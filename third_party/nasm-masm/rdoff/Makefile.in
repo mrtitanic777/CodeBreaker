@@ -29,9 +29,9 @@ LDRDFLIBS 	= rdoff.o nasmlib.o symtab.o collectn.o rdlib.o segtab.o hash.o
 RDXLIBS 	= rdoff.o rdfload.o symtab.o collectn.o hash.o
 
 .c.o:
-	$(CC) -c $(CFLAGS) -o $@ $<
+	$(CC) -c $(CFLAGS) $<
 
-all: rdfdump ldrdf rdx rdflib rdf2bin rdf2com
+all: rdfdump ldrdf rdx rdflib rdf2bin rdf2com rdf2ihx
 
 rdfdump: rdfdump.o
 	$(CC) $(LDFLAGS) -o rdfdump rdfdump.o
@@ -45,7 +45,10 @@ rdf2bin: rdf2bin.o $(RDXLIBS) nasmlib.o
 	$(CC) $(LDFLAGS) -o rdf2bin rdf2bin.o $(RDXLIBS) nasmlib.o
 rdf2com:
 	rm -f rdf2com && $(LN_S) rdf2bin rdf2com
+rdf2ihx: rdf2ihx.o $(RDXLIBS) nasmlib.o
+	$(CC) $(LDFLAGS) -o rdf2ihx rdf2ihx.o $(RDXLIBS) nasmlib.o
 
+rdf2ihx.o: rdf2ihx.c
 rdf2bin.o: rdf2bin.c
 rdfdump.o: rdfdump.c
 rdoff.o: rdoff.c rdoff.h
@@ -62,17 +65,18 @@ nasmlib.o: $(top_srcdir)/nasmlib.c
 	$(CC) -c $(CFLAGS) $(top_srcdir)/nasmlib.c
 
 clean:
-	rm -f *.o rdfdump ldrdf rdx rdflib rdf2bin rdf2com
+	rm -f *.o rdfdump ldrdf rdx rdflib rdf2bin rdf2com rdf2ihx
 
 spotless: clean
 	rm -f Makefile
 
 distclean: spotless
 
-install: rdfdump ldrdf rdx rdflib rdf2bin rdf2com
+install: rdfdump ldrdf rdx rdflib rdf2bin rdf2com rdf2ihx
 	$(INSTALL_PROGRAM) rdfdump $(INSTALLROOT)$(bindir)/rdfdump
 	$(INSTALL_PROGRAM) ldrdf $(INSTALLROOT)$(bindir)/ldrdf
 	$(INSTALL_PROGRAM) rdx $(INSTALLROOT)$(bindir)/rdx
 	$(INSTALL_PROGRAM) rdflib $(INSTALLROOT)$(bindir)/rdflib
 	$(INSTALL_PROGRAM) rdf2bin $(INSTALLROOT)$(bindir)/rdf2bin
+	$(INSTALL_PROGRAM) rdf2ihx $(INSTALLROOT)$(bindir)/rdf2ihx
 	cd $(INSTALLROOT)$(bindir) && rm -f rdf2com && $(LN_S) rdf2bin rdf2com
