@@ -10,8 +10,8 @@
 # It's been tested with Microsoft C 5.x plus Borland Make. (Yes, I
 # know it's silly, but...)
 
-CC = cl
-CCFLAGS = /c /O /AL
+CC = cl /c /O /AL
+QCL = qcl /c /AL
 LINK = cl
 LINKFLAGS =
 LIBRARIES =
@@ -19,13 +19,13 @@ EXE = .exe#
 OBJ = obj#
 
 .c.$(OBJ):
-	$(CC) $(CCFLAGS) $*.c
+	$(CC) $*.c
 
 NASMOBJS = nasm.$(OBJ) nasmlib.$(OBJ) float.$(OBJ) insnsa.$(OBJ) \
            assemble.$(OBJ) labels.$(OBJ) parser.$(OBJ) outform.$(OBJ) \
 	   outbin.$(OBJ) outaout.$(OBJ) outcoff.$(OBJ) outelf.$(OBJ) \
 	   outobj.$(OBJ) outas86.$(OBJ) outrdf.$(OBJ) outdbg.$(OBJ) \
-	   preproc.$(OBJ)
+	   preproc.$(OBJ) listing.$(OBJ)
 
 NDISASMOBJS = ndisasm.$(OBJ) disasm.$(OBJ) sync.$(OBJ) nasmlib.$(OBJ) \
               insnsd.$(OBJ)
@@ -45,7 +45,9 @@ assemble.$(OBJ): assemble.c nasm.h assemble.h insns.h
 disasm.$(OBJ): disasm.c nasm.h disasm.h sync.h insns.h names.c
 float.$(OBJ): float.c nasm.h
 labels.$(OBJ): labels.c nasm.h nasmlib.h
-nasm.$(OBJ): nasm.c nasm.h nasmlib.h parser.h assemble.h labels.h outform.h
+listing.$(OBJ): listing.c nasm.h nasmlib.h listing.h
+nasm.$(OBJ): nasm.c nasm.h nasmlib.h parser.h assemble.h labels.h \
+	listing.h outform.h
 nasmlib.$(OBJ): nasmlib.c nasm.h nasmlib.h
 ndisasm.$(OBJ): ndisasm.c nasm.h sync.h disasm.h
 outas86.$(OBJ): outas86.c nasm.h nasmlib.h
@@ -65,9 +67,9 @@ sync.$(OBJ): sync.c sync.h
 # CL proper; and we don't need any optimisation in these modules
 # since they're just data.
 insnsa.$(OBJ): insnsa.c nasm.h insns.h
-	qcl /c /AL insnsa.c
+	$(QCL) insnsa.c
 insnsd.$(OBJ): insnsd.c nasm.h insns.h
-	qcl /c /AL insnsd.c
+	$(QCL) insnsd.c
 
 clean :
 	del *.obj
