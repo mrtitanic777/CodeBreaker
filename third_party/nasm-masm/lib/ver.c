@@ -1,6 +1,6 @@
 /* ----------------------------------------------------------------------- *
  *   
- *   Copyright 1996-2009 The NASM Authors - All Rights Reserved
+ *   Copyright 1996-2016 The NASM Authors - All Rights Reserved
  *   See the file AUTHORS included with the NASM distribution for
  *   the specific copyright holders.
  *
@@ -31,7 +31,7 @@
  *
  * ----------------------------------------------------------------------- */
 
-#include "nasm.h"
+#include "ver.h"
 #include "version.h"
 
 /* This is printed when entering nasm -v */
