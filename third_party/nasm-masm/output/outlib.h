@@ -1,6 +1,6 @@
 /* ----------------------------------------------------------------------- *
  *   
- *   Copyright 1996-2009 The NASM Authors - All Rights Reserved
+ *   Copyright 1996-2016 The NASM Authors - All Rights Reserved
  *   See the file AUTHORS included with the NASM distribution for
  *   the specific copyright holders.
  *
@@ -54,6 +54,9 @@ void null_debug_typevalue(int32_t type);
 void null_debug_output(int type, void *param);
 void null_debug_cleanup(void);
 extern const struct dfmt * const null_debug_arr[2];
+
+/* Wrapper for unported backends */
+void nasm_do_legacy_output(const struct out_data *data);
 
 #endif /* NASM_OUTLIB_H */
 
