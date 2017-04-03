@@ -36,7 +36,7 @@
 #include "outlib.h"
 
 enum directive_result
-null_directive(enum directives directive, char *value, int pass)
+null_directive(enum directive directive, char *value, int pass)
 {
     (void)directive;
     (void)value;
