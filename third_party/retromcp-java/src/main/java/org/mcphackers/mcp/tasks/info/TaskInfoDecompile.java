@@ -21,4 +21,9 @@ public class TaskInfoDecompile implements TaskInfo {
         return new TaskDecompile(side);
     }
 
+    @Override
+    public boolean hasServerThread() {
+        return true;
+    }
+
 }
