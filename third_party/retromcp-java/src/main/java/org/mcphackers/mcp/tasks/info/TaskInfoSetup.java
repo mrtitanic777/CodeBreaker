@@ -6,7 +6,7 @@ import org.mcphackers.mcp.tasks.TaskSetup;
 public class TaskInfoSetup implements TaskInfo {
     @Override
     public String title() {
-        return "Setup";
+        return "Setting up";
     }
 
     @Override
