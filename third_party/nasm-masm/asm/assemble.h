@@ -1,6 +1,6 @@
 /* ----------------------------------------------------------------------- *
  *
- *   Copyright 1996-2024 The NASM Authors - All Rights Reserved
+ *   Copyright 1996-2025 The NASM Authors - All Rights Reserved
  *   See the file AUTHORS included with the NASM distribution for
  *   the specific copyright holders.
  *
@@ -40,6 +40,7 @@
 
 #include "nasm.h"
 #include "iflag.h"
+#include "asmutil.h"
 
 extern iflag_t cpu, cmd_cpu;
 void set_cpu(const char *cpuspec);
@@ -50,6 +51,7 @@ extern struct location absolute;
 int64_t increment_offset(int64_t delta);
 void process_insn(insn *instruction);
 
+bool directive_valid(const char *);
 bool process_directives(char *);
 void process_pragma(char *);
 
