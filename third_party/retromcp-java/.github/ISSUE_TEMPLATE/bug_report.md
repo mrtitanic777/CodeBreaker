@@ -17,7 +17,7 @@ A clear and concise description of what you expected to happen.
 If applicable, add screenshots to help explain your problem.
 
 **RetroMCP Version**
-v1.0
+v1.1
 
 **Minecraft version**
 
