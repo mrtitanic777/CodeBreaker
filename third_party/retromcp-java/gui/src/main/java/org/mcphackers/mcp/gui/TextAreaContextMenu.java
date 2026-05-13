@@ -7,6 +7,7 @@ import javax.swing.text.StyledDocument;
 
 import org.mcphackers.mcp.MCP;
 import org.mcphackers.mcp.main.MainGUI;
+import org.mcphackers.mcp.tools.Util;
 
 public class TextAreaContextMenu extends JPopupMenu {
 	private final MCP mcp;
@@ -29,6 +30,17 @@ public class TextAreaContextMenu extends JPopupMenu {
 				doc.setCharacterAttributes(0, doc.getLength(), defaultStyle, true);
 			}
 		});
+		JMenuItem copyText = new JMenuItem(MCP.TRANSLATOR.translateKey("mcp.copyConsole"));
+		copyText.addActionListener(actionEvent -> {
+			if (this.mcp instanceof MainGUI) {
+				MainGUI mainGUI = (MainGUI) this.mcp;
+				JTextPane textPane = mainGUI.textPane;
+				String consoleText = textPane.getSelectedText() != null ? textPane.getSelectedText() : textPane.getText();
+				Util.copyToClipboard(consoleText);
+			}
+		});
 		this.add(clearText);
+		this.add(copyText);
+
 	}
 }

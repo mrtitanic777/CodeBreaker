@@ -28,7 +28,8 @@ mcp.side = Side
 mcp.startClient = Launch client
 mcp.startServer = Launch server
 mcp.console = Console output
-mcp.clearConsole = Clear Console
+mcp.clearConsole = Clear console
+mcp.copyConsole = Copy text
 
 side.client = Client
 side.server = Server
