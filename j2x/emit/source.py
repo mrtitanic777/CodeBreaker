@@ -238,8 +238,8 @@ def _referenced_types(cls, resolver, body_text):
 
 
 def render_source(cls, resolver, ledger=None):
-    """Returns the .cpp text, or None for interfaces (header-only)."""
-    if cls.is_interface:
+    """Returns the .cpp text, or None for interfaces/enums (header-only)."""
+    if cls.is_interface or cls.is_enum:
         return None
 
     body = []

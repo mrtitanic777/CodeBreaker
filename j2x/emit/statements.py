@@ -477,6 +477,8 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
         recv, mem, paren = mm.group(1), mm.group(2), mm.group(3)
         if recv not in static_set:
             return mm.group(0)
+        if mem == 'class' and not paren:             # Java class literal X.class -> stub (no RTTI port)
+            return '((void*)0)'
         if paren:                                  # static method call
             return '%s::%s%s' % (recv, mem, paren)
         if recv in enum_set:                       # enum constant (no s_ prefix)

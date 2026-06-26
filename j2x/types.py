@@ -43,6 +43,8 @@ class TypeResolver(object):
         n = jtype.name
         if n in typemap.PRIMITIVES:
             return 'value'
+        if n in self.enums:
+            return 'value'                           # enums -> int (value)
         if n in typemap.VALUE_STDLIB:
             return 'value'                           # std::string
         if n in typemap.CONTAINERS:
@@ -108,6 +110,8 @@ class TypeResolver(object):
             return '%s<%s>' % (outer, ', '.join(args))
 
         name = jtype.name
+        if name in self.enums:
+            return 'int'                             # enum variable/field/param/return -> int
         # String is passed as const ref (cheap), but RETURNED by value: methods often
         # build a new string (concat), and returning that as const& would dangle. Uses
         # JavaString (a std::string subclass with Java's methods) so s.equals()/s.trim()/...

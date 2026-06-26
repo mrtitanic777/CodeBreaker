@@ -27,8 +27,13 @@ class TestOwnership(unittest.TestCase):
         self.assertEqual(self.r.ownership(T('String')), 'value')
 
     def test_reference_types_are_pointer(self):
-        for n in ('Block', 'World', 'Entity', 'ICamera', 'EnumOS'):
+        for n in ('Block', 'World', 'Entity', 'ICamera'):
             self.assertEqual(self.r.ownership(T(n)), 'pointer', n)
+
+    def test_enums_are_value(self):
+        # enums map to int (value); constants are scoped static const ints (EnumOS::linux)
+        self.assertEqual(self.r.ownership(T('EnumOS')), 'value')
+        self.assertEqual(self.r.field_type(T('EnumOS')), 'int')
 
     def test_unknown_capitalized_is_pointer(self):
         self.assertEqual(self.r.ownership(T('SomeNewClass')), 'pointer')

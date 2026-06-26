@@ -85,6 +85,21 @@ def _method_decl(cls, m, resolver):
 
 def render_header(cls, resolver, ledger=None):
     guard = naming.guard_macro(cls.name)
+
+    # Enums: emit the constants as scoped static const ints so `EnumOS::linux` resolves; the
+    # enum TYPE itself maps to int (see types.py), so variables/switches are plain ints.
+    if cls.is_enum:
+        L = ['#ifndef %s' % guard, '#define %s' % guard, '', _BANNER % cls.name, '',
+             'struct %s {' % cls.name]
+        for i, ec in enumerate(cls.enum_consts):
+            L.append('\tstatic const int %s = %d;' % (ec.name, i))
+        L += ['};', '', '#endif // %s' % guard]
+        if ledger is not None:
+            ledger.add(cls.name + '.h', Category.PORTED,
+                       'enum %s -> struct of static const int constants' % cls.name,
+                       source='emit', rule='enum')
+        return '\n'.join(L)
+
     L = ['#ifndef %s' % guard, '#define %s' % guard, '',
          _BANNER % cls.name, '']
 

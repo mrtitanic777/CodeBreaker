@@ -90,7 +90,7 @@ class TestStaticAndApi(unittest.TestCase):
         self.assertIn('int i = Block::getRenderType(var1);', self.out)
 
     def test_enum_constant_no_prefix(self):
-        self.assertIn('Direction* var2 = Direction::NORTH;', self.out)
+        self.assertIn('int var2 = Direction::NORTH;', self.out)   # enum type -> int, constant scoped
 
     def test_math_mapping(self):
         self.assertIn('float f = sqrtf(2.0F);', self.out)
