@@ -86,10 +86,14 @@ class TypeResolver(object):
         context: 'field' | 'param' | 'return' | 'local' | 'element'
         'element' = inside an array or generic; the caller adds any pointer star.
         """
-        # Arrays: element buffer pointer; nullable ref-arrays are T**.
+        # Arrays: a buffer pointer over the element type. A reference-type element is
+        # itself a pointer (heap object, nullable), so a ref array is T** -- its slots
+        # hold pointers and `arr[i]` is a T* you call through. A value/primitive element
+        # is contiguous, so a value array is T*.
         if jtype.is_array:
-            inner = self.cpp_type(jtype.element(), 'element') + '*'
-            if jtype.name in typemap.PTR_ARRAY_ELEMENTS and not inner.endswith('**'):
+            elem = jtype.element()
+            inner = self.cpp_type(elem, 'element') + '*'
+            if self.is_pointer(elem) and not inner.endswith('**'):
                 inner += '*'
             return inner
 

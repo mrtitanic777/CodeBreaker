@@ -55,10 +55,6 @@ VALUE_STDLIB = {'String'}
 # on the console. A deref of these (or any scope array of reference type) is guarded.
 KNOWN_NULLABLE = {'blocksList', 'itemsList'}
 
-# Nullable reference-type arrays become arrays-of-POINTERS (T**): empty slots are
-# NULL and polymorphism is preserved. e.g. ItemStack[] -> ItemStack**.
-PTR_ARRAY_ELEMENTS = {'ItemStack', 'Item', 'Block'}
-
 # Runtime-support classes the converter EMITS a header for (see runtime.py) and
 # #includes when referenced -- not part of the decompiled corpus.
 RUNTIME_HEADERS = {'Random'}
