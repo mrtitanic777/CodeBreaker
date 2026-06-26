@@ -605,6 +605,36 @@ _GENERATED['DateFormat.h'] = _class_stub('DateFormat',
     ret_methods=[('format', ('std::string', 'std::string()'))])
 _GENERATED['Dimension.h'] = _class_stub('Dimension',
     ret_methods=[('getWidth', ('int', '0')), ('getHeight', ('int', '0'))])
+# java.awt event listeners/adapters (implemented/extended by the desktop applet+window code)
+for _li in ('KeyListener', 'MouseListener', 'MouseMotionListener', 'MouseWheelListener',
+            'WindowListener', 'ComponentListener', 'FocusListener'):
+    _GENERATED[_li + '.h'] = _class_stub(_li,
+        void_methods=['keyPressed', 'keyReleased', 'keyTyped', 'mouseClicked', 'mousePressed',
+                      'mouseReleased', 'mouseEntered', 'mouseExited', 'mouseMoved', 'mouseDragged',
+                      'mouseWheelMoved', 'windowClosing', 'windowOpened', 'windowClosed',
+                      'windowActivated', 'windowDeactivated', 'windowIconified', 'windowDeiconified',
+                      'componentResized', 'componentMoved', 'componentShown', 'componentHidden',
+                      'focusGained', 'focusLost'])
+_GENERATED['WindowAdapter.h'] = _class_stub('WindowAdapter',
+    void_methods=['windowClosing', 'windowOpened', 'windowClosed', 'windowActivated',
+                  'windowDeactivated', 'windowIconified', 'windowDeiconified'])
+# java.awt event objects
+for _ev in ('KeyEvent', 'MouseEvent', 'WindowEvent', 'ComponentEvent', 'FocusEvent', 'InputEvent'):
+    _GENERATED[_ev + '.h'] = _class_stub(_ev, void_methods=['consume'],
+        ret_methods=[('getKeyCode', ('int', '0')), ('getKeyChar', ('char', '0')),
+                     ('getX', ('int', '0')), ('getY', ('int', '0')), ('getButton', ('int', '0')),
+                     ('getClickCount', ('int', '0')), ('getWheelRotation', ('int', '0')),
+                     ('getWindow', ('void*', '0')), ('getComponent', ('void*', '0')),
+                     ('isShiftDown', ('bool', 'false')), ('isControlDown', ('bool', 'false')),
+                     ('isAltDown', ('bool', 'false'))])
+_GENERATED['Panel.h'] = _class_stub('Panel', fwds=['Graphics'],
+    void_methods=['add', 'setLayout', 'validate', 'repaint', 'requestFocus', 'setVisible', 'setSize'],
+    ret_methods=[('getWidth', ('int', '0')), ('getHeight', ('int', '0')), ('getGraphics', ('Graphics*', '0'))])
+_GENERATED['Comparable.h'] = _class_stub('Comparable', ret_methods=[('compareTo', ('int', '0'))])
+_GENERATED['CodecJOrbis.h'] = _class_stub('CodecJOrbis',
+    void_methods=['initialize', 'cleanup', 'setAudioFormat', 'reverseByteOrder'],
+    ret_methods=[('read', ('void*', '0')), ('readAll', ('void*', '0')), ('getAudioFormat', ('void*', '0')),
+                 ('initialized', ('bool', 'false')), ('endOfStream', ('bool', 'false'))])
 _GENERATED['SoundSystem.h'] = _class_stub('SoundSystem',
     void_methods=['cleanup', 'newSource', 'newStreamingSource', 'play', 'setListenerOrientation',
                   'setListenerPosition', 'setPitch', 'setVolume', 'stop', 'pause', 'removeSource'],
