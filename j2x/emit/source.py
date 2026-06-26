@@ -16,6 +16,7 @@ Method-body statement translation is delegated to emit/statements.py (Module 4c)
 
 import re
 
+from .. import typemap
 from ..ledger import Category, Severity
 from . import naming, ownership
 from .statements import translate_body
@@ -189,7 +190,8 @@ def _referenced_types(cls, resolver, body_text):
         for p in m.params:
             add(p.jtype)
     names |= set(re.findall(r'\b([A-Z]\w*)\b', body_text))     # new X / X:: / casts / locals
-    return sorted((names & set(resolver.known)) - {cls.name})
+    includable = set(resolver.known) | typemap.RUNTIME_HEADERS
+    return sorted((names & includable) - {cls.name})
 
 
 def render_source(cls, resolver, ledger=None):

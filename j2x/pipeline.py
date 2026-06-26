@@ -16,7 +16,7 @@ the legacy output.
 
 import os
 
-from . import parse, types, typemap, report, rules
+from . import parse, types, typemap, report, rules, runtime
 from .emit import header as emit_header, source as emit_source
 from .ledger import Ledger, Category, Severity
 
@@ -76,6 +76,9 @@ def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True)
 
     resolve_inheritance(classes)
     resolver = build_resolver(classes, value_types)
+
+    for fname, content in runtime.FILES.items():     # runtime-support headers (Random.h, ...)
+        _write(os.path.join(out_dir, fname), content)
 
     headers = sources = 0
     for cls in classes:

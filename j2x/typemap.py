@@ -59,6 +59,10 @@ KNOWN_NULLABLE = {'blocksList', 'itemsList'}
 # NULL and polymorphism is preserved. e.g. ItemStack[] -> ItemStack**.
 PTR_ARRAY_ELEMENTS = {'ItemStack', 'Item', 'Block'}
 
+# Runtime-support classes the converter EMITS a header for (see runtime.py) and
+# #includes when referenced -- not part of the decompiled corpus.
+RUNTIME_HEADERS = {'Random'}
+
 # java.lang.Math.<fn> -> C math function. Float-suffixed to match the existing
 # Xbox 360 project (float math); pulled in via <math.h>. min/max stay bare
 # (the project provides them). Returns the C name for a given Java Math method.
