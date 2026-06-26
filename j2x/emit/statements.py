@@ -1,25 +1,42 @@
 # -*- coding: utf-8 -*-
 """
-statements.py -- Module 4c: method-body / statement translation (the deep core).
+statements.py -- Module 4c: method-body / statement translation.
 
-For Module 4b this is a SEAM, not the real translator: it returns the original
-Java body as commented-out lines so `emit/source.py` can lay out a correct,
-safe .cpp structure (static defs, ctor init lists, destructors) without yet
-attempting statement-level Java->C++03 translation.
+PASS 1 (this file): the foundation -- a per-method SYMBOL TABLE (params + own
+fields + locals, each with its JType) and value/pointer ACCESS translation:
+  * `this.x`            -> `this->x`           (this is a pointer in C++)
+  * `<ptrVar>.x`        -> `<ptrVar>->x`       (receiver is a reference type)
+  * `<valueVar>.x`      -> unchanged           (receiver is a value/struct type)
+  * local declarations  -> C++ type            (`Block var1` -> `Block* var1`)
 
-4c will replace `translate_body` with the real thing: value/pointer access
-(`.` vs `->` from the resolver), Java-API -> STL, null-deref guards, labeled
-break -> goto, etc. Everything else in emit/ already consumes this contract, so
-4c is a drop-in upgrade.
+This is the #1 error class (C2227/C2228, `.` vs `->`) decided from resolved
+types instead of patched afterward. It is conservative: only names KNOWN to be
+pointers get rewritten; unknown receivers are left alone.
+
+Later passes layer on: Java-API -> STL, `new`/cast translation, null-deref
+guards, labeled break -> goto, class-static `X.Y` -> `X::s_Y`, the real
+`this(...)` delegation inline, and dual-use value types. Bodies are therefore
+PARTIALLY translated until those land -- that's the iterative 4c plan.
 """
+
+import re
+
+from .. import parse as javaparse
+
+# Java keywords that must never be mistaken for a local-variable TYPE.
+_KEYWORDS = {
+    'return', 'if', 'else', 'while', 'for', 'do', 'switch', 'case', 'break',
+    'continue', 'throw', 'throws', 'new', 'this', 'super', 'synchronized',
+    'try', 'catch', 'finally', 'instanceof', 'assert', 'default', 'void',
+}
+
+# `[final] Type name =|;`  -- a local declaration (Type may have generics / [] dims)
+_DECL = re.compile(
+    r'^(?:final\s+)?([A-Za-z_][\w.]*(?:<[^>]*>)?(?:\s*\[\s*\])*)\s+([A-Za-z_]\w*)\s*(=|;)')
 
 
 def inner_lines(body):
-    """The statement lines between the outermost braces of a parsed method body.
-
-    `body` is the parser's list of (line_no, raw_text) spanning the method,
-    which includes the signature's `{` line and the closing `}`.
-    """
+    """Statement lines between the outermost braces of a parsed method body."""
     text = '\n'.join(t for _ln, t in body)
     i = text.find('{')
     j = text.rfind('}')
@@ -28,12 +45,53 @@ def inner_lines(body):
     return [ln.rstrip() for ln in text.split('\n')]
 
 
+def _decl_base(type_str):
+    """The bare type name (drop generics, arrays) for keyword checking."""
+    return type_str.split('[')[0].split('<')[0].strip()
+
+
+def build_scope(cls, method):
+    """name -> JType for params, the class's own fields, and locals declared in the body."""
+    scope = {}
+    for f in cls.fields:
+        scope[f.name] = f.jtype
+    for p in method.params:
+        scope[p.name] = p.jtype
+    for _ln, text in method.body:
+        m = _DECL.match(text.strip())
+        if m and _decl_base(m.group(1)) not in _KEYWORDS and m.group(2) not in _KEYWORDS:
+            try:
+                scope[m.group(2)] = javaparse.parse_type(m.group(1))
+            except Exception:                       # noqa: BLE001 - never let a parse hiccup abort emit
+                pass
+    return scope
+
+
+def _translate_line(s, ptr_names, resolver):
+    # 1. local declaration: rewrite the leading Java type to its C++ spelling
+    m = _DECL.match(s)
+    if m and _decl_base(m.group(1)) not in _KEYWORDS and m.group(2) not in _KEYWORDS:
+        cpp = resolver.cpp_type(javaparse.parse_type(m.group(1)), 'local')
+        s = cpp + s[m.end(1):]
+    # 2. this.  -> this->
+    s = re.sub(r'\bthis\.', 'this->', s)
+    # 3. <pointerName>.  -> <pointerName>->
+    for name in ptr_names:
+        s = re.sub(r'\b' + re.escape(name) + r'\.', name + '->', s)
+    return s
+
+
 def translate_body(method, cls, resolver, ledger=None):
-    """4b stub: emit the Java body as comments, marked for 4c translation.
-    Returns a list of C++ source lines (no indentation; the caller indents)."""
-    stmts = [ln.strip() for ln in inner_lines(method.body) if ln.strip()]
-    if not stmts:
-        return []
-    out = ['// PORT: body pending statement translation (Module 4c)']
-    out.extend('// ' + s for s in stmts)
+    """Return translated C++ body lines (no indentation; caller indents)."""
+    scope = build_scope(cls, method)
+    ptr_names = sorted((n for n, jt in scope.items() if resolver.is_pointer(jt)),
+                       key=len, reverse=True)   # longer names first (avoid prefix overlap)
+    out = []
+    for raw in inner_lines(method.body):
+        s = raw.strip()
+        if not s or s.startswith('//') or s.startswith('*') or s.startswith('/*'):
+            if s:
+                out.append(s)
+            continue
+        out.append(_translate_line(s, ptr_names, resolver))
     return out
