@@ -9,3 +9,6 @@ __pycache__/
 # Logs and snapshots (disposable)
 *.log
 *.tgz
+
+# Naming batch intermediates
+_batches/

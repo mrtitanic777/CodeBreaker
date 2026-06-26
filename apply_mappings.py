@@ -44,18 +44,27 @@ _JAVA_KEYWORDS = {
 }
 
 
+INCLUDE_LOW = '--include-low' in sys.argv
+
+
 def load_renames(path):
-    """symbol -> new_name, for rows with a non-empty, valid new_name."""
-    out, bad = {}, []
+    """symbol -> new_name, for rows with a non-empty, valid new_name.
+    Low-confidence rows are skipped unless --include-low is passed."""
+    out, bad, skipped_low = {}, [], 0
     with open(path, newline='', encoding='utf-8') as f:
         for row in csv.DictReader(f):
             new = (row.get('new_name') or '').strip()
             sym = (row.get('symbol') or '').strip()
+            conf = (row.get('confidence') or '').strip().lower()
             if not new or not sym:
                 continue
+            if conf == 'low' and not INCLUDE_LOW:
+                skipped_low += 1; continue
             if not _IDENT.match(new) or new in _JAVA_KEYWORDS:
                 bad.append((sym, new)); continue
             out[sym] = new
+    if skipped_low:
+        print('Skipped %d low-confidence row(s) (use --include-low to apply them).' % skipped_low)
     return out, bad
 
 
@@ -75,7 +84,8 @@ def main():
     print('Applying %d rename(s).' % len(renames))
 
     lines = open(TINY, encoding='utf-8').read().split('\n')
-    # collision guard: existing named symbols per class
+    # collision guard keyed on (name, descriptor): same name + DIFFERENT signature is a
+    # legal Java overload and allowed; same name + same signature is a true duplicate.
     cur, names_by_class, line_class = None, {}, []
     for ln in lines:
         p = ln.split('\t')
@@ -83,7 +93,7 @@ def main():
             cur = p[1] if len(p) > 1 else None
             names_by_class.setdefault(cur, set())
         elif len(p) >= 4 and p[0] == '' and p[1] in ('m', 'f'):
-            names_by_class.setdefault(cur, set()).add(p[3])
+            names_by_class.setdefault(cur, set()).add((p[3], p[2]))
         line_class.append(cur)
 
     applied, collisions, out = 0, [], []
@@ -92,8 +102,9 @@ def main():
         if len(p) >= 4 and p[0] == '' and p[1] in ('m', 'f') and p[3] in renames:
             new = renames[p[3]]
             cls = line_class[idx]
-            if new in names_by_class.get(cls, set()):
+            if (new, p[2]) in names_by_class.get(cls, set()):
                 collisions.append((cls, p[3], new)); out.append(ln); continue
+            names_by_class.setdefault(cls, set()).add((new, p[2]))
             if DRY and applied < 30:
                 print('  [%s] %s\n     -> %s' % (cls, ln.strip(), new))
             p[3] = new
