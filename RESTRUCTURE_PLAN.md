@@ -28,10 +28,12 @@ Java source ──▶ parse ──▶ IR ──▶ types ──▶ emit ──�
 
 | # | Module | Contract | Status |
 |---|---|---|---|
-| 1 | `ir.py` | data shapes: JClass/Field/Method/JType (parse↔emit contract) | **building** |
-| 2 | `parse/` | Java text → IR (no translation, just structure) | next |
-| 3 | `types.py` | resolve each name → C++ type + ownership (value/ptr) + static | |
-| 4 | `emit/` | IR + types → correct .h/.cpp (new T[n](), real delegation, R-of-3, refs) | |
+| 1 | `ir.py` | data shapes: JClass/Field/Method/JType (parse↔emit contract) | ✅ done |
+| 2 | `parse.py` | Java text → IR (no translation, just structure) | ✅ done (all 230 files) |
+| 3 | `typemap.py`+`types.py` | resolve each name → C++ type + ownership (value/ptr) + static | ✅ done |
+| 4a | `emit/header.py`+`naming.py` | IR + types → correct .h (includes/fwd-decls, s_ statics) | ✅ done |
+| 4b | `emit/source.py` | .cpp: static defs `new T[n]()`, ctor zero-init, R-of-3 dtor, delegation flag | ✅ done |
+| 4c | `emit/statements.py` | **method-body translation** (the deep core) — currently a seam stub | ⏳ next |
 | 5 | `pipeline.py` | discover → parse → resolve → emit → verify → report | |
 | 6 | `verify` | run crash-class `rules.py` on new output; gate on zero HIGH | |
 
