@@ -131,6 +131,35 @@ class TestCollectionsAndString(unittest.TestCase):
         self.assertIn('int n = this->items.size();', self.out)
 
 
+class TestValueContainers(unittest.TestCase):
+    """Java collections are by-value std::vector/map/set; `new ArrayList()` is value
+    construction, not a heap pointer, so method calls use '.' not '->'."""
+    def setUp(self):
+        c = ir.JClass('R')
+        c.fields.append(ir.Field('tagList', ir.JType('List')))
+        m = ir.Method('f', ir.JType('void'), params=[ir.Param('var1', ir.JType('int'))], line=1)
+        m.body = [
+            (1, 'void f(int var1) {'),
+            (2, '\tList var2 = new ArrayList();'),       # value local, not a pointer
+            (3, '\tvar2.add(var1);'),                    # value receiver -> push_back
+            (4, '\tthis.tagList = new ArrayList();'),     # field assign -> value temporary
+            (5, '\tArrayList var3 = new ArrayList();'),
+            (6, '}'),
+        ]
+        c.methods.append(m)
+        self.out = statements.translate_body(m, c, types.TypeResolver())
+
+    def test_local_container_decl_default_constructs(self):
+        self.assertIn('std::vector<void*> var2;', self.out)        # initializer dropped
+        self.assertFalse(any('var2 =' in l and 'new' in l for l in self.out), self.out)
+
+    def test_value_container_method_uses_dot(self):
+        self.assertIn('var2.push_back(var1);', self.out)           # '.' not '->'
+
+    def test_field_assign_is_value_temporary(self):
+        self.assertIn('this->tagList = std::vector<void*>();', self.out)
+
+
 class TestMapSetString(unittest.TestCase):
     def setUp(self):
         c = ir.JClass('R')

@@ -313,8 +313,8 @@ def _pointer_locals(method, scope, resolver):
         if name in param_names:
             continue
         jt = scope.get(name)
-        if jt is None or jt.is_array or resolver.is_pointer(jt):
-            continue                                  # already a pointer/array
+        if jt is None or jt.is_array or resolver.is_pointer(jt) or jt.name in typemap.CONTAINERS:
+            continue                                  # already a pointer/array, or a value container
         nm = re.escape(name)
         if (re.search(r'\b%s\s*=\s*(?:null|NULL)\b' % nm, text)
                 or re.search(r'\b%s\s*(?:==|!=)\s*(?:null|NULL)\b' % nm, text)
@@ -413,6 +413,19 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
         if m.group(2) in ptr_locals and not cpp.endswith('*'):
             cpp += '*'
         s = cpp + s[m.end(1):]
+        # a value-container local initialized with `new ArrayList()` -> just default-construct
+        # (Java collections are by-value std::vector/map/set; dropping avoids an element-type
+        # mismatch between the typed LHS and a raw `new ArrayList()`).
+        cm = re.match(r'^(.*\b%s)\s*=\s*new\s+([A-Z]\w*)(?:<[^;{}]*>)?\s*\([^;{}]*\)\s*;\s*$'
+                      % re.escape(m.group(2)), s)
+        if cm and javaparse.parse_type(cm.group(2)).name in typemap.CONTAINERS:
+            s = cm.group(1) + ';'
+    # 1b. any other `new <Container>(...)` (field/element assignment, for-init, ...) -> a
+    #     value temporary, since collections are held by value
+    def _new_container(mm):
+        jt = javaparse.parse_type(mm.group(1) + (mm.group(2) or ''))
+        return resolver.cpp_type(jt, 'local') + '()' if jt.name in typemap.CONTAINERS else mm.group(0)
+    s = re.sub(r'\bnew\s+([A-Z]\w*)(<[^;{}]*?>)?\s*\([^;{}]*?\)', _new_container, s)
     # 2. this.  -> this->
     s = re.sub(r'\bthis\.', 'this->', s)
     # 3. <pointerName>.  -> <pointerName>->
