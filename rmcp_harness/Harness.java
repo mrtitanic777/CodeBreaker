@@ -1,5 +1,6 @@
 // Headless driver for RetroMCP-Java: runs a single task via MCP.performTask with a
 // plain-text logger (no jansi), so output is capturable. Usage: Harness <task> [workspaceDir]
+// Targets the v1.2.1+ API (MCP.options field; getWorkingDir/getOptions concrete; warning/error added).
 import org.mcphackers.mcp.MCP;
 import org.mcphackers.mcp.Options;
 import org.mcphackers.mcp.tasks.Task;
@@ -13,23 +14,21 @@ import java.nio.file.Paths;
 import java.util.List;
 
 public class Harness extends MCP {
-    private final Path wd;
-    private final Options options;
     private Version version;
 
     Harness(Path wd) throws Exception {
-        this.wd = wd;
-        this.options = new Options(wd.resolve("options.cfg"));
+        this.options = new Options(this, wd.resolve("options.cfg"));
+        this.options.workingDir = wd;          // drives getWorkingDir()
         this.options.side = Task.Side.ANY;
         String json = new String(Files.readAllBytes(wd.resolve("conf/version.json")));
         this.version = Version.from(new JSONObject(json));
     }
 
-    public Path getWorkingDir() { return wd; }
     public void setProgressBars(List<Task> t, TaskMode m) {}
     public void clearProgressBars() {}
     public void log(String s) { System.out.println(s); }
-    public Options getOptions() { return options; }
+    public void warning(String s) { System.out.println("[WARN] " + s); }
+    public void error(String s) { System.out.println("[ERROR] " + s); }
     public Version getCurrentVersion() { return version; }
     public void setCurrentVersion(Version v) { this.version = v; }
     public void setProgress(int i, String s) {}
