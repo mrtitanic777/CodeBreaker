@@ -35,6 +35,31 @@ public interface IBar {
 """
 
 
+class TestMethodRenameCollision(unittest.TestCase):
+    def test_field_method_name_collision_renamed(self):
+        # Java allows field 'isRunning' + method 'isRunning(...)'; C++ does not -> rename method.
+        from j2x import types
+        from j2x.emit import header, statements
+        c = ir.JClass('NetworkManager')
+        c.fields.append(ir.Field('isRunning', ir.JType('boolean')))
+        m = ir.Method('isRunning', ir.JType('boolean'),
+                      params=[ir.Param('var0', ir.JType('NetworkManager'))], is_static=True, line=1)
+        m.body = [(1, 'boolean isRunning(NetworkManager var0) {'), (2, '\treturn var0.isRunning;'), (3, '}')]
+        c.methods.append(m)
+        renames = pipeline.build_method_renames([c])
+        self.assertEqual(renames['NetworkManager'], {'isRunning'})
+        r = types.TypeResolver(known_classes={'NetworkManager'}, method_renames=renames)
+        h = header.render_header(c, r)
+        self.assertIn('bool isRunning;', h)                       # field unchanged
+        self.assertIn('static bool isRunning_(NetworkManager* var0);', h)   # method renamed
+        # call site renamed too
+        caller = ir.JClass('Foo')
+        cm = ir.Method('g', ir.JType('void'), line=1)
+        cm.body = [(1, 'void g() {'), (2, '\tboolean b = NetworkManager.isRunning(var1);'), (3, '}')]
+        caller.methods.append(cm)
+        self.assertIn('bool b = NetworkManager::isRunning_(var1);', statements.translate_body(cm, caller, r))
+
+
 class TestPipeline(unittest.TestCase):
     def setUp(self):
         self.d = tempfile.mkdtemp()

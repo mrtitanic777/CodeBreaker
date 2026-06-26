@@ -221,7 +221,8 @@ def _render_dtor(cls, owned, ledger):
 def _render_method(cls, m, resolver, ledger):
     ret = ownership.return_cpp_type(m, resolver)
     params = ownership.params_str(m, resolver)
-    L = ['%s %s::%s(%s)' % (ret, cls.name, m.name, params), '{']
+    name = resolver.renamed_method(cls.name, m.name)   # field/method name-collision -> name_
+    L = ['%s %s::%s(%s)' % (ret, cls.name, name, params), '{']
     L.extend('\t' + s for s in translate_body(m, cls, resolver, ledger))
     L.append('}')
     return L

@@ -76,6 +76,28 @@ def build_member_env(classes):
     return env
 
 
+def build_method_renames(classes):
+    """{class: set(method names that COLLIDE with a same-named field, over the parent chain)}.
+    Java allows a field and method with the same name (e.g. synthetic accessors like
+    NetworkManager.isRunning); C++ does not, so emit renames the method to `name_` everywhere
+    (declaration + all call sites). Flattened over inheritance so a subclass call to an
+    inherited colliding method renames too."""
+    by_name = dict((c.name, c) for c in classes)
+    own = {}
+    for c in classes:
+        fields = set(f.name for f in c.fields)
+        own[c.name] = set(m.name for m in c.methods if not m.is_ctor and m.name in fields)
+    renames = {}
+    for c in classes:
+        s, cur, guard = set(), c, set()
+        while cur and cur.name not in guard:
+            guard.add(cur.name)
+            s |= own.get(cur.name, set())
+            cur = by_name.get(cur.parent)
+        renames[c.name] = s
+    return renames
+
+
 def build_resolver(classes, value_types=None):
     names = set(c.name for c in classes)
     enums = set(c.name for c in classes if c.is_enum)
@@ -83,7 +105,8 @@ def build_resolver(classes, value_types=None):
     vals = set(value_types if value_types is not None else typemap.DEFAULT_VALUE_TYPES)
     return types.TypeResolver(known_classes=names, value_types=vals,
                              interface_types=ifaces, enum_types=enums,
-                             members=build_member_env(classes))
+                             members=build_member_env(classes),
+                             method_renames=build_method_renames(classes))
 
 
 def _override_path(overrides_dir, name):

@@ -19,7 +19,7 @@ from . import typemap
 
 class TypeResolver(object):
     def __init__(self, known_classes=None, value_types=None,
-                 interface_types=None, enum_types=None, members=None):
+                 interface_types=None, enum_types=None, members=None, method_renames=None):
         # user-defined classes parsed from the corpus (everything here is a reference type)
         self.known = set(known_classes or ())
         # class names that are C++ VALUE/struct types (stack, '.' access)
@@ -31,6 +31,15 @@ class TypeResolver(object):
         # inheritance is already flattened in (closer definitions win). Built by the
         # pipeline from the full corpus; empty in unit tests that don't need chains.
         self.members = members or {}
+        # {class: set(method names colliding with a field)} -> emit those methods as `name_`
+        self.method_renames = method_renames or {}
+
+    def renamed_method(self, class_name, method_name):
+        """The C++ emit name for a method: `name_` if it collides with a same-named field in
+        class_name's hierarchy (so field and method don't clash), else name unchanged."""
+        if method_name in self.method_renames.get(class_name, ()):
+            return method_name + '_'
+        return method_name
 
     # -- classification ------------------------------------------------------
     def is_primitive(self, jtype):

@@ -451,6 +451,7 @@ def _resolve_chains(s, scope, resolver, current):
                     out.append(crepl)
                     i = seg_end
                     break                             # result type (raw element) not tracked
+                name = resolver.renamed_method(cur_jt.name, name)   # field/method collision -> name_
             out.append(('->' if is_ptr else sep) + name)   # upgrade only when proven pointer
             if is_call:
                 out.append('(' + args + ')')
@@ -562,7 +563,7 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
         if mem == 'class' and not paren:             # Java class literal X.class -> stub (no RTTI port)
             return '((void*)0)'
         if paren:                                  # static method call
-            return '%s::%s%s' % (recv, mem, paren)
+            return '%s::%s%s' % (recv, resolver.renamed_method(recv, mem), paren)
         if recv in enum_set:                       # enum constant (no s_ prefix)
             return '%s::%s' % (recv, mem)
         return '%s::%s' % (recv, naming.static_field_name(mem))   # static field
@@ -574,6 +575,11 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
     for nm in own_statics:
         s = sub_outside_literals(re.compile(r'(?<![\w.:])' + re.escape(nm) + r'\b'),
                                  naming.static_field_name(nm), s)
+    # 5c. bare/this call to one of THIS class's name-collided methods -> name_ (the method was
+    #     renamed because a field shares its name). Skips qualified/`.`/string-literal forms.
+    for nm in resolver.method_renames.get(current, ()):
+        s = sub_outside_literals(re.compile(r'(?<![\w.:>])' + re.escape(nm) + r'(\s*\()'),
+                                 nm + r'_\1', s)
     # 6. container/String methods -> STL (.add->.push_back, .get(i)->[i], .charAt(i)->[i], isEmpty->empty)
     s = _translate_calls(s, scope)
     # 6b. cast-result access: ((Type)x).m -> ((Type*)x)->m  (a cast to a reference type yields a pointer)

@@ -80,7 +80,8 @@ def _method_decl(cls, m, resolver):
     ret = ownership.return_cpp_type(m, resolver)
     prefix = 'static ' if m.is_static else 'virtual '
     suffix = ' = 0' if m.is_abstract else ''
-    return '%s%s %s(%s)%s;' % (prefix, ret, m.name, params, suffix)
+    name = resolver.renamed_method(cls.name, m.name)   # field/method name-collision -> name_
+    return '%s%s %s(%s)%s;' % (prefix, ret, name, params, suffix)
 
 
 def render_header(cls, resolver, ledger=None):
