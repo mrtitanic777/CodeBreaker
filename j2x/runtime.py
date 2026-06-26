@@ -42,5 +42,118 @@ public:
 #endif // RANDOM_H
 '''
 
+# --- external Java base types our corpus extends/implements but that aren't decompiled.
+# Minimal but faithful stubs so inheritance + overrides compile (a missing base header is
+# a fatal include error that blocks the whole translation unit). ---------------------------
+
+RUNNABLE_H = r'''#ifndef RUNNABLE_H
+#define RUNNABLE_H
+// java.lang.Runnable
+struct Runnable {
+	virtual ~Runnable() {}
+	virtual void run() = 0;
+};
+#endif // RUNNABLE_H
+'''
+
+THREAD_H = r'''#ifndef THREAD_H
+#define THREAD_H
+// java.lang.Thread (stub: runs inline; real threading is a platform concern)
+#include <string>
+#include "Runnable.h"
+
+class Thread : public Runnable {
+public:
+	Thread() {}
+	Thread(const std::string&) {}
+	virtual ~Thread() {}
+	virtual void run() {}
+	void start() { run(); }
+	void setDaemon(bool) {}
+	void setName(const std::string&) {}
+	void setPriority(int) {}
+	void interrupt() {}
+	void join() {}
+	bool isAlive() { return false; }
+	static void sleep(long long) {}
+	static void yield() {}
+};
+#endif // THREAD_H
+'''
+
+COMPARATOR_H = r'''#ifndef COMPARATOR_H
+#define COMPARATOR_H
+// java.util.Comparator (generics erase to void*)
+struct Comparator {
+	virtual ~Comparator() {}
+	virtual int compare(void*, void*) = 0;
+};
+#endif // COMPARATOR_H
+'''
+
+FILE_H = r'''#ifndef FILE_H
+#define FILE_H
+// java.io.File (stub)
+#include <string>
+
+class File {
+public:
+	File() {}
+	File(const std::string&) {}
+	File(File*, const std::string&) {}
+	virtual ~File() {}
+	std::string getName() { return std::string(); }
+	std::string getPath() { return std::string(); }
+	std::string getAbsolutePath() { return std::string(); }
+	bool exists() { return false; }
+	bool isDirectory() { return false; }
+	bool isFile() { return false; }
+	bool mkdir() { return false; }
+	bool mkdirs() { return false; }
+	bool renameTo(File*) { return false; }
+	long long length() { return 0LL; }
+};
+#endif // FILE_H
+'''
+
+FILENAMEFILTER_H = r'''#ifndef FILENAMEFILTER_H
+#define FILENAMEFILTER_H
+// java.io.FilenameFilter
+#include <string>
+#include "File.h"
+struct FilenameFilter {
+	virtual ~FilenameFilter() {}
+	virtual bool accept(File*, const std::string&) = 0;
+};
+#endif // FILENAMEFILTER_H
+'''
+
+CANVAS_H = r'''#ifndef CANVAS_H
+#define CANVAS_H
+// java.awt.Canvas (stub: AWT is desktop-only; console port does not render through it)
+struct Canvas {
+	virtual ~Canvas() {}
+};
+#endif // CANVAS_H
+'''
+
+APPLET_H = r'''#ifndef APPLET_H
+#define APPLET_H
+// java.applet.Applet (stub: desktop-only entry point)
+struct Applet {
+	virtual ~Applet() {}
+};
+#endif // APPLET_H
+'''
+
 # filename -> content
-FILES = {'Random.h': RANDOM_H}
+FILES = {
+    'Random.h': RANDOM_H,
+    'Runnable.h': RUNNABLE_H,
+    'Thread.h': THREAD_H,
+    'Comparator.h': COMPARATOR_H,
+    'File.h': FILE_H,
+    'FilenameFilter.h': FILENAMEFILTER_H,
+    'Canvas.h': CANVAS_H,
+    'Applet.h': APPLET_H,
+}

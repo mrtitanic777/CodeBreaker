@@ -64,6 +64,13 @@ class TestPipeline(unittest.TestCase):
     def test_report_written(self):
         self.assertTrue(os.path.isfile(os.path.join(self.out, 'report', 'index.md')))
 
+    def test_runtime_stub_headers_emitted(self):
+        # external base types our corpus extends/implements get emitted stubs so a
+        # missing base header never aborts a translation unit
+        for h in ('Random.h', 'Runnable.h', 'Thread.h', 'Comparator.h', 'File.h',
+                  'FilenameFilter.h', 'Canvas.h', 'Applet.h'):
+            self.assertTrue(os.path.isfile(os.path.join(self.out, h)), h)
+
     def test_translation_applied(self):
         with open(os.path.join(self.out, 'Foo.cpp'), encoding='utf-8') as f:
             cpp = f.read()

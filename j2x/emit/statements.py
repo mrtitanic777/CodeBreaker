@@ -464,7 +464,7 @@ def translate_body(method, cls, resolver, ledger=None):
     ptr_locals = _pointer_locals(method, scope, resolver)   # value locals used as nullable refs
     ptr_names = sorted((set(n for n, jt in scope.items() if resolver.is_pointer(jt)) | ptr_locals),
                        key=len, reverse=True)   # longer names first (avoid prefix overlap)
-    static_set = set(resolver.known) | set(resolver.enums) | {cls.name}
+    static_set = set(resolver.known) | set(resolver.enums) | {cls.name} | typemap.RUNTIME_HEADERS
     enum_set = set(resolver.enums)
     own_statics = set(f.name for f in cls.static_fields())
     out = []

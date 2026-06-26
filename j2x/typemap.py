@@ -56,8 +56,10 @@ VALUE_STDLIB = {'String'}
 KNOWN_NULLABLE = {'blocksList', 'itemsList'}
 
 # Runtime-support classes the converter EMITS a header for (see runtime.py) and
-# #includes when referenced -- not part of the decompiled corpus.
-RUNTIME_HEADERS = {'Random'}
+# #includes when referenced -- not part of the decompiled corpus. Includes the external
+# Java base types our classes extend/implement (Runnable/Thread/Comparator/...).
+RUNTIME_HEADERS = {'Random', 'Runnable', 'Thread', 'Comparator', 'File',
+                   'FilenameFilter', 'Canvas', 'Applet'}
 
 # java.lang.Math.<fn> -> C math function. Float-suffixed to match the existing
 # Xbox 360 project (float math); pulled in via <math.h>. min/max stay bare
