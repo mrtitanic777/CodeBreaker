@@ -291,6 +291,39 @@ def build_scope(cls, method):
     return scope
 
 
+def _local_names(method):
+    """Names of locals DECLARED in the body (not params/fields)."""
+    names = set()
+    for _ln, text in method.body:
+        m = _DECL.match(text.strip())
+        if m and _decl_base(m.group(1)) not in _KEYWORDS and m.group(2) not in _KEYWORDS:
+            names.add(m.group(2))
+    return names
+
+
+def _pointer_locals(method, scope, resolver):
+    """Value-type LOCALS used as nullable references must be C++ pointers -- a C++ value
+    type cannot hold null, so a Java local assigned/compared null (or `new`-d) is really a
+    reference. Sound and signature-safe: only locals (params would change the signature)."""
+    forced = set()
+    locals_ = _local_names(method)
+    param_names = set(p.name for p in method.params)
+    text = '\n'.join(t for _ln, t in method.body)
+    for name in locals_:
+        if name in param_names:
+            continue
+        jt = scope.get(name)
+        if jt is None or jt.is_array or resolver.is_pointer(jt):
+            continue                                  # already a pointer/array
+        nm = re.escape(name)
+        if (re.search(r'\b%s\s*=\s*(?:null|NULL)\b' % nm, text)
+                or re.search(r'\b%s\s*(?:==|!=)\s*(?:null|NULL)\b' % nm, text)
+                or re.search(r'\b(?:null|NULL)\s*(?:==|!=)\s*%s\b' % nm, text)
+                or re.search(r'\b%s\s*=\s*new\b' % nm, text)):
+            forced.add(name)
+    return forced
+
+
 def _resolve_chains(s, scope, resolver, current):
     """Expression-type inference for chained member access -- fix a '.' that should be
     '->' because the receiver sub-expression is a pointer. Two link forms, looked up in
@@ -324,11 +357,15 @@ def _resolve_chains(s, scope, resolver, current):
     return s
 
 
-def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent, current, own_statics):
-    # 1. local declaration: rewrite the leading Java type to its C++ spelling
+def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent, current,
+                    own_statics, ptr_locals):
+    # 1. local declaration: rewrite the leading Java type to its C++ spelling. A value-type
+    #    local inferred to be a nullable reference (ptr_locals) gets a trailing '*'.
     m = _DECL.match(s)
     if m and _decl_base(m.group(1)) not in _KEYWORDS and m.group(2) not in _KEYWORDS:
         cpp = resolver.cpp_type(javaparse.parse_type(m.group(1)), 'local')
+        if m.group(2) in ptr_locals and not cpp.endswith('*'):
+            cpp += '*'
         s = cpp + s[m.end(1):]
     # 2. this.  -> this->
     s = re.sub(r'\bthis\.', 'this->', s)
@@ -424,7 +461,8 @@ def _guard_null_deref(s, scope, resolver):
 def translate_body(method, cls, resolver, ledger=None):
     """Return translated C++ body lines (no indentation; caller indents)."""
     scope = build_scope(cls, method)
-    ptr_names = sorted((n for n, jt in scope.items() if resolver.is_pointer(jt)),
+    ptr_locals = _pointer_locals(method, scope, resolver)   # value locals used as nullable refs
+    ptr_names = sorted((set(n for n, jt in scope.items() if resolver.is_pointer(jt)) | ptr_locals),
                        key=len, reverse=True)   # longer names first (avoid prefix overlap)
     static_set = set(resolver.known) | set(resolver.enums) | {cls.name}
     enum_set = set(resolver.enums)
@@ -437,7 +475,7 @@ def translate_body(method, cls, resolver, ledger=None):
                 out.append(s)
             continue
         line = _translate_line(s, ptr_names, static_set, enum_set, resolver, scope,
-                               cls.parent, cls.name, own_statics)
+                               cls.parent, cls.name, own_statics, ptr_locals)
         line, guarded = _guard_null_deref(line, scope, resolver)
         if guarded and ledger is not None:
             ledger.add(cls.name + '.cpp', Category.RISK,

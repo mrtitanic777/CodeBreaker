@@ -286,6 +286,44 @@ class TestPrimitiveCastAndMathConst(unittest.TestCase):
         self.assertIn('float p = (float)3.1415927F;', self.out)
 
 
+class TestNullableValueLocals(unittest.TestCase):
+    """A value-type local used as a nullable reference (assigned/compared null, or new'd)
+    must be emitted as a pointer -- a C++ value type can't hold null."""
+    def setUp(self):
+        c = ir.JClass('AxisAlignedBB')
+        m = ir.Method('trace', ir.JType('void'), params=[ir.Param('var1', ir.JType('Vec3D'))], line=1)
+        m.body = [
+            (1, 'void trace(Vec3D var1) {'),
+            (2, '\tVec3D var3 = var1.getIntermediate();'),   # dual-use return
+            (3, '\tif(!this.isVecIn(var3)) {'),
+            (4, '\t\tvar3 = null;'),                         # null -> must be pointer
+            (5, '\t}'),
+            (6, '\tVec3D var8 = null;'),                     # declared null
+            (7, '\tif(var3 != null) {'),
+            (8, '\t\tvar8 = var3;'),
+            (9, '\t}'),
+            (10, '\tVec3D var9 = var1.normalize();'),         # value local, no null use
+            (11, '\tfloat f = var9.xCoord;'),
+            (12, '}'),
+        ]
+        c.methods.append(m)
+        r = types.TypeResolver(known_classes={'AxisAlignedBB'}, value_types={'Vec3D'})
+        self.out = statements.translate_body(m, c, r)
+
+    def test_nullable_local_becomes_pointer(self):
+        self.assertIn('Vec3D* var3 = var1.getIntermediate();', self.out)
+        self.assertIn('Vec3D* var8 = NULL;', self.out)
+
+    def test_nullable_local_assignments_and_compares(self):
+        self.assertIn('var3 = NULL;', self.out)
+        self.assertIn('var8 = var3;', self.out)
+        self.assertTrue(any('var3 != NULL' in l for l in self.out), self.out)
+
+    def test_plain_value_local_stays_value(self):
+        self.assertIn('Vec3D var9 = var1.normalize();', self.out)   # no null use -> stays value
+        self.assertIn('float f = var9.xCoord;', self.out)           # value access keeps '.'
+
+
 class TestBareStaticPrefix(unittest.TestCase):
     def test_bare_static_field_gets_prefix(self):
         c = ir.JClass('MathHelper')
