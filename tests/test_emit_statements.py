@@ -450,6 +450,20 @@ class TestChainInference(unittest.TestCase):
         out = statements.translate_body(m, c, r)
         self.assertTrue(any('s_rand->nextFloat()' in l for l in out), out)
 
+    def test_container_method_on_foreign_receiver(self):
+        # obj->listField.get(i) / .add(x) -- receiver not in scope; mapped via the member env
+        members = {'World': {'fields': {'players': ir.JType('List')}, 'methods': {}}}
+        r = types.TypeResolver(known_classes={'World', 'C'}, members=members)
+        c = ir.JClass('C')
+        m = ir.Method('f', ir.JType('void'), params=[ir.Param('var1', ir.JType('World'))], line=1)
+        m.body = [(1, 'void f(World var1) {'),
+                  (2, '\tObject var2 = var1.players.get(0);'),
+                  (3, '\tvar1.players.add(var2);'), (4, '}')]
+        c.methods.append(m)
+        out = statements.translate_body(m, c, r)
+        self.assertIn('void* var2 = var1->players[0];', out)
+        self.assertIn('var1->players.push_back(var2);', out)
+
     def test_array_index_field_chain(self):
         # var5->mainInventory[i].writeToNBT() -- array field of a foreign object, index -> element
         members = {'InventoryPlayer': {'fields': {'mainInventory': ir.JType('ItemStack', array_dims=1)},

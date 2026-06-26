@@ -211,6 +211,24 @@ def _category(jtype):
     return None
 
 
+def _container_call(cat, name, args_str):
+    """STL replacement for a container method call `<recv>.name(args)` -- returns the text that
+    REPLACES `.name(args)` (the receiver is already emitted), or None to leave it alone. Used by
+    the chain walker so container methods map on FOREIGN/chained receivers too, not just simple
+    in-scope names. Containers are held by value, so the result attaches with '.'/[]."""
+    if cat is None:
+        return None
+    args = javaparse._split_top_commas(args_str) if args_str.strip() else []
+    rename = _METHOD_RENAME.get((cat, name))
+    if rename:
+        return '.%s(%s)' % (rename, args_str)               # add->push_back, remove->erase, ...
+    if name == _INDEX_METHOD.get(cat) and args:
+        return '[%s]' % args[0]                             # list/map get / String charAt -> [i]
+    if cat == 'map' and name == 'put' and len(args) == 2:
+        return '[%s] = %s' % (args[0], args[1])             # map.put(k, v) -> [k] = v
+    return None
+
+
 def _balanced_call_sub(s, recv, meth, fn):
     """Rewrite every `recv.meth(args)` via fn(arg_list) -> replacement (None = leave)."""
     token = '%s.%s(' % (recv, meth)
@@ -413,6 +431,11 @@ def _resolve_chains(s, scope, resolver, current):
                     break
                 args = _resolve_chains(s[k + 1:close], scope, resolver, current)
                 seg_end = close + 1
+                crepl = _container_call(_category(cur_jt), name, args)
+                if crepl is not None:                 # STL container method on a chained receiver
+                    out.append(crepl)
+                    i = seg_end
+                    break                             # result type (raw element) not tracked
             out.append(('->' if is_ptr else sep) + name)   # upgrade only when proven pointer
             if is_call:
                 out.append('(' + args + ')')
