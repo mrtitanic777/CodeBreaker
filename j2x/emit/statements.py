@@ -22,7 +22,12 @@ PARTIALLY translated until those land -- that's the iterative 4c plan.
 import re
 
 from .. import parse as javaparse, typemap, ir
+from ..ledger import Category, Severity
 from . import naming
+
+# a standalone statement `recv[idx]->call(...);` (or `.` form) -- group2 = base name
+_INDEX_DEREF_STMT = re.compile(
+    r'^((?:this->)?(?:\w+::)*(\w+)\[[^\]]*\])\s*(?:->|\.)\s*(\w+\([^;]*\))\s*;\s*$')
 
 # Java keywords that must never be mistaken for a local-variable TYPE.
 _KEYWORDS = {
@@ -166,6 +171,27 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope):
     return s
 
 
+def _is_nullable_array(base, scope, resolver):
+    """True if `base[...]` indexes a pointer-element array (registry list or a
+    scope array of a reference type) -- i.e. a slot can be NULL."""
+    stripped = base[2:] if base.startswith('s_') else base
+    if stripped in typemap.KNOWN_NULLABLE:
+        return True
+    jt = scope.get(base) or scope.get(stripped)
+    return bool(jt and jt.is_array and resolver.is_pointer(jt.element()))
+
+
+def _guard_null_deref(s, scope, resolver):
+    """Wrap a standalone list-indexed deref in a NULL check; return (line, guarded)."""
+    m = _INDEX_DEREF_STMT.match(s)
+    if not m:
+        return s, False
+    recv, base, call = m.group(1), m.group(2), m.group(3)
+    if not _is_nullable_array(base, scope, resolver):
+        return s, False
+    return 'if (%s != NULL) { %s->%s; }' % (recv, recv, call), True
+
+
 def translate_body(method, cls, resolver, ledger=None):
     """Return translated C++ body lines (no indentation; caller indents)."""
     scope = build_scope(cls, method)
@@ -180,5 +206,12 @@ def translate_body(method, cls, resolver, ledger=None):
             if s:
                 out.append(s)
             continue
-        out.append(_translate_line(s, ptr_names, static_set, enum_set, resolver, scope))
+        line = _translate_line(s, ptr_names, static_set, enum_set, resolver, scope)
+        line, guarded = _guard_null_deref(line, scope, resolver)
+        if guarded and ledger is not None:
+            ledger.add(cls.name + '.cpp', Category.RISK,
+                       'null-deref guard inserted before list-indexed call (an unregistered/NULL '
+                       'slot would be a virtual call through NULL -> IP 0x0 crash)',
+                       line=method.line, severity=Severity.MED, source='emit', rule='null-deref-guard')
+        out.append(line)
     return out

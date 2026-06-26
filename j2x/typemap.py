@@ -45,6 +45,11 @@ CONTAINERS = {'ArrayList', 'List', 'LinkedList', 'HashMap', 'HashSet', 'TreeMap'
 # Java stdlib types that become C++ VALUE types (not pointers).
 VALUE_STDLIB = {'String'}
 
+# Registry arrays whose slots are NULL until an id is registered. Indexing one with
+# an unregistered id and calling through it = a virtual call on NULL = IP 0x0 crash
+# on the console. A deref of these (or any scope array of reference type) is guarded.
+KNOWN_NULLABLE = {'blocksList', 'itemsList'}
+
 # Nullable reference-type arrays become arrays-of-POINTERS (T**): empty slots are
 # NULL and polymorphism is preserved. e.g. ItemStack[] -> ItemStack**.
 PTR_ARRAY_ELEMENTS = {'ItemStack', 'Item', 'Block'}

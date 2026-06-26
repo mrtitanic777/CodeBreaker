@@ -5,6 +5,7 @@ import unittest
 
 from j2x import ir, types
 from j2x.emit import statements
+from j2x.ledger import Ledger
 
 
 def _world():
@@ -154,6 +155,40 @@ class TestCasts(unittest.TestCase):
 
     def test_value_cast_unchanged(self):
         self.assertIn('Vec3D var4 = (Vec3D)var1;', self.out)
+
+
+class TestNullDerefGuard(unittest.TestCase):
+    def setUp(self):
+        c = ir.JClass('World')
+        c.fields.append(ir.Field('chunks', ir.JType('Chunk', 1)))    # Chunk[] -> pointer slots
+        m = ir.Method('tick', ir.JType('void'),
+                      params=[ir.Param('entity', ir.JType('Entity')),
+                              ir.Param('var1', ir.JType('int')), ir.Param('k', ir.JType('int'))], line=1)
+        m.body = [
+            (1, 'void tick(Entity entity, int var1, int k) {'),
+            (2, '\tBlock.blocksList[var1].onUpdate(this, var1, k, var1);'),
+            (3, '\tthis.chunks[k].markDirty();'),
+            (4, '\tentity.move();'),
+            (5, '}'),
+        ]
+        c.methods.append(m)
+        self.led = Ledger()
+        r = types.TypeResolver(known_classes={'Block', 'Chunk', 'World', 'Entity'})
+        self.out = statements.translate_body(m, c, r, ledger=self.led)
+
+    def test_registry_deref_guarded(self):
+        self.assertIn('if (Block::s_blocksList[var1] != NULL) { '
+                      'Block::s_blocksList[var1]->onUpdate(this, var1, k, var1); }', self.out)
+
+    def test_scope_array_deref_guarded(self):
+        self.assertIn('if (this->chunks[k] != NULL) { this->chunks[k]->markDirty(); }', self.out)
+
+    def test_non_index_call_not_guarded(self):
+        self.assertIn('entity->move();', self.out)
+        self.assertNotIn('if (entity', '\n'.join(self.out))
+
+    def test_guard_events_logged(self):
+        self.assertEqual(sum(1 for e in self.led.events if e.rule == 'null-deref-guard'), 2)
 
 
 if __name__ == '__main__':
