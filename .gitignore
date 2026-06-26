@@ -12,3 +12,6 @@ __pycache__/
 
 # Naming batch intermediates
 _batches/
+
+# RetroMCP harness build output
+rmcp_harness/*.class
