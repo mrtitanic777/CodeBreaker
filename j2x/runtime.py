@@ -149,6 +149,70 @@ struct Applet {
 # Universal runtime prelude: free-function shims for java.lang.* statics that have no
 # clean inline mapping. #included by every emitted .cpp (named JavaRT.h, NOT Math.h, to
 # avoid colliding with system <math.h> on a case-insensitive filesystem).
+# java.lang.String -> a thin std::string subclass that adds Java's String methods, so calls
+# like s.equals(t) / s.trim() / s.startsWith(p) compile even when the receiver's type wasn't
+# resolved at translation time (the receiver-type-gated rewrites in statements.py handle the
+# resolved cases; this catches the rest). Implicit ctors from const char*/std::string keep
+# literals and concat/substr results assignable.
+JAVASTRING_H = r'''#ifndef JAVASTRING_H
+#define JAVASTRING_H
+#include <string>
+
+class JavaString : public std::string {
+	static char _lc(char c) { return (char)((c >= 'A' && c <= 'Z') ? c + 32 : c); }
+	static char _uc(char c) { return (char)((c >= 'a' && c <= 'z') ? c - 32 : c); }
+public:
+	JavaString() {}
+	JavaString(const char* s) : std::string(s ? s : "") {}
+	JavaString(const std::string& s) : std::string(s) {}
+
+	int length() const { return (int)size(); }
+	char charAt(int i) const { return (*this)[(size_type)i]; }
+	bool isEmpty() const { return empty(); }
+	bool equals(const std::string& o) const { return *this == o; }
+	bool equalsIgnoreCase(const std::string& o) const {
+		if (size() != o.size()) return false;
+		for (size_type i = 0; i < size(); ++i) if (_lc((*this)[i]) != _lc(o[i])) return false;
+		return true;
+	}
+	bool startsWith(const std::string& p) const {
+		return size() >= p.size() && compare(0, p.size(), p) == 0;
+	}
+	bool startsWith(const std::string& p, int off) const {
+		return (size_type)off <= size() && compare((size_type)off, p.size(), p) == 0;
+	}
+	bool endsWith(const std::string& s) const {
+		return size() >= s.size() && compare(size() - s.size(), s.size(), s) == 0;
+	}
+	bool contains(const std::string& s) const { return find(s) != npos; }
+	int indexOf(const std::string& s) const { size_type p = find(s); return p == npos ? -1 : (int)p; }
+	int indexOf(const std::string& s, int from) const { size_type p = find(s, (size_type)from); return p == npos ? -1 : (int)p; }
+	int indexOf(int ch) const { size_type p = find((char)ch); return p == npos ? -1 : (int)p; }
+	int indexOf(int ch, int from) const { size_type p = find((char)ch, (size_type)from); return p == npos ? -1 : (int)p; }
+	int lastIndexOf(int ch) const { size_type p = rfind((char)ch); return p == npos ? -1 : (int)p; }
+	int compareTo(const std::string& o) const { return compare(o); }
+	JavaString substring(int a) const { return JavaString(substr((size_type)a)); }
+	JavaString substring(int a, int b) const { return JavaString(substr((size_type)a, (size_type)(b - a))); }
+	JavaString toLowerCase() const { JavaString r(*this); for (size_type i = 0; i < r.size(); ++i) r[i] = _lc(r[i]); return r; }
+	JavaString toUpperCase() const { JavaString r(*this); for (size_type i = 0; i < r.size(); ++i) r[i] = _uc(r[i]); return r; }
+	JavaString trim() const {
+		size_type a = 0, b = size();
+		while (a < b && (unsigned char)(*this)[a] <= ' ') ++a;
+		while (b > a && (unsigned char)(*this)[b - 1] <= ' ') --b;
+		return JavaString(substr(a, b - a));
+	}
+	JavaString replace(char from, char to) const {
+		JavaString r(*this); for (size_type i = 0; i < r.size(); ++i) if (r[i] == from) r[i] = to; return r;
+	}
+	JavaString concat(const std::string& s) const { return JavaString(*this + s); }
+	JavaString intern() const { return *this; }
+	const char* toCharArray() const { return c_str(); }              // PORT: read-only view
+	unsigned char* getBytes() const { return (unsigned char*)c_str(); }   // PORT: read-only view
+	JavaString replaceAll(const std::string&, const std::string&) const { return *this; }  // PORT: no regex
+};
+#endif // JAVASTRING_H
+'''
+
 JAVART_H = r'''#ifndef JAVART_H
 #define JAVART_H
 // j2x runtime prelude -- shims for Java stdlib statics. #included by every .cpp.
@@ -156,6 +220,7 @@ JAVART_H = r'''#ifndef JAVART_H
 #include <ctime>
 #include <string>
 #include <sstream>
+#include "JavaString.h"
 
 // java.lang.Math.random(): pseudo-random double in [0, 1)
 inline double javaMathRandom() { return (double)rand() / ((double)RAND_MAX + 1.0); }
@@ -548,6 +613,7 @@ _GENERATED['BufferedImage.h'] = _class_stub('BufferedImage', fwds=['Graphics'],
 # filename -> content
 FILES = {
     'Random.h': RANDOM_H,
+    'JavaString.h': JAVASTRING_H,
     'JavaRT.h': JAVART_H,
     'GL11.h': GL11_H,
     'Runnable.h': RUNNABLE_H,

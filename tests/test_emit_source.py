@@ -161,6 +161,20 @@ class TestSourceRealFiles(unittest.TestCase):
         self.assertIn('virtual Vec3D* subtract(Vec3D var1);', h)
 
 
+class TestJavaStringMapping(unittest.TestCase):
+    """String maps to JavaString (a std::string subclass) and every header includes it."""
+    def test_header_includes_javastring_and_uses_it(self):
+        c = ir.JClass('C')
+        c.fields.append(ir.Field('name', ir.JType('String')))
+        m = ir.Method('greet', ir.JType('String'),
+                      params=[ir.Param('who', ir.JType('String'))], line=1)
+        c.methods.append(m)
+        h = header.render_header(c, types.TypeResolver())
+        self.assertIn('#include "JavaString.h"', h)
+        self.assertIn('JavaString name;', h)                       # field by value
+        self.assertIn('virtual JavaString greet(const JavaString& who);', h)  # return value, param const&
+
+
 class TestTransitiveIncludes(unittest.TestCase):
     """A .cpp that holds a T and reaches T's field/method types through chains must
     #include their full definitions (one level), driven by the member environment."""
@@ -193,15 +207,15 @@ class TestStringReturnUnification(unittest.TestCase):
         r = types.TypeResolver(known_classes={'Entity'})
         h = header.render_header(c, r)
         cpp = source.render_source(c, r)
-        self.assertIn('virtual std::string getTexture();', h)   # NOT std::string*
-        self.assertNotIn('std::string* getTexture', h)
+        self.assertIn('virtual JavaString getTexture();', h)   # String -> JavaString, NOT a pointer
+        self.assertNotIn('JavaString* getTexture', h)
         self.assertIn('return std::string();', cpp)             # null -> empty, never NULL char*
         self.assertNotIn('return NULL;', cpp)
 
     def test_literal_string_return_value(self):
         c = self._string_returner(['\treturn "/mob/char.png";'])
         r = types.TypeResolver(known_classes={'Entity'})
-        self.assertIn('virtual std::string getTexture();', header.render_header(c, r))
+        self.assertIn('virtual JavaString getTexture();', header.render_header(c, r))
 
 
 if __name__ == '__main__':

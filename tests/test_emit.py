@@ -48,10 +48,10 @@ class TestHeaderHandBuilt(unittest.TestCase):
         self.assertIn('\tBlock* field;', self.h)            # reference instance field -> pointer
         self.assertIn('\tint count;', self.h)
         self.assertIn('\tstatic Block** s_list;', self.h)   # nullable ref array -> T**, s_ prefix
-        self.assertIn('\tstatic std::string s_name;', self.h)
+        self.assertIn('\tstatic JavaString s_name;', self.h)   # String -> JavaString
 
-    def test_string_pulls_system_header(self):
-        self.assertIn('#include <string>', self.h)
+    def test_string_pulls_its_header(self):
+        self.assertIn('#include "JavaString.h"', self.h)     # String -> JavaString (subclass of std::string)
 
     def test_method_is_virtual(self):
         self.assertIn('virtual void doIt(Block* b);', self.h)

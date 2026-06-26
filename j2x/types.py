@@ -110,9 +110,11 @@ class TypeResolver(object):
 
         name = jtype.name
         # String is passed as const ref (cheap), but RETURNED by value: methods often
-        # build a new string (concat), and returning that as const& would dangle.
+        # build a new string (concat), and returning that as const& would dangle. Uses
+        # JavaString (a std::string subclass with Java's methods) so s.equals()/s.trim()/...
+        # compile on the parameter too.
         if name == 'String' and context == 'param':
-            return 'const std::string&'
+            return 'const JavaString&'
 
         cpp = self.base_cpp(name)
         # raw (non-generic) container -> give it a concrete element type so it's valid C++

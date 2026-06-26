@@ -19,7 +19,7 @@ JAVA_TO_CPP = {
     'boolean': 'bool', 'byte': 'unsigned char', 'short': 'short', 'int': 'int',
     'long': 'long long', 'float': 'float', 'double': 'double', 'char': 'char',
     'void': 'void',
-    'String': 'std::string',
+    'String': 'JavaString',
     'ArrayList': 'std::vector', 'List': 'std::vector', 'LinkedList': 'std::vector',
     'HashMap': 'std::map', 'HashSet': 'std::set', 'TreeMap': 'std::map',
     'Map': 'std::map', 'Set': 'std::set',

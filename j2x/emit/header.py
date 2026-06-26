@@ -88,6 +88,10 @@ def render_header(cls, resolver, ledger=None):
     L = ['#ifndef %s' % guard, '#define %s' % guard, '',
          _BANNER % cls.name, '']
 
+    # String maps to JavaString (a std::string subclass); a header that mentions String in a
+    # field/param/return needs its full definition. Cheap and idempotent to always include.
+    L.append('#include "JavaString.h"')
+
     sys_inc, inc, fwd = _collect_dependencies(cls, resolver)
     for h in sorted(sys_inc):
         L.append('#include %s' % h)

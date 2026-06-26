@@ -57,9 +57,10 @@ class TestCppSpelling(unittest.TestCase):
         self.assertEqual(self.r.field_type(T('Vec3D')), 'Vec3D')
 
     def test_string_contexts(self):
-        self.assertEqual(self.r.field_type(T('String')), 'std::string')
-        self.assertEqual(self.r.param_type(T('String')), 'const std::string&')
-        self.assertEqual(self.r.return_type(T('String')), 'std::string')   # by value (no dangling)
+        # String -> JavaString (std::string subclass with Java's String methods)
+        self.assertEqual(self.r.field_type(T('String')), 'JavaString')
+        self.assertEqual(self.r.param_type(T('String')), 'const JavaString&')
+        self.assertEqual(self.r.return_type(T('String')), 'JavaString')   # by value (no dangling)
 
     def test_primitive_arrays(self):
         self.assertEqual(self.r.field_type(T('int', 1)), 'int*')
@@ -73,9 +74,9 @@ class TestCppSpelling(unittest.TestCase):
         self.assertEqual(self.r.field_type(T('Mystery', 1)), 'Mystery**')  # unknown capitalized = ref
 
     def test_value_type_array_is_single_pointer(self):
-        # a value-type / std::string element is contiguous -> T*
+        # a value-type / String element is contiguous -> T*
         self.assertEqual(self.r.field_type(T('Vec3D', 1)), 'Vec3D*')
-        self.assertEqual(self.r.field_type(T('String', 1)), 'std::string*')
+        self.assertEqual(self.r.field_type(T('String', 1)), 'JavaString*')
 
     def test_two_dimensional_arrays(self):
         self.assertEqual(self.r.field_type(T('int', 2)), 'int**')

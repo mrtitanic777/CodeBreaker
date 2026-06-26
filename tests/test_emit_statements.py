@@ -171,7 +171,7 @@ class TestMapSetString(unittest.TestCase):
         self.assertIn('bool d = (var1 == "foo");', self.out)
 
     def test_string_substring(self):
-        self.assertIn('std::string var4 = var1.substr(2, (5) - (2));', self.out)
+        self.assertIn('JavaString var4 = var1.substr(2, (5) - (2));', self.out)
 
 
 class TestStringConcat(unittest.TestCase):
@@ -246,7 +246,7 @@ class TestExpressionDeref(unittest.TestCase):
         self.assertIn('Block* var2 = this->entities[0]->getBlock();', self.out)
 
     def test_registry_index_deref(self):
-        self.assertIn('std::string s = Block::s_blocksList[var1]->getName();', self.out)
+        self.assertIn('JavaString s = Block::s_blocksList[var1]->getName();', self.out)
 
     def test_value_array_index_keeps_dot(self):
         self.assertIn('float z = this->points[0].xCoord;', self.out)
@@ -391,7 +391,7 @@ class TestChainInference(unittest.TestCase):
                   (3, '}')]
         c.methods.append(m)
         out = statements.translate_body(m, c, self._resolver())
-        self.assertIn('std::string s = var1->random->toString();', out)
+        self.assertIn('JavaString s = var1->random->toString();', out)
 
     def test_unknown_receiver_left_alone(self):
         c = ir.JClass('C')
