@@ -169,6 +169,29 @@ def _render_method(cls, m, resolver, ledger):
 
 
 # ---------------------------------------------------------------------------
+def _referenced_types(cls, resolver, body_text):
+    """All known user-type names this class references (for full #includes in the .cpp)."""
+    names = set()
+
+    def add(jt):
+        if jt:
+            names.add(jt.name)
+            for a in jt.args:
+                add(a)
+
+    if cls.parent:
+        names.add(cls.parent)
+    names.update(cls.interfaces)
+    for f in list(cls.fields) + list(getattr(cls, 'inherited_fields', ())):
+        add(f.jtype)
+    for m in cls.methods:
+        add(m.return_type)
+        for p in m.params:
+            add(p.jtype)
+    names |= set(re.findall(r'\b([A-Z]\w*)\b', body_text))     # new X / X:: / casts / locals
+    return sorted((names & set(resolver.known)) - {cls.name})
+
+
 def render_source(cls, resolver, ledger=None):
     """Returns the .cpp text, or None for interfaces (header-only)."""
     if cls.is_interface:
@@ -186,10 +209,12 @@ def render_source(cls, resolver, ledger=None):
             continue
         body += _render_method(cls, m, resolver, ledger) + ['']
 
-    # body-driven includes: a .cpp needs the FULL definition of every user type it uses
-    # (calls/new/cast/static access), not just the forward decls in its own header.
-    used = sorted((set(re.findall(r'\b([A-Z]\w*)\b', '\n'.join(body))) & set(resolver.known))
-                  - {cls.name} - set(cls.interfaces))
+    # a .cpp needs the FULL definition of every user type it touches (member access,
+    # new/cast/static), not just the forward decls in its own header. Collect from the
+    # class's signatures (parent, fields incl. inherited, params, returns) AND capitalized
+    # tokens in the body -- the signatures catch types reached only through lowercase vars
+    # (e.g. entity->posX, where the type 'Entity' is never spelled in the body).
+    used = _referenced_types(cls, resolver, '\n'.join(body))
     L = ['#include "stdafx.h"', '', _BANNER % cls.name, '', '#include "%s.h"' % cls.name]
     L += ['#include "%s.h"' % n for n in used]
     L += ['']
