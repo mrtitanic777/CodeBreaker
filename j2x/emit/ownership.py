@@ -15,10 +15,14 @@ detect owners here so emit can free them once AND forbid copying.
 import re
 
 _CTOR_NEW = re.compile(r'(?:this\.)?(\w+)\s*=\s*new\s+\w[\w.]*\s*(\[)?')
+# broad: `field = new` OR `field[i] = new` (array-element ownership)
+_CTOR_NEW_BROAD = re.compile(r'(?:this(?:->|\.))?(\w+)\s*(?:\[[^\]]*\])?\s*=\s*new\b')
 
 
 def owned_pointers(cls, resolver):
-    """{field_name: is_array} for pointer instance fields new'd in a constructor."""
+    """{field_name: is_array} for pointer instance fields new'd DIRECTLY (`field = new`).
+    This is what the destructor can safely `delete` -- element ownership (`field[i] = new`)
+    is intentionally excluded (freeing it needs a sized loop)."""
     owned = {}
     for m in cls.constructors():
         text = '\n'.join(t for _ln, t in m.body)
@@ -31,7 +35,16 @@ def owned_pointers(cls, resolver):
 
 
 def owns_heap(cls, resolver):
-    return bool(owned_pointers(cls, resolver))
+    """True if a constructor allocates into any instance field directly (`field = new`)
+    or into an element of one (`field[i] = new`). Either way a by-value copy would
+    double-free, so copying must be forbidden -- broader than owned_pointers()."""
+    for m in cls.constructors():
+        text = '\n'.join(t for _ln, t in m.body)
+        for fm in _CTOR_NEW_BROAD.finditer(text):
+            fld = cls.field(fm.group(1))
+            if fld and not fld.is_static:
+                return True
+    return False
 
 
 def returns_pointer(method, resolver):

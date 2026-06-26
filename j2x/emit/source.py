@@ -21,7 +21,7 @@ from . import naming, ownership
 from .statements import translate_body
 
 _BANNER = '// Auto-generated from %s.java\n// Target: Xbox 360 / C++03 / DirectX 9'
-_NEW_ARRAY = re.compile(r'^new\s+[\w.]+\s*\[\s*(\w+)\s*\]\s*$')
+_NEW_ARRAY = re.compile(r'^new\s+[\w.]+\s*\[([^\]]+)\]\s*$')   # size may be any expression
 _THIS_CALL = re.compile(r'\bthis\s*\(([^;]*)\)\s*;')
 _PRIMITIVE_CPP = {'int', 'short', 'long long', 'char', 'unsigned char',
                   'float', 'double', 'bool', 'long'}
@@ -97,7 +97,7 @@ def _inline_delegation(args_str, deleg, cls, resolver, ledger):
                 'this(%s);' % args_str]
     sub = dict((p.name, args[i]) for i, p in enumerate(target.params))
     rx = re.compile(r'\b(' + '|'.join(re.escape(k) for k in sub) + r')\b') if sub else None
-    out = ['// inlined this(%s) -- C++03 has no constructor delegation' % args_str]
+    out = ['// inlined this(%s) -- C++03 lacks ctor delegation' % args_str]
     for line in translate_body(target, cls, resolver):
         if _THIS_CALL.match(line):                 # chained delegation in target (rare) -- skip
             continue

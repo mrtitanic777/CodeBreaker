@@ -134,17 +134,16 @@ def render_header(cls, resolver, ledger=None):
 
     # Rule of Three: a class that owns heap (freed in its destructor) must forbid
     # copying, else a by-value copy double-frees the pointer -> heap corruption.
-    owned = ownership.owned_pointers(cls, resolver)
-    if owned:
+    if ownership.owns_heap(cls, resolver):
         L.append('')
         L.append('private:')
-        L.append('\t// owns heap (freed in ~%s); copying disabled so a copy cannot double-free' % cls.name)
+        L.append('\t// owns heap; copying disabled so a copy cannot double-free (Rule of Three)')
         L.append('\t%s(const %s&);' % (cls.name, cls.name))
         L.append('\t%s& operator=(const %s&);' % (cls.name, cls.name))
         if ledger is not None:
             ledger.add(cls.name + '.h', Category.RISK,
-                       'Rule-of-Three: copy ctor + assignment disabled (owns heap: %s) to prevent '
-                       'double-free heap corruption' % ', '.join(sorted(owned)),
+                       'Rule-of-Three: copy ctor + assignment disabled (owns heap) to prevent '
+                       'double-free heap corruption',
                        severity=Severity.MED, source='emit', rule='rule-of-three-nocopy')
 
     L.append('};')

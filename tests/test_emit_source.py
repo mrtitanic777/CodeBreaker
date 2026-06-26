@@ -111,6 +111,16 @@ class TestRuleOfThreeNoCopy(unittest.TestCase):
         self.assertNotIn('Vec3D(const Vec3D&);', h)
         self.assertNotIn('private:', h)
 
+    def test_array_element_owner_disables_copy(self):
+        # ctor does `this.fxLayers[i] = new ...` -> array-element ownership -> copy disabled
+        c = ir.JClass('FX')
+        c.fields.append(ir.Field('fxLayers', ir.JType('List', array_dims=1)))
+        ctor = ir.Method('FX', is_ctor=True, line=1)
+        ctor.body = [(1, 'FX() {'), (2, '\tthis.fxLayers[0] = new ArrayList();'), (3, '}')]
+        c.methods.append(ctor)
+        h = header.render_header(c, types.TypeResolver())
+        self.assertIn('FX(const FX&);', h)
+
 
 class TestSourceRealFiles(unittest.TestCase):
     def test_vec3d_source_renders(self):
