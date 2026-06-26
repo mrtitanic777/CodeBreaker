@@ -65,5 +65,36 @@ class TestAccessTranslation(unittest.TestCase):
         self.assertIn('this->provider->doStuff();', self.out)
 
 
+class TestStaticAndApi(unittest.TestCase):
+    def setUp(self):
+        c = ir.JClass('Block')
+        m = ir.Method('test', ir.JType('void'), line=1)
+        m.body = [
+            (1, 'void test() {'),
+            (2, '\tBlock var1 = Block.stone;'),
+            (3, '\tint i = Block.getRenderType(var1);'),
+            (4, '\tDirection var2 = Direction.NORTH;'),
+            (5, '\tfloat f = Math.sqrt(2.0F);'),
+            (6, '\tfloat g = Math.max(f, 1.0F);'),
+            (7, '}'),
+        ]
+        c.methods.append(m)
+        r = types.TypeResolver(known_classes={'Block', 'Direction'}, enum_types={'Direction'})
+        self.out = statements.translate_body(m, c, r)
+
+    def test_static_field_gets_scope_and_prefix(self):
+        self.assertIn('Block* var1 = Block::s_stone;', self.out)
+
+    def test_static_method_call(self):
+        self.assertIn('int i = Block::getRenderType(var1);', self.out)
+
+    def test_enum_constant_no_prefix(self):
+        self.assertIn('Direction* var2 = Direction::NORTH;', self.out)
+
+    def test_math_mapping(self):
+        self.assertIn('float f = sqrtf(2.0F);', self.out)
+        self.assertIn('float g = max(f, 1.0F);', self.out)
+
+
 if __name__ == '__main__':
     unittest.main()

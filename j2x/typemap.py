@@ -49,6 +49,16 @@ VALUE_STDLIB = {'String'}
 # NULL and polymorphism is preserved. e.g. ItemStack[] -> ItemStack**.
 PTR_ARRAY_ELEMENTS = {'ItemStack', 'Item', 'Block'}
 
+# java.lang.Math.<fn> -> C math function. Float-suffixed to match the existing
+# Xbox 360 project (float math); pulled in via <math.h>. min/max stay bare
+# (the project provides them). Returns the C name for a given Java Math method.
+MATH_API = {
+    'abs': 'abs', 'sqrt': 'sqrtf', 'sin': 'sinf', 'cos': 'cosf', 'tan': 'tanf',
+    'atan': 'atanf', 'atan2': 'atan2f', 'asin': 'asinf', 'acos': 'acosf',
+    'floor': 'floorf', 'ceil': 'ceilf', 'pow': 'powf', 'exp': 'expf', 'log': 'logf',
+    'min': 'min', 'max': 'max',
+}
+
 # Classic Minecraft value/struct types (stack values, '.' access). The pipeline can
 # extend this per profile; kept here as a sensible default so the resolver is usable
 # stand-alone and in tests.

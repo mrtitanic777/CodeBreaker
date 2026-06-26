@@ -21,7 +21,8 @@ PARTIALLY translated until those land -- that's the iterative 4c plan.
 
 import re
 
-from .. import parse as javaparse
+from .. import parse as javaparse, typemap
+from . import naming
 
 # Java keywords that must never be mistaken for a local-variable TYPE.
 _KEYWORDS = {
@@ -33,6 +34,10 @@ _KEYWORDS = {
 # `[final] Type name =|;`  -- a local declaration (Type may have generics / [] dims)
 _DECL = re.compile(
     r'^(?:final\s+)?([A-Za-z_][\w.]*(?:<[^>]*>)?(?:\s*\[\s*\])*)\s+([A-Za-z_]\w*)\s*(=|;)')
+
+_MATH = re.compile(r'\bMath\.([A-Za-z_]\w*)')
+# receiver.member  with optional opening paren (method call)
+_MEMBER = re.compile(r'\b([A-Za-z_]\w*)\.([A-Za-z_]\w*)(\s*\()?')
 
 
 def inner_lines(body):
@@ -67,7 +72,7 @@ def build_scope(cls, method):
     return scope
 
 
-def _translate_line(s, ptr_names, resolver):
+def _translate_line(s, ptr_names, static_set, enum_set, resolver):
     # 1. local declaration: rewrite the leading Java type to its C++ spelling
     m = _DECL.match(s)
     if m and _decl_base(m.group(1)) not in _KEYWORDS and m.group(2) not in _KEYWORDS:
@@ -78,6 +83,19 @@ def _translate_line(s, ptr_names, resolver):
     # 3. <pointerName>.  -> <pointerName>->
     for name in ptr_names:
         s = re.sub(r'\b' + re.escape(name) + r'\.', name + '->', s)
+    # 4. Math.fn -> C math (sqrtf, sinf, ...)
+    s = _MATH.sub(lambda mm: typemap.MATH_API.get(mm.group(1), mm.group(0)), s)
+    # 5. KnownClass.member / Enum.CONST -> :: static access
+    def _static(mm):
+        recv, mem, paren = mm.group(1), mm.group(2), mm.group(3)
+        if recv not in static_set:
+            return mm.group(0)
+        if paren:                                  # static method call
+            return '%s::%s%s' % (recv, mem, paren)
+        if recv in enum_set:                       # enum constant (no s_ prefix)
+            return '%s::%s' % (recv, mem)
+        return '%s::%s' % (recv, naming.static_field_name(mem))   # static field
+    s = _MEMBER.sub(_static, s)
     return s
 
 
@@ -86,6 +104,8 @@ def translate_body(method, cls, resolver, ledger=None):
     scope = build_scope(cls, method)
     ptr_names = sorted((n for n, jt in scope.items() if resolver.is_pointer(jt)),
                        key=len, reverse=True)   # longer names first (avoid prefix overlap)
+    static_set = set(resolver.known) | set(resolver.enums) | {cls.name}
+    enum_set = set(resolver.enums)
     out = []
     for raw in inner_lines(method.body):
         s = raw.strip()
@@ -93,5 +113,5 @@ def translate_body(method, cls, resolver, ledger=None):
             if s:
                 out.append(s)
             continue
-        out.append(_translate_line(s, ptr_names, resolver))
+        out.append(_translate_line(s, ptr_names, static_set, enum_set, resolver))
     return out
