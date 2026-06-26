@@ -60,17 +60,19 @@ def build_member_env(classes):
     by_name = dict((c.name, c) for c in classes)
     env = {}
     for cls in classes:
-        fields, methods = {}, {}
+        fields, methods, statics = {}, {}, set()
         cur, guard = cls, set()
         while cur and cur.name not in guard:         # most-derived first; don't overwrite
             guard.add(cur.name)
             for f in cur.fields:
                 fields.setdefault(f.name, f.jtype)
+                if f.is_static:
+                    statics.add(f.name)              # own + inherited statics (for bare s_ prefix)
             for m in cur.methods:
                 if not m.is_ctor and m.return_type is not None:
                     methods.setdefault(m.name, m.return_type)
             cur = by_name.get(cur.parent)
-        env[cls.name] = {'fields': fields, 'methods': methods}
+        env[cls.name] = {'fields': fields, 'methods': methods, 'statics': statics}
     return env
 
 

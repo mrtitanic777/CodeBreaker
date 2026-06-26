@@ -66,7 +66,10 @@ RUNTIME_HEADERS = ({'Random', 'Runnable', 'Thread', 'Comparator', 'File',
                     'DisplayMode', 'FloatBuffer', 'IntBuffer', 'ByteBuffer',
                     'DataInput', 'DataOutput', 'SoundSystem', 'BufferedImage', 'BufferedReader',
                     'Graphics', 'Component', 'Cursor', 'Robot', 'URL', 'FileDialog',
-                    'DecimalFormat', 'ImageObserver'}
+                    'DecimalFormat', 'ImageObserver',
+                    'Throwable', 'Exception', 'Error', 'RuntimeException', 'IOException',
+                    'InterruptedException', 'IllegalStateException', 'IllegalArgumentException',
+                    'MalformedURLException', 'AWTException', 'LWJGLException', 'NoSuchFieldError'}
                    | RUNTIME_STATIC_HOLDERS)
 
 # Java stdlib static holders shimmed in the prelude (JavaRT.h, included everywhere -- so NOT

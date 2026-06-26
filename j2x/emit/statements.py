@@ -515,7 +515,10 @@ def translate_body(method, cls, resolver, ledger=None):
     static_set = (set(resolver.known) | set(resolver.enums) | {cls.name}
                   | typemap.RUNTIME_HEADERS | typemap.JAVART_STATICS)
     enum_set = set(resolver.enums) | typemap.RUNTIME_ENUM_LIKE
+    # own statics, plus inherited statics from the member environment (so a bare reference to
+    # a parent's static field also gets the s_ prefix, e.g. BlockStep using Block.stairSingle)
     own_statics = set(f.name for f in cls.static_fields())
+    own_statics |= resolver.members.get(cls.name, {}).get('statics', set())
     out = []
     for raw in inner_lines(method.body):
         s = raw.strip()

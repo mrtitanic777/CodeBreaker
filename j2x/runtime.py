@@ -573,6 +573,18 @@ _GENERATED['FileDialog.h'] = _class_stub('FileDialog', void_methods=['setVisible
 _GENERATED['DecimalFormat.h'] = _class_stub('DecimalFormat',
     ret_methods=[('format', ('std::string', 'std::string()'))])
 _GENERATED['ImageObserver.h'] = _class_stub('ImageObserver')
+# Java exception hierarchy (exceptions are OFF on the console; these are just type stubs so
+# `extends Error`, `new IOException(...)`, and catch/throws references compile).
+_EXC_METHODS = [('getMessage', ('std::string', 'std::string()')),
+                ('getLocalizedMessage', ('std::string', 'std::string()')),
+                ('toString', ('std::string', 'std::string()'))]
+_GENERATED['Throwable.h'] = _class_stub('Throwable', void_methods=['printStackTrace'], ret_methods=_EXC_METHODS)
+for _e, _base in [('Exception', 'Throwable'), ('Error', 'Throwable'), ('RuntimeException', 'Exception'),
+                  ('IOException', 'Exception'), ('InterruptedException', 'Exception'),
+                  ('IllegalStateException', 'RuntimeException'), ('IllegalArgumentException', 'RuntimeException'),
+                  ('MalformedURLException', 'IOException'), ('AWTException', 'Exception'),
+                  ('LWJGLException', 'Exception'), ('NoSuchFieldError', 'Error')]:
+    _GENERATED[_e + '.h'] = _class_stub(_e, bases=[_base], includes=[_base])
 # java.io.File (richer than the early minimal stub; overrides it via FILES.update)
 _GENERATED['File.h'] = _class_stub('File', fwds=['URL'],
     ret_methods=[('getName', ('std::string', 'std::string()')), ('getPath', ('std::string', 'std::string()')),
