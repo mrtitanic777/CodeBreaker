@@ -252,6 +252,35 @@ class TestInBodyNewArray(unittest.TestCase):
         self.assertIn('Block** var3 = new Block*[256]();', self.out)
 
 
+class TestLabeledGoto(unittest.TestCase):
+    def test_labeled_break_and_continue(self):
+        lines = [
+            'label0:',
+            'for(int var1 = 0; var1 < 4; ++var1) {',
+            'for(int var2 = 0; var2 < 4; ++var2) {',
+            'if(a) {',
+            'continue label0;',
+            '}',
+            'if(b) {',
+            'break label0;',
+            '}',
+            '}',
+            '}',
+        ]
+        out = statements._translate_labels(lines)
+        self.assertNotIn('label0:', out)                  # original label removed
+        self.assertIn('goto label0_cont;', out)
+        self.assertIn('goto label0_brk;', out)
+        ci, bi = out.index('label0_cont:;'), out.index('label0_brk:;')
+        self.assertLess(ci, bi)
+        self.assertEqual(out[ci + 1], '}')                # cont sits just before the outer loop's close
+        self.assertEqual(out[ci + 2], 'label0_brk:;')     # brk just after it
+
+    def test_unlabeled_break_continue_untouched(self):
+        lines = ['while(x) {', 'break;', 'continue;', '}']
+        self.assertEqual(statements._translate_labels(lines), lines)
+
+
 class TestNullDerefGuard(unittest.TestCase):
     def setUp(self):
         c = ir.JClass('World')

@@ -79,6 +79,71 @@ def _balanced_paren(s, open_idx):
     return -1
 
 
+_LABEL_DEF = re.compile(r'^(\w+):\s*(.*)$')
+_LABEL_JUMP = re.compile(r'\b(break|continue)\s+(\w+)\s*;')
+_LOOP_START = re.compile(r'^(for|while|do)\b')
+
+
+def _loop_close(lines, loop_idx):
+    """Index of the line holding the `}` that closes the loop starting at loop_idx."""
+    depth, started = 0, False
+    for i in range(loop_idx, len(lines)):
+        depth += lines[i].count('{') - lines[i].count('}')
+        if '{' in lines[i]:
+            started = True
+        if started and depth <= 0:
+            return i
+    return None
+
+
+def _translate_labels(lines):
+    """Labeled break/continue -> goto. `break L` jumps past the L-loop; `continue L`
+    jumps to a target at the END of the L-loop body, so a `for` runs its increment
+    on fall-through (no skipped-increment infinite loop -- the shore-water freeze)."""
+    referenced = set()
+    for ln in lines:
+        for m in _LABEL_JUMP.finditer(ln):
+            referenced.add(m.group(2))
+    if not referenced:
+        return lines
+
+    def_strip, cont_at, brk_at = {}, {}, {}
+    for i, ln in enumerate(lines):
+        m = _LABEL_DEF.match(ln)
+        if not m or m.group(1) not in referenced:
+            continue
+        name = m.group(1)
+        loop_idx = (i if _LOOP_START.match(m.group(2))
+                    else i + 1 if i + 1 < len(lines) and _LOOP_START.match(lines[i + 1]) else None)
+        if loop_idx is None:
+            continue
+        close = _loop_close(lines, loop_idx)
+        if close is None:
+            continue
+        def_strip[i] = name
+        cont_at.setdefault(close, []).append('%s_cont:;' % name)
+        brk_at.setdefault(close, []).append('%s_brk:;' % name)
+    if not def_strip:
+        return lines
+
+    def jump(m):
+        return 'goto %s_%s;' % (m.group(2), 'brk' if m.group(1) == 'break' else 'cont')
+    rewritten = [_LABEL_JUMP.sub(jump, ln) for ln in lines]
+
+    out = []
+    for i, ln in enumerate(rewritten):
+        if i in def_strip:
+            ln = re.sub(r'^\s*%s:\s*' % re.escape(def_strip[i]), '', ln)
+            if not ln.strip():
+                continue
+        for c in cont_at.get(i, []):           # continue-target: end of loop body (before `}`)
+            out.append(c)
+        out.append(ln)
+        for b in brk_at.get(i, []):            # break-target: just after the loop
+            out.append(b)
+    return out
+
+
 def _category(jtype):
     if jtype is None:
         return None
@@ -262,4 +327,11 @@ def translate_body(method, cls, resolver, ledger=None):
                        'slot would be a virtual call through NULL -> IP 0x0 crash)',
                        line=method.line, severity=Severity.MED, source='emit', rule='null-deref-guard')
         out.append(line)
+
+    before = out
+    out = _translate_labels(out)                  # labeled break/continue -> goto (body-level)
+    if ledger is not None and len(out) != len(before):
+        ledger.add(cls.name + '.cpp', Category.WARNING,
+                   'labeled break/continue translated to goto (verify the loop still terminates)',
+                   line=method.line, severity=Severity.MED, source='emit', rule='label-goto')
     return out
