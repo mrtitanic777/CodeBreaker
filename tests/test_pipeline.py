@@ -6,7 +6,20 @@ import shutil
 import tempfile
 import unittest
 
-from j2x import pipeline
+from j2x import ir, pipeline
+
+
+class TestInheritanceResolution(unittest.TestCase):
+    def test_inherited_fields_populated(self):
+        a = ir.JClass('A')
+        a.fields.append(ir.Field('x', ir.JType('int'), access=ir.PUBLIC))
+        a.fields.append(ir.Field('secret', ir.JType('int'), access=ir.PRIVATE))   # not inherited
+        b = ir.JClass('B', parent='A')
+        c = ir.JClass('C', parent='B')
+        pipeline.resolve_inheritance([a, b, c])
+        self.assertEqual([f.name for f in b.inherited_fields], ['x'])     # private skipped
+        self.assertEqual([f.name for f in c.inherited_fields], ['x'])     # transitive through B
+        self.assertEqual(a.inherited_fields, [])
 
 FOO = """package a;
 public class Foo {

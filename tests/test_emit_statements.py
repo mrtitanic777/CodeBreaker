@@ -157,6 +157,17 @@ class TestCasts(unittest.TestCase):
         self.assertIn('Vec3D var4 = (Vec3D)var1;', self.out)
 
 
+class TestInheritedFields(unittest.TestCase):
+    def test_inherited_pointer_field_access(self):
+        c = ir.JClass('ModelSheep', parent='ModelBase')
+        c.inherited_fields = [ir.Field('head', ir.JType('ModelRenderer'))]   # inherited, pointer
+        m = ir.Method('render', ir.JType('void'), line=1)
+        m.body = [(1, 'void render() {'), (2, '\tthis.head.addBox(1, 2, 3);'), (3, '}')]
+        c.methods.append(m)
+        out = statements.translate_body(m, c, types.TypeResolver(known_classes={'ModelRenderer'}))
+        self.assertIn('this->head->addBox(1, 2, 3);', out)   # inherited field resolved as pointer
+
+
 class TestInBodyNewArray(unittest.TestCase):
     def setUp(self):
         c = ir.JClass('R')

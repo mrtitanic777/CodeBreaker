@@ -31,6 +31,27 @@ def discover(java_dir):
     return [paths[k] for k in sorted(paths)]
 
 
+def resolve_inheritance(classes):
+    """Populate each class's inherited_fields by walking its parent chain across the
+    full class set. Instance fields only; private parent fields are skipped (a subclass
+    can't reference them); own/closer fields shadow farther ones."""
+    by_name = dict((c.name, c) for c in classes)
+    for cls in classes:
+        seen = set(f.name for f in cls.fields)
+        inherited = []
+        parent = cls.parent
+        guard = set([cls.name])
+        while parent and parent in by_name and parent not in guard:
+            guard.add(parent)
+            pc = by_name[parent]
+            for f in pc.fields:
+                if not f.is_static and f.access != 'private' and f.name not in seen:
+                    inherited.append(f)
+                    seen.add(f.name)
+            parent = pc.parent
+        cls.inherited_fields = inherited
+
+
 def build_resolver(classes, value_types=None):
     names = set(c.name for c in classes)
     enums = set(c.name for c in classes if c.is_enum)
@@ -53,6 +74,7 @@ def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True)
             ledger.add(os.path.basename(path), Category.ERROR, 'parse failed: %s' % e,
                        severity=Severity.HIGH, source='pipeline', rule='parse-error')
 
+    resolve_inheritance(classes)
     resolver = build_resolver(classes, value_types)
 
     headers = sources = 0

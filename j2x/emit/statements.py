@@ -123,8 +123,10 @@ def _decl_base(type_str):
 
 
 def build_scope(cls, method):
-    """name -> JType for params, the class's own fields, and locals declared in the body."""
+    """name -> JType for params, the class's own + inherited fields, and locals declared in the body."""
     scope = {}
+    for f in getattr(cls, 'inherited_fields', ()):   # ancestors first; own fields override on shadow
+        scope[f.name] = f.jtype
     for f in cls.fields:
         scope[f.name] = f.jtype
     for p in method.params:
