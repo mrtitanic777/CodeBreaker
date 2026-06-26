@@ -15,5 +15,6 @@ PORT / GUESS / STUB is reported as it is emitted, not discovered later).
 """
 
 from .header import render_header
+from .source import render_source
 
-__all__ = ['render_header']
+__all__ = ['render_header', 'render_source']

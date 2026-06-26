@@ -1,0 +1,107 @@
+# -*- coding: utf-8 -*-
+"""Module 4b tests: .cpp emission + crash-class safety by construction."""
+
+import os
+import unittest
+
+from j2x import ir, types, parse
+from j2x.emit import source
+from j2x.ledger import Ledger, Category
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+JAVA = os.path.join(ROOT, 'original_java')
+
+
+def _block():
+    c = ir.JClass('Block')
+    c.fields.append(ir.Field('tickOnLoad', ir.JType('boolean', 1), is_static=True,
+                             initializer='new boolean[256]', line=5))
+    c.fields.append(ir.Field('blocksList', ir.JType('Block', 1), is_static=True,
+                             initializer='new Block[256]', line=6))
+    c.fields.append(ir.Field('stone', ir.JType('Block'), is_static=True, initializer=None, line=7))
+    c.fields.append(ir.Field('blockID', ir.JType('int'), access=ir.PUBLIC))
+    c.fields.append(ir.Field('stepSound', ir.JType('StepSound')))
+    c.fields.append(ir.Field('slipperiness', ir.JType('float')))
+
+    ctor = ir.Method('Block', is_ctor=True,
+                     params=[ir.Param('var1', ir.JType('int')), ir.Param('var2', ir.JType('Material'))], line=20)
+    ctor.body = [(20, 'Block(int var1, Material var2) {'),
+                 (21, '\tthis.stepSound = new StepSound();'),
+                 (22, '\tthis.blockID = var1;'), (23, '}')]
+    c.methods.append(ctor)
+
+    deleg = ir.Method('Block', is_ctor=True,
+                      params=[ir.Param('var1', ir.JType('int')), ir.Param('var2', ir.JType('int')),
+                              ir.Param('var3', ir.JType('Material'))], line=26)
+    deleg.body = [(26, 'Block(int var1, int var2, Material var3) {'),
+                  (27, '\tthis(var1, var3);'), (28, '\tthis.blockID = var2;'), (29, '}')]
+    c.methods.append(deleg)
+
+    gm = ir.Method('getBlockID', ir.JType('int'), line=32)
+    gm.body = [(32, 'int getBlockID() {'), (33, '\treturn this.blockID;'), (34, '}')]
+    c.methods.append(gm)
+    return c
+
+
+class TestSourceSafety(unittest.TestCase):
+    def setUp(self):
+        self.c = _block()
+        self.r = types.TypeResolver(known_classes={'Block', 'StepSound', 'Material'})
+        self.led = Ledger()
+        self.cpp = source.render_source(self.c, self.r, ledger=self.led)
+
+    def test_header(self):
+        self.assertTrue(self.cpp.startswith('#include "stdafx.h"'))
+        self.assertIn('#include "Block.h"', self.cpp)
+
+    def test_uninit_primitive_array_value_initialized(self):
+        # boolean[] -> bool*, allocated with () so it's zero-filled like Java
+        self.assertIn('bool* Block::s_tickOnLoad = new bool[256]();', self.cpp)
+
+    def test_uninit_pointer_array_value_initialized(self):
+        # Block[] -> Block** (array of pointers), value-init to NULLs
+        self.assertIn('Block** Block::s_blocksList = new Block*[256]();', self.cpp)
+
+    def test_forward_declared_static_is_nulled(self):
+        self.assertIn('Block* Block::s_stone = NULL;', self.cpp)
+
+    def test_ctor_zero_inits_members(self):
+        self.assertIn('blockID(0)', self.cpp)
+        self.assertIn('stepSound(NULL)', self.cpp)
+        self.assertIn('slipperiness(0)', self.cpp)
+
+    def test_rule_of_three_destructor_frees_heap(self):
+        self.assertIn('Block::~Block()', self.cpp)
+        self.assertIn('delete stepSound;', self.cpp)
+        self.assertIn('stepSound = NULL;', self.cpp)
+        self.assertTrue(any(e.rule == 'rule-of-three-dtor' for e in self.led.events))
+
+    def test_delegation_flagged_not_dropped(self):
+        self.assertIn('// PORT: delegation this(var1, var3)', self.cpp)
+        evs = [e for e in self.led.events if e.rule == 'ctor-delegation']
+        self.assertTrue(evs and evs[0].category == Category.STUBBED)
+
+    def test_method_signature(self):
+        self.assertIn('int Block::getBlockID()', self.cpp)
+
+    def test_uninit_array_events_logged(self):
+        self.assertEqual(sum(1 for e in self.led.events if e.rule == 'uninit-array-fixed'), 2)
+
+
+class TestSourceRealFiles(unittest.TestCase):
+    def test_vec3d_source_renders(self):
+        c = parse.parse_file(os.path.join(JAVA, 'Vec3D.java'))
+        r = types.TypeResolver(value_types={'Vec3D'})
+        cpp = source.render_source(c, r)
+        self.assertIn('#include "stdafx.h"', cpp)
+        self.assertIn('Vec3D::Vec3D(', cpp)
+        self.assertIn('Vec3D::~Vec3D()', cpp)
+
+    def test_interface_has_no_source(self):
+        c = parse.parse_file(os.path.join(JAVA, 'ICamera.java'))
+        r = types.TypeResolver()
+        self.assertIsNone(source.render_source(c, r))
+
+
+if __name__ == '__main__':
+    unittest.main()
