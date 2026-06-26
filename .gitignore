@@ -1,8 +1,4 @@
-# Regenerable build / packaging intermediates
-build/
-dist/
-out/
-_syntaxbuild/
+# Python
 __pycache__/
 *.pyc
 
@@ -10,8 +6,20 @@ __pycache__/
 *.log
 *.tgz
 
-# Naming batch intermediates
-_batches/
+# Generated converter output (build artifacts -- regenerate with
+# `python -m j2x convert <java_dir> <out_dir>`). Never committed.
+/output/
+/output_alpha/
+/output_pristine/
+/out/
+/src/
+/include/
+
+# Build / packaging intermediates
+/build/
+/dist/
+/_syntaxbuild/
+/_batches/
 
 # RetroMCP harness build output
-rmcp_harness/*.class
+legacy/rmcp_harness/*.class
