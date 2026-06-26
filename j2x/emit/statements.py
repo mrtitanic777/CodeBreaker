@@ -324,7 +324,7 @@ def _resolve_chains(s, scope, resolver, current):
     return s
 
 
-def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent, current):
+def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent, current, own_statics):
     # 1. local declaration: rewrite the leading Java type to its C++ spelling
     m = _DECL.match(s)
     if m and _decl_base(m.group(1)) not in _KEYWORDS and m.group(2) not in _KEYWORDS:
@@ -352,6 +352,11 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
             return '%s::%s' % (recv, mem)
         return '%s::%s' % (recv, naming.static_field_name(mem))   # static field
     s = _MEMBER.sub(_static, s)
+    # 5b. bare reference to one of THIS class's static fields -> s_-prefixed name. Java lets
+    #     a class name its own statics unqualified; the C++ static def is `s_name`. Skip any
+    #     occurrence that's already qualified (`X::`, `x.`) or already prefixed (`s_name`).
+    for nm in own_statics:
+        s = re.sub(r'(?<![\w.:])' + re.escape(nm) + r'\b', naming.static_field_name(nm), s)
     # 6. container/String methods -> STL (.add->.push_back, .get(i)->[i], .charAt(i)->[i], isEmpty->empty)
     s = _translate_calls(s, scope)
     # 6b. cast-result access: ((Type)x).m -> ((Type*)x)->m  (a cast to a reference type yields a pointer)
@@ -361,9 +366,17 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
     # 6c. chained member access: receiver sub-expression that resolves to a pointer (static
     #     reference field / pointer field of a typed receiver) -> '.' becomes '->'
     s = _resolve_chains(s, scope, resolver, current)
-    # 7. cast to a reference type -> pointer cast: (Block)x -> (Block*)x
-    s = _CAST.sub(lambda m: '(%s*)' % m.group(1)
-                  if resolver.is_pointer(ir.JType(m.group(1))) else m.group(0), s)
+    # 7. cast translation: reference type -> pointer cast ((Block)x -> (Block*)x);
+    #    primitive whose C++ spelling differs -> the C++ spelling ((byte)x -> (unsigned char)x)
+    def _cast(m):
+        t = m.group(1)
+        if resolver.is_pointer(ir.JType(t)):
+            return '(%s*)' % t
+        cpp = typemap.JAVA_TO_CPP.get(t)
+        if cpp and cpp != t and t in typemap.PRIMITIVES:
+            return '(%s)' % cpp
+        return m.group(0)
+    s = _CAST.sub(_cast, s)
     # 8. Java null literal -> NULL
     s = re.sub(r'\bnull\b', 'NULL', s)
     # 9. new T[n] -> new T[n]() (value-init like Java; reference elements become T*)
@@ -415,6 +428,7 @@ def translate_body(method, cls, resolver, ledger=None):
                        key=len, reverse=True)   # longer names first (avoid prefix overlap)
     static_set = set(resolver.known) | set(resolver.enums) | {cls.name}
     enum_set = set(resolver.enums)
+    own_statics = set(f.name for f in cls.static_fields())
     out = []
     for raw in inner_lines(method.body):
         s = raw.strip()
@@ -422,7 +436,8 @@ def translate_body(method, cls, resolver, ledger=None):
             if s:
                 out.append(s)
             continue
-        line = _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, cls.parent, cls.name)
+        line = _translate_line(s, ptr_names, static_set, enum_set, resolver, scope,
+                               cls.parent, cls.name, own_statics)
         line, guarded = _guard_null_deref(line, scope, resolver)
         if guarded and ledger is not None:
             ledger.add(cls.name + '.cpp', Category.RISK,

@@ -258,6 +258,60 @@ class TestExpressionDeref(unittest.TestCase):
         self.assertIn('float w = ((Vec3D)var1).xCoord;', self.out)
 
 
+class TestPrimitiveCastAndMathConst(unittest.TestCase):
+    def setUp(self):
+        c = ir.JClass('R')
+        m = ir.Method('f', ir.JType('void'), params=[ir.Param('var1', ir.JType('int'))], line=1)
+        m.body = [
+            (1, 'void f(int var1) {'),
+            (2, '\tbyte var2 = (byte)var1;'),          # primitive cast remapped
+            (3, '\tboolean var3 = (boolean)var1;'),
+            (4, '\tfloat var4 = (float)var1;'),         # self-mapping -> unchanged
+            (5, '\tfloat p = (float)Math.PI;'),         # Math.PI constant -> literal
+            (6, '}'),
+        ]
+        c.methods.append(m)
+        self.out = statements.translate_body(m, c, types.TypeResolver())
+
+    def test_byte_cast_remapped(self):
+        self.assertIn('unsigned char var2 = (unsigned char)var1;', self.out)
+
+    def test_boolean_cast_remapped(self):
+        self.assertIn('bool var3 = (bool)var1;', self.out)
+
+    def test_self_mapping_cast_unchanged(self):
+        self.assertIn('float var4 = (float)var1;', self.out)
+
+    def test_math_pi_constant(self):
+        self.assertIn('float p = (float)3.1415927F;', self.out)
+
+
+class TestBareStaticPrefix(unittest.TestCase):
+    def test_bare_static_field_gets_prefix(self):
+        c = ir.JClass('MathHelper')
+        c.fields.append(ir.Field('SIN_TABLE', ir.JType('float', array_dims=1), is_static=True))
+        m = ir.Method('sin', ir.JType('float'), params=[ir.Param('var0', ir.JType('float'))], line=1)
+        m.body = [(1, 'float sin(float var0) {'),
+                  (2, '\treturn SIN_TABLE[(int)var0 & 255];'), (3, '}')]
+        c.methods.append(m)
+        out = statements.translate_body(m, c, types.TypeResolver())
+        self.assertIn('return s_SIN_TABLE[(int)var0 & 255];', out)
+
+    def test_qualified_static_not_double_prefixed(self):
+        c = ir.JClass('Block')
+        c.fields.append(ir.Field('blocksList', ir.JType('Block', array_dims=1), is_static=True))
+        m = ir.Method('f', ir.JType('void'), line=1)
+        m.body = [(1, 'void f() {'),
+                  (2, '\tBlock var1 = Block.blocksList[0];'),   # qualified -> Block::s_blocksList
+                  (3, '\tBlock var2 = blocksList[1];'),          # bare -> s_blocksList
+                  (4, '}')]
+        c.methods.append(m)
+        out = statements.translate_body(m, c, types.TypeResolver(known_classes={'Block'}))
+        self.assertIn('Block* var1 = Block::s_blocksList[0];', out)
+        self.assertIn('Block* var2 = s_blocksList[1];', out)
+        self.assertFalse(any('s_s_' in l for l in out), out)    # never double-prefixed
+
+
 class TestChainInference(unittest.TestCase):
     """Member environment drives chained '.' vs '->' (static reference field; pointer
     field of a typed receiver)."""

@@ -71,6 +71,9 @@ MATH_API = {
     'atan': 'atanf', 'atan2': 'atan2f', 'asin': 'asinf', 'acos': 'acosf',
     'floor': 'floorf', 'ceil': 'ceilf', 'pow': 'powf', 'exp': 'expf', 'log': 'logf',
     'min': 'min', 'max': 'max',
+    # constants (no call): Math.PI is a member, not a method -> inline the float literal
+    # (this is a float-math project, consistent with the sqrtf/sinf choices above)
+    'PI': '3.1415927F',
 }
 
 # Classic Minecraft value/struct types (stack values, '.' access). The pipeline can
