@@ -72,6 +72,8 @@ MATH_API = {
     # constants (no call): Math.PI is a member, not a method -> inline the float literal
     # (this is a float-math project, consistent with the sqrtf/sinf choices above)
     'PI': '3.1415927F',
+    # no clean inline form -> free-function shims from the runtime prelude (JavaRT.h)
+    'random': 'javaMathRandom', 'signum': 'javaMathSignum',
 }
 
 # Classic Minecraft value/struct types (stack values, '.' access). The pipeline can

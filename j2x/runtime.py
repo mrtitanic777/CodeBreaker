@@ -146,9 +146,26 @@ struct Applet {
 #endif // APPLET_H
 '''
 
+# Universal runtime prelude: free-function shims for java.lang.* statics that have no
+# clean inline mapping. #included by every emitted .cpp (named JavaRT.h, NOT Math.h, to
+# avoid colliding with system <math.h> on a case-insensitive filesystem).
+JAVART_H = r'''#ifndef JAVART_H
+#define JAVART_H
+// j2x runtime prelude -- shims for Java stdlib statics
+#include <cstdlib>
+
+// java.lang.Math.random(): pseudo-random double in [0, 1)
+inline double javaMathRandom() { return (double)rand() / ((double)RAND_MAX + 1.0); }
+// java.lang.Math.signum(x)
+template<class T> inline T javaMathSignum(T v) { return v > 0 ? (T)1 : (v < 0 ? (T)-1 : (T)0); }
+
+#endif // JAVART_H
+'''
+
 # filename -> content
 FILES = {
     'Random.h': RANDOM_H,
+    'JavaRT.h': JAVART_H,
     'Runnable.h': RUNNABLE_H,
     'Thread.h': THREAD_H,
     'Comparator.h': COMPARATOR_H,

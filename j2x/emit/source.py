@@ -228,7 +228,8 @@ def render_source(cls, resolver, ledger=None):
     # tokens in the body -- the signatures catch types reached only through lowercase vars
     # (e.g. entity->posX, where the type 'Entity' is never spelled in the body).
     used = _referenced_types(cls, resolver, '\n'.join(body))
-    L = ['#include "stdafx.h"', '', _BANNER % cls.name, '', '#include "%s.h"' % cls.name]
+    L = ['#include "stdafx.h"', '#include "JavaRT.h"', '', _BANNER % cls.name, '',
+         '#include "%s.h"' % cls.name]
     L += ['#include "%s.h"' % n for n in used]
     L += ['']
     L += body
