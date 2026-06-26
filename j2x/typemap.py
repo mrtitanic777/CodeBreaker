@@ -28,16 +28,11 @@ JAVA_TO_CPP = {
     'Object': 'void*',
     'Integer': 'int', 'Long': 'long long', 'Float': 'float', 'Double': 'double',
     'Boolean': 'bool', 'Byte': 'unsigned char', 'Short': 'short', 'Character': 'char',
-    # Java NIO buffers
-    'FloatBuffer': 'float*', 'IntBuffer': 'int*', 'ByteBuffer': 'unsigned char*',
 }
 
 # Java types that emit warrants a PORT note for (mapped, but lossy / needs review).
 PORT_NOTE_TYPES = {
     'Object': 'was Object (untyped); verify the concrete type',
-    'FloatBuffer': 'was java.nio.FloatBuffer',
-    'IntBuffer': 'was java.nio.IntBuffer',
-    'ByteBuffer': 'was java.nio.ByteBuffer',
 }
 
 # Java collection types -> STL. Held BY VALUE as fields by default (std::vector/map).
@@ -58,8 +53,21 @@ KNOWN_NULLABLE = {'blocksList', 'itemsList'}
 # Runtime-support classes the converter EMITS a header for (see runtime.py) and
 # #includes when referenced -- not part of the decompiled corpus. Includes the external
 # Java base types our classes extend/implement (Runnable/Thread/Comparator/...).
-RUNTIME_HEADERS = {'Random', 'Runnable', 'Thread', 'Comparator', 'File',
-                   'FilenameFilter', 'Canvas', 'Applet', 'GL11'}
+# Static-holder externals accessed as Name::member (constants + static functions) that get
+# their own emitted header. Like GL11. Also need RUNTIME_ENUM_LIKE (no s_ prefix on members).
+RUNTIME_STATIC_HOLDERS = {'GL11', 'GL15', 'GLU', 'Keyboard', 'Mouse', 'Display',
+                          'ARBOcclusionQuery', 'ARBVertexBufferObject', 'BufferUtils', 'ImageIO'}
+
+# Runtime-support classes the converter EMITS a header for (see runtime.py) and #includes when
+# referenced -- not part of the decompiled corpus. External Java base types our classes
+# extend/implement, the static holders above, NIO buffers, and java.io/awt/net instance stubs.
+RUNTIME_HEADERS = ({'Random', 'Runnable', 'Thread', 'Comparator', 'File',
+                    'FilenameFilter', 'Canvas', 'Applet',
+                    'DisplayMode', 'FloatBuffer', 'IntBuffer', 'ByteBuffer',
+                    'DataInput', 'DataOutput', 'SoundSystem', 'BufferedImage', 'BufferedReader',
+                    'Graphics', 'Component', 'Cursor', 'Robot', 'URL', 'FileDialog',
+                    'DecimalFormat', 'ImageObserver'}
+                   | RUNTIME_STATIC_HOLDERS)
 
 # Java stdlib static holders shimmed in the prelude (JavaRT.h, included everywhere -- so NOT
 # in RUNTIME_HEADERS, which would emit a bogus per-type #include). `Name.member` -> `Name::member`.
@@ -68,7 +76,7 @@ JAVART_STATICS = {'System', 'Integer', 'Long', 'Double', 'Float', 'Character', '
 # Runtime types whose `Type.MEMBER` (no parens) is a CONSTANT, not an instance/static field
 # -- accessed as Type::MEMBER with no s_ prefix (like an enum constant). e.g. GL11.GL_TEXTURE_2D,
 # Integer.MAX_VALUE, System.out.
-RUNTIME_ENUM_LIKE = {'GL11'} | JAVART_STATICS
+RUNTIME_ENUM_LIKE = RUNTIME_STATIC_HOLDERS | JAVART_STATICS
 
 # java.lang.Math.<fn> -> C math function. Float-suffixed to match the existing
 # Xbox 360 project (float math); pulled in via <math.h>. min/max stay bare

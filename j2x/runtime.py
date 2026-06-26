@@ -363,6 +363,160 @@ namespace GL11 {
 #endif // GL11_H
 '''
 
+# --- generated stubs for the remaining external platform/IO/AWT types ---------------------
+# These are SYMBOL stubs so game logic COMPILES; the real implementations are the Xbox 360
+# platform layer (Direct3D 9 / XInput / sound / file IO), out of scope for the converter.
+
+def _guard(name):
+    return name.upper().replace('.', '_') + '_H'
+
+
+def _ns_stub(name, consts=(), void_fns=(), ret_fns=(), includes=(), fwds=()):
+    """A namespace of static constants + functions (e.g. GL15, Keyboard) -- accessed Name::X."""
+    g = _guard(name)
+    L = ['#ifndef %s' % g, '#define %s' % g, '#include <string>']
+    L += ['#include "%s.h"' % h for h in includes]
+    L += ['class %s;' % f for f in fwds]
+    L += ['', 'namespace %s {' % name]
+    for k, v in consts:
+        L.append('\tconst int %s = %s;' % (k, v))
+    for f in void_fns:
+        L.append('\tinline void %s(...) {}' % f)
+    for f, (rt, rv) in ret_fns:
+        L.append('\tinline %s %s(...) { return %s; }' % (rt, f, rv))
+    L += ['}', '#endif // %s' % g, '']
+    return '\n'.join(L)
+
+
+def _class_stub(name, void_methods=(), ret_methods=(), ctors=True, bases=(),
+                includes=(), fwds=()):
+    """A class with variadic stub methods (e.g. SoundSystem, DataInput) -- accessed var->X."""
+    g = _guard(name)
+    L = ['#ifndef %s' % g, '#define %s' % g, '#include <string>']
+    L += ['#include "%s.h"' % h for h in includes]
+    L += ['class %s;' % f for f in fwds]
+    decl = 'class %s' % name + ((' : ' + ', '.join('public %s' % b for b in bases)) if bases else '')
+    L += ['', decl + ' {', 'public:']
+    if ctors:
+        L.append('\t%s(...) {}' % name)
+    L.append('\tvirtual ~%s() {}' % name)
+    for m in void_methods:
+        L.append('\tvirtual void %s(...) {}' % m)
+    for m, (rt, rv) in ret_methods:
+        L.append('\tvirtual %s %s(...) { return %s; }' % (rt, m, rv))
+    L += ['};', '#endif // %s' % g, '']
+    return '\n'.join(L)
+
+
+# NIO buffers: real classes (not raw pointers) so the .clear()/.put()/.flip() calls compile.
+# Cross-return by pointer (forward-declared) to avoid include cycles.
+def _buffer_stub(name):
+    g = _guard(name)
+    return '\n'.join([
+        '#ifndef %s' % g, '#define %s' % g,
+        'class FloatBuffer; class IntBuffer; class ByteBuffer;', '',
+        'class %s {' % name, 'public:',
+        '\t%s() {}' % name, '\tvirtual ~%s() {}' % name,
+        '\t%s& clear(...) { return *this; }' % name,
+        '\t%s& flip(...) { return *this; }' % name,
+        '\t%s& put(...) { return *this; }' % name,
+        '\t%s& position(...) { return *this; }' % name,
+        '\t%s& limit(...) { return *this; }' % name,
+        '\tint get(...) { return 0; }',
+        '\tint remaining() { return 0; }',
+        '\tint capacity() { return 0; }',
+        '\tFloatBuffer* asFloatBuffer() { return 0; }',
+        '\tIntBuffer* asIntBuffer() { return 0; }',
+        '};', '#endif // %s' % g, ''])
+
+
+_GENERATED = {}
+# LWJGL input / display (static holders)
+_GENERATED['Keyboard.h'] = _ns_stub('Keyboard',
+    consts=[('KEY_ESCAPE', 1), ('KEY_LSHIFT', 42), ('KEY_RSHIFT', 54),
+            ('KEY_F5', 63), ('KEY_F7', 65), ('KEY_F11', 87)],
+    void_fns=['create', 'destroy', 'enableRepeatEvents'],
+    ret_fns=[('getEventKey', ('int', '0')), ('getEventKeyState', ('bool', 'false')),
+             ('getEventCharacter', ('char', '0')), ('isKeyDown', ('bool', 'false')),
+             ('next', ('bool', 'false')), ('getKeyName', ('std::string', 'std::string()'))])
+_GENERATED['Mouse.h'] = _ns_stub('Mouse',
+    void_fns=['create', 'destroy', 'setNativeCursor'],
+    ret_fns=[('getDX', ('int', '0')), ('getDY', ('int', '0')), ('getX', ('int', '0')),
+             ('getY', ('int', '0')), ('getEventButton', ('int', '0')),
+             ('getEventButtonState', ('bool', 'false')), ('getEventDWheel', ('int', '0')),
+             ('getEventX', ('int', '0')), ('getEventY', ('int', '0')),
+             ('isButtonDown', ('bool', 'false')), ('next', ('bool', 'false'))])
+_GENERATED['DisplayMode.h'] = _class_stub('DisplayMode',
+    ret_methods=[('getWidth', ('int', '0')), ('getHeight', ('int', '0')),
+                 ('getFrequency', ('int', '0')), ('getBitsPerPixel', ('int', '0'))])
+_GENERATED['Display.h'] = _ns_stub('Display', includes=['DisplayMode'],
+    void_fns=['create', 'destroy', 'setDisplayMode', 'setFullscreen', 'setParent',
+              'setTitle', 'update'],
+    ret_fns=[('isActive', ('bool', 'false')), ('isCloseRequested', ('bool', 'false')),
+             ('getDisplayMode', ('DisplayMode', 'DisplayMode()')),
+             ('getDesktopDisplayMode', ('DisplayMode', 'DisplayMode()'))])
+_GENERATED['GL15.h'] = _ns_stub('GL15',
+    consts=[('GL_ARRAY_BUFFER', 0x8892), ('GL_STREAM_DRAW', 0x88E0), ('GL_SAMPLES_PASSED', 0x8914),
+            ('GL_QUERY_RESULT', 0x8866), ('GL_QUERY_RESULT_AVAILABLE', 0x8867),
+            ('GL_QUERY_COUNTER_BITS', 0x8864)])
+_GENERATED['GLU.h'] = _ns_stub('GLU', void_fns=['gluPerspective', 'gluLookAt', 'gluProject', 'gluUnProject'])
+_GENERATED['ARBOcclusionQuery.h'] = _ns_stub('ARBOcclusionQuery',
+    void_fns=['glBeginQueryARB', 'glEndQueryARB', 'glGetQueryObjectuARB', 'glGetQueryARB'],
+    ret_fns=[('glGenQueriesARB', ('int', '0'))])
+_GENERATED['ARBVertexBufferObject.h'] = _ns_stub('ARBVertexBufferObject',
+    void_fns=['glBindBufferARB', 'glBufferDataARB', 'glDeleteBuffersARB'],
+    ret_fns=[('glGenBuffersARB', ('int', '0'))])
+_GENERATED['BufferUtils.h'] = _ns_stub('BufferUtils', fwds=['IntBuffer', 'FloatBuffer', 'ByteBuffer'],
+    ret_fns=[('createIntBuffer', ('IntBuffer*', '0')), ('createFloatBuffer', ('FloatBuffer*', '0')),
+             ('createByteBuffer', ('ByteBuffer*', '0'))])
+_GENERATED['ImageIO.h'] = _ns_stub('ImageIO', fwds=['BufferedImage'],
+    void_fns=['write'], ret_fns=[('read', ('BufferedImage*', '0'))])
+# NIO buffers (real classes)
+for _b in ('FloatBuffer', 'IntBuffer', 'ByteBuffer'):
+    _GENERATED[_b + '.h'] = _buffer_stub(_b)
+# java.io data streams (interfaces -> default-impl structs)
+_GENERATED['DataInput.h'] = _class_stub('DataInput', void_methods=['readFully'],
+    ret_methods=[('readByte', ('unsigned char', '0')), ('readUnsignedByte', ('int', '0')),
+                 ('readShort', ('short', '0')), ('readUnsignedShort', ('int', '0')),
+                 ('readInt', ('int', '0')), ('readLong', ('long long', '0LL')),
+                 ('readFloat', ('float', '0.0F')), ('readDouble', ('double', '0.0')),
+                 ('readBoolean', ('bool', 'false')), ('readChar', ('char', '0')),
+                 ('readLine', ('std::string', 'std::string()')),
+                 ('readUTF', ('std::string', 'std::string()'))])
+_GENERATED['DataOutput.h'] = _class_stub('DataOutput',
+    void_methods=['write', 'writeByte', 'writeShort', 'writeInt', 'writeLong', 'writeFloat',
+                  'writeDouble', 'writeBoolean', 'writeChar', 'writeUTF', 'writeBytes'])
+_GENERATED['SoundSystem.h'] = _class_stub('SoundSystem',
+    void_methods=['cleanup', 'newSource', 'newStreamingSource', 'play', 'setListenerOrientation',
+                  'setListenerPosition', 'setPitch', 'setVolume', 'stop', 'pause', 'removeSource'],
+    ret_methods=[('playing', ('bool', 'false'))])
+_GENERATED['BufferedImage.h'] = _class_stub('BufferedImage',
+    void_methods=['setRGB', 'flush'],
+    ret_methods=[('getWidth', ('int', '0')), ('getHeight', ('int', '0')),
+                 ('getRGB', ('int', '0')), ('getData', ('void*', '0'))])
+# small java.io / java.awt / java.net stubs
+_GENERATED['BufferedReader.h'] = _class_stub('BufferedReader',
+    void_methods=['close'], ret_methods=[('readLine', ('std::string', 'std::string()')),
+                                         ('read', ('int', '0')), ('ready', ('bool', 'false'))])
+_GENERATED['Graphics.h'] = _class_stub('Graphics',
+    void_methods=['drawImage', 'dispose', 'setColor', 'fillRect', 'drawString'])
+_GENERATED['Component.h'] = _class_stub('Component',
+    void_methods=['setSize', 'setVisible', 'repaint', 'requestFocus'],
+    ret_methods=[('getWidth', ('int', '0')), ('getHeight', ('int', '0'))])
+_GENERATED['Cursor.h'] = _class_stub('Cursor')
+_GENERATED['Robot.h'] = _class_stub('Robot', void_methods=['mouseMove'])
+_GENERATED['Component.h'] = _GENERATED['Component.h']
+_GENERATED['URL.h'] = _class_stub('URL',
+    ret_methods=[('openConnection', ('void*', '0')), ('openStream', ('void*', '0')),
+                 ('toString', ('std::string', 'std::string()'))])
+_GENERATED['FileDialog.h'] = _class_stub('FileDialog', void_methods=['setVisible', 'setMode'],
+    ret_methods=[('getFile', ('std::string', 'std::string()')),
+                 ('getDirectory', ('std::string', 'std::string()'))])
+_GENERATED['DecimalFormat.h'] = _class_stub('DecimalFormat',
+    ret_methods=[('format', ('std::string', 'std::string()'))])
+_GENERATED['ImageObserver.h'] = _class_stub('ImageObserver')
+
+
 # filename -> content
 FILES = {
     'Random.h': RANDOM_H,
@@ -376,3 +530,4 @@ FILES = {
     'Canvas.h': CANVAS_H,
     'Applet.h': APPLET_H,
 }
+FILES.update(_GENERATED)
