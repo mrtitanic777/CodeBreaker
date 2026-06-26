@@ -190,6 +190,17 @@ def _referenced_types(cls, resolver, body_text):
         for p in m.params:
             add(p.jtype)
     names |= set(re.findall(r'\b([A-Z]\w*)\b', body_text))     # new X / X:: / casts / locals
+    # transitive (one level): a .cpp that holds a T reaches T's field and method-return
+    # types through chains (`var->tField->m()`, `T::s_x->m()`), so it needs their FULL
+    # definitions too -- not just T's. Driven by the resolved member environment, so this
+    # follows exactly the chains the statement translator now emits.
+    for n in list(names):
+        env = resolver.members.get(n)
+        if env:
+            for jt in env['fields'].values():
+                add(jt)
+            for jt in env['methods'].values():
+                add(jt)
     includable = set(resolver.known) | typemap.RUNTIME_HEADERS
     return sorted((names & includable) - {cls.name})
 

@@ -161,5 +161,48 @@ class TestSourceRealFiles(unittest.TestCase):
         self.assertIn('virtual Vec3D* subtract(Vec3D var1);', h)
 
 
+class TestTransitiveIncludes(unittest.TestCase):
+    """A .cpp that holds a T and reaches T's field/method types through chains must
+    #include their full definitions (one level), driven by the member environment."""
+    def test_field_type_of_referenced_class_is_included(self):
+        item = ir.JClass('ItemHoe')
+        m = ir.Method('use', ir.JType('void'), params=[ir.Param('var2', ir.JType('World'))], line=1)
+        m.body = [(1, 'void use(World var2) {'),
+                  (2, '\tint n = var2.random.nextInt(8);'), (3, '}')]   # var2.random -> Random*
+        item.methods.append(m)
+        # member env: World has a Random* field 'random' (as the pipeline would build it)
+        members = {'World': {'fields': {'random': ir.JType('Random')}, 'methods': {}}}
+        r = types.TypeResolver(known_classes={'World', 'ItemHoe', 'Random'}, members=members)
+        cpp = source.render_source(item, r)
+        self.assertIn('#include "World.h"', cpp)
+        self.assertIn('#include "Random.h"', cpp)    # transitively, via World's field type
+
+
+class TestStringReturnUnification(unittest.TestCase):
+    """String is always returned by value (std::string), never promoted to a pointer --
+    even when the body `return null` -- so virtual overrides keep a consistent return type."""
+    def _string_returner(self, body_lines):
+        c = ir.JClass('Mob', parent='Entity')
+        m = ir.Method('getTexture', ir.JType('String'), line=1)
+        m.body = [(1, 'String getTexture() {')] + list(enumerate(body_lines, 2)) + [(99, '}')]
+        c.methods.append(m)
+        return c
+
+    def test_null_string_return_stays_value(self):
+        c = self._string_returner(['\treturn null;'])
+        r = types.TypeResolver(known_classes={'Entity'})
+        h = header.render_header(c, r)
+        cpp = source.render_source(c, r)
+        self.assertIn('virtual std::string getTexture();', h)   # NOT std::string*
+        self.assertNotIn('std::string* getTexture', h)
+        self.assertIn('return std::string();', cpp)             # null -> empty, never NULL char*
+        self.assertNotIn('return NULL;', cpp)
+
+    def test_literal_string_return_value(self):
+        c = self._string_returner(['\treturn "/mob/char.png";'])
+        r = types.TypeResolver(known_classes={'Entity'})
+        self.assertIn('virtual std::string getTexture();', header.render_header(c, r))
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -14,6 +14,8 @@ detect owners here so emit can free them once AND forbid copying.
 
 import re
 
+from .. import typemap
+
 _CTOR_NEW = re.compile(r'(?:this\.)?(\w+)\s*=\s*new\s+\w[\w.]*\s*(\[)?')
 # broad: `field = new` OR `field[i] = new` (array-element ownership)
 _CTOR_NEW_BROAD = re.compile(r'(?:this(?:->|\.))?(\w+)\s*(?:\[[^\]]*\])?\s*=\s*new\b')
@@ -59,6 +61,12 @@ def returns_pointer(method, resolver):
         return False
     if resolver.is_pointer(rt):
         return True
+    # std::string (and other value-stdlib types) is NEVER a pointer: it has dedicated
+    # by-value handling (return-by-value, `return null` -> empty string). Promoting it
+    # both reintroduces the dangling-pointer risk and breaks virtual-override return
+    # unification (base `return null` -> string*, derived `return "x"` -> string).
+    if rt.name in typemap.VALUE_STDLIB:
+        return False
     text = '\n'.join(t for _ln, t in method.body)
     # value-type return promoted to pointer if the body new's it in a return (incl. a
     # ternary) OR returns null -- both impossible for a by-value return

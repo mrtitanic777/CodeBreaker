@@ -431,6 +431,12 @@ def translate_body(method, cls, resolver, ledger=None):
                        line=method.line, severity=Severity.MED, source='emit', rule='null-deref-guard')
         out.append(line)
 
+    # a String return is by value (std::string); `return null` would construct a string
+    # from a NULL char* (undefined behavior / crash) -- return an empty string instead.
+    rt = method.return_type
+    if rt is not None and rt.name == 'String' and not rt.is_array:
+        out = [re.sub(r'\breturn\s+NULL\s*;', 'return std::string();', l) for l in out]
+
     before = out
     out = _translate_labels(out)                  # labeled break/continue -> goto (body-level)
     if ledger is not None and len(out) != len(before):
