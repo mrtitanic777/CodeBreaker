@@ -403,6 +403,47 @@ class TestChainInference(unittest.TestCase):
         self.assertTrue(any('Mystery' in l and '.bar' in l for l in out), out)
 
 
+class TestCallResultChains(unittest.TestCase):
+    """A call/ctor result that is a pointer, then .member -> -> (method-result inference)."""
+    def _resolver(self):
+        members = {
+            'ItemStack': {'fields': {}, 'methods': {'getItem': ir.JType('Item')}},
+            'CraftingManager': {'fields': {},
+                                'methods': {'getInstance': ir.JType('CraftingManager'),
+                                            'findRecipe': ir.JType('ItemStack')}},
+        }
+        return types.TypeResolver(
+            known_classes={'ItemStack', 'Item', 'CraftingManager', 'ThreadDownloadImage', 'C'},
+            members=members)
+
+    def test_instance_method_result_chain(self):
+        c = ir.JClass('C')
+        m = ir.Method('f', ir.JType('void'), params=[ir.Param('var6', ir.JType('ItemStack'))], line=1)
+        m.body = [(1, 'void f(ItemStack var6) {'),
+                  (2, '\tvar6.getItem().onPlaced();'), (3, '}')]
+        c.methods.append(m)
+        out = statements.translate_body(m, c, self._resolver())
+        self.assertIn('var6->getItem()->onPlaced();', out)
+
+    def test_static_method_result_chain(self):
+        c = ir.JClass('C')
+        m = ir.Method('f', ir.JType('void'), line=1)
+        m.body = [(1, 'void f() {'),
+                  (2, '\tItemStack var1 = CraftingManager.getInstance().findRecipe();'), (3, '}')]
+        c.methods.append(m)
+        out = statements.translate_body(m, c, self._resolver())
+        self.assertIn('CraftingManager::getInstance()->findRecipe();', out[0])
+
+    def test_new_result_chain_wrapped(self):
+        c = ir.JClass('C')
+        m = ir.Method('f', ir.JType('void'), line=1)
+        m.body = [(1, 'void f() {'),
+                  (2, '\tnew ThreadDownloadImage(this, var1).start();'), (3, '}')]
+        c.methods.append(m)
+        out = statements.translate_body(m, c, self._resolver())
+        self.assertIn('(new ThreadDownloadImage(this, var1))->start();', out)
+
+
 class TestSuperAndInstanceof(unittest.TestCase):
     def test_instanceof_to_dynamic_cast(self):
         c = ir.JClass('R', parent='Base')

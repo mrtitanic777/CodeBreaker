@@ -357,6 +357,52 @@ def _resolve_chains(s, scope, resolver, current):
     return s
 
 
+_CALL_HEAD = re.compile(r'(\bnew\s+(\w+)|(\w+)(->|::)(\w+))\s*\(')
+
+
+def _resolve_call_chains(s, scope, resolver, current):
+    """Method/constructor RESULT chains: a call that yields a pointer, then `.member`.
+        new Type(...).m          -> (new Type(...))->m     (new always yields a pointer)
+        recv->method(...).m      -> recv->method(...)->m   (method returns a pointer)
+        Class::method(...).m     -> Class::method(...)->m   (static method returns a pointer)
+    Receiver/return types come from the member environment; conservative (only when known
+    to be a pointer). Re-scans after each rewrite since indices shift."""
+    for _ in range(8):
+        changed = False
+        for m in _CALL_HEAD.finditer(s):
+            op = m.end() - 1                          # index of the '(' (pattern ends with it)
+            close = _balanced_paren(s, op)
+            if close < 0:
+                continue
+            j = close + 1
+            while j < len(s) and s[j] == ' ':
+                j += 1
+            if j >= len(s) or s[j] != '.':
+                continue                              # not a result-member access
+            if m.group(2) is not None:               # new Type(...)
+                ptr = True
+            else:
+                recv, sep, meth = m.group(3), m.group(4), m.group(5)
+                owner = (recv if sep == '::' else
+                         current if recv == 'this' else
+                         (scope[recv].name if recv in scope else None))
+                if owner is None:
+                    continue
+                rt = resolver.member_method_type(owner, meth)
+                ptr = rt is not None and resolver.is_pointer(rt)
+            if not ptr:
+                continue
+            if m.group(2) is not None:
+                s = s[:m.start()] + '(' + s[m.start():close + 1] + ')->' + s[j + 1:]
+            else:
+                s = s[:close + 1] + '->' + s[j + 1:]
+            changed = True
+            break
+        if not changed:
+            break
+    return s
+
+
 def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent, current,
                     own_statics, ptr_locals):
     # 1. local declaration: rewrite the leading Java type to its C++ spelling. A value-type
@@ -403,6 +449,8 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
     # 6c. chained member access: receiver sub-expression that resolves to a pointer (static
     #     reference field / pointer field of a typed receiver) -> '.' becomes '->'
     s = _resolve_chains(s, scope, resolver, current)
+    # 6d. method/ctor RESULT chains: call(...).m -> call(...)->m / (new T(...))->m
+    s = _resolve_call_chains(s, scope, resolver, current)
     # 7. cast translation: reference type -> pointer cast ((Block)x -> (Block*)x);
     #    primitive whose C++ spelling differs -> the C++ spelling ((byte)x -> (unsigned char)x)
     def _cast(m):
