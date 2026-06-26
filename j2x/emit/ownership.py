@@ -21,6 +21,40 @@ _CTOR_NEW = re.compile(r'(?:this\.)?(\w+)\s*=\s*new\s+\w[\w.]*\s*(\[)?')
 _AGG_ARRAY = re.compile(r'^new\s+[\w.]+\s*\[\s*\]\s*\{(.*)\}\s*$', re.S)
 
 
+def nullable_value_params(method, resolver):
+    """Names of value-struct PARAMS used as nullable references in the body (compared/assigned
+    null). A C++ value can't hold null, so such a param is really a reference and must be a
+    pointer -- and callers in this corpus already pass the (promoted) pointer for these
+    raytrace-style dual-use types (Vec3D / AxisAlignedBB / MovingObjectPosition). Excludes
+    primitives, String and containers (those have their own handling)."""
+    text = '\n'.join(t for _ln, t in method.body)
+    out = set()
+    for p in method.params:
+        jt = p.jtype
+        if (jt.is_array or resolver.is_pointer(jt) or jt.name in typemap.PRIMITIVES
+                or jt.name in typemap.VALUE_STDLIB or jt.name in typemap.CONTAINERS):
+            continue
+        nm = re.escape(p.name)
+        if (re.search(r'\b%s\s*(?:==|!=)\s*(?:null|NULL)\b' % nm, text)
+                or re.search(r'\b(?:null|NULL)\s*(?:==|!=)\s*%s\b' % nm, text)
+                or re.search(r'\b%s\s*=\s*(?:null|NULL)\b' % nm, text)):
+            out.add(p.name)
+    return out
+
+
+def params_str(method, resolver):
+    """The C++ parameter list for a method, promoting nullable value-struct params to pointers.
+    Single source of truth so the header declaration and the source definition always agree."""
+    nullable = nullable_value_params(method, resolver)
+    parts = []
+    for p in method.params:
+        t = resolver.param_type(p.jtype)
+        if p.name in nullable and not t.endswith('*'):
+            t += '*'
+        parts.append('%s %s' % (t, p.name))
+    return ', '.join(parts)
+
+
 def aggregate_array_body(field):
     """For a static field initialized as `new T[]{...}`, the raw brace contents; else None.
     C++03 cannot `new T[]{...}`, so emit (header + source) declare a fixed C array instead."""

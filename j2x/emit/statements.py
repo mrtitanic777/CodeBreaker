@@ -23,7 +23,7 @@ import re
 
 from .. import parse as javaparse, typemap, ir
 from ..ledger import Category, Severity
-from . import naming
+from . import naming, ownership
 
 # a standalone statement `recv[idx]->call(...);` (or `.` form) -- group2 = base name
 _INDEX_DEREF_STMT = re.compile(
@@ -560,7 +560,9 @@ def translate_body(method, cls, resolver, ledger=None):
     """Return translated C++ body lines (no indentation; caller indents)."""
     scope = build_scope(cls, method)
     ptr_locals = _pointer_locals(method, scope, resolver)   # value locals used as nullable refs
-    ptr_names = sorted((set(n for n, jt in scope.items() if resolver.is_pointer(jt)) | ptr_locals),
+    ptr_params = ownership.nullable_value_params(method, resolver)   # value-struct params used nullably
+    ptr_names = sorted((set(n for n, jt in scope.items() if resolver.is_pointer(jt))
+                        | ptr_locals | ptr_params),
                        key=len, reverse=True)   # longer names first (avoid prefix overlap)
     static_set = (set(resolver.known) | set(resolver.enums) | {cls.name}
                   | typemap.RUNTIME_HEADERS | typemap.JAVART_STATICS)

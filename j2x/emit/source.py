@@ -145,7 +145,7 @@ def _inline_delegation(args_str, deleg, cls, resolver, ledger):
 
 
 def _render_ctor(cls, m, resolver, ledger):
-    params = ', '.join('%s %s' % (resolver.param_type(p.jtype), p.name) for p in m.params)
+    params = ownership.params_str(m, resolver)
     body = translate_body(m, cls, resolver, ledger)
 
     # extract a leading super(args) into the C++ base-class init (C++ has no super() statement)
@@ -194,7 +194,7 @@ def _render_dtor(cls, owned, ledger):
 # ---------------------------------------------------------------------------
 def _render_method(cls, m, resolver, ledger):
     ret = ownership.return_cpp_type(m, resolver)
-    params = ', '.join('%s %s' % (resolver.param_type(p.jtype), p.name) for p in m.params)
+    params = ownership.params_str(m, resolver)
     L = ['%s %s::%s(%s)' % (ret, cls.name, m.name, params), '{']
     L.extend('\t' + s for s in translate_body(m, cls, resolver, ledger))
     L.append('}')

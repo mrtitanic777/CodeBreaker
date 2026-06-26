@@ -74,7 +74,7 @@ def _collect_dependencies(cls, resolver):
 
 
 def _method_decl(cls, m, resolver):
-    params = ', '.join('%s %s' % (resolver.param_type(p.jtype), p.name) for p in m.params)
+    params = ownership.params_str(m, resolver)
     if m.is_ctor:
         return '%s(%s);' % (cls.name, params)
     ret = ownership.return_cpp_type(m, resolver)

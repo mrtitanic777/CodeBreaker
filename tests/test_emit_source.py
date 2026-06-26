@@ -195,6 +195,38 @@ class TestAggregateArrayStatic(unittest.TestCase):
         self.assertNotIn('new Block[]', self.cpp)        # no invalid braced new[]
 
 
+class TestNullableValueParams(unittest.TestCase):
+    """A value-struct param used as a nullable reference (compared/assigned null) becomes a
+    pointer in the signature -- callers in the raytrace dual-use chain pass Vec3D* already."""
+    def setUp(self):
+        c = ir.JClass('AxisAlignedBB')
+        m = ir.Method('isVecInYZ', ir.JType('boolean'),
+                      params=[ir.Param('var1', ir.JType('Vec3D'))], line=1)
+        m.body = [(1, 'boolean isVecInYZ(Vec3D var1) {'),
+                  (2, '\treturn var1 == null ? false : var1.yCoord > this.minY;'), (3, '}')]
+        c.methods.append(m)
+        self.r = types.TypeResolver(value_types={'Vec3D'})
+        self.h = header.render_header(c, self.r)
+        self.cpp = source.render_source(c, self.r)
+
+    def test_header_param_is_pointer(self):
+        self.assertIn('virtual bool isVecInYZ(Vec3D* var1);', self.h)
+
+    def test_source_param_is_pointer_and_body_derefs(self):
+        self.assertIn('bool AxisAlignedBB::isVecInYZ(Vec3D* var1)', self.cpp)
+        self.assertTrue(any('var1->yCoord' in l for l in self.cpp.splitlines()), self.cpp)
+
+    def test_non_nullable_value_param_stays_value(self):
+        c = ir.JClass('Vec3D')
+        m = ir.Method('distance', ir.JType('float'),
+                      params=[ir.Param('var1', ir.JType('Vec3D'))], line=1)
+        m.body = [(1, 'float distance(Vec3D var1) {'),
+                  (2, '\treturn var1.xCoord - this.xCoord;'), (3, '}')]   # no null use
+        c.methods.append(m)
+        h = header.render_header(c, types.TypeResolver(value_types={'Vec3D'}))
+        self.assertIn('virtual float distance(Vec3D var1);', h)   # stays value
+
+
 class TestJavaStringMapping(unittest.TestCase):
     """String maps to JavaString (a std::string subclass) and every header includes it."""
     def test_header_includes_javastring_and_uses_it(self):
