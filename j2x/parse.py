@@ -268,6 +268,7 @@ def _iter_members(body, body_offset, src):
     """Yield ('field', decl, line) and ('method', header, body_text, line)."""
     i, n, start = 0, len(body), 0
     in_str = in_chr = False
+    seen_eq = False                                    # a '=' since the member start -> initializer
     while i < n:
         c = body[i]
         if in_str:
@@ -286,12 +287,16 @@ def _iter_members(body, body_offset, src):
             in_str = True; i += 1; continue
         if c == "'":
             in_chr = True; i += 1; continue
+        if c == '=':
+            seen_eq = True; i += 1; continue
         if c == ';':
             decl = body[start:i].strip()
             if decl:
                 yield ('decl', decl, _line_of(src, body_offset + start))
-            i += 1; start = i; continue
+            i += 1; start = i; seen_eq = False; continue
         if c == '{':
+            if seen_eq:                                # field initializer `= ... { ... }` (array/aggregate),
+                i = _match_brace(body, i); continue    # not a method body -- skip the braces, keep the field
             header = body[start:i].strip()
             close = _match_brace(body, i)
             inner = body[i + 1:close - 1]
@@ -303,7 +308,7 @@ def _iter_members(body, body_offset, src):
             else:
                 yield ('method', header, inner, _line_of(src, body_offset + start),
                        _line_of(src, body_offset + i + 1))
-            i = close; start = i; continue
+            i = close; start = i; seen_eq = False; continue
         i += 1
 
 

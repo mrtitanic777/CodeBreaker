@@ -88,6 +88,20 @@ class TestBlock(unittest.TestCase):
         self.assertIsNone(f.initializer)
 
 
+class TestArrayInitializerField(unittest.TestCase):
+    def test_array_init_field_not_mistaken_for_method(self):
+        src = ('public class G {\n'
+               '  public KeyBinding[] keyBindings = new KeyBinding[]{a, b, c};\n'
+               '  public void foo() { x(); }\n'
+               '}\n')
+        c = parse.parse_source(src)
+        f = c.field('keyBindings')
+        self.assertIsNotNone(f)                       # parsed as a FIELD
+        self.assertEqual(repr(f.jtype), 'KeyBinding[]')
+        self.assertIsNone(c.method('keyBindings'))    # not a bogus method
+        self.assertIsNotNone(c.method('foo'))         # the real method still parses
+
+
 class TestCorpusSmoke(unittest.TestCase):
     """The parser must survive every real file without throwing and produce a named class."""
     def test_parse_all_original_java(self):
