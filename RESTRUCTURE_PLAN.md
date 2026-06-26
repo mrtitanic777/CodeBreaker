@@ -1,93 +1,70 @@
-# Converter Restructure Plan
+# Converter Rebuild Plan
 
-Restructuring the 10,100-line monolith `java2xbox360.py` into a modular package
-(`j2x/`) that (1) is maintainable, (2) **reports everything it does**, and
-(3) enforces the console-crash rule catalog below. The legacy converter stays
-runnable and authoritative until each module that replaces it is proven to
-produce byte-identical output. Backup: `java2xbox360.py.bak`.
+Replacing the 10,100-line monolith `java2xbox360.py` (a generator + 168 post-hoc
+`fix_*` patches) with a clean, modular converter in `j2x/` that emits **correct
+C++03 by construction** — no postfix passes. The bugs that crashed the console
+(uninit arrays, dropped ctor delegation, Rule-of-Three, value-copy of owners)
+are all emit-time decisions; the new pipeline makes them once, correctly.
 
-## Why
+## Method (agreed)
 
-- **168 post-hoc `fix_*` patch functions** operate on already-generated text,
-  are order-dependent, overlap, and occasionally fight each other. The converter
-  emits wrong text then string-patches symptoms — every new file grows the file.
-- **No semantic model.** Value-vs-pointer (the #1 error class) is decided by
-  heuristics and repaired afterward. It should be decided once, at emit time,
-  from a resolved type.
-- **No visibility.** What it ported / stubbed / guessed lived only in a 900 KB
-  build log and scattered `// PORT:` comments. Fixed by the ledger (Phase 1).
-- **166 hand-written overrides (72% of files)** win over generated output —
-  a parallel codebase and the source of the "manually fix then back-port" grind.
+Clean rewrite, **one module at a time**, never in a single pass:
+1. Build the next module cleanly against its contract.
+2. Write its tests; they must pass.
+3. **All prior modules' tests must still pass** (no regressions).
+4. `git commit` the module. Git is the record of what changed.
+5. Iterate to the next module until the converter is fully functioning.
 
-## Target architecture
+The legacy `java2xbox360.py` stays in the tree (and in git history) as a
+reference oracle for translation behavior until the new pipeline matches/beats it.
+
+## Pipeline & module build order
 
 ```
-j2x/
-  ledger.py     Event / Category / Severity / Ledger          [DONE]
-  analyze.py    post-hoc analyzers -> ledger (Phase 1)         [DONE]
-  rules.py      structural crash-class detectors               [DONE, growing]
-  report.py     index.md / <File>.md / report.json             [DONE]
-  cli.py        `python -m j2x report ...`                     [DONE]
-  profiles/     VersionProfile + JSON loading                  [Phase 2]
-  parser/       Java source -> IR                              [Phase 2]
-  model/        symbol table: name -> type + ownership + static [Phase 3] *key*
-  emit/         IR -> C++ (reads model; correct . vs -> first time) [Phase 3]
-  pipeline.py   orchestration (replaces run_conversion/main)   [Phase 2]
+Java source ──▶ parse ──▶ IR ──▶ types ──▶ emit ──▶ C++03 ──▶ verify ──▶ report
+                (front-end)   (resolve      (correct-by-          (crash-class
+                              ownership)    construction)          rules = 0)
 ```
 
-## The reporting ledger (Phase 1 — DONE)
-
-Every action becomes an `Event(file, line, category, severity, source, rule, message, snippet)`.
-
-Categories (worst first): `ERROR` (compiler said no) · `GUESSED` (heuristic call,
-likely latent bug) · `STUBBED` (placeholder) · `BLOCKED` · `RISK` (known
-crash/leak) · `WARNING` · `OVERRIDDEN` · `ANNOTATED` · `PORTED` · `RULE`.
-
-Outputs under `<output_dir>/report/`: `index.md` (totals + **risk-ranked file
-list** + back-port-debt), `files/<File>.md` (per-file ledger), `report.json`.
-
-Run: `python -m j2x report output_alpha --profile alpha`
-Optional: `--pristine <dir>` (no-override regen) to classify each override as
-**retire** (byte-identical to generated) vs **back-port** (real debt).
-
-Phase-1 analyzers are NON-INVASIVE (read artifacts only): `marker` scan, `rule`
-checks, `lint` (converter_lint), `build` log parse, `override` inventory.
-Later phases move event production INTO the generator/rules so PORTED/GUESSED
-decisions are captured at the moment they're made.
-
-## Crash-class rule catalog (the bugs that cost hours on hardware)
-
-The console hard-crashes (IP 0x0 / 0xC0000018) where Java tolerates the same code.
-Each rule is named, self-describing, individually testable.
-
-| Rule | Detects | Bug it maps to | Status |
+| # | Module | Contract | Status |
 |---|---|---|---|
-| `uninit-array` | `new T[n]` without `()` | `new bool[10]` auto-jump; uninit `s_isBlockContainer` | DONE |
-| `ctor-stub` | empty / delegation-only ctor body | Block blockID=0; BlockContainer flag unset | DONE |
-| `rule-of-three` | owns heap, missing dtor / copy control | intermittent gen-phase heap corruption | DONE |
-| `value-copy-owner` | heavy/owning type by value | Tesselator MB-buffer copy | DONE |
-| `null-deref` | unguarded deref of possibly-NULL ptr | blocksList[id]->, tile-entity, NULL texture | converter_lint (broaden) |
-| `label-goto` | labeled-break goto -> infinite loop | shore-water freeze | converter_lint |
-| `render-state-stub` | every D3D9/texture stub surfaced loudly | ZENABLE, blend modes, color key, %blur% strip, alpha-ref | via marker scan (tag better) |
+| 1 | `ir.py` | data shapes: JClass/Field/Method/JType (parse↔emit contract) | **building** |
+| 2 | `parse/` | Java text → IR (no translation, just structure) | next |
+| 3 | `types.py` | resolve each name → C++ type + ownership (value/ptr) + static | |
+| 4 | `emit/` | IR + types → correct .h/.cpp (new T[n](), real delegation, R-of-3, refs) | |
+| 5 | `pipeline.py` | discover → parse → resolve → emit → verify → report | |
+| 6 | `verify` | run crash-class `rules.py` on new output; gate on zero HIGH | |
 
-Not statically catchable (flag as `GUESSED`, never silent): wrong-list/merge
-semantics (getCollidingBoundingBoxes terrain-collision bug).
+Reusable, already built (version-agnostic reporting layer):
+`ledger.py` (Event/Category/Severity), `rules.py` (crash-class detectors),
+`report.py` (index/per-file/json), `analyze.py` (post-hoc legacy-output analysis),
+`cli.py`.
 
-## Phases
+Profiles (version config) are built when `types`/`emit` reveal exactly what
+config they need — not speculatively.
 
-1. **Reporting overlay** — ledger + analyzers + rules + report, zero behavior
-   change. **DONE.** Gives per-file visibility + risk ranking today.
-2. **Modular split** — carve profiles/parser/pipeline out of the monolith behind
-   a stable entry point; verify output byte-identical vs `java2xbox360.py.bak`.
-3. **Type model** — real symbol table; emit decides value/pointer, `s_`/`m_`,
-   includes correctly the first time. Retire the bulk of the 168 `fix_*` passes.
-   Move event emission into emit/rules (live PORTED/GUESSED capture).
-4. **Override coverage** — drive the 166 overrides down: retire the redundant
-   ones, back-port the rest (the report's debt list is the work queue).
+## Verification protocol
 
-## Verification
+- **Per module:** `python -m unittest discover -s tests -t .` is green, including
+  all earlier modules' tests.
+- **End-to-end (once pipeline connects):** run the converter on the Java source,
+  then `python -m j2x report <out>` — the crash-class rule counts (uninit-array,
+  ctor-stub, rule-of-three, value-copy-owner) must trend to **zero**. They are the
+  acceptance test: a correct generator produces no findings.
+- **Compile truth:** `syntaxcheck.ps1` (real Xbox 360 `cl.exe`) on the new output.
+- The legacy converter's output is the behavioral reference for diffing translations.
 
-- Golden tests per rule (input snippet -> expected events): millisecond regression
-  check instead of the 27-min full rebuild.
-- Output-identity check: regen vs `.bak`; diff the tree. No-op diff = safe refactor.
-- Syntax harness `syntaxcheck.ps1` for real `cl.exe` compile status.
+## Crash-class catalog the new emit must satisfy by construction
+
+| Case | Correct emit | Legacy bug it prevents |
+|---|---|---|
+| primitive/pointer array | always `new T[n]()` | `new bool[10]` auto-jump; uninit `s_isBlockContainer` |
+| constructor delegation | emit real `init()` call / inline target body | Block blockID=0; container flag unset |
+| class owns heap | emit dtor + copy ctor + copy assign (or disable copy) | gen-phase heap corruption |
+| heavy/owning type arg | pass `const T&` / `T&`, never by value | Tesselator MB-buffer copy |
+| possibly-NULL deref | guard before `->` on list-indexed / TE / texture | blocksList[id]-> IP 0x0 |
+| labeled break | `goto` that provably exits the loop | shore-water freeze |
+| render-state stub | emit + loudly report every D3D9/texture stub | silent no-op render bugs |
+
+(Not statically decidable, e.g. wrong-list/merge semantics → emit must flag as
+`GUESSED`, never silent.)
