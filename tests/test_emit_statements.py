@@ -131,6 +131,49 @@ class TestCollectionsAndString(unittest.TestCase):
         self.assertIn('int n = this->items.size();', self.out)
 
 
+class TestMapSetString(unittest.TestCase):
+    def setUp(self):
+        c = ir.JClass('R')
+        c.fields.append(ir.Field('map', ir.JType('HashMap')))
+        c.fields.append(ir.Field('set', ir.JType('HashSet')))
+        m = ir.Method('f', ir.JType('void'),
+                      params=[ir.Param('var1', ir.JType('String')), ir.Param('var2', ir.JType('Object'))], line=1)
+        m.body = [
+            (1, 'void f(String var1, Object var2) {'),
+            (2, '\tthis.map.put(var1, var2);'),
+            (3, '\tObject var3 = this.map.get(var1);'),
+            (4, '\tboolean b = this.map.containsKey(var1);'),
+            (5, '\tthis.map.remove(var1);'),
+            (6, '\tthis.set.add(var1);'),
+            (7, '\tboolean c = this.set.contains(var1);'),
+            (8, '\tboolean d = var1.equals("foo");'),
+            (9, '\tString var4 = var1.substring(2, 5);'),
+            (10, '}'),
+        ]
+        c.methods.append(m)
+        self.out = statements.translate_body(m, c, types.TypeResolver())
+
+    def test_map_put(self):
+        self.assertIn('this->map[var1] = var2;', self.out)
+
+    def test_map_get(self):
+        self.assertIn('void* var3 = this->map[var1];', self.out)
+
+    def test_map_containskey_and_remove(self):
+        self.assertIn('bool b = this->map.count(var1);', self.out)
+        self.assertIn('this->map.erase(var1);', self.out)
+
+    def test_set_add_and_contains(self):
+        self.assertIn('this->set.insert(var1);', self.out)
+        self.assertIn('bool c = this->set.count(var1);', self.out)
+
+    def test_string_equals(self):
+        self.assertIn('bool d = (var1 == "foo");', self.out)
+
+    def test_string_substring(self):
+        self.assertIn('std::string var4 = var1.substr(2, (5) - (2));', self.out)
+
+
 class TestCasts(unittest.TestCase):
     def setUp(self):
         c = ir.JClass('R')

@@ -22,6 +22,7 @@ JAVA_TO_CPP = {
     'String': 'std::string',
     'ArrayList': 'std::vector', 'List': 'std::vector', 'LinkedList': 'std::vector',
     'HashMap': 'std::map', 'HashSet': 'std::set', 'TreeMap': 'std::map',
+    'Map': 'std::map', 'Set': 'std::set',
     'Random': 'Random',
     # Java root / boxed types
     'Object': 'void*',
@@ -40,7 +41,11 @@ PORT_NOTE_TYPES = {
 }
 
 # Java collection types -> STL. Held BY VALUE as fields by default (std::vector/map).
-CONTAINERS = {'ArrayList', 'List', 'LinkedList', 'HashMap', 'HashSet', 'TreeMap'}
+CONTAINERS = {'ArrayList', 'List', 'LinkedList', 'HashMap', 'HashSet', 'TreeMap', 'Map', 'Set'}
+
+# default element types for a RAW (non-generic) container -> a valid C++ template
+RAW_CONTAINER_DEFAULT = {'std::vector': '<void*>', 'std::set': '<void*>',
+                         'std::map': '<std::string, void*>'}
 
 # Java stdlib types that become C++ VALUE types (not pointers).
 VALUE_STDLIB = {'String'}

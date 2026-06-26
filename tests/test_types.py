@@ -78,6 +78,11 @@ class TestCppSpelling(unittest.TestCase):
         self.assertEqual(self.r.field_type(T('List', args=[T('int')])),
                          'std::vector<int>')
 
+    def test_raw_container_defaults(self):
+        self.assertEqual(self.r.field_type(T('List')), 'std::vector<void*>')
+        self.assertEqual(self.r.field_type(T('HashMap')), 'std::map<std::string, void*>')
+        self.assertEqual(self.r.field_type(T('HashSet')), 'std::set<void*>')
+
     def test_object_maps_to_voidstar_with_note(self):
         self.assertEqual(self.r.field_type(T('Object')), 'void*')
         self.assertIsNotNone(self.r.port_note(T('Object')))

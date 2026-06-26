@@ -51,14 +51,20 @@ _CALL = re.compile(r'\b(\w+)\.(\w+)\s*\(')
 # a cast `(Type)` immediately followed by an operand (word or '(') -- not a grouping
 _CAST = re.compile(r'\(([A-Za-z_]\w*)\)(?=\s*[\w(])')
 
-# (receiver-category, java method) -> C++ method, args preserved
+# receiver categories
+_LIST_TYPES = {'ArrayList', 'List', 'LinkedList'}
+_MAP_TYPES = {'HashMap', 'Map', 'TreeMap'}
+_SET_TYPES = {'HashSet', 'Set'}
+
+# simple renames (args preserved): (category, java method) -> C++ method
 _METHOD_RENAME = {
-    ('container', 'add'): 'push_back',
-    ('container', 'isEmpty'): 'empty',
+    ('list', 'add'): 'push_back', ('list', 'isEmpty'): 'empty',
+    ('map', 'isEmpty'): 'empty', ('map', 'containsKey'): 'count', ('map', 'remove'): 'erase',
+    ('set', 'add'): 'insert', ('set', 'isEmpty'): 'empty', ('set', 'contains'): 'count', ('set', 'remove'): 'erase',
     ('string', 'isEmpty'): 'empty',
 }
-# (category) -> java accessor that becomes recv[arg]
-_INDEX_METHOD = {'container': 'get', 'string': 'charAt'}
+# accessor that becomes recv[arg]: category -> java method
+_INDEX_METHOD = {'list': 'get', 'map': 'get', 'string': 'charAt'}
 
 
 def _balanced_paren(s, open_idx):
@@ -76,36 +82,61 @@ def _balanced_paren(s, open_idx):
 def _category(jtype):
     if jtype is None:
         return None
-    if jtype.name in typemap.CONTAINERS:
-        return 'container'
-    if jtype.name == 'String':
+    n = jtype.name
+    if n in _LIST_TYPES:
+        return 'list'
+    if n in _MAP_TYPES:
+        return 'map'
+    if n in _SET_TYPES:
+        return 'set'
+    if n == 'String':
         return 'string'
     return None
 
 
+def _balanced_call_sub(s, recv, meth, fn):
+    """Rewrite every `recv.meth(args)` via fn(arg_list) -> replacement (None = leave)."""
+    token = '%s.%s(' % (recv, meth)
+    while True:
+        idx = s.find(token)
+        if idx < 0:
+            return s
+        op = idx + len(token) - 1
+        close = _balanced_paren(s, op)
+        if close < 0:
+            return s
+        rep = fn(javaparse._split_top_commas(s[op + 1:close]))
+        if rep is None:
+            return s                                  # unexpected arity -> leave (and stop)
+        s = s[:idx] + rep + s[close + 1:]
+
+
 def _translate_calls(s, scope):
-    """Map container/String methods to STL, using each receiver's resolved type."""
-    # method renames (args preserved): recv.add(...) -> recv.push_back(...), isEmpty -> empty
+    """Map list/map/set/String methods to STL, using each receiver's resolved type."""
+    # 1. simple method renames (args preserved)
     def repl(m):
         recv, meth = m.group(1), m.group(2)
         new = _METHOD_RENAME.get((_category(scope.get(recv)), meth))
         return '%s.%s(' % (recv, new) if new else m.group(0)
     s = _CALL.sub(repl, s)
-    # index accessors: vector.get(i) / String.charAt(i) -> recv[i]
+    # 2. per-receiver rewrites that need the args
     for recv, jt in scope.items():
-        meth = _INDEX_METHOD.get(_category(jt))
-        if not meth:
+        cat = _category(jt)
+        if not cat:
             continue
-        token = '%s.%s(' % (recv, meth)
-        while True:
-            idx = s.find(token)
-            if idx < 0:
-                break
-            op = idx + len(token) - 1                 # position of '('
-            close = _balanced_paren(s, op)
-            if close < 0:
-                break
-            s = s[:idx] + '%s[%s]' % (recv, s[op + 1:close]) + s[close + 1:]
+        idx_m = _INDEX_METHOD.get(cat)
+        if idx_m:                                     # list/map .get(k) / String.charAt(i) -> recv[k]
+            s = _balanced_call_sub(s, recv, idx_m,
+                                   lambda a, r=recv: ('%s[%s]' % (r, a[0])) if a else None)
+        if cat == 'map':                              # map.put(k, v) -> recv[k] = v
+            s = _balanced_call_sub(s, recv, 'put',
+                                   lambda a, r=recv: ('%s[%s] = %s' % (r, a[0], a[1])) if len(a) == 2 else None)
+        if cat == 'string':
+            s = _balanced_call_sub(s, recv, 'equals',
+                                   lambda a, r=recv: ('(%s == %s)' % (r, a[0])) if a else None)
+            s = _balanced_call_sub(s, recv, 'substring',   # Java end-exclusive -> substr(pos, len)
+                                   lambda a, r=recv: ('%s.substr(%s, (%s) - (%s))' % (r, a[0], a[1], a[0])) if len(a) == 2
+                                   else ('%s.substr(%s)' % (r, a[0])) if len(a) == 1 else None)
     return s
 
 

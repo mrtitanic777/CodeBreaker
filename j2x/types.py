@@ -94,6 +94,9 @@ class TypeResolver(object):
             return 'const std::string&'
 
         cpp = self.base_cpp(name)
+        # raw (non-generic) container -> give it a concrete element type so it's valid C++
+        if cpp in typemap.RAW_CONTAINER_DEFAULT:
+            cpp += typemap.RAW_CONTAINER_DEFAULT[cpp]
         # Add the ownership pointer for reference types -- except in 'element'
         # context, where the array/generic caller is responsible for the star.
         if context != 'element' and self.ownership(jtype) == 'pointer' and not cpp.endswith('*'):
