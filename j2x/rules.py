@@ -96,10 +96,11 @@ def rule_ctor_stub(fname, text, header_text):
     if not fname.endswith('.cpp'):
         return
     cls = fname[:-4]
-    # ClassName::ClassName( ... ) { body }   -- find the body braces
-    pat = re.compile(r'\b%s::%s\s*\(([^)]*)\)\s*(?::[^{]*)?\{' % (re.escape(cls), re.escape(cls)))
+    # ClassName::ClassName( ... ) [: init list] { body }
+    pat = re.compile(r'\b%s::%s\s*\(([^)]*)\)\s*(:[^{]*)?\{' % (re.escape(cls), re.escape(cls)))
     for m in pat.finditer(text):
         params = m.group(1).strip()
+        init_list = (m.group(2) or '').strip()       # `: Base(args), member(0), ...`
         # extract balanced body
         depth, j = 1, m.end()
         while j < len(text) and depth:
@@ -114,7 +115,8 @@ def rule_ctor_stub(fname, text, header_text):
         stripped = _strip_block_comments(body)
         stripped = '\n'.join(ln.split('//', 1)[0] for ln in stripped.split('\n')).strip()
         has_delegation_marker = 'constructor delegation' in body or 'was: this(' in body
-        if params and (not stripped or has_delegation_marker):
+        # an empty body WITH an init list (base/member init) is valid C++, not a stub
+        if params and not init_list and (not stripped or has_delegation_marker):
             yield (line, Category.STUBBED, Severity.HIGH, 'ctor-stub',
                    "constructor %s(%s) has an empty/delegation-only body -- field init and static "
                    "REGISTRATION may be missing (the Block blockID=0 / BlockContainer s_isBlockContainer "
