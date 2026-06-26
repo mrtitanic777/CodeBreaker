@@ -222,6 +222,42 @@ class TestCasts(unittest.TestCase):
         self.assertIn('Vec3D var4 = (Vec3D)var1;', self.out)
 
 
+class TestExpressionDeref(unittest.TestCase):
+    """Index-result and cast-result expressions yield pointers -> '.' becomes '->'."""
+    def setUp(self):
+        c = ir.JClass('R')
+        c.fields.append(ir.Field('entities', ir.JType('Entity', array_dims=1)))   # ref array
+        c.fields.append(ir.Field('points', ir.JType('Vec3D', array_dims=1)))      # value array
+        m = ir.Method('f', ir.JType('void'), params=[ir.Param('var1', ir.JType('Object'))], line=1)
+        m.body = [
+            (1, 'void f(Object var1) {'),
+            (2, '\tBlock var2 = this.entities[0].getBlock();'),     # ref-array index -> ->
+            (3, '\tString s = Block.blocksList[var1].getName();'),  # registry index -> ->
+            (4, '\tfloat z = this.points[0].xCoord;'),              # value-array index -> stays .
+            (5, '\tint i = ((Block)var1).getRenderType();'),        # cast-result -> ->
+            (6, '\tfloat w = ((Vec3D)var1).xCoord;'),               # value cast-result -> stays .
+            (7, '}'),
+        ]
+        c.methods.append(m)
+        r = types.TypeResolver(known_classes={'Block', 'Entity', 'R'}, value_types={'Vec3D'})
+        self.out = statements.translate_body(m, c, r)
+
+    def test_ref_array_index_deref(self):
+        self.assertIn('Block* var2 = this->entities[0]->getBlock();', self.out)
+
+    def test_registry_index_deref(self):
+        self.assertIn('std::string s = Block::s_blocksList[var1]->getName();', self.out)
+
+    def test_value_array_index_keeps_dot(self):
+        self.assertIn('float z = this->points[0].xCoord;', self.out)
+
+    def test_cast_result_deref(self):
+        self.assertIn('int i = ((Block*)var1)->getRenderType();', self.out)
+
+    def test_value_cast_result_keeps_dot(self):
+        self.assertIn('float w = ((Vec3D)var1).xCoord;', self.out)
+
+
 class TestSuperAndInstanceof(unittest.TestCase):
     def test_instanceof_to_dynamic_cast(self):
         c = ir.JClass('R', parent='Base')

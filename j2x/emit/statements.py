@@ -302,6 +302,10 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent)
     # 3. <pointerName>.  -> <pointerName>->
     for name in ptr_names:
         s = re.sub(r'\b' + re.escape(name) + r'\.', name + '->', s)
+    # 3b. index-result is a pointer: <refArray>[i].member -> <refArray>[i]->member
+    s = re.sub(r'\b(\w+)(\[[^\]]*\])\.',
+               lambda mm: ('%s%s->' % (mm.group(1), mm.group(2)))
+               if _is_nullable_array(mm.group(1), scope, resolver) else mm.group(0), s)
     # 4. Math.fn -> C math (sqrtf, sinf, ...)
     s = _MATH.sub(lambda mm: typemap.MATH_API.get(mm.group(1), mm.group(0)), s)
     # 5. KnownClass.member / Enum.CONST -> :: static access
@@ -317,6 +321,10 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent)
     s = _MEMBER.sub(_static, s)
     # 6. container/String methods -> STL (.add->.push_back, .get(i)->[i], .charAt(i)->[i], isEmpty->empty)
     s = _translate_calls(s, scope)
+    # 6b. cast-result access: ((Type)x).m -> ((Type*)x)->m  (a cast to a reference type yields a pointer)
+    s = re.sub(r'\(\(([A-Za-z_]\w*)\)([^()]+)\)\s*\.',
+               lambda mm: ('((%s*)%s)->' % (mm.group(1), mm.group(2)))
+               if resolver.is_pointer(ir.JType(mm.group(1))) else mm.group(0), s)
     # 7. cast to a reference type -> pointer cast: (Block)x -> (Block*)x
     s = _CAST.sub(lambda m: '(%s*)' % m.group(1)
                   if resolver.is_pointer(ir.JType(m.group(1))) else m.group(0), s)
