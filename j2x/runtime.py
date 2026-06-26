@@ -151,13 +151,84 @@ struct Applet {
 # avoid colliding with system <math.h> on a case-insensitive filesystem).
 JAVART_H = r'''#ifndef JAVART_H
 #define JAVART_H
-// j2x runtime prelude -- shims for Java stdlib statics
+// j2x runtime prelude -- shims for Java stdlib statics. #included by every .cpp.
 #include <cstdlib>
+#include <ctime>
+#include <string>
+#include <sstream>
 
 // java.lang.Math.random(): pseudo-random double in [0, 1)
 inline double javaMathRandom() { return (double)rand() / ((double)RAND_MAX + 1.0); }
 // java.lang.Math.signum(x)
 template<class T> inline T javaMathSignum(T v) { return v > 0 ? (T)1 : (v < 0 ? (T)-1 : (T)0); }
+
+// numeric parse helper (C++98-portable; avoids C99 strtoll on the real MSVC target)
+template<class T> inline T _javart_parse(const std::string& s) {
+	T v = T(); std::istringstream is(s); is >> v; return v;
+}
+
+// java.lang.System
+namespace System {
+	struct _PrintStream {
+		template<class T> void println(const T&) {}
+		void println() {}
+		template<class T> void print(const T&) {}
+	};
+	static _PrintStream out;
+	static _PrintStream err;
+	inline long long currentTimeMillis() { return (long long)time(0) * 1000LL; }
+	inline long long nanoTime() { return (long long)clock(); }
+	inline void gc() {}
+	inline void exit(int) {}
+	inline std::string getProperty(const std::string&) { return std::string(); }
+	inline std::string getenv(const std::string&) { return std::string(); }
+	template<class S, class D> inline void arraycopy(S src, int sp, D dst, int dp, int len) {
+		for (int i = 0; i < len; ++i) dst[dp + i] = src[sp + i];
+	}
+}
+
+// java.lang.Integer / Long / Double / Float / Character (boxed types map to primitives)
+namespace Integer {
+	const int MAX_VALUE = 2147483647;
+	const int MIN_VALUE = (-2147483647 - 1);
+	inline int parseInt(const std::string& s) { return _javart_parse<int>(s); }
+	inline int parseInt(const std::string& s, int) { return _javart_parse<int>(s); }
+	inline int valueOf(int v) { return v; }
+	inline int valueOf(const std::string& s) { return _javart_parse<int>(s); }
+	inline std::string toString(int v) { std::ostringstream o; o << v; return o.str(); }
+	inline std::string toBinaryString(int) { return std::string(); }
+	inline std::string toHexString(int) { return std::string(); }
+}
+namespace Long {
+	inline long long parseLong(const std::string& s) { return _javart_parse<long long>(s); }
+	inline long long valueOf(long long v) { return v; }
+	inline std::string toString(long long v) { std::ostringstream o; o << v; return o.str(); }
+}
+namespace Double {
+	inline double parseDouble(const std::string& s) { return _javart_parse<double>(s); }
+	inline bool isNaN(double v) { return v != v; }
+}
+namespace Float {
+	const float POSITIVE_INFINITY = 3.4e38f;
+	const float NEGATIVE_INFINITY = -3.4e38f;
+	inline float parseFloat(const std::string& s) { return _javart_parse<float>(s); }
+	inline bool isNaN(float v) { return v != v; }
+	inline int floatToRawIntBits(float v) { union { float f; int i; } u; u.f = v; return u.i; }
+	inline float intBitsToFloat(int v) { union { float f; int i; } u; u.i = v; return u.f; }
+}
+namespace Character {
+	inline char valueOf(char c) { return c; }
+	inline bool isDigit(char c) { return c >= '0' && c <= '9'; }
+	inline bool isLetter(char c) { return (c>='a'&&c<='z') || (c>='A'&&c<='Z'); }
+}
+
+// java.util.Arrays (stubs: length isn't recoverable generically here)
+namespace Arrays {
+	template<class A, class V> inline void fill(A, V) {}
+	template<class A, class V> inline void fill(A, int, int, V) {}
+	template<class A> inline void sort(A) {}
+	template<class A, class C> inline void sort(A, C) {}
+}
 
 #endif // JAVART_H
 '''

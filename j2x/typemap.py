@@ -61,9 +61,14 @@ KNOWN_NULLABLE = {'blocksList', 'itemsList'}
 RUNTIME_HEADERS = {'Random', 'Runnable', 'Thread', 'Comparator', 'File',
                    'FilenameFilter', 'Canvas', 'Applet', 'GL11'}
 
+# Java stdlib static holders shimmed in the prelude (JavaRT.h, included everywhere -- so NOT
+# in RUNTIME_HEADERS, which would emit a bogus per-type #include). `Name.member` -> `Name::member`.
+JAVART_STATICS = {'System', 'Integer', 'Long', 'Double', 'Float', 'Character', 'Arrays'}
+
 # Runtime types whose `Type.MEMBER` (no parens) is a CONSTANT, not an instance/static field
-# -- accessed as Type::MEMBER with no s_ prefix (like an enum constant). e.g. GL11.GL_TEXTURE_2D.
-RUNTIME_ENUM_LIKE = {'GL11'}
+# -- accessed as Type::MEMBER with no s_ prefix (like an enum constant). e.g. GL11.GL_TEXTURE_2D,
+# Integer.MAX_VALUE, System.out.
+RUNTIME_ENUM_LIKE = {'GL11'} | JAVART_STATICS
 
 # java.lang.Math.<fn> -> C math function. Float-suffixed to match the existing
 # Xbox 360 project (float math); pulled in via <math.h>. min/max stay bare
