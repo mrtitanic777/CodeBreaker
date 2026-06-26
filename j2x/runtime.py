@@ -490,22 +490,15 @@ _GENERATED['SoundSystem.h'] = _class_stub('SoundSystem',
     void_methods=['cleanup', 'newSource', 'newStreamingSource', 'play', 'setListenerOrientation',
                   'setListenerPosition', 'setPitch', 'setVolume', 'stop', 'pause', 'removeSource'],
     ret_methods=[('playing', ('bool', 'false'))])
-_GENERATED['BufferedImage.h'] = _class_stub('BufferedImage',
-    void_methods=['setRGB', 'flush'],
-    ret_methods=[('getWidth', ('int', '0')), ('getHeight', ('int', '0')),
-                 ('getRGB', ('int', '0')), ('getData', ('void*', '0'))])
-# small java.io / java.awt / java.net stubs
+# small java.io / java.awt / java.net stubs (Applet/Canvas/Component/File/FileDialog/
+# BufferedImage are enriched further below)
 _GENERATED['BufferedReader.h'] = _class_stub('BufferedReader',
     void_methods=['close'], ret_methods=[('readLine', ('std::string', 'std::string()')),
                                          ('read', ('int', '0')), ('ready', ('bool', 'false'))])
 _GENERATED['Graphics.h'] = _class_stub('Graphics',
     void_methods=['drawImage', 'dispose', 'setColor', 'fillRect', 'drawString'])
-_GENERATED['Component.h'] = _class_stub('Component',
-    void_methods=['setSize', 'setVisible', 'repaint', 'requestFocus'],
-    ret_methods=[('getWidth', ('int', '0')), ('getHeight', ('int', '0'))])
 _GENERATED['Cursor.h'] = _class_stub('Cursor')
 _GENERATED['Robot.h'] = _class_stub('Robot', void_methods=['mouseMove'])
-_GENERATED['Component.h'] = _GENERATED['Component.h']
 _GENERATED['URL.h'] = _class_stub('URL',
     ret_methods=[('openConnection', ('void*', '0')), ('openStream', ('void*', '0')),
                  ('toString', ('std::string', 'std::string()'))])
@@ -515,6 +508,41 @@ _GENERATED['FileDialog.h'] = _class_stub('FileDialog', void_methods=['setVisible
 _GENERATED['DecimalFormat.h'] = _class_stub('DecimalFormat',
     ret_methods=[('format', ('std::string', 'std::string()'))])
 _GENERATED['ImageObserver.h'] = _class_stub('ImageObserver')
+# java.io.File (richer than the early minimal stub; overrides it via FILES.update)
+_GENERATED['File.h'] = _class_stub('File', fwds=['URL'],
+    ret_methods=[('getName', ('std::string', 'std::string()')), ('getPath', ('std::string', 'std::string()')),
+                 ('getAbsolutePath', ('std::string', 'std::string()')), ('toString', ('std::string', 'std::string()')),
+                 ('exists', ('bool', 'false')), ('isDirectory', ('bool', 'false')), ('isFile', ('bool', 'false')),
+                 ('mkdir', ('bool', 'false')), ('mkdirs', ('bool', 'false')), ('renameTo', ('bool', 'false')),
+                 ('length', ('long long', '0LL')), ('getParentFile', ('File*', '0')),
+                 ('getAbsoluteFile', ('File*', '0')), ('toURI', ('void*', '0')), ('listFiles', ('void*', '0'))])
+# java.awt GUI bases (desktop-only entry points: MinecraftApplet extends Applet, etc.)
+_GENERATED['Applet.h'] = _class_stub('Applet', fwds=['URL', 'Graphics'],
+    void_methods=['validate', 'setLayout', 'add', 'repaint', 'requestFocus', 'setVisible',
+                  'resize', 'init', 'start', 'stop', 'remove', 'setSize'],
+    ret_methods=[('getParameter', ('std::string', 'std::string()')),
+                 ('getDocumentBase', ('URL*', '0')), ('getCodeBase', ('URL*', '0')),
+                 ('getWidth', ('int', '0')), ('getHeight', ('int', '0')),
+                 ('getGraphics', ('Graphics*', '0'))])
+_GENERATED['Canvas.h'] = _class_stub('Canvas', fwds=['Graphics'],
+    void_methods=['setFocusable', 'setSize', 'repaint', 'requestFocus', 'setVisible', 'addNotify',
+                  'setPreferredSize'],
+    ret_methods=[('getWidth', ('int', '0')), ('getHeight', ('int', '0')),
+                 ('getGraphics', ('Graphics*', '0'))])
+_GENERATED['Component.h'] = _class_stub('Component', fwds=['Graphics'],
+    void_methods=['setSize', 'setVisible', 'repaint', 'requestFocus', 'validate', 'setLayout', 'add'],
+    ret_methods=[('getWidth', ('int', '0')), ('getHeight', ('int', '0')),
+                 ('getGraphics', ('Graphics*', '0')), ('getLocationOnScreen', ('void*', '0'))])
+_GENERATED['FileDialog.h'] = _class_stub('FileDialog',
+    void_methods=['setVisible', 'setMode', 'setDirectory', 'setFile', 'setFilenameFilter',
+                  'setLocationRelativeTo'],
+    ret_methods=[('getFile', ('std::string', 'std::string()')),
+                 ('getDirectory', ('std::string', 'std::string()'))])
+_GENERATED['BufferedImage.h'] = _class_stub('BufferedImage', fwds=['Graphics'],
+    void_methods=['setRGB', 'flush'],
+    ret_methods=[('getWidth', ('int', '0')), ('getHeight', ('int', '0')),
+                 ('getRGB', ('int', '0')), ('getData', ('void*', '0')),
+                 ('getGraphics', ('Graphics*', '0')), ('createGraphics', ('Graphics*', '0'))])
 
 
 # filename -> content
