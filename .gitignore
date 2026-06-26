@@ -1,0 +1,11 @@
+# Regenerable build / packaging intermediates
+build/
+dist/
+out/
+_syntaxbuild/
+__pycache__/
+*.pyc
+
+# Logs and snapshots (disposable)
+*.log
+*.tgz

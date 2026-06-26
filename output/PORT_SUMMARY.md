@@ -1,0 +1,169 @@
+# Port Summary
+
+## Statistics
+- Java files: 212
+- Abstract: 9
+- Interfaces: 4
+- Fields: 905
+- Methods: 1227
+
+## Key Manual Work
+1. `// PORT: D3D9` — OpenGL -> Direct3D 9
+2. `// PORT: array length` — track sizes manually
+3. `// PORT: determine element type` — type bare std::vector
+4. `// PORT: delete X if owned` — ownership decisions
+5. `// PORT: was throw` — add error returns
+6. `// PORT: synchronized` — Xbox 360 threading
+7. NBT serialization — full custom implementation
+8. Random class — implement Java-compatible LCG
+
+## Inheritance Tree
+- Block
+  - BlockBookshelf
+  - BlockBreakable
+    - BlockGlass
+  - BlockContainer
+    - BlockChest
+  - BlockDirt
+  - BlockFarmland
+  - BlockFire
+  - BlockFlower
+    - BlockCrops
+    - BlockMushroom
+    - BlockSapling
+  - BlockFluid
+    - BlockFlowing
+    - BlockStationary
+  - BlockGears
+  - BlockGrass
+  - BlockLeavesBase
+    - BlockLeaves
+  - BlockLog
+  - BlockOre
+  - BlockOreBlock
+  - BlockSand
+  - BlockSource
+  - BlockSponge
+  - BlockStep
+  - BlockStone
+  - BlockTNT
+  - BlockTorch
+  - BlockWorkbench
+- Entity
+  - EntityArrow
+  - EntityFX
+    - EntityBubbleFX
+    - EntityDiggingFX
+    - EntityExplodeFX
+    - EntityFlameFX
+    - EntityLavaFX
+    - EntityPickupFX
+    - EntityRainFX
+      - EntitySplashFX
+    - EntitySmokeFX
+  - EntityItem
+  - EntityLiving
+    - EntityCreature
+      - EntityAnimal
+        - EntityPig
+        - EntitySheep
+      - EntityMob
+        - EntityCreeper
+        - EntityGiantZombie
+        - EntitySkeleton
+        - EntitySpider
+        - EntityZombie
+    - EntityPlayer
+      - EntityPlayerSP
+  - EntityTNT
+- Gui
+  - GuiButton
+    - GuiSmallButton
+  - GuiIngame
+  - GuiScreen
+    - GuiContainer
+      - GuiChest
+      - GuiCrafting
+      - GuiInventory
+    - GuiControls
+    - GuiErrorScreen
+    - GuiGameOver
+    - GuiIngameMenu
+    - GuiMainMenu
+    - GuiNewLevel
+    - GuiOptions
+- Item
+  - ItemArmor
+  - ItemBlock
+  - ItemBow
+  - ItemFlintAndSteel
+  - ItemFood
+    - ItemSoup
+  - ItemHoe
+  - ItemSeeds
+  - ItemSword
+  - ItemTool
+    - ItemAxe
+    - ItemPickaxe
+    - ItemSpade
+- LevelLoader
+  - PlayerLoader
+- Material
+  - MaterialLiquid
+  - MaterialLogic
+  - MaterialTransparent
+- ModelBase
+  - ModelBiped
+    - ModelZombie
+      - ModelSkeleton
+  - ModelCreeper
+  - ModelQuadruped
+    - ModelPig
+    - ModelSheep
+    - ModelSheepFur
+  - ModelSpider
+- MovementInput
+  - MovementInputFromOptions
+- NBTBase
+  - NBTTagByte
+  - NBTTagByteArray
+  - NBTTagCompound
+  - NBTTagDouble
+  - NBTTagEnd
+  - NBTTagFloat
+  - NBTTagInt
+  - NBTTagList
+  - NBTTagLong
+  - NBTTagShort
+  - NBTTagString
+- NoiseGenerator
+  - NoiseGeneratorDistort
+  - NoiseGeneratorOctaves
+  - NoiseGeneratorPerlin
+- PlayerController
+  - PlayerControllerCreative
+  - PlayerControllerSP
+- Render
+  - RenderArrow
+  - RenderEntity
+  - RenderItem
+  - RenderLiving
+    - RenderCreeper
+    - RenderGiantZombie
+    - RenderPlayer
+    - RenderSheep
+    - RenderSpider
+  - RenderTNTPrimed
+- Slot
+  - SlotCrafting
+- StepSound
+  - StepSoundGlass
+  - StepSoundGravel
+- TextureFX
+  - TextureFlamesFX
+  - TextureGearsFX
+  - TextureLavaFX
+  - TextureWaterFX
+  - TextureWaterFlowFX
+- TileEntity
+  - TileEntityChest

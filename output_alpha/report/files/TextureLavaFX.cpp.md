@@ -1,0 +1,22 @@
+# TextureLavaFX.cpp
+
+Risk score: **8**  ·  4 findings
+
+## RISK — matches a known console-crash / leak pattern
+
+- **🟡 MED** `L12` (rule, `uninit-array`): new float[] without () -- Java zero-fills arrays, C++ leaves this GARBAGE. Use new float[N]() (the new bool[10] phantom-input bug).
+  ```cpp
+  , m_field_1147_g(new float[256])
+  ```
+- **🟡 MED** `L13` (rule, `uninit-array`): new float[] without () -- Java zero-fills arrays, C++ leaves this GARBAGE. Use new float[N]() (the new bool[10] phantom-input bug).
+  ```cpp
+  , m_field_1146_h(new float[256])
+  ```
+- **🟡 MED** `L14` (rule, `uninit-array`): new float[] without () -- Java zero-fills arrays, C++ leaves this GARBAGE. Use new float[N]() (the new bool[10] phantom-input bug).
+  ```cpp
+  , m_field_1145_i(new float[256])
+  ```
+- **🟡 MED** `L15` (rule, `uninit-array`): new float[] without () -- Java zero-fills arrays, C++ leaves this GARBAGE. Use new float[N]() (the new bool[10] phantom-input bug).
+  ```cpp
+  , m_field_1144_j(new float[256])
+  ```

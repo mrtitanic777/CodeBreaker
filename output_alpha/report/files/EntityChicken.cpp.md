@@ -1,0 +1,10 @@
+# EntityChicken.cpp
+
+Risk score: **2**  ·  1 findings
+
+## WARNING — suspicious; verify by hand
+
+- **🟡 MED** `L76` (marker, `TODO`): implement
+  ```cpp
+  // TODO: implement
+  ```

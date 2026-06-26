@@ -1,0 +1,26 @@
+#ifndef GUIGAMEOVER_H
+#define GUIGAMEOVER_H
+
+// Auto-generated from GuiGameOver.java
+// Target: Xbox 360 / C++03 / DirectX 9
+
+#include "GuiScreen.h"
+
+class GuiButton;
+
+class GuiGameOver : public GuiScreen {
+public:
+	GuiGameOver();
+	virtual ~GuiGameOver();
+
+	virtual void initGui();
+	virtual void drawScreen(int var1, int var2, float var3);
+	virtual bool doesGuiPauseGame();
+
+protected:
+	virtual void keyTyped(char var1, int var2);
+	virtual void actionPerformed(GuiButton* var1);
+
+};
+
+#endif // GUIGAMEOVER_H

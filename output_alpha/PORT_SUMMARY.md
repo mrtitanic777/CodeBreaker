@@ -1,0 +1,318 @@
+# Port Summary
+
+## Statistics
+- Java files: 417
+- Abstract: 13
+- Interfaces: 12
+- Fields: 1737
+- Methods: 2883
+
+## Key Manual Work
+1. `// PORT: D3D9` — OpenGL -> Direct3D 9
+2. `// PORT: array length` — track sizes manually
+3. `// PORT: determine element type` — type bare std::vector
+4. `// PORT: delete X if owned` — ownership decisions
+5. `// PORT: was throw` — add error returns
+6. `// PORT: synchronized` — Xbox 360 threading
+7. NBT serialization — full custom implementation
+8. Random class — implement Java-compatible LCG
+
+## Inheritance Tree
+- Block
+  - BlockBloodStone
+  - BlockBookshelf
+  - BlockBreakable
+    - BlockGlass
+    - BlockIce
+    - BlockPortal
+  - BlockButton
+  - BlockCactus
+  - BlockClay
+  - BlockContainer
+    - BlockChest
+    - BlockFurnace
+    - BlockMobSpawner
+    - BlockSign
+  - BlockDirt
+  - BlockDoor
+  - BlockFence
+  - BlockFire
+  - BlockFlower
+    - BlockCrops
+    - BlockMushroom
+    - BlockSapling
+  - BlockFluids
+    - BlockFlowing
+    - BlockStationary
+  - BlockGrass
+  - BlockJukeBox
+  - BlockLadder
+  - BlockLeavesBase
+    - BlockLeaves
+  - BlockLever
+  - BlockLightStone
+  - BlockLog
+  - BlockMinecartTrack
+  - BlockOre
+  - BlockOreBlock
+  - BlockPressurePlate
+  - BlockPumpkin
+  - BlockRedstoneOre
+  - BlockRedstoneWire
+  - BlockReed
+  - BlockSand
+    - BlockGravel
+  - BlockSlowSand
+  - BlockSnow
+  - BlockSnowBlock
+  - BlockSoil
+  - BlockSponge
+  - BlockStairs
+  - BlockStep
+  - BlockStone
+    - BlockObsidian
+  - BlockTNT
+  - BlockTorch
+    - BlockRedstoneTorch
+  - BlockWorkbench
+- ClippingHelper
+  - ClippingHelperImplementation
+- CodecMus
+- ConsoleLogFormatter
+- CraftingInventoryCB
+  - CraftingInventoryPlayerCB
+  - CraftingInventoryWorkbenchCB
+- Entity
+  - EntityArrow
+  - EntityBoat
+  - EntityFX
+    - EntityBubbleFX
+    - EntityDiggingFX
+    - EntityExplodeFX
+    - EntityFlameFX
+    - EntityLavaFX
+    - EntityPickupFX
+    - EntityPortalFX
+    - EntityRainFX
+      - EntitySplashFX
+    - EntityReddustFX
+    - EntitySlimeFX
+    - EntitySmokeFX
+  - EntityFallingSand
+  - EntityFireball
+  - EntityFish
+  - EntityItem
+  - EntityLiving
+    - EntityCreature
+      - EntityAnimals
+        - EntityChicken
+        - EntityCow
+        - EntityPig
+        - EntitySheep
+      - EntityMobs
+        - EntityCreeper
+        - EntitySkeleton
+        - EntitySpider
+        - EntityZombie
+          - EntityPigZombie
+        - EntityZombieSimple
+    - EntityFlying
+      - EntityGhast
+    - EntityPlayer
+      - EntityOtherPlayerMP
+      - EntityPlayerMP
+      - EntityPlayerSP
+        - EntityClientPlayerMP
+    - EntitySlime
+  - EntityMinecart
+  - EntityPainting
+  - EntitySnowball
+  - EntityTNTPrimed
+- Gui
+  - GuiButton
+    - GuiSlider
+    - GuiSmallButton
+  - GuiIngame
+  - GuiScreen
+    - GuiChat
+    - GuiConflictWarning
+    - GuiConnectFailed
+    - GuiConnecting
+    - GuiContainer
+      - GuiChest
+      - GuiCrafting
+      - GuiFurnace
+      - GuiInventory
+    - GuiControls
+    - GuiDownloadTerrain
+    - GuiEditSign
+    - GuiGameOver
+    - GuiIngameMenu
+    - GuiMainMenu
+    - GuiMultiplayer
+    - GuiOptions
+    - GuiSelectWorld
+      - GuiDeleteWorld
+    - GuiTexturePacks
+    - GuiUnused
+    - GuiYesNo
+- GuiLogFormatter
+- GuiLogOutputHandler
+- GuiStatsComponent
+- Item
+  - ItemArmor
+  - ItemBlock
+  - ItemBoat
+  - ItemBow
+  - ItemBucket
+  - ItemDoor
+  - ItemFishingRod
+  - ItemFlintAndSteel
+  - ItemFood
+    - ItemSoup
+  - ItemHoe
+  - ItemMinecart
+  - ItemPainting
+  - ItemRecord
+  - ItemRedstone
+  - ItemReed
+  - ItemSaddle
+  - ItemSeeds
+  - ItemSign
+  - ItemSnowball
+  - ItemSword
+  - ItemTool
+    - ItemAxe
+    - ItemPickaxe
+    - ItemSpade
+- MapGenBase
+  - MapGenCaves
+  - MapGenCavesHell
+- Material
+  - MaterialLiquid
+  - MaterialLogic
+  - MaterialTransparent
+- MinecraftException
+- MobSpawnerBase
+  - MobSpawnerDesert
+  - MobSpawnerHell
+  - MobSpawnerSwamp
+- ModelBase
+  - ModelBiped
+    - ModelZombie
+      - ModelSkeleton
+  - ModelBoat
+  - ModelChicken
+  - ModelCreeper
+  - ModelGhast
+  - ModelMinecart
+  - ModelQuadraped
+    - ModelCow
+    - ModelPig
+    - ModelSheep1
+    - ModelSheep2
+  - ModelSlime
+  - ModelSpider
+- MovementInput
+  - MovementInputFromOptions
+- NBTBase
+  - NBTTagByte
+  - NBTTagByteArray
+  - NBTTagCompound
+  - NBTTagDouble
+  - NBTTagEnd
+  - NBTTagFloat
+  - NBTTagInt
+  - NBTTagList
+  - NBTTagLong
+  - NBTTagShort
+  - NBTTagString
+- NetLoginHandler
+- NetServerHandler
+- NetworkAcceptThread
+- NoiseGenerator
+  - NoiseGeneratorOctaves
+  - NoiseGeneratorOctaves2
+  - NoiseGeneratorPerlin
+- PlayerController
+  - PlayerControllerMP
+  - PlayerControllerSP
+  - PlayerControllerTest
+- PlayerListBox
+- Render
+  - RenderArrow
+  - RenderBoat
+  - RenderEntity
+  - RenderFallingSand
+  - RenderFireball
+  - RenderFish
+  - RenderItem
+  - RenderLiving
+    - RenderBiped
+    - RenderChicken
+    - RenderCow
+    - RenderCreeper
+    - RenderGhast
+    - RenderPig
+    - RenderPlayer
+    - RenderSheep
+    - RenderSlime
+    - RenderSpider
+    - RenderZombieSimple
+  - RenderMinecart
+  - RenderPainting
+  - RenderSnowball
+  - RenderTNTPrimed
+- ServerGUI
+- ServerGuiFocusAdapter
+- ServerWindowAdapter
+- Slot
+  - SlotInventory
+    - SlotArmor
+    - SlotCrafting
+- StepSound
+  - StepSoundSand
+  - StepSoundStone
+- TextureFX
+  - TextureFlamesFX
+  - TextureLavaFX
+  - TextureLavaFlowFX
+  - TexturePortalFX
+  - TextureWaterFX
+  - TexureWaterFlowFX
+- ThreadCommandReader
+- ThreadLoginVerifier
+- ThreadMonitorConnection
+- ThreadServerApplication
+- TileEntity
+  - TileEntityChest
+  - TileEntityFurnace
+  - TileEntityMobSpawner
+  - TileEntitySign
+- TileEntitySpecialRenderer
+  - TileEntityMobSpawnerRenderer
+  - TileEntitySignRenderer
+- World
+  - WorldClient
+  - WorldIso
+  - WorldServer
+- WorldChunkManager
+  - WorldChunkManagerHell
+- WorldGenerator
+  - WorldGenBigTree
+  - WorldGenCactus
+  - WorldGenClay
+  - WorldGenDungeons
+  - WorldGenFire
+  - WorldGenFlowers
+  - WorldGenHellLava
+  - WorldGenLakes
+  - WorldGenLightStone1
+  - WorldGenLightStone2
+  - WorldGenLiquids
+  - WorldGenMinable
+  - WorldGenPumpkin
+  - WorldGenReed
+  - WorldGenTrees
+- WorldProvider
+  - WorldProviderHell
