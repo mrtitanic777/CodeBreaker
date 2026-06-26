@@ -19,7 +19,7 @@ import re
 from .. import typemap
 from ..ledger import Category, Severity
 from . import naming, ownership
-from .statements import translate_body
+from .statements import translate_body, _resolve_chains, _resolve_call_chains, sub_outside_literals
 
 _BANNER = '// Auto-generated from %s.java\n// Target: Xbox 360 / C++03 / DirectX 9'
 _NEW_ARRAY = re.compile(r'^new\s+[\w.]+\s*\[([^\]]+)\]\s*$')   # size may be any expression
@@ -57,14 +57,14 @@ def _static_init(f, cpp_type, ledger, cls, resolver, own_statics):
     cm = re.match(r'^new\s+([A-Za-z_]\w*)', init)     # `new ArrayList()` -> value container (default)
     if cm and cm.group(1) in typemap.CONTAINERS:
         return None                                  # default-construct the value container (empty)
-    return _static_ref(init, resolver, own_statics)  # other initializer: translate refs
+    return _static_ref(init, resolver, own_statics, cls.name)  # other initializer: translate refs
 
 
-def _static_ref(expr, resolver, own_statics=()):
+def _static_ref(expr, resolver, own_statics=(), current=None):
     """Translate references inside a static initializer expression (these don't go through the
     statement translator): Class.field -> Class::s_field, Class.method(...) -> Class::method(...),
     runtime-holder/enum member -> Holder::member (no s_), a bare own/inherited static -> s_name,
-    and Java null -> NULL."""
+    Java null -> NULL, AND the chained/call-result pointer derefs (Block::s_stone->blockID)."""
     holders = typemap.RUNTIME_STATIC_HOLDERS | typemap.JAVART_STATICS | set(resolver.enums)
 
     def repl(m):
@@ -80,8 +80,14 @@ def _static_ref(expr, resolver, own_statics=()):
     # bare reference to this class's own/inherited static -> s_-prefixed (e.g. an initializer
     # calling setStepSound(soundStoneFootstep) where soundStoneFootstep is a static of the class)
     for nm in own_statics:
-        expr = re.sub(r'(?<![\w.:])' + re.escape(nm) + r'\b', naming.static_field_name(nm), expr)
-    return re.sub(r'\bnull\b', 'NULL', expr)
+        expr = sub_outside_literals(re.compile(r'(?<![\w.:])' + re.escape(nm) + r'\b'),
+                                    naming.static_field_name(nm), expr)
+    expr = re.sub(r'\bnull\b', 'NULL', expr)
+    # static-field / call-result chain derefs (Block::s_stone.blockID -> Block::s_stone->blockID),
+    # reusing the statement translator's type-tracking walker (no locals, current class as `this`).
+    expr = _resolve_chains(expr, {}, resolver, current)
+    expr = _resolve_call_chains(expr, {}, resolver, current)
+    return expr
 
 
 def _array_elem_cpp(jtype, resolver):
@@ -104,7 +110,7 @@ def _render_statics(cls, resolver, ledger):
         agg = ownership.aggregate_array_body(f)
         if agg is not None:                              # new T[]{a,b,c} -> file-static data + JArray
             elem = _array_elem_cpp(f.jtype, resolver)
-            items = [_static_ref(e.strip(), resolver, own_statics) for e in agg.split(',') if e.strip()]
+            items = [_static_ref(e.strip(), resolver, own_statics, cls.name) for e in agg.split(',') if e.strip()]
             data = '_%s_%s_data' % (cls.name, name)
             L.append('static %s %s[] = { %s };' % (elem, data, ', '.join(items)))
             L.append('%s %s::%s(%s, %d);' % (ft, cls.name, name, data, len(items)))

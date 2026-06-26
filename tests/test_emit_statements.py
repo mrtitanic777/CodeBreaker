@@ -364,6 +364,17 @@ class TestBareStaticPrefix(unittest.TestCase):
         out = statements.translate_body(m, c, types.TypeResolver())
         self.assertIn('return s_SIN_TABLE[(int)var0 & 255];', out)
 
+    def test_bare_static_prefix_skips_string_literals(self):
+        # a static field named 'stone' must NOT corrupt the string literal "stone"
+        c = ir.JClass('Block')
+        c.fields.append(ir.Field('stone', ir.JType('Block'), is_static=True))
+        m = ir.Method('f', ir.JType('void'), line=1)
+        m.body = [(1, 'void f() {'),
+                  (2, '\tthis.register(stone, "stone");'), (3, '}')]
+        c.methods.append(m)
+        out = statements.translate_body(m, c, types.TypeResolver(known_classes={'Block'}))
+        self.assertTrue(any('s_stone, "stone"' in l for l in out), out)   # ident renamed, literal intact
+
     def test_qualified_static_not_double_prefixed(self):
         c = ir.JClass('Block')
         c.fields.append(ir.Field('blocksList', ir.JType('Block', array_dims=1), is_static=True))

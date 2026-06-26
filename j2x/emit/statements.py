@@ -29,6 +29,21 @@ from . import naming, ownership
 _INDEX_DEREF_STMT = re.compile(
     r'^((?:this->)?(?:\w+::)*(\w+)\[[^\]]*\])\s*(?:->|\.)\s*(\w+\([^;]*\))\s*;\s*$')
 
+# string / char literals -- substitutions that rename identifiers must skip these (renaming a
+# word inside "stone" would corrupt sound/texture resource names, etc.)
+_STR_LITERAL = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'')
+
+
+def sub_outside_literals(rx, repl, s):
+    """re.sub(rx, repl, s) applied ONLY to the parts of s outside string/char literals."""
+    out, last = [], 0
+    for m in _STR_LITERAL.finditer(s):
+        out.append(rx.sub(repl, s[last:m.start()]))
+        out.append(m.group(0))
+        last = m.end()
+    out.append(rx.sub(repl, s[last:]))
+    return ''.join(out)
+
 # Java keywords that must never be mistaken for a local-variable TYPE.
 _KEYWORDS = {
     'return', 'if', 'else', 'while', 'for', 'do', 'switch', 'case', 'break',
@@ -554,9 +569,11 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
     s = _MEMBER.sub(_static, s)
     # 5b. bare reference to one of THIS class's static fields -> s_-prefixed name. Java lets
     #     a class name its own statics unqualified; the C++ static def is `s_name`. Skip any
-    #     occurrence that's already qualified (`X::`, `x.`) or already prefixed (`s_name`).
+    #     occurrence that's already qualified (`X::`, `x.`), already prefixed (`s_name`), or
+    #     INSIDE a string/char literal (renaming a word in "stone" would corrupt resource names).
     for nm in own_statics:
-        s = re.sub(r'(?<![\w.:])' + re.escape(nm) + r'\b', naming.static_field_name(nm), s)
+        s = sub_outside_literals(re.compile(r'(?<![\w.:])' + re.escape(nm) + r'\b'),
+                                 naming.static_field_name(nm), s)
     # 6. container/String methods -> STL (.add->.push_back, .get(i)->[i], .charAt(i)->[i], isEmpty->empty)
     s = _translate_calls(s, scope)
     # 6b. cast-result access: ((Type)x).m -> ((Type*)x)->m  (a cast to a reference type yields a pointer)
