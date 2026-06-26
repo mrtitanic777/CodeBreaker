@@ -20,6 +20,21 @@ from .ledger import Ledger, Severity
 from . import analyze, report
 
 
+def _cmd_convert(args):
+    from . import pipeline
+    if not os.path.isdir(args.java_dir):
+        print('ERROR: not a directory: %s' % args.java_dir)
+        return 2
+    s = pipeline.convert(args.java_dir, args.out_dir)
+    print('Converted %s -> %s' % (os.path.abspath(args.java_dir), os.path.abspath(args.out_dir)))
+    print('  parsed=%d  headers=%d  sources=%d' % (s['parsed'], s['headers'], s['sources']))
+    print('  verify (crash-class rule findings on output): %d' % s['rule_findings'])
+    print('  ledger events=%d  (HIGH=%d)' % (s['events'], s['high']))
+    if s['report']:
+        print('  report: %s' % os.path.join(s['report'], 'index.md'))
+    return 0
+
+
 def _cmd_report(args):
     output_dir = args.output_dir
     if not os.path.isdir(output_dir):
@@ -71,6 +86,11 @@ def main(argv=None):
     argv = argv if argv is not None else sys.argv[1:]
     ap = argparse.ArgumentParser(prog='j2x', description='Modular Java->Xbox360 converter tooling.')
     sub = ap.add_subparsers(dest='cmd')
+
+    cp = sub.add_parser('convert', help='Convert a Java source tree to C++03 (the j2x rewrite).')
+    cp.add_argument('java_dir', help='Directory of .java source.')
+    cp.add_argument('out_dir', help='Output directory for the generated .h/.cpp.')
+    cp.set_defaults(func=_cmd_convert)
 
     rp = sub.add_parser('report', help='Build the conversion report from existing output.')
     rp.add_argument('output_dir', help='Directory of converted .cpp/.h (e.g. output_alpha).')

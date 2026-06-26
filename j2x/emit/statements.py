@@ -41,6 +41,8 @@ _DECL = re.compile(
     r'^(?:final\s+)?([A-Za-z_][\w.]*(?:<[^>]*>)?(?:\s*\[\s*\])*)\s+([A-Za-z_]\w*)\s*(=|;)')
 
 _MATH = re.compile(r'\bMath\.([A-Za-z_]\w*)')
+# new T[n] (1-D, not already value-init) -> capture type, optional *, size
+_NEW_ARRAY = re.compile(r'\bnew\s+([\w:]+)\s*(\*?)\s*\[([^\]]*)\](?!\s*[\[(])')
 # receiver.member  with optional opening paren (method call)
 _MEMBER = re.compile(r'\b([A-Za-z_]\w*)\.([A-Za-z_]\w*)(\s*\()?')
 _CALL = re.compile(r'\b(\w+)\.(\w+)\s*\(')
@@ -168,6 +170,12 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope):
                   if resolver.is_pointer(ir.JType(m.group(1))) else m.group(0), s)
     # 8. Java null literal -> NULL
     s = re.sub(r'\bnull\b', 'NULL', s)
+    # 9. new T[n] -> new T[n]() (value-init like Java; reference elements become T*)
+    def _new_arr(m):
+        t = m.group(1)
+        star = m.group(2) or ('*' if resolver.is_pointer(ir.JType(t)) else '')
+        return 'new %s%s[%s]()' % (resolver.base_cpp(t), star, m.group(3))
+    s = _NEW_ARRAY.sub(_new_arr, s)
     return s
 
 
