@@ -577,7 +577,29 @@ _GENERATED['DataInput.h'] = _class_stub('DataInput', void_methods=['readFully'],
                  ('readUTF', ('std::string', 'std::string()'))])
 _GENERATED['DataOutput.h'] = _class_stub('DataOutput',
     void_methods=['write', 'writeByte', 'writeShort', 'writeInt', 'writeLong', 'writeFloat',
-                  'writeDouble', 'writeBoolean', 'writeChar', 'writeUTF', 'writeBytes'])
+                  'writeDouble', 'writeBoolean', 'writeChar', 'writeUTF', 'writeBytes', 'writeChars'])
+# java.io concrete streams (DataInputStream/DataOutputStream are the heavy hitters on alpha)
+_GENERATED['InputStream.h'] = _class_stub('InputStream', void_methods=['close', 'reset', 'mark'],
+    ret_methods=[('read', ('int', '0')), ('available', ('int', '0')), ('skip', ('long long', '0LL'))])
+_GENERATED['OutputStream.h'] = _class_stub('OutputStream', void_methods=['write', 'flush', 'close'])
+_GENERATED['DataInputStream.h'] = _class_stub('DataInputStream', bases=['DataInput'], includes=['DataInput'],
+    void_methods=['close', 'reset', 'mark'],
+    ret_methods=[('read', ('int', '0')), ('available', ('int', '0')),
+                 ('skip', ('long long', '0LL')), ('skipBytes', ('int', '0'))])
+_GENERATED['DataOutputStream.h'] = _class_stub('DataOutputStream', bases=['DataOutput'], includes=['DataOutput'],
+    void_methods=['flush', 'close'], ret_methods=[('size', ('int', '0'))])
+_GENERATED['BufferedInputStream.h'] = _class_stub('BufferedInputStream', bases=['InputStream'], includes=['InputStream'])
+_GENERATED['BufferedOutputStream.h'] = _class_stub('BufferedOutputStream', bases=['OutputStream'], includes=['OutputStream'])
+_GENERATED['FileInputStream.h'] = _class_stub('FileInputStream', bases=['InputStream'], includes=['InputStream'])
+_GENERATED['FileOutputStream.h'] = _class_stub('FileOutputStream', bases=['OutputStream'], includes=['OutputStream'])
+_GENERATED['ZipFile.h'] = _class_stub('ZipFile', void_methods=['close'],
+    ret_methods=[('getEntry', ('void*', '0')), ('getInputStream', ('InputStream*', '0')),
+                 ('size', ('int', '0'))], fwds=['InputStream'])
+_GENERATED['Socket.h'] = _class_stub('Socket', void_methods=['close', 'setSoTimeout'],
+    ret_methods=[('getInputStream', ('InputStream*', '0')), ('getOutputStream', ('OutputStream*', '0'))],
+    fwds=['InputStream', 'OutputStream'])
+_GENERATED['DateFormat.h'] = _class_stub('DateFormat',
+    ret_methods=[('format', ('std::string', 'std::string()'))])
 _GENERATED['SoundSystem.h'] = _class_stub('SoundSystem',
     void_methods=['cleanup', 'newSource', 'newStreamingSource', 'play', 'setListenerOrientation',
                   'setListenerPosition', 'setPitch', 'setVolume', 'stop', 'pause', 'removeSource'],

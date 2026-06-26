@@ -504,6 +504,9 @@ def _resolve_call_chains(s, scope, resolver, current):
 
 def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent, current,
                     own_statics, ptr_locals):
+    # 0. `synchronized(lock) {` -> `{`  (no JVM monitors on the single-threaded console port;
+    #    drop the lock, keep the guarded block)
+    s = re.sub(r'\bsynchronized\s*\([^){]*\)\s*', '', s)
     # 1. local declaration: rewrite the leading Java type to its C++ spelling. A value-type
     #    local inferred to be a nullable reference (ptr_locals) gets a trailing '*'.
     m = _DECL.match(s)
