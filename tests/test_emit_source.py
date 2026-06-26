@@ -161,6 +161,27 @@ class TestSourceRealFiles(unittest.TestCase):
         self.assertIn('virtual Vec3D* subtract(Vec3D var1);', h)
 
 
+class TestAggregateArrayStatic(unittest.TestCase):
+    """`static T[] x = new T[]{a, b}` -> a fixed C array (C++03 has no braced new[]),
+    with element refs translated (Block.planks -> Block::s_planks)."""
+    def setUp(self):
+        c = ir.JClass('ItemAxe')
+        c.fields.append(ir.Field('blocksEffectiveAgainst', ir.JType('Block', array_dims=1),
+                                 is_static=True, is_final=True,
+                                 initializer='new Block[]{Block.planks, Block.wood}', line=5))
+        self.r = types.TypeResolver(known_classes={'Block', 'ItemAxe'})
+        self.h = header.render_header(c, self.r)
+        self.cpp = source.render_source(c, self.r)
+
+    def test_header_declares_fixed_array(self):
+        self.assertIn('static Block* s_blocksEffectiveAgainst[];', self.h)
+
+    def test_source_defines_translated_array(self):
+        self.assertIn('Block* ItemAxe::s_blocksEffectiveAgainst[] = '
+                      '{ Block::s_planks, Block::s_wood };', self.cpp)
+        self.assertNotIn('new Block[]', self.cpp)        # no invalid braced new[]
+
+
 class TestJavaStringMapping(unittest.TestCase):
     """String maps to JavaString (a std::string subclass) and every header includes it."""
     def test_header_includes_javastring_and_uses_it(self):

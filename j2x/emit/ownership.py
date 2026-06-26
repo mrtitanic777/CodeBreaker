@@ -17,6 +17,16 @@ import re
 from .. import typemap
 
 _CTOR_NEW = re.compile(r'(?:this\.)?(\w+)\s*=\s*new\s+\w[\w.]*\s*(\[)?')
+# `new T[]{a, b, c}` -- a static array with an aggregate (brace) initializer
+_AGG_ARRAY = re.compile(r'^new\s+[\w.]+\s*\[\s*\]\s*\{(.*)\}\s*$', re.S)
+
+
+def aggregate_array_body(field):
+    """For a static field initialized as `new T[]{...}`, the raw brace contents; else None.
+    C++03 cannot `new T[]{...}`, so emit (header + source) declare a fixed C array instead."""
+    init = (field.initializer or '').strip()
+    m = _AGG_ARRAY.match(init)
+    return m.group(1) if m else None
 # broad: `field = new` OR `field[i] = new` (array-element ownership)
 _CTOR_NEW_BROAD = re.compile(r'(?:this(?:->|\.))?(\w+)\s*(?:\[[^\]]*\])?\s*=\s*new\b')
 

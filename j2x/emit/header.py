@@ -127,7 +127,12 @@ def render_header(cls, resolver, ledger=None):
     for f in inst:
         L.append('\t%s %s;' % (resolver.field_type(f.jtype), naming.field_name(f)))
     for f in stat:
-        L.append('\tstatic %s %s;' % (resolver.field_type(f.jtype), naming.field_name(f)))
+        if ownership.aggregate_array_body(f) is not None:    # `new T[]{...}` -> fixed C array
+            ft = resolver.field_type(f.jtype)                # Block** / int*
+            elem = ft[:-1] if ft.endswith('*') else ft       # element type: Block* / int
+            L.append('\tstatic %s %s[];' % (elem, naming.field_name(f)))
+        else:
+            L.append('\tstatic %s %s;' % (resolver.field_type(f.jtype), naming.field_name(f)))
 
     # methods (skip ctors, already emitted)
     methods = [m for m in cls.methods if not m.is_ctor]

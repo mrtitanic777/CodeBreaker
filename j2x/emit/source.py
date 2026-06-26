@@ -57,12 +57,33 @@ def _static_init(f, cpp_type, ledger, cls):
     return init                                       # other initializer: passthrough (refined in 4c)
 
 
+def _static_ref(expr, resolver):
+    """Translate references inside a static initializer expression: Class.field ->
+    Class::s_field (known classes) and Java null -> NULL. Static initializers don't go
+    through the statement translator, so they need this minimal pass."""
+    expr = re.sub(r'\b([A-Z]\w*)\.(\w+)\b',
+                  lambda m: '%s::%s' % (m.group(1), naming.static_field_name(m.group(2)))
+                  if m.group(1) in resolver.known else m.group(0), expr)
+    return re.sub(r'\bnull\b', 'NULL', expr)
+
+
 def _render_statics(cls, resolver, ledger):
     L = []
     for f in cls.static_fields():
+        name = naming.field_name(f)
+        agg = ownership.aggregate_array_body(f)
+        if agg is not None:                              # `new T[]{a,b,c}` -> fixed C array
+            ft = resolver.field_type(f.jtype)
+            elem = ft[:-1] if ft.endswith('*') else ft
+            items = [_static_ref(e.strip(), resolver) for e in agg.split(',') if e.strip()]
+            L.append('%s %s::%s[] = { %s };' % (elem, cls.name, name, ', '.join(items)))
+            if ledger is not None:
+                ledger.add(cls.name + '.cpp', Category.RISK,
+                           'static array `new T[]{...}` -> fixed C array (C++03 has no braced new[])',
+                           line=f.line, severity=Severity.LOW, source='emit', rule='static-aggregate-array')
+            continue
         ft = resolver.field_type(f.jtype)
         init = _static_init(f, ft, ledger, cls)
-        name = naming.field_name(f)
         if init is None:
             L.append('%s %s::%s;' % (ft, cls.name, name))
         else:
