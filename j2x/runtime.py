@@ -551,6 +551,9 @@ _GENERATED['GL15.h'] = _ns_stub('GL15',
     consts=[('GL_ARRAY_BUFFER', 0x8892), ('GL_STREAM_DRAW', 0x88E0), ('GL_SAMPLES_PASSED', 0x8914),
             ('GL_QUERY_RESULT', 0x8866), ('GL_QUERY_RESULT_AVAILABLE', 0x8867),
             ('GL_QUERY_COUNTER_BITS', 0x8864)])
+_GENERATED['GL12.h'] = _ns_stub('GL12',
+    consts=[('GL_RESCALE_NORMAL', 0x803A), ('GL_CLAMP_TO_EDGE', 0x812F),
+            ('GL_SMOOTH_POINT_SIZE_RANGE', 0x0B12)])
 _GENERATED['GLU.h'] = _ns_stub('GLU', void_fns=['gluPerspective', 'gluLookAt', 'gluProject', 'gluUnProject'])
 _GENERATED['ARBOcclusionQuery.h'] = _ns_stub('ARBOcclusionQuery',
     void_fns=['glBeginQueryARB', 'glEndQueryARB', 'glGetQueryObjectuARB', 'glGetQueryARB'],
@@ -600,6 +603,8 @@ _GENERATED['Socket.h'] = _class_stub('Socket', void_methods=['close', 'setSoTime
     fwds=['InputStream', 'OutputStream'])
 _GENERATED['DateFormat.h'] = _class_stub('DateFormat',
     ret_methods=[('format', ('std::string', 'std::string()'))])
+_GENERATED['Dimension.h'] = _class_stub('Dimension',
+    ret_methods=[('getWidth', ('int', '0')), ('getHeight', ('int', '0'))])
 _GENERATED['SoundSystem.h'] = _class_stub('SoundSystem',
     void_methods=['cleanup', 'newSource', 'newStreamingSource', 'play', 'setListenerOrientation',
                   'setListenerPosition', 'setPitch', 'setVolume', 'stop', 'pause', 'removeSource'],

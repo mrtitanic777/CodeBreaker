@@ -55,7 +55,7 @@ KNOWN_NULLABLE = {'blocksList', 'itemsList'}
 # Java base types our classes extend/implement (Runnable/Thread/Comparator/...).
 # Static-holder externals accessed as Name::member (constants + static functions) that get
 # their own emitted header. Like GL11. Also need RUNTIME_ENUM_LIKE (no s_ prefix on members).
-RUNTIME_STATIC_HOLDERS = {'GL11', 'GL15', 'GLU', 'Keyboard', 'Mouse', 'Display',
+RUNTIME_STATIC_HOLDERS = {'GL11', 'GL12', 'GL15', 'GLU', 'Keyboard', 'Mouse', 'Display',
                           'ARBOcclusionQuery', 'ARBVertexBufferObject', 'BufferUtils', 'ImageIO'}
 
 # Runtime-support classes the converter EMITS a header for (see runtime.py) and #includes when
@@ -69,7 +69,7 @@ RUNTIME_HEADERS = ({'Random', 'Runnable', 'Thread', 'Comparator', 'File',
                     'DecimalFormat', 'ImageObserver', 'Class',
                     'InputStream', 'OutputStream', 'DataInputStream', 'DataOutputStream',
                     'BufferedInputStream', 'BufferedOutputStream', 'FileInputStream',
-                    'FileOutputStream', 'ZipFile', 'Socket', 'DateFormat',
+                    'FileOutputStream', 'ZipFile', 'Socket', 'DateFormat', 'Dimension',
                     'Throwable', 'Exception', 'Error', 'RuntimeException', 'IOException',
                     'InterruptedException', 'IllegalStateException', 'IllegalArgumentException',
                     'MalformedURLException', 'AWTException', 'LWJGLException', 'NoSuchFieldError'}

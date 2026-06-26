@@ -41,7 +41,7 @@ def _default_value(cpp_type):
 # ---------------------------------------------------------------------------
 # static field definitions
 # ---------------------------------------------------------------------------
-def _static_init(f, cpp_type, ledger, cls, resolver):
+def _static_init(f, cpp_type, ledger, cls, resolver, own_statics):
     init = (f.initializer or '').strip()
     if not init:
         return _default_value(cpp_type)              # forward-declared static -> NULL/0/default
@@ -54,13 +54,17 @@ def _static_init(f, cpp_type, ledger, cls, resolver):
                        % (cpp_type, n), line=f.line, severity=Severity.MED, source='emit',
                        rule='uninit-array-fixed')
         return '%s(%s)' % (cpp_type, n)
-    return _static_ref(init, resolver)               # other initializer: translate refs (Class.field, null)
+    cm = re.match(r'^new\s+([A-Za-z_]\w*)', init)     # `new ArrayList()` -> value container (default)
+    if cm and cm.group(1) in typemap.CONTAINERS:
+        return None                                  # default-construct the value container (empty)
+    return _static_ref(init, resolver, own_statics)  # other initializer: translate refs
 
 
-def _static_ref(expr, resolver):
+def _static_ref(expr, resolver, own_statics=()):
     """Translate references inside a static initializer expression (these don't go through the
     statement translator): Class.field -> Class::s_field, Class.method(...) -> Class::method(...),
-    runtime-holder/enum member -> Holder::member (no s_ prefix), and Java null -> NULL."""
+    runtime-holder/enum member -> Holder::member (no s_), a bare own/inherited static -> s_name,
+    and Java null -> NULL."""
     holders = typemap.RUNTIME_STATIC_HOLDERS | typemap.JAVART_STATICS | set(resolver.enums)
 
     def repl(m):
@@ -73,6 +77,10 @@ def _static_ref(expr, resolver):
             return '%s::%s' % (cls, naming.static_field_name(mem))   # static field -> s_
         return m.group(0)
     expr = re.sub(r'\b([A-Z]\w*)\.(\w+)(\s*\()?', repl, expr)
+    # bare reference to this class's own/inherited static -> s_-prefixed (e.g. an initializer
+    # calling setStepSound(soundStoneFootstep) where soundStoneFootstep is a static of the class)
+    for nm in own_statics:
+        expr = re.sub(r'(?<![\w.:])' + re.escape(nm) + r'\b', naming.static_field_name(nm), expr)
     return re.sub(r'\bnull\b', 'NULL', expr)
 
 
@@ -87,13 +95,16 @@ def _array_elem_cpp(jtype, resolver):
 
 def _render_statics(cls, resolver, ledger):
     L = []
+    # own + inherited static field names, for prefixing bare references in initializers
+    own_statics = (set(f.name for f in cls.static_fields())
+                   | resolver.members.get(cls.name, {}).get('statics', set()))
     for f in cls.static_fields():
         name = naming.field_name(f)
         ft = resolver.field_type(f.jtype)
         agg = ownership.aggregate_array_body(f)
         if agg is not None:                              # new T[]{a,b,c} -> file-static data + JArray
             elem = _array_elem_cpp(f.jtype, resolver)
-            items = [_static_ref(e.strip(), resolver) for e in agg.split(',') if e.strip()]
+            items = [_static_ref(e.strip(), resolver, own_statics) for e in agg.split(',') if e.strip()]
             data = '_%s_%s_data' % (cls.name, name)
             L.append('static %s %s[] = { %s };' % (elem, data, ', '.join(items)))
             L.append('%s %s::%s(%s, %d);' % (ft, cls.name, name, data, len(items)))
@@ -103,7 +114,7 @@ def _render_statics(cls, resolver, ledger):
                            '(C++03 has no braced new[]; length tracked)',
                            line=f.line, severity=Severity.LOW, source='emit', rule='static-aggregate-array')
             continue
-        init = _static_init(f, ft, ledger, cls, resolver)
+        init = _static_init(f, ft, ledger, cls, resolver, own_statics)
         if init is None:
             L.append('%s %s::%s;' % (ft, cls.name, name))
         else:
