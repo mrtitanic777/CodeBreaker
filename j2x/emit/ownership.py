@@ -60,7 +60,13 @@ def returns_pointer(method, resolver):
     if resolver.is_pointer(rt):
         return True
     text = '\n'.join(t for _ln, t in method.body)
-    return re.search(r'\breturn\s+new\s+%s\b' % re.escape(rt.name), text) is not None
+    # value-type return promoted to pointer if the body new's it in a return (incl. a
+    # ternary) OR returns null -- both impossible for a by-value return
+    if re.search(r'\breturn\b[^;]*\bnew\s+%s\b' % re.escape(rt.name), text):
+        return True
+    if re.search(r'\breturn\s+(?:null|NULL)\b', text):
+        return True
+    return False
 
 
 def return_cpp_type(method, resolver):

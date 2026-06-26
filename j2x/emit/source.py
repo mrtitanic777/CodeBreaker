@@ -174,21 +174,26 @@ def render_source(cls, resolver, ledger=None):
     if cls.is_interface:
         return None
 
-    L = ['#include "stdafx.h"', '', _BANNER % cls.name, '', '#include "%s.h"' % cls.name, '']
-
+    body = []
     statics = _render_statics(cls, resolver, ledger)
     if statics:
-        L += statics + ['']
-
+        body += statics + ['']
     for m in cls.constructors():
-        L += _render_ctor(cls, m, resolver, ledger) + ['']
-
-    L += _render_dtor(cls, ownership.owned_pointers(cls, resolver), ledger) + ['']
-
+        body += _render_ctor(cls, m, resolver, ledger) + ['']
+    body += _render_dtor(cls, ownership.owned_pointers(cls, resolver), ledger) + ['']
     for m in cls.methods:
         if m.is_ctor or m.is_abstract:
             continue
-        L += _render_method(cls, m, resolver, ledger) + ['']
+        body += _render_method(cls, m, resolver, ledger) + ['']
+
+    # body-driven includes: a .cpp needs the FULL definition of every user type it uses
+    # (calls/new/cast/static access), not just the forward decls in its own header.
+    used = sorted((set(re.findall(r'\b([A-Z]\w*)\b', '\n'.join(body))) & set(resolver.known))
+                  - {cls.name} - set(cls.interfaces))
+    L = ['#include "stdafx.h"', '', _BANNER % cls.name, '', '#include "%s.h"' % cls.name]
+    L += ['#include "%s.h"' % n for n in used]
+    L += ['']
+    L += body
 
     if ledger is not None:
         ledger.add(cls.name + '.cpp', Category.PORTED, 'generated source for %s' % cls.name,
