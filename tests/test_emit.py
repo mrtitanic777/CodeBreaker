@@ -1,0 +1,77 @@
+# -*- coding: utf-8 -*-
+"""Module 4 tests: header emission."""
+
+import os
+import unittest
+
+from j2x import ir, types, parse
+from j2x.emit import header
+from j2x.ledger import Ledger
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+JAVA = os.path.join(ROOT, 'original_java')
+
+
+class TestHeaderHandBuilt(unittest.TestCase):
+    def setUp(self):
+        c = ir.JClass('Foo', parent='Bar')
+        c.fields.append(ir.Field('field', ir.JType('Block'), access=ir.PUBLIC))
+        c.fields.append(ir.Field('count', ir.JType('int'), access=ir.PUBLIC))
+        c.fields.append(ir.Field('list', ir.JType('Block', array_dims=1), is_static=True))
+        c.fields.append(ir.Field('name', ir.JType('String'), is_static=True))
+        c.methods.append(ir.Method('Foo', is_ctor=True, params=[ir.Param('id', ir.JType('int'))]))
+        c.methods.append(ir.Method('doIt', ir.JType('void'),
+                                   params=[ir.Param('b', ir.JType('Block'))]))
+        self.c = c
+        self.r = types.TypeResolver(known_classes={'Block', 'Bar'})
+        self.h = header.render_header(c, self.r)
+
+    def test_include_guard(self):
+        self.assertTrue(self.h.startswith('#ifndef FOO_H\n#define FOO_H'))
+        self.assertTrue(self.h.rstrip().endswith('#endif // FOO_H'))
+
+    def test_parent_included_not_forward_declared(self):
+        self.assertIn('#include "Bar.h"', self.h)
+        self.assertNotIn('class Bar;', self.h)
+
+    def test_reference_member_forward_declared(self):
+        self.assertIn('class Block;', self.h)
+
+    def test_class_declaration_with_base(self):
+        self.assertIn('class Foo : public Bar {', self.h)
+
+    def test_constructor_and_destructor(self):
+        self.assertIn('Foo(int id);', self.h)
+        self.assertIn('virtual ~Foo();', self.h)
+
+    def test_fields(self):
+        self.assertIn('\tBlock* field;', self.h)            # reference instance field -> pointer
+        self.assertIn('\tint count;', self.h)
+        self.assertIn('\tstatic Block** s_list;', self.h)   # nullable ref array -> T**, s_ prefix
+        self.assertIn('\tstatic std::string s_name;', self.h)
+
+    def test_string_pulls_system_header(self):
+        self.assertIn('#include <string>', self.h)
+
+    def test_method_is_virtual(self):
+        self.assertIn('virtual void doIt(Block* b);', self.h)
+
+
+class TestHeaderRealFile(unittest.TestCase):
+    def test_vec3d_header_structure(self):
+        c = parse.parse_file(os.path.join(JAVA, 'Vec3D.java'))
+        r = types.TypeResolver(value_types={'Vec3D'})
+        led = Ledger()
+        h = header.render_header(c, r, ledger=led)
+        self.assertIn('#ifndef VEC3D_H', h)
+        self.assertIn('class Vec3D', h)
+        self.assertIn('float xCoord;', h)                   # value-type field stays bare
+        self.assertIn('virtual ~Vec3D();', h)
+        self.assertTrue(any(line.strip().startswith('Vec3D(') for line in h.split('\n')))
+        self.assertIn('#endif // VEC3D_H', h)
+        # the emitter reported a PORTED event for the header
+        self.assertTrue(any(e.rule == 'header' for e in led.events))
+
+
+if __name__ == '__main__':
+    unittest.main()
