@@ -21,7 +21,7 @@ PARTIALLY translated until those land -- that's the iterative 4c plan.
 
 import re
 
-from .. import parse as javaparse, typemap
+from .. import parse as javaparse, typemap, ir
 from . import naming
 
 # Java keywords that must never be mistaken for a local-variable TYPE.
@@ -39,6 +39,8 @@ _MATH = re.compile(r'\bMath\.([A-Za-z_]\w*)')
 # receiver.member  with optional opening paren (method call)
 _MEMBER = re.compile(r'\b([A-Za-z_]\w*)\.([A-Za-z_]\w*)(\s*\()?')
 _CALL = re.compile(r'\b(\w+)\.(\w+)\s*\(')
+# a cast `(Type)` immediately followed by an operand (word or '(') -- not a grouping
+_CAST = re.compile(r'\(([A-Za-z_]\w*)\)(?=\s*[\w(])')
 
 # (receiver-category, java method) -> C++ method, args preserved
 _METHOD_RENAME = {
@@ -156,6 +158,11 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope):
     s = _MEMBER.sub(_static, s)
     # 6. container/String methods -> STL (.add->.push_back, .get(i)->[i], .charAt(i)->[i], isEmpty->empty)
     s = _translate_calls(s, scope)
+    # 7. cast to a reference type -> pointer cast: (Block)x -> (Block*)x
+    s = _CAST.sub(lambda m: '(%s*)' % m.group(1)
+                  if resolver.is_pointer(ir.JType(m.group(1))) else m.group(0), s)
+    # 8. Java null literal -> NULL
+    s = re.sub(r'\bnull\b', 'NULL', s)
     return s
 
 

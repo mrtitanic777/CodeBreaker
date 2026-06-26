@@ -130,5 +130,31 @@ class TestCollectionsAndString(unittest.TestCase):
         self.assertIn('int n = this->items.size();', self.out)
 
 
+class TestCasts(unittest.TestCase):
+    def setUp(self):
+        c = ir.JClass('R')
+        m = ir.Method('f', ir.JType('void'),
+                      params=[ir.Param('var1', ir.JType('Object')), ir.Param('f', ir.JType('float'))], line=1)
+        m.body = [
+            (1, 'void f(Object var1, float f) {'),
+            (2, '\tBlock var2 = (Block)var1;'),
+            (3, '\tint var3 = (int)f;'),
+            (4, '\tVec3D var4 = (Vec3D)var1;'),
+            (5, '}'),
+        ]
+        c.methods.append(m)
+        r = types.TypeResolver(known_classes={'Block'}, value_types={'Vec3D'})
+        self.out = statements.translate_body(m, c, r)
+
+    def test_reference_cast_gets_pointer(self):
+        self.assertIn('Block* var2 = (Block*)var1;', self.out)
+
+    def test_primitive_cast_unchanged(self):
+        self.assertIn('int var3 = (int)f;', self.out)
+
+    def test_value_cast_unchanged(self):
+        self.assertIn('Vec3D var4 = (Vec3D)var1;', self.out)
+
+
 if __name__ == '__main__':
     unittest.main()

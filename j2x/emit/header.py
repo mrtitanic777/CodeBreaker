@@ -77,7 +77,7 @@ def _method_decl(cls, m, resolver):
     params = ', '.join('%s %s' % (resolver.param_type(p.jtype), p.name) for p in m.params)
     if m.is_ctor:
         return '%s(%s);' % (cls.name, params)
-    ret = resolver.return_type(m.return_type) if m.return_type else 'void'
+    ret = ownership.return_cpp_type(m, resolver)
     prefix = 'static ' if m.is_static else 'virtual '
     suffix = ' = 0' if m.is_abstract else ''
     return '%s%s %s(%s)%s;' % (prefix, ret, m.name, params, suffix)

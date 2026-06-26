@@ -123,7 +123,7 @@ def _render_dtor(cls, owned, ledger):
 # methods
 # ---------------------------------------------------------------------------
 def _render_method(cls, m, resolver, ledger):
-    ret = resolver.return_type(m.return_type) if m.return_type else 'void'
+    ret = ownership.return_cpp_type(m, resolver)
     params = ', '.join('%s %s' % (resolver.param_type(p.jtype), p.name) for p in m.params)
     L = ['%s %s::%s(%s)' % (ret, cls.name, m.name, params), '{']
     L.extend('\t' + s for s in translate_body(m, cls, resolver, ledger))

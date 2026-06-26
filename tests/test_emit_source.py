@@ -122,6 +122,17 @@ class TestSourceRealFiles(unittest.TestCase):
         r = types.TypeResolver()
         self.assertIsNone(source.render_source(c, r))
 
+    def test_dual_use_return_promoted_to_pointer(self):
+        # Vec3D is a value type, but subtract() does `return new Vec3D(...)` -> Vec3D*
+        c = parse.parse_file(os.path.join(JAVA, 'Vec3D.java'))
+        r = types.TypeResolver(value_types={'Vec3D'})
+        cpp = source.render_source(c, r)
+        self.assertIn('Vec3D* Vec3D::subtract(Vec3D var1)', cpp)
+        self.assertIn('return NULL;', cpp)          # Java null -> NULL
+        self.assertNotIn('return null;', cpp)
+        h = header.render_header(c, r)
+        self.assertIn('virtual Vec3D* subtract(Vec3D var1);', h)
+
 
 if __name__ == '__main__':
     unittest.main()

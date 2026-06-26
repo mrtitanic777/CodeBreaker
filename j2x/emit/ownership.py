@@ -32,3 +32,30 @@ def owned_pointers(cls, resolver):
 
 def owns_heap(cls, resolver):
     return bool(owned_pointers(cls, resolver))
+
+
+def returns_pointer(method, resolver):
+    """Whether the method's return should be a C++ pointer.
+
+    Reference types are always pointers. A VALUE type (e.g. Vec3D) is promoted to
+    a pointer when the body `return new <ReturnType>(...)` -- the dual-use case
+    where a struct is stored by value as a field but heap-allocated on return.
+    """
+    rt = method.return_type
+    if rt is None or rt.name == 'void':
+        return False
+    if resolver.is_pointer(rt):
+        return True
+    text = '\n'.join(t for _ln, t in method.body)
+    return re.search(r'\breturn\s+new\s+%s\b' % re.escape(rt.name), text) is not None
+
+
+def return_cpp_type(method, resolver):
+    """The C++ return type for a method, applying dual-use promotion. Shared by
+    header.py and source.py so the declaration and definition always agree."""
+    if method.return_type is None or method.return_type.name == 'void':
+        return 'void'
+    rt = resolver.return_type(method.return_type)
+    if returns_pointer(method, resolver) and not rt.endswith('*') and not rt.endswith('&'):
+        rt += '*'
+    return rt
