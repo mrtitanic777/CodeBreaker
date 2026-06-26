@@ -514,6 +514,16 @@ class TestCallResultChains(unittest.TestCase):
         out = statements.translate_body(m, c, self._resolver())
         self.assertIn('(new ThreadDownloadImage(this, var1))->start();', out)
 
+    def test_already_parenthesized_new_result(self):
+        # source already wrote (new X(...)).start() -> just fix the '.' to '->'
+        c = ir.JClass('C')
+        m = ir.Method('f', ir.JType('void'), line=1)
+        m.body = [(1, 'void f() {'),
+                  (2, '\t(new ThreadDownloadImage(this, var1, var2)).start();'), (3, '}')]
+        c.methods.append(m)
+        out = statements.translate_body(m, c, self._resolver())
+        self.assertIn('(new ThreadDownloadImage(this, var1, var2))->start();', out)
+
 
 class TestSuperAndInstanceof(unittest.TestCase):
     def test_instanceof_to_dynamic_cast(self):

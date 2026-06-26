@@ -58,12 +58,21 @@ def _static_init(f, cpp_type, ledger, cls, resolver):
 
 
 def _static_ref(expr, resolver):
-    """Translate references inside a static initializer expression: Class.field ->
-    Class::s_field (known classes) and Java null -> NULL. Static initializers don't go
-    through the statement translator, so they need this minimal pass."""
-    expr = re.sub(r'\b([A-Z]\w*)\.(\w+)\b',
-                  lambda m: '%s::%s' % (m.group(1), naming.static_field_name(m.group(2)))
-                  if m.group(1) in resolver.known else m.group(0), expr)
+    """Translate references inside a static initializer expression (these don't go through the
+    statement translator): Class.field -> Class::s_field, Class.method(...) -> Class::method(...),
+    runtime-holder/enum member -> Holder::member (no s_ prefix), and Java null -> NULL."""
+    holders = typemap.RUNTIME_STATIC_HOLDERS | typemap.JAVART_STATICS | set(resolver.enums)
+
+    def repl(m):
+        cls, mem, paren = m.group(1), m.group(2), m.group(3)
+        if cls in holders:
+            return '%s::%s%s' % (cls, mem, paren or '')          # holder/enum/method: no s_
+        if cls in resolver.known:
+            if paren:
+                return '%s::%s%s' % (cls, mem, paren)            # static method call
+            return '%s::%s' % (cls, naming.static_field_name(mem))   # static field -> s_
+        return m.group(0)
+    expr = re.sub(r'\b([A-Z]\w*)\.(\w+)(\s*\()?', repl, expr)
     return re.sub(r'\bnull\b', 'NULL', expr)
 
 

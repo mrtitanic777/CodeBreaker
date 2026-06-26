@@ -446,9 +446,15 @@ def _resolve_call_chains(s, scope, resolver, current):
             j = close + 1
             while j < len(s) and s[j] == ' ':
                 j += 1
-            if j >= len(s) or s[j] != '.':
+            # the member-access dot may be directly after the call, or after a wrapping ')'
+            #   (e.g. the source already wrote `(new X(...)).start()`)
+            extra_close = j < len(s) and s[j] == ')'
+            dot = j + 1 if extra_close else j
+            while dot < len(s) and s[dot] == ' ':
+                dot += 1
+            if dot >= len(s) or s[dot] != '.':
                 continue                              # not a result-member access
-            if m.group(2) is not None:               # new Type(...)
+            if m.group(2) is not None:               # new Type(...) always yields a pointer
                 ptr = True
             else:
                 recv, sep, meth = m.group(3), m.group(4), m.group(5)
@@ -461,10 +467,11 @@ def _resolve_call_chains(s, scope, resolver, current):
                 ptr = rt is not None and resolver.is_pointer(rt)
             if not ptr:
                 continue
-            if m.group(2) is not None:
-                s = s[:m.start()] + '(' + s[m.start():close + 1] + ')->' + s[j + 1:]
-            else:
-                s = s[:close + 1] + '->' + s[j + 1:]
+            if m.group(2) is not None and not extra_close:
+                s = s[:m.start()] + '(' + s[m.start():close + 1] + ')->' + s[dot + 1:]
+            else:                                     # already parenthesized, or a method result
+                head_end = j + 1 if extra_close else close + 1
+                s = s[:head_end] + '->' + s[dot + 1:]
             changed = True
             break
         if not changed:
