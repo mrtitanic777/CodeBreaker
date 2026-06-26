@@ -439,6 +439,31 @@ class TestChainInference(unittest.TestCase):
         out = statements.translate_body(m, c, r)
         self.assertIn('int k = this->mc->options->keyBindInventory->keyCode;', out)
 
+    def test_bare_inherited_static_chain(self):
+        # s_rand.nextFloat() -- bare emitted static (Item.rand inherited), should deref
+        members = {'ItemBow': {'fields': {'rand': ir.JType('Random')}, 'methods': {}}}
+        r = types.TypeResolver(known_classes={'ItemBow', 'Random'}, members=members)
+        c = ir.JClass('ItemBow')
+        m = ir.Method('f', ir.JType('float'), line=1)
+        m.body = [(1, 'float f() {'), (2, '\treturn s_rand.nextFloat();'), (3, '}')]
+        c.methods.append(m)
+        out = statements.translate_body(m, c, r)
+        self.assertTrue(any('s_rand->nextFloat()' in l for l in out), out)
+
+    def test_array_index_field_chain(self):
+        # var5->mainInventory[i].writeToNBT() -- array field of a foreign object, index -> element
+        members = {'InventoryPlayer': {'fields': {'mainInventory': ir.JType('ItemStack', array_dims=1)},
+                                       'methods': {}}}
+        r = types.TypeResolver(known_classes={'InventoryPlayer', 'ItemStack', 'C'}, members=members)
+        c = ir.JClass('C')
+        m = ir.Method('f', ir.JType('void'),
+                      params=[ir.Param('var5', ir.JType('InventoryPlayer'))], line=1)
+        m.body = [(1, 'void f(InventoryPlayer var5) {'),
+                  (2, '\tvar5.mainInventory[var3].writeToNBT(var4);'), (3, '}')]
+        c.methods.append(m)
+        out = statements.translate_body(m, c, r)
+        self.assertIn('var5->mainInventory[var3]->writeToNBT(var4);', out)
+
     def test_unknown_receiver_left_alone(self):
         c = ir.JClass('C')
         m = ir.Method('f', ir.JType('void'), line=1)

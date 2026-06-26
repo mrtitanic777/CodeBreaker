@@ -328,26 +328,58 @@ _CHAIN_ROOT = re.compile(r'[A-Za-z_]\w*::s_\w+|[A-Za-z_]\w*')
 _CHAIN_LINK = re.compile(r'\s*(->|\.)\s*([A-Za-z_]\w*)')
 
 
-def _chain_root_type(tok, scope, resolver, current):
-    """(class_name, is_pointer) for a chain-root token, or None if it isn't a typed root.
-    Roots: `this`, a `Class::s_field` static field, or an in-scope variable/field."""
+def _balanced_bracket(s, open_idx):
+    depth = 0
+    for i in range(open_idx, len(s)):
+        if s[i] == '[':
+            depth += 1
+        elif s[i] == ']':
+            depth -= 1
+            if depth == 0:
+                return i
+    return -1
+
+
+def _chain_root(tok, scope, resolver, current):
+    """(JType, is_pointer) for a chain-root token, or None if it isn't a typed root. Roots:
+    `this`, a `Class::s_field` static field, a bare emitted static `s_field` (own/inherited),
+    or an in-scope variable/field."""
     if tok == 'this':
-        return (current, True)
+        return (ir.JType(current), True)
     sm = re.match(r'^([A-Za-z_]\w*)::s_(\w+)$', tok)
     if sm:
         jt = resolver.member_field_type(sm.group(1), sm.group(2))
-        return (jt.name, resolver.is_pointer(jt)) if jt is not None else None
+        return (jt, resolver.is_pointer(jt)) if jt is not None else None
+    if tok.startswith('s_'):                          # bare emitted static (s_ prefix)
+        jt = resolver.member_field_type(current, tok[2:])
+        if jt is not None:
+            return (jt, resolver.is_pointer(jt))
     jt = scope.get(tok)
-    return (jt.name, resolver.is_pointer(jt)) if jt is not None else None
+    return (jt, resolver.is_pointer(jt)) if jt is not None else None
+
+
+def _consume_index(s, i, out, cur_jt, is_ptr, resolver):
+    """While cur_jt is an array and a balanced [index] follows, consume it and step into the
+    element type (so `arr[i].member` types `arr[i]` as the element)."""
+    while cur_jt is not None and cur_jt.is_array and i < len(s) and s[i] == '[':
+        close = _balanced_bracket(s, i)
+        if close < 0:
+            break
+        out.append(s[i:close + 1])
+        i = close + 1
+        cur_jt = cur_jt.element()
+        is_ptr = resolver.is_pointer(cur_jt)
+    return i, cur_jt, is_ptr
 
 
 def _resolve_chains(s, scope, resolver, current):
     """Deep expression-type inference for chained member access: walk a chain from a typed
-    root (this / scope var / Class::s_field), tracking the type of each sub-expression via
-    the member environment, and upgrade a '.' to '->' wherever the receiver-so-far is a
-    pointer -- to ANY depth (e.g. this->mc->options->keyBindInventory.keyCode). Safe by
-    construction: only ever turns '.' into '->' when the receiver is PROVEN a pointer; it
-    never does the reverse and leaves unknown receivers untouched. Recurses into call args."""
+    root (this / scope var / static field), tracking each sub-expression's JType via the
+    member environment (following field/method links AND [index] into array elements), and
+    upgrade a '.' to '->' wherever the receiver-so-far is a pointer -- to ANY depth (e.g.
+    this->mc->options->keyBindInventory->keyCode, or var5->mainInventory[i]->writeToNBT()).
+    Safe: only ever turns '.' into '->' when the receiver is PROVEN a pointer, never the
+    reverse, and stops when a link's type is unknown. Recurses into call args."""
     out = []
     i, n = 0, len(s)
     while i < n:
@@ -357,13 +389,14 @@ def _resolve_chains(s, scope, resolver, current):
         if not m:
             out.append(s[i]); i += 1; continue
         tok = m.group(0)
-        rt = _chain_root_type(tok, scope, resolver, current)
+        rt = _chain_root(tok, scope, resolver, current)
         out.append(tok)
         i = m.end()
         if rt is None:
             continue
-        cls_name, is_ptr = rt
-        while True:                                   # walk the chain links
+        cur_jt, is_ptr = rt
+        i, cur_jt, is_ptr = _consume_index(s, i, out, cur_jt, is_ptr, resolver)
+        while cur_jt is not None:                      # walk the chain links
             lm = _CHAIN_LINK.match(s, i)
             if not lm:
                 break
@@ -384,11 +417,12 @@ def _resolve_chains(s, scope, resolver, current):
             if is_call:
                 out.append('(' + args + ')')
             i = seg_end
-            jt = (resolver.member_method_type(cls_name, name) if is_call
-                  else resolver.member_field_type(cls_name, name))
-            if jt is None:
+            cur_jt = (resolver.member_method_type(cur_jt.name, name) if is_call
+                      else resolver.member_field_type(cur_jt.name, name))
+            if cur_jt is None:
                 break                                 # type unknown -> stop tracking this chain
-            cls_name, is_ptr = jt.name, resolver.is_pointer(jt)
+            is_ptr = resolver.is_pointer(cur_jt)
+            i, cur_jt, is_ptr = _consume_index(s, i, out, cur_jt, is_ptr, resolver)
     return ''.join(out)
 
 
