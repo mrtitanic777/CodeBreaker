@@ -359,6 +359,7 @@ def _pointer_locals(method, scope, resolver):
 
 _CHAIN_ROOT = re.compile(r'[A-Za-z_]\w*::s_\w+|[A-Za-z_]\w*')
 _CHAIN_LINK = re.compile(r'\s*(->|\.)\s*([A-Za-z_]\w*)')
+_NEW_ROOT = re.compile(r'new\s+([A-Za-z_]\w*)\s*\(')   # `new Type(` scalar ctor (not `new T[`)
 
 
 def _balanced_bracket(s, open_idx):
@@ -413,23 +414,11 @@ def _resolve_chains(s, scope, resolver, current):
     this->mc->options->keyBindInventory->keyCode, or var5->mainInventory[i]->writeToNBT()).
     Safe: only ever turns '.' into '->' when the receiver is PROVEN a pointer, never the
     reverse, and stops when a link's type is unknown. Recurses into call args."""
-    out = []
-    i, n = 0, len(s)
-    while i < n:
-        prev = out[-1][-1] if (out and out[-1]) else ''
-        at_boundary = (prev == '') or (not prev.isalnum() and prev not in '_>.:')
-        m = _CHAIN_ROOT.match(s, i) if at_boundary else None
-        if not m:
-            out.append(s[i]); i += 1; continue
-        tok = m.group(0)
-        rt = _chain_root(tok, scope, resolver, current)
-        out.append(tok)
-        i = m.end()
-        if rt is None:
-            continue
-        cur_jt, is_ptr = rt
-        i, cur_jt, is_ptr = _consume_index(s, i, out, cur_jt, is_ptr, resolver)
-        while cur_jt is not None:                      # walk the chain links
+    out, n = [], len(s)
+
+    def walk_links(i, cur_jt, is_ptr):
+        """Consume `.`/`->` field/method links from i, tracking type; returns the new i."""
+        while cur_jt is not None:
             lm = _CHAIN_LINK.match(s, i)
             if not lm:
                 break
@@ -438,8 +427,7 @@ def _resolve_chains(s, scope, resolver, current):
             while k < n and s[k] == ' ':
                 k += 1
             is_call = k < n and s[k] == '('
-            args = None
-            seg_end = after
+            args, seg_end = None, after
             if is_call:
                 close = _balanced_paren(s, k)
                 if close < 0:
@@ -449,8 +437,7 @@ def _resolve_chains(s, scope, resolver, current):
                 crepl = _container_call(_category(cur_jt), name, args)
                 if crepl is not None:                 # STL container method on a chained receiver
                     out.append(crepl)
-                    i = seg_end
-                    break                             # result type (raw element) not tracked
+                    return seg_end                    # result type (raw element) not tracked
                 name = resolver.renamed_method(cur_jt.name, name)   # field/method collision -> name_
             out.append(('->' if is_ptr else sep) + name)   # upgrade only when proven pointer
             if is_call:
@@ -459,9 +446,43 @@ def _resolve_chains(s, scope, resolver, current):
             cur_jt = (resolver.member_method_type(cur_jt.name, name) if is_call
                       else resolver.member_field_type(cur_jt.name, name))
             if cur_jt is None:
-                break                                 # type unknown -> stop tracking this chain
+                break
             is_ptr = resolver.is_pointer(cur_jt)
             i, cur_jt, is_ptr = _consume_index(s, i, out, cur_jt, is_ptr, resolver)
+        return i
+
+    i = 0
+    while i < n:
+        prev = out[-1][-1] if (out and out[-1]) else ''
+        at_boundary = (prev == '') or (not prev.isalnum() and prev not in '_>.:')
+        # a `new Type(args)` root (reference type) -> wrap `(new Type(args))` and walk as a
+        # pointer (fluent builders: new BlockX(...).setHardness(a).setResistance(b)...)
+        nw = _NEW_ROOT.match(s, i) if at_boundary else None
+        if nw and nw.group(1) not in typemap.CONTAINERS and not resolver.is_value(ir.JType(nw.group(1))):
+            close = _balanced_paren(s, nw.end() - 1)
+            j = close + 1
+            while close >= 0 and j < n and s[j] == ' ':
+                j += 1
+            # only engage when a chain link actually follows (fluent builder); leave a standalone
+            # or already-parenthesized `new X()` to _resolve_call_chains / verbatim
+            if close >= 0 and j < n and (s[j] == '.' or s[j:j + 2] == '->'):
+                args = _resolve_chains(s[nw.end():close], scope, resolver, current)
+                out.append('(new %s(%s))' % (nw.group(1), args))
+                cur_jt, is_ptr = ir.JType(nw.group(1)), True
+                k, cur_jt, is_ptr = _consume_index(s, close + 1, out, cur_jt, is_ptr, resolver)
+                i = walk_links(k, cur_jt, is_ptr)
+                continue
+        m = _CHAIN_ROOT.match(s, i) if at_boundary else None
+        if not m:
+            out.append(s[i]); i += 1; continue
+        out.append(m.group(0))
+        rt = _chain_root(m.group(0), scope, resolver, current)
+        i = m.end()
+        if rt is None:
+            continue
+        cur_jt, is_ptr = rt
+        i, cur_jt, is_ptr = _consume_index(s, i, out, cur_jt, is_ptr, resolver)
+        i = walk_links(i, cur_jt, is_ptr)
     return ''.join(out)
 
 

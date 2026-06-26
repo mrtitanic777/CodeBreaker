@@ -530,6 +530,20 @@ class TestCallResultChains(unittest.TestCase):
         out = statements.translate_body(m, c, self._resolver())
         self.assertIn('CraftingManager::getInstance()->findRecipe();', out[0])
 
+    def test_fluent_new_builder_chain(self):
+        # new BlockX(...).setHardness(a).setResistance(b) -- builder returns Block*, deref to depth
+        members = {'BlockX': {'fields': {}, 'methods': {'setHardness': ir.JType('Block')}},
+                   'Block': {'fields': {}, 'methods': {'setHardness': ir.JType('Block'),
+                                                       'setResistance': ir.JType('Block')}}}
+        r = types.TypeResolver(known_classes={'BlockX', 'Block', 'C'}, members=members)
+        c = ir.JClass('C')
+        m = ir.Method('f', ir.JType('void'), line=1)
+        m.body = [(1, 'void f() {'),
+                  (2, '\tBlock var1 = new BlockX(1, 2).setHardness(1.5F).setResistance(10.0F);'), (3, '}')]
+        c.methods.append(m)
+        out = statements.translate_body(m, c, r)
+        self.assertIn('Block* var1 = (new BlockX(1, 2))->setHardness(1.5F)->setResistance(10.0F);', out)
+
     def test_new_result_chain_wrapped(self):
         c = ir.JClass('C')
         m = ir.Method('f', ir.JType('void'), line=1)
