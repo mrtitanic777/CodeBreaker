@@ -80,6 +80,36 @@ def _init_list(cls, resolver):
     return items
 
 
+def _inline_delegation(args_str, deleg, cls, resolver, ledger):
+    """Replace `this(args);` with the target constructor's body (C++03 has no ctor
+    delegation), substituting the target's params with the call args. This makes the
+    delegated ctor's registration actually run -- the Block blockID=0 / container-flag fix."""
+    args = [a.strip() for a in args_str.split(',') if a.strip()]
+    target = next((c for c in cls.constructors()
+                   if c is not deleg and len(c.params) == len(args)), None)
+    if target is None:
+        if ledger is not None:
+            ledger.add(cls.name + '.cpp', Category.STUBBED,
+                       'constructor delegation this(%s): no target ctor with %d args found -- inline manually'
+                       % (args_str, len(args)), line=getattr(deleg, 'line', 0),
+                       severity=Severity.HIGH, source='emit', rule='ctor-delegation')
+        return ['// PORT: delegation this(%s) -- target ctor not found; inline manually' % args_str,
+                'this(%s);' % args_str]
+    sub = dict((p.name, args[i]) for i, p in enumerate(target.params))
+    rx = re.compile(r'\b(' + '|'.join(re.escape(k) for k in sub) + r')\b') if sub else None
+    out = ['// inlined this(%s) -- C++03 has no constructor delegation' % args_str]
+    for line in translate_body(target, cls, resolver):
+        if _THIS_CALL.match(line):                 # chained delegation in target (rare) -- skip
+            continue
+        out.append(rx.sub(lambda mm: sub[mm.group(1)], line) if rx else line)
+    if ledger is not None:
+        ledger.add(cls.name + '.cpp', Category.RULE,
+                   'ctor delegation this(%s) inlined from the %d-arg constructor (registration preserved)'
+                   % (args_str, len(args)), line=getattr(deleg, 'line', 0),
+                   severity=Severity.LOW, source='emit', rule='ctor-delegation-inlined')
+    return out
+
+
 def _render_ctor(cls, m, resolver, ledger):
     params = ', '.join('%s %s' % (resolver.param_type(p.jtype), p.name) for p in m.params)
     L = ['%s::%s(%s)' % (cls.name, cls.name, params)]
@@ -87,17 +117,12 @@ def _render_ctor(cls, m, resolver, ledger):
     if items:
         L.append('\t: ' + '\n\t, '.join(items))
     L.append('{')
-    body_text = '\n'.join(t for _l, t in m.body)
-    deleg = _THIS_CALL.search(body_text)
-    if deleg:
-        args = deleg.group(1).strip()
-        if ledger is not None:
-            ledger.add(cls.name + '.cpp', Category.STUBBED,
-                       'constructor delegation this(%s) must inline the target ctor body '
-                       '(C++03 has no ctor delegation) -- cf. Block blockID=0 bug' % args,
-                       line=m.line, severity=Severity.HIGH, source='emit', rule='ctor-delegation')
-        L.append('\t// PORT: delegation this(%s) -- inline target constructor here (Module 4c)' % args)
-    L.extend('\t' + s for s in translate_body(m, cls, resolver, ledger))
+    for line in translate_body(m, cls, resolver, ledger):
+        dm = _THIS_CALL.match(line)
+        if dm:
+            L.extend('\t' + il for il in _inline_delegation(dm.group(1), m, cls, resolver, ledger))
+        else:
+            L.append('\t' + line)
     L.append('}')
     return L
 

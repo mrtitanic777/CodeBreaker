@@ -76,10 +76,14 @@ class TestSourceSafety(unittest.TestCase):
         self.assertIn('stepSound = NULL;', self.cpp)
         self.assertTrue(any(e.rule == 'rule-of-three-dtor' for e in self.led.events))
 
-    def test_delegation_flagged_not_dropped(self):
-        self.assertIn('// PORT: delegation this(var1, var3)', self.cpp)
-        evs = [e for e in self.led.events if e.rule == 'ctor-delegation']
-        self.assertTrue(evs and evs[0].category == Category.STUBBED)
+    def test_delegation_inlined(self):
+        # the raw this(...) call is gone; the target ctor's registration is inlined
+        self.assertNotIn('this(var1, var3);', self.cpp)
+        self.assertIn('// inlined this(var1, var3)', self.cpp)
+        # the 2-arg ctor's body (stepSound alloc + blockID set) now runs in the 3-arg ctor too
+        self.assertEqual(self.cpp.count('this->stepSound = new StepSound();'), 2)
+        evs = [e for e in self.led.events if e.rule == 'ctor-delegation-inlined']
+        self.assertTrue(evs and evs[0].category == Category.RULE)
 
     def test_method_signature(self):
         self.assertIn('int Block::getBlockID()', self.cpp)
