@@ -4,14 +4,16 @@
 apply_mappings.py -- write filled-in names from the worklist back into mappings.tiny.
 
 Reads the worklist CSV (the `new_name` column you filled), and for every row with
-a name, rewrites that symbol's `named` column in conf/mappings.tiny. After this,
-re-run RetroMCP's decompile and the new names propagate to every reference in the
-source (and downstream into the C++ port).
+a name, rewrites that symbol's `named` column in conf/mappings.tiny AND the matching
+entries in conf/exceptions.exc (so re-added `throws` clauses stay linked). After
+this, re-run RetroMCP's decompile and the new names propagate to every reference in
+the source (and downstream into the C++ port).
 
 Safety:
-  * always writes a timestamped backup (mappings.tiny.bak-N) first
+  * always writes a timestamped backup (mappings.tiny.bak-N, exceptions.exc.bak-N) first
   * validates each new_name is a legal Java identifier
   * refuses a name that would collide with an existing name in the same class
+  * only renames in exceptions.exc the symbols that actually landed in mappings.tiny
   * --dry-run prints the before/after lines and writes nothing
 
 Usage:
@@ -96,19 +98,21 @@ def main():
             names_by_class.setdefault(cur, set()).add((p[3], p[2]))
         line_class.append(cur)
 
-    applied, collisions, out = 0, [], []
+    applied, collisions, out, applied_map = 0, [], [], {}
     for idx, ln in enumerate(lines):
         p = ln.split('\t')
         if len(p) >= 4 and p[0] == '' and p[1] in ('m', 'f') and p[3] in renames:
-            new = renames[p[3]]
+            orig = p[3]
+            new = renames[orig]
             cls = line_class[idx]
             if (new, p[2]) in names_by_class.get(cls, set()):
-                collisions.append((cls, p[3], new)); out.append(ln); continue
+                collisions.append((cls, orig, new)); out.append(ln); continue
             names_by_class.setdefault(cls, set()).add((new, p[2]))
             if DRY and applied < 30:
                 print('  [%s] %s\n     -> %s' % (cls, ln.strip(), new))
             p[3] = new
             out.append('\t'.join(p))
+            applied_map[orig] = new          # only the renames that actually landed
             applied += 1
         else:
             out.append(ln)
@@ -120,6 +124,7 @@ def main():
 
     print('\n%s %d symbol(s).' % ('Would rename' if DRY else 'Renamed', applied))
     if DRY:
+        update_exceptions(applied_map, True)
         print('(dry run -- nothing written)'); return 0
 
     n = 0
@@ -131,8 +136,43 @@ def main():
         f.write('\n'.join(out))
     print('Backup: %s' % bak)
     print('Wrote:  %s' % TINY)
+    update_exceptions(applied_map, False)
     print('\nNext: re-run RetroMCP decompile so the new names propagate to the source.')
     return 0
+
+
+def update_exceptions(applied_map, dry):
+    """Keep conf/exceptions.exc consistent with the mapping renames.
+
+    exceptions.exc keys each entry by the NAMED method (class/.../method desc exc).
+    If a renamed method's old placeholder name stays here, RDI.fixExceptions() can't
+    re-add its `throws` on the next decompile -> unreachable catch -> compile error
+    (e.g. TexturePackList). So we rewrite the method name in each affected line."""
+    exc = os.path.join(os.path.dirname(TINY), 'exceptions.exc')
+    if not applied_map or not os.path.isfile(exc):
+        return 0
+    out, changed = [], 0
+    for ln in open(exc, encoding='utf-8').read().split('\n'):
+        if not ln.strip():
+            out.append(ln); continue
+        head = ln.split(' ', 1)                       # head[0] = class/.../method
+        path = head[0].split('/')
+        if path[-1] in applied_map:                   # method name is a renamed placeholder
+            path[-1] = applied_map[path[-1]]
+            head[0] = '/'.join(path)
+            out.append(' '.join(head)); changed += 1
+        else:
+            out.append(ln)
+    if changed and not dry:
+        b = 0
+        while os.path.exists('%s.bak-%d' % (exc, b)):
+            b += 1
+        os.rename(exc, '%s.bak-%d' % (exc, b))
+        with open(exc, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(out))
+    print('%s conf/exceptions.exc: %d entr%s' %
+          ('Would update' if dry else 'Updated', changed, 'y' if changed == 1 else 'ies'))
+    return changed
 
 
 if __name__ == '__main__':
