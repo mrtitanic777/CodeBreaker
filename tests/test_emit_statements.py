@@ -96,5 +96,39 @@ class TestStaticAndApi(unittest.TestCase):
         self.assertIn('float g = max(f, 1.0F);', self.out)
 
 
+class TestCollectionsAndString(unittest.TestCase):
+    def setUp(self):
+        c = ir.JClass('Inv')
+        c.fields.append(ir.Field('items', ir.JType('List')))
+        c.fields.append(ir.Field('name', ir.JType('String')))
+        m = ir.Method('run', ir.JType('void'), params=[ir.Param('var1', ir.JType('int'))], line=1)
+        m.body = [
+            (1, 'void run(int var1) {'),
+            (2, '\tthis.items.add(var1);'),
+            (3, '\tObject var2 = this.items.get(0);'),
+            (4, '\tboolean b = this.items.isEmpty();'),
+            (5, '\tchar c = this.name.charAt(2);'),
+            (6, '\tint n = this.items.size();'),
+            (7, '}'),
+        ]
+        c.methods.append(m)
+        self.out = statements.translate_body(m, c, types.TypeResolver())
+
+    def test_add_to_push_back(self):
+        self.assertIn('this->items.push_back(var1);', self.out)
+
+    def test_get_to_index(self):
+        self.assertIn('void* var2 = this->items[0];', self.out)
+
+    def test_isempty_to_empty(self):
+        self.assertIn('bool b = this->items.empty();', self.out)
+
+    def test_charat_to_index(self):
+        self.assertIn('char c = this->name[2];', self.out)
+
+    def test_size_unchanged(self):
+        self.assertIn('int n = this->items.size();', self.out)
+
+
 if __name__ == '__main__':
     unittest.main()

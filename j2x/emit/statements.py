@@ -38,6 +38,64 @@ _DECL = re.compile(
 _MATH = re.compile(r'\bMath\.([A-Za-z_]\w*)')
 # receiver.member  with optional opening paren (method call)
 _MEMBER = re.compile(r'\b([A-Za-z_]\w*)\.([A-Za-z_]\w*)(\s*\()?')
+_CALL = re.compile(r'\b(\w+)\.(\w+)\s*\(')
+
+# (receiver-category, java method) -> C++ method, args preserved
+_METHOD_RENAME = {
+    ('container', 'add'): 'push_back',
+    ('container', 'isEmpty'): 'empty',
+    ('string', 'isEmpty'): 'empty',
+}
+# (category) -> java accessor that becomes recv[arg]
+_INDEX_METHOD = {'container': 'get', 'string': 'charAt'}
+
+
+def _balanced_paren(s, open_idx):
+    depth = 0
+    for i in range(open_idx, len(s)):
+        if s[i] == '(':
+            depth += 1
+        elif s[i] == ')':
+            depth -= 1
+            if depth == 0:
+                return i
+    return -1
+
+
+def _category(jtype):
+    if jtype is None:
+        return None
+    if jtype.name in typemap.CONTAINERS:
+        return 'container'
+    if jtype.name == 'String':
+        return 'string'
+    return None
+
+
+def _translate_calls(s, scope):
+    """Map container/String methods to STL, using each receiver's resolved type."""
+    # method renames (args preserved): recv.add(...) -> recv.push_back(...), isEmpty -> empty
+    def repl(m):
+        recv, meth = m.group(1), m.group(2)
+        new = _METHOD_RENAME.get((_category(scope.get(recv)), meth))
+        return '%s.%s(' % (recv, new) if new else m.group(0)
+    s = _CALL.sub(repl, s)
+    # index accessors: vector.get(i) / String.charAt(i) -> recv[i]
+    for recv, jt in scope.items():
+        meth = _INDEX_METHOD.get(_category(jt))
+        if not meth:
+            continue
+        token = '%s.%s(' % (recv, meth)
+        while True:
+            idx = s.find(token)
+            if idx < 0:
+                break
+            op = idx + len(token) - 1                 # position of '('
+            close = _balanced_paren(s, op)
+            if close < 0:
+                break
+            s = s[:idx] + '%s[%s]' % (recv, s[op + 1:close]) + s[close + 1:]
+    return s
 
 
 def inner_lines(body):
@@ -72,7 +130,7 @@ def build_scope(cls, method):
     return scope
 
 
-def _translate_line(s, ptr_names, static_set, enum_set, resolver):
+def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope):
     # 1. local declaration: rewrite the leading Java type to its C++ spelling
     m = _DECL.match(s)
     if m and _decl_base(m.group(1)) not in _KEYWORDS and m.group(2) not in _KEYWORDS:
@@ -96,6 +154,8 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver):
             return '%s::%s' % (recv, mem)
         return '%s::%s' % (recv, naming.static_field_name(mem))   # static field
     s = _MEMBER.sub(_static, s)
+    # 6. container/String methods -> STL (.add->.push_back, .get(i)->[i], .charAt(i)->[i], isEmpty->empty)
+    s = _translate_calls(s, scope)
     return s
 
 
@@ -113,5 +173,5 @@ def translate_body(method, cls, resolver, ledger=None):
             if s:
                 out.append(s)
             continue
-        out.append(_translate_line(s, ptr_names, static_set, enum_set, resolver))
+        out.append(_translate_line(s, ptr_names, static_set, enum_set, resolver, scope))
     return out
