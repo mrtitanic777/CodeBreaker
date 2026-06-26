@@ -59,7 +59,7 @@ class TestCppSpelling(unittest.TestCase):
     def test_string_contexts(self):
         self.assertEqual(self.r.field_type(T('String')), 'std::string')
         self.assertEqual(self.r.param_type(T('String')), 'const std::string&')
-        self.assertEqual(self.r.return_type(T('String')), 'const std::string&')
+        self.assertEqual(self.r.return_type(T('String')), 'std::string')   # by value (no dangling)
 
     def test_primitive_arrays(self):
         self.assertEqual(self.r.field_type(T('int', 1)), 'int*')

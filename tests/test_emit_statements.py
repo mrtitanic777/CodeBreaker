@@ -174,6 +174,28 @@ class TestMapSetString(unittest.TestCase):
         self.assertIn('std::string var4 = var1.substr(2, (5) - (2));', self.out)
 
 
+class TestStringConcat(unittest.TestCase):
+    def test_concat_return_to_ostringstream(self):
+        c = ir.JClass('R')
+        c.fields.append(ir.Field('x', ir.JType('float')))
+        c.fields.append(ir.Field('y', ir.JType('float')))
+        m = ir.Method('toString', ir.JType('String'), line=1)
+        m.body = [(1, 'String toString() {'),
+                  (2, '\treturn "(" + this.x + ", " + this.y + ")";'), (3, '}')]
+        c.methods.append(m)
+        out = statements.translate_body(m, c, types.TypeResolver())
+        self.assertTrue(any('std::ostringstream _oss' in l and '_oss << "(" << this->x'
+                            in l and 'return _oss.str();' in l for l in out), out)
+
+    def test_no_concat_leaves_plain_return(self):
+        c = ir.JClass('R')
+        m = ir.Method('f', ir.JType('int'), line=1)
+        m.body = [(1, 'int f() {'), (2, '\treturn a + b;'), (3, '}')]   # numeric add, no string
+        c.methods.append(m)
+        out = statements.translate_body(m, c, types.TypeResolver())
+        self.assertIn('return a + b;', out)
+
+
 class TestCasts(unittest.TestCase):
     def setUp(self):
         c = ir.JClass('R')

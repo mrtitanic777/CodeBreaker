@@ -67,6 +67,58 @@ _METHOD_RENAME = {
 _INDEX_METHOD = {'list': 'get', 'map': 'get', 'string': 'charAt'}
 
 
+def _split_top_plus(expr):
+    """Split on top-level binary '+' (respecting (), [], {}, string/char literals;
+    not splitting on ++ or +=)."""
+    parts, depth, buf, i, n = [], 0, [], 0, len(expr)
+    in_str = in_chr = False
+    while i < n:
+        c = expr[i]
+        if in_str:
+            buf.append(c)
+            if c == '\\' and i + 1 < n:
+                buf.append(expr[i + 1]); i += 2; continue
+            if c == '"':
+                in_str = False
+            i += 1; continue
+        if in_chr:
+            buf.append(c)
+            if c == '\\' and i + 1 < n:
+                buf.append(expr[i + 1]); i += 2; continue
+            if c == "'":
+                in_chr = False
+            i += 1; continue
+        if c == '"':
+            in_str = True; buf.append(c); i += 1; continue
+        if c == "'":
+            in_chr = True; buf.append(c); i += 1; continue
+        if c in '([{':
+            depth += 1; buf.append(c); i += 1; continue
+        if c in ')]}':
+            depth -= 1; buf.append(c); i += 1; continue
+        if c == '+' and depth == 0:
+            nxt = expr[i + 1] if i + 1 < n else ''
+            prv = expr[i - 1] if i else ''
+            if nxt in '+=' or prv == '+':            # ++ or += -- not a concat
+                buf.append(c); i += 1; continue
+            parts.append(''.join(buf)); buf = []; i += 1; continue
+        buf.append(c); i += 1
+    if ''.join(buf).strip():
+        parts.append(''.join(buf))
+    return [p.strip() for p in parts]
+
+
+def _maybe_concat(expr):
+    """If expr is a Java string concatenation (top-level '+' with a string literal
+    operand), return the ostringstream `<<` chain; else None."""
+    if '"' not in expr or '+' not in expr:
+        return None
+    parts = _split_top_plus(expr)
+    if len(parts) < 2 or not any(p.startswith('"') for p in parts):
+        return None
+    return ' << '.join(parts)
+
+
 def _balanced_paren(s, open_idx):
     depth = 0
     for i in range(open_idx, len(s)):
@@ -281,6 +333,13 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent)
         s = re.sub(r'\bsuper\.(\w+)', parent + r'::\1', s)
     # 11. x instanceof Type -> dynamic_cast<Type*>(x) != NULL  (RTTI / -GR is on)
     s = _INSTANCEOF.sub(lambda m: '(dynamic_cast<%s*>(%s) != NULL)' % (m.group(2), m.group(1)), s)
+    # 12. Java string concatenation in a return -> ostringstream (C++ can't '+' a literal
+    #     with non-strings; ostringstream::operator<< handles every operand type)
+    rm = re.match(r'^return\s+(.+);\s*$', s)
+    if rm:
+        chain = _maybe_concat(rm.group(1).strip())
+        if chain:
+            s = '{ std::ostringstream _oss; _oss << %s; return _oss.str(); }' % chain
     return s
 
 

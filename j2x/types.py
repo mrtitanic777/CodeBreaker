@@ -89,8 +89,9 @@ class TypeResolver(object):
             return '%s<%s>' % (outer, ', '.join(args))
 
         name = jtype.name
-        # String is passed/returned as const ref (cheap, immutable-ish).
-        if name == 'String' and context in ('param', 'return'):
+        # String is passed as const ref (cheap), but RETURNED by value: methods often
+        # build a new string (concat), and returning that as const& would dangle.
+        if name == 'String' and context == 'param':
             return 'const std::string&'
 
         cpp = self.base_cpp(name)
