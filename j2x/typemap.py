@@ -59,7 +59,11 @@ KNOWN_NULLABLE = {'blocksList', 'itemsList'}
 # #includes when referenced -- not part of the decompiled corpus. Includes the external
 # Java base types our classes extend/implement (Runnable/Thread/Comparator/...).
 RUNTIME_HEADERS = {'Random', 'Runnable', 'Thread', 'Comparator', 'File',
-                   'FilenameFilter', 'Canvas', 'Applet'}
+                   'FilenameFilter', 'Canvas', 'Applet', 'GL11'}
+
+# Runtime types whose `Type.MEMBER` (no parens) is a CONSTANT, not an instance/static field
+# -- accessed as Type::MEMBER with no s_ prefix (like an enum constant). e.g. GL11.GL_TEXTURE_2D.
+RUNTIME_ENUM_LIKE = {'GL11'}
 
 # java.lang.Math.<fn> -> C math function. Float-suffixed to match the existing
 # Xbox 360 project (float math); pulled in via <math.h>. min/max stay bare
