@@ -14,7 +14,7 @@ an ANNOTATED event so the report shows it.
 
 from .. import typemap
 from ..ledger import Category, Severity
-from . import naming
+from . import naming, ownership
 
 _BANNER = '// Auto-generated from %s.java\n// Target: Xbox 360 / C++03 / DirectX 9'
 
@@ -131,6 +131,21 @@ def render_header(cls, resolver, ledger=None):
         L.append('')
     for m in methods:
         L.append('\t' + _method_decl(cls, m, resolver))
+
+    # Rule of Three: a class that owns heap (freed in its destructor) must forbid
+    # copying, else a by-value copy double-frees the pointer -> heap corruption.
+    owned = ownership.owned_pointers(cls, resolver)
+    if owned:
+        L.append('')
+        L.append('private:')
+        L.append('\t// owns heap (freed in ~%s); copying disabled so a copy cannot double-free' % cls.name)
+        L.append('\t%s(const %s&);' % (cls.name, cls.name))
+        L.append('\t%s& operator=(const %s&);' % (cls.name, cls.name))
+        if ledger is not None:
+            ledger.add(cls.name + '.h', Category.RISK,
+                       'Rule-of-Three: copy ctor + assignment disabled (owns heap: %s) to prevent '
+                       'double-free heap corruption' % ', '.join(sorted(owned)),
+                       severity=Severity.MED, source='emit', rule='rule-of-three-nocopy')
 
     L.append('};')
     L.append('')

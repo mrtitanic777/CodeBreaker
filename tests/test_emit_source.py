@@ -5,7 +5,7 @@ import os
 import unittest
 
 from j2x import ir, types, parse
-from j2x.emit import source
+from j2x.emit import source, header
 from j2x.ledger import Ledger, Category
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -86,6 +86,26 @@ class TestSourceSafety(unittest.TestCase):
 
     def test_uninit_array_events_logged(self):
         self.assertEqual(sum(1 for e in self.led.events if e.rule == 'uninit-array-fixed'), 2)
+
+
+class TestRuleOfThreeNoCopy(unittest.TestCase):
+    """Heap-corruption defense: owning classes forbid copying (no double-free)."""
+    def test_owning_class_disables_copy(self):
+        c = _block()                                   # ctor does this.stepSound = new StepSound()
+        r = types.TypeResolver(known_classes={'Block', 'StepSound', 'Material'})
+        led = Ledger()
+        h = header.render_header(c, r, ledger=led)
+        self.assertIn('private:', h)
+        self.assertIn('Block(const Block&);', h)
+        self.assertIn('Block& operator=(const Block&);', h)
+        self.assertTrue(any(e.rule == 'rule-of-three-nocopy' for e in led.events))
+
+    def test_value_type_keeps_copy(self):
+        c = parse.parse_file(os.path.join(JAVA, 'Vec3D.java'))   # owns no heap
+        r = types.TypeResolver(value_types={'Vec3D'})
+        h = header.render_header(c, r)
+        self.assertNotIn('Vec3D(const Vec3D&);', h)
+        self.assertNotIn('private:', h)
 
 
 class TestSourceRealFiles(unittest.TestCase):

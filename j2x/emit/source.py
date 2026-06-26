@@ -17,12 +17,11 @@ Method-body statement translation is delegated to emit/statements.py (Module 4c)
 import re
 
 from ..ledger import Category, Severity
-from . import naming
+from . import naming, ownership
 from .statements import translate_body
 
 _BANNER = '// Auto-generated from %s.java\n// Target: Xbox 360 / C++03 / DirectX 9'
 _NEW_ARRAY = re.compile(r'^new\s+[\w.]+\s*\[\s*(\w+)\s*\]\s*$')
-_CTOR_NEW = re.compile(r'(?:this\.)?(\w+)\s*=\s*new\s+\w[\w.]*\s*(\[)?')
 _THIS_CALL = re.compile(r'\bthis\s*\(([^;]*)\)\s*;')
 _PRIMITIVE_CPP = {'int', 'short', 'long long', 'char', 'unsigned char',
                   'float', 'double', 'bool', 'long'}
@@ -106,19 +105,6 @@ def _render_ctor(cls, m, resolver, ledger):
 # ---------------------------------------------------------------------------
 # destructor (Rule of Three: free heap allocated in constructors)
 # ---------------------------------------------------------------------------
-def _owned_pointers(cls):
-    """instance fields assigned via `new` in a ctor body -> {name: is_array}."""
-    owned = {}
-    for m in cls.constructors():
-        text = '\n'.join(t for _l, t in m.body)
-        for fm in _CTOR_NEW.finditer(text):
-            name, is_arr = fm.group(1), bool(fm.group(2))
-            fld = cls.field(name)
-            if fld and not fld.is_static:
-                owned[name] = is_arr or owned.get(name, False)
-    return owned
-
-
 def _render_dtor(cls, owned, ledger):
     L = ['%s::~%s()' % (cls.name, cls.name), '{']
     for name in sorted(owned):
@@ -160,7 +146,7 @@ def render_source(cls, resolver, ledger=None):
     for m in cls.constructors():
         L += _render_ctor(cls, m, resolver, ledger) + ['']
 
-    L += _render_dtor(cls, _owned_pointers(cls), ledger) + ['']
+    L += _render_dtor(cls, ownership.owned_pointers(cls, resolver), ledger) + ['']
 
     for m in cls.methods:
         if m.is_ctor or m.is_abstract:
