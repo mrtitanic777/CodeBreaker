@@ -360,6 +360,7 @@ def _pointer_locals(method, scope, resolver):
 _CHAIN_ROOT = re.compile(r'[A-Za-z_]\w*::s_\w+|[A-Za-z_]\w*')
 _CHAIN_LINK = re.compile(r'\s*(->|\.)\s*([A-Za-z_]\w*)')
 _NEW_ROOT = re.compile(r'new\s+([A-Za-z_]\w*)\s*\(')   # `new Type(` scalar ctor (not `new T[`)
+_PAREN_NEW_ROOT = re.compile(r'\(\s*new\s+([A-Za-z_]\w*)\s*\(')   # `(new Type(` already-parenthesized
 
 
 def _balanced_bracket(s, open_idx):
@@ -457,6 +458,20 @@ def _resolve_chains(s, scope, resolver, current):
         at_boundary = (prev == '') or (not prev.isalnum() and prev not in '_>.:')
         # a `new Type(args)` root (reference type) -> wrap `(new Type(args))` and walk as a
         # pointer (fluent builders: new BlockX(...).setHardness(a).setResistance(b)...)
+        # `(new Type(args))` already-parenthesized root -> walk the fluent chain as a pointer
+        pn = _PAREN_NEW_ROOT.match(s, i) if at_boundary else None
+        if pn and pn.group(1) not in typemap.CONTAINERS and not resolver.is_value(ir.JType(pn.group(1))):
+            inner = _balanced_paren(s, pn.end() - 1)
+            j = inner + 1
+            while inner >= 0 and j < n and s[j] == ' ':
+                j += 1
+            if inner >= 0 and j < n and s[j] == ')':           # the wrapping ')'
+                args = _resolve_chains(s[pn.end():inner], scope, resolver, current)
+                out.append('(new %s(%s))' % (pn.group(1), args))
+                cur_jt, is_ptr = ir.JType(pn.group(1)), True
+                k, cur_jt, is_ptr = _consume_index(s, j + 1, out, cur_jt, is_ptr, resolver)
+                i = walk_links(k, cur_jt, is_ptr)
+                continue
         nw = _NEW_ROOT.match(s, i) if at_boundary else None
         if nw and nw.group(1) not in typemap.CONTAINERS and not resolver.is_value(ir.JType(nw.group(1))):
             close = _balanced_paren(s, nw.end() - 1)

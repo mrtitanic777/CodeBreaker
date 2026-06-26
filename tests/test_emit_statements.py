@@ -543,6 +543,13 @@ class TestCallResultChains(unittest.TestCase):
         c.methods.append(m)
         out = statements.translate_body(m, c, r)
         self.assertIn('Block* var1 = (new BlockX(1, 2))->setHardness(1.5F)->setResistance(10.0F);', out)
+        # already-parenthesized form (as the decompiler emits it) chains too
+        m2 = ir.Method('g', ir.JType('void'), line=1)
+        m2.body = [(1, 'void g() {'),
+                   (2, '\tBlock var2 = (new BlockX(1, 2)).setHardness(1.5F).setResistance(10.0F);'), (3, '}')]
+        c2 = ir.JClass('C'); c2.methods.append(m2)
+        out2 = statements.translate_body(m2, c2, r)
+        self.assertIn('Block* var2 = (new BlockX(1, 2))->setHardness(1.5F)->setResistance(10.0F);', out2)
 
     def test_new_result_chain_wrapped(self):
         c = ir.JClass('C')
