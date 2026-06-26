@@ -291,7 +291,40 @@ def build_scope(cls, method):
     return scope
 
 
-def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent):
+def _resolve_chains(s, scope, resolver, current):
+    """Expression-type inference for chained member access -- fix a '.' that should be
+    '->' because the receiver sub-expression is a pointer. Two link forms, looked up in
+    the resolver's member environment (so it's type-driven, not guessed):
+
+        Class::s_field.member  -> Class::s_field->member   (static reference field)
+        recv->field.member     -> recv->field->member      (field is a reference field
+                                                            of recv's resolved type)
+
+    Conservative: converts ONLY when the receiver type is KNOWN to be a pointer; an
+    unknown receiver is left untouched. Repeated until stable for short chains."""
+    def _static_field(mm):
+        cls, fld = mm.group(1), mm.group(2)
+        jt = resolver.member_field_type(cls, fld)
+        return '%s::s_%s->' % (cls, fld) if (jt is not None and resolver.is_pointer(jt)) else mm.group(0)
+
+    def _field_of_ptr(mm):
+        recv, fld = mm.group(1), mm.group(2)
+        owner = current if recv == 'this' else (scope[recv].name if recv in scope else None)
+        if owner is None:
+            return mm.group(0)
+        jt = resolver.member_field_type(owner, fld)
+        return '%s->%s->' % (recv, fld) if (jt is not None and resolver.is_pointer(jt)) else mm.group(0)
+
+    for _ in range(4):                                # resolve a few links of a chain
+        prev = s
+        s = re.sub(r'\b([A-Z]\w*)::s_(\w+)\s*\.', _static_field, s)
+        s = re.sub(r'\b(this|[a-z]\w*)->(\w+)\s*\.', _field_of_ptr, s)
+        if s == prev:
+            break
+    return s
+
+
+def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent, current):
     # 1. local declaration: rewrite the leading Java type to its C++ spelling
     m = _DECL.match(s)
     if m and _decl_base(m.group(1)) not in _KEYWORDS and m.group(2) not in _KEYWORDS:
@@ -325,6 +358,9 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent)
     s = re.sub(r'\(\(([A-Za-z_]\w*)\)([^()]+)\)\s*\.',
                lambda mm: ('((%s*)%s)->' % (mm.group(1), mm.group(2)))
                if resolver.is_pointer(ir.JType(mm.group(1))) else mm.group(0), s)
+    # 6c. chained member access: receiver sub-expression that resolves to a pointer (static
+    #     reference field / pointer field of a typed receiver) -> '.' becomes '->'
+    s = _resolve_chains(s, scope, resolver, current)
     # 7. cast to a reference type -> pointer cast: (Block)x -> (Block*)x
     s = _CAST.sub(lambda m: '(%s*)' % m.group(1)
                   if resolver.is_pointer(ir.JType(m.group(1))) else m.group(0), s)
@@ -386,7 +422,7 @@ def translate_body(method, cls, resolver, ledger=None):
             if s:
                 out.append(s)
             continue
-        line = _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, cls.parent)
+        line = _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, cls.parent, cls.name)
         line, guarded = _guard_null_deref(line, scope, resolver)
         if guarded and ledger is not None:
             ledger.add(cls.name + '.cpp', Category.RISK,

@@ -258,6 +258,59 @@ class TestExpressionDeref(unittest.TestCase):
         self.assertIn('float w = ((Vec3D)var1).xCoord;', self.out)
 
 
+class TestChainInference(unittest.TestCase):
+    """Member environment drives chained '.' vs '->' (static reference field; pointer
+    field of a typed receiver)."""
+    def _resolver(self):
+        # Block has a static pointer field 'tilledField' and an int field 'blockID';
+        # World has a pointer field 'random' (Random). Flattened member env, as the
+        # pipeline would build it.
+        members = {
+            'Block': {'fields': {'tilledField': ir.JType('Block'), 'blockID': ir.JType('int')},
+                      'methods': {}},
+            'World': {'fields': {'random': ir.JType('Random')}, 'methods': {}},
+        }
+        return types.TypeResolver(known_classes={'Block', 'World', 'Random', 'C'},
+                                  value_types={'Vec3D'}, members=members)
+
+    def test_static_reference_field_chain(self):
+        c = ir.JClass('C')
+        m = ir.Method('f', ir.JType('void'), line=1)
+        m.body = [(1, 'void f() {'),
+                  (2, '\tint i = Block.tilledField.blockID;'), (3, '}')]
+        c.methods.append(m)
+        out = statements.translate_body(m, c, self._resolver())
+        self.assertIn('int i = Block::s_tilledField->blockID;', out)
+
+    def test_pointer_field_of_param_chain(self):
+        c = ir.JClass('C')
+        m = ir.Method('f', ir.JType('void'), params=[ir.Param('var1', ir.JType('World'))], line=1)
+        m.body = [(1, 'void f(World var1) {'),
+                  (2, '\tfloat g = var1.random.nextFloat();'), (3, '}')]
+        c.methods.append(m)
+        out = statements.translate_body(m, c, self._resolver())
+        self.assertIn('float g = var1->random->nextFloat();', out)
+
+    def test_pointer_field_chain_with_string_return(self):
+        c = ir.JClass('C')
+        m = ir.Method('f', ir.JType('void'), params=[ir.Param('var1', ir.JType('World'))], line=1)
+        m.body = [(1, 'void f(World var1) {'),
+                  (2, '\tString s = var1.random.toString();'),   # random is ptr -> ->
+                  (3, '}')]
+        c.methods.append(m)
+        out = statements.translate_body(m, c, self._resolver())
+        self.assertIn('std::string s = var1->random->toString();', out)
+
+    def test_unknown_receiver_left_alone(self):
+        c = ir.JClass('C')
+        m = ir.Method('f', ir.JType('void'), line=1)
+        m.body = [(1, 'void f() {'),
+                  (2, '\tint i = Mystery.foo.bar;'), (3, '}')]   # Mystery unknown -> untouched
+        c.methods.append(m)
+        out = statements.translate_body(m, c, self._resolver())
+        self.assertTrue(any('Mystery' in l and '.bar' in l for l in out), out)
+
+
 class TestSuperAndInstanceof(unittest.TestCase):
     def test_instanceof_to_dynamic_cast(self):
         c = ir.JClass('R', parent='Base')

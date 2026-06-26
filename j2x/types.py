@@ -19,13 +19,18 @@ from . import typemap
 
 class TypeResolver(object):
     def __init__(self, known_classes=None, value_types=None,
-                 interface_types=None, enum_types=None):
+                 interface_types=None, enum_types=None, members=None):
         # user-defined classes parsed from the corpus (everything here is a reference type)
         self.known = set(known_classes or ())
         # class names that are C++ VALUE/struct types (stack, '.' access)
         self.values = set(value_types if value_types is not None else typemap.DEFAULT_VALUE_TYPES)
         self.interfaces = set(interface_types or ())
         self.enums = set(enum_types or ())
+        # member environment for expression-type inference (chained '.' vs '->'):
+        #   {class_name: {'fields': {name: JType}, 'methods': {name: return JType}}}
+        # inheritance is already flattened in (closer definitions win). Built by the
+        # pipeline from the full corpus; empty in unit tests that don't need chains.
+        self.members = members or {}
 
     # -- classification ------------------------------------------------------
     def is_primitive(self, jtype):
@@ -55,6 +60,17 @@ class TypeResolver(object):
 
     def is_value(self, jtype):
         return self.ownership(jtype) == 'value'
+
+    # -- member environment (for chained '.' vs '->' inference) ---------------
+    def member_field_type(self, class_name, field_name):
+        """JType of class_name's field (own or inherited), or None if unknown."""
+        e = self.members.get(class_name)
+        return e['fields'].get(field_name) if e else None
+
+    def member_method_type(self, class_name, method_name):
+        """Return JType of class_name's method (own or inherited), or None if unknown."""
+        e = self.members.get(class_name)
+        return e['methods'].get(method_name) if e else None
 
     def port_note(self, jtype):
         """A PORT message if this type is mapped lossily, else None (for emit's ledger)."""

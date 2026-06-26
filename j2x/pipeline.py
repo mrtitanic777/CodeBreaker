@@ -52,13 +52,36 @@ def resolve_inheritance(classes):
         cls.inherited_fields = inherited
 
 
+def build_member_env(classes):
+    """Flatten each class's fields (static + instance) and method return types over its
+    parent chain into {class: {'fields': {name: JType}, 'methods': {name: JType}}}.
+    Closer (more-derived) definitions win. Feeds expression-type inference so chained
+    `recv.field.member` / `Class::s_field.member` get '.' vs '->' right by construction."""
+    by_name = dict((c.name, c) for c in classes)
+    env = {}
+    for cls in classes:
+        fields, methods = {}, {}
+        cur, guard = cls, set()
+        while cur and cur.name not in guard:         # most-derived first; don't overwrite
+            guard.add(cur.name)
+            for f in cur.fields:
+                fields.setdefault(f.name, f.jtype)
+            for m in cur.methods:
+                if not m.is_ctor and m.return_type is not None:
+                    methods.setdefault(m.name, m.return_type)
+            cur = by_name.get(cur.parent)
+        env[cls.name] = {'fields': fields, 'methods': methods}
+    return env
+
+
 def build_resolver(classes, value_types=None):
     names = set(c.name for c in classes)
     enums = set(c.name for c in classes if c.is_enum)
     ifaces = set(c.name for c in classes if c.is_interface)
     vals = set(value_types if value_types is not None else typemap.DEFAULT_VALUE_TYPES)
     return types.TypeResolver(known_classes=names, value_types=vals,
-                             interface_types=ifaces, enum_types=enums)
+                             interface_types=ifaces, enum_types=enums,
+                             members=build_member_env(classes))
 
 
 def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True):
