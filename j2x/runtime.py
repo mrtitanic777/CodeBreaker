@@ -590,6 +590,10 @@ _GENERATED['BufferedReader.h'] = _class_stub('BufferedReader',
 _GENERATED['Graphics.h'] = _class_stub('Graphics',
     void_methods=['drawImage', 'dispose', 'setColor', 'fillRect', 'drawString'])
 _GENERATED['Cursor.h'] = _class_stub('Cursor')
+_GENERATED['Class.h'] = _class_stub('Class',
+    ret_methods=[('getName', ('std::string', 'std::string()')),
+                 ('getSimpleName', ('std::string', 'std::string()')),
+                 ('isInstance', ('bool', 'false'))])
 _GENERATED['Robot.h'] = _class_stub('Robot', void_methods=['mouseMove'])
 _GENERATED['URL.h'] = _class_stub('URL',
     ret_methods=[('openConnection', ('void*', '0')), ('openStream', ('void*', '0')),

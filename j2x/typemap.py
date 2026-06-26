@@ -66,7 +66,7 @@ RUNTIME_HEADERS = ({'Random', 'Runnable', 'Thread', 'Comparator', 'File',
                     'DisplayMode', 'FloatBuffer', 'IntBuffer', 'ByteBuffer',
                     'DataInput', 'DataOutput', 'SoundSystem', 'BufferedImage', 'BufferedReader',
                     'Graphics', 'Component', 'Cursor', 'Robot', 'URL', 'FileDialog',
-                    'DecimalFormat', 'ImageObserver',
+                    'DecimalFormat', 'ImageObserver', 'Class',
                     'Throwable', 'Exception', 'Error', 'RuntimeException', 'IOException',
                     'InterruptedException', 'IllegalStateException', 'IllegalArgumentException',
                     'MalformedURLException', 'AWTException', 'LWJGLException', 'NoSuchFieldError'}
