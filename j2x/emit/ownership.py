@@ -54,7 +54,8 @@ def owns_heap(cls, resolver):
         text = '\n'.join(t for _ln, t in m.body)
         for fm in _CTOR_NEW_BROAD.finditer(text):
             fld = cls.field(fm.group(1))
-            if fld and not fld.is_static:
+            # only real POINTER fields own heap; arrays are non-owning JArray<T> values now
+            if fld and not fld.is_static and resolver.is_pointer(fld.jtype):
                 return True
     return False
 

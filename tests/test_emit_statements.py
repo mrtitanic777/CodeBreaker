@@ -534,12 +534,12 @@ class TestInBodyNewArray(unittest.TestCase):
         c.methods.append(m)
         self.out = statements.translate_body(m, c, types.TypeResolver(known_classes={'Block'}))
 
-    def test_primitive_array_value_initialized(self):
-        self.assertIn('int* var1 = new int[256]();', self.out)
-        self.assertIn('bool* var2 = new bool[10]();', self.out)   # boolean->bool too
+    def test_primitive_array_to_jarray(self):
+        self.assertIn('JArray<int > var1 = JArray<int >(256);', self.out)
+        self.assertIn('JArray<bool > var2 = JArray<bool >(10);', self.out)   # boolean->bool too
 
-    def test_reference_array_becomes_pointer_array(self):
-        self.assertIn('Block** var3 = new Block*[256]();', self.out)
+    def test_reference_array_to_jarray_of_pointers(self):
+        self.assertIn('JArray<Block* > var3 = JArray<Block* >(256);', self.out)
 
 
 class TestLabeledGoto(unittest.TestCase):

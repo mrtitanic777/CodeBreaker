@@ -41,20 +41,20 @@ def _default_value(cpp_type):
 # ---------------------------------------------------------------------------
 # static field definitions
 # ---------------------------------------------------------------------------
-def _static_init(f, cpp_type, ledger, cls):
+def _static_init(f, cpp_type, ledger, cls, resolver):
     init = (f.initializer or '').strip()
     if not init:
         return _default_value(cpp_type)              # forward-declared static -> NULL/0/default
     m = _NEW_ARRAY.match(init)
-    if m:
+    if m:                                            # new T[n] -> JArray<elem>(n) (bounds-checked)
         n = m.group(1)
-        element = cpp_type[:-1] if cpp_type.endswith('*') else cpp_type
         if ledger is not None:
             ledger.add(cls.name + '.cpp', Category.RISK,
-                       'uninit-array fixed: new %s[%s]() value-initialized (Java zero-fills)' % (element, n),
-                       line=f.line, severity=Severity.MED, source='emit', rule='uninit-array-fixed')
-        return 'new %s[%s]()' % (element, n)
-    return init                                       # other initializer: passthrough (refined in 4c)
+                       'uninit-array fixed: %s(%s) value-initialized + length-tracked (Java zero-fills)'
+                       % (cpp_type, n), line=f.line, severity=Severity.MED, source='emit',
+                       rule='uninit-array-fixed')
+        return '%s(%s)' % (cpp_type, n)
+    return _static_ref(init, resolver)               # other initializer: translate refs (Class.field, null)
 
 
 def _static_ref(expr, resolver):
@@ -67,23 +67,34 @@ def _static_ref(expr, resolver):
     return re.sub(r'\bnull\b', 'NULL', expr)
 
 
+def _array_elem_cpp(jtype, resolver):
+    """The C++ element spelling for a T[] field, i.e. the JArray<...> template argument."""
+    elem_jt = jtype.element()
+    elem = resolver.cpp_type(elem_jt, 'element')
+    if resolver.ownership(elem_jt) == 'pointer' and not elem.endswith('*'):
+        elem += '*'
+    return elem
+
+
 def _render_statics(cls, resolver, ledger):
     L = []
     for f in cls.static_fields():
         name = naming.field_name(f)
+        ft = resolver.field_type(f.jtype)
         agg = ownership.aggregate_array_body(f)
-        if agg is not None:                              # `new T[]{a,b,c}` -> fixed C array
-            ft = resolver.field_type(f.jtype)
-            elem = ft[:-1] if ft.endswith('*') else ft
+        if agg is not None:                              # new T[]{a,b,c} -> file-static data + JArray
+            elem = _array_elem_cpp(f.jtype, resolver)
             items = [_static_ref(e.strip(), resolver) for e in agg.split(',') if e.strip()]
-            L.append('%s %s::%s[] = { %s };' % (elem, cls.name, name, ', '.join(items)))
+            data = '_%s_%s_data' % (cls.name, name)
+            L.append('static %s %s[] = { %s };' % (elem, data, ', '.join(items)))
+            L.append('%s %s::%s(%s, %d);' % (ft, cls.name, name, data, len(items)))
             if ledger is not None:
                 ledger.add(cls.name + '.cpp', Category.RISK,
-                           'static array `new T[]{...}` -> fixed C array (C++03 has no braced new[])',
+                           'static array new T[]{...} -> JArray over a file-static data array '
+                           '(C++03 has no braced new[]; length tracked)',
                            line=f.line, severity=Severity.LOW, source='emit', rule='static-aggregate-array')
             continue
-        ft = resolver.field_type(f.jtype)
-        init = _static_init(f, ft, ledger, cls)
+        init = _static_init(f, ft, ledger, cls, resolver)
         if init is None:
             L.append('%s %s::%s;' % (ft, cls.name, name))
         else:

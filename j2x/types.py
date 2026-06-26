@@ -39,7 +39,7 @@ class TypeResolver(object):
     def ownership(self, jtype):
         """'value' or 'pointer'."""
         if jtype.is_array:
-            return 'pointer'                         # Java arrays -> heap buffers (T* / T**)
+            return 'value'                           # Java arrays -> JArray<T> (value wrapper)
         n = jtype.name
         if n in typemap.PRIMITIVES:
             return 'value'
@@ -86,16 +86,15 @@ class TypeResolver(object):
         context: 'field' | 'param' | 'return' | 'local' | 'element'
         'element' = inside an array or generic; the caller adds any pointer star.
         """
-        # Arrays: a buffer pointer over the element type. A reference-type element is
-        # itself a pointer (heap object, nullable), so a ref array is T** -- its slots
-        # hold pointers and `arr[i]` is a T* you call through. A value/primitive element
-        # is contiguous, so a value array is T*.
+        # Arrays: JArray<elem> -- a length-carrying, bounds-checked value wrapper. A
+        # reference-type element is itself a pointer (JArray<Block*>); a value/primitive
+        # element is stored directly (JArray<int>); a nested array is JArray<JArray<int> >.
         if jtype.is_array:
-            elem = jtype.element()
-            inner = self.cpp_type(elem, 'element') + '*'
-            if self.is_pointer(elem) and not inner.endswith('**'):
-                inner += '*'
-            return inner
+            elem_jt = jtype.element()
+            elem = self.cpp_type(elem_jt, 'element')
+            if self.ownership(elem_jt) == 'pointer' and not elem.endswith('*'):
+                elem += '*'
+            return 'JArray<%s >' % elem              # trailing space keeps nested >> valid C++03
 
         # Generics: std::vector<Elem(*)>, std::map<...>, etc.
         if jtype.is_generic:

@@ -213,6 +213,32 @@ public:
 #endif // JAVASTRING_H
 '''
 
+JARRAY_H = r'''#ifndef JARRAY_H
+#define JARRAY_H
+// java.lang array: a length-carrying, BOUNDS-CHECKED view over a heap buffer. Java arrays
+// know their length and throw on out-of-range; here an out-of-range index returns a safe
+// dummy slot instead of corrupting memory or wild-pointing (the 0xC.../IP-0 console crashes).
+// Non-owning on copy (shallow) so a by-value copy never double-frees -- game arrays are
+// long-lived. Implicit conversion to T* for GL / nio-buffer / System.arraycopy interop.
+
+template<class T>
+class JArray {
+	T* _buf;
+	static T& _oob() { static T dummy; dummy = T(); return dummy; }   // safe slot for bad index
+public:
+	int length;                                  // Java: arr.length
+	JArray() : _buf(0), length(0) {}
+	explicit JArray(int n) : _buf(n > 0 ? new T[n]() : 0), length(n > 0 ? n : 0) {}
+	JArray(T* buf, int n) : _buf(buf), length(n) {}
+	T& operator[](int i) { return (i >= 0 && i < length) ? _buf[i] : _oob(); }
+	const T& operator[](int i) const { return (i >= 0 && i < length) ? _buf[i] : _oob(); }
+	operator T*() { return _buf; }               // raw-pointer interop
+	operator const T*() const { return _buf; }
+	T* data() { return _buf; }
+};
+#endif // JARRAY_H
+'''
+
 JAVART_H = r'''#ifndef JAVART_H
 #define JAVART_H
 // j2x runtime prelude -- shims for Java stdlib statics. #included by every .cpp.
@@ -221,6 +247,7 @@ JAVART_H = r'''#ifndef JAVART_H
 #include <string>
 #include <sstream>
 #include "JavaString.h"
+#include "JArray.h"
 
 // java.lang.Math.random(): pseudo-random double in [0, 1)
 inline double javaMathRandom() { return (double)rand() / ((double)RAND_MAX + 1.0); }
@@ -626,6 +653,7 @@ _GENERATED['BufferedImage.h'] = _class_stub('BufferedImage', fwds=['Graphics'],
 FILES = {
     'Random.h': RANDOM_H,
     'JavaString.h': JAVASTRING_H,
+    'JArray.h': JARRAY_H,
     'JavaRT.h': JAVART_H,
     'GL11.h': GL11_H,
     'Runnable.h': RUNNABLE_H,

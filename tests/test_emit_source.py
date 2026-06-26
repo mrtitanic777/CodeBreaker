@@ -55,12 +55,12 @@ class TestSourceSafety(unittest.TestCase):
         self.assertIn('#include "Block.h"', self.cpp)
 
     def test_uninit_primitive_array_value_initialized(self):
-        # boolean[] -> bool*, allocated with () so it's zero-filled like Java
-        self.assertIn('bool* Block::s_tickOnLoad = new bool[256]();', self.cpp)
+        # boolean[] -> JArray<bool>, zero-filled + length-tracked like Java
+        self.assertIn('JArray<bool > Block::s_tickOnLoad = JArray<bool >(256);', self.cpp)
 
     def test_uninit_pointer_array_value_initialized(self):
-        # Block[] -> Block** (array of pointers), value-init to NULLs
-        self.assertIn('Block** Block::s_blocksList = new Block*[256]();', self.cpp)
+        # Block[] -> JArray<Block*> (length-tracked array of pointers), value-init to NULLs
+        self.assertIn('JArray<Block* > Block::s_blocksList = JArray<Block* >(256);', self.cpp)
 
     def test_forward_declared_static_is_nulled(self):
         self.assertIn('Block* Block::s_stone = NULL;', self.cpp)
@@ -124,15 +124,26 @@ class TestRuleOfThreeNoCopy(unittest.TestCase):
         self.assertNotIn('Vec3D(const Vec3D&);', h)
         self.assertNotIn('private:', h)
 
-    def test_array_element_owner_disables_copy(self):
-        # ctor does `this.fxLayers[i] = new ...` -> array-element ownership -> copy disabled
+    def test_array_field_does_not_disable_copy(self):
+        # arrays are non-owning JArray<T> values now, so an array-element assignment does NOT
+        # force copy-disable (a shallow copy shares the buffer; no double-free)
         c = ir.JClass('FX')
         c.fields.append(ir.Field('fxLayers', ir.JType('List', array_dims=1)))
         ctor = ir.Method('FX', is_ctor=True, line=1)
         ctor.body = [(1, 'FX() {'), (2, '\tthis.fxLayers[0] = new ArrayList();'), (3, '}')]
         c.methods.append(ctor)
         h = header.render_header(c, types.TypeResolver())
-        self.assertIn('FX(const FX&);', h)
+        self.assertNotIn('FX(const FX&);', h)
+
+    def test_pointer_field_owner_disables_copy(self):
+        # a real pointer field new'd in the ctor still owns heap -> copy disabled (Rule of Three)
+        c = ir.JClass('W')
+        c.fields.append(ir.Field('prov', ir.JType('WorldProvider')))
+        ctor = ir.Method('W', is_ctor=True, line=1)
+        ctor.body = [(1, 'W() {'), (2, '\tthis.prov = new WorldProvider();'), (3, '}')]
+        c.methods.append(ctor)
+        h = header.render_header(c, types.TypeResolver(known_classes={'WorldProvider'}))
+        self.assertIn('W(const W&);', h)
 
 
 class TestSourceRealFiles(unittest.TestCase):
@@ -162,8 +173,8 @@ class TestSourceRealFiles(unittest.TestCase):
 
 
 class TestAggregateArrayStatic(unittest.TestCase):
-    """`static T[] x = new T[]{a, b}` -> a fixed C array (C++03 has no braced new[]),
-    with element refs translated (Block.planks -> Block::s_planks)."""
+    """`static T[] x = new T[]{a, b}` -> a JArray over a file-static data array (C++03 has no
+    braced new[]), with element refs translated (Block.planks -> Block::s_planks)."""
     def setUp(self):
         c = ir.JClass('ItemAxe')
         c.fields.append(ir.Field('blocksEffectiveAgainst', ir.JType('Block', array_dims=1),
@@ -173,12 +184,14 @@ class TestAggregateArrayStatic(unittest.TestCase):
         self.h = header.render_header(c, self.r)
         self.cpp = source.render_source(c, self.r)
 
-    def test_header_declares_fixed_array(self):
-        self.assertIn('static Block* s_blocksEffectiveAgainst[];', self.h)
+    def test_header_declares_jarray_static(self):
+        self.assertIn('static JArray<Block* > s_blocksEffectiveAgainst;', self.h)
 
     def test_source_defines_translated_array(self):
-        self.assertIn('Block* ItemAxe::s_blocksEffectiveAgainst[] = '
+        self.assertIn('static Block* _ItemAxe_s_blocksEffectiveAgainst_data[] = '
                       '{ Block::s_planks, Block::s_wood };', self.cpp)
+        self.assertIn('JArray<Block* > ItemAxe::s_blocksEffectiveAgainst('
+                      '_ItemAxe_s_blocksEffectiveAgainst_data, 2);', self.cpp)
         self.assertNotIn('new Block[]', self.cpp)        # no invalid braced new[]
 
 

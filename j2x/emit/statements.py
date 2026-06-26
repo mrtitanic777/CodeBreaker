@@ -512,11 +512,11 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
     s = _CAST.sub(_cast, s)
     # 8. Java null literal -> NULL
     s = re.sub(r'\bnull\b', 'NULL', s)
-    # 9. new T[n] -> new T[n]() (value-init like Java; reference elements become T*)
+    # 9. new T[n] -> JArray<elem>(n) (length-carrying, bounds-checked, value-initialized)
     def _new_arr(m):
-        t = m.group(1)
-        star = m.group(2) or ('*' if resolver.is_pointer(ir.JType(t)) else '')
-        return 'new %s%s[%s]()' % (resolver.base_cpp(t), star, m.group(3))
+        cpp = resolver.cpp_type(ir.JType(m.group(1), array_dims=1), 'local')   # JArray<elem>
+        size = m.group(3).strip()
+        return '%s(%s)' % (cpp, size) if size else '%s()' % cpp
     s = _NEW_ARRAY.sub(_new_arr, s)
     # 10. super.method(...) -> Parent::method(...)  (super(...) ctor calls handled in source.py)
     if parent:

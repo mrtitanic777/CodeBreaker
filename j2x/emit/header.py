@@ -88,9 +88,10 @@ def render_header(cls, resolver, ledger=None):
     L = ['#ifndef %s' % guard, '#define %s' % guard, '',
          _BANNER % cls.name, '']
 
-    # String maps to JavaString (a std::string subclass); a header that mentions String in a
-    # field/param/return needs its full definition. Cheap and idempotent to always include.
+    # String -> JavaString and T[] -> JArray<T>; a header that mentions either in a field/
+    # param/return needs the full definition. Cheap and idempotent to always include.
     L.append('#include "JavaString.h"')
+    L.append('#include "JArray.h"')
 
     sys_inc, inc, fwd = _collect_dependencies(cls, resolver)
     for h in sorted(sys_inc):
@@ -126,13 +127,8 @@ def render_header(cls, resolver, ledger=None):
         L.append('')
     for f in inst:
         L.append('\t%s %s;' % (resolver.field_type(f.jtype), naming.field_name(f)))
-    for f in stat:
-        if ownership.aggregate_array_body(f) is not None:    # `new T[]{...}` -> fixed C array
-            ft = resolver.field_type(f.jtype)                # Block** / int*
-            elem = ft[:-1] if ft.endswith('*') else ft       # element type: Block* / int
-            L.append('\tstatic %s %s[];' % (elem, naming.field_name(f)))
-        else:
-            L.append('\tstatic %s %s;' % (resolver.field_type(f.jtype), naming.field_name(f)))
+    for f in stat:                                   # arrays are JArray<T> now -> normal member decl
+        L.append('\tstatic %s %s;' % (resolver.field_type(f.jtype), naming.field_name(f)))
 
     # methods (skip ctors, already emitted)
     methods = [m for m in cls.methods if not m.is_ctor]

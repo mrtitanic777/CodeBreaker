@@ -33,9 +33,10 @@ class TestOwnership(unittest.TestCase):
     def test_unknown_capitalized_is_pointer(self):
         self.assertEqual(self.r.ownership(T('SomeNewClass')), 'pointer')
 
-    def test_arrays_are_pointer(self):
-        self.assertEqual(self.r.ownership(T('int', 1)), 'pointer')
-        self.assertEqual(self.r.ownership(T('Block', 1)), 'pointer')
+    def test_arrays_are_value(self):
+        # Java arrays -> JArray<T>, a value wrapper (held by value, '.' access, '.length')
+        self.assertEqual(self.r.ownership(T('int', 1)), 'value')
+        self.assertEqual(self.r.ownership(T('Block', 1)), 'value')
 
 
 class TestCppSpelling(unittest.TestCase):
@@ -63,24 +64,23 @@ class TestCppSpelling(unittest.TestCase):
         self.assertEqual(self.r.return_type(T('String')), 'JavaString')   # by value (no dangling)
 
     def test_primitive_arrays(self):
-        self.assertEqual(self.r.field_type(T('int', 1)), 'int*')
-        self.assertEqual(self.r.field_type(T('boolean', 1)), 'bool*')
+        self.assertEqual(self.r.field_type(T('int', 1)), 'JArray<int >')
+        self.assertEqual(self.r.field_type(T('boolean', 1)), 'JArray<bool >')
 
-    def test_nullable_reference_arrays_are_double_pointer(self):
-        # ANY reference-type array -> T** (NULL slots + polymorphism), not just a whitelist
-        self.assertEqual(self.r.field_type(T('Block', 1)), 'Block**')
-        self.assertEqual(self.r.field_type(T('ItemStack', 1)), 'ItemStack**')
-        self.assertEqual(self.r.field_type(T('World', 1)), 'World**')      # not whitelisted, still **
-        self.assertEqual(self.r.field_type(T('Mystery', 1)), 'Mystery**')  # unknown capitalized = ref
+    def test_reference_arrays_hold_pointers(self):
+        # a reference-type element is itself a pointer -> JArray<T*>
+        self.assertEqual(self.r.field_type(T('Block', 1)), 'JArray<Block* >')
+        self.assertEqual(self.r.field_type(T('ItemStack', 1)), 'JArray<ItemStack* >')
+        self.assertEqual(self.r.field_type(T('World', 1)), 'JArray<World* >')
+        self.assertEqual(self.r.field_type(T('Mystery', 1)), 'JArray<Mystery* >')   # unknown cap = ref
 
-    def test_value_type_array_is_single_pointer(self):
-        # a value-type / String element is contiguous -> T*
-        self.assertEqual(self.r.field_type(T('Vec3D', 1)), 'Vec3D*')
-        self.assertEqual(self.r.field_type(T('String', 1)), 'JavaString*')
+    def test_value_type_array_holds_values(self):
+        self.assertEqual(self.r.field_type(T('Vec3D', 1)), 'JArray<Vec3D >')
+        self.assertEqual(self.r.field_type(T('String', 1)), 'JArray<JavaString >')
 
     def test_two_dimensional_arrays(self):
-        self.assertEqual(self.r.field_type(T('int', 2)), 'int**')
-        self.assertEqual(self.r.field_type(T('Block', 2)), 'Block***')
+        self.assertEqual(self.r.field_type(T('int', 2)), 'JArray<JArray<int > >')
+        self.assertEqual(self.r.field_type(T('Block', 2)), 'JArray<JArray<Block* > >')
 
     def test_generic_vector_of_reference(self):
         self.assertEqual(self.r.field_type(T('List', args=[T('ItemStack')])),

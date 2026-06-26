@@ -47,7 +47,7 @@ class TestHeaderHandBuilt(unittest.TestCase):
     def test_fields(self):
         self.assertIn('\tBlock* field;', self.h)            # reference instance field -> pointer
         self.assertIn('\tint count;', self.h)
-        self.assertIn('\tstatic Block** s_list;', self.h)   # nullable ref array -> T**, s_ prefix
+        self.assertIn('\tstatic JArray<Block* > s_list;', self.h)   # ref array -> JArray<Block*>, s_ prefix
         self.assertIn('\tstatic JavaString s_name;', self.h)   # String -> JavaString
 
     def test_string_pulls_its_header(self):
