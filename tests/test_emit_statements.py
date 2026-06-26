@@ -422,6 +422,23 @@ class TestChainInference(unittest.TestCase):
         out = statements.translate_body(m, c, self._resolver())
         self.assertIn('JavaString s = var1->random->toString();', out)
 
+    def test_deep_pointer_chain(self):
+        # this->mc->options->keyBindInventory.keyCode  -- every link a pointer field, to depth
+        members = {
+            'C': {'fields': {'mc': ir.JType('Minecraft')}, 'methods': {}},
+            'Minecraft': {'fields': {'options': ir.JType('GameSettings')}, 'methods': {}},
+            'GameSettings': {'fields': {'keyBindInventory': ir.JType('KeyBinding')}, 'methods': {}},
+            'KeyBinding': {'fields': {'keyCode': ir.JType('int')}, 'methods': {}},
+        }
+        r = types.TypeResolver(known_classes={'C', 'Minecraft', 'GameSettings', 'KeyBinding'},
+                               members=members)
+        c = ir.JClass('C')
+        m = ir.Method('f', ir.JType('void'), line=1)
+        m.body = [(1, 'void f() {'), (2, '\tint k = this.mc.options.keyBindInventory.keyCode;'), (3, '}')]
+        c.methods.append(m)
+        out = statements.translate_body(m, c, r)
+        self.assertIn('int k = this->mc->options->keyBindInventory->keyCode;', out)
+
     def test_unknown_receiver_left_alone(self):
         c = ir.JClass('C')
         m = ir.Method('f', ir.JType('void'), line=1)

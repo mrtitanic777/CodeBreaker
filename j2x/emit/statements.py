@@ -324,37 +324,72 @@ def _pointer_locals(method, scope, resolver):
     return forced
 
 
+_CHAIN_ROOT = re.compile(r'[A-Za-z_]\w*::s_\w+|[A-Za-z_]\w*')
+_CHAIN_LINK = re.compile(r'\s*(->|\.)\s*([A-Za-z_]\w*)')
+
+
+def _chain_root_type(tok, scope, resolver, current):
+    """(class_name, is_pointer) for a chain-root token, or None if it isn't a typed root.
+    Roots: `this`, a `Class::s_field` static field, or an in-scope variable/field."""
+    if tok == 'this':
+        return (current, True)
+    sm = re.match(r'^([A-Za-z_]\w*)::s_(\w+)$', tok)
+    if sm:
+        jt = resolver.member_field_type(sm.group(1), sm.group(2))
+        return (jt.name, resolver.is_pointer(jt)) if jt is not None else None
+    jt = scope.get(tok)
+    return (jt.name, resolver.is_pointer(jt)) if jt is not None else None
+
+
 def _resolve_chains(s, scope, resolver, current):
-    """Expression-type inference for chained member access -- fix a '.' that should be
-    '->' because the receiver sub-expression is a pointer. Two link forms, looked up in
-    the resolver's member environment (so it's type-driven, not guessed):
-
-        Class::s_field.member  -> Class::s_field->member   (static reference field)
-        recv->field.member     -> recv->field->member      (field is a reference field
-                                                            of recv's resolved type)
-
-    Conservative: converts ONLY when the receiver type is KNOWN to be a pointer; an
-    unknown receiver is left untouched. Repeated until stable for short chains."""
-    def _static_field(mm):
-        cls, fld = mm.group(1), mm.group(2)
-        jt = resolver.member_field_type(cls, fld)
-        return '%s::s_%s->' % (cls, fld) if (jt is not None and resolver.is_pointer(jt)) else mm.group(0)
-
-    def _field_of_ptr(mm):
-        recv, fld = mm.group(1), mm.group(2)
-        owner = current if recv == 'this' else (scope[recv].name if recv in scope else None)
-        if owner is None:
-            return mm.group(0)
-        jt = resolver.member_field_type(owner, fld)
-        return '%s->%s->' % (recv, fld) if (jt is not None and resolver.is_pointer(jt)) else mm.group(0)
-
-    for _ in range(4):                                # resolve a few links of a chain
-        prev = s
-        s = re.sub(r'\b([A-Z]\w*)::s_(\w+)\s*\.', _static_field, s)
-        s = re.sub(r'\b(this|[a-z]\w*)->(\w+)\s*\.', _field_of_ptr, s)
-        if s == prev:
-            break
-    return s
+    """Deep expression-type inference for chained member access: walk a chain from a typed
+    root (this / scope var / Class::s_field), tracking the type of each sub-expression via
+    the member environment, and upgrade a '.' to '->' wherever the receiver-so-far is a
+    pointer -- to ANY depth (e.g. this->mc->options->keyBindInventory.keyCode). Safe by
+    construction: only ever turns '.' into '->' when the receiver is PROVEN a pointer; it
+    never does the reverse and leaves unknown receivers untouched. Recurses into call args."""
+    out = []
+    i, n = 0, len(s)
+    while i < n:
+        prev = out[-1][-1] if (out and out[-1]) else ''
+        at_boundary = (prev == '') or (not prev.isalnum() and prev not in '_>.:')
+        m = _CHAIN_ROOT.match(s, i) if at_boundary else None
+        if not m:
+            out.append(s[i]); i += 1; continue
+        tok = m.group(0)
+        rt = _chain_root_type(tok, scope, resolver, current)
+        out.append(tok)
+        i = m.end()
+        if rt is None:
+            continue
+        cls_name, is_ptr = rt
+        while True:                                   # walk the chain links
+            lm = _CHAIN_LINK.match(s, i)
+            if not lm:
+                break
+            sep, name, after = lm.group(1), lm.group(2), lm.end()
+            k = after
+            while k < n and s[k] == ' ':
+                k += 1
+            is_call = k < n and s[k] == '('
+            args = None
+            seg_end = after
+            if is_call:
+                close = _balanced_paren(s, k)
+                if close < 0:
+                    break
+                args = _resolve_chains(s[k + 1:close], scope, resolver, current)
+                seg_end = close + 1
+            out.append(('->' if is_ptr else sep) + name)   # upgrade only when proven pointer
+            if is_call:
+                out.append('(' + args + ')')
+            i = seg_end
+            jt = (resolver.member_method_type(cls_name, name) if is_call
+                  else resolver.member_field_type(cls_name, name))
+            if jt is None:
+                break                                 # type unknown -> stop tracking this chain
+            cls_name, is_ptr = jt.name, resolver.is_pointer(jt)
+    return ''.join(out)
 
 
 _CALL_HEAD = re.compile(r'(\bnew\s+(\w+)|(\w+)(->|::)(\w+))\s*\(')
