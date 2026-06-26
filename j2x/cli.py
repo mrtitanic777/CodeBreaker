@@ -25,9 +25,13 @@ def _cmd_convert(args):
     if not os.path.isdir(args.java_dir):
         print('ERROR: not a directory: %s' % args.java_dir)
         return 2
-    s = pipeline.convert(args.java_dir, args.out_dir)
+    if args.overrides and not os.path.isdir(args.overrides):
+        print('ERROR: overrides dir not found: %s' % args.overrides)
+        return 2
+    s = pipeline.convert(args.java_dir, args.out_dir, overrides_dir=args.overrides)
     print('Converted %s -> %s' % (os.path.abspath(args.java_dir), os.path.abspath(args.out_dir)))
-    print('  parsed=%d  headers=%d  sources=%d' % (s['parsed'], s['headers'], s['sources']))
+    print('  parsed=%d  headers=%d  sources=%d  overrides=%d'
+          % (s['parsed'], s['headers'], s['sources'], s['overrides']))
     print('  verify (crash-class rule findings on output): %d' % s['rule_findings'])
     print('  ledger events=%d  (HIGH=%d)' % (s['events'], s['high']))
     if s['report']:
@@ -90,6 +94,8 @@ def main(argv=None):
     cp = sub.add_parser('convert', help='Convert a Java source tree to C++03 (the j2x rewrite).')
     cp.add_argument('java_dir', help='Directory of .java source.')
     cp.add_argument('out_dir', help='Output directory for the generated .h/.cpp.')
+    cp.add_argument('--overrides', help='Handwritten override dir: <Class>.h/.cpp used verbatim '
+                    'instead of generated output (for the genuinely-hard cases).')
     cp.set_defaults(func=_cmd_convert)
 
     rp = sub.add_parser('report', help='Build the conversion report from existing output.')

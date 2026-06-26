@@ -86,8 +86,18 @@ def build_resolver(classes, value_types=None):
                              members=build_member_env(classes))
 
 
-def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True):
-    """Convert a Java source tree to C++03. Returns a summary dict."""
+def _override_path(overrides_dir, name):
+    p = os.path.join(overrides_dir, name) if overrides_dir else None
+    return p if (p and os.path.isfile(p)) else None
+
+
+def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True, overrides_dir=None):
+    """Convert a Java source tree to C++03. Returns a summary dict.
+
+    overrides_dir: optional directory of handwritten <Class>.h / <Class>.cpp files. When a
+    file there matches a class, it is used verbatim INSTEAD of generated output (and logged
+    as OVERRIDDEN) -- the escape hatch for the genuinely-hard cases (Object dispatch, recipe
+    autoboxing, raytrace dual-use) that are correct-by-hand rather than by construction."""
     ledger = ledger or Ledger()
     os.makedirs(out_dir, exist_ok=True)
 
@@ -105,16 +115,32 @@ def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True)
     for fname, content in runtime.FILES.items():     # runtime-support headers (Random.h, ...)
         _write(os.path.join(out_dir, fname), content)
 
-    headers = sources = 0
+    headers = sources = overrides = 0
     for cls in classes:
         try:
-            h = emit_header.render_header(cls, resolver, ledger)
-            _write(os.path.join(out_dir, cls.name + '.h'), h)
+            ov_h = _override_path(overrides_dir, cls.name + '.h')
+            if ov_h:
+                _write(os.path.join(out_dir, cls.name + '.h'), _read(ov_h))
+                overrides += 1
+                ledger.add(cls.name + '.h', Category.OVERRIDDEN, 'handwritten header override used',
+                           source='pipeline', rule='override')
+            else:
+                _write(os.path.join(out_dir, cls.name + '.h'),
+                       emit_header.render_header(cls, resolver, ledger))
             headers += 1
-            cpp = emit_source.render_source(cls, resolver, ledger)
-            if cpp is not None:
-                _write(os.path.join(out_dir, cls.name + '.cpp'), cpp)
+
+            ov_c = _override_path(overrides_dir, cls.name + '.cpp')
+            if ov_c:
+                _write(os.path.join(out_dir, cls.name + '.cpp'), _read(ov_c))
                 sources += 1
+                overrides += 1
+                ledger.add(cls.name + '.cpp', Category.OVERRIDDEN, 'handwritten source override used',
+                           source='pipeline', rule='override')
+            else:
+                cpp = emit_source.render_source(cls, resolver, ledger)
+                if cpp is not None:
+                    _write(os.path.join(out_dir, cls.name + '.cpp'), cpp)
+                    sources += 1
         except Exception as e:                       # noqa: BLE001
             ledger.add(cls.name, Category.ERROR, 'emit failed: %s' % e,
                        severity=Severity.HIGH, source='pipeline', rule='emit-error')
@@ -128,6 +154,7 @@ def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True)
                                    meta={'output_dir': os.path.abspath(out_dir), 'profile': 'rewrite (j2x)'})
     return {
         'parsed': len(classes), 'headers': headers, 'sources': sources,
+        'overrides': overrides,
         'rule_findings': rule_findings, 'events': len(ledger),
         'high': ledger.totals_by_severity().get(Severity.HIGH, 0),
         'report': rep,
@@ -137,3 +164,8 @@ def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True)
 def _write(path, text):
     with open(path, 'w', encoding='utf-8') as f:
         f.write(text)
+
+
+def _read(path):
+    with open(path, 'r', encoding='utf-8') as f:
+        return f.read()
