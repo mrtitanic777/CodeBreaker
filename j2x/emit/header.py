@@ -132,6 +132,11 @@ def render_header(cls, resolver, ledger=None):
     # constructors + destructor
     for m in cls.constructors():
         L.append('\t' + _method_decl(cls, m, resolver))
+    # a value-type class held by value as a field must be default-constructible; if it only
+    # has parameterized ctors, synthesize a (zero-initializing) default ctor
+    if (cls.name in resolver.values and cls.constructors()
+            and not any(c.arity == 0 for c in cls.constructors())):
+        L.append('\t%s();' % cls.name)
     if not cls.is_interface:
         L.append('\tvirtual ~%s();' % cls.name)
 

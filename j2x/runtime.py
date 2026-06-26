@@ -207,7 +207,7 @@ public:
 	JavaString concat(const std::string& s) const { return JavaString(*this + s); }
 	JavaString intern() const { return *this; }
 	const char* toCharArray() const { return c_str(); }              // PORT: read-only view
-	unsigned char* getBytes() const { return (unsigned char*)c_str(); }   // PORT: read-only view
+	unsigned char* getBytes(...) const { return (unsigned char*)c_str(); }   // PORT: read-only view; ignores charset
 	JavaString replaceAll(const std::string&, const std::string&) const { return *this; }  // PORT: no regex
 };
 #endif // JAVASTRING_H
@@ -630,7 +630,7 @@ _GENERATED['Applet.h'] = _class_stub('Applet', fwds=['URL', 'Graphics'],
                  ('getGraphics', ('Graphics*', '0'))])
 _GENERATED['Canvas.h'] = _class_stub('Canvas', fwds=['Graphics'],
     void_methods=['setFocusable', 'setSize', 'repaint', 'requestFocus', 'setVisible', 'addNotify',
-                  'setPreferredSize'],
+                  'removeNotify', 'setPreferredSize', 'setMinimumSize', 'setMaximumSize', 'enableInputMethods'],
     ret_methods=[('getWidth', ('int', '0')), ('getHeight', ('int', '0')),
                  ('getGraphics', ('Graphics*', '0'))])
 _GENERATED['Component.h'] = _class_stub('Component', fwds=['Graphics'],

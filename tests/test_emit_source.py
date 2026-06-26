@@ -195,6 +195,37 @@ class TestAggregateArrayStatic(unittest.TestCase):
         self.assertNotIn('new Block[]', self.cpp)        # no invalid braced new[]
 
 
+class TestValueTypeDefaultCtor(unittest.TestCase):
+    """A value-type class with only parameterized ctors gets a synthesized zero-init default
+    ctor, so it can be held by value as a field (AxisAlignedBB boundingBox;)."""
+    def setUp(self):
+        c = ir.JClass('AxisAlignedBB')
+        c.fields.append(ir.Field('minX', ir.JType('double')))
+        c.fields.append(ir.Field('hit', ir.JType('Vec3D')))
+        ctor = ir.Method('AxisAlignedBB', is_ctor=True,
+                         params=[ir.Param('var1', ir.JType('double'))], line=1)
+        ctor.body = [(1, 'AxisAlignedBB(double var1) {'), (2, '\tthis.minX = var1;'), (3, '}')]
+        c.methods.append(ctor)
+        self.r = types.TypeResolver(value_types={'AxisAlignedBB', 'Vec3D'})
+        self.h = header.render_header(c, self.r)
+        self.cpp = source.render_source(c, self.r)
+
+    def test_header_declares_default_ctor(self):
+        self.assertIn('AxisAlignedBB();', self.h)
+
+    def test_source_defines_zero_init_default_ctor(self):
+        self.assertIn('AxisAlignedBB::AxisAlignedBB()', self.cpp)
+        self.assertIn('minX(0)', self.cpp)            # zero-inits primitive members
+
+    def test_no_synth_when_default_ctor_exists(self):
+        c = ir.JClass('Vec3D')
+        ctor = ir.Method('Vec3D', is_ctor=True, line=1)   # already a 0-arg ctor
+        ctor.body = [(1, 'Vec3D() {'), (2, '}')]
+        c.methods.append(ctor)
+        h = header.render_header(c, types.TypeResolver(value_types={'Vec3D'}))
+        self.assertEqual(h.count('\tVec3D();'), 1)    # the parsed ctor only; not duplicated
+
+
 class TestNullableValueParams(unittest.TestCase):
     """A value-struct param used as a nullable reference (compared/assigned null) becomes a
     pointer in the signature -- callers in the raytrace dual-use chain pass Vec3D* already."""

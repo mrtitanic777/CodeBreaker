@@ -257,6 +257,16 @@ def render_source(cls, resolver, ledger=None):
         body += statics + ['']
     for m in cls.constructors():
         body += _render_ctor(cls, m, resolver, ledger) + ['']
+    # synthesized zero-initializing default ctor for a value type that lacks one (so it can be
+    # held by value as a field); matches the declaration emitted by header.py
+    if (cls.name in resolver.values and cls.constructors()
+            and not any(c.arity == 0 for c in cls.constructors())):
+        items = _init_list(cls, resolver)
+        L2 = ['%s::%s()' % (cls.name, cls.name)]
+        if items:
+            L2.append('\t: ' + '\n\t, '.join(items))
+        L2 += ['{', '}']
+        body += L2 + ['']
     body += _render_dtor(cls, ownership.owned_pointers(cls, resolver), ledger) + ['']
     for m in cls.methods:
         if m.is_ctor or m.is_abstract:
