@@ -23,6 +23,7 @@ from .statements import translate_body
 _BANNER = '// Auto-generated from %s.java\n// Target: Xbox 360 / C++03 / DirectX 9'
 _NEW_ARRAY = re.compile(r'^new\s+[\w.]+\s*\[([^\]]+)\]\s*$')   # size may be any expression
 _THIS_CALL = re.compile(r'\bthis\s*\(([^;]*)\)\s*;')
+_SUPER_CALL = re.compile(r'^super\s*\(([^;]*)\)\s*;')
 _PRIMITIVE_CPP = {'int', 'short', 'long long', 'char', 'unsigned char',
                   'float', 'double', 'bool', 'long'}
 
@@ -112,12 +113,23 @@ def _inline_delegation(args_str, deleg, cls, resolver, ledger):
 
 def _render_ctor(cls, m, resolver, ledger):
     params = ', '.join('%s %s' % (resolver.param_type(p.jtype), p.name) for p in m.params)
+    body = translate_body(m, cls, resolver, ledger)
+
+    # extract a leading super(args) into the C++ base-class init (C++ has no super() statement)
+    super_init, rest = None, []
+    for line in body:
+        sm = _SUPER_CALL.match(line)
+        if sm and super_init is None and cls.parent:
+            super_init = '%s(%s)' % (cls.parent, sm.group(1).strip())
+            continue
+        rest.append(line)
+
+    items = ([super_init] if super_init else []) + _init_list(cls, resolver)
     L = ['%s::%s(%s)' % (cls.name, cls.name, params)]
-    items = _init_list(cls, resolver)
     if items:
         L.append('\t: ' + '\n\t, '.join(items))
     L.append('{')
-    for line in translate_body(m, cls, resolver, ledger):
+    for line in rest:
         dm = _THIS_CALL.match(line)
         if dm:
             L.extend('\t' + il for il in _inline_delegation(dm.group(1), m, cls, resolver, ledger))

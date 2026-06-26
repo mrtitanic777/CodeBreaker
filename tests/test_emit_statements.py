@@ -157,6 +157,25 @@ class TestCasts(unittest.TestCase):
         self.assertIn('Vec3D var4 = (Vec3D)var1;', self.out)
 
 
+class TestSuperAndInstanceof(unittest.TestCase):
+    def test_instanceof_to_dynamic_cast(self):
+        c = ir.JClass('R', parent='Base')
+        m = ir.Method('f', ir.JType('boolean'), params=[ir.Param('var1', ir.JType('Entity'))], line=1)
+        m.body = [(1, 'boolean f(Entity var1) {'),
+                  (2, '\treturn var1 instanceof EntityPlayer;'), (3, '}')]
+        c.methods.append(m)
+        out = statements.translate_body(m, c, types.TypeResolver(known_classes={'Entity', 'EntityPlayer'}))
+        self.assertIn('return (dynamic_cast<EntityPlayer*>(var1) != NULL);', out)
+
+    def test_super_method_to_qualified(self):
+        c = ir.JClass('R', parent='EntityLiving')
+        m = ir.Method('onUpdate', ir.JType('void'), line=1)
+        m.body = [(1, 'void onUpdate() {'), (2, '\tsuper.onUpdate();'), (3, '}')]
+        c.methods.append(m)
+        out = statements.translate_body(m, c, types.TypeResolver())
+        self.assertIn('EntityLiving::onUpdate();', out)
+
+
 class TestInheritedFields(unittest.TestCase):
     def test_inherited_pointer_field_access(self):
         c = ir.JClass('ModelSheep', parent='ModelBase')

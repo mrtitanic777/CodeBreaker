@@ -92,6 +92,19 @@ class TestSourceSafety(unittest.TestCase):
         self.assertEqual(sum(1 for e in self.led.events if e.rule == 'uninit-array-fixed'), 2)
 
 
+class TestSuperCtor(unittest.TestCase):
+    def test_super_call_moves_to_init_list(self):
+        c = ir.JClass('Sub', parent='Base')
+        c.fields.append(ir.Field('x', ir.JType('int')))
+        ctor = ir.Method('Sub', is_ctor=True, params=[ir.Param('var1', ir.JType('int'))], line=1)
+        ctor.body = [(1, 'Sub(int var1) {'), (2, '\tsuper(var1, 5);'), (3, '\tthis.x = var1;'), (4, '}')]
+        c.methods.append(ctor)
+        cpp = source.render_source(c, types.TypeResolver(known_classes={'Base'}))
+        self.assertIn(': Base(var1, 5)', cpp)
+        self.assertNotIn('super(var1, 5);', cpp)
+        self.assertIn('this->x = var1;', cpp)
+
+
 class TestRuleOfThreeNoCopy(unittest.TestCase):
     """Heap-corruption defense: owning classes forbid copying (no double-free)."""
     def test_owning_class_disables_copy(self):

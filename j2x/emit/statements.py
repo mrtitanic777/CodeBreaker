@@ -43,6 +43,8 @@ _DECL = re.compile(
 _MATH = re.compile(r'\bMath\.([A-Za-z_]\w*)')
 # new T[n] (1-D, not already value-init) -> capture type, optional *, size
 _NEW_ARRAY = re.compile(r'\bnew\s+([\w:]+)\s*(\*?)\s*\[([^\]]*)\](?!\s*[\[(])')
+# x instanceof Type  (x may be a var or a this->field chain)
+_INSTANCEOF = re.compile(r'([A-Za-z_]\w*(?:->[A-Za-z_]\w*)*)\s+instanceof\s+([A-Za-z_]\w*)')
 # receiver.member  with optional opening paren (method call)
 _MEMBER = re.compile(r'\b([A-Za-z_]\w*)\.([A-Za-z_]\w*)(\s*\()?')
 _CALL = re.compile(r'\b(\w+)\.(\w+)\s*\(')
@@ -141,7 +143,7 @@ def build_scope(cls, method):
     return scope
 
 
-def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope):
+def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent):
     # 1. local declaration: rewrite the leading Java type to its C++ spelling
     m = _DECL.match(s)
     if m and _decl_base(m.group(1)) not in _KEYWORDS and m.group(2) not in _KEYWORDS:
@@ -178,6 +180,11 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope):
         star = m.group(2) or ('*' if resolver.is_pointer(ir.JType(t)) else '')
         return 'new %s%s[%s]()' % (resolver.base_cpp(t), star, m.group(3))
     s = _NEW_ARRAY.sub(_new_arr, s)
+    # 10. super.method(...) -> Parent::method(...)  (super(...) ctor calls handled in source.py)
+    if parent:
+        s = re.sub(r'\bsuper\.(\w+)', parent + r'::\1', s)
+    # 11. x instanceof Type -> dynamic_cast<Type*>(x) != NULL  (RTTI / -GR is on)
+    s = _INSTANCEOF.sub(lambda m: '(dynamic_cast<%s*>(%s) != NULL)' % (m.group(2), m.group(1)), s)
     return s
 
 
@@ -216,7 +223,7 @@ def translate_body(method, cls, resolver, ledger=None):
             if s:
                 out.append(s)
             continue
-        line = _translate_line(s, ptr_names, static_set, enum_set, resolver, scope)
+        line = _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, cls.parent)
         line, guarded = _guard_null_deref(line, scope, resolver)
         if guarded and ledger is not None:
             ledger.add(cls.name + '.cpp', Category.RISK,
