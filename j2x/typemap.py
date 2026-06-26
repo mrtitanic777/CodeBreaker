@@ -96,9 +96,10 @@ MATH_API = {
     'random': 'javaMathRandom', 'signum': 'javaMathSignum',
 }
 
-# Classic Minecraft value/struct types (stack values, '.' access). The pipeline can
-# extend this per profile; kept here as a sensible default so the resolver is usable
-# stand-alone and in tests.
-DEFAULT_VALUE_TYPES = {
-    'Vec3D', 'Vec3', 'AxisAlignedBB', 'ChunkCoordinates', 'MovingObjectPosition',
-}
+# User-defined C++ VALUE/struct types ('.' access, no heap). EMPTY by default: a Java class
+# is a REFERENCE type and must be a pointer to be universal + faithful (Minecraft's Vec3D /
+# AxisAlignedBB / MovingObjectPosition are reference types AND pooled -- modeling them as
+# values broke nullable override returns at scale, 742 conflicting-return errors on alpha).
+# The value-type mechanism still exists; a profile/caller can opt a genuinely-by-value struct
+# in via TypeResolver(value_types=...).
+DEFAULT_VALUE_TYPES = set()
