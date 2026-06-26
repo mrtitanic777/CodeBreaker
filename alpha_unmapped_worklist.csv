@@ -242,7 +242,7 @@ refs,kind,symbol,defining_class,signature,new_name,confidence,note
 7,field,field_931_c,GuiIngame,float,prevVignetteBrightness,high,smoothed vignette brightness in renderVignette
 7,field,field_9320_f,EntityPainting,int,tileZ,high,painting block Z position
 7,field,field_9322_d,EntityPainting,int,tileX,high,painting block X position
-7,field,field_9328_R,EntityLiving,float,cameraYaw,high,view bob yaw used by EntityRenderer
+7,field,field_9328_R,EntityLiving,float,,low,reverted (parent-field shadow)
 7,field,field_9333_am,EntityLiving,float,moveSpeed,high,base movement speed per mob
 7,field,field_9344_ag,EntityLiving,int,entityAge,high,AI age counter; despawn at >600
 7,field,field_9368_k,EntityPlayer,int,swingProgressInt,high,swing animation tick counter
@@ -625,7 +625,7 @@ refs,kind,symbol,defining_class,signature,new_name,confidence,note
 4,field,field_9307_bi,Entity,boolean,inWater,high,Entity; true while in water; resets fire/fallDistance
 4,field,field_9310_bf,Entity,int,fireResistance,high,Entity; ticks between fire ticks / fire reset delay
 4,field,field_9311_be,Entity,int,ticksExisted,high,Entity; incremented each onEntityUpdate
-4,field,field_9329_Q,EntityLiving,float,prevCameraYaw,high,previous cameraYaw
+4,field,field_9329_Q,EntityLiving,float,,low,reverted (parent-field shadow)
 4,field,field_9335_K,EntityLiving,int,prevHealth,high,health snapshot before damage; gui heart shake
 4,field,field_9369_j,EntityPlayer,boolean,isSwinging,high,arm swing in progress flag
 4,field,field_9374_bx,EntityPlayerSP,boolean,inPortal,high,set true when in portal this tick
@@ -790,7 +790,7 @@ refs,kind,symbol,defining_class,signature,new_name,confidence,note
 3,field,field_672_a,EntityFlameFX,float,initialParticleScale,high,stores base particleScale for shrink
 3,field,field_673_a,EntityReddustFX,float,baseParticleScale,high,stored initial particle size used for fade
 3,field,field_674_a,EntityLavaFX,float,lavaParticleScale,high,base particle scale used to fade size
-3,field,field_676_r,EntityPickupFX,float,yOffset,med,vertical render offset toward target
+3,field,field_676_r,EntityPickupFX,float,targetYOffset,med,vertical render offset toward target
 3,field,field_780_bk,EntityOtherPlayerMP,double,otherPlayerMPYaw,high,interpolation target yaw
 3,field,field_781_a,EntityPlayer,int,damageRemainder,high,leftover damage after armor calc
 3,field,field_782_bj,EntityOtherPlayerMP,double,otherPlayerMPZ,high,interpolation target z
