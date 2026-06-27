@@ -20,11 +20,14 @@ Reference implementations (Xbox-side; not built by j2x):
 3. Add the four `Textures` methods to the Xbox `Textures.{h,cpp}`.
 4. Assets already ship as loose PNGs under `game:\Content\…` (old port) — keep that layout.
 
-## Dependency
+## Dependency (RESOLVED in Step 5)
 `Class::getResourceAsStream(name)` must resolve `name` (e.g. `/terrain.png`, `/gui/gui.png`) to
-`game:\Content\<name>` and return a real **InputStream** — that's the Step 5 file-IO bridge. Until
-then, `ImageIO::readFile(path)` (provided) loads straight from a `game:\Content\…` path; the old
-port's `Textures::load(path)` also still works for the four boot textures loaded in Main.
+`game:\Content\<name>` and return a real **InputStream**. Step 5 delivers this:
+`FileIO.reference.h/.cpp` provides `J2X_getResourceAsStream(name)` (leading `/` dropped, `/`→`\`,
+prefix `game:\Content`, real `FileInputStream`) and a real `InputStream::read(buf,off,len)` — wire
+`Class::getResourceAsStream` to `J2X_getResourceAsStream`. `ImageIO::readFile(path)` (provided) is no
+longer needed once that's live; the old port's `Textures::load(path)` also still works for the four
+boot textures loaded in Main. See `05b-step5-integration.md`.
 
 ## HARDWARE-VERIFY
 - Color order: D3D A8R8G8B8 == Java ARGB (0xAARRGGBB) — no swizzle expected; if textures look

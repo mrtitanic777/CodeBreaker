@@ -4,9 +4,10 @@
 //
 // PREREQUISITE: the NIO buffers (ByteBuffer/FloatBuffer/IntBuffer) must be REAL (byte-backed) here,
 // not the converter's no-op stubs -- the Tessellator packs vertex data through them, and the
-// vertex-array gather below reads that data. The buffer must expose its backing store + position;
-// this file assumes `char* ByteBuffer::base()` (start of backing bytes) and `int position()`. Wire
-// those to your real buffer impl. (See docs note "Step 2 prerequisite: real NIO buffers".)
+// vertex-array gather below reads that data. This file uses `char* ByteBuffer::base()`, which (per
+// NIOBuffers.reference.h, Step 5) returns the backing start ALREADY OFFSET by the buffer's current
+// byte position -- so a FloatBuffer parked at element 3 yields start+12, and the gather reads from
+// base() directly (no extra position() arithmetic). All three buffer types upcast to ByteBuffer*.
 
 #include "GL11.h"
 #include "Common.h"          // g_pd3dDevice, SCREEN_*
@@ -169,8 +170,10 @@ void glDisableClientState(int cap){
 	if(cap==GL_VERTEX_ARRAY)s_vtx.on=false; else if(cap==GL_COLOR_ARRAY)s_col.on=false;
 	else if(cap==GL_TEXTURE_COORD_ARRAY)s_tex.on=false;
 }
-// NIO-buffer overloads: data = buffer backing bytes + the buffer's current position.
-static const char* bufBase(ByteBuffer* b){ return b->base() + b->position(); }
+// NIO-buffer overloads: data pointer = buffer's base(), which ALREADY folds in the current byte
+// position (see NIOBuffers.reference.h -- base() == backing start + byte position). Do NOT add
+// position() again here: for a FloatBuffer parked at element 3, base() is already start+12 bytes.
+static const char* bufBase(ByteBuffer* b){ return b->base(); }
 void glVertexPointer(int size,int stride,FloatBuffer* b){ s_vtx.on=true; s_vtx.size=size; s_vtx.type=GL_FLOAT; s_vtx.stride=stride; s_vtx.base=bufBase((ByteBuffer*)b); }
 void glTexCoordPointer(int size,int stride,FloatBuffer* b){ s_tex.on=true; s_tex.size=size; s_tex.type=GL_FLOAT; s_tex.stride=stride; s_tex.base=bufBase((ByteBuffer*)b); }
 void glColorPointer(int size,bool,int stride,ByteBuffer* b){ s_col.on=true; s_col.size=size; s_col.type=GL_UNSIGNED_BYTE; s_col.stride=stride; s_col.base=bufBase(b); }

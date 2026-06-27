@@ -12,11 +12,13 @@ the platform layer, so they're verified by building the Xbox project, not the co
 1. Drop `GL11.h`/`GL11.cpp` (+ a small `GLU.h`/`GLU.cpp`, `GL12.h` with the one token) in, REPLACING
    the converter's no-op stub headers for those names. Call `GL11::glInit()` once after the D3D
    device is up (in Main, after `InitD3D`).
-2. **Prerequisite — real NIO buffers.** The converter's `ByteBuffer`/`FloatBuffer`/`IntBuffer` are
-   no-op stubs, but the Tessellator packs vertex data *through* them and the emulator reads it back.
-   Provide real byte-backed buffers with: a contiguous backing store, `position()/limit()`,
-   `put(int[]/...)`, `asIntBuffer()/asFloatBuffer()` views over the SAME bytes, and **`char* base()`**
-   (start of backing bytes) — the emulator's gather calls `((ByteBuffer*)buf)->base() + position()`.
+2. **Prerequisite — real NIO buffers (DELIVERED in Step 5).** The converter's
+   `ByteBuffer`/`FloatBuffer`/`IntBuffer` are no-op stubs, but the Tessellator packs vertex data
+   *through* them and the emulator reads it back. `NIOBuffers.reference.h/.cpp` provides the real
+   byte-backed buffers (contiguous backing, `position()/limit()/clear()/flip()`, `put`/`get`,
+   `asIntBuffer()/asFloatBuffer()` views over the SAME bytes, `char* base()`). NOTE: `base()` now
+   folds in the current byte position, so the emulator's gather uses `((ByteBuffer*)buf)->base()`
+   alone (this file was updated to match). See `05b-step5-integration.md`.
 3. **Textures registry methods** (overlaps Step 3): the emulator calls `Textures::genId()`,
    `deleteId(id)`, `getById(id)`, `uploadRGBA(id,w,h,px)`, `uploadSubRGBA(id,x,y,w,h,px)`. The old
    port's `Textures.cpp` has the loader; add these id/upload entry points.
