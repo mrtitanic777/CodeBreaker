@@ -374,16 +374,19 @@ void Minecraft::loadScreen()
 	DbgPrintF("[boot] ls: mojang tex bound\n");
 	var4->startDrawingQuads();
 	var4->setColorOpaque_I(16777215);
-	var4->addVertexWithUV(0.0, (double)this->displayHeight, 0.0, 0.0, 0.0);
-	var4->addVertexWithUV((double)this->displayWidth, (double)this->displayHeight, 0.0, 0.0, 0.0);
-	var4->addVertexWithUV((double)this->displayWidth, 0.0, 0.0, 0.0, 0.0);
+	// Draw in SCALED-resolution coords (var2 x var3) to match the scaled ortho above. Using the raw
+	// displayWidth/displayHeight here put a full-pixel-size quad into a scaled ortho -> the mojang
+	// screen was zoomed ~scaleFactor x and clipped.
+	var4->addVertexWithUV(0.0, (double)var3, 0.0, 0.0, 0.0);
+	var4->addVertexWithUV((double)var2, (double)var3, 0.0, 0.0, 0.0);
+	var4->addVertexWithUV((double)var2, 0.0, 0.0, 0.0, 0.0);
 	var4->addVertexWithUV(0.0, 0.0, 0.0, 0.0, 0.0);
 	var4->draw();
 	short var5 = 256;
 	short var6 = 256;
 	GL11::glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
 	var4->setColorOpaque_I(16777215);
-	this->drawSplashTexture((this->displayWidth / 2 - var5) / 2, (this->displayHeight / 2 - var6) / 2, 0, 0, var5, var6);
+	this->drawSplashTexture((var2 - var5) / 2, (var3 - var6) / 2, 0, 0, var5, var6);
 	GL11::glDisable(GL11::GL_LIGHTING);
 	GL11::glDisable(GL11::GL_FOG);
 	GL11::glEnable(GL11::GL_ALPHA_TEST);

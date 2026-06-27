@@ -448,8 +448,16 @@ namespace System {
 	};
 	static _PrintStream out;
 	static _PrintStream err;
-	inline long long currentTimeMillis() { return (long long)time(0) * 1000LL; }
-	inline long long nanoTime() { return (long long)clock(); }
+	// REAL millisecond clock. time(0)*1000 had ONE-SECOND resolution, which broke everything timed:
+	// currentTimeMillis()%1000 was always 0 (menu splash never pulsed) and the game Timer drives ticks
+	// off this, so runTick/handleInput/animation fired in once-per-second bursts (unresponsive input).
+	// GetTickCount() is monotonic ms since boot (wraps at ~49 days -- irrelevant for a session).
+	inline long long currentTimeMillis() { return (long long)GetTickCount(); }
+	inline long long nanoTime() {
+		LARGE_INTEGER f, c; QueryPerformanceFrequency(&f); QueryPerformanceCounter(&c);
+		long long s = c.QuadPart / f.QuadPart, r = c.QuadPart % f.QuadPart;   // overflow-safe ns
+		return s * 1000000000LL + (r * 1000000000LL) / f.QuadPart;
+	}
 	inline void gc() {}
 	inline void exit(int) {}
 	inline JavaString getProperty(const std::string&) { return JavaString(); }
