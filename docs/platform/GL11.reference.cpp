@@ -104,7 +104,9 @@ void glInit() {
 	g_pd3dDevice->SetRenderState(D3DRS_CULLMODE,         D3DCULL_NONE);   // GL: cull off until glEnable(GL_CULL_FACE)
 	g_pd3dDevice->SetRenderState(D3DRS_ZENABLE,          TRUE);          // GL: depth test on (s_depthTest=true)
 	g_pd3dDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);         // GL: blend off (s_blend=false)
-	g_pd3dDevice->SetRenderState(D3DRS_LIGHTING,         FALSE);         // light is baked into vertex color
+	// NOTE: no D3DRS_LIGHTING — the Xbox 360 has NO fixed-function pipeline (shader-only), so the FFP
+	// lighting/material/texture-stage render states don't exist. We light via Shaders:: (light baked
+	// into vertex color), so there is nothing to disable here.
 }
 
 // ----------------------------------------------------------------------------- matrices
