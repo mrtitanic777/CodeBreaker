@@ -187,9 +187,10 @@ TileEntitySpecialRenderer* TileEntityRenderer::getSpecialRendererForEntity(TileE
 	 *  The runtime model has no getClass(), so the port passes a fresh `new Class()` stub,
 	 *  which never matches a registered key -> special renderers are effectively never found.
 	 *  ---- end original Java ---- */
-	// Java: getSpecialRendererForClass(var1.getClass()). TileEntity has no getClass() in the
-	// runtime model (no RTTI shim), so identity is lost; structure preserved, resolution flagged.
-	return var1 == NULL ? NULL : this->getSpecialRendererForClass(new Class());
+	// CONSOLE (tile-entity render dispatch fix): pass the tile entity's REAL runtime class via RTTI so
+	// the lookup finds its renderer (signs / mob spawners). Was `new Class()` (empty -> always NULL ->
+	// tile entities never rendered). Class::getName() now returns the bare name matching the string keys.
+	return var1 == NULL ? NULL : this->getSpecialRendererForClass(new Class(typeid(*var1)));
 }
 
 void TileEntityRenderer::setRenderingContext(World* var1, RenderEngine* var2, FontRenderer* var3, EntityPlayer* var4, float var5)

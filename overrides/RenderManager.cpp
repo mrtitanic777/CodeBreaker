@@ -178,10 +178,10 @@ RenderManager::RenderManager()
 	 *  this.entityRenderMap.put(EntityBoat.class, new RenderBoat());
 	 *  this.entityRenderMap.put(EntityFish.class, new RenderFish());
 	 *  ---- end original Java ----
-	 *  RESTORED-BUT-UNCERTAIN keys: Java keyed by Class identity; here keyed by class-NAME string.
-	 *  Two keys also differ from the Java spelling -- Java uses EntityZombieSimple.class and
-	 *  EntityLiving.class, but the strings below read "EntityGiantZombie" and "EntityMob", and the
-	 *  Fish key is "EntityFishHook" vs Java's EntityFish.class. Needs review against Entity.getClass(). */
+	 *  Keys are the bare class-NAME strings, matched against Entity.getClass().getName() (now bare).
+	 *  CONSOLE: corrected to the EXACT Java class names from RenderManager.java -- EntityZombieSimple,
+	 *  EntityLiving, EntityFish (were wrongly "EntityGiantZombie"/"EntityMob"/"EntityFishHook", so those
+	 *  entities never dispatched -> NULL renderer). EntityPlayerSP aliased to RenderPlayer (client leaf). */
 	this->entityRenderMap["EntitySpider"] = new RenderSpider();
 	this->entityRenderMap["EntityPig"] = new RenderPig(new ModelPig(), new ModelPig(0.5F), 0.7F);
 	this->entityRenderMap["EntitySheep"] = new RenderSheep(new ModelSheep2(), new ModelSheep1(), 0.7F);
@@ -193,9 +193,9 @@ RenderManager::RenderManager()
 	this->entityRenderMap["EntitySlime"] = new RenderSlime(new ModelSlime(16), new ModelSlime(0), 0.25F);
 	this->entityRenderMap["EntityPlayer"] = new RenderPlayer();
 	this->entityRenderMap["EntityPlayerSP"] = this->entityRenderMap["EntityPlayer"];   // CONSOLE: the client player is EntityPlayerSP (a leaf class); getSuperclass() is a stub (no walk), so alias its bare name to RenderPlayer
-	this->entityRenderMap["EntityGiantZombie"] = new RenderZombieSimple(new ModelZombie(), 0.5F, 6.0F);
+	this->entityRenderMap["EntityZombieSimple"] = new RenderZombieSimple(new ModelZombie(), 0.5F, 6.0F);
 	this->entityRenderMap["EntityGhast"] = new RenderGhast();
-	this->entityRenderMap["EntityMob"] = new RenderLiving(new ModelBiped(), 0.5F);
+	this->entityRenderMap["EntityLiving"] = new RenderLiving(new ModelBiped(), 0.5F);
 	this->entityRenderMap["Entity"] = new RenderEntity();
 	this->entityRenderMap["EntityPainting"] = new RenderPainting();
 	this->entityRenderMap["EntityArrow"] = new RenderArrow();
@@ -206,7 +206,7 @@ RenderManager::RenderManager()
 	this->entityRenderMap["EntityFallingSand"] = new RenderFallingSand();
 	this->entityRenderMap["EntityMinecart"] = new RenderMinecart();
 	this->entityRenderMap["EntityBoat"] = new RenderBoat();
-	this->entityRenderMap["EntityFishHook"] = new RenderFish();
+	this->entityRenderMap["EntityFish"] = new RenderFish();
 	// Java: for each Render in entityRenderMap.values() { render.setRenderManager(this); }
 	for(std::map<std::string, void*>::iterator var1 = this->entityRenderMap.begin(); var1 != this->entityRenderMap.end(); ++var1) {
 	Render* var2 = (Render*)var1->second;
