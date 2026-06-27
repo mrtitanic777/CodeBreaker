@@ -15,6 +15,10 @@ class Minecraft;
 
 class GuiScreen : public Gui {
 public:
+	// Java zero-inits all fields; C++ does NOT. With no ctor, allowUserInput was garbage -> the
+	// in-world input block in Minecraft::runTick (gated on allowUserInput) ran on the MENU and
+	// dereferenced the NULL thePlayer/playerController -> IP 0x0. Initialize everything to Java defaults.
+	GuiScreen() : mc(0), width(0), height(0), allowUserInput(false), fontRenderer(0), selectedButton(0) {}
 	virtual ~GuiScreen();
 
 	Minecraft* mc;
