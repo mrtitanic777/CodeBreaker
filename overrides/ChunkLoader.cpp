@@ -163,28 +163,14 @@ Chunk* ChunkLoader::loadChunk(World* var1, int var2, int var3)
 
 void ChunkLoader::saveChunk(World* var1, Chunk* var2)
 {
-	var1->checkSessionLock();
-	File* var3 = this->chunkFileForXZ(var2->xPosition, var2->zPosition);
-	if(var3->exists()) {
-	var1->sizeOnDisk -= var3->length();
-	}
-	try {
-	File* var4 = new File(this->saveDir, "tmp_chunk.dat");
-	FileOutputStream* var5 = new FileOutputStream(var4);
-	NBTTagCompound* var6 = new NBTTagCompound();
-	NBTTagCompound* var7 = new NBTTagCompound();
-	var6->setTag("Level", var7);
-	this->storeChunkInCompound(var2, var1, var7);
-	CompressedStreamTools::writeGzippedCompoundToOutputStream(var6, var5);
-	var5->close();
-	if(var3->exists()) {
-	fileDelete(var3);
-	}
-	var4->renameTo(var3);
-	var1->sizeOnDisk += var3->length();
-	} catch (Exception var8) {
-	var8.printStackTrace();
-	}
+	// CONSOLE: chunk persistence is DISABLED for now. The save dir is read-only on the emulator
+	// (ACCESS_DENIED), and storeChunkInCompound dereferenced a NULL chunk array/entity mid-save -> a
+	// hardware fault (IP 0x0) the try/catch can't catch -> crash during "Saving chunks". Skip the save
+	// so world-gen completes into memory and the world is enterable.
+	// TODO(persistence): real chunk save needs the writable Save: STFS mount (Save360_Init) + LZX
+	// compression (CompressedStreamTools is an inert stub) + NULL-guards in storeChunkInCompound.
+	// Original body is in git history; rewrite it properly when wiring persistence (docs/platform/05).
+	(void)var1; (void)var2;
 }
 
 void ChunkLoader::storeChunkInCompound(Chunk* var1, World* var2, NBTTagCompound* var3)
