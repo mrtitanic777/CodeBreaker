@@ -37,6 +37,7 @@ namespace GL11 {
 	const int GL_VERTEX_ARRAY = 0x8074, GL_NORMAL_ARRAY = 0x8075,
 	          GL_COLOR_ARRAY = 0x8076, GL_TEXTURE_COORD_ARRAY = 0x8078;
 	const int GL_MODELVIEW = 0x1700, GL_PROJECTION = 0x1701, GL_TEXTURE = 0x1702;
+	const int GL_MODELVIEW_MATRIX = 0x0BA6, GL_PROJECTION_MATRIX = 0x0BA7;  // matrix readback (frustum cull)
 	const int GL_DEPTH_TEST = 0x0B71, GL_BLEND = 0x0BE2, GL_ALPHA_TEST = 0x0BC0,
 	          GL_CULL_FACE = 0x0B44, GL_FOG = 0x0B60, GL_LIGHTING = 0x0B50,
 	          GL_TEXTURE_2D = 0x0DE1, GL_COLOR_MATERIAL = 0x0B57, GL_DITHER = 0x0BD0;
@@ -83,6 +84,7 @@ namespace GL11 {
 	void glOrtho(double l, double r, double b, double t, double n, double f);
 	void glViewport(int x, int y, int w, int h);
 	void glLoadProjection(const D3DXMATRIX& m);      // set current PROJECTION top (used by GLU)
+	void glGetFloat(int pname, FloatBuffer* buf);    // read MODELVIEW/PROJECTION matrix (frustum culling)
 
 	// --- immediate color / normal (the "current" attribute when no array is bound) ---
 	void glColor3f(float r, float g, float b);

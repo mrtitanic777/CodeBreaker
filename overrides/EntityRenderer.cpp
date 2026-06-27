@@ -451,6 +451,7 @@ void EntityRenderer::renderWorld(float var1)
 {
 	{ static bool _rw=false; if(!_rw){ _rw=true; DbgPrintF("[world] renderWorld BEGIN (first in-world 3D frame)\n"); } }
 	this->getMouseOver(var1);
+	{ static bool _m0=false; if(!_m0){_m0=true; DbgPrintF("[world] rW: getMouseOver ok\n");} }
 	EntityPlayerSP* var2 = this->mc->thePlayer;
 	RenderGlobal* var3 = this->mc->renderGlobal;
 	EffectRenderer* var4 = this->mc->effectRenderer;
@@ -470,17 +471,22 @@ void EntityRenderer::renderWorld(float var1)
 	GL11::glClear(GL11::GL_DEPTH_BUFFER_BIT | GL11::GL_COLOR_BUFFER_BIT);
 	GL11::glEnable(GL11::GL_CULL_FACE);
 	this->setupCameraTransform(var1, var11);
+	{ static bool _m1=false; if(!_m1){_m1=true; DbgPrintF("[world] rW: setupCameraTransform ok\n");} }
 	ClippingHelperImplementation::getInstance();
+	{ static bool _m2=false; if(!_m2){_m2=true; DbgPrintF("[world] rW: frustum getInstance ok\n");} }
 	if(this->mc->gameSettings->renderDistance < 2) {
 	this->setupFog(-1);
 	var3->renderSky(var1);
 	}
+	{ static bool _m3=false; if(!_m3){_m3=true; DbgPrintF("[world] rW: renderSky ok\n");} }
 	GL11::glEnable(GL11::GL_FOG);
 	this->setupFog(1);
 	Frustrum* var12 = new Frustrum();
 	var12->setPosition(var5, var7, var9);
 	this->mc->renderGlobal->clipRenderersByFrustum(var12, var1);
+	{ static bool _m4=false; if(!_m4){_m4=true; DbgPrintF("[world] rW: clipRenderersByFrustum ok\n");} }
 	this->mc->renderGlobal->updateRenderers(var2, false);
+	{ static bool _m5=false; if(!_m5){_m5=true; DbgPrintF("[world] rW: updateRenderers ok\n");} }
 	this->setupFog(0);
 	GL11::glEnable(GL11::GL_FOG);
 	GL11::glBindTexture(GL11::GL_TEXTURE_2D, this->mc->renderEngine->getTexture("/terrain.png"));

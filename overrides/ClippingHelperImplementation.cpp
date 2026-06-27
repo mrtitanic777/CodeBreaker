@@ -64,8 +64,11 @@ void ClippingHelperImplementation::init()
 	this->projectionBuffer->clear();
 	this->modelviewBuffer->clear();
 	this->modelviewProjectionBuffer->clear();
-	_GLShim::glGetFloat(_GLShim::GL_PROJECTION_MATRIX, this->projectionBuffer);
-	_GLShim::glGetFloat(_GLShim::GL_MODELVIEW_MATRIX, this->modelviewBuffer);
+	// CONSOLE (frustum fix): GL11::glGetFloat now REALLY reads the camera matrices (was a no-op _GLShim ->
+	// zero buffers -> degenerate frustum -> NaN planes / no real culling). Real matrices -> correct chunk
+	// frustum culling (side+far planes exact; near plane lenient-but-safe under D3D z[0,1]).
+	GL11::glGetFloat(GL11::GL_PROJECTION_MATRIX, this->projectionBuffer);
+	GL11::glGetFloat(GL11::GL_MODELVIEW_MATRIX, this->modelviewBuffer);
 	this->projectionBuffer->flip().limit(16);
 	this->projectionBuffer->get(this->projectionMatrix);
 	this->modelviewBuffer->flip().limit(16);

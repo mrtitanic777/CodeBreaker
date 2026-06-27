@@ -181,6 +181,20 @@ void glViewport(int x, int y, int w, int h) {
 }
 void glLoadProjection(const D3DXMATRIX& m){ s_projection.back() = m; }   // GLU::gluPerspective uses this
 
+// Read the current MODELVIEW or PROJECTION matrix into a FloatBuffer (16 floats), as GL's glGetFloat does.
+// Used by ClippingHelperImplementation to build the view frustum for chunk culling. CONVENTION: GL11 stores
+// D3DX row-major matrices = the GL column-vector CTM TRANSPOSED; that 16-float memory layout is EXACTLY GL's
+// column-major glGetFloat array (Dmem[i*4+j] = CTM[j][i] = GLarr[i*4+j]), so copy the floats straight through.
+// (Side+far frustum planes come out correct; the near plane is harmlessly lenient under D3D's [0,1] z.)
+void glGetFloat(int pname, FloatBuffer* buf) {
+	if(!buf) return;
+	const D3DXMATRIX* m = (pname==GL_MODELVIEW_MATRIX)  ? &s_modelview.back()
+	                    : (pname==GL_PROJECTION_MATRIX) ? &s_projection.back() : (const D3DXMATRIX*)0;
+	if(!m) return;
+	const float* src = (const float*)m;
+	for(int i=0;i<16;++i) buf->put(src[i]);
+}
+
 // ----------------------------------------------------------------------------- color / normal
 void glColor4f(float r,float g,float b,float a){
 	int ri=(int)(r*255), gi=(int)(g*255), bi=(int)(b*255), ai=(int)(a*255);
