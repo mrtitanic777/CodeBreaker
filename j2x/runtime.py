@@ -1050,6 +1050,7 @@ _GENERATED['Class.h'] = r'''#ifndef CLASS_H
 #include <typeinfo>
 class URL;
 class InputStream;
+InputStream* J2X_getResourceAsStream(const char* name);   // FileIO.cpp: "/x.png" -> game:\Content\x.png
 
 class Class {
 	const std::type_info* _ti;
@@ -1078,6 +1079,11 @@ public:
 	void* newInstance(...) { return 0; }
 	void* getDeclaredFields(...) { return 0; }
 	URL* getResource(...) { return 0; }
+	// Real resource resolution (was `return 0`, which made every RenderEngine texture load NULL ->
+	// readTextureImage crashed on NULL->close()). Routes "/terrain.png","/title/mojang.png",... to
+	// game:\Content\... via FileIO. const std::string& accepts JavaString (extends std::string) and
+	// const char* literals; the variadic fallback keeps any other call shape compiling.
+	InputStream* getResourceAsStream(const std::string& name) { return J2X_getResourceAsStream(name.c_str()); }
 	InputStream* getResourceAsStream(...) { return 0; }
 	operator Class*() { return this; }                     // usable where a Class* is expected
 };

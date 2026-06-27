@@ -196,6 +196,7 @@ int RenderEngine::allocateAndSetupTexture(BufferedImage* var1)
 
 void RenderEngine::setupTexture(BufferedImage* var1, int var2)
 {
+	if(var1 == NULL) return;   // failed/missing decode -> leave slot blank, don't crash on getWidth()
 	GL11::glBindTexture(GL11::GL_TEXTURE_2D, var2);
 	if(s_useMipmaps) {
 	/* ---- ORIGINAL JAVA (stubbed below) ----
@@ -471,6 +472,7 @@ void RenderEngine::refreshTextures()
 
 BufferedImage* RenderEngine::readTextureImage(InputStream* var1)
 {
+	if(var1 == NULL) return NULL;   // missing resource -> no stream; don't deref/close NULL
 	BufferedImage* var2 = ImageIO::read(var1);
 	var1->close();
 	return var2;
