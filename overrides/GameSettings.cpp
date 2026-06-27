@@ -170,6 +170,7 @@ GameSettings::GameSettings(Minecraft* var1, File* var2)
 	, soundVolume(0)
 	, mouseSensitivity(0)
 	, invertMouse(0)
+	, showFPS(true)
 	, renderDistance(0)
 	, viewBobbing(0)
 	, anaglyph(0)
@@ -228,6 +229,7 @@ GameSettings::GameSettings()
 	, soundVolume(0)
 	, mouseSensitivity(0)
 	, invertMouse(0)
+	, showFPS(true)
 	, renderDistance(0)
 	, viewBobbing(0)
 	, anaglyph(0)
@@ -304,7 +306,7 @@ void GameSettings::setOptionFloatValue(int var1, float var2)
 void GameSettings::setOptionValue(int var1, int var2)
 {
 	if(var1 == 2) {
-	this->invertMouse = !this->invertMouse;
+	this->showFPS = !this->showFPS;
 	}
 	if(var1 == 4) {
 	this->renderDistance = (this->renderDistance + var2) & 3;
@@ -355,7 +357,7 @@ JavaString GameSettings::getOptionDisplayString(int var1)
 			: JavaString("Sound: OFF");
 	}
 	if(var1 == 2) {
-		return JavaString(this->invertMouse ? "Invert mouse: ON" : "Invert mouse: OFF");
+		return JavaString(this->showFPS ? "Show FPS: ON" : "Show FPS: OFF");
 	}
 	if(var1 == 3) {
 		if(this->mouseSensitivity == 0.0F) return JavaString("Sensitivity: *yawn*");
@@ -407,8 +409,8 @@ void GameSettings::loadOptions()
 	if(var3[0].equals("mouseSensitivity")) {
 	this->mouseSensitivity = this->parseFloat(var3[1]);
 	}
-	if(var3[0].equals("invertYMouse")) {
-	this->invertMouse = var3[1].equals("true");
+	if(var3[0].equals("showFPS")) {
+	this->showFPS = var3[1].equals("true");
 	}
 	if(var3[0].equals("viewDistance")) {
 	this->renderDistance = Integer::parseInt(var3[1]);
@@ -465,7 +467,7 @@ void GameSettings::saveOptions()
 	PrintWriter* var1 = new PrintWriter(new FileWriter(this->optionsFile));
 	var1->println((JCat() + "music:" + this->musicVolume));
 	var1->println((JCat() + "sound:" + this->soundVolume));
-	var1->println((JCat() + "invertYMouse:" + this->invertMouse));
+	var1->println((JCat() + "showFPS:" + this->showFPS));
 	var1->println((JCat() + "mouseSensitivity:" + this->mouseSensitivity));
 	var1->println((JCat() + "viewDistance:" + this->renderDistance));
 	var1->println((JCat() + "bobView:" + this->viewBobbing));

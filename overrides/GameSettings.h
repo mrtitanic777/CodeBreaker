@@ -21,6 +21,7 @@ public:
 	float soundVolume;
 	float mouseSensitivity;
 	bool invertMouse;
+	bool showFPS;
 	int renderDistance;
 	bool viewBobbing;
 	bool anaglyph;

@@ -256,7 +256,7 @@ void GuiIngame::renderGameOverlay(float var1, bool var2, int var3, int var4)
 	{ static bool _h2=false; if(!_h2){_h2=true; DbgPrintF("[hud] hotbar items ok\n");} }
 	GL11::glDisable(GL12::GL_RESCALE_NORMAL);
 	JavaString var23;
-	if(Keyboard::isKeyDown(KEY_F3)) {
+	if(this->mc->gameSettings->showFPS) {
 	var8->drawStringWithShadow((JCat() + "Minecraft Alpha v1.2.6 (" + this->mc->debugFPS + ")"),2,2,16777215);
 	var8->drawStringWithShadow(this->mc->getDebugInfoRenders(), 2, 12, 16777215);
 	var8->drawStringWithShadow(this->mc->getDebugInfoEntities(), 2, 22, 16777215);
