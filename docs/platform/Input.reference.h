@@ -88,6 +88,16 @@ namespace Input {
 
 	// Set the on-screen display size so Mouse::getX()/getY() (GUI cursor) scale correctly.
 	void setDisplaySize(int w, int h);
+
+	// Discrete menu navigation (Indev-style). Each returns true ONCE per d-pad / left-stick press
+	// (edge-triggered + latched until read, so an edge isn't lost on a tickless frame). GuiScreen
+	// consumes these to move the selected button and snaps the cursor onto it, so the existing
+	// hover-highlight + A-to-click land on the selection. The RIGHT stick stays a free analog pointer
+	// for non-button GUIs (slots). Replaces the old analog-cursor drift that scrolled "super fast".
+	bool navUp();
+	bool navDown();
+	bool navLeft();
+	bool navRight();
 }
 
 // ---------------------------------------------------------------------------

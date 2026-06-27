@@ -89,6 +89,19 @@ static void issueDraw(std::vector<TesselatorVertex>& tris, D3DPRIMITIVETYPE prim
 	Shaders::setProjectionMatrix(s_projection.back());
 	{ D3DXMATRIX I; D3DXMatrixIdentity(&I); Shaders::setViewMatrix(I); }   // modelview folds model+view
 	Shaders::updateShaderConstants();
+	// DIAGNOSTIC (logo/world 3D): log the first few PERSPECTIVE draws (ortho proj has _34==0; perspective
+	// has _34==-1). Shows whether 3D geometry lands inside the clip frustum (need w>0, |x|,|y|<=w, 0<=z<=w)
+	// or is clipped/off-screen -- this is the shared submit point for the menu logo AND world terrain.
+	if (s_projection.back()._34 != 0.0f) {
+		static int s_diag3d = 0;
+		if (s_diag3d < 5) { ++s_diag3d;
+			D3DXMATRIX wvp; D3DXMatrixMultiply(&wvp, &s_modelview.back(), &s_projection.back());
+			D3DXVECTOR3 v0(tris[0].x, tris[0].y, tris[0].z); D3DXVECTOR4 c;
+			D3DXVec3Transform(&c, &v0, &wvp);
+			DbgPrintF("[3d] draw#%d prim=%d cnt=%d tex=%d v0=(%.2f,%.2f,%.2f) clip=(%.2f,%.2f,%.2f w=%.2f)\n",
+			          s_diag3d, (int)prim, primCount, textured?1:0, v0.x, v0.y, v0.z, c.x, c.y, c.z, c.w);
+		}
+	}
 	if(stampColor) for(size_t i=0;i<tris.size();++i) tris[i].color=s_color;
 	g_pd3dDevice->DrawPrimitiveUP(prim, primCount, &tris[0], sizeof(TesselatorVertex));
 }

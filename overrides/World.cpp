@@ -786,16 +786,14 @@ void World::loadPlayerData(EntityPlayer* var1)
 
 void World::saveWorld(bool var1, IProgressUpdate* var2)
 {
-	if(this->chunkProvider->canSave()) {
-	if(var2 != NULL) {
-	var2->displayProgressMessage("Saving level");
-	}
-	this->saveLevel();
-	if(var2 != NULL) {
-	var2->displayLoadingString("Saving chunks");
-	}
-	this->chunkProvider->saveChunks(var1, var2);
-	}
+	// CONSOLE: world persistence is DISABLED until the writable Save: STFS mount is wired. The save dir
+	// (game:\minecraft\saves) is READ-ONLY on the emulator, so saveLevel()'s `new FileOutputStream(
+	// level.dat_new)` returns C0000022 (ACCESS_DENIED) and the level.dat/chunk write path then faults
+	// (IP 0x0) BELOW the try/catch -- a hardware fault the emulator can't unwind -> crash at "Saving
+	// chunks". Skip the whole save so world creation completes into memory and the world is enterable.
+	// TODO(persistence): wire Save360 (Save: mount) + LZX (CompressedStreamTools) per docs/platform/05,
+	// then restore the original body (preserved in git history): canSave -> saveLevel() -> saveChunks().
+	(void)var1; (void)var2;
 }
 
 void World::saveLevel()
@@ -844,14 +842,10 @@ void World::saveLevel()
 
 bool World::quickSaveWorld(int var1)
 {
-	if(!this->chunkProvider->canSave()) {
+	// CONSOLE: in-play autosave disabled for the same read-only-device reason as saveWorld() above.
+	// Returning true reports "saved" so callers don't spin. Restore the body when persistence is wired.
+	(void)var1;
 	return true;
-	} else {
-	if(var1 == 0) {
-	this->saveLevel();
-	}
-	return this->chunkProvider->saveChunks(false, (IProgressUpdate*)NULL);
-	}
 }
 
 int World::getBlockId(int var1, int var2, int var3)

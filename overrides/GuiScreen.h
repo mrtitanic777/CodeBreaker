@@ -18,7 +18,7 @@ public:
 	// Java zero-inits all fields; C++ does NOT. With no ctor, allowUserInput was garbage -> the
 	// in-world input block in Minecraft::runTick (gated on allowUserInput) ran on the MENU and
 	// dereferenced the NULL thePlayer/playerController -> IP 0x0. Initialize everything to Java defaults.
-	GuiScreen() : mc(0), width(0), height(0), allowUserInput(false), fontRenderer(0), selectedButton(0) {}
+	GuiScreen() : mc(0), width(0), height(0), allowUserInput(false), fontRenderer(0), selectedButton(0), navSelected(-1) {}
 	virtual ~GuiScreen();
 
 	Minecraft* mc;
@@ -28,6 +28,11 @@ public:
 	bool allowUserInput;
 	FontRenderer* fontRenderer;
 	GuiButton* selectedButton;
+	// CONSOLE (controller): index into controlList of the currently d-pad-selected button (-1 = none yet).
+	// Drives Indev-style discrete navigation; handleControllerMenuNav() keeps the virtual cursor snapped
+	// onto this button so the existing hover-highlight + A-to-click work unchanged.
+	int navSelected;
+	void handleControllerMenuNav();
 
 	virtual void drawScreen(int var1, int var2, float var3);
 	virtual void keyTyped(char var1, int var2);

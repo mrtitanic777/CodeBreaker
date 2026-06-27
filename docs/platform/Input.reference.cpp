@@ -53,8 +53,11 @@ namespace {
 	WORD  g_prevButtons = 0;           // previous wButtons (rising/falling edge masks)
 	bool  g_prevKeyDown[256];          // previous virtual key bitmap (to emit key edge events)
 	bool  g_prevBtnDown[3];            // previous mouse-button (trigger) state
-	// Menu-nav repeat edge state (d-pad / left-stick notch), mirrors GuiScreen.cpp:126.
+	// Menu-nav edge state (d-pad / left-stick notch). g_prevNav* = last frame's active state (for edge
+	// detection); g_nav*Fired = LATCHED edge waiting to be consumed by Input::navUp()/... (latched so an
+	// edge isn't dropped on a frame that ran 0 ticks, i.e. didn't call GuiScreen::handleInput).
 	bool  g_prevNavUp = false, g_prevNavDown = false, g_prevNavLeft = false, g_prevNavRight = false;
+	bool  g_navUpFired = false, g_navDownFired = false, g_navLeftFired = false, g_navRightFired = false;
 
 	bool g_initDone = false;
 
@@ -148,6 +151,12 @@ bool connected() { return g_connected; }
 float moveStrafe()  { return g_moveStrafe; }
 float moveForward() { return g_moveForward; }
 
+// Discrete menu-nav edges: consume the latched edge (read-once, so exactly one handleInput() acts on it).
+bool navUp()    { bool f = g_navUpFired;    g_navUpFired    = false; return f; }
+bool navDown()  { bool f = g_navDownFired;  g_navDownFired  = false; return f; }
+bool navLeft()  { bool f = g_navLeftFired;  g_navLeftFired  = false; return f; }
+bool navRight() { bool f = g_navRightFired; g_navRightFired = false; return f; }
+
 void poll() {
 	ensureInit();
 
@@ -212,6 +221,8 @@ void poll() {
 		memcpy(g_prevKeyDown, g_keyDown, sizeof(g_keyDown));
 		memcpy(g_prevBtnDown, g_btnDown, sizeof(g_btnDown));
 		g_prevButtons = 0;
+		g_navUpFired = g_navDownFired = g_navLeftFired = g_navRightFired = false;
+		g_prevNavUp = g_prevNavDown = g_prevNavLeft = g_prevNavRight = false;
 		return;
 	}
 
@@ -236,6 +247,10 @@ void poll() {
 	//   !grabbed  == IN A GUI -> left stick + d-pad move a virtual cursor; A = click; B/START = back.
 	if (g_grabbed) {
 		// ===================== IN-GAME =====================
+		// No menu open -> drop any latched menu-nav edge and keep its prev-state cleared so re-opening a
+		// GUI starts clean (a held stick won't fire a nav the instant a menu appears).
+		g_navUpFired = g_navDownFired = g_navLeftFired = g_navRightFired = false;
+		g_prevNavUp = g_prevNavDown = g_prevNavLeft = g_prevNavRight = false;
 		g_moveStrafe  = lx;   // stick-right -> strafe right
 		g_moveForward = ly;   // stick-up    -> forward+ (consumer negates if needed)
 		setKey(Keyboard::KEY_W, ly >  0.5F);   // digital fallback if the analog override isn't used
@@ -271,13 +286,23 @@ void poll() {
 		if (vRB && !prevRB) pushBtnEvent(-1, false, g_cursorX, g_cursorY, +120);
 		if (vLB && !prevLB) pushBtnEvent(-1, false, g_cursorX, g_cursorY, -120);
 	} else {
-		// ===================== IN A GUI (cursor + click) =====================
-		// Move the virtual cursor; getX()/getY() feed GuiScreen's hover highlight so the widget under
-		// the cursor lights up, and A fires a left-click there (GuiScreen::handleMouseInput).
-		// FRAME-RATE-INDEPENDENT: the menu renders with no vsync (uncapped FPS), so a per-frame pixel
-		// step flew across the screen. Move by pixels/SECOND * dt, with a float accumulator so sub-pixel
-		// motion isn't lost at high FPS. Re-sync the accumulator if the cursor was set externally
-		// (setDisplaySize centering / setCursorPosition).
+		// ===================== IN A GUI (Indev-style DISCRETE selection) =====================
+		// The d-pad / LEFT stick select buttons ONE step per press (edge-triggered + latched), instead of
+		// drifting an analog cursor (which flew across the screen at the uncapped menu FPS). GuiScreen
+		// consumes navUp()/navDown()/... to move the selected button and SNAPS this cursor onto it via
+		// Mouse::setCursorPosition -- so the existing hover highlight lights up and A clicks the selection.
+		bool navU = (vUp != 0) || ly >  0.5F;     // ly is up-positive
+		bool navD = (vDn != 0) || ly < -0.5F;
+		bool navL = (vLf != 0) || lx < -0.5F;
+		bool navR = (vRt != 0) || lx >  0.5F;
+		if (navU && !g_prevNavUp)    g_navUpFired    = true;   // latch the rising edge (consumed by navUp())
+		if (navD && !g_prevNavDown)  g_navDownFired  = true;
+		if (navL && !g_prevNavLeft)  g_navLeftFired  = true;
+		if (navR && !g_prevNavRight) g_navRightFired = true;
+		g_prevNavUp = navU; g_prevNavDown = navD; g_prevNavLeft = navL; g_prevNavRight = navR;
+
+		// RIGHT stick = optional FREE analog pointer (frame-rate-independent) for non-button GUIs (slots).
+		// Button menus snap the cursor onto the selected button, so this just lets a slot screen point.
 		static unsigned long s_lastMs = 0;
 		static float s_fx = 0.0F, s_fy = 0.0F;
 		unsigned long nowMs = GetTickCount();
@@ -286,9 +311,7 @@ void poll() {
 		if (dt > 0.1F) dt = 0.1F;                                   // clamp first frame / hitches
 		if ((int)s_fx != g_cursorX || (int)s_fy != g_cursorY) { s_fx = (float)g_cursorX; s_fy = (float)g_cursorY; }
 		float spd = InputConfig::CURSOR_PIXELS_PER_SECOND * dt;
-		s_fx += lx * spd;  s_fy += -ly * spd;                       // left stick (analog), stick-up -> cursor up
-		if (vLf) s_fx -= spd;  if (vRt) s_fx += spd;                // d-pad (digital, full speed)
-		if (vUp) s_fy -= spd;  if (vDn) s_fy += spd;
+		s_fx += rx * spd;  s_fy += -ry * spd;                       // RIGHT stick (analog), stick-up -> cursor up
 		if (s_fx < 0) s_fx = 0;  if (s_fx > (float)g_dispW) s_fx = (float)g_dispW;
 		if (s_fy < 0) s_fy = 0;  if (s_fy > (float)g_dispH) s_fy = (float)g_dispH;
 		g_cursorX = (int)s_fx;  g_cursorY = (int)s_fy;

@@ -5,6 +5,7 @@
 // Target: Xbox 360 / C++03 / DirectX 9
 
 #include "GuiScreen.h"
+#include "Input.h"            // CONSOLE: Input::navUp/Down/... discrete menu nav + Mouse::setCursorPosition
 #include "AxisAlignedBB.h"
 #include "Block.h"
 #include "BlockFire.h"
@@ -216,11 +217,62 @@ void GuiScreen::initGui()
 
 void GuiScreen::handleInput()
 {
+	this->handleControllerMenuNav();   // CONSOLE: Indev-style discrete d-pad button selection + cursor snap
 	while(Mouse::next()) {
 	this->handleMouseInput();
 	}
 	while(Keyboard::next()) {
 	this->handleKeyboardInput();
+	}
+}
+
+// CONSOLE (controller): discrete menu navigation. The d-pad / left stick move `navSelected` between the
+// ENABLED+visible buttons in controlList (wrap-around, skipping disabled), and we snap the virtual cursor
+// onto the selected button's center. That makes the EXISTING paths do the work: GuiButton::drawButton
+// highlights the button under the cursor (yellow text + hover tile), and an A press -> a left-click at the
+// cursor (Input::poll) -> GuiScreen::mouseClicked -> actionPerformed. Screens with no buttons (slot GUIs)
+// fall through untouched and use the right-stick free pointer. Mirrors the working Indev port's selectedButton.
+static bool _navButtonOK(JList<void*>& list, int i) {
+	if (i < 0 || i >= (int)list.size()) return false;
+	GuiButton* b = (GuiButton*)list[i];
+	return b != NULL && b->enabled && b->enabled2;
+}
+void GuiScreen::handleControllerMenuNav()
+{
+	int n = (int)this->controlList.size();
+	if (n <= 0) { this->navSelected = -1; return; }   // no buttons -> nothing to navigate
+
+	bool up = Input::navUp(), down = Input::navDown();
+	bool left = Input::navLeft(), right = Input::navRight();
+	int step = (down || right) ? 1 : ((up || left) ? -1 : 0);
+
+	// Ensure a valid selection (first navigable button) -- handles first entry and a selection that
+	// became disabled/removed.
+	if (!_navButtonOK(this->controlList, this->navSelected)) {
+		this->navSelected = -1;
+		for (int i = 0; i < n; ++i) { if (_navButtonOK(this->controlList, i)) { this->navSelected = i; break; } }
+	}
+	if (this->navSelected < 0) return;   // no navigable buttons on this screen
+
+	if (step != 0) {
+		int i = this->navSelected;
+		for (int guard = 0; guard < n; ++guard) {
+			i += step;
+			if (i < 0) i = n - 1; else if (i >= n) i = 0;
+			if (_navButtonOK(this->controlList, i)) { this->navSelected = i; break; }
+		}
+	}
+
+	// Snap the cursor onto the selected button center. Cursor is DISPLAY pixels (top-down); button coords
+	// are GUI-scaled. This is the inverse of EntityRenderer's mouseX/Y mapping (var10/var11):
+	//   guiX = cursorX * width/displayWidth ; guiY = height - getY*height/displayHeight - 1.
+	if (this->width > 0 && this->height > 0 && this->mc != NULL) {
+		GuiButton* b = (GuiButton*)this->controlList[this->navSelected];
+		int bx = b->xPosition + b->width / 2;
+		int by = b->yPosition + b->height / 2;
+		int cx = bx * this->mc->displayWidth / this->width;
+		int cy = by * this->mc->displayHeight / this->height;
+		Mouse::setCursorPosition(cx, cy);
 	}
 }
 
