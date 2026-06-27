@@ -1146,16 +1146,19 @@ void Minecraft::changeWorld(World* var1, const JavaString& var2, EntityPlayer* v
 	if(!var1->multiplayerWorld) {
 	this->loadWorldSpawnArea(var2);
 	}
+	DbgPrintF("[world] changeWorld: spawnArea returned\n");
 	System::out.println((JCat() + "Player is now " + this->thePlayer));
 	if(this->thePlayer == NULL) {
 	this->thePlayer = (EntityPlayerSP*)this->playerController->createPlayer(var1);
 	this->thePlayer->preparePlayerToSpawn();
 	this->playerController->flipPlayer(this->thePlayer);
 	}
+	DbgPrintF("[world] changeWorld: player ready (%p)\n", (void*)this->thePlayer);
 	this->thePlayer->movementInput = new MovementInputFromOptions(this->gameSettings);
 	if(this->renderGlobal != NULL) {
 	this->renderGlobal->setWorldAndLoadRenderers(var1);
 	}
+	DbgPrintF("[world] changeWorld: renderers set\n");
 	if(this->effectRenderer != NULL) {
 	this->effectRenderer->clearEffects(var1);
 	}
@@ -1172,6 +1175,7 @@ void Minecraft::changeWorld(World* var1, const JavaString& var2, EntityPlayer* v
 	}
 	System::gc();
 	this->prevFrameTime = 0LL;
+	DbgPrintF("[world] changeWorld: DONE (entering world)\n");
 }
 
 void Minecraft::loadWorldSpawnArea(const JavaString& var1)
@@ -1182,6 +1186,7 @@ void Minecraft::loadWorldSpawnArea(const JavaString& var1)
 	int var3 = 0;
 	int var4 = var2 * 2 / 16 + 1;
 	var4 *= var4;
+	DbgPrintF("[world] spawnArea BEGIN (generate %d columns)\n", var4);
 	for(int var5 = -var2; var5 <= var2; var5 += 16) {
 	int var6 = this->theWorld->spawnX;
 	int var7 = this->theWorld->spawnZ;
@@ -1190,15 +1195,18 @@ void Minecraft::loadWorldSpawnArea(const JavaString& var1)
 	var7 = (int)this->thePlayer->posZ;
 	}
 	for(int var8 = -var2; var8 <= var2; var8 += 16) {
+	if(var3 % 40 == 0) DbgPrintF("[world] gen %d/%d at chunk(%d,%d)\n", var3, var4, (var6+var5)>>4, (var7+var8)>>4);
 	this->loadingScreen->setLoadingProgress(var3++ * 100 / var4);
 	this->theWorld->getBlockId(var6 + var5, 64, var7 + var8);
 	while(this->theWorld->updatingLighting()) {
 	}
 	}
 	}
+	DbgPrintF("[world] spawnArea: terrain built (getBlockId loop done)\n");
 	this->loadingScreen->displayLoadingString("Simulating world for a bit");
 	bool var9 = true;
 	this->theWorld->loadAllChunks();
+	DbgPrintF("[world] spawnArea: loadAllChunks done\n");
 }
 
 void Minecraft::installResource(const JavaString& var1_, File* var2)
