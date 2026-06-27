@@ -859,6 +859,7 @@ void Minecraft::resize(int var1, int var2)
 	}
 	this->displayWidth = var1;
 	this->displayHeight = var2;
+	Input::setDisplaySize(var1, var2);   // keep the controller's virtual GUI cursor mapped to real pixels
 	if(this->currentScreen != NULL) {
 	ScaledResolution* var3 = new ScaledResolution(var1, var2);
 	int var4 = var3->getScaledWidth();

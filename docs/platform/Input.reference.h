@@ -34,16 +34,23 @@
 #ifndef INPUT_H
 #define INPUT_H
 
-#include "stdafx.h"          // xtl.h pulls in xinput.h (XInputGetState / XINPUT_STATE / XINPUT_GAMEPAD_*)
+#include "stdafx.h"          // xtl.h -> xbox.h/xinputdefs.h (button-bit constants, used for edge masks)
+#include <xinput2.h>         // THE Xbox 360 controller API: XInput2Sample / XInput2Get{Bool,Float,Point} / XINPUTID_*
 #include <string>
 
 // ---------------------------------------------------------------------------
 // Tunables (start = old-port constants; tune the look gain on hardware).
 // ---------------------------------------------------------------------------
 namespace InputConfig {
-	const short STICK_DEADZONE   = 8000;    // old port _DZ (EntityPlayerSP.cpp:135) -- flat per-axis
-	const short MENU_STEP        = 16384;   // old port one-notch menu threshold (GuiScreen.cpp:129-131)
-	const unsigned char TRIGGER  = 40;      // old port TRIG (Minecraft.cpp:856) -- pulled when value > 40
+	// XInput2 thumbsticks/triggers are normalized floats (NOT the PC API's shorts/bytes), so the live
+	// thresholds are these float ones. HARDWARE-VERIFY the exact range on-device (treated as [-1,1]).
+	const float STICK_DEADZONE_F      = 0.24F;   // ~ old 8000/32767; below this an axis reads 0
+	const float TRIGGER_F             = 0.12F;   // trigger counts as "pulled" above this
+	const float CURSOR_PIXELS_PER_FRAME = 12.0F; // GUI cursor speed at full left-stick deflection (menus)
+
+	const short STICK_DEADZONE   = 8000;    // (legacy short constants kept for reference / any old callers)
+	const short MENU_STEP        = 16384;
+	const unsigned char TRIGGER  = 40;
 
 	// Right-stick -> mouse look. The look gain here is the "pixels of mouse movement per frame at full
 	// deflection" BEFORE the Java sensitivity curve ((sens*0.6+0.2)^3 * 8) in EntityRenderer:411-414.

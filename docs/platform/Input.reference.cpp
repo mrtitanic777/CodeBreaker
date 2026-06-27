@@ -115,14 +115,13 @@ namespace {
 		}
 	}
 
-	// Deadzoned, normalized stick axis in [-1, 1]. Flat per-axis deadzone, matching the old port
-	// (EntityPlayerSP.cpp:136-139): |v|>DZ ? v/32767 : 0.
-	float axis(short v) {
-		if ((short)abs((int)v) <= InputConfig::STICK_DEADZONE) return 0.0F;
-		float f = (float)v / 32767.0F;
-		if (f >  1.0F) f =  1.0F;
-		if (f < -1.0F) f = -1.0F;
-		return f;
+	// Deadzoned, normalized stick axis in [-1, 1]. XInput2 thumbsticks come back as normalized floats
+	// (XInput2GetPoint), so the deadzone is applied in float space. Flat per-axis.
+	float axisf(float v) {
+		if (v > -InputConfig::STICK_DEADZONE_F && v < InputConfig::STICK_DEADZONE_F) return 0.0F;
+		if (v >  1.0F) return  1.0F;
+		if (v < -1.0F) return -1.0F;
+		return v;
 	}
 
 	// Set a virtual key, emitting a press/release event on the edge vs the previous frame.
@@ -139,7 +138,11 @@ namespace {
 // ===========================================================================
 namespace Input {
 
-void setDisplaySize(int w, int h) { if (w > 0) g_dispW = w; if (h > 0) g_dispH = h; }
+void setDisplaySize(int w, int h) {
+	if (w > 0) g_dispW = w;
+	if (h > 0) g_dispH = h;
+	if (g_cursorX == 0 && g_cursorY == 0) { g_cursorX = g_dispW / 2; g_cursorY = g_dispH / 2; }  // start centered
+}
 bool connected() { return g_connected; }
 float moveStrafe()  { return g_moveStrafe; }
 float moveForward() { return g_moveForward; }
@@ -147,21 +150,21 @@ float moveForward() { return g_moveForward; }
 void poll() {
 	ensureInit();
 
-	XINPUT_STATE st;
-	memset(&st, 0, sizeof(st));
-	DWORD r = XInputGetState(0, &st);          // user index 0 / player 1, as the whole old port did
-	g_connected = (r == ERROR_SUCCESS);
+	// ---- Sample player 0's input device via XInput2 (the 360 controller API), then read each control
+	//      by XINPUTID. This is NOT the PC XInputGetState/XINPUT_STATE path. ----
+	XINPUT2CONTEXT ctx = 0;
+	BOOL changed = FALSE;
+	g_connected = (XInput2Sample(XInput2InputDevice(0), &ctx, &changed) != FALSE);
 
-	// Clear this-frame key bitmap; we rebuild it from the pad. (Buttons not driven by the pad stay up.)
-	memset(g_keyDown, 0, sizeof(g_keyDown));
+	memset(g_keyDown, 0, sizeof(g_keyDown));   // rebuilt from the pad each frame
 	g_moveStrafe = g_moveForward = 0.0F;
 
 	if (!g_connected) {
-		// No controller: everything releases. Still emit release edges so held keys don't stick.
+		// No controller / no sample: release everything (emit release edges so nothing sticks).
 		for (int k = 0; k < 256; ++k) if (g_prevKeyDown[k]) pushKeyEvent(k, false, 0);
-		for (int b = 0; b < 3; ++b) {
-			if (g_prevBtnDown[b]) pushBtnEvent(b, false, g_cursorX, g_cursorY, 0);
-			g_btnDown[b] = false;
+		for (int bb = 0; bb < 3; ++bb) {
+			if (g_prevBtnDown[bb]) pushBtnEvent(bb, false, g_cursorX, g_cursorY, 0);
+			g_btnDown[bb] = false;
 		}
 		memcpy(g_prevKeyDown, g_keyDown, sizeof(g_keyDown));
 		memcpy(g_prevBtnDown, g_btnDown, sizeof(g_btnDown));
@@ -169,99 +172,101 @@ void poll() {
 		return;
 	}
 
-	const XINPUT_GAMEPAD& gp = st.Gamepad;
-	const WORD b = gp.wButtons;
+	// ---- Read raw controls (digital via GetBool, triggers via GetFloat, sticks via GetPoint) ----
+	BOOL vA=0,vB=0,vX=0,vY=0, vUp=0,vDn=0,vLf=0,vRt=0, vStart=0,vBack=0, vL3=0,vR3=0, vLB=0,vRB=0;
+	XInput2GetBool(ctx, XINPUTID_A, &vA);              XInput2GetBool(ctx, XINPUTID_B, &vB);
+	XInput2GetBool(ctx, XINPUTID_X, &vX);              XInput2GetBool(ctx, XINPUTID_Y, &vY);
+	XInput2GetBool(ctx, XINPUTID_DPAD_UP, &vUp);       XInput2GetBool(ctx, XINPUTID_DPAD_DOWN, &vDn);
+	XInput2GetBool(ctx, XINPUTID_DPAD_LEFT, &vLf);     XInput2GetBool(ctx, XINPUTID_DPAD_RIGHT, &vRt);
+	XInput2GetBool(ctx, XINPUTID_START, &vStart);      XInput2GetBool(ctx, XINPUTID_BACK, &vBack);
+	XInput2GetBool(ctx, XINPUTID_LEFT_THUMB, &vL3);    XInput2GetBool(ctx, XINPUTID_RIGHT_THUMB, &vR3);
+	XInput2GetBool(ctx, XINPUTID_LEFT_SHOULDER, &vLB); XInput2GetBool(ctx, XINPUTID_RIGHT_SHOULDER, &vRB);
 
-	// ---------- Left stick: analog move axes + digitized W/A/S/D ----------
-	float lx = axis(gp.sThumbLX);
-	float ly = axis(gp.sThumbLY);
-	// Sign-matched to the old port (EntityPlayerSP.cpp:143-144): strafe = lx, forward = -? No:
-	// the old port wrote m_field_1174_a = lx (strafe) and m_field_1173_b = -ly (forward). MovementInput
-	// fields are "strafe right +" and "forward +", so:
-	g_moveStrafe  = lx;          // stick-right -> strafe right
-	g_moveForward = ly;          // stick-up (ly>0) -> forward+ ; consumer negates if needed (see 03b)
-	// Digital fallback (only relevant if you do NOT use the analog MovementInput override):
-	setKey(Keyboard::KEY_W, gp.sThumbLY >  InputConfig::STICK_DEADZONE);   // stick-up    -> forward
-	setKey(Keyboard::KEY_S, gp.sThumbLY < -InputConfig::STICK_DEADZONE);   // stick-down  -> back
-	setKey(Keyboard::KEY_A, gp.sThumbLX < -InputConfig::STICK_DEADZONE);   // stick-left  -> left
-	setKey(Keyboard::KEY_D, gp.sThumbLX >  InputConfig::STICK_DEADZONE);   // stick-right -> right
+	float fLT = 0.0F, fRT = 0.0F;
+	XInput2GetFloat(ctx, XINPUTID_LEFT_TRIGGER,  &fLT);
+	XInput2GetFloat(ctx, XINPUTID_RIGHT_TRIGGER, &fRT);
 
-	// ---------- Right stick: mouse-look deltas (the LIVE look path) ----------
-	// Normalize, then scale to a per-frame "pixel" magnitude. EntityRenderer applies the Java
-	// sensitivity curve on top, so DO NOT bake the curve in here (would double-apply -- doc 03).
-	float rx = axis(gp.sThumbRX);
-	float ry = axis(gp.sThumbRY);
-	float ddx = rx * InputConfig::LOOK_PIXELS_PER_FRAME;
-	float ddy = ry * InputConfig::LOOK_PIXELS_PER_FRAME;
-	if (InputConfig::LOOK_INVERT_X) ddx = -ddx;
-	if (InputConfig::LOOK_INVERT_Y) ddy = -ddy;   // up-stick -> look up by default
-	// Accumulate; getDX/getDY drain it. Only feed look while grabbed (in-game), like a captured cursor.
+	XINPUT2_POINT lsp; lsp.x = lsp.y = 0.0F;  XINPUT2_POINT rsp; rsp.x = rsp.y = 0.0F;
+	XInput2GetPoint(ctx, XINPUTID_LEFT_THUMBSTICK,  &lsp);
+	XInput2GetPoint(ctx, XINPUTID_RIGHT_THUMBSTICK, &rsp);
+	float lx = axisf(lsp.x), ly = axisf(lsp.y);   // [-1,1], y up-positive
+	float rx = axisf(rsp.x), ry = axisf(rsp.y);
+	bool lt = fLT > InputConfig::TRIGGER_F;
+	bool rt = fRT > InputConfig::TRIGGER_F;
+
+	// Build a button-bit mask (reuse the XINPUT_GAMEPAD_* bits from xinputdefs.h) so edge detection
+	// against g_prevButtons stays simple.
+	WORD b = 0;
+	if (vA) b |= XINPUT_GAMEPAD_A;            if (vB) b |= XINPUT_GAMEPAD_B;
+	if (vX) b |= XINPUT_GAMEPAD_X;            if (vY) b |= XINPUT_GAMEPAD_Y;
+	if (vUp) b |= XINPUT_GAMEPAD_DPAD_UP;     if (vDn) b |= XINPUT_GAMEPAD_DPAD_DOWN;
+	if (vLf) b |= XINPUT_GAMEPAD_DPAD_LEFT;   if (vRt) b |= XINPUT_GAMEPAD_DPAD_RIGHT;
+	if (vStart) b |= XINPUT_GAMEPAD_START;    if (vBack) b |= XINPUT_GAMEPAD_BACK;
+	if (vL3) b |= XINPUT_GAMEPAD_LEFT_THUMB;  if (vR3) b |= XINPUT_GAMEPAD_RIGHT_THUMB;
+	if (vLB) b |= XINPUT_GAMEPAD_LEFT_SHOULDER; if (vRB) b |= XINPUT_GAMEPAD_RIGHT_SHOULDER;
+
+	// One unified controller, two modes -- decided by g_grabbed (set by MouseHelper grab/ungrab):
+	//   grabbed   == IN-GAME  -> sticks = move + look, triggers = attack/use, face = jump/inventory/...
+	//   !grabbed  == IN A GUI -> left stick + d-pad move a virtual cursor; A = click; B/START = back.
 	if (g_grabbed) {
+		// ===================== IN-GAME =====================
+		g_moveStrafe  = lx;   // stick-right -> strafe right
+		g_moveForward = ly;   // stick-up    -> forward+ (consumer negates if needed)
+		setKey(Keyboard::KEY_W, ly >  0.5F);   // digital fallback if the analog override isn't used
+		setKey(Keyboard::KEY_S, ly < -0.5F);
+		setKey(Keyboard::KEY_A, lx < -0.5F);
+		setKey(Keyboard::KEY_D, lx >  0.5F);
+
+		// Right stick -> look delta (EntityRenderer applies the Java sensitivity curve; don't bake it in).
+		float ddx = rx * InputConfig::LOOK_PIXELS_PER_FRAME;
+		float ddy = ry * InputConfig::LOOK_PIXELS_PER_FRAME;
+		if (InputConfig::LOOK_INVERT_X) ddx = -ddx;
+		if (InputConfig::LOOK_INVERT_Y) ddy = -ddy;
 		g_dx += (int)ddx;
 		g_dy += (int)ddy;
+
+		// Triggers -> mouse buttons (RT = attack/break = 0, LT = place/use = 1).
+		g_btnDown[0] = rt; g_btnDown[1] = lt; g_btnDown[2] = false;
+		if (rt && !g_prevBtnDown[0]) pushBtnEvent(0, true,  g_cursorX, g_cursorY, 0);
+		if (!rt && g_prevBtnDown[0]) pushBtnEvent(0, false, g_cursorX, g_cursorY, 0);
+		if (lt && !g_prevBtnDown[1]) pushBtnEvent(1, true,  g_cursorX, g_cursorY, 0);
+		if (!lt && g_prevBtnDown[1]) pushBtnEvent(1, false, g_cursorX, g_cursorY, 0);
+
+		// Face / stick-click binds (CONTROL MAP -- see docs/platform/03-input-and-audio.md).
+		setKey(Keyboard::KEY_SPACE,  vA != 0);     // A     -> jump
+		setKey(Keyboard::KEY_LSHIFT, vL3 != 0);    // L3    -> sneak
+		setKey(Keyboard::KEY_E,      vY != 0);     // Y     -> inventory (Alpha bind = E)
+		setKey(Keyboard::KEY_Q,      vB != 0);     // B     -> drop held item
+		setKey(Keyboard::KEY_ESCAPE, vStart != 0); // START -> pause / open menu
+
+		// LB/RB -> hotbar scroll (Minecraft::runTick reads getEventDWheel). One notch per press.
+		bool prevLB = (g_prevButtons & XINPUT_GAMEPAD_LEFT_SHOULDER)  != 0;
+		bool prevRB = (g_prevButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0;
+		if (vRB && !prevRB) pushBtnEvent(-1, false, g_cursorX, g_cursorY, +120);
+		if (vLB && !prevLB) pushBtnEvent(-1, false, g_cursorX, g_cursorY, -120);
 	} else {
-		// In menus, nudge the virtual GUI cursor with the right stick too (handy for pointer screens).
-		g_cursorX += (int)(rx * 12.0F);
-		g_cursorY += (int)(-ry * 12.0F);    // screen-space: down is +y
-		if (g_cursorX < 0) g_cursorX = 0; if (g_cursorX > g_dispW) g_cursorX = g_dispW;
-		if (g_cursorY < 0) g_cursorY = 0; if (g_cursorY > g_dispH) g_cursorY = g_dispH;
+		// ===================== IN A GUI (cursor + click) =====================
+		// Move the virtual cursor; getX()/getY() feed GuiScreen's hover highlight so the widget under
+		// the cursor lights up, and A fires a left-click there (GuiScreen::handleMouseInput).
+		int nudge = (int)InputConfig::CURSOR_PIXELS_PER_FRAME;
+		g_cursorX += (int)(lx * InputConfig::CURSOR_PIXELS_PER_FRAME);
+		g_cursorY += (int)(-ly * InputConfig::CURSOR_PIXELS_PER_FRAME);   // stick-up -> cursor up (top-down y--)
+		if (vLf) g_cursorX -= nudge;  if (vRt) g_cursorX += nudge;
+		if (vUp) g_cursorY -= nudge;  if (vDn) g_cursorY += nudge;
+		if (g_cursorX < 0) g_cursorX = 0;  if (g_cursorX > g_dispW) g_cursorX = g_dispW;
+		if (g_cursorY < 0) g_cursorY = 0;  if (g_cursorY > g_dispH) g_cursorY = g_dispH;
+
+		g_btnDown[0] = g_btnDown[1] = g_btnDown[2] = false;
+		bool prevA     = (g_prevButtons & XINPUT_GAMEPAD_A)     != 0;
+		bool prevB     = (g_prevButtons & XINPUT_GAMEPAD_B)     != 0;
+		bool prevStart = (g_prevButtons & XINPUT_GAMEPAD_START) != 0;
+		if (vA && !prevA) { g_btnDown[0] = true; pushBtnEvent(0, true,  g_cursorX, g_cursorY, 0); }  // A press -> click
+		if (!vA && prevA) {                      pushBtnEvent(0, false, g_cursorX, g_cursorY, 0); }  // A release
+		if ((vB && !prevB) || (vStart && !prevStart)) {   // B / START -> ESCAPE (back/close screen)
+			pushKeyEvent(Keyboard::KEY_ESCAPE, true, 0);
+			pushKeyEvent(Keyboard::KEY_ESCAPE, false, 0);
+		}
 	}
-
-	// ---------- Triggers: mouse buttons 0 (attack) / 1 (place) ----------
-	bool rt = gp.bRightTrigger > InputConfig::TRIGGER;   // RT -> left click (attack/break)
-	bool lt = gp.bLeftTrigger  > InputConfig::TRIGGER;   // LT -> right click (place/use)
-	g_btnDown[0] = rt;
-	g_btnDown[1] = lt;
-	g_btnDown[2] = false;
-	if (rt && !g_prevBtnDown[0]) pushBtnEvent(0, true,  g_cursorX, g_cursorY, 0);
-	if (!rt && g_prevBtnDown[0]) pushBtnEvent(0, false, g_cursorX, g_cursorY, 0);
-	if (lt && !g_prevBtnDown[1]) pushBtnEvent(1, true,  g_cursorX, g_cursorY, 0);
-	if (!lt && g_prevBtnDown[1]) pushBtnEvent(1, false, g_cursorX, g_cursorY, 0);
-
-	// ---------- Face / d-pad / stick-click buttons -> mapped keys ----------
-	// In-game binds (control map, doc 03). These set virtual key STATE; setKey emits edges so the
-	// Java event path (Keyboard::next) sees one press per button push.
-	setKey(Keyboard::KEY_SPACE,  (b & XINPUT_GAMEPAD_A) != 0);            // jump
-	setKey(Keyboard::KEY_LSHIFT, (b & XINPUT_GAMEPAD_LEFT_THUMB) != 0);  // sneak (L3)
-	setKey(Keyboard::KEY_E,      (b & XINPUT_GAMEPAD_Y) != 0);           // inventory (Alpha bind = E)
-	setKey(Keyboard::KEY_Q,      (b & XINPUT_GAMEPAD_B) != 0);           // drop held item
-	// START / BACK -> pause + render-distance cycle. Pause uses ESCAPE (Java keyBind path); render
-	// distance has no keybind in Alpha (old port poked the setting), so we map BACK to KEY_F (a free
-	// key) only as a placeholder -- the cleaner route is a tiny hook, see 03b note.
-	setKey(Keyboard::KEY_ESCAPE, (b & XINPUT_GAMEPAD_START) != 0);       // pause / open menu
-	// Hotbar via LB/RB -> synthesize a mouse wheel notch (Minecraft::runTick reads getEventDWheel),
-	// which is the faithful Alpha hotbar-scroll path. One notch per press (edge).
-	bool lb = (b & XINPUT_GAMEPAD_LEFT_SHOULDER)  != 0;
-	bool rb = (b & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0;
-	bool prevLB = (g_prevButtons & XINPUT_GAMEPAD_LEFT_SHOULDER)  != 0;
-	bool prevRB = (g_prevButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0;
-	if (rb && !prevRB) pushBtnEvent(-1, false, g_cursorX, g_cursorY, +120);  // next slot
-	if (lb && !prevLB) pushBtnEvent(-1, false, g_cursorX, g_cursorY, -120);  // prev slot
-
-	// Debug F-keys the new code polls (Minecraft.cpp / EntityRenderer): leave them releasable but
-	// unmapped to a pad button by default. (Map to chords here if you want them on-device.)
-	// setKey(Keyboard::KEY_F1, ...);  setKey(Keyboard::KEY_F3, ...); etc.
-
-	// ---------- Menu navigation -> arrow keys (GuiScreen polls Keyboard/Mouse events) ----------
-	// D-pad or left-stick notch, edge-detected with the larger MENU_STEP threshold (one step per push),
-	// reusing the old port's GuiScreen.cpp:128-139 logic. Emitted as KEY_UP/DOWN/LEFT/RIGHT key events.
-	bool navUp    = (b & XINPUT_GAMEPAD_DPAD_UP)    != 0 || gp.sThumbLY >  InputConfig::MENU_STEP;
-	bool navDown  = (b & XINPUT_GAMEPAD_DPAD_DOWN)  != 0 || gp.sThumbLY < -InputConfig::MENU_STEP;
-	bool navLeft  = (b & XINPUT_GAMEPAD_DPAD_LEFT)  != 0 || gp.sThumbLX < -InputConfig::MENU_STEP;
-	bool navRight = (b & XINPUT_GAMEPAD_DPAD_RIGHT) != 0 || gp.sThumbLX >  InputConfig::MENU_STEP;
-	if (navUp    && !g_prevNavUp)    { pushKeyEvent(Keyboard::KEY_UP,    true, 0); pushKeyEvent(Keyboard::KEY_UP,    false, 0); }
-	if (navDown  && !g_prevNavDown)  { pushKeyEvent(Keyboard::KEY_DOWN,  true, 0); pushKeyEvent(Keyboard::KEY_DOWN,  false, 0); }
-	if (navLeft  && !g_prevNavLeft)  { pushKeyEvent(Keyboard::KEY_LEFT,  true, 0); pushKeyEvent(Keyboard::KEY_LEFT,  false, 0); }
-	if (navRight && !g_prevNavRight) { pushKeyEvent(Keyboard::KEY_RIGHT, true, 0); pushKeyEvent(Keyboard::KEY_RIGHT, false, 0); }
-	g_prevNavUp = navUp; g_prevNavDown = navDown; g_prevNavLeft = navLeft; g_prevNavRight = navRight;
-	// In a menu, A = activate (RETURN), B = back (ESCAPE) -- as discrete key events.
-	bool aNow = (b & XINPUT_GAMEPAD_A) != 0, prevA = (g_prevButtons & XINPUT_GAMEPAD_A) != 0;
-	bool bNow = (b & XINPUT_GAMEPAD_B) != 0, prevB = (g_prevButtons & XINPUT_GAMEPAD_B) != 0;
-	// NOTE: A/B above ALSO drove KEY_SPACE/KEY_Q for in-game. The Java side gates on currentScreen, so
-	// the duplicate is harmless; if a screen is open the menu path consumes RETURN/ESCAPE first. If you
-	// see double-actions, gate these two lines on "a screen is open" via a flag set from the game.
-	if (aNow && !prevA) { pushKeyEvent(Keyboard::KEY_RETURN, true, '\r'); pushKeyEvent(Keyboard::KEY_RETURN, false, 0); }
-	if (bNow && !prevB) { pushKeyEvent(Keyboard::KEY_ESCAPE, true, 0);    pushKeyEvent(Keyboard::KEY_ESCAPE, false, 0); }
 
 	// ---------- Commit prev-state for next frame's edge detection ----------
 	memcpy(g_prevKeyDown, g_keyDown, sizeof(g_keyDown));
@@ -327,7 +332,7 @@ int getDX() { int d = g_dx; g_dx = 0; return d; }   // read-once, like LWJGL
 int getDY() { int d = g_dy; g_dy = 0; return d; }
 
 int getX() { return g_cursorX; }
-int getY() { return g_cursorY; }
+int getY() { return g_dispH - 1 - g_cursorY; }   // cursor stored top-down; LWJGL Mouse Y is bottom-up
 
 bool isButtonDown(int button) {
 	if (button < 0 || button > 2) return false;
@@ -343,7 +348,7 @@ bool next() {
 int  getEventButton()      { return g_btnCur.button; }
 bool getEventButtonState() { return g_btnCur.state; }
 int  getEventX()           { return g_btnCur.x; }
-int  getEventY()           { return g_btnCur.y; }
+int  getEventY()           { return g_dispH - 1 - g_btnCur.y; }   // top-down store -> LWJGL bottom-up
 int  getEventDWheel()      { return g_btnCur.dwheel; }
 
 } // namespace Mouse

@@ -1,5 +1,42 @@
 # 03 — Input and Audio
 
+> **CORRECTION (authoritative — supersedes the XInputGetState text below).** The 360 controller is
+> driven by **XInput2** (`xinput2.h` + `xinput2.lib`/`xinput2d.lib`), NOT the PC `XInputGetState`/
+> `XINPUT_STATE` API. There is no `xinput.h` in this XDK. The live `Input.cpp` is implemented against
+> XInput2 and verified against `C:\Program Files (x86)\Microsoft Xbox 360 SDK\include\xbox\xinput2.h`.
+>
+> **How to read the pad (one sample per frame):**
+> ```c
+> XINPUT2CONTEXT ctx; BOOL changed;
+> if (XInput2Sample(XInput2InputDevice(0), &ctx, &changed)) {
+>     BOOL a; XInput2GetBool(ctx, XINPUTID_A, &a);                  // buttons: XINPUTID_A/B/X/Y/DPAD_*/START/BACK/*_SHOULDER/*_THUMB
+>     float rt; XInput2GetFloat(ctx, XINPUTID_RIGHT_TRIGGER, &rt);  // triggers: normalized float
+>     XINPUT2_POINT ls; XInput2GetPoint(ctx, XINPUTID_LEFT_THUMBSTICK, &ls);  // sticks: XINPUT2_POINT {x,y} normalized
+> }
+> ```
+>
+> **ONE unified controller IO — there is no keyboard or mouse.** `Input.cpp` reads the pad and feeds a
+> virtual `Keyboard::`/`Mouse::` model purely so the faithful LWJGL-derived game code keeps compiling;
+> nothing reads a real K/M. Two modes, switched automatically by `g_grabbed` (set by `MouseHelper`
+> grab/ungrab — grabbed = in-world, ungrabbed = a GUI is open):
+>
+> | Control            | In-world (grabbed)                 | In a GUI (ungrabbed)                         |
+> |--------------------|------------------------------------|----------------------------------------------|
+> | Left stick         | move (analog + W/A/S/D fallback)   | move the virtual cursor                      |
+> | Right stick        | camera look (getDX/getDY)          | (unused)                                     |
+> | D-pad              | (unused)                           | nudge the virtual cursor                     |
+> | A                  | jump (SPACE)                       | **click** the widget under the cursor        |
+> | B                  | drop item (Q)                      | back / close (ESCAPE)                        |
+> | Y                  | inventory (E)                      | —                                            |
+> | RT / LT            | attack (mouse0) / use (mouse1)     | —                                            |
+> | LB / RB            | hotbar prev / next (wheel)         | —                                            |
+> | L3                 | sneak (LSHIFT)                     | —                                            |
+> | START              | pause (ESCAPE)                     | back / close (ESCAPE)                        |
+>
+> GUI widgets highlight under the cursor (GuiScreen hover via `Mouse::getX/getY`); A synthesizes a
+> mouse-0 click at the cursor. **NOT yet wired:** on-screen keyboard (XShowKeyboardUI) for text fields
+> (world name, chat) — flagged, not silently stubbed. Tunables live in `InputConfig` (`Input.h`).
+
 Platform research doc. Reverse-engineers how the **OLD** Xbox 360 port
 (`MinecraftAlpha/MinecraftAlpha/`, builds on the XDK but is buggy) handled
 controller input and audio, and maps that onto the **NEW** transpiler's
