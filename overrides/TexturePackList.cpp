@@ -120,7 +120,7 @@ TexturePackList::TexturePackList(Minecraft* var1, File* var2)
 	}
 	this->selectedTexturePackName = var1->gameSettings->skin;
 	this->updateAvailableTexturePacks();
-	this->selectedTexturePack->deleteTexturePack();
+	if(this->selectedTexturePack != NULL) this->selectedTexturePack->deleteTexturePack();   // defensive
 }
 
 TexturePackList::~TexturePackList()
