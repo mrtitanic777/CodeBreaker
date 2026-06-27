@@ -39,8 +39,14 @@ void Textures::uploadRGBA(int id, int w, int h, const void* argbPixels) {
 	if (id <= 0 || id >= MAX_TEXTURES || w <= 0 || h <= 0) return;
 	if (s_textures[id]) { s_textures[id]->Release(); s_textures[id] = NULL; }
 	IDirect3DTexture9* tex = NULL;
-	if (FAILED(g_pd3dDevice->CreateTexture(w, h, 1, 0, D3DFMT_A8R8G8B8,
-	                                       D3DPOOL_MANAGED, &tex, NULL)) || !tex)
+	// Nexia360's D3D12 backend FAILS CreateTexture while a scene is open (the menu loads gui/title
+	// textures on-demand mid-BeginScene -> NULL texture -> invisible menu). The game runs inside a
+	// persistent BeginScene (Main.cpp / Display::swapBuffers), so bracket creation OUTSIDE the scene.
+	g_pd3dDevice->EndScene();
+	HRESULT _texhr = g_pd3dDevice->CreateTexture(w, h, 1, 0, D3DFMT_A8R8G8B8,
+	                                             D3DPOOL_MANAGED, &tex, NULL);
+	g_pd3dDevice->BeginScene();
+	if (FAILED(_texhr) || !tex)
 		return;
 	if (argbPixels) {
 		D3DLOCKED_RECT lr;

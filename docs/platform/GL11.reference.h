@@ -61,7 +61,7 @@ namespace GL11 {
 	// extra no-op entry points the game calls (lighting baked into vertex color; lists/readpixels)
 	inline void glLight(...) {}
 	inline void glLightf(...) {}
-	inline void glCallLists(...) {}
+	void glCallLists(IntBuffer* buffer);             // replay a run of display lists (font / chunk render)
 	inline void glReadPixels(...) {}
 	const int GL_NEAREST = 0x2600, GL_LINEAR = 0x2601;
 	const int GL_TEXTURE_MIN_FILTER = 0x2800, GL_TEXTURE_MAG_FILTER = 0x2801;

@@ -95,6 +95,7 @@
 #include "ModelRenderer.h"
 #include "Mouse.h"
 #include "MouseHelper.h"
+#include "Input.h"     // Input::poll() — the per-frame XInput read driving Keyboard/Mouse
 #include "MovementInput.h"
 #include "MovementInputFromOptions.h"
 #include "MovingObjectPosition.h"
@@ -518,6 +519,7 @@ void Minecraft::run()
 	long long var1 = System::currentTimeMillis();
 	int var3 = 0;
 	while(this->running && (this->mcApplet == NULL || this->mcApplet->isActive())) {
+	Input::poll();   // ONE XInput read per frame -> drives the virtual Keyboard/Mouse model (menu nav + look)
 	AxisAlignedBB::clearBoundingBoxPool();
 	Vec3D::initialize();
 	if(this->mcCanvas == NULL && Display::isCloseRequested()) {

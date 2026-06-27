@@ -37,7 +37,7 @@ namespace Display {
 	inline void setLocation(...) {}
 	inline void releaseContext(...) {}
 	inline void makeCurrent(...) {}
-	inline bool isActive(...) { return false; }
+	inline bool isActive(...) { return true; }   // the console IS the foreground app -> always active (focus/mouse-grab gate)
 	inline bool isCloseRequested(...) { return false; }
 	inline bool isCreated(...) { return false; }
 	inline bool isDirty(...) { return false; }

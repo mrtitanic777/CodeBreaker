@@ -15,6 +15,7 @@
 #include "Shaders.h"         // TesselatorVertex, Shaders::*
 #include "Textures.h"        // int-handle <-> IDirect3DTexture9*
 #include <vector>
+#include <map>
 
 namespace GL11 {
 
@@ -39,11 +40,71 @@ static DWORD swizzleRGBAtoARGB(DWORD rgba) {            // GL byte order R,G,B,A
 	return (a<<24)|(r<<16)|(g<<8)|b;
 }
 
+// ----------------------------------------------------------------------------- display-list recorder
+// MC's renderer is display-list-DRIVEN: FontRenderer (256 glyph lists + color lists), WorldRenderer
+// (terrain chunks), RenderGlobal (sky/stars) and ModelRenderer (entities) all glNewList(GL_COMPILE)
+// once then glCallList every frame. GL_COMPILE means RECORD-don't-execute. So while a list is open we
+// capture each draw/matrix/color op into the list instead of issuing it, and glCallList/glCallLists
+// REPLAY them against the LIVE matrix+color+texture state (so a glyph list draws with the current
+// text color and the camera matrix the chunk list is replayed under). This also fixes "draws during
+// construction": chunk geometry built off the render path now records instead of touching the device.
+struct GLListOp {
+	int kind;   // 0 draw, 1 translate, 2 scale, 3 rotate, 4 loadIdentity, 5 push, 6 pop, 7 mult, 8 color, 9 bindTex
+	std::vector<TesselatorVertex> tris;                  // kind 0: pre-triangulated, ready for DrawPrimitiveUP
+	D3DPRIMITIVETYPE prim; int primCount; bool textured; bool stampColor;
+	float a,b,c,d;                                        // kind 1/2 (xyz) / 3 (angle,x,y,z)
+	D3DXMATRIX mat;                                       // kind 7
+	DWORD color; int itex;                               // kind 8 / 9
+	GLListOp():kind(0),prim(D3DPT_TRIANGLELIST),primCount(0),textured(false),stampColor(false),
+	           a(0),b(0),c(0),d(0),color(0xFFFFFFFF),itex(0){}
+};
+typedef std::vector<GLListOp> GLDisplayList;
+static std::map<int,GLDisplayList> s_lists;
+static GLDisplayList* s_recList = NULL;     // non-NULL between glNewList..glEndList (recording)
+static int            s_listNext = 1;       // next free list id for glGenLists
+
+// Triangulate a gathered vertex run (GL_QUADS -> 2 tris w/ reversed winding for D3D CW cull).
+static void triangulate(int mode, const std::vector<TesselatorVertex>& v,
+                        std::vector<TesselatorVertex>& out, D3DPRIMITIVETYPE& prim, int& primCount) {
+	if(mode==GL_QUADS){
+		int quads=(int)v.size()/4; out.resize((size_t)quads*6); int o=0;
+		for(int q=0;q<quads;++q){ int b=q*4;
+			out[o++]=v[b+0]; out[o++]=v[b+2]; out[o++]=v[b+1];
+			out[o++]=v[b+0]; out[o++]=v[b+3]; out[o++]=v[b+2]; }
+		prim=D3DPT_TRIANGLELIST; primCount=o/3;
+	} else if(mode==GL_TRIANGLES){
+		out=v; prim=D3DPT_TRIANGLELIST; primCount=(int)v.size()/3;
+	} else {                              // LINES (HUD selection box etc.)
+		out=v; prim=D3DPT_LINELIST; primCount=(int)v.size()/2;
+	}
+}
+
+// Issue one triangulated run with the LIVE matrices/shader (used by both immediate glDrawArrays and
+// list replay). stampColor: the source had no color array -> paint with the current GL color now.
+static void issueDraw(std::vector<TesselatorVertex>& tris, D3DPRIMITIVETYPE prim, int primCount,
+                      bool textured, bool stampColor) {
+	if(primCount<=0 || tris.empty()) return;
+	if(textured) Shaders::useTexturedShader(); else Shaders::useUntexturedShader();
+	Shaders::setWorldMatrix(s_modelview.back());
+	Shaders::setProjectionMatrix(s_projection.back());
+	{ D3DXMATRIX I; D3DXMatrixIdentity(&I); Shaders::setViewMatrix(I); }   // modelview folds model+view
+	Shaders::updateShaderConstants();
+	if(stampColor) for(size_t i=0;i<tris.size();++i) tris[i].color=s_color;
+	g_pd3dDevice->DrawPrimitiveUP(prim, primCount, &tris[0], sizeof(TesselatorVertex));
+}
+
 // ----------------------------------------------------------------------------- lifecycle
 void glInit() {
 	D3DXMATRIX I; D3DXMatrixIdentity(&I);
 	s_modelview.clear();  s_modelview.push_back(I);
 	s_projection.clear(); s_projection.push_back(I);
+	// Sync the device to GL's INITIAL state. D3D9 defaults CULLMODE to CCW, but GL starts with cull
+	// DISABLED (s_cullFace=false) and the 2D/GUI path never touches GL_CULL_FACE -> menu quads would be
+	// back-face-culled by the stale CCW default and never appear. Push the GL defaults up front.
+	g_pd3dDevice->SetRenderState(D3DRS_CULLMODE,         D3DCULL_NONE);   // GL: cull off until glEnable(GL_CULL_FACE)
+	g_pd3dDevice->SetRenderState(D3DRS_ZENABLE,          TRUE);          // GL: depth test on (s_depthTest=true)
+	g_pd3dDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);         // GL: blend off (s_blend=false)
+	g_pd3dDevice->SetRenderState(D3DRS_LIGHTING,         FALSE);         // light is baked into vertex color
 }
 
 // ----------------------------------------------------------------------------- matrices
@@ -55,22 +116,43 @@ void glInit() {
 static void preMul(const D3DXMATRIX& delta) { D3DXMatrixMultiply(&cur(), &delta, &cur()); }
 
 void glMatrixMode(int mode) { s_matrixMode = mode; }
-void glPushMatrix() { std::vector<D3DXMATRIX>& s = (s_matrixMode==GL_PROJECTION?s_projection:s_modelview); s.push_back(s.back()); }
-void glPopMatrix()  { std::vector<D3DXMATRIX>& s = (s_matrixMode==GL_PROJECTION?s_projection:s_modelview); if (s.size()>1) s.pop_back(); }
-void glLoadIdentity() { D3DXMatrixIdentity(&cur()); }
-void glTranslatef(float x, float y, float z) { D3DXMATRIX m; D3DXMatrixTranslation(&m,x,y,z); preMul(m); }
-void glScalef(float x, float y, float z)     { D3DXMATRIX m; D3DXMatrixScaling(&m,x,y,z);     preMul(m); }
+void glPushMatrix() {
+	if(s_recList){ GLListOp op; op.kind=5; s_recList->push_back(op); return; }
+	std::vector<D3DXMATRIX>& s = (s_matrixMode==GL_PROJECTION?s_projection:s_modelview); s.push_back(s.back());
+}
+void glPopMatrix()  {
+	if(s_recList){ GLListOp op; op.kind=6; s_recList->push_back(op); return; }
+	std::vector<D3DXMATRIX>& s = (s_matrixMode==GL_PROJECTION?s_projection:s_modelview); if (s.size()>1) s.pop_back();
+}
+void glLoadIdentity() {
+	if(s_recList){ GLListOp op; op.kind=4; s_recList->push_back(op); return; }
+	D3DXMatrixIdentity(&cur());
+}
+void glTranslatef(float x, float y, float z) {
+	if(s_recList){ GLListOp op; op.kind=1; op.a=x;op.b=y;op.c=z; s_recList->push_back(op); return; }
+	D3DXMATRIX m; D3DXMatrixTranslation(&m,x,y,z); preMul(m);
+}
+void glScalef(float x, float y, float z)     {
+	if(s_recList){ GLListOp op; op.kind=2; op.a=x;op.b=y;op.c=z; s_recList->push_back(op); return; }
+	D3DXMATRIX m; D3DXMatrixScaling(&m,x,y,z);     preMul(m);
+}
 void glRotatef(float angle, float x, float y, float z) {
+	if(s_recList){ GLListOp op; op.kind=3; op.a=angle;op.b=x;op.c=y;op.d=z; s_recList->push_back(op); return; }
 	D3DXMATRIX m; D3DXVECTOR3 axis(x,y,z);
 	D3DXMatrixRotationAxis(&m, &axis, D3DXToRadian(angle)); preMul(m);
 }
 void glMultMatrix(FloatBuffer* mbuf) {
 	// LWJGL passes 16 column-major floats; loaded row-major into D3DXMATRIX it is the transpose,
 	// which is exactly the D3DX-native delta -> same preMul rule.
-	D3DXMATRIX m; memcpy(&m, ((float*)((ByteBuffer*)mbuf)->base()) + 0, 16*sizeof(float)); preMul(m);
+	D3DXMATRIX m; memcpy(&m, ((float*)((ByteBuffer*)mbuf)->base()) + 0, 16*sizeof(float));
+	if(s_recList){ GLListOp op; op.kind=7; op.mat=m; s_recList->push_back(op); return; }
+	preMul(m);
 }
 void glOrtho(double l, double r, double b, double t, double n, double f) {
-	D3DXMATRIX m; D3DXMatrixOrthoOffCenterLH(&m,(float)l,(float)r,(float)b,(float)t,(float)n,(float)f);
+	// RIGHT-handed: GL is RH (eye looks down -Z) and the GUI/loadScreen draw at eye-z = -2000 after a
+	// glTranslatef(0,0,-2000) under ortho near/far = 1000/3000. An LH ortho maps z=-2000 -> NDC -1.5
+	// (outside [0,1]) -> the whole menu is depth-CLIPPED -> black. RH maps -2000 -> 0.5 -> visible.
+	D3DXMATRIX m; D3DXMatrixOrthoOffCenterRH(&m,(float)l,(float)r,(float)b,(float)t,(float)n,(float)f);
 	s_projection.back() = m;     // GUI uses glOrtho directly; HARDWARE-VERIFY Y orientation (GL y-up)
 }
 void glViewport(int x, int y, int w, int h) {
@@ -82,7 +164,9 @@ void glLoadProjection(const D3DXMATRIX& m){ s_projection.back() = m; }   // GLU:
 // ----------------------------------------------------------------------------- color / normal
 void glColor4f(float r,float g,float b,float a){
 	int ri=(int)(r*255), gi=(int)(g*255), bi=(int)(b*255), ai=(int)(a*255);
-	s_color = D3DCOLOR_ARGB(ai<0?0:ai>255?255:ai, ri<0?0:ri>255?255:ri, gi<0?0:gi>255?255:gi, bi<0?0:bi>255?255:bi);
+	DWORD c = D3DCOLOR_ARGB(ai<0?0:ai>255?255:ai, ri<0?0:ri>255?255:ri, gi<0?0:gi>255?255:gi, bi<0?0:bi>255?255:bi);
+	if(s_recList){ GLListOp op; op.kind=8; op.color=c; s_recList->push_back(op); return; }   // font color-code lists
+	s_color = c;
 }
 void glColor3f(float r,float g,float b){ glColor4f(r,g,b,1.0f); }
 void glNormal3f(float,float,float){}                    // light baked into vertex color
@@ -189,6 +273,7 @@ void glTexCoordPointer(int,int,int,long long){}
 // Tesselator::flush (quads -> triangles, reversed winding for D3D CW culling).
 void glDrawArrays(int mode,int first,int count){
 	if(!s_vtx.on || count<=0) return;
+	bool hadColor = s_col.on;                         // no color array -> color is resolved at draw/replay
 	std::vector<TesselatorVertex> v((size_t)count);
 	for(int i=0;i<count;++i){
 		const char* vp = s_vtx.base + (long long)(first+i)*s_vtx.stride;
@@ -196,38 +281,56 @@ void glDrawArrays(int mode,int first,int count){
 		v[i].x=fp[0]; v[i].y=fp[1]; v[i].z=(s_vtx.size>=3?fp[2]:0.0f);
 		if(s_tex.on){ const float* tp=(const float*)(s_tex.base+(long long)(first+i)*s_tex.stride); v[i].u=tp[0]; v[i].v=tp[1]; }
 		else { v[i].u=0; v[i].v=0; }
-		if(s_col.on){ DWORD rgba=*(const DWORD*)(s_col.base+(long long)(first+i)*s_col.stride); v[i].color=swizzleRGBAtoARGB(rgba); }
-		else v[i].color=s_color;
+		if(hadColor){ DWORD rgba=*(const DWORD*)(s_col.base+(long long)(first+i)*s_col.stride); v[i].color=swizzleRGBAtoARGB(rgba); }
+		else v[i].color=s_color;                       // (overwritten by live color at replay if recorded)
 	}
-	if(s_tex.on && s_texture2D) Shaders::useTexturedShader(); else Shaders::useUntexturedShader();
-	Shaders::setWorldMatrix(s_modelview.back());
-	Shaders::setProjectionMatrix(s_projection.back());
-	{ D3DXMATRIX I; D3DXMatrixIdentity(&I); Shaders::setViewMatrix(I); }   // modelview folds model+view
-	Shaders::updateShaderConstants();
+	std::vector<TesselatorVertex> tris; D3DPRIMITIVETYPE prim; int primCount;
+	triangulate(mode, v, tris, prim, primCount);
 
-	if(mode==GL_QUADS){
-		int quads=count/4; std::vector<TesselatorVertex> tris((size_t)quads*6); int o=0;
-		for(int q=0;q<quads;++q){ int b=q*4;
-			tris[o++]=v[b+0]; tris[o++]=v[b+2]; tris[o++]=v[b+1];     // reversed winding (CW cull)
-			tris[o++]=v[b+0]; tris[o++]=v[b+3]; tris[o++]=v[b+2]; }
-		if(o>0) g_pd3dDevice->DrawPrimitiveUP(D3DPT_TRIANGLELIST,o/3,&tris[0],sizeof(TesselatorVertex));
-	} else if(mode==GL_TRIANGLES){
-		g_pd3dDevice->DrawPrimitiveUP(D3DPT_TRIANGLELIST,count/3,&v[0],sizeof(TesselatorVertex));
-	} else { // LINES / strips: approximate as a line list (rare; HUD selection box etc.)
-		g_pd3dDevice->DrawPrimitiveUP(D3DPT_LINELIST,count/2,&v[0],sizeof(TesselatorVertex));
+	if(s_recList){                                      // RECORDING (glNewList): stash, don't draw
+		s_recList->push_back(GLListOp());               // push empty, then swap geometry in (no big copy)
+		GLListOp& op = s_recList->back();
+		op.kind=0; op.tris.swap(tris); op.prim=prim; op.primCount=primCount;
+		op.textured = s_tex.on; op.stampColor = !hadColor;
+		return;
 	}
+	issueDraw(tris, prim, primCount, s_tex.on && s_texture2D, false);   // immediate
 }
 
 // ----------------------------------------------------------------------------- display lists
-// MC records chunk geometry once (glNewList) and replays each frame (glCallList). Until a real
-// record/replay is in place, run lists immediately: glNewList/glEndList are no-ops and the geometry
-// re-tessellates every frame (correct, just slower). HARDWARE-VERIFY perf; upgrade to recorded
-// D3D vertex buffers if chunk draw is too slow. (See docs/platform/02 open question.)
-int  glGenLists(int){ static int s_next=1; return s_next++; }
-void glNewList(int,int){}
-void glEndList(){}
-void glCallList(int){}
-void glDeleteLists(int,int){}
+// Real record/replay (see the GLListOp recorder up top). glNewList opens a list for recording; every
+// draw/matrix/color op until glEndList is captured; glCallList(s) replays against the LIVE state.
+static void replayList(GLDisplayList& dl){
+	for(size_t i=0;i<dl.size();++i){
+		GLListOp& op=dl[i];
+		switch(op.kind){
+			case 0: issueDraw(op.tris, op.prim, op.primCount, op.textured, op.stampColor); break;
+			case 1: { D3DXMATRIX m; D3DXMatrixTranslation(&m,op.a,op.b,op.c); preMul(m); } break;
+			case 2: { D3DXMATRIX m; D3DXMatrixScaling(&m,op.a,op.b,op.c); preMul(m); } break;
+			case 3: { D3DXMATRIX m; D3DXVECTOR3 ax(op.b,op.c,op.d); D3DXMatrixRotationAxis(&m,&ax,D3DXToRadian(op.a)); preMul(m); } break;
+			case 4: D3DXMatrixIdentity(&cur()); break;
+			case 5: { std::vector<D3DXMATRIX>& s=(s_matrixMode==GL_PROJECTION?s_projection:s_modelview); s.push_back(s.back()); } break;
+			case 6: { std::vector<D3DXMATRIX>& s=(s_matrixMode==GL_PROJECTION?s_projection:s_modelview); if(s.size()>1) s.pop_back(); } break;
+			case 7: preMul(op.mat); break;
+			case 8: s_color=op.color; break;
+			case 9: glBindTexture(0, op.itex); break;
+		}
+	}
+}
+int  glGenLists(int n){ int base=s_listNext; if(n<1)n=1; s_listNext+=n; return base; }   // reserve n consecutive ids
+void glNewList(int list,int){ GLDisplayList& dl=s_lists[list]; dl.clear(); s_recList=&dl; }
+void glEndList(){ s_recList=NULL; }
+void glCallList(int list){
+	std::map<int,GLDisplayList>::iterator it=s_lists.find(list);
+	if(it!=s_lists.end()) replayList(it->second);
+}
+void glCallLists(IntBuffer* buf){                     // replay a run of absolute list ids (font / RenderList)
+	if(!buf) return;
+	int n=buf->remaining();
+	const int* ids=(const int*)((ByteBuffer*)buf)->base();
+	for(int i=0;i<n;++i) glCallList(ids[i]);
+}
+void glDeleteLists(int list,int n){ for(int i=0;i<n;++i) s_lists.erase(list+i); }
 
 // ----------------------------------------------------------------------------- queries / misc
 int  glGetError(){ return 0; }
