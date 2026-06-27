@@ -169,6 +169,10 @@ WorldRenderer::WorldRenderer(World* var1, JList<void*> var2, int var3, int var4,
 	, isInitialized(0)
 {
 	this->isVisible = true;
+	// CONSOLE (override slip): the Java field init `public boolean[] skipRenderPass = new boolean[2];`
+	// was dropped -> skipRenderPass was a length-0 JArray, so the per-pass skip flags read/wrote a safe
+	// dummy (no crash, but terrain pass selection was wrong -> double/empty draws). Restore it.
+	this->skipRenderPass = JArray<bool >(2);
 
 	this->worldObj = var1;
 	this->tileEntities = var2;

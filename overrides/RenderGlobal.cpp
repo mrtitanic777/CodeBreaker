@@ -194,6 +194,18 @@ RenderGlobal::RenderGlobal(Minecraft* var1, RenderEngine* var2)
 	this->prevSortY = -9999.0;
 	this->prevSortZ = -9999.0;
 
+	// CONSOLE (first-in-world-frame crash fix): this handwritten override DROPPED the Java field init
+	//   private RenderList[] allRenderLists = new RenderList[]{new RenderList(), x4};
+	// -> allRenderLists was an EMPTY JArray, so RenderGlobal::renderSortedRenderers() (terrain pass)
+	// dereferenced allRenderLists[i]->isPositionMatching(...) on a NULL out-of-range dummy -> IP 0x0.
+	// The CONVERTER emits this correctly (JArrayInit, x4 new RenderList); the drop was an override slip.
+	this->allRenderLists = JArray<RenderList* >(4);
+	this->allRenderLists[0] = new RenderList();
+	this->allRenderLists[1] = new RenderList();
+	this->allRenderLists[2] = new RenderList();
+	this->allRenderLists[3] = new RenderList();
+	this->field_1457_b = JArray<int >(50000);  // dead field (never read); restored for fidelity + clean init-audit
+
 	this->occlusionResultBuffer = GLAllocation::createDirectIntBuffer(64);
 	this->field_1454_e = GLAllocation::generateDisplayLists(1);
 
