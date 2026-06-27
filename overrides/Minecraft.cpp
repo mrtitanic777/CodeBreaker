@@ -247,8 +247,7 @@ void Minecraft::setServer(const JavaString& var1, int var2)
 
 void Minecraft::startGame()
 {
-	DbgPrintF("[boot] startGame begin
-");
+	DbgPrintF("[boot] startGame begin\n");
 	if(this->mcCanvas != NULL) {
 	Graphics* var1 = this->mcCanvas->getGraphics();
 	if(var1 != NULL) {
@@ -285,14 +284,11 @@ void Minecraft::startGame()
 	this->mcDataDir = getMinecraftDir();
 	this->gameSettings = new GameSettings(this, this->mcDataDir);
 	this->texturePackList = new TexturePackList(this, this->mcDataDir);
-	DbgPrintF("[boot] texturePackList ok
-");
+	DbgPrintF("[boot] texturePackList ok\n");
 	this->renderEngine = new RenderEngine(this->texturePackList, this->gameSettings);
-	DbgPrintF("[boot] renderEngine ok
-");
+	DbgPrintF("[boot] renderEngine ok\n");
 	this->fontRenderer = new FontRenderer(this->gameSettings, "/font/default.png", this->renderEngine);
-	DbgPrintF("[boot] fontRenderer ok
-");
+	DbgPrintF("[boot] fontRenderer ok\n");
 	this->loadScreen();
 	Keyboard::create();
 	Mouse::create();
@@ -316,8 +312,7 @@ void Minecraft::startGame()
 	GL11::glMatrixMode(GL11::GL_MODELVIEW);
 	this->checkGLError("Startup");
 	this->glCapabilities = new OpenGlCapsChecker();
-	DbgPrintF("[boot] glCaps ok
-");
+	DbgPrintF("[boot] glCaps ok\n");
 	this->sndManager->loadSoundSettings(this->gameSettings);
 	this->renderEngine->registerTextureFX(this->textureLavaFX);
 	this->renderEngine->registerTextureFX(this->textureWaterFX);
@@ -329,8 +324,7 @@ void Minecraft::startGame()
 	this->renderEngine->registerTextureFX(new TextureFlamesFX(0));
 	this->renderEngine->registerTextureFX(new TextureFlamesFX(1));
 	this->renderGlobal = new RenderGlobal(this, this->renderEngine);
-	DbgPrintF("[boot] renderGlobal ok
-");
+	DbgPrintF("[boot] renderGlobal ok\n");
 	GL11::glViewport(0, 0, this->displayWidth, this->displayHeight);
 	this->effectRenderer = new EffectRenderer(this->theWorld, this->renderEngine);
 	try {
@@ -340,14 +334,12 @@ void Minecraft::startGame()
 	}
 	this->checkGLError("Post startup");
 	this->ingameGUI = new GuiIngame(this);
-	DbgPrintF("[boot] ingameGUI ok
-");
+	DbgPrintF("[boot] ingameGUI ok\n");
 	if(this->serverName != NULL) {
 	this->displayGuiScreen(new GuiConnecting(this, this->serverName, this->serverPort));
 	} else {
 	this->displayGuiScreen(new GuiMainMenu());
-	DbgPrintF("[boot] main menu shown
-");
+	DbgPrintF("[boot] main menu shown\n");
 	}
 }
 
