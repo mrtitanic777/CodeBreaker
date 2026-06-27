@@ -16,6 +16,7 @@ class NetHandler;
 
 class Packet60 : public Packet {
 public:
+	Packet60() : explosionX(0), explosionY(0), explosionZ(0), explosionSize(0) {}
 	virtual ~Packet60();
 
 	double explosionX;

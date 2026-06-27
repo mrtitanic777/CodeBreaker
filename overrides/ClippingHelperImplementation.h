@@ -13,6 +13,7 @@ class FloatBuffer;
 
 class ClippingHelperImplementation : public ClippingHelper {
 public:
+	ClippingHelperImplementation();   // synthesized: Java field initializers (override had no ctor)
 	virtual ~ClippingHelperImplementation();
 
 	FloatBuffer* projectionBuffer;

@@ -16,6 +16,7 @@ class NetHandler;
 
 class Packet {
 public:
+	Packet();   // synthesized: Java field initializers (override had no ctor)
 	virtual ~Packet();
 
 	bool isChunkDataPacket;

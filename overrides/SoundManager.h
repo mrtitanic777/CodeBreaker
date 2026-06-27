@@ -16,6 +16,7 @@ class SoundSystem;
 
 class SoundManager {
 public:
+	SoundManager();                 // constructs the SoundPools (Java `= new SoundPool()` field inits the override dropped)
 	virtual ~SoundManager();
 
 	SoundPool* soundPoolSounds;

@@ -16,6 +16,7 @@ class World;
 
 class TileEntity {
 public:
+	TileEntity() : worldObj(NULL), xCoord(0), yCoord(0), zCoord(0) {}
 	virtual ~TileEntity();
 
 	World* worldObj;

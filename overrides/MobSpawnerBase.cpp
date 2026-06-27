@@ -1,4 +1,12 @@
 #include "stdafx.h"
+#include "EntityZombie.h"
+#include "EntitySpider.h"
+#include "EntitySkeleton.h"
+#include "EntitySheep.h"
+#include "EntityPig.h"
+#include "EntityCreeper.h"
+#include "EntityCow.h"
+#include "EntityChicken.h"
 #include "JavaRT.h"
 
 // Auto-generated from MobSpawnerBase.java
@@ -61,6 +69,19 @@ MobSpawnerBase* MobSpawnerBase::s_iceDesert;
 MobSpawnerBase* MobSpawnerBase::s_tundra;
 MobSpawnerBase* MobSpawnerBase::s_hell;
 JArray<MobSpawnerBase* > MobSpawnerBase::s_biomeLookupTable;
+
+MobSpawnerBase::MobSpawnerBase()
+	: color(0)
+	, topBlock(0)
+	, fillerBlock(0)
+	, grassColor(0)
+{
+	this->topBlock = (unsigned char)Block::s_grass->blockID;
+	this->fillerBlock = (unsigned char)Block::s_dirt->blockID;
+	this->grassColor = 5169201;
+	this->biomeMonsters = (JArrayInit<Class* >(), Class(typeid(EntitySpider)), Class(typeid(EntityZombie)), Class(typeid(EntitySkeleton)), Class(typeid(EntityCreeper)));
+	this->biomeCreatures = (JArrayInit<Class* >(), Class(typeid(EntitySheep)), Class(typeid(EntityPig)), Class(typeid(EntityChicken)), Class(typeid(EntityCow)));
+}
 
 MobSpawnerBase::~MobSpawnerBase()
 {

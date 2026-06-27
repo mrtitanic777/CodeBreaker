@@ -65,6 +65,32 @@ static JArray<JArray<int > > _newInt2D(int rows, int cols) {
 	return m;
 }
 
+WorldGenBigTree::WorldGenBigTree()
+	: rand(NULL)
+	, worldObj(NULL)
+	, heightLimit(0)
+	, trunkHeight(0)
+	, heightAttenuation(0)
+	, branchDensity(0)
+	, branchSlope(0)
+	, scaleWidth(0)
+	, leafDensity(0)
+	, trunkSize(0)
+	, heightLimitLimit(0)
+	, leafDistanceLimit(0)
+{
+	this->rand = new Random();
+	this->basePos = (JArrayInit<int >(), 0, 0, 0);
+	this->heightAttenuation = 0.618;
+	this->branchDensity = 1.0;
+	this->branchSlope = 0.381;
+	this->scaleWidth = 1.0;
+	this->leafDensity = 1.0;
+	this->trunkSize = 1;
+	this->heightLimitLimit = 12;
+	this->leafDistanceLimit = 4;
+}
+
 WorldGenBigTree::~WorldGenBigTree()
 {
 }

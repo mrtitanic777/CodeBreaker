@@ -116,6 +116,13 @@ class Runnable; // fwd (Runnable.h pulled via Thread.h)
 static Thread* _makeThread(Runnable* /*target*/, const std::string& name) { return new Thread(name); }
 static void _threadJoin(Thread* t, long long /*millis*/) { if (t) t->join(); }
 
+MinecraftApplet::MinecraftApplet()
+	: mcCanvas(NULL)
+	, mc(NULL)
+	, mcThread(NULL)
+{
+}
+
 MinecraftApplet::~MinecraftApplet()
 {
 }

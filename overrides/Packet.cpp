@@ -76,6 +76,11 @@ std::map<int, void*> Packet::s_packetIdToClassMap;
 // class -> id : keyed by RTTI identity string (typeid name), value = packet id.
 std::map<std::string, int> Packet::s_packetClassToIdMap;
 
+Packet::Packet()
+	: isChunkDataPacket(0)
+{
+}
+
 Packet::~Packet()
 {
 }

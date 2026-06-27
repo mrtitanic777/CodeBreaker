@@ -13,6 +13,7 @@ class BufferedImage;
 
 class ImageBufferDownload : public ImageBuffer {
 public:
+	ImageBufferDownload() : imageWidth(0), imageHeight(0) {}
 	virtual ~ImageBufferDownload();
 
 	JArray<int > imageData;

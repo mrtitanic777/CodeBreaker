@@ -19,6 +19,15 @@
 // bridge, so build the file:// URL from the path locally. See "runtime-stub gaps".
 static URL* fileToURL(File* f) { JavaString u = (JCat() + "file:" + f->getPath()); return new URL(u); }
 
+SoundPool::SoundPool()
+	: rand(NULL)
+	, numberOfSoundPoolEntries(0)
+	, stripDigitsFromName(0)
+{
+	this->rand = new Random();
+	this->stripDigitsFromName = true;
+}
+
 SoundPool::~SoundPool()
 {
 }

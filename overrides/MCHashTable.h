@@ -11,6 +11,7 @@ class HashEntry;
 
 class MCHashTable {
 public:
+	MCHashTable();   // synthesized: Java field initializers (override had no ctor)
 	virtual ~MCHashTable();
 
 	JArray<HashEntry* > slots;

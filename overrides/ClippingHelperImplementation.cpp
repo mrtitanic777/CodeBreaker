@@ -29,6 +29,16 @@ namespace _GLShim {
 
 ClippingHelperImplementation* ClippingHelperImplementation::s_instance = new ClippingHelperImplementation();
 
+ClippingHelperImplementation::ClippingHelperImplementation()
+	: projectionBuffer(NULL)
+	, modelviewBuffer(NULL)
+	, modelviewProjectionBuffer(NULL)
+{
+	this->projectionBuffer = GLAllocation::createDirectFloatBuffer(16);
+	this->modelviewBuffer = GLAllocation::createDirectFloatBuffer(16);
+	this->modelviewProjectionBuffer = GLAllocation::createDirectFloatBuffer(16);
+}
+
 ClippingHelperImplementation::~ClippingHelperImplementation()
 {
 }

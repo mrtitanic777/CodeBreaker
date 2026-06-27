@@ -151,6 +151,12 @@ namespace {
 	}
 }
 
+RenderPainting::RenderPainting()
+	: rand(NULL)
+{
+	this->rand = new Random();
+}
+
 RenderPainting::~RenderPainting()
 {
 }

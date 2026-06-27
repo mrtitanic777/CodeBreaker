@@ -15,6 +15,7 @@ class Random;
 
 class RenderPainting : public Render {
 public:
+	RenderPainting();   // synthesized: Java field initializers (override had no ctor)
 	virtual ~RenderPainting();
 
 	Random* rand;

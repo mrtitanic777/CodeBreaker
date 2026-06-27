@@ -15,6 +15,7 @@ class Thread;
 
 class MinecraftApplet : public Applet {
 public:
+	MinecraftApplet();   // synthesized: Java field initializers (override had no ctor)
 	virtual ~MinecraftApplet();
 
 	Canvas* mcCanvas;

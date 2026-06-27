@@ -7,6 +7,17 @@
 #include "MCHashTable.h"
 #include "HashEntry.h"
 
+MCHashTable::MCHashTable()
+	: count(0)
+	, threshold(0)
+	, growFactor(0)
+	, versionStamp(0)
+{
+	this->slots = JArray<HashEntry* >(16);
+	this->threshold = 12;
+	this->growFactor = 12.0F / 16.0F;
+}
+
 MCHashTable::~MCHashTable()
 {
 }

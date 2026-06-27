@@ -14,6 +14,7 @@ class World;
 
 class WorldGenBigTree : public WorldGenerator {
 public:
+	WorldGenBigTree();   // synthesized: Java field initializers (override had no ctor)
 	virtual ~WorldGenBigTree();
 
 	Random* rand;

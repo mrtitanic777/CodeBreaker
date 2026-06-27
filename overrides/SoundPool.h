@@ -15,6 +15,7 @@ class SoundPoolEntry;
 
 class SoundPool {
 public:
+	SoundPool();   // synthesized: Java field initializers (override had no ctor)
 	virtual ~SoundPool();
 
 	Random* rand;

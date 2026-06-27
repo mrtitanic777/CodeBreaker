@@ -13,6 +13,7 @@ class Class;
 
 class MobSpawnerBase {
 public:
+	MobSpawnerBase();   // synthesized: Java field initializers (override had no ctor)
 	static void initStatics();   // run the deferred biome static inits in order (j2x_initAll)
 	virtual ~MobSpawnerBase();
 

@@ -131,6 +131,15 @@ namespace {
 SoundSystem* SoundManager::s_sndSystem = NULL;
 bool SoundManager::s_loaded = false;
 
+// Java field initializers the hand-written override dropped: the three SoundPools (and rand) were never
+// constructed, so soundPoolSounds was a garbage pointer -> playSoundFX("random.click") on EVERY button
+// click did soundPoolSounds->getRandomSoundFromSoundPool(...) -> IP 0x0.
+SoundManager::SoundManager()
+	: soundPoolSounds(new SoundPool()), soundPoolStreaming(new SoundPool()), soundPoolMusic(new SoundPool()),
+	  soundCounter(0), options(0), rand(new Random()), nextMusicDelay(0)
+{
+}
+
 SoundManager::~SoundManager()
 {
 }
