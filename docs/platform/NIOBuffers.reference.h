@@ -89,6 +89,7 @@ public:
 
 // --- java.nio.ByteBuffer -------------------------------------------------------
 class ByteBuffer : public Buffer {
+	using Buffer::position; using Buffer::limit;   // un-hide the 0-arg getters
 public:
 	explicit ByteBuffer(NioBacking* b) : Buffer(b, 0) {}
 	~ByteBuffer() {}
@@ -124,6 +125,7 @@ public:
 
 // --- java.nio.IntBuffer (view over a ByteBuffer's bytes) -----------------------
 class IntBuffer : public Buffer {
+	using Buffer::position; using Buffer::limit;   // un-hide the 0-arg getters
 public:
 	explicit IntBuffer(NioBacking* b) : Buffer(b, 2) {}
 	~IntBuffer() {}
@@ -163,6 +165,7 @@ public:
 
 // --- java.nio.FloatBuffer (view over a ByteBuffer's bytes) ---------------------
 class FloatBuffer : public Buffer {
+	using Buffer::position; using Buffer::limit;   // un-hide the 0-arg getters
 public:
 	explicit FloatBuffer(NioBacking* b) : Buffer(b, 2) {}
 	~FloatBuffer() {}
@@ -184,6 +187,7 @@ public:
 		}
 		return *this;
 	}
+	FloatBuffer& get(JArray<float>& dst) { for (int i = 0; i < dst.length; ++i) dst[i] = get(); return *this; }
 	float get() {
 		if (_b && _posB + 4 <= _limB) { float v = *(float*)(_b->bytes + _posB); _posB += 4; return v; }
 		return 0.0F;

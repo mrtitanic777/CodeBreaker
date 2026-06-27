@@ -149,6 +149,8 @@ void glFog(int pname, FloatBuffer* params){
 // ----------------------------------------------------------------------------- textures
 int  glGenTextures(){ return Textures::genId(); }        // reserve an empty registry slot
 void glDeleteTextures(int id){ Textures::deleteId(id); }
+void glGenTextures(IntBuffer* buf){ if(!buf) return; int n=buf->remaining(); for(int i=0;i<n;++i) buf->put(Textures::genId()); }
+void glDeleteTextures(IntBuffer* buf){ if(!buf) return; int n=buf->remaining(); for(int i=0;i<n;++i) Textures::deleteId(buf->get()); }
 void glBindTexture(int,int id){
 	s_boundTex=id;
 	g_pd3dDevice->SetTexture(0, id ? Textures::getById(id) : NULL);

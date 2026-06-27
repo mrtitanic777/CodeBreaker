@@ -25,7 +25,8 @@
 #define GL11_H
 
 #include "stdafx.h"          // xtl.h / d3d9.h / d3dx9.h
-#include "JavaRT.h"          // FloatBuffer / IntBuffer / ByteBuffer (NIO buffer overloads)
+#include "JavaRT.h"
+#include "NIOBuffers.h"     // real ByteBuffer / FloatBuffer / IntBuffer
 
 namespace GL11 {
 	// --- enum tokens (only the ones the game uses; extend as needed) ---
@@ -109,7 +110,9 @@ namespace GL11 {
 
 	// --- textures ---
 	int  glGenTextures();                            // -> a Textures registry id
+	void glGenTextures(IntBuffer* buf);              // LWJGL buffer form (fills with new ids)
 	void glDeleteTextures(int id);
+	void glDeleteTextures(IntBuffer* buf);
 	void glBindTexture(int target, int id);
 	void glTexParameteri(int target, int pname, int param);
 	void glTexImage2D(int target, int level, int internalFormat, int w, int h,

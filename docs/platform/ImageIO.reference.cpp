@@ -35,20 +35,20 @@ static BufferedImage* decode(const void* data, unsigned size) {
 	if (!data || !size) return NULL;
 	D3DXIMAGE_INFO info;
 	if (FAILED(D3DXGetImageInfoFromFileInMemory(data, size, &info))) return NULL;
-	IDirect3DSurface9* surf = NULL;
-	if (FAILED(g_pd3dDevice->CreateOffscreenPlainSurface(info.Width, info.Height,
-	            D3DFMT_A8R8G8B8, D3DPOOL_SCRATCH, &surf, NULL)) || !surf) return NULL;
-	// decode into the surface (D3DX converts to A8R8G8B8)
-	if (FAILED(D3DXLoadSurfaceFromFileInMemory(surf, NULL, NULL, data, size, NULL,
-	            D3DX_DEFAULT, 0, &info))) { surf->Release(); return NULL; }
+	// Xbox 360 D3D has no CreateOffscreenPlainSurface -> decode into a lockable sysmem texture
+	// (D3DXCreateTextureFromFileInMemoryEx exists on the XDK; the old port used the *FromFileExA form).
+	IDirect3DTexture9* tex = NULL;
+	if (FAILED(D3DXCreateTextureFromFileInMemoryEx(g_pd3dDevice, data, size, info.Width, info.Height,
+	            1, 0, D3DFMT_A8R8G8B8, D3DPOOL_SYSTEMMEM, D3DX_FILTER_NONE, D3DX_FILTER_NONE, 0,
+	            NULL, NULL, &tex)) || !tex) return NULL;
 	BufferedImage* img = new BufferedImage((int)info.Width, (int)info.Height);
 	D3DLOCKED_RECT lr;
-	if (SUCCEEDED(surf->LockRect(&lr, NULL, D3DLOCK_READONLY))) {
+	if (SUCCEEDED(tex->LockRect(0, &lr, NULL, D3DLOCK_READONLY))) {
 		for (int y = 0; y < img->h; ++y)                          // A8R8G8B8 row == ARGB ints, 1:1
 			memcpy(&img->pixels[y * img->w], (const unsigned char*)lr.pBits + y * lr.Pitch, img->w * 4);
-		surf->UnlockRect();
+		tex->UnlockRect(0);
 	}
-	surf->Release();
+	tex->Release();
 	return img;
 }
 

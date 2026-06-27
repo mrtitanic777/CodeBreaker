@@ -30,6 +30,7 @@
 #define FILEIO_H
 
 #include "stdafx.h"          // xtl.h (CreateFile/ReadFile/WriteFile/GetFileAttributes/...)
+#include "JArray.h"
 #include <string>
 #include <vector>
 
@@ -192,6 +193,7 @@ public:
 	float readFloat()   { int i = readInt(); float f; memcpy(&f, &i, 4); return f; }     // bit-cast AFTER BE assembly
 	double readDouble() { long long l = readLong(); double d; memcpy(&d, &l, 8); return d; }
 	void readFully(unsigned char* dst, int len) { for (int i = 0; i < len; ++i) dst[i] = (unsigned char)readUnsignedByte(); }
+	void readFully(JArray<unsigned char>& b) { for (int i = 0; i < b.length; ++i) b[i] = (unsigned char)readUnsignedByte(); }
 	std::string readUTF() {                                  // 2-byte length prefix + modified-UTF8
 		int n = readUnsignedShort(); std::string s; s.reserve(n);
 		for (int i = 0; i < n; ++i) s.push_back((char)readUnsignedByte());
@@ -211,6 +213,7 @@ public:
 	void writeFloat(float v)    { int i;       memcpy(&i, &v, 4); writeInt(i); }          // bit-cast THEN BE emit
 	void writeDouble(double v)  { long long l; memcpy(&l, &v, 8); writeLong(l); }
 	void write(const unsigned char* d, int len) { for (int i = 0; i < len; ++i) buffer.push_back(d[i]); }
+	void write(const JArray<unsigned char>& b) { for (int i = 0; i < b.length; ++i) buffer.push_back((unsigned char)b[i]); }
 	void writeUTF(const std::string& s) {
 		writeShort((int)s.size());
 		for (size_t i = 0; i < s.size(); ++i) buffer.push_back((unsigned char)s[i]);
@@ -247,25 +250,8 @@ public:
 	}
 };
 
-// === GZIP wrappers — PASS-THROUGH (raw NBT, like the reference port) ===========
-// Saves are stored UNCOMPRESSED (self-consistent; incompatible with PC .dat). See 05b "raw vs gzip".
-class GZIPInputStream : public InputStream {
-	InputStream* _in;
-public:
-	GZIPInputStream(InputStream* in) : _in(in) {}
-	int read() { return _in ? _in->read() : -1; }
-	int read(unsigned char* b, int off, int len) { return _in ? _in->read(b, off, len) : -1; }
-	void close() { if (_in) _in->close(); }
-};
-class GZIPOutputStream : public OutputStream {
-	OutputStream* _out;
-public:
-	GZIPOutputStream(OutputStream* out) : _out(out) {}
-	void write(int b) { if (_out) _out->write(b); }
-	void write(const unsigned char* b, int len) { if (_out) _out->write(b, len); }
-	void flush() { if (_out) _out->flush(); }
-	void close() { if (_out) _out->close(); }
-};
+// GZIP wrappers live in CompressedStreamTools.cpp (its own local defs) -- kept OUT of FileIO.h to
+// avoid a double definition (CompressedStreamTools is the only GZIP user; saves are raw/uncompressed).
 
 // === BufferedReader (options.txt) =============================================
 // Real readLine() over a wrapped InputStream (drained eagerly). \n / \r\n terminated, EOF -> empty
@@ -278,6 +264,7 @@ public:
 		if (in) { unsigned char t[4096]; int n;
 			while ((n = in->read(t, 0, (int)sizeof(t))) > 0) _buf.insert(_buf.end(), t, t + n); }
 	}
+	template<class R> BufferedReader(R*) : _pos(0) {}   // Reader types (FileReader/InputStreamReader): stub
 	bool ready() { return _pos < _buf.size(); }
 	int  read() { return (_pos < _buf.size()) ? (int)_buf[_pos++] : -1; }
 	std::string readLine() {
