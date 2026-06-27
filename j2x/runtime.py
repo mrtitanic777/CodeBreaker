@@ -1081,8 +1081,10 @@ public:
 #endif // CLASS_H
 '''
 _GENERATED['Robot.h'] = _class_stub('Robot', void_methods=['mouseMove'])
-_GENERATED['URL.h'] = _class_stub('URL',
-    ret_methods=[('openConnection', ('void*', '0')), ('openStream', ('void*', '0')),
+# openStream() returns a real InputStream* (not void*) so `new DataInputStream(url.openStream())`
+# binds to DataInputStream(InputStream*); parse(void*)/InputStreamReader(...) callers still accept it.
+_GENERATED['URL.h'] = _class_stub('URL', fwds=('InputStream',),
+    ret_methods=[('openConnection', ('void*', '0')), ('openStream', ('InputStream*', '0')),
                  ('toString', ('std::string', 'std::string()')), ('getPath', ('std::string', 'std::string()')),
                  ('getFile', ('std::string', 'std::string()')), ('getProtocol', ('std::string', 'std::string()')),
                  ('getHost', ('std::string', 'std::string()')), ('getQuery', ('std::string', 'std::string()'))])

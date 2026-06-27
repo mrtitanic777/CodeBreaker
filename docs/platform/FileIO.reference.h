@@ -212,8 +212,10 @@ public:
 	void writeLong(long long v) { for (int i = 56; i >= 0; i -= 8) writeByte((int)(v >> i)); }
 	void writeFloat(float v)    { int i;       memcpy(&i, &v, 4); writeInt(i); }          // bit-cast THEN BE emit
 	void writeDouble(double v)  { long long l; memcpy(&l, &v, 8); writeLong(l); }
+	void write(int v) { writeByte(v); }                      // java.io.DataOutput.write(int) -> one byte
 	void write(const unsigned char* d, int len) { for (int i = 0; i < len; ++i) buffer.push_back(d[i]); }
 	void write(const JArray<unsigned char>& b) { for (int i = 0; i < b.length; ++i) buffer.push_back((unsigned char)b[i]); }
+	void write(const JArray<unsigned char>& b, int off, int len) { for (int i = 0; i < len; ++i) buffer.push_back((unsigned char)b[off + i]); }
 	void writeUTF(const std::string& s) {
 		writeShort((int)s.size());
 		for (size_t i = 0; i < s.size(); ++i) buffer.push_back((unsigned char)s[i]);
@@ -233,6 +235,11 @@ public:
 		length = (int)_owned.size(); pos = 0;
 	}
 	int read() { return readUnsignedByte(); }
+	// java.io.DataInputStream.read(byte[]) -> count read, or -1 at EOF (used by the resource fetcher)
+	int read(JArray<unsigned char>& b) {
+		int n = 0; for (; n < b.length && pos < length; ++n) b[n] = data[pos++];
+		return (n > 0) ? n : (b.length == 0 ? 0 : -1);
+	}
 	void close() {}
 };
 

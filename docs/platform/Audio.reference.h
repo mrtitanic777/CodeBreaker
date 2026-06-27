@@ -94,7 +94,7 @@ public:
 	virtual bool playing(const std::string& sourcename);
 
 	// Catch-all so any unmodeled paulscode SoundSystem call still links as a no-op.
-	void cleanup(...) {}
+	// (No cleanup(...) catch-all: it would be ambiguous with the 0-arg cleanup() the game calls.)
 	void newSource(...) {}
 	void newStreamingSource(...) {}
 	void play(...) {}

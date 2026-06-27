@@ -89,8 +89,8 @@ public:
 
 // --- java.nio.ByteBuffer -------------------------------------------------------
 class ByteBuffer : public Buffer {
-	using Buffer::position; using Buffer::limit;   // un-hide the 0-arg getters
 public:
+	using Buffer::position; using Buffer::limit;   // un-hide the 0-arg getters
 	explicit ByteBuffer(NioBacking* b) : Buffer(b, 0) {}
 	~ByteBuffer() {}
 
@@ -116,6 +116,17 @@ public:
 	ByteBuffer& putInt(int v) { if (_b && _posB + 4 <= _b->cap) { *(int*)(_b->bytes + _posB) = v; _posB += 4; } return *this; }
 	ByteBuffer& putInt(int idx, int v) { if (_b && idx >= 0 && idx + 4 <= _b->cap) *(int*)(_b->bytes + idx) = v; return *this; }
 
+	// bulk relative put/get over a JArray<unsigned char> (RenderEngine texture upload via put(bytes);
+	// ScreenShotHelper readback via get(bytes)). Byte-granular, advances the shared byte position.
+	ByteBuffer& put(const JArray<unsigned char>& src) {
+		for (int i = 0; i < src.length && _b && _posB < _b->cap; ++i) _b->bytes[_posB++] = (char)src[i];
+		return *this;
+	}
+	ByteBuffer& get(JArray<unsigned char>& dst) {
+		for (int i = 0; i < dst.length && _b && _posB < _limB; ++i) dst[i] = (unsigned char)_b->bytes[_posB++];
+		return *this;
+	}
+
 	// VIEWS over the SAME bytes (share backing; independent position/limit) -- java.nio semantics.
 	IntBuffer*   asIntBuffer();
 	FloatBuffer* asFloatBuffer();
@@ -125,8 +136,8 @@ public:
 
 // --- java.nio.IntBuffer (view over a ByteBuffer's bytes) -----------------------
 class IntBuffer : public Buffer {
-	using Buffer::position; using Buffer::limit;   // un-hide the 0-arg getters
 public:
+	using Buffer::position; using Buffer::limit;   // un-hide the 0-arg getters
 	explicit IntBuffer(NioBacking* b) : Buffer(b, 2) {}
 	~IntBuffer() {}
 
@@ -165,8 +176,8 @@ public:
 
 // --- java.nio.FloatBuffer (view over a ByteBuffer's bytes) ---------------------
 class FloatBuffer : public Buffer {
-	using Buffer::position; using Buffer::limit;   // un-hide the 0-arg getters
 public:
+	using Buffer::position; using Buffer::limit;   // un-hide the 0-arg getters
 	explicit FloatBuffer(NioBacking* b) : Buffer(b, 2) {}
 	~FloatBuffer() {}
 

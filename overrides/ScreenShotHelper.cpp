@@ -15,9 +15,9 @@
 #include "ImageIO.h"
 
 // --- local shims for runtime-stub gaps ---------------------------------------
-// GL11 lacks GL_UNPACK_ALIGNMENT (standard GL enum 0x0CF5); reopen the namespace
-// to add it. java.text.SimpleDateFormat and java.util.Date have no runtime
-// header, so provide minimal stand-ins. See report's runtime-stub gaps.
+// GL_UNPACK_ALIGNMENT now lives in the real platform GL11.h, so it is NOT re-added here (doing so
+// is a same-TU redefinition once GL11.h is included). java.text.SimpleDateFormat and java.util.Date
+// have no runtime header, so provide minimal stand-ins. See report's runtime-stub gaps.
 /* ---- ORIGINAL JAVA (stubbed below) ----
  *  import java.text.DateFormat;
  *  import java.text.SimpleDateFormat;
@@ -28,10 +28,9 @@
  *  ...
  *  String var4 = "" + dateFormat.format(new Date());   // real timestamp string
  *  ---- end original Java ----
- *  STUB: GL_UNPACK_ALIGNMENT is re-added (faithful 0x0CF5). Date and SimpleDateFormat are minimal
- *  stand-ins -- crucially SimpleDateFormat.format(Date) is a NO-OP returning "" instead of a
- *  formatted timestamp, so screenshot filenames lose their date/time prefix. Needs review. */
-namespace GL11 { const int GL_UNPACK_ALIGNMENT = 0x0CF5; }
+ *  Date and SimpleDateFormat are minimal stand-ins -- crucially SimpleDateFormat.format(Date) is a
+ *  NO-OP returning "" instead of a formatted timestamp, so screenshot filenames lose their date/time
+ *  prefix. Needs review. (GL_UNPACK_ALIGNMENT comes from the platform GL11.h now.) */
 
 class Date {
 public:

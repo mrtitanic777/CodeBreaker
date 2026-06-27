@@ -156,11 +156,11 @@ void glBindTexture(int,int id){
 	g_pd3dDevice->SetTexture(0, id ? Textures::getById(id) : NULL);
 }
 void glTexParameteri(int,int,int){}                      // filtering set globally (point) in Main
-void glTexImage2D(int,int,int,int w,int h,int,int,int,IntBuffer* px){
-	Textures::uploadRGBA(s_boundTex, w, h, px ? (const void*)((ByteBuffer*)px)->base() : NULL);
+void glTexImage2D(int,int,int,int w,int h,int,int,int,ByteBuffer* px){
+	Textures::uploadRGBA(s_boundTex, w, h, px ? (const void*)px->base() : NULL);
 }
-void glTexSubImage2D(int,int,int x,int y,int w,int h,int,int,IntBuffer* px){
-	Textures::uploadSubRGBA(s_boundTex, x, y, w, h, px ? (const void*)((ByteBuffer*)px)->base() : NULL);
+void glTexSubImage2D(int,int,int x,int y,int w,int h,int,int,ByteBuffer* px){
+	Textures::uploadSubRGBA(s_boundTex, x, y, w, h, px ? (const void*)px->base() : NULL);
 }
 void glPixelStorei(int,int){}
 

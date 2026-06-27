@@ -10,6 +10,7 @@ public:
 	JArray<int> pixels;                               // ARGB (0xAARRGGBB), row-major, w*h
 	BufferedImage() : w(0), h(0) {}
 	BufferedImage(int w_, int h_) : w(w_), h(h_), pixels(JArray<int>(w_ * h_)) {}
+	BufferedImage(int w_, int h_, int /*type*/) : w(w_), h(h_), pixels(JArray<int>(w_ * h_)) {}  // TYPE_INT_* ignored (always ARGB)
 	int getWidth()  { return w; }
 	int getHeight() { return h; }
 	int getRGB(int x, int y) { return pixels[y * w + x]; }
@@ -19,6 +20,11 @@ public:
 				a[off + j * scan + i] = pixels[(sy + j) * w + (sx + i)];
 	}
 	void setRGB(int x, int y, int rgb) { pixels[y * w + x] = rgb; }
+	void setRGB(int sx, int sy, int rw, int rh, JArray<int>& a, int off, int scan) {   // block form (ScreenShotHelper/RenderEngine)
+		for (int j = 0; j < rh; ++j)
+			for (int i = 0; i < rw; ++i)
+				pixels[(sy + j) * w + (sx + i)] = a[off + j * scan + i];
+	}
 	Graphics* getGraphics() { return 0; }              // AWT draw target -- no-op on console
 };
 #endif // BUFFEREDIMAGE_H

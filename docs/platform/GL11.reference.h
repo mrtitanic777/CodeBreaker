@@ -116,9 +116,9 @@ namespace GL11 {
 	void glBindTexture(int target, int id);
 	void glTexParameteri(int target, int pname, int param);
 	void glTexImage2D(int target, int level, int internalFormat, int w, int h,
-	                  int border, int format, int type, IntBuffer* pixels);
+	                  int border, int format, int type, ByteBuffer* pixels);   // LWJGL passes a ByteBuffer
 	void glTexSubImage2D(int target, int level, int xoff, int yoff, int w, int h,
-	                     int format, int type, IntBuffer* pixels);
+	                     int format, int type, ByteBuffer* pixels);
 	void glPixelStorei(int pname, int param);
 
 	// --- vertex arrays (the hot path) ---

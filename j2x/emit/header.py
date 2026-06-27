@@ -20,6 +20,13 @@ _BANNER = '// Auto-generated from %s.java\n// Target: Xbox 360 / C++03 / DirectX
 
 
 def _std_header_for(cpp_base):
+    # Object -> JObject (the universal boxed value type) is a name-changing mapping, so it lands here
+    # rather than as a user X.h. JObject lives in the runtime prelude; a header that takes/returns it
+    # BY VALUE (e.g. `equals(JObject)`) needs the full definition, so pull in JavaRT.h. Without this the
+    # header has neither an include nor a forward-decl for JObject and fails to compile standalone (the
+    # only reason it ever worked was the .cpp happening to #include JavaRT.h before the class header).
+    if 'JObject' in cpp_base:
+        return '"JavaRT.h"'
     if 'std::string' in cpp_base:
         return '<string>'
     if 'std::vector' in cpp_base:

@@ -12,18 +12,17 @@
 
 // Local shims for runtime symbols not present in the central stubs (see report):
 //  - GL11::glDeleteLists      (GL11.h has glGenLists/glGenTextures/glDeleteTextures only)
-//  - ByteBuffer::allocateDirect + ByteOrder.nativeOrder() (nio buffer allocation)
+//  - ByteOrder.nativeOrder()  (no-op; the platform ByteBuffer is already native order)
 /* ---- ORIGINAL JAVA (stubbed below) ----
  *  // GL11.glDeleteLists, used in deleteTexturesAndDisplayLists():
  *  GL11.glDeleteLists(((Integer)displayLists.get(var0)).intValue(), ((Integer)displayLists.get(var0 + 1)).intValue());
  *  // ByteBuffer.allocateDirect(...).order(ByteOrder.nativeOrder()), used in createDirectByteBuffer():
  *  ByteBuffer var1 = ByteBuffer.allocateDirect(var0).order(ByteOrder.nativeOrder());
  *  ---- end original Java ----
- *  The real LWJGL/nio symbols are unavailable: glDeleteLists is a no-op, and
- *  allocateDirect/nativeOrder are faked (allocateDirect returns a fresh ByteBuffer,
- *  nativeOrder returns 0 / does nothing). */
+ *  glDeleteLists stays a no-op. allocateDirect now routes to the REAL platform ByteBuffer
+ *  (NIOBuffers.h ByteBuffer::allocateDirect -> n-byte direct backing); nativeOrder is a no-op. */
 namespace { inline void _gl11_glDeleteLists(int, int) {} }
-static ByteBuffer* _bb_allocateDirect(int) { return new ByteBuffer(); }
+static ByteBuffer* _bb_allocateDirect(int n) { return ByteBuffer::allocateDirect(n); }   // real direct buffer (n bytes)
 namespace _ByteOrder { inline int nativeOrder() { return 0; } }
 // box/unbox: the Java source kept List<Integer>; here the list element type is void*, so each
 // int is boxed into the pointer and read back out (no Integer object type exists in the runtime).
