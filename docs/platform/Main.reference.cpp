@@ -20,6 +20,7 @@
 #include "stdafx.h"
 #include "Common.h"
 #include "Shaders.h"
+#include "GL11.h"
 #include "Tesselator.h"
 #include "Textures.h"
 #include "Minecraft.h"
@@ -71,6 +72,11 @@ void __cdecl main() {
     ApplyDefaultRenderState();
 
     if (!Shaders::init()) { DbgPrintF("[BOOT] shader compile failed\n"); return; }
+
+    // GL emulator init: seed the MODELVIEW/PROJECTION matrix stacks with identity. Without this the
+    // stacks are empty std::vectors and the very first glLoadIdentity()/glOrtho() in Minecraft::
+    // loadScreen() does back() on an empty vector -> crash (the black-screen-after-fontRenderer hang).
+    GL11::glInit();
 
     Textures::init();
     Textures::loadAll();
