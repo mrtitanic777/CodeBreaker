@@ -16,6 +16,12 @@ from j2x import parse, pipeline
 
 JAVA_DIR = r'C:/Users/mrtit/Desktop/MinecraftAlpha/minecraft/src'
 OVR_DIR  = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'overrides')
+LIVE_DIR = r'C:/Users/mrtit/Documents/Visual Studio 2010/Projects/MinecraftAlpha/MinecraftAlpha'
+# Java container methods that the converter RENAMES (add->push_back, get->[], etc.) -- ignore in the
+# static{}-block call check or they false-positive (e.g. Session's registeredBlocksList.add -> push_back).
+_CONTAINER_METHODS = {'add','get','put','remove','size','contains','clear','keySet','values','iterator',
+                      'isEmpty','set','addAll','indexOf','toString','length','charAt','put','containsKey',
+                      'static','if','for','while','switch','return','new','equals','hashCode'}
 
 def main():
     classes = []
@@ -79,7 +85,27 @@ def main():
                     total += 1
                     print('=== %s.cpp  (dropped static{} block call: %s()) ===' % (cls.name, call))
 
-    print('\nTOTAL dropped converter-content across overrides (array inits + static{} blocks):', total)
+    # --- check 3: WHOLE LIVE TREE -- every class with a Java static{} block, confirm the live .cpp
+    # (override OR generated) still contains the block's custom-method calls. Catches a stale generated
+    # file too (not just overrides). Container methods are renamed by the converter, so they're ignored.
+    for c in classes:
+        si = getattr(c, 'static_inits', None)
+        if not si:
+            continue
+        live_cpp = os.path.join(LIVE_DIR, c.name + '.cpp')
+        if not os.path.exists(live_cpp):
+            continue
+        src = open(live_cpp, encoding='utf-8', errors='replace').read()
+        calls = set()
+        for block in si:
+            txt = '\n'.join(t for (_, t) in block) if block and isinstance(block[0], tuple) else str(block)
+            calls |= set(re.findall(r'\b([A-Za-z_]\w*)\s*\(', txt))
+        for call in calls - _CONTAINER_METHODS:
+            if call not in src:
+                total += 1
+                print('=== LIVE %s.cpp  (static{} block call missing: %s()) ===' % (c.name, call))
+
+    print('\nTOTAL dropped converter-content (override array/static-blocks + live static-blocks):', total)
 
 if __name__ == '__main__':
     main()

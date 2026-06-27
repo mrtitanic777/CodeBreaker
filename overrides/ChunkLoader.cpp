@@ -133,6 +133,15 @@ File* ChunkLoader::chunkFileForXZ(int var1, int var2)
 
 Chunk* ChunkLoader::loadChunk(World* var1, int var2, int var3)
 {
+	// CONSOLE (gen perf): chunk persistence is DISABLED (read-only save dir -> saveChunk is a no-op), so no
+	// chunk file can ever exist. The original chunkFileForXZ()+exists() probed the HOST filesystem ~3x PER
+	// CHUNK -> a slow ResolvePath / C000000F (file-not-found) STORM during world-gen (the "exhaustively slow"
+	// generation: hundreds of host-FS round-trips). Skip the probe entirely and return NULL so the chunk
+	// provider just GENERATES the chunk -- zero filesystem access -> fast gen. Restore the body when the
+	// writable Save: mount is wired (docs/platform/05).
+	(void)var1; (void)var2; (void)var3;
+	return NULL;
+#if 0
 	File* var4 = this->chunkFileForXZ(var2, var3);
 	if(var4 != NULL && var4->exists()) {
 	try {
@@ -159,6 +168,7 @@ Chunk* ChunkLoader::loadChunk(World* var1, int var2, int var3)
 	}
 	}
 	return NULL;
+#endif
 }
 
 void ChunkLoader::saveChunk(World* var1, Chunk* var2)
