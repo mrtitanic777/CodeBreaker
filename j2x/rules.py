@@ -191,12 +191,118 @@ def rule_value_copy_owner(fname, text, header_text):
                    text.split('\n')[line-1].strip()[:160])
 
 
+# ---------------------------------------------------------------------------
+# Rule: virtual method called from a constructor (dispatches to base, not override)
+# ---------------------------------------------------------------------------
+def _ctor_bodies(text, cls):
+    """Yield (line, body) for each ClassName::ClassName(...) definition."""
+    pat = re.compile(r'\b%s::%s\s*\([^)]*\)\s*(?::[^{]*)?\{' % (re.escape(cls), re.escape(cls)))
+    for m in pat.finditer(text):
+        depth, j = 1, m.end()
+        while j < len(text) and depth:
+            if text[j] == '{':
+                depth += 1
+            elif text[j] == '}':
+                depth -= 1
+            j += 1
+        yield text.count('\n', 0, m.start()) + 1, text[m.end():j-1]
+
+
+def rule_virtual_call_in_ctor(fname, text, header_text):
+    """A constructor that calls one of its own virtual methods: in C++ the call dispatches to THIS
+    class's version (the vtable isn't the derived one yet during construction), NOT a subclass
+    override -- unlike Java. So overridden behaviour is silently skipped and wrong data gets recorded
+    (the old port's Block opacity bug: Block ctor -> setLightOpacity dispatched to Block, not the
+    subclass). Flag it; set the value directly or finish it after construction."""
+    if not fname.endswith('.cpp') or header_text is None:
+        return
+    cls = fname[:-4]
+    h = _strip_block_comments(header_text)
+    virt = set(re.findall(r'\bvirtual\b[^;{]*?\b(\w+)\s*\(', h))
+    virt.discard(cls)                                    # not the ctor itself
+    virt = set(n for n in virt if not n.startswith('~'))  # not the dtor
+    if not virt:
+        return
+    for line0, body in _ctor_bodies(text, cls):
+        bstr = _strip_block_comments(body)
+        for name in virt:
+            # `this->name(` or a bare `name(` (NOT obj->name / obj.name / Class::name -- those are fine)
+            m = (re.search(r'\bthis\s*->\s*%s\s*\(' % re.escape(name), bstr)
+                 or re.search(r'(?<![\w.>:])%s\s*\(' % re.escape(name), bstr))
+            if m:
+                yield (line0, Category.RISK, Severity.MED, 'virtual-call-in-ctor',
+                       "%s's constructor calls virtual %s() -- C++ dispatches to %s's own version, NOT "
+                       "a subclass override (Java would call the override). Wrong data may be recorded "
+                       "(the Block light-opacity bug). Set the field directly or finish init post-ctor."
+                       % (cls, name, cls), '')
+
+
+# ---------------------------------------------------------------------------
+# Rule: eager static init with a cross-translation-unit dependency (init-order crash class)
+# ---------------------------------------------------------------------------
+# A static field DEFINITION with an initializer: `<type> <Class>::s_<name> = <init>;`
+_STATIC_DEF = re.compile(r'^[A-Za-z_][\w:<>\*&,\s]*?\b(\w+::s_\w+)\s*=\s*(.+);\s*$', re.M)
+# constructing a user class (not a safe runtime value type) -> its ctor may read other statics
+_NEW_USER = re.compile(r'\bnew\s+(?!JavaString\b|JArray\b|JList\b|JObject\b|JCat\b)[A-Z]\w*')
+
+
+def rule_static_init_order(fname, text, header_text):
+    """An EAGER static field definition that constructs a user class or reads another class's static
+    (`::s_`) runs at static-init time in UNDEFINED cross-translation-unit order -- the static-init-
+    order crash class (Block initialized before Material -> null vtable). The converter defers these
+    into initStatics(), run by j2x_initAll() in dependency order; this rule flags any that slipped
+    (e.g. in a hand-written override) so they get deferred too."""
+    if not fname.endswith('.cpp'):
+        return
+    for m in _STATIC_DEF.finditer(text):
+        init = m.group(2)
+        if '::s_' in init or _NEW_USER.search(init):
+            line = text.count('\n', 0, m.start()) + 1
+            yield (line, Category.RISK, Severity.MED, 'static-init-order',
+                   "eager static init `%s = ...` runs in UNDEFINED cross-translation-unit order "
+                   "(it constructs a class or reads another class's statics) -- the static-init-order "
+                   "crash class. Defer it into initStatics() (run in dependency order by j2x_initAll)."
+                   % m.group(1), m.group(0).strip()[:160])
+
+
+# ---------------------------------------------------------------------------
+# Rule: raw multi-byte cast/copy in a binary-serialization file (big-endian hazard)
+# ---------------------------------------------------------------------------
+# Files that read/write the on-disk binary formats (NBT, save/region, streams, compressed IO).
+_BINARY_IO_FILE = re.compile(r'(NBT|Stream|Save|Region|Compressed|Chunk.*(Loader|Provider))', re.I)
+# A raw reinterpret over a >1-byte scalar, or memcpy -- byte-swaps on big-endian PowerPC.
+_RAW_CAST = re.compile(r'reinterpret_cast\s*<|memcpy\s*\(|\*\s*\(\s*(?:int|short|long|long long|float|double|unsigned)\b[\w ]*\*\s*\)')
+
+
+def rule_endianness_raw_cast(fname, text, header_text):
+    """Xbox 360 is BIG-ENDIAN PowerPC. The NBT / save / stream code reads & writes multi-byte values
+    one byte at a time (MSB-first) on purpose -- that is endian-agnostic and matches Java. A raw
+    `reinterpret_cast`, `*(int*)ptr`, or `memcpy` over a serialized byte buffer is an "optimization"
+    that BYTE-SWAPS on the 360 and silently corrupts saves / desyncs the protocol. Flag such casts in
+    binary-IO files; keep the manual byte assembly (assemble the int/long, THEN bit-cast to float)."""
+    if not fname.endswith('.cpp') or not _BINARY_IO_FILE.search(fname):
+        return
+    for i, raw, code in _iter_code_lines(text):
+        if not code:
+            continue
+        if _RAW_CAST.search(code):
+            yield (i, Category.WARNING, Severity.MED, 'endianness',
+                   "raw multi-byte cast/memcpy in a binary-serialization file -- on the big-endian "
+                   "360 this byte-swaps and corrupts saves/protocol. Read/write byte-at-a-time "
+                   "(MSB-first), then bit-cast the assembled int/long to float/double.",
+                   raw.strip()[:160])
+
+
 # Registry -- (id, description, function). Add new rules here.
 RULES = [
     ('uninit-array',    'new T[n] without () leaves primitives/pointers uninitialized', rule_uninit_array),
     ('ctor-stub',       'empty or delegation-only constructor body (missing registration)', rule_ctor_stub),
     ('rule-of-three',   'owns heap but missing destructor / copy control', rule_rule_of_three),
     ('value-copy-owner','heavy/owning type passed or returned by value', rule_value_copy_owner),
+    ('virtual-call-in-ctor', 'constructor calls own virtual method (dispatches to base, not override)',
+     rule_virtual_call_in_ctor),
+    ('static-init-order', 'eager static init with a cross-TU dependency (undefined init order)',
+     rule_static_init_order),
 ]
 
 
