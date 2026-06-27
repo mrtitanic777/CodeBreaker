@@ -75,8 +75,8 @@ public:
 	virtual void onChunkLoad();
 	virtual void onChunkUnload();
 	virtual void setChunkModified();
-	virtual void getEntitiesWithinAABBForEntity(Entity* var1, AxisAlignedBB* var2, JList<void*> var3);
-	virtual void getEntitiesOfTypeWithinAAAB(Class* var1, AxisAlignedBB* var2, JList<void*> var3);
+	virtual void getEntitiesWithinAABBForEntity(Entity* var1, AxisAlignedBB* var2, JList<void*>& var3);
+	virtual void getEntitiesOfTypeWithinAAAB(Class* var1, AxisAlignedBB* var2, JList<void*>& var3);
 	virtual bool needsSaving(bool var1);
 	virtual int setChunkData(JArray<unsigned char > var1, int var2, int var3, int var4, int var5, int var6, int var7, int var8);
 	virtual Random* getRandomWithSeed(long long var1);

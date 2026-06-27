@@ -169,7 +169,7 @@ public:
 	virtual int getBlockTextureFromSideAndMetadata(int var1, int var2);
 	virtual int getBlockTextureFromSide(int var1);
 	virtual AxisAlignedBB* getSelectedBoundingBoxFromPool(World* var1, int var2, int var3, int var4);
-	virtual void getCollidingBoundingBoxes(World* var1, int var2, int var3, int var4, AxisAlignedBB* var5, JList<void*> var6);
+	virtual void getCollidingBoundingBoxes(World* var1, int var2, int var3, int var4, AxisAlignedBB* var5, JList<void*>& var6);
 	virtual AxisAlignedBB* getCollisionBoundingBoxFromPool(World* var1, int var2, int var3, int var4);
 	virtual bool isOpaqueCube();
 	virtual bool canCollideCheck(int var1, bool var2);

@@ -377,7 +377,7 @@ AxisAlignedBB* Block::getSelectedBoundingBoxFromPool(World* var1, int var2, int 
 	return AxisAlignedBB::getBoundingBoxFromPool((double)var2 + this->field_370_bf, (double)var3 + this->minY, (double)var4 + this->minZ, (double)var2 + this->maxX, (double)var3 + this->maxY, (double)var4 + this->maxZ);
 }
 
-void Block::getCollidingBoundingBoxes(World* var1, int var2, int var3, int var4, AxisAlignedBB* var5, JList<void*> var6)
+void Block::getCollidingBoundingBoxes(World* var1, int var2, int var3, int var4, AxisAlignedBB* var5, JList<void*>& var6)
 {
 	AxisAlignedBB* var7 = this->getCollisionBoundingBoxFromPool(var1, var2, var3, var4);
 	if(var7 != NULL && var5->intersectsWith(var7)) {

@@ -574,7 +574,7 @@ void Chunk::setChunkModified()
 	this->isModified = true;
 }
 
-void Chunk::getEntitiesWithinAABBForEntity(Entity* var1, AxisAlignedBB* var2, JList<void*> var3)
+void Chunk::getEntitiesWithinAABBForEntity(Entity* var1, AxisAlignedBB* var2, JList<void*>& var3)
 {
 	int var4 = MathHelper::floor_double((var2->minY - 2.0) / 16.0);
 	int var5 = MathHelper::floor_double((var2->maxY + 2.0) / 16.0);
@@ -595,7 +595,7 @@ void Chunk::getEntitiesWithinAABBForEntity(Entity* var1, AxisAlignedBB* var2, JL
 	}
 }
 
-void Chunk::getEntitiesOfTypeWithinAAAB(Class* var1, AxisAlignedBB* var2, JList<void*> var3)
+void Chunk::getEntitiesOfTypeWithinAAAB(Class* var1, AxisAlignedBB* var2, JList<void*>& var3)
 {
 	int var4 = MathHelper::floor_double((var2->minY - 2.0) / 16.0);
 	int var5 = MathHelper::floor_double((var2->maxY + 2.0) / 16.0);
