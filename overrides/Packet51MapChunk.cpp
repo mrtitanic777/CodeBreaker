@@ -73,7 +73,7 @@ void Packet51MapChunk::readPacketData(DataInputStream* var1)
 	 *
 	 *  try {
 	 *      var4.inflate(this.chunk);
-	 *  } catch (DataFormatException) {
+	 *  } catch (DataFormatException var9) {
 	 *      throw new IOException("Bad compressed data format");
 	 *  } finally {
 	 *      var4.end();

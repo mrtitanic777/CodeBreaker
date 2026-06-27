@@ -74,5 +74,24 @@ class TestLabelTargets(unittest.TestCase):
         self.assertNotIn('L_cont:;', joined)
 
 
+class TestCommentProtection(unittest.TestCase):
+    def test_reference_comments_untouched(self):
+        from tools.clean_override_warnings import clean
+        src = ('/* ---- ORIGINAL JAVA ----\n'
+               ' *      } catch (NoSuchFieldError var4) {\n'
+               ' *  int x = a >> 8 & 255;\n'
+               ' *  ---- end ---- */\n'
+               'void f() {\n'
+               '\tint x = a >> 8 & 255;\n'
+               '\ttry { g(); } catch (Exception* var2) {\n'
+               '\t}\n'
+               '}')
+        out = clean(src)
+        self.assertIn('catch (NoSuchFieldError var4)', out)   # comment var NOT dropped
+        self.assertIn('*  int x = a >> 8 & 255;', out)        # comment shift NOT parenthesized
+        self.assertIn('\tint x = (a >> 8) & 255;', out)       # code shift IS parenthesized
+        self.assertIn('catch (Exception*) {', out)            # code catch var IS dropped
+
+
 if __name__ == '__main__':
     unittest.main()

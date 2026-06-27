@@ -153,7 +153,7 @@ void GuiScreen::keyTyped(char var1, int var2)
  *              String var1 = (String)var0.getTransferData(DataFlavor.stringFlavor);
  *              return var1;
  *          }
- *      } catch (Exception) {
+ *      } catch (Exception var2) {
  *      }
  *      return null;
  *  }

@@ -61,7 +61,40 @@ def _drop_unused_labels(text):
     return '\n'.join(keep)
 
 
+def _mask_comments(text):
+    """Replace // and /* */ comments with opaque placeholders so the cleanup passes NEVER edit the
+    `/* ORIGINAL JAVA */` reference blocks. String/char literals are left intact (the unicode pass
+    must see them); the scanner skips over them so a `//` or `/*` inside a string isn't mistaken for
+    a comment. Returns (masked_text, store) -> restore by replacing each placeholder with its text."""
+    out, store, i, n = [], {}, 0, len(text)
+    while i < n:
+        c = text[i]
+        if c in '"\'':                                   # skip a string / char literal verbatim
+            j = i + 1
+            while j < n:
+                if text[j] == '\\':
+                    j += 2
+                    continue
+                if text[j] == c:
+                    j += 1
+                    break
+                j += 1
+            out.append(text[i:j]); i = j
+        elif text[i:i + 2] == '//':
+            j = text.find('\n', i)
+            j = n if j < 0 else j
+            key = '\x01C%d\x01' % len(store); store[key] = text[i:j]; out.append(key); i = j
+        elif text[i:i + 2] == '/*':
+            j = text.find('*/', i + 2)
+            j = n if j < 0 else j + 2
+            key = '\x01C%d\x01' % len(store); store[key] = text[i:j]; out.append(key); i = j
+        else:
+            out.append(c); i += 1
+    return ''.join(out), store
+
+
 def clean(text):
+    text, store = _mask_comments(text)                   # protect reference comments from every pass
     text = _drop_unused_catch(text)
     text = _drop_unused_labels(text)
     lines = []
@@ -71,7 +104,10 @@ def clean(text):
         # C4800: `return <recv>.count(<args>);` returned as bool
         ln = re.sub(r'(\breturn\s+.*\.count\([^;]*\))\s*;', r'\1 != 0;', ln)
         lines.append(ln)
-    return '\n'.join(lines)
+    text = '\n'.join(lines)
+    for key, val in store.items():                       # restore the original comment text verbatim
+        text = text.replace(key, val)
+    return text
 
 
 def main():
