@@ -361,7 +361,11 @@ void GuiScreen::drawBackground(int var1)
 	GL11::glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
 	float var3 = 32.0F;
 	var2->startDrawingQuads();
-	var2->setColorOpaque_I(4210752);
+	// CONSOLE (brightness): vanilla tints the menu dirt to 0x404040 (4210752 = 25% gray) -> with no
+	// gamma boost on D3D it looked extremely dark vs Java's brighter GL. Draw it at FULL texture
+	// brightness (white) so the dirt shows its true authored color and nothing can dim it. (Gamma is
+	// also pinned to 1.0 in Shaders so pow() can't darken it either.)
+	var2->setColorOpaque_I(16777215);
 	var2->addVertexWithUV(0.0, (double)this->height, 0.0, 0.0, (double)((float)this->height / var3 + (float)var1));
 	var2->addVertexWithUV((double)this->width, (double)this->height, 0.0, (double)((float)this->width / var3), (double)((float)this->height / var3 + (float)var1));
 	var2->addVertexWithUV((double)this->width, 0.0, 0.0, (double)((float)this->width / var3), (double)(0 + var1));

@@ -285,15 +285,15 @@ void SoundManager::playStreaming(const JavaString& var1, float var2, float var3,
 void SoundManager::playSound(const JavaString& var1, float var2, float var3, float var4, float var5, float var6)
 {
 	if(s_loaded && this->options->soundVolume != 0.0F) {
-	SoundPoolEntry* var7 = this->soundPoolSounds->getRandomSoundFromSoundPool(var1);
-	if(var7 != NULL && var5 > 0.0F) {
+	// CONSOLE: bypass the empty .ogg pool -> route the sound NAME to the XACT bridge (see playSoundFX).
+	if(var5 > 0.0F) {
 	this->soundCounter = (this->soundCounter + 1) % 256;
 	JavaString var8 = (JCat() + "sound_" + this->soundCounter);
 	float var9 = 16.0F;
 	if(var5 > 1.0F) {
 	var9 *= var5;
 	}
-	s_sndSystem->newSource(var5 > 1.0F, var8, var7->soundUrl, var7->soundName, false, var2, var3, var4, 2, var9);
+	s_sndSystem->newSource(var5 > 1.0F, var8, (void*)NULL, var1, false, var2, var3, var4, 2, var9);
 	s_sndSystem->setPitch(var8, var6);
 	if(var5 > 1.0F) {
 	var5 = 1.0F;
@@ -307,11 +307,13 @@ void SoundManager::playSound(const JavaString& var1, float var2, float var3, flo
 void SoundManager::playSoundFX(const JavaString& var1, float var2, float var3)
 {
 	if(s_loaded && this->options->soundVolume != 0.0F) {
-	SoundPoolEntry* var4 = this->soundPoolSounds->getRandomSoundFromSoundPool(var1);
-	if(var4 != NULL) {
+	// CONSOLE: the Java .ogg sound POOL is empty (sounds live in the XACT banks, not downloaded oggs),
+	// so getRandomSoundFromSoundPool() returned NULL and this bailed -> silence. Route the sound NAME
+	// straight to the XACT bridge: newSource records the cue identity (var1) and SoundSystem::play ->
+	// AudioBridge::toCue(var1) -> XaPlayCue (e.g. "random.click" -> "random_click").
 	this->soundCounter = (this->soundCounter + 1) % 256;
 	JavaString var5 = (JCat() + "sound_" + this->soundCounter);
-	s_sndSystem->newSource(false, var5, var4->soundUrl, var4->soundName, false, 0.0F, 0.0F, 0.0F, 0, 0.0F);
+	s_sndSystem->newSource(false, var5, (void*)NULL, var1, false, 0.0F, 0.0F, 0.0F, 0, 0.0F);
 	if(var2 > 1.0F) {
 	var2 = 1.0F;
 	}
@@ -319,6 +321,5 @@ void SoundManager::playSoundFX(const JavaString& var1, float var2, float var3)
 	s_sndSystem->setPitch(var5, var3);
 	s_sndSystem->setVolume(var5, var2 * this->options->soundVolume);
 	s_sndSystem->play(var5);
-	}
 	}
 }
