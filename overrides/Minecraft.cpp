@@ -290,6 +290,7 @@ void Minecraft::startGame()
 	this->fontRenderer = new FontRenderer(this->gameSettings, "/font/default.png", this->renderEngine);
 	DbgPrintF("[boot] fontRenderer ok\n");
 	this->loadScreen();
+	DbgPrintF("[boot] loadScreen ok\n");
 	Keyboard::create();
 	Mouse::create();
 	this->mouseHelper = new MouseHelper(this->mcCanvas);
@@ -348,6 +349,7 @@ void Minecraft::loadScreen()
 	ScaledResolution* var1 = new ScaledResolution(this->displayWidth, this->displayHeight);
 	int var2 = var1->getScaledWidth();
 	int var3 = var1->getScaledHeight();
+	DbgPrintF("[boot] ls: scaledres\n");
 	GL11::glClear(GL11::GL_DEPTH_BUFFER_BIT | GL11::GL_COLOR_BUFFER_BIT);
 	GL11::glMatrixMode(GL11::GL_PROJECTION);
 	GL11::glLoadIdentity();
@@ -357,11 +359,13 @@ void Minecraft::loadScreen()
 	GL11::glTranslatef(0.0F, 0.0F, -2000.0F);
 	GL11::glViewport(0, 0, this->displayWidth, this->displayHeight);
 	GL11::glClearColor(0.0F, 0.0F, 0.0F, 0.0F);
+	DbgPrintF("[boot] ls: glstate done\n");
 	Tessellator* var4 = Tessellator::s_instance;
 	GL11::glDisable(GL11::GL_LIGHTING);
 	GL11::glEnable(GL11::GL_TEXTURE_2D);
 	GL11::glDisable(GL11::GL_FOG);
 	GL11::glBindTexture(GL11::GL_TEXTURE_2D, this->renderEngine->getTexture("/title/mojang.png"));
+	DbgPrintF("[boot] ls: mojang tex bound\n");
 	var4->startDrawingQuads();
 	var4->setColorOpaque_I(16777215);
 	var4->addVertexWithUV(0.0, (double)this->displayHeight, 0.0, 0.0, 0.0);
@@ -379,6 +383,7 @@ void Minecraft::loadScreen()
 	GL11::glEnable(GL11::GL_ALPHA_TEST);
 	GL11::glAlphaFunc(GL11::GL_GREATER, 0.1F);
 	Display::swapBuffers();
+	DbgPrintF("[boot] ls: post-swap\n");
 }
 
 void Minecraft::drawSplashTexture(int var1, int var2, int var3, int var4, int var5, int var6)
