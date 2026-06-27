@@ -157,6 +157,39 @@ def _init_list(cls, resolver):
     return items
 
 
+# Body init lines that a value member already produces by default-construction (empty container) or that
+# a zero member-init already covers -- redundant, and risky to re-emit into a hand-written override whose
+# field type may differ. Dropped when back-filling an override ctor.
+_REDUNDANT_INIT = re.compile(r'^(std::(map|set|vector|list)<.*>|JList<.*>|JArray<.*>)\(\)$')
+_ZERO_RHS = {'NULL', '0', 'false', '0.0', '0.0F', '0.0f', '0L', '0LL', "'\\0'"}
+
+
+def _init_is_redundant(stmt):
+    m = re.match(r'\s*this->\w+\s*=\s*(.+?);\s*$', stmt)
+    r = m.group(1).strip() if m else ''
+    return r in _ZERO_RHS or bool(_REDUNDANT_INIT.match(r))
+
+
+def synth_default_ctor(cls, resolver):
+    """Return (decl, definition, referenced_type_names) for a synthesized zero-init + Java-field-init
+    default ctor, or None if the class needs none. Used to BACK-FILL OVERRIDE classes that have no ctor
+    and therefore dropped Java's implicit field zero-init + initializers (the SoundManager/SoundPool
+    crash class). Mirrors the ctor source.py already synthesizes for generated no-ctor classes."""
+    items = _init_list(cls, resolver)
+    inits = [l for l in _instance_init_lines(cls, resolver, None) if not _init_is_redundant(l)]
+    if not items and not inits:
+        return None
+    L = ['%s::%s()' % (cls.name, cls.name)]
+    if items:
+        L.append('\t: ' + '\n\t, '.join(items))
+    L += ['{'] + ['\t' + l for l in inits] + ['}']
+    defn = '\n'.join(L)
+    refs = (set(re.findall(r'\bnew\s+(\w+)\s*[(\[]', defn))
+            | set(re.findall(r'typeid\((\w+)\)', defn))
+            | set(re.findall(r'\b([A-Za-z_]\w*)::', defn)))   # static/factory calls (GLAllocation::, Block::)
+    return ('%s();' % cls.name, defn, refs)
+
+
 def _delegated_base_init(args_str, deleg, cls, resolver):
     """When a ctor delegates `this(args)`, the base class is constructed by the TARGET ctor's
     super(...). C++03 has no delegation, so the delegating ctor must carry that base init itself:

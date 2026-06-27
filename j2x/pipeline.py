@@ -15,6 +15,7 @@ the legacy output.
 """
 
 import os
+import re
 
 from . import parse, types, typemap, report, rules, runtime
 from .emit import header as emit_header, source as emit_source
@@ -167,6 +168,45 @@ def _override_path(overrides_dir, name):
     return p if (p and os.path.isfile(p)) else None
 
 
+def _ensure_override_ctor(out_dir, cls, resolver, classnames, ledger):
+    """Back-fill a synthesized default ctor into an OVERRIDE class that has none. Overrides are written
+    verbatim, so a hand-written override with no ctor misses the zero-init + Java field initializers the
+    converter gives generated classes -> garbage pointers/crashes (SoundManager::soundPoolSounds etc.).
+    This makes that fix UNIVERSAL: every convert backfills the ctor + the includes it needs."""
+    if cls.constructors():                                  # Java declared a ctor -> override carries it
+        return
+    hp = os.path.join(out_dir, cls.name + '.h')
+    cp = os.path.join(out_dir, cls.name + '.cpp')
+    if not (os.path.exists(hp) and os.path.exists(cp)):
+        return
+    htext, ctext = _read(hp), _read(cp)
+    # already has a ctor? (member decl `^Class(` in .h, or `Class::Class(` in .cpp) -> leave it
+    if re.search(r'(?m)^\s*' + re.escape(cls.name) + r'\s*\(', htext) \
+       or re.search(re.escape(cls.name) + r'::' + re.escape(cls.name) + r'\s*\(', ctext):
+        return
+    syn = emit_source.synth_default_ctor(cls, resolver)
+    if not syn:
+        return
+    decl, defn, refs = syn
+    m = re.search(r'\bclass\s+' + re.escape(cls.name) + r'\b[^{]*\{', htext)
+    pub = htext.find('public:', m.end()) if m else -1
+    dm = re.search(re.escape(cls.name) + r'::~' + re.escape(cls.name) + r'\s*\(\s*\)', ctext)
+    if pub < 0 or not dm:
+        return
+    ins = htext.index('\n', pub) + 1
+    htext = htext[:ins] + '\t' + decl + '   // synthesized: Java field inits (override had no ctor)\n' + htext[ins:]
+    ctext = ctext[:dm.start()] + defn + '\n\n' + ctext[dm.start():]
+    for t in sorted(refs):                                  # includes for referenced KNOWN classes
+        if t in classnames:
+            inc = '#include "%s.h"' % t
+            if inc not in ctext:
+                i = ctext.find('#include'); j = ctext.index('\n', i) + 1
+                ctext = ctext[:j] + inc + '\n' + ctext[j:]
+    _write(hp, htext); _write(cp, ctext)
+    ledger.add(cls.name, Category.OVERRIDDEN, 'synthesized missing default ctor (field-init back-fill)',
+               source='pipeline', rule='override-ctor')
+
+
 def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True, overrides_dir=None):
     """Convert a Java source tree to C++03. Returns a summary dict.
 
@@ -188,6 +228,7 @@ def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True,
     resolve_inheritance(classes)
     compute_mi_forwards(classes)
     resolver = build_resolver(classes, value_types)
+    classnames = set(c.name for c in classes)        # for include resolution when back-filling override ctors
 
     for fname, content in runtime.FILES.items():     # runtime-support headers (Random.h, ...)
         _write(os.path.join(out_dir, fname), content)
@@ -221,6 +262,9 @@ def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True,
                     sources += 1
                     if getattr(cls, 'has_init_statics', False):
                         init_classes.append(cls.name)    # generated class with deferred static init
+
+            if ov_h or ov_c:                             # override class: back-fill a missing default ctor
+                _ensure_override_ctor(out_dir, cls, resolver, classnames, ledger)
         except Exception as e:                       # noqa: BLE001
             ledger.add(cls.name, Category.ERROR, 'emit failed: %s' % e,
                        severity=Severity.HIGH, source='pipeline', rule='emit-error')

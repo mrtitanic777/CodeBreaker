@@ -8,6 +8,7 @@
 #include "ClippingHelper.h"
 #include "FloatBuffer.h"
 #include "GL11.h"
+#include "GLAllocation.h"   // createDirectFloatBuffer (used by the synthesized ctor)
 #include "MathHelper.h"
 
 // Local shims for GL symbols missing from the central GL11 stub (see report):
