@@ -1,0 +1,218 @@
+#include "stdafx.h"
+#include "JavaRT.h"
+
+// Auto-generated from ModelBiped.java
+// Target: Xbox 360 / C++03 / DirectX 9
+
+#include "ModelBiped.h"
+#include "MathHelper.h"
+#include "ModelBase.h"
+#include "ModelRenderer.h"
+#include "PositionTexureVertex.h"
+#include "TexturedQuad.h"
+#include "Vec3D.h"
+
+ModelBiped::ModelBiped()
+	: bipedHead(NULL)
+	, bipedHeadwear(NULL)
+	, bipedBody(NULL)
+	, bipedRightArm(NULL)
+	, bipedLeftArm(NULL)
+	, bipedRightLeg(NULL)
+	, bipedLeftLeg(NULL)
+	, heldItemLeft(0)
+	, heldItemRight(0)
+	, isSneak(0)
+{
+	// inlined this(0.0F) -- C++03 lacks ctor delegation
+}
+
+ModelBiped::ModelBiped(float var1)
+	: bipedHead(NULL)
+	, bipedHeadwear(NULL)
+	, bipedBody(NULL)
+	, bipedRightArm(NULL)
+	, bipedLeftArm(NULL)
+	, bipedRightLeg(NULL)
+	, bipedLeftLeg(NULL)
+	, heldItemLeft(0)
+	, heldItemRight(0)
+	, isSneak(0)
+{
+	// inlined this(var1, 0.0F) -- C++03 lacks ctor delegation
+	this->heldItemLeft = false;
+	this->heldItemRight = false;
+	this->isSneak = false;
+	this->bipedHead = new ModelRenderer(0, 0);
+	this->bipedHead->addBox(-4.0F, -8.0F, -4.0F, 8, 8, 8, var1);
+	this->bipedHead->setPosition(0.0F, 0.0F + 0.0F, 0.0F);
+	this->bipedHeadwear = new ModelRenderer(32, 0);
+	this->bipedHeadwear->addBox(-4.0F, -8.0F, -4.0F, 8, 8, 8, var1 + 0.5F);
+	this->bipedHeadwear->setPosition(0.0F, 0.0F + 0.0F, 0.0F);
+	this->bipedBody = new ModelRenderer(16, 16);
+	this->bipedBody->addBox(-4.0F, 0.0F, -2.0F, 8, 12, 4, var1);
+	this->bipedBody->setPosition(0.0F, 0.0F + 0.0F, 0.0F);
+	this->bipedRightArm = new ModelRenderer(40, 16);
+	this->bipedRightArm->addBox(-3.0F, -2.0F, -2.0F, 4, 12, 4, var1);
+	this->bipedRightArm->setPosition(-5.0F, 2.0F + 0.0F, 0.0F);
+	this->bipedLeftArm = new ModelRenderer(40, 16);
+	this->bipedLeftArm->mirror = true;
+	this->bipedLeftArm->addBox(-1.0F, -2.0F, -2.0F, 4, 12, 4, var1);
+	this->bipedLeftArm->setPosition(5.0F, 2.0F + 0.0F, 0.0F);
+	this->bipedRightLeg = new ModelRenderer(0, 16);
+	this->bipedRightLeg->addBox(-2.0F, 0.0F, -2.0F, 4, 12, 4, var1);
+	this->bipedRightLeg->setPosition(-2.0F, 12.0F + 0.0F, 0.0F);
+	this->bipedLeftLeg = new ModelRenderer(0, 16);
+	this->bipedLeftLeg->mirror = true;
+	this->bipedLeftLeg->addBox(-2.0F, 0.0F, -2.0F, 4, 12, 4, var1);
+	this->bipedLeftLeg->setPosition(2.0F, 12.0F + 0.0F, 0.0F);
+}
+
+ModelBiped::ModelBiped(float var1, float var2)
+	: bipedHead(NULL)
+	, bipedHeadwear(NULL)
+	, bipedBody(NULL)
+	, bipedRightArm(NULL)
+	, bipedLeftArm(NULL)
+	, bipedRightLeg(NULL)
+	, bipedLeftLeg(NULL)
+	, heldItemLeft(0)
+	, heldItemRight(0)
+	, isSneak(0)
+{
+	this->heldItemLeft = false;
+	this->heldItemRight = false;
+	this->isSneak = false;
+	this->bipedHead = new ModelRenderer(0, 0);
+	this->bipedHead->addBox(-4.0F, -8.0F, -4.0F, 8, 8, 8, var1);
+	this->bipedHead->setPosition(0.0F, 0.0F + var2, 0.0F);
+	this->bipedHeadwear = new ModelRenderer(32, 0);
+	this->bipedHeadwear->addBox(-4.0F, -8.0F, -4.0F, 8, 8, 8, var1 + 0.5F);
+	this->bipedHeadwear->setPosition(0.0F, 0.0F + var2, 0.0F);
+	this->bipedBody = new ModelRenderer(16, 16);
+	this->bipedBody->addBox(-4.0F, 0.0F, -2.0F, 8, 12, 4, var1);
+	this->bipedBody->setPosition(0.0F, 0.0F + var2, 0.0F);
+	this->bipedRightArm = new ModelRenderer(40, 16);
+	this->bipedRightArm->addBox(-3.0F, -2.0F, -2.0F, 4, 12, 4, var1);
+	this->bipedRightArm->setPosition(-5.0F, 2.0F + var2, 0.0F);
+	this->bipedLeftArm = new ModelRenderer(40, 16);
+	this->bipedLeftArm->mirror = true;
+	this->bipedLeftArm->addBox(-1.0F, -2.0F, -2.0F, 4, 12, 4, var1);
+	this->bipedLeftArm->setPosition(5.0F, 2.0F + var2, 0.0F);
+	this->bipedRightLeg = new ModelRenderer(0, 16);
+	this->bipedRightLeg->addBox(-2.0F, 0.0F, -2.0F, 4, 12, 4, var1);
+	this->bipedRightLeg->setPosition(-2.0F, 12.0F + var2, 0.0F);
+	this->bipedLeftLeg = new ModelRenderer(0, 16);
+	this->bipedLeftLeg->mirror = true;
+	this->bipedLeftLeg->addBox(-2.0F, 0.0F, -2.0F, 4, 12, 4, var1);
+	this->bipedLeftLeg->setPosition(2.0F, 12.0F + var2, 0.0F);
+}
+
+ModelBiped::~ModelBiped()
+{
+	delete bipedBody;
+	bipedBody = NULL;
+	delete bipedHead;
+	bipedHead = NULL;
+	delete bipedHeadwear;
+	bipedHeadwear = NULL;
+	delete bipedLeftArm;
+	bipedLeftArm = NULL;
+	delete bipedLeftLeg;
+	bipedLeftLeg = NULL;
+	delete bipedRightArm;
+	bipedRightArm = NULL;
+	delete bipedRightLeg;
+	bipedRightLeg = NULL;
+}
+
+void ModelBiped::render(float var1, float var2, float var3, float var4, float var5, float var6)
+{
+	this->setRotationAngles(var1, var2, var3, var4, var5, var6);
+	this->bipedHead->render(var6);
+	this->bipedBody->render(var6);
+	this->bipedRightArm->render(var6);
+	this->bipedLeftArm->render(var6);
+	this->bipedRightLeg->render(var6);
+	this->bipedLeftLeg->render(var6);
+	this->bipedHeadwear->render(var6);
+}
+
+void ModelBiped::setRotationAngles(float var1, float var2, float var3, float var4, float var5, float var6)
+{
+	this->bipedHead->rotateAngleY = var4 / (180.0F / (float)3.1415927F);
+	this->bipedHead->rotateAngleX = var5 / (180.0F / (float)3.1415927F);
+	this->bipedHeadwear->rotateAngleY = this->bipedHead->rotateAngleY;
+	this->bipedHeadwear->rotateAngleX = this->bipedHead->rotateAngleX;
+	this->bipedRightArm->rotateAngleX = MathHelper::cos(var1 * 0.6662F + (float)3.1415927F) * 2.0F * var2 * 0.5F;
+	this->bipedLeftArm->rotateAngleX = MathHelper::cos(var1 * 0.6662F) * 2.0F * var2 * 0.5F;
+	this->bipedRightArm->rotateAngleZ = 0.0F;
+	this->bipedLeftArm->rotateAngleZ = 0.0F;
+	this->bipedRightLeg->rotateAngleX = MathHelper::cos(var1 * 0.6662F) * 1.4F * var2;
+	this->bipedLeftLeg->rotateAngleX = MathHelper::cos(var1 * 0.6662F + (float)3.1415927F) * 1.4F * var2;
+	this->bipedRightLeg->rotateAngleY = 0.0F;
+	this->bipedLeftLeg->rotateAngleY = 0.0F;
+	if(this->isChild) {
+	this->bipedRightArm->rotateAngleX += (float)3.1415927F * -0.2F;
+	this->bipedLeftArm->rotateAngleX += (float)3.1415927F * -0.2F;
+	this->bipedRightLeg->rotateAngleX = (float)3.1415927F * -0.4F;
+	this->bipedLeftLeg->rotateAngleX = (float)3.1415927F * -0.4F;
+	this->bipedRightLeg->rotateAngleY = (float)3.1415927F * 0.1F;
+	this->bipedLeftLeg->rotateAngleY = (float)3.1415927F * -0.1F;
+	}
+	if(this->heldItemLeft) {
+	this->bipedLeftArm->rotateAngleX = this->bipedLeftArm->rotateAngleX * 0.5F - (float)3.1415927F * 0.1F;
+	}
+	if(this->heldItemRight) {
+	this->bipedRightArm->rotateAngleX = this->bipedRightArm->rotateAngleX * 0.5F - (float)3.1415927F * 0.1F;
+	}
+	this->bipedRightArm->rotateAngleY = 0.0F;
+	this->bipedLeftArm->rotateAngleY = 0.0F;
+	if(this->onGround > -9990.0F) {
+	float var7 = this->onGround;
+	this->bipedBody->rotateAngleY = MathHelper::sin(MathHelper::sqrt_float(var7) * (float)3.1415927F * 2.0F) * 0.2F;
+	this->bipedRightArm->offsetZ = MathHelper::sin(this->bipedBody->rotateAngleY) * 5.0F;
+	this->bipedRightArm->offsetX = -MathHelper::cos(this->bipedBody->rotateAngleY) * 5.0F;
+	this->bipedLeftArm->offsetZ = -MathHelper::sin(this->bipedBody->rotateAngleY) * 5.0F;
+	this->bipedLeftArm->offsetX = MathHelper::cos(this->bipedBody->rotateAngleY) * 5.0F;
+	this->bipedRightArm->rotateAngleY += this->bipedBody->rotateAngleY;
+	this->bipedLeftArm->rotateAngleY += this->bipedBody->rotateAngleY;
+	this->bipedLeftArm->rotateAngleX += this->bipedBody->rotateAngleY;
+	var7 = 1.0F - this->onGround;
+	var7 *= var7;
+	var7 *= var7;
+	var7 = 1.0F - var7;
+	float var8 = MathHelper::sin(var7 * (float)3.1415927F);
+	float var9 = MathHelper::sin(this->onGround * (float)3.1415927F) * -(this->bipedHead->rotateAngleX - 0.7F) * (12.0F / 16.0F);
+	this->bipedRightArm->rotateAngleX = (float)((double)this->bipedRightArm->rotateAngleX - ((double)var8 * 1.2 + (double)var9));
+	this->bipedRightArm->rotateAngleY += this->bipedBody->rotateAngleY * 2.0F;
+	this->bipedRightArm->rotateAngleZ = MathHelper::sin(this->onGround * (float)3.1415927F) * -0.4F;
+	}
+	if(this->isSneak) {
+	this->bipedBody->rotateAngleX = 0.5F;
+	this->bipedRightLeg->rotateAngleX -= 0.0F;
+	this->bipedLeftLeg->rotateAngleX -= 0.0F;
+	this->bipedRightArm->rotateAngleX += 0.4F;
+	this->bipedLeftArm->rotateAngleX += 0.4F;
+	this->bipedRightLeg->offsetZ = 4.0F;
+	this->bipedLeftLeg->offsetZ = 4.0F;
+	this->bipedRightLeg->offsetY = 9.0F;
+	this->bipedLeftLeg->offsetY = 9.0F;
+	this->bipedHead->offsetY = 1.0F;
+	} else {
+	this->bipedBody->rotateAngleX = 0.0F;
+	this->bipedRightLeg->offsetZ = 0.0F;
+	this->bipedLeftLeg->offsetZ = 0.0F;
+	this->bipedRightLeg->offsetY = 12.0F;
+	this->bipedLeftLeg->offsetY = 12.0F;
+	this->bipedHead->offsetY = 0.0F;
+	}
+	this->bipedRightArm->rotateAngleZ += MathHelper::cos(var3 * 0.09F) * 0.05F + 0.05F;
+	this->bipedLeftArm->rotateAngleZ -= MathHelper::cos(var3 * 0.09F) * 0.05F + 0.05F;
+	this->bipedRightArm->rotateAngleX += MathHelper::sin(var3 * 0.067F) * 0.05F;
+	this->bipedLeftArm->rotateAngleX -= MathHelper::sin(var3 * 0.067F) * 0.05F;
+}
+
+void ModelBiped::initStatics()
+{
+}

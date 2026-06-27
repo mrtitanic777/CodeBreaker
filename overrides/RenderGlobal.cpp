@@ -188,6 +188,9 @@ RenderGlobal::RenderGlobal(Minecraft* var1, RenderEngine* var2)
 	, damagePartialTime(0)
 	, frustumCheckOffset(0)
 {
+	this->occlusionResultBuffer = GLAllocation::createDirectIntBuffer(64);
+	this->field_1454_e = GLAllocation::generateDisplayLists(1);
+
 	this->mc = var1;
 	this->renderEngine = var2;
 	unsigned char var3 = 64;

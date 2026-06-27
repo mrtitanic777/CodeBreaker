@@ -129,6 +129,9 @@ RenderEngine::RenderEngine(TexturePackList* var1, GameSettings* var2)
 	, blurTexture(0)
 	, texturePackList(NULL)
 {
+	this->singleIntBuffer = GLAllocation::createDirectIntBuffer(1);
+	this->imageData = GLAllocation::createDirectByteBuffer(1048576);
+
 	this->texturePackList = var1;
 	this->options = var2;
 }

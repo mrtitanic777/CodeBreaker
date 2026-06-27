@@ -120,6 +120,8 @@ WorldClient::WorldClient(NetClientHandler* var1, long long var2, int var4)
 	, D(0)
 	, entitiesById(NULL)
 {
+	this->entitiesById = new MCHashTable();
+
 	this->sendQueue = var1;
 	this->spawnX = 8;
 	this->spawnY = 64;

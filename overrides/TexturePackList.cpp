@@ -86,6 +86,7 @@
 #include "TextureLavaFX.h"
 #include "TexturePackBase.h"
 #include "TexturePackCustom.h"
+#include "TexturePackDefault.h"
 #include "TextureWaterFX.h"
 #include "TexturedQuad.h"
 #include "Thread.h"
@@ -107,6 +108,11 @@ TexturePackList::TexturePackList(Minecraft* var1, File* var2)
 	, mc(NULL)
 	, texturePackDir(NULL)
 {
+	// Java field initializer `defaultTexturePack = new TexturePackDefault()` -- this hand-written
+	// override dropped it, so defaultTexturePack stayed NULL; updateAvailableTexturePacks() then left
+	// selectedTexturePack == NULL and the ctor's selectedTexturePack->deleteTexturePack() below was a
+	// virtual call through NULL (IP 0x0 access violation on boot). Restore it before any use.
+	this->defaultTexturePack = new TexturePackDefault();
 	this->mc = var1;
 	this->texturePackDir = new File(var2, "texturepacks");
 	if(!this->texturePackDir->exists()) {

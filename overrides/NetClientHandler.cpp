@@ -189,6 +189,8 @@ NetClientHandler::NetClientHandler(Minecraft* var1, const JavaString& var2, int 
 	, receivedFirstUpdate(0)
 	, rand(NULL)
 {
+	this->rand = new Random();
+
 	this->mc = var1;
 	Socket* var4 = new Socket(InetAddress.getByName(var2), var3);
 	this->netManager = new NetworkManager(var4, "Client", this);

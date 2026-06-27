@@ -38,6 +38,8 @@ NetworkManager::NetworkManager(Socket* var1, const JavaString& var2, NetHandler*
 	, sendQueueByteLength(0)
 	, chunkDataSendCounter(0)
 {
+	this->sendQueueLock = JObject();
+
 	this->field_12258_e = var1;
 	this->networkSocket = (SocketAddress*)var1->getRemoteSocketAddress();
 	this->netHandler = var3;

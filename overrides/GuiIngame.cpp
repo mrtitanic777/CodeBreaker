@@ -134,6 +134,8 @@ GuiIngame::GuiIngame(Minecraft* var1)
 	, damagePartialTime(0)
 	, prevVignetteBrightness(0)
 {
+	this->rand = new Random();
+
 	this->mc = var1;
 }
 

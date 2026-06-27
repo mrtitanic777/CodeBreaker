@@ -25,6 +25,8 @@ MouseHelper::MouseHelper(Component* var1)
 	, deltaY(0)
 	, field_1115_e(0)
 {
+	this->field_1115_e = 10;
+
 	this->component = var1;
 	IntBuffer* var2 = GLAllocation::createDirectIntBuffer(1);
 	var2->put(0);

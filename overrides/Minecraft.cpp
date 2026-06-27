@@ -215,6 +215,14 @@ Minecraft::Minecraft(Component* var1, Canvas* var2, MinecraftApplet* var3, int v
 	, prevFrameTime(0)
 	, joinPlayerCounter(0)
 {
+	this->timer = new Timer(20.0F);
+	this->hideQuitButton = true;
+	this->loadingScreen = new LoadingScreenRenderer(this);
+	this->entityRenderer = new EntityRenderer(this);
+	this->modelBiped = new ModelBiped(0.0F);
+	this->textureWaterFX = new TextureWaterFX();
+	this->textureLavaFX = new TextureLavaFX();
+
 	this->tempDisplayWidth = var4;
 	this->tempDisplayHeight = var5;
 	this->a = var6;

@@ -168,6 +168,8 @@ WorldRenderer::WorldRenderer(World* var1, JList<void*> var2, int var3, int var4,
 	, isWaitingOnOcclusionQuery(0)
 	, isInitialized(0)
 {
+	this->isVisible = true;
+
 	this->worldObj = var1;
 	this->tileEntities = var2;
 	this->sizeWidth = this->sizeHeight = this->sizeDepth = var6;

@@ -63,6 +63,8 @@ Tessellator::Tessellator(int var1)
 	, vboCount(0)
 	, bufferSize(0)
 {
+	this->vboCount = 10;
+
 	this->bufferSize = var1;
 	this->byteBuffer = GLAllocation::createDirectByteBuffer(var1 * 4);
 	this->intBuffer = this->byteBuffer->asIntBuffer();
