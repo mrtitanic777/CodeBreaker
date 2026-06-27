@@ -517,8 +517,9 @@ namespace Byte {
 	inline signed char valueOf(signed char v) { return v; }
 }
 namespace Boolean {
-	const bool TRUE = true;
-	const bool FALSE = false;
+	// NOTE: no TRUE/FALSE constants -- TRUE/FALSE are #defined as macros by the Windows/Xbox 360
+	// headers (xtl.h: `#define TRUE 1`), so `const bool TRUE = true;` becomes `const bool 1 = ...`
+	// -> C2059/C2143 in every TU. Java Boolean.TRUE/FALSE (rare) should lower to the bool literals.
 	inline bool parseBoolean(const std::string& s) { return s == "true"; }
 	inline bool valueOf(bool v) { return v; }
 	inline std::string toString(bool v) { return v ? "true" : "false"; }

@@ -1,3 +1,4 @@
+#include "stdafx.h"
 // GLU.cpp — org.lwjgl.util.glu.GLU -> D3D9, for the Xbox 360 j2x port.  [Step 2]
 // REFERENCE (Xbox-side; not built by j2x). The game uses only gluPerspective (3D world projection)
 // and gluErrorString. GL12 is just the GL_RESCALE_NORMAL enum token (glEnable no-op). Pair with

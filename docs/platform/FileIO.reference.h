@@ -103,6 +103,17 @@ public:
 		if (!GetFileAttributesEx(path.c_str(), GetFileExInfoStandard, &fad)) return 0;
 		return ((long long)fad.nFileSizeHigh << 32) | (long long)fad.nFileSizeLow;
 	}
+	long long lastModified() const {                         // ms since 1970 (best-effort), 0 if none
+		WIN32_FILE_ATTRIBUTE_DATA fad;
+		if (!GetFileAttributesEx(path.c_str(), GetFileExInfoStandard, &fad)) return 0;
+		long long ft = ((long long)fad.ftLastWriteTime.dwHighDateTime << 32)
+		             | (unsigned long)fad.ftLastWriteTime.dwLowDateTime;   // 100ns since 1601
+		return ft / 10000LL - 11644473600000LL;              // -> ms since 1970
+	}
+	// Java File.listFiles() -> File[]. The game casts the result to (File**). Returning NULL here
+	// (no enumeration yet) makes the world/texture-pack lists empty but compiles; a real
+	// FindFirstFile enumeration can fill it later (HARDWARE-VERIFY: world list shows up).
+	void* listFiles() const { return 0; }
 private:
 	void _join(const std::string& parent, const std::string& child) {
 		path = parent;

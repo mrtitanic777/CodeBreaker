@@ -1,3 +1,4 @@
+#include "stdafx.h"
 // Audio.cpp — paulscode SoundSystem -> XACT3 bridge for the Xbox 360 j2x port.  [Step 6, Route A]
 // REFERENCE IMPLEMENTATION (Xbox-side; not built by j2x). See Audio.reference.h for the design.
 //

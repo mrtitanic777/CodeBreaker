@@ -42,7 +42,26 @@ namespace GL11 {
 	const int GL_DEPTH_BUFFER_BIT = 0x0100, GL_COLOR_BUFFER_BIT = 0x4000;
 	const int GL_SRC_ALPHA = 0x0302, GL_ONE_MINUS_SRC_ALPHA = 0x0303, GL_ONE = 1, GL_ZERO = 0;
 	const int GL_LEQUAL = 0x0203, GL_LESS = 0x0201, GL_GREATER = 0x0204, GL_GEQUAL = 0x0206;
-	const int GL_BACK = 0x0405, GL_FRONT = 0x0404;
+	const int GL_BACK = 0x0405, GL_FRONT = 0x0404, GL_FRONT_AND_BACK = 0x0408, GL_EQUAL = 0x0202;
+	// lighting (no-op pipeline, but the game sets these up for held-item/entity passes)
+	const int GL_LIGHT0 = 0x4000, GL_LIGHT1 = 0x4001, GL_LIGHT_MODEL_AMBIENT = 0x0B53;
+	const int GL_AMBIENT = 0x1200, GL_DIFFUSE = 0x1201, GL_SPECULAR = 0x1202, GL_POSITION = 0x1203,
+	          GL_AMBIENT_AND_DIFFUSE = 0x1602, GL_NORMALIZE = 0x0BA1;
+	// fog params, polygon offset, display-list mode
+	const int GL_FOG_START = 0x0B63, GL_FOG_END = 0x0B64, GL_FOG_MODE = 0x0B65,
+	          GL_POLYGON_OFFSET_FILL = 0x8037, GL_COMPILE = 0x1300;
+	// texture wrap + extra blend factors
+	const int GL_CLAMP = 0x2900, GL_REPEAT = 0x2901, GL_TEXTURE_WRAP_S = 0x2802, GL_TEXTURE_WRAP_T = 0x2803;
+	const int GL_SRC_COLOR = 0x0300, GL_ONE_MINUS_SRC_COLOR = 0x0301, GL_DST_COLOR = 0x0306,
+	          GL_ONE_MINUS_DST_COLOR = 0x0307, GL_DST_ALPHA = 0x0304;
+	// pixel store / format / glGetString tokens
+	const int GL_RGB = 0x1907, GL_PACK_ALIGNMENT = 0x0D05, GL_UNPACK_ALIGNMENT = 0x0CF5,
+	          GL_VENDOR = 0x1F00, GL_RENDERER = 0x1F01, GL_VERSION = 0x1F02;
+	// extra no-op entry points the game calls (lighting baked into vertex color; lists/readpixels)
+	inline void glLight(...) {}
+	inline void glLightf(...) {}
+	inline void glCallLists(...) {}
+	inline void glReadPixels(...) {}
 	const int GL_NEAREST = 0x2600, GL_LINEAR = 0x2601;
 	const int GL_TEXTURE_MIN_FILTER = 0x2800, GL_TEXTURE_MAG_FILTER = 0x2801;
 	const int GL_SMOOTH = 0x1D01, GL_FLAT = 0x1D00;

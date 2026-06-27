@@ -108,6 +108,12 @@ public:
 	ByteBuffer& put(int v) { if (_b && _posB < _b->cap) _b->bytes[_posB++] = (char)v; return *this; }
 	int get() { return (_b && _posB < _limB) ? (unsigned char)_b->bytes[_posB++] : 0; }
 	int get(int idx) { return (_b && idx >= 0 && idx < _b->cap) ? (unsigned char)_b->bytes[idx] : 0; }
+	// 4-byte int put/get (relative + absolute byte index). NATIVE order to round-trip with IntBuffer
+	// over the same backing -- this is on-device scratch (GPU buffers), not serialized NBT.
+	int getInt() { if (_b && _posB + 4 <= _limB) { int v = *(int*)(_b->bytes + _posB); _posB += 4; return v; } return 0; }
+	int getInt(int idx) { return (_b && idx >= 0 && idx + 4 <= _b->cap) ? *(int*)(_b->bytes + idx) : 0; }
+	ByteBuffer& putInt(int v) { if (_b && _posB + 4 <= _b->cap) { *(int*)(_b->bytes + _posB) = v; _posB += 4; } return *this; }
+	ByteBuffer& putInt(int idx, int v) { if (_b && idx >= 0 && idx + 4 <= _b->cap) *(int*)(_b->bytes + idx) = v; return *this; }
 
 	// VIEWS over the SAME bytes (share backing; independent position/limit) -- java.nio semantics.
 	IntBuffer*   asIntBuffer();

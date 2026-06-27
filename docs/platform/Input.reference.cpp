@@ -1,3 +1,4 @@
+#include "stdafx.h"
 // Input.cpp — LWJGL Keyboard/Mouse/Controllers -> Xbox 360 XInput adapter.  [Step 4]
 //
 // One XInput poll per render frame (Input::poll), feeding a virtual keyboard/mouse model that the
