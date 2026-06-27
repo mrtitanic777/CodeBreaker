@@ -10,6 +10,7 @@
 // "button held across a menu close re-fires as a fresh press" bug -- Minecraft.cpp:878-883).
 
 #include "Input.h"
+#include "Common.h"  // DbgPrintF (one-time controller-source diagnostic)
 #include <cstring>   // memset
 #include <cstdlib>   // abs
 
@@ -150,17 +151,59 @@ float moveForward() { return g_moveForward; }
 void poll() {
 	ensureInit();
 
-	// ---- Sample player 0's input device via XInput2 (the 360 controller API), then read each control
-	//      by XINPUTID. This is NOT the PC XInputGetState/XINPUT_STATE path. ----
-	XINPUT2CONTEXT ctx = 0;
-	BOOL changed = FALSE;
-	g_connected = (XInput2Sample(XInput2InputDevice(0), &ctx, &changed) != FALSE);
-
 	memset(g_keyDown, 0, sizeof(g_keyDown));   // rebuilt from the pad each frame
 	g_moveStrafe = g_moveForward = 0.0F;
 
+	// ---- Read the pad. PRIMARY = XInput2 (native 360). FALLBACK = classic XInputGetState (what some
+	//      emulators expose). Both fill the same raw locals; the rest of poll() is source-agnostic. ----
+	BOOL vA=0,vB=0,vX=0,vY=0, vUp=0,vDn=0,vLf=0,vRt=0, vStart=0,vBack=0, vL3=0,vR3=0, vLB=0,vRB=0;
+	float fLT=0.0F, fRT=0.0F, sxl=0.0F, syl=0.0F, sxr=0.0F, syr=0.0F;   // triggers 0..1, sticks -1..1
+	int src = 0;   // 0=none, 1=XInput2, 2=classic XInput
+
+	XINPUT2CONTEXT ctx = 0; BOOL changed = FALSE;
+	if (XInput2Sample(XInput2InputDevice(0), &ctx, &changed)) {
+		src = 1;
+		XInput2GetBool(ctx, XINPUTID_A, &vA);              XInput2GetBool(ctx, XINPUTID_B, &vB);
+		XInput2GetBool(ctx, XINPUTID_X, &vX);              XInput2GetBool(ctx, XINPUTID_Y, &vY);
+		XInput2GetBool(ctx, XINPUTID_DPAD_UP, &vUp);       XInput2GetBool(ctx, XINPUTID_DPAD_DOWN, &vDn);
+		XInput2GetBool(ctx, XINPUTID_DPAD_LEFT, &vLf);     XInput2GetBool(ctx, XINPUTID_DPAD_RIGHT, &vRt);
+		XInput2GetBool(ctx, XINPUTID_START, &vStart);      XInput2GetBool(ctx, XINPUTID_BACK, &vBack);
+		XInput2GetBool(ctx, XINPUTID_LEFT_THUMB, &vL3);    XInput2GetBool(ctx, XINPUTID_RIGHT_THUMB, &vR3);
+		XInput2GetBool(ctx, XINPUTID_LEFT_SHOULDER, &vLB); XInput2GetBool(ctx, XINPUTID_RIGHT_SHOULDER, &vRB);
+		XInput2GetFloat(ctx, XINPUTID_LEFT_TRIGGER,  &fLT);
+		XInput2GetFloat(ctx, XINPUTID_RIGHT_TRIGGER, &fRT);
+		XINPUT2_POINT lp; lp.x=lp.y=0.0F;  XINPUT2_POINT rp; rp.x=rp.y=0.0F;
+		XInput2GetPoint(ctx, XINPUTID_LEFT_THUMBSTICK,  &lp);
+		XInput2GetPoint(ctx, XINPUTID_RIGHT_THUMBSTICK, &rp);
+		sxl=lp.x; syl=lp.y; sxr=rp.x; syr=rp.y;
+	} else {
+		XINPUT_STATE st; memset(&st, 0, sizeof(st));
+		if (XInputGetState(0, &st) == ERROR_SUCCESS) {
+			src = 2;
+			const XINPUT_GAMEPAD& g = st.Gamepad; WORD gb = g.wButtons;
+			vA=(gb&XINPUT_GAMEPAD_A)!=0;            vB=(gb&XINPUT_GAMEPAD_B)!=0;
+			vX=(gb&XINPUT_GAMEPAD_X)!=0;            vY=(gb&XINPUT_GAMEPAD_Y)!=0;
+			vUp=(gb&XINPUT_GAMEPAD_DPAD_UP)!=0;     vDn=(gb&XINPUT_GAMEPAD_DPAD_DOWN)!=0;
+			vLf=(gb&XINPUT_GAMEPAD_DPAD_LEFT)!=0;   vRt=(gb&XINPUT_GAMEPAD_DPAD_RIGHT)!=0;
+			vStart=(gb&XINPUT_GAMEPAD_START)!=0;    vBack=(gb&XINPUT_GAMEPAD_BACK)!=0;
+			vL3=(gb&XINPUT_GAMEPAD_LEFT_THUMB)!=0;  vR3=(gb&XINPUT_GAMEPAD_RIGHT_THUMB)!=0;
+			vLB=(gb&XINPUT_GAMEPAD_LEFT_SHOULDER)!=0; vRB=(gb&XINPUT_GAMEPAD_RIGHT_SHOULDER)!=0;
+			fLT=g.bLeftTrigger/255.0F;  fRT=g.bRightTrigger/255.0F;
+			sxl=g.sThumbLX/32767.0F; syl=g.sThumbLY/32767.0F; sxr=g.sThumbRX/32767.0F; syr=g.sThumbRY/32767.0F;
+		}
+	}
+	g_connected = (src != 0);
+
+	// One-time diagnostic: which API answered + display/cursor mapping (paste from nexia.log if input dead).
+	static int s_diag = 0;
+	if (!s_diag) {
+		s_diag = 1;
+		DbgPrintF("[input] source=%d (1=XInput2 2=classic 0=none) disp=%dx%d cursor=%d,%d\n",
+		          src, g_dispW, g_dispH, g_cursorX, g_cursorY);
+	}
+
 	if (!g_connected) {
-		// No controller / no sample: release everything (emit release edges so nothing sticks).
+		// No controller from either API: release everything (emit release edges so nothing sticks).
 		for (int k = 0; k < 256; ++k) if (g_prevKeyDown[k]) pushKeyEvent(k, false, 0);
 		for (int bb = 0; bb < 3; ++bb) {
 			if (g_prevBtnDown[bb]) pushBtnEvent(bb, false, g_cursorX, g_cursorY, 0);
@@ -172,25 +215,8 @@ void poll() {
 		return;
 	}
 
-	// ---- Read raw controls (digital via GetBool, triggers via GetFloat, sticks via GetPoint) ----
-	BOOL vA=0,vB=0,vX=0,vY=0, vUp=0,vDn=0,vLf=0,vRt=0, vStart=0,vBack=0, vL3=0,vR3=0, vLB=0,vRB=0;
-	XInput2GetBool(ctx, XINPUTID_A, &vA);              XInput2GetBool(ctx, XINPUTID_B, &vB);
-	XInput2GetBool(ctx, XINPUTID_X, &vX);              XInput2GetBool(ctx, XINPUTID_Y, &vY);
-	XInput2GetBool(ctx, XINPUTID_DPAD_UP, &vUp);       XInput2GetBool(ctx, XINPUTID_DPAD_DOWN, &vDn);
-	XInput2GetBool(ctx, XINPUTID_DPAD_LEFT, &vLf);     XInput2GetBool(ctx, XINPUTID_DPAD_RIGHT, &vRt);
-	XInput2GetBool(ctx, XINPUTID_START, &vStart);      XInput2GetBool(ctx, XINPUTID_BACK, &vBack);
-	XInput2GetBool(ctx, XINPUTID_LEFT_THUMB, &vL3);    XInput2GetBool(ctx, XINPUTID_RIGHT_THUMB, &vR3);
-	XInput2GetBool(ctx, XINPUTID_LEFT_SHOULDER, &vLB); XInput2GetBool(ctx, XINPUTID_RIGHT_SHOULDER, &vRB);
-
-	float fLT = 0.0F, fRT = 0.0F;
-	XInput2GetFloat(ctx, XINPUTID_LEFT_TRIGGER,  &fLT);
-	XInput2GetFloat(ctx, XINPUTID_RIGHT_TRIGGER, &fRT);
-
-	XINPUT2_POINT lsp; lsp.x = lsp.y = 0.0F;  XINPUT2_POINT rsp; rsp.x = rsp.y = 0.0F;
-	XInput2GetPoint(ctx, XINPUTID_LEFT_THUMBSTICK,  &lsp);
-	XInput2GetPoint(ctx, XINPUTID_RIGHT_THUMBSTICK, &rsp);
-	float lx = axisf(lsp.x), ly = axisf(lsp.y);   // [-1,1], y up-positive
-	float rx = axisf(rsp.x), ry = axisf(rsp.y);
+	float lx = axisf(sxl), ly = axisf(syl);   // [-1,1], y up-positive
+	float rx = axisf(sxr), ry = axisf(syr);
 	bool lt = fLT > InputConfig::TRIGGER_F;
 	bool rt = fRT > InputConfig::TRIGGER_F;
 

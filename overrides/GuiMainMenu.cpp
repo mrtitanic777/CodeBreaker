@@ -152,18 +152,19 @@ GuiMainMenu::GuiMainMenu()
 	 *  // is reduced to an empty Class() token, so the splash-text resource is not actually
 	 *  // read; the readLine() loop yields nothing and splashText stays "missingno".
 	 *  ---- end original Java ---- */
-	BufferedReader* var2 = new BufferedReader(new InputStreamReader(Class().getResourceAsStream("/title/splashes.txt")));
-	JavaString var3 = "";
-	while(true) {
-	var3 = var2->readLine();
-	if(var3 == NULL) {
-	this->splashText = var1[s_rand->nextInt(var1.size())];
-	break;
-	}
+	// Pass the InputStream straight to the real BufferedReader(InputStream*) ctor -- the local
+	// InputStreamReader shim selected the stub template ctor and read nothing. Loop on ready():
+	// readLine() returns "" (not null) at EOF, so the original `== NULL` test would spin forever.
+	BufferedReader* var2 = new BufferedReader(Class().getResourceAsStream("/title/splashes.txt"));
+	while(var2->ready()) {
+	JavaString var3 = var2->readLine();
 	var3 = var3.trim();
 	if(var3.length() > 0) {
 	var1.push_back(var3);
 	}
+	}
+	if(var1.size() > 0) {
+	this->splashText = var1[s_rand->nextInt(var1.size())];
 	}
 	} catch (Exception) {
 	}
