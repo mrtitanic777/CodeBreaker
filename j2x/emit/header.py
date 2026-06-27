@@ -66,6 +66,11 @@ def _collect_dependencies(cls, resolver):
             note(m.return_type)
         for p in m.params:
             note(p.jtype)
+    for im, _base in getattr(cls, 'mi_forwards', []):   # synthesized forwarding overrides
+        if im.return_type:
+            note(im.return_type)
+        for p in im.params:
+            note(p.jtype)
 
     inc.discard(cls.name)
     fwd.discard(cls.name)
@@ -108,6 +113,7 @@ def render_header(cls, resolver, ledger=None):
     # param/return needs the full definition. Cheap and idempotent to always include.
     L.append('#include "JavaString.h"')
     L.append('#include "JArray.h"')
+    L.append('#include "JList.h"')
 
     sys_inc, inc, fwd = _collect_dependencies(cls, resolver)
     for h in sorted(sys_inc):
@@ -138,6 +144,12 @@ def render_header(cls, resolver, ledger=None):
     if (cls.name in resolver.values and cls.constructors()
             and not any(c.arity == 0 for c in cls.constructors())):
         L.append('\t%s();' % cls.name)
+    # class with instance field initializers / init-blocks but NO explicit ctor: source.py
+    # synthesizes a default ctor to run them, so declare it here to match.
+    elif (not cls.constructors()
+          and (any(f.initializer is not None for f in cls.instance_fields())
+               or getattr(cls, 'inst_inits', []))):
+        L.append('\t%s();' % cls.name)
     if not cls.is_interface:
         L.append('\tvirtual ~%s();' % cls.name)
 
@@ -157,6 +169,23 @@ def render_header(cls, resolver, ledger=None):
         L.append('')
     for m in methods:
         L.append('\t' + _method_decl(cls, m, resolver))
+
+    # static { } initializer blocks -> one static method each, run once by a file-local trigger
+    # in the .cpp (see source.py). Public so the trigger can call them.
+    n_static_init = len(getattr(cls, 'static_inits', []))
+    if n_static_init:
+        L.append('')
+        for i in range(n_static_init):
+            L.append('\tstatic void _j2x_clinit_%d();' % i)
+
+    # MI-diamond unification: forwarding overrides so an interface's pure-virtual that a base
+    # class already implements concretely is satisfied in THIS class (see compute_mi_forwards).
+    mi = getattr(cls, 'mi_forwards', [])
+    if mi:
+        L.append('')
+        for im, _base in mi:                          # concrete override (NOT '= 0' like the interface)
+            L.append('\tvirtual %s %s(%s);' % (ownership.return_cpp_type(im, resolver),
+                                               im.name, ownership.params_str(im, resolver)))
 
     # Rule of Three: a class that owns heap (freed in its destructor) must forbid
     # copying, else a by-value copy double-frees the pointer -> heap corruption.

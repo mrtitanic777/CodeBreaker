@@ -119,7 +119,8 @@ class TestCollectionsAndString(unittest.TestCase):
         self.assertIn('this->items.push_back(var1);', self.out)
 
     def test_get_to_index(self):
-        self.assertIn('void* var2 = this->items[0];', self.out)
+        # `Object var2 = items.get(0)` -> JObject local absorbing the void* element
+        self.assertIn('JObject var2 = this->items[0];', self.out)
 
     def test_isempty_to_empty(self):
         self.assertIn('bool b = this->items.empty();', self.out)
@@ -150,14 +151,14 @@ class TestValueContainers(unittest.TestCase):
         self.out = statements.translate_body(m, c, types.TypeResolver())
 
     def test_local_container_decl_default_constructs(self):
-        self.assertIn('std::vector<void*> var2;', self.out)        # initializer dropped
+        self.assertIn('JList<void*> var2;', self.out)              # initializer dropped
         self.assertFalse(any('var2 =' in l and 'new' in l for l in self.out), self.out)
 
     def test_value_container_method_uses_dot(self):
         self.assertIn('var2.push_back(var1);', self.out)           # '.' not '->'
 
     def test_field_assign_is_value_temporary(self):
-        self.assertIn('this->tagList = std::vector<void*>();', self.out)
+        self.assertIn('this->tagList = JList<void*>();', self.out)
 
 
 class TestMapSetString(unittest.TestCase):
@@ -185,8 +186,13 @@ class TestMapSetString(unittest.TestCase):
     def test_map_put(self):
         self.assertIn('this->map[var1] = var2;', self.out)
 
+    def test_split_top_commas_handles_arrow(self):
+        # '->' must not mis-balance the comma splitter (regression: map.put(a->b, c))
+        self.assertEqual(statements._split_top_commas('var1->entityID, var9'),
+                         ['var1->entityID', 'var9'])
+
     def test_map_get(self):
-        self.assertIn('void* var3 = this->map[var1];', self.out)
+        self.assertIn('JObject var3 = this->map[var1];', self.out)
 
     def test_map_containskey_and_remove(self):
         self.assertIn('bool b = this->map.count(var1);', self.out)
@@ -204,7 +210,7 @@ class TestMapSetString(unittest.TestCase):
 
 
 class TestStringConcat(unittest.TestCase):
-    def test_concat_return_to_ostringstream(self):
+    def test_concat_return_to_jcat(self):
         c = ir.JClass('R')
         c.fields.append(ir.Field('x', ir.JType('float')))
         c.fields.append(ir.Field('y', ir.JType('float')))
@@ -213,8 +219,34 @@ class TestStringConcat(unittest.TestCase):
                   (2, '\treturn "(" + this.x + ", " + this.y + ")";'), (3, '}')]
         c.methods.append(m)
         out = statements.translate_body(m, c, types.TypeResolver())
-        self.assertTrue(any('std::ostringstream _oss' in l and '_oss << "(" << this->x'
-                            in l and 'return _oss.str();' in l for l in out), out)
+        self.assertIn('return (JCat() + "(" + this->x + ", " + this->y + ")");', out)
+
+    def test_concat_in_call_arg(self):
+        c = ir.JClass('R')
+        m = ir.Method('f', ir.JType('void'), line=1)
+        m.body = [(1, 'void f() {'),
+                  (2, '\tSystem.out.println("n=" + var1 + "!");'), (3, '}')]
+        c.methods.append(m)
+        out = statements.translate_body(m, c, types.TypeResolver())
+        self.assertTrue(any('(JCat() + "n=" + var1 + "!")' in l for l in out), out)
+
+    def test_concat_in_assignment(self):
+        c = ir.JClass('R')
+        m = ir.Method('f', ir.JType('void'), line=1)
+        m.body = [(1, 'void f() {'),
+                  (2, '\tString s = "a" + var1 + "b";'), (3, '}')]
+        c.methods.append(m)
+        out = statements.translate_body(m, c, types.TypeResolver())
+        self.assertTrue(any('= (JCat() + "a" + var1 + "b");' in l for l in out), out)
+
+    def test_float_mod_to_fmodf(self):
+        self.assertEqual(statements._rewrite_float_mod('var1 % 4.0F'), 'fmodf(var1, 4.0F)')
+        self.assertEqual(statements._rewrite_float_mod('this->c % 4.0F == 0.0F'),
+                         'fmodf(this->c, 4.0F) == 0.0F')
+
+    def test_int_mod_unchanged(self):
+        self.assertEqual(statements._rewrite_float_mod('a[i % 4] = b'), 'a[i % 4] = b')
+        self.assertEqual(statements._rewrite_float_mod('x = y % z'), 'x = y % z')
 
     def test_no_concat_leaves_plain_return(self):
         c = ir.JClass('R')
@@ -223,6 +255,15 @@ class TestStringConcat(unittest.TestCase):
         c.methods.append(m)
         out = statements.translate_body(m, c, types.TypeResolver())
         self.assertIn('return a + b;', out)
+
+    def test_literal_method_not_wrapped(self):
+        # "abc".length() + 5 is numeric, not concat -- must NOT be wrapped
+        c = ir.JClass('R')
+        m = ir.Method('f', ir.JType('int'), line=1)
+        m.body = [(1, 'int f() {'), (2, '\treturn "abc".length() + 5;'), (3, '}')]
+        c.methods.append(m)
+        out = statements.translate_body(m, c, types.TypeResolver())
+        self.assertFalse(any('JCat()' in l for l in out), out)
 
 
 class TestCasts(unittest.TestCase):
@@ -472,7 +513,7 @@ class TestChainInference(unittest.TestCase):
                   (3, '\tvar1.players.add(var2);'), (4, '}')]
         c.methods.append(m)
         out = statements.translate_body(m, c, r)
-        self.assertIn('void* var2 = var1->players[0];', out)
+        self.assertIn('JObject var2 = var1->players[0];', out)
         self.assertIn('var1->players.push_back(var2);', out)
 
     def test_array_index_field_chain(self):

@@ -20,12 +20,14 @@ JAVA_TO_CPP = {
     'long': 'long long', 'float': 'float', 'double': 'double', 'char': 'char',
     'void': 'void',
     'String': 'JavaString',
-    'ArrayList': 'std::vector', 'List': 'std::vector', 'LinkedList': 'std::vector',
+    'ArrayList': 'JList', 'List': 'JList', 'LinkedList': 'JList',
     'HashMap': 'std::map', 'HashSet': 'std::set', 'TreeMap': 'std::map',
     'Map': 'std::map', 'Set': 'std::set',
     'Random': 'Random',
-    # Java root / boxed types
-    'Object': 'void*',
+    # Java root / boxed types. Object -> JObject (a boxed-value type: holds null/int/char/String/
+    # String[]/typed-pointer with RTTI), so Object[] autoboxing + instanceof + reflective recipe
+    # decode work. JObject is a value (NOT a pointer); it converts to T*/JavaString via operators.
+    'Object': 'JObject',
     'Integer': 'int', 'Long': 'long long', 'Float': 'float', 'Double': 'double',
     'Boolean': 'bool', 'Byte': 'unsigned char', 'Short': 'short', 'Character': 'char',
 }
@@ -39,11 +41,19 @@ PORT_NOTE_TYPES = {
 CONTAINERS = {'ArrayList', 'List', 'LinkedList', 'HashMap', 'HashSet', 'TreeMap', 'Map', 'Set'}
 
 # default element types for a RAW (non-generic) container -> a valid C++ template
-RAW_CONTAINER_DEFAULT = {'std::vector': '<void*>', 'std::set': '<void*>',
-                         'std::map': '<std::string, void*>'}
+RAW_CONTAINER_DEFAULT = {'JList': '<void*>', 'std::vector': '<void*>', 'std::set': '<void*>',
+                         # raw Map -> <JObject, JObject>: a Java raw map mixes key/value types
+                         # (String/Integer/Character keys; any object/boxed value). JObject boxes
+                         # all of them (and has operator< for the key), so put/get/containsKey/remove
+                         # all bind regardless of the concrete Java types. Keys/values convert in
+                         # implicitly; reads convert out via the cast the converter already emits.
+                         'std::map': '<JObject, JObject>'}
 
 # Java stdlib types that become C++ VALUE types (not pointers).
 VALUE_STDLIB = {'String'}
+
+# Boxed primitive wrappers -- map to C++ primitives, so they're VALUE types (not pointers).
+BOXED_VALUE_TYPES = {'Integer', 'Long', 'Float', 'Double', 'Boolean', 'Byte', 'Short', 'Character'}
 
 # Registry arrays whose slots are NULL until an id is registered. Indexing one with
 # an unregistered id and calling through it = a virtual call on NULL = IP 0x0 crash
@@ -56,7 +66,8 @@ KNOWN_NULLABLE = {'blocksList', 'itemsList'}
 # Static-holder externals accessed as Name::member (constants + static functions) that get
 # their own emitted header. Like GL11. Also need RUNTIME_ENUM_LIKE (no s_ prefix on members).
 RUNTIME_STATIC_HOLDERS = {'GL11', 'GL12', 'GL15', 'GLU', 'Keyboard', 'Mouse', 'Display',
-                          'ARBOcclusionQuery', 'ARBVertexBufferObject', 'BufferUtils', 'ImageIO'}
+                          'ARBOcclusionQuery', 'ARBVertexBufferObject', 'BufferUtils', 'ImageIO',
+                          'Sys', 'GLContext', 'Controllers', 'Collections'}
 
 # Runtime-support classes the converter EMITS a header for (see runtime.py) and #includes when
 # referenced -- not part of the decompiled corpus. External Java base types our classes
@@ -73,20 +84,30 @@ RUNTIME_HEADERS = ({'Random', 'Runnable', 'Thread', 'Comparator', 'File',
                     'KeyListener', 'MouseListener', 'MouseMotionListener', 'MouseWheelListener',
                     'WindowListener', 'ComponentListener', 'FocusListener', 'WindowAdapter',
                     'KeyEvent', 'MouseEvent', 'WindowEvent', 'ComponentEvent', 'FocusEvent',
-                    'InputEvent', 'Panel', 'Comparable', 'CodecJOrbis',
+                    'InputEvent', 'Panel', 'Comparable', 'CodecJOrbis', 'URLConnection',
+                    'BorderLayout', 'GridLayout', 'FlowLayout', 'CardLayout', 'GridBagLayout', 'Color',
+                    'Frame',
                     'Throwable', 'Exception', 'Error', 'RuntimeException', 'IOException',
                     'InterruptedException', 'IllegalStateException', 'IllegalArgumentException',
-                    'MalformedURLException', 'AWTException', 'LWJGLException', 'NoSuchFieldError'}
+                    'MalformedURLException', 'AWTException', 'LWJGLException', 'NoSuchFieldError',
+                    'FileNotFoundException', 'EOFException', 'SocketException', 'UnknownHostException',
+                    'ConnectException', 'BindException', 'NumberFormatException', 'NullPointerException',
+                    'ArrayIndexOutOfBoundsException', 'IndexOutOfBoundsException', 'ClassCastException',
+                    'NoSuchElementException', 'UnsupportedOperationException', 'ConcurrentModificationException',
+                    'OutOfMemoryError', 'NoSuchMethodException', 'CloneNotSupportedException',
+                    'ClassNotFoundException'}
                    | RUNTIME_STATIC_HOLDERS)
 
 # Java stdlib static holders shimmed in the prelude (JavaRT.h, included everywhere -- so NOT
 # in RUNTIME_HEADERS, which would emit a bogus per-type #include). `Name.member` -> `Name::member`.
-JAVART_STATICS = {'System', 'Integer', 'Long', 'Double', 'Float', 'Character', 'Arrays'}
+JAVART_STATICS = {'System', 'Integer', 'Long', 'Double', 'Float', 'Character', 'Arrays',
+                  'Short', 'Byte', 'Boolean'}
 
 # Runtime types whose `Type.MEMBER` (no parens) is a CONSTANT, not an instance/static field
 # -- accessed as Type::MEMBER with no s_ prefix (like an enum constant). e.g. GL11.GL_TEXTURE_2D,
 # Integer.MAX_VALUE, System.out.
-RUNTIME_ENUM_LIKE = RUNTIME_STATIC_HOLDERS | JAVART_STATICS
+# Color.BLACK / Color.white etc. are static Color CONSTANTS accessed Color::BLACK (no s_).
+RUNTIME_ENUM_LIKE = RUNTIME_STATIC_HOLDERS | JAVART_STATICS | {'Color'}
 
 # java.lang.Math.<fn> -> C math function. Float-suffixed to match the existing
 # Xbox 360 project (float math); pulled in via <math.h>. min/max stay bare

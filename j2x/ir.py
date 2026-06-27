@@ -146,7 +146,8 @@ class JClass(object):
     """A parsed Java top-level type."""
     __slots__ = ('name', 'package', 'parent', 'interfaces', 'is_interface',
                  'is_abstract', 'is_enum', 'fields', 'methods', 'enum_consts',
-                 'source_path', 'inherited_fields')
+                 'source_path', 'inherited_fields', 'mi_forwards',
+                 'static_inits', 'inst_inits')
 
     def __init__(self, name, package=None, parent=None, interfaces=None,
                  is_interface=False, is_abstract=False, is_enum=False,
@@ -161,10 +162,17 @@ class JClass(object):
         self.fields = []
         self.methods = []
         self.enum_consts = []
+        # raw Java bodies of `static { ... }` and instance `{ ... }` initializer blocks, in
+        # source order. Static blocks run once at class load; instance blocks run in each ctor.
+        self.static_inits = []
+        self.inst_inits = []
         self.source_path = source_path
         # instance fields inherited from ancestors (populated by the pipeline from the
         # full class set); used for value/pointer access of inherited fields in bodies.
         self.inherited_fields = []
+        # synthesized MI-diamond forwarding overrides (populated by pipeline.compute_mi_forwards):
+        # [(interface_Method, base_class_name)] -- an interface pure-virtual a base implements.
+        self.mi_forwards = []
 
     # -- queries used by types/emit -----------------------------------------
     def field(self, name):

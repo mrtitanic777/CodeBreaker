@@ -52,6 +52,59 @@ def resolve_inheritance(classes):
         cls.inherited_fields = inherited
 
 
+def compute_mi_forwards(classes):
+    """MULTIPLE-INHERITANCE diamond fix. Java lets ONE method satisfy both an interface's
+    declaration and a base class's concrete impl (e.g. TileEntityChest: TileEntity declares a
+    concrete onInventoryChanged(), IInventory declares it abstractly). In C++ those are distinct
+    vtable slots: the interface's pure-virtual stays unimplemented -> the class is abstract AND
+    `obj->onInventoryChanged()` is ambiguous. Fix: synthesize, in the derived class, a forwarding
+    override `R m(args){ return Base::m(args); }` that unifies both slots.
+
+    Attaches `cls.mi_forwards = [(Method, base_class_name), ...]`. Method is the interface's
+    declaration (signature source); base_class_name is the ancestor whose concrete impl to call."""
+    by_name = dict((c.name, c) for c in classes)
+
+    def iface_methods(cls):                          # all methods from implemented interfaces (transitive)
+        out, stack, seen = {}, list(cls.interfaces), set()
+        while stack:
+            nm = stack.pop()
+            if nm in seen:
+                continue
+            seen.add(nm)
+            ic = by_name.get(nm)
+            if ic is None:
+                continue
+            for m in ic.methods:
+                if not m.is_ctor:
+                    out.setdefault(m.name, m)
+            stack.extend(ic.interfaces)
+            if ic.parent:
+                stack.append(ic.parent)
+        return out
+
+    for cls in classes:
+        cls.mi_forwards = []
+        if cls.is_interface or cls.is_enum or not cls.interfaces:
+            continue
+        own = set(m.name for m in cls.methods if not m.is_ctor)
+        # nearest concrete impl from the (non-interface) base-class chain -> (class, arity)
+        base_concrete, cur, guard = {}, by_name.get(cls.parent), set()
+        while cur and cur.name not in guard:
+            guard.add(cur.name)
+            if not cur.is_interface:
+                for m in cur.methods:
+                    if not m.is_ctor and not m.is_abstract:
+                        base_concrete.setdefault(m.name, (cur.name, m.arity))
+            cur = by_name.get(cur.parent)
+        for name, im in iface_methods(cls).items():
+            if name in own or name not in base_concrete:
+                continue                             # C overrides it, or no inherited concrete impl
+            base_cls, base_arity = base_concrete[name]
+            if base_arity != im.arity:               # same name, different signature -> not the diamond
+                continue
+            cls.mi_forwards.append((im, base_cls))
+
+
 def build_member_env(classes):
     """Flatten each class's fields (static + instance) and method return types over its
     parent chain into {class: {'fields': {name: JType}, 'methods': {name: JType}}}.
@@ -133,6 +186,7 @@ def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True,
                        severity=Severity.HIGH, source='pipeline', rule='parse-error')
 
     resolve_inheritance(classes)
+    compute_mi_forwards(classes)
     resolver = build_resolver(classes, value_types)
 
     for fname, content in runtime.FILES.items():     # runtime-support headers (Random.h, ...)

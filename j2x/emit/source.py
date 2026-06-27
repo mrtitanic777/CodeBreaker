@@ -16,10 +16,11 @@ Method-body statement translation is delegated to emit/statements.py (Module 4c)
 
 import re
 
-from .. import typemap
+from .. import typemap, ir
 from ..ledger import Category, Severity
 from . import naming, ownership
-from .statements import translate_body, _resolve_chains, _resolve_call_chains, sub_outside_literals
+from .statements import (translate_body, _resolve_chains, _resolve_call_chains,
+                         sub_outside_literals, _split_top_commas)
 
 _BANNER = '// Auto-generated from %s.java\n// Target: Xbox 360 / C++03 / DirectX 9'
 _NEW_ARRAY = re.compile(r'^new\s+[\w.]+\s*\[([^\]]+)\]\s*$')   # size may be any expression
@@ -140,11 +141,34 @@ def _init_list(cls, resolver):
     return items
 
 
+def _delegated_base_init(args_str, deleg, cls, resolver):
+    """When a ctor delegates `this(args)`, the base class is constructed by the TARGET ctor's
+    super(...). C++03 has no delegation, so the delegating ctor must carry that base init itself:
+    return `Parent(<target's super args, target-params substituted by the delegation args>)`."""
+    if not cls.parent:
+        return None
+    args = [a for a in _split_top_commas(args_str) if a]   # balanced: nested-comma calls stay one arg
+    target = next((c for c in cls.constructors()
+                   if c is not deleg and len(c.params) == len(args)), None)
+    if target is None:
+        return None
+    sub = dict((p.name, args[i]) for i, p in enumerate(target.params))
+    rx = re.compile(r'\b(' + '|'.join(re.escape(k) for k in sub) + r')\b') if sub else None
+    for line in translate_body(target, cls, resolver):
+        sm = _SUPER_CALL.match(line)
+        if sm:
+            sargs = sm.group(1).strip()
+            if rx:
+                sargs = rx.sub(lambda mm: sub[mm.group(1)], sargs)
+            return '%s(%s)' % (cls.parent, sargs)
+    return None
+
+
 def _inline_delegation(args_str, deleg, cls, resolver, ledger):
     """Replace `this(args);` with the target constructor's body (C++03 has no ctor
     delegation), substituting the target's params with the call args. This makes the
     delegated ctor's registration actually run -- the Block blockID=0 / container-flag fix."""
-    args = [a.strip() for a in args_str.split(',') if a.strip()]
+    args = [a for a in _split_top_commas(args_str) if a]   # balanced: nested-comma calls stay one arg
     target = next((c for c in cls.constructors()
                    if c is not deleg and len(c.params) == len(args)), None)
     if target is None:
@@ -161,12 +185,61 @@ def _inline_delegation(args_str, deleg, cls, resolver, ledger):
     for line in translate_body(target, cls, resolver):
         if _THIS_CALL.match(line):                 # chained delegation in target (rare) -- skip
             continue
+        if _SUPER_CALL.match(line):                # target's super() becomes THIS ctor's base init
+            continue
         out.append(rx.sub(lambda mm: sub[mm.group(1)], line) if rx else line)
     if ledger is not None:
         ledger.add(cls.name + '.cpp', Category.RULE,
                    'ctor delegation this(%s) inlined from the %d-arg constructor (registration preserved)'
                    % (args_str, len(args)), line=getattr(deleg, 'line', 0),
                    severity=Severity.LOW, source='emit', rule='ctor-delegation-inlined')
+    return out
+
+
+def _translate_block_lines(cls, resolver, ledger, stmt_lines, is_static):
+    """Translate raw Java statement lines in cls's context. `stmt_lines` is a list of statement
+    strings (no enclosing braces). Returns translated C++ lines."""
+    m = ir.Method('_block', ir.JType('void'), params=[], is_static=is_static)
+    m.body = ([(0, 'void _block() {')]
+              + [(i + 1, s) for i, s in enumerate(stmt_lines)]
+              + [(len(stmt_lines) + 1, '}')])
+    return translate_body(m, cls, resolver, ledger)
+
+
+def _strip_block_braces(block_lines):
+    """A captured `static {`/`{` ... `}` block -> just its inner statement strings (drop the
+    opening-brace line and exactly ONE trailing close brace -- not inner for/catch braces)."""
+    inner = [t for _ln, t in block_lines]
+    for k, t in enumerate(inner):                  # drop up to & incl. the opening `{` line
+        if '{' in t:
+            inner = inner[k + 1:]; break
+    while inner and not inner[-1].strip():         # trailing blanks
+        inner = inner[:-1]
+    if inner and inner[-1].strip() == '}':         # the block's OWN close (only one)
+        inner = inner[:-1]
+    return inner
+
+
+def _instance_init_lines(cls, resolver, ledger):
+    """C++ for Java INSTANCE field initializers + instance `{ }` blocks, in declaration order.
+    Java runs these at the top of every constructor that does NOT delegate via this(...). Dropping
+    them was the null-deref / uninitialized-field crash class (e.g. EntityPlayer.inventory)."""
+    stmts = []
+    for f in cls.instance_fields():
+        if f.initializer is None:
+            continue
+        init = f.initializer.strip()
+        if f.jtype.is_array and init.startswith('{'):           # `int[]..[] x = {..}` shorthand ->
+            init = 'new %s%s%s' % (f.jtype.name, '[]' * f.jtype.array_dims, init)   # new T[]..[]{..}
+        stmts.append('this.%s = %s;' % (f.name, init))
+    out = _translate_block_lines(cls, resolver, ledger, stmts, is_static=False) if stmts else []
+    for block in cls.inst_inits:                                # instance { } blocks (rare)
+        out += _translate_block_lines(cls, resolver, ledger, _strip_block_braces(block), is_static=False)
+    if out and ledger is not None:
+        ledger.add(cls.name + '.cpp', Category.RISK,
+                   'instance field initializers / init-blocks emitted into the constructor(s) '
+                   '(Java runs these per-ctor; dropping them caused null-deref/uninit fields)',
+                   severity=Severity.MED, source='emit', rule='instance-init')
     return out
 
 
@@ -183,11 +256,27 @@ def _render_ctor(cls, m, resolver, ledger):
             continue
         rest.append(line)
 
+    # no own super() but delegates `this(args)`: adopt the target ctor's base init, so a base
+    # with no default ctor is still constructed (C++03 delegation gap). Java inserts super()
+    # in the target; here the delegating ctor must mirror it.
+    if super_init is None and cls.parent:
+        for line in rest:
+            dm = _THIS_CALL.match(line)
+            if dm:
+                super_init = _delegated_base_init(dm.group(1), m, cls, resolver)
+                break
+
     items = ([super_init] if super_init else []) + _init_list(cls, resolver)
+    # Java runs instance field initializers / init-blocks at the top of every ctor that does NOT
+    # delegate via this(...) (the delegated-to ctor runs them instead).
+    is_delegating = any(_THIS_CALL.match(line) for line in rest)
+    inst_init = [] if is_delegating else _instance_init_lines(cls, resolver, ledger)
     L = ['%s::%s(%s)' % (cls.name, cls.name, params)]
     if items:
         L.append('\t: ' + '\n\t, '.join(items))
     L.append('{')
+    for line in inst_init:
+        L.append('\t' + line)
     for line in rest:
         dm = _THIS_CALL.match(line)
         if dm:
@@ -228,6 +317,22 @@ def _render_method(cls, m, resolver, ledger):
     return L
 
 
+def _render_mi_forward(cls, im, base, resolver, ledger):
+    """A synthesized MI-diamond forwarding override: `R Cls::m(args) { [return] Base::m(args); }`
+    so an interface pure-virtual already implemented by a base class is satisfied here too."""
+    ret = ownership.return_cpp_type(im, resolver)
+    params = ownership.params_str(im, resolver)
+    call_args = ', '.join(p.name for p in im.params)
+    ret_kw = '' if ret == 'void' else 'return '
+    if ledger is not None:
+        ledger.add(cls.name + '.cpp', Category.RULE,
+                   'MI-diamond: synthesized %s() forwarding to %s:: (interface decl + base impl '
+                   'unified into one vtable override)' % (im.name, base),
+                   severity=Severity.LOW, source='emit', rule='mi-forward')
+    return ['%s %s::%s(%s)' % (ret, cls.name, im.name, params), '{',
+            '\t%s%s::%s(%s);' % (ret_kw, base, im.name, call_args), '}']
+
+
 # ---------------------------------------------------------------------------
 def _referenced_types(cls, resolver, body_text):
     """All known user-type names this class references (for full #includes in the .cpp)."""
@@ -249,17 +354,23 @@ def _referenced_types(cls, resolver, body_text):
         for p in m.params:
             add(p.jtype)
     names |= set(re.findall(r'\b([A-Z]\w*)\b', body_text))     # new X / X:: / casts / locals
-    # transitive (one level): a .cpp that holds a T reaches T's field and method-return
-    # types through chains (`var->tField->m()`, `T::s_x->m()`), so it needs their FULL
-    # definitions too -- not just T's. Driven by the resolved member environment, so this
-    # follows exactly the chains the statement translator now emits.
-    for n in list(names):
+    # transitive CLOSURE: the statement translator emits arbitrarily deep chains
+    # (`this->mc->gameSettings->keyBindInventory->keyCode`), so a .cpp needs the FULL
+    # definition of every type reachable through field/method links -- not just one hop.
+    # Iterate to a fixpoint over the resolved member environment.
+    seen = set()
+    frontier = list(names)
+    while frontier:
+        n = frontier.pop()
+        if n in seen:
+            continue
+        seen.add(n)
         env = resolver.members.get(n)
-        if env:
-            for jt in env['fields'].values():
-                add(jt)
-            for jt in env['methods'].values():
-                add(jt)
+        if not env:
+            continue
+        for jt in list(env['fields'].values()) + list(env['methods'].values()):
+            add(jt)                          # may grow `names`
+        frontier.extend(names - seen)
     includable = set(resolver.known) | typemap.RUNTIME_HEADERS
     return sorted((names & includable) - {cls.name})
 
@@ -285,11 +396,48 @@ def render_source(cls, resolver, ledger=None):
             L2.append('\t: ' + '\n\t, '.join(items))
         L2 += ['{', '}']
         body += L2 + ['']
+    # a class with instance field initializers / init-blocks but NO explicit constructor: Java's
+    # implicit default ctor runs the inits, so synthesize one (C++'s implicit ctor would not).
+    elif (not cls.constructors()
+          and (any(f.initializer is not None for f in cls.instance_fields()) or cls.inst_inits)):
+        items = _init_list(cls, resolver)
+        inits = _instance_init_lines(cls, resolver, ledger)
+        L2 = ['%s::%s()' % (cls.name, cls.name)]
+        if items:
+            L2.append('\t: ' + '\n\t, '.join(items))
+        L2 += ['{'] + ['\t' + l for l in inits] + ['}']
+        body += L2 + ['']
     body += _render_dtor(cls, ownership.owned_pointers(cls, resolver), ledger) + ['']
     for m in cls.methods:
         if m.is_ctor or m.is_abstract:
             continue
         body += _render_method(cls, m, resolver, ledger) + ['']
+    for im, base in getattr(cls, 'mi_forwards', []):
+        body += _render_mi_forward(cls, im, base, resolver, ledger) + ['']
+
+    # static { } blocks: emit each as a static member method, then a file-local trigger that runs
+    # them once at program start (Java runs them at class-load, after static field inits -- the
+    # trigger sits after the static field definitions above, so order is preserved). Dropping these
+    # left registries empty (EntityList/Packet/TileEntity id<->class maps) -- a crash/no-op class.
+    static_inits = getattr(cls, 'static_inits', [])
+    if static_inits:
+        triggers = []
+        for i, block in enumerate(static_inits):
+            clines = _translate_block_lines(cls, resolver, ledger, _strip_block_braces(block), is_static=True)
+            body += ['void %s::_j2x_clinit_%d()' % (cls.name, i), '{']
+            body += ['\t' + l for l in clines] + ['}', '']
+            triggers.append('%s::_j2x_clinit_%d();' % (cls.name, i))
+        body += ['namespace {   // run the static initializer block(s) once at program start',
+                 '\tstruct _ClinitRun_%s {' % cls.name,
+                 '\t\t_ClinitRun_%s() {' % cls.name]
+        body += ['\t\t\t' + t for t in triggers]
+        body += ['\t\t}', '\t};', '\t_ClinitRun_%s _clinitRun_%s_instance;' % (cls.name, cls.name),
+                 '}', '']
+        if ledger is not None:
+            ledger.add(cls.name + '.cpp', Category.RISK,
+                       'static {} initializer block(s) emitted as _j2x_clinit + a run-once trigger '
+                       '(dropping them left static registries empty)',
+                       severity=Severity.MED, source='emit', rule='static-init-block')
 
     # a .cpp needs the FULL definition of every user type it touches (member access,
     # new/cast/static), not just the forward decls in its own header. Collect from the

@@ -56,10 +56,29 @@ _DECL = re.compile(
     r'^(?:final\s+)?([A-Za-z_][\w.]*(?:<[^>]*>)?(?:\s*\[\s*\])*)\s+([A-Za-z_]\w*)\s*(=|;)')
 
 _MATH = re.compile(r'\bMath\.([A-Za-z_]\w*)')
-# new T[n] (1-D, not already value-init) -> capture type, optional *, size
-_NEW_ARRAY = re.compile(r'\bnew\s+([\w:]+)\s*(\*?)\s*\[([^\]]*)\](?!\s*[\[(])')
-# x instanceof Type  (x may be a var or a this->field chain)
-_INSTANCEOF = re.compile(r'([A-Za-z_]\w*(?:->[A-Za-z_]\w*)*)\s+instanceof\s+([A-Za-z_]\w*)')
+# new T[n] (1-D, not already value-init, NOT an aggregate `new T[]{...}`) -> type, optional *, size
+_NEW_ARRAY = re.compile(r'\bnew\s+([\w:]+)\s*(\*?)\s*\[([^\]]*)\](?!\s*[\[({])')
+# new T[]{a, b, c} aggregate -- captured separately and built via JArrayInit
+_NEW_ARRAY_AGG = re.compile(r'\bnew\s+([\w:]+)\s*((?:\*?\s*\[\s*\]\s*)+)\{')   # T[]...[]{ (any dims)
+# multi-dim SIZED new (not an aggregate `{`): new T[a][b] and new T[a][b][c]
+_NEW_ARRAY_3D = re.compile(r'\bnew\s+([\w:]+)\s*\*?\s*\[([^\]]*)\]\s*\[([^\]]*)\]\s*\[([^\]]*)\](?!\s*[\[{])')
+_NEW_ARRAY_2D = re.compile(r'\bnew\s+([\w:]+)\s*\*?\s*\[([^\]]*)\]\s*\[([^\]]*)\](?!\s*[\[{])')
+
+
+def _rewrite_multidim_new(s, resolver):
+    """`new T[a][b]` -> j2x_newarr2<elem>(a,b); `new T[a][b][c]` -> j2x_newarr3<elem>(a,b,c). elem is
+    the scalar element C++ type (int / Chunk*). Sized only -- aggregate `new T[][]{...}` is separate."""
+    def elem(t):
+        return resolver.cpp_type(ir.JType(t), 'local')
+    s = _NEW_ARRAY_3D.sub(lambda m: 'j2x_newarr3<%s >(%s, %s, %s)'
+                          % (elem(m.group(1)), m.group(2).strip(), m.group(3).strip(), m.group(4).strip()), s)
+    s = _NEW_ARRAY_2D.sub(lambda m: 'j2x_newarr2<%s >(%s, %s)'
+                          % (elem(m.group(1)), m.group(2).strip(), m.group(3).strip()), s)
+    return s
+# x instanceof Type  -- x may be a var, a this->field chain, an [index], or a method CALL
+_INSTANCEOF = re.compile(
+    r'([A-Za-z_]\w*(?:\s*(?:->|\.|::)\s*[A-Za-z_]\w*|\s*\([^()]*\)|\s*\[[^\]]*\])*)'
+    r'\s+instanceof\s+([A-Za-z_]\w*(?:\s*\[\s*\])?)')      # type may be an array (String[])
 # receiver.member  with optional opening paren (method call)
 _MEMBER = re.compile(r'\b([A-Za-z_]\w*)\.([A-Za-z_]\w*)(\s*\()?')
 _CALL = re.compile(r'\b(\w+)\.(\w+)\s*\(')
@@ -134,6 +153,101 @@ def _maybe_concat(expr):
     return ' << '.join(parts)
 
 
+def _split_top_commas(expr):
+    """Split on top-level commas (respecting (), [], {}, and string/char literals). '<>'
+    is NOT tracked -- it would mis-balance on '->' and comparisons; call-arg generics with
+    commas don't occur in this emitted code."""
+    parts, depth, buf, i, n = [], 0, [], 0, len(expr)
+    while i < n:
+        c = expr[i]
+        if c == '"' or c == "'":
+            q = c; buf.append(c); i += 1
+            while i < n:
+                buf.append(expr[i])
+                if expr[i] == '\\' and i + 1 < n:
+                    buf.append(expr[i + 1]); i += 2; continue
+                if expr[i] == q:
+                    i += 1; break
+                i += 1
+            continue
+        if c in '([{':
+            depth += 1
+        elif c in ')]}':
+            depth -= 1
+        elif c == ',' and depth == 0:
+            parts.append(''.join(buf)); buf = []; i += 1; continue
+        buf.append(c); i += 1
+    if buf:
+        parts.append(''.join(buf))
+    return [p.strip() for p in parts]
+
+
+_FLOAT_LIT = r'\d+\.\d*[FfDd]?|\.\d+[FfDd]?|\d+[FfDd]'
+_MOD_TERM = r'(?:\([^()]*\)|[A-Za-z_]\w*(?:(?:->|\.)\w+|\[[^\]\[]*\])*|\d+\.?\d*[FfDd]?|\.\d+[FfDd]?)'
+_MOD_PAT = re.compile(r'(%s)\s*%%\s*(%s)' % (_MOD_TERM, _MOD_TERM))
+_FLOAT_RE = re.compile(r'^(?:%s)$' % _FLOAT_LIT)
+
+
+def _rewrite_float_mod(s):
+    """Java `a % b` where one operand is a float literal -> fmodf(a, b). C++ '%' is integer-only;
+    Java's '%' is also float remainder. The float-literal guard keeps integer modulo untouched."""
+    def rep(m):
+        a, b = m.group(1), m.group(2)
+        if _FLOAT_RE.match(a.strip()) or _FLOAT_RE.match(b.strip()):
+            return 'fmodf(%s, %s)' % (a, b)
+        return m.group(0)
+    return _MOD_PAT.sub(rep, s)
+
+
+_PURE_STR_LIT = re.compile(r'^"(?:[^"\\]|\\.)*"$')
+
+
+def _to_jcat(expr):
+    """If `expr` is a Java string concatenation (top-level '+' with at least one PURE
+    string-literal operand), wrap it in the JCat builder; else return None. The pure-literal
+    test avoids mis-wrapping numeric `+` like `"abc".length() + 5` (literal-then-method)."""
+    e = expr.strip()
+    if '"' not in e or '+' not in e:
+        return None
+    parts = _split_top_plus(e)
+    if len(parts) < 2:
+        return None
+    if not any(_PURE_STR_LIT.match(p.strip()) for p in parts):
+        return None
+    return '(JCat() + ' + ' + '.join(p.strip() for p in parts) + ')'
+
+
+def _rewrite_concats(s):
+    """Wrap Java string concatenations with the JCat builder, anywhere they appear as a
+    value: inside every (...) argument group (per comma-separated arg) and recursively in
+    nested groups. Statement-level RHS/return concats are handled by the caller. Literals
+    are copied verbatim so embedded '+'/',' inside strings are never touched."""
+    out, i, n = [], 0, len(s)
+    while i < n:
+        c = s[i]
+        if c == '"' or c == "'":
+            q = c; out.append(c); i += 1
+            while i < n:
+                out.append(s[i])
+                if s[i] == '\\' and i + 1 < n:
+                    out.append(s[i + 1]); i += 2; continue
+                if s[i] == q:
+                    i += 1; break
+                i += 1
+            continue
+        if c == '(':
+            close = _balanced_paren(s, i)
+            if close == -1:
+                out.append(c); i += 1; continue
+            inner = _rewrite_concats(s[i + 1:close])          # recurse into nested groups
+            new_parts = [(_to_jcat(p) or p) for p in _split_top_commas(inner)]
+            out.append('(' + ','.join(new_parts) + ')')
+            i = close + 1
+            continue
+        out.append(c); i += 1
+    return ''.join(out)
+
+
 def _balanced_paren(s, open_idx):
     depth = 0
     for i in range(open_idx, len(s)):
@@ -144,6 +258,96 @@ def _balanced_paren(s, open_idx):
             if depth == 0:
                 return i
     return -1
+
+
+def _balanced_brace(s, open_idx):
+    depth = 0
+    for i in range(open_idx, len(s)):
+        if s[i] == '{':
+            depth += 1
+        elif s[i] == '}':
+            depth -= 1
+            if depth == 0:
+                return i
+    return -1
+
+
+_PTR_CAST_HEAD = re.compile(r'^\(\s*([A-Za-z_]\w*)\s*(\*?)\s*\)')
+
+
+def _deref_cast_results(s, resolver):
+    """`((Type*)EXPR).member` / `((Type)EXPR).member` (Type a reference) -> `...)->member`.
+    A cast to a pointer yields a pointer, so the following access must be '->'. Handles a
+    balanced EXPR (calls, [index]) -- broader than the old no-paren-operand regex."""
+    n = len(s)
+    match, st = {}, []
+    for i, c in enumerate(s):
+        if c == '(':
+            st.append(i)
+        elif c == ')' and st:
+            match[st.pop()] = i
+    repl = set()
+    for op in match:
+        cl = match[op]
+        content = s[op + 1:cl]
+        m = _PTR_CAST_HEAD.match(content)
+        if not m or m.end() >= len(content):           # must be a cast WITH an operand after it
+            continue
+        is_ptr = bool(m.group(2)) or resolver.is_pointer(ir.JType(m.group(1)))
+        if not is_ptr:
+            continue
+        j = cl + 1
+        while j < n and s[j] == ' ':
+            j += 1
+        if j < n and s[j] == '.' and j + 1 < n and (s[j + 1].isalpha() or s[j + 1] == '_'):
+            repl.add(j)
+    if not repl:
+        return s
+    return ''.join('->' if k in repl else ch for k, ch in enumerate(s))
+
+
+def _array_type(base, dims):
+    """JArray nested `dims` deep over `base` (dims=1 -> JArray<base>)."""
+    t = base
+    for _ in range(dims):
+        t = 'JArray<%s >' % t
+    return t
+
+
+def _build_agg(body, dims, base):
+    """Build a nested JArrayInit for an N-dim array aggregate. `body` = contents between the
+    outermost braces (no enclosing braces); `dims` = remaining dimensions; `base` = element type."""
+    parts = [p.strip() for p in _split_top_commas(body)]
+    if dims <= 1:
+        return ('(JArrayInit<%s >(), %s)' % (base, ', '.join(parts))) if parts else ('JArray<%s >()' % base)
+    et = _array_type(base, dims - 1)                    # element of THIS level = (dims-1)-dim array
+    if not parts:
+        return 'JArray<%s >()' % et
+    rows = []
+    for p in parts:
+        if p.startswith('{') and p.endswith('}'):
+            rows.append(_build_agg(p[1:-1], dims - 1, base))   # recurse into the row braces
+        else:
+            rows.append(p)                             # non-brace row (e.g. NULL) -- leave verbatim
+    return '(JArrayInit<%s >(), %s)' % (et, ', '.join(rows))
+
+
+def _rewrite_array_aggregates(s, resolver):
+    """`new T[]...[]{...}` (any dimensionality) -> nested JArrayInit (C++03 has no heap-array init
+    list). Object elements box to JObject; the JArrayInit comma-builders convert to nested JArray."""
+    while True:
+        m = _NEW_ARRAY_AGG.search(s)
+        if not m:
+            return s
+        brace = m.end() - 1                            # the '{'
+        close = _balanced_brace(s, brace)
+        if close < 0:
+            return s
+        dims = m.group(2).count('[')                   # number of [] dimension brackets
+        # Object[] elements are boxed (JObject) -- a mixed String/char/pointer array (Java autobox).
+        base = 'JObject' if m.group(1) == 'Object' else resolver.cpp_type(ir.JType(m.group(1)), 'local')
+        rep = _build_agg(s[brace + 1:close].strip(), dims, base)
+        s = s[:m.start()] + rep + s[close + 1:]
 
 
 _LABEL_DEF = re.compile(r'^(\w+):\s*(.*)$')
@@ -233,7 +437,7 @@ def _container_call(cat, name, args_str):
     in-scope names. Containers are held by value, so the result attaches with '.'/[]."""
     if cat is None:
         return None
-    args = javaparse._split_top_commas(args_str) if args_str.strip() else []
+    args = _split_top_commas(args_str) if args_str.strip() else []
     rename = _METHOD_RENAME.get((cat, name))
     if rename:
         return '.%s(%s)' % (rename, args_str)               # add->push_back, remove->erase, ...
@@ -255,7 +459,7 @@ def _balanced_call_sub(s, recv, meth, fn):
         close = _balanced_paren(s, op)
         if close < 0:
             return s
-        rep = fn(javaparse._split_top_commas(s[op + 1:close]))
+        rep = fn(_split_top_commas(s[op + 1:close]))
         if rep is None:
             return s                                  # unexpected arity -> leave (and stop)
         s = s[:idx] + rep + s[close + 1:]
@@ -346,8 +550,11 @@ def _pointer_locals(method, scope, resolver):
         if name in param_names:
             continue
         jt = scope.get(name)
-        if jt is None or jt.is_array or resolver.is_pointer(jt) or jt.name in typemap.CONTAINERS:
-            continue                                  # already a pointer/array, or a value container
+        if (jt is None or jt.is_array or resolver.is_pointer(jt)
+                or jt.name in typemap.CONTAINERS or jt.name in typemap.VALUE_STDLIB
+                or jt.name == 'Object'):
+            continue            # already a pointer/array, a value container, String, or JObject
+            # (String/JObject hold null themselves and absorb `new T()` via their ctors)
         nm = re.escape(name)
         if (re.search(r'\b%s\s*=\s*(?:null|NULL)\b' % nm, text)
                 or re.search(r'\b%s\s*(?:==|!=)\s*(?:null|NULL)\b' % nm, text)
@@ -355,6 +562,150 @@ def _pointer_locals(method, scope, resolver):
                 or re.search(r'\b%s\s*=\s*new\b' % nm, text)):
             forced.add(name)
     return forced
+
+
+# Java raw Map/HashMap types -> our raw map is std::map<JObject, JObject>, so indexing one yields a
+# JObject value (see typemap.RAW_CONTAINER_DEFAULT). Used to detect JObject operands for casts/instanceof.
+_RAW_MAPS = {'HashMap', 'Map', 'TreeMap', 'LinkedHashMap', 'Hashtable', 'SortedMap', 'MCHashTable'}
+# boxed wrappers whose cast on a JObject is a no-op (JObject's operator int()/char() + .intValue()/
+# .charValue() unbox at the point of use), so `(Integer)obj`/`(Character)obj` -> just `(obj)`.
+_BOXED_WRAPPERS = {'Integer', 'Character', 'Boolean', 'Byte', 'Short', 'Long', 'Double', 'Float'}
+_OPERAND_ROOT = re.compile(r'^([A-Za-z_]\w*)\s*((?:\[[^\]]*\])*)$')
+
+
+def _is_balanced(s):
+    depth = 0
+    for c in s:
+        if c in '([':
+            depth += 1
+        elif c in ')]':
+            depth -= 1
+            if depth < 0:
+                return False
+    return depth == 0
+
+
+def _expr_object_kind(expr, scope):
+    """'object' if `expr` is a JObject-typed VALUE -- a bare Object variable, a fully-indexed Object
+    array element (var[i] / var[i][j]), or a raw-Map index (map[k], value is JObject). Else None.
+    Conservative: only identifier-rooted exprs with simple [idx] groups (no nested brackets)."""
+    o = expr.strip()
+    o = re.sub(r'\s*(?:\+\+|--)\s*$', '', o)                 # x++ / x-- -> x
+    while o.startswith('(') and o.endswith(')') and _is_balanced(o[1:-1]):
+        o = o[1:-1].strip()                                  # strip balanced wrapping parens
+    m = _OPERAND_ROOT.match(o)
+    if not m:
+        return None
+    base, idx = m.group(1), m.group(2)
+    jt = scope.get(base)
+    if jt is None:
+        return None
+    ndim = idx.count('[')
+    if jt.is_array:
+        if (jt.array_dims - ndim) == 0 and jt.name == 'Object':
+            return 'object'                                 # Object[..] fully indexed -> element JObject
+        return None
+    if ndim == 1 and jt.name in _RAW_MAPS:
+        return 'object'                                     # raw map value -> JObject
+    if ndim == 0 and jt.name == 'Object':
+        return 'object'                                     # bare Object variable
+    return None
+
+
+def _read_primary(s, i):
+    """Read a primary operand expression starting at s[i] (just past a cast's ')'). Handles a
+    parenthesized group, or an identifier with trailing ->/. member access, [idx] groups, and ++/--.
+    Returns (expr, end_index); expr is '' if nothing readable."""
+    n = len(s)
+    while i < n and s[i].isspace():
+        i += 1
+    start = i
+    if i < n and s[i] == '(':                               # balanced parenthesized operand
+        depth = 0
+        while i < n:
+            if s[i] == '(':
+                depth += 1
+            elif s[i] == ')':
+                depth -= 1
+                if depth == 0:
+                    i += 1
+                    break
+            i += 1
+        return s[start:i], i
+    if i < n and (s[i].isalpha() or s[i] == '_'):
+        while i < n and (s[i].isalnum() or s[i] == '_'):
+            i += 1
+        while i < n:
+            if s[i] == '[':                                 # [ balanced ] index
+                depth = 0
+                while i < n:
+                    if s[i] == '[':
+                        depth += 1
+                    elif s[i] == ']':
+                        depth -= 1
+                        if depth == 0:
+                            i += 1
+                            break
+                    i += 1
+            elif s[i:i + 2] == '->' or s[i] == '.':         # member access (NOT a call -- stop at '(')
+                i += 2 if s[i:i + 2] == '->' else 1
+                while i < n and s[i].isspace():
+                    i += 1
+                if i < n and s[i] == '(':                    # `.method(` -> not part of a plain operand
+                    break
+                while i < n and (s[i].isalnum() or s[i] == '_'):
+                    i += 1
+            else:
+                break
+        if s[i:i + 2] in ('++', '--'):
+            i += 2
+        return s[start:i], i
+    return '', start
+
+
+_CAST_HEAD = re.compile(r'\(\s*([A-Za-z_]\w*)\s*(\[\s*\])?\s*\)')
+
+
+def _rewrite_jobject_casts(s, scope):
+    """Lower casts whose operand is a JObject (Object var / Object[] element / raw-map value), which
+    the generic _cast pass + JObject's conversion operators can't always handle:
+      (String)obj      -> (obj).str()            (avoids the operator JavaString()/T*-char* ambiguity)
+      (String[])obj    -> (obj).strArray()       ((String[]) is not a _CAST-handled spelling)
+      (String[])arr    -> arr                     (redundant array cast on an already-array expr)
+      (Integer|Character|...)obj -> (obj)         (drop boxed wrapper; operator int()/char() + the
+                                                   trailing .intValue()/.charValue() unbox at use)
+    Other casts ((SomeClass)obj -> (SomeClass*)obj, (int)/(char) -> via operators) are left to _cast."""
+    out = []
+    i, n = 0, len(s)
+    while i < n:
+        m = _CAST_HEAD.match(s, i)
+        if not m:
+            out.append(s[i])
+            i += 1
+            continue
+        typ, is_arr = m.group(1), bool(m.group(2))
+        operand, end = _read_primary(s, m.end())
+        if not operand:
+            out.append(s[i])
+            i += 1
+            continue
+        kind = _expr_object_kind(operand, scope)
+        rewritten = None
+        if is_arr:
+            if typ == 'String':
+                rewritten = ('(%s).strArray()' % operand) if kind else operand
+        elif kind:
+            if typ == 'String':
+                rewritten = '(%s).str()' % operand
+            elif typ in _BOXED_WRAPPERS:
+                rewritten = '(%s)' % operand
+        if rewritten is None:
+            out.append(s[i])
+            i += 1
+        else:
+            out.append(_rewrite_jobject_casts(rewritten, scope))   # recurse (nested casts in operand)
+            i = end
+    return ''.join(out)
 
 
 _CHAIN_ROOT = re.compile(r'[A-Za-z_]\w*::s_\w+|[A-Za-z_]\w*')
@@ -393,14 +744,15 @@ def _chain_root(tok, scope, resolver, current):
     return (jt, resolver.is_pointer(jt)) if jt is not None else None
 
 
-def _consume_index(s, i, out, cur_jt, is_ptr, resolver):
+def _consume_index(s, i, out, cur_jt, is_ptr, resolver, scope, current):
     """While cur_jt is an array and a balanced [index] follows, consume it and step into the
-    element type (so `arr[i].member` types `arr[i]` as the element)."""
+    element type (so `arr[i].member` types `arr[i]` as the element). The index EXPRESSION is
+    itself chain-resolved (it may contain its own pointer chains, e.g. arr[base->idx])."""
     while cur_jt is not None and cur_jt.is_array and i < len(s) and s[i] == '[':
         close = _balanced_bracket(s, i)
         if close < 0:
             break
-        out.append(s[i:close + 1])
+        out.append('[' + _resolve_chains(s[i + 1:close], scope, resolver, current) + ']')
         i = close + 1
         cur_jt = cur_jt.element()
         is_ptr = resolver.is_pointer(cur_jt)
@@ -449,7 +801,7 @@ def _resolve_chains(s, scope, resolver, current):
             if cur_jt is None:
                 break
             is_ptr = resolver.is_pointer(cur_jt)
-            i, cur_jt, is_ptr = _consume_index(s, i, out, cur_jt, is_ptr, resolver)
+            i, cur_jt, is_ptr = _consume_index(s, i, out, cur_jt, is_ptr, resolver, scope, current)
         return i
 
     i = 0
@@ -469,7 +821,7 @@ def _resolve_chains(s, scope, resolver, current):
                 args = _resolve_chains(s[pn.end():inner], scope, resolver, current)
                 out.append('(new %s(%s))' % (pn.group(1), args))
                 cur_jt, is_ptr = ir.JType(pn.group(1)), True
-                k, cur_jt, is_ptr = _consume_index(s, j + 1, out, cur_jt, is_ptr, resolver)
+                k, cur_jt, is_ptr = _consume_index(s, j + 1, out, cur_jt, is_ptr, resolver, scope, current)
                 i = walk_links(k, cur_jt, is_ptr)
                 continue
         nw = _NEW_ROOT.match(s, i) if at_boundary else None
@@ -484,7 +836,7 @@ def _resolve_chains(s, scope, resolver, current):
                 args = _resolve_chains(s[nw.end():close], scope, resolver, current)
                 out.append('(new %s(%s))' % (nw.group(1), args))
                 cur_jt, is_ptr = ir.JType(nw.group(1)), True
-                k, cur_jt, is_ptr = _consume_index(s, close + 1, out, cur_jt, is_ptr, resolver)
+                k, cur_jt, is_ptr = _consume_index(s, close + 1, out, cur_jt, is_ptr, resolver, scope, current)
                 i = walk_links(k, cur_jt, is_ptr)
                 continue
         m = _CHAIN_ROOT.match(s, i) if at_boundary else None
@@ -496,7 +848,7 @@ def _resolve_chains(s, scope, resolver, current):
         if rt is None:
             continue
         cur_jt, is_ptr = rt
-        i, cur_jt, is_ptr = _consume_index(s, i, out, cur_jt, is_ptr, resolver)
+        i, cur_jt, is_ptr = _consume_index(s, i, out, cur_jt, is_ptr, resolver, scope, current)
         i = walk_links(i, cur_jt, is_ptr)
     return ''.join(out)
 
@@ -522,8 +874,17 @@ def _resolve_call_chains(s, scope, resolver, current):
             while j < len(s) and s[j] == ' ':
                 j += 1
             # the member-access dot may be directly after the call, or after a wrapping ')'
-            #   (e.g. the source already wrote `(new X(...)).start()`)
+            #   (e.g. the source already wrote `(new X(...)).start()`). BUT a ')' here is only a
+            #   genuine wrapper if the call head is itself preceded by the matching '(' -- otherwise
+            #   the ')' closes an OUTER call (this call is its last arg) and the '.member' belongs to
+            #   that outer result, not this one (e.g. outer(inner(x)).size()).
             extra_close = j < len(s) and s[j] == ')'
+            if extra_close:
+                p = m.start() - 1
+                while p >= 0 and s[p] == ' ':
+                    p -= 1
+                if p < 0 or s[p] != '(':
+                    extra_close = False
             dot = j + 1 if extra_close else j
             while dot < len(s) and s[dot] == ' ':
                 dot += 1
@@ -580,6 +941,12 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
         jt = javaparse.parse_type(mm.group(1) + (mm.group(2) or ''))
         return resolver.cpp_type(jt, 'local') + '()' if jt.name in typemap.CONTAINERS else mm.group(0)
     s = re.sub(r'\bnew\s+([A-Z]\w*)(<[^;{}]*?>)?\s*\([^;{}]*?\)', _new_container, s)
+    # 1c. leftover `boolean` type keyword not caught as a leading decl (for-init, multi-decl) ->
+    #     bool. Java-only word, so a literal-safe global map is safe (won't touch "boolean" text).
+    s = sub_outside_literals(re.compile(r'\bboolean\b'), 'bool', s)
+    # 1d. a method called directly on a string literal: "abc".indexOf(x) -> the literal is a
+    #     const char[] in C++ (no methods); wrap it so the Java String API resolves.
+    s = re.sub(r'("(?:\\.|[^"\\])*")(\s*\.\s*[A-Za-z_]\w*\s*\()', r'JavaString(\1)\2', s)
     # 2. this.  -> this->
     s = re.sub(r'\bthis\.', 'this->', s)
     # 3. <pointerName>.  -> <pointerName>->
@@ -589,6 +956,14 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
     s = re.sub(r'\b(\w+)(\[[^\]]*\])\.',
                lambda mm: ('%s%s->' % (mm.group(1), mm.group(2)))
                if _is_nullable_array(mm.group(1), scope, resolver) else mm.group(0), s)
+    # 3c. getClass() -> Class(typeid(...)) backed by C++ RTTI, so the runtime class is REAL
+    #     (identity/==/getName agree with X.class). `recv->getClass()` -> typeid(*(recv)) (dynamic
+    #     type via the vtable); `recv.getClass()` (value) -> typeid(recv); bare -> typeid(*this).
+    s = re.sub(r'([A-Za-z_]\w*(?:(?:->|\.)\w+|\[[^\]]*\])*)\s*->\s*getClass\s*\(\s*\)',
+               r'Class(typeid(*(\1)))', s)
+    s = re.sub(r'([A-Za-z_]\w*(?:(?:->|\.)\w+|\[[^\]]*\])*)\s*\.\s*getClass\s*\(\s*\)',
+               r'Class(typeid(\1))', s)
+    s = re.sub(r'(?<![\w.>])getClass\s*\(\s*\)', 'Class(typeid(*this))', s)
     # 4. Math.fn -> C math (sqrtf, sinf, ...)
     s = _MATH.sub(lambda mm: typemap.MATH_API.get(mm.group(1), mm.group(0)), s)
     # 5. KnownClass.member / Enum.CONST -> :: static access
@@ -596,8 +971,8 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
         recv, mem, paren = mm.group(1), mm.group(2), mm.group(3)
         if recv not in static_set:
             return mm.group(0)
-        if mem == 'class' and not paren:             # Java class literal X.class -> stub (no RTTI port)
-            return '((void*)0)'
+        if mem == 'class' and not paren:             # Java class literal X.class -> RTTI-backed Class
+            return 'Class(typeid(%s))' % recv        # real identity (matches obj.getClass())
         if paren:                                  # static method call
             return '%s::%s%s' % (recv, resolver.renamed_method(recv, mem), paren)
         if recv in enum_set:                       # enum constant (no s_ prefix)
@@ -618,15 +993,18 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
                                  nm + r'_\1', s)
     # 6. container/String methods -> STL (.add->.push_back, .get(i)->[i], .charAt(i)->[i], isEmpty->empty)
     s = _translate_calls(s, scope)
-    # 6b. cast-result access: ((Type)x).m -> ((Type*)x)->m  (a cast to a reference type yields a pointer)
-    s = re.sub(r'\(\(([A-Za-z_]\w*)\)([^()]+)\)\s*\.',
-               lambda mm: ('((%s*)%s)->' % (mm.group(1), mm.group(2)))
-               if resolver.is_pointer(ir.JType(mm.group(1))) else mm.group(0), s)
+    # 6b. cast-result access: ((Type*)EXPR).m -> ((Type*)EXPR)->m  (a pointer cast yields a pointer);
+    #     handles `*`-casts and balanced EXPRs (calls / [index]).
+    s = _deref_cast_results(s, resolver)
     # 6c. chained member access: receiver sub-expression that resolves to a pointer (static
     #     reference field / pointer field of a typed receiver) -> '.' becomes '->'
     s = _resolve_chains(s, scope, resolver, current)
     # 6d. method/ctor RESULT chains: call(...).m -> call(...)->m / (new T(...))->m
     s = _resolve_call_chains(s, scope, resolver, current)
+    # 6e. JObject-operand casts (Object var / Object[] element / raw-map value): lower BEFORE the
+    #     generic cast pass -- (String)obj -> (obj).str(), (String[])obj -> (obj).strArray(),
+    #     (Integer/Character/...)obj -> (obj) (JObject operators/unbox-methods do the rest).
+    s = _rewrite_jobject_casts(s, scope)
     # 7. cast translation: reference type -> pointer cast ((Block)x -> (Block*)x);
     #    primitive whose C++ spelling differs -> the C++ spelling ((byte)x -> (unsigned char)x)
     def _cast(m):
@@ -634,12 +1012,30 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
         if resolver.is_pointer(ir.JType(t)):
             return '(%s*)' % t
         cpp = typemap.JAVA_TO_CPP.get(t)
-        if cpp and cpp != t and t in typemap.PRIMITIVES:
+        # primitive whose spelling differs (byte->unsigned char) OR a value class whose C++
+        # name differs (String->JavaString; (String)NULL -> (JavaString)NULL, which the
+        # const char* ctor turns into ""). Skip containers (no valid value-cast spelling).
+        if cpp and cpp != t and t not in typemap.CONTAINERS:
             return '(%s)' % cpp
         return m.group(0)
     s = _CAST.sub(_cast, s)
+    # 7b. `catch (Type name)` -> `catch (Type* name)` for a reference type: exceptions are thrown
+    #     as `new X(...)` (pointers), so the handler binds a pointer. (Exceptions are off on the
+    #     console; this just makes the dead handler compile and keeps the caught var usable.)
+    def _catch(m):
+        t = m.group(1)
+        return 'catch (%s* %s)' % (t, m.group(2)) if resolver.is_pointer(ir.JType(t)) else m.group(0)
+    s = re.sub(r'\bcatch\s*\(\s*([A-Za-z_]\w*)\s+([A-Za-z_]\w*)\s*\)', _catch, s)
+    # 7c. `new Object()` (bare Object, the Java lock-monitor idiom) -> a default JObject
+    #     (Object is JObject now). Identity is all that's used (locks are stripped anyway).
+    s = re.sub(r'\bnew\s+Object\s*\(\s*\)', 'JObject()', s)
     # 8. Java null literal -> NULL
     s = re.sub(r'\bnull\b', 'NULL', s)
+    # 9pre. new T[]{a, b, c} aggregate -> JArrayInit builder (before the sized-new pass)
+    if '[]' in s and '{' in s:
+        s = _rewrite_array_aggregates(s, resolver)
+    # 9b. multi-dim sized new: new T[a][b] / new T[a][b][c] -> j2x_newarr2/3<elem>(...) (nested JArray)
+    s = _rewrite_multidim_new(s, resolver)
     # 9. new T[n] -> JArray<elem>(n) (length-carrying, bounds-checked, value-initialized)
     def _new_arr(m):
         cpp = resolver.cpp_type(ir.JType(m.group(1), array_dims=1), 'local')   # JArray<elem>
@@ -649,16 +1045,88 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
     # 10. super.method(...) -> Parent::method(...)  (super(...) ctor calls handled in source.py)
     if parent:
         s = re.sub(r'\bsuper\.(\w+)', parent + r'::\1', s)
-    # 11. x instanceof Type -> dynamic_cast<Type*>(x) != NULL  (RTTI / -GR is on)
-    s = _INSTANCEOF.sub(lambda m: '(dynamic_cast<%s*>(%s) != NULL)' % (m.group(2), m.group(1)), s)
-    # 12. Java string concatenation in a return -> ostringstream (C++ can't '+' a literal
-    #     with non-strings; ostringstream::operator<< handles every operand type)
-    rm = re.match(r'^return\s+(.+);\s*$', s)
+    # 11. x instanceof Type -> dynamic_cast<Type*>(x) != NULL  (RTTI / -GR is on). When the
+    #     operand is an Object (void*), RTTI is impossible -- fall back to a non-null check.
+    _BOXED_IS = {'Character': 'isCharacter', 'String': 'isString',
+                 'Integer': 'isInteger', 'Boolean': 'isBoolean'}
+
+    def _instanceof(m):
+        lhs, typ = m.group(1).strip(), m.group(2).strip()
+        is_arr = typ.endswith(']')
+        base_typ = re.sub(r'\s*\[\s*\]$', '', typ).strip()
+        # JObject operand? -- a bare Object var, an Object[] element, or a raw-map value.
+        is_obj = _expr_object_kind(lhs, scope) is not None
+        if not is_obj:                           # also accept a simple Object-typed scope var
+            jt = scope.get(lhs)
+            is_obj = jt is not None and (jt.name == 'Object'
+                                         or resolver.cpp_type(jt, 'local').replace(' ', '') == 'JObject')
+        if is_arr:                               # `obj instanceof String[]` -> JObject StringArray kind
+            if is_obj or base_typ == 'String':
+                return '((%s).isStringArray())' % lhs
+            return '((%s) != NULL)' % lhs
+        if base_typ in _BOXED_IS and is_obj:     # instanceof Character/String/Integer/Boolean on a box
+            return '((%s).%s())' % (lhs, _BOXED_IS[base_typ])
+        if is_obj:                               # Object (JObject) instanceof <Class> -> RTTI kind check
+            return '((%s).is<%s>())' % (lhs, base_typ)
+        if resolver.cpp_type(ir.JType(base_typ), 'local').replace(' ', '').startswith('void*'):
+            return '((%s) != NULL)' % lhs        # can't dynamic_cast a void* -- only null-test
+        return '(dynamic_cast<%s*>(%s) != NULL)' % (base_typ, lhs)
+    s = _INSTANCEOF.sub(_instanceof, s)
+    # 11b. Java '%' on floating-point operands -> fmodf (C++ '%' is integer-only). Fire only when
+    #      one side is a float LITERAL, so we know it's float math (e.g. `counter % 4.0F`).
+    if '%' in s:
+        s = _rewrite_float_mod(s)
+    # 12. Java string concatenation (C++ can't '+' a string literal with an int/float/object).
+    #     Rewrite `"x" + n + obj` -> `(JCat() + "x" + n + obj)`, which streams each operand and
+    #     converts to JavaString/std::string in the surrounding value context.
+    # 12a. inside argument groups: out.println("a" + n), new Exception("a" + n), foo("a"+b)
+    if '"' in s and '+' in s:
+        s = _rewrite_concats(s)
+    # 12b. return <concat>;
+    rm = re.match(r'^(\s*return\s+)(.+)(;\s*)$', s)
     if rm:
-        chain = _maybe_concat(rm.group(1).strip())
-        if chain:
-            s = '{ std::ostringstream _oss; _oss << %s; return _oss.str(); }' % chain
+        w = _to_jcat(rm.group(2))
+        if w:
+            s = rm.group(1) + w + rm.group(3)
+    else:
+        # 12c. assignment / declaration-init RHS: LHS = <concat>;
+        eq = _assign_pos(s)
+        if eq != -1:
+            tm = re.match(r'^(.*?)(;\s*)$', s[eq + 1:])
+            if tm:
+                w = _to_jcat(tm.group(1))
+                if w:
+                    s = s[:eq + 1] + ' ' + w + tm.group(2)
     return s
+
+
+def _assign_pos(s):
+    """Index of the top-level simple-assignment '=' in a statement, or -1. Skips '==',
+    '<=', '>=', '!=', and compound assigns (+=, -=, ...); ignores '=' inside (), [], {},
+    and string/char literals. '<>' is not tracked (would mis-balance on '->')."""
+    depth, i, n = 0, 0, len(s)
+    while i < n:
+        c = s[i]
+        if c == '"' or c == "'":
+            q = c; i += 1
+            while i < n:
+                if s[i] == '\\' and i + 1 < n:
+                    i += 2; continue
+                if s[i] == q:
+                    i += 1; break
+                i += 1
+            continue
+        if c in '([{':
+            depth += 1
+        elif c in ')]}':
+            depth -= 1
+        elif c == '=' and depth == 0:
+            prv = s[i - 1] if i else ''
+            nxt = s[i + 1] if i + 1 < n else ''
+            if nxt != '=' and prv not in '=<>!+-*/%&|^~':
+                return i
+        i += 1
+    return -1
 
 
 def _is_nullable_array(base, scope, resolver):
@@ -687,8 +1155,13 @@ def translate_body(method, cls, resolver, ledger=None):
     scope = build_scope(cls, method)
     ptr_locals = _pointer_locals(method, scope, resolver)   # value locals used as nullable refs
     ptr_params = ownership.nullable_value_params(method, resolver)   # value-struct params used nullably
+    # catch (Type name) of a reference type becomes catch (Type* name) -- exceptions are thrown as
+    # `new X` -- so the handler var is a pointer and its member access must use '->'.
+    _body_text = '\n'.join(t for _ln, t in method.body)
+    ptr_catch = set(m.group(2) for m in re.finditer(r'\bcatch\s*\(\s*([A-Za-z_]\w*)\s+([A-Za-z_]\w*)\s*\)', _body_text)
+                    if resolver.is_pointer(ir.JType(m.group(1))))
     ptr_names = sorted((set(n for n, jt in scope.items() if resolver.is_pointer(jt))
-                        | ptr_locals | ptr_params),
+                        | ptr_locals | ptr_params | ptr_catch),
                        key=len, reverse=True)   # longer names first (avoid prefix overlap)
     static_set = (set(resolver.known) | set(resolver.enums) | {cls.name}
                   | typemap.RUNTIME_HEADERS | typemap.JAVART_STATICS)
@@ -719,6 +1192,11 @@ def translate_body(method, cls, resolver, ledger=None):
     rt = method.return_type
     if rt is not None and rt.name == 'String' and not rt.is_array:
         out = [re.sub(r'\breturn\s+NULL\s*;', 'return std::string();', l) for l in out]
+    # an array return is by value (JArray<T>); `return null` -> an empty JArray (no implicit
+    # NULL->JArray conversion exists), matching the value-container model.
+    if rt is not None and rt.is_array:
+        empty = '%s()' % resolver.cpp_type(rt, 'local')
+        out = [re.sub(r'\breturn\s+NULL\s*;', 'return %s;' % empty, l) for l in out]
 
     before = out
     out = _translate_labels(out)                  # labeled break/continue -> goto (body-level)

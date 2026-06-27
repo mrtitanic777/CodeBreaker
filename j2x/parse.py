@@ -303,8 +303,12 @@ def _iter_members(body, body_offset, src):
             htoks = set(header.split())
             if htoks & {'class', 'interface', 'enum'}:
                 pass                                   # inner type -- skip (deferred)
-            elif not header or htoks <= _MODIFIERS:
-                pass                                   # static/instance init block -- skip (deferred)
+            elif 'static' in htoks and htoks <= _MODIFIERS:
+                yield ('static_init', inner, _line_of(src, body_offset + i + 1))   # static { ... }
+            elif not header:
+                yield ('inst_init', inner, _line_of(src, body_offset + i + 1))     # instance { ... }
+            elif htoks <= _MODIFIERS:
+                pass                                   # other modifier-only block -- skip
             else:
                 yield ('method', header, inner, _line_of(src, body_offset + start),
                        _line_of(src, body_offset + i + 1))
@@ -377,6 +381,10 @@ def parse_source(src, source_path=None):
                 cls.methods.append(meth)
             else:
                 cls.fields.extend(_parse_field_decl(decl, name, line))
+        elif item[0] in ('static_init', 'inst_init'):   # static { } / instance { } block
+            _, inner, bline = item
+            block = _body_lines(src, bline, bline + inner.count('\n'))
+            (cls.static_inits if item[0] == 'static_init' else cls.inst_inits).append(block)
         else:
             _, header, inner, hline, bline = item
             meth = _parse_signature(header, name)

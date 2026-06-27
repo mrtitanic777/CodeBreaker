@@ -60,6 +60,10 @@ class TypeResolver(object):
             return 'value'                           # std::vector / std::map held by value
         if n in self.values:
             return 'value'                           # Vec3D / AxisAlignedBB / ...
+        # Object -> JObject (a boxed VALUE), and boxed primitives (Integer/Character/...) map to
+        # C++ primitives -- all value types, not pointers.
+        if n == 'Object' or n in typemap.BOXED_VALUE_TYPES:
+            return 'value'
         # everything else -- user classes, interfaces, enums, unknown Capitalized -- is a reference
         if (n in self.known or n in self.interfaces or n in self.enums
                 or (n[:1].isupper())):
@@ -102,6 +106,10 @@ class TypeResolver(object):
         # element is stored directly (JArray<int>); a nested array is JArray<JArray<int> >.
         if jtype.is_array:
             elem_jt = jtype.element()
+            # Object[] -> JArray<JObject>: a boxed element that can hold a mixed String/char/pointer
+            # (Java autoboxing). Scalar Object stays void*; only the array element is boxed.
+            if elem_jt.name == 'Object' and not elem_jt.is_array:
+                return 'JArray<JObject >'
             elem = self.cpp_type(elem_jt, 'element')
             if self.ownership(elem_jt) == 'pointer' and not elem.endswith('*'):
                 elem += '*'

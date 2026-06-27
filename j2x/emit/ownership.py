@@ -104,6 +104,10 @@ def returns_pointer(method, resolver):
     rt = method.return_type
     if rt is None or rt.name == 'void':
         return False
+    # arrays are by-value JArray<T> (their own null handling: `return null` -> empty JArray).
+    # Never promote to pointer, or `return theField;` (a value JArray) can't convert.
+    if rt.is_array:
+        return False
     if resolver.is_pointer(rt):
         return True
     # std::string (and other value-stdlib types) is NEVER a pointer: it has dedicated

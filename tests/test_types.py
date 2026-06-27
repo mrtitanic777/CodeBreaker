@@ -89,19 +89,23 @@ class TestCppSpelling(unittest.TestCase):
 
     def test_generic_vector_of_reference(self):
         self.assertEqual(self.r.field_type(T('List', args=[T('ItemStack')])),
-                         'std::vector<ItemStack*>')
+                         'JList<ItemStack*>')
 
     def test_generic_vector_of_value(self):
         self.assertEqual(self.r.field_type(T('List', args=[T('int')])),
-                         'std::vector<int>')
+                         'JList<int>')
 
     def test_raw_container_defaults(self):
-        self.assertEqual(self.r.field_type(T('List')), 'std::vector<void*>')
-        self.assertEqual(self.r.field_type(T('HashMap')), 'std::map<std::string, void*>')
+        self.assertEqual(self.r.field_type(T('List')), 'JList<void*>')
+        # raw Map -> <JObject, JObject>: JObject boxes any key/value type (mixed String/Integer/
+        # Character keys etc.) and has operator< for the key, so put/get/containsKey all bind.
+        self.assertEqual(self.r.field_type(T('HashMap')), 'std::map<JObject, JObject>')
         self.assertEqual(self.r.field_type(T('HashSet')), 'std::set<void*>')
 
-    def test_object_maps_to_voidstar_with_note(self):
-        self.assertEqual(self.r.field_type(T('Object')), 'void*')
+    def test_object_maps_to_jobject_with_note(self):
+        # Object -> JObject: a boxed VALUE (holds null/int/char/String/String[]/typed-pointer),
+        # so Object[] autoboxing + instanceof + reflective decode work. Converts to/from any T*.
+        self.assertEqual(self.r.field_type(T('Object')), 'JObject')
         self.assertIsNotNone(self.r.port_note(T('Object')))
 
 
