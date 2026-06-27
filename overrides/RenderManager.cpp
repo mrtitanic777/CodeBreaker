@@ -192,6 +192,7 @@ RenderManager::RenderManager()
 	this->entityRenderMap["EntityZombie"] = new RenderBiped(new ModelZombie(), 0.5F);
 	this->entityRenderMap["EntitySlime"] = new RenderSlime(new ModelSlime(16), new ModelSlime(0), 0.25F);
 	this->entityRenderMap["EntityPlayer"] = new RenderPlayer();
+	this->entityRenderMap["EntityPlayerSP"] = this->entityRenderMap["EntityPlayer"];   // CONSOLE: the client player is EntityPlayerSP (a leaf class); getSuperclass() is a stub (no walk), so alias its bare name to RenderPlayer
 	this->entityRenderMap["EntityGiantZombie"] = new RenderZombieSimple(new ModelZombie(), 0.5F, 6.0F);
 	this->entityRenderMap["EntityGhast"] = new RenderGhast();
 	this->entityRenderMap["EntityMob"] = new RenderLiving(new ModelBiped(), 0.5F);
@@ -260,8 +261,13 @@ Render* RenderManager::getEntityRenderObject(Entity* var1)
 	 *  Stubbed: var1.getClass() has no runtime equivalent, so a bare `new Class()` is passed and
 	 *  var1 is dropped (void cast). This always resolves to the same (wrong) Render bucket --
 	 *  per-entity render dispatch is effectively broken until Entity exposes its class name. */
-	(void)var1;
-	return this->getEntityClassRenderObject(new Class());
+	// CONSOLE (entity render dispatch fix): pass the entity's REAL runtime class via RTTI so
+	// getEntityClassRenderObject finds its Render in entityRenderMap. Was `new Class()` (empty -> the
+	// lookup ALWAYS returned NULL -> no entity ever rendered AND the first-person hand crashed on
+	// NULL->drawFirstPersonHand). Class::getName() now returns the BARE class name to match the map's
+	// string keys ("EntityPig" etc.), and the client player's leaf class "EntityPlayerSP" is registered.
+	if (var1 == NULL) return NULL;
+	return this->getEntityClassRenderObject(new Class(typeid(*var1)));
 }
 
 void RenderManager::cacheActiveRenderInfo(World* var1, RenderEngine* var2, FontRenderer* var3, EntityPlayer* var4, GameSettings* var5, float var6)

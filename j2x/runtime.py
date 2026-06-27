@@ -1069,7 +1069,19 @@ class Class {
 public:
 	Class() : _ti(0) {}
 	Class(const std::type_info& ti) : _ti(&ti) {}
-	std::string getName() const { return _ti ? std::string(_ti->name()) : std::string(); }
+	std::string getName() const {
+		if (!_ti) return std::string();
+		std::string n(_ti->name());
+		// MSVC type_info::name() returns "class Foo" / "struct Foo"; Java getName() is the BARE class
+		// name, and the class-keyed render registries (RenderManager / TileEntityRenderer) key by bare-
+		// name strings ("EntityPig"). Strip the C++ keyword prefix (+ any namespace) so lookups MATCH.
+		if      (n.compare(0,6,"class ")  == 0) n.erase(0,6);
+		else if (n.compare(0,7,"struct ") == 0) n.erase(0,7);
+		else if (n.compare(0,5,"enum ")   == 0) n.erase(0,5);
+		std::string::size_type cc = n.rfind("::");
+		if (cc != std::string::npos) n.erase(0, cc + 2);
+		return n;
+	}
 	std::string getSimpleName() const { return getName(); }
 	bool equals(const Class& o) const { return *this == o; }
 	bool operator==(const Class& o) const { return _ti == o._ti || (_ti && o._ti && *_ti == *o._ti); }
