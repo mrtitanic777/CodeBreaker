@@ -152,6 +152,11 @@ CanvasIsomPreview::CanvasIsomPreview()
 	, lastMouseX(0)
 	, lastMouseY(0)
 {
+	this->zoom = 2;
+	this->showInfo = true;
+	this->dataFolder = this->getDataFolder();
+	this->running = true;
+
 	this->imageBuffers = JArray<JArray<IsoImageBuffer* > >(64);
 	for(int var1 = 0; var1 < 64; ++var1) {
 	this->imageBuffers[var1] = JArray<IsoImageBuffer* >(64);

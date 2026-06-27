@@ -110,6 +110,8 @@ TexturePackCustom::TexturePackCustom(File* var1)
 	, texturePackThumbnail(NULL)
 	, texturePackFile(NULL)
 {
+	this->texturePackName = -1;
+
 	this->texturePackFileName = var1->getName();
 	this->texturePackFile = var1;
 }

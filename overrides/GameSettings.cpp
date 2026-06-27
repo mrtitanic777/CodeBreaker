@@ -249,6 +249,24 @@ GameSettings::GameSettings()
 	, difficulty(0)
 	, thirdPersonView(0)
 {
+	this->musicVolume = 1.0F;
+	this->soundVolume = 1.0F;
+	this->mouseSensitivity = 0.5F;
+	this->viewBobbing = true;
+	this->fancyGraphics = true;
+	this->keyBindForward = new KeyBinding("Forward", 17);
+	this->keyBindLeft = new KeyBinding("Left", 30);
+	this->keyBindBack = new KeyBinding("Back", 31);
+	this->keyBindRight = new KeyBinding("Right", 32);
+	this->keyBindJump = new KeyBinding("Jump", 57);
+	this->keyBindInventory = new KeyBinding("Inventory", 23);
+	this->keyBindDrop = new KeyBinding("Drop", 16);
+	this->keyBindChat = new KeyBinding("Chat", 20);
+	this->keyBindToggleFog = new KeyBinding("Toggle fog", 33);
+	this->keyBindSneak = new KeyBinding("Sneak", 42);
+	this->numberOfOptions = 10;
+	this->difficulty = 2;
+
 }
 
 GameSettings::~GameSettings()

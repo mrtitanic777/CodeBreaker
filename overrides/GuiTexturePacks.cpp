@@ -113,6 +113,11 @@ GuiTexturePacks::GuiTexturePacks(GuiScreen* var1)
 	, mousePrevY(0)
 	, refreshTimer(0)
 {
+	this->listTop = 32;
+	this->listBottom = this->height - 55 + 4;
+	this->listRight = this->width;
+	this->mousePrevY = -2;
+
 	this->refreshTimer = -1;
 
 	this->parentScreen = var1;

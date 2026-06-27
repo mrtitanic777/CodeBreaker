@@ -188,6 +188,12 @@ RenderGlobal::RenderGlobal(Minecraft* var1, RenderEngine* var2)
 	, damagePartialTime(0)
 	, frustumCheckOffset(0)
 {
+	this->renderDistance = -1;
+	this->renderEntitiesStartupCounter = 2;
+	this->prevSortX = -9999.0;
+	this->prevSortY = -9999.0;
+	this->prevSortZ = -9999.0;
+
 	this->occlusionResultBuffer = GLAllocation::createDirectIntBuffer(64);
 	this->field_1454_e = GLAllocation::generateDisplayLists(1);
 

@@ -81,15 +81,32 @@ def member_init_trivial(ctor_head):
     return out
 
 
+def _ctor_body(s, after_brace):
+    """Substring of the ctor body: from just after its opening '{' (after_brace) to the matching '}'."""
+    depth, i = 1, after_brace
+    while i < len(s) and depth:
+        if s[i] == '{':
+            depth += 1
+        elif s[i] == '}':
+            depth -= 1
+        i += 1
+    return s[after_brace:i - 1]
+
+
 def _ctor_plan(s, cls, inits):
     """Return [(body_index, [(field, stmt), ...]), ...] -- per real ctor, the non-trivial Java field
-    initializers it dropped (listed in member-init, not assigned in the body anywhere)."""
-    assigned = set(re.findall(r'this->(\w+)\s*=', s))
+    initializers it dropped. Java runs field initializers at the top of every (non-delegating) ctor
+    REGARDLESS of whether some other method also assigns the field. So we scope the "already assigned"
+    / "already present" checks to THIS CTOR's BODY only -- not the whole file. (The earlier whole-file
+    check wrongly skipped Minecraft.sndManager, which is NULL at boot but assigned later in forceReload,
+    -> the loadSoundSettings boot crash.)"""
     plans = []
     for m in re.finditer(r'\b' + re.escape(cls) + r'::' + re.escape(cls) + r'\s*\([^;{]*?\)\s*((?::[^{]*?)?)\{', s):
         listed = member_init_trivial(m.group(0))
+        body = _ctor_body(s, m.end())
+        body_assigned = set(re.findall(r'this->(\w+)\s*=', body))
         want = [(f, st) for f, st in inits.items()
-                if f in listed and f not in assigned and not _trivial(st) and st not in s]
+                if f in listed and f not in body_assigned and not _trivial(st) and st not in body]
         if want:
             plans.append((m.end(), want))
     return plans
