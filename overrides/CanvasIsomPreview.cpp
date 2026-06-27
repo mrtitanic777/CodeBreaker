@@ -364,7 +364,7 @@ void CanvasIsomPreview::drawWorld(Graphics2D* var1)
 	for(var10 = var8; var10 <= var9; ++var10) {
 	for(int var11 = var6; var11 <= var7; ++var11) {
 	int var12 = var11 - (var10 >> 1);
-	int var13 = var11 + (var10 + 1 >> 1);
+	int var13 = var11 + ((var10 + 1) >> 1);
 	IsoImageBuffer* var14 = this->getImageBuffer(var12, var13);
 	var14->counter = this->frameCount;
 	if(!var14->isDirty) {

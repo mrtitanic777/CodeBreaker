@@ -163,7 +163,7 @@ int RenderEngine::getTexture(const JavaString& var1)
 	}
 	this->textureMap[var1] = Integer::valueOf(var5);
 	return var5;
-	} catch (IOException var4) {
+	} catch (IOException) {
 	throw new RuntimeException("!!");
 	}
 	}
@@ -230,9 +230,9 @@ void RenderEngine::setupTexture(BufferedImage* var1, int var2)
 	int var13;
 	int var14;
 	for(var7 = 0; var7 < var5.length; ++var7) {
-	var8 = var5[var7] >> 24 & 255;
-	var9 = var5[var7] >> 16 & 255;
-	var10 = var5[var7] >> 8 & 255;
+	var8 = (var5[var7] >> 24) & 255;
+	var9 = (var5[var7] >> 16) & 255;
+	var10 = (var5[var7] >> 8) & 255;
 	var11 = var5[var7] & 255;
 	if(this->options != NULL && this->options->anaglyph) {
 	var12 = (var9 * 30 + var10 * 59 + var11 * 11) / 100;
@@ -253,7 +253,7 @@ void RenderEngine::setupTexture(BufferedImage* var1, int var2)
 	GL11::glTexImage2D(GL11::GL_TEXTURE_2D, 0, GL11::GL_RGBA, var3, var4, 0, GL11::GL_RGBA, GL11::GL_UNSIGNED_BYTE, (ByteBuffer*)this->imageData);
 	if(s_useMipmaps) {
 	for(var7 = 1; var7 <= 4; ++var7) {
-	var8 = var3 >> var7 - 1;
+	var8 = var3 >> (var7 - 1);
 	var9 = var3 >> var7;
 	var10 = var4 >> var7;
 	for(var11 = 0; var11 < var9; ++var11) {
@@ -352,7 +352,7 @@ void RenderEngine::updateDynamicTextures()
 	GL11::glTexSubImage2D(GL11::GL_TEXTURE_2D, 0, var2->iconIndex % 16 * 16 + var3 * 16, var2->iconIndex / 16 * 16 + var4 * 16, 16, 16, GL11::GL_RGBA, GL11::GL_UNSIGNED_BYTE, (ByteBuffer*)this->imageData);
 	if(s_useMipmaps) {
 	for(var5 = 1; var5 <= 4; ++var5) {
-	var6 = 16 >> var5 - 1;
+	var6 = 16 >> (var5 - 1);
 	var7 = 16 >> var5;
 	for(var8 = 0; var8 < var7; ++var8) {
 	for(var9 = 0; var9 < var7; ++var9) {
@@ -380,7 +380,7 @@ void RenderEngine::updateDynamicTextures()
 	GL11::glTexSubImage2D(GL11::GL_TEXTURE_2D, 0, 0, 0, 16, 16, GL11::GL_RGBA, GL11::GL_UNSIGNED_BYTE, (ByteBuffer*)this->imageData);
 	if(s_useMipmaps) {
 	for(var3 = 1; var3 <= 4; ++var3) {
-	var4 = 16 >> var3 - 1;
+	var4 = 16 >> (var3 - 1);
 	var5 = 16 >> var3;
 	for(var6 = 0; var6 < var5; ++var6) {
 	for(var7 = 0; var7 < var5; ++var7) {
@@ -401,31 +401,31 @@ void RenderEngine::updateDynamicTextures()
 
 int RenderEngine::averageColor(int var1, int var2)
 {
-	int var3 = (var1 & -16777216) >> 24 & 255;
-	int var4 = (var2 & -16777216) >> 24 & 255;
-	return (var3 + var4 >> 1 << 24) + ((var1 & 16711422) + (var2 & 16711422) >> 1);
+	int var3 = ((var1 & -16777216) >> 24) & 255;
+	int var4 = ((var2 & -16777216) >> 24) & 255;
+	return ((var3 + var4) >> 1 << 24) + (((var1 & 16711422) + (var2 & 16711422)) >> 1);
 }
 
 int RenderEngine::weightedAverageColor(int var1, int var2)
 {
-	int var3 = (var1 & -16777216) >> 24 & 255;
-	int var4 = (var2 & -16777216) >> 24 & 255;
+	int var3 = ((var1 & -16777216) >> 24) & 255;
+	int var4 = ((var2 & -16777216) >> 24) & 255;
 	short var5 = 255;
 	if(var3 + var4 == 0) {
 	var3 = 1;
 	var4 = 1;
 	var5 = 0;
 	}
-	int var6 = (var1 >> 16 & 255) * var3;
-	int var7 = (var1 >> 8 & 255) * var3;
+	int var6 = ((var1 >> 16) & 255) * var3;
+	int var7 = ((var1 >> 8) & 255) * var3;
 	int var8 = (var1 & 255) * var3;
-	int var9 = (var2 >> 16 & 255) * var4;
-	int var10 = (var2 >> 8 & 255) * var4;
+	int var9 = ((var2 >> 16) & 255) * var4;
+	int var10 = ((var2 >> 8) & 255) * var4;
 	int var11 = (var2 & 255) * var4;
 	int var12 = (var6 + var9) / (var3 + var4);
 	int var13 = (var7 + var10) / (var3 + var4);
 	int var14 = (var8 + var11) / (var3 + var4);
-	return var5 << 24 | var12 << 16 | var13 << 8 | var14;
+	return (var5 << 24) | (var12 << 16) | (var13 << 8) | var14;
 }
 
 void RenderEngine::refreshTextures()

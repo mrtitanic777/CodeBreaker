@@ -105,7 +105,7 @@ void NBTTagCompound::setBoolean(const JavaString& var1, bool var2)
 
 bool NBTTagCompound::hasKey(const JavaString& var1)
 {
-	return this->tagMap.count(var1);
+	return this->tagMap.count(var1) != 0;
 }
 
 unsigned char NBTTagCompound::getByte(const JavaString& var1)

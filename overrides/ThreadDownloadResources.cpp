@@ -219,7 +219,7 @@ void ThreadDownloadResources::loadResource(File* var1, const JavaString& var2)
 	} else {
 	try {
 	this->mc->installResource(var2 + var3[var4]->getName(), var3[var4]);
-	} catch (Exception var6) {
+	} catch (Exception) {
 	System::out.println((JCat() + "Failed to add " + var2 + var3[var4]->getName()));
 	}
 	}

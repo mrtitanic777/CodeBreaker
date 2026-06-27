@@ -318,7 +318,7 @@ void RenderGlobal::loadRenderers()
 	if (this->worldRenderers[var1] != NULL) { this->worldRenderers[var1]->setDontDraw(); }
 	}
 	}
-	var1 = 64 << 3 - this->renderDistance;
+	var1 = 64 << (3 - this->renderDistance);
 	if(var1 > 400) {
 	var1 = 400;
 	}
@@ -1121,7 +1121,7 @@ void RenderGlobal::markBlockRangeNeedsUpdate(int var1, int var2, int var3, int v
 void RenderGlobal::clipRenderersByFrustum(ICamera* var1, float var2)
 {
 	for(int var3 = 0; var3 < this->worldRenderers.length; ++var3) {
-	if(!this->worldRenderers[var3]->skipAllRenderPasses() && (!this->worldRenderers[var3]->isVisibleFromCamera || (var3 + this->frustumCheckOffset & 15) == 0)) {
+	if(!this->worldRenderers[var3]->skipAllRenderPasses() && (!this->worldRenderers[var3]->isVisibleFromCamera || ((var3 + this->frustumCheckOffset) & 15) == 0)) {
 	if (this->worldRenderers[var3] != NULL) { this->worldRenderers[var3]->updateInFrustum(var1); }
 	}
 	}

@@ -13,22 +13,22 @@
  *  static {
  *      try {
  *          osMappings[EnumOS2.a.ordinal()] = 1;
- *      } catch (NoSuchFieldError var4) {
+ *      } catch (NoSuchFieldError) {
  *      }
  *
  *      try {
  *          osMappings[EnumOS2.b.ordinal()] = 2;
- *      } catch (NoSuchFieldError var3) {
+ *      } catch (NoSuchFieldError) {
  *      }
  *
  *      try {
  *          osMappings[EnumOS2.c.ordinal()] = 3;
- *      } catch (NoSuchFieldError var2) {
+ *      } catch (NoSuchFieldError) {
  *      }
  *
  *      try {
  *          osMappings[EnumOS2.d.ordinal()] = 4;
- *      } catch (NoSuchFieldError var1) {
+ *      } catch (NoSuchFieldError) {
  *      }
  *  }
  *  ---- end original Java ----

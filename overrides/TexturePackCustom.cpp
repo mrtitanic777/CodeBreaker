@@ -144,13 +144,13 @@ void TexturePackCustom::deleteTexturePackFile(Minecraft* var1)
 	this->secondDescriptionLine = this->trimDescription(var4->readLine());
 	var4->close();
 	var3->close();
-	} catch (Exception var20) {
+	} catch (Exception) {
 	}
 	try {
 	var3 = var2->getInputStream(var2->getEntry("pack.png"));
 	this->texturePackThumbnail = ImageIO::read(var3);
 	var3->close();
-	} catch (Exception var19) {
+	} catch (Exception) {
 	}
 	var2->close();
 	} catch (Exception var21) {
@@ -159,11 +159,11 @@ void TexturePackCustom::deleteTexturePackFile(Minecraft* var1)
 	// finally: runs on all paths (no early return/throw escapes the try above).
 	try {
 	var3->close();
-	} catch (Exception var18) {
+	} catch (Exception) {
 	}
 	try {
 	var2->close();
-	} catch (Exception var17) {
+	} catch (Exception) {
 	}
 }
 
@@ -191,7 +191,7 @@ void TexturePackCustom::deleteTexturePack()
 {
 	try {
 	this->texturePackZipFile = new ZipFile(this->texturePackFile);
-	} catch (Exception var2) {
+	} catch (Exception) {
 	}
 }
 
@@ -199,7 +199,7 @@ void TexturePackCustom::closeTexturePackFile()
 {
 	try {
 	this->texturePackZipFile->close();
-	} catch (Exception var2) {
+	} catch (Exception) {
 	}
 	this->texturePackZipFile = NULL;
 }
@@ -211,7 +211,7 @@ InputStream* TexturePackCustom::getResourceAsStream(const JavaString& var1)
 	if(var2 != NULL) {
 	return this->texturePackZipFile->getInputStream(var2);
 	}
-	} catch (Exception var3) {
+	} catch (Exception) {
 	}
 	/* ---- ORIGINAL JAVA (stubbed below) ----
 	 *  return TexturePackBase.class.getResourceAsStream(var1);

@@ -200,10 +200,8 @@ int SpawnerAnimals::performSpawning(World* var0)
 	}
 	label110_cont:;
 	}
-	label110_brk:;
 	}
 	label113_cont:;
 	}
-	label113_brk:;
 	return var1;
 }

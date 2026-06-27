@@ -26,8 +26,8 @@ static ByteBuffer* _bb_allocateDirect(int n) { return ByteBuffer::allocateDirect
 namespace _ByteOrder { inline int nativeOrder() { return 0; } }
 // box/unbox: the Java source kept List<Integer>; here the list element type is void*, so each
 // int is boxed into the pointer and read back out (no Integer object type exists in the runtime).
-static inline void* _boxInt(int v) { return (void*)(long long)v; }
-static inline int _unboxInt(void* p) { return (int)(long long)p; }
+static inline void* _boxInt(int v) { return (void*)(size_t)(unsigned)v; }   // via size_t: no sign-extend (C4826)
+static inline int _unboxInt(void* p) { return (int)(size_t)p; }
 
 JList<void*> GLAllocation::s_displayLists;
 JList<void*> GLAllocation::s_textureNames;

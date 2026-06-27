@@ -137,7 +137,7 @@ void NetworkManager::sendPacket()
 	if(var1) {
 	Thread::sleep(10LL);
 	}
-	} catch (InterruptedException* var8) {
+	} catch (InterruptedException*) {
 	} catch (Exception* var9) {
 	if(!this->isTerminating) {
 	this->onNetworkError(var9);
@@ -177,17 +177,17 @@ void NetworkManager::networkShutdown(const JavaString& var1)
 	try {
 	this->socketInputStream->close();
 	this->socketInputStream = NULL;
-	} catch (Throwable* var5) {
+	} catch (Throwable*) {
 	}
 	try {
 	this->socketOutputStream->close();
 	this->socketOutputStream = NULL;
-	} catch (Throwable* var4) {
+	} catch (Throwable*) {
 	}
 	try {
 	this->field_12258_e->close();
 	this->field_12258_e = NULL;
-	} catch (Throwable* var3) {
+	} catch (Throwable*) {
 	}
 	}
 }

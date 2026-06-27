@@ -62,7 +62,7 @@ BufferedImage* ImageBufferDownload::parseUserSkin(BufferedImage* var1)
 	for(var5 = 32; var5 < 64; ++var5) {
 	for(var6 = 0; var6 < 16; ++var6) {
 	var7 = this->imageData[var5 + var6 * 64];
-	if((var7 >> 24 & 255) < 128) {
+	if(((var7 >> 24) & 255) < 128) {
 	var4 = true;
 	}
 	}
@@ -71,7 +71,7 @@ BufferedImage* ImageBufferDownload::parseUserSkin(BufferedImage* var1)
 	for(var5 = 32; var5 < 64; ++var5) {
 	for(var6 = 0; var6 < 16; ++var6) {
 	var7 = this->imageData[var5 + var6 * 64];
-	if((var7 >> 24 & 255) < 128) {
+	if(((var7 >> 24) & 255) < 128) {
 	var4 = true;
 	}
 	}
@@ -107,7 +107,7 @@ bool ImageBufferDownload::hasTransparency(int var1, int var2, int var3, int var4
 	for(int var5 = var1; var5 < var3; ++var5) {
 	for(int var6 = var2; var6 < var4; ++var6) {
 	int var7 = this->imageData[var5 + var6 * this->imageWidth];
-	if((var7 >> 24 & 255) < 128) {
+	if(((var7 >> 24) & 255) < 128) {
 	return true;
 	}
 	}

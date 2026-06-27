@@ -199,7 +199,7 @@ void Chunk::generateBlocklightMap()
 	unsigned char var1 = 32;
 	for(int var2 = 0; var2 < 16; ++var2) {
 	for(int var3 = 0; var3 < 16; ++var3) {
-	int var4 = var2 << 11 | var3 << 7;
+	int var4 = (var2 << 11) | (var3 << 7);
 	int var5;
 	int var6;
 	for(var5 = 0; var5 < 128; ++var5) {
@@ -638,7 +638,7 @@ int Chunk::setChunkData(JArray<unsigned char > var1, int var2, int var3, int var
 	int var12;
 	for(var9 = var2; var9 < var5; ++var9) {
 	for(var10 = var4; var10 < var7; ++var10) {
-	var11 = var9 << 11 | var10 << 7 | var3;
+	var11 = (var9 << 11) | (var10 << 7) | var3;
 	var12 = var6 - var3;
 	System::arraycopy(var1, var8, this->blocks, var11, var12);
 	var8 += var12;
@@ -647,7 +647,7 @@ int Chunk::setChunkData(JArray<unsigned char > var1, int var2, int var3, int var
 	this->generateHeightMap();
 	for(var9 = var2; var9 < var5; ++var9) {
 	for(var10 = var4; var10 < var7; ++var10) {
-	var11 = (var9 << 11 | var10 << 7 | var3) >> 1;
+	var11 = ((var9 << 11) | (var10 << 7) | var3) >> 1;
 	var12 = (var6 - var3) / 2;
 	System::arraycopy(var1, var8, this->data->data, var11, var12);
 	var8 += var12;
@@ -655,7 +655,7 @@ int Chunk::setChunkData(JArray<unsigned char > var1, int var2, int var3, int var
 	}
 	for(var9 = var2; var9 < var5; ++var9) {
 	for(var10 = var4; var10 < var7; ++var10) {
-	var11 = (var9 << 11 | var10 << 7 | var3) >> 1;
+	var11 = ((var9 << 11) | (var10 << 7) | var3) >> 1;
 	var12 = (var6 - var3) / 2;
 	System::arraycopy(var1, var8, this->blocklightMap->data, var11, var12);
 	var8 += var12;
@@ -663,7 +663,7 @@ int Chunk::setChunkData(JArray<unsigned char > var1, int var2, int var3, int var
 	}
 	for(var9 = var2; var9 < var5; ++var9) {
 	for(var10 = var4; var10 < var7; ++var10) {
-	var11 = (var9 << 11 | var10 << 7 | var3) >> 1;
+	var11 = ((var9 << 11) | (var10 << 7) | var3) >> 1;
 	var12 = (var6 - var3) / 2;
 	System::arraycopy(var1, var8, this->skylightMap->data, var11, var12);
 	var8 += var12;

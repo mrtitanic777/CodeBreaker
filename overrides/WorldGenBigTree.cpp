@@ -166,7 +166,6 @@ void WorldGenBigTree::placeLeafCrossSection(int var1, int var2, int var3, float 
 	}
 	label32_cont:;
 	}
-	label32_brk:;
 }
 
 float WorldGenBigTree::leafShapeRadius(int var1)

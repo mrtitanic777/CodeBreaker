@@ -388,8 +388,8 @@ void NetClientHandler::handleMultiBlockChange(Packet52MultiBlockChange* var1)
 	short var6 = var1->coordinateArray[var5];
 	int var7 = var1->typeArray[var5] & 255;
 	unsigned char var8 = var1->metadataArray[var5];
-	int var9 = var6 >> 12 & 15;
-	int var10 = var6 >> 8 & 15;
+	int var9 = (var6 >> 12) & 15;
+	int var10 = (var6 >> 8) & 15;
 	int var11 = var6 & 255;
 	var2->setBlockIDWithMetadata(var9, var11, var10, var7, var8);
 	this->worldClient->invalidateBlockReceiveRegion(var9 + var3, var11, var10 + var4, var9 + var3, var11, var10 + var4);
@@ -569,7 +569,7 @@ void NetClientHandler::handleComplexEntity(Packet59ComplexEntity* var1)
 	if(var2 != NULL) {
 	try {
 	var2->readFromNBT(var1->entityNBT);
-	} catch (Exception var4) {
+	} catch (Exception) {
 	}
 	this->worldClient->markBlockRangeNeedsUpdate(var1->xPosition, var1->yPosition, var1->zPosition, var1->xPosition, var1->yPosition, var1->zPosition);
 	}

@@ -233,7 +233,7 @@ void Tessellator::setColorRGBA(int var1, int var2, int var3, int var4)
 	var4 = 0;
 	}
 	this->hasColor = true;
-	this->color = var4 << 24 | var3 << 16 | var2 << 8 | var1;
+	this->color = (var4 << 24) | (var3 << 16) | (var2 << 8) | var1;
 	}
 }
 
@@ -286,16 +286,16 @@ void Tessellator::addVertex(double var1, double var3, double var5)
 
 void Tessellator::setColorOpaque_I(int var1)
 {
-	int var2 = var1 >> 16 & 255;
-	int var3 = var1 >> 8 & 255;
+	int var2 = (var1 >> 16) & 255;
+	int var3 = (var1 >> 8) & 255;
 	int var4 = var1 & 255;
 	this->setColorOpaque(var2, var3, var4);
 }
 
 void Tessellator::setColorRGBA_I(int var1, int var2)
 {
-	int var3 = var1 >> 16 & 255;
-	int var4 = var1 >> 8 & 255;
+	int var3 = (var1 >> 16) & 255;
+	int var4 = (var1 >> 8) & 255;
 	int var5 = var1 & 255;
 	this->setColorRGBA(var3, var4, var5, var2);
 }
@@ -314,7 +314,7 @@ void Tessellator::setNormal(float var1, float var2, float var3)
 	unsigned char var4 = (unsigned char)((int)(var1 * 128.0F));
 	unsigned char var5 = (unsigned char)((int)(var2 * 127.0F));
 	unsigned char var6 = (unsigned char)((int)(var3 * 127.0F));
-	this->normal = var4 | var5 << 8 | var6 << 16;
+	this->normal = var4 | (var5 << 8) | (var6 << 16);
 }
 
 void Tessellator::setTranslationD(double var1, double var3, double var5)

@@ -206,7 +206,7 @@ void MinecraftApplet::shutdown()
 	 *  // timeout and calls plain join() (no bounded wait as the original had).
 	 *  ---- end original Java ---- */
 	_threadJoin(this->mcThread, 10000LL);
-	} catch (InterruptedException var4) {
+	} catch (InterruptedException) {
 	try {
 	this->mc->shutdownMinecraftApplet();
 	} catch (Exception var3) {
@@ -225,6 +225,6 @@ void MinecraftApplet::clearReferences()
 	try {
 	this->removeAll();
 	this->validate();
-	} catch (Exception var2) {
+	} catch (Exception) {
 	}
 }

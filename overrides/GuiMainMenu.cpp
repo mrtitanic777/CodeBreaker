@@ -165,7 +165,7 @@ GuiMainMenu::GuiMainMenu()
 	var1.push_back(var3);
 	}
 	}
-	} catch (Exception var4) {
+	} catch (Exception) {
 	}
 }
 

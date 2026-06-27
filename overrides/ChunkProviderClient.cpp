@@ -71,7 +71,7 @@ ChunkProviderClient::~ChunkProviderClient()
 bool ChunkProviderClient::chunkExists(int var1, int var2)
 {
 	long long var3 = _chunkKey(var1, var2);
-	return this->chunkMapping.count(var3);
+	return this->chunkMapping.count(var3) != 0;
 }
 
 void ChunkProviderClient::unloadChunk(int var1, int var2)

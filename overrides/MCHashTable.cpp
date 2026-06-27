@@ -20,7 +20,7 @@ int MCHashTable::computeHash(int var0)
 
 int MCHashTable::getSlotIndex(int var0, int var1)
 {
-	return var0 & var1 - 1;
+	return var0 & (var1 - 1);
 }
 
 void* MCHashTable::lookup(int var1)

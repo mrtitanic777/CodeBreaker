@@ -88,7 +88,7 @@ JavaString ScreenShotHelper::saveScreenshot(File* var0, int var1, int var2)
 	int var10 = s_pixelBytes[var9 * 3 + 0] & 255;
 	int var11 = s_pixelBytes[var9 * 3 + 1] & 255;
 	int var12 = s_pixelBytes[var9 * 3 + 2] & 255;
-	int var13 = -16777216 | var10 << 16 | var11 << 8 | var12;
+	int var13 = -16777216 | (var10 << 16) | (var11 << 8) | var12;
 	s_pixelValues[var7 + var8 * var1] = var13;
 	}
 	}

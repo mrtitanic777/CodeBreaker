@@ -2058,8 +2058,8 @@ void World::updateBlocksAroundPlayers()
 	this->updateLCG = this->updateLCG * 3 + this->updateLCGConstant;
 	var6 = this->updateLCG >> 2;
 	var7 = var6 & 15;
-	var8 = var6 >> 8 & 15;
-	var9 = var6 >> 16 & 127;
+	var8 = (var6 >> 8) & 15;
+	var9 = (var6 >> 16) & 127;
 	var10 = var14->getBlockID(var7, var9, var8);
 	var7 += var3;
 	var8 += var4;
@@ -2075,8 +2075,8 @@ void World::updateBlocksAroundPlayers()
 	this->updateLCG = this->updateLCG * 3 + this->updateLCGConstant;
 	var7 = this->updateLCG >> 2;
 	var8 = var7 & 15;
-	var9 = var7 >> 8 & 15;
-	var10 = var7 >> 16 & 127;
+	var9 = (var7 >> 8) & 15;
+	var10 = (var7 >> 16) & 127;
 	unsigned char var15 = var14->blocks[var8 << 11 | var9 << 7 | var10];
 	if(Block::s_tickOnLoad[var15]) {
 	if (Block::s_blocksList[var15] != NULL) { Block::s_blocksList[var15]->updateTick(this, var8 + var3, var10, var9 + var4, this->rand); }
@@ -2302,8 +2302,8 @@ void World::setChunkData(int var1, int var2, int var3, int var4, int var5, int v
 {
 	int var8 = var1 >> 4;
 	int var9 = var3 >> 4;
-	int var10 = var1 + var4 - 1 >> 4;
-	int var11 = var3 + var6 - 1 >> 4;
+	int var10 = (var1 + var4 - 1) >> 4;
+	int var11 = (var3 + var6 - 1) >> 4;
 	int var12 = 0;
 	int var13 = var2;
 	int var14 = var2 + var5;
@@ -2356,7 +2356,7 @@ void World::checkSessionLock()
 	throw;
 	}
 	var2->close();
-	} catch (IOException var7) {
+	} catch (IOException) {
 	throw new MinecraftException("Failed to check session lock, aborting");
 	}
 }

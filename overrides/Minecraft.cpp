@@ -266,7 +266,7 @@ void Minecraft::startGame()
 	var6->printStackTrace();
 	try {
 	Thread::sleep(1000LL);
-	} catch (InterruptedException* var5) {
+	} catch (InterruptedException*) {
 	}
 	Display::create();
 	}
@@ -315,7 +315,7 @@ void Minecraft::startGame()
 	try {
 	this->downloadResourcesThread = new ThreadDownloadResources(this->mcDataDir, this);
 	this->downloadResourcesThread->start();
-	} catch (Exception* var3) {
+	} catch (Exception*) {
 	}
 	this->checkGLError("Post startup");
 	this->ingameGUI = new GuiIngame(this);
@@ -469,7 +469,7 @@ void Minecraft::shutdownMinecraftApplet()
 	if(this->downloadResourcesThread != NULL) {
 	this->downloadResourcesThread->closeMinecraft();
 	}
-	} catch (Exception* var8) {
+	} catch (Exception*) {
 	}
 	// PORT: try/finally -> exceptions are off on the console, so run the try body then the
 	// finally body unconditionally (no early exits in this body).
@@ -478,7 +478,7 @@ void Minecraft::shutdownMinecraftApplet()
 	this->setWorld((World*)NULL);
 	try {
 	GLAllocation::deleteTexturesAndDisplayLists();
-	} catch (Exception* var6) {
+	} catch (Exception*) {
 	}
 	this->sndManager->closeMinecraft();
 	Mouse::destroy();
@@ -522,7 +522,7 @@ void Minecraft::run()
 	++this->ticksRan;
 	try {
 	this->runTick();
-	} catch (MinecraftException* var14) {
+	} catch (MinecraftException*) {
 	this->theWorld = NULL;
 	this->setWorld((World*)NULL);
 	this->displayGuiScreen(new GuiConflictWarning());
@@ -586,7 +586,7 @@ void Minecraft::run()
 	var1 += 1000LL;
 	}
 	}
-	} catch (MinecraftError* var16) {
+	} catch (MinecraftError*) {
 	} catch (Throwable* var17) {
 	this->theWorld = NULL;
 	var17->printStackTrace();
@@ -657,7 +657,7 @@ void Minecraft::displayDebugInfo(long long var1)
 	var7->draw();
 	var7->startDrawing(1);
 	for(int var12 = 0; var12 < s_debugFrameTimes.length; ++var12) {
-	int var13 = (var12 - s_debugTimingIndex & s_debugFrameTimes.length - 1) * 255 / s_debugFrameTimes.length;
+	int var13 = ((var12 - s_debugTimingIndex) & (s_debugFrameTimes.length - 1)) * 255 / s_debugFrameTimes.length;
 	int var14 = var13 * var13 / 255;
 	var14 = var14 * var14 / 255;
 	int var15 = var14 * var14 / 255;
@@ -988,7 +988,6 @@ void Minecraft::runTick()
 	}
 	}
 	}
-	label238_cont:;
 	}
 	label238_brk:;
 	}

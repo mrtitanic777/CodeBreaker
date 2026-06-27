@@ -289,7 +289,7 @@ void GameSettings::setOptionValue(int var1, int var2)
 	this->invertMouse = !this->invertMouse;
 	}
 	if(var1 == 4) {
-	this->renderDistance = this->renderDistance + var2 & 3;
+	this->renderDistance = (this->renderDistance + var2) & 3;
 	}
 	if(var1 == 5) {
 	this->viewBobbing = !this->viewBobbing;
@@ -302,7 +302,7 @@ void GameSettings::setOptionValue(int var1, int var2)
 	this->limitFramerate = !this->limitFramerate;
 	}
 	if(var1 == 8) {
-	this->difficulty = this->difficulty + var2 & 3;
+	this->difficulty = (this->difficulty + var2) & 3;
 	}
 	if(var1 == 9) {
 	this->fancyGraphics = !this->fancyGraphics;
