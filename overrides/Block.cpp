@@ -79,6 +79,7 @@ namespace { inline JavaString _blkStr(const std::string& s) { return JavaString(
 #include "IllegalArgumentException.h"
 #include "InventoryPlayer.h"
 #include "Item.h"
+#include "ItemBlock.h"   // CONSOLE: Block's static{} block creates an ItemBlock per registered block
 #include "ItemStack.h"
 #include "Material.h"
 #include "MobSpawnerBase.h"
@@ -762,4 +763,13 @@ void Block::initStatics()
 	Block::s_lightStone = (new BlockLightStone(89, 105, Material::s_glass))->setHardness(0.3F)->setStepSound(s_soundGlassFootstep)->setLightValue(1.0F);
 	Block::s_portal = (BlockPortal*)((BlockPortal*)(new BlockPortal(90, 14))->setHardness(-1.0F)->setStepSound(s_soundGlassFootstep)->setLightValue(12.0F / 16.0F));
 	Block::s_pumpkinLantern = (new BlockPumpkin(91, 102, true))->setHardness(1.0F)->setStepSound(s_soundWoodFootstep)->setLightValue(1.0F);
+	// CONSOLE (stale-override fix): Java `static { for(i 0..256) if(blocksList[i]) itemsList[i]=new ItemBlock(i-256); }`
+	// was dropped by this handwritten override -> every block had NO item (Item::s_itemsList[blockId] NULL):
+	// empty hotbar/inventory for blocks + null ItemBlock derefs. The converter emits this correctly
+	// (render_source); restore it AFTER all blocks are registered (needs Item::initStatics already run).
+	for(int var0 = 0; var0 < 256; ++var0) {
+	if(s_blocksList[var0] != NULL) {
+	Item::s_itemsList[var0] = new ItemBlock(var0 - 256);
+	}
+	}
 }

@@ -54,10 +54,32 @@ def main():
             miss.append((f.name, init[:60]))
         if miss:
             total += len(miss)
-            print('=== %s.cpp ===' % cls.name)
+            print('=== %s.cpp  (dropped array initializers) ===' % cls.name)
             for n, i in miss:
                 print('   %-24s = %s' % (n, i))
-    print('\nTOTAL dropped allocation-initializers across overrides:', total)
+
+    # --- check 2: dropped Java static{} BLOCK bodies (stale overrides) ---
+    # An override that predates a converter feature can omit a `static { ... }` block the converter
+    # now emits into initStatics(). MobSpawnerBase's `static { generateBiomeLookup(); }` was dropped ->
+    # all-NULL biome table -> IP 0x0 at first render. Flag any override whose initStatics() is missing a
+    # method called by the class's Java static{} block.
+    for fn in sorted(os.listdir(OVR_DIR)):
+        if not fn.endswith('.cpp'):
+            continue
+        cls = byname.get(fn[:-4])
+        if not cls or not getattr(cls, 'static_inits', None):
+            continue
+        ov = open(os.path.join(OVR_DIR, fn), encoding='utf-8', errors='replace').read()
+        for block in cls.static_inits:
+            txt = '\n'.join(t for (_, t) in block) if block and isinstance(block[0], tuple) else str(block)
+            for call in set(re.findall(r'\b([A-Za-z_]\w*)\s*\(', txt)):
+                if call in ('static', 'if', 'for', 'while', 'switch', 'return', 'new'):
+                    continue
+                if call not in ov:
+                    total += 1
+                    print('=== %s.cpp  (dropped static{} block call: %s()) ===' % (cls.name, call))
+
+    print('\nTOTAL dropped converter-content across overrides (array inits + static{} blocks):', total)
 
 if __name__ == '__main__':
     main()

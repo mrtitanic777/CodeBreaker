@@ -177,4 +177,11 @@ void MobSpawnerBase::initStatics()
 	MobSpawnerBase::s_tundra = (new MobSpawnerBase())->setColor(5762041)->setBiomeName("Tundra")->setEnableSnow()->setGrassColor(12899129);
 	MobSpawnerBase::s_hell = (new MobSpawnerHell())->setColor(16711680)->setBiomeName("Hell");
 	MobSpawnerBase::s_biomeLookupTable = JArray<MobSpawnerBase* >(4096);
+	// CONSOLE (first-in-world-frame crash fix): Java has `static { generateBiomeLookup(); }` which FILLS
+	// the 4096-entry lookup. This handwritten override is STALE -- it predates the converter's static{}-block
+	// support, so it omitted generateBiomeLookup() and the table stayed all-NULL -> getBiome() returned NULL
+	// -> NULL->getSkyColorByTemp() (virtual) = IP 0x0 on the first render frame. (The CURRENT converter emits
+	// this correctly; verified via render_source -- the override just dropped it.) Restore it after the
+	// singletons (j2x_init runs Block::initStatics first, which generateBiomeLookup needs).
+	MobSpawnerBase::generateBiomeLookup();
 }
