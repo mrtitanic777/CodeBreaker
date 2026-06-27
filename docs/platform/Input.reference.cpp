@@ -274,13 +274,24 @@ void poll() {
 		// ===================== IN A GUI (cursor + click) =====================
 		// Move the virtual cursor; getX()/getY() feed GuiScreen's hover highlight so the widget under
 		// the cursor lights up, and A fires a left-click there (GuiScreen::handleMouseInput).
-		int nudge = (int)InputConfig::CURSOR_PIXELS_PER_FRAME;
-		g_cursorX += (int)(lx * InputConfig::CURSOR_PIXELS_PER_FRAME);
-		g_cursorY += (int)(-ly * InputConfig::CURSOR_PIXELS_PER_FRAME);   // stick-up -> cursor up (top-down y--)
-		if (vLf) g_cursorX -= nudge;  if (vRt) g_cursorX += nudge;
-		if (vUp) g_cursorY -= nudge;  if (vDn) g_cursorY += nudge;
-		if (g_cursorX < 0) g_cursorX = 0;  if (g_cursorX > g_dispW) g_cursorX = g_dispW;
-		if (g_cursorY < 0) g_cursorY = 0;  if (g_cursorY > g_dispH) g_cursorY = g_dispH;
+		// FRAME-RATE-INDEPENDENT: the menu renders with no vsync (uncapped FPS), so a per-frame pixel
+		// step flew across the screen. Move by pixels/SECOND * dt, with a float accumulator so sub-pixel
+		// motion isn't lost at high FPS. Re-sync the accumulator if the cursor was set externally
+		// (setDisplaySize centering / setCursorPosition).
+		static unsigned long s_lastMs = 0;
+		static float s_fx = 0.0F, s_fy = 0.0F;
+		unsigned long nowMs = GetTickCount();
+		float dt = s_lastMs ? (float)(nowMs - s_lastMs) / 1000.0F : 0.0F;
+		s_lastMs = nowMs;
+		if (dt > 0.1F) dt = 0.1F;                                   // clamp first frame / hitches
+		if ((int)s_fx != g_cursorX || (int)s_fy != g_cursorY) { s_fx = (float)g_cursorX; s_fy = (float)g_cursorY; }
+		float spd = InputConfig::CURSOR_PIXELS_PER_SECOND * dt;
+		s_fx += lx * spd;  s_fy += -ly * spd;                       // left stick (analog), stick-up -> cursor up
+		if (vLf) s_fx -= spd;  if (vRt) s_fx += spd;                // d-pad (digital, full speed)
+		if (vUp) s_fy -= spd;  if (vDn) s_fy += spd;
+		if (s_fx < 0) s_fx = 0;  if (s_fx > (float)g_dispW) s_fx = (float)g_dispW;
+		if (s_fy < 0) s_fy = 0;  if (s_fy > (float)g_dispH) s_fy = (float)g_dispH;
+		g_cursorX = (int)s_fx;  g_cursorY = (int)s_fy;
 
 		g_btnDown[0] = g_btnDown[1] = g_btnDown[2] = false;
 		bool prevA     = (g_prevButtons & XINPUT_GAMEPAD_A)     != 0;

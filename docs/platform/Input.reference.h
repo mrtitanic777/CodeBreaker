@@ -46,7 +46,9 @@ namespace InputConfig {
 	// thresholds are these float ones. HARDWARE-VERIFY the exact range on-device (treated as [-1,1]).
 	const float STICK_DEADZONE_F      = 0.24F;   // ~ old 8000/32767; below this an axis reads 0
 	const float TRIGGER_F             = 0.12F;   // trigger counts as "pulled" above this
-	const float CURSOR_PIXELS_PER_FRAME = 12.0F; // GUI cursor speed at full left-stick deflection (menus)
+	// GUI cursor speed in pixels PER SECOND (frame-rate-independent). Per-FRAME movement flew across the
+	// screen because the menu renders with no vsync (uncapped FPS). HARDWARE-VERIFY the feel.
+	const float CURSOR_PIXELS_PER_SECOND = 650.0F;
 
 	const short STICK_DEADZONE   = 8000;    // (legacy short constants kept for reference / any old callers)
 	const short MENU_STEP        = 16384;
