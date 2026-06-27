@@ -143,12 +143,13 @@ Random* GuiMainMenu::s_rand = new Random();
 GuiMainMenu::GuiMainMenu()
 	: updateCounter(0)
 {
-	// CONSOLE (logo fix): the converter DROPPED this Java field initializer --
+	// CONSOLE (logo fix): THIS handwritten override had dropped GuiMainMenu's Java field initializer --
 	//   String[] minecraftLogo = new String[]{ " *   * ...", ... };  (5-row ASCII art of "MINECRAFT")
 	// so minecraftLogo was an EMPTY array and drawLogo's `for(var6 < minecraftLogo.length)` never ran:
 	// NO 3D blocks were ever submitted (the GL11 [3d] issueDraw diagnostic never fired even with the menu
-	// up). Restore it here (Java field initializers run before the ctor body). Root cause also fixed in the
-	// converter (array-of-String field-initializer literal was being dropped).
+	// up). Restore it (Java field initializers run before the ctor body). NOTE: the CONVERTER emits this
+	// correctly (verified: `this->minecraftLogo = (JArrayInit<JavaString>(), "...", ...)`); the drop was
+	// an override-authoring slip when this file was hand-edited for the splash-text logic, NOT a converter bug.
 	this->minecraftLogo = JArray<JavaString >(5);
 	this->minecraftLogo[0] = " *   * * *   * *** *** *** *** *** ***";
 	this->minecraftLogo[1] = " ** ** * **  * *   *   * * * * *    * ";

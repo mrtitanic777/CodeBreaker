@@ -5,6 +5,7 @@
 // Target: Xbox 360 / C++03 / DirectX 9
 
 #include "EntityRenderer.h"
+#include "Common.h"            // CONSOLE: DbgPrintF (one-time in-world render markers)
 #include "AxisAlignedBB.h"
 #include "Block.h"
 #include "BlockFire.h"
@@ -448,6 +449,7 @@ void EntityRenderer::updateCameraAndRender(float var1)
 
 void EntityRenderer::renderWorld(float var1)
 {
+	{ static bool _rw=false; if(!_rw){ _rw=true; DbgPrintF("[world] renderWorld BEGIN (first in-world 3D frame)\n"); } }
 	this->getMouseOver(var1);
 	EntityPlayerSP* var2 = this->mc->thePlayer;
 	RenderGlobal* var3 = this->mc->renderGlobal;
@@ -484,8 +486,10 @@ void EntityRenderer::renderWorld(float var1)
 	GL11::glBindTexture(GL11::GL_TEXTURE_2D, this->mc->renderEngine->getTexture("/terrain.png"));
 	RenderHelper::disableStandardItemLighting();
 	var3->sortAndRender(var2, 0, (double)var1);
+	{ static bool _tr=false; if(!_tr){ _tr=true; DbgPrintF("[world] terrain rendered (sortAndRender pass0 ok)\n"); } }
 	RenderHelper::enableStandardItemLighting();
 	var3->renderEntities(var2->getPosition(var1), var12, var1);
+	{ static bool _re=false; if(!_re){ _re=true; DbgPrintF("[world] entities rendered ok\n"); } }
 	var4->renderLitParticles(var2, var1);
 	RenderHelper::disableStandardItemLighting();
 	this->setupFog(0);
