@@ -158,7 +158,12 @@ void glOrtho(double l, double r, double b, double t, double n, double f) {
 	s_projection.back() = m;     // GUI uses glOrtho directly; HARDWARE-VERIFY Y orientation (GL y-up)
 }
 void glViewport(int x, int y, int w, int h) {
-	D3DVIEWPORT9 vp; vp.X=x; vp.Y=y; vp.Width=w; vp.Height=h; vp.MinZ=0.0f; vp.MaxZ=1.0f;
+	// GL viewport origin is BOTTOM-left, D3D is TOP-left -> flip Y. Without this a GL top-strip
+	// viewport (y = H-h, used by GuiMainMenu::drawLogo for the 3D block logo) landed in the BOTTOM
+	// strip, where the menu then overdrew it -> the logo was invisible. Full-screen (0,0,W,H) is
+	// unaffected (Y stays 0).
+	D3DVIEWPORT9 vp;
+	vp.X = x; vp.Y = SCREEN_HEIGHT - y - h; vp.Width = w; vp.Height = h; vp.MinZ = 0.0f; vp.MaxZ = 1.0f;
 	g_pd3dDevice->SetViewport(&vp);
 }
 void glLoadProjection(const D3DXMATRIX& m){ s_projection.back() = m; }   // GLU::gluPerspective uses this
