@@ -54,6 +54,7 @@ static void copyRGBAtoARGB(unsigned char* dst, int dstPitch, const unsigned char
 // samples. (D3DPOOL is ignored on 360 -- unified memory -- so MANAGED is just a benign token.)
 void Textures::uploadRGBA(int id, int w, int h, const void* rgbaPixels) {
 	if (id <= 0 || id >= MAX_TEXTURES || w <= 0 || h <= 0) return;
+	g_pd3dDevice->SetTexture(0, NULL);   // unbind: the 360 forbids releasing/modifying a still-set texture
 	if (s_textures[id]) { s_textures[id]->Release(); s_textures[id] = NULL; }
 	IDirect3DTexture9* tex = NULL;
 	// (EndScene/BeginScene bracket: no-op on real XDK; retained for the Nexia360 D3D12 backend, which
@@ -80,6 +81,9 @@ void Textures::uploadRGBA(int id, int w, int h, const void* rgbaPixels) {
 // base texture is LINEAR (created by uploadRGBA), so the LockRect sub-rect is a normal linear surface.
 void Textures::uploadSubRGBA(int id, int x, int y, int w, int h, const void* rgbaPixels) {
 	if (id <= 0 || id >= MAX_TEXTURES || !s_textures[id] || !rgbaPixels) return;
+	g_pd3dDevice->SetTexture(0, NULL);   // unbind first: LockRect on a texture still set in the device is
+	                                     // forbidden on the 360 (the "modified while still set" spam) and
+	                                     // was the per-frame animated-FX crash once the timer made ticks run.
 	RECT box; box.left = x; box.top = y; box.right = x + w; box.bottom = y + h;
 	D3DLOCKED_RECT lr;
 	if (SUCCEEDED(s_textures[id]->LockRect(0, &lr, &box, 0))) {

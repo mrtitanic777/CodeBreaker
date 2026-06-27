@@ -522,6 +522,7 @@ void Minecraft::run()
 	long long var1 = System::currentTimeMillis();
 	int var3 = 0;
 	while(this->running && (this->mcApplet == NULL || this->mcApplet->isActive())) {
+	Input::setDisplaySize(this->displayWidth, this->displayHeight);   // resize() isn't reached on console (no AWT canvas) -> wire it here so the GUI cursor maps to real pixels + centers
 	Input::poll();   // ONE XInput read per frame -> drives the virtual Keyboard/Mouse model (menu nav + look)
 	AxisAlignedBB::clearBoundingBoxPool();
 	Vec3D::initialize();
@@ -902,6 +903,7 @@ void Minecraft::runTick()
 	if(!this->isGamePaused) {
 	this->renderEngine->updateDynamicTextures();
 	}
+	{ static bool _dtm = false; if(!_dtm){ _dtm = true; DbgPrintF("[tick] updateDynamicTextures ok\n"); } }
 	if(this->currentScreen == NULL && this->thePlayer != NULL && this->thePlayer->health <= 0) {
 	this->displayGuiScreen((GuiScreen*)NULL);
 	}
