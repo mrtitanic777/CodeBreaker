@@ -26,7 +26,10 @@
 #include "BufferedImage.h"
 #include "Common.h"          // g_pd3dDevice
 #include "InputStream.h"
+#include "URL.h"             // URL::j2xResourcePath()
 #include <vector>
+
+InputStream* J2X_getResourceAsStream(const char* name);   // FileIO.cpp
 
 namespace ImageIO {
 
@@ -76,6 +79,13 @@ BufferedImage* readFile(const char* path) {
 	ReadFile(h, size ? &bytes[0] : (void*)"", size, &got, NULL);
 	CloseHandle(h);
 	return (got == size && size) ? decode(&bytes[0], size) : NULL;
+}
+
+// ImageIO.read(URL): the converted code does ImageIO::read(getClass().getResource("/x.png")).
+// getResource() returns a URL carrying that path; resolve it to game:\Content\... and decode.
+BufferedImage* read(URL* u) {
+	if (!u) return NULL;
+	return read(J2X_getResourceAsStream(u->j2xResourcePath().c_str()));
 }
 
 } // namespace ImageIO

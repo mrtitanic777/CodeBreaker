@@ -1048,7 +1048,7 @@ _GENERATED['Class.h'] = r'''#ifndef CLASS_H
 // return 0 -- the class-keyed registries (EntityList/Packet/TileEntity) supply explicit factories.
 #include <string>
 #include <typeinfo>
-class URL;
+#include "URL.h"                                          // getResource returns a path-carrying URL
 class InputStream;
 InputStream* J2X_getResourceAsStream(const char* name);   // FileIO.cpp: "/x.png" -> game:\Content\x.png
 
@@ -1078,6 +1078,10 @@ public:
 	void* getConstructor(...) { return 0; }
 	void* newInstance(...) { return 0; }
 	void* getDeclaredFields(...) { return 0; }
+	// Real resource resolution (was `return 0`, which made ImageIO::read(getResource("/x.png")) return
+	// a NULL image -> the loader derefed NULL -> crash). Returns a URL carrying the path; ImageIO::
+	// read(URL*) resolves it via game:\Content\... The variadic fallback keeps other call shapes.
+	URL* getResource(const std::string& name) { return new URL(name); }
 	URL* getResource(...) { return 0; }
 	// Real resource resolution (was `return 0`, which made every RenderEngine texture load NULL ->
 	// readTextureImage crashed on NULL->close()). Routes "/terrain.png","/title/mojang.png",... to
@@ -1092,11 +1096,17 @@ public:
 _GENERATED['Robot.h'] = _class_stub('Robot', void_methods=['mouseMove'])
 # openStream() returns a real InputStream* (not void*) so `new DataInputStream(url.openStream())`
 # binds to DataInputStream(InputStream*); parse(void*)/InputStreamReader(...) callers still accept it.
+# URL carries a resource path when built by Class::getResource("/x.png") so ImageIO::read(URL*) can
+# resolve it to game:\Content\... (the URL form of getResourceAsStream). openStream() returns
+# InputStream* so `new DataInputStream(url.openStream())` binds.
 _GENERATED['URL.h'] = _class_stub('URL', fwds=('InputStream',),
     ret_methods=[('openConnection', ('void*', '0')), ('openStream', ('InputStream*', '0')),
                  ('toString', ('std::string', 'std::string()')), ('getPath', ('std::string', 'std::string()')),
                  ('getFile', ('std::string', 'std::string()')), ('getProtocol', ('std::string', 'std::string()')),
-                 ('getHost', ('std::string', 'std::string()')), ('getQuery', ('std::string', 'std::string()'))])
+                 ('getHost', ('std::string', 'std::string()')), ('getQuery', ('std::string', 'std::string()'))],
+    extra=['std::string _j2xpath;',
+           'URL(const std::string& p) : _j2xpath(p) {}',
+           'const std::string& j2xResourcePath() const { return _j2xpath; }'])
 _GENERATED['FileDialog.h'] = _class_stub('FileDialog', void_methods=['setVisible', 'setMode'],
     ret_methods=[('getFile', ('std::string', 'std::string()')),
                  ('getDirectory', ('std::string', 'std::string()'))])

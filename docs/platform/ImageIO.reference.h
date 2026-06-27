@@ -7,7 +7,7 @@ class URL;
 namespace ImageIO {
 	BufferedImage* read(InputStream* in);             // decode the stream's bytes (PNG) -> pixels
 	BufferedImage* readFile(const char* path);        // decode straight from a game:\Content path
-	inline BufferedImage* read(URL*) { return 0; }    // URL form -- stub (skins/resources)
+	BufferedImage* read(URL* u);                      // URL form -> resolve its resource path + decode
 	inline bool write(...) { return false; }          // save (screenshots) -- no-op for now
 }
 #endif // IMAGEIO_H
