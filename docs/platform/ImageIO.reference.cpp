@@ -41,8 +41,10 @@ static BufferedImage* decode(const void* data, unsigned size) {
 	// Xbox 360 D3D has no CreateOffscreenPlainSurface -> decode into a lockable sysmem texture
 	// (D3DXCreateTextureFromFileInMemoryEx exists on the XDK; the old port used the *FromFileExA form).
 	IDirect3DTexture9* tex = NULL;
+	// LINEAR format: we LockRect + linear memcpy the decoded pixels out below. Plain D3DFMT_A8R8G8B8 is
+	// TILED on the 360, which would scramble that read; D3DFMT_LIN_A8R8G8B8 is the untiled twin.
 	if (FAILED(D3DXCreateTextureFromFileInMemoryEx(g_pd3dDevice, data, size, info.Width, info.Height,
-	            1, 0, D3DFMT_A8R8G8B8, D3DPOOL_SYSTEMMEM, D3DX_FILTER_NONE, D3DX_FILTER_NONE, 0,
+	            1, 0, D3DFMT_LIN_A8R8G8B8, D3DPOOL_SYSTEMMEM, D3DX_FILTER_NONE, D3DX_FILTER_NONE, 0,
 	            NULL, NULL, &tex)) || !tex) return NULL;
 	BufferedImage* img = new BufferedImage((int)info.Width, (int)info.Height);
 	D3DLOCKED_RECT lr;

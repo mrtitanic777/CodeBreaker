@@ -69,6 +69,10 @@ static void ApplyDefaultRenderState() {
     // atlas tile with UVs running 0..N (e.g. width/32). Without WRAP the tiling clamps -> stripes.
     g_pd3dDevice->SetSamplerState(0, D3DSAMP_ADDRESSU, D3DTADDRESS_WRAP);
     g_pd3dDevice->SetSamplerState(0, D3DSAMP_ADDRESSV, D3DTADDRESS_WRAP);
+    // 360 lever for pixel-exact 2D: apply the (0.5,0.5) screen-space offset in hardware so integer GUI/
+    // font quad coords land on pixel centers (PC D3D9 needed a -0.5 vertex shift; the 360 does it here).
+    // Our ortho feeds integer coords with no -0.5 baked in, so TRUE is the matching choice. HARDWARE-VERIFY.
+    g_pd3dDevice->SetRenderState(D3DRS_HALFPIXELOFFSET, TRUE);
 }
 
 void __cdecl main() {

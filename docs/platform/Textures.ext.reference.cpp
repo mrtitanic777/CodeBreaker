@@ -34,33 +34,32 @@ void Textures::deleteId(int id) {
 }
 
 // Copy w*h pixels from GL byte order [R,G,B,A] (what RenderEngine::setupTexture packs for GL_RGBA)
-// into a D3DFMT_A8R8G8B8 surface, whose little-endian byte layout is [B,G,R,A] -- so R and B must be
-// SWAPPED or every texture renders with red/blue swapped (brown dirt -> blue). White (R=G=B) is
-// unaffected, which is why the font still looked right.
-static void copyRGBAtoBGRA(unsigned char* dst, int dstPitch, const unsigned char* src, int w, int h) {
+// into a LINEAR A8R8G8B8 surface. Write each texel as a D3DCOLOR_ARGB DWORD -- the ENDIAN-SAFE idiom
+// (the same one the vertex-color path uses). A hand-placed byte order [B,G,R,A] is correct ONLY on a
+// little-endian host and inverts on the big-endian 360; writing the integer 0xAARRGGBB is correct on
+// both because each platform's D3D reads the native DWORD consistently with its own endianness.
+static void copyRGBAtoARGB(unsigned char* dst, int dstPitch, const unsigned char* src, int w, int h) {
 	for (int row = 0; row < h; ++row) {
-		const unsigned char* s = src + row * w * 4;
-		unsigned char* d = dst + row * dstPitch;
-		for (int x = 0; x < w; ++x) {
-			d[x*4+0] = s[x*4+2];   // dst.B <- src.B
-			d[x*4+1] = s[x*4+1];   // dst.G <- src.G
-			d[x*4+2] = s[x*4+0];   // dst.R <- src.R
-			d[x*4+3] = s[x*4+3];   // dst.A <- src.A
-		}
+		const unsigned char* s = src + row * w * 4;          // src: R,G,B,A
+		DWORD* d = (DWORD*)(dst + row * dstPitch);
+		for (int x = 0; x < w; ++x)
+			d[x] = D3DCOLOR_ARGB(s[x*4+3], s[x*4+0], s[x*4+1], s[x*4+2]);   // (a, r, g, b)
 	}
 }
 
-// (Re)create texture `id` as A8R8G8B8 w*h and fill from rgbaPixels (GL_RGBA byte order [R,G,B,A]).
-// MANAGED pool so it survives device resets without manual restore. No mips (MC pixel art).
+// (Re)create texture `id` as LINEAR A8R8G8B8 w*h and fill from rgbaPixels (GL_RGBA byte order).
+// CRITICAL: use D3DFMT_LIN_A8R8G8B8, NOT D3DFMT_A8R8G8B8. On the 360 the plain A8R8G8B8 format is
+// TILED (swizzled) -- a LockRect + linear copy then scrambles the image into block/stripe garbage
+// when sampled. The LIN_ variant is the untiled twin, so a linear copy lays out exactly as the GPU
+// samples. (D3DPOOL is ignored on 360 -- unified memory -- so MANAGED is just a benign token.)
 void Textures::uploadRGBA(int id, int w, int h, const void* rgbaPixels) {
 	if (id <= 0 || id >= MAX_TEXTURES || w <= 0 || h <= 0) return;
 	if (s_textures[id]) { s_textures[id]->Release(); s_textures[id] = NULL; }
 	IDirect3DTexture9* tex = NULL;
-	// Nexia360's D3D12 backend FAILS CreateTexture while a scene is open (the menu loads gui/title
-	// textures on-demand mid-BeginScene -> NULL texture -> invisible menu). The game runs inside a
-	// persistent BeginScene (Main.cpp / Display::swapBuffers), so bracket creation OUTSIDE the scene.
+	// (EndScene/BeginScene bracket: no-op on real XDK; retained for the Nexia360 D3D12 backend, which
+	// disliked CreateTexture mid-scene.)
 	g_pd3dDevice->EndScene();
-	HRESULT _texhr = g_pd3dDevice->CreateTexture(w, h, 1, 0, D3DFMT_A8R8G8B8,
+	HRESULT _texhr = g_pd3dDevice->CreateTexture(w, h, 1, 0, D3DFMT_LIN_A8R8G8B8,
 	                                             D3DPOOL_MANAGED, &tex, NULL);
 	g_pd3dDevice->BeginScene();
 	if (FAILED(_texhr) || !tex)
@@ -68,7 +67,7 @@ void Textures::uploadRGBA(int id, int w, int h, const void* rgbaPixels) {
 	if (rgbaPixels) {
 		D3DLOCKED_RECT lr;
 		if (SUCCEEDED(tex->LockRect(0, &lr, NULL, 0))) {
-			copyRGBAtoBGRA((unsigned char*)lr.pBits, lr.Pitch, (const unsigned char*)rgbaPixels, w, h);
+			copyRGBAtoARGB((unsigned char*)lr.pBits, lr.Pitch, (const unsigned char*)rgbaPixels, w, h);
 			tex->UnlockRect(0);
 		}
 	}
@@ -77,13 +76,14 @@ void Textures::uploadRGBA(int id, int w, int h, const void* rgbaPixels) {
 }
 
 // Update a sub-rectangle (used for the animated terrain/water/lava cells and the dynamic light map).
-// rgbaPixels is GL_RGBA byte order [R,G,B,A]; swizzled to the A8R8G8B8 surface like uploadRGBA.
+// rgbaPixels is GL_RGBA byte order [R,G,B,A]; written as D3DCOLOR_ARGB DWORDs like uploadRGBA. The
+// base texture is LINEAR (created by uploadRGBA), so the LockRect sub-rect is a normal linear surface.
 void Textures::uploadSubRGBA(int id, int x, int y, int w, int h, const void* rgbaPixels) {
 	if (id <= 0 || id >= MAX_TEXTURES || !s_textures[id] || !rgbaPixels) return;
 	RECT box; box.left = x; box.top = y; box.right = x + w; box.bottom = y + h;
 	D3DLOCKED_RECT lr;
 	if (SUCCEEDED(s_textures[id]->LockRect(0, &lr, &box, 0))) {
-		copyRGBAtoBGRA((unsigned char*)lr.pBits, lr.Pitch, (const unsigned char*)rgbaPixels, w, h);
+		copyRGBAtoARGB((unsigned char*)lr.pBits, lr.Pitch, (const unsigned char*)rgbaPixels, w, h);
 		s_textures[id]->UnlockRect(0);
 	}
 }
