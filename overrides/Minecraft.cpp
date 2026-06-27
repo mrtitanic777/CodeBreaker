@@ -1158,6 +1158,13 @@ void Minecraft::changeWorld(World* var1, const JavaString& var2, EntityPlayer* v
 	this->playerController->flipPlayer(this->thePlayer);
 	}
 	DbgPrintF("[world] changeWorld: player ready (%p)\n", (void*)this->thePlayer);
+	if(this->thePlayer != NULL && var1 != NULL) {
+	int _px = (int)this->thePlayer->posX, _py = (int)this->thePlayer->posY, _pz = (int)this->thePlayer->posZ;
+	DbgPrintF("[spawn] pos=(%d,%d,%d) spawn=(%d,%d,%d) surfaceY=%d feetBlk=%d headBlk=%d light(head)=%d skySub=%d\n",
+		_px, _py, _pz, var1->spawnX, var1->spawnY, var1->spawnZ,
+		var1->getHeightValue(_px, _pz), var1->getBlockId(_px, _py, _pz), var1->getBlockId(_px, _py + 1, _pz),
+		var1->getBlockLightValue(_px, _py + 1, _pz), var1->skylightSubtracted);
+	}
 	this->thePlayer->movementInput = new MovementInputFromOptions(this->gameSettings);
 	if(this->renderGlobal != NULL) {
 	this->renderGlobal->setWorldAndLoadRenderers(var1);

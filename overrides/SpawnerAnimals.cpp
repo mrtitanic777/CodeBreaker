@@ -52,6 +52,14 @@
 #include "WorldChunkManager.h"
 #include "WorldProvider.h"
 #include "EntityCreature.h"
+// Spawn factory entity types: Class::newInstance() is reflection (returns 0 on console), so we
+// map the biome list's runtime Class identity back to a real ctor below (_createSpawnEntity).
+#include "EntityZombie.h"
+#include "EntityCreeper.h"
+#include "EntitySheep.h"
+#include "EntityPig.h"
+#include "EntityChicken.h"
+#include "EntityCow.h"
 
 std::set<void*> SpawnerAnimals::s_eligibleChunksForSpawning;
 
@@ -74,19 +82,38 @@ std::set<void*> SpawnerAnimals::s_eligibleChunksForSpawning;
  *      EnumCreatureType var29 = EnumCreatureType.values()[var28];
  *      if(var0.countEntities(var29.creatureClass) <= var29.maxNumberOfEntityType * eligibleChunksForSpawning.size() / 256) {
  *  ---- end original Java ---- */
-// NOTE: original Alpha caps are monster=100 (IMobs), creature=20 (EntityAnimals); the
-// restored values below (70/15) DO NOT match the source and need review.
-// EnumCreatureType was reduced to ordinals (monster=0, creature=1) by the transpiler,
-// losing the per-constant fields. Restore the Alpha data locally so spawning logic
-// (countEntities / cap math) is preserved.
-//   monster : maxNumberOfEntityType = 70
-//   creature: maxNumberOfEntityType = 15
+// EnumCreatureType was reduced to ordinals (monster=0, creature=1) by the transpiler, losing the
+// per-constant fields. Restore the AUTHENTIC Alpha data locally so the cap math is preserved:
+//   monster : maxNumberOfEntityType = 100 (IMobs)
+//   creature: maxNumberOfEntityType = 20  (EntityAnimals)
 static const int _ECT_COUNT = 2;
-static int _ectMaxNumberOfEntityType(int ord) { return ord == EnumCreatureType::monster ? 70 : 15; }
+static int _ectMaxNumberOfEntityType(int ord) { return ord == EnumCreatureType::monster ? 100 : 20; }
 // creatureClass: the runtime Class stub can't carry distinct java.lang.Class identities,
 // so we hand World.countEntities() a per-type placeholder Class*. NOTE: countEntities
 // keys off this Class, so this is an approximation (see "semantics-need-review").
 static Class* _ectCreatureClass(int /*ord*/) { static Class _c; return &_c; }
+
+// --- Mob spawn factory -----------------------------------------------------------------------
+// Java: `(EntityLiving)var33[var8].getConstructor(World.class).newInstance(var0)`. C++ has NO
+// reflection -- Class::newInstance() returns 0, so the transpiled call yields a NULL EntityLiving,
+// and the next line (setLocationAndAngles) is a virtual call through NULL = IP 0x0. That fault
+// fires a few seconds into the world, the first tick a valid spawn site + RNG align (the World::
+// tick crash). Map the biome list's runtime Class identity (typeid name, see MobSpawnerBase ctor)
+// back to a real ctor: monsters {Spider,Zombie,Skeleton,Creeper}, creatures {Sheep,Pig,Chicken,Cow}.
+static EntityLiving* _createSpawnEntity(Class* var0, World* var1)
+{
+	if(var0 == NULL) return NULL;
+	std::string n = var0->getName();
+	if(n == "EntitySpider")   return new EntitySpider(var1);
+	if(n == "EntityZombie")   return new EntityZombie(var1);
+	if(n == "EntitySkeleton") return new EntitySkeleton(var1);
+	if(n == "EntityCreeper")  return new EntityCreeper(var1);
+	if(n == "EntitySheep")    return new EntitySheep(var1);
+	if(n == "EntityPig")      return new EntityPig(var1);
+	if(n == "EntityChicken")  return new EntityChicken(var1);
+	if(n == "EntityCow")      return new EntityCow(var1);
+	return NULL;
+}
 
 SpawnerAnimals::~SpawnerAnimals()
 {
@@ -170,13 +197,16 @@ int SpawnerAnimals::performSpawning(World* var0)
 	if(var26 >= 576.0F) {
 	EntityLiving* var34;
 	try {
-	/* ---- ORIGINAL JAVA (stubbed below) ----
+	/* ---- ORIGINAL JAVA (reflection -> factory) ----
 	 *  var34 = (EntityLiving)var33[var8].getConstructor(new Class[]{World.class}).newInstance(new Object[]{var0});
 	 *  ---- end original Java ---- */
-	var34 = (EntityLiving*)var33[var8]->newInstance((JArrayInit<void* >(), var0));
+	var34 = _createSpawnEntity(var33[var8], var0);
 	} catch (Exception var27) {
 	var27.printStackTrace();
 	return var1;
+	}
+	if(var34 == NULL) {
+	continue;   // unmapped spawn class -> skip this attempt rather than deref NULL (IP 0x0)
 	}
 	var34->setLocationAndAngles((double)var20, (double)var21, (double)var22, var0->rand->nextFloat() * 360.0F, 0.0F);
 	if(var34->getCanSpawnHere()) {
