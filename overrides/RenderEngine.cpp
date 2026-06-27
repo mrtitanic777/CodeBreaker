@@ -174,13 +174,16 @@ int RenderEngine::getTexture(const JavaString& var1)
 
 BufferedImage* RenderEngine::unwrapImageByColumns(BufferedImage* var1)
 {
+	if(var1 == NULL) return NULL;   // failed/missing decode -> no source image
 	int var2 = var1->getWidth() / 16;
 	BufferedImage* var3 = new BufferedImage(16, var1->getHeight() * var2, 2);
-	Graphics* var4 = var3->getGraphics();
-	for(int var5 = 0; var5 < var2; ++var5) {
-	var4->drawImage(var1, -var5 * 16, var5 * var1->getHeight(), (ImageObserver*)NULL);
-	}
-	var4->dispose();
+	// AWT Graphics is a no-op stub on console (getGraphics()==NULL -> drawImage would crash); copy
+	// pixels directly. Java g.drawImage(var1,-col*16,col*H) stacks 16-wide columns vertically.
+	int _h = var1->getHeight();
+	for(int var5 = 0; var5 < var2; ++var5)
+	for(int _y = 0; _y < _h; ++_y)
+	for(int _x = 0; _x < 16; ++_x)
+	var3->setRGB(_x, var5 * _h + _y, var1->getRGB(var5 * 16 + _x, _y));
 	return var3;
 }
 

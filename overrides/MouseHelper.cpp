@@ -54,7 +54,7 @@ void MouseHelper::grabMouseCursor()
 
 void MouseHelper::ungrabMouseCursor()
 {
-	Mouse::setCursorPosition(this->component->getWidth() / 2, this->component->getHeight() / 2);
+	if(this->component != NULL) Mouse::setCursorPosition(this->component->getWidth() / 2, this->component->getHeight() / 2);
 	Mouse::setGrabbed(false);
 }
 

@@ -61,7 +61,12 @@ public:
 
 THREAD_H = r'''#ifndef THREAD_H
 #define THREAD_H
-// java.lang.Thread (stub: runs inline; real threading is a platform concern)
+// java.lang.Thread (stub). start() is a NO-OP on this single-threaded console port: there is no real
+// threading, and start() must NOT run run() inline. The game's threads are daemon/loop or network
+// workers -- e.g. ThreadSleepForever::run() is `while(mc->running) Thread::sleep(...)` and sleep() is
+// a no-op, so running it inline (with running==true) is an INFINITE LOOP on the main thread (the boot
+// hang / black screen). The main game loop is driven directly by Main.cpp (g_minecraft->run()), not
+// via Thread::start, so making start() a no-op is safe; network/daemon threads simply don't run.
 #include <string>
 #include "Runnable.h"
 
@@ -73,7 +78,7 @@ public:
 	template<class R> Thread(R*, const std::string&) {}   // new Thread(runnable, name)
 	virtual ~Thread() {}
 	virtual void run() {}
-	void start() { run(); }
+	void start() {}                                       // NO-OP (see header note) -- do not run inline
 	void setDaemon(bool) {}
 	void setName(const std::string&) {}
 	void setPriority(int) {}
