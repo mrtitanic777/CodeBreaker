@@ -61,12 +61,11 @@ public:
 
 THREAD_H = r'''#ifndef THREAD_H
 #define THREAD_H
-// java.lang.Thread (stub). start() is a NO-OP on this single-threaded console port: there is no real
-// threading, and start() must NOT run run() inline. The game's threads are daemon/loop or network
-// workers -- e.g. ThreadSleepForever::run() is `while(mc->running) Thread::sleep(...)` and sleep() is
-// a no-op, so running it inline (with running==true) is an INFINITE LOOP on the main thread (the boot
-// hang / black screen). The main game loop is driven directly by Main.cpp (g_minecraft->run()), not
-// via Thread::start, so making start() a no-op is safe; network/daemon threads simply don't run.
+// java.lang.Thread -- SELF-CONTAINED STUB for the converter's syntax gate (output_alpha, no platform
+// headers). start() is a no-op here so output compiles standalone. The REAL build uses the platform
+// version docs/platform/Thread.reference.h, which spawns REAL Xbox 360 threads (CreateThread) and a
+// REAL Thread::sleep -- the swap copies it over this stub. (Do NOT run run() inline: ThreadSleepForever
+// is `while(mc->running) sleep()`, an infinite loop on the main thread.)
 #include <string>
 #include "Runnable.h"
 

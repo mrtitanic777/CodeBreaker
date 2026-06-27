@@ -95,6 +95,7 @@ void __cdecl main() {
     // (Component/Canvas/Applet are the AWT host -- null on console.) run() does the remaining init
     // (game settings, render engine, font, main menu) and owns the tick + render + Present loop.
     g_minecraft = new Minecraft(NULL, NULL, NULL, SCREEN_WIDTH, SCREEN_HEIGHT, false);
+    g_pd3dDevice->BeginScene();   // open the first scene; Display::swapBuffers/update End+Present+Begin each frame
     g_minecraft->run();
 
     Shaders::shutdown();
