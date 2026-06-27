@@ -65,6 +65,10 @@ static void ApplyDefaultRenderState() {
     g_pd3dDevice->SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_POINT);   // pixel-art: nearest
     g_pd3dDevice->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_POINT);
     g_pd3dDevice->SetSamplerState(0, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
+    // GL_REPEAT is the GL default and MC relies on it: the menu/loading dirt background and terrain
+    // atlas tile with UVs running 0..N (e.g. width/32). Without WRAP the tiling clamps -> stripes.
+    g_pd3dDevice->SetSamplerState(0, D3DSAMP_ADDRESSU, D3DTADDRESS_WRAP);
+    g_pd3dDevice->SetSamplerState(0, D3DSAMP_ADDRESSV, D3DTADDRESS_WRAP);
 }
 
 void __cdecl main() {

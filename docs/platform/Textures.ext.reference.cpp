@@ -33,9 +33,26 @@ void Textures::deleteId(int id) {
 	s_paths[id][0] = 0;
 }
 
-// (Re)create texture `id` as A8R8G8B8 w*h and fill from argbPixels (0xAARRGGBB rows, w ints each).
+// Copy w*h pixels from GL byte order [R,G,B,A] (what RenderEngine::setupTexture packs for GL_RGBA)
+// into a D3DFMT_A8R8G8B8 surface, whose little-endian byte layout is [B,G,R,A] -- so R and B must be
+// SWAPPED or every texture renders with red/blue swapped (brown dirt -> blue). White (R=G=B) is
+// unaffected, which is why the font still looked right.
+static void copyRGBAtoBGRA(unsigned char* dst, int dstPitch, const unsigned char* src, int w, int h) {
+	for (int row = 0; row < h; ++row) {
+		const unsigned char* s = src + row * w * 4;
+		unsigned char* d = dst + row * dstPitch;
+		for (int x = 0; x < w; ++x) {
+			d[x*4+0] = s[x*4+2];   // dst.B <- src.B
+			d[x*4+1] = s[x*4+1];   // dst.G <- src.G
+			d[x*4+2] = s[x*4+0];   // dst.R <- src.R
+			d[x*4+3] = s[x*4+3];   // dst.A <- src.A
+		}
+	}
+}
+
+// (Re)create texture `id` as A8R8G8B8 w*h and fill from rgbaPixels (GL_RGBA byte order [R,G,B,A]).
 // MANAGED pool so it survives device resets without manual restore. No mips (MC pixel art).
-void Textures::uploadRGBA(int id, int w, int h, const void* argbPixels) {
+void Textures::uploadRGBA(int id, int w, int h, const void* rgbaPixels) {
 	if (id <= 0 || id >= MAX_TEXTURES || w <= 0 || h <= 0) return;
 	if (s_textures[id]) { s_textures[id]->Release(); s_textures[id] = NULL; }
 	IDirect3DTexture9* tex = NULL;
@@ -48,13 +65,10 @@ void Textures::uploadRGBA(int id, int w, int h, const void* argbPixels) {
 	g_pd3dDevice->BeginScene();
 	if (FAILED(_texhr) || !tex)
 		return;
-	if (argbPixels) {
+	if (rgbaPixels) {
 		D3DLOCKED_RECT lr;
 		if (SUCCEEDED(tex->LockRect(0, &lr, NULL, 0))) {
-			const unsigned char* src = (const unsigned char*)argbPixels;
-			unsigned char* dst = (unsigned char*)lr.pBits;
-			for (int row = 0; row < h; ++row)                    // copy row-by-row (pitch may != w*4)
-				memcpy(dst + row * lr.Pitch, src + row * w * 4, w * 4);
+			copyRGBAtoBGRA((unsigned char*)lr.pBits, lr.Pitch, (const unsigned char*)rgbaPixels, w, h);
 			tex->UnlockRect(0);
 		}
 	}
@@ -63,15 +77,13 @@ void Textures::uploadRGBA(int id, int w, int h, const void* argbPixels) {
 }
 
 // Update a sub-rectangle (used for the animated terrain/water/lava cells and the dynamic light map).
-void Textures::uploadSubRGBA(int id, int x, int y, int w, int h, const void* argbPixels) {
-	if (id <= 0 || id >= MAX_TEXTURES || !s_textures[id] || !argbPixels) return;
+// rgbaPixels is GL_RGBA byte order [R,G,B,A]; swizzled to the A8R8G8B8 surface like uploadRGBA.
+void Textures::uploadSubRGBA(int id, int x, int y, int w, int h, const void* rgbaPixels) {
+	if (id <= 0 || id >= MAX_TEXTURES || !s_textures[id] || !rgbaPixels) return;
 	RECT box; box.left = x; box.top = y; box.right = x + w; box.bottom = y + h;
 	D3DLOCKED_RECT lr;
 	if (SUCCEEDED(s_textures[id]->LockRect(0, &lr, &box, 0))) {
-		const unsigned char* src = (const unsigned char*)argbPixels;
-		unsigned char* dst = (unsigned char*)lr.pBits;
-		for (int row = 0; row < h; ++row)
-			memcpy(dst + row * lr.Pitch, src + row * w * 4, w * 4);
+		copyRGBAtoBGRA((unsigned char*)lr.pBits, lr.Pitch, (const unsigned char*)rgbaPixels, w, h);
 		s_textures[id]->UnlockRect(0);
 	}
 }

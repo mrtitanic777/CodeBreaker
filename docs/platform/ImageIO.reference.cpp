@@ -50,6 +50,13 @@ static BufferedImage* decode(const void* data, unsigned size) {
 		for (int y = 0; y < img->h; ++y)                          // A8R8G8B8 row == ARGB ints, 1:1
 			memcpy(&img->pixels[y * img->w], (const unsigned char*)lr.pBits + y * lr.Pitch, img->w * 4);
 		tex->UnlockRect(0);
+		// Normalize fully-transparent texels to 0x00000000. PNGs (incl. the font atlas) keep RGB under
+		// alpha=0, but MC's FontRenderer width scan tests the BLUE channel (pixel & 255) and assumes
+		// transparent == 0 -> a white-on-transparent font makes EVERY column read non-empty, so every
+		// glyph gets max width and text is gappy/garbled. Harmless to textures (alpha 0 = invisible,
+		// point-sampled so no bilinear bleed).
+		for (int i = 0, n = img->w * img->h; i < n; ++i)
+			if ((img->pixels[i] & 0xFF000000) == 0) img->pixels[i] = 0;
 	}
 	tex->Release();
 	return img;
