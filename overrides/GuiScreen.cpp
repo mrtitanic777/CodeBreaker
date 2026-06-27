@@ -227,7 +227,7 @@ void GuiScreen::handleInput()
 }
 
 // CONSOLE (controller): discrete menu navigation. The d-pad / left stick move `navSelected` between the
-// ENABLED+visible buttons in controlList (wrap-around, skipping disabled), and we snap the virtual cursor
+// ENABLED+visible buttons in controlList by 2D spatial direction (skipping disabled), and snaps the cursor
 // onto the selected button's center. That makes the EXISTING paths do the work: GuiButton::drawButton
 // highlights the button under the cursor (yellow text + hover tile), and an A press -> a left-click at the
 // cursor (Input::poll) -> GuiScreen::mouseClicked -> actionPerformed. Screens with no buttons (slot GUIs)
@@ -244,7 +244,6 @@ void GuiScreen::handleControllerMenuNav()
 
 	bool up = Input::navUp(), down = Input::navDown();
 	bool left = Input::navLeft(), right = Input::navRight();
-	int step = (down || right) ? 1 : ((up || left) ? -1 : 0);
 
 	// Ensure a valid selection (first navigable button) -- handles first entry and a selection that
 	// became disabled/removed.
@@ -254,13 +253,42 @@ void GuiScreen::handleControllerMenuNav()
 	}
 	if (this->navSelected < 0) return;   // no navigable buttons on this screen
 
-	if (step != 0) {
-		int i = this->navSelected;
-		for (int guard = 0; guard < n; ++guard) {
-			i += step;
-			if (i < 0) i = n - 1; else if (i >= n) i = 0;
-			if (_navButtonOK(this->controlList, i)) { this->navSelected = i; break; }
+	// 2D SPATIAL navigation: move to the nearest navigable button ACTUALLY in the pressed direction (by
+	// button-center geometry), so a 2-column panel (e.g. GuiOptions) goes up/down within a column and
+	// left/right across columns -- not stepping a flat index. up/down also WRAP within the column (down at
+	// the bottom returns to the top) so single-column menus still cycle.
+	int dir = up ? 1 : (down ? 2 : (left ? 3 : (right ? 4 : 0)));   // 1=up 2=down 3=left 4=right
+	if (dir != 0) {
+		GuiButton* cur = (GuiButton*)this->controlList[this->navSelected];
+		int ccx = cur->xPosition + cur->width / 2;
+		int ccy = cur->yPosition + cur->height / 2;
+		int best = -1; int bestCost = 0;
+		for (int i = 0; i < n; ++i) {            // pass 1: nearest button strictly in the requested dir
+			if (i == this->navSelected || !_navButtonOK(this->controlList, i)) continue;
+			GuiButton* b = (GuiButton*)this->controlList[i];
+			int dx = (b->xPosition + b->width / 2) - ccx;
+			int dy = (b->yPosition + b->height / 2) - ccy;
+			int primary, perp; bool inDir;
+			if (dir == 1)      { inDir = dy < 0; primary = -dy; perp = (dx < 0 ? -dx : dx); }   // up
+			else if (dir == 2) { inDir = dy > 0; primary =  dy; perp = (dx < 0 ? -dx : dx); }   // down
+			else if (dir == 3) { inDir = dx < 0; primary = -dx; perp = (dy < 0 ? -dy : dy); }   // left
+			else               { inDir = dx > 0; primary =  dx; perp = (dy < 0 ? -dy : dy); }   // right
+			if (!inDir) continue;
+			int cost = primary + perp * 2;       // prefer well-aligned (small perp), then nearest
+			if (best < 0 || cost < bestCost) { bestCost = cost; best = i; }
 		}
+		if (best < 0 && (dir == 1 || dir == 2)) {    // pass 2 (up/down): wrap to the column's far end
+			for (int i = 0; i < n; ++i) {
+				if (i == this->navSelected || !_navButtonOK(this->controlList, i)) continue;
+				GuiButton* b = (GuiButton*)this->controlList[i];
+				int bx = b->xPosition + b->width / 2;
+				int by = b->yPosition + b->height / 2;
+				int perp = (bx < ccx ? ccx - bx : bx - ccx);
+				int cost = (dir == 2 ? by : -by) * 4 + perp;   // down->topmost, up->bottommost; column-aware
+				if (best < 0 || cost < bestCost) { bestCost = cost; best = i; }
+			}
+		}
+		if (best >= 0) this->navSelected = best;
 	}
 
 	// Snap the cursor onto the selected button center. Cursor is DISPLAY pixels (top-down); button coords
