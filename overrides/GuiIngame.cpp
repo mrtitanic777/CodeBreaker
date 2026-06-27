@@ -5,6 +5,7 @@
 // Target: Xbox 360 / C++03 / DirectX 9
 
 #include "GuiIngame.h"
+#include "Common.h"            // CONSOLE: DbgPrintF (one-time HUD stage markers)
 #include "AxisAlignedBB.h"
 #include "Block.h"
 #include "BlockFire.h"
@@ -152,6 +153,7 @@ void GuiIngame::renderGameOverlay(float var1, bool var2, int var3, int var4)
 	int var7 = var5->getScaledHeight();
 	FontRenderer* var8 = this->mc->fontRenderer;
 	this->mc->entityRenderer->setupOverlayRendering();
+	{ static bool _h0=false; if(!_h0){_h0=true; DbgPrintF("[hud] begin\n");} }
 	GL11::glEnable(GL11::GL_BLEND);
 	if(this->mc->gameSettings->fancyGraphics) {
 	this->renderVignette(this->mc->thePlayer->getEntityBrightness(var1), var6, var7);
@@ -239,6 +241,7 @@ void GuiIngame::renderGameOverlay(float var1, bool var2, int var3, int var4)
 	}
 	}
 	GL11::glDisable(GL11::GL_BLEND);
+	{ static bool _h1=false; if(!_h1){_h1=true; DbgPrintF("[hud] health/hotbar bg ok\n");} }
 	GL11::glEnable(GL12::GL_RESCALE_NORMAL);
 	GL11::glPushMatrix();
 	GL11::glRotatef(180.0F, 1.0F, 0.0F, 0.0F);
@@ -250,6 +253,7 @@ void GuiIngame::renderGameOverlay(float var1, bool var2, int var3, int var4)
 	this->renderInventorySlot(var15, var16, var17, var1);
 	}
 	RenderHelper::disableStandardItemLighting();
+	{ static bool _h2=false; if(!_h2){_h2=true; DbgPrintF("[hud] hotbar items ok\n");} }
 	GL11::glDisable(GL12::GL_RESCALE_NORMAL);
 	JavaString var23;
 	if(Keyboard::isKeyDown(KEY_F3)) {
@@ -336,6 +340,7 @@ void GuiIngame::renderGameOverlay(float var1, bool var2, int var3, int var4)
 	GL11::glPopMatrix();
 	GL11::glEnable(GL11::GL_ALPHA_TEST);
 	GL11::glDisable(GL11::GL_BLEND);
+	{ static bool _h3=false; if(!_h3){_h3=true; DbgPrintF("[hud] DONE\n");} }
 }
 
 void GuiIngame::renderPumpkinBlur(int var1, int var2)
