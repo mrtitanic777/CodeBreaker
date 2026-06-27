@@ -147,7 +147,7 @@ class JClass(object):
     __slots__ = ('name', 'package', 'parent', 'interfaces', 'is_interface',
                  'is_abstract', 'is_enum', 'fields', 'methods', 'enum_consts',
                  'source_path', 'inherited_fields', 'mi_forwards',
-                 'static_inits', 'inst_inits')
+                 'static_inits', 'inst_inits', 'has_init_statics')
 
     def __init__(self, name, package=None, parent=None, interfaces=None,
                  is_interface=False, is_abstract=False, is_enum=False,
@@ -173,6 +173,9 @@ class JClass(object):
         # synthesized MI-diamond forwarding overrides (populated by pipeline.compute_mi_forwards):
         # [(interface_Method, base_class_name)] -- an interface pure-virtual a base implements.
         self.mi_forwards = []
+        # set by emit.source.render_source: True if initStatics() has a non-empty body (deferred
+        # static field inits or static{} blocks) -> the pipeline adds it to the ordered init driver.
+        self.has_init_statics = False
 
     # -- queries used by types/emit -----------------------------------------
     def field(self, name):

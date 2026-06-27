@@ -100,8 +100,21 @@ def _array_elem_cpp(jtype, resolver):
     return elem
 
 
+def _is_deferrable_static_init(init, ft):
+    """True if a static initializer must run AFTER zero-init, in CONTROLLED order -- it constructs an
+    object (`new`) or reads another class's statics (`::`/`->`), so cross-translation-unit init order
+    matters (the static-init-order crash class). Such inits move into initStatics(); the field def is
+    zero-initialized. Compile-time constants and `const` members (can't be reassigned) stay eager."""
+    head = ft.split('<')[0]
+    if 'const' in head.split():
+        return False
+    return bool(re.search(r'\bnew\b|::|->', init))
+
+
 def _render_statics(cls, resolver, ledger):
-    L = []
+    """Returns (def_lines, init_lines): the static field DEFINITIONS (zero-init for deferrable ones)
+    and the DEFERRED initializer statements that initStatics() must run in dependency order."""
+    defs, inits = [], []
     # own + inherited static field names, for prefixing bare references in initializers
     own_statics = (set(f.name for f in cls.static_fields())
                    | resolver.members.get(cls.name, {}).get('statics', set()))
@@ -113,8 +126,8 @@ def _render_statics(cls, resolver, ledger):
             elem = _array_elem_cpp(f.jtype, resolver)
             items = [_static_ref(e.strip(), resolver, own_statics, cls.name) for e in agg.split(',') if e.strip()]
             data = '_%s_%s_data' % (cls.name, name)
-            L.append('static %s %s[] = { %s };' % (elem, data, ', '.join(items)))
-            L.append('%s %s::%s(%s, %d);' % (ft, cls.name, name, data, len(items)))
+            defs.append('static %s %s[] = { %s };' % (elem, data, ', '.join(items)))
+            defs.append('%s %s::%s(%s, %d);' % (ft, cls.name, name, data, len(items)))
             if ledger is not None:
                 ledger.add(cls.name + '.cpp', Category.RISK,
                            'static array new T[]{...} -> JArray over a file-static data array '
@@ -123,10 +136,13 @@ def _render_statics(cls, resolver, ledger):
             continue
         init = _static_init(f, ft, ledger, cls, resolver, own_statics)
         if init is None:
-            L.append('%s %s::%s;' % (ft, cls.name, name))
+            defs.append('%s %s::%s;' % (ft, cls.name, name))
+        elif _is_deferrable_static_init(init, ft):
+            defs.append('%s %s::%s;' % (ft, cls.name, name))          # zero-init now (order-safe)
+            inits.append('%s::%s = %s;' % (cls.name, name, init))     # initialize in ordered initStatics()
         else:
-            L.append('%s %s::%s = %s;' % (ft, cls.name, name, init))
-    return L
+            defs.append('%s %s::%s = %s;' % (ft, cls.name, name, init))   # compile-time const: eager
+    return defs, inits
 
 
 # ---------------------------------------------------------------------------
@@ -381,9 +397,9 @@ def render_source(cls, resolver, ledger=None):
         return None
 
     body = []
-    statics = _render_statics(cls, resolver, ledger)
-    if statics:
-        body += statics + ['']
+    static_defs, static_init_lines = _render_statics(cls, resolver, ledger)
+    if static_defs:
+        body += static_defs + ['']
     for m in cls.constructors():
         body += _render_ctor(cls, m, resolver, ledger) + ['']
     # synthesized zero-initializing default ctor for a value type that lacks one (so it can be
@@ -415,29 +431,26 @@ def render_source(cls, resolver, ledger=None):
     for im, base in getattr(cls, 'mi_forwards', []):
         body += _render_mi_forward(cls, im, base, resolver, ledger) + ['']
 
-    # static { } blocks: emit each as a static member method, then a file-local trigger that runs
-    # them once at program start (Java runs them at class-load, after static field inits -- the
-    # trigger sits after the static field definitions above, so order is preserved). Dropping these
-    # left registries empty (EntityList/Packet/TileEntity id<->class maps) -- a crash/no-op class.
+    # ORDERED STATIC INIT: deferred static field initializers + Java static{} blocks are run by a
+    # single `void <Class>::initStatics()`, which the generated driver (j2x_init.cpp / j2x_initAll())
+    # calls in dependency order -- NOT by a file-local trigger (whose cross-translation-unit order is
+    # undefined: the static-init-order crash class -- Block initializing before Material -> null vtable).
+    # Static field DEFS above are zero-initialized; initStatics() assigns the real values, in order.
     static_inits = getattr(cls, 'static_inits', [])
-    if static_inits:
-        triggers = []
-        for i, block in enumerate(static_inits):
-            clines = _translate_block_lines(cls, resolver, ledger, _strip_block_braces(block), is_static=True)
-            body += ['void %s::_j2x_clinit_%d()' % (cls.name, i), '{']
-            body += ['\t' + l for l in clines] + ['}', '']
-            triggers.append('%s::_j2x_clinit_%d();' % (cls.name, i))
-        body += ['namespace {   // run the static initializer block(s) once at program start',
-                 '\tstruct _ClinitRun_%s {' % cls.name,
-                 '\t\t_ClinitRun_%s() {' % cls.name]
-        body += ['\t\t\t' + t for t in triggers]
-        body += ['\t\t}', '\t};', '\t_ClinitRun_%s _clinitRun_%s_instance;' % (cls.name, cls.name),
-                 '}', '']
-        if ledger is not None:
-            ledger.add(cls.name + '.cpp', Category.RISK,
-                       'static {} initializer block(s) emitted as _j2x_clinit + a run-once trigger '
-                       '(dropping them left static registries empty)',
-                       severity=Severity.MED, source='emit', rule='static-init-block')
+    init_body = list(static_init_lines)                  # deferred static FIELD initializers first
+    for block in static_inits:                           # then the Java static{} block bodies
+        init_body += _translate_block_lines(cls, resolver, ledger, _strip_block_braces(block), is_static=True)
+    # ALWAYS emit initStatics() (empty when nothing to defer) so the driver can call it on any class
+    # without a header/source mismatch. header.py declares it for every concrete class to match.
+    # cls.has_init_statics lets the pipeline driver call only the classes that actually defer work.
+    cls.has_init_statics = bool(init_body)
+    body += ['void %s::initStatics()' % cls.name, '{']
+    body += ['\t' + l for l in init_body] + ['}', '']
+    if init_body and ledger is not None:
+        ledger.add(cls.name + '.cpp', Category.RISK,
+                   'static field inits + static{} blocks deferred into initStatics(), run in '
+                   'dependency order by j2x_initAll() (kills the static-init-order crash class)',
+                   severity=Severity.MED, source='emit', rule='static-init-ordered')
 
     # a .cpp needs the FULL definition of every user type it touches (member access,
     # new/cast/static), not just the forward decls in its own header. Collect from the

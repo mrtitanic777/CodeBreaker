@@ -170,13 +170,12 @@ def render_header(cls, resolver, ledger=None):
     for m in methods:
         L.append('\t' + _method_decl(cls, m, resolver))
 
-    # static { } initializer blocks -> one static method each, run once by a file-local trigger
-    # in the .cpp (see source.py). Public so the trigger can call them.
-    n_static_init = len(getattr(cls, 'static_inits', []))
-    if n_static_init:
+    # Ordered static init: deferred static field initializers + Java static{} blocks run here,
+    # called in dependency order by the generated driver j2x_initAll() (see source.py / j2x_init.cpp).
+    # Always declared (empty when nothing to defer) so the driver can call it on any concrete class.
+    if not cls.is_interface:
         L.append('')
-        for i in range(n_static_init):
-            L.append('\tstatic void _j2x_clinit_%d();' % i)
+        L.append('\tstatic void initStatics();')
 
     # MI-diamond unification: forwarding overrides so an interface's pure-virtual that a base
     # class already implements concretely is satisfied in THIS class (see compute_mi_forwards).
