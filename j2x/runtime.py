@@ -692,6 +692,7 @@ _EXT_PKG = {
     'DataOutput': 'java.io', 'DataInputStream': 'java.io', 'DataOutputStream': 'java.io',
     'BufferedInputStream': 'java.io', 'BufferedOutputStream': 'java.io', 'FileInputStream': 'java.io',
     'FileOutputStream': 'java.io', 'BufferedReader': 'java.io',
+    'FileReader': 'java.io', 'FileWriter': 'java.io', 'PrintWriter': 'java.io',
     'Socket': 'java.net', 'URL': 'java.net', 'URLConnection': 'java.net',
     'SoundSystem': 'paulscode.sound', 'CodecJOrbis': 'paulscode.sound.codecs',
     'ImageIO': 'javax.imageio', 'BufferedImage': 'java.awt.image', 'ImageObserver': 'java.awt.image',
@@ -827,7 +828,7 @@ _GENERATED['Keyboard.h'] = _ns_stub('Keyboard',
              ('getEventCharacter', ('char', '0')), ('isKeyDown', ('bool', 'false')),
              ('next', ('bool', 'false')), ('getKeyName', ('std::string', 'std::string()'))])
 _GENERATED['Mouse.h'] = _ns_stub('Mouse',
-    void_fns=['create', 'destroy', 'setNativeCursor'],
+    void_fns=['create', 'destroy', 'setNativeCursor', 'setGrabbed', 'setCursorPosition'],
     ret_fns=[('getDX', ('int', '0')), ('getDY', ('int', '0')), ('getX', ('int', '0')),
              ('getY', ('int', '0')), ('getEventButton', ('int', '0')),
              ('getEventButtonState', ('bool', 'false')), ('getEventDWheel', ('int', '0')),
@@ -1018,6 +1019,20 @@ _GENERATED['SoundSystem.h'] = _class_stub('SoundSystem',
 _GENERATED['BufferedReader.h'] = _class_stub('BufferedReader',
     void_methods=['close'], ret_methods=[('readLine', ('std::string', 'std::string()')),
                                          ('read', ('int', '0')), ('ready', ('bool', 'false'))])
+# character streams for options.txt / crash reports (GameSettings, PanelCrashReport): FileReader is
+# wrapped by BufferedReader; PrintWriter wraps FileWriter. Real impls are the Xbox file layer
+# (docs/platform/FileIO.reference) -- BufferedReader.readLine etc. read nothing until then.
+_GENERATED['FileReader.h'] = _class_stub('FileReader', void_methods=['close', 'mark', 'reset'],
+    ret_methods=[('read', ('int', '0')), ('ready', ('bool', 'false'))])
+_GENERATED['FileWriter.h'] = _class_stub('FileWriter', void_methods=['write', 'flush', 'close', 'append'])
+# println/print/write take ANY type incl. JavaString -- which derives from std::string (non-trivial)
+# and so must NOT be passed through a C-style `...`; member templates keep them compile-clean, the
+# same way the GameSettings override models them. flush/close are variadic no-ops.
+_GENERATED['PrintWriter.h'] = _class_stub('PrintWriter',
+    void_methods=['flush', 'close'], ret_methods=[('checkError', ('bool', 'false'))],
+    extra=['template<class T> void println(const T&) {}', 'void println() {}',
+           'template<class T> void print(const T&) {}', 'void print() {}',
+           'template<class T> void write(const T&) {}'])
 _GENERATED['Graphics.h'] = _class_stub('Graphics',
     void_methods=['drawImage', 'dispose', 'setColor', 'fillRect', 'drawString'])
 _GENERATED['Cursor.h'] = _class_stub('Cursor')

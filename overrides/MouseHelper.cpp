@@ -14,28 +14,9 @@
 #include "LWJGLException.h"
 #include "Mouse.h"
 
-// --- Local shim (runtime-stub gap; see final report) ---
-// The Mouse runtime stub lacks setGrabbed / setCursorPosition (LWJGL Mouse).
-// Reopen the namespace to add no-op shims so the call sites stay unchanged.
-// The converter owner should add these centrally with the real implementation.
-/* ---- ORIGINAL JAVA (stubbed below) ----
- *  // org.lwjgl.input.Mouse.setGrabbed / setCursorPosition are real LWJGL native calls;
- *  // here they are replaced by the no-op shims declared just below.
- *  public void grabMouseCursor() {
- *     Mouse.setGrabbed(true);
- *     this.deltaX = 0;
- *     this.deltaY = 0;
- *  }
- *
- *  public void ungrabMouseCursor() {
- *     Mouse.setCursorPosition(this.component.getWidth() / 2, this.component.getHeight() / 2);
- *     Mouse.setGrabbed(false);
- *  }
- *  ---- end original Java ---- */
-namespace Mouse {
-	inline void setGrabbed(bool) {}
-	inline void setCursorPosition(int, int) {}
-}
+// Mouse::setGrabbed / setCursorPosition (LWJGL native cursor grab) are now in the central Mouse
+// runtime stub (no-op there; the real impl is the Xbox Input layer, docs/platform/Input.reference).
+// The local shim that used to live here was removed -- it would collide with the real Mouse impl.
 
 MouseHelper::MouseHelper(Component* var1)
 	: component(NULL)
