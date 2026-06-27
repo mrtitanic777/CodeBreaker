@@ -354,6 +354,7 @@ void EntityRenderer::setupCameraTransform(float var1, int var2)
 	GL11::glTranslatef((float)(-(var2 * 2 - 1)) * var3, 0.0F, 0.0F);
 	}
 	GLU::gluPerspective(this->getFOVModifier(var1), (float)this->mc->displayWidth / (float)this->mc->displayHeight, 0.05F, this->farPlaneDistance);
+	{ static bool _c0=false; if(!_c0){_c0=true; DbgPrintF("[world] cam: gluPerspective ok\n");} }
 	GL11::glMatrixMode(GL11::GL_MODELVIEW);
 	GL11::glLoadIdentity();
 	if(this->mc->gameSettings->anaglyph) {
@@ -372,6 +373,7 @@ void EntityRenderer::setupCameraTransform(float var1, int var2)
 	GL11::glRotatef(-var4 * var4 * 1500.0F, 0.0F, 1.0F, 1.0F);
 	}
 	this->orientCamera(var1);
+	{ static bool _c1=false; if(!_c1){_c1=true; DbgPrintF("[world] cam: orientCamera ok (setupCameraTransform done)\n");} }
 }
 
 void EntityRenderer::renderHand(float var1, int var2)
@@ -468,6 +470,7 @@ void EntityRenderer::renderWorld(float var1)
 	}
 	GL11::glViewport(0, 0, this->mc->displayWidth, this->mc->displayHeight);
 	this->updateFogColor(var1);
+	{ static bool _m6=false; if(!_m6){_m6=true; DbgPrintF("[world] rW: updateFogColor ok\n");} }
 	GL11::glClear(GL11::GL_DEPTH_BUFFER_BIT | GL11::GL_COLOR_BUFFER_BIT);
 	GL11::glEnable(GL11::GL_CULL_FACE);
 	this->setupCameraTransform(var1, var11);
@@ -600,10 +603,12 @@ void EntityRenderer::updateFogColor(float var1)
 	float var4 = 1.0F / (float)(4 - this->mc->gameSettings->renderDistance);
 	var4 = 1.0F - (float)powf((double)var4, 0.25);
 	Vec3D* var5 = var2->getSkyColor(this->mc->thePlayer, var1);
+	{ static bool _f0=false; if(!_f0){_f0=true; DbgPrintF("[world] fog: getSkyColor ok\n");} }
 	float var6 = (float)var5->xCoord;
 	float var7 = (float)var5->yCoord;
 	float var8 = (float)var5->zCoord;
 	Vec3D* var9 = var2->getCloudColour(var1);
+	{ static bool _f1=false; if(!_f1){_f1=true; DbgPrintF("[world] fog: getCloudColour ok\n");} }
 	this->fogColorRed = (float)var9->xCoord;
 	this->fogColorGreen = (float)var9->yCoord;
 	this->fogColorBlue = (float)var9->zCoord;
