@@ -254,7 +254,8 @@ World::World(File* var1, const JavaString& var2)
 	var7->close();
 	} catch (IOException var16) {
 	var16.printStackTrace();
-	throw new RuntimeException("Failed to check session lock, aborting");
+	// CONSOLE: do NOT throw if session.lock can't be written (read-only/emulated save device) -- the
+	// guest C++ throw crashes the 360/emulator. The lock is a multi-instance guard we don't need.
 	}
 	void* var17 = new WorldProvider();
 	File* var18 = new File(this->saveDirectory, "level.dat");
@@ -512,7 +513,8 @@ World::World(File* var1, const JavaString& var2, long long var3)
 	var7->close();
 	} catch (IOException var16) {
 	var16.printStackTrace();
-	throw new RuntimeException("Failed to check session lock, aborting");
+	// CONSOLE: do NOT throw if session.lock can't be written (read-only/emulated save device) -- the
+	// guest C++ throw crashes the 360/emulator. The lock is a multi-instance guard we don't need.
 	}
 	void* var17 = new WorldProvider();
 	File* var18 = new File(this->saveDirectory, "level.dat");
@@ -635,7 +637,8 @@ World::World(File* var1, const JavaString& var2, long long var3, WorldProvider* 
 	var7->close();
 	} catch (IOException var16) {
 	var16.printStackTrace();
-	throw new RuntimeException("Failed to check session lock, aborting");
+	// CONSOLE: do NOT throw if session.lock can't be written (read-only/emulated save device) -- the
+	// guest C++ throw crashes the 360/emulator. The lock is a multi-instance guard we don't need.
 	}
 	void* var17 = new WorldProvider();
 	File* var18 = new File(this->saveDirectory, "level.dat");
@@ -2343,22 +2346,11 @@ void World::sendQuittingDisconnectingPacket()
 
 void World::checkSessionLock()
 {
-	try {
-	File* var1 = new File(this->saveDirectory, "session.lock");
-	DataInputStream* var2 = new DataInputStream(new FileInputStream(var1));
-	// try/finally: ensure var2->close() runs on normal and exceptional paths
-	try {
-	if(var2->readLong() != this->sessionLockStamp) {
-	throw new MinecraftException("The save is being accessed from another location, aborting");
-	}
-	} catch (...) {
-	var2->close();
-	throw;
-	}
-	var2->close();
-	} catch (IOException) {
-	throw new MinecraftException("Failed to check session lock, aborting");
-	}
+	// CONSOLE: no-op. The session lock is a MULTI-INSTANCE guard (stops two PCs editing one save) that
+	// a single-instance console doesn't need. Worse, the original threw a MinecraftException when
+	// session.lock couldn't be read -- and on a read-only/emulated save device it never can -- and the
+	// 360 / emulator cannot unwind a guest C++ throw, so the throw itself crashes (IP 0x0). Skip it.
+	return;
 }
 
 void World::setWorldTime(long long var1)
