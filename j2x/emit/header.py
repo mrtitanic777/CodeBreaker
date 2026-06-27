@@ -151,11 +151,14 @@ def render_header(cls, resolver, ledger=None):
     if (cls.name in resolver.values and cls.constructors()
             and not any(c.arity == 0 for c in cls.constructors())):
         L.append('\t%s();' % cls.name)
-    # class with instance field initializers / init-blocks but NO explicit ctor: source.py
-    # synthesizes a default ctor to run them, so declare it here to match.
+    # A class with NO explicit ctor relies on Java's implicit default ctor, which zero-inits ALL fields
+    # (and runs any field initializers / init-blocks). C++'s compiler-default ctor leaves primitives and
+    # pointers as GARBAGE -- the uninitialized-field crash class (e.g. GuiScreen had no ctor, so
+    # allowUserInput was garbage -> the menu deref'd a NULL player -> IP 0x0). So synthesize a zero-init
+    # default ctor whenever such a class has ANY instance fields (or init-blocks). source.py emits the
+    # matching definition via _init_list (primitives/pointers -> 0; objects default-construct).
     elif (not cls.constructors()
-          and (any(f.initializer is not None for f in cls.instance_fields())
-               or getattr(cls, 'inst_inits', []))):
+          and (cls.instance_fields() or getattr(cls, 'inst_inits', []))):
         L.append('\t%s();' % cls.name)
     if not cls.is_interface:
         L.append('\tvirtual ~%s();' % cls.name)

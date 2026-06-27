@@ -412,10 +412,12 @@ def render_source(cls, resolver, ledger=None):
             L2.append('\t: ' + '\n\t, '.join(items))
         L2 += ['{', '}']
         body += L2 + ['']
-    # a class with instance field initializers / init-blocks but NO explicit constructor: Java's
-    # implicit default ctor runs the inits, so synthesize one (C++'s implicit ctor would not).
+    # A class with NO explicit ctor relies on Java's implicit default ctor, which zero-inits ALL fields
+    # and runs any initializers/init-blocks. C++'s implicit ctor leaves primitives/pointers as garbage
+    # (the uninitialized-field crash class), so synthesize a zero-init default ctor whenever the class
+    # has ANY instance fields (or init-blocks). Matches the declaration emitted by header.py.
     elif (not cls.constructors()
-          and (any(f.initializer is not None for f in cls.instance_fields()) or cls.inst_inits)):
+          and (cls.instance_fields() or cls.inst_inits)):
         items = _init_list(cls, resolver)
         inits = _instance_init_lines(cls, resolver, ledger)
         L2 = ['%s::%s()' % (cls.name, cls.name)]
