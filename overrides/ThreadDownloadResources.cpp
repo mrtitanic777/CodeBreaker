@@ -163,10 +163,9 @@ ThreadDownloadResources::ThreadDownloadResources(File* var1, Minecraft* var2)
 	this->setName("Resource download thread");
 	this->setDaemon(true);
 	this->resourcesFolder = new File(var1, "resources/");
-	if(!this->resourcesFolder->exists() && !this->resourcesFolder->mkdirs()) {
-	JavaString _msg = (JCat() + "The working directory could not be created: " + this->resourcesFolder);
-	throw new RuntimeException(_msg);
-	}
+	if(!this->resourcesFolder->exists()) {
+	this->resourcesFolder->mkdirs();   // best-effort; never throw on the console (a guest C++ throw
+	}                                  // here storms bad_alloc on the emulator -- see Minecraft::getAppDir)
 }
 
 ThreadDownloadResources::~ThreadDownloadResources()

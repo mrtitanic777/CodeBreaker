@@ -387,34 +387,20 @@ File* Minecraft::getMinecraftDir()
 
 File* Minecraft::getAppDir(const JavaString& var0)
 {
-	JavaString var1 = System::getProperty("user.home", ".");
-	File* var2;
-	switch(EnumOSMappingHelper::s_osMappings[getOs()]) {   // getOs() is already the enum's int ordinal
-	case 1:
-	case 2:
-	var2 = new File(var1, '.' + var0 + '/');
-	break;
-	case 3:
-	{                                                      // brace: case-local var3 (jump-to-case-label)
-	JavaString var3 = System::getenv("APPDATA");
-	if(var3 != NULL) {
-	var2 = new File(var3,(JCat() + "." + var0 + '/'));
-	} else {
-	var2 = new File(var1, '.' + var0 + '/');
+	// PORT (Xbox 360): the JVM path logic (user.home / getOs) yields "." here, which is not a valid
+	// device -> File::mkdirs() fails -> the original `throw new RuntimeException(...)` fires. On this
+	// target a guest C++ throw whose message is a JCat passed through the variadic exception ctor
+	// reads a garbage std::string size and storms `new[huge]` (bad_alloc) -- the black-screen crash.
+	// So pin the writable data dir to a real device next to the title (the same device the Content
+	// assets load from) and NEVER throw: create it best-effort and return it regardless. (Durable
+	// world saves additionally route through the STFS layer; a read-only device here just means
+	// options.txt / screenshots don't persist.)
+	std::string var1 = (JCat() + "game:\\" + var0);
+	File* var2 = new File(var1);
+	if(!var2->exists()) {
+	var2->mkdirs();
 	}
-	}
-	break;
-	case 4:
-	var2 = new File(var1,(JCat() + "Library/Application Support/" + var0));
-	break;
-	default:
-	var2 = new File(var1, var0 + '/');
-	}
-	if(!var2->exists() && !var2->mkdirs()) {
-	throw new RuntimeException((JCat() + "The working directory could not be created: " + var2));
-	} else {
 	return var2;
-	}
 }
 
 int Minecraft::getOs()
