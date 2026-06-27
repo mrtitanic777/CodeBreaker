@@ -36,19 +36,16 @@
  *      }
  *  }
  *  ---- end original Java ---- */
-JArray<int > OsMap::s_osTypeOrdinals = JArray<int >(5);
+JArray<int > OsMap::s_osTypeOrdinals;
 // restored Java static{} block (was dropped -> osTypeOrdinals all zero). EnumOS1 constants ARE
-// their ordinals here, so Java's .ordinal() is dropped.
-namespace {
-	struct _InitOsTypeOrdinals {
-		_InitOsTypeOrdinals() {
-			OsMap::s_osTypeOrdinals[EnumOS1::linux] = 1;
-			OsMap::s_osTypeOrdinals[EnumOS1::solaris] = 2;
-			OsMap::s_osTypeOrdinals[EnumOS1::windows] = 3;
-			OsMap::s_osTypeOrdinals[EnumOS1::macos] = 4;
-		}
-	};
-	_InitOsTypeOrdinals _initOsTypeOrdinals_instance;
+// their ordinals here, so Java's .ordinal() is dropped. Run in order by j2x_initAll().
+void OsMap::initStatics()
+{
+	OsMap::s_osTypeOrdinals = JArray<int >(5);
+	OsMap::s_osTypeOrdinals[EnumOS1::linux] = 1;
+	OsMap::s_osTypeOrdinals[EnumOS1::solaris] = 2;
+	OsMap::s_osTypeOrdinals[EnumOS1::windows] = 3;
+	OsMap::s_osTypeOrdinals[EnumOS1::macos] = 4;
 }
 
 OsMap::~OsMap()

@@ -48,19 +48,19 @@
 #include "WorldChunkManager.h"
 #include "WorldProvider.h"
 
-MobSpawnerBase* MobSpawnerBase::s_rainforest = (new MobSpawnerBase())->setColor(588342)->setBiomeName("Rainforest")->setGrassColor(2094168);
-MobSpawnerBase* MobSpawnerBase::s_swampland = (new MobSpawnerSwamp())->setColor(522674)->setBiomeName("Swampland")->setGrassColor(9154376);
-MobSpawnerBase* MobSpawnerBase::s_seasonalForest = (new MobSpawnerBase())->setColor(10215459)->setBiomeName("Seasonal Forest");
-MobSpawnerBase* MobSpawnerBase::s_forest = (new MobSpawnerBase())->setColor(353825)->setBiomeName("Forest")->setGrassColor(5159473);
-MobSpawnerBase* MobSpawnerBase::s_savanna = (new MobSpawnerDesert())->setColor(14278691)->setBiomeName("Savanna");
-MobSpawnerBase* MobSpawnerBase::s_shrubland = (new MobSpawnerBase())->setColor(10595616)->setBiomeName("Shrubland");
-MobSpawnerBase* MobSpawnerBase::s_taiga = (new MobSpawnerBase())->setColor(3060051)->setBiomeName("Taiga")->setEnableSnow()->setGrassColor(8107825);
-MobSpawnerBase* MobSpawnerBase::s_desert = (new MobSpawnerDesert())->setColor(16421912)->setBiomeName("Desert");
-MobSpawnerBase* MobSpawnerBase::s_plains = (new MobSpawnerDesert())->setColor(16767248)->setBiomeName("Plains");
-MobSpawnerBase* MobSpawnerBase::s_iceDesert = (new MobSpawnerDesert())->setColor(16772499)->setBiomeName("Ice Desert")->setEnableSnow()->setGrassColor(12899129);
-MobSpawnerBase* MobSpawnerBase::s_tundra = (new MobSpawnerBase())->setColor(5762041)->setBiomeName("Tundra")->setEnableSnow()->setGrassColor(12899129);
-MobSpawnerBase* MobSpawnerBase::s_hell = (new MobSpawnerHell())->setColor(16711680)->setBiomeName("Hell");
-JArray<MobSpawnerBase* > MobSpawnerBase::s_biomeLookupTable = JArray<MobSpawnerBase* >(4096);
+MobSpawnerBase* MobSpawnerBase::s_rainforest;
+MobSpawnerBase* MobSpawnerBase::s_swampland;
+MobSpawnerBase* MobSpawnerBase::s_seasonalForest;
+MobSpawnerBase* MobSpawnerBase::s_forest;
+MobSpawnerBase* MobSpawnerBase::s_savanna;
+MobSpawnerBase* MobSpawnerBase::s_shrubland;
+MobSpawnerBase* MobSpawnerBase::s_taiga;
+MobSpawnerBase* MobSpawnerBase::s_desert;
+MobSpawnerBase* MobSpawnerBase::s_plains;
+MobSpawnerBase* MobSpawnerBase::s_iceDesert;
+MobSpawnerBase* MobSpawnerBase::s_tundra;
+MobSpawnerBase* MobSpawnerBase::s_hell;
+JArray<MobSpawnerBase* > MobSpawnerBase::s_biomeLookupTable;
 
 MobSpawnerBase::~MobSpawnerBase()
 {
@@ -136,4 +136,24 @@ JArray<Class* > MobSpawnerBase::getEntitiesForType(int var1)
 	} else {
 	return JArray<Class* >();
 	}
+}
+
+
+// Deferred static initialization (ordered by j2x_initAll()): was eager static
+// definitions whose cross-translation-unit init order is undefined.
+void MobSpawnerBase::initStatics()
+{
+	MobSpawnerBase::s_rainforest = (new MobSpawnerBase())->setColor(588342)->setBiomeName("Rainforest")->setGrassColor(2094168);
+	MobSpawnerBase::s_swampland = (new MobSpawnerSwamp())->setColor(522674)->setBiomeName("Swampland")->setGrassColor(9154376);
+	MobSpawnerBase::s_seasonalForest = (new MobSpawnerBase())->setColor(10215459)->setBiomeName("Seasonal Forest");
+	MobSpawnerBase::s_forest = (new MobSpawnerBase())->setColor(353825)->setBiomeName("Forest")->setGrassColor(5159473);
+	MobSpawnerBase::s_savanna = (new MobSpawnerDesert())->setColor(14278691)->setBiomeName("Savanna");
+	MobSpawnerBase::s_shrubland = (new MobSpawnerBase())->setColor(10595616)->setBiomeName("Shrubland");
+	MobSpawnerBase::s_taiga = (new MobSpawnerBase())->setColor(3060051)->setBiomeName("Taiga")->setEnableSnow()->setGrassColor(8107825);
+	MobSpawnerBase::s_desert = (new MobSpawnerDesert())->setColor(16421912)->setBiomeName("Desert");
+	MobSpawnerBase::s_plains = (new MobSpawnerDesert())->setColor(16767248)->setBiomeName("Plains");
+	MobSpawnerBase::s_iceDesert = (new MobSpawnerDesert())->setColor(16772499)->setBiomeName("Ice Desert")->setEnableSnow()->setGrassColor(12899129);
+	MobSpawnerBase::s_tundra = (new MobSpawnerBase())->setColor(5762041)->setBiomeName("Tundra")->setEnableSnow()->setGrassColor(12899129);
+	MobSpawnerBase::s_hell = (new MobSpawnerHell())->setColor(16711680)->setBiomeName("Hell");
+	MobSpawnerBase::s_biomeLookupTable = JArray<MobSpawnerBase* >(4096);
 }

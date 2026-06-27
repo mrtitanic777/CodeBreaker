@@ -257,9 +257,7 @@ _STATIC_INIT_ORDER = ['MathHelper', 'Material', 'Block', 'Item', 'CraftingManage
 # OVERRIDE classes refactored to expose initStatics() (they're verbatim, so not in init_classes,
 # but their overrides/*.h declares initStatics() and overrides/*.cpp defines it). The driver only
 # calls names listed here; add each override as it's refactored to the initStatics() pattern.
-# PENDING: Block/EntityList/TileEntity/MobSpawnerBase/OsMap/Packet still use eager/file-local static
-# init -- until they're refactored they keep self-initializing (and are NOT driven in order yet).
-_INIT_OVERRIDES = set()   # TODO(step1): refactor the 6 registry overrides, then list them here
+_INIT_OVERRIDES = {'Block', 'EntityList', 'TileEntity', 'MobSpawnerBase', 'OsMap', 'Packet'}
 
 
 def _write_init_driver(out_dir, init_classes, all_class_names):

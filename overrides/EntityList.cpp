@@ -126,35 +126,33 @@ void EntityList::registerEntity(const std::string& name, int id)
  *  mapping is dropped (no runtime Class registry exists). The four maps above are
  *  therefore never populated, so every lookup below resolves to nothing. */
 
-// Port of the original Java static{} block: register every entity class with its
-// name + id, keyed by RTTI identity (typeid) and backed by (World*) factories.
-namespace {
-	struct _EntityListInit {
-		_EntityListInit() {
-			EntityList::registerEntity<EntityArrow>("Arrow", 10);
-			EntityList::registerEntity<EntitySnowball>("Snowball", 11);
-			EntityList::registerEntity<EntityItem>("Item", 1);
-			EntityList::registerEntity<EntityPainting>("Painting", 9);
-			EntityList::registerEntity<EntityLiving>("Mob", 48);
-			EntityList::registerEntity<EntityMobs>("Monster", 49);
-			EntityList::registerEntity<EntityCreeper>("Creeper", 50);
-			EntityList::registerEntity<EntitySkeleton>("Skeleton", 51);
-			EntityList::registerEntity<EntitySpider>("Spider", 52);
-			EntityList::registerEntity<EntityZombieSimple>("Giant", 53);
-			EntityList::registerEntity<EntityZombie>("Zombie", 54);
-			EntityList::registerEntity<EntitySlime>("Slime", 55);
-			EntityList::registerEntity<EntityGhast>("Ghast", 56);
-			EntityList::registerEntity<EntityPigZombie>("PigZombie", 57);
-			EntityList::registerEntity<EntityPig>("Pig", 90);
-			EntityList::registerEntity<EntitySheep>("Sheep", 91);
-			EntityList::registerEntity<EntityCow>("Cow", 92);
-			EntityList::registerEntity<EntityChicken>("Chicken", 93);
-			EntityList::registerEntity<EntityTNTPrimed>("PrimedTnt", 20);
-			EntityList::registerEntity<EntityFallingSand>("FallingSand", 21);
-			EntityList::registerEntity<EntityMinecart>("Minecart", 40);
-			EntityList::registerEntity<EntityBoat>("Boat", 41);
-		}
-	} _entityListInit;
+// Port of the original Java static{} block: register every entity class with its name + id, keyed
+// by RTTI identity (typeid) and backed by (World*) factories. Run in dependency order by
+// j2x_initAll() (was a file-local auto-trigger -- undefined cross-TU order).
+void EntityList::initStatics()
+{
+	EntityList::registerEntity<EntityArrow>("Arrow", 10);
+	EntityList::registerEntity<EntitySnowball>("Snowball", 11);
+	EntityList::registerEntity<EntityItem>("Item", 1);
+	EntityList::registerEntity<EntityPainting>("Painting", 9);
+	EntityList::registerEntity<EntityLiving>("Mob", 48);
+	EntityList::registerEntity<EntityMobs>("Monster", 49);
+	EntityList::registerEntity<EntityCreeper>("Creeper", 50);
+	EntityList::registerEntity<EntitySkeleton>("Skeleton", 51);
+	EntityList::registerEntity<EntitySpider>("Spider", 52);
+	EntityList::registerEntity<EntityZombieSimple>("Giant", 53);
+	EntityList::registerEntity<EntityZombie>("Zombie", 54);
+	EntityList::registerEntity<EntitySlime>("Slime", 55);
+	EntityList::registerEntity<EntityGhast>("Ghast", 56);
+	EntityList::registerEntity<EntityPigZombie>("PigZombie", 57);
+	EntityList::registerEntity<EntityPig>("Pig", 90);
+	EntityList::registerEntity<EntitySheep>("Sheep", 91);
+	EntityList::registerEntity<EntityCow>("Cow", 92);
+	EntityList::registerEntity<EntityChicken>("Chicken", 93);
+	EntityList::registerEntity<EntityTNTPrimed>("PrimedTnt", 20);
+	EntityList::registerEntity<EntityFallingSand>("FallingSand", 21);
+	EntityList::registerEntity<EntityMinecart>("Minecart", 40);
+	EntityList::registerEntity<EntityBoat>("Boat", 41);
 }
 
 EntityList::~EntityList()

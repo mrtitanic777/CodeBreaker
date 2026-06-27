@@ -28,6 +28,7 @@ public:
 	static std::map<int, void*> s_IDtoClassMapping;
 	static std::map<void*, void*> s_classToIDMapping;
 
+	static void initStatics();   // run the entity registrations in order (called by j2x_initAll)
 	static void addMapping(Class* var0, const JavaString& var1, int var2);
 	static Entity* createEntityInWorld(const JavaString& var0, World* var1);
 	static Entity* createEntityFromNBT(NBTTagCompound* var0, World* var1);

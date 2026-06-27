@@ -205,11 +205,10 @@ void Packet::writePacket(Packet* var0, DataOutputStream* var1)
  *      addIdClassMapping(255, Packet255KickDisconnect.class);
  *  }
  *  ---- end original Java ---- */
-// C++ equivalent of the Java static{} block: a file-local initializer that runs at
-// program startup and fills both maps with RTTI identity + no-arg factories.
-namespace {
-	struct _Init {
-		_Init() {
+// C++ equivalent of the Java static{} block: fills both maps with RTTI identity + no-arg factories.
+// Run in dependency order by j2x_initAll() (was a file-local auto-trigger -- undefined cross-TU order).
+void Packet::initStatics()
+{
 			_registerPacket(0,   typeid(Packet0KeepAlive).name(),       &j2x_new0<Packet0KeepAlive>);
 			_registerPacket(1,   typeid(Packet1Login).name(),          &j2x_new0<Packet1Login>);
 			_registerPacket(2,   typeid(Packet2Handshake).name(),      &j2x_new0<Packet2Handshake>);
@@ -250,6 +249,4 @@ namespace {
 			_registerPacket(59,  typeid(Packet59ComplexEntity).name(), &j2x_new0<Packet59ComplexEntity>);
 			_registerPacket(60,  typeid(Packet60).name(),              &j2x_new0<Packet60>);
 			_registerPacket(255, typeid(Packet255KickDisconnect).name(),&j2x_new0<Packet255KickDisconnect>);
-		}
-	} _init_inst;
 }

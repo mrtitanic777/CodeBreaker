@@ -12,6 +12,7 @@ public:
 	virtual ~OsMap();
 
 	static JArray<int > s_osTypeOrdinals;
+	static void initStatics();   // fills s_osTypeOrdinals in order (called by j2x_initAll)
 };
 
 #endif // OSMAP_H

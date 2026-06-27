@@ -13,6 +13,7 @@ class Class;
 
 class MobSpawnerBase {
 public:
+	static void initStatics();   // run the deferred biome static inits in order (j2x_initAll)
 	virtual ~MobSpawnerBase();
 
 	JavaString biomeName;

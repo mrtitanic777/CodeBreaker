@@ -117,17 +117,14 @@ void TileEntity::addMapping(Class* var0, const JavaString& var1)
 	}
 }
 
-namespace {
-	// Reproduces the Java `static { addMapping(...) }` block: runs at load, registers each
-	// TileEntity subclass by RTTI identity + no-arg template factory.
-	struct _Init {
-		_Init() {
-			TileEntity::registerMapping(typeid(TileEntityFurnace).name(),    JavaString("Furnace"),    &j2x_new0<TileEntityFurnace>);
-			TileEntity::registerMapping(typeid(TileEntityChest).name(),      JavaString("Chest"),      &j2x_new0<TileEntityChest>);
-			TileEntity::registerMapping(typeid(TileEntitySign).name(),       JavaString("Sign"),       &j2x_new0<TileEntitySign>);
-			TileEntity::registerMapping(typeid(TileEntityMobSpawner).name(), JavaString("MobSpawner"), &j2x_new0<TileEntityMobSpawner>);
-		}
-	} _init_inst;
+// Reproduces the Java `static { addMapping(...) }` block: registers each TileEntity subclass by RTTI
+// identity + no-arg template factory. Run in dependency order by j2x_initAll() (was an auto-trigger).
+void TileEntity::initStatics()
+{
+	TileEntity::registerMapping(typeid(TileEntityFurnace).name(),    JavaString("Furnace"),    &j2x_new0<TileEntityFurnace>);
+	TileEntity::registerMapping(typeid(TileEntityChest).name(),      JavaString("Chest"),      &j2x_new0<TileEntityChest>);
+	TileEntity::registerMapping(typeid(TileEntitySign).name(),       JavaString("Sign"),       &j2x_new0<TileEntitySign>);
+	TileEntity::registerMapping(typeid(TileEntityMobSpawner).name(), JavaString("MobSpawner"), &j2x_new0<TileEntityMobSpawner>);
 }
 
 void TileEntity::readFromNBT(NBTTagCompound* var1)

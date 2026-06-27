@@ -24,6 +24,7 @@ public:
 	static std::map<int, void*> s_packetIdToClassMap;
 	static std::map<std::string, int> s_packetClassToIdMap;
 
+	static void initStatics();   // run the packet registrations in order (called by j2x_initAll)
 	static void addIdClassMapping(int var0, Class* var1);
 	static Packet* getNewPacket(int var0);
 	virtual int getPacketId();

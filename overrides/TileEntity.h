@@ -27,6 +27,7 @@ public:
 	static std::map<std::string, void*> s_nameToClassMap;
 	static std::map<std::string, JavaString> s_classToNameMap;
 
+	static void initStatics();   // run the TileEntity registrations in order (called by j2x_initAll)
 	static void addMapping(Class* var0, const JavaString& var1);
 
 	// PORT: Reflection (Class.newInstance) does not exist in the runtime model. Construction is

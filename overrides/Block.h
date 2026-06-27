@@ -26,6 +26,7 @@ class World;
 
 class Block {
 public:
+	static void initStatics();   // run the deferred block/sound static inits in order (j2x_initAll)
 	Block(int var1, Material* var2);
 	Block(int var1, int var2, Material* var3);
 	virtual ~Block();
