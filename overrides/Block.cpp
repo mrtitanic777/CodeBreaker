@@ -353,7 +353,7 @@ float Block::getBlockBrightness(IBlockAccess* var1, int var2, int var3, int var4
 
 bool Block::shouldSideBeRendered(IBlockAccess* var1, int var2, int var3, int var4, int var5)
 {
-	return var5 == 0 && this->minY > 0.0D ? true : (var5 == 1 && this->maxY < 1.0D ? true : (var5 == 2 && this->minZ > 0.0D ? true : (var5 == 3 && this->maxZ < 1.0D ? true : (var5 == 4 && this->field_370_bf > 0.0D ? true : (var5 == 5 && this->maxX < 1.0D ? true : !var1->isBlockOpaqueCube(var2, var3, var4))))));
+	return var5 == 0 && this->minY > 0.0 ? true : (var5 == 1 && this->maxY < 1.0 ? true : (var5 == 2 && this->minZ > 0.0 ? true : (var5 == 3 && this->maxZ < 1.0 ? true : (var5 == 4 && this->field_370_bf > 0.0 ? true : (var5 == 5 && this->maxX < 1.0 ? true : !var1->isBlockOpaqueCube(var2, var3, var4))))));
 }
 
 int Block::getBlockTexture(IBlockAccess* var1, int var2, int var3, int var4, int var5)
@@ -462,9 +462,9 @@ void Block::dropBlockAsItemWithChance(World* var1, int var2, int var3, int var4,
 	int var9 = this->idDropped(var5, var1->rand);
 	if(var9 > 0) {
 	float var10 = 0.7F;
-	double var11 = (double)(var1->rand->nextFloat() * var10) + (double)(1.0F - var10) * 0.5D;
-	double var13 = (double)(var1->rand->nextFloat() * var10) + (double)(1.0F - var10) * 0.5D;
-	double var15 = (double)(var1->rand->nextFloat() * var10) + (double)(1.0F - var10) * 0.5D;
+	double var11 = (double)(var1->rand->nextFloat() * var10) + (double)(1.0F - var10) * 0.5;
+	double var13 = (double)(var1->rand->nextFloat() * var10) + (double)(1.0F - var10) * 0.5;
+	double var15 = (double)(var1->rand->nextFloat() * var10) + (double)(1.0F - var10) * 0.5;
 	EntityItem* var17 = new EntityItem(var1, (double)var2 + var11, (double)var3 + var13, (double)var4 + var15, new ItemStack(var9));
 	var17->delayBeforeCanPickup = 10;
 	var1->entityJoinedWorld(var17);

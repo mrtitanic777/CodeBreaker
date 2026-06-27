@@ -190,7 +190,7 @@ void ThreadDownloadResources::run()
 	Element* var9 = (Element*)var8;
 	JavaString var10 = ((Element*)var9->getElementsByTagName("Key").item(0))->getChildNodes().item(0)->getNodeValue();
 	long long var11 = Long::parseLong(((Element*)var9->getElementsByTagName("Size").item(0))->getChildNodes().item(0)->getNodeValue());
-	if(var11 > 0L) {
+	if(var11 > 0LL) {
 	this->downloadAndInstallResource(var1, var10, var11, var6);
 	if(this->closing) {
 	return;

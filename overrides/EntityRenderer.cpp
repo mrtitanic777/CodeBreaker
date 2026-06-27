@@ -209,10 +209,10 @@ void EntityRenderer::getMouseOver(float var1)
 	var4 = this->mc->objectMouseOver->hitVec->distanceTo(var6);
 	}
 	if((dynamic_cast<PlayerControllerTest*>(this->mc->playerController) != NULL)) {
-	var2 = 32.0D;
+	var2 = 32.0;
 	} else {
-	if(var4 > 3.0D) {
-	var4 = 3.0D;
+	if(var4 > 3.0) {
+	var4 = 3.0;
 	}
 	var2 = var4;
 	}
@@ -221,7 +221,7 @@ void EntityRenderer::getMouseOver(float var1)
 	this->pointedEntity = NULL;
 	float var9 = 1.0F;
 	JList<void*> var10 = this->mc->theWorld->getEntitiesWithinAABBExcludingEntity(this->mc->thePlayer, this->mc->thePlayer->boundingBox->addCoord(var7->xCoord * var2, var7->yCoord * var2, var7->zCoord * var2)->expands((double)var9, (double)var9, (double)var9));
-	double var11 = 0.0D;
+	double var11 = 0.0;
 	for(int var13 = 0; var13 < var10.size(); ++var13) {
 	Entity* var14 = (Entity*)var10[var13];
 	if(var14->canBeCollidedWith()) {
@@ -229,13 +229,13 @@ void EntityRenderer::getMouseOver(float var1)
 	AxisAlignedBB* var16 = var14->boundingBox->expands((double)var15, (double)var15, (double)var15);
 	MovingObjectPosition* var17 = var16->calculateIntercept(var6, var8);
 	if(var16->isVecInside(var6)) {
-	if(0.0D < var11 || var11 == 0.0D) {
+	if(0.0 < var11 || var11 == 0.0) {
 	this->pointedEntity = var14;
-	var11 = 0.0D;
+	var11 = 0.0;
 	}
 	} else if(var17 != NULL) {
 	double var18 = var6->distanceTo(var17->hitVec);
-	if(var18 < var11 || var11 == 0.0D) {
+	if(var18 < var11 || var11 == 0.0) {
 	this->pointedEntity = var14;
 	var11 = var18;
 	}
@@ -303,12 +303,12 @@ void EntityRenderer::orientCamera(float var1)
 	double var5 = var2->prevPosY + (var2->posY - var2->prevPosY) * (double)var1;
 	double var7 = var2->prevPosZ + (var2->posZ - var2->prevPosZ) * (double)var1;
 	if(this->mc->gameSettings->thirdPersonView) {
-	double var9 = 4.0D;
+	double var9 = 4.0;
 	float var11 = var2->rotationYaw;
 	float var12 = var2->rotationPitch;
 	if(Keyboard::isKeyDown(_KB_KEY_F1)) {
 	var12 += 180.0F;
-	var9 += 2.0D;
+	var9 += 2.0;
 	}
 	double var13 = (double)(-MathHelper::sin(var11 / 180.0F * (float)3.1415927F) * MathHelper::cos(var12 / 180.0F * (float)3.1415927F)) * var9;
 	double var15 = (double)(MathHelper::cos(var11 / 180.0F * (float)3.1415927F) * MathHelper::cos(var12 / 180.0F * (float)3.1415927F)) * var9;
@@ -400,7 +400,7 @@ void EntityRenderer::renderHand(float var1, int var2)
 void EntityRenderer::updateCameraAndRender(float var1)
 {
 	if(!Display::isActive()) {
-	if(System::currentTimeMillis() - this->prevFrameTime > 500L) {
+	if(System::currentTimeMillis() - this->prevFrameTime > 500LL) {
 	this->mc->displayInGameMenu();
 	}
 	} else {
@@ -577,7 +577,7 @@ void EntityRenderer::setupOverlayRendering()
 	GL11::glClear(GL11::GL_DEPTH_BUFFER_BIT);
 	GL11::glMatrixMode(GL11::GL_PROJECTION);
 	GL11::glLoadIdentity();
-	GL11::glOrtho(0.0D, (double)var2, (double)var3, 0.0D, 1000.0D, 3000.0D);
+	GL11::glOrtho(0.0, (double)var2, (double)var3, 0.0, 1000.0, 3000.0);
 	GL11::glMatrixMode(GL11::GL_MODELVIEW);
 	GL11::glLoadIdentity();
 	GL11::glTranslatef(0.0F, 0.0F, -2000.0F);
@@ -588,7 +588,7 @@ void EntityRenderer::updateFogColor(float var1)
 	World* var2 = this->mc->theWorld;
 	EntityPlayerSP* var3 = this->mc->thePlayer;
 	float var4 = 1.0F / (float)(4 - this->mc->gameSettings->renderDistance);
-	var4 = 1.0F - (float)powf((double)var4, 0.25D);
+	var4 = 1.0F - (float)powf((double)var4, 0.25);
 	Vec3D* var5 = var2->getSkyColor(this->mc->thePlayer, var1);
 	float var6 = (float)var5->xCoord;
 	float var7 = (float)var5->yCoord;

@@ -282,10 +282,10 @@ void GuiScreen::drawBackground(int var1)
 	float var3 = 32.0F;
 	var2->startDrawingQuads();
 	var2->setColorOpaque_I(4210752);
-	var2->addVertexWithUV(0.0D, (double)this->height, 0.0D, 0.0D, (double)((float)this->height / var3 + (float)var1));
-	var2->addVertexWithUV((double)this->width, (double)this->height, 0.0D, (double)((float)this->width / var3), (double)((float)this->height / var3 + (float)var1));
-	var2->addVertexWithUV((double)this->width, 0.0D, 0.0D, (double)((float)this->width / var3), (double)(0 + var1));
-	var2->addVertexWithUV(0.0D, 0.0D, 0.0D, 0.0D, (double)(0 + var1));
+	var2->addVertexWithUV(0.0, (double)this->height, 0.0, 0.0, (double)((float)this->height / var3 + (float)var1));
+	var2->addVertexWithUV((double)this->width, (double)this->height, 0.0, (double)((float)this->width / var3), (double)((float)this->height / var3 + (float)var1));
+	var2->addVertexWithUV((double)this->width, 0.0, 0.0, (double)((float)this->width / var3), (double)(0 + var1));
+	var2->addVertexWithUV(0.0, 0.0, 0.0, 0.0, (double)(0 + var1));
 	var2->draw();
 }
 

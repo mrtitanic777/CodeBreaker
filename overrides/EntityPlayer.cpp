@@ -73,7 +73,7 @@ EntityPlayer::EntityPlayer(World* var1)
 {
 	this->inventory = new InventoryPlayer(this);   // restored Java field initializer (was dropped -> null-deref)
 	this->yOffset = 1.62F;
-	this->setLocationAndAngles((double)var1->spawnX + 0.5D, (double)(var1->spawnY + 1), (double)var1->spawnZ + 0.5D, 0.0F, 0.0F);
+	this->setLocationAndAngles((double)var1->spawnX + 0.5, (double)(var1->spawnY + 1), (double)var1->spawnZ + 0.5, 0.0F, 0.0F);
 	this->health = 20;
 	this->entityType = "humanoid";
 	this->renderYawOffsetBase = 180.0F;
@@ -137,7 +137,7 @@ void EntityPlayer::onLivingUpdate()
 	this->cameraYaw += (var1 - this->cameraYaw) * 0.4F;
 	this->field_9328_R += (var2 - this->field_9328_R) * 0.8F;
 	if(this->health > 0) {
-	JList<void*> var3 = this->worldObj->getEntitiesWithinAABBExcludingEntity(this, this->boundingBox->expands(1.0D, 0.0D, 1.0D));
+	JList<void*> var3 = this->worldObj->getEntitiesWithinAABBExcludingEntity(this, this->boundingBox->expands(1.0, 0.0, 1.0));
 	if(var3 != NULL) {
 	for(int var4 = 0; var4 < var3.size(); ++var4) {
 	this->collideWithPlayer((Entity*)var3[var4]);
@@ -170,7 +170,7 @@ void EntityPlayer::onDeath(Entity* var1)
 	this->motionX = (double)(-MathHelper::cos((this->attackedAtYaw + this->rotationYaw) * (float)3.1415927F / 180.0F) * 0.1F);
 	this->motionZ = (double)(-MathHelper::sin((this->attackedAtYaw + this->rotationYaw) * (float)3.1415927F / 180.0F) * 0.1F);
 	} else {
-	this->motionX = this->motionZ = 0.0D;
+	this->motionX = this->motionZ = 0.0;
 	}
 	this->yOffset = 0.1F;
 }

@@ -106,8 +106,8 @@ int SpawnerAnimals::performSpawning(World* var0)
 	int var1;
 	for(var1 = 0; var1 < var0->playerEntities.size(); ++var1) {
 	EntityPlayer* var2 = (EntityPlayer*)var0->playerEntities[var1];
-	int var3 = MathHelper::floor_double(var2->posX / 16.0D);
-	int var4 = MathHelper::floor_double(var2->posZ / 16.0D);
+	int var3 = MathHelper::floor_double(var2->posX / 16.0);
+	int var4 = MathHelper::floor_double(var2->posZ / 16.0);
 	unsigned char var5 = 8;
 	for(int var6 = -var5; var6 <= var5; ++var6) {
 	for(int var7 = -var5; var7 <= var5; ++var7) {
@@ -162,7 +162,7 @@ int SpawnerAnimals::performSpawning(World* var0)
 	float var20 = (float)var15 + 0.5F;
 	float var21 = (float)var16;
 	float var22 = (float)var17 + 0.5F;
-	if(var0->getClosestPlayer((double)var20, (double)var21, (double)var22, 24.0D) == NULL) {
+	if(var0->getClosestPlayer((double)var20, (double)var21, (double)var22, 24.0) == NULL) {
 	float var23 = var20 - (float)var0->spawnX;
 	float var24 = var21 - (float)var0->spawnY;
 	float var25 = var22 - (float)var0->spawnZ;

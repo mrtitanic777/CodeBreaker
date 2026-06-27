@@ -207,7 +207,7 @@ void TileEntityRenderer::setRenderingContext(World* var1, RenderEngine* var2, Fo
 
 void TileEntityRenderer::renderTileEntity(TileEntity* var1, float var2)
 {
-	if(var1->getDistanceFrom(this->playerX, this->playerY, this->playerZ) < 4096.0D) {
+	if(var1->getDistanceFrom(this->playerX, this->playerY, this->playerZ) < 4096.0) {
 	float var3 = this->worldObj->getLightBrightness(var1->xCoord, var1->yCoord, var1->zCoord);
 	GL11::glColor3f(var3, var3, var3);
 	this->renderTileEntityAt(var1, (double)var1->xCoord - s_staticPlayerX, (double)var1->yCoord - s_staticPlayerY, (double)var1->zCoord - s_staticPlayerZ, var2);

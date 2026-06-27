@@ -97,7 +97,7 @@ void Tessellator::draw()
 	}
 	if(this->hasTexture) {
 	if(this->useVBO) {
-	GL11::glTexCoordPointer(2, GL11::GL_FLOAT, 32, 12L);
+	GL11::glTexCoordPointer(2, GL11::GL_FLOAT, 32, 12LL);
 	} else {
 	this->floatBuffer->position(3);
 	GL11::glTexCoordPointer(2, 32, (FloatBuffer*)this->floatBuffer);
@@ -106,7 +106,7 @@ void Tessellator::draw()
 	}
 	if(this->hasColor) {
 	if(this->useVBO) {
-	GL11::glColorPointer(4, GL11::GL_UNSIGNED_BYTE, 32, 20L);
+	GL11::glColorPointer(4, GL11::GL_UNSIGNED_BYTE, 32, 20LL);
 	} else {
 	this->byteBuffer->position(20);
 	GL11::glColorPointer(4, true, 32, this->byteBuffer);
@@ -118,7 +118,7 @@ void Tessellator::draw()
 	/* ---- ORIGINAL JAVA (stubbed below) ----
 	 *  GL11.glNormalPointer(GL11.GL_BYTE, 32, 24L);
 	 *  ---- end original Java ---- */
-	_glNormalPointer(_GL_BYTE, 32, 24L);
+	_glNormalPointer(_GL_BYTE, 32, 24LL);
 	} else {
 	this->byteBuffer->position(24);
 	/* ---- ORIGINAL JAVA (stubbed below) ----
@@ -129,7 +129,7 @@ void Tessellator::draw()
 	GL11::glEnableClientState(_GL_NORMAL_ARRAY);
 	}
 	if(this->useVBO) {
-	GL11::glVertexPointer(3, GL11::GL_FLOAT, 32, 0L);
+	GL11::glVertexPointer(3, GL11::GL_FLOAT, 32, 0LL);
 	} else {
 	this->floatBuffer->position(0);
 	GL11::glVertexPointer(3, 32, (FloatBuffer*)this->floatBuffer);

@@ -265,7 +265,7 @@ void Minecraft::startGame()
 	} catch (LWJGLException* var6) {
 	var6->printStackTrace();
 	try {
-	Thread::sleep(1000L);
+	Thread::sleep(1000LL);
 	} catch (InterruptedException* var5) {
 	}
 	Display::create();
@@ -288,7 +288,7 @@ void Minecraft::startGame()
 	this->checkGLError("Pre startup");
 	GL11::glEnable(GL11::GL_TEXTURE_2D);
 	GL11::glShadeModel(GL11::GL_SMOOTH);
-	GL11::glClearDepth(1.0D);
+	GL11::glClearDepth(1.0);
 	GL11::glEnable(GL11::GL_DEPTH_TEST);
 	GL11::glDepthFunc(GL11::GL_LEQUAL);
 	GL11::glEnable(GL11::GL_ALPHA_TEST);
@@ -334,7 +334,7 @@ void Minecraft::loadScreen()
 	GL11::glClear(GL11::GL_DEPTH_BUFFER_BIT | GL11::GL_COLOR_BUFFER_BIT);
 	GL11::glMatrixMode(GL11::GL_PROJECTION);
 	GL11::glLoadIdentity();
-	GL11::glOrtho(0.0D, (double)var2, (double)var3, 0.0D, 1000.0D, 3000.0D);
+	GL11::glOrtho(0.0, (double)var2, (double)var3, 0.0, 1000.0, 3000.0);
 	GL11::glMatrixMode(GL11::GL_MODELVIEW);
 	GL11::glLoadIdentity();
 	GL11::glTranslatef(0.0F, 0.0F, -2000.0F);
@@ -347,10 +347,10 @@ void Minecraft::loadScreen()
 	GL11::glBindTexture(GL11::GL_TEXTURE_2D, this->renderEngine->getTexture("/title/mojang.png"));
 	var4->startDrawingQuads();
 	var4->setColorOpaque_I(16777215);
-	var4->addVertexWithUV(0.0D, (double)this->displayHeight, 0.0D, 0.0D, 0.0D);
-	var4->addVertexWithUV((double)this->displayWidth, (double)this->displayHeight, 0.0D, 0.0D, 0.0D);
-	var4->addVertexWithUV((double)this->displayWidth, 0.0D, 0.0D, 0.0D, 0.0D);
-	var4->addVertexWithUV(0.0D, 0.0D, 0.0D, 0.0D, 0.0D);
+	var4->addVertexWithUV(0.0, (double)this->displayHeight, 0.0, 0.0, 0.0);
+	var4->addVertexWithUV((double)this->displayWidth, (double)this->displayHeight, 0.0, 0.0, 0.0);
+	var4->addVertexWithUV((double)this->displayWidth, 0.0, 0.0, 0.0, 0.0);
+	var4->addVertexWithUV(0.0, 0.0, 0.0, 0.0, 0.0);
 	var4->draw();
 	short var5 = 256;
 	short var6 = 256;
@@ -370,10 +370,10 @@ void Minecraft::drawSplashTexture(int var1, int var2, int var3, int var4, int va
 	float var8 = 0.00390625F;
 	Tessellator* var9 = Tessellator::s_instance;
 	var9->startDrawingQuads();
-	var9->addVertexWithUV((double)(var1 + 0), (double)(var2 + var6), 0.0D, (double)((float)(var3 + 0) * var7), (double)((float)(var4 + var6) * var8));
-	var9->addVertexWithUV((double)(var1 + var5), (double)(var2 + var6), 0.0D, (double)((float)(var3 + var5) * var7), (double)((float)(var4 + var6) * var8));
-	var9->addVertexWithUV((double)(var1 + var5), (double)(var2 + 0), 0.0D, (double)((float)(var3 + var5) * var7), (double)((float)(var4 + 0) * var8));
-	var9->addVertexWithUV((double)(var1 + 0), (double)(var2 + 0), 0.0D, (double)((float)(var3 + 0) * var7), (double)((float)(var4 + 0) * var8));
+	var9->addVertexWithUV((double)(var1 + 0), (double)(var2 + var6), 0.0, (double)((float)(var3 + 0) * var7), (double)((float)(var4 + var6) * var8));
+	var9->addVertexWithUV((double)(var1 + var5), (double)(var2 + var6), 0.0, (double)((float)(var3 + var5) * var7), (double)((float)(var4 + var6) * var8));
+	var9->addVertexWithUV((double)(var1 + var5), (double)(var2 + 0), 0.0, (double)((float)(var3 + var5) * var7), (double)((float)(var4 + 0) * var8));
+	var9->addVertexWithUV((double)(var1 + 0), (double)(var2 + 0), 0.0, (double)((float)(var3 + 0) * var7), (double)((float)(var4 + 0) * var8));
 	var9->draw();
 }
 
@@ -540,7 +540,7 @@ void Minecraft::run()
 	this->theWorld->updatingLighting();
 	}
 	if(this->gameSettings->limitFramerate) {
-	Thread::sleep(5L);
+	Thread::sleep(5LL);
 	}
 	if(!Keyboard::isKeyDown(Keyboard::KEY_F7)) {
 	Display::update();
@@ -555,7 +555,7 @@ void Minecraft::run()
 	if(this->a) {
 	this->toggleFullscreen();
 	}
-	Thread::sleep(10L);
+	Thread::sleep(10LL);
 	}
 	if(Keyboard::isKeyDown(Keyboard::KEY_F3)) {
 	this->displayDebugInfo(var20);
@@ -580,10 +580,10 @@ void Minecraft::run()
 	}
 	this->checkGLError("Post render");
 	++var3;
-	for(this->isGamePaused = !this->isMultiplayerWorld() && this->currentScreen != NULL && this->currentScreen->doesGuiPauseGame(); System::currentTimeMillis() >= var1 + 1000L; var3 = 0) {
+	for(this->isGamePaused = !this->isMultiplayerWorld() && this->currentScreen != NULL && this->currentScreen->doesGuiPauseGame(); System::currentTimeMillis() >= var1 + 1000LL; var3 = 0) {
 	this->debugFPS = (JCat() + var3 + " fps, " + WorldRenderer::s_chunksUpdated + " chunk updates");
 	WorldRenderer::s_chunksUpdated = 0;
-	var1 += 1000L;
+	var1 += 1000LL;
 	}
 	}
 	} catch (MinecraftError* var16) {
@@ -611,8 +611,8 @@ void Minecraft::screenshotListener()
 
 void Minecraft::displayDebugInfo(long long var1)
 {
-	long long var3 = 16666666L;
-	if(this->debugUpdateTime == -1L) {
+	long long var3 = 16666666LL;
+	if(this->debugUpdateTime == -1LL) {
 	this->debugUpdateTime = System::nanoTime();
 	}
 	long long var5 = System::nanoTime();
@@ -622,7 +622,7 @@ void Minecraft::displayDebugInfo(long long var1)
 	GL11::glClear(GL11::GL_DEPTH_BUFFER_BIT);
 	GL11::glMatrixMode(GL11::GL_PROJECTION);
 	GL11::glLoadIdentity();
-	GL11::glOrtho(0.0D, (double)this->displayWidth, (double)this->displayHeight, 0.0D, 1000.0D, 3000.0D);
+	GL11::glOrtho(0.0, (double)this->displayWidth, (double)this->displayHeight, 0.0, 1000.0, 3000.0);
 	GL11::glMatrixMode(GL11::GL_MODELVIEW);
 	GL11::glLoadIdentity();
 	GL11::glTranslatef(0.0F, 0.0F, -2000.0F);
@@ -630,30 +630,30 @@ void Minecraft::displayDebugInfo(long long var1)
 	GL11::glDisable(GL11::GL_TEXTURE_2D);
 	Tessellator* var7 = Tessellator::s_instance;
 	var7->startDrawing(7);
-	int var8 = (int)(var3 / 200000L);
+	int var8 = (int)(var3 / 200000LL);
 	var7->setColorOpaque_I(536870912);
-	var7->addVertex(0.0D, (double)(this->displayHeight - var8), 0.0D);
-	var7->addVertex(0.0D, (double)this->displayHeight, 0.0D);
-	var7->addVertex((double)s_debugFrameTimes.length, (double)this->displayHeight, 0.0D);
-	var7->addVertex((double)s_debugFrameTimes.length, (double)(this->displayHeight - var8), 0.0D);
+	var7->addVertex(0.0, (double)(this->displayHeight - var8), 0.0);
+	var7->addVertex(0.0, (double)this->displayHeight, 0.0);
+	var7->addVertex((double)s_debugFrameTimes.length, (double)this->displayHeight, 0.0);
+	var7->addVertex((double)s_debugFrameTimes.length, (double)(this->displayHeight - var8), 0.0);
 	var7->setColorOpaque_I(538968064);
-	var7->addVertex(0.0D, (double)(this->displayHeight - var8 * 2), 0.0D);
-	var7->addVertex(0.0D, (double)(this->displayHeight - var8), 0.0D);
-	var7->addVertex((double)s_debugFrameTimes.length, (double)(this->displayHeight - var8), 0.0D);
-	var7->addVertex((double)s_debugFrameTimes.length, (double)(this->displayHeight - var8 * 2), 0.0D);
+	var7->addVertex(0.0, (double)(this->displayHeight - var8 * 2), 0.0);
+	var7->addVertex(0.0, (double)(this->displayHeight - var8), 0.0);
+	var7->addVertex((double)s_debugFrameTimes.length, (double)(this->displayHeight - var8), 0.0);
+	var7->addVertex((double)s_debugFrameTimes.length, (double)(this->displayHeight - var8 * 2), 0.0);
 	var7->draw();
-	long long var9 = 0L;
+	long long var9 = 0LL;
 	int var11;
 	for(var11 = 0; var11 < s_debugFrameTimes.length; ++var11) {
 	var9 += s_debugFrameTimes[var11];
 	}
-	var11 = (int)(var9 / 200000L / (long long)s_debugFrameTimes.length);
+	var11 = (int)(var9 / 200000LL / (long long)s_debugFrameTimes.length);
 	var7->startDrawing(7);
 	var7->setColorOpaque_I(541065216);
-	var7->addVertex(0.0D, (double)(this->displayHeight - var11), 0.0D);
-	var7->addVertex(0.0D, (double)this->displayHeight, 0.0D);
-	var7->addVertex((double)s_debugFrameTimes.length, (double)this->displayHeight, 0.0D);
-	var7->addVertex((double)s_debugFrameTimes.length, (double)(this->displayHeight - var11), 0.0D);
+	var7->addVertex(0.0, (double)(this->displayHeight - var11), 0.0);
+	var7->addVertex(0.0, (double)this->displayHeight, 0.0);
+	var7->addVertex((double)s_debugFrameTimes.length, (double)this->displayHeight, 0.0);
+	var7->addVertex((double)s_debugFrameTimes.length, (double)(this->displayHeight - var11), 0.0);
 	var7->draw();
 	var7->startDrawing(1);
 	for(int var12 = 0; var12 < s_debugFrameTimes.length; ++var12) {
@@ -667,13 +667,13 @@ void Minecraft::displayDebugInfo(long long var1)
 	} else {
 	var7->setColorOpaque_I(-16777216 + var14 * 256);
 	}
-	long long var16 = s_debugFrameTimes[var12] / 200000L;
-	long long var18 = s_debugTickTimes[var12] / 200000L;
-	var7->addVertex((double)((float)var12 + 0.5F), (double)((float)((long long)this->displayHeight - var16) + 0.5F), 0.0D);
-	var7->addVertex((double)((float)var12 + 0.5F), (double)((float)this->displayHeight + 0.5F), 0.0D);
+	long long var16 = s_debugFrameTimes[var12] / 200000LL;
+	long long var18 = s_debugTickTimes[var12] / 200000LL;
+	var7->addVertex((double)((float)var12 + 0.5F), (double)((float)((long long)this->displayHeight - var16) + 0.5F), 0.0);
+	var7->addVertex((double)((float)var12 + 0.5F), (double)((float)this->displayHeight + 0.5F), 0.0);
 	var7->setColorOpaque_I(-16777216 + var14 * 65536 + var14 * 256 + var14 * 1);
-	var7->addVertex((double)((float)var12 + 0.5F), (double)((float)((long long)this->displayHeight - var16) + 0.5F), 0.0D);
-	var7->addVertex((double)((float)var12 + 0.5F), (double)((float)((long long)this->displayHeight - (var16 - var18)) + 0.5F), 0.0D);
+	var7->addVertex((double)((float)var12 + 0.5F), (double)((float)((long long)this->displayHeight - var16) + 0.5F), 0.0);
+	var7->addVertex((double)((float)var12 + 0.5F), (double)((float)((long long)this->displayHeight - (var16 - var18)) + 0.5F), 0.0);
 	}
 	var7->draw();
 	GL11::glEnable(GL11::GL_TEXTURE_2D);
@@ -820,7 +820,7 @@ void Minecraft::toggleFullscreen()
 	this->setIngameNotInFocus();
 	Display::setFullscreen(this->a);
 	Display::update();
-	Thread::sleep(1000L);
+	Thread::sleep(1000LL);
 	if(this->a) {
 	this->setIngameFocus();
 	}
@@ -962,7 +962,7 @@ void Minecraft::runTick()
 	}
 	}
 	var1 = System::currentTimeMillis() - this->prevFrameTime;
-	} while(var1 > 200L);
+	} while(var1 > 200LL);
 	int var3 = Mouse::getEventDWheel();
 	if(var3 != 0) {
 	this->thePlayer->inventory->changeCurrentItem(var3);
@@ -1062,7 +1062,7 @@ void Minecraft::switchDimension()
 	this->thePlayer->isDead = false;
 	double var1 = this->thePlayer->posX;
 	double var3 = this->thePlayer->posZ;
-	double var5 = 8.0D;
+	double var5 = 8.0;
 	World* var7;
 	if(this->thePlayer->dimension == -1) {
 	var1 /= var5;
@@ -1151,7 +1151,7 @@ void Minecraft::changeWorld(World* var1, const JavaString& var2, EntityPlayer* v
 	this->thePlayer = NULL;
 	}
 	System::gc();
-	this->prevFrameTime = 0L;
+	this->prevFrameTime = 0LL;
 }
 
 void Minecraft::loadWorldSpawnArea(const JavaString& var1)
@@ -1268,7 +1268,7 @@ void Minecraft::startMainThread(const JavaString& var0, const JavaString& var1, 
 	if(var0 != NULL && var1 != NULL) {
 	var7->session = new Session(var0, var1);
 	} else {
-	var7->session = new Session((JCat() + "Player" + System::currentTimeMillis() % 1000L),"");
+	var7->session = new Session((JCat() + "Player" + System::currentTimeMillis() % 1000LL),"");
 	}
 	if(var2 != NULL) {
 	JArray<JavaString > var9 = var2.split(":");
@@ -1281,7 +1281,7 @@ void Minecraft::startMainThread(const JavaString& var0, const JavaString& var1, 
 
 void Minecraft::main(JArray<JavaString > var0)
 {
-	JavaString var1 = (JCat() + "Player" + System::currentTimeMillis() % 1000L);
+	JavaString var1 = (JCat() + "Player" + System::currentTimeMillis() % 1000LL);
 	if(var0.length > 0) {
 	var1 = var0[0];
 	}
@@ -1289,7 +1289,7 @@ void Minecraft::main(JArray<JavaString > var0)
 	if(var0.length > 1) {
 	var2 = var0[1];
 	}
-	var1 = (JCat() + "Player" + System::currentTimeMillis() % 1000L);
+	var1 = (JCat() + "Player" + System::currentTimeMillis() % 1000LL);
 	var1 = "Player524";
 	startMainThreadAndLogin(var1, var2);
 }

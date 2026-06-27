@@ -188,6 +188,28 @@ _MOD_PAT = re.compile(r'(%s)\s*%%\s*(%s)' % (_MOD_TERM, _MOD_TERM))
 _FLOAT_RE = re.compile(r'^(?:%s)$' % _FLOAT_LIT)
 
 
+# Java numeric literal with a type suffix. Decimal only (the negative lookbehind for a word char
+# before the number keeps us out of hex like 0x1D / 0xABCDL and out of identifiers like var2D).
+_NUM_SUFFIX = re.compile(
+    r'(?<![\w.])(\d+\.?\d*(?:[eE][+-]?\d+)?|\.\d+(?:[eE][+-]?\d+)?)([DdLl])(?![\w.])')
+
+
+def _fix_numeric_suffixes(s):
+    """Normalize Java numeric-literal suffixes to valid C++03 (MSVC/XDK rejects what g++ tolerated):
+      D/d (double) -> stripped (and `.0` added if it would otherwise read as an integer),
+      L/l (Java long, 64-bit) -> LL.
+      F/f (float) is left alone -- already valid C++. Applied OUTSIDE string/char literals only."""
+    def rep(m):
+        num, suf = m.group(1), m.group(2)
+        if suf in 'Ll':
+            return num + 'LL'
+        # D/d: a double literal. Keep it double-typed: add .0 if there's no '.' and no exponent.
+        if '.' not in num and 'e' not in num and 'E' not in num:
+            return num + '.0'
+        return num
+    return sub_outside_literals(_NUM_SUFFIX, rep, s)
+
+
 def _rewrite_float_mod(s):
     """Java `a % b` where one operand is a float literal -> fmodf(a, b). C++ '%' is integer-only;
     Java's '%' is also float remainder. The float-literal guard keeps integer modulo untouched."""
@@ -920,6 +942,9 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
     # 0. `synchronized(lock) {` -> `{`  (no JVM monitors on the single-threaded console port;
     #    drop the lock, keep the guarded block)
     s = re.sub(r'\bsynchronized\s*\([^){]*\)\s*', '', s)
+    # 0b. Java numeric-literal suffixes -> valid C++03: `0.0D`->`0.0`, `5D`->`5.0`, `7L`->`7LL`
+    #     (D/d is invalid in MSVC/XDK; L must be 64-bit; F stays). Outside string/char literals.
+    s = _fix_numeric_suffixes(s)
     # 1. local declaration: rewrite the leading Java type to its C++ spelling. A value-type
     #    local inferred to be a nullable reference (ptr_locals) gets a trailing '*'.
     m = _DECL.match(s)

@@ -220,13 +220,13 @@ void NetClientHandler::handleLogin(Packet1Login* var1)
 
 void NetClientHandler::handlePickupSpawn(Packet21PickupSpawn* var1)
 {
-	double var2 = (double)var1->xPosition / 32.0D;
-	double var4 = (double)var1->yPosition / 32.0D;
-	double var6 = (double)var1->zPosition / 32.0D;
+	double var2 = (double)var1->xPosition / 32.0;
+	double var4 = (double)var1->yPosition / 32.0;
+	double var6 = (double)var1->zPosition / 32.0;
 	EntityItem* var8 = new EntityItem(this->worldClient, var2, var4, var6, new ItemStack(var1->itemId, var1->count));
-	var8->motionX = (double)var1->rotation / 128.0D;
-	var8->motionY = (double)var1->pitch / 128.0D;
-	var8->motionZ = (double)var1->roll / 128.0D;
+	var8->motionX = (double)var1->rotation / 128.0;
+	var8->motionY = (double)var1->pitch / 128.0;
+	var8->motionZ = (double)var1->roll / 128.0;
 	var8->serverPosX = var1->xPosition;
 	var8->serverPosY = var1->yPosition;
 	var8->serverPosZ = var1->zPosition;
@@ -235,9 +235,9 @@ void NetClientHandler::handlePickupSpawn(Packet21PickupSpawn* var1)
 
 void NetClientHandler::handleVehicleSpawn(Packet23VehicleSpawn* var1)
 {
-	double var2 = (double)var1->xPosition / 32.0D;
-	double var4 = (double)var1->yPosition / 32.0D;
-	double var6 = (double)var1->zPosition / 32.0D;
+	double var2 = (double)var1->xPosition / 32.0;
+	double var4 = (double)var1->yPosition / 32.0;
+	double var6 = (double)var1->zPosition / 32.0;
 	void* var8 = NULL;
 	if(var1->type == 10) {
 	var8 = new EntityMinecart(this->worldClient, var2, var4, var6, 0);
@@ -278,15 +278,15 @@ void NetClientHandler::handleEntityVelocity(Packet28* var1)
 {
 	Entity* var2 = this->getEntityByID(var1->entityId);
 	if(var2 != NULL) {
-	var2->setVelocity((double)var1->velocityX / 8000.0D, (double)var1->velocityY / 8000.0D, (double)var1->velocityZ / 8000.0D);
+	var2->setVelocity((double)var1->velocityX / 8000.0, (double)var1->velocityY / 8000.0, (double)var1->velocityZ / 8000.0);
 	}
 }
 
 void NetClientHandler::handleNamedEntitySpawn(Packet20NamedEntitySpawn* var1)
 {
-	double var2 = (double)var1->xPosition / 32.0D;
-	double var4 = (double)var1->yPosition / 32.0D;
-	double var6 = (double)var1->zPosition / 32.0D;
+	double var2 = (double)var1->xPosition / 32.0;
+	double var4 = (double)var1->yPosition / 32.0;
+	double var6 = (double)var1->zPosition / 32.0;
 	float var8 = (float)(var1->rotation * 360) / 256.0F;
 	float var9 = (float)(var1->pitch * 360) / 256.0F;
 	EntityOtherPlayerMP* var10 = new EntityOtherPlayerMP(this->mc->theWorld, var1->name);
@@ -310,9 +310,9 @@ void NetClientHandler::handleEntityTeleport(Packet34EntityTeleport* var1)
 	var2->serverPosX = var1->xPosition;
 	var2->serverPosY = var1->yPosition;
 	var2->serverPosZ = var1->zPosition;
-	double var3 = (double)var2->serverPosX / 32.0D;
-	double var5 = (double)var2->serverPosY / 32.0D + 1.0D / 64.0D;
-	double var7 = (double)var2->serverPosZ / 32.0D;
+	double var3 = (double)var2->serverPosX / 32.0;
+	double var5 = (double)var2->serverPosY / 32.0 + 1.0 / 64.0;
+	double var7 = (double)var2->serverPosZ / 32.0;
 	float var9 = (float)(var1->yaw * 360) / 256.0F;
 	float var10 = (float)(var1->pitch * 360) / 256.0F;
 	var2->setPositionAndRotation2(var3, var5, var7, var9, var10, 3);
@@ -326,9 +326,9 @@ void NetClientHandler::handleEntity(Packet30Entity* var1)
 	var2->serverPosX += var1->xPosition;
 	var2->serverPosY += var1->yPosition;
 	var2->serverPosZ += var1->zPosition;
-	double var3 = (double)var2->serverPosX / 32.0D;
-	double var5 = (double)var2->serverPosY / 32.0D + 1.0D / 64.0D;
-	double var7 = (double)var2->serverPosZ / 32.0D;
+	double var3 = (double)var2->serverPosX / 32.0;
+	double var5 = (double)var2->serverPosY / 32.0 + 1.0 / 64.0;
+	double var7 = (double)var2->serverPosZ / 32.0;
 	float var9 = var1->rotating ? (float)(var1->yaw * 360) / 256.0F : var2->rotationYaw;
 	float var10 = var1->rotating ? (float)(var1->pitch * 360) / 256.0F : var2->rotationPitch;
 	var2->setPositionAndRotation2(var3, var5, var7, var9, var10, 3);
@@ -358,7 +358,7 @@ void NetClientHandler::handleFlying(Packet10Flying* var1)
 	var10 = var1->pitch;
 	}
 	var2->ySize = 0.0F;
-	var2->motionX = var2->motionY = var2->motionZ = 0.0D;
+	var2->motionX = var2->motionY = var2->motionZ = 0.0;
 	var2->setPositionAndRotation(var3, var5, var7, var9, var10);
 	var1->xPosition = var2->posX;
 	var1->yPosition = var2->boundingBox->minY;
@@ -526,9 +526,9 @@ void NetClientHandler::disconnect()
 
 void NetClientHandler::handleMobSpawn(Packet24MobSpawn* var1)
 {
-	double var2 = (double)var1->xPosition / 32.0D;
-	double var4 = (double)var1->yPosition / 32.0D;
-	double var6 = (double)var1->zPosition / 32.0D;
+	double var2 = (double)var1->xPosition / 32.0;
+	double var4 = (double)var1->yPosition / 32.0;
+	double var6 = (double)var1->zPosition / 32.0;
 	float var8 = (float)(var1->yaw * 360) / 256.0F;
 	float var9 = (float)(var1->pitch * 360) / 256.0F;
 	EntityLiving* var10 = (EntityLiving*)EntityList::createEntity(var1->type, this->mc->theWorld);

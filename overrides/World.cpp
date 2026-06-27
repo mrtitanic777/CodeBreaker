@@ -213,8 +213,8 @@ World::World(File* var1, const JavaString& var2)
 	this->scheduledTickSet = std::set<void*>();
 	this->loadedTileEntityList = JList<void*>();
 	this->playerEntities = JList<void*>();
-	this->worldTime = 0L;
-	this->fogColor = 16777215L;
+	this->worldTime = 0LL;
+	this->fogColor = 16777215LL;
 	this->skylightSubtracted = 0;
 	this->updateLCG = (new Random())->nextInt();
 	this->updateLCGConstant = 1013904223;
@@ -224,8 +224,8 @@ World::World(File* var1, const JavaString& var2)
 	this->rand = new Random();
 	this->isNewWorld = false;
 	this->worldAccesses = JList<void*>();
-	this->randomSeed = 0L;
-	this->sizeOnDisk = 0L;
+	this->randomSeed = 0LL;
+	this->sizeOnDisk = 0LL;
 	this->collidingBoundingBoxes = JList<void*>();
 	this->lightingUpdateDepth = 0;
 	this->activeChunkSet = std::set<void*>();
@@ -281,7 +281,7 @@ World::World(File* var1, const JavaString& var2)
 	}
 	}
 	bool var19 = false;
-	if(this->randomSeed == 0L) {
+	if(this->randomSeed == 0LL) {
 	this->randomSeed = var3;
 	var19 = true;
 	}
@@ -338,8 +338,8 @@ World::World(const JavaString& var1, WorldProvider* var2, long long var3)
 	this->scheduledTickSet = std::set<void*>();
 	this->loadedTileEntityList = JList<void*>();
 	this->playerEntities = JList<void*>();
-	this->worldTime = 0L;
-	this->fogColor = 16777215L;
+	this->worldTime = 0LL;
+	this->fogColor = 16777215LL;
 	this->skylightSubtracted = 0;
 	this->updateLCG = (new Random())->nextInt();
 	this->updateLCGConstant = 1013904223;
@@ -349,8 +349,8 @@ World::World(const JavaString& var1, WorldProvider* var2, long long var3)
 	this->rand = new Random();
 	this->isNewWorld = false;
 	this->worldAccesses = JList<void*>();
-	this->randomSeed = 0L;
-	this->sizeOnDisk = 0L;
+	this->randomSeed = 0LL;
+	this->sizeOnDisk = 0LL;
 	this->collidingBoundingBoxes = JList<void*>();
 	this->lightingUpdateDepth = 0;
 	this->activeChunkSet = std::set<void*>();
@@ -402,8 +402,8 @@ World::World(World* var1, WorldProvider* var2)
 	this->scheduledTickSet = std::set<void*>();
 	this->loadedTileEntityList = JList<void*>();
 	this->playerEntities = JList<void*>();
-	this->worldTime = 0L;
-	this->fogColor = 16777215L;
+	this->worldTime = 0LL;
+	this->fogColor = 16777215LL;
 	this->skylightSubtracted = 0;
 	this->updateLCG = (new Random())->nextInt();
 	this->updateLCGConstant = 1013904223;
@@ -413,8 +413,8 @@ World::World(World* var1, WorldProvider* var2)
 	this->rand = new Random();
 	this->isNewWorld = false;
 	this->worldAccesses = JList<void*>();
-	this->randomSeed = 0L;
-	this->sizeOnDisk = 0L;
+	this->randomSeed = 0LL;
+	this->sizeOnDisk = 0LL;
 	this->collidingBoundingBoxes = JList<void*>();
 	this->lightingUpdateDepth = 0;
 	this->activeChunkSet = std::set<void*>();
@@ -475,8 +475,8 @@ World::World(File* var1, const JavaString& var2, long long var3)
 	this->scheduledTickSet = std::set<void*>();
 	this->loadedTileEntityList = JList<void*>();
 	this->playerEntities = JList<void*>();
-	this->worldTime = 0L;
-	this->fogColor = 16777215L;
+	this->worldTime = 0LL;
+	this->fogColor = 16777215LL;
 	this->skylightSubtracted = 0;
 	this->updateLCG = (new Random())->nextInt();
 	this->updateLCGConstant = 1013904223;
@@ -486,8 +486,8 @@ World::World(File* var1, const JavaString& var2, long long var3)
 	this->rand = new Random();
 	this->isNewWorld = false;
 	this->worldAccesses = JList<void*>();
-	this->randomSeed = 0L;
-	this->sizeOnDisk = 0L;
+	this->randomSeed = 0LL;
+	this->sizeOnDisk = 0LL;
 	this->collidingBoundingBoxes = JList<void*>();
 	this->lightingUpdateDepth = 0;
 	this->activeChunkSet = std::set<void*>();
@@ -542,7 +542,7 @@ World::World(File* var1, const JavaString& var2, long long var3)
 	var17 = (WorldProvider*)NULL;
 	}
 	bool var19 = false;
-	if(this->randomSeed == 0L) {
+	if(this->randomSeed == 0LL) {
 	this->randomSeed = var3;
 	var19 = true;
 	}
@@ -598,8 +598,8 @@ World::World(File* var1, const JavaString& var2, long long var3, WorldProvider* 
 	this->scheduledTickSet = std::set<void*>();
 	this->loadedTileEntityList = JList<void*>();
 	this->playerEntities = JList<void*>();
-	this->worldTime = 0L;
-	this->fogColor = 16777215L;
+	this->worldTime = 0LL;
+	this->fogColor = 16777215LL;
 	this->skylightSubtracted = 0;
 	this->updateLCG = (new Random())->nextInt();
 	this->updateLCGConstant = 1013904223;
@@ -609,8 +609,8 @@ World::World(File* var1, const JavaString& var2, long long var3, WorldProvider* 
 	this->rand = new Random();
 	this->isNewWorld = false;
 	this->worldAccesses = JList<void*>();
-	this->randomSeed = 0L;
-	this->sizeOnDisk = 0L;
+	this->randomSeed = 0LL;
+	this->sizeOnDisk = 0LL;
 	this->collidingBoundingBoxes = JList<void*>();
 	this->lightingUpdateDepth = 0;
 	this->activeChunkSet = std::set<void*>();
@@ -665,7 +665,7 @@ World::World(File* var1, const JavaString& var2, long long var3, WorldProvider* 
 	var17 = var5;
 	}
 	bool var19 = false;
-	if(this->randomSeed == 0L) {
+	if(this->randomSeed == 0LL) {
 	this->randomSeed = var3;
 	var19 = true;
 	}
@@ -1229,40 +1229,40 @@ MovingObjectPosition* World::rayTraceBlocks(Vec3D* var1, Vec3D* var2, bool var3)
 	if(var7 == var4 && var8 == var5 && var9 == var6) {
 	return NULL;
 	}
-	double var11 = 999.0D;
-	double var13 = 999.0D;
-	double var15 = 999.0D;
+	double var11 = 999.0;
+	double var13 = 999.0;
+	double var15 = 999.0;
 	if(var4 > var7) {
-	var11 = (double)var7 + 1.0D;
+	var11 = (double)var7 + 1.0;
 	}
 	if(var4 < var7) {
-	var11 = (double)var7 + 0.0D;
+	var11 = (double)var7 + 0.0;
 	}
 	if(var5 > var8) {
-	var13 = (double)var8 + 1.0D;
+	var13 = (double)var8 + 1.0;
 	}
 	if(var5 < var8) {
-	var13 = (double)var8 + 0.0D;
+	var13 = (double)var8 + 0.0;
 	}
 	if(var6 > var9) {
-	var15 = (double)var9 + 1.0D;
+	var15 = (double)var9 + 1.0;
 	}
 	if(var6 < var9) {
-	var15 = (double)var9 + 0.0D;
+	var15 = (double)var9 + 0.0;
 	}
-	double var17 = 999.0D;
-	double var19 = 999.0D;
-	double var21 = 999.0D;
+	double var17 = 999.0;
+	double var19 = 999.0;
+	double var21 = 999.0;
 	double var23 = var2->xCoord - var1->xCoord;
 	double var25 = var2->yCoord - var1->yCoord;
 	double var27 = var2->zCoord - var1->zCoord;
-	if(var11 != 999.0D) {
+	if(var11 != 999.0) {
 	var17 = (var11 - var1->xCoord) / var23;
 	}
-	if(var13 != 999.0D) {
+	if(var13 != 999.0) {
 	var19 = (var13 - var1->yCoord) / var25;
 	}
-	if(var15 != 999.0D) {
+	if(var15 != 999.0) {
 	var21 = (var15 - var1->zCoord) / var27;
 	}
 	bool var29 = false;
@@ -1360,8 +1360,8 @@ void World::spawnParticle(const JavaString& var1, double var2, double var4, doub
 
 bool World::entityJoinedWorld(Entity* var1)
 {
-	int var2 = MathHelper::floor_double(var1->posX / 16.0D);
-	int var3 = MathHelper::floor_double(var1->posZ / 16.0D);
+	int var2 = MathHelper::floor_double(var1->posX / 16.0);
+	int var3 = MathHelper::floor_double(var1->posZ / 16.0);
 	bool var4 = false;
 	if((dynamic_cast<EntityPlayer*>(var1) != NULL)) {
 	var4 = true;
@@ -1416,11 +1416,11 @@ JList<void*> World::getCollidingBoundingBoxes(Entity* var1, AxisAlignedBB* var2)
 {
 	this->collidingBoundingBoxes.clear();
 	int var3 = MathHelper::floor_double(var2->minX);
-	int var4 = MathHelper::floor_double(var2->maxX + 1.0D);
+	int var4 = MathHelper::floor_double(var2->maxX + 1.0);
 	int var5 = MathHelper::floor_double(var2->minY);
-	int var6 = MathHelper::floor_double(var2->maxY + 1.0D);
+	int var6 = MathHelper::floor_double(var2->maxY + 1.0);
 	int var7 = MathHelper::floor_double(var2->minZ);
-	int var8 = MathHelper::floor_double(var2->maxZ + 1.0D);
+	int var8 = MathHelper::floor_double(var2->maxZ + 1.0);
 	for(int var9 = var3; var9 < var4; ++var9) {
 	for(int var10 = var7; var10 < var8; ++var10) {
 	if(this->blockExists(var9, 64, var10)) {
@@ -1433,7 +1433,7 @@ JList<void*> World::getCollidingBoundingBoxes(Entity* var1, AxisAlignedBB* var2)
 	}
 	}
 	}
-	double var14 = 0.25D;
+	double var14 = 0.25;
 	JList<void*> var15 = this->getEntitiesWithinAABBExcludingEntity(var1, var2->expands(var14, var14, var14));
 	for(int var16 = 0; var16 < var15.size(); ++var16) {
 	AxisAlignedBB* var13 = ((Entity*)var15[var16])->getCollisionBox();
@@ -1499,9 +1499,9 @@ Vec3D* World::getFogColor(float var1)
 	if(var3 > 1.0F) {
 	var3 = 1.0F;
 	}
-	float var4 = (float)(this->fogColor >> 16 & 255L) / 255.0F;
-	float var5 = (float)(this->fogColor >> 8 & 255L) / 255.0F;
-	float var6 = (float)(this->fogColor & 255L) / 255.0F;
+	float var4 = (float)(this->fogColor >> 16 & 255LL) / 255.0F;
+	float var5 = (float)(this->fogColor >> 8 & 255LL) / 255.0F;
+	float var6 = (float)(this->fogColor & 255LL) / 255.0F;
 	var4 *= var3 * 0.9F + 0.1F;
 	var5 *= var3 * 0.9F + 0.1F;
 	var6 *= var3 * 0.85F + 0.15F;
@@ -1657,9 +1657,9 @@ void World::updateEntityWithOptionalForce(Entity* var1, bool var2)
 	if(Double::isNaN((double)var1->rotationYaw) || Double::isInfinite((double)var1->rotationYaw)) {
 	var1->rotationYaw = var1->prevRotationYaw;
 	}
-	int var6 = MathHelper::floor_double(var1->posX / 16.0D);
-	int var7 = MathHelper::floor_double(var1->posY / 16.0D);
-	int var8 = MathHelper::floor_double(var1->posZ / 16.0D);
+	int var6 = MathHelper::floor_double(var1->posX / 16.0);
+	int var7 = MathHelper::floor_double(var1->posY / 16.0);
+	int var8 = MathHelper::floor_double(var1->posZ / 16.0);
 	if(!var1->addedToChunk || var1->chunkCoordX != var6 || var1->chunkCoordY != var7 || var1->chunkCoordZ != var8) {
 	if(var1->addedToChunk && this->chunkExists(var1->chunkCoordX, var1->chunkCoordZ)) {
 	this->getChunkFromChunkCoords(var1->chunkCoordX, var1->chunkCoordZ)->removeEntityAtIndex(var1, var1->chunkCoordY);
@@ -1697,18 +1697,18 @@ bool World::checkIfAABBIsClear(AxisAlignedBB* var1)
 bool World::getIsAnyLiquid(AxisAlignedBB* var1)
 {
 	int var2 = MathHelper::floor_double(var1->minX);
-	int var3 = MathHelper::floor_double(var1->maxX + 1.0D);
+	int var3 = MathHelper::floor_double(var1->maxX + 1.0);
 	int var4 = MathHelper::floor_double(var1->minY);
-	int var5 = MathHelper::floor_double(var1->maxY + 1.0D);
+	int var5 = MathHelper::floor_double(var1->maxY + 1.0);
 	int var6 = MathHelper::floor_double(var1->minZ);
-	int var7 = MathHelper::floor_double(var1->maxZ + 1.0D);
-	if(var1->minX < 0.0D) {
+	int var7 = MathHelper::floor_double(var1->maxZ + 1.0);
+	if(var1->minX < 0.0) {
 	--var2;
 	}
-	if(var1->minY < 0.0D) {
+	if(var1->minY < 0.0) {
 	--var4;
 	}
-	if(var1->minZ < 0.0D) {
+	if(var1->minZ < 0.0) {
 	--var6;
 	}
 	for(int var8 = var2; var8 < var3; ++var8) {
@@ -1727,11 +1727,11 @@ bool World::getIsAnyLiquid(AxisAlignedBB* var1)
 bool World::isBoundingBoxBurning(AxisAlignedBB* var1)
 {
 	int var2 = MathHelper::floor_double(var1->minX);
-	int var3 = MathHelper::floor_double(var1->maxX + 1.0D);
+	int var3 = MathHelper::floor_double(var1->maxX + 1.0);
 	int var4 = MathHelper::floor_double(var1->minY);
-	int var5 = MathHelper::floor_double(var1->maxY + 1.0D);
+	int var5 = MathHelper::floor_double(var1->maxY + 1.0);
 	int var6 = MathHelper::floor_double(var1->minZ);
-	int var7 = MathHelper::floor_double(var1->maxZ + 1.0D);
+	int var7 = MathHelper::floor_double(var1->maxZ + 1.0);
 	for(int var8 = var2; var8 < var3; ++var8) {
 	for(int var9 = var4; var9 < var5; ++var9) {
 	for(int var10 = var6; var10 < var7; ++var10) {
@@ -1748,13 +1748,13 @@ bool World::isBoundingBoxBurning(AxisAlignedBB* var1)
 bool World::handleMaterialAcceleration(AxisAlignedBB* var1, Material* var2, Entity* var3)
 {
 	int var4 = MathHelper::floor_double(var1->minX);
-	int var5 = MathHelper::floor_double(var1->maxX + 1.0D);
+	int var5 = MathHelper::floor_double(var1->maxX + 1.0);
 	int var6 = MathHelper::floor_double(var1->minY);
-	int var7 = MathHelper::floor_double(var1->maxY + 1.0D);
+	int var7 = MathHelper::floor_double(var1->maxY + 1.0);
 	int var8 = MathHelper::floor_double(var1->minZ);
-	int var9 = MathHelper::floor_double(var1->maxZ + 1.0D);
+	int var9 = MathHelper::floor_double(var1->maxZ + 1.0);
 	bool var10 = false;
-	Vec3D* var11 = Vec3D::createVector(0.0D, 0.0D, 0.0D);
+	Vec3D* var11 = Vec3D::createVector(0.0, 0.0, 0.0);
 	for(int var12 = var4; var12 < var5; ++var12) {
 	for(int var13 = var6; var13 < var7; ++var13) {
 	for(int var14 = var8; var14 < var9; ++var14) {
@@ -1769,9 +1769,9 @@ bool World::handleMaterialAcceleration(AxisAlignedBB* var1, Material* var2, Enti
 	}
 	}
 	}
-	if(var11->lengthVector() > 0.0D) {
+	if(var11->lengthVector() > 0.0) {
 	var11 = var11->normalize();
-	double var18 = 0.004D;
+	double var18 = 0.004;
 	var3->motionX += var11->xCoord * var18;
 	var3->motionY += var11->yCoord * var18;
 	var3->motionZ += var11->zCoord * var18;
@@ -1782,11 +1782,11 @@ bool World::handleMaterialAcceleration(AxisAlignedBB* var1, Material* var2, Enti
 bool World::func_689_a(AxisAlignedBB* var1, Material* var2)
 {
 	int var3 = MathHelper::floor_double(var1->minX);
-	int var4 = MathHelper::floor_double(var1->maxX + 1.0D);
+	int var4 = MathHelper::floor_double(var1->maxX + 1.0);
 	int var5 = MathHelper::floor_double(var1->minY);
-	int var6 = MathHelper::floor_double(var1->maxY + 1.0D);
+	int var6 = MathHelper::floor_double(var1->maxY + 1.0);
 	int var7 = MathHelper::floor_double(var1->minZ);
-	int var8 = MathHelper::floor_double(var1->maxZ + 1.0D);
+	int var8 = MathHelper::floor_double(var1->maxZ + 1.0);
 	for(int var9 = var3; var9 < var4; ++var9) {
 	for(int var10 = var5; var10 < var6; ++var10) {
 	for(int var11 = var7; var11 < var8; ++var11) {
@@ -1803,11 +1803,11 @@ bool World::func_689_a(AxisAlignedBB* var1, Material* var2)
 bool World::isMaterialInBBExtended(AxisAlignedBB* var1, Material* var2)
 {
 	int var3 = MathHelper::floor_double(var1->minX);
-	int var4 = MathHelper::floor_double(var1->maxX + 1.0D);
+	int var4 = MathHelper::floor_double(var1->maxX + 1.0);
 	int var5 = MathHelper::floor_double(var1->minY);
-	int var6 = MathHelper::floor_double(var1->maxY + 1.0D);
+	int var6 = MathHelper::floor_double(var1->maxY + 1.0);
 	int var7 = MathHelper::floor_double(var1->minZ);
-	int var8 = MathHelper::floor_double(var1->maxZ + 1.0D);
+	int var8 = MathHelper::floor_double(var1->maxZ + 1.0);
 	for(int var9 = var3; var9 < var4; ++var9) {
 	for(int var10 = var5; var10 < var6; ++var10) {
 	for(int var11 = var7; var11 < var8; ++var11) {
@@ -1816,7 +1816,7 @@ bool World::isMaterialInBBExtended(AxisAlignedBB* var1, Material* var2)
 	int var13 = this->getBlockMetadata(var9, var10, var11);
 	double var14 = (double)(var10 + 1);
 	if(var13 < 8) {
-	var14 = (double)(var10 + 1) - (double)var13 / 8.0D;
+	var14 = (double)(var10 + 1) - (double)var13 / 8.0;
 	}
 	if(var14 >= var1->minY) {
 	return true;
@@ -1844,9 +1844,9 @@ Explosion* World::newExplosion(Entity* var1, double var2, double var4, double va
 
 float World::addKey(Vec3D* var1, AxisAlignedBB* var2)
 {
-	double var3 = 1.0D / ((var2->maxX - var2->minX) * 2.0D + 1.0D);
-	double var5 = 1.0D / ((var2->maxY - var2->minY) * 2.0D + 1.0D);
-	double var7 = 1.0D / ((var2->maxZ - var2->minZ) * 2.0D + 1.0D);
+	double var3 = 1.0 / ((var2->maxX - var2->minX) * 2.0 + 1.0);
+	double var5 = 1.0 / ((var2->maxY - var2->minY) * 2.0 + 1.0);
+	double var7 = 1.0 / ((var2->maxZ - var2->minZ) * 2.0 + 1.0);
 	int var9 = 0;
 	int var10 = 0;
 	for(float var11 = 0.0F; var11 <= 1.0F; var11 = (float)((double)var11 + var3)) {
@@ -2018,7 +2018,7 @@ void World::tick()
 	}
 	}
 	++this->worldTime;
-	if(this->worldTime % (long long)this->autosavePeriod == 0L) {
+	if(this->worldTime % (long long)this->autosavePeriod == 0LL) {
 	this->saveWorld(false, (IProgressUpdate*)NULL);
 	}
 	this->TickUpdates(false);
@@ -2034,8 +2034,8 @@ void World::updateBlocksAroundPlayers()
 	int var7;
 	for(int var1 = 0; var1 < this->playerEntities.size(); ++var1) {
 	EntityPlayer* var2 = (EntityPlayer*)this->playerEntities[var1];
-	var3 = MathHelper::floor_double(var2->posX / 16.0D);
-	var4 = MathHelper::floor_double(var2->posZ / 16.0D);
+	var3 = MathHelper::floor_double(var2->posX / 16.0);
+	var4 = MathHelper::floor_double(var2->posZ / 16.0);
 	unsigned char var5 = 9;
 	for(var6 = -var5; var6 <= var5; ++var6) {
 	for(var7 = -var5; var7 <= var5; ++var7) {
@@ -2064,9 +2064,9 @@ void World::updateBlocksAroundPlayers()
 	var7 += var3;
 	var8 += var4;
 	if(var10 == 0 && this->getBlockLightValue(var7, var9, var8) <= this->rand->nextInt(8) && this->getSavedLightValue(EnumSkyBlock::Sky, var7, var9, var8) <= 0) {
-	EntityPlayer* var11 = this->getClosestPlayer((double)var7 + 0.5D, (double)var9 + 0.5D, (double)var8 + 0.5D, 8.0D);
-	if(var11 != NULL && var11->getDistanceSq((double)var7 + 0.5D, (double)var9 + 0.5D, (double)var8 + 0.5D) > 4.0D) {
-	this->playSoundEffect((double)var7 + 0.5D,(double)var9 + 0.5D,(double)var8 + 0.5D,"ambient.cave.cave",0.7F,0.8F + this->rand->nextFloat() * 0.2F);
+	EntityPlayer* var11 = this->getClosestPlayer((double)var7 + 0.5, (double)var9 + 0.5, (double)var8 + 0.5, 8.0);
+	if(var11 != NULL && var11->getDistanceSq((double)var7 + 0.5, (double)var9 + 0.5, (double)var8 + 0.5) > 4.0) {
+	this->playSoundEffect((double)var7 + 0.5,(double)var9 + 0.5,(double)var8 + 0.5,"ambient.cave.cave",0.7F,0.8F + this->rand->nextFloat() * 0.2F);
 	this->ambientSoundTimer = this->rand->nextInt(12000) + 6000;
 	}
 	}
@@ -2131,10 +2131,10 @@ void World::randomDisplayUpdates(int var1, int var2, int var3)
 JList<void*> World::getEntitiesWithinAABBExcludingEntity(Entity* var1, AxisAlignedBB* var2)
 {
 	this->entitiesWithinAABB.clear();
-	int var3 = MathHelper::floor_double((var2->minX - 2.0D) / 16.0D);
-	int var4 = MathHelper::floor_double((var2->maxX + 2.0D) / 16.0D);
-	int var5 = MathHelper::floor_double((var2->minZ - 2.0D) / 16.0D);
-	int var6 = MathHelper::floor_double((var2->maxZ + 2.0D) / 16.0D);
+	int var3 = MathHelper::floor_double((var2->minX - 2.0) / 16.0);
+	int var4 = MathHelper::floor_double((var2->maxX + 2.0) / 16.0);
+	int var5 = MathHelper::floor_double((var2->minZ - 2.0) / 16.0);
+	int var6 = MathHelper::floor_double((var2->maxZ + 2.0) / 16.0);
 	for(int var7 = var3; var7 <= var4; ++var7) {
 	for(int var8 = var5; var8 <= var6; ++var8) {
 	if(this->chunkExists(var7, var8)) {
@@ -2147,10 +2147,10 @@ JList<void*> World::getEntitiesWithinAABBExcludingEntity(Entity* var1, AxisAlign
 
 JList<void*> World::getEntitiesWithinAABB(Class* var1, AxisAlignedBB* var2)
 {
-	int var3 = MathHelper::floor_double((var2->minX - 2.0D) / 16.0D);
-	int var4 = MathHelper::floor_double((var2->maxX + 2.0D) / 16.0D);
-	int var5 = MathHelper::floor_double((var2->minZ - 2.0D) / 16.0D);
-	int var6 = MathHelper::floor_double((var2->maxZ + 2.0D) / 16.0D);
+	int var3 = MathHelper::floor_double((var2->minX - 2.0) / 16.0);
+	int var4 = MathHelper::floor_double((var2->maxX + 2.0) / 16.0);
+	int var5 = MathHelper::floor_double((var2->minZ - 2.0) / 16.0);
+	int var6 = MathHelper::floor_double((var2->maxZ + 2.0) / 16.0);
 	JList<void*> var7;
 	for(int var8 = var3; var8 <= var4; ++var8) {
 	for(int var9 = var5; var9 <= var6; ++var9) {
@@ -2285,12 +2285,12 @@ EntityPlayer* World::getClosestPlayerToEntity(Entity* var1, double var2)
 
 EntityPlayer* World::getClosestPlayer(double var1, double var3, double var5, double var7)
 {
-	double var9 = -1.0D;
+	double var9 = -1.0;
 	EntityPlayer* var11 = NULL;
 	for(int var12 = 0; var12 < this->playerEntities.size(); ++var12) {
 	EntityPlayer* var13 = (EntityPlayer*)this->playerEntities[var12];
 	double var14 = var13->getDistanceSq(var1, var3, var5);
-	if((var7 < 0.0D || var14 < var7 * var7) && (var9 == -1.0D || var14 < var9)) {
+	if((var7 < 0.0 || var14 < var7 * var7) && (var9 == -1.0 || var14 < var9)) {
 	var9 = var14;
 	var11 = var13;
 	}
@@ -2368,8 +2368,8 @@ void World::setWorldTime(long long var1)
 
 void World::joinEntityInSurroundings(Entity* var1)
 {
-	int var2 = MathHelper::floor_double(var1->posX / 16.0D);
-	int var3 = MathHelper::floor_double(var1->posZ / 16.0D);
+	int var2 = MathHelper::floor_double(var1->posX / 16.0);
+	int var3 = MathHelper::floor_double(var1->posZ / 16.0);
 	unsigned char var4 = 2;
 	for(int var5 = var2 - var4; var5 <= var2 + var4; ++var5) {
 	for(int var6 = var3 - var4; var6 <= var3 + var4; ++var6) {

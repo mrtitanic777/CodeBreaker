@@ -208,9 +208,9 @@ void TileEntity::onInventoryChanged()
 
 double TileEntity::getDistanceFrom(double var1, double var3, double var5)
 {
-	double var7 = (double)this->xCoord + 0.5D - var1;
-	double var9 = (double)this->yCoord + 0.5D - var3;
-	double var11 = (double)this->zCoord + 0.5D - var5;
+	double var7 = (double)this->xCoord + 0.5 - var1;
+	double var9 = (double)this->yCoord + 0.5 - var3;
+	double var11 = (double)this->zCoord + 0.5 - var5;
 	return var7 * var7 + var9 * var9 + var11 * var11;
 }
 

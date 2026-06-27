@@ -481,7 +481,7 @@ namespace Double {
 	inline std::string toString(double v) { std::ostringstream o; o << v; return o.str(); }
 }
 namespace Float {
-	const float MAX_VALUE = 3.4028235e38f;
+	const float MAX_VALUE = 3.402823466e+38f;   // FLT_MAX (3.4028235e38f rounds ABOVE it -> MSVC C2177)
 	const float MIN_VALUE = 1.4e-45f;
 	const float POSITIVE_INFINITY = 3.4e38f;
 	const float NEGATIVE_INFINITY = -3.4e38f;

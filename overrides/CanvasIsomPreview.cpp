@@ -313,7 +313,7 @@ void CanvasIsomPreview::run()
 	}
 	}
 	try {
-	Thread::sleep(2L);
+	Thread::sleep(2LL);
 	} catch (InterruptedException var5) {
 	var5.printStackTrace();
 	}

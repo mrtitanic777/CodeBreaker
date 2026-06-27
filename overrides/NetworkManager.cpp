@@ -135,7 +135,7 @@ void NetworkManager::sendPacket()
 	this->chunkDataSendCounter = 50;
 	}
 	if(var1) {
-	Thread::sleep(10L);
+	Thread::sleep(10LL);
 	}
 	} catch (InterruptedException* var8) {
 	} catch (Exception* var9) {

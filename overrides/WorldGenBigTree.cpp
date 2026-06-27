@@ -75,7 +75,7 @@ void WorldGenBigTree::generateLeafNodeList()
 	if(this->trunkHeight >= this->heightLimit) {
 	this->trunkHeight = this->heightLimit - 1;
 	}
-	int var1 = (int)(1.382D + powf(this->leafDensity * (double)this->heightLimit / 13.0D, 2.0D));
+	int var1 = (int)(1.382 + powf(this->leafDensity * (double)this->heightLimit / 13.0, 2.0));
 	if(var1 < 1) {
 	var1 = 1;
 	}
@@ -97,16 +97,16 @@ void WorldGenBigTree::generateLeafNodeList()
 	--var3;
 	--var6;
 	} else {
-	for(double var9 = 0.5D; var7 < var1; ++var7) {
-	double var11 = this->scaleWidth * (double)var8 * ((double)this->rand->nextFloat() + 0.328D);
-	double var13 = (double)this->rand->nextFloat() * 2.0D * 3.14159D;
+	for(double var9 = 0.5; var7 < var1; ++var7) {
+	double var11 = this->scaleWidth * (double)var8 * ((double)this->rand->nextFloat() + 0.328);
+	double var13 = (double)this->rand->nextFloat() * 2.0 * 3.14159;
 	int var15 = (int)(var11 * sinf(var13) + (double)this->basePos[0] + var9);
 	int var16 = (int)(var11 * cosf(var13) + (double)this->basePos[2] + var9);
 	JArray<int > var17 = (JArrayInit<int >(), var15, var3, var16);
 	JArray<int > var18 = (JArrayInit<int >(), var15, var3 + this->leafDistanceLimit, var16);
 	if(this->checkBlockLine(var17, var18) == -1) {
 	JArray<int > var19 = (JArrayInit<int >(), this->basePos[0], this->basePos[1], this->basePos[2]);
-	double var20 = sqrtf(powf((double)abs(this->basePos[0] - var17[0]), 2.0D) + powf((double)abs(this->basePos[2] - var17[2]), 2.0D));
+	double var20 = sqrtf(powf((double)abs(this->basePos[0] - var17[0]), 2.0) + powf((double)abs(this->basePos[2] - var17[2]), 2.0));
 	double var22 = var20 * this->branchSlope;
 	if((double)var17[1] - var22 > (double)var5) {
 	var19[1] = var5;
@@ -134,7 +134,7 @@ void WorldGenBigTree::generateLeafNodeList()
 
 void WorldGenBigTree::placeLeafCrossSection(int var1, int var2, int var3, float var4, unsigned char var5, int var6)
 {
-	int var7 = (int)((double)var4 + 0.618D);
+	int var7 = (int)((double)var4 + 0.618);
 	unsigned char var8 = s_axisCoordPairs[var5];
 	unsigned char var9 = s_axisCoordPairs[var5 + 3];
 	JArray<int > var10 = (JArrayInit<int >(), var1, var2, var3);
@@ -149,7 +149,7 @@ void WorldGenBigTree::placeLeafCrossSection(int var1, int var2, int var3, float 
 	if(var13 > var7) {
 	goto label32_cont;
 	}
-	double var15 = sqrtf(powf((double)abs(var12) + 0.5D, 2.0D) + powf((double)abs(var13) + 0.5D, 2.0D));
+	double var15 = sqrtf(powf((double)abs(var12) + 0.5, 2.0) + powf((double)abs(var13) + 0.5, 2.0));
 	if(var15 > (double)var4) {
 	++var13;
 	} else {
@@ -171,7 +171,7 @@ void WorldGenBigTree::placeLeafCrossSection(int var1, int var2, int var3, float 
 
 float WorldGenBigTree::leafShapeRadius(int var1)
 {
-	if((double)var1 < (double)((float)this->heightLimit) * 0.3D) {
+	if((double)var1 < (double)((float)this->heightLimit) * 0.3) {
 	return -1.618F;
 	} else {
 	float var2 = (float)this->heightLimit / 2.0F;
@@ -182,7 +182,7 @@ float WorldGenBigTree::leafShapeRadius(int var1)
 	} else if(abs(var3) >= var2) {
 	var4 = 0.0F;
 	} else {
-	var4 = (float)sqrtf(powf((double)abs(var2), 2.0D) - powf((double)abs(var3), 2.0D));
+	var4 = (float)sqrtf(powf((double)abs(var2), 2.0) - powf((double)abs(var3), 2.0));
 	}
 	var4 *= 0.5F;
 	return var4;
@@ -228,9 +228,9 @@ void WorldGenBigTree::placeBlockLine(JArray<int > var1, JArray<int > var2, int v
 	JArray<int > var14 = (JArrayInit<int >(), 0, 0, 0);
 	int var15 = 0;
 	for(int var16 = var4[var6] + var9; var15 != var16; var15 += var9) {
-	var14[var6] = MathHelper::floor_double((double)(var1[var6] + var15) + 0.5D);
-	var14[var7] = MathHelper::floor_double((double)var1[var7] + (double)var15 * var10 + 0.5D);
-	var14[var8] = MathHelper::floor_double((double)var1[var8] + (double)var15 * var12 + 0.5D);
+	var14[var6] = MathHelper::floor_double((double)(var1[var6] + var15) + 0.5);
+	var14[var7] = MathHelper::floor_double((double)var1[var7] + (double)var15 * var10 + 0.5);
+	var14[var8] = MathHelper::floor_double((double)var1[var8] + (double)var15 * var12 + 0.5);
 	this->worldObj->setBlock(var14[0], var14[1], var14[2], var3);
 	}
 	}
@@ -249,7 +249,7 @@ void WorldGenBigTree::generateLeaves()
 
 bool WorldGenBigTree::leafNodeNeedsBase(int var1)
 {
-	return (double)var1 >= (double)this->heightLimit * 0.2D;
+	return (double)var1 >= (double)this->heightLimit * 0.2;
 }
 
 void WorldGenBigTree::generateTrunk()
@@ -351,8 +351,8 @@ bool WorldGenBigTree::validateTreeLocation()
 
 void WorldGenBigTree::setScale(double var1, double var3, double var5)
 {
-	this->heightLimitLimit = (int)(var1 * 12.0D);
-	if(var1 > 0.5D) {
+	this->heightLimitLimit = (int)(var1 * 12.0);
+	if(var1 > 0.5) {
 	this->leafDistanceLimit = 5;
 	}
 	this->scaleWidth = var3;

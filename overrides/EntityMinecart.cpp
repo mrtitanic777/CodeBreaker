@@ -137,9 +137,9 @@ EntityMinecart::EntityMinecart(World* var1, double var2, double var4, double var
 	this->yOffset = this->height / 2.0F;
 	this->entityWalks = false;
 	this->setPosition(var2, var4 + (double)this->yOffset, var6);
-	this->motionX = 0.0D;
-	this->motionY = 0.0D;
-	this->motionZ = 0.0D;
+	this->motionX = 0.0;
+	this->motionY = 0.0;
+	this->motionZ = 0.0;
 	this->prevPosX = var2;
 	this->prevPosY = var4;
 	this->prevPosZ = var6;
@@ -167,7 +167,7 @@ bool EntityMinecart::canBePushed()
 
 double EntityMinecart::getMountedYOffset()
 {
-	return (double)this->height * 0.0D - (double)0.3F;
+	return (double)this->height * 0.0 - (double)0.3F;
 }
 
 bool EntityMinecart::canAttackEntity(Entity* var1, int var2)
@@ -245,10 +245,10 @@ void EntityMinecart::onUpdate()
 	double var41 = this->posX + (this->minecartX - this->posX) / (double)this->turnProgress;
 	double var42 = this->posY + (this->minecartY - this->posY) / (double)this->turnProgress;
 	double var5 = this->posZ + (this->minecartZ - this->posZ) / (double)this->turnProgress;
-	for(var7 = this->minecartYaw - (double)this->rotationYaw; var7 < -180.0D; var7 += 360.0D) {
+	for(var7 = this->minecartYaw - (double)this->rotationYaw; var7 < -180.0; var7 += 360.0) {
 	}
-	while(var7 >= 180.0D) {
-	var7 -= 360.0D;
+	while(var7 >= 180.0) {
+	var7 -= 360.0;
 	}
 	this->rotationYaw = (float)((double)this->rotationYaw + var7 / (double)this->turnProgress);
 	this->rotationPitch = (float)((double)this->rotationPitch + (this->minecartPitch - (double)this->rotationPitch) / (double)this->turnProgress);
@@ -270,9 +270,9 @@ void EntityMinecart::onUpdate()
 	if(this->worldObj->getBlockId(var1, var2 - 1, var3) == Block::s_minecartTrack->blockID) {
 	--var2;
 	}
-	double var4 = 0.4D;
+	double var4 = 0.4;
 	bool var6 = false;
-	var7 = 1.0D / 128.0D;
+	var7 = 1.0 / 128.0;
 	if(this->worldObj->getBlockId(var1, var2, var3) == Block::s_minecartTrack->blockID) {
 	Vec3D* var9 = this->getPosOnRail(this->posX, this->posY, this->posZ);
 	int var10 = this->worldObj->getBlockMetadata(var1, var2, var3);
@@ -297,33 +297,33 @@ void EntityMinecart::onUpdate()
 	double var14 = (double)(var11[1][2] - var11[0][2]);
 	double var16 = sqrtf(var12 * var12 + var14 * var14);
 	double var18 = this->motionX * var12 + this->motionZ * var14;
-	if(var18 < 0.0D) {
+	if(var18 < 0.0) {
 	var12 = -var12;
 	var14 = -var14;
 	}
 	double var20 = sqrtf(this->motionX * this->motionX + this->motionZ * this->motionZ);
 	this->motionX = var20 * var12 / var16;
 	this->motionZ = var20 * var14 / var16;
-	double var22 = 0.0D;
-	double var24 = (double)var1 + 0.5D + (double)var11[0][0] * 0.5D;
-	double var26 = (double)var3 + 0.5D + (double)var11[0][2] * 0.5D;
-	double var28 = (double)var1 + 0.5D + (double)var11[1][0] * 0.5D;
-	double var30 = (double)var3 + 0.5D + (double)var11[1][2] * 0.5D;
+	double var22 = 0.0;
+	double var24 = (double)var1 + 0.5 + (double)var11[0][0] * 0.5;
+	double var26 = (double)var3 + 0.5 + (double)var11[0][2] * 0.5;
+	double var28 = (double)var1 + 0.5 + (double)var11[1][0] * 0.5;
+	double var30 = (double)var3 + 0.5 + (double)var11[1][2] * 0.5;
 	var12 = var28 - var24;
 	var14 = var30 - var26;
 	double var32;
 	double var34;
 	double var36;
-	if(var12 == 0.0D) {
-	this->posX = (double)var1 + 0.5D;
+	if(var12 == 0.0) {
+	this->posX = (double)var1 + 0.5;
 	var22 = this->posZ - (double)var3;
-	} else if(var14 == 0.0D) {
-	this->posZ = (double)var3 + 0.5D;
+	} else if(var14 == 0.0) {
+	this->posZ = (double)var3 + 0.5;
 	var22 = this->posX - (double)var1;
 	} else {
 	var32 = this->posX - var24;
 	var34 = this->posZ - var26;
-	var36 = (var32 * var12 + var34 * var14) * 2.0D;
+	var36 = (var32 * var12 + var34 * var14) * 2.0;
 	var22 = var36;
 	}
 	this->posX = var24 + var12 * var22;
@@ -332,8 +332,8 @@ void EntityMinecart::onUpdate()
 	var32 = this->motionX;
 	var34 = this->motionZ;
 	if(this->riddenByEntity != NULL) {
-	var32 *= 0.75D;
-	var34 *= 0.75D;
+	var32 *= 0.75;
+	var34 *= 0.75;
 	}
 	if(var32 < -var4) {
 	var32 = -var4;
@@ -347,7 +347,7 @@ void EntityMinecart::onUpdate()
 	if(var34 > var4) {
 	var34 = var4;
 	}
-	this->moveEntity(var32, 0.0D, var34);
+	this->moveEntity(var32, 0.0, var34);
 	if(var11[0][1] != 0 && MathHelper::floor_double(this->posX) - var1 == var11[0][0] && MathHelper::floor_double(this->posZ) - var3 == var11[0][2]) {
 	this->setPosition(this->posX, this->posY + (double)var11[0][1], this->posZ);
 	} else if(var11[1][1] != 0 && MathHelper::floor_double(this->posX) - var1 == var11[1][0] && MathHelper::floor_double(this->posZ) - var3 == var11[1][2]) {
@@ -355,36 +355,36 @@ void EntityMinecart::onUpdate()
 	}
 	if(this->riddenByEntity != NULL) {
 	this->motionX *= (double)0.997F;
-	this->motionY *= 0.0D;
+	this->motionY *= 0.0;
 	this->motionZ *= (double)0.997F;
 	} else {
 	if(this->d == 2) {
 	var36 = (double)MathHelper::sqrt_double(this->pushX * this->pushX + this->pushZ * this->pushZ);
-	if(var36 > 0.01D) {
+	if(var36 > 0.01) {
 	var6 = true;
 	this->pushX /= var36;
 	this->pushZ /= var36;
-	double var38 = 0.04D;
+	double var38 = 0.04;
 	this->motionX *= (double)0.8F;
-	this->motionY *= 0.0D;
+	this->motionY *= 0.0;
 	this->motionZ *= (double)0.8F;
 	this->motionX += this->pushX * var38;
 	this->motionZ += this->pushZ * var38;
 	} else {
 	this->motionX *= (double)0.9F;
-	this->motionY *= 0.0D;
+	this->motionY *= 0.0;
 	this->motionZ *= (double)0.9F;
 	}
 	}
 	this->motionX *= (double)0.96F;
-	this->motionY *= 0.0D;
+	this->motionY *= 0.0;
 	this->motionZ *= (double)0.96F;
 	}
 	Vec3D* var46 = this->getPosOnRail(this->posX, this->posY, this->posZ);
 	if(var46 != NULL && var9 != NULL) {
-	double var37 = (var9->yCoord - var46->yCoord) * 0.05D;
+	double var37 = (var9->yCoord - var46->yCoord) * 0.05;
 	var20 = sqrtf(this->motionX * this->motionX + this->motionZ * this->motionZ);
-	if(var20 > 0.0D) {
+	if(var20 > 0.0) {
 	this->motionX = this->motionX / var20 * (var20 + var37);
 	this->motionZ = this->motionZ / var20 * (var20 + var37);
 	}
@@ -399,12 +399,12 @@ void EntityMinecart::onUpdate()
 	}
 	if(this->d == 2) {
 	double var39 = (double)MathHelper::sqrt_double(this->pushX * this->pushX + this->pushZ * this->pushZ);
-	if(var39 > 0.01D && this->motionX * this->motionX + this->motionZ * this->motionZ > 0.001D) {
+	if(var39 > 0.01 && this->motionX * this->motionX + this->motionZ * this->motionZ > 0.001) {
 	this->pushX /= var39;
 	this->pushZ /= var39;
-	if(this->pushX * this->motionX + this->pushZ * this->motionZ < 0.0D) {
-	this->pushX = 0.0D;
-	this->pushZ = 0.0D;
+	if(this->pushX * this->motionX + this->pushZ * this->motionZ < 0.0) {
+	this->pushX = 0.0;
+	this->pushZ = 0.0;
 	} else {
 	this->pushX = this->motionX;
 	this->pushZ = this->motionZ;
@@ -425,9 +425,9 @@ void EntityMinecart::onUpdate()
 	this->motionZ = var4;
 	}
 	if(this->onGround) {
-	this->motionX *= 0.5D;
-	this->motionY *= 0.5D;
-	this->motionZ *= 0.5D;
+	this->motionX *= 0.5;
+	this->motionY *= 0.5;
+	this->motionZ *= 0.5;
 	}
 	this->moveEntity(this->motionX, this->motionY, this->motionZ);
 	if(!this->onGround) {
@@ -439,24 +439,24 @@ void EntityMinecart::onUpdate()
 	this->rotationPitch = 0.0F;
 	double var43 = this->prevPosX - this->posX;
 	double var44 = this->prevPosZ - this->posZ;
-	if(var43 * var43 + var44 * var44 > 0.001D) {
-	this->rotationYaw = (float)(atan2f(var44, var43) * 180.0D / 3.1415927F);
+	if(var43 * var43 + var44 * var44 > 0.001) {
+	this->rotationYaw = (float)(atan2f(var44, var43) * 180.0 / 3.1415927F);
 	if(this->isInReverse) {
 	this->rotationYaw += 180.0F;
 	}
 	}
 	double var13;
-	for(var13 = (double)(this->rotationYaw - this->prevRotationYaw); var13 >= 180.0D; var13 -= 360.0D) {
+	for(var13 = (double)(this->rotationYaw - this->prevRotationYaw); var13 >= 180.0; var13 -= 360.0) {
 	}
-	while(var13 < -180.0D) {
-	var13 += 360.0D;
+	while(var13 < -180.0) {
+	var13 += 360.0;
 	}
-	if(var13 < -170.0D || var13 >= 170.0D) {
+	if(var13 < -170.0 || var13 >= 170.0) {
 	this->rotationYaw += 180.0F;
 	this->isInReverse = !this->isInReverse;
 	}
 	this->setRotation(this->rotationYaw, this->rotationPitch);
-	JList<void*> var15 = this->worldObj->getEntitiesWithinAABBExcludingEntity(this, this->boundingBox->expands((double)0.2F, 0.0D, (double)0.2F));
+	JList<void*> var15 = this->worldObj->getEntitiesWithinAABBExcludingEntity(this, this->boundingBox->expands((double)0.2F, 0.0, (double)0.2F));
 	if(var15 != NULL && var15.size() > 0) {
 	for(int var45 = 0; var45 < var15.size(); ++var45) {
 	Entity* var17 = (Entity*)var15[var45];
@@ -471,9 +471,9 @@ void EntityMinecart::onUpdate()
 	if(var6 && this->rand->nextInt(4) == 0) {
 	--this->fuel;
 	if(this->fuel < 0) {
-	this->pushX = this->pushZ = 0.0D;
+	this->pushX = this->pushZ = 0.0;
 	}
-	this->worldObj->spawnParticle("largesmoke",this->posX,this->posY + 0.8D,this->posZ,0.0D,0.0D,0.0D);
+	this->worldObj->spawnParticle("largesmoke",this->posX,this->posY + 0.8,this->posZ,0.0,0.0,0.0);
 	}
 	}
 }
@@ -526,36 +526,36 @@ Vec3D* EntityMinecart::getPosOnRail(double var1, double var3, double var5)
 	var3 = (double)(var8 + 1);
 	}
 	JArray<JArray<int > > var11 = s_railDirectionMatrix[var10];
-	double var12 = 0.0D;
-	double var14 = (double)var7 + 0.5D + (double)var11[0][0] * 0.5D;
-	double var16 = (double)var8 + 0.5D + (double)var11[0][1] * 0.5D;
-	double var18 = (double)var9 + 0.5D + (double)var11[0][2] * 0.5D;
-	double var20 = (double)var7 + 0.5D + (double)var11[1][0] * 0.5D;
-	double var22 = (double)var8 + 0.5D + (double)var11[1][1] * 0.5D;
-	double var24 = (double)var9 + 0.5D + (double)var11[1][2] * 0.5D;
+	double var12 = 0.0;
+	double var14 = (double)var7 + 0.5 + (double)var11[0][0] * 0.5;
+	double var16 = (double)var8 + 0.5 + (double)var11[0][1] * 0.5;
+	double var18 = (double)var9 + 0.5 + (double)var11[0][2] * 0.5;
+	double var20 = (double)var7 + 0.5 + (double)var11[1][0] * 0.5;
+	double var22 = (double)var8 + 0.5 + (double)var11[1][1] * 0.5;
+	double var24 = (double)var9 + 0.5 + (double)var11[1][2] * 0.5;
 	double var26 = var20 - var14;
-	double var28 = (var22 - var16) * 2.0D;
+	double var28 = (var22 - var16) * 2.0;
 	double var30 = var24 - var18;
-	if(var26 == 0.0D) {
-	var1 = (double)var7 + 0.5D;
+	if(var26 == 0.0) {
+	var1 = (double)var7 + 0.5;
 	var12 = var5 - (double)var9;
-	} else if(var30 == 0.0D) {
-	var5 = (double)var9 + 0.5D;
+	} else if(var30 == 0.0) {
+	var5 = (double)var9 + 0.5;
 	var12 = var1 - (double)var7;
 	} else {
 	double var32 = var1 - var14;
 	double var34 = var5 - var18;
-	double var36 = (var32 * var26 + var34 * var30) * 2.0D;
+	double var36 = (var32 * var26 + var34 * var30) * 2.0;
 	var12 = var36;
 	}
 	var1 = var14 + var26 * var12;
 	var3 = var16 + var28 * var12;
 	var5 = var18 + var30 * var12;
-	if(var28 < 0.0D) {
+	if(var28 < 0.0) {
 	++var3;
 	}
-	if(var28 > 0.0D) {
-	var3 += 0.5D;
+	if(var28 > 0.0) {
+	var3 += 0.5;
 	}
 	return Vec3D::createVector(var1, var3, var5);
 	} else {
@@ -613,7 +613,7 @@ void EntityMinecart::applyEntityCollision(Entity* var1)
 {
 	if(!this->worldObj->multiplayerWorld) {
 	if(var1 != this->riddenByEntity) {
-	if((dynamic_cast<EntityLiving*>(var1) != NULL) && !((dynamic_cast<EntityPlayer*>(var1) != NULL)) && this->d == 0 && this->motionX * this->motionX + this->motionZ * this->motionZ > 0.01D && this->riddenByEntity == NULL && var1->ridingEntity == NULL) {
+	if((dynamic_cast<EntityLiving*>(var1) != NULL) && !((dynamic_cast<EntityPlayer*>(var1) != NULL)) && this->d == 0 && this->motionX * this->motionX + this->motionZ * this->motionZ > 0.01 && this->riddenByEntity == NULL && var1->ridingEntity == NULL) {
 	var1->mountEntity(this);
 	}
 	double var2 = var1->posX - this->posX;
@@ -623,9 +623,9 @@ void EntityMinecart::applyEntityCollision(Entity* var1)
 	var6 = (double)MathHelper::sqrt_double(var6);
 	var2 /= var6;
 	var4 /= var6;
-	double var8 = 1.0D / var6;
-	if(var8 > 1.0D) {
-	var8 = 1.0D;
+	double var8 = 1.0 / var6;
+	if(var8 > 1.0) {
+	var8 = 1.0;
 	}
 	var2 *= var8;
 	var4 *= var8;
@@ -633,36 +633,36 @@ void EntityMinecart::applyEntityCollision(Entity* var1)
 	var4 *= (double)0.1F;
 	var2 *= (double)(1.0F - this->entityCollisionReduction);
 	var4 *= (double)(1.0F - this->entityCollisionReduction);
-	var2 *= 0.5D;
-	var4 *= 0.5D;
+	var2 *= 0.5;
+	var4 *= 0.5;
 	if((dynamic_cast<EntityMinecart*>(var1) != NULL)) {
 	double var10 = var1->motionX + this->motionX;
 	double var12 = var1->motionZ + this->motionZ;
 	if(((EntityMinecart*)var1)->d == 2 && this->d != 2) {
 	this->motionX *= (double)0.2F;
 	this->motionZ *= (double)0.2F;
-	this->addVelocity(var1->motionX - var2, 0.0D, var1->motionZ - var4);
+	this->addVelocity(var1->motionX - var2, 0.0, var1->motionZ - var4);
 	var1->motionX *= (double)0.7F;
 	var1->motionZ *= (double)0.7F;
 	} else if(((EntityMinecart*)var1)->d != 2 && this->d == 2) {
 	var1->motionX *= (double)0.2F;
 	var1->motionZ *= (double)0.2F;
-	var1->addVelocity(this->motionX + var2, 0.0D, this->motionZ + var4);
+	var1->addVelocity(this->motionX + var2, 0.0, this->motionZ + var4);
 	this->motionX *= (double)0.7F;
 	this->motionZ *= (double)0.7F;
 	} else {
-	var10 /= 2.0D;
-	var12 /= 2.0D;
+	var10 /= 2.0;
+	var12 /= 2.0;
 	this->motionX *= (double)0.2F;
 	this->motionZ *= (double)0.2F;
-	this->addVelocity(var10 - var2, 0.0D, var12 - var4);
+	this->addVelocity(var10 - var2, 0.0, var12 - var4);
 	var1->motionX *= (double)0.2F;
 	var1->motionZ *= (double)0.2F;
-	var1->addVelocity(var10 + var2, 0.0D, var12 + var4);
+	var1->addVelocity(var10 + var2, 0.0, var12 + var4);
 	}
 	} else {
-	this->addVelocity(-var2, 0.0D, -var4);
-	var1->addVelocity(var2 / 4.0D, 0.0D, var4 / 4.0D);
+	this->addVelocity(-var2, 0.0, -var4);
+	var1->addVelocity(var2 / 4.0, 0.0, var4 / 4.0);
 	}
 	}
 	}

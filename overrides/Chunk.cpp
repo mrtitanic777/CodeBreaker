@@ -82,7 +82,7 @@ Chunk::Chunk(World* var1, int var2, int var3)
 	this->isModified = false;
 	this->isEmptyChunk = false;
 	this->hasEntities = false;
-	this->lastSaveTime = 0L;
+	this->lastSaveTime = 0LL;
 	this->worldObj = var1;
 	this->xPosition = var2;
 	this->zPosition = var3;
@@ -115,7 +115,7 @@ Chunk::Chunk(World* var1, JArray<unsigned char > var2, int var3, int var4)
 	this->isModified = false;
 	this->isEmptyChunk = false;
 	this->hasEntities = false;
-	this->lastSaveTime = 0L;
+	this->lastSaveTime = 0LL;
 	this->worldObj = var1;
 	this->xPosition = var3;
 	this->zPosition = var4;
@@ -437,8 +437,8 @@ void Chunk::addEntity(Entity* var1)
 {
 	if(!this->isEmptyChunk) {
 	this->hasEntities = true;
-	int var2 = MathHelper::floor_double(var1->posX / 16.0D);
-	int var3 = MathHelper::floor_double(var1->posZ / 16.0D);
+	int var2 = MathHelper::floor_double(var1->posX / 16.0);
+	int var3 = MathHelper::floor_double(var1->posZ / 16.0);
 	/* ---- ORIGINAL JAVA (stubbed below) ----
 	 *  if(var2 != this.xPosition || var3 != this.zPosition) {
 	 *      System.out.println("Wrong location! " + var1);
@@ -451,7 +451,7 @@ void Chunk::addEntity(Entity* var1)
 	System::out.println((JCat() + "Wrong location! " + var1));
 	// Thread.dumpStack() (diagnostic only; absent from the Thread runtime stub) -> no-op port.
 	}
-	int var4 = MathHelper::floor_double(var1->posY / 16.0D);
+	int var4 = MathHelper::floor_double(var1->posY / 16.0);
 	if(var4 < 0) {
 	var4 = 0;
 	}
@@ -576,8 +576,8 @@ void Chunk::setChunkModified()
 
 void Chunk::getEntitiesWithinAABBForEntity(Entity* var1, AxisAlignedBB* var2, JList<void*> var3)
 {
-	int var4 = MathHelper::floor_double((var2->minY - 2.0D) / 16.0D);
-	int var5 = MathHelper::floor_double((var2->maxY + 2.0D) / 16.0D);
+	int var4 = MathHelper::floor_double((var2->minY - 2.0) / 16.0);
+	int var5 = MathHelper::floor_double((var2->maxY + 2.0) / 16.0);
 	if(var4 < 0) {
 	var4 = 0;
 	}
@@ -597,8 +597,8 @@ void Chunk::getEntitiesWithinAABBForEntity(Entity* var1, AxisAlignedBB* var2, JL
 
 void Chunk::getEntitiesOfTypeWithinAAAB(Class* var1, AxisAlignedBB* var2, JList<void*> var3)
 {
-	int var4 = MathHelper::floor_double((var2->minY - 2.0D) / 16.0D);
-	int var5 = MathHelper::floor_double((var2->maxY + 2.0D) / 16.0D);
+	int var4 = MathHelper::floor_double((var2->minY - 2.0) / 16.0);
+	int var5 = MathHelper::floor_double((var2->maxY + 2.0) / 16.0);
 	if(var4 < 0) {
 	var4 = 0;
 	}
@@ -674,5 +674,5 @@ int Chunk::setChunkData(JArray<unsigned char > var1, int var2, int var3, int var
 
 Random* Chunk::getRandomWithSeed(long long var1)
 {
-	return new Random(this->worldObj->randomSeed + (long long)(this->xPosition * this->xPosition * 4987142) + (long long)(this->xPosition * 5947611) + (long long)(this->zPosition * this->zPosition) * 4392871L + (long long)(this->zPosition * 389711) ^ var1);
+	return new Random(this->worldObj->randomSeed + (long long)(this->xPosition * this->xPosition * 4987142) + (long long)(this->xPosition * 5947611) + (long long)(this->zPosition * this->zPosition) * 4392871LL + (long long)(this->zPosition * 389711) ^ var1);
 }

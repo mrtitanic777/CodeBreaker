@@ -274,7 +274,7 @@ void WorldRenderer::updateRenderer()
 	s_tessellator->draw();
 	GL11::glPopMatrix();
 	GL11::glEndList();
-	s_tessellator->setTranslationD(0.0D, 0.0D, 0.0D);
+	s_tessellator->setTranslationD(0.0, 0.0, 0.0);
 	} else {
 	var13 = false;
 	}

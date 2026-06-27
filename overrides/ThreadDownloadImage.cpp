@@ -60,7 +60,7 @@ void ThreadDownloadImage::run()
 		HttpURLConnection** c;
 		_Finally(HttpURLConnection** p) : c(p) {}
 		~_Finally() { if(*c) (*c)->disconnect(); }
-	} _finally(&var1);
+	} _finallyGuard(&var1);   // NOT '_finally': MSVC treats _finally as the __finally SEH keyword
 	try {
 	URL* var2 = new URL(this->location);
 	var1 = (HttpURLConnection*)var2->openConnection();

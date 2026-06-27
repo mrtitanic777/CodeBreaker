@@ -66,7 +66,7 @@ void NetworkWriterThread::run()
 			}
 			}
 		}
-	} _finally(var11);
+	} _finallyGuard(var11);   // NOT '_finally': MSVC treats _finally as the __finally SEH keyword
 	{
 	var11 = true;
 	if(!NetworkManager::isRunning_(this->netManager)) {

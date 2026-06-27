@@ -223,8 +223,8 @@ void GuiIngame::renderGameOverlay(float var1, bool var2, int var3, int var4)
 	}
 	}
 	if(this->mc->thePlayer->isInsideOfMaterial(Material::s_water)) {
-	var16 = (int)ceilf((double)(this->mc->thePlayer->air - 2) * 10.0D / 300.0D);
-	var17 = (int)ceilf((double)this->mc->thePlayer->air * 10.0D / 300.0D) - var16;
+	var16 = (int)ceilf((double)(this->mc->thePlayer->air - 2) * 10.0 / 300.0);
+	var17 = (int)ceilf((double)this->mc->thePlayer->air * 10.0 / 300.0) - var16;
 	for(var18 = 0; var18 < var16 + var17; ++var18) {
 	if(var18 < var16) {
 	this->drawTexturedModalRect(var6 / 2 - 91 + var18 * 8, var7 - 32 - 9, 16, 18, 9, 9);
@@ -265,9 +265,9 @@ void GuiIngame::renderGameOverlay(float var1, bool var2, int var3, int var4)
 	long long var29 = Runtime.getRuntime().totalMemory();
 	long long var30 = Runtime.getRuntime().freeMemory();
 	long long var21 = var29 - var30;
-	var23 = (JCat() + "Used memory: " + var21 * 100L / var24 + "% (" + var21 / 1024L / 1024L + "MB) of " + var24 / 1024L / 1024L + "MB");
+	var23 = (JCat() + "Used memory: " + var21 * 100LL / var24 + "% (" + var21 / 1024LL / 1024LL + "MB) of " + var24 / 1024LL / 1024LL + "MB");
 	this->drawString(var8, var23, var6 - var8->getStringWidth(var23) - 2, 2, 14737632);
-	var23 = (JCat() + "Allocated memory: " + var29 * 100L / var24 + "% (" + var29 / 1024L / 1024L + "MB)");
+	var23 = (JCat() + "Allocated memory: " + var29 * 100LL / var24 + "% (" + var29 / 1024LL / 1024LL + "MB)");
 	this->drawString(var8, var23, var6 - var8->getStringWidth(var23) - 2, 12, 14737632);
 	this->drawString(var8,(JCat() + "x: " + this->mc->thePlayer->posX),2,64,14737632);
 	this->drawString(var8,(JCat() + "y: " + this->mc->thePlayer->posY),2,72,14737632);
@@ -305,17 +305,17 @@ void GuiIngame::renderGameOverlay(float var1, bool var2, int var3, int var4)
 	GL11::glTranslatef(0.0F, (float)(var7 - 48), 0.0F);
 	for(var17 = 0; var17 < this->chatMessageList.size() && var17 < var26; ++var17) {
 	if(((ChatLine*)this->chatMessageList[var17])->updateCounter < 200 || var28) {
-	double var31 = (double)((ChatLine*)this->chatMessageList[var17])->updateCounter / 200.0D;
-	var31 = 1.0D - var31;
-	var31 *= 10.0D;
-	if(var31 < 0.0D) {
-	var31 = 0.0D;
+	double var31 = (double)((ChatLine*)this->chatMessageList[var17])->updateCounter / 200.0;
+	var31 = 1.0 - var31;
+	var31 *= 10.0;
+	if(var31 < 0.0) {
+	var31 = 0.0;
 	}
-	if(var31 > 1.0D) {
-	var31 = 1.0D;
+	if(var31 > 1.0) {
+	var31 = 1.0;
 	}
 	var31 *= var31;
-	int var20 = (int)(255.0D * var31);
+	int var20 = (int)(255.0 * var31);
 	if(var28) {
 	var20 = 255;
 	}
@@ -344,10 +344,10 @@ void GuiIngame::renderPumpkinBlur(int var1, int var2)
 	GL11::glBindTexture(GL11::GL_TEXTURE_2D, this->mc->renderEngine->getTexture("%blur%/misc/pumpkinblur.png"));
 	Tessellator* var3 = Tessellator::s_instance;
 	var3->startDrawingQuads();
-	var3->addVertexWithUV(0.0D, (double)var2, -90.0D, 0.0D, 1.0D);
-	var3->addVertexWithUV((double)var1, (double)var2, -90.0D, 1.0D, 1.0D);
-	var3->addVertexWithUV((double)var1, 0.0D, -90.0D, 1.0D, 0.0D);
-	var3->addVertexWithUV(0.0D, 0.0D, -90.0D, 0.0D, 0.0D);
+	var3->addVertexWithUV(0.0, (double)var2, -90.0, 0.0, 1.0);
+	var3->addVertexWithUV((double)var1, (double)var2, -90.0, 1.0, 1.0);
+	var3->addVertexWithUV((double)var1, 0.0, -90.0, 1.0, 0.0);
+	var3->addVertexWithUV(0.0, 0.0, -90.0, 0.0, 0.0);
 	var3->draw();
 	GL11::glDepthMask(true);
 	GL11::glEnable(GL11::GL_DEPTH_TEST);
@@ -364,7 +364,7 @@ void GuiIngame::renderVignette(float var1, int var2, int var3)
 	if(var1 > 1.0F) {
 	var1 = 1.0F;
 	}
-	this->prevVignetteBrightness = (float)((double)this->prevVignetteBrightness + (double)(var1 - this->prevVignetteBrightness) * 0.01D);
+	this->prevVignetteBrightness = (float)((double)this->prevVignetteBrightness + (double)(var1 - this->prevVignetteBrightness) * 0.01);
 	GL11::glDisable(GL11::GL_DEPTH_TEST);
 	GL11::glDepthMask(false);
 	GL11::glBlendFunc(GL_ZERO, GL11::GL_ONE_MINUS_SRC_COLOR);
@@ -372,10 +372,10 @@ void GuiIngame::renderVignette(float var1, int var2, int var3)
 	GL11::glBindTexture(GL11::GL_TEXTURE_2D, this->mc->renderEngine->getTexture("%blur%/misc/vignette.png"));
 	Tessellator* var4 = Tessellator::s_instance;
 	var4->startDrawingQuads();
-	var4->addVertexWithUV(0.0D, (double)var3, -90.0D, 0.0D, 1.0D);
-	var4->addVertexWithUV((double)var2, (double)var3, -90.0D, 1.0D, 1.0D);
-	var4->addVertexWithUV((double)var2, 0.0D, -90.0D, 1.0D, 0.0D);
-	var4->addVertexWithUV(0.0D, 0.0D, -90.0D, 0.0D, 0.0D);
+	var4->addVertexWithUV(0.0, (double)var3, -90.0, 0.0, 1.0);
+	var4->addVertexWithUV((double)var2, (double)var3, -90.0, 1.0, 1.0);
+	var4->addVertexWithUV((double)var2, 0.0, -90.0, 1.0, 0.0);
+	var4->addVertexWithUV(0.0, 0.0, -90.0, 0.0, 0.0);
 	var4->draw();
 	GL11::glDepthMask(true);
 	GL11::glEnable(GL11::GL_DEPTH_TEST);
@@ -400,10 +400,10 @@ void GuiIngame::renderPortalOverlay(float var1, int var2, int var3)
 	float var7 = (float)(Block::s_portal->blockIndexInTexture / 16 + 1) / 16.0F;
 	Tessellator* var8 = Tessellator::s_instance;
 	var8->startDrawingQuads();
-	var8->addVertexWithUV(0.0D, (double)var3, -90.0D, (double)var4, (double)var7);
-	var8->addVertexWithUV((double)var2, (double)var3, -90.0D, (double)var6, (double)var7);
-	var8->addVertexWithUV((double)var2, 0.0D, -90.0D, (double)var6, (double)var5);
-	var8->addVertexWithUV(0.0D, 0.0D, -90.0D, (double)var4, (double)var5);
+	var8->addVertexWithUV(0.0, (double)var3, -90.0, (double)var4, (double)var7);
+	var8->addVertexWithUV((double)var2, (double)var3, -90.0, (double)var6, (double)var7);
+	var8->addVertexWithUV((double)var2, 0.0, -90.0, (double)var6, (double)var5);
+	var8->addVertexWithUV(0.0, 0.0, -90.0, (double)var4, (double)var5);
 	var8->draw();
 	GL11::glDepthMask(true);
 	GL11::glEnable(GL11::GL_DEPTH_TEST);

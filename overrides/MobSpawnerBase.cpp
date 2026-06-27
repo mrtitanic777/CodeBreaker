@@ -102,8 +102,8 @@ MobSpawnerBase* MobSpawnerBase::setColor(int var1)
 
 MobSpawnerBase* MobSpawnerBase::getBiomeFromLookup(double var0, double var2)
 {
-	int var4 = (int)(var0 * 63.0D);
-	int var5 = (int)(var2 * 63.0D);
+	int var4 = (int)(var0 * 63.0);
+	int var5 = (int)(var2 * 63.0);
 	return s_biomeLookupTable[var4 + var5 * 64];
 }
 

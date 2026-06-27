@@ -248,7 +248,7 @@ RenderGlobal::~RenderGlobal()
 
 void RenderGlobal::renderStars()
 {
-	Random* var1 = new Random(10842L);
+	Random* var1 = new Random(10842LL);
 	Tessellator* var2 = Tessellator::s_instance;
 	var2->startDrawingQuads();
 	for(int var3 = 0; var3 < 1500; ++var3) {
@@ -257,25 +257,25 @@ void RenderGlobal::renderStars()
 	double var8 = (double)(var1->nextFloat() * 2.0F - 1.0F);
 	double var10 = (double)(0.25F + var1->nextFloat() * 0.25F);
 	double var12 = var4 * var4 + var6 * var6 + var8 * var8;
-	if(var12 < 1.0D && var12 > 0.01D) {
-	var12 = 1.0D / sqrtf(var12);
+	if(var12 < 1.0 && var12 > 0.01) {
+	var12 = 1.0 / sqrtf(var12);
 	var4 *= var12;
 	var6 *= var12;
 	var8 *= var12;
-	double var14 = var4 * 100.0D;
-	double var16 = var6 * 100.0D;
-	double var18 = var8 * 100.0D;
+	double var14 = var4 * 100.0;
+	double var16 = var6 * 100.0;
+	double var18 = var8 * 100.0;
 	double var20 = atan2f(var4, var8);
 	double var22 = sinf(var20);
 	double var24 = cosf(var20);
 	double var26 = atan2f(sqrtf(var4 * var4 + var8 * var8), var6);
 	double var28 = sinf(var26);
 	double var30 = cosf(var26);
-	double var32 = var1->nextDouble() * 3.1415927F * 2.0D;
+	double var32 = var1->nextDouble() * 3.1415927F * 2.0;
 	double var34 = sinf(var32);
 	double var36 = cosf(var32);
 	for(int var38 = 0; var38 < 4; ++var38) {
-	double var39 = 0.0D;
+	double var39 = 0.0;
 	double var41 = (double)((var38 & 2) - 1) * var10;
 	double var43 = (double)((var38 + 1 & 2) - 1) * var10;
 	double var47 = var41 * var36 - var43 * var34;
@@ -296,9 +296,9 @@ void RenderGlobal::setWorldAndLoadRenderers(World* var1)
 	if(this->worldObj != NULL) {
 	this->worldObj->removeWorldAccess(this);
 	}
-	this->prevSortX = -9999.0D;
-	this->prevSortY = -9999.0D;
-	this->prevSortZ = -9999.0D;
+	this->prevSortX = -9999.0;
+	this->prevSortY = -9999.0;
+	this->prevSortZ = -9999.0;
 	RenderManager::s_instance->setWorld(var1);
 	this->worldObj = var1;
 	this->globalRenderBlocks = new RenderBlocks(var1);
@@ -488,7 +488,7 @@ int RenderGlobal::sortAndRender(EntityPlayer* var1, int var2, double var3)
 	double var11 = var1->posX - this->prevSortX;
 	double var13 = var1->posY - this->prevSortY;
 	double var15 = var1->posZ - this->prevSortZ;
-	if(var11 * var11 + var13 * var13 + var15 * var15 > 16.0D) {
+	if(var11 * var11 + var13 * var13 + var15 * var15 > 16.0) {
 	this->prevSortX = var1->posX;
 	this->prevSortY = var1->posY;
 	this->prevSortZ = var1->posZ;
@@ -687,7 +687,7 @@ void RenderGlobal::renderSky(float var1)
 	GL11::glRotatef(var8 > 0.5F ? 180.0F : 0.0F, 0.0F, 0.0F, 1.0F);
 	var14->startDrawing(6);
 	var14->setColorRGBA_F(var15[0], var15[1], var15[2], var15[3]);
-	var14->addVertex(0.0D, 100.0D, 0.0D);
+	var14->addVertex(0.0, 100.0, 0.0);
 	unsigned char var9 = 16;
 	var14->setColorRGBA_F(var15[0], var15[1], var15[2], 0.0F);
 	for(int var10 = 0; var10 <= var9; ++var10) {
@@ -713,18 +713,18 @@ void RenderGlobal::renderSky(float var1)
 	float var17 = 30.0F;
 	GL11::glBindTexture(GL11::GL_TEXTURE_2D, this->renderEngine->getTexture("/terrain/sun.png"));
 	var14->startDrawingQuads();
-	var14->addVertexWithUV((double)(-var17), 100.0D, (double)(-var17), 0.0D, 0.0D);
-	var14->addVertexWithUV((double)var17, 100.0D, (double)(-var17), 1.0D, 0.0D);
-	var14->addVertexWithUV((double)var17, 100.0D, (double)var17, 1.0D, 1.0D);
-	var14->addVertexWithUV((double)(-var17), 100.0D, (double)var17, 0.0D, 1.0D);
+	var14->addVertexWithUV((double)(-var17), 100.0, (double)(-var17), 0.0, 0.0);
+	var14->addVertexWithUV((double)var17, 100.0, (double)(-var17), 1.0, 0.0);
+	var14->addVertexWithUV((double)var17, 100.0, (double)var17, 1.0, 1.0);
+	var14->addVertexWithUV((double)(-var17), 100.0, (double)var17, 0.0, 1.0);
 	var14->draw();
 	var17 = 20.0F;
 	GL11::glBindTexture(GL11::GL_TEXTURE_2D, this->renderEngine->getTexture("/terrain/moon.png"));
 	var14->startDrawingQuads();
-	var14->addVertexWithUV((double)(-var17), -100.0D, (double)var17, 1.0D, 1.0D);
-	var14->addVertexWithUV((double)var17, -100.0D, (double)var17, 0.0D, 1.0D);
-	var14->addVertexWithUV((double)var17, -100.0D, (double)(-var17), 0.0D, 0.0D);
-	var14->addVertexWithUV((double)(-var17), -100.0D, (double)(-var17), 1.0D, 0.0D);
+	var14->addVertexWithUV((double)(-var17), -100.0, (double)var17, 1.0, 1.0);
+	var14->addVertexWithUV((double)var17, -100.0, (double)var17, 0.0, 1.0);
+	var14->addVertexWithUV((double)var17, -100.0, (double)(-var17), 0.0, 0.0);
+	var14->addVertexWithUV((double)(-var17), -100.0, (double)(-var17), 1.0, 0.0);
 	var14->draw();
 	GL11::glDisable(GL11::GL_TEXTURE_2D);
 	var11 = this->worldObj->getRainStrength(var1);
@@ -775,8 +775,8 @@ void RenderGlobal::renderClouds(float var1)
 	var10 = 0.5F / 1024.0F;
 	double var22 = this->mc->thePlayer->prevPosX + (this->mc->thePlayer->posX - this->mc->thePlayer->prevPosX) * (double)var1 + (double)(((float)this->cloudTickCounter + var1) * 0.03F);
 	double var13 = this->mc->thePlayer->prevPosZ + (this->mc->thePlayer->posZ - this->mc->thePlayer->prevPosZ) * (double)var1;
-	int var15 = MathHelper::floor_double(var22 / 2048.0D);
-	int var16 = MathHelper::floor_double(var13 / 2048.0D);
+	int var15 = MathHelper::floor_double(var22 / 2048.0);
+	int var16 = MathHelper::floor_double(var13 / 2048.0);
 	var22 -= (double)(var15 * 2048);
 	var13 -= (double)(var16 * 2048);
 	float var17 = 120.0F - var2 + 0.33F;
@@ -810,8 +810,8 @@ void RenderGlobal::renderCloudsFancy(float var1)
 	double var6 = (this->mc->thePlayer->prevPosX + (this->mc->thePlayer->posX - this->mc->thePlayer->prevPosX) * (double)var1 + (double)(((float)this->cloudTickCounter + var1) * 0.03F)) / (double)var4;
 	double var8 = (this->mc->thePlayer->prevPosZ + (this->mc->thePlayer->posZ - this->mc->thePlayer->prevPosZ) * (double)var1) / (double)var4 + (double)0.33F;
 	float var10 = 108.0F - var2 + 0.33F;
-	int var11 = MathHelper::floor_double(var6 / 2048.0D);
-	int var12 = MathHelper::floor_double(var8 / 2048.0D);
+	int var11 = MathHelper::floor_double(var6 / 2048.0);
+	int var12 = MathHelper::floor_double(var8 / 2048.0);
 	var6 -= (double)(var11 * 2048);
 	var8 -= (double)(var12 * 2048);
 	GL11::glBindTexture(GL11::GL_TEXTURE_2D, this->renderEngine->getTexture("/environment/clouds.png"));
@@ -832,8 +832,8 @@ void RenderGlobal::renderCloudsFancy(float var1)
 	var15 = var18;
 	var16 = var19;
 	}
-	var17 = (float)(var6 * 0.0D);
-	var18 = (float)(var8 * 0.0D);
+	var17 = (float)(var6 * 0.0);
+	var18 = (float)(var8 * 0.0);
 	var19 = 0.00390625F;
 	var17 = (float)MathHelper::floor_double(var6) * var19;
 	var18 = (float)MathHelper::floor_double(var8) * var19;
@@ -982,7 +982,7 @@ void RenderGlobal::drawBlockBreaking(EntityPlayer* var1, MovingObjectPosition* v
 	}
 	this->globalRenderBlocks->renderBlockUsingTexture(var9, var2->blockX, var2->blockY, var2->blockZ, 240 + (int)(this->damagePartialTime * 10.0F));
 	var6->draw();
-	var6->setTranslationD(0.0D, 0.0D, 0.0D);
+	var6->setTranslationD(0.0, 0.0, 0.0);
 	GL11::glPolygonOffset(0.0F, 0.0F);
 	GL11::glDisable(GL11::GL_POLYGON_OFFSET_FILL);
 	GL11::glEnable(GL11::GL_ALPHA_TEST);
@@ -1152,7 +1152,7 @@ void RenderGlobal::spawnParticle(const JavaString& var1, double var2, double var
 	double var14 = this->mc->thePlayer->posX - var2;
 	double var16 = this->mc->thePlayer->posY - var4;
 	double var18 = this->mc->thePlayer->posZ - var6;
-	if(var14 * var14 + var16 * var16 + var18 * var18 <= 256.0D) {
+	if(var14 * var14 + var16 * var16 + var18 * var18 <= 256.0) {
 	if(var1 == "bubble") {
 	this->mc->effectRenderer->addEffect(new EntityBubbleFX(this->worldObj, var2, var4, var6, var8, var10, var12));
 	} else if(var1 == "smoke") {

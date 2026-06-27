@@ -205,7 +205,7 @@ void MinecraftApplet::shutdown()
 	 *  // The Thread stub lacks join(long); _threadJoin() ignores the 10000ms
 	 *  // timeout and calls plain join() (no bounded wait as the original had).
 	 *  ---- end original Java ---- */
-	_threadJoin(this->mcThread, 10000L);
+	_threadJoin(this->mcThread, 10000LL);
 	} catch (InterruptedException var4) {
 	try {
 	this->mc->shutdownMinecraftApplet();

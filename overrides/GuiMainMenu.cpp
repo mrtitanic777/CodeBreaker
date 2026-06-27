@@ -238,7 +238,7 @@ void GuiMainMenu::drawScreen(int var1, int var2, float var3)
 	GL11::glPushMatrix();
 	GL11::glTranslatef((float)(this->width / 2 + 90), 70.0F, 0.0F);
 	GL11::glRotatef(-20.0F, 0.0F, 0.0F, 1.0F);
-	float var5 = 1.8F - MathHelper::abs(MathHelper::sin((float)(System::currentTimeMillis() % 1000L) / 1000.0F * (float)3.1415927F * 2.0F) * 0.1F);
+	float var5 = 1.8F - MathHelper::abs(MathHelper::sin((float)(System::currentTimeMillis() % 1000LL) / 1000.0F * (float)3.1415927F * 2.0F) * 0.1F);
 	var5 = var5 * 100.0F / (float)(this->fontRenderer->getStringWidth(this->splashText) + 32);
 	GL11::glScalef(var5, var5, var5);
 	this->drawCenteredString(this->fontRenderer, this->splashText, 0, -8, 16776960);

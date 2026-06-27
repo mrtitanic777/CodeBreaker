@@ -125,7 +125,7 @@ int NBTTagCompound::getInteger(const JavaString& var1)
 
 long long NBTTagCompound::getLong(const JavaString& var1)
 {
-	return !this->tagMap.count(var1) ? 0L : ((NBTTagLong*)this->tagMap[var1])->longValue;
+	return !this->tagMap.count(var1) ? 0LL : ((NBTTagLong*)this->tagMap[var1])->longValue;
 }
 
 float NBTTagCompound::getFloat(const JavaString& var1)
@@ -135,7 +135,7 @@ float NBTTagCompound::getFloat(const JavaString& var1)
 
 double NBTTagCompound::getDouble(const JavaString& var1)
 {
-	return !this->tagMap.count(var1) ? 0.0D : ((NBTTagDouble*)this->tagMap[var1])->doubleValue;
+	return !this->tagMap.count(var1) ? 0.0 : ((NBTTagDouble*)this->tagMap[var1])->doubleValue;
 }
 
 JavaString NBTTagCompound::getString(const JavaString& var1)
