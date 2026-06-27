@@ -978,11 +978,45 @@ _COLOR_RGB = [('BLACK', 0xFF000000), ('WHITE', 0xFFFFFFFF), ('GRAY', 0xFF808080)
               ('green', 0xFF00FF00), ('blue', 0xFF0000FF), ('yellow', 0xFFFFFF00),
               ('cyan', 0xFF00FFFF), ('magenta', 0xFFFF00FF), ('orange', 0xFFFFC800),
               ('pink', 0xFFFFAFAF)]
-_GENERATED['Color.h'] = _class_stub('Color',
-    ret_methods=[('getRGB', ('int', '0')), ('getRed', ('int', '0')), ('getGreen', ('int', '0')),
-                 ('getBlue', ('int', '0')), ('getAlpha', ('int', '0'))],
-    extra=['static int HSBtoRGB(...) { return 0; }', 'static Color getHSBColor(...) { return Color(); }']
-          + ['static const int %s = (int)0x%08X;' % (n, v) for n, v in _COLOR_RGB])
+# java.awt.Color -- NOT a symbol-only stub: getHSBColor/HSBtoRGB/getRGB are REAL. The Alpha sky color
+# is MobSpawnerBase::getSkyColorByTemp() -> Color::getHSBColor(h,s,b).getRGB(); a stub returning
+# Color()/0 made the in-world SKY render BLACK. Standard java.awt HSB->RGB algorithm below.
+_GENERATED['Color.h'] = (
+    "#ifndef COLOR_H\n#define COLOR_H\n#include <string>\n#include <math.h>\n"
+    "class Color {\n"
+    "    int _rgb;\n"
+    "public:\n"
+    "    Color() : _rgb(0) {}\n"
+    "    Color(int rgb) : _rgb(rgb) {}\n"
+    "    Color(int rgba, bool) : _rgb(rgba) {}\n"
+    "    Color(...) : _rgb(0) {}\n"
+    "    virtual ~Color() {}\n"
+    "    virtual int getRGB()   { return _rgb; }\n"
+    "    virtual int getRed()   { return (_rgb >> 16) & 255; }\n"
+    "    virtual int getGreen() { return (_rgb >> 8) & 255; }\n"
+    "    virtual int getBlue()  { return _rgb & 255; }\n"
+    "    virtual int getAlpha() { return (_rgb >> 24) & 255; }\n"
+    "    static int HSBtoRGB(float hue, float saturation, float brightness) {\n"
+    "        int r=0,g=0,b=0;\n"
+    "        if (saturation == 0.0f) { r=g=b=(int)(brightness*255.0f+0.5f); }\n"
+    "        else {\n"
+    "            float h=(hue-(float)floorf(hue))*6.0f; float f=h-(float)floorf(h);\n"
+    "            float p=brightness*(1.0f-saturation); float q=brightness*(1.0f-saturation*f);\n"
+    "            float t=brightness*(1.0f-(saturation*(1.0f-f)));\n"
+    "            switch((int)h){\n"
+    "            case 0: r=(int)(brightness*255.0f+0.5f); g=(int)(t*255.0f+0.5f); b=(int)(p*255.0f+0.5f); break;\n"
+    "            case 1: r=(int)(q*255.0f+0.5f); g=(int)(brightness*255.0f+0.5f); b=(int)(p*255.0f+0.5f); break;\n"
+    "            case 2: r=(int)(p*255.0f+0.5f); g=(int)(brightness*255.0f+0.5f); b=(int)(t*255.0f+0.5f); break;\n"
+    "            case 3: r=(int)(p*255.0f+0.5f); g=(int)(q*255.0f+0.5f); b=(int)(brightness*255.0f+0.5f); break;\n"
+    "            case 4: r=(int)(t*255.0f+0.5f); g=(int)(p*255.0f+0.5f); b=(int)(brightness*255.0f+0.5f); break;\n"
+    "            case 5: r=(int)(brightness*255.0f+0.5f); g=(int)(p*255.0f+0.5f); b=(int)(q*255.0f+0.5f); break;\n"
+    "            }\n"
+    "        }\n"
+    "        return (int)(0xFF000000u | ((unsigned)r<<16) | ((unsigned)g<<8) | (unsigned)b);\n"
+    "    }\n"
+    "    static Color getHSBColor(float h, float s, float b) { return Color(HSBtoRGB(h,s,b)); }\n"
+    + ''.join("    static const int %s = (int)0x%08X;\n" % (n, v) for n, v in _COLOR_RGB)
+    + "};\n#endif // COLOR_H\n")
 # org.lwjgl.input.Controllers (static holder)
 _GENERATED['Controllers.h'] = _ns_stub('Controllers',
     void_fns=['create', 'destroy', 'poll', 'clearEvents'],
