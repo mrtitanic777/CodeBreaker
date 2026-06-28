@@ -30,10 +30,11 @@ static const char* g_src_textured_ps =
     "sampler s0 : register(s0);\n"
     "float4 g_FogColor : register(c0);\n"
     "float4 g_FogParams : register(c1);\n"
+    "float4 g_Tint : register(c2);\n"
     "float4 g_Gamma : register(c3);\n"
     "struct PS_IN { float4 col:COLOR0; float2 tex:TEXCOORD0; float fog:TEXCOORD1; };\n"
     "float4 main(PS_IN i) : COLOR {\n"
-    "  float4 texel = tex2D(s0, i.tex) * i.col;\n"
+    "  float4 texel = tex2D(s0, i.tex) * i.col * g_Tint;\n"
     "  clip(texel.a - g_FogParams.z);\n"
     "  float3 fogCol = g_FogColor.rgb;\n"
     "  float vis = lerp(1.0, i.fog, g_FogParams.w);\n"
@@ -54,10 +55,11 @@ static const char* g_src_untextured_vs =
     "}\n";
 
 static const char* g_src_untextured_ps =
+    "float4 g_Tint : register(c2);\n"
     "float4 g_Gamma : register(c3);\n"
     "struct PS_IN { float4 col:COLOR0; };\n"
     "float4 main(PS_IN i) : COLOR {\n"
-    "  float4 o = i.col;\n"
+    "  float4 o = i.col * g_Tint;\n"
     "  o.rgb = pow(o.rgb, g_Gamma.x);\n"
     "  return o;\n"
     "}\n";
@@ -189,6 +191,11 @@ float Shaders::s_gamma = 1.0f;   // PORT(★ brightness): PS gamma exponent = po
                                  // Was 1.19 which DARKENED everything (the user reported the menu/dirt far too
                                  // dark on the emulator); the working indev port uses 1.0 too. Keep at 1.0 so
                                  // no global gamma can dim a texture below its authored color.
+// PORT(★ item/world brightness): g_Tint (PS c2) = the current GL color, applied as a GLOBAL modulator on
+// top of the per-vertex color. The FFP is absent on the 360, so RenderHelper's GL_LIGHTING is a no-op and
+// the Tessellator's color array ignored glColor -> items/mobs/hand rendered full-bright. Feeding glColor in
+// as a tint dims them by the world block-light (white for terrain/GUI = no change). Set per draw by GL11.
+float Shaders::s_tint[4] = {1.0f, 1.0f, 1.0f, 1.0f};
 
 bool Shaders::init() {
     D3DVERTEXELEMENT9 decl[] = {
@@ -255,6 +262,10 @@ void Shaders::updateShaderConstants() {
     // Default 1.0 = identity (no change), matching Java's gamma-less OpenGL + the indev port.
     float gammaVec[4] = { s_gamma, s_gamma, s_gamma, 1.0f };
     g_pd3dDevice->SetPixelShaderConstantF(3, gammaVec, 1);
+    // PORT(★ item/world brightness): g_Tint at PS c2. Both pixel shaders multiply the final
+    // color by this. Default {1,1,1,1} = identity. GL11::issueDraw sets it from glColor so
+    // items/mobs/hand are dimmed by world block-light instead of rendering full-bright.
+    g_pd3dDevice->SetPixelShaderConstantF(2, s_tint, 1);
 }
 
 void Shaders::setWorldMatrix(const D3DXMATRIX& m) { s_worldMatrix = m; }
@@ -270,3 +281,4 @@ void Shaders::setFogEnd(float e)     { s_fogEnd = e; }
 void Shaders::setFogEnabled(bool e)  { s_fogEnabled = e; }
 void Shaders::setGamma(float g)      { s_gamma = g; }   // PORT(brightness): PS gamma exponent for the next draw(s)
 void Shaders::setAlphaRef(float a)   { s_alphaRef = a; } // PORT(alpha cutout): PS clip threshold for the next draw(s)
+void Shaders::setTint(float r, float g, float b, float a) { s_tint[0]=r; s_tint[1]=g; s_tint[2]=b; s_tint[3]=a; } // PORT(★ item/world brightness): global PS color modulator (= glColor) for the next draw(s)

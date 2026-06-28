@@ -86,6 +86,20 @@ static void issueDraw(std::vector<TesselatorVertex>& tris, D3DPRIMITIVETYPE prim
                       bool textured, bool stampColor) {
 	if(primCount<=0 || tris.empty()) return;
 	if(textured) Shaders::useTexturedShader(); else Shaders::useUntexturedShader();
+	// PORT(★ item/world brightness): feed the current GL color in as a GLOBAL pixel-shader tint.
+	// The 360 has no fixed-function pipeline, so RenderHelper's GL_LIGHTING is a no-op AND array-color
+	// draws (stampColor==false: HUD/world items & dropped entities carry per-vertex WHITE) silently
+	// dropped the glColor block-light multiplier -> rendered full-bright. Apply glColor as the tint so
+	// they dim with world brightness. For stampColor draws s_color is baked into the vertices below,
+	// so the tint stays white to avoid applying the color twice. Terrain/GUI use white glColor, so
+	// tint==white there -> no change.
+	if(stampColor) {
+		Shaders::setTint(1.0f, 1.0f, 1.0f, 1.0f);
+	} else {
+		float a=((s_color>>24)&0xFF)/255.0f, r=((s_color>>16)&0xFF)/255.0f,
+		      g=((s_color>>8)&0xFF)/255.0f, b=(s_color&0xFF)/255.0f;
+		Shaders::setTint(r, g, b, a);
+	}
 	Shaders::setWorldMatrix(s_modelview.back());
 	Shaders::setProjectionMatrix(s_projection.back());
 	{ D3DXMATRIX I; D3DXMatrixIdentity(&I); Shaders::setViewMatrix(I); }   // modelview folds model+view
@@ -367,6 +381,12 @@ static void issueDrawListOp(GLListOp& op){
 	if(op.vb==NULL && op.tris.empty()) return;   // nothing to build from, and no VB built yet
 	if(op.stampColor){ issueDraw(op.tris, op.prim, op.primCount, op.textured, true); return; }
 	if(op.textured) Shaders::useTexturedShader(); else Shaders::useUntexturedShader();
+	// PORT(★ item/world brightness): s_tint is a persistent global, so this baked-color fast path MUST
+	// set it explicitly or terrain inherits a stale dim tint left by a prior item draw. stampColor==false
+	// here -> tint = current glColor (white for terrain = no change), mirroring issueDraw's non-stamp branch.
+	{ float a=((s_color>>24)&0xFF)/255.0f, r=((s_color>>16)&0xFF)/255.0f,
+	    g=((s_color>>8)&0xFF)/255.0f, b=(s_color&0xFF)/255.0f;
+	  Shaders::setTint(r, g, b, a); }
 	Shaders::setWorldMatrix(s_modelview.back());
 	Shaders::setProjectionMatrix(s_projection.back());
 	{ D3DXMATRIX I; D3DXMatrixIdentity(&I); Shaders::setViewMatrix(I); }

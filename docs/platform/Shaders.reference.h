@@ -34,6 +34,11 @@ public:
     // overlays). Default is 0.0 to preserve the working world/water/vignette; cutout draws
     // bracket themselves with setAlphaRef(0.5)...setAlphaRef(0.0). Mirrors the indev reference.
     static void setAlphaRef(float a);
+    // PORT(★ item/world brightness): global PS color modulator at register c2 (= glColor).
+    // The 360 has no FFP, so RenderHelper's GL_LIGHTING is a no-op and Tessellator array draws
+    // drop glColor -> items/mobs/hand render full-bright. GL11::issueDraw feeds glColor here so
+    // they are dimmed by world block-light. Default {1,1,1,1} = identity (terrain/GUI unchanged).
+    static void setTint(float r, float g, float b, float a);
 
     static D3DXMATRIX& getWorldMatrix();
     static D3DXMATRIX& getViewMatrix();
@@ -56,6 +61,7 @@ public: // was private
     static bool  s_fogEnabled;
     static float s_gamma;   // PORT(brightness): PS c3 gamma exponent (1.0 = identity)
     static float s_alphaRef; // PORT(alpha cutout): clip threshold uploaded to PS g_FogParams.z
+    static float s_tint[4];  // PORT(★ item/world brightness): PS c2 global color modulator (= glColor)
 };
 
 #endif // SHADERS_H
