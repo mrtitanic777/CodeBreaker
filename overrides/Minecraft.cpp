@@ -21,6 +21,7 @@
 #include "ChunkProviderClient.h"
 #include "ChunkProviderLoadOrGenerate.h"   // s_deferPopulate (break the spawn-gen populate cascade)
 #include "ThreadPool.h"                     // j2x_pool: worker pool on the idle HW threads (2,4)
+#include "Debug.h"                          // Debug::spawnDebugChests (wired into new-world creation)
 #include "Class.h"
 #include "Color.h"
 #include "Component.h"
@@ -1192,6 +1193,7 @@ void Minecraft::changeWorld(World* var1, const JavaString& var2, EntityPlayer* v
 	}
 	var1->loadPlayerData(this->thePlayer);
 	if(var1->isNewWorld) {
+	Debug::spawnDebugChests(var1);   // wire the (previously orphaned) debug chests into NEW-world creation
 	var1->saveWorldIndicator(this->loadingScreen);
 	}
 	} else {
