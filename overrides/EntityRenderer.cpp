@@ -6,6 +6,7 @@
 
 #include "EntityRenderer.h"
 #include "Common.h"            // CONSOLE: DbgPrintF (one-time in-world render markers)
+#include "Shaders.h"          // CONSOLE: per-pass gamma correction (world 0.80, 2D 1.0) -- D3D darkens vs Java GL
 #include "AxisAlignedBB.h"
 #include "Block.h"
 #include "BlockFire.h"
@@ -428,6 +429,11 @@ void EntityRenderer::updateCameraAndRender(float var1)
 	int var10 = Mouse::getX() * var8 / this->mc->displayWidth;
 	int var11 = var9 - Mouse::getY() * var9 / this->mc->displayHeight - 1;
 	if(this->mc->theWorld != NULL) {
+	// PORT(★ world brightness / gamma pass): D3D/Xenos darkens output vs Java's gamma-less GL. Brighten
+	// the whole 3D world pass (terrain + entities + hand) with gamma 0.80 (pow exponent < 1 = brighter),
+	// matching the Minecraft.Client reference. setupOverlayRendering resets gamma to 1.0 for the HUD/GUI,
+	// so only the world is affected.
+	Shaders::setGamma(0.80F);
 	this->renderWorld(var1);
 	if(!Keyboard::isKeyDown(_KB_KEY_F1)) {
 	this->mc->ingameGUI->renderGameOverlay(var1, this->mc->currentScreen != NULL, var10, var11);
@@ -603,6 +609,9 @@ void EntityRenderer::addRainParticles()
 
 void EntityRenderer::setupOverlayRendering()
 {
+	// PORT(★ gamma pass): every 2D pass (HUD, GUI screens, menus) routes through here first, so reset the
+	// gamma to 1.0 (identity) -- it undoes the world's 0.80 brighten so 2D renders at its true brightness.
+	Shaders::setGamma(1.0F);
 	ScaledResolution* var1 = new ScaledResolution(this->mc->displayWidth, this->mc->displayHeight);
 	int var2 = var1->getScaledWidth();
 	int var3 = var1->getScaledHeight();

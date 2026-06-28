@@ -6,6 +6,7 @@
 
 #include "GuiScreen.h"
 #include "Input.h"            // CONSOLE: Input::navUp/Down/... discrete menu nav + Mouse::setCursorPosition
+#include "Shaders.h"          // CONSOLE: menu gamma-correction pass (dirt BG: gamma 1.19 + washed-out overlays)
 #include "AxisAlignedBB.h"
 #include "Block.h"
 #include "BlockFire.h"
@@ -357,20 +358,48 @@ void GuiScreen::drawBackground(int var1)
 	GL11::glDisable(GL11::GL_LIGHTING);
 	GL11::glDisable(GL11::GL_FOG);
 	Tessellator* var2 = Tessellator::s_instance;
+	// PORT(★ menu brightness / gamma pass): faithful port of Minecraft.Client's drawDirtBackground.
+	// D3D/Xenos darkens output vs Java's gamma-less GL, so the menu dirt needs a gamma-correction PASS,
+	// not a flat tint: gamma 1.19 (>1) + a gamma-compensated dirt tint RGB(108,108,108) instead of Java's
+	// 0x404040 gray, then two full-screen alpha overlays (a white wash + a dark layer) for the authentic
+	// washed-out menu look. setupOverlayRendering pinned gamma to 1.0 for 2D; set 1.19 here, restore after.
+	Shaders::setFogEnabled(false);
+	Shaders::setGamma(1.19F);
 	GL11::glBindTexture(GL11::GL_TEXTURE_2D, this->mc->renderEngine->getTexture("/gui/background.png"));
 	GL11::glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
 	float var3 = 32.0F;
 	var2->startDrawingQuads();
-	// CONSOLE (brightness): vanilla tints the menu dirt to 0x404040 (4210752 = 25% gray) -> with no
-	// gamma boost on D3D it looked extremely dark vs Java's brighter GL. Draw it at FULL texture
-	// brightness (white) so the dirt shows its true authored color and nothing can dim it. (Gamma is
-	// also pinned to 1.0 in Shaders so pow() can't darken it either.)
-	var2->setColorOpaque_I(16777215);
+	var2->setColorOpaque_I(7105644);   // 0x6C6C6C = RGB(108,108,108): gamma-compensated dirt (Java used 0x404040)
 	var2->addVertexWithUV(0.0, (double)this->height, 0.0, 0.0, (double)((float)this->height / var3 + (float)var1));
 	var2->addVertexWithUV((double)this->width, (double)this->height, 0.0, (double)((float)this->width / var3), (double)((float)this->height / var3 + (float)var1));
 	var2->addVertexWithUV((double)this->width, 0.0, 0.0, (double)((float)this->width / var3), (double)(0 + var1));
 	var2->addVertexWithUV(0.0, 0.0, 0.0, 0.0, (double)(0 + var1));
 	var2->draw();
+	// Two full-screen overlays (untextured, alpha-blended) for the washed-out look -- reference values.
+	GL11::glDisable(GL11::GL_TEXTURE_2D);
+	GL11::glEnable(GL11::GL_BLEND);
+	GL11::glDisable(GL11::GL_ALPHA_TEST);
+	GL11::glBlendFunc(GL11::GL_SRC_ALPHA, GL11::GL_ONE_MINUS_SRC_ALPHA);
+	var2->startDrawingQuads();   // white wash: D3DCOLOR_ARGB(25,255,255,255)
+	var2->setColorRGBA_F(1.0F, 1.0F, 1.0F, 25.0F / 255.0F);
+	var2->addVertex(0.0, (double)this->height, 0.0);
+	var2->addVertex((double)this->width, (double)this->height, 0.0);
+	var2->addVertex((double)this->width, 0.0, 0.0);
+	var2->addVertex(0.0, 0.0, 0.0);
+	var2->draw();
+	var2->startDrawingQuads();   // dark layer: D3DCOLOR_ARGB(51,0,0,0)
+	var2->setColorRGBA_F(0.0F, 0.0F, 0.0F, 51.0F / 255.0F);
+	var2->addVertex(0.0, (double)this->height, 0.0);
+	var2->addVertex((double)this->width, (double)this->height, 0.0);
+	var2->addVertex((double)this->width, 0.0, 0.0);
+	var2->addVertex(0.0, 0.0, 0.0);
+	var2->draw();
+	GL11::glDisable(GL11::GL_BLEND);
+	GL11::glEnable(GL11::GL_ALPHA_TEST);
+	GL11::glEnable(GL11::GL_TEXTURE_2D);
+	// Restore identity gamma + fog for everything drawn after the dirt background.
+	Shaders::setGamma(1.0F);
+	Shaders::setFogEnabled(true);
 }
 
 bool GuiScreen::doesGuiPauseGame()
