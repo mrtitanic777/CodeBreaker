@@ -1947,7 +1947,7 @@ bool World::updatingLighting()
 	var2 = true;
 	return var2;
 	}
-	((MetadataChunkBlock*)this->lightingToUpdate.remove((int)this->lightingToUpdate.size() - 1))->updateSkylight(this);
+	{ MetadataChunkBlock* _mcb = (MetadataChunkBlock*)this->lightingToUpdate.remove((int)this->lightingToUpdate.size() - 1); _mcb->updateSkylight(this); delete _mcb; }   // CONSOLE LEAK: Java GC'd these; C++ must delete or the light queue leaks every update (~MB/s) = heap exhaustion
 	}
 	var2 = false;
 	return var2;
@@ -1987,6 +1987,7 @@ void World::scheduleLightingUpdateInternal(int var1, int var2, int var3, int var
 	}
 	this->lightingToUpdate.push_back(new MetadataChunkBlock(var1, var2, var3, var4, var5, var6, var7));
 	if(this->lightingToUpdate.size() > 100000) {
+	for(int _i = 0; _i < (int)this->lightingToUpdate.size(); ++_i) delete (MetadataChunkBlock*)this->lightingToUpdate[_i];   // CONSOLE LEAK: free before clear (no GC)
 	this->lightingToUpdate.clear();
 	}
 	--s_lightingUpdatesScheduled;
@@ -2024,6 +2025,7 @@ void World::tick()
 
 void World::updateBlocksAroundPlayers()
 {
+	for(std::set<void*>::iterator _it = this->activeChunkSet.begin(); _it != this->activeChunkSet.end(); ++_it) delete (ChunkCoordIntPair*)*_it;   // CONSOLE LEAK: free before clear (set<void*>::clear doesn't delete; ~361 new'd ChunkCoordIntPair/tick)
 	this->activeChunkSet.clear();
 	int var3;
 	int var4;

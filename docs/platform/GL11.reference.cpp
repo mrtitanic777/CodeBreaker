@@ -347,7 +347,8 @@ static void _freeListVBs(GLDisplayList& dl){ for(size_t i=0;i<dl.size();++i){ if
 // bottleneck. stampColor geometry (sky/clouds/HUD, whose color is applied live each replay) stays
 // immediate. The VB is freed + rebuilt when the list is re-recorded (glNewList) e.g. on a block edit.
 static void issueDrawListOp(GLListOp& op){
-	if(op.primCount<=0 || op.tris.empty()) return;
+	if(op.primCount<=0) return;
+	if(op.vb==NULL && op.tris.empty()) return;   // nothing to build from, and no VB built yet
 	if(op.stampColor){ issueDraw(op.tris, op.prim, op.primCount, op.textured, true); return; }
 	if(op.textured) Shaders::useTexturedShader(); else Shaders::useUntexturedShader();
 	Shaders::setWorldMatrix(s_modelview.back());
@@ -358,7 +359,9 @@ static void issueDrawListOp(GLListOp& op){
 		UINT bytes=(UINT)(op.tris.size()*sizeof(TesselatorVertex));
 		if(g_pd3dDevice->CreateVertexBuffer(bytes, D3DUSAGE_WRITEONLY, 0, D3DPOOL_DEFAULT, &op.vb, NULL)==D3D_OK && op.vb){
 			void* p=NULL;
-			if(op.vb->Lock(0, bytes, &p, 0)==D3D_OK){ memcpy(p, &op.tris[0], bytes); op.vb->Unlock(); }
+			if(op.vb->Lock(0, bytes, &p, 0)==D3D_OK){ memcpy(p, &op.tris[0], bytes); op.vb->Unlock();
+				std::vector<TesselatorVertex>().swap(op.tris);   // CONSOLE LEAK: data lives in the VB now; free the RAM copy (was duplicating ALL terrain geometry in main RAM)
+			}
 			else { op.vb->Release(); op.vb=NULL; }
 		}
 	}

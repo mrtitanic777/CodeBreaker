@@ -129,6 +129,7 @@ ChunkPosition* SpawnerAnimals::getRandomSpawningPointInChunk(World* var0, int va
 
 int SpawnerAnimals::performSpawning(World* var0)
 {
+	for(std::set<void*>::iterator _it = s_eligibleChunksForSpawning.begin(); _it != s_eligibleChunksForSpawning.end(); ++_it) delete (ChunkCoordIntPair*)*_it;   // CONSOLE LEAK: free before clear (set<void*>::clear doesn't delete; ~289 new'd ChunkCoordIntPair/tick)
 	s_eligibleChunksForSpawning.clear();
 	int var1;
 	for(var1 = 0; var1 < var0->playerEntities.size(); ++var1) {
