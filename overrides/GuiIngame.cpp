@@ -115,10 +115,13 @@
 namespace {
 	const int KEY_F3 = 61;
 	const int GL_ZERO = 0x0000;
+	// Real 360 physical memory (was symbol-only 0s -> the debug overlay read "0MB of 0MB"). Java's
+	// Runtime semantics: total = current heap, free = unused heap, max = heap cap. We map to console
+	// physical RAM via GlobalMemoryStatus (used = total - free shown by the overlay).
 	struct _Runtime {
-		long long maxMemory(...) { return 0LL; }
-		long long totalMemory(...) { return 0LL; }
-		long long freeMemory(...) { return 0LL; }
+		long long maxMemory(...)   { MEMORYSTATUS m; m.dwLength = sizeof(m); GlobalMemoryStatus(&m); return (long long)m.dwTotalPhys; }
+		long long totalMemory(...) { MEMORYSTATUS m; m.dwLength = sizeof(m); GlobalMemoryStatus(&m); return (long long)m.dwTotalPhys; }
+		long long freeMemory(...)  { MEMORYSTATUS m; m.dwLength = sizeof(m); GlobalMemoryStatus(&m); return (long long)m.dwAvailPhys; }
 	};
 	struct _RuntimeClass {
 		_Runtime getRuntime(...) { return _Runtime(); }

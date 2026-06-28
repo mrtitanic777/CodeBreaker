@@ -772,4 +772,19 @@ void Block::initStatics()
 	Item::s_itemsList[var0] = new ItemBlock(var0 - 256);
 	}
 	}
+	// CONSOLE (virtual-call-in-ctor opacity fix): the Block ctor set s_opaqueCubeLookup/s_lightOpacity
+	// from this->isOpaqueCube(), but a virtual call in a ctor binds to Block::isOpaqueCube() (always
+	// true) and IGNORES overrides like BlockSnow/glass/flowers (false). Non-opaque blocks were left
+	// marked opacity 255 -> they BLOCKED skylight -> snow-covered terrain rendered BLACK. Recompute now
+	// that all vtables are live. Keep explicit setLightOpacity values (leaves=1, water/ice=3): only drop
+	// a wrongly-255 non-opaque block to 0.
+	for(int var0b = 0; var0b < 256; ++var0b) {
+	if(s_blocksList[var0b] != NULL) {
+	bool _op = s_blocksList[var0b]->isOpaqueCube();
+	s_opaqueCubeLookup[var0b] = _op;
+	if(!_op && s_lightOpacity[var0b] == 255) {
+	s_lightOpacity[var0b] = 0;
+	}
+	}
+	}
 }
