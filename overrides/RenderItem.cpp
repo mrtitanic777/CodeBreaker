@@ -253,7 +253,7 @@ void RenderItem::renderItemOverlayIntoGUI(FontRenderer* var1, RenderEngine* var2
 	GL11::glEnable(GL11::GL_LIGHTING);
 	GL11::glEnable(GL11::GL_DEPTH_TEST);
 	}
-	if(var3->itemDamage > 0) {
+	if(var3->itemDamage > 0 && var3->getMaxDamage() > 0) {   // PORT(★ SMP NULL item / div-by-zero): getMaxDamage()==0 for an unregistered id -> skip the durability bar (was a NULL deref + a /0)
 	int var11 = 13 - var3->itemDamage * 13 / var3->getMaxDamage();
 	int var7 = 255 - var3->itemDamage * 255 / var3->getMaxDamage();
 	GL11::glDisable(GL11::GL_LIGHTING);
