@@ -61,11 +61,22 @@ public:
 		return k;
 	}
 };
+// CONSOLE: real in-memory byte sink (the stub's toByteArray() returned empty, which is why compress()
+// shipped a 0-length NBT and the server kicked us). Collects every byte written, hands them back.
 class ByteArrayOutputStream : public OutputStream {
+	std::vector<unsigned char> _buf;
 public:
-	ByteArrayOutputStream(...) {}
+	ByteArrayOutputStream() {}
 	virtual ~ByteArrayOutputStream() {}
-	JArray<unsigned char> toByteArray() { return JArray<unsigned char>(0); }
+	virtual void write(int b) { _buf.push_back((unsigned char)b); }
+	virtual void write(const unsigned char* b, int len) { for (int i = 0; i < len; ++i) _buf.push_back(b[i]); }
+	virtual void flush() {}
+	virtual void close() {}
+	JArray<unsigned char> toByteArray() {
+		JArray<unsigned char> a((int)_buf.size());
+		for (size_t i = 0; i < _buf.size(); ++i) a.data()[i] = _buf[i];
+		return a;
+	}
 };
 
 // RAII guard: runs close() on a stream when leaving scope (faithful try/finally).
@@ -126,13 +137,22 @@ NBTTagCompound* CompressedStreamTools::decompress(JArray<unsigned char > var0)
 
 JArray<unsigned char > CompressedStreamTools::compress(NBTTagCompound* var0)
 {
-	ByteArrayOutputStream* var1 = new ByteArrayOutputStream();
-	DataOutputStream* var2 = new DataOutputStream(new GZIPOutputStream(var1));
-	{
-	CloseGuard<DataOutputStream> _g(var2);
-	writeTag(var0, var2);
-	}
-	return var1->toByteArray();
+	// CONSOLE: serialize the NBT to raw bytes, then gzip-wrap (stored DEFLATE + CRC32 via gzipDeflateStored)
+	// so the server's java.util.zip.GZIPInputStream can inflate it. The old GZIPOutputStream/ByteArrayOutput-
+	// Stream were inert stubs -> empty data -> the server KICKED us on every tile-entity update (Packet59).
+	ByteArrayOutputStream var1;
+	DataOutputStream var2(&var1);
+	writeTag(var0, &var2);
+	var2.flush();                                      // push the buffered NBT bytes into var1
+	JArray<unsigned char > raw = var1.toByteArray();
+	if (raw.length <= 0) return JArray<unsigned char >(0);
+	int cap = raw.length + (raw.length / 65535 + 1) * 5 + 32;   // header+stored-block overhead+trailer+slack
+	JArray<unsigned char > tmp(cap);
+	int n = gzipDeflateStored(raw.data(), raw.length, tmp.data(), cap);
+	if (n <= 0) return JArray<unsigned char >(0);
+	JArray<unsigned char > result(n);
+	for (int i = 0; i < n; ++i) result.data()[i] = tmp.data()[i];
+	return result;
 }
 
 NBTTagCompound* CompressedStreamTools::read(DataInput* var0)

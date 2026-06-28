@@ -213,3 +213,51 @@ int gzipInflate(const unsigned char* in, int inLen, unsigned char* out, int outC
 	if (p < 0 || p >= inLen || deflateLen <= 0) return -1;
 	return rawInflate(in + p, deflateLen, out, outCap);
 }
+
+// ---- gzip COMPRESSOR (stored/uncompressed DEFLATE blocks) ------------------------------------
+// Produces a valid gzip stream that java.util.zip.GZIPInputStream accepts (it validates CRC32+ISIZE),
+// without a real Huffman encoder: emit STORED DEFLATE blocks (no compression) + a correct gzip wrapper.
+// Used by CompressedStreamTools::compress to ship tile-entity NBT (Packet59) so the server can inflate it.
+static unsigned int _crc32(const unsigned char* d, int n) {
+	unsigned int c = 0xFFFFFFFFu;
+	for (int i = 0; i < n; ++i) {
+		c ^= (unsigned int)d[i];
+		for (int k = 0; k < 8; ++k) {
+			unsigned int mask = (unsigned int)(0u - (c & 1u));   // 0xFFFFFFFF if low bit set, else 0
+			c = (c >> 1) ^ (0xEDB88320u & mask);
+		}
+	}
+	return c ^ 0xFFFFFFFFu;
+}
+
+int gzipDeflateStored(const unsigned char* in, int inLen, unsigned char* out, int outCap) {
+	if (!out || inLen < 0) return -1;
+	int p = 0;
+	if (p + 10 > outCap) return -1;
+	out[p++] = 0x1F; out[p++] = 0x8B; out[p++] = 0x08; out[p++] = 0x00;   // magic, CM=deflate, FLG=0
+	out[p++] = 0; out[p++] = 0; out[p++] = 0; out[p++] = 0;               // MTIME = 0
+	out[p++] = 0; out[p++] = 0xFF;                                        // XFL=0, OS=255 (unknown)
+	int off = 0;
+	do {
+		int chunk = inLen - off;
+		if (chunk > 65535) chunk = 65535;
+		int isFinal = (off + chunk >= inLen) ? 1 : 0;
+		if (p + 5 + chunk > outCap) return -1;
+		out[p++] = (unsigned char)isFinal;                               // BFINAL bit, BTYPE=00 (stored)
+		out[p++] = (unsigned char)(chunk & 0xFF);                        // LEN  (little-endian)
+		out[p++] = (unsigned char)((chunk >> 8) & 0xFF);
+		unsigned int nlen = (unsigned int)(~chunk);                      // NLEN = one's complement of LEN
+		out[p++] = (unsigned char)(nlen & 0xFF);
+		out[p++] = (unsigned char)((nlen >> 8) & 0xFF);
+		for (int i = 0; i < chunk; ++i) out[p++] = in[off + i];
+		off += chunk;
+	} while (off < inLen);
+	if (p + 8 > outCap) return -1;
+	unsigned int crc = _crc32(in, inLen);
+	out[p++] = (unsigned char)(crc & 0xFF);  out[p++] = (unsigned char)((crc >> 8) & 0xFF);
+	out[p++] = (unsigned char)((crc >> 16) & 0xFF); out[p++] = (unsigned char)((crc >> 24) & 0xFF);
+	unsigned int isize = (unsigned int)inLen;
+	out[p++] = (unsigned char)(isize & 0xFF);  out[p++] = (unsigned char)((isize >> 8) & 0xFF);
+	out[p++] = (unsigned char)((isize >> 16) & 0xFF); out[p++] = (unsigned char)((isize >> 24) & 0xFF);
+	return p;
+}

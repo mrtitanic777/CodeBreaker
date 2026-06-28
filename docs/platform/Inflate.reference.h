@@ -15,5 +15,9 @@ int zlibInflate(const unsigned char* in, int inLen, unsigned char* out, int outC
 // gzip-wrapped DEFLATE (RFC 1952): 10-byte header (+ optional FEXTRA/FNAME/FCOMMENT/FHCRC fields) +
 // DEFLATE + 8-byte CRC32/ISIZE trailer. Used for NBT (java.util.zip.GZIPInputStream / level.dat / Packet59).
 int gzipInflate(const unsigned char* in, int inLen, unsigned char* out, int outCap);
+// gzip COMPRESSOR using STORED (uncompressed) DEFLATE blocks + correct CRC32/ISIZE -- a valid gzip stream
+// java.util.zip.GZIPInputStream accepts (no Huffman encoder needed). Returns bytes written or -1 on overflow.
+// Worst-case output size = inLen + 5*ceil(inLen/65535) + 18; size the out buffer accordingly.
+int gzipDeflateStored(const unsigned char* in, int inLen, unsigned char* out, int outCap);
 
 #endif // INFLATE_H
