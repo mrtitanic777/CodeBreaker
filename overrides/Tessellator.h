@@ -7,6 +7,8 @@
 #include "JavaString.h"
 #include "JArray.h"
 #include "JList.h"
+#include <vector>
+#include "Shaders.h"   // TesselatorVertex (for extractTris -> threaded meshing)
 class ByteBuffer;
 class FloatBuffer;
 class IntBuffer;
@@ -62,6 +64,11 @@ public:
 	virtual void setNormal(float var1, float var2, float var3);
 	virtual void setTranslationD(double var1, double var3, double var5);
 	virtual void setTranslationF(float var1, float var2, float var3);
+
+	// THREADED MESHING: pull the accumulated geometry out as a finished triangle list (the same verts
+	// glDrawArrays would record/draw) WITHOUT touching any GL/device global -- so a worker thread can
+	// tessellate a chunk into its own Tessellator and hand the result to the main thread. Resets after.
+	void extractTris(std::vector<TesselatorVertex>& out);
 };
 
 #endif // TESSELLATOR_H

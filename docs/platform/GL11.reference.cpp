@@ -399,6 +399,20 @@ void glCallLists(IntBuffer* buf){                     // replay a run of absolut
 }
 void glDeleteLists(int list,int n){ for(int i=0;i<n;++i){ std::map<int,GLDisplayList>::iterator it=s_lists.find(list+i); if(it!=s_lists.end()){ _freeListVBs(it->second); s_lists.erase(it); } } }
 
+// Install a pre-built triangle list (from Tessellator::extractTris, possibly on a worker) into the
+// OPEN display list as one baked-color geometry op -> picks up the persistent VB on first replay.
+void recordTris(std::vector<TesselatorVertex>& tris, bool textured){
+	if(!s_recList || tris.size() < 3) return;
+	s_recList->push_back(GLListOp());
+	GLListOp& op = s_recList->back();
+	op.kind = 0;
+	op.tris.swap(tris);
+	op.prim = D3DPT_TRIANGLELIST;
+	op.primCount = (int)op.tris.size() / 3;
+	op.textured = textured;
+	op.stampColor = false;
+}
+
 // ----------------------------------------------------------------------------- queries / misc
 int  glGetError(){ return 0; }
 JavaString glGetString(int){ return JavaString("Xbox360 D3D9"); }

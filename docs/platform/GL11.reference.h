@@ -27,6 +27,8 @@
 #include "stdafx.h"          // xtl.h / d3d9.h / d3dx9.h
 #include "JavaRT.h"
 #include "NIOBuffers.h"     // real ByteBuffer / FloatBuffer / IntBuffer
+#include <vector>
+struct TesselatorVertex;    // fwd (defined in Shaders.h) -- for recordTris (threaded meshing install)
 
 namespace GL11 {
 	// --- enum tokens (only the ones the game uses; extend as needed) ---
@@ -142,6 +144,9 @@ namespace GL11 {
 	void glEndList();
 	void glCallList(int list);
 	void glDeleteLists(int list, int n);
+	// THREADED MESHING: install a worker-built triangle list into the OPEN display list (between
+	// glNewList/glEndList). Baked color (stampColor=false) -> persistent VB on replay (Phase A).
+	void recordTris(std::vector<TesselatorVertex>& tris, bool textured);
 
 	// --- queries / misc (sane defaults; mostly no-ops on console) ---
 	int  glGetError();

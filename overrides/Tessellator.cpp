@@ -165,6 +165,36 @@ void Tessellator::reset()
 	this->addedVertices = 0;
 }
 
+// THREADED MESHING extraction -- see header. Mirrors what GL11::glDrawArrays would gather from the
+// vertex arrays: 8 ints/vertex (pos 0-2, uv 3-4, color@5 RGBA, normal@6 unused here), color swizzled
+// RGBA->ARGB. With s_convertQuadsToTriangles (always true here) addVertex already wrote a TRIANGLE
+// list into rawBuffer, so this is a straight per-vertex copy. Touches NO GL/device global -> safe to
+// call from a worker thread on its own Tessellator. Resets the buffer afterward (like draw()).
+void Tessellator::extractTris(std::vector<TesselatorVertex>& out)
+{
+	int n = this->vertexCount;
+	out.clear();
+	if(n > 0) {
+	out.resize((size_t)n);
+	for(int i = 0; i < n; ++i) {
+	int b = i * 8;
+	out[i].x = *(float*)&this->rawBuffer[b + 0];
+	out[i].y = *(float*)&this->rawBuffer[b + 1];
+	out[i].z = *(float*)&this->rawBuffer[b + 2];
+	out[i].u = this->hasTexture ? *(float*)&this->rawBuffer[b + 3] : 0.0f;
+	out[i].v = this->hasTexture ? *(float*)&this->rawBuffer[b + 4] : 0.0f;
+	if(this->hasColor) {
+	DWORD c = (DWORD)this->rawBuffer[b + 5];                 // R,G,B,A bytes -> D3DCOLOR A,R,G,B
+	out[i].color = (DWORD)((((c >> 24) & 0xFF) << 24) | ((c & 0xFF) << 16) | (((c >> 8) & 0xFF) << 8) | ((c >> 16) & 0xFF));
+	} else {
+	out[i].color = 0xFFFFFFFF;
+	}
+	}
+	}
+	this->isDrawing = false;
+	this->reset();
+}
+
 void Tessellator::startDrawingQuads()
 {
 	this->startDrawing(7);
@@ -235,7 +265,7 @@ void Tessellator::setColorRGBA(int var1, int var2, int var3, int var4)
 	var4 = 0;
 	}
 	this->hasColor = true;
-	this->color = (var4 << 24) | (var3 << 16) | (var2 << 8) | var1;
+	this->color = var4 << 24 | var3 << 16 | var2 << 8 | var1;
 	}
 }
 
@@ -288,16 +318,16 @@ void Tessellator::addVertex(double var1, double var3, double var5)
 
 void Tessellator::setColorOpaque_I(int var1)
 {
-	int var2 = (var1 >> 16) & 255;
-	int var3 = (var1 >> 8) & 255;
+	int var2 = var1 >> 16 & 255;
+	int var3 = var1 >> 8 & 255;
 	int var4 = var1 & 255;
 	this->setColorOpaque(var2, var3, var4);
 }
 
 void Tessellator::setColorRGBA_I(int var1, int var2)
 {
-	int var3 = (var1 >> 16) & 255;
-	int var4 = (var1 >> 8) & 255;
+	int var3 = var1 >> 16 & 255;
+	int var4 = var1 >> 8 & 255;
 	int var5 = var1 & 255;
 	this->setColorRGBA(var3, var4, var5, var2);
 }
@@ -316,7 +346,7 @@ void Tessellator::setNormal(float var1, float var2, float var3)
 	unsigned char var4 = (unsigned char)((int)(var1 * 128.0F));
 	unsigned char var5 = (unsigned char)((int)(var2 * 127.0F));
 	unsigned char var6 = (unsigned char)((int)(var3 * 127.0F));
-	this->normal = var4 | (var5 << 8) | (var6 << 16);
+	this->normal = var4 | var5 << 8 | var6 << 16;
 }
 
 void Tessellator::setTranslationD(double var1, double var3, double var5)

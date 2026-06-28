@@ -277,7 +277,10 @@ void WorldRenderer::updateRenderer()
 	}
 	}
 	if(var14) {
-	s_tessellator->draw();
+	// B1 (threaded-mesh prep): extract the finished tris + install them as one baked-color geometry op,
+	// instead of s_tessellator->draw() (which drives the GL globals). Functionally identical here
+	// single-threaded; in B2 a worker fills its own Tessellator and the main thread does the recordTris.
+	{ std::vector<TesselatorVertex> _tris; s_tessellator->extractTris(_tris); GL11::recordTris(_tris, s_tessellator->hasTexture); }
 	GL11::glPopMatrix();
 	GL11::glEndList();
 	s_tessellator->setTranslationD(0.0, 0.0, 0.0);
