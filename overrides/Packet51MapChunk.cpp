@@ -5,6 +5,8 @@
 // Target: Xbox 360 / C++03 / DirectX 9
 
 #include "Packet51MapChunk.h"
+#include "Inflate.h"   // CONSOLE: real zlib inflate for chunk data (was a no-op stub)
+#include "Common.h"
 #include "DataInputStream.h"
 #include "DataOutputStream.h"
 #include "IOException.h"
@@ -79,18 +81,13 @@ void Packet51MapChunk::readPacketData(DataInputStream* var1)
 	 *      var4.end();
 	 *  }
 	 *  ---- end original Java ---- */
-	Inflater* var4 = new Inflater();
-	var4->setInput(var3);
-	// try/finally -> RAII guard so end() runs on every path (normal, throw, rethrow).
-	struct InflaterEndGuard {
-		Inflater* inf;
-		InflaterEndGuard(Inflater* i) : inf(i) {}
-		~InflaterEndGuard() { inf->end(); }
-	} var4guard(var4);
-	try {
-	var4->inflate(this->chunk);
-	} catch (DataFormatException) {
-	throw new IOException("Bad compressed data format");
+	// CONSOLE: REAL zlib inflate (replaces the no-op stub that left every chunk empty). The server sends
+	// the chunk payload zlib-wrapped (java.util.Deflater); decompress var3 -> this->chunk. See Inflate.cpp.
+	if(var2 > 0 && this->chunk.length > 0) {
+	int _n = zlibInflate(var3.data(), var2, this->chunk.data(), this->chunk.length);
+	if(_n < 0) {
+	static int _f = 0; if(_f++ < 8) DbgPrintF("[mp] chunk inflate FAILED (%d,%d) comp=%d expect=%d\n", this->xPosition, this->zPosition, var2, this->chunk.length);
+	}
 	}
 }
 
