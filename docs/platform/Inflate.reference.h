@@ -12,5 +12,8 @@
 
 int rawInflate(const unsigned char* in, int inLen, unsigned char* out, int outCap);
 int zlibInflate(const unsigned char* in, int inLen, unsigned char* out, int outCap);
+// gzip-wrapped DEFLATE (RFC 1952): 10-byte header (+ optional FEXTRA/FNAME/FCOMMENT/FHCRC fields) +
+// DEFLATE + 8-byte CRC32/ISIZE trailer. Used for NBT (java.util.zip.GZIPInputStream / level.dat / Packet59).
+int gzipInflate(const unsigned char* in, int inLen, unsigned char* out, int outCap);
 
 #endif // INFLATE_H

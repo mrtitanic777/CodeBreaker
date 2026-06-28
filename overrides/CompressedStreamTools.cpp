@@ -15,6 +15,7 @@
 #include "NBTTagCompound.h"
 #include "NBTTagList.h"
 #include "OutputStream.h"
+#include "Inflate.h"   // CONSOLE: real gzip inflate for NBT (the GZIP*Stream shims below were inert no-ops)
 
 // --- Local runtime shims for java.io / java.util.zip stream classes that are
 //     not provided as central runtime headers. They follow the same variadic
@@ -46,10 +47,19 @@ public:
 	GZIPOutputStream(...) {}
 	virtual ~GZIPOutputStream() {}
 };
+// CONSOLE: real in-memory byte source (the stub returned nothing, which is why decompress() never
+// round-tripped). Reads from a caller-owned buffer; does not own it.
 class ByteArrayInputStream : public InputStream {
+	const unsigned char* _b; int _len; int _pos;
 public:
-	ByteArrayInputStream(...) {}
+	ByteArrayInputStream(const unsigned char* b, int len) : _b(b), _len(len), _pos(0) {}
 	virtual ~ByteArrayInputStream() {}
+	virtual int read() { return _pos < _len ? (int)_b[_pos++] : -1; }
+	virtual int read(unsigned char* dst, int off, int len) {
+		if (_pos >= _len) return -1;
+		int k = 0; while (k < len && _pos < _len) dst[off + k++] = _b[_pos++];
+		return k;
+	}
 };
 class ByteArrayOutputStream : public OutputStream {
 public:
@@ -94,13 +104,24 @@ void CompressedStreamTools::writeGzippedCompoundToOutputStream(NBTTagCompound* v
 
 NBTTagCompound* CompressedStreamTools::decompress(JArray<unsigned char > var0)
 {
-	DataInputStream* var1 = new DataInputStream(new GZIPInputStream(new ByteArrayInputStream(var0)));
-	NBTTagCompound* var2;
-	{
-	CloseGuard<DataInputStream> _g(var1);
-	var2 = read(var1);
+	// CONSOLE: NBT is gzip-compressed (RFC 1952). The GZIPInputStream shim above is inert, so the
+	// original drained an empty stream and read() threw "Root tag must be a named compound tag" on
+	// EVERY tile entity (Packet59ComplexEntity: chests/signs/furnaces) -> uncaught throw on the net
+	// reader thread -> hard crash. Inflate for real, then parse the NBT from the raw bytes.
+	int isize = 1 << 16;                               // default 64 KB
+	if (var0.length >= 4) {
+	const unsigned char* d = var0.data(); int dn = var0.length;
+	int gz = d[dn - 4] | (d[dn - 3] << 8) | (d[dn - 2] << 16) | ((int)d[dn - 1] << 24);   // gzip ISIZE (LE)
+	if (gz > 0 && gz <= (1 << 20)) isize = gz;        // trust the trailer within 1 MB, else fall back
 	}
-	return var2;
+	JArray<unsigned char > raw(isize);
+	int n = gzipInflate(var0.data(), var0.length, raw.data(), isize);
+	if (n <= 0) {
+	throw new IOException("Bad gzipped NBT");
+	}
+	ByteArrayInputStream bais(raw.data(), n);
+	DataInputStream var1(&bais);                       // FILE-mode ctor drains bais into its own buffer
+	return read(&var1);
 }
 
 JArray<unsigned char > CompressedStreamTools::compress(NBTTagCompound* var0)

@@ -195,3 +195,21 @@ int zlibInflate(const unsigned char* in, int inLen, unsigned char* out, int outC
 	if (header >= inLen) return -1;
 	return rawInflate(in + header, inLen - header, out, outCap);
 }
+
+int gzipInflate(const unsigned char* in, int inLen, unsigned char* out, int outCap) {
+	if (!in || inLen < 18) return -1;            // 10-byte header + >=0 deflate + 8-byte trailer
+	if (in[0] != 0x1F || in[1] != 0x8B || in[2] != 8) return -1;   // magic + CM=deflate
+	int flg = in[3];
+	int p = 10;                                   // skip the fixed 10-byte header
+	if (flg & 0x04) {                             // FEXTRA: 2-byte XLEN then XLEN bytes
+		if (p + 2 > inLen) return -1;
+		int xlen = in[p] | (in[p + 1] << 8);
+		p += 2 + xlen;
+	}
+	if (flg & 0x08) { while (p < inLen && in[p] != 0) ++p; ++p; }   // FNAME: zero-terminated
+	if (flg & 0x10) { while (p < inLen && in[p] != 0) ++p; ++p; }   // FCOMMENT: zero-terminated
+	if (flg & 0x02) p += 2;                       // FHCRC: 2-byte header CRC
+	int deflateLen = inLen - p - 8;               // trailing 8 bytes = CRC32 + ISIZE
+	if (p < 0 || p >= inLen || deflateLen <= 0) return -1;
+	return rawInflate(in + p, deflateLen, out, outCap);
+}

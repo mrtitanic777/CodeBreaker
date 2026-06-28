@@ -160,6 +160,13 @@ void NetworkManager::readPacket()
 	if(!this->isTerminating) {
 	this->onNetworkError(var2);
 	}
+	} catch (...) {
+	// CONSOLE: a non-Exception* throw (e.g. std::bad_alloc from a corrupt packet length, or any C++
+	// throw the Java `catch(Exception)` mirror misses) must NOT hard-crash the reader thread
+	// (E06D7363 = "guest threw a C++ exception"). Disconnect gracefully like the Java reader would.
+	if(!this->isTerminating) {
+	this->networkShutdown(JavaString("Internal exception: non-Exception throw in reader"));
+	}
 	}
 }
 
