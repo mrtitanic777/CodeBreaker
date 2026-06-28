@@ -46,7 +46,7 @@ NetworkManager::NetworkManager(Socket* var1, const JavaString& var2, NetHandler*
 	this->networkSocket = (SocketAddress*)var1->getRemoteSocketAddress();
 	this->netHandler = var3;
 	var1->setTrafficClass(24);
-	this->socketInputStream = new DataInputStream(var1->getInputStream());
+	this->socketInputStream = new DataInputStream(var1->getInputStream(), true);   // STREAMING (don't drain a socket)
 	this->socketOutputStream = new DataOutputStream(var1->getOutputStream());
 	this->readThread = new NetworkReaderThread(this,(JCat() + var2 + " read thread"));
 	this->writeThread = new NetworkWriterThread(this,(JCat() + var2 + " write thread"));
@@ -137,6 +137,9 @@ void NetworkManager::sendPacket()
 	}
 	Packet::writePacket(var2, this->socketOutputStream);
 	this->chunkDataSendCounter = 50;
+	}
+	if(!var1) {
+	this->socketOutputStream->flush();   // CONSOLE: DataOutputStream buffers; flush now sends the packet(s) to the socket
 	}
 	if(var1) {
 	Thread::sleep(10LL);

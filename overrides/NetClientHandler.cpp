@@ -192,7 +192,8 @@ NetClientHandler::NetClientHandler(Minecraft* var1, const JavaString& var2, int 
 	this->rand = new Random();
 
 	this->mc = var1;
-	Socket* var4 = new Socket(InetAddress.getByName(var2), var3);
+	(void)InetAddress;   // shim no longer used: the real Socket resolves the host itself
+	Socket* var4 = new Socket(var2, var3);   // CONSOLE: pass host+port straight to the real XNet Socket
 	this->netManager = new NetworkManager(var4, "Client", this);
 }
 

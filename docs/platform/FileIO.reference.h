@@ -177,7 +177,8 @@ public:
 	DataInput() : data(0), length(0), pos(0) {}
 	DataInput(const unsigned char* d, int len) : data(d), length(len), pos(0) {}
 
-	int readUnsignedByte() { return (pos < length) ? data[pos++] : 0; }
+	virtual int readUnsignedByte() { return (pos < length) ? data[pos++] : 0; }   // VIRTUAL so the streaming
+	// network DataInputStream can pull bytes from a socket on demand; all readInt/readShort/etc. build on this.
 	signed char readByte()  { return (signed char)readUnsignedByte(); }
 	bool readBoolean()      { return readUnsignedByte() != 0; }
 	short readShort()       { int h = readUnsignedByte(), l = readUnsignedByte(); return (short)((h << 8) | l); }
@@ -227,12 +228,27 @@ public:
 // ctor/close() that moves bytes to/from the wrapped stream.
 class DataInputStream : public DataInput {
 	std::vector<unsigned char> _owned;
+	InputStream* _src;                 // STREAM mode: non-NULL -> read from the socket on demand (no drain)
+	unsigned char _rbuf[4096]; int _rlen; int _rpos;
 public:
-	DataInputStream(InputStream* in) {
+	// FILE mode (unchanged): drain the whole stream up front, then parse the buffer.
+	DataInputStream(InputStream* in) : _src(0), _rlen(0), _rpos(0) {
 		if (in) { unsigned char tmp[4096]; int n;
 			while ((n = in->read(tmp, 0, (int)sizeof(tmp))) > 0) _owned.insert(_owned.end(), tmp, tmp + n); }
 		data = _owned.empty() ? (const unsigned char*)0 : &_owned[0];
 		length = (int)_owned.size(); pos = 0;
+	}
+	// STREAM mode (network): DO NOT drain (a socket never EOFs) -- pull bytes on demand. The bool selects it.
+	DataInputStream(InputStream* in, bool /*streaming*/) : _src(in), _rlen(0), _rpos(0) {
+		data = 0; length = 0; pos = 0;
+	}
+	virtual int readUnsignedByte() {
+		if (_src) {                                    // streaming: refill from the socket (blocking recv)
+			if (_rpos >= _rlen) { _rlen = _src->read(_rbuf, 0, (int)sizeof(_rbuf)); _rpos = 0;
+				if (_rlen <= 0) { _rlen = 0; return -1; } }   // <=0 = peer closed/error; -1 signals end of stream
+			return _rbuf[_rpos++];
+		}
+		return (pos < length) ? data[pos++] : 0;       // file mode (base behavior)
 	}
 	int read() { return readUnsignedByte(); }
 	// java.io.DataInputStream.read(byte[]) -> count read, or -1 at EOF (used by the resource fetcher)
@@ -248,13 +264,16 @@ class DataOutputStream : public DataOutput {
 public:
 	DataOutputStream(OutputStream* out) : _out(out) {}
 	int size() { return (int)buffer.size(); }
-	void flush() { if (_out) _out->flush(); }
-	void close() {
+	// flush() now PUSHES the accumulated bytes to the underlying stream (was a no-op forward). Network code
+	// flushes per packet so packets actually send mid-session; file code accumulates in the FileOutputStream
+	// either way (bytes arrive in order, file written on its own close) so this is safe for both paths.
+	void flush() {
 		if (_out) {
-			if (!buffer.empty()) _out->write(&buffer[0], (int)buffer.size());
-			_out->flush(); _out->close();
+			if (!buffer.empty()) { _out->write(&buffer[0], (int)buffer.size()); buffer.clear(); }
+			_out->flush();
 		}
 	}
+	void close() { if (_out) { flush(); _out->close(); } }
 };
 
 // GZIP wrappers live in CompressedStreamTools.cpp (its own local defs) -- kept OUT of FileIO.h to
