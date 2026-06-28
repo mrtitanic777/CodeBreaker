@@ -21,6 +21,7 @@
 #include "ChunkProviderClient.h"
 #include "ChunkProviderLoadOrGenerate.h"   // s_deferPopulate (break the spawn-gen populate cascade)
 #include "ChunkProviderGenerate.h"         // parallel pre-gen: per-worker generators
+#include "MapGenBase.h"                     // parallel pre-gen: complete type to delete the per-worker caveGenerator (virtual dtor)
 #include "WorldChunkManager.h"             // parallel pre-gen: per-worker biome managers
 #include "SpawnerAnimals.h"                // parallel pre-gen: main-thread worldgen mob spawning
 #include "ThreadPool.h"                     // j2x_pool: worker pool on the idle HW threads (2,4)
