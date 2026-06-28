@@ -535,6 +535,10 @@ void NetClientHandler::handleMobSpawn(Packet24MobSpawn* var1)
 	float var8 = (float)(var1->yaw * 360) / 256.0F;
 	float var9 = (float)(var1->pitch * 360) / 256.0F;
 	EntityLiving* var10 = (EntityLiving*)EntityList::createEntity(var1->type, this->mc->theWorld);
+	// PORT(★ SMP NULL entity): createEntity returns NULL for any mob type id we didn't register.
+	// The next line (serverPosX) and setPositionAndRotation (virtual) would deref NULL -> IP-0.
+	// Drop the unknown mob instead of crashing (matches handleVehicleSpawn's NULL guard).
+	if(var10 == NULL) { return; }
 	var10->serverPosX = var1->xPosition;
 	var10->serverPosY = var1->yPosition;
 	var10->serverPosZ = var1->zPosition;

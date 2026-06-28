@@ -266,6 +266,12 @@ void WorldRenderer::updateRenderer()
 	}
 	}
 	Block* var24 = Block::s_blocksList[var18];
+	// PORT(★ SMP spawn IP-0): a server can stream a block id we never registered (NULL slot in
+	// s_blocksList). getRenderBlockPass() is virtual, so calling it on NULL jumps to vtable[0] = IP 0
+	// and crashes one frame after spawn while meshing an adjacent chunk. SP never hit this (it only
+	// ever places registered ids). Skip the cell like air. (Same NULL-blocksList class the tick/render
+	// paths already guard; this mesh site was the last unguarded blocksList virtual call.)
+	if(var24 == NULL) { continue; }
 	int var20 = var24->getRenderBlockPass();
 	if(var20 != var11) {
 	var12 = true;

@@ -930,7 +930,10 @@ bool World::setBlock(int var1, int var2, int var3, int var4)
 Material* World::getBlockMaterial(int var1, int var2, int var3)
 {
 	int var4 = this->getBlockId(var1, var2, var3);
-	return var4 == 0 ? Material::s_air : Block::s_blocksList[var4]->blockMaterial;
+	// PORT(★ SMP NULL block): hot physics/tick path. An unregistered server block id is a NULL slot;
+	// treat as air rather than deref ->blockMaterial (same guard as ChunkCache::getBlockMaterial).
+	if(var4 == 0 || Block::s_blocksList[var4] == NULL) { return Material::s_air; }
+	return Block::s_blocksList[var4]->blockMaterial;
 }
 
 int World::getBlockMetadata(int var1, int var2, int var3)

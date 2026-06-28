@@ -165,7 +165,10 @@ int ChunkCache::getBlockMetadata(int var1, int var2, int var3)
 Material* ChunkCache::getBlockMaterial(int var1, int var2, int var3)
 {
 	int var4 = this->getBlockId(var1, var2, var3);
-	return var4 == 0 ? Material::s_air : Block::s_blocksList[var4]->blockMaterial;
+	// PORT(★ SMP NULL block): an unregistered server block id -> NULL slot; treat as air instead of
+	// deref'ing ->blockMaterial. (Sibling isBlockOpaqueCube below already guards the same way.)
+	if(var4 == 0 || Block::s_blocksList[var4] == NULL) { return Material::s_air; }
+	return Block::s_blocksList[var4]->blockMaterial;
 }
 
 bool ChunkCache::isBlockOpaqueCube(int var1, int var2, int var3)
