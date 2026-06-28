@@ -40,7 +40,10 @@ NetworkManager::NetworkManager(Socket* var1, const JavaString& var2, NetHandler*
 {
 	this->isRunning = true;
 
-	this->sendQueueLock = JObject();
+	// CONSOLE: the converter DROPPED Java's synchronized(sendQueueLock) blocks, so the reader/writer
+	// threads raced the main thread on the packet vectors -> heap corruption -> IP 0x0 on world entry.
+	// Back sendQueueLock with a real CRITICAL_SECTION and guard every queue mutation below.
+	{ CRITICAL_SECTION* _cs = new CRITICAL_SECTION; InitializeCriticalSection(_cs); this->sendQueueLock = _cs; }
 
 	this->field_12258_e = var1;
 	this->networkSocket = (SocketAddress*)var1->getRemoteSocketAddress();
@@ -64,6 +67,7 @@ NetworkManager::~NetworkManager()
 	socketOutputStream = NULL;
 	delete writeThread;
 	writeThread = NULL;
+	if(this->sendQueueLock) { DeleteCriticalSection((CRITICAL_SECTION*)this->sendQueueLock); delete (CRITICAL_SECTION*)this->sendQueueLock; this->sendQueueLock = NULL; }
 }
 
 void NetworkManager::addToSendQueue(Packet* var1)
@@ -84,14 +88,14 @@ void NetworkManager::addToSendQueue(Packet* var1)
 	 *     }
 	 *  }
 	 *  ---- end original Java ---- */
-	{
+	EnterCriticalSection((CRITICAL_SECTION*)this->sendQueueLock);
 	this->sendQueueByteLength += var1->getPacketSize() + 1;
 	if(var1->isChunkDataPacket) {
 	this->chunkDataPackets.push_back(var1);
 	} else {
 	this->dataPackets.push_back(var1);
 	}
-	}
+	LeaveCriticalSection((CRITICAL_SECTION*)this->sendQueueLock);
 	}
 }
 
@@ -100,43 +104,32 @@ void NetworkManager::sendPacket()
 	try {
 	bool var1 = true;
 	Packet* var2;
-	void* var3;
+	// CONSOLE: grab the next packet UNDER the lock (the queue is shared with the main thread's
+	// addToSendQueue), then writePacket OUTSIDE the lock so a blocking send() can't stall the game.
+	var2 = NULL;
+	EnterCriticalSection((CRITICAL_SECTION*)this->sendQueueLock);
 	if(!this->dataPackets.empty()) {
-	var1 = false;
-	var3 = this->sendQueueLock;
-	/* ---- ORIGINAL JAVA (stubbed below) ----
-	 *  // synchronized(var3) held the sendQueueLock monitor; below is a plain scope
-	 *  // (monitor behaviour dropped).
-	 *  var3 = this.sendQueueLock;
-	 *  synchronized(var3) {
-	 *     var2 = (Packet)this.dataPackets.remove(0);
-	 *     this.sendQueueByteLength -= var2.getPacketSize() + 1;
-	 *  }
-	 *  ---- end original Java ---- */
-	{
 	var2 = (Packet*)this->dataPackets.remove(0);
 	this->sendQueueByteLength -= var2->getPacketSize() + 1;
 	}
+	LeaveCriticalSection((CRITICAL_SECTION*)this->sendQueueLock);
+	if(var2 != NULL) {
+	var1 = false;
 	Packet::writePacket(var2, this->socketOutputStream);
 	}
-	if((var1 || this->chunkDataSendCounter-- <= 0) && !this->chunkDataPackets.empty()) {
-	var1 = false;
-	var3 = this->sendQueueLock;
-	/* ---- ORIGINAL JAVA (stubbed below) ----
-	 *  // synchronized(var3) held the sendQueueLock monitor; below is a plain scope
-	 *  // (monitor behaviour dropped).
-	 *  var3 = this.sendQueueLock;
-	 *  synchronized(var3) {
-	 *     var2 = (Packet)this.chunkDataPackets.remove(0);
-	 *     this.sendQueueByteLength -= var2.getPacketSize() + 1;
-	 *  }
-	 *  ---- end original Java ---- */
-	{
+	if(var1 || this->chunkDataSendCounter-- <= 0) {
+	var2 = NULL;
+	EnterCriticalSection((CRITICAL_SECTION*)this->sendQueueLock);
+	if(!this->chunkDataPackets.empty()) {
 	var2 = (Packet*)this->chunkDataPackets.remove(0);
 	this->sendQueueByteLength -= var2->getPacketSize() + 1;
 	}
+	LeaveCriticalSection((CRITICAL_SECTION*)this->sendQueueLock);
+	if(var2 != NULL) {
+	var1 = false;
 	Packet::writePacket(var2, this->socketOutputStream);
 	this->chunkDataSendCounter = 50;
+	}
 	}
 	if(!var1) {
 	this->socketOutputStream->flush();   // CONSOLE: DataOutputStream buffers; flush now sends the packet(s) to the socket
@@ -157,7 +150,9 @@ void NetworkManager::readPacket()
 	try {
 	Packet* var1 = Packet::readPacket(this->socketInputStream);
 	if(var1 != NULL) {
+	EnterCriticalSection((CRITICAL_SECTION*)this->sendQueueLock);   // shared with the main thread's processReadPackets
 	this->readPackets.push_back(var1);
+	LeaveCriticalSection((CRITICAL_SECTION*)this->sendQueueLock);
 	} else {
 	this->networkShutdown("End of stream");
 	}
@@ -212,8 +207,14 @@ void NetworkManager::processReadPackets()
 	this->timeSinceLastRead = 0;
 	}
 	int var1 = 100;
-	while(!this->readPackets.empty() && var1-- >= 0) {
-	Packet* var2 = (Packet*)this->readPackets.remove(0);
+	while(var1-- >= 0) {
+	// CONSOLE: remove UNDER the lock (the reader thread pushes here), process OUTSIDE so a heavy
+	// packet handler (chunk data) doesn't block the reader thread.
+	Packet* var2 = NULL;
+	EnterCriticalSection((CRITICAL_SECTION*)this->sendQueueLock);
+	if(!this->readPackets.empty()) { var2 = (Packet*)this->readPackets.remove(0); }
+	LeaveCriticalSection((CRITICAL_SECTION*)this->sendQueueLock);
+	if(var2 == NULL) { break; }
 	var2->processPacket(this->netHandler);
 	}
 	if(this->isTerminating && this->readPackets.empty()) {
