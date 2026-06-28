@@ -224,16 +224,20 @@ void SoundManager::playRandomMusic()
 	--this->nextMusicDelay;
 	return;
 	}
+	// CONSOLE: the Java music POOL is empty (tracks live in music.xwb, not downloaded .oggs), so
+	// getRandomSound() returns NULL and the whole block was skipped -> StartMusic never fired = silence.
+	// The XACT playlist owns track selection (calm1/2/3), so trigger the "BgMusic" channel regardless;
+	// SoundSystem::play("BgMusic") -> StartMusic(). Same dead-pool bypass as playSoundFX/playSound.
 	SoundPoolEntry* var1 = this->soundPoolMusic->getRandomSound();
-	if(var1 != NULL) {
 	this->nextMusicDelay = this->rand->nextInt(12000) + 12000;
 	/* ---- ORIGINAL JAVA (stubbed below) ----
 	 *  sndSystem.backgroundMusic("BgMusic", var1.soundUrl, var1.soundName, false);
 	 *  ---- end original Java ---- */
+	if(var1 != NULL) {
 	_sndBackgroundMusic(s_sndSystem, "BgMusic", var1->soundUrl, var1->soundName, false);
+	}
 	s_sndSystem->setVolume("BgMusic", this->options->musicVolume);
 	s_sndSystem->play("BgMusic");
-	}
 	}
 	}
 }
