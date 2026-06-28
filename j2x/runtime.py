@@ -986,7 +986,6 @@ _GENERATED['Color.h'] = (
     "class Color {\n"
     "    int _rgb;\n"
     "public:\n"
-    "    Color() : _rgb(0) {}\n"
     "    Color(int rgb) : _rgb(rgb) {}\n"
     "    Color(int rgba, bool) : _rgb(rgba) {}\n"
     "    Color(...) : _rgb(0) {}\n"
