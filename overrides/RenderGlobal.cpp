@@ -950,6 +950,10 @@ bool RenderGlobal::updateRenderers(EntityPlayer* var1, bool var2)
 	Collections::sort(this->worldRenderersToUpdate, new RenderSorter(var1));
 	int var3 = this->worldRenderersToUpdate.size() - 1;
 	int var4 = this->worldRenderersToUpdate.size();
+	int _upd = 0;   // CONSOLE: hard per-frame chunk-rebuild cap. The original only throttles FAR chunks
+	                // (>32 blocks); NEAR ones rebuild unbounded, so at spawn ~all dirty near chunks mesh in
+	                // ONE frame -> the "129 chunk updates" FPS tank (E=renderersEmpty drains as they finish).
+	                // Cap the total so meshing spreads over a few frames -> steady FPS. var2 (force-all) bypasses.
 	for(int var5 = 0; var5 < var4; ++var5) {
 	WorldRenderer* var6 = (WorldRenderer*)this->worldRenderersToUpdate[var3 - var5];
 	if(!var2) {
@@ -968,6 +972,7 @@ bool RenderGlobal::updateRenderers(EntityPlayer* var1, bool var2)
 	var6->updateRenderer();
 	this->worldRenderersToUpdate.remove(var6);
 	var6->needsUpdate = false;
+	if(!var2 && ++_upd >= 8) { return false; }   // CONSOLE: ~8 rebuilds/frame cap (tune if still choppy)
 	}
 	return this->worldRenderersToUpdate.size() == 0;
 }
