@@ -130,6 +130,7 @@
 #include "ScaledResolution.h"
 #include "ScreenShotHelper.h"
 #include "Session.h"
+#include "XboxUser.h"   // CONSOLE: drive the SMP username from the signed-in 360 gamertag
 #include "Slot.h"
 #include "Socket.h"
 #include "SoundManager.h"
@@ -263,8 +264,12 @@ void Minecraft::startGame()
 	DbgPrintF("[boot] startGame begin\n");
 	if(this->session == NULL) {   // CONSOLE: the desktop main()/applet path (which sets the session) is skipped;
 	// without a session the Multiplayer button stays grayed out. Create a default one so MP enables + SMP login has a name.
-	this->session = new Session((JCat() + "Player" + System::currentTimeMillis() % 1000LL), "");
-	DbgPrintF("[net] default session created: %s\n", this->session->inventory.c_str());
+	// Use the signed-in Xbox 360 gamertag (user index 0) as the username so the player has a stable online identity
+	// (and a skinless gamertag -> a real Alpha client renders the default char.png/Steve, not a random skin). Fall
+	// back to a random "Player###" only when no profile is signed in.
+	JavaString _gamertag = Xbox::getGamertag();
+	this->session = new Session(_gamertag.length() > 0 ? _gamertag : (JCat() + "Player" + System::currentTimeMillis() % 1000LL), "");
+	DbgPrintF("[net] default session created: %s (gamertag=%s)\n", this->session->inventory.c_str(), _gamertag.length() > 0 ? _gamertag.c_str() : "<none>");
 	}
 	{
 	static const int _hw[2] = { 2, 4 };   // idle HW threads: core1=HW2, core2=HW4 (HW0=main, HW5=audio)
