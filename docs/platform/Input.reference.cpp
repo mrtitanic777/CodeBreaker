@@ -276,15 +276,17 @@ void poll() {
 		// Face / stick-click binds (CONTROL MAP -- see docs/platform/03-input-and-audio.md).
 		setKey(Keyboard::KEY_SPACE,  vA != 0);     // A     -> jump
 		setKey(Keyboard::KEY_LSHIFT, vL3 != 0);    // L3    -> sneak
-		setKey(Keyboard::KEY_E,      vY != 0);     // Y     -> inventory (Alpha bind = E)
-		setKey(Keyboard::KEY_Q,      vB != 0);     // B     -> drop held item
+		setKey(Keyboard::KEY_I,      vY != 0);     // Y     -> inventory (Alpha keyBindInventory = 23 = I, NOT E)
+		setKey(Keyboard::KEY_Q,      vB != 0);     // B     -> drop held item (keyBindDrop = 16 = Q)
 		setKey(Keyboard::KEY_ESCAPE, vStart != 0); // START -> pause / open menu
 
-		// LB/RB -> hotbar scroll (Minecraft::runTick reads getEventDWheel). One notch per press.
+		// LB/RB -> hotbar scroll (Minecraft::runTick reads getEventDWheel -> changeCurrentItem, where +1
+		// moves the slot LEFT). RB must select the NEXT (right) slot, so RB -> -120, LB -> +120. (Swapped
+		// from the inverted original where RB went left.)
 		bool prevLB = (g_prevButtons & XINPUT_GAMEPAD_LEFT_SHOULDER)  != 0;
 		bool prevRB = (g_prevButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0;
-		if (vRB && !prevRB) pushBtnEvent(-1, false, g_cursorX, g_cursorY, +120);
-		if (vLB && !prevLB) pushBtnEvent(-1, false, g_cursorX, g_cursorY, -120);
+		if (vRB && !prevRB) pushBtnEvent(-1, false, g_cursorX, g_cursorY, -120);   // RB -> next slot (right)
+		if (vLB && !prevLB) pushBtnEvent(-1, false, g_cursorX, g_cursorY, +120);   // LB -> prev slot (left)
 	} else {
 		// ===================== IN A GUI (Indev-style DISCRETE selection) =====================
 		// The d-pad / LEFT stick select buttons ONE step per press (edge-triggered + latched), instead of
