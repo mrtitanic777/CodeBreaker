@@ -908,7 +908,6 @@ void Minecraft::clickMiddleMouseButton()
 
 void Minecraft::runTick()
 {
-	static int s_tk = 0; ++s_tk; DbgPrintF("[T%d] begin\n", s_tk);   // CONSOLE: per-tick markers for the "few seconds then crash" diagnostic
 	this->ingameGUI->updateTick();
 	this->entityRenderer->getMouseOver(1.0F);
 	if(this->thePlayer != NULL) {
@@ -1049,13 +1048,10 @@ void Minecraft::runTick()
 	this->renderGlobal->updateClouds();
 	}
 	if(!this->isGamePaused) {
-	DbgPrintF("[T%d] updateEntities\n", s_tk);
 	this->theWorld->updateEntities();
 	}
 	if(!this->isGamePaused || this->isMultiplayerWorld()) {
-	DbgPrintF("[T%d] worldTick\n", s_tk);
 	this->theWorld->tick();
-	DbgPrintF("[T%d] worldTick ok\n", s_tk);
 	}
 	if(!this->isGamePaused && this->theWorld != NULL) {
 	this->theWorld->randomDisplayUpdates(MathHelper::floor_double(this->thePlayer->posX), MathHelper::floor_double(this->thePlayer->posY), MathHelper::floor_double(this->thePlayer->posZ));
