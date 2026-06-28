@@ -28,10 +28,10 @@
 > | A                  | jump (SPACE)                       | **click** the widget under the cursor        |
 > | B                  | drop item (Q)                      | back / close (ESCAPE)                        |
 > | Y                  | inventory (E)                      | —                                            |
-> | X                  | sneak (LSHIFT)                     | —                                            |
 > | RT / LT            | attack (mouse0) / use (mouse1)     | —                                            |
 > | LB / RB            | hotbar prev / next (wheel)         | —                                            |
 > | L3                 | toggle 3rd-person camera (F5)      | —                                            |
+> | R3                 | sneak (LSHIFT)                     | —                                            |
 > | START              | pause (ESCAPE)                     | back / close (ESCAPE)                        |
 >
 > GUI widgets highlight under the cursor (GuiScreen hover via `Mouse::getX/getY`); A synthesizes a

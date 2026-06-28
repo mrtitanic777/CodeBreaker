@@ -275,7 +275,7 @@ void poll() {
 
 		// Face / stick-click binds (CONTROL MAP -- see docs/platform/03-input-and-audio.md).
 		setKey(Keyboard::KEY_SPACE,  vA != 0);     // A     -> jump
-		setKey(Keyboard::KEY_LSHIFT, vX != 0);     // X     -> sneak (moved off L3, which now toggles the camera)
+		setKey(Keyboard::KEY_LSHIFT, vR3 != 0);    // R3    -> sneak (right stick click; L3 now toggles the camera)
 		setKey(Keyboard::KEY_I,      vY != 0);     // Y     -> inventory (Alpha keyBindInventory = 23 = I, NOT E)
 		setKey(Keyboard::KEY_Q,      vB != 0);     // B     -> drop held item (keyBindDrop = 16 = Q)
 		setKey(Keyboard::KEY_ESCAPE, vStart != 0); // START -> pause / open menu
