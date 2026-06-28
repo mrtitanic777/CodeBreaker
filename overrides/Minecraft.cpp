@@ -552,7 +552,11 @@ void Minecraft::run()
 	this->sndManager->setListener(this->thePlayer, this->timer->renderPartialTicks);
 	GL11::glEnable(GL11::GL_TEXTURE_2D);
 	if(this->theWorld != NULL && !this->theWorld->multiplayerWorld) {
-	while(this->theWorld->updatingLighting()) {
+	// BOUNDED light drain: this was while(updatingLighting()){} = unbounded, draining the ENTIRE
+	// queued-lighting backlog in ONE frame. The finite 864x864 world (and any chunk gen / block edit)
+	// floods that queue, so the frame froze until it all resolved = the periodic hard-lock. Cap it so
+	// the frame completes and lighting catches up over the next few frames.
+	for(int _ld = 0; _ld < 64 && this->theWorld->updatingLighting(); ++_ld) {
 	}
 	}
 	if(this->theWorld != NULL && this->theWorld->multiplayerWorld) {
