@@ -18,9 +18,13 @@ PRIMITIVES = {
 # CAVEAT: Java `byte` is SIGNED (-128..127). We map it to `unsigned char` because the vast majority
 # of byte uses here are byte[] buffers (chunk/block data, packet payloads, inflate I/O) that want
 # unsigned char* and are read via `& 0xFF`. But SCALAR byte fields used as signed values break:
-# Packet30Entity x/y/z relative-move deltas read -1 as +255 -> entities rocketed into the sky
-# (fixed via overrides/Packet30Entity.h = signed char). If a future class uses a scalar `byte` as a
-# signed quantity, override that field to `signed char` (do NOT blanket-flip this map -> breaks byte[]).
+#   * Packet30Entity x/y/z relative-move deltas read -1 as +255 -> entities rocketed into the sky
+#     (fixed via overrides/Packet30Entity.h = signed char).
+#   * Packet1Login.dimension: nether = -1, read as 255 -> getProviderForDimension(255) returned NULL
+#     -> NULL world provider -> instant crash logging into any nether-enabled server (overworld=0 was
+#     fine). Fixed via overrides/Packet1Login.h = signed char.
+# Pattern: a scalar `byte` that can legitimately be negative (dimension ids, signed deltas, signed
+# coords) MUST be overridden to `signed char`. Do NOT blanket-flip this map -> breaks byte[] buffers.
 JAVA_TO_CPP = {
     'boolean': 'bool', 'byte': 'unsigned char', 'short': 'short', 'int': 'int',
     'long': 'long long', 'float': 'float', 'double': 'double', 'char': 'char',
