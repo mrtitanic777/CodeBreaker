@@ -323,6 +323,12 @@ void glTexCoordPointer(int,int,int,long long){}
 // Tesselator::flush (quads -> triangles, reversed winding for D3D CW culling).
 void glDrawArrays(int mode,int first,int count){
 	if(!s_vtx.on || count<=0) return;
+	if(count > 1048576){   // CONSOLE: sanity cap. A legit Tessellator batch is <=~262K verts; a count this
+		// huge = a corrupted/runaway vertexCount (the chest/TileEntity render path hit this -> the std::vector
+		// below tried to allocate hundreds of MB -> bad_alloc trap). Skip + log instead of crashing the game.
+		DbgPrintF("[gl] glDrawArrays: insane count=%d (mode=%d) -> SKIPPED (corrupted vertexCount)\n", count, mode);
+		return;
+	}
 	bool hadColor = s_col.on;                         // no color array -> color is resolved at draw/replay
 	std::vector<TesselatorVertex> v((size_t)count);
 	for(int i=0;i<count;++i){
