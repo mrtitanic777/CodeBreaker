@@ -118,6 +118,36 @@ def scan_lint(ledger, output_dir):
     return n
 
 
+# Catches the converter's member-access (`.` -> `->`) translation leaking into a STRING LITERAL --
+# a rare AST edge case that silently breaks a resource path, e.g. "/gui/furnace.png" emitted as
+# "/gui/furnace->png": the texture load fails, returns 0, and the engine samples the last-bound
+# atlas (the font sheet) full-screen. Real occurrences: GuiFurnace (furnace.png), CanvasMajongLogo
+# (logo.png) -- fixed via overrides. This flags any recurrence on regen so it can't ship silently.
+_CORRUPT_STR_RE = re.compile(
+    r'"[^"\n]*->(?:png|txt|dat|zip|lvl|class|gif|ogg|wav|properties|lang|nbt|mclevel)[^"\n]*"')
+
+def scan_corrupted_strings(ledger, output_dir):
+    """Flag string literals corrupted by member-access translation (broken resource paths)."""
+    n = 0
+    for fname in sorted(os.listdir(output_dir)):
+        if not (fname.endswith('.cpp') or fname.endswith('.h')):
+            continue
+        try:
+            with open(os.path.join(output_dir, fname), 'r', errors='replace') as fh:
+                for i, raw in enumerate(fh, 1):
+                    m = _CORRUPT_STR_RE.search(raw)
+                    if m:
+                        ledger.add(fname, Category.RISK,
+                                   'corrupted string literal (member-access "." -> "->" leaked into a '
+                                   'string -> broken resource path): %s' % m.group(0),
+                                   line=i, severity=Severity.HIGH, source='lint',
+                                   rule='high/corrupt-string-literal', snippet=raw.strip())
+                        n += 1
+        except (IOError, OSError):
+            pass
+    return n
+
+
 # ---------------------------------------------------------------------------
 # 3. Compiler errors from a build log (optional -- newest log by default)
 # ---------------------------------------------------------------------------
@@ -223,6 +253,7 @@ def analyze_all(ledger, output_dir, override_dir=None, build_log=None,
         'markers':   scan_markers(ledger, output_dir),
         'rules':     rules.scan_rules(ledger, output_dir),
         'lint':      scan_lint(ledger, output_dir),
+        'corrupt_strings': scan_corrupted_strings(ledger, output_dir),
         'build_log': scan_build_log(ledger, build_log),
         'overrides': scan_overrides(ledger, override_dir, output_dir, pristine_dir),
     }
