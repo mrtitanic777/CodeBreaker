@@ -55,8 +55,9 @@ struct GLListOp {
 	float a,b,c,d;                                        // kind 1/2 (xyz) / 3 (angle,x,y,z)
 	D3DXMATRIX mat;                                       // kind 7
 	DWORD color; int itex;                               // kind 8 / 9
+	IDirect3DVertexBuffer9* vb;                          // PERSISTENT cached VB for baked-color geometry (chunk terrain); NULL until first replay
 	GLListOp():kind(0),prim(D3DPT_TRIANGLELIST),primCount(0),textured(false),stampColor(false),
-	           a(0),b(0),c(0),d(0),color(0xFFFFFFFF),itex(0){}
+	           a(0),b(0),c(0),d(0),color(0xFFFFFFFF),itex(0),vb(NULL){}
 };
 typedef std::vector<GLListOp> GLDisplayList;
 static std::map<int,GLDisplayList> s_lists;
@@ -332,13 +333,45 @@ void glDrawArrays(int mode,int first,int count){
 }
 
 // ----------------------------------------------------------------------------- display lists
+// Free any cached persistent VBs in a list (call before clearing/erasing it).
+static void _freeListVBs(GLDisplayList& dl){ for(size_t i=0;i<dl.size();++i){ if(dl[i].vb){ dl[i].vb->Release(); dl[i].vb=NULL; } } }
+
+// Draw one recorded geometry op. BAKED-COLOR geometry (chunk terrain: stampColor==false) is uploaded
+// ONCE into a persistent D3D vertex buffer and DrawPrimitive'd from VRAM on every later replay -- this
+// removes the per-frame DrawPrimitiveUP RAM re-upload of every visible chunk, which was THE in-world fps
+// bottleneck. stampColor geometry (sky/clouds/HUD, whose color is applied live each replay) stays
+// immediate. The VB is freed + rebuilt when the list is re-recorded (glNewList) e.g. on a block edit.
+static void issueDrawListOp(GLListOp& op){
+	if(op.primCount<=0 || op.tris.empty()) return;
+	if(op.stampColor){ issueDraw(op.tris, op.prim, op.primCount, op.textured, true); return; }
+	if(op.textured) Shaders::useTexturedShader(); else Shaders::useUntexturedShader();
+	Shaders::setWorldMatrix(s_modelview.back());
+	Shaders::setProjectionMatrix(s_projection.back());
+	{ D3DXMATRIX I; D3DXMatrixIdentity(&I); Shaders::setViewMatrix(I); }
+	Shaders::updateShaderConstants();
+	if(op.vb==NULL){
+		UINT bytes=(UINT)(op.tris.size()*sizeof(TesselatorVertex));
+		if(g_pd3dDevice->CreateVertexBuffer(bytes, D3DUSAGE_WRITEONLY, 0, D3DPOOL_DEFAULT, &op.vb, NULL)==D3D_OK && op.vb){
+			void* p=NULL;
+			if(op.vb->Lock(0, bytes, &p, 0)==D3D_OK){ memcpy(p, &op.tris[0], bytes); op.vb->Unlock(); }
+			else { op.vb->Release(); op.vb=NULL; }
+		}
+	}
+	if(op.vb){
+		g_pd3dDevice->SetStreamSource(0, op.vb, 0, sizeof(TesselatorVertex));
+		g_pd3dDevice->DrawPrimitive(op.prim, 0, op.primCount);
+	} else {
+		issueDraw(op.tris, op.prim, op.primCount, op.textured, false);   // creation failed -> immediate fallback
+	}
+}
+
 // Real record/replay (see the GLListOp recorder up top). glNewList opens a list for recording; every
 // draw/matrix/color op until glEndList is captured; glCallList(s) replays against the LIVE state.
 static void replayList(GLDisplayList& dl){
 	for(size_t i=0;i<dl.size();++i){
 		GLListOp& op=dl[i];
 		switch(op.kind){
-			case 0: issueDraw(op.tris, op.prim, op.primCount, op.textured, op.stampColor); break;
+			case 0: issueDrawListOp(op); break;
 			case 1: { D3DXMATRIX m; D3DXMatrixTranslation(&m,op.a,op.b,op.c); preMul(m); } break;
 			case 2: { D3DXMATRIX m; D3DXMatrixScaling(&m,op.a,op.b,op.c); preMul(m); } break;
 			case 3: { D3DXMATRIX m; D3DXVECTOR3 ax(op.b,op.c,op.d); D3DXMatrixRotationAxis(&m,&ax,D3DXToRadian(op.a)); preMul(m); } break;
@@ -352,7 +385,7 @@ static void replayList(GLDisplayList& dl){
 	}
 }
 int  glGenLists(int n){ int base=s_listNext; if(n<1)n=1; s_listNext+=n; return base; }   // reserve n consecutive ids
-void glNewList(int list,int){ GLDisplayList& dl=s_lists[list]; dl.clear(); s_recList=&dl; }
+void glNewList(int list,int){ GLDisplayList& dl=s_lists[list]; _freeListVBs(dl); dl.clear(); s_recList=&dl; }
 void glEndList(){ s_recList=NULL; }
 void glCallList(int list){
 	std::map<int,GLDisplayList>::iterator it=s_lists.find(list);
@@ -364,7 +397,7 @@ void glCallLists(IntBuffer* buf){                     // replay a run of absolut
 	const int* ids=(const int*)((ByteBuffer*)buf)->base();
 	for(int i=0;i<n;++i) glCallList(ids[i]);
 }
-void glDeleteLists(int list,int n){ for(int i=0;i<n;++i) s_lists.erase(list+i); }
+void glDeleteLists(int list,int n){ for(int i=0;i<n;++i){ std::map<int,GLDisplayList>::iterator it=s_lists.find(list+i); if(it!=s_lists.end()){ _freeListVBs(it->second); s_lists.erase(it); } } }
 
 // ----------------------------------------------------------------------------- queries / misc
 int  glGetError(){ return 0; }
