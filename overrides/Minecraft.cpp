@@ -20,6 +20,9 @@
 #include "Chunk.h"
 #include "ChunkProviderClient.h"
 #include "ChunkProviderLoadOrGenerate.h"   // s_deferPopulate (break the spawn-gen populate cascade)
+#include "ChunkProviderGenerate.h"         // parallel pre-gen: per-worker generators
+#include "WorldChunkManager.h"             // parallel pre-gen: per-worker biome managers
+#include "SpawnerAnimals.h"                // parallel pre-gen: main-thread worldgen mob spawning
 #include "ThreadPool.h"                     // j2x_pool: worker pool on the idle HW threads (2,4)
 #include "Debug.h"                          // Debug::spawnDebugChests (wired into new-world creation)
 #include "Class.h"
@@ -1218,6 +1221,92 @@ void Minecraft::changeWorld(World* var1, const JavaString& var2, EntityPlayer* v
 	DbgPrintF("[world] changeWorld: DONE (entering world)\n");
 }
 
+// PORT(★ parallel world-gen): generate the spawn-area chunks across the idle HW cores (j2x_pool, HW 2&4)
+// instead of one at a time on the main thread (the "Simulating world for a bit" stall). Each worker owns a
+// fully independent ChunkProviderGenerate + WorldChunkManager (seeded from the world seed -> deterministic,
+// identical output), so provideChunk has NO shared writes. The cross-chunk light propagation + decoration +
+// mob spawning stay on the MAIN thread (after install) -- only the per-chunk noise terrain + caves + skylight
+// (the bulk of the cost) run in parallel.
+struct _GenJob { ChunkProviderGenerate* prov; const int* coords; Chunk** results; int start; int end; };
+static void _genJobFn(void* a) {
+	_GenJob* j = (_GenJob*)a;
+	for(int i = j->start; i < j->end; ++i) {
+		j->results[i] = j->prov->provideChunk(j->coords[2 * i], j->coords[2 * i + 1]);   // own provider; no shared state
+	}
+}
+
+// Pre-generate a (2r+1)^2 block of chunks around chunk (ccx,ccz) in parallel, then install them into the SP
+// chunk provider on the main thread. Returns chunks installed (0 = fell back to the normal sequential loop:
+// SMP/non-generating provider, or the pool isn't running).
+static int j2x_parallelPreGen(World* world, int ccx, int ccz, int r) {
+	if(world == NULL) return 0;
+	ChunkProviderLoadOrGenerate* logen = dynamic_cast<ChunkProviderLoadOrGenerate*>(world->chunkProvider);
+	if(logen == NULL) return 0;                                       // SMP / non-generating provider
+	ChunkProviderGenerate* inner = dynamic_cast<ChunkProviderGenerate*>(logen->chunkProvider);
+	if(inner == NULL) return 0;
+	if(!j2x_pool::isStarted()) return 0;                             // no workers -> let the normal loop generate
+	int N = j2x_pool::workerCount(); if(N < 1) N = 1; if(N > 4) N = 4;
+
+	int side = r * 2 + 1;
+	int total = side * side;
+	int* coords = new int[total * 2];
+	Chunk** results = new Chunk*[total];
+	int k = 0;
+	for(int dx = -r; dx <= r; ++dx) {
+		for(int dz = -r; dz <= r; ++dz) {
+			coords[2 * k] = ccx + dx; coords[2 * k + 1] = ccz + dz; results[k] = NULL; ++k;
+		}
+	}
+
+	// One independent generator + biome manager per worker (constructed on THIS thread, before any job runs).
+	ChunkProviderGenerate* provs[4]; WorldChunkManager* wcms[4]; _GenJob jobs[4];
+	for(int i = 0; i < N; ++i) {
+		provs[i] = new ChunkProviderGenerate(world, world->randomSeed);
+		wcms[i] = new WorldChunkManager(world);
+		provs[i]->genWCM = wcms[i];
+		provs[i]->genDeferSpawn = true;
+	}
+	int per = (total + N - 1) / N;
+	for(int i = 0; i < N; ++i) {
+		int s = i * per; int e = s + per;
+		if(s > total) s = total;
+		if(e > total) e = total;
+		jobs[i].prov = provs[i]; jobs[i].coords = coords; jobs[i].results = results;
+		jobs[i].start = s; jobs[i].end = e;
+		j2x_pool::submit(_genJobFn, &jobs[i]);
+	}
+	j2x_pool::wait();   // barrier: all chunks generated
+
+	// Install pass 1: place every chunk so neighbors exist before any light map is built.
+	int installed = 0;
+	for(int i = 0; i < total; ++i) {
+		if(results[i] == NULL) continue;
+		int cx = coords[2 * i]; int cz = coords[2 * i + 1];
+		logen->chunks[(cx & 31) + (cz & 31) * 32] = results[i];
+		++installed;
+	}
+	// Install pass 2 (main thread): block-light map + onChunkLoad + worldgen mob spawning (world writes).
+	for(int i = 0; i < total; ++i) {
+		Chunk* c = results[i];
+		if(c == NULL) continue;
+		int cx = coords[2 * i]; int cz = coords[2 * i + 1];
+		c->generateBlocklightMap();
+		c->onChunkLoad();
+		SpawnerAnimals::performWorldGenSpawning(world, c, cx, cz);
+	}
+	logen->lastQueriedChunk = NULL;   // drop the 1-entry cache so the next provideChunk reads chunks[] (our installs)
+
+	for(int i = 0; i < N; ++i) {
+		delete wcms[i];                       // genWCM (the generator dtor doesn't own it)
+		delete provs[i]->caveGenerator;       // the generator dtor doesn't free this either
+		provs[i]->caveGenerator = NULL;
+		delete provs[i];
+	}
+	delete[] coords;
+	delete[] results;
+	return installed;
+}
+
 void Minecraft::loadWorldSpawnArea(const JavaString& var1)
 {
 	this->loadingScreen->func_596_a(var1);
@@ -1228,6 +1317,15 @@ void Minecraft::loadWorldSpawnArea(const JavaString& var1)
 	var4 *= var4;
 	DbgPrintF("[world] spawnArea BEGIN (generate %d columns)\n", var4);
 	ChunkProviderLoadOrGenerate::s_deferPopulate = true;   // break the populate cascade during pre-gen
+	// PORT(★ parallel world-gen): generate all spawn-area chunks across the idle cores FIRST. The per-column
+	// loop below then just reads the already-generated chunks (getBlockId -> chunkExists -> no regen) and
+	// drains light. Falls back to the loop's own lazy gen if the pool is unavailable / this is SMP.
+	{
+		int _cx = this->theWorld->spawnX, _cz = this->theWorld->spawnZ;
+		if(this->thePlayer != NULL) { _cx = (int)this->thePlayer->posX; _cz = (int)this->thePlayer->posZ; }
+		int _pg = j2x_parallelPreGen(this->theWorld, _cx >> 4, _cz >> 4, var2 / 16);
+		if(_pg > 0) DbgPrintF("[world] parallel pre-gen: %d chunks on %d workers\n", _pg, j2x_pool::workerCount());
+	}
 	for(int var5 = -var2; var5 <= var2; var5 += 16) {
 	int var6 = this->theWorld->spawnX;
 	int var7 = this->theWorld->spawnZ;

@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "JavaRT.h"
+#include "Common.h"   // DIAG: DbgPrintF for the [GEN] walk-freeze probe
 #include "SpawnerAnimals.h"   // CONSOLE: world-gen animal herds (Alpha 1.2.6 lacks them)
 
 // Auto-generated from ChunkProviderGenerate.java
@@ -75,6 +76,8 @@ ChunkProviderGenerate::ChunkProviderGenerate(World* var1, long long var2)
 	, mobSpawnerNoise(NULL)
 	, worldObj(NULL)
 	, caveGenerator(NULL)
+	, genWCM(NULL)            // PORT(★ parallel pre-gen): default = use worldObj's shared WCM (single-thread)
+	, genDeferSpawn(false)    // PORT(★ parallel pre-gen): default = spawn mobs inline (single-thread)
 {
 	this->sandNoise = JArray<double >(256);
 	this->gravelNoise = JArray<double >(256);
@@ -267,13 +270,20 @@ Chunk* ChunkProviderGenerate::provideChunk(int var1, int var2)
 	this->rand->setSeed((long long)var1 * 341873128712LL + (long long)var2 * 132897987541LL);
 	JArray<unsigned char > var3 = JArray<unsigned char >(-Short::MIN_VALUE);
 	Chunk* var4 = new Chunk(this->worldObj, var3, var1, var2);
-	this->biomesForGeneration = this->worldObj->getWorldChunkManager()->loadBlockGeneratorData(this->biomesForGeneration, var1 * 16, var2 * 16, 16, 16);
-	JArray<double > var5 = this->worldObj->getWorldChunkManager()->temperature;
+	// PORT(★ parallel pre-gen): use the per-worker WCM when set (its temperature/humidity scratch is
+	// private to this thread); otherwise the shared world WCM (single-threaded path, unchanged).
+	WorldChunkManager* _wcm = this->genWCM ? this->genWCM : this->worldObj->getWorldChunkManager();
+	this->biomesForGeneration = _wcm->loadBlockGeneratorData(this->biomesForGeneration, var1 * 16, var2 * 16, 16, 16);
+	JArray<double > var5 = _wcm->temperature;
 	this->generateTerrain(var1, var2, var3, this->biomesForGeneration, var5);
 	this->replaceBlocksForBiome(var1, var2, var3, this->biomesForGeneration);
 	this->caveGenerator->generate(this, this->worldObj, var1, var2, var3);
 	var4->generateSkylightMap();
+	// PORT(★ parallel pre-gen): performWorldGenSpawning writes entities to the world (not thread-safe).
+	// On a worker (genDeferSpawn) skip it; the main thread runs it per chunk after install.
+	if(!this->genDeferSpawn) {
 	SpawnerAnimals::performWorldGenSpawning(this->worldObj, var4, var1, var2);   // CONSOLE: seed passive herds on grass
+	}
 	return var4;
 }
 
