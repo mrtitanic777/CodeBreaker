@@ -296,23 +296,14 @@ void poll() {
 		if (vRB && !prevRB) pushBtnEvent(-1, false, g_cursorX, g_cursorY, -120);   // RB -> next slot (right)
 		if (vLB && !prevLB) pushBtnEvent(-1, false, g_cursorX, g_cursorY, +120);   // LB -> prev slot (left)
 	} else {
-		// ===================== IN A GUI (Indev-style DISCRETE selection) =====================
-		// The d-pad / LEFT stick select buttons ONE step per press (edge-triggered + latched), instead of
-		// drifting an analog cursor (which flew across the screen at the uncapped menu FPS). GuiScreen
-		// consumes navUp()/navDown()/... to move the selected button and SNAPS this cursor onto it via
-		// Mouse::setCursorPosition -- so the existing hover highlight lights up and A clicks the selection.
-		bool navU = (vUp != 0) || ly >  0.5F;     // ly is up-positive
-		bool navD = (vDn != 0) || ly < -0.5F;
-		bool navL = (vLf != 0) || lx < -0.5F;
-		bool navR = (vRt != 0) || lx >  0.5F;
-		if (navU && !g_prevNavUp)    g_navUpFired    = true;   // latch the rising edge (consumed by navUp())
-		if (navD && !g_prevNavDown)  g_navDownFired  = true;
-		if (navL && !g_prevNavLeft)  g_navLeftFired  = true;
-		if (navR && !g_prevNavRight) g_navRightFired = true;
-		g_prevNavUp = navU; g_prevNavDown = navD; g_prevNavLeft = navL; g_prevNavRight = navR;
-
-		// RIGHT stick = optional FREE analog pointer (frame-rate-independent) for non-button GUIs (slots).
-		// Button menus snap the cursor onto the selected button, so this just lets a slot screen point.
+		// ===================== IN A GUI: free analog cursor (LEFT stick) + D-pad nudge =================
+		// LEFT stick drives the on-screen pointer (frame-rate-independent); the D-pad nudges it ~one slot
+		// per press (hold-to-repeat). g_cursorX/Y feeds Mouse::getX/getY, so the hover highlight (a GuiButton
+		// OR a container slot) follows the cursor and A clicks whatever it's over. EntityRenderer draws the
+		// Pointer.png sprite at this position. (Was: left/d-pad = discrete button nav, RIGHT stick = cursor --
+		// the user wants the LEFT stick to move the cursor.) The old discrete-nav latches stay cleared so
+		// GuiScreen::navUp()/... never fight this cursor.
+		g_navUpFired = g_navDownFired = g_navLeftFired = g_navRightFired = false;
 		static unsigned long s_lastMs = 0;
 		static float s_fx = 0.0F, s_fy = 0.0F;
 		unsigned long nowMs = GetTickCount();
@@ -321,7 +312,19 @@ void poll() {
 		if (dt > 0.1F) dt = 0.1F;                                   // clamp first frame / hitches
 		if ((int)s_fx != g_cursorX || (int)s_fy != g_cursorY) { s_fx = (float)g_cursorX; s_fy = (float)g_cursorY; }
 		float spd = InputConfig::CURSOR_PIXELS_PER_SECOND * dt;
-		s_fx += rx * spd;  s_fy += -ry * spd;                       // RIGHT stick (analog), stick-up -> cursor up
+		s_fx += lx * spd;  s_fy += -ly * spd;                       // LEFT stick (analog), stick-up -> cursor up
+
+		// D-pad: nudge the cursor ~one inventory slot per press, hold-to-repeat (8-frame delay, 4-frame rate).
+		float step = (float)g_dispH / 14.0F;                        // ~one slot in display pixels
+		bool nU=(vUp!=0), nD=(vDn!=0), nL=(vLf!=0), nR=(vRt!=0);
+		bool freshDpad = (nU&&!g_prevNavUp)||(nD&&!g_prevNavDown)||(nL&&!g_prevNavLeft)||(nR&&!g_prevNavRight);
+		static int s_dpadRepeat = 0;
+		bool dpadFire = false;
+		if (nU||nD||nL||nR) { if (freshDpad) { dpadFire=true; s_dpadRepeat=8; } else if (--s_dpadRepeat<=0) { dpadFire=true; s_dpadRepeat=4; } }
+		else s_dpadRepeat = 0;
+		if (dpadFire) { if(nU) s_fy-=step; if(nD) s_fy+=step; if(nL) s_fx-=step; if(nR) s_fx+=step; }
+		g_prevNavUp=nU; g_prevNavDown=nD; g_prevNavLeft=nL; g_prevNavRight=nR;
+
 		if (s_fx < 0) s_fx = 0;  if (s_fx > (float)g_dispW) s_fx = (float)g_dispW;
 		if (s_fy < 0) s_fy = 0;  if (s_fy > (float)g_dispH) s_fy = (float)g_dispH;
 		g_cursorX = (int)s_fx;  g_cursorY = (int)s_fy;

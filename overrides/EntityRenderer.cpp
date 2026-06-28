@@ -445,6 +445,27 @@ void EntityRenderer::updateCameraAndRender(float var1)
 	if(this->mc->currentScreen != NULL) {
 	GL11::glClear(GL11::GL_DEPTH_BUFFER_BIT);
 	this->mc->currentScreen->drawScreen(var10, var11, var1);
+	// CONSOLE: draw the controller cursor (Pointer.png) on top of the GUI at the cursor point
+	// (var10/var11 = the Mouse-driven cursor in GUI coords, fed by the LEFT stick / D-pad). The screen's
+	// hover highlight already tracks this same point, so the icon sits on the highlighted button/slot.
+	{
+	RenderEngine* _re = this->mc->renderEngine;
+	_re->bindTexture(_re->getTexture("/gui/Pointer.png"));
+	GL11::glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
+	GL11::glEnable(GL11::GL_BLEND);
+	GL11::glBlendFunc(GL11::GL_SRC_ALPHA, GL11::GL_ONE_MINUS_SRC_ALPHA);
+	GL11::glDisable(GL11::GL_DEPTH_TEST);
+	Tessellator* _t = Tessellator::s_instance;
+	int _cs = 16;   // 16x16 pointer, anchored at the cursor's top-left (Minecraft convention)
+	_t->startDrawingQuads();
+	_t->addVertexWithUV((double)var10,         (double)(var11 + _cs), 0.0, 0.0, 1.0);
+	_t->addVertexWithUV((double)(var10 + _cs), (double)(var11 + _cs), 0.0, 1.0, 1.0);
+	_t->addVertexWithUV((double)(var10 + _cs), (double)var11,         0.0, 1.0, 0.0);
+	_t->addVertexWithUV((double)var10,         (double)var11,         0.0, 0.0, 0.0);
+	_t->draw();
+	GL11::glEnable(GL11::GL_DEPTH_TEST);
+	GL11::glDisable(GL11::GL_BLEND);
+	}
 	}
 	}
 }
