@@ -24,8 +24,8 @@ public:
 		// java.util.Random() is TIME-seeded. A fixed setSeed(0) made every `new Random()` identical each
 		// boot -> the world seed (World's no-seed ctor uses new Random()->nextLong()) never changed = the
 		// "same world every boot" bug. Vary it: a per-call uniquifier (so distinct Randoms differ within a
-		// run) XOR GetTickCount (ms since console boot -> differs by when the world is created).
-		extern "C" unsigned long GetTickCount(void);   // XDK kernel export; avoids pulling xtl.h into this runtime header
+		// run) XOR GetTickCount (ms since console boot -> differs by when the world is created). GetTickCount
+		// is already in scope via stdafx->xtl.h (same as JavaRT.h's System::currentTimeMillis()).
 		static long long s_uniq = 0LL;
 		s_uniq = s_uniq * 6364136223846793005LL + 1442695040888963407LL;
 		setSeed(s_uniq ^ ((long long)GetTickCount() * 2862933555777941757LL));
