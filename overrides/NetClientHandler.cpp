@@ -565,7 +565,7 @@ void NetClientHandler::handlePlayerInventory(Packet5PlayerInventory* var1)
 
 void NetClientHandler::handleComplexEntity(Packet59ComplexEntity* var1)
 {
-	if(var1->entityNBT->getInteger("x") == var1->xPosition) {
+	if(var1->entityNBT != NULL && var1->entityNBT->getInteger("x") == var1->xPosition) {   // CONSOLE guard: NULL NBT (decompress failed) -> deref crash
 	if(var1->entityNBT->getInteger("y") == var1->yPosition) {
 	if(var1->entityNBT->getInteger("z") == var1->zPosition) {
 	TileEntity* var2 = this->worldClient->getBlockTileEntity(var1->xPosition, var1->yPosition, var1->zPosition);

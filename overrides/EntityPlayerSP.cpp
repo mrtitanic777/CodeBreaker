@@ -205,6 +205,7 @@ void EntityPlayerSP::readEntityFromNBT(NBTTagCompound* var1)
 
 void EntityPlayerSP::displayGUIChest(IInventory* var1)
 {
+	if(var1 == NULL) { return; }   // CONSOLE guard: a chest whose tile entity didn't load -> NULL inventory -> GuiChest deref crash
 	this->mc->displayGuiScreen(new GuiChest(this->inventory, var1));
 }
 

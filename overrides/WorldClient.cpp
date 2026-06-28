@@ -331,7 +331,13 @@ bool WorldClient::setBlockAndMetadataNoQueue(int var1, int var2, int var3, int v
 void WorldClient::markTileEntityForUpdate(int var1, int var2, int var3, TileEntity* var4)
 {
 	if(!this->D) {
-	this->sendQueue->addToSendQueue(new Packet59ComplexEntity(var1, var2, var3, var4));
+	// CONSOLE FIX (disconnect when using a furnace/chest/sign): CompressedStreamTools::compress() is still
+	// the inert gzip stub, so this Packet59 carries a 0-length NBT -> the protocol-6 server can't inflate it
+	// and KICKS us. Suppress the empty packet (tile-entity sync never worked with the stub anyway, so this
+	// only removes the disconnect). TODO: implement compress() (gzip stored-block + CRC32) to actually sync.
+	Packet59ComplexEntity* _p = new Packet59ComplexEntity(var1, var2, var3, var4);
+	if(_p->entityData.length > 0) { this->sendQueue->addToSendQueue(_p); }
+	else { delete _p; }
 	}
 }
 
