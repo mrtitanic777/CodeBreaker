@@ -194,6 +194,7 @@ RenderManager::RenderManager()
 	this->entityRenderMap["EntityPlayer"] = new RenderPlayer();
 	this->entityRenderMap["EntityPlayerSP"] = this->entityRenderMap["EntityPlayer"];   // CONSOLE: the client player is EntityPlayerSP (a leaf class); getSuperclass() is a stub (no walk), so alias its bare name to RenderPlayer
 	this->entityRenderMap["EntityOtherPlayerMP"] = this->entityRenderMap["EntityPlayer"];   // CONSOLE: SMP remote players are EntityOtherPlayerMP (also a subclass of EntityPlayer); same stub-getSuperclass reason -> alias to RenderPlayer so other players render (texture falls back to /mob/char.png = Steve)
+	this->entityRenderMap["EntityClientPlayerMP"] = this->entityRenderMap["EntityPlayer"];   // CONSOLE: in SMP the LOCAL player is EntityClientPlayerMP (extends EntityPlayerSP) -> without this alias getEntityRenderObject returns NULL and you're invisible in 3rd-person AND your first-person hand (drawFirstPersonHand) is skipped
 	this->entityRenderMap["EntityZombieSimple"] = new RenderZombieSimple(new ModelZombie(), 0.5F, 6.0F);
 	this->entityRenderMap["EntityGhast"] = new RenderGhast();
 	this->entityRenderMap["EntityLiving"] = new RenderLiving(new ModelBiped(), 0.5F);
