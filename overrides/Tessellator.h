@@ -46,6 +46,12 @@ public:
 	static bool s_convertQuadsToTriangles;
 	static bool s_tryVBO;
 	static Tessellator* s_instance;
+	// PORT(★ threaded chunk mesh): the Tessellator that block-mesh code (RenderBlocks' 24 sites + WorldRenderer)
+	// builds into. Defaults to s_instance (the GUI/HUD/immediate singleton). Stage A: redirected via s_active to
+	// a dedicated MESH Tessellator during a chunk build so it never disturbs the GUI singleton. Stage B: becomes
+	// per-worker (TLS) so concurrent mesh jobs each have their own. GUI/HUD/immediate code keeps using s_instance.
+	static Tessellator* s_active;
+	static Tessellator* active();
 
 	virtual void draw();
 	virtual void reset();

@@ -36,6 +36,11 @@ namespace {
 bool Tessellator::s_convertQuadsToTriangles = true;
 bool Tessellator::s_tryVBO = false;
 Tessellator* Tessellator::s_instance = new Tessellator(2097152);
+// PORT(★ threaded chunk mesh): NULL -> active() yields the GUI singleton (s_instance). Stage A redirects this
+// to a dedicated mesh Tessellator during a chunk build (single-threaded). Stage B replaces active()'s body
+// with a TLS lookup so concurrent workers each get their own. See Tessellator.h.
+Tessellator* Tessellator::s_active = NULL;
+Tessellator* Tessellator::active() { return s_active ? s_active : s_instance; }
 
 Tessellator::Tessellator(int var1)
 	: byteBuffer(NULL)
