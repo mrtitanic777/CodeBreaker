@@ -254,17 +254,27 @@ void glColorMask(bool r,bool g,bool b,bool a){
 void glCullFace(int){}                                   // direction handled by winding; see flush note
 void glAlphaFunc(int,float ref){ Shaders::setAlphaRef(ref); }
 void glShadeModel(int){}
-void glClearColor(float,float,float,float){}             // clear handled in glClear (platform owns the value)
+static float s_clearColor[4] = {0.0f, 0.0f, 0.0f, 1.0f};  // glClearColor value; used by glClear below
+void glClearColor(float r,float g,float b,float a){ s_clearColor[0]=r; s_clearColor[1]=g; s_clearColor[2]=b; s_clearColor[3]=a; }
 void glClearDepth(double){}
+static int _clamp255(float v){ int i=(int)(v*255.0f+0.5f); return i<0?0:(i>255?255:i); }
 void glClear(int mask){
 	DWORD flags=0;
 	if(mask&GL_COLOR_BUFFER_BIT) flags|=D3DCLEAR_TARGET;
 	if(mask&GL_DEPTH_BUFFER_BIT) flags|=D3DCLEAR_ZBUFFER;
-	if(flags) g_pd3dDevice->Clear(0,NULL,flags, D3DCOLOR_ARGB(255,0,0,0), 1.0f, 0);
+	// Clear to the glClearColor value (the fog/sky color set by EntityRenderer::updateFogColor), NOT a
+	// hardcoded black. The sky dome and terrain don't cover the horizon gap / area beyond the finite
+	// world, so a black clear showed as a black band along the horizon (vanilla clears to the fog color).
+	if(flags) g_pd3dDevice->Clear(0,NULL,flags,
+		D3DCOLOR_ARGB(255, _clamp255(s_clearColor[0]), _clamp255(s_clearColor[1]), _clamp255(s_clearColor[2])), 1.0f, 0);
 }
 
 // ----------------------------------------------------------------------------- fog
-void glFogf(int pname,float param){ if(pname==GL_FOG_DENSITY) Shaders::setFogDensity(param); }
+void glFogf(int pname,float param){
+	if(pname==GL_FOG_DENSITY)    Shaders::setFogDensity(param);
+	else if(pname==GL_FOG_START) Shaders::setFogStart(param);   // linear distance fog (was ignored -> no terrain fade)
+	else if(pname==GL_FOG_END)   Shaders::setFogEnd(param);
+}
 void glFogi(int,int){}
 void glFog(int pname, FloatBuffer* params){
 	if(pname==GL_FOG_COLOR){ float* p=(float*)((ByteBuffer*)params)->base(); Shaders::setFogColor(p[0],p[1],p[2]); }
