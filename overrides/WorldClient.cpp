@@ -122,6 +122,18 @@ WorldClient::WorldClient(NetClientHandler* var1, long long var2, int var4)
 {
 	this->entitiesById = new MCHashTable();
 
+	// CONSOLE FIX (PreChunk/world-entry crash): Java calls createChunkProvider()
+	// virtually from the World constructor, which sets WorldClient.chunkProviderClient
+	// (our field C). C++ does NOT do virtual dispatch from a base-class constructor:
+	// the World ctor's createChunkProvider() bound to World::createChunkProvider and
+	// installed a ChunkProviderLoadOrGenerate (wrong for SMP + disk-backed), leaving
+	// WorldClient::C == NULL. The first Packet50PreChunk then did this->C->loadChunk()
+	// on a NULL provider -> deref crash (the id=50 / 0xC0000018 crash). Now that the
+	// object is fully a WorldClient (vtable is ours), redo it: drop the base provider
+	// and install the real client provider (also sets this->C).
+	delete this->chunkProvider;
+	this->chunkProvider = this->createChunkProvider((File*)0);
+
 	this->sendQueue = var1;
 	this->spawnX = 8;
 	this->spawnY = 64;
