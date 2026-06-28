@@ -20,6 +20,7 @@
 #include "Chunk.h"
 #include "ChunkProviderClient.h"
 #include "ChunkProviderLoadOrGenerate.h"   // s_deferPopulate (break the spawn-gen populate cascade)
+#include "ThreadPool.h"                     // j2x_pool: worker pool on the idle HW threads (2,4)
 #include "Class.h"
 #include "Color.h"
 #include "Component.h"
@@ -252,9 +253,20 @@ void Minecraft::setServer(const JavaString& var1, int var2)
 	this->serverPort = var2;
 }
 
+// Boot self-test for the worker pool: proves jobs actually run on the idle HW threads.
+// (Temporary -- removed once real meshing/worldgen work is wired onto the pool.)
+static void _poolBootProbe(void* a) { DbgPrintF("[pool] job %d ran on a worker thread\n", (int)(size_t)a); }
+
 void Minecraft::startGame()
 {
 	DbgPrintF("[boot] startGame begin\n");
+	{
+	static const int _hw[2] = { 2, 4 };   // idle HW threads: core1=HW2, core2=HW4 (HW0=main, HW5=audio)
+	j2x_pool::start(2, _hw);
+	for(int _i = 0; _i < 4; ++_i) j2x_pool::submit(_poolBootProbe, (void*)(size_t)_i);
+	j2x_pool::wait();
+	DbgPrintF("[pool] self-test done: %d workers started on HW 2,4\n", j2x_pool::workerCount());
+	}
 	if(this->mcCanvas != NULL) {
 	Graphics* var1 = this->mcCanvas->getGraphics();
 	if(var1 != NULL) {
