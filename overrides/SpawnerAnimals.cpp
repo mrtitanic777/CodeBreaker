@@ -7,6 +7,7 @@
 #include "SpawnerAnimals.h"
 #include "AxisAlignedBB.h"
 #include "Block.h"
+#include "Common.h"   // DbgPrintF for the worldgen-herd diagnostic
 #include "BlockFire.h"
 #include "BlockFlower.h"
 #include "BlockGrass.h"
@@ -235,4 +236,51 @@ int SpawnerAnimals::performSpawning(World* var0)
 	label113_cont:;
 	}
 	return var1;
+}
+
+// CONSOLE FEATURE: Alpha 1.2.6 has NO world-gen animal spawning (only the sparse per-tick performSpawning
+// above, which is grass-only + 24 blocks from player/spawn), so a fresh world starts barren -- especially on
+// a sandy/beach spawn. Spawn a single-species passive herd (cow/pig/sheep/chicken, like vanilla herds) into
+// newly generated GRASS chunks, directly into the Chunk (it carries its entities into the world when loaded,
+// so no world-query while the chunk isn't stored yet). Grass-only, so sand/ocean chunks naturally spawn none.
+void SpawnerAnimals::performWorldGenSpawning(World* var0, Chunk* var1, int var2, int var3) {
+	if(var0 == NULL || var1 == NULL || var0->rand == NULL || Block::s_grass == NULL) {
+		return;
+	}
+	Random* rand = var0->rand;
+	if(rand->nextInt(4) != 0) {   // ~25% of chunks attempt a herd
+		return;
+	}
+	int species = rand->nextInt(4);          // single-species herd
+	int herd = 3 + rand->nextInt(3);         // 3-5
+	int lx0 = rand->nextInt(16);
+	int lz0 = rand->nextInt(16);
+	int spawned = 0;
+	for(int i = 0; i < herd * 4 && spawned < herd; ++i) {
+		int lx = lx0 + rand->nextInt(5) - 2;
+		int lz = lz0 + rand->nextInt(5) - 2;
+		if(lx < 0 || lx > 15 || lz < 0 || lz > 15) {
+			continue;
+		}
+		int y = var1->getHeightValue(lx, lz);
+		if(y <= 1 || y >= 120) {
+			continue;
+		}
+		if(var1->getBlockID(lx, y - 1, lz) != Block::s_grass->blockID) {
+			continue;   // herd only on grass
+		}
+		EntityLiving* e;
+		switch(species) {
+			case 0:  e = (EntityLiving*)new EntityPig(var0);     break;
+			case 1:  e = (EntityLiving*)new EntitySheep(var0);   break;
+			case 2:  e = (EntityLiving*)new EntityCow(var0);     break;
+			default: e = (EntityLiving*)new EntityChicken(var0); break;
+		}
+		double wx = (double)(var2 * 16 + lx) + 0.5;
+		double wz = (double)(var3 * 16 + lz) + 0.5;
+		e->setLocationAndAngles(wx, (double)y, wz, rand->nextFloat() * 360.0F, 0.0F);
+		var1->addEntity((Entity*)e);
+		++spawned;
+	}
+	if(spawned > 0) { static int _n = 0; if(_n++ < 8) DbgPrintF("[mob] worldgen herd: %d of species %d at chunk %d,%d\n", spawned, species, var2, var3); }
 }

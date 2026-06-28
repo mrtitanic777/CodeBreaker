@@ -11,6 +11,7 @@
 
 class ChunkPosition;
 class World;
+class Chunk;
 
 class SpawnerAnimals {
 public:
@@ -20,6 +21,9 @@ public:
 
 	static ChunkPosition* getRandomSpawningPointInChunk(World* var0, int var1, int var2);
 	static int performSpawning(World* var0);
+	// CONSOLE: Alpha 1.2.6 has no world-gen animal spawning -> add herds (cow/pig/sheep/chicken) to newly
+	// generated grass chunks so a fresh world isn't barren. Spawns directly into the Chunk.
+	static void performWorldGenSpawning(World* var0, Chunk* var1, int var2, int var3);
 };
 
 #endif // SPAWNERANIMALS_H
