@@ -15,6 +15,12 @@ PRIMITIVES = {
 }
 
 # Base Java -> C++03 type names. Profile extras merge on top of this at runtime.
+# CAVEAT: Java `byte` is SIGNED (-128..127). We map it to `unsigned char` because the vast majority
+# of byte uses here are byte[] buffers (chunk/block data, packet payloads, inflate I/O) that want
+# unsigned char* and are read via `& 0xFF`. But SCALAR byte fields used as signed values break:
+# Packet30Entity x/y/z relative-move deltas read -1 as +255 -> entities rocketed into the sky
+# (fixed via overrides/Packet30Entity.h = signed char). If a future class uses a scalar `byte` as a
+# signed quantity, override that field to `signed char` (do NOT blanket-flip this map -> breaks byte[]).
 JAVA_TO_CPP = {
     'boolean': 'bool', 'byte': 'unsigned char', 'short': 'short', 'int': 'int',
     'long': 'long long', 'float': 'float', 'double': 'double', 'char': 'char',
