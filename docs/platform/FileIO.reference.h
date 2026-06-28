@@ -228,22 +228,25 @@ public:
 // ctor/close() that moves bytes to/from the wrapped stream.
 class DataInputStream : public DataInput {
 	std::vector<unsigned char> _owned;
-	InputStream* _src;                 // STREAM mode: non-NULL -> read from the socket on demand (no drain)
+	InputStream* _src;                 // STREAM mode: the socket source (may be NULL if the connect failed)
+	bool _streaming;                   // true -> network stream mode (read on demand); false -> file/drained mode
 	unsigned char _rbuf[4096]; int _rlen; int _rpos;
 public:
 	// FILE mode (unchanged): drain the whole stream up front, then parse the buffer.
-	DataInputStream(InputStream* in) : _src(0), _rlen(0), _rpos(0) {
+	DataInputStream(InputStream* in) : _src(0), _streaming(false), _rlen(0), _rpos(0) {
 		if (in) { unsigned char tmp[4096]; int n;
 			while ((n = in->read(tmp, 0, (int)sizeof(tmp))) > 0) _owned.insert(_owned.end(), tmp, tmp + n); }
 		data = _owned.empty() ? (const unsigned char*)0 : &_owned[0];
 		length = (int)_owned.size(); pos = 0;
 	}
 	// STREAM mode (network): DO NOT drain (a socket never EOFs) -- pull bytes on demand. The bool selects it.
-	DataInputStream(InputStream* in, bool /*streaming*/) : _src(in), _rlen(0), _rpos(0) {
+	DataInputStream(InputStream* in, bool /*streaming*/) : _src(in), _streaming(true), _rlen(0), _rpos(0) {
 		data = 0; length = 0; pos = 0;
 	}
 	virtual int readUnsignedByte() {
-		if (_src) {                                    // streaming: refill from the socket (blocking recv)
+		if (_streaming) {                              // network: refill from the socket (blocking recv)
+			if (_src == 0) return -1;                  // dead/failed socket -> EOF (caller stops; NOT the file
+			                                           // path's 0, which would spin forever building empty packets)
 			if (_rpos >= _rlen) { _rlen = _src->read(_rbuf, 0, (int)sizeof(_rbuf)); _rpos = 0;
 				if (_rlen <= 0) { _rlen = 0; return -1; } }   // <=0 = peer closed/error; -1 signals end of stream
 			return _rbuf[_rpos++];
