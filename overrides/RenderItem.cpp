@@ -209,6 +209,11 @@ void RenderItem::a(EntityItem* var1, double var2, double var4, double var6, floa
 void RenderItem::renderItemIntoGUI(FontRenderer* var1, RenderEngine* var2, ItemStack* var3, int var4, int var5)
 {
 	if(var3 != NULL) {
+	// CONSOLE GUARD: a stack with an unregistered id (debug chest contents, mob loot, a block this port
+	// lacks) leaves Block::s_blocksList[id] / Item::s_itemsList[id] NULL; the unguarded getRenderType() /
+	// renderBlockAsItem / getIconIndex below is a virtual call through NULL = IP 0x0 (the chest-open crash).
+	if(var3->itemID < 256) { if(Block::s_blocksList[var3->itemID] == NULL) return; }
+	else if(Item::s_itemsList[var3->itemID] == NULL) { return; }
 	if(var3->itemID < 256 && RenderBlocks::canRenderBlockAsItem3D(Block::s_blocksList[var3->itemID]->getRenderType())) {
 	int var6 = var3->itemID;
 	var2->bindTexture(var2->getTexture("/terrain.png"));
