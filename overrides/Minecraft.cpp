@@ -19,6 +19,7 @@
 #include "Canvas.h"
 #include "Chunk.h"
 #include "ChunkProviderClient.h"
+#include "ChunkProviderLoadOrGenerate.h"   // s_deferPopulate (break the spawn-gen populate cascade)
 #include "Class.h"
 #include "Color.h"
 #include "Component.h"
@@ -1202,6 +1203,7 @@ void Minecraft::loadWorldSpawnArea(const JavaString& var1)
 	int var4 = var2 * 2 / 16 + 1;
 	var4 *= var4;
 	DbgPrintF("[world] spawnArea BEGIN (generate %d columns)\n", var4);
+	ChunkProviderLoadOrGenerate::s_deferPopulate = true;   // break the populate cascade during pre-gen
 	for(int var5 = -var2; var5 <= var2; var5 += 16) {
 	int var6 = this->theWorld->spawnX;
 	int var7 = this->theWorld->spawnZ;
@@ -1213,10 +1215,11 @@ void Minecraft::loadWorldSpawnArea(const JavaString& var1)
 	if(var3 % 40 == 0) DbgPrintF("[world] gen %d/%d at chunk(%d,%d)\n", var3, var4, (var6+var5)>>4, (var7+var8)>>4);
 	this->loadingScreen->setLoadingProgress(var3++ * 100 / var4);
 	this->theWorld->getBlockId(var6 + var5, 64, var7 + var8);
-	while(this->theWorld->updatingLighting()) {
+	for(int _ld = 0; _ld < 64 && this->theWorld->updatingLighting(); ++_ld) {   // BOUNDED (was unbounded per-column -> quadratic pre-gen stall); rest drains in-game
 	}
 	}
 	}
+	ChunkProviderLoadOrGenerate::s_deferPopulate = false;   // resume normal lazy population during play
 	DbgPrintF("[world] spawnArea: terrain built (getBlockId loop done)\n");
 	this->loadingScreen->displayLoadingString("Simulating world for a bit");
 	bool var9 = true;
