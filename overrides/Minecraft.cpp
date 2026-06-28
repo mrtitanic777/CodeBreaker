@@ -261,6 +261,11 @@ static void _poolBootProbe(void* a) { DbgPrintF("[pool] job %d ran on a worker t
 void Minecraft::startGame()
 {
 	DbgPrintF("[boot] startGame begin\n");
+	if(this->session == NULL) {   // CONSOLE: the desktop main()/applet path (which sets the session) is skipped;
+	// without a session the Multiplayer button stays grayed out. Create a default one so MP enables + SMP login has a name.
+	this->session = new Session((JCat() + "Player" + System::currentTimeMillis() % 1000LL), "");
+	DbgPrintF("[net] default session created: %s\n", this->session->inventory.c_str());
+	}
 	{
 	static const int _hw[2] = { 2, 4 };   // idle HW threads: core1=HW2, core2=HW4 (HW0=main, HW5=audio)
 	j2x_pool::start(2, _hw);
