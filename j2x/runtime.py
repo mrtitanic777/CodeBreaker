@@ -20,7 +20,16 @@ class Random {
 		return (int)((long long)((unsigned long long)seed >> (48 - bits)));
 	}
 public:
-	Random() { setSeed(0LL); }
+	Random() {
+		// java.util.Random() is TIME-seeded. A fixed setSeed(0) made every `new Random()` identical each
+		// boot -> the world seed (World's no-seed ctor uses new Random()->nextLong()) never changed = the
+		// "same world every boot" bug. Vary it: a per-call uniquifier (so distinct Randoms differ within a
+		// run) XOR GetTickCount (ms since console boot -> differs by when the world is created).
+		extern "C" unsigned long GetTickCount(void);   // XDK kernel export; avoids pulling xtl.h into this runtime header
+		static long long s_uniq = 0LL;
+		s_uniq = s_uniq * 6364136223846793005LL + 1442695040888963407LL;
+		setSeed(s_uniq ^ ((long long)GetTickCount() * 2862933555777941757LL));
+	}
 	Random(long long s) { setSeed(s); }
 	void setSeed(long long s) { seed = (s ^ 0x5DEECE66DLL) & ((1LL << 48) - 1); }
 	int nextInt() { return next(32); }

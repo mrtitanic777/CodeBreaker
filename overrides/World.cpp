@@ -2048,6 +2048,7 @@ void World::updateBlocksAroundPlayers()
 	var3 = var13->chunkXPos * 16;
 	var4 = var13->chunkZPos * 16;
 	Chunk* var14 = this->getChunkFromChunkCoords(var13->chunkXPos, var13->chunkZPos);
+	if(var14 == NULL) { continue; }   // CONSOLE: finite-world edge / not-yet-loaded chunk -> skip (var14 is deref'd below)
 	int var8;
 	int var9;
 	int var10;

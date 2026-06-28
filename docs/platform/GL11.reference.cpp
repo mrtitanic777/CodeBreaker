@@ -230,6 +230,11 @@ void glDisable(int cap){
 static D3DBLEND glBlendToD3D(int f){
 	switch(f){case GL_ONE:return D3DBLEND_ONE;case GL_ZERO:return D3DBLEND_ZERO;
 		case GL_SRC_ALPHA:return D3DBLEND_SRCALPHA;case GL_ONE_MINUS_SRC_ALPHA:return D3DBLEND_INVSRCALPHA;
+		// color/dst factors: previously fell through to D3DBLEND_ONE, which turned the block-break crack
+		// overlay glBlendFunc(GL_DST_COLOR, GL_SRC_COLOR) into pure-additive (ONE,ONE) -> washed-out white.
+		case GL_SRC_COLOR:return D3DBLEND_SRCCOLOR;case GL_ONE_MINUS_SRC_COLOR:return D3DBLEND_INVSRCCOLOR;
+		case GL_DST_COLOR:return D3DBLEND_DESTCOLOR;case GL_ONE_MINUS_DST_COLOR:return D3DBLEND_INVDESTCOLOR;
+		case GL_DST_ALPHA:return D3DBLEND_DESTALPHA;
 		default:return D3DBLEND_ONE;}
 }
 void glBlendFunc(int s,int d){
