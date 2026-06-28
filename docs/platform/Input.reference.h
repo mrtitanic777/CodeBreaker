@@ -59,12 +59,17 @@ namespace InputConfig {
 	// Old port mutated rotation directly with normalized * 6.0F, so 6 deg/frame at full tilt was the
 	// felt speed; an LWJGL "pixel" maps ~1 px -> the curve, so ~8-12 px/frame is a sane start.
 	// HARDWARE-VERIFY: tune LOOK_PIXELS_PER_FRAME so full-deflection turn speed feels right.
-	const float LOOK_PIXELS_PER_FRAME = 40.0F;   // matches Indev feel: 40 * sensCurve(1.0) * setAngles(0.15) = 6.0 deg/frame
+	// Tuned to MATCH the Indev port's feel exactly: Indev did rotationYaw += rx*6.0 per frame.
+	// Alpha's chain is rx * LOOK_PIXELS_PER_FRAME * sensCurve(=1.0 at default 0.5) * 0.15 (setAngles),
+	// so 40 * 1.0 * 0.15 = 6.0/frame == Indev. (Was 10 -> ~4x too slow, esp. horizontal turning.)
+	const float LOOK_PIXELS_PER_FRAME = 40.0F;
 
 	// Right-stick Y sign. LWJGL getDY is screen-space; XInput sThumbRY is up-positive. EntityRenderer
 	// applies invertMouse on top, so this is the BASE sign before the user's invert option.
 	// HARDWARE-VERIFY: if pitch is inverted with invertMouse OFF, flip LOOK_INVERT_Y.
-	const bool  LOOK_INVERT_Y    = false;   // up-stick -> look up (negating it inverted pitch; reported bug)
+	// stick-up must = look UP. The chain (getDY -> setAngles does rotationPitch -= dy*0.15) means
+	// NO negation here gives up-stick->look-up; negating inverted it (the reported bug). So: false.
+	const bool  LOOK_INVERT_Y    = false;
 	const bool  LOOK_INVERT_X    = false;   // right-stick-right -> look right
 }
 
@@ -202,5 +207,9 @@ namespace Controllers {
 	int  getEventControlIndex();
 	bool getEventButtonState();
 }
+
+// True only while a container GUI (inventory/chest/furnace/crafting) is open -- set by
+// Minecraft::displayGuiScreen. Gates the LEFT-stick free cursor + Pointer.png icon to those screens.
+extern bool g_guiCursorMode;
 
 #endif // INPUT_H

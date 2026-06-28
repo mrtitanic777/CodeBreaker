@@ -445,10 +445,10 @@ void EntityRenderer::updateCameraAndRender(float var1)
 	if(this->mc->currentScreen != NULL) {
 	GL11::glClear(GL11::GL_DEPTH_BUFFER_BIT);
 	this->mc->currentScreen->drawScreen(var10, var11, var1);
-	// CONSOLE: draw the controller cursor (Pointer.png) on top of the GUI at the cursor point
-	// (var10/var11 = the Mouse-driven cursor in GUI coords, fed by the LEFT stick / D-pad). The screen's
-	// hover highlight already tracks this same point, so the icon sits on the highlighted button/slot.
-	{
+	// CONSOLE: draw the controller cursor (Pointer.png) ONLY in container GUIs (g_guiCursorMode, set by
+	// Minecraft::displayGuiScreen). Other screens (main menu / options / pause) use discrete nav + no cursor.
+	extern bool g_guiCursorMode;
+	if(g_guiCursorMode) {
 	RenderEngine* _re = this->mc->renderEngine;
 	_re->bindTexture(_re->getTexture("/gui/Pointer.png"));
 	GL11::glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
@@ -516,10 +516,8 @@ void EntityRenderer::renderWorld(float var1)
 	GL11::glBindTexture(GL11::GL_TEXTURE_2D, this->mc->renderEngine->getTexture("/terrain.png"));
 	RenderHelper::disableStandardItemLighting();
 	var3->sortAndRender(var2, 0, (double)var1);
-	{ static bool _tr=false; if(!_tr){ _tr=true; DbgPrintF("[world] terrain rendered (sortAndRender pass0 ok)\n"); } }
 	RenderHelper::enableStandardItemLighting();
 	var3->renderEntities(var2->getPosition(var1), var12, var1);
-	{ static bool _re=false; if(!_re){ _re=true; DbgPrintF("[world] entities rendered ok\n"); } }
 	var4->renderLitParticles(var2, var1);
 	RenderHelper::disableStandardItemLighting();
 	this->setupFog(0);

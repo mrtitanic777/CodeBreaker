@@ -63,6 +63,7 @@
 #include "GuiGameOver.h"
 #include "GuiIngame.h"
 #include "GuiIngameMenu.h"
+#include "GuiContainer.h"   // CONSOLE: dynamic_cast in displayGuiScreen (gate the GUI cursor to containers)
 #include "GuiInventory.h"
 #include "GuiMainMenu.h"
 #include "GuiScreen.h"
@@ -476,6 +477,9 @@ void Minecraft::displayGuiScreen(GuiScreen* var1)
 	var1 = new GuiGameOver();
 	}
 	this->currentScreen = (GuiScreen*)var1;
+	// CONSOLE: the LEFT-stick free cursor + Pointer.png icon are ONLY for container GUIs (inventory/chest/
+	// furnace/crafting all extend GuiContainer). Every other screen keeps discrete button nav and no cursor.
+	g_guiCursorMode = (dynamic_cast<GuiContainer*>(var1) != NULL);
 	if(var1 != NULL) {
 	this->setIngameNotInFocus();
 	ScaledResolution* var2 = new ScaledResolution(this->displayWidth, this->displayHeight);
