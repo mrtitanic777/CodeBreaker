@@ -275,10 +275,18 @@ void poll() {
 
 		// Face / stick-click binds (CONTROL MAP -- see docs/platform/03-input-and-audio.md).
 		setKey(Keyboard::KEY_SPACE,  vA != 0);     // A     -> jump
-		setKey(Keyboard::KEY_LSHIFT, vL3 != 0);    // L3    -> sneak
+		setKey(Keyboard::KEY_LSHIFT, vX != 0);     // X     -> sneak (moved off L3, which now toggles the camera)
 		setKey(Keyboard::KEY_I,      vY != 0);     // Y     -> inventory (Alpha keyBindInventory = 23 = I, NOT E)
 		setKey(Keyboard::KEY_Q,      vB != 0);     // B     -> drop held item (keyBindDrop = 16 = Q)
 		setKey(Keyboard::KEY_ESCAPE, vStart != 0); // START -> pause / open menu
+		// L3 (click left stick) -> toggle 3rd-person camera, matching the 360 control. Synthesize an F5
+		// key event so Minecraft's existing handler flips gameSettings->thirdPersonView; edge-triggered
+		// (rising edge) so one click = one toggle.
+		bool prevL3 = (g_prevButtons & XINPUT_GAMEPAD_LEFT_THUMB) != 0;
+		if (vL3 && !prevL3) {
+			pushKeyEvent(Keyboard::KEY_F5, true,  0);
+			pushKeyEvent(Keyboard::KEY_F5, false, 0);
+		}
 
 		// LB/RB -> hotbar scroll (Minecraft::runTick reads getEventDWheel -> changeCurrentItem, where +1
 		// moves the slot LEFT). RB must select the NEXT (right) slot, so RB -> -120, LB -> +120. (Swapped
