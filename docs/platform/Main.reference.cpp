@@ -23,6 +23,7 @@
 #include "GL11.h"
 #include "Tesselator.h"
 #include "Textures.h"
+#include "Mipmaps.h"         // <-- ported from Minecraft.Client: MipmapManager sampler settings
 #include "Minecraft.h"
 #include "j2x_init.h"        // <-- generated: void j2x_initAll();
 
@@ -62,9 +63,12 @@ static void ApplyDefaultRenderState() {
     g_pd3dDevice->SetRenderState(D3DRS_ZFUNC, D3DCMP_LESSEQUAL);
     g_pd3dDevice->SetRenderState(D3DRS_CULLMODE, D3DCULL_CW);
     g_pd3dDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
-    g_pd3dDevice->SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_POINT);   // pixel-art: nearest
-    g_pd3dDevice->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_POINT);
-    g_pd3dDevice->SetSamplerState(0, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
+    // Mipmapping (ported from Minecraft.Client MipmapManager): POINT mag/min keeps pixel art crisp up
+    // close, LINEAR mip blends between mip levels, slight negative LOD bias prefers sharper mips. The
+    // terrain atlas is loaded with a pre-baked mip chain (Textures::loadTerrainMipmapped), so distant
+    // terrain samples the smaller per-tile mips = far less aliasing + texture-cache thrash = big perf win.
+    MipmapManager::init();
+    MipmapManager::applySettings();
     // GL_REPEAT is the GL default and MC relies on it: the menu/loading dirt background and terrain
     // atlas tile with UVs running 0..N (e.g. width/32). Without WRAP the tiling clamps -> stripes.
     g_pd3dDevice->SetSamplerState(0, D3DSAMP_ADDRESSU, D3DTADDRESS_WRAP);
