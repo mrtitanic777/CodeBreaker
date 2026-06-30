@@ -168,6 +168,8 @@ def main(argv=None):
 
     args = ap.parse_args(argv)
     if not getattr(args, 'cmd', None):
+        if getattr(sys, 'frozen', False):
+            return _cmd_gui()
         ap.print_help()
         return 1
     return args.func(args)
