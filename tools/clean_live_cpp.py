@@ -9,7 +9,7 @@ passes here are identical and idempotent to what the converter now emits, so the
 up matching canonical output without disturbing the platform layer.
 
 The platform layer .cpp (real D3D9/XInput/IO/audio impls) are EXCLUDED -- they are hand-written and
-synced from docs/platform/*.reference.*, and have none of these decompiler-artifact warnings.
+synced from docs/platform/reference/*.reference.*, and have none of these decompiler-artifact warnings.
 
 Run from the ConversionTool dir:  python tools/clean_live_cpp.py
 """

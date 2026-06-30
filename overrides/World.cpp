@@ -791,7 +791,7 @@ void World::saveWorld(bool var1, IProgressUpdate* var2)
 	// level.dat_new)` returns C0000022 (ACCESS_DENIED) and the level.dat/chunk write path then faults
 	// (IP 0x0) BELOW the try/catch -- a hardware fault the emulator can't unwind -> crash at "Saving
 	// chunks". Skip the whole save so world creation completes into memory and the world is enterable.
-	// TODO(persistence): wire Save360 (Save: mount) + LZX (CompressedStreamTools) per docs/platform/05,
+	// TODO(persistence): wire Save360 (Save: mount) + LZX (CompressedStreamTools) per docs/platform/notes/05-xdk-subsystem-integration.md,
 	// then restore the original body (preserved in git history): canSave -> saveLevel() -> saveChunks().
 	(void)var1; (void)var2;
 }

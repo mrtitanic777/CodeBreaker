@@ -15,7 +15,7 @@
 #include "Mouse.h"
 
 // Mouse::setGrabbed / setCursorPosition (LWJGL native cursor grab) are now in the central Mouse
-// runtime stub (no-op there; the real impl is the Xbox Input layer, docs/platform/Input.reference).
+// runtime stub (no-op there; the real impl is the Xbox Input layer, docs/platform/reference/Input.reference).
 // The local shim that used to live here was removed -- it would collide with the real Mouse impl.
 
 MouseHelper::MouseHelper(Component* var1)

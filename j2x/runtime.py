@@ -72,7 +72,7 @@ THREAD_H = r'''#ifndef THREAD_H
 #define THREAD_H
 // java.lang.Thread -- SELF-CONTAINED STUB for the converter's syntax gate (output_alpha, no platform
 // headers). start() is a no-op here so output compiles standalone. The REAL build uses the platform
-// version docs/platform/Thread.reference.h, which spawns REAL Xbox 360 threads (CreateThread) and a
+// version docs/platform/reference/Thread.reference.h, which spawns REAL Xbox 360 threads (CreateThread) and a
 // REAL Thread::sleep -- the swap copies it over this stub. (Do NOT run run() inline: ThreadSleepForever
 // is `while(mc->running) sleep()`, an infinite loop on the main thread.)
 #include <string>
@@ -1079,7 +1079,7 @@ _GENERATED['BufferedReader.h'] = _class_stub('BufferedReader',
                                          ('read', ('int', '0')), ('ready', ('bool', 'false'))])
 # character streams for options.txt / crash reports (GameSettings, PanelCrashReport): FileReader is
 # wrapped by BufferedReader; PrintWriter wraps FileWriter. Real impls are the Xbox file layer
-# (docs/platform/FileIO.reference) -- BufferedReader.readLine etc. read nothing until then.
+# (docs/platform/reference/FileIO.reference) -- BufferedReader.readLine etc. read nothing until then.
 _GENERATED['FileReader.h'] = _class_stub('FileReader', void_methods=['close', 'mark', 'reset'],
     ret_methods=[('read', ('int', '0')), ('ready', ('bool', 'false'))])
 _GENERATED['FileWriter.h'] = _class_stub('FileWriter', void_methods=['write', 'flush', 'close', 'append'])

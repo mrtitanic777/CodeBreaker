@@ -138,7 +138,7 @@ Chunk* ChunkLoader::loadChunk(World* var1, int var2, int var3)
 	// CHUNK -> a slow ResolvePath / C000000F (file-not-found) STORM during world-gen (the "exhaustively slow"
 	// generation: hundreds of host-FS round-trips). Skip the probe entirely and return NULL so the chunk
 	// provider just GENERATES the chunk -- zero filesystem access -> fast gen. Restore the body when the
-	// writable Save: mount is wired (docs/platform/05).
+	// writable Save: mount is wired (docs/platform/notes/05-xdk-subsystem-integration.md).
 	(void)var1; (void)var2; (void)var3;
 	return NULL;
 #if 0
@@ -179,7 +179,7 @@ void ChunkLoader::saveChunk(World* var1, Chunk* var2)
 	// so world-gen completes into memory and the world is enterable.
 	// TODO(persistence): real chunk save needs the writable Save: STFS mount (Save360_Init) + LZX
 	// compression (CompressedStreamTools is an inert stub) + NULL-guards in storeChunkInCompound.
-	// Original body is in git history; rewrite it properly when wiring persistence (docs/platform/05).
+	// Original body is in git history; rewrite it properly when wiring persistence (docs/platform/notes/05-xdk-subsystem-integration.md).
 	(void)var1; (void)var2;
 }
 
