@@ -113,6 +113,12 @@ def _cmd_vcxproj(args):
     return 0
 
 
+def _cmd_gui():
+    from .gui import main as gui_main
+    gui_main()
+    return 0
+
+
 def main(argv=None):
     argv = argv if argv is not None else sys.argv[1:]
     ap = argparse.ArgumentParser(prog='j2x', description='Java -> Xbox 360 C++03 converter.')
@@ -155,6 +161,10 @@ def main(argv=None):
     vp = sub.add_parser('vcxproj', help='Regenerate the Xbox .vcxproj file list.')
     vp.add_argument('--proj', default=None, help='Xbox project dir (default: ../MinecraftAlpha/MinecraftAlpha).')
     vp.set_defaults(func=_cmd_vcxproj)
+
+    # gui
+    gp = sub.add_parser('gui', help='Launch the desktop GUI.')
+    gp.set_defaults(func=lambda _args: _cmd_gui())
 
     args = ap.parse_args(argv)
     if not getattr(args, 'cmd', None):
