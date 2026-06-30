@@ -25,7 +25,7 @@ The working Xbox project `../MinecraftAlpha/` was swapped in-place to the new j2
   "Random.h"`.
 - **Regenerated** `MinecraftAlpha.vcxproj`: was 50 MB of blank-line bloat → 64 KB, listing the 461
   `.cpp` + 588 `.h`, `stdafx.cpp` PCH block + all 6 configs preserved. (Tool:
-  `ConversionTool/tools/regen_xbox_vcxproj.py` — re-run after any future swap.)
+  ``python -m j2x vcxproj`` — re-run after any future swap.)
 - **Cleaned** ~430 MB of stale Debug/Release/LTCG obj + the 29 MB `.sdf`.
 
 ## Build it (VS2010 + Xbox 360 XDK — can't be built from the converter repo)

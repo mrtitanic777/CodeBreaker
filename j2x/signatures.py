@@ -1,43 +1,21 @@
 # -*- coding: utf-8 -*-
 """
-gen_signatures.py -- generate signatures.md, a single-file map of the whole game
+signatures.py -- generate signatures.md, a single-file map of the whole game
 codebase (every class, grouped by subsystem/package, with inheritance, fields and
 method signatures, showing BOTH the Java spelling and the resolved C++03 type).
 
-It does NOT re-scan the source by hand: it drives the existing j2x front-end
-(parse -> IR) and the j2x type resolver (TypeResolver), the very same pieces the
-converter uses, so the map stays faithful to what the converter actually sees.
+Drives the existing j2x front-end (parse -> IR) and type resolver, so the map
+stays faithful to what the converter actually sees.
 
-Run from the repo root so `import j2x` works:
-
-    python tools/gen_signatures.py
-
-Reads:  original_java/*.java
-Writes: signatures.md   (at the repo root)
+    python -m j2x signatures <java_dir> [--out signatures.md]
 """
 
 import os
-import sys
 
-# Make `import j2x` work no matter where this is launched from: the repo root is
-# the parent of this tools/ directory.
-_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if _REPO_ROOT not in sys.path:
-    sys.path.insert(0, _REPO_ROOT)
-
-from j2x import parse, pipeline  # noqa: E402
-
-JAVA_DIR = os.path.join(_REPO_ROOT, 'original_java')
-OUT_PATH = os.path.join(_REPO_ROOT, 'signatures.md')
+from . import parse, pipeline
 
 DEFAULT_PKG = '(default package)'
 
-
-# ---------------------------------------------------------------------------
-# Subsystem (package) roles -- the ONE place we add human judgement. A short,
-# one-line role is inferred per package; we key on the package name and fall
-# back to a generic note built from the trailing segment if unmapped.
-# ---------------------------------------------------------------------------
 _PACKAGE_ROLES = {
     'net.minecraft.game': 'Top-level game wiring and shared game-wide types.',
     'net.minecraft.game.entity': 'Entity base classes and the entity update/movement core.',
@@ -60,8 +38,6 @@ _PACKAGE_ROLES = {
 
 
 def _package_role(pkg, class_names):
-    """One-line role for a package. Mapped roles win; otherwise synthesize one
-    from the trailing package segment so every subsystem still gets a line."""
     if pkg in _PACKAGE_ROLES:
         return _PACKAGE_ROLES[pkg]
     if pkg == DEFAULT_PKG:
@@ -70,9 +46,6 @@ def _package_role(pkg, class_names):
     return 'Subsystem: %s (%d classes).' % (seg, len(class_names))
 
 
-# ---------------------------------------------------------------------------
-# Formatting helpers
-# ---------------------------------------------------------------------------
 def _kind_word(cls):
     if cls.is_interface:
         return 'interface'
@@ -95,7 +68,7 @@ def _field_line(field, resolver):
     final = 'final ' if field.is_final else ''
     try:
         cpp = resolver.field_type(field.jtype)
-    except Exception as e:  # noqa: BLE001 - never let one weird type abort the map
+    except Exception as e:
         cpp = '<resolve-error: %s>' % e
     return '  - %s%s%s %s   // C++: %s' % (
         static, final, repr(field.jtype), field.name, cpp)
@@ -109,7 +82,6 @@ def _method_line(method, resolver):
         flags.append('abstract')
     prefix = ('[%s] ' % ' '.join(flags)) if flags else ''
 
-    # Java spelling
     if method.is_ctor:
         jret = '(ctor)'
     elif method.return_type is None:
@@ -118,7 +90,6 @@ def _method_line(method, resolver):
         jret = repr(method.return_type)
     jparams = ', '.join('%s %s' % (repr(p.jtype), p.name) for p in method.params)
 
-    # C++ spelling
     if method.is_ctor:
         cret = '(ctor)'
     elif method.return_type is None:
@@ -126,13 +97,13 @@ def _method_line(method, resolver):
     else:
         try:
             cret = resolver.return_type(method.return_type)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             cret = '<resolve-error: %s>' % e
     cpp_params = []
     for p in method.params:
         try:
             cpp_params.append('%s %s' % (resolver.param_type(p.jtype), p.name))
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             cpp_params.append('<resolve-error: %s> %s' % (e, p.name))
     cparams = ', '.join(cpp_params)
 
@@ -140,24 +111,19 @@ def _method_line(method, resolver):
         prefix, jret, method.name, jparams, cret, method.name, cparams)
 
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
-def main():
-    paths = pipeline.discover(JAVA_DIR)
+def run(java_dir, out_path):
+    paths = pipeline.discover(java_dir)
 
     classes = []
-    failures = []  # (basename, error message)
+    failures = []
     for path in paths:
         try:
             classes.append(parse.parse_file(path))
-        except Exception as e:  # noqa: BLE001 - one bad file shouldn't abort the map
+        except Exception as e:
             failures.append((os.path.basename(path), str(e)))
 
-    # Resolver needs the FULL class set so user types resolve to value/pointer.
     resolver = pipeline.build_resolver(classes)
 
-    # Group by package (the subsystems). Empty/None package -> default bucket.
     by_pkg = {}
     for c in classes:
         pkg = c.package or DEFAULT_PKG
@@ -169,11 +135,10 @@ def main():
     out = []
     w = out.append
 
-    # --- Header -----------------------------------------------------------
     w('# Game codebase signatures')
     w('')
-    w('Generated by tools/gen_signatures.py from original_java/ '
-      '— regenerate with `python tools/gen_signatures.py`.')
+    w('Generated by `python -m j2x signatures` from the Java source '
+      '— regenerate with `python -m j2x signatures <java_dir>`.')
     w('')
     w('Classes mapped: %d (across %d subsystems/packages).'
       % (len(classes), len(by_pkg)))
@@ -184,7 +149,6 @@ def main():
       'the converter resolves it to (value vs `T*` pointer — i.e. `.` vs `->`).')
     w('')
 
-    # --- Subsystem overview ----------------------------------------------
     w('## Subsystem overview')
     w('')
     for pkg in ordered_pkgs:
@@ -196,7 +160,6 @@ def main():
         w('Classes (%d): %s' % (len(names), ', '.join(names)))
         w('')
 
-    # --- Classes ----------------------------------------------------------
     w('## Classes')
     w('')
     for pkg in ordered_pkgs:
@@ -229,7 +192,6 @@ def main():
                 w('  - (none)')
             w('')
 
-    # --- Parse failures ---------------------------------------------------
     if failures:
         w('## Parse failures')
         w('')
@@ -238,12 +200,11 @@ def main():
         w('')
 
     text = '\n'.join(out) + '\n'
-    with open(OUT_PATH, 'w', encoding='utf-8') as fh:
+    with open(out_path, 'w', encoding='utf-8') as fh:
         fh.write(text)
 
-    print('Wrote %s' % OUT_PATH)
+    print('Wrote %s' % out_path)
     print('Classes mapped: %d across %d packages.' % (len(classes), len(by_pkg)))
-    print('Subsystems (packages):')
     for pkg in ordered_pkgs:
         print('  - %s (%d classes)' % (pkg, len(by_pkg[pkg])))
     if failures:
@@ -252,7 +213,3 @@ def main():
             print('  - %s: %s' % (name, err))
     else:
         print('Parse failures: 0')
-
-
-if __name__ == '__main__':
-    main()

@@ -7,12 +7,11 @@ __pycache__/
 *.log
 *.tgz
 
-# Generated converter output (build artifacts -- regenerate with
+# Generated converter output (regenerate with
 # `python -m j2x convert <java_dir> <out_dir>`). Never committed.
-/output/
-/output_alpha/
-/output_pristine/
 /out/
+/output/
+/output_pristine/
 /src/
 /include/
 
@@ -21,6 +20,3 @@ __pycache__/
 /dist/
 /_syntaxbuild/
 /_batches/
-
-# RetroMCP harness build output
-legacy/rmcp_harness/*.class

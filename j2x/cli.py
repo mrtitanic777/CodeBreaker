@@ -1,15 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-cli.py -- command-line entry for the j2x reporting layer.
+cli.py -- command-line entry for the j2x converter.
 
-    python -m j2x report <output_dir> [--overrides DIR] [--build-log FILE]
-                                      [--pristine DIR] [--out DIR]
-
-Reads the artifacts already sitting in <output_dir> (converted .cpp/.h, PORT
-markers), runs the lint + structural rules, optionally folds in compiler errors
-from a build log and override/back-port debt, and writes the report bundle.
-
-Nothing here mutates the converter or its output -- it only reads + reports.
+    python -m j2x convert    <java_dir> <out_dir> [--overrides DIR]
+    python -m j2x report     <output_dir> [--overrides DIR] [--build-log FILE] [--out DIR]
+    python -m j2x signatures <java_dir> [--out FILE]
+    python -m j2x worklist   <out_dir> [--cc CC] [--std STD] [--out FILE]
+    python -m j2x vcxproj    [--proj DIR]
 """
 
 import argparse
@@ -19,16 +16,28 @@ import sys
 from .ledger import Ledger, Severity
 from . import analyze, report
 
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_DEFAULT_OVERRIDES = os.path.join(_ROOT, 'overrides')
+
+
+def _resolve_overrides(explicit):
+    if explicit is not None:
+        return explicit
+    if os.path.isdir(_DEFAULT_OVERRIDES):
+        return _DEFAULT_OVERRIDES
+    return None
+
 
 def _cmd_convert(args):
     from . import pipeline
     if not os.path.isdir(args.java_dir):
         print('ERROR: not a directory: %s' % args.java_dir)
         return 2
-    if args.overrides and not os.path.isdir(args.overrides):
+    ov = _resolve_overrides(args.overrides)
+    if args.overrides and not os.path.isdir(ov):
         print('ERROR: overrides dir not found: %s' % args.overrides)
         return 2
-    s = pipeline.convert(args.java_dir, args.out_dir, overrides_dir=args.overrides)
+    s = pipeline.convert(args.java_dir, args.out_dir, overrides_dir=ov)
     print('Converted %s -> %s' % (os.path.abspath(args.java_dir), os.path.abspath(args.out_dir)))
     print('  parsed=%d  headers=%d  sources=%d  overrides=%d'
           % (s['parsed'], s['headers'], s['sources'], s['overrides']))
@@ -46,12 +55,7 @@ def _cmd_report(args):
         return 2
 
     root = os.getcwd()
-    override_dir = args.overrides
-    if override_dir is None:
-        # sensible default: handwritten_<profile> next to cwd, guessed from output dir name
-        guess = 'handwritten_alpha' if 'alpha' in os.path.basename(output_dir.rstrip('/\\')) else None
-        if guess and os.path.isdir(os.path.join(root, guess)):
-            override_dir = os.path.join(root, guess)
+    override_dir = _resolve_overrides(args.overrides)
 
     ledger = Ledger()
     counts = analyze.analyze_all(
@@ -86,26 +90,71 @@ def _cmd_report(args):
     return 0
 
 
+def _cmd_signatures(args):
+    from . import signatures
+    if not os.path.isdir(args.java_dir):
+        print('ERROR: not a directory: %s' % args.java_dir)
+        return 2
+    signatures.run(args.java_dir, args.out)
+    return 0
+
+
+def _cmd_worklist(args):
+    from . import worklist
+    if not os.path.isdir(args.out_dir):
+        print('ERROR: not a directory: %s' % args.out_dir)
+        return 2
+    return worklist.run(args.out_dir, cc=args.cc, std=args.std, worklist_path=args.out)
+
+
+def _cmd_vcxproj(args):
+    from . import vcxproj
+    vcxproj.run(proj_dir=args.proj)
+    return 0
+
+
 def main(argv=None):
     argv = argv if argv is not None else sys.argv[1:]
-    ap = argparse.ArgumentParser(prog='j2x', description='Modular Java->Xbox360 converter tooling.')
+    ap = argparse.ArgumentParser(prog='j2x', description='Java -> Xbox 360 C++03 converter.')
     sub = ap.add_subparsers(dest='cmd')
 
-    cp = sub.add_parser('convert', help='Convert a Java source tree to C++03 (the j2x rewrite).')
+    # convert
+    cp = sub.add_parser('convert', help='Convert a Java source tree to C++03.')
     cp.add_argument('java_dir', help='Directory of .java source.')
     cp.add_argument('out_dir', help='Output directory for the generated .h/.cpp.')
-    cp.add_argument('--overrides', help='Handwritten override dir: <Class>.h/.cpp used verbatim '
-                    'instead of generated output (for the genuinely-hard cases).')
+    cp.add_argument('--overrides', default=None,
+                    help='Override dir (default: overrides/ next to j2x).')
     cp.set_defaults(func=_cmd_convert)
 
+    # report
     rp = sub.add_parser('report', help='Build the conversion report from existing output.')
-    rp.add_argument('output_dir', help='Directory of converted .cpp/.h (e.g. output_alpha).')
-    rp.add_argument('--overrides', help='Hand-written override dir (default: auto-detect handwritten_alpha).')
-    rp.add_argument('--build-log', help='MSVC build log to mine for errors (default: newest build_alpha*.log).')
-    rp.add_argument('--pristine', help='A pristine (no-override) converter output dir, to measure back-port debt.')
+    rp.add_argument('output_dir', help='Directory of converted .cpp/.h.')
+    rp.add_argument('--overrides', default=None, help='Override dir (default: overrides/).')
+    rp.add_argument('--build-log', help='MSVC build log to mine for errors.')
+    rp.add_argument('--pristine', help='Pristine (no-override) output dir for debt measurement.')
     rp.add_argument('--out', help='Report output dir (default: <output_dir>/report).')
-    rp.add_argument('--profile', help='Profile name, for the report header.')
+    rp.add_argument('--profile', help='Profile name for the report header.')
     rp.set_defaults(func=_cmd_report)
+
+    # signatures
+    sp = sub.add_parser('signatures', help='Generate signatures.md (codebase map).')
+    sp.add_argument('java_dir', help='Directory of .java source.')
+    sp.add_argument('--out', default=os.path.join(_ROOT, 'signatures.md'),
+                    help='Output path (default: signatures.md at repo root).')
+    sp.set_defaults(func=_cmd_signatures)
+
+    # worklist
+    wp = sub.add_parser('worklist', help='Compile output and write the failure worklist.')
+    wp.add_argument('out_dir', help='Directory of converted .cpp/.h.')
+    wp.add_argument('--cc', default=None, help='Compiler (default: $J2X_CC or g++).')
+    wp.add_argument('--std', default='c++03', help='C++ standard (default: c++03).')
+    wp.add_argument('--out', default=None, help='Worklist output path (default: overrides/WORKLIST.md).')
+    wp.set_defaults(func=_cmd_worklist)
+
+    # vcxproj
+    vp = sub.add_parser('vcxproj', help='Regenerate the Xbox .vcxproj file list.')
+    vp.add_argument('--proj', default=None, help='Xbox project dir (default: ../MinecraftAlpha/MinecraftAlpha).')
+    vp.set_defaults(func=_cmd_vcxproj)
 
     args = ap.parse_args(argv)
     if not getattr(args, 'cmd', None):

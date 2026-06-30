@@ -70,7 +70,7 @@ public:
 
 THREAD_H = r'''#ifndef THREAD_H
 #define THREAD_H
-// java.lang.Thread -- SELF-CONTAINED STUB for the converter's syntax gate (output_alpha, no platform
+// java.lang.Thread -- SELF-CONTAINED STUB for the converter's syntax gate (out, no platform
 // headers). start() is a no-op here so output compiles standalone. The REAL build uses the platform
 // version docs/platform/reference/Thread.reference.h, which spawns REAL Xbox 360 threads (CreateThread) and a
 // REAL Thread::sleep -- the swap copies it over this stub. (Do NOT run run() inline: ThreadSleepForever
