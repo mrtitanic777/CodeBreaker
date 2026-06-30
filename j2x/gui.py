@@ -2,17 +2,13 @@
 """
 gui.py -- PySide6 desktop control panel for the j2x converter.
 
-    python -m j2x gui
-
-Wraps the j2x pipeline (convert, report, signatures, worklist, vcxproj) in a
-dark-themed window with metric cards, a log panel, and build integration.
+Wraps the full j2x pipeline (convert, report, signatures, worklist, vcxproj,
+build) in a dark-themed window. Double-click j2x.exe to launch.
 """
 
 import os
 import re
 import sys
-import html
-import collections
 import io
 import contextlib
 
@@ -27,7 +23,7 @@ try:
     from PySide6.QtWidgets import (
         QApplication, QMainWindow, QWidget, QLabel, QPushButton,
         QLineEdit, QFileDialog, QTreeWidget, QTreeWidgetItem,
-        QPlainTextEdit, QSplitter, QHBoxLayout, QVBoxLayout,
+        QPlainTextEdit, QHBoxLayout, QVBoxLayout,
         QFrame, QSizePolicy, QTabWidget, QListWidget, QListWidgetItem,
     )
 except ImportError:
@@ -41,7 +37,7 @@ DEFAULT_OVERRIDES = os.path.join(REPO_ROOT, 'overrides')
 DEFAULT_SLN = os.path.join(PROJECT_DIR, 'MinecraftAlpha.sln')
 DEFAULT_MSBUILD = r'C:\Windows\Microsoft.NET\Framework\v4.0.30319\MSBuild.exe'
 
-OK, FAIL, INFO, MUTE = '#4caf78', '#e24b4a', '#378add', '#9a9a93'
+OK, FAIL, WARN, INFO, MUTE = '#4caf78', '#e24b4a', '#ef9f27', '#378add', '#9a9a93'
 
 _ERR_RE = re.compile(
     r'^\s*(.*?)\((\d+)(?:,\d+)?\)\s*:\s*(fatal error|error|warning)\s+(\w+)\s*:\s*(.*)$')
@@ -55,6 +51,7 @@ QFrame#strip { background: #262624; border: 1px solid #3a3a37; border-radius: 8p
 QLineEdit { background: #1c1c1a; border: 1px solid #3a3a37; border-radius: 6px; padding: 5px 8px; }
 QPushButton { background: #2d2d2a; border: 1px solid #44443f; border-radius: 6px; padding: 6px 14px; }
 QPushButton:hover { background: #383834; }
+QPushButton:disabled { color: #55554f; }
 QPushButton#primary { background: #2f5d3f; border: 1px solid #3c7a52; }
 QPushButton#primary:hover { background: #376e4a; }
 QTreeWidget, QPlainTextEdit, QListWidget {
@@ -121,6 +118,7 @@ class ConverterWindow(QMainWindow):
         self.settings = QSettings('j2x', 'ConverterGUI')
         self.worker = None
         self.proc = None
+        self._chain_after_convert = False
         self._build_ui()
 
     def _build_ui(self):
@@ -135,12 +133,13 @@ class ConverterWindow(QMainWindow):
         head = QHBoxLayout()
         title = QLabel('j2x Converter')
         title.setObjectName('title')
-        run = QPushButton('  Convert  ')
-        run.setObjectName('primary')
-        run.clicked.connect(self.run_convert)
+        self.btn_run_all = QPushButton('  Run All  ')
+        self.btn_run_all.setObjectName('primary')
+        self.btn_run_all.setToolTip('Convert → Report → Regen vcxproj')
+        self.btn_run_all.clicked.connect(self.run_all)
         head.addWidget(title)
         head.addStretch(1)
-        head.addWidget(run)
+        head.addWidget(self.btn_run_all)
         outer.addLayout(head)
 
         # path rows
@@ -157,7 +156,7 @@ class ConverterWindow(QMainWindow):
         f1, self.m_parsed = _card('Parsed', OK)
         f2, self.m_headers = _card('Headers', INFO)
         f3, self.m_sources = _card('Sources', INFO)
-        f4, self.m_overrides = _card('Overrides', '#ef9f27')
+        f4, self.m_overrides = _card('Overrides', WARN)
         f5, self.m_rules = _card('Rule findings', FAIL)
         f6, self.m_high = _card('HIGH events', FAIL)
         for f in (f1, f2, f3, f4, f5, f6):
@@ -171,56 +170,60 @@ class ConverterWindow(QMainWindow):
         sl.setContentsMargins(12, 8, 12, 8)
         sl.setSpacing(8)
         self.stages = {}
-        names = ['Convert', 'Verify', 'vcxproj', 'Build XEX']
-        for i, n in enumerate(names):
+        stage_names = ['Convert', 'Report', 'vcxproj', 'Build XEX']
+        for i, n in enumerate(stage_names):
             lab = QLabel(n)
             lab.setStyleSheet('color:%s;' % MUTE)
             self.stages[n] = lab
             sl.addWidget(lab)
-            if i < len(names) - 1:
+            if i < len(stage_names) - 1:
                 sep = QLabel('>')
                 sep.setStyleSheet('color:#55554f;')
                 sl.addWidget(sep)
         sl.addStretch(1)
         outer.addWidget(strip)
 
-        # tabs: log, rule findings, build errors
+        # tabs
         self.tabs = QTabWidget()
 
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
         self.log.setFont(QFont('Consolas', 9))
 
-        self.rule_tree = QTreeWidget()
-        self.rule_tree.setHeaderLabels(['Severity', 'File', 'Category', 'Message'])
-        self.rule_tree.setColumnWidth(0, 60)
-        self.rule_tree.setColumnWidth(1, 180)
-        self.rule_tree.setColumnWidth(2, 140)
-        self.rule_tree.setRootIsDecorated(False)
+        self.report_tree = QTreeWidget()
+        self.report_tree.setHeaderLabels(['Risk', 'File', 'Categories', 'Severities'])
+        self.report_tree.setColumnWidth(0, 60)
+        self.report_tree.setColumnWidth(1, 220)
+        self.report_tree.setColumnWidth(2, 200)
+        self.report_tree.setRootIsDecorated(False)
 
         self.err_list = QListWidget()
         self.err_list.itemDoubleClicked.connect(self._open_err_item)
 
         self.tabs.addTab(self.log, 'Log')
-        self.tabs.addTab(self.rule_tree, 'Rule findings')
+        self.tabs.addTab(self.report_tree, 'Report')
         self.tabs.addTab(self.err_list, 'Build errors')
         self.tabs.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         outer.addWidget(self.tabs, 1)
 
-        # bottom buttons
+        # action buttons — every CLI command is here
         btns = QHBoxLayout()
         btns.setSpacing(8)
-        for text, slot in [
-            ('Convert', self.run_convert),
-            ('Regen vcxproj', self.run_vcxproj),
-            ('Build XEX', self.run_build),
-            ('Signatures', self.run_signatures),
-            ('Worklist', self.run_worklist),
-            ('Open output', self.open_output),
+        self._action_buttons = {}
+        for text, slot, tip in [
+            ('Convert',       self.run_convert,    'Parse Java + emit C++03 (with overrides)'),
+            ('Report',        self.run_report,     'Crash-class analysis on converted output'),
+            ('Regen vcxproj', self.run_vcxproj,    'Update Xbox .vcxproj file list'),
+            ('Build XEX',     self.run_build,      'MSBuild the Xbox 360 project'),
+            ('Signatures',    self.run_signatures, 'Generate signatures.md codebase map'),
+            ('Worklist',      self.run_worklist,   'Compile-check output, write WORKLIST.md'),
+            ('Open output',   self.open_output,    'Open the output folder in Explorer'),
         ]:
             b = QPushButton(text)
+            b.setToolTip(tip)
             b.clicked.connect(slot)
             btns.addWidget(b)
+            self._action_buttons[text] = b
         btns.addStretch(1)
         outer.addLayout(btns)
 
@@ -261,21 +264,34 @@ class ConverterWindow(QMainWindow):
                   self.m_overrides, self.m_rules, self.m_high):
             w.setText('-')
 
+    def _set_busy(self, busy):
+        for b in self._action_buttons.values():
+            b.setEnabled(not busy)
+        self.btn_run_all.setEnabled(not busy)
+
+    # ---- RUN ALL (Convert -> Report -> vcxproj) -------------------------
+    def run_all(self):
+        self._chain_after_convert = True
+        self.run_convert()
+
     # ---- CONVERT --------------------------------------------------------
     def run_convert(self):
         java_dir = self.ed_java.text().strip()
         out_dir = self.ed_out.text().strip()
         if not os.path.isdir(java_dir):
             self.logln('ERROR: Java source dir not found: %s' % java_dir)
+            self._chain_after_convert = False
             return
         if self.worker and self.worker.isRunning():
             self.logln('! conversion already running')
+            self._chain_after_convert = False
             return
         os.makedirs(out_dir, exist_ok=True)
         self._reset_cards()
         self._set_stage('Convert', 'active')
-        self._set_stage('Verify', 'pending')
-        self.rule_tree.clear()
+        self._set_stage('Report', 'pending')
+        self.report_tree.clear()
+        self._set_busy(True)
 
         ov = DEFAULT_OVERRIDES if os.path.isdir(DEFAULT_OVERRIDES) else None
         self.worker = ConvertWorker(java_dir, out_dir, ov)
@@ -284,6 +300,7 @@ class ConverterWindow(QMainWindow):
         self.worker.start()
 
     def _convert_done(self, rc, stats):
+        self._set_busy(False)
         if rc == 0:
             self._set_stage('Convert', 'done')
             self.m_parsed.setText(str(stats.get('parsed', 0)))
@@ -292,12 +309,70 @@ class ConverterWindow(QMainWindow):
             self.m_overrides.setText(str(stats.get('overrides', 0)))
             self.m_rules.setText(str(stats.get('rule_findings', 0)))
             self.m_high.setText(str(stats.get('high', 0)))
-            self._set_stage('Verify', 'done' if stats.get('high', 0) == 0 else 'fail')
             self.logln('[Convert] done.')
+            if self._chain_after_convert:
+                self._chain_after_convert = False
+                self.run_report()
+                self.run_vcxproj()
         else:
             self._set_stage('Convert', 'fail')
-            self._set_stage('Verify', 'fail')
+            self._chain_after_convert = False
             self.logln('[Convert] FAILED (rc=%d)' % rc)
+
+    # ---- REPORT ---------------------------------------------------------
+    def run_report(self):
+        out_dir = self.ed_out.text().strip()
+        if not os.path.isdir(out_dir):
+            self.logln('ERROR: output dir not found (convert first): %s' % out_dir)
+            return
+        self._set_stage('Report', 'active')
+        QApplication.processEvents()
+        try:
+            from . import analyze, report
+            from .ledger import Ledger, Severity
+
+            ov = DEFAULT_OVERRIDES if os.path.isdir(DEFAULT_OVERRIDES) else None
+            ledger = Ledger()
+            counts = analyze.analyze_all(
+                ledger, out_dir,
+                override_dir=ov,
+                root=REPO_ROOT)
+
+            meta = {
+                'output_dir': os.path.abspath(out_dir),
+                'build_log': counts.get('_build_log_path') or '(none)',
+                'profile': 'alpha',
+            }
+            report_dir = report.write_reports(ledger, out_dir, meta=meta)
+
+            sevs = ledger.totals_by_severity()
+            self.logln('Report: markers=%d  rules=%d  lint=%d  overrides=%d'
+                       % (counts['markers'], counts['rules'], counts['lint'],
+                          counts['overrides']))
+            self.logln('  events: %d  (HIGH=%d MED=%d LOW=%d)'
+                       % (len(ledger), sevs.get(Severity.HIGH, 0),
+                          sevs.get(Severity.MED, 0), sevs.get(Severity.LOW, 0)))
+
+            # populate the report tab with the risk table
+            self.report_tree.clear()
+            for fname, score, cats, sevlist in ledger.file_risk_table():
+                if score == 0:
+                    continue
+                it = QTreeWidgetItem([
+                    str(score), fname,
+                    str(cats) if cats else '',
+                    str(sevlist) if sevlist else ''])
+                color = FAIL if score >= 10 else (WARN if score >= 3 else MUTE)
+                it.setForeground(0, QColor(color))
+                self.report_tree.addTopLevelItem(it)
+
+            self.logln('Report written to %s' % os.path.abspath(report_dir))
+            self._set_stage('Report', 'done')
+            if self.report_tree.topLevelItemCount() > 0:
+                self.tabs.setCurrentWidget(self.report_tree)
+        except Exception as e:
+            self.logln('ERROR: report failed: %s' % e)
+            self._set_stage('Report', 'fail')
 
     # ---- VCXPROJ --------------------------------------------------------
     def run_vcxproj(self):
