@@ -217,10 +217,13 @@ def _delegated_base_init(args_str, deleg, cls, resolver):
     return None
 
 
-def _inline_delegation(args_str, deleg, cls, resolver, ledger):
+def _inline_delegation(args_str, deleg, cls, resolver, ledger, _depth=0):
     """Replace `this(args);` with the target constructor's body (C++03 has no ctor
     delegation), substituting the target's params with the call args. This makes the
-    delegated ctor's registration actually run -- the Block blockID=0 / container-flag fix."""
+    delegated ctor's registration actually run -- the Block blockID=0 / container-flag fix.
+    Chained delegations (target body is itself a this() call) are recursively inlined."""
+    if _depth > 8:
+        return ['// PORT: delegation this(%s) -- recursion limit reached; inline manually' % args_str]
     args = [a for a in _split_top_commas(args_str) if a]   # balanced: nested-comma calls stay one arg
     target = next((c for c in cls.constructors()
                    if c is not deleg and len(c.params) == len(args)), None)
@@ -236,7 +239,11 @@ def _inline_delegation(args_str, deleg, cls, resolver, ledger):
     rx = re.compile(r'\b(' + '|'.join(re.escape(k) for k in sub) + r')\b') if sub else None
     out = ['// inlined this(%s) -- C++03 lacks ctor delegation' % args_str]
     for line in translate_body(target, cls, resolver):
-        if _THIS_CALL.match(line):                 # chained delegation in target (rare) -- skip
+        cm = _THIS_CALL.match(line)
+        if cm:
+            # Recursively inline chained delegation with substituted args
+            chained_args = rx.sub(lambda mm: sub[mm.group(1)], cm.group(1)) if rx else cm.group(1)
+            out.extend(_inline_delegation(chained_args, target, cls, resolver, ledger, _depth + 1))
             continue
         if _SUPER_CALL.match(line):                # target's super() becomes THIS ctor's base init
             continue

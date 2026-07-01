@@ -226,6 +226,76 @@ class TestValueTypeDefaultCtor(unittest.TestCase):
         self.assertEqual(h.count('\tVec3D();'), 1)    # the parsed ctor only; not duplicated
 
 
+class TestChainedCtorDelegation(unittest.TestCase):
+    """Chained this() delegation (A -> B -> C) must recursively inline,
+    not silently drop the inner delegation (the ItemStack itemID=0 bug)."""
+    def setUp(self):
+        c = ir.JClass('ItemStack')
+        c.fields.append(ir.Field('itemID', ir.JType('int')))
+        c.fields.append(ir.Field('stackSize', ir.JType('int')))
+        c.fields.append(ir.Field('itemDamage', ir.JType('int')))
+        # 3-arg: the leaf — actually assigns fields
+        ctor3 = ir.Method('ItemStack', is_ctor=True,
+                          params=[ir.Param('var1', ir.JType('int')),
+                                  ir.Param('var2', ir.JType('int')),
+                                  ir.Param('var3', ir.JType('int'))], line=10)
+        ctor3.body = [(10, 'ItemStack(int var1, int var2, int var3) {'),
+                      (11, '\tthis.itemID = var1;'),
+                      (12, '\tthis.stackSize = var2;'),
+                      (13, '\tthis.itemDamage = var3;'), (14, '}')]
+        c.methods.append(ctor3)
+        # 2-arg: delegates to 3-arg
+        ctor2 = ir.Method('ItemStack', is_ctor=True,
+                          params=[ir.Param('var1', ir.JType('int')),
+                                  ir.Param('var2', ir.JType('int'))], line=16)
+        ctor2.body = [(16, 'ItemStack(int var1, int var2) {'),
+                      (17, '\tthis(var1, var2, 0);'), (18, '}')]
+        c.methods.append(ctor2)
+        # 1-arg: delegates to 2-arg (chained)
+        ctor1 = ir.Method('ItemStack', is_ctor=True,
+                          params=[ir.Param('var1', ir.JType('int'))], line=20)
+        ctor1.body = [(20, 'ItemStack(int var1) {'),
+                      (21, '\tthis(var1, 1);'), (22, '}')]
+        c.methods.append(ctor1)
+        self.r = types.TypeResolver(known_classes={'ItemStack'})
+        self.led = Ledger()
+        self.cpp = source.render_source(c, self.r, ledger=self.led)
+
+    def test_1arg_ctor_inlines_field_assignments(self):
+        # The 1-arg ctor must end up with the 3-arg ctor's field assignments
+        # (via 1-arg -> 2-arg -> 3-arg), not an empty body
+        lines = self.cpp.splitlines()
+        in_1arg = False
+        body_lines = []
+        for line in lines:
+            if 'ItemStack::ItemStack(int var1)' in line:
+                in_1arg = True
+            elif in_1arg and line.startswith('}'):
+                break
+            elif in_1arg:
+                body_lines.append(line)
+        body = '\n'.join(body_lines)
+        self.assertIn('this->itemID = var1', body)
+        self.assertIn('this->stackSize = 1', body)
+        self.assertIn('this->itemDamage = 0', body)
+
+    def test_2arg_ctor_inlines_field_assignments(self):
+        lines = self.cpp.splitlines()
+        in_2arg = False
+        body_lines = []
+        for line in lines:
+            if 'ItemStack::ItemStack(int var1, int var2)' in line:
+                in_2arg = True
+            elif in_2arg and line.startswith('}'):
+                break
+            elif in_2arg:
+                body_lines.append(line)
+        body = '\n'.join(body_lines)
+        self.assertIn('this->itemID = var1', body)
+        self.assertIn('this->stackSize = var2', body)
+        self.assertIn('this->itemDamage = 0', body)
+
+
 class TestNullableValueParams(unittest.TestCase):
     """A value-struct param used as a nullable reference (compared/assigned null) becomes a
     pointer in the signature -- callers in the raytrace dual-use chain pass Vec3D* already."""
