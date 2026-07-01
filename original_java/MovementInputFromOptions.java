@@ -1,16 +1,14 @@
-package net.minecraft.client.player;
+package net.minecraft.src;
 
-import net.minecraft.client.GameSettings;
-
-public final class MovementInputFromOptions extends MovementInput {
-	private boolean[] movementKeyStates = new boolean[10];
+public class MovementInputFromOptions extends MovementInput {
+	private boolean[] movementKeyState = new boolean[10];
 	private GameSettings gameSettings;
 
 	public MovementInputFromOptions(GameSettings var1) {
 		this.gameSettings = var1;
 	}
 
-	public final void checkKeyForMovementInput(int var1, boolean var2) {
+	public void setKeyState(int var1, boolean var2) {
 		byte var3 = -1;
 		if(var1 == this.gameSettings.keyBindForward.keyCode) {
 			var3 = 0;
@@ -32,38 +30,48 @@ public final class MovementInputFromOptions extends MovementInput {
 			var3 = 4;
 		}
 
+		if(var1 == this.gameSettings.keyBindSneak.keyCode) {
+			var3 = 5;
+		}
+
 		if(var3 >= 0) {
-			this.movementKeyStates[var3] = var2;
+			this.movementKeyState[var3] = var2;
 		}
 
 	}
 
-	public final void resetKeyState() {
+	public void resetKeyState() {
 		for(int var1 = 0; var1 < 10; ++var1) {
-			this.movementKeyStates[var1] = false;
+			this.movementKeyState[var1] = false;
 		}
 
 	}
 
-	public final void updatePlayerMoveState() {
+	public void updatePlayerMoveState(EntityPlayer var1) {
 		this.moveStrafe = 0.0F;
 		this.moveForward = 0.0F;
-		if(this.movementKeyStates[0]) {
-			--this.moveForward;
-		}
-
-		if(this.movementKeyStates[1]) {
+		if(this.movementKeyState[0]) {
 			++this.moveForward;
 		}
 
-		if(this.movementKeyStates[2]) {
-			--this.moveStrafe;
+		if(this.movementKeyState[1]) {
+			--this.moveForward;
 		}
 
-		if(this.movementKeyStates[3]) {
+		if(this.movementKeyState[2]) {
 			++this.moveStrafe;
 		}
 
-		this.jump = this.movementKeyStates[4];
+		if(this.movementKeyState[3]) {
+			--this.moveStrafe;
+		}
+
+		this.jump = this.movementKeyState[4];
+		this.sneak = this.movementKeyState[5];
+		if(this.sneak) {
+			this.moveStrafe = (float)((double)this.moveStrafe * 0.3D);
+			this.moveForward = (float)((double)this.moveForward * 0.3D);
+		}
+
 	}
 }

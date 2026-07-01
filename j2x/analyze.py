@@ -187,75 +187,47 @@ def newest_build_log(root):
     return max(logs, key=os.path.getmtime)
 
 
-# ---------------------------------------------------------------------------
-# 4. Hand-written override inventory + backport-debt diff
-# ---------------------------------------------------------------------------
-
-def _read(path):
-    with open(path, 'rb') as f:
-        return f.read().replace(b'\r\n', b'\n')
-
-
-def scan_overrides(ledger, override_dir, output_dir, pristine_dir=None):
-    """
-    Record one OVERRIDDEN event per hand-written override.
-
-    If `pristine_dir` (a fresh converter run WITHOUT overrides applied) is given,
-    diff each override against it to measure REAL backport debt:
-      - identical  -> the converter already reproduces this; the override is dead
-                      weight and can be retired (LOW severity, 'retire' rule).
-      - differs    -> a fix that lives only in the override; this delta is your
-                      backport to-do (MED/HIGH severity, 'backport' rule).
-    Without a pristine dir we can't tell (output_dir already has overrides applied),
-    so every override is logged as undetermined.
-    """
-    if not override_dir or not os.path.isdir(override_dir):
-        return 0
-    n = 0
-    for fname in sorted(os.listdir(override_dir)):
-        if not (fname.endswith('.cpp') or fname.endswith('.h')):
-            continue
-        ov_path = os.path.join(override_dir, fname)
-        if pristine_dir:
-            pr_path = os.path.join(pristine_dir, fname)
-            if not os.path.isfile(pr_path):
-                ledger.add(fname, Category.OVERRIDDEN,
-                           'override exists but converter emits no such file (new hand-written class)',
-                           severity=Severity.MED, source='override', rule='backport-new')
-            elif _read(ov_path) == _read(pr_path):
-                ledger.add(fname, Category.OVERRIDDEN,
-                           'converter output is byte-identical to the override -- override is redundant, safe to retire',
-                           severity=Severity.LOW, source='override', rule='retire')
-            else:
-                ledger.add(fname, Category.OVERRIDDEN,
-                           'override differs from converter output -- contains a hand-fix not yet back-ported',
-                           severity=Severity.MED, source='override', rule='backport')
-        else:
-            ledger.add(fname, Category.OVERRIDDEN,
-                       'hand-written override in use (run with --pristine to measure backport debt)',
-                       severity=Severity.MED, source='override', rule='override')
-        n += 1
-    return n
-
 
 # ---------------------------------------------------------------------------
 # Orchestration
 # ---------------------------------------------------------------------------
 
-def analyze_all(ledger, output_dir, override_dir=None, build_log=None,
-                pristine_dir=None, root=None):
+def _detect_platform(output_dir):
+    """Try to detect the target platform from a generated header's comment line."""
+    import re
+    from .platforms import PLATFORMS
+    for fname in sorted(os.listdir(output_dir)):
+        if not fname.endswith('.h'):
+            continue
+        path = os.path.join(output_dir, fname)
+        try:
+            with open(path, 'r', encoding='utf-8', errors='replace') as f:
+                for line_no, line in enumerate(f):
+                    if line_no > 10:
+                        break
+                    if '// Target:' in line:
+                        for pid, plat in PLATFORMS.items():
+                            if plat['label'] in line:
+                                return pid
+        except Exception:
+            continue
+    return None
+
+
+def analyze_all(ledger, output_dir, build_log=None, root=None, platform=None):
     """Run every available analyzer against the artifacts and return per-source counts."""
     root = root or os.getcwd()
     if build_log is None:
         build_log = newest_build_log(root)
+    if platform is None:
+        platform = _detect_platform(output_dir)
     from . import rules
     counts = {
         'markers':   scan_markers(ledger, output_dir),
-        'rules':     rules.scan_rules(ledger, output_dir),
+        'rules':     rules.scan_rules(ledger, output_dir, platform=platform),
         'lint':      scan_lint(ledger, output_dir),
         'corrupt_strings': scan_corrupted_strings(ledger, output_dir),
         'build_log': scan_build_log(ledger, build_log),
-        'overrides': scan_overrides(ledger, override_dir, output_dir, pristine_dir),
     }
     counts['_build_log_path'] = build_log
     return counts

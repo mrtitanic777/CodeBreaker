@@ -1,38 +1,41 @@
-package net.minecraft.client.gui.container;
+package net.minecraft.src;
 
-import net.minecraft.game.IInventory;
-import net.minecraft.game.item.ItemStack;
-
-public final class InventoryCrafting implements IInventory {
+public class InventoryCrafting implements IInventory {
 	private ItemStack[] stackList;
-	private int inventoryWidth;
-	private GuiContainer eventHandler;
+	private int nbrSlots;
+	private CraftingInventoryCB eventHandler;
 
-	public InventoryCrafting(GuiContainer var1, int var2, int var3) {
-		this.inventoryWidth = var2 * var3;
-		this.stackList = new ItemStack[this.inventoryWidth];
+	public InventoryCrafting(CraftingInventoryCB var1, int var2, int var3) {
+		this.nbrSlots = var2 * var3;
+		this.stackList = new ItemStack[this.nbrSlots];
 		this.eventHandler = var1;
 	}
 
-	public final int getSizeInventory() {
-		return this.inventoryWidth;
+	public InventoryCrafting(CraftingInventoryCB var1, ItemStack[] var2) {
+		this.nbrSlots = var2.length;
+		this.stackList = var2;
+		this.eventHandler = var1;
 	}
 
-	public final ItemStack getStackInSlot(int var1) {
+	public int getSizeInventory() {
+		return this.nbrSlots;
+	}
+
+	public ItemStack getStackInSlot(int var1) {
 		return this.stackList[var1];
 	}
 
-	public final String getInvName() {
+	public String getInvName() {
 		return "Crafting";
 	}
 
-	public final ItemStack decrStackSize(int var1, int var2) {
+	public ItemStack decrStackSize(int var1, int var2) {
 		if(this.stackList[var1] != null) {
 			ItemStack var3;
 			if(this.stackList[var1].stackSize <= var2) {
 				var3 = this.stackList[var1];
 				this.stackList[var1] = null;
-				this.eventHandler.guiCraftingItemsCheck();
+				this.eventHandler.onCraftMatrixChanged(this);
 				return var3;
 			} else {
 				var3 = this.stackList[var1].splitStack(var2);
@@ -40,7 +43,7 @@ public final class InventoryCrafting implements IInventory {
 					this.stackList[var1] = null;
 				}
 
-				this.eventHandler.guiCraftingItemsCheck();
+				this.eventHandler.onCraftMatrixChanged(this);
 				return var3;
 			}
 		} else {
@@ -48,12 +51,15 @@ public final class InventoryCrafting implements IInventory {
 		}
 	}
 
-	public final void setInventorySlotContents(int var1, ItemStack var2) {
+	public void setInventorySlotContents(int var1, ItemStack var2) {
 		this.stackList[var1] = var2;
-		this.eventHandler.guiCraftingItemsCheck();
+		this.eventHandler.onCraftMatrixChanged(this);
 	}
 
-	public final int getInventoryStackLimit() {
+	public int getInventoryStackLimit() {
 		return 64;
+	}
+
+	public void onInventoryChanged() {
 	}
 }

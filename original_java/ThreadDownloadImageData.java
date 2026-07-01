@@ -1,14 +1,14 @@
-package net.minecraft.client.render;
+package net.minecraft.src;
 
 import java.awt.image.BufferedImage;
 
-public final class ThreadDownloadImageData {
+public class ThreadDownloadImageData {
 	public BufferedImage image;
 	public int referenceCount = 1;
 	public int textureName = -1;
 	public boolean textureSetupComplete = false;
 
-	public ThreadDownloadImageData(String var1, ImageBufferDownload var2) {
+	public ThreadDownloadImageData(String var1, ImageBuffer var2) {
 		(new ThreadDownloadImage(this, var1, var2)).start();
 	}
 }

@@ -1,4 +1,4 @@
-package net.minecraft.client;
+package net.minecraft.src;
 
-public final class MinecraftError extends Error {
+public class MinecraftError extends Error {
 }

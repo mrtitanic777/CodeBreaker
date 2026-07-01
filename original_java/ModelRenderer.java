@@ -1,33 +1,35 @@
-package net.minecraft.client.model;
+package net.minecraft.src;
 
-import net.minecraft.client.render.Tessellator;
-import net.minecraft.game.physics.Vec3D;
 import org.lwjgl.opengl.GL11;
 
-public final class ModelRenderer {
-	private PositionTextureVertex[] corners;
+public class ModelRenderer {
+	private PositionTexureVertex[] corners;
 	private TexturedQuad[] faces;
 	private int textureOffsetX;
 	private int textureOffsetY;
-	private float rotationPointX;
-	private float rotationPointY;
-	private float rotationPointZ;
+	public float offsetX;
+	public float offsetY;
+	public float offsetZ;
 	public float rotateAngleX;
 	public float rotateAngleY;
 	public float rotateAngleZ;
 	private boolean compiled = false;
 	private int displayList = 0;
 	public boolean mirror = false;
-	private boolean showModel = true;
-	private boolean isHidden = false;
+	public boolean showModel = true;
+	public boolean isHidden = false;
 
 	public ModelRenderer(int var1, int var2) {
 		this.textureOffsetX = var1;
 		this.textureOffsetY = var2;
 	}
 
-	public final void addBox(float var1, float var2, float var3, int var4, int var5, int var6, float var7) {
-		this.corners = new PositionTextureVertex[8];
+	public void addBox(float var1, float var2, float var3, int var4, int var5, int var6) {
+		this.addBox(var1, var2, var3, var4, var5, var6, 0.0F);
+	}
+
+	public void addBox(float var1, float var2, float var3, int var4, int var5, int var6, float var7) {
+		this.corners = new PositionTexureVertex[8];
 		this.faces = new TexturedQuad[6];
 		float var8 = var1 + (float)var4;
 		float var9 = var2 + (float)var5;
@@ -39,112 +41,125 @@ public final class ModelRenderer {
 		var9 += var7;
 		var10 += var7;
 		if(this.mirror) {
-			var7 = var8;
+			float var11 = var8;
 			var8 = var1;
-			var1 = var7;
+			var1 = var11;
 		}
 
-		PositionTextureVertex var20 = new PositionTextureVertex(var1, var2, var3, 0.0F, 0.0F);
-		PositionTextureVertex var11 = new PositionTextureVertex(var8, var2, var3, 0.0F, 8.0F);
-		PositionTextureVertex var12 = new PositionTextureVertex(var8, var9, var3, 8.0F, 8.0F);
-		PositionTextureVertex var18 = new PositionTextureVertex(var1, var9, var3, 8.0F, 0.0F);
-		PositionTextureVertex var13 = new PositionTextureVertex(var1, var2, var10, 0.0F, 0.0F);
-		PositionTextureVertex var15 = new PositionTextureVertex(var8, var2, var10, 0.0F, 8.0F);
-		PositionTextureVertex var21 = new PositionTextureVertex(var8, var9, var10, 8.0F, 8.0F);
-		PositionTextureVertex var14 = new PositionTextureVertex(var1, var9, var10, 8.0F, 0.0F);
+		PositionTexureVertex var20 = new PositionTexureVertex(var1, var2, var3, 0.0F, 0.0F);
+		PositionTexureVertex var12 = new PositionTexureVertex(var8, var2, var3, 0.0F, 8.0F);
+		PositionTexureVertex var13 = new PositionTexureVertex(var8, var9, var3, 8.0F, 8.0F);
+		PositionTexureVertex var14 = new PositionTexureVertex(var1, var9, var3, 8.0F, 0.0F);
+		PositionTexureVertex var15 = new PositionTexureVertex(var1, var2, var10, 0.0F, 0.0F);
+		PositionTexureVertex var16 = new PositionTexureVertex(var8, var2, var10, 0.0F, 8.0F);
+		PositionTexureVertex var17 = new PositionTexureVertex(var8, var9, var10, 8.0F, 8.0F);
+		PositionTexureVertex var18 = new PositionTexureVertex(var1, var9, var10, 8.0F, 0.0F);
 		this.corners[0] = var20;
-		this.corners[1] = var11;
-		this.corners[2] = var12;
-		this.corners[3] = var18;
-		this.corners[4] = var13;
-		this.corners[5] = var15;
-		this.corners[6] = var21;
-		this.corners[7] = var14;
-		this.faces[0] = new TexturedQuad(new PositionTextureVertex[]{var15, var11, var12, var21}, this.textureOffsetX + var6 + var4, this.textureOffsetY + var6, this.textureOffsetX + var6 + var4 + var6, this.textureOffsetY + var6 + var5);
-		this.faces[1] = new TexturedQuad(new PositionTextureVertex[]{var20, var13, var14, var18}, this.textureOffsetX, this.textureOffsetY + var6, this.textureOffsetX + var6, this.textureOffsetY + var6 + var5);
-		this.faces[2] = new TexturedQuad(new PositionTextureVertex[]{var15, var13, var20, var11}, this.textureOffsetX + var6, this.textureOffsetY, this.textureOffsetX + var6 + var4, this.textureOffsetY + var6);
-		this.faces[3] = new TexturedQuad(new PositionTextureVertex[]{var12, var18, var14, var21}, this.textureOffsetX + var6 + var4, this.textureOffsetY, this.textureOffsetX + var6 + var4 + var4, this.textureOffsetY + var6);
-		this.faces[4] = new TexturedQuad(new PositionTextureVertex[]{var11, var20, var18, var12}, this.textureOffsetX + var6, this.textureOffsetY + var6, this.textureOffsetX + var6 + var4, this.textureOffsetY + var6 + var5);
-		this.faces[5] = new TexturedQuad(new PositionTextureVertex[]{var13, var15, var21, var14}, this.textureOffsetX + var6 + var4 + var6, this.textureOffsetY + var6, this.textureOffsetX + var6 + var4 + var6 + var4, this.textureOffsetY + var6 + var5);
+		this.corners[1] = var12;
+		this.corners[2] = var13;
+		this.corners[3] = var14;
+		this.corners[4] = var15;
+		this.corners[5] = var16;
+		this.corners[6] = var17;
+		this.corners[7] = var18;
+		this.faces[0] = new TexturedQuad(new PositionTexureVertex[]{var16, var12, var13, var17}, this.textureOffsetX + var6 + var4, this.textureOffsetY + var6, this.textureOffsetX + var6 + var4 + var6, this.textureOffsetY + var6 + var5);
+		this.faces[1] = new TexturedQuad(new PositionTexureVertex[]{var20, var15, var18, var14}, this.textureOffsetX + 0, this.textureOffsetY + var6, this.textureOffsetX + var6, this.textureOffsetY + var6 + var5);
+		this.faces[2] = new TexturedQuad(new PositionTexureVertex[]{var16, var15, var20, var12}, this.textureOffsetX + var6, this.textureOffsetY + 0, this.textureOffsetX + var6 + var4, this.textureOffsetY + var6);
+		this.faces[3] = new TexturedQuad(new PositionTexureVertex[]{var13, var14, var18, var17}, this.textureOffsetX + var6 + var4, this.textureOffsetY + 0, this.textureOffsetX + var6 + var4 + var4, this.textureOffsetY + var6);
+		this.faces[4] = new TexturedQuad(new PositionTexureVertex[]{var12, var20, var14, var13}, this.textureOffsetX + var6, this.textureOffsetY + var6, this.textureOffsetX + var6 + var4, this.textureOffsetY + var6 + var5);
+		this.faces[5] = new TexturedQuad(new PositionTexureVertex[]{var15, var16, var17, var18}, this.textureOffsetX + var6 + var4 + var6, this.textureOffsetY + var6, this.textureOffsetX + var6 + var4 + var6 + var4, this.textureOffsetY + var6 + var5);
 		if(this.mirror) {
-			for(int var16 = 0; var16 < this.faces.length; ++var16) {
-				TexturedQuad var17 = this.faces[var16];
-				PositionTextureVertex[] var19 = new PositionTextureVertex[var17.vertexPositions.length];
-
-				for(var4 = 0; var4 < var17.vertexPositions.length; ++var4) {
-					var19[var4] = var17.vertexPositions[var17.vertexPositions.length - var4 - 1];
-				}
-
-				var17.vertexPositions = var19;
+			for(int var19 = 0; var19 < this.faces.length; ++var19) {
+				this.faces[var19].flipFace();
 			}
 		}
 
 	}
 
-	public final void setRotationPoint(float var1, float var2, float var3) {
-		this.rotationPointX = var1;
-		this.rotationPointY = var2;
-		this.rotationPointZ = var3;
+	public void setPosition(float var1, float var2, float var3) {
+		this.offsetX = var1;
+		this.offsetY = var2;
+		this.offsetZ = var3;
 	}
 
-	public final void render(float var1) {
-		if(this.showModel) {
-			if(!this.compiled) {
-				float var3 = var1;
-				ModelRenderer var2 = this;
-				this.displayList = GL11.glGenLists(1);
-				GL11.glNewList(this.displayList, GL11.GL_COMPILE);
-				Tessellator var4 = Tessellator.instance;
+	public void render(float var1) {
+		if(!this.isHidden) {
+			if(this.showModel) {
+				if(!this.compiled) {
+					this.compileDisplayList(var1);
+				}
 
-				for(int var5 = 0; var5 < var2.faces.length; ++var5) {
-					var4.startDrawingQuads();
-					TexturedQuad var10000 = var2.faces[var5];
-					float var8 = var3;
-					Tessellator var7 = var4;
-					TexturedQuad var6 = var10000;
-					Vec3D var9 = var6.vertexPositions[1].vector3D.subtract(var6.vertexPositions[0].vector3D).normalize();
-					Vec3D var10 = var6.vertexPositions[1].vector3D.subtract(var6.vertexPositions[2].vector3D).normalize();
-					var9 = (new Vec3D(var9.yCoord * var10.zCoord - var9.zCoord * var10.yCoord, var9.zCoord * var10.xCoord - var9.xCoord * var10.zCoord, var9.xCoord * var10.yCoord - var9.yCoord * var10.xCoord)).normalize();
-					Tessellator.setNormal(-var9.xCoord, -var9.yCoord, -var9.zCoord);
-
-					for(int var11 = 0; var11 < 4; ++var11) {
-						PositionTextureVertex var12 = var6.vertexPositions[var11];
-						var7.addVertexWithUV(var12.vector3D.xCoord * var8, var12.vector3D.yCoord * var8, var12.vector3D.zCoord * var8, var12.texturePositionX, var12.texturePositionY);
+				if(this.rotateAngleX == 0.0F && this.rotateAngleY == 0.0F && this.rotateAngleZ == 0.0F) {
+					if(this.offsetX == 0.0F && this.offsetY == 0.0F && this.offsetZ == 0.0F) {
+						GL11.glCallList(this.displayList);
+					} else {
+						GL11.glTranslatef(this.offsetX * var1, this.offsetY * var1, this.offsetZ * var1);
+						GL11.glCallList(this.displayList);
+						GL11.glTranslatef(-this.offsetX * var1, -this.offsetY * var1, -this.offsetZ * var1);
+					}
+				} else {
+					GL11.glPushMatrix();
+					GL11.glTranslatef(this.offsetX * var1, this.offsetY * var1, this.offsetZ * var1);
+					if(this.rotateAngleZ != 0.0F) {
+						GL11.glRotatef(this.rotateAngleZ * (180.0F / (float)Math.PI), 0.0F, 0.0F, 1.0F);
 					}
 
-					var4.draw();
-				}
+					if(this.rotateAngleY != 0.0F) {
+						GL11.glRotatef(this.rotateAngleY * (180.0F / (float)Math.PI), 0.0F, 1.0F, 0.0F);
+					}
 
-				GL11.glEndList();
-				var2.compiled = true;
-			}
+					if(this.rotateAngleX != 0.0F) {
+						GL11.glRotatef(this.rotateAngleX * (180.0F / (float)Math.PI), 1.0F, 0.0F, 0.0F);
+					}
 
-			if(this.rotateAngleX == 0.0F && this.rotateAngleY == 0.0F && this.rotateAngleZ == 0.0F) {
-				if(this.rotationPointX == 0.0F && this.rotationPointY == 0.0F && this.rotationPointZ == 0.0F) {
 					GL11.glCallList(this.displayList);
-				} else {
-					GL11.glTranslatef(this.rotationPointX * var1, this.rotationPointY * var1, this.rotationPointZ * var1);
-					GL11.glCallList(this.displayList);
-					GL11.glTranslatef(-this.rotationPointX * var1, -this.rotationPointY * var1, -this.rotationPointZ * var1);
-				}
-			} else {
-				GL11.glPushMatrix();
-				GL11.glTranslatef(this.rotationPointX * var1, this.rotationPointY * var1, this.rotationPointZ * var1);
-				if(this.rotateAngleZ != 0.0F) {
-					GL11.glRotatef(this.rotateAngleZ * (180.0F / (float)Math.PI), 0.0F, 0.0F, 1.0F);
+					GL11.glPopMatrix();
 				}
 
-				if(this.rotateAngleY != 0.0F) {
-					GL11.glRotatef(this.rotateAngleY * (180.0F / (float)Math.PI), 0.0F, 1.0F, 0.0F);
-				}
-
-				if(this.rotateAngleX != 0.0F) {
-					GL11.glRotatef(this.rotateAngleX * (180.0F / (float)Math.PI), 1.0F, 0.0F, 0.0F);
-				}
-
-				GL11.glCallList(this.displayList);
-				GL11.glPopMatrix();
 			}
 		}
+	}
+
+	public void postRender(float var1) {
+		if(!this.isHidden) {
+			if(this.showModel) {
+				if(!this.compiled) {
+					this.compileDisplayList(var1);
+				}
+
+				if(this.rotateAngleX == 0.0F && this.rotateAngleY == 0.0F && this.rotateAngleZ == 0.0F) {
+					if(this.offsetX != 0.0F || this.offsetY != 0.0F || this.offsetZ != 0.0F) {
+						GL11.glTranslatef(this.offsetX * var1, this.offsetY * var1, this.offsetZ * var1);
+					}
+				} else {
+					GL11.glTranslatef(this.offsetX * var1, this.offsetY * var1, this.offsetZ * var1);
+					if(this.rotateAngleZ != 0.0F) {
+						GL11.glRotatef(this.rotateAngleZ * (180.0F / (float)Math.PI), 0.0F, 0.0F, 1.0F);
+					}
+
+					if(this.rotateAngleY != 0.0F) {
+						GL11.glRotatef(this.rotateAngleY * (180.0F / (float)Math.PI), 0.0F, 1.0F, 0.0F);
+					}
+
+					if(this.rotateAngleX != 0.0F) {
+						GL11.glRotatef(this.rotateAngleX * (180.0F / (float)Math.PI), 1.0F, 0.0F, 0.0F);
+					}
+				}
+
+			}
+		}
+	}
+
+	private void compileDisplayList(float var1) {
+		this.displayList = GLAllocation.generateDisplayLists(1);
+		GL11.glNewList(this.displayList, GL11.GL_COMPILE);
+		Tessellator var2 = Tessellator.instance;
+
+		for(int var3 = 0; var3 < this.faces.length; ++var3) {
+			this.faces[var3].draw(var2, var1);
+		}
+
+		GL11.glEndList();
+		this.compiled = true;
 	}
 }

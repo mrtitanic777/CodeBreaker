@@ -1,20 +1,16 @@
-package net.minecraft.game.item.recipe;
+package net.minecraft.src;
 
-import net.minecraft.game.item.Item;
-import net.minecraft.game.item.ItemStack;
-import net.minecraft.game.level.block.Block;
+public class RecipesArmor {
+	private String[][] craftingPatterns = new String[][]{{"XXX", "X X"}, {"X X", "XXX", "XXX"}, {"XXX", "X X", "X X"}, {"X X", "X X"}};
+	private Object[][] armorItems = new Object[][]{{Item.leather, Block.fire, Item.ingotIron, Item.diamond, Item.ingotGold}, {Item.helmetLeather, Item.helmetChain, Item.helmetSteel, Item.helmetDiamond, Item.helmetGold}, {Item.plateLeather, Item.plateChain, Item.plateSteel, Item.plateDiamond, Item.plateGold}, {Item.legsLeather, Item.legsChain, Item.legsSteel, Item.legsDiamond, Item.legsGold}, {Item.bootsLeather, Item.bootsChain, Item.bootsSteel, Item.bootsDiamond, Item.bootsGold}};
 
-public final class RecipesArmor {
-	private String[][] recipePatterns = new String[][]{{"XXX", "X X"}, {"X X", "XXX", "XXX"}, {"XXX", "X X", "X X"}, {"X X", "X X"}};
-	private Object[][] recipeItems = new Object[][]{{Block.clothGray, Block.fire, Item.ingotIron, Item.diamond, Item.ingotGold}, {Item.plateLeather, Item.plateChain, Item.plateSteel, Item.plateDiamond, Item.plateGold}, {Item.legsLeather, Item.legsChain, Item.legsSteel, Item.legsDiamond, Item.legsGold}, {Item.bootsLeather, Item.bootsChain, Item.bootsSteel, Item.bootsDiamond, Item.bootsGold}, {Item.helmetChain, Item.helmetSteel, Item.helmetDiamond, Item.helmetGold, Item.flint}};
+	public void addRecipes(CraftingManager var1) {
+		for(int var2 = 0; var2 < this.armorItems[0].length; ++var2) {
+			Object var3 = this.armorItems[0][var2];
 
-	public final void addRecipes(CraftingManager var1) {
-		for(int var2 = 0; var2 < this.recipeItems[0].length; ++var2) {
-			Object var3 = this.recipeItems[0][var2];
-
-			for(int var4 = 0; var4 < this.recipeItems.length - 1; ++var4) {
-				Item var5 = (Item)this.recipeItems[var4 + 1][var2];
-				var1.addRecipe(new ItemStack(var5), new Object[]{this.recipePatterns[var4], Character.valueOf('X'), var3});
+			for(int var4 = 0; var4 < this.armorItems.length - 1; ++var4) {
+				Item var5 = (Item)this.armorItems[var4 + 1][var2];
+				var1.addRecipe(new ItemStack(var5), new Object[]{this.craftingPatterns[var4], Character.valueOf('X'), var3});
 			}
 		}
 

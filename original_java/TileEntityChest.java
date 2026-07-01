@@ -1,27 +1,23 @@
-package net.minecraft.game.level.block.tileentity;
+package net.minecraft.src;
 
-import com.mojang.nbt.NBTTagCompound;
-import com.mojang.nbt.NBTTagList;
-import net.minecraft.game.IInventory;
-import net.minecraft.game.item.ItemStack;
-
-public final class TileEntityChest extends TileEntity implements IInventory {
+public class TileEntityChest extends TileEntity implements IInventory {
 	private ItemStack[] chestContents = new ItemStack[36];
 
-	public final int getSizeInventory() {
+	public int getSizeInventory() {
 		return 27;
 	}
 
-	public final ItemStack getStackInSlot(int var1) {
+	public ItemStack getStackInSlot(int var1) {
 		return this.chestContents[var1];
 	}
 
-	public final ItemStack decrStackSize(int var1, int var2) {
+	public ItemStack decrStackSize(int var1, int var2) {
 		if(this.chestContents[var1] != null) {
 			ItemStack var3;
 			if(this.chestContents[var1].stackSize <= var2) {
 				var3 = this.chestContents[var1];
 				this.chestContents[var1] = null;
+				this.onInventoryChanged();
 				return var3;
 			} else {
 				var3 = this.chestContents[var1].splitStack(var2);
@@ -29,6 +25,7 @@ public final class TileEntityChest extends TileEntity implements IInventory {
 					this.chestContents[var1] = null;
 				}
 
+				this.onInventoryChanged();
 				return var3;
 			}
 		} else {
@@ -36,34 +33,36 @@ public final class TileEntityChest extends TileEntity implements IInventory {
 		}
 	}
 
-	public final void setInventorySlotContents(int var1, ItemStack var2) {
+	public void setInventorySlotContents(int var1, ItemStack var2) {
 		this.chestContents[var1] = var2;
-		if(var2 != null && var2.stackSize > 64) {
-			var2.stackSize = 64;
+		if(var2 != null && var2.stackSize > this.getInventoryStackLimit()) {
+			var2.stackSize = this.getInventoryStackLimit();
 		}
 
+		this.onInventoryChanged();
 	}
 
-	public final String getInvName() {
+	public String getInvName() {
 		return "Chest";
 	}
 
-	public final void readFromNBT(NBTTagCompound var1) {
-		NBTTagList var5 = var1.getTagList("Items");
-		this.chestContents = new ItemStack[27];
+	public void readFromNBT(NBTTagCompound var1) {
+		super.readFromNBT(var1);
+		NBTTagList var2 = var1.getTagList("Items");
+		this.chestContents = new ItemStack[this.getSizeInventory()];
 
-		for(int var2 = 0; var2 < var5.tagCount(); ++var2) {
-			NBTTagCompound var3 = (NBTTagCompound)var5.tagAt(var2);
-			int var4 = var3.getByte("Slot") & 255;
-			if(var4 >= 0 && var4 < this.chestContents.length) {
-				this.chestContents[var4] = new ItemStack(var3);
+		for(int var3 = 0; var3 < var2.tagCount(); ++var3) {
+			NBTTagCompound var4 = (NBTTagCompound)var2.tagAt(var3);
+			int var5 = var4.getByte("Slot") & 255;
+			if(var5 >= 0 && var5 < this.chestContents.length) {
+				this.chestContents[var5] = new ItemStack(var4);
 			}
 		}
 
 	}
 
-	public final void writeToNBT(NBTTagCompound var1) {
-		var1.setString("id", "Chest");
+	public void writeToNBT(NBTTagCompound var1) {
+		super.writeToNBT(var1);
 		NBTTagList var2 = new NBTTagList();
 
 		for(int var3 = 0; var3 < this.chestContents.length; ++var3) {
@@ -78,7 +77,7 @@ public final class TileEntityChest extends TileEntity implements IInventory {
 		var1.setTag("Items", var2);
 	}
 
-	public final int getInventoryStackLimit() {
+	public int getInventoryStackLimit() {
 		return 64;
 	}
 }

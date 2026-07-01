@@ -1,47 +1,34 @@
-package net.minecraft.client.controller;
+package net.minecraft.src;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.sound.SoundManager;
-import net.minecraft.game.entity.player.EntityPlayer;
-import net.minecraft.game.level.World;
-import net.minecraft.game.level.block.Block;
-import net.minecraft.game.level.block.StepSound;
 
 public class PlayerController {
 	protected final Minecraft mc;
-	public boolean isInTestMode = false;
+	public boolean isCreativeMode = false;
 
 	public PlayerController(Minecraft var1) {
 		this.mc = var1;
 	}
 
-	public void onWorldChange(World var1) {
+	public void addPendingConnection(World var1) {
 	}
 
-	public void clickBlock(int var1, int var2, int var3) {
-		this.sendBlockRemoved(var1, var2, var3);
+	public void clickBlock(int var1, int var2, int var3, int var4) {
+		this.sendBlockRemoved(var1, var2, var3, var4);
 	}
 
-	public boolean sendBlockRemoved(int var1, int var2, int var3) {
+	public boolean sendBlockRemoved(int var1, int var2, int var3, int var4) {
 		this.mc.effectRenderer.addBlockDestroyEffects(var1, var2, var3);
-		World var4 = this.mc.theWorld;
-		Block var5 = Block.blocksList[var4.getBlockId(var1, var2, var3)];
-		byte var6 = var4.getBlockMetadata(var1, var2, var3);
-		boolean var7 = var4.setBlockWithNotify(var1, var2, var3, 0);
-		if(var5 != null && var7) {
-			SoundManager var10000 = this.mc.sndManager;
-			String var10001 = var5.stepSound.stepSoundDir();
-			float var10002 = (float)var1 + 0.5F;
-			float var10003 = (float)var2 + 0.5F;
-			float var10004 = (float)var3 + 0.5F;
-			StepSound var8 = var5.stepSound;
-			float var10005 = (var8.soundVolume + 1.0F) / 2.0F;
-			var8 = var5.stepSound;
-			var10000.playSound(var10001, var10002, var10003, var10004, var10005, var8.soundPitch * 0.8F);
-			var5.onBlockDestroyedByPlayer(var4, var1, var2, var3, var6);
+		World var5 = this.mc.theWorld;
+		Block var6 = Block.blocksList[var5.getBlockId(var1, var2, var3)];
+		int var7 = var5.getBlockMetadata(var1, var2, var3);
+		boolean var8 = var5.setBlockWithNotify(var1, var2, var3, 0);
+		if(var6 != null && var8) {
+			this.mc.sndManager.playSound(var6.stepSound.getBreakSound(), (float)var1 + 0.5F, (float)var2 + 0.5F, (float)var3 + 0.5F, (var6.stepSound.getVolume() + 1.0F) / 2.0F, var6.stepSound.getPitch() * 0.8F);
+			var6.onBlockDestroyedByPlayer(var5, var1, var2, var3, var7);
 		}
 
-		return var7;
+		return var8;
 	}
 
 	public void sendBlockRemoving(int var1, int var2, int var3, int var4) {
@@ -50,20 +37,55 @@ public class PlayerController {
 	public void resetBlockRemoving() {
 	}
 
-	public void setPartialTime(float var1) {
+	public void updateBlockHitOverlay(float var1) {
 	}
 
 	public float getBlockReachDistance() {
 		return 5.0F;
 	}
 
-	public void onUpdate() {
+	public boolean sendUseItem(EntityPlayer var1, World var2, ItemStack var3) {
+		int var4 = var3.stackSize;
+		ItemStack var5 = var3.useItemRightClick(var2, var1);
+		if(var5 != var3 || var5 != null && var5.stackSize != var4) {
+			var1.inventory.mainInventory[var1.inventory.currentItem] = var5;
+			if(var5.stackSize == 0) {
+				var1.inventory.mainInventory[var1.inventory.currentItem] = null;
+			}
+
+			return true;
+		} else {
+			return false;
+		}
 	}
 
-	public boolean shouldDrawHUD() {
+	public void flipPlayer(EntityPlayer var1) {
+	}
+
+	public void resetBlockRemovingSound() {
+	}
+
+	public boolean shouldDrawHealthBar() {
 		return true;
 	}
 
-	public void onRespawn(EntityPlayer var1) {
+	public void onPlayerCreated(EntityPlayer var1) {
+	}
+
+	public boolean sendPlaceBlock(EntityPlayer var1, World var2, ItemStack var3, int var4, int var5, int var6, int var7) {
+		int var8 = var2.getBlockId(var4, var5, var6);
+		return var8 > 0 && Block.blocksList[var8].blockActivated(var2, var4, var5, var6, var1) ? true : (var3 == null ? false : var3.useItem(var1, var2, var4, var5, var6, var7));
+	}
+
+	public EntityPlayer createPlayer(World var1) {
+		return new EntityPlayerSP(this.mc, var1, this.mc.session, var1.worldProvider.dimensionId);
+	}
+
+	public void interactWithEntity(EntityPlayer var1, Entity var2) {
+		var1.useCurrentItemOnEntity(var2);
+	}
+
+	public void attackEntity(EntityPlayer var1, Entity var2) {
+		var1.attackTargetEntityWithCurrentItem(var2);
 	}
 }

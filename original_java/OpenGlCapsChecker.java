@@ -1,4 +1,11 @@
-package net.minecraft.client;
+package net.minecraft.src;
 
-public final class OpenGlCapsChecker {
+import org.lwjgl.opengl.GLContext;
+
+public class OpenGlCapsChecker {
+	private static boolean tryCheckOcclusionCapable = false;
+
+	public boolean checkARBOcclusion() {
+		return tryCheckOcclusionCapable && GLContext.getCapabilities().GL_ARB_occlusion_query;
+	}
 }

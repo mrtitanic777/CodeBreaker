@@ -1,4 +1,4 @@
-package util;
+package net.minecraft.src;
 
 public interface IProgressUpdate {
 	void displayProgressMessage(String var1);

@@ -1,21 +1,21 @@
-package com.mojang.nbt;
+package net.minecraft.src;
 
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 
-public final class NBTTagEnd extends NBTBase {
-	final void readTagContents(DataInput var1) throws IOException {
+public class NBTTagEnd extends NBTBase {
+	void readTagContents(DataInput var1) throws IOException {
 	}
 
-	final void writeTagContents(DataOutput var1) throws IOException {
+	void writeTagContents(DataOutput var1) throws IOException {
 	}
 
-	public final byte getType() {
+	public byte getType() {
 		return (byte)0;
 	}
 
-	public final String toString() {
+	public String toString() {
 		return "END";
 	}
 }

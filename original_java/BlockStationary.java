@@ -1,58 +1,57 @@
-package net.minecraft.game.level.block;
+package net.minecraft.src;
 
 import java.util.Random;
-import net.minecraft.game.level.World;
-import net.minecraft.game.level.material.Material;
 
-public final class BlockStationary extends BlockFluid {
+public class BlockStationary extends BlockFluids {
 	protected BlockStationary(int var1, Material var2) {
 		super(var1, var2);
-		this.movingId = var1 - 1;
-		this.stillId = var1;
 		this.setTickOnLoad(false);
+		if(var2 == Material.lava) {
+			this.setTickOnLoad(true);
+		}
+
 	}
 
-	public final void updateTick(World var1, int var2, int var3, int var4, Random var5) {
+	public void onNeighborBlockChange(World var1, int var2, int var3, int var4, int var5) {
+		super.onNeighborBlockChange(var1, var2, var3, var4, var5);
+		if(var1.getBlockId(var2, var3, var4) == this.blockID) {
+			this.setNotStationary(var1, var2, var3, var4);
+		}
+
 	}
 
-	public final void onNeighborBlockChange(World var1, int var2, int var3, int var4, int var5) {
-		boolean var6 = false;
-		if(this.canFlow(var1, var2, var3 - 1, var4)) {
-			var6 = true;
-		}
+	private void setNotStationary(World var1, int var2, int var3, int var4) {
+		int var5 = var1.getBlockMetadata(var2, var3, var4);
+		var1.editingBlocks = true;
+		var1.setBlockAndMetadata(var2, var3, var4, this.blockID - 1, var5);
+		var1.markBlockRangeNeedsUpdate(var2, var3, var4, var2, var3, var4);
+		var1.scheduleBlockUpdate(var2, var3, var4, this.blockID - 1);
+		var1.editingBlocks = false;
+	}
 
-		if(!var6 && this.canFlow(var1, var2 - 1, var3, var4)) {
-			var6 = true;
-		}
+	public void updateTick(World var1, int var2, int var3, int var4, Random var5) {
+		if(this.blockMaterial == Material.lava) {
+			int var6 = var5.nextInt(3);
 
-		if(!var6 && this.canFlow(var1, var2 + 1, var3, var4)) {
-			var6 = true;
-		}
-
-		if(!var6 && this.canFlow(var1, var2, var3, var4 - 1)) {
-			var6 = true;
-		}
-
-		if(!var6 && this.canFlow(var1, var2, var3, var4 + 1)) {
-			var6 = true;
-		}
-
-		if(var5 != 0) {
-			Material var7 = Block.blocksList[var5].material;
-			if(this.material == Material.water && var7 == Material.lava || var7 == Material.water && this.material == Material.lava) {
-				var1.setBlockWithNotify(var2, var3, var4, Block.stone.blockID);
-				return;
+			for(int var7 = 0; var7 < var6; ++var7) {
+				var2 += var5.nextInt(3) - 1;
+				++var3;
+				var4 += var5.nextInt(3) - 1;
+				int var8 = var1.getBlockId(var2, var3, var4);
+				if(var8 == 0) {
+					if(this.isBlockBurning(var1, var2 - 1, var3, var4) || this.isBlockBurning(var1, var2 + 1, var3, var4) || this.isBlockBurning(var1, var2, var3, var4 - 1) || this.isBlockBurning(var1, var2, var3, var4 + 1) || this.isBlockBurning(var1, var2, var3 - 1, var4) || this.isBlockBurning(var1, var2, var3 + 1, var4)) {
+						var1.setBlockWithNotify(var2, var3, var4, Block.fire.blockID);
+						return;
+					}
+				} else if(Block.blocksList[var8].blockMaterial.blocksMovement()) {
+					return;
+				}
 			}
 		}
 
-		if(Block.fire.getChanceOfNeighborsEncouragingFire(var5)) {
-			var6 = true;
-		}
+	}
 
-		if(var6) {
-			var1.setTileNoUpdate(var2, var3, var4, this.movingId);
-			var1.scheduleBlockUpdate(var2, var3, var4, this.movingId);
-		}
-
+	private boolean isBlockBurning(World var1, int var2, int var3, int var4) {
+		return var1.getBlockMaterial(var2, var3, var4).getBurning();
 	}
 }

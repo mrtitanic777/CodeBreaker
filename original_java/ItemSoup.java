@@ -1,15 +1,12 @@
-package net.minecraft.game.item;
+package net.minecraft.src;
 
-import net.minecraft.game.entity.player.EntityPlayer;
-import net.minecraft.game.level.World;
-
-public final class ItemSoup extends ItemFood {
+public class ItemSoup extends ItemFood {
 	public ItemSoup(int var1, int var2) {
-		super(26, 10);
+		super(var1, var2);
 	}
 
-	public final ItemStack onItemRightClick(ItemStack var1, World var2, EntityPlayer var3) {
+	public ItemStack onItemRightClick(ItemStack var1, World var2, EntityPlayer var3) {
 		super.onItemRightClick(var1, var2, var3);
-		return new ItemStack(Item.bowlSoup);
+		return new ItemStack(Item.bowlEmpty);
 	}
 }

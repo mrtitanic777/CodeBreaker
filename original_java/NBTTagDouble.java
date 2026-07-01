@@ -1,25 +1,32 @@
-package com.mojang.nbt;
+package net.minecraft.src;
 
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 
-public final class NBTTagDouble extends NBTBase {
-	private double doubleValue;
+public class NBTTagDouble extends NBTBase {
+	public double doubleValue;
 
-	final void writeTagContents(DataOutput var1) throws IOException {
+	public NBTTagDouble() {
+	}
+
+	public NBTTagDouble(double var1) {
+		this.doubleValue = var1;
+	}
+
+	void writeTagContents(DataOutput var1) throws IOException {
 		var1.writeDouble(this.doubleValue);
 	}
 
-	final void readTagContents(DataInput var1) throws IOException {
+	void readTagContents(DataInput var1) throws IOException {
 		this.doubleValue = var1.readDouble();
 	}
 
-	public final byte getType() {
+	public byte getType() {
 		return (byte)6;
 	}
 
-	public final String toString() {
+	public String toString() {
 		return "" + this.doubleValue;
 	}
 }

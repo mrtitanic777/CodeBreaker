@@ -1,63 +1,52 @@
-package net.minecraft.client.gui.container;
+package net.minecraft.src;
 
 import java.util.ArrayList;
 import java.util.List;
-import net.minecraft.client.RenderHelper;
-import net.minecraft.client.gui.GuiScreen;
-import net.minecraft.client.player.EntityPlayerSP;
-import net.minecraft.client.render.entity.RenderItem;
-import net.minecraft.game.IInventory;
-import net.minecraft.game.item.ItemStack;
 import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL12;
 
 public abstract class GuiContainer extends GuiScreen {
 	private static RenderItem itemRenderer = new RenderItem();
-	private ItemStack itemStack = null;
 	protected int xSize = 176;
 	protected int ySize = 166;
 	protected List inventorySlots = new ArrayList();
 
 	public void drawScreen(int var1, int var2, float var3) {
 		this.drawDefaultBackground();
-		int var12 = (this.width - this.xSize) / 2;
-		int var4 = (this.height - this.ySize) / 2;
-		this.drawGuiContainerBackgroundLayer();
+		int var4 = (this.width - this.xSize) / 2;
+		int var5 = (this.height - this.ySize) / 2;
+		this.drawGuiContainerBackgroundLayer(var3);
 		GL11.glPushMatrix();
 		GL11.glRotatef(180.0F, 1.0F, 0.0F, 0.0F);
 		RenderHelper.enableStandardItemLighting();
 		GL11.glPopMatrix();
 		GL11.glPushMatrix();
-		GL11.glTranslatef((float)var12, (float)var4, 0.0F);
+		GL11.glTranslatef((float)var4, (float)var5, 0.0F);
 		GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
-		GL11.glEnable(GL11.GL_NORMALIZE);
+		GL11.glEnable(GL12.GL_RESCALE_NORMAL);
 
-		for(int var5 = 0; var5 < this.inventorySlots.size(); ++var5) {
-			Slot var6 = (Slot)this.inventorySlots.get(var5);
-			int var11 = var6.yPos;
-			int var10 = var6.xPos;
-			int var9 = var6.slotIndex;
-			IInventory var8 = var6.inventory;
-			ItemStack var14 = var8.getStackInSlot(var9);
-			itemRenderer.renderItemIntoGUI(this.mc.renderEngine, var14, var10, var11);
-			itemRenderer.renderItemOverlayIntoGUI(this.fontRenderer, var14, var10, var11);
-			if(var6.isAtCursorPos(var1, var2)) {
+		for(int var6 = 0; var6 < this.inventorySlots.size(); ++var6) {
+			SlotInventory var7 = (SlotInventory)this.inventorySlots.get(var6);
+			this.drawSlotInventory(var7);
+			if(var7.isAtCursorPos(var1, var2)) {
 				GL11.glDisable(GL11.GL_LIGHTING);
 				GL11.glDisable(GL11.GL_DEPTH_TEST);
-				int var7 = var6.xPos;
-				int var13 = var6.yPos;
-				drawGradientRect(var7, var13, var7 + 16, var13 + 16, -2130706433, -2130706433);
+				int var8 = var7.xPos;
+				int var9 = var7.yPos;
+				this.drawGradientRect(var8, var9, var8 + 16, var9 + 16, -2130706433, -2130706433);
 				GL11.glEnable(GL11.GL_LIGHTING);
 				GL11.glEnable(GL11.GL_DEPTH_TEST);
 			}
 		}
 
-		if(this.itemStack != null) {
+		InventoryPlayer var10 = this.mc.thePlayer.inventory;
+		if(var10.draggingItemStack != null) {
 			GL11.glTranslatef(0.0F, 0.0F, 32.0F);
-			itemRenderer.renderItemIntoGUI(this.mc.renderEngine, this.itemStack, var1 - var12 - 8, var2 - var4 - 8);
-			itemRenderer.renderItemOverlayIntoGUI(this.fontRenderer, this.itemStack, var1 - var12 - 8, var2 - var4 - 8);
+			itemRenderer.renderItemIntoGUI(this.fontRenderer, this.mc.renderEngine, var10.draggingItemStack, var1 - var4 - 8, var2 - var5 - 8);
+			itemRenderer.renderItemOverlayIntoGUI(this.fontRenderer, this.mc.renderEngine, var10.draggingItemStack, var1 - var4 - 8, var2 - var5 - 8);
 		}
 
-		GL11.glDisable(GL11.GL_NORMALIZE);
+		GL11.glDisable(GL12.GL_RESCALE_NORMAL);
 		RenderHelper.disableStandardItemLighting();
 		GL11.glDisable(GL11.GL_LIGHTING);
 		GL11.glDisable(GL11.GL_DEPTH_TEST);
@@ -70,158 +59,138 @@ public abstract class GuiContainer extends GuiScreen {
 	protected void drawGuiContainerForegroundLayer() {
 	}
 
-	protected abstract void drawGuiContainerBackgroundLayer();
+	protected abstract void drawGuiContainerBackgroundLayer(float var1);
 
-	protected final void drawSlotInventory(int var1, int var2, int var3) {
-		if(var3 == 0 || var3 == 1) {
-			int var6 = var2;
-			int var4 = var1;
-			GuiContainer var5 = this;
-			int var7 = 0;
-
-			Slot var10000;
-			while(true) {
-				if(var7 >= var5.inventorySlots.size()) {
-					var10000 = null;
-					break;
-				}
-
-				Slot var8 = (Slot)var5.inventorySlots.get(var7);
-				if(var8.isAtCursorPos(var4, var6)) {
-					var10000 = var8;
-					break;
-				}
-
-				++var7;
+	private void drawSlotInventory(SlotInventory var1) {
+		IInventory var2 = var1.inventory;
+		int var3 = var1.slotIndex;
+		int var4 = var1.xPos;
+		int var5 = var1.yPos;
+		ItemStack var6 = var2.getStackInSlot(var3);
+		if(var6 == null) {
+			int var7 = var1.getBackgroundIconIndex();
+			if(var7 >= 0) {
+				GL11.glDisable(GL11.GL_LIGHTING);
+				this.mc.renderEngine.bindTexture(this.mc.renderEngine.getTexture("/gui/items.png"));
+				this.drawTexturedModalRect(var4, var5, var7 % 16 * 16, var7 / 16 * 16, 16, 16);
+				GL11.glEnable(GL11.GL_LIGHTING);
+				return;
 			}
+		}
 
-			Slot var11 = var10000;
-			if(var11 != null) {
-				ItemStack var12 = var11.inventory.getStackInSlot(var11.slotIndex);
-				if(var12 == null && this.itemStack == null) {
-					return;
-				}
+		itemRenderer.renderItemIntoGUI(this.fontRenderer, this.mc.renderEngine, var6, var4, var5);
+		itemRenderer.renderItemOverlayIntoGUI(this.fontRenderer, this.mc.renderEngine, var6, var4, var5);
+	}
 
-				if(var12 != null && this.itemStack == null) {
-					var6 = var3 == 0 ? var12.stackSize : (var12.stackSize + 1) / 2;
-					this.itemStack = var11.inventory.decrStackSize(var11.slotIndex, var6);
-					if(var12.stackSize == 0) {
-						var11.putStack((ItemStack)null);
-					}
+	private Slot getSlotAtPosition(int var1, int var2) {
+		for(int var3 = 0; var3 < this.inventorySlots.size(); ++var3) {
+			SlotInventory var4 = (SlotInventory)this.inventorySlots.get(var3);
+			if(var4.isAtCursorPos(var1, var2)) {
+				return var4;
+			}
+		}
 
-					var11.onPickupFromSlot();
-				} else if(var12 == null && this.itemStack != null && var11.isItemValid()) {
-					var6 = var3 == 0 ? this.itemStack.stackSize : 1;
-					if(var6 > var11.inventory.getInventoryStackLimit()) {
-						var6 = var11.inventory.getInventoryStackLimit();
-					}
+		return null;
+	}
 
-					var11.putStack(this.itemStack.splitStack(var6));
-					if(this.itemStack.stackSize == 0) {
-						this.itemStack = null;
-					}
-				} else {
-					if(var12 == null || this.itemStack == null) {
-						return;
-					}
+	protected void mouseClicked(int var1, int var2, int var3) {
+		if(var3 == 0 || var3 == 1) {
+			Slot var4 = this.getSlotAtPosition(var1, var2);
+			InventoryPlayer var5 = this.mc.thePlayer.inventory;
+			int var7;
+			if(var4 != null) {
+				ItemStack var6 = var4.getStack();
+				if(var6 != null || var5.draggingItemStack != null) {
+					if(var6 != null && var5.draggingItemStack == null) {
+						var7 = var3 == 0 ? var6.stackSize : (var6.stackSize + 1) / 2;
+						var5.draggingItemStack = var4.inventory.decrStackSize(var4.slotIndex, var7);
+						if(var6.stackSize == 0) {
+							var4.putStack((ItemStack)null);
+						}
 
-					ItemStack var9;
-					if(!var11.isItemValid()) {
-						if(var12.itemID == this.itemStack.itemID) {
-							var9 = this.itemStack;
-							if(var9.getItem().getItemStackLimit() > 1) {
-								var6 = var12.stackSize;
-								if(var6 > 0) {
-									int var14 = var6 + this.itemStack.stackSize;
-									var9 = this.itemStack;
-									if(var14 <= var9.getItem().getItemStackLimit()) {
-										this.itemStack.stackSize += var6;
-										var12.splitStack(var6);
-										if(var12.stackSize == 0) {
-											var11.putStack((ItemStack)null);
-										}
+						var4.onPickupFromSlot();
+					} else if(var6 == null && var5.draggingItemStack != null && var4.isItemValid(var5.draggingItemStack)) {
+						var7 = var3 == 0 ? var5.draggingItemStack.stackSize : 1;
+						if(var7 > var4.getSlotStackLimit()) {
+							var7 = var4.getSlotStackLimit();
+						}
 
-										var11.onPickupFromSlot();
-										return;
+						var4.putStack(var5.draggingItemStack.splitStack(var7));
+						if(var5.draggingItemStack.stackSize == 0) {
+							var5.draggingItemStack = null;
+						}
+					} else if(var6 != null && var5.draggingItemStack != null) {
+						if(var4.isItemValid(var5.draggingItemStack)) {
+							if(var6.itemID != var5.draggingItemStack.itemID) {
+								if(var5.draggingItemStack.stackSize <= var4.getSlotStackLimit()) {
+									var4.putStack(var5.draggingItemStack);
+									var5.draggingItemStack = var6;
+								}
+							} else if(var6.itemID == var5.draggingItemStack.itemID) {
+								if(var3 == 0) {
+									var7 = var5.draggingItemStack.stackSize;
+									if(var7 > var4.getSlotStackLimit() - var6.stackSize) {
+										var7 = var4.getSlotStackLimit() - var6.stackSize;
 									}
+
+									if(var7 > var5.draggingItemStack.getMaxStackSize() - var6.stackSize) {
+										var7 = var5.draggingItemStack.getMaxStackSize() - var6.stackSize;
+									}
+
+									var5.draggingItemStack.splitStack(var7);
+									if(var5.draggingItemStack.stackSize == 0) {
+										var5.draggingItemStack = null;
+									}
+
+									var6.stackSize += var7;
+								} else if(var3 == 1) {
+									var7 = 1;
+									if(var7 > var4.getSlotStackLimit() - var6.stackSize) {
+										var7 = var4.getSlotStackLimit() - var6.stackSize;
+									}
+
+									if(var7 > var5.draggingItemStack.getMaxStackSize() - var6.stackSize) {
+										var7 = var5.draggingItemStack.getMaxStackSize() - var6.stackSize;
+									}
+
+									var5.draggingItemStack.splitStack(var7);
+									if(var5.draggingItemStack.stackSize == 0) {
+										var5.draggingItemStack = null;
+									}
+
+									var6.stackSize += var7;
+								}
+							}
+						} else if(var6.itemID == var5.draggingItemStack.itemID && var5.draggingItemStack.getMaxStackSize() > 1) {
+							var7 = var6.stackSize;
+							if(var7 > 0 && var7 + var5.draggingItemStack.stackSize <= var5.draggingItemStack.getMaxStackSize()) {
+								var5.draggingItemStack.stackSize += var7;
+								var6.splitStack(var7);
+								if(var6.stackSize == 0) {
+									var4.putStack((ItemStack)null);
 								}
 
-								return;
+								var4.onPickupFromSlot();
 							}
-						}
-
-						return;
-					}
-
-					if(var12.itemID != this.itemStack.itemID) {
-						if(this.itemStack.stackSize > var11.inventory.getInventoryStackLimit()) {
-							return;
-						}
-
-						var11.putStack(this.itemStack);
-						this.itemStack = var12;
-					} else {
-						if(var12.itemID != this.itemStack.itemID) {
-							return;
-						}
-
-						if(var3 == 0) {
-							var6 = this.itemStack.stackSize;
-							if(var6 > var11.inventory.getInventoryStackLimit() - var12.stackSize) {
-								var6 = var11.inventory.getInventoryStackLimit() - var12.stackSize;
-							}
-
-							var9 = this.itemStack;
-							if(var6 > var9.getItem().getItemStackLimit() - var12.stackSize) {
-								var9 = this.itemStack;
-								var6 = var9.getItem().getItemStackLimit() - var12.stackSize;
-							}
-
-							this.itemStack.splitStack(var6);
-							if(this.itemStack.stackSize == 0) {
-								this.itemStack = null;
-							}
-
-							var12.stackSize += var6;
-						} else {
-							if(var3 != 1) {
-								return;
-							}
-
-							var6 = 1;
-							if(1 > var11.inventory.getInventoryStackLimit() - var12.stackSize) {
-								var6 = var11.inventory.getInventoryStackLimit() - var12.stackSize;
-							}
-
-							var9 = this.itemStack;
-							if(var6 > var9.getItem().getItemStackLimit() - var12.stackSize) {
-								var9 = this.itemStack;
-								var6 = var9.getItem().getItemStackLimit() - var12.stackSize;
-							}
-
-							this.itemStack.splitStack(var6);
-							if(this.itemStack.stackSize == 0) {
-								this.itemStack = null;
-							}
-
-							var12.stackSize += var6;
 						}
 					}
 				}
-			} else if(this.itemStack != null) {
-				int var13 = (this.width - this.xSize) / 2;
-				var6 = (this.height - this.ySize) / 2;
-				if(var1 < var13 || var2 < var6 || var1 >= var13 + this.xSize || var2 >= var6 + this.xSize) {
-					EntityPlayerSP var10 = this.mc.thePlayer;
+
+				var4.onSlotChanged();
+			} else if(var5.draggingItemStack != null) {
+				int var9 = (this.width - this.xSize) / 2;
+				var7 = (this.height - this.ySize) / 2;
+				if(var1 < var9 || var2 < var7 || var1 >= var9 + this.xSize || var2 >= var7 + this.xSize) {
+					EntityPlayerSP var8 = this.mc.thePlayer;
 					if(var3 == 0) {
-						var10.dropPlayerItem(this.itemStack);
-						this.itemStack = null;
+						var8.dropPlayerItem(var5.draggingItemStack);
+						var5.draggingItemStack = null;
 					}
 
 					if(var3 == 1) {
-						var10.dropPlayerItem(this.itemStack.splitStack(1));
-						if(this.itemStack.stackSize == 0) {
-							this.itemStack = null;
+						var8.dropPlayerItem(var5.draggingItemStack.splitStack(1));
+						if(var5.draggingItemStack.stackSize == 0) {
+							var5.draggingItemStack = null;
 						}
 					}
 				}
@@ -230,24 +199,31 @@ public abstract class GuiContainer extends GuiScreen {
 
 	}
 
-	protected final void keyTyped(char var1, int var2) {
-		if(var2 == 1 || var2 == this.mc.options.keyBindInventory.keyCode) {
+	protected void mouseMovedOrUp(int var1, int var2, int var3) {
+		if(var3 == 0) {
+		}
+
+	}
+
+	protected void keyTyped(char var1, int var2) {
+		if(var2 == 1 || var2 == this.mc.gameSettings.keyBindInventory.keyCode) {
 			this.mc.displayGuiScreen((GuiScreen)null);
 		}
 
 	}
 
 	public void onGuiClosed() {
-		if(this.itemStack != null) {
-			this.mc.thePlayer.dropPlayerItem(this.itemStack);
+		if(this.mc.thePlayer != null) {
+			InventoryPlayer var1 = this.mc.thePlayer.inventory;
+			if(var1.draggingItemStack != null) {
+				this.mc.thePlayer.dropPlayerItem(var1.draggingItemStack);
+				var1.draggingItemStack = null;
+			}
+
 		}
-
 	}
 
-	public void guiCraftingItemsCheck() {
-	}
-
-	public final boolean doesGuiPauseGame() {
+	public boolean doesGuiPauseGame() {
 		return false;
 	}
 }

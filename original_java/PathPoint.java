@@ -1,8 +1,6 @@
-package net.minecraft.game.level.path;
+package net.minecraft.src;
 
-import util.MathHelper;
-
-public final class PathPoint {
+public class PathPoint {
 	public final int xCoord;
 	public final int yCoord;
 	public final int zCoord;
@@ -21,26 +19,26 @@ public final class PathPoint {
 		this.hash = var1 | var2 << 10 | var3 << 20;
 	}
 
-	public final float distanceTo(PathPoint var1) {
+	public float distanceTo(PathPoint var1) {
 		float var2 = (float)(var1.xCoord - this.xCoord);
 		float var3 = (float)(var1.yCoord - this.yCoord);
 		float var4 = (float)(var1.zCoord - this.zCoord);
 		return MathHelper.sqrt_float(var2 * var2 + var3 * var3 + var4 * var4);
 	}
 
-	public final boolean equals(Object var1) {
+	public boolean equals(Object var1) {
 		return ((PathPoint)var1).hash == this.hash;
 	}
 
-	public final int hashCode() {
+	public int hashCode() {
 		return this.hash;
 	}
 
-	public final boolean isAssigned() {
+	public boolean isAssigned() {
 		return this.index >= 0;
 	}
 
-	public final String toString() {
+	public String toString() {
 		return this.xCoord + ", " + this.yCoord + ", " + this.zCoord;
 	}
 }

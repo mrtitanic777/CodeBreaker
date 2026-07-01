@@ -1296,3 +1296,142 @@ FILES = {
     'Applet.h': APPLET_H,
 }
 FILES.update(_GENERATED)
+
+
+def annotate_stub(text, class_name, platform_id):
+    """Inject a platform-specific SDK hint comment after the EXTERNAL-LIBRARY STUB banner.
+    If the file isn't a stub or no platform is set, returns the text unchanged."""
+    if 'EXTERNAL-LIBRARY STUB' not in text or not platform_id:
+        return text
+    from .stubs import classify_stub
+    from .platforms import get_stub_comment
+    subsystem_id, _info = classify_stub(class_name)
+    comment = get_stub_comment(platform_id, subsystem_id)
+    marker = '// =============================================================================='
+    return text.replace(marker, marker + '\n' + comment, 1)
+
+
+_PLATFORM_BANNER_OLD = 'the real behaviour is the Xbox 360 platform layer'
+_PLATFORM_BANNER_SDK_OLD = '// (Direct3D 9 / XInput / file IO / sound).'
+
+def generate_files(cpp_std=None, platform_id=None):
+    """Dynamically generate the full runtime file set, applying C++ standard
+    transforms and platform-specific stub annotations on the fly.
+
+    This is the dynamic replacement for the static FILES dict. Every call
+    produces a fresh dict so the same converter session can re-run with
+    different settings without stale cached output."""
+    from .emit.std_transforms import apply_std_transforms
+    from .platforms import PLATFORMS, generate_stdafx
+    plat = PLATFORMS.get(platform_id, {}) if platform_id else {}
+    plat_label = plat.get('label', 'Xbox 360')
+    std_label = cpp_std.label if cpp_std else 'C++03'
+
+    out = {}
+
+    if platform_id:
+        out['stdafx.h'] = generate_stdafx(platform_id, std_label)
+
+    is_non_windows = platform_id in ('ps3', 'wii', 'psp', 'nds')
+
+    for fname, content in FILES.items():
+        class_name = fname[:-2] if fname.endswith('.h') else fname
+        if platform_id and plat_label != 'Xbox 360':
+            content = content.replace(_PLATFORM_BANNER_OLD,
+                                      'the real behaviour is the %s platform layer' % plat_label)
+            subs = plat.get('subsystems', {})
+            from .stubs import classify_stub
+            sid, _ = classify_stub(class_name)
+            sub_info = subs.get(sid)
+            if sub_info:
+                content = content.replace(_PLATFORM_BANNER_SDK_OLD,
+                                          '// (%s / %s).' % (sub_info['sdk'], sub_info['libs']))
+        if is_non_windows and fname in ('JavaRT.h', 'Random.h'):
+            content = _patch_timer_for_platform(content, platform_id)
+        if platform_id:
+            content = annotate_stub(content, class_name, platform_id)
+        if cpp_std is not None:
+            content = apply_std_transforms(content, cpp_std)
+        out[fname] = content
+    return out
+
+
+_TIMER_PATCHES = {
+    'ps3': {
+        'GetTickCount()': '((unsigned long)(sys_time_get_system_time() / 1000))',
+        'currentTimeMillis': (
+            'inline long long currentTimeMillis() {\n'
+            '\t\treturn (long long)(sys_time_get_system_time() / 1000);\n'
+            '\t}'
+        ),
+        'nanoTime': (
+            'inline long long nanoTime() {\n'
+            '\t\treturn (long long)sys_time_get_system_time() * 1000LL;\n'
+            '\t}'
+        ),
+    },
+    'wii': {
+        'GetTickCount()': '((unsigned long)(ticks_to_millisecs(gettime())))',
+        'currentTimeMillis': (
+            'inline long long currentTimeMillis() {\n'
+            '\t\treturn (long long)ticks_to_millisecs(gettime());\n'
+            '\t}'
+        ),
+        'nanoTime': (
+            'inline long long nanoTime() {\n'
+            '\t\treturn (long long)ticks_to_nanosecs(gettime());\n'
+            '\t}'
+        ),
+    },
+    'psp': {
+        'GetTickCount()': '((unsigned long)(sceKernelGetSystemTimeLow() / 1000))',
+        'currentTimeMillis': (
+            'inline long long currentTimeMillis() {\n'
+            '\t\tSceRtcTick tick; sceRtcGetCurrentTick(&tick);\n'
+            '\t\treturn (long long)(tick.tick / 1000);\n'
+            '\t}'
+        ),
+        'nanoTime': (
+            'inline long long nanoTime() {\n'
+            '\t\tSceRtcTick tick; sceRtcGetCurrentTick(&tick);\n'
+            '\t\treturn (long long)(tick.tick * 1000LL);\n'
+            '\t}'
+        ),
+    },
+    'nds': {
+        'GetTickCount()': '((unsigned long)(cpuGetTiming() / BUS_CLOCK * 1000))',
+        'currentTimeMillis': (
+            'inline long long currentTimeMillis() {\n'
+            '\t\treturn 0LL; // TODO: implement DS timer\n'
+            '\t}'
+        ),
+        'nanoTime': (
+            'inline long long nanoTime() {\n'
+            '\t\treturn 0LL; // TODO: implement DS timer\n'
+            '\t}'
+        ),
+    },
+}
+
+import re as _re
+
+_CURRENT_TIME_RE = _re.compile(
+    r'inline long long currentTimeMillis\(\)[^}]*\}')
+_NANO_TIME_RE = _re.compile(
+    r'inline long long nanoTime\(\)\s*\{[^}]*\}')
+_GET_TICK_COUNT = _re.compile(
+    r'\(long long\)GetTickCount\(\)')
+
+
+def _patch_timer_for_platform(content, platform_id):
+    """Replace Windows timer calls in JavaRT.h / Random.h with platform equivalents."""
+    patch = _TIMER_PATCHES.get(platform_id)
+    if not patch:
+        return content
+    if 'currentTimeMillis' in patch:
+        content = _CURRENT_TIME_RE.sub(patch['currentTimeMillis'], content)
+    if 'nanoTime' in patch:
+        content = _NANO_TIME_RE.sub(patch['nanoTime'], content)
+    if 'GetTickCount()' in patch:
+        content = _GET_TICK_COUNT.sub(patch['GetTickCount()'], content)
+    return content

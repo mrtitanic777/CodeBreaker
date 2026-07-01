@@ -1,28 +1,27 @@
-package net.minecraft.game.level.path;
+package net.minecraft.src;
 
-import net.minecraft.game.entity.Entity;
-import net.minecraft.game.physics.Vec3D;
-
-public final class PathEntity {
+public class PathEntity {
 	private final PathPoint[] points;
+	public final int pathLength;
 	private int pathIndex;
 
 	public PathEntity(PathPoint[] var1) {
 		this.points = var1;
+		this.pathLength = var1.length;
 	}
 
-	public final void incrementPathIndex() {
+	public void incrementPathIndex() {
 		++this.pathIndex;
 	}
 
-	public final boolean isFinished() {
+	public boolean isFinished() {
 		return this.pathIndex >= this.points.length;
 	}
 
-	public final Vec3D getPosition(Entity var1) {
-		float var2 = (float)this.points[this.pathIndex].xCoord + (float)((int)(var1.width + 1.0F)) * 0.5F;
-		float var3 = (float)this.points[this.pathIndex].yCoord;
-		float var4 = (float)this.points[this.pathIndex].zCoord + (float)((int)(var1.width + 1.0F)) * 0.5F;
-		return new Vec3D(var2, var3, var4);
+	public Vec3D getPosition(Entity var1) {
+		double var2 = (double)this.points[this.pathIndex].xCoord + (double)((int)(var1.width + 1.0F)) * 0.5D;
+		double var4 = (double)this.points[this.pathIndex].yCoord;
+		double var6 = (double)this.points[this.pathIndex].zCoord + (double)((int)(var1.width + 1.0F)) * 0.5D;
+		return Vec3D.createVector(var2, var4, var6);
 	}
 }

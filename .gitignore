@@ -15,6 +15,9 @@ __pycache__/
 /src/
 /include/
 
+# Extracted platform SDKs (large, regenerate from VS2010 cabs)
+/PlatformSDKs/
+
 # Build / packaging intermediates
 /build/
 /dist/

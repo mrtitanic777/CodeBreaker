@@ -1,9 +1,7 @@
-package net.minecraft.game.level.block;
+package net.minecraft.src;
 
-import net.minecraft.game.level.material.Material;
-
-public final class BlockDirt extends Block {
+public class BlockDirt extends Block {
 	protected BlockDirt(int var1, int var2) {
-		super(3, 2, Material.ground);
+		super(var1, var2, Material.ground);
 	}
 }

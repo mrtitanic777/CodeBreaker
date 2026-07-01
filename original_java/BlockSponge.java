@@ -1,20 +1,18 @@
-package net.minecraft.game.level.block;
+package net.minecraft.src;
 
-import net.minecraft.game.level.World;
-import net.minecraft.game.level.material.Material;
-
-public final class BlockSponge extends Block {
+public class BlockSponge extends Block {
 	protected BlockSponge(int var1) {
-		super(19, Material.sponge);
+		super(var1, Material.sponge);
 		this.blockIndexInTexture = 48;
 	}
 
-	public final void onBlockAdded(World var1, int var2, int var3, int var4) {
-		for(int var5 = var2 - 2; var5 <= var2 + 2; ++var5) {
-			for(int var6 = var3 - 2; var6 <= var3 + 2; ++var6) {
-				for(int var7 = var4 - 2; var7 <= var4 + 2; ++var7) {
-					if(var1.isWater(var5, var6, var7)) {
-						var1.setBlock(var5, var6, var7, 0);
+	public void onBlockAdded(World var1, int var2, int var3, int var4) {
+		byte var5 = 2;
+
+		for(int var6 = var2 - var5; var6 <= var2 + var5; ++var6) {
+			for(int var7 = var3 - var5; var7 <= var3 + var5; ++var7) {
+				for(int var8 = var4 - var5; var8 <= var4 + var5; ++var8) {
+					if(var1.getBlockMaterial(var6, var7, var8) == Material.water) {
 					}
 				}
 			}
@@ -22,11 +20,13 @@ public final class BlockSponge extends Block {
 
 	}
 
-	public final void onBlockRemoval(World var1, int var2, int var3, int var4) {
-		for(int var5 = var2 - 2; var5 <= var2 + 2; ++var5) {
-			for(int var6 = var3 - 2; var6 <= var3 + 2; ++var6) {
-				for(int var7 = var4 - 2; var7 <= var4 + 2; ++var7) {
-					var1.notifyBlocksOfNeighborChange(var5, var6, var7, var1.getBlockId(var5, var6, var7));
+	public void onBlockRemoval(World var1, int var2, int var3, int var4) {
+		byte var5 = 2;
+
+		for(int var6 = var2 - var5; var6 <= var2 + var5; ++var6) {
+			for(int var7 = var3 - var5; var7 <= var3 + var5; ++var7) {
+				for(int var8 = var4 - var5; var8 <= var4 + var5; ++var8) {
+					var1.notifyBlocksOfNeighborChange(var6, var7, var8, var1.getBlockId(var6, var7, var8));
 				}
 			}
 		}

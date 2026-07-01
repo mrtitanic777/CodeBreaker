@@ -1,53 +1,107 @@
-package net.minecraft.game.entity.monster;
+package net.minecraft.src;
 
-import com.mojang.nbt.NBTTagCompound;
-import net.minecraft.game.entity.Entity;
-import net.minecraft.game.level.World;
-
-public class EntityCreeper extends EntityMob {
-	private int timeSinceIgnited;
-	private int lastActiveTime;
-	private int fuseTime = 30;
-	private int creeperState = -1;
+public class EntityCreeper extends EntityMobs {
+	int timeSinceIgnited;
+	int lastActiveTime;
+	int fuseTime = 30;
+	int creeperState = -1;
+	int prevCreeperState = -1;
 
 	public EntityCreeper(World var1) {
 		super(var1);
 		this.texture = "/mob/creeper.png";
 	}
 
-	protected final void writeEntityToNBT(NBTTagCompound var1) {
+	public void writeEntityToNBT(NBTTagCompound var1) {
 		super.writeEntityToNBT(var1);
 	}
 
-	protected final void readEntityFromNBT(NBTTagCompound var1) {
+	public void readEntityFromNBT(NBTTagCompound var1) {
 		super.readEntityFromNBT(var1);
 	}
 
-	protected final String getEntityString() {
-		return "Creeper";
-	}
+	public void handleHealthUpdate(byte var1) {
+		super.handleHealthUpdate(var1);
+		if(var1 == 4) {
+			if(this.timeSinceIgnited == 0) {
+				this.worldObj.playSoundAtEntity(this, "random.fuse", 1.0F, 0.5F);
+			}
 
-	protected final void updatePlayerActionState() {
-		this.lastActiveTime = this.timeSinceIgnited;
-		if(this.timeSinceIgnited > 0 && this.creeperState < 0) {
-			--this.timeSinceIgnited;
+			this.creeperState = 1;
 		}
 
-		if(this.creeperState >= 0) {
-			this.creeperState = 2;
-		}
-
-		super.updatePlayerActionState();
-		if(this.creeperState != 1) {
+		if(var1 == 5) {
 			this.creeperState = -1;
 		}
 
 	}
 
-	protected final void attackEntity(Entity var1, float var2) {
+	public void onUpdate() {
+		this.lastActiveTime = this.timeSinceIgnited;
+		if(this.worldObj.multiplayerWorld) {
+			this.timeSinceIgnited += this.creeperState;
+			if(this.timeSinceIgnited < 0) {
+				this.timeSinceIgnited = 0;
+			}
+
+			if(this.timeSinceIgnited >= this.fuseTime) {
+				this.timeSinceIgnited = this.fuseTime;
+			}
+		}
+
+		super.onUpdate();
+	}
+
+	protected void updateEntityActionState() {
+		if(this.prevCreeperState != this.creeperState) {
+			this.prevCreeperState = this.creeperState;
+			if(this.creeperState > 0) {
+				this.worldObj.setEntityState(this, (byte)4);
+			} else {
+				this.worldObj.setEntityState(this, (byte)5);
+			}
+		}
+
+		this.lastActiveTime = this.timeSinceIgnited;
+		if(this.worldObj.multiplayerWorld) {
+			super.updateEntityActionState();
+		} else {
+			if(this.timeSinceIgnited > 0 && this.creeperState < 0) {
+				--this.timeSinceIgnited;
+			}
+
+			if(this.creeperState >= 0) {
+				this.creeperState = 2;
+			}
+
+			super.updateEntityActionState();
+			if(this.creeperState != 1) {
+				this.creeperState = -1;
+			}
+		}
+
+	}
+
+	protected String getHurtSound() {
+		return "mob.creeper";
+	}
+
+	protected String getDeathSound() {
+		return "mob.creeperdeath";
+	}
+
+	public void onDeath(Entity var1) {
+		super.onDeath(var1);
+		if(var1 instanceof EntitySkeleton) {
+			this.dropItem(Item.record13.shiftedIndex + this.rand.nextInt(2), 1);
+		}
+
+	}
+
+	protected void attackEntity(Entity var1, float var2) {
 		if(this.creeperState <= 0 && var2 < 3.0F || this.creeperState > 0 && var2 < 7.0F) {
 			if(this.timeSinceIgnited == 0) {
-				this.worldObj.a(this, "random.fuse", 1.0F, 0.5F);
+				this.worldObj.playSoundAtEntity(this, "random.fuse", 1.0F, 0.5F);
 			}
 
 			this.creeperState = 1;
@@ -62,7 +116,11 @@ public class EntityCreeper extends EntityMob {
 
 	}
 
-	public final float c(float var1) {
+	public float getCreeperFlashIntensity(float var1) {
 		return ((float)this.lastActiveTime + (float)(this.timeSinceIgnited - this.lastActiveTime) * var1) / (float)(this.fuseTime - 2);
+	}
+
+	protected int getDropItemId() {
+		return Item.gunpowder.shiftedIndex;
 	}
 }

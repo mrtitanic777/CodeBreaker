@@ -1,17 +1,18 @@
-package net.minecraft.game.level.block;
-
-import net.minecraft.game.level.World;
-import net.minecraft.game.level.block.tileentity.TileEntity;
-import net.minecraft.game.level.material.Material;
+package net.minecraft.src;
 
 public abstract class BlockContainer extends Block {
 	protected BlockContainer(int var1, Material var2) {
 		super(var1, var2);
+		isBlockContainer[var1] = true;
 	}
 
-	public final void onBlockAdded(World var1, int var2, int var3, int var4) {
+	protected BlockContainer(int var1, int var2, Material var3) {
+		super(var1, var2, var3);
+	}
+
+	public void onBlockAdded(World var1, int var2, int var3, int var4) {
 		super.onBlockAdded(var1, var2, var3, var4);
-		var1.setBlockTileEntity(var2, var3, var4, this.getBlockEntity());
+		var1.setBlockTileEntity(var2, var3, var4, this.SetBlockEntity());
 	}
 
 	public void onBlockRemoval(World var1, int var2, int var3, int var4) {
@@ -19,5 +20,5 @@ public abstract class BlockContainer extends Block {
 		var1.removeBlockTileEntity(var2, var3, var4);
 	}
 
-	protected abstract TileEntity getBlockEntity();
+	protected abstract TileEntity SetBlockEntity();
 }

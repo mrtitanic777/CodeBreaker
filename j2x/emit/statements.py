@@ -1378,15 +1378,109 @@ def _is_nullable_array(base, scope, resolver):
     return bool(jt and jt.is_array and resolver.is_pointer(jt.element()))
 
 
-def _guard_null_deref(s, scope, resolver):
-    """Wrap a standalone list-indexed deref in a NULL check; return (line, guarded)."""
+# standalone `getter(args)->call(args);`
+_GETTER_DEREF_STMT = re.compile(
+    r'^((?:this->)?(?:\w+::)*(\w+)\([^)]*\))\s*->\s*(\w+\([^;]*\))\s*;\s*$')
+
+# `this->field->call(args);` as a standalone stmt
+_FIELD_DEREF_STMT = re.compile(
+    r'^((?:this->)(\w+))\s*->\s*(\w+\([^;]*\))\s*;\s*$')
+
+# General nullable-getter deref scanner: matches receiver->GETTER(args) where GETTER
+# is in KNOWN_NULLABLE_GETTERS. Receiver can be this->, var->, this->field[idx]->, etc.
+_GETTER_NAMES_ALT = '|'.join(re.escape(g) for g in
+    sorted(typemap.KNOWN_NULLABLE_GETTERS, key=len, reverse=True))
+_NULLABLE_GETTER_CALL = re.compile(
+    r'((?:this->)?(?:\w+(?:\[[^\]]*\])?\s*->\s*)*)'
+    r'(' + _GETTER_NAMES_ALT + r')\s*\(')
+
+
+def _default_return_val(rt, resolver):
+    if rt is None or rt.name == 'void':
+        return None
+    if rt.is_array:
+        return '%s()' % resolver.cpp_type(rt, 'local')
+    if rt.name == 'String':
+        return 'JavaString()'
+    if rt.name in ('boolean',):
+        return 'false'
+    if rt.name in typemap.PRIMITIVES:
+        return '0'
+    return 'NULL'
+
+
+def _hoist_nullable_getter(s, return_type, resolver):
+    """If s contains a KNOWN_NULLABLE_GETTER(args)->deref not caught by the standalone
+    patterns, hoist the getter into a temp variable and null-guard the dereference."""
+    for m in _NULLABLE_GETTER_CALL.finditer(s):
+        gn = m.group(2)
+        open_idx = m.end() - 1
+        close = _balanced_paren(s, open_idx)
+        if close < 0:
+            continue
+        j = close + 1
+        while j < len(s) and s[j] == ' ':
+            j += 1
+        if j + 1 >= len(s) or s[j:j + 2] != '->':
+            continue
+
+        recv_expr = s[m.start():close + 1]
+        tmp = '_j2x_%s' % gn.replace('get', '', 1)[:20]
+        tmp = tmp[0].lower() + tmp[1:]
+        new_line = s[:m.start()] + tmp + s[close + 1:]
+
+        stripped = s.strip()
+        if stripped.startswith('return '):
+            dflt = _default_return_val(return_type, resolver)
+            if dflt is None:
+                return 'auto %s = %s; if (%s == NULL) return; %s' % (
+                    tmp, recv_expr, tmp, new_line.strip())
+            return 'auto %s = %s; if (%s == NULL) return %s; %s' % (
+                tmp, recv_expr, tmp, dflt, new_line.strip())
+
+        dm = _DECL.match(new_line.strip())
+        if dm and dm.group(3) == '=' and _decl_base(dm.group(1)) not in _KEYWORDS:
+            cpp_type = dm.group(1)
+            var_name = dm.group(2)
+            assign_rest = new_line.strip()[dm.end(3):].lstrip()
+            return ('%s %s = 0; auto %s = %s; if (%s != NULL) { %s = %s }'
+                    % (cpp_type, var_name, tmp, recv_expr, tmp, var_name, assign_rest))
+
+        return '{ auto %s = %s; if (%s != NULL) { %s } }' % (
+            tmp, recv_expr, tmp, new_line.strip())
+    return None
+
+
+def _guard_null_deref(s, scope, resolver, return_type=None):
+    """Wrap NULL-dereference-risk patterns in a NULL check; return (line, guarded, rule_id)."""
+    # (1) list-indexed deref: blocksList[id]->method()
     m = _INDEX_DEREF_STMT.match(s)
-    if not m:
-        return s, False
-    recv, base, call = m.group(1), m.group(2), m.group(3)
-    if not _is_nullable_array(base, scope, resolver):
-        return s, False
-    return 'if (%s != NULL) { %s->%s; }' % (recv, recv, call), True
+    if m:
+        recv, base, call = m.group(1), m.group(2), m.group(3)
+        if _is_nullable_array(base, scope, resolver):
+            return 'if (%s != NULL) { %s->%s; }' % (recv, recv, call), True, 'null-deref-guard'
+
+    # (2) getter()->deref: getChunkFromChunkCoords(...)->method()
+    m2 = _GETTER_DEREF_STMT.match(s)
+    if m2:
+        recv_expr, getter_name, call = m2.group(1), m2.group(2), m2.group(3)
+        if getter_name in typemap.KNOWN_NULLABLE_GETTERS:
+            tmp = '_j2x_%s' % getter_name.replace('get', '', 1)[:20]
+            tmp = tmp[0].lower() + tmp[1:]
+            return ('{ auto %s = %s; if (%s != NULL) { %s->%s; } }'
+                    % (tmp, recv_expr, tmp, tmp, call)), True, 'null-deref-getter-guard'
+
+    # (3) General: nullable getter()->deref embedded in a return / assignment / expression.
+    result = _hoist_nullable_getter(s, return_type, resolver)
+    if result is not None:
+        return result, True, 'null-deref-getter-guard'
+
+    # (4) nullable field deref: this->worldObj->method()
+    # NOT auto-guarded at emit time -- the working game shows these are overwhelmingly
+    # false positives (the field is always set when the method runs). The post-hoc scanner
+    # rule (null-deref-field) still flags them for manual review.
+
+    return s, False, None
 
 
 def translate_body(method, cls, resolver, ledger=None):
@@ -1418,12 +1512,22 @@ def translate_body(method, cls, resolver, ledger=None):
             continue
         line = _translate_line(s, ptr_names, static_set, enum_set, resolver, scope,
                                cls.parent, cls.name, own_statics, ptr_locals)
-        line, guarded = _guard_null_deref(line, scope, resolver)
+        line, guarded, guard_rule = _guard_null_deref(line, scope, resolver, method.return_type)
         if guarded and ledger is not None:
+            _GUARD_MSGS = {
+                'null-deref-guard':
+                    'null-deref guard inserted before list-indexed call (an unregistered/NULL '
+                    'slot would be a virtual call through NULL -- undefined behaviour in C++)',
+                'null-deref-getter-guard':
+                    'null-deref guard inserted: getter can return NULL -- dereference without '
+                    'check is undefined behaviour in C++ (Java would throw NPE)',
+                'null-deref-field-guard':
+                    'null-deref guard inserted: nullable field dereference -- undefined '
+                    'behaviour in C++ if field is NULL (Java would throw NPE)',
+            }
             ledger.add(cls.name + '.cpp', Category.RISK,
-                       'null-deref guard inserted before list-indexed call (an unregistered/NULL '
-                       'slot would be a virtual call through NULL -> IP 0x0 crash)',
-                       line=method.line, severity=Severity.MED, source='emit', rule='null-deref-guard')
+                       _GUARD_MSGS.get(guard_rule, 'null-deref guard inserted'),
+                       line=method.line, severity=Severity.MED, source='emit', rule=guard_rule)
         out.append(line)
 
     # a String return is by value (std::string); `return null` would construct a string

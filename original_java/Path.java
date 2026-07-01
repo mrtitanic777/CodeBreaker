@@ -1,10 +1,10 @@
-package net.minecraft.game.level.path;
+package net.minecraft.src;
 
-public final class Path {
+public class Path {
 	private PathPoint[] pathPoints = new PathPoint[1024];
 	private int count = 0;
 
-	public final PathPoint addPoint(PathPoint var1) {
+	public PathPoint addPoint(PathPoint var1) {
 		if(var1.index >= 0) {
 			throw new IllegalStateException("OW KNOWS!");
 		} else {
@@ -21,11 +21,11 @@ public final class Path {
 		}
 	}
 
-	public final void clearPath() {
+	public void clearPath() {
 		this.count = 0;
 	}
 
-	public final PathPoint b() {
+	public PathPoint dequeue() {
 		PathPoint var1 = this.pathPoints[0];
 		this.pathPoints[0] = this.pathPoints[--this.count];
 		this.pathPoints[this.count] = null;
@@ -37,7 +37,7 @@ public final class Path {
 		return var1;
 	}
 
-	public final void changeDistance(PathPoint var1, float var2) {
+	public void changeDistance(PathPoint var1, float var2) {
 		float var3 = var1.distanceToTarget;
 		var1.distanceToTarget = var2;
 		if(var2 < var3) {
@@ -45,6 +45,7 @@ public final class Path {
 		} else {
 			this.sortForward(var1.index);
 		}
+
 	}
 
 	private void sortBack(int var1) {
@@ -112,7 +113,7 @@ public final class Path {
 		var2.index = var1;
 	}
 
-	public final boolean isPathEmpty() {
+	public boolean isPathEmpty() {
 		return this.count == 0;
 	}
 }

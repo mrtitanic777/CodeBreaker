@@ -1,17 +1,21 @@
-package net.minecraft.client;
+package net.minecraft.src;
 
-import java.io.BufferedReader;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.net.URL;
-import java.util.ArrayList;
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import net.minecraft.client.Minecraft;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
 
-public final class ThreadDownloadResources extends Thread {
-	private File resourcesFolder;
+public class ThreadDownloadResources extends Thread {
+	public File resourcesFolder;
 	private Minecraft mc;
 	private boolean closing = false;
 
@@ -25,88 +29,107 @@ public final class ThreadDownloadResources extends Thread {
 		}
 	}
 
-	public final void run() {
+	public void run() {
 		try {
-            ArrayList<String> list = new ArrayList<String>();
-            URL url = new URL("http://www.minecraft.net/resources/");
-            BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(url.openStream()));
-            while (true) {
-                final String line = bufferedReader.readLine();
-                if (line == null) {
-                    break;
-                }
-                list.add(line);
-            }
-            bufferedReader.close();
-            for (int i = 0; i < list.size(); ++i) {
-                URL url2 = url;
-                String s = (String)list.get(i);
-                URL url3 = url2;
-                Label_0338: {
-                    try {
-                        String[] split = s.split(",");
-                        String s2 = split[0];
-                        int int1 = Integer.parseInt(split[1]);
-                        Long.parseLong(split[2]);
-                        final File file = new File(this.resourcesFolder, s2);
-                        if (!file.exists() || file.length() != int1) {
-                            file.getParentFile().mkdirs();
-                            this.downloadResource(new URL(url3, s2.replaceAll(" ", "%20")), file);
-                            if (this.closing) {
-                                break Label_0338;
-                            }
-                        }
-                        Minecraft mc = this.mc;
-                        String s3 = s2;
-                        File file2 = file;
-                        String s4 = s3;
-                        Minecraft minecraft = mc;
-                        int index = s4.indexOf("/");
-                        String substring = s4.substring(0, index);
-                        String substring2 = s4.substring(index + 1);
-                        if (substring.equalsIgnoreCase("sound")) {
-                            minecraft.sndManager.addSound(substring2, file2);
-                        }
-                        else if (substring.equalsIgnoreCase("newsound")) {
-                            minecraft.sndManager.addSound(substring2, file2);
-                        }
-                        else if (substring.equalsIgnoreCase("music")) {
-                            minecraft.sndManager.addMusic(substring2, file2);
-                        }
-                    }
-                    catch (Exception ex) {
-                        ex.printStackTrace();
-                    }
-                }
-                if (this.closing) {
-                    return;
-                }
-            }
-        }
-        catch (IOException ex) {
-            ex.printStackTrace();
-        }
+			URL var1 = new URL("http://s3.amazonaws.com/MinecraftResources/");
+			DocumentBuilderFactory var2 = DocumentBuilderFactory.newInstance();
+			DocumentBuilder var3 = var2.newDocumentBuilder();
+			Document var4 = var3.parse(var1.openStream());
+			NodeList var5 = var4.getElementsByTagName("Contents");
+
+			for(int var6 = 0; var6 < 2; ++var6) {
+				for(int var7 = 0; var7 < var5.getLength(); ++var7) {
+					Node var8 = var5.item(var7);
+					if(var8.getNodeType() == 1) {
+						Element var9 = (Element)var8;
+						String var10 = ((Element)var9.getElementsByTagName("Key").item(0)).getChildNodes().item(0).getNodeValue();
+						long var11 = Long.parseLong(((Element)var9.getElementsByTagName("Size").item(0)).getChildNodes().item(0).getNodeValue());
+						if(var11 > 0L) {
+							this.downloadAndInstallResource(var1, var10, var11, var6);
+							if(this.closing) {
+								return;
+							}
+						}
+					}
+				}
+			}
+		} catch (Exception var13) {
+			this.loadResource(this.resourcesFolder, "");
+			var13.printStackTrace();
+		}
+
 	}
 
-	private void downloadResource(URL var1, File var2) throws IOException {
-		byte[] var3 = new byte[4096];
-		DataInputStream var5 = new DataInputStream(var1.openStream());
-		DataOutputStream var6 = new DataOutputStream(new FileOutputStream(var2));
+	public void reloadResources() {
+		this.loadResource(this.resourcesFolder, "");
+	}
 
-		do {
-			int var4 = var5.read(var3);
-			if(var4 < 0) {
-				var5.close();
-				var6.close();
+	private void loadResource(File var1, String var2) {
+		File[] var3 = var1.listFiles();
+
+		for(int var4 = 0; var4 < var3.length; ++var4) {
+			if(var3[var4].isDirectory()) {
+				this.loadResource(var3[var4], var2 + var3[var4].getName() + "/");
+			} else {
+				try {
+					this.mc.installResource(var2 + var3[var4].getName(), var3[var4]);
+				} catch (Exception var6) {
+					System.out.println("Failed to add " + var2 + var3[var4].getName());
+				}
+			}
+		}
+
+	}
+
+	private void downloadAndInstallResource(URL var1, String var2, long var3, int var5) {
+		try {
+			int var6 = var2.indexOf("/");
+			String var7 = var2.substring(0, var6);
+			if(!var7.equals("sound") && !var7.equals("newsound")) {
+				if(var5 != 1) {
+					return;
+				}
+			} else if(var5 != 0) {
 				return;
 			}
 
-			var6.write(var3, 0, var4);
+			File var8 = new File(this.resourcesFolder, var2);
+			if(!var8.exists() || var8.length() != var3) {
+				var8.getParentFile().mkdirs();
+				String var9 = var2.replaceAll(" ", "%20");
+				this.downloadResource(new URL(var1, var9), var8, var3);
+				if(this.closing) {
+					return;
+				}
+			}
+
+			this.mc.installResource(var2, var8);
+		} catch (Exception var10) {
+			var10.printStackTrace();
+		}
+
+	}
+
+	private void downloadResource(URL var1, File var2, long var3) throws IOException {
+		byte[] var5 = new byte[4096];
+		DataInputStream var6 = new DataInputStream(var1.openStream());
+		DataOutputStream var7 = new DataOutputStream(new FileOutputStream(var2));
+		boolean var8 = false;
+
+		do {
+			int var9 = var6.read(var5);
+			if(var9 < 0) {
+				var6.close();
+				var7.close();
+				return;
+			}
+
+			var7.write(var5, 0, var9);
 		} while(!this.closing);
 
 	}
 
-	public final void closeMinecraft() {
+	public void closeMinecraft() {
 		this.closing = true;
 	}
 }

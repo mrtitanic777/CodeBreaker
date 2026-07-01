@@ -15,8 +15,12 @@ an ANNOTATED event so the report shows it.
 from .. import typemap
 from ..ledger import Category, Severity
 from . import naming, ownership
+from .std_transforms import apply_std_transforms
 
-_BANNER = '// Auto-generated from %s.java\n// Target: Xbox 360 / C++03 / DirectX 9'
+def _banner(cls_name, cpp_std=None, platform_label=None):
+    std_label = cpp_std.label if cpp_std else 'C++03'
+    plat = platform_label or 'unknown'
+    return '// Auto-generated from %s.java\n// Target: %s / %s' % (cls_name, plat, std_label)
 
 
 def _std_header_for(cpp_base):
@@ -96,13 +100,13 @@ def _method_decl(cls, m, resolver):
     return '%s%s %s(%s)%s;' % (prefix, ret, name, params, suffix)
 
 
-def render_header(cls, resolver, ledger=None):
+def render_header(cls, resolver, ledger=None, cpp_std=None, platform_label=None):
     guard = naming.guard_macro(cls.name)
 
     # Enums: emit the constants as scoped static const ints so `EnumOS::linux` resolves; the
     # enum TYPE itself maps to int (see types.py), so variables/switches are plain ints.
     if cls.is_enum:
-        L = ['#ifndef %s' % guard, '#define %s' % guard, '', _BANNER % cls.name, '',
+        L = ['#ifndef %s' % guard, '#define %s' % guard, '', _banner(cls.name, cpp_std, platform_label), '',
              'struct %s {' % cls.name]
         for i, ec in enumerate(cls.enum_consts):
             L.append('\tstatic const int %s = %d;' % (ec.name, i))
@@ -111,10 +115,10 @@ def render_header(cls, resolver, ledger=None):
             ledger.add(cls.name + '.h', Category.PORTED,
                        'enum %s -> struct of static const int constants' % cls.name,
                        source='emit', rule='enum')
-        return '\n'.join(L)
+        return apply_std_transforms('\n'.join(L), cpp_std)
 
     L = ['#ifndef %s' % guard, '#define %s' % guard, '',
-         _BANNER % cls.name, '']
+         _banner(cls.name, cpp_std, platform_label), '']
 
     # String -> JavaString and T[] -> JArray<T>; a header that mentions either in a field/
     # param/return needs the full definition. Cheap and idempotent to always include.
@@ -216,7 +220,7 @@ def render_header(cls, resolver, ledger=None):
 
     if ledger is not None:
         _report(cls, resolver, ledger)
-    return '\n'.join(L)
+    return apply_std_transforms('\n'.join(L), cpp_std)
 
 
 def _report(cls, resolver, ledger):

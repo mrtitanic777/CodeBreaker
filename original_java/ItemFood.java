@@ -1,7 +1,4 @@
-package net.minecraft.game.item;
-
-import net.minecraft.game.entity.player.EntityPlayer;
-import net.minecraft.game.level.World;
+package net.minecraft.src;
 
 public class ItemFood extends Item {
 	private int healAmount;

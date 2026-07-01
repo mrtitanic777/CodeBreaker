@@ -1,20 +1,21 @@
-package net.minecraft.client;
+package net.minecraft.src;
 
 import java.awt.Canvas;
+import net.minecraft.client.MinecraftApplet;
 
-final class CanvasMinecraftApplet extends Canvas {
-	private MinecraftApplet mcApplet;
+public class CanvasMinecraftApplet extends Canvas {
+	final MinecraftApplet mcApplet;
 
-	CanvasMinecraftApplet(MinecraftApplet var1) {
+	public CanvasMinecraftApplet(MinecraftApplet var1) {
 		this.mcApplet = var1;
 	}
 
-	public final synchronized void addNotify() {
+	public synchronized void addNotify() {
 		super.addNotify();
 		this.mcApplet.startMainThread();
 	}
 
-	public final synchronized void removeNotify() {
+	public synchronized void removeNotify() {
 		this.mcApplet.shutdown();
 		super.removeNotify();
 	}

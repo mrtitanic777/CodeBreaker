@@ -1,21 +1,21 @@
-package net.minecraft.game.item.recipe;
+package net.minecraft.src;
 
-import net.minecraft.game.item.ItemStack;
-
-public final class CraftingRecipe {
+public class CraftingRecipe {
 	private int width;
 	private int height;
 	private int[] ingredientMap;
-	private ItemStack recipeOutput;
+	private ItemStack resultStack;
+	public final int resultId;
 
 	public CraftingRecipe(int var1, int var2, int[] var3, ItemStack var4) {
+		this.resultId = var4.itemID;
 		this.width = var1;
 		this.height = var2;
 		this.ingredientMap = var3;
-		this.recipeOutput = var4;
+		this.resultStack = var4;
 	}
 
-	public final boolean matchRecipe(int[] var1) {
+	public boolean matchRecipe(int[] var1) {
 		for(int var2 = 0; var2 <= 3 - this.width; ++var2) {
 			for(int var3 = 0; var3 <= 3 - this.height; ++var3) {
 				if(this.matches(var1, var2, var3, true)) {
@@ -54,11 +54,11 @@ public final class CraftingRecipe {
 		return true;
 	}
 
-	public final ItemStack createResult() {
-		return new ItemStack(this.recipeOutput.itemID, this.recipeOutput.stackSize);
+	public ItemStack createResult(int[] var1) {
+		return new ItemStack(this.resultStack.itemID, this.resultStack.stackSize);
 	}
 
-	public final int b() {
+	public int getRecipeSize() {
 		return this.width * this.height;
 	}
 }

@@ -1,30 +1,47 @@
 # -*- coding: utf-8 -*-
 """
-rules.py -- structural crash-class detectors for converted Xbox 360 C++.
+rules.py -- structural crash-class detectors for converted C++.
 
-These encode the bug classes that actually crashed the console during the Alpha
-port (see the project memory / RESTRUCTURE_PLAN.md). The console hard-crashes
-(IP 0x0 / 0xC0000018) where Java would tolerate the same code, so the converter
-must flag these, not just translate.
+These encode the bug classes that crash when porting Java to C++ across any
+target platform. Each rule is platform-aware: messages, severity, and
+applicability adapt to the selected target (Xbox 360, PC Windows, PS3, etc.)
+using metadata from platforms.py.
 
 Each rule is a small, named, self-describing object so it's individually
 testable and the report can explain *why* it fired. A rule looks at a converted
 file (and, when needed, its sibling header) and yields Events.
 
 Covered here (the cases plain text-marker / lint scanning misses):
-  uninit-array        new T[n] without () -- Java zero-fills, C++ does not   (auto-jump bug)
-  ctor-stub           empty / delegation-only constructor body               (blockID=0, container-flag bugs)
-  rule-of-three       owns heap (new in ctor) but missing dtor/copy control  (heap-corruption / double-free)
-  value-copy-owner    a heavy/owning type passed or returned BY VALUE        (Tesselator MB-buffer copy)
-
-Null-deref and label-goto stay in converter_lint (already covered there) to
-avoid double-reporting; this module is the home for the *new* structural rules.
+  uninit-array        new T[n] without () -- Java zero-fills, C++ does not
+  ctor-stub           empty / delegation-only constructor body
+  rule-of-three       owns heap (new in ctor) but missing dtor/copy control
+  value-copy-owner    a heavy/owning type passed or returned BY VALUE
+  virtual-call-in-ctor  ctor calls own virtual -> dispatches to base, not override
+  static-init-order   eager static init with cross-TU dependency
+  endianness          raw multi-byte cast in binary-IO file (big-endian only)
+  null-deref-getter   getter()->member where getter can return NULL
+  null-deref-field    known-nullable field deref without null check
 """
 
 import os
 import re
 
 from .ledger import Category, Severity
+
+
+# ---------------------------------------------------------------------------
+# Platform context: built once per scan_rules() call, passed to every rule.
+# ---------------------------------------------------------------------------
+class _PlatCtx(object):
+    __slots__ = ('label', 'big_endian', 'null_page_protected', 'null_deref_msg')
+    def __init__(self, platform_id):
+        from .platforms import PLATFORMS
+        plat = PLATFORMS.get(platform_id, {})
+        self.label = plat.get('label', platform_id or 'unknown')
+        self.big_endian = plat.get('big_endian', False)
+        self.null_page_protected = plat.get('null_page_protected', True)
+        self.null_deref_msg = plat.get('null_deref_msg',
+            'NULL dereference -- undefined behaviour in C++ (Java would throw NPE)')
 
 
 # Primitive element types whose `new T[n]` is left uninitialized in C++.
@@ -64,7 +81,7 @@ def _iter_code_lines(text):
 # ---------------------------------------------------------------------------
 # Rule: uninitialized primitive / pointer arrays
 # ---------------------------------------------------------------------------
-def rule_uninit_array(fname, text, header_text):
+def rule_uninit_array(fname, text, header_text, plat):
     if not fname.endswith('.cpp') and not fname.endswith('.h'):
         return
     for i, raw, code in _iter_code_lines(text):
@@ -76,14 +93,14 @@ def rule_uninit_array(fname, text, header_text):
             sev = Severity.HIGH if t in ('bool',) else Severity.MED
             yield (i, Category.RISK, sev, 'uninit-array',
                    "new %s[] without () -- Java zero-fills arrays, C++ leaves this GARBAGE. "
-                   "Use new %s[N]() (the new bool[10] phantom-input bug)." % (t, t),
+                   "Use new %s[N]()." % (t, t),
                    raw.strip()[:160])
             continue
         mp = _NEW_PTR_ARRAY.search(code)
         if mp and not mp.group(1):
             yield (i, Category.RISK, Severity.HIGH, 'uninit-array',
                    "new <Type>*[] without () -- uninitialized pointer array = garbage vtables -> "
-                   "deref crash (IP 0x0). Use new T*[N]() and NULL-check before deref.",
+                   "deref crash. Use new T*[N]() and NULL-check before deref.",
                    raw.strip()[:160])
 
 
@@ -92,7 +109,7 @@ def rule_uninit_array(fname, text, header_text):
 # ---------------------------------------------------------------------------
 _CTOR_DEF = None  # built per-file (needs class name)
 
-def rule_ctor_stub(fname, text, header_text):
+def rule_ctor_stub(fname, text, header_text, plat):
     if not fname.endswith('.cpp'):
         return
     cls = fname[:-4]
@@ -127,7 +144,7 @@ def rule_ctor_stub(fname, text, header_text):
 # ---------------------------------------------------------------------------
 # Rule: Rule of Three -- owns heap but missing destructor / copy control
 # ---------------------------------------------------------------------------
-def rule_rule_of_three(fname, text, header_text):
+def rule_rule_of_three(fname, text, header_text, plat):
     if not fname.endswith('.cpp') or header_text is None:
         return
     cls = fname[:-4]
@@ -168,7 +185,7 @@ def rule_rule_of_three(fname, text, header_text):
 # ---------------------------------------------------------------------------
 # Rule: heavy/owning type passed or returned BY VALUE
 # ---------------------------------------------------------------------------
-def rule_value_copy_owner(fname, text, header_text):
+def rule_value_copy_owner(fname, text, header_text, plat):
     if not (fname.endswith('.cpp') or fname.endswith('.h')):
         return
     for t in _HEAVY_TYPES:
@@ -208,12 +225,11 @@ def _ctor_bodies(text, cls):
         yield text.count('\n', 0, m.start()) + 1, text[m.end():j-1]
 
 
-def rule_virtual_call_in_ctor(fname, text, header_text):
+def rule_virtual_call_in_ctor(fname, text, header_text, plat):
     """A constructor that calls one of its own virtual methods: in C++ the call dispatches to THIS
     class's version (the vtable isn't the derived one yet during construction), NOT a subclass
-    override -- unlike Java. So overridden behaviour is silently skipped and wrong data gets recorded
-    (the old port's Block opacity bug: Block ctor -> setLightOpacity dispatched to Block, not the
-    subclass). Flag it; set the value directly or finish it after construction."""
+    override -- unlike Java. So overridden behaviour is silently skipped and wrong data gets recorded.
+    Flag it; set the value directly or finish it after construction."""
     if not fname.endswith('.cpp') or header_text is None:
         return
     cls = fname[:-4]
@@ -246,12 +262,11 @@ _STATIC_DEF = re.compile(r'^[A-Za-z_][\w:<>\*&,\s]*?\b(\w+::s_\w+)\s*=\s*(.+);\s
 _NEW_USER = re.compile(r'\bnew\s+(?!JavaString\b|JArray\b|JList\b|JObject\b|JCat\b)[A-Z]\w*')
 
 
-def rule_static_init_order(fname, text, header_text):
+def rule_static_init_order(fname, text, header_text, plat):
     """An EAGER static field definition that constructs a user class or reads another class's static
     (`::s_`) runs at static-init time in UNDEFINED cross-translation-unit order -- the static-init-
-    order crash class (Block initialized before Material -> null vtable). The converter defers these
-    into initStatics(), run by j2x_initAll() in dependency order; this rule flags any that slipped
-    (e.g. in a hand-written override) so they get deferred too."""
+    order crash class. The converter defers these into initStatics(), run by j2x_initAll() in
+    dependency order; this rule flags any that slipped."""
     if not fname.endswith('.cpp'):
         return
     for m in _STATIC_DEF.finditer(text):
@@ -274,12 +289,13 @@ _BINARY_IO_FILE = re.compile(r'(NBT|Stream|Save|Region|Compressed|Chunk.*(Loader
 _RAW_CAST = re.compile(r'reinterpret_cast\s*<|memcpy\s*\(|\*\s*\(\s*(?:int|short|long|long long|float|double|unsigned)\b[\w ]*\*\s*\)')
 
 
-def rule_endianness_raw_cast(fname, text, header_text):
-    """Xbox 360 is BIG-ENDIAN PowerPC. The NBT / save / stream code reads & writes multi-byte values
-    one byte at a time (MSB-first) on purpose -- that is endian-agnostic and matches Java. A raw
-    `reinterpret_cast`, `*(int*)ptr`, or `memcpy` over a serialized byte buffer is an "optimization"
-    that BYTE-SWAPS on the 360 and silently corrupts saves / desyncs the protocol. Flag such casts in
-    binary-IO files; keep the manual byte assembly (assemble the int/long, THEN bit-cast to float)."""
+def rule_endianness_raw_cast(fname, text, header_text, plat):
+    """Big-endian targets (Xbox 360, PS3, Wii) byte-swap multi-byte values. The NBT / save / stream
+    code reads & writes one byte at a time (MSB-first) on purpose -- that is endian-agnostic. A raw
+    `reinterpret_cast`, `*(int*)ptr`, or `memcpy` over a serialized byte buffer silently corrupts
+    saves / desyncs the protocol on big-endian. Skipped entirely on little-endian targets."""
+    if not plat.big_endian:
+        return
     if not fname.endswith('.cpp') or not _BINARY_IO_FILE.search(fname):
         return
     for i, raw, code in _iter_code_lines(text):
@@ -287,10 +303,74 @@ def rule_endianness_raw_cast(fname, text, header_text):
             continue
         if _RAW_CAST.search(code):
             yield (i, Category.WARNING, Severity.MED, 'endianness',
-                   "raw multi-byte cast/memcpy in a binary-serialization file -- on the big-endian "
-                   "360 this byte-swaps and corrupts saves/protocol. Read/write byte-at-a-time "
-                   "(MSB-first), then bit-cast the assembled int/long to float/double.",
+                   "raw multi-byte cast/memcpy in a binary-serialization file -- on big-endian "
+                   "%s this byte-swaps and corrupts saves/protocol. Read/write byte-at-a-time "
+                   "(MSB-first), then bit-cast the assembled int/long to float/double."
+                   % plat.label,
                    raw.strip()[:160])
+
+
+# ---------------------------------------------------------------------------
+# Rule: nullable getter return dereferenced without null check
+# ---------------------------------------------------------------------------
+from . import typemap as _typemap
+
+_GETTER_DEREF = re.compile(r'(\w+)\s*\([^)]*\)\s*->\s*\w+')
+
+def rule_null_deref_getter(fname, text, header_text, plat):
+    """getter()->member where the getter can return NULL. Dereferencing without a null check
+    is undefined behaviour in C++ (Java would throw NPE). The return must be captured into
+    a local and null-checked before dereference."""
+    if not (fname.endswith('.cpp') or fname.endswith('.h')):
+        return
+    for i, raw, code in _iter_code_lines(text):
+        if not code or '->' not in code:
+            continue
+        for m in _GETTER_DEREF.finditer(code):
+            fn_name = m.group(1)
+            if fn_name in _typemap.KNOWN_NULLABLE_GETTERS:
+                yield (i, Category.RISK, Severity.HIGH, 'null-deref-getter',
+                       "%s() can return NULL -- dereferencing without a null check is a %s. "
+                       "Capture into a local and check before use."
+                       % (fn_name, plat.null_deref_msg),
+                       raw.strip()[:160])
+
+
+# ---------------------------------------------------------------------------
+# Rule: known-nullable field dereferenced without a preceding null check
+# ---------------------------------------------------------------------------
+_FIELD_DEREF = re.compile(r'(?:this->)?(\w+)->')
+
+def rule_null_deref_field(fname, text, header_text, plat):
+    """A known-nullable field (worldObj, mc, thePlayer, etc.) dereferenced on a line
+    where there is no preceding null check."""
+    if not fname.endswith('.cpp'):
+        return
+    lines = text.split('\n')
+    for i, raw_line in enumerate(lines):
+        code = raw_line.split('//', 1)[0]
+        if not code.strip() or '->' not in code:
+            continue
+        for m in _FIELD_DEREF.finditer(code):
+            field = m.group(1)
+            if field not in _typemap.KNOWN_NULLABLE_FIELDS:
+                continue
+            if re.search(r'\b%s\s*[!=]= (?:NULL|nullptr|0)\b' % re.escape(field), code):
+                continue
+            guarded = False
+            for j in range(max(0, i - 5), i):
+                prev = lines[j].split('//', 1)[0]
+                if re.search(r'\b%s\s*[!=]= (?:NULL|nullptr|0)\b' % re.escape(field), prev):
+                    guarded = True
+                    break
+            if not guarded:
+                lineno = i + 1
+                yield (lineno, Category.RISK, Severity.MED, 'null-deref-field',
+                       "%s can be NULL -- dereferencing without a null check is a %s. "
+                       "Add `if (%s != NULL)` guard."
+                       % (field, plat.null_deref_msg, field),
+                       raw_line.strip()[:160])
+                break
 
 
 # Registry -- (id, description, function). Add new rules here.
@@ -303,11 +383,18 @@ RULES = [
      rule_virtual_call_in_ctor),
     ('static-init-order', 'eager static init with a cross-TU dependency (undefined init order)',
      rule_static_init_order),
+    ('endianness',      'raw multi-byte cast in binary-IO file (big-endian hazard)',
+     rule_endianness_raw_cast),
+    ('null-deref-getter', 'getter return dereferenced without null check',
+     rule_null_deref_getter),
+    ('null-deref-field', 'known-nullable field dereferenced without null check',
+     rule_null_deref_field),
 ]
 
 
-def scan_rules(ledger, output_dir):
+def scan_rules(ledger, output_dir, platform=None):
     """Run every structural rule over the converted tree, appending Events. Returns count."""
+    plat = _PlatCtx(platform)
     n = 0
     files = sorted(f for f in os.listdir(output_dir) if f.endswith('.cpp') or f.endswith('.h'))
     for fname in files:
@@ -318,7 +405,7 @@ def scan_rules(ledger, output_dir):
             if os.path.isfile(hp):
                 header_text = _read(hp)
         for _rid, _desc, fn in RULES:
-            for line, cat, sev, rule, msg, snip in fn(fname, text, header_text):
+            for line, cat, sev, rule, msg, snip in fn(fname, text, header_text, plat):
                 ledger.add(fname, cat, msg, line=line, severity=sev,
                            source='rule', rule=rule, snippet=snip)
                 n += 1

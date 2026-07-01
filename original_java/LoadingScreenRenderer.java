@@ -1,136 +1,125 @@
-package net.minecraft.client;
+package net.minecraft.src;
 
-import com.mojang.nbt.NBTBase;
-import com.mojang.nbt.NBTTagCompound;
-import java.io.DataInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.zip.GZIPInputStream;
-import net.minecraft.client.gui.ScaledResolution;
-import net.minecraft.client.render.Tessellator;
+import net.minecraft.client.Minecraft;
 import org.lwjgl.opengl.Display;
 import org.lwjgl.opengl.GL11;
-import util.IProgressUpdate;
 
 public class LoadingScreenRenderer implements IProgressUpdate {
-	private String text;
+	private String message = "";
 	private Minecraft mc;
-	private String title;
-	private long start;
+	private String title = "";
+	private long systemTime = System.currentTimeMillis();
+	private boolean doneWorking = false;
 
 	public LoadingScreenRenderer(Minecraft var1) {
-		this.text = "";
-		this.title = "";
-		this.start = System.currentTimeMillis();
 		this.mc = var1;
 	}
 
-	public final void displayProgressMessage(String var1) {
+	public void func_596_a(String var1) {
+		this.doneWorking = false;
+		this.func_597_c(var1);
+	}
+
+	public void displayProgressMessage(String var1) {
+		this.doneWorking = true;
+		this.func_597_c(this.title);
+	}
+
+	public void func_597_c(String var1) {
 		if(!this.mc.running) {
-			throw new MinecraftError();
+			if(!this.doneWorking) {
+				throw new MinecraftError();
+			}
 		} else {
 			this.title = var1;
-			ScaledResolution var3 = new ScaledResolution(this.mc.displayWidth, this.mc.displayHeight);
-			int var2 = var3.getScaledWidth();
-			int var4 = var3.getScaledHeight();
+			ScaledResolution var2 = new ScaledResolution(this.mc.displayWidth, this.mc.displayHeight);
+			int var3 = var2.getScaledWidth();
+			int var4 = var2.getScaledHeight();
 			GL11.glClear(GL11.GL_DEPTH_BUFFER_BIT);
 			GL11.glMatrixMode(GL11.GL_PROJECTION);
 			GL11.glLoadIdentity();
-			GL11.glOrtho(0.0D, (double)var2, (double)var4, 0.0D, 100.0D, 300.0D);
+			GL11.glOrtho(0.0D, (double)var3, (double)var4, 0.0D, 100.0D, 300.0D);
 			GL11.glMatrixMode(GL11.GL_MODELVIEW);
 			GL11.glLoadIdentity();
 			GL11.glTranslatef(0.0F, 0.0F, -200.0F);
 		}
 	}
 
-	public final void displayLoadingString(String var1) {
+	public void displayLoadingString(String var1) {
 		if(!this.mc.running) {
-			throw new MinecraftError();
+			if(!this.doneWorking) {
+				throw new MinecraftError();
+			}
 		} else {
-			this.start = 0L;
-			this.text = var1;
+			this.systemTime = 0L;
+			this.message = var1;
 			this.setLoadingProgress(-1);
-			this.start = 0L;
+			this.systemTime = 0L;
 		}
 	}
 
-	public final void setLoadingProgress(int var1) {
+	public void setLoadingProgress(int var1) {
 		if(!this.mc.running) {
-			throw new MinecraftError();
+			if(!this.doneWorking) {
+				throw new MinecraftError();
+			}
 		} else {
 			long var2 = System.currentTimeMillis();
-			if(var2 - this.start >= 20L) {
-				this.start = var2;
-				ScaledResolution var8 = new ScaledResolution(this.mc.displayWidth, this.mc.displayHeight);
-				int var3 = var8.getScaledWidth();
-				int var9 = var8.getScaledHeight();
+			if(var2 - this.systemTime >= 20L) {
+				this.systemTime = var2;
+				ScaledResolution var4 = new ScaledResolution(this.mc.displayWidth, this.mc.displayHeight);
+				int var5 = var4.getScaledWidth();
+				int var6 = var4.getScaledHeight();
 				GL11.glClear(GL11.GL_DEPTH_BUFFER_BIT);
 				GL11.glMatrixMode(GL11.GL_PROJECTION);
 				GL11.glLoadIdentity();
-				GL11.glOrtho(0.0D, (double)var3, (double)var9, 0.0D, 100.0D, 300.0D);
+				GL11.glOrtho(0.0D, (double)var5, (double)var6, 0.0D, 100.0D, 300.0D);
 				GL11.glMatrixMode(GL11.GL_MODELVIEW);
 				GL11.glLoadIdentity();
 				GL11.glTranslatef(0.0F, 0.0F, -200.0F);
 				GL11.glClear(GL11.GL_DEPTH_BUFFER_BIT | GL11.GL_COLOR_BUFFER_BIT);
-				Tessellator var4 = Tessellator.instance;
-				int var5 = this.mc.renderEngine.getTexture("/dirt.png");
-				GL11.glBindTexture(GL11.GL_TEXTURE_2D, var5);
-				var4.startDrawingQuads();
-				var4.setColorOpaque_I(4210752);
-				var4.addVertexWithUV(0.0F, (float)var9, 0.0F, 0.0F, (float)var9 / 32.0F);
-				var4.addVertexWithUV((float)var3, (float)var9, 0.0F, (float)var3 / 32.0F, (float)var9 / 32.0F);
-				var4.addVertexWithUV((float)var3, 0.0F, 0.0F, (float)var3 / 32.0F, 0.0F);
-				var4.addVertexWithUV(0.0F, 0.0F, 0.0F, 0.0F, 0.0F);
-				var4.draw();
+				Tessellator var7 = Tessellator.instance;
+				int var8 = this.mc.renderEngine.getTexture("/gui/background.png");
+				GL11.glBindTexture(GL11.GL_TEXTURE_2D, var8);
+				float var9 = 32.0F;
+				var7.startDrawingQuads();
+				var7.setColorOpaque_I(4210752);
+				var7.addVertexWithUV(0.0D, (double)var6, 0.0D, 0.0D, (double)((float)var6 / var9));
+				var7.addVertexWithUV((double)var5, (double)var6, 0.0D, (double)((float)var5 / var9), (double)((float)var6 / var9));
+				var7.addVertexWithUV((double)var5, 0.0D, 0.0D, (double)((float)var5 / var9), 0.0D);
+				var7.addVertexWithUV(0.0D, 0.0D, 0.0D, 0.0D, 0.0D);
+				var7.draw();
 				if(var1 >= 0) {
-					var5 = var3 / 2 - 50;
-					int var6 = var9 / 2 + 16;
+					byte var10 = 100;
+					byte var11 = 2;
+					int var12 = var5 / 2 - var10 / 2;
+					int var13 = var6 / 2 + 16;
 					GL11.glDisable(GL11.GL_TEXTURE_2D);
-					var4.startDrawingQuads();
-					var4.setColorOpaque_I(8421504);
-					var4.addVertex((float)var5, (float)var6, 0.0F);
-					var4.addVertex((float)var5, (float)(var6 + 2), 0.0F);
-					var4.addVertex((float)(var5 + 100), (float)(var6 + 2), 0.0F);
-					var4.addVertex((float)(var5 + 100), (float)var6, 0.0F);
-					var4.setColorOpaque_I(8454016);
-					var4.addVertex((float)var5, (float)var6, 0.0F);
-					var4.addVertex((float)var5, (float)(var6 + 2), 0.0F);
-					var4.addVertex((float)(var5 + var1), (float)(var6 + 2), 0.0F);
-					var4.addVertex((float)(var5 + var1), (float)var6, 0.0F);
-					var4.draw();
+					var7.startDrawingQuads();
+					var7.setColorOpaque_I(8421504);
+					var7.addVertex((double)var12, (double)var13, 0.0D);
+					var7.addVertex((double)var12, (double)(var13 + var11), 0.0D);
+					var7.addVertex((double)(var12 + var10), (double)(var13 + var11), 0.0D);
+					var7.addVertex((double)(var12 + var10), (double)var13, 0.0D);
+					var7.setColorOpaque_I(8454016);
+					var7.addVertex((double)var12, (double)var13, 0.0D);
+					var7.addVertex((double)var12, (double)(var13 + var11), 0.0D);
+					var7.addVertex((double)(var12 + var1), (double)(var13 + var11), 0.0D);
+					var7.addVertex((double)(var12 + var1), (double)var13, 0.0D);
+					var7.draw();
 					GL11.glEnable(GL11.GL_TEXTURE_2D);
 				}
 
-				this.mc.fontRenderer.drawStringWithShadow(this.title, (var3 - this.mc.fontRenderer.getStringWidth(this.title)) / 2, var9 / 2 - 4 - 16, 16777215);
-				this.mc.fontRenderer.drawStringWithShadow(this.text, (var3 - this.mc.fontRenderer.getStringWidth(this.text)) / 2, var9 / 2 - 4 + 8, 16777215);
+				this.mc.fontRenderer.drawStringWithShadow(this.title, (var5 - this.mc.fontRenderer.getStringWidth(this.title)) / 2, var6 / 2 - 4 - 16, 16777215);
+				this.mc.fontRenderer.drawStringWithShadow(this.message, (var5 - this.mc.fontRenderer.getStringWidth(this.message)) / 2, var6 / 2 - 4 + 8, 16777215);
 				Display.update();
 
 				try {
 					Thread.yield();
-				} catch (Exception var7) {
+				} catch (Exception var14) {
 				}
+
 			}
 		}
-	}
-
-	public LoadingScreenRenderer() {
-	}
-
-	public static NBTTagCompound writeLevelTags(InputStream var0) throws IOException {
-		DataInputStream var4 = new DataInputStream(new GZIPInputStream(var0));
-
-		NBTTagCompound var5;
-		try {
-			NBTBase var1 = NBTBase.readTag(var4);
-			if(!(var1 instanceof NBTTagCompound)) {
-				throw new IOException("Root tag must be a named compound tag");
-			}
-
-			var5 = (NBTTagCompound)var1;
-		} finally {
-			var4.close();
-		}
-
-		return var5;
 	}
 }

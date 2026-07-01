@@ -1,45 +1,46 @@
-package net.minecraft.client.effect;
+package net.minecraft.src;
 
-import net.minecraft.client.render.Tessellator;
-import net.minecraft.client.render.entity.RenderManager;
-import net.minecraft.game.entity.Entity;
-import net.minecraft.game.entity.EntityLiving;
-import net.minecraft.game.level.World;
 import org.lwjgl.opengl.GL11;
 
-public final class EntityPickupFX extends EntityFX {
-	private Entity entityToPickUp;
-	private EntityLiving entityPickingUp;
+public class EntityPickupFX extends EntityFX {
+	private Entity thePlayer;
+	private Entity targetEntity;
 	private int age = 0;
 	private int maxAge = 0;
-	private float yOffs;
+	private float targetYOffset;
 
-	public EntityPickupFX(World var1, Entity var2, EntityLiving var3, float var4) {
+	public EntityPickupFX(World var1, Entity var2, Entity var3, float var4) {
 		super(var1, var2.posX, var2.posY, var2.posZ, var2.motionX, var2.motionY, var2.motionZ);
-		this.entityToPickUp = var2;
-		this.entityPickingUp = var3;
+		this.thePlayer = var2;
+		this.targetEntity = var3;
 		this.maxAge = 3;
-		this.yOffs = -0.5F;
+		this.targetYOffset = var4;
 	}
 
-	public final void renderParticle(Tessellator var1, float var2, float var3, float var4, float var5, float var6, float var7) {
-		float var9 = ((float)this.age + var2) / (float)this.maxAge;
-		var9 *= var9;
-		var3 = this.entityToPickUp.posX;
-		var4 = this.entityToPickUp.posY;
-		var5 = this.entityToPickUp.posZ;
-		var6 = this.entityPickingUp.lastTickPosX + (this.entityPickingUp.posX - this.entityPickingUp.lastTickPosX) * var2;
-		var7 = this.entityPickingUp.lastTickPosY + (this.entityPickingUp.posY - this.entityPickingUp.lastTickPosY) * var2 + this.yOffs;
-		float var8 = this.entityPickingUp.lastTickPosZ + (this.entityPickingUp.posZ - this.entityPickingUp.lastTickPosZ) * var2;
-		var3 += (var6 - var3) * var9;
-		var4 += (var7 - var4) * var9;
-		var9 = var5 + (var8 - var5) * var9;
-		var5 = this.worldObj.getLightBrightness((int)var3, (int)var4, (int)var9);
-		GL11.glColor4f(var5, var5, var5, 1.0F);
-		RenderManager.instance.a(this.entityToPickUp, var3, var4, var9, this.entityToPickUp.rotationYaw, var2);
+	public void renderParticle(Tessellator var1, float var2, float var3, float var4, float var5, float var6, float var7) {
+		float var8 = ((float)this.age + var2) / (float)this.maxAge;
+		var8 *= var8;
+		double var9 = this.thePlayer.posX;
+		double var11 = this.thePlayer.posY;
+		double var13 = this.thePlayer.posZ;
+		double var15 = this.targetEntity.lastTickPosX + (this.targetEntity.posX - this.targetEntity.lastTickPosX) * (double)var2;
+		double var17 = this.targetEntity.lastTickPosY + (this.targetEntity.posY - this.targetEntity.lastTickPosY) * (double)var2 + (double)this.targetYOffset;
+		double var19 = this.targetEntity.lastTickPosZ + (this.targetEntity.posZ - this.targetEntity.lastTickPosZ) * (double)var2;
+		double var21 = var9 + (var15 - var9) * (double)var8;
+		double var23 = var11 + (var17 - var11) * (double)var8;
+		double var25 = var13 + (var19 - var13) * (double)var8;
+		int var27 = MathHelper.floor_double(var21);
+		int var28 = MathHelper.floor_double(var23 + (double)(this.yOffset / 2.0F));
+		int var29 = MathHelper.floor_double(var25);
+		float var30 = this.worldObj.getLightBrightness(var27, var28, var29);
+		var21 -= interpPosX;
+		var23 -= interpPosY;
+		var25 -= interpPosZ;
+		GL11.glColor4f(var30, var30, var30, 1.0F);
+		RenderManager.instance.doRenderEntity(this.thePlayer, (double)((float)var21), (double)((float)var23), (double)((float)var25), this.thePlayer.rotationYaw, var2);
 	}
 
-	public final void onEntityUpdate() {
+	public void onUpdate() {
 		++this.age;
 		if(this.age == this.maxAge) {
 			this.setEntityDead();
@@ -47,7 +48,7 @@ public final class EntityPickupFX extends EntityFX {
 
 	}
 
-	public final int getFXLayer() {
-		return 2;
+	public int getFXLayer() {
+		return 3;
 	}
 }

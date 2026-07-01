@@ -1,21 +1,29 @@
-package net.minecraft.client.render;
+package net.minecraft.src;
 
 import java.util.Comparator;
-import net.minecraft.game.entity.player.EntityPlayer;
 
-public final class RenderSorter implements Comparator {
-	private EntityPlayer baseEntity;
+public class RenderSorter implements Comparator {
+	private EntityPlayer entityPlayer;
 
 	public RenderSorter(EntityPlayer var1) {
-		this.baseEntity = var1;
+		this.entityPlayer = var1;
 	}
 
-	public final int compare(Object var1, Object var2) {
-		WorldRenderer var10001 = (WorldRenderer)var1;
-		WorldRenderer var3 = (WorldRenderer)var2;
-		WorldRenderer var6 = var10001;
-		boolean var4 = var6.isInFrustrum;
-		boolean var5 = var3.isInFrustrum;
-		return var4 && !var5 ? 1 : ((!var5 || var4) && var6.distanceToEntitySquared(this.baseEntity) < var3.distanceToEntitySquared(this.baseEntity) ? 1 : -1);
+	public int a(WorldRenderer var1, WorldRenderer var2) {
+		boolean var3 = var1.isVisibleFromCamera;
+		boolean var4 = var2.isVisibleFromCamera;
+		if(var3 && !var4) {
+			return 1;
+		} else if(var4 && !var3) {
+			return -1;
+		} else {
+			double var5 = (double)var1.distanceToEntitySquared(this.entityPlayer);
+			double var7 = (double)var2.distanceToEntitySquared(this.entityPlayer);
+			return var5 < var7 ? 1 : (var5 > var7 ? -1 : (var1.chunkIndex < var2.chunkIndex ? 1 : -1));
+		}
+	}
+
+	public int compare(Object var1, Object var2) {
+		return this.a((WorldRenderer)var1, (WorldRenderer)var2);
 	}
 }

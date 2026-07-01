@@ -1,10 +1,10 @@
-package com.mojang.nbt;
+package net.minecraft.src;
 
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 
-public final class NBTTagFloat extends NBTBase {
+public class NBTTagFloat extends NBTBase {
 	public float floatValue;
 
 	public NBTTagFloat() {
@@ -14,19 +14,19 @@ public final class NBTTagFloat extends NBTBase {
 		this.floatValue = var1;
 	}
 
-	final void writeTagContents(DataOutput var1) throws IOException {
+	void writeTagContents(DataOutput var1) throws IOException {
 		var1.writeFloat(this.floatValue);
 	}
 
-	final void readTagContents(DataInput var1) throws IOException {
+	void readTagContents(DataInput var1) throws IOException {
 		this.floatValue = var1.readFloat();
 	}
 
-	public final byte getType() {
+	public byte getType() {
 		return (byte)5;
 	}
 
-	public final String toString() {
+	public String toString() {
 		return "" + this.floatValue;
 	}
 }

@@ -13,7 +13,6 @@ a = Analysis(
     pathex=[HERE],
     binaries=[],
     datas=[
-        ('overrides', 'overrides'),
         ('profiles', 'profiles'),
     ],
     hiddenimports=[
@@ -22,6 +21,9 @@ a = Analysis(
         'j2x.signatures',
         'j2x.worklist',
         'j2x.vcxproj',
+        'j2x.platforms',
+        'j2x.stubs',
+        'j2x.emit.std_transforms',
     ],
     hookspath=[],
     hooksconfig={},

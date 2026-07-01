@@ -1,7 +1,7 @@
-package net.minecraft.client.render.camera;
-
-import net.minecraft.game.physics.AxisAlignedBB;
+package net.minecraft.src;
 
 public interface ICamera {
-	boolean isBoundingBoxInFrustrum(AxisAlignedBB var1);
+	boolean isBoundingBoxInFrustum(AxisAlignedBB var1);
+
+	void setPosition(double var1, double var3, double var5);
 }

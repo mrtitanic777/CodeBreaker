@@ -1,59 +1,84 @@
-package net.minecraft.client.render;
+package net.minecraft.src;
 
-import net.minecraft.client.render.camera.ICamera;
-import net.minecraft.client.render.entity.RenderItem;
-import net.minecraft.game.entity.EntityLiving;
-import net.minecraft.game.level.World;
-import net.minecraft.game.level.block.Block;
-import net.minecraft.game.physics.AxisAlignedBB;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
 import org.lwjgl.opengl.GL11;
-import util.MathHelper;
 
-public final class WorldRenderer {
-	private World worldObj;
+public class WorldRenderer {
+	public World worldObj;
 	private int glRenderList = -1;
 	private static Tessellator tessellator = Tessellator.instance;
 	public static int chunksUpdated = 0;
-	private int posX;
-	private int posY;
-	private int posZ;
-	private int sizeWidth;
-	private int sizeHeight;
-	private int sizeDepth;
-	public boolean isInFrustrum = false;
-	private boolean[] skipRenderPass = new boolean[2];
-	private int posXPlus;
-	private int posYPlus;
-	private int posZPlus;
+	public int posX;
+	public int posY;
+	public int posZ;
+	public int sizeWidth;
+	public int sizeHeight;
+	public int sizeDepth;
+	public int posXClamped;
+	public int posYClamped;
+	public int posZClamped;
+	public int posXMinus;
+	public int posYMinus;
+	public int posZMinus;
+	public boolean isVisibleFromCamera = false;
+	public boolean[] skipRenderPass = new boolean[2];
+	public int posXClip;
+	public int posYClip;
+	public int posZClip;
+	public float rendererRadius;
 	public boolean needsUpdate;
-	private AxisAlignedBB rendererBoundingBox;
-	private RenderBlocks renderBlocks;
+	public AxisAlignedBB rendererBoundingBox;
+	public int chunkIndex;
 	public boolean isVisible = true;
+	public boolean isInFrustum;
+	public int glRenderListBase;
 	public boolean isWaitingOnOcclusionQuery;
-	public int glOcclusionQuery;
+	private boolean isInitialized = false;
+	public List tileEntityRenderers = new ArrayList();
+	private List tileEntities;
 
-	public WorldRenderer(World var1, int var2, int var3, int var4, int var5, int var6) {
-		this.renderBlocks = new RenderBlocks(var1);
+	public WorldRenderer(World var1, List var2, int var3, int var4, int var5, int var6, int var7) {
 		this.worldObj = var1;
-		this.posX = var2;
-		this.posY = var3;
-		this.posZ = var4;
-		this.sizeWidth = this.sizeHeight = this.sizeDepth = 16;
-		this.posXPlus = var2 + this.sizeWidth / 2;
-		this.posYPlus = var3 + this.sizeHeight / 2;
-		this.posZPlus = var4 + this.sizeDepth / 2;
-		MathHelper.sqrt_float((float)(this.sizeWidth * this.sizeWidth + this.sizeHeight * this.sizeHeight + this.sizeDepth * this.sizeDepth));
-		this.rendererBoundingBox = (new AxisAlignedBB((float)var2, (float)var3, (float)var4, (float)(var2 + this.sizeWidth), (float)(var3 + this.sizeHeight), (float)(var4 + this.sizeDepth))).expand(2.0F, 2.0F, 2.0F);
-		this.glRenderList = var6;
-		this.setDontDraw();
-		GL11.glDisable(GL11.GL_TEXTURE_2D);
-		GL11.glNewList(var6 + 2, GL11.GL_COMPILE);
-		RenderItem.renderOffsetAABB(this.rendererBoundingBox);
-		GL11.glEndList();
-		GL11.glEnable(GL11.GL_TEXTURE_2D);
+		this.tileEntities = var2;
+		this.sizeWidth = this.sizeHeight = this.sizeDepth = var6;
+		this.rendererRadius = MathHelper.sqrt_float((float)(this.sizeWidth * this.sizeWidth + this.sizeHeight * this.sizeHeight + this.sizeDepth * this.sizeDepth)) / 2.0F;
+		this.glRenderList = var7;
+		this.posX = -999;
+		this.setPosition(var3, var4, var5);
+		this.needsUpdate = false;
 	}
 
-	public final void updateRenderer() {
+	public void setPosition(int var1, int var2, int var3) {
+		if(var1 != this.posX || var2 != this.posY || var3 != this.posZ) {
+			this.markPassesDirty();
+			this.posX = var1;
+			this.posY = var2;
+			this.posZ = var3;
+			this.posXClip = var1 + this.sizeWidth / 2;
+			this.posYClip = var2 + this.sizeHeight / 2;
+			this.posZClip = var3 + this.sizeDepth / 2;
+			this.posXMinus = var1 & 1023;
+			this.posYMinus = var2;
+			this.posZMinus = var3 & 1023;
+			this.posXClamped = var1 - this.posXMinus;
+			this.posYClamped = var2 - this.posYMinus;
+			this.posZClamped = var3 - this.posZMinus;
+			float var4 = 2.0F;
+			this.rendererBoundingBox = AxisAlignedBB.getBoundingBox((double)((float)var1 - var4), (double)((float)var2 - var4), (double)((float)var3 - var4), (double)((float)(var1 + this.sizeWidth) + var4), (double)((float)(var2 + this.sizeHeight) + var4), (double)((float)(var3 + this.sizeDepth) + var4));
+			GL11.glNewList(this.glRenderList + 2, GL11.GL_COMPILE);
+			RenderItem.renderAABB(AxisAlignedBB.getBoundingBoxFromPool((double)((float)this.posXMinus - var4), (double)((float)this.posYMinus - var4), (double)((float)this.posZMinus - var4), (double)((float)(this.posXMinus + this.sizeWidth) + var4), (double)((float)(this.posYMinus + this.sizeHeight) + var4), (double)((float)(this.posZMinus + this.sizeDepth) + var4)));
+			GL11.glEndList();
+			this.MarkDirty();
+		}
+	}
+
+	private void translateToOrigin() {
+		GL11.glTranslatef((float)this.posXMinus, (float)this.posYMinus, (float)this.posZMinus);
+	}
+
+	public void updateRenderer() {
 		if(this.needsUpdate) {
 			++chunksUpdated;
 			int var1 = this.posX;
@@ -63,85 +88,127 @@ public final class WorldRenderer {
 			int var5 = this.posY + this.sizeHeight;
 			int var6 = this.posZ + this.sizeDepth;
 
-			int var7;
-			for(var7 = 0; var7 < 2; ++var7) {
+			for(int var7 = 0; var7 < 2; ++var7) {
 				this.skipRenderPass[var7] = true;
 			}
 
-			for(var7 = 0; var7 < 2; ++var7) {
-				boolean var8 = false;
-				boolean var9 = false;
-				tessellator.startDrawingQuads();
-				GL11.glNewList(this.glRenderList + var7, GL11.GL_COMPILE);
+			Chunk.isLit = false;
+			HashSet var21 = new HashSet();
+			var21.addAll(this.tileEntityRenderers);
+			this.tileEntityRenderers.clear();
+			byte var8 = 1;
+			ChunkCache var9 = new ChunkCache(this.worldObj, var1 - var8, var2 - var8, var3 - var8, var4 + var8, var5 + var8, var6 + var8);
+			RenderBlocks var10 = new RenderBlocks(var9);
 
-				for(int var10 = var2; var10 < var5; ++var10) {
-					for(int var11 = var3; var11 < var6; ++var11) {
-						int var12 = (var10 * this.worldObj.length + var11) * this.worldObj.width + var1;
+			for(int var11 = 0; var11 < 2; ++var11) {
+				boolean var12 = false;
+				boolean var13 = false;
+				boolean var14 = false;
 
-						for(int var13 = var1; var13 < var4; ++var13) {
-							int var14 = this.worldObj.d[var12++] & 255;
-							if(var14 > 0) {
-								Block var15 = Block.blocksList[var14];
-								if(var15.getRenderBlockPass() != var7) {
-									var8 = true;
-								} else {
-									var9 |= this.renderBlocks.renderBlockByRenderType(var15, var13, var10, var11);
+				for(int var15 = var2; var15 < var5; ++var15) {
+					for(int var16 = var3; var16 < var6; ++var16) {
+						for(int var17 = var1; var17 < var4; ++var17) {
+							int var18 = var9.getBlockId(var17, var15, var16);
+							if(var18 > 0) {
+								if(!var14) {
+									var14 = true;
+									GL11.glNewList(this.glRenderList + var11, GL11.GL_COMPILE);
+									GL11.glPushMatrix();
+									this.translateToOrigin();
+									float var19 = 1.000001F;
+									GL11.glTranslatef((float)(-this.sizeDepth) / 2.0F, (float)(-this.sizeHeight) / 2.0F, (float)(-this.sizeDepth) / 2.0F);
+									GL11.glScalef(var19, var19, var19);
+									GL11.glTranslatef((float)this.sizeDepth / 2.0F, (float)this.sizeHeight / 2.0F, (float)this.sizeDepth / 2.0F);
+									tessellator.startDrawingQuads();
+									tessellator.setTranslationD((double)(-this.posX), (double)(-this.posY), (double)(-this.posZ));
+								}
+
+								if(var11 == 0 && Block.isBlockContainer[var18]) {
+									TileEntity var23 = var9.getBlockTileEntity(var17, var15, var16);
+									if(TileEntityRenderer.instance.hasSpecialRenderer(var23)) {
+										this.tileEntityRenderers.add(var23);
+									}
+								}
+
+								Block var24 = Block.blocksList[var18];
+								int var20 = var24.getRenderBlockPass();
+								if(var20 != var11) {
+									var12 = true;
+								} else if(var20 == var11) {
+									var13 |= var10.renderBlockByRenderType(var24, var17, var15, var16);
 								}
 							}
 						}
 					}
 				}
 
-				tessellator.draw();
-				GL11.glEndList();
-				if(var9) {
-					this.skipRenderPass[var7] = false;
+				if(var14) {
+					tessellator.draw();
+					GL11.glPopMatrix();
+					GL11.glEndList();
+					tessellator.setTranslationD(0.0D, 0.0D, 0.0D);
+				} else {
+					var13 = false;
 				}
 
-				if(!var8) {
+				if(var13) {
+					this.skipRenderPass[var11] = false;
+				}
+
+				if(!var12) {
 					break;
 				}
 			}
 
+			HashSet var22 = new HashSet();
+			var22.addAll(this.tileEntityRenderers);
+			var22.removeAll(var21);
+			this.tileEntities.addAll(var22);
+			var21.removeAll(this.tileEntityRenderers);
+			this.tileEntities.removeAll(var21);
+			this.isWaitingOnOcclusionQuery = Chunk.isLit;
+			this.isInitialized = true;
 		}
 	}
 
-	public final float distanceToEntitySquared(EntityLiving var1) {
-		float var2 = var1.posX - (float)this.posXPlus;
-		float var3 = var1.posY - (float)this.posYPlus;
-		float var4 = var1.posZ - (float)this.posZPlus;
+	public float distanceToEntitySquared(Entity var1) {
+		float var2 = (float)(var1.posX - (double)this.posXClip);
+		float var3 = (float)(var1.posY - (double)this.posYClip);
+		float var4 = (float)(var1.posZ - (double)this.posZClip);
 		return var2 * var2 + var3 * var3 + var4 * var4;
 	}
 
-	private void setDontDraw() {
+	public void markPassesDirty() {
 		for(int var1 = 0; var1 < 2; ++var1) {
 			this.skipRenderPass[var1] = true;
 		}
 
+		this.isVisibleFromCamera = false;
+		this.isInitialized = false;
 	}
 
-	public final void stopRendering() {
-		this.setDontDraw();
+	public void setDontDraw() {
+		this.markPassesDirty();
 		this.worldObj = null;
 	}
 
-	public final int getGLCallListForPass(int[] var1, int var2, int var3) {
-		if(!this.isInFrustrum) {
-			return var2;
-		} else {
-			if(!this.skipRenderPass[var3]) {
-				var1[var2++] = this.glRenderList + var3;
-			}
-
-			return var2;
-		}
+	public int getGLCallList(int var1) {
+		return !this.isVisibleFromCamera ? -1 : (!this.skipRenderPass[var1] ? this.glRenderList + var1 : -1);
 	}
 
-	public final void updateInFrustrum(ICamera var1) {
-		this.isInFrustrum = var1.isBoundingBoxInFrustrum(this.rendererBoundingBox);
+	public void updateInFrustum(ICamera var1) {
+		this.isVisibleFromCamera = var1.isBoundingBoxInFrustum(this.rendererBoundingBox);
 	}
 
-	public final void callOcclusionQueryList() {
+	public void callOcclusionQueryList() {
 		GL11.glCallList(this.glRenderList + 2);
+	}
+
+	public boolean skipAllRenderPasses() {
+		return !this.isInitialized ? false : this.skipRenderPass[0] && this.skipRenderPass[1];
+	}
+
+	public void MarkDirty() {
+		this.needsUpdate = true;
 	}
 }

@@ -1,23 +1,26 @@
-package net.minecraft.client;
+package net.minecraft.src;
 
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.PrintWriter;
+import net.minecraft.client.Minecraft;
 import org.lwjgl.input.Keyboard;
 
-public final class GameSettings {
+public class GameSettings {
 	private static final String[] RENDER_DISTANCES = new String[]{"FAR", "NORMAL", "SHORT", "TINY"};
-	private static final String[] DIFFICULTIES = new String[]{"Peaceful", "Easy", "Normal", "Hard"};
-	public boolean music = true;
-	public boolean sound = true;
+	private static final String[] DIFFICULTY_LEVELS = new String[]{"Peaceful", "Easy", "Normal", "Hard"};
+	public float musicVolume = 1.0F;
+	public float soundVolume = 1.0F;
+	public float mouseSensitivity = 0.5F;
 	public boolean invertMouse = false;
-	public boolean showFPS = false;
 	public int renderDistance = 0;
-	public boolean fancyGraphics = true;
+	public boolean viewBobbing = true;
 	public boolean anaglyph = false;
 	public boolean limitFramerate = false;
+	public boolean fancyGraphics = true;
+	public String skin = "Default";
 	public KeyBinding keyBindForward = new KeyBinding("Forward", 17);
 	public KeyBinding keyBindLeft = new KeyBinding("Left", 30);
 	public KeyBinding keyBindBack = new KeyBinding("Back", 31);
@@ -25,15 +28,16 @@ public final class GameSettings {
 	public KeyBinding keyBindJump = new KeyBinding("Jump", 57);
 	public KeyBinding keyBindInventory = new KeyBinding("Inventory", 23);
 	public KeyBinding keyBindDrop = new KeyBinding("Drop", 16);
-	private KeyBinding keyBindChat = new KeyBinding("Chat", 20);
+	public KeyBinding keyBindChat = new KeyBinding("Chat", 20);
 	public KeyBinding keyBindToggleFog = new KeyBinding("Toggle fog", 33);
-	public KeyBinding keyBindSave = new KeyBinding("Save location", 28);
-	public KeyBinding keyBindLoad = new KeyBinding("Load location", 19);
-	public KeyBinding[] keyBindings = new KeyBinding[]{this.keyBindForward, this.keyBindLeft, this.keyBindBack, this.keyBindRight, this.keyBindJump, this.keyBindDrop, this.keyBindInventory, this.keyBindChat, this.keyBindToggleFog, this.keyBindSave, this.keyBindLoad};
-	private Minecraft mc;
+	public KeyBinding keyBindSneak = new KeyBinding("Sneak", 42);
+	public KeyBinding[] keyBindings = new KeyBinding[]{this.keyBindForward, this.keyBindLeft, this.keyBindBack, this.keyBindRight, this.keyBindJump, this.keyBindSneak, this.keyBindDrop, this.keyBindInventory, this.keyBindChat, this.keyBindToggleFog};
+	protected Minecraft mc;
 	private File optionsFile;
-	public int numberOfOptions = 9;
+	public int numberOfOptions = 10;
 	public int difficulty = 2;
+	public boolean thirdPersonView = false;
+	public String lastServer = "";
 
 	public GameSettings(Minecraft var1, File var2) {
 		this.mc = var1;
@@ -41,32 +45,38 @@ public final class GameSettings {
 		this.loadOptions();
 	}
 
-	public final String setKeyBindingString(int var1) {
+	public GameSettings() {
+	}
+
+	public String getKeyBinding(int var1) {
 		return this.keyBindings[var1].keyDescription + ": " + Keyboard.getKeyName(this.keyBindings[var1].keyCode);
 	}
 
-	public final void setKeyBinding(int var1, int var2) {
+	public void setKeyBinding(int var1, int var2) {
 		this.keyBindings[var1].keyCode = var2;
 		this.saveOptions();
 	}
 
-	public final void setOptionValue(int var1, int var2) {
+	public void setOptionFloatValue(int var1, float var2) {
 		if(var1 == 0) {
-			this.music = !this.music;
+			this.musicVolume = var2;
 			this.mc.sndManager.onSoundOptionsChanged();
 		}
 
 		if(var1 == 1) {
-			this.sound = !this.sound;
+			this.soundVolume = var2;
 			this.mc.sndManager.onSoundOptionsChanged();
 		}
 
-		if(var1 == 2) {
-			this.invertMouse = !this.invertMouse;
+		if(var1 == 3) {
+			this.mouseSensitivity = var2;
 		}
 
-		if(var1 == 3) {
-			this.showFPS = !this.showFPS;
+	}
+
+	public void setOptionValue(int var1, int var2) {
+		if(var1 == 2) {
+			this.invertMouse = !this.invertMouse;
 		}
 
 		if(var1 == 4) {
@@ -74,7 +84,7 @@ public final class GameSettings {
 		}
 
 		if(var1 == 5) {
-			this.fancyGraphics = !this.fancyGraphics;
+			this.viewBobbing = !this.viewBobbing;
 		}
 
 		if(var1 == 6) {
@@ -90,87 +100,123 @@ public final class GameSettings {
 			this.difficulty = this.difficulty + var2 & 3;
 		}
 
+		if(var1 == 9) {
+			this.fancyGraphics = !this.fancyGraphics;
+			this.mc.renderGlobal.loadRenderers();
+		}
+
 		this.saveOptions();
 	}
 
-	public final String setOptionString(int var1) {
-		return var1 == 0 ? "Music: " + (this.music ? "ON" : "OFF") : (var1 == 1 ? "Sound: " + (this.sound ? "ON" : "OFF") : (var1 == 2 ? "Invert mouse: " + (this.invertMouse ? "ON" : "OFF") : (var1 == 3 ? "Show FPS: " + (this.showFPS ? "ON" : "OFF") : (var1 == 4 ? "Render distance: " + RENDER_DISTANCES[this.renderDistance] : (var1 == 5 ? "View bobbing: " + (this.fancyGraphics ? "ON" : "OFF") : (var1 == 6 ? "3d anaglyph: " + (this.anaglyph ? "ON" : "OFF") : (var1 == 7 ? "Limit framerate: " + (this.limitFramerate ? "ON" : "OFF") : (var1 == 8 ? "Difficulty: " + DIFFICULTIES[this.difficulty] : ""))))))));
+	public int getOptionControlType(int var1) {
+		return var1 == 0 ? 1 : (var1 == 1 ? 1 : (var1 == 3 ? 1 : 0));
 	}
 
-	private void loadOptions() {
+	public float getOptionFloatValue(int var1) {
+		return var1 == 0 ? this.musicVolume : (var1 == 1 ? this.soundVolume : (var1 == 3 ? this.mouseSensitivity : 0.0F));
+	}
+
+	public String getOptionDisplayString(int var1) {
+		return var1 == 0 ? "Music: " + (this.musicVolume > 0.0F ? (int)(this.musicVolume * 100.0F) + "%" : "OFF") : (var1 == 1 ? "Sound: " + (this.soundVolume > 0.0F ? (int)(this.soundVolume * 100.0F) + "%" : "OFF") : (var1 == 2 ? "Invert mouse: " + (this.invertMouse ? "ON" : "OFF") : (var1 == 3 ? (this.mouseSensitivity == 0.0F ? "Sensitivity: *yawn*" : (this.mouseSensitivity == 1.0F ? "Sensitivity: HYPERSPEED!!!" : "Sensitivity: " + (int)(this.mouseSensitivity * 200.0F) + "%")) : (var1 == 4 ? "Render distance: " + RENDER_DISTANCES[this.renderDistance] : (var1 == 5 ? "View bobbing: " + (this.viewBobbing ? "ON" : "OFF") : (var1 == 6 ? "3d anaglyph: " + (this.anaglyph ? "ON" : "OFF") : (var1 == 7 ? "Limit framerate: " + (this.limitFramerate ? "ON" : "OFF") : (var1 == 8 ? "Difficulty: " + DIFFICULTY_LEVELS[this.difficulty] : (var1 == 9 ? "Graphics: " + (this.fancyGraphics ? "FANCY" : "FAST") : "")))))))));
+	}
+
+	public void loadOptions() {
 		try {
-			if(this.optionsFile.exists()) {
-				BufferedReader var1 = new BufferedReader(new FileReader(this.optionsFile));
+			if(!this.optionsFile.exists()) {
+				return;
+			}
 
-				while(true) {
-					String var2 = var1.readLine();
-					if(var2 == null) {
-						var1.close();
-						return;
-					}
+			BufferedReader var1 = new BufferedReader(new FileReader(this.optionsFile));
+			String var2 = "";
 
-					String[] var5 = var2.split(":");
-					if(var5[0].equals("music")) {
-						this.music = var5[1].equals("true");
-					}
+			while(true) {
+				var2 = var1.readLine();
+				if(var2 == null) {
+					var1.close();
+					break;
+				}
 
-					if(var5[0].equals("sound")) {
-						this.sound = var5[1].equals("true");
-					}
+				String[] var3 = var2.split(":");
+				if(var3[0].equals("music")) {
+					this.musicVolume = this.parseFloat(var3[1]);
+				}
 
-					if(var5[0].equals("invertYMouse")) {
-						this.invertMouse = var5[1].equals("true");
-					}
+				if(var3[0].equals("sound")) {
+					this.soundVolume = this.parseFloat(var3[1]);
+				}
 
-					if(var5[0].equals("showFrameRate")) {
-						this.showFPS = var5[1].equals("true");
-					}
+				if(var3[0].equals("mouseSensitivity")) {
+					this.mouseSensitivity = this.parseFloat(var3[1]);
+				}
 
-					if(var5[0].equals("viewDistance")) {
-						this.renderDistance = Integer.parseInt(var5[1]);
-					}
+				if(var3[0].equals("invertYMouse")) {
+					this.invertMouse = var3[1].equals("true");
+				}
 
-					if(var5[0].equals("bobView")) {
-						this.fancyGraphics = var5[1].equals("true");
-					}
+				if(var3[0].equals("viewDistance")) {
+					this.renderDistance = Integer.parseInt(var3[1]);
+				}
 
-					if(var5[0].equals("anaglyph3d")) {
-						this.anaglyph = var5[1].equals("true");
-					}
+				if(var3[0].equals("bobView")) {
+					this.viewBobbing = var3[1].equals("true");
+				}
 
-					if(var5[0].equals("limitFramerate")) {
-						this.limitFramerate = var5[1].equals("true");
-					}
+				if(var3[0].equals("anaglyph3d")) {
+					this.anaglyph = var3[1].equals("true");
+				}
 
-					if(var5[0].equals("difficulty")) {
-						this.difficulty = Integer.parseInt(var5[1]);
-					}
+				if(var3[0].equals("limitFramerate")) {
+					this.limitFramerate = var3[1].equals("true");
+				}
 
-					for(int var3 = 0; var3 < this.keyBindings.length; ++var3) {
-						if(var5[0].equals("key_" + this.keyBindings[var3].keyDescription)) {
-							this.keyBindings[var3].keyCode = Integer.parseInt(var5[1]);
-						}
+				if(var3[0].equals("difficulty")) {
+					this.difficulty = Integer.parseInt(var3[1]);
+				}
+
+				if(var3[0].equals("fancyGraphics")) {
+					this.fancyGraphics = var3[1].equals("true");
+				}
+
+				if(var3[0].equals("skin")) {
+					this.skin = var3[1];
+				}
+
+				if(var3[0].equals("lastServer")) {
+					this.lastServer = var3[1];
+				}
+
+				for(int var4 = 0; var4 < this.keyBindings.length; ++var4) {
+					if(var3[0].equals("key_" + this.keyBindings[var4].keyDescription)) {
+						this.keyBindings[var4].keyCode = Integer.parseInt(var3[1]);
 					}
 				}
 			}
-		} catch (Exception var4) {
+		} catch (Exception var5) {
 			System.out.println("Failed to load options");
-			var4.printStackTrace();
+			var5.printStackTrace();
 		}
+
 	}
 
-	public final void saveOptions() {
+	private float parseFloat(String var1) {
+		return var1.equals("true") ? 1.0F : (var1.equals("false") ? 0.0F : Float.parseFloat(var1));
+	}
+
+	public void saveOptions() {
 		try {
 			PrintWriter var1 = new PrintWriter(new FileWriter(this.optionsFile));
-			var1.println("music:" + this.music);
-			var1.println("sound:" + this.sound);
+			var1.println("music:" + this.musicVolume);
+			var1.println("sound:" + this.soundVolume);
 			var1.println("invertYMouse:" + this.invertMouse);
-			var1.println("showFrameRate:" + this.showFPS);
+			var1.println("mouseSensitivity:" + this.mouseSensitivity);
 			var1.println("viewDistance:" + this.renderDistance);
-			var1.println("bobView:" + this.fancyGraphics);
+			var1.println("bobView:" + this.viewBobbing);
 			var1.println("anaglyph3d:" + this.anaglyph);
 			var1.println("limitFramerate:" + this.limitFramerate);
 			var1.println("difficulty:" + this.difficulty);
+			var1.println("fancyGraphics:" + this.fancyGraphics);
+			var1.println("skin:" + this.skin);
+			var1.println("lastServer:" + this.lastServer);
 
 			for(int var2 = 0; var2 < this.keyBindings.length; ++var2) {
 				var1.println("key_" + this.keyBindings[var2].keyDescription + ":" + this.keyBindings[var2].keyCode);
@@ -181,5 +227,6 @@ public final class GameSettings {
 			System.out.println("Failed to save options");
 			var3.printStackTrace();
 		}
+
 	}
 }

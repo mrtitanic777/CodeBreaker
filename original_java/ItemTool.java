@@ -1,24 +1,28 @@
-package net.minecraft.game.item;
-
-import net.minecraft.game.level.block.Block;
+package net.minecraft.src;
 
 public class ItemTool extends Item {
 	private Block[] blocksEffectiveAgainst;
 	private float efficiencyOnProperMaterial = 4.0F;
 	private int damageVsEntity;
+	protected int ingredientQuality;
 
 	public ItemTool(int var1, int var2, int var3, Block[] var4) {
 		super(var1);
+		this.ingredientQuality = var3;
 		this.blocksEffectiveAgainst = var4;
 		this.maxStackSize = 1;
 		this.maxDamage = 32 << var3;
-		this.efficiencyOnProperMaterial = (float)(var3 + 1 << 1);
+		if(var3 == 3) {
+			this.maxDamage *= 4;
+		}
+
+		this.efficiencyOnProperMaterial = (float)((var3 + 1) * 2);
 		this.damageVsEntity = var2 + var3;
 	}
 
-	public final float getStrVsBlock(Block var1) {
-		for(int var2 = 0; var2 < this.blocksEffectiveAgainst.length; ++var2) {
-			if(this.blocksEffectiveAgainst[var2] == var1) {
+	public float getStrVsBlock(ItemStack var1, Block var2) {
+		for(int var3 = 0; var3 < this.blocksEffectiveAgainst.length; ++var3) {
+			if(this.blocksEffectiveAgainst[var3] == var2) {
 				return this.efficiencyOnProperMaterial;
 			}
 		}
@@ -26,15 +30,19 @@ public class ItemTool extends Item {
 		return 1.0F;
 	}
 
-	public final void hitEntity(ItemStack var1) {
+	public void hitEntity(ItemStack var1, EntityLiving var2) {
 		var1.damageItem(2);
 	}
 
-	public final void onBlockDestroyed(ItemStack var1) {
+	public void hitBlock(ItemStack var1, int var2, int var3, int var4, int var5) {
 		var1.damageItem(1);
 	}
 
-	public final int getDamageVsEntity() {
+	public int getDamageVsEntity(Entity var1) {
 		return this.damageVsEntity;
+	}
+
+	public boolean isFull3D() {
+		return true;
 	}
 }

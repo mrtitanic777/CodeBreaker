@@ -1,10 +1,10 @@
-package com.mojang.nbt;
+package net.minecraft.src;
 
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 
-public final class NBTTagInt extends NBTBase {
+public class NBTTagInt extends NBTBase {
 	public int intValue;
 
 	public NBTTagInt() {
@@ -14,19 +14,19 @@ public final class NBTTagInt extends NBTBase {
 		this.intValue = var1;
 	}
 
-	final void writeTagContents(DataOutput var1) throws IOException {
+	void writeTagContents(DataOutput var1) throws IOException {
 		var1.writeInt(this.intValue);
 	}
 
-	final void readTagContents(DataInput var1) throws IOException {
+	void readTagContents(DataInput var1) throws IOException {
 		this.intValue = var1.readInt();
 	}
 
-	public final byte getType() {
+	public byte getType() {
 		return (byte)3;
 	}
 
-	public final String toString() {
+	public String toString() {
 		return "" + this.intValue;
 	}
 }

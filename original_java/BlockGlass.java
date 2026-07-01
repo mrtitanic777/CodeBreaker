@@ -1,14 +1,13 @@
-package net.minecraft.game.level.block;
+package net.minecraft.src;
 
 import java.util.Random;
-import net.minecraft.game.level.material.Material;
 
-public final class BlockGlass extends BlockBreakable {
+public class BlockGlass extends BlockBreakable {
 	public BlockGlass(int var1, int var2, Material var3, boolean var4) {
-		super(20, 49, var3, false);
+		super(var1, var2, var3, var4);
 	}
 
-	public final int quantityDropped(Random var1) {
+	public int quantityDropped(Random var1) {
 		return 0;
 	}
 }

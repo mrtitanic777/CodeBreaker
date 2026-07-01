@@ -19,10 +19,14 @@ import re
 from .. import typemap, ir
 from ..ledger import Category, Severity
 from . import naming, ownership
+from .std_transforms import apply_std_transforms
 from .statements import (translate_body, _resolve_chains, _resolve_call_chains,
                          sub_outside_literals, _split_top_commas)
 
-_BANNER = '// Auto-generated from %s.java\n// Target: Xbox 360 / C++03 / DirectX 9'
+def _banner(cls_name, cpp_std=None, platform_label=None):
+    std_label = cpp_std.label if cpp_std else 'C++03'
+    plat = platform_label or 'unknown'
+    return '// Auto-generated from %s.java\n// Target: %s / %s' % (cls_name, plat, std_label)
 _NEW_ARRAY = re.compile(r'^new\s+[\w.]+\s*\[([^\]]+)\]\s*$')   # size may be any expression
 _THIS_CALL = re.compile(r'\bthis\s*\(([^;]*)\)\s*;')
 _SUPER_CALL = re.compile(r'^super\s*\(([^;]*)\)\s*;')
@@ -424,7 +428,7 @@ def _referenced_types(cls, resolver, body_text):
     return sorted((names & includable) - {cls.name})
 
 
-def render_source(cls, resolver, ledger=None):
+def render_source(cls, resolver, ledger=None, cpp_std=None, platform_label=None):
     """Returns the .cpp text, or None for interfaces/enums (header-only)."""
     if cls.is_interface or cls.is_enum:
         return None
@@ -493,7 +497,7 @@ def render_source(cls, resolver, ledger=None):
     # tokens in the body -- the signatures catch types reached only through lowercase vars
     # (e.g. entity->posX, where the type 'Entity' is never spelled in the body).
     used = _referenced_types(cls, resolver, '\n'.join(body))
-    L = ['#include "stdafx.h"', '#include "JavaRT.h"', '', _BANNER % cls.name, '',
+    L = ['#include "stdafx.h"', '#include "JavaRT.h"', '', _banner(cls.name, cpp_std, platform_label), '',
          '#include "%s.h"' % cls.name]
     L += ['#include "%s.h"' % n for n in used]
     L += ['']
@@ -502,4 +506,4 @@ def render_source(cls, resolver, ledger=None):
     if ledger is not None:
         ledger.add(cls.name + '.cpp', Category.PORTED, 'generated source for %s' % cls.name,
                    source='emit', rule='source')
-    return '\n'.join(L).rstrip() + '\n'
+    return apply_std_transforms('\n'.join(L).rstrip() + '\n', cpp_std)

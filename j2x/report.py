@@ -98,47 +98,23 @@ def _write_index(ledger, report_dir, meta):
     L.append('%d files have findings; %d carry HIGH-severity risk.' %
              (len(risky), sum(1 for r in rows if r[3].get(Severity.HIGH))))
     L.append('')
-    L.append('| Risk | File | 🔴 | 🟡 | guess | stub | risk | err | override |')
-    L.append('|---:|---|---:|---:|---:|---:|---:|---:|---:|')
+    L.append('| Risk | File | 🔴 | 🟡 | guess | stub | risk | err |')
+    L.append('|---:|---|---:|---:|---:|---:|---:|---:|')
     for fname, score, c, s in rows[:40]:
         if score == 0:
             continue
         link = 'files/%s.md' % _safe(fname)
-        L.append('| %d | [%s](%s) | %d | %d | %d | %d | %d | %d | %d |' % (
+        L.append('| %d | [%s](%s) | %d | %d | %d | %d | %d | %d |' % (
             score, fname, link,
             s.get(Severity.HIGH, 0), s.get(Severity.MED, 0),
             c.get(Category.GUESSED, 0), c.get(Category.STUBBED, 0),
-            c.get(Category.RISK, 0), c.get(Category.ERROR, 0),
-            c.get(Category.OVERRIDDEN, 0)))
+            c.get(Category.RISK, 0), c.get(Category.ERROR, 0)))
     L.append('')
-
-    # Override / backport-debt section
-    ov = [e for e in ledger.events if e.category == Category.OVERRIDDEN]
-    if ov:
-        retire = [e for e in ov if e.rule == 'retire']
-        backport = [e for e in ov if e.rule in ('backport', 'backport-new')]
-        undet = [e for e in ov if e.rule == 'override']
-        L.append('## Override / back-port debt')
-        L.append('')
-        L.append('- Hand-written overrides in use: **%d**' % len(ov))
-        if retire:
-            L.append('- ✅ Redundant (byte-identical to generated output, **safe to retire**): **%d**' % len(retire))
-        if backport:
-            L.append('- 🔧 Contain a hand-fix not yet back-ported (**real debt**): **%d**' % len(backport))
-        if undet:
-            L.append('- ❔ Undetermined — re-run with `--pristine <dir>` to classify: **%d**' % len(undet))
-        L.append('')
-        if backport:
-            L.append('Back-port these into the generator (then the override can be deleted):')
-            L.append('')
-            for e in sorted(backport, key=lambda e: e.file):
-                L.append('- `%s`' % e.file)
-            L.append('')
 
     L.append('## Legend')
     L.append('')
     L.append('Sources: `marker` (PORT/STUB/TODO comment), `rule` (structural crash-class check), '
-             '`lint` (known crash/leak pattern), `build` (compiler error), `override` (hand-written file).')
+             '`lint` (known crash/leak pattern), `build` (compiler error).')
     L.append('')
 
     with open(os.path.join(report_dir, 'index.md'), 'w', encoding='utf-8') as f:

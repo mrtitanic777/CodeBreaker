@@ -70,6 +70,29 @@ BOXED_VALUE_TYPES = {'Integer', 'Long', 'Float', 'Double', 'Boolean', 'Byte', 'S
 # on the console. A deref of these (or any scope array of reference type) is guarded.
 KNOWN_NULLABLE = {'blocksList', 'itemsList'}
 
+# Fields that are legitimately NULL at certain points in the lifecycle (set later,
+# cleared on shutdown, etc.). On Xbox 360, ANY dereference of these without a prior
+# null check is a hard crash (no NULL page protection). The converter must guard them.
+KNOWN_NULLABLE_FIELDS = {
+    'worldObj', 'mc', 'thePlayer', 'theWorld', 'currentScreen',
+    'playerController', 'riddenByEntity', 'ridingEntity',
+    'renderEngine', 'fontRenderer', 'ingameGUI', 'loadingScreen',
+    'sndManager', 'effectRenderer', 'renderGlobal', 'entityRenderer',
+    'craftingInventory', 'inventorySlots',
+}
+
+# Getters that can return NULL (return a lookup from a sparse registry, or an
+# optional reference). Chaining `getter()->method()` without a null check is a
+# hard crash on the 360.
+KNOWN_NULLABLE_GETTERS = {
+    'getChunkFromChunkCoords', 'getChunkFromBlockCoords',
+    'getItem', 'getSmeltingResultItem',
+    'getCompoundTag', 'getNetClientHandler',
+    'getDocumentBase', 'getParentFile',
+    'getReadThread', 'getWriteThread',
+    'getWorldFromRenderManager',
+}
+
 # Runtime-support classes the converter EMITS a header for (see runtime.py) and
 # #includes when referenced -- not part of the decompiled corpus. Includes the external
 # Java base types our classes extend/implement (Runnable/Thread/Comparator/...).

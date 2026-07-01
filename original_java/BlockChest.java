@@ -1,25 +1,16 @@
-package net.minecraft.game.level.block;
+package net.minecraft.src;
 
 import java.util.Random;
-import net.minecraft.game.IInventory;
-import net.minecraft.game.InventoryLargeChest;
-import net.minecraft.game.entity.misc.EntityItem;
-import net.minecraft.game.entity.player.EntityPlayer;
-import net.minecraft.game.item.ItemStack;
-import net.minecraft.game.level.World;
-import net.minecraft.game.level.block.tileentity.TileEntity;
-import net.minecraft.game.level.block.tileentity.TileEntityChest;
-import net.minecraft.game.level.material.Material;
 
-public final class BlockChest extends BlockContainer {
-	private Random random = new Random();
+public class BlockChest extends BlockContainer {
+	private Random rand = new Random();
 
 	protected BlockChest(int var1) {
-		super(54, Material.wood);
+		super(var1, Material.wood);
 		this.blockIndexInTexture = 26;
 	}
 
-	public final int getBlockTexture(World var1, int var2, int var3, int var4, int var5) {
+	public int getBlockTexture(IBlockAccess var1, int var2, int var3, int var4, int var5) {
 		if(var5 == 1) {
 			return this.blockIndexInTexture - 1;
 		} else if(var5 == 0) {
@@ -106,11 +97,11 @@ public final class BlockChest extends BlockContainer {
 		}
 	}
 
-	public final int getBlockTextureFromSide(int var1) {
+	public int getBlockTextureFromSide(int var1) {
 		return var1 == 1 ? this.blockIndexInTexture - 1 : (var1 == 0 ? this.blockIndexInTexture - 1 : (var1 == 3 ? this.blockIndexInTexture + 1 : this.blockIndexInTexture));
 	}
 
-	public final boolean canPlaceBlockAt(World var1, int var2, int var3, int var4) {
+	public boolean canPlaceBlockAt(World var1, int var2, int var3, int var4) {
 		int var5 = 0;
 		if(var1.getBlockId(var2 - 1, var3, var4) == this.blockID) {
 			++var5;
@@ -135,28 +126,29 @@ public final class BlockChest extends BlockContainer {
 		return var1.getBlockId(var2, var3, var4) != this.blockID ? false : (var1.getBlockId(var2 - 1, var3, var4) == this.blockID ? true : (var1.getBlockId(var2 + 1, var3, var4) == this.blockID ? true : (var1.getBlockId(var2, var3, var4 - 1) == this.blockID ? true : var1.getBlockId(var2, var3, var4 + 1) == this.blockID)));
 	}
 
-	public final void onBlockRemoval(World var1, int var2, int var3, int var4) {
+	public void onBlockRemoval(World var1, int var2, int var3, int var4) {
 		TileEntityChest var5 = (TileEntityChest)var1.getBlockTileEntity(var2, var3, var4);
 
 		for(int var6 = 0; var6 < var5.getSizeInventory(); ++var6) {
 			ItemStack var7 = var5.getStackInSlot(var6);
 			if(var7 != null) {
-				float var8 = this.random.nextFloat() * 0.8F + 0.1F;
-				float var9 = this.random.nextFloat() * 0.8F + 0.1F;
-				float var10 = this.random.nextFloat() * 0.8F + 0.1F;
+				float var8 = this.rand.nextFloat() * 0.8F + 0.1F;
+				float var9 = this.rand.nextFloat() * 0.8F + 0.1F;
+				float var10 = this.rand.nextFloat() * 0.8F + 0.1F;
 
 				while(var7.stackSize > 0) {
-					int var11 = this.random.nextInt(21) + 10;
+					int var11 = this.rand.nextInt(21) + 10;
 					if(var11 > var7.stackSize) {
 						var11 = var7.stackSize;
 					}
 
 					var7.stackSize -= var11;
-					EntityItem var12 = new EntityItem(var1, (float)var2 + var8, (float)var3 + var9, (float)var4 + var10, new ItemStack(var7.itemID, var11, var7.itemDamage));
-					var12.motionX = (float)this.random.nextGaussian() * 0.05F;
-					var12.motionY = (float)this.random.nextGaussian() * 0.05F + 0.2F;
-					var12.motionZ = (float)this.random.nextGaussian() * 0.05F;
-					var1.spawnEntityInWorld(var12);
+					EntityItem var12 = new EntityItem(var1, (double)((float)var2 + var8), (double)((float)var3 + var9), (double)((float)var4 + var10), new ItemStack(var7.itemID, var11, var7.itemDamage));
+					float var13 = 0.05F;
+					var12.motionX = (double)((float)this.rand.nextGaussian() * var13);
+					var12.motionY = (double)((float)this.rand.nextGaussian() * var13 + 0.2F);
+					var12.motionZ = (double)((float)this.rand.nextGaussian() * var13);
+					var1.entityJoinedWorld(var12);
 				}
 			}
 		}
@@ -164,17 +156,17 @@ public final class BlockChest extends BlockContainer {
 		super.onBlockRemoval(var1, var2, var3, var4);
 	}
 
-	public final boolean blockActivated(World var1, int var2, int var3, int var4, EntityPlayer var5) {
+	public boolean blockActivated(World var1, int var2, int var3, int var4, EntityPlayer var5) {
 		Object var6 = (TileEntityChest)var1.getBlockTileEntity(var2, var3, var4);
-		if(var1.isBlockNormalCube(var2, var3 + 1, var4)) {
+		if(var1.isBlockOpaqueCube(var2, var3 + 1, var4)) {
 			return true;
-		} else if(var1.getBlockId(var2 - 1, var3, var4) == this.blockID && var1.isBlockNormalCube(var2 - 1, var3 + 1, var4)) {
+		} else if(var1.getBlockId(var2 - 1, var3, var4) == this.blockID && var1.isBlockOpaqueCube(var2 - 1, var3 + 1, var4)) {
 			return true;
-		} else if(var1.getBlockId(var2 + 1, var3, var4) == this.blockID && var1.isBlockNormalCube(var2 + 1, var3 + 1, var4)) {
+		} else if(var1.getBlockId(var2 + 1, var3, var4) == this.blockID && var1.isBlockOpaqueCube(var2 + 1, var3 + 1, var4)) {
 			return true;
-		} else if(var1.getBlockId(var2, var3, var4 - 1) == this.blockID && var1.isBlockNormalCube(var2, var3 + 1, var4 - 1)) {
+		} else if(var1.getBlockId(var2, var3, var4 - 1) == this.blockID && var1.isBlockOpaqueCube(var2, var3 + 1, var4 - 1)) {
 			return true;
-		} else if(var1.getBlockId(var2, var3, var4 + 1) == this.blockID && var1.isBlockNormalCube(var2, var3 + 1, var4 + 1)) {
+		} else if(var1.getBlockId(var2, var3, var4 + 1) == this.blockID && var1.isBlockOpaqueCube(var2, var3 + 1, var4 + 1)) {
 			return true;
 		} else {
 			if(var1.getBlockId(var2 - 1, var3, var4) == this.blockID) {
@@ -198,7 +190,7 @@ public final class BlockChest extends BlockContainer {
 		}
 	}
 
-	protected final TileEntity getBlockEntity() {
+	protected TileEntity SetBlockEntity() {
 		return new TileEntityChest();
 	}
 }

@@ -1,11 +1,15 @@
-package net.minecraft.game.level.material;
+package net.minecraft.src;
 
-public final class MaterialLiquid extends Material {
-	public final boolean getIsLiquid() {
+public class MaterialLiquid extends Material {
+	public boolean getIsLiquid() {
 		return true;
 	}
 
-	public final boolean isSolid() {
+	public boolean blocksMovement() {
+		return false;
+	}
+
+	public boolean isSolid() {
 		return false;
 	}
 }

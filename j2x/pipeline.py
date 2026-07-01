@@ -163,131 +163,166 @@ def build_resolver(classes, value_types=None):
                              method_renames=build_method_renames(classes))
 
 
-def _override_path(overrides_dir, name):
-    p = os.path.join(overrides_dir, name) if overrides_dir else None
-    return p if (p and os.path.isfile(p)) else None
+
+class CppStandard:
+    """Lightweight descriptor for the target C++ standard revision."""
+    def __init__(self, year):
+        self.year = year
+        self.label = 'C++%02d' % (year % 100)
+    @property
+    def has_nullptr(self):
+        return self.year >= 2011
+    @property
+    def has_auto(self):
+        return self.year >= 2011
+    @property
+    def has_range_for(self):
+        return self.year >= 2011
+    @property
+    def has_override(self):
+        return self.year >= 2011
+    @property
+    def has_initializer_list(self):
+        return self.year >= 2011
+    @property
+    def has_enum_class(self):
+        return self.year >= 2011
+    @property
+    def has_constexpr(self):
+        return self.year >= 2011
+    @property
+    def has_structured_bindings(self):
+        return self.year >= 2017
+    @property
+    def has_optional(self):
+        return self.year >= 2017
+    @property
+    def has_string_view(self):
+        return self.year >= 2017
 
 
-def _ensure_override_ctor(out_dir, cls, resolver, classnames, ledger):
-    """Back-fill a synthesized default ctor into an OVERRIDE class that has none. Overrides are written
-    verbatim, so a hand-written override with no ctor misses the zero-init + Java field initializers the
-    converter gives generated classes -> garbage pointers/crashes (SoundManager::soundPoolSounds etc.).
-    This makes that fix UNIVERSAL: every convert backfills the ctor + the includes it needs."""
-    if cls.constructors():                                  # Java declared a ctor -> override carries it
-        return
-    hp = os.path.join(out_dir, cls.name + '.h')
-    cp = os.path.join(out_dir, cls.name + '.cpp')
-    if not (os.path.exists(hp) and os.path.exists(cp)):
-        return
-    htext, ctext = _read(hp), _read(cp)
-    # already has a ctor? (member decl `^Class(` in .h, or `Class::Class(` in .cpp) -> leave it
-    if re.search(r'(?m)^\s*' + re.escape(cls.name) + r'\s*\(', htext) \
-       or re.search(re.escape(cls.name) + r'::' + re.escape(cls.name) + r'\s*\(', ctext):
-        return
-    syn = emit_source.synth_default_ctor(cls, resolver)
-    if not syn:
-        return
-    decl, defn, refs = syn
-    m = re.search(r'\bclass\s+' + re.escape(cls.name) + r'\b[^{]*\{', htext)
-    pub = htext.find('public:', m.end()) if m else -1
-    dm = re.search(re.escape(cls.name) + r'::~' + re.escape(cls.name) + r'\s*\(\s*\)', ctext)
-    if pub < 0 or not dm:
-        return
-    ins = htext.index('\n', pub) + 1
-    htext = htext[:ins] + '\t' + decl + '   // synthesized: Java field inits (override had no ctor)\n' + htext[ins:]
-    ctext = ctext[:dm.start()] + defn + '\n\n' + ctext[dm.start():]
-    for t in sorted(refs):                                  # includes for referenced KNOWN classes
-        if t in classnames:
-            inc = '#include "%s.h"' % t
-            if inc not in ctext:
-                i = ctext.find('#include'); j = ctext.index('\n', i) + 1
-                ctext = ctext[:j] + inc + '\n' + ctext[j:]
-    _write(hp, htext); _write(cp, ctext)
-    ledger.add(cls.name, Category.OVERRIDDEN, 'synthesized missing default ctor (field-init back-fill)',
-               source='pipeline', rule='override-ctor')
+_STD_MAP = {
+    'C++98': 1998, 'C++03': 2003, 'C++11': 2011, 'C++14': 2014,
+    'C++17': 2017, 'C++20': 2020, 'C++23': 2023,
+}
+
+def _parse_std_version(label):
+    return CppStandard(_STD_MAP.get(label, 2003))
 
 
-def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True, overrides_dir=None):
-    """Convert a Java source tree to C++03. Returns a summary dict.
+def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True,
+            cpp_std='C++03', platform=None, progress_cb=None):
+    """Convert a Java source tree to C++. Returns a summary dict.
 
-    overrides_dir: optional directory of handwritten <Class>.h / <Class>.cpp files. When a
-    file there matches a class, it is used verbatim INSTEAD of generated output (and logged
-    as OVERRIDDEN) -- the escape hatch for the genuinely-hard cases (Object dispatch, recipe
-    autoboxing, raytrace dual-use) that are correct-by-hand rather than by construction."""
-    ledger = ledger or Ledger()
+    cpp_std: target C++ standard ('C++98', 'C++03', 'C++11', 'C++14', 'C++17', 'C++20', 'C++23').
+    platform: target platform id ('xbox360', 'pc_windows', 'ps3', 'wii', etc.) for stub annotations.
+    progress_cb: optional callable(str) invoked with per-class progress lines."""
+    ledger = ledger if ledger is not None else Ledger()
+    std_version = _parse_std_version(cpp_std)
+    _prog = progress_cb or (lambda _: None)
     os.makedirs(out_dir, exist_ok=True)
 
+    _prog('[config] target C++ standard: %s (year %d)' % (std_version.label, std_version.year))
+    _prog('[parse] discovering .java files...')
+    java_paths = discover(java_dir)
+    _prog('[parse] found %d .java files' % len(java_paths))
+
     classes = []
-    for path in discover(java_dir):
+    for i, path in enumerate(java_paths):
         try:
             classes.append(parse.parse_file(path))
         except Exception as e:                       # noqa: BLE001 - one bad file shouldn't abort
+            _prog('[parse] FAIL %s: %s' % (os.path.basename(path), e))
             ledger.add(os.path.basename(path), Category.ERROR, 'parse failed: %s' % e,
                        severity=Severity.HIGH, source='pipeline', rule='parse-error')
+    _prog('[parse] parsed %d classes OK' % len(classes))
 
+    _prog('[resolve] inheritance + MI forwards + type resolver...')
     resolve_inheritance(classes)
     compute_mi_forwards(classes)
     resolver = build_resolver(classes, value_types)
-    classnames = set(c.name for c in classes)        # for include resolution when back-filling override ctors
+    _prog('[resolve] done (%d known classes, %d interfaces, %d enums)'
+          % (len(resolver.known), len(resolver.interfaces), len(resolver.enums)))
 
-    for fname, content in runtime.FILES.items():     # runtime-support headers (Random.h, ...)
+    plat_label = None
+    if platform:
+        from .platforms import get_platform
+        plat_info = get_platform(platform)
+        plat_label = plat_info['label'] if plat_info else platform
+        _prog('[config] target platform: %s' % plat_label)
+
+    rt_files = runtime.generate_files(cpp_std=std_version, platform_id=platform)
+    _prog('[runtime] writing %d support headers...' % len(rt_files))
+    for fname, content in rt_files.items():
         _write(os.path.join(out_dir, fname), content)
 
-    headers = sources = overrides = 0
+    headers = sources = 0
     init_classes = []                                # concrete classes whose initStatics() does real work
-    for cls in classes:
+    total = len(classes)
+    for idx, cls in enumerate(classes):
+        tag = '[%d/%d] %s' % (idx + 1, total, cls.name)
         try:
-            ov_h = _override_path(overrides_dir, cls.name + '.h')
-            if ov_h:
-                _write(os.path.join(out_dir, cls.name + '.h'), _read(ov_h))
-                overrides += 1
-                ledger.add(cls.name + '.h', Category.OVERRIDDEN, 'handwritten header override used',
-                           source='pipeline', rule='override')
+            ev_before = len(ledger)
+            _write(os.path.join(out_dir, cls.name + '.h'),
+                   emit_header.render_header(cls, resolver, ledger, cpp_std=std_version, platform_label=plat_label))
+            new_evs = ledger.events[ev_before:]
+            if new_evs:
+                for ev in new_evs:
+                    if ev.category != Category.PORTED:
+                        _prog('%s .h %s: %s' % (tag, ev.category, ev.message))
             else:
-                _write(os.path.join(out_dir, cls.name + '.h'),
-                       emit_header.render_header(cls, resolver, ledger))
+                _prog('%s .h generated' % tag)
             headers += 1
 
-            ov_c = _override_path(overrides_dir, cls.name + '.cpp')
-            if ov_c:
-                _write(os.path.join(out_dir, cls.name + '.cpp'), _read(ov_c))
+            ev_before = len(ledger)
+            cpp = emit_source.render_source(cls, resolver, ledger, cpp_std=std_version, platform_label=plat_label)
+            if cpp is not None:
+                _write(os.path.join(out_dir, cls.name + '.cpp'), cpp)
                 sources += 1
-                overrides += 1
-                ledger.add(cls.name + '.cpp', Category.OVERRIDDEN, 'handwritten source override used',
-                           source='pipeline', rule='override')
+                if getattr(cls, 'has_init_statics', False):
+                    init_classes.append(cls.name)    # generated class with deferred static init
+            new_evs = ledger.events[ev_before:]
+            notable = [ev for ev in new_evs if ev.category != Category.PORTED]
+            if notable:
+                for ev in notable:
+                    _prog('%s .cpp %s: %s' % (tag, ev.category, ev.message))
             else:
-                cpp = emit_source.render_source(cls, resolver, ledger)
-                if cpp is not None:
-                    _write(os.path.join(out_dir, cls.name + '.cpp'), cpp)
-                    sources += 1
-                    if getattr(cls, 'has_init_statics', False):
-                        init_classes.append(cls.name)    # generated class with deferred static init
-
-            if ov_h or ov_c:                             # override class: back-fill a missing default ctor
-                _ensure_override_ctor(out_dir, cls, resolver, classnames, ledger)
+                _prog('%s .cpp generated (clean)' % tag)
         except Exception as e:                       # noqa: BLE001
+            _prog('%s ERROR: %s' % (tag, e))
             ledger.add(cls.name, Category.ERROR, 'emit failed: %s' % e,
                        severity=Severity.HIGH, source='pipeline', rule='emit-error')
 
     # ORDERED STATIC-INIT DRIVER: a single j2x_initAll() that calls each class's initStatics() in
     # DEPENDENCY order (C++ gives no cross-TU static-init order -> the static-init-order crash class).
-    # Seeded with the alpha dependency order; refactored OVERRIDE registry classes expose initStatics()
-    # too (declared in their overrides/*.h). Everything else runs after, in a stable (sorted) order.
     _write_init_driver(out_dir, init_classes, set(c.name for c in classes))
 
     # verify: run the crash-class rules over the emitted output (acceptance check)
-    rule_findings = rules.scan_rules(ledger, out_dir)
+    _prog('[rules] scanning crash-class rules on emitted output...')
+    rule_findings = rules.scan_rules(ledger, out_dir, platform=platform)
+    _prog('[rules] %d crash-class findings' % rule_findings)
 
     rep = None
     if write_report:
+        _prog('[report] writing conversion report...')
         rep = report.write_reports(ledger, out_dir,
                                    meta={'output_dir': os.path.abspath(out_dir), 'profile': 'rewrite (j2x)'})
+        _prog('[report] written to %s' % rep)
+
+    cats = ledger.totals_by_category()
+    sevs = ledger.totals_by_severity()
+    _prog('[done] %d events: %d PORTED, %d GUESSED, %d STUBBED, %d RISK, %d HIGH-sev'
+          % (len(ledger), cats.get(Category.PORTED, 0), cats.get(Category.GUESSED, 0),
+             cats.get(Category.STUBBED, 0), cats.get(Category.RISK, 0),
+             sevs.get(Severity.HIGH, 0)))
     return {
         'parsed': len(classes), 'headers': headers, 'sources': sources,
-        'overrides': overrides,
         'rule_findings': rule_findings, 'events': len(ledger),
-        'high': ledger.totals_by_severity().get(Severity.HIGH, 0),
+        'high': sevs.get(Severity.HIGH, 0),
         'report': rep,
+        'ledger': ledger,
+        'cpp_std': std_version.label,
+        'platform': platform or 'none',
     }
 
 
@@ -298,17 +333,13 @@ def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True,
 # in a stable sorted order. To fix a missed dependency found on hardware, edit THIS list.
 _STATIC_INIT_ORDER = ['MathHelper', 'Material', 'Block', 'Item', 'CraftingManager',
                       'EntityList', 'TileEntity', 'MobSpawnerBase', 'OsMap', 'Packet']
-# OVERRIDE classes refactored to expose initStatics() (they're verbatim, so not in init_classes,
-# but their overrides/*.h declares initStatics() and overrides/*.cpp defines it). The driver only
-# calls names listed here; add each override as it's refactored to the initStatics() pattern.
-_INIT_OVERRIDES = {'Block', 'EntityList', 'TileEntity', 'MobSpawnerBase', 'OsMap', 'Packet'}
 
 
 def _write_init_driver(out_dir, init_classes, all_class_names):
     """Emit j2x_init.h / j2x_init.cpp -- the single ordered static-init entry point. j2x_initAll()
     calls each class's initStatics() in dependency order; Main calls it once at startup, BEFORE the
     game runs, replacing C++'s undefined cross-translation-unit static-init order."""
-    callable_init = set(init_classes) | (_INIT_OVERRIDES & all_class_names)
+    callable_init = set(init_classes)
     ordered = [c for c in _STATIC_INIT_ORDER if c in callable_init]
     ordered += sorted(c for c in callable_init if c not in _STATIC_INIT_ORDER)
 

@@ -1,13 +1,11 @@
-package net.minecraft.client.render.entity;
+package net.minecraft.src;
 
-import net.minecraft.game.entity.Entity;
 import org.lwjgl.opengl.GL11;
 
-public final class RenderEntity extends Render {
-	public final void doRender(Entity var1, float var2, float var3, float var4, float var5, float var6) {
+public class RenderEntity extends Render {
+	public void doRender(Entity var1, double var2, double var4, double var6, float var8, float var9) {
 		GL11.glPushMatrix();
-		GL11.glTranslatef(var2 - var1.lastTickPosX, var3 - var1.lastTickPosY, var4 - var1.lastTickPosZ);
-		renderOffsetAABB(var1.boundingBox);
+		renderOffsetAABB(var1.boundingBox, var2 - var1.lastTickPosX, var4 - var1.lastTickPosY, var6 - var1.lastTickPosZ);
 		GL11.glPopMatrix();
 	}
 }

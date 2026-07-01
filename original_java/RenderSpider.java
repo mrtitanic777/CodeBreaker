@@ -1,36 +1,38 @@
-package net.minecraft.client.render.entity;
+package net.minecraft.src;
 
-import net.minecraft.client.model.ModelSpider;
-import net.minecraft.game.entity.EntityLiving;
-import net.minecraft.game.entity.monster.EntitySpider;
 import org.lwjgl.opengl.GL11;
 
-public final class RenderSpider extends RenderLiving {
+public class RenderSpider extends RenderLiving {
 	public RenderSpider() {
 		super(new ModelSpider(), 1.0F);
 		this.setRenderPassModel(new ModelSpider());
 	}
 
-	protected final float getDeathMaxRotation(EntityLiving var1) {
+	protected float a(EntitySpider var1) {
 		return 180.0F;
 	}
 
-	protected final boolean shouldRenderPass(EntityLiving var1, int var2) {
-		EntitySpider var10001 = (EntitySpider)var1;
-		int var3 = var2;
-		EntitySpider var5 = var10001;
-		if(var3 != 0) {
+	protected boolean a(EntitySpider var1, int var2) {
+		if(var2 != 0) {
 			return false;
-		} else if(var3 != 0) {
+		} else if(var2 != 0) {
 			return false;
 		} else {
 			this.loadTexture("/mob/spider_eyes.png");
-			float var4 = (1.0F - var5.getEntityBrightness(1.0F)) * 0.5F;
+			float var3 = (1.0F - var1.getEntityBrightness(1.0F)) * 0.5F;
 			GL11.glEnable(GL11.GL_BLEND);
 			GL11.glDisable(GL11.GL_ALPHA_TEST);
 			GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-			GL11.glColor4f(1.0F, 1.0F, 1.0F, var4);
+			GL11.glColor4f(1.0F, 1.0F, 1.0F, var3);
 			return true;
 		}
+	}
+
+	protected float getDeathMaxRotation(EntityLiving var1) {
+		return this.a((EntitySpider)var1);
+	}
+
+	protected boolean shouldRenderPass(EntityLiving var1, int var2) {
+		return this.a((EntitySpider)var1, var2);
 	}
 }

@@ -1,20 +1,23 @@
-package net.minecraft.client;
+package net.minecraft.src;
 
-public final class Timer {
-	float ticksPerSecond = 20.0F;
+public class Timer {
+	public float ticksPerSecond;
 	private double lastHRTime;
 	public int elapsedTicks;
 	public float renderPartialTicks;
-	private float timerSpeed = 1.0F;
-	private float elapsedPartialTicks = 0.0F;
-	private long lastSyncSysClock = System.currentTimeMillis();
-	private long lastSyncHRClock = System.nanoTime() / 1000000L;
+	public float timerSpeed = 1.0F;
+	public float elapsedPartialTicks = 0.0F;
+	private long lastSyncSysClock;
+	private long lastSyncHRClock;
 	private double timeSyncAdjustment = 1.0D;
 
 	public Timer(float var1) {
+		this.ticksPerSecond = var1;
+		this.lastSyncSysClock = System.currentTimeMillis();
+		this.lastSyncHRClock = System.nanoTime() / 1000000L;
 	}
 
-	public final void updateTimer() {
+	public void updateTimer() {
 		long var1 = System.currentTimeMillis();
 		long var3 = var1 - this.lastSyncSysClock;
 		long var5 = System.nanoTime() / 1000000L;

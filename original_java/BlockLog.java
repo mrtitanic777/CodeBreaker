@@ -1,23 +1,22 @@
-package net.minecraft.game.level.block;
+package net.minecraft.src;
 
 import java.util.Random;
-import net.minecraft.game.level.material.Material;
 
-public final class BlockLog extends Block {
+public class BlockLog extends Block {
 	protected BlockLog(int var1) {
-		super(17, Material.wood);
+		super(var1, Material.wood);
 		this.blockIndexInTexture = 20;
 	}
 
-	public final int quantityDropped(Random var1) {
-		return var1.nextInt(3) + 3;
+	public int quantityDropped(Random var1) {
+		return 1;
 	}
 
-	public final int idDropped(int var1) {
-		return Block.planks.blockID;
+	public int idDropped(int var1, Random var2) {
+		return Block.wood.blockID;
 	}
 
-	public final int getBlockTextureFromSide(int var1) {
+	public int getBlockTextureFromSide(int var1) {
 		return var1 == 1 ? 21 : (var1 == 0 ? 21 : 20);
 	}
 }

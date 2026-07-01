@@ -1,79 +1,217 @@
-package net.minecraft.client;
+package net.minecraft.src;
 
-import net.minecraft.client.gui.GuiButton;
-import net.minecraft.client.gui.GuiLoadLevel;
-import net.minecraft.client.gui.GuiNewLevel;
-import net.minecraft.client.gui.GuiOptions;
-import net.minecraft.client.gui.GuiScreen;
-import net.minecraft.client.render.Tessellator;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.Random;
 import org.lwjgl.opengl.GL11;
-import util.MathHelper;
+import org.lwjgl.util.glu.GLU;
 
-public final class GuiMainMenu extends GuiScreen {
+public class GuiMainMenu extends GuiScreen {
+	private static final Random rand = new Random();
+	String[] minecraftLogo = new String[]{" *   * * *   * *** *** *** *** *** ***", " ** ** * **  * *   *   * * * * *    * ", " * * * * * * * **  *   **  *** **   * ", " *   * * *  ** *   *   * * * * *    * ", " *   * * *   * *** *** * * * * *    * "};
+	private LogoEffectRandomizer[][] logoEffects;
 	private float updateCounter = 0.0F;
-	private String[] splashes = new String[]{"Pre-beta!", "As seen on TV!", "Awesome!", "100% pure!", "May contain nuts!", "Better than Prey!", "More polygons!", "Sexy!", "Limited edition!", "Flashing letters!", "Made by Notch!", "Coming soon!", "Best in class!", "When it\'s finished!", "Absolutely dragon free!", "Excitement!", "More than 4000 sold!", "One of a kind!", "700+ hits on YouTube!", "Indev!", "Spiders everywhere!", "Check it out!", "Holy cow, man!", "It\'s a game!", "Made in Sweden!", "Uses LWJGL!", "Reticulating splines!", "Minecraft!", "Yaaay!", "Alpha version!", "Singleplayer!", "Keyboard compatible!", "Undocumented!", "Ingots!", "Exploding creepers!", "That\'s not a moon!", "l33t!", "Create!", "Survive!", "Dungeon!", "Exclusive!", "The bee\'s knees!", "Down with O.P.P.!", "Closed source!", "Classy!", "Wow!", "Not on steam!", "9.95 euro!", "Half price!", "Oh man!", "Check it out!", "Awesome community!", "Pixels!", "Teetsuuuuoooo!", "Kaaneeeedaaaa!", "Now with difficulty!", "Enhanced!", "90% bug free!", "Pretty!", "12 herbs and spices!", "Fat free!", "Absolutely no memes!", "Free dental!", "Ask your doctor!", "Minors welcome!", "Cloud computing!", "Legal in Finland!", "Hard to label!", "Technically good!"};
-	private String currentSplash = this.splashes[(int)(Math.random() * (double)this.splashes.length)];
+	private String splashText = "missingno";
 
-	public final void updateScreen() {
-		this.updateCounter += 0.01F;
+	public GuiMainMenu() {
+		try {
+			ArrayList var1 = new ArrayList();
+			BufferedReader var2 = new BufferedReader(new InputStreamReader(GuiMainMenu.class.getResourceAsStream("/title/splashes.txt")));
+			String var3 = "";
+
+			while(true) {
+				var3 = var2.readLine();
+				if(var3 == null) {
+					this.splashText = (String)var1.get(rand.nextInt(var1.size()));
+					break;
+				}
+
+				var3 = var3.trim();
+				if(var3.length() > 0) {
+					var1.add(var3);
+				}
+			}
+		} catch (Exception var4) {
+		}
+
 	}
 
-	protected final void keyTyped(char var1, int var2) {
+	public void updateScreen() {
+		++this.updateCounter;
+		if(this.logoEffects != null) {
+			for(int var1 = 0; var1 < this.logoEffects.length; ++var1) {
+				for(int var2 = 0; var2 < this.logoEffects[var1].length; ++var2) {
+					this.logoEffects[var1][var2].updatePosition();
+				}
+			}
+		}
+
 	}
 
-	public final void initGui() {
-		this.controlList.clear();
-		this.controlList.add(new GuiButton(1, this.width / 2 - 100, this.height / 4 + 48, "Generate new level..."));
-		this.controlList.add(new GuiButton(2, this.width / 2 - 100, this.height / 4 + 72, "Load level.."));
-		this.controlList.add(new GuiButton(3, this.width / 2 - 100, this.height / 4 + 96, "Play tutorial level"));
+	protected void keyTyped(char var1, int var2) {
+	}
+
+	public void initGui() {
+		Calendar var1 = Calendar.getInstance();
+		var1.setTime(new Date());
+		if(var1.get(2) + 1 == 11 && var1.get(5) == 9) {
+			this.splashText = "Happy birthday, ez!";
+		} else if(var1.get(2) + 1 == 6 && var1.get(5) == 1) {
+			this.splashText = "Happy birthday, Notch!";
+		} else if(var1.get(2) + 1 == 12 && var1.get(5) == 24) {
+			this.splashText = "Merry X-mas!";
+		} else if(var1.get(2) + 1 == 1 && var1.get(5) == 1) {
+			this.splashText = "Happy new year!";
+		}
+
+		this.controlList.add(new GuiButton(1, this.width / 2 - 100, this.height / 4 + 48, "Singleplayer"));
+		this.controlList.add(new GuiButton(2, this.width / 2 - 100, this.height / 4 + 72, "Multiplayer"));
+		this.controlList.add(new GuiButton(3, this.width / 2 - 100, this.height / 4 + 96, "Mods and Texture Packs"));
 		this.controlList.add(new GuiButton(0, this.width / 2 - 100, this.height / 4 + 120 + 12, "Options..."));
-		((GuiButton)this.controlList.get(2)).enabled = false;
 		if(this.mc.session == null) {
 			((GuiButton)this.controlList.get(1)).enabled = false;
 		}
 
 	}
 
-	protected final void actionPerformed(GuiButton var1) {
+	protected void actionPerformed(GuiButton var1) {
 		if(var1.id == 0) {
-			this.mc.displayGuiScreen(new GuiOptions(this, this.mc.options));
+			this.mc.displayGuiScreen(new GuiOptions(this, this.mc.gameSettings));
 		}
 
 		if(var1.id == 1) {
-			this.mc.displayGuiScreen(new GuiNewLevel(this));
+			this.mc.displayGuiScreen(new GuiSelectWorld(this));
 		}
 
-		if(this.mc.session != null && var1.id == 2) {
-			this.mc.displayGuiScreen(new GuiLoadLevel(this));
+		if(var1.id == 2) {
+			this.mc.displayGuiScreen(new GuiMultiplayer(this));
+		}
+
+		if(var1.id == 3) {
+			this.mc.displayGuiScreen(new GuiTexturePacks(this));
 		}
 
 	}
 
-	public final void drawScreen(int var1, int var2, float var3) {
+	public void drawScreen(int var1, int var2, float var3) {
 		this.drawDefaultBackground();
 		Tessellator var4 = Tessellator.instance;
+		this.drawLogo(var3);
 		GL11.glBindTexture(GL11.GL_TEXTURE_2D, this.mc.renderEngine.getTexture("/gui/logo.png"));
 		GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
 		var4.setColorOpaque_I(16777215);
-		this.drawTexturedModalRect((this.width - 256) / 2, 30, 0, 0, 256, 49);
 		GL11.glPushMatrix();
 		GL11.glTranslatef((float)(this.width / 2 + 90), 70.0F, 0.0F);
 		GL11.glRotatef(-20.0F, 0.0F, 0.0F, 1.0F);
-		float var15 = 1.8F - MathHelper.abs(MathHelper.sin((float)(System.currentTimeMillis() % 1000L) / 1000.0F * (float)Math.PI * 2.0F) * 0.1F);
-		var15 = var15 * 100.0F / (float)(this.fontRenderer.getStringWidth(this.currentSplash) + 32);
-		GL11.glScalef(var15, var15, var15);
-		drawCenteredString(this.fontRenderer, this.currentSplash, 0, -8, 16776960);
+		float var5 = 1.8F - MathHelper.abs(MathHelper.sin((float)(System.currentTimeMillis() % 1000L) / 1000.0F * (float)Math.PI * 2.0F) * 0.1F);
+		var5 = var5 * 100.0F / (float)(this.fontRenderer.getStringWidth(this.splashText) + 32);
+		GL11.glScalef(var5, var5, var5);
+		this.drawCenteredString(this.fontRenderer, this.splashText, 0, -8, 16776960);
 		GL11.glPopMatrix();
-		String var16 = "Copyright Mojang Specifications. Do not distribute.";
-		drawString(this.fontRenderer, var16, this.width - this.fontRenderer.getStringWidth(var16) - 2, this.height - 10, 16777215);
-		long var7 = Runtime.getRuntime().maxMemory();
-		long var9 = Runtime.getRuntime().totalMemory();
-		long var11 = Runtime.getRuntime().freeMemory();
-		long var13 = var7 - var11;
-		var16 = "Free memory: " + var13 * 100L / var7 + "% of " + var7 / 1024L / 1024L + "MB";
-		drawString(this.fontRenderer, var16, this.width - this.fontRenderer.getStringWidth(var16) - 2, 2, 8421504);
-		var16 = "Allocated memory: " + var9 * 100L / var7 + "% (" + var9 / 1024L / 1024L + "MB)";
-		drawString(this.fontRenderer, var16, this.width - this.fontRenderer.getStringWidth(var16) - 2, 12, 8421504);
+		this.drawString(this.fontRenderer, "Minecraft Alpha v1.2.6", 2, 2, 5263440);
+		String var6 = "Copyright Mojang Specifications. Do not distribute.";
+		this.drawString(this.fontRenderer, var6, this.width - this.fontRenderer.getStringWidth(var6) - 2, this.height - 10, 16777215);
 		super.drawScreen(var1, var2, var3);
+	}
+
+	private void drawLogo(float var1) {
+		int var3;
+		if(this.logoEffects == null) {
+			this.logoEffects = new LogoEffectRandomizer[this.minecraftLogo[0].length()][this.minecraftLogo.length];
+
+			for(int var2 = 0; var2 < this.logoEffects.length; ++var2) {
+				for(var3 = 0; var3 < this.logoEffects[var2].length; ++var3) {
+					this.logoEffects[var2][var3] = new LogoEffectRandomizer(this, var2, var3);
+				}
+			}
+		}
+
+		GL11.glMatrixMode(GL11.GL_PROJECTION);
+		GL11.glPushMatrix();
+		GL11.glLoadIdentity();
+		ScaledResolution var14 = new ScaledResolution(this.mc.displayWidth, this.mc.displayHeight);
+		var3 = 120 * var14.scaleFactor;
+		GLU.gluPerspective(70.0F, (float)this.mc.displayWidth / (float)var3, 0.05F, 100.0F);
+		GL11.glViewport(0, this.mc.displayHeight - var3, this.mc.displayWidth, var3);
+		GL11.glMatrixMode(GL11.GL_MODELVIEW);
+		GL11.glPushMatrix();
+		GL11.glLoadIdentity();
+		GL11.glDisable(GL11.GL_CULL_FACE);
+		GL11.glCullFace(GL11.GL_BACK);
+		GL11.glDepthMask(true);
+		RenderBlocks var4 = new RenderBlocks();
+
+		for(int var5 = 0; var5 < 3; ++var5) {
+			GL11.glPushMatrix();
+			GL11.glTranslatef(0.4F, 0.6F, -13.0F);
+			if(var5 == 0) {
+				GL11.glClear(GL11.GL_DEPTH_BUFFER_BIT);
+				GL11.glTranslatef(0.0F, -0.4F, 0.0F);
+				GL11.glScalef(0.98F, 1.0F, 1.0F);
+				GL11.glEnable(GL11.GL_BLEND);
+				GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+			}
+
+			if(var5 == 1) {
+				GL11.glDisable(GL11.GL_BLEND);
+				GL11.glClear(GL11.GL_DEPTH_BUFFER_BIT);
+			}
+
+			if(var5 == 2) {
+				GL11.glEnable(GL11.GL_BLEND);
+				GL11.glBlendFunc(GL11.GL_SRC_COLOR, GL11.GL_ONE);
+			}
+
+			GL11.glScalef(1.0F, -1.0F, 1.0F);
+			GL11.glRotatef(15.0F, 1.0F, 0.0F, 0.0F);
+			GL11.glScalef(0.89F, 1.0F, 0.4F);
+			GL11.glTranslatef((float)(-this.minecraftLogo[0].length()) * 0.5F, (float)(-this.minecraftLogo.length) * 0.5F, 0.0F);
+			GL11.glBindTexture(GL11.GL_TEXTURE_2D, this.mc.renderEngine.getTexture("/terrain.png"));
+			if(var5 == 0) {
+				GL11.glBindTexture(GL11.GL_TEXTURE_2D, this.mc.renderEngine.getTexture("/title/black.png"));
+			}
+
+			for(int var6 = 0; var6 < this.minecraftLogo.length; ++var6) {
+				for(int var7 = 0; var7 < this.minecraftLogo[var6].length(); ++var7) {
+					char var8 = this.minecraftLogo[var6].charAt(var7);
+					if(var8 != 32) {
+						GL11.glPushMatrix();
+						LogoEffectRandomizer var9 = this.logoEffects[var7][var6];
+						float var10 = (float)(var9.prevPosY + (var9.posY - var9.prevPosY) * (double)var1);
+						float var11 = 1.0F;
+						float var12 = 1.0F;
+						float var13 = 0.0F;
+						if(var5 == 0) {
+							var11 = var10 * 0.04F + 1.0F;
+							var12 = 1.0F / var11;
+							var10 = 0.0F;
+						}
+
+						GL11.glTranslatef((float)var7, (float)var6, var10);
+						GL11.glScalef(var11, var11, var11);
+						GL11.glRotatef(var13, 0.0F, 1.0F, 0.0F);
+						var4.renderBlockWithAlpha(Block.stone, var12);
+						GL11.glPopMatrix();
+					}
+				}
+			}
+
+			GL11.glPopMatrix();
+		}
+
+		GL11.glDisable(GL11.GL_BLEND);
+		GL11.glMatrixMode(GL11.GL_PROJECTION);
+		GL11.glPopMatrix();
+		GL11.glMatrixMode(GL11.GL_MODELVIEW);
+		GL11.glPopMatrix();
+		GL11.glViewport(0, 0, this.mc.displayWidth, this.mc.displayHeight);
+		GL11.glEnable(GL11.GL_CULL_FACE);
+	}
+
+	static Random getRand() {
+		return rand;
 	}
 }

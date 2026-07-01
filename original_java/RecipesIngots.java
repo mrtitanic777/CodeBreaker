@@ -1,13 +1,9 @@
-package net.minecraft.game.item.recipe;
+package net.minecraft.src;
 
-import net.minecraft.game.item.Item;
-import net.minecraft.game.item.ItemStack;
-import net.minecraft.game.level.block.Block;
-
-public final class RecipesIngots {
+public class RecipesIngots {
 	private Object[][] recipeItems = new Object[][]{{Block.blockGold, Item.ingotGold}, {Block.blockSteel, Item.ingotIron}, {Block.blockDiamond, Item.diamond}};
 
-	public final void addRecipes(CraftingManager var1) {
+	public void addRecipes(CraftingManager var1) {
 		for(int var2 = 0; var2 < this.recipeItems.length; ++var2) {
 			Block var3 = (Block)this.recipeItems[var2][0];
 			Item var4 = (Item)this.recipeItems[var2][1];

@@ -1,38 +1,32 @@
-package net.minecraft.client.render.entity;
+package net.minecraft.src;
 
-import net.minecraft.client.model.ModelCreeper;
-import net.minecraft.game.entity.EntityLiving;
-import net.minecraft.game.entity.monster.EntityCreeper;
 import org.lwjgl.opengl.GL11;
-import util.MathHelper;
 
-public final class RenderCreeper extends RenderLiving {
+public class RenderCreeper extends RenderLiving {
 	public RenderCreeper() {
 		super(new ModelCreeper(), 0.5F);
 	}
 
-	protected final void preRenderCallback(EntityLiving var1, float var2) {
-		EntityCreeper var4 = (EntityCreeper)var1;
-		float var5 = var4.c(var2);
-		var2 = 1.0F + MathHelper.sin(var5 * 100.0F) * var5 * 0.01F;
-		if(var5 < 0.0F) {
-			var5 = 0.0F;
+	protected void a(EntityCreeper var1, float var2) {
+		float var4 = var1.getCreeperFlashIntensity(var2);
+		float var5 = 1.0F + MathHelper.sin(var4 * 100.0F) * var4 * 0.01F;
+		if(var4 < 0.0F) {
+			var4 = 0.0F;
 		}
 
-		if(var5 > 1.0F) {
-			var5 = 1.0F;
+		if(var4 > 1.0F) {
+			var4 = 1.0F;
 		}
 
-		var5 *= var5;
-		var5 *= var5;
-		float var3 = (1.0F + var5 * 0.4F) * var2;
-		var5 = (1.0F + var5 * 0.1F) / var2;
-		GL11.glScalef(var3, var5, var3);
+		var4 *= var4;
+		var4 *= var4;
+		float var6 = (1.0F + var4 * 0.4F) * var5;
+		float var7 = (1.0F + var4 * 0.1F) / var5;
+		GL11.glScalef(var6, var7, var6);
 	}
 
-	protected final int getColorMultiplier(EntityLiving var1, float var2, float var3) {
-		EntityCreeper var4 = (EntityCreeper)var1;
-		float var5 = var4.c(var3);
+	protected int a(EntityCreeper var1, float var2, float var3) {
+		float var5 = var1.getCreeperFlashIntensity(var3);
 		if((int)(var5 * 10.0F) % 2 == 0) {
 			return 0;
 		} else {
@@ -45,7 +39,18 @@ public final class RenderCreeper extends RenderLiving {
 				var6 = 255;
 			}
 
-			return var6 << 24 | 16711680 | '\uff00' | 255;
+			short var7 = 255;
+			short var8 = 255;
+			short var9 = 255;
+			return var6 << 24 | var7 << 16 | var8 << 8 | var9;
 		}
+	}
+
+	protected void preRenderCallback(EntityLiving var1, float var2) {
+		this.a((EntityCreeper)var1, var2);
+	}
+
+	protected int getColorMultiplier(EntityLiving var1, float var2, float var3) {
+		return this.a((EntityCreeper)var1, var2, var3);
 	}
 }

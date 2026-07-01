@@ -1,6 +1,4 @@
-package net.minecraft.game;
-
-import net.minecraft.game.item.ItemStack;
+package net.minecraft.src;
 
 public interface IInventory {
 	int getSizeInventory();
@@ -14,4 +12,6 @@ public interface IInventory {
 	String getInvName();
 
 	int getInventoryStackLimit();
+
+	void onInventoryChanged();
 }

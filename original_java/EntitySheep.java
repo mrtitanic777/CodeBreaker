@@ -1,13 +1,6 @@
-package net.minecraft.game.entity.animal;
+package net.minecraft.src;
 
-import com.mojang.nbt.NBTTagCompound;
-import net.minecraft.game.entity.Entity;
-import net.minecraft.game.entity.EntityLiving;
-import net.minecraft.game.entity.misc.EntityItem;
-import net.minecraft.game.level.World;
-import net.minecraft.game.level.block.Block;
-
-public class EntitySheep extends EntityAnimal {
+public class EntitySheep extends EntityAnimals {
 	public boolean sheared = false;
 
 	public EntitySheep(World var1) {
@@ -16,45 +9,41 @@ public class EntitySheep extends EntityAnimal {
 		this.setSize(0.9F, 1.3F);
 	}
 
-	public final boolean attackEntityFrom(Entity var1, int var2) {
-		if(!this.sheared && var1 instanceof EntityLiving) {
+	public boolean canAttackEntity(Entity var1, int var2) {
+		if(!this.worldObj.multiplayerWorld && !this.sheared && var1 instanceof EntityLiving) {
 			this.sheared = true;
 			int var3 = 1 + this.rand.nextInt(3);
 
 			for(int var4 = 0; var4 < var3; ++var4) {
-				EntityItem var5 = this.entityDropItem(Block.clothDarkGray.blockID + this.rand.nextInt(3), 1, 1.0F);
-				var5.motionY += this.rand.nextFloat() * 0.05F;
-				var5.motionX += (this.rand.nextFloat() - this.rand.nextFloat()) * 0.1F;
-				var5.motionZ += (this.rand.nextFloat() - this.rand.nextFloat()) * 0.1F;
+				EntityItem var5 = this.dropItemWithOffset(Block.cloth.blockID, 1, 1.0F);
+				var5.motionY += (double)(this.rand.nextFloat() * 0.05F);
+				var5.motionX += (double)((this.rand.nextFloat() - this.rand.nextFloat()) * 0.1F);
+				var5.motionZ += (double)((this.rand.nextFloat() - this.rand.nextFloat()) * 0.1F);
 			}
 		}
 
-		return super.attackEntityFrom(var1, var2);
+		return super.canAttackEntity(var1, var2);
 	}
 
-	protected final void writeEntityToNBT(NBTTagCompound var1) {
+	public void writeEntityToNBT(NBTTagCompound var1) {
 		super.writeEntityToNBT(var1);
 		var1.setBoolean("Sheared", this.sheared);
 	}
 
-	protected final void readEntityFromNBT(NBTTagCompound var1) {
+	public void readEntityFromNBT(NBTTagCompound var1) {
 		super.readEntityFromNBT(var1);
 		this.sheared = var1.getBoolean("Sheared");
 	}
 
-	protected final String getEntityString() {
-		return "Sheep";
-	}
-
-	protected final String getLivingSound() {
+	protected String getLivingSound() {
 		return "mob.sheep";
 	}
 
-	protected final String getHurtSound() {
+	protected String getHurtSound() {
 		return "mob.sheep";
 	}
 
-	protected final String getDeathSound() {
+	protected String getDeathSound() {
 		return "mob.sheep";
 	}
 }

@@ -1,26 +1,28 @@
-package net.minecraft.client.sound;
+package net.minecraft.src;
 
 import java.io.File;
-import net.minecraft.client.GameSettings;
-import net.minecraft.game.entity.EntityLiving;
+import java.util.Random;
 import paulscode.sound.SoundSystem;
 import paulscode.sound.SoundSystemConfig;
 import paulscode.sound.codecs.CodecJOrbis;
 import paulscode.sound.codecs.CodecWav;
 import paulscode.sound.libraries.LibraryLWJGLOpenAL;
-import util.MathHelper;
 
-public final class SoundManager {
-	private SoundSystem sndSystem;
+public class SoundManager {
+	private static SoundSystem sndSystem;
 	private SoundPool soundPoolSounds = new SoundPool();
+	private SoundPool soundPoolStreaming = new SoundPool();
 	private SoundPool soundPoolMusic = new SoundPool();
-	private int latestSoundID = 0;
+	private int soundCounter = 0;
 	private GameSettings options;
-	private boolean loaded = false;
+	private static boolean loaded = false;
+	private Random rand = new Random();
+	private int nextMusicDelay = this.rand.nextInt(12000);
 
-	public final void loadSoundSettings(GameSettings var1) {
+	public void loadSoundSettings(GameSettings var1) {
+		this.soundPoolStreaming.stripDigitsFromName = false;
 		this.options = var1;
-		if(!this.loaded && (var1.sound || var1.music)) {
+		if(!loaded && (var1 == null || var1.soundVolume != 0.0F || var1.musicVolume != 0.0F)) {
 			this.tryToSetLibraryAndCodecs();
 		}
 
@@ -28,118 +30,163 @@ public final class SoundManager {
 
 	private void tryToSetLibraryAndCodecs() {
 		try {
-			boolean var1 = this.options.sound;
-			boolean var2 = this.options.music;
-			this.options.sound = false;
-			this.options.music = false;
+			float var1 = this.options.soundVolume;
+			float var2 = this.options.musicVolume;
+			this.options.soundVolume = 0.0F;
+			this.options.musicVolume = 0.0F;
 			this.options.saveOptions();
 			SoundSystemConfig.addLibrary(LibraryLWJGLOpenAL.class);
 			SoundSystemConfig.setCodec("ogg", CodecJOrbis.class);
+			SoundSystemConfig.setCodec("mus", CodecMus.class);
 			SoundSystemConfig.setCodec("wav", CodecWav.class);
-			this.sndSystem = new SoundSystem();
-			this.options.sound = var1;
-			this.options.music = var2;
+			sndSystem = new SoundSystem();
+			this.options.soundVolume = var1;
+			this.options.musicVolume = var2;
 			this.options.saveOptions();
 		} catch (Throwable var3) {
+			var3.printStackTrace();
 			System.err.println("error linking with the LibraryJavaSound plug-in");
 		}
 
-		this.loaded = true;
+		loaded = true;
 	}
 
-	public final void onSoundOptionsChanged() {
-		if(!this.loaded && (this.options.sound || this.options.music)) {
+	public void onSoundOptionsChanged() {
+		if(!loaded && (this.options.soundVolume != 0.0F || this.options.musicVolume != 0.0F)) {
 			this.tryToSetLibraryAndCodecs();
 		}
 
-		if(!this.options.music) {
-			this.sndSystem.stop("BgMusic");
+		if(this.options.musicVolume == 0.0F) {
+			sndSystem.stop("BgMusic");
+		} else {
+			sndSystem.setVolume("BgMusic", this.options.musicVolume);
 		}
 
 	}
 
-	public final void closeMinecraft() {
-		if(this.loaded) {
-			this.sndSystem.cleanup();
+	public void closeMinecraft() {
+		if(loaded) {
+			sndSystem.cleanup();
 		}
 
 	}
 
-	public final void addSound(String var1, File var2) {
+	public void addSound(String var1, File var2) {
 		this.soundPoolSounds.addSound(var1, var2);
 	}
 
-	public final void addMusic(String var1, File var2) {
+	public void addStreaming(String var1, File var2) {
+		this.soundPoolStreaming.addSound(var1, var2);
+	}
+
+	public void addMusic(String var1, File var2) {
 		this.soundPoolMusic.addSound(var1, var2);
 	}
 
-	public final void playRandomMusicIfReady(float var1, float var2, float var3) {
-		if(this.loaded && this.options.music) {
-			if(!this.sndSystem.playing("BgMusic")) {
-				SoundPoolEntry var4 = this.soundPoolMusic.getRandomSoundFromSoundPool("calm");
-				this.sndSystem.newStreamingSource(true, "BgMusic", var4.soundUrl, var4.soundName, false, var1, var2, var3, 2, 32.0F);
-				this.sndSystem.play("BgMusic");
-			}
-
-		}
-	}
-
-	public final void setListener(EntityLiving var1, float var2) {
-		if(this.loaded && this.options.sound) {
-			if(var1 != null) {
-				float var3 = var1.prevRotationPitch + (var1.rotationPitch - var1.prevRotationPitch) * var2;
-				float var4 = var1.prevRotationYaw + (var1.rotationYaw - var1.prevRotationYaw) * var2;
-				float var5 = var1.prevPosX + (var1.posX - var1.prevPosX) * var2;
-				float var6 = var1.prevPosY + (var1.posY - var1.prevPosY) * var2;
-				float var10 = var1.prevPosZ + (var1.posZ - var1.prevPosZ) * var2;
-				var2 = MathHelper.cos(-var4 * ((float)Math.PI / 180.0F) - (float)Math.PI);
-				var4 = MathHelper.sin(-var4 * ((float)Math.PI / 180.0F) - (float)Math.PI);
-				float var7 = MathHelper.cos(-var3 * ((float)Math.PI / 180.0F));
-				var3 = MathHelper.sin(-var3 * ((float)Math.PI / 180.0F));
-				float var8 = var4 * var7;
-				float var9 = var2 * var7;
-				var4 *= var3;
-				var2 *= var3;
-				this.sndSystem.setListenerPosition(var5, var6, var10);
-				this.sndSystem.setListenerOrientation(var8, var3, var9, var4, var7, var2);
-			}
-		}
-	}
-
-	public final void playSound(String var1, float var2, float var3, float var4, float var5, float var6) {
-		if(this.loaded && this.options.sound) {
-			SoundPoolEntry var9 = this.soundPoolSounds.getRandomSoundFromSoundPool(var1);
-			if(var9 != null && var5 > 0.0F) {
-				this.latestSoundID = (this.latestSoundID + 1) % 256;
-				String var7 = "sound_" + this.latestSoundID;
-				float var8 = 16.0F;
-				if(var5 > 1.0F) {
-					var8 = 16.0F * var5;
+	public void playRandomMusic() {
+		if(loaded && this.options.musicVolume != 0.0F) {
+			if(!sndSystem.playing("BgMusic") && !sndSystem.playing("streaming")) {
+				if(this.nextMusicDelay > 0) {
+					--this.nextMusicDelay;
+					return;
 				}
 
-				this.sndSystem.newSource(var5 > 1.0F, var7, var9.soundUrl, var9.soundName, false, var2, var3, var4, 2, var8);
-				this.sndSystem.setPitch(var7, var6);
+				SoundPoolEntry var1 = this.soundPoolMusic.getRandomSound();
+				if(var1 != null) {
+					this.nextMusicDelay = this.rand.nextInt(12000) + 12000;
+					sndSystem.backgroundMusic("BgMusic", var1.soundUrl, var1.soundName, false);
+					sndSystem.setVolume("BgMusic", this.options.musicVolume);
+					sndSystem.play("BgMusic");
+				}
+			}
+
+		}
+	}
+
+	public void setListener(EntityLiving var1, float var2) {
+		if(loaded && this.options.soundVolume != 0.0F) {
+			if(var1 != null) {
+				float var3 = var1.prevRotationYaw + (var1.rotationYaw - var1.prevRotationYaw) * var2;
+				double var4 = var1.prevPosX + (var1.posX - var1.prevPosX) * (double)var2;
+				double var6 = var1.prevPosY + (var1.posY - var1.prevPosY) * (double)var2;
+				double var8 = var1.prevPosZ + (var1.posZ - var1.prevPosZ) * (double)var2;
+				float var10 = MathHelper.cos(-var3 * ((float)Math.PI / 180.0F) - (float)Math.PI);
+				float var11 = MathHelper.sin(-var3 * ((float)Math.PI / 180.0F) - (float)Math.PI);
+				float var12 = -var11;
+				float var13 = 0.0F;
+				float var14 = -var10;
+				float var15 = 0.0F;
+				float var16 = 1.0F;
+				float var17 = 0.0F;
+				sndSystem.setListenerPosition((float)var4, (float)var6, (float)var8);
+				sndSystem.setListenerOrientation(var12, var13, var14, var15, var16, var17);
+			}
+		}
+	}
+
+	public void playStreaming(String var1, float var2, float var3, float var4, float var5, float var6) {
+		if(loaded && this.options.soundVolume != 0.0F) {
+			String var7 = "streaming";
+			if(sndSystem.playing("streaming")) {
+				sndSystem.stop("streaming");
+			}
+
+			if(var1 != null) {
+				SoundPoolEntry var8 = this.soundPoolStreaming.getRandomSoundFromSoundPool(var1);
+				if(var8 != null && var5 > 0.0F) {
+					if(sndSystem.playing("BgMusic")) {
+						sndSystem.stop("BgMusic");
+					}
+
+					float var9 = 16.0F;
+					sndSystem.newStreamingSource(true, var7, var8.soundUrl, var8.soundName, false, var2, var3, var4, 2, var9 * 4.0F);
+					sndSystem.setVolume(var7, 0.5F * this.options.soundVolume);
+					sndSystem.play(var7);
+				}
+
+			}
+		}
+	}
+
+	public void playSound(String var1, float var2, float var3, float var4, float var5, float var6) {
+		if(loaded && this.options.soundVolume != 0.0F) {
+			SoundPoolEntry var7 = this.soundPoolSounds.getRandomSoundFromSoundPool(var1);
+			if(var7 != null && var5 > 0.0F) {
+				this.soundCounter = (this.soundCounter + 1) % 256;
+				String var8 = "sound_" + this.soundCounter;
+				float var9 = 16.0F;
+				if(var5 > 1.0F) {
+					var9 *= var5;
+				}
+
+				sndSystem.newSource(var5 > 1.0F, var8, var7.soundUrl, var7.soundName, false, var2, var3, var4, 2, var9);
+				sndSystem.setPitch(var8, var6);
 				if(var5 > 1.0F) {
 					var5 = 1.0F;
 				}
 
-				this.sndSystem.setVolume(var7, var5);
-				this.sndSystem.play(var7);
+				sndSystem.setVolume(var8, var5 * this.options.soundVolume);
+				sndSystem.play(var8);
 			}
 
 		}
 	}
 
-	public final void playSoundFX(String var1, float var2, float var3) {
-		if(this.loaded && this.options.sound) {
+	public void playSoundFX(String var1, float var2, float var3) {
+		if(loaded && this.options.soundVolume != 0.0F) {
 			SoundPoolEntry var4 = this.soundPoolSounds.getRandomSoundFromSoundPool(var1);
 			if(var4 != null) {
-				this.latestSoundID = (this.latestSoundID + 1) % 256;
-				String var5 = "sound_" + this.latestSoundID;
-				this.sndSystem.newSource(false, var5, var4.soundUrl, var4.soundName, false, 0.0F, 0.0F, 0.0F, 0, 0.0F);
-				this.sndSystem.setPitch(var5, 1.0F);
-				this.sndSystem.setVolume(var5, 0.25F);
-				this.sndSystem.play(var5);
+				this.soundCounter = (this.soundCounter + 1) % 256;
+				String var5 = "sound_" + this.soundCounter;
+				sndSystem.newSource(false, var5, var4.soundUrl, var4.soundName, false, 0.0F, 0.0F, 0.0F, 0, 0.0F);
+				if(var2 > 1.0F) {
+					var2 = 1.0F;
+				}
+
+				var2 *= 0.25F;
+				sndSystem.setPitch(var5, var3);
+				sndSystem.setVolume(var5, var2 * this.options.soundVolume);
+				sndSystem.play(var5);
 			}
 
 		}

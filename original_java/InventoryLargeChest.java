@@ -1,8 +1,6 @@
-package net.minecraft.game;
+package net.minecraft.src;
 
-import net.minecraft.game.item.ItemStack;
-
-public final class InventoryLargeChest implements IInventory {
+public class InventoryLargeChest implements IInventory {
 	private String name;
 	private IInventory upperChest;
 	private IInventory lowerChest;
@@ -13,31 +11,37 @@ public final class InventoryLargeChest implements IInventory {
 		this.lowerChest = var3;
 	}
 
-	public final int getSizeInventory() {
+	public int getSizeInventory() {
 		return this.upperChest.getSizeInventory() + this.lowerChest.getSizeInventory();
 	}
 
-	public final String getInvName() {
+	public String getInvName() {
 		return this.name;
 	}
 
-	public final ItemStack getStackInSlot(int var1) {
+	public ItemStack getStackInSlot(int var1) {
 		return var1 >= this.upperChest.getSizeInventory() ? this.lowerChest.getStackInSlot(var1 - this.upperChest.getSizeInventory()) : this.upperChest.getStackInSlot(var1);
 	}
 
-	public final ItemStack decrStackSize(int var1, int var2) {
+	public ItemStack decrStackSize(int var1, int var2) {
 		return var1 >= this.upperChest.getSizeInventory() ? this.lowerChest.decrStackSize(var1 - this.upperChest.getSizeInventory(), var2) : this.upperChest.decrStackSize(var1, var2);
 	}
 
-	public final void setInventorySlotContents(int var1, ItemStack var2) {
+	public void setInventorySlotContents(int var1, ItemStack var2) {
 		if(var1 >= this.upperChest.getSizeInventory()) {
 			this.lowerChest.setInventorySlotContents(var1 - this.upperChest.getSizeInventory(), var2);
 		} else {
 			this.upperChest.setInventorySlotContents(var1, var2);
 		}
+
 	}
 
-	public final int getInventoryStackLimit() {
+	public int getInventoryStackLimit() {
 		return this.upperChest.getInventoryStackLimit();
+	}
+
+	public void onInventoryChanged() {
+		this.upperChest.onInventoryChanged();
+		this.lowerChest.onInventoryChanged();
 	}
 }

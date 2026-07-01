@@ -1,51 +1,44 @@
-package net.minecraft.game.item;
+package net.minecraft.src;
 
-import net.minecraft.game.level.World;
-import net.minecraft.game.level.block.Block;
-
-public final class ItemFlintAndSteel extends Item {
+public class ItemFlintAndSteel extends Item {
 	public ItemFlintAndSteel(int var1) {
-		super(3);
+		super(var1);
 		this.maxStackSize = 1;
 		this.maxDamage = 64;
 	}
 
-	public final boolean onItemUse(ItemStack var1, World var2, int var3, int var4, int var5, int var6) {
-		if(var6 == 0) {
-			--var4;
-		}
-
-		if(var6 == 1) {
-			++var4;
-		}
-
-		if(var6 == 2) {
+	public boolean onItemUse(ItemStack var1, EntityPlayer var2, World var3, int var4, int var5, int var6, int var7) {
+		if(var7 == 0) {
 			--var5;
 		}
 
-		if(var6 == 3) {
+		if(var7 == 1) {
 			++var5;
 		}
 
-		if(var6 == 4) {
-			--var3;
+		if(var7 == 2) {
+			--var6;
 		}
 
-		if(var6 == 5) {
-			++var3;
+		if(var7 == 3) {
+			++var6;
 		}
 
-		if(var3 > 0 && var4 > 0 && var5 > 0 && var3 < var2.width - 1 && var4 < var2.height - 1 && var5 < var2.length - 1) {
-			var6 = var2.getBlockId(var3, var4, var5);
-			if(var6 == 0) {
-				var2.playSoundAtPlayer((float)var3 + 0.5F, (float)var4 + 0.5F, (float)var5 + 0.5F, "fire.ignite", 1.0F, rand.nextFloat() * 0.4F + 0.8F);
-				var2.setBlockWithNotify(var3, var4, var5, Block.fire.blockID);
-			}
-
-			var1.damageItem(1);
-			return true;
-		} else {
-			return false;
+		if(var7 == 4) {
+			--var4;
 		}
+
+		if(var7 == 5) {
+			++var4;
+		}
+
+		int var8 = var3.getBlockId(var4, var5, var6);
+		if(var8 == 0) {
+			var3.playSoundEffect((double)var4 + 0.5D, (double)var5 + 0.5D, (double)var6 + 0.5D, "fire.ignite", 1.0F, itemRand.nextFloat() * 0.4F + 0.8F);
+			var3.setBlockWithNotify(var4, var5, var6, Block.fire.blockID);
+		}
+
+		var1.damageItem(1);
+		return true;
 	}
 }

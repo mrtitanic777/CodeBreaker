@@ -1,8 +1,8 @@
-package net.minecraft.client.sound;
+package net.minecraft.src;
 
 import java.net.URL;
 
-public final class SoundPoolEntry {
+public class SoundPoolEntry {
 	public String soundName;
 	public URL soundUrl;
 

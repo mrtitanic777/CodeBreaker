@@ -1,27 +1,28 @@
-package net.minecraft.client;
+package net.minecraft.src;
 
-final class EnumOSMappingHelper {
-	static final int[] osValues = new int[EnumOS.values().length];
+public class EnumOSMappingHelper {
+	public static final int[] osMappings = new int[EnumOS2.values().length];
 
 	static {
 		try {
-			osValues[EnumOS.linux.ordinal()] = 1;
+			osMappings[EnumOS2.a.ordinal()] = 1;
+		} catch (NoSuchFieldError var4) {
+		}
+
+		try {
+			osMappings[EnumOS2.b.ordinal()] = 2;
 		} catch (NoSuchFieldError var3) {
 		}
 
 		try {
-			osValues[EnumOS.solaris.ordinal()] = 2;
+			osMappings[EnumOS2.c.ordinal()] = 3;
 		} catch (NoSuchFieldError var2) {
 		}
 
 		try {
-			osValues[EnumOS.windows.ordinal()] = 3;
+			osMappings[EnumOS2.d.ordinal()] = 4;
 		} catch (NoSuchFieldError var1) {
 		}
 
-		try {
-			osValues[EnumOS.macos.ordinal()] = 4;
-		} catch (NoSuchFieldError var0) {
-		}
 	}
 }

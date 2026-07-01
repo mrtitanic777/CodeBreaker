@@ -1,20 +1,16 @@
-package net.minecraft.client.render.texture;
+package net.minecraft.src;
 
-import net.minecraft.game.level.block.Block;
-import util.MathHelper;
-
-public final class TextureLavaFX extends TextureFX {
-	private float[] red = new float[256];
-	private float[] green = new float[256];
-	private float[] blue = new float[256];
-	private float[] alpha = new float[256];
+public class TextureLavaFX extends TextureFX {
+	protected float[] lavaBufferA = new float[256];
+	protected float[] lavaBufferB = new float[256];
+	protected float[] lavaHeat = new float[256];
+	protected float[] lavaHeatSpeed = new float[256];
 
 	public TextureLavaFX() {
-		super(Block.lavaMoving.blockIndexInTexture);
+		super(Block.lavaStill.blockIndexInTexture);
 	}
 
-	public final void onTick() {
-		int var1;
+	public void onTick() {
 		int var2;
 		float var3;
 		int var5;
@@ -22,7 +18,7 @@ public final class TextureLavaFX extends TextureFX {
 		int var7;
 		int var8;
 		int var9;
-		for(var1 = 0; var1 < 16; ++var1) {
+		for(int var1 = 0; var1 < 16; ++var1) {
 			for(var2 = 0; var2 < 16; ++var2) {
 				var3 = 0.0F;
 				int var4 = (int)(MathHelper.sin((float)var2 * (float)Math.PI * 2.0F / 16.0F) * 1.2F);
@@ -32,29 +28,29 @@ public final class TextureLavaFX extends TextureFX {
 					for(var7 = var2 - 1; var7 <= var2 + 1; ++var7) {
 						var8 = var6 + var4 & 15;
 						var9 = var7 + var5 & 15;
-						var3 += this.red[var8 + (var9 << 4)];
+						var3 += this.lavaBufferA[var8 + var9 * 16];
 					}
 				}
 
-				this.green[var1 + (var2 << 4)] = var3 / 10.0F + (this.blue[(var1 & 15) + ((var2 & 15) << 4)] + this.blue[(var1 + 1 & 15) + ((var2 & 15) << 4)] + this.blue[(var1 + 1 & 15) + ((var2 + 1 & 15) << 4)] + this.blue[(var1 & 15) + ((var2 + 1 & 15) << 4)]) / 4.0F * 0.8F;
-				this.blue[var1 + (var2 << 4)] += this.alpha[var1 + (var2 << 4)] * 0.01F;
-				if(this.blue[var1 + (var2 << 4)] < 0.0F) {
-					this.blue[var1 + (var2 << 4)] = 0.0F;
+				this.lavaBufferB[var1 + var2 * 16] = var3 / 10.0F + (this.lavaHeat[(var1 + 0 & 15) + (var2 + 0 & 15) * 16] + this.lavaHeat[(var1 + 1 & 15) + (var2 + 0 & 15) * 16] + this.lavaHeat[(var1 + 1 & 15) + (var2 + 1 & 15) * 16] + this.lavaHeat[(var1 + 0 & 15) + (var2 + 1 & 15) * 16]) / 4.0F * 0.8F;
+				this.lavaHeat[var1 + var2 * 16] += this.lavaHeatSpeed[var1 + var2 * 16] * 0.01F;
+				if(this.lavaHeat[var1 + var2 * 16] < 0.0F) {
+					this.lavaHeat[var1 + var2 * 16] = 0.0F;
 				}
 
-				this.alpha[var1 + (var2 << 4)] -= 0.06F;
+				this.lavaHeatSpeed[var1 + var2 * 16] -= 0.06F;
 				if(Math.random() < 0.005D) {
-					this.alpha[var1 + (var2 << 4)] = 1.5F;
+					this.lavaHeatSpeed[var1 + var2 * 16] = 1.5F;
 				}
 			}
 		}
 
-		float[] var10 = this.green;
-		this.green = this.red;
-		this.red = var10;
+		float[] var11 = this.lavaBufferB;
+		this.lavaBufferB = this.lavaBufferA;
+		this.lavaBufferA = var11;
 
 		for(var2 = 0; var2 < 256; ++var2) {
-			var3 = this.red[var2] * 2.0F;
+			var3 = this.lavaBufferA[var2] * 2.0F;
 			if(var3 > 1.0F) {
 				var3 = 1.0F;
 			}
@@ -69,16 +65,16 @@ public final class TextureLavaFX extends TextureFX {
 			if(this.anaglyphEnabled) {
 				var8 = (var5 * 30 + var6 * 59 + var7 * 11) / 100;
 				var9 = (var5 * 30 + var6 * 70) / 100;
-				var1 = (var5 * 30 + var7 * 70) / 100;
+				int var10 = (var5 * 30 + var7 * 70) / 100;
 				var5 = var8;
 				var6 = var9;
-				var7 = var1;
+				var7 = var10;
 			}
 
-			this.imageData[var2 << 2] = (byte)var5;
-			this.imageData[(var2 << 2) + 1] = (byte)var6;
-			this.imageData[(var2 << 2) + 2] = (byte)var7;
-			this.imageData[(var2 << 2) + 3] = -1;
+			this.imageData[var2 * 4 + 0] = (byte)var5;
+			this.imageData[var2 * 4 + 1] = (byte)var6;
+			this.imageData[var2 * 4 + 2] = (byte)var7;
+			this.imageData[var2 * 4 + 3] = -1;
 		}
 
 	}

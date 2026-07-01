@@ -1,8 +1,6 @@
-package net.minecraft.game.physics;
+package net.minecraft.src;
 
-import net.minecraft.game.entity.Entity;
-
-public final class MovingObjectPosition {
+public class MovingObjectPosition {
 	public int typeOfHit;
 	public int blockX;
 	public int blockY;
@@ -17,12 +15,12 @@ public final class MovingObjectPosition {
 		this.blockY = var2;
 		this.blockZ = var3;
 		this.sideHit = var4;
-		this.hitVec = new Vec3D(var5.xCoord, var5.yCoord, var5.zCoord);
+		this.hitVec = Vec3D.createVector(var5.xCoord, var5.yCoord, var5.zCoord);
 	}
 
 	public MovingObjectPosition(Entity var1) {
 		this.typeOfHit = 1;
 		this.entityHit = var1;
-		this.hitVec = new Vec3D(var1.posX, var1.posY, var1.posZ);
+		this.hitVec = Vec3D.createVector(var1.posX, var1.posY, var1.posZ);
 	}
 }

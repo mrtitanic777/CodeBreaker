@@ -1,21 +1,29 @@
-package net.minecraft.game.level.block;
+package net.minecraft.src;
 
 public class StepSound {
-	private String sound;
-	public final float soundVolume;
-	public final float soundPitch;
+	public final String stepSoundName;
+	public final float volume;
+	public final float pitch;
 
 	public StepSound(String var1, float var2, float var3) {
-		this.sound = var1;
-		this.soundVolume = var2;
-		this.soundPitch = var3;
+		this.stepSoundName = var1;
+		this.volume = var2;
+		this.pitch = var3;
 	}
 
-	public String stepSoundDir() {
-		return "step." + this.sound;
+	public float getVolume() {
+		return this.volume;
 	}
 
-	public final String stepSoundDir2() {
-		return "step." + this.sound;
+	public float getPitch() {
+		return this.pitch;
+	}
+
+	public String getBreakSound() {
+		return "step." + this.stepSoundName;
+	}
+
+	public String getStepSound() {
+		return "step." + this.stepSoundName;
 	}
 }

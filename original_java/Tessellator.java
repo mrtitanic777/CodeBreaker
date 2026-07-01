@@ -1,56 +1,67 @@
-package net.minecraft.client.render;
+package net.minecraft.src;
 
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
-import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.ARBVertexBufferObject;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL15;
+import org.lwjgl.opengl.GLContext;
 
-public final class Tessellator {
-	private static boolean convertQuadsToTriangles = false;
+public class Tessellator {
+	private static boolean convertQuadsToTriangles = true;
 	private static boolean tryVBO = false;
-	private ByteBuffer byteBuffer = BufferUtils.createByteBuffer(8388608);
-	private int[] rawBuffer = new int[2097152];
+	private ByteBuffer byteBuffer;
+	private IntBuffer intBuffer;
+	private FloatBuffer floatBuffer;
+	private int[] rawBuffer;
 	private int vertexCount = 0;
-	private float textureU;
-	private float textureV;
+	private double textureU;
+	private double textureV;
 	private int color;
 	private boolean hasColor = false;
 	private boolean hasTexture = false;
+	private boolean hasNormals = false;
 	private int rawBufferIndex = 0;
 	private int addedVertices = 0;
 	private boolean isColorDisabled = false;
 	private int drawMode;
-	public static Tessellator instance = new Tessellator();
+	private double xOffset;
+	private double yOffset;
+	private double zOffset;
+	private int normal;
+	public static final Tessellator instance = new Tessellator(2097152);
 	private boolean isDrawing = false;
 	private boolean useVBO = false;
 	private IntBuffer vertexBuffers;
 	private int vboIndex = 0;
 	private int vboCount = 10;
+	private int bufferSize;
 
-	private Tessellator() {
-		this.useVBO = false;
+	private Tessellator(int var1) {
+		this.bufferSize = var1;
+		this.byteBuffer = GLAllocation.createDirectByteBuffer(var1 * 4);
+		this.intBuffer = this.byteBuffer.asIntBuffer();
+		this.floatBuffer = this.byteBuffer.asFloatBuffer();
+		this.rawBuffer = new int[var1];
+		this.useVBO = tryVBO && GLContext.getCapabilities().GL_ARB_vertex_buffer_object;
 		if(this.useVBO) {
-			this.vertexBuffers = BufferUtils.createIntBuffer(this.vboCount);
+			this.vertexBuffers = GLAllocation.createDirectIntBuffer(this.vboCount);
 			ARBVertexBufferObject.glGenBuffersARB(this.vertexBuffers);
 		}
 
 	}
 
-	public final void draw() {
+	public void draw() {
 		if(!this.isDrawing) {
 			throw new IllegalStateException("Not tesselating!");
 		} else {
 			this.isDrawing = false;
 			if(this.vertexCount > 0) {
-				IntBuffer var1 = this.byteBuffer.asIntBuffer();
-				FloatBuffer var2 = this.byteBuffer.asFloatBuffer();
-				var1.clear();
-				var1.put(this.rawBuffer, 0, this.rawBufferIndex);
+				this.intBuffer.clear();
+				this.intBuffer.put(this.rawBuffer, 0, this.rawBufferIndex);
 				this.byteBuffer.position(0);
-				this.byteBuffer.limit(this.rawBufferIndex << 2);
+				this.byteBuffer.limit(this.rawBufferIndex * 4);
 				if(this.useVBO) {
 					this.vboIndex = (this.vboIndex + 1) % this.vboCount;
 					ARBVertexBufferObject.glBindBufferARB(GL15.GL_ARRAY_BUFFER, this.vertexBuffers.get(this.vboIndex));
@@ -61,8 +72,8 @@ public final class Tessellator {
 					if(this.useVBO) {
 						GL11.glTexCoordPointer(2, GL11.GL_FLOAT, 32, 12L);
 					} else {
-						var2.position(3);
-						GL11.glTexCoordPointer(2, 32, (FloatBuffer)var2);
+						this.floatBuffer.position(3);
+						GL11.glTexCoordPointer(2, 32, (FloatBuffer)this.floatBuffer);
 					}
 
 					GL11.glEnableClientState(GL11.GL_TEXTURE_COORD_ARRAY);
@@ -79,15 +90,31 @@ public final class Tessellator {
 					GL11.glEnableClientState(GL11.GL_COLOR_ARRAY);
 				}
 
+				if(this.hasNormals) {
+					if(this.useVBO) {
+						GL11.glNormalPointer(GL11.GL_BYTE, 32, 24L);
+					} else {
+						this.byteBuffer.position(24);
+						GL11.glNormalPointer(32, (ByteBuffer)this.byteBuffer);
+					}
+
+					GL11.glEnableClientState(GL11.GL_NORMAL_ARRAY);
+				}
+
 				if(this.useVBO) {
 					GL11.glVertexPointer(3, GL11.GL_FLOAT, 32, 0L);
 				} else {
-					var2.position(0);
-					GL11.glVertexPointer(3, 32, (FloatBuffer)var2);
+					this.floatBuffer.position(0);
+					GL11.glVertexPointer(3, 32, (FloatBuffer)this.floatBuffer);
 				}
 
 				GL11.glEnableClientState(GL11.GL_VERTEX_ARRAY);
-				GL11.glDrawArrays(this.drawMode, GL11.GL_POINTS, this.vertexCount);
+				if(this.drawMode == 7 && convertQuadsToTriangles) {
+					GL11.glDrawArrays(GL11.GL_TRIANGLES, GL11.GL_POINTS, this.vertexCount);
+				} else {
+					GL11.glDrawArrays(this.drawMode, GL11.GL_POINTS, this.vertexCount);
+				}
+
 				GL11.glDisableClientState(GL11.GL_VERTEX_ARRAY);
 				if(this.hasTexture) {
 					GL11.glDisableClientState(GL11.GL_TEXTURE_COORD_ARRAY);
@@ -95,6 +122,10 @@ public final class Tessellator {
 
 				if(this.hasColor) {
 					GL11.glDisableClientState(GL11.GL_COLOR_ARRAY);
+				}
+
+				if(this.hasNormals) {
+					GL11.glDisableClientState(GL11.GL_NORMAL_ARRAY);
 				}
 			}
 
@@ -109,36 +140,43 @@ public final class Tessellator {
 		this.addedVertices = 0;
 	}
 
-	public final void startDrawingQuads() {
+	public void startDrawingQuads() {
 		this.startDrawing(7);
 	}
 
-	public final void startDrawing(int var1) {
+	public void startDrawing(int var1) {
 		if(this.isDrawing) {
 			throw new IllegalStateException("Already tesselating!");
 		} else {
 			this.isDrawing = true;
 			this.reset();
 			this.drawMode = var1;
+			this.hasNormals = false;
 			this.hasColor = false;
 			this.hasTexture = false;
 			this.isColorDisabled = false;
 		}
 	}
 
-	public final void setColorOpaque_F(float var1, float var2, float var3) {
+	public void setTextureUV(double var1, double var3) {
+		this.hasTexture = true;
+		this.textureU = var1;
+		this.textureV = var3;
+	}
+
+	public void setColorOpaque_F(float var1, float var2, float var3) {
 		this.setColorOpaque((int)(var1 * 255.0F), (int)(var2 * 255.0F), (int)(var3 * 255.0F));
 	}
 
-	public final void setColorRGBA_F(float var1, float var2, float var3, float var4) {
+	public void setColorRGBA_F(float var1, float var2, float var3, float var4) {
 		this.setColorRGBA((int)(var1 * 255.0F), (int)(var2 * 255.0F), (int)(var3 * 255.0F), (int)(var4 * 255.0F));
 	}
 
-	private void setColorOpaque(int var1, int var2, int var3) {
+	public void setColorOpaque(int var1, int var2, int var3) {
 		this.setColorRGBA(var1, var2, var3, 255);
 	}
 
-	private void setColorRGBA(int var1, int var2, int var3, int var4) {
+	public void setColorRGBA(int var1, int var2, int var3, int var4) {
 		if(!this.isColorDisabled) {
 			if(var1 > 255) {
 				var1 = 255;
@@ -177,47 +215,97 @@ public final class Tessellator {
 		}
 	}
 
-	public final void addVertexWithUV(float var1, float var2, float var3, float var4, float var5) {
-		this.hasTexture = true;
-		this.textureU = var4;
-		this.textureV = var5;
-		this.addVertex(var1, var2, var3);
+	public void addVertexWithUV(double var1, double var3, double var5, double var7, double var9) {
+		this.setTextureUV(var7, var9);
+		this.addVertex(var1, var3, var5);
 	}
 
-	public final void addVertex(float var1, float var2, float var3) {
+	public void addVertex(double var1, double var3, double var5) {
 		++this.addedVertices;
+		if(this.drawMode == 7 && convertQuadsToTriangles && this.addedVertices % 4 == 0) {
+			for(int var7 = 0; var7 < 2; ++var7) {
+				int var8 = 8 * (3 - var7);
+				if(this.hasTexture) {
+					this.rawBuffer[this.rawBufferIndex + 3] = this.rawBuffer[this.rawBufferIndex - var8 + 3];
+					this.rawBuffer[this.rawBufferIndex + 4] = this.rawBuffer[this.rawBufferIndex - var8 + 4];
+				}
+
+				if(this.hasColor) {
+					this.rawBuffer[this.rawBufferIndex + 5] = this.rawBuffer[this.rawBufferIndex - var8 + 5];
+				}
+
+				this.rawBuffer[this.rawBufferIndex + 0] = this.rawBuffer[this.rawBufferIndex - var8 + 0];
+				this.rawBuffer[this.rawBufferIndex + 1] = this.rawBuffer[this.rawBufferIndex - var8 + 1];
+				this.rawBuffer[this.rawBufferIndex + 2] = this.rawBuffer[this.rawBufferIndex - var8 + 2];
+				++this.vertexCount;
+				this.rawBufferIndex += 8;
+			}
+		}
+
 		if(this.hasTexture) {
-			this.rawBuffer[this.rawBufferIndex + 3] = Float.floatToRawIntBits(this.textureU);
-			this.rawBuffer[this.rawBufferIndex + 4] = Float.floatToRawIntBits(this.textureV);
+			this.rawBuffer[this.rawBufferIndex + 3] = Float.floatToRawIntBits((float)this.textureU);
+			this.rawBuffer[this.rawBufferIndex + 4] = Float.floatToRawIntBits((float)this.textureV);
 		}
 
 		if(this.hasColor) {
 			this.rawBuffer[this.rawBufferIndex + 5] = this.color;
 		}
 
-		this.rawBuffer[this.rawBufferIndex] = Float.floatToRawIntBits(var1);
-		this.rawBuffer[this.rawBufferIndex + 1] = Float.floatToRawIntBits(var2);
-		this.rawBuffer[this.rawBufferIndex + 2] = Float.floatToRawIntBits(var3);
+		if(this.hasNormals) {
+			this.rawBuffer[this.rawBufferIndex + 6] = this.normal;
+		}
+
+		this.rawBuffer[this.rawBufferIndex + 0] = Float.floatToRawIntBits((float)(var1 + this.xOffset));
+		this.rawBuffer[this.rawBufferIndex + 1] = Float.floatToRawIntBits((float)(var3 + this.yOffset));
+		this.rawBuffer[this.rawBufferIndex + 2] = Float.floatToRawIntBits((float)(var5 + this.zOffset));
 		this.rawBufferIndex += 8;
 		++this.vertexCount;
-		if(this.vertexCount % 4 == 0 && this.rawBufferIndex >= 2097120) {
+		if(this.vertexCount % 4 == 0 && this.rawBufferIndex >= this.bufferSize - 32) {
 			this.draw();
+			this.isDrawing = true;
 		}
 
 	}
 
-	public final void setColorOpaque_I(int var1) {
+	public void setColorOpaque_I(int var1) {
 		int var2 = var1 >> 16 & 255;
 		int var3 = var1 >> 8 & 255;
-		var1 &= 255;
-		this.setColorOpaque(var2, var3, var1);
+		int var4 = var1 & 255;
+		this.setColorOpaque(var2, var3, var4);
 	}
 
-	public final void disableColor() {
+	public void setColorRGBA_I(int var1, int var2) {
+		int var3 = var1 >> 16 & 255;
+		int var4 = var1 >> 8 & 255;
+		int var5 = var1 & 255;
+		this.setColorRGBA(var3, var4, var5, var2);
+	}
+
+	public void disableColor() {
 		this.isColorDisabled = true;
 	}
 
-	public static void setNormal(float var0, float var1, float var2) {
-		GL11.glNormal3f(var0, var1, var2);
+	public void setNormal(float var1, float var2, float var3) {
+		if(!this.isDrawing) {
+			System.out.println("But..");
+		}
+
+		this.hasNormals = true;
+		byte var4 = (byte)((int)(var1 * 128.0F));
+		byte var5 = (byte)((int)(var2 * 127.0F));
+		byte var6 = (byte)((int)(var3 * 127.0F));
+		this.normal = var4 | var5 << 8 | var6 << 16;
+	}
+
+	public void setTranslationD(double var1, double var3, double var5) {
+		this.xOffset = var1;
+		this.yOffset = var3;
+		this.zOffset = var5;
+	}
+
+	public void setTranslationF(float var1, float var2, float var3) {
+		this.xOffset += (double)var1;
+		this.yOffset += (double)var2;
+		this.zOffset += (double)var3;
 	}
 }

@@ -1,4 +1,4 @@
-package com.mojang.nbt;
+package net.minecraft.src;
 
 import java.io.DataInput;
 import java.io.DataOutput;
@@ -13,11 +13,11 @@ public abstract class NBTBase {
 
 	public abstract byte getType();
 
-	public final String getKey() {
+	public String getKey() {
 		return this.key == null ? "" : this.key;
 	}
 
-	public final NBTBase setKey(String var1) {
+	public NBTBase setKey(String var1) {
 		this.key = var1;
 		return this;
 	}
@@ -27,22 +27,17 @@ public abstract class NBTBase {
 		if(var1 == 0) {
 			return new NBTTagEnd();
 		} else {
-			NBTBase var3 = createTagOfType(var1);
-			short var2 = var0.readShort();
-			byte[] var4 = new byte[var2];
-			var0.readFully(var4);
-			var3.key = new String(var4, "UTF-8");
-			var3.readTagContents(var0);
-			return var3;
+			NBTBase var2 = createTagOfType(var1);
+			var2.key = var0.readUTF();
+			var2.readTagContents(var0);
+			return var2;
 		}
 	}
 
 	public static void writeTag(NBTBase var0, DataOutput var1) throws IOException {
 		var1.writeByte(var0.getType());
 		if(var0.getType() != 0) {
-			byte[] var2 = var0.getKey().getBytes("UTF-8");
-			var1.writeShort(var2.length);
-			var1.write(var2);
+			var1.writeUTF(var0.getKey());
 			var0.writeTagContents(var1);
 		}
 	}
@@ -73,6 +68,35 @@ public abstract class NBTBase {
 			return new NBTTagCompound();
 		default:
 			return null;
+		}
+	}
+
+	public static String getTagName(byte var0) {
+		switch(var0) {
+		case 0:
+			return "TAG_End";
+		case 1:
+			return "TAG_Byte";
+		case 2:
+			return "TAG_Short";
+		case 3:
+			return "TAG_Int";
+		case 4:
+			return "TAG_Long";
+		case 5:
+			return "TAG_Float";
+		case 6:
+			return "TAG_Double";
+		case 7:
+			return "TAG_Byte_Array";
+		case 8:
+			return "TAG_String";
+		case 9:
+			return "TAG_List";
+		case 10:
+			return "TAG_Compound";
+		default:
+			return "UNKNOWN";
 		}
 	}
 }

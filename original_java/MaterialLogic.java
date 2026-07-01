@@ -1,15 +1,15 @@
-package net.minecraft.game.level.material;
+package net.minecraft.src;
 
-public final class MaterialLogic extends Material {
-	public final boolean isSolid() {
+public class MaterialLogic extends Material {
+	public boolean isSolid() {
 		return false;
 	}
 
-	public final boolean getCanBlockGrass() {
+	public boolean getCanBlockGrass() {
 		return false;
 	}
 
-	public final boolean getIsSolid() {
+	public boolean blocksMovement() {
 		return false;
 	}
 }

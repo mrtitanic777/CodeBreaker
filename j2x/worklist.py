@@ -2,7 +2,7 @@
 """
 worklist.py -- compile the converted output and write a per-file failure worklist.
 
-    python -m j2x worklist <out_dir> [--cc g++] [--std c++03] [--out overrides/WORKLIST.md]
+    python -m j2x worklist <out_dir> [--cc g++] [--std c++03] [--out WORKLIST.md]
 
 For each <out_dir>/*.cpp it runs `<cc> -std=<std> -fsyntax-only -I<out_dir> <file>` and records
 the files that fail to compile, sorted by error count (fewest first = closest to clean), with the
@@ -32,7 +32,7 @@ def _category(text):
 def run(out_dir, cc=None, std='c++03', worklist_path=None):
     cc = cc or os.environ.get('J2X_CC', 'g++')
     if worklist_path is None:
-        worklist_path = os.path.join('overrides', 'WORKLIST.md')
+        worklist_path = 'WORKLIST.md'
 
     cpps = sorted(glob.glob(os.path.join(out_dir, '*.cpp')))
     rows, clean = [], 0
