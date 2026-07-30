@@ -19,6 +19,30 @@ bool Socket::globalInit() {
 	WSADATA wsd;
 	int w = WSAStartup(MAKEWORD(2, 2), &wsd);
 	if (w != 0) { DbgPrintF("[net] WSAStartup failed: %d\n", w); XNetCleanup(); return false; }
+
+	// Wait (bounded) for the console to actually acquire a network address before any
+	// connect(). On a cold boot XNet is still doing DHCP; connecting before the stack has
+	// an address fails for no reason but "asked too early" -- the #1 cause of flaky connects
+	// on real hardware. Reference: HttpProgram/Matchmaking.cpp polls XNetGetTitleXnAddr past
+	// XNET_GET_XNADDR_PENDING. We bound it (~5s) instead of looping forever so a genuinely
+	// offline console fails gracefully rather than hanging boot; connect() still runs after
+	// (and will fail cleanly via the connect timeout if there's truly no network).
+	XNADDR xna; memset(&xna, 0, sizeof(xna));
+	DWORD xst = XNET_GET_XNADDR_PENDING;
+	for (int tries = 0; tries < 50; ++tries) {          // 50 * 100ms = ~5s max
+		xst = XNetGetTitleXnAddr(&xna);
+		if (xst != XNET_GET_XNADDR_PENDING) break;
+		Sleep(100);
+	}
+	if (xst == XNET_GET_XNADDR_PENDING || (xst & XNET_GET_XNADDR_NONE)) {
+		DbgPrintF("[net] WARNING: no network address acquired (state=0x%08X) -- trying anyway\n", xst);
+	} else {
+		char ips[16];
+		unsigned char* ob = (unsigned char*)&xna.ina.s_addr;
+		sprintf(ips, "%u.%u.%u.%u", ob[0], ob[1], ob[2], ob[3]);
+		DbgPrintF("[net] local address acquired: %s (state=0x%08X)\n", ips, xst);
+	}
+
 	s_netInit = true;
 	DbgPrintF("[net] network stack up (XNet bypass-security + WSA 2.2)\n");
 	return true;
@@ -96,6 +120,14 @@ void Socket::_doConnect(const char* host, int port) {
 	SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (s == INVALID_SOCKET) { DbgPrintF("[net] socket() failed\n"); return; }
 
+	// Xbox 360: disable XNet encryption so we can talk to a standard PC server.
+	// 0x5802 = disable VDP encryption, 0x5801 = enable insecure (cleartext) traffic.
+	// Must be set before connect(). Without these, XNet encrypts all traffic and a
+	// standard PC server sees garbage.
+	BOOL bInsecure = TRUE;
+	setsockopt(s, SOL_SOCKET, 0x5802, (const char*)&bInsecure, sizeof(BOOL));
+	setsockopt(s, SOL_SOCKET, 0x5801, (const char*)&bInsecure, sizeof(BOOL));
+
 	// Resolve the host: dotted-quad IP directly, else XNet DNS.
 	IN_ADDR ina; memset(&ina, 0, sizeof(ina));
 	unsigned a = 0, b = 0, c = 0, d = 0;
@@ -119,11 +151,34 @@ void Socket::_doConnect(const char* host, int port) {
 	sa.sin_family = AF_INET;
 	sa.sin_port   = htons((unsigned short)port);
 	sa.sin_addr   = ina;
-	if (::connect(s, (const struct sockaddr*)&sa, sizeof(sa)) != 0) {
-		DbgPrintF("[net] connect() to %s:%d failed: %d\n", host, port, WSAGetLastError());
-		closesocket(s);
-		return;
+
+	// Bounded connect: a blocking connect() to a dead/wrong IP hangs GuiConnecting forever.
+	// Go non-blocking, then select() for writability with a timeout, so a bad host fails
+	// cleanly. Restore blocking afterwards -- the reader/writer threads want blocking I/O.
+	u_long nb = 1; ioctlsocket(s, FIONBIO, &nb);
+	int cr = ::connect(s, (const struct sockaddr*)&sa, sizeof(sa));
+	if (cr != 0) {
+		int werr = WSAGetLastError();
+		if (werr != WSAEWOULDBLOCK) {
+			DbgPrintF("[net] connect() to %s:%d failed: %d\n", host, port, werr);
+			closesocket(s);
+			return;
+		}
+		// connect in progress -> wait up to 10s for the socket to become writable (connected)
+		fd_set wfds; FD_ZERO(&wfds); FD_SET(s, &wfds);
+		fd_set efds; FD_ZERO(&efds); FD_SET(s, &efds);
+		timeval tv; tv.tv_sec = 10; tv.tv_usec = 0;
+		// Winsock signals a failed non-blocking connect via the except set and a successful
+		// one via the write set (SO_ERROR isn't available in the 360 winsockx.h). So: writable
+		// AND not in the except set == connected; anything else == timed out / refused.
+		int sel = select(0, NULL, &wfds, &efds, &tv);
+		if (sel <= 0 || FD_ISSET(s, &efds) || !FD_ISSET(s, &wfds)) {
+			DbgPrintF("[net] connect() to %s:%d timed out/refused\n", host, port);
+			closesocket(s);
+			return;
+		}
 	}
+	u_long bl = 0; ioctlsocket(s, FIONBIO, &bl);   // back to blocking for the net threads
 
 	int one = 1;
 	setsockopt(s, IPPROTO_TCP, TCP_NODELAY, (const char*)&one, sizeof(one));   // low latency for packets
