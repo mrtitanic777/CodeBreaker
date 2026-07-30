@@ -100,6 +100,17 @@ def _method_decl(cls, m, resolver):
     return '%s%s %s(%s)%s;' % (prefix, ret, name, params, suffix)
 
 
+def _field_type(cls, f, resolver):
+    """C++ type for an instance field. Java `byte` defaults to unsigned char (for byte[] buffers),
+    but a scalar byte field that is legitimately negative (dimension, movement deltas, rotation) must
+    be `signed char` -- else -1 reads back as 255 (nether-provider NULL crash; entities flung by delta
+    wrap). Curated in typemap.SIGNED_BYTE_FIELDS: correct by construction, replacing the old overrides."""
+    if (f.jtype.name == 'byte' and not f.jtype.is_array
+            and (cls.name, f.name) in typemap.SIGNED_BYTE_FIELDS):
+        return 'signed char'
+    return resolver.field_type(f.jtype)
+
+
 def render_header(cls, resolver, ledger=None, cpp_std=None, platform_label=None):
     guard = naming.guard_macro(cls.name)
 
@@ -173,7 +184,7 @@ def render_header(cls, resolver, ledger=None, cpp_std=None, platform_label=None)
     if inst or stat:
         L.append('')
     for f in inst:
-        L.append('\t%s %s;' % (resolver.field_type(f.jtype), naming.field_name(f)))
+        L.append('\t%s %s;' % (_field_type(cls, f, resolver), naming.field_name(f)))
     for f in stat:                                   # arrays are JArray<T> now -> normal member decl
         L.append('\tstatic %s %s;' % (resolver.field_type(f.jtype), naming.field_name(f)))
 

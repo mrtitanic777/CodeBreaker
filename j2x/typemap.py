@@ -18,13 +18,12 @@ PRIMITIVES = {
 # CAVEAT: Java `byte` is SIGNED (-128..127). We map it to `unsigned char` because the vast majority
 # of byte uses here are byte[] buffers (chunk/block data, packet payloads, inflate I/O) that want
 # unsigned char* and are read via `& 0xFF`. But SCALAR byte fields used as signed values break:
-#   * Packet30Entity x/y/z relative-move deltas read -1 as +255 -> entities rocketed into the sky
-#     (fixed via overrides/Packet30Entity.h = signed char).
+#   * Packet30Entity x/y/z relative-move deltas read -1 as +255 -> entities rocketed into the sky.
 #   * Packet1Login.dimension: nether = -1, read as 255 -> getProviderForDimension(255) returned NULL
-#     -> NULL world provider -> instant crash logging into any nether-enabled server (overworld=0 was
-#     fine). Fixed via overrides/Packet1Login.h = signed char.
-# Pattern: a scalar `byte` that can legitimately be negative (dimension ids, signed deltas, signed
-# coords) MUST be overridden to `signed char`. Do NOT blanket-flip this map -> breaks byte[] buffers.
+#     -> NULL world provider -> instant crash logging into any nether-enabled server (overworld=0 fine).
+# Correct by construction: a scalar `byte` field listed in SIGNED_BYTE_FIELDS (below) emits `signed
+# char` instead (applied in emit/header.py). This replaces the old handwritten overrides/Packet*.h.
+# Do NOT blanket-flip this map -> byte[] buffers must stay unsigned char.
 JAVA_TO_CPP = {
     'boolean': 'bool', 'byte': 'unsigned char', 'short': 'short', 'int': 'int',
     'long': 'long long', 'float': 'float', 'double': 'double', 'char': 'char',
@@ -40,6 +39,20 @@ JAVA_TO_CPP = {
     'Object': 'JObject',
     'Integer': 'int', 'Long': 'long long', 'Float': 'float', 'Double': 'double',
     'Boolean': 'bool', 'Byte': 'unsigned char', 'Short': 'short', 'Character': 'char',
+}
+
+# Scalar `byte` fields that are legitimately negative -> emit `signed char` instead of the default
+# `unsigned char` (see the byte CAVEAT above JAVA_TO_CPP). Keyed (ClassName, fieldName); applied by
+# emit/header.py to NON-array byte instance fields only (byte[] buffers stay unsigned char). These
+# reproduce the proven Packet1Login/Packet30Entity signed-char fixes by construction, replacing the
+# old handwritten overrides. Extend as new signed-byte scalars surface.
+SIGNED_BYTE_FIELDS = {
+    ('Packet1Login', 'dimension'),      # nether = -1 (else 255 -> NULL world provider -> crash)
+    ('Packet30Entity', 'xPosition'),    # relative-move deltas: signed (else -1 -> +255 -> entity flung)
+    ('Packet30Entity', 'yPosition'),
+    ('Packet30Entity', 'zPosition'),
+    ('Packet30Entity', 'yaw'),          # rotation bytes: signed in Java
+    ('Packet30Entity', 'pitch'),
 }
 
 # Java types that emit warrants a PORT note for (mapped, but lossy / needs review).

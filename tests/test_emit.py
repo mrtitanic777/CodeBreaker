@@ -65,12 +65,33 @@ class TestHeaderRealFile(unittest.TestCase):
         h = header.render_header(c, r, ledger=led)
         self.assertIn('#ifndef VEC3D_H', h)
         self.assertIn('class Vec3D', h)
-        self.assertIn('float xCoord;', h)                   # value-type field stays bare
+        self.assertIn('double xCoord;', h)                  # value-type field stays bare (Alpha: double coords)
         self.assertIn('virtual ~Vec3D();', h)
         self.assertTrue(any(line.strip().startswith('Vec3D(') for line in h.split('\n')))
         self.assertIn('#endif // VEC3D_H', h)
         # the emitter reported a PORTED event for the header
         self.assertTrue(any(e.rule == 'header' for e in led.events))
+
+
+class TestSignedByteFields(unittest.TestCase):
+    """Java `byte` is signed; a scalar byte field in typemap.SIGNED_BYTE_FIELDS emits `signed char`
+    (correct-by-construction replacement for the old handwritten Packet*.h overrides). byte[] buffers
+    stay unsigned char, and unlisted scalar bytes keep the default unsigned char."""
+
+    def test_listed_scalar_byte_emits_signed_char(self):
+        c = ir.JClass('Packet1Login')
+        c.fields.append(ir.Field('dimension', ir.JType('byte'), access=ir.PUBLIC))
+        c.fields.append(ir.Field('payload', ir.JType('byte', array_dims=1), access=ir.PUBLIC))
+        h = header.render_header(c, types.TypeResolver())
+        self.assertIn('signed char dimension;', h)          # nether = -1
+        self.assertNotIn('unsigned char dimension;', h)
+        self.assertNotIn('signed char payload', h)          # byte[] buffer stays unsigned
+
+    def test_unlisted_scalar_byte_stays_unsigned(self):
+        c = ir.JClass('SomeClass')
+        c.fields.append(ir.Field('flags', ir.JType('byte'), access=ir.PUBLIC))
+        h = header.render_header(c, types.TypeResolver())
+        self.assertIn('unsigned char flags;', h)
 
 
 if __name__ == '__main__':
