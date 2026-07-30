@@ -7,8 +7,11 @@ import unittest
 from j2x import rules
 
 
-def _fire(fn, fname, text, header=None):
-    return list(fn(fname, text, header))
+def _fire(fn, fname, text, header=None, platform='xbox360'):
+    # Rules are platform-aware (rules.py): each takes a _PlatCtx as its 4th arg. Default to the
+    # big-endian Xbox 360 target these tests were written for so the endianness rule applies.
+    plat = rules._PlatCtx(platform)
+    return list(fn(fname, text, header, plat))
 
 
 class TestVirtualCallInCtor(unittest.TestCase):

@@ -554,13 +554,22 @@ class TestCallResultChains(unittest.TestCase):
             members=members)
 
     def test_instance_method_result_chain(self):
+        # getItem() is a known-nullable getter, so with its return type known the chain is NULL-guarded
+        # (the crash-class defense added in a1db028) and every hop on the ItemStack* receiver uses '->'
+        # -- never a '.' on a pointer. Local resolver so getItem()'s return type is resolvable.
+        r = types.TypeResolver(known_classes={'C', 'ItemStack', 'Item'},
+                               members={'ItemStack': {'fields': {},
+                                                      'methods': {'getItem': ir.JType('Item')}}})
         c = ir.JClass('C')
         m = ir.Method('f', ir.JType('void'), params=[ir.Param('var6', ir.JType('ItemStack'))], line=1)
         m.body = [(1, 'void f(ItemStack var6) {'),
                   (2, '\tvar6.getItem().onPlaced();'), (3, '}')]
         c.methods.append(m)
-        out = statements.translate_body(m, c, self._resolver())
-        self.assertIn('var6->getItem()->onPlaced();', out)
+        out = '\n'.join(statements.translate_body(m, c, r))
+        self.assertIn('var6->getItem()', out)          # receiver hop uses '->'
+        self.assertIn('->onPlaced()', out)             # result hop uses '->', not '.'
+        self.assertNotIn('getItem().onPlaced', out)    # never a '.' deref on the pointer
+        self.assertIn('NULL', out)                     # nullable getter is guarded
 
     def test_static_method_result_chain(self):
         c = ir.JClass('C')

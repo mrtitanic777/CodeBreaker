@@ -21,14 +21,17 @@ class TestValueType(unittest.TestCase):
 
     def test_header(self):
         self.assertEqual(self.c.name, 'Vec3D')
-        self.assertEqual(self.c.package, 'net.minecraft.game.physics')
+        self.assertEqual(self.c.package, 'net.minecraft.src')
         self.assertFalse(self.c.is_interface)
         self.assertIsNone(self.c.parent)
 
     def test_fields(self):
-        self.assertEqual([f.name for f in self.c.fields], ['xCoord', 'yCoord', 'zCoord'])
-        self.assertTrue(all(repr(f.jtype) == 'float' for f in self.c.fields))
-        self.assertTrue(all(not f.is_static for f in self.c.fields))
+        # Alpha's Vec3D adds a static vector pool (vectorList, nextVector) ahead of the coords.
+        inst = [f for f in self.c.fields if not f.is_static]
+        self.assertEqual([f.name for f in inst], ['xCoord', 'yCoord', 'zCoord'])
+        self.assertTrue(all(repr(f.jtype) == 'double' for f in inst))   # Alpha uses double coords
+        self.assertTrue(self.c.field('vectorList').is_static)
+        self.assertTrue(self.c.field('nextVector').is_static)
 
     def test_constructor(self):
         ctors = self.c.constructors()
@@ -49,9 +52,9 @@ class TestInterface(unittest.TestCase):
     def test_interface_method_is_abstract(self):
         c = parse.parse_file(os.path.join(JAVA, 'ICamera.java'))
         self.assertTrue(c.is_interface)
-        self.assertEqual(len(c.methods), 1)
+        self.assertEqual(len(c.methods), 2)          # isBoundingBoxInFrustum + setPosition
         m = c.methods[0]
-        self.assertEqual(m.name, 'isBoundingBoxInFrustrum')
+        self.assertEqual(m.name, 'isBoundingBoxInFrustum')
         self.assertTrue(m.is_abstract)
         self.assertEqual(m.body, [])
         self.assertEqual(repr(m.params[0].jtype), 'AxisAlignedBB')
@@ -59,7 +62,7 @@ class TestInterface(unittest.TestCase):
 
 class TestEnum(unittest.TestCase):
     def test_enum_constants(self):
-        c = parse.parse_file(os.path.join(JAVA, 'EnumOS.java'))
+        c = parse.parse_file(os.path.join(JAVA, 'EnumOS1.java'))
         self.assertTrue(c.is_enum)
         self.assertEqual([e.name for e in c.enum_consts],
                          ['linux', 'solaris', 'windows', 'macos', 'unknown'])
@@ -82,7 +85,14 @@ class TestBlock(unittest.TestCase):
         self.assertEqual(f.initializer, 'new Block[256]')
 
     def test_forward_declared_static_has_no_initializer(self):
-        f = self.c.field('stone')                    # `public static final Block stone;`
+        # A forward-declared static (no initializer) must parse with initializer=None so the emitter
+        # can defer its definition. Alpha's Block initializes every static inline, so this uses a
+        # synthetic fixture rather than a corpus field.
+        c = parse.parse_source('public class Holder {\n'
+                               '  public static final Block stone;\n'
+                               '  public int x;\n'
+                               '}\n')
+        f = c.field('stone')
         self.assertIsNotNone(f)
         self.assertTrue(f.is_static)
         self.assertIsNone(f.initializer)
