@@ -106,6 +106,19 @@ KNOWN_NULLABLE_GETTERS = {
     'getWorldFromRenderManager',
 }
 
+# Return type (a reference/pointer type) of each POINTER-returning nullable getter, so the null-guard
+# hoist in emit/statements.py can declare a typed temp in C++03 -- `Type* t = getter();` -- instead of
+# C++11 `auto`. Keyed by getter name; the emitter appends `*`. Verified against the Alpha source.
+# getSmeltingResultItem is intentionally ABSENT: it returns `int` (a value), so it can never form a
+# `getter()->deref` and never triggers the guard.
+NULLABLE_GETTER_RETURN_TYPE = {
+    'getChunkFromChunkCoords': 'Chunk', 'getChunkFromBlockCoords': 'Chunk',
+    'getItem': 'Item', 'getCompoundTag': 'NBTTagCompound',
+    'getNetClientHandler': 'NetClientHandler', 'getWorldFromRenderManager': 'World',
+    'getDocumentBase': 'URL', 'getParentFile': 'File',
+    'getReadThread': 'Thread', 'getWriteThread': 'Thread',
+}
+
 # Runtime-support classes the converter EMITS a header for (see runtime.py) and
 # #includes when referenced -- not part of the decompiled corpus. Includes the external
 # Java base types our classes extend/implement (Runnable/Thread/Comparator/...).

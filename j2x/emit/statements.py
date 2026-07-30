@@ -1409,6 +1409,14 @@ def _default_return_val(rt, resolver):
     return 'NULL'
 
 
+def _nullable_getter_ctype(getter_name):
+    """C++ pointer type for a pointer-returning nullable getter (from typemap), so the null-guard
+    hoist can declare a typed temp in C++03 -- never `auto`. None if the getter has no known pointer
+    return type (then the caller skips hoisting rather than emit `auto`)."""
+    t = typemap.NULLABLE_GETTER_RETURN_TYPE.get(getter_name)
+    return (t + '*') if t else None
+
+
 def _hoist_nullable_getter(s, return_type, resolver):
     """If s contains a KNOWN_NULLABLE_GETTER(args)->deref not caught by the standalone
     patterns, hoist the getter into a temp variable and null-guard the dereference."""
@@ -1424,6 +1432,12 @@ def _hoist_nullable_getter(s, return_type, resolver):
         if j + 1 >= len(s) or s[j:j + 2] != '->':
             continue
 
+        # Need the getter's concrete pointer type to declare the temp in C++03 (no `auto`). If it's
+        # unknown, don't hoist -- leave the expression for other guards rather than emit C++11.
+        ctype = _nullable_getter_ctype(gn)
+        if ctype is None:
+            continue
+
         recv_expr = s[m.start():close + 1]
         tmp = '_j2x_%s' % gn.replace('get', '', 1)[:20]
         tmp = tmp[0].lower() + tmp[1:]
@@ -1433,21 +1447,21 @@ def _hoist_nullable_getter(s, return_type, resolver):
         if stripped.startswith('return '):
             dflt = _default_return_val(return_type, resolver)
             if dflt is None:
-                return 'auto %s = %s; if (%s == NULL) return; %s' % (
-                    tmp, recv_expr, tmp, new_line.strip())
-            return 'auto %s = %s; if (%s == NULL) return %s; %s' % (
-                tmp, recv_expr, tmp, dflt, new_line.strip())
+                return '%s %s = %s; if (%s == NULL) return; %s' % (
+                    ctype, tmp, recv_expr, tmp, new_line.strip())
+            return '%s %s = %s; if (%s == NULL) return %s; %s' % (
+                ctype, tmp, recv_expr, tmp, dflt, new_line.strip())
 
         dm = _DECL.match(new_line.strip())
         if dm and dm.group(3) == '=' and _decl_base(dm.group(1)) not in _KEYWORDS:
             cpp_type = dm.group(1)
             var_name = dm.group(2)
             assign_rest = new_line.strip()[dm.end(3):].lstrip()
-            return ('%s %s = 0; auto %s = %s; if (%s != NULL) { %s = %s }'
-                    % (cpp_type, var_name, tmp, recv_expr, tmp, var_name, assign_rest))
+            return ('%s %s = 0; %s %s = %s; if (%s != NULL) { %s = %s }'
+                    % (cpp_type, var_name, ctype, tmp, recv_expr, tmp, var_name, assign_rest))
 
-        return '{ auto %s = %s; if (%s != NULL) { %s } }' % (
-            tmp, recv_expr, tmp, new_line.strip())
+        return '{ %s %s = %s; if (%s != NULL) { %s } }' % (
+            ctype, tmp, recv_expr, tmp, new_line.strip())
     return None
 
 
@@ -1465,10 +1479,15 @@ def _guard_null_deref(s, scope, resolver, return_type=None):
     if m2:
         recv_expr, getter_name, call = m2.group(1), m2.group(2), m2.group(3)
         if getter_name in typemap.KNOWN_NULLABLE_GETTERS:
-            tmp = '_j2x_%s' % getter_name.replace('get', '', 1)[:20]
-            tmp = tmp[0].lower() + tmp[1:]
-            return ('{ auto %s = %s; if (%s != NULL) { %s->%s; } }'
-                    % (tmp, recv_expr, tmp, tmp, call)), True, 'null-deref-getter-guard'
+            ctype = _nullable_getter_ctype(getter_name)
+            if ctype is not None:
+                tmp = '_j2x_%s' % getter_name.replace('get', '', 1)[:20]
+                tmp = tmp[0].lower() + tmp[1:]
+                return ('{ %s %s = %s; if (%s != NULL) { %s->%s; } }'
+                        % (ctype, tmp, recv_expr, tmp, tmp, call)), True, 'null-deref-getter-guard'
+            # Unknown pointer type -> C++03-safe double-eval (no temp). These getters are pure lookups.
+            return ('if (%s != NULL) { %s->%s; }'
+                    % (recv_expr, recv_expr, call)), True, 'null-deref-getter-guard'
 
     # (3) General: nullable getter()->deref embedded in a return / assignment / expression.
     result = _hoist_nullable_getter(s, return_type, resolver)

@@ -570,6 +570,8 @@ class TestCallResultChains(unittest.TestCase):
         self.assertIn('->onPlaced()', out)             # result hop uses '->', not '.'
         self.assertNotIn('getItem().onPlaced', out)    # never a '.' deref on the pointer
         self.assertIn('NULL', out)                     # nullable getter is guarded
+        self.assertIn('Item* ', out)                   # typed temp (C++03), not `auto`
+        self.assertNotIn('auto', out)                  # no C++11 in C++03 output
 
     def test_static_method_result_chain(self):
         c = ir.JClass('C')
