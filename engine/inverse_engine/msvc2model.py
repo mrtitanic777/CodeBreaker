@@ -91,6 +91,36 @@ def _binargs_plan(op, li, ri):
     return load, other, enc
 
 
+def _flatten_chain(E):
+    """If E is a left-associative chain of ONE operator over arg leaves -- ((a op b) op c) ... --
+    return (op, [argidx leftmost..rightmost]); else None. Used to recognise n-ary chains."""
+    if E[0] != "binop":
+        return None
+    op = E[1]
+    leaves, node = [], E
+    while node[0] == "binop" and node[1] == op:
+        if node[3][0] != "arg":                          # right operand must be an arg leaf
+            return None
+        leaves.append(node[3][1])
+        node = node[2]
+    if node[0] != "arg":
+        return None
+    leaves.append(node[1])
+    leaves.reverse()
+    return op, leaves
+
+
+def _emit_mul_chain(nargs, idxs):
+    """a*b*c[*d...] -> eax = rightmost; imul the rest RIGHT-TO-LEFT; frame deferred past the
+    imuls (all operands read esp-relative, before `mov ebp,esp`). Measured byte-exact."""
+    pro = bytes([0x55])
+    seq = _load_eax(idxs[-1])                             # eax = rightmost leaf
+    for k in reversed(idxs[:-1]):                         # imul eax, [esp+arg]  (reverse order)
+        seq += bytes([0x0F, 0xAF, 0x44, 0x24, _argoff(k)])
+    seq += bytes([0x8B, 0xEC])                            # mov ebp, esp  (deferred, imul style)
+    return pro + seq + bytes([0x5D]) + bytes([0xC2]) + struct.pack("<H", 4 * nargs)
+
+
 def emit(node):
     """Forward model: construct -> exact MSVC-2.0 /O1 /Oy- bytes, or None if out of class."""
     try:
@@ -119,6 +149,14 @@ def emit(node):
         op, L, R = E[1], E[2], E[3]
         if op not in OPS:
             return None
+        # n-ary chain of one operator over arg leaves (>=3 leaves): only multiplicative chains
+        # are modeled byte-exact so far. Additive chains reassociate into a 2nd register, and
+        # subtraction chains flip the esp/ebp base mid-expression -- those are DECLINED (None),
+        # never mis-modeled, until their scheduling is modeled.  [see probe notes]
+        chain = _flatten_chain(E)
+        if chain and len(chain[1]) >= 3:
+            cop, idxs = chain
+            return _emit_mul_chain(nargs, idxs) if cop == "*" else None
         # arg <op> const
         if L[0] == "arg" and R[0] == "const":
             k, c = L[1], R[1]
@@ -144,16 +182,18 @@ def _c_operand(o):
     return ("arg%d" % o[1]) if o[0] == "arg" else str(o[1])
 
 
+def _c_expr(E):
+    if E[0] == "const":
+        return str(E[1])
+    if E[0] == "arg":
+        return "arg%d" % E[1]
+    return "(%s %s %s)" % (_c_expr(E[2]), E[1], _c_expr(E[3]))   # left-assoc, fully parenthesised
+
+
 def to_c(node):
     nargs, E = node["nargs"], node["expr"]
     params = "void" if nargs == 0 else ", ".join("int arg%d" % (i + 1) for i in range(nargs))
-    if E[0] == "const":
-        expr = str(E[1])
-    elif E[0] == "arg":
-        expr = "arg%d" % E[1]
-    else:
-        expr = "%s %s %s" % (_c_operand(E[2]), E[1], _c_operand(E[3]))
-    return "int __stdcall f(%s) { return %s; }" % (params, expr)
+    return "int __stdcall f(%s) { return %s; }" % (params, _c_expr(E))
 
 
 # --- the battery: every construct in the class ------------------------------
@@ -168,7 +208,31 @@ def battery():
     for op in ("+", "-", "&", "|", "^", "*"):
         cases.append(("a%sc" % op, {"nargs": 1, "expr": ("binop", op, ("arg", 1), ("const", 5))}))
         cases.append(("a%sb" % op, {"nargs": 2, "expr": ("binop", op, ("arg", 1), ("arg", 2))}))
+    # multi-op: multiplicative chains (modeled byte-exact), left-associative over arg leaves
+    def _chain(op, idxs):
+        e = ("arg", idxs[0])
+        for i in idxs[1:]:
+            e = ("binop", op, e, ("arg", i))
+        return e
+    cases.append(("a*b*c", {"nargs": 3, "expr": _chain("*", [1, 2, 3])}))
+    cases.append(("a*b*c*d", {"nargs": 4, "expr": _chain("*", [1, 2, 3, 4])}))
     return cases
+
+
+def declined_battery():
+    """Cases the model must DECLINE (emit -> None) until their scheduling is modeled: additive
+    chains (2nd-register reassociation), subtraction chains (esp/ebp base flip), mixed precedence."""
+    def _chain(op, idxs):
+        e = ("arg", idxs[0])
+        for i in idxs[1:]:
+            e = ("binop", op, e, ("arg", i))
+        return e
+    return [
+        ("a+b+c", {"nargs": 3, "expr": _chain("+", [1, 2, 3])}),
+        ("a-b-c", {"nargs": 3, "expr": _chain("-", [1, 2, 3])}),
+        ("a&b&c", {"nargs": 3, "expr": _chain("&", [1, 2, 3])}),
+        ("a*b+c", {"nargs": 3, "expr": ("binop", "+", ("binop", "*", ("arg", 1), ("arg", 2)), ("arg", 3))}),
+    ]
 
 
 # ===========================================================================
@@ -295,7 +359,17 @@ def selftest(show=False):
             print("  %-8s %s  pred=%s  real=%s" % (name, tag,
                   pred.hex(" ") if pred else "(declined)", real.hex(" ")))
     print("\nmsvc2model self-test: %d/%d byte-exact  (MSVC 2.0 /O1 /Oy-)" % (ok, tot))
-    return ok == tot
+    # correctly-declined check: unmodeled shapes must return None (never a wrong guess)
+    dec_ok = dec_tot = 0
+    for name, node in declined_battery():
+        dec_tot += 1
+        d = emit(node) is None
+        dec_ok += d
+        if show or not d:
+            print("  declined %-8s %s" % (name, "OK (None)" if d else "LEAK: emitted bytes!"))
+    print("declined-correctly: %d/%d  (unmodeled shapes return None, never mis-modeled)"
+          % (dec_ok, dec_tot))
+    return ok == tot and dec_ok == dec_tot
 
 
 def main():
