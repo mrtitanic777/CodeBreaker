@@ -12,6 +12,7 @@ const, arg, arg<op>const, arg<op>arg, multiplicative chains, 3-op additive/mixed
 
     wt inverse msvc2inv                 # round-trip battery: bytes -> C -> (oracle) -> bytes
 """
+import re
 import sys
 from engine.inverse_engine import msvc2model as M
 
@@ -99,6 +100,25 @@ def _candidates(code):
 
     # --- single accumulator in eax: arg / arg<op>arg / arg<op>const / mul-&-alu chains ---
     if r0 == "eax":
+        # pointer deref / const-index:  mov eax,[esp+p]; mov eax,[eax(+d)]
+        if len(ops) == 2 and ops[1][0] == "mov":
+            m = re.match(r"eax, (?:dword ptr )?\[eax(?: \+ (0x[0-9a-f]+|\d+))?\]$", ops[1][1])
+            if m:
+                d = int(m.group(1), 0) if m.group(1) else 0
+                if d == 0:
+                    yield {"nargs": nargs, "expr": ("deref", ("arg", k0))}
+                if d % 4 == 0:
+                    yield {"nargs": nargs, "expr": ("index", ("arg", k0), ("const", d // 4))}
+                return
+        # relational bool:  mov eax,[L]; cmp [R],eax; mov eax,1; jcc +2; xor eax,eax
+        cmpi = next((o for mn, o in ops if mn == "cmp"), None)
+        jcc = next((mn for mn, o in ops if mn.startswith("j")), None)
+        if cmpi and jcc:
+            Rk = _argk(cmpi)
+            JMAP = {"jg": "<", "jge": "<=", "jl": ">", "jle": ">="}
+            if Rk is not None and jcc in JMAP:
+                yield {"nargs": nargs, "expr": ("cmp", JMAP[jcc], ("arg", k0), ("arg", Rk))}
+                return
         # gather the chain of ops applied to eax after the load
         steps = []                                # (op_char or '*', kind, val)
         ok = True
@@ -142,8 +162,16 @@ def _candidates(code):
                 yield {"nargs": nargs, "expr": e}
         return
 
-    # --- two-register (ecx base) : 3-op additive/mixed, or product+/-leaf ---
+    # --- two-register (ecx base) : equality, 3-op additive/mixed, or product+/-leaf ---
     if r0 == "ecx":
+        # equality:  mov ecx,[R]; sub ecx,[L]; cmp ecx,1; sbb eax,eax; neg(==)/inc(!=)
+        if len(ops) >= 2 and ops[1][0] == "sub" and any(o == "ecx, 1" for m, o in ops if m == "cmp"):
+            Lk = _argk(ops[1][1])
+            if Lk is not None:
+                if any(m == "neg" for m, o in ops):
+                    yield {"nargs": nargs, "expr": ("cmp", "==", ("arg", Lk), ("arg", k0))}
+                elif any(m == "inc" for m, o in ops):
+                    yield {"nargs": nargs, "expr": ("cmp", "!=", ("arg", Lk), ("arg", k0))}
         # product+leaf:  mov ecx,[pR]; imul ecx,[pL]; mov eax,[H]; add eax,ecx
         if (len(ops) >= 4 and ops[1][0] == "imul" and ops[2][0] == "mov"
                 and ops[-1] == ("add", "eax, ecx")):

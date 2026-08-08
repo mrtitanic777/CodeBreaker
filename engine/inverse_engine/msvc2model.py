@@ -218,6 +218,45 @@ def emit(node):
         seq = _load_eax(E[1]) + setframe                # load; mov ebp,esp
         return pro + seq + epi
 
+    # --- pointer load: *p  ->  mov eax,[esp+p]; mov ebp,esp; mov eax,[eax] ------
+    if kind == "deref":
+        if E[1][0] != "arg":
+            return None
+        return pro + _load_eax(E[1][1]) + setframe + bytes([0x8B, 0x00]) + epi
+
+    # --- const-index load: p[k]  ->  mov eax,[eax + k*4] ------------------------
+    if kind == "index":
+        p, idx = E[1], E[2]
+        if p[0] != "arg" or idx[0] != "const":
+            return None
+        d = idx[1] * 4
+        if d == 0:
+            mem = bytes([0x8B, 0x00])                    # mov eax,[eax]
+        elif 0 < d < 0x80:
+            mem = bytes([0x8B, 0x40, d])                 # mov eax,[eax+disp8]
+        else:
+            return None
+        return pro + _load_eax(p[1]) + setframe + mem + epi
+
+    # --- comparison returning 0/1 ---------------------------------------------
+    if kind == "cmp":
+        op, L, R = E[1], E[2], E[3]
+        if L[0] != "arg" or R[0] != "arg":
+            return None
+        if op in ("<", "<=", ">", ">="):                # branch idiom: cmp [R],eax(=L); mov 1; jcc +2; xor
+            JCC = {"<": 0x7F, "<=": 0x7D, ">": 0x7C, ">=": 0x7E}   # inverse-relation on (R-L)
+            seq = (_load_eax(L[1]) + setframe
+                   + bytes([0x39, 0x44, 0x24, _argoff(R[1])])
+                   + bytes([0xB8, 1, 0, 0, 0, JCC[op], 0x02, 0x33, 0xC0]))
+            return pro + seq + epi
+        if op in ("==", "!="):                          # ecx=R-L; pop; cmp ecx,1; sbb eax,eax; neg/inc
+            seq = (_mov("ecx", "esp", _argoff(R[1])) + setframe
+                   + _alu("-", "ecx", "esp", _argoff(L[1]))
+                   + bytes([0x5D, 0x83, 0xF9, 0x01, 0x1B, 0xC0])
+                   + (bytes([0xF7, 0xD8]) if op == "==" else bytes([0x40])))
+            return pro + seq + bytes([0xC2]) + struct.pack("<H", 4 * nargs)
+        return None
+
     if kind == "binop":
         op, L, R = E[1], E[2], E[3]
         if op not in OPS:
@@ -270,12 +309,33 @@ def _c_expr(E):
         return str(E[1])
     if E[0] == "arg":
         return "arg%d" % E[1]
-    return "(%s %s %s)" % (_c_expr(E[2]), E[1], _c_expr(E[3]))   # left-assoc, fully parenthesised
+    if E[0] == "deref":
+        return "(*%s)" % _c_expr(E[1])
+    if E[0] == "index":
+        return "%s[%s]" % (_c_expr(E[1]), _c_expr(E[2]))
+    return "(%s %s %s)" % (_c_expr(E[2]), E[1], _c_expr(E[3]))   # binop / cmp, left-assoc
+
+
+def _ptr_args(E, s):
+    """Collect arg indices used as pointers (deref/index base) so the signature types them."""
+    if E[0] == "deref":
+        if E[1][0] == "arg":
+            s.add(E[1][1])
+        _ptr_args(E[1], s)
+    elif E[0] == "index":
+        if E[1][0] == "arg":
+            s.add(E[1][1])
+    elif E[0] in ("binop", "cmp"):
+        _ptr_args(E[2], s)
+        _ptr_args(E[3], s)
 
 
 def to_c(node):
     nargs, E = node["nargs"], node["expr"]
-    params = "void" if nargs == 0 else ", ".join("int arg%d" % (i + 1) for i in range(nargs))
+    ptr = set()
+    _ptr_args(E, ptr)
+    params = "void" if nargs == 0 else ", ".join(
+        "int%s arg%d" % ("*" if (i + 1) in ptr else "", i + 1) for i in range(nargs))
     return "int __stdcall f(%s) { return %s; }" % (params, _c_expr(E))
 
 
@@ -306,6 +366,13 @@ def battery():
     cases.append(("a-b+c", {"nargs": 3, "expr": ("binop", "+", ("binop", "-", A(1), A(2)), A(3))}))
     cases.append(("a*b+c", {"nargs": 3, "expr": ("binop", "+", ("binop", "*", A(1), A(2)), A(3))}))
     cases.append(("a+b*c", {"nargs": 3, "expr": ("binop", "+", A(1), ("binop", "*", A(2), A(3)))}))
+    # pointer / deref
+    cases.append(("*p", {"nargs": 1, "expr": ("deref", A(1))}))
+    cases.append(("p[2]", {"nargs": 1, "expr": ("index", A(1), ("const", 2))}))
+    cases.append(("p[0]", {"nargs": 1, "expr": ("index", A(1), ("const", 0))}))
+    # comparison -> 0/1
+    for o in ("<", "<=", ">", ">=", "==", "!="):
+        cases.append(("a%sb" % o, {"nargs": 2, "expr": ("cmp", o, A(1), A(2))}))
     return cases
 
 
