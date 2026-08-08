@@ -89,6 +89,14 @@ def _candidates(code):
                     pass
         return
 
+    # --- indexed load p[i] :  ...; mov eax,[eax + ecx*4] ---
+    if any(m == "mov" and o.startswith("eax,") and "ecx*4]" in o for m, o in ops):
+        pk = next((_argk(o) for m, o in ops if m == "mov" and o.startswith("eax,") and _argk(o) is not None), None)
+        ik = next((_argk(o) for m, o in ops if m == "mov" and o.startswith("ecx,") and _argk(o) is not None), None)
+        if pk is not None and ik is not None:
+            yield {"nargs": nargs, "expr": ("index", ("arg", pk), ("arg", ik))}
+        return
+
     # --- constants (no frame): xor eax,eax  or  mov eax,imm ---
     if len(ops) == 1:
         mn, op = ops[0]
@@ -182,6 +190,12 @@ def _candidates(code):
                 e = ("arg", idxs[0])
                 for i in idxs[1:]:
                     e = ("binop", "*", e, ("arg", i))
+                yield {"nargs": nargs, "expr": e}
+            elif all(o == "-" and kind == "arg" for o, kind, _ in steps):   # sub chain (>=2 subs)
+                src = M._pairswap([v for _, _, v in steps])   # un-swap the scheduler's pairing
+                e = ("arg", k0)
+                for i in src:
+                    e = ("binop", "-", e, ("arg", i))
                 yield {"nargs": nargs, "expr": e}
         return
 

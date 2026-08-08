@@ -190,6 +190,28 @@ def _emit_add3(nargs, head, tail):
     return bytes([0x55]) + seq + _epi(nargs)
 
 
+def _pairswap(xs):
+    """Swap adjacent elements in pairs: [a,b,c,d]->[b,a,d,c] (self-inverse). The generic
+    scheduler's reorder of independent subtracted operands in a sub-chain."""
+    out, i = [], 0
+    while i < len(xs):
+        if i + 1 < len(xs):
+            out += [xs[i + 1], xs[i]]; i += 2
+        else:
+            out.append(xs[i]); i += 1
+    return out
+
+
+def _emit_sub_chain(nargs, head, subargs):
+    """a-b-c[-d..]: eax=head; frame; sub the rest. Base-flip rule for the eax accumulator: the
+    FIRST subtract reads esp-relative, the rest ebp. Subtracted operands are pair-swapped."""
+    order = _pairswap(subargs)
+    seq = _load_eax(head) + _FRAME + _alu("-", "eax", "esp", _argoff(order[0]))
+    for k in order[1:]:
+        seq += _alu("-", "eax", "ebp", _argoff(k))
+    return bytes([0x55]) + seq + _epi(nargs)
+
+
 def _emit_prod_leaf(nargs, pL, pR, H):
     """(argpL * argpR) + argH  (either source order): product in ecx (ecx=pR, imul pL --
     right-first), leaf in eax, frame deferred past all loads, then add eax,ecx. Measured
@@ -229,19 +251,25 @@ def emit(node):
             return None
         return pro + _load_eax(E[1][1]) + setframe + bytes([0x8B, 0x00]) + epi
 
-    # --- const-index load: p[k]  ->  mov eax,[eax + k*4] ------------------------
+    # --- index load: p[k] (const) or p[i] (arg, scaled) ------------------------
     if kind == "index":
         p, idx = E[1], E[2]
-        if p[0] != "arg" or idx[0] != "const":
+        if p[0] != "arg":
             return None
-        d = idx[1] * 4
-        if d == 0:
-            mem = bytes([0x8B, 0x00])                    # mov eax,[eax]
-        elif 0 < d < 0x80:
-            mem = bytes([0x8B, 0x40, d])                 # mov eax,[eax+disp8]
-        else:
-            return None
-        return pro + _load_eax(p[1]) + setframe + mem + epi
+        if idx[0] == "arg":          # p[i]: mov ecx,[i]; frame; mov eax,[p]; pop; mov eax,[eax+ecx*4]
+            seq = (_mov("ecx", "esp", _argoff(idx[1])) + setframe + _load_eax(p[1])
+                   + bytes([0x5D, 0x8B, 0x04, 0x88]))
+            return pro + seq + bytes([0xC2]) + struct.pack("<H", 4 * nargs)
+        if idx[0] == "const":
+            d = idx[1] * 4
+            if d == 0:
+                mem = bytes([0x8B, 0x00])                # mov eax,[eax]
+            elif 0 < d < 0x80:
+                mem = bytes([0x8B, 0x40, d])             # mov eax,[eax+disp8]
+            else:
+                return None
+            return pro + _load_eax(p[1]) + setframe + mem + epi
+        return None
 
     # --- store *p = value  (void) ---------------------------------------------
     if kind == "store":
@@ -288,6 +316,8 @@ def emit(node):
             fa = _flatten_addsub(E)                       # pure +/- chain over arg leaves?
             if fa and len(fa[1]) == 2 and any(o == "+" for o, _ in fa[1]):
                 return _emit_add3(nargs, fa[0], fa[1])    # a+b+c / a+b-c / a-b+c
+            if fa and len(fa[1]) >= 2 and all(o == "-" for o, _ in fa[1]):
+                return _emit_sub_chain(nargs, fa[0], [k for _, k in fa[1]])   # a-b-c[-d..]
             if op == "+":                                 # product + leaf (mixed precedence)
                 pl, pr = _as_arg_product(L), _as_arg_product(R)
                 if pl and R[0] == "arg":
@@ -401,6 +431,16 @@ def battery():
     cases.append(("a-1", {"nargs": 1, "expr": ("binop", "-", A(1), ("const", 1))}))
     cases.append(("store", {"nargs": 2, "expr": ("store", A(1), A(2))}))
     cases.append(("store0", {"nargs": 1, "expr": ("store", A(1), ("const", 0))}))
+    # pop-flip family (base-flip cracked): sub-chains + indexed load
+    def _sub(idxs):
+        e = A(idxs[0])
+        for i in idxs[1:]:
+            e = ("binop", "-", e, A(i))
+        return e
+    cases.append(("a-b-c", {"nargs": 3, "expr": _sub([1, 2, 3])}))
+    cases.append(("a-b-c-d", {"nargs": 4, "expr": _sub([1, 2, 3, 4])}))
+    cases.append(("a-b-c-d-e", {"nargs": 5, "expr": _sub([1, 2, 3, 4, 5])}))
+    cases.append(("p[i]", {"nargs": 2, "expr": ("index", A(1), A(2))}))
     return cases
 
 
@@ -414,7 +454,6 @@ def declined_battery():
         return e
     A = lambda i: ("arg", i)
     return [
-        ("a-b-c", {"nargs": 3, "expr": _chain("-", [1, 2, 3])}),           # esp/ebp base flip
         ("a&b&c", {"nargs": 3, "expr": _chain("&", [1, 2, 3])}),           # bitwise chain unmodeled
         ("a+b+c+d", {"nargs": 4, "expr": _chain("+", [1, 2, 3, 4])}),      # n>=4: pop scheduling
         ("(a+b)*c", {"nargs": 3, "expr": ("binop", "*", ("binop", "+", A(1), A(2)), A(3))}),  # base flip
