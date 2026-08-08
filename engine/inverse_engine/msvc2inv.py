@@ -148,6 +148,9 @@ def _candidates(code):
             return
         # a single memory load = bare `arg`; fall through to the accumulator path below
 
+    if not ops:
+        return
+
     # first op is the initial load into a register
     def loadreg(mn, op):
         if mn == "mov":
@@ -315,14 +318,32 @@ def _match(pred, code, mask):
     return all(pred[i] == code[i] for i in range(len(code)) if i not in mask)
 
 
+def _reloc_mask(code):
+    """Byte positions in `code` that are relocation slots (a call/jmp rel32 target, or an
+    absolute [disp32] memory operand) -- their bytes differ between our 0-placeholder and the
+    shipped linked address, so they are ignored in the byte comparison."""
+    m = set()
+    for ins in _MD.disasm(bytes(code), 0):
+        if ins.mnemonic in ("call", "jmp") and ins.op_str.startswith("0x") and len(ins.bytes) == 5:
+            m.update(range(ins.address + 1, ins.address + 5))     # rel32
+        elif "[0x" in ins.op_str:                                 # absolute disp32 (globals)
+            d = ins.op_str.find("[0x")
+            m.update(range(ins.address + len(ins.bytes) - 4, ins.address + len(ins.bytes)))
+    return m
+
+
 def invert(code, mask=None):
-    """bytes -> {nargs, expr, c} byte-exact, or None if out of the modeled class. `mask` is the
-    set of reloc byte positions to ignore (calls/globals); pass it for real linked code."""
+    """bytes -> {nargs, expr, c} byte-exact, or None if out of the modeled class. Relocation slots
+    (call targets / global addrs) are auto-detected from each candidate and ignored, so this works
+    directly on real LINKED code; pass `mask` to override."""
     code = bytes(code)
-    mask = set(mask or ())
     for node in _candidates(code):
         try:
-            if _match(M.emit(node), code, mask):
+            pred = M.emit(node)
+            if pred is None:
+                continue
+            m = set(mask) if mask is not None else _reloc_mask(pred)
+            if _match(pred, code, m):
                 return {"nargs": node["nargs"], "expr": node["expr"], "c": M.to_c(node)}
         except Exception:
             continue
