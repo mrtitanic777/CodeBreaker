@@ -140,6 +140,11 @@ def _rm(reg, base, off):
     return bytes([0x40 | (rb << 3) | 0x05, off & 0xFF])          # ebp
 
 
+def _push_mem(base, off):
+    """push dword ptr [base+off]  (esp form has a SIB byte, ebp form doesn't)."""
+    return bytes([0xFF, 0x74, 0x24, off & 0xFF]) if base == "esp" else bytes([0xFF, 0x75, off & 0xFF])
+
+
 def _mov(reg, base, off):    return bytes([0x8B]) + _rm(reg, base, off)
 def _alu(op, reg, base, off): return bytes([_ALU[op]]) + _rm(reg, base, off)
 def _imul(reg, base, off):   return bytes([0x0F, 0xAF]) + _rm(reg, base, off)
@@ -293,6 +298,23 @@ def emit(node):
             return pro + _load_eax(p[1]) + setframe + mem + epi
         return None
 
+    # --- call an extern:  g(args)  ---------------------------------------------
+    # value = the call's eax result; reloc bytes (rel32 target) are emitted as 0 and MASKED.
+    if kind == "call":
+        conv, cargs = E[1], E[2]
+        if not all(a[0] == "arg" for a in cargs):
+            return None
+        if not cargs:                                   # return g(): tail-call jmp rel32 (no frame)
+            return bytes([0xE9, 0, 0, 0, 0])
+        seq = bytes([0x55, 0x8B, 0xEC])                 # push ebp; mov ebp,esp
+        for i, a in enumerate(reversed(cargs)):         # push args right-to-left; first esp, rest ebp
+            seq += _push_mem("esp" if i == 0 else "ebp", _argoff(a[1]))
+        seq += bytes([0xE8, 0, 0, 0, 0])                # call rel32 (reloc)
+        if conv == "__cdecl":
+            seq += bytes([0x8B, 0xE5])                  # mov esp,ebp  (caller cleans cdecl args)
+        seq += _epi(nargs)
+        return seq
+
     # --- store *p = value  (void) ---------------------------------------------
     if kind == "store":
         p, val = E[1], E[2]
@@ -437,6 +459,12 @@ def to_c(node):
         "int%s arg%d" % ("*" if (i + 1) in ptr else "", i + 1) for i in range(nargs))
     if E[0] == "store":                              # void: *argP = value;
         return "void __stdcall f(%s) { *arg%d = %s; }" % (params, E[1][1], _c_expr(E[2]))
+    if E[0] == "call":                               # extern g(...); return g(args);
+        conv, cargs = E[1], E[2]
+        gsig = ", ".join("int" for _ in cargs) or "void"
+        callargs = ", ".join("arg%d" % a[1] for a in cargs)
+        return ("extern int %s g(%s); int __stdcall f(%s) { return g(%s); }"
+                % (conv, gsig, params, callargs))
     return "int __stdcall f(%s) { return %s; }" % (params, _c_expr(E))
 
 
@@ -498,6 +526,12 @@ def battery():
     cases.append(("a&b&c", {"nargs": 3, "expr": _chain("&", [1, 2, 3])}))
     cases.append(("a*b-c*d", {"nargs": 4, "expr": ("binop", "-", ("binop", "*", A(1), A(2)),
                                                    ("binop", "*", A(3), A(4)))}))
+    # function calls (#1) -- reloc bytes masked
+    cases.append(("g()", {"nargs": 0, "expr": ("call", "__stdcall", [])}))
+    cases.append(("g(a)", {"nargs": 1, "expr": ("call", "__stdcall", [A(1)])}))
+    cases.append(("g(a,b)", {"nargs": 2, "expr": ("call", "__stdcall", [A(1), A(2)])}))
+    cases.append(("g(a,b,c)", {"nargs": 3, "expr": ("call", "__stdcall", [A(1), A(2), A(3)])}))
+    cases.append(("g_cdecl(a)", {"nargs": 1, "expr": ("call", "__cdecl", [A(1)])}))
     return cases
 
 
@@ -634,7 +668,9 @@ def selftest(show=False):
         fns = cc32.Obj(r["obj"]).functions()
         fn = next((v for k, v in fns.items() if k.startswith("_f")), None)
         real = bytes(fn[0]) if fn else b""
-        match = pred == real
+        mask = set(fn[1]) if fn else set()               # reloc byte positions -> ignore
+        match = pred is not None and len(pred) == len(real) and all(
+            pred[i] == real[i] for i in range(len(real)) if i not in mask)
         ok += match
         if show or not match:
             tag = "OK " if match else "MISS"

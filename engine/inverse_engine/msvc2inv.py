@@ -70,6 +70,18 @@ def _candidates(code):
     nargs = _nargs_from_ret(ins)
     ops = _leaf_ops(ins)
 
+    # --- call an extern: tail-jmp (no args) or push args; call ---
+    if len(ins) == 1 and ins[0][0] == "jmp":
+        yield {"nargs": nargs, "expr": ("call", "__stdcall", [])}
+        return
+    if any(m == "call" for m, o in ops):
+        pushes = [_argk(o) for m, o in ops if m == "push" and o.startswith("dword")]
+        if pushes and all(k is not None for k in pushes):
+            conv = "__cdecl" if any((m, o) == ("mov", "esp, ebp") for m, o in ops) else "__stdcall"
+            args = [("arg", k) for k in reversed(pushes)]   # push order = reverse of source args
+            yield {"nargs": nargs, "expr": ("call", conv, args)}
+        return
+
     # --- store *p = value :  mov [eax], (ecx | imm) ---
     st = next((o for m, o in ops if m == "mov" and re.match(r"(?:dword ptr )?\[eax\], ", o)), None)
     if st:
@@ -297,11 +309,20 @@ def _addsub_forms(head, base, other, mo):
     return forms
 
 
-def invert(code):
-    """bytes -> {nargs, expr, c} byte-exact, or None if out of the modeled class."""
+def _match(pred, code, mask):
+    if pred is None or len(pred) != len(code):
+        return False
+    return all(pred[i] == code[i] for i in range(len(code)) if i not in mask)
+
+
+def invert(code, mask=None):
+    """bytes -> {nargs, expr, c} byte-exact, or None if out of the modeled class. `mask` is the
+    set of reloc byte positions to ignore (calls/globals); pass it for real linked code."""
+    code = bytes(code)
+    mask = set(mask or ())
     for node in _candidates(code):
         try:
-            if M.emit(node) == bytes(code):
+            if _match(M.emit(node), code, mask):
                 return {"nargs": node["nargs"], "expr": node["expr"], "c": M.to_c(node)}
         except Exception:
             continue
@@ -320,8 +341,9 @@ def selftest(show=False):
         if not fn:
             print("  %-8s ORACLE-FAIL" % name); continue
         real = bytes(fn[0])
-        inv = invert(real)
-        good = inv is not None and M.emit({"nargs": inv["nargs"], "expr": inv["expr"]}) == real
+        mask = set(fn[1])
+        inv = invert(real, mask)
+        good = inv is not None and _match(M.emit({"nargs": inv["nargs"], "expr": inv["expr"]}), real, mask)
         ok += good
         if show or not good:
             print("  %-8s %s  %s" % (name, "OK " if good else "MISS",
