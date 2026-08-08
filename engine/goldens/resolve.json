@@ -1,0 +1,232 @@
+{
+ "win1.0": {
+  "argcheck": [
+   "CodeBreaker/engine/argcheck.py",
+   "b35d3a69d4e1f5fae755c89d30db9036"
+  ],
+  "cfg": [
+   "CodeBreaker/win1.0/cfg.py",
+   "02ee1a0206d79388981ae2e16025c812"
+  ],
+  "disasm": [
+   "CodeBreaker/engine/disasm.py",
+   "0e94f31298b2572b818f8a96a7e63fa2"
+  ],
+  "idord": [
+   "CodeBreaker/win1.0/idord.py",
+   "01964f9b67846311d8a1963fb08b1219"
+  ],
+  "ledger": [
+   "CodeBreaker/win1.0/ledger.py",
+   "feabd29a086af3acc1d828880067d144"
+  ],
+  "lift": [
+   "CodeBreaker/engine/lift.py",
+   "6ad0f3d8f6c340ba0213f7b51bbcc6c2"
+  ],
+  "masmlift": [
+   "CodeBreaker/win1.0/masmlift.py",
+   "a6bac6f9b1af867fa24eb0ea3c8a51f1"
+  ],
+  "names": [
+   "CodeBreaker/win1.0/names.py",
+   "538a3cc94873199b5cfe13f10278761b"
+  ],
+  "ne": [
+   "CodeBreaker/engine/ne.py",
+   "1b04a4fe87033f07f62253e7f2b0705e"
+  ],
+  "trace": [
+   "CodeBreaker/win1.0/trace.py",
+   "b5c78ec2f108cef024edf65b53164f8f"
+  ],
+  "verify": [
+   "CodeBreaker/win1.0/verify.py",
+   "b744bb1a13dc5c8c0c4bc3001ffb74c6"
+  ]
+ },
+ "win3.1": {
+  "argcheck": [
+   "CodeBreaker/engine/argcheck.py",
+   "b35d3a69d4e1f5fae755c89d30db9036"
+  ],
+  "cfg": [
+   "CodeBreaker/engine/cfg.py",
+   "831347224a40b0b31e169ca69d17f7d7"
+  ],
+  "disasm": [
+   "CodeBreaker/engine/disasm.py",
+   "0e94f31298b2572b818f8a96a7e63fa2"
+  ],
+  "idord": [
+   "CodeBreaker/engine/idord.py",
+   "d8f978299f4709d23ad3bf4a2a1c38ec"
+  ],
+  "ledger": [
+   "CodeBreaker/win3.1/ledger.py",
+   "2d1f97495bbae2d3617cd2f4eeb25f34"
+  ],
+  "lift": [
+   "CodeBreaker/engine/lift.py",
+   "6ad0f3d8f6c340ba0213f7b51bbcc6c2"
+  ],
+  "masmlift": [
+   "CodeBreaker/win3.1/masmlift.py",
+   "2adde9dad4c12ffc3863f4ee195db00e"
+  ],
+  "names": [
+   "CodeBreaker/engine/names.py",
+   "c0ffc8b357693d86900530fec47efd0f"
+  ],
+  "ne": [
+   "CodeBreaker/engine/ne.py",
+   "1b04a4fe87033f07f62253e7f2b0705e"
+  ],
+  "trace": [
+   "CodeBreaker/engine/trace.py",
+   "909db556d0ca218dc9386f94d9f2d94f"
+  ],
+  "verify": [
+   "CodeBreaker/engine/verify.py",
+   "713177f6a401ba0d0d99245904110d5c"
+  ]
+ },
+ "win95": {
+  "argcheck": [
+   "CodeBreaker/engine/argcheck.py",
+   "b35d3a69d4e1f5fae755c89d30db9036"
+  ],
+  "cfg": [
+   "CodeBreaker/engine/cfg.py",
+   "831347224a40b0b31e169ca69d17f7d7"
+  ],
+  "disasm": [
+   "CodeBreaker/engine/disasm.py",
+   "0e94f31298b2572b818f8a96a7e63fa2"
+  ],
+  "idord": [
+   "CodeBreaker/engine/idord.py",
+   "d8f978299f4709d23ad3bf4a2a1c38ec"
+  ],
+  "ledger": [
+   "CodeBreaker/win95/ledger.py",
+   "94c8cecfdb1928213baf05aef612d5af"
+  ],
+  "lift": [
+   "CodeBreaker/engine/lift.py",
+   "6ad0f3d8f6c340ba0213f7b51bbcc6c2"
+  ],
+  "masmlift": [
+   "CodeBreaker/engine/masmlift.py",
+   "58d065426633830c1894888d315683ce"
+  ],
+  "names": [
+   "CodeBreaker/engine/names.py",
+   "c0ffc8b357693d86900530fec47efd0f"
+  ],
+  "ne": [
+   "CodeBreaker/engine/ne.py",
+   "1b04a4fe87033f07f62253e7f2b0705e"
+  ],
+  "trace": [
+   "CodeBreaker/engine/trace.py",
+   "909db556d0ca218dc9386f94d9f2d94f"
+  ],
+  "verify": [
+   "CodeBreaker/engine/verify.py",
+   "713177f6a401ba0d0d99245904110d5c"
+  ]
+ },
+ "win98": {
+  "argcheck": [
+   "CodeBreaker/engine/argcheck.py",
+   "b35d3a69d4e1f5fae755c89d30db9036"
+  ],
+  "cfg": [
+   "CodeBreaker/engine/cfg.py",
+   "831347224a40b0b31e169ca69d17f7d7"
+  ],
+  "disasm": [
+   "CodeBreaker/engine/disasm.py",
+   "0e94f31298b2572b818f8a96a7e63fa2"
+  ],
+  "idord": [
+   "CodeBreaker/engine/idord.py",
+   "d8f978299f4709d23ad3bf4a2a1c38ec"
+  ],
+  "ledger": [
+   "CodeBreaker/engine/ledger.py",
+   "6e3670c2d1c708fc1816d49413a24308"
+  ],
+  "lift": [
+   "CodeBreaker/engine/lift.py",
+   "6ad0f3d8f6c340ba0213f7b51bbcc6c2"
+  ],
+  "masmlift": [
+   "CodeBreaker/engine/masmlift.py",
+   "58d065426633830c1894888d315683ce"
+  ],
+  "names": [
+   "CodeBreaker/engine/names.py",
+   "c0ffc8b357693d86900530fec47efd0f"
+  ],
+  "ne": [
+   "CodeBreaker/engine/ne.py",
+   "1b04a4fe87033f07f62253e7f2b0705e"
+  ],
+  "trace": [
+   "CodeBreaker/engine/trace.py",
+   "909db556d0ca218dc9386f94d9f2d94f"
+  ],
+  "verify": [
+   "CodeBreaker/engine/verify.py",
+   "713177f6a401ba0d0d99245904110d5c"
+  ]
+ },
+ "winnt4": {
+  "argcheck": [
+   "CodeBreaker/engine/argcheck.py",
+   "b35d3a69d4e1f5fae755c89d30db9036"
+  ],
+  "cfg": [
+   "CodeBreaker/engine/cfg.py",
+   "831347224a40b0b31e169ca69d17f7d7"
+  ],
+  "disasm": [
+   "CodeBreaker/engine/disasm.py",
+   "0e94f31298b2572b818f8a96a7e63fa2"
+  ],
+  "idord": [
+   "CodeBreaker/engine/idord.py",
+   "d8f978299f4709d23ad3bf4a2a1c38ec"
+  ],
+  "ledger": [
+   "CodeBreaker/engine/ledger.py",
+   "6e3670c2d1c708fc1816d49413a24308"
+  ],
+  "lift": [
+   "CodeBreaker/engine/lift.py",
+   "6ad0f3d8f6c340ba0213f7b51bbcc6c2"
+  ],
+  "masmlift": [
+   "CodeBreaker/engine/masmlift.py",
+   "58d065426633830c1894888d315683ce"
+  ],
+  "names": [
+   "CodeBreaker/engine/names.py",
+   "c0ffc8b357693d86900530fec47efd0f"
+  ],
+  "ne": [
+   "CodeBreaker/engine/ne.py",
+   "1b04a4fe87033f07f62253e7f2b0705e"
+  ],
+  "trace": [
+   "CodeBreaker/engine/trace.py",
+   "909db556d0ca218dc9386f94d9f2d94f"
+  ],
+  "verify": [
+   "CodeBreaker/engine/verify.py",
+   "713177f6a401ba0d0d99245904110d5c"
+  ]
+ }
+}

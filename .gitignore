@@ -1,0 +1,30 @@
+# CodeBreaker — track tool CODE only. Keep build artifacts, generated
+# ledgers/reports, caches, and any user-supplied inputs out of the repo.
+
+__pycache__/
+*.pyc
+
+# PyInstaller packaging output
+build/
+dist/
+*.manifest
+
+# generated coverage ledgers, conduct/*.json, logs
+reports/
+
+# Vendored assembler/compiler binaries (never distributed; local build dependency)
+**/masm32bin/
+
+# Transpiler-Diff generated corpus database (regenerable via `wt diff ingest`)
+engine/diff/*.db
+engine/diff/*.db-wal
+engine/diff/*.db-shm
+
+# User-supplied inputs / reference trees / emulator + toolchain installs (never commit)
+reference/
+files/
+*.iso
+
+# Object files (recompile95 build output)
+*.o
+*.obj
