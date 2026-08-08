@@ -212,6 +212,19 @@ def _emit_sub_chain(nargs, head, subargs):
     return bytes([0x55]) + seq + _epi(nargs)
 
 
+def _emit_add_chain(nargs, args):
+    """a+b+c+d[+...] (n>=4, all '+'): ecx = last; add (n-1)th; eax = head; add the remaining
+    middle operands (reverse); pop; add eax,ecx. Base: only the ecx load is esp, rest ebp.
+    pop comes BEFORE the final combine for n>=4 (n=3 is _emit_add3, combine-then-pop)."""
+    seq = (_mov("ecx", "esp", _argoff(args[-1])) + _FRAME
+           + _alu("+", "ecx", "ebp", _argoff(args[-2]))
+           + _mov("eax", "ebp", _argoff(args[0])))
+    for i in range(len(args) - 3, 0, -1):                # middle operands args[n-3]..args[1], reverse
+        seq += _alu("+", "ecx", "ebp", _argoff(args[i]))
+    seq += bytes([0x5D]) + _add_rr("eax", "ecx")         # pop; add eax,ecx (pop before combine)
+    return bytes([0x55]) + seq + bytes([0xC2]) + struct.pack("<H", 4 * nargs)
+
+
 def _emit_prod_leaf(nargs, pL, pR, H):
     """(argpL * argpR) + argH  (either source order): product in ecx (ecx=pR, imul pL --
     right-first), leaf in eax, frame deferred past all loads, then add eax,ecx. Measured
@@ -318,15 +331,31 @@ def emit(node):
                 return _emit_add3(nargs, fa[0], fa[1])    # a+b+c / a+b-c / a-b+c
             if fa and len(fa[1]) >= 2 and all(o == "-" for o, _ in fa[1]):
                 return _emit_sub_chain(nargs, fa[0], [k for _, k in fa[1]])   # a-b-c[-d..]
+            if fa and len(fa[1]) >= 3 and all(o == "+" for o, _ in fa[1]):    # a+b+c+d[+..] (n>=4)
+                return _emit_add_chain(nargs, [fa[0]] + [k for _, k in fa[1]])
             if op == "+":                                 # product + leaf (mixed precedence)
                 pl, pr = _as_arg_product(L), _as_arg_product(R)
                 if pl and R[0] == "arg":
                     return _emit_prod_leaf(nargs, pl[0], pl[1], R[1])
                 if pr and L[0] == "arg":
                     return _emit_prod_leaf(nargs, pr[0], pr[1], L[1])
-            # everything else here (n>=4 chains, all-subtraction, deeper nesting) -> declined
-            # below (None), never mis-modeled -- their esp/ebp base-flip + pop scheduling is
-            # the C2.EXE scheduler frontier.  [see probe notes]
+                if pl and pr:                             # two products: (a*b)+(c*d) -> lea combine
+                    seq = (_mov("edx", "esp", _argoff(pr[1])) + _imul("edx", "esp", _argoff(pr[0]))
+                           + _mov("ecx", "esp", _argoff(pl[1])) + setframe
+                           + _imul("ecx", "ebp", _argoff(pl[0]))
+                           + bytes([0x5D, 0x8D, 0x04, 0x0A]))   # pop; lea eax,[edx+ecx]
+                    return pro + seq + bytes([0xC2]) + struct.pack("<H", 4 * nargs)
+        # left-fold: (a <io> b) <op2> c  -- inner sum/diff in eax (esp), then op2 c (ebp)
+        if (L[0] == "binop" and L[1] in ("+", "-") and L[2][0] == "arg" and L[3][0] == "arg"
+                and R[0] == "arg" and op not in ("+", "-")):
+            inner = _alu(L[1], "eax", "esp", _argoff(L[3][1]))
+            if op == "*":
+                outer = _imul("eax", "ebp", _argoff(R[1]))
+            elif op in _ALU:
+                outer = _alu(op, "eax", "ebp", _argoff(R[1]))
+            else:
+                return None
+            return pro + _load_eax(L[2][1]) + setframe + inner + outer + epi
         # arg <op> const
         if L[0] == "arg" and R[0] == "const":
             k, c = L[1], R[1]
@@ -441,6 +470,12 @@ def battery():
     cases.append(("a-b-c-d", {"nargs": 4, "expr": _sub([1, 2, 3, 4])}))
     cases.append(("a-b-c-d-e", {"nargs": 5, "expr": _sub([1, 2, 3, 4, 5])}))
     cases.append(("p[i]", {"nargs": 2, "expr": ("index", A(1), A(2))}))
+    # remaining pop-flip family (rules known)
+    cases.append(("a+b+c+d", {"nargs": 4, "expr": _chain("+", [1, 2, 3, 4])}))
+    cases.append(("a+b+c+d+e", {"nargs": 5, "expr": _chain("+", [1, 2, 3, 4, 5])}))
+    cases.append(("(a+b)*c", {"nargs": 3, "expr": ("binop", "*", ("binop", "+", A(1), A(2)), A(3))}))
+    cases.append(("a*b+c*d", {"nargs": 4, "expr": ("binop", "+", ("binop", "*", A(1), A(2)),
+                                                   ("binop", "*", A(3), A(4)))}))
     return cases
 
 
@@ -452,13 +487,10 @@ def declined_battery():
         for i in idxs[1:]:
             e = ("binop", op, e, ("arg", i))
         return e
-    A = lambda i: ("arg", i)
     return [
         ("a&b&c", {"nargs": 3, "expr": _chain("&", [1, 2, 3])}),           # bitwise chain unmodeled
-        ("a+b+c+d", {"nargs": 4, "expr": _chain("+", [1, 2, 3, 4])}),      # n>=4: pop scheduling
-        ("(a+b)*c", {"nargs": 3, "expr": ("binop", "*", ("binop", "+", A(1), A(2)), A(3))}),  # base flip
-        ("a*b+c*d", {"nargs": 4, "expr": ("binop", "+", ("binop", "*", A(1), A(2)),
-                                          ("binop", "*", A(3), A(4)))}),   # two products + lea
+        ("a*b-c*d", {"nargs": 4, "expr": ("binop", "-", ("binop", "*", ("arg", 1), ("arg", 2)),
+                                          ("binop", "*", ("arg", 3), ("arg", 4)))}),   # two-product minus
     ]
 
 

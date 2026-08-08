@@ -97,6 +97,18 @@ def _candidates(code):
             yield {"nargs": nargs, "expr": ("index", ("arg", pk), ("arg", ik))}
         return
 
+    # --- two products combined by lea :  lea eax,[edx + ecx]  (a*b + c*d) ---
+    if any(m == "lea" and "edx + ecx" in o for m, o in ops):
+        dl = next((_argk(o) for m, o in ops if m == "mov" and o.startswith("edx,") and _argk(o) is not None), None)
+        di = next((_argk(o) for m, o in ops if m == "imul" and o.startswith("edx,") and _argk(o) is not None), None)
+        cl = next((_argk(o) for m, o in ops if m == "mov" and o.startswith("ecx,") and _argk(o) is not None), None)
+        ci = next((_argk(o) for m, o in ops if m == "imul" and o.startswith("ecx,") and _argk(o) is not None), None)
+        if None not in (dl, di, cl, ci):     # edx = di*dl (imul=L, load=R); ecx = ci*cl
+            yield {"nargs": nargs, "expr": ("binop", "+",
+                                            ("binop", "*", ("arg", ci), ("arg", cl)),
+                                            ("binop", "*", ("arg", di), ("arg", dl)))}
+        return
+
     # --- constants (no frame): xor eax,eax  or  mov eax,imm ---
     if len(ops) == 1:
         mn, op = ops[0]
@@ -197,6 +209,11 @@ def _candidates(code):
                 for i in src:
                     e = ("binop", "-", e, ("arg", i))
                 yield {"nargs": nargs, "expr": e}
+            else:                                             # generic left-fold, e.g. (a+b)*c
+                e = ("arg", k0)
+                for o, kind, v in steps:
+                    e = ("binop", o, e, ("arg", v) if kind == "arg" else ("const", v))
+                yield {"nargs": nargs, "expr": e}
         return
 
     # --- two-register (ecx base) : equality, 3-op additive/mixed, or product+/-leaf ---
@@ -209,6 +226,28 @@ def _candidates(code):
                     yield {"nargs": nargs, "expr": ("cmp", "==", ("arg", Lk), ("arg", k0))}
                 elif any(m == "inc" for m, o in ops):
                     yield {"nargs": nargs, "expr": ("cmp", "!=", ("arg", Lk), ("arg", k0))}
+        # additive chain (pure +):  mov ecx,[last]; add ecx,..; mov eax,[head]; ..; add eax,ecx
+        if any(o == "eax, ecx" for m, o in ops if m == "add"):
+            ecx_args = [k0]
+            head = None
+            pure = True
+            for mn, o in ops[1:]:
+                if mn == "add" and o.startswith("ecx,"):
+                    k = _argk(o)
+                    if k is None:
+                        pure = False; break
+                    ecx_args.append(k)
+                elif mn == "mov" and o.startswith("eax,"):
+                    head = _argk(o)
+                elif (mn, o) == ("add", "eax, ecx"):
+                    pass
+                else:
+                    pure = False; break
+            if pure and head is not None and len(ecx_args) >= 2:
+                e = ("arg", head)
+                for i in reversed(ecx_args):
+                    e = ("binop", "+", e, ("arg", i))
+                yield {"nargs": nargs, "expr": e}
         # product+leaf:  mov ecx,[pR]; imul ecx,[pL]; mov eax,[H]; add eax,ecx
         if (len(ops) >= 4 and ops[1][0] == "imul" and ops[2][0] == "mov"
                 and ops[-1] == ("add", "eax, ecx")):
