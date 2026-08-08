@@ -32,6 +32,12 @@ Out-of-class constructs are declined (emit returns None) -- never mis-modeled.
 import struct
 import sys
 
+try:
+    from capstone import Cs, CS_ARCH_X86, CS_MODE_32
+    _MD = Cs(CS_ARCH_X86, CS_MODE_32)
+except Exception:
+    _MD = None                                          # only the frame self-test needs it
+
 # ---- construct IR (tiny; the "quad" analogue for this class) ---------------
 # node = {"nargs": N, "expr": E}
 #   E = ("const", V) | ("arg", K) | ("binop", op, L, R)   with L,R = ("arg",K)|("const",V)
@@ -165,6 +171,88 @@ def battery():
     return cases
 
 
+# ===========================================================================
+# 32-BIT FRAME-LAYOUT MODEL  (the mc2 framemodel.py analogue)
+# ---------------------------------------------------------------------------
+# Measured MSVC-2.0 /O1 /Oy- stack-frame allocator (address-taken locals -> forced to stack):
+#   * frame:  push ebp; mov ebp,esp; sub esp,N   /   epilogue: mov esp,ebp; pop ebp; ret[4*nargs]
+#   * each local's size rounds UP to 4 (char[10] -> 12).
+#   * ORDERING: scalars first (top, nearest ebp), then arrays; within each class, DECLARATION
+#     order. (`char buf[6]; int a;` -> a at [ebp-4], buf at [ebp-0xc] -- the scalar wins the top
+#     slot despite being declared second. All-scalar or all-array => plain declaration order.)
+#   * offset(local) = -(cumulative rounded size through that local); framesize = that cumulative.
+# ===========================================================================
+def _roundup4(n):
+    return (n + 3) & ~3
+
+
+def frame_layout(locals_):
+    """locals_ = [(size_bytes, is_array), ...] in DECLARATION order.
+    Returns (framesize, {decl_index: ebp_offset}) -- offset negative, i.e. [ebp+offset]."""
+    order = ([i for i, (_, arr) in enumerate(locals_) if not arr] +
+             [i for i, (_, arr) in enumerate(locals_) if arr])       # scalars first, then arrays
+    cum = 0
+    off = {}
+    for i in order:
+        cum += _roundup4(locals_[i][0])
+        off[i] = -cum
+    return cum, off                                                  # cum already a multiple of 4
+
+
+def _frame_battery():
+    # (name, C source, locals-in-decl-order[(size,is_array)])
+    G = "extern void __stdcall g(void*); "
+    return [
+        ("1int",   G + "int __stdcall f(void){ int a; g(&a); return a; }", [(4, False)]),
+        ("2int",   G + "int __stdcall f(void){ int a,b; g(&a); g(&b); return a+b; }", [(4, False), (4, False)]),
+        ("3int",   G + "int __stdcall f(void){ int a,b,c; g(&a); g(&b); g(&c); return a+b+c; }",
+         [(4, False), (4, False), (4, False)]),
+        ("2int_rev", G + "int __stdcall f(void){ int a,b; g(&b); g(&a); return a+b; }", [(4, False), (4, False)]),
+        ("buf8",   G + "int __stdcall f(void){ char buf[8]; g(buf); return 0; }", [(8, True)]),
+        ("buf10",  G + "int __stdcall f(void){ char buf[10]; g(buf); return 0; }", [(10, True)]),
+        ("int_buf", G + "int __stdcall f(void){ int a; char buf[8]; g(&a); g(buf); return a; }",
+         [(4, False), (8, True)]),
+        ("buf_int", G + "int __stdcall f(void){ char buf[6]; int a; g(buf); g(&a); return a; }",
+         [(6, True), (4, False)]),
+    ]
+
+
+def _extract_frame(code):
+    """From compiled bytes: (framesize from `sub esp,N`, sorted set of distinct [ebp-X] offsets)."""
+    import re
+    fs = 0
+    offs = set()
+    for ins in _MD.disasm(code, 0):
+        if ins.mnemonic == "sub" and ins.op_str.startswith("esp,"):
+            fs = int(ins.op_str.split(",")[1], 0)
+        m = re.findall(r"\[ebp - (0x[0-9a-f]+|\d+)\]", ins.op_str)
+        for x in m:
+            offs.add(-int(x, 0))
+    return fs, sorted(offs)
+
+
+def frame_selftest(show=False):
+    cc32 = _oracle()
+    ok = tot = 0
+    for name, src, locals_ in _frame_battery():
+        tot += 1
+        pred_fs, pred_off = frame_layout(locals_)
+        pred_set = sorted(set(pred_off.values()))
+        r = cc32.compile_c(src, flags="/c /O1 /Oy-")
+        if "obj" not in r:
+            print("  %-8s ORACLE-FAIL" % name); continue
+        fns = cc32.Obj(r["obj"]).functions()
+        fn = next((v for k, v in fns.items() if k.startswith("_f")), None)
+        real_fs, real_off = _extract_frame(bytes(fn[0])) if fn else (-1, [])
+        match = (pred_fs == real_fs) and (pred_set == real_off)
+        ok += match
+        if show or not match:
+            print("  %-8s %s  pred(fs=%d,off=%s) real(fs=%d,off=%s)" %
+                  (name, "OK " if match else "MISS", pred_fs, pred_set, real_fs, real_off))
+    print("\nmsvc2 frame-layout self-test: %d/%d byte-exact  (MSVC 2.0 /O1 /Oy-)" % (ok, tot))
+    return ok == tot
+
+
 def _oracle():
     """Wire MSVC-2.0 cc32 via the win95 target. cc32._vc_root() finds the vendored msvc20
     toolchain under the win95 DATA root's docs/reference/toolchain -- and it keys off cwd, so
@@ -211,8 +299,12 @@ def selftest(show=False):
 
 
 def main():
-    show = "--show" in sys.argv[1:]
-    ok = selftest(show=show)
+    args = sys.argv[1:]
+    show = "--show" in args
+    if "--frame" in args:
+        ok = frame_selftest(show=show)
+    else:
+        ok = selftest(show=show)
     sys.exit(0 if ok else 1)
 
 
