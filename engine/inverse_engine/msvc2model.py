@@ -121,6 +121,79 @@ def _emit_mul_chain(nargs, idxs):
     return pro + seq + bytes([0x5D]) + bytes([0xC2]) + struct.pack("<H", 4 * nargs)
 
 
+# --- a small ModRM encoder for the two-register evaluator --------------------
+_R = {"eax": 0, "ecx": 1, "edx": 2}
+_ALU = {"+": 0x03, "-": 0x2B, "&": 0x23, "|": 0x0B, "^": 0x33}   # op r32, r/m32
+
+
+def _rm(reg, base, off):
+    """ModRM(+SIB) for `<reg>, [base+off]` with a disp8. base in {'esp','ebp'} -- MSVC uses the
+    esp (SIB) form for a ref emitted BEFORE `mov ebp,esp`, the ebp (no-SIB) form for one after."""
+    rb = _R[reg]
+    if base == "esp":
+        return bytes([0x40 | (rb << 3) | 0x04, 0x24, off & 0xFF])
+    return bytes([0x40 | (rb << 3) | 0x05, off & 0xFF])          # ebp
+
+
+def _mov(reg, base, off):    return bytes([0x8B]) + _rm(reg, base, off)
+def _alu(op, reg, base, off): return bytes([_ALU[op]]) + _rm(reg, base, off)
+def _imul(reg, base, off):   return bytes([0x0F, 0xAF]) + _rm(reg, base, off)
+def _add_rr(dst, src):       return bytes([0x03, 0xC0 | (_R[dst] << 3) | _R[src]])
+_FRAME = bytes([0x8B, 0xEC])
+
+
+def _flatten_addsub(E):
+    """A left-assoc +/- chain over ARG leaves -> (head_argidx, [(op, argidx) ...tail]) or None.
+    The head carries an implicit '+'. Any non-arg leaf (e.g. a product) makes it None."""
+    if E[0] != "binop" or E[1] not in ("+", "-"):
+        return None
+    tail, node = [], E
+    while node[0] == "binop" and node[1] in ("+", "-"):
+        if node[3][0] != "arg":
+            return None
+        tail.append((node[1], node[3][1]))
+        node = node[2]
+    if node[0] != "arg":
+        return None
+    tail.reverse()
+    return node[1], tail
+
+
+def _as_arg_product(X):
+    """X == argA * argB  ->  (A, B)  else None."""
+    if X[0] == "binop" and X[1] == "*" and X[2][0] == "arg" and X[3][0] == "arg":
+        return X[2][1], X[3][1]
+    return None
+
+
+def _epi(nargs):
+    return bytes([0x5D]) + bytes([0xC2]) + struct.pack("<H", 4 * nargs)
+
+
+def _emit_add3(nargs, head, tail):
+    """3-operand +/- chain with >=1 '+': the '+' tail operand becomes the ecx base (loaded
+    esp-relative, pre-frame), the other tail operand is applied with its op (ebp-relative,
+    post-frame), then eax = head, eax += ecx. Uniform schedule, measured byte-exact."""
+    (opb, b), (opc, c) = tail
+    if opc == "+":
+        base, other, opo = c, b, opb
+    else:                                                 # opb == '+'
+        base, other, opo = b, c, opc
+    seq = (_mov("ecx", "esp", _argoff(base)) + _FRAME
+           + _alu(opo, "ecx", "ebp", _argoff(other))
+           + _mov("eax", "ebp", _argoff(head)) + _add_rr("eax", "ecx"))
+    return bytes([0x55]) + seq + _epi(nargs)
+
+
+def _emit_prod_leaf(nargs, pL, pR, H):
+    """(argpL * argpR) + argH  (either source order): product in ecx (ecx=pR, imul pL --
+    right-first), leaf in eax, frame deferred past all loads, then add eax,ecx. Measured
+    byte-exact.  Combine is '+' only (subtraction-combine unprobed -> declined by caller)."""
+    seq = (_mov("ecx", "esp", _argoff(pR)) + _imul("ecx", "esp", _argoff(pL))
+           + _mov("eax", "esp", _argoff(H)) + _FRAME + _add_rr("eax", "ecx"))
+    return bytes([0x55]) + seq + _epi(nargs)
+
+
 def emit(node):
     """Forward model: construct -> exact MSVC-2.0 /O1 /Oy- bytes, or None if out of class."""
     try:
@@ -149,14 +222,24 @@ def emit(node):
         op, L, R = E[1], E[2], E[3]
         if op not in OPS:
             return None
-        # n-ary chain of one operator over arg leaves (>=3 leaves): only multiplicative chains
-        # are modeled byte-exact so far. Additive chains reassociate into a 2nd register, and
-        # subtraction chains flip the esp/ebp base mid-expression -- those are DECLINED (None),
-        # never mis-modeled, until their scheduling is modeled.  [see probe notes]
+        # multiplicative chain (same-op '*' over >=3 arg leaves) -- single-accumulator, clean.
         chain = _flatten_chain(E)
-        if chain and len(chain[1]) >= 3:
-            cop, idxs = chain
-            return _emit_mul_chain(nargs, idxs) if cop == "*" else None
+        if chain and chain[0] == "*" and len(chain[1]) >= 3:
+            return _emit_mul_chain(nargs, chain[1])
+        # TWO-REGISTER additive / mixed-precedence (the modeled clean-schedule shapes):
+        if op in ("+", "-"):
+            fa = _flatten_addsub(E)                       # pure +/- chain over arg leaves?
+            if fa and len(fa[1]) == 2 and any(o == "+" for o, _ in fa[1]):
+                return _emit_add3(nargs, fa[0], fa[1])    # a+b+c / a+b-c / a-b+c
+            if op == "+":                                 # product + leaf (mixed precedence)
+                pl, pr = _as_arg_product(L), _as_arg_product(R)
+                if pl and R[0] == "arg":
+                    return _emit_prod_leaf(nargs, pl[0], pl[1], R[1])
+                if pr and L[0] == "arg":
+                    return _emit_prod_leaf(nargs, pr[0], pr[1], L[1])
+            # everything else here (n>=4 chains, all-subtraction, deeper nesting) -> declined
+            # below (None), never mis-modeled -- their esp/ebp base-flip + pop scheduling is
+            # the C2.EXE scheduler frontier.  [see probe notes]
         # arg <op> const
         if L[0] == "arg" and R[0] == "const":
             k, c = L[1], R[1]
@@ -216,6 +299,13 @@ def battery():
         return e
     cases.append(("a*b*c", {"nargs": 3, "expr": _chain("*", [1, 2, 3])}))
     cases.append(("a*b*c*d", {"nargs": 4, "expr": _chain("*", [1, 2, 3, 4])}))
+    # two-register additive / mixed-precedence (modeled byte-exact)
+    A = lambda i: ("arg", i)
+    cases.append(("a+b+c", {"nargs": 3, "expr": ("binop", "+", ("binop", "+", A(1), A(2)), A(3))}))
+    cases.append(("a+b-c", {"nargs": 3, "expr": ("binop", "-", ("binop", "+", A(1), A(2)), A(3))}))
+    cases.append(("a-b+c", {"nargs": 3, "expr": ("binop", "+", ("binop", "-", A(1), A(2)), A(3))}))
+    cases.append(("a*b+c", {"nargs": 3, "expr": ("binop", "+", ("binop", "*", A(1), A(2)), A(3))}))
+    cases.append(("a+b*c", {"nargs": 3, "expr": ("binop", "+", A(1), ("binop", "*", A(2), A(3)))}))
     return cases
 
 
@@ -227,11 +317,14 @@ def declined_battery():
         for i in idxs[1:]:
             e = ("binop", op, e, ("arg", i))
         return e
+    A = lambda i: ("arg", i)
     return [
-        ("a+b+c", {"nargs": 3, "expr": _chain("+", [1, 2, 3])}),
-        ("a-b-c", {"nargs": 3, "expr": _chain("-", [1, 2, 3])}),
-        ("a&b&c", {"nargs": 3, "expr": _chain("&", [1, 2, 3])}),
-        ("a*b+c", {"nargs": 3, "expr": ("binop", "+", ("binop", "*", ("arg", 1), ("arg", 2)), ("arg", 3))}),
+        ("a-b-c", {"nargs": 3, "expr": _chain("-", [1, 2, 3])}),           # esp/ebp base flip
+        ("a&b&c", {"nargs": 3, "expr": _chain("&", [1, 2, 3])}),           # bitwise chain unmodeled
+        ("a+b+c+d", {"nargs": 4, "expr": _chain("+", [1, 2, 3, 4])}),      # n>=4: pop scheduling
+        ("(a+b)*c", {"nargs": 3, "expr": ("binop", "*", ("binop", "+", A(1), A(2)), A(3))}),  # base flip
+        ("a*b+c*d", {"nargs": 4, "expr": ("binop", "+", ("binop", "*", A(1), A(2)),
+                                          ("binop", "*", A(3), A(4)))}),   # two products + lea
     ]
 
 
