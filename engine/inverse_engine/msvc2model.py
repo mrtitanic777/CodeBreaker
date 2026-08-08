@@ -60,6 +60,11 @@ def _load_eax(k):
 
 # arg <op> const  -> the byte sequence for the op (operand already in eax)
 def _op_const(op, c):
+    # +/-1 use the 1-byte inc/dec, not add/sub imm (measured)
+    if (op == "+" and c == 1) or (op == "-" and c == -1):
+        return bytes([0x40])                            # inc eax
+    if (op == "-" and c == 1) or (op == "+" and c == -1):
+        return bytes([0x48])                            # dec eax
     if op == "+":
         return bytes([0x83, 0xC0, c & 0xFF])            # add eax, ib
     if op == "-":
@@ -238,6 +243,19 @@ def emit(node):
             return None
         return pro + _load_eax(p[1]) + setframe + mem + epi
 
+    # --- store *p = value  (void) ---------------------------------------------
+    if kind == "store":
+        p, val = E[1], E[2]
+        if p[0] != "arg":
+            return None
+        if val[0] == "arg":            # mov ecx,[esp+v]; frame; mov eax,[esp+p]; pop; mov [eax],ecx
+            seq = (_mov("ecx", "esp", _argoff(val[1])) + setframe
+                   + _load_eax(p[1]) + bytes([0x5D, 0x89, 0x08]))
+            return pro + seq + bytes([0xC2]) + struct.pack("<H", 4 * nargs)
+        if val[0] == "const":          # mov eax,[esp+p]; frame; mov dword[eax],imm; pop; ret
+            return pro + _load_eax(p[1]) + setframe + bytes([0xC7, 0x00]) + struct.pack("<i", val[1]) + epi
+        return None
+
     # --- comparison returning 0/1 ---------------------------------------------
     if kind == "cmp":
         op, L, R = E[1], E[2], E[3]
@@ -325,6 +343,9 @@ def _ptr_args(E, s):
     elif E[0] == "index":
         if E[1][0] == "arg":
             s.add(E[1][1])
+    elif E[0] == "store":
+        if E[1][0] == "arg":
+            s.add(E[1][1])
     elif E[0] in ("binop", "cmp"):
         _ptr_args(E[2], s)
         _ptr_args(E[3], s)
@@ -336,6 +357,8 @@ def to_c(node):
     _ptr_args(E, ptr)
     params = "void" if nargs == 0 else ", ".join(
         "int%s arg%d" % ("*" if (i + 1) in ptr else "", i + 1) for i in range(nargs))
+    if E[0] == "store":                              # void: *argP = value;
+        return "void __stdcall f(%s) { *arg%d = %s; }" % (params, E[1][1], _c_expr(E[2]))
     return "int __stdcall f(%s) { return %s; }" % (params, _c_expr(E))
 
 
@@ -373,6 +396,11 @@ def battery():
     # comparison -> 0/1
     for o in ("<", "<=", ">", ">=", "==", "!="):
         cases.append(("a%sb" % o, {"nargs": 2, "expr": ("cmp", o, A(1), A(2))}))
+    # inc/dec (+/-1)  and  store *p = value  (void)
+    cases.append(("a+1", {"nargs": 1, "expr": ("binop", "+", A(1), ("const", 1))}))
+    cases.append(("a-1", {"nargs": 1, "expr": ("binop", "-", A(1), ("const", 1))}))
+    cases.append(("store", {"nargs": 2, "expr": ("store", A(1), A(2))}))
+    cases.append(("store0", {"nargs": 1, "expr": ("store", A(1), ("const", 0))}))
     return cases
 
 

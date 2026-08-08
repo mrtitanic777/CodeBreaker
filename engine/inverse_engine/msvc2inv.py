@@ -70,6 +70,25 @@ def _candidates(code):
     nargs = _nargs_from_ret(ins)
     ops = _leaf_ops(ins)
 
+    # --- store *p = value :  mov [eax], (ecx | imm) ---
+    st = next((o for m, o in ops if m == "mov" and re.match(r"(?:dword ptr )?\[eax\], ", o)), None)
+    if st:
+        pk = next((_argk(o) for m, o in ops if m == "mov" and o.startswith("eax,") and _argk(o) is not None), None)
+        rhs = re.match(r"(?:dword ptr )?\[eax\], (.+)$", st).group(1)
+        if pk is not None:
+            if rhs == "ecx":
+                vk = next((_argk(o) for m, o in ops if m == "mov" and o.startswith("ecx,") and _argk(o) is not None), None)
+                if vk is not None:
+                    yield {"nargs": nargs, "expr": ("store", ("arg", pk), ("arg", vk))}
+            else:
+                try:
+                    v = int(rhs, 0)
+                    yield {"nargs": nargs, "expr": ("store", ("arg", pk),
+                                                    ("const", v - 0x100000000 if v > 0x7fffffff else v))}
+                except ValueError:
+                    pass
+        return
+
     # --- constants (no frame): xor eax,eax  or  mov eax,imm ---
     if len(ops) == 1:
         mn, op = ops[0]
@@ -123,6 +142,10 @@ def _candidates(code):
         steps = []                                # (op_char or '*', kind, val)
         ok = True
         for mn, op in ops[1:]:
+            if mn == "inc":
+                steps.append(("+", "const", 1)); continue
+            if mn == "dec":
+                steps.append(("-", "const", 1)); continue
             if mn == "imul":
                 k = _argk(op)
                 if k is not None:
