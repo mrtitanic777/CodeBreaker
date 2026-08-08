@@ -109,6 +109,18 @@ def _candidates(code):
                                             ("binop", "*", ("arg", di), ("arg", dl)))}
         return
 
+    # --- two products (a*b) - (c*d): ...; sub eax, edx ---
+    if any((m, o) == ("sub", "eax, edx") for m, o in ops) and any(m == "imul" and o.startswith("edx,") for m, o in ops):
+        el = next((_argk(o) for m, o in ops if m == "mov" and o.startswith("eax,") and _argk(o) is not None), None)
+        ei = next((_argk(o) for m, o in ops if m == "imul" and o.startswith("eax,") and _argk(o) is not None), None)
+        dl = next((_argk(o) for m, o in ops if m == "mov" and o.startswith("edx,") and _argk(o) is not None), None)
+        di = next((_argk(o) for m, o in ops if m == "imul" and o.startswith("edx,") and _argk(o) is not None), None)
+        if None not in (el, ei, dl, di):
+            yield {"nargs": nargs, "expr": ("binop", "-",
+                                            ("binop", "*", ("arg", ei), ("arg", el)),
+                                            ("binop", "*", ("arg", di), ("arg", dl)))}
+        return
+
     # --- constants (no frame): xor eax,eax  or  mov eax,imm ---
     if len(ops) == 1:
         mn, op = ops[0]
@@ -196,12 +208,13 @@ def _candidates(code):
                 yield {"nargs": nargs, "expr": ("binop", o, ("arg", k0), R)}
                 if kind == "arg":
                     yield {"nargs": nargs, "expr": ("binop", o, R, ("arg", k0))}
-            elif all(o == "*" and kind == "arg" for o, kind, _ in steps):   # mul chain
-                loaded = [k0] + [v for _, _, v in steps]      # load order = reverse of source
-                idxs = list(reversed(loaded))
+            elif (steps and all(kind == "arg" for _, kind, _ in steps)
+                  and len({o for o, _, _ in steps}) == 1 and steps[0][0] in ("*", "&", "|", "^")):
+                o0 = steps[0][0]                              # commutative chain (*, &, |, ^)
+                idxs = list(reversed([k0] + [v for _, _, v in steps]))   # load order = reverse
                 e = ("arg", idxs[0])
                 for i in idxs[1:]:
-                    e = ("binop", "*", e, ("arg", i))
+                    e = ("binop", o0, e, ("arg", i))
                 yield {"nargs": nargs, "expr": e}
             elif all(o == "-" and kind == "arg" for o, kind, _ in steps):   # sub chain (>=2 subs)
                 src = M._pairswap([v for _, _, v in steps])   # un-swap the scheduler's pairing

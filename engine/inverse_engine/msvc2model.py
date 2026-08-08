@@ -190,6 +190,15 @@ def _emit_add3(nargs, head, tail):
     return bytes([0x55]) + seq + _epi(nargs)
 
 
+def _emit_bitchain(op, nargs, args):
+    """a&b&c (also |, ^): commutative chain -- load LAST, op the rest in reverse; the frame is set
+    right after the load (first-2-esp then ebp), unlike mul which defers the frame to the end."""
+    seq = _load_eax(args[-1]) + _FRAME + _alu(op, "eax", "esp", _argoff(args[-2]))
+    for k in reversed(args[:-2]):
+        seq += _alu(op, "eax", "ebp", _argoff(k))
+    return bytes([0x55]) + seq + _epi(nargs)
+
+
 def _pairswap(xs):
     """Swap adjacent elements in pairs: [a,b,c,d]->[b,a,d,c] (self-inverse). The generic
     scheduler's reorder of independent subtracted operands in a sub-chain."""
@@ -324,6 +333,8 @@ def emit(node):
         chain = _flatten_chain(E)
         if chain and chain[0] == "*" and len(chain[1]) >= 3:
             return _emit_mul_chain(nargs, chain[1])
+        if chain and chain[0] in ("&", "|", "^") and len(chain[1]) >= 3:   # bitwise chain
+            return _emit_bitchain(chain[0], nargs, chain[1])
         # TWO-REGISTER additive / mixed-precedence (the modeled clean-schedule shapes):
         if op in ("+", "-"):
             fa = _flatten_addsub(E)                       # pure +/- chain over arg leaves?
@@ -345,6 +356,14 @@ def emit(node):
                            + _imul("ecx", "ebp", _argoff(pl[0]))
                            + bytes([0x5D, 0x8D, 0x04, 0x0A]))   # pop; lea eax,[edx+ecx]
                     return pro + seq + bytes([0xC2]) + struct.pack("<H", 4 * nargs)
+        # two products (a*b) - (c*d): eax=a*b, edx=c*d, sub eax,edx (no lea, order matters)
+        if op == "-" and _as_arg_product(L) and _as_arg_product(R):
+            a, b = _as_arg_product(L)
+            c, d = _as_arg_product(R)
+            seq = (_mov("eax", "esp", _argoff(b)) + _imul("eax", "esp", _argoff(a))
+                   + _mov("edx", "esp", _argoff(d)) + setframe + _imul("edx", "ebp", _argoff(c))
+                   + bytes([0x2B, 0xC2]))               # sub eax, edx
+            return pro + seq + epi
         # left-fold: (a <io> b) <op2> c  -- inner sum/diff in eax (esp), then op2 c (ebp)
         if (L[0] == "binop" and L[1] in ("+", "-") and L[2][0] == "arg" and L[3][0] == "arg"
                 and R[0] == "arg" and op not in ("+", "-")):
@@ -476,6 +495,9 @@ def battery():
     cases.append(("(a+b)*c", {"nargs": 3, "expr": ("binop", "*", ("binop", "+", A(1), A(2)), A(3))}))
     cases.append(("a*b+c*d", {"nargs": 4, "expr": ("binop", "+", ("binop", "*", A(1), A(2)),
                                                    ("binop", "*", A(3), A(4)))}))
+    cases.append(("a&b&c", {"nargs": 3, "expr": _chain("&", [1, 2, 3])}))
+    cases.append(("a*b-c*d", {"nargs": 4, "expr": ("binop", "-", ("binop", "*", A(1), A(2)),
+                                                   ("binop", "*", A(3), A(4)))}))
     return cases
 
 
@@ -487,10 +509,11 @@ def declined_battery():
         for i in idxs[1:]:
             e = ("binop", op, e, ("arg", i))
         return e
+    # everything probed so far is now modeled; keep a couple of genuinely-unmodeled shapes as guards
+    A = lambda i: ("arg", i)
     return [
-        ("a&b&c", {"nargs": 3, "expr": _chain("&", [1, 2, 3])}),           # bitwise chain unmodeled
-        ("a*b-c*d", {"nargs": 4, "expr": ("binop", "-", ("binop", "*", ("arg", 1), ("arg", 2)),
-                                          ("binop", "*", ("arg", 3), ("arg", 4)))}),   # two-product minus
+        ("a/b", {"nargs": 2, "expr": ("binop", "/", A(1), A(2))}),          # division not modeled
+        ("a<<b", {"nargs": 2, "expr": ("binop", "<<", A(1), A(2))}),        # shifts not modeled
     ]
 
 
