@@ -100,6 +100,45 @@ def _compile(body):
 _ZERO = ('eax', 'ebx', 'ecx', 'edx', 'esi', 'edi', 'CF', 'ZF', 'SF', 'OF', 'PF', 'AF')
 
 
+def _arg_slots(code, va0, off, end):
+    """The ordered, distinct stack-argument slots a function actually reads -- esp-adjusted.
+
+    il.py emits SLOT-NAMED, SPARSE parameter lists: a param called `arg3` is the 3rd stdcall
+    dword ([esp+0xc] at entry) and unreferenced leading args are omitted, so a 2-param C
+    function may read slots (3,4) not (1,2). Worse, the name can be off-by-one when the body
+    pushes before the read (`push esi` then `[esp+0x14]` is slot 4, not 5). So we can't trust
+    the names -- we recover the TRUE slots from the bytes by tracking esp across push/pop/
+    sub/add and mapping each [esp+d] read to entry-arg index (d + esp_delta)//4. Returns e.g.
+    [3, 4]; the caller maps the i-th C parameter to the i-th slot here."""
+    import capstone
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
+    md.detail = True
+    delta, slots = 0, []
+    for i in md.disasm(bytes(code[off:end]), va0 + off):
+        m = i.mnemonic
+        if m == "push":
+            delta -= 4
+        elif m == "pop":
+            delta += 4
+        elif m in ("sub", "add") and i.operands and i.operands[0].type == capstone.x86.X86_OP_REG \
+                and i.reg_name(i.operands[0].reg) == "esp" and i.operands[1].type == capstone.x86.X86_OP_IMM:
+            delta += (-i.operands[1].imm if m == "sub" else i.operands[1].imm)
+        for op in i.operands:                            # any [esp + d] memory reference
+            if op.type == capstone.x86.X86_OP_MEM and op.mem.base and \
+                    i.reg_name(op.mem.base) == "esp" and op.mem.index == 0:
+                entry_disp = op.mem.disp + delta
+                if entry_disp >= 4 and entry_disp % 4 == 0:
+                    idx = entry_disp // 4                # slot 1 == arg1 == [entry esp+4]
+                    if idx not in slots:
+                        slots.append(idx)
+    return sorted(slots)
+
+
+def _nparams(body):
+    seg = body.split("(", 1)[-1].split(")", 1)[0]
+    return 0 if not seg.strip() else seg.count(",") + 1
+
+
 def test_module(module, trials=20, limit=None, budget=45):
     """Returns (proven, mismatches[list], skipped)."""
     import unicorn
@@ -123,23 +162,30 @@ def test_module(module, trials=20, limit=None, budget=45):
         so, fname = _compile(blocks[off])
         if not so:
             skip += 1; continue
+        # il.py's params are SLOT-NAMED and SPARSE, so calling positionally binds the wrong
+        # stack slots. Recover the true slots from the bytes and map the i-th C parameter to
+        # the i-th slot; fall back to positional only if the shapes don't line up.
+        npar = _nparams(blocks[off])
+        slots = _arg_slots(code, va0, off, f['end'])
+        by_slot = slots if len(slots) == npar else [k + 1 for k in range(npar)]
+        depth = max([n] + by_slot) if by_slot else n
         lib = ctypes.CDLL(so)
         fn = getattr(lib, fname); fn.restype = ctypes.c_uint32
-        fn.argtypes = [ctypes.c_uint32] * n
+        fn.argtypes = [ctypes.c_uint32] * npar
         ok = tested = 0; ok = True
         rng = random.Random(off)                     # deterministic per-function inputs -> reproducible
         for _ in range(trials):
-            args = [rng.getrandbits(32) for _ in range(n)]
-            o = _emulate(unicorn, va0, code, va0 + off, f['end'], args)
+            stack = [rng.getrandbits(32) for _ in range(depth)]
+            o = _emulate(unicorn, va0, code, va0 + off, f['end'], stack)
             if o is None:
                 ok = False; break
             for r in _ZERO:
                 try: ctypes.c_uint32.in_dll(lib, r).value = 0
                 except ValueError: pass
-            c = fn(*args) & 0xffffffff
+            c = fn(*[stack[s - 1] for s in by_slot]) & 0xffffffff
             tested += 1
             if o != c:
-                mism.append((off, fname, args, o, c)); ok = False; break
+                mism.append((off, fname, [stack[s - 1] for s in by_slot], o, c)); ok = False; break
         if ok and tested:
             proven.append((off, fname, n))
     return proven, mism, skip, truncated
