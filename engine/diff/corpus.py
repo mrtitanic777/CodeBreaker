@@ -19,7 +19,23 @@ import sys
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))       # engine/diff
-REPO = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))   # repo parent
+
+
+def _data_root():
+    """Where the per-target data trees (win95/, win3.1/, ...) live. In the monorepo they sit
+    beside engine/; in the split CodeBreaker/data layout they live under WT_DATA_ROOT. Honor the
+    env override, then fall back to the repo parent, then to a sibling of the repo named for the
+    first version_id's tree -- so the diff engine works in both layouts without reconfiguration."""
+    env = os.environ.get("WT_DATA_ROOT")
+    if env and os.path.isdir(env):
+        return env
+    parent = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))   # repo parent
+    if os.path.isdir(os.path.join(parent, "win95", "src")):
+        return parent
+    return parent
+
+
+DATA_ROOT = _data_root()
 sys.path.insert(0, HERE)
 import extractor  # noqa: E402
 
@@ -80,7 +96,7 @@ def _detect_bits(path):
 
 def iter_functions(version_id):
     """Yield (path_abs, group, module, seg, off) for every function file."""
-    root = os.path.join(REPO, VERSIONS[version_id]["asm_root"])
+    root = os.path.join(DATA_ROOT, VERSIONS[version_id]["asm_root"])
     for dirpath, _dirs, files in os.walk(root):
         for fn in files:
             if not fn.lower().endswith(".asm"):
@@ -108,7 +124,7 @@ def ingest(conn, version_id, limit=None, modules=None, force=False, progress=Non
         raise SystemExit("unknown version %r (known: %s)"
                          % (version_id, ", ".join(sorted(VERSIONS))))
     register_version(conn, version_id)
-    root = os.path.join(REPO, VERSIONS[version_id]["asm_root"])
+    root = os.path.join(DATA_ROOT, VERSIONS[version_id]["asm_root"])
     if not os.path.isdir(root):
         raise SystemExit("corpus root missing: %s" % root)
 
@@ -140,7 +156,7 @@ def ingest(conn, version_id, limit=None, modules=None, force=False, progress=Non
             fp["cfg_node_count"], fp["cfg_edge_count"], fp["cyclomatic_complexity"],
             fp["cfg_topology_hash"], fp["insn_count"], fp["normalized_opcode_hash"],
             fp["call_count"], fp["call_vector_hash"], None, None,
-            os.path.relpath(path, REPO).replace("\\", "/")))
+            os.path.relpath(path, DATA_ROOT).replace("\\", "/")))
         added += 1
         if len(batch) >= 2000:
             _flush(conn, batch); batch = []

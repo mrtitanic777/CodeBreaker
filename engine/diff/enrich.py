@@ -26,21 +26,89 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
 import corpus  # noqa: E402
 from engine.format_loaders import ne as ne_mod
 
-REPO = corpus.REPO
-_SEGOFF = re.compile(r"seg?(\w+?):0x([0-9a-fA-F]+)", re.I)   # "seg1:0x051c" / "sec1:0x0012f40"
+DATA_ROOT = corpus.DATA_ROOT
+_SEGOFF = re.compile(r"se[gc](\w+?):0x([0-9a-fA-F]+)", re.I)  # "seg1:0x051c" (NE) / "sec1:0x0012f40" (PE)
+
+# win95 (and the other 32-bit targets) ship PE binaries; their exports live in the PE
+# export directory, addressed by RVA. The corpus keys a function by its code-section-relative
+# offset (RVA minus the code section's RVA), so PE enrichment joins on that same offset.
+_PE_TARGET = {"win95_gold": "win95", "win98_gold": "win98", "winnt4_gold": "winnt4"}
+_pe_target_set = None
+
+
+def _ensure_pe_target(version_id):
+    """Point cores at the version's target once, so names.export_names / the lazy binary
+    cache resolve through WT_DATA_ROOT (split repo/data tree aware). Returns False if the
+    version isn't a wired PE target."""
+    global _pe_target_set
+    tgt = _PE_TARGET.get(version_id)
+    if not tgt:
+        return False
+    if _pe_target_set != tgt:
+        from engine.foundation import cores
+        here = os.path.dirname(os.path.abspath(__file__))
+        cb = os.path.dirname(os.path.dirname(here))            # engine/ -> repo root
+        cores.set_target(os.path.join(cb, "engine", "targets", tgt))
+        _pe_target_set = tgt
+    return True
+
+
+def _target_root(version_id):
+    """Absolute data root for a PE target (the dir the target resolves `files/`, `src/` under)."""
+    return os.path.join(DATA_ROOT, _PE_TARGET[version_id])
+
+
+def _pe_names(module, version_id):
+    """{(seg, offset_int) -> (name, ordinal)} for a PE module's exports, addressed in the
+    corpus's code-section-relative offset space. Named exports come from the PE export table
+    (ground truth); ordinal-only exports are filled from the period SDK's ordinal map where it
+    has one (16-bit heritage libs; hypothesis-tier), else left for structural propagation.
+    The target resolves `files/` relative to its data root, so we resolve with cwd parked there."""
+    from engine.symbol_engine import names
+    cwd = os.getcwd()
+    try:
+        os.chdir(_target_root(version_id))
+        ne, _exp = names.export_names(module)
+        if not hasattr(ne, "exports"):
+            return {}
+        cs = ne.code_sections()
+        base = (cs[0][0] - ne.image_base) if cs else 0
+        exports = list(ne.exports())
+    finally:
+        os.chdir(cwd)
+    seg = 1                                                    # code section == sec1 in the carve
+    out = {}
+    unnamed = []
+    for o, n, rva in exports:
+        key = (seg, rva - base)
+        if n:
+            out[key] = (n, o)                                 # PE export table -- ground truth
+        else:
+            unnamed.append((key, o))
+    if unnamed:                                               # try the SDK ordinal map (16-bit libs)
+        try:
+            from engine.symbol_engine import symdb
+            omap = symdb.ordinal_names(module)                # {ordinal: name} or {}
+        except Exception:
+            omap = {}
+        for key, o in unnamed:
+            nm = omap.get(o)
+            if nm:
+                out[key] = (nm, o)                            # SDK-supplied (hypothesis-tier)
+    return out
 
 
 def _binary_for(version_id, module):
     """Absolute path to the shipped binary a corpus module was carved from, or None."""
     m = module.upper()
     if version_id == "win310":
-        p = os.path.join(REPO, "win3.1", "files", m)
+        p = os.path.join(DATA_ROOT, "win3.1", "files", m)
         return p if os.path.exists(p) else None
     if version_id == "win101":
         # apps ship as ordinary NE .EXE under files/WF; system modules live in the
         # WIN100.BIN bundle (not handled here).
         for cand in (m if m.endswith(".EXE") else m + ".EXE",):
-            p = os.path.join(REPO, "win1.0", "files", "WF", cand)
+            p = os.path.join(DATA_ROOT, "win1.0", "files", "WF", cand)
             if os.path.exists(p):
                 return p
     return None
@@ -79,17 +147,28 @@ def enrich(conn, version_id, apply=True):
         key = (seg, int(m.group(2), 16))
         by_mod.setdefault(r["module_name"], {})[key] = r["function_id"]
 
+    is_pe = _ensure_pe_target(version_id)                 # 32-bit PE target (win95/98/nt4)?
     named = done = missing = 0
     for module, addr_to_fid in sorted(by_mod.items()):
-        binary = _binary_for(version_id, module)
-        if not binary:
-            missing += 1
-            continue
-        try:
-            names = _ne_names(binary)
-        except Exception:
-            missing += 1
-            continue
+        if is_pe:
+            try:
+                names = _pe_names(module, version_id)      # PE export table + SDK ordinal fill
+            except Exception:
+                missing += 1
+                continue
+            if not names:
+                missing += 1
+                continue
+        else:
+            binary = _binary_for(version_id, module)
+            if not binary:
+                missing += 1
+                continue
+            try:
+                names = _ne_names(binary)
+            except Exception:
+                missing += 1
+                continue
         done += 1
         for (seg, off), (name, ordinal) in names.items():
             fid = addr_to_fid.get((seg, off))

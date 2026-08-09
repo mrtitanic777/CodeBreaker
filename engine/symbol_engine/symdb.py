@@ -60,12 +60,23 @@ def _load():
         cvnames.update(names)
     proto = sdk.get("proto", {})
     arity_lib = arities
+    # 16-bit OMF IMPDEF map carries ordinals: {MODULE: {name: ordinal_or_expname}}. Invert to
+    # {MODULE: {ordinal: name}} so an ordinal-only export can be named (the 32-bit COFF libs are
+    # by-name, so they contribute no ordinal map -- 32-bit exports are named from the PE table).
+    ord16 = {}
+    for mod, syms in sdk.get("16", {}).items():
+        inv = {}
+        for name, ov in syms.items():
+            if isinstance(ov, int):
+                inv.setdefault(ov, name)
+        if inv:
+            ord16[mod.upper()] = inv
     # case-insensitive index: 16-bit export names are UPPERCASE, SDK names are proper-case
     ci = {k.lower(): k for k in proto}
     ci_arity = {k.lower(): k for k in arity_lib}
     ci_cv = {n.lower() for n in cvnames}
     _CACHE.update(proto=proto, struct=sdk.get("struct", {}), arity_lib=arity_lib,
-                  cvnames=cvnames, ci=ci, ci_arity=ci_arity, ci_cv=ci_cv)
+                  cvnames=cvnames, ci=ci, ci_arity=ci_arity, ci_cv=ci_cv, ord16=ord16)
     return _CACHE
 
 
@@ -91,6 +102,22 @@ def arity(name):
         return len(db["proto"][c]["params"])
     ca = db["ci_arity"].get(name.lower())
     return db["arity_lib"].get(ca) if ca else None
+
+
+_MOD_ALIAS = {"KRNL386": "KERNEL", "KRNL286": "KERNEL"}   # file name -> SDK import-lib module
+
+
+def ordinal_names(module):
+    """{ordinal: name} for a module's exports, from the SDK's 16-bit OMF ordinal map. Keyed by
+    the import-library module name (KERNEL/USER/GDI/...); accepts a file name (GDI.EXE, KRNL386)
+    and normalizes it. Empty for 32-bit modules (the COFF libs are by-name -> no ordinal map)."""
+    base = os.path.basename(module).upper()
+    for ext in (".EXE", ".DLL", ".DRV", ".386", ".VXD"):
+        if base.endswith(ext):
+            base = base[:-len(ext)]
+            break
+    base = _MOD_ALIAS.get(base, base)
+    return _load()["ord16"].get(base, {})
 
 
 def struct(name):
