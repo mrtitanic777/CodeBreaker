@@ -132,10 +132,15 @@ def adapt(src, link=False, arities=None):
     # Can't take the address of a constant -> drop the & (hex or decimal). Bitwise `x & 0xff`
     # has a space before the operand, so it's unaffected.
     src = re.sub(r'&(0x[0-9a-fA-F]+|\d+)(?=[;,)\]])', r'\1', src)
-    # unresolved jumps: `goto seg4:0x0000;`, `goto MFC250.1206;`, `goto seg;` are not valid
-    # labels. The lift's real local labels are `L_<hex>`; drop any goto that isn't one of
-    # those (or a computed `goto *`). Rung 1 = compile; the control edge is recovered later.
-    src = re.sub(r'goto (?!\*|L_)[A-Za-z_][\w.:]*\s*;', ';', src)
+    # unresolved unconditional transfers: `goto seg4:0x0000;` (indirect/jump-table target the
+    # static lift left as seg:0x0), `goto MFC250.1206;` (import tail jump), `goto seg;`. These are
+    # not valid C labels (the lift's real locals are `L_<hex>`, computed jumps are `goto *`).
+    # Rung 1 used to DROP them to `;` -- which silently FELL THROUGH into the next statement, a
+    # correct-looking function quietly running the wrong path. Route them to a no-return trap
+    # instead (win95c.h/win95rt.c): a function that never reaches the edge still runs correctly,
+    # one that does fails loudly rather than corrupting. Recovering the true target is lift-time,
+    # binary-aware work (jump-table read); this preserves control-flow SEMANTICS meanwhile.
+    src = re.sub(r'goto (?!\*|L_)[A-Za-z_][\w.:]*\s*;', '__lifted_unresolved_jump();', src)
     # jump pseudo-op emitted as assignment to an address literal: `0xADDR = __jmpd(...)`.
     # Can't assign to a constant -> drop the LHS, keep the call.
     src = re.sub(r'\b0x[0-9a-fA-F]+ = (?=__jmpd)', '', src)

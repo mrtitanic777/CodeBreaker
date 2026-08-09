@@ -23,3 +23,8 @@ u32 __dvl, __dvh, __xch;
 
 /* --- x86 flags surfaced as bare values ------------------------------------------------ */
 u32 CF, ZF, SF, OF, PF, AF;
+
+/* Unresolved unconditional transfer (see win95c.h): a no-return trap. Falling through an
+ * unknown jump would silently corrupt; trapping keeps every function that never reaches the
+ * edge correct, and makes one that does fail loudly. __builtin_trap emits ud2 -- no libc. */
+void __lifted_unresolved_jump(void) { __builtin_trap(); }

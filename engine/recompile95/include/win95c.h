@@ -40,6 +40,15 @@ typedef long double        u80;              /* x87 80-bit FPU register views (n
 /* indirect-call target type the lift casts through: (*(fnptr)addr)(...) */
 typedef u32 (*fnptr)();
 
+/* Unresolved unconditional transfer: an intra-image jump whose target the static lift could
+ * not tie to a local label (an indirect jmp/jump table left as seg:0x0, or a cross-segment
+ * tail jump). RUNG 1 used to DROP these to `;`, which silently FELL THROUGH -- a correct-
+ * looking function that quietly runs the wrong path. Route them here instead: a no-return
+ * trap, so a function that never reaches the unresolved edge runs correctly, and one that
+ * does fails loudly and detectably rather than corrupting. Recovering the real target needs
+ * binary-aware analysis at lift time (jump-table read); this is the honest compile-shim stub. */
+extern void __lifted_unresolved_jump(void);
+
 /* --- the x86 register file, as globals (the lift's implicit machine state) --------- */
 extern u32 eax, ebx, ecx, edx, esi, edi, ebp, esp;
 extern u32 cs, ds, es, fs, gs, ss;              /* segment selectors, used as bases */
