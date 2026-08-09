@@ -90,15 +90,20 @@ extern u32 __dvl, __dvh, __xch;
 #define __ror(...)      __rc_(__VA_ARGS__)
 #define __rcl(...)      __rc_(__VA_ARGS__)
 #define __rcr(...)      __rc_(__VA_ARGS__)
-#define __mulhi(...)    __rc_(__VA_ARGS__)
+static u32 __mulhi(u32 a, u32 b){ return (u32)(((u64)a * (u64)b) >> 32); }   /* mul -> EDX (high 32) */
 #define __xch(...)      __rc_(__VA_ARGS__)
 #define __bsr(...)      __rc_(__VA_ARGS__)
 #define __bsf(...)      __rc_(__VA_ARGS__)
 #define __parity(...)   __rc_(__VA_ARGS__)
-#define __div(...)      __rc_(__VA_ARGS__)
-#define __div_rem(...)  __rc_(__VA_ARGS__)
-#define __idiv(...)     __rc_(__VA_ARGS__)
-#define __idiv_rem(...) __rc_(__VA_ARGS__)
+/* Integer division, modelled for real (was a compile stub returning the first operand, which made
+ * every division function compute garbage). x86 `div`/`idiv r/m32` divide the 64-bit EDX:EAX pair
+ * by the operand -> quotient in EAX, remainder in EDX. The lift emits __idiv(hi, lo, divisor). A
+ * zero (or overflowing) divisor #DEs on real hardware -> the emulator faults and that trial is
+ * skipped, so a 0 here is never compared; guard it only so the recompiled code doesn't itself trap. */
+static u32 __div(u32 hi, u32 lo, u32 d){ u64 n=((u64)hi<<32)|lo; return d?(u32)(n/d):0u; }
+static u32 __div_rem(u32 hi, u32 lo, u32 d){ u64 n=((u64)hi<<32)|lo; return d?(u32)(n%d):0u; }
+static i32 __idiv(u32 hi, u32 lo, u32 d){ i64 n=(i64)(((u64)hi<<32)|lo); return d?(i32)(n/(i32)d):0; }
+static i32 __idiv_rem(u32 hi, u32 lo, u32 d){ i64 n=(i64)(((u64)hi<<32)|lo); return d?(i32)(n%(i32)d):0; }
 #define __dvl(...)      __rc_(__VA_ARGS__)
 #define __dvh(...)      __rc_(__VA_ARGS__)
 #define __inp(...)      __rc_(__VA_ARGS__)

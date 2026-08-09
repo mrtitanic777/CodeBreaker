@@ -98,7 +98,7 @@ def _compile(body):
 _ZERO = ('eax', 'ebx', 'ecx', 'edx', 'esi', 'edi', 'CF', 'ZF', 'SF', 'OF', 'PF', 'AF')
 
 
-def test_module(module, trials=20, limit=None):
+def test_module(module, trials=20, limit=None, budget=45):
     """Returns (proven, mismatches[list], skipped)."""
     import unicorn
     target = cores.get("target")
@@ -112,7 +112,11 @@ def test_module(module, trials=20, limit=None):
     if limit:
         cands = cands[:limit]
     proven, mism, skip = [], [], 0
+    import time
+    start, truncated = time.time(), False
     for off, f in cands:
+        if time.time() - start > budget:            # per-module wall-clock cap: one pathological
+            truncated = True; break                 # module (100s of gcc spawns) must not stall a sweep
         n = arities.get(off) or 0
         so, fname = _compile(blocks[off])
         if not so:
@@ -135,21 +139,22 @@ def test_module(module, trials=20, limit=None):
                 mism.append((off, fname, args, o, c)); ok = False; break
         if ok and tested:
             proven.append((off, fname, n))
-    return proven, mism, skip
+    return proven, mism, skip, truncated
 
 
 def main():
     mods = [a for a in sys.argv[1:] if not a.startswith("-")]
-    tp = tm = ts = 0
+    tp = tm = ts = trunc = 0
     for m in mods:
         try:
-            p, mm, s = test_module(m)
+            p, mm, s, t = test_module(m)
         except Exception as e:
             print("  %-16s ERROR %s" % (m, repr(e)[:80])); continue
-        tp += len(p); tm += len(mm); ts += s
-        print("  %-16s proven=%-3d mismatch=%-2d skipped=%d" % (m, len(p), len(mm), s))
+        tp += len(p); tm += len(mm); ts += s; trunc += bool(t)
+        print("  %-16s proven=%-3d mismatch=%-2d skipped=%d%s"
+              % (m, len(p), len(mm), s, "  (TRUNCATED: hit time budget)" if t else ""))
     print("TOTAL: %d functions PROVEN bit-identical to real win95 machine code "
-          "(%d mismatch, %d skipped)" % (tp, tm, ts))
+          "(%d mismatch, %d skipped, %d modules truncated)" % (tp, tm, ts, trunc))
 
 
 if __name__ == "__main__":
