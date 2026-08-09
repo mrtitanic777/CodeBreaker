@@ -104,6 +104,39 @@ def _drop_casts(src, def_arity):
     return "".join(out), dropped, kept
 
 
+_FUNC = re.compile(r'(?:int|void|u32|struct[^\n{;]*\*)\s+\w+\(([^)]*)\)\s*\{')
+
+
+def recover_arg_load(src):
+    """Recover a dropped argument-load-into-register (the gccnc class): x86 `mov eax,[esp+N]` at
+    entry loads an argument into eax, but il.py's arg-recovery declared the parameter and DISCARDED
+    the load -- so the body reads an uninitialised eax (`int f(u32 arg1){ if(eax!=0)... }`, no
+    `eax=arg1`). It compiles and links (arg1 is just unused) but computes the wrong value.
+
+    Scoped, safe fix: only when a function declares EXACTLY ONE distinct argN, that arg is UNUSED in
+    the body (proof the load was dropped, not merely unread), and eax is read before it is written,
+    inject `eax = argN;` at entry -- the missing load. Any other shape is left untouched."""
+    out, last = [], 0
+    for m in _FUNC.finditer(src):
+        args = re.findall(r'\barg(\d+)\b', m.group(1))
+        depth, j = 1, m.end()
+        while j < len(src) and depth:
+            depth += (src[j] == '{') - (src[j] == '}'); j += 1
+        body = src[m.end():j - 1]
+        inject = ''
+        if len(set(args)) == 1:
+            arg = 'arg' + args[0]
+            if not re.search(r'\b' + arg + r'\b', body):                # param declared but unused
+                fr = re.search(r'\beax\b(?!\s*=)', body)                # eax used, not assigned
+                fw = re.search(r'\beax\s*=', body)
+                if fr and (not fw or fr.start() < fw.start()):          # read before first write
+                    inject = ' eax = %s;' % arg
+        out.append(src[last:m.end()] + inject)
+        last = m.end()
+    out.append(src[last:])
+    return ''.join(out)
+
+
 def adapt(src, link=False, arities=None):
     """Mechanical source rewrites that make the readable lift compile (rung 1).
     Each rule is a whole-class fix, keyed off a pattern il.py emits corpus-wide.
@@ -113,6 +146,7 @@ def adapt(src, link=False, arities=None):
     arities (rung 2c): {func_offset: nargs} from sigrecover -- set each def's real arity so
     matching calls drop the fn-ptr cast and use a true prototype (see _drop_casts)."""
     arities = arities or {}
+    src = recover_arg_load(src)                  # inject dropped `eax = argN` arg-loads (gccnc class)
     # STRUCT-ARG ELIMINATION: il.py types some args as `struct MOD_OFF_argK *` (from field
     # recovery) but ALSO uses them as integers (arg & 0xff), which is illegal, AND the struct
     # TYPE names collide across offset-dupes (redefinition). Both vanish if the args are just

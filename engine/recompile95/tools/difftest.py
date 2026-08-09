@@ -85,6 +85,8 @@ def _emulate(uc_mod, va0, code, fva, end, args):
 
 
 def _compile(body):
+    import rc                                             # apply rc.adapt's dropped-arg-load recovery
+    body = rc.recover_arg_load(body)                      # so the sweep tests the recompile-layer C
     mo = re.search(r'\b([A-Za-z_]\w*)\s*\(', body)
     d = tempfile.mkdtemp()
     open(os.path.join(d, "f.c"), "w").write('#include "win95c.h"\n' + body)
