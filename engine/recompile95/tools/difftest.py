@@ -49,6 +49,12 @@ def _is_pure(body, off, arities):
         return False
     if 'not recovered' in body:
         return False
+    # a VOID-return function has no value to differential-test: the candidate leaves gcc's scratch
+    # in eax while the emulator has its own eax, so comparing the "return" is a false mismatch.
+    # (Verifying a void fn means checking its memory side-effects -- the buffer-marshaling path.)
+    if re.search(r'/\* \[AUTO\][^*]*\*/\s*void\s+\w+\s*\(', body) or \
+            re.match(r'\s*(?:/\*[^\n]*\*/\s*)?void\s+\w+\s*\(', body.split('*/', 1)[-1]):
+        return False
     code = body.split('{', 1)[-1]
     for m in _INREG.finditer(code):
         r, pre = m.group(1), code[:m.start()]
