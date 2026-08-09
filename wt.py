@@ -10,6 +10,7 @@ CodeBreaker — a deterministic reverse-engineering workbench.
     wt doctor                              # external-dependency check
     wt diff <cmd>                          # cross-version analysis (target-agnostic)
     wt recompile <cmd>                     # make the lifted C compile/link (win95 corpus)
+    wt inverse <cmd>                       # compiler-inverse engine (Lattice C 2.12 / MS C 2.03)
     wt ui                                  # CodeBreaker Studio: the themed drag-and-drop UI
 
 A single entry point over era-specific toolchains, selected by `--target`
@@ -30,16 +31,23 @@ import runpy
 import sys
 
 WT_DIR = os.path.dirname(os.path.abspath(__file__))     # repo root (the tool code)
-REPO = os.path.dirname(WT_DIR)                           # parent (holds per-era data dirs)
 # Frozen (PyInstaller) ship build: the TOOL code is bundled inside sys._MEIPASS, but the
-# DATA (win95/src, files/, ...) is the user's external checkout -- resolve data from WT_REPO
-# / the working dir, not from next to the bundle. Non-frozen runs are unaffected (DATA_ROOT
-# stays == REPO), so the dev workflow is byte-identical.
+# DATA (win95/src, files/, ...) is the user's external checkout -- resolve it from
+# WT_DATA_ROOT / the working dir, not from next to the bundle. Non-frozen runs resolve the
+# data alongside the tool, so the dev workflow is byte-identical.
 if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
     WT_DIR = sys._MEIPASS                                # bundled tools live here
-    DATA_ROOT = os.environ.get("WT_REPO") or os.getcwd()
+    DATA_ROOT = os.environ.get("WT_DATA_ROOT") or os.getcwd()
 else:
-    DATA_ROOT = REPO
+    # Dev checkout: data trees usually sit beside the tool (monorepo), but a split layout
+    # (CodeBreaker tool repo + a separate data tree) points WT_DATA_ROOT at the data. Honor
+    # the env override when it actually holds the era dirs, else fall back to the tool's parent.
+    _env = os.environ.get("WT_DATA_ROOT")
+    if _env and any(os.path.isdir(os.path.join(_env, e)) for e in
+                    ("win95", "win98", "win3.1", "win1.0", "winnt4")):
+        DATA_ROOT = _env
+    else:
+        DATA_ROOT = os.path.dirname(WT_DIR)              # holds per-era data dirs (dev checkout)
 ENGINE = os.path.join(WT_DIR, "engine")                 # shared, target-agnostic tools
                                                         # (the IR engine: il/validate_il/decompile)
 
@@ -99,7 +107,7 @@ def cmd_targets():
     print("\nrun:  wt --target <name> <command> [args...]")
 
 
-_SUBSYS = ("targets", "diff", "recompile95", "studio", "goldens", "__pycache__")
+_SUBSYS = ("targets", "diff", "recompile95", "studio", "inverse_engine", "goldens", "__pycache__")
 
 
 def _engine_commands():
@@ -136,7 +144,7 @@ def cmd_doctor():
         print("  [%s] %-12s %s" % ("OK" if ok else "--", label, detail))
     for name, (tools, data) in sorted(TARGETS.items()):
         chk(name, os.path.isdir(tools),
-            "%s%s" % (os.path.relpath(tools, REPO),
+            "%s%s" % (os.path.relpath(tools, DATA_ROOT),
                       "" if os.path.isdir(data) else "  (DATA MISSING: %s)" % data))
     print()
     chk("DOSBox-X", os.path.exists(cfg.get("dosbox_x", "")), cfg.get("dosbox_x", "(unset)"))
@@ -169,6 +177,30 @@ def cmd_recompile(rest):
     runpy.run_path(script, run_name="__main__")
 
 
+def cmd_inverse(rest):
+    """Dispatch an inverse-engine tool. The compiler-inverse engine (Lattice C 2.12 /
+    MS C 2.03) is target-agnostic -- it models a period compiler, not a Windows era -- so it
+    takes no --target. Its oracle (MC1/MC2 under DOSBox-X) is configured in config.json."""
+    iv_dir = os.path.join(ENGINE, "inverse_engine")
+    tools = {}
+    if os.path.isdir(iv_dir):
+        for f in sorted(os.listdir(iv_dir)):
+            if f.endswith(".py") and not f.startswith("_") and f != "oracle16.py":
+                tools[f[:-3]] = os.path.join(iv_dir, f)
+    if not rest or rest[0] == "list":
+        print("inverse-engine commands  (engine/inverse_engine):\n")
+        for name in sorted(tools):
+            print("  %s" % name)
+        return
+    cmd, cmd_args = rest[0], rest[1:]
+    script = tools.get(cmd)
+    if not script:
+        print("error: no inverse command %r (try: wt inverse list)" % cmd); sys.exit(2)
+    sys.path.insert(0, WT_DIR)                               # the engine package
+    sys.argv = [os.path.basename(script)] + cmd_args
+    runpy.run_path(script, run_name="__main__")
+
+
 def usage():
     print(__doc__)
     cmd_targets()
@@ -196,6 +228,10 @@ def main():
         # (compile -> link). It operates on the win95 corpus, so run it in win95's data
         # context (the tools set up their own import path).
         cmd_recompile(argv[1:]); return
+    if argv[0] == "inverse":
+        # The compiler-inverse engine: bytes -> byte-exact C by inverting the Lattice C /
+        # MS C 2.03 codegen. Target-agnostic; the oracle is set in config.json.
+        cmd_inverse(argv[1:]); return
     if argv[0] == "ui":
         # CodeBreaker Studio: the native (Win32/GDI) themed drag-and-drop workbench.
         sys.path.insert(0, WT_DIR)

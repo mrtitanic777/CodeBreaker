@@ -49,6 +49,8 @@ VERSIONS = {
                    "release_date": "1992-04-06"},
     "win95_gold": {"asm_root": "win95/src/asm",  "architecture": "x86_32_flat",
                    "release_date": "1995-08-24"},
+    "win98_gold": {"asm_root": "win98/src/asm",  "architecture": "x86_32_flat",
+                   "release_date": "1999-05-05"},
 }
 
 _FN_RE = re.compile(r"^(seg|sec)([0-9a-fA-F]+)_([0-9a-fA-F]+)\.asm$", re.I)
