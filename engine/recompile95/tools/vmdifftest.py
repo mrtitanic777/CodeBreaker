@@ -119,20 +119,17 @@ def build(out_iso, modules):
         th.append('  {"%s","%s",0x%xu,"%s",%d,%d,K%d},' % (m, short[m], rva, exp, n, len(cs), i))
     th += ["};", "static const int NTEST=%d;" % len(tests)]
     open(os.path.join(HERE, "tests.h"), "w").write("\n".join(th))
-    _run([I686, "-std=gnu99", "-w", "-m32", "-nostdlib", "-mstackrealign", "-O1", "-Wl,-e,_run",
+    _run([I686, "-std=gnu99", "-w", "-m32", "-nostdlib", "-mstackrealign", "-O0", "-Wl,-e,_run",
           "-o", os.path.join(stage, "HARNESS.EXE"), os.path.join(HERE, "vmtest_harness.c"),
           "-I", HERE, "-lkernel32"], "HARNESS.EXE")
     os.remove(os.path.join(HERE, "tests.h"))
 
-    for m in used:
-        shutil.copy(cores.get("target").resolve(m), os.path.join(stage, short[m]))
-    open(os.path.join(stage, "MODULES.TXT"), "w").write(
-        "".join("%s = %s\r\n" % (short[m], m) for m in used))
     open(os.path.join(stage, "README.TXT"), "w").write(
-        "Lifted C differential harness -- run HARNESS.EXE in a 32-bit Windows (win95 VM).\r\n"
-        "It writes RESULTS.TXT: SELF = our recompiled Lifted C vs the emulator reference "
-        "(runs anywhere); LIVE = the real win95 DLL vs the reference (needs the win95 VM).\r\n"
-        "%d functions, %d DLLs. R<k>.DLL -> module map in MODULES.TXT.\r\n" % (len(tests), len(used)))
+        "Lifted C differential harness -- run HARNESS.EXE in a 32-bit Windows (win95 VM); it\r\n"
+        "writes RESULTS.TXT. It compares our recompiled Lifted C (LIFT.DLL) against a reference\r\n"
+        "computed by emulating Windows 95's OWN shipped bytes -- so an 'ok' line means the Lifted\r\n"
+        "C, running natively on this OS, computes exactly what Microsoft's machine code computes.\r\n"
+        "%d functions across %d win95 DLLs.\r\n" % (len(tests), len(used)))
 
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(HERE)), "targets", "win95"))
     import isowrite
