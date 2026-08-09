@@ -76,6 +76,65 @@ def _omf_lib_imports(data):
             pass
 
 
+# --- C headers (INC16/INC32): prototypes + struct layouts -------------------
+_CONV = r"(?:WINAPI|APIENTRY|PASCAL|CALLBACK|WINAPIV|STDMETHODCALLTYPE)"
+_IMP = r"(?:WINBASEAPI|WINUSERAPI|WINGDIAPI|WINADVAPI|WINOLEAPI|WINMMAPI|WINCOMMCTRLAPI|STDAPI|EXTERN_C)?"
+_PROTO = None
+import re as _re
+_PROTO = _re.compile(_IMP + r"\s*([A-Za-z_][\w \t\*]*?)\s+" + _CONV +
+                     r"\s+([A-Za-z_]\w*)\s*\(([^;{()]*)\)\s*;", _re.S)
+
+
+def _ptype(p):
+    """'LPCSTR lpFileName' -> 'LPCSTR'  (drop the parameter name; keep the type)."""
+    p = p.strip().replace("CONST", "const")
+    toks = p.split()
+    if len(toks) <= 1:
+        return p
+    # last token is the param name unless it's all-caps (a bare type like DWORD)
+    return " ".join(toks[:-1]) if _re.match(r"[A-Za-z_]\w*$", toks[-1]) else p
+
+
+def parse_headers(sdk_dir):
+    """Return (protos, structs): {name:{ret,params}} and {name:[(type,field)]} from the SDK .h."""
+    protos, structs = {}, {}
+    for sub in ("INC32", "INC16"):
+        d = os.path.join(sdk_dir, sub)
+        if not os.path.isdir(d):
+            continue
+        for fn in os.listdir(d):
+            if not fn.upper().endswith(".H"):
+                continue
+            try:
+                txt = open(os.path.join(d, fn), encoding="latin1").read()
+            except OSError:
+                continue
+            txt = _re.sub(r"/\*.*?\*/", " ", txt, flags=_re.S)
+            txt = _re.sub(r"//[^\n]*", " ", txt)
+            for m in _PROTO.finditer(txt):
+                ret = " ".join(m.group(1).split())
+                ret = _re.sub(r"^(?:WINBASEAPI|WINUSERAPI|WINGDIAPI|WINADVAPI|WINOLEAPI|WINMMAPI|"
+                              r"WINCOMMCTRLAPI|EXTERN_C|extern)\s+", "", ret).strip()
+                name = m.group(2)
+                params = m.group(3).strip()
+                if not ret or name in protos or ret in ("return", "else", "typedef"):
+                    continue
+                plist = [] if params in ("", "void", "VOID") else [_ptype(x) for x in params.split(",")]
+                protos[name] = {"ret": ret, "params": plist}
+            for m in _re.finditer(r"typedef\s+struct\s+\w*\s*\{([^{}]*)\}\s*([A-Za-z_]\w*)", txt, _re.S):
+                fields = []
+                for decl in m.group(1).split(";"):
+                    decl = " ".join(decl.split())
+                    if not decl:
+                        continue
+                    t = decl.split()
+                    if len(t) >= 2:
+                        fields.append((" ".join(t[:-1]), t[-1]))
+                if m.group(2) not in structs:
+                    structs[m.group(2)] = fields
+    return protos, structs
+
+
 def build(sdk_dir):
     """Return {'32':{dll:{name:arity}}, '16':{module:{name:ord_or_expname}}}."""
     out = {"32": {}, "16": {}}
@@ -111,6 +170,14 @@ def main():
     a = [x for x in sys.argv[1:] if not x.startswith("-")]
     sdk = a[0] if a else r"C:\Users\mrtit\Desktop\WindowsRE\Misc\Windows Chicago - Build 331 SDK"
     db = build(sdk)
+    protos, structs = parse_headers(sdk)
+    db["proto"] = protos
+    db["struct"] = structs
+    print("\n=== headers: %d prototypes, %d structs ===" % (len(protos), len(structs)))
+    for n in ("CreateFileA", "GetProcAddress", "SendMessageA", "RegOpenKeyExA"):
+        if n in protos:
+            p = protos[n]
+            print("  %-16s %s (%s)" % (n, p["ret"], ", ".join(p["params"])))
     if "--save" in sys.argv[1:]:
         import json
         out = a[1] if len(a) > 1 else "sdk_symbols.json"
