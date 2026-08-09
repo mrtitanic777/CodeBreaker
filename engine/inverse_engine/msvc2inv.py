@@ -75,11 +75,36 @@ def _candidates(code):
         yield {"nargs": nargs, "expr": ("call", "__stdcall", [])}
         return
     if any(m == "call" for m, o in ops):
+        callop = next(o for m, o in ops if m == "call")
         pushes = [_argk(o) for m, o in ops if m == "push" and o.startswith("dword")]
         if pushes and all(k is not None for k in pushes):
             conv = "__cdecl" if any((m, o) == ("mov", "esp, ebp") for m, o in ops) else "__stdcall"
             args = [("arg", k) for k in reversed(pushes)]   # push order = reverse of source args
-            yield {"nargs": nargs, "expr": ("call", conv, args)}
+            kind_ = "icall" if "[" in callop else "call"    # indirect [P] vs direct rel32
+            yield {"nargs": nargs, "expr": (kind_, conv, args)}
+        return
+
+    # --- globals: read (mov eax,[abs]), write imm/arg, inc/dec [abs] ---
+    _ABS = r"(?:dword ptr )?\[(0x[0-9a-f]+|\d+)\]"
+    if len(ops) == 1 and ops[0][0] == "mov" and re.match(r"eax, " + _ABS + r"$", ops[0][1]):
+        yield {"nargs": nargs, "expr": ("gread", "G")}
+        return
+    gw = next((o for m, o in ops if m == "mov" and re.match(_ABS + r", ", o)), None)
+    if gw:
+        rhs = re.match(_ABS + r", (.+)$", gw).group(2)
+        if rhs == "eax":
+            ak = next((_argk(o) for m, o in ops if m == "mov" and o.startswith("eax,") and _argk(o) is not None), None)
+            if ak is not None:
+                yield {"nargs": nargs, "expr": ("gwrite", "G", ("arg", ak))}
+        else:
+            try:
+                yield {"nargs": nargs, "expr": ("gwrite", "G", ("const", int(rhs, 0)))}
+            except ValueError:
+                pass
+        return
+    idc = next(((m, o) for m, o in ops if m in ("inc", "dec") and re.match(_ABS + r"$", o)), None)
+    if idc:
+        yield {"nargs": nargs, "expr": ("gincdec", "G", 1 if idc[0] == "inc" else -1)}
         return
 
     # --- store *p = value :  mov [eax], (ecx | imm) ---
@@ -324,11 +349,18 @@ def _reloc_mask(code):
     shipped linked address, so they are ignored in the byte comparison."""
     m = set()
     for ins in _MD.disasm(bytes(code), 0):
-        if ins.mnemonic in ("call", "jmp") and ins.op_str.startswith("0x") and len(ins.bytes) == 5:
-            m.update(range(ins.address + 1, ins.address + 5))     # rel32
-        elif "[0x" in ins.op_str:                                 # absolute disp32 (globals)
-            d = ins.op_str.find("[0x")
-            m.update(range(ins.address + len(ins.bytes) - 4, ins.address + len(ins.bytes)))
+        b, a = ins.bytes, ins.address
+        if ins.mnemonic in ("call", "jmp"):
+            if ins.op_str.startswith("0x") and len(b) == 5:       # rel32
+                m.update(range(a + 1, a + 5))
+            elif "]" in ins.op_str and len(b) >= 6:               # indirect [disp32] ff15/ff25
+                m.update(range(a + len(b) - 4, a + len(b)))
+        elif b[:1] in (b"\xa1", b"\xa3"):                         # mov eax,[disp32] / mov [disp32],eax
+            m.update(range(a + 1, a + 5))
+        elif b[:2] == b"\xc7\x05":                                # mov dword[disp32], imm32
+            m.update(range(a + 2, a + 6))
+        elif b[:2] in (b"\xff\x05", b"\xff\x0d"):                 # inc/dec dword[disp32]
+            m.update(range(a + 2, a + 6))
     return m
 
 

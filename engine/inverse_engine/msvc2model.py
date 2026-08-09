@@ -315,6 +315,35 @@ def emit(node):
         seq += _epi(nargs)
         return seq
 
+    # --- global read/write (getters/setters); disp32 = reloc, masked -----------
+    if kind == "gread":                                  # return G  (leaf, no frame)
+        if nargs != 0:
+            return None
+        return bytes([0xA1, 0, 0, 0, 0, 0xC3])           # mov eax,[G]; ret
+    if kind == "gwrite":                                 # G = value
+        val = E[2]
+        if val[0] == "const":                            # mov dword[G], imm32; ret
+            body = bytes([0xC7, 0x05, 0, 0, 0, 0]) + struct.pack("<i", val[1])
+            return body + (bytes([0xC3]) if nargs == 0 else epi)
+        if val[0] == "arg":                              # mov eax,[a]; frame; mov [G],eax; pop; ret
+            return pro + _load_eax(val[1]) + setframe + bytes([0xA3, 0, 0, 0, 0]) + epi
+        return None
+    if kind == "gincdec":                                # G++ / G--  (inc/dec dword[G])
+        return bytes([0xFF, 0x05 if E[2] > 0 else 0x0D, 0, 0, 0, 0]) + (bytes([0xC3]) if nargs == 0 else epi)
+
+    # --- indirect call via a fn-ptr global:  (*P)(args)  ->  call dword ptr [P] --
+    if kind == "icall":
+        cargs = E[2]
+        if not cargs or not all(a[0] == "arg" for a in cargs):
+            return None
+        seq = bytes([0x55, 0x8B, 0xEC])
+        for i, a in enumerate(reversed(cargs)):
+            seq += _push_mem("esp" if i == 0 else "ebp", _argoff(a[1]))
+        seq += bytes([0xFF, 0x15, 0, 0, 0, 0])           # call dword ptr [P]
+        if E[1] == "__cdecl":
+            seq += bytes([0x8B, 0xE5])
+        return seq + epi
+
     # --- store *p = value  (void) ---------------------------------------------
     if kind == "store":
         p, val = E[1], E[2]
@@ -465,6 +494,18 @@ def to_c(node):
         callargs = ", ".join("arg%d" % a[1] for a in cargs)
         return ("extern int %s g(%s); int __stdcall f(%s) { return g(%s); }"
                 % (conv, gsig, params, callargs))
+    if E[0] == "gread":
+        return "extern int G; int __stdcall f(void) { return G; }"
+    if E[0] == "gwrite":
+        return "extern int G; void __stdcall f(%s) { G = %s; }" % (params, _c_expr(E[2]))
+    if E[0] == "gincdec":
+        return "extern int G; void __stdcall f(void) { G %s; }" % ("++" if E[2] > 0 else "--")
+    if E[0] == "icall":
+        conv, cargs = E[1], E[2]
+        gsig = ", ".join("int" for _ in cargs) or "void"
+        callargs = ", ".join("arg%d" % a[1] for a in cargs)
+        return ("extern int (%s *P)(%s); int __stdcall f(%s) { return P(%s); }"
+                % (conv, gsig, params, callargs))
     return "int __stdcall f(%s) { return %s; }" % (params, _c_expr(E))
 
 
@@ -532,6 +573,13 @@ def battery():
     cases.append(("g(a,b)", {"nargs": 2, "expr": ("call", "__stdcall", [A(1), A(2)])}))
     cases.append(("g(a,b,c)", {"nargs": 3, "expr": ("call", "__stdcall", [A(1), A(2), A(3)])}))
     cases.append(("g_cdecl(a)", {"nargs": 1, "expr": ("call", "__cdecl", [A(1)])}))
+    # globals + indirect call (#2 foundation)
+    cases.append(("getG", {"nargs": 0, "expr": ("gread", "G")}))
+    cases.append(("setGc", {"nargs": 0, "expr": ("gwrite", "G", ("const", 5))}))
+    cases.append(("setG", {"nargs": 1, "expr": ("gwrite", "G", A(1))}))
+    cases.append(("incG", {"nargs": 0, "expr": ("gincdec", "G", 1)}))
+    cases.append(("P(a)", {"nargs": 1, "expr": ("icall", "__stdcall", [A(1)])}))
+    cases.append(("P(a,b)", {"nargs": 2, "expr": ("icall", "__stdcall", [A(1), A(2)])}))
     return cases
 
 
