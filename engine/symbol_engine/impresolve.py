@@ -71,6 +71,22 @@ def resolve(dll, ordinal):
     return exporter_map(dll).get(int(ordinal))
 
 
+def signature(name):
+    """SDK header prototype for an API name (typed), via the unified symbol DB, or None."""
+    try:
+        from engine.symbol_engine import symdb
+        return symdb.signature(name)
+    except Exception:
+        return None
+
+
+def resolve_typed(dll, ordinal):
+    """Import (module, ordinal) -> (api_name, sdk_signature_or_None). Names the ordinal from the
+    exporting module's export table (ground truth), then attaches the SDK prototype (hypothesis)."""
+    nm = resolve(dll, ordinal)
+    return nm, (signature(nm) if nm else None)
+
+
 def resolve_ref(ref):
     """Resolve a 'MODULE.ordinal' string to 'MODULE.NAME' (or 'MODULE.ord<N>' if unnamed)."""
     if "." not in ref:

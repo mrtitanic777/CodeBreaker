@@ -1,0 +1,123 @@
+#!/usr/bin/env python3
+r"""symdb.py -- unified symbol/type database over the extracted period-SDK + beta-CodeView data.
+
+Loads the JSON DBs produced by sdksyms.py (SDK import libs + headers) and the Build 311 CodeView
+name harvest, and answers the questions the decompiler/naming pass asks:
+  * signature(name) -> "RET name(t1, t2, ...)"   (from SDK headers, 3184 prototypes)
+  * arity(name)     -> int argument count         (from SDK .lib @N + headers)
+  * struct(name)    -> [(type, field), ...]        (1126 SDK struct layouts)
+  * known(name)     -> which DB knows this name    ('sdk' | 'codeview' | None)
+All HYPOTHESIS-tier (SDK/beta != OSR2): use to annotate/type, cross-check by structure, never to
+override a byte-verified fact. DBs live in the win95 reference tree (gitignored, tool-consumed)."""
+import json
+import os
+
+_REF = ("docs", "reference")
+_CACHE = {}
+
+
+def _find(fname):
+    """Locate a reference JSON across the repo/data split (WT_DATA_ROOT, sibling win95, cwd)."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    cb = os.path.dirname(os.path.dirname(here))
+    roots = []
+    if os.environ.get("WT_DATA_ROOT"):
+        roots.append(os.path.join(os.environ["WT_DATA_ROOT"], "win95"))
+    roots += [os.path.join(os.path.dirname(cb), "win95"), os.getcwd(),
+              os.path.join(os.getcwd(), "win95")]
+    for r in roots:
+        p = os.path.join(r, *_REF, fname)
+        if os.path.exists(p):
+            return p
+    return None
+
+
+def _load():
+    if _CACHE:
+        return _CACHE
+    sdk = {}
+    p = _find("sdk_symbols.json")
+    if p:
+        try:
+            sdk = json.load(open(p, encoding="utf-8"))
+        except (OSError, ValueError):
+            sdk = {}
+    cv = {}
+    p = _find("build311_codeview_syms.json")
+    if p:
+        try:
+            cv = json.load(open(p, encoding="utf-8"))
+        except (OSError, ValueError):
+            cv = {}
+    # flatten: name -> arity (from lib @N across all modules), and the codeview name set
+    arities = {}
+    for dll, syms in sdk.get("32", {}).items():
+        for name, a in syms.items():
+            if isinstance(a, int) and name not in arities:
+                arities[name] = a
+    cvnames = set()
+    for _mod, names in cv.items():
+        cvnames.update(names)
+    proto = sdk.get("proto", {})
+    arity_lib = arities
+    # case-insensitive index: 16-bit export names are UPPERCASE, SDK names are proper-case
+    ci = {k.lower(): k for k in proto}
+    ci_arity = {k.lower(): k for k in arity_lib}
+    ci_cv = {n.lower() for n in cvnames}
+    _CACHE.update(proto=proto, struct=sdk.get("struct", {}), arity_lib=arity_lib,
+                  cvnames=cvnames, ci=ci, ci_arity=ci_arity, ci_cv=ci_cv)
+    return _CACHE
+
+
+def _canon(name):
+    return _load()["ci"].get(name.lower())        # canonical proto name for any-case input
+
+
+def signature(name):
+    """'RET name(t1, t2, ...)' from the SDK header prototype (case-insensitive), or None."""
+    db = _load()
+    c = db["ci"].get(name.lower())
+    if not c:
+        return None
+    p = db["proto"][c]
+    return "%s %s(%s)" % (p["ret"], c, ", ".join(p["params"]) or "void")
+
+
+def arity(name):
+    """Argument count from the SDK header prototype (preferred) or the .lib @N decoration."""
+    db = _load()
+    c = db["ci"].get(name.lower())
+    if c is not None:
+        return len(db["proto"][c]["params"])
+    ca = db["ci_arity"].get(name.lower())
+    return db["arity_lib"].get(ca) if ca else None
+
+
+def struct(name):
+    return _load()["struct"].get(name)
+
+
+def known(name):
+    db = _load()
+    if name in db["proto"] or name in db["arity_lib"]:
+        return "sdk"
+    if name in db["cvnames"]:
+        return "codeview"
+    return None
+
+
+def stats():
+    db = _load()
+    return {"prototypes": len(db["proto"]), "structs": len(db["struct"]),
+            "lib_arities": len(db["arity_lib"]), "codeview_names": len(db["cvnames"])}
+
+
+def main():
+    import sys
+    print("symdb:", stats())
+    for n in sys.argv[1:] or ("CreateFileA", "GetDC", "SendMessageA", "AttApplyCharFormat"):
+        print("  %-18s known=%s  arity=%s  sig=%s" % (n, known(n), arity(n), signature(n)))
+
+
+if __name__ == "__main__":
+    main()
