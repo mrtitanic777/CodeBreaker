@@ -127,8 +127,9 @@ def test_module(module, trials=20, limit=None, budget=45):
         fn = getattr(lib, fname); fn.restype = ctypes.c_uint32
         fn.argtypes = [ctypes.c_uint32] * n
         ok = tested = 0; ok = True
+        rng = random.Random(off)                     # deterministic per-function inputs -> reproducible
         for _ in range(trials):
-            args = [random.getrandbits(32) for _ in range(n)]
+            args = [rng.getrandbits(32) for _ in range(n)]
             o = _emulate(unicorn, va0, code, va0 + off, f['end'], args)
             if o is None:
                 ok = False; break
