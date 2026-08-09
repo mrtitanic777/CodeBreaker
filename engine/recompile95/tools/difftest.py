@@ -99,6 +99,19 @@ def _compile(body):
 
 _ZERO = ('eax', 'ebx', 'ecx', 'edx', 'esi', 'edi', 'CF', 'ZF', 'SF', 'OF', 'PF', 'AF')
 
+_MD = None
+
+
+def _md():
+    """One detailed capstone engine, reused -- constructing it per function was the cost that
+    tipped mfco40 (61 fns) over the sweep's per-module time budget."""
+    global _MD
+    if _MD is None:
+        import capstone
+        _MD = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
+        _MD.detail = True
+    return _MD
+
 
 def _arg_slots(code, va0, off, end):
     """The ordered, distinct stack-argument slots a function actually reads -- esp-adjusted.
@@ -111,8 +124,7 @@ def _arg_slots(code, va0, off, end):
     sub/add and mapping each [esp+d] read to entry-arg index (d + esp_delta)//4. Returns e.g.
     [3, 4]; the caller maps the i-th C parameter to the i-th slot here."""
     import capstone
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
-    md.detail = True
+    md = _md()
     delta, slots = 0, []
     for i in md.disasm(bytes(code[off:end]), va0 + off):
         m = i.mnemonic
