@@ -80,6 +80,9 @@ def build(out_iso, modules):
     rng = random.Random(20260808)
     stage = tempfile.mkdtemp(prefix="vmdt_")
     lift = ['#include "win95c.h"\n',
+            # Freestanding DLL entry: win95 rejects a DLL whose mingw CRT startup calls APIs it
+            # lacks. -nostdlib + this trivial entry drops all CRT init -> loads on win95.
+            'int __stdcall DllMainCRTStartup(void*h,unsigned r,void*x){(void)h;(void)r;(void)x;return 1;}\n',
             '__declspec(dllexport) void __zero(void){eax=ebx=ecx=edx=esi=edi=CF=ZF=SF=OF=PF=AF=0;}\n']
     tests, used = [], []
     for m in modules:
@@ -97,9 +100,13 @@ def build(out_iso, modules):
     print("selected %d proven pure-leaf functions across %d modules" % (len(tests), len(used)))
 
     open(os.path.join(stage, "LIFT.C"), "w").write("".join(lift))
-    _run([I686, "-x", "c", "-std=gnu89", "-w", "-m32", "-mstackrealign", "-shared", "-o",
-          os.path.join(stage, "LIFT.DLL"), os.path.join(stage, "LIFT.C"),
-          os.path.join(INC, "win95rt.c"), "-I", INC], "LIFT.DLL")
+    _run([I686, "-x", "c", "-std=gnu89", "-w", "-m32", "-mstackrealign", "-shared", "-nostdlib",
+          "-Wl,-e,_DllMainCRTStartup@12",                    # freestanding entry, no CRT init
+          "-Wl,--major-os-version,4", "-Wl,--minor-os-version,0",       # PE says "runs on win95"
+          "-Wl,--major-subsystem-version,4", "-Wl,--minor-subsystem-version,0",
+          "-Wl,--disable-nxcompat", "-Wl,--disable-dynamicbase",       # flags win95's loader rejects
+          "-o", os.path.join(stage, "LIFT.DLL"), os.path.join(stage, "LIFT.C"),
+          os.path.join(INC, "win95rt.c"), "-I", INC, "-lgcc"], "LIFT.DLL")  # -lgcc: 64-bit mul/div helpers
     os.remove(os.path.join(stage, "LIFT.C"))
 
     th = ["typedef struct{const char*mod;const char*realdll;unsigned rva;const char*expname;"
