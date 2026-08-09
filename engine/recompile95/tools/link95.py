@@ -201,9 +201,12 @@ def resolve_calls(src, pfx, segs, segvaddr, defmap):
 def transform(mod, dll_of_prefix, stub=False):
     """Namespace + export-alias + import-rewrite the module's C. dll_of_prefix maps an
     imported DLL name (upper, no ext) -> its prefix, for cross-module import symbols."""
-    try:                                              # rung 2c: real arities (ret N) -> drop casts
-        import sigrecover
-        _ar = sigrecover.arities(mod)
+    try:                                              # rung 2c: real arities (ret N) -> drop casts;
+        import sigrecover                              # rung-3 SDK fill: ret N > SDK arity (hypothesis)
+        _ar, _rep = sigrecover.arities_plus(mod)
+        if _rep.get("disagree") or _rep.get("filled"):
+            print("  [sigrecover] SDK cross-check: %d agree, %d disagree, %d cdecl-export fills"
+                  % (_rep["agree"], _rep["disagree"], _rep["filled"]))
     except Exception:
         _ar = None
     src = rc.adapt(open(cfile(mod), encoding="utf-8", errors="replace").read(), link=True, arities=_ar)
