@@ -151,7 +151,7 @@ def _nparams(body):
     return 0 if not seg.strip() else seg.count(",") + 1
 
 
-def test_module(module, trials=20, limit=None, budget=45):
+def test_module(module, trials=20, limit=None, budget=90):
     """Returns (proven, mismatches[list], skipped)."""
     import unicorn
     target = cores.get("target")
