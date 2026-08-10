@@ -850,8 +850,15 @@ def _operand(tok, params, width_hint=None, bits=32):
         ms = re.match(r"^(%s)\s*\+\s*(0x[0-9a-f]+|[0-9a-f]+h|\d+)$" % fp, inner)
         if ms and _imm2(ms.group(2)).val < 0x8000:
             disp = _imm2(ms.group(2)).val
-            name = "arg%d" % (disp // argdiv)    # ret addr low; args above the frame ptr
-            params[disp] = name
+            off_in = disp % argdiv               # byte offset WITHIN the containing arg slot
+            base = disp - off_in                 # the aligned dword-arg this access lands in
+            name = "arg%d" % (base // argdiv)    # ret addr low; args above the frame ptr
+            params[base] = name
+            if off_in and width < argdiv * 8:    # sub-dword access -> byte/word LANE of the arg
+                # e.g. `mov cl, [ebp+9]` reads byte 1 of arg2, i.e. (arg2 >> 8) & 0xff -- not
+                # the whole arg. Dropping off_in collapsed the lane and read byte 0 instead.
+                return (Bin("&", Bin(">>", Reg(name, 32), Const(off_in * 8, 32), 32),
+                             Const((1 << width) - 1, 32), width), width)
             return Reg(name, width), width
         # frame-negative slot -> a named stack local (declared at function top).
         ml = re.match(r"^%s\s*-\s*(0x[0-9a-f]+|[0-9a-f]+h|\d+)$" % loc, inner)
@@ -2055,10 +2062,26 @@ def lift_asm_function(path, name=None, faithful=False):
     # ---- global register liveness -> safe cross-block dead-store elimination ---
     # (faithful mode keeps live_out for the SSA rename below, but does NOT prune:
     #  losslessness for byte-exact recompilation trumps readability here.)
-    live_out = _reg_liveness(blocks, conds=_recover_conditions(rows, params, bits))
+    conds0 = _recover_conditions(rows, params, bits)
+    live_out = _reg_liveness(blocks, conds=conds0)
     if not faithful:
+        # A block's own conditional branch reads its cmp operands, so those registers are
+        # live at the block's end -- even when EVERY successor redefines them first (then
+        # they are absent from live_out). Seed DSE with them too, or the store feeding the
+        # branch is wrongly dropped -> use-before-def. This is the dropped-subregister-load
+        # class (e.g. mmfmig32 0x16830: `mov cl,[ebp+9]; cmp ..,cl; jbe` where the next
+        # block reloads cl, so cl left live_out and the first load vanished).
+        cond_reads, ci = {}, 0
+        for (nm, _st, term) in blocks:
+            if term[0] == "cond":
+                cc = conds0[ci] if ci < len(conds0) else None
+                ci += 1
+                rd = set()
+                if cc and cc[2]:
+                    _reads_regs(cc[2][0], rd); _reads_regs(cc[2][1], rd)
+                cond_reads[nm] = rd
         for b in blocks:
-            b[1] = _dse_blocklocal(b[1], live_out.get(b[0], set()))
+            b[1] = _dse_blocklocal(b[1], live_out.get(b[0], set()) | cond_reads.get(b[0], set()))
 
     # ---- structurer: recover if-then for `cond` blocks whose fall body rejoins -
     names = [b[0] for b in blocks]
@@ -2409,27 +2432,57 @@ NEG_MN = {"je": "jne", "jne": "je", "jl": "jge", "jge": "jl", "jle": "jg",
           "js": "jns", "jns": "js", "jo": "jno", "jno": "jo", "jp": "jnp", "jnp": "jp"}
 
 
+def _opw(n):
+    """The bit-width of a comparison operand (8/16/32); 32 if untagged."""
+    w = getattr(n, "width", None)
+    return w if w in (8, 16, 32) else 32
+
+
+def _cmp_width(a, b):
+    """Width of a cmp: the non-immediate operand carries the true size (`cmp al,0x39`
+    is an 8-bit compare even though 0x39 fits a dword). x86 requires both the same
+    width, so either non-const answers; fall back to 32 (a bare imm-vs-imm never occurs)."""
+    if not isinstance(a, Const):
+        return _opw(a)
+    if not isinstance(b, Const):
+        return _opw(b)
+    return 32
+
+
+def _wc(s, w, signed):
+    """Cast an already-rendered operand to its compare width so the C relational has the
+    SAME signedness/width as the x86 flags. At w==32 this reproduces the historical output
+    exactly ((i32) for signed, bare for unsigned); at w<32 it sign-/zero-extends from the
+    real subregister -- e.g. `cmp al,imm; jle` is a SIGNED int8 test, so (i8)al (0x8d ->
+    -115), and `cmp word[..],imm; ja` is UNSIGNED 16-bit, so (u16)."""
+    if w >= 32:
+        return "(i32)%s" % s if signed else s
+    return "(%s%d)%s" % ("i" if signed else "u", w, s)
+
+
 def _cc_to_c(mn, a, b, kind):
-    """Render a jcc as a C boolean, honouring signedness and the compare kind.
+    """Render a jcc as a C boolean, honouring signedness, the compare kind, AND the
+    operand WIDTH.
 
     `test x,x` (and `test a,b`) set flags off `x` (or `a&b`) vs 0, so je/js/jl there
     mean == 0 / < 0 -- NOT `x < x`. cmp a,b compares the two operands, signed for
-    jl/jg (i32 casts) and unsigned for jb/ja."""
+    jl/jg and unsigned for jb/ja, each at the operands' subregister width."""
     if kind == "test":
         lhs = a if _c(a) == _c(b) else Bin("&", a, b, 32)
         rhs = Const(0, 32)
     else:
         lhs, rhs = a, b
+    w = _cmp_width(lhs, rhs)
     L, R = _c(lhs), _c(rhs)
-    table = {"je": "%s == %s", "jne": "%s != %s",
-             "jb": "%s < %s", "jbe": "%s <= %s", "ja": "%s > %s", "jae": "%s >= %s",
-             "jl": "(i32)%s < (i32)%s", "jle": "(i32)%s <= (i32)%s",
-             "jg": "(i32)%s > (i32)%s", "jge": "(i32)%s >= (i32)%s"}
-    if mn in table:
-        return table[mn] % (L, R)
+    unsigned = {"je": "==", "jne": "!=", "jb": "<", "jbe": "<=", "ja": ">", "jae": ">="}
+    signed = {"jl": "<", "jle": "<=", "jg": ">", "jge": ">="}
+    if mn in unsigned:                                    # ==,!= and unsigned relationals
+        return "%s %s %s" % (_wc(L, w, False), unsigned[mn], _wc(R, w, False))
+    if mn in signed:                                      # signed relationals (i8/i16/i32)
+        return "%s %s %s" % (_wc(L, w, True), signed[mn], _wc(R, w, True))
     if mn in ("js", "jns"):
         inner = L if R in ("0", "0x0") else "(%s - %s)" % (L, R)
-        return "(i32)%s %s 0" % (inner, "<" if mn == "js" else ">=")
+        return "%s %s 0" % (_wc(inner, w, True), "<" if mn == "js" else ">=")
     if mn in ("jo", "jno"):
         if kind == "test":                               # test clears OF
             return "0" if mn == "jo" else "1"
