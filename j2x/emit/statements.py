@@ -1738,6 +1738,11 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
         # simple identifier-rooted operands earlier; this catches call/static-rooted ones it can't.
         if t in typemap.BOXED_VALUE_TYPES:
             return ''
+        # interface cast to a collection ((List)/(Map)/(Set)/(Collection)): DROP it. `List`/`Map` are
+        # Java interface NAMES with no C++ type, and the operand is either already the value container
+        # (redundant cast) or a JObject that unboxes to it via the JObject ctor added to JList/JMap/JSet.
+        if t in typemap.CONTAINERS:
+            return ''
         if resolver.is_pointer(ir.JType(t)):
             return '(%s*)' % t
         cpp = typemap.JAVA_TO_CPP.get(t)
