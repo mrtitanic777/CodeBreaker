@@ -664,6 +664,9 @@ struct JObject {
 	// box a primitive/reference array (`Object o = intArray`, `map.put(k, int[])`) as a heap copy,
 	// RTTI-tagged so `(int[])o` unboxes it. Non-String arrays only (String[] uses the kind-6 ctor above).
 	template<class T> JObject(const JArray<T>& v) : kind(5), i(0), d(0), p(new JArray<T>(v)), ti(&typeid(JArray<T>)) {}
+	// box a value-container Map the same way (`Object o = map` / a generics bridge returning Map as
+	// Object, argo's JsonNodeSelectors). `(Map)o` unboxes via the operator below.
+	template<class K, class V> JObject(const JMap<K, V>& m) : kind(5), i(0), d(0), p(new JMap<K, V>(m)), ti(&typeid(JMap<K, V>)) {}
 	template<class T> JObject(T* v) : kind(v ? 5 : 0), i(0), d(0), p((void*)v), ti(v ? &typeid(T) : 0) {}
 	// Java instanceof:
 	bool isCharacter() const { return kind == 2; }
@@ -708,6 +711,10 @@ struct JObject {
 	// unbox a boxed array: `(int[])o` -> the stored JArray (empty if o didn't box a JArray<T>).
 	template<class T> operator JArray<T>() const {
 		return (kind == 5 && p && ti && *ti == typeid(JArray<T>)) ? *(JArray<T>*)p : JArray<T>();
+	}
+	// unbox a boxed Map: `(Map)o` -> the stored JMap (empty if o didn't box a JMap<K,V>).
+	template<class K, class V> operator JMap<K, V>() const {
+		return (kind == 5 && p && ti && *ti == typeid(JMap<K, V>)) ? *(JMap<K, V>*)p : JMap<K, V>();
 	}
 };
 
