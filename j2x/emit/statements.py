@@ -1559,6 +1559,32 @@ def _deref_iter_helpers(s):
     return s
 
 
+_NEW_ALLOC = re.compile(r'new\s+[A-Za-z_]\w*\s*\(')
+
+
+def _wrap_new_alloc_chains(s):
+    """`new X(...)->m` / `new X(...).m` parses in C++ as `new (X()->m)` -- the member access binds to
+    the CALL, not the allocation. Parenthesize the allocation: `(new X(...))->m`. Idempotent (skips a
+    `new` that is already wrapped as `(new ...)`)."""
+    out, i, n = [], 0, len(s)
+    while i < n:
+        m = _NEW_ALLOC.match(s, i)
+        if m:
+            close = _balanced_paren(s, m.end() - 1)
+            if close >= 0:
+                j = close + 1
+                while j < n and s[j] == ' ':
+                    j += 1
+                if j < n and (s[j] == '.' or s[j:j + 2] == '->'):
+                    prev = out[-1] if out else ''
+                    if prev != '(':                       # not already `(new ...)`
+                        out.append('(' + s[i:close + 1] + ')')
+                        i = close + 1
+                        continue
+        out.append(s[i]); i += 1
+    return ''.join(out)
+
+
 def fix_enum_access(s, resolver):
     """Refine enum member access after `Enum.member` -> `Enum::member`. Shared by the statement
     translator and the static-initializer translator (source._static_ref), since enum access appears
@@ -1768,6 +1794,13 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
     # 7c. `new Object()` (bare Object, the Java lock-monitor idiom) -> a default JObject
     #     (Object is JObject now). Identity is all that's used (locks are stripped anyway).
     s = re.sub(r'\bnew\s+Object\s*\(\s*\)', 'JObject()', s)
+    # 7c2. `new Integer(x)` / `new Byte(x)` / ... (boxed-wrapper CONSTRUCTOR) -> JObject(x): the wrapper
+    #      types are namespaces (Integer::valueOf, ...), not classes, so `new Byte(x)` boxes into the
+    #      universal JObject (dataWatcher->addObject(id, new Byte((signed char)v)), NBT tag values, ...).
+    s = re.sub(r'\bnew\s+(?:Integer|Long|Float|Double|Boolean|Byte|Short|Character)\s*\(', 'JObject(', s)
+    s = s.replace(chr(39) + chr(92) + "u0000" + chr(39), chr(39) + chr(92) + "0" + chr(39))
+    #      only one the corpus uses is NUL -> the standard `'\0'` escape.
+    s = s.replace(chr(39) + chr(92) + "u0000" + chr(39), chr(39) + chr(92) + "0" + chr(39))
     # 8. Java null literal -> NULL
     s = re.sub(r'\bnull\b', 'NULL', s)
     # 9pre. new T[]{a, b, c} aggregate -> JArrayInit builder (before the sized-new pass)
@@ -2091,6 +2124,7 @@ def translate_body(method, cls, resolver, ledger=None):
                    line=method.line, severity=Severity.MED, source='emit', rule='label-goto')
     out = _rewrite_leak_temporaries(out, resolver, ledger, cls)   # (new T())->m() throwaway -> scoped stack obj
     out = _flag_reflection(out, ledger, cls)      # tag newInstance/forName/getConstructor for review
+    out = [_wrap_new_alloc_chains(l) for l in out]   # `new X()->m` -> `(new X())->m` (C++ precedence)
     out = [_clarify_precedence(l) for l in out]   # C4554: parenthesize shift/bitwise sub-expressions
     out = _drop_unused_catch_vars(out)            # `catch (Type* e){}` with e unused -> `catch (Type*)` (C4101)
     out = _wrap_switch_cases(out)                 # `{ }` per case body so decls don't cross a case label (C2360/C2361)
