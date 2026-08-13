@@ -1719,7 +1719,7 @@ public:
 	bool isInstance(...) const { return false; }
 	bool isAssignableFrom(...) const { return false; }
 	Class* getSuperclass() { return 0; }
-	void* getConstructor(...) { return 0; }
+	Class getConstructor(...) { return *this; }   // dead reflection: chain `.newInstance()` compiles; returns NULL
 	void* newInstance(...) { return 0; }
 	void* getDeclaredFields(...) { return 0; }
 	// Real resource resolution (was `return 0`, which made ImageIO::read(getResource("/x.png")) return

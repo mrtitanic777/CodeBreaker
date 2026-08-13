@@ -36,6 +36,10 @@ def _finalize_emitted(text):
     # `new Object()` (a bare java.lang.Object, used only as a monitor/lock) -> a JObject VALUE. Object
     # has no C++ class; the universal box default-constructs, and the sync object is never used on the port.
     text = re.sub(r'\bnew\s+Object\s*\(\s*\)', 'JObject()', text)
+    # `arr->length` -> `arr.length`: `length` (no parens) is a field on JArray ONLY, always a value, so a
+    # pointer deref of it is a cross-class member-env miss (a byte[] field reached through a typed pointer,
+    # e.g. RenderEngine's var2->imageData->length). `->length(` (a method) and `->lengthX` are untouched.
+    text = re.sub(r'->length\b(?!\s*\()', '.length', text)
     return '\n'.join(_wrap_literal_method(_wrap_new_alloc_chains(ln)) for ln in text.split('\n'))
 
 
