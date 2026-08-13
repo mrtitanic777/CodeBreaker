@@ -355,9 +355,240 @@ def unpack(path):
     sys.stderr.write("produced=%d / %d\n" % (len(out), dec_size))
     return out
 
-if __name__ == "__main__":
-    src = sys.argv[1]
-    dst = sys.argv[2] if len(sys.argv) > 2 else src + ".decompressed"
+# ---- region files (.mcr) ----------------------------------------------------
+# Layout:  [4096 B location table][4096 B timestamps][chunk sectors]
+#   location entry = u32 BE (sector << 8) | sector_count
+#   chunk sector   = [u32 BE 0x80000000|comp_len][u32 BE decompressed_size]
+#                    then XMemCompress-LZX -> RLE-compressed legacy chunk NBT.
+_REGION_WINDOW = 0x20000
+
+def rle_decode(data):
+    """LCE region-chunk RLE (mirror of Minecraft.World DecompressRLE):
+       0..254     -> literal byte
+       255,k(<=2) -> (k+1) copies of 0xFF
+       255,n(>=3),b -> (n+1) copies of b."""
+    out = bytearray()
+    i = 0
+    n = len(data)
+    while i < n:
+        b = data[i]
+        if b == 0xFF:
+            k = data[i + 1]
+            if k <= 2:
+                out += b"\xff" * (k + 1); i += 2
+            else:
+                out += bytes([data[i + 2]]) * (k + 1); i += 3
+        else:
+            out.append(b); i += 1
+    return bytes(out)
+
+def decode_region_chunk(sector_bytes):
+    """One chunk's sector bytes -> decompressed legacy chunk NBT.
+
+    Handles both LCE chunk encodings: plain legacy NBT (payload starts with
+    a Compound tag 0x0A) and the version 8/9 "compressed chunk storage"
+    (palettized tile storage + sparse nibble storage) which is expanded here
+    into the same legacy chunk NBT."""
+    comp_len = struct.unpack_from(">I", sector_bytes, 0)[0] & 0x7FFFFFFF
+    dec_size = struct.unpack_from(">I", sector_bytes, 4)[0]
+    body = sector_bytes[8:8 + comp_len]
+    # XMemCompress LZX frame stream (first frame carries an 0xFF long header)
+    num_slots = _num_position_slots(_REGION_WINDOW)
+    extra, base = _build_pos_tables(num_slots)
+    if body and body[0] == 0xFF:
+        raw = struct.unpack_from(">H", body, 1)[0]
+        clen = struct.unpack_from(">H", body, 3)[0]
+        payload = body[5:5 + clen]
+    else:
+        raw = 0x8000
+        clen = struct.unpack_from(">H", body, 0)[0]
+        payload = body[2:2 + clen]
+    rle = lzx_decompress_chunk(payload, raw, num_slots, extra, base)
+    nbt = rle_decode(rle)
+
+    if nbt[:1] != b"\x0a" and len(nbt) >= 2:
+        ver = struct.unpack_from(">h", nbt, 0)[0]
+        if ver in (COMPRESSED_STORAGE_V8, COMPRESSED_STORAGE_V9):
+            nbt = build_legacy_chunk_nbt(decode_compressed_chunk(nbt))
+    return nbt, dec_size
+
+# ---- version 8/9 "compressed chunk storage" ---------------------------------
+COMPRESSED_STORAGE_V8 = 8      # blocks/data/light, no InhabitedTime
+COMPRESSED_STORAGE_V9 = 9      # adds InhabitedTime
+BLOCKS_PER_SECTION = 128 * 16 * 16          # 32768
+NIBBLES_PER_SECTION = BLOCKS_PER_SECTION // 2  # 16384
+_IDX_TYPE_MASK = 0x0003
+_IDX_0OR8 = 0x0003
+_IDX_0BIT_FLAG = 0x0004
+_SPARSE_ALL_ZERO = 128
+_SPARSE_ALL_FIFTEEN = 129
+
+def _compressed_tile_index(block, tile):
+    idx = ((block & 0x180) << 6) | ((block & 0x060) << 4) | ((block & 0x01F) << 2)
+    idx |= ((tile & 0x30) << 7) | ((tile & 0x0C) << 5) | (tile & 0x03)
+    return idx
+
+def _read_compressed_tile_storage(payload, off):
+    allocated = struct.unpack_from(">i", payload, off)[0]; off += 4
+    blob = payload[off:off + allocated]; off += allocated
+    data_region = blob[1024:]
+    blocks = bytearray(BLOCKS_PER_SECTION)
+    for block in range(512):
+        block_index = struct.unpack_from("<H", blob, block * 2)[0]
+        itype = block_index & _IDX_TYPE_MASK
+        if itype == _IDX_0OR8:
+            if block_index & _IDX_0BIT_FLAG:                 # whole 4x4x4 tile one value
+                value = (block_index >> 8) & 0xFF
+                for tile in range(64):
+                    blocks[_compressed_tile_index(block, tile)] = value
+            else:                                            # 8-bit: 64 literal bytes
+                doff = (block_index >> 1) & 0x7FFE
+                for tile in range(64):
+                    blocks[_compressed_tile_index(block, tile)] = data_region[doff + tile]
+            continue
+        # 1/2/4-bit palette
+        bits = 1 << itype
+        type_count = 1 << bits
+        type_mask = type_count - 1
+        index_shift = 3 - itype
+        index_mask_bits = 7 >> itype
+        index_mask_bytes = 62 >> index_shift
+        packed_size = 8 << itype
+        doff = (block_index >> 1) & 0x7FFE
+        palette = data_region[doff:doff + type_count]
+        packed = data_region[doff + type_count:doff + type_count + packed_size]
+        for tile in range(64):
+            bidx = (tile >> index_shift) & index_mask_bytes
+            bit = (tile & index_mask_bits) * bits
+            pi = (packed[bidx] >> bit) & type_mask
+            blocks[_compressed_tile_index(block, tile)] = palette[pi]
+    return bytes(blocks), off
+
+def _set_nibble(nib, xz, y, value):
+    pos = (xz << 7) | y
+    slot = pos >> 1
+    if pos & 1:
+        nib[slot] = (nib[slot] & 0x0F) | ((value & 0x0F) << 4)
+    else:
+        nib[slot] = (nib[slot] & 0xF0) | (value & 0x0F)
+
+def _read_sparse_nibble(payload, off, supports_fifteen):
+    count = struct.unpack_from(">i", payload, off)[0]; off += 4
+    storage = 128 + count * 128
+    blob = payload[off:off + storage]; off += storage
+    plane_indices = blob[:128]
+    plane_data = blob[128:]
+    nib = bytearray(NIBBLES_PER_SECTION)
+    for y in range(128):
+        pidx = plane_indices[y]
+        if pidx == _SPARSE_ALL_ZERO:
+            continue
+        if supports_fifteen and pidx == _SPARSE_ALL_FIFTEEN:
+            for xz in range(256):
+                _set_nibble(nib, xz, y, 15)
+            continue
+        po = pidx * 128
+        plane = plane_data[po:po + 128]
+        for xz in range(128):
+            packed = plane[xz]
+            _set_nibble(nib, xz << 1, y, packed & 0x0F)
+            _set_nibble(nib, (xz << 1) + 1, y, (packed >> 4) & 0x0F)
+    return bytes(nib), off
+
+def decode_compressed_chunk(payload):
+    """Version 8/9 compressed chunk storage -> dict of legacy chunk arrays."""
+    off = 0
+    version = struct.unpack_from(">h", payload, off)[0]; off += 2
+    cx = struct.unpack_from(">i", payload, off)[0]; off += 4
+    cz = struct.unpack_from(">i", payload, off)[0]; off += 4
+    last_update = struct.unpack_from(">q", payload, off)[0]; off += 8
+    inhabited = 0
+    if version >= COMPRESSED_STORAGE_V9:
+        inhabited = struct.unpack_from(">q", payload, off)[0]; off += 8
+    blocks, off = _read_compressed_tile_storage(payload, off)
+    _, off = _read_compressed_tile_storage(payload, off)                  # upper (ignored)
+    data, off = _read_sparse_nibble(payload, off, False)
+    _, off = _read_sparse_nibble(payload, off, False)                     # upper
+    sky, off = _read_sparse_nibble(payload, off, True)
+    _, off = _read_sparse_nibble(payload, off, True)                      # upper
+    blocklight, off = _read_sparse_nibble(payload, off, True)
+    _, off = _read_sparse_nibble(payload, off, True)                      # upper
+    heightmap = payload[off:off + 256]; off += 256
+    terrain_flags = struct.unpack_from(">h", payload, off)[0]; off += 2
+    biomes = payload[off:off + 256]; off += 256
+    dynamic = payload[off:]      # trailing dynamic NBT root, or empty
+    return dict(version=version, xPos=cx, zPos=cz, LastUpdate=last_update,
+                InhabitedTime=inhabited, Blocks=blocks, Data=data, SkyLight=sky,
+                BlockLight=blocklight, HeightMap=heightmap,
+                TerrainPopulatedFlags=terrain_flags, Biomes=biomes, dynamic=dynamic)
+
+def _nbt_name(name):
+    nb = name.encode("utf-8")
+    return struct.pack(">H", len(nb)) + nb
+
+def build_legacy_chunk_nbt(c):
+    """Build a big-endian legacy chunk NBT (root -> Level) from decoded arrays.
+    Any entities/tile-entities in the trailing dynamic NBT are spliced in."""
+    level = bytearray()
+    level += b"\x03" + _nbt_name("xPos") + struct.pack(">i", c["xPos"])
+    level += b"\x03" + _nbt_name("zPos") + struct.pack(">i", c["zPos"])
+    level += b"\x04" + _nbt_name("LastUpdate") + struct.pack(">q", c["LastUpdate"])
+    level += b"\x04" + _nbt_name("InhabitedTime") + struct.pack(">q", c["InhabitedTime"])
+    for k in ("Blocks", "Data", "SkyLight", "BlockLight", "HeightMap"):
+        level += b"\x07" + _nbt_name(k) + struct.pack(">i", len(c[k])) + c[k]
+    level += b"\x02" + _nbt_name("TerrainPopulatedFlags") + struct.pack(">h", c["TerrainPopulatedFlags"])
+    level += b"\x07" + _nbt_name("Biomes") + struct.pack(">i", len(c["Biomes"])) + c["Biomes"]
+    # splice inner tags of the trailing dynamic root (Entities/TileEntities/...)
+    dyn = c.get("dynamic") or b""
+    if len(dyn) >= 3 and dyn[0] == 0x0A:
+        nl = struct.unpack_from(">H", dyn, 1)[0]
+        inner = dyn[3 + nl:]
+        if inner.endswith(b"\x00"):
+            inner = inner[:-1]
+        level += inner
+    else:
+        level += b"\x09" + _nbt_name("Entities") + b"\x0a" + struct.pack(">i", 0)
+        level += b"\x09" + _nbt_name("TileEntities") + b"\x0a" + struct.pack(">i", 0)
+    out = bytearray()
+    out += b"\x0a" + _nbt_name("")          # root compound (empty name)
+    out += b"\x0a" + _nbt_name("Level")     # Level compound
+    out += level
+    out += b"\x00"                          # end Level
+    out += b"\x00"                          # end root
+    return bytes(out)
+
+def decode_region(path):
+    """Yield (chunk_x, chunk_z, nbt_bytes) for every present chunk in a .mcr."""
+    d = open(path, "rb").read()
+    for i in range(1024):
+        loc = struct.unpack_from(">I", d, i * 4)[0]
+        sector = loc >> 8
+        if sector == 0:
+            continue
+        cx, cz = i % 32, i // 32
+        p = sector * 4096
+        nbt, _ = decode_region_chunk(d[p:])
+        yield cx, cz, nbt
+
+# ---- CLI --------------------------------------------------------------------
+def _main(argv):
+    if len(argv) >= 2 and argv[0] == "region":
+        import os
+        path = argv[1]
+        outdir = argv[2] if len(argv) > 2 else path + "_chunks"
+        os.makedirs(outdir, exist_ok=True)
+        n = 0
+        for cx, cz, nbt in decode_region(path):
+            open(os.path.join(outdir, "chunk.%d.%d.nbt" % (cx, cz)), "wb").write(nbt)
+            n += 1
+        sys.stderr.write("decoded %d chunks -> %s\n" % (n, outdir))
+        return
+    # default: unpack a savegame container
+    src = argv[0]
+    dst = argv[1] if len(argv) > 1 else src + ".decompressed"
     data = unpack(src)
     open(dst, "wb").write(data)
     sys.stderr.write("wrote %s (%d bytes)\n" % (dst, len(data)))
+
+if __name__ == "__main__":
+    _main(sys.argv[1:])

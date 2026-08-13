@@ -658,6 +658,29 @@ def render_source(cls, resolver, ledger=None, cpp_std=None, platform_label=None)
         if m.is_ctor or m.is_abstract:
             continue
         body += _render_method(cls, m, resolver, ledger) + ['']
+    # An abstract method CALLED from a constructor (Entity's ctor calls the abstract entityInit()) needs
+    # an out-of-line definition: from the base ctor the call resolves NON-virtually to THIS class's version,
+    # so a pure `= 0` with no body is an unresolved external. A pure virtual is allowed to have a body;
+    # emit an empty one (subclasses still override it). Java would dispatch to the override here, but C++
+    # calls the base during base-construction -- the standard virtual-call-in-ctor divergence.
+    ctor_text = '\n'.join(t for c in cls.constructors() for _ln, t in c.body)
+    for m in cls.methods:
+        if not m.is_abstract:
+            continue
+        if re.search(r'(?<![\w.>])(?:this\s*(?:\.|->)\s*)?%s\s*\(' % re.escape(m.name), ctor_text):
+            rt = ownership.return_cpp_type(m, resolver)
+            sig = '%s %s::%s(%s)' % (rt, cls.name, m.name, ownership.params_str(m, resolver))
+            if rt == 'void':
+                body += [sig, '{', '}', '']
+            else:
+                dv = _default_value(rt)
+                body += [sig, '{', '\treturn %s;' % (dv if dv is not None else rt + '()'), '}', '']
+            if ledger is not None:
+                ledger.add(cls.name + '.cpp', Category.RISK,
+                           'abstract %s() is called from a constructor -- emitted an empty base definition '
+                           '(C++ calls the base, not the override, during base construction)' % m.name,
+                           line=getattr(m, 'line', 0), severity=Severity.MED, source='emit',
+                           rule='abstract-called-in-ctor')
     for im, base in getattr(cls, 'mi_forwards', []):
         body += _render_mi_forward(cls, im, base, resolver, ledger) + ['']
 
