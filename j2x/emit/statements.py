@@ -2204,9 +2204,39 @@ def _nullable_getter_ctype(getter_name):
     return (t + '*') if t else None
 
 
+def _recv_qual_start(s, name_start):
+    """Walk back from a getter name at `name_start` over any receiver qualifier chain
+    (`NetworkManager::getX`, `this->obj.getX`) so the whole receiver is hoisted together,
+    not left glued to the substituted temp. Returns the index the qualified receiver starts at."""
+    i = name_start
+    while True:
+        if i >= 2 and s[i - 2:i] in ('::', '->'):
+            j = i - 2
+        elif i >= 1 and s[i - 1] == '.':
+            j = i - 1
+        else:
+            break
+        k = j
+        while k > 0 and (s[k - 1].isalnum() or s[k - 1] == '_'):
+            k -= 1
+        if k == j:                                   # a connector with no identifier before it -> stop
+            break
+        i = k
+    return i
+
+
 def _hoist_nullable_getter(s, return_type, resolver):
     """If s contains a KNOWN_NULLABLE_GETTER(args)->deref not caught by the standalone
     patterns, hoist the getter into a temp variable and null-guard the dereference."""
+    # A control-flow header / block opener is NOT a hoistable value statement: wrapping it in a
+    # `{ tmp = ...; if (tmp) { <line> } }` block strands the trailing `{` and mangles the condition
+    # (the NetworkManager `if(getReadThread(x)->isAlive()) {` corruption). Leave it un-hoisted -- the
+    # raw `recv->call()` compiles and matches Java's own NPE-on-null semantics.
+    head = s.lstrip()
+    if s.rstrip().endswith('{') or head.startswith((
+            'if(', 'if ', 'while(', 'while ', 'for(', 'for ', 'switch(', 'switch ',
+            '} else', 'else ', 'else{', 'do ', 'do{')):
+        return None
     for m in _NULLABLE_GETTER_CALL.finditer(s):
         gn = m.group(2)
         open_idx = m.end() - 1
@@ -2232,10 +2262,11 @@ def _hoist_nullable_getter(s, return_type, resolver):
         if ctype is None:
             continue
 
-        recv_expr = s[m.start():close + 1]
+        qstart = _recv_qual_start(s, m.start())      # include NetworkManager:: / this->obj. qualifier
+        recv_expr = s[qstart:close + 1]
         tmp = '_j2x_%s' % gn.replace('get', '', 1)[:20]
         tmp = tmp[0].lower() + tmp[1:]
-        new_line = s[:m.start()] + tmp + s[close + 1:]
+        new_line = s[:qstart] + tmp + s[close + 1:]
 
         stripped = s.strip()
         if stripped.startswith('return '):

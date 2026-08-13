@@ -2545,3 +2545,29 @@ class JCatTernaryTests(unittest.TestCase):
         out = statements._to_jcat('a ? x + " p" : (b ? y + " q" : z + " r")')
         self.assertIn('(JCat() + y + " q")', out)
         self.assertIn('(JCat() + z + " r")', out)
+
+
+class NullableGetterHoistTests(unittest.TestCase):
+    def test_hoist_bails_on_if_condition(self):
+        # hoisting inside an if-condition strands the trailing `{` and mangles the qualifier
+        s = 'if(NetworkManager::getReadThread(this->x)->isAlive()) {'
+        self.assertIsNone(statements._hoist_nullable_getter(s, None, types.TypeResolver()))
+
+    def test_hoist_bails_on_while_condition(self):
+        s = 'while(NetworkManager::getReadThread(this->x)->isAlive()) {'
+        self.assertIsNone(statements._hoist_nullable_getter(s, None, types.TypeResolver()))
+
+    def test_recv_qual_start_absorbs_scope(self):
+        s = 'a = NetworkManager::getReadThread(x)->f();'
+        i = s.index('getReadThread')
+        self.assertEqual(s[statements._recv_qual_start(s, i):i], 'NetworkManager::')
+
+    def test_recv_qual_start_absorbs_arrow_and_dot(self):
+        s = 'this->obj.getReadThread(x)->f();'
+        i = s.index('getReadThread')
+        self.assertEqual(s[statements._recv_qual_start(s, i):i], 'this->obj.')
+
+    def test_recv_qual_start_no_qualifier(self):
+        s = 'getReadThread(x)->f();'
+        i = s.index('getReadThread')
+        self.assertEqual(statements._recv_qual_start(s, i), i)
