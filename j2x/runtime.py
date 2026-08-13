@@ -1261,9 +1261,14 @@ _GENERATED['FileFilter.h'] = _class_stub('FileFilter', fwds=['File'],
 _GENERATED['ByteArrayOutputStream.h'] = _class_stub('ByteArrayOutputStream', bases=['OutputStream'],
     includes=['OutputStream', 'JArray'],
     void_methods=['write', 'reset', 'close', 'flush'],
-    ret_methods=[('toByteArray', ('JArray<unsigned char >', 'JArray<unsigned char >()')), ('size', ('int', '0'))])
-_GENERATED['InputStreamReader.h'] = _class_stub('InputStreamReader', fwds=['InputStream'],
-    void_methods=['close'], ret_methods=[('read', ('int', '-1'))])
+    ret_methods=[('toByteArray', ('JArray<unsigned char >', 'JArray<unsigned char >()')), ('size', ('int', '0'))],
+    # Java's protected fields; subclasses (e.g. RegionFileChunkBuffer) read `this.buf`/`this.count` directly.
+    extra=['JArray<unsigned char> buf;', 'int count;'])
+# java.io.Reader base (StringReader/InputStreamReader/BufferedReader all extend it; a parser param typed
+# `Reader*` must accept a StringReader*).
+_GENERATED['Reader.h'] = _class_stub('Reader', void_methods=['close'], ret_methods=[('read', ('int', '-1'))])
+_GENERATED['InputStreamReader.h'] = _class_stub('InputStreamReader', bases=['Reader'], includes=['Reader'],
+    fwds=['InputStream'], void_methods=['close'], ret_methods=[('read', ('int', '-1'))])
 # java.net.HttpURLConnection (Beta ThreadDownloadImage / ThreadCheckHasPaid). Dead on the 360.
 _GENERATED['HttpURLConnection.h'] = _class_stub('HttpURLConnection', bases=['URLConnection'],
     includes=['URLConnection'], fwds=['InputStream'],
@@ -1422,8 +1427,8 @@ _GENERATED['BufferedOutputStream.h'] = _class_stub('BufferedOutputStream', bases
 _GENERATED['FileInputStream.h'] = _class_stub('FileInputStream', bases=['InputStream'], includes=['InputStream'])
 _GENERATED['FileOutputStream.h'] = _class_stub('FileOutputStream', bases=['OutputStream'], includes=['OutputStream'])
 _GENERATED['ZipFile.h'] = _class_stub('ZipFile', void_methods=['close'],
-    ret_methods=[('getEntry', ('void*', '0')), ('getInputStream', ('InputStream*', '0')),
-                 ('size', ('int', '0'))], fwds=['InputStream'])
+    ret_methods=[('getEntry', ('ZipEntry*', '0')), ('getInputStream', ('InputStream*', '0')),
+                 ('size', ('int', '0'))], fwds=['InputStream', 'ZipEntry'])
 _GENERATED['Socket.h'] = _class_stub('Socket',
     void_methods=['close', 'setSoTimeout', 'setTrafficClass', 'setTcpNoDelay', 'setKeepAlive', 'connect'],
     ret_methods=[('getInputStream', ('InputStream*', '0')), ('getOutputStream', ('OutputStream*', '0')),
@@ -1815,10 +1820,19 @@ _GENERATED['FileDialog.h'] = _class_stub('FileDialog',
                   'setLocationRelativeTo'],
     ret_methods=[('getFile', ('std::string', 'std::string()')),
                  ('getDirectory', ('std::string', 'std::string()'))])
-_GENERATED['BufferedImage.h'] = _class_stub('BufferedImage', fwds=['Graphics'],
+# java.awt.image raster chain: BufferedImage.getRaster().getDataBuffer() -> (DataBufferInt*)-> getData()
+# (ImageBufferDownload reads the pixel int[] directly). Dead on the 360, but must type-check.
+_GENERATED['DataBuffer.h'] = _class_stub('DataBuffer')
+_GENERATED['DataBufferInt.h'] = _class_stub('DataBufferInt', bases=['DataBuffer'], includes=['DataBuffer', 'JArray'],
+    ret_methods=[('getData', ('JArray<int >', 'JArray<int >()'))])
+_GENERATED['Raster.h'] = _class_stub('Raster', fwds=['DataBuffer'],
+    ret_methods=[('getDataBuffer', ('DataBuffer*', '0'))])
+_GENERATED['WritableRaster.h'] = _class_stub('WritableRaster', bases=['Raster'], includes=['Raster'])
+_GENERATED['BufferedImage.h'] = _class_stub('BufferedImage', fwds=['Graphics'], includes=['Raster'],
     void_methods=['setRGB', 'flush'],
     ret_methods=[('getWidth', ('int', '0')), ('getHeight', ('int', '0')),
                  ('getRGB', ('int', '0')), ('getData', ('void*', '0')),
+                 ('getRaster', ('Raster', 'Raster()')),
                  ('getGraphics', ('Graphics*', '0')), ('createGraphics', ('Graphics*', '0'))])
 
 
