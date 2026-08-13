@@ -1560,6 +1560,11 @@ def _rewrite_jobject_casts(s, scope, resolver=None):
                 rewritten = '(%s).str()' % operand
             elif typ in _BOXED_WRAPPERS:
                 rewritten = operand          # drop the wrapper; operand is a self-contained primary
+            elif typ in typemap.CONTAINERS and resolver is not None:
+                # (List)/(Map)/(Set) on a JObject (a raw-map value that holds a boxed container): unbox
+                # via operator JList/JMap/JSet -- NOT dropped, else a chained `.add()`/`.get()` lands on
+                # the JObject (SoundPool's ((List)map.get(k)).add(x)).
+                rewritten = '(%s)(%s)' % (resolver.cpp_type(ir.JType(typ), 'local'), operand)
         if rewritten is None:
             out.append(s[i])
             i += 1

@@ -1443,8 +1443,11 @@ _GENERATED['Calendar.h'] = _class_stub('Calendar', void_methods=['set', 'setTime
            'static const int JANUARY = 0, FEBRUARY = 1, DECEMBER = 11, DATE = 5, MONTH = 2, YEAR = 1;'])
 _GENERATED['GregorianCalendar.h'] = _class_stub('GregorianCalendar', bases=['Calendar'], includes=['Calendar'])
 # AWT / paulscode leaf stubs (all dead on the 360 -- desktop clipboard / config).
-_GENERATED['Toolkit.h'] = _class_stub('Toolkit', extra=['static Toolkit* getDefaultToolkit() { return new Toolkit(); }',
-                                                        'void* getSystemClipboard(...) { return 0; }'])
+_GENERATED['Clipboard.h'] = _class_stub('Clipboard', fwds=['Transferable'],
+    ret_methods=[('getContents', ('Transferable*', '0'))])
+_GENERATED['Toolkit.h'] = _class_stub('Toolkit', includes=['Clipboard'],
+    extra=['static Toolkit* getDefaultToolkit() { return new Toolkit(); }',
+           'Clipboard getSystemClipboard(...) { return Clipboard(); }'])   # value receiver -> .getContents()
 _GENERATED['TextArea.h'] = _class_stub('TextArea', ret_methods=[('getText', ('std::string', 'std::string()'))])
 _GENERATED['Transferable.h'] = _class_stub('Transferable')
 _GENERATED['SoundSystemConfig.h'] = _ns_stub('SoundSystemConfig',
@@ -1466,9 +1469,10 @@ _GENERATED['RenderingHints.h'] = _class_stub('RenderingHints', void_methods=['pu
            'static const int s_VALUE_INTERPOLATION_NEAREST_NEIGHBOR = 0;',
            'static const int s_KEY_ANTIALIASING = 0;', 'static const int s_VALUE_ANTIALIAS_OFF = 0;'])
 _GENERATED['CodecWav.h'] = _class_stub('CodecWav')   # paulscode WAV codec (dead type stub on the console)
-_GENERATED['DataFlavor.h'] = _class_stub('DataFlavor')
+_GENERATED['DataFlavor.h'] = _class_stub('DataFlavor',
+    extra=['static const int s_stringFlavor = 0;'])   # DataFlavor.stringFlavor -> dead const (passed to varargs stubs)
 _GENERATED['Transferable.h'] = _class_stub('Transferable',
-    ret_methods=[('isDataFlavorSupported', ('bool', 'false')), ('getTransferData', ('void*', '0'))])
+    ret_methods=[('isDataFlavorSupported', ('bool', 'false')), ('getTransferData', ('JObject', 'JObject()'))])
 _GENERATED['TextArea.h'] = _class_stub('TextArea', void_methods=['setFont', 'setText'],
     ret_methods=[('getText', ('std::string', 'std::string()'))])
 # java.io concrete streams (DataInputStream/DataOutputStream are the heavy hitters on alpha)
@@ -1843,13 +1847,14 @@ for _e, _base in [('Exception', 'Throwable'), ('Error', 'Throwable'), ('RuntimeE
                   ('CloneNotSupportedException', 'Exception'), ('ClassNotFoundException', 'Exception')]:
     _GENERATED[_e + '.h'] = _class_stub(_e, bases=[_base], includes=[_base])
 # java.io.File (richer than the early minimal stub; overrides it via FILES.update)
-_GENERATED['File.h'] = _class_stub('File', fwds=['URL'], includes=['JArray'],
+_GENERATED['URI.h'] = _class_stub('URI', fwds=['URL'], ret_methods=[('toURL', ('URL*', '0'))])
+_GENERATED['File.h'] = _class_stub('File', fwds=['URL'], includes=['JArray', 'URI'],
     ret_methods=[('getName', ('std::string', 'std::string()')), ('getPath', ('std::string', 'std::string()')),
                  ('getAbsolutePath', ('std::string', 'std::string()')), ('toString', ('std::string', 'std::string()')),
                  ('exists', ('bool', 'false')), ('isDirectory', ('bool', 'false')), ('isFile', ('bool', 'false')),
                  ('mkdir', ('bool', 'false')), ('mkdirs', ('bool', 'false')), ('renameTo', ('bool', 'false')),
                  ('length', ('long long', '0LL')), ('getParentFile', ('File*', '0')),
-                 ('getAbsoluteFile', ('File*', '0')), ('toURI', ('void*', '0')),
+                 ('getAbsoluteFile', ('File*', '0')), ('toURI', ('URI', 'URI()')),   # value -> .toURL() chains
                  ('listFiles', ('JArray<File* >', 'JArray<File* >()')),   # File[] not void*
                  ('lastModified', ('long long', '0LL')), ('list', ('void*', '0')),
                  ('getParent', ('std::string', 'std::string()')), ('canRead', ('bool', 'false')),
