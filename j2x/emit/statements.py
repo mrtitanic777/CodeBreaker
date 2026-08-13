@@ -69,6 +69,12 @@ def _rewrite_multidim_new(s, resolver):
     """`new T[a][b]` -> j2x_newarr2<elem>(a,b); `new T[a][b][c]` -> j2x_newarr3<elem>(a,b,c). elem is
     the scalar element C++ type (int / Chunk*). Sized only -- aggregate `new T[][]{...}` is separate."""
     def elem(t):
+        # Derive the element from the ARRAY type, not the scalar: `byte[]` element is unsigned char
+        # (buffer policy) while a scalar `byte` is signed char -- a `new byte[a][b]` must match the
+        # `JArray<JArray<unsigned char> >` field it fills (TexturePortalFX), so use the array element.
+        arr = resolver.cpp_type(ir.JType(t, array_dims=1), 'local')
+        if arr.startswith('JArray<') and arr.endswith('>'):
+            return arr[len('JArray<'):arr.rindex('>')].strip()
         return resolver.cpp_type(ir.JType(t), 'local')
     s = _NEW_ARRAY_3D.sub(lambda m: 'j2x_newarr3<%s >(%s, %s, %s)'
                           % (elem(m.group(1)), m.group(2).strip(), m.group(3).strip(), m.group(4).strip()), s)
