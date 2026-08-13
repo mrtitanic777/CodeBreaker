@@ -663,6 +663,27 @@ def _rewrite_concats(s):
     return ''.join(out)
 
 
+def _fix_indexed_add(s):
+    """`recv.push_back(a, b)` -> `recv.add(a, b)`. std::vector::push_back takes ONE arg, so a 2-arg
+    push_back is a mis-renamed Java `list.add(index, elem)`; JList::add(int, const T&) is the insert."""
+    out, i, n = [], 0, len(s)
+    while True:
+        j = s.find('.push_back(', i)
+        if j == -1:
+            out.append(s[i:]); break
+        open_idx = j + len('.push_back(') - 1
+        close = _balanced_paren(s, open_idx)
+        if close == -1:
+            out.append(s[i:]); break
+        inner = s[open_idx + 1:close]
+        if len(_split_top_commas(inner)) == 2:
+            out.append(s[i:j] + '.add(' + inner + ')')
+        else:
+            out.append(s[i:close + 1])
+        i = close + 1
+    return ''.join(out)
+
+
 def _balanced_paren(s, open_idx):
     depth = 0
     for i in range(open_idx, len(s)):
@@ -2140,6 +2161,10 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
                 w = _to_jcat(tm.group(1))
                 if w:
                     s = s[:eq + 1] + ' ' + w + tm.group(2)
+    # 13. `list.add(i, x)` (indexed insert) renamed to `.push_back(i, x)` by ANY pass above -- but
+    #     std::vector::push_back takes ONE arg. Rewrite the 2-arg form to JList::add(int, const T&).
+    if '.push_back(' in s:
+        s = _fix_indexed_add(s)
     return s
 
 

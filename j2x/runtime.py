@@ -375,6 +375,7 @@ JLIST_H = r'''#ifndef JLIST_H
 #define JLIST_H
 #include <vector>
 #include <algorithm>
+#include <set>
 #include "JIterator.h"
 
 // java.util.List / ArrayList / LinkedList, held BY VALUE. Subclasses std::vector<T> so every
@@ -397,6 +398,10 @@ public:
 	template<class U> JList(const JList<U>& o) {
 		this->reserve(o.size());
 		for (typename JList<U>::const_iterator i = o.begin(); i != o.end(); ++i) this->push_back((T)*i);
+	}
+	// `new ArrayList(someSet)` -- copy a Set (std::set-derived JSet) into a List, element-cast per slot.
+	template<class U> JList(const std::set<U>& s) {
+		for (typename std::set<U>::const_iterator i = s.begin(); i != s.end(); ++i) this->push_back((T)*i);
 	}
 	Iterator* iterator() const { return j2xIter(*this); }   // .iterator() on a chained/foreign receiver
 	void add(const T& v) { this->push_back(v); }
@@ -1156,7 +1161,7 @@ def _buffer_stub(name):
         L.append('\t%s& %s(int) { return *this; }' % (name, m))
     L += ['\tint remaining() { return 0; }', '\tint capacity() { return 0; }',
           '\tFloatBuffer* asFloatBuffer() { return 0; }', '\tIntBuffer* asIntBuffer() { return 0; }',
-          '\t%s& order(...) { return *this; }' % name,          # ByteBuffer.order(ByteOrder) -> self
+          '\t%s* order(...) { return this; }' % name,           # ByteBuffer.order(ByteOrder) -> self (ptr; matches STUB_MEMBERS + chains into a ByteBuffer* local)
           '\tstatic %s* allocateDirect(...) { return new %s(); }' % (name, name),   # ByteBuffer.allocateDirect(n)
           '\tstatic %s* allocate(...) { return new %s(); }' % (name, name),
           '\toperator void*() { return 0; }', '};', '#endif // %s' % g, '']
@@ -1446,12 +1451,13 @@ _GENERATED['FileOutputStream.h'] = _class_stub('FileOutputStream', bases=['Outpu
 _GENERATED['ZipFile.h'] = _class_stub('ZipFile', void_methods=['close'],
     ret_methods=[('getEntry', ('ZipEntry*', '0')), ('getInputStream', ('InputStream*', '0')),
                  ('size', ('int', '0'))], fwds=['InputStream', 'ZipEntry'])
+_GENERATED['SocketAddress.h'] = _class_stub('SocketAddress')
 _GENERATED['Socket.h'] = _class_stub('Socket',
     void_methods=['close', 'setSoTimeout', 'setTrafficClass', 'setTcpNoDelay', 'setKeepAlive', 'connect'],
     ret_methods=[('getInputStream', ('InputStream*', '0')), ('getOutputStream', ('OutputStream*', '0')),
-                 ('getRemoteSocketAddress', ('void*', '0')), ('getInetAddress', ('void*', '0')),
+                 ('getRemoteSocketAddress', ('SocketAddress*', '0')), ('getInetAddress', ('InetAddress*', '0')),
                  ('getPort', ('int', '0')), ('isConnected', ('bool', 'false')), ('isClosed', ('bool', 'false'))],
-    fwds=['InputStream', 'OutputStream'])
+    fwds=['InputStream', 'OutputStream', 'SocketAddress', 'InetAddress'])
 _GENERATED['DateFormat.h'] = _class_stub('DateFormat',
     ret_methods=[('format', ('std::string', 'std::string()'))])
 _GENERATED['Dimension.h'] = _class_stub('Dimension',
