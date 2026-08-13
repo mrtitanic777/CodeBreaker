@@ -99,6 +99,24 @@ class TypeResolver(object):
         e = self.members.get(class_name)
         return e['methods'].get(method_name) if e else None
 
+    def extends_value_container(self, class_name):
+        """True if class_name (transitively) derives from a by-value container (JList/JMap/JSet) --
+        e.g. argo's J_JsonNodeList : List, J_JsonObjectNodeList : Map. Such a class instance IS the
+        container value, so `new X(...)` must be dereferenced where the base container value is wanted."""
+        seen = set()
+        cur = class_name
+        while cur and cur not in seen:
+            seen.add(cur)
+            e = self.members.get(cur)
+            parent = e.get('parent') if e else None
+            if not parent:
+                return False
+            cpp = typemap.JAVA_TO_CPP.get(parent, parent)
+            if cpp in ('JList', 'JSet', 'JMap'):
+                return True
+            cur = parent
+        return False
+
     def port_note(self, jtype):
         """A PORT message if this type is mapped lossily, else None (for emit's ledger)."""
         return typemap.PORT_NOTE_TYPES.get(jtype.name)

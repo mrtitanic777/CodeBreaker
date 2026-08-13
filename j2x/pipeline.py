@@ -240,7 +240,7 @@ def build_member_env(classes):
                 if not m.is_ctor and m.return_type is not None:
                     methods.setdefault(m.name, m.return_type)
             cur = by_name.get(cur.parent)
-        env[cls.name] = {'fields': fields, 'methods': methods, 'statics': statics}
+        env[cls.name] = {'fields': fields, 'methods': methods, 'statics': statics, 'parent': cls.parent}
     # Runtime types that aren't in the parsed corpus but whose chained methods must resolve
     # `.`->`->` (StringBuilder.append() returns the builder). Return types drive chain inference.
     from .ir import JType as _JT

@@ -757,6 +757,13 @@ template<class M> inline Iterator* j2xKeys(const M& m) {
 	return it;
 }
 
+// Java reference-identity `this == o` inside equals(Object o), where o is a nullable Object param -> a
+// JObject* boxing the argument. Compare the receiver pointer to the boxed pointer (true iff o boxes
+// `this`) -- exactly Java's `==`. Only viable when one side is a JObject*, so no other comparison is
+// affected. (argo's J_JsonArray/J_JsonObject/... equals shortcut.)
+template<class T> inline bool operator==(const T* a, const JObject* b) { return b != 0 && b->kind == 5 && b->p == (const void*)a; }
+template<class T> inline bool operator!=(const T* a, const JObject* b) { return !(a == b); }
+
 // Stream a JObject (Java String-concatenation of an Object calls its toString()). Without this the
 // implicit conversions (operator int / operator T*) make `ostream << JObject` AMBIGUOUS, which breaks
 // `JCat() + someObject`. We print the boxed primitive/string; other kinds get a stable placeholder.
@@ -1370,8 +1377,10 @@ _GENERATED['RandomAccessFile.h'] = _class_stub('RandomAccessFile',
                  ('readShort', ('int', '0')), ('readUnsignedByte', ('int', '0')), ('readLong', ('long long', '0LL')),
                  ('length', ('long long', '0LL')), ('getFilePointer', ('long long', '0LL')),
                  ('skipBytes', ('int', '0'))])
-# java.io.Writer / StringWriter / PushbackReader.
-_GENERATED['Writer.h'] = _class_stub('Writer', void_methods=['write', 'flush', 'close', 'append'])
+# java.io.Writer / StringWriter / PushbackReader. Writer.append returns the Writer (java.lang.Appendable)
+# so `w.append(a).append(b)` chains (argo's compact formatter).
+_GENERATED['Writer.h'] = _class_stub('Writer', void_methods=['write', 'flush', 'close'],
+    extra=['Writer* append(...) { return this; }'])
 _GENERATED['StringWriter.h'] = _class_stub('StringWriter', bases=['Writer'], includes=['Writer'],
     ret_methods=[('toString', ('std::string', 'std::string()')), ('getBuffer', ('void*', '0'))])
 _GENERATED['PushbackReader.h'] = _class_stub('PushbackReader', void_methods=['unread', 'close'],

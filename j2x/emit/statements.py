@@ -671,6 +671,27 @@ def _rewrite_concats(s):
     return ''.join(out)
 
 
+def _deref_container_subclass_new(s, resolver):
+    """`new X(...)` where X derives from a by-value container (JList/JMap/JSet) -> `(*(new X(...)))`.
+    Such an instance IS the container value (argo's J_JsonNodeList : List / J_JsonObjectNodeList : Map),
+    so a bare `new X` (a pointer) can't be returned/passed where the base container VALUE is expected;
+    the deref slices to the base container (the heap object is a dead-path leak)."""
+    out, i, n = [], 0, len(s)
+    while True:
+        m = re.compile(r'\bnew\s+([A-Za-z_]\w*)\s*\(').search(s, i)
+        if not m:
+            out.append(s[i:]); break
+        cls = m.group(1)
+        if not resolver.extends_value_container(cls):
+            out.append(s[i:m.end()]); i = m.end(); continue
+        close = _balanced_paren(s, m.end() - 1)
+        if close == -1:
+            out.append(s[i:m.end()]); i = m.end(); continue
+        out.append(s[i:m.start()] + '(*(' + s[m.start():close + 1] + '))')
+        i = close + 1
+    return ''.join(out)
+
+
 def _fix_indexed_add(s):
     """`recv.push_back(a, b)` -> `recv.add(a, b)`. std::vector::push_back takes ONE arg, so a 2-arg
     push_back is a mis-renamed Java `list.add(index, elem)`; JList::add(int, const T&) is the insert."""
@@ -2180,6 +2201,10 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
     #     std::vector::push_back takes ONE arg. Rewrite the 2-arg form to JList::add(int, const T&).
     if '.push_back(' in s:
         s = _fix_indexed_add(s)
+    # 14. `new X(...)` where X derives from a value container -> `(*(new X(...)))` (slice to the base
+    #     container value; argo's J_JsonNodeList : List / J_JsonObjectNodeList : Map).
+    if 'new ' in s:
+        s = _deref_container_subclass_new(s, resolver)
     return s
 
 
