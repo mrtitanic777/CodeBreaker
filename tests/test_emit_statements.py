@@ -2571,3 +2571,22 @@ class NullableGetterHoistTests(unittest.TestCase):
         s = 'getReadThread(x)->f();'
         i = s.index('getReadThread')
         self.assertEqual(statements._recv_qual_start(s, i), i)
+
+
+class ForInitObjectDeclTests(unittest.TestCase):
+    def test_forinit_pointer_class_gets_star_and_arrow(self):
+        # a for-init loop var of a pointer class must be `T*` with `->` access and a null compare
+        c = ir.JClass('MCHash')
+        c.fields.append(ir.Field('slots', ir.JType('MCHashEntry', array_dims=1)))
+        m = ir.Method('lookup', ir.JType('Object'), line=1)
+        m.body = [(1, 'Object lookup(int var1) {'),
+                  (2, '\tfor(MCHashEntry var3 = this.slots[0]; var3 != null; var3 = var3.nextEntry) {'),
+                  (3, '\t\tif(var3.hashEntry == var1) { return var3.valueEntry; }'),
+                  (4, '\t}'), (5, '\treturn null;'), (6, '}')]
+        c.methods.append(m)
+        r = types.TypeResolver(known_classes={'MCHash', 'MCHashEntry'})
+        out = '\n'.join(statements.translate_body(m, c, r))
+        self.assertIn('MCHashEntry* var3 =', out)
+        self.assertIn('var3 != NULL', out)
+        self.assertIn('var3->nextEntry', out)
+        self.assertIn('var3->hashEntry', out)

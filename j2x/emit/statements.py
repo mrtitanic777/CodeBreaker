@@ -1277,6 +1277,16 @@ def build_scope(cls, method):
                 scope[m.group(2)] = javaparse.parse_type(m.group(1))
             except Exception:                       # noqa: BLE001 - never let a parse hiccup abort emit
                 pass
+        # for-init object declarations (`for(MCHashEntry var3 = this.slots[i]; ...)`) escape the
+        # line-anchored _DECL above, so their loop var never enters scope -> stays a value with `.`
+        # access and no null-compare. Capture it so pointer classes get `*` + `->` like any local.
+        for fm in re.finditer(r'\bfor\s*\(\s*(?:final\s+)?([A-Za-z_][\w.]*)\s+([A-Za-z_]\w*)\s*=', text):
+            if _decl_base(fm.group(1)) in _KEYWORDS or fm.group(2) in _KEYWORDS or fm.group(2) in scope:
+                continue
+            try:
+                scope[fm.group(2)] = javaparse.parse_type(fm.group(1))
+            except Exception:                       # noqa: BLE001
+                pass
     return scope
 
 
@@ -1892,6 +1902,16 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
         return 'for (%s %s ' % (resolver.cpp_type(javaparse.parse_type(mm.group(1)), 'local'), mm.group(2))
     s = re.sub(r'\bfor\s*\(\s*(?:final\s+)?([A-Za-z_][\w.]*(?:<[^>]*>)?(?:\s*\[\s*\])+)\s+([A-Za-z_]\w*)\s+',
                _forinit_arr, s)
+    # 0f'. for-init OBJECT declaration: `for(MCHashEntry var3 = this->slots[i]; ...)`. Same blind spot
+    #      as arrays -- rewrite the type to its C++ spelling so a pointer class gets its `*` (the value
+    #      spelling can't hold null and breaks `var3 != NULL` / `var3->nextEntry`).
+    def _forinit_obj(mm):
+        base = _decl_base(mm.group(1))
+        if base in _KEYWORDS or mm.group(2) in _KEYWORDS:
+            return mm.group(0)
+        cpp = resolver.cpp_type(javaparse.parse_type(mm.group(1)), 'local')
+        return 'for (%s %s =' % (cpp, mm.group(2))
+    s = re.sub(r'\bfor\s*\(\s*(?:final\s+)?([A-Za-z_][\w.]*)\s+([A-Za-z_]\w*)\s*=', _forinit_obj, s)
     # 1. local declaration: rewrite the leading Java type to its C++ spelling. A value-type
     #    local inferred to be a nullable reference (ptr_locals) gets a trailing '*'.
     m = _DECL.match(s)
