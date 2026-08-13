@@ -92,6 +92,17 @@ class TestProcess(unittest.TestCase):
         _, _, fac = rf.process(txt, 'TileEntity')
         self.assertNotIn('this', fac['classes'])
 
+    def test_j2xclassof_registration_format(self):
+        # the live emitter spells X.class as j2xClassOf(typeid(X)) (not Class(typeid(X))) -- the
+        # factory pass must match BOTH so registries are recognized (regression: it once matched only
+        # Class(...), silently leaving every reflection site as an uncompilable void*->newInstance()).
+        txt = WORLD_ARG_CPP.replace('Class(typeid(', 'j2xClassOf(typeid(')
+        new, n, fac = rf.process(txt, 'EntityList')
+        self.assertEqual(n, 1)
+        self.assertEqual(set(fac['classes']), {'EntityPig', 'EntityCow', 'EntitySheep'})
+        self.assertIn('EntityList_createByReflection(var3, (World*)var1)', new)
+        self.assertIn('if (*c == Class(typeid(EntityPig))) return new EntityPig(a0);', new)  # factory cmp stays Class()
+
     def test_no_reflection_is_noop(self):
         txt = '#include "Foo.h"\nint Foo::bar() { return 1; }\n'
         new, n, fac = rf.process(txt, 'Foo')

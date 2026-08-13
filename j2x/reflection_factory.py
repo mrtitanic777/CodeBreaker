@@ -28,14 +28,16 @@ _RECV = r'((?:this\s*->\s*)?[A-Za-z_]\w*(?:\s*->\s*[A-Za-z_]\w*|\s*\[[^\]]*\])*)
 #   (Entity*)recv->getConstructor((JArrayInit<Class* >(), j2xClassOf(typeid(World)))).newInstance((JArrayInit<JObject >(), var1))
 _WORLD_ARG = re.compile(
     r'\(\s*([A-Za-z_]\w*)\s*\*\s*\)\s*' + _RECV + r'\s*->\s*getConstructor\s*\(\s*'
-    r'\(\s*JArrayInit<[^>]*>\(\)((?:\s*,\s*Class\(typeid\(\s*\w+\s*\)\))+)\s*\)\s*\)'
+    r'\(\s*JArrayInit<[^>]*>\(\)((?:\s*,\s*(?:Class|j2xClassOf)\(typeid\(\s*\w+\s*\)\))+)\s*\)\s*\)'
     r'\s*\.\s*newInstance\s*\(\s*\(\s*JArrayInit<[^>]*>\(\)\s*,\s*(.+?)\)\s*\)')
 
 # a plain no-arg reflection instantiation (TileEntity / Packet / BlockSign):  (TileEntity*)recv->newInstance()
 _PLAIN = re.compile(r'\(\s*([A-Za-z_]\w*)\s*\*\s*\)\s*' + _RECV + r'\s*->\s*newInstance\s*\(\s*\)')
 
-# X.class -> Class(typeid(X)); the dynamic getClass() form Class(typeid(*(var))) is excluded by \w+
-_TYPEID = re.compile(r'Class\(typeid\(\s*(\w+)\s*\)\)')
+# X.class -> j2xClassOf(typeid(X)) (or the older Class(typeid(X))); the dynamic getClass() form
+# ...(typeid(*(var))) is excluded by \w+. The generated factory compares `*c == Class(typeid(X))`
+# (a runtime Class value), which is correct whichever spelling the registration table used.
+_TYPEID = re.compile(r'(?:Class|j2xClassOf)\(typeid\(\s*(\w+)\s*\)\)')
 # registration call lines that carry the concrete class table
 _REG_LINE = re.compile(r'\b(?:addMapping|addIdClassMapping|register\w*|addClassMapping)\s*\(')
 
