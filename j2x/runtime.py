@@ -335,39 +335,21 @@ template<class T> JArray<JArray<JArray<T> > > j2x_newarr3(int a, int b, int c) {
 
 JITERATOR_H = r'''#ifndef JITERATOR_H
 #define JITERATOR_H
-#include <vector>
 
-// java.util.Iterator over any container. Type-erased (void* elements) so ONE Iterator type serves
-// List/Set and Map value/key/entry views; next() returns void*, cast at the call site
-// (`(T*)it->next()`) exactly as Java casts Iterator.next() from Object. Elements are COPIED in, so
-// mutating the source mid-iteration is safe here (Java would throw ConcurrentModificationException;
-// the port won't). Lives in its OWN header (not inline in JavaRT.h) so JList/JSet/JMap can each
-// expose an `iterator()` MEMBER -- needed when the receiver is a chained/foreign expression the
-// text-level `.iterator()` rewrite can't reach -- without a circular include back into JavaRT.h.
-struct Iterator {
-	std::vector<void*> _v; unsigned _i;
-	Iterator() : _i(0) {}
-	bool hasNext() const { return _i < _v.size(); }
-	void* next() { return _i < _v.size() ? _v[_i++] : (void*)0; }
-	void remove() {}                                     // no-op (source already snapshotted)
-};
-// list/set .iterator()  (elements are pointers / boxed -> void*)
-template<class C> inline Iterator* j2xIter(const C& c) {
-	Iterator* it = new Iterator();
-	for (typename C::const_iterator i = c.begin(); i != c.end(); ++i) it->_v.push_back((void*)*i);
-	return it;
-}
-// map.values().iterator()  /  map.keySet().iterator()
-template<class M> inline Iterator* j2xValues(const M& m) {
-	Iterator* it = new Iterator();
-	for (typename M::const_iterator i = m.begin(); i != m.end(); ++i) it->_v.push_back((void*)i->second);
-	return it;
-}
-template<class M> inline Iterator* j2xKeys(const M& m) {
-	Iterator* it = new Iterator();
-	for (typename M::const_iterator i = m.begin(); i != m.end(); ++i) it->_v.push_back((void*)i->first);
-	return it;
-}
+// java.util.Iterator over any container. Its elements are JObject, so iterating a JList<JObject>
+// yields the boxed value (a plain void* would drop the kind/int/String tag): next() returns a JObject
+// that converts back to the element -- a pointer via operator T*, a boxed primitive via
+// .intValue()/operator int, a String via operator JavaString -- exactly as Java casts Iterator.next().
+//
+// Only FORWARD-DECLARED here: Iterator stores JObject, but JObject (JavaRT.h) is built on JList/JMap,
+// which include THIS header -- a cycle. So the full definition + j2xIter/j2xValues/j2xKeys live in
+// JavaRT.h AFTER JObject. JList/JSet/JMap only need `Iterator*` (a pointer -> forward decl suffices) and
+// call j2xIter in inline bodies that are instantiated at their .cpp use sites, where JObject is complete.
+struct JObject;
+struct Iterator;
+template<class C> Iterator* j2xIter(const C& c);
+template<class M> Iterator* j2xValues(const M& m);
+template<class M> Iterator* j2xKeys(const M& m);
 #endif // JITERATOR_H
 '''
 
@@ -735,6 +717,36 @@ struct JObject {
 		return (kind == 5 && p && ti && *ti == typeid(JList<T>)) ? *(JList<T>*)p : JList<T>();
 	}
 };
+
+// java.util.Iterator DEFINITION (forward-declared in JIterator.h). Elements are JObject so a
+// JList<JObject> iterates as JObject, not a void* that drops the box tag; next() returns a JObject that
+// converts back to the element via JObject's operators. Elements are COPIED in (source may mutate
+// mid-iteration; Java would throw ConcurrentModificationException). Defined here, after JObject, because
+// JObject depends on the containers that include JIterator.h.
+struct Iterator {
+	std::vector<JObject> _v; unsigned _i;
+	Iterator() : _i(0) {}
+	bool hasNext() const { return _i < _v.size(); }
+	JObject next() { return _i < _v.size() ? _v[_i++] : JObject(); }
+	void remove() {}                                     // no-op (source already snapshotted)
+};
+// list/set .iterator()  (each element boxed into a JObject)
+template<class C> inline Iterator* j2xIter(const C& c) {
+	Iterator* it = new Iterator();
+	for (typename C::const_iterator i = c.begin(); i != c.end(); ++i) it->_v.push_back(JObject(*i));
+	return it;
+}
+// map.values().iterator()  /  map.keySet().iterator()
+template<class M> inline Iterator* j2xValues(const M& m) {
+	Iterator* it = new Iterator();
+	for (typename M::const_iterator i = m.begin(); i != m.end(); ++i) it->_v.push_back(JObject(i->second));
+	return it;
+}
+template<class M> inline Iterator* j2xKeys(const M& m) {
+	Iterator* it = new Iterator();
+	for (typename M::const_iterator i = m.begin(); i != m.end(); ++i) it->_v.push_back(JObject(i->first));
+	return it;
+}
 
 // Stream a JObject (Java String-concatenation of an Object calls its toString()). Without this the
 // implicit conversions (operator int / operator T*) make `ostream << JObject` AMBIGUOUS, which breaks
