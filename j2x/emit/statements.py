@@ -623,7 +623,15 @@ def _to_jcat(expr):
         na, nb = _branch(a), _branch(b)
         if not na and not nb:
             return None
-        return cond + '? ' + (na or a.strip()) + ' : ' + (nb or b.strip())
+        # Type-unify the arms: when ONE arm became a JCat and the other is a bare string literal, the
+        # ternary has no common type (`cond ? "" : (JCat()+..)` -> JCat can't convert to const char*).
+        # Wrap the literal as JavaString (JCat converts to JavaString) so both arms agree (ScreenShotHelper).
+        fa, fb = na or a.strip(), nb or b.strip()
+        if nb and not na and _PURE_STR_LIT.match(a.strip()):
+            fa = 'JavaString(%s)' % a.strip()
+        if na and not nb and _PURE_STR_LIT.match(b.strip()):
+            fb = 'JavaString(%s)' % b.strip()
+        return cond + '? ' + fa + ' : ' + fb
     parts = _split_top_plus(e)
     if len(parts) < 2:
         return None
