@@ -151,14 +151,14 @@ class TestValueContainers(unittest.TestCase):
         self.out = statements.translate_body(m, c, types.TypeResolver())
 
     def test_local_container_decl_default_constructs(self):
-        self.assertIn('JList<void*> var2;', self.out)              # initializer dropped
+        self.assertIn('JList<JObject> var2;', self.out)              # initializer dropped
         self.assertFalse(any('var2 =' in l and 'new' in l for l in self.out), self.out)
 
     def test_value_container_method_uses_dot(self):
         self.assertIn('var2.push_back(var1);', self.out)           # '.' not '->'
 
     def test_field_assign_is_value_temporary(self):
-        self.assertIn('this->tagList = JList<void*>();', self.out)
+        self.assertIn('this->tagList = JList<JObject>();', self.out)
 
 
 class TestMapSetString(unittest.TestCase):
@@ -1103,14 +1103,14 @@ class TestValueContainers(unittest.TestCase):
         self.out = statements.translate_body(m, c, types.TypeResolver())
 
     def test_local_container_decl_default_constructs(self):
-        self.assertIn('JList<void*> var2;', self.out)              # initializer dropped
+        self.assertIn('JList<JObject> var2;', self.out)              # initializer dropped
         self.assertFalse(any('var2 =' in l and 'new' in l for l in self.out), self.out)
 
     def test_value_container_method_uses_dot(self):
         self.assertIn('var2.push_back(var1);', self.out)           # '.' not '->'
 
     def test_field_assign_is_value_temporary(self):
-        self.assertIn('this->tagList = JList<void*>();', self.out)
+        self.assertIn('this->tagList = JList<JObject>();', self.out)
 
 
 class TestMapSetString(unittest.TestCase):
@@ -1929,14 +1929,14 @@ class TestValueContainers(unittest.TestCase):
         self.out = statements.translate_body(m, c, types.TypeResolver())
 
     def test_local_container_decl_default_constructs(self):
-        self.assertIn('JList<void*> var2;', self.out)              # initializer dropped
+        self.assertIn('JList<JObject> var2;', self.out)              # initializer dropped
         self.assertFalse(any('var2 =' in l and 'new' in l for l in self.out), self.out)
 
     def test_value_container_method_uses_dot(self):
         self.assertIn('var2.push_back(var1);', self.out)           # '.' not '->'
 
     def test_field_assign_is_value_temporary(self):
-        self.assertIn('this->tagList = JList<void*>();', self.out)
+        self.assertIn('this->tagList = JList<JObject>();', self.out)
 
 
 class TestMapSetString(unittest.TestCase):

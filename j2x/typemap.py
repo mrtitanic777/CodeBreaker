@@ -63,7 +63,7 @@ CONTAINERS = {'ArrayList', 'List', 'LinkedList', 'Collection', 'HashMap', 'HashS
               'LinkedHashMap', 'TreeSet', 'Map', 'Set'}
 
 # default element types for a RAW (non-generic) container -> a valid C++ template
-RAW_CONTAINER_DEFAULT = {'JList': '<void*>', 'JSet': '<void*>', 'std::vector': '<void*>', 'std::set': '<void*>',
+RAW_CONTAINER_DEFAULT = {'JList': '<JObject>', 'JSet': '<JObject>', 'std::vector': '<void*>', 'std::set': '<void*>',
                          # raw Map -> JMap<JObject, JObject>: a Java raw map mixes key/value types
                          # (String/Integer/Character keys; any object/boxed value). JObject boxes
                          # all of them (and has operator< for the key), so put/get/containsKey/remove

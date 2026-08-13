@@ -661,6 +661,10 @@ struct JObject {
 	// (verified on g++ -std=c++03: == 0 with both present compiles without warning).
 	bool operator==(int v) const { return v == 0 && (kind == 0 || (kind == 5 && p == 0)); }
 	bool operator!=(int v) const { return !(*this == v); }
+	// value equality (Object.equals default) -- lets JList<JObject>::indexOf/contains/remove(value)
+	// (std::find) work now that raw lists hold JObject (boxed primitives + pointers), like raw maps.
+	bool operator==(const JObject& o) const { return equals(o); }
+	bool operator!=(const JObject& o) const { return !equals(o); }
 	bool operator<(const JObject& o) const { return p < o.p || (p == o.p && i < o.i); }   // map-key order
 	// conversion operators used by converter-emitted casts: (int)x, (char)x, (String)x, (Block*)x,
 	// void* interop. NOTE: no operator bool() -- it would make `if(x)` ambiguous with operator int().
