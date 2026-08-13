@@ -1396,6 +1396,7 @@ def _expr_object_kind(expr, scope):
     o = re.sub(r'\s*(?:\+\+|--)\s*$', '', o)                 # x++ / x-- -> x
     while o.startswith('(') and o.endswith(')') and _is_balanced(o[1:-1]):
         o = o[1:-1].strip()                                  # strip balanced wrapping parens
+    o = re.sub(r'^this\s*->\s*', '', o)                      # this->field[idx] -> field[idx] (field in scope)
     m = _OPERAND_ROOT.match(o)
     if not m:
         return None
@@ -1469,11 +1470,13 @@ def _read_primary(s, i):
 _CAST_HEAD = re.compile(r'\(\s*([A-Za-z_]\w*)\s*(\[\s*\])?\s*\)')
 
 
-def _rewrite_jobject_casts(s, scope):
+def _rewrite_jobject_casts(s, scope, resolver=None):
     """Lower casts whose operand is a JObject (Object var / Object[] element / raw-map value), which
     the generic _cast pass + JObject's conversion operators can't always handle:
       (String)obj      -> (obj).str()            (avoids the operator JavaString()/T*-char* ambiguity)
       (String[])obj    -> (obj).strArray()       ((String[]) is not a _CAST-handled spelling)
+      (int[])obj       -> (JArray<int >)(obj)     (JObject::operator JArray<T>() unbox; (int[]) is not
+                                                   valid C++ and _CAST doesn't match a `[]` target)
       (String[])arr    -> arr                     (redundant array cast on an already-array expr)
       (Integer|Character|...)obj -> (obj)         (drop boxed wrapper; operator int()/char() + the
                                                    trailing .intValue()/.charValue() unbox at use)
@@ -1497,16 +1500,19 @@ def _rewrite_jobject_casts(s, scope):
         if is_arr:
             if typ == 'String':
                 rewritten = ('(%s).strArray()' % operand) if kind else operand
+            elif kind and resolver is not None:
+                # non-String array cast of a JObject: unbox to JArray<elem> via operator JArray<T>()
+                rewritten = '(%s)(%s)' % (resolver.cpp_type(ir.JType(typ, array_dims=1), 'local'), operand)
         elif kind:
             if typ == 'String':
                 rewritten = '(%s).str()' % operand
             elif typ in _BOXED_WRAPPERS:
-                rewritten = '(%s)' % operand
+                rewritten = operand          # drop the wrapper; operand is a self-contained primary
         if rewritten is None:
             out.append(s[i])
             i += 1
         else:
-            out.append(_rewrite_jobject_casts(rewritten, scope))   # recurse (nested casts in operand)
+            out.append(_rewrite_jobject_casts(rewritten, scope, resolver))   # recurse (nested casts in operand)
             i = end
     return ''.join(out)
 
@@ -2014,7 +2020,7 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
     # 6e. JObject-operand casts (Object var / Object[] element / raw-map value): lower BEFORE the
     #     generic cast pass -- (String)obj -> (obj).str(), (String[])obj -> (obj).strArray(),
     #     (Integer/Character/...)obj -> (obj) (JObject operators/unbox-methods do the rest).
-    s = _rewrite_jobject_casts(s, scope)
+    s = _rewrite_jobject_casts(s, scope, resolver)
     # 7. cast translation: reference type -> pointer cast ((Block)x -> (Block*)x);
     #    primitive whose C++ spelling differs -> the C++ spelling ((byte)x -> (unsigned char)x)
     def _cast(m):

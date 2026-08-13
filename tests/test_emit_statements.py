@@ -2590,3 +2590,19 @@ class ForInitObjectDeclTests(unittest.TestCase):
         self.assertIn('var3 != NULL', out)
         self.assertIn('var3->nextEntry', out)
         self.assertIn('var3->hashEntry', out)
+
+
+class ArrayCastUnboxTests(unittest.TestCase):
+    def _emit(self, lines):
+        c = ir.JClass('R')
+        c.fields.append(ir.Field('m', ir.JType('HashMap')))
+        m = ir.Method('f', ir.JType('void'), line=1)
+        m.body = [(1, 'void f() {')] + [(i + 2, l) for i, l in enumerate(lines)] + [(99, '}')]
+        c.methods.append(m)
+        return '\n'.join(statements.translate_body(m, c, types.TypeResolver()))
+
+    def test_int_array_cast_of_map_value_unboxes_to_jarray(self):
+        # (int[])map.get(k) -> (JArray<int >)(map value) -- (int[]) is not valid C++
+        out = self._emit(['\tint[] var1 = (int[])this.m.get(k);'])
+        self.assertIn('(JArray<int >)(this->m[k])', out)
+        self.assertNotIn('(int[])', out)

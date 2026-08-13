@@ -284,7 +284,9 @@ public:
 	JavaString operator+(unsigned v) const { std::ostringstream o; o << v; return JavaString((const std::string&)*this + o.str()); }
 	JavaString operator+(double v) const { std::ostringstream o; o << v; return JavaString((const std::string&)*this + o.str()); }
 	JavaString operator+(char v) const { return JavaString((const std::string&)*this + std::string(1, v)); }
-	JavaString operator+(bool v) const { return JavaString((const std::string&)*this + (v ? "true" : "false")); }
+	// NOTE: deliberately NO operator+(bool)/(const char*)/(std::string) -- a `const char*` literal converts
+	// to bool, which would make `s + "literal"` ambiguous against the free std::operator+(string,const char*).
+	// String concatenation with a bool is handled by the JCat lowering (which has its own bool overload).
 };
 #endif // JAVASTRING_H
 '''
@@ -420,7 +422,11 @@ public:
 		T v = (*this)[(size_t)i]; this->erase(this->begin() + i); return v;
 	}
 	template<class U> bool remove(const U& v) {          // List.remove(Object) -> was-present
-		_it it = std::find(this->begin(), this->end(), v);
+		// box U to the element type first: on a JList<JObject>, `std::find(.., EntityPlayer*)` would
+		// compare `JObject == EntityPlayer*`, which is ambiguous (JObject has both operator==(JObject)
+		// and an implicit EntityPlayer*<->JObject conversion). T(v) forces an element==element compare.
+		T needle = T(v);
+		_it it = std::find(this->begin(), this->end(), needle);
 		if (it == this->end()) return false;
 		this->erase(it); return true;
 	}
