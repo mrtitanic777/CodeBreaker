@@ -171,7 +171,8 @@ RUNTIME_HEADERS = ({'Random', 'Runnable', 'Thread', 'Comparator', 'File',
                     'Inflater', 'Deflater', 'InflaterInputStream', 'DeflaterOutputStream',
                     'ByteArrayInputStream', 'DataFormatException', 'NoSuchAlgorithmException',
                     'BigInteger', 'SoftReference', 'InetAddress', 'StringReader', 'Font', 'FontMetrics',
-                    'AffineTransform', 'DataBufferInt', 'Graphics2D', 'BufferStrategy', 'LibraryLWJGLOpenAL'}
+                    'AffineTransform', 'DataBufferInt', 'Graphics2D', 'BufferStrategy', 'LibraryLWJGLOpenAL',
+                    'CodecWav', 'FontMetrics'}
                    | RUNTIME_STATIC_HOLDERS)
 
 # Java stdlib static holders shimmed in the prelude (JavaRT.h, included everywhere -- so NOT

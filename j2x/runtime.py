@@ -497,6 +497,10 @@ public:
 	}
 	bool operator==(long long) const { return false; }   // a by-value map is never null
 	bool operator!=(long long) const { return true; }
+	// java.util.AbstractMap.equals/hashCode (JSON node objects compare their backing map)
+	bool equals(const JMap<K, V>& o) const { return (const std::map<K, V>&)*this == (const std::map<K, V>&)o; }
+	template<class U> bool equals(const U&) const { return false; }   // non-map argument
+	int hashCode() const { int h = 0; for (typename std::map<K, V>::const_iterator i = this->begin(); i != this->end(); ++i) h += (int)(size_t)&i->second; return h; }
 };
 #endif // JMAP_H
 '''
@@ -1317,7 +1321,11 @@ _GENERATED['MessageDigest.h'] = _class_stub('MessageDigest', includes=['JArray']
     ret_methods=[('digest', ('JArray<unsigned char >', 'JArray<unsigned char >()'))],
     extra=['static MessageDigest* getInstance(...) { return new MessageDigest(); }'])
 # AWT / misc leaf stubs (dead on the 360).
-_GENERATED['RenderingHints.h'] = _class_stub('RenderingHints', void_methods=['put'])
+_GENERATED['RenderingHints.h'] = _class_stub('RenderingHints', void_methods=['put'],
+    extra=['static const int s_KEY_INTERPOLATION = 0;',   # opaque hint keys/values (dead: no AWT on the 360)
+           'static const int s_VALUE_INTERPOLATION_NEAREST_NEIGHBOR = 0;',
+           'static const int s_KEY_ANTIALIASING = 0;', 'static const int s_VALUE_ANTIALIAS_OFF = 0;'])
+_GENERATED['CodecWav.h'] = _class_stub('CodecWav')   # paulscode WAV codec (dead type stub on the console)
 _GENERATED['DataFlavor.h'] = _class_stub('DataFlavor')
 _GENERATED['Reference.h'] = _class_stub('Reference', ret_methods=[('get', ('void*', '0'))])
 _GENERATED['Logger.h'] = _class_stub('Logger', void_methods=['log', 'info', 'warning', 'severe', 'fine'],
@@ -1347,7 +1355,11 @@ _GENERATED['Charset.h'] = _class_stub('Charset',
 _GENERATED['Rectangle.h'] = _class_stub('Rectangle', extra=['int x, y, width, height;'])
 # Transferable / TextArea leaf methods (dead AWT; keep them compiling). RenderingHints/DataFlavor
 # static-constant accesses (KEY_INTERPOLATION / stringFlavor) remain a few errors -- dead AWT, low pri.
-_GENERATED['RenderingHints.h'] = _class_stub('RenderingHints', void_methods=['put'])
+_GENERATED['RenderingHints.h'] = _class_stub('RenderingHints', void_methods=['put'],
+    extra=['static const int s_KEY_INTERPOLATION = 0;',   # opaque hint keys/values (dead: no AWT on the 360)
+           'static const int s_VALUE_INTERPOLATION_NEAREST_NEIGHBOR = 0;',
+           'static const int s_KEY_ANTIALIASING = 0;', 'static const int s_VALUE_ANTIALIAS_OFF = 0;'])
+_GENERATED['CodecWav.h'] = _class_stub('CodecWav')   # paulscode WAV codec (dead type stub on the console)
 _GENERATED['DataFlavor.h'] = _class_stub('DataFlavor')
 _GENERATED['Transferable.h'] = _class_stub('Transferable',
     ret_methods=[('isDataFlavorSupported', ('bool', 'false')), ('getTransferData', ('void*', '0'))])
@@ -1686,10 +1698,11 @@ _GENERATED['FontMetrics.h'] = _class_stub('FontMetrics',
     ret_methods=[('stringWidth', ('int', '0')), ('getHeight', ('int', '0')), ('charWidth', ('int', '0'))])
 _GENERATED['AffineTransform.h'] = _class_stub('AffineTransform')
 _GENERATED['DataBufferInt.h'] = _class_stub('DataBufferInt', ret_methods=[('getData', ('void*', '0'))])
-_GENERATED['Graphics2D.h'] = _class_stub('Graphics2D', bases=['Graphics'], includes=['Graphics', 'FontMetrics'],
+_GENERATED['Graphics2D.h'] = _class_stub('Graphics2D', bases=['Graphics'],
+    includes=['Graphics', 'FontMetrics'], fwds=['AffineTransform', 'Rectangle'],
     void_methods=['setClip', 'setRenderingHint', 'translate', 'scale', 'setColor', 'fillRect',
                   'drawImage', 'setTransform', 'drawString', 'dispose', 'rotate', 'shear'],
-    ret_methods=[('getTransform', ('void*', '0')), ('getClipBounds', ('void*', '0')),
+    ret_methods=[('getTransform', ('AffineTransform*', '0')), ('getClipBounds', ('Rectangle*', '0')),
                  ('getFontMetrics', ('FontMetrics*', '0'))])
 _GENERATED['BufferStrategy.h'] = _class_stub('BufferStrategy', includes=['Graphics'], fwds=['Graphics'],
     void_methods=['show'], ret_methods=[('getDrawGraphics', ('Graphics*', '0'))])
@@ -1747,11 +1760,11 @@ _GENERATED['Applet.h'] = _class_stub('Applet', bases=['Component'], includes=['C
                  ('getWidth', ('int', '0')), ('getHeight', ('int', '0')),
                  ('getGraphics', ('Graphics*', '0')), ('isActive', ('bool', 'false')),
                  ('isDisplayable', ('bool', 'false')), ('getParent', ('void*', '0'))])
-_GENERATED['Canvas.h'] = _class_stub('Canvas', bases=['Component'], includes=['Component'], fwds=['Graphics'],
+_GENERATED['Canvas.h'] = _class_stub('Canvas', bases=['Component'], includes=['Component'], fwds=['Graphics', 'BufferStrategy'],
     void_methods=_AWT_VOID,
     ret_methods=[('getWidth', ('int', '0')), ('getHeight', ('int', '0')),
                  ('getGraphics', ('Graphics*', '0')), ('getLocationOnScreen', ('void*', '0')),
-                 ('getBufferStrategy', ('void*', '0'))])
+                 ('getBufferStrategy', ('BufferStrategy*', '0'))], extra=['void createBufferStrategy(...) {}'])
 _GENERATED['Component.h'] = _class_stub('Component', fwds=['Graphics'], void_methods=_AWT_VOID,
     ret_methods=[('getWidth', ('int', '0')), ('getHeight', ('int', '0')),
                  ('getGraphics', ('Graphics*', '0')), ('getLocationOnScreen', ('void*', '0'))])
