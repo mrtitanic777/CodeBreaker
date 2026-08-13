@@ -2040,6 +2040,11 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
     s = _resolve_call_chains(s, scope, resolver, current)
     # 6d'. Iterator* free-helper results (j2xIter/j2xValues/j2xKeys from step 0e): `.next()` -> `->next()`.
     s = _deref_iter_helpers(s)
+    # 6d''. `.iterator()` (the container MEMBER, e.g. on a chained `map.entrySet().iterator()`) always
+    #       returns Iterator* -- so the call after it derefs with `->`, which the pointer-root chain pass
+    #       misses when the receiver is a value (entrySet() -> JList). Universal: `.iterator().` -> `->`.
+    if '.iterator().' in s:
+        s = re.sub(r'\.iterator\(\)\s*\.(?=[A-Za-z_])', '.iterator()->', s)
     # 6e. JObject-operand casts (Object var / Object[] element / raw-map value): lower BEFORE the
     #     generic cast pass -- (String)obj -> (obj).str(), (String[])obj -> (obj).strArray(),
     #     (Integer/Character/...)obj -> (obj) (JObject operators/unbox-methods do the rest).
