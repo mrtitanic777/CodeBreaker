@@ -678,6 +678,9 @@ struct JObject {
 	// box a value-container Map the same way (`Object o = map` / a generics bridge returning Map as
 	// Object, argo's JsonNodeSelectors). `(Map)o` unboxes via the operator below.
 	template<class K, class V> JObject(const JMap<K, V>& m) : kind(5), i(0), d(0), p(new JMap<K, V>(m)), ti(&typeid(JMap<K, V>)) {}
+	// box a value-container List too (`Object o = list`, argo's element/array node selectors). `(List)o`
+	// unboxes via the operator below.
+	template<class T> JObject(const JList<T>& v) : kind(5), i(0), d(0), p(new JList<T>(v)), ti(&typeid(JList<T>)) {}
 	template<class T> JObject(T* v) : kind(v ? 5 : 0), i(0), d(0), p((void*)v), ti(v ? &typeid(T) : 0) {}
 	// Java instanceof:
 	bool isCharacter() const { return kind == 2; }
@@ -726,6 +729,10 @@ struct JObject {
 	// unbox a boxed Map: `(Map)o` -> the stored JMap (empty if o didn't box a JMap<K,V>).
 	template<class K, class V> operator JMap<K, V>() const {
 		return (kind == 5 && p && ti && *ti == typeid(JMap<K, V>)) ? *(JMap<K, V>*)p : JMap<K, V>();
+	}
+	// unbox a boxed List: `(List)o` -> the stored JList (empty if o didn't box a JList<T>).
+	template<class T> operator JList<T>() const {
+		return (kind == 5 && p && ti && *ti == typeid(JList<T>)) ? *(JList<T>*)p : JList<T>();
 	}
 };
 
