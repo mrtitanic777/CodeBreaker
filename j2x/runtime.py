@@ -408,6 +408,12 @@ public:
 	T remove(int i) {                                    // List.remove(int index) -> removed element
 		T v = (*this)[(size_t)i]; this->erase(this->begin() + i); return v;
 	}
+	// List.remove(int index) with a non-`int` integer index (unsigned/long from a Java int expr). These
+	// NON-template overloads beat the by-value template below for integer args, so an index remove never
+	// boxes the index into T (JObject(unsigned) is ambiguous) or mistakes it for a remove-by-value.
+	T remove(unsigned i) { return this->remove((int)i); }
+	T remove(long i) { return this->remove((int)i); }
+	T remove(long long i) { return this->remove((int)i); }
 	template<class U> bool remove(const U& v) {          // List.remove(Object) -> was-present
 		// box U to the element type first: on a JList<JObject>, `std::find(.., EntityPlayer*)` would
 		// compare `JObject == EntityPlayer*`, which is ambiguous (JObject has both operator==(JObject)
@@ -663,7 +669,10 @@ struct JObject {
 	// box a value-container List too (`Object o = list`, argo's element/array node selectors). `(List)o`
 	// unboxes via the operator below.
 	template<class T> JObject(const JList<T>& v) : kind(5), i(0), d(0), p(new JList<T>(v)), ti(&typeid(JList<T>)) {}
-	template<class T> JObject(T* v) : kind(v ? 5 : 0), i(0), d(0), p((void*)v), ti(v ? &typeid(T) : 0) {}
+	// Box a pointer with its DYNAMIC type (typeid(*v), not typeid(T)) so `o.is<Leaf>()` -- the lowering
+	// of `o instanceof Leaf` -- matches the runtime class even when the static box type was a base
+	// (a raw List<Entity> element tested `instanceof EntityPainting`). Guarded: typeid(*v) needs v != 0.
+	template<class T> JObject(T* v) : kind(v ? 5 : 0), i(0), d(0), p((void*)v), ti(v ? &typeid(*v) : 0) {}
 	// Java instanceof:
 	bool isCharacter() const { return kind == 2; }
 	bool isString() const { return kind == 4; }

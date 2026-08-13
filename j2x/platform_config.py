@@ -437,7 +437,7 @@ def _kernel_files(cfg):
             '    XOVERLAPPED ov; memset(&ov, 0, sizeof(ov));',
             '    ULARGE_INTEGER needed; needed.QuadPart = 8ULL * 1024 * 1024;   // space to reserve for the save',
             '    DWORD r = XShowDeviceSelectorUI(0, XCONTENTTYPE_SAVEDGAME, XCONTENTFLAG_MANAGESTORAGE,',
-            '                                    &needed, &g_deviceId, &ov);',
+            '                                    needed, &g_deviceId, &ov);',
             '    if (r != ERROR_IO_PENDING) return false;',
             '    while (!XHasOverlappedIoCompleted(&ov)) { }',
             '    DWORD ext = 0; return XGetOverlappedResult(&ov, &ext, TRUE) == ERROR_SUCCESS;',

@@ -265,6 +265,12 @@ def render_header(cls, resolver, ledger=None, cpp_std=None, platform_label=None)
     for m in methods:
         L.append('\t' + _method_decl(cls, m, resolver))
 
+    # java.lang.Object.toString() is callable through any reference, but a generated INTERFACE has no
+    # Object base to inherit it from -- so a `functor->toString()` call won't compile. Give an interface
+    # that doesn't declare its own toString a default one (argo's J_Functor).
+    if cls.is_interface and not any(mm.name == 'toString' and not mm.params for mm in cls.methods):
+        L.append('\tvirtual JavaString toString() { return JavaString(); }')
+
     # Ordered static init: deferred static field initializers + Java static{} blocks run here,
     # called in dependency order by the generated driver j2x_initAll() (see source.py / j2x_init.cpp).
     # Always declared (empty when nothing to defer) so the driver can call it on any concrete class.

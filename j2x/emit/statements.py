@@ -1432,6 +1432,8 @@ def _expr_object_kind(expr, scope):
         return None
     if ndim == 1 and jt.name in _RAW_MAPS:
         return 'object'                                     # raw map value -> JObject
+    if ndim == 1 and jt.name in _LIST_TYPES and not getattr(jt, 'args', None):
+        return 'object'                                     # RAW list element (JList<JObject>) -> JObject
     if ndim == 0 and jt.name == 'Object':
         return 'object'                                     # bare Object variable
     return None
