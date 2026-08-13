@@ -758,11 +758,12 @@ template<class M> inline Iterator* j2xKeys(const M& m) {
 }
 
 // Java reference-identity `this == o` inside equals(Object o), where o is a nullable Object param -> a
-// JObject* boxing the argument. Compare the receiver pointer to the boxed pointer (true iff o boxes
-// `this`) -- exactly Java's `==`. Only viable when one side is a JObject*, so no other comparison is
-// affected. (argo's J_JsonArray/J_JsonObject/... equals shortcut.)
-template<class T> inline bool operator==(const T* a, const JObject* b) { return b != 0 && b->kind == 5 && b->p == (const void*)a; }
-template<class T> inline bool operator!=(const T* a, const JObject* b) { return !(a == b); }
+// JObject (value or pointer) boxing the argument. j2xIdentEq compares the receiver pointer to the boxed
+// pointer (true iff o boxes `this`) -- exactly Java's `==`. A free operator== can't do this (both sides
+// are pointers, and an overloaded operator needs a class-type parameter -> C2803), so the converter
+// rewrites `this == <Object var>` to this call. (argo's J_JsonArray/J_JsonObject/... equals shortcut.)
+template<class T> inline bool j2xIdentEq(const T* a, const JObject& b) { return b.kind == 5 && b.p == (const void*)a; }
+template<class T> inline bool j2xIdentEq(const T* a, const JObject* b) { return b != 0 && b->kind == 5 && b->p == (const void*)a; }
 
 // Stream a JObject (Java String-concatenation of an Object calls its toString()). Without this the
 // implicit conversions (operator int / operator T*) make `ostream << JObject` AMBIGUOUS, which breaks

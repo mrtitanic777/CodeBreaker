@@ -2606,3 +2606,25 @@ class ArrayCastUnboxTests(unittest.TestCase):
         out = self._emit(['\tint[] var1 = (int[])this.m.get(k);'])
         self.assertIn('(JArray<int >)(this->m[k])', out)
         self.assertNotIn('(int[])', out)
+
+
+class ThisIdentEqTests(unittest.TestCase):
+    def _scope(self):
+        return {'var1': ir.JType('Object'), 'other': ir.JType('Entity')}
+
+    def test_this_eq_object_becomes_identeq(self):
+        self.assertEqual(statements._rewrite_this_ident_eq('if(this == var1) {', self._scope()),
+                         'if(j2xIdentEq(this, var1)) {')
+
+    def test_object_eq_this_becomes_identeq(self):
+        self.assertEqual(statements._rewrite_this_ident_eq('return var1 == this;', self._scope()),
+                         'return j2xIdentEq(this, var1);')
+
+    def test_this_neq_object(self):
+        self.assertEqual(statements._rewrite_this_ident_eq('if(this != var1) {', self._scope()),
+                         'if(!j2xIdentEq(this, var1)) {')
+
+    def test_this_eq_typed_pointer_unchanged(self):
+        # comparing this to a typed pointer is a normal pointer compare -- must NOT be rewritten
+        self.assertEqual(statements._rewrite_this_ident_eq('if(this == other) {', self._scope()),
+                         'if(this == other) {')

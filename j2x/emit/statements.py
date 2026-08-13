@@ -1522,6 +1522,34 @@ def _read_primary(s, i):
 _CAST_HEAD = re.compile(r'\(\s*([A-Za-z_]\w*)\s*(\[\s*\])?\s*\)')
 
 
+def _rewrite_this_ident_eq(s, scope):
+    """`this == o` / `o == this` where o is an Object-typed var (a JObject boxing the arg) -> j2xIdentEq
+    (Java reference identity: is o boxing `this`?). A raw `this == someJObject` won't compile -- a typed
+    pointer can't be compared to a JObject, and an operator== can't bridge two pointers (C2803)."""
+    if 'this' not in s or ('==' not in s and '!=' not in s):
+        return s
+
+    def _obj(ident):
+        jt = scope.get(ident)
+        return jt is not None and not jt.is_array and jt.name == 'Object'
+
+    def r1(m):
+        op, ident = m.group(1), m.group(2)
+        if not _obj(ident):
+            return m.group(0)
+        call = 'j2xIdentEq(this, %s)' % ident
+        return call if op == '==' else '!' + call
+    s = re.sub(r'\bthis\s*(==|!=)\s*([A-Za-z_]\w*)', r1, s)
+
+    def r2(m):
+        ident, op = m.group(1), m.group(2)
+        if not _obj(ident):
+            return m.group(0)
+        call = 'j2xIdentEq(this, %s)' % ident
+        return call if op == '==' else '!' + call
+    return re.sub(r'\b([A-Za-z_]\w*)\s*(==|!=)\s*this\b', r2, s)
+
+
 def _rewrite_jobject_casts(s, scope, resolver=None):
     """Lower casts whose operand is a JObject (Object var / Object[] element / raw-map value), which
     the generic _cast pass + JObject's conversion operators can't always handle:
@@ -1961,6 +1989,11 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
     # 0c. Unicode char/string escapes -> code-page-safe forms (no C4566): '￿' -> 0xffff,
     #     the ⌂ font glyph -> its CP437 byte. Operates ON literals, so before identifier rewrites.
     s = _fix_unicode_literals(s)
+    # 0d''. `this == <Object var>` (Java reference identity in equals) -> j2xIdentEq(this, var). Done
+    #       early, while `this` is still bare (before `this.` -> `this->`) and before the comparison is
+    #       otherwise touched.
+    if 'this' in s and ('==' in s or '!=' in s):
+        s = _rewrite_this_ident_eq(s, scope)
     # 0f. for-init ARRAY declaration: `for(int[] var3 = ...` -- the line-anchored _DECL below misses
     #     it, and a raw `int[] var` is invalid C++ (MSVC parses `[...]` as a lambda -> C3493 cascade).
     #     Convert the array TYPE in a for-init to JArray<...>.
