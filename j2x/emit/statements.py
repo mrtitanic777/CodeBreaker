@@ -1149,7 +1149,13 @@ def _boxed_nullable_locals(method, scope, resolver):
         jt = scope.get(name)
         if jt is None or jt.is_array or jt.name not in typemap.BOXED_VALUE_TYPES:
             continue
-        if _local_used_nullably(name, text):
+        # nullable use OR an unbox call (`var.intValue()` / `.byteValue()` / ...) both mean the local
+        # holds a BOXED value (a collection/iterator result, an Object cast) -> it must be a JObject,
+        # not the raw primitive (`int var = iter->next()` + `var.intValue()` don't compile).
+        if (_local_used_nullably(name, text)
+                or re.search(r'(?<![\w.>])' + re.escape(name) +
+                             r'\s*\.\s*(?:intValue|byteValue|shortValue|longValue|floatValue|doubleValue|'
+                             r'booleanValue|charValue)\s*\(', text)):
             boxed.add(name)
     return boxed
 
