@@ -32,6 +32,49 @@ def discover(java_dir):
     return [paths[k] for k in sorted(paths)]
 
 
+def drop_synthetic_artifacts(classes, ledger=None):
+    """Drop MCP decompiler artifacts that exist only to satisfy Java access rules and would emit
+    noise / a false ctor-stub / an uninitialized-object trap in C++:
+      * empty MARKER classes (`class Empty1 {}`) -- no fields, methods, parent or interfaces;
+      * synthetic BRIDGE constructors `Cls(EmptyN var1) { this(); }` -- a ctor taking exactly one
+        marker-typed param (these delegate to the real private ctor and are never meaningfully called).
+    EmptyChunk (a real Chunk subclass) and NoiseGenerator (an empty-in-source abstract BASE class)
+    are NOT markers, so they are untouched. Returns the kept classes."""
+    # names used as a base -> never droppable (NoiseGenerator is `class NoiseGenerator {}` but is
+    # extended by NoiseGeneratorOctaves/Perlin).
+    used_as_base = set()
+    for c in classes:
+        if c.parent:
+            used_as_base.add(c.parent)
+        used_as_base.update(c.interfaces)
+    # sole-parameter constructor types -> the bridge-ctor signal
+    bridge_param_types = set(m.params[0].jtype.name for c in classes for m in c.methods
+                             if m.is_ctor and len(m.params) == 1)
+    # a marker is EMPTY (no members/parent/interfaces), never a base, AND used only as a bridge param
+    markers = set(c.name for c in classes
+                  if not c.is_enum and not c.is_interface
+                  and not c.fields and not c.methods and not c.parent and not c.interfaces
+                  and c.name not in used_as_base and c.name in bridge_param_types)
+    if not markers:
+        return classes, set()
+    dropped_ctors = 0
+    for c in classes:
+        kept = []
+        for m in c.methods:
+            if m.is_ctor and len(m.params) == 1 and m.params[0].jtype.name in markers:
+                dropped_ctors += 1
+                continue                                  # synthetic bridge ctor -> drop
+            kept.append(m)
+        c.methods = kept
+    result = [c for c in classes if c.name not in markers]
+    if ledger is not None:
+        ledger.add('(pipeline)', Category.PORTED,
+                   'dropped %d empty marker class(es) [%s] + %d synthetic bridge constructor(s)'
+                   % (len(markers), ', '.join(sorted(markers)), dropped_ctors),
+                   source='pipeline', rule='drop-synthetic')
+    return result, markers
+
+
 def resolve_inheritance(classes):
     """Populate each class's inherited_fields by walking its parent chain across the
     full class set. Instance fields only; private parent fields are skipped (a subclass
@@ -127,6 +170,13 @@ def build_member_env(classes):
                     methods.setdefault(m.name, m.return_type)
             cur = by_name.get(cur.parent)
         env[cls.name] = {'fields': fields, 'methods': methods, 'statics': statics}
+    # Runtime types that aren't in the parsed corpus but whose chained methods must resolve
+    # `.`->`->` (StringBuilder.append() returns the builder). Return types drive chain inference.
+    from .ir import JType as _JT
+    env['StringBuilder'] = {'fields': {}, 'statics': set(), 'methods': {
+        'append': _JT('StringBuilder'), 'insert': _JT('StringBuilder'),
+        'deleteCharAt': _JT('StringBuilder'), 'reverse': _JT('StringBuilder'),
+        'toString': _JT('String'), 'charAt': _JT('char'), 'length': _JT('int')}}
     return env
 
 
@@ -152,15 +202,62 @@ def build_method_renames(classes):
     return renames
 
 
+def compute_thread_like(classes):
+    """Names of classes that are (transitively) a Thread subclass or Runnable -- i.e. an
+    object whose `.start()`/`.run()` runs ASYNCHRONOUSLY and must OUTLIVE the call site. These must
+    NEVER be stack-allocated by the leak transform (the object outliving the thread is a use-after-free).
+    Seeded with the external roots Thread/Runnable (not in the parsed corpus)."""
+    by_name = dict((c.name, c) for c in classes)
+    thread_like = set()
+    for cls in classes:
+        cur, guard = cls, set()
+        while cur and cur.name not in guard:
+            guard.add(cur.name)
+            if cur.parent in ('Thread', 'Runnable') or 'Runnable' in cur.interfaces or 'Thread' in cur.interfaces:
+                thread_like.add(cls.name)
+                break
+            cur = by_name.get(cur.parent)
+    return thread_like
+
+
+_RETURN_NULL = re.compile(r'\breturn\s+null\s*;')
+
+
+def derive_nullability(classes, resolver):
+    """DERIVE nullable getters from the corpus (retires reliance on the Alpha-curated whitelist):
+    a method returning a REFERENCE type whose body can `return null;` can hand back NULL, so
+    `getX()->y` on it is a NULL-deref crash on the 360 and must be guarded -- on ANY corpus, not just
+    Alpha. High-precision (explicit `return null` + pointer return only), so over-guarding is bounded;
+    a spurious guard is at worst a benign extra null-check. Returns (getter_names, {getter: retType})."""
+    getters, gtypes = set(), {}
+    for c in classes:
+        for m in c.methods:
+            rt = m.return_type
+            if m.is_ctor or rt is None or rt.is_array:
+                continue
+            if rt.name in typemap.PRIMITIVES or rt.name == 'String' or rt.name in typemap.CONTAINERS:
+                continue                                  # value return can't form getter()->deref
+            if not resolver.is_pointer(rt):
+                continue
+            body = '\n'.join(t for _ln, t in m.body)
+            if _RETURN_NULL.search(body):
+                getters.add(m.name)
+                gtypes.setdefault(m.name, rt.name)
+    return getters, gtypes
+
+
 def build_resolver(classes, value_types=None):
     names = set(c.name for c in classes)
     enums = set(c.name for c in classes if c.is_enum)
+    typed_enums = set(c.name for c in classes if c.is_enum and c.is_typed_enum())
     ifaces = set(c.name for c in classes if c.is_interface)
     vals = set(value_types if value_types is not None else typemap.DEFAULT_VALUE_TYPES)
     return types.TypeResolver(known_classes=names, value_types=vals,
                              interface_types=ifaces, enum_types=enums,
+                             typed_enum_types=typed_enums,
                              members=build_member_env(classes),
-                             method_renames=build_method_renames(classes))
+                             method_renames=build_method_renames(classes),
+                             thread_like=compute_thread_like(classes))
 
 
 
@@ -211,16 +308,28 @@ def _parse_std_version(label):
 
 
 def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True,
-            cpp_std='C++03', platform=None, progress_cb=None):
+            cpp_std='C++03', platform=None, progress_cb=None, platform_refs=False,
+            sdk_override=None, emit_debug=True):
     """Convert a Java source tree to C++. Returns a summary dict.
 
     cpp_std: target C++ standard ('C++98', 'C++03', 'C++11', 'C++14', 'C++17', 'C++20', 'C++23').
     platform: target platform id ('xbox360', 'pc_windows', 'ps3', 'wii', etc.) for stub annotations.
+    platform_refs: if True, emit the real hand-written platform layer from docs/platform/reference/
+                   (GL->D3D9 emulator, audio, input, socket) instead of the no-op stubs.
+    sdk_override: explicit SDK root; else auto-detected. A console platform without a located SDK is
+                  REFUSED (the converter ships no SDK headers/signatures).
     progress_cb: optional callable(str) invoked with per-class progress lines."""
     ledger = ledger if ledger is not None else Ledger()
     std_version = _parse_std_version(cpp_std)
     _prog = progress_cb or (lambda _: None)
     os.makedirs(out_dir, exist_ok=True)
+
+    # SDK GATE: refuse platform-specific conversion for a console target with no SDK on the machine.
+    from . import sdk as _sdk
+    sdk_info = None
+    if _sdk.requires_sdk(platform):
+        sdk_info = _sdk.require(platform, override=sdk_override)   # raises SdkNotFound -> caller reports
+        _prog('[sdk] %s located at %s (via %s)' % (sdk_info.name, sdk_info.root, sdk_info.source))
 
     _prog('[config] target C++ standard: %s (year %d)' % (std_version.label, std_version.year))
     _prog('[parse] discovering .java files...')
@@ -237,12 +346,32 @@ def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True,
                        severity=Severity.HIGH, source='pipeline', rule='parse-error')
     _prog('[parse] parsed %d classes OK' % len(classes))
 
+    before = len(classes)
+    classes, markers = drop_synthetic_artifacts(classes, ledger)
+    if len(classes) != before:
+        _prog('[parse] dropped %d empty marker class(es) + synthetic bridge ctors' % (before - len(classes)))
+
     _prog('[resolve] inheritance + MI forwards + type resolver...')
     resolve_inheritance(classes)
     compute_mi_forwards(classes)
     resolver = build_resolver(classes, value_types)
+    resolver.markers = markers                            # dropped EmptyN markers -> strip their call-site args
     _prog('[resolve] done (%d known classes, %d interfaces, %d enums)'
           % (len(resolver.known), len(resolver.interfaces), len(resolver.enums)))
+
+    # DERIVE nullable getters from the corpus and union into the guarded set for THIS conversion, so
+    # emit-time null-guarding + the null-deref rule cover getters that can `return null` on any corpus
+    # (not just the Alpha whitelist). Snapshot/restore keeps the module globals clean across calls.
+    from .emit import statements as _statements
+    _base_getters = set(typemap.KNOWN_NULLABLE_GETTERS)
+    _base_gtypes = dict(typemap.NULLABLE_GETTER_RETURN_TYPE)
+    d_getters, d_gtypes = derive_nullability(classes, resolver)
+    typemap.KNOWN_NULLABLE_GETTERS |= d_getters
+    for _k, _v in d_gtypes.items():
+        typemap.NULLABLE_GETTER_RETURN_TYPE.setdefault(_k, _v)
+    _statements.refresh_nullable_getters()
+    _prog('[nullability] derived %d additional nullable getter(s) from the corpus'
+          % len(d_getters - _base_getters))
 
     plat_label = None
     if platform:
@@ -255,6 +384,17 @@ def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True,
     _prog('[runtime] writing %d support headers...' % len(rt_files))
     for fname, content in rt_files.items():
         _write(os.path.join(out_dir, fname), content)
+
+    # optionally REPLACE the platform stubs with the real hand-written implementations (GL->D3D9
+    # emulator, XACT audio, XInput, XNet socket, ...) from docs/platform/reference/. The port stops
+    # being blind: it ships the proven Alpha platform layer; PLATFORM_COVERAGE.md reports the delta.
+    if platform_refs:
+        from . import platform_refs as _pref
+        _ref_dir0 = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                 'docs', 'platform', 'reference')
+        emitted = _pref.emit_references(out_dir, _ref_dir0)
+        _prog('[platform] emitted %d hand-written platform references (replacing stubs): %s'
+              % (len(emitted), ', '.join(sorted(emitted))))
 
     headers = sources = 0
     init_classes = []                                # concrete classes whose initStatics() does real work
@@ -295,7 +435,17 @@ def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True,
 
     # ORDERED STATIC-INIT DRIVER: a single j2x_initAll() that calls each class's initStatics() in
     # DEPENDENCY order (C++ gives no cross-TU static-init order -> the static-init-order crash class).
-    _write_init_driver(out_dir, init_classes, set(c.name for c in classes))
+    _write_init_driver(out_dir, init_classes, classes)
+
+    # reflection factories: Java class-registry reflection (getConstructor/newInstance -> NULL stub,
+    # the entity-spawn / tile-load / packet-parse crash) becomes a real generated factory switch built
+    # from the registration table, and reuse sites (BlockSign/SpawnerAnimals) call it via a shared
+    # header. Runs before the rules scan so the reflection-unsupported findings drop.
+    from . import reflection_factory
+    _rf = reflection_factory.run(out_dir)
+    if _rf['total_sites']:
+        _prog('[reflect] %d registries -> factories (%d classes), %d sites rewritten (%d reused)'
+              % (len(_rf['registries']), _rf['total_classes'], _rf['total_sites'], len(_rf['reused'])))
 
     # verify: run the crash-class rules over the emitted output (acceptance check)
     _prog('[rules] scanning crash-class rules on emitted output...')
@@ -308,6 +458,44 @@ def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True,
         rep = report.write_reports(ledger, out_dir,
                                    meta={'output_dir': os.path.abspath(out_dir), 'profile': 'rewrite (j2x)'})
         _prog('[report] written to %s' % rep)
+
+    # asset manifest: what textures/sounds/music/lang files must ship in the content folder
+    from . import content
+    cm = content.write_content_md(java_dir, out_dir)
+    _prog('[content] asset manifest written to %s' % cm)
+
+    # achievement conversion: map the program's achievements to the console achievement system
+    # (title config + networked profile write) -- only if the program actually defines any.
+    from . import achievements as _ach
+    _found = _ach.scan_achievements(out_dir)
+    if _found:
+        _ach.run(out_dir, out_dir)
+        _prog('[achievements] %d found -> ACHIEVEMENTS.md + achievements.xlast + Achievements.h/.cpp' % len(_found))
+
+    # the single debug file: one master switch (DEBUG_ENABLED) gating every DBG_* macro, so all
+    # debug instrumentation across the codebase is toggled from one place. Concise + rate-limited.
+    # Opt-in: the UI/CLI decides whether the port gets debug support at all.
+    if emit_debug:
+        from . import debug
+        debug.write_debug(out_dir)
+        _prog('[debug] emitted Debug.h/.cpp + DEBUG.md (master toggle DEBUG_ENABLED; J2X-DEBUG markers)')
+    else:
+        _prog('[debug] debug support NOT emitted (opt-in disabled)')
+
+    # platform-layer coverage: which video/input/audio/fileIO/network/memory symbols the game uses,
+    # classified REUSABLE (Alpha reference) / STUB / MISSING, with an implementation-choice menu.
+    from . import platform_coverage
+    _ref_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            'docs', 'platform', 'reference')
+    pc_path, _pc = platform_coverage.write_report(
+        out_dir, reference_dir=(_ref_dir if os.path.isdir(_ref_dir) else None),
+        runtime_files=set(rt_files.keys()))
+    _prog('[platform] coverage report written to %s' % pc_path)
+
+    # restore the base nullable-getter globals (derived set was scoped to this conversion only)
+    typemap.KNOWN_NULLABLE_GETTERS.clear(); typemap.KNOWN_NULLABLE_GETTERS.update(_base_getters)
+    typemap.NULLABLE_GETTER_RETURN_TYPE.clear(); typemap.NULLABLE_GETTER_RETURN_TYPE.update(_base_gtypes)
+    _statements.refresh_nullable_getters()
 
     cats = ledger.totals_by_category()
     sevs = ledger.totals_by_severity()
@@ -335,13 +523,52 @@ _STATIC_INIT_ORDER = ['MathHelper', 'Material', 'Block', 'Item', 'CraftingManage
                       'EntityList', 'TileEntity', 'MobSpawnerBase', 'OsMap', 'Packet']
 
 
-def _write_init_driver(out_dir, init_classes, all_class_names):
+def compute_static_init_order(classes, callable_init):
+    """Order classes' initStatics() so a class runs AFTER every class whose statics it reads.
+    Two dependency sources, combined:
+      * SEED (`_STATIC_INIT_ORDER`): proven, ctor-MEDIATED deps (Block ctor reads Material statics --
+        invisible to a text scan because Material is referenced inside BlockStone's ctor, not Block's
+        static init). Kept as a PRIORITY so the known order is preserved.
+      * DERIVED: DIRECT reads -- a class whose static field initializers / static{} blocks reference
+        another initable class's `Name.`/`Name::` statics. These become HARD ordering constraints and
+        catch registries the seed doesn't list (new Beta classes: Achievement, StatList, typed enums
+        reading Material, ...). Correct by construction rather than by hand-editing the seed.
+    Stable + deterministic; cycles are broken by seed/alpha priority (logged by the caller)."""
+    by_name = dict((c.name, c) for c in classes)
+
+    def direct_refs(c):
+        txt = [f.initializer for f in c.fields if f.is_static and f.initializer]
+        for blk in getattr(c, 'static_inits', []):
+            txt.extend(t for _ln, t in blk)
+        for ec in getattr(c, 'enum_consts', []):        # typed-enum constant args build in initStatics()
+            txt.extend(ec.args)                          # (e.g. EnumCreatureType reads Material.air)
+        refs = set(re.findall(r'\b([A-Z]\w*)\b', ' '.join(t for t in txt if t)))
+        return (refs & callable_init) - {c.name}        # only OTHER initable classes are real deps
+
+    deps = dict((n, direct_refs(by_name[n])) for n in callable_init if n in by_name)
+    prio = dict((name, i) for i, name in enumerate(_STATIC_INIT_ORDER))
+    order_key = lambda n: (prio.get(n, len(_STATIC_INIT_ORDER)), n)
+
+    ordered, placed, remaining = [], set(), set(deps)
+    while remaining:
+        ready = [n for n in remaining if deps[n] <= placed]
+        if not ready:                                   # dependency cycle -> break by priority
+            ready = list(remaining)
+        pick = min(ready, key=order_key)
+        ordered.append(pick)
+        placed.add(pick)
+        remaining.discard(pick)
+    # any callable class not present in `classes` (shouldn't happen) -> append stably
+    ordered += sorted(c for c in callable_init if c not in placed)
+    return ordered
+
+
+def _write_init_driver(out_dir, init_classes, classes):
     """Emit j2x_init.h / j2x_init.cpp -- the single ordered static-init entry point. j2x_initAll()
     calls each class's initStatics() in dependency order; Main calls it once at startup, BEFORE the
     game runs, replacing C++'s undefined cross-translation-unit static-init order."""
     callable_init = set(init_classes)
-    ordered = [c for c in _STATIC_INIT_ORDER if c in callable_init]
-    ordered += sorted(c for c in callable_init if c not in _STATIC_INIT_ORDER)
+    ordered = compute_static_init_order(classes, callable_init)
 
     _write(os.path.join(out_dir, 'j2x_init.h'),
            '#ifndef J2X_INIT_H\n#define J2X_INIT_H\n'

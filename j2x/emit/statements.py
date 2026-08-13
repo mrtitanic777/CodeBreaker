@@ -83,7 +83,7 @@ _INSTANCEOF = re.compile(
 _MEMBER = re.compile(r'\b([A-Za-z_]\w*)\.([A-Za-z_]\w*)(\s*\()?')
 _CALL = re.compile(r'\b(\w+)\.(\w+)\s*\(')
 # a cast `(Type)` immediately followed by an operand (word or '(') -- not a grouping
-_CAST = re.compile(r'\(([A-Za-z_]\w*)\)(?=\s*[\w(])')
+_CAST = re.compile(r'\(([A-Za-z_]\w*)\)(?=\s*[\w("\'\-+~!])')   # cast target may be a var, (, literal, or unary -/+/~/! (e.g. (byte)-1)
 
 # receiver categories
 _LIST_TYPES = {'ArrayList', 'List', 'LinkedList'}
@@ -554,7 +554,13 @@ def _rewrite_array_aggregates(s, resolver):
             return s
         dims = m.group(2).count('[')                   # number of [] dimension brackets
         # Object[] elements are boxed (JObject) -- a mixed String/char/pointer array (Java autobox).
-        base = 'JObject' if m.group(1) == 'Object' else resolver.cpp_type(ir.JType(m.group(1)), 'local')
+        # byte[] is an unsigned-char BUFFER (matches types.cpp_type / _array_elem_cpp), NOT signed char.
+        if m.group(1) == 'Object':
+            base = 'JObject'
+        elif m.group(1) == 'byte':
+            base = 'unsigned char'
+        else:
+            base = resolver.cpp_type(ir.JType(m.group(1)), 'local')
         rep = _build_agg(s[brace + 1:close].strip(), dims, base)
         s = s[:m.start()] + rep + s[close + 1:]
 
@@ -629,6 +635,108 @@ def _translate_labels(lines):
     return out
 
 
+def _balanced_from(s, i):
+    """s[i] must be '('. Return (inner, index_after_close) for the balanced paren group."""
+    assert s[i] == '('
+    depth, j = 0, i
+    while j < len(s):
+        if s[j] == '(':
+            depth += 1
+        elif s[j] == ')':
+            depth -= 1
+            if depth == 0:
+                return s[i + 1:j], j + 1
+        j += 1
+    return None, len(s)
+
+
+def _parse_throwaway_new(stmt):
+    """If `stmt` (a full translated statement, no trailing ';') is exactly a used-once heap temporary
+    `(new T(ctorargs))->method(callargs)` whose result is DISCARDED, return (T, ctorargs, method,
+    callargs); else None. Balanced-paren aware so nested calls in the args don't fool it."""
+    s = stmt.strip()
+    if not s.startswith('(new '):
+        return None
+    m = re.match(r'\(new\s+([A-Za-z_]\w*)\s*\(', s)
+    if not m:
+        return None
+    typ = m.group(1)
+    ctorargs, k = _balanced_from(s, m.end() - 1)          # '(' of the ctor args
+    if ctorargs is None or k >= len(s) or s[k] != ')':    # the outer ')' closing `(new ...)`
+        return None
+    rest = s[k + 1:]
+    mm = re.match(r'->\s*([A-Za-z_]\w*)\s*\(', rest)       # ->method(
+    if not mm:
+        return None
+    method = mm.group(1)
+    callargs, k2 = _balanced_from(rest, mm.end() - 1)
+    if callargs is None or rest[k2:].strip() != '':       # nothing may follow (result is discarded)
+        return None
+    return typ, ctorargs.strip(), method, callargs.strip()
+
+
+def _rewrite_leak_temporaries(lines, resolver, ledger, cls):
+    """AUTO-FIX the dominant [memleak] pattern: a used-once heap temporary
+    `(new T(a))->m(b);` (statement, result discarded) leaks T every call (Java GC'd it; C++ does not
+    -- world-gen `(new WorldGenX())->generate(...)` leaked on every populate). Rewrite to a scoped
+    STACK object `{ T _j2xleakN(a); _j2xleakN.m(b); }` that auto-destructs. Only for known user
+    classes (stack-constructible). Matches the hand [memleak] fixes in ChunkProviderGenerate.
+
+    SAFETY: never stackify an object that ESCAPES the call -- a Thread/Runnable started via
+    `.start()`/`.run()` runs asynchronously and MUST outlive the statement (stack-allocating it is a
+    use-after-free, not a leak fix). Those are left as heap (a benign leak beats a crash)."""
+    out, n = [], 0
+    for ln in lines:
+        stripped = ln.strip()
+        if stripped.endswith(';') and stripped.startswith('(new '):
+            parsed = _parse_throwaway_new(stripped[:-1])
+            if (parsed and parsed[0] in resolver.known
+                    and parsed[0] not in resolver.thread_like       # async object: must outlive the call
+                    and parsed[2] not in ('start', 'run')):         # thread-launch methods -> escapes
+                typ, ctorargs, method, callargs = parsed
+                indent = ln[:len(ln) - len(ln.lstrip())]
+                tmp = '_j2xleak%d' % n
+                n += 1
+                decl = '%s %s(%s);' % (typ, tmp, ctorargs) if ctorargs else '%s %s;' % (typ, tmp)
+                out.append('%s{ %s %s.%s(%s); }' % (indent, decl, tmp, method, callargs))
+                if ledger is not None:
+                    ledger.add(cls.name + '.cpp', Category.RULE,
+                               'leak fixed: throwaway `(new %s(...))->%s(...)` -> scoped stack object '
+                               '(Java GC temp leaked every call)' % (typ, method),
+                               severity=Severity.MED, source='emit', rule='leak-temp-stackified')
+                continue
+        out.append(ln)
+    return out
+
+
+# Java reflection with NO C++ equivalent -- the runtime stubs return NULL, so a silent translation is
+# a latent NULL-deref/hang (the TileEntitySign sign-placement deadlock: newInstance() -> NULL tile
+# entity -> null write on the 360 -> freeze). These MUST be surfaced, never silently stubbed.
+_REFLECTION_CALL = re.compile(r'(?<![\w])(newInstance|forName|getConstructor|getDeclaredConstructor)\s*\(')
+
+
+def _flag_reflection(lines, ledger, cls):
+    """Prepend a greppable `J2X-REVIEW[reflection-unsupported]` tag above any statement using Java
+    reflection (newInstance/forName/getConstructor). The stubs return NULL, so a human must supply a
+    hand-written factory. `grep -rn J2X-REVIEW` after a full conversion lists every one."""
+    out = []
+    for ln in lines:
+        code = ln.split('//', 1)[0]
+        m = _REFLECTION_CALL.search(code)
+        if m and 'J2X-REVIEW' not in ln:
+            indent = ln[:len(ln) - len(ln.lstrip())]
+            out.append('%s// J2X-REVIEW[reflection-unsupported]: %s() has no C++ equivalent -- the '
+                       'runtime stub returns NULL. Replace with a hand-written factory (a class-keyed '
+                       'switch / registry), then null-check the result.' % (indent, m.group(1)))
+            if ledger is not None:
+                ledger.add(cls.name + '.cpp', Category.RISK,
+                           'reflection %s() has no C++ equivalent -- stub returns NULL; needs a '
+                           'hand-written factory (J2X-REVIEW[reflection-unsupported])' % m.group(1),
+                           severity=Severity.HIGH, source='emit', rule='reflection-unsupported')
+        out.append(ln)
+    return out
+
+
 _CATCH_PTR = re.compile(r'\bcatch\s*\(\s*([\w:]+)\s*\*\s*([A-Za-z_]\w*)\s*\)')
 _CATCH_VAL = re.compile(r'\bcatch\s*\(\s*([\w:]+)\s+([A-Za-z_]\w*)\s*\)')
 
@@ -656,11 +764,44 @@ def _category(jtype):
         return 'list'
     if n in _MAP_TYPES:
         return 'map'
-    if n in _SET_TYPES:
-        return 'set'
+    # sets now map to JSet<T> (a std::set subclass with the native Java API: add/addAll/removeAll/
+    # contains/isEmpty return the Java types), so DON'T remap set method calls -- let them bind to
+    # JSet's own methods (remapping add->insert would break `if(set.add(v))`, since insert returns a pair).
     if n == 'String':
         return 'string'
     return None
+
+
+def _rewrite_new_containers(s, resolver):
+    """Rewrite every `new <Container>(...)` in `s` to a by-value STL temporary, balanced-paren aware.
+    Empty args -> default construct `CppType()`; a single collection arg (Java copy/range ctor) is
+    PRESERVED as `CppType(arg)` so the elements are actually copied (dropping it silently emptied the
+    container -- the recipe/texture-pack data-loss bug). Non-container `new` is left untouched."""
+    out, i, n = [], 0, len(s)
+    pat = re.compile(r'\bnew\s+([A-Z]\w*)(<[^;{}]*?>)?\s*\(')
+    while i < n:
+        m = pat.search(s, i)
+        if not m:
+            out.append(s[i:]); break
+        jt = javaparse.parse_type(m.group(1) + (m.group(2) or ''))
+        if jt.name not in typemap.CONTAINERS:
+            out.append(s[i:m.end()]); i = m.end(); continue      # not a container -> leave `new X(`
+        popen = m.end() - 1                                      # index of the '('
+        depth, j = 0, popen
+        while j < n:                                            # balanced close paren
+            if s[j] == '(':
+                depth += 1
+            elif s[j] == ')':
+                depth -= 1
+                if depth == 0:
+                    break
+            j += 1
+        inner = s[popen + 1:j].strip()
+        cpp = resolver.cpp_type(jt, 'local')
+        out.append(s[i:m.start()])
+        out.append('%s(%s)' % (cpp, inner) if inner else '%s()' % cpp)
+        i = j + 1
+    return ''.join(out)
 
 
 def _container_call(cat, name, args_str):
@@ -1150,15 +1291,52 @@ def _resolve_call_chains(s, scope, resolver, current):
 
 def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent, current,
                     own_statics, ptr_locals):
-    # 0. `synchronized(lock) {` -> `{`  (no JVM monitors on the single-threaded console port;
-    #    drop the lock, keep the guarded block)
-    s = re.sub(r'\bsynchronized\s*\([^){]*\)\s*', '', s)
+    # 0. `synchronized(lock) {` -> keep the block, drop the JVM monitor -- BUT tag it. The port is
+    #    NOT fully single-threaded (network reader/writer threads, the mesher pool), so a dropped
+    #    monitor on cross-thread state is a race (the hand-fixed sendQueueLock reader/writer race).
+    #    J2X-REVIEW[synchronized-dropped] makes every one greppable so a human confirms it's not shared.
+    def _sync(mm):
+        return '/* J2X-REVIEW[synchronized-dropped]: was synchronized(%s) -- add a lock if this state '\
+               'is touched by another thread (network/pool) */ ' % mm.group(1).strip()
+    s = re.sub(r'\bsynchronized\s*\(([^){]*)\)\s*', _sync, s)
+    # 0a2. `finally {` -> `catch (...) {} {`: C++ has no `finally`. The catch-all makes the `try` valid
+    #      whether or not it already had a `catch`, and the finally body becomes a trailing scope block
+    #      that runs on the normal path (guest exceptions are disabled on the 360, so this is faithful).
+    s = re.sub(r'\bfinally\s*\{', 'catch (...) {} {', s)
+    # 0e. Java Iterator idiom -> typed helpers returning Iterator* (JavaRT.h): `coll.iterator()` and
+    #     `map.values()/keySet().iterator()`. Run BEFORE the container/chain passes (the `.values()/
+    #     .iterator()` calls must still be intact). RECV is a field/index chain, not a method call.
+    _iter_recv = r'([A-Za-z_]\w*(?:(?:->|\.)\w+(?!\s*\()|\[[^\]]*\])*)'
+    s = re.sub(_iter_recv + r'\.values\(\)\s*\.\s*iterator\(\)', r'j2xValues(\1)', s)
+    s = re.sub(_iter_recv + r'\.keySet\(\)\s*\.\s*iterator\(\)', r'j2xKeys(\1)', s)
+    s = re.sub(_iter_recv + r'\.iterator\(\)', r'j2xIter(\1)', s)
+    # 0g. Java method named like a C++ KEYWORD (File.delete(), StringBuilder.delete(), ...) -> `name_`
+    #     at the call site (`x->delete()` is the delete-operator = syntax error). Runtime stubs and the
+    #     user-class decls provide the `name_` form (build_method_renames + the File/StringBuilder stubs).
+    s = re.sub(r'(->|\.)\s*(delete|register|and|or|xor|not|operator|template|typename|namespace|using|friend|explicit|mutable)\s*\(',
+               r'\1\2_(', s)
+    # 0h. a call passing a DROPPED marker as its only arg -- `new X((Empty2)null)` -- was the synthetic
+    #     bridge-ctor call; the bridge ctor + marker class are gone, so strip the arg -> `new X()`
+    #     (invokes the real no-arg ctor). Marker set comes from pipeline.drop_synthetic_artifacts.
+    if getattr(resolver, 'markers', None):
+        _mk = '|'.join(re.escape(m) for m in resolver.markers)
+        s = re.sub(r'\(\s*\(\s*(?:%s)\s*\)\s*null\s*\)' % _mk, '()', s)
     # 0b. Java numeric-literal suffixes -> valid C++03: `0.0D`->`0.0`, `5D`->`5.0`, `7L`->`7LL`
     #     (D/d is invalid in MSVC/XDK; L must be 64-bit; F stays). Outside string/char literals.
     s = _fix_numeric_suffixes(s)
     # 0c. Unicode char/string escapes -> code-page-safe forms (no C4566): '￿' -> 0xffff,
     #     the ⌂ font glyph -> its CP437 byte. Operates ON literals, so before identifier rewrites.
     s = _fix_unicode_literals(s)
+    # 0f. for-init ARRAY declaration: `for(int[] var3 = ...` -- the line-anchored _DECL below misses
+    #     it, and a raw `int[] var` is invalid C++ (MSVC parses `[...]` as a lambda -> C3493 cascade).
+    #     Convert the array TYPE in a for-init to JArray<...>.
+    def _forinit_arr(mm):
+        base = _decl_base(mm.group(1))
+        if base in _KEYWORDS:
+            return mm.group(0)
+        return 'for (%s %s ' % (resolver.cpp_type(javaparse.parse_type(mm.group(1)), 'local'), mm.group(2))
+    s = re.sub(r'\bfor\s*\(\s*(?:final\s+)?([A-Za-z_][\w.]*(?:<[^>]*>)?(?:\s*\[\s*\])+)\s+([A-Za-z_]\w*)\s+',
+               _forinit_arr, s)
     # 1. local declaration: rewrite the leading Java type to its C++ spelling. A value-type
     #    local inferred to be a nullable reference (ptr_locals) gets a trailing '*'.
     m = _DECL.match(s)
@@ -1167,19 +1345,20 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
         if m.group(2) in ptr_locals and not cpp.endswith('*'):
             cpp += '*'
         s = cpp + s[m.end(1):]
-        # a value-container local initialized with `new ArrayList()` -> just default-construct
-        # (Java collections are by-value std::vector/map/set; dropping avoids an element-type
-        # mismatch between the typed LHS and a raw `new ArrayList()`).
-        cm = re.match(r'^(.*\b%s)\s*=\s*new\s+([A-Z]\w*)(?:<[^;{}]*>)?\s*\([^;{}]*\)\s*;\s*$'
+        # a value-container local initialized with EMPTY-arg `new ArrayList()` -> just
+        # default-construct (Java collections are by-value std::vector/map/set; dropping the raw
+        # `new ArrayList()` avoids an element-type mismatch with the typed LHS). A NON-empty
+        # `new ArrayList(src)` (collection-copy ctor) is preserved by 1b below.
+        cm = re.match(r'^(.*\b%s)\s*=\s*new\s+([A-Z]\w*)(?:<[^;{}]*>)?\s*\(\s*\)\s*;\s*$'
                       % re.escape(m.group(2)), s)
         if cm and javaparse.parse_type(cm.group(2)).name in typemap.CONTAINERS:
             s = cm.group(1) + ';'
-    # 1b. any other `new <Container>(...)` (field/element assignment, for-init, ...) -> a
-    #     value temporary, since collections are held by value
-    def _new_container(mm):
-        jt = javaparse.parse_type(mm.group(1) + (mm.group(2) or ''))
-        return resolver.cpp_type(jt, 'local') + '()' if jt.name in typemap.CONTAINERS else mm.group(0)
-    s = re.sub(r'\bnew\s+([A-Z]\w*)(<[^;{}]*?>)?\s*\([^;{}]*?\)', _new_container, s)
+    # 1b. any other `new <Container>(...)` -> a value temporary (collections are held by value).
+    #     A single collection argument (`new ArrayList(src)`, `new TreeSet(map.keySet())`) is the
+    #     Java copy/range ctor -> PRESERVE it as `CppType(src)` (a copy) rather than silently
+    #     dropping it to an empty container. Balanced-paren aware so nested calls in the arg
+    #     (`map.keySet()`) don't leave a dangling `)`.
+    s = _rewrite_new_containers(s, resolver)
     # 1c. leftover `boolean` type keyword not caught as a leading decl (for-init, multi-decl) ->
     #     bool. Java-only word, so a literal-safe global map is safe (won't touch "boolean" text).
     s = sub_outside_literals(re.compile(r'\bboolean\b'), 'bool', s)
@@ -1195,14 +1374,15 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
     s = re.sub(r'\b(\w+)(\[[^\]]*\])\.',
                lambda mm: ('%s%s->' % (mm.group(1), mm.group(2)))
                if _is_nullable_array(mm.group(1), scope, resolver) else mm.group(0), s)
-    # 3c. getClass() -> Class(typeid(...)) backed by C++ RTTI, so the runtime class is REAL
-    #     (identity/==/getName agree with X.class). `recv->getClass()` -> typeid(*(recv)) (dynamic
+    # 3c. getClass() -> j2xClassOf(typeid(...)): a STABLE Class* (same registry singleton as the
+    #     `X.class` literal, so `a->getClass() == B.class` is correct pointer identity, and it can be
+    #     stored/passed as Class* without dangling). `recv->getClass()` -> typeid(*(recv)) (dynamic
     #     type via the vtable); `recv.getClass()` (value) -> typeid(recv); bare -> typeid(*this).
     s = re.sub(r'([A-Za-z_]\w*(?:(?:->|\.)\w+|\[[^\]]*\])*)\s*->\s*getClass\s*\(\s*\)',
-               r'Class(typeid(*(\1)))', s)
+               r'j2xClassOf(typeid(*(\1)))', s)
     s = re.sub(r'([A-Za-z_]\w*(?:(?:->|\.)\w+|\[[^\]]*\])*)\s*\.\s*getClass\s*\(\s*\)',
-               r'Class(typeid(\1))', s)
-    s = re.sub(r'(?<![\w.>])getClass\s*\(\s*\)', 'Class(typeid(*this))', s)
+               r'j2xClassOf(typeid(\1))', s)
+    s = re.sub(r'(?<![\w.>])getClass\s*\(\s*\)', 'j2xClassOf(typeid(*this))', s)
     # 4. Math.fn -> C math (sqrtf, sinf, ...)
     s = _MATH.sub(lambda mm: typemap.MATH_API.get(mm.group(1), mm.group(0)), s)
     # 5. KnownClass.member / Enum.CONST -> :: static access
@@ -1210,14 +1390,18 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
         recv, mem, paren = mm.group(1), mm.group(2), mm.group(3)
         if recv not in static_set:
             return mm.group(0)
-        if mem == 'class' and not paren:             # Java class literal X.class -> RTTI-backed Class
-            return 'Class(typeid(%s))' % recv        # real identity (matches obj.getClass())
+        if mem == 'class' and not paren:             # Java class literal X.class -> STABLE Class*
+            return 'j2xClassOf(typeid(%s))' % recv   # program-lifetime singleton (never a dangling temp)
         if paren:                                  # static method call
             return '%s::%s%s' % (recv, resolver.renamed_method(recv, mem), paren)
         if recv in enum_set:                       # enum constant (no s_ prefix)
             return '%s::%s' % (recv, mem)
         return '%s::%s' % (recv, naming.static_field_name(mem))   # static field
     s = _MEMBER.sub(_static, s)
+    # 5a2. j2xClassOf(typeid(...)) is a Class* (from `.class` / getClass above); a member access
+    #      immediately after it must use `->`, not `.` (e.g. `X.class.getResource()` ->
+    #      `j2xClassOf(typeid(X))->getResource()`). Balanced over ONE nested paren (typeid(*(recv))).
+    s = re.sub(r'(j2xClassOf\(typeid\((?:[^()]|\([^()]*\))*\)\))\s*\.', r'\1->', s)
     # 5b. bare reference to one of THIS class's static fields -> s_-prefixed name. Java lets
     #     a class name its own statics unqualified; the C++ static def is `s_name`. Skip any
     #     occurrence that's already qualified (`X::`, `x.`), already prefixed (`s_name`), or
@@ -1388,11 +1572,26 @@ _FIELD_DEREF_STMT = re.compile(
 
 # General nullable-getter deref scanner: matches receiver->GETTER(args) where GETTER
 # is in KNOWN_NULLABLE_GETTERS. Receiver can be this->, var->, this->field[idx]->, etc.
-_GETTER_NAMES_ALT = '|'.join(re.escape(g) for g in
-    sorted(typemap.KNOWN_NULLABLE_GETTERS, key=len, reverse=True))
-_NULLABLE_GETTER_CALL = re.compile(
-    r'((?:this->)?(?:\w+(?:\[[^\]]*\])?\s*->\s*)*)'
-    r'(' + _GETTER_NAMES_ALT + r')\s*\(')
+# Rebuilt via refresh_nullable_getters() after the pipeline DERIVES additional nullable getters
+# from the corpus (so a getter that can `return null` on ANY corpus, not just the curated Alpha
+# set, gets emit-time guarded -- not merely flagged).
+def refresh_nullable_getters():
+    """Rebuild the getter-deref scanner from the CURRENT typemap.KNOWN_NULLABLE_GETTERS. Call after
+    the pipeline unions derived nullable getters into that set, so emit-time guarding covers them."""
+    global _GETTER_NAMES_ALT, _NULLABLE_GETTER_CALL
+    _GETTER_NAMES_ALT = '|'.join(re.escape(g) for g in
+        sorted(typemap.KNOWN_NULLABLE_GETTERS, key=len, reverse=True))
+    _NULLABLE_GETTER_CALL = re.compile(
+        r'((?:this->)?(?:\w+(?:\[[^\]]*\])?\s*->\s*)*)'
+        r'(' + _GETTER_NAMES_ALT + r')\s*\(')
+
+
+refresh_nullable_getters()
+
+# A function/method CALL token (identifier immediately followed by `(`), excluding control keywords.
+# Used to keep the getter-hoist SIDE-EFFECT SAFE: never hoist a getter across a preceding call.
+_PRECEDING_CALL = re.compile(
+    r'(?<![\w>])(?!(?:if|while|for|switch|return|sizeof|catch|new)\b)[A-Za-z_]\w*\s*\(')
 
 
 def _default_return_val(rt, resolver):
@@ -1430,6 +1629,13 @@ def _hoist_nullable_getter(s, return_type, resolver):
         while j < len(s) and s[j] == ' ':
             j += 1
         if j + 1 >= len(s) or s[j:j + 2] != '->':
+            continue
+
+        # SIDE-EFFECT SAFETY (the RenderPig-class invariant): never hoist the getter ACROSS a
+        # preceding call in the same statement. Java evaluates left-to-right; moving the getter to
+        # the statement head would reorder it before an earlier (possibly side-effecting) call. Only
+        # hoist when nothing callable precedes it (the common `return getX()->..`/`T v = getX()->..`).
+        if _PRECEDING_CALL.search(s[:m.start()]):
             continue
 
         # Need the getter's concrete pointer type to declare the temp in C++03 (no `auto`). If it's
@@ -1566,6 +1772,8 @@ def translate_body(method, cls, resolver, ledger=None):
         ledger.add(cls.name + '.cpp', Category.WARNING,
                    'labeled break/continue translated to goto (verify the loop still terminates)',
                    line=method.line, severity=Severity.MED, source='emit', rule='label-goto')
+    out = _rewrite_leak_temporaries(out, resolver, ledger, cls)   # (new T())->m() throwaway -> scoped stack obj
+    out = _flag_reflection(out, ledger, cls)      # tag newInstance/forName/getConstructor for review
     out = [_clarify_precedence(l) for l in out]   # C4554: parenthesize shift/bitwise sub-expressions
     out = _drop_unused_catch_vars(out)            # `catch (Type* e){}` with e unused -> `catch (Type*)` (C4101)
     return out

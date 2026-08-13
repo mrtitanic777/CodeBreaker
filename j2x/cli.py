@@ -19,13 +19,213 @@ from . import analyze, report
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+def _cmd_xact(args):
+    from . import xact
+    act = args.action
+    if act == 'dump':
+        if not os.path.isfile(args.a):
+            print('ERROR: not a file: %s' % args.a); return 2
+        print(xact.dump(args.a)); return 0
+    if act == 'build':
+        xap, cues = xact.build(args.a, args.b)
+        print('Wrote %s (%d cues) + build_banks.bat + AUDIO_COVERAGE.md to %s' % (xap, len(cues), args.b))
+        print('Next: drop a .wav per cue under %s/wav/, then run build_banks.bat (XDK XACTBLD).' % args.b)
+        return 0
+    if act == 'coverage':
+        cov = xact.cue_coverage(args.a, args.b)
+        print('needed=%d  authored=%d  MISSING=%d  unused=%d'
+              % (len(cov['needed']), len(cov['authored']), len(cov['missing']), len(cov['unused'])))
+        for c in cov['missing']:
+            print('  MISSING (silent): %s  <- %s' % (c, ', '.join(cov['needed'][c][:3])))
+        return 0
+    if act == 'match':
+        # a = java_dir, b = resources_dir; optional out dir via args.c
+        out = args.c or '.'
+        m = xact.match_sources(args.a, args.b)
+        bat = xact.write_ffmpeg_script(m, out, args.b)
+        print('matched=%d  MISSING=%d  (index keys=%d)'
+              % (len(m['matched']), len(m['missing']), m['index_keys']))
+        for cue in sorted(m['missing']):
+            print('  no source ogg: %s  <- %s' % (cue, ', '.join(m['missing'][cue][:3])))
+        print('Wrote %s (ffmpeg .ogg->.wav per matched cue).' % bat)
+        return 0
+    print('ERROR: unknown xact action %r (dump/build/coverage/match)' % act); return 2
+
+
+def _cmd_achievements(args):
+    from . import achievements
+    if not os.path.isdir(args.code_dir):
+        print('ERROR: not a directory: %s' % args.code_dir); return 2
+    res = achievements.run(args.code_dir, args.out_dir, lang_file=args.lang,
+                           profile=args.profile, delivery=args.delivery,
+                           title_id=args.title_id, title_name=args.title_name)
+    m = res['mapping']
+    print('Found %d achievement(s) -> %s profile, %d gamerscore (limit %d)'
+          % (res['count'], m['profile'], m['total_score'], m['limit']))
+    for w in m['warnings']:
+        print('  WARNING: %s' % w)
+    ic = res['icons']
+    print('  icons: %d auto-wired, %d need manual art' % (len(ic['wired']), len(ic['unresolved'])))
+    print('  title id: 0x%s%s' % (res['title_id'], ' (suggested — verify no collision)'
+                                   if res['title_suggested'] else ''))
+    print('  report: %s' % res['report'])
+    print('  xlast:  %s   code: %s' % (res['xlast'], ', '.join(os.path.basename(p) for p in res['code'])))
+    return 0
+
+
+def _cmd_ui_mark(args):
+    from . import ui_mark
+    if not os.path.isdir(args.dir):
+        print('ERROR: not a directory: %s' % args.dir); return 2
+    extra = [c.strip() for c in (args.extra or '').split(',') if c.strip()]
+    res = ui_mark.run(args.dir, dry_run=args.dry_run, extra_classes=extra)
+    total = sum(len(v) for v in res['marked'].values())
+    print('UI classes: %d   methods %s: %d   (already-marked skipped: %d)'
+          % (len(res['classes']), 'that would be marked' if args.dry_run else 'marked',
+             total, res['skipped']))
+    if args.dry_run:
+        for cls in sorted(res['marked'])[:20]:
+            print('  %s (%d)' % (cls, len(res['marked'][cls])))
+    else:
+        print('  index: %s' % res['index'])
+    return 0
+
+
+def _cmd_debug(args):
+    from . import debug
+    os.makedirs(args.out_dir, exist_ok=True)
+    if args.off:
+        paths = debug.write_debug(args.out_dir, enabled_default=False)
+        print('Emitted debug files with DEBUG_ENABLED=0 (opt-in off): %s'
+              % ', '.join(os.path.basename(p) for p in paths))
+    else:
+        paths = debug.write_debug(args.out_dir, enabled_default=True)
+        print('Emitted %s (master toggle DEBUG_ENABLED=1; J2X-DEBUG markers).'
+              % ', '.join(os.path.basename(p) for p in paths))
+    markers = debug.scan_debug_markers(args.out_dir)
+    print('  J2X-DEBUG marker tags present: %d (%s)'
+          % (len(markers), ', '.join(sorted(markers))[:100]))
+    return 0
+
+
+def _cmd_reflect_factories(args):
+    from . import reflection_factory
+    r = reflection_factory.run(args.out_dir)
+    if not r['total_sites']:
+        print('No reflection sites to rewrite (already applied, or none present).')
+        return 0
+    for reg in r['registries']:
+        print('  %-22s -> %s_createByReflection  (%d classes, %d site%s)'
+              % (reg['file'], reg['registry'], len(reg['classes']),
+                 reg['sites'], '' if reg['sites'] == 1 else 's'))
+    for ru in r['reused']:
+        print('  %-22s -> reuses a shared factory  (%d site%s)'
+              % (ru['file'], ru['sites'], '' if ru['sites'] == 1 else 's'))
+    print('Generated ReflectionFactory.h; %d sites rewritten across %d registries (%d classes).'
+          % (r['total_sites'], len(r['registries']), r['total_classes']))
+    return 0
+
+
+def _cmd_project_layout(args):
+    from . import project_layout
+    r = project_layout.layout(args.root, name=args.name)
+    if r['moved']:
+        print('Moved %d flat entr%s down into %s\\'
+              % (r['moved'], 'y' if r['moved'] == 1 else 'ies', r['name']))
+    print('Solution layout ready:')
+    print('  %s' % r['sln'])
+    print('  %s\\  (%s.vcxproj)' % (r['proj_dir'], r['name']))
+    return 0
+
+
+def _cmd_platform_config(args):
+    from . import platform_config, sdk
+    os.makedirs(args.out_dir, exist_ok=True)
+    updates = {}
+    if args.layout:            updates['layout'] = args.layout
+    if args.invert_y:          updates['invert_y'] = True
+    if args.no_invert_y:       updates['invert_y'] = False
+    if args.sensitivity is not None: updates['look_sensitivity'] = args.sensitivity
+    if args.keyboard:          updates['keyboard'] = args.keyboard
+    if args.storage:           updates['storage'] = args.storage
+    for b in (args.bind or []):
+        if '=' in b:
+            act, ctrl = b.split('=', 1)
+            updates['bind.%s' % act.strip()] = ctrl.strip()
+    if args.list:
+        cfg, _w, _i, _u = platform_config.run(args.out_dir, updates=updates, list_only=True)
+        print(platform_config._choices_md(cfg))
+        return 0
+    try:
+        cfg, written, info, unverified = platform_config.run(
+            args.out_dir, updates=updates, platform=args.platform, sdk_override=args.sdk)
+    except sdk.SdkNotFound as e:
+        print('ERROR (SDK gate): %s' % e)
+        return 3
+    print('Wrote %d file(s) to %s' % (len(written), os.path.abspath(args.out_dir)))
+    print('  controller layout=%s invertY=%s | keyboard=%s | storage=%s'
+          % (cfg['controller']['layout'], cfg['controller']['invert_y'],
+             cfg['keyboard'], cfg['storage']))
+    if info and info.root:
+        print('  SDK: %s @ %s (via %s)' % (info.name, info.root, info.source))
+    if unverified:
+        print('  WARNING: symbols not found in the located SDK: %s' % ', '.join(unverified))
+    print('  see %s' % os.path.join(args.out_dir, 'PLATFORM_CHOICES.md'))
+    return 0
+
+
+def _cmd_sdk(args):
+    from . import sdk
+    print(sdk.describe(args.platform, override=args.sdk))
+    info = sdk.detect(args.platform, override=args.sdk)
+    if info and info.include_dirs:
+        print('  include dirs: %s' % ', '.join(info.include_dirs))
+    return 0 if info is not None else 1
+
+
+def _cmd_assets(args):
+    from . import assets
+    if not os.path.isfile(args.jar):
+        print('ERROR: not a file: %s' % args.jar); return 2
+    res = assets.run(args.jar, args.content_dir, code_dir=args.code, only_needed=args.only_needed,
+                     normalize_png=not args.no_rgba)
+    print('Extracted %d asset(s) -> %s' % (len(res['written']), os.path.abspath(args.content_dir)))
+    if res['converted']:
+        print('  normalized %d non-RGBA PNG(s) to RGBA (360 render fix): %s'
+              % (len(res['converted']), ', '.join(res['converted'][:6])
+                 + (' ...' if len(res['converted']) > 6 else '')))
+    if res['unconverted']:
+        print('  WARNING: %d non-RGBA PNG(s) could NOT be converted (Pillow missing) -> will misrender'
+              % len(res['unconverted']))
+    cov = res['coverage']
+    if cov is not None:
+        print('  coverage: code needs %d, jar provides %d, present %d, MISSING %d, jar extras %d'
+              % (len(cov['needed']), cov['jar_count'], len(cov['present']),
+                 len(cov['missing']), len(cov['extra'])))
+        for p in cov['missing']:
+            print('    MISSING (runtime NULL image): %s' % p)
+        if res['report']:
+            print('  report: %s' % res['report'])
+    return 0
+
+
 def _cmd_convert(args):
     from . import pipeline
+    from . import sdk
     if not os.path.isdir(args.java_dir):
         print('ERROR: not a directory: %s' % args.java_dir)
         return 2
-    s = pipeline.convert(args.java_dir, args.out_dir)
+    try:
+        s = pipeline.convert(args.java_dir, args.out_dir,
+                             cpp_std=getattr(args, 'cpp_std', 'C++03'),
+                             platform=getattr(args, 'platform', None),
+                             platform_refs=getattr(args, 'platform_refs', False),
+                             sdk_override=getattr(args, 'sdk', None))
+    except sdk.SdkNotFound as e:
+        print('ERROR (SDK gate): %s' % e)
+        return 3
     print('Converted %s -> %s' % (os.path.abspath(args.java_dir), os.path.abspath(args.out_dir)))
+    print('  target: %s / %s' % (s['platform'], s['cpp_std']))
     print('  parsed=%d  headers=%d  sources=%d'
           % (s['parsed'], s['headers'], s['sources']))
     print('  verify (crash-class rule findings on output): %d' % s['rule_findings'])
@@ -113,6 +313,17 @@ def main(argv=None):
     cp = sub.add_parser('convert', help='Convert a Java source tree to C++.')
     cp.add_argument('java_dir', help='Directory of .java source.')
     cp.add_argument('out_dir', help='Output directory for the generated .h/.cpp.')
+    cp.add_argument('--platform', default=None,
+                    help='Target platform id (xbox360, pc_windows, ps3, wii). Drives endianness/'
+                         'null-page rule messages + stub annotations.')
+    cp.add_argument('--cpp-std', dest='cpp_std', default='C++03',
+                    help='Target C++ standard (C++98, C++03, C++11, ...). Default C++03 (Xbox 360 XDK).')
+    cp.add_argument('--platform-refs', dest='platform_refs', action='store_true',
+                    help='Emit the REAL hand-written platform layer (GL->D3D9 emulator, audio, input, '
+                         'socket) from docs/platform/reference/ instead of no-op stubs.')
+    cp.add_argument('--sdk', default=None,
+                    help='Path to the target platform SDK root (else auto-detected via env/standard '
+                         'paths). A console platform with no located SDK is refused.')
     cp.set_defaults(func=_cmd_convert)
 
     # report
@@ -144,14 +355,112 @@ def main(argv=None):
     vp.add_argument('--proj', default=None, help='Xbox project dir (default: ../MinecraftAlpha/MinecraftAlpha).')
     vp.set_defaults(func=_cmd_vcxproj)
 
+    # xact (audio bank tool)
+    xp = sub.add_parser('xact', help='XACT3 audio banks: dump/build/coverage/match.')
+    xp.add_argument('action', choices=['dump', 'build', 'coverage', 'match'],
+                    help='dump <bank> | build <java_dir> <out_dir> | coverage <java_dir> <bank.xsb> '
+                         '| match <java_dir> <resources_dir> [out_dir]')
+    xp.add_argument('a', help='dump: bank file; build/coverage/match: java source dir.')
+    xp.add_argument('b', nargs='?', help='build: out dir; coverage: .xsb; match: resources dir.')
+    xp.add_argument('c', nargs='?', help='match: output dir for convert_audio.bat (default: cwd).')
+    xp.set_defaults(func=_cmd_xact)
+
+    # assets (texture/resource extraction from the game jar)
+    asp = sub.add_parser('assets', help='Extract textures/resources from the game jar into Content\\.')
+    asp.add_argument('jar', help='Path to the game jar (e.g. deobfuscated.jar).')
+    asp.add_argument('content_dir', help='Destination Content directory (assets land at Content\\<jar-path>).')
+    asp.add_argument('--code', default=None,
+                     help='Source tree (.java or converted .cpp/.h) to audit coverage against.')
+    asp.add_argument('--only-needed', dest='only_needed', action='store_true',
+                     help='Extract only paths the code references (needs --code); default extracts all assets.')
+    asp.add_argument('--no-rgba', dest='no_rgba', action='store_true',
+                     help='Do NOT normalize palettized/grayscale PNGs to RGBA (default normalizes them; '
+                          'the 360 loader needs 32-bit RGBA or textures misrender).')
+    asp.set_defaults(func=_cmd_assets)
+
+    # platform-config (controller mapping + kernel-call selection)
+    pcp = sub.add_parser('platform-config',
+                         help='Select controller mapping + kernel calls (keyboard/storage); emit them.')
+    pcp.add_argument('out_dir', help='Output dir for ControllerConfig.h/KernelConfig.h/Kernel.cpp.')
+    pcp.add_argument('--platform', default='xbox360', help='Target platform (default xbox360).')
+    pcp.add_argument('--sdk', default=None, help='SDK root override (else auto-detect).')
+    pcp.add_argument('--layout', choices=['default', 'southpaw', 'legacy', 'legacy_southpaw'],
+                     help='Stick layout preset (default/southpaw/legacy/legacy_southpaw).')
+    pcp.add_argument('--invert-y', dest='invert_y', action='store_true', help='Invert look Y.')
+    pcp.add_argument('--no-invert-y', dest='no_invert_y', action='store_true', help='Do not invert look Y.')
+    pcp.add_argument('--sensitivity', type=float, default=None, help='Look sensitivity multiplier.')
+    pcp.add_argument('--keyboard', choices=['xshowkeyboard', 'osk', 'stub'], help='Text-input medium.')
+    pcp.add_argument('--storage', choices=['stfs', 'rawhdd', 'memory'], help='Save/load medium.')
+    pcp.add_argument('--bind', action='append', metavar='ACTION=CONTROL',
+                     help='Rebind an action, e.g. --bind jump=A (repeatable).')
+    pcp.add_argument('--list', action='store_true', help='Print the menu + current choices, do not emit.')
+    pcp.set_defaults(func=_cmd_platform_config)
+
+    # achievements (analyze + map to console achievement system)
+    acp = sub.add_parser('achievements',
+                         help='Map the program\'s achievements to the console system (XLAST + unlock seam).')
+    acp.add_argument('code_dir', help='Converted C++ (or Java) tree to scan for achievements.')
+    acp.add_argument('out_dir', help='Output dir for ACHIEVEMENTS.md / achievements.xlast / Achievements.*')
+    acp.add_argument('--lang', default=None, help='Optional .lang file for achievement names/descriptions.')
+    acp.add_argument('--profile', choices=['retail', 'arcade'], default='retail',
+                     help='Gamerscore budget profile (retail=1000/99, arcade=200/12).')
+    acp.add_argument('--delivery', choices=['online', 'local', 'off'], default='online',
+                     help='online = write to profile over LIVE; local = track locally; off.')
+    acp.add_argument('--title-id', dest='title_id', default=None,
+                     help='Self-issued 32-bit Title ID (hex, e.g. FFFE1234). Omit to auto-suggest one.')
+    acp.add_argument('--title-name', dest='title_name', default=None,
+                     help='Game name used to derive a suggested Title ID (when --title-id is omitted).')
+    acp.set_defaults(func=_cmd_achievements)
+
+    # ui-mark (tag UI functions with greppable markers)
+    ump = sub.add_parser('ui-mark', help='Tag every UI function with a greppable J2X-UI marker + index.')
+    ump.add_argument('dir', help='Converted C++ tree to mark.')
+    ump.add_argument('--dry-run', dest='dry_run', action='store_true',
+                     help='Report what would be marked without editing.')
+    ump.add_argument('--extra', default=None,
+                     help='Comma-separated extra UI class names to include.')
+    ump.set_defaults(func=_cmd_ui_mark)
+
+    # debug (emit the single debug file / toggle)
+    dbp = sub.add_parser('debug', help='Emit the single toggleable debug file (Debug.h/.cpp + DEBUG.md).')
+    dbp.add_argument('out_dir', help='Directory to emit the debug files into.')
+    dbp.add_argument('--off', action='store_true', help='Bake DEBUG_ENABLED=0 (debug support present but off).')
+    dbp.set_defaults(func=_cmd_debug)
+
+    # sdk (detect/gatekeep)
+    sdp = sub.add_parser('sdk', help='Detect the platform SDK the converter would gate on.')
+    sdp.add_argument('platform', help='Platform id (xbox360, ps3, wii, pc_windows).')
+    sdp.add_argument('--sdk', default=None, help='SDK root override to test.')
+    sdp.set_defaults(func=_cmd_sdk)
+
+    # project-layout (solution root + project subfolder + .sln, fixes flat dumps)
+    plp = sub.add_parser('project-layout',
+                         help='Give a converted tree the VS solution layout (<root>/<Name>.sln + <root>/<Name>/).')
+    plp.add_argument('root', help='Solution root; its basename is the project name.')
+    plp.add_argument('--name', default=None, help='Override the project name (default: root folder name).')
+    plp.set_defaults(func=_cmd_project_layout)
+
+    # reflect-factories (turn class-registry reflection into real factories)
+    rfp = sub.add_parser('reflect-factories',
+                         help='Turn Java reflection registries (newInstance) into generated C++ factories.')
+    rfp.add_argument('out_dir', help='Converted output directory to rewrite in place.')
+    rfp.set_defaults(func=_cmd_reflect_factories)
+
     # gui
     gp = sub.add_parser('gui', help='Launch the desktop GUI.')
     gp.set_defaults(func=lambda _args: _cmd_gui())
 
     args = ap.parse_args(argv)
     if not getattr(args, 'cmd', None):
-        if getattr(sys, 'frozen', False):
+        # UI is the default, primary interface -- launch it when invoked with no subcommand.
+        # (CLI is the secondary path: pass a subcommand to use it.) Fall back to help text only
+        # if the GUI toolkit is unavailable.
+        try:
             return _cmd_gui()
-        ap.print_help()
-        return 1
+        except SystemExit:
+            raise
+        except Exception as e:                            # PySide6 missing / no display
+            sys.stderr.write('GUI unavailable (%s). CLI usage:\n\n' % e)
+            ap.print_help()
+            return 1
     return args.func(args)

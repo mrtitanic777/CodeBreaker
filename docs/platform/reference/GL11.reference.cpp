@@ -303,7 +303,7 @@ void glBindTexture(int,int id){
 	s_boundTex=id;
 	g_pd3dDevice->SetTexture(0, id ? Textures::getById(id) : NULL);
 }
-void glTexParameteri(int,int,int){}                      // filtering set globally (point) in Main
+void glTexParameteri(int,int,int){}                      // J2X-STUB[gl-texfilter]: NO-OP -- filtering is set GLOBALLY to point-sampling in Main; per-texture min/mag + MIPMAP filters (GL_NEAREST_MIPMAP_LINEAR) are ignored. LOAD-BEARING: Beta uses mipmaps -> distant textures shimmer until this sets D3DSAMP_MIN/MAG/MIPFILTER per bound texture.
 void glTexImage2D(int,int,int,int w,int h,int,int,int,ByteBuffer* px){
 	Textures::uploadRGBA(s_boundTex, w, h, px ? (const void*)px->base() : NULL);
 }

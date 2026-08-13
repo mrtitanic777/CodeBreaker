@@ -42,6 +42,16 @@ def _std_header_for(cpp_base):
     return None
 
 
+def _base_type_spelling(parent):
+    """C++ base-class spelling for a Java class that EXTENDS a container (e.g. `extends ArrayList`).
+    ArrayList/List -> JList<void* > (JList.h is always included); HashMap/Map -> std::map<JObject,
+    JObject>; HashSet/Set/TreeSet -> std::set<void* >. Non-container parents are returned unchanged."""
+    if parent not in typemap.CONTAINERS:
+        return parent
+    base = typemap.JAVA_TO_CPP.get(parent, parent)
+    return base + typemap.RAW_CONTAINER_DEFAULT.get(base, '')
+
+
 def _collect_dependencies(cls, resolver):
     """Return (system_includes, quoted_includes, forward_decls)."""
     sys_inc, inc, fwd = set(), set(), set()
@@ -67,7 +77,12 @@ def _collect_dependencies(cls, resolver):
             note(a)
 
     if cls.parent:
-        inc.add(cls.parent)
+        if cls.parent in typemap.CONTAINERS:          # class extends ArrayList/HashMap/... -> STL base
+            h = _std_header_for(_base_type_spelling(cls.parent))
+            if h:
+                sys_inc.add(h)
+        else:
+            inc.add(cls.parent)
     for iface in cls.interfaces:
         inc.add(iface)
     for f in cls.fields:
@@ -101,21 +116,67 @@ def _method_decl(cls, m, resolver):
 
 
 def _field_type(cls, f, resolver):
-    """C++ type for an instance field. Java `byte` defaults to unsigned char (for byte[] buffers),
-    but a scalar byte field that is legitimately negative (dimension, movement deltas, rotation) must
-    be `signed char` -- else -1 reads back as 255 (nether-provider NULL crash; entities flung by delta
-    wrap). Curated in typemap.SIGNED_BYTE_FIELDS: correct by construction, replacing the old overrides."""
+    """C++ type for an instance field. Scalar Java `byte` -> `signed char` (Java-faithful; resolver
+    handles it) and `byte[]` -> unsigned-char buffer -- see the signed-byte policy in typemap. The
+    only override is the (empty by default) UNSIGNED_BYTE_SCALAR_FIELDS escape hatch."""
     if (f.jtype.name == 'byte' and not f.jtype.is_array
-            and (cls.name, f.name) in typemap.SIGNED_BYTE_FIELDS):
-        return 'signed char'
+            and (cls.name, f.name) in typemap.UNSIGNED_BYTE_SCALAR_FIELDS):
+        return 'unsigned char'
     return resolver.field_type(f.jtype)
+
+
+def _render_typed_enum_header(cls, resolver, ledger, cpp_std, platform_label):
+    """A TYPED enum (constants carry ctor args / the enum has instance fields or methods) becomes a
+    real class: instance fields + ctor + methods are preserved, and each constant is a singleton
+    `static EnumX* NAME` built in initStatics(). All statics use BARE names (no s_), because a typed
+    enum stays in the holder set so `EnumX.NAME` resolves to `EnumX::NAME` (see types.py)."""
+    guard = naming.guard_macro(cls.name)
+    L = ['#ifndef %s' % guard, '#define %s' % guard, '',
+         _banner(cls.name, cpp_std, platform_label), '',
+         '#include "JavaString.h"', '#include "JArray.h"', '#include "JList.h"', '#include "JSet.h"']
+    sys_inc, inc, fwd = _collect_dependencies(cls, resolver)
+    for h in sorted(sys_inc):
+        L.append('#include %s' % h)
+    for h in sorted(inc):
+        L.append('#include "%s.h"' % h)
+    for name in sorted(fwd):
+        L.append('class %s;' % name)
+    L += ['', 'class %s {' % cls.name, 'public:']
+    for m in cls.constructors():
+        L.append('\t' + _method_decl(cls, m, resolver))
+    L.append('\tvirtual ~%s();' % cls.name)
+    L.append('')
+    L.append('\tint __ordinal;   // Java enum ordinal (0-based, declaration order)')
+    for f in cls.instance_fields():
+        L.append('\t%s %s;' % (_field_type(cls, f, resolver), f.name))   # bare instance name
+    L.append('')
+    for ec in cls.enum_consts:                                # the singleton constants
+        L.append('\tstatic %s* %s;' % (cls.name, ec.name))
+    for f in cls.static_fields():                             # real enum statics -> BARE name (holder access)
+        L.append('\tstatic %s %s;' % (resolver.field_type(f.jtype), f.name))
+    L.append('')
+    for m in cls.methods:
+        if not m.is_ctor:
+            L.append('\t' + _method_decl(cls, m, resolver))
+    L.append('\tint ordinal();')
+    L.append('\tstatic JArray<%s* >& values();' % cls.name)
+    L.append('\tstatic void initStatics();')
+    L += ['};', '', '#endif // %s' % guard]
+    if ledger is not None:
+        ledger.add(cls.name + '.h', Category.PORTED,
+                   'typed enum %s -> class with %d singleton constants + preserved fields/methods'
+                   % (cls.name, len(cls.enum_consts)), source='emit', rule='typed-enum')
+    return apply_std_transforms('\n'.join(L), cpp_std)
 
 
 def render_header(cls, resolver, ledger=None, cpp_std=None, platform_label=None):
     guard = naming.guard_macro(cls.name)
 
-    # Enums: emit the constants as scoped static const ints so `EnumOS::linux` resolves; the
-    # enum TYPE itself maps to int (see types.py), so variables/switches are plain ints.
+    if cls.is_enum and cls.name in resolver.typed_enums:
+        return _render_typed_enum_header(cls, resolver, ledger, cpp_std, platform_label)
+
+    # Constant-only enums: emit the constants as scoped static const ints so `EnumOS::linux` resolves;
+    # the enum TYPE itself maps to int (see types.py), so variables/switches are plain ints.
     if cls.is_enum:
         L = ['#ifndef %s' % guard, '#define %s' % guard, '', _banner(cls.name, cpp_std, platform_label), '',
              'struct %s {' % cls.name]
@@ -136,6 +197,7 @@ def render_header(cls, resolver, ledger=None, cpp_std=None, platform_label=None)
     L.append('#include "JavaString.h"')
     L.append('#include "JArray.h"')
     L.append('#include "JList.h"')
+    L.append('#include "JSet.h"')
 
     sys_inc, inc, fwd = _collect_dependencies(cls, resolver)
     for h in sorted(sys_inc):
@@ -152,7 +214,7 @@ def render_header(cls, resolver, ledger=None, cpp_std=None, platform_label=None)
     # class declaration
     bases = []
     if cls.parent:
-        bases.append('public %s' % cls.parent)
+        bases.append('public %s' % _base_type_spelling(cls.parent))
     bases += ['public %s' % i for i in cls.interfaces]
     decl = 'class %s' % cls.name + (' : ' + ', '.join(bases) if bases else '')
     L.append(decl + ' {')

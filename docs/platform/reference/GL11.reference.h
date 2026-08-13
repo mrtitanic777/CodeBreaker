@@ -62,11 +62,14 @@ namespace GL11 {
 	const int GL_RGB = 0x1907, GL_PACK_ALIGNMENT = 0x0D05, GL_UNPACK_ALIGNMENT = 0x0CF5,
 	          GL_VENDOR = 0x1F00, GL_RENDERER = 0x1F01, GL_VERSION = 0x1F02;
 	// extra no-op entry points the game calls (lighting baked into vertex color; lists/readpixels)
-	inline void glLight(...) {}
-	inline void glLightf(...) {}
+	inline void glLight(...) {}                       // J2X-STUB[gl-lighting]: no-op (fixed-function lighting unused; light baked into vertex color)
+	inline void glLightf(...) {}                      // J2X-STUB[gl-lighting]: no-op (see glLight)
 	void glCallLists(IntBuffer* buffer);             // replay a run of display lists (font / chunk render)
-	inline void glReadPixels(...) {}
+	inline void glReadPixels(...) {}                  // J2X-STUB[gl-readpixels]: no-op -- screenshot/readback not wired (implement if screenshots are needed)
 	const int GL_NEAREST = 0x2600, GL_LINEAR = 0x2601;
+	// mipmap min-filters (Beta requests these; D3D9 sampler picks the mip chain -- see glTexParameteri).
+	const int GL_NEAREST_MIPMAP_NEAREST = 0x2700, GL_LINEAR_MIPMAP_NEAREST = 0x2701,
+	          GL_NEAREST_MIPMAP_LINEAR = 0x2702, GL_LINEAR_MIPMAP_LINEAR = 0x2703;
 	const int GL_TEXTURE_MIN_FILTER = 0x2800, GL_TEXTURE_MAG_FILTER = 0x2801;
 	const int GL_SMOOTH = 0x1D01, GL_FLAT = 0x1D00;
 	const int GL_RGBA = 0x1908, GL_FOG_COLOR = 0x0B66, GL_FOG_DENSITY = 0x0B62, GL_EXP = 0x0800;
@@ -82,6 +85,7 @@ namespace GL11 {
 	void glTranslatef(float x, float y, float z);
 	void glRotatef(float angle, float x, float y, float z);
 	void glScalef(float x, float y, float z);
+	inline void glScaled(double x, double y, double z) { glScalef((float)x, (float)y, (float)z); }  // Beta uses the double form
 	void glMultMatrix(FloatBuffer* m);
 	void glOrtho(double l, double r, double b, double t, double n, double f);
 	void glViewport(int x, int y, int w, int h);
@@ -91,7 +95,8 @@ namespace GL11 {
 	// --- immediate color / normal (the "current" attribute when no array is bound) ---
 	void glColor3f(float r, float g, float b);
 	void glColor4f(float r, float g, float b, float a);
-	void glNormal3f(float x, float y, float z);      // no-op (light baked into color)
+	void glNormal3f(float x, float y, float z);      // J2X-STUB[gl-normals]: no-op (light baked into color)
+	inline void glNormalPointer(...) {}              // J2X-STUB[gl-normals]: no-op -- this renderer bakes light into vertex color (like glNormal3f). Implement only if Beta adds real normal-based lighting.
 
 	// --- render state ---
 	void glEnable(int cap);

@@ -324,6 +324,14 @@ public:
 	void add(const T& v) { this->push_back(v); }
 	void add(int i, const T& v) { this->insert(this->begin() + i, v); }
 	template<class C> void addAll(const C& o) { this->insert(this->end(), o.begin(), o.end()); }  // any container (vector/set/list)
+	template<class C> bool removeAll(const C& o) {       // remove every element present in o
+		bool changed = false;
+		for (typename C::const_iterator k = o.begin(); k != o.end(); ++k) {
+			_it it = std::find(this->begin(), this->end(), *k);
+			if (it != this->end()) { this->erase(it); changed = true; }
+		}
+		return changed;
+	}
 	T get(int i) const { return (*this)[(size_t)i]; }
 	T set(int i, const T& v) { T old = (*this)[(size_t)i]; (*this)[(size_t)i] = v; return old; }
 	bool isEmpty() const { return this->empty(); }
@@ -340,11 +348,40 @@ public:
 		if (it == this->end()) return false;
 		this->erase(it); return true;
 	}
+	int hashCode() const { int h = 1; for (_cit i = this->begin(); i != this->end(); ++i) h = 31 * h; return h; }
+	template<class C> bool equals(const C& o) const { return this->size() == o.size() && std::equal(this->begin(), this->end(), o.begin()); }
 	// Java `list != null` / `== null`: a by-value list is never null (it always exists).
 	bool operator==(long long) const { return false; }
 	bool operator!=(long long) const { return true; }
 };
 #endif // JLIST_H
+'''
+
+# HashSet / TreeSet -> JSet<T>: a std::set subclass with the Java Set API (add/addAll/removeAll/
+# contains/isEmpty/first + collection-copy ctor). Mirrors JList so set method calls compile without
+# per-receiver type inference. Ordered (std::set) -> TreeSet's sorted iteration is preserved for free.
+JSET_H = r'''#ifndef JSET_H
+#define JSET_H
+#include <set>
+template<class T> class JSet : public std::set<T> {
+public:
+	typedef typename std::set<T>::const_iterator _cit;
+	JSet() {}
+	JSet(long long) {}                                   // `Set x = null;` -> empty set
+	template<class C> JSet(const C& o) { this->insert(o.begin(), o.end()); }   // new TreeSet(collection)
+	// templated add/contains/remove cast the arg to the element type T: a RAW `Set<Integer>` becomes
+	// JSet<void*>, so `add(intValue)` must C-cast int->void* (stored consistently; membership still works).
+	template<class U> bool add(const U& v) { return this->insert((T)v).second; }
+	template<class C> bool addAll(const C& o) { std::size_t n = this->size(); this->insert(o.begin(), o.end()); return this->size() != n; }
+	template<class C> bool removeAll(const C& o) { bool ch = false; for (typename C::const_iterator k = o.begin(); k != o.end(); ++k) { if (this->erase(*k)) ch = true; } return ch; }
+	template<class U> bool remove(const U& v) { return this->erase((T)v) != 0; }
+	template<class U> bool contains(const U& v) const { return this->find((T)v) != this->end(); }
+	bool isEmpty() const { return this->empty(); }
+	T first() const { return *this->begin(); }
+	bool operator==(long long) const { return false; }
+	bool operator!=(long long) const { return true; }
+};
+#endif // JSET_H
 '''
 
 JAVART_H = r'''#ifndef JAVART_H
@@ -355,9 +392,40 @@ JAVART_H = r'''#ifndef JAVART_H
 #include <string>
 #include <sstream>
 #include <typeinfo>
+#include <vector>
 #include "JavaString.h"
 #include "JArray.h"
 #include "JList.h"
+#include "JSet.h"
+
+// java.util.Iterator over any container. Type-erased (void* elements) so ONE Iterator type serves
+// List/Set and Map value/key views; next() returns void*, cast at the call site (`(T*)it->next()`)
+// exactly as Java casts Iterator.next() from Object. Elements are COPIED in, so mutating the source
+// mid-iteration is safe here (Java would throw ConcurrentModificationException; the port won't).
+struct Iterator {
+	std::vector<void*> _v; unsigned _i;
+	Iterator() : _i(0) {}
+	bool hasNext() const { return _i < _v.size(); }
+	void* next() { return _i < _v.size() ? _v[_i++] : (void*)0; }
+	void remove() {}                                     // no-op (source already snapshotted)
+};
+// list/set .iterator()  (elements are pointers -> void*)
+template<class C> inline Iterator* j2xIter(const C& c) {
+	Iterator* it = new Iterator();
+	for (typename C::const_iterator i = c.begin(); i != c.end(); ++i) it->_v.push_back((void*)*i);
+	return it;
+}
+// map.values().iterator()  /  map.keySet().iterator()
+template<class M> inline Iterator* j2xValues(const M& m) {
+	Iterator* it = new Iterator();
+	for (typename M::const_iterator i = m.begin(); i != m.end(); ++i) it->_v.push_back((void*)i->second);
+	return it;
+}
+template<class M> inline Iterator* j2xKeys(const M& m) {
+	Iterator* it = new Iterator();
+	for (typename M::const_iterator i = m.begin(); i != m.end(); ++i) it->_v.push_back((void*)i->first);
+	return it;
+}
 
 // java.lang.Math.random(): pseudo-random double in [0, 1)
 inline double javaMathRandom() { return (double)rand() / ((double)RAND_MAX + 1.0); }
@@ -383,6 +451,34 @@ struct JCat {
 	JCat& operator+(bool v) { _s += (v ? "true" : "false"); return *this; }   // Java prints true/false
 	JCat& operator+(const char* v) { if (v) _s += v; return *this; }
 	JCat& operator+(const std::string& v) { _s += v; return *this; }
+	operator JavaString() const { return JavaString(_s); }
+	operator std::string() const { return _s; }
+};
+
+// java.lang.StringBuilder / StringBuffer. Beta's decompiler emits explicit builders
+// (`StringBuilder v = new StringBuilder(); v.append(a); v.append(b); ... v.toString()`) where
+// Alpha used `+` concat. Every append() returns `this` (StringBuilder*) so both the inline
+// chain `(new StringBuilder())->append(a)->append(b)->toString()` and the multi-statement form
+// compile; the converter registers these return types (typemap.RUNTIME_MEMBER_ENV) so `.`->`->`
+// resolves. Backed by std::string; append streams any operand via ostringstream (like JCat).
+struct StringBuilder {
+	std::string _s;
+	StringBuilder() {}
+	StringBuilder(int /*capacity*/) {}
+	StringBuilder(const JavaString& s) : _s(s) {}
+	template<class T> StringBuilder* append(const T& v) { std::ostringstream o; o << v; _s += o.str(); return this; }
+	StringBuilder* append(bool v) { _s += (v ? "true" : "false"); return this; }   // Java prints true/false
+	StringBuilder* append(char v) { _s += v; return this; }
+	StringBuilder* append(const char* v) { if (v) _s += v; return this; }
+	StringBuilder* append(const std::string& v) { _s += v; return this; }
+	JavaString toString() const { return JavaString(_s); }
+	int length() const { return (int)_s.size(); }
+	char charAt(int i) const { return (i >= 0 && i < (int)_s.size()) ? _s[i] : '\0'; }
+	StringBuilder* deleteCharAt(int i) { if (i >= 0 && i < (int)_s.size()) _s.erase(i, 1); return this; }
+	StringBuilder* delete_(int a, int b) { if (a >= 0 && b <= (int)_s.size() && a <= b) _s.erase(a, b - a); return this; }  // delete(start,end)
+	StringBuilder* insert(int i, const std::string& v) { if (i >= 0 && i <= (int)_s.size()) _s.insert(i, v); return this; }
+	StringBuilder* reverse() { for (int a = 0, b = (int)_s.size() - 1; a < b; ++a, --b) { char t = _s[a]; _s[a] = _s[b]; _s[b] = t; } return this; }
+	void setLength(int n) { _s.resize(n >= 0 ? n : 0); }
 	operator JavaString() const { return JavaString(_s); }
 	operator std::string() const { return _s; }
 };
@@ -434,6 +530,10 @@ struct JObject {
 	JavaString str() const { return s; }
 	JArray<JavaString> strArray() const { return sa; }
 	template<class T> T* as() const { return (T*)p; }
+	// Object.equals(...): compare by boxed value / pointer identity (Java Object.equals default).
+	bool equals(const JObject& o) const { return kind == o.kind && i == o.i && p == o.p && (kind != 4 || s == o.s); }
+	bool equals(const JavaString& o) const { return kind == 4 && s == o; }
+	template<class T> bool equals(T* q) const { return kind == 5 && p == (void*)q; }
 	// null compare (Object x == null -> x == 0, since NULL is 0). operator==(int) is an exact
 	// match for the int 0, so it wins over the operator int() user-conversion path -> no ambiguity
 	// (verified on g++ -std=c++03: == 0 with both present compiles without warning).
@@ -502,7 +602,19 @@ namespace Double {
 	inline double parseDouble(const std::string& s) { return _javart_parse<double>(s); }
 	inline double valueOf(double v) { return v; }
 	inline bool isNaN(double v) { return v != v; }
+	inline bool isInfinite(double v) { return v != 0.0 && v * 2.0 == v; }   // only +/-inf: x*2==x (NaN fails, 0 excluded)
 	inline std::string toString(double v) { std::ostringstream o; o << v; return o.str(); }
+}
+// java.lang.String STATIC methods (String.valueOf / String.format). The String TYPE maps to
+// JavaString; this namespace holds only the statics, accessed as String::valueOf(...) (no clash).
+namespace String {
+	template<class T> inline JavaString valueOf(const T& v) { std::ostringstream o; o << v; return JavaString(o.str()); }
+	inline JavaString valueOf(bool v) { return JavaString(v ? "true" : "false"); }
+	inline JavaString valueOf(const char* v) { return JavaString(v ? v : ""); }
+	inline JavaString valueOf(const std::string& v) { return JavaString(v); }
+	inline JavaString format(const JavaString& fmt) { return fmt; }             // printf-style not ported
+	template<class A> inline JavaString format(const JavaString& fmt, const A&) { return fmt; }
+	template<class A, class B> inline JavaString format(const JavaString& fmt, const A&, const B&) { return fmt; }
 }
 namespace Float {
 	const float MAX_VALUE = 3.402823466e+38f;   // FLT_MAX (3.4028235e38f rounds ABOVE it -> MSVC C2177)
@@ -555,6 +667,7 @@ namespace Arrays {
 	template<class A, class V> inline void fill(A, int, int, V) {}
 	template<class A> inline void sort(A) {}
 	template<class A, class C> inline void sort(A, C) {}
+	template<class A> inline std::string toString(const A&) { return std::string(); }   // debug only
 }
 
 #endif // JAVART_H
@@ -757,10 +870,13 @@ def _ns_stub(name, consts=(), void_fns=(), ret_fns=(), includes=(), fwds=()):
     L += ['', 'namespace %s {' % name]
     for k, v in consts:
         L.append('\tconst int %s = %s;' % (k, v))
+    # every stub method carries a greppable J2X-STUB marker so a scan (`grep -rn J2X-STUB`) enumerates
+    # the ENTIRE placeholder surface -- a no-op that turns out to be load-bearing (the glPolygonOffset
+    # z-fight class) is never left silently undone.
     for f in void_fns:
-        L.append('\tinline void %s(...) {}' % f)
+        L.append('\tinline void %s(...) {}   // J2X-STUB[%s]: no-op placeholder -- verify not load-bearing' % (f, name))
     for f, (rt, rv) in ret_fns:
-        L.append('\tinline %s %s(...) { return %s; }' % (rt, f, rv))
+        L.append('\tinline %s %s(...) { return %s; }   // J2X-STUB[%s]: returns default -- verify' % (rt, f, rv, name))
     L += ['}', '#endif // %s' % g, '']
     return '\n'.join(L)
 
@@ -770,7 +886,7 @@ def _class_stub(name, void_methods=(), ret_methods=(), ctors=True, bases=(),
     """A class with variadic stub methods (e.g. SoundSystem, DataInput) -- accessed var->X.
     `extra` = verbatim extra member lines (e.g. conversion operators)."""
     g = _guard(name)
-    L = ['#ifndef %s' % g, '#define %s' % g] + _ext_banner(name) + ['#include <string>']
+    L = ['#ifndef %s' % g, '#define %s' % g] + _ext_banner(name) + ['#include <string>', '#include "JavaString.h"']
     L += ['#include "%s.h"' % h for h in includes]
     L += ['class %s;' % f for f in fwds]
     decl = 'class %s' % name + ((' : ' + ', '.join('public %s' % b for b in bases)) if bases else '')
@@ -778,10 +894,15 @@ def _class_stub(name, void_methods=(), ret_methods=(), ctors=True, bases=(),
     if ctors:
         L.append('\t%s(...) {}' % name)
     L.append('\tvirtual ~%s() {}' % name)
+    # J2X-STUB marker on every stub method -> `grep -rn J2X-STUB` enumerates the full placeholder surface.
     for m in void_methods:
-        L.append('\tvirtual void %s(...) {}' % m)
+        L.append('\tvirtual void %s(...) {}   // J2X-STUB[%s]: no-op placeholder -- verify not load-bearing' % (m, name))
     for m, (rt, rv) in ret_methods:
-        L.append('\tvirtual %s %s(...) { return %s; }' % (rt, m, rv))
+        # A method that returns a Java String must return JavaString, not std::string -- else the
+        # caller's `.startsWith()/.substring()/.trim()` (Java String methods) fail to compile.
+        if rt == 'std::string':
+            rt, rv = 'JavaString', 'JavaString()'
+        L.append('\tvirtual %s %s(...) { return %s; }   // J2X-STUB[%s]: returns default -- verify' % (rt, m, rv, name))
     for line in extra:
         L.append('\t' + line)
     L += ['};', '#endif // %s' % g, '']
@@ -907,6 +1028,143 @@ _GENERATED['DataInput.h'] = _class_stub('DataInput', void_methods=['readFully'],
 _GENERATED['DataOutput.h'] = _class_stub('DataOutput',
     void_methods=['write', 'writeByte', 'writeShort', 'writeInt', 'writeLong', 'writeFloat',
                   'writeDouble', 'writeBoolean', 'writeChar', 'writeUTF', 'writeBytes', 'writeChars'])
+# java.util.regex (Beta: chunk-filename matching in ChunkFilePattern/ChunkFolderPattern). The 360
+# has no regex engine and file-based chunk save is stubbed, so these are compile-only stubs: match
+# calls return defaults. Replace with hand C++ string parsing if region-file loading is ever wired.
+_GENERATED['Matcher.h'] = _class_stub('Matcher', includes=['JavaString'],
+    ret_methods=[('matches', ('bool', 'false')), ('find', ('bool', 'false')),
+                 ('lookingAt', ('bool', 'false')), ('group', ('JavaString', 'JavaString()')),
+                 ('groupCount', ('int', '0')), ('start', ('int', '0')), ('end', ('int', '0'))])
+_GENERATED['Pattern.h'] = _class_stub('Pattern', includes=['Matcher'],
+    ret_methods=[('matcher', ('Matcher*', 'new Matcher()'))],
+    extra=['static Pattern* compile(...) { return new Pattern(); }'])
+# java.io.FileFilter (Beta ChunkFolderPattern extends it) -- like FilenameFilter.
+_GENERATED['FileFilter.h'] = _class_stub('FileFilter', fwds=['File'],
+    ret_methods=[('accept', ('bool', 'false'))])
+# java.io.ByteArrayOutputStream / InputStreamReader (Beta texture-pack + NBT IO).
+_GENERATED['ByteArrayOutputStream.h'] = _class_stub('ByteArrayOutputStream', bases=['OutputStream'],
+    includes=['OutputStream', 'JArray'],
+    void_methods=['write', 'reset', 'close', 'flush'],
+    ret_methods=[('toByteArray', ('JArray<unsigned char >', 'JArray<unsigned char >()')), ('size', ('int', '0'))])
+_GENERATED['InputStreamReader.h'] = _class_stub('InputStreamReader', fwds=['InputStream'],
+    void_methods=['close'], ret_methods=[('read', ('int', '-1'))])
+# java.net.HttpURLConnection (Beta ThreadDownloadImage / ThreadCheckHasPaid). Dead on the 360.
+_GENERATED['HttpURLConnection.h'] = _class_stub('HttpURLConnection', bases=['URLConnection'],
+    includes=['URLConnection'], fwds=['InputStream'],
+    void_methods=['setDoInput', 'setDoOutput', 'connect', 'disconnect', 'setRequestMethod', 'setRequestProperty'],
+    ret_methods=[('getResponseCode', ('int', '-1')), ('getInputStream', ('InputStream*', '0'))])
+# java.util.zip.ZipEntry.
+_GENERATED['ZipEntry.h'] = _class_stub('ZipEntry',
+    ret_methods=[('getName', ('std::string', 'std::string()')), ('getSize', ('long long', '0')),
+                 ('isDirectory', ('bool', 'false'))])
+# org.w3c.dom / javax.xml.parsers (Beta ThreadDownloadResources texture-pack XML). Dead on the 360;
+# newInstance/parse are flagged J2X-REVIEW[reflection-unsupported] at the call sites.
+_GENERATED['NodeList.h'] = _class_stub('NodeList', fwds=['Node'],
+    ret_methods=[('getLength', ('int', '0')), ('item', ('Node*', '0'))])
+_GENERATED['Node.h'] = _class_stub('Node', fwds=['NodeList'],
+    ret_methods=[('getNodeType', ('int', '0')), ('getNodeName', ('std::string', 'std::string()')),
+                 ('getNodeValue', ('std::string', 'std::string()')), ('getChildNodes', ('NodeList*', '0'))])
+_GENERATED['Element.h'] = _class_stub('Element', bases=['Node'], includes=['Node'], fwds=['NodeList'],
+    ret_methods=[('getAttribute', ('std::string', 'std::string()')), ('getElementsByTagName', ('NodeList*', '0'))])
+_GENERATED['Document.h'] = _class_stub('Document', fwds=['NodeList', 'Element'],
+    ret_methods=[('getElementsByTagName', ('NodeList*', '0')), ('getDocumentElement', ('Element*', '0'))])
+_GENERATED['DocumentBuilder.h'] = _class_stub('DocumentBuilder', fwds=['Document'],
+    ret_methods=[('parse', ('Document*', '0'))])
+_GENERATED['DocumentBuilderFactory.h'] = _class_stub('DocumentBuilderFactory', fwds=['DocumentBuilder'],
+    ret_methods=[('newDocumentBuilder', ('DocumentBuilder*', '0'))],
+    extra=['static DocumentBuilderFactory* newInstance(...) { return new DocumentBuilderFactory(); }'])
+# java.util.Date / java.text.SimpleDateFormat (Beta ScreenShotHelper timestamps).
+_GENERATED['Date.h'] = _class_stub('Date',
+    ret_methods=[('getTime', ('long long', '0LL')), ('toString', ('std::string', 'std::string()'))])
+_GENERATED['SimpleDateFormat.h'] = _class_stub('SimpleDateFormat', bases=['DateFormat'], includes=['DateFormat'],
+    ret_methods=[('format', ('std::string', 'std::string()'))])
+# java.util.zip gzip streams (Beta SaveConverterMcRegion / NBT). Real gzip lives in the hand-written
+# Inflate/CompressedStreamTools platform code; these keep the type references compiling.
+_GENERATED['GZIPInputStream.h'] = _class_stub('GZIPInputStream', bases=['InputStream'], includes=['InputStream'])
+_GENERATED['GZIPOutputStream.h'] = _class_stub('GZIPOutputStream', bases=['OutputStream'], includes=['OutputStream'],
+    void_methods=['finish'])
+# java.lang.Runtime (Beta memory queries) + java.nio.ByteOrder.
+_GENERATED['Runtime.h'] = _class_stub('Runtime',
+    void_methods=['gc', 'runFinalization'],
+    ret_methods=[('freeMemory', ('long long', '0LL')), ('totalMemory', ('long long', '0LL')),
+                 ('maxMemory', ('long long', '0LL'))],
+    extra=['static Runtime* getRuntime() { static Runtime r; return &r; }'])
+_GENERATED['ByteOrder.h'] = _ns_stub('ByteOrder', consts=[('BIG_ENDIAN', '1'), ('LITTLE_ENDIAN', '0')],
+                                     ret_fns=[('nativeOrder', ('int', '1'))])
+# java.io.RandomAccessFile (Beta RegionFile chunk store). Real IO is the hand-written platform layer.
+_GENERATED['RandomAccessFile.h'] = _class_stub('RandomAccessFile',
+    void_methods=['seek', 'write', 'writeInt', 'writeByte', 'writeShort', 'writeLong', 'writeFully',
+                  'setLength', 'close', 'readFully'],
+    ret_methods=[('read', ('int', '-1')), ('readInt', ('int', '0')), ('readByte', ('int', '0')),
+                 ('readShort', ('int', '0')), ('readUnsignedByte', ('int', '0')), ('readLong', ('long long', '0LL')),
+                 ('length', ('long long', '0LL')), ('getFilePointer', ('long long', '0LL')),
+                 ('skipBytes', ('int', '0'))])
+# java.io.Writer / StringWriter / PushbackReader.
+_GENERATED['Writer.h'] = _class_stub('Writer', void_methods=['write', 'flush', 'close', 'append'])
+_GENERATED['StringWriter.h'] = _class_stub('StringWriter', bases=['Writer'], includes=['Writer'],
+    ret_methods=[('toString', ('std::string', 'std::string()')), ('getBuffer', ('void*', '0'))])
+_GENERATED['PushbackReader.h'] = _class_stub('PushbackReader', void_methods=['unread', 'close'],
+    ret_methods=[('read', ('int', '-1'))])
+# java.util.Stack / Properties / Map.Entry / NumberFormat.
+_GENERATED['Stack.h'] = (
+    '#ifndef STACK_H\n#define STACK_H\n#include <vector>\n'
+    'class Stack {\n'                                     # java.util.Stack<T> -> void*-element stub (a pointer class)
+    '\tstd::vector<void*> _v;\n'
+    'public:\n'
+    '\tvoid* push(void* v) { _v.push_back(v); return v; }\n'
+    '\tvoid* pop() { if (_v.empty()) return 0; void* v = _v.back(); _v.pop_back(); return v; }\n'
+    '\tvoid* peek() const { return _v.empty() ? 0 : _v.back(); }\n'
+    '\tbool isEmpty() const { return _v.empty(); }\n'
+    '\tint size() const { return (int)_v.size(); }\n'
+    '\tvoid* elementAt(int i) const { return (i >= 0 && i < (int)_v.size()) ? _v[i] : 0; }\n'
+    '};\n#endif\n')
+_GENERATED['Properties.h'] = _class_stub('Properties',
+    void_methods=['load', 'store', 'setProperty', 'put'],
+    ret_methods=[('getProperty', ('std::string', 'std::string()'))])
+_GENERATED['Entry.h'] = _class_stub('Entry',
+    ret_methods=[('getKey', ('void*', '0')), ('getValue', ('void*', '0'))])
+_GENERATED['NumberFormat.h'] = _class_stub('NumberFormat',
+    void_methods=['setMaximumFractionDigits', 'setMinimumFractionDigits'],
+    ret_methods=[('format', ('std::string', 'std::string()'))],
+    extra=['static NumberFormat* getInstance() { return new NumberFormat(); }',
+           'static NumberFormat* getIntegerInstance() { return new NumberFormat(); }'])
+# java.security.MessageDigest (Beta MD5). Real hashing is MCHash/MD5String platform code.
+_GENERATED['MessageDigest.h'] = _class_stub('MessageDigest', includes=['JArray'],
+    void_methods=['update', 'reset'],
+    ret_methods=[('digest', ('JArray<unsigned char >', 'JArray<unsigned char >()'))],
+    extra=['static MessageDigest* getInstance(...) { return new MessageDigest(); }'])
+# AWT / misc leaf stubs (dead on the 360).
+_GENERATED['RenderingHints.h'] = _class_stub('RenderingHints', void_methods=['put'])
+_GENERATED['DataFlavor.h'] = _class_stub('DataFlavor')
+_GENERATED['Reference.h'] = _class_stub('Reference', ret_methods=[('get', ('void*', '0'))])
+_GENERATED['Logger.h'] = _class_stub('Logger', void_methods=['log', 'info', 'warning', 'severe', 'fine'],
+    extra=['static Logger* getLogger(...) { return new Logger(); }'])
+# java.util.Calendar / GregorianCalendar (Beta seasonal-chest / timestamp checks).
+_GENERATED['Calendar.h'] = _class_stub('Calendar', void_methods=['set', 'setTime', 'add'],
+    ret_methods=[('get', ('int', '0')), ('getTime', ('void*', '0')), ('getTimeInMillis', ('long long', '0LL'))],
+    extra=['static Calendar* getInstance() { return new Calendar(); }',
+           'static const int JANUARY = 0, FEBRUARY = 1, DECEMBER = 11, DATE = 5, MONTH = 2, YEAR = 1;'])
+_GENERATED['GregorianCalendar.h'] = _class_stub('GregorianCalendar', bases=['Calendar'], includes=['Calendar'])
+# AWT / paulscode leaf stubs (all dead on the 360 -- desktop clipboard / config).
+_GENERATED['Toolkit.h'] = _class_stub('Toolkit', extra=['static Toolkit* getDefaultToolkit() { return new Toolkit(); }',
+                                                        'void* getSystemClipboard(...) { return 0; }'])
+_GENERATED['TextArea.h'] = _class_stub('TextArea', ret_methods=[('getText', ('std::string', 'std::string()'))])
+_GENERATED['Transferable.h'] = _class_stub('Transferable')
+_GENERATED['SoundSystemConfig.h'] = _ns_stub('SoundSystemConfig', void_fns=['setCodec', 'setNumberStreamingChannels'])
+# java.util.Collection (interface base) / Locale / java.awt.Rectangle.
+_GENERATED['Collection.h'] = _class_stub('Collection',
+    void_methods=['add', 'clear'], ret_methods=[('size', ('int', '0')), ('isEmpty', ('bool', 'true')),
+                                                 ('iterator', ('void*', '0')), ('contains', ('bool', 'false'))])
+_GENERATED['Locale.h'] = _class_stub('Locale')
+_GENERATED['Rectangle.h'] = _class_stub('Rectangle', extra=['int x, y, width, height;'])
+# Transferable / TextArea leaf methods (dead AWT; keep them compiling). RenderingHints/DataFlavor
+# static-constant accesses (KEY_INTERPOLATION / stringFlavor) remain a few errors -- dead AWT, low pri.
+_GENERATED['RenderingHints.h'] = _class_stub('RenderingHints', void_methods=['put'])
+_GENERATED['DataFlavor.h'] = _class_stub('DataFlavor')
+_GENERATED['Transferable.h'] = _class_stub('Transferable',
+    ret_methods=[('isDataFlavorSupported', ('bool', 'false')), ('getTransferData', ('void*', '0'))])
+_GENERATED['TextArea.h'] = _class_stub('TextArea', void_methods=['setFont', 'setText'],
+    ret_methods=[('getText', ('std::string', 'std::string()'))])
 # java.io concrete streams (DataInputStream/DataOutputStream are the heavy hitters on alpha)
 _GENERATED['InputStream.h'] = _class_stub('InputStream', void_methods=['close', 'reset', 'mark'],
     ret_methods=[('read', ('int', '0')), ('available', ('int', '0')), ('skip', ('long long', '0LL'))])
@@ -1102,6 +1360,7 @@ _GENERATED['Class.h'] = r'''#ifndef CLASS_H
 // return 0 -- the class-keyed registries (EntityList/Packet/TileEntity) supply explicit factories.
 #include <string>
 #include <typeinfo>
+#include <vector>
 #include "URL.h"                                          // getResource returns a path-carrying URL
 class InputStream;
 InputStream* J2X_getResourceAsStream(const char* name);   // FileIO.cpp: "/x.png" -> game:\Content\x.png
@@ -1125,9 +1384,16 @@ public:
 		return n;
 	}
 	std::string getSimpleName() const { return getName(); }
+	std::string getCanonicalName() const { return getName(); }
+	std::string toString() const { return std::string("class ") + getName(); }
 	bool equals(const Class& o) const { return *this == o; }
 	bool operator==(const Class& o) const { return _ti == o._ti || (_ti && o._ti && *_ti == *o._ti); }
 	bool operator!=(const Class& o) const { return !(*this == o); }
+	// A Java `.class` literal maps to a STABLE Class* (j2xClassOf, below); `getClass()` stays a Class
+	// value. These let `getClass() == Foo.class` (value == Class*) compare by TYPE, not pointer.
+	bool operator==(const Class* o) const { return o && *this == *o; }
+	bool operator!=(const Class* o) const { return !(o && *this == *o); }
+	const std::type_info* rawType() const { return _ti; }
 	bool operator<(const Class& o) const {                 // strict-weak order for std::map keys
 		if (!_ti) return o._ti != 0;
 		if (!o._ti) return false;
@@ -1157,6 +1423,23 @@ public:
 	InputStream* getResourceAsStream(...) { return 0; }
 	operator Class*() { return this; }                     // usable where a Class* is expected
 };
+
+// A Java `.class` literal must be a STABLE, non-dangling Class object (Java Class objects are
+// process-lifetime singletons). j2xClassOf returns a Class* into a program-lifetime registry keyed
+// by std::type_info, so the SAME type always yields the SAME pointer -- `EntityList::addMapping(
+// EntityPig.class, ...)` stores a valid pointer (NOT the address of a destroyed temporary, the old
+// `Class(typeid(X))` dangling bug) and `a.class == b.class` is correct pointer identity.
+inline Class* j2xClassOf(const std::type_info& ti) {
+	static std::vector<Class*> reg;                        // leaked once per type == program-lifetime
+	for (unsigned i = 0; i < reg.size(); ++i) {
+		const std::type_info* rt = reg[i]->rawType();
+		if (rt && *rt == ti) return reg[i];
+	}
+	Class* c = new Class(ti); reg.push_back(c); return c;
+}
+// free cross-comparisons so `Foo.class == obj->getClass()` (Class* == Class value) also works
+inline bool operator==(const Class* a, const Class& b) { return a && *a == b; }
+inline bool operator!=(const Class* a, const Class& b) { return !(a && *a == b); }
 #endif // CLASS_H
 '''
 _GENERATED['Robot.h'] = _class_stub('Robot', void_methods=['mouseMove'])
@@ -1206,16 +1489,18 @@ for _e, _base in [('Exception', 'Throwable'), ('Error', 'Throwable'), ('RuntimeE
                   ('CloneNotSupportedException', 'Exception'), ('ClassNotFoundException', 'Exception')]:
     _GENERATED[_e + '.h'] = _class_stub(_e, bases=[_base], includes=[_base])
 # java.io.File (richer than the early minimal stub; overrides it via FILES.update)
-_GENERATED['File.h'] = _class_stub('File', fwds=['URL'],
+_GENERATED['File.h'] = _class_stub('File', fwds=['URL'], includes=['JArray'],
     ret_methods=[('getName', ('std::string', 'std::string()')), ('getPath', ('std::string', 'std::string()')),
                  ('getAbsolutePath', ('std::string', 'std::string()')), ('toString', ('std::string', 'std::string()')),
                  ('exists', ('bool', 'false')), ('isDirectory', ('bool', 'false')), ('isFile', ('bool', 'false')),
                  ('mkdir', ('bool', 'false')), ('mkdirs', ('bool', 'false')), ('renameTo', ('bool', 'false')),
                  ('length', ('long long', '0LL')), ('getParentFile', ('File*', '0')),
-                 ('getAbsoluteFile', ('File*', '0')), ('toURI', ('void*', '0')), ('listFiles', ('void*', '0')),
+                 ('getAbsoluteFile', ('File*', '0')), ('toURI', ('void*', '0')),
+                 ('listFiles', ('JArray<File* >', 'JArray<File* >()')),   # File[] not void*
                  ('lastModified', ('long long', '0LL')), ('list', ('void*', '0')),
                  ('getParent', ('std::string', 'std::string()')), ('canRead', ('bool', 'false')),
-                 ('canWrite', ('bool', 'false'))])
+                 ('canWrite', ('bool', 'false')), ('delete_', ('bool', 'false')),   # File.delete() (keyword-renamed)
+                 ('createNewFile', ('bool', 'false'))])
 # java.awt GUI bases (desktop-only entry points: MinecraftApplet extends Applet, etc.)
 _GENERATED['Applet.h'] = _class_stub('Applet', bases=['Component'], includes=['Component'], fwds=['URL', 'Graphics'],
     void_methods=['validate', 'setLayout', 'add', 'repaint', 'requestFocus', 'setVisible',
@@ -1303,6 +1588,9 @@ struct Collections {
 	}
 	template<class T> static void sort(JList<T>& list) { std::sort(list.begin(), list.end()); }
 	template<class T> static void reverse(JList<T>& list) { std::reverse(list.begin(), list.end()); }
+	template<class T> static JList<T>& synchronizedList(JList<T>& list) { return list; }   // no JVM monitor on the port
+	template<class M> static M& synchronizedMap(M& m) { return m; }
+	template<class T> static JList<T> emptyList() { return JList<T>(); }
 	template<class T> static void shuffle(JList<T>&) {}            // no-op (no RNG dependency here)
 	template<class T> static void shuffle(JList<T>&, Random*) {}
 };
@@ -1316,6 +1604,7 @@ FILES = {
     'JavaString.h': JAVASTRING_H,
     'JArray.h': JARRAY_H,
     'JList.h': JLIST_H,
+    'JSet.h': JSET_H,
     'JavaRT.h': JAVART_H,
     'GL11.h': GL11_H,
     'Runnable.h': RUNNABLE_H,

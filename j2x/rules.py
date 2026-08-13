@@ -373,6 +373,219 @@ def rule_null_deref_field(fname, text, header_text, plat):
                 break
 
 
+# ---------------------------------------------------------------------------
+# Hang / heap-exhaustion class: per-iteration heap allocation inside a loop
+# ---------------------------------------------------------------------------
+def _loop_body_span(text, hdr_open):
+    """Given the index of a `for`/`while` keyword, return (body_start, body_end) covering its body:
+    the balanced `{...}` if the next non-space after the header `)` is `{`, else up to the next `;`."""
+    i, n = hdr_open, len(text)
+    m = re.compile(r'\b(for|while)\b').match(text, hdr_open)
+    if not m:
+        return None
+    p = text.find('(', m.end())
+    if p < 0:
+        return None
+    depth, j = 0, p
+    while j < n:                                          # balance the header parens
+        if text[j] == '(':
+            depth += 1
+        elif text[j] == ')':
+            depth -= 1
+            if depth == 0:
+                break
+        j += 1
+    k = j + 1
+    while k < n and text[k] in ' \t\r\n':
+        k += 1
+    if k < n and text[k] == '{':
+        depth, t = 0, k
+        while t < n:
+            if text[t] == '{':
+                depth += 1
+            elif text[t] == '}':
+                depth -= 1
+                if depth == 0:
+                    return k, t
+            t += 1
+        return k, n
+    end = text.find(';', k)
+    return (k, end if end >= 0 else n)
+
+
+# hot per-frame / per-chunk / per-entity methods where a big loop runs on the 360's tiny budget
+_HOTPATH = re.compile(r'\b(generate|populate|render\w*|doRender\w*|tick|onUpdate|updateEntity|'
+                      r'onLivingUpdate|updateRenderer\w*|getBlock\w*|relightBlock|updateLighting|'
+                      r'func_\w+)\s*\(')
+_NEW_OBJ = re.compile(r'\bnew\s+([A-Z]\w*)\s*[({]')       # heap object (not new T[]) construction
+
+
+def rule_hotpath_alloc(fname, text, header_text, plat):
+    """PERF/HANG (flag-only): a heap `new` INSIDE a loop allocates once PER ITERATION. Java's GC hides
+    this; on the 360 a large loop (a chunk/tree/entity scan run millions of times) becomes an
+    allocation storm -> heap exhaustion / multi-second stall / apparent hang. Higher severity inside a
+    hot-path method. Not auto-fixed (the fix -- hoist the allocation, pool it, or stack it -- needs
+    human judgement); flagged for review."""
+    if not fname.endswith('.cpp'):
+        return
+    seen = set()
+    for lm in re.finditer(r'\b(?:for|while)\b', text):
+        span = _loop_body_span(text, lm.start())
+        if not span:
+            continue
+        bstart, bend = span
+        body = text[bstart:bend]
+        # is this loop lexically inside a hot-path method? (cheap: scan back to the enclosing signature)
+        head = text[max(0, lm.start() - 4000):lm.start()]
+        hot = bool(_HOTPATH.search(head.rsplit('\n\n', 1)[-1]))
+        for nm in _NEW_OBJ.finditer(body):
+            line = text.count('\n', 0, bstart + nm.start()) + 1
+            if line in seen:
+                continue
+            seen.add(line)
+            sev = Severity.HIGH if hot else Severity.MED
+            yield (line, Category.RISK, sev, 'hotpath-alloc',
+                   "heap `new %s` inside a loop allocates once PER ITERATION -- on %s this is an "
+                   "allocation storm / heap-exhaustion hang when the loop is large (Java's GC hid it). "
+                   "Hoist it out of the loop, pool it, or stack-allocate it."
+                   % (nm.group(1), plat.label),
+                   text[bstart + nm.start():bstart + nm.start() + 120].split('\n')[0].strip())
+
+
+# ---------------------------------------------------------------------------
+# Hang class: an unbounded loop with no exit in its body
+# ---------------------------------------------------------------------------
+def rule_infinite_loop(fname, text, header_text, plat):
+    """HANG (flag-only): `while (true)` / `for (;;)` whose body contains no break / return / goto /
+    throw -- an unconditional infinite loop. On the 360 this wedges the (often main) thread with no
+    watchdog. Flagged for review (a converter mistranslation of a labeled break, or a genuinely
+    unbounded loop, both surface here)."""
+    if not fname.endswith('.cpp'):
+        return
+    for lm in re.finditer(r'\b(while\s*\(\s*(?:true|1)\s*\)|for\s*\(\s*;\s*;\s*\))', text):
+        span = _loop_body_span(text, lm.start())
+        if not span:
+            continue
+        bstart, bend = span
+        body = text[bstart:bend]
+        if not re.search(r'\b(break|return|goto|throw|exit)\b', body):
+            line = text.count('\n', 0, lm.start()) + 1
+            yield (line, Category.RISK, Severity.MED, 'infinite-loop',
+                   "unbounded loop (`%s`) with no break/return/goto in its body -- wedges the thread "
+                   "on %s (no watchdog). Verify it has an exit; a mistranslated labeled break lands here."
+                   % (lm.group(1), plat.label),
+                   lm.group(0))
+
+
+# ---------------------------------------------------------------------------
+# Leak class: a heap local reassigned in a loop without freeing the prior value
+# ---------------------------------------------------------------------------
+def rule_leak_loop_reassign(fname, text, header_text, plat):
+    """LEAK (flag-only): a local pointer reassigned via `new` inside a loop, with no `delete` of the
+    prior value first -- every iteration leaks the previous object (the WorldGenBigTree reuse pattern
+    the live tree fixed by hand). The throwaway `(new T())->m()` case is auto-fixed elsewhere; this is
+    the harder reassign-in-loop case, flagged for a human `delete before reassign` + `delete after loop`."""
+    if not fname.endswith('.cpp'):
+        return
+    for lm in re.finditer(r'\b(?:for|while)\b', text):
+        span = _loop_body_span(text, lm.start())
+        if not span:
+            continue
+        bstart, bend = span
+        body = text[bstart:bend]
+        for am in re.finditer(r'\b(\w+)\s*=\s*new\s+[A-Z]\w*\s*[({]', body):
+            var = am.group(1)
+            pre = body[:am.start()]
+            if re.search(r'\bdelete\b[^;]*\b%s\b' % re.escape(var), body[max(0, am.start() - 200):am.start()]):
+                continue                                  # a delete of this var precedes the reassign
+            line = text.count('\n', 0, bstart + am.start()) + 1
+            yield (line, Category.RISK, Severity.MED, 'leak-loop-reassign',
+                   "`%s = new ...` inside a loop with no `delete %s` first -- each iteration leaks the "
+                   "previous object (Java GC'd it). Add `delete %s;` before the reassign and once after "
+                   "the loop." % (var, var, var),
+                   am.group(0)[:120])
+            break                                         # one finding per loop is enough
+
+
+# ---------------------------------------------------------------------------
+# Side-effect preservation net (the RenderPig class): an impure statement inside a guarded branch
+# ---------------------------------------------------------------------------
+# impure = a call, an allocation, or an assignment to non-local (field/global/native) state.
+_IMPURE = re.compile(r'\b\w+\s*\([^)]*\)\s*;|\bnew\s+[A-Za-z_]|->\s*\w+\s*=|::\s*\w+\s*=|\bthis->\w+\s*=')
+
+
+def rule_side_effect_in_branch(fname, text, header_text, plat):
+    """SIDE-EFFECT PRESERVATION audit net. Flags an `if (...) { ... }` block that contains BOTH an
+    impure statement (call / `new` / assignment to field/global/native state) AND a `return` -- the
+    exact shape a naive 'collapse the guard into a predicate return' would corrupt by dropping or
+    unconditionally hoisting the side effect (the RenderPig loadTexture bug). The converter is
+    order-preserving so these are almost always intact; the tag `J2X-REVIEW[side-effect-in-branch]`
+    makes every one greppable so a full-codebase pass can confirm the guard survived."""
+    if not fname.endswith('.cpp'):
+        return
+    for m in re.finditer(r'\bif\s*\(', text):
+        p = m.end() - 1                                   # balance the condition parens
+        depth, j, n = 0, p, len(text)
+        while j < n:
+            if text[j] == '(':
+                depth += 1
+            elif text[j] == ')':
+                depth -= 1
+                if depth == 0:
+                    break
+            j += 1
+        k = j + 1
+        while k < n and text[k] in ' \t\r\n':
+            k += 1
+        if k >= n or text[k] != '{':                      # only braced blocks (single-stmt is low-risk)
+            continue
+        depth, t = 0, k
+        while t < n:
+            if text[t] == '{':
+                depth += 1
+            elif text[t] == '}':
+                depth -= 1
+                if depth == 0:
+                    break
+            t += 1
+        body = text[k + 1:t]
+        if 'return' in body and _IMPURE.search(body) and 'J2X-REVIEW' not in body:
+            line = text.count('\n', 0, m.start()) + 1
+            yield (line, Category.RISK, Severity.LOW, 'side-effect-in-branch',
+                   "J2X-REVIEW[side-effect-in-branch]: a guarded branch runs an impure statement AND "
+                   "returns -- confirm the side effect still executes ONLY under this guard (it must "
+                   "never be collapsed/hoisted into an unconditional prelude; the RenderPig class).",
+                   text[m.start():k].replace('\n', ' ')[:120])
+
+
+_DEBUG_BYPASS = re.compile(r'\b(OutputDebugString[AW]?|printf|fprintf|std::(?:cout|cerr)|puts)\s*[\(<]')
+
+
+def rule_debug_bypass(fname, text, header_text, plat):
+    """Flags raw debug output (printf / OutputDebugString / cout) that does NOT go through the single
+    Debug.h `DBG_*` macros. The user's rule: all debug instrumentation must route through the one
+    master switch (DEBUG_ENABLED) so toggling it off silences everything. A stray printf stays hot in
+    a retail build and spams the console -- tag it `J2X-REVIEW[debug-bypass]` so it is greppable and
+    can be converted to a DBG_* macro (or removed)."""
+    if not fname.endswith('.cpp'):
+        return
+    if 'Debug.cpp' in fname:                               # the backend itself legitimately uses printf
+        return
+    for m in _DEBUG_BYPASS.finditer(text):
+        line = text.count('\n', 0, m.start()) + 1
+        # skip lines already routed/annotated
+        ls = text.rfind('\n', 0, m.start()) + 1
+        le = text.find('\n', m.start())
+        linetext = text[ls:le if le != -1 else len(text)]
+        if 'DBG_' in linetext or 'J2X-REVIEW' in linetext or 'Debug_Printf' in linetext:
+            continue
+        yield (line, Category.RISK, Severity.LOW, 'debug-bypass',
+               "J2X-REVIEW[debug-bypass]: raw debug output not routed through Debug.h -- convert to a "
+               "DBG_* macro so the master DEBUG_ENABLED switch governs it (else it stays hot in retail "
+               "and spams the console).",
+               linetext.strip()[:120])
+
+
 # Registry -- (id, description, function). Add new rules here.
 RULES = [
     ('uninit-array',    'new T[n] without () leaves primitives/pointers uninitialized', rule_uninit_array),
@@ -389,6 +602,16 @@ RULES = [
      rule_null_deref_getter),
     ('null-deref-field', 'known-nullable field dereferenced without null check',
      rule_null_deref_field),
+    ('hotpath-alloc',   'heap allocation inside a loop (per-iteration alloc storm / hang)',
+     rule_hotpath_alloc),
+    ('infinite-loop',   'unbounded loop with no break/return in body (thread wedge)',
+     rule_infinite_loop),
+    ('leak-loop-reassign', 'heap local reassigned in a loop without freeing the prior value',
+     rule_leak_loop_reassign),
+    ('side-effect-in-branch', 'impure statement in a guarded branch that returns (RenderPig class)',
+     rule_side_effect_in_branch),
+    ('debug-bypass',    'raw debug output not routed through the single Debug.h master switch',
+     rule_debug_bypass),
 ]
 
 

@@ -21,7 +21,7 @@ from ..ledger import Category, Severity
 from . import naming, ownership
 from .std_transforms import apply_std_transforms
 from .statements import (translate_body, _resolve_chains, _resolve_call_chains,
-                         sub_outside_literals, _split_top_commas)
+                         sub_outside_literals, _split_top_commas, _fix_numeric_suffixes)
 
 def _banner(cls_name, cpp_std=None, platform_label=None):
     std_label = cpp_std.label if cpp_std else 'C++03'
@@ -72,8 +72,19 @@ def _static_ref(expr, resolver, own_statics=(), current=None):
     Java null -> NULL, AND the chained/call-result pointer derefs (Block::s_stone->blockID)."""
     holders = typemap.RUNTIME_STATIC_HOLDERS | typemap.JAVART_STATICS | set(resolver.enums)
 
+    # static-field/array initializers don't go through the statement translator, so apply the two
+    # transforms they still need: Java numeric-literal suffixes (`2.0D`->`2.0`, `7L`->`7LL` -- MSVC
+    # rejects the `D` suffix -> "bad suffix on number") and primitive-type casts (`(byte)2` ->
+    # `(signed char)2`; `byte`/`boolean` are not C++ types).
+    expr = _fix_numeric_suffixes(expr)
+    expr = re.sub(r'\(\s*(byte|boolean|short|int|long|float|double|char)\s*\)',
+                  lambda mm: '(%s)' % typemap.JAVA_TO_CPP.get(mm.group(1), mm.group(1)), expr)
+
     def repl(m):
         cls, mem, paren = m.group(1), m.group(2), m.group(3)
+        if mem == 'class' and not paren:                         # Java `X.class` literal (any X) ->
+            return 'j2xClassOf(typeid(%s))' % cls                # STABLE Class* (never `X::s_class`,
+                                                                 # which is undefined, nor a dangling temp)
         if cls in holders:
             return '%s::%s%s' % (cls, mem, paren or '')          # holder/enum/method: no s_
         if cls in resolver.known:
@@ -96,8 +107,13 @@ def _static_ref(expr, resolver, own_statics=(), current=None):
 
 
 def _array_elem_cpp(jtype, resolver):
-    """The C++ element spelling for a T[] field, i.e. the JArray<...> template argument."""
+    """The C++ element spelling for a T[] field, i.e. the JArray<...> template argument. Must MATCH
+    types.cpp_type's array handling exactly, or the aggregate data array (`static elem _data[]`) and
+    the JArray<elem> field type disagree -- e.g. byte[] is JArray<unsigned char> (a buffer) even though
+    a SCALAR byte is signed char, so the element here must be unsigned char too."""
     elem_jt = jtype.element()
+    if elem_jt.name == 'byte' and not elem_jt.is_array:      # byte[] buffer -> unsigned char (see types.py)
+        return 'unsigned char'
     elem = resolver.cpp_type(elem_jt, 'element')
     if resolver.ownership(elem_jt) == 'pointer' and not elem.endswith('*'):
         elem += '*'
@@ -414,6 +430,8 @@ def _referenced_types(cls, resolver, body_text):
         for p in m.params:
             add(p.jtype)
     names |= set(re.findall(r'\b([A-Z]\w*)\b', body_text))     # new X / X:: / casts / locals
+    if 'j2xClassOf' in body_text or 'typeid' in body_text:     # `.class` / getClass() -> needs Class.h
+        names.add('Class')
     # transitive CLOSURE: the statement translator emits arbitrarily deep chains
     # (`this->mc->gameSettings->keyBindInventory->keyCode`), so a .cpp needs the FULL
     # definition of every type reachable through field/method links -- not just one hop.
@@ -435,8 +453,70 @@ def _referenced_types(cls, resolver, body_text):
     return sorted((names & includable) - {cls.name})
 
 
+def _enum_const_arg(expr, resolver, cls_name):
+    """Translate one enum-constant constructor argument (e.g. `Material.air`, `IMob.class`,
+    `"Kebab"`, `16`). Reuses the static-initializer ref translator, which maps `X.class` to a stable
+    j2xClassOf(typeid(X)) Class*."""
+    return _static_ref(expr, resolver, (), cls_name)
+
+
+def _render_typed_enum_source(cls, resolver, ledger, cpp_std, platform_label):
+    """Emit the .cpp for a typed enum: static const/instance defs, the ctor(s)/dtor/methods via the
+    normal renderers, and an initStatics() that builds the singleton instance table (in ctor-body
+    dependency order via j2x_initAll), assigns ordinals, and fills values()."""
+    body = []
+    # static definitions: the singleton constants + real enum statics (zero-init) + values backing
+    for ec in cls.enum_consts:
+        body.append('%s* %s::%s;' % (cls.name, cls.name, ec.name))
+    for f in cls.static_fields():
+        body.append('%s %s::%s;' % (resolver.field_type(f.jtype), cls.name, f.name))
+    body.append('JArray<%s* > %s::_j2x_values;' % (cls.name, cls.name))
+    body.append('')
+
+    for m in cls.constructors():
+        body += _render_ctor(cls, m, resolver, ledger) + ['']
+    body += _render_dtor(cls, ownership.owned_pointers(cls, resolver), ledger) + ['']
+    for m in cls.methods:
+        if not m.is_ctor and not m.is_abstract:
+            body += _render_method(cls, m, resolver, ledger) + ['']
+    body += ['int %s::ordinal()' % cls.name, '{', '\treturn this->__ordinal;', '}', '']
+    body += ['JArray<%s* >& %s::values()' % (cls.name, cls.name), '{', '\treturn _j2x_values;', '}', '']
+
+    # initStatics(): construct each singleton, set its ordinal, run real static inits, fill values().
+    own_statics = set(f.name for f in cls.static_fields())
+    init = []
+    for i, ec in enumerate(cls.enum_consts):
+        args = ', '.join(_enum_const_arg(a.strip(), resolver, cls.name) for a in ec.args)
+        init.append('%s = new %s(%s);' % (ec.name, cls.name, args))
+        init.append('%s->__ordinal = %d;' % (ec.name, i))
+    for f in cls.static_fields():
+        if f.initializer:
+            init.append('%s = %s;' % (f.name, _static_ref(f.initializer.strip(), resolver, own_statics, cls.name)))
+    for block in getattr(cls, 'static_inits', []):
+        init += _translate_block_lines(cls, resolver, ledger, _strip_block_braces(block), is_static=True)
+    init.append('_j2x_values = JArray<%s* >(%d);' % (cls.name, len(cls.enum_consts)))
+    for i, ec in enumerate(cls.enum_consts):
+        init.append('_j2x_values[%d] = %s;' % (i, ec.name))
+    cls.has_init_statics = True                              # always: the constant table must be built
+    body += ['void %s::initStatics()' % cls.name, '{']
+    body += ['\t' + l for l in init] + ['}', '']
+
+    used = _referenced_types(cls, resolver, '\n'.join(body))
+    L = ['#include "stdafx.h"', '#include "JavaRT.h"', '', _banner(cls.name, cpp_std, platform_label), '',
+         '#include "%s.h"' % cls.name]
+    L += ['#include "%s.h"' % n for n in used]
+    L += [''] + body
+    if ledger is not None:
+        ledger.add(cls.name + '.cpp', Category.PORTED,
+                   'typed enum source: %d singletons built in initStatics()' % len(cls.enum_consts),
+                   source='emit', rule='typed-enum')
+    return apply_std_transforms('\n'.join(L).rstrip() + '\n', cpp_std)
+
+
 def render_source(cls, resolver, ledger=None, cpp_std=None, platform_label=None):
-    """Returns the .cpp text, or None for interfaces/enums (header-only)."""
+    """Returns the .cpp text, or None for interfaces / constant-only enums (header-only)."""
+    if cls.is_enum and cls.name in resolver.typed_enums:
+        return _render_typed_enum_source(cls, resolver, ledger, cpp_std, platform_label)
     if cls.is_interface or cls.is_enum:
         return None
 

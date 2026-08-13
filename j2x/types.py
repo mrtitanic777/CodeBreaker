@@ -19,13 +19,23 @@ from . import typemap
 
 class TypeResolver(object):
     def __init__(self, known_classes=None, value_types=None,
-                 interface_types=None, enum_types=None, members=None, method_renames=None):
+                 interface_types=None, enum_types=None, members=None, method_renames=None,
+                 typed_enum_types=None, thread_like=None):
         # user-defined classes parsed from the corpus (everything here is a reference type)
         self.known = set(known_classes or ())
         # class names that are C++ VALUE/struct types (stack, '.' access)
         self.values = set(value_types if value_types is not None else typemap.DEFAULT_VALUE_TYPES)
         self.interfaces = set(interface_types or ())
         self.enums = set(enum_types or ())
+        # TYPED enums (constants carry state/behaviour) -> emitted as real pointer-classes with a
+        # static instance table, NOT int constants. Still in `enums` so `Enum.CONST` resolves to
+        # `Enum::CONST` (no s_ prefix), but ownership/cpp_type treat them as pointers.
+        self.typed_enums = set(typed_enum_types or ())
+        # classes whose objects run asynchronously (Thread subclasses / Runnable) -> the leak
+        # transform must NEVER stack-allocate them (the object must outlive the started thread).
+        self.thread_like = set(thread_like or ())
+        # dropped MCP EmptyN marker types -> strip `(EmptyN*)NULL` bridge args at call sites.
+        self.markers = set()
         # member environment for expression-type inference (chained '.' vs '->'):
         #   {class_name: {'fields': {name: JType}, 'methods': {name: return JType}}}
         # inheritance is already flattened in (closer definitions win). Built by the
@@ -52,8 +62,10 @@ class TypeResolver(object):
         n = jtype.name
         if n in typemap.PRIMITIVES:
             return 'value'
+        if n in self.typed_enums:
+            return 'pointer'                         # typed enum -> real object (singleton instances)
         if n in self.enums:
-            return 'value'                           # enums -> int (value)
+            return 'value'                           # constant-only enum -> int (value)
         if n in typemap.VALUE_STDLIB:
             return 'value'                           # std::string
         if n in typemap.CONTAINERS:
@@ -110,6 +122,10 @@ class TypeResolver(object):
             # (Java autoboxing). Scalar Object stays void*; only the array element is boxed.
             if elem_jt.name == 'Object' and not elem_jt.is_array:
                 return 'JArray<JObject >'
+            # byte[] BUFFER stays unsigned char (chunk/packet/inflate data read via & 0xFF), even
+            # though a SCALAR byte is signed char. This is the one place the two byte policies split.
+            if elem_jt.name == 'byte' and not elem_jt.is_array:
+                return 'JArray<unsigned char >'
             elem = self.cpp_type(elem_jt, 'element')
             if self.ownership(elem_jt) == 'pointer' and not elem.endswith('*'):
                 elem += '*'
@@ -127,8 +143,8 @@ class TypeResolver(object):
             return '%s<%s>' % (outer, ', '.join(args))
 
         name = jtype.name
-        if name in self.enums:
-            return 'int'                             # enum variable/field/param/return -> int
+        if name in self.enums and name not in self.typed_enums:
+            return 'int'                             # constant-only enum variable/field/param/return -> int
         # String is passed as const ref (cheap), but RETURNED by value: methods often
         # build a new string (concat), and returning that as const& would dangle. Uses
         # JavaString (a std::string subclass with Java's methods) so s.equals()/s.trim()/...

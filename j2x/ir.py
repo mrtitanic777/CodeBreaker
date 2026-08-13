@@ -204,6 +204,17 @@ class JClass(object):
         """True if any field initializer allocates (a Rule-of-Three signal at the IR level)."""
         return any(f.initializer and 'new ' in f.initializer for f in self.fields)
 
+    def is_typed_enum(self):
+        """A Java 5 'typed' enum -- constants carry constructor args and/or the enum declares
+        instance state/behaviour (EnumToolMaterial, EnumArt, EnumCreatureType, ...). These must
+        become real objects (a class with a static instance table), NOT bare int constants.
+        A constant-only enum (EnumMobType: `everything, mobs, players;`) stays int constants."""
+        if not self.is_enum:
+            return False
+        return (any(ec.args for ec in self.enum_consts)
+                or bool(self.instance_fields())
+                or any(not m.is_ctor for m in self.methods))
+
     def __repr__(self):
         kind = 'interface' if self.is_interface else ('enum' if self.is_enum else 'class')
         ext = (' extends %s' % self.parent) if self.parent else ''

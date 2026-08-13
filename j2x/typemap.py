@@ -15,45 +15,42 @@ PRIMITIVES = {
 }
 
 # Base Java -> C++03 type names. Profile extras merge on top of this at runtime.
-# CAVEAT: Java `byte` is SIGNED (-128..127). We map it to `unsigned char` because the vast majority
-# of byte uses here are byte[] buffers (chunk/block data, packet payloads, inflate I/O) that want
-# unsigned char* and are read via `& 0xFF`. But SCALAR byte fields used as signed values break:
-#   * Packet30Entity x/y/z relative-move deltas read -1 as +255 -> entities rocketed into the sky.
-#   * Packet1Login.dimension: nether = -1, read as 255 -> getProviderForDimension(255) returned NULL
-#     -> NULL world provider -> instant crash logging into any nether-enabled server (overworld=0 fine).
-# Correct by construction: a scalar `byte` field listed in SIGNED_BYTE_FIELDS (below) emits `signed
-# char` instead (applied in emit/header.py). This replaces the old handwritten overrides/Packet*.h.
-# Do NOT blanket-flip this map -> byte[] buffers must stay unsigned char.
+# SIGNED-BYTE POLICY (correct by construction): Java `byte` is SIGNED (-128..127). A SCALAR byte is
+# therefore mapped to `signed char` -- the Java-faithful default -- because scalar bytes are routinely
+# used as signed values (negative sentinels like -1/-100, `< 0` tests, signed deltas/offsets). Mapping
+# them unsigned silently turns -1 into 255 and detonates:
+#   * Packet1Login.dimension: nether = -1 read as 255 -> getProviderForDimension(255) NULL -> crash.
+#   * Packet30Entity x/y/z relative-move deltas: -1 read as +255 -> entities flung into the sky.
+#   * live-tree [signedbyte] annotations: side indices, flow-decay sentinels, mouse-invert, door hinge,
+#     track-shape ids, model offsets -- all LOCAL byte vars that broke as unsigned.
+# EXCEPTION: `byte[]` BUFFERS stay `unsigned char` (chunk/block data, packet payloads, inflate I/O --
+# read via `& 0xFF` and want `unsigned char*`). That split is applied in types.cpp_type: scalar byte ->
+# `signed char`, byte[] element -> `unsigned char`. `& 0xFF` still works on signed char (int-promoted),
+# so buffers that also see arithmetic are unaffected. This retires the old SIGNED_BYTE_FIELDS whitelist.
 JAVA_TO_CPP = {
-    'boolean': 'bool', 'byte': 'unsigned char', 'short': 'short', 'int': 'int',
+    'boolean': 'bool', 'byte': 'signed char', 'short': 'short', 'int': 'int',
     'long': 'long long', 'float': 'float', 'double': 'double', 'char': 'char',
     'void': 'void',
     'String': 'JavaString',
     'ArrayList': 'JList', 'List': 'JList', 'LinkedList': 'JList',
-    'HashMap': 'std::map', 'HashSet': 'std::set', 'TreeMap': 'std::map',
-    'Map': 'std::map', 'Set': 'std::set',
+    'HashMap': 'std::map', 'HashSet': 'JSet', 'TreeMap': 'std::map',
+    'TreeSet': 'JSet',                           # sorted set -> JSet (std::set subclass w/ Java API)
+    'Map': 'std::map', 'Set': 'JSet',
     'Random': 'Random',
     # Java root / boxed types. Object -> JObject (a boxed-value type: holds null/int/char/String/
     # String[]/typed-pointer with RTTI), so Object[] autoboxing + instanceof + reflective recipe
     # decode work. JObject is a value (NOT a pointer); it converts to T*/JavaString via operators.
     'Object': 'JObject',
     'Integer': 'int', 'Long': 'long long', 'Float': 'float', 'Double': 'double',
-    'Boolean': 'bool', 'Byte': 'unsigned char', 'Short': 'short', 'Character': 'char',
+    'Boolean': 'bool', 'Byte': 'signed char', 'Short': 'short', 'Character': 'char',
 }
 
-# Scalar `byte` fields that are legitimately negative -> emit `signed char` instead of the default
-# `unsigned char` (see the byte CAVEAT above JAVA_TO_CPP). Keyed (ClassName, fieldName); applied by
-# emit/header.py to NON-array byte instance fields only (byte[] buffers stay unsigned char). These
-# reproduce the proven Packet1Login/Packet30Entity signed-char fixes by construction, replacing the
-# old handwritten overrides. Extend as new signed-byte scalars surface.
-SIGNED_BYTE_FIELDS = {
-    ('Packet1Login', 'dimension'),      # nether = -1 (else 255 -> NULL world provider -> crash)
-    ('Packet30Entity', 'xPosition'),    # relative-move deltas: signed (else -1 -> +255 -> entity flung)
-    ('Packet30Entity', 'yPosition'),
-    ('Packet30Entity', 'zPosition'),
-    ('Packet30Entity', 'yaw'),          # rotation bytes: signed in Java
-    ('Packet30Entity', 'pitch'),
-}
+# RETIRED: SIGNED_BYTE_FIELDS whitelist. Scalar `byte` is now `signed char` by DEFAULT (Java-faithful),
+# so per-field curation is no longer needed -- Packet1Login.dimension, Packet30Entity deltas, and every
+# unlisted scalar byte are all correctly signed by construction. Only `byte[]` buffers stay unsigned
+# (see JAVA_TO_CPP note + types.cpp_type). If a specific scalar byte ever needs to be UNSIGNED, add it
+# to UNSIGNED_BYTE_SCALAR_FIELDS below (empty -- none known).
+UNSIGNED_BYTE_SCALAR_FIELDS = set()   # (ClassName, fieldName) scalar bytes forced back to unsigned char
 
 # Java types that emit warrants a PORT note for (mapped, but lossy / needs review).
 PORT_NOTE_TYPES = {
@@ -61,10 +58,10 @@ PORT_NOTE_TYPES = {
 }
 
 # Java collection types -> STL. Held BY VALUE as fields by default (std::vector/map).
-CONTAINERS = {'ArrayList', 'List', 'LinkedList', 'HashMap', 'HashSet', 'TreeMap', 'Map', 'Set'}
+CONTAINERS = {'ArrayList', 'List', 'LinkedList', 'HashMap', 'HashSet', 'TreeMap', 'TreeSet', 'Map', 'Set'}
 
 # default element types for a RAW (non-generic) container -> a valid C++ template
-RAW_CONTAINER_DEFAULT = {'JList': '<void*>', 'std::vector': '<void*>', 'std::set': '<void*>',
+RAW_CONTAINER_DEFAULT = {'JList': '<void*>', 'JSet': '<void*>', 'std::vector': '<void*>', 'std::set': '<void*>',
                          # raw Map -> <JObject, JObject>: a Java raw map mixes key/value types
                          # (String/Integer/Character keys; any object/boxed value). JObject boxes
                          # all of them (and has operator< for the key), so put/get/containsKey/remove
@@ -126,7 +123,10 @@ NULLABLE_GETTER_RETURN_TYPE = {
 # their own emitted header. Like GL11. Also need RUNTIME_ENUM_LIKE (no s_ prefix on members).
 RUNTIME_STATIC_HOLDERS = {'GL11', 'GL12', 'GL15', 'GLU', 'Keyboard', 'Mouse', 'Display',
                           'ARBOcclusionQuery', 'ARBVertexBufferObject', 'BufferUtils', 'ImageIO',
-                          'Sys', 'GLContext', 'Controllers', 'Collections'}
+                          'Sys', 'GLContext', 'Controllers', 'Collections',
+                          'Pattern',                # java.util.regex Pattern.compile(...) is static
+                          'Runtime', 'ByteOrder',   # Runtime.getRuntime(), ByteOrder.BIG_ENDIAN
+                          'SoundSystemConfig'}
 
 # Runtime-support classes the converter EMITS a header for (see runtime.py) and #includes when
 # referenced -- not part of the decompiled corpus. External Java base types our classes
@@ -146,7 +146,15 @@ RUNTIME_HEADERS = ({'Random', 'Runnable', 'Thread', 'Comparator', 'File',
                     'KeyEvent', 'MouseEvent', 'WindowEvent', 'ComponentEvent', 'FocusEvent',
                     'InputEvent', 'Panel', 'Comparable', 'CodecJOrbis', 'URLConnection',
                     'BorderLayout', 'GridLayout', 'FlowLayout', 'CardLayout', 'GridBagLayout', 'Color',
-                    'Frame',
+                    'Frame', 'Pattern', 'Matcher',
+                    'FileFilter', 'ByteArrayOutputStream', 'InputStreamReader', 'HttpURLConnection',
+                    'ZipEntry', 'Node', 'NodeList', 'Element', 'Document', 'DocumentBuilder',
+                    'DocumentBuilderFactory', 'Date', 'SimpleDateFormat', 'GZIPInputStream',
+                    'GZIPOutputStream', 'Runtime', 'ByteOrder',
+                    'RandomAccessFile', 'Writer', 'StringWriter', 'PushbackReader', 'Stack',
+                    'Properties', 'Entry', 'NumberFormat', 'MessageDigest', 'RenderingHints',
+                    'DataFlavor', 'Reference', 'Logger', 'Calendar', 'GregorianCalendar',
+                    'Toolkit', 'TextArea', 'Transferable', 'Collection', 'Locale', 'Rectangle',
                     'Throwable', 'Exception', 'Error', 'RuntimeException', 'IOException',
                     'InterruptedException', 'IllegalStateException', 'IllegalArgumentException',
                     'MalformedURLException', 'AWTException', 'LWJGLException', 'NoSuchFieldError',
@@ -161,7 +169,7 @@ RUNTIME_HEADERS = ({'Random', 'Runnable', 'Thread', 'Comparator', 'File',
 # Java stdlib static holders shimmed in the prelude (JavaRT.h, included everywhere -- so NOT
 # in RUNTIME_HEADERS, which would emit a bogus per-type #include). `Name.member` -> `Name::member`.
 JAVART_STATICS = {'System', 'Integer', 'Long', 'Double', 'Float', 'Character', 'Arrays',
-                  'Short', 'Byte', 'Boolean'}
+                  'Short', 'Byte', 'Boolean', 'String'}   # String.valueOf/format statics (type still -> JavaString)
 
 # Runtime types whose `Type.MEMBER` (no parens) is a CONSTANT, not an instance/static field
 # -- accessed as Type::MEMBER with no s_ prefix (like an enum constant). e.g. GL11.GL_TEXTURE_2D,

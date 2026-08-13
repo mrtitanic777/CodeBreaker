@@ -51,7 +51,8 @@ class TestCppSpelling(unittest.TestCase):
 
     def test_primitive_mapping(self):
         self.assertEqual(self.r.field_type(T('boolean')), 'bool')
-        self.assertEqual(self.r.field_type(T('byte')), 'unsigned char')
+        self.assertEqual(self.r.field_type(T('byte')), 'signed char')          # scalar byte is signed (Java-faithful)
+        self.assertEqual(self.r.field_type(T('byte', dims=1)), 'JArray<unsigned char >')  # byte[] buffer stays unsigned
         self.assertEqual(self.r.field_type(T('long')), 'long long')
         self.assertEqual(self.r.field_type(T('int')), 'int')
 
@@ -100,7 +101,7 @@ class TestCppSpelling(unittest.TestCase):
         # raw Map -> <JObject, JObject>: JObject boxes any key/value type (mixed String/Integer/
         # Character keys etc.) and has operator< for the key, so put/get/containsKey all bind.
         self.assertEqual(self.r.field_type(T('HashMap')), 'std::map<JObject, JObject>')
-        self.assertEqual(self.r.field_type(T('HashSet')), 'std::set<void*>')
+        self.assertEqual(self.r.field_type(T('HashSet')), 'JSet<void*>')   # JSet = std::set + Java API
 
     def test_object_maps_to_jobject_with_note(self):
         # Object -> JObject: a boxed VALUE (holds null/int/char/String/String[]/typed-pointer),

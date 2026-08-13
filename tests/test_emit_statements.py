@@ -199,8 +199,10 @@ class TestMapSetString(unittest.TestCase):
         self.assertIn('this->map.erase(var1);', self.out)
 
     def test_set_add_and_contains(self):
-        self.assertIn('this->set.insert(var1);', self.out)
-        self.assertIn('bool c = this->set.count(var1);', self.out)
+        # sets map to JSet<T> (a std::set subclass with the native Java API), so add/contains are
+        # NOT remapped to insert/count -- they bind to JSet's own methods (correct Java return types).
+        self.assertIn('this->set.add(var1);', self.out)
+        self.assertIn('bool c = this->set.contains(var1);', self.out)
 
     def test_string_equals(self):
         self.assertIn('bool d = (var1 == "foo");', self.out)
@@ -344,7 +346,7 @@ class TestPrimitiveCastAndMathConst(unittest.TestCase):
         self.out = statements.translate_body(m, c, types.TypeResolver())
 
     def test_byte_cast_remapped(self):
-        self.assertIn('unsigned char var2 = (unsigned char)var1;', self.out)
+        self.assertIn('signed char var2 = (signed char)var1;', self.out)   # scalar byte is signed (Java-faithful)
 
     def test_boolean_cast_remapped(self):
         self.assertIn('bool var3 = (bool)var1;', self.out)

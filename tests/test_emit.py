@@ -74,24 +74,36 @@ class TestHeaderRealFile(unittest.TestCase):
 
 
 class TestSignedByteFields(unittest.TestCase):
-    """Java `byte` is signed; a scalar byte field in typemap.SIGNED_BYTE_FIELDS emits `signed char`
-    (correct-by-construction replacement for the old handwritten Packet*.h overrides). byte[] buffers
-    stay unsigned char, and unlisted scalar bytes keep the default unsigned char."""
+    """Java `byte` is SIGNED, so EVERY scalar byte field emits `signed char` by default (the flipped
+    policy: -1 must not read back as 255). Only `byte[]` buffers stay unsigned char (read via & 0xFF).
+    A specific scalar can be forced unsigned via typemap.UNSIGNED_BYTE_SCALAR_FIELDS (empty by default)."""
 
-    def test_listed_scalar_byte_emits_signed_char(self):
+    def test_scalar_byte_emits_signed_char_and_buffer_stays_unsigned(self):
         c = ir.JClass('Packet1Login')
         c.fields.append(ir.Field('dimension', ir.JType('byte'), access=ir.PUBLIC))
         c.fields.append(ir.Field('payload', ir.JType('byte', array_dims=1), access=ir.PUBLIC))
         h = header.render_header(c, types.TypeResolver())
         self.assertIn('signed char dimension;', h)          # nether = -1
         self.assertNotIn('unsigned char dimension;', h)
-        self.assertNotIn('signed char payload', h)          # byte[] buffer stays unsigned
+        self.assertIn('unsigned char', h)                   # byte[] payload buffer stays unsigned
+        self.assertNotIn('signed char payload', h)
 
-    def test_unlisted_scalar_byte_stays_unsigned(self):
+    def test_any_scalar_byte_is_signed_by_default(self):
         c = ir.JClass('SomeClass')
         c.fields.append(ir.Field('flags', ir.JType('byte'), access=ir.PUBLIC))
         h = header.render_header(c, types.TypeResolver())
-        self.assertIn('unsigned char flags;', h)
+        self.assertIn('signed char flags;', h)              # flipped default (was unsigned)
+
+    def test_unsigned_escape_hatch(self):
+        from j2x import typemap
+        typemap.UNSIGNED_BYTE_SCALAR_FIELDS.add(('SomeClass', 'raw'))
+        try:
+            c = ir.JClass('SomeClass')
+            c.fields.append(ir.Field('raw', ir.JType('byte'), access=ir.PUBLIC))
+            h = header.render_header(c, types.TypeResolver())
+            self.assertIn('unsigned char raw;', h)
+        finally:
+            typemap.UNSIGNED_BYTE_SCALAR_FIELDS.discard(('SomeClass', 'raw'))
 
 
 if __name__ == '__main__':

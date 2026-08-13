@@ -368,7 +368,7 @@ def parse_source(src, source_path=None):
     body_offset = open_brace + 1
 
     if cls.is_enum:
-        _parse_enum_body(cls, body, body_offset, blanked)
+        _parse_enum_body(cls, body, body_offset, blanked, src)
         return cls
 
     for item in _iter_members(body, body_offset, blanked):
@@ -395,7 +395,7 @@ def parse_source(src, source_path=None):
     return cls
 
 
-def _parse_enum_body(cls, body, body_offset, blanked):
+def _parse_enum_body(cls, body, body_offset, blanked, src):
     semi = _toplevel_index(body, ';')
     consts_part = body[:semi] if semi != -1 else body
     for raw in _split_top_commas(consts_part):
@@ -407,7 +407,9 @@ def _parse_enum_body(cls, body, body_offset, blanked):
             nm, args = raw.strip(), []
         if nm:
             cls.enum_consts.append(ir.EnumConst(nm, args))
-    # members after the ';' (enum methods/fields) -- parse like a class body
+    # members after the ';' (enum methods/fields) -- parse like a class body. Bodies are captured
+    # from the ORIGINAL src (real text + line numbers) so typed-enum ctors/methods translate; a
+    # constant-only enum ignores them (header-only int constants).
     if semi != -1:
         tail = body[semi + 1:]
         for item in _iter_members(tail, body_offset + semi + 1, blanked):
@@ -417,10 +419,15 @@ def _parse_enum_body(cls, body, body_offset, blanked):
                     cls.methods.append(_parse_signature(decl, cls.name))
                 else:
                     cls.fields.extend(_parse_field_decl(decl, cls.name, line))
+            elif item[0] in ('static_init', 'inst_init'):
+                _, inner, bline = item
+                block = _body_lines(src, bline, bline + inner.count('\n'))
+                (cls.static_inits if item[0] == 'static_init' else cls.inst_inits).append(block)
             else:
                 _, header, inner, hline, bline = item
                 meth = _parse_signature(header, cls.name)
                 meth.line = hline
+                meth.body = _body_lines(src, bline, bline + inner.count('\n'))
                 cls.methods.append(meth)
 
 
