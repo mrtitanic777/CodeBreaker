@@ -109,8 +109,8 @@ def _static_ref(expr, resolver, own_statics=(), current=None):
     def repl(m):
         cls, mem, paren = m.group(1), m.group(2), m.group(3)
         if mem == 'class' and not paren:                         # Java `X.class` literal (any X) ->
-            return 'j2xClassOf(typeid(%s))' % cls                # STABLE Class* (never `X::s_class`,
-                                                                 # which is undefined, nor a dangling temp)
+            from .statements import _CLASS_LIT_TYPE               # wrapper/String -> its C++ type (typeid)
+            return 'j2xClassOf(typeid(%s))' % _CLASS_LIT_TYPE.get(cls, cls)   # STABLE Class* (no dangling temp)
         if cls in holders:
             return '%s::%s%s' % (cls, mem, paren or '')          # holder/enum/method: no s_
         if cls in resolver.known:

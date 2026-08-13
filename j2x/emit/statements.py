@@ -1631,6 +1631,11 @@ def _wrap_new_alloc_chains(s):
     return ''.join(out)
 
 
+# `X.class` for a wrapper/String maps to the C++ type so `typeid(X)` is valid (the wrappers are
+# NAMESPACES, not classes, so `typeid(Byte)` fails). Corpus classes pass through unchanged.
+_CLASS_LIT_TYPE = {'Byte': 'signed char', 'Short': 'short', 'Integer': 'int', 'Long': 'long long',
+                   'Float': 'float', 'Double': 'double', 'Character': 'char', 'Boolean': 'bool',
+                   'String': 'JavaString', 'Object': 'JObject'}
 _USHR = re.compile(r'(\w+(?:\s*(?:->|\.)\s*\w+|\s*\[[^\]]*\])*|\([^()]*\))\s*>>>(?!=)\s*(\w+|\([^()]*\))')
 
 
@@ -1772,7 +1777,7 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
         if recv not in static_set:
             return mm.group(0)
         if mem == 'class' and not paren:             # Java class literal X.class -> STABLE Class*
-            return 'j2xClassOf(typeid(%s))' % recv   # program-lifetime singleton (never a dangling temp)
+            return 'j2xClassOf(typeid(%s))' % _CLASS_LIT_TYPE.get(recv, recv)   # Byte.class->typeid(signed char)
         if paren:                                  # static method call
             return '%s::%s%s' % (recv, resolver.renamed_method(recv, mem), paren)
         if recv in enum_set:                       # enum constant (no s_ prefix)
