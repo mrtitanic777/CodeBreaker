@@ -2520,3 +2520,28 @@ class TestNullDerefGuard(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class JCatTernaryTests(unittest.TestCase):
+    def test_jcat_not_wrap_for_header(self):
+        # a for-header (top-level ';') must never be JCat-wrapped -- caused `for((JCat() + var = ...`
+        self.assertIsNone(statements._to_jcat('var9 = var7[i++] + " "; i < n; var9 = var9 + " "'))
+
+    def test_jcat_not_wrap_embedded_assignment(self):
+        self.assertIsNone(statements._to_jcat('var9 = var7[i++] + " "'))
+
+    def test_jcat_recurses_ternary_branches(self):
+        # number-first concat inside a ternary branch must be lowered (double + " s" won't compile raw)
+        out = statements._to_jcat('a > 0.5 ? f(a) + " y" : var2 + " s"')
+        self.assertEqual(out, 'a > 0.5 ? (JCat() + f(a) + " y") : (JCat() + var2 + " s")')
+
+    def test_jcat_ternary_skips_scope_colon(self):
+        # the `::` in Base::foo() must not be mistaken for the ternary ':'
+        out = statements._to_jcat('a > 0.5 ? Base::foo()->g(a) + " y" : var2 + " s"')
+        self.assertIn('(JCat() + Base::foo()->g(a) + " y")', out)
+        self.assertIn('(JCat() + var2 + " s")', out)
+
+    def test_jcat_nested_parenthesized_ternary(self):
+        out = statements._to_jcat('a ? x + " p" : (b ? y + " q" : z + " r")')
+        self.assertIn('(JCat() + y + " q")', out)
+        self.assertIn('(JCat() + z + " r")', out)

@@ -188,6 +188,7 @@ JAVASTRING_H = r'''#ifndef JAVASTRING_H
 #define JAVASTRING_H
 #include <string>
 #include <vector>
+#include <sstream>
 #include "JArray.h"
 
 class JavaString : public std::string {
@@ -225,8 +226,12 @@ public:
 	int lastIndexOf(const std::string& s) const { size_type p = rfind(s); return p == npos ? -1 : (int)p; }
 	int compareTo(const std::string& o) const { return compare(o); }
 	int hashCode() const { int h = 0; for (size_type i = 0; i < size(); ++i) h = h * 31 + (*this)[i]; return h; }
-	JavaString substring(int a) const { return JavaString(substr((size_type)a)); }
-	JavaString substring(int a, int b) const { return JavaString(substr((size_type)a, (size_type)(b - a))); }
+	JavaString substring(int a) const { return JavaString(std::string::substr((size_type)a)); }
+	JavaString substring(int a, int b) const { return JavaString(std::string::substr((size_type)a, (size_type)(b - a))); }
+	// substr() shadows std::string::substr so a Java `.substring()` lowered to `.substr()` still yields a
+	// JavaString -- otherwise a std::string result kills a chained `.trim()`/`.length()` (Java String API).
+	JavaString substr(size_type a) const { return JavaString(std::string::substr(a)); }
+	JavaString substr(size_type a, size_type n) const { return JavaString(std::string::substr(a, n)); }
 	JavaString toLowerCase() const { JavaString r(*this); for (size_type i = 0; i < r.size(); ++i) r[i] = _lc(r[i]); return r; }
 	JavaString toUpperCase() const { JavaString r(*this); for (size_type i = 0; i < r.size(); ++i) r[i] = _uc(r[i]); return r; }
 	JavaString trim() const {
@@ -237,6 +242,13 @@ public:
 	}
 	JavaString replace(char from, char to) const {
 		JavaString r(*this); for (size_type i = 0; i < r.size(); ++i) if (r[i] == from) r[i] = to; return r;
+	}
+	// String.replace(CharSequence, CharSequence): replace every LITERAL occurrence of `from` with `to`.
+	JavaString replace(const std::string& from, const std::string& to) const {
+		if (from.empty()) return *this;
+		std::string r(*this); size_type p = 0;
+		while ((p = r.find(from, p)) != npos) { r.replace(p, from.size(), to); p += to.size(); }
+		return JavaString(r);
 	}
 	JavaString concat(const std::string& s) const { return JavaString(*this + s); }
 	JavaString intern() const { return *this; }
@@ -263,6 +275,16 @@ public:
 	// so "null" maps to the empty string (absence). NULL is an integer 0 here, hence long long.
 	bool operator==(long long v) const { return v == 0 && empty(); }
 	bool operator!=(long long v) const { return !(v == 0 && empty()); }
+	// Java string concatenation `s + <primitive>` (the JCat lowering can't reach every site, e.g. inside a
+	// ternary). String-first only, and numeric-only -- no std::string/char*/JavaString overloads, so the
+	// existing free operator+ still resolves string+string with no ambiguity (numbers can't convert to it).
+	JavaString operator+(int v) const { std::ostringstream o; o << v; return JavaString((const std::string&)*this + o.str()); }
+	JavaString operator+(long v) const { std::ostringstream o; o << v; return JavaString((const std::string&)*this + o.str()); }
+	JavaString operator+(long long v) const { std::ostringstream o; o << v; return JavaString((const std::string&)*this + o.str()); }
+	JavaString operator+(unsigned v) const { std::ostringstream o; o << v; return JavaString((const std::string&)*this + o.str()); }
+	JavaString operator+(double v) const { std::ostringstream o; o << v; return JavaString((const std::string&)*this + o.str()); }
+	JavaString operator+(char v) const { return JavaString((const std::string&)*this + std::string(1, v)); }
+	JavaString operator+(bool v) const { return JavaString((const std::string&)*this + (v ? "true" : "false")); }
 };
 #endif // JAVASTRING_H
 '''

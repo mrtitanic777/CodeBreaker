@@ -27,12 +27,13 @@ def _finalize_emitted(text):
     static-data arrays and inlined ctor bodies, not just method-body lines):
       - enum-constant refs colliding with macros (EnumX::NULL -> EnumX::NULL_)
       - the invalid `'\\u0000'` C++ char literal -> the standard `'\\0'`
-      - `new X(...)->m` -> `(new X(...))->m` (C++ precedence: the member binds to the call otherwise)"""
+      - `new X(...)->m` -> `(new X(...))->m` (C++ precedence: the member binds to the call otherwise)
+      - `"lit".method()` -> `JavaString("lit").method()` (a bare literal has no Java String methods)"""
     from .emit.std_transforms import sanitize_reserved_members
-    from .emit.statements import _wrap_new_alloc_chains
+    from .emit.statements import _wrap_new_alloc_chains, _wrap_literal_method
     text = sanitize_reserved_members(text)
     text = text.replace(chr(39) + chr(92) + 'u0000' + chr(39), chr(39) + chr(92) + '0' + chr(39))
-    return '\n'.join(_wrap_new_alloc_chains(ln) for ln in text.split('\n'))
+    return '\n'.join(_wrap_literal_method(_wrap_new_alloc_chains(ln)) for ln in text.split('\n'))
 
 
 def discover(java_dir):

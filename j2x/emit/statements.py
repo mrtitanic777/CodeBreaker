@@ -440,6 +440,148 @@ def _has_top_level_ternary(e):
     return False
 
 
+def _top_level_semicolon(e):
+    """True if `e` has a `;` at bracket depth 0 (outside literals) -- i.e. it's a statement
+    sequence / for-header, NOT a single value expression."""
+    depth, in_str, in_chr, i, n = 0, False, False, 0, len(e)
+    while i < n:
+        c = e[i]
+        if in_str:
+            if c == '\\':
+                i += 2; continue
+            if c == '"':
+                in_str = False
+        elif in_chr:
+            if c == '\\':
+                i += 2; continue
+            if c == "'":
+                in_chr = False
+        elif c == '"':
+            in_str = True
+        elif c == "'":
+            in_chr = True
+        elif c in '([{':
+            depth += 1
+        elif c in ')]}':
+            depth -= 1
+        elif depth == 0 and c == ';':
+            return True
+        i += 1
+    return False
+
+
+def _split_ternary(e):
+    """Split a top-level `cond ? a : b` into (cond, a, b), respecting nesting and literals.
+    Returns None if there's no top-level `?`."""
+    depth, in_str, in_chr, i, n, q = 0, False, False, 0, len(e), -1
+    while i < n:
+        c = e[i]
+        if in_str:
+            if c == '\\':
+                i += 2; continue
+            if c == '"':
+                in_str = False
+        elif in_chr:
+            if c == '\\':
+                i += 2; continue
+            if c == "'":
+                in_chr = False
+        elif c == '"':
+            in_str = True
+        elif c == "'":
+            in_chr = True
+        elif c in '([{':
+            depth += 1
+        elif c in ')]}':
+            depth -= 1
+        elif depth == 0 and c == '?':
+            q = i; break
+        i += 1
+    if q == -1:
+        return None
+    depth, in_str, in_chr, i, tern = 0, False, False, q + 1, 0
+    while i < n:
+        c = e[i]
+        if in_str:
+            if c == '\\':
+                i += 2; continue
+            if c == '"':
+                in_str = False
+        elif in_chr:
+            if c == '\\':
+                i += 2; continue
+            if c == "'":
+                in_chr = False
+        elif c == '"':
+            in_str = True
+        elif c == "'":
+            in_chr = True
+        elif c in '([{':
+            depth += 1
+        elif c in ')]}':
+            depth -= 1
+        elif depth == 0 and c == '?':
+            tern += 1
+        elif c == ':' and i + 1 < n and e[i + 1] == ':':
+            i += 2; continue                              # C++ scope resolution `::`, not a ternary colon
+        elif depth == 0 and c == ':':
+            if tern == 0:
+                return (e[:q], e[q + 1:i], e[i + 1:])
+            tern -= 1
+        i += 1
+    return None
+
+
+def _wrap_literal_method(s):
+    """`"lit".method(...)` -> `JavaString("lit").method(...)`. A bare C string literal has no Java
+    String methods (length/equals/charAt/...), so a direct `.` after it won't compile. Only fires on a
+    literal immediately followed (past spaces) by `.<identifier>`; an already-wrapped `JavaString("x")`
+    ends in `)` before the `.`, so this is idempotent. String contents are scanned, never rewritten."""
+    if '"' not in s:
+        return s
+    out, i, n = [], 0, len(s)
+    while i < n:
+        c = s[i]
+        if c == "'":                                     # char literal -- copy verbatim
+            out.append(c); i += 1
+            while i < n:
+                out.append(s[i])
+                if s[i] == '\\' and i + 1 < n:
+                    out.append(s[i + 1]); i += 2; continue
+                if s[i] == "'":
+                    i += 1; break
+                i += 1
+            continue
+        if c == '"':
+            start = i; out_lit = ['"']; i += 1
+            while i < n:
+                out_lit.append(s[i])
+                if s[i] == '\\' and i + 1 < n:
+                    out_lit.append(s[i + 1]); i += 2; continue
+                if s[i] == '"':
+                    i += 1; break
+                i += 1
+            lit = ''.join(out_lit)
+            j = i
+            while j < n and s[j] in ' \t':
+                j += 1
+            if j < n and s[j] == '.' and j + 1 < n and (s[j + 1].isalpha() or s[j + 1] == '_'):
+                out.append('JavaString(' + lit + ')')
+            else:
+                out.append(lit)
+            continue
+        out.append(c); i += 1
+    return ''.join(out)
+
+
+def _outer_parened(e):
+    """If `e` is one fully-enclosing paren group `( ... )`, return the inside; else None."""
+    e = e.strip()
+    if len(e) >= 2 and e[0] == '(' and e[-1] == ')' and _balanced_paren(e, 0) == len(e) - 1:
+        return e[1:-1]
+    return None
+
+
 def _to_jcat(expr):
     """If `expr` is a Java string concatenation (top-level '+' with at least one PURE
     string-literal operand), wrap it in the JCat builder; else return None. The pure-literal
@@ -447,11 +589,35 @@ def _to_jcat(expr):
     e = expr.strip()
     if '"' not in e or '+' not in e:
         return None
-    # a top-level ternary means the `+`s are inside its branches, NOT a single concatenation --
-    # wrapping the whole thing swallows the condition (`JCat() + var4 > 0.5 ? "m" : "s"`). Each branch
-    # concatenates on its own via std::string::operator+ (the format() result is a JavaString/string).
-    if _has_top_level_ternary(e):
+    # Not a single value expression -> never wrap. A top-level ';' means a for-header/statement
+    # sequence; a top-level simple '=' means an embedded assignment. Wrapping either produced the
+    # `for((JCat() + var = ...` corruption.
+    if _top_level_semicolon(e) or _assign_pos(e) != -1:
         return None
+    # A top-level ternary hides the `+`s inside its branches. Recurse into each branch and JCat-lower
+    # the ones that are concatenations (a number-first branch like `x + " s"` won't compile otherwise);
+    # leave the condition alone. Strip a branch's enclosing parens so nested `(a ? b : c)` also recurses.
+    if _has_top_level_ternary(e):
+        t = _split_ternary(e)
+        if not t:
+            return None
+        cond, a, b = t
+
+        def _branch(x):
+            x = x.strip()
+            r = _to_jcat(x)
+            if r:
+                return r
+            inner = _outer_parened(x)
+            if inner is not None:
+                ri = _to_jcat(inner.strip())
+                if ri:
+                    return '(' + ri + ')'
+            return None
+        na, nb = _branch(a), _branch(b)
+        if not na and not nb:
+            return None
+        return cond + '? ' + (na or a.strip()) + ' : ' + (nb or b.strip())
     parts = _split_top_plus(e)
     if len(parts) < 2:
         return None
