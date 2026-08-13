@@ -404,6 +404,14 @@ public:
 	bool operator==(long long) const { return false; }
 	bool operator!=(long long) const { return true; }
 };
+// Java String-concatenation of a List calls AbstractCollection.toString() -> "[a, b, c]". Provide a
+// stream op so `JCat() + list` compiles (used only in exception-message paths on the port).
+#include <ostream>
+template<class T> inline std::ostream& operator<<(std::ostream& o, const JList<T>& v) {
+	o << '[';
+	for (typename std::vector<T>::size_type i = 0; i < v.size(); ++i) { if (i) o << ", "; o << v[i]; }
+	return o << ']';
+}
 #endif // JLIST_H
 '''
 
@@ -539,6 +547,15 @@ struct JCat {
 	JCat& operator+(const std::string& v) { _s += v; return *this; }
 	operator JavaString() const { return JavaString(_s); }
 	operator std::string() const { return _s; }
+	// Java lets you keep calling String methods on a concatenation result, e.g.
+	// `("" + name).trim()`. trim() drops leading/trailing chars <= ' ' (Java semantics).
+	JavaString trim() const {
+		std::string::size_type a = 0, b = _s.size();
+		while (a < b && (unsigned char)_s[a] <= ' ') ++a;
+		while (b > a && (unsigned char)_s[b - 1] <= ' ') --b;
+		return JavaString(_s.substr(a, b - a));
+	}
+	int length() const { return (int)_s.size(); }
 };
 
 // java.lang.StringBuilder / StringBuffer. Beta's decompiler emits explicit builders
@@ -643,6 +660,21 @@ struct JObject {
 	operator JavaString() const { return s; }
 	template<class T> operator T*() const { return (T*)p; }
 };
+
+// Stream a JObject (Java String-concatenation of an Object calls its toString()). Without this the
+// implicit conversions (operator int / operator T*) make `ostream << JObject` AMBIGUOUS, which breaks
+// `JCat() + someObject`. We print the boxed primitive/string; other kinds get a stable placeholder.
+inline std::ostream& operator<<(std::ostream& o, const JObject& j) {
+	switch (j.kind) {
+		case 1: return o << j.i;
+		case 2: return o << (char)j.i;
+		case 4: return o << j.s;
+		case 7: return o << (j.i ? "true" : "false");
+		case 8: return o << j.d;
+		case 0: return o << "null";
+		default: return o << "[object]";
+	}
+}
 
 // java.lang.System
 namespace System {

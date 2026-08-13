@@ -42,15 +42,30 @@ def nullable_value_params(method, resolver):
     return out
 
 
+def _reassigned_params(method):
+    """Param names that the body REASSIGNS (`p = ...`, `p += ...`, `p++`). Java lets a method reassign
+    its parameter (the param is a local copy of the reference/value); a C++ `const X&` param cannot be
+    reassigned -> "no operator = for const JavaString". Such params must be passed BY VALUE (mutable)."""
+    body = '\n'.join(t for _ln, t in getattr(method, 'body', []) or [])
+    out = set()
+    for p in method.params:
+        if re.search(r'(?<![\w.])' + re.escape(p.name) + r'\b\s*(?:[-+*/%|&^]?=(?!=)|\+\+|--)', body):
+            out.add(p.name)
+    return out
+
+
 def params_str(method, resolver):
     """The C++ parameter list for a method, promoting nullable value-struct params to pointers.
     Single source of truth so the header declaration and the source definition always agree."""
     nullable = nullable_value_params(method, resolver)
+    reassigned = _reassigned_params(method)
     parts = []
     for p in method.params:
         t = resolver.param_type(p.jtype)
         if p.name in nullable and not t.endswith('*'):
             t += '*'
+        elif p.name in reassigned and t.startswith('const ') and t.endswith('&'):
+            t = t[len('const '):-1].strip()          # const X& -> X: a reassigned param is by-value & mutable
         parts.append('%s %s' % (t, p.name))
     return ', '.join(parts)
 
