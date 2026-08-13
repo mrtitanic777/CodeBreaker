@@ -669,9 +669,12 @@ struct JObject {
 	// box a value-container List too (`Object o = list`, argo's element/array node selectors). `(List)o`
 	// unboxes via the operator below.
 	template<class T> JObject(const JList<T>& v) : kind(5), i(0), d(0), p(new JList<T>(v)), ti(&typeid(JList<T>)) {}
-	// Box a pointer with its DYNAMIC type (typeid(*v), not typeid(T)) so `o.is<Leaf>()` -- the lowering
-	// of `o instanceof Leaf` -- matches the runtime class even when the static box type was a base
-	// (a raw List<Entity> element tested `instanceof EntityPainting`). Guarded: typeid(*v) needs v != 0.
+	// A raw `void*` (opaque handle / a JList<void*> element): can't `typeid(*v)` a void*, so tag it with
+	// typeid(void). Non-template -> beats the T* template below for void* args.
+	JObject(void* v) : kind(v ? 5 : 0), i(0), d(0), p(v), ti(v ? &typeid(void) : 0) {}
+	// Box a typed pointer with its DYNAMIC type (typeid(*v), not typeid(T)) so `o.is<Leaf>()` -- the
+	// lowering of `o instanceof Leaf` -- matches the runtime class even when the static box type was a
+	// base (a raw List<Entity> element tested `instanceof EntityPainting`). Guarded: typeid(*v) needs v != 0.
 	template<class T> JObject(T* v) : kind(v ? 5 : 0), i(0), d(0), p((void*)v), ti(v ? &typeid(*v) : 0) {}
 	// Java instanceof:
 	bool isCharacter() const { return kind == 2; }
