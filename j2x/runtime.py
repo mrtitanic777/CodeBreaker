@@ -1846,6 +1846,16 @@ struct Collections {
 '''
 
 
+# Runtime container/buffer method result-types, so the chain resolver can type a chain THROUGH them
+# and pick `.` vs `->` correctly: `x.entrySet().iterator().next()` (iterator() -> Iterator*, so .next()
+# -> ->next()) and `ByteBuffer::allocateDirect(n).order(bo).asIntBuffer()`. Merged into the member env.
+STUB_MEMBERS['JList'] = {'parent': None, 'methods': {'iterator': 'Iterator*'}}
+STUB_MEMBERS['JSet'] = {'parent': None, 'methods': {'iterator': 'Iterator*'}}
+STUB_MEMBERS['JMap'] = {'parent': None, 'methods': {'entrySet': 'JList', 'values': 'JList', 'keySet': 'JSet'}}
+STUB_MEMBERS['ByteBuffer'] = {'parent': None, 'methods': {
+    'allocateDirect': 'ByteBuffer*', 'allocate': 'ByteBuffer*', 'order': 'ByteBuffer*',
+    'asIntBuffer': 'IntBuffer*', 'asFloatBuffer': 'FloatBuffer*'}}
+
 # filename -> content
 FILES = {
     'Random.h': RANDOM_H,

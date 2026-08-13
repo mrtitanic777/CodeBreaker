@@ -1282,6 +1282,9 @@ _CHAIN_LINK = re.compile(r'\s*(->|\.)\s*([A-Za-z_]\w*)')
 _NEW_ROOT = re.compile(r'new\s+([A-Za-z_]\w*)\s*\(')   # `new Type(` scalar ctor (not `new T[`)
 _PAREN_NEW_ROOT = re.compile(r'\(\s*new\s+([A-Za-z_]\w*)\s*\(')   # `(new Type(` already-parenthesized
 _CAST_ROOT = re.compile(r'\(\s*\(\s*([A-Za-z_]\w*)\s*(\*?)\s*\)')  # `((Type*)EXPR)` / `((Type)EXPR)` root
+# a method-CALL root: `Class::meth(` (static) or bare `meth(` (implicit this). The `recv->meth(` case
+# is already handled by _CHAIN_ROOT + walk_links (recv is a typed root). group1=Class or None, meth=g3.
+_CALL_ROOT = re.compile(r'(?:([A-Za-z_]\w*)\s*(::)\s*)?([A-Za-z_]\w*)\s*\(')
 
 
 def _balanced_bracket(s, open_idx):
@@ -1426,6 +1429,30 @@ def _resolve_chains(s, scope, resolver, current):
                     k, cur_jt, is_ptr = _consume_index(s, close + 1, out, cur_jt, is_ptr, resolver, scope, current)
                     i = walk_links(k, cur_jt, is_ptr)
                     continue
+        # a METHOD-CALL root whose result is a pointer: `Class::m(...)`, `recv->m(...)`, `this->m(...)`,
+        # or a bare `m(...)` (implicit this). Typing the result lets walk_links upgrade the WHOLE
+        # subsequent chain -- e.g. `func(...)->texturePackList.availableTexturePacks()` (call -> field ->
+        # method) or `x.entrySet().iterator().next()` (iterator() returns Iterator*, so .next() -> ->).
+        cm = _CALL_ROOT.match(s, i) if at_boundary else None
+        if cm:
+            crecv, csep, cmeth = cm.group(1), cm.group(2), cm.group(3)
+            op = cm.end() - 1
+            cclose = _balanced_paren(s, op)
+            if cclose >= 0:
+                j = cclose + 1
+                while j < n and s[j] == ' ':
+                    j += 1
+                if j < n and (s[j] == '.' or s[j:j + 2] == '->'):     # a member link actually follows
+                    owner = (crecv if csep == '::' else
+                             current if (crecv is None or crecv == 'this') else
+                             (scope[crecv].name if crecv in scope else None))
+                    rt = resolver.member_method_type(owner, cmeth) if owner else None
+                    if rt is not None and resolver.is_pointer(rt):
+                        cargs = _resolve_chains(s[op + 1:cclose], scope, resolver, current)
+                        out.append((('%s%s' % (crecv, csep)) if crecv else '') + '%s(%s)' % (cmeth, cargs))
+                        k, cur_jt, is_ptr = _consume_index(s, cclose + 1, out, rt, True, resolver, scope, current)
+                        i = walk_links(k, cur_jt, is_ptr)
+                        continue
         m = _CHAIN_ROOT.match(s, i) if at_boundary else None
         if not m:
             out.append(s[i]); i += 1; continue
