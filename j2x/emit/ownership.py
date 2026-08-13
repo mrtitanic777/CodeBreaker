@@ -123,6 +123,12 @@ def returns_pointer(method, resolver):
     # Never promote to pointer, or `return theField;` (a value JArray) can't convert.
     if rt.is_array:
         return False
+    # collections are by-value (JList/JMap/JSet), with their own null handling (`= null` / `return
+    # null` -> empty via the long-long ctor) exactly like arrays. NEVER promote a container return to
+    # a pointer: a sibling method / local / field of the SAME interface type is a value, and a promoted
+    # pointer return can't interconvert with it (the StatsSyncher/StatFileWriter JMap*<->JMap collisions).
+    if rt.name in typemap.CONTAINERS:
+        return False
     if resolver.is_pointer(rt):
         return True
     # std::string (and other value-stdlib types) is NEVER a pointer: it has dedicated
