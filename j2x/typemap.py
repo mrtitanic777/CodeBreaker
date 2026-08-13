@@ -33,7 +33,7 @@ JAVA_TO_CPP = {
     'void': 'void',
     'String': 'JavaString',
     'ArrayList': 'JList', 'List': 'JList', 'LinkedList': 'JList',
-    'Collection': 'JList',                       # java.util.Collection/Iterable-return -> a by-value list
+    'Collection': 'JList', 'Iterable': 'JList',   # java.util.Collection/Iterable -> a by-value list
     'HashMap': 'JMap', 'HashSet': 'JSet', 'TreeMap': 'JMap', 'LinkedHashMap': 'JMap',
     'TreeSet': 'JSet',                           # sorted set -> JSet (std::set subclass w/ Java API)
     'Map': 'JMap', 'Set': 'JSet',                # Map/HashMap/... -> JMap (std::map subclass w/ Java API)
@@ -59,7 +59,7 @@ PORT_NOTE_TYPES = {
 }
 
 # Java collection types -> STL. Held BY VALUE as fields by default (std::vector/map).
-CONTAINERS = {'ArrayList', 'List', 'LinkedList', 'Collection', 'HashMap', 'HashSet', 'TreeMap',
+CONTAINERS = {'ArrayList', 'List', 'LinkedList', 'Collection', 'Iterable', 'HashMap', 'HashSet', 'TreeMap',
               'LinkedHashMap', 'TreeSet', 'Map', 'Set'}
 
 # default element types for a RAW (non-generic) container -> a valid C++ template
