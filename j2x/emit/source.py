@@ -253,6 +253,58 @@ def synth_default_ctor(cls, resolver):
     return ('%s();' % cls.name, defn, refs)
 
 
+_NEW_ARG_TYPE = re.compile(r'^\s*new\s+([A-Za-z_]\w*)')
+_CAST_ARG_TYPE = re.compile(r'^\s*\(\s*([A-Za-z_]\w*)\s*\)\s*\S')
+_FACTORY_ARG_TYPE = re.compile(r'^\s*([A-Za-z_]\w*)\s*::\s*[A-Za-z_]\w*\s*\(')
+
+
+def _infer_arg_type(expr):
+    """Static type of a delegation argument expression, when obvious: `new X(...)` -> X, `(X)e` -> X,
+    `X::factory(...)` -> X (a static factory almost always returns its own type, e.g.
+    Vec3D::createVectorHelper). None otherwise -- resolved via the caller's param map, or left unscored."""
+    m = _NEW_ARG_TYPE.match(expr)
+    if m:
+        return m.group(1)
+    m = _CAST_ARG_TYPE.match(expr)
+    if m:
+        return m.group(1)
+    m = _FACTORY_ARG_TYPE.match(expr)
+    if m:
+        return m.group(1)
+    return None
+
+
+def _ctor_delegates(c):
+    """True if constructor `c` itself starts by delegating via `this(...)`."""
+    for _ln, t in c.body:
+        if re.match(r'\s*this\s*\(', t):
+            return True
+    return False
+
+
+def _select_deleg_target(args, deleg, cls):
+    """Pick the constructor a `this(args)` delegates to. Matching by ARG COUNT alone is ambiguous when
+    a class has several same-arity ctors (Achievement's Block/Item/ItemStack 6-arg trio) -- it can pick
+    another DELEGATING ctor and recurse (`new ItemStack(new ItemStack(...))`) or lose the base init.
+    Score candidates by param-type match against the args (`new X`/`(X)` args + the delegating ctor's
+    own param types), tie-breaking toward the terminal (non-delegating) ctor."""
+    cands = [c for c in cls.constructors() if c is not deleg and len(c.params) == len(args)]
+    if len(cands) <= 1:
+        return cands[0] if cands else None
+    pmap = dict((p.name, p.jtype.name) for p in deleg.params)
+    arg_types = []
+    for a in args:
+        t = _infer_arg_type(a)
+        if t is None:
+            t = pmap.get(a.strip())
+        arg_types.append(t)
+
+    def score(c):
+        matched = sum(1 for i, p in enumerate(c.params) if arg_types[i] and p.jtype.name == arg_types[i])
+        return (matched, not _ctor_delegates(c))
+    return max(cands, key=score)
+
+
 def _delegated_base_init(args_str, deleg, cls, resolver):
     """When a ctor delegates `this(args)`, the base class is constructed by the TARGET ctor's
     super(...). C++03 has no delegation, so the delegating ctor must carry that base init itself:
@@ -260,8 +312,7 @@ def _delegated_base_init(args_str, deleg, cls, resolver):
     if not cls.parent:
         return None
     args = [a for a in _split_top_commas(args_str) if a]   # balanced: nested-comma calls stay one arg
-    target = next((c for c in cls.constructors()
-                   if c is not deleg and len(c.params) == len(args)), None)
+    target = _select_deleg_target(args, deleg, cls)
     if target is None:
         return None
     sub = dict((p.name, args[i]) for i, p in enumerate(target.params))
@@ -284,8 +335,7 @@ def _inline_delegation(args_str, deleg, cls, resolver, ledger, _depth=0):
     if _depth > 8:
         return ['// PORT: delegation this(%s) -- recursion limit reached; inline manually' % args_str]
     args = [a for a in _split_top_commas(args_str) if a]   # balanced: nested-comma calls stay one arg
-    target = next((c for c in cls.constructors()
-                   if c is not deleg and len(c.params) == len(args)), None)
+    target = _select_deleg_target(args, deleg, cls)
     if target is None:
         if ledger is not None:
             ledger.add(cls.name + '.cpp', Category.STUBBED,

@@ -414,3 +414,39 @@ class TestStringReturnUnification(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class DelegationTargetSelectionTests(unittest.TestCase):
+    """Same-arity sibling ctors must resolve by param TYPE, not by arg count alone."""
+    def _vtx_class(self):
+        c = ir.JClass('PTV')
+        c.fields.append(ir.Field('vector3D', ir.JType('Vec3D')))
+        # 0: the delegating float x5 ctor -> this(Vec3D::createVectorHelper(...), var4, var5)
+        d = ir.Method('PTV', is_ctor=True,
+                      params=[ir.Param('var%d' % i, ir.JType('float')) for i in range(1, 6)], line=1)
+        # 1: (PTV, float, float) -- WRONG target (self-type)
+        c1 = ir.Method('PTV', is_ctor=True,
+                       params=[ir.Param('var1', ir.JType('PTV')), ir.Param('var2', ir.JType('float')),
+                               ir.Param('var3', ir.JType('float'))], line=5)
+        # 2: (Vec3D, float, float) -- the RIGHT target
+        c2 = ir.Method('PTV', is_ctor=True,
+                       params=[ir.Param('var1', ir.JType('Vec3D')), ir.Param('var2', ir.JType('float')),
+                               ir.Param('var3', ir.JType('float'))], line=8)
+        c.methods += [d, c1, c2]
+        return c, d, c1, c2
+
+    def test_factory_arg_selects_matching_ctor(self):
+        c, d, c1, c2 = self._vtx_class()
+        args = ['Vec3D::createVectorHelper((double)var1, (double)var2, (double)var3)', 'var4', 'var5']
+        self.assertIs(source._select_deleg_target(args, d, c), c2)
+
+    def test_new_arg_selects_matching_ctor(self):
+        c, d, c1, c2 = self._vtx_class()
+        args = ['new Vec3D(1.0, 2.0, 3.0)', 'var4', 'var5']
+        self.assertIs(source._select_deleg_target(args, d, c), c2)
+
+    def test_infer_arg_type_forms(self):
+        self.assertEqual(source._infer_arg_type('new ItemStack(var5)'), 'ItemStack')
+        self.assertEqual(source._infer_arg_type('(Vec3D)obj'), 'Vec3D')
+        self.assertEqual(source._infer_arg_type('Vec3D::createVectorHelper(a, b)'), 'Vec3D')
+        self.assertIsNone(source._infer_arg_type('var5 + 1'))
