@@ -10,6 +10,7 @@ import unittest
 from j2x import parse, pipeline, rules
 from j2x.emit import header, source, statements
 from j2x import ir
+from j2x.ledger import Ledger
 
 
 def _resolve(*srcs):
@@ -208,10 +209,77 @@ class TestClassLiteralAndReflection(unittest.TestCase):
         self.assertIn('j2xClassOf(typeid(World))', expr)
         self.assertNotIn('s_class', expr)
 
+    def test_static_init_reference_cast_gets_pointer(self):
+        # a reference-type cast in a static initializer must become a POINTER cast (the statement
+        # translator does this in method bodies; static inits bypass it and need it applied here)
+        from j2x.emit import source
+        _cls, r = _resolve(
+            'package net.minecraft.src;\npublic class BlockGrass extends Block {}\n',
+            'package net.minecraft.src;\npublic class Block {}\n')
+        expr = source._static_ref('(BlockGrass)(new BlockGrass(2))', r, (), None)
+        self.assertIn('(BlockGrass*)', expr)
+        self.assertNotIn('(BlockGrass)(', expr)
+
+    def test_static_init_value_cast_unchanged(self):
+        # a value-type cast (String -> "") must NOT gain a star
+        from j2x.emit import source
+        _cls, r = _resolve('package net.minecraft.src;\npublic class Block {}\n')
+        expr = source._static_ref('(String)null', r, (), None)
+        self.assertNotIn('*', expr)
+
+    def test_static_init_ternary_cast_distributed(self):
+        from j2x.emit import source
+        _cls, r = _resolve(
+            'package net.minecraft.src;\npublic class A extends Base {}\n',
+            'package net.minecraft.src;\npublic class B extends Base {}\n',
+            'package net.minecraft.src;\npublic class Base {}\n')
+        expr = source._static_ref('(Base)(c ? new A() : new B())', r, (), None)
+        self.assertIn('(Base*)(new A())', expr)
+        self.assertIn('(Base*)(new B())', expr)
+
     def test_reflection_flagged(self):
         out, _c, _r = self._go('public Object m() { return this.factory.newInstance(); }')
         self.assertIn('J2X-REVIEW[reflection-unsupported]', out['m'])
         self.assertIn('newInstance', out['m'])                 # call kept (flagged, not deleted)
+
+
+class TestStaticHolderInitializers(unittest.TestCase):
+    """Static-initializer expressions skip the statement translator, so `_static_ref` must lower
+    every static-holder access to `::` itself: runtime-support holders (Logger/NumberFormat/Locale/
+    Charset), java.lang.Math functions, and enum `values()`. Regression for the 'X.member ->
+    undeclared identifier / illegal use of type/namespace' crash class in StatBase/SaveHandler/
+    NoiseGenerator2/EnumOptionsMappingHelper."""
+
+    def _r(self):
+        _cls, r = _resolve('package net.minecraft.src;\npublic class Dummy {}\n')
+        return r
+
+    def test_runtime_holder_static_method_and_const(self):
+        expr = source._static_ref('NumberFormat.getIntegerInstance(Locale.US)', self._r(), (), None)
+        self.assertEqual(expr, 'NumberFormat::getIntegerInstance(Locale::US)')
+
+    def test_runtime_holder_getlogger(self):
+        expr = source._static_ref('Logger.getLogger("Minecraft")', self._r(), (), None)
+        self.assertEqual(expr, 'Logger::getLogger("Minecraft")')
+
+    def test_math_in_static_init(self):
+        expr = source._static_ref('0.5 * (Math.sqrt(3.0) - 1.0)', self._r(), (), None)
+        self.assertIn('sqrtf(3.0)', expr)
+        self.assertNotIn('Math.', expr)
+
+    def test_enum_values_in_array_size(self):
+        # `new int[EnumOptions.values().length]` static field -> the size expr's `EnumOptions.values()`
+        # must become `EnumOptions::values()` (the enum's own emitted values() static), not a dot.
+        srcs = ('package net.minecraft.src;\npublic enum EnumOptions { A, B; }\n',
+                'package net.minecraft.src;\npublic class Helper {\n'
+                '  private static final int[] map = new int[EnumOptions.values().length];\n'
+                '}\n')
+        classes, r = _resolve(*srcs)
+        helper = [c for c in classes if c.name == 'Helper'][0]
+        defs, inits = source._render_statics(helper, r, Ledger())
+        blob = '\n'.join(defs + inits)
+        self.assertIn('EnumOptions::values().length', blob)
+        self.assertNotIn('EnumOptions.values()', blob)
 
 
 class TestSideEffectInBranchRule(unittest.TestCase):
@@ -277,6 +345,38 @@ class TestSideEffectOrdering(unittest.TestCase):
                        '  int var2 = this.getItem(var1).itemID;\n}')['e']
         lines = [l.strip() for l in out.splitlines() if l.strip()]
         self.assertEqual(lines[0], 'this->render();')       # the preceding call stays first, untouched
+
+
+class TestGL11Stub(unittest.TestCase):
+    """The emitted GL11 (and NV) stubs must carry every GL symbol the render corpus references,
+    so RenderEngine/Tessellator/EntityRenderer/etc. compile against them (gl11-stub error class)."""
+
+    def setUp(self):
+        from j2x import runtime
+        self.gl11 = runtime.FILES['GL11.h']
+        self.nvfog = runtime.FILES['NVFogDistance.h']
+
+    def test_missing_gl11_constants_now_present(self):
+        for name in ('GL_BYTE', 'GL_TRIANGLES', 'GL_NORMAL_ARRAY', 'GL_NEAREST_MIPMAP_LINEAR',
+                     'GL_TEXTURE', 'GL_ZERO', 'GL_GEQUAL', 'GL_UNPACK_ALIGNMENT'):
+            self.assertIn('const int %s' % name, self.gl11, '%s missing from GL11 stub' % name)
+
+    def test_missing_gl11_functions_now_present(self):
+        for fn in ('glNormalPointer', 'glScaled'):
+            self.assertIn('void %s(' % fn, self.gl11, '%s missing from GL11 stub' % fn)
+
+    def test_nvfogdistance_holder_emitted(self):
+        # EntityRenderer references NVFogDistance.GL_FOG_DISTANCE_MODE_NV / GL_EYE_RADIAL_NV
+        self.assertIn('namespace NVFogDistance', self.nvfog)
+        self.assertIn('GL_FOG_DISTANCE_MODE_NV', self.nvfog)
+        self.assertIn('GL_EYE_RADIAL_NV', self.nvfog)
+
+    def test_nvfogdistance_is_static_holder(self):
+        # so Name.MEMBER resolves to Name::MEMBER (enum-like) and gets its own #include
+        from j2x import typemap
+        self.assertIn('NVFogDistance', typemap.RUNTIME_STATIC_HOLDERS)
+        self.assertIn('NVFogDistance', typemap.RUNTIME_HEADERS)
+        self.assertIn('NVFogDistance', typemap.RUNTIME_ENUM_LIKE)
 
 
 if __name__ == '__main__':

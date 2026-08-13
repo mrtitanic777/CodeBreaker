@@ -7,6 +7,8 @@ These stand in for Java runtime types that aren't part of the decompiled corpus
 #included by any class that references them (see typemap.RUNTIME_HEADERS).
 """
 
+import re
+
 # Faithful java.util.Random: 48-bit LCG with Java's exact constants, so generated
 # worlds/sequences match the Java original bit-for-bit.
 RANDOM_H = r'''#ifndef RANDOM_H
@@ -302,10 +304,49 @@ template<class T> JArray<JArray<JArray<T> > > j2x_newarr3(int a, int b, int c) {
 #endif // JARRAY_H
 '''
 
+JITERATOR_H = r'''#ifndef JITERATOR_H
+#define JITERATOR_H
+#include <vector>
+
+// java.util.Iterator over any container. Type-erased (void* elements) so ONE Iterator type serves
+// List/Set and Map value/key/entry views; next() returns void*, cast at the call site
+// (`(T*)it->next()`) exactly as Java casts Iterator.next() from Object. Elements are COPIED in, so
+// mutating the source mid-iteration is safe here (Java would throw ConcurrentModificationException;
+// the port won't). Lives in its OWN header (not inline in JavaRT.h) so JList/JSet/JMap can each
+// expose an `iterator()` MEMBER -- needed when the receiver is a chained/foreign expression the
+// text-level `.iterator()` rewrite can't reach -- without a circular include back into JavaRT.h.
+struct Iterator {
+	std::vector<void*> _v; unsigned _i;
+	Iterator() : _i(0) {}
+	bool hasNext() const { return _i < _v.size(); }
+	void* next() { return _i < _v.size() ? _v[_i++] : (void*)0; }
+	void remove() {}                                     // no-op (source already snapshotted)
+};
+// list/set .iterator()  (elements are pointers / boxed -> void*)
+template<class C> inline Iterator* j2xIter(const C& c) {
+	Iterator* it = new Iterator();
+	for (typename C::const_iterator i = c.begin(); i != c.end(); ++i) it->_v.push_back((void*)*i);
+	return it;
+}
+// map.values().iterator()  /  map.keySet().iterator()
+template<class M> inline Iterator* j2xValues(const M& m) {
+	Iterator* it = new Iterator();
+	for (typename M::const_iterator i = m.begin(); i != m.end(); ++i) it->_v.push_back((void*)i->second);
+	return it;
+}
+template<class M> inline Iterator* j2xKeys(const M& m) {
+	Iterator* it = new Iterator();
+	for (typename M::const_iterator i = m.begin(); i != m.end(); ++i) it->_v.push_back((void*)i->first);
+	return it;
+}
+#endif // JITERATOR_H
+'''
+
 JLIST_H = r'''#ifndef JLIST_H
 #define JLIST_H
 #include <vector>
 #include <algorithm>
+#include "JIterator.h"
 
 // java.util.List / ArrayList / LinkedList, held BY VALUE. Subclasses std::vector<T> so every
 // existing STL use keeps working (iterators, operator[], size(), push_back, range loops, and
@@ -321,6 +362,14 @@ public:
 	typedef typename std::vector<T>::const_iterator _cit;
 	JList() {}
 	JList(long long) {}                                  // Java `List x = null;` -> empty list
+	// element-cast copy: `return map.values();` builds a JList<void*> from a JList<JObject> (the raw
+	// Collection return type erases the element), and `new ArrayList(otherTypedList)` copies across
+	// element types. Same-type copy uses the compiler's copy ctor (an exact match beats this template).
+	template<class U> JList(const JList<U>& o) {
+		this->reserve(o.size());
+		for (typename JList<U>::const_iterator i = o.begin(); i != o.end(); ++i) this->push_back((T)*i);
+	}
+	Iterator* iterator() const { return j2xIter(*this); }   // .iterator() on a chained/foreign receiver
 	void add(const T& v) { this->push_back(v); }
 	void add(int i, const T& v) { this->insert(this->begin() + i, v); }
 	template<class C> void addAll(const C& o) { this->insert(this->end(), o.begin(), o.end()); }  // any container (vector/set/list)
@@ -363,6 +412,7 @@ public:
 JSET_H = r'''#ifndef JSET_H
 #define JSET_H
 #include <set>
+#include "JIterator.h"
 template<class T> class JSet : public std::set<T> {
 public:
 	typedef typename std::set<T>::const_iterator _cit;
@@ -378,10 +428,68 @@ public:
 	template<class U> bool contains(const U& v) const { return this->find((T)v) != this->end(); }
 	bool isEmpty() const { return this->empty(); }
 	T first() const { return *this->begin(); }
+	Iterator* iterator() const { return j2xIter(*this); }   // .iterator() on a chained/temporary receiver
 	bool operator==(long long) const { return false; }
 	bool operator!=(long long) const { return true; }
 };
 #endif // JSET_H
+'''
+
+# HashMap / TreeMap / LinkedHashMap / Map -> JMap<K,V>: a std::map subclass with the Java Map API
+# (put/get/containsKey/remove/isEmpty + keySet/values/entrySet views + null-compare). Mirrors JList/
+# JSet so map method calls compile WITHOUT per-receiver type inference -- essential on chained/foreign
+# receivers (map.entrySet().iterator().next(), a method call whose result is a map). std::map is the
+# base, so every rewrite the emitter already does (put->[k]=v, get->[k], containsKey->count,
+# remove->erase, isEmpty->empty, clear/size inherited) keeps working; the members catch the calls the
+# emitter leaves intact. Views return by-value JList copies so they iterate, feed a JSet/JList copy-ctor
+# (new HashSet(map.keySet())), and expose .iterator(). Order is key-sorted (TreeMap-faithful).
+JMAP_H = r'''#ifndef JMAP_H
+#define JMAP_H
+#include <map>
+#include <utility>
+#include "JIterator.h"
+#include "JList.h"
+#include "Entry.h"
+template<class K, class V>
+class JMap : public std::map<K, V> {
+public:
+	typedef typename std::map<K, V>::iterator _it;
+	typedef typename std::map<K, V>::const_iterator _cit;
+	JMap() {}
+	JMap(long long) {}                                   // Java `Map x = null;` -> empty map
+	V put(const K& k, const V& v) {                      // Java returns the PREVIOUS value (or null)
+		_it it = this->find(k);
+		if (it == this->end()) { this->insert(std::make_pair(k, v)); return V(); }
+		V old = it->second; it->second = v; return old;
+	}
+	V get(const K& k) const {                            // no insert (unlike operator[]); null if absent
+		_cit it = this->find(k);
+		return it == this->end() ? V() : it->second;
+	}
+	bool containsKey(const K& k) const { return this->find(k) != this->end(); }
+	V remove(const K& k) {                               // Java returns the removed value (or null)
+		_it it = this->find(k);
+		if (it == this->end()) return V();
+		V old = it->second; this->erase(it); return old;
+	}
+	bool isEmpty() const { return this->empty(); }
+	// view methods -> by-value JList copies: begin/end (feed addAll / JSet(...) / JList(...)) + iterator().
+	JList<V> values() const {
+		JList<V> r; for (_cit i = this->begin(); i != this->end(); ++i) r.push_back(i->second); return r;
+	}
+	JList<K> keySet() const {
+		JList<K> r; for (_cit i = this->begin(); i != this->end(); ++i) r.push_back(i->first); return r;
+	}
+	JList<Entry*> entrySet() const {                     // Entry.getKey()/getValue() return void* (cast at use)
+		JList<Entry*> r;
+		for (_cit i = this->begin(); i != this->end(); ++i)
+			r.push_back(new Entry((void*)i->first, (void*)i->second));
+		return r;
+	}
+	bool operator==(long long) const { return false; }   // a by-value map is never null
+	bool operator!=(long long) const { return true; }
+};
+#endif // JMAP_H
 '''
 
 JAVART_H = r'''#ifndef JAVART_H
@@ -389,48 +497,25 @@ JAVART_H = r'''#ifndef JAVART_H
 // j2x runtime prelude -- shims for Java stdlib statics. #included by every .cpp.
 #include <cstdlib>
 #include <ctime>
+#include <math.h>
 #include <string>
 #include <sstream>
 #include <typeinfo>
 #include <vector>
 #include "JavaString.h"
 #include "JArray.h"
+#include "JIterator.h"
 #include "JList.h"
 #include "JSet.h"
-
-// java.util.Iterator over any container. Type-erased (void* elements) so ONE Iterator type serves
-// List/Set and Map value/key views; next() returns void*, cast at the call site (`(T*)it->next()`)
-// exactly as Java casts Iterator.next() from Object. Elements are COPIED in, so mutating the source
-// mid-iteration is safe here (Java would throw ConcurrentModificationException; the port won't).
-struct Iterator {
-	std::vector<void*> _v; unsigned _i;
-	Iterator() : _i(0) {}
-	bool hasNext() const { return _i < _v.size(); }
-	void* next() { return _i < _v.size() ? _v[_i++] : (void*)0; }
-	void remove() {}                                     // no-op (source already snapshotted)
-};
-// list/set .iterator()  (elements are pointers -> void*)
-template<class C> inline Iterator* j2xIter(const C& c) {
-	Iterator* it = new Iterator();
-	for (typename C::const_iterator i = c.begin(); i != c.end(); ++i) it->_v.push_back((void*)*i);
-	return it;
-}
-// map.values().iterator()  /  map.keySet().iterator()
-template<class M> inline Iterator* j2xValues(const M& m) {
-	Iterator* it = new Iterator();
-	for (typename M::const_iterator i = m.begin(); i != m.end(); ++i) it->_v.push_back((void*)i->second);
-	return it;
-}
-template<class M> inline Iterator* j2xKeys(const M& m) {
-	Iterator* it = new Iterator();
-	for (typename M::const_iterator i = m.begin(); i != m.end(); ++i) it->_v.push_back((void*)i->first);
-	return it;
-}
+#include "JMap.h"
 
 // java.lang.Math.random(): pseudo-random double in [0, 1)
 inline double javaMathRandom() { return (double)rand() / ((double)RAND_MAX + 1.0); }
 // java.lang.Math.signum(x)
 template<class T> inline T javaMathSignum(T v) { return v > 0 ? (T)1 : (v < 0 ? (T)-1 : (T)0); }
+// java.lang.Math.round(x): round-half-up to an integer (int for float, long long for double)
+inline int javaMathRound(float v) { return (int)floorf(v + 0.5F); }
+inline long long javaMathRound(double v) { return (long long)floor(v + 0.5); }
 
 // numeric parse helper (C++98-portable; avoids C99 strtoll on the real MSVC target)
 template<class T> inline T _javart_parse(const std::string& s) {
@@ -502,20 +587,24 @@ template<class T> struct JArrayInit {
 // String/any pointer; converts back via casts; `instanceof Character/String/...` -> isXxx(). Scalar
 // `Object` stays void* (opaque refs don't need this).
 struct JObject {
-	int kind;                         // 0 null, 1 int, 2 char, 4 String, 5 ptr, 6 String[], 7 bool
+	int kind;                         // 0 null, 1 int, 2 char, 4 String, 5 ptr, 6 String[], 7 bool, 8 real
 	long long i;
+	double d;                         // for kind==8: the boxed float/double value (Float/Double)
 	JavaString s;
 	JArray<JavaString> sa;
 	void* p;
 	const std::type_info* ti;         // for kind==5: the boxed pointer's static type (for is<T>())
-	JObject() : kind(0), i(0), p(0), ti(0) {}
-	JObject(int v) : kind(v ? 1 : 0), i(v), p(0), ti(0) {}        // 0 == null (NULL is 0); else boxed int
-	JObject(char v) : kind(2), i(v), p(0), ti(0) {}
-	JObject(bool v) : kind(7), i(v ? 1 : 0), p(0), ti(0) {}
-	JObject(const char* v) : kind(4), i(0), s(v), p(0), ti(0) {}
-	JObject(const JavaString& v) : kind(4), i(0), s(v), p(0), ti(0) {}
-	JObject(const JArray<JavaString>& v) : kind(6), i(0), sa(v), p(0), ti(0) {}
-	template<class T> JObject(T* v) : kind(v ? 5 : 0), i(0), p((void*)v), ti(v ? &typeid(T) : 0) {}
+	JObject() : kind(0), i(0), d(0), p(0), ti(0) {}
+	JObject(int v) : kind(v ? 1 : 0), i(v), d(0), p(0), ti(0) {}        // 0 == null (NULL is 0); else boxed int
+	JObject(long long v) : kind(v ? 1 : 0), i(v), d(0), p(0), ti(0) {}  // boxed long
+	JObject(char v) : kind(2), i(v), d(0), p(0), ti(0) {}
+	JObject(bool v) : kind(7), i(v ? 1 : 0), d(0), p(0), ti(0) {}
+	JObject(float v) : kind(8), i((long long)v), d(v), p(0), ti(0) {}   // boxed Float
+	JObject(double v) : kind(8), i((long long)v), d(v), p(0), ti(0) {}  // boxed Double
+	JObject(const char* v) : kind(4), i(0), d(0), s(v), p(0), ti(0) {}
+	JObject(const JavaString& v) : kind(4), i(0), d(0), s(v), p(0), ti(0) {}
+	JObject(const JArray<JavaString>& v) : kind(6), i(0), d(0), sa(v), p(0), ti(0) {}
+	template<class T> JObject(T* v) : kind(v ? 5 : 0), i(0), d(0), p((void*)v), ti(v ? &typeid(T) : 0) {}
 	// Java instanceof:
 	bool isCharacter() const { return kind == 2; }
 	bool isString() const { return kind == 4; }
@@ -523,9 +612,15 @@ struct JObject {
 	bool isBoolean() const { return kind == 7; }
 	bool isStringArray() const { return kind == 6; }
 	template<class T> bool is() const { return kind == 5 && ti && *ti == typeid(T); }   // instanceof <Class>
-	// named extractors (Java unbox: ((Integer)o).intValue(), ((Character)o).charValue(), ...):
+	// named extractors (Java unbox: ((Integer)o).intValue(), ((Character)o).charValue(), ...). Integral
+	// kinds read `i`; Float/Double read `d`. Each round-trips the primitive it was boxed from.
 	char charValue() const { return (char)i; }
+	signed char byteValue() const { return (signed char)i; }
+	short shortValue() const { return (short)i; }
 	int intValue() const { return (int)i; }
+	long long longValue() const { return i; }
+	float floatValue() const { return kind == 8 ? (float)d : (float)i; }
+	double doubleValue() const { return kind == 8 ? d : (double)i; }
 	bool booleanValue() const { return i != 0; }
 	JavaString str() const { return s; }
 	JArray<JavaString> strArray() const { return sa; }
@@ -680,6 +775,8 @@ GL11_H = r'''#ifndef GL11_H
 
 namespace GL11 {
 	const int GL_POINTS = 0x0000;
+	const int GL_TRIANGLES = 0x0004;
+	const int GL_ZERO = 0x0000;
 	const int GL_FRONT = 0x0404;
 	const int GL_BACK = 0x0405;
 	const int GL_FRONT_AND_BACK = 0x0408;
@@ -707,6 +804,7 @@ namespace GL11 {
 	const int GL_LINEAR = 0x2601;
 	const int GL_NEAREST = 0x2600;
 	const int GL_GREATER = 0x0204;
+	const int GL_GEQUAL = 0x0206;
 	const int GL_EQUAL = 0x0202;
 	const int GL_LEQUAL = 0x0203;
 	const int GL_SRC_ALPHA = 0x0302;
@@ -720,11 +818,15 @@ namespace GL11 {
 	const int GL_RGB = 0x1907;
 	const int GL_RGBA = 0x1908;
 	const int GL_UNSIGNED_BYTE = 0x1401;
+	const int GL_BYTE = 0x1400;
 	const int GL_FLOAT = 0x1406;
+	const int GL_TEXTURE = 0x1702;
+	const int GL_NORMAL_ARRAY = 0x8075;
 	const int GL_TEXTURE_MAG_FILTER = 0x2800;
 	const int GL_TEXTURE_MIN_FILTER = 0x2801;
 	const int GL_TEXTURE_WRAP_S = 0x2802;
 	const int GL_TEXTURE_WRAP_T = 0x2803;
+	const int GL_NEAREST_MIPMAP_LINEAR = 0x2702;
 	const int GL_REPEAT = 0x2901;
 	const int GL_CLAMP = 0x2900;
 	const int GL_COLOR_BUFFER_BIT = 0x4000;
@@ -740,6 +842,7 @@ namespace GL11 {
 	const int GL_AMBIENT_AND_DIFFUSE = 0x1602;
 	const int GL_LIGHT_MODEL_AMBIENT = 0x0B53;
 	const int GL_PACK_ALIGNMENT = 0x0D05;
+	const int GL_UNPACK_ALIGNMENT = 0x0CF5;
 	const int GL_VENDOR = 0x1F00;
 	const int GL_RENDERER = 0x1F01;
 	const int GL_VERSION = 0x1F02;
@@ -782,6 +885,7 @@ namespace GL11 {
 	inline void glMultMatrix(...) {}
 	inline void glNewList(...) {}
 	inline void glNormal3f(...) {}
+	inline void glNormalPointer(...) {}
 	inline void glOrtho(...) {}
 	inline void glPixelStorei(...) {}
 	inline void glPopMatrix(...) {}
@@ -789,6 +893,7 @@ namespace GL11 {
 	inline void glReadPixels(...) {}
 	inline void glRenderList(...) {}
 	inline void glRotatef(...) {}
+	inline void glScaled(...) {}
 	inline void glScalef(...) {}
 	inline void glShadeModel(...) {}
 	inline void glSkyList(...) {}
@@ -822,6 +927,7 @@ def _guard(name):
 # Best-effort Java package for the external types we stub, so the banner names the real library.
 _EXT_PKG = {
     'GL11': 'org.lwjgl.opengl', 'GL12': 'org.lwjgl.opengl', 'GL15': 'org.lwjgl.opengl',
+    'NVFogDistance': 'org.lwjgl.opengl',
     'GLU': 'org.lwjgl.util.glu', 'GLContext': 'org.lwjgl.opengl', 'ARBOcclusionQuery': 'org.lwjgl.opengl',
     'ARBVertexBufferObject': 'org.lwjgl.opengl', 'Keyboard': 'org.lwjgl.input', 'Mouse': 'org.lwjgl.input',
     'Controllers': 'org.lwjgl.input', 'Display': 'org.lwjgl.opengl', 'DisplayMode': 'org.lwjgl.opengl',
@@ -881,10 +987,31 @@ def _ns_stub(name, consts=(), void_fns=(), ret_fns=(), includes=(), fwds=()):
     return '\n'.join(L)
 
 
+# Return-type registry for the emitted stub classes, so expression-type inference (the `.` vs `->`
+# chain resolver in emit/statements.py) can type a chain THROUGH a stub method result -- e.g.
+# `Runtime::getRuntime()->maxMemory()`, `getDocumentBase()->getHost()`, `var->getParentFile()->mkdirs()`.
+# Populated as each stub is built: {class: {'parent': base_or_None, 'methods': {method: cpp_ret_type}}}.
+# Last definition wins (matches _GENERATED overwrite for classes redefined, e.g. File). The pipeline
+# converts the C++ return spellings to JTypes and merges this into the member environment.
+STUB_MEMBERS = {}
+
+# `Type* method(` / `static Type* method(` inside an `extra` line (static factories & pointer getters
+# defined verbatim rather than via ret_methods, e.g. Runtime::getRuntime, Toolkit::getDefaultToolkit).
+_EXTRA_PTR_METHOD = re.compile(r'(?:static\s+)?([A-Za-z_]\w*)\s*\*\s*(\w+)\s*\(')
+
+
 def _class_stub(name, void_methods=(), ret_methods=(), ctors=True, bases=(),
                 includes=(), fwds=(), extra=()):
     """A class with variadic stub methods (e.g. SoundSystem, DataInput) -- accessed var->X.
     `extra` = verbatim extra member lines (e.g. conversion operators)."""
+    rec = {'parent': bases[0] if bases else None, 'methods': {}}
+    for _m, (_rt, _rv) in ret_methods:
+        rec['methods'][_m] = _rt
+    for _line in extra:
+        _pm = _EXTRA_PTR_METHOD.search(_line)
+        if _pm and _pm.group(1) != 'void':
+            rec['methods'][_pm.group(2)] = _pm.group(1) + '*'
+    STUB_MEMBERS[name] = rec                          # last def wins (mirrors _GENERATED overwrite)
     g = _guard(name)
     L = ['#ifndef %s' % g, '#define %s' % g] + _ext_banner(name) + ['#include <string>', '#include "JavaString.h"']
     L += ['#include "%s.h"' % h for h in includes]
@@ -1000,6 +1127,10 @@ _GENERATED['GL15.h'] = _ns_stub('GL15',
 _GENERATED['GL12.h'] = _ns_stub('GL12',
     consts=[('GL_RESCALE_NORMAL', 0x803A), ('GL_CLAMP_TO_EDGE', 0x812F),
             ('GL_SMOOTH_POINT_SIZE_RANGE', 0x0B12)])
+# GL_NV_fog_distance extension (EntityRenderer picks radial fog when GL_NV_fog_distance is present).
+_GENERATED['NVFogDistance.h'] = _ns_stub('NVFogDistance',
+    consts=[('GL_FOG_DISTANCE_MODE_NV', 0x855A), ('GL_EYE_RADIAL_NV', 0x855B),
+            ('GL_EYE_PLANE_ABSOLUTE_NV', 0x855C)])
 _GENERATED['GLU.h'] = _ns_stub('GLU', void_fns=['gluPerspective', 'gluLookAt', 'gluProject', 'gluUnProject'],
     ret_fns=[('gluErrorString', ('std::string', 'std::string()')), ('gluBuild2DMipmaps', ('int', '0'))])
 _GENERATED['ARBOcclusionQuery.h'] = _ns_stub('ARBOcclusionQuery',
@@ -1121,13 +1252,26 @@ _GENERATED['Stack.h'] = (
 _GENERATED['Properties.h'] = _class_stub('Properties',
     void_methods=['load', 'store', 'setProperty', 'put'],
     ret_methods=[('getProperty', ('std::string', 'std::string()'))])
-_GENERATED['Entry.h'] = _class_stub('Entry',
-    ret_methods=[('getKey', ('void*', '0')), ('getValue', ('void*', '0'))])
+# java.util.Map.Entry -- a REAL pair box (JMap.entrySet() heap-allocates one per mapping). getKey()/
+# getValue() return the stored void* (the boxed key/value pointer), cast at the call site exactly as
+# Java casts Map.Entry.getKey()/getValue() from Object. The no-arg ctor keeps the old stub call sites
+# compiling; setValue() mutates the local copy only (entrySet() is a snapshot here, like Iterator).
+_GENERATED['Entry.h'] = (
+    '#ifndef ENTRY_H\n#define ENTRY_H\n'
+    'class Entry {\n'
+    '\tvoid* _k; void* _v;\n'
+    'public:\n'
+    '\tEntry() : _k(0), _v(0) {}\n'
+    '\tEntry(void* k, void* v) : _k(k), _v(v) {}\n'
+    '\tvoid* getKey() const { return _k; }\n'
+    '\tvoid* getValue() const { return _v; }\n'
+    '\tvoid* setValue(void* v) { void* o = _v; _v = v; return o; }\n'
+    '};\n#endif // ENTRY_H\n')
 _GENERATED['NumberFormat.h'] = _class_stub('NumberFormat',
     void_methods=['setMaximumFractionDigits', 'setMinimumFractionDigits'],
     ret_methods=[('format', ('std::string', 'std::string()'))],
-    extra=['static NumberFormat* getInstance() { return new NumberFormat(); }',
-           'static NumberFormat* getIntegerInstance() { return new NumberFormat(); }'])
+    extra=['static NumberFormat* getInstance(...) { return new NumberFormat(); }',
+           'static NumberFormat* getIntegerInstance(...) { return new NumberFormat(); }'])
 # java.security.MessageDigest (Beta MD5). Real hashing is MCHash/MD5String platform code.
 _GENERATED['MessageDigest.h'] = _class_stub('MessageDigest', includes=['JArray'],
     void_methods=['update', 'reset'],
@@ -1155,7 +1299,11 @@ _GENERATED['SoundSystemConfig.h'] = _ns_stub('SoundSystemConfig', void_fns=['set
 _GENERATED['Collection.h'] = _class_stub('Collection',
     void_methods=['add', 'clear'], ret_methods=[('size', ('int', '0')), ('isEmpty', ('bool', 'true')),
                                                  ('iterator', ('void*', '0')), ('contains', ('bool', 'false'))])
-_GENERATED['Locale.h'] = _class_stub('Locale')
+_GENERATED['Locale.h'] = _class_stub('Locale',
+    extra=['static const int US = 0, ENGLISH = 0, ROOT = 0;'])   # Locale.US et al -> dead int consts (locale is a no-op on the 360)
+# java.nio.charset.Charset -- Charset.forName("UTF-8") is a static factory; returns a stub instance.
+_GENERATED['Charset.h'] = _class_stub('Charset',
+    extra=['static Charset* forName(...) { return new Charset(); }'])
 _GENERATED['Rectangle.h'] = _class_stub('Rectangle', extra=['int x, y, width, height;'])
 # Transferable / TextArea leaf methods (dead AWT; keep them compiling). RenderingHints/DataFlavor
 # static-constant accesses (KEY_INTERPOLATION / stringFlavor) remain a few errors -- dead AWT, low pri.
@@ -1603,8 +1751,10 @@ FILES = {
     'Random.h': RANDOM_H,
     'JavaString.h': JAVASTRING_H,
     'JArray.h': JARRAY_H,
+    'JIterator.h': JITERATOR_H,
     'JList.h': JLIST_H,
     'JSet.h': JSET_H,
+    'JMap.h': JMAP_H,
     'JavaRT.h': JAVART_H,
     'GL11.h': GL11_H,
     'Runnable.h': RUNNABLE_H,

@@ -33,9 +33,10 @@ JAVA_TO_CPP = {
     'void': 'void',
     'String': 'JavaString',
     'ArrayList': 'JList', 'List': 'JList', 'LinkedList': 'JList',
-    'HashMap': 'std::map', 'HashSet': 'JSet', 'TreeMap': 'std::map',
+    'Collection': 'JList',                       # java.util.Collection/Iterable-return -> a by-value list
+    'HashMap': 'JMap', 'HashSet': 'JSet', 'TreeMap': 'JMap', 'LinkedHashMap': 'JMap',
     'TreeSet': 'JSet',                           # sorted set -> JSet (std::set subclass w/ Java API)
-    'Map': 'std::map', 'Set': 'JSet',
+    'Map': 'JMap', 'Set': 'JSet',                # Map/HashMap/... -> JMap (std::map subclass w/ Java API)
     'Random': 'Random',
     # Java root / boxed types. Object -> JObject (a boxed-value type: holds null/int/char/String/
     # String[]/typed-pointer with RTTI), so Object[] autoboxing + instanceof + reflective recipe
@@ -58,16 +59,17 @@ PORT_NOTE_TYPES = {
 }
 
 # Java collection types -> STL. Held BY VALUE as fields by default (std::vector/map).
-CONTAINERS = {'ArrayList', 'List', 'LinkedList', 'HashMap', 'HashSet', 'TreeMap', 'TreeSet', 'Map', 'Set'}
+CONTAINERS = {'ArrayList', 'List', 'LinkedList', 'Collection', 'HashMap', 'HashSet', 'TreeMap',
+              'LinkedHashMap', 'TreeSet', 'Map', 'Set'}
 
 # default element types for a RAW (non-generic) container -> a valid C++ template
 RAW_CONTAINER_DEFAULT = {'JList': '<void*>', 'JSet': '<void*>', 'std::vector': '<void*>', 'std::set': '<void*>',
-                         # raw Map -> <JObject, JObject>: a Java raw map mixes key/value types
+                         # raw Map -> JMap<JObject, JObject>: a Java raw map mixes key/value types
                          # (String/Integer/Character keys; any object/boxed value). JObject boxes
                          # all of them (and has operator< for the key), so put/get/containsKey/remove
                          # all bind regardless of the concrete Java types. Keys/values convert in
                          # implicitly; reads convert out via the cast the converter already emits.
-                         'std::map': '<JObject, JObject>'}
+                         'JMap': '<JObject, JObject>', 'std::map': '<JObject, JObject>'}
 
 # Java stdlib types that become C++ VALUE types (not pointers).
 VALUE_STDLIB = {'String'}
@@ -121,11 +123,12 @@ NULLABLE_GETTER_RETURN_TYPE = {
 # Java base types our classes extend/implement (Runnable/Thread/Comparator/...).
 # Static-holder externals accessed as Name::member (constants + static functions) that get
 # their own emitted header. Like GL11. Also need RUNTIME_ENUM_LIKE (no s_ prefix on members).
-RUNTIME_STATIC_HOLDERS = {'GL11', 'GL12', 'GL15', 'GLU', 'Keyboard', 'Mouse', 'Display',
+RUNTIME_STATIC_HOLDERS = {'GL11', 'GL12', 'GL15', 'GLU', 'NVFogDistance', 'Keyboard', 'Mouse', 'Display',
                           'ARBOcclusionQuery', 'ARBVertexBufferObject', 'BufferUtils', 'ImageIO',
                           'Sys', 'GLContext', 'Controllers', 'Collections',
                           'Pattern',                # java.util.regex Pattern.compile(...) is static
                           'Runtime', 'ByteOrder',   # Runtime.getRuntime(), ByteOrder.BIG_ENDIAN
+                          'Charset',                # java.nio.charset Charset.forName("UTF-8") is static
                           'SoundSystemConfig'}
 
 # Runtime-support classes the converter EMITS a header for (see runtime.py) and #includes when
@@ -154,7 +157,7 @@ RUNTIME_HEADERS = ({'Random', 'Runnable', 'Thread', 'Comparator', 'File',
                     'RandomAccessFile', 'Writer', 'StringWriter', 'PushbackReader', 'Stack',
                     'Properties', 'Entry', 'NumberFormat', 'MessageDigest', 'RenderingHints',
                     'DataFlavor', 'Reference', 'Logger', 'Calendar', 'GregorianCalendar',
-                    'Toolkit', 'TextArea', 'Transferable', 'Collection', 'Locale', 'Rectangle',
+                    'Toolkit', 'TextArea', 'Transferable', 'Locale', 'Rectangle',
                     'Throwable', 'Exception', 'Error', 'RuntimeException', 'IOException',
                     'InterruptedException', 'IllegalStateException', 'IllegalArgumentException',
                     'MalformedURLException', 'AWTException', 'LWJGLException', 'NoSuchFieldError',
@@ -185,6 +188,9 @@ MATH_API = {
     'atan': 'atanf', 'atan2': 'atan2f', 'asin': 'asinf', 'acos': 'acosf',
     'floor': 'floorf', 'ceil': 'ceilf', 'pow': 'powf', 'exp': 'expf', 'log': 'logf',
     'min': 'min', 'max': 'max',
+    # Math.round(x) returns an integer (round-half-up); overloaded free-function shim in the prelude
+    # (int for float, long long for double) -- there is no single C stdlib call with Java's semantics.
+    'round': 'javaMathRound',
     # constants (no call): Math.PI is a member, not a method -> inline the float literal
     # (this is a float-math project, consistent with the sqrtf/sinf choices above)
     'PI': '3.1415927F',

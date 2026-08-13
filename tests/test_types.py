@@ -98,10 +98,20 @@ class TestCppSpelling(unittest.TestCase):
 
     def test_raw_container_defaults(self):
         self.assertEqual(self.r.field_type(T('List')), 'JList<void*>')
-        # raw Map -> <JObject, JObject>: JObject boxes any key/value type (mixed String/Integer/
-        # Character keys etc.) and has operator< for the key, so put/get/containsKey all bind.
-        self.assertEqual(self.r.field_type(T('HashMap')), 'std::map<JObject, JObject>')
+        # raw Map -> JMap<JObject, JObject>: JMap is a std::map subclass with the Java Map API. JObject
+        # boxes any key/value type (mixed String/Integer/Character keys etc.) and has operator< for the
+        # key, so put/get/containsKey/values/keySet/entrySet all bind.
+        self.assertEqual(self.r.field_type(T('HashMap')), 'JMap<JObject, JObject>')
+        self.assertEqual(self.r.field_type(T('TreeMap')), 'JMap<JObject, JObject>')
+        self.assertEqual(self.r.field_type(T('Map')), 'JMap<JObject, JObject>')
         self.assertEqual(self.r.field_type(T('HashSet')), 'JSet<void*>')   # JSet = std::set + Java API
+        # java.util.Collection return/field -> a by-value JList (iterable; superset of the old stub API)
+        self.assertEqual(self.r.field_type(T('Collection')), 'JList<void*>')
+
+    def test_generic_map_element_types(self):
+        # a typed Map<String, Item> -> JMap<JavaString, Item*>: value ref element gets its pointer star.
+        self.assertEqual(self.r.field_type(T('HashMap', args=[T('String'), T('Item')])),
+                         'JMap<JavaString, Item*>')
 
     def test_object_maps_to_jobject_with_note(self):
         # Object -> JObject: a boxed VALUE (holds null/int/char/String/String[]/typed-pointer),

@@ -35,6 +35,8 @@ def _std_header_for(cpp_base):
         return '<string>'
     if 'std::vector' in cpp_base:
         return '<vector>'
+    if 'JMap' in cpp_base:
+        return None                              # JMap.h is always included (like JList.h/JSet.h)
     if 'std::map' in cpp_base:
         return '<map>'
     if 'std::set' in cpp_base:
@@ -133,7 +135,8 @@ def _render_typed_enum_header(cls, resolver, ledger, cpp_std, platform_label):
     guard = naming.guard_macro(cls.name)
     L = ['#ifndef %s' % guard, '#define %s' % guard, '',
          _banner(cls.name, cpp_std, platform_label), '',
-         '#include "JavaString.h"', '#include "JArray.h"', '#include "JList.h"', '#include "JSet.h"']
+         '#include "JavaString.h"', '#include "JArray.h"', '#include "JList.h"', '#include "JSet.h"',
+         '#include "JMap.h"']
     sys_inc, inc, fwd = _collect_dependencies(cls, resolver)
     for h in sorted(sys_inc):
         L.append('#include %s' % h)
@@ -199,6 +202,7 @@ def render_header(cls, resolver, ledger=None, cpp_std=None, platform_label=None)
     L.append('#include "JArray.h"')
     L.append('#include "JList.h"')
     L.append('#include "JSet.h"')
+    L.append('#include "JMap.h"')
 
     sys_inc, inc, fwd = _collect_dependencies(cls, resolver)
     for h in sorted(sys_inc):

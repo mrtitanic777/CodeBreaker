@@ -149,14 +149,68 @@ def compute_mi_forwards(classes):
             cls.mi_forwards.append((im, base_cls))
 
 
+class _StubMethod(object):
+    """Lightweight method record for a runtime-stub class, shaped like a parsed Method so the
+    member-env flatten can treat stub and corpus classes uniformly."""
+    is_ctor = False
+    is_static = False
+    def __init__(self, name, return_type):
+        self.name = name
+        self.return_type = return_type
+
+
+class _StubClass(object):
+    """Lightweight class record for a runtime-stub class (see runtime.STUB_MEMBERS). Only the
+    attributes the member-env flatten reads (name/parent/fields/methods) are provided."""
+    is_enum = False
+    is_interface = False
+    def __init__(self, name, parent, methods):
+        self.name = name
+        self.parent = parent
+        self.fields = []
+        self.methods = methods
+
+
+def _stub_return_jtype(cpp):
+    """A JType for a runtime-stub method's C++ return spelling, ONLY when it is unambiguous enough
+    to drive chain inference: a single reference-type pointer (`File*` -> File) or `std::string`
+    (-> String, a value). Everything else (void*, JArray<...>, primitives) returns None -- the
+    chain resolver then conservatively leaves `.` untouched rather than guess."""
+    from .ir import JType as _JT
+    cpp = cpp.strip()
+    if cpp == 'std::string':
+        return _JT('String')
+    m = re.match(r'^([A-Za-z_]\w*)\s*\*$', cpp)
+    if m and m.group(1) != 'void':
+        return _JT(m.group(1))
+    return None
+
+
 def build_member_env(classes):
     """Flatten each class's fields (static + instance) and method return types over its
     parent chain into {class: {'fields': {name: JType}, 'methods': {name: JType}}}.
     Closer (more-derived) definitions win. Feeds expression-type inference so chained
     `recv.field.member` / `Class::s_field.member` get '.' vs '->' right by construction."""
     by_name = dict((c.name, c) for c in classes)
+    # Runtime-stub classes (URL/File/Runtime/Applet/Node/...) aren't in the parsed corpus, but their
+    # method result types must resolve chains through them (`getDocumentBase()->getHost()`, a corpus
+    # class extending Applet inheriting getDocumentBase, etc.). Adopt them as class-like records so the
+    # SAME flatten handles corpus->stub inheritance and stub->stub bases uniformly. Corpus names win.
+    from . import runtime
+    stub_classes = []
+    for name, rec in runtime.STUB_MEMBERS.items():
+        if name in by_name:
+            continue
+        methods = []
+        for mname, cpp in rec['methods'].items():
+            jt = _stub_return_jtype(cpp)
+            if jt is not None:
+                methods.append(_StubMethod(mname, jt))
+        stub = _StubClass(name, rec.get('parent'), methods)
+        by_name[name] = stub
+        stub_classes.append(stub)
     env = {}
-    for cls in classes:
+    for cls in list(classes) + stub_classes:
         fields, methods, statics = {}, {}, set()
         cur, guard = cls, set()
         while cur and cur.name not in guard:         # most-derived first; don't overwrite

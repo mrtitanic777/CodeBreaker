@@ -87,7 +87,7 @@ _CAST = re.compile(r'\(([A-Za-z_]\w*)\)(?=\s*[\w("\'\-+~!])')   # cast target ma
 
 # receiver categories
 _LIST_TYPES = {'ArrayList', 'List', 'LinkedList'}
-_MAP_TYPES = {'HashMap', 'Map', 'TreeMap'}
+_MAP_TYPES = {'HashMap', 'Map', 'TreeMap', 'LinkedHashMap'}
 _SET_TYPES = {'HashSet', 'Set'}
 
 # simple renames (args preserved): (category, java method) -> C++ method
@@ -481,6 +481,87 @@ def _balanced_brace(s, open_idx):
     return -1
 
 
+def _split_top_ternary(expr):
+    """If `expr` is a top-level `cond ? a : b`, return (cond, a, b) (all stripped); else None.
+    Respects nesting in (), [], {} and nested `?:` pairs. Ternary is right-associative, so we
+    split at the FIRST top-level '?' and the ':' that matches it."""
+    depth = 0
+    q = -1
+    for i, c in enumerate(expr):
+        if c in '([{':
+            depth += 1
+        elif c in ')]}':
+            depth -= 1
+        elif depth == 0 and c == '?':
+            q = i
+            break
+    if q < 0:
+        return None
+    depth = 0
+    pending = 0                                    # nested '?' awaiting their ':'
+    for j in range(q + 1, len(expr)):
+        c = expr[j]
+        if c in '([{':
+            depth += 1
+        elif c in ')]}':
+            depth -= 1
+        elif depth == 0 and c == '?':
+            pending += 1
+        elif depth == 0 and c == ':':
+            if pending == 0:
+                return (expr[:q].strip(), expr[q + 1:j].strip(), expr[j + 1:].strip())
+            pending -= 1
+    return None
+
+
+def _unwrap_parens(expr):
+    """Strip redundant outermost parenthesis layers ((a) -> a), leaving the meaning unchanged."""
+    expr = expr.strip()
+    while expr.startswith('(') and _balanced_paren(expr, 0) == len(expr) - 1:
+        expr = expr[1:-1].strip()
+    return expr
+
+
+def _apply_cast_to_arms(cast, expr):
+    """Push a pointer-cast lexeme (`(Base*)`) into a conditional so each arm is cast individually.
+    C++03 cannot type `cond ? new A() : new B()` when A/B are unrelated pointer types, but
+    `cond ? (Base*)(new A()) : (Base*)(new B())` is well-formed (each arm converts to Base*)."""
+    tern = _split_top_ternary(_unwrap_parens(expr))
+    if tern is None:
+        expr = expr.strip()
+        return '%s%s' % (cast, expr if expr.startswith('(') else '(%s)' % expr)
+    cond, a, b = tern
+    return '(%s ? %s : %s)' % (cond, _apply_cast_to_arms(cast, a), _apply_cast_to_arms(cast, b))
+
+
+_PTR_CAST_CALL = re.compile(r'(\((?:const\s+)?[A-Za-z_]\w*\s*\*\))\s*\(')
+
+
+def distribute_cast_into_ternaries(s):
+    """`(Base*)(cond ? A : B)` -> `(cond ? (Base*)(A) : (Base*)(B))`, recursively for nested/chained
+    conditionals. A no-op unless a pointer-cast directly wraps a parenthesized top-level conditional,
+    so ordinary casts are left byte-for-byte unchanged."""
+    if '?' not in s or '*)' not in s:
+        return s
+    out = []
+    i = 0
+    n = len(s)
+    while i < n:
+        m = _PTR_CAST_CALL.match(s, i)
+        if m:
+            open_idx = m.end() - 1                  # index of the '(' opening the cast operand
+            close = _balanced_paren(s, open_idx)
+            if close != -1:
+                inner = s[open_idx + 1:close]
+                if _split_top_ternary(_unwrap_parens(inner)) is not None:
+                    out.append(_apply_cast_to_arms(m.group(1), inner))
+                    i = close + 1
+                    continue
+        out.append(s[i])
+        i += 1
+    return ''.join(out)
+
+
 _PTR_CAST_HEAD = re.compile(r'^\(\s*([A-Za-z_]\w*)\s*(\*?)\s*\)')
 
 
@@ -580,6 +661,91 @@ def _loop_close(lines, loop_idx):
         if started and depth <= 0:
             return i
     return None
+
+
+_CASE_LABEL = re.compile(r'^(case\b.*?|default)\s*:(.*)$')
+
+
+def _scan_braces(text, stack, pending_switch):
+    """Walk `text` (skipping string/char literals and comments), pushing/popping
+    brace frames on `stack`. A frame is [is_switch, case_open]. `switch (...)`
+    marks the NEXT `{` as a switch body. Returns the carried pending_switch flag."""
+    i, n = 0, len(text)
+    while i < n:
+        c = text[i]
+        if c == '"' or c == "'":
+            q = c
+            i += 1
+            while i < n:
+                if text[i] == '\\':
+                    i += 2
+                    continue
+                if text[i] == q:
+                    i += 1
+                    break
+                i += 1
+            continue
+        if c == '/' and i + 1 < n and text[i + 1] == '/':
+            break                                  # line comment: nothing left to scan
+        if c == '/' and i + 1 < n and text[i + 1] == '*':
+            j = text.find('*/', i + 2)
+            i = n if j == -1 else j + 2
+            continue
+        if c == '{':
+            stack.append([pending_switch, False])
+            pending_switch = False
+            i += 1
+            continue
+        if c == '}':
+            if stack:
+                stack.pop()
+            i += 1
+            continue
+        if (c == 's' and text.startswith('switch', i)
+                and (i == 0 or not (text[i - 1].isalnum() or text[i - 1] == '_'))):
+            k = i + 6
+            while k < n and text[k] in ' \t':
+                k += 1
+            if k < n and text[k] == '(':
+                pending_switch = True
+            i += 6
+            continue
+        i += 1
+    return pending_switch
+
+
+def _wrap_switch_cases(lines):
+    """Wrap each switch case/default body in a `{ }` block so a local declared in one
+    case cannot cross the next case label (C2360/C2361 -- initialization skipped by a
+    case label). Fallthrough and break are preserved: the braces are pure scope, so an
+    unbroken case still falls into the next one. Nested `{}` (guards, ifs, inner
+    switches) are tracked so only labels/closing-brace of the CURRENT switch fire."""
+    out = []
+    stack = []                                     # frames: [is_switch, case_open]
+    pending_switch = False
+    for line in lines:
+        stripped = line.lstrip()
+        indent = line[:len(line) - len(stripped)]
+        # A case/default label whose innermost open block is a switch body.
+        if stack and stack[-1][0]:
+            m = _CASE_LABEL.match(stripped)
+            if m:
+                if stack[-1][1]:                   # close the previous case's block
+                    out.append(indent + '}')
+                out.append(indent + m.group(1) + ': {')
+                stack[-1][1] = True
+                rest = m.group(2).strip()
+                if rest:                           # rare: `case X: stmt;` on one line
+                    out.append(indent + rest)
+                    pending_switch = _scan_braces(rest, stack, pending_switch)
+                continue
+        # A `}` that closes the switch body must close the last open case first.
+        if stripped[:1] == '}' and stack[-1:] and stack[-1][0] and stack[-1][1]:
+            out.append(indent + '}')
+            stack[-1][1] = False
+        out.append(line)
+        pending_switch = _scan_braces(line, stack, pending_switch)
+    return out
 
 
 def _translate_labels(lines):
@@ -912,10 +1078,41 @@ def _local_names(method):
     return names
 
 
+def _local_used_nullably(name, text):
+    """True if local `name` is assigned/compared null or `new`-d in the method text."""
+    nm = re.escape(name)
+    return bool(re.search(r'\b%s\s*=\s*(?:null|NULL)\b' % nm, text)
+                or re.search(r'\b%s\s*(?:==|!=)\s*(?:null|NULL)\b' % nm, text)
+                or re.search(r'\b(?:null|NULL)\s*(?:==|!=)\s*%s\b' % nm, text)
+                or re.search(r'\b%s\s*=\s*new\b' % nm, text))
+
+
+def _boxed_nullable_locals(method, scope, resolver):
+    """Boxed-wrapper LOCALS (Integer/Byte/Short/Float/...) used nullably must become JObject, NOT
+    a pointer-to-primitive. A raw `int*`/`signed char*` can't hold the boxed value the Java code
+    assigns it (`x = (Integer)map.get(k)` yields a JObject) and has no .intValue()/.byteValue()
+    unbox. JObject holds null, boxes every primitive, unboxes via the value methods, and converts
+    to the primitive in arithmetic -- so a nullable boxed local round-trips cleanly as a JObject
+    VALUE (no `->`)."""
+    boxed = set()
+    param_names = set(p.name for p in method.params)
+    text = '\n'.join(t for _ln, t in method.body)
+    for name in _local_names(method):
+        if name in param_names:
+            continue
+        jt = scope.get(name)
+        if jt is None or jt.is_array or jt.name not in typemap.BOXED_VALUE_TYPES:
+            continue
+        if _local_used_nullably(name, text):
+            boxed.add(name)
+    return boxed
+
+
 def _pointer_locals(method, scope, resolver):
     """Value-type LOCALS used as nullable references must be C++ pointers -- a C++ value
     type cannot hold null, so a Java local assigned/compared null (or `new`-d) is really a
-    reference. Sound and signature-safe: only locals (params would change the signature)."""
+    reference. Sound and signature-safe: only locals (params would change the signature).
+    (Boxed wrappers are handled by _boxed_nullable_locals -> JObject, not by a pointer.)"""
     forced = set()
     locals_ = _local_names(method)
     param_names = set(p.name for p in method.params)
@@ -926,14 +1123,12 @@ def _pointer_locals(method, scope, resolver):
         jt = scope.get(name)
         if (jt is None or jt.is_array or resolver.is_pointer(jt)
                 or jt.name in typemap.CONTAINERS or jt.name in typemap.VALUE_STDLIB
+                or jt.name in typemap.BOXED_VALUE_TYPES
                 or jt.name == 'Object'):
-            continue            # already a pointer/array, a value container, String, or JObject
-            # (String/JObject hold null themselves and absorb `new T()` via their ctors)
-        nm = re.escape(name)
-        if (re.search(r'\b%s\s*=\s*(?:null|NULL)\b' % nm, text)
-                or re.search(r'\b%s\s*(?:==|!=)\s*(?:null|NULL)\b' % nm, text)
-                or re.search(r'\b(?:null|NULL)\s*(?:==|!=)\s*%s\b' % nm, text)
-                or re.search(r'\b%s\s*=\s*new\b' % nm, text)):
+            continue            # already a pointer/array, a value container, String, JObject, or a
+            # boxed wrapper (String/JObject hold null themselves and absorb `new T()`; boxed
+            # wrappers are retyped to JObject by _boxed_nullable_locals)
+        if _local_used_nullably(name, text):
             forced.add(name)
     return forced
 
@@ -1086,6 +1281,7 @@ _CHAIN_ROOT = re.compile(r'[A-Za-z_]\w*::s_\w+|[A-Za-z_]\w*')
 _CHAIN_LINK = re.compile(r'\s*(->|\.)\s*([A-Za-z_]\w*)')
 _NEW_ROOT = re.compile(r'new\s+([A-Za-z_]\w*)\s*\(')   # `new Type(` scalar ctor (not `new T[`)
 _PAREN_NEW_ROOT = re.compile(r'\(\s*new\s+([A-Za-z_]\w*)\s*\(')   # `(new Type(` already-parenthesized
+_CAST_ROOT = re.compile(r'\(\s*\(\s*([A-Za-z_]\w*)\s*(\*?)\s*\)')  # `((Type*)EXPR)` / `((Type)EXPR)` root
 
 
 def _balanced_bracket(s, open_idx):
@@ -1213,6 +1409,23 @@ def _resolve_chains(s, scope, resolver, current):
                 k, cur_jt, is_ptr = _consume_index(s, close + 1, out, cur_jt, is_ptr, resolver, scope, current)
                 i = walk_links(k, cur_jt, is_ptr)
                 continue
+        # `((Type*)EXPR)` cast root -> the parenthesized value is a pointer; walk the fluent chain
+        # off it as a pointer so a method RESULT deeper in (`...)->getChildNodes().item(0)`) types too.
+        cr = _CAST_ROOT.match(s, i) if at_boundary else None
+        if cr:
+            close = _balanced_paren(s, i)              # the wrapping '(' at i
+            tname, star = cr.group(1), cr.group(2)
+            if close >= 0 and tname != 'void' and (star or resolver.is_pointer(ir.JType(tname))):
+                j = close + 1
+                while j < n and s[j] == ' ':
+                    j += 1
+                if j < n and (s[j] == '.' or s[j:j + 2] == '->'):   # a chain link actually follows
+                    inner = _resolve_chains(s[i + 1:close], scope, resolver, current)
+                    out.append('(' + inner + ')')
+                    cur_jt, is_ptr = ir.JType(tname), True
+                    k, cur_jt, is_ptr = _consume_index(s, close + 1, out, cur_jt, is_ptr, resolver, scope, current)
+                    i = walk_links(k, cur_jt, is_ptr)
+                    continue
         m = _CHAIN_ROOT.match(s, i) if at_boundary else None
         if not m:
             out.append(s[i]); i += 1; continue
@@ -1289,8 +1502,38 @@ def _resolve_call_chains(s, scope, resolver, current):
     return s
 
 
+# Free helpers (JavaRT.h) that RETURN Iterator* -- the java `coll.iterator()` idiom was lowered to
+# these in step 0e. A `.member` directly on their result must be `->` (the result is a pointer), and
+# _resolve_call_chains only matches receiver.method/new heads, not a bare `helper(...)` call.
+_ITER_HELPERS = ('j2xIter', 'j2xValues', 'j2xKeys')
+
+
+def _deref_iter_helpers(s):
+    """`j2xIter(coll).next()` -> `j2xIter(coll)->next()` (Iterator* result). Balanced-paren scan so
+    the collection arg may itself be a chain/call."""
+    for fn in _ITER_HELPERS:
+        start = 0
+        while True:
+            idx = s.find(fn + '(', start)
+            if idx < 0:
+                break
+            if idx > 0 and (s[idx - 1].isalnum() or s[idx - 1] == '_'):
+                start = idx + len(fn)                  # part of a longer identifier -- skip
+                continue
+            close = _balanced_paren(s, idx + len(fn))
+            if close < 0:
+                break
+            j = close + 1
+            while j < len(s) and s[j] == ' ':
+                j += 1
+            if j < len(s) and s[j] == '.':
+                s = s[:close + 1] + '->' + s[j + 1:]
+            start = close + 1
+    return s
+
+
 def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent, current,
-                    own_statics, ptr_locals):
+                    own_statics, ptr_locals, box_locals=frozenset()):
     # 0. `synchronized(lock) {` -> keep the block, drop the JVM monitor -- BUT tag it. The port is
     #    NOT fully single-threaded (network reader/writer threads, the mesher pool), so a dropped
     #    monitor on cross-thread state is a race (the hand-fixed sendQueueLock reader/writer race).
@@ -1341,9 +1584,12 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
     #    local inferred to be a nullable reference (ptr_locals) gets a trailing '*'.
     m = _DECL.match(s)
     if m and _decl_base(m.group(1)) not in _KEYWORDS and m.group(2) not in _KEYWORDS:
-        cpp = resolver.cpp_type(javaparse.parse_type(m.group(1)), 'local')
-        if m.group(2) in ptr_locals and not cpp.endswith('*'):
-            cpp += '*'
+        if m.group(2) in box_locals:
+            cpp = 'JObject'          # nullable boxed wrapper -> JObject (holds null + boxes/unboxes)
+        else:
+            cpp = resolver.cpp_type(javaparse.parse_type(m.group(1)), 'local')
+            if m.group(2) in ptr_locals and not cpp.endswith('*'):
+                cpp += '*'
         s = cpp + s[m.end(1):]
         # a value-container local initialized with EMPTY-arg `new ArrayList()` -> just
         # default-construct (Java collections are by-value std::vector/map/set; dropping the raw
@@ -1424,6 +1670,8 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
     s = _resolve_chains(s, scope, resolver, current)
     # 6d. method/ctor RESULT chains: call(...).m -> call(...)->m / (new T(...))->m
     s = _resolve_call_chains(s, scope, resolver, current)
+    # 6d'. Iterator* free-helper results (j2xIter/j2xValues/j2xKeys from step 0e): `.next()` -> `->next()`.
+    s = _deref_iter_helpers(s)
     # 6e. JObject-operand casts (Object var / Object[] element / raw-map value): lower BEFORE the
     #     generic cast pass -- (String)obj -> (obj).str(), (String[])obj -> (obj).strArray(),
     #     (Integer/Character/...)obj -> (obj) (JObject operators/unbox-methods do the rest).
@@ -1432,6 +1680,16 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
     #    primitive whose C++ spelling differs -> the C++ spelling ((byte)x -> (unsigned char)x)
     def _cast(m):
         t = m.group(1)
+        # Boxed-wrapper cast ((Integer)/(Byte)/(Short)/(Float)/...): DROP it. The operand is a
+        # JObject (a raw-map value, an Object[] element, or an Object-returning call) whose
+        # operator int()/... converts it in a primitive context, and whose trailing
+        # .intValue()/.byteValue()/.floatValue()/... unbox binds directly. Lowering the wrapper to
+        # a primitive spelling ((Integer)->(int)) instead produced `((int)obj).intValue()` -- an
+        # unbox call on a raw primitive (no such member). Dropping is also harmless when the operand
+        # is already a primitive (a redundant Java widening cast). _rewrite_jobject_casts handles the
+        # simple identifier-rooted operands earlier; this catches call/static-rooted ones it can't.
+        if t in typemap.BOXED_VALUE_TYPES:
+            return ''
         if resolver.is_pointer(ir.JType(t)):
             return '(%s*)' % t
         cpp = typemap.JAVA_TO_CPP.get(t)
@@ -1442,6 +1700,11 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
             return '(%s)' % cpp
         return m.group(0)
     s = _CAST.sub(_cast, s)
+    # 7a. distribute a pointer-cast over a conditional's arms: `(Base*)(c ? new A() : new B())` ->
+    #     `(c ? (Base*)(new A()) : (Base*)(new B()))`. C++03 can't type a conditional whose arms are
+    #     unrelated pointer types (Java picks the least-upper-bound); casting each arm to the target
+    #     pointer makes both convertible. No-op unless a `*)` cast wraps a parenthesized conditional.
+    s = distribute_cast_into_ternaries(s)
     # 7b. `catch (Type name)` -> `catch (Type* name)` for a reference type: exceptions are thrown
     #     as `new X(...)` (pointers), so the handler binds a pointer. (Exceptions are off on the
     #     console; this just makes the dead handler compile and keeps the caught var usable.)
@@ -1712,6 +1975,7 @@ def translate_body(method, cls, resolver, ledger=None):
     """Return translated C++ body lines (no indentation; caller indents)."""
     scope = build_scope(cls, method)
     ptr_locals = _pointer_locals(method, scope, resolver)   # value locals used as nullable refs
+    box_locals = _boxed_nullable_locals(method, scope, resolver)   # nullable boxed wrappers -> JObject
     ptr_params = ownership.nullable_value_params(method, resolver)   # value-struct params used nullably
     # catch (Type name) of a reference type becomes catch (Type* name) -- exceptions are thrown as
     # `new X` -- so the handler var is a pointer and its member access must use '->'.
@@ -1736,7 +2000,7 @@ def translate_body(method, cls, resolver, ledger=None):
                 out.append(s)
             continue
         line = _translate_line(s, ptr_names, static_set, enum_set, resolver, scope,
-                               cls.parent, cls.name, own_statics, ptr_locals)
+                               cls.parent, cls.name, own_statics, ptr_locals, box_locals)
         line, guarded, guard_rule = _guard_null_deref(line, scope, resolver, method.return_type)
         if guarded and ledger is not None:
             _GUARD_MSGS = {
@@ -1776,4 +2040,5 @@ def translate_body(method, cls, resolver, ledger=None):
     out = _flag_reflection(out, ledger, cls)      # tag newInstance/forName/getConstructor for review
     out = [_clarify_precedence(l) for l in out]   # C4554: parenthesize shift/bitwise sub-expressions
     out = _drop_unused_catch_vars(out)            # `catch (Type* e){}` with e unused -> `catch (Type*)` (C4101)
+    out = _wrap_switch_cases(out)                 # `{ }` per case body so decls don't cross a case label (C2360/C2361)
     return out

@@ -196,6 +196,32 @@ class TestAggregateArrayStatic(unittest.TestCase):
         self.assertNotIn('new Block[]', self.cpp)        # no invalid braced new[]
 
 
+class TestNestedAggregateArrayStatic(unittest.TestCase):
+    """`static int[][] x = new int[][]{{...},{...}}` -> nested JArrayInit (C++03 has no braced
+    new[][]). The 2-D `new T[][]{...}` field must NOT survive as a C bracket-init (the C2087
+    'missing subscript' crash class); it builds JArray<JArray<int> > via the comma-operator builder."""
+    def setUp(self):
+        c = ir.JClass('ModelBed')
+        c.fields.append(ir.Field('bedDirection', ir.JType('int', array_dims=2),
+                                 is_static=True, is_final=True,
+                                 initializer='new int[][]{{1, 0}, {3, 2}}', line=6))
+        self.r = types.TypeResolver(known_classes={'ModelBed'})
+        self.h = header.render_header(c, self.r)
+        self.cpp = source.render_source(c, self.r)
+
+    def test_header_declares_nested_jarray_static(self):
+        self.assertIn('static JArray<JArray<int > > s_bedDirection;', self.h)
+
+    def test_no_braced_new_array(self):
+        self.assertNotIn('new int[]', self.cpp)          # no invalid braced new[][] (C2087)
+
+    def test_source_builds_nested_jarrayinit(self):
+        # zero-init def now, real nested value assigned in initStatics()
+        self.assertIn('JArray<JArray<int > > ModelBed::s_bedDirection;', self.cpp)
+        self.assertIn('ModelBed::s_bedDirection = (JArrayInit<JArray<int > >(), '
+                      '(JArrayInit<int >(), 1, 0), (JArrayInit<int >(), 3, 2));', self.cpp)
+
+
 class TestValueTypeDefaultCtor(unittest.TestCase):
     """A value-type class with only parameterized ctors gets a synthesized zero-init default
     ctor, so it can be held by value as a field (AxisAlignedBB boundingBox;)."""

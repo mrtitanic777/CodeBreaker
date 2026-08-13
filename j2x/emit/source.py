@@ -21,13 +21,19 @@ from ..ledger import Category, Severity
 from . import naming, ownership
 from .std_transforms import apply_std_transforms
 from .statements import (translate_body, _resolve_chains, _resolve_call_chains,
-                         sub_outside_literals, _split_top_commas, _fix_numeric_suffixes)
+                         sub_outside_literals, _split_top_commas, _fix_numeric_suffixes,
+                         _rewrite_array_aggregates, _MATH, distribute_cast_into_ternaries)
 
 def _banner(cls_name, cpp_std=None, platform_label=None):
     std_label = cpp_std.label if cpp_std else 'C++03'
     plat = platform_label or 'unknown'
     return '// Auto-generated from %s.java\n// Target: %s / %s' % (cls_name, plat, std_label)
 _NEW_ARRAY = re.compile(r'^new\s+[\w.]+\s*\[([^\]]+)\]\s*$')   # size may be any expression
+# Multi-dimensional aggregate `new T[][]{...}` / `new T[][][]{...}` (2+ empty `[]` dims then `{`).
+# aggregate_array_body() intentionally handles only the 1-D `new T[]{...}` file-static-data form;
+# nested aggregates can't be a flat C array, so they build a nested JArrayInit instead (C++03 has no
+# braced new[][]). One `[]` is NOT matched here -- that stays the ownership.aggregate_array_body path.
+_NEW_ARRAY_AGG_MULTI = re.compile(r'^new\s+[\w.]+\s*(?:\[\s*\]\s*){2,}\{', re.S)
 _THIS_CALL = re.compile(r'\bthis\s*\(([^;]*)\)\s*;')
 _SUPER_CALL = re.compile(r'^super\s*\(([^;]*)\)\s*;')
 _PRIMITIVE_CPP = {'int', 'short', 'long long', 'char', 'unsigned char',
@@ -52,7 +58,9 @@ def _static_init(f, cpp_type, ledger, cls, resolver, own_statics):
         return _default_value(cpp_type)              # forward-declared static -> NULL/0/default
     m = _NEW_ARRAY.match(init)
     if m:                                            # new T[n] -> JArray<elem>(n) (bounds-checked)
-        n = m.group(1)
+        # the size expression is not a bare literal in general (e.g. `new int[EnumOptions.values().length]`)
+        # -> translate its references too, so `EnumOptions.values()` becomes `EnumOptions::values()`.
+        n = _static_ref(m.group(1), resolver, own_statics, cls.name)
         if ledger is not None:
             ledger.add(cls.name + '.cpp', Category.RISK,
                        'uninit-array fixed: %s(%s) value-initialized + length-tracked (Java zero-fills)'
@@ -70,7 +78,10 @@ def _static_ref(expr, resolver, own_statics=(), current=None):
     statement translator): Class.field -> Class::s_field, Class.method(...) -> Class::method(...),
     runtime-holder/enum member -> Holder::member (no s_), a bare own/inherited static -> s_name,
     Java null -> NULL, AND the chained/call-result pointer derefs (Block::s_stone->blockID)."""
-    holders = typemap.RUNTIME_STATIC_HOLDERS | typemap.JAVART_STATICS | set(resolver.enums)
+    # Every runtime-support class (RUNTIME_HEADERS) is a legitimate `::` static holder here, matching
+    # statements.py's static_set -- so Logger.getLogger / NumberFormat.getIntegerInstance / Locale.US
+    # / Charset.forName in a static initializer lower to `::` just as they do in method bodies.
+    holders = typemap.RUNTIME_HEADERS | typemap.JAVART_STATICS | set(resolver.enums)
 
     # static-field/array initializers don't go through the statement translator, so apply the two
     # transforms they still need: Java numeric-literal suffixes (`2.0D`->`2.0`, `7L`->`7LL` -- MSVC
@@ -79,6 +90,21 @@ def _static_ref(expr, resolver, own_statics=(), current=None):
     expr = _fix_numeric_suffixes(expr)
     expr = re.sub(r'\(\s*(byte|boolean|short|int|long|float|double|char)\s*\)',
                   lambda mm: '(%s)' % typemap.JAVA_TO_CPP.get(mm.group(1), mm.group(1)), expr)
+    # Math.<fn> -> C math (sqrtf, floorf, javaMathRound, ...) -- same map the statement translator uses,
+    # since a static initializer (e.g. NoiseGenerator2 = 0.5 * (Math.sqrt(3.0) - 1.0)) skips that pass.
+    expr = _MATH.sub(lambda mm: typemap.MATH_API.get(mm.group(1), mm.group(0)), expr)
+    # reference-type cast -> pointer cast: `(BlockGrass)(new BlockGrass(2))` -> `(BlockGrass*)(...)`,
+    # `(Achievement)NULL` -> `(Achievement*)NULL`. Statement bodies get this via emit.statements'
+    # `_cast`, but static initializers bypass the statement translator, so apply it here too. Only
+    # POINTER types gain the star -- value types (JavaString/JObject, `(String)NULL` -> "") are left
+    # exactly as-is so their conversion-operator behaviour is unchanged.
+    def _refcast(mm):
+        t = mm.group(1)
+        return '(%s*)' % t if resolver.is_pointer(ir.JType(t)) else mm.group(0)
+    expr = re.sub(r'\(([A-Z]\w*)\)(?=\s*[\w("])', _refcast, expr)
+    # distribute a pointer-cast over a conditional's arms (see emit.statements) -- a static
+    # initializer may hold `(Base)(cond ? new A() : new B())` too.
+    expr = distribute_cast_into_ternaries(expr)
 
     def repl(m):
         cls, mem, paren = m.group(1), m.group(2), m.group(3)
@@ -141,6 +167,21 @@ def _render_statics(cls, resolver, ledger):
     for f in cls.static_fields():
         name = naming.field_name(f)
         ft = resolver.field_type(f.jtype)
+        init_raw = (f.initializer or '').strip()
+        if _NEW_ARRAY_AGG_MULTI.match(init_raw):         # new T[][]{...} -> nested JArrayInit (C++03)
+            # Translate references first (numeric leaves are untouched), then build the nested
+            # JArrayInit comma-expression the runtime converts to JArray<JArray<T> >. Deferred into
+            # initStatics() like any value-constructing init -- it allocates, so it isn't a constant.
+            value = _rewrite_array_aggregates(
+                _static_ref(init_raw, resolver, own_statics, cls.name), resolver)
+            defs.append('%s %s::%s;' % (ft, cls.name, name))          # zero/default now (order-safe)
+            inits.append('%s::%s = %s;' % (cls.name, name, value))    # nested-array value in initStatics()
+            if ledger is not None:
+                ledger.add(cls.name + '.cpp', Category.RISK,
+                           'multi-dim static array new T[][]{...} -> nested JArrayInit '
+                           '(C++03 has no braced new[][]; each level length-tracked)',
+                           line=f.line, severity=Severity.LOW, source='emit', rule='static-aggregate-array-nd')
+            continue
         agg = ownership.aggregate_array_body(f)
         if agg is not None:                              # new T[]{a,b,c} -> file-static data + JArray
             elem = _array_elem_cpp(f.jtype, resolver)
