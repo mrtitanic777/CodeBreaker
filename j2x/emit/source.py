@@ -274,6 +274,16 @@ def _infer_arg_type(expr):
     return None
 
 
+def _paren_arg(a):
+    """Parenthesize a delegation arg before it is substituted into a ctor body, so a compound arg
+    keeps its precedence: substituting `(Block*)var1` into `var1.blockID` must yield
+    `((Block*)var1)->blockID`, not `(Block*)var1->blockID` (a cast of the whole field access)."""
+    a = a.strip()
+    if re.match(r'^[A-Za-z_][\w.]*$', a) or re.match(r'^-?\d[\w.]*$', a) or (a.startswith('(') and a.endswith(')')):
+        return a                                       # bare name/field, number, or already parenthesized
+    return '(' + a + ')'
+
+
 def _ctor_delegates(c):
     """True if constructor `c` itself starts by delegating via `this(...)`."""
     for _ln, t in c.body:
@@ -315,7 +325,7 @@ def _delegated_base_init(args_str, deleg, cls, resolver):
     target = _select_deleg_target(args, deleg, cls)
     if target is None:
         return None
-    sub = dict((p.name, args[i]) for i, p in enumerate(target.params))
+    sub = dict((p.name, _paren_arg(args[i])) for i, p in enumerate(target.params))
     rx = re.compile(r'\b(' + '|'.join(re.escape(k) for k in sub) + r')\b') if sub else None
     for line in translate_body(target, cls, resolver):
         sm = _SUPER_CALL.match(line)
@@ -344,7 +354,7 @@ def _inline_delegation(args_str, deleg, cls, resolver, ledger, _depth=0):
                        severity=Severity.HIGH, source='emit', rule='ctor-delegation')
         return ['// PORT: delegation this(%s) -- target ctor not found; inline manually' % args_str,
                 'this(%s);' % args_str]
-    sub = dict((p.name, args[i]) for i, p in enumerate(target.params))
+    sub = dict((p.name, _paren_arg(args[i])) for i, p in enumerate(target.params))
     rx = re.compile(r'\b(' + '|'.join(re.escape(k) for k in sub) + r')\b') if sub else None
     out = ['// inlined this(%s) -- C++03 lacks ctor delegation' % args_str]
     for line in translate_body(target, cls, resolver):

@@ -450,3 +450,16 @@ class DelegationTargetSelectionTests(unittest.TestCase):
         self.assertEqual(source._infer_arg_type('(Vec3D)obj'), 'Vec3D')
         self.assertEqual(source._infer_arg_type('Vec3D::createVectorHelper(a, b)'), 'Vec3D')
         self.assertIsNone(source._infer_arg_type('var5 + 1'))
+
+
+class DelegationArgParenTests(unittest.TestCase):
+    def test_paren_arg_wraps_cast(self):
+        # a compound arg must be parenthesized so `(Block*)var1` substituted into `var1.blockID`
+        # yields `((Block*)var1)->blockID`, not a cast of the whole field access
+        self.assertEqual(source._paren_arg('(Block*)var1'), '((Block*)var1)')
+
+    def test_paren_arg_leaves_simple(self):
+        self.assertEqual(source._paren_arg('var1'), 'var1')
+        self.assertEqual(source._paren_arg('var1.blockID'), 'var1.blockID')
+        self.assertEqual(source._paren_arg('1'), '1')
+        self.assertEqual(source._paren_arg('(already)'), '(already)')

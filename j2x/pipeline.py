@@ -33,6 +33,9 @@ def _finalize_emitted(text):
     from .emit.statements import _wrap_new_alloc_chains, _wrap_literal_method
     text = sanitize_reserved_members(text)
     text = text.replace(chr(39) + chr(92) + 'u0000' + chr(39), chr(39) + chr(92) + '0' + chr(39))
+    # `new Object()` (a bare java.lang.Object, used only as a monitor/lock) -> a JObject VALUE. Object
+    # has no C++ class; the universal box default-constructs, and the sync object is never used on the port.
+    text = re.sub(r'\bnew\s+Object\s*\(\s*\)', 'JObject()', text)
     return '\n'.join(_wrap_literal_method(_wrap_new_alloc_chains(ln)) for ln in text.split('\n'))
 
 
