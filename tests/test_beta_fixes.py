@@ -268,8 +268,9 @@ class TestStaticHolderInitializers(unittest.TestCase):
         self.assertNotIn('Math.', expr)
 
     def test_enum_values_in_array_size(self):
-        # `new int[EnumOptions.values().length]` static field -> the size expr's `EnumOptions.values()`
-        # must become `EnumOptions::values()` (the enum's own emitted values() static), not a dot.
+        # `new int[EnumOptions.values().length]` static field: a CONST-ONLY enum has no values()
+        # method (it's a struct of `static const int`), so its `.values().length` lowers to the emitted
+        # `EnumOptions::_J2X_COUNT` constant -- never a `.values()` (which would not compile).
         srcs = ('package net.minecraft.src;\npublic enum EnumOptions { A, B; }\n',
                 'package net.minecraft.src;\npublic class Helper {\n'
                 '  private static final int[] map = new int[EnumOptions.values().length];\n'
@@ -278,8 +279,8 @@ class TestStaticHolderInitializers(unittest.TestCase):
         helper = [c for c in classes if c.name == 'Helper'][0]
         defs, inits = source._render_statics(helper, r, Ledger())
         blob = '\n'.join(defs + inits)
-        self.assertIn('EnumOptions::values().length', blob)
-        self.assertNotIn('EnumOptions.values()', blob)
+        self.assertIn('EnumOptions::_J2X_COUNT', blob)
+        self.assertNotIn('.values()', blob)
 
 
 class TestSideEffectInBranchRule(unittest.TestCase):

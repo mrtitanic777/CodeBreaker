@@ -1532,6 +1532,26 @@ def _deref_iter_helpers(s):
     return s
 
 
+def fix_enum_access(s, resolver):
+    """Refine enum member access after `Enum.member` -> `Enum::member`. Shared by the statement
+    translator and the static-initializer translator (source._static_ref), since enum access appears
+    in both method bodies and static initializers (the MappingHelper `values().length` tables).
+      const-only enum (maps to int; the member value IS its 0-based ordinal):
+        `EnumX::values().length` -> `EnumX::_J2X_COUNT`
+        `EnumX::MEMBER.ordinal()` -> `EnumX::MEMBER`     (ordinal() is the identity)
+        `<call>().ordinal()`      -> `<call>()`           (a const-enum-returning call is int; a
+                                                           typed-enum result is a pointer and the chain
+                                                           resolver already made it `)->ordinal()`)
+      typed enum: the singleton constant is a POINTER, so `EnumX::MEMBER.method(` -> `->method(`."""
+    for e in (set(resolver.enums) - set(resolver.typed_enums)):
+        s = re.sub(re.escape(e) + r'::values\(\)\s*\.\s*length\b', e + '::_J2X_COUNT', s)
+        s = re.sub(r'\b' + re.escape(e) + r'::(\w+)\s*\.\s*ordinal\s*\(\s*\)', e + r'::\1', s)
+    for e in set(resolver.typed_enums):
+        s = re.sub(r'\b' + re.escape(e) + r'::(\w+)\s*\.\s*(\w+\s*\()', e + r'::\1->\2', s)
+    s = re.sub(r'\)\s*\.\s*ordinal\s*\(\s*\)', ')', s)   # const-enum method result (int) -- ordinal is identity
+    return s
+
+
 def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent, current,
                     own_statics, ptr_locals, box_locals=frozenset()):
     # 0. `synchronized(lock) {` -> keep the block, drop the JVM monitor -- BUT tag it. The port is
@@ -1644,6 +1664,7 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
             return '%s::%s' % (recv, naming.enum_member(mem))
         return '%s::%s' % (recv, naming.static_field_name(mem))   # static field
     s = _MEMBER.sub(_static, s)
+    s = fix_enum_access(s, resolver)                 # 5a1. const/typed enum ordinal()/values() refinements
     # 5a2. j2xClassOf(typeid(...)) is a Class* (from `.class` / getClass above); a member access
     #      immediately after it must use `->`, not `.` (e.g. `X.class.getResource()` ->
     #      `j2xClassOf(typeid(X))->getResource()`). Balanced over ONE nested paren (typeid(*(recv))).

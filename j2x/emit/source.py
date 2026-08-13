@@ -119,6 +119,8 @@ def _static_ref(expr, resolver, own_statics=(), current=None):
             return '%s::%s' % (cls, naming.static_field_name(mem))   # static field -> s_
         return m.group(0)
     expr = re.sub(r'\b([A-Z]\w*)\.(\w+)(\s*\()?', repl, expr)
+    from .statements import fix_enum_access
+    expr = fix_enum_access(expr, resolver)           # const/typed enum ordinal()/values() (MappingHelper tables)
     # bare reference to this class's own/inherited static -> s_-prefixed (e.g. an initializer
     # calling setStepSound(soundStoneFootstep) where soundStoneFootstep is a static of the class)
     for nm in own_statics:

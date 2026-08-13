@@ -186,6 +186,9 @@ def render_header(cls, resolver, ledger=None, cpp_std=None, platform_label=None)
              'struct %s {' % cls.name]
         for i, ec in enumerate(cls.enum_consts):
             L.append('\tstatic const int %s = %d;' % (naming.enum_member(ec.name), i))
+        # EnumX.values().length -> EnumX::_J2X_COUNT (the member value IS its ordinal, 0-based, so
+        # `EnumX::MEMBER.ordinal()` is the identity -- handled as a rewrite in emit/statements.py).
+        L.append('\tstatic const int _J2X_COUNT = %d;' % len(cls.enum_consts))
         L += ['};', '', '#endif // %s' % guard]
         if ledger is not None:
             ledger.add(cls.name + '.h', Category.PORTED,
