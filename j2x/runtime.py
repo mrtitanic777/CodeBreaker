@@ -535,6 +535,11 @@ template<class T> inline T _javart_parse(const std::string& s) {
 	T v = T(); std::istringstream is(s); is >> v; return v;
 }
 
+// Java `>>>` (unsigned/logical right shift). C++ `>>` on a signed value is arithmetic (sign-extends),
+// so we shift the value reinterpreted as unsigned. Overloaded for the two integer widths Java uses.
+inline int j2xUshr(int v, int n) { return (int)((unsigned int)v >> n); }
+inline long long j2xUshr(long long v, int n) { return (long long)((unsigned long long)v >> n); }
+
 // Java string concatenation builder. Java's `"x" + n + obj` mixes a String with any
 // type; C++ can't `+` a string literal with an int/float/object. The converter rewrites
 // such a chain to `(JCat() + "x" + n + obj)`: each `+` appends the operand, and the

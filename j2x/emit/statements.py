@@ -411,12 +411,46 @@ def _rewrite_float_mod(s):
 _PURE_STR_LIT = re.compile(r'^"(?:[^"\\]|\\.)*"$')
 
 
+def _has_top_level_ternary(e):
+    """True if `e` contains a top-level `?` (a conditional), respecting (), [], {} and literals."""
+    depth, in_str, in_chr, i, n = 0, False, False, 0, len(e)
+    while i < n:
+        c = e[i]
+        if in_str:
+            if c == '\\':
+                i += 2; continue
+            if c == '"':
+                in_str = False
+        elif in_chr:
+            if c == '\\':
+                i += 2; continue
+            if c == "'":
+                in_chr = False
+        elif c == '"':
+            in_str = True
+        elif c == "'":
+            in_chr = True
+        elif c in '([{':
+            depth += 1
+        elif c in ')]}':
+            depth -= 1
+        elif depth == 0 and c == '?':
+            return True
+        i += 1
+    return False
+
+
 def _to_jcat(expr):
     """If `expr` is a Java string concatenation (top-level '+' with at least one PURE
     string-literal operand), wrap it in the JCat builder; else return None. The pure-literal
     test avoids mis-wrapping numeric `+` like `"abc".length() + 5` (literal-then-method)."""
     e = expr.strip()
     if '"' not in e or '+' not in e:
+        return None
+    # a top-level ternary means the `+`s are inside its branches, NOT a single concatenation --
+    # wrapping the whole thing swallows the condition (`JCat() + var4 > 0.5 ? "m" : "s"`). Each branch
+    # concatenates on its own via std::string::operator+ (the format() result is a JavaString/string).
+    if _has_top_level_ternary(e):
         return None
     parts = _split_top_plus(e)
     if len(parts) < 2:
@@ -988,13 +1022,23 @@ def _container_call(cat, name, args_str):
     return None
 
 
-def _balanced_call_sub(s, recv, meth, fn):
-    """Rewrite every `recv.meth(args)` via fn(arg_list) -> replacement (None = leave)."""
+def _balanced_call_sub(s, recv, meth, fn, standalone_only=False):
+    """Rewrite every `recv.meth(args)` via fn(arg_list) -> replacement (None = leave). With
+    standalone_only, skip a `recv` that is a member of something else (`this.recv`) or the suffix of a
+    longer identifier -- needed for rewrites that PARENTHESIZE the result (equals -> `(a == b)`), where
+    `this.username.equals(x)` would otherwise mangle to `this.(username == x)`. Index rewrites (get->[k])
+    don't parenthesize, so they stay off it and correctly rewrite `this->map.get(k)` -> `this->map[k]`."""
     token = '%s.%s(' % (recv, meth)
+    start = 0
     while True:
-        idx = s.find(token)
+        idx = s.find(token, start)
         if idx < 0:
             return s
+        if standalone_only:
+            prev = s[idx - 1] if idx > 0 else ''
+            if prev == '.' or prev == '>' or prev == '_' or prev.isalnum():
+                start = idx + 1
+                continue
         op = idx + len(token) - 1
         close = _balanced_paren(s, op)
         if close < 0:
@@ -1003,6 +1047,7 @@ def _balanced_call_sub(s, recv, meth, fn):
         if rep is None:
             return s                                  # unexpected arity -> leave (and stop)
         s = s[:idx] + rep + s[close + 1:]
+        start = 0                                     # indices shifted -- rescan from the front
 
 
 def _translate_calls(s, scope):
@@ -1027,7 +1072,8 @@ def _translate_calls(s, scope):
                                    lambda a, r=recv: ('%s[%s] = %s' % (r, a[0], a[1])) if len(a) == 2 else None)
         if cat == 'string':
             s = _balanced_call_sub(s, recv, 'equals',
-                                   lambda a, r=recv: ('(%s == %s)' % (r, a[0])) if a else None)
+                                   lambda a, r=recv: ('(%s == %s)' % (r, a[0])) if a else None,
+                                   standalone_only=True)   # parenthesizes -> must not match this.<field>.equals
             s = _balanced_call_sub(s, recv, 'substring',   # Java end-exclusive -> substr(pos, len)
                                    lambda a, r=recv: ('%s.substr(%s, (%s) - (%s))' % (r, a[0], a[1], a[0])) if len(a) == 2
                                    else ('%s.substr(%s)' % (r, a[0])) if len(a) == 1 else None)
@@ -1585,6 +1631,21 @@ def _wrap_new_alloc_chains(s):
     return ''.join(out)
 
 
+_USHR = re.compile(r'(\w+(?:\s*(?:->|\.)\s*\w+|\s*\[[^\]]*\])*|\([^()]*\))\s*>>>(?!=)\s*(\w+|\([^()]*\))')
+
+
+def _rewrite_ushr(s):
+    """Java `a >>> b` (unsigned/logical right shift) -> j2xUshr(a, b). C++ has no `>>>`, and `>>` on a
+    signed value is arithmetic. Handles the simple-operand forms the corpus uses (var/member/index/
+    paren >>> number/var/paren); repeated to catch `a >>> b >>> c`."""
+    for _ in range(4):
+        new = _USHR.sub(r'j2xUshr(\1, \2)', s)
+        if new == s:
+            break
+        s = new
+    return s
+
+
 def fix_enum_access(s, resolver):
     """Refine enum member access after `Enum.member` -> `Enum::member`. Shared by the statement
     translator and the static-initializer translator (source._static_ref), since enum access appears
@@ -1615,6 +1676,7 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
         return '/* J2X-REVIEW[synchronized-dropped]: was synchronized(%s) -- add a lock if this state '\
                'is touched by another thread (network/pool) */ ' % mm.group(1).strip()
     s = re.sub(r'\bsynchronized\s*\(([^){]*)\)\s*', _sync, s)
+    s = _rewrite_ushr(s)                             # Java `a >>> b` (unsigned shift) -> j2xUshr(a, b)
     # 0a2. `finally {` -> `catch (...) {} {`: C++ has no `finally`. The catch-all makes the `try` valid
     #      whether or not it already had a `catch`, and the finally body becomes a trailing scope block
     #      that runs on the normal path (guest exceptions are disabled on the 360, so this is faithful).
