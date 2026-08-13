@@ -1131,7 +1131,7 @@ _AWT_VOID = ['setFocusable', 'setSize', 'repaint', 'requestFocus', 'setVisible',
              'setBackground', 'setForeground', 'validate', 'setLayout', 'add', 'remove', 'removeAll',
              'addKeyListener', 'addMouseListener', 'addMouseMotionListener', 'addMouseWheelListener',
              'addFocusListener', 'addComponentListener', 'addWindowListener', 'setFocusTraversalKeysEnabled',
-             'setCursor', 'createBufferStrategy', 'transferFocus', 'paint', 'update', 'doLayout',
+             'setCursor', 'transferFocus', 'paint', 'update', 'doLayout',
              'invalidate', 'revalidate', 'pack']
 # LWJGL input / display (static holders)
 _GENERATED['Keyboard.h'] = _ns_stub('Keyboard',
@@ -1882,6 +1882,9 @@ FILES = {
     'JavaString.h': JAVASTRING_H,
     'JArray.h': JARRAY_H,
     'JIterator.h': JITERATOR_H,
+    # java.util.Iterator maps to the `Iterator` struct, which lives in JIterator.h. Code that names the
+    # type emits `#include "Iterator.h"` (RUNTIME_HEADERS), so provide it as a thin alias header.
+    'Iterator.h': '#ifndef ITERATOR_H\n#define ITERATOR_H\n#include "JIterator.h"\n#endif\n',
     'JList.h': JLIST_H,
     'JSet.h': JSET_H,
     'JMap.h': JMAP_H,
