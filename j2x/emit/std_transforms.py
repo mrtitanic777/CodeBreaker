@@ -56,6 +56,21 @@ def _annotate_first(text, pattern, annotation):
     return '\n'.join(lines)
 
 
+# Enum-constant references that collide with C/C++ macros. The declaration is suffixed with `_`
+# (naming.enum_member); a reference `EnumX::NULL` reaches emission through several paths (method
+# bodies, static-field initializers, enum-const args), so we normalize ALL of them here in one
+# always-on pass. Only UPPERCASE macro names appear after `::` as enum constants, so this is safe.
+_RESERVED_REF = re.compile(
+    r'::(TRUE|FALSE|NULL|NAN|INFINITY|ERROR|DELETE|IN|OUT|OPTIONAL|CONST|VOID|NEAR|FAR|THIS|'
+    r'INTERFACE|DOMAIN)\b')
+
+
+def sanitize_reserved_members(text):
+    """Suffix `EnumX::NULL` -> `EnumX::NULL_` to match the sanitized declaration. Idempotent
+    (the `\\b` after the name does not match the already-suffixed `NULL_`). Applied at all C++ levels."""
+    return _RESERVED_REF.sub(lambda m: '::' + m.group(1) + '_', text)
+
+
 def apply_std_transforms(text, cpp_std):
     """Apply C++ standard-specific text transforms to emitted code."""
     if cpp_std is None or cpp_std.year < 2011:

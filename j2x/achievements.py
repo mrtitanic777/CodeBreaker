@@ -440,6 +440,7 @@ def emit_code(mapping, out_dir, delivery='online'):
 
     live = delivery == 'online'
     c = ['// Achievements.cpp -- j2x-emitted. Routes in-code unlocks to the platform write.',
+         '#include "stdafx.h"',                              # forced PCH: must be the first include
          '#include "Achievements.h"', '',
          '#if defined(_XBOX) || defined(_XENON)', '  #include <xtl.h>', '#endif',
          '#include <string.h>', '',

@@ -392,6 +392,7 @@ def _kernel_files(cfg):
          '', '#endif // J2X_KERNEL_CONFIG_H', '']
 
     cpp = ['// Kernel.cpp -- j2x-emitted 360 kernel wrappers for the chosen mediums. See KernelConfig.h.',
+           '#include "stdafx.h"',                            # forced PCH: must be the first include
            '#include "KernelConfig.h"', '',
            '#if defined(_XBOX) || defined(_XENON)', '  #include <xtl.h>', '#endif',
            '#include <string.h>', '#include <wchar.h>', '']

@@ -1395,7 +1395,7 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
         if paren:                                  # static method call
             return '%s::%s%s' % (recv, resolver.renamed_method(recv, mem), paren)
         if recv in enum_set:                       # enum constant (no s_ prefix)
-            return '%s::%s' % (recv, mem)
+            return '%s::%s' % (recv, naming.enum_member(mem))
         return '%s::%s' % (recv, naming.static_field_name(mem))   # static field
     s = _MEMBER.sub(_static, s)
     # 5a2. j2xClassOf(typeid(...)) is a Class* (from `.class` / getClass above); a member access

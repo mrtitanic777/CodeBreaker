@@ -119,6 +119,7 @@ void  Debug_HardCrash(const char* file, int line, const char* fmt, ...);  // log
 
 
 DEBUG_CPP = r'''// Debug.cpp -- backend for the single debug file (j2x-emitted). See Debug.h.
+#include "stdafx.h"                                          // forced PCH: must be the first include
 #include "Debug.h"
 #include <stdio.h>
 #include <stdarg.h>

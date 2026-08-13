@@ -151,7 +151,7 @@ def _render_typed_enum_header(cls, resolver, ledger, cpp_std, platform_label):
         L.append('\t%s %s;' % (_field_type(cls, f, resolver), f.name))   # bare instance name
     L.append('')
     for ec in cls.enum_consts:                                # the singleton constants
-        L.append('\tstatic %s* %s;' % (cls.name, ec.name))
+        L.append('\tstatic %s* %s;' % (cls.name, naming.enum_member(ec.name)))
     for f in cls.static_fields():                             # real enum statics -> BARE name (holder access)
         L.append('\tstatic %s %s;' % (resolver.field_type(f.jtype), f.name))
     L.append('')
@@ -159,6 +159,7 @@ def _render_typed_enum_header(cls, resolver, ledger, cpp_std, platform_label):
         if not m.is_ctor:
             L.append('\t' + _method_decl(cls, m, resolver))
     L.append('\tint ordinal();')
+    L.append('\tstatic JArray<%s* > _j2x_values;' % cls.name)   # backing table (defined in the .cpp)
     L.append('\tstatic JArray<%s* >& values();' % cls.name)
     L.append('\tstatic void initStatics();')
     L += ['};', '', '#endif // %s' % guard]
@@ -181,7 +182,7 @@ def render_header(cls, resolver, ledger=None, cpp_std=None, platform_label=None)
         L = ['#ifndef %s' % guard, '#define %s' % guard, '', _banner(cls.name, cpp_std, platform_label), '',
              'struct %s {' % cls.name]
         for i, ec in enumerate(cls.enum_consts):
-            L.append('\tstatic const int %s = %d;' % (ec.name, i))
+            L.append('\tstatic const int %s = %d;' % (naming.enum_member(ec.name), i))
         L += ['};', '', '#endif // %s' % guard]
         if ledger is not None:
             ledger.add(cls.name + '.h', Category.PORTED,

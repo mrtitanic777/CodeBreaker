@@ -467,7 +467,7 @@ def _render_typed_enum_source(cls, resolver, ledger, cpp_std, platform_label):
     body = []
     # static definitions: the singleton constants + real enum statics (zero-init) + values backing
     for ec in cls.enum_consts:
-        body.append('%s* %s::%s;' % (cls.name, cls.name, ec.name))
+        body.append('%s* %s::%s;' % (cls.name, cls.name, naming.enum_member(ec.name)))
     for f in cls.static_fields():
         body.append('%s %s::%s;' % (resolver.field_type(f.jtype), cls.name, f.name))
     body.append('JArray<%s* > %s::_j2x_values;' % (cls.name, cls.name))
@@ -487,8 +487,9 @@ def _render_typed_enum_source(cls, resolver, ledger, cpp_std, platform_label):
     init = []
     for i, ec in enumerate(cls.enum_consts):
         args = ', '.join(_enum_const_arg(a.strip(), resolver, cls.name) for a in ec.args)
-        init.append('%s = new %s(%s);' % (ec.name, cls.name, args))
-        init.append('%s->__ordinal = %d;' % (ec.name, i))
+        nm = naming.enum_member(ec.name)
+        init.append('%s = new %s(%s);' % (nm, cls.name, args))
+        init.append('%s->__ordinal = %d;' % (nm, i))
     for f in cls.static_fields():
         if f.initializer:
             init.append('%s = %s;' % (f.name, _static_ref(f.initializer.strip(), resolver, own_statics, cls.name)))
@@ -496,7 +497,7 @@ def _render_typed_enum_source(cls, resolver, ledger, cpp_std, platform_label):
         init += _translate_block_lines(cls, resolver, ledger, _strip_block_braces(block), is_static=True)
     init.append('_j2x_values = JArray<%s* >(%d);' % (cls.name, len(cls.enum_consts)))
     for i, ec in enumerate(cls.enum_consts):
-        init.append('_j2x_values[%d] = %s;' % (i, ec.name))
+        init.append('_j2x_values[%d] = %s;' % (i, naming.enum_member(ec.name)))
     cls.has_init_statics = True                              # always: the constant table must be built
     body += ['void %s::initStatics()' % cls.name, '{']
     body += ['\t' + l for l in init] + ['}', '']

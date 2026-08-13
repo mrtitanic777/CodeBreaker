@@ -403,8 +403,9 @@ def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True,
         tag = '[%d/%d] %s' % (idx + 1, total, cls.name)
         try:
             ev_before = len(ledger)
+            from .emit.std_transforms import sanitize_reserved_members as _sanitize
             _write(os.path.join(out_dir, cls.name + '.h'),
-                   emit_header.render_header(cls, resolver, ledger, cpp_std=std_version, platform_label=plat_label))
+                   _sanitize(emit_header.render_header(cls, resolver, ledger, cpp_std=std_version, platform_label=plat_label)))
             new_evs = ledger.events[ev_before:]
             if new_evs:
                 for ev in new_evs:
@@ -417,7 +418,7 @@ def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True,
             ev_before = len(ledger)
             cpp = emit_source.render_source(cls, resolver, ledger, cpp_std=std_version, platform_label=plat_label)
             if cpp is not None:
-                _write(os.path.join(out_dir, cls.name + '.cpp'), cpp)
+                _write(os.path.join(out_dir, cls.name + '.cpp'), _sanitize(cpp))
                 sources += 1
                 if getattr(cls, 'has_init_statics', False):
                     init_classes.append(cls.name)    # generated class with deferred static init
