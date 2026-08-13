@@ -166,7 +166,12 @@ RUNTIME_HEADERS = ({'Random', 'Runnable', 'Thread', 'Comparator', 'File',
                     'ArrayIndexOutOfBoundsException', 'IndexOutOfBoundsException', 'ClassCastException',
                     'NoSuchElementException', 'UnsupportedOperationException', 'ConcurrentModificationException',
                     'OutOfMemoryError', 'NoSuchMethodException', 'CloneNotSupportedException',
-                    'ClassNotFoundException'}
+                    'ClassNotFoundException',
+                    # additional java.* stubs surfaced by the Beta corpus (runtime.py _GENERATED)
+                    'Inflater', 'Deflater', 'InflaterInputStream', 'DeflaterOutputStream',
+                    'ByteArrayInputStream', 'DataFormatException', 'NoSuchAlgorithmException',
+                    'BigInteger', 'SoftReference', 'InetAddress', 'StringReader', 'Font', 'FontMetrics',
+                    'AffineTransform', 'DataBufferInt', 'Graphics2D', 'BufferStrategy', 'LibraryLWJGLOpenAL'}
                    | RUNTIME_STATIC_HOLDERS)
 
 # Java stdlib static holders shimmed in the prelude (JavaRT.h, included everywhere -- so NOT

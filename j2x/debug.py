@@ -125,6 +125,10 @@ DEBUG_CPP = r'''// Debug.cpp -- backend for the single debug file (j2x-emitted).
 #include <stdarg.h>
 #include <string.h>
 
+#if defined(_MSC_VER) && !defined(snprintf)
+  #define snprintf _snprintf                                // MSVC/Xbox 360 CRT spells it _snprintf
+#endif
+
 #if defined(_XBOX) || defined(_XENON)
   #include <xtl.h>
   #define DBG_SINK(s)   OutputDebugStringA(s)

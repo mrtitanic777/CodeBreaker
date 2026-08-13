@@ -93,7 +93,8 @@ public:
 	void setName(const std::string&) {}
 	void setPriority(int) {}
 	void interrupt() {}
-	void join() {}
+	void join(...) {}                                    // join() / join(millis) -- no-op (start() is a no-op)
+	static void dumpStack() {}
 	void stop() {}
 	void suspend() {}
 	void resume() {}
@@ -681,6 +682,7 @@ namespace Integer {
 	inline int valueOf(int v) { return v; }
 	inline int valueOf(const std::string& s) { return _javart_parse<int>(s); }
 	inline std::string toString(int v) { std::ostringstream o; o << v; return o.str(); }
+	inline std::string toString(int v, int) { std::ostringstream o; o << v; return o.str(); }  // radix ignored (stub)
 	inline std::string toBinaryString(int) { return std::string(); }
 	inline std::string toHexString(int) { return std::string(); }
 }
@@ -704,6 +706,7 @@ namespace Double {
 // JavaString; this namespace holds only the statics, accessed as String::valueOf(...) (no clash).
 namespace String {
 	template<class T> inline JavaString valueOf(const T& v) { std::ostringstream o; o << v; return JavaString(o.str()); }
+	template<class A> inline JavaString valueOf(const A& a, int, int) { std::ostringstream o; o << a; return JavaString(o.str()); }  // String.valueOf(char[], off, len) (stub)
 	inline JavaString valueOf(bool v) { return JavaString(v ? "true" : "false"); }
 	inline JavaString valueOf(const char* v) { return JavaString(v ? v : ""); }
 	inline JavaString valueOf(const std::string& v) { return JavaString(v); }
@@ -763,6 +766,7 @@ namespace Arrays {
 	template<class A> inline void sort(A) {}
 	template<class A, class C> inline void sort(A, C) {}
 	template<class A> inline std::string toString(const A&) { return std::string(); }   // debug only
+	template<class A> inline JList<void* > asList(const A&) { return JList<void* >(); }  // stub: empty (elements not recoverable)
 }
 
 #endif // JAVART_H
@@ -1057,6 +1061,9 @@ def _buffer_stub(name):
         L.append('\t%s& %s(int) { return *this; }' % (name, m))
     L += ['\tint remaining() { return 0; }', '\tint capacity() { return 0; }',
           '\tFloatBuffer* asFloatBuffer() { return 0; }', '\tIntBuffer* asIntBuffer() { return 0; }',
+          '\t%s& order(...) { return *this; }' % name,          # ByteBuffer.order(ByteOrder) -> self
+          '\tstatic %s* allocateDirect(...) { return new %s(); }' % (name, name),   # ByteBuffer.allocateDirect(n)
+          '\tstatic %s* allocate(...) { return new %s(); }' % (name, name),
           '\toperator void*() { return 0; }', '};', '#endif // %s' % g, '']
     return '\n'.join(L)
 
@@ -1294,7 +1301,8 @@ _GENERATED['Toolkit.h'] = _class_stub('Toolkit', extra=['static Toolkit* getDefa
                                                         'void* getSystemClipboard(...) { return 0; }'])
 _GENERATED['TextArea.h'] = _class_stub('TextArea', ret_methods=[('getText', ('std::string', 'std::string()'))])
 _GENERATED['Transferable.h'] = _class_stub('Transferable')
-_GENERATED['SoundSystemConfig.h'] = _ns_stub('SoundSystemConfig', void_fns=['setCodec', 'setNumberStreamingChannels'])
+_GENERATED['SoundSystemConfig.h'] = _ns_stub('SoundSystemConfig',
+    void_fns=['setCodec', 'setNumberStreamingChannels', 'addLibrary', 'removeLibrary', 'setSoundFilesPackage'])
 # java.util.Collection (interface base) / Locale / java.awt.Rectangle.
 _GENERATED['Collection.h'] = _class_stub('Collection',
     void_methods=['add', 'clear'], ret_methods=[('size', ('int', '0')), ('isEmpty', ('bool', 'true')),
@@ -1476,7 +1484,8 @@ _GENERATED['CodecJOrbis.h'] = _class_stub('CodecJOrbis', includes=['URL', 'URLCo
     extra=['URL* url;', 'URLConnection urlConnection;'])   # paulscode ICodec protected fields
 _GENERATED['SoundSystem.h'] = _class_stub('SoundSystem',
     void_methods=['cleanup', 'newSource', 'newStreamingSource', 'play', 'setListenerOrientation',
-                  'setListenerPosition', 'setPitch', 'setVolume', 'stop', 'pause', 'removeSource'],
+                  'setListenerPosition', 'setPitch', 'setVolume', 'stop', 'pause', 'removeSource',
+                  'backgroundMusic', 'quickPlay', 'quickStream', 'setPosition', 'fadeOut', 'fadeOutIn'],
     ret_methods=[('playing', ('bool', 'false'))])
 # small java.io / java.awt / java.net stubs (Applet/Canvas/Component/File/FileDialog/
 # BufferedImage are enriched further below)
@@ -1600,7 +1609,8 @@ _GENERATED['URL.h'] = _class_stub('URL', fwds=('InputStream',),
     ret_methods=[('openConnection', ('void*', '0')), ('openStream', ('InputStream*', '0')),
                  ('toString', ('std::string', 'std::string()')), ('getPath', ('std::string', 'std::string()')),
                  ('getFile', ('std::string', 'std::string()')), ('getProtocol', ('std::string', 'std::string()')),
-                 ('getHost', ('std::string', 'std::string()')), ('getQuery', ('std::string', 'std::string()'))],
+                 ('getHost', ('std::string', 'std::string()')), ('getQuery', ('std::string', 'std::string()')),
+                 ('getPort', ('int', '-1')), ('getDefaultPort', ('int', '-1')), ('toURI', ('void*', '0'))],
     extra=['std::string _j2xpath;',
            'URL(const std::string& p) : _j2xpath(p) {}',
            'const std::string& j2xResourcePath() const { return _j2xpath; }'])
@@ -1610,6 +1620,50 @@ _GENERATED['FileDialog.h'] = _class_stub('FileDialog', void_methods=['setVisible
 _GENERATED['DecimalFormat.h'] = _class_stub('DecimalFormat',
     ret_methods=[('format', ('std::string', 'std::string()'))])
 _GENERATED['ImageObserver.h'] = _class_stub('ImageObserver')
+
+# --- additional java.* stubs surfaced by the Beta corpus (all dead or shimmed on the console) ---
+# java.util.zip: chunk (de)compression. Real GZIP work happens through the GZIP streams elsewhere;
+# these are type stubs so RegionFile / Packet51MapChunk / ChunkLoader compile.
+_GENERATED['Inflater.h'] = _class_stub('Inflater',
+    void_methods=['setInput', 'end', 'reset'],
+    ret_methods=[('inflate', ('int', '0')), ('finished', ('bool', 'false')),
+                 ('needsInput', ('bool', 'false')), ('getRemaining', ('int', '0')), ('getTotalOut', ('int', '0'))])
+_GENERATED['Deflater.h'] = _class_stub('Deflater',
+    void_methods=['setInput', 'finish', 'end', 'setLevel', 'reset'],
+    ret_methods=[('deflate', ('int', '0')), ('finished', ('bool', 'false')), ('getTotalOut', ('int', '0'))])
+_GENERATED['InflaterInputStream.h'] = _class_stub('InflaterInputStream', bases=['InputStream'], includes=['InputStream'])
+_GENERATED['DeflaterOutputStream.h'] = _class_stub('DeflaterOutputStream', bases=['OutputStream'], includes=['OutputStream'])
+_GENERATED['ByteArrayInputStream.h'] = _class_stub('ByteArrayInputStream', bases=['InputStream'], includes=['InputStream'])
+# java.util.zip exceptions
+_GENERATED['DataFormatException.h'] = _class_stub('DataFormatException', bases=['Exception'], includes=['Exception'])
+_GENERATED['NoSuchAlgorithmException.h'] = _class_stub('NoSuchAlgorithmException', bases=['Exception'], includes=['Exception'])
+# java.math / java.security (MD5String checksum -- dead: no auth on the console)
+_GENERATED['BigInteger.h'] = _class_stub('BigInteger',
+    ret_methods=[('toString', ('std::string', 'std::string()')), ('abs', ('BigInteger*', '0'))])
+# java.lang.ref (RegionFileCache soft cache -> just holds the referent)
+_GENERATED['SoftReference.h'] = _class_stub('SoftReference', ret_methods=[('get', ('void*', '0'))])
+# java.net host lookup (NetClientHandler -- dead on the 360)
+_GENERATED['InetAddress.h'] = _class_stub('InetAddress',
+    ret_methods=[('getHostName', ('std::string', 'std::string()')), ('getHostAddress', ('std::string', 'std::string()'))],
+    extra=['static InetAddress* getByName(...) { return new InetAddress(); }',
+           'static InetAddress* getLocalHost(...) { return new InetAddress(); }'])
+_GENERATED['StringReader.h'] = _class_stub('StringReader', bases=['InputStreamReader'], includes=['InputStreamReader'])
+# java.awt (applet / isometric-preview / crash-report paths -- all dead on the console)
+_GENERATED['Font.h'] = _class_stub('Font', ret_methods=[('getSize', ('int', '0')), ('deriveFont', ('Font*', '0'))])
+_GENERATED['FontMetrics.h'] = _class_stub('FontMetrics',
+    ret_methods=[('stringWidth', ('int', '0')), ('getHeight', ('int', '0')), ('charWidth', ('int', '0'))])
+_GENERATED['AffineTransform.h'] = _class_stub('AffineTransform')
+_GENERATED['DataBufferInt.h'] = _class_stub('DataBufferInt', ret_methods=[('getData', ('void*', '0'))])
+_GENERATED['Graphics2D.h'] = _class_stub('Graphics2D', bases=['Graphics'], includes=['Graphics', 'FontMetrics'],
+    void_methods=['setClip', 'setRenderingHint', 'translate', 'scale', 'setColor', 'fillRect',
+                  'drawImage', 'setTransform', 'drawString', 'dispose', 'rotate', 'shear'],
+    ret_methods=[('getTransform', ('void*', '0')), ('getClipBounds', ('void*', '0')),
+                 ('getFontMetrics', ('FontMetrics*', '0'))])
+_GENERATED['BufferStrategy.h'] = _class_stub('BufferStrategy', includes=['Graphics'], fwds=['Graphics'],
+    void_methods=['show'], ret_methods=[('getDrawGraphics', ('Graphics*', '0'))])
+# LWJGL/paulscode sound plug referenced by SoundManager.addLibrary(...)
+_GENERATED['LibraryLWJGLOpenAL.h'] = _class_stub('LibraryLWJGLOpenAL')
+
 # Java exception hierarchy (exceptions are OFF on the console; these are just type stubs so
 # `extends Error`, `new IOException(...)`, and catch/throws references compile).
 _EXC_METHODS = [('getMessage', ('std::string', 'std::string()')),
@@ -1689,6 +1743,7 @@ COLLECTIONS_H = r'''#ifndef COLLECTIONS_H
 #include "Comparator.h"
 #include <vector>
 #include <cstddef>
+class Random;                                            // shuffle(list, Random) -- fwd-decl (no RNG dep here)
 // java.util.Collections.
 //
 // sort(List, Comparator): Java's Collections.sort is a STABLE merge sort that tolerates
