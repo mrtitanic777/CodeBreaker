@@ -76,6 +76,12 @@ inline void DbgPrintF(const char* fmt, ...) {
     path[j] = '\0';
     HANDLE h = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (h != INVALID_HANDLE_VALUE) CloseHandle(h);
+    // DURABLE disk trace -- the channel that does NOT depend on the emulator surfacing anything OR on the
+    // log surviving a force-close. game:\ maps to the .xex OutDir on the host (Debug\), so this lands at
+    // Debug\J2X_trace.txt, readable directly from Windows. Append + fflush + fclose per line => the last
+    // line written is always durably on disk, even if the very next call hangs or faults.
+    FILE* tf = fopen("game:\\J2X_trace.txt", "a");
+    if (tf) { fputs(buf, tf); fflush(tf); fclose(tf); }
 #else
     (void)fmt;
 #endif

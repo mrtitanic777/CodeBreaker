@@ -38,6 +38,14 @@ IDirect3DTexture9* g_defaultTexture = NULL;
 
 Minecraft* g_minecraft = NULL;
 
+// GLOBAL-CTOR PROBE: this object is constructed during C++ static initialization -- BEFORE main(). If the
+// title dies before main() (a hang/fault in some other class's global ctor / static field initializer),
+// this is the ONLY thing that still runs. Its mark tells us: (a) the trace channel works at all, and (b)
+// how far static init got relative to main(). If this mark appears but "[BOOT] 0 main enter" does not,
+// the fault is in global initialization, not in main().
+struct _J2xBootProbe { _J2xBootProbe() { DbgPrintF("[BOOT] -1 static-init (global ctor) reached\n"); } };
+static _J2xBootProbe _j2xBootProbe;
+
 static bool InitD3D() {
     g_pD3D = Direct3DCreate9(D3D_SDK_VERSION);
     if (!g_pD3D) return false;
