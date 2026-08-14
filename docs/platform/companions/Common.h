@@ -35,13 +35,30 @@ inline long long GetNanoTime() {
     return (long long)((double)counter.QuadPart * 1000000000.0 / (double)freq.QuadPart);
 }
 
-// --- DbgPrint format helper ---
+// --- DbgPrint format helper (the port's ONE debug-output apparatus) ---
+// Formats like printf and emits a single line to the host debug channel: OutputDebugStringA is what
+// actually surfaces in the Nexia360 / kernel debug log; DbgPrint is the raw kernel print alongside it.
+//
+// THE RULE (learned the hard way): only call this at SPARSE, one-shot events -- boot checkpoints, world
+// load/save, a caught error. NEVER from a per-frame / per-tick / per-entity path. It was briefly no-op'd
+// after per-tick call sites flooded the log to multiple GB and crashed the host; that was a CALL-SITE
+// mistake, not a reason to kill the mechanism. Flip J2X_DEBUG_LOG to 0 to compile every site out to nothing.
+#include <stdio.h>
+#include <stdarg.h>
+#define J2X_DEBUG_LOG 1
 extern "C" unsigned long __cdecl DbgPrint(const char* Format, ...);
-inline void DbgPrintF(const char* /*fmt*/, ...) {
-    // CONSOLE: debug logging DISABLED. Per-tick/per-entity diagnostic prints filled the Nexia360 log to
-    // multiple gigabytes over a long session and crashed the host. The body is no-op'd so every DbgPrintF
-    // call site across the project produces no output. To re-enable logging (for a short, targeted probe
-    // only -- never leave a per-tick print on), restore the OutputDebugStringA + DbgPrint body below.
+inline void DbgPrintF(const char* fmt, ...) {
+#if J2X_DEBUG_LOG
+    char buf[512];
+    va_list ap; va_start(ap, fmt);
+    _vsnprintf(buf, sizeof(buf) - 1, fmt, ap);
+    va_end(ap);
+    buf[sizeof(buf) - 1] = '\0';
+    OutputDebugStringA(buf);   // -> Nexia360 host debug log (this is the line you actually see)
+    DbgPrint("%s", buf);       // -> raw kernel print, belt-and-suspenders
+#else
+    (void)fmt;
+#endif
 }
 
 // --- [HEAPCHK] diagnostic: poke the REAL process heap (the one RtlValidateHeap@40000000 guards) with
