@@ -209,6 +209,35 @@ def _cmd_assets(args):
     return 0
 
 
+def _cmd_savegame(args):
+    from . import lce_savegame as lce
+    if not os.path.isfile(args.savefile):
+        print('ERROR: not a file: %s' % args.savefile); return 2
+    outdir = args.out_dir or (args.savefile + '_extracted')
+    files = lce.extract_savegame(args.savefile, outdir)
+    print('Unpacked %d file(s) -> %s' % (len(files), os.path.abspath(outdir)))
+    regions = [n for (n, _o, _l) in files if n.endswith('.mcr')]
+    for name, _off, length in files:
+        tag = '  region' if name.endswith('.mcr') else '  file  '
+        print('%s %-34s %8d bytes' % (tag, name, length))
+    if args.chunks:
+        total = 0
+        for rname in regions:
+            rpath = os.path.join(outdir, rname.replace('/', '_'))
+            cdir = rpath + '_chunks'
+            os.makedirs(cdir, exist_ok=True)
+            n = 0
+            for cx, cz, nbt in lce.decode_region(rpath):
+                with open(os.path.join(cdir, 'chunk.%d.%d.nbt' % (cx, cz)), 'wb') as fh:
+                    fh.write(nbt)
+                n += 1
+            total += n
+            if n:
+                print('  decoded %4d chunks -> %s' % (n, os.path.relpath(cdir, outdir)))
+        print('Decoded %d region chunk(s) to NBT.' % total)
+    return 0
+
+
 def _cmd_convert(args):
     from . import pipeline
     from . import sdk
@@ -377,6 +406,17 @@ def main(argv=None):
                      help='Do NOT normalize palettized/grayscale PNGs to RGBA (default normalizes them; '
                           'the 360 loader needs 32-bit RGBA or textures misrender).')
     asp.set_defaults(func=_cmd_assets)
+
+    # savegame (unpack an Xbox 360 / LCE world save; decode region chunks to NBT)
+    svp = sub.add_parser('savegame',
+                         help='Unpack an Xbox 360 (LCE) world save: XMemCompress/LZX container -> '
+                              'VFS files (level.dat, region .mcr, players), optionally chunks -> NBT.')
+    svp.add_argument('savefile', help='Path to the extracted LCE savegame blob (e.g. Tutorial\\Tutorial).')
+    svp.add_argument('out_dir', nargs='?', default=None,
+                     help='Destination directory (default: <savefile>_extracted).')
+    svp.add_argument('--chunks', action='store_true',
+                     help='Also decode every region .mcr into per-chunk NBT (<region>_chunks\\chunk.X.Z.nbt).')
+    svp.set_defaults(func=_cmd_savegame)
 
     # platform-config (controller mapping + kernel-call selection)
     pcp = sub.add_parser('platform-config',

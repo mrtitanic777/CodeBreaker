@@ -86,8 +86,44 @@ def emit_references(out_dir, reference_dir):
                 f.write(shim)
             files_written.append('%s.h (-> %s.h)' % (repl, base))
         emitted.add(base)
+
+    # COMPANIONS: game-agnostic platform files a reference .cpp links against but that aren't themselves
+    # references (Common.h, Textures.h/.cpp, Tesselator.h/.cpp). Bundled in docs/platform/companions/ and
+    # emitted verbatim so the platform layer is SELF-CONTAINED -- no hand-copying from the Alpha tree.
+    comp_dir = os.path.join(os.path.dirname(reference_dir), 'companions')
+    if os.path.isdir(comp_dir):
+        for fn in sorted(os.listdir(comp_dir)):
+            if not (fn.endswith('.h') or fn.endswith('.cpp')):
+                continue
+            with open(os.path.join(comp_dir, fn), 'r', encoding='utf-8', errors='replace') as f:
+                content = f.read()
+            with open(os.path.join(out_dir, fn), 'w', encoding='utf-8') as f:
+                f.write(_companion_banner(fn) + content)
+            files_written.append(fn)
+            emitted.add(fn[:-len('.cpp')] if fn.endswith('.cpp') else fn[:-len('.h')])
+
+    # Main.cpp: the 360 entry point (defines main() + the D3D9 device + the boot sequence). It has a
+    # Main.reference.cpp but no companion .h, so emit it here from the reference.
+    main_ref = os.path.join(reference_dir, 'Main.reference.cpp')
+    if os.path.isfile(main_ref):
+        with open(main_ref, 'r', encoding='utf-8', errors='replace') as f:
+            content = f.read()
+        with open(os.path.join(out_dir, 'Main.cpp'), 'w', encoding='utf-8') as f:
+            f.write(_banner('Main', 'cpp') + content)
+        files_written.append('Main.cpp')
+        emitted.add('Main')
+
     _write_platform_layer_md(out_dir, sorted(emitted), files_written)
     return emitted
+
+
+def _companion_banner(fn):
+    return ('// ============================ PLATFORM COMPANION ============================\n'
+            '// Game-agnostic Xbox 360 platform file, emitted by j2x from\n'
+            '//   docs/platform/companions/%s\n'
+            '// A reference .cpp links against this; it is version-independent (edit the companion\n'
+            '// source, then reconvert). NOT converter-generated game code.\n'
+            '// ==========================================================================\n\n' % fn)
 
 
 def _write_platform_layer_md(out_dir, emitted, files_written):
@@ -98,13 +134,12 @@ def _write_platform_layer_md(out_dir, emitted, files_written):
     for base in emitted:
         cpp = '%s.cpp' % base
         L.append('| `%s.h` %s | yes |' % (base, ('+ `%s`' % cpp) if cpp in files_written else '(header-only)'))
-    L += ['', '## Companion files you must copy in', '',
-          'A reference `.cpp` links against these game-agnostic platform files, which are NOT part of the',
-          'reference set. Copy them from the Alpha live tree (`…\\MinecraftAlpha\\MinecraftAlpha\\`) -- they',
-          'are version-independent and reused wholesale:', '']
-    for c in _COMPANIONS:
-        L.append('- `%s`' % c)
-    L += ['', '## What is still missing', '',
+    L += ['', '## Companion files (auto-emitted -- no hand-copying)', '',
+          'The game-agnostic platform files a reference `.cpp` links against (Common.h, Textures.h/.cpp,',
+          'Tesselator.h/.cpp) AND the 360 entry point (Main.cpp) are now emitted automatically from',
+          '`docs/platform/companions/` + `Main.reference.cpp`. The full platform layer is self-contained;',
+          'nothing needs to be copied from the Alpha tree.', '',
+          '## What is still missing', '',
           'See `PLATFORM_COVERAGE.md` -> the **MISSING** rows: symbols the game uses that neither the',
           'reference nor the stub provides. Those are the only per-version hand-fills left.', '']
     with open(os.path.join(out_dir, 'PLATFORM_LAYER.md'), 'w', encoding='utf-8') as f:

@@ -398,6 +398,11 @@ def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True,
     std_version = _parse_std_version(cpp_std)
     _prog = progress_cb or (lambda _: None)
     os.makedirs(out_dir, exist_ok=True)
+    # The 360 target ships a COMPLETE, self-contained platform layer by default (entry point, GL->D3D9
+    # emulator, shaders, textures, audio, input, file IO) -- the user never hand-writes/copies it. Opt
+    # out is still possible by passing platform_refs=False explicitly for a non-xbox target.
+    if platform == 'xbox360':
+        platform_refs = True
 
     # SDK GATE: refuse platform-specific conversion for a console target with no SDK on the machine.
     from . import sdk as _sdk

@@ -355,6 +355,43 @@ def unpack(path):
     sys.stderr.write("produced=%d / %d\n" % (len(out), dec_size))
     return out
 
+# ---- savegame VFS (the decompressed container) ------------------------------
+_VFS_ENTRY = 136          # 128-byte UTF-16BE name + u32 BE length + u32 BE offset
+
+def list_savegame(blob):
+    """Parse the mini-VFS index -> list of (name, offset, length)."""
+    index_off = struct.unpack_from(">I", blob, 0)[0]
+    files = []
+    p = index_off
+    while p + _VFS_ENTRY <= len(blob):
+        raw = blob[p:p + 128]
+        z = raw.find(b"\x00\x00")
+        if z < 0:
+            z = len(raw)
+        if z & 1:
+            z += 1
+        name = raw[:z].decode("utf-16-be", "replace").rstrip("\x00")
+        length = struct.unpack_from(">I", blob, p + 128)[0]
+        offset = struct.unpack_from(">I", blob, p + 132)[0]
+        if not name:
+            break
+        files.append((name, offset, length))
+        p += _VFS_ENTRY
+    return files
+
+def extract_savegame(path, outdir):
+    """Decompress an LCE savegame and write its VFS files into outdir.
+    Returns the list of (name, offset, length) entries."""
+    import os
+    blob = unpack(path)
+    os.makedirs(outdir, exist_ok=True)
+    files = list_savegame(blob)
+    for name, off, length in files:
+        if off + length <= len(blob):
+            with open(os.path.join(outdir, name.replace("/", "_")), "wb") as fh:
+                fh.write(blob[off:off + length])
+    return files
+
 # ---- region files (.mcr) ----------------------------------------------------
 # Layout:  [4096 B location table][4096 B timestamps][chunk sectors]
 #   location entry = u32 BE (sector << 8) | sector_count
