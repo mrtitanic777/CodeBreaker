@@ -635,6 +635,40 @@ def _render_typed_enum_source(cls, resolver, ledger, cpp_std, platform_label):
     return apply_std_transforms('\n'.join(L).rstrip() + '\n', cpp_std)
 
 
+# J2X-BUGFIX 2026-08-13 static-init-cycle: Java initializes a class LAZILY on first static access, so a
+# self-singleton getter called mid-init (StatList::func_25157_c -> CraftingManager::getInstance(), whose
+# instance is built in a LATER-ordered initStatics()) returns NULL and crashes. A linear j2x_initAll can't
+# reproduce lazy init for a true cycle. Emulate it: a `X::s_foo = new X(...)` singleton makes its pure
+# getter (`return s_foo;`) build on demand, and initStatics() becomes idempotent (the driver may also call
+# it). Detects the singleton field from the deferred init lines.
+def _detect_self_singleton(clsname, static_init_lines):
+    pat = re.compile(r'^%s::(\w+)\s*=\s*new\s+%s\b' % (re.escape(clsname), re.escape(clsname)))
+    for l in static_init_lines:
+        m = pat.match(l.strip())
+        if m:
+            return m.group(1)
+    return None
+
+
+def _inject_lazy_singleton(mlines, clsname, field):
+    """If a rendered method is a PURE getter that returns the singleton field, prepend a lazy-init guard so
+    first access builds it (Java's <clinit>-on-static-access). Only touches single-statement `return field;`
+    bodies -- never a method that does other work."""
+    try:
+        open_i = mlines.index('{')
+    except ValueError:
+        return mlines
+    stmts = [i for i in range(open_i + 1, len(mlines)) if mlines[i].strip() not in ('', '}')]
+    if len(stmts) != 1:
+        return mlines
+    i = stmts[0]
+    if mlines[i].strip() in ('return %s;' % field, 'return %s::%s;' % (clsname, field)):
+        indent = mlines[i][:len(mlines[i]) - len(mlines[i].lstrip())]
+        mlines[i:i] = ['%sif (%s == NULL) initStatics();   // J2X: lazy singleton (Java <clinit> on static access)'
+                       % (indent, field)]
+    return mlines
+
+
 def render_source(cls, resolver, ledger=None, cpp_std=None, platform_label=None):
     """Returns the .cpp text, or None for interfaces / constant-only enums (header-only)."""
     if cls.is_enum and cls.name in resolver.typed_enums:
@@ -644,6 +678,7 @@ def render_source(cls, resolver, ledger=None, cpp_std=None, platform_label=None)
 
     body = []
     static_defs, static_init_lines = _render_statics(cls, resolver, ledger)
+    singleton_field = _detect_self_singleton(cls.name, static_init_lines)   # lazy-init emulation, see helper
     if static_defs:
         body += static_defs + ['']
     for m in cls.constructors():
@@ -675,7 +710,10 @@ def render_source(cls, resolver, ledger=None, cpp_std=None, platform_label=None)
     for m in cls.methods:
         if m.is_ctor or m.is_abstract:
             continue
-        body += _render_method(cls, m, resolver, ledger) + ['']
+        mlines = _render_method(cls, m, resolver, ledger)
+        if singleton_field:
+            mlines = _inject_lazy_singleton(mlines, cls.name, singleton_field)
+        body += mlines + ['']
     # An abstract method CALLED from a constructor (Entity's ctor calls the abstract entityInit()) needs
     # an out-of-line definition: from the base ctor the call resolves NON-virtually to THIS class's version,
     # so a pure `= 0` with no body is an unresolved external. A pure virtual is allowed to have a body;
@@ -716,6 +754,9 @@ def render_source(cls, resolver, ledger=None, cpp_std=None, platform_label=None)
     # cls.has_init_statics lets the pipeline driver call only the classes that actually defer work.
     cls.has_init_statics = bool(init_body)
     body += ['void %s::initStatics()' % cls.name, '{']
+    if singleton_field and init_body:      # idempotent: a lazy getter may have already built the singleton
+        body += ['\tif (%s != NULL) return;   // J2X: idempotent (may be lazily inited via a singleton getter)'
+                 % singleton_field]
     body += ['\t' + l for l in init_body] + ['}', '']
     if init_body and ledger is not None:
         ledger.add(cls.name + '.cpp', Category.RISK,
