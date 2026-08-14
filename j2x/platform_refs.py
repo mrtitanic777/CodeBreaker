@@ -133,6 +133,19 @@ def emit_references(out_dir, reference_dir):
             files_written.append(fn)
             emitted.add(fn[:-len('.cpp')] if fn.endswith('.cpp') else fn[:-len('.h')])
 
+    # Extension .cpp companions (X.ext.reference.cpp -> X.ext.cpp): extra out-of-line definitions bolted
+    # onto a companion class -- Textures.ext defines genId/deleteId/uploadRGBA/uploadSubRGBA (declared in
+    # Textures.h) that the GL11->D3D9 emulator forwards to. No .h of its own. Without it: LNK2019.
+    for fn in sorted(os.listdir(reference_dir)):
+        if fn.endswith('.ext.reference.cpp'):
+            base = fn[:-len('.reference.cpp')]        # e.g. 'Textures.ext'
+            with open(os.path.join(reference_dir, fn), 'r', encoding='utf-8', errors='replace') as f:
+                content = f.read()
+            with open(os.path.join(out_dir, base + '.cpp'), 'w', encoding='utf-8') as f:
+                f.write(_banner(base, 'cpp') + content)
+            files_written.append(base + '.cpp')
+            emitted.add(base)
+
     # Main.cpp: the 360 entry point (defines main() + the D3D9 device + the boot sequence). It has a
     # Main.reference.cpp but no companion .h, so emit it here from the reference.
     main_ref = os.path.join(reference_dir, 'Main.reference.cpp')

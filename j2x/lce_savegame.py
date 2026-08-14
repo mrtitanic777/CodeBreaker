@@ -607,6 +607,163 @@ def decode_region(path):
         nbt, _ = decode_region_chunk(d[p:])
         yield cx, cz, nbt
 
+# ---- ENCODE (write LCE saves) ----------------------------------------------
+# LZX is emitted using uncompressed blocks only: a fully valid, decoder-
+# accepted LZX stream that needs no match-finder/Huffman encoder. Output is
+# therefore larger than the console's (which uses real LZX compression); the
+# format and framing are correct and round-trip exactly. A real LZX compressor
+# can later replace lzx_compress without changing the surrounding structure.
+
+class _BitWriter:
+    """Inverse of BitReader: bits accumulate MSB-first, flushed as 16-bit LE words."""
+    __slots__ = ("out", "acc", "nbits")
+    def __init__(self):
+        self.out = bytearray(); self.acc = 0; self.nbits = 0
+    def put(self, value, n):
+        if n == 0:
+            return
+        self.acc = (self.acc << n) | (value & ((1 << n) - 1))
+        self.nbits += n
+        while self.nbits >= 16:
+            self.nbits -= 16
+            w = (self.acc >> self.nbits) & 0xFFFF
+            self.out.append(w & 0xFF); self.out.append((w >> 8) & 0xFF)
+            self.acc &= (1 << self.nbits) - 1
+    def align16(self):
+        if self.nbits & 15:
+            self.put(0, 16 - (self.nbits & 15))
+    def put_raw(self, data):        # only valid once bit buffer is word-flushed
+        self.out += data
+
+def lzx_compress_frames(data):
+    """Yield (raw_size, frame_bytes) for each 32 KB output frame; the frame
+    bytes concatenate into a single LZX stream of uncompressed blocks."""
+    frames = []
+    n = len(data)
+    pos = 0
+    first = True
+    while pos < n or first:
+        fsize = min(FRAME, n - pos)
+        if fsize == 0 and not first:
+            break
+        bw = _BitWriter()
+        if first:
+            bw.put(0, 1)                 # E8 header bit = 0 (once)
+            first = False
+        bw.put(3, 3)                     # BLOCKTYPE_UNCOMPRESSED
+        bw.put((fsize >> 16) & 0xFF, 8); bw.put((fsize >> 8) & 0xFF, 8); bw.put(fsize & 0xFF, 8)
+        bw.align16()
+        bw.put_raw(struct.pack("<III", 1, 1, 1))     # R0,R1,R2
+        bw.put_raw(data[pos:pos + fsize])
+        if fsize & 1:
+            bw.put_raw(b"\x00")          # pad odd-length block
+        frames.append((fsize, bytes(bw.out)))
+        pos += fsize
+        if fsize < FRAME:
+            break
+    return frames
+
+def lzx_compress(data):
+    """`data` -> a single uncompressed-block LZX stream (inverse of
+    lzx_decompress_chunk with out_len == len(data))."""
+    return b"".join(fb for _raw, fb in lzx_compress_frames(data))
+
+def rle_encode(data):
+    """Inverse of rle_decode (mirror of Minecraft.World CompressRLE)."""
+    out = bytearray()
+    n = len(data)
+    i = 0
+    while i < n:
+        b = data[i]
+        run = 1
+        while i + run < n and data[i + run] == b and run < 256:
+            run += 1
+        if b == 0xFF:
+            out.append(0xFF); out.append(run - 1)
+            if run > 3:
+                out.append(0xFF)
+        elif run < 4:
+            out += bytes([b]) * run
+        else:
+            out.append(0xFF); out.append(run - 1); out.append(b)
+        i += run
+    return bytes(out)
+
+def xmem_compress(blob):
+    """Bytes following the 8-byte container header: per-frame chunk framing
+    (short u16 header for full frames, 0xFF long header for the final one)."""
+    out = bytearray()
+    for raw, fb in lzx_compress_frames(blob):
+        if raw == FRAME:
+            out += struct.pack(">H", len(fb)) + fb
+        else:
+            out += b"\xff" + struct.pack(">H", raw) + struct.pack(">H", len(fb)) + fb
+    return bytes(out)
+
+def pack_savegame_blob(blob):
+    """A raw decompressed container blob -> the compressed savegame file bytes."""
+    return struct.pack(">II", 0, len(blob)) + xmem_compress(blob)
+
+def encode_region_chunk(nbt):
+    """Legacy chunk NBT -> (sector_bytes, sector_count).  RLE + a single 0xFF
+    LZX segment, header 0x80000000|comp_len, padded to a 4096-byte sector."""
+    rle = rle_encode(nbt)
+    stream = lzx_compress(rle)
+    if len(rle) > 0xFFFF or len(stream) > 0xFFFF:
+        raise ValueError("chunk RLE/LZX segment exceeds 16-bit size")
+    seg = b"\xff" + struct.pack(">H", len(rle)) + struct.pack(">H", len(stream)) + stream
+    header = struct.pack(">I", 0x80000000 | len(seg)) + struct.pack(">I", len(nbt))
+    body = header + seg
+    body += b"\x00" * ((-len(body)) % 4096)
+    return body, len(body) // 4096
+
+def build_region(chunks):
+    """chunks: dict[(cx,cz)] -> legacy chunk NBT  ->  .mcr file bytes."""
+    loc = bytearray(4096)
+    timestamps = bytearray(4096)
+    sectors = bytearray()
+    sector_no = 2
+    for (cx, cz), nbt in sorted(chunks.items(), key=lambda kv: (kv[0][1], kv[0][0])):
+        data, cnt = encode_region_chunk(nbt)
+        idx = cx + cz * 32
+        struct.pack_into(">I", loc, idx * 4, (sector_no << 8) | cnt)
+        sectors += data
+        sector_no += cnt
+    return bytes(loc) + bytes(timestamps) + bytes(sectors)
+
+def build_savegame(files):
+    """files: list of (name, bytes) -> compressed savegame file bytes.
+    Container layout: [u32 index_off][u32 count][u32 1][files...][index]."""
+    body = bytearray(12)
+    entries = []
+    for name, data in files:
+        off = len(body)
+        body += data
+        body += b"\x00" * ((-len(body)) % 4)     # 4-byte align each file
+        entries.append((name, off, len(data)))
+    index_off = len(body)
+    for name, off, length in entries:
+        nb = name.encode("utf-16-be")[:128]
+        body += nb + b"\x00" * (128 - len(nb))
+        body += struct.pack(">I", length) + struct.pack(">I", off)
+    struct.pack_into(">I", body, 0, index_off)
+    struct.pack_into(">I", body, 4, len(entries))
+    struct.pack_into(">I", body, 8, 1)
+    return pack_savegame_blob(bytes(body))
+
+def pack_savegame_dir(indir, outfile):
+    """Pack every file in a directory into an LCE savegame container."""
+    import os
+    names = sorted(os.listdir(indir))
+    files = []
+    for name in names:
+        p = os.path.join(indir, name)
+        if os.path.isfile(p):
+            files.append((name, open(p, "rb").read()))
+    data = build_savegame(files)
+    open(outfile, "wb").write(data)
+    return files
+
 # ---- CLI --------------------------------------------------------------------
 def _main(argv):
     if len(argv) >= 2 and argv[0] == "region":
