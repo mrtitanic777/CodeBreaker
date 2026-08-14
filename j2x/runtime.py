@@ -635,6 +635,25 @@ template<class T> struct JArrayInit {
 	}
 };
 
+// --- Java instanceof is IS-A, not exact-type. C++ typeid gives the EXACT dynamic type, so a plain
+// `*ti == typeid(T)` makes `x instanceof Block` FALSE for every Block SUBCLASS (BlockOreStorage, ...) --
+// which silently broke every recipe/entity/GUI instanceof. We can't dynamic_cast from the type-erased
+// void*, so the converter registers each class's direct base(s)/interface(s) (j2xRegisterBase, emitted
+// into j2x_initAll's RTTI prelude) and is<T>() walks that ancestry. Keyed by type_info::name() so it is
+// stable across translation units. ---
+inline std::map<std::string, std::vector<std::string> >& _j2xBases() {
+	static std::map<std::string, std::vector<std::string> > m; return m;
+}
+inline void j2xRegisterBase(const char* cls, const char* base) { _j2xBases()[cls].push_back(base); }
+inline bool _j2xIsA(const std::string& obj, const std::string& tgt) {
+	if (obj == tgt) return true;
+	std::map<std::string, std::vector<std::string> >::iterator it = _j2xBases().find(obj);
+	if (it == _j2xBases().end()) return false;
+	for (std::size_t k = 0; k < it->second.size(); ++k)
+		if (_j2xIsA(it->second[k], tgt)) return true;
+	return false;
+}
+
 // Boxed java.lang.Object element, ONLY for `Object[]` (Object[] -> JArray<JObject>). Java's mixed
 // `new Object[]{"str", Character.valueOf('c'), block, item}` autoboxes primitives; C++ void* can't
 // hold a char/String AND be RTTI-decoded, so JObject is a tagged box. Autoboxes from char/int/
@@ -684,7 +703,10 @@ struct JObject {
 	bool isInteger() const { return kind == 1; }
 	bool isBoolean() const { return kind == 7; }
 	bool isStringArray() const { return kind == 6; }
-	template<class T> bool is() const { return kind == 5 && ti && *ti == typeid(T); }   // instanceof <Class>
+	// instanceof <Class>: exact dynamic-type match OR is-a via the converter-registered ancestry.
+	template<class T> bool is() const {
+		return kind == 5 && ti && (*ti == typeid(T) || _j2xIsA(ti->name(), typeid(T).name()));
+	}
 	// named extractors (Java unbox: ((Integer)o).intValue(), ((Character)o).charValue(), ...). Integral
 	// kinds read `i`; Float/Double read `d`. Each round-trips the primitive it was boxed from.
 	char charValue() const { return (char)i; }
