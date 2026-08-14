@@ -1504,8 +1504,36 @@ _GENERATED['Transferable.h'] = _class_stub('Transferable',
 _GENERATED['TextArea.h'] = _class_stub('TextArea', void_methods=['setFont', 'setText'],
     ret_methods=[('getText', ('std::string', 'std::string()'))])
 # java.io concrete streams (DataInputStream/DataOutputStream are the heavy hitters on alpha)
-_GENERATED['InputStream.h'] = _class_stub('InputStream', void_methods=['close', 'reset', 'mark'],
-    ret_methods=[('read', ('int', '0')), ('available', ('int', '0')), ('skip', ('long long', '0LL'))])
+# J2X-BUGFIX 2026-08-13 inputstream-odr: `class InputStream` was defined DIFFERENTLY here (variadic stub)
+# and in FileIO.reference.h (typed) under the SAME guard INPUTSTREAM_H -> per-TU ODR: FileInputStream's
+# read()/available() overrides bound in some TUs and not others, so virtual dispatch hit the base stub
+# (return 0) and EVERY getResourceAsStream load returned empty (font/lang/colormaps). ONE canonical typed
+# InputStream now; FileIO.reference.h includes THIS instead of redefining. Byte streams (FileInputStream)
+# override the typed virtuals; the variadic read(...) absorbs JArray/other converted read forms.
+_GENERATED['InputStream.h'] = (
+    '#ifndef INPUTSTREAM_H\n#define INPUTSTREAM_H\n'
+    '// java.io.InputStream -- ONE canonical definition (see j2x runtime note: inputstream-odr).\n'
+    '#include <string>\n#include "JavaString.h"\n'
+    'class InputStream {\n'
+    'public:\n'
+    '\tInputStream() {}\n'
+    '\tInputStream(...) {}\n'
+    '\tvirtual ~InputStream() {}\n'
+    '\tvirtual int read() { return -1; }\n'
+    '\tvirtual int read(unsigned char* b, int off, int len) {\n'
+    '\t\tint n = 0;\n'
+    '\t\tfor (; n < len; ++n) { int c = read(); if (c < 0) break; b[off + n] = (unsigned char)c; }\n'
+    '\t\treturn (n > 0) ? n : (len == 0 ? 0 : -1);\n'
+    '\t}\n'
+    '\tvirtual int read(unsigned char* b, int len) { return read(b, 0, len); }\n'
+    '\tvirtual int available() { return 0; }\n'
+    '\tvirtual long long skip(long long) { return 0; }\n'
+    '\tvirtual void close() {}\n'
+    '\tvirtual void reset() {}\n'
+    '\tvirtual void mark(int) {}\n'
+    '\tvirtual int read(...) { return -1; }   // catch-all: JArray/other converted read forms\n'
+    '};\n'
+    '#endif // INPUTSTREAM_H\n')
 _GENERATED['OutputStream.h'] = _class_stub('OutputStream', void_methods=['write', 'flush', 'close'])
 _GENERATED['DataInputStream.h'] = _class_stub('DataInputStream', bases=['DataInput'], includes=['DataInput'],
     void_methods=['close', 'reset', 'mark'],

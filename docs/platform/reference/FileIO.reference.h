@@ -35,22 +35,11 @@
 #include <vector>
 
 // === java.io.InputStream / OutputStream =======================================
-class InputStream {
-public:
-	virtual ~InputStream() {}
-	virtual int read() { return -1; }                       // next byte (0..255) or -1 at EOF
-	// 3-arg form the NEW code uses (ImageIO::read does in->read(buf,0,len)). Returns count or -1@EOF.
-	virtual int read(unsigned char* b, int off, int len) {
-		int n = 0;
-		for (; n < len; ++n) { int c = read(); if (c < 0) break; b[off + n] = (unsigned char)c; }
-		return (n > 0) ? n : (len == 0 ? 0 : -1);
-	}
-	// 2-arg legacy form (off==0) kept for the old DataInputStream drain loop.
-	virtual int read(unsigned char* b, int len) { return read(b, 0, len); }
-	virtual int available() { return 0; }
-	virtual long long skip(long long) { return 0; }
-	virtual void close() {}
-};
+// J2X-BUGFIX 2026-08-13 inputstream-odr: InputStream is the ONE canonical definition in InputStream.h --
+// defining it here too (under the same guard) caused a per-TU ODR/vtable mismatch that made
+// FileInputStream::read()/available() dispatch to the base stub (0), so every resource load came back
+// empty. Include the canonical one; FileInputStream (below) overrides its typed virtuals.
+#include "InputStream.h"
 
 class OutputStream {
 public:
