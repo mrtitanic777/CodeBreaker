@@ -27,9 +27,17 @@ def _cmd_xact(args):
             print('ERROR: not a file: %s' % args.a); return 2
         print(xact.dump(args.a)); return 0
     if act == 'build':
-        xap, cues = xact.build(args.a, args.b)
-        print('Wrote %s (%d cues) + build_banks.bat + AUDIO_COVERAGE.md to %s' % (xap, len(cues), args.b))
-        print('Next: drop a .wav per cue under %s/wav/, then run build_banks.bat (XDK XACTBLD).' % args.b)
+        run = getattr(args, 'run', False)
+        sdk_root = None
+        if run:
+            from . import sdk as _sdk
+            _info = _sdk.detect('xbox360')
+            sdk_root = getattr(_info, 'root', None) if _info else None
+        xap, cues = xact.build(args.a, args.b, autorun=run, sdk_root=sdk_root, log=print)
+        print('Wrote %s (%d cues) + build_banks.bat + convert_audio.bat to %s' % (xap, len(cues), args.b))
+        if not run:
+            print('Next: run convert_audio.bat (ffmpeg ogg->wav) then build_banks.bat (XDK XACTBLD) '
+                  '-- or pass --run to autorun both now.')
         return 0
     if act == 'coverage':
         cov = xact.cue_coverage(args.a, args.b)
@@ -410,6 +418,8 @@ def main(argv=None):
     xp.add_argument('a', help='dump: bank file; build/coverage/match: java source dir.')
     xp.add_argument('b', nargs='?', help='build: out dir; coverage: .xsb; match: resources dir.')
     xp.add_argument('c', nargs='?', help='match: output dir for convert_audio.bat (default: cwd).')
+    xp.add_argument('--run', dest='run', action='store_true',
+                    help='build: autorun convert_audio.bat (ffmpeg) then build_banks.bat (XACTBLD) now.')
     xp.set_defaults(func=_cmd_xact)
 
     # assets (texture/resource extraction from the game jar)

@@ -1383,14 +1383,22 @@ class ConverterWindow(QMainWindow):
             if jar and os.path.isfile(jar):
                 assets.run(jar, a.get('content') or os.path.join(out, 'Content'), code_dir=out)
         elif sid == 'audio':
-            from . import xact
+            from . import xact, sdk
             a = cfg.get('audio', {})
             res = a.get('resources')
-            if res and os.path.isdir(res):
-                m = xact.match_sources(self.ed_java.text().strip(), res)
-                ao = a.get('audio_out') or os.path.join(out, 'Content', 'Audio')
-                os.makedirs(ao, exist_ok=True)
-                xact.write_ffmpeg_script(m, ao, res)
+            ao = a.get('audio_out') or os.path.join(out, 'Content', 'Audio')
+            os.makedirs(ao, exist_ok=True)
+            try:
+                _info = sdk.detect('xbox360')
+                sdk_root = getattr(_info, 'root', None) if _info else None
+            except Exception:                              # noqa: BLE001 -- SDK probe must not abort audio
+                sdk_root = None
+            # Full XACT3 build (sounds.xap + build_banks.bat + convert_audio.bat) AND autorun the bats:
+            # ffmpeg decodes ogg->wav, then XACTBLD compiles -> Content\Audio\sounds.xwb/.xsb. Each step
+            # skips gracefully (logged, never fatal) if its tool is missing.
+            xact.build(self.ed_java.text().strip(), ao,
+                       resources_dir=(res if res and os.path.isdir(res) else None),
+                       autorun=True, sdk_root=sdk_root, log=self.logln)
         elif sid == 'decisions':
             from . import platform_config, sdk
             updates = {'invert_y': cfg.get('invert_y', False)}

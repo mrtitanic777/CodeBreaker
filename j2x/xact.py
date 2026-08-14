@@ -391,15 +391,17 @@ def _find_resources_dir(java_dir):
     return None
 
 
-def build(java_dir, out_dir):
-    """One-shot audio build for a converted game: write the .xap project, the XACTBLD build script,
-    and AUDIO_COVERAGE.md (needed cues). Returns the .xap path."""
+def build(java_dir, out_dir, resources_dir=None, autorun=False, sdk_root=None, log=None):
+    """One-shot XACT3 audio build for a converted game: write the .xap project, the XACTBLD build script,
+    the ogg->wav ffmpeg script, and AUDIO_COVERAGE.md. When `autorun` is set, ALSO run the scripts
+    (convert_audio.bat then build_banks.bat) so the .xwb/.xsb banks are produced as part of conversion --
+    no manual step. `log` is an optional callable(str) for progress. Returns (xap_path, cues)."""
     if not os.path.isdir(out_dir):
         os.makedirs(out_dir)
     xap = os.path.join(out_dir, 'sounds.xap')
     cues = build_xap(java_dir, xap)
     write_build_script(out_dir)
-    resources = _find_resources_dir(java_dir)
+    resources = resources_dir or _find_resources_dir(java_dir)
     if resources:                                        # auto-emit the ogg->wav decode script if we can find the sources
         write_ffmpeg_script(match_sources(java_dir, resources), out_dir, resources)
     with open(os.path.join(out_dir, 'AUDIO_COVERAGE.md'), 'w', encoding='utf-8') as f:
@@ -407,4 +409,50 @@ def build(java_dir, out_dir):
         f.write('# AUDIO cues the game needs (%d)\n\nAuthor a .wav per cue under `wav/`, then run '
                 '`build_banks.bat` (XACTBLD).\n\n' % len(cov_needed)
                 + '\n'.join('- `%s.wav`  <- %s' % (c, ', '.join(v[:2])) for c, v in sorted(cov_needed.items())) + '\n')
+    if autorun:
+        run_build(out_dir, sdk_root=sdk_root, log=log)
     return xap, cues
+
+
+def run_build(out_dir, sdk_root=None, log=None):
+    """AUTORUN the two audio scripts in out_dir: convert_audio.bat (ffmpeg ogg->wav) then build_banks.bat
+    (XACTBLD xap -> sounds.xwb/.xsb). Each step is SKIPPED gracefully (never fails the conversion) if its
+    tool is missing -- ffmpeg on PATH, or XACTBLD at %XEDK%\\bin\\win32\\xactbld3.exe. Returns (ok, lines)."""
+    import subprocess
+    try:
+        from shutil import which
+    except ImportError:
+        which = lambda _n: None
+    _log = log or (lambda _m: None)
+    lines = []
+    env = dict(os.environ)
+    if sdk_root and not env.get('XEDK'):
+        env['XEDK'] = sdk_root
+
+    def emit(m):
+        lines.append(m); _log(m)
+
+    def _run(bat, tool_ok, tool_hint):
+        p = os.path.join(out_dir, bat)
+        if not os.path.isfile(p):
+            emit('[audio] skip %s (not generated)' % bat); return True
+        if not tool_ok():
+            emit('[audio] SKIP %s -- %s not found; the .bat is written, run it later.' % (bat, tool_hint))
+            return True
+        try:
+            r = subprocess.Popen(['cmd', '/c', bat], cwd=out_dir, env=env,
+                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            out, _ = r.communicate(timeout=1800)
+            txt = (out or b'').decode('utf-8', 'replace')
+            emit('[audio] %s -> exit %d' % (bat, r.returncode))
+            if r.returncode != 0:
+                emit(txt[-800:])
+            return r.returncode == 0
+        except Exception as e:                           # noqa: BLE001 -- audio must never abort the convert
+            emit('[audio] %s failed: %s' % (bat, e)); return False
+
+    xedk = env.get('XEDK')
+    have_xactbld = lambda: bool(xedk) and os.path.isfile(os.path.join(xedk, 'bin', 'win32', 'xactbld3.exe'))
+    ok1 = _run('convert_audio.bat', lambda: which('ffmpeg') is not None, 'ffmpeg (add it to PATH)')
+    ok2 = _run('build_banks.bat', have_xactbld, 'XACTBLD (set %XEDK% / install the Xbox 360 SDK)')
+    return (ok1 and ok2), lines
