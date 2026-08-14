@@ -1513,10 +1513,9 @@ _GENERATED['TextArea.h'] = _class_stub('TextArea', void_methods=['setFont', 'set
 _GENERATED['InputStream.h'] = (
     '#ifndef INPUTSTREAM_H\n#define INPUTSTREAM_H\n'
     '// java.io.InputStream -- ONE canonical definition (see j2x runtime note: inputstream-odr).\n'
-    '#include <string>\n#include "JavaString.h"\n'
+    '#include <string>\n#include "JavaString.h"\n#include "JArray.h"\n'
     'class InputStream {\n'
     'public:\n'
-    '\tInputStream() {}\n'
     '\tInputStream(...) {}\n'
     '\tvirtual ~InputStream() {}\n'
     '\tvirtual int read() { return -1; }\n'
@@ -1526,12 +1525,15 @@ _GENERATED['InputStream.h'] = (
     '\t\treturn (n > 0) ? n : (len == 0 ? 0 : -1);\n'
     '\t}\n'
     '\tvirtual int read(unsigned char* b, int len) { return read(b, 0, len); }\n'
+    '\t// JArray forms (Java InputStream.read(byte[])) -> delegate to the typed virtual so byte-buffer\n'
+    '\t// streams (FileInputStream) still fill them via their override:\n'
+    '\tvirtual int read(JArray<unsigned char>& b) { return read(b.data(), 0, b.length); }\n'
+    '\tvirtual int read(JArray<unsigned char>& b, int off, int len) { return read(b.data(), off, len); }\n'
     '\tvirtual int available() { return 0; }\n'
     '\tvirtual long long skip(long long) { return 0; }\n'
     '\tvirtual void close() {}\n'
     '\tvirtual void reset() {}\n'
     '\tvirtual void mark(int) {}\n'
-    '\tvirtual int read(...) { return -1; }   // catch-all: JArray/other converted read forms\n'
     '};\n'
     '#endif // INPUTSTREAM_H\n')
 _GENERATED['OutputStream.h'] = _class_stub('OutputStream', void_methods=['write', 'flush', 'close'])
