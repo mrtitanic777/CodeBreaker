@@ -27,10 +27,23 @@ import os
 # each such reference we ALSO overwrite the stubs it replaces with a thin `#include` shim.
 REFERENCE_REPLACES = {
     'Input': ['Keyboard', 'Mouse', 'Controllers'],   # Input.reference defines namespace Keyboard/Mouse/Controllers
-    'Audio': ['SoundSystem'],                          # Audio.reference defines class SoundSystem
     'ImageIO': ['ImageIO'],
-    'BufferedImage': ['BufferedImage'],
+    # NIOBuffers.reference DEFINES ByteBuffer/FloatBuffer/IntBuffer (the real byte-granular NIO buffers the
+    # GL emulator + Tessellator use). Without this, its class defs collide with the converter's ByteBuffer.h/
+    # FloatBuffer.h/IntBuffer.h stubs -> C2011 redefinition in every TU that pulls both.
+    'NIOBuffers': ['ByteBuffer', 'FloatBuffer', 'IntBuffer'],
 }
+
+# References that lack a Beta-specific method the converter's STUB already provides (and would otherwise
+# shadow it), or that need companion types not yet bundled. SKIP emitting them -> the converter's stub
+# (which the game already compiles+links against) stands. First-boot tradeoff: rendering/input/file-IO are
+# real; audio/zip/socket/threading/image-decode fall back to the no-op stubs until each is reconciled.
+#   Audio       -> SoundSystem.backgroundMusic (Beta-new) + needs XactAudio.h/.cpp companions
+#   BufferedImage -> getRaster()/Raster/DataBuffer chain (added to the stub for Beta)
+#   ZipFile     -> getEntry()->ZipEntry* (stub) + reference needs full InputStream/FileInputStream
+#   Socket      -> getRemoteSocketAddress()->SocketAddress* (stub)
+#   Thread      -> dumpStack()/join(1-arg) (stub)
+REFERENCE_SKIP = {'Audio', 'BufferedImage', 'ZipFile', 'Socket', 'Thread'}
 
 
 def available_references(reference_dir):
@@ -63,6 +76,8 @@ def emit_references(out_dir, reference_dir):
     emitted = set()
     files_written = []
     for base in sorted(available_references(reference_dir)):
+        if base in REFERENCE_SKIP:                    # keep the converter stub (see REFERENCE_SKIP note)
+            continue
         for ext in ('h', 'cpp'):
             src = os.path.join(reference_dir, '%s.reference.%s' % (base, ext))
             if not os.path.isfile(src):

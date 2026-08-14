@@ -195,7 +195,7 @@ class TestMapSetString(unittest.TestCase):
         self.assertIn('JObject var3 = this->map[var1];', self.out)
 
     def test_map_containskey_and_remove(self):
-        self.assertIn('bool b = this->map.count(var1);', self.out)
+        self.assertIn('bool b = this->map.containsKey(var1);', self.out)
         self.assertIn('this->map.erase(var1);', self.out)
 
     def test_set_add_and_contains(self):
@@ -1147,7 +1147,7 @@ class TestMapSetString(unittest.TestCase):
         self.assertIn('JObject var3 = this->map[var1];', self.out)
 
     def test_map_containskey_and_remove(self):
-        self.assertIn('bool b = this->map.count(var1);', self.out)
+        self.assertIn('bool b = this->map.containsKey(var1);', self.out)
         self.assertIn('this->map.erase(var1);', self.out)
 
     def test_set_add_and_contains(self):
@@ -1973,7 +1973,7 @@ class TestMapSetString(unittest.TestCase):
         self.assertIn('JObject var3 = this->map[var1];', self.out)
 
     def test_map_containskey_and_remove(self):
-        self.assertIn('bool b = this->map.count(var1);', self.out)
+        self.assertIn('bool b = this->map.containsKey(var1);', self.out)
         self.assertIn('this->map.erase(var1);', self.out)
 
     def test_set_add_and_contains(self):
@@ -2628,3 +2628,20 @@ class ThisIdentEqTests(unittest.TestCase):
         # comparing this to a typed pointer is a normal pointer compare -- must NOT be rewritten
         self.assertEqual(statements._rewrite_this_ident_eq('if(this == other) {', self._scope()),
                          'if(this == other) {')
+
+
+class WarningFixTests(unittest.TestCase):
+    def test_shift_paren_arith_operand(self):
+        self.assertEqual(statements._paren_shift_operands('a = x - 3 >> 4;'), 'a = (x - 3) >> 4;')
+        self.assertEqual(statements._paren_shift_operands('a = b * 121 >> 15 & 15;'),
+                         'a = (b * 121) >> 15 & 15;')
+
+    def test_shift_no_arith_unchanged(self):
+        self.assertEqual(statements._paren_shift_operands('a = x >> b;'), 'a = x >> b;')
+        self.assertEqual(statements._paren_shift_operands('a = h >> 16 ^ h;'), 'a = h >> 16 ^ h;')
+
+    def test_shift_paren_idempotent(self):
+        self.assertEqual(statements._paren_shift_operands('a = (x - 3) >> 4;'), 'a = (x - 3) >> 4;')
+
+    def test_shift_not_assign_or_ushr(self):
+        self.assertEqual(statements._paren_shift_operands('a >>= 2;'), 'a >>= 2;')

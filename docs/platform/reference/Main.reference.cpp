@@ -25,6 +25,7 @@
 #include "Textures.h"
 #include "Mipmaps.h"         // <-- ported from Minecraft.Client: MipmapManager sampler settings
 #include "Minecraft.h"
+#include "MinecraftImpl.h"   // <-- the CONCRETE Minecraft (Minecraft is abstract: displayUnexpectedThrowable)
 #include "j2x_init.h"        // <-- generated: void j2x_initAll();
 
 // Globals (defined once here; declared extern in Common.h)
@@ -106,7 +107,7 @@ void __cdecl main() {
     // The new Minecraft has no default ctor: pass the display size the AWT ctor would have set.
     // (Component/Canvas/Applet are the AWT host -- null on console.) run() does the remaining init
     // (game settings, render engine, font, main menu) and owns the tick + render + Present loop.
-    g_minecraft = new Minecraft(NULL, NULL, NULL, SCREEN_WIDTH, SCREEN_HEIGHT, false);
+    g_minecraft = new MinecraftImpl(NULL, NULL, NULL, SCREEN_WIDTH, SCREEN_HEIGHT, false, NULL);   // Frame* var7 = NULL (no AWT frame on console)
     g_pd3dDevice->BeginScene();   // open the first scene; Display::swapBuffers/update End+Present+Begin each frame
     g_minecraft->run();
 

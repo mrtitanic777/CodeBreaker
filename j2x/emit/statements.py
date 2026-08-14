@@ -99,8 +99,10 @@ _SET_TYPES = {'HashSet', 'Set'}
 # simple renames (args preserved): (category, java method) -> C++ method
 _METHOD_RENAME = {
     ('list', 'add'): 'push_back', ('list', 'isEmpty'): 'empty',
-    ('map', 'isEmpty'): 'empty', ('map', 'containsKey'): 'count', ('map', 'remove'): 'erase',
-    ('set', 'add'): 'insert', ('set', 'isEmpty'): 'empty', ('set', 'contains'): 'count', ('set', 'remove'): 'erase',
+    ('map', 'isEmpty'): 'empty', ('map', 'remove'): 'erase',
+    ('set', 'add'): 'insert', ('set', 'isEmpty'): 'empty', ('set', 'remove'): 'erase',
+    # NOTE: containsKey/contains are NOT remapped to `count` -- JMap::containsKey / JSet::contains already
+    # return bool. `count()` returns size_type (unsigned), which forces a C4800 in a bool context.
     ('string', 'isEmpty'): 'empty',
 }
 # accessor that becomes recv[arg]: category -> java method
@@ -690,6 +692,22 @@ def _deref_container_subclass_new(s, resolver):
         out.append(s[i:m.start()] + '(*(' + s[m.start():close + 1] + '))')
         i = close + 1
     return ''.join(out)
+
+
+_TERM = r'(?:[A-Za-z_]\w*(?:\s*(?:->|\.|::)\s*[A-Za-z_]\w*|\s*\([^()]*\)|\s*\[[^\]]*\])*|\d+)'
+_SHIFT_ARITH = re.compile(
+    r'(?<![>\w])'                                        # not >>> and not mid-identifier
+    r'(' + _TERM + r'(?:\s*[-+*/%]\s*' + _TERM + r')+)'  # LEFT operand = term (arith term)+
+    r'(\s*(?:>>|<<))(?![=<>])')                          # the shift op (not >>=, <<=, >>>)
+
+
+def _paren_shift_operands(s):
+    """`a - 3 >> 4` / `a * 121 >> 15` -> `(a - 3) >> 4` / `(a * 121) >> 15`. Java and C++ agree that
+    additive/multiplicative binds tighter than shift, so this is a NO-OP on behaviour -- it only adds the
+    clarifying parens MSVC's C4554 asks for (a shift with an unparenthesized arithmetic operand)."""
+    if '>>' not in s and '<<' not in s:
+        return s
+    return _SHIFT_ARITH.sub(lambda m: '(%s)%s' % (m.group(1), m.group(2)), s)
 
 
 def _fix_indexed_add(s):

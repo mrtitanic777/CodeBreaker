@@ -30,7 +30,7 @@ def _finalize_emitted(text):
       - `new X(...)->m` -> `(new X(...))->m` (C++ precedence: the member binds to the call otherwise)
       - `"lit".method()` -> `JavaString("lit").method()` (a bare literal has no Java String methods)"""
     from .emit.std_transforms import sanitize_reserved_members
-    from .emit.statements import _wrap_new_alloc_chains, _wrap_literal_method
+    from .emit.statements import _wrap_new_alloc_chains, _wrap_literal_method, _paren_shift_operands
     text = sanitize_reserved_members(text)
     text = text.replace(chr(39) + chr(92) + 'u0000' + chr(39), chr(39) + chr(92) + '0' + chr(39))
     # `new Object()` (a bare java.lang.Object, used only as a monitor/lock) -> a JObject VALUE. Object
@@ -40,7 +40,10 @@ def _finalize_emitted(text):
     # pointer deref of it is a cross-class member-env miss (a byte[] field reached through a typed pointer,
     # e.g. RenderEngine's var2->imageData->length). `->length(` (a method) and `->lengthX` are untouched.
     text = re.sub(r'->length\b(?!\s*\()', '.length', text)
-    return '\n'.join(_wrap_literal_method(_wrap_new_alloc_chains(ln)) for ln in text.split('\n'))
+    # `a - 3 >> 4` -> `(a - 3) >> 4`: parenthesize a shift's arithmetic operand (MSVC C4554). Behaviour-
+    # preserving (Java/C++ agree additive/multiplicative binds tighter than shift); only silences the warn.
+    return '\n'.join(_paren_shift_operands(_wrap_literal_method(_wrap_new_alloc_chains(ln)))
+                     for ln in text.split('\n'))
 
 
 def discover(java_dir):
