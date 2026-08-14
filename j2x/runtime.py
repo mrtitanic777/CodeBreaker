@@ -1545,7 +1545,31 @@ _GENERATED['DataOutputStream.h'] = _class_stub('DataOutputStream', bases=['DataO
     void_methods=['flush', 'close'], ret_methods=[('size', ('int', '0'))])
 _GENERATED['BufferedInputStream.h'] = _class_stub('BufferedInputStream', bases=['InputStream'], includes=['InputStream'])
 _GENERATED['BufferedOutputStream.h'] = _class_stub('BufferedOutputStream', bases=['OutputStream'], includes=['OutputStream'])
-_GENERATED['FileInputStream.h'] = _class_stub('FileInputStream', bases=['InputStream'], includes=['InputStream'])
+# J2X-BUGFIX 2026-08-13 fileinputstream-odr: FileInputStream was ALSO defined (real) in FileIO.reference.h
+# while this file held a symbol-only stub -> two `class FileInputStream` definitions -> the linker folded
+# them to ONE vtable and picked the stub's (no overrides), so read()/available() dispatched to the
+# InputStream base (0) and every getResourceAsStream load returned empty. ONE canonical raw-buffer
+# definition now; FileIO.reference.h includes it (and defines _load + the File* ctor out-of-line).
+_GENERATED['FileInputStream.h'] = (
+    '#ifndef FILEINPUTSTREAM_H\n#define FILEINPUTSTREAM_H\n'
+    '#include <string>\n#include "InputStream.h"\n'
+    'class File;\n'
+    'class FileInputStream : public InputStream {\n'
+    '\tunsigned char* _data;\n'
+    '\tint _size;\n'
+    '\tint _pos;\n'
+    '\tvoid _load(const char* p);\n'
+    'public:\n'
+    '\tFileInputStream(const std::string& p) : _data(0), _size(0), _pos(0) { _load(p.c_str()); }\n'
+    '\tFileInputStream(File* f);\n'
+    '\tvirtual ~FileInputStream() { if (_data) delete[] _data; }\n'
+    '\tint read() { return (_pos < _size) ? (int)_data[_pos++] : -1; }\n'
+    '\tint read(unsigned char* b, int off, int len) { int n = 0; while (n < len && _pos < _size) b[off + n++] = _data[_pos++]; return (n > 0) ? n : (len == 0 ? 0 : -1); }\n'
+    '\tint read(unsigned char* b, int len) { return read(b, 0, len); }\n'
+    '\tint available() { return _size - _pos; }\n'
+    '\tvoid close() {}\n'
+    '};\n'
+    '#endif // FILEINPUTSTREAM_H\n')
 _GENERATED['FileOutputStream.h'] = _class_stub('FileOutputStream', bases=['OutputStream'], includes=['OutputStream'])
 _GENERATED['ZipFile.h'] = _class_stub('ZipFile', void_methods=['close'],
     ret_methods=[('getEntry', ('ZipEntry*', '0')), ('getInputStream', ('InputStream*', '0')),

@@ -10,16 +10,20 @@
 // FileInputStream::_load — slurp the whole file via CreateFile/GetFileSize/ReadFile.
 // Works for game:\Content\*.png (read-only DVD) and Save:\* (STFS mount, after Save360_Init).
 // ------------------------------------------------------------------------------
+// Raw buffer (not std::vector) -- see fileinputstream-odr note in FileInputStream.h.
 void FileInputStream::_load(const char* p) {
 	HANDLE h = CreateFile(p, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-	if (h == INVALID_HANDLE_VALUE) return;                  // _buf stays empty -> read() == -1 (EOF)
+	if (h == INVALID_HANDLE_VALUE) return;                  // _data stays NULL -> read() == -1 (EOF)
 	DWORD sz = GetFileSize(h, NULL);
 	if (sz != 0 && sz != ((DWORD)0xFFFFFFFF)) {
-		_buf.resize(sz);
-		DWORD r = 0; ReadFile(h, &_buf[0], sz, &r, NULL); _buf.resize(r);
+		_data = new unsigned char[sz];
+		DWORD r = 0; ReadFile(h, _data, sz, &r, NULL); _size = (int)r;
 	}
 	CloseHandle(h);
 }
+
+// File* ctor is out-of-line: FileInputStream.h only forward-declares File (f->path needs the full type).
+FileInputStream::FileInputStream(File* f) : _data(0), _size(0), _pos(0) { _load(f ? f->path.c_str() : ""); }
 
 // ------------------------------------------------------------------------------
 // FileOutputStream::close — write-on-close. CREATE_ALWAYS overwrites (no atomic temp+rename; the

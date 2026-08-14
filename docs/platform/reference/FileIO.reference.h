@@ -124,22 +124,11 @@ private:
 // === FileInputStream / FileOutputStream (CreateFile on the mounted drive) ======
 // Eager slurp on open (chunk-sized data; same as the old port). Works on game:\ (read-only assets)
 // and Save:\ (STFS save mount) once Save360_Init has mounted the container.
-class FileInputStream : public InputStream {
-	std::vector<unsigned char> _buf;
-	size_t _pos;
-	void _load(const char* p);
-public:
-	FileInputStream(const std::string& p) : _pos(0) { _load(p.c_str()); }
-	FileInputStream(File* f) : _pos(0) { _load(f ? f->path.c_str() : ""); }
-	int read() { return (_pos < _buf.size()) ? (int)_buf[_pos++] : -1; }
-	int read(unsigned char* b, int off, int len) {
-		int n = 0; while (n < len && _pos < _buf.size()) b[off + n++] = _buf[_pos++];
-		return (n > 0) ? n : (len == 0 ? 0 : -1);
-	}
-	int read(unsigned char* b, int len) { return read(b, 0, len); }
-	int available() { return (int)(_buf.size() - _pos); }
-	void close() {}
-};
+// J2X-BUGFIX 2026-08-13 fileinputstream-odr: FileInputStream is the ONE canonical definition in
+// FileInputStream.h (game TUs include that header). Defining it here too folded two vtables and picked the
+// stub's -> read()/available() dispatched to InputStream base (0) -> every resource load returned empty.
+// The File* ctor + _load are defined out-of-line below (in FileIO.cpp).
+#include "FileInputStream.h"
 
 // Write-on-close (RAM buffer -> CreateFile(CREATE_ALWAYS)+WriteFile in close()). A missing close()
 // or a crash before it LOSES the file -- callers must close(), and the STFS layer must
