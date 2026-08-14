@@ -138,7 +138,20 @@ def run(proj_dir=None, name=None, write_filters_too=True):
     compile_grp = '  <ItemGroup>\n' + ''.join(cl_compile(f) for f in cpps) + '  </ItemGroup>\n'
     include_grp = '  <ItemGroup>\n' + ''.join('    <ClInclude Include="%s" />\n' % f for f in hs) + '  </ItemGroup>\n'
 
-    text = text.replace('</Project>', compile_grp + include_grp + '</Project>')
+    # Stage the assets next to the built .xex: `game:\` maps to the .xex's OUTPUT dir ($(OutDir), e.g.
+    # Debug\), but the converter lays Content\ at the PROJECT root -- so the read-only Content root
+    # (game:\Content\*, incl. its resources\ audio banks) is empty at runtime -> no textures/sound ->
+    # black screen. This post-build step mirrors Content\ into $(OutDir) after every build. Idempotent
+    # (only added once). Runs regardless of configuration (AfterTargets=Build).
+    copy_target = ''
+    if 'Name="StageContent"' not in text:
+        copy_target = (
+            '  <Target Name="StageContent" AfterTargets="Build">\n'
+            '    <Exec Condition="Exists(\'$(ProjectDir)Content\')" '
+            'Command="xcopy /E /I /Y /Q &quot;$(ProjectDir)Content&quot; &quot;$(OutDir)Content\\&quot;" />\n'
+            '  </Target>\n')
+
+    text = text.replace('</Project>', compile_grp + include_grp + copy_target + '</Project>')
 
     with open(vcx, 'w', encoding='utf-8') as f:
         f.write(text)

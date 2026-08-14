@@ -1388,7 +1388,7 @@ class ConverterWindow(QMainWindow):
             res = a.get('resources')
             if res and os.path.isdir(res):
                 m = xact.match_sources(self.ed_java.text().strip(), res)
-                ao = a.get('audio_out') or os.path.join(out, 'audio')
+                ao = a.get('audio_out') or os.path.join(out, 'Content', 'Audio')
                 os.makedirs(ao, exist_ok=True)
                 xact.write_ffmpeg_script(m, ao, res)
         elif sid == 'decisions':
@@ -2163,7 +2163,7 @@ class ConverterWindow(QMainWindow):
         ac = self._cfg.get('audio', {})
         self.ed_res = QLineEdit(ac.get('resources') or getattr(self, '_resolved', {}).get('resources')
                                 or self.settings.value('resources', ''))
-        self.ed_audio_out = QLineEdit(ac.get('audio_out') or os.path.join(out_default, 'audio'))
+        self.ed_audio_out = QLineEdit(ac.get('audio_out') or os.path.join(out_default, 'Content', 'Audio'))
         card, lay = self._tool_card(
             'Audio (XACT) — banks & sources',
             'Match sound cues to the original .ogg and build the XACT banks.')

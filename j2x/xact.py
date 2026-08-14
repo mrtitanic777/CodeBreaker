@@ -5,7 +5,7 @@ xact.py -- XACT3 wave-bank (.xwb) / sound-bank (.xsb) tool for the Xbox 360 audi
 360 audio is XACT3 or XAudio2; the port uses XACT3 (Audio.reference routes SoundManager -> XACT cues).
 This tool reads/decompiles the banks (Phase 1, here) and -- Phase 2 -- builds them from Content.md's
 sound list + the .ogg/.wav sources. It is grounded in the banks the user authored by hand for the
-Alpha port (…\MinecraftAlpha\…\Content\resources\sounds.xwb+.xsb, music.*).
+Alpha port (…\MinecraftAlpha\…\Content\Audio\sounds.xwb+.xsb, music.*).
 
 Format (Xbox 360 = BIG-ENDIAN; XACT stores the magic byte-reversed vs the PC LE 'WBND'/'SDBK'):
   XWB  magic 'DNBW'  header{version, headerVersion, 5x(offset,length) segments:
@@ -194,17 +194,17 @@ def build_xap(java_dir, out_path, wave_dir='wav', bank='sounds'):
     cues = sorted(needed_cues(java_dir))
     L = ['Signature = XACT3;', 'Version = 18;', 'Content Version = 46;', 'Release = March 2008;', '',
          'Options', '{', '    Verbose Report = 0;', '    Generate C/C++ Headers = 1;', '}', '',
-         'Global Settings', '{', '    Xbox File = Content\\resources\\Global.xgs;',
+         'Global Settings', '{', '    Xbox File = Content\\Audio\\Global.xgs;',
          '    Xbox Header File = Global.h;', '    Category { Name = Global; Volume = 0; }',
          '    Category { Name = Default; Volume = 0; Parent = Global; }',
          '    Category { Name = Music; Volume = 0; Parent = Global; }', '}', '',
-         'Wave Bank', '{', '    Name = %s;' % bank, '    Xbox File = Content\\resources\\%s.xwb;' % bank,
+         'Wave Bank', '{', '    Name = %s;' % bank, '    Xbox File = Content\\Audio\\%s.xwb;' % bank,
          '    Xbox Bank Path Edited = 1;', '    Compression Preset Name = XWMA_Q3;', '']
     for c in cues:
         L += ['    Wave', '    {', '        Name = %s;' % c,
               '        File = %s\\%s.wav;' % (wave_dir, c), '    }', '']
     L += ['}', '', 'Sound Bank', '{', '    Name = %s;' % bank,
-          '    Xbox File = Content\\resources\\%s.xsb;' % bank, '    Xbox Header File = %s.h;' % bank, '']
+          '    Xbox File = Content\\Audio\\%s.xsb;' % bank, '    Xbox Header File = %s.h;' % bank, '']
     for c in cues:
         L += ['    Sound', '    {', '        Name = %s;' % c, '        Category Name = Default;',
               '        Track { Play Wave Event { Wave Entry { Name = %s; } } }' % c, '    }', '']
@@ -224,7 +224,7 @@ def write_build_script(out_dir, bank='sounds'):
            'rem Build the XACT audio banks for Xbox 360 (needs the Xbox 360 SDK on PATH).\r\n'
            'set XACTBLD="%%XEDK%%\\bin\\win32\\xactbld3.exe"\r\n'
            '%%XACTBLD%% /L /X:%s.xap .\r\n'
-           'echo Built %s.xwb / %s.xsb into Content\\resources\\\r\n' % (bank, bank, bank))
+           'echo Built %s.xwb / %s.xsb into Content\\Audio\\\r\n' % (bank, bank, bank))
     p = os.path.join(out_dir, 'build_banks.bat')
     with open(p, 'w', encoding='utf-8') as f:
         f.write(bat)
