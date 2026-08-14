@@ -217,53 +217,6 @@ def _cmd_assets(args):
     return 0
 
 
-def _cmd_savegame(args):
-    from . import lce_savegame as lce
-    if not os.path.isfile(args.savefile):
-        print('ERROR: not a file: %s' % args.savefile); return 2
-    outdir = args.out_dir or (args.savefile + '_extracted')
-    files = lce.extract_savegame(args.savefile, outdir)
-    print('Unpacked %d file(s) -> %s' % (len(files), os.path.abspath(outdir)))
-    regions = [n for (n, _o, _l) in files if n.endswith('.mcr')]
-    for name, _off, length in files:
-        tag = '  region' if name.endswith('.mcr') else '  file  '
-        print('%s %-34s %8d bytes' % (tag, name, length))
-    if args.chunks:
-        total = 0
-        for rname in regions:
-            rpath = os.path.join(outdir, rname.replace('/', '_'))
-            cdir = rpath + '_chunks'
-            os.makedirs(cdir, exist_ok=True)
-            n = 0
-            for cx, cz, nbt in lce.decode_region(rpath):
-                with open(os.path.join(cdir, 'chunk.%d.%d.nbt' % (cx, cz)), 'wb') as fh:
-                    fh.write(nbt)
-                n += 1
-            total += n
-            if n:
-                print('  decoded %4d chunks -> %s' % (n, os.path.relpath(cdir, outdir)))
-        print('Decoded %d region chunk(s) to NBT.' % total)
-    return 0
-
-
-def _cmd_savegame_pack(args):
-    from . import lce_savegame as lce
-    if not os.path.isdir(args.in_dir):
-        print('ERROR: not a directory: %s' % args.in_dir); return 2
-    files = lce.pack_savegame_dir(args.in_dir, args.out_file)
-    total = sum(len(d) for _n, d in files)
-    size = os.path.getsize(args.out_file)
-    print('Packed %d file(s) (%d bytes) -> %s (%d bytes)'
-          % (len(files), total, os.path.abspath(args.out_file), size))
-    # verify it reads back
-    try:
-        back = lce.list_savegame(lce.unpack(args.out_file))
-        print('  verified: unpacks to %d VFS entries.' % len(back))
-    except Exception as exc:
-        print('  WARNING: re-read failed: %s' % exc)
-    return 0
-
-
 def _cmd_convert(args):
     from . import pipeline
     from . import sdk
@@ -434,25 +387,6 @@ def main(argv=None):
                      help='Do NOT normalize palettized/grayscale PNGs to RGBA (default normalizes them; '
                           'the 360 loader needs 32-bit RGBA or textures misrender).')
     asp.set_defaults(func=_cmd_assets)
-
-    # savegame (unpack an Xbox 360 / LCE world save; decode region chunks to NBT)
-    svp = sub.add_parser('savegame',
-                         help='Unpack an Xbox 360 (LCE) world save: XMemCompress/LZX container -> '
-                              'VFS files (level.dat, region .mcr, players), optionally chunks -> NBT.')
-    svp.add_argument('savefile', help='Path to the extracted LCE savegame blob (e.g. Tutorial\\Tutorial).')
-    svp.add_argument('out_dir', nargs='?', default=None,
-                     help='Destination directory (default: <savefile>_extracted).')
-    svp.add_argument('--chunks', action='store_true',
-                     help='Also decode every region .mcr into per-chunk NBT (<region>_chunks\\chunk.X.Z.nbt).')
-    svp.set_defaults(func=_cmd_savegame)
-
-    # savegame-pack (reverse: build an LCE world save from a directory of VFS files)
-    spp = sub.add_parser('savegame-pack',
-                         help='Reverse of savegame: pack a directory of VFS files (level.dat, '
-                              'region .mcr, players) back into an Xbox 360 (LCE) world save.')
-    spp.add_argument('in_dir', help='Directory of files to pack (e.g. a <savefile>_extracted dir).')
-    spp.add_argument('out_file', help='Destination savegame file to write.')
-    spp.set_defaults(func=_cmd_savegame_pack)
 
     # platform-config (controller mapping + kernel-call selection)
     pcp = sub.add_parser('platform-config',
