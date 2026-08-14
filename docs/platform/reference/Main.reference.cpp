@@ -81,35 +81,46 @@ static void ApplyDefaultRenderState() {
 }
 
 void __cdecl main() {
-    if (!InitD3D()) { DbgPrintF("[BOOT] D3D init failed\n"); return; }
+    if (!InitD3D()) { DbgPrint("[BOOT] D3D init failed\n"); return; }
     ApplyDefaultRenderState();
 
-    if (!Shaders::init()) { DbgPrintF("[BOOT] shader compile failed\n"); return; }
+    if (!Shaders::init()) { DbgPrint("[BOOT] shader compile failed\n"); return; }
 
     // GL emulator init: seed the MODELVIEW/PROJECTION matrix stacks with identity. Without this the
     // stacks are empty std::vectors and the very first glLoadIdentity()/glOrtho() in Minecraft::
     // loadScreen() does back() on an empty vector -> crash (the black-screen-after-fontRenderer hang).
     GL11::glInit();
+    DbgPrint("[BOOT] 1 GL11::glInit done\n");
 
     Textures::init();
+    DbgPrint("[BOOT] 2 Textures::init done\n");
     Textures::loadAll();
+    DbgPrint("[BOOT] 3 Textures::loadAll done\n");
     g_terrainTexture = Textures::getById(Textures::load("game:\\Content\\terrain.png"));
+    DbgPrint("[BOOT] 4 terrain.png id=%d\n", g_terrainTexture ? 1 : 0);
     g_guiTexture     = Textures::getById(Textures::load("game:\\Content\\gui\\gui.png"));
+    DbgPrint("[BOOT] 5 gui.png id=%d\n", g_guiTexture ? 1 : 0);
     g_charTexture    = Textures::getById(Textures::load("game:\\Content\\mob\\char.png"));
+    DbgPrint("[BOOT] 6 char.png id=%d\n", g_charTexture ? 1 : 0);
     g_defaultTexture = Textures::getById(Textures::load("game:\\Content\\default.png"));
+    DbgPrint("[BOOT] 7 default.png id=%d\n", g_defaultTexture ? 1 : 0);
 
     // Run EVERY class's Java static{} blocks + static field initializers, in dependency order.
     // (Replaces the old port's ~13 hand-listed initStatics() calls.) MUST run before any game code:
     // skip it and every Block / Item / registry / enum singleton is null -> first use jumps a null
     // vtable (the static-init-order crash class the converter now prevents by construction).
     j2x_initAll();
+    DbgPrint("[BOOT] 8 j2x_initAll done\n");
 
     // The new Minecraft has no default ctor: pass the display size the AWT ctor would have set.
     // (Component/Canvas/Applet are the AWT host -- null on console.) run() does the remaining init
     // (game settings, render engine, font, main menu) and owns the tick + render + Present loop.
     g_minecraft = new MinecraftImpl(NULL, NULL, NULL, SCREEN_WIDTH, SCREEN_HEIGHT, false, NULL);   // Frame* var7 = NULL (no AWT frame on console)
+    DbgPrint("[BOOT] 9 MinecraftImpl ctor done\n");
     g_pd3dDevice->BeginScene();   // open the first scene; Display::swapBuffers/update End+Present+Begin each frame
+    DbgPrint("[BOOT] 10 entering run() -- game loop\n");
     g_minecraft->run();
+    DbgPrint("[BOOT] 11 run() returned (game exited)\n");
 
     Shaders::shutdown();
     Textures::shutdown();
