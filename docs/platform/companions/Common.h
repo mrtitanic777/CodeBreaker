@@ -58,22 +58,24 @@ inline void DbgPrintF(const char* fmt, ...) {
     OutputDebugStringA(buf);   // debug channel: works on real hw / other tools, but Nexia360 SWALLOWS it
     DbgPrint("%s", buf);       // raw kernel print: also swallowed by Nexia360
     // Nexia360 does NOT surface the debug channel -- but it logs EVERY HostPathDevice::ResolvePath. So
-    // mirror the message into a throwaway path-resolve the emulator WILL print, in order:
-    //     F> ... HostPathDevice::ResolvePath(\J2X\<message>)
-    // The path never exists (resolve "fails") -- we only want the logged line, not any bytes. This is the
-    // ONLY reliable boot-trace channel here. Sparse one-shot calls only -- NEVER per-frame (that's what
-    // flooded the log before). Sanitize to one clean path segment (drop \ / : and newlines).
-    char path[576];
-    strcpy(path, "game:\\J2X\\");
+    // mirror the message into a throwaway file-open the emulator WILL print, in order:
+    //     F> ... HostPathDevice::ResolvePath(\J2X_<message>)
+    // Use raw CreateFileA (NOT fopen -- the CRT rejects paths with spaces/brackets/subdirs BEFORE the
+    // device layer, so no line is logged). Root-level clean path, exactly like the \xam.xex probe we KNOW
+    // logs: keep only [A-Za-z0-9], map space/._- to '_', DROP everything else. The file never exists (we
+    // only want the logged resolve). Sparse one-shot calls only -- NEVER per-frame (that flooded the log).
+    char path[128];
+    strcpy(path, "game:\\J2X_");
     size_t j = strlen(path);
     for (size_t i = 0; buf[i] && j < sizeof(path) - 1; ++i) {
         char c = buf[i];
-        if (c == '\n' || c == '\r' || c == '\\' || c == '/' || c == ':') continue;
-        path[j++] = c;
+        if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) path[j++] = c;
+        else if (c == ' ' || c == '_' || c == '.' || c == '-') path[j++] = '_';
+        // else: skip (brackets, colon, slash, newline, etc.)
     }
     path[j] = '\0';
-    FILE* pf = fopen(path, "rb");
-    if (pf) fclose(pf);
+    HANDLE h = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (h != INVALID_HANDLE_VALUE) CloseHandle(h);
 #else
     (void)fmt;
 #endif
