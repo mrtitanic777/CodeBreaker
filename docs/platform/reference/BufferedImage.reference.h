@@ -4,7 +4,7 @@
 // into one via D3DX). Replaces the converter's no-op stub.
 #include "JArray.h"
 #include "Raster.h"                                    // getRaster() chain (ImageBufferDownload skin decode)
-class Graphics;                                        // java.awt.Graphics (AWT no-op stub)
+#include "Graphics.h"                                  // java.awt.Graphics (all-no-op stub) + j2xSharedGraphics()
 class BufferedImage {
 public:
 	int w, h;
@@ -26,8 +26,10 @@ public:
 			for (int i = 0; i < rw; ++i)
 				pixels[(sy + j) * w + (sx + i)] = a[off + j * scan + i];
 	}
-	Graphics* getGraphics() { return 0; }              // AWT draw target -- no-op on console
-	Graphics* createGraphics() { return 0; }
+	// J2X-BUGFIX 2026-08-13 null-graphics: return a SHARED no-op Graphics, not NULL -- RenderEngine's ctor
+	// does `missingTextureImage.getGraphics().setColor(...)`, a virtual call that NULL-deref-crashed startGame.
+	Graphics* getGraphics() { return j2xSharedGraphics(); }     // AWT draw target -- no-op on console
+	Graphics* createGraphics() { return j2xSharedGraphics(); }
 	void flush() {}
 	// java.awt.image getRaster().getDataBuffer() -> (DataBufferInt*) -> getData(): ImageBufferDownload
 	// (player-skin decode over the network -- dead on the 360) pulls the ARGB int[] this way. Compiles

@@ -1691,6 +1691,12 @@ _GENERATED['PrintWriter.h'] = _class_stub('PrintWriter',
            'template<class T> void write(const T&) {}'])
 _GENERATED['Graphics.h'] = _class_stub('Graphics',
     void_methods=['drawImage', 'dispose', 'setColor', 'fillRect', 'drawString'])
+# J2X-BUGFIX 2026-08-13 null-graphics: BufferedImage.getGraphics() returned NULL, so RenderEngine's
+# `missingTextureImage.getGraphics().setColor(...)` (in startGame) was a virtual call through a null
+# vtable -> crash. Graphics is an all-no-op stub, so return a SHARED instance instead of NULL.
+_GENERATED['Graphics.h'] = _GENERATED['Graphics.h'].replace(
+    '};\n#endif',
+    '};\ninline Graphics* j2xSharedGraphics() { static Graphics _g; return &_g; }\n#endif', 1)
 _GENERATED['Cursor.h'] = _class_stub('Cursor')
 _GENERATED['Class.h'] = r'''#ifndef CLASS_H
 #define CLASS_H
@@ -1921,12 +1927,13 @@ _GENERATED['DataBufferInt.h'] = _class_stub('DataBufferInt', bases=['DataBuffer'
 _GENERATED['Raster.h'] = _class_stub('Raster', fwds=['DataBuffer'],
     ret_methods=[('getDataBuffer', ('DataBuffer*', '0'))])
 _GENERATED['WritableRaster.h'] = _class_stub('WritableRaster', bases=['Raster'], includes=['Raster'])
-_GENERATED['BufferedImage.h'] = _class_stub('BufferedImage', fwds=['Graphics'], includes=['Raster'],
+_GENERATED['BufferedImage.h'] = _class_stub('BufferedImage', includes=['Raster', 'Graphics'],
     void_methods=['setRGB', 'flush'],
     ret_methods=[('getWidth', ('int', '0')), ('getHeight', ('int', '0')),
                  ('getRGB', ('int', '0')), ('getData', ('void*', '0')),
                  ('getRaster', ('Raster', 'Raster()')),
-                 ('getGraphics', ('Graphics*', '0')), ('createGraphics', ('Graphics*', '0'))])
+                 ('getGraphics', ('Graphics*', 'j2xSharedGraphics()')),
+                 ('createGraphics', ('Graphics*', 'j2xSharedGraphics()'))])
 
 
 COLLECTIONS_H = r'''#ifndef COLLECTIONS_H
