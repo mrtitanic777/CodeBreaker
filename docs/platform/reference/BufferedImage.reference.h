@@ -3,6 +3,7 @@
 // java.awt.image.BufferedImage -- a real ARGB pixel buffer (see ImageIO.cpp, which decodes PNGs
 // into one via D3DX). Replaces the converter's no-op stub.
 #include "JArray.h"
+#include "Raster.h"                                    // getRaster() chain (ImageBufferDownload skin decode)
 class Graphics;                                        // java.awt.Graphics (AWT no-op stub)
 class BufferedImage {
 public:
@@ -26,5 +27,11 @@ public:
 				pixels[(sy + j) * w + (sx + i)] = a[off + j * scan + i];
 	}
 	Graphics* getGraphics() { return 0; }              // AWT draw target -- no-op on console
+	Graphics* createGraphics() { return 0; }
+	void flush() {}
+	// java.awt.image getRaster().getDataBuffer() -> (DataBufferInt*) -> getData(): ImageBufferDownload
+	// (player-skin decode over the network -- dead on the 360) pulls the ARGB int[] this way. Compiles
+	// via the converter's Raster/DataBufferInt stubs; returns empty (the skin path never runs offline).
+	Raster getRaster() { return Raster(); }
 };
 #endif // BUFFEREDIMAGE_H

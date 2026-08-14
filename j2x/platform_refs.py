@@ -39,11 +39,12 @@ REFERENCE_REPLACES = {
 # (which the game already compiles+links against) stands. First-boot tradeoff: rendering/input/file-IO are
 # real; audio/zip/socket/threading/image-decode fall back to the no-op stubs until each is reconciled.
 #   Audio       -> SoundSystem.backgroundMusic (Beta-new) + needs XactAudio.h/.cpp companions
-#   BufferedImage -> getRaster()/Raster/DataBuffer chain (added to the stub for Beta)
 #   ZipFile     -> getEntry()->ZipEntry* (stub) + reference needs full InputStream/FileInputStream
 #   Socket      -> getRemoteSocketAddress()->SocketAddress* (stub)
 #   Thread      -> dumpStack()/join(1-arg) (stub)
-REFERENCE_SKIP = {'Audio', 'BufferedImage', 'ZipFile', 'Socket', 'Thread'}
+# NOT skipped: BufferedImage -- its reference is the REAL ARGB pixel buffer that ImageIO.reference decodes
+# PNGs into (w/h/pixels fields), and it now carries getRaster()/flush()/createGraphics() too.
+REFERENCE_SKIP = {'Audio', 'ZipFile', 'Socket', 'Thread'}
 
 
 def available_references(reference_dir):
