@@ -619,13 +619,46 @@ def compute_static_init_order(classes, callable_init):
     Stable + deterministic; cycles are broken by seed/alpha priority (logged by the caller)."""
     by_name = dict((c.name, c) for c in classes)
 
+    def _ctor_and_inst_text(cls):
+        """Text that runs when an object of `cls` is constructed: its ctor bodies + instance-field
+        initializers + instance `{ }` blocks (all execute during construction)."""
+        t = [ln for m in cls.constructors() for _ln, ln in m.body]
+        t += [f.initializer for f in cls.fields if not f.is_static and f.initializer]
+        for blk in getattr(cls, 'inst_inits', []):
+            t += [ln for _ln, ln in blk]
+        return t
+
+    # J2X-BUGFIX 2026-08-13 static-init-order-ctor: a class whose initStatics() CONSTRUCTS objects
+    # (`new X`) runs X's ctor chain -- and those ctors read other classes' statics. That dependency is
+    # invisible if you only scan the class's own static-init text: BiomeGenBase::initStatics() does
+    # `new BiomeGenRainforest()`, whose (inherited BiomeGenBase) ctor reads Block::s_grass -> BiomeGenBase
+    # must init AFTER Block, but its static-init text names Block zero times. So FOLLOW `new X` transitively
+    # into X's ctor + instance inits + ancestor ctors, collecting their static refs as real deps.
     def direct_refs(c):
         txt = [f.initializer for f in c.fields if f.is_static and f.initializer]
         for blk in getattr(c, 'static_inits', []):
             txt.extend(t for _ln, t in blk)
         for ec in getattr(c, 'enum_consts', []):        # typed-enum constant args build in initStatics()
             txt.extend(ec.args)                          # (e.g. EnumCreatureType reads Material.air)
-        refs = set(re.findall(r'\b([A-Z]\w*)\b', ' '.join(t for t in txt if t)))
+        joined = ' '.join(t for t in txt if t)
+        refs = set(re.findall(r'\b([A-Z]\w*)\b', joined))
+        # transitively follow `new X` into constructed classes' ctor/instance/ancestor bodies
+        todo = list(re.findall(r'\bnew\s+([A-Z]\w*)', joined))
+        seen = set()
+        while todo:
+            x = todo.pop()
+            if x in seen:
+                continue
+            seen.add(x)
+            anc = by_name.get(x)
+            while anc is not None and anc.name not in ('',):     # walk x + its superclass chain
+                bj = ' '.join(t for t in _ctor_and_inst_text(anc) if t)
+                refs |= set(re.findall(r'\b([A-Z]\w*)\b', bj))
+                todo.extend(re.findall(r'\bnew\s+([A-Z]\w*)', bj))
+                nxt = by_name.get(anc.parent)
+                if nxt is None or nxt.name in seen:
+                    break
+                anc = nxt
         return (refs & callable_init) - {c.name}        # only OTHER initable classes are real deps
 
     deps = dict((n, direct_refs(by_name[n])) for n in callable_init if n in by_name)
