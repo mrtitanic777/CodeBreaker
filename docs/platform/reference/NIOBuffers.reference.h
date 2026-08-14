@@ -96,7 +96,7 @@ public:
 
 	// java.nio.ByteBuffer.allocateDirect(n): fresh backing of n bytes (GLAllocation calls this).
 	static ByteBuffer* allocateDirect(int nbytes) { return new ByteBuffer(new NioBacking(nbytes)); }
-	ByteBuffer& order(int /*byteOrder*/) { return *this; }     // ByteOrder.nativeOrder() -> no-op
+	ByteBuffer* order(int /*byteOrder*/) { return this; }      // ByteOrder.nativeOrder() -> no-op (ptr: the converter chains ->order()->asIntBuffer() and assigns to ByteBuffer*)
 
 	ByteBuffer& clear()  { _posB = 0; _limB = _b ? _b->cap : 0; return *this; }
 	ByteBuffer& flip()   { _limB = _posB; _posB = 0; return *this; }

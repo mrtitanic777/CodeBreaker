@@ -75,6 +75,21 @@ def emit_references(out_dir, reference_dir):
     emitted stub. Returns the set of base names emitted. Also writes PLATFORM_LAYER.md."""
     emitted = set()
     files_written = []
+    # Clean up references that USED to be emitted but are now skipped: a prior convert wrote X.cpp/X.h
+    # (carrying the PLATFORM REFERENCE banner); leaving them makes the vcxproj still compile the stale
+    # reference (e.g. a skipped Audio.cpp -> unresolved XactAudio.h). Delete only OUR banner'd files, never
+    # a stub the current run just wrote (stubs carry no banner) or a user file.
+    for base in sorted(REFERENCE_SKIP):
+        for ext in ('cpp', 'h'):
+            fp = os.path.join(out_dir, '%s.%s' % (base, ext))
+            if os.path.isfile(fp):
+                try:
+                    with open(fp, 'r', encoding='utf-8', errors='replace') as f:
+                        head = f.read(400)
+                    if 'PLATFORM REFERENCE' in head or 'PLATFORM COMPANION' in head:
+                        os.remove(fp)
+                except OSError:
+                    pass
     for base in sorted(available_references(reference_dir)):
         if base in REFERENCE_SKIP:                    # keep the converter stub (see REFERENCE_SKIP note)
             continue
