@@ -38,6 +38,9 @@ IDirect3DTexture9* g_defaultTexture = NULL;
 
 Minecraft* g_minecraft = NULL;
 
+// J2X-BUGFIX 2026-08-13 boot-trace-before-main: every boot probe used to sit inside main(), but the first
+// crash was in a global ctor BEFORE main() -- so nothing could ever log. This file-scope probe fires during
+// static init to bracket that region (see also j2x_initAll per-class [INIT] trace + Common.h ResolvePath).
 // GLOBAL-CTOR PROBE: this object is constructed during C++ static initialization -- BEFORE main(). If the
 // title dies before main() (a hang/fault in some other class's global ctor / static field initializer),
 // this is the ONLY thing that still runs. Its mark tells us: (a) the trace channel works at all, and (b)

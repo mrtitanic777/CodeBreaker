@@ -148,6 +148,11 @@ def _array_elem_cpp(jtype, resolver):
     return elem
 
 
+# J2X-BUGFIX 2026-08-13 static-init-order: a FUNCTION-CALL static field initializer (e.g. StatList's
+# `s_mineBlockStatArray = func_25153_a(...)`) leaked out as an eager file-scope global ctor. Global ctors
+# run in UNDEFINED cross-TU order BEFORE main()/j2x_initAll(), so func_25153_a() -> Block::s_waterStill->
+# blockID derefed a NULL Block static -> silent crash before main() (black screen, no boot markers). Fix:
+# also defer lowercase-initial function-call initializers into the ordered initStatics(). See below.
 def _is_deferrable_static_init(init, ft):
     """True if a static initializer must run AFTER zero-init, in CONTROLLED order -- so that cross-
     translation-unit global-ctor order (which C++ leaves UNDEFINED) can't crash the boot before main().

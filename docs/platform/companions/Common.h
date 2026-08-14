@@ -35,6 +35,12 @@ inline long long GetNanoTime() {
     return (long long)((double)counter.QuadPart * 1000000000.0 / (double)freq.QuadPart);
 }
 
+// J2X-BUGFIX 2026-08-13 nexia-log-channel: Nexia360 SWALLOWS OutputDebugStringA AND the raw kernel
+// DbgPrint on its own -- so boot logging was invisible and the black-screen looked un-debuggable. The one
+// channel it always surfaces is HostPathDevice::ResolvePath. DbgPrintF below mirrors every message into a
+// throwaway CreateFileA("game:\\J2X_<msg>") so it shows as `ResolvePath(\J2X_<msg>)`, plus a durable
+// game:\J2X_trace.txt append. (After main() is reached, the (DbgPrint) lines DO appear -- but the resolve
+// marker is the reliable one.) RULE: sparse one-shot calls only, never per-frame (that flooded the log).
 // --- DbgPrint format helper (the port's ONE debug-output apparatus) ---
 // Formats like printf and emits a single line to the host debug channel: OutputDebugStringA is what
 // actually surfaces in the Nexia360 / kernel debug log; DbgPrint is the raw kernel print alongside it.

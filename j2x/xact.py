@@ -414,6 +414,10 @@ def build(java_dir, out_dir, resources_dir=None, autorun=False, sdk_root=None, l
     return xap, cues
 
 
+# J2X-BUGFIX 2026-08-13 audio-never-built: the wizard audio step only wrote convert_audio.bat and never
+# generated the .xap/build_banks.bat, so the XACT banks were never produced -> no game audio. build() now
+# runs the FULL XACT3 build, and run_build() (below) AUTORUNS both bats (ffmpeg then XACTBLD), skipping
+# gracefully if a tool is missing. Content path is Content\Audio\ (not Content\resources).
 def run_build(out_dir, sdk_root=None, log=None):
     """AUTORUN the two audio scripts in out_dir: convert_audio.bat (ffmpeg ogg->wav) then build_banks.bat
     (XACTBLD xap -> sounds.xwb/.xsb). Each step is SKIPPED gracefully (never fails the conversion) if its
