@@ -45,6 +45,7 @@ inline long long GetNanoTime() {
 // mistake, not a reason to kill the mechanism. Flip J2X_DEBUG_LOG to 0 to compile every site out to nothing.
 #include <stdio.h>
 #include <stdarg.h>
+#include <string.h>
 #define J2X_DEBUG_LOG 1
 extern "C" unsigned long __cdecl DbgPrint(const char* Format, ...);
 inline void DbgPrintF(const char* fmt, ...) {
@@ -54,8 +55,25 @@ inline void DbgPrintF(const char* fmt, ...) {
     _vsnprintf(buf, sizeof(buf) - 1, fmt, ap);
     va_end(ap);
     buf[sizeof(buf) - 1] = '\0';
-    OutputDebugStringA(buf);   // -> Nexia360 host debug log (this is the line you actually see)
-    DbgPrint("%s", buf);       // -> raw kernel print, belt-and-suspenders
+    OutputDebugStringA(buf);   // debug channel: works on real hw / other tools, but Nexia360 SWALLOWS it
+    DbgPrint("%s", buf);       // raw kernel print: also swallowed by Nexia360
+    // Nexia360 does NOT surface the debug channel -- but it logs EVERY HostPathDevice::ResolvePath. So
+    // mirror the message into a throwaway path-resolve the emulator WILL print, in order:
+    //     F> ... HostPathDevice::ResolvePath(\J2X\<message>)
+    // The path never exists (resolve "fails") -- we only want the logged line, not any bytes. This is the
+    // ONLY reliable boot-trace channel here. Sparse one-shot calls only -- NEVER per-frame (that's what
+    // flooded the log before). Sanitize to one clean path segment (drop \ / : and newlines).
+    char path[576];
+    strcpy(path, "game:\\J2X\\");
+    size_t j = strlen(path);
+    for (size_t i = 0; buf[i] && j < sizeof(path) - 1; ++i) {
+        char c = buf[i];
+        if (c == '\n' || c == '\r' || c == '\\' || c == '/' || c == ':') continue;
+        path[j++] = c;
+    }
+    path[j] = '\0';
+    FILE* pf = fopen(path, "rb");
+    if (pf) fclose(pf);
 #else
     (void)fmt;
 #endif

@@ -81,10 +81,14 @@ static void ApplyDefaultRenderState() {
 }
 
 void __cdecl main() {
-    if (!InitD3D()) { DbgPrintF("[BOOT] D3D init failed\n"); return; }
+    DbgPrintF("[BOOT] 0 main enter\n");
+    if (!InitD3D()) { DbgPrintF("[BOOT] D3D init FAILED\n"); return; }
+    DbgPrintF("[BOOT] 0a InitD3D ok\n");
     ApplyDefaultRenderState();
+    DbgPrintF("[BOOT] 0b ApplyDefaultRenderState done\n");
 
-    if (!Shaders::init()) { DbgPrintF("[BOOT] shader compile failed\n"); return; }
+    if (!Shaders::init()) { DbgPrintF("[BOOT] shader compile FAILED\n"); return; }
+    DbgPrintF("[BOOT] 0c Shaders::init done\n");
 
     // GL emulator init: seed the MODELVIEW/PROJECTION matrix stacks with identity. Without this the
     // stacks are empty std::vectors and the very first glLoadIdentity()/glOrtho() in Minecraft::
