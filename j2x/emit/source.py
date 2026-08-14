@@ -149,14 +149,27 @@ def _array_elem_cpp(jtype, resolver):
 
 
 def _is_deferrable_static_init(init, ft):
-    """True if a static initializer must run AFTER zero-init, in CONTROLLED order -- it constructs an
-    object (`new`) or reads another class's statics (`::`/`->`), so cross-translation-unit init order
-    matters (the static-init-order crash class). Such inits move into initStatics(); the field def is
-    zero-initialized. Compile-time constants and `const` members (can't be reassigned) stay eager."""
+    """True if a static initializer must run AFTER zero-init, in CONTROLLED order -- so that cross-
+    translation-unit global-ctor order (which C++ leaves UNDEFINED) can't crash the boot before main().
+    Deferred inits move into the ordered initStatics(); the field def is zero-initialized. Compile-time
+    constants and `const` members (can't be reassigned) stay eager.
+
+    Order-sensitive when the initializer:
+      - constructs an object (`new`) or reads another class's statics (`::` / `->`); OR
+      - CALLS a free/static function -- a lowercase-initial identifier (incl. obfuscated `func_NNNNN`)
+        immediately before `(`. Such a call runs arbitrary code at static-init time that may touch other
+        classes' not-yet-constructed statics. The real bug this catches: `StatList::s_mineBlockStatArray
+        = func_25153_a("stat.mineBlock", 16777216)` -- func_25153_a() indexes Block::s_blocksList, whose
+        TU may not have run its global ctors yet -> null deref BEFORE main() (silent black screen).
+    Constructor calls (PascalCase type, e.g. `JArray<T>(N)`, `JavaString(...)`) only allocate and are
+    order-independent, so they stay eager."""
     head = ft.split('<')[0]
     if 'const' in head.split():
         return False
-    return bool(re.search(r'\bnew\b|::|->', init))
+    if re.search(r'\bnew\b|::|->', init):
+        return True
+    # a call to a lowercase-initial function name (not a PascalCase constructor) -> defer
+    return bool(re.search(r'(^|[^\w:.])[a-z]\w*\s*\(', init))
 
 
 def _render_statics(cls, resolver, ledger):
