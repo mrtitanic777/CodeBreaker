@@ -629,6 +629,17 @@ def compute_static_init_order(classes, callable_init):
         return (refs & callable_init) - {c.name}        # only OTHER initable classes are real deps
 
     deps = dict((n, direct_refs(by_name[n])) for n in callable_init if n in by_name)
+
+    # J2X-BUGFIX 2026-08-13 static-init-order-seed: the SEED must be a HARD ordering chain, not just a
+    # tiebreaker priority. CraftingManager::initStatics() is only `s_instance = new CraftingManager()`, so
+    # direct_refs sees no deps (the real Item::/Block:: reads are buried in the ctor -> RecipesTools::
+    # addRecipes) -> it floated to position 2, ran before Item/Block, and derefed NULL Item statics ->
+    # crash in j2x_initAll (black screen). Chain consecutive seed members as real deps so those ctor-
+    # mediated orderings hold: each seeded class present in the graph must run after the previous one.
+    seed_present = [n for n in _STATIC_INIT_ORDER if n in deps]
+    for _i in range(1, len(seed_present)):
+        deps[seed_present[_i]] = deps[seed_present[_i]] | {seed_present[_i - 1]}
+
     prio = dict((name, i) for i, name in enumerate(_STATIC_INIT_ORDER))
     order_key = lambda n: (prio.get(n, len(_STATIC_INIT_ORDER)), n)
 
@@ -661,8 +672,21 @@ def _write_init_driver(out_dir, init_classes, classes):
 
     lines = ['#include "stdafx.h"', '#include "JavaRT.h"', '#include "j2x_init.h"', '']
     lines += ['#include "%s.h"' % c for c in ordered]
-    lines += ['', 'void j2x_initAll()', '{']
-    lines += ['\t%s::initStatics();' % c for c in ordered]
+    # J2X-BUGFIX 2026-08-13 init-trace: emit a per-class boot trace so a crash INSIDE j2x_initAll (a class
+    # whose initStatics/ctor derefs a not-yet-initialized static) is pinpointed -- the last [INIT] line
+    # logged names the offender. One-shot at boot (sparse -> safe per the DbgPrintF rule); gate J2X_INIT_TRACE
+    # to 0 to strip it from a release build. Uses raw DbgPrint (surfaces once main() is running).
+    lines += ['',
+              'extern "C" unsigned long __cdecl DbgPrint(const char* Format, ...);',
+              '#ifndef J2X_INIT_TRACE',
+              '#define J2X_INIT_TRACE 1',
+              '#endif',
+              '', 'void j2x_initAll()', '{']
+    for c in ordered:
+        lines.append('#if J2X_INIT_TRACE')
+        lines.append('\tDbgPrint("[INIT] %s\\n");' % c)
+        lines.append('#endif')
+        lines.append('\t%s::initStatics();' % c)
     lines += ['}', '']
     _write(os.path.join(out_dir, 'j2x_init.cpp'), '\n'.join(lines))
 
