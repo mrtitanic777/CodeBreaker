@@ -20,9 +20,14 @@
 // define _XBOX (see the .vcxproj), exactly as Microsoft's own code keys off it. Select the form here so
 // ONE platform layer serves both a Windows/PC-D3D9 target and an Xbox 360/D3DX9-360 target.
 #ifdef _XBOX
-  #define J2X_TEXPOOL  D3DPOOL_DEFAULT   // 360: no managed pool; DEFAULT is lockable (unified memory)
+  #define J2X_TEXPOOL  D3DPOOL_MANAGED       // 360: pool is ignored (unified memory); MANAGED is a benign token
+  // CRITICAL: the 360's plain D3DFMT_A8R8G8B8 is TILED (swizzled). A LockRect + linear pixel copy into a
+  // tiled texture scrambles the image into block/stripe garbage when sampled. D3DFMT_LIN_A8R8G8B8 is the
+  // UNTILED twin, so a linear copy lays out exactly as the GPU samples. (Proven in the Beta port.)
+  #define J2X_TEXFMT   D3DFMT_LIN_A8R8G8B8
 #else
-  #define J2X_TEXPOOL  D3DPOOL_MANAGED   // PC D3D9: managed pool (auto system-memory backing)
+  #define J2X_TEXPOOL  D3DPOOL_MANAGED       // PC D3D9: managed pool (auto system-memory backing)
+  #define J2X_TEXFMT   D3DFMT_A8R8G8B8       // PC has no tiling; plain A8R8G8B8
 #endif
 
 namespace GL11 {
@@ -447,21 +452,23 @@ void glTexParameterf(int target, int pname, float param) { glTexParameteri(targe
 static void _uploadRGBA(GLTex* t, int w, int h, const unsigned char* rgba) {
 	if (!g_dev || !t || w <= 0 || h <= 0) return;
 	if (t->tex) { t->tex->Release(); t->tex = 0; }
-	// Target-aware pool (J2X_TEXPOOL): DEFAULT on 360 (no managed pool), MANAGED on PC. Matches the
-	// working hand-port's Textures::loadTextureFromData on 360.
-	if (FAILED(g_dev->CreateTexture(w, h, 1, 0, D3DFMT_A8R8G8B8, J2X_TEXPOOL, &t->tex, 0))) return;
+	// Match the Beta port's proven upload: unbind first (360 forbids releasing a still-set texture),
+	// LINEAR format (J2X_TEXFMT), and bracket CreateTexture with EndScene/BeginScene -- the Nexia360
+	// D3D12 backend rejects CreateTexture mid-scene.
+	g_dev->SetTexture(0, 0);
+	if (t->tex) { t->tex->Release(); t->tex = 0; }
+	g_dev->EndScene();
+	HRESULT hr = g_dev->CreateTexture(w, h, 1, 0, J2X_TEXFMT, J2X_TEXPOOL, &t->tex, 0);
+	g_dev->BeginScene();
+	if (FAILED(hr) || !t->tex) { t->tex = 0; return; }
 	t->w = w; t->h = h;
 	D3DLOCKED_RECT lr;
 	if (FAILED(t->tex->LockRect(0, &lr, 0, 0))) return;
 	for (int y = 0; y < h; ++y) {
-		unsigned char* dst = (unsigned char*)lr.pBits + y * lr.Pitch;
-		const unsigned char* src = rgba + y * w * 4;
-		for (int x = 0; x < w; ++x) {
-			unsigned char r = src[0], g = src[1], b = src[2], a = src[3]; src += 4;
-			// D3DFMT_A8R8G8B8 is BGRA in memory on this platform (little-endian) -- input is RGBA.
-			// Byte-for-byte identical to the working hand-port's Textures::loadTextureFromData.
-			dst[0] = b; dst[1] = g; dst[2] = r; dst[3] = a; dst += 4;
-		}
+		DWORD* dst = (DWORD*)((unsigned char*)lr.pBits + y * lr.Pitch);
+		const unsigned char* src = rgba + y * w * 4;      // src is GL_RGBA byte order [R,G,B,A]
+		for (int x = 0; x < w; ++x)
+			dst[x] = D3DCOLOR_ARGB(src[x*4+3], src[x*4+0], src[x*4+1], src[x*4+2]);   // native ARGB DWORD
 	}
 	t->tex->UnlockRect(0);
 }
@@ -475,15 +482,14 @@ void glTexImage2D(int, int, int, int w, int h, int, int, int, IntBuffer* pixels)
 }
 void glTexSubImage2D(int, int, int xoff, int yoff, int w, int h, int, int, ByteBuffer* pixels) {
 	GLTex* t = boundTex(); if (!t || !t->tex || !pixels) return;
+	g_dev->SetTexture(0, 0);   // unbind: 360 forbids LockRect on a texture still set in the device
 	D3DLOCKED_RECT lr; RECT rc; rc.left = xoff; rc.top = yoff; rc.right = xoff + w; rc.bottom = yoff + h;
 	if (FAILED(t->tex->LockRect(0, &lr, &rc, 0))) return;
-	const unsigned char* src = (const unsigned char*)pixels->base();
+	const unsigned char* src = (const unsigned char*)pixels->base();   // GL_RGBA byte order [R,G,B,A]
 	for (int y = 0; y < h; ++y) {
-		unsigned char* dst = (unsigned char*)lr.pBits + y * lr.Pitch;
-		for (int x = 0; x < w; ++x) {
-			unsigned char r = src[0], g = src[1], b = src[2], a = src[3]; src += 4;
-			dst[0] = b; dst[1] = g; dst[2] = r; dst[3] = a; dst += 4;
-		}
+		DWORD* dst = (DWORD*)((unsigned char*)lr.pBits + y * lr.Pitch);
+		for (int x = 0; x < w; ++x, src += 4)
+			dst[x] = D3DCOLOR_ARGB(src[3], src[0], src[1], src[2]);   // native ARGB DWORD
 	}
 	t->tex->UnlockRect(0);
 }
