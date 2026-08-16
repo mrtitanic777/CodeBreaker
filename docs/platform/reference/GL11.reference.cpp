@@ -437,7 +437,13 @@ static void _uploadRGBA(GLTex* t, int w, int h, const unsigned char* rgba) {
 		const unsigned char* src = rgba + y * w * 4;
 		for (int x = 0; x < w; ++x) {
 			unsigned char r = src[0], g = src[1], b = src[2], a = src[3]; src += 4;
-			dst[0] = b; dst[1] = g; dst[2] = r; dst[3] = a; dst += 4;    // ARGB little-endian = [B,G,R,A]
+			// ENDIAN-SAFE: write the texel as a native 32-bit ARGB value. On the big-endian 360/
+			// emulator this stores [A,R,G,B] (correct D3DFMT_A8R8G8B8); a byte-by-byte [B,G,R,A] write
+			// (little-endian PC layout) scrambled every channel -- and put ALPHA in the blue slot, so
+			// alpha-tested terrain got clip()'d away (the missing ground). [J2X-BUGFIX tex-endianness]
+			*(unsigned int*)dst = ((unsigned int)a << 24) | ((unsigned int)r << 16)
+			                    | ((unsigned int)g << 8) | (unsigned int)b;
+			dst += 4;
 		}
 	}
 	t->tex->UnlockRect(0);
