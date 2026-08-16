@@ -446,9 +446,17 @@ void glTexParameteri(int, int pname, int param) {
 }
 void glTexParameterf(int target, int pname, float param) { glTexParameteri(target, pname, (int)param); }
 
-// Upload RGBA bytes into a fresh managed texture bound to the current id. GL byte order is R,G,B,A;
-// D3DFMT_A8R8G8B8 wants B,G,R,A in memory -> swizzle per pixel. HARDWARE-VERIFY the 360 wants tiled
-// textures (XGTileTextureLevel) -- a LOCKED linear D3DFMT_A8R8G8B8 texture may need untiling.
+// Convert a game-supplied texel DWORD to a native D3DCOLOR_ARGB (0xAARRGGBB). The common LWJGL texture
+// idiom packs each pixel as an int (a<<24)|(b<<16)|(g<<8)|r and writes it via IntBuffer.put -- stored
+// NATIVELY, that value reads back as 0xAABBGGRR (ABGR), so we swap R<->B to get ARGB. Endian-independent:
+// it operates on the DWORD VALUE the game wrote, not its byte layout, so it is correct whether the title
+// runs big- or little-endian. (glTexImage2D is nominally GL_RGBA, but the packed-int idiom's little-endian
+// assumption means the real channel order is ABGR -- this was the magenta grass.)
+static inline DWORD _texelToARGB(DWORD abgr) {
+	return (abgr & 0xFF00FF00u) | ((abgr & 0x000000FFu) << 16) | ((abgr & 0x00FF0000u) >> 16);
+}
+
+// Upload a texture into a fresh LINEAR texture bound to the current id (see J2X_TEXFMT / _texelToARGB).
 static void _uploadRGBA(GLTex* t, int w, int h, const unsigned char* rgba) {
 	if (!g_dev || !t || w <= 0 || h <= 0) return;
 	if (t->tex) { t->tex->Release(); t->tex = 0; }
@@ -466,9 +474,8 @@ static void _uploadRGBA(GLTex* t, int w, int h, const unsigned char* rgba) {
 	if (FAILED(t->tex->LockRect(0, &lr, 0, 0))) return;
 	for (int y = 0; y < h; ++y) {
 		DWORD* dst = (DWORD*)((unsigned char*)lr.pBits + y * lr.Pitch);
-		const unsigned char* src = rgba + y * w * 4;      // src is GL_RGBA byte order [R,G,B,A]
-		for (int x = 0; x < w; ++x)
-			dst[x] = D3DCOLOR_ARGB(src[x*4+3], src[x*4+0], src[x*4+1], src[x*4+2]);   // native ARGB DWORD
+		const DWORD* s = (const DWORD*)(rgba + y * w * 4);
+		for (int x = 0; x < w; ++x) dst[x] = _texelToARGB(s[x]);
 	}
 	t->tex->UnlockRect(0);
 }
@@ -485,11 +492,10 @@ void glTexSubImage2D(int, int, int xoff, int yoff, int w, int h, int, int, ByteB
 	g_dev->SetTexture(0, 0);   // unbind: 360 forbids LockRect on a texture still set in the device
 	D3DLOCKED_RECT lr; RECT rc; rc.left = xoff; rc.top = yoff; rc.right = xoff + w; rc.bottom = yoff + h;
 	if (FAILED(t->tex->LockRect(0, &lr, &rc, 0))) return;
-	const unsigned char* src = (const unsigned char*)pixels->base();   // GL_RGBA byte order [R,G,B,A]
+	const DWORD* src = (const DWORD*)pixels->base();
 	for (int y = 0; y < h; ++y) {
 		DWORD* dst = (DWORD*)((unsigned char*)lr.pBits + y * lr.Pitch);
-		for (int x = 0; x < w; ++x, src += 4)
-			dst[x] = D3DCOLOR_ARGB(src[3], src[0], src[1], src[2]);   // native ARGB DWORD
+		for (int x = 0; x < w; ++x) dst[x] = _texelToARGB(src[y * w + x]);
 	}
 	t->tex->UnlockRect(0);
 }
