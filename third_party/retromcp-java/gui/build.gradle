@@ -31,5 +31,9 @@ tasks.named("shadowJar", ShadowJar) {
 	setDestinationDirectory(rootProject.getLayout().getBuildDirectory().dir("libs"))
 	minimize() {
 		exclude(dependency(libs.flatlaf.get()))
+		// Vineflower loads its plugins (Kotlin, pass builders) reflectively via its own
+		// InJarClassLoader, so minimize() can't see them as "used" -- exclude it or those
+		// classes get stripped and decompile crashes with NoClassDefFoundError at startup.
+		exclude(dependency(libs.fernflower.get()))
 	}
 }

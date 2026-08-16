@@ -7,6 +7,10 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map.Entry;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import org.json.JSONObject;
 import org.mcphackers.mcp.DownloadListener;
@@ -140,18 +144,46 @@ public class DownloadData {
 	}
 
 	public void performDownload(DownloadListener listener) throws IOException {
+		// Assets are hundreds/thousands of tiny files -- serial fetching is latency-bound and very slow.
+		// Download them concurrently with a small thread pool (progress notifications serialized).
+		int threads = Math.min(16, Math.max(1, downloadQueue.size()));
+		ExecutorService pool = Executors.newFixedThreadPool(threads);
+		final Object notifyLock = new Object();
+		List<Future<?>> futures = new ArrayList<>();
 		for (Download dl : downloadQueue) {
-			IDownload download = dl.download;
-			Path baseDir = dl.dir;
-			String path = download.downloadPath();
-			// if downloadPath is null then baseDir is the location of downloaded file.
-			Path file = path == null ? baseDir : baseDir.resolve(path);
-			listener.notify(dl.download, totalSize);
-			if (!Files.exists(file) || (download.verify() && !download.downloadHash().equals(Util.getSHA1(file)))) {
-				Path parent = file.getParent();
-				if (parent != null) Files.createDirectories(parent);
-				FileUtil.downloadFile(download.downloadURL(), file);
+			futures.add(pool.submit(() -> {
+				IDownload download = dl.download;
+				Path baseDir = dl.dir;
+				String path = download.downloadPath();
+				// if downloadPath is null then baseDir is the location of downloaded file.
+				Path file = path == null ? baseDir : baseDir.resolve(path);
+				if (!Files.exists(file) || (download.verify() && !download.downloadHash().equals(Util.getSHA1(file)))) {
+					Path parent = file.getParent();
+					if (parent != null) Files.createDirectories(parent);
+					FileUtil.downloadFile(download.downloadURL(), file);
+				}
+				synchronized (notifyLock) {
+					listener.notify(dl.download, totalSize);
+				}
+				return null;
+			}));
+		}
+		pool.shutdown();
+		try {
+			for (Future<?> f : futures) {
+				f.get(); // propagate any download failure
 			}
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			throw new IOException("Download interrupted", e);
+		} catch (ExecutionException e) {
+			Throwable cause = e.getCause();
+			if (cause instanceof IOException) {
+				throw (IOException) cause;
+			}
+			throw new IOException("Download failed", cause);
+		} finally {
+			pool.shutdownNow();
 		}
 	}
 
