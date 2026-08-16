@@ -171,7 +171,8 @@ void glInit() {
 	g_lists.clear(); g_recordingList = 0;
 	_buildShader();
 	if (g_dev) {
-		g_dev->SetRenderState(D3DRS_LIGHTING, FALSE);
+		// NOTE: no D3DRS_LIGHTING -- Xenos (360) has no fixed-function pipeline, so that render state
+		// does not exist in the XDK. Lighting is off by construction (the shader does color*texture).
 		g_dev->SetRenderState(D3DRS_ZENABLE, TRUE);
 		g_dev->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
 	}
