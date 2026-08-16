@@ -15,6 +15,16 @@
 #include <vector>
 #include <string.h>
 
+// TARGET-AWARE D3D FORM FACTOR. The Xbox 360's Direct3D is a DIFFERENT form of D3D9 than the PC's:
+// unified memory (no managed pool), no fixed-function pipeline, D3DX9-centric. The 360 build configs
+// define _XBOX (see the .vcxproj), exactly as Microsoft's own code keys off it. Select the form here so
+// ONE platform layer serves both a Windows/PC-D3D9 target and an Xbox 360/D3DX9-360 target.
+#ifdef _XBOX
+  #define J2X_TEXPOOL  D3DPOOL_DEFAULT   // 360: no managed pool; DEFAULT is lockable (unified memory)
+#else
+  #define J2X_TEXPOOL  D3DPOOL_MANAGED   // PC D3D9: managed pool (auto system-memory backing)
+#endif
+
 namespace GL11 {
 
 // --------------------------------------------------------------------------- vertex format
@@ -428,10 +438,9 @@ void glTexParameterf(int target, int pname, float param) { glTexParameteri(targe
 static void _uploadRGBA(GLTex* t, int w, int h, const unsigned char* rgba) {
 	if (!g_dev || !t || w <= 0 || h <= 0) return;
 	if (t->tex) { t->tex->Release(); t->tex = 0; }
-	// D3DPOOL_DEFAULT (NOT _MANAGED): the Xbox 360 has no managed pool -- CreateTexture(MANAGED)
-	// corrupts/fails there. DEFAULT-pool textures ARE lockable on 360 (unified memory). Matches the
-	// working hand-port's Textures::loadTextureFromData. [J2X-BUGFIX tex-pool-360]
-	if (FAILED(g_dev->CreateTexture(w, h, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &t->tex, 0))) return;
+	// Target-aware pool (J2X_TEXPOOL): DEFAULT on 360 (no managed pool), MANAGED on PC. Matches the
+	// working hand-port's Textures::loadTextureFromData on 360.
+	if (FAILED(g_dev->CreateTexture(w, h, 1, 0, D3DFMT_A8R8G8B8, J2X_TEXPOOL, &t->tex, 0))) return;
 	t->w = w; t->h = h;
 	D3DLOCKED_RECT lr;
 	if (FAILED(t->tex->LockRect(0, &lr, 0, 0))) return;
