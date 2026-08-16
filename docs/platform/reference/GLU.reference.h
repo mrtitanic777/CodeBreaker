@@ -12,7 +12,7 @@
 #include "JavaString.h"
 #include "NIOBuffers.h"     // IntBuffer for the gluPickMatrix viewport
 
-namespace GLU {
+namespace d3d9 {
 	void gluPerspective(float fovy, float aspect, float zNear, float zFar);   // REAL -- GLU.reference.cpp
 	// Picking: narrows the current PROJECTION to a small region around (x,y) before gluPerspective, in
 	// GL_SELECT mode (RubyDung block picking). Composes onto the current matrix via GL11 translate/scale.
@@ -26,4 +26,6 @@ namespace GLU {
 	inline void gluProject(...) {}
 	inline void gluUnProject(...) {}
 }
+// TRANSITION alias (removed after Stage 3 rewires callers): GLU is part of the d3d9 layer.
+namespace GLU = d3d9;
 #endif // GLU_H

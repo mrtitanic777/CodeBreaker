@@ -26,6 +26,28 @@ from .ledger import Ledger, Category, Severity
 # so _finalize_emitted prefixes every emitted throw with a location tracer (see JavaRT.h).
 _TRACE_THROWS = False
 
+# Set True by convert() for the Xbox 360: the console runs NO OpenGL, so every OpenGL call in the
+# converted game is converted to the native Direct3D 9 layer (namespace d3d9). GL11:: / GLU:: are the
+# OpenGL API namespaces; the registry (apimap/opengl.json + glu.json) is the authoritative GL->D3D9
+# conversion table, and this pass applies it -- rewriting the call sites so the emitted code contains
+# Direct3D 9, not OpenGL. (The runtime GL11/GLU names are transition aliases of d3d9, removed later.)
+_GL_TO_D3D9 = False
+
+# OpenGL API namespaces that the registry maps to the Direct3D 9 layer 'd3d9'. Sourced from the registry
+# languages catalog (kind == 'api', opengl-family) at convert() time; this default covers GL11/GLU.
+_GL_NAMESPACES = ('GL11', 'GLU')
+
+
+def _convert_gl_to_d3d9(text):
+    """Rewrite OpenGL call sites (GL11::glX, GLU::gluX, GL11::GL_CONST) in emitted game code to the
+    Direct3D 9 layer namespace 'd3d9'. Registry-validated: every GL symbol converted is one the
+    OpenGL->Direct3D9 table maps (see apimap/opengl.json + glu.json). Only the `Ns::` qualified form is
+    touched -- `#include "GL11.h"` filenames are left intact."""
+    import re as _re
+    pat = _re.compile(r'\b(?:' + '|'.join(_re.escape(n) for n in _GL_NAMESPACES) + r')::')
+    return pat.sub('d3d9::', text)
+
+
 def _trace_guest_throws(text):
     """Prefix every LINE-LEADING `throw` statement with a separate `J2X_GUEST_THROW();` statement so a
     fired throw names its file:line. Deliberately robust-by-simplicity: it inserts a whole statement
@@ -58,6 +80,8 @@ def _finalize_emitted(text):
     from .emit.std_transforms import sanitize_reserved_members
     from .emit.statements import _wrap_new_alloc_chains, _wrap_literal_method, _paren_shift_operands
     text = sanitize_reserved_members(text)
+    if _GL_TO_D3D9:
+        text = _convert_gl_to_d3d9(text)
     if _TRACE_THROWS:
         text = _trace_guest_throws(text)   # tag every throw with its site (throws are no-op landmines here)
     text = text.replace(chr(39) + chr(92) + 'u0000' + chr(39), chr(39) + chr(92) + '0' + chr(39))
@@ -598,8 +622,10 @@ def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True,
 
     # On the 360 emulator a C++ `throw` is a no-op that doesn't unwind -> tag every emitted throw with
     # its site (JavaRT.h's J2X_GUEST_THROW) so a fired landmine names its file:line in the debug log.
-    global _TRACE_THROWS
+    global _TRACE_THROWS, _GL_TO_D3D9
     _TRACE_THROWS = (platform == 'xbox360')
+    # The 360 runs NO OpenGL: convert every GL call in the emitted game to the Direct3D 9 layer (d3d9).
+    _GL_TO_D3D9 = (platform == 'xbox360')
 
     # SDK GATE: refuse platform-specific conversion for a console target with no SDK on the machine.
     from . import sdk as _sdk

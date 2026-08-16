@@ -9,7 +9,7 @@
 // pixel-exact 2D (GUI/font). The input pump (Input::poll) is a no-op if the game links no Input layer.
 
 #include "stdafx.h"     // xtl.h / d3d9.h / d3dx9.h
-#include "GL11.h"       // GL11::glSetDevice / glInit / glViewport
+#include "GL11.h"       // d3d9::glSetDevice / glInit / glViewport
 #include "Common.h"     // DbgPrintF -- boot trace that surfaces on the 360/emulator; g_pd3dDevice extern
 #include "Display.h"
 
@@ -77,9 +77,9 @@ void create() {
 	// Hand the device to the GL emulator and initialize GL state, then set the viewport to the
 	// backbuffer size and open the first scene (Display::update EndScene/Present/BeginScene per frame).
 	g_pd3dDevice = s_dev;            // publish to the app-global the platform companions reference
-	GL11::glSetDevice(s_dev);
-	GL11::glInit();
-	GL11::glViewport(0, 0, w, h);
+	d3d9::glSetDevice(s_dev);
+	d3d9::glInit();
+	d3d9::glViewport(0, 0, w, h);
 	s_dev->SetRenderState(D3DRS_HALFPIXELOFFSET, TRUE);   // pixel-exact 2D on 360 (HARDWARE-VERIFY)
 	s_dev->BeginScene();
 	s_created = true;
