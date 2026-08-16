@@ -673,8 +673,8 @@ def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True,
     # being blind: it ships the proven Alpha platform layer; PLATFORM_COVERAGE.md reports the delta.
     if platform_refs:
         from . import platform_refs as _pref
-        _ref_dir0 = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                                 'docs', 'platform', 'reference')
+        from ._paths import data_path as _data_path
+        _ref_dir0 = _data_path('docs', 'platform', 'reference')
         emitted = _pref.emit_references(out_dir, _ref_dir0)
         _prog('[platform] emitted %d hand-written platform references (replacing stubs): %s'
               % (len(emitted), ', '.join(sorted(emitted))))
@@ -806,8 +806,8 @@ def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True,
     # platform-layer coverage: which video/input/audio/fileIO/network/memory symbols the game uses,
     # classified REUSABLE (Alpha reference) / STUB / MISSING, with an implementation-choice menu.
     from . import platform_coverage
-    _ref_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                            'docs', 'platform', 'reference')
+    from ._paths import data_path as _data_path
+    _ref_dir = _data_path('docs', 'platform', 'reference')
     pc_path, _pc = platform_coverage.write_report(
         out_dir, reference_dir=(_ref_dir if os.path.isdir(_ref_dir) else None),
         runtime_files=set(rt_files.keys()))

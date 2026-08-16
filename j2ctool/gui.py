@@ -12,7 +12,10 @@ import sys
 import io
 import contextlib
 
+from ._paths import data_path as _data_path
 HERE = os.path.dirname(os.path.abspath(__file__))
+# REPO_ROOT is the WRITABLE base (generated output, .sln, signatures.md) -- next to the exe when frozen.
+# Bundled read-only data (docs/platform/**) is resolved separately via _data_path().
 REPO_ROOT = os.path.dirname(HERE)
 if getattr(sys, 'frozen', False):
     REPO_ROOT = os.path.dirname(sys.executable)
@@ -1304,7 +1307,7 @@ class ConverterWindow(QMainWindow):
                              title_id=a.get('title_id') or None)
         elif sid == 'coverage':
             from . import platform_coverage
-            ref = os.path.join(REPO_ROOT, 'docs', 'platform', 'reference')
+            ref = _data_path('docs', 'platform', 'reference')
             platform_coverage.write_report(out, ref if os.path.isdir(ref) else None)
         elif sid == 'devutils':
             runners = {'Scan Stubs': self.run_stubs, 'Regen vcxproj': self.run_vcxproj,
@@ -2291,7 +2294,7 @@ class ConverterWindow(QMainWindow):
         out = self.ed_out.text().strip()
         if not os.path.isdir(out):
             self.logln('! output dir not found: %s' % out); return
-        ref = os.path.join(REPO_ROOT, 'docs', 'platform', 'reference')
+        ref = _data_path('docs', 'platform', 'reference')
         r = self._tool(platform_coverage.write_report, out,
                        ref if os.path.isdir(ref) else None)
         if r:

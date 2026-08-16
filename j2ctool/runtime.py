@@ -14,8 +14,8 @@ import os
 # docs/platform/canonical/ and loaded here so the netcode/save byte streams are REAL and there is exactly
 # ONE definition of each (the C4743 vtable-ODR fix). [360] NO XDK EQUIVALENT -- hand-implemented: pure C++
 # big-endian byte codecs (DataInput/Output) + passthrough/streaming wrappers (Buffered/Data*Stream).
-_CANONICAL_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                              'docs', 'platform', 'canonical')
+from ._paths import data_path as _data_path
+_CANONICAL_DIR = _data_path('docs', 'platform', 'canonical')
 
 def _load_canonical(header):
     with open(os.path.join(_CANONICAL_DIR, header), encoding='utf-8') as f:
