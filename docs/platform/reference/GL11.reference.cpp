@@ -11,6 +11,7 @@
 
 #include "stdafx.h"     // MUST be first: the Xbox 360 project uses /Yu precompiled headers
 #include "GL11.h"
+#include "Common.h"     // DbgPrintF -- boot trace sink that surfaces on the 360/emulator
 #include <vector>
 #include <string.h>
 
@@ -138,8 +139,8 @@ static void _buildShader() {
 	if (vsb) vsb->Release(); if (psb) psb->Release(); if (err) err->Release();
 	// Boot trace: if the shader failed to build, _drawTris no-ops and the screen stays at the clear
 	// color (blue for RubyDung) with NO geometry -- distinct from a black screen (device/present dead).
-	OutputDebugStringA((g_vs && g_ps) ? "[GL] built-in shader compiled OK\n"
-	                                  : "[GL] built-in shader FAILED (D3DXCompileShader unavailable?)\n");
+	DbgPrintF((g_vs && g_ps) ? "[J2X] built-in shader compiled OK\n"
+	                         : "[J2X] built-in shader FAILED (D3DXCompileShader unavailable?)\n");
 }
 
 // combined modelview*projection, transposed for HLSL row-major c-register upload.

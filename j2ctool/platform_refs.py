@@ -116,23 +116,24 @@ def generate_entry_point(main_class):
         '// ==========================================================================\n\n'
         '#include "stdafx.h"\n'
         '#include "JavaRT.h"\n'
+        '#include "Common.h"       // DbgPrintF -- the boot-trace sink that surfaces on the 360/emulator\n'
         '#include "j2x_init.h"     // generated: void j2x_initAll();\n'
         '#include "%s.h"\n\n'
         'void __cdecl main() {\n'
-        '    // Boot trace (OutputDebugStringA shows up in the console/emulator debug log). Brackets the\n'
-        '    // two transitions that black-screen a launch: did static init finish, and did the game\'s\n'
-        '    // own main() get control. Harmless in release.\n'
-        '    OutputDebugStringA("[BOOT] entry: running ordered static init...\\n");\n'
+        '    // Boot trace via DbgPrintF (mirrors through HostPathDevice::ResolvePath, the channel that\n'
+        '    // always surfaces on this console/emulator). Brackets the two transitions that black-screen\n'
+        '    // a launch: did static init finish, and did the game\'s own main() get control.\n'
+        '    DbgPrintF("[J2X] entry: running ordered static init\\n");\n'
         '    // Ordered static init: every class\'s Java static{} blocks + static field initializers,\n'
         '    // in dependency order (prevents the static-init-order null-vtable crash class).\n'
         '    j2x_initAll();\n'
-        '    OutputDebugStringA("[BOOT] static init done; calling %s::main\\n");\n\n'
+        '    DbgPrintF("[J2X] static init done; calling game main\\n");\n\n'
         '    // Hand off to the game\'s own entry point. No command-line args on console.\n'
         '    JArray<JavaString> args(0);   // Java String[] -> JArray<JavaString> (JavaString is a value type)\n'
         '    %s::main(args);\n'
-        '    OutputDebugStringA("[BOOT] game main() returned (exited)\\n");\n'
+        '    DbgPrintF("[J2X] game main returned (exited)\\n");\n'
         '}\n'
-        % (main_class, main_class, main_class, main_class))
+        % (main_class, main_class, main_class))
 
 
 # References that are legitimately .cpp-only (no stub .h to replace): Main is the standalone entry point.

@@ -10,12 +10,8 @@
 
 #include "stdafx.h"     // xtl.h / d3d9.h / d3dx9.h
 #include "GL11.h"       // GL11::glSetDevice / glInit / glViewport
+#include "Common.h"     // DbgPrintF -- boot trace that surfaces on the 360/emulator; g_pd3dDevice extern
 #include "Display.h"
-#include <stdio.h>      // sprintf for the boot trace
-
-static void _dbg(const char* fmt, int a = 0, int b = 0) {
-	char buf[128]; sprintf(buf, fmt, a, b); OutputDebugStringA(buf);
-}
 
 // Provided by the Input platform reference (controller -> Keyboard/Mouse event pump). Declared weakly
 // here so Display.update() can pump input once per frame the way LWJGL's Display.update() does.
@@ -40,13 +36,13 @@ void setDisplayMode(const DisplayMode& mode) { s_mode = mode; }
 
 void create() {
 	if (s_created) return;
-	OutputDebugStringA("[GL] Display::create begin\n");
+	DbgPrintF("[J2X] Display create begin\n");
 	s_d3d = Direct3DCreate9(D3D_SDK_VERSION);
-	if (!s_d3d) { OutputDebugStringA("[GL] Direct3DCreate9 FAILED (null)\n"); return; }
+	if (!s_d3d) { DbgPrintF("[J2X] Direct3DCreate9 FAILED (null)\n"); return; }
 
 	int w = s_mode.getWidth()  > 0 ? s_mode.getWidth()  : 854;
 	int h = s_mode.getHeight() > 0 ? s_mode.getHeight() : 480;
-	_dbg("[GL] requested backbuffer %dx%d\n", w, h);
+	DbgPrintF("[J2X] requested backbuffer %dx%d\n", w, h);
 
 	D3DPRESENT_PARAMETERS pp;
 	ZeroMemory(&pp, sizeof(pp));
@@ -64,10 +60,10 @@ void create() {
 	HRESULT hr = s_d3d->CreateDevice(0, D3DDEVTYPE_HAL, NULL,
 	                                 D3DCREATE_HARDWARE_VERTEXPROCESSING, &pp, &s_dev);
 	if (FAILED(hr)) {
-		_dbg("[GL] CreateDevice FAILED hr=0x%08x\n", (int)hr);
+		DbgPrintF("[J2X] CreateDevice FAILED hr=0x%08x\n", (unsigned)hr);
 		s_d3d->Release(); s_d3d = 0; return;
 	}
-	OutputDebugStringA("[GL] CreateDevice OK; device is up\n");
+	DbgPrintF("[J2X] CreateDevice OK; device is up\n");
 
 	// Hand the device to the GL emulator and initialize GL state, then set the viewport to the
 	// backbuffer size and open the first scene (Display::update EndScene/Present/BeginScene per frame).
@@ -86,7 +82,7 @@ void swapBuffers() {
 
 void update() {
 	static int frame = 0;
-	if (frame < 3) _dbg("[GL] render loop alive: presenting frame %d\n", frame);
+	if (frame < 3) DbgPrintF("[J2X] render loop alive: presenting frame %d\n", frame);
 	++frame;
 	Input::poll(); swapBuffers();
 }
