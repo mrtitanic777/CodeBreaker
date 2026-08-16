@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "j2x"
+description = "A deterministic Java -> C++03 source-to-source transpiler (with a Minecraft/Xbox-360 profile)."
+readme = "README.md"
+requires-python = ">=3.6"
+license = { file = "LICENSE" }
+authors = [{ name = "mrtit" }]
+keywords = ["transpiler", "java", "cpp", "c++03", "source-to-source", "codegen", "xbox360"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Software Development :: Compilers",
+    "Topic :: Software Development :: Code Generators",
+]
+# The core transpiler + CLI require only the standard library.
+dependencies = []
+dynamic = ["version"]
+
+[project.optional-dependencies]
+# The desktop GUI (default no-argument entry point).
+gui = ["PySide6"]
+# Texture/asset extraction and achievement icon handling.
+assets = ["Pillow"]
+# Everything, for full functionality.
+full = ["PySide6", "Pillow"]
+# Test suite.
+dev = ["pytest"]
+
+[project.scripts]
+j2x = "j2x.cli:main"
+
+[tool.setuptools]
+# Data the transpiler reads at runtime (canonical Java-stdlib headers, the platform reference
+# layer, and conversion profiles) lives outside the package tree; an editable install
+# (`pip install -e .`) keeps those relative paths working. See README for the supported install.
+packages = ["j2x", "j2x.emit"]
+
+[tool.setuptools.dynamic]
+version = { attr = "j2x.__version__" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
