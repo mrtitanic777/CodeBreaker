@@ -16,6 +16,13 @@
 // here so Display.update() can pump input once per frame the way LWJGL's Display.update() does.
 namespace Input { void poll(); }
 
+// The app-global D3D device. Some platform companions (ImageIO / Mipmaps / Shaders) reference this
+// `extern IDirect3DDevice9* g_pd3dDevice;` (declared in Common.h) for their own D3D work. Beta's Main.cpp
+// used to DEFINE it; in the agnostic pipeline the generic entry has no such bootstrap, so Display (the
+// device owner) defines it and keeps it pointed at the live device -- resolving the LNK2001 without
+// making those companions depend on the GL emulator.
+IDirect3DDevice9* g_pd3dDevice = 0;
+
 namespace Display {
 
 static IDirect3D9*       s_d3d = 0;
@@ -54,6 +61,7 @@ void create() {
 
 	// Hand the device to the GL emulator and initialize GL state, then set the viewport to the
 	// backbuffer size and open the first scene (Display::update EndScene/Present/BeginScene per frame).
+	g_pd3dDevice = s_dev;            // publish to the app-global the platform companions reference
 	GL11::glSetDevice(s_dev);
 	GL11::glInit();
 	GL11::glViewport(0, 0, w, h);
@@ -71,6 +79,7 @@ void update() { Input::poll(); swapBuffers(); }
 void destroy() {
 	if (s_dev) { s_dev->EndScene(); s_dev->Release(); s_dev = 0; }
 	if (s_d3d) { s_d3d->Release(); s_d3d = 0; }
+	g_pd3dDevice = 0;
 	s_created = false;
 }
 
