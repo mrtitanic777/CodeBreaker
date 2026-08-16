@@ -18,17 +18,25 @@
 class Thread : public Runnable {
 protected:
 	HANDLE _handle;
+	Runnable* _target;   // the Runnable passed to `new Thread(runnable)`, or 0 for a Thread subclass
 	static DWORD WINAPI _entry(LPVOID p) { ((Thread*)p)->run(); return 0; }
 	// Spawn a REAL OS thread that runs run(). Called ONLY from the net-thread start() overrides (see header note).
 	void j2x_startReal() { if (!_handle) _handle = CreateThread(0, 0, _entry, this, 0, 0); }
 public:
-	Thread() : _handle(0) {}
-	Thread(const std::string&) : _handle(0) {}
-	template<class R> Thread(R*) : _handle(0) {}                       // new Thread(runnable)
-	template<class R> Thread(R*, const std::string&) : _handle(0) {}   // new Thread(runnable, name)
+	Thread() : _handle(0), _target(0) {}
+	Thread(const std::string&) : _handle(0), _target(0) {}
+	template<class R> Thread(R* r) : _handle(0), _target(r) {}                       // new Thread(runnable)
+	template<class R> Thread(R* r, const std::string&) : _handle(0), _target(r) {}   // new Thread(runnable, name)
 	virtual ~Thread() {}
-	virtual void run() {}
-	virtual void start() {}                               // NO-OP by default; net threads override -> j2x_startReal()
+	// A Thread built with `new Thread(runnable)` runs its TARGET; a Thread SUBCLASS overrides run().
+	virtual void run() { if (_target) _target->run(); }
+	// FIXED BUG thread-start-noop: RubyDung's whole game is `new Thread(this).start()` -- with the old
+	// no-op start() run() never executed (black screen). Now: a Thread WITH A TARGET (a wrapped Runnable,
+	// = "run this task", e.g. the app's main thread) runs it here, SYNCHRONOUSLY -- correct for the
+	// `new Thread(app).start()` main pattern with no process-exit race. A Thread SUBCLASS with NO target
+	// (Beta's dead daemons: StatsSyncher/ThreadDownload/timer) keeps the no-op so the menu-freeze does not
+	// return; the net reader/writer/connect threads still override start() -> j2x_startReal() (real OS thread).
+	virtual void start() { if (_target) _target->run(); }
 	void setDaemon(bool) {}
 	void setName(const std::string&) {}
 	void setPriority(int) {}
