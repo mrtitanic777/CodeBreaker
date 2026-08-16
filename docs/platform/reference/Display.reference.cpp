@@ -42,7 +42,14 @@ void create() {
 
 	int w = s_mode.getWidth()  > 0 ? s_mode.getWidth()  : 854;
 	int h = s_mode.getHeight() > 0 ? s_mode.getHeight() : 480;
-	DbgPrintF("[J2X] requested backbuffer %dx%d\n", w, h);
+#ifdef _XBOX
+	// Xbox 360 HD REQUIRES a minimum 1280x720 frame buffer (a smaller one fails certification and
+	// gets hardware-scaled, clipping the lower world). Force 720p and REPORT it as the display mode so
+	// the game's projection/viewport (which reads getDisplayMode()) matches the backbuffer. Matches the
+	// working hand-port's InitD3D. [J2X-BUGFIX fb-720p]
+	if (w < 1280 || h < 720) { w = 1280; h = 720; s_mode = DisplayMode(w, h); }
+#endif
+	DbgPrintF("[J2X] backbuffer %dx%d\n", w, h);
 
 	D3DPRESENT_PARAMETERS pp;
 	ZeroMemory(&pp, sizeof(pp));

@@ -302,6 +302,7 @@ static void _drawTris(const std::vector<GLVert>& tri) {
 		D3DTEXTUREFILTERTYPE mag = (bt->magF == GL_LINEAR) ? D3DTEXF_LINEAR : D3DTEXF_POINT;
 		g_dev->SetSamplerState(0, D3DSAMP_MAGFILTER, mag);
 		g_dev->SetSamplerState(0, D3DSAMP_MINFILTER, mag);
+		g_dev->SetSamplerState(0, D3DSAMP_MIPFILTER, D3DTEXF_NONE);   // no mip chain (matches the hand-port)
 	} else {
 		g_dev->SetTexture(0, 0);
 	}
@@ -546,6 +547,12 @@ void glNewList(int list, int /*mode*/) {
 }
 void glEndList() { g_recordingList = 0; }
 void glCallList(int list) {
+	static int _traced = 0;
+	if (_traced < 8) {   // one-shot diagnostic: is the ground geometry actually in the display list?
+		int nt = (list > 0 && list < (int)g_lists.size()) ? (int)g_lists[list].tris.size() : -1;
+		DbgPrintF("[J2X] glCallList %d: %d tris\n", list, nt);
+		++_traced;
+	}
 	if (list > 0 && list < (int)g_lists.size() && g_lists[list].used)
 		_drawTris(g_lists[list].tris);
 }
