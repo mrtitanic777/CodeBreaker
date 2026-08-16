@@ -3,7 +3,7 @@
 
 import unittest
 
-from j2x import ir
+from j2ctool import ir
 
 
 class TestJType(unittest.TestCase):

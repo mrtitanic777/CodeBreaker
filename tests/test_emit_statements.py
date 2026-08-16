@@ -3,9 +3,9 @@
 
 import unittest
 
-from j2x import ir, types
-from j2x.emit import statements
-from j2x.ledger import Ledger
+from j2ctool import ir, types
+from j2ctool.emit import statements
+from j2ctool.ledger import Ledger
 
 
 def _world():
@@ -869,7 +869,7 @@ class TestStubMemberEnv(unittest.TestCase):
     stub result resolves '.' vs '->'. Pointer returns become the pointee JType; std::string -> String;
     void*/JArray/primitives are omitted (chain resolver stays conservative)."""
     def setUp(self):
-        from j2x import pipeline
+        from j2ctool import pipeline
         self.env = pipeline.build_member_env([])          # no corpus -- only the stub classes
 
     def test_pointer_return_registered(self):
@@ -894,14 +894,14 @@ class TestStubMemberEnv(unittest.TestCase):
     def test_corpus_class_inherits_stub_methods(self):
         # a parsed class extending a stub base picks up the stub's methods via the flatten
         sub = ir.JClass('MyApplet', parent='Applet')
-        env = __import__('j2x.pipeline', fromlist=['build_member_env']).build_member_env([sub])
+        env = __import__('j2ctool.pipeline', fromlist=['build_member_env']).build_member_env([sub])
         self.assertEqual(env['MyApplet']['methods']['getDocumentBase'].name, 'URL')
 
 
 class TestStubResultChains(unittest.TestCase):
     """End-to-end: a method whose RESULT is a stub pointer gets '->' on the following access."""
     def _members(self):
-        from j2x import pipeline
+        from j2ctool import pipeline
         return pipeline.build_member_env([])
 
     def test_stub_result_member_becomes_arrow(self):
@@ -956,9 +956,9 @@ if __name__ == '__main__':
 
 import unittest
 
-from j2x import ir, types
-from j2x.emit import statements
-from j2x.ledger import Ledger
+from j2ctool import ir, types
+from j2ctool.emit import statements
+from j2ctool.ledger import Ledger
 
 
 def _world():
@@ -1206,7 +1206,7 @@ class TestJMapRuntimeHeader(unittest.TestCase):
     """The emitted JMap.h exposes the full Java Map surface as real members so calls bind on any
     receiver (chained/foreign), mirroring the JList/JSet pattern."""
     def setUp(self):
-        from j2x import runtime
+        from j2ctool import runtime
         self.files = runtime.generate_files()
 
     def test_jmap_header_emitted(self):
@@ -1769,9 +1769,9 @@ if __name__ == '__main__':
 
 import unittest
 
-from j2x import ir, types
-from j2x.emit import statements
-from j2x.ledger import Ledger
+from j2ctool import ir, types
+from j2ctool.emit import statements
+from j2ctool.ledger import Ledger
 
 
 def _world():

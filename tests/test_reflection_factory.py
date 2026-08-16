@@ -5,7 +5,7 @@ import tempfile
 import shutil
 import unittest
 
-from j2x import reflection_factory as rf
+from j2ctool import reflection_factory as rf
 
 
 WORLD_ARG_CPP = '''\

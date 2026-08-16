@@ -1,6 +1,6 @@
 # Code swap — DONE (in-place). Build it in VS2010.
 
-The working Xbox project `../MinecraftAlpha/` was swapped in-place to the new j2x codebase
+The working Xbox project `../MinecraftAlpha/` was swapped in-place to the new j2ctool codebase
 (2026-06-27). Source backup: `../MinecraftAlpha_src_backup_20260627_preswap.tgz` (restore with
 `tar xzf` from the parent dir if needed — the project is NOT git-tracked).
 
@@ -9,7 +9,7 @@ The working Xbox project `../MinecraftAlpha/` was swapped in-place to the new j2
   IAnimals/GuiLoadLevel…) and the old `Enum*.cpp` (enums are header-only now).
 - **Kept** the platform layer (18 files): Shaders, Tesselator, Textures, XactAudio, Save360,
   ContentStorage, Debug, stdafx, Common.h, JavaIO.h.
-- **Added** the 1018 new j2x files (444 game `.cpp` + headers + runtime: JavaRT/JavaString/JArray/
+- **Added** the 1018 new j2ctool files (444 game `.cpp` + headers + runtime: JavaRT/JavaString/JArray/
   JList/Random… + `j2x_init.{h,cpp}`). The platform `stdafx.h` was kept (the stub one not copied).
 - **Wired the platform layer** over the no-op stubs:
   - GL11.h/.cpp, GLU.h/.cpp (real GL→D3D9), GL12.h kept (one enum token).
@@ -25,7 +25,7 @@ The working Xbox project `../MinecraftAlpha/` was swapped in-place to the new j2
   "Random.h"`.
 - **Regenerated** `MinecraftAlpha.vcxproj`: was 50 MB of blank-line bloat → 64 KB, listing the 461
   `.cpp` + 588 `.h`, `stdafx.cpp` PCH block + all 6 configs preserved. (Tool:
-  ``python -m j2x vcxproj`` — re-run after any future swap.)
+  ``python -m j2ctool vcxproj`` — re-run after any future swap.)
 - **Cleaned** ~430 MB of stale Debug/Release/LTCG obj + the 29 MB `.sdf`.
 
 ## Build it (VS2010 + Xbox 360 XDK — can't be built from the converter repo)
@@ -46,4 +46,4 @@ The working Xbox project `../MinecraftAlpha/` was swapped in-place to the new j2
 
 ## Crash classes — prevented by construction
 null-deref, uninit arrays, rule-of-three, static-init order (j2x_initAll), virtual-call-in-ctor,
-endianness — all guarded by the converter or flagged every build (j2x/rules.py).
+endianness — all guarded by the converter or flagged every build (j2ctool/rules.py).

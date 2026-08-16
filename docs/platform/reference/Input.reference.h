@@ -1,11 +1,11 @@
-// Input.h — LWJGL Keyboard/Mouse/Controllers -> Xbox 360 XInput adapter for the j2x port.  [Step 4]
+// Input.h — LWJGL Keyboard/Mouse/Controllers -> Xbox 360 XInput adapter for the j2ctool port.  [Step 4]
 //
 // REFERENCE IMPLEMENTATION for the Xbox-project integration. It REPLACES the converter's no-op
-// Keyboard / Mouse stubs (j2x/runtime.py Keyboard.h / Mouse.h): the new game code is faithful to the
+// Keyboard / Mouse stubs (j2ctool/runtime.py Keyboard.h / Mouse.h): the new game code is faithful to the
 // Java and calls Keyboard::isKeyDown(KEY_*) / Keyboard::next()/getEventKey()/getEventKeyState() /
 // Mouse::getDX()/getDY() / Mouse::isButtonDown(0|1) / Mouse::next()/getEventButton(), so a real
 // backing makes input work. Lives in the Xbox project against the XDK's XInput (xinput.h via xtl.h);
-// it is NOT compiled by the j2x build (which only syntax-checks the no-op stubs). Grounded in the OLD
+// it is NOT compiled by the j2ctool build (which only syntax-checks the no-op stubs). Grounded in the OLD
 // port's proven inline XInput mapping (Minecraft.cpp:847-884, EntityPlayerSP.cpp:132-152,
 // GuiScreen.cpp:114-172) and docs/platform/03-input-and-audio.md.
 //

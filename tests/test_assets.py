@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
-"""Tests for asset extraction (j2x.assets) and sound source-matching (j2x.xact.match_sources)."""
+"""Tests for asset extraction (j2ctool.assets) and sound source-matching (j2ctool.xact.match_sources)."""
 
 import os
 import io
 import zipfile
 
-from j2x import assets, xact
+from j2ctool import assets, xact
 
 
 def _make_jar(path, entries):

@@ -41,7 +41,7 @@
 Platform research doc. Reverse-engineers how the **OLD** Xbox 360 port
 (`MinecraftAlpha/MinecraftAlpha/`, builds on the XDK but is buggy) handled
 controller input and audio, and maps that onto the **NEW** transpiler's
-LWJGL/paulscode stub surface (`ConversionTool/j2x/runtime.py`) so the new build
+LWJGL/paulscode stub surface (`J2CTool/j2ctool/runtime.py`) so the new build
 can be backed by a real Xbox 360 implementation.
 
 All `file:line` references are into the OLD port unless noted.

@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Tests for the one-folder project resolver (j2x.project_scan)."""
+"""Tests for the one-folder project resolver (j2ctool.project_scan)."""
 
 import os
-from j2x import project_scan as ps
+from j2ctool import project_scan as ps
 
 
 def _make_tree(tmp_path):

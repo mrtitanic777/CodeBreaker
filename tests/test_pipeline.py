@@ -6,7 +6,7 @@ import shutil
 import tempfile
 import unittest
 
-from j2x import ir, pipeline
+from j2ctool import ir, pipeline
 
 
 class TestInheritanceResolution(unittest.TestCase):
@@ -38,8 +38,8 @@ public interface IBar {
 class TestMethodRenameCollision(unittest.TestCase):
     def test_field_method_name_collision_renamed(self):
         # Java allows field 'isRunning' + method 'isRunning(...)'; C++ does not -> rename method.
-        from j2x import types
-        from j2x.emit import header, statements
+        from j2ctool import types
+        from j2ctool.emit import header, statements
         c = ir.JClass('NetworkManager')
         c.fields.append(ir.Field('isRunning', ir.JType('boolean')))
         m = ir.Method('isRunning', ir.JType('boolean'),

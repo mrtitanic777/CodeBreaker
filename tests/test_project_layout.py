@@ -5,7 +5,7 @@ import tempfile
 import shutil
 import unittest
 
-from j2x import project_layout as pl
+from j2ctool import project_layout as pl
 
 
 def _touch(path, text='x'):

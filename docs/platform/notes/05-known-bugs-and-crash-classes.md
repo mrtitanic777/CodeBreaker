@@ -216,7 +216,7 @@ target-correct; regenerate, don't byte-flip.
 
 ## Crash classes: old port vs new converter guards
 
-| Crash class | Old port hit it? | `j2x/rules.py` guards it? | Gap? |
+| Crash class | Old port hit it? | `j2ctool/rules.py` guards it? | Gap? |
 |---|---|---|---|
 | **Uninit primitive/pointer array** (`new T[n]` no `()`) | ✅ root-cause (`Block.cpp:88-99`, empty world + suffocation) | ✅ `rule_uninit_array` (HIGH for `bool`, ptr arrays) | Covered |
 | **Empty/delegation-only ctor → missing registration** | ✅ root-cause (`Block.cpp:267`, `World.cpp:134`, blockID=0) | ✅ `rule_ctor_stub` (names blockID=0 / s_isBlockContainer) | Covered |

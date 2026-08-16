@@ -3,7 +3,7 @@
 
 import unittest
 
-from j2x import ir, types
+from j2ctool import ir, types
 
 
 def T(name, dims=0, args=None):

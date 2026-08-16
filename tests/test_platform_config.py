@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-"""Tests for SDK gatekeeping (j2x.sdk), platform choices (j2x.platform_config), debug (j2x.debug)."""
+"""Tests for SDK gatekeeping (j2ctool.sdk), platform choices (j2ctool.platform_config), debug (j2ctool.debug)."""
 
 import os
 import pytest
 
-from j2x import sdk, platform_config, debug
+from j2ctool import sdk, platform_config, debug
 
 
 def _fake_xdk(tmp_path, with_symbols=True):

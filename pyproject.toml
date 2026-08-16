@@ -3,7 +3,7 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "j2x"
+name = "j2ctool"
 description = "A deterministic Java -> C++03 source-to-source transpiler (with a Minecraft/Xbox-360 profile)."
 readme = "README.md"
 requires-python = ">=3.6"
@@ -31,16 +31,16 @@ full = ["PySide6", "Pillow"]
 dev = ["pytest"]
 
 [project.scripts]
-j2x = "j2x.cli:main"
+j2ctool = "j2ctool.cli:main"
 
 [tool.setuptools]
 # Data the transpiler reads at runtime (canonical Java-stdlib headers, the platform reference
 # layer, and conversion profiles) lives outside the package tree; an editable install
 # (`pip install -e .`) keeps those relative paths working. See README for the supported install.
-packages = ["j2x", "j2x.emit"]
+packages = ["j2ctool", "j2ctool.emit", "j2ctool.profiles"]
 
 [tool.setuptools.dynamic]
-version = { attr = "j2x.__version__" }
+version = { attr = "j2ctool.__version__" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

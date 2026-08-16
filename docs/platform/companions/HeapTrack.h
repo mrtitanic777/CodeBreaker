@@ -1,4 +1,4 @@
-// HeapTrack.h -- global heap-leak watchdog for the j2x port (PLATFORM COMPANION).
+// HeapTrack.h -- global heap-leak watchdog for the j2ctool port (PLATFORM COMPANION).
 //
 // The no-GC port leaks any object Java would have collected; enough churn eventually exhausts the
 // heap ("BaseHeap::Alloc failed to find contiguous range") and the game hangs. This watchdog makes

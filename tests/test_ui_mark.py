@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Tests for the UI-marker tool (j2x.ui_mark) and debug markers (j2x.debug)."""
+"""Tests for the UI-marker tool (j2ctool.ui_mark) and debug markers (j2ctool.debug)."""
 
 import os
-from j2x import ui_mark, debug
+from j2ctool import ui_mark, debug
 
 
 def _write(p, text):

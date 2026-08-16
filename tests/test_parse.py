@@ -6,7 +6,7 @@ import glob
 import os
 import unittest
 
-from j2x import parse, ir
+from j2ctool import parse, ir
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 JAVA = os.path.join(ROOT, 'tests', 'fixtures', 'java')

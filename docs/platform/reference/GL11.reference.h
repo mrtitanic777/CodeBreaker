@@ -1,10 +1,10 @@
-// GL11.h — OpenGL (LWJGL) -> Direct3D 9 emulator for the Xbox 360 j2x port.  [Step 2]
+// GL11.h — OpenGL (LWJGL) -> Direct3D 9 emulator for the Xbox 360 j2ctool port.  [Step 2]
 //
 // REFERENCE IMPLEMENTATION for the Xbox-project integration. It REPLACES the converter's no-op
-// GL11 stub (j2x/runtime.py GL11_H): the new game code is faithful to the Java and calls GL11::glX,
+// GL11 stub (j2ctool/runtime.py GL11_H): the new game code is faithful to the Java and calls GL11::glX,
 // so a real GL->D3D9 layer makes it render. Lives in the Xbox project against the XDK's d3d9 + the
 // platform layer (Common.h / Shaders.h / Tesselator.h / Textures.h) -- it is NOT compiled by the
-// j2x build (which only syntax-checks the no-op stub). Grounded in the old port's Shaders.cpp +
+// j2ctool build (which only syntax-checks the no-op stub). Grounded in the old port's Shaders.cpp +
 // Tesselator.cpp (the proven GL->D3D9 mechanism) and docs/platform/02-rendering-gl-to-d3d9.md.
 //
 // Design: a classic immediate/array-mode emulator over D3D9 fixed-shader draws.

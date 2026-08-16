@@ -1,6 +1,6 @@
 # NOTICE
 
-`j2x` is a source-to-source transpiler. It is licensed under the MIT License (see `LICENSE`)
+`j2ctool` is a source-to-source transpiler. It is licensed under the MIT License (see `LICENSE`)
 and is the original work of its authors.
 
 ## What this project does NOT contain

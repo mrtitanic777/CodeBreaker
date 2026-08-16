@@ -1,6 +1,6 @@
 # Step 2 — GL→D3D9 emulator: deliverables & integration checklist
 
-Reference implementation written (Xbox-side; not built by the j2x repo — they need the XDK's d3d9 +
+Reference implementation written (Xbox-side; not built by the j2ctool repo — they need the XDK's d3d9 +
 the platform layer, so they're verified by building the Xbox project, not the converter):
 - `GL11.reference.h` / `GL11.reference.cpp` — the OpenGL→D3D9 emulator (matrices, state, color,
   textures, the vertex-array hot path → `DrawPrimitiveUP` via `Shaders`, fog, alpha-ref, display

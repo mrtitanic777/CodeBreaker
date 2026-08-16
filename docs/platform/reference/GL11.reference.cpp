@@ -1,6 +1,6 @@
 #include "stdafx.h"
-// GL11.cpp — OpenGL(LWJGL) -> Direct3D 9 emulator for the Xbox 360 j2x port.  [Step 2]
-// REFERENCE IMPLEMENTATION (Xbox-side; not built by j2x). See GL11.reference.h for the design.
+// GL11.cpp — OpenGL(LWJGL) -> Direct3D 9 emulator for the Xbox 360 j2ctool port.  [Step 2]
+// REFERENCE IMPLEMENTATION (Xbox-side; not built by j2ctool). See GL11.reference.h for the design.
 // Grounded in the old port's Shaders.cpp + Tesselator.cpp (the proven GL->D3D9 mechanism).
 //
 // PREREQUISITE: the NIO buffers (ByteBuffer/FloatBuffer/IntBuffer) must be REAL (byte-backed) here,

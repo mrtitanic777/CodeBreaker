@@ -1,5 +1,5 @@
 // FileIO.cpp — out-of-line CreateFile bodies + game:\Content resource resolution + Save:\ mapping.
-// [Step 5]  REFERENCE (Xbox-side; not built by j2x). See FileIO.reference.h for the design + the
+// [Step 5]  REFERENCE (Xbox-side; not built by j2ctool). See FileIO.reference.h for the design + the
 // BIG-ENDIAN hazard banner. Grounded in JavaIO.h (FileInputStream/FileOutputStream) and Save360.cpp.
 
 #include "stdafx.h"

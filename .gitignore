@@ -8,7 +8,7 @@ __pycache__/
 *.tgz
 
 # Generated converter output (regenerate with
-# `python -m j2x convert <java_dir> <out_dir>`). Never committed.
+# `python -m j2ctool convert <java_dir> <out_dir>`). Never committed.
 /out/
 /output/
 /output_pristine/

@@ -4,9 +4,9 @@
 import os
 import unittest
 
-from j2x import ir, types, parse
-from j2x.emit import source, header
-from j2x.ledger import Ledger, Category
+from j2ctool import ir, types, parse
+from j2ctool.emit import source, header
+from j2ctool.ledger import Ledger, Category
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 JAVA = os.path.join(ROOT, 'tests', 'fixtures', 'java')

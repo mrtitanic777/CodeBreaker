@@ -4,7 +4,7 @@ buildout: virtual-call-in-constructor and eager static-init-order."""
 
 import unittest
 
-from j2x import rules
+from j2ctool import rules
 
 
 def _fire(fn, fname, text, header=None, platform='xbox360'):

@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Tests for the achievement conversion analyzer (j2x.achievements)."""
+"""Tests for the achievement conversion analyzer (j2ctool.achievements)."""
 
 import os
-from j2x import achievements as ach
+from j2ctool import achievements as ach
 
 
 _SAMPLE = (

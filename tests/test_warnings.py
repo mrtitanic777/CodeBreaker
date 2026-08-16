@@ -3,7 +3,7 @@
 C4101 (unused catch vars), C4102 (unused labels)."""
 
 import unittest
-from j2x.emit import statements as st
+from j2ctool.emit import statements as st
 
 
 class TestClarifyPrecedence(unittest.TestCase):

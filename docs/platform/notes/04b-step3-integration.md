@@ -4,7 +4,7 @@ The new RenderEngine (override) IS the texture manager. Its path:
 `getResourceAsStream(name)` → `ImageIO::read(stream)` → `BufferedImage` → `getRGB()` →
 `glBindTexture`/`glTexImage2D`/`glTexSubImage2D` → (GL11 emulator) → `Textures::uploadRGBA`.
 
-Reference implementations (Xbox-side; not built by j2x):
+Reference implementations (Xbox-side; not built by j2ctool):
 - `Textures.ext.reference.cpp` — `genId`/`deleteId`/`uploadRGBA`/`uploadSubRGBA` to ADD to the old
   port's `Textures` class (it already has `load`/`getById`/`bind`/`s_textures[128]`). `uploadRGBA`
   creates an A8R8G8B8 MANAGED texture and copies ARGB pixels (1:1, no swizzle); `uploadSubRGBA` does

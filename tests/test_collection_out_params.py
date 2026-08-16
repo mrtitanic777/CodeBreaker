@@ -6,8 +6,8 @@ negative case + the emitter rendering."""
 
 import unittest
 
-from j2x import ir, pipeline
-from j2x.emit import ownership
+from j2ctool import ir, pipeline
+from j2ctool.emit import ownership
 
 
 def _m(name, params, body_lines):

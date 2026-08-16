@@ -88,7 +88,7 @@ and declares the globals every TU sees:
   (`:15`).
 - `Random` (`Common.h:20-37`) — NOTE: this is a **64-bit LCG, NOT Java's `java.util.Random`**
   (constants `6364136223846793005`/`1442695040888963407`). It does not match Java sequences. The
-  NEW converter's `runtime.py RANDOM_H` (`j2x/runtime.py:12-43`) is a faithful 48-bit Java LCG —
+  NEW converter's `runtime.py RANDOM_H` (`j2ctool/runtime.py:12-43`) is a faithful 48-bit Java LCG —
   these two will generate **different worlds** (see Pitfalls).
 - Timing helpers: `GetNanoTime()` via `QueryPerformanceCounter` (`Common.h:40-45`).
 - Debug logging: `DbgPrintF` -> `OutputDebugStringA` + `DbgPrint` (the Nexia360 log channel)
@@ -190,7 +190,7 @@ NOTE: the `.vcxproj` is ~512KB and padded with huge runs of blank lines between 
 
 ## Mapping to the new converter
 
-The NEW game code calls LWJGL-style symbols (stubs in `j2x/runtime.py`). For app startup the NEW
+The NEW game code calls LWJGL-style symbols (stubs in `j2ctool/runtime.py`). For app startup the NEW
 platform layer must turn these from no-ops into a real D3D9 implementation:
 
 - **`Display`** (`runtime.py:839-848`, `_ns_stub`) — the big one. NEW `Display::create()` must do

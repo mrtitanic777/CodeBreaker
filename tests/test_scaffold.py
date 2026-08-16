@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Tests for the skeleton language emitters (j2x.scaffold)."""
+"""Tests for the skeleton language emitters (j2ctool.scaffold)."""
 
 import os
 import pytest
-from j2x import scaffold
+from j2ctool import scaffold
 
 
 _JAVA = (

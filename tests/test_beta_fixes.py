@@ -7,10 +7,10 @@ safety), synthetic-marker drop, and the new hang/leak detector rules. Stdlib uni
 
 import unittest
 
-from j2x import parse, pipeline, rules
-from j2x.emit import header, source, statements
-from j2x import ir
-from j2x.ledger import Ledger
+from j2ctool import parse, pipeline, rules
+from j2ctool.emit import header, source, statements
+from j2ctool import ir
+from j2ctool.ledger import Ledger
 
 
 def _resolve(*srcs):
@@ -203,7 +203,7 @@ class TestClassLiteralAndReflection(unittest.TestCase):
 
     def test_class_literal_in_static_init_not_undefined_static(self):
         # `.class` in a static-initializer expr must NOT become the undefined `World::s_class`
-        from j2x.emit import source
+        from j2ctool.emit import source
         _cls, r = _resolve('package sample;\npublic class World {}\n')
         expr = source._static_ref('World.class', r, (), None)
         self.assertIn('j2xClassOf(typeid(World))', expr)
@@ -212,7 +212,7 @@ class TestClassLiteralAndReflection(unittest.TestCase):
     def test_static_init_reference_cast_gets_pointer(self):
         # a reference-type cast in a static initializer must become a POINTER cast (the statement
         # translator does this in method bodies; static inits bypass it and need it applied here)
-        from j2x.emit import source
+        from j2ctool.emit import source
         _cls, r = _resolve(
             'package sample;\npublic class BlockGrass extends Block {}\n',
             'package sample;\npublic class Block {}\n')
@@ -222,13 +222,13 @@ class TestClassLiteralAndReflection(unittest.TestCase):
 
     def test_static_init_value_cast_unchanged(self):
         # a value-type cast (String -> "") must NOT gain a star
-        from j2x.emit import source
+        from j2ctool.emit import source
         _cls, r = _resolve('package sample;\npublic class Block {}\n')
         expr = source._static_ref('(String)null', r, (), None)
         self.assertNotIn('*', expr)
 
     def test_static_init_ternary_cast_distributed(self):
-        from j2x.emit import source
+        from j2ctool.emit import source
         _cls, r = _resolve(
             'package sample;\npublic class A extends Base {}\n',
             'package sample;\npublic class B extends Base {}\n',
@@ -353,7 +353,7 @@ class TestGL11Stub(unittest.TestCase):
     so RenderEngine/Tessellator/EntityRenderer/etc. compile against them (gl11-stub error class)."""
 
     def setUp(self):
-        from j2x import runtime
+        from j2ctool import runtime
         self.gl11 = runtime.FILES['GL11.h']
         self.nvfog = runtime.FILES['NVFogDistance.h']
 
@@ -374,7 +374,7 @@ class TestGL11Stub(unittest.TestCase):
 
     def test_nvfogdistance_is_static_holder(self):
         # so Name.MEMBER resolves to Name::MEMBER (enum-like) and gets its own #include
-        from j2x import typemap
+        from j2ctool import typemap
         self.assertIn('NVFogDistance', typemap.RUNTIME_STATIC_HOLDERS)
         self.assertIn('NVFogDistance', typemap.RUNTIME_HEADERS)
         self.assertIn('NVFogDistance', typemap.RUNTIME_ENUM_LIKE)

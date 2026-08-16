@@ -3,7 +3,7 @@
 Reverse-engineered from the OLD buggy reference port
 `MinecraftAlpha/MinecraftAlpha/` (XDK / D3D9, ~379 .cpp) so we can re-implement the
 same behaviour behind the NEW transpiler's symbol-only stubs in
-`ConversionTool/j2x/runtime.py`.
+`J2CTool/j2ctool/runtime.py`.
 
 Java surface the NEW code emits → what the OLD port actually does on the 360.
 
@@ -250,7 +250,7 @@ Everything is in **`JavaIO.h`** (with `File.h` just `#include`-ing it).
 
 ## Mapping to the new converter
 
-The NEW stubs in `j2x/runtime.py` are **symbol-only no-ops** today
+The NEW stubs in `j2ctool/runtime.py` are **symbol-only no-ops** today
 (`_ext_banner`, line 709-722 explicitly says behaviour is "the Xbox 360 platform
 layer's job"). To make the new faithful-Java code actually run, the platform layer must
 fill them in roughly as the OLD port does:

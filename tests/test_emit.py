@@ -4,9 +4,9 @@
 import os
 import unittest
 
-from j2x import ir, types, parse
-from j2x.emit import header
-from j2x.ledger import Ledger
+from j2ctool import ir, types, parse
+from j2ctool.emit import header
+from j2ctool.ledger import Ledger
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 JAVA = os.path.join(ROOT, 'tests', 'fixtures', 'java')
@@ -95,7 +95,7 @@ class TestSignedByteFields(unittest.TestCase):
         self.assertIn('signed char flags;', h)              # flipped default (was unsigned)
 
     def test_unsigned_escape_hatch(self):
-        from j2x import typemap
+        from j2ctool import typemap
         typemap.UNSIGNED_BYTE_SCALAR_FIELDS.add(('SomeClass', 'raw'))
         try:
             c = ir.JClass('SomeClass')
