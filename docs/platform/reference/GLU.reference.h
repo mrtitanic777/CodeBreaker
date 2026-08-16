@@ -10,9 +10,13 @@
 // the game silently fell back to the no-op GLU stub -> flat world. Keep .h + .cpp paired for every reference.
 #include <string>
 #include "JavaString.h"
+#include "NIOBuffers.h"     // IntBuffer for the gluPickMatrix viewport
 
 namespace GLU {
 	void gluPerspective(float fovy, float aspect, float zNear, float zFar);   // REAL -- GLU.reference.cpp
+	// Picking: narrows the current PROJECTION to a small region around (x,y) before gluPerspective, in
+	// GL_SELECT mode (RubyDung block picking). Composes onto the current matrix via GL11 translate/scale.
+	void gluPickMatrix(float x, float y, float deltaX, float deltaY, IntBuffer* viewport);   // REAL
 	JavaString gluErrorString(int err);                                       // REAL -- GLU.reference.cpp
 	inline void gluLookAt(...) {}
 	inline void gluProject(...) {}

@@ -6,7 +6,6 @@
 // float,float,float); JavaString gluErrorString(int); }).
 
 #include "GL11.h"
-#include "Shaders.h"
 #include "JavaRT.h"
 
 namespace GLU {
@@ -22,6 +21,18 @@ void gluPerspective(float fovy, float aspect, float zNear, float zFar) {
 	// HARDWARE-VERIFY: if the 3D world later renders mirrored/inside-out, the fix is cull winding
 	// (GL11 reversed-winding / D3DCULL), NOT switching back to LH.
 	GL11::glLoadProjection(m);
+}
+
+// gluPickMatrix: standard GL pick transform. Composes translate+scale onto the CURRENT matrix (the
+// caller has glMatrixMode(GL_PROJECTION); glLoadIdentity() active) so the subsequent gluPerspective
+// only "sees" a tiny region around (x,y) -- in GL_SELECT that's what limits which names get hit.
+// viewport = {x, y, width, height} (LWJGL fills it via glGetInteger(GL_VIEWPORT)).
+void gluPickMatrix(float x, float y, float deltaX, float deltaY, IntBuffer* viewport) {
+	if (!viewport || deltaX <= 0.0f || deltaY <= 0.0f) return;
+	float vx = (float)viewport->get(0), vy = (float)viewport->get(1);
+	float vw = (float)viewport->get(2), vh = (float)viewport->get(3);
+	GL11::glTranslatef((vw - 2.0f * (x - vx)) / deltaX, (vh - 2.0f * (y - vy)) / deltaY, 0.0f);
+	GL11::glScalef(vw / deltaX, vh / deltaY, 1.0f);
 }
 
 JavaString gluErrorString(int) { return JavaString(""); }
