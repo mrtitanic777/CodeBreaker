@@ -27,6 +27,8 @@ a = Analysis(
         ('docs/platform/reference',  'docs/platform/reference'),
         ('docs/platform/companions', 'docs/platform/companions'),
         ('profiles',                 'profiles'),
+        # The bundled RetroMCP/Vineflower decompiler backend (Minecraft version -> Java source).
+        ('backends',                 'backends'),
     ],
     hiddenimports=hidden,
     hookspath=[],

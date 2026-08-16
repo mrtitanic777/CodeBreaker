@@ -159,7 +159,7 @@ class ConvertWorker(QThread):
     done = Signal(int, dict)
 
     def __init__(self, java_dir, out_dir, cpp_std='C++03', platform='xbox360',
-                 emit_debug=True, sdk_override=None):
+                 emit_debug=True, sdk_override=None, mc_version=None, mc_workspace=None):
         super().__init__()
         self.java_dir = java_dir
         self.out_dir = out_dir
@@ -167,6 +167,8 @@ class ConvertWorker(QThread):
         self.platform = platform
         self.emit_debug = emit_debug
         self.sdk_override = sdk_override
+        self.mc_version = mc_version          # if set, decompile this MC version first
+        self.mc_workspace = mc_workspace
 
     def _progress(self, msg):
         self.line.emit(msg)
@@ -177,9 +179,20 @@ class ConvertWorker(QThread):
             from . import pipeline
             from .ledger import Ledger
             ledger = Ledger()
-            self._progress('converting %s -> %s ...' % (self.java_dir, self.out_dir))
+            java_dir = self.java_dir
+            if self.mc_version:
+                from . import decompile
+                self._progress('Decompiling Minecraft %s (RetroMCP + Vineflower)...' % self.mc_version)
+                ws = self.mc_workspace or os.path.join(self.out_dir, '_decompiled')
+                try:
+                    java_dir = decompile.decompile(self.mc_version, ws, on_output=self._progress)
+                except decompile.DecompileError as e:
+                    self._progress('ERROR (decompile): %s' % e)
+                    self.done.emit(1, {})
+                    return
+            self._progress('converting %s -> %s ...' % (java_dir, self.out_dir))
             s = pipeline.convert(
-                self.java_dir, self.out_dir,
+                java_dir, self.out_dir,
                 ledger=ledger,
                 cpp_std=self.cpp_std,
                 platform=self.platform,
@@ -962,6 +975,18 @@ class ConverterWindow(QMainWindow):
                 if i >= 0:
                     self.combo_std.setCurrentIndex(i)
         elif sid == 'folders':
+            mcver = ''
+            if getattr(self, '_wiz_mc_version', None) is not None:
+                mcver = self._wiz_mc_version.text().strip()
+            self._mc_version = mcver or None
+            if self._mc_version:
+                # Decompile this Minecraft version at convert time (bundled RetroMCP/Vineflower);
+                # there is no local project folder to validate or scan.
+                self._resolved = {}
+                self.ed_java.setText('')
+                self.ed_out.setText(self._wiz_out.text().strip())
+                self.ed_sdk.setText(self._wiz_sdk.text().strip())
+                return True
             j = self._wiz_java.text().strip()
             if not os.path.isdir(j):
                 QMessageBox.warning(self, 'Folder not found',
@@ -1110,6 +1135,18 @@ class ConverterWindow(QMainWindow):
         self._wiz_java = QLineEdit(self.ed_java.text())
         self._wiz_java.setPlaceholderText('…\\your-project\\src')
         lay.addLayout(self._folder_row(self._wiz_java))
+        # OR: decompile a Minecraft version directly via the bundled RetroMCP/Vineflower backend.
+        from . import decompile as _dc
+        if _dc.available():
+            mcl = QLabel('… or leave the folder blank and decompile a Minecraft version directly '
+                         '(bundled RetroMCP + Vineflower):')
+            mcl.setStyleSheet('color:%s; font-size:12px;' % MUTE); mcl.setWordWrap(True)
+            lay.addWidget(mcl)
+            self._wiz_mc_version = QLineEdit(getattr(self, '_mc_version', '') or '')
+            self._wiz_mc_version.setPlaceholderText('Minecraft version id, e.g. a1.2.6, b1.6.6, c0.30_01c')
+            lay.addWidget(self._wiz_mc_version)
+        else:
+            self._wiz_mc_version = None
         q2 = QLabel('Please provide an output directory for the converted project.')
         q2.setStyleSheet('font-size:15px; font-weight:bold; color:#e7e5dd;'); q2.setWordWrap(True)
         lay.addWidget(q2)
@@ -1185,7 +1222,8 @@ class ConverterWindow(QMainWindow):
 
     def _cv_start(self):
         java, out = self.ed_java.text().strip(), self.ed_out.text().strip()
-        if not os.path.isdir(java):
+        mc_version = getattr(self, '_mc_version', None)
+        if not mc_version and not os.path.isdir(java):
             self._cv_fail('Source folder not found:\n%s' % java); return
         os.makedirs(out, exist_ok=True)
         self._open_log_file()
@@ -1205,7 +1243,9 @@ class ConverterWindow(QMainWindow):
         self._cv_worker = ConvertWorker(java, out, cpp_std=self.combo_std.currentText(),
                                         platform=self._selected_platform_id(),
                                         emit_debug=self._emit_debug_enabled(),
-                                        sdk_override=self.ed_sdk.text().strip() or None)
+                                        sdk_override=self.ed_sdk.text().strip() or None,
+                                        mc_version=mc_version,
+                                        mc_workspace=os.path.join(out, '_decompiled'))
         self._cv_worker.line.connect(self._cv_on_line)
         self._cv_worker.done.connect(self._cv_on_done)
         self._cv_worker.start()

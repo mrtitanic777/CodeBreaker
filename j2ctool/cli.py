@@ -242,11 +242,31 @@ def _cmd_assets(args):
 def _cmd_convert(args):
     from . import pipeline
     from . import sdk
-    if not os.path.isdir(args.java_dir):
-        print('ERROR: not a directory: %s' % args.java_dir)
+    java_dir, out_dir = args.java_dir, args.out_dir
+    if getattr(args, 'mc_version', None):
+        # `convert --mc-version <id> <out_dir>`: the single positional is the output dir.
+        if out_dir is None:
+            out_dir = java_dir
+        if not out_dir:
+            print('ERROR: output directory required, e.g. `convert --mc-version a1.2.6 out/`')
+            return 2
+        from . import decompile
+        ws = args.mc_workspace or os.path.join(out_dir, '_decompiled')
+        print('Decompiling Minecraft %s via the bundled RetroMCP/Vineflower backend...' % args.mc_version)
+        try:
+            java_dir = decompile.decompile(args.mc_version, ws, java=getattr(args, 'java', None),
+                                           on_output=lambda ln: print('  ' + ln))
+        except decompile.DecompileError as e:
+            print('ERROR (decompile): %s' % e)
+            return 4
+    if not java_dir or not out_dir:
+        print('ERROR: usage: convert <java_dir> <out_dir>   (or: convert --mc-version <id> <out_dir>)')
+        return 2
+    if not os.path.isdir(java_dir):
+        print('ERROR: not a directory: %s' % java_dir)
         return 2
     try:
-        s = pipeline.convert(args.java_dir, args.out_dir,
+        s = pipeline.convert(java_dir, out_dir,
                              cpp_std=getattr(args, 'cpp_std', 'C++03'),
                              platform=getattr(args, 'platform', None),
                              platform_refs=getattr(args, 'platform_refs', False),
@@ -254,7 +274,7 @@ def _cmd_convert(args):
     except sdk.SdkNotFound as e:
         print('ERROR (SDK gate): %s' % e)
         return 3
-    print('Converted %s -> %s' % (os.path.abspath(args.java_dir), os.path.abspath(args.out_dir)))
+    print('Converted %s -> %s' % (os.path.abspath(java_dir), os.path.abspath(out_dir)))
     print('  target: %s / %s' % (s['platform'], s['cpp_std']))
     print('  parsed=%d  headers=%d  sources=%d'
           % (s['parsed'], s['headers'], s['sources']))
@@ -262,6 +282,23 @@ def _cmd_convert(args):
     print('  ledger events=%d  (HIGH=%d)' % (s['events'], s['high']))
     if s['report']:
         print('  report: %s' % os.path.join(s['report'], 'index.md'))
+    return 0
+
+
+def _cmd_decompile(args):
+    from . import decompile
+    if not decompile.find_java():
+        print('ERROR: no Java runtime found. Install a JRE/JDK (8+) and put `java` on PATH or set '
+              'JAVA_HOME. Only the decompile backend needs Java; the transpiler does not.')
+        return 4
+    try:
+        src = decompile.decompile(args.version, args.workspace, java=getattr(args, 'java', None),
+                                  on_output=lambda ln: print('  ' + ln))
+    except decompile.DecompileError as e:
+        print('ERROR: %s' % e)
+        return 4
+    print('Decompiled Minecraft %s -> %s' % (args.version, src))
+    print('  feed it to: j2ctool convert "%s" <out_dir>' % src)
     return 0
 
 
@@ -341,8 +378,19 @@ def main(argv=None):
 
     # convert
     cp = sub.add_parser('convert', help='Convert a Java source tree to C++.')
-    cp.add_argument('java_dir', help='Directory of .java source.')
-    cp.add_argument('out_dir', help='Output directory for the generated .h/.cpp.')
+    cp.add_argument('java_dir', nargs='?', default=None,
+                    help='Directory of .java source. Omit and use --mc-version to decompile a '
+                         'Minecraft version first.')
+    cp.add_argument('out_dir', nargs='?', default=None,
+                    help='Output directory for the generated .h/.cpp.')
+    cp.add_argument('--mc-version', dest='mc_version', default=None,
+                    help='Decompile this Minecraft version (bundled RetroMCP/Vineflower backend) and '
+                         'convert its source in one step. Requires a Java runtime + network. '
+                         'Usage: convert --mc-version <id> <out_dir>')
+    cp.add_argument('--mc-workspace', dest='mc_workspace', default=None,
+                    help='Workspace dir for the decompile step (default: <out_dir>/_decompiled).')
+    cp.add_argument('--java', default=None,
+                    help='java executable for the decompile step (else $JAVA_HOME / PATH).')
     cp.add_argument('--platform', default=None,
                     help='Target platform id (xbox360, pc_windows, ps3, wii). Drives endianness/'
                          'null-page rule messages + stub annotations.')
@@ -355,6 +403,14 @@ def main(argv=None):
                     help='Path to the target platform SDK root (else auto-detected via env/standard '
                          'paths). A console platform with no located SDK is refused.')
     cp.set_defaults(func=_cmd_convert)
+
+    # decompile (RetroMCP/Vineflower backend: Minecraft version -> Java source)
+    dcp = sub.add_parser('decompile',
+                         help='Decompile a Minecraft version to Java source (bundled RetroMCP/Vineflower).')
+    dcp.add_argument('version', help='Minecraft version id (e.g. a1.2.6, b1.6.6, c0.30_01c, inf-20100618).')
+    dcp.add_argument('workspace', help='Workspace dir; decompiled source lands under <workspace>/minecraft_*/src.')
+    dcp.add_argument('--java', default=None, help='java executable (else $JAVA_HOME / PATH).')
+    dcp.set_defaults(func=_cmd_decompile)
 
     # report
     rp = sub.add_parser('report', help='Build the conversion report from existing output.')

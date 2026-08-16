@@ -27,6 +27,7 @@ dependencies unlock extra features and degrade gracefully when absent:
 |---------|---------|-----------|
 | `PySide6` | the desktop GUI (default entry point) | use the CLI |
 | `Pillow`  | texture/asset extraction, achievement icons (`j2ctool assets`, `j2ctool achievements`) | those steps warn and skip |
+| a **Java** runtime (JRE/JDK 8+) | the bundled decompiler backend (`decompile` / `convert --mc-version`) turns a Minecraft version into Java source before transpiling | supply your own Java source dir to `convert` instead |
 
 ```bash
 # editable install — gives you the `j2ctool` command while keeping the repo's data paths working
@@ -42,6 +43,8 @@ language, paths, and each tool step. Everything the GUI does is also available o
 
 ```bash
 j2ctool convert     <java_dir> <out_dir>   # transpile Java -> C++ (--platform, --cpp-std, --platform-refs, --sdk)
+j2ctool convert --mc-version <id> <out>    # decompile a Minecraft version AND transpile it, in one step
+j2ctool decompile   <version> <workspace>  # just decompile a Minecraft version to Java source (RetroMCP/Vineflower)
 j2ctool report      <out_dir>              # crash-class report from emitted output
 j2ctool signatures  <java_dir>             # codebase map: class -> fields/methods, Java type -> C++ type
 j2ctool worklist    <out_dir>              # compile the output, write a failing-file worklist

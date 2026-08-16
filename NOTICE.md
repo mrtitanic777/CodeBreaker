@@ -3,6 +3,20 @@
 `j2ctool` is a source-to-source transpiler. It is licensed under the MIT License (see `LICENSE`)
 and is the original work of its authors.
 
+## Bundled third-party components
+
+The `backends/retromcp-cli.jar` decompiler backend (used to turn a Minecraft version into Java
+source before transpiling) is a self-contained build that bundles the following, all under
+permissive licenses:
+
+- **RetroMCP-Java** — © MCPHackers, MIT License. https://github.com/MCPHackers/RetroMCP-Java
+- **Vineflower** decompiler — Apache License 2.0. https://github.com/Vineflower/vineflower
+- **FlatLaf** (Apache-2.0), **ASM** (BSD-3-Clause), **mapping-io** (Apache-2.0), and other permissive
+  libraries.
+
+These are third-party works, redistributed here only as a compiled convenience backend; their
+respective licenses and copyrights apply. j2ctool itself remains MIT-licensed.
+
 ## What this project does NOT contain
 
 This repository ships **no** third-party game code and **no** platform SDK code. Specifically,
