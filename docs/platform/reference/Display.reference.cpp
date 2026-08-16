@@ -59,10 +59,12 @@ void create() {
 	pp.BackBufferCount            = 1;
 	pp.MultiSampleType            = D3DMULTISAMPLE_NONE;
 	pp.SwapEffect                 = D3DSWAPEFFECT_DISCARD;
+	pp.hDeviceWindow              = NULL;      // 360 has no window (match the working hand-port exactly)
+	pp.Windowed                   = FALSE;
 	pp.EnableAutoDepthStencil     = TRUE;
 	pp.AutoDepthStencilFormat     = D3DFMT_D24S8;
 	pp.FullScreen_RefreshRateInHz = 60;
-	pp.PresentationInterval       = D3DPRESENT_INTERVAL_ONE;
+	pp.PresentationInterval       = D3DPRESENT_INTERVAL_IMMEDIATE;
 
 	HRESULT hr = s_d3d->CreateDevice(0, D3DDEVTYPE_HAL, NULL,
 	                                 D3DCREATE_HARDWARE_VERTEXPROCESSING, &pp, &s_dev);
