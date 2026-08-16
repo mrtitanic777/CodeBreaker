@@ -675,14 +675,27 @@ def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True,
         from . import platform_refs as _pref
         from ._paths import data_path as _data_path
         _ref_dir0 = _data_path('docs', 'platform', 'reference')
-        emitted = _pref.emit_references(out_dir, _ref_dir0)
-        _prog('[platform] emitted %d hand-written platform references (replacing stubs): %s'
+        # DETECTION-DRIVEN (no game hardcoding): tell the platform emitter which classes the game
+        # defines itself + its main class, so it skips any platform file that collides with a
+        # game-defined class and generates a generic entry point instead of the Beta-specific one.
+        _game_classes = set(c.name for c in classes)
+        _main_class = _pref.detect_main_class(classes)
+        emitted = _pref.emit_references(out_dir, _ref_dir0,
+                                        game_classes=_game_classes, main_class=_main_class)
+        _prog('[platform] emitted %d platform references (agnostic layer, replacing stubs): %s'
               % (len(emitted), ', '.join(sorted(emitted))))
+        _skipped = getattr(_pref.emit_references, 'last_skipped', [])
+        if _skipped:
+            _prog('[platform] skipped %d platform file(s) the game defines itself (its converted class '
+                  'wins): %s' % (len(_skipped), ', '.join(_skipped)))
+        if _main_class:
+            _prog('[platform] generic entry point -> %s::main (detected)' % _main_class)
         # INTEGRATION GUARD: never let a reference silently fail to emit again (the GLU flat-world bug --
         # a .reference.cpp with no matching .reference.h). Audit for orphans + VERIFY every reference's stub
         # was really replaced in the output; surface any gap LOUDLY.
         _audit = _pref.audit_references(_ref_dir0)
-        _expect = sorted(b for b in _audit['complete'] if b not in _pref.REFERENCE_SKIP)
+        _expect = sorted(b for b in _audit['complete']
+                         if b not in _pref.REFERENCE_SKIP and b not in _game_classes)
         _vfail = _pref.verify_integrated(out_dir, _expect)
         if _audit['orphans']:
             _prog('[platform] !! ORPHAN REFERENCE(S) NOT INTEGRATED (have .reference.cpp but NO .reference.h '
