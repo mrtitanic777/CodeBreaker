@@ -1,19 +1,15 @@
 {
   "subsystem": "glu",
   "language": "glu",
-  "description": "OpenGL Utility library. Matrix helpers map to D3DX; gluPickMatrix (picking) is emulated.",
+  "description": "OpenGL Utility (GLU) -> Direct3D 9 for Xbox 360. Matrix builders map to D3DX; texture build maps to the D3D9 texture helper; picking maps to the D3D9 software-pick helper. No OpenGL at runtime.",
   "symbols": {
-    "GLU.gluPerspective": {"signature": "(float,float,float,float)",
-      "maps": {"direct3d9": {"target": "D3DXMatrixPerspectiveFovRH -> SetTransform(D3DTS_PROJECTION)",
-        "kind": "shim", "note": "Real; fixes the blank-3D bug."}}},
-    "GLU.gluLookAt": {"signature": "(float x9...)",
-      "maps": {"direct3d9": {"target": "D3DXMatrixLookAtRH", "kind": "shim"}}},
-    "GLU.gluPickMatrix": {"signature": "(float,float,float,float,IntBuffer)",
-      "maps": {"direct3d9": {"target": "j2c::glu::pickMatrix", "kind": "shim",
-        "note": "Builds a picking projection (narrow frustum around the cursor); pairs with the GL selection shim."}}},
-    "GLU.gluProject": {"signature": "(...)",
-      "maps": {"direct3d9": {"target": "D3DXVec3Project", "kind": "shim"}}},
-    "GLU.gluUnProject": {"signature": "(...)",
-      "maps": {"direct3d9": {"target": "D3DXVec3Unproject", "kind": "shim"}}}
+    "GLU.gluPerspective":   {"maps": {"direct3d9": {"target": "D3DXMatrixPerspectiveFovRH -> d3d9::mtx setProjection", "kind": "direct", "note": "builds the projection matrix and pushes it to the matrix stack"}}},
+    "GLU.gluLookAt":        {"maps": {"direct3d9": {"target": "D3DXMatrixLookAtRH", "kind": "direct"}}},
+    "GLU.gluOrtho2D":       {"maps": {"direct3d9": {"target": "D3DXMatrixOrthoOffCenterRH", "kind": "direct"}}},
+    "GLU.gluBuild2DMipmaps":{"maps": {"direct3d9": {"target": "d3d9::createTexture2D", "kind": "d3d9-helper", "note": "same texture-upload helper as glTexImage2D (LIN_A8R8G8B8 + RGBA->ARGB)"}}},
+    "GLU.gluPickMatrix":    {"maps": {"direct3d9": {"target": "d3d9::pick::pickMatrix", "kind": "d3d9-helper", "note": "narrow pick frustum around the cursor; pairs with the D3D9 software-pick pass"}}},
+    "GLU.gluProject":       {"maps": {"direct3d9": {"target": "D3DXVec3Project", "kind": "direct"}}},
+    "GLU.gluUnProject":     {"maps": {"direct3d9": {"target": "D3DXVec3Unproject", "kind": "direct"}}},
+    "GLU.gluErrorString":   {"maps": {"direct3d9": {"target": "(empty string)", "kind": "constant"}}}
   }
 }

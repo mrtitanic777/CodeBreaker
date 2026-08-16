@@ -21,8 +21,8 @@ def test_resolve_qualified_and_leaf():
     for name in ('GL11.glVertex3f', 'glVertex3f', 'org.lwjgl.opengl.GL11.glVertex3f'):
         m = reg.resolve(name, 'opengl', 'direct3d9')
         assert m is not None, name
-        assert m.target == 'j2c::gl::vertex3f'
-        assert m.kind == 'shim'
+        assert m.target == 'd3d9::im::vertex3f'
+        assert m.kind == 'd3d9-helper'
 
 
 def test_unmapped_returns_none():
@@ -68,7 +68,7 @@ def test_reverse_index_includes_by_version():
     reg = _reg()
     assert reg.reverse('NULL', 'cpp', 'java') is not None
     assert reg.reverse('nullptr', 'cpp', 'java') is not None
-    assert reg.reverse('j2c::gl::vertex3f', 'direct3d9', 'opengl') is not None
+    assert reg.reverse('d3d9::im::vertex3f', 'direct3d9', 'opengl') is not None
 
 
 def test_coverage_classification():
