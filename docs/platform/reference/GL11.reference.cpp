@@ -109,38 +109,56 @@ static IntBuffer* g_selBuf = 0; static int g_selWritten = 0; static int g_hitCou
 static bool g_hitThisName = false; static float g_hitMinZ = 0, g_hitMaxZ = 0;
 
 // =========================================================================== shader build
-// HARDWARE-VERIFY: if the 360 XDK lacks runtime D3DXCompileShader, replace this with pre-compiled
-// shader byte code (offline fxc/xsl). The shader: transform by the combined matrix in c0..c3, pass
-// vertex color + uv; pixel: sample s0 (or white if untextured via c4.x), * color, alpha-test, fog.
-static const char* kShaderSrc =
-	"float4x4 gWVP : register(c0);          \n"
-	"float4   gCtl : register(c4);          \n"   // x=useTex, y=alphaTest, z=alphaRef, w=fogEnable
-	"float4   gFog : register(c5);          \n"   // x=start, y=end, rgb in c6
-	"float4   gFogC: register(c6);          \n"
-	"sampler2D s0 : register(s0);           \n"
-	"void VS(float3 p:POSITION, float4 c:COLOR0, float2 t:TEXCOORD0,          \n"
-	"        out float4 op:POSITION, out float4 oc:COLOR0, out float2 ot:TEXCOORD0, out float ofz:TEXCOORD1){ \n"
-	"  op = mul(float4(p,1), gWVP); oc = c; ot = t; ofz = op.w; }             \n"
-	"float4 PS(float4 c:COLOR0, float2 t:TEXCOORD0, float fz:TEXCOORD1):COLOR{\n"
-	"  float4 o = c;                                                          \n"
-	"  if (gCtl.x > 0.5) o *= tex2D(s0, t);                                   \n"
-	"  if (gCtl.y > 0.5 && o.a < gCtl.z) discard;                            \n"
-	"  if (gCtl.w > 0.5){ float f = saturate((gFog.y - fz)/(gFog.y-gFog.x)); o.rgb = lerp(gFogC.rgb, o.rgb, f);} \n"
-	"  return o; }                                                            \n";
+// SEPARATE VS/PS sources, each entry "main" -- this mirrors the Beta port's proven D3DXCompileShader
+// usage on this exact platform (a single combined source with "VS"/"PS" entry points failed to
+// compile). VS constants and PS constants are INDEPENDENT register files, so both start at c0.
+static const char* kVS =
+	"float4x4 gWVP : register(c0);\n"
+	"void main(float3 p:POSITION, float4 c:COLOR0, float2 t:TEXCOORD0,\n"
+	"          out float4 op:POSITION, out float4 oc:COLOR0, out float2 ot:TEXCOORD0, out float ofz:TEXCOORD1){\n"
+	"  op = mul(float4(p,1), gWVP); oc = c; ot = t; ofz = op.w;\n"
+	"}\n";
+static const char* kPS =
+	"float4 gCtl : register(c0);\n"   // x=useTex, y=alphaTest, z=alphaRef, w=fogEnable
+	"float4 gFog : register(c1);\n"   // x=start, y=end
+	"float4 gFogC: register(c2);\n"
+	"sampler2D s0 : register(s0);\n"
+	"float4 main(float4 c:COLOR0, float2 t:TEXCOORD0, float fz:TEXCOORD1):COLOR{\n"
+	"  float4 o = c;\n"
+	"  if (gCtl.x > 0.5) o *= tex2D(s0, t);\n"
+	"  if (gCtl.y > 0.5) clip(o.a - gCtl.z);\n"   // alpha test: discard where o.a < ref
+	"  if (gCtl.w > 0.5){ float f = saturate((gFog.y - fz)/(gFog.y-gFog.x)); o.rgb = lerp(gFogC.rgb, o.rgb, f); }\n"
+	"  return o;\n"
+	"}\n";
+
+static IDirect3DVertexDeclaration9* g_decl = 0;   // SM3 needs an explicit decl (SetFVF is not enough on Xenos)
 
 static void _buildShader() {
 	if (!g_dev || g_vs) return;
-	ID3DXBuffer* vsb = 0; ID3DXBuffer* psb = 0; ID3DXBuffer* err = 0;
-	if (SUCCEEDED(D3DXCompileShader(kShaderSrc, (UINT)strlen(kShaderSrc), 0, 0, "VS", "vs_3_0", 0, &vsb, &err, 0)))
-		g_dev->CreateVertexShader((const DWORD*)vsb->GetBufferPointer(), &g_vs);
-	if (err) { err->Release(); err = 0; }
-	if (SUCCEEDED(D3DXCompileShader(kShaderSrc, (UINT)strlen(kShaderSrc), 0, 0, "PS", "ps_3_0", 0, &psb, &err, 0)))
-		g_dev->CreatePixelShader((const DWORD*)psb->GetBufferPointer(), &g_ps);
-	if (vsb) vsb->Release(); if (psb) psb->Release(); if (err) err->Release();
-	// Boot trace: if the shader failed to build, _drawTris no-ops and the screen stays at the clear
-	// color (blue for RubyDung) with NO geometry -- distinct from a black screen (device/present dead).
-	DbgPrintF((g_vs && g_ps) ? "[J2X] built-in shader compiled OK\n"
-	                         : "[J2X] built-in shader FAILED (D3DXCompileShader unavailable?)\n");
+	ID3DXBuffer* code = 0; ID3DXBuffer* err = 0;
+	HRESULT hr = D3DXCompileShader(kVS, (UINT)strlen(kVS), 0, 0, "main", "vs_3_0", 0, &code, &err, 0);
+	if (SUCCEEDED(hr) && code) g_dev->CreateVertexShader((const DWORD*)code->GetBufferPointer(), &g_vs);
+	else if (err) DbgPrintF("[J2X] VS compile err: %s\n", (const char*)err->GetBufferPointer());
+	else DbgPrintF("[J2X] VS D3DXCompileShader hr=0x%08x\n", (unsigned)hr);
+	if (code) { code->Release(); code = 0; } if (err) { err->Release(); err = 0; }
+
+	hr = D3DXCompileShader(kPS, (UINT)strlen(kPS), 0, 0, "main", "ps_3_0", 0, &code, &err, 0);
+	if (SUCCEEDED(hr) && code) g_dev->CreatePixelShader((const DWORD*)code->GetBufferPointer(), &g_ps);
+	else if (err) DbgPrintF("[J2X] PS compile err: %s\n", (const char*)err->GetBufferPointer());
+	else DbgPrintF("[J2X] PS D3DXCompileShader hr=0x%08x\n", (unsigned)hr);
+	if (code) code->Release(); if (err) err->Release();
+
+	// Explicit vertex declaration for GLVert: POSITION float3 @0, COLOR D3DCOLOR @12, TEXCOORD float2 @16.
+	static const D3DVERTEXELEMENT9 decl[] = {
+		{ 0, 0,  D3DDECLTYPE_FLOAT3,   D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_POSITION, 0 },
+		{ 0, 12, D3DDECLTYPE_D3DCOLOR, D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_COLOR,    0 },
+		{ 0, 16, D3DDECLTYPE_FLOAT2,   D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_TEXCOORD, 0 },
+		D3DDECL_END()
+	};
+	g_dev->CreateVertexDeclaration(decl, &g_decl);
+
+	DbgPrintF((g_vs && g_ps && g_decl) ? "[J2X] built-in shader + decl OK\n"
+	                                   : "[J2X] built-in shader FAILED (see VS/PS err above)\n");
 }
 
 // combined modelview*projection, transposed for HLSL row-major c-register upload.
@@ -161,9 +179,9 @@ static void _uploadControl() {
 	float fog[4] = { g_fogStart, g_fogEnd, 0, 0 };
 	float fogc[4] = { ((g_fogColor >> 16) & 255) / 255.0f, ((g_fogColor >> 8) & 255) / 255.0f,
 	                  (g_fogColor & 255) / 255.0f, 1.0f };
-	g_dev->SetPixelShaderConstantF(4, ctl, 1);
-	g_dev->SetPixelShaderConstantF(5, fog, 1);
-	g_dev->SetPixelShaderConstantF(6, fogc, 1);
+	g_dev->SetPixelShaderConstantF(0, ctl, 1);
+	g_dev->SetPixelShaderConstantF(1, fog, 1);
+	g_dev->SetPixelShaderConstantF(2, fogc, 1);
 }
 
 // =========================================================================== lifecycle
@@ -265,7 +283,7 @@ static void _drawTris(const std::vector<GLVert>& tri) {
 	if (!g_dev || !g_vs || tri.empty()) return;
 	_uploadMatrices(); _uploadControl();
 	g_dev->SetVertexShader(g_vs); g_dev->SetPixelShader(g_ps);
-	g_dev->SetFVF(GLVERT_FVF);
+	g_dev->SetVertexDeclaration(g_decl);   // SM3 vertex decl (not SetFVF)
 	GLTex* bt = boundTex();
 	if (g_texEnabled && bt && bt->tex) {
 		g_dev->SetTexture(0, bt->tex);
