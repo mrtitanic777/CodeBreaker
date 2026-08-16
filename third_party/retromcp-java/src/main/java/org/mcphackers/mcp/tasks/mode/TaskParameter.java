@@ -3,7 +3,7 @@ package org.mcphackers.mcp.tasks.mode;
 import java.util.HashMap;
 import java.util.Map;
 
-import de.fernflower.main.extern.IFernflowerPreferences;
+import org.jetbrains.java.decompiler.main.extern.IFernflowerPreferences;
 import org.mcphackers.mcp.MCP;
 import org.mcphackers.mcp.Options;
 import org.mcphackers.mcp.tasks.Task.Side;
@@ -52,8 +52,10 @@ public enum TaskParameter {
 	}
 
 	private static String getDefaultFFOptions() {
-		Map<String, Object> ffOptions = new HashMap<>(IFernflowerPreferences.DEFAULTS);
-		ffOptions.put(IFernflowerPreferences.NO_COMMENT_OUTPUT, "1");
+		// Vineflower (unlike classic fernflower) exposes no IFernflowerPreferences.DEFAULTS map and no
+		// NO_COMMENT_OUTPUT option -- it applies its own defaults for anything left unset and does not
+		// emit the "$FF:" annotation comments, so we build the option map from scratch.
+		Map<String, Object> ffOptions = new HashMap<>();
 		ffOptions.put(IFernflowerPreferences.REMOVE_BRIDGE, "0");
 		ffOptions.put(IFernflowerPreferences.ASCII_STRING_CHARACTERS, "1");
 		ffOptions.put(IFernflowerPreferences.OVERRIDE_ANNOTATION, "0");
