@@ -123,7 +123,7 @@ def generate_entry_point(main_class):
         '    // in dependency order (prevents the static-init-order null-vtable crash class).\n'
         '    j2x_initAll();\n\n'
         '    // Hand off to the game\'s own entry point. No command-line args on console.\n'
-        '    JArray<JavaString*> args(0);\n'
+        '    JArray<JavaString> args(0);   // Java String[] -> JArray<JavaString> (JavaString is a value type)\n'
         '    %s::main(args);\n'
         '}\n'
         % (main_class, main_class, main_class))

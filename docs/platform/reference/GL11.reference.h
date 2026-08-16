@@ -153,6 +153,15 @@ namespace GL11 {
 	void glTexCoordPointer(int size, int stride, FloatBuffer* buf);
 	void glDrawArrays(int mode, int first, int count);
 
+	// ------------------------------------------------------------------ display lists
+	// Chunk geometry caching: record the triangles emitted between glNewList/glEndList and replay them
+	// on glCallList (with the matrix current AT REPLAY time, matching GL display-list semantics).
+	int  glGenLists(int n);
+	void glNewList(int list, int mode);
+	void glEndList();
+	void glCallList(int list);
+	void glDeleteLists(int list, int n);
+
 	// ------------------------------------------------------------------ selection / picking
 	void glInitNames();
 	void glPushName(int name);

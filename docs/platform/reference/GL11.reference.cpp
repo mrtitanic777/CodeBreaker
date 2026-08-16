@@ -9,6 +9,7 @@
 // (2) GL right-handed vs D3D left-handed => projection Z + cull winding may need flipping;
 // (3) the Display shim must call GL11::glSetDevice(dev) once the D3D device exists.
 
+#include "stdafx.h"     // MUST be first: the Xbox 360 project uses /Yu precompiled headers
 #include "GL11.h"
 #include <vector>
 #include <string.h>
@@ -89,6 +90,11 @@ static GLTex* boundTex() {
 static int g_beginMode = -1;
 static std::vector<GLVert> g_imm;
 
+// --------------------------------------------------------------------------- display lists
+struct GLList { std::vector<GLVert> tris; bool used; GLList() : used(false) {} };
+static std::vector<GLList> g_lists;      // index by list id (0 reserved)
+static int g_recordingList = 0;          // != 0 while inside glNewList/glEndList
+
 // --------------------------------------------------------------------------- vertex-array pointers
 static bool g_vaVertex = false, g_vaColor = false, g_vaTex = false;
 static const char* g_vpPtr = 0; static int g_vpSize = 3, g_vpStride = 0;
@@ -162,6 +168,7 @@ void glInit() {
 	g_proj.clear(); g_proj.push_back(id);
 	g_tex.clear();  g_tex.push_back(id);
 	g_textures.clear(); g_textures.push_back(GLTex());   // reserve id 0
+	g_lists.clear(); g_recordingList = 0;
 	_buildShader();
 	if (g_dev) {
 		g_dev->SetRenderState(D3DRS_LIGHTING, FALSE);
@@ -228,10 +235,8 @@ void glColor4ub(unsigned char r, unsigned char g, unsigned char b, unsigned char
 }
 void glNormal3f(float, float, float) { /* light baked into vertex color */ }
 
-// Convert a run of GL primitives (with quad->2tri expansion) into a triangle list and draw it.
-static void _drawGather(int mode, const GLVert* v, int n) {
-	if (!g_dev || !g_vs || n <= 0) return;
-	std::vector<GLVert> tri;
+// Expand a run of GL primitives (quad/strip/fan -> triangles) into a triangle list.
+static void _gatherTris(int mode, const GLVert* v, int n, std::vector<GLVert>& tri) {
 	if (mode == GL_QUADS) {
 		for (int i = 0; i + 3 < n; i += 4) {
 			tri.push_back(v[i]); tri.push_back(v[i+1]); tri.push_back(v[i+2]);
@@ -246,9 +251,12 @@ static void _drawGather(int mode, const GLVert* v, int n) {
 		}
 	} else if (mode == GL_TRIANGLE_FAN || mode == GL_POLYGON) {
 		for (int i = 1; i + 1 < n; ++i) { tri.push_back(v[0]); tri.push_back(v[i]); tri.push_back(v[i+1]); }
-	} else { return; }   // points/lines: not needed by the target renderers (extend if required)
-	if (tri.empty()) return;
+	}   // points/lines: not needed by the target renderers (extend if required)
+}
 
+// Draw a ready triangle list through the shared shader + current matrix/texture state.
+static void _drawTris(const std::vector<GLVert>& tri) {
+	if (!g_dev || !g_vs || tri.empty()) return;
 	_uploadMatrices(); _uploadControl();
 	g_dev->SetVertexShader(g_vs); g_dev->SetPixelShader(g_ps);
 	g_dev->SetFVF(GLVERT_FVF);
@@ -264,6 +272,20 @@ static void _drawGather(int mode, const GLVert* v, int n) {
 		g_dev->SetTexture(0, 0);
 	}
 	g_dev->DrawPrimitiveUP(D3DPT_TRIANGLELIST, (UINT)(tri.size() / 3), &tri[0], sizeof(GLVert));
+}
+
+// Gather a primitive run, then either RECORD it into the open display list or draw it now.
+static void _drawGather(int mode, const GLVert* v, int n) {
+	if (n <= 0) return;
+	std::vector<GLVert> tri;
+	_gatherTris(mode, v, n, tri);
+	if (tri.empty()) return;
+	if (g_recordingList > 0 && g_recordingList < (int)g_lists.size()) {
+		std::vector<GLVert>& L = g_lists[g_recordingList].tris;
+		L.insert(L.end(), tri.begin(), tri.end());   // capture untransformed; matrix applied at glCallList
+		return;
+	}
+	_drawTris(tri);
 }
 
 void glEnd() {
@@ -468,6 +490,32 @@ void glDrawArrays(int mode, int first, int count) {
 		g.push_back(v);
 	}
 	_drawGather(mode, &g[0], (int)g.size());
+}
+
+// =========================================================================== display lists
+int glGenLists(int n) {
+	if (g_lists.empty()) g_lists.push_back(GLList());   // reserve id 0
+	int base = (int)g_lists.size();
+	for (int i = 0; i < n; ++i) g_lists.push_back(GLList());
+	return base;
+}
+void glNewList(int list, int /*mode*/) {
+	if (list <= 0) return;
+	while ((int)g_lists.size() <= list) g_lists.push_back(GLList());
+	g_recordingList = list;
+	g_lists[list].tris.clear();
+	g_lists[list].used = true;
+}
+void glEndList() { g_recordingList = 0; }
+void glCallList(int list) {
+	if (list > 0 && list < (int)g_lists.size() && g_lists[list].used)
+		_drawTris(g_lists[list].tris);
+}
+void glDeleteLists(int list, int n) {
+	for (int i = 0; i < n; ++i) {
+		int id = list + i;
+		if (id > 0 && id < (int)g_lists.size()) { g_lists[id].tris.clear(); g_lists[id].used = false; }
+	}
 }
 
 // =========================================================================== selection / picking

@@ -18,9 +18,12 @@ namespace GLU {
 	// GL_SELECT mode (RubyDung block picking). Composes onto the current matrix via GL11 translate/scale.
 	void gluPickMatrix(float x, float y, float deltaX, float deltaY, IntBuffer* viewport);   // REAL
 	JavaString gluErrorString(int err);                                       // REAL -- GLU.reference.cpp
+	// Texture upload path: builds/uploads the 2D texture into the currently-bound GL texture. Real
+	// (forwards to the GL emulator's glTexImage2D) so textures actually reach the GPU -- a no-op here
+	// left every surface untextured (white). RubyDung's Textures.load calls this.
+	int gluBuild2DMipmaps(int target, int internalFormat, int w, int h, int format, int type, ByteBuffer* pixels);
 	inline void gluLookAt(...) {}
 	inline void gluProject(...) {}
 	inline void gluUnProject(...) {}
-	inline int gluBuild2DMipmaps(...) { return 0; }
 }
 #endif // GLU_H
