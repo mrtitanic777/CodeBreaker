@@ -29,6 +29,8 @@ a = Analysis(
         ('profiles',                 'profiles'),
         # The bundled RetroMCP/Vineflower decompiler backend (Minecraft version -> Java source).
         ('backends',                 'backends'),
+        # The VS-solution .vcxproj template that project_layout writes the Xbox 360 .sln/.vcxproj from.
+        ('j2ctool/templates',        'j2ctool/templates'),
     ],
     hiddenimports=hidden,
     hookspath=[],

@@ -115,9 +115,9 @@ def write_filters(proj_dir, proj_name, cpps, hs):
         f.write('\n'.join(L) + '\n')
     return path, len(filters)
 
-_DEFAULT_PROJ = os.path.normpath(os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    '..', 'MinecraftAlpha', 'MinecraftAlpha'))
+# No hardcoded project path -- callers pass the actual output/project dir. Fall back to CWD so a
+# bare invocation operates on the current directory rather than a stale, non-existent path.
+_DEFAULT_PROJ = os.getcwd()
 
 
 def _find_vcxproj(proj_dir, name=None):

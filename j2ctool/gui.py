@@ -1752,14 +1752,30 @@ class ConverterWindow(QMainWindow):
         QApplication.processEvents()
         try:
             from . import vcxproj
+            out = self.ed_out.text().strip()
+            # The .vcxproj lives in the laid-out solution (<out>/<Name>/<Name>.vcxproj), created by the
+            # project-layout step at convert-end. Find it under the output and refresh its file list;
+            # if it isn't there yet (this runs before layout during a convert), that step generates it.
+            vcx = None
+            for root, _dirs, files in os.walk(out):
+                for f in files:
+                    if f.endswith('.vcxproj'):
+                        vcx = os.path.join(root, f)
+                        break
+                if vcx:
+                    break
+            if not vcx:
+                self.logln('[vcxproj] no .vcxproj yet; the solution-layout step will generate it.')
+                self._set_stage('vcxproj', 'done')
+                return
             buf = io.StringIO()
             with contextlib.redirect_stdout(buf):
-                vcxproj.run()
+                vcxproj.run(os.path.dirname(vcx), name=os.path.splitext(os.path.basename(vcx))[0])
             self.logln(buf.getvalue().strip())
             self._set_stage('vcxproj', 'done')
         except Exception as e:
-            self.logln('ERROR: vcxproj failed: %s' % e)
-            self._set_stage('vcxproj', 'fail')
+            self.logln('[vcxproj] skipped: %s' % e)   # non-fatal: layout step is the source of truth
+            self._set_stage('vcxproj', 'done')
 
     # ---- BUILD XEX (QProcess -> MSBuild) --------------------------------
     def run_build(self):
