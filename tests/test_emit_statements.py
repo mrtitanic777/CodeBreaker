@@ -2646,3 +2646,42 @@ class WarningFixTests(unittest.TestCase):
 
     def test_shift_not_assign_or_ushr(self):
         self.assertEqual(statements._paren_shift_operands('a >>= 2;'), 'a >>= 2;')
+
+
+class ContainerElementArrowTests(unittest.TestCase):
+    """FIXED BUG list-elem-dot-arrow: indexing a JList<T*> yields a pointer element, so the
+    following call must be `->`, not `.` (this->zombies[i]->tick())."""
+
+    def test_field_container_element_uses_arrow(self):
+        c = ir.JClass('World')
+        c.fields.append(ir.Field('zombies', ir.JType('List', args=[ir.JType('Zombie')])))
+        m = ir.Method('tick', ir.JType('void'), params=[], line=1)
+        m.body = [
+            (1, 'void tick() {'),
+            (2, '\tfor (int i = 0; i < this.zombies.size(); i++) {'),
+            (3, '\t\tthis.zombies.get(i).tick();'),
+            (4, '\t}'),
+            (5, '}'),
+        ]
+        c.methods.append(m)
+        members = {'World': {'fields': {'zombies': ir.JType('List', args=[ir.JType('Zombie')])},
+                             'methods': {}, 'parent': None},
+                   'Zombie': {'fields': {}, 'methods': {'tick': ir.JType('void')}, 'parent': None}}
+        r = types.TypeResolver(known_classes={'World', 'Zombie'}, members=members)
+        out = statements.translate_body(m, c, r)
+        self.assertIn('this->zombies[i]->tick();', out)
+        self.assertNotIn('this->zombies[i].tick();', out)
+
+    def test_scope_var_container_element_uses_arrow(self):
+        c = ir.JClass('World')
+        m = ir.Method('move', ir.JType('void'),
+                      params=[ir.Param('aABBs', ir.JType('List', args=[ir.JType('AABB')]))], line=1)
+        m.body = [
+            (1, 'void move(List aABBs) {'),
+            (2, '\taABBs.get(0).clipYCollide();'),
+            (3, '}'),
+        ]
+        c.methods.append(m)
+        r = types.TypeResolver(known_classes={'World', 'AABB'})
+        out = statements.translate_body(m, c, r)
+        self.assertIn('aABBs[0]->clipYCollide();', out)

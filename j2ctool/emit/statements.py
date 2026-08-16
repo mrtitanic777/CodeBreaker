@@ -1220,6 +1220,23 @@ def _category(jtype):
     return None
 
 
+def _container_element(jt):
+    """Element type produced by subscripting a container with `[...]`, or None if it can't be
+    determined (raw container with no tracked generic arg -- then we do NOT step in, staying safe).
+
+    list/vector `[i]` -> the element type (args[0]); map `[k]` -> the value type (args[-1]). This is
+    what lets `jlist[i].method()` know `jlist[i]` is a `T*` so the following call becomes `->` --
+    the container analogue of stepping an array element (see FIXED BUG list-elem-dot-arrow)."""
+    if jt is None or not getattr(jt, 'args', None):
+        return None
+    cat = _category(jt)
+    if cat == 'list':
+        return jt.args[0]
+    if cat == 'map' and len(jt.args) >= 2:
+        return jt.args[-1]
+    return None
+
+
 def _rewrite_new_containers(s, resolver):
     """Rewrite every `new <Container>(...)` in `s` to a by-value STL temporary, balanced-paren aware.
     Empty args -> default construct `CppType()`; a single collection arg (Java copy/range ctor) is
@@ -1686,16 +1703,21 @@ def _chain_root(tok, scope, resolver, current):
 
 
 def _consume_index(s, i, out, cur_jt, is_ptr, resolver, scope, current):
-    """While cur_jt is an array and a balanced [index] follows, consume it and step into the
-    element type (so `arr[i].member` types `arr[i]` as the element). The index EXPRESSION is
-    itself chain-resolved (it may contain its own pointer chains, e.g. arr[base->idx])."""
-    while cur_jt is not None and cur_jt.is_array and i < len(s) and s[i] == '[':
+    """While a balanced [index] follows and cur_jt is subscriptable (an ARRAY, or a list/map
+    CONTAINER whose element type is known), consume it and step into the element type -- so
+    `arr[i].member` / `jlist[i].member` types the indexed value as the element (a pointer for
+    reference types, so the following `.` becomes `->`). The index EXPRESSION is itself
+    chain-resolved (it may contain its own pointer chains, e.g. arr[base->idx])."""
+    while cur_jt is not None and i < len(s) and s[i] == '[':
+        elem = cur_jt.element() if cur_jt.is_array else _container_element(cur_jt)
+        if elem is None:                      # not subscriptable / element type unknown -> stop
+            break
         close = _balanced_bracket(s, i)
         if close < 0:
             break
         out.append('[' + _resolve_chains(s[i + 1:close], scope, resolver, current) + ']')
         i = close + 1
-        cur_jt = cur_jt.element()
+        cur_jt = elem
         is_ptr = resolver.is_pointer(cur_jt)
     return i, cur_jt, is_ptr
 
