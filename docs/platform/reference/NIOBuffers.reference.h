@@ -85,6 +85,20 @@ public:
 	int   capacity() const { return _b ? (_b->cap >> _shift) : 0; }
 	int   limit() const { return _limB >> _shift; }
 	int   remaining() const { return (_limB - _posB) >> _shift; }
+
+	// J2X-BUGFIX buffer-base-api: java.nio declares clear/flip/rewind/mark/position(int)/limit(int)
+	// on Buffer itself (returning Buffer), and the converter faithfully casts a typed view UP to
+	// Buffer* before calling them -- `((Buffer*)floatBuf)->flip().limit(16)`, `((Buffer*)ib)->clear()`.
+	// Without these on the base, every such call failed C2039 ("clear is not a member of Buffer").
+	// position(int)/limit(int) are ELEMENT-valued and use _shift, so this ONE base implementation is
+	// correct for Byte(shift 0)/Int/Float(shift 2). Subclasses override with covariant returns
+	// (ByteBuffer&/IntBuffer&/FloatBuffer&) so TYPED chains keep their static type.
+	virtual Buffer& clear()  { _posB = 0; _limB = _b ? _b->cap : 0; return *this; }
+	virtual Buffer& flip()   { _limB = _posB; _posB = 0; return *this; }
+	virtual Buffer& rewind() { _posB = 0; return *this; }
+	virtual Buffer& mark()   { return *this; }
+	virtual Buffer& position(int p) { _posB = p << _shift; return *this; }
+	virtual Buffer& limit(int l)    { _limB = l << _shift; return *this; }
 };
 
 // --- java.nio.ByteBuffer -------------------------------------------------------
@@ -161,6 +175,10 @@ public:
 		}
 		return *this;
 	}
+	// J2X-BUGFIX buffer-put-overloads: java.nio.IntBuffer.put(int[]) bulk (Textures uploads an int
+	// pixel array: `pixels->asIntBuffer()->put(rawPixels)`), and absolute put(index,int).
+	IntBuffer& put(const JArray<int>& src) { return put(src, 0, src.length); }
+	IntBuffer& put(int idx, int v) { int o = idx << 2; if (_b && o + 4 <= _b->cap) *(int*)(_b->bytes + o) = v; return *this; }
 	// relative get()
 	int get() {
 		if (_b && _posB + 4 <= _limB) { int v = *(int*)(_b->bytes + _posB); _posB += 4; return v; }
@@ -198,6 +216,11 @@ public:
 		}
 		return *this;
 	}
+	// J2X-BUGFIX buffer-put-overloads: java.nio.FloatBuffer.put(float[]) bulk (RubyDung fog color:
+	// `fogColor->put((JArrayInit<float>(), r,g,b,1.0F))` -- JArrayInit converts to JArray<float>),
+	// and absolute put(index,float) (Tessellator: `vertexBuffer->put(i*3+0, x).put(i*3+1, y)...`).
+	FloatBuffer& put(const JArray<float>& src) { return put(src, 0, src.length); }
+	FloatBuffer& put(int idx, float v) { int o = idx << 2; if (_b && o + 4 <= _b->cap) *(float*)(_b->bytes + o) = v; return *this; }
 	FloatBuffer& get(JArray<float>& dst) { for (int i = 0; i < dst.length; ++i) dst[i] = get(); return *this; }
 	float get() {
 		if (_b && _posB + 4 <= _limB) { float v = *(float*)(_b->bytes + _posB); _posB += 4; return v; }
