@@ -2480,6 +2480,11 @@ def generate_files(cpp_std=None, platform_id=None):
 
     if platform_id:
         out['stdafx.h'] = generate_stdafx(platform_id, std_label)
+        # The PCH *create* source: Xbox 360 projects build <Project>.pch from stdafx.cpp (/Yc),
+        # every other .cpp uses it (/Yu). Without this the vcxproj's stdafx.cpp Create block has no
+        # file and all sources fail with C1083 "cannot open precompiled header". (Emitted for all
+        # platforms -- it is just `#include "stdafx.h"`, harmless where no PCH is used.)
+        out['stdafx.cpp'] = '#include "stdafx.h"\n'
 
     is_non_windows = platform_id in ('ps3', 'wii', 'psp', 'nds')
 
