@@ -56,7 +56,11 @@ inline long long GetNanoTime() {
 // so it must NEVER drive per-frame/per-packet logging. Flip to 1 (or override in the build) only for
 // sparse one-shot boot/error tracing. Independent of the heap watchdog (J2X_HEAPTRACK).
 #ifndef J2X_DEBUG_LOG
-#define J2X_DEBUG_LOG 0
+#ifdef _DEBUG
+#define J2X_DEBUG_LOG 1   // Debug builds: surface boot/error traces via ResolvePath mirror + Debug\J2X_trace.txt
+#else
+#define J2X_DEBUG_LOG 0   // Release: compiled out to nothing
+#endif
 #endif
 extern "C" unsigned long __cdecl DbgPrint(const char* Format, ...);
 inline void DbgPrintF(const char* fmt, ...) {
