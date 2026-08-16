@@ -338,7 +338,7 @@ void glEnable(int cap) {
 		case GL_TEXTURE_2D: g_texEnabled = true; break;
 		case GL_BLEND: g_blend = true; _rs(D3DRS_ALPHABLENDENABLE, TRUE); break;
 		case GL_DEPTH_TEST: g_depth = true; _rs(D3DRS_ZENABLE, TRUE); break;
-		case GL_CULL_FACE: g_cull = true; _rs(D3DRS_CULLMODE, D3DCULL_CCW); break;   // HARDWARE-VERIFY winding
+		case GL_CULL_FACE: g_cull = true; _rs(D3DRS_CULLMODE, D3DCULL_CW); break;   // CW: GL RH front-face -> D3D LH is CW. Was CCW = culled the visible faces (missing ground). Matches the working hand-port.
 		case GL_ALPHA_TEST: g_alphaTest = true; break;
 		case GL_FOG: g_fog = true; break;
 		default: break;
@@ -428,7 +428,10 @@ void glTexParameterf(int target, int pname, float param) { glTexParameteri(targe
 static void _uploadRGBA(GLTex* t, int w, int h, const unsigned char* rgba) {
 	if (!g_dev || !t || w <= 0 || h <= 0) return;
 	if (t->tex) { t->tex->Release(); t->tex = 0; }
-	if (FAILED(g_dev->CreateTexture(w, h, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &t->tex, 0))) return;
+	// D3DPOOL_DEFAULT (NOT _MANAGED): the Xbox 360 has no managed pool -- CreateTexture(MANAGED)
+	// corrupts/fails there. DEFAULT-pool textures ARE lockable on 360 (unified memory). Matches the
+	// working hand-port's Textures::loadTextureFromData. [J2X-BUGFIX tex-pool-360]
+	if (FAILED(g_dev->CreateTexture(w, h, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &t->tex, 0))) return;
 	t->w = w; t->h = h;
 	D3DLOCKED_RECT lr;
 	if (FAILED(t->tex->LockRect(0, &lr, 0, 0))) return;
@@ -437,13 +440,9 @@ static void _uploadRGBA(GLTex* t, int w, int h, const unsigned char* rgba) {
 		const unsigned char* src = rgba + y * w * 4;
 		for (int x = 0; x < w; ++x) {
 			unsigned char r = src[0], g = src[1], b = src[2], a = src[3]; src += 4;
-			// ENDIAN-SAFE: write the texel as a native 32-bit ARGB value. On the big-endian 360/
-			// emulator this stores [A,R,G,B] (correct D3DFMT_A8R8G8B8); a byte-by-byte [B,G,R,A] write
-			// (little-endian PC layout) scrambled every channel -- and put ALPHA in the blue slot, so
-			// alpha-tested terrain got clip()'d away (the missing ground). [J2X-BUGFIX tex-endianness]
-			*(unsigned int*)dst = ((unsigned int)a << 24) | ((unsigned int)r << 16)
-			                    | ((unsigned int)g << 8) | (unsigned int)b;
-			dst += 4;
+			// D3DFMT_A8R8G8B8 is BGRA in memory on this platform (little-endian) -- input is RGBA.
+			// Byte-for-byte identical to the working hand-port's Textures::loadTextureFromData.
+			dst[0] = b; dst[1] = g; dst[2] = r; dst[3] = a; dst += 4;
 		}
 	}
 	t->tex->UnlockRect(0);
