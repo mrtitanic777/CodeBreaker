@@ -30,7 +30,7 @@
   #define J2X_TEXFMT   D3DFMT_A8R8G8B8       // PC has no tiling; plain A8R8G8B8
 #endif
 
-namespace GL11 {
+namespace d3d9 {
 
 // --------------------------------------------------------------------------- vertex format
 // One interleaved vertex the whole emulator funnels through (immediate + array + selection gather).
@@ -678,4 +678,4 @@ JavaString glGetString(int name) {
 	return JavaString("");
 }
 
-} // namespace GL11
+} // namespace d3d9

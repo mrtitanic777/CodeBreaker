@@ -1,10 +1,14 @@
-// GL11.h -- game-AGNOSTIC OpenGL 1.x (LWJGL) -> Direct3D 9 emulator for the j2ctool Xbox 360 target.
+// The Direct3D 9 (Xbox 360) GRAPHICS LAYER -- namespace `d3d9`. This is NOT an OpenGL emulator: the 360
+// runs NO OpenGL. The API-mapping registry (apimap/opengl.json) CONVERTS every OpenGL call the game makes
+// into a call on this native Direct3D 9 layer -- direct IDirect3DDevice9/D3DX for the 1:1 cases, and a
+// small D3D9 helper for the three STATEFUL GL concepts that have no single D3D9 call (immediate mode,
+// matrix stack, display lists). Everything below is Direct3D 9: IDirect3DDevice9, DrawPrimitive,
+// CreateVertexBuffer, CreateTexture, D3DX matrices. Self-contained (own texture table / matrix stacks /
+// device) so it backs any converted game's renderer without game-specific plumbing.
 //
-// REFERENCE IMPLEMENTATION emitted by j2ctool (replaces the no-op GL11 stub). Unlike the earlier
-// Beta-coupled emulator, this one is SELF-CONTAINED: it manages its OWN texture table (no callback
-// into any game's Textures class), its OWN matrix stacks, and its OWN device pointer -- so it backs
-// ANY converted game's renderer (RubyDung, Minecraft, ...) without game-specific plumbing. The game's
-// own converted classes (Textures.java, Tesselator.java, ...) call GL11::glX and this makes them draw.
+// TRANSITION: a `namespace GL11 = d3d9` alias at the bottom keeps already-emitted game code (which still
+// calls GL11::) building while Stage 3 rewires the converter to emit d3d9:: directly. The function names
+// keep their gl-origin spelling for traceability against the registry table.
 //
 // It supports BOTH GL usage styles a converted game may take:
 //   * IMMEDIATE mode  -- glBegin/glVertex3f/glTexCoord2f/glColor*/glNormal3f/glEnd (RubyDung, Cube,
@@ -28,7 +32,7 @@
 #include "JavaRT.h"
 #include "NIOBuffers.h"      // real ByteBuffer / FloatBuffer / IntBuffer
 
-namespace GL11 {
+namespace d3d9 {
 	// ------------------------------------------------------------------ enum tokens
 	const int GL_FALSE = 0, GL_TRUE = 1;
 	const int GL_POINTS = 0x0000, GL_LINES = 0x0001, GL_LINE_LOOP = 0x0002, GL_LINE_STRIP = 0x0003;
@@ -182,4 +186,7 @@ namespace GL11 {
 	inline void glClipPlane(...) {}
 }
 
+
+// --- TRANSITION alias (removed in Stage 3, when the converter emits d3d9:: directly) ---
+namespace GL11 = d3d9;
 #endif // GL11_H
