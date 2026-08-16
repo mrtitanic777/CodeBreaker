@@ -37,6 +37,9 @@ public:
 		}
 		return (pos < length) ? data[pos++] : 0;       // file mode (base behavior)
 	}
+	// EOF-aware read for readFully (see DataInput.h): -1 at end of stream. Streaming mode already returns -1 at
+	// EOF from readUnsignedByte (socket closed); file mode reports EOF at pos==length instead of the masked 0.
+	virtual int readByteOrEof() { return _streaming ? readUnsignedByte() : ((pos < length) ? data[pos++] : -1); }
 	int read() { return readUnsignedByte(); }
 	// java.io.DataInputStream.read(byte[]) -> count read, or -1 at EOF (used by the resource fetcher)
 	int read(JArray<unsigned char>& b) {
