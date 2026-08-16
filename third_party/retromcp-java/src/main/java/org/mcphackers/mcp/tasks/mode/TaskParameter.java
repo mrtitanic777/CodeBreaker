@@ -56,15 +56,18 @@ public enum TaskParameter {
 		// NO_COMMENT_OUTPUT option -- it applies its own defaults for anything left unset and does not
 		// emit the "$FF:" annotation comments, so we build the option map from scratch.
 		Map<String, Object> ffOptions = new HashMap<>();
-		ffOptions.put(IFernflowerPreferences.REMOVE_BRIDGE, "0");
 		ffOptions.put(IFernflowerPreferences.ASCII_STRING_CHARACTERS, "1");
 		ffOptions.put(IFernflowerPreferences.OVERRIDE_ANNOTATION, "0");
 		ffOptions.put(IFernflowerPreferences.DECOMPILE_GENERIC_SIGNATURES, "1");
 		// Faithful-to-original decompilation: strip compiler-synthesized members (enum $values(),
 		// inner-class access$ accessors, generic/covariant bridge methods, enum switch-map arrays)
 		// that were never written in the source. Verified recompile-safe -- javac regenerates all of
-		// them from the clean source, so this also supersedes the conservative REMOVE_BRIDGE=0 above.
+		// them from the clean source. (This also covers bridge methods, so Vineflower's default
+		// REMOVE_BRIDGE=true is left as-is rather than the old fernflower REMOVE_BRIDGE=0 override.)
 		ffOptions.put(IFernflowerPreferences.REMOVE_SYNTHETIC, "1");
+		// Fold `cond ? X : false` / `cond ? true : X` back into the `&&`/`||` chains the code was
+		// actually written with (verified on the Alpha corpus: matches the original, still recompiles).
+		ffOptions.put(IFernflowerPreferences.TERNARY_CONSTANT_SIMPLIFICATION, "1");
 		ffOptions.put(IFernflowerPreferences.INDENT_STRING, "\t");
 		ffOptions.remove(IFernflowerPreferences.BANNER);
 		return ffOptions.toString();
