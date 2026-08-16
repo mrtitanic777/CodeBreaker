@@ -111,9 +111,23 @@ static std::vector<GLVert> g_imm;
 // was current when the geometry was recorded -- real GL records glBindTexture INTO the list, so glCallList
 // must replay with the list's texture, not whatever is bound at call time. (This was the white ground:
 // terrain glBindTexture happened inside glNewList, but replay drew untextured -> vertex color = white.)
-struct GLBatch { std::vector<GLVert> tris; int tex; bool texEnabled; GLBatch() : tex(0), texEnabled(false) {} };
-struct GLList { std::vector<GLBatch> batches; bool used; GLList() : used(false) {}
-	int triCount() const { int n = 0; for (size_t i = 0; i < batches.size(); ++i) n += (int)batches[i].tris.size(); return n; } };
+// A batch is baked into a STATIC vertex buffer at glEndList and drawn with DrawPrimitive (fast) on every
+// glCallList -- NOT re-uploaded per frame via DrawPrimitiveUP (that was the terrible FPS). `tris` is only
+// the transient CPU staging during recording; it's freed once `vb` is built.
+struct GLBatch {
+	std::vector<GLVert> tris;
+	IDirect3DVertexBuffer9* vb;
+	int triCount;
+	int tex; bool texEnabled;
+	GLBatch() : vb(0), triCount(0), tex(0), texEnabled(false) {}
+};
+struct GLList { std::vector<GLBatch> batches; bool used; GLList() : used(false) {} };
+
+static void _freeBatchVBs(GLList& L) {
+	for (size_t i = 0; i < L.batches.size(); ++i)
+		if (L.batches[i].vb) { L.batches[i].vb->Release(); L.batches[i].vb = 0; }
+	L.batches.clear();
+}
 static std::vector<GLList> g_lists;      // index by list id (0 reserved)
 static int g_recordingList = 0;          // != 0 while inside glNewList/glEndList
 
@@ -299,9 +313,9 @@ static void _gatherTris(int mode, const GLVert* v, int n, std::vector<GLVert>& t
 	}   // points/lines: not needed by the target renderers (extend if required)
 }
 
-// Draw a ready triangle list through the shared shader + current matrix/texture state.
-static void _drawTris(const std::vector<GLVert>& tri) {
-	if (!g_dev || !g_vs || tri.empty()) return;
+// Set the shared shader + current matrix/texture/sampler state for a draw. Shared by the immediate
+// DrawPrimitiveUP path and the display-list vertex-buffer DrawPrimitive path.
+static void _applyDrawState() {
 	_uploadMatrices(); _uploadControl();
 	g_dev->SetVertexShader(g_vs); g_dev->SetPixelShader(g_ps);
 	g_dev->SetVertexDeclaration(g_decl);   // SM3 vertex decl (not SetFVF)
@@ -317,6 +331,13 @@ static void _drawTris(const std::vector<GLVert>& tri) {
 	} else {
 		g_dev->SetTexture(0, 0);
 	}
+}
+
+// Draw a ready triangle list in ONE-SHOT (immediate mode): uploads the verts inline. Used for the
+// small dynamic geometry (entities in glBegin/glEnd) -- NOT for terrain (that goes through cached VBs).
+static void _drawTris(const std::vector<GLVert>& tri) {
+	if (!g_dev || !g_vs || tri.empty()) return;
+	_applyDrawState();
 	g_dev->DrawPrimitiveUP(D3DPT_TRIANGLELIST, (UINT)(tri.size() / 3), &tri[0], sizeof(GLVert));
 }
 
@@ -561,25 +582,50 @@ int glGenLists(int n) {
 void glNewList(int list, int /*mode*/) {
 	if (list <= 0) return;
 	while ((int)g_lists.size() <= list) g_lists.push_back(GLList());
+	_freeBatchVBs(g_lists[list]);        // releasing the old VBs before re-recording
 	g_recordingList = list;
-	g_lists[list].batches.clear();
 	g_lists[list].used = true;
 }
-void glEndList() { g_recordingList = 0; }
+// Bake each recorded batch into a static vertex buffer (drawn with DrawPrimitive, not re-uploaded per
+// frame). CreateVertexBuffer is bracketed with EndScene/BeginScene (Nexia360 dislikes mid-scene creates).
+void glEndList() {
+	if (g_recordingList > 0 && g_recordingList < (int)g_lists.size() && g_dev) {
+		GLList& L = g_lists[g_recordingList];
+		for (size_t i = 0; i < L.batches.size(); ++i) {
+			GLBatch& b = L.batches[i];
+			if (b.tris.empty()) continue;
+			UINT bytes = (UINT)(b.tris.size() * sizeof(GLVert));
+			g_dev->EndScene();
+			HRESULT hr = g_dev->CreateVertexBuffer(bytes, D3DUSAGE_WRITEONLY, 0, D3DPOOL_MANAGED, &b.vb, 0);
+			g_dev->BeginScene();
+			if (SUCCEEDED(hr) && b.vb) {
+				void* p = 0;
+				if (SUCCEEDED(b.vb->Lock(0, bytes, &p, 0))) { memcpy(p, &b.tris[0], bytes); b.vb->Unlock(); }
+				b.triCount = (int)(b.tris.size() / 3);
+			}
+			std::vector<GLVert>().swap(b.tris);   // free the CPU staging copy
+		}
+	}
+	g_recordingList = 0;
+}
 void glCallList(int list) {
-	if (list <= 0 || list >= (int)g_lists.size() || !g_lists[list].used) return;
+	if (list <= 0 || list >= (int)g_lists.size() || !g_lists[list].used || !g_dev || !g_vs) return;
 	GLList& L = g_lists[list];
 	int saveTex = g_boundTex; bool saveEn = g_texEnabled;   // replay each batch with ITS recorded texture
 	for (size_t i = 0; i < L.batches.size(); ++i) {
-		g_boundTex = L.batches[i].tex; g_texEnabled = L.batches[i].texEnabled;
-		_drawTris(L.batches[i].tris);
+		GLBatch& b = L.batches[i];
+		if (!b.vb || b.triCount <= 0) continue;
+		g_boundTex = b.tex; g_texEnabled = b.texEnabled;
+		_applyDrawState();
+		g_dev->SetStreamSource(0, b.vb, 0, sizeof(GLVert));
+		g_dev->DrawPrimitive(D3DPT_TRIANGLELIST, 0, b.triCount);
 	}
 	g_boundTex = saveTex; g_texEnabled = saveEn;
 }
 void glDeleteLists(int list, int n) {
 	for (int i = 0; i < n; ++i) {
 		int id = list + i;
-		if (id > 0 && id < (int)g_lists.size()) { g_lists[id].batches.clear(); g_lists[id].used = false; }
+		if (id > 0 && id < (int)g_lists.size()) { _freeBatchVBs(g_lists[id]); g_lists[id].used = false; }
 	}
 }
 
