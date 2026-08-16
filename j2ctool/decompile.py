@@ -60,11 +60,20 @@ def _run(java, jar, args, cwd, on_output=None, stdin_text=None):
     cmd = [java, '-jar', jar] + args
     if on_output:
         on_output('$ ' + ' '.join(['java', '-jar', os.path.basename(jar)] + args))
+    # In a windowed (console=False) PyInstaller build the parent has no console; CREATE_NO_WINDOW
+    # gives the java child its own (hidden) one so its std handles are valid and no window flashes.
+    creationflags = getattr(subprocess, 'CREATE_NO_WINDOW', 0) if os.name == 'nt' else 0
+    logf = None
+    try:
+        logf = open(os.path.join(cwd, 'j2ctool-decompile.log'), 'a', encoding='utf-8', errors='replace')
+        logf.write('\n$ ' + ' '.join(cmd) + '\n')
+    except (IOError, OSError):
+        logf = None
     proc = subprocess.Popen(
         cmd, cwd=cwd,
         stdin=(subprocess.PIPE if stdin_text is not None else subprocess.DEVNULL),
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        universal_newlines=True, bufsize=1)
+        universal_newlines=True, bufsize=1, creationflags=creationflags)
     # RetroMCP's setup task prompts (Scanner.nextLine) when it can't resolve the version from the arg.
     # Pre-feed the answer so it doesn't hang / crash on missing stdin; closing it makes an unknown
     # version fail fast (EOF) instead of looping forever.
@@ -78,9 +87,20 @@ def _run(java, jar, args, cwd, on_output=None, stdin_text=None):
     for line in proc.stdout:
         line = line.rstrip('\n')
         saw.append(line)
+        if logf:
+            try:
+                logf.write(line + '\n')
+            except (IOError, OSError):
+                pass
         if on_output:
             on_output(line)
     proc.wait()
+    if logf:
+        try:
+            logf.write('[exit %d]\n' % proc.returncode)
+            logf.close()
+        except (IOError, OSError):
+            pass
     return proc.returncode, saw
 
 
