@@ -31,8 +31,11 @@ static IDirect3DDevice9* s_dev = 0;
 static DisplayMode       s_mode(854, 480);   // sensible default until the game sets one
 static bool              s_created = false;
 
-void setDisplayMode(DisplayMode* mode) { if (mode) s_mode = *mode; }
-void setDisplayMode(const DisplayMode& mode) { s_mode = mode; }
+// Ignored once the device is created (the entry creates it first): the backbuffer is fixed at creation,
+// so a later setDisplayMode must NOT change the reported mode or the game's projection/viewport would
+// desync from the actual backbuffer.
+void setDisplayMode(DisplayMode* mode) { if (mode && !s_created) s_mode = *mode; }
+void setDisplayMode(const DisplayMode& mode) { if (!s_created) s_mode = mode; }
 
 void create() {
 	if (s_created) return;
