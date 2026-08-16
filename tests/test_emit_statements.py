@@ -2685,3 +2685,42 @@ class ContainerElementArrowTests(unittest.TestCase):
         r = types.TypeResolver(known_classes={'World', 'AABB'})
         out = statements.translate_body(m, c, r)
         self.assertIn('aABBs[0]->clipYCollide();', out)
+
+
+class StaticShadowedByParamTests(unittest.TestCase):
+    """FIXED BUG static-shadowed-by-param: a param/local sharing a static field's name shadows it,
+    so a bare reference is the LOCAL and must NOT be s_-prefixed (Frustum.normalizePlane's float[][]
+    param `frustum` collided with the static singleton `frustum` -> `s_frustum[side][0]`)."""
+
+    def _cls(self):
+        c = ir.JClass('Frustum')
+        c.fields.append(ir.Field('frustum', ir.JType('Frustum'), is_static=True, initializer=None))
+        return c
+
+    def test_param_shadows_static_keeps_local_name(self):
+        c = self._cls()
+        m = ir.Method('normalizePlane', ir.JType('void'),
+                      params=[ir.Param('frustum', ir.JType('float', array_dims=2)),
+                              ir.Param('side', ir.JType('int'))], line=1)
+        m.body = [(1, 'void normalizePlane(float[][] frustum, int side) {'),
+                  (2, '\tfloat m = frustum[side][0];'),
+                  (3, '\tfrustum[side][0] = frustum[side][0] / m;'),
+                  (4, '}')]
+        c.methods.append(m)
+        r = types.TypeResolver(known_classes={'Frustum'},
+                               members={'Frustum': {'fields': {'frustum': ir.JType('Frustum')},
+                                                    'methods': {}, 'statics': {'frustum'}, 'parent': None}})
+        out = '\n'.join(statements.translate_body(m, c, r))
+        self.assertIn('frustum[side][0]', out)
+        self.assertNotIn('s_frustum[side]', out)
+
+    def test_static_ref_without_shadow_is_prefixed(self):
+        c = self._cls()
+        m = ir.Method('getFrustum', ir.JType('Frustum'), params=[], is_static=True, line=1)
+        m.body = [(1, 'Frustum getFrustum() {'), (2, '\treturn frustum;'), (3, '}')]
+        c.methods.append(m)
+        r = types.TypeResolver(known_classes={'Frustum'},
+                               members={'Frustum': {'fields': {'frustum': ir.JType('Frustum')},
+                                                    'methods': {}, 'statics': {'frustum'}, 'parent': None}})
+        out = '\n'.join(statements.translate_body(m, c, r))
+        self.assertIn('s_frustum', out)                       # no shadow -> the static IS prefixed

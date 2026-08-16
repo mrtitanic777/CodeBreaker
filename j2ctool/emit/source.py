@@ -344,7 +344,12 @@ def _delegated_base_init(args_str, deleg, cls, resolver):
     if target is None:
         return None
     sub = dict((p.name, _paren_arg(args[i])) for i, p in enumerate(target.params))
-    rx = re.compile(r'\b(' + '|'.join(re.escape(k) for k in sub) + r')\b') if sub else None
+    # Substitute the target's PARAM references, but never an identifier used as a MEMBER
+    # (`this->pos`, `obj.pos`, `Cls::pos`) -- a field that shares a param's name must keep its
+    # name. Without the lookbehind, `this->pos = pos;` became `this->(arg) = (arg);` (the botched
+    # Vertex ctor). The leading (?<![\w.>:]) excludes a preceding word char, '.', '>' (from '->')
+    # and ':' (from '::'); the trailing \b keeps whole-word matching.
+    rx = re.compile(r'(?<![\w.>:])(' + '|'.join(re.escape(k) for k in sub) + r')\b') if sub else None
     for line in translate_body(target, cls, resolver):
         sm = _SUPER_CALL.match(line)
         if sm:
@@ -373,7 +378,12 @@ def _inline_delegation(args_str, deleg, cls, resolver, ledger, _depth=0):
         return ['// PORT: delegation this(%s) -- target ctor not found; inline manually' % args_str,
                 'this(%s);' % args_str]
     sub = dict((p.name, _paren_arg(args[i])) for i, p in enumerate(target.params))
-    rx = re.compile(r'\b(' + '|'.join(re.escape(k) for k in sub) + r')\b') if sub else None
+    # Substitute the target's PARAM references, but never an identifier used as a MEMBER
+    # (`this->pos`, `obj.pos`, `Cls::pos`) -- a field that shares a param's name must keep its
+    # name. Without the lookbehind, `this->pos = pos;` became `this->(arg) = (arg);` (the botched
+    # Vertex ctor). The leading (?<![\w.>:]) excludes a preceding word char, '.', '>' (from '->')
+    # and ':' (from '::'); the trailing \b keeps whole-word matching.
+    rx = re.compile(r'(?<![\w.>:])(' + '|'.join(re.escape(k) for k in sub) + r')\b') if sub else None
     out = ['// inlined this(%s) -- C++03 lacks ctor delegation' % args_str]
     for line in translate_body(target, cls, resolver):
         cm = _THIS_CALL.match(line)

@@ -2561,6 +2561,12 @@ def translate_body(method, cls, resolver, ledger=None):
     # a parent's static field also gets the s_ prefix, e.g. BlockStep using Block.stairSingle)
     own_statics = set(f.name for f in cls.static_fields())
     own_statics |= resolver.members.get(cls.name, {}).get('statics', set())
+    # A param or local that shares a static field's name SHADOWS it in this method (Java scoping),
+    # so a bare reference is the LOCAL, not the static -- don't s_-prefix it. (FIXED BUG
+    # static-shadowed-by-param: Frustum.normalizePlane(float[][] frustum, ...) -- the param `frustum`
+    # collided with the static singleton field `frustum` and every `frustum[side][0]` became
+    # `s_frustum[side][0]`, indexing the Frustum* singleton -> "Frustum has no operator[]".)
+    own_statics -= (set(p.name for p in method.params) | _local_names(method))
     out = []
     for raw in inner_lines(method.body):
         s = raw.strip()

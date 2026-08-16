@@ -463,3 +463,35 @@ class DelegationArgParenTests(unittest.TestCase):
         self.assertEqual(source._paren_arg('var1.blockID'), 'var1.blockID')
         self.assertEqual(source._paren_arg('1'), '1')
         self.assertEqual(source._paren_arg('(already)'), '(already)')
+
+
+class DelegationFieldParamCollisionTests(unittest.TestCase):
+    """FIXED BUG delegation-field-name: a delegating ctor whose TARGET assigns a field that shares a
+    param's name (this.pos = pos) must not substitute the field on the LHS -- the botched Vertex
+    ctor emitted `this->(new Vec3(..)) = (new Vec3(..));`."""
+
+    def _vertex(self):
+        c = ir.JClass('Vertex')
+        c.fields.append(ir.Field('pos', ir.JType('Vec3')))
+        c.fields.append(ir.Field('u', ir.JType('float')))
+        c.fields.append(ir.Field('v', ir.JType('float')))
+        d = ir.Method('Vertex', is_ctor=True,
+                      params=[ir.Param('x', ir.JType('float')), ir.Param('y', ir.JType('float')),
+                              ir.Param('z', ir.JType('float')), ir.Param('u', ir.JType('float')),
+                              ir.Param('v', ir.JType('float'))], line=10)
+        d.body = [(10, 'Vertex(float x, float y, float z, float u, float v) {'),
+                  (11, '\tthis(new Vec3(x, y, z), u, v);'), (12, '}')]
+        t = ir.Method('Vertex', is_ctor=True,
+                      params=[ir.Param('pos', ir.JType('Vec3')), ir.Param('u', ir.JType('float')),
+                              ir.Param('v', ir.JType('float'))], line=13)
+        t.body = [(13, 'Vertex(Vec3 pos, float u, float v) {'),
+                  (14, '\tthis.pos = pos;'), (15, '\tthis.u = u;'), (16, '\tthis.v = v;'), (17, '}')]
+        c.methods.extend([d, t])
+        return c
+
+    def test_field_lhs_not_substituted(self):
+        c = self._vertex()
+        r = types.TypeResolver(known_classes={'Vertex', 'Vec3'})
+        cpp = source.render_source(c, r, ledger=Ledger())
+        self.assertNotIn('this->(new Vec3', cpp)              # the botched form is gone
+        self.assertIn('this->pos = (new Vec3(x, y, z));', cpp)
