@@ -504,6 +504,8 @@ void glTexCoordPointer(int size, int stride, FloatBuffer* buf) {
 }
 static unsigned char _u8(float f) { int i = (int)(f * 255.0f + 0.5f); return (unsigned char)(i < 0 ? 0 : i > 255 ? 255 : i); }
 void glDrawArrays(int mode, int first, int count) {
+	{ static int _t = 0; if (_t < 8) { DbgPrintF("[J2X] glDrawArrays mode=%d count=%d rec=%d vtx=%d clr=%d tex=%d\n",
+	    mode, count, g_recordingList, g_vaVertex?1:0, g_vaColor?1:0, g_vaTex?1:0); ++_t; } }
 	if (count <= 0) return;
 	std::vector<GLVert> g; g.reserve(count);
 	for (int i = 0; i < count; ++i) {
@@ -539,13 +541,22 @@ int glGenLists(int n) {
 	return base;
 }
 void glNewList(int list, int /*mode*/) {
+	static int _t = 0;
+	if (_t < 6) { DbgPrintF("[J2X] glNewList %d\n", list); ++_t; }
 	if (list <= 0) return;
 	while ((int)g_lists.size() <= list) g_lists.push_back(GLList());
 	g_recordingList = list;
 	g_lists[list].tris.clear();
 	g_lists[list].used = true;
 }
-void glEndList() { g_recordingList = 0; }
+void glEndList() {
+	static int _t = 0;
+	if (_t < 6) {
+		int n = (g_recordingList > 0 && g_recordingList < (int)g_lists.size()) ? (int)g_lists[g_recordingList].tris.size() : -1;
+		DbgPrintF("[J2X] glEndList %d: recorded %d tris\n", g_recordingList, n); ++_t;
+	}
+	g_recordingList = 0;
+}
 void glCallList(int list) {
 	static int _traced = 0;
 	if (_traced < 8) {   // one-shot diagnostic: is the ground geometry actually in the display list?
