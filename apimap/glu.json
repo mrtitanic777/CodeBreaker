@@ -1,0 +1,19 @@
+{
+  "subsystem": "glu",
+  "language": "glu",
+  "description": "OpenGL Utility library. Matrix helpers map to D3DX; gluPickMatrix (picking) is emulated.",
+  "symbols": {
+    "GLU.gluPerspective": {"signature": "(float,float,float,float)",
+      "maps": {"direct3d9": {"target": "D3DXMatrixPerspectiveFovRH -> SetTransform(D3DTS_PROJECTION)",
+        "kind": "shim", "note": "Real; fixes the blank-3D bug."}}},
+    "GLU.gluLookAt": {"signature": "(float x9...)",
+      "maps": {"direct3d9": {"target": "D3DXMatrixLookAtRH", "kind": "shim"}}},
+    "GLU.gluPickMatrix": {"signature": "(float,float,float,float,IntBuffer)",
+      "maps": {"direct3d9": {"target": "j2c::glu::pickMatrix", "kind": "shim",
+        "note": "Builds a picking projection (narrow frustum around the cursor); pairs with the GL selection shim."}}},
+    "GLU.gluProject": {"signature": "(...)",
+      "maps": {"direct3d9": {"target": "D3DXVec3Project", "kind": "shim"}}},
+    "GLU.gluUnProject": {"signature": "(...)",
+      "maps": {"direct3d9": {"target": "D3DXVec3Unproject", "kind": "shim"}}}
+  }
+}

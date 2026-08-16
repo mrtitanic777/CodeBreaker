@@ -813,6 +813,21 @@ def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True,
         runtime_files=set(rt_files.keys()))
     _prog('[platform] coverage report written to %s' % pc_path)
 
+    # API-mapping coverage: which external Java/library symbols the source references, resolved
+    # against the API-mapping registry for the target language+dialect. APIMAP.md is the enumerable
+    # gap list -- what the engine can already translate vs. what still needs a mapping row/shim.
+    try:
+        from . import apimap as _apimap
+        _dialect = (std_version.label or '').lower() or None
+        _syms = _apimap.extract_symbols_from_dir(java_dir)
+        _md = _apimap.render_coverage_md(_syms, 'java', 'cpp', _dialect)
+        _write(os.path.join(out_dir, 'APIMAP.md'), _md)
+        _amcov = _apimap.load().coverage(_syms, 'java', 'cpp', _dialect)
+        _prog('[apimap] %d symbols: %d mapped, %d unsupported, %d unknown -> APIMAP.md'
+              % (len(_syms), len(_amcov['mapped']), len(_amcov['unsupported']), len(_amcov['unmapped'])))
+    except Exception as _e:
+        _prog('[apimap] skipped: %s' % _e)
+
     # Regenerate the bug-fix ledger from the live FIXED BUG / J2X-BUGFIX markers in the
     # converter's authored sources (source of truth is the CONVERTER repo, not the tree).
     # Keeps BUGFIX_LEDGER.md perfectly in sync so no game-breaking fix is ever forgotten.

@@ -1,0 +1,29 @@
+{
+  "subsystem": "java.util",
+  "language": "java",
+  "description": "java.util collections -> the converter's J-container runtime (JList/JMap/JSet over std containers).",
+  "symbols": {
+    "List.get": {"signature": "(int)",
+      "maps": {"cpp": {"target": "JList::operator[]", "kind": "macro",
+        "note": "Element access; the element is a pointer for reference types (so the NEXT call chains with -> )."}}},
+    "List.add": {"signature": "(E) | (int,E)", "maps": {"cpp": {"target": "JList::add", "kind": "shim"}}},
+    "List.size": {"signature": "()", "maps": {"cpp": {"target": "JList::size", "kind": "direct"}}},
+    "List.remove": {"signature": "(int) | (Object)", "maps": {"cpp": {"target": "JList::remove", "kind": "shim"}}},
+    "List.clear": {"signature": "()", "maps": {"cpp": {"target": "JList::clear", "kind": "direct"}}},
+    "List.isEmpty": {"signature": "()", "maps": {"cpp": {"target": "JList::isEmpty", "kind": "direct"}}},
+    "List.contains": {"signature": "(Object)", "maps": {"cpp": {"target": "JList::contains", "kind": "shim"}}},
+    "ArrayList.get": {"signature": "(int)", "maps": {"cpp": {"target": "JList::operator[]", "kind": "macro"}}},
+    "ArrayList.add": {"signature": "(E)", "maps": {"cpp": {"target": "JList::add", "kind": "shim"}}},
+    "Map.get": {"signature": "(K)", "maps": {"cpp": {"target": "JMap::get", "kind": "shim",
+      "note": "Returns default-constructed / NULL on miss, matching Java (not std::map::at which throws)."}}},
+    "Map.put": {"signature": "(K,V)", "maps": {"cpp": {"target": "JMap::put", "kind": "shim"}}},
+    "Map.containsKey": {"signature": "(K)", "maps": {"cpp": {"target": "JMap::containsKey", "kind": "shim"}}},
+    "HashMap.get": {"signature": "(K)", "maps": {"cpp": {"target": "JMap::get", "kind": "shim"}}},
+    "Random.nextInt": {"signature": "() | (int)", "maps": {"cpp": {"target": "Random::nextInt", "kind": "shim",
+      "note": "Must reproduce java.util.Random's LCG bit-for-bit (world gen depends on it)."}}},
+    "Random.nextFloat": {"signature": "()", "maps": {"cpp": {"target": "Random::nextFloat", "kind": "shim"}}},
+    "Random.nextDouble": {"signature": "()", "maps": {"cpp": {"target": "Random::nextDouble", "kind": "shim"}}},
+    "Iterator.hasNext": {"signature": "()", "maps": {"cpp": {"target": "(STL iteration)", "kind": "macro",
+      "note": "The Java Iterator idiom is lowered to begin()/end() STL iteration by the emitter."}}}
+  }
+}

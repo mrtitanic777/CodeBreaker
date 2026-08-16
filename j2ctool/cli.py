@@ -365,6 +365,62 @@ def _cmd_vcxproj(args):
     return 0
 
 
+def _cmd_apimap(args):
+    """Query the API-mapping registry: resolve a symbol, list a subsystem, or report coverage."""
+    from . import apimap
+    reg = apimap.load()
+    act = args.action
+    if act == 'languages':
+        for lid in sorted(reg.languages):
+            info = reg.languages[lid]
+            dl = info.get('dialects')
+            dl = ('  dialects: ' + ', '.join(dl)) if dl else ''
+            print('  %-12s [%s] %s%s' % (lid, info.get('kind', '?'), info.get('desc', ''), dl))
+        return 0
+    if act == 'subsystems':
+        for sid in sorted(reg.subsystems):
+            s = reg.subsystems[sid]
+            print('  %-24s (%s)  %s' % (sid, s.get('language', ''), s.get('description', '')[:70]))
+        return 0
+    if act == 'list':
+        if not args.a:
+            print('ERROR: apimap list <subsystem>'); return 2
+        rows = reg.symbols_in(args.a)
+        if not rows:
+            print('No symbols in subsystem %r. Try: apimap subsystems' % args.a); return 2
+        for name, rec in rows:
+            tgts = ', '.join('%s=%s' % (d, m.get('target', '?')) for d, m in rec['maps'].items())
+            print('  %-28s -> %s' % (name, tgts))
+        return 0
+    if act == 'resolve':
+        if not (args.a and args.src and args.dst):
+            print('ERROR: apimap resolve <symbol> --from <lang> --to <lang> [--dialect D]'); return 2
+        m = reg.resolve(args.a, args.src, args.dst, args.dialect)
+        if not m:
+            print('UNMAPPED: %s (%s -> %s)' % (args.a, args.src, args.dst)); return 1
+        print('%s  (%s -> %s%s)' % (args.a, args.src, args.dst, ('@' + m.dialect if m.dialect else '')))
+        print('  target : %s' % m.target)
+        print('  kind   : %s' % m.kind)
+        if m.note:
+            print('  note   : %s' % m.note)
+        return 0
+    if act == 'coverage':
+        if not (args.a and args.src and args.dst):
+            print('ERROR: apimap coverage <java_dir> --from <lang> --to <lang> [--dialect D] [--out FILE]'); return 2
+        if not os.path.isdir(args.a):
+            print('ERROR: not a directory: %s' % args.a); return 2
+        syms = apimap.extract_symbols_from_dir(args.a)
+        md = apimap.render_coverage_md(syms, args.src, args.dst, args.dialect, reg=reg)
+        out = args.out or os.path.join(args.a, 'APIMAP.md')
+        with open(out, 'w', encoding='utf-8') as f:
+            f.write(md)
+        cov = reg.coverage(syms, args.src, args.dst, args.dialect)
+        print('symbols=%d  mapped=%d  unsupported=%d  unmapped=%d  ->  %s'
+              % (len(syms), len(cov['mapped']), len(cov['unsupported']), len(cov['unmapped']), out))
+        return 0
+    print('ERROR: unknown apimap action %r' % act); return 2
+
+
 def _cmd_gui():
     from .gui import main as gui_main
     gui_main()
@@ -553,6 +609,19 @@ def main(argv=None):
     rfp.set_defaults(func=_cmd_reflect_factories)
 
     # gui
+    # apimap (API-mapping registry: cross-language / cross-API function equivalence)
+    amp = sub.add_parser('apimap',
+                         help='Query the API-mapping registry (languages/subsystems/resolve/coverage).')
+    amp.add_argument('action', choices=['languages', 'subsystems', 'list', 'resolve', 'coverage'],
+                     help='languages | subsystems | list <subsystem> | resolve <symbol> --from L --to L '
+                          '| coverage <java_dir> --from L --to L')
+    amp.add_argument('a', nargs='?', help='subsystem id / symbol / java_dir depending on action.')
+    amp.add_argument('--from', dest='src', default=None, help='source language/api id.')
+    amp.add_argument('--to', dest='dst', default=None, help='target language/api id.')
+    amp.add_argument('--dialect', default=None, help='target dialect (e.g. c++03, c++11).')
+    amp.add_argument('--out', default=None, help='coverage: output path (default <java_dir>/APIMAP.md).')
+    amp.set_defaults(func=_cmd_apimap)
+
     gp = sub.add_parser('gui', help='Launch the desktop GUI.')
     gp.set_defaults(func=lambda _args: _cmd_gui())
 

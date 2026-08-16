@@ -27,6 +27,8 @@ a = Analysis(
         ('docs/platform/reference',  'docs/platform/reference'),
         ('docs/platform/companions', 'docs/platform/companions'),
         ('profiles',                 'profiles'),
+        # The API-mapping registry: cross-language / cross-API function equivalence tables.
+        ('apimap',                   'apimap'),
         # The bundled RetroMCP/Vineflower decompiler backend (Minecraft version -> Java source).
         ('backends',                 'backends'),
         # The VS-solution .vcxproj template that project_layout writes the Xbox 360 .sln/.vcxproj from.

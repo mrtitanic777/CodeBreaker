@@ -1,0 +1,23 @@
+{
+  "$comment": "The catalog of language / API 'slots' the registry can map between. 'language' entries are general-purpose languages (their stdlib callables live in subsystem files like java.util.json); 'api' entries are libraries/subsystems (OpenGL, Direct3D). 'dialects' lists a language's versions OLDEST->NEWEST; a mapping row may carry 'by_version' overrides keyed by these ids, and the resolver picks the newest override at-or-below the requested target dialect. Add a slot here to open it for mapping rows; seed rows demand-driven as real code needs them.",
+  "languages": {
+    "java":      {"kind": "language", "desc": "Java SE (source language of the Minecraft corpus).",
+                  "dialects": ["java5", "java6", "java7", "java8", "java11", "java17", "java21"]},
+    "cpp":       {"kind": "language", "desc": "C++ (ISO), the converter's primary target.",
+                  "dialects": ["c++98", "c++03", "c++11", "c++14", "c++17", "c++20", "c++23"]},
+    "c":         {"kind": "language", "desc": "C (ISO).",
+                  "dialects": ["c89", "c99", "c11", "c17", "c23"]},
+    "csharp":    {"kind": "language", "desc": "C# / .NET.",
+                  "dialects": ["cs7", "cs8", "cs9", "cs10", "cs11", "cs12"]},
+    "python":    {"kind": "language", "desc": "CPython.",
+                  "dialects": ["py2", "py3.6", "py3.9", "py3.11", "py3.12"]},
+    "rust":      {"kind": "language", "desc": "Rust.", "dialects": ["rust2015", "rust2018", "rust2021"]},
+    "asm.x86":   {"kind": "language", "desc": "x86-64 assembly (target for lowered hot paths)."},
+    "opengl":    {"kind": "api", "desc": "OpenGL 1.x fixed-function pipeline (as exposed by LWJGL)."},
+    "glu":       {"kind": "api", "desc": "OpenGL Utility library (GLU)."},
+    "direct3d9": {"kind": "api", "desc": "Direct3D 9 + D3DX (the Xbox 360 realization of OpenGL)."},
+    "xbox360":   {"kind": "api", "desc": "Xbox 360 XDK families (xboxkrnl/xam/xnet/d3d9/xact3/xinput2)."},
+    "lwjgl":     {"kind": "api", "desc": "LWJGL input/display (Keyboard/Mouse/Display)."},
+    "javax.swing": {"kind": "api", "desc": "Java AWT/Swing desktop UI (mostly dead on console)."}
+  }
+}
