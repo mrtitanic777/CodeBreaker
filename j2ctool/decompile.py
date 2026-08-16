@@ -56,17 +56,32 @@ def _find_src(workspace):
     return best if best_n > 0 else None
 
 
-def _run(java, jar, args, cwd, on_output=None):
+def _run(java, jar, args, cwd, on_output=None, stdin_text=None):
     cmd = [java, '-jar', jar] + args
     if on_output:
         on_output('$ ' + ' '.join(['java', '-jar', os.path.basename(jar)] + args))
-    proc = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                            universal_newlines=True, bufsize=1)
+    proc = subprocess.Popen(
+        cmd, cwd=cwd,
+        stdin=(subprocess.PIPE if stdin_text is not None else subprocess.DEVNULL),
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        universal_newlines=True, bufsize=1)
+    # RetroMCP's setup task prompts (Scanner.nextLine) when it can't resolve the version from the arg.
+    # Pre-feed the answer so it doesn't hang / crash on missing stdin; closing it makes an unknown
+    # version fail fast (EOF) instead of looping forever.
+    if stdin_text is not None:
+        try:
+            proc.stdin.write(stdin_text)
+            proc.stdin.close()
+        except (IOError, OSError, ValueError):
+            pass
+    saw = []
     for line in proc.stdout:
+        line = line.rstrip('\n')
+        saw.append(line)
         if on_output:
-            on_output(line.rstrip('\n'))
+            on_output(line)
     proc.wait()
-    return proc.returncode
+    return proc.returncode, saw
 
 
 def decompile(version, workspace, java=None, on_output=None, setup=True):
@@ -92,13 +107,21 @@ def decompile(version, workspace, java=None, on_output=None, setup=True):
     if setup:
         if on_output:
             on_output("[decompile] setting up Minecraft %s (downloads version + mappings)..." % version)
-        rc = _run(java, jar, ['setup', 'setup=%s' % version], workspace, on_output)
+        # Feed the version through stdin too: TaskSetup prompts for it if the arg doesn't resolve.
+        rc, out = _run(java, jar, ['setup', 'setup=%s' % version], workspace, on_output,
+                       stdin_text=(version + '\n'))
         if rc != 0:
+            joined = '\n'.join(out)
+            if 'NoSuchElementException' in joined or 'selectVersion' in joined.lower() \
+                    or 'select version' in joined.lower():
+                raise DecompileError(
+                    "Minecraft version '%s' was not found in the configured version manifest. "
+                    "Check the version id (e.g. a1.2.6, b1.6.6, c0.30-c-1900)." % version)
             raise DecompileError("RetroMCP setup failed for version '%s' (exit code %d)." % (version, rc))
 
     if on_output:
         on_output("[decompile] decompiling with Vineflower...")
-    rc = _run(java, jar, ['decompile'], workspace, on_output)
+    rc, _out = _run(java, jar, ['decompile'], workspace, on_output)
     if rc != 0:
         raise DecompileError("RetroMCP decompile failed (exit code %d)." % rc)
 
