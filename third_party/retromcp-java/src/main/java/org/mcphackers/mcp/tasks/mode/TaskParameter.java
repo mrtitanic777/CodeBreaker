@@ -58,6 +58,11 @@ public enum TaskParameter {
 		ffOptions.put(IFernflowerPreferences.ASCII_STRING_CHARACTERS, "1");
 		ffOptions.put(IFernflowerPreferences.OVERRIDE_ANNOTATION, "0");
 		ffOptions.put(IFernflowerPreferences.DECOMPILE_GENERIC_SIGNATURES, "1");
+		// Faithful-to-original decompilation: strip compiler-synthesized members (enum $values(),
+		// inner-class access$ accessors, generic/covariant bridge methods, enum switch-map arrays)
+		// that were never written in the source. Verified recompile-safe -- javac regenerates all of
+		// them from the clean source, so this also supersedes the conservative REMOVE_BRIDGE=0 above.
+		ffOptions.put(IFernflowerPreferences.REMOVE_SYNTHETIC, "1");
 		ffOptions.put(IFernflowerPreferences.INDENT_STRING, "\t");
 		ffOptions.remove(IFernflowerPreferences.BANNER);
 		return ffOptions.toString();
