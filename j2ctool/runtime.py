@@ -1325,7 +1325,9 @@ _GENERATED['Keyboard.h'] = _ns_stub('Keyboard',
             ('KEY_DECIMAL', 83), ('KEY_RCONTROL', 157), ('KEY_RMENU', 184), ('KEY_HOME', 199),
             ('KEY_UP', 200), ('KEY_PRIOR', 201), ('KEY_LEFT', 203), ('KEY_RIGHT', 205),
             ('KEY_END', 207), ('KEY_DOWN', 208), ('KEY_NEXT', 209), ('KEY_INSERT', 210),
-            ('KEY_DELETE', 211), ('CHAR_NONE', 0), ('KEY_NONE', 0)],
+            ('KEY_DELETE', 211), ('CHAR_NONE', 0), ('KEY_NONE', 0),
+            ('KEY_LMETA', 219), ('KEY_RMETA', 221), ('KEY_LWIN', 219), ('KEY_RWIN', 221),
+            ('KEY_APPS', 221)],
     void_fns=['create', 'destroy', 'enableRepeatEvents'],
     ret_fns=[('getEventKey', ('int', '0')), ('getEventKeyState', ('bool', 'false')),
              ('getEventCharacter', ('char', '0')), ('isKeyDown', ('bool', 'false')),
@@ -1384,6 +1386,16 @@ _GENERATED['BufferUtils.h'] = (
     '}\n#endif // BUFFERUTILS_H\n')
 _GENERATED['ImageIO.h'] = _ns_stub('ImageIO', fwds=['BufferedImage'],
     void_fns=['write'], ret_fns=[('read', ('BufferedImage*', '0'))])
+# javax.swing.JOptionPane: desktop dialogs, dead on console. Games call it on fatal-error paths
+# (RubyDung: JOptionPane.showMessageDialog on an LWJGL init failure). A compile-only namespace stub
+# is enough -- showMessageDialog is a no-op (route to the debug log if ever reached); the *Dialog
+# queries return defaults. Emitting it also makes the converter resolve `JOptionPane.x` -> `::x`
+# (else it stays an undeclared `JOptionPane.showMessageDialog`).
+_GENERATED['JOptionPane.h'] = _ns_stub('JOptionPane',
+    consts=[('YES_OPTION', '0'), ('NO_OPTION', '1'), ('CANCEL_OPTION', '2'),
+            ('OK_OPTION', '0'), ('ERROR_MESSAGE', '0'), ('INFORMATION_MESSAGE', '1')],
+    void_fns=['showMessageDialog'],
+    ret_fns=[('showConfirmDialog', ('int', '2')), ('showInputDialog', ('void*', '0'))])
 # NIO buffers (real classes)
 for _b in ('FloatBuffer', 'IntBuffer', 'ByteBuffer'):
     _GENERATED[_b + '.h'] = _buffer_stub(_b)

@@ -136,6 +136,9 @@ namespace Keyboard {
 	const int KEY_UP = 200, KEY_PRIOR = 201, KEY_LEFT = 203, KEY_RIGHT = 205;
 	const int KEY_END = 207, KEY_DOWN = 208, KEY_NEXT = 209, KEY_INSERT = 210;
 	const int KEY_DELETE = 211, CHAR_NONE = 0, KEY_NONE = 0;
+	// Meta/command keys (LWJGL scancodes). Defined even though no 360 controller key maps to them --
+	// games reference them in bind tables (RubyDung's Player.KEY_LMETA). [J2X-BUGFIX key-meta-consts]
+	const int KEY_LMETA = 219, KEY_RMETA = 221, KEY_LWIN = 219, KEY_RWIN = 221, KEY_APPS = 221;
 
 	// lifecycle (called by Minecraft::startGame / shutdown). No-ops on console: poll() owns the device.
 	void create();
