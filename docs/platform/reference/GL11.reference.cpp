@@ -92,7 +92,7 @@ static std::vector<GLVert> g_imm;
 // --------------------------------------------------------------------------- vertex-array pointers
 static bool g_vaVertex = false, g_vaColor = false, g_vaTex = false;
 static const char* g_vpPtr = 0; static int g_vpSize = 3, g_vpStride = 0;
-static const char* g_cpPtr = 0; static int g_cpSize = 4, g_cpStride = 0;
+static const char* g_cpPtr = 0; static int g_cpSize = 4, g_cpStride = 0; static bool g_cpFloat = false;
 static const char* g_tpPtr = 0; static int g_tpSize = 2, g_tpStride = 0;
 
 // --------------------------------------------------------------------------- selection state
@@ -429,15 +429,19 @@ void glDisableClientState(int cap) {
 	if (cap == GL_VERTEX_ARRAY) g_vaVertex = false; else if (cap == GL_COLOR_ARRAY) g_vaColor = false;
 	else if (cap == GL_TEXTURE_COORD_ARRAY) g_vaTex = false;
 }
-void glVertexPointer(int size, int, int stride, FloatBuffer* buf) {
+void glVertexPointer(int size, int stride, FloatBuffer* buf) {
 	g_vpSize = size; g_vpStride = stride ? stride : size * 4; g_vpPtr = buf ? buf->base() : 0;
 }
-void glColorPointer(int size, int, int stride, ByteBuffer* buf) {
-	g_cpSize = size; g_cpStride = stride ? stride : size; g_cpPtr = buf ? buf->base() : 0;
+void glColorPointer(int size, int stride, FloatBuffer* buf) {
+	g_cpSize = size; g_cpStride = stride ? stride : size * 4; g_cpPtr = buf ? buf->base() : 0; g_cpFloat = true;
 }
-void glTexCoordPointer(int size, int, int stride, FloatBuffer* buf) {
+void glColorPointer(int size, int stride, ByteBuffer* buf) {
+	g_cpSize = size; g_cpStride = stride ? stride : size; g_cpPtr = buf ? buf->base() : 0; g_cpFloat = false;
+}
+void glTexCoordPointer(int size, int stride, FloatBuffer* buf) {
 	g_tpSize = size; g_tpStride = stride ? stride : size * 4; g_tpPtr = buf ? buf->base() : 0;
 }
+static unsigned char _u8(float f) { int i = (int)(f * 255.0f + 0.5f); return (unsigned char)(i < 0 ? 0 : i > 255 ? 255 : i); }
 void glDrawArrays(int mode, int first, int count) {
 	if (count <= 0) return;
 	std::vector<GLVert> g; g.reserve(count);
@@ -451,9 +455,15 @@ void glDrawArrays(int mode, int first, int count) {
 			const float* p = (const float*)(g_tpPtr + idx * g_tpStride); v.u = p[0]; v.v = p[1];
 		}
 		if (g_vaColor && g_cpPtr) {
-			const unsigned char* c = (const unsigned char*)(g_cpPtr + idx * g_cpStride);
-			unsigned char a = g_cpSize >= 4 ? c[3] : 255;
-			v.color = D3DCOLOR_ARGB(a, c[0], c[1], c[2]);
+			if (g_cpFloat) {
+				const float* c = (const float*)(g_cpPtr + idx * g_cpStride);
+				unsigned char a = g_cpSize >= 4 ? _u8(c[3]) : 255;
+				v.color = D3DCOLOR_ARGB(a, _u8(c[0]), _u8(c[1]), _u8(c[2]));
+			} else {
+				const unsigned char* c = (const unsigned char*)(g_cpPtr + idx * g_cpStride);
+				unsigned char a = g_cpSize >= 4 ? c[3] : 255;
+				v.color = D3DCOLOR_ARGB(a, c[0], c[1], c[2]);
+			}
 		}
 		g.push_back(v);
 	}

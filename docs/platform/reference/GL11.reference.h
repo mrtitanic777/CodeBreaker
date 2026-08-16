@@ -143,11 +143,14 @@ namespace GL11 {
 	void glPixelStorei(int pname, int param);
 
 	// ------------------------------------------------------------------ vertex arrays
+	// LWJGL NIO 3-arg forms (size, stride-in-bytes, buffer). Colors may be FLOAT (0..1, e.g. RubyDung)
+	// OR unsigned BYTE (0..255, e.g. the Beta Tessellator) -- both overloads provided.
 	void glEnableClientState(int cap);
 	void glDisableClientState(int cap);
-	void glVertexPointer(int size, int type, int stride, FloatBuffer* buf);
-	void glColorPointer(int size, int type, int stride, ByteBuffer* buf);
-	void glTexCoordPointer(int size, int type, int stride, FloatBuffer* buf);
+	void glVertexPointer(int size, int stride, FloatBuffer* buf);
+	void glColorPointer(int size, int stride, FloatBuffer* buf);
+	void glColorPointer(int size, int stride, ByteBuffer* buf);
+	void glTexCoordPointer(int size, int stride, FloatBuffer* buf);
 	void glDrawArrays(int mode, int first, int count);
 
 	// ------------------------------------------------------------------ selection / picking
