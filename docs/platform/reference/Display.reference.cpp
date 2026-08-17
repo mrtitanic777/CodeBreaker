@@ -12,6 +12,7 @@
 #include "GL11.h"       // d3d9::glSetDevice / glInit / glViewport
 #include "Common.h"     // DbgPrintF -- boot trace that surfaces on the 360/emulator; g_pd3dDevice extern
 #include "Display.h"
+#include "SysNotify.h"  // system-notification queue: Guide stall, sign-in / controller changes
 
 // Provided by the Input platform reference (controller -> Keyboard/Mouse event pump). Declared weakly
 // here so Display.update() can pump input once per frame the way LWJGL's Display.update() does.
@@ -96,6 +97,12 @@ void update() {
 	static int frame = 0;
 	if (frame < 3) DbgPrintF("[J2X] render loop alive: presenting frame %d\n", frame);
 	++frame;
+	// System notifications FIRST, before input and before the present. This is the one point a converted
+	// game reaches every frame, so it is where the console's notification queue gets drained -- and while
+	// the Guide overlay is up SysNotify::poll() does not return, which stalls the caller's game loop
+	// (no ticks, no new audio, last frame left on screen). Simulating or playing audio under the Guide is
+	// a cert failure; see SysNotify.h.
+	SysNotify::poll();
 	Input::poll(); swapBuffers();
 }
 

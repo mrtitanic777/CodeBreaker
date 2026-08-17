@@ -16,6 +16,7 @@
 
 #include "Audio.h"
 #include "XactAudio.h"     // InitAudio/UpdateAudio/XaPlayCue/StartMusic/StopMusic/XaSet*Enabled, g_audio
+#include "SysNotify.h"     // setSilenceHook -- go quiet while the Guide overlay is up (cert)
 #include "Common.h"        // DbgPrintF (optional logging)
 #include <cstdio>          // sprintf for variant cue names
 #include <cstdlib>         // rand
@@ -199,12 +200,24 @@ static bool isStreamingChannel(const std::string& n) { return n == "streaming"; 
 // =============================================================================================
 // SoundSystem implementation (the bridge).
 // =============================================================================================
+// Guide silence gate (registered with SysNotify below). Stalling the frame pump stops the game from
+// TRIGGERING sounds, but music already handed to XACT keeps playing over the Guide -- a cert failure --
+// so cut it here. Deliberately StopAllAudio() rather than XaSetMusicEnabled(false): the enable flags
+// mirror the player's GameSettings, and flipping them would clobber the user's choice on the way back.
+// Nothing to undo on resume: music restarts off SoundManager's own timer and SFX are event-driven.
+static void _guideSilence(bool silence) {
+	if (silence) StopAllAudio();
+}
+
 SoundSystem::SoundSystem() {
 	// SoundManager constructs `new SoundSystem()` inside tryToSetLibraryAndCodecs() AFTER it has
 	// decided audio is wanted. That is our deterministic "bring up the engine" hook -- it mirrors
 	// the old override's tryToSetLibraryAndCodecs()->InitAudio(). Idempotent: InitAudio/XactAudio
 	// guards against double-start.
 	InitAudio();   // XACT3 engine + sounds.xwb/music.xwb + audio thread on HW thread 5
+	// Tell the notification layer how to silence us. Registered HERE because this is the point audio is
+	// known to exist -- SysNotify stays audio-agnostic, so a port with no audio simply registers nothing.
+	SysNotify::setSilenceHook(_guideSilence);
 	DbgPrintF("Audio: SoundSystem bridge up (Route A: XACT3)\n");
 }
 
