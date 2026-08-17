@@ -868,8 +868,12 @@ def rule_silent_dispatch(fname, text, header_text, plat):
         var = m.group(1)
         chain = [ln]                                  # gather the chain: this line + following `else*` lines
         k = i + 1
-        while k < n and lines[k].strip().startswith('else') and (k - i) < 40:
-            chain.append(lines[k]); k += 1
+        while k < n and (k - i) < 40:                 # skip interior comment/blank lines so an explanatory
+            s = lines[k].strip()                      # comment between two else-ifs doesn't truncate the chain
+            if s.startswith('else') or s == '' or s.startswith(('//', '/*', '*')):
+                chain.append(lines[k]); k += 1
+            else:
+                break
         region = '\n'.join(chain)
         elseifs = len(re.findall(r'\belse\s+if\s*\(\s*' + re.escape(var) + r'\s*==\s*[A-Z][A-Z0-9_]{2,}', region))
         if elseifs < 1:

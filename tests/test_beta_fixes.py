@@ -323,6 +323,43 @@ class TestOwnedReassignCleanup(unittest.TestCase):
         self.assertEqual(out.count('delete this->bb;'), 1)   # setPos only (dtor uses `delete bb;`)
 
 
+class TestFieldInitOwnership(unittest.TestCase):
+    """RetroMCP-style decompiles field-INITIALIZE members (`Timer timer = new Timer();`). The emitter
+    moves these into the ctor, but they live on Field.initializer, not a method body -- so the ownership
+    analysis (and thus the destructor) must scan initializers or it silently leaks them."""
+
+    def test_field_initialized_new_is_owned(self):
+        from j2ctool.emit import ownership
+        src = ('package s;\npublic class G {\n'
+               '  Timer timer = new Timer();\n'          # field-init new
+               '  FloatBuffer buf = BufferUtils.createFloatBuffer(4);\n'   # field-init factory
+               '  Level level;\n'                        # borrowed (set from a param below)
+               '  public G(Level l) { this.level = l; }\n}\n')
+        classes, r = _resolve(src)
+        owned = ownership.owned_pointers([c for c in classes if c.name == 'G'][0], r)
+        self.assertIn('timer', owned)
+        self.assertIn('buf', owned)
+        self.assertNotIn('level', owned)                 # borrowed -> not owned
+
+
+class TestSilentDispatchCommentChain(unittest.TestCase):
+    def test_interior_comment_does_not_truncate_chain(self):
+        # a comment between two else-ifs must NOT hide the terminal J2X_UNHANDLED (the glEnableClientState FP).
+        cpp = ('void f(int c) {\n'
+               '  if (c == GL_A) x=1; else if (c == GL_B) x=2;\n'
+               '  // an explanatory comment mid-chain\n'
+               '  else if (c == GL_C) x=3;\n'
+               '  else J2X_UNHANDLED("f", c);\n}\n')
+        found = list(rules.rule_silent_dispatch('f.cpp', cpp, None, rules._PlatCtx('xbox360')))
+        self.assertFalse([x for x in found if x[3] == 'silent-dispatch'])
+
+    def test_still_flags_a_genuinely_silent_chain(self):
+        cpp = ('void f(int c) {\n  if (c == GL_A) x=1; else if (c == GL_B) x=2;\n'
+               '  else if (c == GL_C) x=3;\n}\n')
+        found = list(rules.rule_silent_dispatch('f.cpp', cpp, None, rules._PlatCtx('xbox360')))
+        self.assertTrue([x for x in found if x[3] == 'silent-dispatch'])
+
+
 class TestVirtualCallInCtorRule(unittest.TestCase):
     HDR = 'class Foo {\npublic:\n\tFoo();\n\tvirtual ~Foo();\n\tvirtual void init();\n};\n'
     CPP = 'Foo::Foo() {\n\tthis->init();\n}\n'

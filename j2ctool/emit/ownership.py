@@ -115,21 +115,30 @@ def owned_pointers(cls, resolver):
     """{field_name: is_array} for POINTER instance fields this object owns and the destructor may
     safely `delete`: allocated somewhere and never aliased to a borrowed value (see module note)."""
     alloc, borrowed = {}, set()
+
+    def classify(name, rhs):
+        mnew = _RHS_NEW.match(rhs)
+        if mnew:
+            alloc[name] = bool(mnew.group(1)) or alloc.get(name, False)
+        elif _RHS_FACTORY.match(rhs):
+            alloc.setdefault(name, False)
+        elif _RHS_NEUTRAL.match(rhs):
+            pass                                             # = NULL: neutral, delete-of-NULL is safe
+        else:
+            borrowed.add(name)                               # param / alias / unknown getter -> borrowed
+
+    # field-declaration initializers (`Timer timer = new Timer(60F);`, `= BufferUtils.createIntBuffer(16);`):
+    # the emitter moves these into the constructor, but they live on Field.initializer, NOT in any scanned
+    # method body -- so without this the destructor silently misses them (the RetroMCP-style leak).
+    for f in cls.fields:
+        if not f.is_static and f.initializer and resolver.is_pointer(f.jtype):
+            classify(f.name, f.initializer.strip())
+    # method-body assignments
     for text in _method_texts(cls):
         for am in _ASSIGN_STMT.finditer(text):
-            name, rhs = am.group(1), am.group(2).strip()
-            fld = cls.field(name)
-            if not fld or fld.is_static or not resolver.is_pointer(fld.jtype):
-                continue
-            mnew = _RHS_NEW.match(rhs)
-            if mnew:
-                alloc[name] = bool(mnew.group(1)) or alloc.get(name, False)
-            elif _RHS_FACTORY.match(rhs):
-                alloc.setdefault(name, False)
-            elif _RHS_NEUTRAL.match(rhs):
-                continue                                     # = NULL: neutral, delete-of-NULL is safe
-            else:
-                borrowed.add(name)                           # param / alias / unknown getter -> borrowed
+            fld = cls.field(am.group(1))
+            if fld and not fld.is_static and resolver.is_pointer(fld.jtype):
+                classify(am.group(1), am.group(2).strip())
     return {f: a for f, a in alloc.items() if f not in borrowed}
 
 
