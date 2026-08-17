@@ -48,3 +48,54 @@ def _split_top_commas(expr):
     if buf:
         parts.append(''.join(buf))
     return [p.strip() for p in parts]
+
+
+def _balanced_paren(s, open_idx):
+    depth = 0
+    for i in range(open_idx, len(s)):
+        if s[i] == '(':
+            depth += 1
+        elif s[i] == ')':
+            depth -= 1
+            if depth == 0:
+                return i
+    return -1
+
+
+def _balanced_brace(s, open_idx):
+    depth = 0
+    for i in range(open_idx, len(s)):
+        if s[i] == '{':
+            depth += 1
+        elif s[i] == '}':
+            depth -= 1
+            if depth == 0:
+                return i
+    return -1
+
+
+def _balanced_from(s, i):
+    """s[i] must be '('. Return (inner, index_after_close) for the balanced paren group."""
+    assert s[i] == '('
+    depth, j = 0, i
+    while j < len(s):
+        if s[j] == '(':
+            depth += 1
+        elif s[j] == ')':
+            depth -= 1
+            if depth == 0:
+                return s[i + 1:j], j + 1
+        j += 1
+    return None, len(s)
+
+
+def _balanced_bracket(s, open_idx):
+    depth = 0
+    for i in range(open_idx, len(s)):
+        if s[i] == '[':
+            depth += 1
+        elif s[i] == ']':
+            depth -= 1
+            if depth == 0:
+                return i
+    return -1

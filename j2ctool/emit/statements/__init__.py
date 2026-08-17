@@ -32,6 +32,7 @@ _INDEX_DEREF_STMT = re.compile(
 # string/char-literal-aware substitution + the literal pattern -- leaf text primitives live in scan.py
 # so both this package and the sibling transform modules (expr.py, ...) share them without a cycle.
 from .scan import sub_outside_literals, _STR_LITERAL
+from .scan import _balanced_paren, _balanced_brace, _balanced_from, _balanced_bracket
 
 # Java keywords that must never be mistaken for a local-variable TYPE.
 _KEYWORDS = {
@@ -456,28 +457,8 @@ def _fix_indexed_add(s):
     return ''.join(out)
 
 
-def _balanced_paren(s, open_idx):
-    depth = 0
-    for i in range(open_idx, len(s)):
-        if s[i] == '(':
-            depth += 1
-        elif s[i] == ')':
-            depth -= 1
-            if depth == 0:
-                return i
-    return -1
 
 
-def _balanced_brace(s, open_idx):
-    depth = 0
-    for i in range(open_idx, len(s)):
-        if s[i] == '{':
-            depth += 1
-        elif s[i] == '}':
-            depth -= 1
-            if depth == 0:
-                return i
-    return -1
 
 
 def _split_top_ternary(expr):
@@ -649,19 +630,6 @@ from .controlflow import (_LABEL_DEF, _LABEL_JUMP, _LOOP_START, _loop_close, _CA
                           _scan_braces, _wrap_switch_cases, _translate_labels)
 
 
-def _balanced_from(s, i):
-    """s[i] must be '('. Return (inner, index_after_close) for the balanced paren group."""
-    assert s[i] == '('
-    depth, j = 0, i
-    while j < len(s):
-        if s[j] == '(':
-            depth += 1
-        elif s[j] == ')':
-            depth -= 1
-            if depth == 0:
-                return s[i + 1:j], j + 1
-        j += 1
-    return None, len(s)
 
 
 def _parse_throwaway_new(stmt):
@@ -1156,16 +1124,6 @@ _CAST_ROOT = re.compile(r'\(\s*\(\s*([A-Za-z_]\w*)\s*(\*?)\s*\)')  # `((Type*)EX
 _CALL_ROOT = re.compile(r'(?:([A-Za-z_]\w*)\s*(::)\s*)?([A-Za-z_]\w*)\s*\(')
 
 
-def _balanced_bracket(s, open_idx):
-    depth = 0
-    for i in range(open_idx, len(s)):
-        if s[i] == '[':
-            depth += 1
-        elif s[i] == ']':
-            depth -= 1
-            if depth == 0:
-                return i
-    return -1
 
 
 def _chain_root(tok, scope, resolver, current):
