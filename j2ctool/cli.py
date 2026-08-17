@@ -66,14 +66,21 @@ def _cmd_achievements(args):
         print('ERROR: not a directory: %s' % args.code_dir); return 2
     res = achievements.run(args.code_dir, args.out_dir, lang_file=args.lang,
                            profile=args.profile, delivery=args.delivery,
-                           title_id=args.title_id, title_name=args.title_name)
+                           title_id=args.title_id, title_name=args.title_name,
+                           content_dir=args.content_dir)
     m = res['mapping']
     print('Found %d achievement(s) -> %s profile, %d gamerscore (limit %d)'
           % (res['count'], m['profile'], m['total_score'], m['limit']))
     for w in m['warnings']:
         print('  WARNING: %s' % w)
     ic = res['icons']
-    print('  icons: %d auto-wired, %d need manual art' % (len(ic['wired']), len(ic['unresolved'])))
+    print('  icons: %d auto-wired, %d need manual art%s'
+          % (len(ic['wired']), len(ic['unresolved']),
+             '   (atlases: %s)' % res['content_dir'] if res['content_dir'] else ''))
+    for key, why in ic['unresolved'][:6]:                 # WHY, not just a count -- a silent 0 hid this
+        print('    - %s: %s' % (key, why))
+    if len(ic['unresolved']) > 6:
+        print('    - ... and %d more (see ACHIEVEMENTS.md)' % (len(ic['unresolved']) - 6))
     print('  title id: 0x%s%s' % (res['title_id'], ' (suggested — verify no collision)'
                                    if res['title_suggested'] else ''))
     print('  report: %s' % res['report'])
@@ -554,6 +561,10 @@ def main(argv=None):
                      help='Self-issued 32-bit Title ID (hex, e.g. FFFE1234). Omit to auto-suggest one.')
     acp.add_argument('--title-name', dest='title_name', default=None,
                      help='Game name used to derive a suggested Title ID (when --title-id is omitted).')
+    acp.add_argument('--content-dir', dest='content_dir', default=None,
+                     help='Content dir holding the texture atlases (terrain.png, gui/items.png) that the '
+                          'achievement tile art is cropped from. Omit to look next to out_dir '
+                          '(Debug\\Content first -- the canonical deploy dir).')
     acp.set_defaults(func=_cmd_achievements)
 
     # ui-mark (tag UI functions with greppable markers)

@@ -486,10 +486,17 @@ def run(code_dir, out_dir, lang_file=None, profile='retail', delivery='online', 
         os.makedirs(out_dir)
     achs = scan_achievements(code_dir, lang_file=lang_file)
     mapping = map_to_platform(achs, profile=profile)
-    icons = {'wired': [], 'unresolved': []}
     cdir = content_dir or _guess_content_dir(out_dir)
     if cdir:
         icons = wire_icons(mapping['entries'], code_dir, cdir, out_dir)
+    else:
+        # Say WHY, per entry. Reporting {'wired': [], 'unresolved': []} here -- zero of BOTH -- read as
+        # "nothing to do" and is exactly how 16 TODO tiles went unnoticed. A missing atlas source is an
+        # unresolved icon, not an absence of work.
+        icons = {'wired': [], 'unresolved': [
+            (e['key'], 'no Content dir with terrain.png / gui/items.png found near %s '
+                       '(run `j2ctool assets` first, or pass --content-dir)' % out_dir)
+            for e in mapping['entries']]}
     # Title ID resolution, in precedence order: an explicit --title-id, else the project's
     # platform.config.json (the ONE place it lives -- `j2ctool vcxproj` stamps the SAME value into the
     # XEX, and the two MUST match or unlocks never bind to a profile), else the conventional "unset"
@@ -502,7 +509,7 @@ def run(code_dir, out_dir, lang_file=None, profile='retail', delivery='online', 
                               title_id=tid, title_suggested=suggested))
     xlast = emit_xlast(mapping, os.path.join(out_dir, 'achievements.xlast'), title_id=tid)
     code = emit_code(mapping, out_dir, delivery=delivery)
-    return {'mapping': mapping, 'report': report, 'xlast': xlast, 'code': code,
+    return {'mapping': mapping, 'report': report, 'xlast': xlast, 'code': code, 'content_dir': cdir,
             'count': mapping['count'], 'icons': icons, 'title_id': tid, 'title_suggested': suggested}
 
 
@@ -520,8 +527,21 @@ def _title_id_from_config(out_dir):
 
 
 def _guess_content_dir(out_dir):
-    """Find the game's Content folder (with the texture atlases) near out_dir."""
-    for cand in (os.path.join(out_dir, 'Content'), out_dir):
+    """Find the game's Content folder (the one with the texture atlases) near out_dir.
+
+    FIXED BUG achievement-art-content-dir: this only looked at <out_dir>/Content and <out_dir>, but the
+    asset pipeline deliberately writes assets to <out_dir>\\Debug\\Content -- that IS `game:\\Content`,
+    the path next to the Debug .xex (see the assets-in-project-root note in vcxproj.py; other configs are
+    mirrored from Debug by the DeployContent target). So the guess always came back None on a real project
+    and wire_icons was never even called: the achievements step reported "0 auto-wired, 0 need manual art"
+    -- zero of BOTH, which reads like "nothing to do" rather than "the atlases were never found" -- and all
+    16 tiles stayed TODO. Debug is checked first because it is the canonical deploy dir."""
+    cands = [os.path.join(out_dir, 'Debug', 'Content'),
+             os.path.join(out_dir, 'Content'),
+             out_dir,
+             os.path.join(out_dir, 'Release', 'Content'),
+             os.path.join(out_dir, 'Release_LTCG', 'Content')]
+    for cand in cands:
         if os.path.isfile(os.path.join(cand, 'terrain.png')) or \
            os.path.isfile(os.path.join(cand, 'gui', 'items.png')):
             return cand
