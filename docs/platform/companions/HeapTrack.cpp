@@ -18,11 +18,20 @@
 #include <cstdlib>
 #include <new>
 
-// TOGGLE: heap-leak watchdog. Default ON. Override to 0 from the build (add J2X_HEAPTRACK=0 to the
-// vcxproj PreprocessorDefinitions) or edit here. Reports via DbgPrint (cheap kernel channel, NO
-// filesystem I/O) -- independent of J2X_DEBUG_LOG. 0 compiles it out entirely (no new/delete override).
+// TOGGLE: heap-leak watchdog. Default OFF -- this is a DIAGNOSTIC, opt in for a leak hunt and turn it
+// back off to measure anything. Override from the build (add J2X_HEAPTRACK=1 to the vcxproj
+// PreprocessorDefinitions) or edit here. Reports via DbgPrint (cheap kernel channel, NO filesystem I/O)
+// -- independent of J2X_DEBUG_LOG. 0 compiles it out entirely (no new/delete override).
+//
+// WHY OFF BY DEFAULT: it replaces global operator new/delete with a tagging allocator (16-byte header +
+// a conservative stack scan per allocation >= HT_MINTRACE). A Beta session logs ~350,000 allocations AND
+// ~350,000 frees per 2.5s watch interval, so the instrument sits on ~700k heap ops per interval and
+// dominates the frame time -- the HT_MINTRACE bypass below exists precisely because scanning every alloc
+// "dropped us to 8 fps". Leaving it on makes every perf number meaningless: you cannot tell the game's
+// cost from the microscope's. It also cannot be trusted as a baseline for a hang, since the extra header
+// per allocation changes the fragmentation it is trying to measure.
 #ifndef J2X_HEAPTRACK
-#define J2X_HEAPTRACK 1
+#define J2X_HEAPTRACK 0
 #endif
 
 #ifndef HT_CODE_LO

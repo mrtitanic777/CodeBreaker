@@ -10,8 +10,14 @@
 // Turn the printed `0x........` call-site addresses into function names with the linker MAP file
 // (MinecraftBeta.map) or the .pdb -- find the address in the map's "Address" column.
 //
-// Toggle with J2X_HEAPTRACK in HeapTrack.cpp (default ON). When OFF the whole thing compiles out and
-// the default new/delete are used.
+// Toggle with J2X_HEAPTRACK in HeapTrack.cpp (default OFF) or J2X_HEAPTRACK=1 in the vcxproj
+// PreprocessorDefinitions. When OFF the whole thing compiles out, the default new/delete are used, and
+// every function below is a no-op stub -- so callers (Main's HeapTrack::start()) need no #ifdef.
+//
+// It is OFF by default because it is a measuring instrument, not a feature: intercepting every
+// new/delete and stack-scanning the larger ones costs enough frame time to invalidate any perf number
+// taken while it is on (see the WHY OFF BY DEFAULT note in HeapTrack.cpp). Turn it on to hunt a leak,
+// then turn it back off before judging performance.
 #ifndef HEAPTRACK_H
 #define HEAPTRACK_H
 
