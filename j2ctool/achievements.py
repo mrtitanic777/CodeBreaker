@@ -22,6 +22,7 @@ The report spells out the telemetry/networking requirement explicitly so it isn'
 
 import os
 import re
+import json
 import zlib
 
 try:
@@ -489,9 +490,11 @@ def run(code_dir, out_dir, lang_file=None, profile='retail', delivery='online', 
     cdir = content_dir or _guess_content_dir(out_dir)
     if cdir:
         icons = wire_icons(mapping['entries'], code_dir, cdir, out_dir)
-    # Title ID default is the conventional "unset" placeholder 00000000 -- the user self-issues one
-    # (Suggest button / --title-id) rather than us auto-filling it.
-    tid = normalize_title_id(title_id) or '00000000'
+    # Title ID resolution, in precedence order: an explicit --title-id, else the project's
+    # platform.config.json (the ONE place it lives -- `j2ctool vcxproj` stamps the SAME value into the
+    # XEX, and the two MUST match or unlocks never bind to a profile), else the conventional "unset"
+    # placeholder 00000000. We do NOT auto-issue one: the user picks it (Suggest button / --title-id).
+    tid = normalize_title_id(title_id) or normalize_title_id(_title_id_from_config(out_dir)) or '00000000'
     suggested = False
     report = os.path.join(out_dir, 'ACHIEVEMENTS.md')
     with open(report, 'w', encoding='utf-8') as f:
@@ -501,6 +504,19 @@ def run(code_dir, out_dir, lang_file=None, profile='retail', delivery='online', 
     code = emit_code(mapping, out_dir, delivery=delivery)
     return {'mapping': mapping, 'report': report, 'xlast': xlast, 'code': code,
             'count': mapping['count'], 'icons': icons, 'title_id': tid, 'title_suggested': suggested}
+
+
+def _title_id_from_config(out_dir):
+    """The project's title_id from <out_dir>/platform.config.json, or None. Shared with vcxproj.py so the
+    XLAST/SPA and the XEX are stamped from the same value."""
+    path = os.path.join(out_dir, 'platform.config.json')
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            return json.load(f).get('title_id') or None
+    except (ValueError, OSError):
+        return None
 
 
 def _guess_content_dir(out_dir):

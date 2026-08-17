@@ -10,6 +10,7 @@ ones listing the current .cpp/.h, preserving stdafx.cpp's per-config PCH block.
 
 import os
 import re
+import json
 import hashlib
 
 # Ordered (regex, filter) classification: FIRST match wins, so put SPECIFIC before GENERAL.
@@ -128,6 +129,28 @@ def _find_vcxproj(proj_dir, name=None):
     return os.path.join(proj_dir, cands[0]) if cands else os.path.join(proj_dir, 'MinecraftAlpha.vcxproj')
 
 
+def _title_id_for(proj_dir):
+    """The project's self-issued Title ID from platform.config.json, as (canonical_8_hex or None, note).
+    ONE source of truth: the XEX (<ImageXex><TitleID>, stamped here) and the XLAST/SPA achievement config
+    are both keyed to it and must match, or achievement unlocks never bind to a profile."""
+    from . import achievements as _ach
+    cfg_path = os.path.join(proj_dir, 'platform.config.json')
+    if not os.path.isfile(cfg_path):
+        return None, ''
+    try:
+        with open(cfg_path, 'r', encoding='utf-8') as f:
+            raw = json.load(f).get('title_id')
+    except (ValueError, OSError) as e:
+        return None, 'title id: could not read platform.config.json (%s)' % e
+    if not raw:
+        return None, ('title id: UNSET in platform.config.json -- the XEX keeps 0x00000000, so '
+                      'achievements cannot bind to a profile (set it, then re-run vcxproj)')
+    tid = _ach.normalize_title_id(raw)
+    if not tid:
+        return None, 'title id: %r in platform.config.json is not 1-8 hex digits -- ignored' % (raw,)
+    return tid, ''
+
+
 def run(proj_dir=None, name=None, write_filters_too=True):
     """Regenerate the .vcxproj ClCompile/ClInclude file list from the .cpp/.h in proj_dir, and (by
     default) also (re)write the subsystem <name>.vcxproj.filters so Solution Explorer shows folders."""
@@ -180,11 +203,40 @@ def run(proj_dir=None, name=None, write_filters_too=True):
 
     text = text.replace('</Project>', compile_grp + include_grp + deploy_target + '</Project>')
 
+    # TITLE ID -> <ImageXex><TitleID>: the ImageXex task stamps this into the XEX (it is passed to the
+    # task, not to the visible imagexex command line). It MUST equal the id in the XLAST/SPA achievement
+    # config or unlocks never bind to a profile, so both read the ONE value in platform.config.json.
+    #
+    # FIXED BUG titleid-one-config-only: the project template carries a single <ImageXex> block, and it
+    # sits inside the Release_LTCG ItemDefinitionGroup -- so filling that one left EVERY other
+    # configuration (Debug, Release, Profile, ...) building a 0x00000000 XEX, and a Release build silently
+    # could not deliver achievements. ItemDefinitionGroup with NO Condition applies to all configurations,
+    # so emit one of those (regenerated each run -> idempotent) AND fill any per-config block that exists.
+    tid, tid_msg = _title_id_for(proj_dir)
+    if tid:
+        text = _re.sub(r'\s*<ItemDefinitionGroup Label="J2XTitleId">.*?</ItemDefinitionGroup>',
+                       '', text, flags=_re.S)                      # drop ours from a previous run
+        text, n_existing = _re.subn(r'(<TitleID>)\s*(</TitleID>)',
+                                    r'\g<1>0x%s\g<2>' % tid, text)  # per-config blocks (LTCG)
+        shared = ('  <ItemDefinitionGroup Label="J2XTitleId">\n'
+                  '    <ImageXex>\n'
+                  '      <TitleID>0x%s</TitleID>\n'
+                  '    </ImageXex>\n'
+                  '  </ItemDefinitionGroup>\n' % tid)
+        m_idg = _re.search(r'[ \t]*<ItemDefinitionGroup', text)
+        if m_idg:
+            text = text[:m_idg.start()] + shared + text[m_idg.start():]
+        else:                                                       # no groups at all -> before </Project>
+            text = text.replace('</Project>', shared + '</Project>')
+        tid_msg = 'title id: 0x%s (all configurations; %d per-config block(s) filled)' % (tid, n_existing)
+
     with open(vcx, 'w', encoding='utf-8') as f:
         f.write(text)
     msg = 'vcxproj: %d bytes -> %d bytes; %d .cpp, %d .h listed%s' % (
         raw_bytes, len(text), len(cpps), len(hs),
         '' if stdafx_block else '  (WARNING: stdafx.cpp PCH block not found)')
+    if tid_msg:
+        msg += '\n' + tid_msg
     if write_filters_too:
         fp, nfilt = write_filters(proj_dir, proj_name, cpps, hs)
         msg += '\nfilters: %s (%d subsystem folders)' % (os.path.basename(fp), nfilt)

@@ -194,6 +194,12 @@ def default_config():
         },
         'keyboard': 'xshowkeyboard',
         'storage': 'stfs',
+        # Self-issued 32-bit Title ID (8 hex digits; high 16 = publisher, low 16 = title number). The
+        # SPA/XLAST achievement config and the built XEX are BOTH keyed to it and MUST match or unlocks
+        # never bind to a profile -- so it lives here, once, and both emitters read it from here.
+        # '' means unset: the achievements step then suggests one (0xFFFE publisher prefix) and the XEX
+        # is built with 00000000, which is fine for bring-up but cannot deliver achievements.
+        'title_id': '',
         'subsystems': dict((k, v['default']) for k, v in SUBSYSTEM_OPTIONS.items()),
     }
 
