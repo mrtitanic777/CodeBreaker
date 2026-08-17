@@ -22,6 +22,7 @@ __pycache__/
 # Decompiled game source (bring your own), its structural dump, and any per-project
 # hand-fixed converted output. The transpiler ships without any game or SDK content.
 /original_java/
+/original_java_beta/
 /signatures.md
 /overlays/
 /profiles/*.local.json
