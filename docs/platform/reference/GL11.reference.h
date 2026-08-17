@@ -155,6 +155,20 @@ namespace d3d9 {
 	void glColorPointer(int size, int stride, FloatBuffer* buf);
 	void glColorPointer(int size, int stride, ByteBuffer* buf);
 	void glTexCoordPointer(int size, int stride, FloatBuffer* buf);
+	// LWJGL's 4-arg NIO colour form: `unsignedBytes` marks the bytes as normalized 0..255 (the Beta
+	// Tessellator calls glColorPointer(4, true, 32, byteBuffer)). Same data path as the 3-arg ByteBuffer
+	// overload -- the flag only restates what that overload already assumes.
+	void glColorPointer(int size, bool unsignedBytes, int stride, ByteBuffer* buf);
+	// Normals: this layer bakes lighting into the vertex colour and Xenos has no fixed-function lighting,
+	// so normal data is accepted and ignored -- matching glNormal3f, which is already a reviewed no-op.
+	void glNormalPointer(int stride, ByteBuffer* buf);
+	// LWJGL VBO-offset forms (size, type, stride, byte offset into the bound ARRAY_BUFFER). This layer
+	// reports GL_ARB_vertex_buffer_object = false, so a game's useVBO branch is never taken; these exist
+	// so that branch COMPILES and fail loud if one is ever reached.
+	void glVertexPointer(int size, int type, int stride, long long offset);
+	void glColorPointer(int size, int type, int stride, long long offset);
+	void glTexCoordPointer(int size, int type, int stride, long long offset);
+	void glNormalPointer(int type, int stride, long long offset);
 	void glDrawArrays(int mode, int first, int count);
 
 	// ------------------------------------------------------------------ display lists
@@ -164,6 +178,9 @@ namespace d3d9 {
 	void glNewList(int list, int mode);
 	void glEndList();
 	void glCallList(int list);
+	// Batch replay: execute every list id remaining in the buffer (FontRenderer fills + flips an
+	// IntBuffer of glyph lists; RenderList replays a chunk's lists). Equivalent to glCallList per id.
+	void glCallLists(IntBuffer* lists);
 	void glDeleteLists(int list, int n);
 
 	// ------------------------------------------------------------------ selection / picking

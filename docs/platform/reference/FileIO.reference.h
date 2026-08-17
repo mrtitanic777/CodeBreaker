@@ -89,32 +89,13 @@
 // avoid a double definition (CompressedStreamTools is the only GZIP user; saves are raw/uncompressed).
 
 // === BufferedReader (options.txt) =============================================
-// Real readLine() over a wrapped InputStream (drained eagerly). \n / \r\n terminated, EOF -> empty
-// std::string AND ready()==false. (GameSettings can also keep the old shortcut of splitting itself.)
-class BufferedReader {
-	std::vector<unsigned char> _buf;
-	size_t _pos;
-public:
-	BufferedReader(InputStream* in) : _pos(0) {
-		if (in) { unsigned char t[4096]; int n;
-			while ((n = in->read(t, 0, (int)sizeof(t))) > 0) _buf.insert(_buf.end(), t, t + n); }
-	}
-	template<class R> BufferedReader(R*) : _pos(0) {}   // Reader types (FileReader/InputStreamReader): stub
-	bool ready() { return _pos < _buf.size(); }
-	int  read() { return (_pos < _buf.size()) ? (int)_buf[_pos++] : -1; }
-	std::string readLine() {
-		if (_pos >= _buf.size()) return std::string();      // EOF (caller treats empty+!ready as null)
-		std::string line;
-		while (_pos < _buf.size()) {
-			char c = (char)_buf[_pos++];
-			if (c == '\n') break;
-			if (c == '\r') { if (_pos < _buf.size() && _buf[_pos] == '\n') ++_pos; break; }
-			line.push_back(c);
-		}
-		return line;
-	}
-	void close() {}
-};
+// J2X-BUGFIX odr-duplicate-def: BufferedReader had TWO structurally different definitions -- this one
+// (over InputStream, std::string readLine) and the canonical one in BufferedReader.h (over Reader,
+// JavaString readLine, virtual). Same name, different layout/vtable -> across TUs the linker keeps one
+// arbitrarily and the other TU calls it with a mismatched layout (the C4743 / silent-corruption class).
+// There is now ONE definition: the canonical header. FileIO just pulls it in so its includers still see
+// the type.
+#include "BufferedReader.h"
 
 // === Class::getResourceAsStream — game:\Content resolution ======================
 // The NEW code reaches assets via TexturePackBase::getResourceAsStream -> Class::getResourceAsStream

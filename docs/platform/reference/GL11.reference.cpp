@@ -86,7 +86,7 @@ static bool g_texEnabled = false, g_blend = false, g_depth = true, g_cull = fals
 static float g_alphaRef = 0.0f;
 static float g_clearR = 0, g_clearG = 0, g_clearB = 0, g_clearA = 1; static float g_clearDepth = 1.0f;
 static D3DVIEWPORT9 g_vp = { 0, 0, 640, 480, 0.0f, 1.0f };
-static float g_fogStart = 0, g_fogEnd = 1; static D3DCOLOR g_fogColor = 0;
+static float g_fogStart = 0, g_fogEnd = 1, g_fogDensity = 1.0f; static int g_fogMode = GL_EXP; static D3DCOLOR g_fogColor = 0;
 
 // --------------------------------------------------------------------------- textures (self table)
 struct GLTex {
@@ -162,11 +162,21 @@ static const char* kPS =
 	"  float4 o = c;\n"
 	"  if (gCtl.x > 0.5) o *= tex2D(s0, t);\n"
 	"  if (gCtl.y > 0.5) clip(o.a - gCtl.z);\n"   // alpha test: discard where o.a < ref
-	"  if (gCtl.w > 0.5){ float f = saturate((gFog.y - fz)/(gFog.y-gFog.x)); o.rgb = lerp(gFogC.rgb, o.rgb, f); }\n"
+	"  if (gCtl.w > 0.5){ float f = (gFog.w > 0.5) ? saturate(exp(-gFog.z * fz)) : saturate((gFog.y - fz)/(gFog.y-gFog.x)); o.rgb = lerp(gFogC.rgb, o.rgb, f); }\n"
 	"  return o;\n"
 	"}\n";
 
 static IDirect3DVertexDeclaration9* g_decl = 0;   // SM3 needs an explicit decl (SetFVF is not enough on Xenos)
+// [J2X-PERF state-cache] Redundant-state filtering. The emulator validates EVERY D3D call, so re-setting
+// the (unchanging) shader/decl and the (mostly-shared) texture/matrix on every one of the hundreds of
+// chunk batches + ~600 entity draws per frame was the bulk of the frame cost. Cache the last-set values
+// and skip no-op device calls. Invalidated in glInit (device (re)bound).
+static IDirect3DVertexShader9*      g_lastVS   = 0;
+static IDirect3DPixelShader9*       g_lastPS   = 0;
+static IDirect3DVertexDeclaration9* g_lastDecl = 0;
+static IDirect3DBaseTexture9*       g_lastTex  = (IDirect3DBaseTexture9*)~(size_t)0;  // sentinel: 1st bind always applies
+static int  g_lastWrapS = -1, g_lastWrapT = -1, g_lastMag = -1;
+static D3DXMATRIX g_lastWVP; static bool g_lastWVPValid = false;
 
 static void _buildShader() {
 	if (!g_dev || g_vs) return;
@@ -199,11 +209,16 @@ static void _buildShader() {
 // combined modelview*projection, transposed for HLSL row-major c-register upload.
 static void _uploadMatrices() {
 	if (!g_dev) return;
-	D3DXMATRIX mv = g_mv.empty()   ? *(new D3DXMATRIX) : g_mv.back();
-	D3DXMATRIX pr = g_proj.empty() ? *(new D3DXMATRIX) : g_proj.back();
-	if (g_mv.empty())   D3DXMatrixIdentity(&mv);
-	if (g_proj.empty()) D3DXMatrixIdentity(&pr);
+	D3DXMATRIX mv, pr;
+	if (g_mv.empty())   D3DXMatrixIdentity(&mv);   else mv = g_mv.back();     // (was *(new D3DXMATRIX) -- a leak)
+	if (g_proj.empty()) D3DXMatrixIdentity(&pr);   else pr = g_proj.back();
 	D3DXMATRIX wvp = mv * pr;                 // row-vector convention: v * MV * P
+	// [J2X-PERF state-cache] Skip the shader-constant upload when the combined matrix is unchanged. Every
+	// terrain chunk is baked in world space and shares the camera matrix -> uploaded ONCE per frame instead
+	// of once per chunk. A 64-byte memcmp is far cheaper than a SetVertexShaderConstantF the emulator must
+	// validate. (Entities DO change it per body part, so those still upload -- correctly.)
+	if (g_lastWVPValid && memcmp(&wvp, &g_lastWVP, sizeof(D3DXMATRIX)) == 0) return;
+	g_lastWVP = wvp; g_lastWVPValid = true;
 	D3DXMATRIX t;  D3DXMatrixTranspose(&t, &wvp);
 	g_dev->SetVertexShaderConstantF(0, (const float*)t.m, 4);
 }
@@ -211,7 +226,7 @@ static void _uploadMatrices() {
 static void _uploadControl() {
 	if (!g_dev) return;
 	float ctl[4] = { g_texEnabled && boundTex() ? 1.0f : 0.0f, g_alphaTest ? 1.0f : 0.0f, g_alphaRef, g_fog ? 1.0f : 0.0f };
-	float fog[4] = { g_fogStart, g_fogEnd, 0, 0 };
+	float fog[4] = { g_fogStart, g_fogEnd, g_fogDensity, (g_fogMode == GL_EXP || g_fogMode == 0x0801) ? 1.0f : 0.0f };
 	float fogc[4] = { ((g_fogColor >> 16) & 255) / 255.0f, ((g_fogColor >> 8) & 255) / 255.0f,
 	                  (g_fogColor & 255) / 255.0f, 1.0f };
 	g_dev->SetPixelShaderConstantF(0, ctl, 1);
@@ -234,6 +249,12 @@ void glInit() {
 		g_dev->SetRenderState(D3DRS_ZENABLE, TRUE);
 		g_dev->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
 	}
+	// [J2X-PERF state-cache] invalidate the redundant-state cache: the device is (re)bound, so the next
+	// draw must re-apply shader/decl/texture/matrix once before the filtering kicks in.
+	g_lastVS = 0; g_lastPS = 0; g_lastDecl = 0;
+	g_lastTex = (IDirect3DBaseTexture9*)~(size_t)0;
+	g_lastWrapS = g_lastWrapT = g_lastMag = -1;
+	g_lastWVPValid = false;
 }
 
 // =========================================================================== matrix ops
@@ -273,6 +294,7 @@ void glGetFloat(int pname, FloatBuffer* buf) {
 	const D3DXMATRIX* src = 0;
 	if (pname == GL_MODELVIEW_MATRIX)  src = &top(g_mv);
 	else if (pname == GL_PROJECTION_MATRIX) src = &top(g_proj);
+	else J2X_UNHANDLED("glGetFloat", pname);   // fail-loud: unknown matrix pname would silently return garbage
 	if (src) { const float* d = (const float*)src->m; for (int i = 0; i < 16; ++i) buf->put(i, d[i]); }
 }
 void glGetInteger(int pname, IntBuffer* buf) {
@@ -317,19 +339,24 @@ static void _gatherTris(int mode, const GLVert* v, int n, std::vector<GLVert>& t
 // DrawPrimitiveUP path and the display-list vertex-buffer DrawPrimitive path.
 static void _applyDrawState() {
 	_uploadMatrices(); _uploadControl();
-	g_dev->SetVertexShader(g_vs); g_dev->SetPixelShader(g_ps);
-	g_dev->SetVertexDeclaration(g_decl);   // SM3 vertex decl (not SetFVF)
+	// [J2X-PERF state-cache] shader + vertex decl NEVER change after glInit -> set once, not per draw.
+	if (g_vs   != g_lastVS)   { g_dev->SetVertexShader(g_vs);        g_lastVS = g_vs; }
+	if (g_ps   != g_lastPS)   { g_dev->SetPixelShader(g_ps);         g_lastPS = g_ps; }
+	if (g_decl != g_lastDecl) { g_dev->SetVertexDeclaration(g_decl); g_lastDecl = g_decl; }   // SM3 decl (not SetFVF)
 	GLTex* bt = boundTex();
-	if (g_texEnabled && bt && bt->tex) {
-		g_dev->SetTexture(0, bt->tex);
-		g_dev->SetSamplerState(0, D3DSAMP_ADDRESSU, bt->wrapS == GL_CLAMP ? D3DTADDRESS_CLAMP : D3DTADDRESS_WRAP);
-		g_dev->SetSamplerState(0, D3DSAMP_ADDRESSV, bt->wrapT == GL_CLAMP ? D3DTADDRESS_CLAMP : D3DTADDRESS_WRAP);
-		D3DTEXTUREFILTERTYPE mag = (bt->magF == GL_LINEAR) ? D3DTEXF_LINEAR : D3DTEXF_POINT;
-		g_dev->SetSamplerState(0, D3DSAMP_MAGFILTER, mag);
-		g_dev->SetSamplerState(0, D3DSAMP_MINFILTER, mag);
-		g_dev->SetSamplerState(0, D3DSAMP_MIPFILTER, D3DTEXF_NONE);   // no mip chain (matches the hand-port)
-	} else {
-		g_dev->SetTexture(0, 0);
+	IDirect3DBaseTexture9* want = (g_texEnabled && bt && bt->tex) ? (IDirect3DBaseTexture9*)bt->tex : 0;
+	if (want != g_lastTex) { g_dev->SetTexture(0, want); g_lastTex = want; }   // terrain + all zombies share one texture
+	if (want) {                                                               // sampler params: touch the device only on change
+		int ws = bt->wrapS, wt = bt->wrapT, mg = bt->magF;
+		if (ws != g_lastWrapS) { g_dev->SetSamplerState(0, D3DSAMP_ADDRESSU, ws == GL_CLAMP ? D3DTADDRESS_CLAMP : D3DTADDRESS_WRAP); g_lastWrapS = ws; }
+		if (wt != g_lastWrapT) { g_dev->SetSamplerState(0, D3DSAMP_ADDRESSV, wt == GL_CLAMP ? D3DTADDRESS_CLAMP : D3DTADDRESS_WRAP); g_lastWrapT = wt; }
+		if (mg != g_lastMag) {
+			D3DTEXTUREFILTERTYPE mag = (mg == GL_LINEAR) ? D3DTEXF_LINEAR : D3DTEXF_POINT;
+			g_dev->SetSamplerState(0, D3DSAMP_MAGFILTER, mag);
+			g_dev->SetSamplerState(0, D3DSAMP_MINFILTER, mag);
+			g_dev->SetSamplerState(0, D3DSAMP_MIPFILTER, D3DTEXF_NONE);   // no mip chain (matches the hand-port)
+			g_lastMag = mg;
+		}
 	}
 }
 
@@ -405,6 +432,7 @@ void glDepthFunc(int f) {
 	DWORD c = D3DCMP_LESSEQUAL;
 	if (f == GL_LESS) c = D3DCMP_LESS; else if (f == GL_GREATER) c = D3DCMP_GREATER;
 	else if (f == GL_GEQUAL) c = D3DCMP_GREATEREQUAL; else if (f == GL_EQUAL) c = D3DCMP_EQUAL;
+	else J2X_UNHANDLED("glDepthFunc", f);   // report the gap; c keeps its D3DCMP_LESSEQUAL default (sensible fallback)
 	_rs(D3DRS_ZFUNC, c);
 }
 void glDepthMask(bool flag) { _rs(D3DRS_ZWRITEENABLE, flag ? TRUE : FALSE); }
@@ -434,8 +462,10 @@ void glColorMaterial(int, int) {}
 // =========================================================================== fog
 void glFogf(int pname, float param) {
 	if (pname == GL_FOG_START) g_fogStart = param; else if (pname == GL_FOG_END) g_fogEnd = param;
+	else if (pname == GL_FOG_DENSITY) g_fogDensity = param;   // J2X-BUGFIX exp-fog: was dropped -> dim highlight
+	else J2X_UNHANDLED("glFogf", pname);
 }
-void glFogi(int pname, int param) { glFogf(pname, (float)param); }
+void glFogi(int pname, int param) { if (pname == GL_FOG_MODE) g_fogMode = param; else glFogf(pname, (float)param); }
 void glFog(int pname, FloatBuffer* p) {
 	if (pname == GL_FOG_COLOR && p) {
 		int r = (int)(p->get(0) * 255), g = (int)(p->get(1) * 255), b = (int)(p->get(2) * 255);
@@ -464,6 +494,7 @@ void glTexParameteri(int, int pname, int param) {
 	GLTex* t = boundTex(); if (!t) return;
 	if (pname == GL_TEXTURE_WRAP_S) t->wrapS = param; else if (pname == GL_TEXTURE_WRAP_T) t->wrapT = param;
 	else if (pname == GL_TEXTURE_MIN_FILTER) t->minF = param; else if (pname == GL_TEXTURE_MAG_FILTER) t->magF = param;
+	else J2X_UNHANDLED("glTexParameteri", pname);
 }
 void glTexParameterf(int target, int pname, float param) { glTexParameteri(target, pname, (int)param); }
 
@@ -526,10 +557,16 @@ void glPixelStorei(int, int) {}
 void glEnableClientState(int cap) {
 	if (cap == GL_VERTEX_ARRAY) g_vaVertex = true; else if (cap == GL_COLOR_ARRAY) g_vaColor = true;
 	else if (cap == GL_TEXTURE_COORD_ARRAY) g_vaTex = true;
+	// GL_NORMAL_ARRAY: accepted and ignored -- see glNormalPointer. Handled explicitly so the Beta
+	// Tessellator's per-chunk enable/disable pair does not trip the fail-loud path every draw.
+	else if (cap == GL_NORMAL_ARRAY) J2X_NOOP("no fixed-function lighting on Xenos; light is in vertex colour");
+	else J2X_UNHANDLED("glEnableClientState", cap);
 }
 void glDisableClientState(int cap) {
 	if (cap == GL_VERTEX_ARRAY) g_vaVertex = false; else if (cap == GL_COLOR_ARRAY) g_vaColor = false;
 	else if (cap == GL_TEXTURE_COORD_ARRAY) g_vaTex = false;
+	else if (cap == GL_NORMAL_ARRAY) J2X_NOOP("no fixed-function lighting on Xenos; light is in vertex colour");
+	else J2X_UNHANDLED("glDisableClientState", cap);
 }
 void glVertexPointer(int size, int stride, FloatBuffer* buf) {
 	g_vpSize = size; g_vpStride = stride ? stride : size * 4; g_vpPtr = buf ? buf->base() : 0;
@@ -543,6 +580,31 @@ void glColorPointer(int size, int stride, ByteBuffer* buf) {
 void glTexCoordPointer(int size, int stride, FloatBuffer* buf) {
 	g_tpSize = size; g_tpStride = stride ? stride : size * 4; g_tpPtr = buf ? buf->base() : 0;
 }
+// LWJGL 4-arg colour form. `unsignedBytes` (true for the Beta Tessellator) states the bytes are
+// normalized 0..255 -- exactly what the 3-arg ByteBuffer overload already assumes, so delegate. A false
+// here would mean un-normalized bytes, which no converted game emits; report it rather than guess.
+void glColorPointer(int size, bool unsignedBytes, int stride, ByteBuffer* buf) {
+	if (!unsignedBytes) J2X_UNHANDLED("glColorPointer(unsignedBytes=false)", size);
+	glColorPointer(size, stride, buf);
+}
+// Normals are accepted and DISCARDED: GLVert carries no normal, Xenos has no fixed-function lighting
+// (D3DRS_LIGHTING does not exist), and this layer bakes light into the vertex colour -- the same reason
+// glNormal3f is a reviewed no-op. Taking the pointer without using it keeps glEnableClientState
+// (GL_NORMAL_ARRAY) + glNormalPointer + glDrawArrays a well-formed sequence for the caller.
+void glNormalPointer(int /*stride*/, ByteBuffer* /*buf*/) {
+	J2X_NOOP("normals unused: light is baked into the vertex colour, no fixed-function lighting on Xenos");
+}
+
+// --------------------------------------------------------------------------- VBO-offset forms (dead)
+// These take a byte OFFSET into the currently-bound GL_ARRAY_BUFFER. This layer implements no buffer
+// objects and reports GL_ARB_vertex_buffer_object = false, so a game's `useVBO` branch is never taken --
+// they exist so that branch COMPILES. If one is ever reached the capability flag lied, and silently
+// treating an offset as a pointer would read wild memory, so fail loud instead.
+static void _vboFormUnsupported(const char* fn) { J2X_UNHANDLED(fn, 0); }
+void glVertexPointer(int, int, int, long long)   { _vboFormUnsupported("glVertexPointer(VBO offset)"); }
+void glColorPointer(int, int, int, long long)    { _vboFormUnsupported("glColorPointer(VBO offset)"); }
+void glTexCoordPointer(int, int, int, long long) { _vboFormUnsupported("glTexCoordPointer(VBO offset)"); }
+void glNormalPointer(int, int, long long)        { _vboFormUnsupported("glNormalPointer(VBO offset)"); }
 static unsigned char _u8(float f) { int i = (int)(f * 255.0f + 0.5f); return (unsigned char)(i < 0 ? 0 : i > 255 ? 255 : i); }
 void glDrawArrays(int mode, int first, int count) {
 	if (count <= 0) return;
@@ -621,6 +683,16 @@ void glCallList(int list) {
 		g_dev->DrawPrimitive(D3DPT_TRIANGLELIST, 0, b.triCount);
 	}
 	g_boundTex = saveTex; g_texEnabled = saveEn;
+}
+// glCallLists(IntBuffer): execute the ids in [position, limit) -- base() already folds the byte position
+// in, so read straight from it (the same contract glDrawArrays relies on). FontRenderer put()s glyph list
+// ids then flip()s before calling, so remaining() is exactly the count to replay.
+void glCallLists(IntBuffer* lists) {
+	if (!lists) return;
+	const int n = lists->remaining();
+	const int* ids = (const int*)lists->base();
+	if (!ids || n <= 0) return;
+	for (int i = 0; i < n; ++i) glCallList(ids[i]);
 }
 void glDeleteLists(int list, int n) {
 	for (int i = 0; i < n; ++i) {

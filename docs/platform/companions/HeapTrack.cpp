@@ -1,5 +1,9 @@
 // HeapTrack.cpp -- global heap-leak watchdog (PLATFORM COMPANION). See HeapTrack.h.
 //
+// J2X-ALWAYS-LINK: this file overrides global operator new/delete, so it is needed at LINK time even
+// though no other file #includes it. The dead-subsystem prune (pipeline._prune_unreferenced) keys off
+// this marker to treat the file as a reachability ROOT and never cut it.
+//
 // Overrides global operator new/delete so EVERY C++ allocation is tagged with a 16-byte header and
 // attributed to a CALL-STACK. Attribution uses a CONSERVATIVE STACK SCAN (pure memory reads -- NO kernel
 // call like RtlCaptureStackBackTrace, which the emulator doesn't implement): it scans this thread's own
@@ -163,10 +167,21 @@ long long peakBytes() { return g_peakBytes; }
 void report(const char* tag) {
 	static volatile LONGLONG pTot = 0, pFre = 0, pLive = 0;
 	LONGLONG live = g_liveBytes, cnt = g_liveCount, peak = g_peakBytes, tot = g_totAlloc, fre = g_totFree;
+	long netK = (long)((live - pLive) / 1024);
 	DbgPrint("[HEAP] %s live=%ldK (%ld objs) peak=%ldK | interval: +%ld alloc -%ld free = %+ldK net\n",
 	         tag ? tag : "", (long)(live/1024), (long)cnt, (long)(peak/1024),
-	         (long)(tot - pTot), (long)(fre - pFre), (long)((live - pLive)/1024));
+	         (long)(tot - pTot), (long)(fre - pFre), netK);
 	pTot = tot; pFre = fre; pLive = live;
+
+	// LEAK VERDICT: turn the data stream into a pass/FAIL signal. Sustained live-bytes growth across
+	// consecutive intervals (not a one-off spike from streaming in chunks) means a real leak -- the very
+	// thing that historically had to be hunted by hand. Print it LOUD and greppable so a test run fails on
+	// it instead of someone eyeballing the numbers. Threshold: > +48K/interval for 4 straight intervals (~10s).
+	static int growStreak = 0;
+	growStreak = (netK > 48) ? (growStreak + 1) : 0;
+	if (growStreak >= 4)
+		DbgPrint("[HEAP] LEAK VERDICT: **FAIL** -- live bytes have grown ~%ldK/interval for %d intervals "
+		         "(steady leak). See the top callstacks below.\n", netK, growStreak);
 
 	enum { TOPN = 8 };
 	Site* top[TOPN]; LONGLONG topB[TOPN]; int i;

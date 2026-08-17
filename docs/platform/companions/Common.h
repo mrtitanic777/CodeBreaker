@@ -55,9 +55,14 @@ inline long long GetNanoTime() {
 // TOGGLE: DbgPrintF file-mirror logging. Default OFF -- each call does a CreateFile (filesystem spam),
 // so it must NEVER drive per-frame/per-packet logging. Flip to 1 (or override in the build) only for
 // sparse one-shot boot/error tracing. Independent of the heap watchdog (J2X_HEAPTRACK).
+// J2X_DEBUG is the APP-LEVEL debug axis -- our own trace log, independent of Microsoft's _DEBUG debug
+// runtime libraries. The Xbox project's Debug config defines J2X_DEBUG while still linking the RETAIL
+// system libs (it targets a retail/RGH console, not a devkit), so app tracing turns on WITHOUT pulling in
+// the devkit-only debug D3D/XAM runtimes (see templates/xbox360.vcxproj.in). _DEBUG is kept as a legacy
+// fallback so a stock/devkit debug build still logs.
 #ifndef J2X_DEBUG_LOG
-#ifdef _DEBUG
-#define J2X_DEBUG_LOG 1   // Debug builds: surface boot/error traces via ResolvePath mirror + Debug\J2X_trace.txt
+#if defined(J2X_DEBUG) || defined(_DEBUG)
+#define J2X_DEBUG_LOG 1   // Debug/J2X_DEBUG builds: surface boot/error traces via ResolvePath mirror + Debug\J2X_trace.txt
 #else
 #define J2X_DEBUG_LOG 0   // Release: compiled out to nothing
 #endif
@@ -101,6 +106,44 @@ inline void DbgPrintF(const char* fmt, ...) {
     (void)fmt;
 #endif
 }
+
+// --- [J2X-DOCTRINE fail-loud] ------------------------------------------------------------------------
+// The fog bug hid because a dispatcher (glFogi/glFogf) SILENTLY ignored an enum it didn't implement.
+// RULE: an unhandled case must NEVER fall through silently -- it either REPORTS (J2X_UNHANDLED) or is
+// explicitly blessed as a deliberate no-op (J2X_NOOP). The converter's `silent-dispatch` rule flags any
+// dispatcher that does neither. J2X_UNHANDLED logs ONCE per unique (subsystem,value) so a per-frame call
+// can't flood the log, and compiles to nothing in Release (J2X_DEBUG_LOG==0).
+inline void J2X_ReportUnhandled(const char* sys, unsigned value) {
+#if J2X_DEBUG_LOG
+    static const char* seenSys[256]; static unsigned seenVal[256]; static int seenN = 0;
+    for (int i = 0; i < seenN; ++i) if (seenVal[i] == value && seenSys[i] == sys) return;   // already reported
+    if (seenN < 256) { seenSys[seenN] = sys; seenVal[seenN] = value; ++seenN; }
+    DbgPrintF("[UNHANDLED] %s: 0x%04X (%u) -- add a case, or J2X_NOOP if deliberate\n", sys, value, value);
+#else
+    (void)sys; (void)value;
+#endif
+}
+#define J2X_UNHANDLED(sys, val) J2X_ReportUnhandled((sys), (unsigned)(val))
+#define J2X_NOOP(reason)        ((void)0)   /* J2X-NOOP: a REVIEWED deliberate no-op; reason = why */
+
+// NaN is the skycolor-nan-garbage class: a NaN from noise/division slips through and paints garbage.
+// Static detection is too noisy to be clean, so surface it at RUNTIME instead -- drop J2X_NANCHK(x,"where")
+// on a critical float (sky color, a divisor, a normalized vector) and it logs the FIRST time x is NaN/Inf.
+// Returns x so it wraps inline: `float t = J2X_NANCHK(computeTemp(), "skycolor");`. Compiles out in Release.
+inline float J2X_NanCheck(float x, const char* where) {
+#if J2X_DEBUG_LOG
+    if (x != x || x > 3.0e38f || x < -3.0e38f) {   // NaN (x!=x) or +/-Inf
+        static const char* seen[128]; static int seenN = 0;
+        for (int i = 0; i < seenN; ++i) if (seen[i] == where) return x;   // one-shot per site
+        if (seenN < 128) seen[seenN++] = where;
+        DbgPrintF("[NAN] %s produced a non-finite float (%s)\n", where, (x != x) ? "NaN" : "Inf");
+    }
+#else
+    (void)where;
+#endif
+    return x;
+}
+#define J2X_NANCHK(x, where) J2X_NanCheck((x), (where))
 
 // --- [HEAPCHK] diagnostic: poke the REAL process heap (the one RtlValidateHeap@40000000 guards) with
 // a malloc/free; the 360 heap auto-validates on free, so the LAST "[HEAPCHK] ck: X" printed right

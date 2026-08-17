@@ -16,7 +16,7 @@ void FileInputStream::_load(const char* p) {
 	if (h == INVALID_HANDLE_VALUE) return;                  // _data stays NULL -> read() == -1 (EOF)
 	DWORD sz = GetFileSize(h, NULL);
 	if (sz != 0 && sz != ((DWORD)0xFFFFFFFF)) {
-		_data = new unsigned char[sz];
+		_data = new unsigned char[sz]();   // J2X-BUGFIX uninit-array: zero-fill so a short ReadFile leaves no garbage tail
 		DWORD r = 0; ReadFile(h, _data, sz, &r, NULL); _size = (int)r;
 	}
 	CloseHandle(h);

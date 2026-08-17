@@ -50,7 +50,9 @@ struct NioBacking {
 	char* bytes;
 	int   cap;               // capacity in BYTES
 	int   ref;
-	explicit NioBacking(int nbytes) : bytes(nbytes > 0 ? new char[nbytes] : 0), cap(nbytes > 0 ? nbytes : 0), ref(1) {}
+	// J2X-BUGFIX uninit-array: `new char[n]()` value-initializes to zero -- Java's ByteBuffer.allocateDirect
+	// guarantees a zeroed buffer, and code that reads before writing would otherwise see indeterminate bytes.
+	explicit NioBacking(int nbytes) : bytes(nbytes > 0 ? new char[nbytes]() : 0), cap(nbytes > 0 ? nbytes : 0), ref(1) {}
 	void addRef() { ++ref; }
 	void release() { if (--ref <= 0) { delete[] bytes; delete this; } }
 private:
