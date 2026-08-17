@@ -113,8 +113,10 @@ never re-fired — its edge already fired on the frame it went down.
 
 ## HARDWARE-VERIFY (can't be checked off-device — iterate on the 360)
 
-- **Right-stick sensitivity.** `InputConfig::LOOK_PIXELS_PER_FRAME` (default 10) is the per-frame
-  "mouse pixels" at full deflection, BEFORE the Java curve `(sens*0.6+0.2)^3 * 8`
+- **Right-stick sensitivity.** `InputConfig::LOOK_PIXELS_PER_SECOND` (default 750 ≈ 112°/s at full stick;
+  deg/s = value/2400*360) is the per-SECOND
+  "mouse pixels" at full deflection (poll scales by real frame dt, so it is frame-rate independent —
+  see [J2X-BUGFIX fps-look-scale]), BEFORE the Java curve `(sens*0.6+0.2)^3 * 8`
   (`EntityRenderer.cpp:411-414`). It is deliberately NOT pre-gained (the old port's `*6.0F` was on the
   rotation directly; baking it here would double-apply through the curve). Tune for comfortable turn
   speed; also expose the in-game mouse-sensitivity slider as usual.

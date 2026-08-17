@@ -194,7 +194,7 @@ namespace d3d9 {
 	// ------------------------------------------------------------------ queries / misc
 	int  glGetError();
 	JavaString glGetString(int name);
-	inline void glFlush() {}
+	void glFlush();   // [J2X-PERF] drains the pending coalesced entity batch (real impl in GL11.cpp)
 	inline void glFinish() {}
 	inline void glLight(...) {}
 	inline void glLightf(...) {}

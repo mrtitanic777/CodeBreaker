@@ -54,15 +54,16 @@ namespace InputConfig {
 	const short MENU_STEP        = 16384;
 	const unsigned char TRIGGER  = 40;
 
-	// Right-stick -> mouse look. The look gain here is the "pixels of mouse movement per frame at full
-	// deflection" BEFORE the Java sensitivity curve ((sens*0.6+0.2)^3 * 8) in EntityRenderer:411-414.
-	// Old port mutated rotation directly with normalized * 6.0F, so 6 deg/frame at full tilt was the
-	// felt speed; an LWJGL "pixel" maps ~1 px -> the curve, so ~8-12 px/frame is a sane start.
-	// HARDWARE-VERIFY: tune LOOK_PIXELS_PER_FRAME so full-deflection turn speed feels right.
-	// Tuned to MATCH the Indev port's feel exactly: Indev did rotationYaw += rx*6.0 per frame.
-	// Alpha's chain is rx * LOOK_PIXELS_PER_FRAME * sensCurve(=1.0 at default 0.5) * 0.15 (setAngles),
-	// so 40 * 1.0 * 0.15 = 6.0/frame == Indev. (Was 10 -> ~4x too slow, esp. horizontal turning.)
-	const float LOOK_PIXELS_PER_FRAME = 40.0F;
+	// Right-stick -> mouse look, in pixels PER SECOND (frame-rate-independent, like CURSOR_PIXELS_PER_SECOND).
+	// [J2X-BUGFIX fps-look-scale] This was PER-FRAME (40 px/frame). Uncapped FPS (Release_LTCG runs many
+	// hundreds of fps) then turned the camera ~10x too fast, exactly the bug the GUI cursor already fixed.
+	// Poll now scales by real elapsed seconds: ddx = rx * LOOK_PIXELS_PER_SECOND * dt.
+	// The felt speed is preserved at the 60fps reference: 40 px/frame * 60 = 2400 px/s, and the Java chain
+	// (rx * px * sensCurve(=1.0 at default 0.5) * 0.15 in setAngles) still yields 6 deg/frame @60 == Indev.
+	// HARDWARE-VERIFY: tune LOOK_PIXELS_PER_SECOND so full-deflection turn speed feels right on-device.
+	// Tuning: turn speed at full deflection (deg/sec) = LOOK_PIXELS_PER_SECOND / 2400 * 360.
+	//   600 -> 90 deg/s   750 -> ~112 deg/s   900 -> 135 deg/s   1200 -> 180 deg/s   2400 -> 360 deg/s.
+	const float LOOK_PIXELS_PER_SECOND = 750.0F;
 
 	// Right-stick Y sign. LWJGL getDY is screen-space; XInput sThumbRY is up-positive. EntityRenderer
 	// applies invertMouse on top, so this is the BASE sign before the user's invert option.

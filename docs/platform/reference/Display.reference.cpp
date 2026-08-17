@@ -90,6 +90,7 @@ void create() {
 }
 
 void swapBuffers() {
+	d3d9::glFlush();   // [J2X-PERF] drain the coalesced entity batch before presenting the frame
 	if (s_dev) { s_dev->EndScene(); s_dev->Present(NULL, NULL, NULL, NULL); s_dev->BeginScene(); }
 }
 

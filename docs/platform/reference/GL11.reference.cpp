@@ -105,6 +105,12 @@ static GLTex* boundTex() {
 // --------------------------------------------------------------------------- immediate accumulator
 static int g_beginMode = -1;
 static std::vector<GLVert> g_imm;
+// [J2X-PERF entity-batch] Coalesced immediate-mode draws. Each glBegin/glEnd entity run is baked to VIEW
+// space (modelview folded into the verts) and appended here, then drawn in ONE call with a projection-only
+// matrix -- collapsing the ~600 per-frame entity-cube DrawPrimitiveUP calls. See _drawGather / _flushEntityBatch.
+static std::vector<GLVert> g_eBatch;
+static bool g_eBatchOpen = false;
+static void _flushEntityBatch();   // fwd decl: called from matrix/state ops defined above its body
 
 // --------------------------------------------------------------------------- display lists
 // A display list records DRAW BATCHES, each capturing the texture state (bound texture + enable) that
@@ -130,6 +136,13 @@ static void _freeBatchVBs(GLList& L) {
 }
 static std::vector<GLList> g_lists;      // index by list id (0 reserved)
 static int g_recordingList = 0;          // != 0 while inside glNewList/glEndList
+// [J2X-PERF terrain-load] Display lists whose batches still need a GPU vertex buffer. glEndList only STAGES
+// the geometry (CPU-side); the actual CreateVertexBuffer happens once per frame in _pumpPendingVBs, inside a
+// SINGLE EndScene/BeginScene window. The 360 backend only requires creates to be out-of-scene, not one scene
+// toggle PER buffer -- so building 8 chunks/frame costs ONE device stall, not sixteen. Keeps load-time FPS up.
+static std::vector<int> g_pendingVB;
+static bool g_recordHadVB = false;   // set in glNewList: did the list being (re)recorded already have live VBs?
+static void _pumpPendingVBs();   // fwd decl: defined near glEndList, called from glFlush (per frame)
 
 // --------------------------------------------------------------------------- vertex-array pointers
 static bool g_vaVertex = false, g_vaColor = false, g_vaTex = false;
@@ -258,7 +271,11 @@ void glInit() {
 }
 
 // =========================================================================== matrix ops
-void glMatrixMode(int mode) { g_matMode = mode; }
+// [J2X-PERF] The entity batch bakes MODELVIEW into its verts and draws with PROJECTION-only, so a projection
+// change would invalidate a pending batch. Projection is only ever touched while g_matMode==GL_PROJECTION, and
+// entities are always batched under GL_MODELVIEW, so flushing on the mode switch closes the batch under the
+// correct (still-current) projection. Not in the per-entity hot path (mode stays MODELVIEW across entities).
+void glMatrixMode(int mode) { if (mode != g_matMode) _flushEntityBatch(); g_matMode = mode; }
 void glPushMatrix() { std::vector<D3DXMATRIX>& s = curStack(); s.push_back(top(s)); }
 void glPopMatrix()  { std::vector<D3DXMATRIX>& s = curStack(); if (s.size() > 1) s.pop_back(); }
 void glLoadIdentity() { D3DXMatrixIdentity(&top(curStack())); }
@@ -287,7 +304,11 @@ void glViewport(int x, int y, int w, int h) {
 	g_vp.X = x; g_vp.Y = y; g_vp.Width = w; g_vp.Height = h; g_vp.MinZ = 0.0f; g_vp.MaxZ = 1.0f;
 	if (g_dev) g_dev->SetViewport(&g_vp);
 }
-void glLoadProjection(const D3DXMATRIX& m) { g_matMode = GL_PROJECTION; top(g_proj) = m; }
+void glLoadProjection(const D3DXMATRIX& m) { _flushEntityBatch(); g_matMode = GL_PROJECTION; top(g_proj) = m; }
+
+// [J2X-PERF] End-of-frame drain (called from Display::swapBuffers before Present): flush the coalesced entity
+// batch, then upload this frame's freshly-built chunk vertex buffers in one out-of-scene window.
+void glFlush() { _flushEntityBatch(); _pumpPendingVBs(); }
 
 void glGetFloat(int pname, FloatBuffer* buf) {
 	if (!buf) return;
@@ -368,8 +389,27 @@ static void _drawTris(const std::vector<GLVert>& tri) {
 	g_dev->DrawPrimitiveUP(D3DPT_TRIANGLELIST, (UINT)(tri.size() / 3), &tri[0], sizeof(GLVert));
 }
 
-// Gather a primitive run, then either RECORD it into the open display list or draw it now.
-static void _drawGather(int mode, const GLVert* v, int n) {
+// [J2X-PERF entity-batch] Draw the accumulated (view-space) immediate geometry in ONE call. Called before
+// any state change / list draw / present, so the CURRENT g_* state IS the state the geometry was gathered
+// under -- _applyDrawState uses it correctly. Verts are pre-baked to VIEW space, so upload PROJECTION-ONLY.
+static void _flushEntityBatch() {
+	if (!g_eBatchOpen) return;
+	g_eBatchOpen = false;
+	if (g_eBatch.empty() || !g_dev || !g_vs) { g_eBatch.clear(); return; }
+	_applyDrawState();
+	D3DXMATRIX pr; if (g_proj.empty()) D3DXMatrixIdentity(&pr); else pr = g_proj.back();
+	D3DXMATRIX t;  D3DXMatrixTranspose(&t, &pr);
+	g_dev->SetVertexShaderConstantF(0, (const float*)t.m, 4);   // proj only (modelview already baked in)
+	g_lastWVPValid = false;                                     // we clobbered c0 -> next draw re-uploads its WVP
+	g_dev->DrawPrimitiveUP(D3DPT_TRIANGLELIST, (UINT)(g_eBatch.size() / 3), &g_eBatch[0], sizeof(GLVert));
+	g_eBatch.clear();
+}
+
+// Gather a primitive run, then either RECORD it into the open display list, BATCH it for a coalesced draw
+// (entities), or draw it immediately. allowBatch is TRUE only for the glBegin/glEnd path -- that is where the
+// ~600 per-frame entity cube draws come from. The glDrawArrays path (Tesselator: the block highlight, and
+// terrain that is recorded into lists) passes FALSE so it keeps its proven full-WVP direct draw untouched.
+static void _drawGather(int mode, const GLVert* v, int n, bool allowBatch) {
 	if (n <= 0) return;
 	std::vector<GLVert> tri;
 	_gatherTris(mode, v, n, tri);
@@ -381,7 +421,18 @@ static void _drawGather(int mode, const GLVert* v, int n) {
 		g_lists[g_recordingList].batches.push_back(b);   // matrix applied at glCallList; texture replayed too
 		return;
 	}
-	_drawTris(tri);
+	if (!allowBatch) { _drawTris(tri); return; }   // [J2X-PERF] non-entity immediate geometry: draw as before
+	// Entity immediate mode: bake the current modelview into the verts (-> VIEW space) so this run can share ONE
+	// batched draw with the other entity cubes (which each have a different per-body-part matrix). The batch
+	// is flushed with a projection-only matrix; matrix changes between glEnds are absorbed by this bake.
+	D3DXMATRIX mv; if (g_mv.empty()) D3DXMatrixIdentity(&mv); else mv = g_mv.back();
+	for (size_t k = 0; k < tri.size(); ++k) {
+		D3DXVECTOR3 in(tri[k].x, tri[k].y, tri[k].z), out;
+		D3DXVec3TransformCoord(&out, &in, &mv);      // out = in * mv (row-vector), affine -> exact view pos
+		tri[k].x = out.x; tri[k].y = out.y; tri[k].z = out.z;
+	}
+	g_eBatch.insert(g_eBatch.end(), tri.begin(), tri.end());
+	g_eBatchOpen = true;
 }
 
 void glEnd() {
@@ -389,7 +440,7 @@ void glEnd() {
 		// In selection mode any geometry inside the (pick) frustum registers a hit on the current name.
 		if (!g_imm.empty()) g_hitThisName = true;
 	} else {
-		_drawGather(g_beginMode, g_imm.empty() ? 0 : &g_imm[0], (int)g_imm.size());
+		_drawGather(g_beginMode, g_imm.empty() ? 0 : &g_imm[0], (int)g_imm.size(), true);   // entities: batchable
 	}
 	g_beginMode = -1; g_imm.clear();
 }
@@ -406,6 +457,7 @@ static DWORD _blendArg(int f) {
 	}
 }
 void glEnable(int cap) {
+	_flushEntityBatch();   // [J2X-PERF] pending entity batch was gathered under the OLD state -- draw it first
 	switch (cap) {
 		case GL_TEXTURE_2D: g_texEnabled = true; break;
 		case GL_BLEND: g_blend = true; _rs(D3DRS_ALPHABLENDENABLE, TRUE); break;
@@ -417,6 +469,7 @@ void glEnable(int cap) {
 	}
 }
 void glDisable(int cap) {
+	_flushEntityBatch();   // [J2X-PERF] flush geometry gathered under the old state before it changes
 	switch (cap) {
 		case GL_TEXTURE_2D: g_texEnabled = false; break;
 		case GL_BLEND: g_blend = false; _rs(D3DRS_ALPHABLENDENABLE, FALSE); break;
@@ -427,8 +480,9 @@ void glDisable(int cap) {
 		default: break;
 	}
 }
-void glBlendFunc(int s, int d) { _rs(D3DRS_SRCBLEND, _blendArg(s)); _rs(D3DRS_DESTBLEND, _blendArg(d)); }
+void glBlendFunc(int s, int d) { _flushEntityBatch(); _rs(D3DRS_SRCBLEND, _blendArg(s)); _rs(D3DRS_DESTBLEND, _blendArg(d)); }
 void glDepthFunc(int f) {
+	_flushEntityBatch();   // [J2X-PERF]
 	DWORD c = D3DCMP_LESSEQUAL;
 	if (f == GL_LESS) c = D3DCMP_LESS; else if (f == GL_GREATER) c = D3DCMP_GREATER;
 	else if (f == GL_GEQUAL) c = D3DCMP_GREATEREQUAL; else if (f == GL_EQUAL) c = D3DCMP_EQUAL;
@@ -447,6 +501,7 @@ void glShadeModel(int) {}
 void glClearColor(float r, float g, float b, float a) { g_clearR = r; g_clearG = g; g_clearB = b; g_clearA = a; }
 void glClearDepth(double d) { g_clearDepth = (float)d; }
 void glClear(int mask) {
+	_flushEntityBatch();   // [J2X-PERF]
 	if (!g_dev) return;
 	DWORD flags = 0;
 	if (mask & GL_COLOR_BUFFER_BIT) flags |= D3DCLEAR_TARGET;
@@ -461,12 +516,14 @@ void glColorMaterial(int, int) {}
 
 // =========================================================================== fog
 void glFogf(int pname, float param) {
+	_flushEntityBatch();   // [J2X-PERF]
 	if (pname == GL_FOG_START) g_fogStart = param; else if (pname == GL_FOG_END) g_fogEnd = param;
 	else if (pname == GL_FOG_DENSITY) g_fogDensity = param;   // J2X-BUGFIX exp-fog: was dropped -> dim highlight
 	else J2X_UNHANDLED("glFogf", pname);
 }
 void glFogi(int pname, int param) { if (pname == GL_FOG_MODE) g_fogMode = param; else glFogf(pname, (float)param); }
 void glFog(int pname, FloatBuffer* p) {
+	_flushEntityBatch();   // [J2X-PERF]
 	if (pname == GL_FOG_COLOR && p) {
 		int r = (int)(p->get(0) * 255), g = (int)(p->get(1) * 255), b = (int)(p->get(2) * 255);
 		g_fogColor = D3DCOLOR_XRGB(r & 255, g & 255, b & 255);
@@ -489,7 +546,7 @@ void glDeleteTextures(IntBuffer* buf) {
 	if (!buf) return;
 	for (int i = buf->position(); i < buf->limit(); ++i) glDeleteTextures(buf->get(i));
 }
-void glBindTexture(int, int id) { g_boundTex = id; }
+void glBindTexture(int, int id) { if (id != g_boundTex) _flushEntityBatch(); g_boundTex = id; }   // [J2X-PERF] texture change ends a batch
 void glTexParameteri(int, int pname, int param) {
 	GLTex* t = boundTex(); if (!t) return;
 	if (pname == GL_TEXTURE_WRAP_S) t->wrapS = param; else if (pname == GL_TEXTURE_WRAP_T) t->wrapT = param;
@@ -631,7 +688,7 @@ void glDrawArrays(int mode, int first, int count) {
 		}
 		g.push_back(v);
 	}
-	_drawGather(mode, &g[0], (int)g.size());
+	_drawGather(mode, &g[0], (int)g.size(), false);   // Tesselator (highlight/terrain-lists): direct/recorded, never batched
 }
 
 // =========================================================================== display lists
@@ -644,33 +701,59 @@ int glGenLists(int n) {
 void glNewList(int list, int /*mode*/) {
 	if (list <= 0) return;
 	while ((int)g_lists.size() <= list) g_lists.push_back(GLList());
+	// [J2X-PERF terrain-load] Was this list ALREADY on screen (had live VBs)? If so it's a re-build of a
+	// visible chunk (block edit) -> glEndList uploads immediately so it never blanks for a frame (no flash).
+	// A first build (initial load) has no live VBs -> deferred to the batched per-frame pump.
+	g_recordHadVB = false;
+	{ GLList& L = g_lists[list]; for (size_t i = 0; i < L.batches.size(); ++i) if (L.batches[i].vb) { g_recordHadVB = true; break; } }
 	_freeBatchVBs(g_lists[list]);        // releasing the old VBs before re-recording
 	g_recordingList = list;
 	g_lists[list].used = true;
 }
-// Bake each recorded batch into a static vertex buffer (drawn with DrawPrimitive, not re-uploaded per
-// frame). CreateVertexBuffer is bracketed with EndScene/BeginScene (Nexia360 dislikes mid-scene creates).
+// Upload one list's staged CPU geometry into GPU vertex buffers. The DEVICE MUST BE OUT OF SCENE across the
+// call (the 360 backend rejects mid-scene creates); callers bracket it with EndScene/BeginScene.
+static void _createListVBs(GLList& L) {
+	for (size_t i = 0; i < L.batches.size(); ++i) {
+		GLBatch& b = L.batches[i];
+		if (b.vb || b.tris.empty()) continue;           // already uploaded (or nothing to upload)
+		UINT bytes = (UINT)(b.tris.size() * sizeof(GLVert));
+		if (SUCCEEDED(g_dev->CreateVertexBuffer(bytes, D3DUSAGE_WRITEONLY, 0, D3DPOOL_MANAGED, &b.vb, 0)) && b.vb) {
+			void* p = 0;
+			if (SUCCEEDED(b.vb->Lock(0, bytes, &p, 0))) { memcpy(p, &b.tris[0], bytes); b.vb->Unlock(); }
+			b.triCount = (int)(b.tris.size() / 3);
+		}
+		std::vector<GLVert>().swap(b.tris);             // free the CPU staging copy now that it's on the GPU
+	}
+}
+// [J2X-PERF terrain-load] STAGE the recorded geometry (CPU tris already in the batches). A FIRST build (initial
+// load) is deferred to the once-per-frame _pumpPendingVBs so a load frame pays ONE device stall for all its
+// chunks instead of one per chunk. A RE-build of an already-visible chunk (block edit, g_recordHadVB) uploads
+// NOW so it draws this same frame -- deferring it would leave the chunk blank for one frame (a visible flash).
 void glEndList() {
 	if (g_recordingList > 0 && g_recordingList < (int)g_lists.size() && g_dev) {
+		bool hasGeom = false;
 		GLList& L = g_lists[g_recordingList];
-		for (size_t i = 0; i < L.batches.size(); ++i) {
-			GLBatch& b = L.batches[i];
-			if (b.tris.empty()) continue;
-			UINT bytes = (UINT)(b.tris.size() * sizeof(GLVert));
-			g_dev->EndScene();
-			HRESULT hr = g_dev->CreateVertexBuffer(bytes, D3DUSAGE_WRITEONLY, 0, D3DPOOL_MANAGED, &b.vb, 0);
-			g_dev->BeginScene();
-			if (SUCCEEDED(hr) && b.vb) {
-				void* p = 0;
-				if (SUCCEEDED(b.vb->Lock(0, bytes, &p, 0))) { memcpy(p, &b.tris[0], bytes); b.vb->Unlock(); }
-				b.triCount = (int)(b.tris.size() / 3);
-			}
-			std::vector<GLVert>().swap(b.tris);   // free the CPU staging copy
+		for (size_t i = 0; i < L.batches.size(); ++i) if (!L.batches[i].tris.empty()) { hasGeom = true; break; }
+		if (hasGeom) {
+			if (g_recordHadVB) { g_dev->EndScene(); _createListVBs(L); g_dev->BeginScene(); }   // edit: no flash
+			else g_pendingVB.push_back(g_recordingList);                                        // load: defer
 		}
 	}
 	g_recordingList = 0;
 }
+// Create all pending display-list vertex buffers in ONE out-of-scene window (called per frame from glFlush).
+static void _pumpPendingVBs() {
+	if (g_pendingVB.empty() || !g_dev) { g_pendingVB.clear(); return; }
+	g_dev->EndScene();                                  // ONE stall for every chunk built this frame
+	for (size_t k = 0; k < g_pendingVB.size(); ++k) {
+		int id = g_pendingVB[k];
+		if (id > 0 && id < (int)g_lists.size()) _createListVBs(g_lists[id]);
+	}
+	g_dev->BeginScene();
+	g_pendingVB.clear();
+}
 void glCallList(int list) {
+	_flushEntityBatch();   // [J2X-PERF] flush pending entity geometry before drawing a display list (world chunks etc.)
 	if (list <= 0 || list >= (int)g_lists.size() || !g_lists[list].used || !g_dev || !g_vs) return;
 	GLList& L = g_lists[list];
 	int saveTex = g_boundTex; bool saveEn = g_texEnabled;   // replay each batch with ITS recorded texture

@@ -37,7 +37,8 @@ namespace {
 	KeyEvent   g_keyCur = { 0, false, 0 };       // the event next() last surfaced (getEvent* read this)
 
 	// ---- Virtual mouse ----
-	int   g_dx = 0, g_dy = 0;          // accumulated right-stick look delta since last getDX/getDY
+	float g_dx = 0, g_dy = 0;          // accumulated right-stick look delta since last getDX/getDY (float:
+	                                   // carries sub-pixel remainder so slow stick + high FPS still turns)
 	int   g_cursorX = 0, g_cursorY = 0;// virtual GUI cursor (top-down)
 	int   g_dispW = 854, g_dispH = 480;// display size for cursor clamping (set by setDisplaySize)
 	bool  g_btnDown[3];                // 0=left(RT) 1=right(LT) 2=middle
@@ -162,6 +163,23 @@ bool navDown()  { bool f = g_navDownFired;  g_navDownFired  = false; return f; }
 bool navLeft()  { bool f = g_navLeftFired;  g_navLeftFired  = false; return f; }
 bool navRight() { bool f = g_navRightFired; g_navRightFired = false; return f; }
 
+// [J2X-BUGFIX fps-look-scale] Real seconds elapsed since the previous poll(). poll() runs once per render
+// frame, so this is the frame time -- used to make right-stick look frame-rate independent. Uses the 64-bit
+// performance counter (smooth at hundreds of fps, where GetTickCount's ~1ms granularity would jitter).
+// Clamps to a sane window: the first call and any long stall (load, pause) must not fling the camera.
+float _lookDtSeconds() {
+	static LARGE_INTEGER s_freq = { 0 };
+	static LARGE_INTEGER s_prev = { 0 };
+	if (s_freq.QuadPart == 0) QueryPerformanceFrequency(&s_freq);
+	LARGE_INTEGER now; QueryPerformanceCounter(&now);
+	if (s_prev.QuadPart == 0 || s_freq.QuadPart == 0) { s_prev = now; return 1.0f / 60.0f; }  // first frame: assume 60fps
+	double dt = double(now.QuadPart - s_prev.QuadPart) / double(s_freq.QuadPart);
+	s_prev = now;
+	if (dt < 0.0)   dt = 0.0;
+	if (dt > 0.10)  dt = 0.10;   // clamp a hitch to <=100ms so a stutter can't spike the turn
+	return (float)dt;
+}
+
 void poll() {
 	ensureInit();
 
@@ -266,12 +284,16 @@ void poll() {
 		// Right stick -> look delta (EntityRenderer applies the Java sensitivity curve; don't bake it in).
 		// Right-stick-up = look up, right = look right, with NO inversion (invert-look is not a Beta
 		// feature yet; the base signs are already correct so nothing to negate).
-		float ddx = rx * InputConfig::LOOK_PIXELS_PER_FRAME;
-		float ddy = ry * InputConfig::LOOK_PIXELS_PER_FRAME;
-		g_dx += (int)ddx;
-		g_dy += (int)ddy;
+		// [J2X-BUGFIX fps-look-scale] Scale by REAL elapsed seconds so turn speed is frame-rate independent
+		// (Release_LTCG runs uncapped at hundreds of fps). Accumulate as float -> sub-pixel remainder is kept.
+		float lookDt = _lookDtSeconds();
+		g_dx += rx * InputConfig::LOOK_PIXELS_PER_SECOND * lookDt;
+		g_dy += ry * InputConfig::LOOK_PIXELS_PER_SECOND * lookDt;
 
-		// Triggers -> mouse buttons (RT = attack/break = 0, LT = place/use = 1).
+		// Triggers -> mouse buttons. STANDARD Minecraft click semantics (Beta and later): mouse button 0 =
+		// attack/break, button 1 = place/use. RT -> button 0, LT -> button 1 gives the console feel LT=place,
+		// RT=destroy. NOTE: a game with INVERTED clicks (e.g. RubyDung, where button 0 places) needs LT/RT
+		// swapped here to reach the same feel -- that is a per-game input choice, not a converter default.
 		g_btnDown[0] = rt; g_btnDown[1] = lt; g_btnDown[2] = false;
 		if (rt && !g_prevBtnDown[0]) pushBtnEvent(0, true,  g_cursorX, g_cursorY, 0);
 		if (!rt && g_prevBtnDown[0]) pushBtnEvent(0, false, g_cursorX, g_cursorY, 0);
@@ -434,8 +456,10 @@ void setGrabbed(bool grabbed) {
 }
 void setCursorPosition(int x, int y) { g_cursorX = x; g_cursorY = y; }
 
-int getDX() { int d = g_dx; g_dx = 0; return d; }   // read-once, like LWJGL
-int getDY() { int d = g_dy; g_dy = 0; return d; }
+// read-once, like LWJGL. Return the whole-pixel part and CARRY the sub-pixel remainder so a slow stick at
+// high FPS (small per-frame delta) still accumulates into turns instead of truncating to zero every frame.
+int getDX() { int d = (int)g_dx; g_dx -= (float)d; return d; }
+int getDY() { int d = (int)g_dy; g_dy -= (float)d; return d; }
 
 int getX() { return g_cursorX; }
 int getY() { return g_dispH - 1 - g_cursorY; }   // cursor stored top-down; LWJGL Mouse Y is bottom-up

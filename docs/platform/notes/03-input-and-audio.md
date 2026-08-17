@@ -220,6 +220,11 @@ So back `Mouse::getDX()/getDY()` with the right-stick deltas:
 - `isButtonDown(0)` (left / attack) → `bRightTrigger > TRIG`.
 - `isButtonDown(1)` (right / place) → `bLeftTrigger > TRIG`.
 
+> **Standard click semantics** (Beta and later): button 0 = attack/break, button 1 = place/use, so this
+> mapping yields the console feel **LT = place, RT = destroy**. A game with *inverted* clicks (e.g. RubyDung,
+> where button 0 places) needs LT/RT swapped in `Input.reference.cpp` to reach the same feel — a per-game
+> input choice, not a converter default.
+
 The Java `clickMouse`/`isButtonDown` callers will then handle held-vs-edge
 themselves. (The old port used RT=attack/LT=place via `clickMouse`; preserve
 that orientation.) `getEventButton`/`getEventButtonState` need a small event
