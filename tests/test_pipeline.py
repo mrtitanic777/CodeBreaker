@@ -203,6 +203,38 @@ class TestPruneUnreferenced(unittest.TestCase):
         self.assertTrue(os.path.exists(os.path.join(self.out, 'HeapTrack.cpp')))
         self.assertTrue(os.path.exists(os.path.join(self.out, 'BufferedImage.h')))
 
+    def test_overlay_written_files_are_roots(self):
+        """GUARANTEE for overlays.py: a file a project overlay wrote is a prune ROOT even when NOTHING
+        #includes it and it defines no referenced symbol. Regression -- the prune runs AFTER
+        apply_overlays, so every overlay-ADDED file (Kernel.cpp + KernelConfig.h + ControllerConfig.h,
+        and the whole Udp* scaffold that UDP_MIGRATION.md says nothing includes yet BY DESIGN) used to be
+        silently deleted on every convert, defeating overlays.py's 'ADDED .cpp are compiled' contract."""
+        self._w('Level.h', 'struct Level{};\n')
+        self._w('Level.cpp', '#include "Level.h"\nvoid f(){}\n')
+        self._w('stdafx.h', '// pch\n')
+        # overlay-ADDED: unreachable by include AND by symbol reference -- only the overlay makes them live
+        self._w('Kernel.cpp', '#include "KernelConfig.h"\nvoid Kernel_Boot(){}\n')
+        self._w('KernelConfig.h', '#define J2X_KERNEL 1\n')
+        self._w('UdpSocket.h', 'struct UdpSocket{};\n')
+        self._w('Orphan.h', 'struct Orphan{};\n')          # NOT overlaid -> still CUT
+        applied = ['Kernel.cpp', 'KernelConfig.h', 'UdpSocket.h']
+        dropped = pipeline._prune_unreferenced(self.out, {'Level'}, lambda _s: None,
+                                              overlay_files=applied)
+        for f in applied:
+            self.assertNotIn(f, dropped)
+            self.assertTrue(os.path.exists(os.path.join(self.out, f)), '%s was pruned' % f)
+        self.assertIn('Orphan.h', dropped)                 # control: prune still cuts real islands
+
+    def test_overlay_roots_accept_nested_relpaths(self):
+        """apply_overlays returns RELPATHS (it walks subdirs); the prune works on a flat listing, so a
+        nested overlay relpath must still root by basename."""
+        self._w('Level.h', 'struct Level{};\n')
+        self._w('stdafx.h', '// pch\n')
+        self._w('ControllerConfig.h', 'struct Pad{};\n')
+        dropped = pipeline._prune_unreferenced(self.out, {'Level'}, lambda _s: None,
+                                              overlay_files=[os.path.join('sub', 'ControllerConfig.h')])
+        self.assertNotIn('ControllerConfig.h', dropped)
+
     def test_h_drags_cpp_partner_and_its_includes(self):
         # Level -> Display.h; Display.cpp (partner) pulls Input.h. Input must survive via the .cpp partner.
         self._w('Level.h', '#include "Display.h"\nstruct Level{};\n')

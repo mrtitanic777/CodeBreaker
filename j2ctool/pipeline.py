@@ -809,7 +809,7 @@ def _coalesce_forwarders(out_dir, prog):
     return removed
 
 
-def _prune_unreferenced(out_dir, game_classes, prog):
+def _prune_unreferenced(out_dir, game_classes, prog, overlay_files=None):
     """Full-product prune -- automatic dead-subsystem cut, no curated library list. ROOTS are the converted
     GAME CORPUS + the entry/build spine + any file marked `J2X-ALWAYS-LINK`. A file is KEPT if either
     (1) it is #include-reachable from a root, OR (2) it DEFINES a symbol that live code references by name
@@ -821,7 +821,13 @@ def _prune_unreferenced(out_dir, game_classes, prog):
     Soundness: rule (1) keeps a file's own #includes (closure -> nothing kept dangles an include); rule (2)
     keeps any translation unit that supplies a symbol live code links against (-> no unresolved externals).
     The residual is link-only side effects with no name reference at all (HeapTrack's operator new), handled
-    by the J2X-ALWAYS-LINK marker. Returns the list of dropped filenames."""
+    by the J2X-ALWAYS-LINK marker. Returns the list of dropped filenames.
+
+    `overlay_files` -- relpaths a project OVERLAY just wrote (see overlays.py). These are roots by
+    DEFINITION: a human put the file there deliberately, which outranks include-reachability. Without this
+    every overlay-ADDED file was silently deleted on every convert -- the 360 boot/config glue (Kernel.cpp,
+    KernelConfig.h, ControllerConfig.h) and the whole UDP scaffold, which UDP_MIGRATION.md says nothing
+    includes yet BY DESIGN -- defeating the "ADDED .cpp are compiled" guarantee overlays.py makes."""
     import re as _re
     files = [f for f in os.listdir(out_dir) if f.endswith('.h') or f.endswith('.cpp')]
     fileset = set(files)
@@ -847,6 +853,12 @@ def _prune_unreferenced(out_dir, game_classes, prog):
     for f in files:                                   # link-critical files self-declare (HeapTrack, ...)
         if 'J2X-ALWAYS-LINK' in raw[f]:
             roots.add(_base(f))
+    # Overlay-written files are roots by definition -- a deliberate hand-placed file outranks the include
+    # graph. (Only the basename matters: the prune works on the flat out_dir listing.)
+    for rel in (overlay_files or ()):
+        fn = os.path.basename(rel)
+        if fn.endswith('.h') or fn.endswith('.cpp'):
+            roots.add(_base(fn))
 
     reachable = set()
 
@@ -1115,7 +1127,7 @@ def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True,
     # cut whole -- no curated list. Runs LAST, after every file exists (emission + references + overlays),
     # so it sees the final include graph. See _prune_unreferenced.
     if platform:
-        _prune_unreferenced(out_dir, set(c.name for c in classes), _prog)
+        _prune_unreferenced(out_dir, set(c.name for c in classes), _prog, overlay_files=_applied)
 
     # verify: run the crash-class rules over the emitted output (acceptance check)
     _prog('[rules] scanning crash-class rules on emitted output...')
