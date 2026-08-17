@@ -179,8 +179,13 @@ RUNTIME_ENUM_LIKE = RUNTIME_STATIC_HOLDERS | JAVART_STATICS | {'Color'}
 # Xbox 360 project (float math); pulled in via <math.h>. min/max stay bare
 # (the project provides them). Returns the C name for a given Java Math method.
 MATH_API = {
-    'abs': 'abs', 'sqrt': 'sqrtf', 'sin': 'sinf', 'cos': 'cosf', 'tan': 'tanf',
-    'atan': 'atanf', 'atan2': 'atan2f', 'asin': 'asinf', 'acos': 'acosf',
+    # TRIG is DOUBLE, not float. Java's Math.sin/cos/tan are double, and the game calls them on LARGE
+    # arguments -- e.g. sin(System.currentTimeMillis()/100.0) for the pulsing block-highlight alpha. `sinf`
+    # cannot range-reduce an argument that large (it returns NaN on the 360 PPC CRT), which packed the
+    # highlight's alpha to 0 -> invisible. `sin` (double, native on PPC -> no perf cost) reduces correctly.
+    # J2X-BUGFIX trig-double-precision.
+    'abs': 'abs', 'sqrt': 'sqrtf', 'sin': 'sin', 'cos': 'cos', 'tan': 'tan',
+    'atan': 'atan', 'atan2': 'atan2', 'asin': 'asin', 'acos': 'acos',
     'floor': 'floorf', 'ceil': 'ceilf', 'pow': 'powf', 'exp': 'expf', 'log': 'logf',
     'min': 'min', 'max': 'max',
     # Math.round(x) returns an integer (round-half-up); overloaded free-function shim in the prelude

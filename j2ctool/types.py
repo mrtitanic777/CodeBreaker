@@ -14,7 +14,23 @@ cpp_type(jtype, context) produces the C++ spelling for a field / param / return 
 local / generic-or-array element, applying the proven array and string rules.
 """
 
+import collections
+
 from . import typemap
+
+
+class OwnershipCatalog(collections.namedtuple(
+        'OwnershipCatalog', 'return_methods scalar_methods retained_params corpus_methods')):
+    """Whole-program no-GC caller-frees facts the source emitter consults:
+      return_methods  -- method names that return a freshly-built OWNED container (Pattern A cleanup)
+      scalar_methods  -- {name: cpp_elem_type} of methods that return a fresh heap SCALAR (Pattern B)
+      retained_params -- {name: {arg positions}} the method retains -> a temp there must NOT be freed
+      corpus_methods  -- every method name in the corpus (so retention of unknown callees stays unsafe)"""
+    __slots__ = ()
+
+    @classmethod
+    def empty(cls):
+        return cls(frozenset(), {}, {}, set())
 
 
 class TypeResolver(object):
@@ -43,6 +59,9 @@ class TypeResolver(object):
         self.members = members or {}
         # {class: set(method names colliding with a field)} -> emit those methods as `name_`
         self.method_renames = method_renames or {}
+        # whole-program no-GC ownership catalog (caller-frees analysis for the source emitter). Populated
+        # by pipeline.build_resolver over the whole corpus; empty in unit tests that don't set it.
+        self.own_catalog = OwnershipCatalog.empty()
 
     def renamed_method(self, class_name, method_name):
         """The C++ emit name for a method: `name_` if it collides with a same-named field in

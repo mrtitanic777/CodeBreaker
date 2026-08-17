@@ -22,7 +22,8 @@ from . import naming, ownership
 from .std_transforms import apply_std_transforms
 from .statements import (translate_body, _resolve_chains, _resolve_call_chains,
                          sub_outside_literals, _split_top_commas, _fix_numeric_suffixes,
-                         _rewrite_array_aggregates, _MATH, distribute_cast_into_ternaries)
+                         _rewrite_array_aggregates, _MATH, distribute_cast_into_ternaries,
+                         _balanced_paren)
 
 def _banner(cls_name, cpp_std=None, platform_label=None):
     std_label = cpp_std.label if cpp_std else 'C++03'
@@ -497,16 +498,22 @@ def _render_ctor(cls, m, resolver, ledger):
 # ---------------------------------------------------------------------------
 # destructor (Rule of Three: free heap allocated in constructors)
 # ---------------------------------------------------------------------------
-def _render_dtor(cls, owned, ledger):
+def _render_dtor(cls, resolver, ledger):
+    owned = ownership.owned_pointers(cls, resolver)
+    containers = ownership.owned_containers(cls, resolver)
     L = ['%s::~%s()' % (cls.name, cls.name), '{']
+    # container ELEMENTS first (an element may reference a scalar-owned sibling), then scalar pointers
+    for name in sorted(containers):
+        L.append('\tfor (int _i = 0; _i < %s%s; ++_i) { delete %s[_i]; }' % (name, containers[name], name))
     for name in sorted(owned):
         L.append('\tdelete%s %s;' % ('[]' if owned[name] else '', name))
         L.append('\t%s = NULL;' % name)
     L.append('}')
-    if owned and ledger is not None:
+    freed = sorted(list(owned) + list(containers))
+    if freed and ledger is not None:
         ledger.add(cls.name + '.cpp', Category.RISK,
                    'Rule-of-Three: synthesized destructor frees %d heap-owning field(s): %s'
-                   % (len(owned), ', '.join(sorted(owned))),
+                   % (len(freed), ', '.join(freed)),
                    severity=Severity.MED, source='emit', rule='rule-of-three-dtor')
     return L
 
@@ -514,12 +521,131 @@ def _render_dtor(cls, owned, ledger):
 # ---------------------------------------------------------------------------
 # methods
 # ---------------------------------------------------------------------------
+# a local declaration `JList<T*> name = <rhs>;` (the JSet form too) -- candidate to receive an owned-return guard
+_OWNED_LOCAL_DECL = re.compile(r'^(\s*)(JList|JSet)\s*<\s*([A-Za-z_][\w:]*)\s*\*\s*>\s+([A-Za-z_]\w*)\s*=\s*(.+);\s*$')
+_CALL_NAME = re.compile(r'([A-Za-z_]\w*)\s*\(')
+
+
+def _elements_not_retained(var, text):
+    """True iff every use of `var` after its declaration is transient -- a container-level read
+    (`var.size()` / `var.length`) or an element used ONLY as a call receiver (`var[i]->m(...)`). Any other
+    use (element stored, whole container returned/passed) means an element may outlive the guard, so we
+    must NOT free -- return False and leave the leak (still flagged) rather than risk a dangling delete."""
+    v = re.escape(var)
+    for mo in re.finditer(r'\b%s\b' % v, text):
+        after = text[mo.end():]
+        if re.match(r'\s*\.\s*(?:size\s*\(\s*\)|length\b)', after):
+            continue
+        if re.match(r'\s*\[[^\]]*\]\s*->', after):
+            continue
+        return False
+    return True
+
+
+def _free_owned_returns(lines, resolver):
+    """Post-pass: after a `JList<T*> x = ...builder(...);` where `builder` hands back an owned container
+    (resolver.own_catalog.return_methods), drop an RAII `J2X_ScopedFreeElems` guard so the caller frees the
+    elements at scope exit -- the no-GC caller-frees contract (Level.getCubes -> new AABBs in Entity.move).
+    Only when the elements are used transiently, so the delete can never dangle."""
+    owned = resolver.own_catalog.return_methods
+    if not owned:
+        return lines
+    out = []
+    for idx, ln in enumerate(lines):
+        out.append(ln)
+        dm = _OWNED_LOCAL_DECL.match(ln)
+        if not dm:
+            continue
+        indent, kind, elem, var, rhs = dm.groups()
+        hit = sorted(set(_CALL_NAME.findall(rhs)) & owned)
+        if not hit:
+            continue
+        if not _elements_not_retained(var, '\n'.join(lines[idx + 1:])):
+            continue
+        out.append("%sJ2X_ScopedFreeElems<%s<%s*> > _j2xfree_%s(%s);   // J2X no-gc-return-leak: free the "
+                   "heap elements %s() handed back (caller-frees; Java GC'd them)"
+                   % (indent, kind, elem, var, var, '/'.join(hit)))
+    return out
+
+
+_RECV_PREFIX = re.compile(r'(?:[A-Za-z_]\w*\s*(?:->|\.|::)\s*)+$')   # `this->bb->` before a method name
+
+
+def _enclosing_call(line, inner_start):
+    """(outer_method_name, arg_position) of the call whose argument list DIRECTLY contains inner_start,
+    or None if inner_start isn't inside a call's parens. Scans left, tracking paren depth."""
+    depth, commas, i = 0, 0, inner_start - 1
+    while i >= 0:
+        ch = line[i]
+        if ch == ')':
+            depth += 1
+        elif ch == '(':
+            if depth == 0:
+                mm = re.search(r'([A-Za-z_]\w*)\s*$', line[:i])
+                return (mm.group(1), commas) if mm else None
+            depth -= 1
+        elif ch == ',' and depth == 0:
+            commas += 1
+        i -= 1
+    return None
+
+
+def _hoist_owned_scalar_args(lines, resolver):
+    """Post-pass (Pattern B): an owned-scalar builder call used INLINE as an argument -- `getCubes(bb->
+    expand(...))` -- leaks the temp. Hoist it to a local + RAII delete, but ONLY when the receiving method
+    is in-corpus and provably just reads that argument position (never retains it). Anything uncertain is
+    left untouched (the leak stays flagged) rather than risk a dangling free."""
+    cat = resolver.own_catalog
+    owned = cat.scalar_methods
+    if not owned:
+        return lines
+    corpus, retained = cat.corpus_methods, cat.retained_params
+    owned_re = re.compile(r'(?<![\w])(%s)\s*\(' % '|'.join(re.escape(n) for n in owned))
+    out, counter = [], [0]
+    for ln in lines:
+        indent = re.match(r'\s*', ln).group(0)
+        pre = []
+        for _ in range(8):                                        # bounded: at most a few owned temps / line
+            mm = owned_re.search(ln)
+            if not mm:
+                break
+            nm = mm.group(1)
+            close = _balanced_paren(ln, ln.index('(', mm.start()))
+            args_end = close + 1 if close >= 0 else -1
+            rp = _RECV_PREFIX.search(ln[:mm.start()])
+            expr_start = rp.start() if rp else mm.start()
+            enc = _enclosing_call(ln, expr_start)
+            if args_end < 0 or not enc:
+                break                                             # captured (not an arg) / malformed -> stop
+            outer, pos = enc
+            if outer not in corpus or pos in retained.get(outer, set()):
+                break                                             # receiver may retain the arg -> unsafe
+            counter[0] += 1
+            tmp, elem, expr = '_j2xarg_%d' % counter[0], owned[nm], ln[expr_start:args_end]
+            pre.append('%s%s* %s = %s;' % (indent, elem, tmp, expr))
+            pre.append("%sJ2X_ScopedDelete<%s > _j2xargd_%d(%s);   // J2X no-gc-arg-leak: free the heap %s "
+                       "that %s() returned (%s() only reads it)" % (indent, elem, counter[0], tmp, elem, nm, outer))
+            ln = ln[:expr_start] + tmp + ln[args_end:]
+        out.extend(pre)
+        out.append(ln)
+    return out
+
+
+# No-GC ownership cleanup passes over the translated body, in order. Each takes (lines, resolver) and
+# returns lines; Pattern B (hoist owned-scalar args) must run before Pattern A (free owned-return
+# containers) so the container guard sees the rewritten call. Add a pass here to grow the family.
+_OWNERSHIP_POSTPASSES = (_hoist_owned_scalar_args, _free_owned_returns)
+
+
 def _render_method(cls, m, resolver, ledger):
     ret = ownership.return_cpp_type(m, resolver)
     params = ownership.params_str(m, resolver)
     name = resolver.renamed_method(cls.name, m.name)   # field/method name-collision -> name_
     L = ['%s %s::%s(%s)' % (ret, cls.name, name, params), '{']
-    L.extend('\t' + s for s in translate_body(m, cls, resolver, ledger))
+    body = list(translate_body(m, cls, resolver, ledger))
+    for _pass in _OWNERSHIP_POSTPASSES:
+        body = _pass(body, resolver)
+    L.extend('\t' + s for s in body)
     L.append('}')
     return L
 
@@ -606,7 +732,7 @@ def _render_typed_enum_source(cls, resolver, ledger, cpp_std, platform_label):
 
     for m in cls.constructors():
         body += _render_ctor(cls, m, resolver, ledger) + ['']
-    body += _render_dtor(cls, ownership.owned_pointers(cls, resolver), ledger) + ['']
+    body += _render_dtor(cls, resolver, ledger) + ['']
     for m in cls.methods:
         if not m.is_ctor and not m.is_abstract:
             body += _render_method(cls, m, resolver, ledger) + ['']
@@ -716,7 +842,7 @@ def render_source(cls, resolver, ledger=None, cpp_std=None, platform_label=None)
             L2.append('\t: ' + '\n\t, '.join(items))
         L2 += ['{'] + ['\t' + l for l in inits] + ['}']
         body += L2 + ['']
-    body += _render_dtor(cls, ownership.owned_pointers(cls, resolver), ledger) + ['']
+    body += _render_dtor(cls, resolver, ledger) + ['']
     for m in cls.methods:
         if m.is_ctor or m.is_abstract:
             continue
