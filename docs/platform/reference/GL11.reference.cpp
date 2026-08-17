@@ -49,6 +49,31 @@ static IDirect3DPixelShader9*  g_ps = 0;
 void glSetDevice(IDirect3DDevice9* dev) { g_dev = dev; }
 IDirect3DDevice9* device() { return g_dev; }
 
+// --------------------------------------------------------------------------- stream-source binding
+// FIXED BUG vb-released-while-bound: SetStreamSource was called once per display-list batch and NEVER
+// unset, so stream 0 stayed bound to the last list's vertex buffer indefinitely. Then:
+//   * glNewList re-recording a list -> _freeBatchVBs Release()s a VB that is STILL the bound stream
+//     ("You can't do a final 'Release' on a resource that is still set in a D3D device", followed by
+//     "Was the VertexBuffer structure memory at 0x... already freed?" and the INTREFCOUNT assertion);
+//   * a later Lock/validate sees a slot pointing at freed memory ("Invalid 'Common' field (resource
+//     probably already freed)", "The specified vertex buffer is being modified while still currently
+//     set in a D3D device ... un-set it first");
+//   * DrawPrimitiveUP (immediate/entity path) swaps in its own internal resource, so the stale binding
+//     also produced "the resource's type doesn't match the type expected by the API. Expected type
+//     VertexBuffer, got type ."
+// On the 360 the GPU runs asynchronously, so touching a resource it may still be reading forces the
+// driver to serialize -- which is why this showed up as a framerate collapse and unbuilt (black) chunks
+// rather than a clean crash. Bind through here (cached, so the state-cache work is preserved) and ALWAYS
+// unbind before releasing or locking a buffer.
+static IDirect3DVertexBuffer9* g_lastStreamVB = (IDirect3DVertexBuffer9*)~(size_t)0;   // sentinel
+
+static void _bindStream(IDirect3DVertexBuffer9* vb) {
+	if (!g_dev || vb == g_lastStreamVB) return;
+	g_dev->SetStreamSource(0, vb, 0, vb ? sizeof(GLVert) : 0);
+	g_lastStreamVB = vb;
+}
+static void _unbindStream() { _bindStream(0); }
+
 // --------------------------------------------------------------------------- matrix stacks
 static int g_matMode = GL_MODELVIEW;
 static std::vector<D3DXMATRIX> g_mv;      // modelview stack (top = back())
@@ -130,6 +155,9 @@ struct GLBatch {
 struct GLList { std::vector<GLBatch> batches; bool used; GLList() : used(false) {} };
 
 static void _freeBatchVBs(GLList& L) {
+	// Un-bind stream 0 FIRST: one of these buffers is very likely the currently-set stream (the list was
+	// just replayed), and releasing a bound resource is the vb-released-while-bound bug above.
+	_unbindStream();
 	for (size_t i = 0; i < L.batches.size(); ++i)
 		if (L.batches[i].vb) { L.batches[i].vb->Release(); L.batches[i].vb = 0; }
 	L.batches.clear();
@@ -268,6 +296,7 @@ void glInit() {
 	g_lastTex = (IDirect3DBaseTexture9*)~(size_t)0;
 	g_lastWrapS = g_lastWrapT = g_lastMag = -1;
 	g_lastWVPValid = false;
+	g_lastStreamVB = (IDirect3DVertexBuffer9*)~(size_t)0;   // sentinel: nothing known-bound on a fresh device
 }
 
 // =========================================================================== matrix ops
@@ -713,6 +742,9 @@ void glNewList(int list, int /*mode*/) {
 // Upload one list's staged CPU geometry into GPU vertex buffers. The DEVICE MUST BE OUT OF SCENE across the
 // call (the 360 backend rejects mid-scene creates); callers bracket it with EndScene/BeginScene.
 static void _createListVBs(GLList& L) {
+	// Lock() on a buffer the GPU may still be reading stalls the driver; a stale binding also makes the
+	// validator inspect a slot whose resource we are mid-write on. Unbind once for the whole upload pass.
+	_unbindStream();
 	for (size_t i = 0; i < L.batches.size(); ++i) {
 		GLBatch& b = L.batches[i];
 		if (b.vb || b.tris.empty()) continue;           // already uploaded (or nothing to upload)
@@ -762,10 +794,13 @@ void glCallList(int list) {
 		if (!b.vb || b.triCount <= 0) continue;
 		g_boundTex = b.tex; g_texEnabled = b.texEnabled;
 		_applyDrawState();
-		g_dev->SetStreamSource(0, b.vb, 0, sizeof(GLVert));
+		_bindStream(b.vb);
 		g_dev->DrawPrimitive(D3DPT_TRIANGLELIST, 0, b.triCount);
 	}
 	g_boundTex = saveTex; g_texEnabled = saveEn;
+	// Leave stream 0 empty. Holding the last list's VB bound past the draw is what let a later
+	// Release/Lock hit a live resource, and it also collides with DrawPrimitiveUP's internal buffer.
+	_unbindStream();
 }
 // glCallLists(IntBuffer): execute the ids in [position, limit) -- base() already folds the byte position
 // in, so read straight from it (the same contract glDrawArrays relies on). FontRenderer put()s glyph list
