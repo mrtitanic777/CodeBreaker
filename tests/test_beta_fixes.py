@@ -360,6 +360,28 @@ class TestSilentDispatchCommentChain(unittest.TestCase):
         self.assertTrue([x for x in found if x[3] == 'silent-dispatch'])
 
 
+class TestMathShadowing(unittest.TestCase):
+    """`float sin = (float)Math.sin(x);` -- the local `sin` shadows the math function within its own
+    initializer, so an unqualified `sin(x)` calls the (uncallable) local -> C2064. Emit `::sin`."""
+
+    def test_trig_locals_are_global_qualified(self):
+        src = ('package s;\npublic class E {\n'
+               '  public void m(float a) {\n'
+               '    float sin = (float)Math.sin(a);\n'
+               '    float cos = (float)Math.cos(a);\n  }\n}\n')
+        classes, r = _resolve(src)
+        out = '\n'.join(statements.translate_body(classes[0].method('m'), classes[0], r))
+        self.assertIn('::sin(', out)
+        self.assertIn('::cos(', out)
+
+    def test_renamed_math_fns_not_qualified(self):
+        # sqrt->sqrtf and round->javaMathRound differ from the Java name, so no local can shadow them.
+        src = ('package s;\npublic class E {\n  public void m(float a) { float r = (float)Math.sqrt(a); }\n}\n')
+        out = '\n'.join(statements.translate_body(_resolve(src)[0][0].method('m'), _resolve(src)[0][0], _resolve(src)[1]))
+        self.assertIn('sqrtf(', out)
+        self.assertNotIn('::sqrtf', out)
+
+
 class TestVirtualCallInCtorRule(unittest.TestCase):
     HDR = 'class Foo {\npublic:\n\tFoo();\n\tvirtual ~Foo();\n\tvirtual void init();\n};\n'
     CPP = 'Foo::Foo() {\n\tthis->init();\n}\n'

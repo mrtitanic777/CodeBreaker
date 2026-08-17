@@ -198,6 +198,16 @@ MATH_API = {
     'random': 'javaMathRandom', 'signum': 'javaMathSignum',
 }
 
+# EMIT form: global-qualify (`::sin`) ONLY the math functions whose C++ name is UNCHANGED from the Java
+# name (sin, cos, tan, abs, ...). Those are the only ones a same-named local can shadow within its own
+# initializer -- the `float sin = Math.sin(...)` C2064 from decompiled code (Entity.moveRelative). Names
+# that already differ (sqrt->sqrtf, round->javaMathRound) can't collide, and `min`/`max` stay unqualified
+# (they may be MSVC min/max MACROS, which `::` breaks). This is the map emit uses.
+MATH_API_EMIT = {
+    k: ('::' + v if (v == k and v not in ('min', 'max')) else v)
+    for k, v in MATH_API.items()
+}
+
 # User-defined C++ VALUE/struct types ('.' access, no heap). EMPTY by default: a Java class
 # is a REFERENCE type and must be a pointer to be universal + faithful (Minecraft's Vec3D /
 # AxisAlignedBB / MovingObjectPosition are reference types AND pooled -- modeling them as

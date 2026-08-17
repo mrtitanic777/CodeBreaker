@@ -93,7 +93,7 @@ def _static_ref(expr, resolver, own_statics=(), current=None):
                   lambda mm: '(%s)' % typemap.JAVA_TO_CPP.get(mm.group(1), mm.group(1)), expr)
     # Math.<fn> -> C math (sqrtf, floorf, javaMathRound, ...) -- same map the statement translator uses,
     # since a static initializer (e.g. NoiseGenerator2 = 0.5 * (Math.sqrt(3.0) - 1.0)) skips that pass.
-    expr = _MATH.sub(lambda mm: typemap.MATH_API.get(mm.group(1), mm.group(0)), expr)
+    expr = _MATH.sub(lambda mm: typemap.MATH_API_EMIT.get(mm.group(1), mm.group(0)), expr)
     # reference-type cast -> pointer cast: `(BlockGrass)(new BlockGrass(2))` -> `(BlockGrass*)(...)`,
     # `(Achievement)NULL` -> `(Achievement*)NULL`. Statement bodies get this via emit.statements'
     # `_cast`, but static initializers bypass the statement translator, so apply it here too. Only

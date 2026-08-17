@@ -1584,7 +1584,7 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
                r'j2xClassOf(typeid(\1))', s)
     s = re.sub(r'(?<![\w.>])getClass\s*\(\s*\)', 'j2xClassOf(typeid(*this))', s)
     # 4. Math.fn -> C math (sqrtf, sinf, ...)
-    s = _MATH.sub(lambda mm: typemap.MATH_API.get(mm.group(1), mm.group(0)), s)
+    s = _MATH.sub(lambda mm: typemap.MATH_API_EMIT.get(mm.group(1), mm.group(0)), s)
     # 5. KnownClass.member / Enum.CONST -> :: static access
     def _static(mm):
         recv, mem, paren = mm.group(1), mm.group(2), mm.group(3)
