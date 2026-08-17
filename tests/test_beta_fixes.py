@@ -292,6 +292,37 @@ class TestOwnedScalarArgCleanup(unittest.TestCase):
         self.assertNotIn('J2X_ScopedDelete', out)
 
 
+class TestOwnedReassignCleanup(unittest.TestCase):
+    """Reassigning an OWNED scalar pointer member leaks the previous object on the 360 (the Entity.bb /
+    setPos leak: Zombie.tick -> resetPos -> setPos allocates a new AABB every reset). The emitter must
+    delete-before-reassign -- but only for owned members, and idempotently."""
+
+    def _render(self, body):
+        from j2ctool.emit import source
+        src = ('package s;\npublic class Entity {\n  Level level; AABB bb;\n'
+               '  public Entity(Level level) { this.level = level; }\n%s\n}\n' % body)
+        classes, _ = pipeline.drop_synthetic_artifacts([parse.parse_source(src)])
+        pipeline.resolve_inheritance(classes)
+        pipeline.compute_mi_forwards(classes)
+        r = pipeline.build_resolver(classes)
+        return source.render_source(classes[0], r, Ledger())
+
+    def test_owned_reassign_gets_delete(self):
+        out = self._render('  public void setPos(float x) { this.bb = new AABB(x); }')
+        self.assertIn('delete this->bb;', out)
+        self.assertIn('this->bb = new AABB(x);', out)
+
+    def test_borrowed_member_not_deleted(self):
+        # `level` is assigned from a ctor param (borrowed) -> never delete-before-reassign it.
+        out = self._render('  public void rebind(Level l) { this.level = l; }')
+        self.assertNotIn('delete this->level;', out)
+
+    def test_idempotent_when_delete_already_present(self):
+        # a hand-written / template delete-before-reassign must NOT get a second delete.
+        out = self._render('  public void setPos(float x) { this.bb = new AABB(x); }')
+        self.assertEqual(out.count('delete this->bb;'), 1)   # setPos only (dtor uses `delete bb;`)
+
+
 class TestVirtualCallInCtorRule(unittest.TestCase):
     HDR = 'class Foo {\npublic:\n\tFoo();\n\tvirtual ~Foo();\n\tvirtual void init();\n};\n'
     CPP = 'Foo::Foo() {\n\tthis->init();\n}\n'

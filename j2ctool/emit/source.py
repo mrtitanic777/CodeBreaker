@@ -637,6 +637,27 @@ def _hoist_owned_scalar_args(lines, resolver):
 _OWNERSHIP_POSTPASSES = (_hoist_owned_scalar_args, _free_owned_returns)
 
 
+def _free_owned_reassigns(lines, owned_scalar):
+    """Reassigning an OWNED scalar pointer member leaks the previous object (Java GC'd it; the 360 does
+    not). Prepend `delete this->m;` before each `this->m = new .../factory` -- safe because every member
+    is NULL-initialized in the constructor's member-init list, and delete-of-NULL is a no-op. Idempotent:
+    skips a reassign already preceded by that delete (a hand-written one, or the raycast template's)."""
+    if not owned_scalar:
+        return lines
+    pat = re.compile(r'^(\s*)this->(%s)\s*=\s*(?:new\s|[A-Za-z_][\w:]*::(?:create|make|alloc|clone)[A-Za-z]\w*\s*\()'
+                     % '|'.join(re.escape(n) for n in owned_scalar))
+    out = []
+    for ln in lines:
+        m = pat.match(ln)
+        if m:
+            already = bool(out) and out[-1].strip() == ('delete this->%s;' % m.group(2))
+            if not already:
+                out.append('%sdelete this->%s;   // J2X no-gc-reassign-leak: free the previous owned %s'
+                           % (m.group(1), m.group(2), m.group(2)))
+        out.append(ln)
+    return out
+
+
 def _render_method(cls, m, resolver, ledger):
     ret = ownership.return_cpp_type(m, resolver)
     params = ownership.params_str(m, resolver)
@@ -645,6 +666,9 @@ def _render_method(cls, m, resolver, ledger):
     body = list(translate_body(m, cls, resolver, ledger))
     for _pass in _OWNERSHIP_POSTPASSES:
         body = _pass(body, resolver)
+    # delete-before-reassign for this class's owned SCALAR pointer members (the Entity.bb / setPos leak)
+    owned_scalar = [n for n, is_arr in ownership.owned_pointers(cls, resolver).items() if not is_arr]
+    body = _free_owned_reassigns(body, owned_scalar)
     L.extend('\t' + s for s in body)
     L.append('}')
     return L
