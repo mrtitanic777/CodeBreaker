@@ -272,16 +272,35 @@ def _cmd_convert(args):
     if not os.path.isdir(java_dir):
         print('ERROR: not a directory: %s' % java_dir)
         return 2
+    project = getattr(args, 'project', False)
     try:
         s = pipeline.convert(java_dir, out_dir,
                              cpp_std=getattr(args, 'cpp_std', 'C++03'),
                              platform=getattr(args, 'platform', None),
-                             platform_refs=getattr(args, 'platform_refs', False),
+                             platform_refs=getattr(args, 'platform_refs', False) or project,
                              sdk_override=getattr(args, 'sdk', None))
     except sdk.SdkNotFound as e:
         print('ERROR (SDK gate): %s' % e)
         return 3
     print('Converted %s -> %s' % (os.path.abspath(java_dir), os.path.abspath(out_dir)))
+    if project:
+        # One-step buildable project: preserve/re-emit config, then refresh the VS project file list. Each
+        # step is best-effort -- a missing SDK or .vcxproj is reported, never fatal to the conversion.
+        from . import platform_config, vcxproj
+        try:
+            _cfg, written, _info, _unv = platform_config.run(
+                out_dir, platform=(getattr(args, 'platform', None) or 'xbox360'),
+                sdk_override=getattr(args, 'sdk', None))
+            print('  project: config emitted (%d file(s), controller binds preserved)' % len(written))
+        except sdk.SdkNotFound as e:
+            print('  project: platform-config skipped (SDK gate): %s' % e)
+        except Exception as e:                       # noqa: BLE001 -- config must not abort the reconvert
+            print('  project: platform-config FAILED: %s' % e)
+        try:
+            vcxproj.run(out_dir)                      # prints its own byte/file-count status
+            print('  project: VS project + filters refreshed')
+        except Exception as e:                       # noqa: BLE001 -- vcxproj refresh must not abort
+            print('  project: vcxproj refresh FAILED: %s' % e)
     print('  target: %s / %s' % (s['platform'], s['cpp_std']))
     print('  parsed=%d  headers=%d  sources=%d'
           % (s['parsed'], s['headers'], s['sources']))
@@ -462,6 +481,11 @@ def main(argv=None):
     cp.add_argument('--platform-refs', dest='platform_refs', action='store_true',
                     help='Emit the REAL hand-written platform layer (GL->D3D9 emulator, audio, input, '
                          'socket) from docs/platform/reference/ instead of no-op stubs.')
+    cp.add_argument('--project', action='store_true',
+                    help='One-step reconvert: after converting, also (re)emit the platform config from '
+                         'the existing platform.config.json (preserving controller binds) and refresh the '
+                         'Visual Studio .vcxproj/.filters file list -- a buildable project, no GUI needed. '
+                         'Implies --platform-refs.')
     cp.add_argument('--sdk', default=None,
                     help='Path to the target platform SDK root (else auto-detected via env/standard '
                          'paths). A console platform with no located SDK is refused.')
