@@ -98,6 +98,13 @@
     <RunCodeAnalysis>true</RunCodeAnalysis>
     <CodeAnalysisRuleSet>AllRules.ruleset</CodeAnalysisRuleSet>
   </PropertyGroup>
+  <!-- RETAIL-LINKED DEBUG. The target is a RETAIL/RGH console, not a devkit, so this config links the
+       RETAIL Xbox 360 system libraries (d3d9.lib, xapilib.lib, ...) and the retail static CRT -- NEVER the
+       *d.lib debug runtimes. The debug D3D/XAM/audio runtimes require devkit-only kernel services; on a
+       retail console they either fail to init or (in an emulator) trip validation asserts like
+       "*VdGlobalDevice == NULL". App-level debugging is a SEPARATE axis: J2X_DEBUG turns on our own trace
+       log / HeapTrack (see companions/Common.h) with ZERO dependency on Microsoft's _DEBUG libraries.
+       Kept debuggable via Optimization=Disabled + full PDB. See notes/01-architecture-and-lifecycle.md. -->
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Xbox 360'">
     <ClCompile>
       <PrecompiledHeader>Use</PrecompiledHeader>
@@ -109,16 +116,17 @@
       <MinimalRebuild>true</MinimalRebuild>
       <BufferSecurityCheck>false</BufferSecurityCheck>
       <PrecompiledHeaderOutputFile>$(OutDir)$(ProjectName).pch</PrecompiledHeaderOutputFile>
-      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
-      <PreprocessorDefinitions>_DEBUG;_XBOX</PreprocessorDefinitions>
-      <CallAttributedProfiling>Callcap</CallAttributedProfiling>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <PreprocessorDefinitions>NDEBUG;_XBOX;J2X_DEBUG</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <ProgramDatabaseFile>$(OutDir)$(ProjectName).pdb</ProgramDatabaseFile>
-      <AdditionalDependencies>xuihtmld.lib;xuirund.lib;xuirenderd.lib;xapilibd.lib;d3d9d.lib;d3dx9d.lib;xgraphicsd.lib;xboxkrnl.lib;xnetd.lib;xaudiod2.lib;xactd3.lib;x3daudiod.lib;xmcored.lib;xbdm.lib;vcompd.lib;xinput2d.lib</AdditionalDependencies>
+      <AdditionalDependencies>xuihtml.lib;xuirun.lib;xuirender.lib;xapilib.lib;d3d9.lib;d3dx9.lib;xgraphics.lib;xboxkrnl.lib;xnet.lib;xaudio2.lib;xact3.lib;x3daudio.lib;xmcore.lib;vcomp.lib;xinput2.lib</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
+  <!-- CodeAnalysis: PREfast static analysis. Also retail-linked (same rationale as Debug above) so an
+       accidental deploy of this config still runs on a retail/RGH console. J2X_DEBUG keeps app tracing on. -->
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='CodeAnalysis|Xbox 360'">
     <ClCompile>
       <PrecompiledHeader>Use</PrecompiledHeader>
@@ -130,14 +138,13 @@
       <PREfast>AnalyzeOnly</PREfast>
       <BufferSecurityCheck>false</BufferSecurityCheck>
       <PrecompiledHeaderOutputFile>$(OutDir)$(ProjectName).pch</PrecompiledHeaderOutputFile>
-      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
-      <PreprocessorDefinitions>_DEBUG;_XBOX</PreprocessorDefinitions>
-      <CallAttributedProfiling>Callcap</CallAttributedProfiling>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <PreprocessorDefinitions>NDEBUG;_XBOX;J2X_DEBUG</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <ProgramDatabaseFile>$(OutDir)$(ProjectName).pdb</ProgramDatabaseFile>
-      <AdditionalDependencies>xuihtmld.lib;xuirund.lib;xuirenderd.lib;xapilibd.lib;d3d9d.lib;d3dx9d.lib;xgraphicsd.lib;xboxkrnl.lib;xnetd.lib;xaudiod2.lib;xactd3.lib;x3daudiod.lib;xmcored.lib;xbdm.lib;vcompd.lib;xinput2d.lib</AdditionalDependencies>
+      <AdditionalDependencies>xuihtml.lib;xuirun.lib;xuirender.lib;xapilib.lib;d3d9.lib;d3dx9.lib;xgraphics.lib;xboxkrnl.lib;xnet.lib;xaudio2.lib;xact3.lib;x3daudio.lib;xmcore.lib;vcomp.lib;xinput2.lib</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Profile|Xbox 360'">

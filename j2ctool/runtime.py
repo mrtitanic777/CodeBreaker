@@ -458,6 +458,33 @@ template<class T> inline std::ostream& operator<<(std::ostream& o, const JList<T
 	for (typename std::vector<T>::size_type i = 0; i < v.size(); ++i) { if (i) o << ", "; o << v[i]; }
 	return o << ']';
 }
+
+// J2X no-GC caller-frees cleanup: a builder method (e.g. Level.getCubes) returns a fresh container of
+// heap objects the CALLER now owns. Java GC reclaimed them; on the 360 the caller must delete them. The
+// converter drops one of these RAII guards right after such a call -- its destructor frees every element
+// at scope exit, so it is correct across early returns, breaks, and (were they enabled) exceptions. Only
+// emitted when the elements are used transiently (iterated, never stored), so the delete cannot dangle.
+template<class C> struct J2X_ScopedFreeElems {
+	C& _c;
+	explicit J2X_ScopedFreeElems(C& c) : _c(c) {}
+	~J2X_ScopedFreeElems() { for (int _i = 0; _i < (int)_c.size(); ++_i) delete _c[_i]; }
+private:
+	J2X_ScopedFreeElems(const J2X_ScopedFreeElems&);
+	J2X_ScopedFreeElems& operator=(const J2X_ScopedFreeElems&);
+};
+
+// J2X no-GC caller-frees cleanup for a single heap SCALAR: a builder returns `new X(...)` used inline as
+// a call argument (Level.getCubes(bb.expand(...))). The converter hoists it into a temp and hands the
+// temp here so its destructor frees it at scope exit -- emitted only when the receiving method provably
+// just reads the argument (never stores/returns it), so the delete cannot dangle.
+template<class T> struct J2X_ScopedDelete {
+	T* _p;
+	explicit J2X_ScopedDelete(T* p) : _p(p) {}
+	~J2X_ScopedDelete() { delete _p; }
+private:
+	J2X_ScopedDelete(const J2X_ScopedDelete&);
+	J2X_ScopedDelete& operator=(const J2X_ScopedDelete&);
+};
 #endif // JLIST_H
 '''
 

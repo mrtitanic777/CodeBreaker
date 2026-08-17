@@ -132,6 +132,187 @@ class TestHangRules(unittest.TestCase):
         found = list(rules.rule_hotpath_alloc('World.cpp', cpp, None, rules._PlatCtx('xbox360')))
         self.assertTrue(any(f[3] == 'hotpath-alloc' for f in found))
 
+    def test_hotpath_alloc_skips_constructor_loop(self):
+        # a `new` in a loop inside a CONSTRUCTOR builds a fixed structure ONCE per object -- not a
+        # per-frame allocation storm, so it must not be flagged.
+        cpp = ('World::World() {\n  for (int i = 0; i < n; ++i) {\n'
+               '    this->chunks[i] = new Chunk(i);\n  }\n}\n')
+        found = list(rules.rule_hotpath_alloc('World.cpp', cpp, None, rules._PlatCtx('xbox360')))
+        self.assertFalse(any(f[3] == 'hotpath-alloc' for f in found))
+
+
+class TestOwnershipBroadening(unittest.TestCase):
+    """No-GC ownership: the destructor must free EVERY heap member -- factory- and init()-allocated,
+    scalar and container -- but NEVER a borrowed (passed-in) pointer, which would double-free."""
+
+    def _cls(self, src, name):
+        from j2ctool.emit import ownership
+        classes, r = _resolve(src)
+        c = [c for c in classes if c.name == name][0]
+        return c, r, ownership
+
+    def test_factory_and_init_allocations_owned(self):
+        # allocations in a NON-constructor (init) and via a create* factory are owned, not just ctor `new`.
+        src = ('package s;\npublic class Game {\n'
+               '  Timer timer; Level level; FloatBuffer buf;\n'
+               '  public Game() { this.timer = new Timer(); this.buf = BufferUtils.createFloatBuffer(4); }\n'
+               '  public void init() { this.level = new Level(); }\n'
+               '}\n')
+        c, r, own = self._cls(src, 'Game')
+        owned = own.owned_pointers(c, r)
+        self.assertEqual({'timer', 'level', 'buf'}, set(owned))
+
+    def test_borrowed_param_pointer_not_owned(self):
+        # `this.level = level;` (from a ctor param) is a BORROW -- deleting it double-frees the real owner.
+        src = ('package s;\npublic class Renderer {\n'
+               '  Level level; Tess t;\n'
+               '  public Renderer(Level level) { this.t = new Tess(); this.level = level; }\n'
+               '}\n')
+        c, r, own = self._cls(src, 'Renderer')
+        owned = own.owned_pointers(c, r)
+        self.assertIn('t', owned)
+        self.assertNotIn('level', owned)
+        self.assertTrue(own.owns_heap(c, r))          # still owns t -> non-copyable
+
+    def test_ambiguous_field_excluded(self):
+        # a field allocated in one path and aliased to a param in another is ambiguous -> not deleted.
+        src = ('package s;\npublic class C {\n  Node n;\n'
+               '  public C() { this.n = new Node(); }\n'
+               '  public void set(Node x) { this.n = x; }\n}\n')
+        c, r, own = self._cls(src, 'C')
+        self.assertNotIn('n', own.owned_pointers(c, r))
+
+    def test_container_of_new_owned_listener_list_not(self):
+        # a list every element of which is `new` is owned (loop-delete); a list of passed-in observers isn't.
+        src = ('package s;\nimport java.util.List;\npublic class W {\n'
+               '  List<Zombie> zombies; List<Listener> listeners;\n'
+               '  public void spawn() { this.zombies.add(new Zombie()); }\n'
+               '  public void addListener(Listener l) { this.listeners.add(l); }\n'
+               '}\n')
+        c, r, own = self._cls(src, 'W')
+        cont = own.owned_containers(c, r)
+        self.assertIn('zombies', cont)
+        self.assertNotIn('listeners', cont)
+
+    def test_dtor_frees_scalars_and_container_not_borrowed(self):
+        src = ('package s;\nimport java.util.List;\npublic class Game {\n'
+               '  Level level; Timer timer; List<Zombie> zombies;\n'
+               '  public Game() { this.timer = new Timer(); }\n'
+               '  public void init() { this.level = new Level(); this.zombies.add(new Zombie()); }\n'
+               '}\n')
+        c, r, own = self._cls(src, 'Game')
+        from j2ctool.emit import source
+        dtor = '\n'.join(source._render_dtor(c, r, Ledger()))
+        self.assertIn('delete timer;', dtor)
+        self.assertIn('delete level;', dtor)
+        self.assertIn('delete zombies[_i];', dtor)
+
+
+class TestOwnedReturnCleanup(unittest.TestCase):
+    """A builder method returns a container of heap objects the CALLER must free (Level.getCubes ->
+    new AABBs, iterated then discarded in Entity.move). The emitter drops an RAII element-deleter after
+    the call -- but only when it's a fresh owned container AND the elements are used transiently."""
+
+    LEVEL = ('package s;\nimport java.util.ArrayList;\npublic class Level {\n'
+             '  public ArrayList<AABB> getCubes(AABB box) {\n'
+             '    ArrayList<AABB> cubes = new ArrayList<AABB>();\n'
+             '    cubes.add(new AABB(0,0,0,1,1,1));\n    return cubes;\n  }\n}\n')
+
+    def _entity(self, body):
+        from j2ctool.emit import source
+        ent = ('import java.util.ArrayList;\npackage s;\npublic class Entity {\n  Level level; AABB bb; AABB sel;\n'
+               '  public void move() {\n%s\n  }\n}\n' % body)
+        classes, _ = pipeline.drop_synthetic_artifacts([parse.parse_source(self.LEVEL), parse.parse_source(ent)])
+        pipeline.resolve_inheritance(classes)
+        pipeline.compute_mi_forwards(classes)
+        r = pipeline.build_resolver(classes)
+        e = [c for c in classes if c.name == 'Entity'][0]
+        return source.render_source(e, r, Ledger()), r
+
+    def test_getcubes_recognized_as_owned_return(self):
+        _out, r = self._entity('    ArrayList<AABB> a = this.level.getCubes(this.bb);')
+        self.assertIn('getCubes', r.own_catalog.return_methods)
+
+    def test_guard_emitted_for_transient_use(self):
+        out, _ = self._entity('    ArrayList<AABB> aABBs = this.level.getCubes(this.bb);\n'
+                              '    for (int i = 0; i < aABBs.size(); i++) { aABBs.get(i).clipYCollide(this.bb, 0.0F); }')
+        self.assertIn('J2X_ScopedFreeElems<JList<AABB*> > _j2xfree_aABBs(aABBs);', out)
+
+    def test_guard_skipped_when_element_retained(self):
+        # element stored into a field -> it outlives the guard; freeing would dangle, so DO NOT guard.
+        out, _ = self._entity('    ArrayList<AABB> aABBs = this.level.getCubes(this.bb);\n'
+                              '    this.sel = aABBs.get(0);')
+        self.assertNotIn('J2X_ScopedFreeElems', out)
+
+    def test_borrowed_return_not_owned(self):
+        from j2ctool.emit import ownership
+        # a getter that returns a FIELD (a borrowed view) must never be treated as owned-return.
+        src = ('package s;\nimport java.util.ArrayList;\npublic class Pool {\n  ArrayList<AABB> all;\n'
+               '  public ArrayList<AABB> getAll() { return this.all; }\n}\n')
+        classes, r = _resolve(src)
+        self.assertNotIn('getAll', ownership.owned_return_container_methods(classes, r))
+
+
+class TestOwnedScalarArgCleanup(unittest.TestCase):
+    """Pattern B: an owned-scalar builder (`AABB.expand -> new AABB`) used inline as an argument leaks.
+    Hoist + RAII-delete it, but ONLY when the receiving method provably just reads that argument."""
+
+    AABB = ('package s;\npublic class AABB {\n  float x0;\n'
+            '  public AABB expand(float a) { return new AABB(); }\n}\n')
+
+    def _render(self, sink_cls, move_body):
+        from j2ctool.emit import source
+        ent = ('package s;\npublic class Entity {\n  Sink sink; AABB bb;\n'
+               '  public void move() {\n%s\n  }\n}\n' % move_body)
+        classes, _ = pipeline.drop_synthetic_artifacts(
+            [parse.parse_source(self.AABB), parse.parse_source(sink_cls), parse.parse_source(ent)])
+        pipeline.resolve_inheritance(classes)
+        pipeline.compute_mi_forwards(classes)
+        r = pipeline.build_resolver(classes)
+        e = [c for c in classes if c.name == 'Entity'][0]
+        return source.render_source(e, r, Ledger())
+
+    READER = ('package s;\npublic class Sink {\n'
+              '  public int take(AABB a) { return (int)a.x0; }\n}\n')          # only READS the arg
+    RETAINER = ('package s;\npublic class Sink {\n  AABB kept;\n'
+                '  public int take(AABB a) { this.kept = a; return 0; }\n}\n')  # STORES the arg
+
+    def test_hoist_when_receiver_only_reads(self):
+        out = self._render(self.READER, '    this.sink.take(this.bb.expand(1.0F));')
+        self.assertIn('J2X_ScopedDelete<AABB >', out)
+        self.assertIn('= this->bb->expand(1.0F);', out)
+
+    def test_no_hoist_when_receiver_retains_arg(self):
+        out = self._render(self.RETAINER, '    this.sink.take(this.bb.expand(1.0F));')
+        self.assertNotIn('J2X_ScopedDelete', out)          # store -> would dangle -> leave it
+
+    def test_no_hoist_when_result_captured(self):
+        # `AABB a = bb.expand(...)` captures the result in a local; it's not an uncaptured temp arg.
+        out = self._render(self.READER, '    AABB a = this.bb.expand(1.0F);\n    this.sink.take(a);')
+        self.assertNotIn('J2X_ScopedDelete', out)
+
+
+class TestVirtualCallInCtorRule(unittest.TestCase):
+    HDR = 'class Foo {\npublic:\n\tFoo();\n\tvirtual ~Foo();\n\tvirtual void init();\n};\n'
+    CPP = 'Foo::Foo() {\n\tthis->init();\n}\n'
+
+    def test_flagged_when_hierarchy_unknown(self):
+        # per-file / unit-test call: override_pairs is None -> stay conservative and flag.
+        found = list(rules.rule_virtual_call_in_ctor('Foo.cpp', self.CPP, self.HDR, rules._PlatCtx('xbox360')))
+        self.assertTrue(any(f[3] == 'virtual-call-in-ctor' for f in found))
+
+    def test_not_flagged_when_no_subclass_overrides(self):
+        plat = rules._PlatCtx('xbox360')
+        plat.override_pairs = frozenset()          # whole tree known; nobody overrides Foo::init
+        found = list(rules.rule_virtual_call_in_ctor('Foo.cpp', self.CPP, self.HDR, plat))
+        self.assertFalse(found)
+
+    def test_flagged_when_a_subclass_overrides(self):
+        plat = rules._PlatCtx('xbox360')
+        plat.override_pairs = frozenset({('Foo', 'init')})
+        found = list(rules.rule_virtual_call_in_ctor('Foo.cpp', self.CPP, self.HDR, plat))
+        self.assertTrue(any(f[3] == 'virtual-call-in-ctor' for f in found))
+
     def test_infinite_loop_flagged_without_break(self):
         cpp = 'void A::b() {\n  while (true) {\n    doStuff();\n  }\n}\n'
         found = list(rules.rule_infinite_loop('A.cpp', cpp, None, rules._PlatCtx('xbox360')))
@@ -294,6 +475,27 @@ class TestSideEffectInBranchRule(unittest.TestCase):
         cpp = 'bool R::a() {\n  if (cond) {\n    return true;\n  }\n  return false;\n}\n'
         found = list(rules.rule_side_effect_in_branch('R.cpp', cpp, None, rules._PlatCtx('xbox360')))
         self.assertFalse(found)
+
+    def test_return_value_call_not_flagged(self):
+        # `return f(x);` is not a side-effecting STATEMENT -- the call is the returned value. (Textures
+        # cache-hit `return map.get(k);`, Input `return std::string(s);` were false positives.)
+        cpp = ('std::string R::a() {\n  if (cache.containsKey(k)) { return cache.get(k); }\n'
+               '  return std::string();\n}\n')
+        found = list(rules.rule_side_effect_in_branch('R.cpp', cpp, None, rules._PlatCtx('xbox360')))
+        self.assertFalse(found)
+
+    def test_nested_early_return_guard_not_flagged(self):
+        # `if (flg & 4) { if (p > n) return -1; p += 2; }` -- reducing `return -1;` must not leave
+        # `if (...) ;` that reads as an impure call (the Inflate gzip-header false positive).
+        cpp = 'int R::a() {\n  if (flg & 4) { if (p > n) return -1; p += 2; }\n  return p;\n}\n'
+        found = list(rules.rule_side_effect_in_branch('R.cpp', cpp, None, rules._PlatCtx('xbox360')))
+        self.assertFalse(found)
+
+    def test_real_side_effect_assignment_flagged(self):
+        # a genuine guarded side effect (`this->x = new ...; return;`) still flags.
+        cpp = ('void R::a() {\n  if (isHit) {\n    this->hit = new HitResult(1);\n    return;\n  }\n}\n')
+        found = list(rules.rule_side_effect_in_branch('R.cpp', cpp, None, rules._PlatCtx('xbox360')))
+        self.assertTrue(any(f[3] == 'side-effect-in-branch' for f in found))
 
 
 class TestSideEffectOrdering(unittest.TestCase):

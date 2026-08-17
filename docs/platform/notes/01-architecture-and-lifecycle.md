@@ -177,6 +177,29 @@ Link libraries (`<AdditionalDependencies>`), per config (debug `*d`, instr `*i`,
 - Release_LTCG swaps in `d3d9ltcg.lib; xact3ltcg.lib; x3daudioltcg.lib; xmcoreltcg.lib`.
 - `vcomp(d).lib` = OpenMP; `xbdm.lib` = debug monitor; `xnet` present but networking is stubbed.
 
+> **Converter deviation — Debug is RETAIL-linked (RGH target, not a devkit).**
+> The stock XDK layout above links the `*d.lib` DEBUG system runtimes in the Debug/CodeAnalysis
+> configs. Those debug runtimes (`d3d9d`, `xapilibd`, `xaudiod2`, ...) require **devkit-only** kernel
+> services. On a **retail/RGH console** — the actual deploy target — they cannot initialize; under the
+> Nexia360 emulator they surface as the boot assertion `ERR[D3D]: *VdGlobalDevice == NULL` /
+> "There's already an active D3D device object" (the debug D3D runtime asserting because the emulator
+> pre-creates a device during its own GPU-thread boot). Retail games never link the debug runtime, which
+> is why that assertion never appears in any shipped title.
+>
+> The converter (`j2ctool/templates/xbox360.vcxproj.in`) therefore makes **Debug and CodeAnalysis
+> retail-linked**: retail system libs (`d3d9.lib`, `xapilib.lib`, ...) + retail static CRT
+> (`MultiThreaded`) + `NDEBUG`, while keeping `Optimization=Disabled` + full PDB so it stays debuggable.
+> App-level debugging is a **separate axis** — the `J2X_DEBUG` define (set here) drives our own trace log
+> / HeapTrack via `companions/Common.h`, with **zero** dependency on Microsoft's `_DEBUG` libraries.
+> Rule: *toggling app debugging must never pull in the debug system libraries.* Profile/Release/LTCG are
+> unchanged (already retail/instrumented/ltcg per the table above).
+>
+> Same reason, second facet: **Call-Attributed Profiling is disabled in Debug/CodeAnalysis.** The stock
+> XDK Debug config sets `<CallAttributedProfiling>Callcap</CallAttributedProfiling>`, which injects
+> `__CAP_Enter_Function`/`__CAP_Exit_Function` at every function boundary — hooks that only the
+> debug/instrumented libs (`xapilibd`/`xapilibi`) resolve. With retail libs they link-error (LNK2019).
+> Callcap belongs to the Profile configs (which keep it); a retail-linked Debug build must not set it.
+
 XDK paths: **no `<AdditionalIncludeDirectories>` / `<AdditionalLibraryDirectories>` are set** — the
 project relies on the XDK's default include/lib environment (SDK installed at
 `C:/Program Files (x86)/Microsoft Xbox 360 SDK`; `XEDK` env var). The libs above resolve from the

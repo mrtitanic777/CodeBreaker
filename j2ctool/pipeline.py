@@ -70,6 +70,116 @@ def _trace_guest_throws(text):
     return '\n'.join(out)
 
 
+# --- Minecraft-family GL-selection picking -> screen-center raycast (xbox360) -----------------------
+# GL selection-mode picking (glRenderMode(GL_SELECT) + gluPickMatrix + a glPushName name stack) has NO
+# Direct3D equivalent. Stage 3 could only route the *calls* to the d3d9 layer, where they were software-
+# emulated -- fragile, viewport/cursor-dependent, and effectively non-functional on console. The correct
+# port replaces the whole idiom with a raycast (an ALGORITHM, not a call mapping), leaving the game with
+# ZERO GL selection semantics. This finalizer detects the idiom in emitted game code and rewrites it:
+#   * the DRIVER   -- a `Class::pick(` body containing GL_SELECT  -> screen-center voxel raycast
+#   * the RENDERER -- a body containing glPushName (name stack)   -> emptied (dead after the raycast)
+#   * the PICK CAM -- a body containing gluPickMatrix              -> emptied (dead after the raycast)
+# The raycast references Minecraft-family members (this->player{x,y,z,xo,yo,zo,xRot,yRot},
+# this->level->isSolidTile, this->hitResult, HitResult(x,y,z,o,face)); it is installed only when those
+# members are present in the file (can_raycast), so a non-Minecraft port is left untouched.
+_RAYCAST_PICK_BODY = (
+    "\n"
+    "\t// [J2X-BUGFIX raycast-pick] GL selection-mode picking has no Direct3D equivalent; replaced at the\n"
+    "\t// converter level with a screen-center raycast that ray-marches the voxel grid from the interpolated\n"
+    "\t// eye along the view vector. Emits the same HitResult(x,y,z,0,face); the face convention matches the\n"
+    "\t// place/destroy offsets in the game's render(). Also fixes the original per-frame HitResult leak.\n"
+    "\tdelete this->hitResult;\n"
+    "\tthis->hitResult = NULL;\n"
+    "\tif (this->player == NULL || this->level == NULL) { return; }\n"
+    "\tconst float j2xD2R = 3.14159265358979f / 180.0f;\n"
+    "\tfloat yawRad   = this->player->yRot * j2xD2R;\n"
+    "\tfloat pitchRad = this->player->xRot * j2xD2R;\n"
+    "\t// Camera-forward vector (world space) for the RubyDung view matrix Rx(xRot)*Ry(yRot):\n"
+    "\t//   forward = ( sin(yaw)cos(pitch), -sin(pitch), -cos(yaw)cos(pitch) ).\n"
+    "\t// xRot is POSITIVE looking DOWN (Entity::turn does xRot -= yo), hence dirY = -sin(pitch); the\n"
+    "\t// horizontal signs match where the CAMERA looks (not RubyDung's movement-forward, which is opposite).\n"
+    "\tfloat dirX =  sinf(yawRad) * cosf(pitchRad);\n"
+    "\tfloat dirY = -sinf(pitchRad);\n"
+    "\tfloat dirZ = -cosf(yawRad) * cosf(pitchRad);\n"
+    "\tfloat px = this->player->xo + (this->player->x - this->player->xo) * a;\n"
+    "\tfloat py = this->player->yo + (this->player->y - this->player->yo) * a;\n"
+    "\tfloat pz = this->player->zo + (this->player->z - this->player->zo) * a;\n"
+    "\tint lastX = (int)floorf(px), lastY = (int)floorf(py), lastZ = (int)floorf(pz);\n"
+    "\tbool hadLast = false;\n"
+    "\tfor (float dist = 0.0f; dist < 5.0f; dist += 0.05f) {\n"
+    "\t\tint bx = (int)floorf(px + dirX * dist);\n"
+    "\t\tint by = (int)floorf(py + dirY * dist);\n"
+    "\t\tint bz = (int)floorf(pz + dirZ * dist);\n"
+    "\t\tif (this->level->isSolidTile(bx, by, bz)) {\n"
+    "\t\t\t// J2X-REVIEW[side-effect-in-branch]: confirmed intentional -- the raycast records exactly one\n"
+    "\t\t\t// HitResult under the solid-tile guard, then returns; the side effect must stay guarded here.\n"
+    "\t\t\tint face = 1;\n"
+    "\t\t\tif (hadLast) {\n"
+    "\t\t\t\tint dx = bx - lastX, dy = by - lastY, dz = bz - lastZ;\n"
+    "\t\t\t\tif (dy < 0) { face = 1; }\n"
+    "\t\t\t\telse if (dy > 0) { face = 0; }\n"
+    "\t\t\t\telse if (dz < 0) { face = 3; }\n"
+    "\t\t\t\telse if (dz > 0) { face = 2; }\n"
+    "\t\t\t\telse if (dx < 0) { face = 5; }\n"
+    "\t\t\t\telse if (dx > 0) { face = 4; }\n"
+    "\t\t\t}\n"
+    "\t\t\tthis->hitResult = new HitResult(bx, by, bz, 0, face);\n"
+    "\t\t\treturn;\n"
+    "\t\t}\n"
+    "\t\tlastX = bx; lastY = by; lastZ = bz; hadLast = true;\n"
+    "\t}\n"
+)
+_EMPTY_PICK_HELPER = (
+    "\n"
+    "\t// [J2X-BUGFIX raycast-pick] GL-selection helper removed -- pick() now raycasts the voxel grid\n"
+    "\t// directly, so this name-stack / pick-matrix code is dead (no GL selection semantics remain).\n"
+)
+
+
+def _convert_gl_pick_to_raycast(text):
+    """Rewrite the Minecraft-family GL-selection picking idiom to a raycast (see block comment above).
+    Operates on emitted C++ text. Matches only real method DEFINITIONS (`Class::method(...) {`), never
+    control-flow blocks, and brace-matches each body while skipping string/char literals."""
+    if 'GL_SELECT' not in text and 'glPushName' not in text and 'gluPickMatrix' not in text:
+        return text
+    import re as _re
+    can_raycast = ('this->player' in text and 'this->level' in text and 'this->hitResult' in text)
+    spans = []   # (body_start, body_end_excl, replacement) -- in order, non-overlapping
+    for m in _re.finditer(r'\b[A-Za-z_]\w*::[A-Za-z_]\w*\s*\([^;{}]*\)\s*(?:const\s*)?\{', text):
+        open_brace = m.end() - 1
+        i, n, depth, close = open_brace, len(text), 0, None
+        while i < n:
+            c = text[i]
+            if c == '"' or c == "'":
+                q = c; i += 1
+                while i < n:
+                    if text[i] == '\\': i += 2; continue
+                    if text[i] == q: break
+                    i += 1
+            elif c == '{': depth += 1
+            elif c == '}':
+                depth -= 1
+                if depth == 0: close = i; break
+            i += 1
+        if close is None:
+            continue
+        body = text[open_brace + 1:close]
+        repl = None
+        if 'GL_SELECT' in body and can_raycast:
+            repl = _RAYCAST_PICK_BODY
+        elif 'glPushName' in body or 'gluPickMatrix' in body:
+            repl = _EMPTY_PICK_HELPER      # dead GL-selection helper; safe to strip on D3D
+        if repl is not None:
+            spans.append((open_brace + 1, close, repl))
+    if not spans:
+        return text
+    out, idx = [], 0
+    for s, e, r in spans:
+        out.append(text[idx:s]); out.append(r); idx = e
+    out.append(text[idx:])
+    return ''.join(out)
+
+
 def _finalize_emitted(text):
     """Global text finalizers applied to EVERY emitted .h/.cpp (so they also catch source.py-emitted
     static-data arrays and inlined ctor bodies, not just method-body lines):
@@ -81,6 +191,7 @@ def _finalize_emitted(text):
     from .emit.statements import _wrap_new_alloc_chains, _wrap_literal_method, _paren_shift_operands
     text = sanitize_reserved_members(text)
     if _GL_TO_D3D9:
+        text = _convert_gl_pick_to_raycast(text)   # rip GL_SELECT picking -> raycast BEFORE the ns rename
         text = _convert_gl_to_d3d9(text)
     if _TRACE_THROWS:
         text = _trace_guest_throws(text)   # tag every throw with its site (throws are no-op landmines here)
@@ -92,6 +203,17 @@ def _finalize_emitted(text):
     # pointer deref of it is a cross-class member-env miss (a byte[] field reached through a typed pointer,
     # e.g. RenderEngine's var2->imageData->length). `->length(` (a method) and `->lengthX` are untouched.
     text = re.sub(r'->length\b(?!\s*\()', '.length', text)
+    # DISCARDED-NEW LEAK: a statement that is a bare `new X(...);` (allocation whose result is never stored)
+    # is a no-op in Java (the temporary is GC'd immediately) but LEAKS in C++. Faithful even in the original
+    # -- e.g. RubyDung.render() has Notch's stray `new Cube(0, 0);`. Rewrite to `delete new X(...);` so the
+    # ctor's side effects (if any) still run and the object is freed. Skips args containing a nested `new`
+    # (deleting the outer object could double-free the inner one) -- left as-is for manual review.
+    def _fix_discarded_new(_m):
+        indent, stmt = _m.group(1), _m.group(2)
+        if re.search(r'\bnew\b', stmt[3:]):
+            return _m.group(0)
+        return '%sdelete %s  // J2X-BUGFIX discarded-new-leak' % (indent, stmt)
+    text = re.sub(r'(?m)^(\s*)(new\s+[A-Za-z_][\w:]*\s*\([^;]*\)\s*;)\s*$', _fix_discarded_new, text)
     # `a - 3 >> 4` -> `(a - 3) >> 4`: parenthesize a shift's arithmetic operand (MSVC C4554). Behaviour-
     # preserving (Java/C++ agree additive/multiplicative binds tighter than shift); only silences the warn.
     return '\n'.join(_paren_shift_operands(_wrap_literal_method(_wrap_new_alloc_chains(ln)))
@@ -543,12 +665,23 @@ def build_resolver(classes, value_types=None):
     typed_enums = set(c.name for c in classes if c.is_enum and c.is_typed_enum())
     ifaces = set(c.name for c in classes if c.is_interface)
     vals = set(value_types if value_types is not None else typemap.DEFAULT_VALUE_TYPES)
-    return types.TypeResolver(known_classes=names, value_types=vals,
+    resolver = types.TypeResolver(known_classes=names, value_types=vals,
                              interface_types=ifaces, enum_types=enums,
                              typed_enum_types=typed_enums,
                              members=build_member_env(classes),
                              method_renames=build_method_renames(classes),
                              thread_like=compute_thread_like(classes))
+    # whole-program no-GC caller-frees catalog for the source emitter: owned containers (Level.getCubes ->
+    # new AABBs) get an RAII element-deleter at their call sites; owned scalar returns used inline as
+    # arguments (getCubes(bb.expand(...))) get hoisted + RAII-deleted, but only where the receiving method
+    # provably just reads the arg (retained_params / corpus_methods gate).
+    from .emit import ownership as _ownership
+    resolver.own_catalog = types.OwnershipCatalog(
+        return_methods=_ownership.owned_return_container_methods(classes, resolver),
+        scalar_methods=_ownership.owned_scalar_return_methods(classes, resolver),
+        retained_params=_ownership.retained_param_positions(classes),
+        corpus_methods=set(m.name for c in classes for m in c.methods if not m.is_ctor))
+    return resolver
 
 
 
@@ -596,6 +729,170 @@ _STD_MAP = {
 
 def _parse_std_version(label):
     return CppStandard(_STD_MAP.get(label, 2003))
+
+
+def _defined_symbols(text):
+    """Top-level symbols a translation unit DEFINES: class/struct names, the owner class of every `X::`
+    method definition, and free-function names (a `<ret> name(args) {` definition). Used by the prune to
+    keep an implementation file whose symbols live code links against even when NO file #includes it
+    directly (e.g. FileInputStream's ctor + the free function J2X_getResourceAsStream both live in
+    FileIO.cpp; Level/ImageIO reference them by name, not by including FileIO.h). Over-extraction only
+    causes over-KEEPING (safe); the goal is to never miss a real link dependency."""
+    import re as _re
+    syms = set()
+    for m in _re.finditer(r'\b(?:class|struct)\s+([A-Za-z_]\w*)', text):
+        syms.add(m.group(1))
+    # method/ctor/operator DEFINITION owner class: `Class::member(args) {` (has a body). Only DEFINITIONS
+    # match (trailing `{`), so `std::vector v;` / `d3d9::glClear(...);` USAGES are NOT captured -- otherwise
+    # every file would "provide" std/d3d9 and nothing could ever be pruned.
+    for m in _re.finditer(r'\b([A-Za-z_]\w*)::[~A-Za-z_]\w*\s*\([^;{}]*\)\s*(?:const\s*)?\{', text):
+        syms.add(m.group(1))
+    # free-function DEFINITION at column 0: `<ret> name(args) {`. No `:` allowed in the prefix, so a method
+    # definition (which has `Class::`) is NOT re-captured here as its bare method name.
+    for m in _re.finditer(r'(?m)^[A-Za-z_][\w<>,\*&\s]*?\b([A-Za-z_]\w*)\s*\([^;{}]*\)\s*(?:const\s*)?\{', text):
+        syms.add(m.group(1))
+    return syms
+
+
+def _coalesce_forwarders(out_dir, prog):
+    """Fold pure FORWARDER headers into their targets. A forwarder is a header whose only real content is a
+    single `#include "target.h"` -- a redirect that exists only because the Java code imported a name whose
+    C++ definition actually lives elsewhere (ByteBuffer.h -> NIOBuffers.h, Keyboard.h/Mouse.h -> Input.h,
+    Iterator.h -> JIterator.h). Rewrite every `#include "forwarder.h"` across the tree to the resolved
+    target and delete the forwarder. Safe and purely cosmetic: the TYPE stays defined in the target, so no
+    code changes -- only fewer files. Auto-detected, no curated list. Returns the removed filenames."""
+    import re as _re
+    _strip = lambda s: _re.sub(r'//[^\n]*', '', _re.sub(r'/\*.*?\*/', '', s, flags=_re.S))
+    inc_re = _re.compile(r'#\s*include\s+"([^"]+\.h)"')
+    guard_re = _re.compile(r'^\s*#\s*(?:ifndef|define|endif|pragma\b).*$')
+    onlyinc_re = _re.compile(r'^\s*#\s*include\s+"[^"]+\.h"\s*$')
+    raw = {}
+    for f in os.listdir(out_dir):
+        if f.endswith('.h') or f.endswith('.cpp'):
+            raw[f] = _read(os.path.join(out_dir, f))
+
+    fwd = {}   # forwarder filename -> the single target header it #includes
+    for f in raw:
+        if not f.endswith('.h'):
+            continue
+        body = _strip(raw[f])
+        incs = inc_re.findall(body)
+        meaningful = [ln for ln in body.splitlines() if ln.strip() and not guard_re.match(ln)]
+        if len(incs) == 1 and meaningful and all(onlyinc_re.match(ln) for ln in meaningful):
+            fwd[f] = incs[0]
+    if not fwd:
+        return []
+
+    def _resolve(h):                                  # follow forwarder chains to the real (non-fwd) target
+        seen = set()
+        while h in fwd and h not in seen:
+            seen.add(h); h = fwd[h]
+        return h
+    alias = {f: _resolve(f) for f in fwd}
+
+    for f in list(raw):
+        if f in fwd:
+            continue
+        new = inc_re.sub(lambda m: '#include "%s"' % alias.get(m.group(1), m.group(1)), raw[f])
+        if new != raw[f]:
+            _write(os.path.join(out_dir, f), new)
+
+    removed = []
+    for f in sorted(fwd):
+        try:
+            os.remove(os.path.join(out_dir, f)); removed.append(f)
+        except OSError:
+            pass
+    if removed:
+        prog('[coalesce] folded %d forwarder header(s) into their targets: %s'
+             % (len(removed), ', '.join(removed)))
+    return removed
+
+
+def _prune_unreferenced(out_dir, game_classes, prog):
+    """Full-product prune -- automatic dead-subsystem cut, no curated library list. ROOTS are the converted
+    GAME CORPUS + the entry/build spine + any file marked `J2X-ALWAYS-LINK`. A file is KEPT if either
+    (1) it is #include-reachable from a root, OR (2) it DEFINES a symbol that live code references by name
+    (the cross-named-implementation case: FileInputStream's ctor / J2X_getResourceAsStream are defined in
+    FileIO.cpp but declared in kept headers -- no #include reaches FileIO.cpp, yet the linker needs it).
+    Everything else -- whole platform bundles (audio, net) and unused java.* stubs the game never touches --
+    is a dead island and is dropped.
+
+    Soundness: rule (1) keeps a file's own #includes (closure -> nothing kept dangles an include); rule (2)
+    keeps any translation unit that supplies a symbol live code links against (-> no unresolved externals).
+    The residual is link-only side effects with no name reference at all (HeapTrack's operator new), handled
+    by the J2X-ALWAYS-LINK marker. Returns the list of dropped filenames."""
+    import re as _re
+    files = [f for f in os.listdir(out_dir) if f.endswith('.h') or f.endswith('.cpp')]
+    fileset = set(files)
+    _base = lambda f: f[:-2] if f.endswith('.h') else f[:-4]
+    inc_re = _re.compile(r'#\s*include\s+"([^"]+\.h)"')
+    _strip = lambda s: _re.sub(r'//[^\n]*', '', _re.sub(r'/\*.*?\*/', '', s, flags=_re.S))
+    incs, raw, code, provides = {}, {}, {}, {}
+    for f in files:
+        try:
+            with open(os.path.join(out_dir, f), encoding='utf-8', errors='replace') as _fh:
+                raw[f] = _fh.read()
+        except Exception:
+            raw[f] = ''
+        incs[f] = set(inc_re.findall(raw[f]))
+        code[f] = _strip(raw[f])
+        provides[f] = _defined_symbols(code[f])
+
+    # Build-critical spine + entry glue: always roots. These are reachable from the game anyway (it
+    # #includes JavaRT etc.); listing them is insurance so a scan gap can never drop the foundation.
+    FOUNDATION = ('stdafx', 'JavaRT', 'JavaString', 'JArray', 'JList', 'JMap', 'JSet', 'JObject', 'JCat',
+                  'Common', 'j2x_init', 'j2x_rtti', 'Main')
+    roots = set(game_classes) | set(FOUNDATION)
+    for f in files:                                   # link-critical files self-declare (HeapTrack, ...)
+        if 'J2X-ALWAYS-LINK' in raw[f]:
+            roots.add(_base(f))
+
+    reachable = set()
+
+    def _walk(seed_files):
+        stack = list(seed_files)
+        while stack:
+            f = stack.pop()
+            if f in reachable or f not in fileset:
+                continue
+            reachable.add(f)
+            if f.endswith('.h'):                       # a reached .h drags its .cpp partner (same TU)
+                cpp = _base(f) + '.cpp'
+                if cpp in fileset and cpp not in reachable:
+                    stack.append(cpp)
+            for inc in incs.get(f, ()):
+                if inc in fileset and inc not in reachable:
+                    stack.append(inc)
+
+    _walk([f for f in files if _base(f) in roots])
+    # Symbol-defense fixpoint: keep any file that DEFINES a name referenced by already-reachable CODE
+    # (catches cross-named implementation files the #include graph misses), then re-walk their includes.
+    changed = True
+    while changed:
+        changed = False
+        ref_idents = set()
+        for f in reachable:
+            ref_idents.update(_re.findall(r'\b[A-Za-z_]\w*\b', code[f]))
+        for f in files:
+            if f in reachable:
+                continue
+            if provides[f] & ref_idents:
+                _walk([f]); changed = True
+
+    dropped = []
+    for f in sorted(files):
+        if f in reachable or _base(f) in roots:
+            continue
+        try:
+            os.remove(os.path.join(out_dir, f)); dropped.append(f)
+        except OSError:
+            pass
+    if dropped:
+        prog('[prune] cut %d file(s) in dead subsystems no live #include reaches (%d subsystem(s)): %s'
+             % (len(dropped), len(set(_base(f) for f in dropped)),
+                ', '.join(sorted(set(_base(f) for f in dropped)))))
+    return dropped
 
 
 def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True,
@@ -806,6 +1103,19 @@ def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True,
         _kb = _kbm.run(out_dir)
         _prog('[keybind] tagged %d keyboard key-press site(s) -> KEYBIND_INDEX.md (route to controller/menu)'
               % len(_kb['sites']))
+
+    # FORWARDER COALESCE: fold pure redirect headers (ByteBuffer.h -> NIOBuffers.h, Keyboard.h -> Input.h)
+    # into their targets and delete them -- fewer files, no shims. Runs BEFORE the prune so the prune sees
+    # the rewritten (direct) include graph.
+    if platform:
+        _coalesce_forwarders(out_dir, _prog)
+
+    # DEAD-SUBSYSTEM PRUNE: full-product #include-reachability from the game corpus + entry. Any platform
+    # bundle or stub the game never reaches (audio, networking, unused java.* libs, dead desktop types) is
+    # cut whole -- no curated list. Runs LAST, after every file exists (emission + references + overlays),
+    # so it sees the final include graph. See _prune_unreferenced.
+    if platform:
+        _prune_unreferenced(out_dir, set(c.name for c in classes), _prog)
 
     # verify: run the crash-class rules over the emitted output (acceptance check)
     _prog('[rules] scanning crash-class rules on emitted output...')

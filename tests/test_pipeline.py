@@ -103,5 +103,179 @@ class TestPipeline(unittest.TestCase):
         self.assertIn('int Foo::getX()', cpp)
 
 
-if __name__ == '__main__':
+class TestGlSelectPickToRaycast(unittest.TestCase):
+    """The GL_SELECT picking idiom (glRenderMode/gluPickMatrix/glPushName name stack) has no D3D
+    equivalent; the xbox360 finalizer rewrites it to a screen-center voxel raycast."""
+
+    DRIVER = (
+        "void RubyDung::pick(float a)\n"
+        "{\n"
+        "\td3d9::glSelectBuffer(this->selectBuffer);\n"
+        "\td3d9::glRenderMode(d3d9::GL_SELECT);\n"
+        "\tthis->setupPickCamera(a, this->width / 2, this->height / 2);\n"
+        "\tthis->levelRenderer->pick(this->player);\n"
+        "\tint hits = d3d9::glRenderMode(d3d9::GL_RENDER);\n"
+        "\tif (this->player != NULL) { this->hitResult = new HitResult(1,2,3,0,1); }\n"
+        "\tthis->level->setTile(0,0,0,0);\n"   # forces this->level presence
+        "}\n"
+    )
+    CAMERA = (
+        "void RubyDung::setupPickCamera(float a, int x, int y)\n"
+        "{\n"
+        "\td3d9::gluPickMatrix(x, y, 5.0F, 5.0F, this->viewportBuffer);\n"
+        "}\n"
+    )
+    RENDERER = (
+        "void LevelRenderer::pick(Player* player)\n"
+        "{\n"
+        "\td3d9::glInitNames();\n"
+        "\td3d9::glPushName(0);\n"
+        "}\n"
+    )
+
+    def test_driver_becomes_raycast(self):
+        out = pipeline._convert_gl_pick_to_raycast(self.DRIVER)
+        self.assertNotIn('GL_SELECT', out)
+        self.assertNotIn('glRenderMode', out)
+        self.assertNotIn('glSelectBuffer', out)
+        self.assertIn('isSolidTile', out)                 # raycast body installed
+        self.assertIn('new HitResult(bx, by, bz, 0, face)', out)
+        self.assertEqual(out.count('void RubyDung::pick(float a)'), 1)   # header preserved
+
+    def test_helpers_emptied(self):
+        cam = pipeline._convert_gl_pick_to_raycast(self.CAMERA)
+        self.assertNotIn('gluPickMatrix', cam)
+        ren = pipeline._convert_gl_pick_to_raycast(self.RENDERER)
+        self.assertNotIn('glPushName', ren)
+        self.assertNotIn('glInitNames', ren)
+
+    def test_guard_leaves_non_minecraft_driver_untouched(self):
+        # No this->player / this->level / this->hitResult -> cannot raycast -> driver stays.
+        alien = (
+            "void Widget::pick(float a)\n"
+            "{\n"
+            "\td3d9::glRenderMode(d3d9::GL_SELECT);\n"
+            "\tdoStuff();\n"
+            "}\n"
+        )
+        out = pipeline._convert_gl_pick_to_raycast(alien)
+        self.assertIn('GL_SELECT', out)                   # left intact (no MC fields to raycast against)
+
+    def test_no_op_without_idiom(self):
+        plain = "void Foo::bar() {\n\treturn;\n}\n"
+        self.assertEqual(pipeline._convert_gl_pick_to_raycast(plain), plain)
+
+
+class TestPruneUnreferenced(unittest.TestCase):
+    """Full-product #include-reachability prune: a platform/stub file the game never reaches (audio, net,
+    unused libs, dead desktop types) is cut; reachable ones + link-critical J2X-ALWAYS-LINK files stay.
+    See pipeline._prune_unreferenced."""
+
+    def setUp(self):
+        self.out = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.out, ignore_errors=True)
+
+    def _w(self, name, text):
+        with open(os.path.join(self.out, name), 'w', encoding='utf-8') as f:
+            f.write(text)
+
+    def test_cuts_unreached_keeps_reachable_and_linkcritical(self):
+        # game corpus root: Level. It uses the texture path (Textures.h) which pulls BufferedImage.
+        self._w('Level.h', '#include "Textures.h"\nstruct Level{};\n')
+        self._w('Level.cpp', '#include "Level.h"\nvoid f(){}\n')
+        self._w('Textures.h', '#include "BufferedImage.h"\nstruct Textures{};\n')   # reached via Level
+        self._w('BufferedImage.h', 'struct BufferedImage{};\n')                     # reached via Textures
+        self._w('Audio.h', 'struct Audio{};\n')            # island -> CUT
+        self._w('Audio.cpp', '#include "Audio.h"\n')       # island -> CUT
+        self._w('Socket.h', 'struct Socket{};\n')          # island -> CUT
+        self._w('HeapTrack.cpp', '// J2X-ALWAYS-LINK\nvoid* operator new(unsigned){return 0;}\n')  # link-critical -> KEEP
+        self._w('stdafx.h', '// pch\n')
+        dropped = pipeline._prune_unreferenced(self.out, {'Level'}, lambda _s: None)
+        self.assertIn('Audio.h', dropped)
+        self.assertIn('Audio.cpp', dropped)
+        self.assertIn('Socket.h', dropped)
+        self.assertNotIn('Textures.h', dropped)        # reachable from Level
+        self.assertNotIn('BufferedImage.h', dropped)   # reachable via Textures
+        self.assertNotIn('HeapTrack.cpp', dropped)     # J2X-ALWAYS-LINK root
+        self.assertFalse(os.path.exists(os.path.join(self.out, 'Audio.h')))
+        self.assertTrue(os.path.exists(os.path.join(self.out, 'HeapTrack.cpp')))
+        self.assertTrue(os.path.exists(os.path.join(self.out, 'BufferedImage.h')))
+
+    def test_h_drags_cpp_partner_and_its_includes(self):
+        # Level -> Display.h; Display.cpp (partner) pulls Input.h. Input must survive via the .cpp partner.
+        self._w('Level.h', '#include "Display.h"\nstruct Level{};\n')
+        self._w('Display.h', 'struct Display{};\n')
+        self._w('Display.cpp', '#include "Display.h"\n#include "Input.h"\n')
+        self._w('Input.h', 'struct Input{};\n')
+        self._w('Orphan.h', 'struct Orphan{};\n')      # nothing reaches -> CUT
+        dropped = pipeline._prune_unreferenced(self.out, {'Level'}, lambda _s: None)
+        self.assertIn('Orphan.h', dropped)
+        self.assertNotIn('Input.h', dropped)           # reached through Display.cpp partner
+        self.assertNotIn('Display.cpp', dropped)
+
+    def test_cross_named_implementation_kept_by_symbol_defense(self):
+        # The real LNK bug: FileInputStream's ctor + a free function are DEFINED in FileIO.cpp but the
+        # game references them by NAME without including FileIO.h. Symbol-defense must keep FileIO.cpp.
+        self._w('Level.h', '#include "FileInputStream.h"\nstruct Level{};\n')
+        self._w('Level.cpp', '#include "Level.h"\nvoid f(){ FileInputStream* s = new FileInputStream(0);'
+                             ' InputStream* r = J2X_getResourceAsStream("x"); }\n')
+        self._w('FileInputStream.h', 'struct FileInputStream { FileInputStream(void*); };\n')  # decl only
+        self._w('FileIO.h', 'struct FileIO{};\n')
+        self._w('FileIO.cpp', '#include "FileIO.h"\n'
+                              'FileInputStream::FileInputStream(void*) {}\n'
+                              'InputStream* J2X_getResourceAsStream(const char* n) { return 0; }\n')
+        self._w('Audio.h', 'struct Audio{};\n')
+        self._w('Audio.cpp', '#include "Audio.h"\nvoid Audio::play() {}\n')   # symbol unreferenced -> CUT
+        dropped = pipeline._prune_unreferenced(self.out, {'Level'}, lambda _s: None)
+        self.assertNotIn('FileIO.cpp', dropped)        # defines FileInputStream:: + J2X_getResourceAsStream
+        self.assertNotIn('FileIO.h', dropped)          # dragged in via FileIO.cpp
+        self.assertIn('Audio.cpp', dropped)            # defines only Audio::, referenced nowhere live
+        self.assertIn('Audio.h', dropped)
+
+
+if __name__ == "__main__":
     unittest.main()
+
+
+class TestCoalesceForwarders(unittest.TestCase):
+    """Pure redirect headers (single #include, no body) are folded into their targets. See
+    pipeline._coalesce_forwarders."""
+
+    def setUp(self):
+        self.out = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.out, ignore_errors=True)
+
+    def _w(self, name, text):
+        with open(os.path.join(self.out, name), 'w', encoding='utf-8') as f:
+            f.write(text)
+
+    def test_folds_forwarder_and_rewrites_includes(self):
+        self._w('NIOBuffers.h', 'struct ByteBuffer{};\n')                       # real definition
+        self._w('ByteBuffer.h', '#ifndef BYTEBUFFER_H\n#define BYTEBUFFER_H\n#include "NIOBuffers.h"\n#endif\n')  # forwarder
+        self._w('Level.cpp', '#include "ByteBuffer.h"\nvoid f(){ ByteBuffer b; }\n')
+        removed = pipeline._coalesce_forwarders(self.out, lambda _s: None)
+        self.assertIn('ByteBuffer.h', removed)
+        self.assertFalse(os.path.exists(os.path.join(self.out, 'ByteBuffer.h')))  # forwarder gone
+        lvl = open(os.path.join(self.out, 'Level.cpp')).read()
+        self.assertIn('#include "NIOBuffers.h"', lvl)   # rewritten to target
+        self.assertNotIn('#include "ByteBuffer.h"', lvl)
+
+    def test_resolves_forwarder_chain(self):
+        self._w('Real.h', 'struct T{};\n')
+        self._w('Mid.h', '#include "Real.h"\n')          # forwarder -> forwarder
+        self._w('Top.h', '#include "Mid.h"\n')           # forwarder -> Mid -> Real
+        self._w('U.cpp', '#include "Top.h"\n')
+        removed = pipeline._coalesce_forwarders(self.out, lambda _s: None)
+        self.assertEqual(set(removed), {'Mid.h', 'Top.h'})
+        self.assertIn('#include "Real.h"', open(os.path.join(self.out, 'U.cpp')).read())
+
+    def test_real_header_not_touched(self):
+        self._w('Real.h', '#include "Other.h"\nstruct Real{};\n')   # has a body -> NOT a forwarder
+        self._w('Other.h', 'struct Other{};\n')
+        removed = pipeline._coalesce_forwarders(self.out, lambda _s: None)
+        self.assertEqual(removed, [])
+        self.assertTrue(os.path.exists(os.path.join(self.out, 'Real.h')))

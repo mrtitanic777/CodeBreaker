@@ -18,12 +18,24 @@ class Profile(object):
     def __init__(self, name, static_init_order=None, package_roles=None, heavy_types=None,
                  vcxproj_filters=None, nullable=None, nullable_fields=None, nullable_getters=None,
                  nullable_getter_return_type=None, unsigned_byte_scalar_fields=None,
-                 default_value_types=None):
+                 default_value_types=None, dead_types=None, optional_types=None):
         self.name = name
         self.static_init_order = list(static_init_order or [])
         self.package_roles = dict(package_roles or {})
         self.heavy_types = tuple(heavy_types or ())
         self.vcxproj_filters = list(vcxproj_filters or [])
+        # Anchored regex (string) matching class BASENAMES that are DEAD on this target -- external
+        # desktop/GUI types (java.awt / javax.swing / java.applet, org.w3c.dom) that cannot function on
+        # the console. The pipeline drops any dead type that is ALSO unreferenced (reachability is the
+        # safety net). Precise by design: explicit class names, never `\w*Listener`-style wildcards that
+        # would sweep in real game types. None -> the profile prunes nothing.
+        self.dead_types = dead_types
+        # Anchored regex (string) matching class BASENAMES of OPTIONAL platform SUBSYSTEMS -- self-contained
+        # 360 backend bundles (audio, networking, ...) that only matter if the game actually uses them.
+        # Pruned by the SAME reachability pass as dead_types: if no live file reaches the bundle, the whole
+        # bundle is dropped (a title with no sound / no netplay never ships the audio / net layer); if the
+        # game does use it, reachability keeps it. None -> nothing optional to prune.
+        self.optional_types = optional_types
         self.nullable = set(nullable or set())
         self.nullable_fields = set(nullable_fields or set())
         self.nullable_getters = set(nullable_getters or set())

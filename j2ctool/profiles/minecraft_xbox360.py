@@ -72,12 +72,39 @@ NULLABLE_GETTER_RETURN_TYPE = {
     'getReadThread': 'Thread', 'getWriteThread': 'Thread',
 }
 
+# DEAD external desktop/GUI types: java.awt / javax.swing / java.applet + org.w3c.dom, plus the
+# crash-report isometric-preview canvases. These cannot function on the console (no window, no AWT, no
+# DOM). The pipeline DROPS any of these that is also unreferenced (reachability is the safety net), so
+# no-op stubs for them are never brought into the port. PRECISE ON PURPOSE -- explicit class names, never
+# a `\w*Listener`/`\w*Event` wildcard, so a real game type (LevelListener, a game FooEvent) is never
+# swept in. Reachable ones (BufferedImage/Raster/Graphics/ImageIO on the texture-decode path) are kept
+# and grouped by the matching filter rule below. Shared as the prune predicate (profile.dead_types).
+DEAD_TYPES = (
+    r'^('
+    r'Frame|Panel|Canvas|Component|Applet|MinecraftApplet|Cursor|Robot|Toolkit|Clipboard'
+    r'|Transferable|DataFlavor|BorderLayout|GridLayout|FlowLayout|CardLayout|GridBagLayout'
+    r'|Window|Dialog|WindowAdapter|KeyAdapter|MouseAdapter|FocusAdapter|ComponentAdapter'
+    r'|KeyListener|MouseListener|MouseMotionListener|MouseWheelListener|WindowListener'
+    r'|ComponentListener|FocusListener|ActionListener|ContainerListener'
+    r'|KeyEvent|MouseEvent|MouseWheelEvent|WindowEvent|ComponentEvent|FocusEvent|InputEvent|ActionEvent'
+    r'|Graphics|Graphics2D|Font|FontMetrics|Rectangle|Dimension|Color|BufferStrategy'
+    r'|BufferedImage|Raster|WritableRaster|DataBuffer|DataBufferInt|ImageObserver|ImageIO'
+    r'|Document|DocumentBuilder|DocumentBuilderFactory|Node|NodeList|Element'
+    r'|Iso\w*|IsomPreview\w*'
+    r')$'
+)
+
+# NOTE: unused platform SUBSYSTEMS (audio, networking, unused java.* libraries, ...) are NOT curated
+# here -- pipeline._prune_unreferenced cuts any bundle the game never #includes, automatically, by
+# full-product reachability from the game corpus. DEAD_TYPES below is kept only for FILTER grouping of
+# the few external stubs that survive (used by the texture path), not for pruning.
+
 # Visual Studio .vcxproj/.filters classification: (basename regex, filter path). First match wins;
 # EVERY file must resolve to a filter (fallback 'Game (misc)'), never the project root.
 VCXPROJ_FILTERS = [
     # ---- j2ctool runtime & build glue -------------------------------------------------------------
-    (r'^Debug$', 'Debug'),
-    (r'^(JavaRT|JavaString|JArray|JList|JObject|JMap|JSet|JCat|Runnable|Iterator|Class|j2x_\w*|stdafx|Common|ReflectionFactory)$', 'Runtime'),
+    (r'^(Debug|HeapTrack|ThreadPool|Stack)$', 'Debug'),   # debug apparatus: trace log, heap watchdog, backtrace stack, worker pool
+    (r'^(JavaRT|JavaString|JArray|JList|JObject|JMap|JSet|JCat|Runnable|Iterator|Class|Runtime|j2x_\w*|stdafx|Common|ReflectionFactory)$', 'Runtime'),
 
     # ---- Platform layer: hand-written 360 backends + Java-stdlib bridges -----------------------
     (r'^(Kernel|KernelConfig|ControllerConfig|SDKConfig)$', 'Platform\\Config'),
@@ -88,7 +115,10 @@ VCXPROJ_FILTERS = [
     (r'^(Inflate|Inflater|InflaterInputStream|Deflater|DeflaterOutputStream|GZIP\w*|Zip\w*|DataFormatException)$', 'Platform\\Compression (zlib)'),
     (r'^(File\w*|Buffered(Input|Output|Reader|Writer)\w*|Data(Input|Output)\w*|(Input|Output)Stream\w*|ByteArray\w*Stream|Print\w*|StringReader|StringWriter|PushbackReader|InputStreamReader|Reader|Writer|RandomAccessFile|FileIO|EOFException|IOException|FileNotFoundException)$', 'Platform\\Java IO'),
     (r'^(Pattern|Matcher|Charset|Locale|Calendar|Date|GregorianCalendar|SimpleDateFormat|DateFormat|DecimalFormat|NumberFormat|Properties|Logger|BigInteger|MessageDigest|MD5\w*|ByteOrder|Reference|SoftReference)$', 'Platform\\Java util'),
-    (r'^(Frame|Panel|Canvas|Component\w*|Graphics\w*|Applet|MinecraftApplet|Cursor|Robot|Toolkit|Clipboard|Transferable|DataFlavor|\w*Layout|\w*Event|\w*Listener|\w*Adapter|Window\w*|Image\w*|BufferedImage|Raster|WritableRaster|DataBuffer\w*|Font|FontMetrics|Rectangle|Dimension|Color|Focus\w*|BufferStrategy|Document|DocumentBuilder\w*|Node|NodeList|Element)$', 'Platform\\AWT-Swing (dead)'),
+    # External java.awt/swing/applet + DOM stubs. The DEAD unreferenced ones are PRUNED before the project
+    # is written (see pipeline._prune_dead_unreferenced), so this folder only ever holds the few that are
+    # actually USED (e.g. BufferedImage/Raster/Graphics/ImageIO on the texture-decode path).
+    (DEAD_TYPES, 'Platform\\Java AWT/DOM (stubs)'),
     (r'^(\w*Exception|\w*Error|Throwable)$', 'Platform\\Java exceptions'),
 
     # ---- Game networking ----------------------------------------------------------------------
@@ -111,6 +141,8 @@ VCXPROJ_FILTERS = [
     (r'^Model\w*', 'Rendering\\Models'),
     (r'^(Texture\w*|TexturePack\w*|\w+FX|IconCoord|Colorizer\w*|\w*Colorizer)$', 'Rendering\\Textures'),
     (r'^(Tessellator|EffectRenderer|\w*Particle\w*)$', 'Rendering\\Tessellator & FX'),
+    # RubyDung/pre-classic render pipeline: the (one-'l') Tesselator, block renderer, shader + mipmap helpers.
+    (r'^(Tile|Tesselator|Shaders|Mipmaps)$', 'Rendering\\Renderers'),
 
     # ---- TileEntities (before Entities: 'TileEntity*' also matches the Entity fallback) --------
     (r'^TileEntity\w*', 'TileEntities'),
@@ -146,21 +178,22 @@ VCXPROJ_FILTERS = [
     # ---- Java library glue / dead code that would otherwise fall to 'Game (misc)' --------------
     (r'^J_\w*', 'Platform\\JSON (argo)'),                       # argo JSON parser (stats/achievements payloads)
     (r'^(ByteBuffer|ShortBuffer|IntBuffer|FloatBuffer|DoubleBuffer|LongBuffer|CharBuffer|NIOBuffers)$', 'Platform\\Java NIO'),
-    (r'^(Canvas\w*|Iso\w*|IsomPreview\w*)$', 'Platform\\AWT-Swing (dead)'),   # crash-report/isometric-preview canvases (dead)
     (r'^(Collection|Collections|Comparable|Comparator|Entry|Enumeration|JIterator|HashMap\w*|HashSet\w*|TreeMap\w*|TreeSet\w*|ArrayList\w*|LinkedList\w*|LinkedHashMap\w*|StringBuilder|StringBuffer)$', 'Runtime'),
     (r'^Chat\w*', 'GUI\\Screens'),                              # ChatLine, ChatAllowedCharacters
     (r'^(ClippingHelper\w*|Frustrum|ICamera)$', 'Rendering\\Renderers'),   # frustum culling
     (r'^Explosion$', 'World & Generation\\World'),
 
-    # ---- Math & Util --------------------------------------------------------------------------
-    (r'^(MathHelper|Vec3D\w*|AxisAlignedBB|MovingObjectPosition|Direction|Facing|ChunkCoordinates\w*|ChunkPosition|WeightedRandom\w*|Tuple|LongHashMap\w*|MCHash\w*|Random)$', 'Math & Util'),
+    # ---- Math & Utilities ---------------------------------------------------------------------
+    # RubyDung/pre-classic geometry primitives (AABB, Cube, Frustum, Polygon, Vec3, Vertex) join the
+    # Beta-era math types (Vec3D/AxisAlignedBB/MathHelper/...).
+    (r'^(MathHelper|Vec3D\w*|Vec3|Vertex|AABB|Cube|Frustum|Polygon|AxisAlignedBB|MovingObjectPosition|Direction|Facing|ChunkCoordinates\w*|ChunkPosition|WeightedRandom\w*|Tuple|LongHashMap\w*|MCHash\w*|Random)$', 'Math & Utilities'),
 
     # ---- Enums --------------------------------------------------------------------------------
     (r'^Enum\w*', 'Enums'),
 
     # ---- Core ---------------------------------------------------------------------------------
     (r'^(StatBase|StatList|Stat\w*|IStat\w*|Achievement\w*|StatFileWriter|StatsSyncher|StatCollector|StatStringFormat\w*)$', 'Core\\Stats & Achievements'),
-    (r'^(Minecraft|MinecraftApplet|Session|Timer|Main|GameSettings|EnumOptions\w*|Profiler|MovementInput\w*)$', 'Core'),
+    (r'^(Minecraft|MinecraftApplet|RubyDung|Session|Timer|Main|GameSettings|EnumOptions\w*|Profiler|MovementInput\w*)$', 'Core'),
 ]
 
 PROFILE = Profile(
@@ -169,6 +202,7 @@ PROFILE = Profile(
     package_roles=PACKAGE_ROLES,
     heavy_types=HEAVY_TYPES,
     vcxproj_filters=VCXPROJ_FILTERS,
+    dead_types=DEAD_TYPES,
     nullable=NULLABLE,
     nullable_fields=NULLABLE_FIELDS,
     nullable_getters=NULLABLE_GETTERS,

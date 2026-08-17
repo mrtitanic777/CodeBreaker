@@ -119,6 +119,10 @@ void  Debug_HardCrash(const char* file, int line, const char* fmt, ...);  // log
 
 
 DEBUG_CPP = r'''// Debug.cpp -- backend for the single debug file (j2ctool-emitted). See Debug.h.
+// J2X-ALWAYS-LINK: the debug facility is a developer tool that must ship whenever debug is enabled even
+// if no game code references it yet (you add Debug:: log calls while chasing a bug). The dead-subsystem
+// prune treats this file as a reachability ROOT and never cuts it. NOTE: the boot/error trace the port
+// relies on (DbgPrintF) lives in Common.h and is independent of this file.
 #include "stdafx.h"                                          // forced PCH: must be the first include
 #include "Debug.h"
 #include <stdio.h>
