@@ -71,15 +71,16 @@ public enum TaskParameter {
 		ffOptions.put(IFernflowerPreferences.ASCII_STRING_CHARACTERS, "1");
 		ffOptions.put(IFernflowerPreferences.OVERRIDE_ANNOTATION, "0");
 		ffOptions.put(IFernflowerPreferences.DECOMPILE_GENERIC_SIGNATURES, "1");
-		// NOTE: REMOVE_SYNTHETIC is deliberately NOT enabled. It was tried for faithfulness (to strip
-		// enum $values(), access$ accessors, bridge methods, enum switch-map arrays), but Vineflower's
-		// implementation removes the synthetic member *declarations* while leaving the code that still
-		// *references* them -- synthetic outer-class fields (e.g. the captured "this$0"/mcApplet) and
-		// enum switch-map arrays (e.g. $SwitchMap$.../osValues). javac does NOT regenerate those from
-		// the decompiled source (it only would if the source were written with the corresponding
-		// high-level construct, but the decompiler emits the desugared references), so enabling it
-		// produced ~30 "cannot find symbol" errors on Indev 20100213 and breaks recompilation. Leave
-		// it off; Vineflower's default REMOVE_BRIDGE handling still hides covariant bridges.
+		// Explicitly DISABLE REMOVE_SYNTHETIC (Vineflower defaults it to ON, so we must set "0", not
+		// just omit it). It was tried for faithfulness (to strip enum $values(), access$ accessors,
+		// bridge methods, enum switch-map arrays), but Vineflower's implementation removes the
+		// synthetic member *declarations* while leaving the code that still *references* them --
+		// synthetic outer-class fields (e.g. the captured "this$0"/mcApplet) and enum switch-map arrays
+		// (e.g. $SwitchMap$.../osValues). javac does NOT regenerate those from the decompiled source
+		// (it only would if the source were written with the corresponding high-level construct, but
+		// the decompiler emits the desugared references), so leaving it on produced ~28 extra
+		// "cannot find symbol" errors on Indev 20100213 and breaks recompilation.
+		ffOptions.put(IFernflowerPreferences.REMOVE_SYNTHETIC, "0");
 		// Ignore the MethodParameters attribute when naming parameters. RDInjector's remapper
 		// (applyMappings) writes a MethodParameters attribute on every method, and when a mapping
 		// supplies no parameter name it synthesises one from the type. For array parameters that
