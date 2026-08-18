@@ -11,6 +11,7 @@ import java.util.Map.Entry;
 import java.util.Objects;
 import java.util.stream.Stream;
 
+import org.jetbrains.java.decompiler.main.extern.IFernflowerPreferences;
 import org.mcphackers.mcp.tasks.Task.Side;
 import org.mcphackers.mcp.tasks.mode.TaskParameter;
 import org.mcphackers.mcp.tasks.mode.TaskParameterMap;
@@ -233,6 +234,13 @@ public class Options {
 				}
 			}
 		}
+		// Pipeline-critical: these two are not stylistic options but requirements for RDI+Vineflower
+		// output to recompile and for the version patch sets (authored against this exact output) to
+		// apply. Re-assert them AFTER the user overlay so a stale ff_options snapshot -- e.g. one that
+		// still carries remove-synthetic=1 from before it was disabled -- can never turn them back on
+		// and silently break decompilation. See TaskParameter.getDefaultFFOptionsMap for the why.
+		ffOptions.put(IFernflowerPreferences.REMOVE_SYNTHETIC, "0");
+		ffOptions.put(IFernflowerPreferences.USE_METHOD_PARAMETERS, "0");
 		return ffOptions;
 	}
 
