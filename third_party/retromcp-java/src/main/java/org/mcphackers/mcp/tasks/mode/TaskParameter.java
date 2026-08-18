@@ -65,6 +65,18 @@ public enum TaskParameter {
 		// them from the clean source. (This also covers bridge methods, so Vineflower's default
 		// REMOVE_BRIDGE=true is left as-is rather than the old fernflower REMOVE_BRIDGE=0 override.)
 		ffOptions.put(IFernflowerPreferences.REMOVE_SYNTHETIC, "1");
+		// Ignore the MethodParameters attribute when naming parameters. RDInjector's remapper
+		// (applyMappings) writes a MethodParameters attribute on every method, and when a mapping
+		// supplies no parameter name it synthesises one from the type. For array parameters that
+		// fallback uses Type.getInternalName(), which is the descriptor form, so illegal characters
+		// leak into the identifier (e.g. "[B1" for byte[], "positionTextureVertex;1" for an object
+		// array). Vineflower only sanitizes the references in the method body (rewriting them to varN
+		// with a "$VF was:" comment) while leaving the illegal name in the parameter declaration,
+		// producing source that neither recompiles nor patches. This broke every version carrying an
+		// array-typed parameter (e.g. Indev 20100213). Discarding these names also keeps decompiled
+		// output on the varN convention the patch set is written against, so we ignore the attribute
+		// and let Vineflower fall back to consistent, always-legal varN naming.
+		ffOptions.put(IFernflowerPreferences.USE_METHOD_PARAMETERS, "0");
 		// Fold `cond ? X : false` / `cond ? true : X` back into the `&&`/`||` chains the code was
 		// actually written with (verified on the Alpha corpus: matches the original, still recompiles).
 		ffOptions.put(IFernflowerPreferences.TERNARY_CONSTANT_SIMPLIFICATION, "1");
