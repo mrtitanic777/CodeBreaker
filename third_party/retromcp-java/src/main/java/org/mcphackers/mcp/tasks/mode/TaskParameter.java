@@ -52,6 +52,18 @@ public enum TaskParameter {
 	}
 
 	private static String getDefaultFFOptions() {
+		return getDefaultFFOptionsMap().toString();
+	}
+
+	/**
+	 * The authoritative baseline of decompiler options, defined in code. This is the single source of
+	 * truth: it seeds the {@link #FERNFLOWER_OPTIONS} default (serialized) and is used directly as the
+	 * baseline in {@link org.mcphackers.mcp.Options#getFernflowerOptions()}, where the user's stored
+	 * ff_options string is overlaid on top. Building the map here (rather than only the serialized
+	 * default) means newly added options always take effect even when a previously-saved options.cfg
+	 * holds an older ff_options snapshot that predates them.
+	 */
+	public static Map<String, Object> getDefaultFFOptionsMap() {
 		// Vineflower (unlike classic fernflower) exposes no IFernflowerPreferences.DEFAULTS map and no
 		// NO_COMMENT_OUTPUT option -- it applies its own defaults for anything left unset and does not
 		// emit the "$FF:" annotation comments, so we build the option map from scratch.
@@ -59,12 +71,15 @@ public enum TaskParameter {
 		ffOptions.put(IFernflowerPreferences.ASCII_STRING_CHARACTERS, "1");
 		ffOptions.put(IFernflowerPreferences.OVERRIDE_ANNOTATION, "0");
 		ffOptions.put(IFernflowerPreferences.DECOMPILE_GENERIC_SIGNATURES, "1");
-		// Faithful-to-original decompilation: strip compiler-synthesized members (enum $values(),
-		// inner-class access$ accessors, generic/covariant bridge methods, enum switch-map arrays)
-		// that were never written in the source. Verified recompile-safe -- javac regenerates all of
-		// them from the clean source. (This also covers bridge methods, so Vineflower's default
-		// REMOVE_BRIDGE=true is left as-is rather than the old fernflower REMOVE_BRIDGE=0 override.)
-		ffOptions.put(IFernflowerPreferences.REMOVE_SYNTHETIC, "1");
+		// NOTE: REMOVE_SYNTHETIC is deliberately NOT enabled. It was tried for faithfulness (to strip
+		// enum $values(), access$ accessors, bridge methods, enum switch-map arrays), but Vineflower's
+		// implementation removes the synthetic member *declarations* while leaving the code that still
+		// *references* them -- synthetic outer-class fields (e.g. the captured "this$0"/mcApplet) and
+		// enum switch-map arrays (e.g. $SwitchMap$.../osValues). javac does NOT regenerate those from
+		// the decompiled source (it only would if the source were written with the corresponding
+		// high-level construct, but the decompiler emits the desugared references), so enabling it
+		// produced ~30 "cannot find symbol" errors on Indev 20100213 and breaks recompilation. Leave
+		// it off; Vineflower's default REMOVE_BRIDGE handling still hides covariant bridges.
 		// Ignore the MethodParameters attribute when naming parameters. RDInjector's remapper
 		// (applyMappings) writes a MethodParameters attribute on every method, and when a mapping
 		// supplies no parameter name it synthesises one from the type. For array parameters that
@@ -82,7 +97,7 @@ public enum TaskParameter {
 		ffOptions.put(IFernflowerPreferences.TERNARY_CONSTANT_SIMPLIFICATION, "1");
 		ffOptions.put(IFernflowerPreferences.INDENT_STRING, "\t");
 		ffOptions.remove(IFernflowerPreferences.BANNER);
-		return ffOptions.toString();
+		return ffOptions;
 	}
 
 	public String getDesc() {

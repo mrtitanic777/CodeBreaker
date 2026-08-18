@@ -217,18 +217,23 @@ public class Options {
 	}
 
 	public Map<String, Object> getFernflowerOptions() {
-		Map<String, Object> ffOptions = new HashMap<>();
+		// Start from the authoritative code-defined baseline so newly added decompiler options always
+		// apply -- even when a previously-saved options.cfg holds an older ff_options string (which is
+		// just a serialized snapshot of the baseline and would otherwise mask them). The user's stored
+		// ff_options string is then overlaid on top, so any explicit per-key override still wins.
+		Map<String, Object> ffOptions = TaskParameter.getDefaultFFOptionsMap();
 		String options = mcp.getOptions().getStringParameter(TaskParameter.FERNFLOWER_OPTIONS);
-		String[] splitTokens = options.split(",");
-		for (String split : splitTokens) {
-			String[] keyPair = split.split("=");
-			if (keyPair.length == 2) {
-				String key = keyPair[0].trim().replace("{", "");
-				String value = keyPair[1].replace("}", "");
-				ffOptions.put(key, value);
+		if (options != null) {
+			for (String split : options.split(",")) {
+				String[] keyPair = split.split("=", 2);
+				if (keyPair.length == 2) {
+					String key = keyPair[0].trim().replace("{", "");
+					String value = keyPair[1].replace("}", "");
+					ffOptions.put(key, value);
+				}
 			}
 		}
-		return new HashMap<>(ffOptions);
+		return ffOptions;
 	}
 
 	public Side getSide() {
