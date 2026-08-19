@@ -96,7 +96,15 @@ public class TaskRecompile extends TaskStaged {
 							int javaVersion = Util.getJavaVersion(this.mcp);
 							if (javaVersion > 9) {
 								if (sourceVersion <= 0) {
-									sourceVersion = javaVersion;
+									// Target Java 8, NOT the tool's own JVM version. RetroMCP builds
+									// retro Minecraft, which runs on Java 8; defaulting to the running JVM
+									// (e.g. 21/25) compiled the game as modern bytecode -- it pulled in
+									// java.lang.invoke.StringConcatFactory (Java 9+) for string concatenation,
+									// so it crashed with NoClassDefFoundError on Java 8 and could only run on a
+									// modern JVM, where the version's ancient LWJGL/OpenGL renders incorrectly.
+									// --release 8 uses the Java 8 API/language level (no StringConcatFactory,
+									// correct NIO Buffer covariant signatures) so the output runs on Java 8.
+									sourceVersion = 8;
 								}
 								options.addAll(Arrays.asList("--release", Integer.toString(sourceVersion)));
 							} else {

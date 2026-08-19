@@ -198,7 +198,7 @@ public class TaskRun extends TaskStaged {
 					Path natives = MCPPaths.get(mcp, NATIVES).toAbsolutePath();
 
 					List<String> args = new ArrayList<>();
-					args.add(Util.getJava());
+					args.add(Util.getJava(mcp));
 					String cpString = String.join(File.pathSeparator, classPath);
 					for (String s : getJvmArgs(mcp, mcpSide)) {
 						args.add(s.replace("${classpath}", cpString)

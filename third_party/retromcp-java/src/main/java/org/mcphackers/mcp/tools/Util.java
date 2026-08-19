@@ -213,6 +213,19 @@ public abstract class Util {
 		return System.getProperties().getProperty("java.home") + File.separator + "bin" + File.separator + "java";
 	}
 
+	/**
+	 * Java executable used to RUN the game. Respects the JAVA_HOME option so the game can run on a
+	 * Java 8 runtime even when RetroMCP itself runs on a newer JVM -- retro Minecraft's ancient
+	 * LWJGL/OpenGL renders incorrectly on modern JVMs, so this must not silently inherit the tool's JVM.
+	 */
+	public static String getJava(MCP mcp) {
+		String javaHome = mcp.getOptions().getStringParameter(TaskParameter.JAVA_HOME);
+		if (javaHome != null && !javaHome.isEmpty()) {
+			return javaHome + File.separator + "bin" + File.separator + "java";
+		}
+		return getJava();
+	}
+
 	public static String getJavac(MCP mcp) {
 		String javaHome = mcp.getOptions().getStringParameter(TaskParameter.JAVA_HOME);
 		String defaultJavaCompiler = System.getProperties().getProperty("java.home") + File.separator + "bin" + File.separator + "javac";
