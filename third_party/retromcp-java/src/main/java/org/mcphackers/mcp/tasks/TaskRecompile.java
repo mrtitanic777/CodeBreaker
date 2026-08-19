@@ -92,6 +92,10 @@ public class TaskRecompile extends TaskStaged {
 								options.addAll(Arrays.asList(splitJavacArgs));
 							}
 
+							// Suppress the "source/target value 8 is obsolete" notes: targeting Java 8 on a
+							// modern JDK is intentional for retro Minecraft, not a problem worth warning about.
+							options.add("-Xlint:-options");
+
 							// Compile with the JDK at javahome only when it actually has a javac (i.e. it's a
 							// JDK, not a run-only JRE like the launcher's jre-legacy). Otherwise compile
 							// in-process with the tool's own compiler; javahome then applies only to RUNNING
