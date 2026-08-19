@@ -226,6 +226,28 @@ public abstract class Util {
 		return getJava();
 	}
 
+	/** Major Java version of the JVM currently running RetroMCP itself (e.g. 8, 17, 21, 25). */
+	public static int getCurrentJavaVersion() {
+		String v = System.getProperty("java.specification.version", "");
+		if (v.startsWith("1.")) {
+			v = v.substring(2);
+		}
+		try {
+			return Integer.parseInt(v.split("\\.")[0]);
+		} catch (NumberFormatException e) {
+			return 8;
+		}
+	}
+
+	/** True when javaHome points at a JDK (has a javac executable), not a run-only JRE. */
+	public static boolean hasJavac(String javaHome) {
+		if (javaHome == null || javaHome.isEmpty()) {
+			return false;
+		}
+		Path bin = Paths.get(javaHome).resolve("bin");
+		return Files.exists(bin.resolve("javac")) || Files.exists(bin.resolve("javac.exe"));
+	}
+
 	public static String getJavac(MCP mcp) {
 		String javaHome = mcp.getOptions().getStringParameter(TaskParameter.JAVA_HOME);
 		String defaultJavaCompiler = System.getProperties().getProperty("java.home") + File.separator + "bin" + File.separator + "javac";

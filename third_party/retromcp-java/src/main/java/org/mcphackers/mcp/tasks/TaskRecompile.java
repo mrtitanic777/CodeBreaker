@@ -92,8 +92,14 @@ public class TaskRecompile extends TaskStaged {
 								options.addAll(Arrays.asList(splitJavacArgs));
 							}
 
-							// Set --release flag for newer Java versions
-							int javaVersion = Util.getJavaVersion(this.mcp);
+							// Compile with the JDK at javahome only when it actually has a javac (i.e. it's a
+							// JDK, not a run-only JRE like the launcher's jre-legacy). Otherwise compile
+							// in-process with the tool's own compiler; javahome then applies only to RUNNING
+							// the game (TaskRun via Util.getJava(mcp)). This lets users point javahome at a
+							// Java 8 JRE for running while still compiling on their modern JDK.
+							boolean compileWithJavahome = Util.hasJavac(javaHome);
+							// Base the release/bootclasspath decision on whichever compiler will actually run.
+							int javaVersion = compileWithJavahome ? Util.getJavaVersion(this.mcp) : Util.getCurrentJavaVersion();
 							if (javaVersion > 9) {
 								if (sourceVersion <= 0) {
 									// Target Java 8, NOT the tool's own JVM version. RetroMCP builds
@@ -127,11 +133,16 @@ public class TaskRecompile extends TaskStaged {
 
 							setProgress(3);
 
-							if (javaHome.isEmpty()) {
+							if (compileWithJavahome) {
+								recompile(mcp, side, javaHome, src, options);
+							} else {
+								if (compiler == null) {
+									RuntimeException t = new RuntimeException("No Java compiler available. Run RetroMCP with a JDK, or set javahome to a JDK.");
+									Util.throwExceptionInIDE(t);
+									throw t;
+								}
 								DiagnosticCollector<JavaFileObject> ds = new DiagnosticCollector<>();
 								recompile(compiler, ds, src, options);
-							} else {
-								recompile(mcp, side, javaHome, src, options);
 							}
 						}),
 				stage(getLocalizedStage("copyres"), 50,
