@@ -9,11 +9,11 @@ import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
-import org.jetbrains.java.decompiler.main.decompiler.BaseDecompiler;
-import org.jetbrains.java.decompiler.main.decompiler.DirectoryResultSaver;
-import org.jetbrains.java.decompiler.main.extern.IBytecodeProvider;
-import org.jetbrains.java.decompiler.main.extern.IFernflowerPreferences;
-import org.jetbrains.java.decompiler.util.InterpreterUtil;
+import de.fernflower.main.decompiler.BaseDecompiler;
+import de.fernflower.main.decompiler.DirectoryResultSaver;
+import de.fernflower.main.extern.IBytecodeProvider;
+import de.fernflower.main.extern.IFernflowerPreferences;
+import de.fernflower.util.InterpreterUtil;
 import org.mcphackers.mcp.MCP;
 import org.mcphackers.mcp.tasks.ProgressListener;
 import org.mcphackers.mcp.tasks.mode.TaskParameter;
@@ -39,9 +39,9 @@ public class Decompiler implements IBytecodeProvider {
 		BaseDecompiler decompiler = new BaseDecompiler(this, new DirectoryResultSaver(destination.toFile()), mapOptions, log/*, javadocs.exists() ? new TinyJavadocProvider(javadocs) : null*/);
 		for (Path lib : libraries) {
 			if (Files.exists(lib))
-				decompiler.addLibrary(lib.toAbsolutePath().toFile());   // Vineflower: addSpace(f,false) -> addLibrary(f)
+				decompiler.addSpace(lib.toAbsolutePath().toFile(), false);
 		}
-		decompiler.addSource(source.toAbsolutePath().toFile());         // Vineflower: addSpace(f,true) -> addSource(f)
+		decompiler.addSpace(source.toAbsolutePath().toFile(), true);
 		decompiler.decompileContext();
 		this.openZips.close();
 	}

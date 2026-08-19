@@ -11,7 +11,6 @@ import java.util.Map.Entry;
 import java.util.Objects;
 import java.util.stream.Stream;
 
-import org.jetbrains.java.decompiler.main.extern.IFernflowerPreferences;
 import org.mcphackers.mcp.tasks.Task.Side;
 import org.mcphackers.mcp.tasks.mode.TaskParameter;
 import org.mcphackers.mcp.tasks.mode.TaskParameterMap;
@@ -218,30 +217,18 @@ public class Options {
 	}
 
 	public Map<String, Object> getFernflowerOptions() {
-		// Start from the authoritative code-defined baseline so newly added decompiler options always
-		// apply -- even when a previously-saved options.cfg holds an older ff_options string (which is
-		// just a serialized snapshot of the baseline and would otherwise mask them). The user's stored
-		// ff_options string is then overlaid on top, so any explicit per-key override still wins.
-		Map<String, Object> ffOptions = TaskParameter.getDefaultFFOptionsMap();
+		Map<String, Object> ffOptions = new HashMap<>();
 		String options = mcp.getOptions().getStringParameter(TaskParameter.FERNFLOWER_OPTIONS);
-		if (options != null) {
-			for (String split : options.split(",")) {
-				String[] keyPair = split.split("=", 2);
-				if (keyPair.length == 2) {
-					String key = keyPair[0].trim().replace("{", "");
-					String value = keyPair[1].replace("}", "");
-					ffOptions.put(key, value);
-				}
+		String[] splitTokens = options.split(",");
+		for (String split : splitTokens) {
+			String[] keyPair = split.split("=");
+			if (keyPair.length == 2) {
+				String key = keyPair[0].trim().replace("{", "");
+				String value = keyPair[1].replace("}", "");
+				ffOptions.put(key, value);
 			}
 		}
-		// Pipeline-critical: these two are not stylistic options but requirements for RDI+Vineflower
-		// output to recompile and for the version patch sets (authored against this exact output) to
-		// apply. Re-assert them AFTER the user overlay so a stale ff_options snapshot -- e.g. one that
-		// still carries remove-synthetic=1 from before it was disabled -- can never turn them back on
-		// and silently break decompilation. See TaskParameter.getDefaultFFOptionsMap for the why.
-		ffOptions.put(IFernflowerPreferences.REMOVE_SYNTHETIC, "0");
-		ffOptions.put(IFernflowerPreferences.USE_METHOD_PARAMETERS, "0");
-		return ffOptions;
+		return new HashMap<>(ffOptions);
 	}
 
 	public Side getSide() {
