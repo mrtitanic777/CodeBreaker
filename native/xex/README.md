@@ -4,6 +4,17 @@ A clean-room C++17 rebuild of xorloser's **XexTool** (v6.3, 2011) for Xbox 360 `
 files — with a native GUI, and output that is **byte-for-byte identical** to the
 original tool.
 
+## Project Status
+
+**✅ Finished — public.**
+
+- **Done:** Clean-room rebuild with byte-identical output vs the original XexTool, plus a native GUI.
+- **Unfinished:** `-s` (special patches) still needs the page-hash chain. `-p` was
+  re-verified and fixed (see Known gaps); its historical multi-sample corpus is
+  no longer in the repo, so breadth is unproven.
+
+_Last reviewed: 2026-08-19._
+
 ## What Is This?
 
 XexTool is *the* utility for working with Xbox 360 executables: extracting the
@@ -34,7 +45,7 @@ games, homebrew, and Xbox 360 NAND system files (`xam.xex`, `xbdm.xex`).
 | Machine type | `-m d` / `-m r` | byte-identical |
 | Remove limits | `-r` | byte-identical (see note) |
 | Bounding path | `-a` | byte-identical |
-| Delta patching | `-p` / `-u` | 17/18 samples |
+| Delta patching | `-p` / `-u` | byte-identical (see note) |
 | Special patches | `-s` | **not usable — see below** |
 
 ### Known gaps
@@ -47,7 +58,22 @@ games, homebrew, and Xbox 360 NAND system files (`xam.xex`, `xbdm.xex`).
 - **`-r i/y/v/k/c`** (console/date/keyvault/revocation limits) are unmapped — no
   available sample carries those limits, so there is nothing to verify against.
   They are ignored rather than guessed at.
-- One of 18 delta-patch samples (`xam`) differs by 7 bytes in a delta-LZX edge case.
+- **`-p` (delta patching)** is byte-identical on the sample it has been re-verified
+  against (a retail Minecraft X360 title update, TU14: 0 bytes differ across
+  35,127,296). Two bugs were found and fixed in `patch.cpp`:
+    - the base XEX header was truncated to `headerTargetSize` before the header
+      patch read from it, although the source region is bounded against
+      `baseHeaderSize` (lines 97-98) and may extend past it -- yielding a wrong
+      patched image size;
+    - in the `baseComp == 2` (LZX) path the decompressed base image was written to
+      `newXexHeaderSize` while every delta record addresses it through
+      `outExe = &out[newHeaderSize]`, so the whole image sat one header-size-delta
+      off.
+  Both only trigger when a patch changes the XEX header size
+  (`baseHeaderSize != headerTargetSize`), which is likely why most samples passed
+  before. The historical 18-sample delta corpus is no longer present in this repo,
+  so 18/18 cannot currently be re-asserted; the `xam` 7-byte case in particular is
+  untested against the fix and may share the same root cause.
 
 ## Building
 

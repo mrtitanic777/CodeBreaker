@@ -103,7 +103,10 @@ std::vector<uint8_t> apply_patch(const std::vector<uint8_t>& base, const std::ve
     // --- Build the new headers ---
     uint32_t newXexHeaderSize = std::max(headerTargetSize, baseHeaderSize);
     std::vector<uint8_t> out(newXexHeaderSize, 0);
-    std::memcpy(out.data(), xexBytes, headerTargetSize);
+    // Load the FULL base header: the header-patch source region is expressed in
+    // base-header coordinates and may extend past headerTargetSize (lines 97-98
+    // bound it against baseHeaderSize), so truncating here would feed it zeros.
+    std::memcpy(out.data(), xexBytes, std::min<size_t>(baseHeaderSize, newXexHeaderSize));
     if (deltaHeadersSourceOff > 0)
         std::memmove(&out[deltaHeadersTargetOff], &out[deltaHeadersSourceOff], deltaHeadersSourceSz);
 
@@ -196,7 +199,10 @@ std::vector<uint8_t> apply_patch(const std::vector<uint8_t>& base, const std::ve
             p += blockSize; blockSize = next;
         }
         auto image = compress::lzx_decompress(stream.data(), stream.size(), baseImageSize, window);
-        std::memcpy(&out[newXexHeaderSize], image.data(), image.size());
+        // The image must land where outExe points (headerTargetSize), not at
+        // newXexHeaderSize -- otherwise every record addresses it off by the
+        // difference between the base and target header sizes.
+        std::memcpy(&out[headerTargetSize], image.data(), image.size());
     } else if (baseComp != 0) {
         fail("unsupported base compression");
     }
