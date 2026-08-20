@@ -326,7 +326,11 @@ std::vector<uint8_t> convert_machine(const XexFile& x, bool to_devkit) {
     // Key rewrap: title = dec(source KEK, stored); restored = enc(target, title).
     // The title key itself is unchanged, so the ciphertext just written by the
     // rebuild stays valid -- only the wrapping changes to the target's KEK.
-    if (encrypted) {
+    // Re-wrap unconditionally: the stored aes_key must be valid for the TARGET
+    // machine regardless of whether the payload is currently encrypted, and
+    // xextool rewraps either way.  Guarding this on x.is_encrypted() left the
+    // key wrapped under the source KEK on unencrypted files.
+    {
         uint8_t title[16], wrapped[16], zero[16] = {0};
         crypto::Aes128(detect_kek(x)).decrypt_block(x.security().aes_key.data(), title);
         crypto::Aes128(to_devkit ? zero : crypto::kRetailKey).encrypt_block(title, wrapped);

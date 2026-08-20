@@ -9,9 +9,9 @@ original tool.
 **✅ Finished — public.**
 
 - **Done:** Clean-room rebuild with byte-identical output vs the original XexTool, plus a native GUI.
-- **Unfinished:** `-s` (special patches) still needs the page-hash chain. `-p` was
-  re-verified and fixed (see Known gaps); its historical multi-sample corpus is
-  no longer in the repo, so breadth is unproven.
+- **Unfinished:** `-s` (special patches) still needs the page-hash chain.
+  Everything else is verified against the original tool -- `-p` on the full
+  18-sample delta corpus, `-m` after a key-rewrap fix (see Known gaps).
 
 _Last reviewed: 2026-08-19._
 
@@ -55,12 +55,19 @@ games, homebrew, and Xbox 360 NAND system files (`xam.xex`, `xbdm.xex`).
   requires recomputing the XEX **page-hash chain**, which is not yet reverse-
   engineered. Output would carry stale page hashes and fail console verification.
   The command refuses rather than writing a broken file.
+- **`-m` (machine type)** did not re-wrap the stored title key when the payload
+  was unencrypted: `convert_machine` guarded the rewrap on `x.is_encrypted()`, so
+  `security_info.aes_key` stayed wrapped under the *source* KEK and the output
+  would not decrypt on the target machine. The rewrap is now unconditional.
+  Divergence was 6 of 20 comparisons, all at `sec+0x150`; now 20/20 identical.
+
 - **`-r i/y/v/k/c`** (console/date/keyvault/revocation limits) are unmapped — no
   available sample carries those limits, so there is nothing to verify against.
   They are ignored rather than guessed at.
-- **`-p` (delta patching)** is byte-identical on the sample it has been re-verified
-  against (a retail Minecraft X360 title update, TU14: 0 bytes differ across
-  35,127,296). Two bugs were found and fixed in `patch.cpp`:
+- **`-p` (delta patching)** is byte-identical across the full 18-sample delta
+  corpus (`xeBuild/6717`: aac .. ximedic, including `xam`) plus a retail
+  Minecraft X360 title update (TU14: 0 bytes differ across 35,127,296).
+  Two bugs were found and fixed in `patch.cpp`:
     - the base XEX header was truncated to `headerTargetSize` before the header
       patch read from it, although the source region is bounded against
       `baseHeaderSize` (lines 97-98) and may extend past it -- yielding a wrong
@@ -70,10 +77,11 @@ games, homebrew, and Xbox 360 NAND system files (`xam.xex`, `xbdm.xex`).
       `outExe = &out[newHeaderSize]`, so the whole image sat one header-size-delta
       off.
   Both only trigger when a patch changes the XEX header size
-  (`baseHeaderSize != headerTargetSize`), which is likely why most samples passed
-  before. The historical 18-sample delta corpus is no longer present in this repo,
-  so 18/18 cannot currently be re-asserted; the `xam` 7-byte case in particular is
-  untested against the fix and may share the same root cause.
+  (`baseHeaderSize != headerTargetSize`), which is why most samples passed before.
+  The previously-noted `xam` 7-byte discrepancy is resolved by these fixes.
+  Note the two tools package `-p` output differently (XexTool-RE writes the
+  patched image plain, the original preserves the input's encryption and
+  compression), so compare extracted basefiles rather than the XEX wrappers.
 
 ## Building
 
