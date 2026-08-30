@@ -321,14 +321,13 @@ def build_ff(module, outdir):
                 _cb = il.lift_asm_function(_ap, "sub_%x" % _o, clean=True, reg_inputs=None)
             except Exception:
                 _unsafe.add(_o); continue
+            # GLOBAL SYMBOLIZATION: rewrite module-range absolute globals (*(u32*)(0x7fe23b28)) to the
+            # relocatable (_imgbase + rva) form -- _imgbase is the real load base, so the ref resolves
+            # to the drop-in's OWN (byte-exact-preserved) global instead of a hardcoded constant that
+            # points at wrong memory once the DLL is relocated (the SHELL32 desktop-garble class).
+            _cb = il.reloc_imgbase(_cb, base)
             _rp = _leading_reg_params(_cb, _o)
-            # GLOBAL-RELOCATION GUARD: the clean lift emits a module-global access as a HARDCODED
-            # absolute address (e.g. *(u32*)(0x7fe23b28)). That integer constant carries NO base
-            # relocation, so in the drop-in -- loaded off a DIFFERENT base than the original -- it
-            # dereferences the WRONG memory: silent state corruption (the SHELL32 desktop-garble +
-            # Explorer-load-fail class). The oracle's random inputs often never reach the global branch,
-            # so it can't be relied on to catch this. Until globals are symbol-bound + relocatable, any
-            # clean body with a bare absolute deref is UNSAFE -> byte-exact (which relocates correctly).
+            # Any absolute deref STILL present is out-of-module (truly non-relocatable) -> byte-exact.
             if re.search(r"\*\(u\d+\*\)\(0x[0-9a-f]{4,}\)", _cb):
                 _unsafe.add(_o); continue
             # ORACLE GATE (strict): a fn ships clean ONLY if the differential oracle proved its exact

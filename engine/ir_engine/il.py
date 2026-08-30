@@ -1923,6 +1923,21 @@ def _resolve_vxdcalls(rows, path):
     return out
 
 
+def reloc_imgbase(src, image_base, span=0x10000000):
+    """Rewrite absolute VAs that fall in the module's image range [image_base, image_base+span) to the
+    relocatable form (_imgbase + rva). A bare absolute constant (e.g. *(u32*)(0x7fe23b28) for a module
+    global) carries NO PE relocation, so in a drop-in loaded off a DIFFERENT base than the original it
+    dereferences the WRONG memory -> silent corruption. `_imgbase` is set to the real load base at
+    DllMain, so (_imgbase + rva) always resolves to the drop-in's own copy of that global (which is
+    preserved byte-exact). Symbolizes globals into relocatable references, exactly what the compiler
+    would need to emit a .reloc record. Only 6-8 hex-digit constants are considered (real addresses)."""
+    lo, hi = image_base, image_base + span
+    def _r(m):
+        va = int(m.group(0), 16)
+        return "(_imgbase + 0x%x)" % (va - image_base) if lo <= va < hi else m.group(0)
+    return re.sub(r'0x[0-9a-fA-F]{6,8}', _r, src)
+
+
 def lift_asm_function(path, name=None, faithful=False, clean=False, reg_inputs=None):
     """Lift a reconstructed .asm function -> structured C. Returns the C source.
 
