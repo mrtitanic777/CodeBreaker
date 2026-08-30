@@ -322,6 +322,15 @@ def build_ff(module, outdir):
             except Exception:
                 _unsafe.add(_o); continue
             _rp = _leading_reg_params(_cb, _o)
+            # GLOBAL-RELOCATION GUARD: the clean lift emits a module-global access as a HARDCODED
+            # absolute address (e.g. *(u32*)(0x7fe23b28)). That integer constant carries NO base
+            # relocation, so in the drop-in -- loaded off a DIFFERENT base than the original -- it
+            # dereferences the WRONG memory: silent state corruption (the SHELL32 desktop-garble +
+            # Explorer-load-fail class). The oracle's random inputs often never reach the global branch,
+            # so it can't be relied on to catch this. Until globals are symbol-bound + relocatable, any
+            # clean body with a bare absolute deref is UNSAFE -> byte-exact (which relocates correctly).
+            if re.search(r"\*\(u\d+\*\)\(0x[0-9a-f]{4,}\)", _cb):
+                _unsafe.add(_o); continue
             # ORACLE GATE (strict): a fn ships clean ONLY if the differential oracle proved its exact
             # deregisterized emission bit-identical to Microsoft's bytes (in _verified). EVERYTHING else
             # -- including "zero-register" fns (whose liveness could be a false negative) -- stays
