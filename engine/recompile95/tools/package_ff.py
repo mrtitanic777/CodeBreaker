@@ -58,6 +58,20 @@ def _retN(img, rva, base, depth=0):
 MSVC = "--msvc" in sys.argv          # emit MSVC (__declspec(naked)+Intel __asm) instead of GCC AT&T
 REDIRECT = "--redirect" in sys.argv  # patch reconstituted image so byte-exact callers reach clean C
 
+
+def _redir_publish(body):
+    """REDIRECT: before each `return` in a clean fn, publish its MODIFIED GP register-locals to the
+    global register-file (*g_edx=edx, ...), so the redirect thunk can propagate NON-eax outputs (a
+    secondary edx return, esi/edi side effects) to the byte-exact caller. eax is excluded -- the C
+    return already carries it. Only registers actually ASSIGNED in the body are published (they are
+    declared, so referencing them compiles)."""
+    _GP = ("ecx", "edx", "ebx", "esi", "edi", "ebp")
+    asg = [r for r in _GP if re.search(r"\b" + r + r"\b\s*=(?!=)", body)]
+    if not asg:
+        return body
+    pub = "".join("*g_%s=%s;" % (r, r) for r in asg)
+    return re.sub(r"\breturn\b", lambda m: pub + " return", body)
+
 # SDK API signatures (argc/varargs) -> authoritative stdcall cleanup for named exports.
 try:
     import json as _json
@@ -371,6 +385,8 @@ def build_ff(module, outdir):
             return "\n".join(_out)
         for _o in list(_raw):
             _raw[_o] = _bridge(_raw[_o])
+            if REDIRECT:                          # publish non-eax register outputs so the redirect
+                _raw[_o] = _redir_publish(_raw[_o])   # thunk can propagate them to byte-exact callers
         src_clean = "\n".join(_raw[_o] for _o in sorted(_raw))
         _CLEAN_REGP.clear()                                # exports still clean keep their thiscall thunks
         _CLEAN_REGP.update({o: r for o, r in _regp.items() if o in _raw})
@@ -542,13 +558,24 @@ def build_ff(module, outdir):
                 if _N is None:
                     continue                              # unknown cleanup -> leave unpatched (byte-exact)
                 _nm = "sub_%x" % _o
+                _GP = ("eax", "ecx", "edx", "ebx", "esi", "edi", "ebp")
+                # MULTI-REGISTER OUTPUTS: publish the caller's real regs to the global register-file on
+                # entry (so registers the fn never touches pass through unchanged), and restore from it
+                # on exit. The clean fn publishes its MODIFIED register-locals to that file before each
+                # return (see _redir_publish), so non-eax outputs (edx secondary return, esi/edi effects)
+                # propagate back to the byte-exact caller -- not just eax.
+                _pub = ['  "movl %%%s,_%s\\n\\t"' % (r, r) for r in _GP]
+                # restore EXCLUDES eax: the C return value is already in the real eax and is the
+                # authoritative eax output (a fn returning a constant never assigns the eax local, so
+                # its global is stale -- restoring it would clobber the return).
+                _rst = ['  "movl _%s,%%%s\\n\\t"' % (r, r) for r in _GP if r != "eax"]
                 _ls = ['__attribute__((naked,used)) void %s_redir(void){ __asm__ volatile(' % _nm,
-                       '  "incl _redir_hits\\n\\t"',       # handoff counter (verification)
-                       '  "popl _thk_ret\\n\\t"']          # save return addr (clean leaves -> single slot OK)
+                       '  "incl _redir_hits\\n\\t"'] + _pub + [   # handoff counter + publish input regs
+                       '  "popl _thk_ret\\n\\t"']                 # save return addr (clean leaves -> single slot OK)
                 for _r in reversed(_regs):                 # push reg args reverse so param0 ends on top
                     _ls.append('  "pushl %%%s\\n\\t"' % _r)
                 _ls += ['  "call _%s\\n\\t"' % _nm,
-                        '  "addl $%d,%%esp\\n\\t"' % (len(_regs) * 4 + _N),   # drop reg args + caller stack args
+                        '  "addl $%d,%%esp\\n\\t"' % (len(_regs) * 4 + _N)] + _rst + [  # drop args + restore output regs
                         '  "pushl _thk_ret\\n\\t"',
                         '  "ret\\n"',
                         '  ); }']
