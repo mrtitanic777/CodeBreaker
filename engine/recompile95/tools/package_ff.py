@@ -56,6 +56,7 @@ def _retN(img, rva, base, depth=0):
 
 
 MSVC = "--msvc" in sys.argv          # emit MSVC (__declspec(naked)+Intel __asm) instead of GCC AT&T
+REDIRECT = "--redirect" in sys.argv  # patch reconstituted image so byte-exact callers reach clean C
 
 # SDK API signatures (argc/varargs) -> authoritative stdcall cleanup for named exports.
 try:
@@ -525,15 +526,56 @@ def build_ff(module, outdir):
             src = _knr_defs(src)             # calls compile (no prototype -> no arity check; gcc + MSVC)
             src = _clean_fixups(src, MSVC)   # + naked-wrapper arity, &<const>, gcc computed-goto cast
         f.write(src)
+        if REDIRECT and CLEAN and _raw:
+            # REDIRECTION THUNKS: a clean INTERNAL fn is dead unless something reaches it -- byte-exact
+            # callers run reconstituted ORIGINAL bytes, whose calls stay in the reconstituted image. So
+            # for each clean fn we generate a marshaling thunk and (in DllMain) patch its entry in the
+            # reconstituted image to `jmp thunk`. The thunk presents the byte-exact caller's REAL register
+            # inputs as the clean C's leading params, calls the clean C, then does the original `ret N`
+            # cleanup -- the register save/restore boundary that makes sparse gating deregisterize LIVE code.
+            f.write("\n/* --- redirection thunks (byte-exact caller -> clean C) --- */\n")
+            f.write("unsigned redir_hits; static unsigned thk_ret;\n")
+            _rtbl = []
+            for _o in sorted(_raw):
+                _regs = _regp.get(_o, [])                 # leading register params, in signature order
+                _N = _retN(img, tv + _o, base)            # original callee stack cleanup (bytes)
+                if _N is None:
+                    continue                              # unknown cleanup -> leave unpatched (byte-exact)
+                _nm = "sub_%x" % _o
+                _ls = ['__attribute__((naked,used)) void %s_redir(void){ __asm__ volatile(' % _nm,
+                       '  "incl _redir_hits\\n\\t"',       # handoff counter (verification)
+                       '  "popl _thk_ret\\n\\t"']          # save return addr (clean leaves -> single slot OK)
+                for _r in reversed(_regs):                 # push reg args reverse so param0 ends on top
+                    _ls.append('  "pushl %%%s\\n\\t"' % _r)
+                _ls += ['  "call _%s\\n\\t"' % _nm,
+                        '  "addl $%d,%%esp\\n\\t"' % (len(_regs) * 4 + _N),   # drop reg args + caller stack args
+                        '  "pushl _thk_ret\\n\\t"',
+                        '  "ret\\n"',
+                        '  ); }']
+                f.write("\n".join(_ls) + "\n")
+                _rtbl.append((tv + _o, _nm))
+            f.write("typedef void(*_thkfn)(void);\ntypedef struct{unsigned rva;_thkfn fn;}redir_t;\n")
+            f.write("redir_t REDIR[]={%s};\n" % ",".join("{0x%xu,(_thkfn)%s_redir}" % (rva, nm) for rva, nm in _rtbl))
+            f.write("unsigned NREDIR=%d;\n" % len(_rtbl))
+            f.write("unsigned get_redir_hits(void){return redir_hits;}\nunsigned get_imgbase(void){return _imgbase;}\n")
     # DllMain: reconstitute at ORIGINAL ImageBase (executable), populate IAT, set _imgbase
     with open(os.path.join(outdir, sym + "_glue.c"), "w") as f:
         # WIN32_LEAN_AND_MEAN skips objbase.h/OLE (MSVC 2.0's objbase.h uses the obsolete __export).
         f.write('#define WIN32_LEAN_AND_MEAN\n#include <windows.h>\n#include "%s_pkg.h"\nextern unsigned _imgbase;\n' % sym)
+        if REDIRECT:
+            f.write("typedef void(*_thkfn)(void);\ntypedef struct{unsigned rva;_thkfn fn;}redir_t;\n"
+                    "extern redir_t REDIR[];extern unsigned NREDIR;\n")
+        # patch each clean fn's entry in the reconstituted image to `jmp thunk` (E9 rel32) BEFORE the
+        # original entry runs, so byte-exact callers detour into the clean C via the marshaling thunk.
+        _rpatch = ("    { unsigned _k; for(_k=0;_k<NREDIR;_k++){ unsigned char*_q=b+REDIR[_k].rva;\n"
+                   "      unsigned _t=(unsigned)(size_t)REDIR[_k].fn;\n"
+                   "      _q[0]=0xE9; *(unsigned*)(_q+1)=_t-((unsigned)(size_t)_q+5); } }\n") if REDIRECT else ""
         f.write("BOOL WINAPI DllMain(HINSTANCE h,DWORD r,LPVOID x){ unsigned i;\n"
                 "  if(r==DLL_PROCESS_ATTACH){\n"
                 "    unsigned char*b=(unsigned char*)VirtualAlloc((void*)IMGBASE,IMGSZ,MEM_RESERVE|MEM_COMMIT,PAGE_EXECUTE_READWRITE);\n"
                 "    if(!b) b=(unsigned char*)VirtualAlloc(NULL,IMGSZ,MEM_RESERVE|MEM_COMMIT,PAGE_EXECUTE_READWRITE);\n"
                 "    memcpy(b,IMGDATA,IMGSZ); _imgbase=(unsigned)(size_t)b;\n"
+                + _rpatch +
                 "    for(i=0;i<NIMP;i++){\n"
                 "      /* GetModuleHandle first: a pure lookup, NOT a load. Calling LoadLibrary here\n"
                 "         (inside DllMain PROCESS_ATTACH) re-enters KERNEL32's loader mid-load and\n"
@@ -588,6 +630,9 @@ def build_ff(module, outdir):
         with open(os.path.join(outdir, sym + "_reloc.c"), "a") as f:
             f.write("\n/* stdcall export thunks (clean N arg bytes; Win95 calls exports stdcall) */\n")
             f.write("".join(thunks))
+    if REDIRECT:                                   # verification hooks: handoff counter + reconstituted base
+        lines.append("  get_redir_hits")
+        lines.append("  get_imgbase")
     open(os.path.join(outdir, sym + ".def"), "w").write("\n".join(lines) + "\n")
     return sym, len(bad), len(funcs), n, base
 
