@@ -910,6 +910,9 @@ def _call_target(tok, params, bits=32):
     m = re.match(r"^(0x[0-9a-f]+|[0-9a-f]+h)$", t)
     if m:
         return "sub_%x" % _imm2(t).val
+    ml = re.match(r"^l_([0-9a-f]+)$", t)                   # intra-section label target (`call L_08341`)
+    if ml:                                                 # -> its offset. A DIRECT call the disassembler
+        return "sub_%x" % int(ml.group(1), 16)            # rendered as a label, NOT an indirect call.
     node, _w = _operand(t, params, bits=bits)
     return node if node is not None else "sub_indirect"
 
@@ -1920,7 +1923,7 @@ def _resolve_vxdcalls(rows, path):
     return out
 
 
-def lift_asm_function(path, name=None, faithful=False):
+def lift_asm_function(path, name=None, faithful=False, clean=False, reg_inputs=None):
     """Lift a reconstructed .asm function -> structured C. Returns the C source.
 
     faithful=False (default): the READABLE path -- cross-block dead-store elimination
@@ -1946,6 +1949,39 @@ def lift_asm_function(path, name=None, faithful=False):
     def _lift(txt):
         return (_lift16 if bits == 16 else _lift32)(txt, params, last_cmp)
 
+    # SYNTHESIZE a label at every jump target that lands on a real instruction but has none.
+    # il.py used to leave such `jmp 3e7h` as an "external" computed jump (a huge defect class);
+    # but an intra-function jump to a valid instruction offset is just an unlabelled goto. Adding
+    # the missing label turns `goto *(void*)0x3e7 /* external */` into a clean `goto L_003e7`.
+    _pfx = re.compile(r"^\s*((es|cs|ss|ds|fs|gs|lock|addr32|data32|addr16|data16)\s+)+", re.I)
+    _insn_off = set(t for t, _v in rows if t != "label" and isinstance(t, int) and t >= 0)
+    _have = set()
+    for _t, _v in rows:
+        if _t == "label":
+            try:
+                _have.add(int(_v[2:], 16))
+            except ValueError:
+                pass
+    _targets = set()
+    for _t, _v in rows:
+        if _t == "label":
+            continue
+        _low = _pfx.sub("", _v).strip().lower().split()
+        if _low and (_low[0] in COND_JUMPS or _low[0] in ("jmp", "ljmp", "jmpf")):
+            _m = re.match(r"(?i)^([0-9a-f]+)h?$", _pfx.sub("", _v).split()[-1])
+            if _m:
+                try:
+                    _targets.add(int(_m.group(1), 16))
+                except ValueError:
+                    pass
+    _need = (_targets & _insn_off) - _have
+    if _need:
+        _nr = []
+        for _r in rows:
+            if _r[0] != "label" and isinstance(_r[0], int) and _r[0] in _need:
+                _nr.append(("label", "L_%05x" % _r[0]))
+            _nr.append(_r)
+        rows = _nr
     # map code offsets -> their L_ label, to resolve bare-hex jump targets: the db
     # escape writes `jmp 3e7h` (a raw offset) rather than `jmp L_003e7`.
     label_off = {}
@@ -2063,7 +2099,7 @@ def lift_asm_function(path, name=None, faithful=False):
     # (faithful mode keeps live_out for the SSA rename below, but does NOT prune:
     #  losslessness for byte-exact recompilation trumps readability here.)
     conds0 = _recover_conditions(rows, params, bits)
-    live_out = _reg_liveness(blocks, conds=conds0)
+    live_out, live_in = _reg_liveness(blocks, conds=conds0)
     if not faithful:
         # A block's own conditional branch reads its cmp operands, so those registers are
         # live at the block's end -- even when EVERY successor redefines them first (then
@@ -2092,6 +2128,10 @@ def lift_asm_function(path, name=None, faithful=False):
 
     # ---- light type recovery: pointer/struct params + void/int return --------
     ptr_params, structs, produces_eax = _recover_types(blocks, acc)
+    if clean:
+        produces_eax = True                          # DEREGISTERIZED: eax is a LOCAL, so a caller that
+        # reads eax after the call must capture the RETURN (`eax = sub(...)`). The register-machine
+        # model threads eax via the global, so it can be void there -- but clean fns must return int.
     if not produces_eax:                             # no eax result -> void; drop `return eax`
         for b in blocks:
             b[1] = [Ret(None) if isinstance(s, Ret) else s for s in b[1]]
@@ -2134,21 +2174,45 @@ def lift_asm_function(path, name=None, faithful=False):
                 subreg_regs.add(BREGS[tok][0])
     _ssa_rename(blocks, live_out, cond_regs | subreg_regs, keep_locs=faithful)
 
-    C = list(struct_decls)
-    sig_names, _seen = [], set()                     # sub-dword slots share an arg name;
-    for d in sorted(params):                         # emit each parameter once
-        nm = params[d]
-        if nm not in _seen:
-            _seen.add(nm)
-            sig_names.append(ptype.get(nm, ("void *%s" if nm in ptr_params else "u32 %s") % nm))
-    sig = ", ".join(sig_names) or "void"
-    C.append("%s %s(%s)" % ("int" if produces_eax else "void", fn, sig))
-    C.append("{")
     body = _emit_structured(blocks, conds)
     txt = "\n".join(body)
     decls = sorted(set(re.findall(r"\bloc_[0-9a-f]+\b", txt)), key=lambda s: int(s[4:], 16)) \
         + sorted(set(re.findall(r"\bv\d+\b", txt)), key=lambda s: int(s[1:]))
-    if decls:                                         # recovered stack locals + SSA temps
+    reg_params = []
+    if clean:
+        # DEREGISTERIZE -- undo the compiler's register allocation. A GP register that is NOT a
+        # genuine INPUT is a pure local: declare it function-local so the lift's global eax..edi (and
+        # their lane macros al/ah/ax = *(u8/u16*)&eax) resolve to it by name-shadowing, making the fn
+        # self-contained. A genuine input becomes a real register-PARAM. Which registers are inputs:
+        # `reg_inputs` when supplied (the empirical unicorn detector -- EVIDENCE, not guess); else
+        # fall back to entry live-in (static, conservative). frame/seg regs stay global.
+        _LANES = {"eax": ("al", "ah", "ax"), "ebx": ("bl", "bh", "bx"), "ecx": ("cl", "ch", "cx"),
+                  "edx": ("dl", "dh", "dx"), "esi": ("si",), "edi": ("di",)}
+        def _parent(r):
+            for _p, _ls in _LANES.items():
+                if r == _p or r in _ls:
+                    return _p
+            return r
+        input_parents = ({_parent(r) for r in reg_inputs} if reg_inputs is not None
+                         else {_parent(r) for r in live_in.get("entry", set())})
+        used = [p for p, ls in _LANES.items() if re.search(r"\b(%s)\b" % "|".join((p,) + ls), txt)]
+        decls = decls + sorted(p for p in used if p not in input_parents)   # -> function locals
+        reg_params = sorted(p for p in used if p in input_parents)          # -> real register inputs
+    C = list(struct_decls)
+    sig_names, _seen = [], set()                     # sub-dword slots share an arg name;
+    for p in reg_params:                             # genuine register inputs (ecx=this, fastcall, ..)
+        sig_names.append("u32 %s" % p)
+    for d in sorted(params):                         # then the recovered stack args, each once
+        nm = params[d]
+        if nm not in _seen:
+            _seen.add(nm)
+            # `char *` (not `void *`) for raw pointer params: the lift does byte-arithmetic on them
+            # (`argN + off`), which gcc allows on void* but MSVC rejects (C2036 'void*: unknown size').
+            sig_names.append(ptype.get(nm, ("char *%s" if nm in ptr_params else "u32 %s") % nm))
+    sig = ", ".join(sig_names) or "void"
+    C.append("%s %s(%s)" % ("int" if produces_eax else "void", fn, sig))
+    C.append("{")
+    if decls:                                         # recovered stack locals + SSA temps (+ clean reg-locals)
         C.append("    u32 %s;" % ", ".join(decls))
     for ln in body:
         C.append("    " + ln)
@@ -2398,7 +2462,7 @@ def _reg_liveness(blocks, conds):
             if lo != live_out[name] or li != live_in[name]:
                 live_out[name], live_in[name] = lo, li
                 changed = True
-    return live_out
+    return live_out, live_in
 
 
 def _dse_blocklocal(stmts, live_out):

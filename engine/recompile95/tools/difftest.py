@@ -204,7 +204,9 @@ def test_module(module, trials=20, limit=None, budget=90):
 
 
 def main():
-    mods = [a for a in sys.argv[1:] if not a.startswith("-")]
+    manifest = sys.argv[sys.argv.index("--manifest") + 1] if "--manifest" in sys.argv else None
+    mods = [a for a in sys.argv[1:] if not a.startswith("-") and a != manifest]
+    mf = open(manifest, "a", encoding="utf-8") if manifest else None
     tp = tm = ts = trunc = 0
     for m in mods:
         try:
@@ -212,8 +214,14 @@ def main():
         except Exception as e:
             print("  %-16s ERROR %s" % (m, repr(e)[:80])); continue
         tp += len(p); tm += len(mm); ts += s; trunc += bool(t)
+        if mf:                                       # proven-manifest: module <tab> seg1-offset
+            for off, fname, n in p:
+                mf.write("%s\t1\t%x\n" % (m, off))
+            mf.flush()
         print("  %-16s proven=%-3d mismatch=%-2d skipped=%d%s"
               % (m, len(p), len(mm), s, "  (TRUNCATED: hit time budget)" if t else ""))
+    if mf:
+        mf.close()
     print("TOTAL: %d functions PROVEN bit-identical to real win95 machine code "
           "(%d mismatch, %d skipped, %d modules truncated)" % (tp, tm, ts, trunc))
 
