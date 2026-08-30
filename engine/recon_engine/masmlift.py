@@ -28,11 +28,11 @@ import time
 import zlib
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-_REPO = os.path.dirname(os.path.dirname(ROOT))                    # CodeBreaker/engine -> repo root
-# Defaults are REPO-RELATIVE so a checkout works anywhere; config.json (config.apply_config)
+_ROOT = os.path.dirname(os.path.dirname(ROOT))                    # CodeBreaker/engine -> repo root
+# Defaults are DATA_ROOT-RELATIVE so a checkout works anywhere; config.json (config.apply_config)
 # overrides them for a machine whose tools live elsewhere.
-DBX = os.path.join(_REPO, "win1.0", "refs", "tools", "dosbox-x", "bin", "x64", "Release", "dosbox-x.exe")
-MASMROOT = os.path.join(_REPO, "win1.0", "build16")               # has BIN/INC/LIB
+DBX = os.path.join(_ROOT, "win1.0", "refs", "tools", "dosbox-x", "bin", "x64", "Release", "dosbox-x.exe")
+MASMROOT = os.path.join(_ROOT, "win1.0", "build16")               # has BIN/INC/LIB
 
 # DOSBox CPU core. `normal` is the safe interpreter; `dynamic` JITs the emulated x86
 # (much faster on cache MISSES). MASM output is deterministic, so a correct core yields

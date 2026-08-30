@@ -94,11 +94,11 @@ def _resolve_src(r):
     after ingest (the stored src_path can go stale when a group dir is renamed).
     Falls back to locating <module>/<basename> under the version's asm root."""
     import glob
-    p = os.path.join(corpus.REPO, r["src_path"])
+    p = os.path.join(corpus.DATA_ROOT, r["src_path"])
     if os.path.exists(p):
         return p
     base = os.path.basename(r["src_path"])
-    root = os.path.join(corpus.REPO, corpus.VERSIONS.get(r["version_id"], {})
+    root = os.path.join(corpus.DATA_ROOT, corpus.VERSIONS.get(r["version_id"], {})
                         .get("asm_root", ""))
     hits = glob.glob(os.path.join(root, "**", r["module_name"], base), recursive=True)
     return hits[0] if hits else p

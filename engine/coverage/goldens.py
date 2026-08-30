@@ -29,7 +29,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))       # CodeBreaker/engine
 WT_DIR = os.path.dirname(HERE)                          # CodeBreaker
-REPO = os.path.dirname(WT_DIR)                          # repo parent
+DATA_ROOT = os.path.dirname(WT_DIR)                          # repo parent
 STORE = os.path.join(HERE, "goldens")
 
 CORES = ["masmlift", "trace", "ne", "disasm", "cfg", "lift",
@@ -62,7 +62,7 @@ def resolve_hashes():
         row = {}
         for core in CORES:
             p = _resolve(target, core)
-            row[core] = None if p is None else [os.path.relpath(p, REPO).replace("\\", "/"),
+            row[core] = None if p is None else [os.path.relpath(p, DATA_ROOT).replace("\\", "/"),
                                                 _hash_file(p)]
         out[target] = row
     return out
@@ -83,7 +83,7 @@ def _sample_asm():
     if not files:
         return []
     stride = max(1, len(files) // BEHAVIOUR_N)
-    return [os.path.relpath(f, REPO).replace("\\", "/") for f in files[::stride][:BEHAVIOUR_N]]
+    return [os.path.relpath(f, DATA_ROOT).replace("\\", "/") for f in files[::stride][:BEHAVIOUR_N]]
 
 
 def behaviour_hash(sample):
@@ -93,7 +93,7 @@ def behaviour_hash(sample):
     h = hashlib.md5()
     n = 0
     for rel in sample:
-        p = os.path.join(REPO, rel)
+        p = os.path.join(DATA_ROOT, rel)
         if not os.path.exists(p):
             continue
         try:

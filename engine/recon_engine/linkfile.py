@@ -117,6 +117,7 @@ def link_module(name, masmroot=None):
 
     secs = _code_sections(path, fmt)          # (name, file_off, key, size)
     secmap = {key: foff for (_nm, foff, key, _sz) in secs}
+    secsz = {key: sz for (_nm, _foff, key, sz) in secs}     # raw size per code section
     placed = 0
     # Assemble each function .asm ONCE and drop its bytes at its file offset, routing
     # each to its OWN code section (secN prefix). Fixup-mask sites are skipped: a fixup
@@ -159,8 +160,12 @@ def link_module(name, masmroot=None):
             if j in mask:                       # linker-resolved site: leave layout value
                 fixups += 1
                 continue
+            if off + j >= secsz.get(sec, 1 << 62):   # a function's OBJ can carry trailing
+                continue                              # alignment padding; never let it spill
+                                                      # past its own section's raw size into
+                                                      # the next section (corrupts .rsrc etc.)
             fo = _foff(sec, off + j)
-            if fo is not None:
+            if fo is not None and 0 <= fo < len(rebuilt):
                 rebuilt[fo] = code[j]
         placed += 1
 

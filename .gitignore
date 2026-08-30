@@ -28,3 +28,7 @@ files/
 # Object files (recompile95 build output)
 *.o
 *.obj
+
+# Local external-tool config (paths are machine-specific; copy config.json.example)
+config.json
+CodeBreaker.config.json

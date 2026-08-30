@@ -1,0 +1,8 @@
+{
+  "dosbox_x": "",
+  "masm": "reference/masm/BIN",
+  "msvc152c": "reference/msvc152c",
+  "msc203_oracle": "",
+  "sevenzip": "7z",
+  "ghidra": ""
+}

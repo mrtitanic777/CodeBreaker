@@ -31,7 +31,7 @@ def cmd_versions(args):
     print("registered OS snapshots:\n")
     for vid in sorted(corpus.VERSIONS):
         v = corpus.VERSIONS[vid]
-        root = os.path.join(corpus.REPO, v["asm_root"])
+        root = os.path.join(corpus.DATA_ROOT, v["asm_root"])
         exists = "OK " if os.path.isdir(root) else "-- "
         print("  [%s] %-11s %-13s %s" % (exists, vid, v["architecture"], v["asm_root"]))
 

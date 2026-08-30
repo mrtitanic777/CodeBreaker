@@ -1,5 +1,15 @@
 # CodeBreaker
 
+## Project Status
+
+**🟢 Working tool — actively developed. Not yet pushed to GitHub.**
+
+- **Done:** Deterministic, evidence-only RE workbench for early-PC binaries — disassemble → byte-exact reassembleable ASM → readable C, with an IR engine (`engine/il.py`, `engine/decompile.py`) and a cross-version engine tracking a function's identity across releases. Ships no third-party binaries/source.
+- **Unfinished:** Ongoing engine work; local git repo has uncommitted changes and **no remote yet**.
+- **Next:** Commit, create a (private) repo, push. Part of the Windows-95 reconstruction effort alongside LoganOS and MS-DOS 7.10.
+
+_Last reviewed: 2026-07-15._
+
 **A deterministic, evidence-only reverse-engineering workbench for early-PC binaries** —
 disassemble → byte-exact reassembleable ASM → readable C, with an IR engine that lifts
 proven-exact assembly into structured C, and a cross-version engine that tracks a function's
@@ -82,6 +92,7 @@ engine/          the tool's core — a Python package of subsystem subpackages
   reference/       external reference-source tooling
   diff/            cross-version fingerprint / match / propagate + git-style UI  → wt diff
   recompile95/     make the lifted C compile/link                                → wt recompile
+  inverse_engine/  compiler-inverse: bytes → byte-exact C (Lattice C 2.12/MSC 2.03) → wt inverse
   targets/         per-era overrides (win1.0 … winnt4), injected via cores       → wt --target
 ```
 
