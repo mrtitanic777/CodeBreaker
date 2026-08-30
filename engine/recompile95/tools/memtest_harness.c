@@ -16,10 +16,16 @@ typedef unsigned u32;
 
 typedef u32 (__cdecl *F1)(u32); typedef u32 (__cdecl *F2)(u32, u32);
 typedef u32 (__cdecl *F3)(u32, u32, u32); typedef u32 (__cdecl *F4)(u32, u32, u32, u32);
+typedef u32 (__cdecl *F5)(u32, u32, u32, u32, u32); typedef u32 (__cdecl *F6)(u32, u32, u32, u32, u32, u32);
+typedef u32 (__cdecl *F7)(u32, u32, u32, u32, u32, u32, u32);
+typedef u32 (__cdecl *F8)(u32, u32, u32, u32, u32, u32, u32, u32);
 typedef void (__cdecl *ZF)(void);
 static u32 calln(void *f, int n, u32 *a){
   switch(n){ case 1: return ((F1)f)(a[0]); case 2: return ((F2)f)(a[0], a[1]);
-  case 3: return ((F3)f)(a[0], a[1], a[2]); default: return ((F4)f)(a[0], a[1], a[2], a[3]); } }
+  case 3: return ((F3)f)(a[0], a[1], a[2]); case 4: return ((F4)f)(a[0], a[1], a[2], a[3]);
+  case 5: return ((F5)f)(a[0],a[1],a[2],a[3],a[4]); case 6: return ((F6)f)(a[0],a[1],a[2],a[3],a[4],a[5]);
+  case 7: return ((F7)f)(a[0],a[1],a[2],a[3],a[4],a[5],a[6]);
+  default: return ((F8)f)(a[0],a[1],a[2],a[3],a[4],a[5],a[6],a[7]); } }
 
 static jmp_buf jb;
 static void onfault(int s){ (void)s; longjmp(jb, 1); }
@@ -37,7 +43,7 @@ int main(void){
     for(int j=0;j<t->nptr;j++)
       bufs[j] = (unsigned char*)VirtualAlloc(0, BUFSZ, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE);
     for(int k=0;k<t->nc;k++){
-      u32 args[4];
+      u32 args[8];
       for(int a=0;a<t->arity;a++) args[a] = t->args[k*t->arity + a];
       for(int j=0;j<t->nptr;j++){
         const unsigned char *src = &t->bin[(k*t->nptr + j)*BUFSZ];

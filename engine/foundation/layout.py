@@ -29,9 +29,17 @@ import os
 # ABSOLUTE data root (e.g. goldens.py) pass it explicitly.
 
 
+def _base(base):
+    """The data-root prefix. Explicit base wins; else $WT_DATA_ROOT (so STANDALONE tools resolve
+    data paths regardless of the current directory -- the class of bug where a tool run from the
+    wrong cwd silently found nothing); else '' = relative to cwd, which `wt` sets to the data root.
+    Backward-compatible: with WT_DATA_ROOT unset this is exactly the old cwd-relative behavior."""
+    return base or os.environ.get("WT_DATA_ROOT", "")
+
+
 def migrated(base=""):
     """True once this data dir uses the clean (published) layout."""
-    return os.path.isdir(os.path.join(base, "src"))
+    return os.path.isdir(os.path.join(_base(base), "src"))
 
 
 # --- byte-exact asm -------------------------------------------------------
@@ -39,6 +47,7 @@ def asm_dir(base=""):
     """The byte-exact asm root. Migrated targets keep it at top-level `asm/`, EXCEPT
     where it's been pulled under the source tree at `src/asm/` (win95) — existence-based
     and per-target, so each target resolves independently during the transition."""
+    base = _base(base)
     if migrated(base):
         nested = os.path.join(base, "src", "asm")
         return nested if os.path.isdir(nested) else os.path.join(base, "asm")
@@ -47,12 +56,14 @@ def asm_dir(base=""):
 
 # --- machine-generated [AUTO] C ------------------------------------------
 def generated_dir(base=""):
+    base = _base(base)
     return os.path.join(base, "src", "generated") if migrated(base) else os.path.join(base, "reconstructed", "auto")
 
 
 # --- hand-written C -------------------------------------------------------
 def recon_dir(base=""):
     """Root of the hand-written reconstruction C."""
+    base = _base(base)
     return os.path.join(base, "src", "reconstructed") if migrated(base) else os.path.join(base, "reconstructed")
 
 

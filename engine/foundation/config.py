@@ -20,9 +20,10 @@ import json
 from engine.foundation import cores
 import os
 
-_ENGINE = os.path.dirname(os.path.abspath(__file__))
-_WT_DIR = os.path.dirname(_ENGINE)                    # CodeBreaker/
-_REPO = os.path.dirname(_WT_DIR)                      # repo parent (holds per-era data dirs)
+_FOUND = os.path.dirname(os.path.abspath(__file__))   # engine/foundation
+_ENGINE = os.path.dirname(_FOUND)                     # engine
+_WT_DIR = os.path.dirname(_ENGINE)                    # CodeBreaker/  (repo root: config.json lives here)
+_ROOT = _WT_DIR                                       # relative tool paths resolve against the repo root
 
 
 def _resolve(cfg):
@@ -31,7 +32,7 @@ def _resolve(cfg):
     genuinely-external tools like ghidra / 7-Zip -- pass through unchanged."""
     out = {}
     for k, v in cfg.items():
-        out[k] = os.path.normpath(os.path.join(_REPO, v)) if isinstance(v, str) and v and not os.path.isabs(v) else v
+        out[k] = os.path.normpath(os.path.join(_ROOT, v)) if isinstance(v, str) and v and not os.path.isabs(v) else v
     return out
 
 
