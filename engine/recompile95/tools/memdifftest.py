@@ -269,22 +269,35 @@ def build(modules, stage):
         sys.exit("LIFTM.DLL build failed:\n" + r.stderr[-1500:])
 
     th = ["typedef struct{const char*mod;const char*name;int arity;int nptr;const int*pidx;int nc;"
-          "const unsigned*args;const unsigned char*bin;const unsigned char*bout;const unsigned*ret;}MT;",
+          "const unsigned*args;const unsigned char*bin;const unsigned char*bout;const unsigned*ret;"
+          "const int*retbuf;const unsigned*retoff;}MT;",
           "#define BUFSZ %d" % BUFSZ, "#define MAXPTR %d" % MAXPTR]
     for i, (mod, exp, arity, pidxs, cases) in enumerate(tests):
         args = [v & 0xffffffff for (a, b, r, bo) in cases for v in a]
         bin_ = [x for (a, b, r, bo) in cases for buf in b for x in buf]
         bout = [x for (a, b, r, bo) in cases for buf in bo for x in buf]
         ret = [r for (a, b, r, bo) in cases]
+        # POINTER-IDENTITY return: if the emulated return lands inside buffer j (mapped at BUF0+j*0x1000),
+        # it is a returned POINTER (e.g. a thiscall returning `this`/`this+k`). Its raw value differs from
+        # the candidate's VirtualAlloc'd buffer, so record (buffer idx, offset) and let the harness rebuild
+        # the expected pointer from ITS buffer -- otherwise a correct return-`this` looks like a mismatch.
+        rbuf, roff = [], []
+        for (a, b, r, bo) in cases:
+            if BUF0 <= r < BUF0 + len(pidxs) * 0x1000:
+                rbuf.append((r - BUF0) >> 12); roff.append((r - BUF0) & 0xFFF)
+            else:
+                rbuf.append(-1); roff.append(r & 0xffffffff)
         th.append("static const int P%d[]={%s};" % (i, ",".join(str(x) for x in pidxs)))
         th.append("static const unsigned A%d[]={%s};" % (i, ",".join("0x%xu" % v for v in args)))
         th.append("static const unsigned char BI%d[]={%s};" % (i, ",".join(str(v) for v in bin_)))
         th.append("static const unsigned char BO%d[]={%s};" % (i, ",".join(str(v) for v in bout)))
         th.append("static const unsigned R%d[]={%s};" % (i, ",".join("0x%xu" % v for v in ret)))
+        th.append("static const int RB%d[]={%s};" % (i, ",".join(str(x) for x in rbuf)))
+        th.append("static const unsigned RO%d[]={%s};" % (i, ",".join("0x%xu" % v for v in roff)))
     th.append("static const MT MT_[]={")
     for i, (mod, exp, arity, pidxs, cases) in enumerate(tests):
-        th.append('  {"%s","%s",%d,%d,P%d,%d,A%d,BI%d,BO%d,R%d},'
-                  % (mod, exp, arity, len(pidxs), i, len(cases), i, i, i, i))
+        th.append('  {"%s","%s",%d,%d,P%d,%d,A%d,BI%d,BO%d,R%d,RB%d,RO%d},'
+                  % (mod, exp, arity, len(pidxs), i, len(cases), i, i, i, i, i, i))
     th += ["};", "static const int NMT=%d;" % len(tests)]
     open(os.path.join(stage, "memtests.h"), "w").write("\n".join(th))   # per-run (parallel-safe), not HERE
     r = subprocess.run([HOSTCC, "-m32", "-w", "-I", stage, "-I", HERE, "-o", os.path.join(stage, "MEMTEST.EXE"),

@@ -27,6 +27,17 @@ def _emul(va0, code, fva, end, args, regvals):
     size = (len(code) + (va0 - secbase) + 0xFFF) & ~0xFFF
     uc.mem_map(secbase, max(size, 0x1000)); uc.mem_write(va0, bytes(code))
     uc.mem_map(0x200000, 0x10000)
+    # Pointer-input detection: a register holding a pointer the fn DEREFERENCES at entry would fault
+    # every run -- including the all-zero baseline -- giving ran=0 and a false "no register inputs"
+    # (the class of bug that deregisterized an edi buffer-pointer to an uninit local=0 -> NULL). Map
+    # the low page (deref of 0 reads zero) and the MARK page (deref of MARK reads a valid scratch
+    # pointer, so a pointer input shifts eax observably instead of crashing; double-deref stays mapped).
+    for _b in (0x0, 0x5A5A0000):
+        try:
+            uc.mem_map(_b, 0x20000)
+        except U.UcError:
+            pass
+    uc.mem_write(0x5A5A0000, b"\x00\x00\x20\x00" * (0x20000 // 4))   # each u32 == 0x00200000 (mapped)
     esp, RET = 0x208000, 0xDEAD0000
     for a in reversed(args):
         esp -= 4; uc.mem_write(esp, int(a & 0xffffffff).to_bytes(4, "little"))

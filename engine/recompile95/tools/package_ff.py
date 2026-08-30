@@ -294,9 +294,12 @@ def build_ff(module, outdir):
             _verified = set()
             for _ln in open(VERIFIED_PATH, encoding="utf-8", errors="replace"):
                 _pp = _ln.strip().split("\t")
-                if len(_pp) == 2 and _pp[0].upper() == module.upper():
+                # accept both manifest shapes: 2-field `MOD<tab>off` (memdifftest, clean_graph)
+                # and 3-field `MOD<tab>seg<tab>off` (difftest). The offset is always the last
+                # field and is section-relative in every writer (same convention as sec1_*.asm).
+                if len(_pp) in (2, 3) and _pp[0].upper() == module.upper():
                     try:
-                        _verified.add(int(_pp[1], 16))
+                        _verified.add(int(_pp[-1], 16))
                     except Exception:
                         pass
         _exp_offs = set()                                  # exports: Win95 calls them stdcall(+ecx this)

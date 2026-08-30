@@ -194,12 +194,15 @@ def verify_graph_reg(module, off, sg, va0, code, an):
         fo = sg.funcs[o]
         if fo["end"] - o > 600:
             return None
-        inp, ran = R.detect(va0, code, va0 + o, fo["end"])
         ap = os.path.join(layout.asm_module_dir(module), "sec1_%05x.asm" % o)
         if not os.path.isfile(ap):
             return None
         try:
-            cb = il.lift_asm_function(ap, "sub_%x" % o, clean=True, reg_inputs=frozenset(inp))
+            # SOUNDNESS: lift with reg_inputs=None (il DATAFLOW liveness) -- the EXACT lift package_ff
+            # ships (it also passes reg_inputs=None). Verifying an R.detect-threaded emission instead
+            # would prove a DIFFERENT function bit-identical than the one that runs. _leading_regs below
+            # reads back whatever il actually recovered, so threading + the oracle test match the ship.
+            cb = il.lift_asm_function(ap, "sub_%x" % o, clean=True, reg_inputs=None)
         except Exception:
             return None
         b = cb.split("{", 1)[-1]
@@ -259,6 +262,8 @@ def main():
     module = [a for a in sys.argv[1:] if not a.startswith("-")][0]
     limit = int(sys.argv[sys.argv.index("--limit") + 1]) if "--limit" in sys.argv else None
     reg = "--reg" in sys.argv                         # reg-aware (thiscall/fastcall) whole-graph
+    manifest = sys.argv[sys.argv.index("--manifest") + 1] if "--manifest" in sys.argv else None
+    mf = open(manifest, "a", encoding="utf-8") if manifest else None   # oracle-gate: MOD<tab>off
     vg = verify_graph_reg if reg else verify_graph
     target = cores.get("target"); pe = open_pe(target.resolve(module))
     va0, code, secname = pe.code_sections()[0]
@@ -275,10 +280,11 @@ def main():
         if r:
             bodies, n = r
             proven += 1; fns_promoted |= set(bodies); sizes.append(n)
-            rp = reg and _leading_regs(il.lift_asm_function(
-                os.path.join(layout.asm_module_dir(module), "sec1_%05x.asm" % off),
-                "sub_%x" % off, clean=True,
-                reg_inputs=frozenset(R.detect(va0, code, va0 + off, f["end"])[0])), off)
+            if mf:                                     # the WHOLE closure was proven bit-identical
+                for _co in set(bodies):                # together -> every member is safe to ship clean
+                    mf.write("%s\t%x\n" % (module, _co))
+                mf.flush()
+            rp = reg and _leading_regs(bodies[off], off)   # il's ACTUAL recovered inputs (what shipped)
             tag = ("  regs=%s" % rp) if rp else ""
             if rp:
                 nreg_top += 1

@@ -54,7 +54,10 @@ int main(void){
       u32 rv; totc++;
       if(setjmp(jb)==0){ rv = calln(f, t->arity, args); }
       else { crashed=1; signal(SIGSEGV,onfault); signal(SIGILL,onfault); fok=0; continue; }
-      int good = (rv == t->ret[k]);
+      /* pointer-identity return: a returned `this`/`this+k` points into a buffer; the emulated ref
+       * holds the emulation address, so rebuild the expected value from THIS run's buffer j. */
+      u32 expret = (t->retbuf[k] >= 0) ? (u32)(size_t)bufs[t->retbuf[k]] + t->retoff[k] : t->ret[k];
+      int good = (rv == expret);
       for(int j=0;j<t->nptr && good;j++){
         const unsigned char *exp = &t->bout[(k*t->nptr + j)*BUFSZ];
         for(int b=0;b<BUFSZ;b++) if(bufs[j][b] != exp[b]){ good=0; break; }
