@@ -81,7 +81,8 @@ def verify_graph(module, off, sg, va0, code, an):
         except Exception:
             return None
         body = cb.split("{", 1)[-1]
-        if "not recovered" in body or "goto *" in body or "__lifted" in body:
+        if ("not recovered" in body or "goto *" in body or "__lifted" in body
+                or re.search(r"\*\(u\d+\*\)\(0x[0-9a-f]{4,}\)", body)):   # non-relocatable abs global
             return None
         cb = re.sub(r"\bsub_([0-9a-f]+)\b",              # rename callee call-sites to TU names
                     lambda mm: "f_%s_s1_%05x" % (sym, int(mm.group(1), 16)), cb)
@@ -206,7 +207,8 @@ def verify_graph_reg(module, off, sg, va0, code, an):
         except Exception:
             return None
         b = cb.split("{", 1)[-1]
-        if "not recovered" in b or "goto *" in b or "__lifted" in b:
+        if ("not recovered" in b or "goto *" in b or "__lifted" in b
+                or re.search(r"\*\(u\d+\*\)\(0x[0-9a-f]{4,}\)", b)):   # non-relocatable abs global
             return None
         raw[o] = cb
         regp[o] = _leading_regs(cb, o)

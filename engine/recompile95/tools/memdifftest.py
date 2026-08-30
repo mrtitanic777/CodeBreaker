@@ -92,7 +92,7 @@ def _select(txt):
     out = {}
     for m in _BLOCK.finditer(txt):
         off, name, params, body = int(m.group(1), 16), m.group(3), m.group(4), m.group(5)
-        if ("sub_" in body and not GRAPH) or "goto *" in body or "goto seg" in body or "*(u32*)(0x" in body:
+        if ("sub_" in body and not GRAPH) or "goto *" in body or "goto seg" in body or re.search(r"\*\(u\d+\*\)\(0x", body):
             continue                                         # --graph: allow calls (closure compiled in)
         if re.search(r"\b(cs|ds|es|fs|gs|esp|ebp)\b", body):
             continue
@@ -165,7 +165,7 @@ def _closure_threaded(module, off, an):
             return None
         body = cb.split("{", 1)[-1]
         if ("not recovered" in body or "goto *" in body or "__lifted" in body
-                or "*(u32*)(0x" in body or re.search(r"\b(cs|ds|es|fs|gs)\b", body)):
+                or re.search(r"\*\(u\d+\*\)\(0x", body) or re.search(r"\b(cs|ds|es|fs|gs)\b", body)):
             return None
         raw[o], regp[o] = cb, clean_graph._leading_regs(cb, o)
     for o in list(raw):                                      # thread each callee's reg args into calls
@@ -221,7 +221,7 @@ def build(modules, stage):
                         continue
                     cbody = cc.split("{", 1)[-1]
                     if ("not recovered" in cbody or "goto *" in cbody or "__lifted" in cbody
-                            or "sub_" in cbody):
+                            or "sub_" in cbody or re.search(r"\*\(u\d+\*\)\(0x", cbody)):  # abs global
                         continue
                     reg_order = tuple(_leading_regs_named(cc, name))
                     blksrc = cc
