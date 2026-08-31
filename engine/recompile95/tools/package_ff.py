@@ -492,9 +492,17 @@ def build_ff(module, outdir):
                 f.write('__attribute__((naked,used)) %s sub_%x(%s){ __asm__ volatile(\n'
                         '  "push %%ebp\\n\\t"\n'
                         '  "mov %%esp,%%ebp\\n\\t"\n'
+                        # PRESERVE the caller\'s callee-saved regs. The global-sync below overwrites the
+                        # real ebx/esi/edi with the register-file globals -- fine for a clean caller (it
+                        # reads state from globals), but an EXTERNAL stdcall caller (SHELL32, win95)
+                        # expects ebx/esi/edi/ebp preserved across the call. Without this, its ebx became
+                        # the stale global -> `add ebx,eax` -> deref garbage -> crash (COMCTL32 #356).
+                        '  "push %%ebx\\n\\t"\n'           # [ebp-4]  caller ebx
+                        '  "push %%esi\\n\\t"\n'           # [ebp-8]  caller esi
+                        '  "push %%edi\\n\\t"\n'           # [ebp-12] caller edi
                         '  "movl __imgbase,%%eax\\n\\t"\n'
                         '  "addl $0x%x,%%eax\\n\\t"\n'
-                        '  "push %%eax\\n\\t"\n'           # [ebp-4] = original address
+                        '  "push %%eax\\n\\t"\n'           # [ebp-16] = original address
                         '%s'                               # copy N args (above the saved address)
                         '  "movl _eax,%%eax\\n\\t"\n'      # load threaded input state: globals -> real
                         '  "movl _ebx,%%ebx\\n\\t"\n'
@@ -502,13 +510,16 @@ def build_ff(module, outdir):
                         '  "movl _edx,%%edx\\n\\t"\n'
                         '  "movl _esi,%%esi\\n\\t"\n'
                         '  "movl _edi,%%edi\\n\\t"\n'
-                        '  "call *-4(%%ebp)\\n\\t"\n'      # run the original with correct input regs
+                        '  "call *-16(%%ebp)\\n\\t"\n'     # run the original with correct input regs
                         '  "movl %%eax,_eax\\n\\t"\n'      # store output state: real -> globals
                         '  "movl %%ebx,_ebx\\n\\t"\n'
                         '  "movl %%ecx,_ecx\\n\\t"\n'
                         '  "movl %%edx,_edx\\n\\t"\n'
                         '  "movl %%esi,_esi\\n\\t"\n'
                         '  "movl %%edi,_edi\\n\\t"\n'
+                        '  "mov -4(%%ebp),%%ebx\\n\\t"\n'  # restore caller callee-saved (eax=return kept)
+                        '  "mov -8(%%ebp),%%esi\\n\\t"\n'
+                        '  "mov -12(%%ebp),%%edi\\n\\t"\n'
                         '  "mov %%ebp,%%esp\\n\\t"\n'
                         '  "pop %%ebp\\n\\t"\n'
                         '  "ret\\n"\n'                     # cdecl (result already in real eax)
