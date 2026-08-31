@@ -273,6 +273,10 @@ def build_ff(module, outdir):
         va = int(m.group(0), 16)
         return "(_imgbase + 0x%x)" % (va - base) if lo <= va < hi else m.group(0)
     src = rc.adapt(src, link=True)
+    # rc.adapt prepends a `static u32 __cf0;` decl, but win95c.h now declares `extern u32 __cf0;`
+    # (unconditional, for the clean-path adc/sbb CF snapshot) and win95rt.c defines it -> static-after-
+    # non-static collision that breaks the byte-exact drop-in. Drop the redundant static decl.
+    src = re.sub(r'(?m)^\s*static\s+u32\s+__cf0\s*;\s*$', '', src)
     src = re.sub(r'0x[0-9a-fA-F]{6,8}', repl, src)
     # DROP the definitions of bad functions from the C (we replace them with jump-stubs) and
     # gather the set of sub_<off> that must become original-byte stubs.
