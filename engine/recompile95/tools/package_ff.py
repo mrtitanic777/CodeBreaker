@@ -13,7 +13,7 @@ original ImageBase free for the reconstituted image.
 
     python package_ff.py <module.dll> --out DIR
 """
-import os, re, sys, glob
+import os, re, sys, glob, struct
 _HERE = os.path.abspath(__file__)
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(_HERE)))))
 sys.path.insert(0, os.path.dirname(_HERE))
@@ -244,6 +244,13 @@ def build_ff(module, outdir):
     pe = open_pe(os.path.join(W, "disc", "staged", "bin", module))
     base = pe.image_base
     tv = [s for s in pe.sections if s["chars"] & 0x20000000][0]["vaddr"]
+    # base-relocation directory (data dir[5]) -> applied to the reconstituted image in DllMain so that
+    # absolute pointers baked into .data (vtables, fn-pointer tables) point at the ACTUAL load base, not
+    # the preferred base. Without this, a module whose preferred base can't be VirtualAlloc'd (e.g. the
+    # shared arena >=0x80000000: COMCTL32 @ 0xbfed0000) reconstitutes at a fallback base and every
+    # data-pointer deref lands in wrong memory -> crash. (win95's own loader relocates the pristine DLL.)
+    _pehdr = struct.unpack_from("<I", pe.data, 0x3c)[0]
+    _reloc_rva, _reloc_sz = struct.unpack_from("<II", pe.data, _pehdr + 24 + 96 + 5 * 8)
     funcs, defects, calls = certify_fn._analyze(module)
     # a function is "bad" if it carries a defect OR is only referenced but never defined
     referenced = set()
@@ -403,6 +410,7 @@ def build_ff(module, outdir):
         f.write("static const unsigned char IMGDATA[]={%s};\n" % ",".join(str(b) for b in img))
         _entry = getattr(pe, "entry", 0) or 0     # AddressOfEntryPoint (RVA) -> module's own DllMain
         f.write("#define IMGSZ %du\n#define IMGBASE 0x%08xu\n#define ENTRY_RVA 0x%xu\n" % (simg, base, _entry))
+        f.write("#define RELOC_RVA 0x%xu\n#define RELOC_SZ %du\n" % (_reloc_rva, _reloc_sz))
         imports = pe.imports()
         # include ORDINAL imports too (name "#N" -> ord=N); Win95 DLLs import kernel32 etc.
         # heavily by ordinal, and leaving those IAT slots unresolved crashes on the first call.
@@ -601,12 +609,20 @@ def build_ff(module, outdir):
         _rpatch = ("    { unsigned _k; for(_k=0;_k<NREDIR;_k++){ unsigned char*_q=b+REDIR[_k].rva;\n"
                    "      unsigned _t=(unsigned)(size_t)REDIR[_k].fn;\n"
                    "      _q[0]=0xE9; *(unsigned*)(_q+1)=_t-((unsigned)(size_t)_q+5); } }\n") if REDIRECT else ""
+        # base-relocate the reconstituted image if it did NOT land on its preferred base (delta!=0):
+        # add delta to every HIGHLOW (type 3) fixup so absolute pointers in code+data resolve correctly.
+        _rreloc = ("    { unsigned _d=(unsigned)(size_t)b-IMGBASE;\n"
+                   "      if(_d && RELOC_SZ){ unsigned char*_rp=b+RELOC_RVA,*_re=_rp+RELOC_SZ; unsigned _pg,_bl,_n,_j;\n"
+                   "        while(_rp+8<=_re){ _pg=*(unsigned*)_rp; _bl=*(unsigned*)(_rp+4); if(_bl<8) break;\n"
+                   "          { unsigned short*_e=(unsigned short*)(_rp+8); _n=(_bl-8)/2;\n"
+                   "            for(_j=0;_j<_n;_j++) if((_e[_j]>>12)==3) *(unsigned*)(b+_pg+(_e[_j]&0xFFF))+=_d; }\n"
+                   "          _rp+=_bl; } } }\n")
         f.write("BOOL WINAPI DllMain(HINSTANCE h,DWORD r,LPVOID x){ unsigned i;\n"
                 "  if(r==DLL_PROCESS_ATTACH){\n"
                 "    unsigned char*b=(unsigned char*)VirtualAlloc((void*)IMGBASE,IMGSZ,MEM_RESERVE|MEM_COMMIT,PAGE_EXECUTE_READWRITE);\n"
                 "    if(!b) b=(unsigned char*)VirtualAlloc(NULL,IMGSZ,MEM_RESERVE|MEM_COMMIT,PAGE_EXECUTE_READWRITE);\n"
                 "    memcpy(b,IMGDATA,IMGSZ); _imgbase=(unsigned)(size_t)b;\n"
-                + _rpatch +
+                + _rreloc + _rpatch +
                 "    for(i=0;i<NIMP;i++){\n"
                 "      /* GetModuleHandle first: a pure lookup, NOT a load. Calling LoadLibrary here\n"
                 "         (inside DllMain PROCESS_ATTACH) re-enters KERNEL32's loader mid-load and\n"
