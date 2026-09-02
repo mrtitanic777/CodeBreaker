@@ -102,7 +102,7 @@ def main():
     module = sys.argv[1]
     seg, off = re.match(r"seg(\d+):0x([0-9a-f]+)", sys.argv[2]).groups()
     seg, off = int(seg), int(off, 16)
-    os.environ.setdefault("WT_DATA_ROOT", "C:/Users/mrtit/Desktop/WindowsRE/win95")
+    os.environ.setdefault("WT_DATA_ROOT", "C:/Users/mrtit/Documents/GitHub/CodeBreaker/binaries/win95")
     code = fn_bytes(module, seg, off)
     ent = H._index().get(module.lower())
     apath = os.path.join(ent[0], "seg%d_%04x.asm" % (seg, off))

@@ -14,7 +14,7 @@ CodeBreaker — a deterministic reverse-engineering workbench.
     wt ui                                  # CodeBreaker Studio: the themed drag-and-drop UI
 
 A single entry point over era-specific toolchains, selected by `--target`
-(win1.0, win3.1, win95, win98, winnt4). The shared, target-agnostic core lives
+(win1.0, win3.1, win95, win98). The shared, target-agnostic core lives
 in `engine/`; each era's quirk tools live as a submodule under
 `engine/targets/<era>/`, holding only what genuinely differs for that platform.
 
@@ -44,7 +44,7 @@ else:
     # the env override when it actually holds the era dirs, else fall back to the tool's parent.
     _env = os.environ.get("WT_DATA_ROOT")
     if _env and any(os.path.isdir(os.path.join(_env, e)) for e in
-                    ("win95", "win98", "win3.1", "win1.0", "winnt4")):
+                    ("win95", "win98", "win3.1", "win1.0")):
         DATA_ROOT = _env
     else:
         DATA_ROOT = os.path.dirname(WT_DIR)              # holds per-era data dirs (dev checkout)
@@ -54,12 +54,20 @@ ENGINE = os.path.join(WT_DIR, "engine")                 # shared, target-agnosti
 # The five eras. Each era's tool code is a submodule under the core, at
 # `engine/targets/<era>/`; its DATA (files/, reconstructed/, ...) is external and
 # resolved under DATA_ROOT/<era> (the user's checkout / working directory).
-_ERAS = ("win1.0", "win3.1", "win95", "win98", "winnt4")
+_ERAS = ("win1.0", "win3.1", "win95", "win98")
+
+
+def _era_data(name):
+    # A per-era data override (WT_WIN1_0_DATA / WT_WIN3_1_DATA / WT_WIN98_DATA) lets an era's
+    # data live in its OWN standalone repo (e.g. GitHub/win1.0) instead of under DATA_ROOT;
+    # falls back to DATA_ROOT/<era> (win95 stays under binaries/win95). NOTE: distinct from
+    # WT_WIN95_ROOT, which is the reconstructed SOURCE tree (the Windows95 repo), not data.
+    ov = os.environ.get("WT_%s_DATA" % name.upper().replace(".", "_"))
+    return ov if ov and os.path.isdir(ov) else os.path.join(DATA_ROOT, name)
 
 
 def _resolve_targets():
-    return {name: (os.path.join(ENGINE, "targets", name),
-                   os.path.join(DATA_ROOT, name)) for name in _ERAS}
+    return {name: (os.path.join(ENGINE, "targets", name), _era_data(name)) for name in _ERAS}
 
 
 TARGETS = _resolve_targets()
@@ -201,6 +209,32 @@ def cmd_inverse(rest):
     runpy.run_path(script, run_name="__main__")
 
 
+def cmd_msc6(rest):
+    """Dispatch an msc6-engine tool -- byte-exact MSC-6.0a reconstruction of NE (16-bit
+    Windows) DLLs (merged from the standalone w95recon tool). Toolchain + corpus paths
+    come from config.json (msc6_toolchain / msc6_data / dosbox_x)."""
+    m6_dir = os.path.join(ENGINE, "msc6")
+    skip = {"paths.py", "toolchain.py", "__init__.py", "bruteforce.py", "autoaxis.py"}
+    tools = {}
+    if os.path.isdir(m6_dir):
+        for f in sorted(os.listdir(m6_dir)):
+            if f.endswith(".py") and not f.startswith("_") and f not in skip:
+                tools[f[:-3]] = os.path.join(m6_dir, f)
+    if not rest or rest[0] in ("list", "-h", "--help"):
+        print("msc6-engine commands (engine/msc6) -- byte-exact MSC-6.0a NE reconstruction:\n")
+        for name in sorted(tools):
+            print("  %s" % name)
+        print("\n(recipe: auto-detect a DLL's compiler flags; normalize: compact an NE's DOS stub)")
+        return
+    cmd, cmd_args = rest[0], rest[1:]
+    script = tools.get(cmd)
+    if not script:
+        print("error: no msc6 command %r (try: wt msc6 list)" % cmd); sys.exit(2)
+    sys.path.insert(0, WT_DIR)                                # the engine package on path
+    sys.argv = [os.path.basename(script)] + cmd_args
+    runpy.run_path(script, run_name="__main__")
+
+
 def usage():
     print(__doc__)
     cmd_targets()
@@ -232,6 +266,23 @@ def main():
         # The compiler-inverse engine: bytes -> byte-exact C by inverting the Lattice C /
         # MS C 2.03 codegen. Target-agnostic; the oracle is set in config.json.
         cmd_inverse(argv[1:]); return
+    if argv[0] == "msc6":
+        # The MSC-6.0a byte-exact engine (merged from w95recon): reconstruct NE (16-bit
+        # Windows) DLLs to source that re-links to the EXACT shipped bytes via the authentic
+        # MSC 6.0a / MASM 5.1 / LINK 5.20+5.60 toolchain. Paths from config.json (msc6_*).
+        cmd_msc6(argv[1:]); return
+    if argv[0] == "backbone":
+        # The modular toolchain API backbone: one uniform interface over
+        # compilers/assemblers/linkers/disassemblers, swappable by name (Phase 2).
+        sys.path.insert(0, WT_DIR)
+        from engine.backbone.__main__ import main as bb_main
+        sys.exit(bb_main(argv[1:]))
+    if argv[0] == "sdk":
+        # SDK/DDK ingestion: scan a kit, auto-detect its toolchain via the backbone,
+        # parse headers/defs into typed signatures that raise inverse accuracy (Phase 3).
+        sys.path.insert(0, WT_DIR)
+        from engine.sdk.__main__ import main as sdk_main
+        sys.exit(sdk_main(argv[1:]))
     if argv[0] == "ui":
         # CodeBreaker Studio: the native (Win32/GDI) themed drag-and-drop workbench.
         sys.path.insert(0, WT_DIR)

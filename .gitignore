@@ -32,3 +32,7 @@ files/
 # Local external-tool config (paths are machine-specific; copy config.json.example)
 config.json
 CodeBreaker.config.json
+
+# Data home: corpus, disassembly, Microsoft toolchain (user-attached), VMs, build
+# artifacts. NEVER committed -- attach your own compilers via config.json.
+/binaries/

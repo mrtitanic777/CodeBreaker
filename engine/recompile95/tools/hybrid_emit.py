@@ -18,7 +18,7 @@ is the separate 'runs-as-a-whole-module' frontier).
 """
 import os, re, sys, glob
 
-W = os.environ.get("WT_DATA_ROOT", "C:/Users/mrtit/Desktop/WindowsRE/win95")
+W = os.environ.get("WT_DATA_ROOT", "C:/Users/mrtit/Documents/GitHub/CodeBreaker/binaries/win95")
 ASM = os.path.join(W, "src", "asm")
 
 # a normal line:  "   push ebp   ; 00000 55"   |  a db line: "   db 0e8h,.. ; 0029 call 57h"

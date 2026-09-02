@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirna
 from engine.format_loaders.pe import open_pe
 sys.path.insert(0, os.path.dirname(_HERE))
 import symbolize
-W = os.environ.get("WT_DATA_ROOT", "C:/Users/mrtit/Desktop/WindowsRE/win95")
+W = os.environ.get("WT_DATA_ROOT", "C:/Users/mrtit/Documents/GitHub/CodeBreaker/binaries/win95")
 
 
 def package(module, outdir):

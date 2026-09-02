@@ -1,0 +1,29 @@
+;
+; LZEXPAND.DEF - module definition for LZEXPAND.DLL
+;
+; Export ordinals reproduce the shipped DLL exactly (WEP is @11; LZCopy is @1,
+; not the source order) so existing binaries that import LZEXPAND by ordinal
+; keep working.
+;
+LIBRARY     LZEXPAND
+DESCRIPTION 'Windows file expansion library'
+EXETYPE     WINDOWS
+STUB        'WINSTUB.EXE'
+
+CODE        MOVEABLE DISCARDABLE PRELOAD
+DATA        MOVEABLE SINGLE PRELOAD
+
+HEAPSIZE    1024
+
+EXPORTS
+    LZCOPY          @1
+    LZOPENFILE      @2
+    LZINIT          @3
+    LZSEEK          @4
+    LZREAD          @5
+    LZCLOSE         @6
+    LZSTART         @7
+    COPYLZFILE      @8
+    LZDONE          @9
+    GETEXPANDEDNAME @10
+    WEP             @11    RESIDENTNAME

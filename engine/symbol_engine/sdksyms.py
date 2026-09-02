@@ -168,7 +168,7 @@ def build(sdk_dir):
 
 def main():
     a = [x for x in sys.argv[1:] if not x.startswith("-")]
-    sdk = a[0] if a else r"C:\Users\mrtit\Desktop\WindowsRE\Misc\Windows Chicago - Build 331 SDK"
+    sdk = a[0] if a else r"C:\Users\mrtit\Documents\GitHub\CodeBreaker\binaries\toolchains\archive-stash\Windows Chicago - Build 331 SDK"
     db = build(sdk)
     protos, structs = parse_headers(sdk)
     db["proto"] = protos

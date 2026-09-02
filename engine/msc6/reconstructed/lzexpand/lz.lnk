@@ -1,0 +1,6 @@
+/NOD /NOE /NOPACKCODE /ALIGN:16 lzdata.obj+lzinit.obj+lzio.obj+lzhdr.obj+lzlzss.obj+lzdecode.obj+
+lzname.obj+lzctx.obj+lzcopy.obj+lzfile.obj+lzwep.obj
+lzexpand.dll
+lzexpand.map
+mdllcew.lib libw.lib
+lzexpand.def

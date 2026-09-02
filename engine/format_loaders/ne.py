@@ -140,8 +140,10 @@ class NEFile:
 
     def imported_name(self, off):
         base = self.ne_off + self.h["imp_tab"]
+        if not (0 <= base + off < len(self.data)):
+            return "?"                                    # out-of-range import-name offset
         ln = self.data[base+off]
-        return self.data[base+off+1:base+off+1+ln].decode("latin1")
+        return self.data[base+off+1:base+off+1+ln].decode("latin1", "replace")
 
     # ---- segment table -----------------------------------------------------
     def segments(self):

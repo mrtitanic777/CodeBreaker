@@ -21,7 +21,7 @@ from engine.format_loaders.pe import open_pe
 import certify_fn, rc, recover_flags, hybrid_emit as H
 from engine.ir_engine import il                          # deregisterized (clean) emission
 from engine.foundation import layout
-W = os.environ.get("WT_DATA_ROOT", "C:/Users/mrtit/Desktop/WindowsRE/win95")
+W = os.environ.get("WT_DATA_ROOT", "C:/Users/mrtit/Documents/GitHub/CodeBreaker/binaries/win95")
 CLEAN = "--clean" in sys.argv       # BOOT-CEILING: emit DEREGISTERIZED good fns (registers->locals)
 def _argval(flag):
     return sys.argv[sys.argv.index(flag) + 1] if flag in sys.argv and sys.argv.index(flag) + 1 < len(sys.argv) else None
