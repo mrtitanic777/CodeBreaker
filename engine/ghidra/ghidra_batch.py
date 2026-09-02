@@ -91,8 +91,10 @@ def main(argv):
     if len(argv) < 2:
         print(__doc__)
         return 2
+    import concurrent.futures
     inp, outdir = argv[0], argv[1]
     limit = int(argv[argv.index("--limit") + 1]) if "--limit" in argv else None
+    jobs = int(argv[argv.index("--jobs") + 1]) if "--jobs" in argv else max(1, min((os.cpu_count() or 4) - 4, 6))
     os.makedirs(outdir, exist_ok=True)
     if os.path.isdir(inp):
         targets = []
@@ -102,25 +104,34 @@ def main(argv):
                     targets.append(os.path.join(dp, fn))
     else:
         targets = [inp]
-    targets = sorted(set(targets))[:limit]
-    print("ghidra_batch: %d target(s) -> %s\n" % (len(targets), outdir))
-    done = skipped = 0
-    for t in targets:
+    # resumable: skip anything already decompiled, then honor --limit
+    todo = []
+    for t in sorted(set(targets)):
         base = os.path.splitext(os.path.basename(t))[0]
         out_c = os.path.join(outdir, base + ".ghidra.c")
-        if os.path.exists(out_c):
-            print("  [have] %s" % base)
-            continue
-        res = decompile_one(t, out_c)
-        if res.get("skip"):
-            skipped += 1
-            print("  [skip] %-26s %s" % (base, res["skip"]))
-        elif res.get("ok"):
-            done += 1
-            print("  [ok]   %-26s gdt=%s" % (base, res.get("gdt")))
-        else:
-            print("  [FAIL] %-26s (no output)" % base)
-    print("\ndone: %d decompiled, %d skipped -> %s" % (done, skipped, outdir))
+        if not os.path.exists(out_c):
+            todo.append((t, out_c))
+    todo = todo[:limit]
+    print("ghidra_batch: %d to do, %d parallel workers -> %s" % (len(todo), jobs, outdir), flush=True)
+    done = skipped = 0
+    with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as ex:
+        futs = {ex.submit(decompile_one, t, out_c): t for (t, out_c) in todo}
+        for i, fut in enumerate(concurrent.futures.as_completed(futs), 1):
+            base = os.path.splitext(os.path.basename(futs[fut]))[0]
+            try:
+                res = fut.result()
+            except Exception as e:
+                res = {"skip": "worker error: %s" % str(e)[:60]}
+            if res.get("skip"):
+                skipped += 1
+                tag, note = "[skip]", res["skip"]
+            elif res.get("ok"):
+                done += 1
+                tag, note = "[ok]  ", "gdt=%s" % res.get("gdt")
+            else:
+                tag, note = "[FAIL]", "no output"
+            print("  %4d/%d %s %-26s %s" % (i, len(todo), tag, base, note), flush=True)
+    print("\ndone: %d decompiled, %d skipped -> %s" % (done, skipped, outdir), flush=True)
     return 0
 
 
