@@ -150,6 +150,54 @@ class Dec:
         cond = " || ".join("(%s)" % " && ".join(g) for g in terms)
         return cond, join, exit_i
 
+    def _bool_materialize(s, i, hi, reg):
+        """Recover a MATERIALIZED boolean -- MSC 6.0a builds `(A || B || ...)` into a
+        register as a literal 0/1 and tests it later, instead of branching directly:
+
+            cmp A,0 ; jne T        (>=1 such, all jne to the SAME target T)
+            [cmp B,0 ; jne T]...
+            sub R,R ; jmp J        (false fall-through: R = 0)
+          T:  mov R,1              (true, the jne target: R = 1)
+          J:  or R,R ; jcc ...     (the caller now tests R, which holds (A||B))
+
+        Returns (R, expr, J_index) so walk() can set reg[R]=expr and resume at J, where the
+        existing `or R,R ; jcc` handler renders `if ((A||B) <cc> 0)`. None if it doesn't match."""
+        md = s.md
+        pairs = []; idx = i
+        while idx + 1 < hi and md[idx].mnemonic == "cmp" \
+                and md[idx].op_str.endswith(", 0") and md[idx+1].mnemonic == "jne":
+            t = s._ti(int(md[idx+1].op_str, 16))
+            if t is None or t <= idx:
+                break
+            pairs.append((idx, md[idx+1].bytes[0])); idx += 2
+        if not pairs:
+            return None
+        T = s._ti(int(md[pairs[0][0]+1].op_str, 16))
+        if any(s._ti(int(md[ci+1].op_str, 16)) != T for ci, _ in pairs):
+            return None                                  # all jne must target the same true-block
+        if idx + 1 >= hi or md[idx].mnemonic != "sub":   # sub R,R
+            return None
+        a, _, b = md[idx].op_str.partition(", ")
+        if not b or a != b or a not in _WREG:
+            return None
+        R = a
+        if md[idx+1].mnemonic != "jmp":                  # jmp J
+            return None
+        J = s._ti(int(md[idx+1].op_str, 16))
+        if J is None or T is None or T >= len(md):
+            return None
+        if md[T].mnemonic != "mov" or md[T].op_str != "%s, 1" % R:   # T: mov R,1
+            return None
+        if T + 1 != J:                                   # J is the fall-through after `mov R,1`
+            return None
+        terms = []
+        for ci, jop in pairs:                            # each jne fires when the operand != 0
+            c = s.cond_of(md[ci], _JCC_OPP[jop], reg)
+            if c is None:
+                return None
+            terms.append(c)
+        return R, "(" + " || ".join(terms) + ")", J
+
     def pname(s, off):
         """The C name of the parameter at [bp+off], honoring a typed signature (s.pnames
         for int params, s.lanes for far) so the body agrees with the declared signature;
@@ -336,6 +384,12 @@ class Dec:
                     out += ["    " + t for t in body]
                     out.append("}")
                     i = exit_i; continue
+            # materialized boolean: cmp A,0;jne T / sub R,R;jmp J / T: mov R,1  -> reg holds (A||B)
+            if mn == "cmp" and i + 1 < hi and s.md[i+1].mnemonic == "jne":
+                bm = s._bool_materialize(i, hi, reg)
+                if bm is not None:
+                    R, expr, J = bm
+                    reg[R] = expr; i = J; continue
             # branch: (or r,r | cmp ..) followed by jcc
             if i + 1 < hi and s.md[i+1].mnemonic in ("jne", "je", "jl", "jge", "jle", "jg") \
                     and mn in ("or", "cmp"):
@@ -747,6 +801,8 @@ def _selftest():
         ("dword-frword", "1e589045558bec1e8ed883ec028b56062bc04d4d8be51f5d4dca0200", "long", [("a", "int")]),
         # short-circuit OR-of-ANDs converging on a JOIN: (f==1&&g==0)||(f==2&&g==0)||(f==3&&g==0)
         ("shortcircuit-or-and", "1e589045558bec1e8ed883ec028b4e088b560683f90175040bd2741283f90275040bd2740983f903750c0bd27508519a00000000eb03b80d004d4d8be51f5d4dca040090", "int", [("f", "int"), ("g", "int")]),
+        # materialized boolean: MSC builds (a||b) into a 0/1 register then tests it (olecli sub_28aa)
+        ("bool-materialize", "1e589045558bec1e8ed883ec02c45e0626837f7f00750b26837f7d0075042bd2eb03ba01000bd274052bc0eb0490b805004d4d8be51f5d4dca040090", "int", [("p", "far")]),
     ]
     for label, hx, rt, pms in far:
         c = bytes.fromhex(hx)
