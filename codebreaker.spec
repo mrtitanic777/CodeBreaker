@@ -52,8 +52,10 @@ def collect_code(subdir):
 datas = []
 for d in _CODE_DIRS:
     datas += collect_code(d)
-if os.path.exists(os.path.join(HERE, "config.json")):
-    datas.append((os.path.join(HERE, "config.json"), "."))
+# Ship the EXAMPLE config as a template only -- never bake the user's live config.json, which
+# holds machine-specific local paths, into a distributable binary.
+if os.path.exists(os.path.join(HERE, "config.json.example")):
+    datas.append((os.path.join(HERE, "config.json.example"), "."))
 
 binaries = []
 # clr = pythonnet, imported dynamically by the WinForms UI (bundled as data, so not seen by
