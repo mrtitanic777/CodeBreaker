@@ -252,11 +252,43 @@ def cmd_xbox(rest):
     runpy.run_path(launcher, run_name="__main__")
 
 
+def _attach_console_if_cli(argv):
+    """Hybrid ship-exe support: the packaged build is windowed (no console flash on a
+    double-click). When launched with CLI arguments from a terminal, attach to the parent
+    console so stdout/stderr are visible; either way, ensure the streams exist (a windowed
+    build has none) so print() never crashes -- output is discarded when there is no console."""
+    if not (getattr(sys, "frozen", False) and sys.platform == "win32"):
+        return
+    log = os.environ.get("WT_LOG")                          # diagnostics for the windowed build
+    if log:
+        try:
+            f = open(log, "w", buffering=1); sys.stdout = f; sys.stderr = f
+            return
+        except Exception:
+            pass
+    attached = False
+    if argv:
+        try:
+            import ctypes
+            attached = bool(ctypes.windll.kernel32.AttachConsole(-1))   # ATTACH_PARENT_PROCESS
+        except Exception:
+            attached = False
+    for _name in ("stdout", "stderr"):
+        if getattr(sys, _name, None) is None:
+            try:
+                setattr(sys, _name, open("CONOUT$" if attached else os.devnull, "w", buffering=1))
+            except Exception:
+                pass
+
+
 def main():
     import multiprocessing
     multiprocessing.freeze_support()
     argv = sys.argv[1:]
-    if not argv or argv[0] in ("-h", "--help", "help"):
+    _attach_console_if_cli(argv)
+    if not argv:
+        argv = ["ui"]                                           # double-click / no args -> the UI
+    if argv[0] in ("-h", "--help", "help"):
         usage(); return
     if argv[0] == "targets":
         cmd_targets(); return

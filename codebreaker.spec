@@ -1,8 +1,13 @@
 # -*- mode: python ; coding: utf-8 -*-
 #
-# CodeBreaker.spec -- package the unified workbench into a standalone console exe.
+# CodeBreaker.spec -- package the unified workbench into a standalone hybrid exe.
 #
 #   pyinstaller CodeBreaker.spec     # -> dist/CodeBreaker.exe
+#
+# Hybrid: double-clicking the exe (no args) opens the native UI; running it with arguments
+# (CodeBreaker.exe diff versions) behaves as the CLI, printing to the terminal it was launched
+# from. It is a windowed build so a double-click shows no console; wt.py attaches the parent
+# console on demand (see _attach_console_if_cli).
 #
 # Model: the ENTRY is wt.py (the --target dispatcher). wt.py runs each tool via
 # runpy.run_path, so the tool CODE (engine/ + the per-target tool dirs) is bundled as
@@ -51,7 +56,10 @@ if os.path.exists(os.path.join(HERE, "config.json")):
     datas.append((os.path.join(HERE, "config.json"), "."))
 
 binaries = []
-hiddenimports = []
+# clr = pythonnet, imported dynamically by the WinForms UI (bundled as data, so not seen by
+# the import graph); listing it triggers pythonnet's own PyInstaller hook, which bundles
+# Python.Runtime.dll + the .NET runtime so `wt ui` works from the frozen exe.
+hiddenimports = ["clr"]
 _c = collect_all("capstone")                            # the tools' one third-party dep
 datas += _c[0]; binaries += _c[1]; hiddenimports += _c[2]
 
@@ -83,7 +91,9 @@ exe = EXE(
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=True,
+    console=False,                                       # hybrid: windowed (no console flash on
+                                                         # double-click -> UI); wt.py attaches the
+                                                         # parent console when launched with args
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
