@@ -39,7 +39,12 @@ GDT_DIR = os.path.join(ROOT, "binaries", "ghidra_gdt")
 GDT_WIN32 = os.path.join(GDT_DIR, "win32_win95sdk.gdt")
 GDT_DDK = os.path.join(GDT_DIR, "ddk_win95_vxd.gdt")
 GDT_WIN16 = os.path.join(GDT_DIR, "win16_win95sdk.gdt")
-_EXTS = (".dll", ".exe", ".vxd", ".ocx", ".cpl", ".drv", ".sys", ".386", ".scr")
+# Code-bearing extensions. classify() still content-checks (MZ->PE/NE/LE), so a
+# non-code file that happens to match self-skips. .fon/.tlb are deliberately out
+# (NE/PE format but resource-only -- fonts, type libs -- no code to decompile).
+_EXTS = (".dll", ".exe", ".vxd", ".ocx", ".cpl", ".drv", ".sys", ".386", ".scr",
+         ".mpd", ".pdr", ".acm", ".acv", ".ax", ".tsp", ".flt", ".vbx", ".3gr",
+         ".nav", ".new", ".nw4", ".ned", ".wpc", ".tsk", ".pci", ".bin", ".ms")
 
 
 def classify(path):
