@@ -2,10 +2,10 @@
 # Corpus-wide FULL-FIDELITY build: every install PE DLL -> editable C/ASM-mix drop-in DLL.
 # Resumable (skips modules whose output DLL already exists). One log line per module.
 set -uo pipefail
-REPO="${REPO:-C:/Users/mrtit/Documents/GitHub/CodeBreaker}"
+REPO="${REPO:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../../.." && pwd)}"
 export WT_DATA_ROOT="${WT_DATA_ROOT:-$REPO/binaries/win95}"
 export PATH="/c/msys64/mingw32/bin:$PATH"
-T="C:/Users/mrtit/Documents/GitHub/CodeBreaker/engine/recompile95/tools"
+T="$REPO/engine/recompile95/tools"
 INC="$T/../include"
 SP="${SP:-$REPO/binaries/work/build}"
 OUT="$SP/ffcorpus"

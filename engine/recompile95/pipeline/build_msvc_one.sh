@@ -3,10 +3,10 @@
 # Places the finished DLL into the FF corpus dll dir (default) so build_safe swaps it.
 set -uo pipefail
 m="$1"
-REPO="${REPO:-C:/Users/mrtit/Documents/GitHub/CodeBreaker}"
+REPO="${REPO:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../../.." && pwd)}"
 export WT_DATA_ROOT="${WT_DATA_ROOT:-$REPO/binaries/win95}"
-T="C:/Users/mrtit/Documents/GitHub/CodeBreaker/engine/recompile95/tools"
-INCU="C:/Users/mrtit/Documents/GitHub/CodeBreaker/engine/recompile95/include"
+T="$REPO/engine/recompile95/tools"
+INCU="$REPO/engine/recompile95/include"
 INC="C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\engine\\recompile95\\include"
 MSVC="${MSVC:-$REPO/binaries/toolchains/period/compilers/msvc-2.0}"
 MSVCW="C:\\Users\\mrtit\\Documents\\GitHub\\Windows95\\toolchain\\msvc20"

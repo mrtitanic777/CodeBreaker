@@ -16,7 +16,7 @@ and censuses the lift defects, then classifies:
 import os, re, sys, glob, subprocess
 
 CB = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-W = os.environ.get("WT_DATA_ROOT", "C:/Users/mrtit/Documents/GitHub/CodeBreaker/binaries/win95")
+W = os.environ.get("WT_DATA_ROOT", os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "binaries", "win95"))
 GEN = os.path.join(W, "src", "generated")
 
 

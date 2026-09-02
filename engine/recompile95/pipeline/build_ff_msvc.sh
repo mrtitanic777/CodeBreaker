@@ -2,7 +2,7 @@
 # MULTITHREADED corpus FF build via MSVC 2.0. Fans build_msvc_one over ff_targets.txt.
 # Resumable (skips modules already present in the MSVC output dir). Run under Git Bash/MSYS2.
 set -uo pipefail
-REPO="${REPO:-C:/Users/mrtit/Documents/GitHub/CodeBreaker}"
+REPO="${REPO:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../../.." && pwd)}"
 SP="${SP:-$REPO/binaries/work/build}"
 export DLLDIR="${DLLDIR:-$SP/ffcorpus_msvc/dll}"          # separate dir so we don't clobber mingw corpus
 export ONE="${ONE:-$REPO/binaries/win95/pipeline/build_msvc_one.sh}"

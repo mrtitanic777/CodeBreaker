@@ -3,10 +3,10 @@
 # Fans out across cores via xargs -P (default 8 jobs). Resumable (skips modules whose DLL exists).
 # Each module builds in its OWN work dir -> no cross-job contention. Run under Git Bash/MSYS2.
 set -uo pipefail
-REPO="${REPO:-C:/Users/mrtit/Documents/GitHub/CodeBreaker}"
+REPO="${REPO:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../../.." && pwd)}"
 export WT_DATA_ROOT="${WT_DATA_ROOT:-$REPO/binaries/win95}"
 export PATH="/c/msys64/mingw32/bin:$PATH"
-export T="C:/Users/mrtit/Documents/GitHub/CodeBreaker/engine/recompile95/tools"
+export T="$REPO/engine/recompile95/tools"
 export INC="$T/../include"
 SP="${SP:-$REPO/binaries/work/build}"
 export OUT="$SP/ffcorpus"

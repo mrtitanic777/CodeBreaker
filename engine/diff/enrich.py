@@ -32,7 +32,7 @@ _SEGOFF = re.compile(r"se[gc](\w+?):0x([0-9a-fA-F]+)", re.I)  # "seg1:0x051c" (N
 # win95 (and the other 32-bit targets) ship PE binaries; their exports live in the PE
 # export directory, addressed by RVA. The corpus keys a function by its code-section-relative
 # offset (RVA minus the code section's RVA), so PE enrichment joins on that same offset.
-_PE_TARGET = {"win95_gold": "win95", "win98_gold": "win98", "winnt4_gold": "winnt4"}
+_PE_TARGET = {"win95_gold": "win95", "win98_gold": "win98"}
 _pe_target_set = None
 
 

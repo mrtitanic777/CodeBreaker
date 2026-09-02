@@ -3,7 +3,7 @@
 # Reads keep-list from a FILE (no shell-arg quoting bug). Verifies KERNEL32 stays original.
 set -uo pipefail
 export MTOOLS_SKIP_CHECK=1
-REPO="${REPO:-C:/Users/mrtit/Documents/GitHub/CodeBreaker}"
+REPO="${REPO:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../../.." && pwd)}"
 VM="${VM:-$REPO/binaries/vms}"
 SP="${SP:-$REPO/binaries/work/build}"
 DLL="${DLL:-$SP/ffcorpus/dll}"

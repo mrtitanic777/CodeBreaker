@@ -2,13 +2,12 @@
 
 ## Project Status
 
-**🟢 Working tool — actively developed. Not yet pushed to GitHub.**
-
-- **Done:** Deterministic, evidence-only RE workbench for early-PC binaries — disassemble → byte-exact reassembleable ASM → readable C, with an IR engine (`engine/il.py`, `engine/decompile.py`) and a cross-version engine tracking a function's identity across releases. Ships no third-party binaries/source.
-- **Unfinished:** Ongoing engine work; local git repo has uncommitted changes and **no remote yet**.
-- **Next:** Commit, create a (private) repo, push. Part of the Windows-95 reconstruction effort alongside LoganOS and MS-DOS 7.10.
-
-_Last reviewed: 2026-07-15._
+**🟢 Working tool — actively developed.** Deterministic, evidence-only RE workbench for
+early-PC binaries: disassemble → byte-exact reassembleable ASM → readable C, with an IR
+engine (`engine/ir_engine/il.py`, `engine/ir_engine/decompile.py`) and a cross-version
+engine that tracks a function's identity across releases. Ships no third-party binaries or
+source — you attach your own compilers and corpus. Part of the Windows-95 reconstruction
+effort alongside LoganOS and MS-DOS 7.10.
 
 **A deterministic, evidence-only reverse-engineering workbench for early-PC binaries** —
 disassemble → byte-exact reassembleable ASM → readable C, with an IR engine that lifts
@@ -25,7 +24,7 @@ system or third party — you point it at inputs you supply. See **[Disclaimer](
 - **Byte-exact reconstruction.** "Reconstructed" means the emitted source re-assembles/
   re-links to the *exact* original bytes — verified by rebuilding, not by eyeballing.
   Nothing is claimed that isn't proven against the input bytes.
-- **IR engine → readable C** (`engine/il.py`, `engine/decompile.py`). Lifts byte-exact
+- **IR engine → readable C** (`engine/ir_engine/il.py`, `engine/ir_engine/decompile.py`). Lifts byte-exact
   assembly into a typed, explicit-flag intermediate representation, runs optimization
   passes (dead-flag elimination, constant/copy propagation, dead-store elimination),
   recovers `if/else`/loop structure and call arguments, and emits clean C. Because the
@@ -93,7 +92,7 @@ engine/          the tool's core — a Python package of subsystem subpackages
   diff/            cross-version fingerprint / match / propagate + git-style UI  → wt diff
   recompile95/     make the lifted C compile/link                                → wt recompile
   inverse_engine/  compiler-inverse: bytes → byte-exact C (Lattice C 2.12/MSC 2.03) → wt inverse
-  targets/         per-era overrides (win1.0 … winnt4), injected via cores       → wt --target
+  targets/         per-era overrides (win1.0 … win98), injected via cores       → wt --target
 ```
 
 **Imports are explicit** (`from engine.ir_engine import il`) — a module's location is its

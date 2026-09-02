@@ -4,7 +4,7 @@
 # oracle-verified, deregisterized Windows 95 source per module. Emits build/clean/<MOD>_clean.c.
 #   clean_sweep.sh OUTDIR MODULE.DLL [MODULE.DLL ...]     (run from the win95 data root)
 set -uo pipefail
-T="C:/Users/mrtit/Documents/GitHub/CodeBreaker/engine/recompile95/tools"
+T="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 OUT="$1"; shift
 MM="$OUT/sweep.mem_manifest.txt"
 mkdir -p "$OUT"; : > "$MM"

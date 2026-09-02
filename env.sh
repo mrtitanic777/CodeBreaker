@@ -33,10 +33,11 @@ export INC="$CODEBREAKER/engine/recompile95/include"   # win95c.h, win95rt.c
 # --- the reconstructed WIN95 SOURCE TREE (separate, clean repo) --------------
 # The published Win95 source tree; win95tree.py `place` files reconstructed
 # source into it. Override WT_WIN95_ROOT if your checkout lives elsewhere.
+# Default: a Windows95 checkout sitting beside this repo (../Windows95).
 if [ -n "${WT_WIN95_ROOT:-}" ] && [ -d "$WT_WIN95_ROOT" ]; then
   : # honor an explicit override
-elif [ -d "C:/Users/mrtit/Documents/GitHub/Windows95/base" ]; then
-  export WT_WIN95_ROOT="C:/Users/mrtit/Documents/GitHub/Windows95"
+elif [ -d "$(dirname "$PROJECT")/Windows95/base" ]; then
+  export WT_WIN95_ROOT="$(dirname "$PROJECT")/Windows95"
 fi
 
 # --- toolchains -------------------------------------------------------------
@@ -57,7 +58,8 @@ export VM="$RECON/vms"                      # the VMware VM dir -- boot vm/Windo
 
 # --- per-era data roots (win1.0/win3.1/win98 extracted to their OWN repos) ----
 # wt --target <era> resolves these via WT_<ERA>_DATA; win95 stays under binaries/.
+# Default: era checkouts sitting beside this repo (../win1.0, ../win3.1, ../win98).
 for _e in win1.0:WIN1_0 win3.1:WIN3_1 win98:WIN98; do
-  _dir="C:/Users/mrtit/Documents/GitHub/${_e%%:*}"
+  _dir="$(dirname "$PROJECT")/${_e%%:*}"
   [ -d "$_dir" ] && export "WT_${_e##*:}_DATA=$_dir"
 done; unset _e _dir

@@ -5,7 +5,7 @@
 # Tier-1 sigs) -> build/clean/<mod>_clean.c; per-module logs in <OUT>/logs. Naming runs at the end.
 #   JOBS=6 clean_sweep_mt.sh OUTDIR MODULE [MODULE ...]        (run from the win95 data root)
 set -uo pipefail
-T="C:/Users/mrtit/Documents/GitHub/CodeBreaker/engine/recompile95/tools"
+T="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 OUT="$1"; shift
 JOBS="${JOBS:-6}"
 mkdir -p "$OUT" "$OUT/logs" "$OUT/manifests"

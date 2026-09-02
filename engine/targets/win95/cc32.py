@@ -7,7 +7,7 @@ ERA-CORRECT ORACLE: retail Windows 95 / OSR2 (1995-96) 32-bit code was built wit
 MSVC 2.0/4.x. MSVC 4.2 (1996, compiler internal version 10.20) is now VENDORED in
 win95's own reference tree and is the PREFERRED oracle here — the closest available
 match to the shipping toolchain. MSVC 5.0 (1997, internal 11.00, shared from
-win98/winnt4) remains as a FALLBACK when 4.2 is not staged. `_vc_root()` prefers 4.2,
+win98) remains as a FALLBACK when 4.2 is not staged. `_vc_root()` prefers 4.2,
 then 5.0. Codegen from 4.2 should track retail closely, but optimizer/calling-convention
 drift is still possible; a byte-exact match is strong evidence, a mismatch is NOT proof
 the C is wrong. win95's own EMBEDDED 16-bit code (`.drv`/VxD thunks) uses cc16 instead.
@@ -64,7 +64,7 @@ def _vc_root():
     if envr and os.path.exists(os.path.join(envr, "BIN", "CL.EXE")):
         return envr
     # Prefer MSVC 4.2 (msvc42), the era-correct win95 oracle; fall back to MSVC 5.0
-    # (msvc50), shared from win98/winnt4. Config keys override the staged defaults.
+    # (msvc50), shared from win98. Config keys override the staged defaults.
     import json
     for key in ("msvc42", "msvc50"):
         for base in (APP_DIR, os.getcwd(), os.path.dirname(os.getcwd())):
@@ -95,10 +95,10 @@ def _vc_root():
         if os.path.exists(os.path.join(cand, "BIN", "CL.EXE")):
             return cand
     # last resort: win95 has no vendored MSVC 5.0 of its own — share the sibling
-    # data dir's MSVC 5.0 (win98's, then winnt4's). cwd is the top-level win95 data
-    # dir, so ../win98 and ../winnt4 are the sibling projects. Approximate oracle;
+    # data dir's MSVC 5.0 (win98's). cwd is the top-level win95 data
+    # dir, so ../win98 are the sibling projects. Approximate oracle;
     # see the module docstring. Duplicating the toolchain buys nothing here.
-    for sib in ("win98", "winnt4"):
+    for sib in ("win98",):
         cand = os.path.join(layout.reference_sub("toolchain",
                             base=os.path.join(os.path.dirname(os.getcwd()), sib)),
                             "msvc50", "DEVSTUDIO", "VC")

@@ -80,18 +80,5 @@
   "ne": null,
   "trace": null,
   "verify": null
- },
- "winnt4": {
-  "argcheck": null,
-  "cfg": null,
-  "disasm": null,
-  "idord": null,
-  "ledger": null,
-  "lift": null,
-  "masmlift": null,
-  "names": null,
-  "ne": null,
-  "trace": null,
-  "verify": null
  }
 }
