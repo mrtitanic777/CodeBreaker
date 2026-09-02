@@ -258,6 +258,17 @@ class Dec:
                 s.globs[lo[0]] = "long"; return "(WORD)(%s >> 16)" % lo[0]
             name = nm[0] if nm else "gW_%x" % off
             s.globs[name] = "word"; return name
+        mi = re.match(r"\[(bx|si|di)(?:\s*([+-])\s*(0x[0-9a-f]+|\d+))?\]$", tok)
+        if mi:                                                 # near-indexed [base(+/-disp)]:
+            bv = reg.get(mi.group(1))                          # pointer / array / struct field
+            if bv is not None and bv not in _RAWREG:
+                d = int(mi.group(3), 0) if mi.group(3) else 0
+                if mi.group(2) == "-":
+                    d = -d
+                cty = "char" if byte else "WORD"
+                if d:
+                    return "*(%s *)((char *)%s + %d)" % (cty, bv, d)
+                return "*(%s *)%s" % (cty, bv)
         if re.match(r"(-?0x[0-9a-f]+|-?\d+)$", tok):
             return str(int(tok, 0))
         return tok
@@ -499,6 +510,15 @@ class Dec:
                     s.farptr[dst] = p; s._esbx = p
                 else:
                     return None
+            elif mn == "push" and ops in ("ss", "ds", "es"):  # segment half of a far-ptr arg:
+                nx = s.md[i+1] if i+1 < hi else None           # push <seg> ; push <offset>
+                if nx is not None and nx.mnemonic == "push":   # -> (T far *)<offset>
+                    ov = nx.op_str.replace("word ptr ", "")
+                    off = reg.get(ov, s._val(ov, reg))
+                    if off is not None and off not in _RAWREG:
+                        s.args.append("(char far *)%s" % off)
+                        i += 2; continue
+                s.fail = "push %s" % ops; return None
             elif mn == "push" and ":[" in ops:               # push <seg>:[base+N]: a far-ptr field
                 ff = s._farmem(ops)
                 if ff is None:
