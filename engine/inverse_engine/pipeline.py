@@ -147,11 +147,62 @@ def classify_gaps(gaplog):
     return klass
 
 
+def corpus(paths, gaplog=None):
+    """Regression suite: run the pipeline over many gold NE binaries, aggregate the
+    template:msc6dec:gap ratio corpus-wide. Track this across engine versions -- it is
+    the coverage number that must go UP as msc6dec gaps close."""
+    agg = Counter(); ndll = 0; per = []
+    for p in paths:
+        try:
+            rep = reconstruct_binary(p, gaplog=gaplog)
+        except Exception:
+            continue
+        if rep["total"] == 0:
+            continue
+        ndll += 1
+        for k, v in rep["counts"].items():
+            agg[k] += v
+        per.append((rep["dll"], rep["total"], rep["counts"]))
+    tot = sum(agg.values()) or 1
+    print("== corpus regression: %d NE binaries, %d functions ==" % (ndll, sum(agg.values())))
+    for k in ("template", "msc6dec", "needs-link", "leaf", "gap"):
+        if agg.get(k):
+            print("   %-11s %6d  (%.0f%%)" % (k, agg[k], 100.0 * agg[k] / tot))
+    auto = agg.get("template", 0) + agg.get("msc6dec", 0)
+    print("   -> auto-inversion corpus-wide: %d/%d = %.1f%%" % (auto, tot, 100.0 * auto / tot))
+    return agg
+
+
+def _ne_files(root):
+    import glob
+    out = []
+    for p in glob.glob(os.path.join(root, "*")):
+        if not p.lower().endswith((".dll", ".exe", ".drv", ".386", ".ocx", ".cpl")):
+            continue
+        try:
+            d = open(p, "rb").read(0x400)
+            if len(d) < 0x40 or d[:2] != b"MZ":
+                continue
+            lfa = struct.unpack_from("<I", d, 0x3c)[0]
+            f = open(p, "rb"); f.seek(lfa)
+            if f.read(2) == b"NE":
+                out.append(p)
+        except Exception:
+            pass
+    return sorted(out)
+
+
 def main(argv):
     if not argv:
         print(__doc__); return 2
     if argv[0] == "classify":
         classify_gaps(argv[1]); return 0
+    if argv[0] == "corpus":
+        gaplog = argv[argv.index("--gaplog") + 1] if "--gaplog" in argv else None
+        lim = int(argv[argv.index("--limit") + 1]) if "--limit" in argv else None
+        files = _ne_files(argv[1])[:lim]
+        corpus(files, gaplog=gaplog)
+        return 0
     gaplog = argv[argv.index("--gaplog") + 1] if "--gaplog" in argv else None
     rep = reconstruct_binary(argv[0], gaplog=gaplog)
     print_report(rep)
