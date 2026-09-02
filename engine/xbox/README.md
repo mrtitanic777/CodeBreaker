@@ -1,5 +1,11 @@
 # XboxTranspiler — an Xbox 360 reverse-engineering workbench
 
+> **Integrated into CodeBreaker.** This is now the `engine/xbox` subsystem of CodeBreaker,
+> driven by **`wt xbox <command>`** (`wt xbox` with no args lists every command). It shares
+> CodeBreaker's discipline and format dispatch; its data, samples, and console secrets live
+> outside git (see `engine/xbox/.gitignore`). The standalone launcher (`XboxTranspiler.py`)
+> still works for direct invocation. The lineage note below is retained for provenance.
+
 Forked from **WinTranspiler** (the Windows 1.0 / 3.1 / 95 teardown toolchain)
 and extended to the **Xbox 360**. Same discipline as the lineage it comes from:
 dependency-light tools that take a retail binary apart, plus *evidence only,

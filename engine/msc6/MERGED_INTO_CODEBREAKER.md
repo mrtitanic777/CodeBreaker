@@ -4,12 +4,14 @@ The byte-exact MSC-6.0a DLL-reconstruction capability of this tool now lives in 
 CodeBreaker engine repo as **`engine/msc6/`**, driven by **`wt msc6 <cmd>`**.
 
 - **Ported** (the unique byte-exact capability): `detect_recipe.py`, `ne_normalize.py`,
-  `bruteforce.py`, `autoaxis.py`, the version-keyed toolchain resolver + manifest,
-  `IDIOMS.md`, the reconstruction spec (→ `SPEC.md`), and the proven byte-exact
-  LZEXPAND source (→ `engine/msc6/reconstructed/lzexpand/`).
+  `bruteforce.py`, `autoaxis.py`, `tree.py` (the component-tree filing step, formerly
+  `win95tree.py`, now filing into the separate Windows95 source repo via `WT_WIN95_ROOT`),
+  the version-keyed toolchain resolver + manifest, `IDIOMS.md`, the reconstruction spec
+  (→ `SPEC.md`), and the proven byte-exact LZEXPAND source
+  (→ `engine/msc6/reconstructed/lzexpand/`).
 - **Retired** (CodeBreaker already does these, better): `ne.py`, `disasm.py`, `omf.py`,
-  `verify.py`/segdiff, `skeleton.py`/`pydiscover.py` (Ghidra skeleton → use `ir_engine`
-  lift), `triage.py`/`scaffold.py`, `win95tree.py` (→ `data/src/generated/`).
+  `verify.py`/segdiff, `pydiscover.py` (Ghidra skeleton → use `ir_engine` lift),
+  `triage.py`/`scaffold.py`.
 
 Toolchain, corpus, and DOSBox paths are configured in `CodeBreaker/config.json`
 (`msc6_toolchain`, `msc6_data`, `dosbox_x`).

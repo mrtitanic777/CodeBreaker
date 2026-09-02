@@ -10,8 +10,8 @@
 export PROJECT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 
 # --- the RECON (tooling + data + toolchain + vm + build) ROOT ----------------
-# The recon/ tree (data + toolchain + vm) lives here; fall back to the repo root if a
-# future layout hoists it up.
+# The git-ignored data home (corpus + toolchain + vm + build) lives at binaries/; the RECON
+# var name is kept for back-compat with pipeline scripts. Fall back to the repo root.
 if [ -d "$PROJECT/binaries" ]; then
   export RECON="$PROJECT/binaries"
 else

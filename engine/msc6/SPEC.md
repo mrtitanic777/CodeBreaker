@@ -1,5 +1,13 @@
 # Byte-Exact Reconstruction of Windows 95 System DLLs — End-to-End Specification
 
+> **Relocation note.** This spec predates the merge of the standalone `w95recon` tool into
+> CodeBreaker; its `tools/w95recon/<file>.py` path references are historical. The capability
+> now lives in the CodeBreaker engine: NE parsing → `engine/format_loaders`, 16-bit disassembly
+> → `engine/disasm_engine`, OMF parsing → `engine/inverse_engine/omf.py`, byte-exact
+> verify/segdiff → `engine/recon_engine`, and the MSC-6.0a-specific steps (recipe detection, NE
+> normalization, brute-force axis search, component-tree filing) → `engine/msc6` (run via
+> `wt msc6 …`). See [`MERGED_INTO_CODEBREAKER.md`](MERGED_INTO_CODEBREAKER.md) for the full map.
+
 **Purpose.** This document specifies the complete, repeatable process for taking an
 *originally shipped* Windows 95 binary DLL and reproducing it as a set of faithful,
 compilable source files (C + assembler) that, driven through the authentic period

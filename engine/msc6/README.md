@@ -50,7 +50,7 @@ ported — use CodeBreaker's:
 | `verify.py` / segdiff | `engine/recon_engine/{verify,segdiff}.py` |
 | `skeleton.py` / `pydiscover.py` (Ghidra step-2 skeleton) | `engine/ir_engine` lift (16-bit-native, symbol-resolved, no `unaff_SS` garbage) |
 | `triage.py` / `scaffold.py` | `engine/recompile95/tools/triage.py` + the lift/package flow |
-| `win95tree.py` (component tree) | `data/src/generated/` (apps/core/gdi/shell/…) already exists |
+| `win95tree.py` (component tree) | **ported** → `engine/msc6/tree.py` (`wt msc6 tree`), files into the separate Windows95 source repo (`WT_WIN95_ROOT`) |
 
 ## How msc6 fits the byte-exact pipeline
 
