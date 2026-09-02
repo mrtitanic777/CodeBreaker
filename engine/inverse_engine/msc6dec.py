@@ -423,14 +423,17 @@ class Dec:
                 reg["ax"] = "%s(%s)" % (nm, ", ".join(s.args)); s.args = []
                 reg["_lastcall"] = reg["ax"]
                 nx = s.md[i+2] if i+2 < hi else None
+                if nx is not None and nx.mnemonic == "add" and nx.op_str.startswith("sp,"):
+                    nx = s.md[i+3] if i+3 < hi else None      # cdecl cleanup isn't the consumer
                 cons = nx is not None and (
                     (nx.mnemonic == "mov" and nx.op_str.endswith(", ax")) or
                     (nx.mnemonic == "push" and nx.op_str == "ax") or
                     (nx.mnemonic in ("cmp", "test") and "ax" in nx.op_str.split(", ")) or
+                    (nx.mnemonic == "or" and nx.op_str == "ax, ax") or
                     (nx.mnemonic == "jmp" and nx.op_str.startswith("0x") and int(nx.op_str, 16) >= s.end))
                 if not cons and not (nx is None and not getattr(s, "void", False)):
                     out.append(reg["ax"] + ";"); reg.pop("_lastcall", None)
-                elif cons and nx is not None and nx.mnemonic in ("cmp", "test"):
+                elif cons and nx is not None and nx.mnemonic in ("cmp", "test", "or"):
                     reg.pop("_lastcall", None)
                 s.nearcalls = getattr(s, "nearcalls", 0) + 1
                 i += 2; continue
@@ -443,14 +446,17 @@ class Dec:
                 reg["ax"] = "%s(%s)" % (nm, ", ".join(s.args)); s.args = []
                 reg["_lastcall"] = reg["ax"]
                 nx = s.md[i+1] if i+1 < hi else None
+                if nx is not None and nx.mnemonic == "add" and nx.op_str.startswith("sp,"):
+                    nx = s.md[i+2] if i+2 < hi else None      # cdecl cleanup isn't the consumer
                 cons = nx is not None and (
                     (nx.mnemonic == "mov" and nx.op_str.endswith(", ax")) or
                     (nx.mnemonic == "push" and nx.op_str == "ax") or
                     (nx.mnemonic in ("cmp", "test") and "ax" in nx.op_str.split(", ")) or
+                    (nx.mnemonic == "or" and nx.op_str == "ax, ax") or
                     (nx.mnemonic == "jmp" and nx.op_str.startswith("0x") and int(nx.op_str, 16) >= s.end))
                 if not cons and not (nx is None and not getattr(s, "void", False)):
                     out.append(reg["ax"] + ";"); reg.pop("_lastcall", None)
-                elif cons and nx is not None and nx.mnemonic in ("cmp", "test"):
+                elif cons and nx is not None and nx.mnemonic in ("cmp", "test", "or"):
                     reg.pop("_lastcall", None)
                 i += 1; continue
             if op[0] == 0x9a:                                   # CALLF
