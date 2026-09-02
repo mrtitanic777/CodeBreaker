@@ -361,8 +361,9 @@ def _run(selftest=False, shot=None, shot_panel=None):
             fill(dc, (bx, y0, bx + bw, y1), blockcol)
 
     def geom(w, h):
-        y = 3 + TITLEH + 3
+        y = 3 + TITLEH
         g = {"title": (3, 3, w - 3, 3 + TITLEH)}
+        g["tool"] = (3, y, w - 3, y + TOOLH); y += TOOLH + 3
         g["nav"] = (6, y, 6 + NAVW, h - STATH - 3)
         g["main"] = (6 + NAVW + 4, y, w - 6, h - STATH - 3)
         g["status"] = (3, h - STATH, w - 3, h - 3)
@@ -514,6 +515,26 @@ def _run(selftest=False, shot=None, shot_panel=None):
                   cap, DT_LEFT | DT_VCENTER | DT_SINGLELINE, fB)
         xb = (w - 20, 6, w - 6, 6 + 14)
         user32.DrawFrameControl(dc, C.byref(R(*xb)), DFC_CAPTION, DFCS_CAPTIONCLOSE); hit(xb, ("close",))
+        # toolbar: quick icon buttons (left) + theme swatches (right)
+        edge(dc, g["tool"], EDGE_SUNKEN)
+        tx = g["tool"][0] + 4; ty = g["tool"][1] + 3; tb = g["tool"][3] - 3
+        for label, ic, act in (("Open", "folder", ("analyze_browse",)),
+                               ("Analyze", "lens", ("nav", 0)),
+                               ("Diff", "diff", ("navlabel", "Compare versions (Diff)")),
+                               ("Xbox", "xbox", ("navlabel", "Xbox 360")),
+                               ("Stop", "stop", ("stop",))):
+            bw = 8 * len(label) + 30; b = (tx, ty, tx + bw, tb)
+            button(dc, b, "", fN, BLACK)
+            draw_icon(dc, ic, b[0] + 5, (ty + tb) // 2 - 8)
+            draw_text(dc, label, (b[0] + 24, b[1], b[2] - 4, b[3]), BLACK,
+                      DT_LEFT | DT_VCENTER | DT_SINGLELINE, fN)
+            hit(b, act); tx += bw + 3
+        sx = g["tool"][2] - len(THEMES) * 22 - 6
+        draw_text(dc, "Look:", (sx - 34, ty, sx - 4, tb), BLACK, DT_LEFT | DT_VCENTER | DT_SINGLELINE, fN)
+        for i, tdef in enumerate(THEMES):
+            box = (sx + i * 22, ty + 2, sx + i * 22 + 18, tb - 1)
+            fill(dc, box, RGB(*tdef[2])); edge(dc, box, EDGE_SUNKEN if i == S.theme else EDGE_RAISED)
+            hit(box, ("theme", i))
         # nav + active panel
         draw_nav(dc, g["nav"])
         m = g["main"]; pad = (m[0] + 10, m[1] + 8, m[2] - 10, m[3] - 8)
@@ -523,16 +544,9 @@ def _run(selftest=False, shot=None, shot_panel=None):
             draw_settings(dc, pad)
         else:
             draw_command(dc, pad)
-        # status bar: message (left) + theme swatches, oracle LED, clickable target (right)
-        st = g["status"]; edge(dc, st, EDGE_SUNKEN); R2 = st[2]
-        sxsw = R2 - 6 - len(THEMES) * 18
-        draw_text(dc, "Look:", (sxsw - 34, st[1], sxsw - 4, st[3]), BLACK,
-                  DT_LEFT | DT_VCENTER | DT_SINGLELINE, fN)
-        for i, tdef in enumerate(THEMES):
-            box = (sxsw + i * 18, st[1] + 3, sxsw + i * 18 + 15, st[3] - 3)
-            fill(dc, box, RGB(*tdef[2])); edge(dc, box, EDGE_SUNKEN if i == S.theme else EDGE_RAISED)
-            hit(box, ("theme", i))
-        tgt = (sxsw - 148, st[1], sxsw - 44, st[3])
+        # status bar: message (left) + oracle LED + clickable target (right)
+        st = g["status"]; edge(dc, st, EDGE_SUNKEN)
+        tgt = (st[2] - 112, st[1], st[2] - 8, st[3])
         draw_text(dc, "Target: %s" % S.target, (tgt[0], tgt[1], tgt[2], tgt[3]), BLACK,
                   DT_CENTER | DT_VCENTER | DT_SINGLELINE, fN)
         edge(dc, (tgt[0], tgt[1] + 2, tgt[2], tgt[3] - 2), EDGE_SUNKEN); hit(tgt, ("target_cycle",))

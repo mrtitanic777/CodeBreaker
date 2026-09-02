@@ -300,10 +300,16 @@ def main():
         from engine.sdk.__main__ import main as sdk_main
         sys.exit(sdk_main(argv[1:]))
     if argv[0] == "ui":
-        # CodeBreaker Studio: the native (Win32/GDI) themed drag-and-drop workbench.
+        # CodeBreaker Workbench: the native WinForms UI (visual styles follow the OS).
+        # Falls back to the owner-drawn GDI app only if pythonnet/.NET is unavailable.
         sys.path.insert(0, WT_DIR)
-        from engine.studio import app as studio
-        studio.main(argv[1:]); return
+        try:
+            from engine.studio import winforms_app
+            winforms_app.main(argv[1:])
+        except ImportError:
+            from engine.studio import app as studio
+            studio.main(argv[1:])
+        return
 
     # --target <name> may appear anywhere; pull it out, keep the rest verbatim.
     target = None
