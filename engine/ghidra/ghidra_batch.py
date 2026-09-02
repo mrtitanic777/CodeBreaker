@@ -38,6 +38,7 @@ JAVA_HOME = os.environ.get("JAVA_HOME") or _cfg("java_home") or r"C:\Program Fil
 GDT_DIR = os.path.join(ROOT, "binaries", "ghidra_gdt")
 GDT_WIN32 = os.path.join(GDT_DIR, "win32_win95sdk.gdt")
 GDT_DDK = os.path.join(GDT_DIR, "ddk_win95_vxd.gdt")
+GDT_WIN16 = os.path.join(GDT_DIR, "win16_win95sdk.gdt")
 _EXTS = (".dll", ".exe", ".vxd", ".ocx", ".cpl", ".drv", ".sys", ".386", ".scr")
 
 
@@ -59,7 +60,7 @@ def classify(path):
         if sig in (b"LE", b"LX"):
             return ("le", GDT_DDK)
         if sig == b"NE":
-            return ("ne", None)
+            return ("ne", GDT_WIN16)      # Ghidra x86:LE:16 draft (byte-exact stays with msc6dec)
     except Exception:
         pass
     return ("other", None)
@@ -67,10 +68,8 @@ def classify(path):
 
 def decompile_one(dll, out_c):
     kind, gdt = classify(dll)
-    if kind == "ne":
-        return {"skip": "16-bit NE -> msc6dec byte-exact track"}
     if kind == "other":
-        return {"skip": "not a PE/LE image"}
+        return {"skip": "not a PE/LE/NE image"}
     env = dict(os.environ)
     env["JAVA_HOME"] = JAVA_HOME
     headless = os.path.join(GHIDRA, "support", "analyzeHeadless.bat")
