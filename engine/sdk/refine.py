@@ -23,7 +23,9 @@ from engine.inverse_engine import msc6_oracle as ora
 from engine.inverse_engine.msc6fn import _mask
 
 _MD = Cs(CS_ARCH_X86, CS_MODE_16)
-RECIPES = ("/AM /G2 /Gsw /Ox", "/AM /G2 /Gsw /Os")
+# /G2 = 286 codegen (push imm8); the plain /Gsw forms are 8086 (sub ax,ax;push ax;push ax).
+# Shipped DLLs mix both, so try both CPU targets before declaring a divergence.
+RECIPES = ("/AM /G2 /Gsw /Ox", "/AM /G2 /Gsw /Os", "/AM /Gsw /Ox", "/AM /Gsw /Os")
 
 
 def _norm(b):

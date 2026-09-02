@@ -21,7 +21,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 from engine.inverse_engine import msc6_oracle as ora
 from engine.inverse_engine.msc6fn import _mask, EPI
 
-RECIPES = ("/AM /G2 /Gsw /Ox", "/AM /G2 /Gsw /Os")
+# /G2 = 286 (push imm8); plain /Gsw = 8086 (sub ax,ax;push ax;push ax). Shipped DLLs mix both.
+RECIPES = ("/AM /G2 /Gsw /Ox", "/AM /G2 /Gsw /Os", "/AM /Gsw /Ox", "/AM /Gsw /Os")
 
 
 def _first_func(text):
