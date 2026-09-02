@@ -6,5 +6,6 @@
   "sevenzip": "7z",
   "ghidra": "",
   "msc6_toolchain": "",
-  "msc6_data": ""
+  "msc6_data": "",
+  "nasm": "tools/nasm-masm/nasm.exe"
 }

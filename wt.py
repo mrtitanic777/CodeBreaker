@@ -115,7 +115,7 @@ def cmd_targets():
     print("\nrun:  wt --target <name> <command> [args...]")
 
 
-_SUBSYS = ("targets", "diff", "recompile95", "studio", "inverse_engine", "goldens", "__pycache__")
+_SUBSYS = ("targets", "diff", "recompile95", "studio", "inverse_engine", "goldens", "xbox", "__pycache__")
 
 
 def _engine_commands():
@@ -240,6 +240,18 @@ def usage():
     cmd_targets()
 
 
+def cmd_xbox(rest):
+    """The Xbox 360 subsystem (integrated from XboxTranspiler): XEX2/PowerPC byte-exact
+    reconstruction + console/format/crypto/forensics tooling. Its package sets up its own
+    flat import path; data/samples/console-secrets live outside git (engine/xbox/.gitignore)."""
+    launcher = os.path.join(ENGINE, "xbox", "XboxTranspiler.py")
+    if not os.path.exists(launcher):
+        print("error: xbox subsystem not present (engine/xbox)"); sys.exit(2)
+    sys.path.insert(0, WT_DIR)                            # the engine package on path
+    sys.argv = [launcher] + list(rest)
+    runpy.run_path(launcher, run_name="__main__")
+
+
 def main():
     import multiprocessing
     multiprocessing.freeze_support()
@@ -271,6 +283,10 @@ def main():
         # Windows) DLLs to source that re-links to the EXACT shipped bytes via the authentic
         # MSC 6.0a / MASM 5.1 / LINK 5.20+5.60 toolchain. Paths from config.json (msc6_*).
         cmd_msc6(argv[1:]); return
+    if argv[0] == "xbox":
+        # The Xbox 360 subsystem (integrated from XboxTranspiler): XEX2/PowerPC byte-exact
+        # reconstruction + console/format/crypto/forensics. Data/secrets live outside git.
+        cmd_xbox(argv[1:]); return
     if argv[0] == "backbone":
         # The modular toolchain API backbone: one uniform interface over
         # compilers/assemblers/linkers/disassemblers, swappable by name (Phase 2).

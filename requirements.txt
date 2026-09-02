@@ -1,3 +1,4 @@
 # CodeBreaker runtime dependencies.
 capstone>=5.0        # multi-arch disassembly framework
 pycdlib>=1.14        # ISO 9660 reading/writing (image carve + build)
+pycryptodome>=3.18   # AES/RSA for the Xbox 360 subsystem (XEX decrypt/sign); pure-python fallback exists
