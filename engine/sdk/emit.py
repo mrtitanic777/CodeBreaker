@@ -190,8 +190,8 @@ if __name__ == "__main__":
     import sys
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     from engine.sdk import reconstruct as R
-    binp = sys.argv[1] if len(sys.argv) > 1 else \
-        r"C:\Users\mrtit\Documents\GitHub\Windows95\data\files\setup\inf\lzexpand.dll"
+    from engine.sdk import w95paths
+    binp = sys.argv[1] if len(sys.argv) > 1 else w95paths.input_dll("setup", "inf", "lzexpand.dll")
     out = sys.argv[2] if len(sys.argv) > 2 else "recon_out"
     verify = "--verify" in sys.argv
     r = write_tree(R.analyze(binp), out, binp, verify=verify)

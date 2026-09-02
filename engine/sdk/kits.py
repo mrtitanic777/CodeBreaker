@@ -29,7 +29,8 @@ def _toolchain_root():
             return r
     except Exception:
         pass
-    return r"C:\Users\mrtit\Documents\GitHub\Windows95\toolchain"
+    from engine.sdk import w95paths
+    return w95paths.toolchain_root()
 
 
 # kit definitions: (key, human name, arch bits, [include subpaths], [lib subpaths], is_crt)

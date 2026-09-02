@@ -331,8 +331,8 @@ def print_coverage(rep, reasons=False):
 
 if __name__ == "__main__":
     from engine.sdk import apidb as _apidb
-    binp = sys.argv[1] if len(sys.argv) > 1 else \
-        r"C:\Users\mrtit\Documents\GitHub\Windows95\data\files\setup\inf\lzexpand.dll"
+    from engine.sdk import w95paths
+    binp = sys.argv[1] if len(sys.argv) > 1 else w95paths.input_dll("setup", "inf", "lzexpand.dll")
     hdrs = sys.argv[2:]
     db = _apidb.ApiDb.from_paths(hdrs) if hdrs else None
     print_coverage(analyze(binp, db))

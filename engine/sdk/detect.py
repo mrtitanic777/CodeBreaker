@@ -82,8 +82,8 @@ if __name__ == "__main__":
     import sys
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     from engine.sdk import ingest
-    root = sys.argv[1] if len(sys.argv) > 1 else \
-        r"C:\Users\mrtit\Documents\GitHub\Windows95\toolchain"
+    from engine.sdk import w95paths
+    root = sys.argv[1] if len(sys.argv) > 1 else w95paths.toolchain_root()
     inv = ingest.scan(root)
     print("tools found:", len(inv.tools))
     for t in identify_tools(inv)[:20]:

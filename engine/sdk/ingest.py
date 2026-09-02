@@ -67,7 +67,8 @@ def scan(root, max_files=200000):
 
 
 def _selftest():
-    root = r"C:\Users\mrtit\Documents\GitHub\Windows95\tools\w95recon\WIN95\BASE\LZEXPAND"
+    from engine.sdk import w95paths
+    root = w95paths.src("base", "lzexpand")
     inv = scan(root)
     print("root:", inv.root)
     for k, v in inv.summary().items():

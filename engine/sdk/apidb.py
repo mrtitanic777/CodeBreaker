@@ -200,7 +200,8 @@ class ApiDb:
 
 
 def _selftest():
-    here = r"C:\Users\mrtit\Documents\GitHub\Windows95\tools\w95recon\WIN95\BASE\LZEXPAND"
+    from engine.sdk import w95paths
+    here = w95paths.src("base", "lzexpand")
     db = ApiDb.from_paths([os.path.join(here, "lzexpand.h")],
                           [os.path.join(here, "lzexpand.def")])
     for name in ("LZStart", "LZCopy", "LZOpenFile", "LZSeek", "LZRead", "LZClose"):

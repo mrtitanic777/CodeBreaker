@@ -74,7 +74,8 @@ if __name__ == "__main__":
     import struct
     from engine.format_loaders import ne
     from engine.sdk import reconstruct as R
-    OLE = r"C:\Users\mrtit\Documents\GitHub\Windows95\data\files\WINDOWS\SYSTEM\olecli.dll"
+    from engine.sdk import w95paths
+    OLE = w95paths.input_dll("WINDOWS", "SYSTEM", "olecli.dll")
     d = open(OLE, "rb").read(); ne_off = struct.unpack_from("<I", d, 0x3c)[0]
     f = ne.NEFile.from_buffer(d, ne_off, OLE)
     rep = R.analyze(OLE)
