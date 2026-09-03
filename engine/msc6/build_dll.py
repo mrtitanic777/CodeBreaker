@@ -82,6 +82,85 @@ def build(recon_dir, work_dir=None, modules=None):
     return dll if os.path.exists(dll) else None
 
 
+def _level0(fb, solved, do_c_verify):
+    """Resolve one function to a byte-exact reconstruction, Level-0 FIRST. Returns
+    (kind, source, exact) or ('gap', None, False):
+      - a segment-switch thunk -> its MASM stub (byte-exact by round-trip, no oracle);
+      - a banked C shape already in solved.json -> reuse without recompiling;
+      - otherwise decompile with msc6dec and (optionally) prove it via the frame-matched oracle.
+    This is the fast-path: the bank and the template short-circuit the compiler before any
+    decompilation or code generation is attempted."""
+    from engine.inverse_engine import seg_thunk
+    t = seg_thunk.verify(fb)
+    if t is not None:
+        return "asm", seg_thunk.emit_asm(t), True
+    from engine.inverse_engine.auto_sweep import signature
+    sig = signature(fb)
+    if sig in solved and not str(solved[sig]).startswith("SEG-SWITCH"):
+        return "c", solved[sig], True                      # Level-0 hit: pre-verified banked C
+    from engine.inverse_engine import msc6dec
+    from engine.sdk import reconstruct as R
+    try:
+        src, meta = msc6dec.invert(fb, syms=R._synth_syms(fb))
+    except Exception:
+        src = None
+    if not src:
+        return "gap", None, False
+    if not do_c_verify:
+        return "c", src, None                              # candidate, exactness deferred
+    from engine.inverse_engine import oracle_router as router
+    return "c", src, router.byte_exact(fb, src).get("exact", False)
+
+
+def reconstruct_module(dll_path, verify=True):
+    """Whole-module reconstruction from the Level-0 bank + templates. For each framed function
+    resolve a byte-exact source (thunk MASM / banked or decompiled C) and report per-segment
+    coverage -- the inputs a build assembles from. Returns (report, pieces)."""
+    import json
+    from engine.sdk import reconstruct as R
+    from engine.format_loaders import ne
+    from engine.inverse_engine.auto_sweep import signature
+    solved_path = os.path.join(HERE.replace("msc6", "inverse_engine"), "_sweepdb", "solved.json")
+    solved = json.load(open(solved_path)) if os.path.exists(solved_path) else {}
+    d = open(dll_path, "rb").read(); lfa = struct.unpack_from("<I", d, 0x3c)[0]
+    f = ne.NEFile.from_buffer(d, lfa, dll_path)
+    segb = {s["idx"]: d[s["file_off"]:s["file_off"] + s["length"]]
+            for s in f.segments() if s["kind"] == "CODE"}
+    from engine.inverse_engine import seg_thunk
+    rep = R.analyze(dll_path)
+    pieces = []; pend = []
+    for sg in rep["segments"]:
+        sb = segb.get(sg["idx"], b"")
+        for fn in sg["funcs"]:
+            if not fn.get("framed"):
+                pieces.append((sg["idx"], fn["off"], "leaf", None, None)); continue
+            fb = bytes(sb[fn["off"]:fn["off"] + fn["size"]])
+            t = seg_thunk.verify(fb)
+            if t is not None:                              # thunk template -> MASM (byte-exact)
+                pieces.append((sg["idx"], fn["off"], "asm", seg_thunk.emit_asm(t), True)); continue
+            if fn.get("status") == "needs-link":           # intra-seg calls: verifiable only linked
+                pieces.append((sg["idx"], fn["off"], "needs-link", fn.get("c"), None)); continue
+            kind, src, exact = _level0(fb, solved, do_c_verify=False)
+            if kind == "c" and exact is None and verify:
+                pend.append((len(pieces), fb, src))
+            pieces.append((sg["idx"], fn["off"], kind, src, exact))
+    if verify and pend:                                    # one oracle batch per compiler
+        from engine.inverse_engine import oracle_router as router
+        for (i, _fb, _s), r in zip(pend, router.byte_exact_batch([(fb, s) for _i, fb, s in pend])):
+            pieces[i] = pieces[i][:4] + (r.get("exact", False),)
+    framed = [p for p in pieces if p[2] != "leaf"]
+    thunks = sum(1 for p in framed if p[2] == "asm")
+    cexact = sum(1 for p in framed if p[2] == "c" and p[4])
+    needslink = sum(1 for p in framed if p[2] == "needs-link")
+    gaps = sum(1 for p in framed if p[2] == "gap" or (p[2] == "c" and not p[4]))
+    report = {"module": os.path.basename(dll_path), "framed": len(framed),
+              "thunks": thunks, "c_exact": cexact, "needs_link": needslink, "gaps": gaps,
+              "solved": thunks + cexact,
+              "coverage": (thunks + cexact) / max(1, len(framed)),
+              "link_potential": (thunks + cexact + needslink) / max(1, len(framed))}
+    return report, pieces
+
+
 def _segments(path):
     d = open(path, "rb").read(); lfa = struct.unpack_from("<I", d, 0x3c)[0]
     n = struct.unpack_from("<H", d, lfa + 0x1c)[0]
@@ -122,6 +201,17 @@ def main(argv):
     if not argv:
         print(__doc__)
         return 2
+    if "--reconstruct" in argv:                            # whole-module Level-0 coverage
+        rep, _pieces = reconstruct_module(argv[0])
+        print("== reconstruct %s ==" % rep["module"])
+        print("   framed functions : %d" % rep["framed"])
+        print("   thunks (MASM)    : %d" % rep["thunks"])
+        print("   C byte-exact     : %d" % rep["c_exact"])
+        print("   needs-link (C)   : %d  (verifiable only in the whole-module link)" % rep["needs_link"])
+        print("   gaps             : %d" % rep["gaps"])
+        print("   => solved %d / %d standalone (%.0f%%);  link potential %.0f%%"
+              % (rep["solved"], rep["framed"], 100 * rep["coverage"], 100 * rep["link_potential"]))
+        return 0
     recon = argv[0]
     oracle = argv[argv.index("--oracle") + 1] if "--oracle" in argv else \
         os.path.join(ROOT, "binaries", "win95", "oracle", "lzexpand.dll")
