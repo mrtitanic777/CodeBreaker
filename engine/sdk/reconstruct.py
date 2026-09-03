@@ -44,6 +44,30 @@ _EPIS = (
     bytes.fromhex("1f5d"),                        # pop ds;pop bp             (near loadds, no locals)
 )
 
+_NEAR_LOADDS = bytes.fromhex("558bec1e8ed8")      # near-loadds prologue (no inc bp)
+
+
+def asm_origin(fb):
+    """A framed function whose FRAME no C source reproduces at the compile oracle -- it belongs
+    to the assembly/template path, not the C decompiler. Two shapes dominate the corpus:
+
+      1. NEAR-LOADDS (55 8bec 1e 8ed8, no inc bp): 1.52c's cl emits the 8cd8+inc-bp far frame
+         for every C declaration, so this form is a linker segment transform or hand-written asm.
+      2. DRIVER SEGMENT-SWITCH THUNK: the far prologue (1e58/8cd8, 10 bytes) immediately followed
+         by `mov ax,imm16 ; mov ds,ax` -- a second DS load to a FIXED (non-DGROUP, un-relocated)
+         segment, which portable C cannot express. 87% of the 24-48 B bucket, ~938 near-identical
+         printer-driver thunks.
+
+    Tagging these keeps them out of msc6dec's C-inversion + the synthesizer, and marks them for
+    a structural assembly template instead."""
+    fb = bytes(fb)
+    if fb.startswith(_NEAR_LOADDS):
+        return "near-loadds"
+    if len(fb) >= 15 and fb[:2] in (b"\x8c\xd8", b"\x1e\x58") \
+            and fb[10] == 0xb8 and fb[13:15] == b"\x8e\xd8":
+        return "seg-switch-thunk"
+    return None
+
 
 def _ordinal_names(f):
     """ordinal -> exported name, from the resident + non-resident name tables."""
@@ -227,6 +251,12 @@ def analyze(path, apidb=None):
             imports = _func_imports(f, seg, relocs, s, s + len(fb))
             res = {"off": s, "size": len(fb), "name": name, "ordinal": ordv,
                    "framed": framed}
+            origin = asm_origin(fb) if framed else None
+            if origin:
+                # frame no C source reproduces -> the assembly/template path, not the C
+                # decompiler. Tag it and skip inversion so the synthesizer wastes no cycles.
+                res["status"] = "asm-origin"; res["origin"] = origin
+                funcs.append(res); continue
             if framed:
                 rt = (sig["ret"] if sig and sig["ret"] in ("int", "long", "void") else "int")
                 # SDK signature, else the call-graph-inferred one (full override: it gives EVERY
