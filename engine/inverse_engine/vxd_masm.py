@@ -113,11 +113,14 @@ def has_seg_prefix(row):
     return bool(row["raw"]) and row["raw"][0] in _SEG_PREFIX
 
 
-def object_body(D, oi, force_raw=None, base_line=0, extra_labels=None):
+def object_body(D, oi, force_raw=None, base_line=0, extra_labels=None, probe=False):
     """The body lines of one object -- instructions symbolically, data + fixup-bearing + service
     instructions as raw db, labels at branch/fixup targets. Returns (lines, linemap) where linemap
     maps (base_line + index-in-lines, 1-based) to the instruction offset. extra_labels adds label
-    names at given offsets (e.g. the exported DDB). Shared by the object test and the full link."""
+    names at given offsets (e.g. the exported DDB). With probe=True, a `Q<hexoff>:` label precedes
+    every instruction; labels emit no bytes, so the code is identical, but the COFF symbol table
+    then reveals each instruction's TRUE assembled offset -- so one assembly finds every drifting
+    instruction at once (no one-per-pass). Shared by the object test and the full link."""
     force_raw = force_raw or set()
     extra_labels = extra_labels or {}
     code = D.code[oi]
@@ -141,6 +144,9 @@ def object_body(D, oi, force_raw=None, base_line=0, extra_labels=None):
                 L.append(_db(code[i:min(i + 16, b)]))
             a = b
             continue
+        if probe:
+            L.append("public Q%x" % a)                     # per-instruction offset probe (public so
+            L.append("Q%x:" % a)                           #  it lands in the COFF symbol table)
         line = None if (row["fx"] or row["vxdcall"] or a in force_raw) else _masm_line(D, oi, row)
         if line is None:
             L.append(_db(row["raw"]))
@@ -151,12 +157,13 @@ def object_body(D, oi, force_raw=None, base_line=0, extra_labels=None):
     return L, linemap
 
 
-def emit_object_masm(D, oi, segname="_LTEXT", force_raw=None):
+def emit_object_masm(D, oi, segname="_LTEXT", force_raw=None, probe=False):
     """Emit one executable object as an assemblable MASM use32 segment. Returns (text, linemap),
     where linemap maps a 1-based source line back to the instruction offset it emitted -- so an
-    assembler error at a line can be traced to the instruction and repaired (forced to raw db)."""
+    assembler error at a line can be traced to the instruction and repaired (forced to raw db).
+    probe adds per-instruction `Q<off>` labels (see object_body)."""
     head = [".386p", "%s segment dword public use32 'CODE'" % segname, ""]
-    body, linemap = object_body(D, oi, force_raw=force_raw, base_line=len(head))
+    body, linemap = object_body(D, oi, force_raw=force_raw, base_line=len(head), probe=probe)
     L = head + body + ["%s ends" % segname, "        end", ""]
     return "\r\n".join(L), linemap
 
@@ -234,68 +241,116 @@ def assemble(masm_text, root):
     return (out.get("m.obj"), log)
 
 
+def assemble_coff(masm_text, root):
+    """Assemble to a COFF object (so section bytes + a symbol table are available). Returns
+    (obj_bytes, log)."""
+    tc = _stage_toolchain(root)
+    tmo = 300 if len(masm_text) > 60000 else 120
+    ok, out, work = run_dos({"c": tc},
+                            ["c:\\ml.exe -coff -c -Fom.obj m.asm > asm.txt"],
+                            ["m.obj", "asm.txt"], files={"m.asm": masm_text}, timeout=tmo)
+    log = open(os.path.join(work, "asm.txt"), errors="replace").read() if work and os.path.exists(
+        os.path.join(work, "asm.txt")) else ""
+    return out.get("m.obj"), log
+
+
+def coff_text_syms(obj):
+    """From a COFF object with one code section, return (section_bytes, {symbol_name: offset}) where
+    each symbol's offset is section-relative. Used to read the TRUE assembled offset of every
+    probe-labelled instruction."""
+    nsec = struct.unpack_from("<H", obj, 2)[0]
+    symptr = struct.unpack_from("<I", obj, 8)[0]
+    nsym = struct.unpack_from("<I", obj, 12)[0]
+    strtab = symptr + nsym * 18
+    secs = []
+    for i in range(nsec):
+        h = 20 + i * 40
+        rawsize = struct.unpack_from("<I", obj, h + 16)[0]
+        rawptr = struct.unpack_from("<I", obj, h + 20)[0]
+        flags = struct.unpack_from("<I", obj, h + 36)[0]
+        secs.append((i + 1, rawsize, rawptr, flags))
+    code = [s for s in secs if (s[3] & 0x20) and s[1] > 0] or \
+        sorted(secs, key=lambda s: s[1], reverse=True)[:1]
+    secnum, rawsize, rawptr, _ = code[0]
+    text = obj[rawptr:rawptr + rawsize]
+    syms = {}
+    i = 0
+    while i < nsym:
+        off = symptr + i * 18
+        name8 = obj[off:off + 8]
+        if name8[:4] == b"\x00\x00\x00\x00":
+            so = struct.unpack_from("<I", name8, 4)[0]
+            end = obj.index(b"\x00", strtab + so)
+            name = obj[strtab + so:end].decode("latin1", "replace")
+        else:
+            name = name8.rstrip(b"\x00").decode("latin1", "replace")
+        value, sec, typ, sclass, naux = struct.unpack_from("<IhHBB", obj, off + 8)
+        if sec == secnum:
+            syms[name] = value
+        i += 1 + naux
+    return text, syms
+
+
 _ERRLINE = re.compile(r"m\.asm\((\d+)\)\s*:\s*(?:error|fatal)", re.I)
 
 
-def compare_object(v, oi, root=".", max_repair=20):
-    """Emit object oi as MASM, assemble with ML, and drive it to a byte-exact rebuild. Each pass
-    forces to raw `db` any instruction the assembler REJECTS or re-encodes to DIFFERENT bytes than
-    the oracle (a commutative-operand / SIB-order / direction-bit ambiguity). Those fall-backs are
-    same-length and byte-preserving, so offsets never drift and the loop converges. A drift-heavy
-    object that won't converge in `max_repair` passes falls back to full raw byte-preservation --
-    still byte-exact (the disassembly is a faithful VIEW; see verify()), just with 0 symbolic
-    re-encodes for that object. Returns the verdict plus the symbolic vs forced-raw split."""
+def compare_object(v, oi, root=".", max_repair=8):
+    """Emit object oi as MASM, assemble with the period ML, and drive it to a byte-exact rebuild --
+    maximising GENUINE re-encodes (no wholesale byte-copy). Every instruction is emitted symbolically
+    and probe-labelled; one COFF assembly then reveals, via each label's true offset, EVERY
+    instruction ML re-encoded to different bytes than the oracle (length drift or a same-length
+    commutative/SIB/direction mirror). Only those -- plus any the assembler outright rejects -- are
+    forced to raw db; everything else stays a real re-assembled instruction. Because all mismatches
+    are found at once, drift-heavy objects converge in a couple of passes instead of falling back.
+    Returns the verdict + the symbolic (ML-reproduced) vs forced-raw split."""
     D = VxDDisasm(v).run()
     root = os.path.abspath(root)
     oracle = D.code[oi]
-    owner = {}                                             # covered offset -> instruction start
+    offs = sorted(a for (o, a) in D.insns if o == oi)
+    allins = set(offs)
     force_raw = set()
-    allins = set()
-    for (o, a), r in D.insns.items():
-        if o == oi:
-            allins.add(a)
-            for k in range(a, a + r["size"]):
-                owner[k] = a
-            if has_abs_mem(r) or has_seg_prefix(r):        # bare-abs operands / segment prefixes
-                force_raw.add(a)
     for _ in range(max_repair):
-        masm, linemap = emit_object_masm(D, oi, force_raw=force_raw)
-        obj, log = assemble(masm, root)
+        masm, linemap = emit_object_masm(D, oi, force_raw=force_raw, probe=True)
+        obj, log = assemble_coff(masm, root)
         if not obj:                                        # assembler rejected some lines
             bad = {linemap[int(m.group(1))] for m in _ERRLINE.finditer(log) if int(m.group(1)) in linemap}
             if not bad or bad <= force_raw:
                 break                                      # unattributable errors -> raw fallback
             force_raw |= bad
             continue
-        asm_bytes = omf_segment_bytes(obj)
-        n = min(len(asm_bytes), len(oracle))
-        diffs = [k for k in range(n) if asm_bytes[k] != oracle[k]]
-        exact = not diffs and len(asm_bytes) == len(oracle)
-        if len(asm_bytes) == len(oracle):                  # no drift: every diff is a same-length
-            newbad = {owner[k] for k in diffs if k in owner} - force_raw   # mirror -- force them all
-        else:                                              # length drift: a re-encode changed size;
-            first = diffs[0] if diffs else n               # force only the culprit at the divergence
-            newbad = ({owner[first]} if first in owner else set()) - force_raw
-        if exact or not newbad:                            # byte-exact, or nothing left to attribute
-            return {"ok": True, "match": exact, "oracle_len": len(oracle), "asm_len": len(asm_bytes),
-                    "n_diffs": len(diffs), "symbolic_insns": len(linemap),
-                    "forced_raw": len(force_raw), "force_raw_set": set(force_raw), "diffs": diffs[:40],
-                    "raw_fallback": False, "_asm": asm_bytes, "_oracle": oracle, "D": D}
-        force_raw |= newbad                                # byte-preserve the mirror-encoded ones
-    # Did not converge symbolically: emit EVERY instruction raw. The bytes are the oracle's own, so
-    # this assembles to a byte-exact image by construction -- the object is byte-exact, symbolic=0.
+        text, syms = coff_text_syms(obj)
+        # every probe label gives an instruction's TRUE assembled offset; if its bytes there differ
+        # from the oracle, ML re-encoded it (drift or mirror) -- force it. A mere position shift from
+        # an earlier drift still matches at the shifted offset, so it is (correctly) not flagged.
+        newbad = set()
+        for a in offs:
+            if a in force_raw:
+                continue
+            ao = syms.get("Q%x" % a)
+            if ao is None:
+                continue
+            olen = D.insns[(oi, a)]["size"]
+            if bytes(text[ao:ao + olen]) != bytes(oracle[a:a + olen]):
+                newbad.add(a)
+        exact = len(text) >= len(oracle) and bytes(text[:len(oracle)]) == bytes(oracle)
+        if exact or not newbad:
+            return {"ok": True, "match": exact, "oracle_len": len(oracle), "asm_len": len(text),
+                    "n_diffs": len(newbad), "symbolic_insns": len(offs) - len(force_raw),
+                    "forced_raw": len(force_raw), "force_raw_set": set(force_raw),
+                    "raw_fallback": False, "_asm": bytes(text[:len(oracle)]), "_oracle": oracle, "D": D}
+        force_raw |= newbad
+    # Last resort (rare): emit every instruction raw -- byte-exact by construction, symbolic 0.
     masm, linemap = emit_object_masm(D, oi, force_raw=allins)
-    obj, log = assemble(masm, root)
+    obj, log = assemble_coff(masm, root)
     if not obj:
         return {"ok": False, "error": "raw fallback failed to assemble", "log": log[-400:],
                 "forced_raw": len(allins)}
-    asm_bytes = omf_segment_bytes(obj)
-    diffs = [k for k in range(min(len(asm_bytes), len(oracle))) if asm_bytes[k] != oracle[k]]
-    exact = not diffs and len(asm_bytes) == len(oracle)
-    return {"ok": True, "match": exact, "oracle_len": len(oracle), "asm_len": len(asm_bytes),
-            "n_diffs": len(diffs), "symbolic_insns": len(linemap), "forced_raw": len(allins),
-            "force_raw_set": set(allins), "diffs": diffs[:40], "raw_fallback": True,
-            "_asm": asm_bytes, "_oracle": oracle, "D": D}
+    text, _ = coff_text_syms(obj)
+    exact = len(text) >= len(oracle) and bytes(text[:len(oracle)]) == bytes(oracle)
+    return {"ok": True, "match": exact, "oracle_len": len(oracle), "asm_len": len(text),
+            "n_diffs": 0 if exact else 1, "symbolic_insns": 0, "forced_raw": len(allins),
+            "force_raw_set": set(allins), "raw_fallback": True,
+            "_asm": bytes(text[:len(oracle)]), "_oracle": oracle, "D": D}
 
 
 def compare_module(v, root="."):
