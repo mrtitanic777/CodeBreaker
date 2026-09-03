@@ -32,9 +32,11 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from capstone import Cs, CS_ARCH_X86, CS_MODE_32
+from engine.inverse_engine import vxd_services
 
 _MD = Cs(CS_ARCH_X86, CS_MODE_32)
 _MD.detail = True
+_SVC = vxd_services.load()          # DDK service-name tables (ordinal -> name)
 
 # Canonical Win95 VxD device ids -> names (DDK VxD service tables). The high word of an INT 20h
 # service DWORD is the device id; this names the callee module for `VxDCall`.
@@ -163,8 +165,9 @@ class VxDDisasm:
                     break
                 if s.objs.get(e["obj"], {}).get("exec"):
                     seeds.append((e["obj"], e["target"]))
-                    s.labels.setdefault((e["obj"], e["target"]),
-                                        "%s_Service_%02d" % (db["name"] or "Dev", j))
+                    sname = _SVC.name(db["name"], j)        # this driver's own DDK service name
+                    lbl = sname or "%s_Service_%02d" % (db["name"] or "Dev", j)   # already qualified
+                    s.labels.setdefault((e["obj"], e["target"]), lbl)
                 cnt += 1
             if cnt:
                 s.svctab = (boi, base, cnt)
@@ -318,8 +321,10 @@ def _direct_target_row(row):
 def _svc_name(dev, svc, via):
     dname = VXD_DEVICES.get(dev, "Dev_%04X" % dev)
     kind = "VMMCall" if dev == 0x0001 else "VxDCall"
+    sname = _SVC.name(dname, svc)                       # DDK name if the device+ordinal is known
+    ref = "%s.%s" % (dname, sname) if sname else "%s.Service_%04Xh" % (dname, svc)
     tag = "" if via == "inline" else "  ; (import-fixup)"
-    return "%s  %s.Service_%04Xh" % (kind, dname, svc) + tag
+    return "%s  %s" % (kind, ref) + tag
 
 
 def emit_asm(s_v):
