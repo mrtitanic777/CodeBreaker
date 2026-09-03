@@ -43,10 +43,20 @@ def pick(fb):
     return _msc6, RECIPES_MSC6
 
 
+_CHUNK = 64            # a single DOSBox run reliably compiles this many; larger runs drop objects
+
+
 def _compile_batch(ora, jobs):
-    """Uniform batch entry: msc6_oracle exposes mc6_compile_batch, msvc152 exposes compile_batch."""
+    """Uniform batch entry: msc6_oracle exposes mc6_compile_batch, msvc152 exposes compile_batch.
+    Split into bounded chunks -- one DOSBox invocation drops objects past ~a few dozen files, so a
+    module-sized batch (hundreds of compiles) silently under-verifies. Chunking keeps it exact."""
     fn = getattr(ora, "compile_batch", None) or getattr(ora, "mc6_compile_batch")
-    return fn(jobs)
+    if len(jobs) <= _CHUNK:
+        return fn(jobs)
+    out = []
+    for i in range(0, len(jobs), _CHUNK):
+        out.extend(fn(jobs[i:i + _CHUNK]))
+    return out
 
 
 def _norm(b):
