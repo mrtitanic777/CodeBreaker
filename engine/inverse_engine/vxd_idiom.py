@@ -69,44 +69,150 @@ def ddb_macro(db):
         db["name"], db["major"], db["minor"], db["name"], db["device_id"], db["init_order"])
 
 
-def control_handlers(D):
-    """[(MESSAGE_NAME, handler_label)] for the control-dispatch handlers, from the recovered jump
-    table -- exactly the `Control_Dispatch <Msg>, <Handler>` lines the source had. Only real
-    handlers (not the shared unhandled stub, referenced by many messages) are returned."""
+def service_table(D, emittable):
+    """Recover the VxD's own exported service table. The DDB (VxD_Desc_Block) carries a
+    Service_Table_Ptr (+0x30) and Service_Table_Size (+0x34); the table is Size DWORD pointers, one
+    per service, each a fixup to that service's handler. Returns (labels, (obj, off, count)) where
+    labels[i] is the handler label for service i (or 'RESERVED' for a null slot) and the tuple locates
+    the raw bytes so the object walk can skip them. Returns (None, None) if there is no table, or any
+    entry cannot be resolved to a single emittable label -- e.g. a handler the recursive descent left
+    mid-instruction because the service pointer and a branch disagreed on alignment (then the table
+    stays raw db, and the DDB keeps the zero Service_Table fields rather than a broken reference).
+
+    Emitted (see emit_idiomatic) as `Begin_Service_Table <name>` / `<name>_Service <handler>, LOCAL`
+    (x Size) / `End_Service_Table <name>`, with `Create_<name>_Service_Table` set so Declare_Virtual_
+    Device fills the DDB's Service_Table_Ptr/Size correctly. Every service is forced LOCAL: the DDK
+    INC marks a few services non-LOCAL (they lived in a separately-linked object and are EXTRN'd), but
+    in this single-file reconstruction every handler IS local, so LOCAL is both correct and avoids the
+    EXTRN-vs-definition collision."""
+    db = D.ddb
+    if not db:
+        return None, None
+    obj = db["obj"]
+    code = D.code[obj]
+    r = db["rva"]
+    ptr = int.from_bytes(code[r + 0x30:r + 0x34], "little")
+    count = int.from_bytes(code[r + 0x34:r + 0x38], "little")
+    if not (ptr and 0 < count < 4000 and ptr + 4 * count <= len(code)):
+        return None, None
+    labels = []
+    seen = set()
+    for i in range(count):
+        f = D.fx.get((obj, ptr + 4 * i))
+        if f:
+            tgt = (f["obj"], f["target"])
+            lbl = D.labels.get(tgt)
+            if not lbl or lbl in seen or tgt not in emittable:   # unlabelled, shared by two services
+                return None, None                                #  (double-defines _<lbl>), or lands
+            seen.add(lbl)                                        #  mid-instruction -> keep the raw db
+            labels.append(lbl)
+        elif int.from_bytes(code[ptr + 4 * i:ptr + 4 * i + 4], "little") == 0:
+            labels.append("RESERVED")             # genuine null slot -> macro emits dd 0
+        else:
+            return None, None                     # non-zero without a fixup -> unexpected, keep raw
+    return labels, (obj, ptr, count)
+
+
+def _branch_label(D, oi, a, row, emittable):
+    """The emitted label a direct branch targets, or None. Resolves a same-object target and a cross-
+    object one (via the fixup on the branch operand); requires the target to be an emittable label so
+    the macro's reference will resolve."""
+    from engine.inverse_engine.vxd_asm import _direct_target_row
+    t = _direct_target_row(row)
+    if t is not None and (oi, t) in emittable:
+        return D.labels.get((oi, t))
+    for k in range(a + 1, a + row["size"]):
+        f = D.fx.get((oi, k))
+        if f and f.get("target") is not None and (f["obj"], f["target"]) in emittable:
+            return D.labels.get((f["obj"], f["target"]))
+    return None
+
+
+def control_dispatch(D, emittable):
+    """Recover the control-dispatch handlers AND the exact byte extent of the dispatch mechanism to
+    skip when re-emitting it as `Begin_Control_Dispatch`. Returns (handlers, skip): handlers is
+    [(MESSAGE_NAME, handler_label)] and skip is the {(obj,off)} the macro regenerates. Two shapes the
+    DDK macro compiles to are recovered: a jump table (cmp/sub eax,N; jae default; jmp [tbl+eax*4] +
+    the table, which may sit far from the prologue) and a compare chain (cmp eax,N; je handler,
+    repeated). Every handler must resolve to an `emittable` label; if the proc matches neither shape,
+    or any handler is unresolved, returns ([], set()) so the caller emits the whole proc verbatim as
+    ordinary code -- correct and complete, never losing the routines between prologue and table."""
     from engine.inverse_engine import vxd_symbols
     db = D.ddb
     if not db:
-        return []
+        return [], set()
     cp = next((k for k, nm in D.labels.items() if nm == db["name"] + "_Control"), None)
     if not cp:
-        return []
+        return [], set()
     msgs = vxd_symbols.control_messages()
-    oi, a = cp
+    oi, a0 = cp
+    # --- jump-table form ---
+    a = a0
     base = 0
-    for _ in range(10):
+    for _ in range(8):                                     # the prologue is short; do not walk far
         row = D.insns.get((oi, a))
         if not row:
-            return []
+            break
         if row["mnem"] == "sub" and row["ops"].replace(" ", "").startswith("eax,"):
             try:
                 base = int(row["ops"].split(",")[1].strip(), 0)
             except ValueError:
                 pass
         if row["mnem"] == "jmp" and "*4" in row["ops"]:
+            skip = {(oi, k) for k in range(a0, a + row["size"])}          # prologue bytes
             jt = None
-            for k in range(a + 1, a + row["size"]):
+            for k in range(a, a + row["size"]):
                 f = D.fx.get((oi, k))
-                if f and f["kind"] == "internal":
+                if f and f["kind"] == "internal" and f["obj"] == oi:
                     jt = D.jtables.get((f["obj"], f["target"]))
+                    if jt:
+                        skip |= {(oi, f["target"] + b) for b in range(len(jt) * 4)}   # table bytes
                     break
+            b = a + row["size"]                                          # trailing unhandled stub
+            while (oi, b) in D.insns and \
+                    D.insns[(oi, b)]["mnem"] in ("clc", "stc", "cmc", "ret", "retn", "retf"):
+                skip |= {(oi, k) for k in range(b, b + D.insns[(oi, b)]["size"])}
+                b += D.insns[(oi, b)]["size"]
             out = []
             for i, tk in enumerate(jt or []):
                 msg = i + base
                 if msg in msgs and jt.count(tk) == 1 and tk in D.insns:
-                    out.append((msgs[msg], D.labels.get(tk, "loc_%d_%04X" % tk)))
-            return out
+                    out.append((msgs[msg], D.labels.get(tk) or "loc_%d_%04X" % tk))
+            return (out, skip) if out else ([], set())
         a += row["size"]
-    return []
+    # --- compare-chain form: cmp eax,N ; je handler (repeated) ---
+    a = a0
+    skip = set()
+    out = []
+    seen = set()
+    while (oi, a) in D.insns:
+        row = D.insns[(oi, a)]
+        if row["mnem"] != "cmp" or not row["ops"].replace(" ", "").startswith("eax,"):
+            break
+        try:
+            m = int(row["ops"].split(",")[1].strip(), 0)
+        except ValueError:
+            break
+        jr = D.insns.get((oi, a + row["size"]))
+        if not jr or jr["mnem"] not in ("je", "jz"):
+            break
+        lbl = _branch_label(D, oi, a + row["size"], jr, emittable)
+        if m not in msgs or not lbl or m in seen:
+            return [], set()                               # can't reproduce this arm -> emit verbatim
+        seen.add(m)
+        out.append((msgs[m], lbl))
+        skip |= {(oi, k) for k in range(a, a + row["size"] + jr["size"])}
+        a += row["size"] + jr["size"]
+    if len(out) < 2:                                       # a lone cmp/je is not a dispatch chain
+        return [], set()
+    while (oi, a) in D.insns and \
+            D.insns[(oi, a)]["mnem"] in ("clc", "stc", "cmc", "ret", "retn", "retf", "jmp"):
+        r = D.insns[(oi, a)]                               # trailing default (fall-through / jmp)
+        skip |= {(oi, k) for k in range(a, a + r["size"])}
+        a += r["size"]
+        if r["mnem"] == "jmp":
+            break
+    return out, skip
 
 
 _SEG_MACRO = {"LCODE": "VxD_LOCKED_CODE", "ICODE": "VxD_ICODE", "PCODE": "VxD_PAGEABLE_CODE",
@@ -210,11 +316,12 @@ def emit_idiomatic(D):
     like Microsoft's source; the DDB + service calls are byte-exact, the dispatch/segment layout
     resolve through the DDK ML+LINK build.
 
-    A VxD's own *exported* service table is kept as its exact bytes (data), NOT re-generated via
-    `Create_<name>_Service_Table` + the INC's `Begin_Service_Table`: that path collides (A2005) with
-    the reconstructed internal names -- a `.SYM` handler name like VKD_Filter_Keyboard_Input is also a
-    symbol the device INC defines -- and only a fraction of the table entries map to a named handler
-    anyway (the rest are shared/reserved stubs). The raw bytes carry the whole table correctly."""
+    A VxD's own *exported* service table (when every entry resolves, see service_table) is emitted
+    idiomatically as `Begin_Service_Table`/`<name>_Service <handler>, LOCAL`/`End_Service_Table` with
+    `Create_<name>_Service_Table` set, so Declare_Virtual_Device fills the DDB's Service_Table_Ptr/Size
+    correctly -- otherwise those DDB fields would be zero. Every service is forced LOCAL (correct here:
+    the whole VxD is one file), which sidesteps the EXTRN-vs-definition collision the INC's own
+    (partly non-LOCAL) table would cause. A table that can't be fully resolved stays raw db."""
     from engine.inverse_engine.vxd_tree import seg_class
     from engine.inverse_engine.vxd_masm import _masm_line, _db, has_abs_mem, has_seg_prefix
     from engine.inverse_engine.vxd_asm import _BRANCHES, _direct_target_row
@@ -226,46 +333,54 @@ def emit_idiomatic(D):
     # sub_ name (consistently, in D.labels, so its references follow) or ML reports A2005 redefinition.
     for k in [k for k, nm in D.labels.items() if nm in (name + "_DDB", name + "_Service_Table")]:
         D.labels[k] = "sub_%d_%04X" % k
-    # .586p (privileged, superset of .386p) so ring-0 486/Pentium ops -- invd/wbinvd/cpuid/cmpxchg/
-    # rdmsr/wrmsr/rdtsc -- assemble as themselves instead of hitting A2085 (not-in-current-CPU-mode).
-    L = [".586p"] + ["include %s.inc" % i.lower() for i in _all_incs(D)] + [""]
-    if db:
-        L += [ddb_macro(db), ""]
-    cp = next((k for k, nm in D.labels.items() if nm == name + "_Control"), None)
-    handlers = control_handlers(D)
-    # extent of the control proc + its dispatch table, to skip when we reach it
-    cp_skip = set()
-    if cp:
-        oi0, a0 = cp
-        a = a0
-        end = a0
-        while (oi0, a) in D.insns:
-            row = D.insns[(oi0, a)]
-            a += row["size"]
-            end = a
-            if row["mnem"] == "jmp" and "*4" in row["ops"]:   # dispatch table follows the clc/ret
-                for k in range(a - row["size"] + 1, a):
-                    f = D.fx.get((oi0, k))
-                    if f and f["kind"] == "internal" and f["obj"] == oi0:
-                        jt = D.jtables.get((f["obj"], f["target"]))
-                        if jt:
-                            end = max(end, f["target"] + len(jt) * 4)
-                break
-        cp_skip = {(oi0, k) for k in range(a0, end)}         # whole control proc + table region
-    if db:                                                    # the DDB struct is re-emitted by the
-        cp_skip |= {(db["obj"], k)                            #  top-level Declare_Virtual_Device, so
-                    for k in range(db["rva"], db["rva"] + _ddb_size(D, db))}   # skip it in the walk
-    # offsets that will carry an emitted label a symbolic branch can resolve to: a label at an
-    # instruction start, or on a data byte -- but NOT one landing mid-instruction, nor inside the
-    # control-proc / DDB region the macros absorb. A branch to anything else is byte-preserved.
+    # base set of offsets that will carry an emitted label -- a label at an instruction start, or on a
+    # data byte, but NOT one landing mid-instruction. control_dispatch needs it to only reference
+    # handlers we actually emit; the branch gate below needs it minus the macro-absorbed regions.
     starts, interior = {}, {}
     for (o2, a2), row in D.insns.items():
         starts.setdefault(o2, set()).add(a2)
         iv = interior.setdefault(o2, set())
         for k in range(a2 + 1, a2 + row["size"]):
             iv.add(k)
-    emitted = {(o2, a2) for (o2, a2) in D.labels
-               if a2 in starts.get(o2, ()) or a2 not in interior.get(o2, set())} - cp_skip
+    emittable = {(o2, a2) for (o2, a2) in D.labels
+                 if a2 in starts.get(o2, ()) or a2 not in interior.get(o2, set())}
+    # Resolve the control dispatch and DDB skip FIRST, so the service table is validated against what
+    # the walk will actually emit (a handler inside the dispatch region would be referenced but skipped).
+    handlers, cp_skip = control_dispatch(D, emittable)       # ([], set()) unless a recognised jump
+    cp = next((k for k, nm in D.labels.items()               #  table / compare chain -> then emit
+              if nm == name + "_Control"), None) if handlers else None   # Begin_Control_Dispatch and
+    #                                                          skip it; else emit the proc verbatim
+    if db:                                                    # the DDB struct is re-emitted by the
+        cp_skip |= {(db["obj"], k)                            #  top-level Declare_Virtual_Device, so
+                    for k in range(db["rva"], db["rva"] + _ddb_size(D, db))}   # skip it in the walk
+    svc_labels, svc_loc = service_table(D, emittable - cp_skip)   # own exported service table; handlers
+    if svc_loc:                                                   #  must be emitted, not in a skip region
+        so, sp, sc = svc_loc                                  # skip the raw service-table pointers;
+        cp_skip |= {(so, k) for k in range(sp, sp + 4 * sc)}  #  Begin_Service_Table re-emits them
+    # .586p (privileged, superset of .386p) so ring-0 486/Pentium ops -- invd/wbinvd/cpuid/cmpxchg/
+    # rdmsr/wrmsr/rdtsc -- assemble as themselves instead of hitting A2085 (not-in-current-CPU-mode).
+    L = [".586p"] + ["include %s.inc" % i.lower() for i in _all_incs(D)] + [""]
+    if svc_labels:
+        svcset = {lbl for lbl in svc_labels if lbl != "RESERVED"}
+        # Begin_Service_Table regenerates a PUBLIC caller-thunk `_<service>` for each service; drop any
+        # reconstructed label of that exact name (a .SYM ships those thunks) or ML reports A2005.
+        for k in [k for k, nm2 in D.labels.items() if nm2.startswith("_") and nm2[1:] in svcset]:
+            D.labels[k] = "sub_%d_%04X" % k
+        L.append("IFNDEF %s_Device_ID" % name)             # the service macro forms each ordinal from
+        if db:                                             #  <name>_Device_ID; define it from the DDB
+            L.append("%s_Device_ID EQU 0%04Xh" % (name, db["device_id"]))   # since the device's own
+        L.append("ENDIF")                                  #  INC (which would define it) may be absent
+        L.append("Create_%s_Service_Table EQU 1" % name)  # (Create_ before the DDB so Declare_Virtual_
+        L.append("Begin_Service_Table %s" % name)         #  Device fills Service_Table_Ptr/Size). All
+        for lbl in svc_labels:                             #  LOCAL: every handler is in this one file.
+            L.append("        %s_Service %s, LOCAL" % (name, lbl) if lbl != "RESERVED"
+                     else "        %s_Service RESERVED" % name)
+        L += ["End_Service_Table %s" % name, ""]
+    if db:
+        L += [ddb_macro(db), ""]
+    # a symbolic branch may resolve only to a label the walk emits: emittable minus the control-proc /
+    # DDB / service-table regions the macros absorb. A branch to anything else is byte-preserved.
+    emitted = emittable - cp_skip
     # a control handler whose target label we do not actually emit (a stub VxD whose messages all
     # dispatch into the control-proc region, or a shared do-nothing stub) would make Control_Dispatch
     # reference an undefined symbol -- drop it, and that message falls through to the macro default.
