@@ -617,6 +617,26 @@ class Dec:
                     elif val.endswith("#lo") and (reg.get("es") == "%s#hi" % base
                                                   or reg.get("ds") == "%s#hi" % base):
                         s.farptr[dst] = base                     # offset lane, segment already loaded
+                # DX:AX 32-bit long store: mov [m],ax ; mov [m+2],dx -> *(long)m = <dx:ax>.
+                # The paired adjacent word stores of ax (low) then dx (high) are MSC's long
+                # store; emit it as one long assignment and consume both.
+                if src == "ax" and i + 1 < hi and s.md[i + 1].mnemonic == "mov":
+                    nxo = s.md[i + 1].op_str
+                    lb = re.match(r"(?:word ptr )?\[bp - (\w+)\]$", dst)
+                    lg = re.match(r"(?:word ptr )?\[0x([0-9a-f]+)\]$", dst)
+                    if lb:
+                        n = int(lb.group(1), 0)
+                        h = re.match(r"(?:word ptr )?\[bp - (\w+)\], dx$", nxo)
+                        if h and int(h.group(1), 0) == n - 2:
+                            nm = s._local(n, False); s.localdecl[nm] = "long"
+                            out.append("%s = %s;" % (nm, val)); i += 2; continue
+                    elif lg:
+                        g = int(lg.group(1), 16)
+                        h = re.match(r"(?:word ptr )?\[0x([0-9a-f]+)\], dx$", nxo)
+                        if h and int(h.group(1), 16) == g + 2:
+                            sym = s.syms.get(g); name = sym[0] if sym else "gL_%x" % g
+                            s.globs[name] = "long"
+                            out.append("%s = %s;" % (name, val)); i += 2; continue
                 ml = re.match(r"(?:(word|byte) ptr )?\[bp - (\w+)\]$", dst)
                 if ml:                                           # mov [bp-off], <src>: local store
                     nm = s._local(int(ml.group(2), 0), ml.group(1) == "byte")
