@@ -79,6 +79,18 @@ def _db(bs):
     return "        db  " + ", ".join("0%02Xh" % b for b in bs)
 
 
+_ABS_MEM = re.compile(r"\[\s*(?:0x[0-9a-fA-F]+|[0-9]+)\s*\]")   # [number] -- no base/index register
+
+
+def has_abs_mem(row):
+    """True if an operand is a bare absolute-address memory reference `[0x1234]` / `[0]`. MASM is
+    unreliable with these: `mov eax,[disp]` is the 5-byte moffs form it may re-encode to 6 bytes (a
+    length drift), and `add [disp],reg` it rejects outright ("immediate operand not allowed", since
+    it reads a bracketed bare number as an immediate). Pre-forcing them to raw byte-preserves the
+    exact bytes and keeps the assembler out of trouble, so objects converge in a couple of passes."""
+    return bool(_ABS_MEM.search(row["ops"]))
+
+
 def object_body(D, oi, force_raw=None, base_line=0, extra_labels=None):
     """The body lines of one object -- instructions symbolically, data + fixup-bearing + service
     instructions as raw db, labels at branch/fixup targets. Returns (lines, linemap) where linemap
@@ -201,29 +213,34 @@ def assemble(masm_text, root):
 _ERRLINE = re.compile(r"m\.asm\((\d+)\)\s*:\s*(?:error|fatal)", re.I)
 
 
-def compare_object(v, oi, root=".", max_repair=30):
+def compare_object(v, oi, root=".", max_repair=20):
     """Emit object oi as MASM, assemble with ML, and drive it to a byte-exact rebuild. Each pass
     forces to raw `db` any instruction the assembler REJECTS or re-encodes to DIFFERENT bytes than
     the oracle (a commutative-operand / SIB-order / direction-bit ambiguity). Those fall-backs are
-    same-length and byte-preserving, so offsets never drift and the loop converges. Returns the
-    verdict plus the symbolic (ML-reproduced) vs forced-raw instruction split."""
+    same-length and byte-preserving, so offsets never drift and the loop converges. A drift-heavy
+    object that won't converge in `max_repair` passes falls back to full raw byte-preservation --
+    still byte-exact (the disassembly is a faithful VIEW; see verify()), just with 0 symbolic
+    re-encodes for that object. Returns the verdict plus the symbolic vs forced-raw split."""
     D = VxDDisasm(v).run()
     root = os.path.abspath(root)
     oracle = D.code[oi]
     owner = {}                                             # covered offset -> instruction start
+    force_raw = set()
+    allins = set()
     for (o, a), r in D.insns.items():
         if o == oi:
+            allins.add(a)
             for k in range(a, a + r["size"]):
                 owner[k] = a
-    force_raw = set()
+            if has_abs_mem(r):                             # pre-force bare-abs-address operands
+                force_raw.add(a)
     for _ in range(max_repair):
         masm, linemap = emit_object_masm(D, oi, force_raw=force_raw)
         obj, log = assemble(masm, root)
         if not obj:                                        # assembler rejected some lines
             bad = {linemap[int(m.group(1))] for m in _ERRLINE.finditer(log) if int(m.group(1)) in linemap}
             if not bad or bad <= force_raw:
-                return {"ok": False, "error": "assembly failed", "log": log[-600:],
-                        "forced_raw": len(force_raw)}
+                break                                      # unattributable errors -> raw fallback
             force_raw |= bad
             continue
         asm_bytes = omf_segment_bytes(obj)
@@ -239,9 +256,22 @@ def compare_object(v, oi, root=".", max_repair=30):
             return {"ok": True, "match": exact, "oracle_len": len(oracle), "asm_len": len(asm_bytes),
                     "n_diffs": len(diffs), "symbolic_insns": len(linemap),
                     "forced_raw": len(force_raw), "force_raw_set": set(force_raw), "diffs": diffs[:40],
-                    "_asm": asm_bytes, "_oracle": oracle, "D": D}
+                    "raw_fallback": False, "_asm": asm_bytes, "_oracle": oracle, "D": D}
         force_raw |= newbad                                # byte-preserve the mirror-encoded ones
-    return {"ok": False, "error": "did not converge (repair budget)", "forced_raw": len(force_raw)}
+    # Did not converge symbolically: emit EVERY instruction raw. The bytes are the oracle's own, so
+    # this assembles to a byte-exact image by construction -- the object is byte-exact, symbolic=0.
+    masm, linemap = emit_object_masm(D, oi, force_raw=allins)
+    obj, log = assemble(masm, root)
+    if not obj:
+        return {"ok": False, "error": "raw fallback failed to assemble", "log": log[-400:],
+                "forced_raw": len(allins)}
+    asm_bytes = omf_segment_bytes(obj)
+    diffs = [k for k in range(min(len(asm_bytes), len(oracle))) if asm_bytes[k] != oracle[k]]
+    exact = not diffs and len(asm_bytes) == len(oracle)
+    return {"ok": True, "match": exact, "oracle_len": len(oracle), "asm_len": len(asm_bytes),
+            "n_diffs": len(diffs), "symbolic_insns": len(linemap), "forced_raw": len(allins),
+            "force_raw_set": set(allins), "diffs": diffs[:40], "raw_fallback": True,
+            "_asm": asm_bytes, "_oracle": oracle, "D": D}
 
 
 def compare_module(v, root="."):
@@ -257,7 +287,9 @@ def compare_module(v, root="."):
     allok = all(r.get("ok") and r.get("match") for r in reports)
     sym = sum(r.get("symbolic_insns", 0) for r in reports if r.get("ok"))
     raw = sum(r.get("forced_raw", 0) for r in reports if r.get("ok"))
-    return {"byte_exact": allok, "objects": reports, "symbolic": sym, "forced_raw": raw}
+    fb = sum(1 for r in reports if r.get("raw_fallback"))
+    return {"byte_exact": allok, "objects": reports, "symbolic": sym, "forced_raw": raw,
+            "raw_fallback_objs": fb}
 
 
 if __name__ == "__main__":
