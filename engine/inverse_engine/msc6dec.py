@@ -499,6 +499,11 @@ class Dec:
                     lo = int(gl.group(1), 0) & 0xffff; hiw = int(gh.group(1), 0) & 0xffff
                     s.args.append("%dL" % ((hiw << 16) | lo))
                     reg["ax"] = str(lo); reg["dx"] = str(hiw); i += 4; continue
+            # long-variable argument:  push dx ; push ax  where dx:ax already holds a long value
+            # (a long param/global loaded into the accumulator) -> one long arg, not two ints.
+            if mn == "push" and ops == "dx" and i + 1 < hi and reg.get("dxax") \
+                    and s.md[i+1].mnemonic == "push" and s.md[i+1].op_str == "ax":
+                s.args.append(reg["dxax"]); i += 2; continue
             # intra-segment far call:  push cs ; call near <rel>  (linker-optimized far call
             # to a same-segment function). Target resolves in SEGMENT coords via func_base.
             if mn == "push" and ops == "cs" and i+1 < hi and s.md[i+1].mnemonic == "call":
@@ -855,8 +860,9 @@ def invert(code, imports=None, syms=None, rtype="int", params=None, nearmap=None
             memoff.add(int(gm.group(1), 16))
     # infer far/int params BEFORE building Dec, so the far-param LAYOUT (lanes) is set and
     # the body walk uses the right param names: a `les reg,[bp+off]` marks off far (4 bytes).
-    if params is None:
-        far_offs = set(); long_offs = set(); accessed = set(); maxo = 4
+    if params is None or all(t == "int" for _n, t in (params or [])):   # detect far/long even when
+        far_offs = set(); long_offs = set(); accessed = set(); maxo = 4  # callsig guessed all-int
+        seg_from = {}                                       # gpreg -> bp offset it was loaded from
         for j, ins in enumerate(md):
             if ins.mnemonic in ("les", "lds"):
                 lm = re.search(r"\[bp \+ (\w+)\]", ins.op_str)
@@ -865,6 +871,13 @@ def invert(code, imports=None, syms=None, rtype="int", params=None, nearmap=None
             mm = re.match(r"(es|ds), word ptr \[bp \+ (\w+)\]", ins.op_str)
             if ins.mnemonic == "mov" and mm:                # mov es,[bp+M] -> far param at M-2
                 far_offs.add(int(mm.group(2), 0) - 2)
+            # indirect far-seg param: mov reg,[bp+M] ; ... ; mov es,reg  -> far param at M-2
+            gm = re.match(r"(\w+), word ptr \[bp \+ (\w+)\]$", ins.op_str)
+            if ins.mnemonic == "mov" and gm:
+                seg_from[gm.group(1)] = int(gm.group(2), 0)
+            sm = re.match(r"(es|ds), (ax|bx|cx|dx|si|di)$", ins.op_str)
+            if ins.mnemonic == "mov" and sm and sm.group(2) in seg_from:
+                far_offs.add(seg_from[sm.group(2)] - 2)
             # a 32-bit push of a stack dword (66 ff /6) passes a `long` param by value
             dm = re.match(r"dword ptr \[bp \+ (\w+)\]$", ins.op_str)
             if ins.mnemonic == "push" and dm:
@@ -899,7 +912,9 @@ def invert(code, imports=None, syms=None, rtype="int", params=None, nearmap=None
             # `inferred` is built low-offset first; _layout_params lays params out pascal
             # (last-declared at bp+6), so decl order is the reverse -- flip it, then name
             # positionally, so each type lands on the stack slot it was detected at.
-            params = [("p%d" % k, ty) for k, (_n, ty) in enumerate(reversed(inferred))]
+            _built = [("p%d" % k, ty) for k, (_n, ty) in enumerate(reversed(inferred))]
+            if params is None or any(t in ("far", "long") for _n, t in _built):
+                params = _built            # body evidence wins over a callsig all-int guess
     d = Dec(md, be, imports, syms, params, nearmap=nearmap, func_base=func_base)
     d.memoff = memoff
     d.void = (rtype == "void"); d.rtype = rtype
