@@ -79,24 +79,30 @@ def _db(bs):
     return "        db  " + ", ".join("0%02Xh" % b for b in bs)
 
 
-def emit_object_masm(D, oi, segname="_LTEXT", force_raw=None):
-    """Emit one executable object as an assemblable MASM use32 segment. Returns (text, linemap),
-    where linemap maps a 1-based source line back to the instruction offset it emitted -- so an
-    assembler error at a line can be traced to the instruction and repaired (forced to raw db)."""
+def object_body(D, oi, force_raw=None, base_line=0, extra_labels=None):
+    """The body lines of one object -- instructions symbolically, data + fixup-bearing + service
+    instructions as raw db, labels at branch/fixup targets. Returns (lines, linemap) where linemap
+    maps (base_line + index-in-lines, 1-based) to the instruction offset. extra_labels adds label
+    names at given offsets (e.g. the exported DDB). Shared by the object test and the full link."""
     force_raw = force_raw or set()
+    extra_labels = extra_labels or {}
     o = D.objs[oi]
     code = D.code[oi]
     n = o["vsize"]
-    L = [".386p", "%s segment dword public use32 'CODE'" % segname, ""]
+    L = []
     linemap = {}
     a = 0
     while a < n:
+        if a in extra_labels:
+            L.append("public %s" % extra_labels[a])
+            L.append("%s label byte" % extra_labels[a])
         if D.labels.get((oi, a)):
             L.append("%s:" % D.labels[(oi, a)])
         row = D.insns.get((oi, a))
         if row is None:                                    # data byte(s)
             b = a
-            while b < n and (oi, b) not in D.insns and not (b > a and D.labels.get((oi, b))):
+            while b < n and (oi, b) not in D.insns and not (b > a and D.labels.get((oi, b))) \
+                    and not (b > a and b in extra_labels):
                 b += 1
             for i in range(a, b, 16):
                 L.append(_db(code[i:min(i + 16, b)]))
@@ -107,9 +113,18 @@ def emit_object_masm(D, oi, segname="_LTEXT", force_raw=None):
             L.append(_db(row["raw"]))
         else:
             L.append(line)
-            linemap[len(L)] = a                            # this symbolic line -> its offset
+            linemap[base_line + len(L)] = a                # this symbolic line -> its offset
         a += row["size"]
-    L += ["%s ends" % segname, "        end", ""]
+    return L, linemap
+
+
+def emit_object_masm(D, oi, segname="_LTEXT", force_raw=None):
+    """Emit one executable object as an assemblable MASM use32 segment. Returns (text, linemap),
+    where linemap maps a 1-based source line back to the instruction offset it emitted -- so an
+    assembler error at a line can be traced to the instruction and repaired (forced to raw db)."""
+    head = [".386p", "%s segment dword public use32 'CODE'" % segname, ""]
+    body, linemap = object_body(D, oi, force_raw=force_raw, base_line=len(head))
+    L = head + body + ["%s ends" % segname, "        end", ""]
     return "\r\n".join(L), linemap
 
 
@@ -223,7 +238,7 @@ def compare_object(v, oi, root=".", max_repair=30):
         if exact or not newbad:                            # byte-exact, or nothing left to attribute
             return {"ok": True, "match": exact, "oracle_len": len(oracle), "asm_len": len(asm_bytes),
                     "n_diffs": len(diffs), "symbolic_insns": len(linemap),
-                    "forced_raw": len(force_raw), "diffs": diffs[:40],
+                    "forced_raw": len(force_raw), "force_raw_set": set(force_raw), "diffs": diffs[:40],
                     "_asm": asm_bytes, "_oracle": oracle, "D": D}
         force_raw |= newbad                                # byte-preserve the mirror-encoded ones
     return {"ok": False, "error": "did not converge (repair budget)", "forced_raw": len(force_raw)}
