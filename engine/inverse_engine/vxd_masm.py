@@ -61,6 +61,15 @@ def _masm_ops(ops):
     return re.sub(r"0x([0-9a-fA-F]+)", _hex, ops)
 
 
+# jmp/jcc have both a 2-byte rel8 (SHORT) and a 5/6-byte rel32 (NEAR) form; MASM auto-picks the
+# short one when the target fits, which drifts from a compiler that emitted the long form (and
+# vice-versa). Emitting the explicit size pins ML to the oracle's encoding. call is always near;
+# jcxz/loop are always short -- neither takes a size override.
+_SHORTABLE = {"jmp", "je", "jne", "jz", "jnz", "ja", "jae", "jb", "jbe", "jg", "jge", "jl", "jle",
+              "jo", "jno", "js", "jns", "jp", "jnp", "jc", "jnc", "jpe", "jpo", "jna", "jnae",
+              "jnb", "jnbe", "jng", "jnge", "jnl", "jnle"}
+
+
 def _masm_line(D, oi, row):
     """MASM text for one instruction, or None if it must be emitted as raw bytes instead (a direct
     branch whose numeric target has no label -- MASM rejects `jmp <number>`)."""
@@ -72,6 +81,8 @@ def _masm_line(D, oi, row):
     if mnem in _BRANCHES and not resolved and _direct_target_row(row) is not None:
         return None                                        # direct branch to an unlabelled address
     ops = _masm_ops(ops)
+    if mnem in _SHORTABLE and resolved:                    # pin the branch size to the oracle's
+        ops = ("SHORT " if row["size"] == 2 else "NEAR PTR ") + ops
     return ("        %-6s %s" % (mnem, ops)).rstrip()
 
 
@@ -89,6 +100,17 @@ def has_abs_mem(row):
     it reads a bracketed bare number as an immediate). Pre-forcing them to raw byte-preserves the
     exact bytes and keeps the assembler out of trouble, so objects converge in a couple of passes."""
     return bool(_ABS_MEM.search(row["ops"]))
+
+
+_SEG_PREFIX = {0x2E, 0x26, 0x36, 0x3E, 0x64, 0x65}       # CS ES SS DS FS GS override bytes
+
+
+def has_seg_prefix(row):
+    """True if the instruction carries a segment-override prefix (2E/26/36/3E/64/65). Ring-0 VxD
+    code uses these to reach V86/other segments, and often carries a redundant CS: prefix that MASM
+    silently drops -- a length drift that cascades into every following call/jmp target. Pre-forcing
+    byte-preserves the prefix exactly."""
+    return bool(row["raw"]) and row["raw"][0] in _SEG_PREFIX
 
 
 def object_body(D, oi, force_raw=None, base_line=0, extra_labels=None):
@@ -232,7 +254,7 @@ def compare_object(v, oi, root=".", max_repair=20):
             allins.add(a)
             for k in range(a, a + r["size"]):
                 owner[k] = a
-            if has_abs_mem(r):                             # pre-force bare-abs-address operands
+            if has_abs_mem(r) or has_seg_prefix(r):        # bare-abs operands / segment prefixes
                 force_raw.add(a)
     for _ in range(max_repair):
         masm, linemap = emit_object_masm(D, oi, force_raw=force_raw)
