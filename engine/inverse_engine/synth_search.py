@@ -169,16 +169,28 @@ def parallel_solve(target, grammars=None, workers=6, ctx=None, prune=None):
                 for rcp in RECIPES:
                     tasks.append((cand, src, rcp, is_sib))
 
-    def _run(cand, src, rcp, is_sib):
+    import math
+
+    def _run_batch(batch):
+        # ONE DOSBox run for the whole batch (spawn paid once), then check each result
         try:
-            rc = ora.mc6_compile(src, rcp)
+            results = ora.mc6_compile_batch([(src, rcp) for (_c, src, rcp, _s) in batch])
         except Exception:
             return None
-        b = _first_func(rc) if is_sib else rc
-        return cand if _mask(b).rstrip(b"\x90\x00") == a else None
+        for (cand, _src, _rcp, is_sib), rc in zip(batch, results):
+            if rc is None:
+                continue
+            b = _first_func(rc) if is_sib else rc
+            if _mask(b).rstrip(b"\x90\x00") == a:
+                return cand
+        return None
 
+    if not tasks:
+        return None, conv, 0
+    bsize = max(1, math.ceil(len(tasks) / workers))     # ~`workers` batches, run in parallel
+    batches = [tasks[i:i + bsize] for i in range(0, len(tasks), bsize)]
     with ThreadPoolExecutor(max_workers=workers) as ex:
-        futs = [ex.submit(_run, *t) for t in tasks]
+        futs = [ex.submit(_run_batch, b) for b in batches]
         for fut in as_completed(futs):
             r = fut.result()
             if r:

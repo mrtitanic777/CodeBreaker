@@ -64,9 +64,8 @@ def mc6_compile(csrc, flags="/AM /G2 /Gsw /Ox", timeout=90):
     open(os.path.join(work, "BLD.BAT"), "w").write(
         "@echo off\r\npath c:\\bin\r\ndel m.obj\r\ncl /c %s /Fom.obj m.c >nul\r\n"
         "echo DONE > done.txt\r\n" % flags)
-    open(os.path.join(work, "r.conf"), "w").write(
-        "[cpu]\ncycles=20000\n[autoexec]\nmount c %s\nmount d %s\nset PATH=C:\\BIN\nd:\n"
-        "call BLD.BAT\nexit\n" % (tcdir.replace("/", "\\"), work.replace("/", "\\")))
+    open(os.path.join(work, "r.conf"), "w").write(_CONF % (
+        tcdir.replace("/", "\\"), work.replace("/", "\\")))
     for f in ("m.obj", "done.txt"):
         try: os.remove(os.path.join(work, f))
         except OSError: pass
@@ -76,6 +75,40 @@ def mc6_compile(csrc, flags="/AM /G2 /Gsw /Ox", timeout=90):
     if not os.path.exists(obj):
         raise RuntimeError("msc6 oracle: compile produced no object (flags=%r)" % flags)
     return _obj_code(obj)
+
+
+# dynamic recompiler core + surface output = faster emulation and init than the default
+_CONF = ("[sdl]\noutput=surface\n[cpu]\ncore=dynamic\ncputype=386\ncycles=max\n[autoexec]\n"
+         "mount c %s\nmount d %s\nset PATH=C:\\BIN\nd:\ncall BLD.BAT\nexit\n")
+
+
+def mc6_compile_batch(jobs, timeout=300):
+    """Compile MANY (csrc, flags) jobs in ONE DOSBox run -- the ~1.8s spawn is paid once,
+    not per compile (it is 58% of a single compile). Returns a list of code-bytes, with
+    None where a job produced no object. This is the primary DOSBox-cost reduction."""
+    if not available():
+        raise RuntimeError("msc6 oracle not configured")
+    c = _cfg(); dbx = c["dosbox_x"]
+    tcdir = os.path.join(c["msc6_toolchain"], "compilers", "msc-6.0a")
+    work = tempfile.mkdtemp(prefix="msc6batch_")
+    lines = ["@echo off", "path c:\\bin", "del *.obj"]
+    for i, (csrc, flags) in enumerate(jobs):
+        open(os.path.join(work, "m%d.c" % i), "w").write(csrc + "\n")
+        lines.append("cl /c %s /Fom%d.obj m%d.c >nul" % (flags, i, i))
+    lines.append("echo DONE > done.txt")
+    open(os.path.join(work, "BLD.BAT"), "w", newline="").write("\r\n".join(lines) + "\r\n")
+    open(os.path.join(work, "r.conf"), "w").write(_CONF % (
+        tcdir.replace("/", "\\"), work.replace("/", "\\")))
+    subprocess.run([dbx, "-conf", os.path.join(work, "r.conf"), "-exit"],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=timeout)
+    out = []
+    for i in range(len(jobs)):
+        obj = os.path.join(work, "m%d.obj" % i)
+        try:
+            out.append(_obj_code(obj) if os.path.exists(obj) else None)
+        except Exception:
+            out.append(None)
+    return out
 
 
 if __name__ == "__main__":
