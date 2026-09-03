@@ -678,7 +678,13 @@ class Dec:
                     else:
                         s.args.append(reg[r])
                 elif re.match(r"\[bp \+ (\w+)\]", r):
-                    s.args.append(s.pname(int(re.search(r"\+ (\w+)", r).group(1), 0)))
+                    o = int(re.search(r"\+ (\w+)", r).group(1), 0); lane = s.lanes.get(o)
+                    if lane and lane[1] == "hi":                 # far-arg hi word pushed from memory:
+                        s._pendfar = lane[0]                     # wait for the lo word (as reg or mem)
+                    elif lane and lane[1] == "lo" and getattr(s, "_pendfar", None) == lane[0]:
+                        s.args.append(lane[0]); s._pendfar = None  # hi+lo -> one far pointer argument
+                    else:
+                        s.args.append(s.pname(o))
                 elif re.match(r"\[bp - (\w+)\]$", r):             # push a local by value (unopt)
                     s.args.append(s._local(int(re.search(r"- (\w+)", r).group(1), 0)))
                 elif re.match(r"(-?0x[0-9a-f]+|-?\d+)$", r):
