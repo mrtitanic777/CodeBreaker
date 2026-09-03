@@ -79,6 +79,10 @@ class VxDDisasm:
     def fsite(s, oi, off):
         return s.fx.get((oi, off))
 
+    def _free(s, oi, a, sz):
+        """True iff [a, a+sz) is entirely unclaimed -- so decoding here creates no overlap."""
+        return all((oi, k) not in s.mark for k in range(a, a + sz))
+
     # ---- recursive descent -----------------------------------------------------
     def run(s):
         s._descend(s._seeds())
@@ -170,8 +174,12 @@ class VxDDisasm:
             while a < n:
                 if (oi, a) in s.insns:
                     break
+                if (oi, a) in s.mark:                       # landed mid-instruction of prior code
+                    break                                   #  (a bad speculative seed) -- abandon
                 # VxD service call: CD 20 + inline DWORD
                 if code[a] == 0xCD and a + 5 < n and code[a + 1] == 0x20:
+                    if not s._free(oi, a, 6):
+                        break
                     imp = s.fsite(oi, a + 2)
                     if imp and imp["kind"] == "import":
                         dev, svc, via = imp["module"], imp["ordinal"], "import"
@@ -186,6 +194,8 @@ class VxDDisasm:
                     continue
                 ins = next(_MD.disasm(code[a:a + 16], a), None)
                 if ins is None:
+                    break
+                if not s._free(oi, a, ins.size):            # would overlap authoritative code
                     break
                 fx = None
                 for k in range(a + 1, a + ins.size):
@@ -437,6 +447,36 @@ def _emit_data(D, oi, start, end):
     return out
 
 
+def verify(v):
+    """Faithfulness check: the disassembly is a VIEW of the real bytes, so every executable byte
+    must be accounted for exactly once -- claimed by exactly one decoded instruction (code) or by
+    none (data). Overlapping instructions mean a mis-seeded entry point disassembled bytes that
+    are really mid-instruction; a byte-range past vsize means over-read. Returns per-object
+    {n, code, data, overlap, overrun} -- overlap==overrun==0 across the module is the proof."""
+    D = VxDDisasm(v).run()
+    rep = []
+    for o in v.objects:
+        if not o["exec"]:
+            continue
+        oi = o["idx"]; n = o["vsize"]
+        occ = bytearray(n)
+        overlap = overrun = 0
+        for (moi, off), row in D.insns.items():
+            if moi != oi:
+                continue
+            for k in range(off, off + row["size"]):
+                if k >= n:
+                    overrun += 1
+                elif occ[k]:
+                    overlap += 1
+                else:
+                    occ[k] = 1
+        code = sum(occ)
+        rep.append({"obj": oi, "n": n, "code": code, "data": n - code,
+                    "overlap": overlap, "overrun": overrun})
+    return rep
+
+
 def disassemble_file(path, outdir=None):
     """Disassemble a VxD file (LE, LX, or a W3 bundle of several) and, if outdir is given, write
     one <module>.asm per embedded module. Returns a list of per-module stat dicts."""
@@ -460,7 +500,28 @@ if __name__ == "__main__":
     from engine.format_loaders import le
     import glob
     args = sys.argv[1:]
-    if args and args[0] == "--all":
+    if args and args[0] == "--verify":
+        srcdir = args[1] if len(args) > 1 else "binaries/win95/oracle"
+        files = sorted(glob.glob(os.path.join(srcdir, "*.vxd")) + glob.glob(os.path.join(srcdir, "*.386")))
+        clean = dirty = mods = 0
+        tcode = tdata = tov = torn = 0
+        for p in files:
+            try:
+                for name, v in le.open_vxds(p):
+                    rep = verify(v)
+                    ov = sum(r["overlap"] for r in rep); orn = sum(r["overrun"] for r in rep)
+                    c = sum(r["code"] for r in rep); dta = sum(r["data"] for r in rep)
+                    tcode += c; tdata += dta; tov += ov; torn += orn; mods += 1
+                    if ov or orn:
+                        dirty += 1
+                        print("  DIRTY %-12s overlap=%d overrun=%d" % (name, ov, orn))
+                    else:
+                        clean += 1
+            except Exception as e:
+                print("  ERROR %-16s %s" % (os.path.basename(p), str(e)[:50]))
+        print("== verify: %d modules, %d CLEAN, %d dirty | code=%d data=%d overlap=%d overrun=%d ==" % (
+            mods, clean, dirty, tcode, tdata, tov, torn))
+    elif args and args[0] == "--all":
         srcdir = args[1] if len(args) > 1 else "binaries/win95/oracle"
         outdir = args[2] if len(args) > 2 else "recovered/vxd"
         files = sorted(glob.glob(os.path.join(srcdir, "*.vxd")) + glob.glob(os.path.join(srcdir, "*.386")))
