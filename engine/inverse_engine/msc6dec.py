@@ -25,6 +25,13 @@ PROLOGUE_MOVDS = bytes.fromhex("8cd89045558bec1e8ed8")
 # The far frame tears down two ways: EPI (dec bp;dec bp;mov sp,bp;pop ds;pop bp;dec bp) and
 # this lea-variant (lea sp,[bp-2];pop ds;pop bp;dec bp) that mixed-object DLLs also emit.
 EPI_LEA = bytes.fromhex("8d66fe1f5d4d")
+# The NEAR-loadds frame (push bp;mov bp,sp;push ds;mov ds,ax -- no inc bp) is common in the
+# 1.52c corpus. It still returns FAR (retf/retf N), but its teardown drops the dec bp: the
+# far-lea/-mov epilogues without the trailing 4d. Longest-first ordering at the find site
+# keeps a far frame (which contains these as a prefix/substring) from matching a near form.
+PROLOGUE_NEAR = bytes.fromhex("558bec1e8ed8")
+EPI_NEAR_LEA = bytes.fromhex("8d66fe1f5d")        # lea sp,[bp-2];pop ds;pop bp
+EPI_NEAR_MOV = bytes.fromhex("8be51f5d")          # mov sp,bp;pop ds;pop bp
 
 JCC_INV = {0x74: "!=", 0x75: "==", 0x7c: ">=", 0x7d: "<", 0x7e: ">", 0x7f: "<="}
 
@@ -799,6 +806,8 @@ def invert(code, imports=None, syms=None, rtype="int", params=None, nearmap=None
         p = len(PROLOGUE)
     elif b.startswith(PROLOGUE_MOVDS):                # mov-ax,ds encoding: identical frame after
         p = len(PROLOGUE_MOVDS)                       # the DS load, same length, same epilogue
+    elif b.startswith(PROLOGUE_NEAR):                 # near-loadds frame (no inc bp), still retf
+        p = len(PROLOGUE_NEAR)
     else:
         return None, "prologue miss"
     if b[p:p+2] == b"\x83\xec":              # sub sp, imm8  (optimized locals frame)
@@ -810,6 +819,10 @@ def invert(code, imports=None, syms=None, rtype="int", params=None, nearmap=None
     ei = b.rfind(EPI); epilen = len(EPI)
     if ei < 0:                                        # lea-variant teardown (mixed-object DLLs)
         ei = b.rfind(EPI_LEA); epilen = len(EPI_LEA)
+    if ei < 0:                                        # near-loadds teardown (no dec bp), still retf
+        ei = b.rfind(EPI_NEAR_LEA); epilen = len(EPI_NEAR_LEA)
+    if ei < 0:
+        ei = b.rfind(EPI_NEAR_MOV); epilen = len(EPI_NEAR_MOV)
     if ei < 0:
         return None, "no epilogue"
     be = ei

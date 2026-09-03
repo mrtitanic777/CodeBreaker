@@ -16,8 +16,11 @@ from engine.inverse_engine import msc6_oracle as _msc6
 from engine.inverse_engine import msvc152_oracle as _msvc152
 from engine.inverse_engine.msc6fn import _mask
 
-_EPI_LEA = bytes.fromhex("8d66fe1f5d4d")            # 1.52c lea-variant teardown
+_EPI_LEA = bytes.fromhex("8d66fe1f5d4d")            # 1.52c lea-variant teardown (far frame)
+_EPI_NEAR_LEA = bytes.fromhex("8d66fe1f5d")         # 1.52c lea teardown, near frame (no dec bp);
+                                                    # a substring of _EPI_LEA, so it catches both
 _PRO_MOVDS = bytes.fromhex("8cd8")                  # 1.52c mov-ax,ds prologue head
+_PRO_NEAR = bytes.fromhex("558bec1e8ed8")           # 1.52c near-loadds prologue (no inc bp)
 
 # recipe sets per compiler. 1.52c ships a lot of UNoptimized code (81ec frame + stack slots),
 # so the no-/O forms lead; both sets keep the optimized variants for the modules built with them.
@@ -26,9 +29,11 @@ RECIPES_MSVC152 = ("/AM /G2 /Gsw", "/AM /G2 /Gsw /Od", "/AM /G2 /Gsw /Os", "/AM 
 
 
 def is_msvc152(fb):
-    """Frame test: the mov-ax,ds prologue or the lea-variant epilogue marks MSVC 1.52c."""
+    """Frame test for MSVC 1.52c: the mov-ax,ds prologue, the near-loadds prologue, or a
+    lea-based teardown (lea sp,[bp-2]) -- all of which 6.0a never emits. The near-lea epilogue
+    is a substring of the far-lea one, so the single `in` check covers both frame widths."""
     fb = bytes(fb)
-    return fb[:2] == _PRO_MOVDS or _EPI_LEA in fb
+    return fb[:2] == _PRO_MOVDS or fb.startswith(_PRO_NEAR) or _EPI_NEAR_LEA in fb
 
 
 def pick(fb):
