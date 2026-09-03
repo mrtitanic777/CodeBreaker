@@ -917,6 +917,12 @@ def invert(code, imports=None, syms=None, rtype="int", params=None, nearmap=None
             _built = [("p%d" % k, ty) for k, (_n, ty) in enumerate(reversed(inferred))]
             if params is None or any(t in ("far", "long") for _n, t in _built):
                 params = _built            # body evidence wins over a callsig all-int guess
+    if params is None:                              # plain-int pascal: take the EXACT param count
+        q0 = ei + epilen                            # from retf N and lay it out so the body's pname
+        if b[q0:q0+1] == b"\xca":                   # matches the signature -- pascal puts the LAST
+            cnt = (b[q0+1] | (b[q0+2] << 8)) // 2   # declared param at bp+6, so the positional
+            if 0 < cnt <= 32:                       # _param fallback (ascending from bp+6) is reversed
+                params = [("p%d" % k, "int") for k in range(cnt)]
     d = Dec(md, be, imports, syms, params, nearmap=nearmap, func_base=func_base)
     d.memoff = memoff
     d.void = (rtype == "void"); d.rtype = rtype
