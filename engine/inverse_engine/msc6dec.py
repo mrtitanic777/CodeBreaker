@@ -32,6 +32,9 @@ EPI_LEA = bytes.fromhex("8d66fe1f5d4d")
 PROLOGUE_NEAR = bytes.fromhex("558bec1e8ed8")
 EPI_NEAR_LEA = bytes.fromhex("8d66fe1f5d")        # lea sp,[bp-2];pop ds;pop bp
 EPI_NEAR_MOV = bytes.fromhex("8be51f5d")          # mov sp,bp;pop ds;pop bp
+# Far frame, sub-bp variant: `sub bp,2` in place of `dec bp;dec bp` before mov sp,bp -- same
+# bp fixup, another 1.52c teardown encoding. (Searched before EPI_NEAR_MOV, its 8be51f5d tail.)
+EPI_SUBBP = bytes.fromhex("83ed028be51f5d4d")     # sub bp,2;mov sp,bp;pop ds;pop bp;dec bp
 
 JCC_INV = {0x74: "!=", 0x75: "==", 0x7c: ">=", 0x7d: "<", 0x7e: ">", 0x7f: "<="}
 
@@ -831,6 +834,8 @@ def invert(code, imports=None, syms=None, rtype="int", params=None, nearmap=None
     ei = b.rfind(EPI); epilen = len(EPI)
     if ei < 0:                                        # lea-variant teardown (mixed-object DLLs)
         ei = b.rfind(EPI_LEA); epilen = len(EPI_LEA)
+    if ei < 0:                                        # sub-bp,2 variant of the far teardown
+        ei = b.rfind(EPI_SUBBP); epilen = len(EPI_SUBBP)
     if ei < 0:                                        # near-loadds teardown (no dec bp), still retf
         ei = b.rfind(EPI_NEAR_LEA); epilen = len(EPI_NEAR_LEA)
     if ei < 0:
