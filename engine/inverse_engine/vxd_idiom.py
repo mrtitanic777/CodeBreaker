@@ -120,7 +120,10 @@ _SEG_MACRO = {"LCODE": "VxD_LOCKED_CODE", "ICODE": "VxD_ICODE", "PCODE": "VxD_PA
 #   les/lds/lfs/lgs/lss  far-pointer loads (capstone `ptr [..]`)
 # Byte-preserving keeps the exact bytes and keeps ML out of trouble.
 _RAW_MNEMS = {"aam", "aad", "lcall", "ljmp", "lar", "lsl", "int3", "int1", "ud0", "ud1", "ud2",
-              "salc", "les", "lds", "lfs", "lgs", "lss"}
+              "salc", "les", "lds", "lfs", "lgs", "lss",
+              "fisttp", "fxsave", "fxrstor",   # SSE-era x87 the 1994 assembler predates (also data)
+              "lidt", "lgdt", "sidt", "sgdt", "lldt", "sldt",   # capstone drops the `fword ptr` size
+              "sysret", "sysenter", "sysexit"}                  # post-1994 fast-syscall (data misread)
 
 _PREFIX_BYTES = {0x66, 0x67, 0xF0, 0xF2, 0xF3, 0x2E, 0x26, 0x36, 0x3E, 0x64, 0x65}
 _SHIFTS = {"rcl", "rcr", "rol", "ror", "shl", "shr", "sal", "sar"}
@@ -142,6 +145,20 @@ def _ml611_unknown(row):
     are invariably data the linear sweep mis-decoded; byte-preserve so ML never sees the mnemonic."""
     m = row["mnem"]
     return m.startswith("cmov") or m.startswith("fcmov") or bool(_XMM_MM.search(row["ops"]))
+
+
+def _x87_stack(row):
+    """An x87 op with a stack-register operand (`fadd st(3)`, `faddp st(0)`, capstone's `fstpnce`) --
+    capstone's one-operand / non-standard spelling the DDK ML rejects. Rare in ring-0 VxD code and
+    almost always data mis-decoded; byte-preserve. (fld/fstp with a memory operand stay symbolic.)"""
+    return row["mnem"][:1] == "f" and "st(" in row["ops"]
+
+
+def _indirect_branch(row):
+    """A jmp/call through a memory operand (`call [edx+4]`, `jmp [edi+6fh]`) -- capstone renders it
+    with a sizeless `ptr [..]` the DDK ML rejects (A2016). Byte-preserve (an indirect branch has no
+    resolvable label target anyway; the recovered dispatch tables are handled separately)."""
+    return row["mnem"] in ("jmp", "call") and "[" in row["ops"]
 
 
 def _addr16(row):
@@ -184,13 +201,27 @@ def emit_idiomatic(D):
     `VxD_..._CODE_SEG`, the control proc as `Begin_Control_Dispatch`/`Control_Dispatch`/`End_Control_
     Dispatch`, functions as `BeginProc`/`EndProc`, service calls as `VMMcall`/`VxDcall <name>`. Reads
     like Microsoft's source; the DDB + service calls are byte-exact, the dispatch/segment layout
-    resolve through the DDK ML+LINK build."""
+    resolve through the DDK ML+LINK build.
+
+    A VxD's own *exported* service table is kept as its exact bytes (data), NOT re-generated via
+    `Create_<name>_Service_Table` + the INC's `Begin_Service_Table`: that path collides (A2005) with
+    the reconstructed internal names -- a `.SYM` handler name like VKD_Filter_Keyboard_Input is also a
+    symbol the device INC defines -- and only a fraction of the table entries map to a named handler
+    anyway (the rest are shared/reserved stubs). The raw bytes carry the whole table correctly."""
     from engine.inverse_engine.vxd_tree import seg_class
     from engine.inverse_engine.vxd_masm import _masm_line, _db, has_abs_mem, has_seg_prefix
     from engine.inverse_engine.vxd_asm import _BRANCHES, _direct_target_row
     db = D.ddb
     name = db["name"] if db else "DEVICE"
-    L = [".386p"] + ["include %s.inc" % i.lower() for i in _all_incs(D)] + [""]
+    # a reconstructed label (often from a .SYM) can collide with a symbol the DDK macros generate --
+    # <name>_DDB (Declare_Virtual_Device) or <name>_Service_Table (Begin_Service_Table) -- e.g. VDD's
+    # .SYM names a routine VDD_DDB at an offset that is NOT the real DDB. Rename it to the offset-based
+    # sub_ name (consistently, in D.labels, so its references follow) or ML reports A2005 redefinition.
+    for k in [k for k, nm in D.labels.items() if nm in (name + "_DDB", name + "_Service_Table")]:
+        D.labels[k] = "sub_%d_%04X" % k
+    # .586p (privileged, superset of .386p) so ring-0 486/Pentium ops -- invd/wbinvd/cpuid/cmpxchg/
+    # rdmsr/wrmsr/rdtsc -- assemble as themselves instead of hitting A2085 (not-in-current-CPU-mode).
+    L = [".586p"] + ["include %s.inc" % i.lower() for i in _all_incs(D)] + [""]
     if db:
         L += [ddb_macro(db), ""]
     cp = next((k for k, nm in D.labels.items() if nm == name + "_Control"), None)
@@ -270,16 +301,22 @@ def emit_idiomatic(D):
                 m = svc_macro(row["vxdcall"][0], row["vxdcall"][1])
                 L.append(m if m else _db(row["raw"]))
             elif row["fx"] or has_abs_mem(row) or has_seg_prefix(row) or _addr16(row) \
-                    or _shift_no_count(row) or _ml611_unknown(row) or row["mnem"] in _RAW_MNEMS:
+                    or _shift_no_count(row) or _ml611_unknown(row) or _x87_stack(row) \
+                    or _indirect_branch(row) or row["mnem"] in _RAW_MNEMS:
                 L.append(_db(row["raw"]))                       # byte-preserve the encodings ML will
             else:                                              #  not reproduce (abs-mem, seg-override,
                 line = _masm_line(D, oi, row)                  #  16-bit addr, aam/aad, int3, far ...)
-                if line and row["mnem"] in _BRANCHES:          # branch to a target we don't emit a
-                    op = line.split(None, 1)                   #  label for (bare number, or a label
-                    tgt = _direct_target_row(row)              #  landing mid-instruction) -> raw
+                if line and row["mnem"] in _BRANCHES:
+                    op = line.split(None, 1)
+                    tgt = _direct_target_row(row)
                     if (len(op) > 1 and _NUM_TARGET.match(op[1].strip())) \
                             or (tgt is not None and (oi, tgt) not in emitted):
-                        line = None
+                        line = None                            # target we don't emit a label for
+                    else:                                      #  (bare number / mid-instruction) -> raw
+                        line = line.replace("SHORT ", "").replace("NEAR PTR ", "")   # let ML size the
+                #  branch: keeping the oracle's rel8/rel32 is the byte-exact tree's job; the readable
+                #  form's object layout shifts (macros, skipped DDB, size-drifting db) can push a pinned
+                #  SHORT out of range, and unpinned reads more like MS source anyway.
                 L.append(line or _db(row["raw"]))
             a += row["size"]
         if cur_proc:
