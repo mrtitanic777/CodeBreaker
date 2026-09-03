@@ -113,22 +113,25 @@ def has_seg_prefix(row):
     return bool(row["raw"]) and row["raw"][0] in _SEG_PREFIX
 
 
-def object_body(D, oi, force_raw=None, base_line=0, extra_labels=None, probe=False):
+def object_body(D, oi, force_raw=None, base_line=0, extra_labels=None, probe=False, crange=None):
     """The body lines of one object -- instructions symbolically, data + fixup-bearing + service
     instructions as raw db, labels at branch/fixup targets. Returns (lines, linemap) where linemap
     maps (base_line + index-in-lines, 1-based) to the instruction offset. extra_labels adds label
     names at given offsets (e.g. the exported DDB). With probe=True, a `Q<hexoff>:` label precedes
     every instruction; labels emit no bytes, so the code is identical, but the COFF symbol table
     then reveals each instruction's TRUE assembled offset -- so one assembly finds every drifting
-    instruction at once (no one-per-pass). Shared by the object test and the full link."""
+    instruction at once (no one-per-pass). crange=(lo,hi) emits only that offset range (one source
+    file of a split object); the caller forces any branch leaving the range. Shared by the object
+    test, the split-file emitter, and the full link."""
     force_raw = force_raw or set()
     extra_labels = extra_labels or {}
     code = D.code[oi]
     n = len(code)                                          # actual page bytes (may be < vsize when
-    L = []                                                 #  the object has a zero-fill/BSS tail)
+    lo, hi = crange or (0, n)                              #  the object has a zero-fill/BSS tail)
+    L = []
     linemap = {}
-    a = 0
-    while a < n:
+    a = lo
+    while a < hi:
         if a in extra_labels:
             L.append("public %s" % extra_labels[a])
             L.append("%s label byte" % extra_labels[a])
@@ -137,7 +140,7 @@ def object_body(D, oi, force_raw=None, base_line=0, extra_labels=None, probe=Fal
         row = D.insns.get((oi, a))
         if row is None:                                    # data byte(s)
             b = a
-            while b < n and (oi, b) not in D.insns and not (b > a and D.labels.get((oi, b))) \
+            while b < hi and (oi, b) not in D.insns and not (b > a and D.labels.get((oi, b))) \
                     and not (b > a and b in extra_labels):
                 b += 1
             for i in range(a, b, 16):
@@ -157,15 +160,50 @@ def object_body(D, oi, force_raw=None, base_line=0, extra_labels=None, probe=Fal
     return L, linemap
 
 
-def emit_object_masm(D, oi, segname="_LTEXT", force_raw=None, probe=False):
-    """Emit one executable object as an assemblable MASM use32 segment. Returns (text, linemap),
-    where linemap maps a 1-based source line back to the instruction offset it emitted -- so an
-    assembler error at a line can be traced to the instruction and repaired (forced to raw db).
-    probe adds per-instruction `Q<off>` labels (see object_body)."""
+def emit_object_masm(D, oi, segname="_LTEXT", force_raw=None, probe=False, crange=None):
+    """Emit one executable object (or, with crange, one offset-range slice of it) as an assemblable
+    MASM use32 segment. Returns (text, linemap), where linemap maps a 1-based source line back to
+    the instruction offset -- so an assembler error at a line can be traced to the instruction and
+    repaired. probe adds per-instruction `Q<off>` labels (see object_body)."""
     head = [".386p", "%s segment dword public use32 'CODE'" % segname, ""]
-    body, linemap = object_body(D, oi, force_raw=force_raw, base_line=len(head), probe=probe)
+    body, linemap = object_body(D, oi, force_raw=force_raw, base_line=len(head), probe=probe,
+                                crange=crange)
     L = head + body + ["%s ends" % segname, "        end", ""]
     return "\r\n".join(L), linemap
+
+
+def split_ranges(D, oi, max_ins=6000):
+    """Split an executable object into function-aligned offset ranges of about max_ins instructions
+    each -- the real Win95 source was many files, not one monolith, and ML cannot assemble a huge
+    single source anyway. Cuts fall on function starts (sub_ labels) so no function spans two files."""
+    offs = sorted(a for (o, a) in D.insns if o == oi)
+    n = len(D.code[oi])
+    fs = {off for (o, off), name in D.labels.items() if o == oi and name.startswith("sub_")}
+    ranges = []
+    lo = 0
+    count = 0
+    for a in offs:
+        if count >= max_ins and a in fs and a > lo:
+            ranges.append((lo, a)); lo = a; count = 0
+        count += 1
+    ranges.append((lo, n))
+    return ranges
+
+
+def cross_range_force(D, oi, lo, hi):
+    """Offsets in [lo,hi) whose branch leaves the range -- their target label lives in another file,
+    so in an isolated per-file assembly they must be byte-preserved (or, for the buildable tree,
+    declared extern and resolved by the linker)."""
+    from engine.inverse_engine.vxd_asm import _direct_target_row, _BRANCHES
+    out = set()
+    for (o, a), row in D.insns.items():
+        if o != oi or not (lo <= a < hi):
+            continue
+        if row["mnem"] in _BRANCHES:
+            t = _direct_target_row(row)
+            if t is not None and not (lo <= t < hi):
+                out.add(a)
+    return out
 
 
 # ---- OMF: reconstruct the assembled segment bytes -------------------------------
@@ -238,6 +276,8 @@ def assemble(masm_text, root):
     log = ""
     if work and os.path.exists(os.path.join(work, "asm.txt")):
         log = open(os.path.join(work, "asm.txt"), errors="replace").read()
+    if work:
+        shutil.rmtree(work, ignore_errors=True)
     return (out.get("m.obj"), log)
 
 
@@ -251,6 +291,8 @@ def assemble_coff(masm_text, root):
                             ["m.obj", "asm.txt"], files={"m.asm": masm_text}, timeout=tmo)
     log = open(os.path.join(work, "asm.txt"), errors="replace").read() if work and os.path.exists(
         os.path.join(work, "asm.txt")) else ""
+    if work:                                               # don't accumulate mkdtemp dirs (a corpus
+        shutil.rmtree(work, ignore_errors=True)            #  run makes thousands)
     return out.get("m.obj"), log
 
 
@@ -294,37 +336,27 @@ def coff_text_syms(obj):
 _ERRLINE = re.compile(r"m\.asm\((\d+)\)\s*:\s*(?:error|fatal)", re.I)
 
 
-def compare_object(v, oi, root=".", max_repair=8):
-    """Emit object oi as MASM, assemble with the period ML, and drive it to a byte-exact rebuild --
-    maximising GENUINE re-encodes (no wholesale byte-copy). Every instruction is emitted symbolically
-    and probe-labelled; one COFF assembly then reveals, via each label's true offset, EVERY
-    instruction ML re-encoded to different bytes than the oracle (length drift or a same-length
-    commutative/SIB/direction mirror). Only those -- plus any the assembler outright rejects -- are
-    forced to raw db; everything else stays a real re-assembled instruction. Because all mismatches
-    are found at once, drift-heavy objects converge in a couple of passes instead of falling back.
-    Returns the verdict + the symbolic (ML-reproduced) vs forced-raw split."""
-    D = VxDDisasm(v).run()
-    root = os.path.abspath(root)
-    oracle = D.code[oi]
-    offs = sorted(a for (o, a) in D.insns if o == oi)
-    allins = set(offs)
-    force_raw = set()
+def _converge_range(D, oi, root, lo, hi, oracle, max_repair):
+    """Drive one offset-range [lo,hi) of an object to a byte-exact assembly via probe labels. A
+    branch leaving the range is byte-preserved (its target label is in another file). Returns
+    {sym, raw, match, force, text} where text is the range's assembled bytes (== oracle[lo:hi] when
+    exact)."""
+    offs = [a for (o, a) in D.insns if o == oi and lo <= a < hi]
+    inrange = set(offs)
+    force = cross_range_force(D, oi, lo, hi)               # branches out of the range -> byte-preserve
     for _ in range(max_repair):
-        masm, linemap = emit_object_masm(D, oi, force_raw=force_raw, probe=True)
+        masm, linemap = emit_object_masm(D, oi, force_raw=force, probe=True, crange=(lo, hi))
         obj, log = assemble_coff(masm, root)
-        if not obj:                                        # assembler rejected some lines
+        if not obj:
             bad = {linemap[int(m.group(1))] for m in _ERRLINE.finditer(log) if int(m.group(1)) in linemap}
-            if not bad or bad <= force_raw:
-                break                                      # unattributable errors -> raw fallback
-            force_raw |= bad
+            if not bad or bad <= force:
+                break                                      # -> range raw fallback
+            force |= bad
             continue
         text, syms = coff_text_syms(obj)
-        # every probe label gives an instruction's TRUE assembled offset; if its bytes there differ
-        # from the oracle, ML re-encoded it (drift or mirror) -- force it. A mere position shift from
-        # an earlier drift still matches at the shifted offset, so it is (correctly) not flagged.
         newbad = set()
         for a in offs:
-            if a in force_raw:
+            if a in force:
                 continue
             ao = syms.get("Q%x" % a)
             if ao is None:
@@ -332,25 +364,47 @@ def compare_object(v, oi, root=".", max_repair=8):
             olen = D.insns[(oi, a)]["size"]
             if bytes(text[ao:ao + olen]) != bytes(oracle[a:a + olen]):
                 newbad.add(a)
-        exact = len(text) >= len(oracle) and bytes(text[:len(oracle)]) == bytes(oracle)
+        exact = len(text) >= (hi - lo) and bytes(text[:hi - lo]) == bytes(oracle[lo:hi])
         if exact or not newbad:
-            return {"ok": True, "match": exact, "oracle_len": len(oracle), "asm_len": len(text),
-                    "n_diffs": len(newbad), "symbolic_insns": len(offs) - len(force_raw),
-                    "forced_raw": len(force_raw), "force_raw_set": set(force_raw),
-                    "raw_fallback": False, "_asm": bytes(text[:len(oracle)]), "_oracle": oracle, "D": D}
-        force_raw |= newbad
-    # Last resort (rare): emit every instruction raw -- byte-exact by construction, symbolic 0.
-    masm, linemap = emit_object_masm(D, oi, force_raw=allins)
+            fr = force & inrange
+            return {"sym": len(inrange) - len(fr), "raw": len(fr), "match": exact,
+                    "force": force, "text": bytes(text[:hi - lo])}
+        force |= newbad
+    force |= inrange                                       # range fallback: byte-preserve all of it
+    masm, _ = emit_object_masm(D, oi, force_raw=force, crange=(lo, hi))
     obj, log = assemble_coff(masm, root)
-    if not obj:
-        return {"ok": False, "error": "raw fallback failed to assemble", "log": log[-400:],
-                "forced_raw": len(allins)}
-    text, _ = coff_text_syms(obj)
-    exact = len(text) >= len(oracle) and bytes(text[:len(oracle)]) == bytes(oracle)
-    return {"ok": True, "match": exact, "oracle_len": len(oracle), "asm_len": len(text),
-            "n_diffs": 0 if exact else 1, "symbolic_insns": 0, "forced_raw": len(allins),
-            "force_raw_set": set(allins), "raw_fallback": True,
-            "_asm": bytes(text[:len(oracle)]), "_oracle": oracle, "D": D}
+    text = coff_text_syms(obj)[0] if obj else b""
+    exact = obj is not None and len(text) >= (hi - lo) and bytes(text[:hi - lo]) == bytes(oracle[lo:hi])
+    return {"sym": 0, "raw": len(inrange), "match": exact, "force": force,
+            "text": bytes(text[:hi - lo]) if obj else b""}
+
+
+def compare_object(v, oi, root=".", max_repair=8, max_ins=6000):
+    """Assemble-and-compare object oi against the oracle, maximising GENUINE re-encodes (no wholesale
+    byte-copy). Every instruction is emitted symbolically and probe-labelled; one COFF assembly then
+    reveals, via each label's true offset, every instruction ML re-encoded differently (drift or a
+    commutative/SIB/direction mirror) -- only those are byte-preserved. Large objects are SPLIT into
+    function-aligned files of ~max_ins instructions (as the real multi-file source was, and because
+    ML cannot assemble a huge monolithic source); each file converges independently and its bytes
+    are checked against its oracle range. Returns the verdict + the symbolic vs forced-raw split."""
+    D = VxDDisasm(v).run()
+    root = os.path.abspath(root)
+    oracle = D.code[oi]
+    offs = sorted(a for (o, a) in D.insns if o == oi)
+    ranges = [(0, len(oracle))] if len(offs) <= max_ins else split_ranges(D, oi, max_ins)
+    sym = raw = 0
+    match = True
+    fr_all = set()
+    parts = []
+    for lo, hi in ranges:
+        r = _converge_range(D, oi, root, lo, hi, oracle, max_repair)
+        sym += r["sym"]; raw += r["raw"]; match = match and r["match"]; fr_all |= r["force"]
+        parts.append(r["text"])
+    asm = b"".join(parts)
+    return {"ok": True, "match": match, "oracle_len": len(oracle), "asm_len": len(asm),
+            "n_diffs": 0 if match else 1, "symbolic_insns": sym, "forced_raw": raw,
+            "force_raw_set": fr_all, "raw_fallback": sym == 0, "n_files": len(ranges),
+            "_asm": asm[:len(oracle)], "_oracle": oracle, "D": D}
 
 
 def compare_module(v, root="."):
