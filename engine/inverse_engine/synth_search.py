@@ -65,8 +65,11 @@ def verify_any(target, cand):
     import re
     from engine.sdk import refine, mocklink
     from engine.inverse_engine import msc6_oracle as ora
+    from engine.inverse_engine import oracle_router as router
     from engine.inverse_engine.msc6fn import _mask
     target = bytes(target)
+    if router.is_msvc152(target):        # 1.52c frame -> its own oracle + recipe set
+        return router.byte_exact(target, cand)
     sibs = re.findall(r"extern int far (\w+)\(\);", cand)
     if not sibs:
         return refine.check(target, cand)
@@ -154,11 +157,13 @@ def parallel_solve(target, grammars=None, workers=6, ctx=None, prune=None):
     target's convention (and by `prune(cand)`, the pre-flight constraint filter), compile+
     verify them concurrently across `workers` DOSBox processes (each independent), return
     the first byte-exact candidate. ~10x the serial solve()."""
-    from engine.inverse_engine import msc6_oracle as ora
+    from engine.inverse_engine import oracle_router as router
     from engine.inverse_engine.msc6fn import _mask
-    from engine.sdk.mocklink import _first_func, RECIPES
+    from engine.sdk.mocklink import _first_func
     target = bytes(target)
     a = _mask(target).rstrip(b"\x90\x00")
+    ora, RECIPES = router.pick(target)               # route to the compiler that built this frame
+    _compile_batch = getattr(ora, "compile_batch", None) or getattr(ora, "mc6_compile_batch")
     conv = sibling_conv(target)
     tasks = []
     for grammar in (grammars or GRAMMARS):
@@ -174,7 +179,7 @@ def parallel_solve(target, grammars=None, workers=6, ctx=None, prune=None):
     def _run_batch(batch):
         # ONE DOSBox run for the whole batch (spawn paid once), then check each result
         try:
-            results = ora.mc6_compile_batch([(src, rcp) for (_c, src, rcp, _s) in batch])
+            results = _compile_batch([(src, rcp) for (_c, src, rcp, _s) in batch])
         except Exception:
             return None
         for (cand, _src, _rcp, is_sib), rc in zip(batch, results):
