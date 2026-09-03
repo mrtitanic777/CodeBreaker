@@ -706,6 +706,8 @@ class Dec:
                         val = s.pnames[o]
                     else:
                         val = s.pname(o)
+                elif re.match(r"byte ptr \[bp \+ (\w+)\]", src):
+                    val = s.pname(int(re.search(r"\+ (\w+)", src).group(1), 0))  # low byte of a char param
                 elif re.match(r"(-?0x[0-9a-f]+|-?\d+)$", src):
                     val = str(int(src, 0))
                 elif re.match(r"(?:word|byte) ptr \[(0x[0-9a-f]+|bp - \w+)\]$", src):
