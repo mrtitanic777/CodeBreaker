@@ -946,7 +946,13 @@ def invert(code, imports=None, syms=None, rtype="int", params=None, nearmap=None
     for snm in d.nears_used:                               # sibling (same-segment) functions
         decls += "extern int far %s();\n" % snm
     regd = "".join("    register int %s;\n" % v for v in d.decl_order)
-    locd = "".join("    %s %s;\n" % (t, nm) for nm, t in d.localdecl.items())
+    # Declare stack locals in ASCENDING bp-offset order (loc_2, loc_4, ...). Unoptimized 1.52c
+    # lays locals at descending addresses in DECLARATION order, so declaring loc_N in the order
+    # it was first used (which need not be offset order) lands each at the wrong slot and every
+    # [bp-N] access then compiles to a mismatched offset. Ordering by offset reproduces the
+    # rigid layout so loc_N sits exactly at [bp-N].
+    _loff = lambda kv: int(kv[0].split("_")[1], 16)
+    locd = "".join("    %s %s;\n" % (t, nm) for nm, t in sorted(d.localdecl.items(), key=_loff))
     body = regd + locd + "".join("    %s\n" % ln for ln in lines)
     return "%s\n%s far %sF(%s)\n{\n%s}" % (decls, rtype, kw, params, body), \
         {"calls": d.calls, "regvars": d.decl_order, "globals": dict(d.globs),
