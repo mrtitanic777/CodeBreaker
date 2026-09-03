@@ -27,6 +27,23 @@ from engine.inverse_engine.msc6fn import PROLOGUE
 _EPI = bytes.fromhex("4d4d8be51f5d4d")           # dec bp;dec bp;mov sp,bp;pop ds;pop bp;dec bp
 _EPI_LEA = bytes.fromhex("8d66fe1f5d4d")         # lea sp,[bp-2];pop ds;pop bp;dec bp (variant)
 
+# The prologue FAMILY -- MSC-6 lays 16-bit functions with several standard frames; the
+# corpus is dominated by the near-loadds form, not lzexpand's far-loadds. Longest first so
+# the greedy span-consumer in analyze() takes the most specific match and skips the shorter
+# ones that appear as substrings mid-frame.
+_PROLOGUES = (
+    PROLOGUE,                                     # 1e5890 45 55 8bec 1e 8ed8  far loadds (push ds;pop ax)
+    bytes.fromhex("8cd89045558bec1e8ed8"),        # 8cd890 45 55 8bec 1e 8ed8  far loadds (mov ax,ds)
+    bytes.fromhex("558bec1e8ed8"),                # 55 8bec 1e 8ed8            near loadds (push bp;mov bp,sp;push ds;mov ds,ax)
+)
+# Epilogue FAMILY, paired with the frames above. The near-loadds forms return NEAR (c3/c2,
+# no dec bp) and restore ds but not the far-frame dec bp.
+_EPIS = (
+    _EPI, _EPI_LEA,
+    bytes.fromhex("8be51f5d"),                    # mov sp,bp;pop ds;pop bp   (near loadds, with locals)
+    bytes.fromhex("1f5d"),                        # pop ds;pop bp             (near loadds, no locals)
+)
+
 
 def _ordinal_names(f):
     """ordinal -> exported name, from the resident + non-resident name tables."""
@@ -65,9 +82,10 @@ def _func_starts(f, segs, seg, segb):
     prologue scan (ground truth for framed functions), the entry table (exports,
     incl. leaf functions), and INTERNAL relocation targets."""
     starts = set()
-    p = segb.find(PROLOGUE)
-    while p >= 0:                                # every framed function starts here
-        starts.add(p); p = segb.find(PROLOGUE, p + 1)
+    for pro in _PROLOGUES:                       # every framed function starts at a frame prologue
+        p = segb.find(pro)
+        while p >= 0:                            # (a far frame's tail matches the near pattern too;
+            starts.add(p); p = segb.find(pro, p + 1)   # analyze()'s greedy consumer drops the inner hit)
     for e in f.entries():
         if e.get("kind") in ("MOVEABLE", "FIXED") and e.get("seg") == seg["idx"]:
             starts.add(e["offset"])
@@ -121,21 +139,32 @@ def _synth_syms(fb):
 
 
 def _func_end(segb, start, hardstop):
-    """Exact end of a framed function: the first epilogue followed by its retf,
-    scanning from `start`. Recognizes both the MSC 6.0a epilogue and the lea-variant
-    (shipped DLLs link objects from mixed compiler builds). Returns the offset just
-    past the retf, or None if no epilogue is found before `hardstop`."""
-    cands = [p for p in (segb.find(_EPI, start), segb.find(_EPI_LEA, start)) if p >= 0]
-    cands = [p for p in cands if p < hardstop]
-    if not cands:
-        return None
-    p = min(cands)
-    q = p + (len(_EPI) if segb[p:p+len(_EPI)] == _EPI else len(_EPI_LEA))
-    if segb[q:q+1] == b"\xca":                     # retf imm16
-        return q + 3
-    if segb[q:q+1] in (b"\xcb", b"\xc3"):          # retf / ret
-        return q + 1
-    return q                                        # epilogue with no explicit retf byte
+    """Exact end of a framed function: the earliest epilogue in the family that is
+    terminated by its own return, scanning from `start`. Recognizes the far-loadds
+    teardown and its lea-variant (retf/retf N) plus the near-loadds teardown (ret/ret N);
+    a short near pattern that appears mid-body is rejected because it lacks the trailing
+    return. Returns the offset just past the return, or None if none is found before
+    `hardstop`."""
+    best = None                                     # (pos, end) of the earliest epilogue+ret
+    for pat in _EPIS:
+        p = start
+        while True:
+            p = segb.find(pat, p)
+            if p < 0 or p >= hardstop:
+                break
+            q = p + len(pat)
+            r = segb[q:q+1]
+            end = None
+            if r in (b"\xca", b"\xc2"):             # retf imm16 / ret imm16
+                end = q + 3
+            elif r in (b"\xcb", b"\xc3"):           # retf / ret near
+                end = q + 1
+            if end is not None:                     # a real epilogue is terminated by its ret;
+                if best is None or p < best[0]:     # the short near patterns (1f5d) appear mid-body
+                    best = (p, end)                 # too, so only a ret-terminated hit counts
+                break
+            p += 1
+    return best[1] if best else None
 
 
 def analyze(path, apidb=None):
@@ -168,7 +197,7 @@ def analyze(path, apidb=None):
         for s in starts:
             if s < consumed:
                 continue
-            if segb[s:s+len(PROLOGUE)] == PROLOGUE:
+            if any(segb[s:s+len(pro)] == pro for pro in _PROLOGUES):
                 e = _func_end(segb, s, seg["length"])
                 if e is None:                          # a prologue with NO epilogue after it is
                     continue                            # spurious trailing bytes -> not a function
