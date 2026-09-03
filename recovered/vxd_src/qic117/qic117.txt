@@ -1,0 +1,15 @@
+; QIC117 -- recovered VxD source tree (multi-file, by segment + function)
+;
+; Declare_Virtual_Device QIC117, 2, 2, QIC117_Control, 00000h
+; DDK version 030Ah   init_order 080000000h
+;
+; NOTE: a stripped LE binary carries no original file or (mostly) function names;
+; files are named by segment class and role. Exported service names, control-dispatch
+; handler names, and -- for the 12 core VxDs with a debug .SYM -- internal function
+; names are the real DDK names. Other internals are sub_<offset>.
+
+; files:
+;   qic117_lcode_01_01.asm       object 1 _LTEXT [0x0-0x4656)
+;   qic117_lcode_01_02.asm       object 1 _LTEXT [0x4656-0x9069)
+;   qic117_lcode_01_03.asm       object 1 _LTEXT [0x9069-0xc064)
+;   qic117_pcode_02.asm          object 2 _PTEXT [0x0-0x36)

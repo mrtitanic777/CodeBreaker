@@ -1,0 +1,20 @@
+; PCCARD -- recovered VxD source tree (multi-file, by segment + function)
+;
+; Declare_Virtual_Device PCCARD, 4, 0, PCCARD_Control, 0097Ch
+; DDK version 0400h   init_order 016800000h
+;
+; NOTE: a stripped LE binary carries no original file or (mostly) function names;
+; files are named by segment class and role. Exported service names, control-dispatch
+; handler names, and -- for the 12 core VxDs with a debug .SYM -- internal function
+; names are the real DDK names. Other internals are sub_<offset>.
+
+; files:
+;   pccard_lcode_01_01.asm       object 1 _LTEXT [0x0-0x4245)
+;   pccard_lcode_01_02.asm       object 1 _LTEXT [0x4245-0x8c67)
+;   pccard_lcode_01_03.asm       object 1 _LTEXT [0x8c67-0x9890)
+;   pccard_mcode_02.asm          object 2 _LMSGTABLE [0x0-0x25)
+;   pccard_pcode_03_01.asm       object 3 _PTEXT [0x0-0x42ec)
+;   pccard_pcode_03_02.asm       object 3 _PTEXT [0x42ec-0x5446)
+;   pccard_pcode_04.asm          object 4 _PTEXT [0x0-0x13)
+;   pccard_ldata_05.asm          object 5 _LDATA [0x0-0x567)
+;   pccard_icode_06.asm          object 6 _ITEXT [0x0-0x9a)

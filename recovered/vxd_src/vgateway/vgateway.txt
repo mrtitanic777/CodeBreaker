@@ -1,0 +1,14 @@
+; VGATEWAY -- recovered VxD source tree (multi-file, by segment + function)
+;
+; Declare_Virtual_Device VGATEWAY, 3, 10, VGATEWAY_Control, 00000h
+; DDK version 0400h   init_order 080000000h
+;
+; NOTE: a stripped LE binary carries no original file or (mostly) function names;
+; files are named by segment class and role. Exported service names, control-dispatch
+; handler names, and -- for the 12 core VxDs with a debug .SYM -- internal function
+; names are the real DDK names. Other internals are sub_<offset>.
+
+; files:
+;   vgateway_lcode_01.asm        object 1 _LTEXT [0x0-0xa5c)
+;   vgateway_pcode_02_01.asm     object 2 _PTEXT [0x0-0x4ae7)
+;   vgateway_pcode_02_02.asm     object 2 _PTEXT [0x4ae7-0x8ac5)

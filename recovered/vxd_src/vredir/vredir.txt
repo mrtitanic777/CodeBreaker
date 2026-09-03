@@ -1,0 +1,24 @@
+; VREDIR -- recovered VxD source tree (multi-file, by segment + function)
+;
+; Declare_Virtual_Device VREDIR, 3, 0, VREDIR_Control, 00481h
+; DDK version 0400h   init_order 0A0021000h
+;
+; NOTE: a stripped LE binary carries no original file or (mostly) function names;
+; files are named by segment class and role. Exported service names, control-dispatch
+; handler names, and -- for the 12 core VxDs with a debug .SYM -- internal function
+; names are the real DDK names. Other internals are sub_<offset>.
+
+; files:
+;   vredir_lcode_01_01.asm       object 1 _LTEXT [0x0-0x41b0)
+;   vredir_lcode_01_02.asm       object 1 _LTEXT [0x41b0-0x61e0)
+;   vredir_mcode_02.asm          object 2 _LMSGTABLE [0x0-0x1e2)
+;   vredir_pcode_03.asm          object 3 _PTEXT [0x0-0x4430)
+;   vredir_pcode_04.asm          object 4 _PTEXT [0x0-0x21f6)
+;   vredir_pcode_05.asm          object 5 _PTEXT [0x0-0x1b60)
+;   vredir_pcode_06_01.asm       object 6 _PTEXT [0x0-0x4350)
+;   vredir_pcode_06_02.asm       object 6 _PTEXT [0x4350-0x88d0)
+;   vredir_pcode_06_03.asm       object 6 _PTEXT [0x88d0-0xcdc0)
+;   vredir_pcode_06_04.asm       object 6 _PTEXT [0xcdc0-0xda00)
+;   vredir_pcode_07.asm          object 7 _PTEXT [0x0-0xdb)
+;   vredir_ldata_08.asm          object 8 _LDATA [0x0-0x8f)
+;   vredir_icode_09.asm          object 9 _ITEXT [0x0-0x628)

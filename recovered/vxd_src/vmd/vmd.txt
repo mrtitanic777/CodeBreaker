@@ -1,0 +1,14 @@
+; VMD -- recovered VxD source tree (multi-file, by segment + function)
+;
+; Declare_Virtual_Device VMD, 3, 0, VMD_Control, 0000Ch
+; DDK version 0400h   init_order 034000000h
+;
+; NOTE: a stripped LE binary carries no original file or (mostly) function names;
+; files are named by segment class and role. Exported service names, control-dispatch
+; handler names, and -- for the 12 core VxDs with a debug .SYM -- internal function
+; names are the real DDK names. Other internals are sub_<offset>.
+
+; files:
+;   vmd_lcode_01.asm             object 1 _LTEXT [0x0-0xb2c)
+;   vmd_icode_02.asm             object 2 _ITEXT [0x0-0x25f)
+;   vmd_pcode_03.asm             object 3 _PTEXT [0x0-0x42)

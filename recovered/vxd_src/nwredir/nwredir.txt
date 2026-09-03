@@ -1,0 +1,22 @@
+; NWREDIR -- recovered VxD source tree (multi-file, by segment + function)
+;
+; Declare_Virtual_Device NWREDIR, 1, 0, NWREDIR_Control, 0048Eh
+; DDK version 0400h   init_order 0A0018000h
+;
+; NOTE: a stripped LE binary carries no original file or (mostly) function names;
+; files are named by segment class and role. Exported service names, control-dispatch
+; handler names, and -- for the 12 core VxDs with a debug .SYM -- internal function
+; names are the real DDK names. Other internals are sub_<offset>.
+
+; files:
+;   nwredir_lcode_01.asm         object 1 _LTEXT [0x0-0x20c6)
+;   nwredir_mcode_02.asm         object 2 _LMSGTABLE [0x0-0x24c)
+;   nwredir_mcode_03.asm         object 3 _LMSGTABLE [0x0-0x392)
+;   nwredir_icode_04.asm         object 4 _ITEXT [0x0-0x1e14)
+;   nwredir_pcode_05_01.asm      object 5 _PTEXT [0x0-0x4b30)
+;   nwredir_pcode_05_02.asm      object 5 _PTEXT [0x4b30-0x9820)
+;   nwredir_pcode_05_03.asm      object 5 _PTEXT [0x9820-0xd2f0)
+;   nwredir_pcode_06.asm         object 6 _PTEXT [0x0-0x4c)
+;   nwredir_pcode_07_01.asm      object 7 _PTEXT [0x0-0x4ffc)
+;   nwredir_pcode_07_02.asm      object 7 _PTEXT [0x4ffc-0x56d0)
+;   nwredir_pcode_08.asm         object 8 _PTEXT [0x0-0x16)

@@ -1,0 +1,30 @@
+; VDD -- recovered VxD source tree (multi-file, by segment + function)
+;
+; Declare_Virtual_Device VDD, 2, 0, VDD_Control, 0000Ah
+; DDK version 0400h   init_order 028000000h
+;
+; NOTE: a stripped LE binary carries no original file or (mostly) function names;
+; files are named by segment class and role. Exported service names, control-dispatch
+; handler names, and -- for the 12 core VxDs with a debug .SYM -- internal function
+; names are the real DDK names. Other internals are sub_<offset>.
+
+; files:
+;   vdd_lcode_01.asm             object 1 _LTEXT [0x0-0x11a8)
+;   vdd_mcode_02.asm             object 2 _LMSGTABLE [0x0-0xba)
+;   vdd_mcode_03.asm             object 3 _LMSGTABLE [0x0-0x2e5)
+;   vdd_icode_04.asm             object 4 _ITEXT [0x0-0xed4)
+;   vdd_pcode_05.asm             object 5 _PTEXT [0x0-0x3fe)
+;   vdd_ldata_06.asm             object 6 _LDATA [0x0-0x34c)
+;   vdd_pcode_07.asm             object 7 _PTEXT [0x0-0xc)
+;   vdd_pcode_08.asm             object 8 _PTEXT [0x0-0x59c)
+;   vdd_pcode_09.asm             object 9 _PTEXT [0x0-0x1dd8)
+;   vdd_pcode_10.asm             object 10 _PTEXT [0x0-0x31c)
+;   vdd_pcode_11.asm             object 11 _PTEXT [0x0-0xe0)
+;   vdd_pcode_12.asm             object 12 _PTEXT [0x0-0x48)
+;   vdd_pcode_13.asm             object 13 _PTEXT [0x0-0x60)
+;   vdd_pcode_14.asm             object 14 _PTEXT [0x0-0x19ce)
+;   vdd_pcode_15_01.asm          object 15 _PTEXT [0x0-0x47e8)
+;   vdd_pcode_15_02.asm          object 15 _PTEXT [0x47e8-0x541c)
+;   vdd_pcode_16.asm             object 16 _PTEXT [0x0-0x249)
+;   vdd_ldata_17.asm             object 17 _LDATA [0x0-0x69)
+;   vdd_ldata_18.asm             object 18 _LDATA [0x0-0x0)

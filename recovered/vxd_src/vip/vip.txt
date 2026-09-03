@@ -1,0 +1,16 @@
+; VIP -- recovered VxD source tree (multi-file, by segment + function)
+;
+; Declare_Virtual_Device VIP, 3, 0, VIP_Control, 00489h
+; DDK version 0400h   init_order 054008000h
+;
+; NOTE: a stripped LE binary carries no original file or (mostly) function names;
+; files are named by segment class and role. Exported service names, control-dispatch
+; handler names, and -- for the 12 core VxDs with a debug .SYM -- internal function
+; names are the real DDK names. Other internals are sub_<offset>.
+
+; files:
+;   vip_lcode_01_01.asm          object 1 _LTEXT [0x0-0x4b70)
+;   vip_lcode_01_02.asm          object 1 _LTEXT [0x4b70-0x8ef4)
+;   vip_lcode_01_03.asm          object 1 _LTEXT [0x8ef4-0xc304)
+;   vip_icode_02.asm             object 2 _ITEXT [0x0-0x1570)
+;   vip_pcode_03.asm             object 3 _PTEXT [0x0-0x9d)

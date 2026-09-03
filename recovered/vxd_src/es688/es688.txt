@@ -1,0 +1,18 @@
+; ES688 -- recovered VxD source tree (multi-file, by segment + function)
+;
+; Declare_Virtual_Device ES688, 4, 0, ES688_Control, 033F4h
+; DDK version 0400h   init_order 080000000h
+;
+; NOTE: a stripped LE binary carries no original file or (mostly) function names;
+; files are named by segment class and role. Exported service names, control-dispatch
+; handler names, and -- for the 12 core VxDs with a debug .SYM -- internal function
+; names are the real DDK names. Other internals are sub_<offset>.
+
+; files:
+;   es688_lcode_01.asm           object 1 _LTEXT [0x0-0x538)
+;   es688_mcode_02.asm           object 2 _LMSGTABLE [0x0-0xc9)
+;   es688_pcode_03.asm           object 3 _PTEXT [0x0-0x151)
+;   es688_pcode_04.asm           object 4 _PTEXT [0x0-0x78c)
+;   es688_pcode_05.asm           object 5 _PTEXT [0x0-0x210d)
+;   es688_ldata_06.asm           object 6 _LDATA [0x0-0x322)
+;   es688_icode_07.asm           object 7 _ITEXT [0x0-0x73)

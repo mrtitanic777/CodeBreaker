@@ -1,0 +1,17 @@
+; T30N3 -- recovered VxD source tree (multi-file, by segment + function)
+;
+; Declare_Virtual_Device T30N3, 3, 10, T30N3_Control, 00000h
+; DDK version 030Ah   init_order 054004000h
+;
+; NOTE: a stripped LE binary carries no original file or (mostly) function names;
+; files are named by segment class and role. Exported service names, control-dispatch
+; handler names, and -- for the 12 core VxDs with a debug .SYM -- internal function
+; names are the real DDK names. Other internals are sub_<offset>.
+
+; files:
+;   t30n3_lcode_01.asm           object 1 _LTEXT [0x0-0x6850)
+;   t30n3_pcode_02.asm           object 2 _PTEXT [0x0-0x570)
+;   t30n3_pcode_03.asm           object 3 _PTEXT [0x0-0x16)
+;   t30n3_ldata_04.asm           object 4 _LDATA [0x0-0x10c)
+;   t30n3_pcode_05_01.asm        object 5 _PTEXT [0x0-0x505c)
+;   t30n3_pcode_05_02.asm        object 5 _PTEXT [0x505c-0x51db)

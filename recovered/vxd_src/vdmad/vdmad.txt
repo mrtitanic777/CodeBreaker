@@ -1,0 +1,19 @@
+; VDMAD -- recovered VxD source tree (multi-file, by segment + function)
+;
+; Declare_Virtual_Device VDMAD, 4, 0, VDMAD_Control, 00004h
+; DDK version 0400h   init_order 090000000h
+;
+; NOTE: a stripped LE binary carries no original file or (mostly) function names;
+; files are named by segment class and role. Exported service names, control-dispatch
+; handler names, and -- for the 12 core VxDs with a debug .SYM -- internal function
+; names are the real DDK names. Other internals are sub_<offset>.
+
+; files:
+;   vdmad_lcode_01.asm           object 1 _LTEXT [0x0-0x2164)
+;   vdmad_mcode_02.asm           object 2 _LMSGTABLE [0x0-0x8a)
+;   vdmad_icode_03.asm           object 3 _ITEXT [0x0-0x7cd)
+;   vdmad_pcode_04.asm           object 4 _PTEXT [0x0-0x10)
+;   vdmad_ldata_05.asm           object 5 _LDATA [0x0-0x30)
+;   vdmad_lcode_06.asm           object 6 _LTEXT [0x0-0x7cc)
+;   vdmad_pcode_07.asm           object 7 _PTEXT [0x0-0xf0)
+;   vdmad_pcode_08.asm           object 8 _PTEXT [0x0-0x352)

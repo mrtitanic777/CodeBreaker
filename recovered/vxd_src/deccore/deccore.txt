@@ -1,0 +1,11 @@
+; DECCORE -- recovered VxD source tree (multi-file, by segment + function)
+;
+; NOTE: a stripped LE binary carries no original file or (mostly) function names;
+; files are named by segment class and role. Exported service names, control-dispatch
+; handler names, and -- for the 12 core VxDs with a debug .SYM -- internal function
+; names are the real DDK names. Other internals are sub_<offset>.
+
+; files:
+;   deccore_icode_01.asm         object 1 _ITEXT [0x0-0x4c4)
+;   deccore_pcode_02.asm         object 2 _PTEXT [0x0-0x13f8)
+;   deccore_pcode_03.asm         object 3 _PTEXT [0x0-0xce)

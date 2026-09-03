@@ -1,0 +1,30 @@
+; DOSMGR -- recovered VxD source tree (multi-file, by segment + function)
+;
+; Declare_Virtual_Device DOSMGR, 4, 0, DOSMGR_Control, 00015h
+; DDK version 0400h   init_order 058000000h
+;
+; NOTE: a stripped LE binary carries no original file or (mostly) function names;
+; files are named by segment class and role. Exported service names, control-dispatch
+; handler names, and -- for the 12 core VxDs with a debug .SYM -- internal function
+; names are the real DDK names. Other internals are sub_<offset>.
+
+; files:
+;   dosmgr_lcode_01.asm          object 1 _LTEXT [0x0-0x324)
+;   dosmgr_mcode_02.asm          object 2 _LMSGTABLE [0x0-0x66)
+;   dosmgr_mcode_03.asm          object 3 _LMSGTABLE [0x0-0x71)
+;   dosmgr_icode_04.asm          object 4 _ITEXT [0x0-0x2138)
+;   dosmgr_pcode_05.asm          object 5 _PTEXT [0x0-0x59d)
+;   dosmgr_ldata_06.asm          object 6 _LDATA [0x0-0x4da)
+;   dosmgr_lcode_07.asm          object 7 _LTEXT [0x0-0x1744)
+;   dosmgr_pcode_08.asm          object 8 _PTEXT [0x0-0x127e)
+;   dosmgr_pcode_09.asm          object 9 _PTEXT [0x0-0x6c)
+;   dosmgr_pcode_10.asm          object 10 _PTEXT [0x0-0x2a8)
+;   dosmgr_pcode_11.asm          object 11 _PTEXT [0x0-0x1413)
+;   dosmgr_pcode_12.asm          object 12 _PTEXT [0x0-0x4c9)
+;   dosmgr_pcode_13.asm          object 13 _PTEXT [0x0-0x14c)
+;   dosmgr_pcode_14.asm          object 14 _PTEXT [0x0-0x101b)
+;   dosmgr_pcode_15.asm          object 15 _PTEXT [0x0-0x330)
+;   dosmgr_pcode_16.asm          object 16 _PTEXT [0x0-0x4)
+;   dosmgr_pcode_17.asm          object 17 _PTEXT [0x0-0x6c)
+;   dosmgr_pcode_18.asm          object 18 _PTEXT [0x0-0xa0)
+;   dosmgr_pcode_19.asm          object 19 _PTEXT [0x0-0x550)

@@ -1,0 +1,22 @@
+; CONFIGMG -- recovered VxD source tree (multi-file, by segment + function)
+;
+; Declare_Virtual_Device CONFIGMG, 4, 0, CONFIGMG_Control, 00033h
+; DDK version 0400h   init_order 01680FFFFh
+;
+; NOTE: a stripped LE binary carries no original file or (mostly) function names;
+; files are named by segment class and role. Exported service names, control-dispatch
+; handler names, and -- for the 12 core VxDs with a debug .SYM -- internal function
+; names are the real DDK names. Other internals are sub_<offset>.
+
+; files:
+;   configmg_lcode_01.asm        object 1 _LTEXT [0x0-0x6e4)
+;   configmg_mcode_02.asm        object 2 _LMSGTABLE [0x0-0xaca)
+;   configmg_pcode_03.asm        object 3 _PTEXT [0x0-0x148)
+;   configmg_pcode_04.asm        object 4 _PTEXT [0x0-0x6a7)
+;   configmg_pcode_05_01.asm     object 5 _PTEXT [0x0-0x44b6)
+;   configmg_pcode_05_02.asm     object 5 _PTEXT [0x44b6-0x886d)
+;   configmg_pcode_05_03.asm     object 5 _PTEXT [0x886d-0xca6c)
+;   configmg_pcode_05_04.asm     object 5 _PTEXT [0xca6c-0xd242)
+;   configmg_pcode_06.asm        object 6 _PTEXT [0x0-0x37d)
+;   configmg_ldata_07.asm        object 7 _LDATA [0x0-0xeac)
+;   configmg_icode_08.asm        object 8 _ITEXT [0x0-0x366)

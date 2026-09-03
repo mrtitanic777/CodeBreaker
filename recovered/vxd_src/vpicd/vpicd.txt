@@ -1,0 +1,20 @@
+; VPICD -- recovered VxD source tree (multi-file, by segment + function)
+;
+; Declare_Virtual_Device VPICD, 4, 10, VPICD_Control, 00003h
+; DDK version 0400h   init_order 00C000000h
+;
+; NOTE: a stripped LE binary carries no original file or (mostly) function names;
+; files are named by segment class and role. Exported service names, control-dispatch
+; handler names, and -- for the 12 core VxDs with a debug .SYM -- internal function
+; names are the real DDK names. Other internals are sub_<offset>.
+
+; files:
+;   vpicd_lcode_01.asm           object 1 _LTEXT [0x0-0x2718)
+;   vpicd_mcode_02.asm           object 2 _LMSGTABLE [0x0-0x15f)
+;   vpicd_mcode_03.asm           object 3 _LMSGTABLE [0x0-0x40)
+;   vpicd_icode_04.asm           object 4 _ITEXT [0x0-0x5b8)
+;   vpicd_ldata_05.asm           object 5 _LDATA [0x0-0x58)
+;   vpicd_lcode_06.asm           object 6 _LTEXT [0x0-0x864)
+;   vpicd_pcode_07.asm           object 7 _PTEXT [0x0-0xc)
+;   vpicd_pcode_08.asm           object 8 _PTEXT [0x0-0x30)
+;   vpicd_pcode_09.asm           object 9 _PTEXT [0x0-0x478)

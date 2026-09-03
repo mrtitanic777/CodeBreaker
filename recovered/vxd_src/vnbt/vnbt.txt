@@ -1,0 +1,18 @@
+; VNBT -- recovered VxD source tree (multi-file, by segment + function)
+;
+; Declare_Virtual_Device VNBT, 3, 0, VNBT_Control, 0049Bh
+; DDK version 0400h   init_order 05400C000h
+;
+; NOTE: a stripped LE binary carries no original file or (mostly) function names;
+; files are named by segment class and role. Exported service names, control-dispatch
+; handler names, and -- for the 12 core VxDs with a debug .SYM -- internal function
+; names are the real DDK names. Other internals are sub_<offset>.
+
+; files:
+;   vnbt_lcode_01_01.asm         object 1 _LTEXT [0x0-0x45b0)
+;   vnbt_lcode_01_02.asm         object 1 _LTEXT [0x45b0-0x9154)
+;   vnbt_lcode_01_03.asm         object 1 _LTEXT [0x9154-0xdb70)
+;   vnbt_lcode_01_04.asm         object 1 _LTEXT [0xdb70-0x1239c)
+;   vnbt_lcode_01_05.asm         object 1 _LTEXT [0x1239c-0x134a4)
+;   vnbt_icode_02.asm            object 2 _ITEXT [0x0-0xc10)
+;   vnbt_pcode_03.asm            object 3 _PTEXT [0x0-0x6dc)
