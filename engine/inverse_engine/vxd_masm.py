@@ -120,10 +120,9 @@ def object_body(D, oi, force_raw=None, base_line=0, extra_labels=None):
     names at given offsets (e.g. the exported DDB). Shared by the object test and the full link."""
     force_raw = force_raw or set()
     extra_labels = extra_labels or {}
-    o = D.objs[oi]
     code = D.code[oi]
-    n = o["vsize"]
-    L = []
+    n = len(code)                                          # actual page bytes (may be < vsize when
+    L = []                                                 #  the object has a zero-fill/BSS tail)
     linemap = {}
     a = 0
     while a < n:
