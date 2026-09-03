@@ -140,21 +140,11 @@ def sweep(binary, gaplog, root, commit=False, limit=None):
         stats["tried"] += 1
         found = None
         for lname, grams, budget in _levels():              # stratified fast->slow
-            t0 = time.time()
-            for gram in grams:
-                for cand in gram(None):
-                    if time.time() - t0 > budget:
-                        break
-                    if not preflight(t_retf, cand):         # subsystem 1: prune pre-compile
-                        stats["pruned"] += 1; continue
-                    try:
-                        if S.verify_any(fb, cand).get("exact"):
-                            found = cand; break
-                    except Exception:
-                        continue
-                if found:
-                    break
-            if found:
+            # directed (convention) + parallel (workers) + constraint-prune, all at once
+            c, conv, ntasks = S.parallel_solve(
+                fb, grammars=grams, workers=6, prune=lambda cand: preflight(t_retf, cand))
+            if c:
+                found = c
                 break
         if found:
             db.bank(sig, found); stats["solved"] += 1

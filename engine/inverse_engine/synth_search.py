@@ -110,3 +110,79 @@ def bank_template(c, name):
     """A verified candidate IS a correct rule. In the full loop this appends a generalized
     Template to templates.py (holes re-parameterized). Stubbed here as the auto-commit hook."""
     return {"template": name, "c": c}
+
+
+# ---- SPEED DIAL: directed verification + parallel workers ----------------------
+import re as _re
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from capstone import Cs as _Cs, CS_ARCH_X86 as _ARCH, CS_MODE_16 as _M16
+_MDS = _Cs(_ARCH, _M16)
+
+
+def sibling_conv(fb):
+    """Read the target's sibling call semantics to pick the convention WITHOUT compiling:
+    `push cs ; call near` then `add sp,N` -> cdecl sibling (caller cleans); no add sp ->
+    pascal. This skips the wasted half of the recipe search (e.g. 8 pascal compiles on a
+    cdecl function). Returns 'cdecl' | 'pascal' | None (no near sibling)."""
+    ins = list(_MDS.disasm(bytes(fb), 0))
+    for i, inst in enumerate(ins):
+        if inst.mnemonic == "call" and inst.op_str.startswith("0x") and i > 0 \
+                and ins[i - 1].mnemonic == "push" and ins[i - 1].op_str == "cs":
+            nx = ins[i + 1] if i + 1 < len(ins) else None
+            return "cdecl" if (nx and nx.mnemonic == "add" and nx.op_str.startswith("sp")) else "pascal"
+    return None
+
+
+def _srcs(cand, conv):
+    """(compilable source, is_sibling) forms for a candidate, DIRECTED by the target's
+    sibling convention -- only the matching stub kind, not both."""
+    sibs = _re.findall(r"extern int far (\w+)\(\);", cand)
+    if not sibs:
+        yield cand, False
+        return
+    body = cand
+    for s in sibs:
+        body = body.replace("extern int far %s();\n" % s, "")
+    if conv in ("cdecl", None):
+        yield body + "\n" + "".join("int far %s(){ return 0; }\n" % s for s in sibs), True
+    if conv in ("pascal", None):
+        yield body + "\n" + "".join("int far pascal %s(){ return 0; }\n" % s for s in sibs), True
+
+
+def parallel_solve(target, grammars=None, workers=6, ctx=None, prune=None):
+    """Directed + parallel synthesis: enumerate (candidate x recipe) tasks pruned to the
+    target's convention (and by `prune(cand)`, the pre-flight constraint filter), compile+
+    verify them concurrently across `workers` DOSBox processes (each independent), return
+    the first byte-exact candidate. ~10x the serial solve()."""
+    from engine.inverse_engine import msc6_oracle as ora
+    from engine.inverse_engine.msc6fn import _mask
+    from engine.sdk.mocklink import _first_func, RECIPES
+    target = bytes(target)
+    a = _mask(target).rstrip(b"\x90\x00")
+    conv = sibling_conv(target)
+    tasks = []
+    for grammar in (grammars or GRAMMARS):
+        for cand in grammar(ctx):
+            if prune is not None and not prune(cand):        # constraint-engine prune
+                continue
+            for src, is_sib in _srcs(cand, conv):
+                for rcp in RECIPES:
+                    tasks.append((cand, src, rcp, is_sib))
+
+    def _run(cand, src, rcp, is_sib):
+        try:
+            rc = ora.mc6_compile(src, rcp)
+        except Exception:
+            return None
+        b = _first_func(rc) if is_sib else rc
+        return cand if _mask(b).rstrip(b"\x90\x00") == a else None
+
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futs = [ex.submit(_run, *t) for t in tasks]
+        for fut in as_completed(futs):
+            r = fut.result()
+            if r:
+                for f in futs:
+                    f.cancel()
+                return r, conv, len(tasks)
+    return None, conv, len(tasks)
