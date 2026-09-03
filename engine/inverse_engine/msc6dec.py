@@ -894,8 +894,8 @@ def invert(code, imports=None, syms=None, rtype="int", params=None, nearmap=None
             memoff.add(int(gm.group(1), 16))
     # infer far/int params BEFORE building Dec, so the far-param LAYOUT (lanes) is set and
     # the body walk uses the right param names: a `les reg,[bp+off]` marks off far (4 bytes).
-    if params is None or all(t == "int" for _n, t in (params or [])):   # detect far/long even when
-        far_offs = set(); long_offs = set(); accessed = set(); maxo = 4  # callsig guessed all-int
+    if True:                                            # gather far/long BODY evidence always, so a
+        far_offs = set(); long_offs = set(); accessed = set(); maxo = 4  # wrong callsig can be overridden
         seg_from = {}                                       # gpreg -> bp offset it was loaded from
         for j, ins in enumerate(md):
             if ins.mnemonic in ("les", "lds"):
@@ -947,8 +947,14 @@ def invert(code, imports=None, syms=None, rtype="int", params=None, nearmap=None
             # (last-declared at bp+6), so decl order is the reverse -- flip it, then name
             # positionally, so each type lands on the stack slot it was detected at.
             _built = [("p%d" % k, ty) for k, (_n, ty) in enumerate(reversed(inferred))]
-            if params is None or any(t in ("far", "long") for _n, t in _built):
-                params = _built            # body evidence wins over a callsig all-int guess
+            if params is None:
+                params = _built
+            else:                          # body far/long evidence overrides a wrong callsig: it is
+                lanes, _pn, longs = _layout_params(params)   # DIRECT (les / mov es / dx:ax), callsig
+                if all(t == "int" for _n, t in params) \
+                        or any(o not in lanes for o in far_offs) \
+                        or any(o not in longs for o in long_offs):
+                    params = _built        # is inferred from call sites and here places them wrong
     if params is None:                              # plain-int pascal: take the EXACT param count
         q0 = ei + epilen                            # from retf N and lay it out so the body's pname
         if b[q0:q0+1] == b"\xca":                   # matches the signature -- pascal puts the LAST
