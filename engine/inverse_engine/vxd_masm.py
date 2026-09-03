@@ -223,9 +223,12 @@ def _expand_lidata(body, p, is32):
 # ---- assemble + compare ----------------------------------------------------------
 def assemble(masm_text, root):
     tc = _stage_toolchain(root)
+    # a large all-raw object is thousands of db lines; give ML headroom (DOSBox at 20k cycles is
+    # slow) so a big object's fallback assembly doesn't time out and spuriously "fail".
+    tmo = 300 if len(masm_text) > 60000 else 120
     ok, out, work = run_dos({"c": tc},
                             ["c:\\ml.exe /c /Fo m.obj m.asm > asm.txt"],
-                            ["m.obj", "asm.txt"], files={"m.asm": masm_text}, timeout=120)
+                            ["m.obj", "asm.txt"], files={"m.asm": masm_text}, timeout=tmo)
     log = ""
     if work and os.path.exists(os.path.join(work, "asm.txt")):
         log = open(os.path.join(work, "asm.txt"), errors="replace").read()
