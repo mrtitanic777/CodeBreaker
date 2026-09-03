@@ -584,6 +584,8 @@ class Dec:
                         s.args.append(reg[r])
                 elif re.match(r"\[bp \+ (\w+)\]", r):
                     s.args.append(s.pname(int(re.search(r"\+ (\w+)", r).group(1), 0)))
+                elif re.match(r"\[bp - (\w+)\]$", r):             # push a local by value (unopt)
+                    s.args.append(s._local(int(re.search(r"- (\w+)", r).group(1), 0)))
                 elif re.match(r"(-?0x[0-9a-f]+|-?\d+)$", r):
                     v = int(r, 0)
                     if op[0] == 0x68 and v in getattr(s, "memoff", ()):   # push imm16 = &global
@@ -757,9 +759,11 @@ def invert(code, imports=None, syms=None, rtype="int", params=None, nearmap=None
         p = len(PROLOGUE_MOVDS)                       # the DS load, same length, same epilogue
     else:
         return None, "prologue miss"
-    if b[p:p+2] == b"\x83\xec":
+    if b[p:p+2] == b"\x83\xec":              # sub sp, imm8  (optimized locals frame)
         p += 3
-    while b[p:p+1] in (b"\x57", b"\x56"):
+    elif b[p:p+2] == b"\x81\xec":            # sub sp, imm16 (UNoptimized locals frame -- the
+        p += 4                               # 1.52c corpus default: /AM /G2 /Gsw with no /O)
+    while b[p:p+1] in (b"\x57", b"\x56"):    # push di / push si (callee-saved register frame)
         p += 1
     ei = b.rfind(EPI); epilen = len(EPI)
     if ei < 0:                                        # lea-variant teardown (mixed-object DLLs)
