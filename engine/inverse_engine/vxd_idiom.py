@@ -161,6 +161,13 @@ def _indirect_branch(row):
     return row["mnem"] in ("jmp", "call") and "[" in row["ops"]
 
 
+def _cap_size(row):
+    """capstone's 80-bit memory-operand size keywords `xword`/`tword ptr` (e.g. `fld xword ptr [ebx]`)
+    -- the DDK ML spells 80-bit memory `tbyte ptr` and reads `xword` as an undefined symbol. Byte-
+    preserve (a real 80-bit fld/fstp, or data mis-decoded)."""
+    return "xword" in row["ops"] or "tword" in row["ops"]
+
+
 def _addr16(row):
     """True if the instruction carries a 0x67 address-size prefix -- i.e. 16-bit addressing (`[di]`,
     `[bp+si]`, ...) inside a use32 segment, which ML rejects (A2155, 16-bit register with a 32-bit
@@ -259,6 +266,11 @@ def emit_idiomatic(D):
             iv.add(k)
     emitted = {(o2, a2) for (o2, a2) in D.labels
                if a2 in starts.get(o2, ()) or a2 not in interior.get(o2, set())} - cp_skip
+    # a control handler whose target label we do not actually emit (a stub VxD whose messages all
+    # dispatch into the control-proc region, or a shared do-nothing stub) would make Control_Dispatch
+    # reference an undefined symbol -- drop it, and that message falls through to the macro default.
+    emitted_names = {D.labels[k] for k in emitted}
+    handlers = [(m, h) for (m, h) in handlers if h in emitted_names]
     for o in D.v.objects if hasattr(D, "v") else D.objs.values():
         oi = o["idx"]
         cls, _ = seg_class(o["flags"])
@@ -302,7 +314,7 @@ def emit_idiomatic(D):
                 L.append(m if m else _db(row["raw"]))
             elif row["fx"] or has_abs_mem(row) or has_seg_prefix(row) or _addr16(row) \
                     or _shift_no_count(row) or _ml611_unknown(row) or _x87_stack(row) \
-                    or _indirect_branch(row) or row["mnem"] in _RAW_MNEMS:
+                    or _indirect_branch(row) or _cap_size(row) or row["mnem"] in _RAW_MNEMS:
                 L.append(_db(row["raw"]))                       # byte-preserve the encodings ML will
             else:                                              #  not reproduce (abs-mem, seg-override,
                 line = _masm_line(D, oi, row)                  #  16-bit addr, aam/aad, int3, far ...)
