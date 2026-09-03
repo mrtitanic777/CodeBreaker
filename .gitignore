@@ -39,3 +39,4 @@ CodeBreaker.config.json
 
 # Merged projects pending native integration into engine/ (their code is absorbed
 # into the engine; the raw project dirs + their binaries are not tracked as-is).
+engine/inverse_engine/_sweepdb/
