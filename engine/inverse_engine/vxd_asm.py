@@ -99,7 +99,61 @@ class VxDDisasm:
                 break
             s._descend(more)
         s._collect_labels()
+        s._apply_ddk_names()
         return s
+
+    def _apply_ddk_names(s):
+        """Overlay real names from the DDK onto the anonymous sub_/loc_ labels: control-dispatch
+        handlers get the message they service (DEVICE_INIT, SYS_VM_INIT, ...), and the 12 core VxDs
+        with a debug .SYM get their real internal function names where a symbol's offset lands on a
+        recovered function start."""
+        try:
+            from engine.inverse_engine import vxd_symbols
+        except Exception:
+            return
+        db = s.ddb
+        if not db:
+            return
+        dev = db["name"]
+        used = set(s.labels.values())                      # never introduce a duplicate label name
+
+        def _assign(key, name):
+            if name in used or key not in s.insns:
+                return
+            if not s.labels.get(key, "").startswith(("sub_", "loc_")):   # keep semantic names
+                return
+            s.labels[key] = name
+            used.add(name)
+
+        cp = next((k for k, nm in s.labels.items() if nm == dev + "_Control"), None)
+        if cp:                                             # name control handlers by their message
+            msgs = vxd_symbols.control_messages()
+            oi, a = cp
+            base = 0
+            for _ in range(10):
+                row = s.insns.get((oi, a))
+                if not row:
+                    break
+                if row["mnem"] == "sub" and row["ops"].replace(" ", "").startswith("eax,"):
+                    try:
+                        base = int(row["ops"].split(",")[1].strip(), 0)
+                    except ValueError:
+                        pass
+                if row["mnem"] == "jmp" and "*4" in row["ops"]:
+                    jt = None
+                    for k in range(a + 1, a + row["size"]):
+                        f = s.fx.get((oi, k))
+                        if f and f["kind"] == "internal":
+                            jt = s.jtables.get((f["obj"], f["target"]))
+                            break
+                    for i, tk in enumerate(jt or []):
+                        msg = i + base
+                        if msg in msgs and jt.count(tk) == 1:            # unique handler only
+                            _assign(tk, "%s_%s" % (dev, msgs[msg]))
+                    break
+                a += row["size"]
+        for off, name in vxd_symbols.sym_names(dev).items():   # real internal names where the offset
+            _assign((1, off), name)                            #  lands on a function start
 
     def _gap_seeds(s):
         """Find plausible code entry points the descent missed: a fixup target or a function
