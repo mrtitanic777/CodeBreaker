@@ -403,8 +403,8 @@ def compare_object(v, oi, root=".", max_repair=8, max_ins=6000):
     asm = b"".join(parts)
     return {"ok": True, "match": match, "oracle_len": len(oracle), "asm_len": len(asm),
             "n_diffs": 0 if match else 1, "symbolic_insns": sym, "forced_raw": raw,
-            "force_raw_set": fr_all, "raw_fallback": sym == 0, "n_files": len(ranges),
-            "_asm": asm[:len(oracle)], "_oracle": oracle, "D": D}
+            "force_raw_set": fr_all, "raw_fallback": sym == 0 and (sym + raw) > 0,   # code, all forced
+            "n_files": len(ranges), "_asm": asm[:len(oracle)], "_oracle": oracle, "D": D}
 
 
 def compare_module(v, root="."):
