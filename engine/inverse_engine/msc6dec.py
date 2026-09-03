@@ -484,6 +484,18 @@ class Dec:
                 if tgt >= s.end and "ax" in reg:
                     out.append("return %s;" % reg["ax"])
                 i += 1; continue
+            # long-constant argument:  mov ax,LO ; mov dx,HI ; push dx ; push ax  -> VALUEL.
+            # Unoptimized 1.52c pushes a long by value hi-word first; the two int pushes are ONE
+            # long arg, not two ints. Anchored on the exact 4-insn shape so it can't misfire.
+            if mn == "mov" and i + 3 < hi:
+                gl = re.match(r"ax, (-?0x[0-9a-f]+|-?\d+)$", ops)
+                gh = re.match(r"dx, (-?0x[0-9a-f]+|-?\d+)$", s.md[i+1].op_str)
+                if gl and gh and s.md[i+1].mnemonic == "mov" \
+                        and s.md[i+2].mnemonic == "push" and s.md[i+2].op_str == "dx" \
+                        and s.md[i+3].mnemonic == "push" and s.md[i+3].op_str == "ax":
+                    lo = int(gl.group(1), 0) & 0xffff; hiw = int(gh.group(1), 0) & 0xffff
+                    s.args.append("%dL" % ((hiw << 16) | lo))
+                    reg["ax"] = str(lo); reg["dx"] = str(hiw); i += 4; continue
             # intra-segment far call:  push cs ; call near <rel>  (linker-optimized far call
             # to a same-segment function). Target resolves in SEGMENT coords via func_base.
             if mn == "push" and ops == "cs" and i+1 < hi and s.md[i+1].mnemonic == "call":
