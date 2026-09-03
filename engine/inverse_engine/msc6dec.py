@@ -88,6 +88,8 @@ class Dec:
         s.farty = {}          # far-param name -> 'int' once a WORD deref proves the pointee width
         s.localdecl = {}      # loc_x -> 'int'|'char', stack locals discovered during the walk
         s.farptr = {}         # base-reg -> the far pointer expr currently in <seg>:<reg>
+        s.vtbl = {}           # base-reg -> the object whose vtable is loaded in <seg>:<reg> (COM)
+        s.uses_vtbl = False   # emit the PROC typedef when a vtable dispatch is recovered
         # pre-scan back-edges (do-while loops): jcc whose target index < its own index
         s.loops = {}           # loop-head index -> (backedge jcc index, jcc opcode)
         s.counter = {}         # loop-head index -> counter register (inc/dec'd inside)
@@ -572,6 +574,27 @@ class Dec:
                     out.append(reg["ax"] + ";"); reg.pop("_lastcall", None)
                 elif consumed and nxt is not None and nxt.mnemonic in ("cmp", "test", "or"):
                     reg.pop("_lastcall", None)                   # embedded in a condition
+            elif mn == "lcall" and ops.startswith("es:["):   # indirect far call through es:<reg>
+                bm = re.match(r"es:\[(\w+)(?:\s*\+\s*(0x[0-9a-f]+|\d+))?\]", ops)
+                if not (bm and bm.group(1) in s.vtbl):
+                    s.fail = "lcall %s" % ops; return None       # not a recovered vtable dispatch
+                # COM vtable dispatch: obj's lpVtbl was loaded by `les <reg>, es:[obj]`, and this
+                # calls its method at byte offset N -> method index N/4 of the far-proc table.
+                obj = s.vtbl[bm.group(1)]; s.uses_vtbl = True
+                idx = (int(bm.group(2), 0) if bm.group(2) else 0) // 4
+                call = "(*(PROC far * far *)%s)[%d](%s)" % (obj, idx, ", ".join(s.args)); s.args = []
+                reg["ax"] = call; reg["_lastcall"] = call
+                nxt = s.md[i+1] if i+1 < hi else None
+                consumed = nxt is not None and (
+                    (nxt.mnemonic == "mov" and nxt.op_str.endswith(", ax")) or
+                    (nxt.mnemonic == "push" and nxt.op_str == "ax") or
+                    (nxt.mnemonic in ("cmp", "test") and "ax" in nxt.op_str.split(", ")) or
+                    (nxt.mnemonic == "or" and nxt.op_str == "ax, ax") or
+                    (nxt.mnemonic == "jmp" and nxt.op_str.startswith("0x") and int(nxt.op_str, 16) >= s.end))
+                if not consumed and not (nxt is None and not getattr(s, "void", False)):
+                    out.append(call + ";"); reg.pop("_lastcall", None)
+                elif consumed and nxt is not None and nxt.mnemonic in ("cmp", "test", "or"):
+                    reg.pop("_lastcall", None)
             elif mn in ("les", "lds"):                       # les/lds <reg>, <far pointer source>
                 dst, _, memt = ops.partition(", ")
                 m = re.search(r"\[bp \+ (\w+)\]", memt)
@@ -583,6 +606,9 @@ class Dec:
                     s.farptr[dst] = p; s._esbx = p
                 elif ff:                                      # les reg, es:[base+N]: far ptr in a field
                     s.farptr[dst] = ff[0]; s._esbx = ff[0]
+                    bm = re.search(r":\[(\w+)\]", memt)       # les <r>, es:[obj]  loads the vtable of
+                    if bm and bm.group(1) in s.farptr and s.farptr.get(bm.group(1)):
+                        s.vtbl[dst] = s.farptr[bm.group(1)]   # the object -> COM vtable dispatch base
                 elif mg:                                      # les reg, [imm]: a global far pointer
                     off = int(mg.group(1), 16); nm = s.syms.get(off)
                     p = nm[0] if nm else "gW_%x" % off; s.globs[p] = "word"
@@ -963,6 +989,8 @@ def invert(code, imports=None, syms=None, rtype="int", params=None, nearmap=None
         params = ", ".join("int %s" % chr(ord('a')+i) for i in range(nparam)) or "void"
     seen = set()
     decls = "typedef unsigned int WORD;\n"
+    if getattr(d, "uses_vtbl", False):                    # COM vtable dispatch: far-proc table type
+        decls += "typedef WORD (far pascal *PROC)();\n"
     for k in range(d.calls):
         nm = imports.get(k, "G%d" % k)
         if nm not in seen:
