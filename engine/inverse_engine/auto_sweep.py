@@ -181,10 +181,23 @@ def harvest(binary, root):
         if r.get("exact"):
             db.bank(signature(fb), c); banked += 1
             print("  BANK seg%d:0x%-4x via %s (%s)" % (sgi, off, r["oracle"], r.get("recipe", "")))
+    # needs-link functions: their intra-segment call resolves only against a sibling, so verify
+    # them at the SEGMENT level via mocklink (recompile with sibling stubs, mask the layout rel16).
+    # mocklink drives the 6.0a oracle, so restrict to 6.0a-framed modules.
+    from engine.sdk import mocklink
+    nl = [(bytes.fromhex(fn["bytes"]), fn["c"], sg["idx"], fn["off"])
+          for sg in rep["segments"] for fn in sg["funcs"]
+          if fn.get("status") == "needs-link" and "bytes" in fn and "c" in fn]
+    banked_nl = 0
+    for fb, c, sgi, off in nl:
+        if router.is_msvc152(fb):                          # mocklink is 6.0a-only
+            continue
+        if mocklink.verify(fb, c).get("exact"):
+            db.bank(signature(fb), c); banked_nl += 1
     db.save()
-    print("== harvest %s ==  inverted=%d  banked byte-exact=%d" % (
-        os.path.basename(binary), len(items), banked))
-    return {"inverted": len(items), "banked": banked}
+    print("== harvest %s ==  inverted=%d banked=%d | needs-link=%d segment-verified=%d" % (
+        os.path.basename(binary), len(items), banked, len(nl), banked_nl))
+    return {"inverted": len(items), "banked": banked, "needs_link": len(nl), "banked_nl": banked_nl}
 
 
 def main(argv):
