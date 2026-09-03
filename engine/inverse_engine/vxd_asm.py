@@ -78,6 +78,8 @@ class VxDDisasm:
         s.labels = {}               # (oi, off) -> label name
         s.jtables = {}              # (oi, base) -> [(oi, target), ...]
         s.svctab = None             # (oi, base, count) if a service table was found
+        s.entries = set()           # (oi, off) authoritative entry points (DDB procs + service table)
+        #                             -- no instruction may SPAN one, so an entry always starts an insn
 
     def fsite(s, oi, off):
         return s.fx.get((oi, off))
@@ -207,6 +209,7 @@ class VxDDisasm:
             f = s.fsite(oi, db["rva"] + fld)
             if f and f["kind"] == "internal" and s.objs.get(f["obj"], {}).get("exec"):
                 seeds.append((f["obj"], f["target"]))
+                s.entries.add((f["obj"], f["target"]))
                 s.labels[(f["obj"], f["target"])] = (db["name"] or "Device") + nm
         # service table: DDB_Service_Table_Ptr -> array of DDB_Service_Size dword service procs
         st = s.fsite(oi, db["rva"] + DDB_SERVICE_TABLE)
@@ -219,6 +222,7 @@ class VxDDisasm:
                     break
                 if s.objs.get(e["obj"], {}).get("exec"):
                     seeds.append((e["obj"], e["target"]))
+                    s.entries.add((e["obj"], e["target"]))  # a service handler always starts an insn
                     sname = _SVC.name(db["name"], j)        # this driver's own DDK service name
                     lbl = sname or "%s_Service_%02d" % (db["name"] or "Dev", j)   # already qualified
                     s.labels.setdefault((e["obj"], e["target"]), lbl)
@@ -262,6 +266,9 @@ class VxDDisasm:
                     break
                 if not s._free(oi, a, ins.size):            # would overlap authoritative code
                     break
+                if s.entries and any((oi, a + k) in s.entries for k in range(1, ins.size)):
+                    break                                   # would swallow an authoritative entry point
+                #                                             (service proc / DDB proc) -> let it start fresh
                 fx = None
                 for k in range(a + 1, a + ins.size):
                     if (oi, k) in s.fx:

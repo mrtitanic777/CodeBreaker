@@ -2418,7 +2418,7 @@
     "len": 113,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -2427,8 +2427,8 @@
     "match": true,
     "ok": true,
     "len": 8504,
-    "symbolic": 3988,
-    "forced_raw": 135,
+    "symbolic": 3987,
+    "forced_raw": 136,
     "raw_fallback": false,
     "diffs": 0,
     "err": null
@@ -2590,10 +2590,10 @@
   ],
   "n_obj": 18,
   "n_exact": 18,
-  "symbolic": 9210,
-  "forced_raw": 356,
-  "raw_fallback_objs": 1,
-  "seconds": 140.7
+  "symbolic": 9209,
+  "forced_raw": 357,
+  "raw_fallback_objs": 0,
+  "seconds": 144.6
  },
  "elnkmc.vxd": {
   "byte_exact": true,
@@ -5166,8 +5166,8 @@
     "match": true,
     "ok": true,
     "len": 91723,
-    "symbolic": 26119,
-    "forced_raw": 1617,
+    "symbolic": 26032,
+    "forced_raw": 1606,
     "raw_fallback": false,
     "diffs": 0,
     "err": null
@@ -5212,7 +5212,7 @@
     "len": 362,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -5230,10 +5230,10 @@
   ],
   "n_obj": 9,
   "n_exact": 9,
-  "symbolic": 42093,
-  "forced_raw": 2479,
-  "raw_fallback_objs": 1,
-  "seconds": 204.1
+  "symbolic": 42006,
+  "forced_raw": 2468,
+  "raw_fallback_objs": 0,
+  "seconds": 209.1
  },
  "necatapi.vxd": {
   "byte_exact": true,
@@ -11381,8 +11381,8 @@
     "match": true,
     "ok": true,
     "len": 18863,
-    "symbolic": 6025,
-    "forced_raw": 175,
+    "symbolic": 6115,
+    "forced_raw": 85,
     "raw_fallback": false,
     "diffs": 0,
     "err": null
@@ -11394,17 +11394,17 @@
     "len": 10,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
   ],
   "n_obj": 5,
   "n_exact": 5,
-  "symbolic": 7838,
-  "forced_raw": 255,
-  "raw_fallback_objs": 1,
-  "seconds": 51.5
+  "symbolic": 7928,
+  "forced_raw": 165,
+  "raw_fallback_objs": 0,
+  "seconds": 51.6
  },
  "wshtcp.vxd": {
   "byte_exact": true,
@@ -11887,8 +11887,8 @@
     "match": true,
     "ok": true,
     "len": 60952,
-    "symbolic": 11146,
-    "forced_raw": 1114,
+    "symbolic": 11134,
+    "forced_raw": 1122,
     "raw_fallback": false,
     "diffs": 0,
     "err": null
@@ -11922,7 +11922,7 @@
     "len": 44,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -12072,9 +12072,9 @@
   ],
   "n_obj": 21,
   "n_exact": 21,
-  "symbolic": 62381,
-  "forced_raw": 3051,
-  "raw_fallback_objs": 1,
-  "seconds": 406.7
+  "symbolic": 62369,
+  "forced_raw": 3059,
+  "raw_fallback_objs": 0,
+  "seconds": 413.4
  }
 }
