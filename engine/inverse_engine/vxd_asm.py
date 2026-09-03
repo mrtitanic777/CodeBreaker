@@ -72,6 +72,7 @@ class VxDDisasm:
         s.objs = {o["idx"]: o for o in v.objects}
         s.insns = {}                # (oi, off) -> row dict
         s.mark = set()              # (oi, off) bytes that are code
+        s.data = set()              # (oi, off) bytes KNOWN to be data (tables, DDB) -- never code
         s.labels = {}               # (oi, off) -> label name
         s.jtables = {}              # (oi, base) -> [(oi, target), ...]
         s.svctab = None             # (oi, base, count) if a service table was found
@@ -82,6 +83,10 @@ class VxDDisasm:
     def _free(s, oi, a, sz):
         """True iff [a, a+sz) is entirely unclaimed -- so decoding here creates no overlap."""
         return all((oi, k) not in s.mark for k in range(a, a + sz))
+
+    def _mark_data(s, oi, start, length):
+        for k in range(start, start + length):
+            s.data.add((oi, k))
 
     # ---- recursive descent -----------------------------------------------------
     def run(s):
@@ -108,14 +113,15 @@ class VxDDisasm:
                 if f["kind"] != "internal" or f["obj"] != oi:
                     continue
                 t = f["target"]
-                if t is None or not (0 <= t < n) or (oi, t) in s.mark:
+                if t is None or not (0 <= t < n) or (oi, t) in s.mark or (oi, t) in s.data:
                     continue
                 if s._looks_code(code, t):
                     seeds.append((oi, t))
             # bare `push ebp; mov ebp, esp` prologues in gaps
             i = 0
             while i < n - 2:
-                if code[i] == 0x55 and code[i + 1] == 0x8B and code[i + 2] == 0xEC and (oi, i) not in s.mark:
+                if code[i] == 0x55 and code[i + 1] == 0x8B and code[i + 2] == 0xEC \
+                        and (oi, i) not in s.mark and (oi, i) not in s.data:
                     seeds.append((oi, i))
                     i += 3
                 else:
@@ -139,6 +145,7 @@ class VxDDisasm:
                     seeds.append((o["idx"], 0))
             return seeds
         oi = db["obj"]
+        s._mark_data(oi, db["rva"], 0x54)                  # the DDB itself is data, not code
         for fld, nm in ((DDB_CONTROL_PROC, "_Control"), (DDB_V86_API_PROC, "_V86_API"),
                         (DDB_PM_API_PROC, "_PM_API")):
             f = s.fsite(oi, db["rva"] + fld)
@@ -161,6 +168,7 @@ class VxDDisasm:
                 cnt += 1
             if cnt:
                 s.svctab = (boi, base, cnt)
+                s._mark_data(boi, base, cnt * 4)           # the service table is a pointer array
         return seeds
 
     def _descend(s, seeds):
@@ -174,8 +182,8 @@ class VxDDisasm:
             while a < n:
                 if (oi, a) in s.insns:
                     break
-                if (oi, a) in s.mark:                       # landed mid-instruction of prior code
-                    break                                   #  (a bad speculative seed) -- abandon
+                if (oi, a) in s.mark or (oi, a) in s.data:  # mid-instruction of prior code, or a
+                    break                                   #  known data table -- abandon this walk
                 # VxD service call: CD 20 + inline DWORD
                 if code[a] == 0xCD and a + 5 < n and code[a + 1] == 0x20:
                     if not s._free(oi, a, 6):
@@ -251,6 +259,7 @@ class VxDDisasm:
                 work.append((e["obj"], e["target"]))
         if targets:
             s.jtables[(boi, base)] = targets
+            s._mark_data(boi, base, len(targets) * 4)      # the table bytes are data, not code
 
     def _collect_labels(s):
         calltgt = set()
@@ -279,7 +288,9 @@ class VxDDisasm:
                 s.labels.setdefault((f["obj"], f["target"]), s._lname((f["obj"], f["target"]), calltgt))
 
     def _lname(s, key, calltgt):
-        return ("sub_%04X" if key in calltgt else "loc_%04X") % key[1]
+        # object-qualified: two objects can share an offset (both often start at 0), so the bare
+        # offset is ambiguous across segments -- qualify with the object to keep labels unique.
+        return ("sub_%d_%04X" if key in calltgt else "loc_%d_%04X") % key
 
 
 def _direct_target(ins):
