@@ -22,6 +22,9 @@ from engine.inverse_engine.msc6fn import _mask, PROLOGUE, EPI
 # (same 90 45 55 8bec 1e 8ed8), the same length, and the same far epilogue -- invert() can
 # treat the two interchangeably by just skipping the right prologue.
 PROLOGUE_MOVDS = bytes.fromhex("8cd89045558bec1e8ed8")
+# The far frame tears down two ways: EPI (dec bp;dec bp;mov sp,bp;pop ds;pop bp;dec bp) and
+# this lea-variant (lea sp,[bp-2];pop ds;pop bp;dec bp) that mixed-object DLLs also emit.
+EPI_LEA = bytes.fromhex("8d66fe1f5d4d")
 
 JCC_INV = {0x74: "!=", 0x75: "==", 0x7c: ">=", 0x7d: "<", 0x7e: ">", 0x7f: "<="}
 
@@ -531,6 +534,29 @@ class Dec:
                 if ff is None:
                     s.fail = "push %s" % ops; return None
                 s.args.append(ff[0])
+            elif mn == "push" and ops.startswith("dword ptr "):
+                # 66 ff /6: a 32-bit push of a memory dword -- one `long` argument. The param
+                # layout marks the source slot long (inferred above or from the signature).
+                loc = ops[len("dword ptr "):]
+                gp = re.match(r"\[bp \+ (\w+)\]$", loc)
+                gl = re.match(r"\[bp - (\w+)\]$", loc)
+                gg = re.match(r"\[(0x[0-9a-f]+)\]$", loc)
+                if gp:
+                    off = int(gp.group(1), 0); nm = s._longload(off)   # long param?
+                    if nm is None and off in s.lanes and s.lanes[off][1] == "lo":
+                        nm = s.lanes[off][0]                  # far-pointer param, pushed whole
+                    if nm is None:                            # neither long nor far here: don't guess
+                        s.fail = "push %s" % ops; return None
+                    s.args.append(nm)
+                elif gl:
+                    nm = "loc_%x" % int(gl.group(1), 0); s.localdecl[nm] = "long"
+                    s.args.append(nm)
+                elif gg:
+                    off = int(gg.group(1), 16); sy = s.syms.get(off)
+                    nm = sy[0] if (sy and sy[1] == "long") else "gL_%x" % off
+                    s.globs[nm] = "long"; s.args.append(nm)
+                else:
+                    s.fail = "push %s" % ops; return None
             elif mn == "push":
                 r = ops.replace("word ptr ", "")
                 mm = re.match(r"\[(0x[0-9a-f]+)\]$", r)
@@ -735,7 +761,12 @@ def invert(code, imports=None, syms=None, rtype="int", params=None, nearmap=None
         p += 3
     while b[p:p+1] in (b"\x57", b"\x56"):
         p += 1
-    ei = b.rfind(EPI); be = ei
+    ei = b.rfind(EPI); epilen = len(EPI)
+    if ei < 0:                                        # lea-variant teardown (mixed-object DLLs)
+        ei = b.rfind(EPI_LEA); epilen = len(EPI_LEA)
+    if ei < 0:
+        return None, "no epilogue"
+    be = ei
     while be > p and b[be-1] in (0x5e, 0x5f):
         be -= 1
     md = list(_MD.disasm(b[p:be], p))
@@ -749,8 +780,8 @@ def invert(code, imports=None, syms=None, rtype="int", params=None, nearmap=None
     # infer far/int params BEFORE building Dec, so the far-param LAYOUT (lanes) is set and
     # the body walk uses the right param names: a `les reg,[bp+off]` marks off far (4 bytes).
     if params is None:
-        far_offs = set(); accessed = set(); maxo = 4
-        for ins in md:
+        far_offs = set(); long_offs = set(); accessed = set(); maxo = 4
+        for j, ins in enumerate(md):
             if ins.mnemonic in ("les", "lds"):
                 lm = re.search(r"\[bp \+ (\w+)\]", ins.op_str)
                 if lm:
@@ -758,25 +789,41 @@ def invert(code, imports=None, syms=None, rtype="int", params=None, nearmap=None
             mm = re.match(r"(es|ds), word ptr \[bp \+ (\w+)\]", ins.op_str)
             if ins.mnemonic == "mov" and mm:                # mov es,[bp+M] -> far param at M-2
                 far_offs.add(int(mm.group(2), 0) - 2)
+            # a 32-bit push of a stack dword (66 ff /6) passes a `long` param by value
+            dm = re.match(r"dword ptr \[bp \+ (\w+)\]$", ins.op_str)
+            if ins.mnemonic == "push" and dm:
+                o = int(dm.group(1), 0); long_offs.add(o); maxo = max(maxo, o + 2)
+            # long-param load lanes:  mov ax,[bp+o] ; mov dx,[bp+o+2]
+            g = re.match(r"ax, word ptr \[bp \+ (\w+)\]$", ins.op_str)
+            if ins.mnemonic == "mov" and g and j + 1 < len(md):
+                o = int(g.group(1), 0)
+                n2 = re.match(r"dx, word ptr \[bp \+ (\w+)\]$", md[j+1].op_str)
+                if md[j+1].mnemonic == "mov" and n2 and int(n2.group(1), 0) == o + 2:
+                    long_offs.add(o); maxo = max(maxo, o + 2)
             for mm2 in re.finditer(r"\[bp \+ (\w+)\]", ins.op_str):
                 oo = int(mm2.group(1), 0)
                 if oo >= 6:
                     accessed.add(oo); maxo = max(maxo, oo)
-        if far_offs:                                       # only build a typed list when far params exist
+        if far_offs or long_offs:                          # build a typed list when far/long params exist
             # bound by retf N (exact total param bytes) for pascal -- a hard constraint that
             # beats guessing the count from the max stack offset accessed.
-            q0 = ei + len(EPI)
+            q0 = ei + epilen
             retf_total = (b[q0+1] | (b[q0+2] << 8)) if b[q0:q0+1] == b"\xca" else None
             limit = 6 + retf_total if retf_total else maxo + 2
             inferred = []; oo = 6
             while oo < limit:
                 if oo in far_offs and oo + 4 <= limit:
-                    inferred.append(("p%d" % len(inferred), "far")); oo += 4
+                    inferred.append(("p", "far")); oo += 4
+                elif oo in long_offs and oo + 4 <= limit:
+                    inferred.append(("p", "long")); oo += 4
                 elif oo in accessed or (retf_total and oo < limit):
-                    inferred.append(("p%d" % len(inferred), "int")); oo += 2
+                    inferred.append(("p", "int")); oo += 2
                 else:
                     oo += 2
-            params = inferred
+            # `inferred` is built low-offset first; _layout_params lays params out pascal
+            # (last-declared at bp+6), so decl order is the reverse -- flip it, then name
+            # positionally, so each type lands on the stack slot it was detected at.
+            params = [("p%d" % k, ty) for k, (_n, ty) in enumerate(reversed(inferred))]
     d = Dec(md, be, imports, syms, params, nearmap=nearmap, func_base=func_base)
     d.memoff = memoff
     d.void = (rtype == "void"); d.rtype = rtype
@@ -786,7 +833,7 @@ def invert(code, imports=None, syms=None, rtype="int", params=None, nearmap=None
         return None, "unmodeled: %s" % getattr(d, "fail", "?")
     # calling convention + param count from the return instruction:
     #   ca NN -> pascal, NN/2 words cleaned by callee;  cb/c3 -> cdecl, caller cleans.
-    q = ei + len(EPI)
+    q = ei + epilen
     pascal = True; conv = 0
     if b[q:q+1] == b"\xca":
         conv = (b[q+1] | (b[q+2] << 8)) // 2
