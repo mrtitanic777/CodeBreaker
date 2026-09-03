@@ -72,45 +72,55 @@ def ddb_macro(db):
 def service_table(D, emittable):
     """Recover the VxD's own exported service table. The DDB (VxD_Desc_Block) carries a
     Service_Table_Ptr (+0x30) and Service_Table_Size (+0x34); the table is Size DWORD pointers, one
-    per service, each a fixup to that service's handler. Returns (labels, (obj, off, count)) where
-    labels[i] is the handler label for service i (or 'RESERVED' for a null slot) and the tuple locates
-    the raw bytes so the object walk can skip them. Returns (None, None) if there is no table, or any
-    entry cannot be resolved to a single emittable label -- e.g. a handler the recursive descent left
-    mid-instruction because the service pointer and a branch disagreed on alignment (then the table
-    stays raw db, and the DDB keeps the zero Service_Table fields rather than a broken reference).
+    per service, each a fixup to that service's handler. Returns (names, (obj, off, count), extra):
 
-    Emitted (see emit_idiomatic) as `Begin_Service_Table <name>` / `<name>_Service <handler>, LOCAL`
-    (x Size) / `End_Service_Table <name>`, with `Create_<name>_Service_Table` set so Declare_Virtual_
-    Device fills the DDB's Service_Table_Ptr/Size correctly. Every service is forced LOCAL: the DDK
-    INC marks a few services non-LOCAL (they lived in a separately-linked object and are EXTRN'd), but
-    in this single-file reconstruction every handler IS local, so LOCAL is both correct and avoids the
-    EXTRN-vs-definition collision."""
+    - names[i] is service i's own DDK name (or 'RESERVED' for a null slot). It is taken per INDEX, not
+      from the handler's disasm label, so several services that SHARE one handler routine (retail stubs
+      many debug services onto Out_Debug_String) each keep their distinct name instead of colliding.
+    - extra maps a handler offset -> the service names to emit as EXTRA labels there (those that are
+      not already the disasm label at that offset), so `<name>_Service <svc>` resolves for every one.
+    - the tuple locates the raw table bytes so the object walk can skip them.
+
+    Returns (None, None, None) if there is no table, a handler landed mid-instruction (the pointer and a
+    branch disagreed on alignment -> stays raw db, DDB keeps the zero fields), or two services carry the
+    genuinely identical name. Emitted (see emit_idiomatic) as `Begin_Service_Table` / `<name>_Service
+    <svc>, LOCAL` / `End_Service_Table` with `Create_<name>_Service_Table` so Declare_Virtual_Device
+    fills the DDB Service_Table_Ptr/Size. Every service is forced LOCAL: the DDK INC marks a few non-
+    LOCAL (they lived in a separately-linked object, EXTRN'd), but here every handler IS local."""
     db = D.ddb
     if not db:
-        return None, None
+        return None, None, None
     obj = db["obj"]
     code = D.code[obj]
     r = db["rva"]
     ptr = int.from_bytes(code[r + 0x30:r + 0x34], "little")
     count = int.from_bytes(code[r + 0x34:r + 0x38], "little")
-    if not (ptr and 0 < count < 4000 and ptr + 4 * count <= len(code)):
-        return None, None
-    labels = []
-    seen = set()
+    if not (ptr and 0 < count < 8192 and ptr + 4 * count <= len(code)):
+        return None, None, None
+    from engine.inverse_engine.vxd_asm import VXD_DEVICES
+    devname = VXD_DEVICES.get(db["device_id"])
+    svc = vxd_services.load()
+    names = []
+    extra = {}
+    used = set()
     for i in range(count):
         f = D.fx.get((obj, ptr + 4 * i))
-        if f:
-            tgt = (f["obj"], f["target"])
-            lbl = D.labels.get(tgt)
-            if not lbl or lbl in seen or tgt not in emittable:   # unlabelled, shared by two services
-                return None, None                                #  (double-defines _<lbl>), or lands
-            seen.add(lbl)                                        #  mid-instruction -> keep the raw db
-            labels.append(lbl)
-        elif int.from_bytes(code[ptr + 4 * i:ptr + 4 * i + 4], "little") == 0:
-            labels.append("RESERVED")             # genuine null slot -> macro emits dd 0
-        else:
-            return None, None                     # non-zero without a fixup -> unexpected, keep raw
-    return labels, (obj, ptr, count)
+        if not f:
+            if int.from_bytes(code[ptr + 4 * i:ptr + 4 * i + 4], "little") == 0:
+                names.append("RESERVED")          # genuine null slot -> macro emits dd 0
+                continue
+            return None, None, None               # non-zero without a fixup -> unexpected, keep raw
+        tgt = (f["obj"], f["target"])
+        if tgt not in emittable:                  # handler left mid-instruction -> can't be labelled
+            return None, None, None
+        nm = (svc.name(devname, i) if devname else None) or "%s_Service_%03d" % (db["name"], i)
+        if nm in used:                            # two services with the identical name -> bail
+            return None, None, None
+        used.add(nm)
+        names.append(nm)
+        if nm != D.labels.get(tgt):               # emit nm as an extra label at the handler unless it
+            extra.setdefault(tgt, []).append(nm)  #  already IS the disasm label there
+    return names, (obj, ptr, count), extra
 
 
 def _branch_label(D, oi, a, row, emittable):
@@ -353,8 +363,9 @@ def emit_idiomatic(D):
     if db:                                                    # the DDB struct is re-emitted by the
         cp_skip |= {(db["obj"], k)                            #  top-level Declare_Virtual_Device, so
                     for k in range(db["rva"], db["rva"] + _ddb_size(D, db))}   # skip it in the walk
-    svc_labels, svc_loc = service_table(D, emittable - cp_skip)   # own exported service table; handlers
-    if svc_loc:                                                   #  must be emitted, not in a skip region
+    svc_labels, svc_loc, svc_extra = service_table(D, emittable - cp_skip)   # own exported service table;
+    svc_extra = svc_extra or {}                                   #  handlers must be emitted, not skipped
+    if svc_loc:
         so, sp, sc = svc_loc                                  # skip the raw service-table pointers;
         cp_skip |= {(so, k) for k in range(sp, sp + 4 * sc)}  #  Begin_Service_Table re-emits them
     # .586p (privileged, superset of .386p) so ring-0 486/Pentium ops -- invd/wbinvd/cpuid/cmpxchg/
@@ -406,6 +417,8 @@ def emit_idiomatic(D):
             if (oi, a) in cp_skip:                          # rest of the control proc / dispatch
                 a += 1                                      #  table is generated by the macros above
                 continue
+            for xnm in svc_extra.get((oi, a), ()):         # extra service-name labels: several services
+                L.append("%s:" % xnm)                      #  may share one handler routine
             lbl = D.labels.get((oi, a))
             if lbl and lbl.startswith(("sub_", name + "_")) and not lbl.endswith("_Control"):
                 if cur_proc:
@@ -417,8 +430,8 @@ def emit_idiomatic(D):
             row = D.insns.get((oi, a))
             if row is None:                                # data
                 b = a
-                while b < n and (oi, b) not in D.insns and (b == a or not D.labels.get((oi, b))) \
-                        and (oi, b) not in cp_skip:
+                while b < n and (oi, b) not in D.insns and (oi, b) not in cp_skip \
+                        and (b == a or (not D.labels.get((oi, b)) and (oi, b) not in svc_extra)):
                     b += 1
                 for i in range(a, b, 16):
                     L.append(_db(code[i:min(i + 16, b)]))

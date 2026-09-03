@@ -216,9 +216,14 @@ class VxDDisasm:
         if st and st["kind"] == "internal":
             base = st["target"]; boi = st["obj"]
             cnt = 0
-            for j in range(256):                           # walk the dword-fixup run
+            size = int.from_bytes(s.code[oi][db["rva"] + DDB_SERVICE_SIZE:
+                                             db["rva"] + DDB_SERVICE_SIZE + 4], "little")
+            known = 0 < size <= 8192                        # DDB_Service_Table_Size is authoritative
+            for j in range(size if known else 4096):        # (VMM has 406; a fixed 256 cap dropped 256+)
                 e = s.fsite(boi, base + j * 4)
-                if not (e and e["kind"] == "internal"):
+                if not (e and e["kind"] == "internal"):     # a reserved slot (dd 0, no fixup): with a
+                    if known:                               # known size skip it and keep going, else the
+                        cnt += 1; continue                  # first gap marks the end of the run
                     break
                 if s.objs.get(e["obj"], {}).get("exec"):
                     seeds.append((e["obj"], e["target"]))
@@ -249,6 +254,8 @@ class VxDDisasm:
                 if code[a] == 0xCD and a + 5 < n and code[a + 1] == 0x20:
                     if not s._free(oi, a, 6):
                         break
+                    if s.entries and any((oi, a + k) in s.entries for k in range(1, 6)):
+                        break                               # must not span a service/DDB entry point
                     imp = s.fsite(oi, a + 2)
                     if imp and imp["kind"] == "import":
                         dev, svc, via = imp["module"], imp["ordinal"], "import"
