@@ -37,7 +37,6 @@ def g_bufread(ctx):
     Holes: buffer size, read type/expr, return-flow, out-pointer width. This ONE grammar
     covers both seg11:0x7f4 (2-byte WORD) and seg11:0x830 (4-byte long) hand-fixes."""
     word_reads = ["b[0]|(b[1]<<8)", "*(unsigned*)b"]
-    long_read = ("long v; v=b[3]; v=(v<<8)+b[2]; v=(v<<8)+b[1]; v=(v<<8)+b[0];", "v")
     # 2-byte WORD variant
     for bufsz, rd, flow in itertools.product((2, 4), word_reads, ("if", "early")):
         if flow == "if":
@@ -45,14 +44,13 @@ def g_bufread(ctx):
         else:
             body = "unsigned char b[%d]; if (!SIB(p,(char far*)b,2)) return 0; *out=%s; return 0xffff;" % (bufsz, rd)
         yield "extern int far SIB();\nint far F(int p, unsigned *out){ %s }" % body
-    # 4-byte long variant
+    # 4-byte long variant: declare `long v`, then build it AFTER the buffer is filled
+    build = "v=b[3]; v=(v<<8)+b[2]; v=(v<<8)+b[1]; v=(v<<8)+b[0];"
     for bufsz, flow in itertools.product((4, 6), ("if", "early")):
-        pre, expr = long_read
         if flow == "if":
-            body = "unsigned char b[%d]; %s if (SIB(p,(char far*)b,4)){ *out=%s; return 0xffff; } return 0;" % (bufsz, pre, expr)
-            body = "unsigned char b[%d]; if (SIB(p,(char far*)b,4)){ %s *out=%s; return 0xffff; } return 0;" % (bufsz, pre, expr)
+            body = "unsigned char b[%d]; long v; if (SIB(p,(char far*)b,4)){ %s *out=v; return 0xffff; } return 0;" % (bufsz, build)
         else:
-            body = "unsigned char b[%d]; %s if (!SIB(p,(char far*)b,4)) return 0; v=b[3]; v=(v<<8)+b[2]; v=(v<<8)+b[1]; v=(v<<8)+b[0]; *out=v; return 0xffff;" % (bufsz, pre)
+            body = "unsigned char b[%d]; long v; if (!SIB(p,(char far*)b,4)) return 0; %s *out=v; return 0xffff;" % (bufsz, build)
         yield "extern int far SIB();\nint far F(int p, long *out){ %s }" % body
 
 
