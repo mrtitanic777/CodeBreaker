@@ -160,6 +160,33 @@ def sweep(binary, gaplog, root, commit=False, limit=None):
     return stats
 
 
+def harvest(binary, root):
+    """Bank the SOLVED C functions of a module: verify every msc6dec-inverted candidate against
+    its frame-matched oracle (via oracle_router) and store the byte-exact ones in Level-0. This
+    complements sweep(), which synthesizes DECLINED gaps -- harvest banks what the decompiler
+    already produced and the router can prove. Seg-switch thunks are handled by seg_thunk, so
+    they never reach here (they are tagged asm-origin, not 'inverted')."""
+    from engine.sdk import reconstruct as R
+    from engine.inverse_engine import oracle_router as router
+    db = DB(root)
+    rep = R.analyze(binary)
+    items = []
+    for sg in rep["segments"]:
+        for fn in sg["funcs"]:
+            if fn.get("status") == "inverted" and "bytes" in fn and "c" in fn:
+                items.append((bytes.fromhex(fn["bytes"]), fn["c"], sg["idx"], fn["off"]))
+    banked = 0
+    results = router.byte_exact_batch([(fb, c) for fb, c, _s, _o in items])
+    for (fb, c, sgi, off), r in zip(items, results):
+        if r.get("exact"):
+            db.bank(signature(fb), c); banked += 1
+            print("  BANK seg%d:0x%-4x via %s (%s)" % (sgi, off, r["oracle"], r.get("recipe", "")))
+    db.save()
+    print("== harvest %s ==  inverted=%d  banked byte-exact=%d" % (
+        os.path.basename(binary), len(items), banked))
+    return {"inverted": len(items), "banked": banked}
+
+
 def main(argv):
     if not argv:
         print(__doc__); return 2
@@ -167,7 +194,10 @@ def main(argv):
     root = argv[argv.index("--db") + 1] if "--db" in argv else os.path.join(HERE, "_sweepdb")
     os.makedirs(root, exist_ok=True)
     lim = int(argv[argv.index("--limit") + 1]) if "--limit" in argv else None
-    sweep(argv[0], gaplog, root, commit="--commit" in argv, limit=lim)
+    if "--harvest" in argv:
+        harvest(argv[0], root)
+    else:
+        sweep(argv[0], gaplog, root, commit="--commit" in argv, limit=lim)
     return 0
 
 
