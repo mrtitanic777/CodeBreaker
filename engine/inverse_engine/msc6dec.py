@@ -101,6 +101,22 @@ class Dec:
             return len(s.md)
         return j
 
+    def _resolve_jmp(s, addr):
+        """Follow a chain of unconditional `jmp`s to its ultimate target address. Unoptimized
+        codegen threads every `return` through jumps that hop to the shared epilogue via one
+        or more intermediate `jmp`s, so a `jmp` whose chain ends at the epilogue IS a return."""
+        seen = set()
+        while addr not in seen:
+            seen.add(addr)
+            ti = s.a2i.get(addr)
+            if ti is None or ti >= len(s.md):
+                return addr
+            ins = s.md[ti]
+            if ins.mnemonic == "jmp" and ins.op_str.startswith("0x"):
+                addr = int(ins.op_str, 16); continue
+            return addr
+        return addr
+
     def cond_of(s, test, jcc_op, reg):
         """(test insn, jcc opcode) -> C condition string (the INVERSE of the skip-jcc)."""
         cc = JCC_INV[jcc_op]
@@ -411,27 +427,53 @@ class Dec:
                 if bm is not None:
                     R, expr, J = bm
                     reg[R] = expr; i = J; continue
-            # branch: (or r,r | cmp ..) followed by jcc
+            # branch: (or r,r | cmp ..) followed by jcc -> if / if-else
             if i + 1 < hi and s.md[i+1].mnemonic in ("jne", "je", "jl", "jge", "jle", "jg") \
                     and mn in ("or", "cmp"):
-                jcc = s.md[i+1]; cond = s.cond_of(ins, jcc.bytes[0], reg)
-                if cond is None:
-                    return None
+                jcc = s.md[i+1]; jop = jcc.bytes[0]
                 skip_i = s._ti(int(jcc.op_str, 16))
                 if skip_i is None or skip_i <= i:
                     s.fail = "backward branch (goto): %s" % ops
                     return None                              # backward jcc = goto/loop, not an if
-                # then-block is [i+2 : skip_i]; it may end in `jmp end` (a return path)
-                then = s.walk(i + 2, skip_i, dict(reg))
+                # If the then-block ends in a FORWARD `jmp L2` to a MID-function label (strictly
+                # before the epilogue), that jmp is the else-skip: then=[i+2:jmp], else=[skip_i:L2],
+                # both join at L2. A `jmp` to the epilogue is a return and stays in the then-block
+                # (walk() renders it), so exclude L2==len(md).
+                els = None; cont = skip_i; then_end = skip_i; jx = skip_i - 1
+                if jx > i + 1 and s.md[jx].mnemonic == "jmp" and s.md[jx].op_str.startswith("0x"):
+                    l2 = s._ti(int(s.md[jx].op_str, 16))
+                    if l2 is not None and skip_i < l2 < len(s.md):
+                        then_end = jx; els = (skip_i, l2); cont = l2
+                then = s.walk(i + 2, then_end, dict(reg))
                 if then is None:
+                    return None
+                if els is not None and not then:
+                    # empty then before the else-jmp = a lone jcc-over-jmp long conditional;
+                    # emit it as the DIRECT-condition `if` with the else-block as its body.
+                    cond = s.cond_of(ins, _JCC_OPP.get(jop, jop), reg)
+                    body = s.walk(els[0], els[1], dict(reg))
+                    if cond is None or body is None:
+                        return None
+                    out.append("if (%s) {" % cond)
+                    out += ["    " + t for t in body]
+                    out.append("}")
+                    i = cont; continue
+                cond = s.cond_of(ins, jop, reg)
+                if cond is None:
                     return None
                 out.append("if (%s) {" % cond)
                 out += ["    " + t for t in then]
+                if els is not None:
+                    eb = s.walk(els[0], els[1], dict(reg))
+                    if eb is None:
+                        return None
+                    out.append("} else {")
+                    out += ["    " + t for t in eb]
                 out.append("}")
-                reg = reg; i = skip_i; continue
-            # jmp to the epilogue after ax set == a return of ax's value
+                i = cont; continue
+            # jmp to the epilogue (directly or via a jmp-chain) after ax set == return ax
             if mn == "jmp":
-                tgt = int(ops, 16)
+                tgt = s._resolve_jmp(int(ops, 16))
                 if tgt >= s.end and "ax" in reg:
                     out.append("return %s;" % reg["ax"])
                 i += 1; continue
