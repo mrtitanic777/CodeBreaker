@@ -16,6 +16,13 @@ _MD = Cs(CS_ARCH_X86, CS_MODE_16)
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from engine.inverse_engine.msc6fn import _mask, PROLOGUE, EPI
 
+# The far-loadds prologue ships in two encodings that differ only in how DS reaches AX:
+# PROLOGUE is `push ds;pop ax` (1e58), this variant is `mov ax,ds` (8cd8). Both are 2 bytes
+# and leave DS in AX with no other effect, so the frame is byte-identical from offset 2 on
+# (same 90 45 55 8bec 1e 8ed8), the same length, and the same far epilogue -- invert() can
+# treat the two interchangeably by just skipping the right prologue.
+PROLOGUE_MOVDS = bytes.fromhex("8cd89045558bec1e8ed8")
+
 JCC_INV = {0x74: "!=", 0x75: "==", 0x7c: ">=", 0x7d: "<", 0x7e: ">", 0x7f: "<="}
 
 
@@ -718,9 +725,12 @@ class Dec:
 def invert(code, imports=None, syms=None, rtype="int", params=None, nearmap=None, func_base=0):
     imports = imports or {}
     b = bytes(code)
-    if not b.startswith(PROLOGUE):
+    if b.startswith(PROLOGUE):
+        p = len(PROLOGUE)
+    elif b.startswith(PROLOGUE_MOVDS):                # mov-ax,ds encoding: identical frame after
+        p = len(PROLOGUE_MOVDS)                       # the DS load, same length, same epilogue
+    else:
         return None, "prologue miss"
-    p = len(PROLOGUE)
     if b[p:p+2] == b"\x83\xec":
         p += 3
     while b[p:p+1] in (b"\x57", b"\x56"):
