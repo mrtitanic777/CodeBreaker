@@ -11843,8 +11843,8 @@
     "match": true,
     "ok": true,
     "len": 64944,
-    "symbolic": 20947,
-    "forced_raw": 607,
+    "symbolic": 20766,
+    "forced_raw": 598,
     "raw_fallback": false,
     "diffs": 0,
     "err": null
@@ -11887,8 +11887,8 @@
     "match": true,
     "ok": true,
     "len": 60952,
-    "symbolic": 11134,
-    "forced_raw": 1122,
+    "symbolic": 11138,
+    "forced_raw": 1119,
     "raw_fallback": false,
     "diffs": 0,
     "err": null
@@ -11898,8 +11898,8 @@
     "match": true,
     "ok": true,
     "len": 31860,
-    "symbolic": 6293,
-    "forced_raw": 31,
+    "symbolic": 6283,
+    "forced_raw": 33,
     "raw_fallback": false,
     "diffs": 0,
     "err": null
@@ -12063,7 +12063,7 @@
     "match": true,
     "ok": true,
     "len": 508,
-    "symbolic": 171,
+    "symbolic": 170,
     "forced_raw": 6,
     "raw_fallback": false,
     "diffs": 0,
@@ -12072,9 +12072,9 @@
   ],
   "n_obj": 21,
   "n_exact": 21,
-  "symbolic": 62369,
-  "forced_raw": 3059,
+  "symbolic": 62181,
+  "forced_raw": 3049,
   "raw_fallback_objs": 0,
-  "seconds": 413.4
+  "seconds": 403.5
  }
 }
