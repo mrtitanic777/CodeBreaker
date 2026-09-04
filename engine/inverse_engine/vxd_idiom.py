@@ -496,11 +496,74 @@ def emit_idiomatic_tree(v, name, outdir):
     return path
 
 
+def verify_corpus(srcdir, root=".", budget=40000, only=None):
+    """Assemble every module's idiomatic source through the period DDK ML.EXE and report which fail.
+    Assemblies are BATCHED -- many modules' `ml.exe` calls run in ONE DOSBox session (one BLD.BAT),
+    grouped so each session stays under `budget` source lines (a module larger than that runs solo).
+    That turns ~215 cold DOSBox starts into ~15-45 sessions; startup, not the assembler, was the cost.
+    Returns {name: bool}. `only` limits to a set of lowercase module names."""
+    import glob
+    from engine.format_loaders import le
+    from engine.inverse_engine import vxd_masm
+    from engine.backbone.dosbox import run_dos
+    tc = vxd_masm._stage_toolchain(root)
+    incsrc = os.path.join(root, "binaries", "media", "Microsoft Windows 95 DDK", "INC32")
+    incdst = os.path.join(tc, "inc")
+    os.makedirs(incdst, exist_ok=True)
+    for f in glob.glob(incsrc + "/*.INC"):
+        dst = os.path.join(incdst, os.path.basename(f))
+        if not os.path.exists(dst):
+            __import__("shutil").copy(f, dst)
+    mods = []
+    for p in sorted(glob.glob(os.path.join(srcdir, "*.vxd")) + glob.glob(os.path.join(srcdir, "*.386"))):
+        try:
+            ms = le.open_vxds(p)
+        except Exception:
+            continue
+        for nm, v in ms:
+            k = nm.split(".")[0].lower()
+            if only and k not in only:
+                continue
+            D = VxDDisasm(v).run(); D.v = v
+            mods.append((k, emit_idiomatic(D)))
+    batches, cur, cl = [], [], 0
+    for m in sorted(mods, key=lambda x: x[1].count("\n")):
+        nl = m[1].count("\n")
+        if nl > budget:
+            batches.append([m]); continue
+        if cl + nl > budget and cur:
+            batches.append(cur); cur, cl = [], 0
+        cur.append(m); cl += nl
+    if cur:
+        batches.append(cur)
+    cmd = r"c:\ml.exe -coff -c -DBLD_COFF -DIS_32 -DMASM6 -Ic:\inc -Fo%s.obj %s.asm > %s.txt"
+    res = {}
+    for batch in batches:
+        files, bat, arts = {}, [], []
+        for i, (k, asm) in enumerate(batch):
+            fn = "m%d" % i
+            files[fn + ".asm"] = asm
+            bat.append(cmd % (fn, fn, fn))
+            arts += [fn + ".obj", fn + ".txt"]
+        tot = sum(m[1].count("\n") for m in batch)
+        _, out, _ = run_dos({"c": tc}, bat, arts, files=files, timeout=min(600, 40 + tot // 100))
+        for i, (k, asm) in enumerate(batch):
+            res[k] = bool(out.get("m%d.obj" % i))
+    return res
+
+
 if __name__ == "__main__":
     import sys
     from engine.format_loaders import le
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    if args and (args[0].endswith(".vxd") or args[0].endswith(".386")) and len(args) < 2:
+    if "--verify" in sys.argv:                               # batched assemble-through-ML check
+        srcdir = args[0] if args else "binaries/win95/oracle"
+        res = verify_corpus(srcdir)
+        bad = sorted(k for k, ok in res.items() if not ok)
+        print("== idiomatic assembly: %d/%d clean ==" % (sum(res.values()), len(res)))
+        if bad:
+            print("FAILED:", bad)
+    elif args and (args[0].endswith(".vxd") or args[0].endswith(".386")) and len(args) < 2:
         v = le.LEFile.from_file(args[0])                       # single-file preview to stdout
         D = VxDDisasm(v).run(); D.v = v
         print(emit_idiomatic(D)[:1600])
