@@ -24,6 +24,8 @@ import os
 import re
 import shutil
 import struct
+import subprocess
+import tempfile
 
 from engine.inverse_engine.vxd_asm import VxDDisasm
 from engine.backbone.dosbox import run_dos
@@ -281,9 +283,68 @@ def assemble(masm_text, root):
     return (out.get("m.obj"), log)
 
 
+# --- Native MASM-compatible assembler (nasm --masm) -------------------------
+# When a MASM-compatible nasm is installed it drives the byte-exact convergence
+# natively -- no DOSBox/ML round-trip -- typically 10-20x faster, and it matches
+# the shipped Win95 bytes even on the SIB base/index orderings where ML 6.11c
+# differs (so it byte-preserves FEWER instructions than ML). Point NASM_MASM at
+# its executable, or put a `nasm` supporting `--masm` on PATH. When none is found
+# the code transparently falls back to ML.EXE under DOSBox.
+# Build/install instructions: docs/NATIVE_ASSEMBLER.md.
+_NASM_PROBE = "bits 32\r\n mov eax, ebx\r\n"
+_nasm_cache = None
+
+
+def find_nasm():
+    """Path to a `--masm`-capable nasm, or None if none is installed. Probed once and cached; set
+    the environment variable NASM_MASM to force a specific build."""
+    global _nasm_cache
+    if _nasm_cache is not None:
+        return _nasm_cache or None
+    for cand in (os.environ.get("NASM_MASM"), shutil.which("nasm-masm"), shutil.which("nasm")):
+        if not cand:
+            continue
+        try:
+            wd = tempfile.mkdtemp()
+            ap = os.path.join(wd, "p.asm"); op = os.path.join(wd, "p.obj")
+            open(ap, "w", newline="\r\n").write(_NASM_PROBE)
+            subprocess.run([cand, "--masm", "-f", "win32", ap, "-o", op],
+                           capture_output=True, timeout=30)
+            ok = os.path.exists(op) and os.path.getsize(op) > 0     # --masm accepted + emitted COFF
+            shutil.rmtree(wd, ignore_errors=True)
+            if ok:
+                _nasm_cache = cand
+                return cand
+        except Exception:
+            pass
+    _nasm_cache = ""                                                # probed, unavailable -> ML fallback
+    return None
+
+
+def _assemble_coff_nasm(masm_text, nasm):
+    """Assemble one MASM text to a COFF object with nasm --masm. Returns (obj_bytes, log)."""
+    wd = tempfile.mkdtemp()
+    ap = os.path.join(wd, "m.asm"); op = os.path.join(wd, "m.obj")
+    open(ap, "w", newline="\r\n").write(masm_text)
+    tmo = 300 if len(masm_text) > 60000 else 120
+    try:
+        r = subprocess.run([nasm, "--masm", "-f", "win32", ap, "-o", op],
+                           capture_output=True, text=True, timeout=tmo)
+        log = (r.stderr or "") + (r.stdout or "")
+        obj = open(op, "rb").read() if os.path.exists(op) else None
+    except Exception as e:
+        obj, log = None, "nasm: %s" % e
+    finally:
+        shutil.rmtree(wd, ignore_errors=True)
+    return obj, log
+
+
 def assemble_coff(masm_text, root):
     """Assemble to a COFF object (so section bytes + a symbol table are available). Returns
-    (obj_bytes, log)."""
+    (obj_bytes, log). Uses nasm --masm natively when installed, else ML.EXE under DOSBox."""
+    nasm = find_nasm()
+    if nasm:
+        return _assemble_coff_nasm(masm_text, nasm)
     tc = _stage_toolchain(root)
     tmo = 300 if len(masm_text) > 60000 else 120
     ok, out, work = run_dos({"c": tc},
@@ -294,6 +355,45 @@ def assemble_coff(masm_text, root):
     if work:                                               # don't accumulate mkdtemp dirs (a corpus
         shutil.rmtree(work, ignore_errors=True)            #  run makes thousands)
     return out.get("m.obj"), log
+
+
+def assemble_coff_batch(masm_list, root, budget=300000, maxfiles=32):
+    """Assemble many MASM texts to COFF in as FEW DOSBox sessions as possible -- run_dos takes a list
+    of commands, so N `ml.exe` calls share one BLD.BAT. Texts are grouped so each session stays under
+    `budget` total chars and `maxfiles` files (a text over budget runs solo). Returns [(obj, log)]
+    aligned with masm_list. This is where a corpus's cold-start cost lives: 883 objects' first pass
+    becomes a few dozen sessions instead of 883. With native nasm there is no cold start, so each
+    text is assembled directly and the batching below is only used for the ML/DOSBox fallback."""
+    nasm = find_nasm()
+    if nasm:
+        return [_assemble_coff_nasm(m, nasm) for m in masm_list]
+    tc = _stage_toolchain(root)
+    results = [(None, "")] * len(masm_list)
+    batches, cur, cl = [], [], 0
+    for i in sorted(range(len(masm_list)), key=lambda k: len(masm_list[k])):
+        sz = len(masm_list[i])
+        if sz > budget:
+            batches.append([i]); continue
+        if cur and (cl + sz > budget or len(cur) >= maxfiles):
+            batches.append(cur); cur, cl = [], 0
+        cur.append(i); cl += sz
+    if cur:
+        batches.append(cur)
+    for batch in batches:
+        files, bat, arts = {}, [], []
+        for j, idx in enumerate(batch):
+            fn = "m%d" % j
+            files[fn + ".asm"] = masm_list[idx]
+            bat.append("c:\\ml.exe -coff -c -Fo%s.obj %s.asm > %s.txt" % (fn, fn, fn))
+            arts += [fn + ".obj", fn + ".txt"]
+        tot = sum(len(masm_list[i]) for i in batch)
+        _, out, work = run_dos({"c": tc}, bat, arts, files=files, timeout=min(600, 90 + tot // 400))
+        for j, idx in enumerate(batch):
+            log = out.get("m%d.txt" % j, b"")
+            results[idx] = (out.get("m%d.obj" % j), log.decode("latin1", "replace") if log else "")
+        if work:
+            shutil.rmtree(work, ignore_errors=True)
+    return results
 
 
 def coff_text_syms(obj):
@@ -333,20 +433,26 @@ def coff_text_syms(obj):
     return text, syms
 
 
-_ERRLINE = re.compile(r"m\.asm\((\d+)\)\s*:\s*(?:error|fatal)", re.I)
+_ERRLINE = re.compile(r"m\d*\.asm[:(](\d+)\)?:?\s*(?:error|fatal)", re.I)   # ML m.asm(N): / m<N>.asm / nasm m.asm:N:
 
 
-def _converge_range(D, oi, root, lo, hi, oracle, max_repair):
+def _converge_range(D, oi, root, lo, hi, oracle, max_repair, first=None):
     """Drive one offset-range [lo,hi) of an object to a byte-exact assembly via probe labels. A
     branch leaving the range is byte-preserved (its target label is in another file). Returns
     {sym, raw, match, force, text} where text is the range's assembled bytes (== oracle[lo:hi] when
-    exact)."""
+    exact). `first`=(obj, log, linemap) seeds iteration 0 with an already-assembled first pass (its
+    force MUST be the initial cross_range_force) -- so a caller can batch every range's first pass in
+    one DOSBox and hand the result here; the repair passes, which depend on the previous, assemble
+    normally."""
     offs = [a for (o, a) in D.insns if o == oi and lo <= a < hi]
     inrange = set(offs)
     force = cross_range_force(D, oi, lo, hi)               # branches out of the range -> byte-preserve
-    for _ in range(max_repair):
-        masm, linemap = emit_object_masm(D, oi, force_raw=force, probe=True, crange=(lo, hi))
-        obj, log = assemble_coff(masm, root)
+    for it in range(max_repair):
+        if it == 0 and first is not None:
+            obj, log, linemap = first                     # batched first pass (assembled with `force`)
+        else:
+            masm, linemap = emit_object_masm(D, oi, force_raw=force, probe=True, crange=(lo, hi))
+            obj, log = assemble_coff(masm, root)
         if not obj:
             bad = {linemap[int(m.group(1))] for m in _ERRLINE.finditer(log) if int(m.group(1)) in linemap}
             if not bad or bad <= force:
@@ -407,22 +513,56 @@ def compare_object(v, oi, root=".", max_repair=8, max_ins=6000):
             "n_files": len(ranges), "_asm": asm[:len(oracle)], "_oracle": oracle, "D": D}
 
 
-def compare_module(v, root="."):
-    """Assemble-and-compare every executable object of a VxD. Returns per-object reports plus a
-    module verdict: byte-exact iff every executable object rebuilds byte-for-byte."""
+def compare_module(v, root=".", max_repair=8, max_ins=6000):
+    """Assemble-and-compare every executable object of a VxD. The FIRST assembly pass of every range
+    (of every object) is batched into as few DOSBox sessions as possible (assemble_coff_batch); only
+    ranges that do not converge on that first pass take further, per-range repair assemblies. Since
+    most ranges are byte-exact on the first pass, this turns a module's dozens of cold DOSBox starts
+    into a couple. Returns per-object reports + a module verdict (byte-exact iff every exec object
+    rebuilds byte-for-byte)."""
+    D = VxDDisasm(v).run()
+    root = os.path.abspath(root)
+    ranges = []                                            # (oi, lo, hi, oracle, linemap)
+    masms = []                                             # each range's first-pass (probe) MASM
+    for o in v.objects:
+        if not o["exec"]:
+            continue
+        oi = o["idx"]
+        oracle = D.code[oi]
+        offs = sorted(a for (oo, a) in D.insns if oo == oi)
+        rr = [(0, len(oracle))] if len(offs) <= max_ins else split_ranges(D, oi, max_ins)
+        for lo, hi in rr:
+            force0 = cross_range_force(D, oi, lo, hi)
+            masm, linemap = emit_object_masm(D, oi, force_raw=force0, probe=True, crange=(lo, hi))
+            ranges.append((oi, lo, hi, oracle, linemap))
+            masms.append(masm)
+    firsts = assemble_coff_batch(masms, root)              # batched first pass
+    per_obj = {}
+    for (oi, lo, hi, oracle, linemap), (obj, log) in zip(ranges, firsts):
+        res = _converge_range(D, oi, root, lo, hi, oracle, max_repair, first=(obj, log, linemap))
+        per_obj.setdefault(oi, []).append(res)
     reports = []
     for o in v.objects:
         if not o["exec"]:
             continue
-        r = compare_object(v, o["idx"], root=root)
-        r["obj"] = o["idx"]
-        reports.append(r)
-    allok = all(r.get("ok") and r.get("match") for r in reports)
-    sym = sum(r.get("symbolic_insns", 0) for r in reports if r.get("ok"))
-    raw = sum(r.get("forced_raw", 0) for r in reports if r.get("ok"))
-    fb = sum(1 for r in reports if r.get("raw_fallback"))
-    return {"byte_exact": allok, "objects": reports, "symbolic": sym, "forced_raw": raw,
-            "raw_fallback_objs": fb}
+        oi = o["idx"]
+        oracle = D.code[oi]
+        parts = per_obj.get(oi, [])
+        sym = sum(p["sym"] for p in parts)
+        raw = sum(p["raw"] for p in parts)
+        match = all(p["match"] for p in parts) if parts else True
+        asm = b"".join(p["text"] for p in parts)
+        fr_all = set().union(*[p["force"] for p in parts]) if parts else set()
+        reports.append({"ok": True, "obj": oi, "match": match, "oracle_len": len(oracle),
+                        "asm_len": len(asm), "n_diffs": 0 if match else 1, "symbolic_insns": sym,
+                        "forced_raw": raw, "force_raw_set": fr_all, "n_files": len(parts),
+                        "raw_fallback": sym == 0 and (sym + raw) > 0, "_asm": asm[:len(oracle)],
+                        "_oracle": oracle})
+    allok = all(r["match"] for r in reports)
+    return {"byte_exact": allok, "objects": reports,
+            "symbolic": sum(r["symbolic_insns"] for r in reports),
+            "forced_raw": sum(r["forced_raw"] for r in reports),
+            "raw_fallback_objs": sum(1 for r in reports if r["raw_fallback"])}
 
 
 if __name__ == "__main__":
