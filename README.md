@@ -59,7 +59,8 @@ configured — a green dot means ready.
 
 **Building the bundled NASM.** The MASM-matching assembler lives in `tools/nasm-masm/` as source.
 Build it (`sh autogen.sh && ./configure && make`, or `nmake -f Mkfiles/msvc.mak`) and point
-`config.json`'s `nasm` at the resulting `nasm` executable.
+`config.json`'s `nasm` at the resulting `nasm` executable. It lets the byte-exact rebuild run
+natively (no DOSBox), ~10–20× faster — see [`docs/NATIVE_ASSEMBLER.md`](docs/NATIVE_ASSEMBLER.md).
 
 **The vintage Microsoft compilers.** These are decades-old Microsoft products and are **not**
 distributed with CodeBreaker — use a copy you are licensed to use. For preservation they are

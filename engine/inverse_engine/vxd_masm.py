@@ -287,22 +287,36 @@ def assemble(masm_text, root):
 # When a MASM-compatible nasm is installed it drives the byte-exact convergence
 # natively -- no DOSBox/ML round-trip -- typically 10-20x faster, and it matches
 # the shipped Win95 bytes even on the SIB base/index orderings where ML 6.11c
-# differs (so it byte-preserves FEWER instructions than ML). Point NASM_MASM at
-# its executable, or put a `nasm` supporting `--masm` on PATH. When none is found
-# the code transparently falls back to ML.EXE under DOSBox.
+# differs (so it byte-preserves FEWER instructions than ML). It is resolved from
+# config.json's `nasm` (the bundled tools/nasm-masm build; the repo convention),
+# then the NASM_MASM env override, then a `nasm-masm`/`nasm` on PATH. When none
+# qualifies the code transparently falls back to ML.EXE under DOSBox.
 # Build/install instructions: docs/NATIVE_ASSEMBLER.md.
-_NASM_PROBE = "bits 32\r\n mov eax, ebx\r\n"
+#
+# The probe assembles a mixed-case PUBLIC and checks it survives verbatim in the
+# object: the convergence locates drift by `public Q<off>` symbols, so a nasm
+# that folds public case (older --masm builds did) is rejected here rather than
+# silently failing every lookup.
+_NASM_PROBE = "bits 32\r\nglobal Q7X\r\nQ7X:\r\n mov eax, ebx\r\n"
 _nasm_cache = None
 
 
 def find_nasm():
-    """Path to a `--masm`-capable nasm, or None if none is installed. Probed once and cached; set
-    the environment variable NASM_MASM to force a specific build."""
+    """Path to a `--masm`-capable, public-case-preserving nasm, or None. Resolution order:
+    config.json `nasm`, then the NASM_MASM env var, then `nasm-masm`/`nasm` on PATH. Probed once
+    (accepts --masm, emits COFF, keeps public case) and cached. See docs/NATIVE_ASSEMBLER.md."""
     global _nasm_cache
     if _nasm_cache is not None:
         return _nasm_cache or None
-    for cand in (os.environ.get("NASM_MASM"), shutil.which("nasm-masm"), shutil.which("nasm")):
-        if not cand:
+    cands = []
+    try:
+        from engine.foundation import config
+        cands.append(config.load_config().get("nasm"))          # config.json (repo convention; absolute)
+    except Exception:
+        pass
+    cands += [os.environ.get("NASM_MASM"), shutil.which("nasm-masm"), shutil.which("nasm")]
+    for cand in cands:
+        if not cand or not os.path.exists(cand):
             continue
         try:
             wd = tempfile.mkdtemp()
@@ -310,9 +324,9 @@ def find_nasm():
             open(ap, "w", newline="\r\n").write(_NASM_PROBE)
             subprocess.run([cand, "--masm", "-f", "win32", ap, "-o", op],
                            capture_output=True, timeout=30)
-            ok = os.path.exists(op) and os.path.getsize(op) > 0     # --masm accepted + emitted COFF
+            obj = open(op, "rb").read() if os.path.exists(op) else b""
             shutil.rmtree(wd, ignore_errors=True)
-            if ok:
+            if obj and b"Q7X" in obj:      # --masm accepted, COFF emitted, public case PRESERVED (ML-like)
                 _nasm_cache = cand
                 return cand
         except Exception:
