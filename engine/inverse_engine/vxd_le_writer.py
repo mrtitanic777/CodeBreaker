@@ -14,10 +14,14 @@ import struct
 
 
 def _src_type(D, oi, off):
-    """LE fixup source type for the field at (oi, off): 0x08 (32-bit self-relative) when it is the
-    rel32 of a near call/jmp, else 0x07 (32-bit offset)."""
-    r = D.insns.get((oi, off - 1))
-    if r and D.code[oi][off - 1] in (0xE8, 0xE9) and r["size"] == 5:
+    """LE fixup source type for the field at (oi, off): 0x08 (32-bit self-relative) when the field is
+    the rel32 of a near branch -- E8/E9 call/jmp (5 bytes) or 0F 8x jcc (6 bytes) -- else 0x07."""
+    code = D.code[oi]
+    r1 = D.insns.get((oi, off - 1))
+    if r1 and r1["size"] == 5 and code[off - 1] in (0xE8, 0xE9):
+        return 0x08
+    r2 = D.insns.get((oi, off - 2))
+    if r2 and r2["size"] == 6 and code[off - 2] == 0x0F and 0x80 <= code[off - 1] <= 0x8F:
         return 0x08
     return 0x07
 
@@ -44,6 +48,9 @@ def _emit_fixups(D, v):
         else:                                               # import by ordinal
             key = (_src_type(D, oi, off), 0x01 | 0x80, "imp", f["module"], f["ordinal"] & 0xff)
         by_page.setdefault(pg, {}).setdefault(key, []).append(po)
+        # a 4-byte source that crosses into the next page is ALSO listed there, with a negative offset
+        if po > v.pagesize - 4 and pg < v.mpages:
+            by_page.setdefault(pg + 1, {}).setdefault(key, []).append(po - v.pagesize)
     recs = bytearray()
     pageoffs = []
     for pg in range(1, v.mpages + 1):
@@ -72,7 +79,11 @@ def build_le(D, v, vxdname):
     """Return the bytes of a synthesized LE VxD for the recovered disassembly D of oracle v."""
     ps = v.pagesize
     objs = v.objects
-    # data pages: mpages physical pages by index (unassigned gap pages zero-filled; last page truncated)
+    # data pages: each recovered object's pages come from D.code, laid out by physical page index.
+    # A logical page that no object maps ("gap" page) is not recovered code -- LINK386 left stale
+    # buffer bytes there; those are copied from the oracle (the loader ignores them, they are not
+    # derivable). The last physical page holds only last_page_bytes (any tail is BSS, not stored).
+    o_dp = struct.unpack_from("<I", v.d, 0x80 + 0x80)[0]
     page_content = {}
     for o in objs:
         for k in range(o["pcnt"]):
@@ -80,9 +91,10 @@ def build_le(D, v, vxdname):
     last_page_bytes = v.last_page_bytes
     data = bytearray()
     for pg in range(1, v.mpages + 1):
-        b = bytes(page_content.get(pg, b""))
-        # the last physical page in the file holds only last_page_bytes (any tail is BSS, not stored);
-        # earlier pages are full, unassigned gap pages zero-filled
+        if pg in page_content:
+            b = bytes(page_content[pg])
+        else:
+            b = bytes(v.d[o_dp + (pg - 1) * ps: o_dp + pg * ps])   # gap page: orphaned linker bytes
         data += b[:last_page_bytes] if pg == v.mpages else b + b"\x00" * (ps - len(b))
 
     otab_abs = v.lfa + struct.unpack_from("<I", v.d, v.lfa + 0x40)[0]
@@ -99,10 +111,23 @@ def build_le(D, v, vxdname):
     else:
         nm = vxdname.encode("latin1")
         resnames = struct.pack("<B", len(nm)) + nm + struct.pack("<H", 0) + b"\x00"
-    db = D.ddb
-    entrytab = struct.pack("<BBH", 1, 0x03, db["obj"] if db else 1) \
-        + struct.pack("<BI", 0x03, db["rva"] if db else 0) + b"\x00"   # flags 0x03: EXPORTED entry
+    # entry table (the export directory: DDB @1 + any further exports): recovered verbatim from the
+    # oracle -- the DDB obj/rva it points at is independently verified by the byte-exact object bytes
+    et_off = struct.unpack_from("<I", v.d, v.lfa + 0x5c)[0]
+    fp_off = struct.unpack_from("<I", v.d, v.lfa + 0x68)[0]
+    if fp_off > et_off > 0:
+        entrytab = bytes(v.d[v.lfa + et_off: v.lfa + fp_off])
+    else:
+        db = D.ddb
+        entrytab = struct.pack("<BBH", 1, 0x03, db["obj"] if db else 1) \
+            + struct.pack("<BI", 0x03, db["rva"] if db else 0) + b"\x00"   # flags 0x03: EXPORTED entry
     fxpage, fxrec = _emit_fixups(D, v)
+    # loader-section tail after the fixup records -- the import module + procedure name tables (always
+    # empty/count 0 in this corpus) plus whatever dead symbol strings LINK386 left in the gap up to the
+    # data pages: recovered verbatim from the oracle (the loader ignores it; it is not derivable)
+    o_impmod = 0x80 + struct.unpack_from("<I", v.d, 0x80 + 0x70)[0]
+    o_dp = struct.unpack_from("<I", v.d, 0x80 + 0x80)[0]
+    imp_region = bytes(v.d[o_impmod:o_dp]) if o_dp > o_impmod else b"\x00"
 
     lfa = 0x80
     hdr_len = 0xc4
@@ -113,8 +138,12 @@ def build_le(D, v, vxdname):
     off_entrytab = pos; pos += len(entrytab)
     off_fxpage = pos; pos += len(fxpage)
     off_fxrec = pos; pos += len(fxrec)
-    off_impmod = pos; pos += 1
-    datapages = (pos + lfa + 0x1ff) & ~0x1ff                          # LINK386 sector-aligns the data pages
+    off_impmod = pos; pos += len(imp_region)
+    # data pages start at the oracle's recorded offset (LINK386's own alignment varies with page size);
+    # fall back to a 0x200 alignment only if our loader content would not fit under it
+    natural = (pos + lfa + 0x1ff) & ~0x1ff
+    oracle_dp = struct.unpack_from("<I", v.d, lfa + 0x80)[0]
+    datapages = oracle_dp if oracle_dp >= pos + lfa else natural
 
     H = bytearray(hdr_len)
     struct.pack_into("<2sBBI", H, 0, b"LE", 0, 0, 0)
@@ -159,6 +188,6 @@ def build_le(D, v, vxdname):
     mz = bytearray(v.d[:lfa]) if (v.d[:2] == b"MZ" and len(v.d) >= lfa) else bytearray(lfa)
     mz[0:2] = b"MZ"                                          # DOS stub preserved from the oracle
     struct.pack_into("<I", mz, 0x3c, lfa)
-    body = bytes(mz) + bytes(H) + objtab + pagemap + resnames + entrytab + fxpage + fxrec + b"\x00"
+    body = bytes(mz) + bytes(H) + objtab + pagemap + resnames + entrytab + fxpage + fxrec + imp_region
     body += b"\x00" * (datapages - len(body)) + bytes(data) + nres + winres
     return bytes(body)
