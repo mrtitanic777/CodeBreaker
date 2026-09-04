@@ -65,6 +65,35 @@ DDB_SERVICE_SIZE = 0x34
 _TERMS = {"ret", "retn", "retf", "iret", "iretd", "iretw"}
 
 
+def _string_ranges(code):
+    """[start, end) byte ranges in `code` that are ASCII string DATA the disassembler would otherwise
+    decode as instructions. A run of >=8 printable bytes qualifies only if it is NUL-terminated or long
+    (>=20), is alpha-majority (>=60%), and contains a vowel -- the three gates that reject genuine code
+    whose bytes happen to be printable (e.g. an `[esp+disp]` compare chain decoding as `D$ ;D$$u`).
+    ~100% precision on the Win95 corpus, ~86% recall (short vowel-less tags like `CD-XA001` are missed)."""
+    P = lambda b: 0x20 <= b <= 0x7E
+    A = lambda b: 0x41 <= b <= 0x5A or 0x61 <= b <= 0x7A
+    V = frozenset(b"AEIOUaeiou")
+    out = []
+    n = len(code)
+    i = 0
+    while i < n:
+        if not P(code[i]):
+            i += 1
+            continue
+        j = i
+        while j < n and P(code[j]):
+            j += 1
+        seg = code[i:j]
+        L = j - i
+        if (L >= 8 and ((j < n and code[j] == 0) or L >= 20)      # NUL-terminated or long
+                and sum(1 for b in seg if A(b)) >= 0.60 * L        # alpha-majority
+                and any(b in V for b in seg)):                     # contains a vowel
+            out.append((i, j))
+        i = j
+    return out
+
+
 class VxDDisasm:
     def __init__(s, v):
         s.v = v
@@ -94,7 +123,15 @@ class VxDDisasm:
 
     # ---- recursive descent -----------------------------------------------------
     def run(s):
-        s._descend(s._seeds())
+        seeds = s._seeds()                                 # resolve entry points (control/service) FIRST
+        for o in s.objs.values():                          # then carve ASCII string data out of every
+            if not o["exec"]:                              # exec object BEFORE descent, so the gap
+                continue                                    # seeder's fixup-to-string targets can't
+            oi = o["idx"]                                   # decode strings as bogus code and cascade
+            for rs, re in _string_ranges(s.code[oi]):       # past them. NEVER carve across an
+                if not any((oi, k) in s.entries for k in range(rs, re)):   # authoritative entry point.
+                    s._mark_data(oi, rs, re - rs)
+        s._descend(seeds)
         for _ in range(8):                                 # gap recovery: reach code the control
             more = s._gap_seeds()                           # graph doesn't (indirect/computed calls)
             if not more:

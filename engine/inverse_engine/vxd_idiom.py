@@ -91,14 +91,20 @@ def service_table(D, emittable):
     if not db:
         return None, None, None
     obj = db["obj"]
-    code = D.code[obj]
     r = db["rva"]
-    ptr = int.from_bytes(code[r + 0x30:r + 0x34], "little")
-    count = int.from_bytes(code[r + 0x34:r + 0x38], "little")
-    if not (ptr and 0 < count < 8192 and ptr + 4 * count <= len(code)):
+    # Service_Table_Ptr (+0x30) is stored as a zero-addend relocation on many VxDs: the raw dword is 0
+    # and the real base lives in the fixup (exactly as _seeds resolves it via fsite). Prefer the fixup,
+    # fall back to the raw dword. The table's object may differ from the DDB's, so read Size from the
+    # DDB object and index the table in the object the fixup names.
+    st = D.fsite(obj, r + 0x30)
+    if st and st["kind"] == "internal":
+        obj, ptr = st["obj"], st["target"]
+    else:
+        ptr = int.from_bytes(D.code[obj][r + 0x30:r + 0x34], "little")
+    code = D.code[obj]
+    count = int.from_bytes(D.code[db["obj"]][r + 0x34:r + 0x38], "little")
+    if not (ptr is not None and 0 < count < 8192 and ptr + 4 * count <= len(code)):
         return None, None, None
-    from engine.inverse_engine.vxd_asm import VXD_DEVICES
-    devname = VXD_DEVICES.get(db["device_id"])
     svc = vxd_services.load()
     names = []
     extra = {}
@@ -113,7 +119,7 @@ def service_table(D, emittable):
         tgt = (f["obj"], f["target"])
         if tgt not in emittable:                  # handler left mid-instruction -> can't be labelled
             return None, None, None
-        nm = (svc.name(devname, i) if devname else None) or "%s_Service_%03d" % (db["name"], i)
+        nm = svc.name(db["name"], i) or "%s_Service_%03d" % (db["name"], i)   # key off the DDB name
         if nm in used:                            # two services with the identical name -> bail
             return None, None, None
         used.add(nm)
@@ -319,6 +325,40 @@ def _all_incs(D):
     #                                                         other device INCs invoke at include time
 
 
+def _db_data(bs, width=60):
+    """Render a DATA span readably: coalesce printable-ASCII runs (>=4 bytes) into `db 'text'` (a `'`
+    doubled, long runs wrapped at `width`), everything else as `db 0XXh, ...` (16/line). Assembles to
+    the SAME bytes as all-hex -- MASM/nasm encode 'text' as its ASCII bytes. For DATA spans only; never
+    used on byte-preserved instruction encodings (which stay `_db` hex)."""
+    out = []
+    n = len(bs)
+    i = 0
+    while i < n:
+        if 0x20 <= bs[i] <= 0x7E:                          # a printable run of >=4 -> string literal
+            j = i
+            while j < n and 0x20 <= bs[j] <= 0x7E:
+                j += 1
+            if j - i >= 4:
+                for c in range(i, j, width):
+                    txt = bytes(bs[c:min(c + width, j)]).decode("latin1").replace("'", "''")
+                    out.append("        db  '%s'" % txt)
+                i = j
+                continue
+        j = i                                              # else a hex chunk up to the next such run
+        while j < n:
+            if 0x20 <= bs[j] <= 0x7E:
+                k = j
+                while k < n and 0x20 <= bs[k] <= 0x7E:
+                    k += 1
+                if k - j >= 4:
+                    break
+            j += 1
+        for c in range(i, j, 16):
+            out.append("        db  " + ", ".join("0%02Xh" % b for b in bs[c:min(c + 16, j)]))
+        i = j
+    return out
+
+
 def emit_idiomatic(D):
     """Emit one VxD as idiomatic DDK-macro source: `include`s, `Declare_Virtual_Device`, per-segment
     `VxD_..._CODE_SEG`, the control proc as `Begin_Control_Dispatch`/`Control_Dispatch`/`End_Control_
@@ -433,8 +473,7 @@ def emit_idiomatic(D):
                 while b < n and (oi, b) not in D.insns and (oi, b) not in cp_skip \
                         and (b == a or (not D.labels.get((oi, b)) and (oi, b) not in svc_extra)):
                     b += 1
-                for i in range(a, b, 16):
-                    L.append(_db(code[i:min(i + 16, b)]))
+                L.extend(_db_data(code[a:b]))           # readable `db 'text'` for the carved strings
                 a = b
                 continue
             if row.get("vxdcall"):
