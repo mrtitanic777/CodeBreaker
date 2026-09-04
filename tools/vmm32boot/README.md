@@ -46,7 +46,12 @@ older reconstruction throws a Windows protection error during IOS init.
   `binaries/win95/oracle/` and writes reconstructions; the disk image and its contents are yours.
 - The reconstructions differ from the oracle only in the order LINK386 emitted intra-page fixup
   records — a linker artifact that does not affect loading or execution.
-- The compressed **W4** container (used on installed machines) is *not* handled here and is not
-  needed: its per-block compression is an LZSS-family scheme whose decompressor lives in the
-  real-mode loader (IO.SYS/WINBOOT), and the uncompressed-W3 + standalone-fallback route above
-  sidesteps it entirely.
+- The uncompressed-W3 + standalone-fallback route above is all you need to boot; it sidesteps the
+  compressed **W4** container installed machines actually use.
+- If you *do* want an installed machine's exact bundle, **`w4.py`** decompresses a W4 vmm32.vxd to
+  its W3 payload and lists the bundled modules: `python w4.py vmm32.vxd out.w3`. Each 8 KB page is
+  compressed with an MRCI/DoubleSpace-family bit code (literals + 6/8/12-bit-distance back-references
+  at base 0/64/320, max 4415 = end-of-page, gamma length from 2). The decompressor is the routine
+  inside the W4's *own* real-mode stub; `w4.py` locates it and runs it under the Unicorn CPU emulator,
+  so the output is Microsoft's own, bit-for-bit. (Needs `pip install unicorn`. Re-*compressing* to a
+  byte-exact W4 is unnecessary — the loader accepts an uncompressed W3.)
