@@ -49,9 +49,9 @@ def _emit_fixups(D, v):
     for (oi, start), r in D.insns.items():
         ends.setdefault(oi, set()).add(start + r["size"])
     ps = v.pagesize                                         # object bytes from its first page to the end
-    o_dp = struct.unpack_from("<I", v.d, 0x80 + 0x80)[0]    # of the data region -- covers a fixup whose
-    data_end = (struct.unpack_from("<I", v.d, 0x80 + 0x88)[0]        # offset overruns the object's own
-                or struct.unpack_from("<I", v.d, 0x80 + 0xb8)[0] or len(v.d))   # pages into a later one
+    o_dp = struct.unpack_from("<I", v.d, v.lfa + 0x80)[0]   # of the data region -- covers a fixup whose
+    data_end = (struct.unpack_from("<I", v.d, v.lfa + 0x88)[0]       # offset overruns the object's own
+                or struct.unpack_from("<I", v.d, v.lfa + 0xb8)[0] or len(v.d))  # pages into a later one
     code_of = {o["idx"]: bytes(v.d[o_dp + (o["pmidx"] - 1) * ps: data_end]) for o in v.objects}
     by_page = {}
     for (oi, off), f in D.fx.items():
@@ -225,3 +225,25 @@ def build_le(D, v, vxdname):
     if len(body) < len(v.d):                                # match the oracle's end-of-file padding
         body += bytes(v.d[len(body):])
     return bytes(body)
+
+
+def build_w3(D, v, name):
+    """Reconstruct a single-module W3 container (Win95's vmm32.vxd) from the recovered module. Unlike
+    a standalone .vxd, the embedded LE keeps its container-absolute layout at v.lfa; its OBJECT DATA
+    comes from D.code and its FIXUP records from D.fx, while the DOS stub + real-mode loader, the W3
+    header + entry, the LE header fields, the object/name tables and the version resource are the
+    container's own metadata. Byte-exact with the oracle vmm32.vxd except LINK386's intra-page fixup
+    ORDER -- the same standard as the 213 standalone modules."""
+    out = bytearray(v.d)
+    L = v.lfa
+    U = lambda o: struct.unpack_from("<I", v.d, L + o)[0]
+    ps = v.pagesize
+    datapages = U(0x80)                                     # container-absolute
+    for o in v.objects:                                     # recovered object bytes, in place
+        base = datapages + (o["pmidx"] - 1) * ps
+        cb = D.code[o["idx"]]
+        out[base:base + len(cb)] = cb
+    fxpage, fxrec = _emit_fixups(D, v)                      # fixup page + record tables rebuilt from D.fx
+    out[L + U(0x68):L + U(0x68) + len(fxpage)] = fxpage
+    out[L + U(0x6c):L + U(0x6c) + len(fxrec)] = fxrec
+    return bytes(out)
