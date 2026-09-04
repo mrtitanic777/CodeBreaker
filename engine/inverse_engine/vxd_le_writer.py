@@ -98,10 +98,23 @@ def build_le(D, v, vxdname):
     struct.pack_into("<I", H, 0x6c, off_fxrec)
     struct.pack_into("<I", H, 0x70, off_impmod); struct.pack_into("<I", H, 0x74, 0)
     struct.pack_into("<I", H, 0x80, datapages)
+    # header fields the real Win95 loader reads, preserved from the oracle (module version/flags, the
+    # initial ESP, preload page count) -- these are recovered values, not linker artifacts
+    for foff in (0x0c, 0x10, 0x20, 0x24, 0x84):
+        struct.pack_into("<I", H, foff, struct.unpack_from("<I", v.d, lfa + foff)[0])
+    # non-resident name table (the module description string): preserved, placed after the data pages
+    nres_off = struct.unpack_from("<I", v.d, lfa + 0x88)[0]
+    nres_sz = struct.unpack_from("<I", v.d, lfa + 0x8c)[0]
+    nres = v.d[nres_off:nres_off + nres_sz] if (nres_off and nres_sz and nres_off + nres_sz <= len(v.d)) else b""
+    if nres and not (0 < nres[0] < 64 and all(31 < c < 127 or c == 9 for c in nres[1:1 + nres[0]])):
+        nres = b""                                          # not a plausible description (e.g. a W3 module's container-relative offset)
+    if nres:
+        struct.pack_into("<I", H, 0x88, datapages + len(data))
+        struct.pack_into("<I", H, 0x8c, len(nres))
 
     mz = bytearray(0x80)
     mz[0:2] = b"MZ"
     struct.pack_into("<I", mz, 0x3c, lfa)
     body = bytes(mz) + bytes(H) + objtab + pagemap + resnames + entrytab + fxpage + fxrec + b"\x00"
-    body += b"\x00" * (datapages - len(body)) + bytes(data)
+    body += b"\x00" * (datapages - len(body)) + bytes(data) + nres
     return bytes(body)
