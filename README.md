@@ -37,7 +37,8 @@ setup is the **byte-exact rebuild** loop, which drives real period compilers —
   reassembleable assembly.
 - **Turn it into C** — lift that assembly into readable, structured C you can actually follow.
 - **Rebuild it byte-for-byte** — for supported classes, recover source that recompiles to the
-  *exact* original bytes (proven by rebuilding, not by eye).
+  *exact* original bytes (proven by rebuilding, not by eye). On the Win95 VxD target, the
+  byte-exact loop verifies all **215/215** modules.
 - **Compare across versions** — line the same function up across releases (even 16-bit → 32-bit)
   and carry a recovered name forward onto its twin.
 - **Xbox 360** — the same discipline for XEX2 / PowerPC, plus package, crypto, and forensics tools.
