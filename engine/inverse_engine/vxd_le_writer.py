@@ -13,13 +13,14 @@ object/module names, device id, and version resource all match exactly.
 import struct
 
 
-def _src_type(D, oi, off, covered):
+def _src_type(D, oi, off, ends, code):
     """LE fixup source type for the field at (oi, off): 0x08 (32-bit self-relative) when the 4-byte
     field is the rel32 of a near branch -- E8/E9 call/jmp (5 bytes) or 0F 8x jcc (6 bytes) -- else
-    0x07 (a 32-bit offset). The recovered instruction is authoritative where the descent reached the
-    site; in a region the descent MISSED (a branch left as data), trust the raw opcode byte -- but
-    never inside a decoded non-branch instruction, where an E8/E9 byte would be coincidental."""
-    code = D.code[oi]; n = len(code)
+    0x07 (a 32-bit offset). A decoded branch ending at this field is authoritative; otherwise, when
+    NO decoded instruction ends at off+4 (the field is not a clean instruction tail -- an undecoded
+    or mis-decoded branch, including code past the object's declared vsize), trust the raw opcode
+    byte. `ends` is the set of instruction-end offsets; `code` the object's full (untruncated) bytes."""
+    n = len(code)
     b1 = code[off - 1] if 0 <= off - 1 < n else None
     b2 = code[off - 2] if 0 <= off - 2 < n else None
     r1 = D.insns.get((oi, off - 1))
@@ -28,7 +29,7 @@ def _src_type(D, oi, off, covered):
     r2 = D.insns.get((oi, off - 2))
     if r2 and r2["size"] == 6 and b2 == 0x0F and b1 is not None and 0x80 <= b1 <= 0x8F:
         return 0x08
-    if (off - 1) not in covered:                            # undecoded site -> trust the raw opcode byte
+    if (off + 4) not in ends:                               # not a decoded insn tail -> trust the opcode
         if b1 in (0xE8, 0xE9):
             return 0x08
         if b2 == 0x0F and b1 is not None and 0x80 <= b1 <= 0x8F:
@@ -44,9 +45,14 @@ def _emit_fixups(D, v):
     rejected as "damaged". Records are ordered by ascending first-source offset. The table is indexed
     by logical page (matching the loader), independent of the page map's own page numbers. Returns
     (page_table_bytes, record_bytes)."""
-    covered = {}                                            # per-object byte offsets inside a decoded insn
+    ends = {}                                               # per-object instruction-end offsets
     for (oi, start), r in D.insns.items():
-        covered.setdefault(oi, set()).update(range(start, start + r["size"]))
+        ends.setdefault(oi, set()).add(start + r["size"])
+    ps = v.pagesize                                         # object bytes from its first page to the end
+    o_dp = struct.unpack_from("<I", v.d, 0x80 + 0x80)[0]    # of the data region -- covers a fixup whose
+    data_end = (struct.unpack_from("<I", v.d, 0x80 + 0x88)[0]        # offset overruns the object's own
+                or struct.unpack_from("<I", v.d, 0x80 + 0xb8)[0] or len(v.d))   # pages into a later one
+    code_of = {o["idx"]: bytes(v.d[o_dp + (o["pmidx"] - 1) * ps: data_end]) for o in v.objects}
     by_page = {}
     for (oi, off), f in D.fx.items():
         if f["kind"] == "internal" and f["target"] is None:
@@ -56,7 +62,7 @@ def _emit_fixups(D, v):
             continue
         pg = obj["pmidx"] + off // v.pagesize
         po = off % v.pagesize
-        st = _src_type(D, oi, off, covered.get(oi, ()))
+        st = _src_type(D, oi, off, ends.get(oi, ()), code_of.get(oi, b""))
         if f["kind"] == "internal":
             tflags = 0x10 if f["target"] > 0xffff else 0x00
             key = (st, tflags, "int", f["obj"], f["target"])
@@ -153,7 +159,7 @@ def build_le(D, v, vxdname):
     # data pages: recovered verbatim from the oracle (the loader ignores it; it is not derivable)
     o_impmod = 0x80 + struct.unpack_from("<I", v.d, 0x80 + 0x70)[0]
     o_dp = struct.unpack_from("<I", v.d, 0x80 + 0x80)[0]
-    imp_region = bytes(v.d[o_impmod:o_dp]) if o_dp > o_impmod else b"\x00"
+    imp_region = bytes(v.d[o_impmod:o_dp]) if o_dp > o_impmod else b""   # empty when impmod == datapages
 
     lfa = 0x80
     hdr_len = 0xc4
@@ -191,7 +197,7 @@ def build_le(D, v, vxdname):
     struct.pack_into("<I", H, 0x30, len(fxpage) + len(fxrec))         # fixup section (page table + records)
     # header fields the real Win95 loader reads, preserved from the oracle (module version/flags, the
     # initial ESP, preload count, and the VxD device id + DDK version packed at 0xc0) -- recovered values
-    for foff in (0x0c, 0x10, 0x20, 0x24, 0x84, 0xc0):
+    for foff in (0x0c, 0x10, 0x20, 0x24, 0x84, 0x94, 0xc0):
         struct.pack_into("<I", H, foff, struct.unpack_from("<I", v.d, lfa + foff)[0])
     # non-resident name table (the module description string): preserved, placed after the data pages
     nres_off = struct.unpack_from("<I", v.d, lfa + 0x88)[0]
@@ -216,4 +222,6 @@ def build_le(D, v, vxdname):
     struct.pack_into("<I", mz, 0x3c, lfa)
     body = bytes(mz) + bytes(H) + objtab + pagemap + resnames + entrytab + fxpage + fxrec + imp_region
     body += b"\x00" * (datapages - len(body)) + bytes(data) + nres + winres
+    if len(body) < len(v.d):                                # match the oracle's end-of-file padding
+        body += bytes(v.d[len(body):])
     return bytes(body)
