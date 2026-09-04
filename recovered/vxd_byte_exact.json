@@ -30,7 +30,7 @@
   "symbolic": 659,
   "forced_raw": 12,
   "raw_fallback_objs": 0,
-  "seconds": 10.9
+  "seconds": 13.3
  },
  "act220l.vxd": {
   "byte_exact": true,
@@ -63,7 +63,7 @@
   "symbolic": 442,
   "forced_raw": 21,
   "raw_fallback_objs": 0,
-  "seconds": 13.9
+  "seconds": 16.2
  },
  "act200l.vxd": {
   "byte_exact": true,
@@ -96,7 +96,7 @@
   "symbolic": 703,
   "forced_raw": 15,
   "raw_fallback_objs": 0,
-  "seconds": 14.7
+  "seconds": 17.4
  },
  "apix.vxd": {
   "byte_exact": true,
@@ -151,7 +151,7 @@
   "symbolic": 3157,
   "forced_raw": 144,
   "raw_fallback_objs": 0,
-  "seconds": 25.8
+  "seconds": 29.8
  },
  "am1500t.vxd": {
   "byte_exact": true,
@@ -185,7 +185,7 @@
     "len": 22,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
@@ -194,8 +194,8 @@
   "n_exact": 3,
   "symbolic": 4944,
   "forced_raw": 211,
-  "raw_fallback_objs": 1,
-  "seconds": 28.7
+  "raw_fallback_objs": 0,
+  "seconds": 33.5
  },
  "afvxd.vxd": {
   "byte_exact": true,
@@ -228,7 +228,7 @@
   "symbolic": 6003,
   "forced_raw": 156,
   "raw_fallback_objs": 0,
-  "seconds": 31.1
+  "seconds": 35.8
  },
  "atapchng.vxd": {
   "byte_exact": true,
@@ -272,7 +272,7 @@
   "symbolic": 928,
   "forced_raw": 27,
   "raw_fallback_objs": 0,
-  "seconds": 21.3
+  "seconds": 25.0
  },
  "ati.vxd": {
   "byte_exact": true,
@@ -349,7 +349,40 @@
   "symbolic": 1885,
   "forced_raw": 12,
   "raw_fallback_objs": 0,
-  "seconds": 28.9
+  "seconds": 35.5
+ },
+ "cbss.vxd": {
+  "byte_exact": true,
+  "objects": [
+   {
+    "obj": 1,
+    "match": true,
+    "ok": true,
+    "len": 428,
+    "symbolic": 60,
+    "forced_raw": 0,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 2,
+    "match": true,
+    "ok": true,
+    "len": 8722,
+    "symbolic": 3065,
+    "forced_raw": 106,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   }
+  ],
+  "n_obj": 2,
+  "n_exact": 2,
+  "symbolic": 3125,
+  "forced_raw": 106,
+  "raw_fallback_objs": 0,
+  "seconds": 21.7
  },
  "avvxp500.vxd": {
   "byte_exact": true,
@@ -392,9 +425,9 @@
     "match": true,
     "ok": true,
     "len": 407,
-    "symbolic": 120,
-    "forced_raw": 1,
-    "raw_fallback": false,
+    "symbolic": 0,
+    "forced_raw": 121,
+    "raw_fallback": true,
     "diffs": 0,
     "err": null
    },
@@ -423,43 +456,10 @@
   ],
   "n_obj": 6,
   "n_exact": 6,
-  "symbolic": 398,
-  "forced_raw": 16,
-  "raw_fallback_objs": 0,
-  "seconds": 33.5
- },
- "cbss.vxd": {
-  "byte_exact": true,
-  "objects": [
-   {
-    "obj": 1,
-    "match": true,
-    "ok": true,
-    "len": 428,
-    "symbolic": 60,
-    "forced_raw": 0,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 2,
-    "match": true,
-    "ok": true,
-    "len": 8722,
-    "symbolic": 3065,
-    "forced_raw": 106,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   }
-  ],
-  "n_obj": 2,
-  "n_exact": 2,
-  "symbolic": 3125,
-  "forced_raw": 106,
-  "raw_fallback_objs": 0,
-  "seconds": 19.6
+  "symbolic": 278,
+  "forced_raw": 136,
+  "raw_fallback_objs": 1,
+  "seconds": 44.6
  },
  "biosxlat.vxd": {
   "byte_exact": true,
@@ -514,51 +514,7 @@
   "symbolic": 355,
   "forced_raw": 10,
   "raw_fallback_objs": 0,
-  "seconds": 23.6
- },
- "cdtsd.vxd": {
-  "byte_exact": true,
-  "objects": [
-   {
-    "obj": 1,
-    "match": true,
-    "ok": true,
-    "len": 376,
-    "symbolic": 50,
-    "forced_raw": 4,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 2,
-    "match": true,
-    "ok": true,
-    "len": 96,
-    "symbolic": 37,
-    "forced_raw": 0,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 3,
-    "match": true,
-    "ok": true,
-    "len": 444,
-    "symbolic": 97,
-    "forced_raw": 0,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   }
-  ],
-  "n_obj": 3,
-  "n_exact": 3,
-  "symbolic": 184,
-  "forced_raw": 4,
-  "raw_fallback_objs": 0,
-  "seconds": 10.5
+  "seconds": 27.7
  },
  "bios.vxd": {
   "byte_exact": true,
@@ -602,7 +558,51 @@
   "symbolic": 4624,
   "forced_raw": 404,
   "raw_fallback_objs": 0,
-  "seconds": 34.1
+  "seconds": 36.9
+ },
+ "cdtsd.vxd": {
+  "byte_exact": true,
+  "objects": [
+   {
+    "obj": 1,
+    "match": true,
+    "ok": true,
+    "len": 376,
+    "symbolic": 50,
+    "forced_raw": 4,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 2,
+    "match": true,
+    "ok": true,
+    "len": 96,
+    "symbolic": 37,
+    "forced_raw": 0,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 3,
+    "match": true,
+    "ok": true,
+    "len": 444,
+    "symbolic": 97,
+    "forced_raw": 0,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   }
+  ],
+  "n_obj": 3,
+  "n_exact": 3,
+  "symbolic": 184,
+  "forced_raw": 4,
+  "raw_fallback_objs": 0,
+  "seconds": 12.1
  },
  "cdvsd.vxd": {
   "byte_exact": true,
@@ -646,7 +646,7 @@
   "symbolic": 2548,
   "forced_raw": 105,
   "raw_fallback_objs": 0,
-  "seconds": 22.6
+  "seconds": 29.8
  },
  "cendis.vxd": {
   "byte_exact": true,
@@ -680,7 +680,7 @@
     "len": 22,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
@@ -689,8 +689,85 @@
   "n_exact": 3,
   "symbolic": 5223,
   "forced_raw": 269,
+  "raw_fallback_objs": 0,
+  "seconds": 27.5
+ },
+ "azt16.vxd": {
+  "byte_exact": true,
+  "objects": [
+   {
+    "obj": 1,
+    "match": true,
+    "ok": true,
+    "len": 2588,
+    "symbolic": 855,
+    "forced_raw": 15,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 2,
+    "match": true,
+    "ok": true,
+    "len": 218,
+    "symbolic": 64,
+    "forced_raw": 19,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 3,
+    "match": true,
+    "ok": true,
+    "len": 451,
+    "symbolic": 149,
+    "forced_raw": 4,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 4,
+    "match": true,
+    "ok": true,
+    "len": 4985,
+    "symbolic": 0,
+    "forced_raw": 1778,
+    "raw_fallback": true,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 5,
+    "match": true,
+    "ok": true,
+    "len": 7693,
+    "symbolic": 2676,
+    "forced_raw": 41,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 7,
+    "match": true,
+    "ok": true,
+    "len": 115,
+    "symbolic": 32,
+    "forced_raw": 1,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   }
+  ],
+  "n_obj": 6,
+  "n_exact": 6,
+  "symbolic": 3776,
+  "forced_raw": 1858,
   "raw_fallback_objs": 1,
-  "seconds": 22.9
+  "seconds": 68.7
  },
  "chips.vxd": {
   "byte_exact": true,
@@ -735,7 +812,7 @@
     "len": 7,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -755,19 +832,19 @@
   "n_exact": 5,
   "symbolic": 598,
   "forced_raw": 13,
-  "raw_fallback_objs": 1,
-  "seconds": 22.7
+  "raw_fallback_objs": 0,
+  "seconds": 29.9
  },
- "azt16.vxd": {
+ "ce2ndis3.vxd": {
   "byte_exact": true,
   "objects": [
    {
     "obj": 1,
     "match": true,
     "ok": true,
-    "len": 2588,
-    "symbolic": 855,
-    "forced_raw": 15,
+    "len": 22628,
+    "symbolic": 7148,
+    "forced_raw": 347,
     "raw_fallback": false,
     "diffs": 0,
     "err": null
@@ -776,9 +853,9 @@
     "obj": 2,
     "match": true,
     "ok": true,
-    "len": 218,
-    "symbolic": 64,
-    "forced_raw": 19,
+    "len": 2176,
+    "symbolic": 787,
+    "forced_raw": 28,
     "raw_fallback": false,
     "diffs": 0,
     "err": null
@@ -787,53 +864,20 @@
     "obj": 3,
     "match": true,
     "ok": true,
-    "len": 451,
-    "symbolic": 149,
-    "forced_raw": 4,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 4,
-    "match": true,
-    "ok": true,
-    "len": 4985,
-    "symbolic": 1755,
-    "forced_raw": 23,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 5,
-    "match": true,
-    "ok": true,
-    "len": 7693,
-    "symbolic": 2676,
-    "forced_raw": 41,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 7,
-    "match": true,
-    "ok": true,
-    "len": 115,
-    "symbolic": 32,
-    "forced_raw": 1,
+    "len": 22,
+    "symbolic": 0,
+    "forced_raw": 0,
     "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
   ],
-  "n_obj": 6,
-  "n_exact": 6,
-  "symbolic": 5531,
-  "forced_raw": 103,
+  "n_obj": 3,
+  "n_exact": 3,
+  "symbolic": 7935,
+  "forced_raw": 375,
   "raw_fallback_objs": 0,
-  "seconds": 63.2
+  "seconds": 50.6
  },
  "cirrus.vxd": {
   "byte_exact": true,
@@ -888,18 +932,18 @@
   "symbolic": 2050,
   "forced_raw": 16,
   "raw_fallback_objs": 0,
-  "seconds": 21.9
+  "seconds": 24.0
  },
- "ce2ndis3.vxd": {
+ "combuff.vxd": {
   "byte_exact": true,
   "objects": [
    {
     "obj": 1,
     "match": true,
     "ok": true,
-    "len": 22628,
-    "symbolic": 7148,
-    "forced_raw": 347,
+    "len": 612,
+    "symbolic": 149,
+    "forced_raw": 4,
     "raw_fallback": false,
     "diffs": 0,
     "err": null
@@ -908,9 +952,9 @@
     "obj": 2,
     "match": true,
     "ok": true,
-    "len": 2176,
-    "symbolic": 787,
-    "forced_raw": 28,
+    "len": 348,
+    "symbolic": 127,
+    "forced_raw": 0,
     "raw_fallback": false,
     "diffs": 0,
     "err": null
@@ -919,20 +963,20 @@
     "obj": 3,
     "match": true,
     "ok": true,
-    "len": 22,
-    "symbolic": 0,
-    "forced_raw": 0,
-    "raw_fallback": true,
+    "len": 635,
+    "symbolic": 253,
+    "forced_raw": 6,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
   ],
   "n_obj": 3,
   "n_exact": 3,
-  "symbolic": 7935,
-  "forced_raw": 375,
-  "raw_fallback_objs": 1,
-  "seconds": 44.4
+  "symbolic": 529,
+  "forced_raw": 10,
+  "raw_fallback_objs": 0,
+  "seconds": 19.0
  },
  "cirruslg.vxd": {
   "byte_exact": true,
@@ -987,18 +1031,18 @@
   "symbolic": 1096,
   "forced_raw": 16,
   "raw_fallback_objs": 0,
-  "seconds": 20.9
+  "seconds": 23.1
  },
- "combuff.vxd": {
+ "cm2ndis3.vxd": {
   "byte_exact": true,
   "objects": [
    {
     "obj": 1,
     "match": true,
     "ok": true,
-    "len": 612,
-    "symbolic": 149,
-    "forced_raw": 4,
+    "len": 15520,
+    "symbolic": 4691,
+    "forced_raw": 268,
     "raw_fallback": false,
     "diffs": 0,
     "err": null
@@ -1007,9 +1051,9 @@
     "obj": 2,
     "match": true,
     "ok": true,
-    "len": 348,
-    "symbolic": 127,
-    "forced_raw": 0,
+    "len": 2176,
+    "symbolic": 787,
+    "forced_raw": 28,
     "raw_fallback": false,
     "diffs": 0,
     "err": null
@@ -1018,9 +1062,9 @@
     "obj": 3,
     "match": true,
     "ok": true,
-    "len": 635,
-    "symbolic": 253,
-    "forced_raw": 6,
+    "len": 22,
+    "symbolic": 0,
+    "forced_raw": 0,
     "raw_fallback": false,
     "diffs": 0,
     "err": null
@@ -1028,10 +1072,10 @@
   ],
   "n_obj": 3,
   "n_exact": 3,
-  "symbolic": 529,
-  "forced_raw": 10,
+  "symbolic": 5478,
+  "forced_raw": 296,
   "raw_fallback_objs": 0,
-  "seconds": 17.1
+  "seconds": 25.6
  },
  "cdfs.vxd": {
   "byte_exact": true,
@@ -1086,51 +1130,7 @@
   "symbolic": 13552,
   "forced_raw": 611,
   "raw_fallback_objs": 0,
-  "seconds": 64.5
- },
- "cm2ndis3.vxd": {
-  "byte_exact": true,
-  "objects": [
-   {
-    "obj": 1,
-    "match": true,
-    "ok": true,
-    "len": 15520,
-    "symbolic": 4691,
-    "forced_raw": 268,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 2,
-    "match": true,
-    "ok": true,
-    "len": 2176,
-    "symbolic": 787,
-    "forced_raw": 28,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 3,
-    "match": true,
-    "ok": true,
-    "len": 22,
-    "symbolic": 0,
-    "forced_raw": 0,
-    "raw_fallback": true,
-    "diffs": 0,
-    "err": null
-   }
-  ],
-  "n_obj": 3,
-  "n_exact": 3,
-  "symbolic": 5478,
-  "forced_raw": 296,
-  "raw_fallback_objs": 1,
-  "seconds": 23.8
+  "seconds": 73.0
  },
  "crystal.vxd": {
   "byte_exact": true,
@@ -1163,7 +1163,7 @@
   "symbolic": 663,
   "forced_raw": 14,
   "raw_fallback_objs": 0,
-  "seconds": 14.2
+  "seconds": 15.3
  },
  "compaq.vxd": {
   "byte_exact": true,
@@ -1218,7 +1218,7 @@
   "symbolic": 1560,
   "forced_raw": 58,
   "raw_fallback_objs": 0,
-  "seconds": 24.9
+  "seconds": 27.6
  },
  "dbkvssd.vxd": {
   "byte_exact": true,
@@ -1251,7 +1251,7 @@
   "symbolic": 5012,
   "forced_raw": 178,
   "raw_fallback_objs": 0,
-  "seconds": 22.7
+  "seconds": 23.3
  },
  "cpqndis3.vxd": {
   "byte_exact": true,
@@ -1285,7 +1285,7 @@
     "len": 22,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
@@ -1294,8 +1294,8 @@
   "n_exact": 3,
   "symbolic": 7841,
   "forced_raw": 153,
-  "raw_fallback_objs": 1,
-  "seconds": 38.0
+  "raw_fallback_objs": 0,
+  "seconds": 41.7
  },
  "ctndw.vxd": {
   "byte_exact": true,
@@ -1329,7 +1329,7 @@
     "len": 22,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
@@ -1338,8 +1338,8 @@
   "n_exact": 3,
   "symbolic": 6205,
   "forced_raw": 215,
-  "raw_fallback_objs": 1,
-  "seconds": 37.1
+  "raw_fallback_objs": 0,
+  "seconds": 39.4
  },
  "deccore.vxd": {
   "byte_exact": true,
@@ -1383,51 +1383,7 @@
   "symbolic": 2060,
   "forced_raw": 65,
   "raw_fallback_objs": 0,
-  "seconds": 29.4
- },
- "declan.vxd": {
-  "byte_exact": true,
-  "objects": [
-   {
-    "obj": 1,
-    "match": true,
-    "ok": true,
-    "len": 7644,
-    "symbolic": 2340,
-    "forced_raw": 84,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 2,
-    "match": true,
-    "ok": true,
-    "len": 14448,
-    "symbolic": 4268,
-    "forced_raw": 223,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 3,
-    "match": true,
-    "ok": true,
-    "len": 22,
-    "symbolic": 0,
-    "forced_raw": 0,
-    "raw_fallback": true,
-    "diffs": 0,
-    "err": null
-   }
-  ],
-  "n_obj": 3,
-  "n_exact": 3,
-  "symbolic": 6608,
-  "forced_raw": 307,
-  "raw_fallback_objs": 1,
-  "seconds": 29.3
+  "seconds": 34.4
  },
  "diskmgmt.vxd": {
   "byte_exact": true,
@@ -1460,7 +1416,7 @@
   "symbolic": 369,
   "forced_raw": 7,
   "raw_fallback_objs": 0,
-  "seconds": 10.0
+  "seconds": 12.3
  },
  "declicl.vxd": {
   "byte_exact": true,
@@ -1494,7 +1450,7 @@
     "len": 34,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
@@ -1503,19 +1459,19 @@
   "n_exact": 3,
   "symbolic": 3607,
   "forced_raw": 398,
-  "raw_fallback_objs": 1,
-  "seconds": 25.7
+  "raw_fallback_objs": 0,
+  "seconds": 27.2
  },
- "diskvsd.vxd": {
+ "declan.vxd": {
   "byte_exact": true,
   "objects": [
    {
     "obj": 1,
     "match": true,
     "ok": true,
-    "len": 2948,
-    "symbolic": 793,
-    "forced_raw": 33,
+    "len": 7644,
+    "symbolic": 2340,
+    "forced_raw": 84,
     "raw_fallback": false,
     "diffs": 0,
     "err": null
@@ -1524,9 +1480,9 @@
     "obj": 2,
     "match": true,
     "ok": true,
-    "len": 120,
-    "symbolic": 48,
-    "forced_raw": 0,
+    "len": 14448,
+    "symbolic": 4268,
+    "forced_raw": 223,
     "raw_fallback": false,
     "diffs": 0,
     "err": null
@@ -1535,9 +1491,9 @@
     "obj": 3,
     "match": true,
     "ok": true,
-    "len": 424,
-    "symbolic": 98,
-    "forced_raw": 6,
+    "len": 22,
+    "symbolic": 0,
+    "forced_raw": 0,
     "raw_fallback": false,
     "diffs": 0,
     "err": null
@@ -1545,10 +1501,10 @@
   ],
   "n_obj": 3,
   "n_exact": 3,
-  "symbolic": 939,
-  "forced_raw": 39,
+  "symbolic": 6608,
+  "forced_raw": 307,
   "raw_fallback_objs": 0,
-  "seconds": 17.3
+  "seconds": 34.4
  },
  "dosnet.vxd": {
   "byte_exact": true,
@@ -1593,7 +1549,7 @@
     "len": 180,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
@@ -1602,8 +1558,52 @@
   "n_exact": 4,
   "symbolic": 539,
   "forced_raw": 3,
-  "raw_fallback_objs": 1,
-  "seconds": 13.3
+  "raw_fallback_objs": 0,
+  "seconds": 16.1
+ },
+ "diskvsd.vxd": {
+  "byte_exact": true,
+  "objects": [
+   {
+    "obj": 1,
+    "match": true,
+    "ok": true,
+    "len": 2948,
+    "symbolic": 793,
+    "forced_raw": 33,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 2,
+    "match": true,
+    "ok": true,
+    "len": 120,
+    "symbolic": 48,
+    "forced_raw": 0,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 3,
+    "match": true,
+    "ok": true,
+    "len": 424,
+    "symbolic": 98,
+    "forced_raw": 6,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   }
+  ],
+  "n_obj": 3,
+  "n_exact": 3,
+  "symbolic": 939,
+  "forced_raw": 39,
+  "raw_fallback_objs": 0,
+  "seconds": 21.7
  },
  "disktsd.vxd": {
   "byte_exact": true,
@@ -1647,7 +1647,7 @@
   "symbolic": 2834,
   "forced_raw": 108,
   "raw_fallback_objs": 0,
-  "seconds": 28.4
+  "seconds": 32.6
  },
  "dsound.vxd": {
   "byte_exact": true,
@@ -1691,7 +1691,7 @@
   "symbolic": 1287,
   "forced_raw": 36,
   "raw_fallback_objs": 0,
-  "seconds": 20.5
+  "seconds": 25.4
  },
  "dynapage.vxd": {
   "byte_exact": true,
@@ -1725,7 +1725,7 @@
     "len": 170,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -1767,8 +1767,8 @@
   "n_exact": 6,
   "symbolic": 667,
   "forced_raw": 13,
-  "raw_fallback_objs": 1,
-  "seconds": 30.9
+  "raw_fallback_objs": 0,
+  "seconds": 35.1
  },
  "configmg.vxd": {
   "byte_exact": true,
@@ -1835,7 +1835,7 @@
     "len": 893,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -1855,8 +1855,8 @@
   "n_exact": 7,
   "symbolic": 19412,
   "forced_raw": 1550,
-  "raw_fallback_objs": 1,
-  "seconds": 107.1
+  "raw_fallback_objs": 0,
+  "seconds": 118.6
  },
  "e30n3.vxd": {
   "byte_exact": true,
@@ -1890,7 +1890,7 @@
     "len": 22,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -1910,8 +1910,8 @@
   "n_exact": 4,
   "symbolic": 5630,
   "forced_raw": 213,
-  "raw_fallback_objs": 1,
-  "seconds": 27.4
+  "raw_fallback_objs": 0,
+  "seconds": 31.1
  },
  "ebios.vxd": {
   "byte_exact": true,
@@ -1945,7 +1945,7 @@
     "len": 192,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -1976,8 +1976,8 @@
   "n_exact": 5,
   "symbolic": 119,
   "forced_raw": 3,
-  "raw_fallback_objs": 1,
-  "seconds": 16.3
+  "raw_fallback_objs": 0,
+  "seconds": 18.0
  },
  "e31n3.vxd": {
   "byte_exact": true,
@@ -2011,7 +2011,7 @@
     "len": 22,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -2031,8 +2031,8 @@
   "n_exact": 4,
   "symbolic": 5614,
   "forced_raw": 205,
-  "raw_fallback_objs": 1,
-  "seconds": 26.4
+  "raw_fallback_objs": 0,
+  "seconds": 29.9
  },
  "eisa.vxd": {
   "byte_exact": true,
@@ -2065,7 +2065,7 @@
   "symbolic": 1167,
   "forced_raw": 12,
   "raw_fallback_objs": 0,
-  "seconds": 13.9
+  "seconds": 15.8
  },
  "drvspacx.vxd": {
   "byte_exact": true,
@@ -2142,7 +2142,7 @@
   "symbolic": 9633,
   "forced_raw": 544,
   "raw_fallback_objs": 0,
-  "seconds": 70.0
+  "seconds": 80.5
  },
  "ee16.vxd": {
   "byte_exact": true,
@@ -2176,7 +2176,7 @@
     "len": 22,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
@@ -2185,8 +2185,8 @@
   "n_exact": 3,
   "symbolic": 5706,
   "forced_raw": 228,
-  "raw_fallback_objs": 1,
-  "seconds": 26.8
+  "raw_fallback_objs": 0,
+  "seconds": 30.0
  },
  "elnk16.vxd": {
   "byte_exact": true,
@@ -2220,7 +2220,7 @@
     "len": 22,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -2240,8 +2240,8 @@
   "n_exact": 4,
   "symbolic": 5797,
   "forced_raw": 284,
-  "raw_fallback_objs": 1,
-  "seconds": 29.2
+  "raw_fallback_objs": 0,
+  "seconds": 32.6
  },
  "elnk3.vxd": {
   "byte_exact": true,
@@ -2275,7 +2275,7 @@
     "len": 22,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
@@ -2284,8 +2284,8 @@
   "n_exact": 3,
   "symbolic": 7740,
   "forced_raw": 239,
-  "raw_fallback_objs": 1,
-  "seconds": 31.3
+  "raw_fallback_objs": 0,
+  "seconds": 35.4
  },
  "el59x.vxd": {
   "byte_exact": true,
@@ -2319,7 +2319,7 @@
     "len": 22,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
@@ -2328,8 +2328,8 @@
   "n_exact": 3,
   "symbolic": 14035,
   "forced_raw": 441,
-  "raw_fallback_objs": 1,
-  "seconds": 46.8
+  "raw_fallback_objs": 0,
+  "seconds": 52.0
  },
  "elnkii.vxd": {
   "byte_exact": true,
@@ -2374,7 +2374,7 @@
     "len": 22,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
@@ -2383,8 +2383,63 @@
   "n_exact": 4,
   "symbolic": 6487,
   "forced_raw": 318,
-  "raw_fallback_objs": 1,
-  "seconds": 36.9
+  "raw_fallback_objs": 0,
+  "seconds": 43.7
+ },
+ "elnkmc.vxd": {
+  "byte_exact": true,
+  "objects": [
+   {
+    "obj": 1,
+    "match": true,
+    "ok": true,
+    "len": 14132,
+    "symbolic": 4199,
+    "forced_raw": 174,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 2,
+    "match": true,
+    "ok": true,
+    "len": 2176,
+    "symbolic": 787,
+    "forced_raw": 28,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 3,
+    "match": true,
+    "ok": true,
+    "len": 22,
+    "symbolic": 0,
+    "forced_raw": 0,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 4,
+    "match": true,
+    "ok": true,
+    "len": 2096,
+    "symbolic": 615,
+    "forced_raw": 36,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   }
+  ],
+  "n_obj": 4,
+  "n_exact": 4,
+  "symbolic": 5601,
+  "forced_raw": 238,
+  "raw_fallback_objs": 0,
+  "seconds": 29.5
  },
  "dosmgr.vxd": {
   "byte_exact": true,
@@ -2593,62 +2648,7 @@
   "symbolic": 9209,
   "forced_raw": 357,
   "raw_fallback_objs": 0,
-  "seconds": 144.6
- },
- "elnkmc.vxd": {
-  "byte_exact": true,
-  "objects": [
-   {
-    "obj": 1,
-    "match": true,
-    "ok": true,
-    "len": 14132,
-    "symbolic": 4199,
-    "forced_raw": 174,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 2,
-    "match": true,
-    "ok": true,
-    "len": 2176,
-    "symbolic": 787,
-    "forced_raw": 28,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 3,
-    "match": true,
-    "ok": true,
-    "len": 22,
-    "symbolic": 0,
-    "forced_raw": 0,
-    "raw_fallback": true,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 4,
-    "match": true,
-    "ok": true,
-    "len": 2096,
-    "symbolic": 615,
-    "forced_raw": 36,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   }
-  ],
-  "n_obj": 4,
-  "n_exact": 4,
-  "symbolic": 5601,
-  "forced_raw": 238,
-  "raw_fallback_objs": 1,
-  "seconds": 25.7
+  "seconds": 167.0
  },
  "elpc3.vxd": {
   "byte_exact": true,
@@ -2682,7 +2682,7 @@
     "len": 22,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
@@ -2691,8 +2691,8 @@
   "n_exact": 3,
   "symbolic": 7624,
   "forced_raw": 242,
-  "raw_fallback_objs": 1,
-  "seconds": 34.8
+  "raw_fallback_objs": 0,
+  "seconds": 39.7
  },
  "enable2.vxd": {
   "byte_exact": true,
@@ -2747,7 +2747,7 @@
   "symbolic": 2637,
   "forced_raw": 42,
   "raw_fallback_objs": 0,
-  "seconds": 21.4
+  "seconds": 25.5
  },
  "enable4.vxd": {
   "byte_exact": true,
@@ -2780,7 +2780,7 @@
   "symbolic": 3636,
   "forced_raw": 196,
   "raw_fallback_objs": 0,
-  "seconds": 20.1
+  "seconds": 21.8
  },
  "enable.vxd": {
   "byte_exact": true,
@@ -2836,7 +2836,7 @@
     "len": 20,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -2867,8 +2867,8 @@
   "n_exact": 7,
   "symbolic": 2480,
   "forced_raw": 79,
-  "raw_fallback_objs": 1,
-  "seconds": 41.5
+  "raw_fallback_objs": 0,
+  "seconds": 47.6
  },
  "epro.vxd": {
   "byte_exact": true,
@@ -2902,7 +2902,7 @@
     "len": 22,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
@@ -2911,52 +2911,8 @@
   "n_exact": 3,
   "symbolic": 5559,
   "forced_raw": 258,
-  "raw_fallback_objs": 1,
-  "seconds": 27.4
- },
- "esi.vxd": {
-  "byte_exact": true,
-  "objects": [
-   {
-    "obj": 1,
-    "match": true,
-    "ok": true,
-    "len": 980,
-    "symbolic": 256,
-    "forced_raw": 10,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 2,
-    "match": true,
-    "ok": true,
-    "len": 6,
-    "symbolic": 1,
-    "forced_raw": 0,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 3,
-    "match": true,
-    "ok": true,
-    "len": 40,
-    "symbolic": 14,
-    "forced_raw": 0,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   }
-  ],
-  "n_obj": 3,
-  "n_exact": 3,
-  "symbolic": 271,
-  "forced_raw": 10,
   "raw_fallback_objs": 0,
-  "seconds": 13.9
+  "seconds": 30.9
  },
  "dlc.vxd": {
   "byte_exact": true,
@@ -3001,7 +2957,7 @@
     "len": 52,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -3021,19 +2977,19 @@
   "n_exact": 5,
   "symbolic": 42398,
   "forced_raw": 23640,
-  "raw_fallback_objs": 1,
-  "seconds": 193.4
+  "raw_fallback_objs": 0,
+  "seconds": 212.6
  },
- "filesec.vxd": {
+ "esi.vxd": {
   "byte_exact": true,
   "objects": [
    {
     "obj": 1,
     "match": true,
     "ok": true,
-    "len": 884,
-    "symbolic": 9,
-    "forced_raw": 0,
+    "len": 980,
+    "symbolic": 256,
+    "forced_raw": 10,
     "raw_fallback": false,
     "diffs": 0,
     "err": null
@@ -3042,9 +2998,9 @@
     "obj": 2,
     "match": true,
     "ok": true,
-    "len": 392,
-    "symbolic": 126,
-    "forced_raw": 2,
+    "len": 6,
+    "symbolic": 1,
+    "forced_raw": 0,
     "raw_fallback": false,
     "diffs": 0,
     "err": null
@@ -3053,9 +3009,9 @@
     "obj": 3,
     "match": true,
     "ok": true,
-    "len": 9359,
-    "symbolic": 2742,
-    "forced_raw": 160,
+    "len": 40,
+    "symbolic": 14,
+    "forced_raw": 0,
     "raw_fallback": false,
     "diffs": 0,
     "err": null
@@ -3063,10 +3019,10 @@
   ],
   "n_obj": 3,
   "n_exact": 3,
-  "symbolic": 2877,
-  "forced_raw": 162,
+  "symbolic": 271,
+  "forced_raw": 10,
   "raw_fallback_objs": 0,
-  "seconds": 19.9
+  "seconds": 14.5
  },
  "fls1mtd.vxd": {
   "byte_exact": true,
@@ -3088,7 +3044,7 @@
   "symbolic": 488,
   "forced_raw": 5,
   "raw_fallback_objs": 0,
-  "seconds": 10.4
+  "seconds": 12.7
  },
  "es1488.vxd": {
   "byte_exact": true,
@@ -3165,7 +3121,51 @@
   "symbolic": 3366,
   "forced_raw": 76,
   "raw_fallback_objs": 0,
-  "seconds": 54.1
+  "seconds": 61.8
+ },
+ "filesec.vxd": {
+  "byte_exact": true,
+  "objects": [
+   {
+    "obj": 1,
+    "match": true,
+    "ok": true,
+    "len": 884,
+    "symbolic": 9,
+    "forced_raw": 0,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 2,
+    "match": true,
+    "ok": true,
+    "len": 392,
+    "symbolic": 126,
+    "forced_raw": 2,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 3,
+    "match": true,
+    "ok": true,
+    "len": 9359,
+    "symbolic": 2742,
+    "forced_raw": 160,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   }
+  ],
+  "n_obj": 3,
+  "n_exact": 3,
+  "symbolic": 2877,
+  "forced_raw": 162,
+  "raw_fallback_objs": 0,
+  "seconds": 22.3
  },
  "es1688.vxd": {
   "byte_exact": true,
@@ -3242,7 +3242,7 @@
   "symbolic": 4919,
   "forced_raw": 194,
   "raw_fallback_objs": 0,
-  "seconds": 57.5
+  "seconds": 63.8
  },
  "fls2mtd.vxd": {
   "byte_exact": true,
@@ -3264,7 +3264,7 @@
   "symbolic": 524,
   "forced_raw": 6,
   "raw_fallback_objs": 0,
-  "seconds": 10.1
+  "seconds": 11.4
  },
  "es488.vxd": {
   "byte_exact": true,
@@ -3341,7 +3341,7 @@
   "symbolic": 3295,
   "forced_raw": 72,
   "raw_fallback_objs": 0,
-  "seconds": 55.4
+  "seconds": 62.2
  },
  "es688.vxd": {
   "byte_exact": true,
@@ -3418,7 +3418,7 @@
   "symbolic": 4147,
   "forced_raw": 153,
   "raw_fallback_objs": 0,
-  "seconds": 57.2
+  "seconds": 62.2
  },
  "i128.vxd": {
   "byte_exact": true,
@@ -3473,7 +3473,7 @@
   "symbolic": 123,
   "forced_raw": 5,
   "raw_fallback_objs": 0,
-  "seconds": 15.7
+  "seconds": 17.3
  },
  "hpeisa.vxd": {
   "byte_exact": true,
@@ -3507,7 +3507,7 @@
     "len": 22,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -3527,8 +3527,8 @@
   "n_exact": 4,
   "symbolic": 6653,
   "forced_raw": 190,
-  "raw_fallback_objs": 1,
-  "seconds": 36.9
+  "raw_fallback_objs": 0,
+  "seconds": 39.3
  },
  "hpfend.vxd": {
   "byte_exact": true,
@@ -3562,7 +3562,7 @@
     "len": 22,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -3582,8 +3582,8 @@
   "n_exact": 4,
   "symbolic": 7788,
   "forced_raw": 239,
-  "raw_fallback_objs": 1,
-  "seconds": 38.4
+  "raw_fallback_objs": 0,
+  "seconds": 41.8
  },
  "hpmca.vxd": {
   "byte_exact": true,
@@ -3617,7 +3617,7 @@
     "len": 22,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -3637,8 +3637,8 @@
   "n_exact": 4,
   "symbolic": 6746,
   "forced_raw": 212,
-  "raw_fallback_objs": 1,
-  "seconds": 36.0
+  "raw_fallback_objs": 0,
+  "seconds": 40.0
  },
  "hpisa.vxd": {
   "byte_exact": true,
@@ -3672,7 +3672,7 @@
     "len": 22,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -3692,8 +3692,52 @@
   "n_exact": 4,
   "symbolic": 7781,
   "forced_raw": 368,
-  "raw_fallback_objs": 1,
-  "seconds": 38.5
+  "raw_fallback_objs": 0,
+  "seconds": 42.5
+ },
+ "ibmtok4.vxd": {
+  "byte_exact": true,
+  "objects": [
+   {
+    "obj": 1,
+    "match": true,
+    "ok": true,
+    "len": 16872,
+    "symbolic": 4680,
+    "forced_raw": 138,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 2,
+    "match": true,
+    "ok": true,
+    "len": 5008,
+    "symbolic": 1633,
+    "forced_raw": 24,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 3,
+    "match": true,
+    "ok": true,
+    "len": 22,
+    "symbolic": 0,
+    "forced_raw": 0,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   }
+  ],
+  "n_obj": 3,
+  "n_exact": 3,
+  "symbolic": 6313,
+  "forced_raw": 162,
+  "raw_fallback_objs": 0,
+  "seconds": 33.0
  },
  "int13.vxd": {
   "byte_exact": true,
@@ -3737,51 +3781,7 @@
   "symbolic": 884,
   "forced_raw": 22,
   "raw_fallback_objs": 0,
-  "seconds": 16.4
- },
- "ibmtok4.vxd": {
-  "byte_exact": true,
-  "objects": [
-   {
-    "obj": 1,
-    "match": true,
-    "ok": true,
-    "len": 16872,
-    "symbolic": 4680,
-    "forced_raw": 138,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 2,
-    "match": true,
-    "ok": true,
-    "len": 5008,
-    "symbolic": 1633,
-    "forced_raw": 24,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 3,
-    "match": true,
-    "ok": true,
-    "len": 22,
-    "symbolic": 0,
-    "forced_raw": 0,
-    "raw_fallback": true,
-    "diffs": 0,
-    "err": null
-   }
-  ],
-  "n_obj": 3,
-  "n_exact": 3,
-  "symbolic": 6313,
-  "forced_raw": 162,
-  "raw_fallback_objs": 1,
-  "seconds": 29.7
+  "seconds": 19.1
  },
  "ibmtok.vxd": {
   "byte_exact": true,
@@ -3815,7 +3815,7 @@
     "len": 22,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -3846,8 +3846,8 @@
   "n_exact": 5,
   "symbolic": 7162,
   "forced_raw": 302,
-  "raw_fallback_objs": 1,
-  "seconds": 50.9
+  "raw_fallback_objs": 0,
+  "seconds": 58.1
  },
  "irenum.vxd": {
   "byte_exact": true,
@@ -3880,7 +3880,7 @@
   "symbolic": 4718,
   "forced_raw": 99,
   "raw_fallback_objs": 0,
-  "seconds": 26.6
+  "seconds": 29.1
  },
  "irlapfrm.vxd": {
   "byte_exact": true,
@@ -3913,7 +3913,7 @@
   "symbolic": 2730,
   "forced_raw": 104,
   "raw_fallback_objs": 0,
-  "seconds": 17.6
+  "seconds": 18.6
  },
  "ircomm.vxd": {
   "byte_exact": true,
@@ -3957,7 +3957,7 @@
   "symbolic": 7596,
   "forced_raw": 316,
   "raw_fallback_objs": 0,
-  "seconds": 45.1
+  "seconds": 48.6
  },
  "javasup.vxd": {
   "byte_exact": true,
@@ -3969,7 +3969,7 @@
     "len": 100,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -4000,8 +4000,8 @@
   "n_exact": 3,
   "symbolic": 155,
   "forced_raw": 6,
-  "raw_fallback_objs": 1,
-  "seconds": 12.3
+  "raw_fallback_objs": 0,
+  "seconds": 13.4
  },
  "isapnp.vxd": {
   "byte_exact": true,
@@ -4045,7 +4045,7 @@
   "symbolic": 1824,
   "forced_raw": 78,
   "raw_fallback_objs": 0,
-  "seconds": 18.6
+  "seconds": 20.4
  },
  "ios.vxd": {
   "byte_exact": true,
@@ -4101,7 +4101,7 @@
     "len": 3624,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -4121,8 +4121,8 @@
   "n_exact": 6,
   "symbolic": 11694,
   "forced_raw": 420,
-  "raw_fallback_objs": 1,
-  "seconds": 68.5
+  "raw_fallback_objs": 0,
+  "seconds": 74.7
  },
  "irlamp.vxd": {
   "byte_exact": true,
@@ -4166,7 +4166,7 @@
   "symbolic": 15933,
   "forced_raw": 413,
   "raw_fallback_objs": 0,
-  "seconds": 60.1
+  "seconds": 62.0
  },
  "logger.vxd": {
   "byte_exact": true,
@@ -4210,7 +4210,7 @@
   "symbolic": 601,
   "forced_raw": 7,
   "raw_fallback_objs": 0,
-  "seconds": 15.9
+  "seconds": 17.9
  },
  "irmatrac.vxd": {
   "byte_exact": true,
@@ -4244,7 +4244,7 @@
     "len": 22,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -4264,8 +4264,8 @@
   "n_exact": 4,
   "symbolic": 8528,
   "forced_raw": 244,
-  "raw_fallback_objs": 1,
-  "seconds": 49.4
+  "raw_fallback_objs": 0,
+  "seconds": 53.9
  },
  "mga.vxd": {
   "byte_exact": true,
@@ -4309,7 +4309,7 @@
   "symbolic": 833,
   "forced_raw": 0,
   "raw_fallback_objs": 0,
-  "seconds": 9.9
+  "seconds": 10.7
  },
  "lptenum.vxd": {
   "byte_exact": true,
@@ -4353,7 +4353,7 @@
   "symbolic": 1584,
   "forced_raw": 30,
   "raw_fallback_objs": 0,
-  "seconds": 17.3
+  "seconds": 19.1
  },
  "mnmvdd.386": {
   "byte_exact": true,
@@ -4376,7 +4376,7 @@
     "len": 84,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
@@ -4385,8 +4385,8 @@
   "n_exact": 2,
   "symbolic": 72,
   "forced_raw": 0,
-  "raw_fallback_objs": 1,
-  "seconds": 6.1
+  "raw_fallback_objs": 0,
+  "seconds": 7.5
  },
  "lpt.vxd": {
   "byte_exact": true,
@@ -4441,7 +4441,7 @@
   "symbolic": 5442,
   "forced_raw": 385,
   "raw_fallback_objs": 0,
-  "seconds": 35.6
+  "seconds": 38.4
  },
  "mmdevldr.vxd": {
   "byte_exact": true,
@@ -4453,7 +4453,7 @@
     "len": 144,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -4495,8 +4495,8 @@
   "n_exact": 4,
   "symbolic": 1967,
   "forced_raw": 57,
-  "raw_fallback_objs": 1,
-  "seconds": 20.9
+  "raw_fallback_objs": 0,
+  "seconds": 24.2
  },
  "mgamil.vxd": {
   "byte_exact": true,
@@ -4573,7 +4573,7 @@
   "symbolic": 1175,
   "forced_raw": 9,
   "raw_fallback_objs": 0,
-  "seconds": 23.3
+  "seconds": 26.0
  },
  "lmouse.vxd": {
   "byte_exact": true,
@@ -4617,7 +4617,7 @@
   "symbolic": 17398,
   "forced_raw": 383,
   "raw_fallback_objs": 0,
-  "seconds": 63.0
+  "seconds": 66.5
  },
  "msmouse.vxd": {
   "byte_exact": true,
@@ -4661,7 +4661,7 @@
   "symbolic": 1216,
   "forced_raw": 21,
   "raw_fallback_objs": 0,
-  "seconds": 17.6
+  "seconds": 19.4
  },
  "msodisup.vxd": {
   "byte_exact": true,
@@ -4695,7 +4695,7 @@
     "len": 290,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
@@ -4704,8 +4704,8 @@
   "n_exact": 3,
   "symbolic": 4411,
   "forced_raw": 228,
-  "raw_fallback_objs": 1,
-  "seconds": 30.7
+  "raw_fallback_objs": 0,
+  "seconds": 34.5
  },
  "mrci2.vxd": {
   "byte_exact": true,
@@ -4760,7 +4760,7 @@
   "symbolic": 6112,
   "forced_raw": 423,
   "raw_fallback_objs": 0,
-  "seconds": 47.2
+  "seconds": 52.5
  },
  "msmpu401.vxd": {
   "byte_exact": true,
@@ -4837,51 +4837,7 @@
   "symbolic": 1157,
   "forced_raw": 33,
   "raw_fallback_objs": 0,
-  "seconds": 46.6
- },
- "mssp.vxd": {
-  "byte_exact": true,
-  "objects": [
-   {
-    "obj": 1,
-    "match": true,
-    "ok": true,
-    "len": 612,
-    "symbolic": 107,
-    "forced_raw": 2,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 2,
-    "match": true,
-    "ok": true,
-    "len": 988,
-    "symbolic": 291,
-    "forced_raw": 28,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 3,
-    "match": true,
-    "ok": true,
-    "len": 6339,
-    "symbolic": 1800,
-    "forced_raw": 168,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   }
-  ],
-  "n_obj": 3,
-  "n_exact": 3,
-  "symbolic": 2198,
-  "forced_raw": 198,
-  "raw_fallback_objs": 0,
-  "seconds": 18.8
+  "seconds": 52.7
  },
  "msopl.vxd": {
   "byte_exact": true,
@@ -4958,7 +4914,51 @@
   "symbolic": 1013,
   "forced_raw": 27,
   "raw_fallback_objs": 0,
-  "seconds": 41.9
+  "seconds": 49.2
+ },
+ "mssp.vxd": {
+  "byte_exact": true,
+  "objects": [
+   {
+    "obj": 1,
+    "match": true,
+    "ok": true,
+    "len": 612,
+    "symbolic": 107,
+    "forced_raw": 2,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 2,
+    "match": true,
+    "ok": true,
+    "len": 988,
+    "symbolic": 291,
+    "forced_raw": 28,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 3,
+    "match": true,
+    "ok": true,
+    "len": 6339,
+    "symbolic": 1800,
+    "forced_raw": 168,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   }
+  ],
+  "n_obj": 3,
+  "n_exact": 3,
+  "symbolic": 2198,
+  "forced_raw": 198,
+  "raw_fallback_objs": 0,
+  "seconds": 21.5
  },
  "mssblst.vxd": {
   "byte_exact": true,
@@ -5035,7 +5035,7 @@
   "symbolic": 3570,
   "forced_raw": 108,
   "raw_fallback_objs": 0,
-  "seconds": 53.3
+  "seconds": 61.3
  },
  "mswebsp.vxd": {
   "byte_exact": true,
@@ -5079,7 +5079,7 @@
   "symbolic": 1237,
   "forced_raw": 25,
   "raw_fallback_objs": 0,
-  "seconds": 23.7
+  "seconds": 26.0
  },
  "mvpas.vxd": {
   "byte_exact": true,
@@ -5091,7 +5091,7 @@
     "len": 92,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -5122,8 +5122,8 @@
   "n_exact": 3,
   "symbolic": 958,
   "forced_raw": 68,
-  "raw_fallback_objs": 1,
-  "seconds": 21.2
+  "raw_fallback_objs": 0,
+  "seconds": 22.8
  },
  "ifsmgr.vxd": {
   "byte_exact": true,
@@ -5233,7 +5233,7 @@
   "symbolic": 42006,
   "forced_raw": 2468,
   "raw_fallback_objs": 0,
-  "seconds": 209.1
+  "seconds": 218.8
  },
  "necatapi.vxd": {
   "byte_exact": true,
@@ -5277,7 +5277,7 @@
   "symbolic": 400,
   "forced_raw": 6,
   "raw_fallback_objs": 0,
-  "seconds": 16.3
+  "seconds": 17.4
  },
  "ndis2sup.vxd": {
   "byte_exact": true,
@@ -5311,7 +5311,7 @@
     "len": 134,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
@@ -5320,8 +5320,8 @@
   "n_exact": 3,
   "symbolic": 4930,
   "forced_raw": 257,
-  "raw_fallback_objs": 1,
-  "seconds": 32.4
+  "raw_fallback_objs": 0,
+  "seconds": 34.8
  },
  "mssndsys.vxd": {
   "byte_exact": true,
@@ -5398,7 +5398,7 @@
   "symbolic": 6767,
   "forced_raw": 186,
   "raw_fallback_objs": 0,
-  "seconds": 65.3
+  "seconds": 72.8
  },
  "netmgmt.vxd": {
   "byte_exact": true,
@@ -5453,7 +5453,7 @@
   "symbolic": 300,
   "forced_raw": 19,
   "raw_fallback_objs": 0,
-  "seconds": 19.3
+  "seconds": 21.1
  },
  "nice.vxd": {
   "byte_exact": true,
@@ -5487,7 +5487,7 @@
     "len": 22,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
@@ -5496,8 +5496,8 @@
   "n_exact": 3,
   "symbolic": 4992,
   "forced_raw": 270,
-  "raw_fallback_objs": 1,
-  "seconds": 23.5
+  "raw_fallback_objs": 0,
+  "seconds": 24.6
  },
  "nscl.vxd": {
   "byte_exact": true,
@@ -5531,7 +5531,7 @@
     "len": 22,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
@@ -5540,8 +5540,8 @@
   "n_exact": 3,
   "symbolic": 4353,
   "forced_raw": 117,
-  "raw_fallback_objs": 1,
-  "seconds": 24.1
+  "raw_fallback_objs": 0,
+  "seconds": 24.8
  },
  "netbeui.vxd": {
   "byte_exact": true,
@@ -5586,7 +5586,7 @@
     "len": 128,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
@@ -5595,8 +5595,8 @@
   "n_exact": 4,
   "symbolic": 10189,
   "forced_raw": 605,
-  "raw_fallback_objs": 1,
-  "seconds": 50.3
+  "raw_fallback_objs": 0,
+  "seconds": 52.3
  },
  "nwsp.vxd": {
   "byte_exact": true,
@@ -5640,7 +5640,7 @@
   "symbolic": 2082,
   "forced_raw": 24,
   "raw_fallback_objs": 0,
-  "seconds": 21.7
+  "seconds": 23.0
  },
  "nwnblink.vxd": {
   "byte_exact": true,
@@ -5674,7 +5674,7 @@
     "len": 22,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -5694,8 +5694,8 @@
   "n_exact": 4,
   "symbolic": 9106,
   "forced_raw": 575,
-  "raw_fallback_objs": 1,
-  "seconds": 44.1
+  "raw_fallback_objs": 0,
+  "seconds": 45.8
  },
  "oak.vxd": {
   "byte_exact": true,
@@ -5750,7 +5750,7 @@
   "symbolic": 350,
   "forced_raw": 5,
   "raw_fallback_objs": 0,
-  "seconds": 15.9
+  "seconds": 17.2
  },
  "nwlink.vxd": {
   "byte_exact": true,
@@ -5805,7 +5805,7 @@
   "symbolic": 11335,
   "forced_raw": 390,
   "raw_fallback_objs": 0,
-  "seconds": 67.6
+  "seconds": 66.6
  },
  "pageswap.vxd": {
   "byte_exact": true,
@@ -5850,7 +5850,7 @@
     "len": 26,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
@@ -5859,8 +5859,8 @@
   "n_exact": 4,
   "symbolic": 49,
   "forced_raw": 1,
-  "raw_fallback_objs": 1,
-  "seconds": 13.0
+  "raw_fallback_objs": 0,
+  "seconds": 13.4
  },
  "ndis.vxd": {
   "byte_exact": true,
@@ -5916,7 +5916,7 @@
     "len": 207,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -5936,8 +5936,8 @@
   "n_exact": 6,
   "symbolic": 29795,
   "forced_raw": 1334,
-  "raw_fallback_objs": 1,
-  "seconds": 133.1
+  "raw_fallback_objs": 0,
+  "seconds": 139.6
  },
  "paralink.vxd": {
   "byte_exact": true,
@@ -5981,7 +5981,40 @@
   "symbolic": 3941,
   "forced_raw": 19,
   "raw_fallback_objs": 0,
-  "seconds": 18.2
+  "seconds": 19.6
+ },
+ "parallax.vxd": {
+  "byte_exact": true,
+  "objects": [
+   {
+    "obj": 1,
+    "match": true,
+    "ok": true,
+    "len": 1316,
+    "symbolic": 358,
+    "forced_raw": 20,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 2,
+    "match": true,
+    "ok": true,
+    "len": 40,
+    "symbolic": 14,
+    "forced_raw": 0,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   }
+  ],
+  "n_obj": 2,
+  "n_exact": 2,
+  "symbolic": 372,
+  "forced_raw": 20,
+  "raw_fallback_objs": 0,
+  "seconds": 11.3
  },
  "otceth.vxd": {
   "byte_exact": true,
@@ -6015,7 +6048,7 @@
     "len": 22,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -6046,41 +6079,8 @@
   "n_exact": 5,
   "symbolic": 6137,
   "forced_raw": 120,
-  "raw_fallback_objs": 1,
-  "seconds": 35.4
- },
- "parallax.vxd": {
-  "byte_exact": true,
-  "objects": [
-   {
-    "obj": 1,
-    "match": true,
-    "ok": true,
-    "len": 1316,
-    "symbolic": 358,
-    "forced_raw": 20,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 2,
-    "match": true,
-    "ok": true,
-    "len": 40,
-    "symbolic": 14,
-    "forced_raw": 0,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   }
-  ],
-  "n_obj": 2,
-  "n_exact": 2,
-  "symbolic": 372,
-  "forced_raw": 20,
   "raw_fallback_objs": 0,
-  "seconds": 10.7
+  "seconds": 37.7
  },
  "octk32.vxd": {
   "byte_exact": true,
@@ -6114,7 +6114,7 @@
     "len": 22,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -6134,8 +6134,8 @@
   "n_exact": 4,
   "symbolic": 10241,
   "forced_raw": 301,
-  "raw_fallback_objs": 1,
-  "seconds": 52.1
+  "raw_fallback_objs": 0,
+  "seconds": 55.2
  },
  "parity.vxd": {
   "byte_exact": true,
@@ -6179,7 +6179,7 @@
   "symbolic": 99,
   "forced_raw": 20,
   "raw_fallback_objs": 0,
-  "seconds": 12.0
+  "seconds": 14.3
  },
  "pcntn3.vxd": {
   "byte_exact": true,
@@ -6213,7 +6213,7 @@
     "len": 22,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
@@ -6222,8 +6222,8 @@
   "n_exact": 3,
   "symbolic": 7206,
   "forced_raw": 307,
-  "raw_fallback_objs": 1,
-  "seconds": 32.1
+  "raw_fallback_objs": 0,
+  "seconds": 35.1
  },
  "pe3ndis.vxd": {
   "byte_exact": true,
@@ -6257,7 +6257,7 @@
     "len": 22,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
@@ -6266,8 +6266,8 @@
   "n_exact": 3,
   "symbolic": 7342,
   "forced_raw": 277,
-  "raw_fallback_objs": 1,
-  "seconds": 34.5
+  "raw_fallback_objs": 0,
+  "seconds": 38.0
  },
  "nwredir.vxd": {
   "byte_exact": true,
@@ -6334,7 +6334,7 @@
     "len": 76,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -6365,8 +6365,52 @@
   "n_exact": 8,
   "symbolic": 29155,
   "forced_raw": 1763,
-  "raw_fallback_objs": 1,
-  "seconds": 140.0
+  "raw_fallback_objs": 0,
+  "seconds": 146.3
+ },
+ "pci.vxd": {
+  "byte_exact": true,
+  "objects": [
+   {
+    "obj": 1,
+    "match": true,
+    "ok": true,
+    "len": 116,
+    "symbolic": 0,
+    "forced_raw": 0,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 2,
+    "match": true,
+    "ok": true,
+    "len": 31542,
+    "symbolic": 10016,
+    "forced_raw": 804,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 4,
+    "match": true,
+    "ok": true,
+    "len": 242,
+    "symbolic": 75,
+    "forced_raw": 2,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   }
+  ],
+  "n_obj": 3,
+  "n_exact": 3,
+  "symbolic": 10091,
+  "forced_raw": 806,
+  "raw_fallback_objs": 0,
+  "seconds": 62.6
  },
  "nwserver.vxd": {
   "byte_exact": true,
@@ -6432,51 +6476,7 @@
   "symbolic": 30696,
   "forced_raw": 2253,
   "raw_fallback_objs": 0,
-  "seconds": 132.2
- },
- "pci.vxd": {
-  "byte_exact": true,
-  "objects": [
-   {
-    "obj": 1,
-    "match": true,
-    "ok": true,
-    "len": 116,
-    "symbolic": 0,
-    "forced_raw": 0,
-    "raw_fallback": true,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 2,
-    "match": true,
-    "ok": true,
-    "len": 31542,
-    "symbolic": 10016,
-    "forced_raw": 804,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 4,
-    "match": true,
-    "ok": true,
-    "len": 242,
-    "symbolic": 75,
-    "forced_raw": 2,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   }
-  ],
-  "n_obj": 3,
-  "n_exact": 3,
-  "symbolic": 10091,
-  "forced_raw": 806,
-  "raw_fallback_objs": 1,
-  "seconds": 56.8
+  "seconds": 148.9
  },
  "perf.vxd": {
   "byte_exact": true,
@@ -6532,7 +6532,7 @@
     "len": 24,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
@@ -6541,96 +6541,8 @@
   "n_exact": 5,
   "symbolic": 1499,
   "forced_raw": 77,
-  "raw_fallback_objs": 1,
-  "seconds": 27.2
- },
- "qemmfix.vxd": {
-  "byte_exact": true,
-  "objects": [
-   {
-    "obj": 1,
-    "match": true,
-    "ok": true,
-    "len": 152,
-    "symbolic": 18,
-    "forced_raw": 2,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 2,
-    "match": true,
-    "ok": true,
-    "len": 568,
-    "symbolic": 190,
-    "forced_raw": 0,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 3,
-    "match": true,
-    "ok": true,
-    "len": 21,
-    "symbolic": 0,
-    "forced_raw": 0,
-    "raw_fallback": true,
-    "diffs": 0,
-    "err": null
-   }
-  ],
-  "n_obj": 3,
-  "n_exact": 3,
-  "symbolic": 208,
-  "forced_raw": 2,
-  "raw_fallback_objs": 1,
-  "seconds": 9.2
- },
- "quartz.vxd": {
-  "byte_exact": true,
-  "objects": [
-   {
-    "obj": 1,
-    "match": true,
-    "ok": true,
-    "len": 112,
-    "symbolic": 0,
-    "forced_raw": 0,
-    "raw_fallback": true,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 2,
-    "match": true,
-    "ok": true,
-    "len": 205,
-    "symbolic": 82,
-    "forced_raw": 0,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 3,
-    "match": true,
-    "ok": true,
-    "len": 4,
-    "symbolic": 3,
-    "forced_raw": 0,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   }
-  ],
-  "n_obj": 3,
-  "n_exact": 3,
-  "symbolic": 85,
-  "forced_raw": 0,
-  "raw_fallback_objs": 1,
-  "seconds": 8.7
+  "raw_fallback_objs": 0,
+  "seconds": 29.2
  },
  "ppm.vxd": {
   "byte_exact": true,
@@ -6674,7 +6586,95 @@
   "symbolic": 4228,
   "forced_raw": 55,
   "raw_fallback_objs": 0,
-  "seconds": 28.4
+  "seconds": 31.3
+ },
+ "qemmfix.vxd": {
+  "byte_exact": true,
+  "objects": [
+   {
+    "obj": 1,
+    "match": true,
+    "ok": true,
+    "len": 152,
+    "symbolic": 18,
+    "forced_raw": 2,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 2,
+    "match": true,
+    "ok": true,
+    "len": 568,
+    "symbolic": 190,
+    "forced_raw": 0,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 3,
+    "match": true,
+    "ok": true,
+    "len": 21,
+    "symbolic": 0,
+    "forced_raw": 0,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   }
+  ],
+  "n_obj": 3,
+  "n_exact": 3,
+  "symbolic": 208,
+  "forced_raw": 2,
+  "raw_fallback_objs": 0,
+  "seconds": 9.9
+ },
+ "quartz.vxd": {
+  "byte_exact": true,
+  "objects": [
+   {
+    "obj": 1,
+    "match": true,
+    "ok": true,
+    "len": 112,
+    "symbolic": 0,
+    "forced_raw": 0,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 2,
+    "match": true,
+    "ok": true,
+    "len": 205,
+    "symbolic": 82,
+    "forced_raw": 0,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 3,
+    "match": true,
+    "ok": true,
+    "len": 4,
+    "symbolic": 3,
+    "forced_raw": 0,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   }
+  ],
+  "n_obj": 3,
+  "n_exact": 3,
+  "symbolic": 85,
+  "forced_raw": 0,
+  "raw_fallback_objs": 0,
+  "seconds": 10.1
  },
  "pccard.vxd": {
   "byte_exact": true,
@@ -6740,7 +6740,7 @@
   "symbolic": 19958,
   "forced_raw": 992,
   "raw_fallback_objs": 0,
-  "seconds": 91.2
+  "seconds": 101.8
  },
  "proteon.vxd": {
   "byte_exact": true,
@@ -6774,7 +6774,7 @@
     "len": 22,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
@@ -6783,8 +6783,8 @@
   "n_exact": 3,
   "symbolic": 9518,
   "forced_raw": 244,
-  "raw_fallback_objs": 1,
-  "seconds": 41.7
+  "raw_fallback_objs": 0,
+  "seconds": 44.4
  },
  "reboot.vxd": {
   "byte_exact": true,
@@ -6861,7 +6861,7 @@
   "symbolic": 572,
   "forced_raw": 58,
   "raw_fallback_objs": 0,
-  "seconds": 25.8
+  "seconds": 28.2
  },
  "qic117.vxd": {
   "byte_exact": true,
@@ -6894,7 +6894,7 @@
   "symbolic": 15295,
   "forced_raw": 969,
   "raw_fallback_objs": 0,
-  "seconds": 45.8
+  "seconds": 47.9
  },
  "s3.vxd": {
   "byte_exact": true,
@@ -6949,7 +6949,7 @@
   "symbolic": 2616,
   "forced_raw": 52,
   "raw_fallback_objs": 0,
-  "seconds": 39.8
+  "seconds": 42.9
  },
  "s3v.vxd": {
   "byte_exact": true,
@@ -7004,7 +7004,7 @@
   "symbolic": 2580,
   "forced_raw": 17,
   "raw_fallback_objs": 0,
-  "seconds": 24.2
+  "seconds": 27.1
  },
  "s3mm.vxd": {
   "byte_exact": true,
@@ -7059,51 +7059,7 @@
   "symbolic": 3387,
   "forced_raw": 63,
   "raw_fallback_objs": 0,
-  "seconds": 37.9
- },
- "scsi1hlp.vxd": {
-  "byte_exact": true,
-  "objects": [
-   {
-    "obj": 1,
-    "match": true,
-    "ok": true,
-    "len": 512,
-    "symbolic": 150,
-    "forced_raw": 6,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 2,
-    "match": true,
-    "ok": true,
-    "len": 92,
-    "symbolic": 44,
-    "forced_raw": 0,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 3,
-    "match": true,
-    "ok": true,
-    "len": 5966,
-    "symbolic": 1929,
-    "forced_raw": 98,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   }
-  ],
-  "n_obj": 3,
-  "n_exact": 3,
-  "symbolic": 2123,
-  "forced_raw": 104,
-  "raw_fallback_objs": 0,
-  "seconds": 21.6
+  "seconds": 41.1
  },
  "serenum.vxd": {
   "byte_exact": true,
@@ -7147,7 +7103,51 @@
   "symbolic": 1782,
   "forced_raw": 234,
   "raw_fallback_objs": 0,
-  "seconds": 18.6
+  "seconds": 20.4
+ },
+ "scsi1hlp.vxd": {
+  "byte_exact": true,
+  "objects": [
+   {
+    "obj": 1,
+    "match": true,
+    "ok": true,
+    "len": 512,
+    "symbolic": 150,
+    "forced_raw": 6,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 2,
+    "match": true,
+    "ok": true,
+    "len": 92,
+    "symbolic": 44,
+    "forced_raw": 0,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 3,
+    "match": true,
+    "ok": true,
+    "len": 5966,
+    "symbolic": 1929,
+    "forced_raw": 98,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   }
+  ],
+  "n_obj": 3,
+  "n_exact": 3,
+  "symbolic": 2123,
+  "forced_raw": 104,
+  "raw_fallback_objs": 0,
+  "seconds": 24.1
  },
  "serial.vxd": {
   "byte_exact": true,
@@ -7191,7 +7191,7 @@
   "symbolic": 2277,
   "forced_raw": 28,
   "raw_fallback_objs": 0,
-  "seconds": 21.4
+  "seconds": 24.3
  },
  "serwave.vxd": {
   "byte_exact": true,
@@ -7224,7 +7224,7 @@
   "symbolic": 2138,
   "forced_raw": 93,
   "raw_fallback_objs": 0,
-  "seconds": 15.4
+  "seconds": 17.0
  },
  "smartvsd.vxd": {
   "byte_exact": true,
@@ -7279,7 +7279,7 @@
   "symbolic": 1658,
   "forced_raw": 18,
   "raw_fallback_objs": 0,
-  "seconds": 17.7
+  "seconds": 19.0
  },
  "sb16.vxd": {
   "byte_exact": true,
@@ -7345,7 +7345,7 @@
   "symbolic": 14920,
   "forced_raw": 817,
   "raw_fallback_objs": 0,
-  "seconds": 80.5
+  "seconds": 88.1
  },
  "setp3.vxd": {
   "byte_exact": true,
@@ -7379,7 +7379,7 @@
     "len": 22,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
@@ -7388,8 +7388,52 @@
   "n_exact": 3,
   "symbolic": 8631,
   "forced_raw": 158,
-  "raw_fallback_objs": 1,
-  "seconds": 42.2
+  "raw_fallback_objs": 0,
+  "seconds": 43.8
+ },
+ "pppmac.vxd": {
+  "byte_exact": true,
+  "objects": [
+   {
+    "obj": 1,
+    "match": true,
+    "ok": true,
+    "len": 104668,
+    "symbolic": 30745,
+    "forced_raw": 1309,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 2,
+    "match": true,
+    "ok": true,
+    "len": 6497,
+    "symbolic": 2273,
+    "forced_raw": 339,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 3,
+    "match": true,
+    "ok": true,
+    "len": 9408,
+    "symbolic": 2951,
+    "forced_raw": 109,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   }
+  ],
+  "n_obj": 3,
+  "n_exact": 3,
+  "symbolic": 35969,
+  "forced_raw": 1757,
+  "raw_fallback_objs": 0,
+  "seconds": 145.0
  },
  "sbawe.vxd": {
   "byte_exact": true,
@@ -7444,95 +7488,7 @@
   "symbolic": 15557,
   "forced_raw": 539,
   "raw_fallback_objs": 0,
-  "seconds": 76.9
- },
- "pppmac.vxd": {
-  "byte_exact": true,
-  "objects": [
-   {
-    "obj": 1,
-    "match": true,
-    "ok": true,
-    "len": 104668,
-    "symbolic": 30745,
-    "forced_raw": 1309,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 2,
-    "match": true,
-    "ok": true,
-    "len": 6497,
-    "symbolic": 2273,
-    "forced_raw": 339,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 3,
-    "match": true,
-    "ok": true,
-    "len": 9408,
-    "symbolic": 2951,
-    "forced_raw": 109,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   }
-  ],
-  "n_obj": 3,
-  "n_exact": 3,
-  "symbolic": 35969,
-  "forced_raw": 1757,
-  "raw_fallback_objs": 0,
-  "seconds": 135.3
- },
- "smc8000w.vxd": {
-  "byte_exact": true,
-  "objects": [
-   {
-    "obj": 1,
-    "match": true,
-    "ok": true,
-    "len": 13864,
-    "symbolic": 4349,
-    "forced_raw": 89,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 2,
-    "match": true,
-    "ok": true,
-    "len": 13584,
-    "symbolic": 4602,
-    "forced_raw": 35,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 3,
-    "match": true,
-    "ok": true,
-    "len": 22,
-    "symbolic": 0,
-    "forced_raw": 0,
-    "raw_fallback": true,
-    "diffs": 0,
-    "err": null
-   }
-  ],
-  "n_obj": 3,
-  "n_exact": 3,
-  "symbolic": 8951,
-  "forced_raw": 124,
-  "raw_fallback_objs": 1,
-  "seconds": 32.3
+  "seconds": 84.1
  },
  "smc80pc.vxd": {
   "byte_exact": true,
@@ -7566,7 +7522,7 @@
     "len": 22,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
@@ -7575,8 +7531,52 @@
   "n_exact": 3,
   "symbolic": 5355,
   "forced_raw": 59,
-  "raw_fallback_objs": 1,
-  "seconds": 26.4
+  "raw_fallback_objs": 0,
+  "seconds": 30.4
+ },
+ "smc8000w.vxd": {
+  "byte_exact": true,
+  "objects": [
+   {
+    "obj": 1,
+    "match": true,
+    "ok": true,
+    "len": 13864,
+    "symbolic": 4349,
+    "forced_raw": 89,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 2,
+    "match": true,
+    "ok": true,
+    "len": 13584,
+    "symbolic": 4602,
+    "forced_raw": 35,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 3,
+    "match": true,
+    "ok": true,
+    "len": 22,
+    "symbolic": 0,
+    "forced_raw": 0,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   }
+  ],
+  "n_obj": 3,
+  "n_exact": 3,
+  "symbolic": 8951,
+  "forced_raw": 124,
+  "raw_fallback_objs": 0,
+  "seconds": 35.9
  },
  "smc9000.vxd": {
   "byte_exact": true,
@@ -7610,7 +7610,7 @@
     "len": 22,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -7630,63 +7630,8 @@
   "n_exact": 4,
   "symbolic": 4636,
   "forced_raw": 134,
-  "raw_fallback_objs": 1,
-  "seconds": 27.4
- },
- "snapshot.vxd": {
-  "byte_exact": true,
-  "objects": [
-   {
-    "obj": 1,
-    "match": true,
-    "ok": true,
-    "len": 568,
-    "symbolic": 71,
-    "forced_raw": 1,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 2,
-    "match": true,
-    "ok": true,
-    "len": 16,
-    "symbolic": 0,
-    "forced_raw": 0,
-    "raw_fallback": true,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 3,
-    "match": true,
-    "ok": true,
-    "len": 112,
-    "symbolic": 27,
-    "forced_raw": 0,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 4,
-    "match": true,
-    "ok": true,
-    "len": 21,
-    "symbolic": 0,
-    "forced_raw": 0,
-    "raw_fallback": true,
-    "diffs": 0,
-    "err": null
-   }
-  ],
-  "n_obj": 4,
-  "n_exact": 4,
-  "symbolic": 98,
-  "forced_raw": 1,
-  "raw_fallback_objs": 2,
-  "seconds": 15.4
+  "raw_fallback_objs": 0,
+  "seconds": 31.9
  },
  "smc8232w.vxd": {
   "byte_exact": true,
@@ -7720,7 +7665,7 @@
     "len": 22,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
@@ -7729,19 +7674,19 @@
   "n_exact": 3,
   "symbolic": 6958,
   "forced_raw": 110,
-  "raw_fallback_objs": 1,
-  "seconds": 31.5
+  "raw_fallback_objs": 0,
+  "seconds": 35.0
  },
- "spap.vxd": {
+ "snapshot.vxd": {
   "byte_exact": true,
   "objects": [
    {
     "obj": 1,
     "match": true,
     "ok": true,
-    "len": 7540,
-    "symbolic": 2151,
-    "forced_raw": 83,
+    "len": 568,
+    "symbolic": 71,
+    "forced_raw": 1,
     "raw_fallback": false,
     "diffs": 0,
     "err": null
@@ -7750,20 +7695,42 @@
     "obj": 2,
     "match": true,
     "ok": true,
-    "len": 148,
+    "len": 16,
+    "symbolic": 0,
+    "forced_raw": 0,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 3,
+    "match": true,
+    "ok": true,
+    "len": 112,
     "symbolic": 27,
-    "forced_raw": 3,
+    "forced_raw": 0,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 4,
+    "match": true,
+    "ok": true,
+    "len": 21,
+    "symbolic": 0,
+    "forced_raw": 0,
     "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
   ],
-  "n_obj": 2,
-  "n_exact": 2,
-  "symbolic": 2178,
-  "forced_raw": 86,
+  "n_obj": 4,
+  "n_exact": 4,
+  "symbolic": 98,
+  "forced_raw": 1,
   "raw_fallback_objs": 0,
-  "seconds": 19.3
+  "seconds": 16.9
  },
  "socketsv.vxd": {
   "byte_exact": true,
@@ -7796,7 +7763,7 @@
   "symbolic": 4095,
   "forced_raw": 138,
   "raw_fallback_objs": 0,
-  "seconds": 22.8
+  "seconds": 24.6
  },
  "snip.vxd": {
   "byte_exact": true,
@@ -7830,7 +7797,7 @@
     "len": 22,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
@@ -7839,19 +7806,19 @@
   "n_exact": 3,
   "symbolic": 6853,
   "forced_raw": 322,
-  "raw_fallback_objs": 1,
-  "seconds": 35.5
+  "raw_fallback_objs": 0,
+  "seconds": 37.8
  },
- "smc8100w.vxd": {
+ "spap.vxd": {
   "byte_exact": true,
   "objects": [
    {
     "obj": 1,
     "match": true,
     "ok": true,
-    "len": 64720,
-    "symbolic": 16008,
-    "forced_raw": 474,
+    "len": 7540,
+    "symbolic": 2151,
+    "forced_raw": 83,
     "raw_fallback": false,
     "diffs": 0,
     "err": null
@@ -7860,53 +7827,20 @@
     "obj": 2,
     "match": true,
     "ok": true,
-    "len": 1392,
-    "symbolic": 533,
-    "forced_raw": 8,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 3,
-    "match": true,
-    "ok": true,
-    "len": 22,
-    "symbolic": 0,
-    "forced_raw": 0,
-    "raw_fallback": true,
-    "diffs": 0,
-    "err": null
-   }
-  ],
-  "n_obj": 3,
-  "n_exact": 3,
-  "symbolic": 16541,
-  "forced_raw": 482,
-  "raw_fallback_objs": 1,
-  "seconds": 64.5
- },
- "splitter.vxd": {
-  "byte_exact": true,
-  "objects": [
-   {
-    "obj": 1,
-    "match": true,
-    "ok": true,
-    "len": 1540,
-    "symbolic": 498,
+    "len": 148,
+    "symbolic": 27,
     "forced_raw": 3,
     "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
   ],
-  "n_obj": 1,
-  "n_exact": 1,
-  "symbolic": 498,
-  "forced_raw": 3,
+  "n_obj": 2,
+  "n_exact": 2,
+  "symbolic": 2178,
+  "forced_raw": 86,
   "raw_fallback_objs": 0,
-  "seconds": 10.9
+  "seconds": 21.8
  },
  "socket.vxd": {
   "byte_exact": true,
@@ -7940,7 +7874,7 @@
     "len": 22,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
@@ -7949,8 +7883,74 @@
   "n_exact": 3,
   "symbolic": 6914,
   "forced_raw": 327,
-  "raw_fallback_objs": 1,
-  "seconds": 34.8
+  "raw_fallback_objs": 0,
+  "seconds": 38.5
+ },
+ "smc8100w.vxd": {
+  "byte_exact": true,
+  "objects": [
+   {
+    "obj": 1,
+    "match": true,
+    "ok": true,
+    "len": 64720,
+    "symbolic": 16008,
+    "forced_raw": 474,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 2,
+    "match": true,
+    "ok": true,
+    "len": 1392,
+    "symbolic": 533,
+    "forced_raw": 8,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 3,
+    "match": true,
+    "ok": true,
+    "len": 22,
+    "symbolic": 0,
+    "forced_raw": 0,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   }
+  ],
+  "n_obj": 3,
+  "n_exact": 3,
+  "symbolic": 16541,
+  "forced_raw": 482,
+  "raw_fallback_objs": 0,
+  "seconds": 72.7
+ },
+ "splitter.vxd": {
+  "byte_exact": true,
+  "objects": [
+   {
+    "obj": 1,
+    "match": true,
+    "ok": true,
+    "len": 1540,
+    "symbolic": 498,
+    "forced_raw": 3,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   }
+  ],
+  "n_obj": 1,
+  "n_exact": 1,
+  "symbolic": 498,
+  "forced_raw": 3,
+  "raw_fallback_objs": 0,
+  "seconds": 12.4
  },
  "srammtd.vxd": {
   "byte_exact": true,
@@ -7972,7 +7972,7 @@
   "symbolic": 301,
   "forced_raw": 4,
   "raw_fallback_objs": 0,
-  "seconds": 10.0
+  "seconds": 11.8
  },
  "spendis.vxd": {
   "byte_exact": true,
@@ -8006,7 +8006,7 @@
     "len": 22,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
@@ -8015,8 +8015,8 @@
   "n_exact": 3,
   "symbolic": 4888,
   "forced_raw": 152,
-  "raw_fallback_objs": 1,
-  "seconds": 21.8
+  "raw_fallback_objs": 0,
+  "seconds": 25.6
  },
  "spooler.vxd": {
   "byte_exact": true,
@@ -8061,7 +8061,7 @@
     "len": 22,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
@@ -8070,8 +8070,8 @@
   "n_exact": 4,
   "symbolic": 3157,
   "forced_raw": 59,
-  "raw_fallback_objs": 1,
-  "seconds": 23.0
+  "raw_fallback_objs": 0,
+  "seconds": 26.7
  },
  "shell.vxd": {
   "byte_exact": true,
@@ -8149,7 +8149,7 @@
     "len": 392,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -8160,7 +8160,7 @@
     "len": 62,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -8257,8 +8257,8 @@
   "n_exact": 16,
   "symbolic": 6479,
   "forced_raw": 273,
-  "raw_fallback_objs": 2,
-  "seconds": 116.1
+  "raw_fallback_objs": 0,
+  "seconds": 130.3
  },
  "torisan3.vxd": {
   "byte_exact": true,
@@ -8302,7 +8302,7 @@
   "symbolic": 833,
   "forced_raw": 13,
   "raw_fallback_objs": 0,
-  "seconds": 16.9
+  "seconds": 18.2
  },
  "tseng.vxd": {
   "byte_exact": true,
@@ -8357,62 +8357,7 @@
   "symbolic": 512,
   "forced_raw": 2,
   "raw_fallback_objs": 0,
-  "seconds": 16.3
- },
- "tctokch.vxd": {
-  "byte_exact": true,
-  "objects": [
-   {
-    "obj": 1,
-    "match": true,
-    "ok": true,
-    "len": 17740,
-    "symbolic": 4960,
-    "forced_raw": 214,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 2,
-    "match": true,
-    "ok": true,
-    "len": 1392,
-    "symbolic": 533,
-    "forced_raw": 8,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 3,
-    "match": true,
-    "ok": true,
-    "len": 22,
-    "symbolic": 0,
-    "forced_raw": 0,
-    "raw_fallback": true,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 4,
-    "match": true,
-    "ok": true,
-    "len": 6832,
-    "symbolic": 2015,
-    "forced_raw": 92,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   }
-  ],
-  "n_obj": 4,
-  "n_exact": 4,
-  "symbolic": 7508,
-  "forced_raw": 314,
-  "raw_fallback_objs": 1,
-  "seconds": 35.5
+  "seconds": 17.6
  },
  "t20n3.vxd": {
   "byte_exact": true,
@@ -8446,7 +8391,7 @@
     "len": 22,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -8466,8 +8411,63 @@
   "n_exact": 4,
   "symbolic": 7292,
   "forced_raw": 113,
-  "raw_fallback_objs": 1,
-  "seconds": 44.0
+  "raw_fallback_objs": 0,
+  "seconds": 48.3
+ },
+ "tctokch.vxd": {
+  "byte_exact": true,
+  "objects": [
+   {
+    "obj": 1,
+    "match": true,
+    "ok": true,
+    "len": 17740,
+    "symbolic": 4960,
+    "forced_raw": 214,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 2,
+    "match": true,
+    "ok": true,
+    "len": 1392,
+    "symbolic": 533,
+    "forced_raw": 8,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 3,
+    "match": true,
+    "ok": true,
+    "len": 22,
+    "symbolic": 0,
+    "forced_raw": 0,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 4,
+    "match": true,
+    "ok": true,
+    "len": 6832,
+    "symbolic": 2015,
+    "forced_raw": 92,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   }
+  ],
+  "n_obj": 4,
+  "n_exact": 4,
+  "symbolic": 7508,
+  "forced_raw": 314,
+  "raw_fallback_objs": 0,
+  "seconds": 39.3
  },
  "t30n3.vxd": {
   "byte_exact": true,
@@ -8501,7 +8501,7 @@
     "len": 22,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -8521,8 +8521,8 @@
   "n_exact": 4,
   "symbolic": 7175,
   "forced_raw": 157,
-  "raw_fallback_objs": 1,
-  "seconds": 43.8
+  "raw_fallback_objs": 0,
+  "seconds": 48.3
  },
  "tlnk3.vxd": {
   "byte_exact": true,
@@ -8556,7 +8556,7 @@
     "len": 22,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -8576,8 +8576,8 @@
   "n_exact": 4,
   "symbolic": 9720,
   "forced_raw": 49,
-  "raw_fallback_objs": 1,
-  "seconds": 39.5
+  "raw_fallback_objs": 0,
+  "seconds": 43.7
  },
  "ubnei.vxd": {
   "byte_exact": true,
@@ -8611,7 +8611,7 @@
     "len": 22,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
@@ -8620,8 +8620,8 @@
   "n_exact": 3,
   "symbolic": 5982,
   "forced_raw": 264,
-  "raw_fallback_objs": 1,
-  "seconds": 31.0
+  "raw_fallback_objs": 0,
+  "seconds": 34.6
  },
  "vcache.vxd": {
   "byte_exact": true,
@@ -8655,7 +8655,7 @@
     "len": 124,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -8675,8 +8675,8 @@
   "n_exact": 4,
   "symbolic": 2215,
   "forced_raw": 55,
-  "raw_fallback_objs": 1,
-  "seconds": 26.3
+  "raw_fallback_objs": 0,
+  "seconds": 30.2
  },
  "vcdfsd.vxd": {
   "byte_exact": true,
@@ -8732,7 +8732,7 @@
     "len": 52,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -8752,8 +8752,8 @@
   "n_exact": 6,
   "symbolic": 541,
   "forced_raw": 31,
-  "raw_fallback_objs": 1,
-  "seconds": 28.4
+  "raw_fallback_objs": 0,
+  "seconds": 34.1
  },
  "vcd.vxd": {
   "byte_exact": true,
@@ -8819,7 +8819,7 @@
   "symbolic": 2740,
   "forced_raw": 108,
   "raw_fallback_objs": 0,
-  "seconds": 38.5
+  "seconds": 45.4
  },
  "unimodem.vxd": {
   "byte_exact": true,
@@ -8874,7 +8874,7 @@
   "symbolic": 10908,
   "forced_raw": 797,
   "raw_fallback_objs": 0,
-  "seconds": 58.8
+  "seconds": 65.2
  },
  "vdef.vxd": {
   "byte_exact": true,
@@ -8908,7 +8908,7 @@
     "len": 8,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
@@ -8917,8 +8917,8 @@
   "n_exact": 3,
   "symbolic": 473,
   "forced_raw": 7,
-  "raw_fallback_objs": 1,
-  "seconds": 12.9
+  "raw_fallback_objs": 0,
+  "seconds": 15.0
  },
  "vcomm.vxd": {
   "byte_exact": true,
@@ -8995,7 +8995,7 @@
   "symbolic": 3343,
   "forced_raw": 103,
   "raw_fallback_objs": 0,
-  "seconds": 41.9
+  "seconds": 49.4
  },
  "vcond.vxd": {
   "byte_exact": true,
@@ -9040,7 +9040,7 @@
     "len": 36,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -9060,8 +9060,8 @@
   "n_exact": 5,
   "symbolic": 7285,
   "forced_raw": 82,
-  "raw_fallback_objs": 1,
-  "seconds": 38.5
+  "raw_fallback_objs": 0,
+  "seconds": 43.0
  },
  "verite.vxd": {
   "byte_exact": true,
@@ -9105,7 +9105,7 @@
   "symbolic": 302,
   "forced_raw": 5,
   "raw_fallback_objs": 0,
-  "seconds": 9.7
+  "seconds": 10.5
  },
  "vdhcp.386": {
   "byte_exact": true,
@@ -9160,7 +9160,7 @@
   "symbolic": 6459,
   "forced_raw": 177,
   "raw_fallback_objs": 0,
-  "seconds": 38.8
+  "seconds": 44.5
  },
  "vfd.vxd": {
   "byte_exact": true,
@@ -9193,7 +9193,62 @@
   "symbolic": 177,
   "forced_raw": 14,
   "raw_fallback_objs": 0,
-  "seconds": 12.4
+  "seconds": 14.1
+ },
+ "vfbackup.vxd": {
+  "byte_exact": true,
+  "objects": [
+   {
+    "obj": 1,
+    "match": true,
+    "ok": true,
+    "len": 1232,
+    "symbolic": 349,
+    "forced_raw": 12,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 2,
+    "match": true,
+    "ok": true,
+    "len": 146,
+    "symbolic": 56,
+    "forced_raw": 15,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 3,
+    "match": true,
+    "ok": true,
+    "len": 1796,
+    "symbolic": 493,
+    "forced_raw": 12,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 4,
+    "match": true,
+    "ok": true,
+    "len": 1927,
+    "symbolic": 580,
+    "forced_raw": 9,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   }
+  ],
+  "n_obj": 4,
+  "n_exact": 4,
+  "symbolic": 1478,
+  "forced_raw": 48,
+  "raw_fallback_objs": 0,
+  "seconds": 34.9
  },
  "vdmad.vxd": {
   "byte_exact": true,
@@ -9281,62 +9336,7 @@
   "symbolic": 4836,
   "forced_raw": 89,
   "raw_fallback_objs": 0,
-  "seconds": 49.5
- },
- "vfbackup.vxd": {
-  "byte_exact": true,
-  "objects": [
-   {
-    "obj": 1,
-    "match": true,
-    "ok": true,
-    "len": 1232,
-    "symbolic": 349,
-    "forced_raw": 12,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 2,
-    "match": true,
-    "ok": true,
-    "len": 146,
-    "symbolic": 56,
-    "forced_raw": 15,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 3,
-    "match": true,
-    "ok": true,
-    "len": 1796,
-    "symbolic": 493,
-    "forced_raw": 12,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 4,
-    "match": true,
-    "ok": true,
-    "len": 1927,
-    "symbolic": 580,
-    "forced_raw": 9,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   }
-  ],
-  "n_obj": 4,
-  "n_exact": 4,
-  "symbolic": 1478,
-  "forced_raw": 48,
-  "raw_fallback_objs": 0,
-  "seconds": 31.0
+  "seconds": 55.9
  },
  "vflatd.vxd": {
   "byte_exact": true,
@@ -9369,7 +9369,7 @@
   "symbolic": 558,
   "forced_raw": 29,
   "raw_fallback_objs": 0,
-  "seconds": 17.6
+  "seconds": 19.9
  },
  "video7.vxd": {
   "byte_exact": true,
@@ -9424,7 +9424,7 @@
   "symbolic": 546,
   "forced_raw": 4,
   "raw_fallback_objs": 0,
-  "seconds": 16.7
+  "seconds": 18.2
  },
  "v86mmgr.vxd": {
   "byte_exact": true,
@@ -9491,7 +9491,7 @@
     "len": 662,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -9588,8 +9588,8 @@
   "n_exact": 14,
   "symbolic": 11638,
   "forced_raw": 542,
-  "raw_fallback_objs": 1,
-  "seconds": 130.0
+  "raw_fallback_objs": 0,
+  "seconds": 154.9
  },
  "vjoyd.vxd": {
   "byte_exact": true,
@@ -9622,7 +9622,7 @@
   "symbolic": 5112,
   "forced_raw": 54,
   "raw_fallback_objs": 0,
-  "seconds": 19.0
+  "seconds": 21.0
  },
  "vgateway.vxd": {
   "byte_exact": true,
@@ -9655,51 +9655,7 @@
   "symbolic": 11890,
   "forced_raw": 418,
   "raw_fallback_objs": 0,
-  "seconds": 37.5
- },
- "vmd.vxd": {
-  "byte_exact": true,
-  "objects": [
-   {
-    "obj": 1,
-    "match": true,
-    "ok": true,
-    "len": 2860,
-    "symbolic": 743,
-    "forced_raw": 12,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 2,
-    "match": true,
-    "ok": true,
-    "len": 607,
-    "symbolic": 157,
-    "forced_raw": 9,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 3,
-    "match": true,
-    "ok": true,
-    "len": 66,
-    "symbolic": 0,
-    "forced_raw": 0,
-    "raw_fallback": true,
-    "diffs": 0,
-    "err": null
-   }
-  ],
-  "n_obj": 3,
-  "n_exact": 3,
-  "symbolic": 900,
-  "forced_raw": 21,
-  "raw_fallback_objs": 1,
-  "seconds": 23.3
+  "seconds": 44.6
  },
  "vfat.vxd": {
   "byte_exact": true,
@@ -9755,7 +9711,7 @@
     "len": 18,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
@@ -9764,8 +9720,52 @@
   "n_exact": 5,
   "symbolic": 17919,
   "forced_raw": 1044,
-  "raw_fallback_objs": 1,
-  "seconds": 98.6
+  "raw_fallback_objs": 0,
+  "seconds": 110.7
+ },
+ "vmd.vxd": {
+  "byte_exact": true,
+  "objects": [
+   {
+    "obj": 1,
+    "match": true,
+    "ok": true,
+    "len": 2860,
+    "symbolic": 743,
+    "forced_raw": 12,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 2,
+    "match": true,
+    "ok": true,
+    "len": 607,
+    "symbolic": 157,
+    "forced_raw": 9,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 3,
+    "match": true,
+    "ok": true,
+    "len": 66,
+    "symbolic": 0,
+    "forced_raw": 0,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   }
+  ],
+  "n_obj": 3,
+  "n_exact": 3,
+  "symbolic": 900,
+  "forced_raw": 21,
+  "raw_fallback_objs": 0,
+  "seconds": 25.6
  },
  "vmcpd.vxd": {
   "byte_exact": true,
@@ -9810,7 +9810,7 @@
     "len": 115,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
@@ -9819,8 +9819,8 @@
   "n_exact": 4,
   "symbolic": 832,
   "forced_raw": 22,
-  "raw_fallback_objs": 1,
-  "seconds": 26.2
+  "raw_fallback_objs": 0,
+  "seconds": 29.0
  },
  "vdd.vxd": {
   "byte_exact": true,
@@ -9887,7 +9887,7 @@
     "len": 12,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -9995,8 +9995,8 @@
   "n_exact": 15,
   "symbolic": 14905,
   "forced_raw": 740,
-  "raw_fallback_objs": 1,
-  "seconds": 133.8
+  "raw_fallback_objs": 0,
+  "seconds": 161.4
  },
  "vip.386": {
   "byte_exact": true,
@@ -10040,7 +10040,7 @@
   "symbolic": 18271,
   "forced_raw": 760,
   "raw_fallback_objs": 0,
-  "seconds": 72.3
+  "seconds": 86.0
  },
  "vmpoll.vxd": {
   "byte_exact": true,
@@ -10128,7 +10128,62 @@
   "symbolic": 476,
   "forced_raw": 12,
   "raw_fallback_objs": 0,
-  "seconds": 28.4
+  "seconds": 40.4
+ },
+ "vmouse.vxd": {
+  "byte_exact": true,
+  "objects": [
+   {
+    "obj": 1,
+    "match": true,
+    "ok": true,
+    "len": 2228,
+    "symbolic": 613,
+    "forced_raw": 24,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 2,
+    "match": true,
+    "ok": true,
+    "len": 1432,
+    "symbolic": 392,
+    "forced_raw": 29,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 3,
+    "match": true,
+    "ok": true,
+    "len": 14088,
+    "symbolic": 4143,
+    "forced_raw": 104,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 5,
+    "match": true,
+    "ok": true,
+    "len": 12,
+    "symbolic": 0,
+    "forced_raw": 0,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   }
+  ],
+  "n_obj": 4,
+  "n_exact": 4,
+  "symbolic": 5148,
+  "forced_raw": 157,
+  "raw_fallback_objs": 0,
+  "seconds": 49.5
  },
  "vkd.vxd": {
   "byte_exact": true,
@@ -10249,62 +10304,7 @@
   "symbolic": 3598,
   "forced_raw": 170,
   "raw_fallback_objs": 0,
-  "seconds": 72.7
- },
- "vmouse.vxd": {
-  "byte_exact": true,
-  "objects": [
-   {
-    "obj": 1,
-    "match": true,
-    "ok": true,
-    "len": 2228,
-    "symbolic": 613,
-    "forced_raw": 24,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 2,
-    "match": true,
-    "ok": true,
-    "len": 1432,
-    "symbolic": 392,
-    "forced_raw": 29,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 3,
-    "match": true,
-    "ok": true,
-    "len": 14088,
-    "symbolic": 4143,
-    "forced_raw": 104,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 5,
-    "match": true,
-    "ok": true,
-    "len": 12,
-    "symbolic": 0,
-    "forced_raw": 0,
-    "raw_fallback": true,
-    "diffs": 0,
-    "err": null
-   }
-  ],
-  "n_obj": 4,
-  "n_exact": 4,
-  "symbolic": 5148,
-  "forced_raw": 157,
-  "raw_fallback_objs": 1,
-  "seconds": 38.1
+  "seconds": 94.0
  },
  "vmvid.vxd": {
   "byte_exact": true,
@@ -10381,7 +10381,51 @@
   "symbolic": 2731,
   "forced_raw": 57,
   "raw_fallback_objs": 0,
-  "seconds": 45.7
+  "seconds": 58.3
+ },
+ "vnetsup.vxd": {
+  "byte_exact": true,
+  "objects": [
+   {
+    "obj": 1,
+    "match": true,
+    "ok": true,
+    "len": 4636,
+    "symbolic": 1651,
+    "forced_raw": 66,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 3,
+    "match": true,
+    "ok": true,
+    "len": 3296,
+    "symbolic": 1325,
+    "forced_raw": 39,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 4,
+    "match": true,
+    "ok": true,
+    "len": 162,
+    "symbolic": 12,
+    "forced_raw": 2,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   }
+  ],
+  "n_obj": 3,
+  "n_exact": 3,
+  "symbolic": 2988,
+  "forced_raw": 107,
+  "raw_fallback_objs": 0,
+  "seconds": 31.2
  },
  "voltrack.vxd": {
   "byte_exact": true,
@@ -10436,51 +10480,7 @@
   "symbolic": 1452,
   "forced_raw": 81,
   "raw_fallback_objs": 0,
-  "seconds": 24.0
- },
- "vnetsup.vxd": {
-  "byte_exact": true,
-  "objects": [
-   {
-    "obj": 1,
-    "match": true,
-    "ok": true,
-    "len": 4636,
-    "symbolic": 1651,
-    "forced_raw": 66,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 3,
-    "match": true,
-    "ok": true,
-    "len": 3296,
-    "symbolic": 1325,
-    "forced_raw": 39,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 4,
-    "match": true,
-    "ok": true,
-    "len": 162,
-    "symbolic": 12,
-    "forced_raw": 2,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   }
-  ],
-  "n_obj": 3,
-  "n_exact": 3,
-  "symbolic": 2988,
-  "forced_raw": 107,
-  "raw_fallback_objs": 0,
-  "seconds": 27.5
+  "seconds": 27.7
  },
  "vnetbios.vxd": {
   "byte_exact": true,
@@ -10536,7 +10536,7 @@
     "len": 452,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -10556,41 +10556,8 @@
   "n_exact": 6,
   "symbolic": 2968,
   "forced_raw": 151,
-  "raw_fallback_objs": 1,
-  "seconds": 42.7
- },
- "vpmtd.386": {
-  "byte_exact": true,
-  "objects": [
-   {
-    "obj": 1,
-    "match": true,
-    "ok": true,
-    "len": 584,
-    "symbolic": 125,
-    "forced_raw": 4,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 2,
-    "match": true,
-    "ok": true,
-    "len": 4,
-    "symbolic": 2,
-    "forced_raw": 0,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   }
-  ],
-  "n_obj": 2,
-  "n_exact": 2,
-  "symbolic": 127,
-  "forced_raw": 4,
   "raw_fallback_objs": 0,
-  "seconds": 9.5
+  "seconds": 53.6
  },
  "vpd.vxd": {
   "byte_exact": true,
@@ -10635,7 +10602,7 @@
     "len": 25,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -10655,8 +10622,41 @@
   "n_exact": 5,
   "symbolic": 1029,
   "forced_raw": 18,
-  "raw_fallback_objs": 1,
-  "seconds": 19.8
+  "raw_fallback_objs": 0,
+  "seconds": 22.8
+ },
+ "vpmtd.386": {
+  "byte_exact": true,
+  "objects": [
+   {
+    "obj": 1,
+    "match": true,
+    "ok": true,
+    "len": 584,
+    "symbolic": 125,
+    "forced_raw": 4,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 2,
+    "match": true,
+    "ok": true,
+    "len": 4,
+    "symbolic": 2,
+    "forced_raw": 0,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   }
+  ],
+  "n_obj": 2,
+  "n_exact": 2,
+  "symbolic": 127,
+  "forced_raw": 4,
+  "raw_fallback_objs": 0,
+  "seconds": 11.2
  },
  "vpasd.vxd": {
   "byte_exact": true,
@@ -10744,7 +10744,7 @@
   "symbolic": 4032,
   "forced_raw": 96,
   "raw_fallback_objs": 0,
-  "seconds": 54.2
+  "seconds": 65.0
  },
  "vsd.vxd": {
   "byte_exact": true,
@@ -10777,7 +10777,7 @@
   "symbolic": 151,
   "forced_raw": 5,
   "raw_fallback_objs": 0,
-  "seconds": 9.9
+  "seconds": 11.6
  },
  "vpicd.vxd": {
   "byte_exact": true,
@@ -10876,7 +10876,51 @@
   "symbolic": 4941,
   "forced_raw": 136,
   "raw_fallback_objs": 0,
-  "seconds": 50.9
+  "seconds": 62.7
+ },
+ "vnbt.386": {
+  "byte_exact": true,
+  "objects": [
+   {
+    "obj": 1,
+    "match": true,
+    "ok": true,
+    "len": 79012,
+    "symbolic": 24683,
+    "forced_raw": 1263,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 2,
+    "match": true,
+    "ok": true,
+    "len": 3088,
+    "symbolic": 713,
+    "forced_raw": 63,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 3,
+    "match": true,
+    "ok": true,
+    "len": 1756,
+    "symbolic": 561,
+    "forced_raw": 29,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   }
+  ],
+  "n_obj": 3,
+  "n_exact": 3,
+  "symbolic": 25957,
+  "forced_raw": 1355,
+  "raw_fallback_objs": 0,
+  "seconds": 128.2
  },
  "vpowerd.vxd": {
   "byte_exact": true,
@@ -10910,7 +10954,7 @@
     "len": 16,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -10963,52 +11007,8 @@
   "n_exact": 7,
   "symbolic": 2090,
   "forced_raw": 121,
-  "raw_fallback_objs": 1,
-  "seconds": 55.4
- },
- "vnbt.386": {
-  "byte_exact": true,
-  "objects": [
-   {
-    "obj": 1,
-    "match": true,
-    "ok": true,
-    "len": 79012,
-    "symbolic": 24683,
-    "forced_raw": 1263,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 2,
-    "match": true,
-    "ok": true,
-    "len": 3088,
-    "symbolic": 713,
-    "forced_raw": 63,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 3,
-    "match": true,
-    "ok": true,
-    "len": 1756,
-    "symbolic": 561,
-    "forced_raw": 29,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   }
-  ],
-  "n_obj": 3,
-  "n_exact": 3,
-  "symbolic": 25957,
-  "forced_raw": 1355,
   "raw_fallback_objs": 0,
-  "seconds": 116.0
+  "seconds": 63.5
  },
  "vshare.vxd": {
   "byte_exact": true,
@@ -11042,7 +11042,7 @@
     "len": 42,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    }
@@ -11051,8 +11051,8 @@
   "n_exact": 3,
   "symbolic": 2086,
   "forced_raw": 156,
-  "raw_fallback_objs": 1,
-  "seconds": 25.1
+  "raw_fallback_objs": 0,
+  "seconds": 25.7
  },
  "vtdapi.vxd": {
   "byte_exact": true,
@@ -11107,7 +11107,7 @@
   "symbolic": 717,
   "forced_raw": 52,
   "raw_fallback_objs": 0,
-  "seconds": 19.7
+  "seconds": 21.8
  },
  "vtdi.386": {
   "byte_exact": true,
@@ -11140,7 +11140,7 @@
   "symbolic": 435,
   "forced_raw": 9,
   "raw_fallback_objs": 0,
-  "seconds": 10.2
+  "seconds": 10.4
  },
  "vtcp.386": {
   "byte_exact": true,
@@ -11173,7 +11173,7 @@
   "symbolic": 12519,
   "forced_raw": 459,
   "raw_fallback_objs": 0,
-  "seconds": 52.7
+  "seconds": 56.1
  },
  "vtd.vxd": {
   "byte_exact": true,
@@ -11218,7 +11218,7 @@
     "len": 53,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -11271,8 +11271,8 @@
   "n_exact": 8,
   "symbolic": 1184,
   "forced_raw": 54,
-  "raw_fallback_objs": 1,
-  "seconds": 49.8
+  "raw_fallback_objs": 0,
+  "seconds": 53.9
  },
  "wd.vxd": {
   "byte_exact": true,
@@ -11338,7 +11338,40 @@
   "symbolic": 353,
   "forced_raw": 3,
   "raw_fallback_objs": 0,
-  "seconds": 23.2
+  "seconds": 25.1
+ },
+ "wshtcp.vxd": {
+  "byte_exact": true,
+  "objects": [
+   {
+    "obj": 1,
+    "match": true,
+    "ok": true,
+    "len": 4024,
+    "symbolic": 1241,
+    "forced_raw": 4,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   },
+   {
+    "obj": 2,
+    "match": true,
+    "ok": true,
+    "len": 152,
+    "symbolic": 44,
+    "forced_raw": 1,
+    "raw_fallback": false,
+    "diffs": 0,
+    "err": null
+   }
+  ],
+  "n_obj": 2,
+  "n_exact": 2,
+  "symbolic": 1285,
+  "forced_raw": 5,
+  "raw_fallback_objs": 0,
+  "seconds": 20.2
  },
  "vwin32.vxd": {
   "byte_exact": true,
@@ -11404,40 +11437,7 @@
   "symbolic": 7928,
   "forced_raw": 165,
   "raw_fallback_objs": 0,
-  "seconds": 51.6
- },
- "wshtcp.vxd": {
-  "byte_exact": true,
-  "objects": [
-   {
-    "obj": 1,
-    "match": true,
-    "ok": true,
-    "len": 4024,
-    "symbolic": 1241,
-    "forced_raw": 4,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   },
-   {
-    "obj": 2,
-    "match": true,
-    "ok": true,
-    "len": 152,
-    "symbolic": 44,
-    "forced_raw": 1,
-    "raw_fallback": false,
-    "diffs": 0,
-    "err": null
-   }
-  ],
-  "n_obj": 2,
-  "n_exact": 2,
-  "symbolic": 1285,
-  "forced_raw": 5,
-  "raw_fallback_objs": 0,
-  "seconds": 17.7
+  "seconds": 56.7
  },
  "vxdldr.vxd": {
   "byte_exact": true,
@@ -11514,7 +11514,7 @@
   "symbolic": 3644,
   "forced_raw": 101,
   "raw_fallback_objs": 0,
-  "seconds": 50.4
+  "seconds": 56.3
  },
  "wsipx.vxd": {
   "byte_exact": true,
@@ -11547,7 +11547,7 @@
   "symbolic": 3026,
   "forced_raw": 99,
   "raw_fallback_objs": 0,
-  "seconds": 18.4
+  "seconds": 20.8
  },
  "wsock.vxd": {
   "byte_exact": true,
@@ -11580,7 +11580,7 @@
   "symbolic": 3297,
   "forced_raw": 16,
   "raw_fallback_objs": 0,
-  "seconds": 25.5
+  "seconds": 27.6
  },
  "vredir.vxd": {
   "byte_exact": true,
@@ -11658,7 +11658,7 @@
     "len": 219,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -11678,8 +11678,8 @@
   "n_exact": 8,
   "symbolic": 39636,
   "forced_raw": 805,
-  "raw_fallback_objs": 1,
-  "seconds": 175.8
+  "raw_fallback_objs": 0,
+  "seconds": 201.1
  },
  "vserver.vxd": {
   "byte_exact": true,
@@ -11724,7 +11724,7 @@
     "len": 40,
     "symbolic": 0,
     "forced_raw": 0,
-    "raw_fallback": true,
+    "raw_fallback": false,
     "diffs": 0,
     "err": null
    },
@@ -11744,8 +11744,8 @@
   "n_exact": 5,
   "symbolic": 28564,
   "forced_raw": 1350,
-  "raw_fallback_objs": 1,
-  "seconds": 147.8
+  "raw_fallback_objs": 0,
+  "seconds": 162.0
  },
  "xga.vxd": {
   "byte_exact": true,
@@ -11800,7 +11800,7 @@
   "symbolic": 2211,
   "forced_raw": 146,
   "raw_fallback_objs": 0,
-  "seconds": 25.7
+  "seconds": 28.6
  },
  "wsvv.vxd": {
   "byte_exact": true,
@@ -11833,7 +11833,7 @@
   "symbolic": 24360,
   "forced_raw": 1093,
   "raw_fallback_objs": 0,
-  "seconds": 75.0
+  "seconds": 79.5
  },
  "vmm": {
   "byte_exact": true,
@@ -12075,6 +12075,6 @@
   "symbolic": 62181,
   "forced_raw": 3049,
   "raw_fallback_objs": 0,
-  "seconds": 403.5
+  "seconds": 446.5
  }
 }
