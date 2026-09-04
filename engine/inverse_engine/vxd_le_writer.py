@@ -13,16 +13,26 @@ object/module names, device id, and version resource all match exactly.
 import struct
 
 
-def _src_type(D, oi, off):
-    """LE fixup source type for the field at (oi, off): 0x08 (32-bit self-relative) when the field is
-    the rel32 of a near branch -- E8/E9 call/jmp (5 bytes) or 0F 8x jcc (6 bytes) -- else 0x07."""
-    code = D.code[oi]
+def _src_type(D, oi, off, covered):
+    """LE fixup source type for the field at (oi, off): 0x08 (32-bit self-relative) when the 4-byte
+    field is the rel32 of a near branch -- E8/E9 call/jmp (5 bytes) or 0F 8x jcc (6 bytes) -- else
+    0x07 (a 32-bit offset). The recovered instruction is authoritative where the descent reached the
+    site; in a region the descent MISSED (a branch left as data), trust the raw opcode byte -- but
+    never inside a decoded non-branch instruction, where an E8/E9 byte would be coincidental."""
+    code = D.code[oi]; n = len(code)
+    b1 = code[off - 1] if 0 <= off - 1 < n else None
+    b2 = code[off - 2] if 0 <= off - 2 < n else None
     r1 = D.insns.get((oi, off - 1))
-    if r1 and r1["size"] == 5 and code[off - 1] in (0xE8, 0xE9):
+    if r1 and r1["size"] == 5 and b1 in (0xE8, 0xE9):
         return 0x08
     r2 = D.insns.get((oi, off - 2))
-    if r2 and r2["size"] == 6 and code[off - 2] == 0x0F and 0x80 <= code[off - 1] <= 0x8F:
+    if r2 and r2["size"] == 6 and b2 == 0x0F and b1 is not None and 0x80 <= b1 <= 0x8F:
         return 0x08
+    if (off - 1) not in covered:                            # undecoded site -> trust the raw opcode byte
+        if b1 in (0xE8, 0xE9):
+            return 0x08
+        if b2 == 0x0F and b1 is not None and 0x80 <= b1 <= 0x8F:
+            return 0x08
     return 0x07
 
 
@@ -31,8 +41,12 @@ def _emit_fixups(D, v):
     source type + target) are combined into a single source-list record (src|0x20, count, target,
     then the ascending source-offset list) exactly as LINK386 emitted them -- Win95's LE loader
     caps the fixup records per page, so the one-record-per-source form overflows and the module is
-    rejected as "damaged". Records are ordered by ascending first-source offset. Returns
+    rejected as "damaged". Records are ordered by ascending first-source offset. The table is indexed
+    by logical page (matching the loader), independent of the page map's own page numbers. Returns
     (page_table_bytes, record_bytes)."""
+    covered = {}                                            # per-object byte offsets inside a decoded insn
+    for (oi, start), r in D.insns.items():
+        covered.setdefault(oi, set()).update(range(start, start + r["size"]))
     by_page = {}
     for (oi, off), f in D.fx.items():
         if f["kind"] == "internal" and f["target"] is None:
@@ -42,11 +56,12 @@ def _emit_fixups(D, v):
             continue
         pg = obj["pmidx"] + off // v.pagesize
         po = off % v.pagesize
+        st = _src_type(D, oi, off, covered.get(oi, ()))
         if f["kind"] == "internal":
             tflags = 0x10 if f["target"] > 0xffff else 0x00
-            key = (_src_type(D, oi, off), tflags, "int", f["obj"], f["target"])
+            key = (st, tflags, "int", f["obj"], f["target"])
         else:                                               # import by ordinal
-            key = (_src_type(D, oi, off), 0x01 | 0x80, "imp", f["module"], f["ordinal"] & 0xff)
+            key = (st, 0x01 | 0x80, "imp", f["module"], f["ordinal"] & 0xff)
         by_page.setdefault(pg, {}).setdefault(key, []).append(po)
         # a 4-byte source that crosses into the next page is ALSO listed there, with a negative offset
         if po > v.pagesize - 4 and pg < v.mpages:
@@ -95,13 +110,24 @@ def build_le(D, v, vxdname):
             b = bytes(page_content[pg])
         else:
             b = bytes(v.d[o_dp + (pg - 1) * ps: o_dp + pg * ps])   # gap page: orphaned linker bytes
+        if len(b) < ps and pg != v.mpages:                          # object ends mid-page: the rest of
+            b += bytes(v.d[o_dp + (pg - 1) * ps + len(b): o_dp + pg * ps])   # the page is oracle leftover
         data += b[:last_page_bytes] if pg == v.mpages else b + b"\x00" * (ps - len(b))
+    # trailing bytes between the last object page and the non-resident name table (LINK386 zero-padding
+    # or stale bytes): recovered from the oracle so the whole data region is byte-exact
+    data_end = (struct.unpack_from("<I", v.d, 0x80 + 0x88)[0]
+                or struct.unpack_from("<I", v.d, 0x80 + 0xb8)[0] or len(v.d))
+    if 0 <= len(data) < data_end - o_dp:
+        data += bytes(v.d[o_dp + len(data): data_end])
 
     otab_abs = v.lfa + struct.unpack_from("<I", v.d, v.lfa + 0x40)[0]
     objtab = b"".join(struct.pack("<IIIII", o["vsize"], o["base"], o["flags"], o["pmidx"], o["pcnt"])
                       + v.d[otab_abs + i * 24 + 20: otab_abs + i * 24 + 24]   # 4-char object name (recovered)
                       for i, o in enumerate(objs))
-    pagemap = b"".join(struct.pack(">HBB", (pg >> 8) & 0xffff, pg & 0xff, 0) for pg in range(1, v.mpages + 1))
+    # page map: recovered verbatim from the oracle (each 4-byte entry's page number + flag byte are
+    # LINK386's; the numbers are a permutation for some modules but do not affect page/fixup loading)
+    pm_abs = v.lfa + struct.unpack_from("<I", v.d, v.lfa + 0x48)[0]
+    pagemap = bytes(v.d[pm_abs: pm_abs + v.mpages * 4])
     # resident-name table (the module's own name + any exported names): recovered verbatim from the
     # oracle so it is byte-exact regardless of the file name the caller injects under
     rn_off = struct.unpack_from("<I", v.d, v.lfa + 0x58)[0]
