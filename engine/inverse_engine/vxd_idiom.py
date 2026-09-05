@@ -61,12 +61,31 @@ def svc_macro(dev, svc):
     return "        %s %s" % ("VMMcall" if dev == 0x0001 else "VxDcall", name)
 
 
-def ddb_macro(db):
-    """`Declare_Virtual_Device` line for a recovered DDB. PROVEN byte-exact: with the recovered
-    fields (crucially the REAL init_order, not Undefined_Init_Order) the macro's _LDATA DDB matches
-    the oracle byte-for-byte. A VxD with a service table additionally needs Begin_Service_Table."""
-    return "Declare_Virtual_Device %s, %d, %d, %s_Control, 0%04Xh, 0%08Xh" % (
-        db["name"], db["major"], db["minor"], db["name"], db["device_id"], db["init_order"])
+def ddb_macro(D, db, loadable=False):
+    """`Declare_Virtual_Device` line for a recovered DDB. With the recovered fields (crucially the
+    REAL init_order) the macro's _LDATA DDB matches the oracle byte-for-byte. A VxD may ALSO carry a
+    V86-mode API proc (+0x1c), a protected-mode API proc (+0x20) and/or reference data (+0x2c) -- each
+    a DDB fixup to a handler, and the trailing macro args after init_order. Those pointer FIELDS are 0
+    in the oracle image (the loader relocates them), so omitting the args keeps the DDB byte-exact --
+    but the RELOCATION is then missing, so in loadable mode the API entry stays NULL and a call into
+    it jumps to 0 and faults (this is what broke VKD's boot). Emit them only when `loadable`, so the
+    byte-exact tree is untouched and the linked DDB still gets a real relocation."""
+    args = [db["name"], "%d" % db["major"], "%d" % db["minor"], db["name"] + "_Control",
+            "0%04Xh" % db["device_id"], "0%08Xh" % db["init_order"]]
+    if loadable:
+        rva, oi = db["rva"], db["obj"]
+
+        def _proc(fo):                                    # the handler label a DDB pointer field targets
+            f = D.fx.get((oi, rva + fo))
+            return D.labels.get((f["obj"], f["target"])) if f and f["kind"] == "internal" else None
+        v86, pm, ref = _proc(0x1c), _proc(0x20), _proc(0x2c)
+        if v86 or pm or ref:                              # append trailing args only as far as needed,
+            args.append(v86 or "")                        #  leaving earlier ones blank (macro default)
+            if pm or ref:
+                args.append(pm or "")
+                if ref:
+                    args.append("OFFSET32 " + ref)
+    return "Declare_Virtual_Device " + ", ".join(args)
 
 
 def service_table(D, emittable):
@@ -562,7 +581,7 @@ def emit_idiomatic(D, loadable=False):
                      else "        %s_Service RESERVED" % name)
         L += ["End_Service_Table %s" % name, ""]
     if db:
-        L += [ddb_macro(db), ""]
+        L += [ddb_macro(D, db, loadable), ""]
     # a symbolic branch may resolve only to a label the walk emits: emittable minus the control-proc /
     # DDB / service-table regions the macros absorb. A branch to anything else is byte-preserved.
     emitted = emittable - cp_skip
