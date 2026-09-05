@@ -372,27 +372,47 @@ def _fx_label(D, oi, k):
     return D.labels.get((f["obj"], f["target"]))
 
 
-def _loadable_insn(D, oi, a, row):
+def _dd_target_expr(D, tobj, toff, ctx):
+    """The `dd` operand for a fixup target: `offset <name>_DDB [+ N]` when it lands inside the DDB
+    struct the macro regenerates (no loc_ label exists there), else `offset <label>`, else None."""
+    if ctx and tobj == ctx["ddb_obj"] and ctx["ddb_rva"] <= toff < ctx["ddb_hi"]:
+        d = toff - ctx["ddb_rva"]
+        return "offset %s_DDB%s" % (ctx["name"], (" + %02Xh" % d) if d else "")
+    lab = D.labels.get((tobj, toff))
+    return "offset %s" % lab if lab else None
+
+
+def _loadable_insn(D, oi, a, row, ctx=None):
     """LOADABLE mode: emit an instruction's INTERNAL fixups symbolically so LINK writes real LE
     relocations (the byte-exact path raws them, dropping the relocation -> wrong pointer on load).
     A near call/jmp/jcc whose displacement carries a self-relative fixup becomes `call/jmp/jcc
     <label>` (the assembler recomputes the displacement after LINK places the segments); any other
-    32-bit-offset fixup field becomes `dd offset <label>`, splitting the instruction into db + dd + db.
-    Returns asm lines, or None to fall through (no fixup / int 20h service / import / unlabelled)."""
+    32-bit-offset fixup field becomes `dd offset <label>` (or `offset <name>_DDB + N` into the DDB),
+    splitting the instruction into db + dd + db. Returns asm lines, or None to fall through (no fixup
+    / int 20h service / import / unresolved target)."""
     from engine.inverse_engine.vxd_masm import _db
     fixes = sorted(k for k in range(a, a + row["size"]) if (oi, k) in D.fx)
-    if not fixes or row.get("vxdcall") or any(_fx_label(D, oi, k) is None for k in fixes):
+    if not fixes or row.get("vxdcall"):
         return None
     code = D.code[oi]; op = code[a]
-    if row["size"] == 5 and op in (0xE8, 0xE9) and fixes == [a + 1]:
-        return ["        %-6s %s" % ("call" if op == 0xE8 else "jmp", _fx_label(D, oi, a + 1))]
+    if row["size"] == 5 and op in (0xE8, 0xE9) and fixes == [a + 1]:      # self-relative near branch
+        lab = _fx_label(D, oi, a + 1)
+        return ["        %-6s %s" % ("call" if op == 0xE8 else "jmp", lab)] if lab else None
     if row["size"] == 6 and op == 0x0F and code[a + 1] in _JCC and fixes == [a + 2]:
-        return ["        %-6s %s" % (_JCC[code[a + 1]], _fx_label(D, oi, a + 2))]
+        lab = _fx_label(D, oi, a + 2)
+        return ["        %-6s %s" % (_JCC[code[a + 1]], lab)] if lab else None
+    exprs = {}                                                            # absolute 32-bit offset field(s)
+    for k in fixes:
+        f = D.fx.get((oi, k))
+        e = _dd_target_expr(D, f["obj"], f.get("target"), ctx) if f and f["kind"] == "internal" else None
+        if e is None:
+            return None
+        exprs[k] = e
     out = []; prev = a
     for k in fixes:
         if k > prev:
             out.append(_db(code[prev:k]))
-        out.append("        dd  offset %s" % _fx_label(D, oi, k))
+        out.append("        dd  %s" % exprs[k])
         prev = k + 4
     if prev < a + row["size"]:
         out.append(_db(code[prev:a + row["size"]]))
@@ -414,16 +434,19 @@ def _db_split_labels(code, a, b, labels):
     return out
 
 
-def _loadable_data(D, oi, a, b):
+def _loadable_data(D, oi, a, b, ctx=None):
     """LOADABLE mode: emit a data span [a,b), turning each INTERNAL-fixup DWORD into `dd offset
-    <label>` (a real relocation) and the rest through the readable _db_data (strings/bytes)."""
+    <label>` / `dd offset <name>_DDB + N` (a real relocation) and the rest through the readable
+    _db_data (strings/bytes)."""
     out = []; run = a; k = a; code = D.code[oi]
     while k < b:
-        lbl = _fx_label(D, oi, k)
-        if lbl and k + 4 <= b:
+        f = D.fx.get((oi, k))
+        expr = _dd_target_expr(D, f["obj"], f.get("target"), ctx) if (
+            f and f["kind"] == "internal") else None
+        if expr and k + 4 <= b:
             if k > run:
                 out.extend(_db_data(code[run:k]))
-            out.append("        dd  offset %s" % lbl)
+            out.append("        dd  %s" % expr)
             k += 4; run = k
         else:
             k += 1
@@ -457,9 +480,12 @@ def emit_idiomatic(D, loadable=False):
     for k in [k for k, nm in D.labels.items() if nm in (name + "_DDB", name + "_Service_Table")]:
         D.labels[k] = "sub_%d_%04X" % k
     force_lbl = {}                                            # (oi,off) -> label, for a fixup target that
-    if loadable:                                              # lands MID-INSTRUCTION (a data byte the
-        from engine.inverse_engine.vxd_link import _label_fixup_targets   # disassembler swept into an
-        _label_fixup_targets(D)                              # instruction). loadable: every internal
+    ldctx = None                                             # lands MID-INSTRUCTION (a data byte the
+    if loadable:                                              # disassembler swept into an instruction).
+        from engine.inverse_engine.vxd_link import _label_fixup_targets   # loadable: every internal
+        _label_fixup_targets(D)                              # fixup target needs a resolvable operand;
+        ldctx = {"name": name, "ddb_obj": db["obj"], "ddb_rva": db["rva"],   # one landing in the DDB
+                 "ddb_hi": db["rva"] + _ddb_size(D, db)} if db else None      # struct resolves to _DDB
         interior_of = {}                                     # fixup target needs a label the symbolic
         for (o2, a2), r2 in D.insns.items():                #  emit can reference; a mid-instruction
             for k in range(a2 + 1, a2 + r2["size"]):        #  target forces its instruction to raw db
@@ -565,7 +591,7 @@ def emit_idiomatic(D, loadable=False):
                         and (b == a or (not D.labels.get((oi, b)) and (oi, b) not in svc_extra)):
                     b += 1
                 if loadable:                            # data pointers / jump tables -> real relocations
-                    L.extend(_loadable_data(D, oi, a, b))
+                    L.extend(_loadable_data(D, oi, a, b, ldctx))
                 else:
                     L.extend(_db_data(code[a:b]))       # readable `db 'text'` for the carved strings
                 a = b
@@ -574,7 +600,7 @@ def emit_idiomatic(D, loadable=False):
                 lbls = {k: force_lbl[(oi, k)] for k in range(a, a + row["size"]) if (oi, k) in force_lbl}
                 L.extend(_db_split_labels(code, a, a + row["size"], lbls))   # target sits mid-instruction
                 a += row["size"]; continue
-            load_lines = _loadable_insn(D, oi, a, row) if loadable else None
+            load_lines = _loadable_insn(D, oi, a, row, ldctx) if loadable else None
             if row.get("vxdcall"):
                 m = svc_macro(row["vxdcall"][0], row["vxdcall"][1])
                 L.append(m if m else _db(row["raw"]))
