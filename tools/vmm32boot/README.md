@@ -71,11 +71,29 @@ the source-type analysis reads an empty code window and every fixup comes out wr
 - The reconstructions differ from the oracle only in the order LINK386 emitted intra-page fixup
   records — a linker artifact that does not affect loading or execution.
 - The uncompressed-W3 + standalone-fallback route above is all you need to boot; it sidesteps the
-  compressed **W4** container installed machines actually use.
-- If you *do* want an installed machine's exact bundle, **`w4.py`** decompresses a W4 vmm32.vxd to
-  its W3 payload and lists the bundled modules: `python w4.py vmm32.vxd out.w3`. Each 8 KB page is
-  compressed with an MRCI/DoubleSpace-family bit code (literals + 6/8/12-bit-distance back-references
-  at base 0/64/320, max 4415 = end-of-page, gamma length from 2). The decompressor is the routine
-  inside the W4's *own* real-mode stub; `w4.py` locates it and runs it under the Unicorn CPU emulator,
-  so the output is Microsoft's own, bit-for-bit. (Needs `pip install unicorn`. Re-*compressing* to a
-  byte-exact W4 is unnecessary — the loader accepts an uncompressed W3.)
+  compressed **W4** container installed machines actually use. If you *do* want the installed machine's
+  own format, **`w4.py`** is a full byte-exact W4 codec.
+
+## The W4 compression, cracked
+
+`w4.py` implements the W4 per-page compression directly in Python — **decode and encode** — so it
+needs no emulator and reproduces Microsoft's own compressed bytes exactly. Each 8 KB page is an
+MRCI/DoubleSpace-family bit code (read LSB-first): literal bytes, plus LZ back-references with 6/8/12-bit
+distances at base 0/64/320 (max 4414), an Elias-gamma length from 2, closed into 512-byte chunks by a
+`0xfff` marker. The full grammar is documented at the top of `w4.py`.
+
+```bash
+python w4.py decompress vmm32.vxd out.w3     # W4 -> W3 payload (+ the 43-module list)
+python w4.py reproduce  vmm32.vxd out.vxd    # rebuild the W4 byte-for-byte from its own tokens
+python w4.py compress   vmm32.vxd in.w3 out  # build a W4 from any W3, reusing vmm32.vxd's stub
+python w4.py verify     vmm32.vxd            # cross-check the Python decoder vs the stub's own
+                                             # decompressor run under emulation (needs `unicorn`)
+```
+
+Validation on a real installed `vmm32.vxd`: all 227 pages decode to exactly what the stub's own
+decompressor produces, and re-encode to the original compressed bytes — the whole 709,605-byte file
+rebuilds byte-for-byte (`reproduce`). The decoder was pinned by disassembling the stub's real-mode
+decompressor and cross-checked against running it under emulation (`verify`), so the format is
+established, not guessed. `compress` runs a fresh greedy-LZ parse (it actually beats Microsoft's, ~93%
+of their size) and every block is verified to round-trip. This closes the loop: a bundle rebuilt from
+the recovered disassembly can be re-compressed into the exact **W4** container an installed Win95 runs.
