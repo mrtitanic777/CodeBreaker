@@ -622,6 +622,18 @@ def emit_idiomatic(D, loadable=False):
                 lbls = {k: force_lbl[(oi, k)] for k in range(a, a + row["size"]) if (oi, k) in force_lbl}
                 L.extend(_db_split_labels(code, a, a + row["size"], lbls))   # target sits mid-instruction
                 a += row["size"]; continue
+            if loadable:                                       # a relocation whose 4-byte field runs PAST
+                sp = sorted(k for k in range(a, a + row["size"])    # this (mis-decoded, short) instruction
+                            if (oi, k) in D.fx and k + 4 > a + row["size"])   # = a data pointer decoded as
+                if sp:                                         # code. Emit it as ONE 4-byte dd (else the
+                    k = sp[0]                                  # `dd offset` would overflow and shift the
+                    if k > a:                                  # whole table -> corrupt data -> init fault)
+                        L.append(_db(code[a:k]))
+                    f = D.fx[(oi, k)]
+                    e = _dd_target_expr(D, f["obj"], f.get("target"), ldctx) if f.get("kind") == "internal" else None
+                    L.append("        dd  %s" % e if e else _db(code[k:k + 4]))
+                    a = k + 4                                  # skip the instructions the pointer overlaps
+                    continue
             load_lines = _loadable_insn(D, oi, a, row, ldctx) if loadable else None
             if row.get("vxdcall"):
                 m = svc_macro(row["vxdcall"][0], row["vxdcall"][1])
