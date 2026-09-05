@@ -49,9 +49,11 @@ def _emit_fixups(D, v):
     for (oi, start), r in D.insns.items():
         ends.setdefault(oi, set()).add(start + r["size"])
     ps = v.pagesize                                         # object bytes from its first page to the end
-    o_dp = struct.unpack_from("<I", v.d, v.lfa + 0x80)[0]   # of the data region -- covers a fixup whose
-    data_end = (struct.unpack_from("<I", v.d, v.lfa + 0x88)[0]       # offset overruns the object's own
-                or struct.unpack_from("<I", v.d, v.lfa + 0xb8)[0] or len(v.d))  # pages into a later one
+    o_dp = struct.unpack_from("<I", v.d, v.lfa + 0x80)[0]   # of the module's data pages -- covers a fixup
+    # whose offset overruns the object's own pages into a later object. Derive the end from the page
+    # layout (container-absolute), NOT the nres field: W3 bundling leaves nres module-relative, which
+    # would make this empty for a bundled module and break every src_type read.
+    data_end = min(o_dp + (v.mpages - 1) * ps + v.last_page_bytes, len(v.d))
     code_of = {o["idx"]: bytes(v.d[o_dp + (o["pmidx"] - 1) * ps: data_end]) for o in v.objects}
     by_page = {}
     for (oi, off), f in D.fx.items():

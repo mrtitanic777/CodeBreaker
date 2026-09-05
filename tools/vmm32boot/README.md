@@ -40,6 +40,30 @@ python build_vmm32.py --out /tmp/vmm32stage
 VFBACKUP that post-date the oracle) rather than overwriting them — replacing a newer IOS with the
 older reconstruction throws a Windows protection error during IOS init.
 
+## Rebuild the machine's *exact* bundle
+
+The flow above boots a *replacement* kernel (VMM-only W3 + standalone VxDs). **`rebuild_bundle.py`**
+does the stronger thing: it takes the machine's own `vmm32.vxd` — the compressed **W4** an installed
+Win95 actually runs — decompresses it to its W3 payload, and re-synthesizes **every** bundled module
+*in place* from the recovered disassembly, keeping the same module set and layout:
+
+```bash
+# W4 (installed machine) or W3 (install media) in -> uncompressed-W3 bundle out, every module rebuilt
+python rebuild_bundle.py  vmm32.vxd  vmm32-rebuilt.vxd  --check
+#   rebuilt 43/43 LE modules in place, 43 byte-exact-except-fixup-order
+#   relocation set identical to original: 43/43 modules
+
+# drop it in as VMM32.VXD (loader takes the uncompressed-W3 path) and boot -> runs to logon
+./inject_and_boot.sh  path/to/Win95.vmdk  <dir-with-vmm32-rebuilt.vxd-as-vmm32.vxd>  out.vmdk
+```
+
+Each module's object bytes come from `VxDDisasm(...).run().code` (byte-exact) and its fixup tables
+are re-emitted by the LE writer; `--check` confirms the re-emitted fixups decode to the identical
+relocation set (they differ from the originals only in LINK386's intra-page record order). One wrinkle
+the engine now handles: a W3 sub-image leaves its non-resident-name offset module-relative after
+bundling, so the data-page extent is derived from the page layout, not that header field — otherwise
+the source-type analysis reads an empty code window and every fixup comes out wrong.
+
 ## Notes
 
 - **Nothing here contains Microsoft code.** `build_vmm32.py` reads VxDs you supply under
