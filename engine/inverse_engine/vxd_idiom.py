@@ -359,7 +359,80 @@ def _db_data(bs, width=60):
     return out
 
 
-def emit_idiomatic(D):
+_JCC = {0x80: "jo", 0x81: "jno", 0x82: "jb", 0x83: "jae", 0x84: "je", 0x85: "jne", 0x86: "jbe",
+        0x87: "ja", 0x88: "js", 0x89: "jns", 0x8a: "jp", 0x8b: "jnp", 0x8c: "jl", 0x8d: "jge",
+        0x8e: "jle", 0x8f: "jg"}
+
+
+def _fx_label(D, oi, k):
+    """The emitted label an INTERNAL fixup at (oi,k) points to, or None (import / no label)."""
+    f = D.fx.get((oi, k))
+    if not f or f["kind"] != "internal" or f.get("target") is None:
+        return None
+    return D.labels.get((f["obj"], f["target"]))
+
+
+def _loadable_insn(D, oi, a, row):
+    """LOADABLE mode: emit an instruction's INTERNAL fixups symbolically so LINK writes real LE
+    relocations (the byte-exact path raws them, dropping the relocation -> wrong pointer on load).
+    A near call/jmp/jcc whose displacement carries a self-relative fixup becomes `call/jmp/jcc
+    <label>` (the assembler recomputes the displacement after LINK places the segments); any other
+    32-bit-offset fixup field becomes `dd offset <label>`, splitting the instruction into db + dd + db.
+    Returns asm lines, or None to fall through (no fixup / int 20h service / import / unlabelled)."""
+    from engine.inverse_engine.vxd_masm import _db
+    fixes = sorted(k for k in range(a, a + row["size"]) if (oi, k) in D.fx)
+    if not fixes or row.get("vxdcall") or any(_fx_label(D, oi, k) is None for k in fixes):
+        return None
+    code = D.code[oi]; op = code[a]
+    if row["size"] == 5 and op in (0xE8, 0xE9) and fixes == [a + 1]:
+        return ["        %-6s %s" % ("call" if op == 0xE8 else "jmp", _fx_label(D, oi, a + 1))]
+    if row["size"] == 6 and op == 0x0F and code[a + 1] in _JCC and fixes == [a + 2]:
+        return ["        %-6s %s" % (_JCC[code[a + 1]], _fx_label(D, oi, a + 2))]
+    out = []; prev = a
+    for k in fixes:
+        if k > prev:
+            out.append(_db(code[prev:k]))
+        out.append("        dd  offset %s" % _fx_label(D, oi, k))
+        prev = k + 4
+    if prev < a + row["size"]:
+        out.append(_db(code[prev:a + row["size"]]))
+    return out
+
+
+def _db_split_labels(code, a, b, labels):
+    """Emit code[a:b] as raw db, inserting `<name> label byte` at each interior offset in `labels`
+    (a fixup target that fell mid-instruction). Byte-preserving, and gives the target an address."""
+    from engine.inverse_engine.vxd_masm import _db
+    out = []; run = a
+    for off in sorted(k for k in labels if a <= k < b):
+        if off > run:
+            out.append(_db(code[run:off]))
+        out.append("%s label byte" % labels[off])
+        run = off
+    if run < b:
+        out.append(_db(code[run:b]))
+    return out
+
+
+def _loadable_data(D, oi, a, b):
+    """LOADABLE mode: emit a data span [a,b), turning each INTERNAL-fixup DWORD into `dd offset
+    <label>` (a real relocation) and the rest through the readable _db_data (strings/bytes)."""
+    out = []; run = a; k = a; code = D.code[oi]
+    while k < b:
+        lbl = _fx_label(D, oi, k)
+        if lbl and k + 4 <= b:
+            if k > run:
+                out.extend(_db_data(code[run:k]))
+            out.append("        dd  offset %s" % lbl)
+            k += 4; run = k
+        else:
+            k += 1
+    if run < b:
+        out.extend(_db_data(code[run:b]))
+    return out
+
+
+def emit_idiomatic(D, loadable=False):
     """Emit one VxD as idiomatic DDK-macro source: `include`s, `Declare_Virtual_Device`, per-segment
     `VxD_..._CODE_SEG`, the control proc as `Begin_Control_Dispatch`/`Control_Dispatch`/`End_Control_
     Dispatch`, functions as `BeginProc`/`EndProc`, service calls as `VMMcall`/`VxDcall <name>`. Reads
@@ -383,6 +456,24 @@ def emit_idiomatic(D):
     # sub_ name (consistently, in D.labels, so its references follow) or ML reports A2005 redefinition.
     for k in [k for k, nm in D.labels.items() if nm in (name + "_DDB", name + "_Service_Table")]:
         D.labels[k] = "sub_%d_%04X" % k
+    force_lbl = {}                                            # (oi,off) -> label, for a fixup target that
+    if loadable:                                              # lands MID-INSTRUCTION (a data byte the
+        from engine.inverse_engine.vxd_link import _label_fixup_targets   # disassembler swept into an
+        _label_fixup_targets(D)                              # instruction). loadable: every internal
+        interior_of = {}                                     # fixup target needs a label the symbolic
+        for (o2, a2), r2 in D.insns.items():                #  emit can reference; a mid-instruction
+            for k in range(a2 + 1, a2 + r2["size"]):        #  target forces its instruction to raw db
+                interior_of[(o2, k)] = a2                    #  so the label can sit at the exact byte
+        for (soi, soff), f in list(D.fx.items()):
+            if f["kind"] != "internal" or f.get("target") is None:
+                continue
+            tgt = (f["obj"], f["target"])
+            if tgt in D.labels:
+                continue
+            lab = "loc_%d_%04X" % tgt
+            D.labels[tgt] = lab
+            if tgt in interior_of:
+                force_lbl[tgt] = lab
     # base set of offsets that will carry an emitted label -- a label at an instruction start, or on a
     # data byte, but NOT one landing mid-instruction. control_dispatch needs it to only reference
     # handlers we actually emit; the branch gate below needs it minus the macro-absorbed regions.
@@ -473,12 +564,22 @@ def emit_idiomatic(D):
                 while b < n and (oi, b) not in D.insns and (oi, b) not in cp_skip \
                         and (b == a or (not D.labels.get((oi, b)) and (oi, b) not in svc_extra)):
                     b += 1
-                L.extend(_db_data(code[a:b]))           # readable `db 'text'` for the carved strings
+                if loadable:                            # data pointers / jump tables -> real relocations
+                    L.extend(_loadable_data(D, oi, a, b))
+                else:
+                    L.extend(_db_data(code[a:b]))       # readable `db 'text'` for the carved strings
                 a = b
                 continue
+            if loadable and any((oi, k) in force_lbl for k in range(a + 1, a + row["size"])):
+                lbls = {k: force_lbl[(oi, k)] for k in range(a, a + row["size"]) if (oi, k) in force_lbl}
+                L.extend(_db_split_labels(code, a, a + row["size"], lbls))   # target sits mid-instruction
+                a += row["size"]; continue
+            load_lines = _loadable_insn(D, oi, a, row) if loadable else None
             if row.get("vxdcall"):
                 m = svc_macro(row["vxdcall"][0], row["vxdcall"][1])
                 L.append(m if m else _db(row["raw"]))
+            elif load_lines is not None:                       # loadable: internal fixup -> symbolic ref
+                L.extend(load_lines)
             elif row["fx"] or has_abs_mem(row) or has_seg_prefix(row) or _addr16(row) \
                     or _shift_no_count(row) or _ml611_unknown(row) or _x87_stack(row) \
                     or _indirect_branch(row) or _cap_size(row) or row["mnem"] in _RAW_MNEMS:

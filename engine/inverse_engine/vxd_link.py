@@ -27,8 +27,28 @@ from engine.inverse_engine import vxd_masm
 from engine.backbone.dosbox import run_dos
 
 # MS LINK 2.50 (msvc-2.0) -- runs natively; unlike the DDK's 2.60, its /VXD self-spawns as `-lib`
-# to build the export file correctly. Its BIN also carries the CVTVXD helper it may invoke.
+# to build the export file correctly.
 _LINK = "binaries/toolchains/period/compilers/msvc-2.0/BIN/LINK.EXE"
+
+# standard DDK VxD segment map (verbatim from BASE/SAMPLES/*/*.DEF -- this is what boots VMD from
+# source); LINK ignores segments absent from the object, so one template serves every VxD.
+_VXD_DEF_SEGS = (
+    "    _LPTEXT     CLASS 'LCODE'   PRELOAD NONDISCARDABLE\r\n"
+    "    _LTEXT      CLASS 'LCODE'   PRELOAD NONDISCARDABLE\r\n"
+    "    _LDATA      CLASS 'LCODE'   PRELOAD NONDISCARDABLE\r\n"
+    "    _TEXT       CLASS 'LCODE'   PRELOAD NONDISCARDABLE\r\n"
+    "    _DATA       CLASS 'LCODE'   PRELOAD NONDISCARDABLE\r\n"
+    "    CONST       CLASS 'LCODE'   PRELOAD NONDISCARDABLE\r\n"
+    "    _TLS        CLASS 'LCODE'   PRELOAD NONDISCARDABLE\r\n"
+    "    _BSS        CLASS 'LCODE'   PRELOAD NONDISCARDABLE\r\n"
+    "    _ITEXT      CLASS 'ICODE'   DISCARDABLE\r\n"
+    "    _IDATA      CLASS 'ICODE'   DISCARDABLE\r\n"
+    "    _PTEXT      CLASS 'PCODE'   NONDISCARDABLE\r\n"
+    "    _PDATA      CLASS 'PDATA'   NONDISCARDABLE SHARED\r\n"
+    "    _STEXT      CLASS 'SCODE'   RESIDENT\r\n"
+    "    _SDATA      CLASS 'SCODE'   RESIDENT\r\n"
+    "    _16ICODE    CLASS '16ICODE' PRELOAD DISCARDABLE\r\n"
+    "    _RCODE      CLASS 'RCODE'\r\n")
 
 
 def _seg_attrs(flags):
@@ -251,6 +271,55 @@ def build_functional(v, vxdname, root="."):
     return {"ok": True, "vxd": vxd, "vxd_len": len(vxd), "oracle_len": len(v.d),
             "oracle_fixups": len(ofx), "oracle_internal": oint,
             "rebuilt_fixups": len(mfx), "rebuilt_internal": mint, "link_log": llog[-400:]}
+
+
+def _assemble_idiomatic(asm_text, root):
+    """Assemble idiomatic DDK-macro source to COFF -- needs the DDK INC32 headers on the include path
+    (the raw-segment build in _assemble_coff does not include them)."""
+    import glob
+    tc = vxd_masm._stage_toolchain(root)
+    incdst = os.path.join(tc, "inc"); os.makedirs(incdst, exist_ok=True)
+    incsrc = os.path.join(root, "binaries", "media", "Microsoft Windows 95 DDK", "INC32")
+    for f in glob.glob(incsrc + "/*.INC"):
+        d = os.path.join(incdst, os.path.basename(f))
+        if not os.path.exists(d):
+            shutil.copy(f, d)
+    _, out, work = run_dos({"c": tc},
+                           [r"c:\ml.exe -coff -c -DBLD_COFF -DIS_32 -DMASM6 -Ic:\inc -Fom.obj m.asm > a.txt"],
+                           ["m.obj", "a.txt"], files={"m.asm": asm_text}, timeout=300)
+    log = open(os.path.join(work, "a.txt"), errors="replace").read() if work and os.path.exists(
+        os.path.join(work, "a.txt")) else ""
+    return out.get("m.obj"), log, work
+
+
+def build_loadable_idiomatic(v, name=None, root="."):
+    """Build a LOADABLE LE .vxd from the *idiomatic DDK-macro* source and the real toolchain:
+    vxd_idiom.emit_idiomatic(loadable=True) -> ML (-coff) -> LINK /VXD. Unlike build_functional (raw
+    per-object segments, which hit A2107 far-call errors on cross-object references), the DDK segment
+    macros set up the flat model, so cross-object near calls assemble; loadable mode routes every
+    internal fixup symbolically so LINK writes real LE relocations. Proven end-to-end: a VMD built
+    this way loads in the real Win95 VMM and runs to the desktop with a working mouse. Returns
+    {ok, vxd, objects, rebuilt_internal, oracle_internal, ...}."""
+    from engine.inverse_engine import vxd_idiom
+    from engine.format_loaders import le as _le
+    D = VxDDisasm(v).run(); D.v = v
+    name = name or (D.ddb and D.ddb["name"])
+    root = os.path.abspath(root)
+    asm = vxd_idiom.emit_idiomatic(D, loadable=True)
+    obj, alog, work = _assemble_idiomatic(asm, root)
+    if not obj:
+        return {"ok": False, "stage": "assemble", "log": alog[-1500:], "asm": asm}
+    deftext = ("VXD %s\r\nDESCRIPTION '%s reconstructed from source'\r\n\r\nSEGMENTS\r\n%s\r\n"
+               "EXPORTS\r\n        %s_DDB @1\r\n" % (name, name, _VXD_DEF_SEGS, name))
+    vxd, llog = _link_vxd(obj, deftext, root, work)
+    if not vxd:
+        return {"ok": False, "stage": "link", "log": llog[-1500:], "asm": asm, "def": deftext}
+    tmp = os.path.join(work, "src.vxd"); open(tmp, "wb").write(vxd)
+    mine = _le.LEFile.from_file(tmp); mfx = mine.fixups(); ofx = v.fixups()
+    return {"ok": True, "vxd": vxd, "vxd_len": len(vxd), "oracle_len": len(v.d), "asm": asm,
+            "objects": len(mine.objects), "link_log": llog[-300:],
+            "rebuilt_internal": sum(1 for f in mfx.values() if f["kind"] == "internal"),
+            "oracle_internal": sum(1 for f in ofx.values() if f["kind"] == "internal")}
 
 
 def compare_objects(orc, mine):
