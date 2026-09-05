@@ -309,8 +309,12 @@ def build_loadable_idiomatic(v, name=None, root="."):
     obj, alog, work = _assemble_idiomatic(asm, root)
     if not obj:
         return {"ok": False, "stage": "assemble", "log": alog[-1500:], "asm": asm}
-    deftext = ("VXD %s\r\nDESCRIPTION '%s reconstructed from source'\r\n\r\nSEGMENTS\r\n%s\r\n"
-               "EXPORTS\r\n        %s_DDB @1\r\n" % (name, name, _VXD_DEF_SEGS, name))
+    perobj = ""                                             # one .DEF entry per object (unique class +
+    for o in v.objects:                                    # its real attributes) so LINK reproduces the
+        sn, cl = vxd_idiom.obj_seg(o["idx"], o["flags"])   # oracle's object layout instead of merging by
+        perobj += "    %-11s CLASS '%s' %s\r\n" % (sn, cl, _seg_attrs(o["flags"]))   # class
+    deftext = ("VXD %s\r\nDESCRIPTION '%s reconstructed from source'\r\n\r\nSEGMENTS\r\n%s%s\r\n"
+               "EXPORTS\r\n        %s_DDB @1\r\n" % (name, name, _VXD_DEF_SEGS, perobj, name))
     vxd, llog = _link_vxd(obj, deftext, root, work)
     if not vxd:
         return {"ok": False, "stage": "link", "log": llog[-1500:], "asm": asm, "def": deftext}

@@ -364,6 +364,16 @@ _JCC = {0x80: "jo", 0x81: "jno", 0x82: "jb", 0x83: "jae", 0x84: "je", 0x85: "jne
         0x8e: "jle", 0x8f: "jg"}
 
 
+def obj_seg(oi, flags):
+    """LOADABLE mode: the FLAT segment name + class for one LE object. A UNIQUE class per object keeps
+    LINK from merging same-class objects (which would collapse a writable data object into the
+    read-only LCODE object and fault on the first write). 'CODE' in the class marks the object
+    executable; a 'DATA' class is read/write -- so exec objects stay exec+ro and data objects stay
+    writable, matching the oracle's per-object attributes. build_loadable_idiomatic mirrors this for
+    the .DEF."""
+    return ("VSEG%02d" % oi, "S%02d%s" % (oi, "CODE" if flags & 0x0004 else "DATA"))
+
+
 def _fx_label(D, oi, k):
     """The emitted label an INTERNAL fixup at (oi,k) points to, or None (import / no label)."""
     f = D.fx.get((oi, k))
@@ -528,6 +538,13 @@ def emit_idiomatic(D, loadable=False):
     # .586p (privileged, superset of .386p) so ring-0 486/Pentium ops -- invd/wbinvd/cpuid/cmpxchg/
     # rdmsr/wrmsr/rdtsc -- assemble as themselves instead of hitting A2085 (not-in-current-CPU-mode).
     L = [".586p"] + ["include %s.inc" % i.lower() for i in _all_incs(D)] + [""]
+    objs_list = list(D.v.objects if hasattr(D, "v") else D.objs.values())
+    if loadable:                                           # pre-declare each object's own FLAT segment
+        for o in objs_list:                                # (unique class -> LINK keeps it a separate
+            sn, cl = obj_seg(o["idx"], o["flags"])         # object, so writable data stays writable and
+            L.append("%s SEGMENT DWORD PUBLIC _FLAT '%s'" % (sn, cl))   # is not merged into read-only code)
+            L.append("%s ENDS" % sn)
+        L.append("")
     if svc_labels:
         svcset = {lbl for lbl in svc_labels if lbl != "RESERVED"}
         # Begin_Service_Table regenerates a PUBLIC caller-thunk `_<service>` for each service; drop any
@@ -554,11 +571,16 @@ def emit_idiomatic(D, loadable=False):
     # reference an undefined symbol -- drop it, and that message falls through to the macro default.
     emitted_names = {D.labels[k] for k in emitted}
     handlers = [(m, h) for (m, h) in handlers if h in emitted_names]
-    for o in D.v.objects if hasattr(D, "v") else D.objs.values():
+    for o in objs_list:
         oi = o["idx"]
-        cls, _ = seg_class(o["flags"])
-        segm = _SEG_MACRO.get(cls, "VxD_LOCKED_CODE")
-        L.append("%s_SEG" % segm)
+        if loadable:                                       # each object -> its own FLAT segment
+            segn, _sc = obj_seg(oi, o["flags"])
+            L.append("%s SEGMENT" % segn)
+            L.append("   ASSUME cs:FLAT, ds:FLAT, es:FLAT, ss:FLAT")
+        else:
+            cls, _ = seg_class(o["flags"])
+            segm = _SEG_MACRO.get(cls, "VxD_LOCKED_CODE")
+            L.append("%s_SEG" % segm)
         code = D.code[oi]
         n = len(code)
         cur_proc = None
@@ -627,7 +649,7 @@ def emit_idiomatic(D, loadable=False):
             a += row["size"]
         if cur_proc:
             L.append("EndProc %s" % cur_proc)
-        L.append("%s_ENDS" % segm)
+        L.append("%s ENDS" % segn if loadable else "%s_ENDS" % segm)
         L.append("")
     L.append("        end")
     return "\r\n".join(L) + "\r\n"
