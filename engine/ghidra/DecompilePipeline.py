@@ -6,8 +6,22 @@ from ghidra.app.decompiler import DecompInterface
 from ghidra.util.task import ConsoleTaskMonitor
 
 args = getScriptArgs()
+# Positional args after the required out.c are recognized by extension, so the
+# caller can pass a GDT and/or a names map in any order:
+#   <out.c> [<types.gdt>] [<names.json>]
+# names.json is a flat {"0xVA": "name", ...} symbol map applied before decompile,
+# so call sites in the emitted C read as real names instead of FUN_xxxx.
 outpath = args[0] if len(args) > 0 else (currentProgram.getName() + ".c")
-gdt_path = args[1] if len(args) > 1 else None
+gdt_path = None
+names_path = None
+for a in args[1:]:
+    low = a.lower()
+    if low.endswith(".json"):
+        names_path = a
+    elif low.endswith(".gdt"):
+        gdt_path = a
+    elif gdt_path is None:
+        gdt_path = a                                   # back-compat: bare 2nd arg = gdt
 
 prog = currentProgram
 fm = prog.getFunctionManager()
@@ -61,12 +75,33 @@ for pat in ["\\x55\\x8b\\xec", "\\x8b\\xff\\x55\\x8b\\xec"]:
             if createFunction(a, None) is not None:
                 created += 1
 
+# (B2) apply a caller-supplied symbol map: name/rename functions before decompile
+# so the emitted C uses real names at every call site (a generic rename pass; the
+# map is produced outside Ghidra from exports/signatures/xrefs).
+renamed = 0
+if names_path and os.path.exists(names_path):
+    try:
+        import json as _json
+        from ghidra.program.model.symbol import SourceType
+        nm = _json.load(open(names_path))
+        for va, name in nm.items():
+            addr = toAddr(long(va, 16) if isinstance(va, basestring) else long(va))
+            f = fm.getFunctionAt(addr)
+            if f is None and in_exec(addr):
+                f = createFunction(addr, None)
+            if f is not None:
+                f.setName(str(name), SourceType.USER_DEFINED)
+                renamed += 1
+    except:
+        import sys as _sys
+        print("NAMES_APPLY_ERR= %s" % (_sys.exc_info()[1],))
+
 # (C) decompile everything
 decomp = DecompInterface()
 decomp.openProgram(prog)
 funcs = list(fm.getFunctions(True))
-lines = ["// Ghidra pipeline: %s | gdt_applied=%d before=%d created=%d total=%d"
-         % (prog.getName(), applied, before, created, len(funcs))]
+lines = ["// Ghidra pipeline: %s | gdt_applied=%d named=%d before=%d created=%d total=%d"
+         % (prog.getName(), applied, renamed, before, created, len(funcs))]
 ok = 0
 fail = 0
 for f in funcs:
@@ -90,5 +125,5 @@ fh = codecs.open(outpath, "w", "utf-8", "replace")
 fh.write((u"// %d ok, %d fail\n" % (ok, fail)) + u"\n\n".join(
     [unicode(x) for x in lines]))
 fh.close()
-print("PIPELINE_DONE gdt=%d before=%d created=%d ok=%d fail=%d total=%d"
-      % (applied, before, created, ok, fail, len(funcs)))
+print("PIPELINE_DONE gdt=%d named=%d before=%d created=%d ok=%d fail=%d total=%d"
+      % (applied, renamed, before, created, ok, fail, len(funcs)))
