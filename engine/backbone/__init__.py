@@ -18,6 +18,7 @@ from engine.backbone.base import Compiler, Assembler, Linker, Disassembler  # no
 
 _ADAPTERS = (
     "engine.backbone.adapters.msc6_compiler",
+    "engine.backbone.adapters.msvc_compiler",
     "engine.backbone.adapters.capstone_disasm",
     "engine.backbone.adapters.masm_assembler",
     "engine.backbone.adapters.nasm_assembler",

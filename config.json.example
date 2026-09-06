@@ -7,5 +7,9 @@
   "ghidra": "",
   "msc6_toolchain": "",
   "msc6_data": "",
-  "nasm": "tools/nasm-masm/nasm.exe"
+  "nasm": "tools/nasm-masm/nasm.exe",
+  "msvc_cl": "",
+  "msvc_include": "",
+  "msvc_lib": "",
+  "msvc_env_path": ""
 }

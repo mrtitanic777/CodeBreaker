@@ -82,8 +82,13 @@ for f in funcs:
         lines.append("// %s: EXC %s" % (f.getName(), e))
         fail += 1
 
-fh = open(outpath, "w")
-fh.write(("// %d ok, %d fail\n" % (ok, fail)) + "\n\n".join(lines))
+# Write UTF-8: decompiled C can contain non-ASCII (e.g. bytes from wide-string
+# literals). Jython's default open() uses ASCII and would raise mid-write, leaving
+# a 0-byte file, so go through codecs with replacement for anything stray.
+import codecs
+fh = codecs.open(outpath, "w", "utf-8", "replace")
+fh.write((u"// %d ok, %d fail\n" % (ok, fail)) + u"\n\n".join(
+    [unicode(x) for x in lines]))
 fh.close()
 print("PIPELINE_DONE gdt=%d before=%d created=%d ok=%d fail=%d total=%d"
       % (applied, before, created, ok, fail, len(funcs)))
