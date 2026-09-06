@@ -50,15 +50,26 @@ def device_incs(D, oi):
 def svc_macro(dev, svc):
     """`VMMcall <name>` / `VxDcall <name>` for an INT 20h service, or None if the name is unknown
     (then the caller keeps the raw `int 20h`+DWORD bytes). PROVEN byte-exact: with vmm.inc included,
-    `VMMcall Get_System_Time` assembles to cd203f000100, identical to the oracle."""
+    `VMMcall Get_System_Time` assembles to cd203f000100, identical to the oracle.
+
+    Bit 0x8000 of the service word is DL_Jmp_Mask (VMM.INC): the DDK's VxDCall/VMMCall macros emit
+    `GenDD ... 0` while VxDJmp/VMMJmp emit `GenDD ... DL_Jmp_Mask`. A jmp-reference is patched by the
+    VMM dynamic linker into a JMP (tail control-transfer, no return) rather than a CALL, so it MUST be
+    reproduced as VMMJmp/VxDJmp -- collapsing it to VMMcall inverts the call/return contract and faults
+    at runtime (e.g. Simulate_Far_Jmp = 0x00018049)."""
     from engine.inverse_engine.vxd_asm import VXD_DEVICES
     if dev not in DEVICE_INC:                              # no .INC to define the service @@equate ->
         return None                                        #  keep the raw int 20h+DWORD (e.g. VDD)
     devname = VXD_DEVICES.get(dev)
-    name = vxd_services.load().name(devname, svc) if devname else None
+    name = vxd_services.load().name(devname, svc & 0x7FFF) if devname else None
     if not name:
         return None
-    return "        %s %s" % ("VMMcall" if dev == 0x0001 else "VxDcall", name)
+    jmp = bool(svc & 0x8000)                              # DL_Jmp_Mask -> VMMJmp/VxDJmp, not call
+    if dev == 0x0001:
+        verb = "VMMJmp" if jmp else "VMMcall"
+    else:
+        verb = "VxDJmp" if jmp else "VxDcall"
+    return "        %s %s" % (verb, name)
 
 
 def ddb_macro(D, db, loadable=False):
@@ -179,20 +190,26 @@ def control_dispatch(D, emittable):
     cp = next((k for k, nm in D.labels.items() if nm == db["name"] + "_Control"), None)
     if not cp:
         return [], set()
+    from engine.inverse_engine.vxd_asm import _direct_target_row
     msgs = vxd_symbols.control_messages()
     oi, a0 = cp
     # --- jump-table form ---
     a = a0
     base = 0
-    for _ in range(8):                                     # the prologue is short; do not walk far
-        row = D.insns.get((oi, a))
-        if not row:
-            break
+    default = None                                         # the range-check (jae/ja) branch target:
+    for _ in range(8):                                     # the do-nothing stub the many UNHANDLED
+        row = D.insns.get((oi, a))                         # messages fall through to. Real handlers
+        if not row:                                        # (even one SHARED by several messages) are
+            break                                          # kept; only this stub is dropped.
         if row["mnem"] == "sub" and row["ops"].replace(" ", "").startswith("eax,"):
             try:
                 base = int(row["ops"].split(",")[1].strip(), 0)
             except ValueError:
                 pass
+        if default is None and row["mnem"] in ("jae", "ja", "jnb", "jnbe", "jbe", "jb", "jg", "jge"):
+            t = _direct_target_row(row)
+            if t is not None:
+                default = (oi, t)
         if row["mnem"] == "jmp" and "*4" in row["ops"]:
             skip = {(oi, k) for k in range(a0, a + row["size"])}          # prologue bytes
             jt = None
@@ -211,7 +228,10 @@ def control_dispatch(D, emittable):
             out = []
             for i, tk in enumerate(jt or []):
                 msg = i + base
-                if msg in msgs and jt.count(tk) == 1 and tk in D.insns:
+                # keep every real handler, INCLUDING one shared by several messages; drop only the
+                # default stub. Fall back to the old uniqueness test when the stub can't be identified.
+                keep = (tk != default) if default is not None else (jt.count(tk) == 1)
+                if msg in msgs and keep and tk in D.insns:
                     out.append((msgs[msg], D.labels.get(tk) or "loc_%d_%04X" % tk))
             return (out, skip) if out else ([], set())
         a += row["size"]
@@ -324,10 +344,17 @@ def _addr16(row):
 def _ddb_size(D, db):
     """Byte length of the on-disk VxD_Desc_Block, so the object walk can skip it (the top-level
     Declare_Virtual_Device re-emits it). The modern DDB carries a DDB_Prev='Prev' marker at +0x3C and
-    its own size at +0x40; the classic pre-Win32 DDB has neither and is 0x34 bytes."""
+    its own size at +0x40; the classic pre-Win32 DDB has neither and is 0x34 bytes.
+
+    The DDK builds the marker with `dd 'Prev'`, so the char constant is packed as the DWORD 0x50726576
+    and stored little-endian -- the on-disk bytes are b"verP", NOT b"Prev". Matching b"Prev" here
+    ALWAYS failed, so every loadable VxD fell back to 0x34 and the walk re-emitted the DDB's 0x34..size
+    tail (Service_Table_Size, Win32_Service_Table, Prev, Reserved0-3) as data -- a duplicate of the
+    macro's DDB. Harmless where the tail is inert, but for a VxD with a service table it corrupts the
+    object layout and faults in init (VKD)."""
     code = D.code[db["obj"]]
     r = db["rva"]
-    if code[r + 0x3C:r + 0x40] == b"Prev":
+    if code[r + 0x3C:r + 0x40] == b"verP":                # 'Prev' packed by `dd` -> little-endian bytes
         sz = int.from_bytes(code[r + 0x40:r + 0x44], "little")
         if 0x34 <= sz <= 0x80:
             return sz
