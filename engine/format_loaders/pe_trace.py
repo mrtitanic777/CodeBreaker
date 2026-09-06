@@ -27,6 +27,7 @@ modern decoder — cross-check anything surprising against objdump/Ghidra.
     python pe_trace.py USER32.DLL --func 0xbff9xxxx # one function, resolved
     python pe_trace.py KERNEL32.DLL --stats
 """
+import bisect
 import re
 from engine.foundation import cores
 import sys
@@ -192,6 +193,86 @@ class PeCarve:
             rows.append((va, mn, op))
             va += size
         return rows
+
+    # -- data cross-references -------------------------------------------
+    # `resolve_call` gives the control-flow edges; these give the *data* edges:
+    # which function reads/pushes the address of a string or global. A `push
+    # imm32`, `mov reg,imm32`, or absolute `[disp]` whose value lands inside the
+    # image is a data reference — the join that answers "who references this
+    # string?" without which a literal cannot be traced back to its caller.
+    def _image_ranges(self):
+        r = getattr(self, "_imgr", None)
+        if r is None:
+            r = [(self.pe.image_base + s["vaddr"],
+                  self.pe.image_base + s["vaddr"] + max(s["vsize"], s["rawsize"]))
+                 for s in self.pe.sections]
+            self._imgr = r
+        return r
+
+    def _in_image(self, va):
+        for lo, hi in self._image_ranges():
+            if lo <= va < hi:
+                return True
+        return False
+
+    def data_refs(self):
+        """{func_start: sorted[referenced data VA]}.
+
+        Records IMM and absolute-`[disp]` operands that land in the image, except
+        a branch's direct target (a code edge, owned by resolve_call/calls_in) and
+        recognized IAT slots (import edges, owned by resolve_call)."""
+        cached = getattr(self, "_drefs", None)
+        if cached is not None:
+            return cached
+        starts = sorted(self.funcs)
+        fend = {s: self.funcs[s]["end"] for s in starts}
+        out = {}
+        for addr, (mn, _op, _sz, ins, _tgt) in self.insn.items():
+            i = bisect.bisect_right(starts, addr) - 1
+            if i < 0:
+                continue
+            fs = starts[i]
+            if addr >= fend[fs]:
+                continue
+            branch = mn in ("call", "jmp") or mn.startswith("j")
+            for op in ins.operands:
+                va = None
+                if op.type == capstone.x86.X86_OP_IMM:
+                    if branch:
+                        continue
+                    va = op.imm & 0xFFFFFFFF
+                elif op.type == capstone.x86.X86_OP_MEM:
+                    m = op.mem
+                    if m.base == 0 and m.index == 0:
+                        cand = m.disp & 0xFFFFFFFF
+                        if cand in self.imports:
+                            continue
+                        va = cand
+                if va is not None and self._in_image(va):
+                    out.setdefault(fs, set()).add(va)
+        self._drefs = {s: sorted(v) for s, v in out.items()}
+        return self._drefs
+
+    def xrefs_to(self, va):
+        """Sorted function-starts that reference data address `va`."""
+        rev = getattr(self, "_drev", None)
+        if rev is None:
+            rev = {}
+            for fs, vas in self.data_refs().items():
+                for v in vas:
+                    rev.setdefault(v, []).append(fs)
+            self._drev = rev
+        return sorted(rev.get(va, []))
+
+    def string_refs(self, va2text):
+        """{func_start: [(va, text), ...]} — the strings each function references.
+        `va2text` is a {VA: string} map (see format_loaders.pe_strings.by_va)."""
+        out = {}
+        for fs, vas in self.data_refs().items():
+            hits = [(v, va2text[v]) for v in vas if v in va2text]
+            if hits:
+                out[fs] = hits
+        return out
 
 
 def main():

@@ -32,9 +32,13 @@ def _cfg(key, default=""):
         return default
 
 
-GHIDRA = os.environ.get("GHIDRA_HOME") or _cfg("ghidra_home") or \
+# Accept both the documented `ghidra_home`/`java_home` keys and the shorter
+# `ghidra`/`java` keys that config.json.example actually ships, so a install is
+# found however the user spelled it.
+GHIDRA = os.environ.get("GHIDRA_HOME") or _cfg("ghidra_home") or _cfg("ghidra") or \
     r"C:\Users\mrtit\Desktop\My Projects\Xbox 360\ghidra_11.3.2_PUBLIC"
-JAVA_HOME = os.environ.get("JAVA_HOME") or _cfg("java_home") or r"C:\Program Files\Java\jdk-21"
+JAVA_HOME = os.environ.get("JAVA_HOME") or _cfg("java_home") or _cfg("java") or \
+    r"C:\Program Files\Java\jdk-21"
 GDT_DIR = os.path.join(ROOT, "binaries", "ghidra_gdt")
 GDT_WIN32 = os.path.join(GDT_DIR, "win32_win95sdk.gdt")
 GDT_DDK = os.path.join(GDT_DIR, "ddk_win95_vxd.gdt")

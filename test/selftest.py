@@ -116,6 +116,46 @@ def t_diff():
     return "cross-version diff CLI import ok"
 
 
+def t_pe_analysis():
+    # The 32-bit-PE analysis primitives: build meta + CodeView (pe.py), generic
+    # string scan (pe_strings), helper recognition (symbol_engine.sigscan), and
+    # data cross-references (pe_trace.PeCarve.data_refs). All target-agnostic.
+    import capstone
+    from engine.format_loaders import pe, pe_strings, pe_trace
+    from engine.symbol_engine import sigscan
+    if not pe_strings._selftest() or not sigscan._selftest():
+        raise RuntimeError("pe_strings/sigscan module selftest failed")
+    P = pe.PEFile(_sample_pe())
+    meta = P.build_meta()
+    if not meta.get("machine") or not meta.get("magic"):
+        raise RuntimeError("build_meta missing fields")
+    P.debug_codeview()                               # must not raise (may be None)
+    ns = len(pe_strings.extract(P))
+    # data_refs on a synthetic carve: push 0x402000; ret  (0x402000 in .data).
+    # Subclass PeCarve with a no-op __init__ so data_refs' sibling methods bind.
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32); md.detail = True
+
+    class _FakePE:
+        image_base = 0x400000
+        sections = [{"name": ".text", "vaddr": 0x1000, "vsize": 0x10,
+                     "rawsize": 0x10, "rawptr": 0x1000},
+                    {"name": ".data", "vaddr": 0x2000, "vsize": 0x10,
+                     "rawsize": 0x10, "rawptr": 0x2000}]
+
+    class _C(pe_trace.PeCarve):
+        def __init__(self):
+            self.pe = _FakePE()
+            self.imports = {}
+            self.insn = {}
+            self.funcs = {0x401000: {"start": 0x401000, "end": 0x401006, "name": None}}
+    c = _C()
+    for ins in md.disasm(b"\x68\x00\x20\x40\x00\xc3", 0x401000):
+        c.insn[ins.address] = (ins.mnemonic, ins.op_str, ins.size, ins, None)
+    if c.data_refs().get(0x401000) != [0x402000]:
+        raise RuntimeError("PeCarve.data_refs did not resolve the data operand")
+    return "meta+codeview, %d strings, sigscan, data_refs" % ns
+
+
 CHECKS = [
     ("Foundation",            t_foundation),
     ("Format loaders",        t_format_loaders),
@@ -125,6 +165,7 @@ CHECKS = [
     ("Studio pipeline",       t_studio_pipeline),
     ("Studio (native UI)",    t_studio_ui),
     ("Cross-version diff",    t_diff),
+    ("PE analysis (x86)",     t_pe_analysis),
 ]
 
 

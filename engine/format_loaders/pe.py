@@ -15,7 +15,9 @@ separate, later concern; this does not attempt it.
 """
 import struct
 
-_MACHINE = {0x014C: "i386", 0x8664: "x64", 0x01C0: "arm"}
+_MACHINE = {0x014C: "i386", 0x8664: "x64", 0x01C0: "arm", 0xAA64: "arm64"}
+_SUBSYSTEM = {1: "native", 2: "GUI", 3: "console", 5: "OS/2", 7: "POSIX",
+              9: "Windows CE GUI", 10: "EFI application", 14: "Xbox"}
 _IMAGE_SCN_CNT_CODE = 0x00000020
 _IMAGE_SCN_MEM_EXECUTE = 0x20000000
 
@@ -236,6 +238,69 @@ class PEFile:
                     out.add(page_rva + roff)
             p += block_size
         return out
+
+
+    def build_meta(self):
+        """Structural build metadata: machine, bitness, image base, entry, link
+        timestamp, linker version, subsystem, EXE/DLL. All from the headers."""
+        d = self.data
+        opt = self.e_lfanew + 4 + 20                      # optional header start
+        subsys_off = opt + (72 if self.is_plus else 68)   # Subsystem field
+        return {
+            "machine": self.machine_name(),
+            "magic": "PE32+" if self.is_plus else "PE32",
+            "kind": "DLL" if self.is_dll() else "EXE",
+            "image_base": self.image_base,
+            "entry_rva": self.entry,
+            "entry_va": self.image_base + self.entry if self.entry else 0,
+            "timestamp": self.timestamp,
+            "linker_version": "%d.%d" % (d[opt + 2], d[opt + 3]),
+            "subsystem": _SUBSYSTEM.get(
+                struct.unpack("<H", d[subsys_off:subsys_off + 2])[0],
+                "0x%x" % struct.unpack("<H", d[subsys_off:subsys_off + 2])[0]),
+        }
+
+    def debug_codeview(self):
+        """The CodeView record from the DEBUG data directory (index 6), or None.
+
+        Modern toolchains emit an RSDS record here pointing at the matching PDB
+        (a GUID+age key); older ones emit NB10 (a timestamp+age key). This is the
+        PE debug-directory form, distinct from the appended NB09 CodeView blob
+        that symbol_engine/codeview.py reads.
+
+        RSDS -> {'format':'RSDS','guid':str,'age':int,'pdb':str}
+        NB10 -> {'format':'NB10','signature':int,'age':int,'pdb':str}
+        """
+        if len(self.datadirs) < 7 or not self.datadirs[6][0]:
+            return None
+        va, size = self.datadirs[6]
+        off = self._rva_to_off(va)
+        if off is None:
+            return None
+        d = self.data
+        for i in range(size // 28):
+            rec = d[off + i * 28: off + i * 28 + 28]
+            if len(rec) < 28:
+                break
+            typ = struct.unpack("<I", rec[12:16])[0]
+            if typ != 2:                                  # IMAGE_DEBUG_TYPE_CODEVIEW
+                continue
+            dsize = struct.unpack("<I", rec[16:20])[0]
+            dptr = struct.unpack("<I", rec[24:28])[0]     # PointerToRawData
+            cv = d[dptr:dptr + dsize]
+            if cv[:4] == b"RSDS":
+                g = struct.unpack("<IHH8s", cv[4:20])
+                guid = "%08X-%04X-%04X-%s-%s" % (
+                    g[0], g[1], g[2], g[3][:2].hex().upper(), g[3][2:].hex().upper())
+                return {"format": "RSDS", "guid": guid,
+                        "age": struct.unpack("<I", cv[20:24])[0],
+                        "pdb": cv[24:].split(b"\0", 1)[0].decode("latin1", "replace")}
+            if cv[:4] == b"NB10":
+                return {"format": "NB10",
+                        "signature": struct.unpack("<I", cv[8:12])[0],
+                        "age": struct.unpack("<I", cv[12:16])[0],
+                        "pdb": cv[16:].split(b"\0", 1)[0].decode("latin1", "replace")}
+        return None
 
 
 def open_pe(path):
