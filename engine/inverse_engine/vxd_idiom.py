@@ -434,6 +434,11 @@ def _dd_target_expr(D, tobj, toff, ctx):
     if ctx and tobj == ctx["ddb_obj"] and ctx["ddb_rva"] <= toff < ctx["ddb_hi"]:
         d = toff - ctx["ddb_rva"]
         return "offset %s_DDB%s" % (ctx["name"], (" + %02Xh" % d) if d else "")
+    if ctx and (tobj, toff) in ctx.get("skip", ()):     # target lands in a macro-absorbed region (the
+        return None                                     #  service table / control-dispatch table the
+        #  Begin_Service_Table / Begin_Control_Dispatch macros regenerate): no loc_ label is emitted
+        #  there, so a symbolic `offset loc_..' would be undefined (A2006). Byte-preserve the pointer
+        #  instead -- it loses its relocation, but the region is macro-owned and the build assembles.
     lab = D.labels.get((tobj, toff))
     return "offset %s" % lab if lab else None
 
@@ -587,6 +592,8 @@ def emit_idiomatic(D, loadable=False):
     if svc_loc:
         so, sp, sc = svc_loc                                  # skip the raw service-table pointers;
         cp_skip |= {(so, k) for k in range(sp, sp + 4 * sc)}  #  Begin_Service_Table re-emits them
+    if ldctx is not None:                                     # let _dd_target_expr raw-emit a pointer whose
+        ldctx["skip"] = cp_skip                               #  target sits in a macro-absorbed region
     # .586p (privileged, superset of .386p) so ring-0 486/Pentium ops -- invd/wbinvd/cpuid/cmpxchg/
     # rdmsr/wrmsr/rdtsc -- assemble as themselves instead of hitting A2085 (not-in-current-CPU-mode).
     L = [".586p"] + ["include %s.inc" % i.lower() for i in _all_incs(D)] + [""]
@@ -679,7 +686,22 @@ def emit_idiomatic(D, loadable=False):
                             if (oi, k) in D.fx and k + 4 > a + row["size"])   # = a data pointer decoded as
                 if sp:                                         # code. Emit it as ONE 4-byte dd (else the
                     k = sp[0]                                  # `dd offset` would overflow and shift the
-                    if k > a:                                  # whole table -> corrupt data -> init fault)
+                    e2 = k + 4                                 # whole table -> corrupt data -> init fault)
+                    swallowed = [j for j in range(a + 1, e2) if (oi, j) in D.labels]
+                    if swallowed:                              # this single-dd span would bury a referenced
+                        # label (an overlapping / mis-decoded pointer table: another dword points AT a byte
+                        # inside this pointer, or a branch/`dd offset' targets an instruction start the jump
+                        # steps over). The emit loop's `a` jumps to k+4 in one step and never lands on that
+                        # offset, so neither the label placement nor line-673's split fires, and the
+                        # `dd offset loc_..' / `jcc loc_..' elsewhere is left undefined (A2006). Emit the whole
+                        # span as raw db WITH the label(s) so every target is DEFINED and byte-exact; only this
+                        # one pointer loses its relocation -- harmless in a region the disassembler already
+                        # mis-swept, and the build assembles + links.
+                        lbls = {j: D.labels[(oi, j)] for j in range(a, e2) if (oi, j) in D.labels}
+                        L.extend(_db_split_labels(code, a, e2, lbls))
+                        a = e2
+                        continue
+                    if k > a:
                         L.append(_db(code[a:k]))
                     f = D.fx[(oi, k)]
                     e = _dd_target_expr(D, f["obj"], f.get("target"), ldctx) if f.get("kind") == "internal" else None
