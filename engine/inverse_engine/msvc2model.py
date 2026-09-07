@@ -130,6 +130,24 @@ def emit(node):
             body = bytes([0xB8]) + _imm32(v)                 # mov eax,imm32
         return body + ret_n
 
+    # --- empty body: void f(...) {}  (frame only when it takes args) -------
+    if kind == "empty":
+        return bytes([0xC3]) if nargs == 0 else _PRO + _epi(nargs)
+
+    # --- unary on one arg:  -a (neg) / ~a (not) / !a (lognot -> a==0) -------
+    if kind == "unary":
+        uop, a = E[1], E[2]
+        if a[0] != "arg":
+            return None
+        if uop == "neg":
+            return _PRO + _ld("eax", a[1]) + bytes([0xF7, 0xD8]) + _epi(nargs)   # neg eax
+        if uop == "not":
+            return _PRO + _ld("eax", a[1]) + bytes([0xF7, 0xD0]) + _epi(nargs)   # not eax
+        if uop == "lognot":                                                      # xor eax,eax; cmp [a],eax; sete al
+            return (_PRO + bytes([0x33, 0xC0]) + bytes([0x39]) + _ebp_rm("eax", _argoff(a[1]))
+                    + bytes([0x0F, 0x94, 0xC0]) + _epi(nargs))
+        return None
+
     # --- global read / write / inc-dec (leaf; disp32 reloc is masked) ------
     if kind == "gread":                                      # return G
         return None if nargs != 0 else bytes([0xA1, 0, 0, 0, 0]) + ret_n
@@ -355,6 +373,11 @@ def to_c(node):
         callargs = ", ".join("arg%d" % a[1] for a in cargs)
         return ("extern int (%s *P)(%s); int __stdcall f(%s) { return P(%s); }"
                 % (conv, gsig, params, callargs))
+    if E[0] == "empty":                              # void f(...) {}
+        return "void __stdcall f(%s) {}" % params
+    if E[0] == "unary":                              # return -a / ~a / !a
+        return "int __stdcall f(%s) { return %sarg%d; }" % (
+            params, {"neg": "-", "not": "~", "lognot": "!"}[E[1]], E[2][1])
     return "int __stdcall f(%s) { return %s; }" % (params, _c_expr(E))
 
 
@@ -429,6 +452,13 @@ def battery():
     cases.append(("incG", {"nargs": 0, "expr": ("gincdec", "G", 1)}))
     cases.append(("P(a)", {"nargs": 1, "expr": ("icall", "__stdcall", [A(1)])}))
     cases.append(("P(a,b)", {"nargs": 2, "expr": ("icall", "__stdcall", [A(1), A(2)])}))
+    # empty bodies + unary
+    cases.append(("empty0", {"nargs": 0, "expr": ("empty",)}))
+    cases.append(("empty1", {"nargs": 1, "expr": ("empty",)}))
+    cases.append(("empty2", {"nargs": 2, "expr": ("empty",)}))
+    cases.append(("neg", {"nargs": 1, "expr": ("unary", "neg", A(1))}))
+    cases.append(("not", {"nargs": 1, "expr": ("unary", "not", A(1))}))
+    cases.append(("lognot", {"nargs": 1, "expr": ("unary", "lognot", A(1))}))
     return cases
 
 

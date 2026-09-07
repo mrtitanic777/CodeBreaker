@@ -173,9 +173,12 @@ def _candidates(code):
         SET = {"setl": "<", "setle": "<=", "setg": ">", "setge": ">=", "sete": "==", "setne": "!="}
         if None not in (Lk, Rk) and setcc in SET:
             yield {"nargs": nargs, "expr": ("cmp", SET[setcc], ("arg", Lk), ("arg", Rk))}
+        elif setcc == "sete" and Rk is not None:             # !a : xor eax,eax; cmp [a],eax; sete al
+            yield {"nargs": nargs, "expr": ("unary", "lognot", ("arg", Rk))}
         return
 
-    if not ops:
+    if not ops:                                              # empty body: void f(...) {}
+        yield {"nargs": nargs, "expr": ("empty",)}
         return
 
     # the first instruction is a load into eax or ecx
@@ -257,6 +260,10 @@ def _candidates(code):
             if d % 4 == 0:
                 yield {"nargs": nargs, "expr": ("index", ("arg", k0), ("const", d // 4))}
             return
+
+    if len(ops) == 2 and ops[1][0] in ("neg", "not") and ops[1][1] == "eax":   # -a / ~a
+        yield {"nargs": nargs, "expr": ("unary", ops[1][0], ("arg", k0))}
+        return
 
     steps = []                                               # (op_char, kind, val) applied to eax
     ok = True
