@@ -91,6 +91,26 @@ def _epi(nargs):
     return bytes([0x5D, 0xC2]) + struct.pack("<H", 4 * nargs)
 
 
+def _op_const_bytes(op, c):
+    """Bytes for `eax <op>= c` (c an imm8), or None if unmodeled / out of imm8 range.
+    Measured MSVC 2.0 idioms: +/-1 -> inc/dec, a-c -> add eax,(-c), or via al, *5 via lea."""
+    if not (-128 <= c <= 127):
+        return None
+    if op == "+":
+        return bytes([0x40]) if c == 1 else bytes([0x48]) if c == -1 else bytes([0x83, 0xC0, c & 0xFF])
+    if op == "-":
+        return bytes([0x48]) if c == 1 else bytes([0x40]) if c == -1 else bytes([0x83, 0xC0, (-c) & 0xFF])
+    if op == "&":
+        return bytes([0x83, 0xE0, c & 0xFF])
+    if op == "|":
+        return bytes([0x0C, c & 0xFF])                       # or al,ib
+    if op == "^":
+        return bytes([0x83, 0xF0, c & 0xFF])                 # xor eax,ib
+    if op == "*":
+        return bytes([0x8D, 0x04, 0x80]) if c == 5 else bytes([0x6B, 0xC0, c & 0xFF])  # *5 -> lea; else imul
+    return None
+
+
 def _flatten_chain(E):
     """If E is a left-associative chain of ONE operator over arg leaves -- ((a op b) op c) ... --
     return (op, [argidx leftmost..rightmost]); else None. Used to recognise n-ary chains."""
@@ -175,6 +195,27 @@ def emit(node):
         seq += bytes([0xE8, 0, 0, 0, 0]) if kind == "call" else bytes([0xFF, 0x15, 0, 0, 0, 0])
         if conv == "__cdecl":
             seq += bytes([0x59])                             # pop ecx  (caller cleans one cdecl arg)
+        return seq + _epi(nargs)
+
+    # --- call result combined with one operand:  g(args) <op> {arg|const} --
+    # (__stdcall extern only; the result in eax is then op'd with an arg [mem] or a const.)
+    if kind == "callbin":
+        op, conv, cargs, other = E[1], E[2], E[3], E[4]
+        if conv != "__stdcall" or op not in OPS or not all(a[0] == "arg" for a in cargs):
+            return None
+        seq = _PRO
+        for a in reversed(cargs):
+            seq += _push_arg(a[1])
+        seq += bytes([0xE8, 0, 0, 0, 0])                     # call rel32 (reloc)
+        if other[0] == "arg":                                # eax=g(); op eax,[other]  (memory form)
+            seq += _memop(op, "eax", other[1])
+        elif other[0] == "const":                            # eax=g(); op eax,const
+            ob = _op_const_bytes(op, other[1])
+            if ob is None:
+                return None
+            seq += ob
+        else:
+            return None
         return seq + _epi(nargs)
 
     # --- everything below sets up the standard /Oy- frame FIRST ------------
@@ -283,27 +324,15 @@ def emit(node):
                 return _PRO + seq + _epi(nargs)
         # arg <op> const
         if L[0] == "arg" and R[0] == "const":
-            k, c = L[1], R[1]
-            if not (-128 <= c <= 127):
-                return None                                  # imm8-range only, this milestone
-            if op == "+":
-                ob = bytes([0x40]) if c == 1 else bytes([0x48]) if c == -1 else bytes([0x83, 0xC0, c & 0xFF])
-            elif op == "-":                                  # a - c  ->  add eax,(-c)  (compiler canonical)
-                ob = bytes([0x48]) if c == 1 else bytes([0x40]) if c == -1 else bytes([0x83, 0xC0, (-c) & 0xFF])
-            elif op == "&":
-                ob = bytes([0x83, 0xE0, c & 0xFF])           # and eax,ib
-            elif op == "|":
-                ob = bytes([0x0C, c & 0xFF])                 # or al,ib
-            elif op == "^":
-                ob = bytes([0x83, 0xF0, c & 0xFF])           # xor eax,ib
-            elif op == "*":
-                ob = bytes([0x8D, 0x04, 0x80]) if c == 5 else bytes([0x6B, 0xC0, c & 0xFF])  # *5->lea; else imul
-            else:
+            ob = _op_const_bytes(op, R[1])
+            if ob is None:
                 return None
-            return _PRO + _ld("eax", k) + ob + _epi(nargs)
+            return _PRO + _ld("eax", L[1]) + ob + _epi(nargs)
         # arg <op> arg
         if L[0] == "arg" and R[0] == "arg":
             li, ri = L[1], R[1]
+            if op == "*" and li == ri:                       # a*a -> imul eax,eax (compiler reuses the load)
+                return _PRO + _ld("eax", li) + bytes([0x0F, 0xAF, 0xC0]) + _epi(nargs)
             if op == "+":                                    # eax=b; ecx=a; add eax,ecx  (two-register)
                 return _PRO + _ld("eax", ri) + _ld("ecx", li) + bytes([0x03, 0xC1]) + _epi(nargs)
             if op == "-":                                    # eax=a; sub eax,[b]
@@ -373,6 +402,13 @@ def to_c(node):
         callargs = ", ".join("arg%d" % a[1] for a in cargs)
         return ("extern int (%s *P)(%s); int __stdcall f(%s) { return P(%s); }"
                 % (conv, gsig, params, callargs))
+    if E[0] == "callbin":                            # return g(args) <op> {arg|const};
+        op, conv, cargs, other = E[1], E[2], E[3], E[4]
+        gsig = ", ".join("int" for _ in cargs) or "void"
+        callargs = ", ".join("arg%d" % a[1] for a in cargs)
+        oc = ("arg%d" % other[1]) if other[0] == "arg" else str(other[1])
+        return ("extern int %s g(%s); int __stdcall f(%s) { return g(%s) %s %s; }"
+                % (conv, gsig, params, callargs, op, oc))
     if E[0] == "empty":                              # void f(...) {}
         return "void __stdcall f(%s) {}" % params
     if E[0] == "unary":                              # return -a / ~a / !a
@@ -459,6 +495,11 @@ def battery():
     cases.append(("neg", {"nargs": 1, "expr": ("unary", "neg", A(1))}))
     cases.append(("not", {"nargs": 1, "expr": ("unary", "not", A(1))}))
     cases.append(("lognot", {"nargs": 1, "expr": ("unary", "lognot", A(1))}))
+    # square (imul eax,eax) + call result combined with an operand
+    cases.append(("a*a", {"nargs": 1, "expr": ("binop", "*", A(1), A(1))}))
+    cases.append(("g(a)+b", {"nargs": 2, "expr": ("callbin", "+", "__stdcall", [A(1)], A(2))}))
+    cases.append(("g(a)+c", {"nargs": 1, "expr": ("callbin", "+", "__stdcall", [A(1)], ("const", 1))}))
+    cases.append(("g(a,b)&c", {"nargs": 2, "expr": ("callbin", "&", "__stdcall", [A(1), A(2)], ("const", 7))}))
     return cases
 
 

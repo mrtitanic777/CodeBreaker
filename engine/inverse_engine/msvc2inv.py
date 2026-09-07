@@ -46,6 +46,14 @@ def _sconst(s):
     return v - 0x100000000 if v > 0x7fffffff else v
 
 
+def _cst(s):
+    """('const', signed int) from an immediate string, or None if not a number."""
+    try:
+        return ("const", _sconst(s))
+    except ValueError:
+        return None
+
+
 def _nargs_from_ret(ins):
     mn, op = ins[-1]
     if mn == "ret" and op:                       # ret imm  -> nargs = imm/4
@@ -104,13 +112,33 @@ def _candidates(code):
         yield {"nargs": nargs, "expr": ("call", "__stdcall", [])}
         return
     if any(m == "call" for m, o in ops):
-        callop = next(o for m, o in ops if m == "call")
+        ci = next(i for i, (m, o) in enumerate(ops) if m == "call")
+        callop = ops[ci][1]
         pushes = [_argk(o) for m, o in ops if m == "push" and o.startswith("dword")]
         if pushes and all(k is not None for k in pushes):
             conv = "__cdecl" if ("pop", "ecx") in ops else "__stdcall"   # cdecl cleans via pop ecx
             args = [("arg", k) for k in reversed(pushes)]                 # push order = reverse of source
             kind_ = "icall" if "[" in callop else "call"
             yield {"nargs": nargs, "expr": (kind_, conv, args)}
+            # callbin: exactly one op on eax AFTER a direct __stdcall  ->  g(args) <op> {arg|const}
+            tail = ops[ci + 1:]
+            if kind_ == "call" and conv == "__stdcall" and len(tail) == 1:
+                tm, to = tail[0]
+                op = other = None
+                if tm == "inc":
+                    op, other = "+", ("const", 1)
+                elif tm == "dec":
+                    op, other = "-", ("const", 1)
+                elif tm == "lea" and re.match(r"eax, \[eax \+ eax\*4\]$", to):
+                    op, other = "*", ("const", 5)
+                elif tm == "imul":
+                    k = _argk(to)
+                    op, other = "*", (("arg", k) if k is not None else _cst(to.split(", ")[-1]))
+                elif tm in _ALU_MN:
+                    k = _argk(to)
+                    op, other = _ALU_MN[tm], (("arg", k) if k is not None else _cst(to.split(", ")[1]))
+                if op is not None and other is not None:
+                    yield {"nargs": nargs, "expr": ("callbin", op, conv, args, other)}
         return
 
     # --- globals: read (mov eax,[abs]), write imm/arg, inc/dec [abs] ---
@@ -263,6 +291,9 @@ def _candidates(code):
 
     if len(ops) == 2 and ops[1][0] in ("neg", "not") and ops[1][1] == "eax":   # -a / ~a
         yield {"nargs": nargs, "expr": ("unary", ops[1][0], ("arg", k0))}
+        return
+    if len(ops) == 2 and ops[1] == ("imul", "eax, eax"):     # a*a  (compiler squares the loaded value)
+        yield {"nargs": nargs, "expr": ("binop", "*", ("arg", k0), ("arg", k0))}
         return
 
     steps = []                                               # (op_char, kind, val) applied to eax
