@@ -242,7 +242,94 @@ def assemble(asm_text, root="."):
     return {"obj": out.get("m.obj"), "lst": _rd("m.lst"), "log": _rd("a.txt")}
 
 
-def reconcile_range(sg, start, end, funcs=None, root=".", max_passes=60):
+# --------------------------------------------------------------------------
+# DOSBox-free backend: the nasm-masm fork assembles cMacros natively (its
+# cmacros_shim.inc replaces CMACROS.INC), ~100x faster than ML-under-DOSBox.
+# nasm picks different-but-equivalent encodings than ML on ambiguous cases,
+# so the reconcile db-pins nasm's OWN divergers (found by direct byte compare,
+# since nasm's listing format differs from ML's).
+# --------------------------------------------------------------------------
+def _nasm_bin():
+    return os.environ.get(
+        "NASM_MASM", r"C:\Users\mrtit\Documents\GitHub\nasm-masm\nasm.exe")
+
+
+def _nasm_inc():
+    """A space-free include dir holding cmacros_shim.inc (nasm redirects
+    `include cmacros.inc' -> it)."""
+    import tempfile
+    d = os.path.join(tempfile.gettempdir(), "ne_idiom_nasm_inc")
+    os.makedirs(d, exist_ok=True)
+    shim = os.path.join(os.path.dirname(_nasm_bin()), "test", "masm",
+                        "cmacros_shim.inc")
+    dst = os.path.join(d, "cmacros_shim.inc")
+    if os.path.exists(shim) and (not os.path.exists(dst)
+                                 or os.path.getmtime(shim) > os.path.getmtime(dst)):
+        shutil.copy(shim, dst)
+    return d
+
+
+def assemble_nasm(asm_text):
+    """Assemble idiomatic cMacros source with the nasm-masm fork (16-bit OMF),
+    no DOSBox.  Returns {obj: bytes|None, lst: str, log: str}."""
+    import subprocess
+    import tempfile
+    inc = _nasm_inc()
+    work = tempfile.mkdtemp(prefix="ne_nasm_")
+    src = os.path.join(work, "m.asm")
+    obj = os.path.join(work, "m.obj")
+    lst = os.path.join(work, "m.lst")
+    open(src, "w", newline="\n").write(asm_text)
+    try:
+        p = subprocess.run([_nasm_bin(), "--masm", "-f", "obj", "-I", inc + os.sep,
+                            "-l", lst, "-o", obj, src],
+                           capture_output=True, text=True, timeout=120)
+        log = (p.stderr or "") + (p.stdout or "")
+    except Exception as e:
+        log = repr(e)
+    data = open(obj, "rb").read() if os.path.exists(obj) else None
+    lstx = open(lst, errors="replace").read() if os.path.exists(lst) else ""
+    return {"obj": data, "lst": lstx, "log": log}
+
+
+# nasm listing byte line: "<src#> <offset8> <bytes...> <source ; NNNN>"
+# (shim-expansion lines carry a `<N>' marker and no offset -- they don't match).
+_NLST = re.compile(r"^\s*\d+\s+([0-9A-Fa-f]{8})\s+([0-9A-Fa-f]{2})")
+
+
+def _nasm_divergers(lst, our, omask, shipped, smask, spans, start):
+    """asmrecon._divergers for the nasm-masm listing format (line#/src#/offset8).
+    Returns (lendiff, reencode) sets of original offsets to db, exactly like the
+    ML path: fix length-differers first, then same-length re-encodes."""
+    pairs = []
+    for ln in lst.splitlines():
+        m = _NLST.match(ln)
+        if not m:
+            continue
+        co = re.search(r";\s*([0-9a-f]{4})\b", ln)
+        pairs.append((int(m.group(1), 16), int(co.group(1), 16) if co else None))
+    lendiff, reencode = set(), set()
+    for i, (moff, ooff) in enumerate(pairs):
+        if ooff not in spans:
+            continue
+        mlen = (pairs[i + 1][0] - moff) if i + 1 < len(pairs) else (len(our) - moff)
+        olen = spans[ooff] - ooff
+        oi = ooff - start
+        if mlen != olen:
+            lendiff.add(ooff)
+            continue
+        for k in range(olen):
+            if (moff + k) in omask or (oi + k) in smask:
+                continue
+            if moff + k >= len(our) or oi + k >= len(shipped):
+                break
+            if our[moff + k] != shipped[oi + k]:
+                reencode.add(ooff)
+                break
+    return lendiff, reencode
+
+
+def reconcile_range(sg, start, end, funcs=None, root=".", max_passes=60, backend="ml"):
     """Emit [start,end) idiomatic, assemble via ML+CMACROS, and db-fallback each
     diverging instruction until byte-exact -- asmrecon's reconcile technique with
     the cMacros emitter.  A whole range is one assembly unit, so one instruction
@@ -273,14 +360,15 @@ def reconcile_range(sg, start, end, funcs=None, root=".", max_passes=60):
             s = funcs_list[j]
             return s, (funcs_list[j + 1] if j + 1 < len(funcs_list) else end)
         return None
-    err_re = re.compile(r"\((\d+)\)\s*:\s*(?:error|fatal)", re.I)
+    err_re = (re.compile(r":(\d+):\s*(?:error|fatal)", re.I) if backend == "nasm"
+              else re.compile(r"\((\d+)\)\s*:\s*(?:error|fatal)", re.I))
     off_re = re.compile(r";\s*([0-9a-f]{4})\b")
     force_db, errored, res, asm = set(), set(), None, ""
     for _ in range(max_passes):
         asm, unresolved = _emit(sg, start, end, funcs=funcs,
                                 force_db=force_db, data_off=data_off)
         asm_lines = asm.splitlines()
-        r = assemble(asm, root)
+        r = assemble_nasm(asm) if backend == "nasm" else assemble(asm, root)
         # localize any MASM error to the offending original offset via its `; NNNN'
         # comment and db just that instruction (it is data MASM cannot encode).
         errs = set()
@@ -305,13 +393,17 @@ def reconcile_range(sg, start, end, funcs=None, root=".", max_passes=60):
         res = segdiff.diff(our, omask, shipped, smask)
         if res.get("exact"):
             break
-        lendiff, reencode = asmrecon._divergers(r["lst"], our, omask, shipped,
-                                                smask, spans, start)
-        new_len = lendiff - force_db          # phase 1: fix length-differers first
+        if backend == "nasm":
+            lendiff, reencode = _nasm_divergers(r.get("lst") or "", our, omask,
+                                                shipped, smask, spans, start)
+        else:
+            lendiff, reencode = asmrecon._divergers(r["lst"], our, omask, shipped,
+                                                    smask, spans, start)
+        new_len = lendiff - force_db           # phase 1: fix length-differers first
         if new_len:
             force_db |= new_len
             continue
-        new_re = reencode - force_db          # phase 2: same-length re-encodes
+        new_re = reencode - force_db           # phase 2: same-length re-encodes
         if new_re:
             force_db |= new_re
             continue
@@ -354,7 +446,8 @@ if __name__ == "__main__":
     module = sys.argv[1] if len(sys.argv) > 1 else "KRNL386.EXE"
     seg_i = int(sys.argv[2]) if len(sys.argv) > 2 else 1
     lo = int(sys.argv[3], 0) if len(sys.argv) > 3 else 0x04a4
-    hi = int(sys.argv[4], 0) if len(sys.argv) > 4 else 0x04fa
+    hi_arg = sys.argv[4] if len(sys.argv) > 4 else "0x4fa"   # a number or "whole"
+    save = os.environ.get("NE_SAVE")                          # write the .asm here
     try:
         path = target.resolve(module)
     except Exception:
@@ -370,6 +463,7 @@ if __name__ == "__main__":
             break
     if sg is None:
         print("no code segment", seg_i); sys.exit(1)
+    hi = len(sg.code) if hi_arg == "whole" else int(hi_arg, 0)
     r = verify_range(sg, lo, hi)
     print("=== %s seg%d [0x%x,0x%x) ===" % (module, seg_i, lo, hi))
     if r["ok"]:
@@ -377,5 +471,9 @@ if __name__ == "__main__":
         print("*** BYTE-EXACT (%d bytes) -- %d/%d instructions live idiomatic, "
               "%d db-pinned (%.1f%% live) ***" % (r["n"], r["live"], r["n_code"],
                                                   r["db"], pct))
+        if save:
+            os.makedirs(os.path.dirname(os.path.abspath(save)), exist_ok=True)
+            open(save, "w", newline="\r\n").write(r["asm"])
+            print("saved idiomatic source -> %s (%d lines)" % (save, r["asm"].count("\n")))
     else:
         print("NOT exact:", {k: v for k, v in r.items() if k != "asm"})
