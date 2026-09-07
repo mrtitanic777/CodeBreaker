@@ -106,6 +106,37 @@ def byte_exact_batch(items):
     return results
 
 
+# --------------------------------------------------------------------------
+# 32-bit PE (Win32) routing.  The 16-bit NE world above is COMPILE-and-diff
+# (pick a compiler, recompile a candidate C, compare).  Win95's 32-bit DLLs are
+# MSVC 2.0 (linker 2.50, standard /Oy- frame) and are recovered by the search-
+# free MODEL INVERSE: msvc2inv turns bytes straight into byte-exact C, each
+# candidate self-verified by msvc2model.emit -- no compiler in the loop.  So the
+# 32-bit entry is INVERSE (bytes -> C), the mirror of byte_exact's role.
+# --------------------------------------------------------------------------
+def recover32(fb, mask=None):
+    """32-bit PE function bytes -> {exact, oracle:'msvc2', c, nargs, expr}, or {exact:False}.
+    Relocation slots (call targets / global addrs) are auto-masked, so this works on real linked
+    code; every result is byte-exact by construction (declined otherwise)."""
+    from engine.inverse_engine import msvc2inv
+    r = msvc2inv.invert(bytes(fb), mask=mask)
+    if r:
+        return {"exact": True, "oracle": "msvc2", "c": r["c"], "nargs": r["nargs"], "expr": r["expr"]}
+    return {"exact": False, "oracle": "msvc2"}
+
+
+def recover(fb, arch=16, candidate_c=None, mask=None):
+    """Architecture-routed recovery/verification entry.
+      arch=32 (PE): INVERSE -- return recover32(fb) (bytes -> byte-exact C, no candidate needed).
+      arch=16 (NE): if candidate_c is given, frame-route + compile-diff via byte_exact; else the
+                    16-bit path is search-based and lives in synth_search (not invoked here)."""
+    if arch == 32:
+        return recover32(fb, mask=mask)
+    if candidate_c is not None:
+        return byte_exact(fb, candidate_c)
+    return {"exact": False, "reason": "16-bit recovery needs a candidate C (see synth_search)"}
+
+
 if __name__ == "__main__":
     # frame routing is pure/offline -- assert it without invoking a compiler
     msc6_frame = bytes.fromhex("1e589045558bec1e8ed8") + b"\x00" * 4 + bytes.fromhex("4d4d8be51f5d4dcb")
@@ -115,3 +146,7 @@ if __name__ == "__main__":
     print("oracle_router: frame routing OK (msc6 <- 1e58/std, msvc152 <- 8cd8/lea)")
     print("  msc6 configured   :", _msc6.available())
     print("  msvc152 configured:", _msvc152.available())
+    # 32-bit PE inverse routing: GetCurrentProcess = `return 0x7fffffff` (leaf, no reloc)
+    r32 = recover32(bytes.fromhex("b8ffffff7fc3"))
+    assert r32["exact"] and r32["oracle"] == "msvc2", r32
+    print("  win32 msvc2 route :", r32["c"])
