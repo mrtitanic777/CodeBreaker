@@ -53,47 +53,42 @@ def _argoff(k):
     return 4 + 4 * k
 
 
-def _load_eax(k):
-    """mov eax, [esp + off]  ->  8b 44 24 ib   (off always < 0x80 for our arg range)."""
-    return bytes([0x8B, 0x44, 0x24, _argoff(k)])
+# ---- ebp-relative encoders (MSVC 2.0 /O1 /Oy- keeps the frame pointer) -------
+# Every arg-using function sets up the standard frame FIRST -- `push ebp`(55)
+# `mov ebp,esp`(8b ec) -- then reads args ebp-relative at [ebp + 4 + 4k].  There
+# is no esp-relative pre-frame load and no deferred `mov ebp,esp` (an earlier
+# model probed the wrong flags and encoded an FPO-style frame; the shipped 9x
+# DLLs and the /Oy- oracle both use this standard frame -- verified byte-exact).
+_R = {"eax": 0, "ecx": 1, "edx": 2}
+_PRO = bytes([0x55, 0x8B, 0xEC])                         # push ebp; mov ebp,esp
+_MEMOP = {"+": 0x03, "-": 0x2B, "&": 0x23, "|": 0x0B, "^": 0x33}   # op r32, r/m32
 
 
-# arg <op> const  -> the byte sequence for the op (operand already in eax)
-def _op_const(op, c):
-    # +/-1 use the 1-byte inc/dec, not add/sub imm (measured)
-    if (op == "+" and c == 1) or (op == "-" and c == -1):
-        return bytes([0x40])                            # inc eax
-    if (op == "-" and c == 1) or (op == "+" and c == -1):
-        return bytes([0x48])                            # dec eax
-    if op == "+":
-        return bytes([0x83, 0xC0, c & 0xFF])            # add eax, ib
-    if op == "-":
-        return bytes([0x83, 0xE8, c & 0xFF])            # sub eax, ib
-    if op == "&":
-        return bytes([0x83, 0xE0, c & 0xFF])            # and eax, ib
-    if op == "|":
-        return bytes([0x0C, c & 0xFF])                  # or  al, ib
-    if op == "^":
-        return bytes([0x34, c & 0xFF])                  # xor al, ib
+def _ebp_rm(reg, off):
+    """ModRM for `<reg>,[ebp+disp8]` (mod=01, rm=101)."""
+    return bytes([0x40 | (_R[reg] << 3) | 0x05, off & 0xFF])
+
+
+def _ld(reg, k):
+    """mov <reg>,[ebp + arg k]  ->  8b /r  (eax:8b 45 ib, ecx:8b 4d ib)."""
+    return bytes([0x8B]) + _ebp_rm(reg, _argoff(k))
+
+
+def _push_arg(k):
+    """push dword ptr [ebp + arg k]  ->  ff 75 ib."""
+    return bytes([0xFF, 0x75, _argoff(k) & 0xFF])
+
+
+def _memop(op, reg, k):
+    """<op> <reg>,[ebp + arg k]  (imul is the 0f af two-byte form)."""
     if op == "*":
-        return bytes([0x6B, 0xC0, c & 0xFF])            # imul eax, eax, ib
-    return None
+        return bytes([0x0F, 0xAF]) + _ebp_rm(reg, _argoff(k))
+    return bytes([_MEMOP[op]]) + _ebp_rm(reg, _argoff(k))
 
 
-# arg <op> arg  -> (which operand to LOAD first, the op-with-memory bytes vs the other operand)
-_MEMOP = {"+": 0x03, "-": 0x2B, "&": 0x23, "|": 0x0B, "^": 0x33}   # op eax, [esp+off]
-def _binargs_plan(op, li, ri):
-    """Return (load_idx, other_idx, op_encoder). add/sub load LEFT first; commutative
-    (and/or/xor/mul) load RIGHT first, then op against the LEFT."""
-    if op in ("+", "-"):
-        load, other = li, ri
-    else:                                                # & | ^ *  -> right first
-        load, other = ri, li
-    def enc(off):
-        if op == "*":
-            return bytes([0x0F, 0xAF, 0x44, 0x24, off])  # imul eax, [esp+off]
-        return bytes([_MEMOP[op], 0x44, 0x24, off])      # op eax, [esp+off]
-    return load, other, enc
+def _epi(nargs):
+    """pop ebp; ret 4*nargs  (the __stdcall callee-clean epilogue)."""
+    return bytes([0x5D, 0xC2]) + struct.pack("<H", 4 * nargs)
 
 
 def _flatten_chain(E):
@@ -115,139 +110,6 @@ def _flatten_chain(E):
     return op, leaves
 
 
-def _emit_mul_chain(nargs, idxs):
-    """a*b*c[*d...] -> eax = rightmost; imul the rest RIGHT-TO-LEFT; frame deferred past the
-    imuls (all operands read esp-relative, before `mov ebp,esp`). Measured byte-exact."""
-    pro = bytes([0x55])
-    seq = _load_eax(idxs[-1])                             # eax = rightmost leaf
-    for k in reversed(idxs[:-1]):                         # imul eax, [esp+arg]  (reverse order)
-        seq += bytes([0x0F, 0xAF, 0x44, 0x24, _argoff(k)])
-    seq += bytes([0x8B, 0xEC])                            # mov ebp, esp  (deferred, imul style)
-    return pro + seq + bytes([0x5D]) + bytes([0xC2]) + struct.pack("<H", 4 * nargs)
-
-
-# --- a small ModRM encoder for the two-register evaluator --------------------
-_R = {"eax": 0, "ecx": 1, "edx": 2}
-_ALU = {"+": 0x03, "-": 0x2B, "&": 0x23, "|": 0x0B, "^": 0x33}   # op r32, r/m32
-
-
-def _rm(reg, base, off):
-    """ModRM(+SIB) for `<reg>, [base+off]` with a disp8. base in {'esp','ebp'} -- MSVC uses the
-    esp (SIB) form for a ref emitted BEFORE `mov ebp,esp`, the ebp (no-SIB) form for one after."""
-    rb = _R[reg]
-    if base == "esp":
-        return bytes([0x40 | (rb << 3) | 0x04, 0x24, off & 0xFF])
-    return bytes([0x40 | (rb << 3) | 0x05, off & 0xFF])          # ebp
-
-
-def _push_mem(base, off):
-    """push dword ptr [base+off]  (esp form has a SIB byte, ebp form doesn't)."""
-    return bytes([0xFF, 0x74, 0x24, off & 0xFF]) if base == "esp" else bytes([0xFF, 0x75, off & 0xFF])
-
-
-def _mov(reg, base, off):    return bytes([0x8B]) + _rm(reg, base, off)
-def _alu(op, reg, base, off): return bytes([_ALU[op]]) + _rm(reg, base, off)
-def _imul(reg, base, off):   return bytes([0x0F, 0xAF]) + _rm(reg, base, off)
-def _add_rr(dst, src):       return bytes([0x03, 0xC0 | (_R[dst] << 3) | _R[src]])
-_FRAME = bytes([0x8B, 0xEC])
-
-
-def _flatten_addsub(E):
-    """A left-assoc +/- chain over ARG leaves -> (head_argidx, [(op, argidx) ...tail]) or None.
-    The head carries an implicit '+'. Any non-arg leaf (e.g. a product) makes it None."""
-    if E[0] != "binop" or E[1] not in ("+", "-"):
-        return None
-    tail, node = [], E
-    while node[0] == "binop" and node[1] in ("+", "-"):
-        if node[3][0] != "arg":
-            return None
-        tail.append((node[1], node[3][1]))
-        node = node[2]
-    if node[0] != "arg":
-        return None
-    tail.reverse()
-    return node[1], tail
-
-
-def _as_arg_product(X):
-    """X == argA * argB  ->  (A, B)  else None."""
-    if X[0] == "binop" and X[1] == "*" and X[2][0] == "arg" and X[3][0] == "arg":
-        return X[2][1], X[3][1]
-    return None
-
-
-def _epi(nargs):
-    return bytes([0x5D]) + bytes([0xC2]) + struct.pack("<H", 4 * nargs)
-
-
-def _emit_add3(nargs, head, tail):
-    """3-operand +/- chain with >=1 '+': the '+' tail operand becomes the ecx base (loaded
-    esp-relative, pre-frame), the other tail operand is applied with its op (ebp-relative,
-    post-frame), then eax = head, eax += ecx. Uniform schedule, measured byte-exact."""
-    (opb, b), (opc, c) = tail
-    if opc == "+":
-        base, other, opo = c, b, opb
-    else:                                                 # opb == '+'
-        base, other, opo = b, c, opc
-    seq = (_mov("ecx", "esp", _argoff(base)) + _FRAME
-           + _alu(opo, "ecx", "ebp", _argoff(other))
-           + _mov("eax", "ebp", _argoff(head)) + _add_rr("eax", "ecx"))
-    return bytes([0x55]) + seq + _epi(nargs)
-
-
-def _emit_bitchain(op, nargs, args):
-    """a&b&c (also |, ^): commutative chain -- load LAST, op the rest in reverse; the frame is set
-    right after the load (first-2-esp then ebp), unlike mul which defers the frame to the end."""
-    seq = _load_eax(args[-1]) + _FRAME + _alu(op, "eax", "esp", _argoff(args[-2]))
-    for k in reversed(args[:-2]):
-        seq += _alu(op, "eax", "ebp", _argoff(k))
-    return bytes([0x55]) + seq + _epi(nargs)
-
-
-def _pairswap(xs):
-    """Swap adjacent elements in pairs: [a,b,c,d]->[b,a,d,c] (self-inverse). The generic
-    scheduler's reorder of independent subtracted operands in a sub-chain."""
-    out, i = [], 0
-    while i < len(xs):
-        if i + 1 < len(xs):
-            out += [xs[i + 1], xs[i]]; i += 2
-        else:
-            out.append(xs[i]); i += 1
-    return out
-
-
-def _emit_sub_chain(nargs, head, subargs):
-    """a-b-c[-d..]: eax=head; frame; sub the rest. Base-flip rule for the eax accumulator: the
-    FIRST subtract reads esp-relative, the rest ebp. Subtracted operands are pair-swapped."""
-    order = _pairswap(subargs)
-    seq = _load_eax(head) + _FRAME + _alu("-", "eax", "esp", _argoff(order[0]))
-    for k in order[1:]:
-        seq += _alu("-", "eax", "ebp", _argoff(k))
-    return bytes([0x55]) + seq + _epi(nargs)
-
-
-def _emit_add_chain(nargs, args):
-    """a+b+c+d[+...] (n>=4, all '+'): ecx = last; add (n-1)th; eax = head; add the remaining
-    middle operands (reverse); pop; add eax,ecx. Base: only the ecx load is esp, rest ebp.
-    pop comes BEFORE the final combine for n>=4 (n=3 is _emit_add3, combine-then-pop)."""
-    seq = (_mov("ecx", "esp", _argoff(args[-1])) + _FRAME
-           + _alu("+", "ecx", "ebp", _argoff(args[-2]))
-           + _mov("eax", "ebp", _argoff(args[0])))
-    for i in range(len(args) - 3, 0, -1):                # middle operands args[n-3]..args[1], reverse
-        seq += _alu("+", "ecx", "ebp", _argoff(args[i]))
-    seq += bytes([0x5D]) + _add_rr("eax", "ecx")         # pop; add eax,ecx (pop before combine)
-    return bytes([0x55]) + seq + bytes([0xC2]) + struct.pack("<H", 4 * nargs)
-
-
-def _emit_prod_leaf(nargs, pL, pR, H):
-    """(argpL * argpR) + argH  (either source order): product in ecx (ecx=pR, imul pL --
-    right-first), leaf in eax, frame deferred past all loads, then add eax,ecx. Measured
-    byte-exact.  Combine is '+' only (subtraction-combine unprobed -> declined by caller)."""
-    seq = (_mov("ecx", "esp", _argoff(pR)) + _imul("ecx", "esp", _argoff(pL))
-           + _mov("eax", "esp", _argoff(H)) + _FRAME + _add_rr("eax", "ecx"))
-    return bytes([0x55]) + seq + _epi(nargs)
-
-
 def emit(node):
     """Forward model: construct -> exact MSVC-2.0 /O1 /Oy- bytes, or None if out of class."""
     try:
@@ -255,193 +117,180 @@ def emit(node):
     except (KeyError, TypeError):
         return None
     kind = E[0]
+    ret_n = bytes([0xC3]) if nargs == 0 else bytes([0xC2]) + struct.pack("<H", 4 * nargs)
 
     # --- pure constant: no frame -------------------------------------------
     if kind == "const":
         v = E[1]
-        body = bytes([0x33, 0xC0]) if v == 0 else (bytes([0xB8]) + _imm32(v))
-        ret = bytes([0xC3]) if nargs == 0 else bytes([0xC2]) + struct.pack("<H", 4 * nargs)
-        return body + ret
+        if v == 0:
+            body = bytes([0x33, 0xC0])                       # xor eax,eax
+        elif -128 <= v <= 127:
+            body = bytes([0x6A, v & 0xFF, 0x58])             # push imm8; pop eax  (short const)
+        else:
+            body = bytes([0xB8]) + _imm32(v)                 # mov eax,imm32
+        return body + ret_n
 
-    # --- everything else uses an arg -> /Oy- frame -------------------------
-    setframe = bytes([0x8B, 0xEC])                       # mov ebp, esp
-    epi = bytes([0x5D]) + bytes([0xC2]) + struct.pack("<H", 4 * nargs)   # pop ebp; ret 4n
-    pro = bytes([0x55])                                  # push ebp
+    # --- global read / write / inc-dec (leaf; disp32 reloc is masked) ------
+    if kind == "gread":                                      # return G
+        return None if nargs != 0 else bytes([0xA1, 0, 0, 0, 0]) + ret_n
+    if kind == "gwrite":                                     # G = value
+        val = E[2]
+        if val[0] == "const":                                # mov dword[G],imm32
+            return bytes([0xC7, 0x05, 0, 0, 0, 0]) + struct.pack("<i", val[1]) + ret_n
+        if val[0] == "arg":                                  # mov eax,[a]; mov [G],eax
+            return _PRO + _ld("eax", val[1]) + bytes([0xA3, 0, 0, 0, 0]) + _epi(nargs)
+        return None
+    if kind == "gincdec":                                    # G++ / G--
+        return bytes([0xFF, 0x05 if E[2] > 0 else 0x0D, 0, 0, 0, 0]) + ret_n
 
-    if kind == "arg":
-        seq = _load_eax(E[1]) + setframe                # load; mov ebp,esp
-        return pro + seq + epi
+    # --- call / indirect call: frame first, push args right-to-left (all ebp) --
+    # the rel32 / disp32 target bytes are emitted 0 and MASKED by the verifier.
+    if kind in ("call", "icall"):
+        conv, cargs = E[1], E[2]
+        if not all(a[0] == "arg" for a in cargs):
+            return None
+        if kind == "call" and not cargs:                     # return g(): tail-call jmp rel32
+            return bytes([0xE9, 0, 0, 0, 0])
+        seq = _PRO
+        for a in reversed(cargs):
+            seq += _push_arg(a[1])                           # push dword [ebp+arg]
+        seq += bytes([0xE8, 0, 0, 0, 0]) if kind == "call" else bytes([0xFF, 0x15, 0, 0, 0, 0])
+        if conv == "__cdecl":
+            seq += bytes([0x59])                             # pop ecx  (caller cleans one cdecl arg)
+        return seq + _epi(nargs)
 
-    # --- pointer load: *p  ->  mov eax,[esp+p]; mov ebp,esp; mov eax,[eax] ------
-    if kind == "deref":
+    # --- everything below sets up the standard /Oy- frame FIRST ------------
+    if kind == "arg":                                        # return a
+        return _PRO + _ld("eax", E[1]) + _epi(nargs)
+
+    if kind == "deref":                                      # return *p
         if E[1][0] != "arg":
             return None
-        return pro + _load_eax(E[1][1]) + setframe + bytes([0x8B, 0x00]) + epi
+        return _PRO + _ld("eax", E[1][1]) + bytes([0x8B, 0x00]) + _epi(nargs)
 
-    # --- index load: p[k] (const) or p[i] (arg, scaled) ------------------------
     if kind == "index":
         p, idx = E[1], E[2]
         if p[0] != "arg":
             return None
-        if idx[0] == "arg":          # p[i]: mov ecx,[i]; frame; mov eax,[p]; pop; mov eax,[eax+ecx*4]
-            seq = (_mov("ecx", "esp", _argoff(idx[1])) + setframe + _load_eax(p[1])
-                   + bytes([0x5D, 0x8B, 0x04, 0x88]))
-            return pro + seq + bytes([0xC2]) + struct.pack("<H", 4 * nargs)
+        if idx[0] == "arg":                                  # p[i]: eax=[i]; ecx=[p]; mov eax,[ecx+eax*4]
+            return _PRO + _ld("eax", idx[1]) + _ld("ecx", p[1]) + bytes([0x8B, 0x04, 0x81]) + _epi(nargs)
         if idx[0] == "const":
             d = idx[1] * 4
             if d == 0:
-                mem = bytes([0x8B, 0x00])                # mov eax,[eax]
+                mem = bytes([0x8B, 0x00])                     # mov eax,[eax]
             elif 0 < d < 0x80:
-                mem = bytes([0x8B, 0x40, d])             # mov eax,[eax+disp8]
+                mem = bytes([0x8B, 0x40, d])                 # mov eax,[eax+disp8]
             else:
                 return None
-            return pro + _load_eax(p[1]) + setframe + mem + epi
+            return _PRO + _ld("eax", p[1]) + mem + _epi(nargs)
         return None
 
-    # --- call an extern:  g(args)  ---------------------------------------------
-    # value = the call's eax result; reloc bytes (rel32 target) are emitted as 0 and MASKED.
-    if kind == "call":
-        conv, cargs = E[1], E[2]
-        if not all(a[0] == "arg" for a in cargs):
-            return None
-        if not cargs:                                   # return g(): tail-call jmp rel32 (no frame)
-            return bytes([0xE9, 0, 0, 0, 0])
-        seq = bytes([0x55, 0x8B, 0xEC])                 # push ebp; mov ebp,esp
-        for i, a in enumerate(reversed(cargs)):         # push args right-to-left; first esp, rest ebp
-            seq += _push_mem("esp" if i == 0 else "ebp", _argoff(a[1]))
-        seq += bytes([0xE8, 0, 0, 0, 0])                # call rel32 (reloc)
-        if conv == "__cdecl":
-            seq += bytes([0x8B, 0xE5])                  # mov esp,ebp  (caller cleans cdecl args)
-        seq += _epi(nargs)
-        return seq
-
-    # --- global read/write (getters/setters); disp32 = reloc, masked -----------
-    if kind == "gread":                                  # return G  (leaf, no frame)
-        if nargs != 0:
-            return None
-        return bytes([0xA1, 0, 0, 0, 0, 0xC3])           # mov eax,[G]; ret
-    if kind == "gwrite":                                 # G = value
-        val = E[2]
-        if val[0] == "const":                            # mov dword[G], imm32; ret
-            body = bytes([0xC7, 0x05, 0, 0, 0, 0]) + struct.pack("<i", val[1])
-            return body + (bytes([0xC3]) if nargs == 0 else epi)
-        if val[0] == "arg":                              # mov eax,[a]; frame; mov [G],eax; pop; ret
-            return pro + _load_eax(val[1]) + setframe + bytes([0xA3, 0, 0, 0, 0]) + epi
-        return None
-    if kind == "gincdec":                                # G++ / G--  (inc/dec dword[G])
-        return bytes([0xFF, 0x05 if E[2] > 0 else 0x0D, 0, 0, 0, 0]) + (bytes([0xC3]) if nargs == 0 else epi)
-
-    # --- indirect call via a fn-ptr global:  (*P)(args)  ->  call dword ptr [P] --
-    if kind == "icall":
-        cargs = E[2]
-        if not cargs or not all(a[0] == "arg" for a in cargs):
-            return None
-        seq = bytes([0x55, 0x8B, 0xEC])
-        for i, a in enumerate(reversed(cargs)):
-            seq += _push_mem("esp" if i == 0 else "ebp", _argoff(a[1]))
-        seq += bytes([0xFF, 0x15, 0, 0, 0, 0])           # call dword ptr [P]
-        if E[1] == "__cdecl":
-            seq += bytes([0x8B, 0xE5])
-        return seq + epi
-
-    # --- store *p = value  (void) ---------------------------------------------
-    if kind == "store":
+    if kind == "store":                                      # *p = value  (void)
         p, val = E[1], E[2]
         if p[0] != "arg":
             return None
-        if val[0] == "arg":            # mov ecx,[esp+v]; frame; mov eax,[esp+p]; pop; mov [eax],ecx
-            seq = (_mov("ecx", "esp", _argoff(val[1])) + setframe
-                   + _load_eax(p[1]) + bytes([0x5D, 0x89, 0x08]))
-            return pro + seq + bytes([0xC2]) + struct.pack("<H", 4 * nargs)
-        if val[0] == "const":          # mov eax,[esp+p]; frame; mov dword[eax],imm; pop; ret
-            return pro + _load_eax(p[1]) + setframe + bytes([0xC7, 0x00]) + struct.pack("<i", val[1]) + epi
+        if val[0] == "arg":                                  # mov ecx,[p]; mov eax,[v]; mov [ecx],eax
+            return _PRO + _ld("ecx", p[1]) + _ld("eax", val[1]) + bytes([0x89, 0x01]) + _epi(nargs)
+        if val[0] == "const" and val[1] == 0:                # *p = 0  ->  and dword[eax],0
+            return _PRO + _ld("eax", p[1]) + bytes([0x83, 0x20, 0x00]) + _epi(nargs)
+        if val[0] == "const":                                # mov dword[eax],imm32
+            return _PRO + _ld("eax", p[1]) + bytes([0xC7, 0x00]) + struct.pack("<i", val[1]) + _epi(nargs)
         return None
 
-    # --- comparison returning 0/1 ---------------------------------------------
-    if kind == "cmp":
+    if kind == "cmp":                                        # a <rel> b -> 0/1 via setcc
         op, L, R = E[1], E[2], E[3]
         if L[0] != "arg" or R[0] != "arg":
             return None
-        if op in ("<", "<=", ">", ">="):                # branch idiom: cmp [R],eax(=L); mov 1; jcc +2; xor
-            JCC = {"<": 0x7F, "<=": 0x7D, ">": 0x7C, ">=": 0x7E}   # inverse-relation on (R-L)
-            seq = (_load_eax(L[1]) + setframe
-                   + bytes([0x39, 0x44, 0x24, _argoff(R[1])])
-                   + bytes([0xB8, 1, 0, 0, 0, JCC[op], 0x02, 0x33, 0xC0]))
-            return pro + seq + epi
-        if op in ("==", "!="):                          # ecx=R-L; pop; cmp ecx,1; sbb eax,eax; neg/inc
-            seq = (_mov("ecx", "esp", _argoff(R[1])) + setframe
-                   + _alu("-", "ecx", "esp", _argoff(L[1]))
-                   + bytes([0x5D, 0x83, 0xF9, 0x01, 0x1B, 0xC0])
-                   + (bytes([0xF7, 0xD8]) if op == "==" else bytes([0x40])))
-            return pro + seq + bytes([0xC2]) + struct.pack("<H", 4 * nargs)
-        return None
+        SET = {"<": 0x9C, "<=": 0x9E, ">": 0x9F, ">=": 0x9D, "==": 0x94, "!=": 0x95}
+        if op not in SET:
+            return None
+        return (_PRO + _ld("ecx", L[1]) + bytes([0x33, 0xC0])       # mov ecx,[a]; xor eax,eax
+                + bytes([0x3B]) + _ebp_rm("ecx", _argoff(R[1]))     # cmp ecx,[b]
+                + bytes([0x0F, SET[op], 0xC0]) + _epi(nargs))       # setcc al
 
     if kind == "binop":
         op, L, R = E[1], E[2], E[3]
         if op not in OPS:
             return None
-        # multiplicative chain (same-op '*' over >=3 arg leaves) -- single-accumulator, clean.
+        # same-op chain over >=3 arg leaves: single accumulator, load last, fold in reverse
         chain = _flatten_chain(E)
-        if chain and chain[0] == "*" and len(chain[1]) >= 3:
-            return _emit_mul_chain(nargs, chain[1])
-        if chain and chain[0] in ("&", "|", "^") and len(chain[1]) >= 3:   # bitwise chain
-            return _emit_bitchain(chain[0], nargs, chain[1])
-        # TWO-REGISTER additive / mixed-precedence (the modeled clean-schedule shapes):
-        if op in ("+", "-"):
-            fa = _flatten_addsub(E)                       # pure +/- chain over arg leaves?
-            if fa and len(fa[1]) == 2 and any(o == "+" for o, _ in fa[1]):
-                return _emit_add3(nargs, fa[0], fa[1])    # a+b+c / a+b-c / a-b+c
-            if fa and len(fa[1]) >= 2 and all(o == "-" for o, _ in fa[1]):
-                return _emit_sub_chain(nargs, fa[0], [k for _, k in fa[1]])   # a-b-c[-d..]
-            if fa and len(fa[1]) >= 3 and all(o == "+" for o, _ in fa[1]):    # a+b+c+d[+..] (n>=4)
-                return _emit_add_chain(nargs, [fa[0]] + [k for _, k in fa[1]])
-            if op == "+":                                 # product + leaf (mixed precedence)
-                pl, pr = _as_arg_product(L), _as_arg_product(R)
-                if pl and R[0] == "arg":
-                    return _emit_prod_leaf(nargs, pl[0], pl[1], R[1])
-                if pr and L[0] == "arg":
-                    return _emit_prod_leaf(nargs, pr[0], pr[1], L[1])
-                if pl and pr:                             # two products: (a*b)+(c*d) -> lea combine
-                    seq = (_mov("edx", "esp", _argoff(pr[1])) + _imul("edx", "esp", _argoff(pr[0]))
-                           + _mov("ecx", "esp", _argoff(pl[1])) + setframe
-                           + _imul("ecx", "ebp", _argoff(pl[0]))
-                           + bytes([0x5D, 0x8D, 0x04, 0x0A]))   # pop; lea eax,[edx+ecx]
-                    return pro + seq + bytes([0xC2]) + struct.pack("<H", 4 * nargs)
-        # two products (a*b) - (c*d): eax=a*b, edx=c*d, sub eax,edx (no lea, order matters)
-        if op == "-" and _as_arg_product(L) and _as_arg_product(R):
-            a, b = _as_arg_product(L)
-            c, d = _as_arg_product(R)
-            seq = (_mov("eax", "esp", _argoff(b)) + _imul("eax", "esp", _argoff(a))
-                   + _mov("edx", "esp", _argoff(d)) + setframe + _imul("edx", "ebp", _argoff(c))
-                   + bytes([0x2B, 0xC2]))               # sub eax, edx
-            return pro + seq + epi
-        # left-fold: (a <io> b) <op2> c  -- inner sum/diff in eax (esp), then op2 c (ebp)
-        if (L[0] == "binop" and L[1] in ("+", "-") and L[2][0] == "arg" and L[3][0] == "arg"
-                and R[0] == "arg" and op not in ("+", "-")):
-            inner = _alu(L[1], "eax", "esp", _argoff(L[3][1]))
-            if op == "*":
-                outer = _imul("eax", "ebp", _argoff(R[1]))
-            elif op in _ALU:
-                outer = _alu(op, "eax", "ebp", _argoff(R[1]))
-            else:
-                return None
-            return pro + _load_eax(L[2][1]) + setframe + inner + outer + epi
+        if chain and len(chain[1]) >= 3:
+            cop, lv = chain
+            if cop in ("*", "&", "|", "^"):                  # commutative: eax=last; op the rest (reverse)
+                seq = _ld("eax", lv[-1])
+                for k in reversed(lv[:-1]):
+                    seq += _memop(cop, "eax", k)
+                return _PRO + seq + _epi(nargs)
+            if cop == "-":                                   # a-b-c[-..]: subtract 2nd..last first, 1st last
+                head, sub = lv[0], lv[1:]
+                seq = _ld("eax", head)
+                for k in sub[1:] + sub[:1]:
+                    seq += _memop("-", "eax", k)
+                return _PRO + seq + _epi(nargs)
+            if cop == "+":                                   # a+b+c[+..]: eax=last; ecx=2nd-last; add; then +rest
+                seq = _ld("eax", lv[-1]) + _ld("ecx", lv[-2]) + bytes([0x03, 0xC1])
+                for k in reversed(lv[:-2]):
+                    seq += _memop("+", "eax", k)
+                return _PRO + seq + _epi(nargs)
+            return None
+
+        # --- mixed-precedence / mixed +/- three-operand shapes (two-register) ---
+        def _argprod(X):
+            if X[0] == "binop" and X[1] == "*" and X[2][0] == "arg" and X[3][0] == "arg":
+                return X[2][1], X[3][1]
+            return None
+        if op in ("+", "-") and _argprod(L) and _argprod(R):     # (a*b) +/- (c*d)
+            a, b = _argprod(L)
+            c, d = _argprod(R)
+            seq = (_ld("eax", b) + _ld("ecx", d) + _memop("*", "eax", a) + _memop("*", "ecx", c)
+                   + (bytes([0x03, 0xC1]) if op == "+" else bytes([0x2B, 0xC1])))
+            return _PRO + seq + _epi(nargs)
+        if op == "+":                                            # (a*b) + c  /  a + (b*c)  -- product first
+            for X, Y in ((L, R), (R, L)):
+                pr = _argprod(X)
+                if pr and Y[0] == "arg":
+                    return (_PRO + _ld("eax", pr[1]) + _memop("*", "eax", pr[0])
+                            + _memop("+", "eax", Y[1]) + _epi(nargs))
+        if (op == "*" and L[0] == "binop" and L[1] == "+"        # (a+b) * c
+                and L[2][0] == "arg" and L[3][0] == "arg" and R[0] == "arg"):
+            return (_PRO + _ld("eax", L[3][1]) + _ld("ecx", L[2][1]) + bytes([0x03, 0xC1])
+                    + _memop("*", "eax", R[1]) + _epi(nargs))
+        if (op in ("+", "-") and L[0] == "binop" and L[1] in ("+", "-")   # (a op1 b) op2 c, one '+' one '-'
+                and L[2][0] == "arg" and L[3][0] == "arg" and R[0] == "arg"):
+            tail = [(L[1], L[3][1]), (op, R[1])]
+            plus = [k for o, k in tail if o == "+"]
+            minus = [k for o, k in tail if o == "-"]
+            if len(plus) == 1 and len(minus) == 1:               # seed the '+' operand, sub the '-', add head
+                seq = _ld("eax", plus[0]) + _memop("-", "eax", minus[0]) + _memop("+", "eax", L[2][1])
+                return _PRO + seq + _epi(nargs)
         # arg <op> const
         if L[0] == "arg" and R[0] == "const":
             k, c = L[1], R[1]
-            opb = _op_const(op, c)
-            if opb is None or not (-128 <= c <= 127):
-                return None                              # imm8-range only, this milestone
-            if op == "*":                                # imul defers mov ebp,esp past the op
-                return pro + _load_eax(k) + opb + setframe + epi
-            return pro + _load_eax(k) + setframe + opb + epi
+            if not (-128 <= c <= 127):
+                return None                                  # imm8-range only, this milestone
+            if op == "+":
+                ob = bytes([0x40]) if c == 1 else bytes([0x48]) if c == -1 else bytes([0x83, 0xC0, c & 0xFF])
+            elif op == "-":                                  # a - c  ->  add eax,(-c)  (compiler canonical)
+                ob = bytes([0x48]) if c == 1 else bytes([0x40]) if c == -1 else bytes([0x83, 0xC0, (-c) & 0xFF])
+            elif op == "&":
+                ob = bytes([0x83, 0xE0, c & 0xFF])           # and eax,ib
+            elif op == "|":
+                ob = bytes([0x0C, c & 0xFF])                 # or al,ib
+            elif op == "^":
+                ob = bytes([0x83, 0xF0, c & 0xFF])           # xor eax,ib
+            elif op == "*":
+                ob = bytes([0x8D, 0x04, 0x80]) if c == 5 else bytes([0x6B, 0xC0, c & 0xFF])  # *5->lea; else imul
+            else:
+                return None
+            return _PRO + _ld("eax", k) + ob + _epi(nargs)
         # arg <op> arg
         if L[0] == "arg" and R[0] == "arg":
-            load, other, enc = _binargs_plan(op, L[1], R[1])
-            opb = enc(_argoff(other))
-            if op == "*":
-                return pro + _load_eax(load) + opb + setframe + epi
-            return pro + _load_eax(load) + setframe + opb + epi
+            li, ri = L[1], R[1]
+            if op == "+":                                    # eax=b; ecx=a; add eax,ecx  (two-register)
+                return _PRO + _ld("eax", ri) + _ld("ecx", li) + bytes([0x03, 0xC1]) + _epi(nargs)
+            if op == "-":                                    # eax=a; sub eax,[b]
+                return _PRO + _ld("eax", li) + _memop("-", "eax", ri) + _epi(nargs)
+            return _PRO + _ld("eax", ri) + _memop(op, "eax", li) + _epi(nargs)  # &|^*: eax=b; op eax,[a]
         return None
     return None
 
