@@ -73,6 +73,27 @@ def _seg_name(tag):
     return ("_" + tag) if tag.upper() in _MASM_RESERVED else tag
 
 
+def _object_segs(names, ddb_obj):
+    """Map each NON-DDB object index -> (segment_name, class) for the _FLAT custom segments, guaranteeing a
+    UNIQUE, VALID MASM name per object.  A tag that is blank, NUL-filled (`\\x00\\x00\\x00\\x00'), a reserved
+    word, or a DUPLICATE of another object's tag would otherwise yield an unnamed or colliding segment
+    (A2034 `must be in segment block' / a silent LINK merge) -- give those a synthetic `SEG<idx>' name.  The
+    class tracks the name so LINK keeps every object distinct; a plain unique tag keeps its `<tag>CODE'."""
+    segs, seen = {}, set()
+    for idx, tag in enumerate(names, 1):
+        if idx == ddb_obj:
+            continue
+        t = tag.rstrip("\x00 ").strip()
+        valid = bool(t) and (t[0].isalpha() or t[0] == "_") and all(c.isalnum() or c in "_$?@" for c in t)
+        base = _seg_name(t) if valid else "SEG%d" % idx
+        name, k = base, 2
+        while name in seen:                       # de-duplicate a repeated tag (e.g. two PCOD objects)
+            name, k = "%s_%d" % (base, k), k + 1
+        seen.add(name)
+        segs[idx] = (name, name + "CODE")
+    return segs
+
+
 def object_names(v):
     """The 4-char segment class tag stored in each LE object-table entry's reserved field (offset 20).
     LINK /VXD writes the segment's CLASS name truncated to 4 chars there (e.g. 'LCODE' -> 'LCOD'), which
@@ -111,14 +132,12 @@ def realseg_source(D, v, names, tail0):
     in a `_FLAT`-model custom segment named for its class. (A transform over emit_idiomatic's output --
     which emits synthetic per-object VSEGnn -- rather than a second emitter.)"""
     ddb_obj = D.ddb["obj"] if D.ddb else 1
-    STD = {names[ddb_obj - 1]: "VxD_LOCKED_CODE"}          # DDB object -> the locked-code macro (_LTEXT)
-    custom = [n for n in names if n not in STD]
+    segs = _object_segs(names, ddb_obj)                   # {idx: (name, class)} for the non-DDB objects
 
     def open_close(idx):
-        nm = names[idx - 1]
-        if nm in STD:
-            return STD[nm] + "_SEG", STD[nm] + "_ENDS"
-        return "%s SEGMENT" % _seg_name(nm), "%s ENDS" % _seg_name(nm)
+        if idx == ddb_obj:                                # DDB object -> the locked-code macro (_LTEXT)
+            return "VxD_LOCKED_CODE_SEG", "VxD_LOCKED_CODE_ENDS"
+        return "%s SEGMENT" % segs[idx][0], "%s ENDS" % segs[idx][0]
 
     lines = vxd_idiom.emit_idiomatic(D, loadable=True).split("\r\n")
     # 1) drop the synthetic-VSEG predeclarations
@@ -140,7 +159,7 @@ def realseg_source(D, v, names, tail0):
             res.append(open_close(int(me.group(1)))[1]); continue
         res.append(ln)
     # 3) split the DDB object's _LTEXT: code stays in _LTEXT; the tail (>= tail0) goes to _LDATA
-    if tail0 is not None and names[ddb_obj - 1] in STD:
+    if tail0 is not None:
         lc_open = next(k for k, x in enumerate(res) if x.strip() == "VxD_LOCKED_CODE_SEG")
         lc_close = next(k for k in range(lc_open + 1, len(res)) if res[k].strip() == "VxD_LOCKED_CODE_ENDS")
         lab = re.compile(r"^(?:loc|sub)_%d_([0-9A-Fa-f]+):?$" % ddb_obj)
@@ -162,8 +181,9 @@ def realseg_source(D, v, names, tail0):
                    + body + ["VxD_LOCKED_DATA_ENDS"] + res[lc_close + 1:])
     # 4) predeclare the custom segments in the _FLAT model, right after the includes
     decls = []
-    for nm in custom:
-        decls += ["%s SEGMENT DWORD PUBLIC _FLAT '%sCODE'" % (_seg_name(nm), nm), "%s ENDS" % _seg_name(nm)]
+    for idx in sorted(segs):
+        nm, cls = segs[idx]
+        decls += ["%s SEGMENT DWORD PUBLIC _FLAT '%s'" % (nm, cls), "%s ENDS" % nm]
     j = 0
     while j < len(res) and not res[j].startswith("include"):
         j += 1
@@ -173,15 +193,14 @@ def realseg_source(D, v, names, tail0):
     return "\r\n".join(res) + "\r\n"
 
 
-def realseg_def(name, names):
-    """The .DEF SEGMENTS block: _LTEXT/_LDATA plus one entry per custom segment, in object order, ALL
-    `PRELOAD NONDISCARDABLE` -> the linker writes pages in logical order (identity page map)."""
+def realseg_def(name, names, ddb_obj=1):
+    """The .DEF SEGMENTS block: _LTEXT/_LDATA (the DDB object) plus one entry per custom segment, ALL
+    `PRELOAD NONDISCARDABLE` -> the linker writes pages in logical order (identity page map). Names and
+    classes come from _object_segs so they match realseg_source (unique + valid, even for NUL/dup tags)."""
     seg = ["    _LTEXT   CLASS 'LCODE'  PRELOAD NONDISCARDABLE",
            "    _LDATA   CLASS 'LCODE'  PRELOAD NONDISCARDABLE"]
-    for idx, nm in enumerate(names, 1):
-        if idx == 1:                                  # the DDB object is the LCODE object (_LTEXT/_LDATA)
-            continue
-        seg.append("    %-8s CLASS '%sCODE' PRELOAD NONDISCARDABLE" % (_seg_name(nm), nm))
+    for idx, (nm, cls) in sorted(_object_segs(names, ddb_obj).items()):
+        seg.append("    %-8s CLASS '%s' PRELOAD NONDISCARDABLE" % (nm, cls))
     return ("VXD %s\r\nDESCRIPTION '%s reconstructed from source'\r\n\r\nSEGMENTS\r\n%s\r\n\r\n"
             "EXPORTS\r\n        %s_DDB @1\r\n" % (name, name, "\r\n".join(seg), name))
 
@@ -282,7 +301,7 @@ def build_from_source(v, name=None, root="."):
     obj, alog, work = vxd_link._assemble_idiomatic(asm, root)
     if not obj:
         return {"ok": False, "stage": "assemble", "log": alog[-1500:], "asm": asm}
-    deftext = realseg_def(name, names)
+    deftext = realseg_def(name, names, D.ddb["obj"] if D.ddb else 1)
     vxd, llog = vxd_link.link_vxd_260(obj, deftext, root, work)   # LINK 2.60 stamps device id + page map
     if not vxd:
         return {"ok": False, "stage": "link", "log": llog[-1500:], "asm": asm, "def": deftext}
