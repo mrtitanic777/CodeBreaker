@@ -109,11 +109,17 @@ def disasm_whole(code, base=0):
 
 class Seg:
     """One CODE segment: disassembled, with functions discovered and calls resolved."""
-    def __init__(self, ne, seg_index, ordinals):
+    def __init__(self, ne, seg_index, ordinals, name_override=None):
         self.ne = ne
         self.si = seg_index
         self.seg = ne.segments()[seg_index-1]
         self.ordinals = ordinals
+        # {offset:int -> real internal name}. Recovered exactly-matching names for
+        # functions the export table leaves anonymous (see names.json produced by
+        # the debug-symbol signature matcher). A pure label rename: it changes the
+        # cProc name and every symbolic call/branch that resolves to it alike, so
+        # the emitted bytes are unchanged. Export names still win at their offset.
+        self.name_override = dict(name_override or {})
         self.mods = ne.module_refs()
         self.fixups = build_fixup_map(ne, self.seg, self.mods)   # site_off -> "MODULE.ord"/"segN:0xNNNN"
         self.code = ne.data[self.seg["file_off"]:self.seg["file_off"]+self.seg["length"]]
@@ -224,6 +230,8 @@ class Seg:
     def name_at(self, off):
         if off in self.export_names:
             return self.export_names[off]
+        if off in self.name_override:
+            return self.name_override[off]
         return f"sub_%04x" % off
 
     # -- call resolution ---------------------------------------------------

@@ -461,10 +461,20 @@ if __name__ == "__main__":
         path = hits[0] if hits else module
     ne = ne_mod.NEFile(path)
     o = _t.load_ordinals("ORDINALS.md")
+    # apply recovered real internal names if a names.json exists for this module
+    # (see debug_names.py) -- a pure label rename, byte-exactness is unaffected.
+    override = {}
+    tag = os.path.splitext(os.path.basename(module))[0].lower()
+    names_json = os.path.join("binaries/win95/src/idiomatic", tag, "names.json")
+    if os.path.exists(names_json):
+        from engine.inverse_engine import debug_names
+        override = debug_names.load_override(names_json)
+        print("applying %d recovered real names from %s" % (
+            sum(len(v) for v in override.values()), names_json))
     sg = None
     for i, s in enumerate(ne.segments(), 1):
         if i == seg_i and s.get("kind") == "CODE":
-            sg = _t.Seg(ne, i, o)
+            sg = _t.Seg(ne, i, o, name_override=override.get(i))
             break
     if sg is None:
         print("no code segment", seg_i); sys.exit(1)
