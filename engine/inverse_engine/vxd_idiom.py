@@ -697,8 +697,8 @@ def emit_idiomatic(D, loadable=False):
                         # span as raw db WITH the label(s) so every target is DEFINED and byte-exact; only this
                         # one pointer loses its relocation -- harmless in a region the disassembler already
                         # mis-swept, and the build assembles + links.
-                        lbls = {j: D.labels[(oi, j)] for j in range(a, e2) if (oi, j) in D.labels}
-                        L.extend(_db_split_labels(code, a, e2, lbls))
+                        lbls = {j: D.labels[(oi, j)] for j in range(a + 1, e2) if (oi, j) in D.labels}
+                        L.extend(_db_split_labels(code, a, e2, lbls))   # a's own label (if any) is already
                         a = e2
                         continue
                     if k > a:
