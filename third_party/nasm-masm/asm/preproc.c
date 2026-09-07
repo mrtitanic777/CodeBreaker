@@ -1521,11 +1521,16 @@ struct masm_ppblk {
     struct masm_ppblk *next;
     bool is_macro;
     bool is_for;                /* FOR/IRP/IRPC: replay the body per list item */
+    bool is_skip;               /* a nested MACRO def inside a FOR body: swallow to ENDM */
     int nparam;
     char **param;
     char *forname;              /* minted temp-macro name for a FOR/IRP body */
     char **item;                /* the FOR/IRP list items (or IRPC chars) */
     int nitem;
+    char **oparam;              /* nested macro def: the ENCLOSING macro's params, */
+    int noparam;                /* snapshotted into `_mo<oseq>_<N>' %xdefines at the */
+    int oseq;                   /* outer's expand time so the inner body can name them */
+    char *forvar;               /* FOR/IRP loop variable, for the body's `&var' paste */
 };
 static struct masm_ppblk *masm_ppstk;
 static int masm_for_seq;        /* uniquifier for FOR/IRP temp-macro names */
@@ -1569,11 +1574,26 @@ static size_t masm_word(const char **pp, char *buf, size_t bufsz)
     size_t n = 0;
     while (*p == ' ' || *p == '\t')
         p++;
-    while (nasm_isidchar(*p)) {
-        if (n + 1 < bufsz)
-            buf[n] = *p;
-        n++;
-        p++;
+    /* A word may embed a substituted-parameter paste `%[..]' / `%{..}' (from a
+     * macro-body `&'-paste, e.g. `_&&Procedure' -> `_%[Procedure]' or the DDB's
+     * `%{1}_DDB'): include the whole group so the label/LABEL/struct/macro-def
+     * handlers see a single token rather than stopping at the `%'. */
+    while (nasm_isidchar(*p) || (*p == '%' && (p[1] == '[' || p[1] == '{'))) {
+        if (*p == '%') {
+            char close = p[1] == '[' ? ']' : '}';
+            if (n + 1 < bufsz) buf[n] = *p;
+            n++; p++;                          /* '%' */
+            if (n + 1 < bufsz) buf[n] = *p;
+            n++; p++;                          /* '[' or '{' */
+            while (*p && *p != close) {
+                if (n + 1 < bufsz) buf[n] = *p;
+                n++; p++;
+            }
+            if (*p == close) { if (n + 1 < bufsz) buf[n] = *p; n++; p++; }
+        } else {
+            if (n + 1 < bufsz) buf[n] = *p;
+            n++; p++;
+        }
     }
     buf[n < bufsz ? n : bufsz - 1] = '\0';
     *pp = p;
@@ -1675,6 +1695,7 @@ static const char *masm_skip_typeptr(const char *s)
 struct masm_smember {
     char *name;
     const char *dir;            /* "db"/"dw"/"dd"/"dq"/"dt" (static string) */
+    char *def;                  /* the member's default initializer (for `X S <..>' instances) */
     int count;                  /* array count from `N DUP(...)' */
     int shift;                  /* RECORD: bit position of the field's low bit */
     struct masm_smember *next;
@@ -2307,12 +2328,45 @@ static char *masm_rewrite_line(char *line)
     o = out;
 
     while (*p) {
-        /* MASM `%(expr)' immediate-evaluation operator -> just `(expr)': the
-         * `%' forces compile-time evaluation, which NASM does anyway.  (`%('
-         * is not valid NASM, so this is unambiguous.) */
+        /*
+         * A string or char literal is opaque data: copy it through byte for byte
+         * so that no operator transform below (`THIS' -> `$', `MOD' -> `%', the
+         * SHL/SHR paren wraps, ...) ever fires on its contents.  Without this, a
+         * debug message like `db '...this is very...'' has its literal word `this'
+         * rewritten to `$' (the current-address operator).  MASM's doubled-quote
+         * escape needs no special case -- each quote still copies verbatim.
+         */
+        if (*p == '\'' || *p == '"') {
+            char qc = *p;
+            *o++ = *p++;
+            while (*p && *p != qc)
+                *o++ = *p++;
+            if (*p)
+                *o++ = *p++;            /* the closing quote */
+            continue;
+        }
+        /*
+         * MASM `%(expr)' immediate-evaluation operator -> NASM `%[expr]'.  MASM's
+         * `%' forces the expression to its numeric VALUE as text -- essential when
+         * it is a macro argument that gets pasted into a symbol name (Control_
+         * Dispatch's `Equate_Service %(Service)' must yield `??_cd_1', not
+         * `??_cd_(DEVICE_INIT)').  `%[...]' expands inline and evaluates the same
+         * way in an arithmetic context, so it is correct for both uses.
+         */
         if (*p == '%' && p[1] == '(') {
-            *o++ = '(';
-            p += 2;
+            const char *q = p + 2;
+            int d = 1;
+            char qc = 0;
+            for (; *q && d > 0; q++) {
+                if (qc) { if (*q == qc) qc = 0; }
+                else if (*q == '\'' || *q == '"') qc = *q;
+                else if (*q == '(') d++;
+                else if (*q == ')' && --d == 0) break;
+            }
+            *o++ = '%'; *o++ = '[';
+            { const char *r = p + 2; while (r < q) *o++ = *r++; }
+            *o++ = ']';
+            p = (*q == ')') ? q + 1 : q;
             changed = true;
             continue;
         }
@@ -2559,8 +2613,13 @@ static char *masm_rewrite_line(char *line)
                 else if (wl == 5 && !nasm_strnicmp(p, "width",  5)) pre = "WIDTH_";
                 if (pre) {
                     const char *a = p + wl;
+                    bool paren = false;
                     while (*a == ' ' || *a == '\t')
                         a++;
+                    if (*a == '(') {            /* MASM also writes `SIZE(name)' */
+                        paren = true; a++;
+                        while (*a == ' ' || *a == '\t') a++;
+                    }
                     if (nasm_isidstart(*a)) {
                         const char *ns = a;
                         while (nasm_isidchar(*a) || *a == '.')
@@ -2569,6 +2628,10 @@ static char *masm_rewrite_line(char *line)
                             o += sprintf(o, "%s%.*s", pre, (int)(a - ns), ns);
                         else                    /* name_size */
                             o += sprintf(o, "%.*s_size", (int)(a - ns), ns);
+                        if (paren) {            /* consume the matching `)' */
+                            while (*a == ' ' || *a == '\t') a++;
+                            if (*a == ')') a++;
+                        }
                         p = a;
                         changed = true;
                         continue;
@@ -2794,6 +2857,34 @@ static char *masm_subst_params(char *line, char **param, int nparam)
 
     while (*p) {
         if (q) {                        /* inside a string literal */
+            /*
+             * MASM's `&param' paste substitutes even inside a string: a macro
+             * body's `db "&Name"' pastes the argument into the string.  Convert
+             * it to the same `%{N}' reference used elsewhere (a downstream
+             * consumer -- e.g. a struct DB field -- rebuilds the bytes, since
+             * NASM does not expand `%{N}' inside a string literal).  All other
+             * characters inside the string are opaque.
+             */
+            if (*p == '&' && nasm_isidstart((unsigned char)p[1])) {
+                const char *s = p + 1;
+                size_t wl = 0;
+                int i, hit = -1;
+                while (nasm_isidchar((unsigned char)s[wl]))
+                    wl++;
+                for (i = 0; i < nparam; i++)
+                    if (strlen(param[i]) == wl && !memcmp(s, param[i], wl)) {
+                        hit = i;
+                        break;
+                    }
+                if (hit >= 0) {
+                    o += sprintf(o, "%%{%d}", hit + 1);
+                    p = s + wl;
+                    if (*p == '&')      /* a trailing `&' closes the paste */
+                        p++;
+                    changed = true;
+                    continue;
+                }
+            }
             if (*p == q)
                 q = 0;
             *o++ = *p++;
@@ -2873,12 +2964,127 @@ static char *masm_subst_params(char *line, char **param, int nparam)
 }
 
 /*
+ * Inside a NESTED macro definition, replace each ENCLOSING-macro parameter name
+ * with `%[_mo<oseq>_<N>]' -- a reference to the %xdefine that snapshotted the
+ * enclosing arg at the enclosing macro's expand time.  `%[...]' expands even
+ * mid-identifier, so after the `&' paste drop `Num_&Dev&_Svc' -> `Num_%[_mo1_1]_Svc'
+ * -> `Num_VMM_Svc'.  Run BEFORE the inner params are bound to %1..%N, so an
+ * enclosing-macro reference resolves to the enclosing value while an inner
+ * reference stays this macro's own parameter (which NASM defers to its expansion).
+ */
+static char *masm_subst_outer(char *line, char **oparam, int noparam, int oseq)
+{
+    const char *p = line;
+    char *out, *o;
+    bool changed = false;
+    char q = 0;
+
+    if (noparam <= 0)
+        return line;
+    out = nasm_malloc(strlen(line) * 8 + 64);
+    o = out;
+    while (*p) {
+        if (q) {
+            if (*p == q)
+                q = 0;
+            *o++ = *p++;
+            continue;
+        }
+        if (*p == '\'' || *p == '"') {
+            q = *p;
+            *o++ = *p++;
+            continue;
+        }
+        if (nasm_isidstart(*p) &&
+            (p == line || (!nasm_isidchar(p[-1]) && p[-1] != '%' && p[-1] != '.'))) {
+            size_t wl = 0;
+            int i, hit = -1;
+            while (nasm_isidchar(p[wl]))
+                wl++;
+            for (i = 0; i < noparam; i++)
+                if (strlen(oparam[i]) == wl && !memcmp(p, oparam[i], wl)) {
+                    hit = i;
+                    break;
+                }
+            if (hit >= 0) {
+                o += sprintf(o, "%%[_mo%d_%d]", oseq, hit + 1);
+                p += wl;
+                changed = true;
+                continue;
+            }
+            memcpy(o, p, wl);
+            o += wl;
+            p += wl;
+            continue;
+        }
+        *o++ = *p++;
+    }
+    *o = '\0';
+    if (!changed) {
+        nasm_free(out);
+        return line;
+    }
+    nasm_free(line);
+    return out;
+}
+
+/*
  * Translate MASM's word operators to NASM's symbolic ones within an expression
  * (an IF/IFE condition or a `=' right-hand side).  Whole-word, case-insensitive,
  * skipping string literals.  EQ NE LT GT LE GE -> == != < > <= >= ; MOD SHL SHR
  * -> % << >> ; AND OR XOR NOT -> & | ^ ~ .  (These words are unambiguous in an
  * expression; as a line's leading mnemonic they are handled elsewhere.)
  */
+/* MASM's SHL/SHR bind TIGHTER than +/- ; NASM's `<<'/`>>' bind LOOSER.  So before
+ * the operator words are translated, wrap each `A shl B' / `A shr B' subexpression
+ * in parentheses, preserving MASM grouping: `x shl 4 + y' -> `(x shl 4) + y' ->
+ * `(x << 4) + y'.  Operands are a single term (identifier / number / `(..)' group,
+ * with a leading unary on the right).  Left-to-right; the left operand is taken
+ * from what was just emitted into dst. */
+static void masm_paren_shifts(char *dst, size_t dsz, const char *src)
+{
+    const char *p = src;
+    char *o = dst;
+    char *term = dst;                   /* start (in dst) of the current +/- term */
+    char q = 0;
+    while (*p && (size_t)(o - dst) + 4 < dsz) {
+        if (q) { if (*p == q) q = 0; *o++ = *p++; continue; }
+        if (*p == '\'' || *p == '"') { q = *p; *o++ = *p++; continue; }
+        if (*p == '+' || *p == '-') {   /* additive boundary: a new term starts after it */
+            *o++ = *p++;
+            while (*p == ' ' || *p == '\t') *o++ = *p++;
+            term = o;
+            continue;
+        }
+        if (*p == '(') {                /* copy a balanced group verbatim (one term) */
+            int d = 0;
+            do {
+                if (*p == '(') d++; else if (*p == ')') d--;
+                *o++ = *p++;
+            } while (*p && d > 0 && (size_t)(o - dst) + 4 < dsz);
+            continue;
+        }
+        if ((!nasm_strnicmp(p, "shl", 3) || !nasm_strnicmp(p, "shr", 3)) &&
+            !nasm_isidchar(p[3]) && (p == src || !nasm_isidchar(p[-1]))) {
+            const char *r = p + 3;      /* find the end of the right operand in src */
+            while (*r == ' ' || *r == '\t') r++;
+            while (*r == '~' || *r == '-' || *r == '+') { r++; while (*r==' '||*r=='\t') r++; }
+            if (*r == '(') { int d = 0; do { if(*r=='(')d++; else if(*r==')')d--; r++; } while (*r && d>0); }
+            else while (nasm_isidchar((unsigned char)*r) || *r == '.') r++;
+            /* insert '(' at the left-term start, copy `shl'..right operand, then ')' */
+            memmove(term + 1, term, (size_t)(o - term));
+            *term = '(';
+            o++;
+            while (p < r && (size_t)(o - dst) + 4 < dsz) *o++ = *p++;
+            *o++ = ')';
+            term = o;                   /* the wrapped shift is now a complete term */
+            continue;
+        }
+        *o++ = *p++;
+    }
+    *o = '\0';
+}
+
 static void masm_xlat_ops(char *dst, size_t dsz, const char *src)
 {
     static const struct { const char *w; const char *op; } ops[] = {
@@ -2886,9 +3092,15 @@ static void masm_xlat_ops(char *dst, size_t dsz, const char *src)
         {"gt",">"}, {"mod","%"}, {"shl","<<"}, {"shr",">>"}, {"and","&"},
         {"or","|"}, {"xor","^"}, {"not","~"}, {NULL,NULL}
     };
+    char sbuf[1024];
     char *o = dst;
-    const char *p = src;
+    const char *p;
     char q = 0;
+    if (strlen(src) < sizeof sbuf) {    /* fix SHL/SHR precedence before translating ops */
+        masm_paren_shifts(sbuf, sizeof sbuf, src);
+        src = sbuf;
+    }
+    p = src;
     while (*p && (size_t)(o - dst) + 8 < dsz) {
         if (q) { if (*p == q) q = 0; *o++ = *p++; continue; }
         if (*p == '\'' || *p == '"') { q = *p; *o++ = *p++; continue; }
@@ -3081,6 +3293,475 @@ static char *masm_rewrite_anon(const char *line)
     return out;
 }
 
+/*
+ * In a FOR/IRP body, MASM's `&' pastes the loop variable to adjacent text
+ * (`??_pfx_&x', `x&_sfx').  NASM has no `&' paste, but `%[x]' expands the loop
+ * variable (a `%define x %1' the FOR lowering emits) even mid-identifier, so
+ * rewrite `&<var>' and `<var>&' to `%[<var>]', dropping the `&'.  A bare `<var>'
+ * is left for the %define.  Skips string literals; `&macro'/`&endm' are left
+ * intact (nested-macro delimiters).  Bounds-safe: `%[var]' (vl+3) replaces
+ * `&var'/`var&' (vl+1), a growth of 2 per hit, well under the *4 buffer.
+ */
+static char *masm_for_paste(char *line, const char *var)
+{
+    size_t vl = var ? strlen(var) : 0;
+    char *out, *o;
+    const char *p = line;
+    bool changed = false;
+    char q = 0;
+
+    if (!vl)
+        return line;
+    out = nasm_malloc(strlen(line) * 4 + 64);
+    o = out;
+    while (*p) {
+        if (q) {
+            if (*p == q) q = 0;
+            *o++ = *p++;
+            continue;
+        }
+        if (*p == '\'' || *p == '"') {
+            q = *p;
+            *o++ = *p++;
+            continue;
+        }
+        /* `&&var' / `&&var&&': `&&' is MASM's paste operator escaped for a body that
+         * is itself inside a macro (BeginProc's IRP `VxD_&&arg&&_CODE_SEG', `?&&arg&&
+         * _BeginProc').  Our single-level FOR temp macro collapses that nesting, so
+         * `&&' pastes the loop variable exactly like `&' -- reduce it the same way,
+         * dropping a trailing `&&' delimiter too.  Checked before the single-`&' case. */
+        if (*p == '&' && p[1] == '&' && !nasm_strnicmp(p + 2, var, vl) &&
+            !nasm_isidchar(p[2 + vl])) {
+            o += sprintf(o, "%%[%s]", var);       /* `&&var' -> `%[var]' */
+            p += 2 + vl;
+            if (p[0] == '&' && p[1] == '&') p += 2;
+            changed = true;
+            continue;
+        }
+        if (*p == '&' && !nasm_strnicmp(p + 1, var, vl) && !nasm_isidchar(p[1 + vl]) &&
+            nasm_strnicmp(p + 1, "macro", 5) && nasm_strnicmp(p + 1, "endm", 4)) {
+            o += sprintf(o, "%%[%s]", var);       /* `&var' -> `%[var]' */
+            p += 1 + vl;
+            changed = true;
+            continue;
+        }
+        if (nasm_isidstart((unsigned char)*p) && !nasm_strnicmp(p, var, vl) &&
+            p[vl] == '&' && (p == line || !nasm_isidchar(p[-1]))) {
+            o += sprintf(o, "%%[%s]", var);       /* `var&' / `var&&' -> `%[var]' */
+            p += vl + 1;
+            if (*p == '&') p++;
+            changed = true;
+            continue;
+        }
+        *o++ = *p++;
+    }
+    *o = '\0';
+    if (!changed) {
+        nasm_free(out);
+        return line;
+    }
+    nasm_free(line);
+    return out;
+}
+
+/* If `s' is exactly a 2-8 char literal (`'Prev'', `"Rsv1"'), pack it MASM-style
+ * (first char = most-significant byte) into a hex number in `out' and return true.
+ * MASM `dd 'Prev'' is the NUMBER 0x50726576 (bytes 76 65 72 50 little-endian); NASM
+ * would lay the chars forward, so a struct field defaulting to a packed tag needs
+ * this to be byte-exact.  A 1-char or non-literal value is left alone (false). */
+static bool masm_pack_char_literal(const char *s, char *out, size_t osz)
+{
+    char q;
+    const char *b;
+    size_t n = 0;
+    unsigned long long val = 0;
+    while (*s == ' ' || *s == '\t') s++;
+    if (*s != '\'' && *s != '"')
+        return false;
+    q = *s++;
+    b = s;
+    while (s[n] && s[n] != q)
+        n++;
+    if (s[n] != q || n < 2 || n > 8)
+        return false;
+    { const char *t = s + n + 1;                 /* only trailing whitespace allowed */
+      while (*t == ' ' || *t == '\t') t++;
+      if (*t) return false; }
+    for (size_t i = 0; i < n; i++)
+        val = (val << 8) | (unsigned char)b[i];
+    snprintf(out, osz, "0%llXh", val);
+    return true;
+}
+
+/*
+ * Byte size of a `db' struct-member initializer that has no `DUP' clause: each
+ * top-level comma item counts, a quoted string contributing its character count
+ * and every other item (a scalar, `?') one byte.  MASM sizes a struct DB field
+ * by its initializer, so `DDB_Name DB "        "' is an 8-byte field, not 1 --
+ * and `SIZE(VxD_Desc_Block)' depends on it.  Returns 0 if it cannot tell (an
+ * empty or comment-only initializer), so the caller keeps its element count.
+ */
+static int masm_db_field_bytes(const char *s)
+{
+    int bytes = 0;
+    while (*s == ' ' || *s == '\t')
+        s++;
+    if (!*s || *s == ';' || (*s == '?' && !nasm_isidchar((unsigned char)s[1])))
+        return 0;                           /* `?' / empty: leave as one element */
+    while (*s && *s != ';') {
+        while (*s == ' ' || *s == '\t' || *s == ',')
+            s++;
+        if (!*s || *s == ';')
+            break;
+        if (*s == '"' || *s == '\'') {
+            char q = *s++;
+            while (*s && *s != q) {
+                bytes++;
+                s++;
+            }
+            if (*s == q)
+                s++;
+        } else {
+            bytes++;                        /* one scalar element */
+            while (*s && *s != ',' && *s != ';')
+                s++;
+        }
+    }
+    return bytes;
+}
+
+/* Emit a MASM static struct instance `<ilabel> <struct> <i0,i1,..>' as a labelled
+ * data block: `ilabel:' then one `ilabel.member <dir> <value>' per member, taking
+ * the positional initializer or, when a field is omitted, the member's default.
+ * `ip' points at (or just before) the opening `<' of the initializer list.  Returns
+ * the queued translation; the CALLER frees the source line (ip may point into it,
+ * but the inits are copied out before return). */
+static char *masm_struct_instance(struct masm_sdef *sd, const char *ilabel,
+                                  const char *ip)
+{
+    struct masm_smember *mb;
+    char inits[32][192];
+    char tmp[600];
+    int ninit = 0, mi;
+
+    while (*ip == ' ' || *ip == '\t')
+        ip++;
+    if (*ip == '<') {                       /* split top-level <...> inits */
+        int depth = 0;
+        const char *s;
+        char *d = inits[0];
+        size_t n = 0;
+        ip++;
+        for (s = ip; *s; s++) {
+            if (*s == '<') depth++;
+            else if (*s == '>') { if (depth == 0) break; depth--; }
+            if (*s == ',' && depth == 0) {
+                d[n] = '\0';
+                if (ninit < 31) { ninit++; d = inits[ninit]; n = 0; }
+                continue;
+            }
+            if (n + 1 < sizeof inits[0])
+                d[n++] = *s;
+        }
+        d[n] = '\0';
+        ninit++;
+    }
+
+    if (sd->is_record) {                    /* pack the fields into one integer */
+        char rhs[512];
+        size_t ri = 0;
+        int first = 1;
+        for (mb = sd->head, mi = 0; mb; mb = mb->next, mi++) {
+            char val[192];
+            const char *v = "0";
+            if (mi < ninit) {
+                char *b = inits[mi];
+                while (*b == ' ' || *b == '\t') b++;
+                snprintf(val, sizeof val, "%s", b);
+                { size_t e = strlen(val);
+                  while (e && (val[e-1]==' '||val[e-1]=='\t'||val[e-1]=='\r'))
+                      val[--e] = '\0'; }
+                if (val[0]) v = val;
+            }
+            ri += snprintf(rhs + ri, ri < sizeof rhs ? sizeof rhs - ri : 0,
+                           "%s((%s) << %d)", first ? "" : " | ", v, mb->shift);
+            first = 0;
+        }
+        if (first)
+            snprintf(rhs, sizeof rhs, "0");
+        snprintf(tmp, sizeof tmp, "%s\t%s %s", ilabel, sd->rdir, rhs);
+        masm_ppq_add(nasm_strdup(tmp));
+        return masm_ppq_get();
+    }
+
+    snprintf(tmp, sizeof tmp, "%s:", ilabel);
+    masm_ppq_add(nasm_strdup(tmp));
+    for (mb = sd->head, mi = 0; mb; mb = mb->next, mi++) {
+        char val[192];
+        const char *v = NULL;
+        char *vfree = NULL;
+        const char *dir;
+        if (mi < ninit) {                   /* trim the field's init text */
+            char *b = inits[mi];
+            while (*b == ' ' || *b == '\t') b++;
+            snprintf(val, sizeof val, "%s", b);
+            { size_t e = strlen(val);
+              while (e && (val[e-1]==' '||val[e-1]=='\t'||val[e-1]=='\r'))
+                  val[--e] = '\0'; }
+            if (val[0]) v = val;
+        }
+        /* An omitted field takes the member's DEFAULT initializer, not 0 --
+         * byte-exactness depends on it (DDK_VERSION, the 8-space name, 'Prev'/
+         * 'Rsv?' tags). `?' (uninitialised) -> 0; other defaults carry MASM
+         * operators (SIZE/OFFSET/...) so translate them. */
+        if (!v) {
+            const char *dv = mb->def;
+            if (!dv || !*dv || (dv[0] == '?' && !dv[1]))
+                v = "0";
+            else { vfree = masm_rewrite_line(nasm_strdup(dv)); v = vfree; }
+        }
+        dir = mb->dir ? mb->dir : "dd";     /* nested: best effort */
+        /*
+         * A `db' field whose value is a quoted string whose entire content is a
+         * macro-parameter reference (`%{N}' / `%[name]', left by masm_subst_params
+         * from a MASM `&param' paste).  NASM does not expand such a reference
+         * inside a string literal, so `db "%{1}"' would emit the literal bytes.
+         * MASM instead substitutes the parameter and pads the field with spaces
+         * to its declared width (the VxD DDB_Name "&Name" -> "DOSMGR  ").  Emit
+         * the parameter as a stringified token via %defstr and pad to the width
+         * the member default (`DDB_Name db "        "') declares.
+         */
+        if (v && !nasm_stricmp(dir, "db") && (v[0] == '"' || v[0] == '\'')) {
+            size_t vl = strlen(v);
+            if (vl >= 4 && v[vl - 1] == v[0] &&      /* "..." with content */
+                v[1] == '%' && (v[2] == '{' || v[2] == '[')) {
+                char pref[160];
+                size_t rn = vl - 2;                  /* content between the quotes */
+                int W = 0;
+                if (rn + 1 > sizeof pref) rn = sizeof pref - 1;
+                memcpy(pref, v + 1, rn);
+                pref[rn] = '\0';
+                if (mb->def) {                      /* width = default's quoted length */
+                    const char *q = strpbrk(mb->def, "\"'");
+                    if (q) {
+                        const char *e = strchr(q + 1, *q);
+                        if (e) W = (int)(e - (q + 1));
+                    }
+                }
+                if (W > 0) {
+                    snprintf(tmp, sizeof tmp, "%%defstr _masm_pstr %s", pref);
+                    masm_ppq_add(nasm_strdup(tmp));
+                    masm_ppq_add(nasm_strdup("%strlen _masm_pslen _masm_pstr"));
+                    snprintf(tmp, sizeof tmp, "%s.%s\tdb _masm_pstr", ilabel, mb->name);
+                    masm_ppq_add(nasm_strdup(tmp));
+                    snprintf(tmp, sizeof tmp, "%%if _masm_pslen < %d", W);
+                    masm_ppq_add(nasm_strdup(tmp));
+                    snprintf(tmp, sizeof tmp, "times (%d - _masm_pslen) db ' '", W);
+                    masm_ppq_add(nasm_strdup(tmp));
+                    masm_ppq_add(nasm_strdup("%endif"));
+                    if (vfree) nasm_free(vfree);
+                    continue;
+                }
+            }
+        }
+        {                                   /* a `dd 'Prev'' field is a PACKED number */
+            char pk[24];
+            if (nasm_stricmp(dir, "db") && masm_pack_char_literal(v, pk, sizeof pk))
+                v = pk;
+        }
+        if (mb->count > 1)
+            snprintf(tmp, sizeof tmp, "%s.%s\ttimes %d %s %s",
+                     ilabel, mb->name, mb->count, dir, v);
+        else
+            snprintf(tmp, sizeof tmp, "%s.%s\t%s %s", ilabel, mb->name, dir, v);
+        if (vfree) nasm_free(vfree);
+        masm_ppq_add(nasm_strdup(tmp));
+    }
+    return masm_ppq_get();
+}
+
+/* Detect a struct instance whose label is a macro-body `&'-paste that param-
+ * substitution turned into a `%{N}...' token masm_word cannot read (so w1 came
+ * back empty).  Whitespace-split: token 0 = paste-form label, token 1 = struct
+ * name, then `<...>'.  Returns the emitted instance, or NULL if it is not one. */
+static char *masm_paste_struct_instance(char *line)
+{
+    const char *s = line;
+    char pbuf[256], sn[128];
+    size_t bn = 0, snn = 0;
+    struct masm_sdef *sd;
+    while (*s == ' ' || *s == '\t') s++;
+    while (*s && *s != ' ' && *s != '\t' && bn + 1 < sizeof pbuf)
+        pbuf[bn++] = *s++;
+    pbuf[bn] = '\0';
+    while (*s == ' ' || *s == '\t') s++;
+    while (nasm_isidchar((unsigned char)*s) && snn + 1 < sizeof sn)
+        sn[snn++] = *s++;
+    sn[snn] = '\0';
+    while (*s == ' ' || *s == '\t') s++;
+    if (!bn || !snn || *s != '<' || !strpbrk(pbuf, "%&"))
+        return NULL;
+    sd = masm_sdef_find(sn);
+    if (!sd)
+        return NULL;
+    return masm_struct_instance(sd, pbuf, s);
+}
+
+/* MASM escapes a literal quote by DOUBLING it inside a same-quote string
+ * (`'isn''t'` == isn't).  NASM's single/double-quoted strings don't, so `db
+ * 'isn''t'` reads as `'isn'` `'t'` -> "comma expected after operand".  Convert any
+ * MASM string that contains a doubled quote to NASM's backtick form with the double
+ * collapsed (backtick strings take a literal `'`/`"`; escape ` and \ inside).
+ * Returns a fresh string, or NULL if no doubled quote was found. */
+static char *masm_fix_dq_strings(char *line)
+{
+    char *out, *o;
+    const char *p = line;
+    bool changed = false;
+    out = nasm_malloc(strlen(line) * 2 + 4);
+    o = out;
+    while (*p) {
+        if (*p == '\'' || *p == '"') {
+            char qc = *p;
+            const char *s = p + 1;
+            bool doubled = false;
+            while (*s) {
+                if (*s == qc) {
+                    if (s[1] == qc) { s += 2; doubled = true; continue; }
+                    break;
+                }
+                s++;
+            }
+            if (!doubled) {                     /* copy the string verbatim */
+                const char *e = (*s == qc) ? s + 1 : s;
+                while (p < e) *o++ = *p++;
+                continue;
+            }
+            *o++ = '`';                          /* re-quote with backticks */
+            { const char *r = p + 1;
+              while (r < s) {
+                  if (*r == qc && r[1] == qc) { *o++ = qc; r += 2; continue; }
+                  if (*r == '`' || *r == '\\') *o++ = '\\';
+                  *o++ = *r++;
+              } }
+            *o++ = '`';
+            p = (*s == qc) ? s + 1 : s;
+            changed = true;
+            continue;
+        }
+        *o++ = *p++;
+    }
+    *o = '\0';
+    if (!changed) { nasm_free(out); return NULL; }
+    nasm_free(line);
+    return out;
+}
+
+/* Convert each OUTERMOST balanced `<...>' group in a macro-call line to a NASM
+ * `{...}' brace-group (inner `<>' left intact), so a `<name>' argument arrives with
+ * its delimiters stripped.  Skips quoted text.  Returns a fresh string, or NULL if
+ * the line has no top-level group or the `<>' are unbalanced (leave it untouched). */
+static char *masm_angle_args_to_brace(char *line)
+{
+    char *out, *o;
+    const char *p = line;
+    int depth = 0;
+    char q = 0;
+    bool changed = false;
+    out = nasm_malloc(strlen(line) + 1);
+    o = out;
+    while (*p) {
+        if (q) { if (*p == q) q = 0; *o++ = *p++; continue; }
+        if (*p == '\'' || *p == '"') { q = *p; *o++ = *p++; continue; }
+        if (*p == '<') {
+            *o++ = depth == 0 ? '{' : '<';
+            if (depth == 0) changed = true;
+            depth++; p++; continue;
+        }
+        if (*p == '>') {
+            if (depth == 1) { *o++ = '}'; depth = 0; }
+            else { if (depth > 1) depth--; *o++ = *p; }
+            p++; continue;
+        }
+        *o++ = *p++;
+    }
+    *o = '\0';
+    if (!changed || depth != 0) {        /* nothing to do, or unbalanced -> keep original */
+        nasm_free(out);
+        return NULL;
+    }
+    return out;
+}
+
+/* Emit a MASM `NAME EQU <numeric-expr>' as a preprocessor %iassign (case-insensitive)
+ * so `%[NAME]' yields its VALUE and `%ifdef NAME' sees it -- required for the DDK
+ * `IFDEF Create_<dev>_Service_Table' service-table gate and the value-indexed
+ * control-dispatch table (message constants).  ONLY when every non-number operand
+ * is itself an EQU/= constant: if any is a label (an assembler-time address), the
+ * value is not a preprocessor constant, so return NULL and let the caller emit a
+ * plain assembler `equ'.  Forward references to not-yet-defined constants defer. */
+static char *masm_emit_num_const(const char *name, const char *expr)
+{
+    struct masm_nameset *fdeps = NULL;
+    const char *s = expr;
+    char tmp[600];
+    while (*s) {
+        if (nasm_isidchar((unsigned char)*s)) {
+            const char *st = s;
+            bool isnum = nasm_isdigit((unsigned char)*s);
+            while (nasm_isidchar((unsigned char)*s))
+                s++;
+            if (!isnum && !masm_is_wordop(st, (size_t)(s - st))) {
+                char id[128];
+                size_t n = (size_t)(s - st);
+                if (n < sizeof id) {
+                    memcpy(id, st, n); id[n] = '\0';
+                    if (!nasm_stricmp(id, name) || masm_nameset_has(masm_defined_tab, id))
+                        ;                                   /* self, or a backward const */
+                    else if (masm_nameset_has(masm_const_tab, id))
+                        masm_nameset_add(&fdeps, id);       /* forward const -> defer */
+                    else {                                  /* a label / non-const -> not %iassign */
+                        while (fdeps) { struct masm_nameset *x = fdeps; fdeps = fdeps->next;
+                                        nasm_free(x->name); nasm_free(x); }
+                        return NULL;
+                    }
+                }
+            }
+        } else {
+            s++;
+        }
+    }
+    if (fdeps) {
+        struct masm_pending *pd;
+        nasm_new(pd);
+        pd->name = nasm_strdup(name);
+        pd->expr = nasm_strdup(expr);
+        pd->deps = fdeps;
+        pd->next = masm_pendings;
+        masm_pendings = pd;
+        return nasm_strdup("");
+    }
+    snprintf(tmp, sizeof tmp, "%%iassign %s %s", name, expr);
+    masm_ppq_add(nasm_strdup(tmp));
+    masm_note_defined(name);
+    return masm_ppq_get();
+}
+
+/* True if `line' is a MASM macro definition `<name> MACRO [params]'.  The name may
+ * be a substituted-parameter paste (`%{1}_Service', `VxD_&%[seg]_CODE_SEG') that
+ * masm_word cannot read, so just check the SECOND whitespace token is `MACRO'. */
+static bool masm_line_is_macro_def(const char *line)
+{
+    const char *s = line;
+    while (*s == ' ' || *s == '\t') s++;
+    if (!*s)
+        return false;
+    while (*s && *s != ' ' && *s != '\t') s++;      /* skip the name token */
+    while (*s == ' ' || *s == '\t') s++;
+    return !nasm_strnicmp(s, "macro", 5) &&
+           (s[5]=='\0'||s[5]==' '||s[5]=='\t'||s[5]=='\r'||s[5]=='\n');
+}
+
 static char *masm_pp_xform(char *line)
 {
     const char *p = line;
@@ -3152,13 +3833,149 @@ static char *masm_pp_xform(char *line)
             nasm_free(line);
             return nasm_strdup(tmp);
         }
+
+        /*
+         * A plain nested MASM macro definition inside a macro body: `NAME MACRO
+         * [params]' -- how real MASM writes a macro that defines a macro (BST2's
+         * `Device_Name&_Service MACRO Procedure, ...').  masm_word cannot read a
+         * NAME that begins with a substituted parameter (`%{1}_Service'), so the
+         * generic `NAME MACRO' handler never sees it.  Recognise it here: emit
+         * `%imacro <name> 0-*' as the OUTER's body TEXT (NASM defines the inner
+         * macro when the outer expands), with the NAME substituted against the
+         * OUTER's params -- `Dev&_Service' -> `%{1}_Service' pastes to the real
+         * name at expansion -- and push a block carrying the INNER's params so the
+         * inner body substitutes to %1..%N, which NASM binds to the inner macro's
+         * own arguments (deferred past the outer's expansion, as MASM's `&&' does).
+         */
+        {
+            const char *nsp = t, *kp;
+            char nmbuf[256];
+            size_t nl2 = 0;
+            while (*nsp && *nsp != ' ' && *nsp != '\t') {
+                if (nl2 + 1 < sizeof nmbuf)
+                    nmbuf[nl2] = *nsp;
+                nl2++; nsp++;
+            }
+            nmbuf[nl2 < sizeof nmbuf ? nl2 : sizeof nmbuf - 1] = '\0';
+            kp = nsp;
+            while (*kp == ' ' || *kp == '\t')
+                kp++;
+            if (nl2 && !nasm_strnicmp(kp, "macro", 5) &&
+                (kp[5]=='\0'||kp[5]==' '||kp[5]=='\t'||kp[5]=='\r'||kp[5]=='\n')) {
+                struct masm_ppblk *b;
+                int nparam = 0;
+                char **param = NULL;
+                const char *q = kp + 5;
+                char *sub = masm_subst_params(nasm_strdup(nmbuf),
+                                              masm_ppstk->param, masm_ppstk->nparam);
+                while (*q) {                    /* comma-separated inner param names */
+                    char pn[128];
+                    size_t n = 0;
+                    while (*q == ' ' || *q == '\t')
+                        q++;
+                    while (nasm_isidchar(*q)) {
+                        if (n + 1 < sizeof pn)
+                            pn[n] = *q;
+                        n++; q++;
+                    }
+                    pn[n < sizeof pn ? n : sizeof pn - 1] = '\0';
+                    if (n) {
+                        param = nasm_realloc(param, (nparam + 1) * sizeof(char *));
+                        param[nparam++] = nasm_strdup(pn);
+                    }
+                    while (*q && *q != ',')
+                        q++;
+                    if (*q == ',')
+                        q++;
+                    else
+                        break;
+                }
+                {
+                    int oseq = ++masm_for_seq;
+                    int nouter = masm_ppstk->nparam, k;
+                    char **oparam = NULL;
+                    /* Snapshot the enclosing macro's params into `_mo<oseq>_<N>'
+                     * %xdefines emitted at the enclosing expand time, so the inner
+                     * body can name the enclosing args via `%[_mo<oseq>_<N>]'. */
+                    for (k = 0; k < nouter; k++) {
+                        char xd[80];
+                        snprintf(xd, sizeof xd, "%%xdefine _mo%d_%d %%{%d}", oseq, k + 1, k + 1);
+                        masm_ppq_add(nasm_strdup(xd));
+                        oparam = nasm_realloc(oparam, (k + 1) * sizeof(char *));
+                        oparam[k] = nasm_strdup(masm_ppstk->param[k]);
+                    }
+                    snprintf(tmp, sizeof tmp, "%%imacro %s 0-*", sub);
+                    masm_ppq_add(nasm_strdup(tmp));
+                    nasm_free(sub);
+                    nasm_new(b);
+                    b->is_macro = true;
+                    b->nparam = nparam;
+                    b->param = param;
+                    b->oparam = oparam;
+                    b->noparam = nouter;
+                    b->oseq = oseq;
+                    b->next = masm_ppstk;
+                    masm_ppstk = b;
+                    nasm_free(line);
+                    return masm_ppq_get();
+                }
+            }
+        }
     }
 
     /* Inside a MACRO body: substitute the parameter names with %1..%N first, so
-     * every later transform sees the NASM parameter form. */
-    if (masm_ppstk && masm_ppstk->is_macro)
+     * every later transform sees the NASM parameter form.  An enclosing macro's
+     * params (for a nested definition) are resolved first, to `%[_mo..]' snapshots. */
+    if (masm_ppstk && masm_ppstk->is_macro) {
+        if (masm_ppstk->oparam)
+            line = masm_subst_outer(line, masm_ppstk->oparam,
+                                    masm_ppstk->noparam, masm_ppstk->oseq);
         line = masm_subst_params(line, masm_ppstk->param, masm_ppstk->nparam);
+    }
+    /* A FOR/IRP body's `&<loopvar>' paste: `??_foo_&x' -> `??_foo_%[x]', and the FOR temp macro's
+     * `%define <var> %1' then expands `%[x]' to the current list item.  Guarded to the innermost FOR
+     * block so a plain macro body (no loop var) is untouched. */
+    if (masm_ppstk && masm_ppstk->is_for && masm_ppstk->forvar)
+        line = masm_for_paste(line, masm_ppstk->forvar);
     p = line;
+
+    /*
+     * A nested MASM MACRO definition inside a FOR/IRP body defines one macro per
+     * loop item, its name pasted from the loop variable (`VxD_&&segname&&_CODE_SEG
+     * MACRO' in MakeCodeSeg).  NASM's %imacro needs a static name, so such a macro
+     * cannot be defined -- but the reconstruction never calls these loop-generated
+     * segment macros (it uses the hand-written VxD_LOCKED_CODE_SEG), so swallow the
+     * whole nested definition through its ENDM.  Otherwise its unreadable paste-name
+     * makes masm_word bail, the body and a stray ENDM leak out, and the FOR body's
+     * own IFB/IFNB/IFNDEF conditionals never close (fatal `expected %endif').
+     */
+    if (masm_ppstk && masm_ppstk->is_skip) {        /* already swallowing a nested def */
+        const char *t = line;
+        while (*t == ' ' || *t == '\t') t++;
+        if (!nasm_strnicmp(t, "endm", 4) &&
+            (t[4]=='\0'||t[4]==' '||t[4]=='\t'||t[4]=='\r'||t[4]=='\n')) {
+            struct masm_ppblk *b = masm_ppstk;      /* matching ENDM: end this skip */
+            masm_ppstk = b->next;
+            nasm_free(b);
+        } else if (masm_line_is_macro_def(t)) {     /* a further nested def -> deeper */
+            struct masm_ppblk *b;
+            nasm_new(b);
+            b->is_skip = true;
+            b->next = masm_ppstk;
+            masm_ppstk = b;
+        }
+        nasm_free(line);
+        return nasm_strdup("");
+    }
+    if (masm_ppstk && masm_ppstk->is_for && masm_line_is_macro_def(line)) {
+        struct masm_ppblk *b;
+        nasm_new(b);
+        b->is_skip = true;
+        b->next = masm_ppstk;
+        masm_ppstk = b;
+        nasm_free(line);
+        return nasm_strdup("");
+    }
 
     /* Inside a COMMENT block: swallow lines until the delimiter recurs. */
     if (masm_comment_delim) {
@@ -3212,7 +4029,8 @@ static char *masm_pp_xform(char *line)
      * `=' handler below cannot see.  Detect a top-level single `=' whose left
      * side contains `%{' and emit `%assign LHS RHS'.
      */
-    if (masm_ppstk && masm_ppstk->is_macro && strstr(line, "%{")) {
+    if (masm_ppstk && (masm_ppstk->is_macro || masm_ppstk->is_for) &&
+        (strstr(line, "%{") || strstr(line, "%["))) {
         const char *s = line, *eqp = NULL;
         char qc = 0;
         for (; *s; s++) {
@@ -3230,7 +4048,7 @@ static char *masm_pp_xform(char *line)
             while (*lp == ' ' || *lp == '\t') lp++;
             le = strlen(lp);
             while (le && (lp[le-1]==' '||lp[le-1]=='\t')) lp[--le] = '\0';
-            if (strstr(lp, "%{")) {
+            if (strstr(lp, "%{") || strstr(lp, "%[")) {
                 const char *xr;
                 masm_xlat_ops(ex, sizeof ex, eqp + 1);
                 xr = ex;
@@ -3258,8 +4076,17 @@ static char *masm_pp_xform(char *line)
     }
 
     l1 = masm_word(&p, w1, sizeof w1);
-    if (!l1)
+    if (!l1) {
+        /* masm_word stops at `%', so a paste-form struct-instance label from a
+         * macro body (`%{1}_DDB VxD_Desc_Block <..>' after param substitution)
+         * leaves w1 empty -- the normal w1/w2 instance handler never sees it.
+         * Emit the instance here before bailing on the unreadable first token. */
+        if (masm_ppstk && masm_ppstk->is_macro) {
+            char *r = masm_paste_struct_instance(line);
+            if (r) { nasm_free(line); return r; }
+        }
         return line;
+    }
 
     /*
      * Assembly-time `if (<expr with $>) / <body> / endif' -- a location-counter
@@ -3433,6 +4260,26 @@ static char *masm_pp_xform(char *line)
                     nasm_free(line);
                     return masm_rewrite_line(nasm_strdup(tmp));
                 }
+            }
+        }
+    }
+
+    /*
+     * `DeclareNonstandardCcallService <a, b, ...>' -- a VMM.INC macro whose one
+     * argument is a `<>'-wrapped list it walks with IRP.  NASM separates macro
+     * arguments on commas (not the `<>' group), so the wrapper must become a
+     * NASM `{...}' brace-group for the whole list to arrive as a single arg.
+     */
+    if (!nasm_stricmp(w1, "DeclareNonstandardCcallService")) {
+        const char *s = p;
+        while (*s == ' ' || *s == '\t')
+            s++;
+        if (*s == '<') {
+            const char *e = strrchr(s, '>');
+            if (e && e > s + 1) {
+                snprintf(tmp, sizeof tmp, "%s {%.*s}", w1, (int)(e - s - 1), s + 1);
+                nasm_free(line);
+                return masm_rewrite_line(nasm_strdup(tmp));
             }
         }
     }
@@ -3871,10 +4718,20 @@ static char *masm_pp_xform(char *line)
             }
             if (masm_sdef_cur) {                /* record for instance emission */
                 struct masm_smember *mb;
+                const char *dv = mp;            /* the member's default initializer, trimmed */
+                const char *de;
                 nasm_new(mb);
                 mb->name = nasm_strdup(w1);
                 mb->dir = masm_type_to_dd(mtype);
                 mb->count = count;
+                while (*dv == ' ' || *dv == '\t')
+                    dv++;
+                de = dv;
+                while (*de && *de != ';')       /* stop at a comment */
+                    de++;
+                while (de > dv && (de[-1] == ' ' || de[-1] == '\t'))
+                    de--;
+                mb->def = nasm_strndup(dv, (size_t)(de - dv));
                 if (masm_sdef_cur->tail)
                     masm_sdef_cur->tail->next = mb;
                 else
@@ -3889,9 +4746,20 @@ static char *masm_pp_xform(char *line)
                          masm_sdef_cur->name, w1);
             } else if (res && cx)   /* expression count: `resX (expr)' */
                 snprintf(tmp, sizeof tmp, ".%s: %s (%s)", w1, res, cx);
-            else if (res)
-                snprintf(tmp, sizeof tmp, ".%s: %s %d", w1, res, count);
-            else        /* nested struct type: reserve <type>_size bytes */
+            else if (res) {
+                /* A `db' field with no DUP is sized by its initializer, not by
+                 * one element: `DDB_Name DB "        "' reserves 8 bytes.  The
+                 * element count stays in mb->count (the instance emits the value
+                 * once); only the struct-def reservation grows.  Other widths keep
+                 * their element count (a `dd 'Prev'' is one 4-byte element). */
+                int resn = count;
+                if (esz == 1 && count == 1) {
+                    int bn = masm_db_field_bytes(mp);
+                    if (bn > 1)
+                        resn = bn;
+                }
+                snprintf(tmp, sizeof tmp, ".%s: %s %d", w1, res, resn);
+            } else        /* nested struct type: reserve <type>_size bytes */
                 snprintf(tmp, sizeof tmp, ".%s: resb %s_size", w1, mtype);
             if (cx)
                 nasm_free(cx);
@@ -3952,23 +4820,37 @@ static char *masm_pp_xform(char *line)
             return line;                /* stray ENDM: let NASM diagnose */
         masm_ppstk = b->next;
         if (b->is_for) {
-            /* Close the temp macro, then replay it once per list item. */
+            /* Close the %rep self-iteration and the temp macro, then invoke it ONCE with all
+             * items comma-joined.  A `<list>' that is a macro parameter expands to its items
+             * only at this call; NASM then splits them into the variadic args %1..%N that
+             * `%rep %0'/`%rotate' walks.  (A literal list joins straight back to itself.) */
             int i;
+            char call[4096]; size_t cn;
+            masm_ppq_add(nasm_strdup("%endif"));        /* close the per-item `%ifnempty %1' skip-guard */
+            masm_ppq_add(nasm_strdup("%rotate 1"));
+            masm_ppq_add(nasm_strdup("%endrep"));
             masm_ppq_add(nasm_strdup("%endmacro"));
+            cn = (size_t)snprintf(call, sizeof call, "%s ", b->forname);
             for (i = 0; i < b->nitem; i++) {
-                snprintf(tmp, sizeof tmp, "%s %s", b->forname, b->item[i]);
-                masm_ppq_add(nasm_strdup(tmp));
+                if (cn < sizeof call)
+                    cn += snprintf(call + cn, sizeof call - cn, "%s%s", i ? ", " : "", b->item[i]);
                 nasm_free(b->item[i]);
             }
-            snprintf(tmp, sizeof tmp, "%%unmacro %s 1", b->forname);
+            if (b->nitem)
+                masm_ppq_add(nasm_strdup(call));
+            snprintf(tmp, sizeof tmp, "%%unmacro %s 0-*", b->forname);
             masm_ppq_add(nasm_strdup(tmp));
             nasm_free(b->item);
             nasm_free(b->forname);
+            nasm_free(b->forvar);
         } else if (b->is_macro) {
             int i;
             for (i = 0; i < b->nparam; i++)   /* params were substituted textually */
                 nasm_free(b->param[i]);
             nasm_free(b->param);
+            for (i = 0; i < b->noparam; i++)  /* enclosing-param snapshots, if a nested def */
+                nasm_free(b->oparam[i]);
+            nasm_free(b->oparam);
             masm_ppq_add(nasm_strdup("%endmacro"));
         } else {
             masm_ppq_add(nasm_strdup("%endrep"));
@@ -4022,6 +4904,17 @@ static char *masm_pp_xform(char *line)
 
     if (!nasm_stricmp(w1, "includelib")) {
         nasm_free(line);            /* link-time detail; accepted and dropped */
+        return nasm_strdup("");
+    }
+
+    /*
+     * `OPTION <settings>' configures the assembler (oldmacros, oldstructs,
+     * noscoped, offset:..., casemap:..., ...).  The settings the DDK headers
+     * use match how this mode already behaves, so accept and drop the directive
+     * rather than mis-parse `option' as a label and its argument as an opcode.
+     */
+    if (!nasm_stricmp(w1, "option")) {
+        nasm_free(line);
         return nasm_strdup("");
     }
 
@@ -4204,15 +5097,21 @@ static char *masm_pp_xform(char *line)
         }
 
         snprintf(nm, sizeof nm, "__?masm_for%d?__", ++masm_for_seq);
-        snprintf(tmp, sizeof tmp, "%%macro %s 1", nm);
-        masm_ppq_add(nasm_strdup(tmp));
-        snprintf(tmp, sizeof tmp, "%%define %s %%1", param);
-        masm_ppq_add(nasm_strdup(tmp));
+        snprintf(tmp, sizeof tmp, "%%macro %s 0-*", nm);   /* variadic + self-iterating (%rep %0 / */
+        masm_ppq_add(nasm_strdup(tmp));                    /*   %rotate) so the list is walked at CALL */
+        masm_ppq_add(nasm_strdup("%rep %0"));              /*   time -- a `<list>' that is itself a macro */
+        snprintf(tmp, sizeof tmp, "%%xdefine %s %%1", param);  /* parameter is unknown until then, and */
+        masm_ppq_add(nasm_strdup(tmp));                        /* %xdefine re-binds the loop var per item */
+        masm_ppq_add(nasm_strdup("%ifnempty %1"));         /* MASM's IRP skips BLANK items (unsupplied macro
+                                                            * params: `irp arg,<P1..P7>' with none given must
+                                                            * not run the body -- BeginProc would `.err' on
+                                                            * each). %rotate still advances past the blank. */
         nasm_new(b);
         b->is_for = true;
         b->forname = nasm_strdup(nm);
         b->item = item;
         b->nitem = nitem;
+        b->forvar = nasm_strdup(param);           /* for the body's `&<var>' paste (%[<var>]) */
         b->next = masm_ppstk;
         masm_ppstk = b;
         nasm_free(line);
@@ -4251,6 +5150,24 @@ static char *masm_pp_xform(char *line)
          * one-time setup) is always taken and IF2 is never taken. */
         else if (!nasm_stricmp(w1, "if1"))    { dir = "%if"; rest = "1"; }
         else if (!nasm_stricmp(w1, "if2"))    { dir = "%if"; rest = "0"; }
+        if (!nasm_stricmp(w1, "elseifdef") || !nasm_stricmp(w1, "elseifndef")) {
+            /* MASM ELSEIFDEF is true for a symbol defined as ANYTHING; the DDK uses
+             * it to detect MACROS (BeginProc's `VxD_&&arg&&_CODE_SEG', `?&&arg&&_
+             * BeginProc'), which NASM's %elifdef (single-line macros) misses -- use
+             * %elifmacro.  Pass the whole operand (it carries a `%[arg]' paste) up to
+             * a `;' comment; the macro name resolves when the FOR item expands. */
+            const char *s = rest, *e = rest;
+            char op[256]; size_t n = 0;
+            while (*e && *e != ';') e++;
+            while (e > s && (e[-1] == ' ' || e[-1] == '\t')) e--;
+            while (s < e && n + 1 < sizeof op) op[n++] = *s++;
+            op[n] = '\0';
+            snprintf(tmp, sizeof tmp, "%s %s",
+                     !nasm_stricmp(w1, "elseifdef") ? "%elifmacro" : "%elifnmacro", op);
+            nasm_free(line);
+            masm_ppq_add(nasm_strdup(tmp));
+            return masm_ppq_get();
+        }
         /*
          * MASM `IFDEF X' is true for ANY defined symbol, including a numeric
          * EQU/= constant -- which we emit as an assembly `equ' that NASM's
@@ -4280,11 +5197,27 @@ static char *masm_pp_xform(char *line)
                 if (!nasm_stricmp(dir, "%if"))
                     masm_emit_opt_guards(ex);
                 snprintf(tmp, sizeof tmp, "%s %s", dir, ex);
+            } else if (strstr(rest, "%[") || strstr(rest, "%{")) {
+                /* A PASTE-form operand (`IFDEF Create_&Device_Name&_Service_Table'
+                 * -> `Create_%{1}_Service_Table') -- the idchar-only `ifid' would
+                 * clip it to `Create_'.  Emit the whole operand (up to a `;'); the
+                 * name resolves when the macro expands (this is what gates the DDK
+                 * service-table emission).  Also test the `__masmL_' label marker
+                 * (multi-arg %ifdef is an OR) so `IFDEF <dev>_Service_Table' sees
+                 * the service-table LABEL, which is not a preprocessor smacro. */
+                const char *s = rest, *e = rest;
+                char op[256]; size_t n = 0;
+                while (*e && *e != ';') e++;
+                while (e > s && (e[-1] == ' ' || e[-1] == '\t')) e--;
+                while (s < e && n + 1 < sizeof op) op[n++] = *s++;
+                op[n] = '\0';
+                snprintf(tmp, sizeof tmp, "%s %s __masmL_%s", dir, op, op);
             } else {
                 /* MASM IFDEF/IFNDEF takes a single symbol; ignore any trailing
                  * text (a reconstructed source may forget the `;' before a
-                 * comment, e.g. `ifndef WOW - too slow').  Emit just the name. */
-                snprintf(tmp, sizeof tmp, "%s %s", dir, ifid);
+                 * comment, e.g. `ifndef WOW - too slow').  Emit just the name --
+                 * plus the `__masmL_' marker so a bare LABEL name is seen too. */
+                snprintf(tmp, sizeof tmp, "%s %s __masmL_%s", dir, ifid, ifid);
             }
             nasm_free(line);
             masm_ppq_add(nasm_strdup(tmp));
@@ -4364,12 +5297,20 @@ static char *masm_pp_xform(char *line)
             const char *cmp = !nasm_stricmp(w1, ".erre") ? "==" : "!=";
             char ex[512], *rr, *c;
             char qc = 0;
+            int depth = 0;
             size_t el;
             masm_xlat_ops(ex, sizeof ex, rest);
+            /* `.ERRE/.ERRNZ expr, <message>' -- MASM's optional error text.  Drop
+             * it (and any `;' comment): only the expression is wrapped, else the
+             * top-level comma lands inside `(...)' and the evaluator sees `,' where
+             * it expects `)' (`.errnz ?_LCODE, <Control_Dispatch must be ..>'). */
             for (c = ex; *c; c++) {
                 if (qc) { if (*c == qc) qc = 0; }
                 else if (*c == '\'' || *c == '"') qc = *c;
+                else if (*c == '(') depth++;
+                else if (*c == ')') { if (depth) depth--; }
                 else if (*c == ';') { *c = '\0'; break; }
+                else if (*c == ',' && depth == 0) { *c = '\0'; break; }
             }
             el = strlen(ex);
             while (el && (ex[el-1]==' '||ex[el-1]=='\t')) ex[--el] = '\0';
@@ -4381,6 +5322,18 @@ static char *masm_pp_xform(char *line)
             masm_ppq_add(nasm_strdup("%endif"));
             nasm_free(line);
             return masm_ppq_get();
+        }
+        if (!nasm_stricmp(w1, ".errnb") || !nasm_stricmp(w1, ".errb") ||
+            !nasm_stricmp(w1, ".errdif") || !nasm_stricmp(w1, ".erridn") ||
+            !nasm_stricmp(w1, ".errdifi") || !nasm_stricmp(w1, ".erridni") ||
+            !nasm_stricmp(w1, ".errdef") || !nasm_stricmp(w1, ".errndef")) {
+            /* Blank/text-comparison assertions (`.errnb <arg>, <msg>' errors if the
+             * macro arg is not blank, etc.).  They guard hand-written misuse of a
+             * macro; the reconstruction's generated calls are well-formed, so the
+             * assertion never fires -- accept and drop it (evaluating "is this
+             * expanded arg blank" would need expansion-time text tests NASM lacks). */
+            nasm_free(line);
+            return nasm_strdup("");
         }
         if (!nasm_stricmp(w1, "echo") || !nasm_stricmp(w1, "%out") ||
             !nasm_stricmp(w1, ".radix")) {
@@ -4499,8 +5452,18 @@ static char *masm_pp_xform(char *line)
         if (sz > 0)
             masm_type_note(w1, sz);
         snprintf(tmp, sizeof tmp, "%s:", w1);
-        nasm_free(line);
         masm_ppq_add(nasm_strdup(tmp));
+        /*
+         * MASM `IFDEF NAME' is true for a LABEL, but NASM's `%ifdef' sees only
+         * preprocessor smacros -- a label is invisible to it.  Emit a companion
+         * marker smacro under a reserved prefix (so it never shadows the label
+         * itself) that the IFDEF/IFNDEF translation also tests.  This is what
+         * gates the DDK DDB service-table fields: `IFDEF <dev>_Service_Table'
+         * must see the `<dev>_Service_Table LABEL DWORD' the service table mints.
+         */
+        snprintf(tmp, sizeof tmp, "%%idefine __masmL_%s 1", w1);
+        masm_ppq_add(nasm_strdup(tmp));
+        nasm_free(line);
         return masm_ppq_get();
     }
 
@@ -4803,103 +5766,10 @@ static char *masm_pp_xform(char *line)
         }
     }
 
-    if (l2 && masm_sdef_find(w2)) {
-        /*
-         * `label STRUCTTYPE <i0, i1, ...>' -- a static struct instance.  Emit a
-         * labelled data block so each field gets a real address; the MASM data-
-         * label typing (keyed on the literal label string) then makes a bare
-         * `label.member' reference mean its contents.  The field labels use the
-         * full `label.member' name so the set-time and get-time keys match:
-         *     label:
-         *     label.m0  <dir0>  i0-or-0
-         *     label.m1  <dir1>  i1-or-0
-         */
-        struct masm_sdef *sd = masm_sdef_find(w2);
-        struct masm_smember *mb;
-        const char *ip = p;
-        char inits[32][192];
-        int ninit = 0, mi;
-
-        while (*ip == ' ' || *ip == '\t')
-            ip++;
-        if (*ip == '<') {                       /* split top-level <...> inits */
-            int depth = 0;
-            const char *s;
-            char *d = inits[0];
-            size_t n = 0;
-            ip++;                               /* past '<' */
-            for (s = ip; *s; s++) {
-                if (*s == '<') depth++;
-                else if (*s == '>') {
-                    if (depth == 0) break;
-                    depth--;
-                }
-                if (*s == ',' && depth == 0) {
-                    d[n] = '\0';
-                    if (ninit < 31) { ninit++; d = inits[ninit]; n = 0; }
-                    continue;
-                }
-                if (n + 1 < sizeof inits[0])
-                    d[n++] = *s;
-            }
-            d[n] = '\0';
-            ninit++;                            /* count the last field */
-        }
-
-        if (sd->is_record) {
-            /* pack the fields into one integer: label <dir> (i<<sh)|... */
-            char rhs[512];
-            size_t ri = 0;
-            int first = 1;
-            for (mb = sd->head, mi = 0; mb; mb = mb->next, mi++) {
-                char val[192];
-                const char *v = "0";
-                if (mi < ninit) {
-                    char *b = inits[mi];
-                    while (*b == ' ' || *b == '\t') b++;
-                    snprintf(val, sizeof val, "%s", b);
-                    { size_t e = strlen(val);
-                      while (e && (val[e-1]==' '||val[e-1]=='\t'||val[e-1]=='\r'))
-                          val[--e] = '\0'; }
-                    if (val[0]) v = val;
-                }
-                ri += snprintf(rhs + ri, ri < sizeof rhs ? sizeof rhs - ri : 0,
-                               "%s((%s) << %d)", first ? "" : " | ", v, mb->shift);
-                first = 0;
-            }
-            if (first)                          /* no fields: emit 0 */
-                snprintf(rhs, sizeof rhs, "0");
-            snprintf(tmp, sizeof tmp, "%s\t%s %s", w1, sd->rdir, rhs);
-            masm_ppq_add(nasm_strdup(tmp));
-            nasm_free(line);
-            return masm_ppq_get();
-        }
-
-        snprintf(tmp, sizeof tmp, "%s:", w1);
-        masm_ppq_add(nasm_strdup(tmp));
-        for (mb = sd->head, mi = 0; mb; mb = mb->next, mi++) {
-            char val[192];
-            const char *v = "0";
-            if (mi < ninit) {                   /* trim the field's init text */
-                char *b = inits[mi];
-                while (*b == ' ' || *b == '\t') b++;
-                snprintf(val, sizeof val, "%s", b);
-                { size_t e = strlen(val);
-                  while (e && (val[e-1]==' '||val[e-1]=='\t'||val[e-1]=='\r'))
-                      val[--e] = '\0'; }
-                if (val[0])
-                    v = val;
-            }
-            const char *dir = mb->dir ? mb->dir : "dd";  /* nested: best effort */
-            if (mb->count > 1)
-                snprintf(tmp, sizeof tmp, "%s.%s\ttimes %d %s %s",
-                         w1, mb->name, mb->count, dir, v);
-            else
-                snprintf(tmp, sizeof tmp, "%s.%s\t%s %s", w1, mb->name, dir, v);
-            masm_ppq_add(nasm_strdup(tmp));
-        }
+    if (l2 && masm_sdef_find(w2)) {          /* clean-label static struct instance */
+        char *r = masm_struct_instance(masm_sdef_find(w2), w1, p);
         nasm_free(line);
-        return masm_ppq_get();
+        return r;
     }
 
     if (l2 && !nasm_stricmp(w2, "equ")) {
@@ -4922,7 +5792,50 @@ static char *masm_pp_xform(char *line)
                 buf[vn-1] = '\0';
                 memmove(buf, buf + 1, vn - 1);
             }
-            snprintf(tmp, sizeof tmp, "%%ixdefine %s %s", w1, buf);
+            /*
+             * `OFFSET FLAT: sym' is MASM's flat-model "offset of sym in the FLAT
+             * group"; in NASM's flat/32-bit model the offset of a label IS the
+             * label, so drop the operator.  `OFFSET32 EQU <OFFSET FLAT:>' then
+             * makes `OFFSET32 Ctrl_Proc' expand to just `Ctrl_Proc' (the DDB's
+             * Control_Proc field, and every service-table pointer, need this).
+             */
+            {
+                size_t i = 0, o = 0;
+                while (buf[i]) {
+                    if (!nasm_strnicmp(buf + i, "offset", 6) &&
+                        (i == 0 || !nasm_isidchar((unsigned char)buf[i-1]))) {
+                        size_t j = i + 6;
+                        while (buf[j] == ' ' || buf[j] == '\t') j++;
+                        if (!nasm_strnicmp(buf + j, "flat", 4) &&
+                            !nasm_isidchar((unsigned char)buf[j+4])) {
+                            j += 4;
+                            while (buf[j] == ' ' || buf[j] == '\t') j++;
+                            if (buf[j] == ':') { i = j + 1; continue; }
+                        }
+                    }
+                    buf[o++] = buf[i++];
+                }
+                buf[o] = '\0';
+            }
+            /*
+             * Translate MASM word-operators (MOD/SHL/SHR/AND/OR/...) in the alias
+             * body: a text equate is often a folded EXPRESSION (`?_16ICODE EQU
+             * <(??_CUR_CODE_SEG MOD 16) - ??_16ICODE>'), and if `MOD' survives, a
+             * later `IFE ?_16ICODE' expands to `%if ((.. MOD 16)..)==0' and the
+             * evaluator chokes on MOD (`expecting )').  A bare-identifier alias has
+             * no operators, so this is a no-op there.
+             */
+            {
+                /* LAZY %idefine, not eager %ixdefine: a MASM `EQU <text>' is a
+                 * redefinable text alias re-expanded at each USE, so `?_LCODE EQU
+                 * <(??_CUR_CODE_SEG MOD 16) - ??_LCODE>' must read ??_CUR_CODE_SEG's
+                 * value where it's referenced (after a segment macro ran), not
+                 * snapshot 0 at definition time (which made every ?_xCODE stale and
+                 * the `.errnz ?_LCODE' segment-class assertions fire). */
+                char xb[512];
+                masm_xlat_ops(xb, sizeof xb, buf);
+                snprintf(tmp, sizeof tmp, "%%idefine %s %s", w1, xb);
+            }
             nasm_free(line);
             masm_ppq_add(nasm_strdup(tmp));
             return masm_ppq_get();
@@ -4981,13 +5894,43 @@ static char *masm_pp_xform(char *line)
                 nasm_free(mr);
             } else if (masm_ident_only(xr) &&
                 (!nasm_stricmp(xr, "short") || !nasm_stricmp(xr, "near") ||
-                 !nasm_stricmp(xr, "far")))
+                 !nasm_stricmp(xr, "far") || !nasm_stricmp(xr, "flat") ||
+                 !nasm_stricmp(xr, "use32") || !nasm_stricmp(xr, "use16")))
+                /* a bare keyword equate: size-cast (short/near/far) or a SEGMENT
+                 * use-type/group attribute (`_FLAT EQU FLAT', `_FLAT EQU USE32').
+                 * NASM has no such symbol -- the segment translator strips the
+                 * attribute -- so bind the alias textually rather than via `equ'. */
                 snprintf(tmp, sizeof tmp, "%%idefine %s %s", w1, xr);
-            else {
+            else if (masm_ident_only(xr) && nasm_stricmp(xr, w1)) {
+                /*
+                 * NAME EQU <lone identifier>: a numeric/label equate, OR an alias
+                 * for a multi-line macro (`VxD_ICODE_SEG equ VxD_INIT_CODE_SEG').
+                 * NASM's `equ' rejects a macro name, and %define of a plain label
+                 * risks a forward cycle, so let NASM choose at its own level: alias
+                 * textually iff the RHS names a macro, else fall back to `equ'.
+                 * (Skip a self-referential RHS, which would be a %idefine cycle.)
+                 */
+                snprintf(tmp, sizeof tmp, "%%ifmacro %s", xr);
+                masm_ppq_add(nasm_strdup(tmp));
+                snprintf(tmp, sizeof tmp, "%%idefine %s %s", w1, xr);
+                masm_ppq_add(nasm_strdup(tmp));
+                masm_ppq_add(nasm_strdup("%else"));
+                snprintf(tmp, sizeof tmp, "%s equ %s", w1, xr);
+                masm_ppq_add(nasm_strdup(tmp));
+                masm_ppq_add(nasm_strdup("%endif"));
+                nasm_free(line);
+                masm_note_defined(w1);
+                return masm_ppq_get();
+            } else {
                 /* Rewrite operators the same way an instruction operand is
                  * (SIZE/SIZEOF/TYPE/`.member'): `DSC_LEN equ (size DscPtr)'
                  * -> `... equ (DscPtr_size)'. */
                 char *rr = masm_rewrite_line(nasm_strdup(xr));
+                /* Prefer a preprocessor %iassign for a pure-numeric constant (so
+                 * %ifdef/%[..] see it -- the service-table and dispatch gates); a
+                 * value that names a label stays a plain assembler `equ'. */
+                char *r = masm_emit_num_const(w1, rr);
+                if (r) { nasm_free(rr); nasm_free(line); return r; }
                 snprintf(tmp, sizeof tmp, "%s equ %s", w1, rr);
                 nasm_free(rr);
                 numeq = true;           /* a numeric constant equate */
@@ -5107,8 +6050,32 @@ static char *masm_pp_xform(char *line)
         }
     }
 
-    /* Plain line: apply struct-member / SIZEOF operand rewrites. */
-    return masm_rewrite_line(line);
+    /*
+     * A plain line that still carries `<...>' groups here is a macro CALL whose
+     * arguments MASM grouped in angle brackets (`VxDCall <P>, <Param>', `PushCParams
+     * <args>, <flags>').  Every directive that consumes `<>' as its own syntax
+     * (IFB/IFDIFI/IFIDN, IRP/IRPC, `EQU <text>', a struct instance, `.errXX') has
+     * its own handler above and returned already, so convert the OUTERMOST groups to
+     * NASM's `{...}' brace-groups: NASM then splits macro args on commas but keeps a
+     * braced group whole and strips the braces on access.  This is what makes a
+     * paste like `@@&P' (P passed as `<name>') resolve to `@@name', not `@@<name>'.
+     * At this stage a literal `<' is only a group delimiter (MASM comparison ops are
+     * still the words LT/GT until masm_rewrite_line), and an unbalanced result is
+     * discarded, so a stray `<' is left untouched.
+     */
+    if (strchr(line, '<')) {
+        char *br = masm_angle_args_to_brace(line);
+        if (br) { nasm_free(line); line = br; }
+    }
+    /* Plain line: apply struct-member / SIZEOF operand rewrites, then normalise
+     * MASM doubled-quote string escapes (done LAST, so masm_rewrite_line saw the
+     * original `'..''..'` as two quoted spans and left them alone). */
+    line = masm_rewrite_line(line);
+    {
+        char *sf = strpbrk(line, "'\"") ? masm_fix_dq_strings(line) : NULL;
+        if (sf) line = sf;
+    }
+    return line;
 }
 
 static char *read_line(void)
