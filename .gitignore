@@ -41,3 +41,10 @@ CodeBreaker.config.json
 # into the engine; the raw project dirs + their binaries are not tracked as-is).
 engine/inverse_engine/_sweepdb/
 tools/vmm32boot/vmm32stage/
+
+# recovered/: local disassembly + build scratch. The byte-exact ledger
+# (vxd_byte_exact.json) is kept as the tracked standard of measure; the
+# per-run logs and the loadable/phased ledgers are regenerable and stay local.
+/recovered/*.log
+/recovered/vxd_loadable.json
+/recovered/loadable_phased.json
