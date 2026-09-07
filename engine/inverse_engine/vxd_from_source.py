@@ -2,11 +2,11 @@
 r"""vxd_from_source.py -- build a LOADABLE Win95 VxD from reconstructed SOURCE, with NO byte transplant.
 
 This is the path that `build_loadable_idiomatic` could not take: it emits the recovered VxD as idiomatic
-DDK-macro assembly with each object in its REAL named segment, assembles it with the period ML.EXE,
-links it with LINK /VXD, and applies the two container fixups the Win95 loader requires that a modern
-LINK omits. Unlike `build_loadable_idiomatic`, it does NOT overlay the oracle's object bytes -- the
-container that comes out is the linker's own, corrected only where a *substitute* linker diverges from
-Microsoft's LINK386. A VKD.VXD built this way boots real Windows 95 to the logon.
+DDK-macro assembly with each object in its REAL named segment, assembles it with the period ML.EXE, links
+it with the DDK's OWN LINK 2.60, and embeds the version resource with the DDK's OWN RC + ADRC2VXD. Every
+byte comes from an authentic period tool run over recovered source -- no oracle object bytes are overlaid
+and no container field is hand-patched. A VKD.VXD built this way boots real Windows 95 to the logon (and
+the keyboard is live at the logon prompt).
 
 The four requirements, all pinned by real boots (see docs/VXD_FROM_SOURCE.md):
 
@@ -18,35 +18,45 @@ The four requirements, all pinned by real boots (see docs/VXD_FROM_SOURCE.md):
   2. FLAT MODEL. Every non-DDK segment is declared `<NAME> SEGMENT DWORD PUBLIC _FLAT '<NAME>CODE'`.
      `_FLAT` (=FLAT under MASM6) makes it part of the flat group; `USE32` does not, and every cross-
      segment near call then fails to assemble (A2107). This is what the DDK's MakeCodeSeg expands to.
-  3. CONTAINER FIELDS. The VxD device id (LE header 0xc0) and the Windows version resource
-     (0xb8/0xbc) are loader-REQUIRED and LINK /VXD leaves them blank; supply them post-link.
-  4. IDENTITY PAGE MAP. Mark every segment PRELOAD NONDISCARDABLE so the linker does not group
-     discardable pages at end-of-file (which permutes the page map). The Win95 static VxD loader reads
-     object pages by LOGICAL slot and ignores a permuted map, so a permutation loads objects as garbage
-     and faults during init. NONDISCARDABLE -> pages in logical order -> identity map, and as a bonus
-     the object order matches too.
+  3. THE RIGHT LINKER. The VxD device id (LE 0xc0) and the Windows version resource (0xb8/0xbc) are
+     loader-REQUIRED. The VC++ 2.0 linker (LINK 2.50) leaves 0xc0 blank and permutes the page map; the DDK
+     shipped LINK 2.60.5046 (\MSVC20\LINK.EXE) SPECIFICALLY to fix VxD linking (its README says so), and it
+     stamps 0xc0 from the exported <NAME>_DDB and writes an identity map. The resource is then added by the
+     DDK's own RC + ADRC2VXD -- see version_rc / embed_version_resource, not a hand-copy. LINK386 (the OS/2
+     linker) is never needed: it targets OS/2 LX and would not stamp a Win95 device id.
+  4. IDENTITY PAGE MAP + OBJECT ORDER. realseg_def marks every segment PRELOAD NONDISCARDABLE. This keeps
+     the linker from grouping discardable pages at end-of-file (which would permute the page map the Win95
+     static loader reads by LOGICAL slot -> objects load as garbage -> init fault) AND keeps the objects in
+     .def order == the oracle's object order. Result: an identity map and a matching object table.
 
     from engine.inverse_engine import vxd_from_source as F
     r = F.build_from_source(v)          # v = engine.format_loaders.le.LEFile
     open("vkd.vxd","wb").write(r["vxd"])
 
 NOTE ON PROVENANCE: the code, DDB, service table, fixups and object bytes are 100% from the recovered
-source (only commutative re-encodings differ from the original -- SIB base/index order, test/xchg
-operand order). The ONE non-source input is the Windows version resource in requirement 3, copied from
-the oracle: it is a version-info RESOURCE (strings), not code, and LINK386 would have generated it from
-a .rc the disassembly cannot recover. Generating it from the DDB metadata instead is the open TODO that
-would make the pipeline entirely oracle-free.
-"""
+source (only commutative re-encodings differ from the original -- SIB base/index order, test/xchg operand
+order). The version resource is likewise rebuilt from recovered source: version_rc reconstructs the .rc
+(device id + internal name from the DDB; file description + copyright years recovered from the oracle's
+version-resource STRINGS -- metadata, not code) and the DDK's real RC + ADRC2VXD recompile and embed it.
+Nothing is transplanted and no MS tool is reimplemented; the toolchain is ML 6.11 + LINK 2.60.5046 + RC
+3.11 + ADRC2VXD, all period-authentic (see docs/VXD_FROM_SOURCE.md)."""
 import os
 import re
+import shutil
 import struct
-import subprocess
+import tempfile
 
 from engine.inverse_engine.vxd_asm import VxDDisasm
 from engine.inverse_engine import vxd_idiom
 from engine.inverse_engine.vxd_idiom import _ddb_size
 from engine.inverse_engine import vxd_link
+from engine.backbone.dosbox import run_dos
 from engine.format_loaders import le as _le
+
+# Authentic DDK resource tools (BASE\VXDRES\MAKEFILE recipe: `rc -r <name>.rc` then `adrc2vxd`).
+_RC_DIR  = "binaries/toolchains/period/compilers/msvc-1.52c/BIN"       # RC 3.11 driver + RCPP (DOS)
+_ADRC    = "binaries/media/Microsoft Windows 95 DDK/BIN/ADRC2VXD.EXE"  # DDK version-resource embedder
+_INC16   = "binaries/media/Microsoft Windows 95 DDK/INC16"             # version.h / common.ver / ver.h
 
 
 def object_names(v):
@@ -153,26 +163,86 @@ def realseg_def(name, names):
             "EXPORTS\r\n        %s_DDB @1\r\n" % (name, name, "\r\n".join(seg), name))
 
 
-def container_fixup(vxd_bytes, v, D):
-    """Supply the two loader-required fields LINK /VXD leaves blank: the VxD device id (LE hdr 0xc0,
-    from the DDB's device number -- source-derived) and the Windows version resource (hdr 0xb8/0xbc,
-    copied from the oracle -- a resource, not code; see the module TODO). Returns patched bytes."""
-    raw = bytearray(vxd_bytes)
-    blfa = struct.unpack_from("<I", raw, 0x3c)[0]
-    if D.ddb:
-        struct.pack_into("<H", raw, blfa + 0xc0, D.ddb["device_id"] & 0xffff)   # device id (source)
-    # Windows version resource: copy the oracle's block, append, point hdr 0xb8/0xbc at it.
-    olfa = v.lfa
-    woff = struct.unpack_from("<I", v.d, olfa + 0xb8)[0]
-    wlen = struct.unpack_from("<I", v.d, olfa + 0xbc)[0]
-    if woff and wlen:
-        while len(raw) % 4:
-            raw.append(0)
-        newoff = len(raw) - blfa
-        raw += v.d[olfa + woff: olfa + woff + wlen]
-        struct.pack_into("<I", raw, blfa + 0xb8, newoff)
-        struct.pack_into("<I", raw, blfa + 0xbc, wlen)
-    return bytes(raw)
+def ver_strings(res):
+    """16-bit (ANSI) VER resource: 'key\\0value\\0' pairs with WORD-align padding. Extract wanted keys.
+    (A VxD's version resource is VOS_DOS_WINDOWS16, so its strings are ANSI, not the UTF-16 of a Win32
+    VS_VERSION_INFO.)"""
+    out = {}
+    for key in ("FileDescription", "LegalCopyright", "InternalName", "OriginalFilename"):
+        i = res.find(key.encode("latin1"))
+        if i < 0:
+            continue
+        j = i + len(key)
+        while j < len(res) and res[j] == 0:            # skip key terminator + alignment pad
+            j += 1
+        e = j
+        while e < len(res) and res[e] != 0:            # value runs to its null
+            e += 1
+        out[key] = res[j:e].decode("latin1", "replace")
+    return out
+
+
+def version_rc(D, res):
+    """Reconstruct the VxD version-resource .rc as recovered SOURCE. The device id and internal name come
+    from the recovered DDB; the human-authored strings (file description, copyright years) are recovered
+    from the oracle's version-resource block `res`. Those strings are metadata the real RC recompiles into
+    a fresh resource -- NOT a byte transplant. This is the .rc Microsoft fed to RC + ADRC2VXD (its shape is
+    the DDK's own BASE\\VXDRES\\SAMPLE.RC)."""
+    s = ver_strings(res)
+    m = re.search(r"\d{4}-\d{4}|\d{4}", s.get("LegalCopyright", ""))
+    return ("#include <version.h>\r\n"
+            "#define VER_FILETYPE             VFT_VXD\r\n"
+            "#define VER_FILESUBTYPE          0x%08X\r\n"
+            '#define VER_FILEDESCRIPTION_STR  "%s"\r\n'
+            '#define VER_INTERNALNAME_STR     "%s"\r\n'
+            '#define VER_LEGALCOPYRIGHT_YEARS "%s"\r\n'
+            '#define VER_ORIGINALFILENAME_STR "%s.VXD"\r\n'
+            "#include <common.ver>\r\n"
+            % (D.ddb["device_id"], s.get("FileDescription", ""), D.ddb["name"],
+               m.group(0) if m else "", D.ddb["name"]))
+
+
+def _stage_res_tools(root):
+    """Copy RC 3.11 (+ its RCPP preprocessor) and the DDK ADRC2VXD into a cached space-free tool dir, and
+    the INC16 version headers into a cached space-free include dir (the DDK's own path has spaces DOSBox
+    cannot mount). Returns (tooldir, incdir)."""
+    import glob
+    tools = os.path.join(tempfile.gettempdir(), "cb_restools")
+    inc = os.path.join(tempfile.gettempdir(), "cb_inc16")
+    os.makedirs(tools, exist_ok=True); os.makedirs(inc, exist_ok=True)
+    rcbin = os.path.join(root, _RC_DIR.replace("/", os.sep))
+    for f, src in (("RC.EXE", os.path.join(rcbin, "RC.EXE")),
+                   ("RCPP.EXE", os.path.join(rcbin, "RCPP.EXE")),
+                   ("ADRC2VXD.EXE", os.path.join(root, _ADRC.replace("/", os.sep)))):
+        if not os.path.exists(os.path.join(tools, f)):
+            shutil.copy(src, os.path.join(tools, f))
+    incsrc = os.path.join(root, _INC16.replace("/", os.sep))
+    for f in glob.glob(incsrc + os.sep + "*.H") + glob.glob(incsrc + os.sep + "*.VER"):
+        if not os.path.exists(os.path.join(inc, os.path.basename(f))):
+            shutil.copy(f, os.path.join(inc, os.path.basename(f)))
+    return tools, inc
+
+
+def embed_version_resource(vxd_bytes, D, root):
+    """Add the Windows version resource with the DDK's OWN tools -- the BASE\\VXDRES\\MAKEFILE recipe,
+    `rc -r <name>.rc` (RC 3.11) then `adrc2vxd <name>.vxd <name>.res` (DDK) -- replacing every hand-rolled
+    container patch. Reconstructs the .rc (version_rc), compiles + embeds it under DOSBox, and returns
+    (bytes, log) where bytes is the resource-carrying .vxd (hdr 0xb8/0xbc now reference a freshly compiled
+    resource) or None if DOSBox is unconfigured / the tools error."""
+    lfa = D.v.lfa
+    woff = struct.unpack_from("<I", D.v.d, lfa + 0xb8)[0]    # absolute file offset of the oracle resource
+    wlen = struct.unpack_from("<I", D.v.d, lfa + 0xbc)[0]
+    rc_text = version_rc(D, D.v.d[woff:woff + wlen])
+    tools, inc = _stage_res_tools(root)
+    bat = ["set INCLUDE=e:\\",
+           "copy in.vxd out.vxd",
+           "c:\\RC.EXE -r m.rc > rc.txt",
+           "c:\\ADRC2VXD.EXE out.vxd m.res > adrc.txt"]
+    ok, out, work = run_dos({"c": tools, "e": inc}, bat, ["out.vxd", "m.res", "rc.txt", "adrc.txt"],
+                            timeout=180, files={"m.rc": rc_text, "in.vxd": vxd_bytes})
+    log = "".join("[%s] %s\n" % (t, out[t].decode("latin1", "replace").strip())
+                  for t in ("rc.txt", "adrc.txt") if t in out)
+    return out.get("out.vxd"), (rc_text + "\n" + log)
 
 
 def build_from_source(v, name=None, root="."):
@@ -188,10 +258,12 @@ def build_from_source(v, name=None, root="."):
     if not obj:
         return {"ok": False, "stage": "assemble", "log": alog[-1500:], "asm": asm}
     deftext = realseg_def(name, names)
-    vxd, llog = vxd_link._link_vxd(obj, deftext, root, work)
+    vxd, llog = vxd_link.link_vxd_260(obj, deftext, root, work)   # LINK 2.60 stamps device id + page map
     if not vxd:
         return {"ok": False, "stage": "link", "log": llog[-1500:], "asm": asm, "def": deftext}
-    final = container_fixup(vxd, v, D)
+    final, rlog = embed_version_resource(vxd, D, root)            # real RC + ADRC2VXD version resource
+    if not final:
+        return {"ok": False, "stage": "resource", "log": rlog[-1500:], "asm": asm, "def": deftext}
     # verification: identity page map, DDB back at the oracle offset, DDB object near-exact
     m = _le.LEFile.from_buffer(final)
     d, lfa = m.d, m.lfa
@@ -201,12 +273,15 @@ def build_from_source(v, name=None, root="."):
             for k in range(npg)]
     identity = phys == list(range(1, npg + 1))
     dd = m.ddb()
+    dev = struct.unpack_from("<H", d, lfa + 0xc0)[0]              # device id LINK 2.60 stamped from the DDB
+    reslen = struct.unpack_from("<I", d, lfa + 0xbc)[0]          # version resource ADRC2VXD embedded
     o = bytes(v.object_bytes(v.objects[0])); r = bytes(m.object_bytes(m.objects[0]))
     o1diffs = sum(1 for k in range(min(len(o), len(r))) if o[k] != r[k])
     return {"ok": True, "vxd": final, "vxd_len": len(final), "oracle_len": len(v.d), "asm": asm,
             "def": deftext, "objects": len(m.objects), "page_map_identity": identity,
             "ddb_rva": dd and dd["rva"], "oracle_ddb_rva": D.ddb and D.ddb["rva"],
-            "obj1_diffs": o1diffs, "link_log": llog[-300:]}
+            "device_id": dev, "device_id_ok": bool(D.ddb) and dev == D.ddb["device_id"],
+            "resource_len": reslen, "obj1_diffs": o1diffs, "link_log": llog[-300:], "res_log": rlog[-300:]}
 
 
 if __name__ == "__main__":

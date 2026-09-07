@@ -21,14 +21,25 @@ import re
 import shutil
 import struct
 import subprocess
+import tempfile
 
 from engine.inverse_engine.vxd_asm import VxDDisasm
 from engine.inverse_engine import vxd_masm
 from engine.backbone.dosbox import run_dos
 
-# MS LINK 2.50 (msvc-2.0) -- runs natively; unlike the DDK's 2.60, its /VXD self-spawns as `-lib`
-# to build the export file correctly.
+# MS LINK 2.50 (= the VC++ 2.0 linker). Retained only for the legacy byte-exact object experiments
+# (build_and_compare / build_functional). It is the WRONG linker for a loadable VxD: its /VXD leaves the
+# device id (LE 0xc0) blank and permutes the page map -- the exact defects the DDK shipped LINK 2.60 to
+# fix (see MSVC20\README.TXT). The from-source loadable path uses link_vxd_260() below.
 _LINK = "binaries/toolchains/period/compilers/msvc-2.0/BIN/LINK.EXE"
+
+# MS LINK 2.60.5046 -- the DDK's own VxD linker (\MSVC20\LINK.EXE), shipped specifically to fix VxD
+# linking in 2.50. It stamps the device id from the exported <NAME>_DDB and writes an identity page map,
+# so no post-link container patching is needed. It is a native Win32 PE (runs on modern Windows), BUT its
+# /VXD self-spawn re-execs LINK by its own module path WITHOUT quoting it, so it MUST run from a
+# space-free directory (the DDK's install path has spaces). _stage_link260 copies it out to one.
+_LINK260_DIR   = "binaries/media/Microsoft Windows 95 DDK/MSVC20"
+_LINK260_FILES = ("LINK.EXE", "DBI.DLL", "LINK.ERR", "IMAGEHLP.DLL")
 
 # standard DDK VxD segment map (verbatim from BASE/SAMPLES/*/*.DEF -- this is what boots VMD from
 # source); LINK ignores segments absent from the object, so one template serves every VxD.
@@ -207,6 +218,41 @@ def _link_vxd(obj_bytes, def_text, root, work):
                            cwd=work, capture_output=True, text=True, timeout=120)
     except Exception as e:
         return None, "link exec failed: %s" % e
+    vp = os.path.join(work, "m.vxd")
+    out = (p.stdout or "") + (p.stderr or "")
+    return (open(vp, "rb").read() if os.path.exists(vp) else None), out
+
+
+def _stage_link260(root):
+    """Copy LINK 2.60 + its DLLs into a cached SPACE-FREE dir (its /VXD self-spawn cannot handle spaces
+    in its own path) and return the staged LINK.EXE path."""
+    src = os.path.join(root, _LINK260_DIR.replace("/", os.sep))
+    dst = os.path.join(tempfile.gettempdir(), "cb_link260")
+    os.makedirs(dst, exist_ok=True)
+    for f in _LINK260_FILES:
+        d = os.path.join(dst, f)
+        if not os.path.exists(d):
+            shutil.copy(os.path.join(src, f), d)
+    return os.path.join(dst, "LINK.EXE")
+
+
+def link_vxd_260(obj_bytes, def_text, root, work, align=0x1000):
+    """Link one COFF object into a loadable .vxd with the DDK's LINK 2.60 /VXD. Unlike _link_vxd (2.50)
+    the device id (LE 0xc0) is stamped from the exported <NAME>_DDB and the page map is identity, so the
+    output needs no container patching. `align` is the LE page size (/ALIGN); 0x1000 = the 4096-byte pages
+    VKD ships with (LINK 2.60 defaults to 512, which is also valid and used by other shipping VxDs)."""
+    link = _stage_link260(root)
+    with open(os.path.join(work, "m.obj"), "wb") as f:
+        f.write(obj_bytes)
+    with open(os.path.join(work, "m.def"), "w") as f:
+        f.write(def_text)
+    env = dict(os.environ)
+    env["PATH"] = os.path.dirname(link) + os.pathsep + env.get("PATH", "")   # self-spawn + DLLs
+    args = [link, "/VXD", "/NOD", "/ALIGN:0x%x" % align, "/OUT:m.vxd", "/DEF:m.def", "m.obj"]
+    try:
+        p = subprocess.run(args, cwd=work, capture_output=True, text=True, timeout=120, env=env)
+    except Exception as e:
+        return None, "link260 exec failed: %s" % e
     vp = os.path.join(work, "m.vxd")
     out = (p.stdout or "") + (p.stderr or "")
     return (open(vp, "rb").read() if os.path.exists(vp) else None), out
