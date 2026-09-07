@@ -171,14 +171,20 @@ def realseg_source(D, v, names, tail0):
             # the DDB struct + tables are the whole object -- splits cleanly at the tail start (~45 modules
             # whose code lives in other objects). Guarding on an EndProc after L1 avoids max() over an empty
             # sequence and never duplicates an EndProc that precedes the tail.
+            begins_after = any(res[k].strip().startswith("BeginProc") for k in range(L1, lc_close))
             ends_after = [k for k in range(L1, lc_close) if res[k].strip().startswith("EndProc")]
-            if ends_after:
-                L2 = max(ends_after)
-                head, body = res[:L1] + [res[L2], "VxD_LOCKED_CODE_ENDS"], res[L1:L2]
+            if begins_after:
+                pass    # CODE resumes past the DDB in the DDB object (service handlers in obj1, e.g. NDIS):
+                #  splitting at the tail would straddle a proc across the _LTEXT/_LDATA boundary (its
+                #  BeginProc in _LDATA, EndProc in _LTEXT -> A1010). Leave the whole object in _LTEXT.
             else:
-                head, body = res[:L1] + ["VxD_LOCKED_CODE_ENDS"], res[L1:lc_close]
-            res = (head + ["VxD_LOCKED_DATA_SEG", "   ASSUME cs:FLAT, ds:FLAT, es:FLAT, ss:FLAT"]
-                   + body + ["VxD_LOCKED_DATA_ENDS"] + res[lc_close + 1:])
+                if ends_after:
+                    L2 = max(ends_after)
+                    head, body = res[:L1] + [res[L2], "VxD_LOCKED_CODE_ENDS"], res[L1:L2]
+                else:
+                    head, body = res[:L1] + ["VxD_LOCKED_CODE_ENDS"], res[L1:lc_close]
+                res = (head + ["VxD_LOCKED_DATA_SEG", "   ASSUME cs:FLAT, ds:FLAT, es:FLAT, ss:FLAT"]
+                       + body + ["VxD_LOCKED_DATA_ENDS"] + res[lc_close + 1:])
     # 4) predeclare the custom segments in the _FLAT model, right after the includes
     decls = []
     for idx in sorted(segs):
