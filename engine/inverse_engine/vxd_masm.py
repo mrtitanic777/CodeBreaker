@@ -306,6 +306,9 @@ def find_nasm():
     config.json `nasm`, then the NASM_MASM env var, then `nasm-masm`/`nasm` on PATH. Probed once
     (accepts --masm, emits COFF, keeps public case) and cached. See docs/NATIVE_ASSEMBLER.md."""
     global _nasm_cache
+    if os.environ.get("CB_FORCE_ML"):        # force the authentic DDK ML.EXE (DOSBox), not native nasm
+        _nasm_cache = ""
+        return None
     if _nasm_cache is not None:
         return _nasm_cache or None
     cands = []
