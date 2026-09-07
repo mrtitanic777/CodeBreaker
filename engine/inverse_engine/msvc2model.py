@@ -135,6 +135,49 @@ def _flatten_chain(E):
     return op, leaves
 
 
+def _emit_fastcall(node):
+    """__fastcall / __thiscall register-convention leaf: arg1->ecx, arg2->edx (>2 args
+    decline -- arg3+ would spill to the stack), result in eax, no frame, `ret` (c3).
+    Covers arg / deref / index(const) / a+b (lea edx+ecx) / (*arg1)<op>arg2."""
+    nargs, E = node["nargs"], node["expr"]
+    if nargs > 2:
+        return None
+    kind = E[0]
+    ret = bytes([0xC3])
+    if kind == "arg":                                        # mov eax,ecx / mov eax,edx
+        if E[1] == 1:
+            return bytes([0x8B, 0xC1]) + ret
+        if E[1] == 2:
+            return bytes([0x8B, 0xC2]) + ret
+        return None
+    if kind == "deref":                                      # mov eax,[ecx] / [edx]
+        a = E[1]
+        if a[0] != "arg" or a[1] not in (1, 2):
+            return None
+        return bytes([0x8B, 0x01 if a[1] == 1 else 0x02]) + ret
+    if kind == "index":                                      # mov eax,[ecx+d] / [edx+d]
+        p, idx = E[1], E[2]
+        if p[0] != "arg" or p[1] not in (1, 2) or idx[0] != "const":
+            return None
+        d = idx[1] * 4
+        if d == 0:
+            mm = bytes([0x01 if p[1] == 1 else 0x02])
+        elif 0 < d < 0x80:
+            mm = bytes([0x41 if p[1] == 1 else 0x42, d])
+        else:
+            return None
+        return bytes([0x8B]) + mm + ret
+    if kind == "binop":
+        op, L, R = E[1], E[2], E[3]
+        if op == "+" and L == ("arg", 1) and R == ("arg", 2):        # a+b -> lea eax,[edx+ecx]
+            return bytes([0x8D, 0x04, 0x0A]) + ret
+        if (op in _MEMOP and L[0] == "deref" and L[1] == ("arg", 1)  # (*arg1) <op> arg2
+                and R == ("arg", 2)):
+            return bytes([0x8B, 0x01, _MEMOP[op], 0xC2]) + ret       # mov eax,[ecx]; op eax,edx
+        return None
+    return None
+
+
 def _emit_fpo(node):
     """Frameless (/Oy, frame-pointer omission) leaf shapes: NO frame, args read
     esp-relative at [esp + 4k] (SIB 44 24), and the body is otherwise identical to
@@ -230,6 +273,8 @@ def emit(node):
         nargs, E = node["nargs"], node["expr"]
     except (KeyError, TypeError):
         return None
+    if node.get("cc") == "fastcall":
+        return _emit_fastcall(node)
     if node.get("fpo"):
         return _emit_fpo(node)
     kind = E[0]
@@ -478,6 +523,8 @@ def to_c(node):
     _ptr_args(E, ptr)
     params = "void" if nargs == 0 else ", ".join(
         "int%s arg%d" % ("*" if (i + 1) in ptr else "", i + 1) for i in range(nargs))
+    if node.get("cc") == "fastcall":                 # register-convention leaf (arg/deref/index/binop)
+        return "int __fastcall f(%s) { return %s; }" % (params, _c_expr(E))
     if E[0] == "store":                              # void: *argP = value;
         return "void __stdcall f(%s) { *arg%d = %s; }" % (params, E[1][1], _c_expr(E[2]))
     if E[0] == "call":                               # extern g(...); return g(args);

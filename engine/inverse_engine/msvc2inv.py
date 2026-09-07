@@ -77,6 +77,53 @@ def _leaf_ops(ins):
     return out
 
 
+def _maxarg(e):
+    """Largest arg index referenced in an expr (register args carry no ret-imm, so nargs must be
+    inferred from usage: ecx=arg1, edx=arg2)."""
+    if e[0] == "arg":
+        return e[1]
+    if e[0] in ("deref", "index"):
+        return _maxarg(e[1])
+    if e[0] == "binop":
+        return max(_maxarg(e[2]), _maxarg(e[3]))
+    return 0
+
+
+def _fastcall_candidates(ops, _nargs):
+    """Register-convention (__fastcall/__thiscall) leaf shapes: ecx=arg1, edx=arg2, no frame,
+    result in eax.  Yields nodes tagged cc='fastcall' (emit-verified by the caller)."""
+    REG = {"ecx": 1, "edx": 2}
+    if not ops:
+        return
+
+    def fc(expr):
+        return {"nargs": _maxarg(expr), "cc": "fastcall", "expr": expr}
+
+    m0, o0 = ops[0]
+    if len(ops) == 1 and m0 == "mov" and o0 in ("eax, ecx", "eax, edx"):     # return arg1/arg2
+        yield fc(("arg", REG[o0.split(", ")[1]]))
+        return
+    if len(ops) == 1 and m0 == "lea" and o0 == "eax, [edx + ecx]":           # arg1 + arg2
+        yield fc(("binop", "+", ("arg", 1), ("arg", 2)))
+        return
+    mm = re.match(r"eax, (?:dword ptr )?\[(ecx|edx)(?: \+ (0x[0-9a-f]+|\d+))?\]$", o0) if m0 == "mov" else None
+    if mm:
+        k = REG[mm.group(1)]
+        d = int(mm.group(2), 0) if mm.group(2) else 0
+        if len(ops) == 1:
+            if d == 0:                                                       # *arg
+                yield fc(("deref", ("arg", k)))
+            if d % 4 == 0:                                                   # arg[k]
+                yield fc(("index", ("arg", k), ("const", d // 4)))
+            return
+        if len(ops) == 2 and d == 0 and k == 1:                             # (*arg1) <op> arg2
+            m1, o1 = ops[1]
+            if m1 in _ALU_MN and o1 == "eax, edx":
+                yield fc(("binop", _ALU_MN[m1], ("deref", ("arg", 1)), ("arg", 2)))
+            return
+    return
+
+
 def _candidates(code):
     """Yield plausible (nargs, expr) nodes for the byte sequence -- each is emit-verified by the
     caller, so over-generation is safe. Mirrors the standard-/Oy- msvc2model templates."""
@@ -89,6 +136,14 @@ def _candidates(code):
     def loadk(reg):
         return next((_argk(o) for m, o in ops if m == "mov" and o.startswith(reg + ",")
                      and _argk(o) is not None), None)
+
+    # register-convention (__fastcall/__thiscall): first compute reads ecx/edx as an incoming
+    # register arg (not loaded from the stack) -- a distinct convention, detect and route.
+    if (ops and ops[0][0] in ("mov", "lea") and ops[0][1].startswith("eax,")
+            and re.search(r"\b(ecx|edx)\b", ops[0][1])
+            and "esp" not in ops[0][1] and "ebp" not in ops[0][1]):
+        yield from _fastcall_candidates(ops, nargs)
+        return
 
     # --- constants (no frame): xor eax,eax / push imm;pop eax / mov eax,imm32 ---
     if len(ops) == 1 and ops[0] == ("xor", "eax, eax"):
