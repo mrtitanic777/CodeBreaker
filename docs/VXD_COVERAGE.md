@@ -15,7 +15,8 @@ and the verification status of each class. Companion to [`VXD_FROM_SOURCE.md`](V
 | Modules fully byte-exact | **222 / 222** |
 | Objects needing whole-object byte preservation | **0** |
 | Idiomatic sources that assemble through DDK `ML` | 222 / 222 |
-| From-source loadable + booted (authentic toolchain) | 1 (VKD; capability, §6) |
+| From-source loadable build (authentic toolchain, correct device id + identity map) | **222 / 222** |
+| From-source loadable **+ booted** | 1 (VKD; §6) |
 
 Every reconstructed driver has two coordinated views in `Windows95/vmm32/<name>/`: the **idiomatic**
 whole-driver source (`<name>.asm`, DDK macros) and the **byte-exact** per-object source
@@ -121,9 +122,18 @@ recovered source — through the authentic period toolchain — is a separate re
 source with `ML` + the DDK's `LINK 2.60.5046` + `RC` + `ADRC2VXD`, with no reimplementation and no bytes
 copied from the original, it boots Windows 95 to the logon with a working keyboard.
 
-The from-source loadable path applies in principle to any driver in the corpus; it has been carried through
-to a boot for VKD specifically. Extending it driver-by-driver is the open work item. The distinction is
-deliberate: **all 222 are byte-exact verified at the object level; one is boot-verified from source.**
+The from-source loadable path now covers the **entire corpus**: **all 222 modules rebuild from recovered
+source** through `ML` + `LINK 2.60.5046` + `RC` + `ADRC2VXD` — assembling, linking, and embedding the
+version resource with **no reimplementation and no bytes copied from the original**. Every one of the 222
+links with the **correct device id** stamped from its own DDB and an **identity page map**. VKD is
+additionally **boot-verified**: it carries all the way to the Windows 95 logon with a working keyboard.
+
+The distinction that remains is boot coverage: **all 222 are byte-exact verified at the object level and
+build from source with the authentic toolchain; one (VKD) is boot-verified from source.** Reaching the
+complete 222 required, beyond VKD's path, resolving every construct the generalized emit meets across the
+corpus — pure-data DDB objects, BSS/data-only objects, reserved-word and NUL/duplicate segment tags,
+out-of-bounds fixup targets, mid-instruction and macro-absorbed (service-table) relocation targets, and
+DDB detection for drivers whose DDK version stamp falls outside the common set.
 
 ---
 
