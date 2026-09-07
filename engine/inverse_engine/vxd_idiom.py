@@ -483,8 +483,9 @@ def _db_split_labels(code, a, b, labels):
     for off in sorted(k for k in labels if a <= k < b):
         if off > run:
             out.append(_db(code[run:off]))
-        out.append("%s label byte" % labels[off])
-        run = off
+        out.append("%s label near" % labels[off])   # `near' (a code address) not `byte': a branch target
+        run = off                                     #  needs a near label (`je <byte>' -> A2024); `dd
+        #  offset' and data pointers accept a near label too. Emits no bytes, so byte-exact is unchanged.
     if run < b:
         out.append(_db(code[run:b]))
     return out
