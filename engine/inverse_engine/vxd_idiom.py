@@ -550,12 +550,14 @@ def emit_idiomatic(D, loadable=False):
             if f["kind"] != "internal" or f.get("target") is None:
                 continue
             tgt = (f["obj"], f["target"])
-            if tgt in D.labels:
-                continue
-            lab = "loc_%d_%04X" % tgt
-            D.labels[tgt] = lab
-            if tgt in interior_of:
-                force_lbl[tgt] = lab
+            lab = D.labels.get(tgt) or ("loc_%d_%04X" % tgt)
+            D.labels.setdefault(tgt, lab)
+            if tgt in interior_of:            # target lands MID-INSTRUCTION -> force its instruction to raw
+                force_lbl[tgt] = lab          #  db so the label sits at the exact byte. Do this even when
+                #  _label_fixup_targets already assigned the label (a misdecoded pointer table decodes run-
+                #  to-run into different instruction boundaries -- PYTHONHASHSEED -- so a target skipped as a
+                #  `data byte' there can be mid-instruction here; without the split the `dd offset loc_..' is
+                #  undefined. Idempotent: a start/data target is untouched.
     # base set of offsets that will carry an emitted label -- a label at an instruction start, or on a
     # data byte, but NOT one landing mid-instruction. control_dispatch needs it to only reference
     # handlers we actually emit; the branch gate below needs it minus the macro-absorbed regions.
