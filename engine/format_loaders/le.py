@@ -133,24 +133,49 @@ class LEFile:
         signature: a dword-aligned DDK version (0x03xx/0x04xx) followed by device id, a
         major/minor byte pair, flags, and an 8-byte device name of printable ASCII. Returns the
         decoded DDB or None. The name is what `Declare_Virtual_Device <name>` emits."""
-        for obj in s.objects:
+        def decode(obj, b, off):
+            name = b[off + 8:off + 16]
+            if not name or not all(32 <= c < 127 for c in name):
+                return None
+            if not (name[0:1].isalpha() or name[0:1].isdigit()):
+                return None
+            return {"obj": obj["idx"], "rva": off - 4,
+                    "version": b[off] | (b[off + 1] << 8),
+                    "device_id": b[off + 2] | (b[off + 3] << 8),
+                    "major": b[off + 4], "minor": b[off + 5],
+                    "flags": b[off + 6] | (b[off + 7] << 8),
+                    "name": name.rstrip(b" \x00").decode("latin1", "replace"),
+                    "init_order": struct.unpack_from("<I", b, off + 16)[0],
+                    "control_proc": struct.unpack_from("<I", b, off + 20)[0]}
+        for obj in s.objects:                                  # strict DDK version stamps -- the common case
             b = s.object_bytes(obj)
             for off in range(0, len(b) - 26, 4):
-                ver = b[off] | (b[off + 1] << 8)
-                if ver not in (0x030a, 0x0400, 0x040a, 0x0400):   # DDK version stamps
+                if (b[off] | (b[off + 1] << 8)) not in (0x030a, 0x0400, 0x040a):
                     continue
-                name = b[off + 8:off + 16]
-                if not name or not all(32 <= c < 127 for c in name):
-                    continue
-                if not (name[0:1].isalpha() or name[0:1].isdigit()):
-                    continue
-                devid = b[off + 2] | (b[off + 3] << 8)
-                init_order = struct.unpack_from("<I", b, off + 16)[0]
-                ctrl = struct.unpack_from("<I", b, off + 20)[0]
-                return {"obj": obj["idx"], "rva": off - 4, "version": ver, "device_id": devid,
-                        "major": b[off + 4], "minor": b[off + 5], "flags": b[off + 6] | (b[off + 7] << 8),
-                        "name": name.rstrip(b" \x00").decode("latin1", "replace"),
-                        "init_order": init_order, "control_proc": ctrl}
+                d = decode(obj, b, off)
+                if d:
+                    return d
+        # Fallback: some VxDs stamp a DDK version outside the common set (0x0300 DSVXD,
+        # 0x030b DECCORE/VNetSup). Accept any 0x03xx/0x04xx stamp, but require the candidate's
+        # device id to equal the one in the LE header (+0xC0) -- this both broadens the version
+        # match and rejects a stray version-looking dword (deccore has a 0x03d0/name-like blob
+        # whose device id does not match). Runs only when the strict scan found nothing.
+        try:
+            hdr_dev = struct.unpack_from("<H", s.d, s.lfa + 0xC0)[0]
+        except Exception:
+            hdr_dev = 0
+        if hdr_dev:
+            for obj in s.objects:
+                b = s.object_bytes(obj)
+                for off in range(0, len(b) - 26, 4):
+                    ver = b[off] | (b[off + 1] << 8)
+                    if (ver >> 8) not in (3, 4):
+                        continue
+                    if (b[off + 2] | (b[off + 3] << 8)) != hdr_dev:
+                        continue
+                    d = decode(obj, b, off)
+                    if d:
+                        return d
         return None
 
 
