@@ -58,6 +58,20 @@ _RC_DIR  = "binaries/toolchains/period/compilers/msvc-1.52c/BIN"       # RC 3.11
 _ADRC    = "binaries/media/Microsoft Windows 95 DDK/BIN/ADRC2VXD.EXE"  # DDK version-resource embedder
 _INC16   = "binaries/media/Microsoft Windows 95 DDK/INC16"             # version.h / common.ver / ver.h
 
+# MASM reserved words a recovered 4-char segment tag can collide with (e.g. dosmgr's `LOCK' segment ->
+# `LOCK SEGMENT' -> A2008).  Rename the SEGMENT to a safe alias; the CLASS ('<tag>CODE') is unchanged, so
+# the object-table 4-char tag (from the class, truncated) still matches the oracle.
+_MASM_RESERVED = {"LOCK", "REP", "REPE", "REPZ", "REPNE", "REPNZ", "REPT", "AND", "OR", "XOR", "NOT",
+                  "SHL", "SHR", "MOD", "EQ", "NE", "LT", "GT", "LE", "GE", "BYTE", "WORD", "DWORD",
+                  "NEAR", "FAR", "PTR", "OFFSET", "SEG", "PROC", "ENDP", "IF", "ELSE", "ENDIF", "END",
+                  "SIZE", "LENGTH", "TYPE", "THIS", "SHORT", "HIGH", "LOW", "GROUP", "ASSUME", "PUBLIC"}
+
+
+def _seg_name(tag):
+    """The MASM SEGMENT name for a 4-char class tag: the tag itself, or a safe alias when it is a reserved
+    word.  Only the segment NAME changes; the class stays '<tag>CODE' so the object tag is preserved."""
+    return ("_" + tag) if tag.upper() in _MASM_RESERVED else tag
+
 
 def object_names(v):
     """The 4-char segment class tag stored in each LE object-table entry's reserved field (offset 20).
@@ -104,7 +118,7 @@ def realseg_source(D, v, names, tail0):
         nm = names[idx - 1]
         if nm in STD:
             return STD[nm] + "_SEG", STD[nm] + "_ENDS"
-        return "%s SEGMENT" % nm, "%s ENDS" % nm
+        return "%s SEGMENT" % _seg_name(nm), "%s ENDS" % _seg_name(nm)
 
     lines = vxd_idiom.emit_idiomatic(D, loadable=True).split("\r\n")
     # 1) drop the synthetic-VSEG predeclarations
@@ -133,14 +147,23 @@ def realseg_source(D, v, names, tail0):
         L1 = next((k for k in range(lc_open + 1, lc_close)
                    if (m := lab.match(res[k].strip())) and int(m.group(1), 16) >= tail0), None)
         if L1 is not None:
-            L2 = max(k for k in range(lc_open + 1, lc_close) if res[k].strip().startswith("EndProc"))
-            res = (res[:L1] + [res[L2], "VxD_LOCKED_CODE_ENDS", "VxD_LOCKED_DATA_SEG",
-                               "   ASSUME cs:FLAT, ds:FLAT, es:FLAT, ss:FLAT"]
-                   + res[L1:L2] + ["VxD_LOCKED_DATA_ENDS"] + res[lc_close + 1:])
+            # A proc whose body was over-read PAST the tail start keeps its EndProc in _LTEXT and moves the
+            # straddling body to _LDATA (VKD). A data-only DDB object -- no proc at/after the tail start,
+            # the DDB struct + tables are the whole object -- splits cleanly at the tail start (~45 modules
+            # whose code lives in other objects). Guarding on an EndProc after L1 avoids max() over an empty
+            # sequence and never duplicates an EndProc that precedes the tail.
+            ends_after = [k for k in range(L1, lc_close) if res[k].strip().startswith("EndProc")]
+            if ends_after:
+                L2 = max(ends_after)
+                head, body = res[:L1] + [res[L2], "VxD_LOCKED_CODE_ENDS"], res[L1:L2]
+            else:
+                head, body = res[:L1] + ["VxD_LOCKED_CODE_ENDS"], res[L1:lc_close]
+            res = (head + ["VxD_LOCKED_DATA_SEG", "   ASSUME cs:FLAT, ds:FLAT, es:FLAT, ss:FLAT"]
+                   + body + ["VxD_LOCKED_DATA_ENDS"] + res[lc_close + 1:])
     # 4) predeclare the custom segments in the _FLAT model, right after the includes
     decls = []
     for nm in custom:
-        decls += ["%s SEGMENT DWORD PUBLIC _FLAT '%sCODE'" % (nm, nm), "%s ENDS" % nm]
+        decls += ["%s SEGMENT DWORD PUBLIC _FLAT '%sCODE'" % (_seg_name(nm), nm), "%s ENDS" % _seg_name(nm)]
     j = 0
     while j < len(res) and not res[j].startswith("include"):
         j += 1
@@ -158,7 +181,7 @@ def realseg_def(name, names):
     for idx, nm in enumerate(names, 1):
         if idx == 1:                                  # the DDB object is the LCODE object (_LTEXT/_LDATA)
             continue
-        seg.append("    %-8s CLASS '%sCODE' PRELOAD NONDISCARDABLE" % (nm, nm))
+        seg.append("    %-8s CLASS '%sCODE' PRELOAD NONDISCARDABLE" % (_seg_name(nm), nm))
     return ("VXD %s\r\nDESCRIPTION '%s reconstructed from source'\r\n\r\nSEGMENTS\r\n%s\r\n\r\n"
             "EXPORTS\r\n        %s_DDB @1\r\n" % (name, name, "\r\n".join(seg), name))
 
@@ -232,6 +255,8 @@ def embed_version_resource(vxd_bytes, D, root):
     lfa = D.v.lfa
     woff = struct.unpack_from("<I", D.v.d, lfa + 0xb8)[0]    # absolute file offset of the oracle resource
     wlen = struct.unpack_from("<I", D.v.d, lfa + 0xbc)[0]
+    if not wlen:                                             # ~1/7 of VxDs ship no version resource
+        return vxd_bytes, "(no version resource in oracle; skipped)"
     rc_text = version_rc(D, D.v.d[woff:woff + wlen])
     tools, inc = _stage_res_tools(root)
     bat = ["set INCLUDE=e:\\",

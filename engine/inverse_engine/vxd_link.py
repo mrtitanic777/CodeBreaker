@@ -338,6 +338,55 @@ def _assemble_idiomatic(asm_text, root):
     return out.get("m.obj"), log, work
 
 
+def _stage_inc32(root):
+    """Stage the DDK INC32 headers into the toolchain dir (shared by the idiomatic assemblers)."""
+    import glob
+    tc = vxd_masm._stage_toolchain(root)
+    incdst = os.path.join(tc, "inc"); os.makedirs(incdst, exist_ok=True)
+    incsrc = os.path.join(root, "binaries", "media", "Microsoft Windows 95 DDK", "INC32")
+    for f in glob.glob(incsrc + "/*.INC"):
+        d = os.path.join(incdst, os.path.basename(f))
+        if not os.path.exists(d):
+            shutil.copy(f, d)
+    return tc
+
+
+def assemble_idiomatic_batch(asm_list, root, budget=200000, maxfiles=24):
+    """Assemble many idiomatic DDK-macro sources to COFF in as FEW DOSBox/ML sessions as possible --
+    run_dos takes a LIST of commands, so N `ml.exe` calls share one BLD.BAT. Sources are grouped so each
+    session stays under `budget` chars and `maxfiles` files (a source over budget runs solo). Returns
+    [(obj_bytes|None, log)] aligned with asm_list. The idiomatic form needs ML (its VMM.INC macros are
+    beyond nasm), so this is the DOSBox-batching that keeps a corpus build from opening ML per module."""
+    tc = _stage_inc32(root)
+    results = [(None, "")] * len(asm_list)
+    batches, cur, cl = [], [], 0
+    for i in sorted(range(len(asm_list)), key=lambda k: len(asm_list[k])):
+        sz = len(asm_list[i])
+        if sz > budget:
+            batches.append([i]); continue
+        if cur and (cl + sz > budget or len(cur) >= maxfiles):
+            batches.append(cur); cur, cl = [], 0
+        cur.append(i); cl += sz
+    if cur:
+        batches.append(cur)
+    for batch in batches:
+        files, bat, arts = {}, [], []
+        for j, idx in enumerate(batch):
+            fn = "m%d" % j
+            files[fn + ".asm"] = asm_list[idx]
+            bat.append(r"c:\ml.exe -coff -c -DBLD_COFF -DIS_32 -DMASM6 -Ic:\inc -Fo%s.obj %s.asm > %s.txt"
+                       % (fn, fn, fn))
+            arts += [fn + ".obj", fn + ".txt"]
+        tot = sum(len(asm_list[i]) for i in batch)
+        _, out, work = run_dos({"c": tc}, bat, arts, files=files, timeout=min(600, 120 + tot // 300))
+        for j, idx in enumerate(batch):
+            log = out.get("m%d.txt" % j, b"")
+            results[idx] = (out.get("m%d.obj" % j), log.decode("latin1", "replace") if log else "")
+        if work:
+            shutil.rmtree(work, ignore_errors=True)
+    return results
+
+
 def _source_code_into_container(D, v, fs_bytes, min_score=0.5):
     """Overlay the assembled-from-source CODE (from the LINK output `fs_bytes`) onto the recovered
     object bytes `D.code`, then emit through the byte-exact LE writer (vxd_le_writer.build_le), which

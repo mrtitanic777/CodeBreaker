@@ -95,7 +95,7 @@ def ddb_macro(D, db, loadable=False):
             if pm or ref:
                 args.append(pm or "")
                 if ref:
-                    args.append("OFFSET32 " + ref)
+                    args.append(ref)   # bare label: the macro wraps it (Ref_Data_Offset EQU <OFFSET32 ..>)
     return "Declare_Virtual_Device " + ", ".join(args)
 
 
@@ -707,6 +707,17 @@ def emit_idiomatic(D, loadable=False):
             a += row["size"]
         if cur_proc:
             L.append("EndProc %s" % cur_proc)
+        vs = o["vsize"]                                     # BSS tail: vsize beyond the physical bytes is
+        k = n                                              #  uninitialised data. Reserve it and emit any
+        while k < vs:                                      #  label there -- a data-only object may be purely
+            lb = D.labels.get((oi, k))                     #  a relocation target (a DDB/service/jump-table
+            if lb:                                         #  pointer -> loc_<obj>_0000), whose label must be
+                L.append("%s:" % lb)                       #  DEFINED or the `dd offset ..' is undefined and
+            nk = k + 1                                     #  the segment links empty (combuff's 4-byte PDATA).
+            while nk < vs and not D.labels.get((oi, nk)):
+                nk += 1
+            L.append("        db %d dup (0)" % (nk - k))
+            k = nk
         L.append("%s ENDS" % segn if loadable else "%s_ENDS" % segm)
         L.append("")
     L.append("        end")
