@@ -375,10 +375,10 @@ def _reloc_mask(code):
     for ins in _MD.disasm(bytes(code), 0):
         b, a = ins.bytes, ins.address
         if ins.mnemonic in ("call", "jmp"):
-            if ins.op_str.startswith("0x") and len(b) == 5:       # rel32
-                m.update(range(a + 1, a + 5))
-            elif "]" in ins.op_str and len(b) >= 6:               # indirect [disp32] ff15/ff25
-                m.update(range(a + len(b) - 4, a + len(b)))
+            if b[:1] in (b"\xe8", b"\xe9") and len(b) == 5:       # rel32 call/jmp (detect by opcode:
+                m.update(range(a + 1, a + 5))                     # a 0-placeholder target prints as
+            elif "]" in ins.op_str and len(b) >= 6:               # decimal '5', not '0x5', so key off e8/e9)
+                m.update(range(a + len(b) - 4, a + len(b)))       # indirect [disp32] ff15/ff25
         elif b[:1] in (b"\xa1", b"\xa3"):                         # mov eax,[disp32] / mov [disp32],eax
             m.update(range(a + 1, a + 5))
         elif b[:2] == b"\xc7\x05":                                # mov dword[disp32], imm32
