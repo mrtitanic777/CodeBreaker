@@ -105,6 +105,11 @@ def _emit(sg, start, end, funcs=None, seg_i=1, force_db=(), data_off=()):
     if funcs is None:
         funcs = sorted(s for s in sg.funcs if start <= s < end)
     funcs = sorted(funcs)
+    if not funcs:
+        # a segment the carve found no function starts in (e.g. code that does
+        # not open with `push bp'): treat the whole range as one function so it
+        # is emitted rather than dropped to an empty segment (0 _TEXT).
+        funcs = [start]
     fstart = set(funcs)
     fend = {}
     for i, s in enumerate(funcs):
