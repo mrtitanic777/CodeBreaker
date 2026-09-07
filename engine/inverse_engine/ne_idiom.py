@@ -20,6 +20,7 @@ import re
 import sys
 import glob
 import shutil
+import bisect
 
 from engine.disasm_engine import trace
 from engine.recon_engine import asmrecon
@@ -111,6 +112,7 @@ def _emit(sg, start, end, funcs=None, seg_i=1, force_db=(), data_off=()):
 
     rows = [(o, a) for o, a in sg.rows if start <= o < end]
     off2idx = {o: i for i, (o, _) in enumerate(rows)}
+    row_starts = sorted(o for o, _ in rows)
     code = sg.code
 
     # --- pass 1: collect every direct-branch target, classify in-range vs extern
@@ -142,6 +144,8 @@ def _emit(sg, start, end, funcs=None, seg_i=1, force_db=(), data_off=()):
     body = []
     unresolved = set()
     local_labels = {t for t, k in targets.items() if k == "local"}
+    if funcs and funcs[0] > start:            # range opened mid-function: db the lead-in
+        asmrecon._emit_db(body, code[start:funcs[0]], start, "data/lead-in")
     for s in funcs:
         e = fend[s]
         name = _procname(sg, s)
@@ -152,20 +156,25 @@ def _emit(sg, start, end, funcs=None, seg_i=1, force_db=(), data_off=()):
                 far = True
         body.append("cProc   %s,<%s>" % (name, "FAR" if far else "NEAR"))
         body.append("cBegin  nogen")
-        i = off2idx.get(s)
+        # Walk EVERY byte of [s,e): a covered offset emits its instruction (live,
+        # symbolic, or db), an uncovered gap is db'd up to the next covered offset
+        # -- so no byte is ever dropped even where objdump mis-decodes a run.
         pos = s
-        while pos < e and i is not None and i < len(rows):
-            off, a = rows[i]
-            if off != pos:                     # uncovered bytes -> db
-                nxt = off
-                asmrecon._emit_db(body, code[pos:nxt], pos, "data")
+        while pos < e:
+            if pos in local_labels:
+                body.append("L_%04x:" % pos)
+            if pos not in off2idx:              # uncovered bytes -> db
+                j = bisect.bisect_right(row_starts, pos)
+                nxt = min(row_starts[j] if j < len(row_starts) else e, e)
+                if nxt <= pos:
+                    nxt = e
+                asmrecon._emit_db(body, code[pos:nxt], pos, "data/uncovered")
                 pos = nxt
                 continue
-            nxt = rows[i + 1][0] if i + 1 < len(rows) else e
-            nxt = min(nxt, e)
+            i = off2idx[pos]
+            off, a = rows[i]
+            nxt = min(rows[i + 1][0] if i + 1 < len(rows) else e, e)
             raw = code[off:nxt]
-            if off in local_labels:
-                body.append("L_%04x:" % off)
             op, tgt = _branch(a)
             far_ins = bool(raw) and raw[0] in (0x9A, 0xEA)
             if off in force_db or off in data_off or far_ins or "(bad)" in a or len(raw) > 8:
@@ -173,7 +182,6 @@ def _emit(sg, start, end, funcs=None, seg_i=1, force_db=(), data_off=()):
                 # pointer, or a run objdump collapsed -- emit the shipped bytes.
                 asmrecon._emit_db(body, raw, off, asmrecon.to_masm(a, lambda o: None))
                 pos = nxt
-                i += 1
                 continue
             emitted = None
             if op and tgt is not None:
@@ -193,7 +201,6 @@ def _emit(sg, start, end, funcs=None, seg_i=1, force_db=(), data_off=()):
             else:
                 body.append("        %-30s ; %04x" % (asmrecon.to_masm(a, lambda o: None), off))
             pos = nxt
-            i += 1
         body.append("cEnd    nogen")
         body.append("")
 
@@ -256,6 +263,16 @@ def reconcile_range(sg, start, end, funcs=None, root=".", max_passes=60):
     rows = sorted(o for o, _ in sg.rows if start <= o < end and o not in data_off)
     spans = {o: (rows[i + 1] if i + 1 < len(rows) else end)
              for i, o in enumerate(rows)}
+    funcs_list = sorted(f for f in (funcs if funcs is not None else sg.funcs)
+                        if start <= f < end)
+
+    def _func_of(absoff):
+        """The function range [s,e) containing absoff (for whole-function db)."""
+        j = bisect.bisect_right(funcs_list, absoff) - 1
+        if 0 <= j < len(funcs_list):
+            s = funcs_list[j]
+            return s, (funcs_list[j + 1] if j + 1 < len(funcs_list) else end)
+        return None
     err_re = re.compile(r"\((\d+)\)\s*:\s*(?:error|fatal)", re.I)
     off_re = re.compile(r";\s*([0-9a-f]{4})\b")
     force_db, errored, res, asm = set(), set(), None, ""
@@ -295,9 +312,21 @@ def reconcile_range(sg, start, end, funcs=None, root=".", max_passes=60):
             force_db |= new_len
             continue
         new_re = reencode - force_db          # phase 2: same-length re-encodes
-        if not new_re:
-            break
-        force_db |= new_re
+        if new_re:
+            force_db |= new_re
+            continue
+        # last resort: the listing can't localize the divergence (a mis-decoded
+        # region, e.g. an inline jump table objdump read as code). db the whole
+        # function containing the first diff -- pure db is byte-exact in a
+        # contiguous emission -- which re-aligns everything after it.
+        fd = res.get("first_diff")
+        fr = _func_of(start + fd) if fd is not None else None
+        if fr:
+            rr = {o for o in rows if fr[0] <= o < fr[1]}
+            if rr - force_db:
+                force_db |= rr
+                continue
+        break
     code_rows = [o for o in rows if o not in errored]
     return asm, res, force_db - errored, len(code_rows)
 
