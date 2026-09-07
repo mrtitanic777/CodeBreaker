@@ -69,6 +69,11 @@ def _ebp_rm(reg, off):
     return bytes([0x40 | (_R[reg] << 3) | 0x05, off & 0xFF])
 
 
+def _esp_rm(reg, off):
+    """ModRM+SIB for `<reg>,[esp+disp8]` (mod=01, rm=100=SIB, base+index=esp/none)."""
+    return bytes([0x40 | (_R[reg] << 3) | 0x04, 0x24, off & 0xFF])
+
+
 def _ld(reg, k):
     """mov <reg>,[ebp + arg k]  ->  8b /r  (eax:8b 45 ib, ecx:8b 4d ib)."""
     return bytes([0x8B]) + _ebp_rm(reg, _argoff(k))
@@ -130,12 +135,103 @@ def _flatten_chain(E):
     return op, leaves
 
 
+def _emit_fpo(node):
+    """Frameless (/Oy, frame-pointer omission) leaf shapes: NO frame, args read
+    esp-relative at [esp + 4k] (SIB 44 24), and the body is otherwise identical to
+    the framed form.  Covers the single-return non-call subset (arg / arg<op>{arg,
+    const} / chains / deref / index / unary / square); call/global/store frameless
+    are declined -- a push shifts esp and the arg offsets with it."""
+    nargs, E = node["nargs"], node["expr"]
+    kind = E[0]
+    ret = bytes([0xC3]) if nargs == 0 else bytes([0xC2]) + struct.pack("<H", 4 * nargs)
+
+    def ld(reg, k):
+        return bytes([0x8B]) + _esp_rm(reg, 4 * k)          # mov reg,[esp+4k]
+
+    def memop(op, reg, k):
+        if op == "*":
+            return bytes([0x0F, 0xAF]) + _esp_rm(reg, 4 * k)
+        return bytes([_MEMOP[op]]) + _esp_rm(reg, 4 * k)
+
+    if kind == "arg":
+        return ld("eax", E[1]) + ret
+    if kind == "unary":
+        uop, a = E[1], E[2]
+        if a[0] != "arg":
+            return None
+        if uop == "neg":
+            return ld("eax", a[1]) + bytes([0xF7, 0xD8]) + ret
+        if uop == "not":
+            return ld("eax", a[1]) + bytes([0xF7, 0xD0]) + ret
+        if uop == "lognot":
+            return bytes([0x33, 0xC0]) + bytes([0x39]) + _esp_rm("eax", 4 * a[1]) + bytes([0x0F, 0x94, 0xC0]) + ret
+        return None
+    if kind == "deref":
+        if E[1][0] != "arg":
+            return None
+        return ld("eax", E[1][1]) + bytes([0x8B, 0x00]) + ret
+    if kind == "index":
+        p, idx = E[1], E[2]
+        if p[0] != "arg":
+            return None
+        if idx[0] == "arg":
+            return ld("eax", idx[1]) + ld("ecx", p[1]) + bytes([0x8B, 0x04, 0x81]) + ret
+        if idx[0] == "const":
+            d = idx[1] * 4
+            if d == 0:
+                mem = bytes([0x8B, 0x00])
+            elif 0 < d < 0x80:
+                mem = bytes([0x8B, 0x40, d])
+            else:
+                return None
+            return ld("eax", p[1]) + mem + ret
+        return None
+    if kind == "binop":
+        op, L, R = E[1], E[2], E[3]
+        if op not in OPS:
+            return None
+        chain = _flatten_chain(E)
+        if chain and len(chain[1]) >= 3:
+            cop, lv = chain
+            if cop in ("*", "&", "|", "^"):
+                seq = ld("eax", lv[-1])
+                for k in reversed(lv[:-1]):
+                    seq += memop(cop, "eax", k)
+                return seq + ret
+            if cop == "-":
+                head, sub = lv[0], lv[1:]
+                seq = ld("eax", head)
+                for k in sub[1:] + sub[:1]:
+                    seq += memop("-", "eax", k)
+                return seq + ret
+            return None
+        if L[0] == "arg" and R[0] == "const":
+            ob = _op_const_bytes(op, R[1])
+            if ob is None:
+                return None
+            return ld("eax", L[1]) + ob + ret
+        if L[0] == "arg" and R[0] == "arg":
+            li, ri = L[1], R[1]
+            if op == "*" and li == ri:
+                return ld("eax", li) + bytes([0x0F, 0xAF, 0xC0]) + ret
+            if op == "+":
+                return ld("eax", ri) + ld("ecx", li) + bytes([0x03, 0xC1]) + ret
+            if op == "-":
+                return ld("eax", li) + memop("-", "eax", ri) + ret
+            return ld("eax", ri) + memop(op, "eax", li) + ret
+        return None
+    return None
+
+
 def emit(node):
-    """Forward model: construct -> exact MSVC-2.0 /O1 /Oy- bytes, or None if out of class."""
+    """Forward model: construct -> exact MSVC-2.0 bytes, or None if out of class.  A node with
+    "fpo":True is the frameless (/Oy) form; otherwise the standard /Oy- framed form."""
     try:
         nargs, E = node["nargs"], node["expr"]
     except (KeyError, TypeError):
         return None
+    if node.get("fpo"):
+        return _emit_fpo(node)
     kind = E[0]
     ret_n = bytes([0xC3]) if nargs == 0 else bytes([0xC2]) + struct.pack("<H", 4 * nargs)
 

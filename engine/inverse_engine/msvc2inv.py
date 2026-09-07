@@ -30,14 +30,15 @@ def _dis(code):
 
 
 def _argk(opstr):
-    """'dword ptr [ebp + 8]' / '[esp + 0xc]' -> arg index k (argoff(k) = 4 + 4k)."""
-    m = re.search(r"\[e[sb]p \+ (0x[0-9a-f]+|\d+)\]", opstr)
+    """arg index from a stack mem operand: framed `[ebp + 4 + 4k]`, or frameless (/Oy)
+    `[esp + 4k]` (arg1 at [esp+4]).  Base register disambiguates the two conventions."""
+    m = re.search(r"\[(e[sb]p) \+ (0x[0-9a-f]+|\d+)\]", opstr)
     if not m:
         return None
-    off = int(m.group(1), 0)
-    if off < 8 or (off - 4) % 4:
-        return None
-    return (off - 4) // 4
+    base, off = m.group(1), int(m.group(2), 0)
+    if base == "esp":                                # frameless: arg1 at [esp+4], argK at [esp+4K]
+        return off // 4 if (off >= 4 and off % 4 == 0) else None
+    return (off - 4) // 4 if (off >= 8 and (off - 4) % 4 == 0) else None   # framed: [ebp+4+4K]
 
 
 def _sconst(s):
@@ -388,19 +389,33 @@ def _reloc_mask(code):
     return m
 
 
+_FPO_KINDS = ("arg", "binop", "unary", "deref", "index")   # shapes whose bytes differ framed vs /Oy
+
+
+def _is_frameless(ins):
+    """True when the function has no `push ebp; mov ebp,esp` prologue (a /Oy leaf)."""
+    return not (len(ins) >= 2 and ins[0] == ("push", "ebp") and ins[1] == ("mov", "ebp, esp"))
+
+
 def invert(code, mask=None):
     """bytes -> {nargs, expr, c} byte-exact, or None if out of the modeled class. Relocation slots
     (call targets / global addrs) are auto-detected from each candidate and ignored, so this works
-    directly on real LINKED code; pass `mask` to override."""
+    directly on real LINKED code; pass `mask` to override.  Frameless (/Oy) leaves are recognised
+    too -- an arg-using node from a no-frame function is emitted in its frameless form."""
     code = bytes(code)
+    fpo = _is_frameless(_dis(code))
     for node in _candidates(code):
         try:
-            pred = M.emit(node)
+            n = node
+            if fpo and node["expr"] and node["expr"][0] in _FPO_KINDS:
+                n = dict(node)
+                n["fpo"] = True
+            pred = M.emit(n)
             if pred is None:
                 continue
             m = set(mask) if mask is not None else _reloc_mask(pred)
             if _match(pred, code, m):
-                return {"nargs": node["nargs"], "expr": node["expr"], "c": M.to_c(node)}
+                return {"nargs": n["nargs"], "expr": n["expr"], "c": M.to_c(n)}
         except Exception:
             continue
     return None
