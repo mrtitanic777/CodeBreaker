@@ -196,6 +196,37 @@ def _reconcile_one_pe(sg, sec_i, start, end, seg_mask, emitdir=None):
                 "err": repr(e)[:120], "live": 0, "total": 0, "db": 0}
 
 
+def recover_c_pe(module, emitdir=None, limit=None):
+    """C-inversion companion to the ASM reconcile (Track B): recover byte-exact C for the PE
+    module's leaf functions via the MSVC-2.0 model inverse (oracle_router.recover32), writing a
+    sec<i>_<off>.c beside each sec<i>_<off>.asm.  Returns (recovered, sampled).  Every emitted C
+    is byte-exact by construction (self-verified through msvc2model.emit); the rest are declined."""
+    import capstone
+    from engine.format_loaders.pe_trace import PeCarve
+    from engine.inverse_engine import oracle_router, msvc2cov
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
+    carve = PeCarve(module)
+    secbase = {va: i for i, (va, _d, _n) in enumerate(carve.sections, 1)}
+    rec = tot = 0
+    for s, f in sorted(carve.funcs.items()):
+        b = msvc2cov._leaf_bytes(md, carve, s, f["end"])
+        if not b or len(b) < 3:
+            continue
+        tot += 1
+        r = oracle_router.recover32(b)
+        if r.get("exact"):
+            rec += 1
+            if emitdir:
+                base, _ = carve._sec_of(s)
+                os.makedirs(emitdir, exist_ok=True)
+                open(os.path.join(emitdir, "sec%d_%05x.c" % (secbase.get(base, 0), s - base)),
+                     "w", newline="\r\n").write(
+                         "/* %s  (msvc2 byte-exact) */\n%s\n" % (f.get("name") or "sub_%x" % s, r["c"]))
+        if limit and tot >= limit:
+            break
+    return rec, tot
+
+
 def _record(sg, seg_i, start, end, asm, res, fdb, n, fmt, emitdir):
     """Turn a batched reconcile result into a ledger record, emitting the .asm for
     byte-exact functions (NE gets comment-only annotate labels; PE/LE stay raw)."""
