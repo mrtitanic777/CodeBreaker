@@ -22,9 +22,10 @@ def _setup():
     if cores._active_dir is None:
         cores.set_target(os.path.join(cb, "engine", "targets", "win95"))
     roots = ([os.path.join(os.environ["WT_DATA_ROOT"], "win95")] if os.environ.get("WT_DATA_ROOT") else [])
-    roots += [os.path.join(os.path.dirname(cb), "win95"), os.getcwd()]
+    roots += [os.path.join(cb, "binaries", "win95"), os.path.join(os.path.dirname(cb), "win95"), os.getcwd()]
     for r in roots:
-        if os.path.isdir(os.path.join(r, "src")) or os.path.isdir(os.path.join(r, "reconstructed")):
+        if os.path.isdir(os.path.join(r, "files")) or os.path.isdir(os.path.join(r, "src")) \
+                or os.path.isdir(os.path.join(r, "reconstructed")):
             os.chdir(r)
             break
 
@@ -63,12 +64,81 @@ def run(limit=2000, module=None, show=0):
     return inv, tot
 
 
+_CORE = ["kernel32.dll", "gdi32.dll", "user32.dll"]
+
+
+def _leaf_bytes(md, carve, s, end):
+    """Bytes of the function at `s` up to and including its first ret (or a bare
+    tail-jmp thunk), or None if it is not a short straight-line leaf."""
+    base, data = carve._sec_of(s)
+    if base is None:
+        return None
+    buf = bytes(data[s - base:min(end, base + len(data)) - base])
+    out = b""
+    for ins in md.disasm(buf, s):
+        out += ins.bytes
+        if ins.mnemonic in ("ret", "retn"):
+            return out
+        if ins.mnemonic == "jmp" and out == ins.bytes:      # tail-call thunk: return g()
+            return out
+        if len(out) > 80:
+            return None
+    return None
+
+
+def run_direct(modules=None, show=0):
+    """Coverage by carving the SHIPPED PE modules directly (no pre-generated corpus needed):
+    isolate each leaf function and count msvc2inv byte-exact recoveries. This is the honest
+    self-contained baseline for the modeled class."""
+    _setup()
+    import capstone
+    from engine.format_loaders.pe_trace import PeCarve
+    from engine.inverse_engine import msvc2inv
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
+    tot = inv = 0
+    shapes = Counter()
+    shown = 0
+    for mod in (modules or _CORE):
+        try:
+            carve = PeCarve(mod)
+        except Exception as e:
+            print("  SKIP %s (%r)" % (mod, e))
+            continue
+        mtot = minv = 0
+        for s, f in sorted(carve.funcs.items()):
+            b = _leaf_bytes(md, carve, s, f["end"])
+            if not b or len(b) < 3:
+                continue
+            mtot += 1
+            r = msvc2inv.invert(b)
+            if r:
+                minv += 1
+                shapes[r["expr"][0] if r["expr"] else "?"] += 1
+                if show and shown < show:
+                    print("  %-22s %s" % ((f.get("name") or "sub_%x" % s)[:22], r["c"]))
+                    shown += 1
+        print("  %-13s leaf-ish %4d  byte-exact C %3d  (%.1f%%)" % (
+            mod, mtot, minv, 100.0 * minv / max(1, mtot)))
+        tot += mtot
+        inv += minv
+    print("\n" + "=" * 64)
+    print("MSVC-2.0 INVERSE -- real-win95 direct coverage")
+    print("=" * 64)
+    print("  leaf-ish functions sampled:        %d" % tot)
+    print("  byte-exact recovered by msvc2inv:  %d  (%.1f%%)" % (inv, 100 * inv / max(1, tot)))
+    print("  recovered-shape breakdown:  " + ", ".join("%s=%d" % kv for kv in shapes.most_common()))
+    return inv, tot
+
+
 def main():
     a = sys.argv[1:]
     limit = int(a[0]) if a and a[0].isdigit() else 2000
     module = next((x for x in a if not x.isdigit() and not x.startswith("-")), None)
     show = 20 if "--show" in a else 0
-    run(limit=limit, module=module, show=show)
+    if "--corpus" in a:                     # the old pre-generated-corpus path
+        run(limit=limit, module=module, show=show)
+    else:                                   # default: self-contained direct carve
+        run_direct(modules=[module] if module else None, show=show)
 
 
 if __name__ == "__main__":
