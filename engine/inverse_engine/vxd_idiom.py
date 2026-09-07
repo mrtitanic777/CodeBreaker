@@ -760,8 +760,14 @@ def verify_corpus(srcdir, root=".", budget=40000, only=None):
         dst = os.path.join(incdst, os.path.basename(f))
         if not os.path.exists(dst):
             __import__("shutil").copy(f, dst)
+    from engine.inverse_engine import vxd_corpus                    # complete VxD file enumeration
+    cand = []
+    for pat in vxd_corpus._VXD_EXTS:
+        cand += glob.glob(os.path.join(srcdir, pat))
+    for f in vxd_corpus._EXTRA_FILES:
+        cand.append(os.path.join(srcdir, f))
     mods = []
-    for p in sorted(glob.glob(os.path.join(srcdir, "*.vxd")) + glob.glob(os.path.join(srcdir, "*.386"))):
+    for p in sorted(q for q in set(cand) if os.path.exists(q) and vxd_corpus._is_le_vxd(q)):
         try:
             ms = le.open_vxds(p)
         except Exception:

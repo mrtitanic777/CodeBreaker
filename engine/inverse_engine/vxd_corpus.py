@@ -42,6 +42,26 @@ def _one_module(name, v):
         return {"error": str(e)[:120], "trace": traceback.format_exc()[-300:]}
 
 
+# VxDs also ship as IOS port/mini-port drivers (.pdr/.mpd) and a few under misc extensions -- all LE
+# Ring-0 modules the engine reconstructs identically. Include them so the corpus is the COMPLETE set.
+_VXD_EXTS = ("*.vxd", "*.386", "*.pdr", "*.mpd")
+_EXTRA_FILES = ("csmapper.sys", "bigmem.drv", "drvspace.bin")
+
+
+def _is_le_vxd(path):
+    """True if `path` is an LE/LX/W3/W4 Ring-0 module (so a stray real-mode .sys/.drv is skipped)."""
+    try:
+        import struct
+        d = open(path, "rb").read(0x100)
+        if d[:2] != b"MZ":
+            return False
+        lfa = struct.unpack_from("<I", d, 0x3c)[0]
+        full = open(path, "rb").read(lfa + 2)
+        return full[lfa:lfa + 2] in (b"LE", b"LX", b"W3", b"W4")
+    except Exception:
+        return False
+
+
 def run(srcdir, out_json, redo=None, workers=4):
     """Assemble-and-compare every module of the corpus, `workers` in parallel (each an independent
     DOSBox), checkpointing to out_json after every module so the run resumes where it stopped."""
@@ -50,7 +70,12 @@ def run(srcdir, out_json, redo=None, workers=4):
     from engine.format_loaders import le
     redo = set(redo or [])
     results = json.load(open(out_json)) if os.path.exists(out_json) else {}
-    files = sorted(glob.glob(os.path.join(srcdir, "*.vxd")) + glob.glob(os.path.join(srcdir, "*.386")))
+    cand = []
+    for pat in _VXD_EXTS:
+        cand += glob.glob(os.path.join(srcdir, pat))
+    for f in _EXTRA_FILES:
+        cand.append(os.path.join(srcdir, f))
+    files = sorted(p for p in set(cand) if os.path.exists(p) and _is_le_vxd(p))
     todo = []
     for p in files:
         try:
