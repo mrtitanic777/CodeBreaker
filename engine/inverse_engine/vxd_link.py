@@ -87,12 +87,15 @@ def _label_fixup_targets(D):
         s = covered.setdefault(oi, set())
         for k in range(a + 1, a + row["size"]):
             s.add(k)
+    ovs = {o["idx"]: o["vsize"] for o in (D.v.objects if hasattr(D, "v") else [])}
     for (soi, soff), f in list(D.fx.items()):
         if f["kind"] != "internal" or f["target"] is None:
             continue
         tgt = (f["obj"], f["target"])
         if tgt in D.labels:
             continue
+        if tgt[0] in ovs and tgt[1] >= ovs[tgt[0]]:   # target beyond the object: an absolute/linear fixup
+            continue                                   #  value (0x8000.., 0xFFFF..), not object-relative
         if tgt in D.insns or tgt[1] not in covered.get(tgt[0], ()):   # insn start or a data byte
             D.labels[tgt] = "loc_%d_%04X" % tgt
 

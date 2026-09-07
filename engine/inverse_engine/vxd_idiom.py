@@ -546,10 +546,13 @@ def emit_idiomatic(D, loadable=False):
         for (o2, a2), r2 in D.insns.items():                #  emit can reference; a mid-instruction
             for k in range(a2 + 1, a2 + r2["size"]):        #  target forces its instruction to raw db
                 interior_of[(o2, k)] = a2                    #  so the label can sit at the exact byte
+        _ovs = {o["idx"]: o["vsize"] for o in (D.v.objects if hasattr(D, "v") else [])}
         for (soi, soff), f in list(D.fx.items()):
             if f["kind"] != "internal" or f.get("target") is None:
                 continue
             tgt = (f["obj"], f["target"])
+            if tgt[0] in _ovs and tgt[1] >= _ovs[tgt[0]]:   # target beyond the object: an absolute/linear
+                continue                                     #  fixup value, not object-relative -> keep raw
             lab = D.labels.get(tgt) or ("loc_%d_%04X" % tgt)
             D.labels.setdefault(tgt, lab)
             if tgt in interior_of:            # target lands MID-INSTRUCTION -> force its instruction to raw
