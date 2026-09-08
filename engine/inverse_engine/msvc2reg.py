@@ -124,8 +124,25 @@ def interp(code, nargs):
             env["eax"] = val
         elif m == "mov":
             dst, _, src = o.partition(", ")
+            ms = re.match(r"(?:dword ptr )?\[(eax|ecx|edx|esi|edi|ebx)(?: \+ (0x[0-9a-f]+|\d+))?\]$", dst)
+            if ms:                                           # STORE: mov [base+disp], value
+                base = env.get(ms.group(1))
+                if base is None:
+                    return None
+                disp = int(ms.group(2), 0) if ms.group(2) else 0
+                if src in ("eax", "ecx", "edx", "esi", "edi", "ebx"):
+                    val = env.get(src)
+                    if val is None:
+                        return None
+                else:
+                    c = _sconst(src)
+                    if c is None:
+                        return None
+                    val = ("const", c)
+                stmts.append(("store", base, disp, val))
+                continue
             if dst not in ("eax", "ecx", "edx", "esi", "edi", "ebx"):
-                return None                                  # store to memory -- not this cut
+                return None                                  # other memory dest -- not this cut
             k = _argk_ebp(o)
             consumes_eax = False
             if k is not None:                                # mov reg,[ebp+argk]
@@ -151,6 +168,11 @@ def interp(code, nargs):
             if o == "eax, eax":
                 flush_dead_eax()
             env[o.split(",")[0]] = ("const", 0)
+        elif m == "and" and re.match(r"(?:dword ptr )?\[(eax|ecx|edx|esi|edi|ebx)\], 0$", o):
+            base = env.get(re.match(r"(?:dword ptr )?\[(\w+)\]", o).group(1))   # *p = 0 idiom
+            if base is None:
+                return None
+            stmts.append(("store", base, 0, ("const", 0)))
         elif m in ("inc", "dec") and o in env:
             env[o] = ("binop", "+" if m == "inc" else "-", env[o], ("const", 1))
         elif m in _ALU and o.startswith("eax"):
@@ -171,6 +193,10 @@ def interp(code, nargs):
     if pending or saved:
         return None                                          # esi/edi/ebx parks intertwine with the
     ret = env.get("eax")                                     # schedule -> deferred to the next cut
-    # the returned value is the live eax, as a raw Value -- _materialize/_emit_seq reproduce it
-    # (call/icall/load/global/deref/binop) and emit-verify is the acceptance test.
-    return {"nargs": nargs, "stmts": stmts, "ret": ret, "leave": leave}
+    # the returned value is the live eax (raw Value); but a leftover eax may just be a scratch
+    # register in a void function -- yield both so emit-verify decides (extra bytes fail otherwise).
+    base = {"nargs": nargs, "stmts": stmts, "leave": leave}
+    cands = [dict(base, ret=ret)]
+    if ret is not None:
+        cands.append(dict(base, ret=None))
+    return cands

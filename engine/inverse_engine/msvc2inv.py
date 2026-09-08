@@ -340,8 +340,7 @@ def _candidates(code):
     ops = _leaf_ops(ins)
 
     from engine.inverse_engine import msvc2reg          # unified register-dataflow interpreter
-    rn = msvc2reg.interp(code, nargs)                   # tried for every framed function (composes all)
-    if rn is not None:
+    for rn in (msvc2reg.interp(code, nargs) or []):     # tried for every framed function (composes all)
         yield rn
 
     def loadk(reg):

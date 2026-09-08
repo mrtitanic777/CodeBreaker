@@ -250,6 +250,29 @@ def _emit_stmt(st):
         return _emit_call_seq(st[2])
     if st[0] == "ivoidcall":
         return _emit_call_seq(st[1], indirect=True)
+    if st[0] == "store":                                     # *(base+disp) = value
+        _, base, disp, value = st
+        if value == ("const", 0):                            # *p = 0  ->  and dword[eax+disp], 0
+            b = _materialize(base)
+            if b is None:
+                return None
+            if disp == 0:
+                return b + bytes([0x83, 0x20, 0x00])
+            if -0x80 <= disp < 0x80:
+                return b + bytes([0x83, 0x60, disp & 0xFF, 0x00])
+            return b + bytes([0x83, 0xA0]) + struct.pack("<i", disp) + bytes([0x00])
+        if base[0] != "arg":                                 # base in ecx: only a stack pointer arg for now
+            return None
+        bb = bytes([0x8B, 0x4D, _argoff(base[1]) & 0xFF])    # mov ecx,[ebp+argoff]
+        vb = _materialize(value)                             # value -> eax
+        if vb is None:
+            return None
+        seq = (vb + bb) if value[0] in ("call", "icall") else (bb + vb)   # call value first; else base first
+        if disp == 0:
+            return seq + bytes([0x89, 0x01])                 # mov [ecx], eax
+        if -0x80 <= disp < 0x80:
+            return seq + bytes([0x89, 0x41, disp & 0xFF])
+        return seq + bytes([0x89, 0x81]) + struct.pack("<i", disp)
     if st[0] == "if":
         cond, then = st[1], st[2]
         body = b""
@@ -751,10 +774,12 @@ def _to_c_seq(node):
             else:
                 c = "0"
             return "if (%s) { %s }" % (c, " ".join(stmtC(s) for s in then))
+        if st[0] == "store":
+            _, base, disp, value = st
+            lv = "(*%s)" % valC(base) if disp == 0 else "(*(int*)((char*)%s + %d))" % (valC(base), disp)
+            return "%s = %s;" % (lv, valC(value))
         return ""
 
-    for st in node["stmts"]:
-        body.append(stmtC(st))
     def valC(V):
         k = V[0]
         if k == "arg":
@@ -783,6 +808,8 @@ def _to_c_seq(node):
             return "(%s %s %s)" % (valC(V[2]), V[1], valC(V[3]))
         return "0"
 
+    for st in node["stmts"]:
+        body.append(stmtC(st))
     ret = node.get("ret")
     rtype = "void"
     if ret is not None:
