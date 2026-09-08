@@ -124,6 +124,89 @@ def _fastcall_candidates(ops, _nargs):
     return
 
 
+def _parse_ret_body(ops):
+    """Parse the instructions AFTER the last call of a straight-line function as a simple return
+    expression (const / arg / arg<op>{arg,const} / two-register a+b), or None."""
+    if not ops:
+        return None
+    m0, o0 = ops[0]
+    if len(ops) == 1 and (m0, o0) == ("xor", "eax, eax"):
+        return ("const", 0)
+    if len(ops) == 2 and m0 == "push" and ops[1] == ("pop", "eax"):
+        c = _cst(o0)
+        return c
+    if len(ops) == 1 and m0 == "mov" and o0.startswith("eax, ") and "[" not in o0:
+        return _cst(o0.split(", ")[1])
+    if m0 != "mov" or not o0.startswith("eax,"):
+        return None
+    k0 = _argk(o0)
+    if k0 is None:
+        return None
+    if len(ops) == 1:
+        return ("arg", k0)
+    if (len(ops) == 3 and ops[1][0] == "mov" and ops[1][1].startswith("ecx,")
+            and ops[2] == ("add", "eax, ecx")):                     # a+b two-register
+        li = _argk(ops[1][1])
+        if li is not None:
+            return ("binop", "+", ("arg", li), ("arg", k0))
+    if len(ops) == 2:
+        m1, o1 = ops[1]
+        if m1 == "inc":
+            return ("binop", "+", ("arg", k0), ("const", 1))
+        if m1 == "dec":
+            return ("binop", "-", ("arg", k0), ("const", 1))
+        if m1 == "imul":
+            kk = _argk(o1)
+            if kk is not None:
+                return ("binop", "*", ("arg", k0), ("arg", kk))
+        if m1 in _ALU_MN:
+            kk = _argk(o1)
+            if kk is not None:
+                return ("binop", _ALU_MN[m1], ("arg", k0), ("arg", kk))
+            c = _cst(o1.split(", ")[1]) if ", " in o1 else None
+            if c:
+                return ("binop", _ALU_MN[m1], ("arg", k0), c)
+    return None
+
+
+def _seq_candidates(ops, nargs):
+    """Straight-line multi-statement: a run of [push* ; direct __stdcall call], then an optional
+    trailing return body.  Yields seq nodes ({nargs, stmts, ret})."""
+    calls, pending, i = [], [], 0
+    while i < len(ops):
+        m, o = ops[i]
+        if m == "push":
+            if "[" in o:                                            # push [ebp+x] -> stack arg
+                k = _argk(o)
+                if k is None:
+                    return
+                pending.append(("arg", k))
+            else:                                                   # push imm -> const arg
+                c = _cst(o)
+                if c is None:                                       # push reg / unknown -> not modeled
+                    return
+                pending.append(c)
+        elif m == "call":
+            if "[" in o:                                            # indirect call -> not modeled here
+                return
+            calls.append(list(reversed(pending)))                   # push order reversed = source args
+            pending = []
+        else:
+            break
+        i += 1
+    if not calls or pending:
+        return
+    stmts = [("voidcall", "__stdcall", c) for c in calls]
+    trailing = ops[i:]
+    if trailing:
+        ret = _parse_ret_body(trailing)
+        if ret is not None:
+            yield {"nargs": nargs, "stmts": stmts, "ret": ret}
+    else:                                                           # no trailing: void, or last call is the return
+        yield {"nargs": nargs, "stmts": stmts, "ret": None}
+        yield {"nargs": nargs, "stmts": stmts[:-1], "ret": ("call", "__stdcall", calls[-1])}
+
+
 def _candidates(code):
     """Yield plausible (nargs, expr) nodes for the byte sequence -- each is emit-verified by the
     caller, so over-generation is safe. Mirrors the standard-/Oy- msvc2model templates."""
@@ -195,6 +278,7 @@ def _candidates(code):
                     op, other = _ALU_MN[tm], (("arg", k) if k is not None else _cst(to.split(", ")[1]))
                 if op is not None and other is not None:
                     yield {"nargs": nargs, "expr": ("callbin", op, conv, args, other)}
+        yield from _seq_candidates(ops, nargs)      # straight-line multi-statement (multi-call / call+return)
         return
 
     # --- globals: read (mov eax,[abs]), write imm/arg, inc/dec [abs] ---
@@ -462,7 +546,7 @@ def invert(code, mask=None):
     for node in _candidates(code):
         try:
             n = node
-            if fpo and node["expr"] and node["expr"][0] in _FPO_KINDS:
+            if fpo and node.get("expr") and node["expr"][0] in _FPO_KINDS:
                 n = dict(node)
                 n["fpo"] = True
             pred = M.emit(n)
@@ -470,7 +554,7 @@ def invert(code, mask=None):
                 continue
             m = set(mask) if mask is not None else _reloc_mask(pred)
             if _match(pred, code, m):
-                return {"nargs": n["nargs"], "expr": n["expr"], "c": M.to_c(n)}
+                return {"nargs": n["nargs"], "expr": n.get("expr"), "c": M.to_c(n)}
         except Exception:
             continue
     return None

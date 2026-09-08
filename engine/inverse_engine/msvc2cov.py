@@ -51,7 +51,7 @@ def run(limit=2000, module=None, show=0):
         r = msvc2inv.invert(sb)
         if r:
             inv += 1
-            shapes[r["expr"][0] if r["expr"] else "?"] += 1
+            shapes[r["expr"][0] if r.get("expr") else "seq"] += 1
             bylen[len(sb) // 8 * 8] += 1
             if show and inv <= show:
                 print("  %-16s (%2dB) -> %s" % ("%s:%s:%s" % (mod, seg, off), len(sb), r["c"]))
@@ -113,7 +113,7 @@ def run_direct(modules=None, show=0):
             r = msvc2inv.invert(b)
             if r:
                 minv += 1
-                shapes[r["expr"][0] if r["expr"] else "?"] += 1
+                shapes[r["expr"][0] if r.get("expr") else "seq"] += 1
                 if show and shown < show:
                     print("  %-22s %s" % ((f.get("name") or "sub_%x" % s)[:22], r["c"]))
                     shown += 1

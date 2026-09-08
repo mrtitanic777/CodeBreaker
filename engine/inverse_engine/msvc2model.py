@@ -135,6 +135,82 @@ def _flatten_chain(E):
     return op, leaves
 
 
+def _ret_body(E):
+    """Bytes that compute a simple return expression into eax (NO frame / epilogue) -- the tail
+    of a multi-statement function.  Covers const / arg / arg<op>{arg,const} / square.  None if
+    out of this small class (the multi-statement milestone keeps return exprs simple)."""
+    k = E[0]
+    if k == "const":
+        v = E[1]
+        if v == 0:
+            return bytes([0x33, 0xC0])
+        if -128 <= v <= 127:
+            return bytes([0x6A, v & 0xFF, 0x58])
+        return bytes([0xB8]) + _imm32(v)
+    if k == "arg":
+        return _ld("eax", E[1])
+    if k == "binop":
+        op, L, R = E[1], E[2], E[3]
+        if L[0] == "arg" and R[0] == "const":
+            ob = _op_const_bytes(op, R[1])
+            return (_ld("eax", L[1]) + ob) if ob else None
+        if L[0] == "arg" and R[0] == "arg":
+            li, ri = L[1], R[1]
+            if op == "*" and li == ri:
+                return _ld("eax", li) + bytes([0x0F, 0xAF, 0xC0])
+            if op == "+":
+                return _ld("eax", ri) + _ld("ecx", li) + bytes([0x03, 0xC1])
+            if op == "-":
+                return _ld("eax", li) + _memop("-", "eax", ri)
+            return _ld("eax", ri) + _memop(op, "eax", li)
+    return None
+
+
+def _emit_call_seq(cargs):
+    """push args right-to-left, then `call rel32` (target = 0, masked).  An arg is a stack
+    parameter ('arg', k) -> push [ebp+argk], or an immediate ('const', v) -> push imm8/imm32."""
+    seq = b""
+    for a in reversed(cargs):
+        if a[0] == "arg":
+            seq += _push_arg(a[1])                           # ff 75 off
+        elif a[0] == "const":
+            v = a[1]
+            seq += bytes([0x6A, v & 0xFF]) if -128 <= v <= 127 else bytes([0x68]) + struct.pack("<i", v)
+        else:
+            return None
+    return seq + bytes([0xE8, 0, 0, 0, 0])
+
+
+def _emit_seq(node):
+    """Straight-line multi-statement body: a run of __stdcall void-call statements, then an
+    optional trailing return (a simple expr, or a returning call).  frame; [push;call]*; [ret];
+    epi.  The register-value-tracking / control-flow cases stay out for now."""
+    nargs = node["nargs"]
+    seq = _PRO
+    for st in node["stmts"]:
+        if st[0] != "voidcall" or st[1] != "__stdcall":
+            return None
+        cs = _emit_call_seq(st[2])
+        if cs is None:
+            return None
+        seq += cs
+    ret = node.get("ret")
+    if ret is not None:
+        if ret[0] == "call":
+            if ret[1] != "__stdcall":
+                return None
+            cs = _emit_call_seq(ret[2])
+            if cs is None:
+                return None
+            seq += cs
+        else:
+            body = _ret_body(ret)
+            if body is None:
+                return None
+            seq += body
+    return seq + _epi(nargs)
+
+
 def _emit_fastcall(node):
     """__fastcall / __thiscall register-convention leaf: arg1->ecx, arg2->edx (>2 args
     decline -- arg3+ would spill to the stack), result in eax, no frame, `ret` (c3).
@@ -269,6 +345,8 @@ def _emit_fpo(node):
 def emit(node):
     """Forward model: construct -> exact MSVC-2.0 bytes, or None if out of class.  A node with
     "fpo":True is the frameless (/Oy) form; otherwise the standard /Oy- framed form."""
+    if isinstance(node, dict) and node.get("stmts") is not None:
+        return _emit_seq(node)
     try:
         nargs, E = node["nargs"], node["expr"]
     except (KeyError, TypeError):
@@ -517,7 +595,34 @@ def _ptr_args(E, s):
         _ptr_args(E[3], s)
 
 
+def _to_c_seq(node):
+    """C for a straight-line multi-statement node: extern decls + a void/int body."""
+    nargs = node["nargs"]
+    params = "void" if nargs == 0 else ", ".join("int arg%d" % (i + 1) for i in range(nargs))
+    externs, body = [], []
+    ctr = [0]
+
+    def callC(cargs):
+        gsig = ", ".join("int" for _ in cargs) or "void"
+        externs.append("extern int __stdcall g%d(%s);" % (ctr[0], gsig))
+        argsC = ", ".join(("arg%d" % a[1]) if a[0] == "arg" else str(a[1]) for a in cargs)
+        s = "g%d(%s)" % (ctr[0], argsC)
+        ctr[0] += 1
+        return s
+
+    for st in node["stmts"]:
+        body.append(callC(st[2]) + ";")
+    ret = node.get("ret")
+    rtype = "void"
+    if ret is not None:
+        rtype = "int"
+        body.append("return " + (callC(ret[2]) if ret[0] == "call" else _c_expr(ret)) + ";")
+    return "%s %s __stdcall f(%s) { %s }" % (" ".join(externs), rtype, params, " ".join(body))
+
+
 def to_c(node):
+    if isinstance(node, dict) and node.get("stmts") is not None:
+        return _to_c_seq(node)
     nargs, E = node["nargs"], node["expr"]
     ptr = set()
     _ptr_args(E, ptr)
