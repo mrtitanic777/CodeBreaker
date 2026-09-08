@@ -86,6 +86,33 @@ def _leaf_bytes(md, carve, s, end):
     return None
 
 
+_BR = ("je", "jne", "jz", "jnz", "jmp", "jg", "jl", "jle", "jge", "ja", "jb", "jae", "jbe", "js", "jns")
+
+
+def _func_bytes(md, carve, s, end):
+    """Full function bytes: extend to the first `ret` that no earlier forward branch jumps
+    past (so control-flow / multi-return functions aren't truncated at their first ret).
+    None if it runs longer than the modeled class can plausibly reach."""
+    base, data = carve._sec_of(s)
+    if base is None:
+        return None
+    buf = bytes(data[s - base:min(end, base + len(data)) - base])
+    out, maxtgt = b"", s
+    for ins in md.disasm(buf, s):
+        out += ins.bytes
+        if ins.mnemonic in _BR and ins.op_str.startswith("0x"):
+            t = int(ins.op_str, 16)
+            if t > ins.address:
+                maxtgt = max(maxtgt, t)
+        if ins.mnemonic in ("ret", "retn") and ins.address >= maxtgt:
+            return out
+        if ins.mnemonic == "jmp" and out == ins.bytes:          # bare tail-call thunk
+            return out
+        if len(out) > 200:
+            return None
+    return None
+
+
 def run_direct(modules=None, show=0):
     """Coverage by carving the SHIPPED PE modules directly (no pre-generated corpus needed):
     isolate each leaf function and count msvc2inv byte-exact recoveries. This is the honest
@@ -106,7 +133,7 @@ def run_direct(modules=None, show=0):
             continue
         mtot = minv = 0
         for s, f in sorted(carve.funcs.items()):
-            b = _leaf_bytes(md, carve, s, f["end"])
+            b = _func_bytes(md, carve, s, f["end"])
             if not b or len(b) < 3:
                 continue
             mtot += 1

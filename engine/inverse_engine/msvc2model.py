@@ -191,8 +191,6 @@ def _emit_stmt(st):
         return _emit_call_seq(st[1], indirect=True)
     if st[0] == "if":
         cond, then = st[1], st[2]
-        if cond[0] not in ("nz", "z"):
-            return None
         body = b""
         for s in then:
             bs = _emit_stmt(s)
@@ -201,9 +199,25 @@ def _emit_stmt(st):
             body += bs
         if not body or len(body) > 127:                      # rel8 guard only, this milestone
             return None
-        cmpb = bytes([0x83, 0x7D, _argoff(cond[1]) & 0xFF, 0x00])     # cmp dword [ebp+argoff], 0
-        jcc = bytes([0x74 if cond[0] == "nz" else 0x75, len(body)])   # je (if arg) / jne (if !arg)
-        return cmpb + jcc + body
+        if cond[0] in ("nz", "z"):                            # if(arg) / if(!arg): cmp [arg],0
+            condb = bytes([0x83, 0x7D, _argoff(cond[1]) & 0xFF, 0x00])
+            je = cond[0] == "nz"
+        elif cond[0] in ("callnz", "callz"):                  # if(g(args)) : push;call; test eax,eax
+            cs = _emit_call_seq(cond[2])
+            if cs is None:
+                return None
+            condb = cs + bytes([0x85, 0xC0])
+            je = cond[0] == "callnz"
+        elif cond[0] in ("icallnz", "icallz"):               # if((*p)(args)) : push;call [P]; test eax,eax
+            cs = _emit_call_seq(cond[1], indirect=True)
+            if cs is None:
+                return None
+            condb = cs + bytes([0x85, 0xC0])
+            je = cond[0] == "icallnz"
+        else:
+            return None
+        jcc = bytes([0x74 if je else 0x75, len(body)])        # je -> body runs when true, jne -> when false
+        return condb + jcc + body
     return None
 
 
@@ -646,7 +660,20 @@ def _to_c_seq(node):
             return callC(st[2]) + ";"
         if st[0] == "if":
             cond, then = st[1], st[2]
-            c = ("arg%d" % cond[1]) if cond[0] == "nz" else ("!arg%d" % cond[1])
+            if cond[0] == "nz":
+                c = "arg%d" % cond[1]
+            elif cond[0] == "z":
+                c = "!arg%d" % cond[1]
+            elif cond[0] == "callnz":
+                c = callC(cond[2])
+            elif cond[0] == "callz":
+                c = "!" + callC(cond[2])
+            elif cond[0] == "icallnz":
+                c = callC(cond[1], True)
+            elif cond[0] == "icallz":
+                c = "!" + callC(cond[1], True)
+            else:
+                c = "0"
             return "if (%s) { %s }" % (c, " ".join(stmtC(s) for s in then))
         return ""
 

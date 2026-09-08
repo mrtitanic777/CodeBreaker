@@ -215,6 +215,26 @@ def _parse_stmts(ins, i, end, addr2idx):
             cond = ("nz" if jcc.mnemonic == "je" else "z", argk)
             stmts.append(("if", cond, sub[0]))
             i = body_end
+        elif (m == "test" and o == "eax, eax" and i + 1 < end and ins[i + 1].mnemonic in ("je", "jne")
+              and not pending and stmts and stmts[-1][0] in ("voidcall", "ivoidcall")):
+            # M1 register-dataflow: eax holds the preceding call's result -> branch on it.
+            jcc = ins[i + 1]
+            mt = re.match(r"0x([0-9a-f]+)$", jcc.op_str)
+            if not mt:
+                return None
+            body_end = addr2idx.get(int(mt.group(1), 16))
+            if body_end is None or body_end <= i + 1:
+                return None
+            sub = _parse_stmts(ins, i + 2, body_end, addr2idx)
+            if sub is None or sub[1] != body_end:
+                return None
+            call_stmt = stmts.pop()                                 # the call is the condition, not a stmt
+            if call_stmt[0] == "voidcall":                          # if(g(args)) -> je-guard; if(!g) -> jne
+                cond = ("callnz" if jcc.mnemonic == "je" else "callz", call_stmt[1], call_stmt[2])
+            else:
+                cond = ("icallnz" if jcc.mnemonic == "je" else "icallz", call_stmt[1])
+            stmts.append(("if", cond, sub[0]))
+            i = body_end
         else:
             break                                                   # trailing return body
     if pending:
