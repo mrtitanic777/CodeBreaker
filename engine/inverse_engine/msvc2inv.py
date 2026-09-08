@@ -401,6 +401,10 @@ def _candidates(code):
                     op, other = _ALU_MN[tm], (("arg", k) if k is not None else _cst(to.split(", ")[1]))
                 if op is not None and other is not None:
                     yield {"nargs": nargs, "expr": ("callbin", op, conv, args, other)}
+        from engine.inverse_engine import msvc2reg     # unified register-dataflow interpreter
+        rn = msvc2reg.interp(code, nargs)
+        if rn is not None:
+            yield rn
         yield from _seq_candidates(code, nargs, leave=any(m == "leave" for m, _ in ins))
         yield from _call2_candidates(ops, nargs)     # M2: return callL <op> callR (esi-parked)
         return

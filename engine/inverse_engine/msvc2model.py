@@ -237,6 +237,16 @@ def _emit_seq(node):
             cs = _emit_call_seq(ret[2])
         elif ret[0] == "icall_ret":                          # indirect call whose result is returned
             cs = _emit_call_seq(ret[1], indirect=True)
+        elif ret[0] == "callbinret":                         # return <call> <op> {const|arg}
+            _, op, call, other = ret
+            cargs = call[2] if call[0] == "call" else call[1]
+            cs = _emit_call_seq(cargs, indirect=(call[0] == "icall"))
+            if cs is not None:
+                if other[0] == "arg":
+                    cs += _memop(op, "eax", other[1])
+                else:
+                    ob = _op_const_bytes(op, other[1])
+                    cs = None if ob is None else cs + ob
         else:
             cs = _ret_body(ret)
         if cs is None:
@@ -703,6 +713,11 @@ def _to_c_seq(node):
             body.append("return " + callC(ret[2]) + ";")
         elif ret[0] == "icall_ret":
             body.append("return " + callC(ret[1], True) + ";")
+        elif ret[0] == "callbinret":
+            _, op, call, other = ret
+            cargs = call[2] if call[0] == "call" else call[1]
+            oc = ("arg%d" % other[1]) if other[0] == "arg" else str(other[1])
+            body.append("return %s %s %s;" % (callC(cargs, call[0] == "icall"), op, oc))
         else:
             body.append("return " + _c_expr(ret) + ";")
     return "%s %s __stdcall f(%s) { %s }" % (" ".join(externs), rtype, params, " ".join(body))
