@@ -279,6 +279,57 @@ def _seq_candidates(code, nargs, leave=False):
             yield {"nargs": nargs, "stmts": stmts[:-1], "ret": ("icall_ret", last[1]), "leave": leave}
 
 
+_R_OP = {"add eax, esi": "+", "sub eax, esi": "-", "and eax, esi": "&",
+         "or eax, esi": "|", "xor eax, esi": "^", "imul eax, esi": "*"}
+
+
+def _pushargs(pushes):
+    """A run of `push` instrs -> source arg list (reversed), or None if any is unmodeled."""
+    out = []
+    for m, o in pushes:
+        if m != "push":
+            return None
+        if "[" in o:
+            k = _argk(o)
+            if k is None:
+                return None
+            out.append(("arg", k))
+        else:
+            c = _cst(o)
+            if c is None:
+                return None
+            out.append(c)
+    return list(reversed(out))
+
+
+def _call2_candidates(ops, nargs):
+    """M2 callee-saved: return callL <op> callR.  push esi; <R:push*;call>; <L:push*>;
+    mov esi,eax; call; <op> eax,esi; pop esi."""
+    if len(ops) < 6 or ops[0] != ("push", "esi") or ops[-1] != ("pop", "esi"):
+        return
+    inner = ops[1:-1]
+    if ("mov", "esi, eax") not in inner:
+        return
+    mi = inner.index(("mov", "esi, eax"))
+    if mi + 3 != len(inner) or inner[mi + 1][0] != "call":
+        return
+    opk = _R_OP.get("%s %s" % inner[mi + 2])
+    if opk is None:
+        return
+    try:
+        rc = next(j for j, (m, _o) in enumerate(inner) if m == "call")
+    except StopIteration:
+        return
+    if "[" in inner[rc][1] or "[" in inner[mi + 1][1]:                # direct __stdcall calls only
+        return
+    Rargs = _pushargs(inner[:rc])
+    Largs = _pushargs(inner[rc + 1:mi])
+    if Rargs is None or Largs is None:
+        return
+    yield {"nargs": nargs, "expr": ("binop", opk,
+                                    ("call", "__stdcall", Largs), ("call", "__stdcall", Rargs))}
+
+
 def _candidates(code):
     """Yield plausible (nargs, expr) nodes for the byte sequence -- each is emit-verified by the
     caller, so over-generation is safe. Mirrors the standard-/Oy- msvc2model templates."""
@@ -351,6 +402,7 @@ def _candidates(code):
                 if op is not None and other is not None:
                     yield {"nargs": nargs, "expr": ("callbin", op, conv, args, other)}
         yield from _seq_candidates(code, nargs, leave=any(m == "leave" for m, _ in ins))
+        yield from _call2_candidates(ops, nargs)     # M2: return callL <op> callR (esi-parked)
         return
 
     # --- globals: read (mov eax,[abs]), write imm/arg, inc/dec [abs] ---

@@ -394,6 +394,22 @@ def emit(node):
         return _emit_fastcall(node)
     if node.get("fpo"):
         return _emit_fpo(node)
+    # M2 callee-saved: return callL <op> callR -- park the right call's result in esi across
+    # the left call.  push esi; <eval R>; push L.args; mov esi,eax; call L; op eax,esi; pop esi.
+    if (E[0] == "binop" and E[1] in OPS and E[2][0] == "call" and E[3][0] == "call"
+            and E[2][1] == "__stdcall" and E[3][1] == "__stdcall"
+            and all(a[0] == "arg" for a in E[2][2]) and all(a[0] == "arg" for a in E[3][2])):
+        op, cargsL, cargsR = E[1], E[2][2], E[3][2]
+        seq = _PRO + bytes([0x56])                           # frame; push esi
+        cr = _emit_call_seq(cargsR)                          # push R.args; call R -> eax
+        if cr is None:
+            return None
+        seq += cr
+        for a in reversed(cargsL):                           # push L.args
+            seq += _push_arg(a[1])
+        seq += bytes([0x8B, 0xF0, 0xE8, 0, 0, 0, 0])         # mov esi,eax (save R); call L -> eax
+        seq += bytes([0x0F, 0xAF, 0xC6]) if op == "*" else bytes([_MEMOP[op], 0xC6])  # op eax,esi
+        return seq + bytes([0x5E]) + _epi(nargs)             # pop esi; epi
     kind = E[0]
     ret_n = bytes([0xC3]) if nargs == 0 else bytes([0xC2]) + struct.pack("<H", 4 * nargs)
 
@@ -702,6 +718,13 @@ def to_c(node):
         "int%s arg%d" % ("*" if (i + 1) in ptr else "", i + 1) for i in range(nargs))
     if node.get("cc") == "fastcall":                 # register-convention leaf (arg/deref/index/binop)
         return "int __fastcall f(%s) { return %s; }" % (params, _c_expr(E))
+    if E[0] == "binop" and E[2][0] == "call" and E[3][0] == "call":   # return g0(..) op g1(..)
+        L, R = E[2], E[3]
+        return ("extern int __stdcall g0(%s); extern int __stdcall g1(%s); int __stdcall f(%s)"
+                " { return g0(%s) %s g1(%s); }" % (
+                    ", ".join("int" for _ in L[2]) or "void", ", ".join("int" for _ in R[2]) or "void",
+                    params, ", ".join("arg%d" % a[1] for a in L[2]), E[1],
+                    ", ".join("arg%d" % a[1] for a in R[2])))
     if E[0] == "store":                              # void: *argP = value;
         return "void __stdcall f(%s) { *arg%d = %s; }" % (params, E[1][1], _c_expr(E[2]))
     if E[0] == "call":                               # extern g(...); return g(args);
