@@ -182,19 +182,38 @@ def _emit_call_seq(cargs, indirect=False):
     return seq + (bytes([0xFF, 0x15, 0, 0, 0, 0]) if indirect else bytes([0xE8, 0, 0, 0, 0]))
 
 
+def _emit_stmt(st):
+    """One statement -> bytes (no frame).  voidcall/ivoidcall (a call) or an `if(cond) {body}`
+    guard: `cmp [arg],0; je/jne +len(body); <body>` (je guards if(arg), jne guards if(!arg))."""
+    if st[0] == "voidcall" and st[1] == "__stdcall":
+        return _emit_call_seq(st[2])
+    if st[0] == "ivoidcall":
+        return _emit_call_seq(st[1], indirect=True)
+    if st[0] == "if":
+        cond, then = st[1], st[2]
+        if cond[0] not in ("nz", "z"):
+            return None
+        body = b""
+        for s in then:
+            bs = _emit_stmt(s)
+            if bs is None:
+                return None
+            body += bs
+        if not body or len(body) > 127:                      # rel8 guard only, this milestone
+            return None
+        cmpb = bytes([0x83, 0x7D, _argoff(cond[1]) & 0xFF, 0x00])     # cmp dword [ebp+argoff], 0
+        jcc = bytes([0x74 if cond[0] == "nz" else 0x75, len(body)])   # je (if arg) / jne (if !arg)
+        return cmpb + jcc + body
+    return None
+
+
 def _emit_seq(node):
-    """Straight-line multi-statement body: a run of __stdcall void-call statements, then an
-    optional trailing return (a simple expr, or a returning call).  frame; [push;call]*; [ret];
-    epi.  The register-value-tracking / control-flow cases stay out for now."""
+    """Multi-statement body: a run of statements (void calls / if-guards), then an optional
+    trailing return (a simple expr, or a returning call).  frame; <stmts>; [ret]; epi."""
     nargs = node["nargs"]
     seq = _PRO
     for st in node["stmts"]:
-        if st[0] == "voidcall" and st[1] == "__stdcall":
-            cs = _emit_call_seq(st[2])
-        elif st[0] == "ivoidcall":                           # indirect (IAT) call statement
-            cs = _emit_call_seq(st[1], indirect=True)
-        else:
-            return None
+        cs = _emit_stmt(st)
         if cs is None:
             return None
         seq += cs
@@ -620,8 +639,19 @@ def _to_c_seq(node):
         ctr[0] += 1
         return "%s(%s)" % (nm, argsC)
 
+    def stmtC(st):
+        if st[0] == "ivoidcall":
+            return callC(st[1], True) + ";"
+        if st[0] == "voidcall":
+            return callC(st[2]) + ";"
+        if st[0] == "if":
+            cond, then = st[1], st[2]
+            c = ("arg%d" % cond[1]) if cond[0] == "nz" else ("!arg%d" % cond[1])
+            return "if (%s) { %s }" % (c, " ".join(stmtC(s) for s in then))
+        return ""
+
     for st in node["stmts"]:
-        body.append((callC(st[1], True) if st[0] == "ivoidcall" else callC(st[2])) + ";")
+        body.append(stmtC(st))
     ret = node.get("ret")
     rtype = "void"
     if ret is not None:

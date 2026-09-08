@@ -169,49 +169,94 @@ def _parse_ret_body(ops):
     return None
 
 
-def _seq_candidates(ops, nargs, leave=False):
-    """Straight-line multi-statement: a run of [push* ; call (direct or indirect)], then an
-    optional trailing return body.  Yields seq nodes ({nargs, stmts, ret[, leave]})."""
-    calls, pending, i = [], [], 0        # calls: list of (cargs, indirect)
-    while i < len(ops):
-        m, o = ops[i]
+def _parse_stmts(ins, i, end, addr2idx):
+    """Parse ins[i:end] as a statement list -- push/call runs and `if(cond){body}` guards
+    (offset-aware: a cmp;jcc pair's target bounds the guarded body).  Returns (stmts, next_i)
+    where next_i is where a trailing return body would begin, or None if unrecognized."""
+    stmts, pending = [], []
+    while i < end:
+        x = ins[i]
+        m, o = x.mnemonic, x.op_str
         if m == "push":
-            if "[" in o:                                            # push [ebp+x] -> stack arg
+            if "[" in o:
                 k = _argk(o)
                 if k is None:
-                    return
+                    return None
                 pending.append(("arg", k))
-            else:                                                   # push imm -> const arg
+            else:
                 c = _cst(o)
-                if c is None:                                       # push reg / unknown -> not modeled
-                    return
+                if c is None:
+                    return None
                 pending.append(c)
+            i += 1
         elif m == "call":
-            indirect = "[" in o                                     # call dword ptr [IAT slot]
-            if indirect and not re.search(r"\[(0x[0-9a-f]+|\d+)\]", o):
-                return                                              # call [reg] / [reg+..] -> not modeled
-            calls.append((list(reversed(pending)), indirect))       # push order reversed = source args
+            ind = "[" in o
+            if ind and not re.search(r"\[(0x[0-9a-f]+|\d+)\]", o):
+                return None
+            cargs = list(reversed(pending))
+            stmts.append(("ivoidcall", cargs) if ind else ("voidcall", "__stdcall", cargs))
             pending = []
+            i += 1
+        elif (m == "cmp" and re.match(r"(?:dword ptr )?\[ebp \+ (?:0x[0-9a-f]+|\d+)\], 0$", o)
+              and i + 1 < end and ins[i + 1].mnemonic in ("je", "jne")):
+            if pending:
+                return None
+            argk = _argk(o)
+            jcc = ins[i + 1]
+            mt = re.match(r"0x([0-9a-f]+)$", jcc.op_str)
+            if argk is None or not mt:
+                return None
+            body_end = addr2idx.get(int(mt.group(1), 16))
+            if body_end is None or body_end <= i + 1:
+                return None
+            sub = _parse_stmts(ins, i + 2, body_end, addr2idx)
+            if sub is None or sub[1] != body_end:                   # guarded region must be all statements
+                return None
+            cond = ("nz" if jcc.mnemonic == "je" else "z", argk)
+            stmts.append(("if", cond, sub[0]))
+            i = body_end
         else:
-            break
-        i += 1
-    if not calls or pending:
+            break                                                   # trailing return body
+    if pending:
+        return None
+    return stmts, i
+
+
+def _seq_candidates(code, nargs, leave=False):
+    """Multi-statement body (offset-aware): statements (push/call runs, if-guards) then an
+    optional trailing return.  Yields seq nodes ({nargs, stmts, ret[, leave]})."""
+    md_ins = list(_MD.disasm(bytes(code), 0))
+    lo, hi = 0, len(md_ins)
+    if (len(md_ins) >= 2 and (md_ins[0].mnemonic, md_ins[0].op_str) == ("push", "ebp")
+            and (md_ins[1].mnemonic, md_ins[1].op_str) == ("mov", "ebp, esp")):
+        lo = 2
+    while hi > lo and md_ins[hi - 1].mnemonic in ("ret", "retn"):
+        hi -= 1
+    if hi > lo and (md_ins[hi - 1].mnemonic == "leave"
+                    or (md_ins[hi - 1].mnemonic, md_ins[hi - 1].op_str) == ("pop", "ebp")):
+        hi -= 1
+    body = md_ins[lo:hi]
+    addr2idx = {x.address: j for j, x in enumerate(body)}
+    if hi < len(md_ins):                                 # a jcc past the last body instr targets the
+        addr2idx[md_ins[hi].address] = len(body)         # epilogue == end of body (index len(body))
+    res = _parse_stmts(body, 0, len(body), addr2idx)
+    if res is None:
         return
-
-    def stmt(c, ind):
-        return ("ivoidcall", c) if ind else ("voidcall", "__stdcall", c)
-
-    stmts = [stmt(c, ind) for c, ind in calls]
-    trailing = ops[i:]
+    stmts, ti = res
+    if not stmts:
+        return
+    trailing = [(x.mnemonic, x.op_str) for x in body[ti:]]
     if trailing:
         ret = _parse_ret_body(trailing)
         if ret is not None:
             yield {"nargs": nargs, "stmts": stmts, "ret": ret, "leave": leave}
-    else:                                                           # no trailing: void, or last call is the return
+    else:
         yield {"nargs": nargs, "stmts": stmts, "ret": None, "leave": leave}
-        c_last, ind_last = calls[-1]
-        ret_call = ("icall_ret", c_last) if ind_last else ("call", "__stdcall", c_last)
-        yield {"nargs": nargs, "stmts": stmts[:-1], "ret": ret_call, "leave": leave}
+        last = stmts[-1]                                            # last call may be the return value
+        if last[0] == "voidcall":
+            yield {"nargs": nargs, "stmts": stmts[:-1], "ret": ("call", "__stdcall", last[2]), "leave": leave}
+        elif last[0] == "ivoidcall":
+            yield {"nargs": nargs, "stmts": stmts[:-1], "ret": ("icall_ret", last[1]), "leave": leave}
 
 
 def _candidates(code):
@@ -285,7 +330,7 @@ def _candidates(code):
                     op, other = _ALU_MN[tm], (("arg", k) if k is not None else _cst(to.split(", ")[1]))
                 if op is not None and other is not None:
                     yield {"nargs": nargs, "expr": ("callbin", op, conv, args, other)}
-        yield from _seq_candidates(ops, nargs, leave=any(m == "leave" for m, _ in ins))
+        yield from _seq_candidates(code, nargs, leave=any(m == "leave" for m, _ in ins))
         return
 
     # --- globals: read (mov eax,[abs]), write imm/arg, inc/dec [abs] ---
