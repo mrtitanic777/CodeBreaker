@@ -339,6 +339,11 @@ def _candidates(code):
     nargs = _nargs_from_ret(ins)
     ops = _leaf_ops(ins)
 
+    from engine.inverse_engine import msvc2reg          # unified register-dataflow interpreter
+    rn = msvc2reg.interp(code, nargs)                   # tried for every framed function (composes all)
+    if rn is not None:
+        yield rn
+
     def loadk(reg):
         return next((_argk(o) for m, o in ops if m == "mov" and o.startswith(reg + ",")
                      and _argk(o) is not None), None)
@@ -401,10 +406,6 @@ def _candidates(code):
                     op, other = _ALU_MN[tm], (("arg", k) if k is not None else _cst(to.split(", ")[1]))
                 if op is not None and other is not None:
                     yield {"nargs": nargs, "expr": ("callbin", op, conv, args, other)}
-        from engine.inverse_engine import msvc2reg     # unified register-dataflow interpreter
-        rn = msvc2reg.interp(code, nargs)
-        if rn is not None:
-            yield rn
         yield from _seq_candidates(code, nargs, leave=any(m == "leave" for m, _ in ins))
         yield from _call2_candidates(ops, nargs)     # M2: return callL <op> callR (esi-parked)
         return
@@ -682,7 +683,7 @@ def invert(code, mask=None):
                 continue
             m = set(mask) if mask is not None else _reloc_mask(pred)
             if _match(pred, code, m):
-                return {"nargs": n["nargs"], "expr": n.get("expr"), "c": M.to_c(n)}
+                return {"nargs": n["nargs"], "expr": n.get("expr"), "c": M.to_c(n), "node": n}
         except Exception:
             continue
     return None
@@ -703,7 +704,7 @@ def selftest(show=False):
         real = bytes(fn[0])
         mask = set(fn[1])
         inv = invert(real, mask)
-        good = inv is not None and _match(M.emit({"nargs": inv["nargs"], "expr": inv["expr"]}), real, mask)
+        good = inv is not None and _match(M.emit(inv["node"]), real, mask)   # re-emit the full node
         ok += good
         if show or not good:
             print("  %-8s %s  %s" % (name, "OK " if good else "MISS",

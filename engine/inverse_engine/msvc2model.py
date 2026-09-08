@@ -166,6 +166,67 @@ def _ret_body(E):
     return None
 
 
+def _materialize(V):
+    """Bytes that leave Value V in eax (framed context), or None if not modelable.  The general
+    emit primitive the register-dataflow interpreter needs: a value may be an arg, const, global,
+    a (indirect) call, a memory load/field off another value, or `X <op> {const|arg}`.  A load
+    chain flows through eax: materialize the base into eax, then `mov eax,[eax+disp]`."""
+    k = V[0]
+    if k == "arg":
+        return _ld("eax", V[1])
+    if k == "const":
+        v = V[1]
+        if v == 0:
+            return bytes([0x33, 0xC0])
+        if -128 <= v <= 127:
+            return bytes([0x6A, v & 0xFF, 0x58])
+        return bytes([0xB8]) + _imm32(v)
+    if k == "global":
+        return bytes([0xA1, 0, 0, 0, 0])                     # mov eax,[disp32] (reloc masked)
+    if k == "call":
+        return _emit_call_seq(V[2])
+    if k in ("icall", "icall_ret"):
+        return _emit_call_seq(V[1], indirect=True)
+    if k in ("load", "deref", "index"):
+        if k == "deref":
+            base, d = V[1], 0
+        elif k == "index":
+            base, d = V[1], (V[2][1] * 4 if V[2][0] == "const" else None)
+        else:
+            base, d = V[1], V[2]
+        if d is None:
+            return None
+        b = _materialize(base)
+        if b is None:
+            return None
+        if d == 0:
+            mem = bytes([0x8B, 0x00])                        # mov eax,[eax]
+        elif -0x80 <= d < 0x80:
+            mem = bytes([0x8B, 0x40, d & 0xFF])              # mov eax,[eax+disp8]
+        else:
+            mem = bytes([0x8B, 0x80]) + struct.pack("<i", d)  # mov eax,[eax+disp32]
+        return b + mem
+    if k == "callbinret":                                    # (call) <op> {const|arg}
+        _, op, call, other = V
+        b = _materialize(call)
+        if b is None:
+            return None
+        if other[0] == "arg":
+            return b + _memop(op, "eax", other[1])
+        ob = _op_const_bytes(op, other[1])
+        return (b + ob) if ob is not None else None
+    if k == "binop":
+        op, L, R = V[1], V[2], V[3]
+        if op not in OPS:
+            return None
+        if R[0] == "const":                                  # <materialize L> ; op eax,const
+            b = _materialize(L)
+            ob = _op_const_bytes(op, R[1])
+            return (b + ob) if (b is not None and ob is not None) else None
+        return None
+    return None
+
+
 def _emit_call_seq(cargs, indirect=False):
     """push args right-to-left, then the call (target reloc = 0, masked).  An arg is a stack
     parameter ('arg', k) -> push [ebp+argk], or an immediate ('const', v) -> push imm8/imm32.
@@ -233,22 +294,9 @@ def _emit_seq(node):
         seq += cs
     ret = node.get("ret")
     if ret is not None:
-        if ret[0] == "call" and ret[1] == "__stdcall":
-            cs = _emit_call_seq(ret[2])
-        elif ret[0] == "icall_ret":                          # indirect call whose result is returned
-            cs = _emit_call_seq(ret[1], indirect=True)
-        elif ret[0] == "callbinret":                         # return <call> <op> {const|arg}
-            _, op, call, other = ret
-            cargs = call[2] if call[0] == "call" else call[1]
-            cs = _emit_call_seq(cargs, indirect=(call[0] == "icall"))
-            if cs is not None:
-                if other[0] == "arg":
-                    cs += _memop(op, "eax", other[1])
-                else:
-                    ob = _op_const_bytes(op, other[1])
-                    cs = None if ob is None else cs + ob
-        else:
-            cs = _ret_body(ret)
+        cs = _materialize(ret)                               # general: call/load/global/binop-const/...
+        if cs is None:
+            cs = _ret_body(ret)                              # arg<op>arg two-register forms
         if cs is None:
             return None
         seq += cs
@@ -399,6 +447,8 @@ def emit(node):
     try:
         nargs, E = node["nargs"], node["expr"]
     except (KeyError, TypeError):
+        return None
+    if E is None:
         return None
     if node.get("cc") == "fastcall":
         return _emit_fastcall(node)
@@ -705,21 +755,39 @@ def _to_c_seq(node):
 
     for st in node["stmts"]:
         body.append(stmtC(st))
+    def valC(V):
+        k = V[0]
+        if k == "arg":
+            return "arg%d" % V[1]
+        if k == "const":
+            return str(V[1])
+        if k == "global":
+            if "extern int G;" not in externs:
+                externs.insert(0, "extern int G;")
+            return "G"
+        if k == "call":
+            return callC(V[2])
+        if k in ("icall", "icall_ret"):
+            return callC(V[1], True)
+        if k == "deref":
+            return "(*%s)" % valC(V[1])
+        if k == "index":
+            return "%s[%d]" % (valC(V[1]), V[2][1])
+        if k == "load":
+            return "(*%s)" % valC(V[1]) if V[2] == 0 else "(*(int*)((char*)%s + %d))" % (valC(V[1]), V[2])
+        if k == "callbinret":
+            _, op, call, other = V
+            oc = ("arg%d" % other[1]) if other[0] == "arg" else str(other[1])
+            return "(%s %s %s)" % (valC(call), op, oc)
+        if k == "binop":
+            return "(%s %s %s)" % (valC(V[2]), V[1], valC(V[3]))
+        return "0"
+
     ret = node.get("ret")
     rtype = "void"
     if ret is not None:
         rtype = "int"
-        if ret[0] == "call":
-            body.append("return " + callC(ret[2]) + ";")
-        elif ret[0] == "icall_ret":
-            body.append("return " + callC(ret[1], True) + ";")
-        elif ret[0] == "callbinret":
-            _, op, call, other = ret
-            cargs = call[2] if call[0] == "call" else call[1]
-            oc = ("arg%d" % other[1]) if other[0] == "arg" else str(other[1])
-            body.append("return %s %s %s;" % (callC(cargs, call[0] == "icall"), op, oc))
-        else:
-            body.append("return " + _c_expr(ret) + ";")
+        body.append("return " + valC(ret) + ";")
     return "%s %s __stdcall f(%s) { %s }" % (" ".join(externs), rtype, params, " ".join(body))
 
 

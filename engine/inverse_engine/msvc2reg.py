@@ -124,18 +124,32 @@ def interp(code, nargs):
             env["eax"] = val
         elif m == "mov":
             dst, _, src = o.partition(", ")
-            if dst in ("eax", "ecx", "edx", "esi", "edi", "ebx"):
-                k = _argk_ebp(o)
-                if k is not None:
-                    env[dst] = ("arg", k)
-                elif src in env:
-                    env[dst] = env[src]                      # value-number a reg->reg copy / park
+            if dst not in ("eax", "ecx", "edx", "esi", "edi", "ebx"):
+                return None                                  # store to memory -- not this cut
+            k = _argk_ebp(o)
+            consumes_eax = False
+            if k is not None:                                # mov reg,[ebp+argk]
+                nv = ("arg", k)
+            elif src in ("eax", "ecx", "edx", "esi", "edi", "ebx"):
+                nv = env.get(src)                            # reg->reg copy / callee-saved park
+                consumes_eax = src == "eax"
+            else:
+                ml = re.match(r"(?:dword ptr )?\[(eax|ecx|edx|esi|edi|ebx)(?: \+ (0x[0-9a-f]+|\d+))?\]$", src)
+                mg = re.match(r"(?:dword ptr )?\[(0x[0-9a-f]+|\d+)\]$", src)
+                if ml and env.get(ml.group(1)) is not None:  # mov reg,[base+disp] -> load off a value
+                    nv = ("load", env[ml.group(1)], int(ml.group(2), 0) if ml.group(2) else 0)
+                    consumes_eax = ml.group(1) == "eax"
+                elif mg and dst == "eax":                    # mov eax,[disp32] -> a global
+                    nv = ("global",)
                 else:
                     c = _sconst(src)
-                    env[dst] = ("const", c) if c is not None else None
-            else:
-                return None                                  # store to memory etc. -- not this cut
+                    nv = ("const", c) if c is not None else None
+            if dst == "eax" and not consumes_eax:            # overwriting eax without using it: a
+                flush_dead_eax()                             # prior un-consumed call was a statement
+            env[dst] = nv
         elif m == "xor" and o in ("eax, eax", "ecx, ecx", "edx, edx"):
+            if o == "eax, eax":
+                flush_dead_eax()
             env[o.split(",")[0]] = ("const", 0)
         elif m in ("inc", "dec") and o in env:
             env[o] = ("binop", "+" if m == "inc" else "-", env[o], ("const", 1))
@@ -157,17 +171,6 @@ def interp(code, nargs):
     if pending or saved:
         return None                                          # esi/edi/ebx parks intertwine with the
     ret = env.get("eax")                                     # schedule -> deferred to the next cut
-    # map the live-eax value to an emittable ret form
-    if ret is None:
-        rv = None
-    elif ret[0] == "call":
-        rv = ("call", "__stdcall", ret[2])
-    elif ret[0] == "icall":
-        rv = ("icall_ret", ret[1])
-    elif ret[0] == "binop" and ret[2][0] in ("call", "icall") and ret[3][0] in ("const", "arg"):
-        rv = ("callbinret", ret[1], ret[2], ret[3])          # (call) <op> {const|arg}  -- callbin tail
-    elif ret[0] in ("arg", "const", "binop"):
-        rv = ret
-    else:
-        return None
-    return {"nargs": nargs, "stmts": stmts, "ret": rv, "leave": leave}
+    # the returned value is the live eax, as a raw Value -- _materialize/_emit_seq reproduce it
+    # (call/icall/load/global/deref/binop) and emit-verify is the acceptance test.
+    return {"nargs": nargs, "stmts": stmts, "ret": ret, "leave": leave}
