@@ -66,10 +66,10 @@ _ALU_MN = {"add": "+", "sub": "-", "and": "&", "or": "|", "xor": "^"}
 
 
 def _leaf_ops(ins):
-    """Strip frame scaffolding (push/mov ebp,esp/pop ebp/ret); return the compute instrs."""
+    """Strip frame scaffolding (push/mov ebp,esp/pop ebp/leave/ret); return the compute instrs."""
     out = []
     for mn, op in ins:
-        if (mn, op) in (("push", "ebp"), ("mov", "ebp, esp"), ("pop", "ebp")):
+        if (mn, op) in (("push", "ebp"), ("mov", "ebp, esp"), ("pop", "ebp"), ("leave", "")):
             continue
         if mn == "ret":
             continue
@@ -169,10 +169,10 @@ def _parse_ret_body(ops):
     return None
 
 
-def _seq_candidates(ops, nargs):
-    """Straight-line multi-statement: a run of [push* ; direct __stdcall call], then an optional
-    trailing return body.  Yields seq nodes ({nargs, stmts, ret})."""
-    calls, pending, i = [], [], 0
+def _seq_candidates(ops, nargs, leave=False):
+    """Straight-line multi-statement: a run of [push* ; call (direct or indirect)], then an
+    optional trailing return body.  Yields seq nodes ({nargs, stmts, ret[, leave]})."""
+    calls, pending, i = [], [], 0        # calls: list of (cargs, indirect)
     while i < len(ops):
         m, o = ops[i]
         if m == "push":
@@ -187,24 +187,31 @@ def _seq_candidates(ops, nargs):
                     return
                 pending.append(c)
         elif m == "call":
-            if "[" in o:                                            # indirect call -> not modeled here
-                return
-            calls.append(list(reversed(pending)))                   # push order reversed = source args
+            indirect = "[" in o                                     # call dword ptr [IAT slot]
+            if indirect and not re.search(r"\[(0x[0-9a-f]+|\d+)\]", o):
+                return                                              # call [reg] / [reg+..] -> not modeled
+            calls.append((list(reversed(pending)), indirect))       # push order reversed = source args
             pending = []
         else:
             break
         i += 1
     if not calls or pending:
         return
-    stmts = [("voidcall", "__stdcall", c) for c in calls]
+
+    def stmt(c, ind):
+        return ("ivoidcall", c) if ind else ("voidcall", "__stdcall", c)
+
+    stmts = [stmt(c, ind) for c, ind in calls]
     trailing = ops[i:]
     if trailing:
         ret = _parse_ret_body(trailing)
         if ret is not None:
-            yield {"nargs": nargs, "stmts": stmts, "ret": ret}
+            yield {"nargs": nargs, "stmts": stmts, "ret": ret, "leave": leave}
     else:                                                           # no trailing: void, or last call is the return
-        yield {"nargs": nargs, "stmts": stmts, "ret": None}
-        yield {"nargs": nargs, "stmts": stmts[:-1], "ret": ("call", "__stdcall", calls[-1])}
+        yield {"nargs": nargs, "stmts": stmts, "ret": None, "leave": leave}
+        c_last, ind_last = calls[-1]
+        ret_call = ("icall_ret", c_last) if ind_last else ("call", "__stdcall", c_last)
+        yield {"nargs": nargs, "stmts": stmts[:-1], "ret": ret_call, "leave": leave}
 
 
 def _candidates(code):
@@ -278,7 +285,7 @@ def _candidates(code):
                     op, other = _ALU_MN[tm], (("arg", k) if k is not None else _cst(to.split(", ")[1]))
                 if op is not None and other is not None:
                     yield {"nargs": nargs, "expr": ("callbin", op, conv, args, other)}
-        yield from _seq_candidates(ops, nargs)      # straight-line multi-statement (multi-call / call+return)
+        yield from _seq_candidates(ops, nargs, leave=any(m == "leave" for m, _ in ins))
         return
 
     # --- globals: read (mov eax,[abs]), write imm/arg, inc/dec [abs] ---

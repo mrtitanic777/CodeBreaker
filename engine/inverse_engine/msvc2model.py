@@ -166,9 +166,10 @@ def _ret_body(E):
     return None
 
 
-def _emit_call_seq(cargs):
-    """push args right-to-left, then `call rel32` (target = 0, masked).  An arg is a stack
-    parameter ('arg', k) -> push [ebp+argk], or an immediate ('const', v) -> push imm8/imm32."""
+def _emit_call_seq(cargs, indirect=False):
+    """push args right-to-left, then the call (target reloc = 0, masked).  An arg is a stack
+    parameter ('arg', k) -> push [ebp+argk], or an immediate ('const', v) -> push imm8/imm32.
+    indirect=True emits `call dword ptr [disp32]` (ff 15, an IAT/import slot) instead of rel32."""
     seq = b""
     for a in reversed(cargs):
         if a[0] == "arg":
@@ -178,7 +179,7 @@ def _emit_call_seq(cargs):
             seq += bytes([0x6A, v & 0xFF]) if -128 <= v <= 127 else bytes([0x68]) + struct.pack("<i", v)
         else:
             return None
-    return seq + bytes([0xE8, 0, 0, 0, 0])
+    return seq + (bytes([0xFF, 0x15, 0, 0, 0, 0]) if indirect else bytes([0xE8, 0, 0, 0, 0]))
 
 
 def _emit_seq(node):
@@ -188,27 +189,32 @@ def _emit_seq(node):
     nargs = node["nargs"]
     seq = _PRO
     for st in node["stmts"]:
-        if st[0] != "voidcall" or st[1] != "__stdcall":
+        if st[0] == "voidcall" and st[1] == "__stdcall":
+            cs = _emit_call_seq(st[2])
+        elif st[0] == "ivoidcall":                           # indirect (IAT) call statement
+            cs = _emit_call_seq(st[1], indirect=True)
+        else:
             return None
-        cs = _emit_call_seq(st[2])
         if cs is None:
             return None
         seq += cs
     ret = node.get("ret")
     if ret is not None:
-        if ret[0] == "call":
-            if ret[1] != "__stdcall":
-                return None
+        if ret[0] == "call" and ret[1] == "__stdcall":
             cs = _emit_call_seq(ret[2])
-            if cs is None:
-                return None
-            seq += cs
+        elif ret[0] == "icall_ret":                          # indirect call whose result is returned
+            cs = _emit_call_seq(ret[1], indirect=True)
         else:
-            body = _ret_body(ret)
-            if body is None:
-                return None
-            seq += body
-    return seq + _epi(nargs)
+            cs = _ret_body(ret)
+        if cs is None:
+            return None
+        seq += cs
+    if node.get("leave"):                                    # `leave` teardown (indirect calls, unknown
+        epi = bytes([0xC9]) + (bytes([0xC3]) if nargs == 0    # callee convention -> restore esp via ebp)
+                               else bytes([0xC2]) + struct.pack("<H", 4 * nargs))
+    else:
+        epi = _epi(nargs)
+    return seq + epi
 
 
 def _emit_fastcall(node):
@@ -602,21 +608,30 @@ def _to_c_seq(node):
     externs, body = [], []
     ctr = [0]
 
-    def callC(cargs):
+    def callC(cargs, indirect=False):
         gsig = ", ".join("int" for _ in cargs) or "void"
-        externs.append("extern int __stdcall g%d(%s);" % (ctr[0], gsig))
+        if indirect:                                         # call through a function pointer (IAT slot)
+            externs.append("extern int (__stdcall *p%d)(%s);" % (ctr[0], gsig))
+            nm = "(*p%d)" % ctr[0]
+        else:
+            externs.append("extern int __stdcall g%d(%s);" % (ctr[0], gsig))
+            nm = "g%d" % ctr[0]
         argsC = ", ".join(("arg%d" % a[1]) if a[0] == "arg" else str(a[1]) for a in cargs)
-        s = "g%d(%s)" % (ctr[0], argsC)
         ctr[0] += 1
-        return s
+        return "%s(%s)" % (nm, argsC)
 
     for st in node["stmts"]:
-        body.append(callC(st[2]) + ";")
+        body.append((callC(st[1], True) if st[0] == "ivoidcall" else callC(st[2])) + ";")
     ret = node.get("ret")
     rtype = "void"
     if ret is not None:
         rtype = "int"
-        body.append("return " + (callC(ret[2]) if ret[0] == "call" else _c_expr(ret)) + ";")
+        if ret[0] == "call":
+            body.append("return " + callC(ret[2]) + ";")
+        elif ret[0] == "icall_ret":
+            body.append("return " + callC(ret[1], True) + ";")
+        else:
+            body.append("return " + _c_expr(ret) + ";")
     return "%s %s __stdcall f(%s) { %s }" % (" ".join(externs), rtype, params, " ".join(body))
 
 
