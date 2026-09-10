@@ -72,12 +72,43 @@ def _grammar(observed_outputs):
                    (lambda a, b: lambda x: ((x << a) + b) & MASK)(a, b))
 
 
+def _grammar2(observed_outputs):
+    """Yield (label, c_expr, fn(x,y)) over two uint32 inputs -- the common 'combine two values'
+    shapes (packing, linear combinations, bitwise merges)."""
+    yield ("x + y", "return x + y;", lambda x, y: (x + y) & MASK)
+    yield ("x - y", "return x - y;", lambda x, y: (x - y) & MASK)
+    yield ("y - x", "return y - x;", lambda x, y: (y - x) & MASK)
+    yield ("x * y", "return x * y;", lambda x, y: (x * y) & MASK)
+    yield ("x & y", "return x & y;", lambda x, y: x & y)
+    yield ("x | y", "return x | y;", lambda x, y: x | y)
+    yield ("x ^ y", "return x ^ y;", lambda x, y: x ^ y)
+    for s in (8, 16):   # packing: x | (y << s) and the mirror -- MAKELONG/MAKEWORD family
+        yield ("x | (y << %d)" % s, "return x | (y << %d);" % s,
+               (lambda s: lambda x, y: (x | (y << s)) & MASK)(s))
+        yield ("y | (x << %d)" % s, "return y | (x << %d);" % s,
+               (lambda s: lambda x, y: (y | (x << s)) & MASK)(s))
+        yield ("(x & 0x%x) | (y << %d)" % ((1 << s) - 1, s),
+               "return (x & 0x%xU) | (y << %d);" % ((1 << s) - 1, s),
+               (lambda s: lambda x, y: ((x & ((1 << s) - 1)) | (y << s)) & MASK)(s))
+    cset = sorted({0, 1, 5, 7, 8} | set(observed_outputs))
+    for a in (1, 2, 3, 4):
+        for b in (1, 2, 3, 4):
+            for c in cset:
+                yield ("%d*x + %d*y + 0x%x" % (a, b, c),
+                       "return %d*x + %d*y + 0x%xU;" % (a, b, c),
+                       (lambda a, b, c: lambda x, y: (a * x + b * y + c) & MASK)(a, b, c))
+
+
+def _oracle_vec(module, func, args, insn_cap=2000):
+    t = tracer.trace_function(module, func=func, args=[a & MASK for a in args], insn_cap=insn_cap)
+    return t["ret"] if t["exit"] == "ret" else None
+
+
 def _oracle(module, func, arg_index, arity, x, insn_cap=2000):
     args = [0] * arity
     if arg_index is not None:
         args[arg_index] = x & MASK
-    t = tracer.trace_function(module, func=func, args=args, insn_cap=insn_cap)
-    return t["ret"] if t["exit"] == "ret" else None
+    return _oracle_vec(module, func, args, insn_cap)
 
 
 def _candidacy(module, func, insn_cap=3000):
@@ -98,9 +129,11 @@ def _candidacy(module, func, insn_cap=3000):
             "func_va": base["func_va"], "func_off": base["func_off"], "base": base}
     if ptr:
         return False, dict(info, reason="has pointer argument(s) %s -- out of v1 grammar scope" % ptr)
-    if len(affect) > 1:
-        return False, dict(info, reason="return depends on multiple args %s -- v1 does one" % affect)
-    info["input"] = affect[0] if affect else None
+    if len(affect) > 2:
+        return False, dict(info, reason="return depends on %d args %s -- grammar does <=2"
+                                        % (len(affect), affect))
+    info["inputs"] = affect                 # 0, 1, or 2 return-affecting integer args
+    info["input"] = affect[0] if len(affect) == 1 else None
     return True, info
 
 
@@ -113,6 +146,9 @@ def synthesize(module, func=None, arg_of=None, trials=40, insn_cap=2000):
         result["reason"] = info["reason"]
         return result
     arity = info["arity"]
+    inputs = info.get("inputs", [])
+    if len(inputs) == 2 and arg_of is None:
+        return _synth2(module, func, info, inputs, arity, trials, insn_cap, result)
     xi = arg_of if arg_of is not None else info["input"]
     # 1. sample the oracle on a diverse, fixed input set
     seeds = [0, 1, 2, 3, 4, 7, 8, 10, 100, 255, 256, 0x100, 0x1234, 0xFFFF,
@@ -148,6 +184,42 @@ def synthesize(module, func=None, arg_of=None, trials=40, insn_cap=2000):
         result["emitted_c"] = csrc
         result["confirm"] = _gcc_confirm(csrc, "sub_%x" % result["func_va"], xi, arity,
                                          module, func, insn_cap)
+    return result
+
+
+def _synth2(module, func, info, inputs, arity, trials, insn_cap, result):
+    """Two-variable synthesis: inputs are the two return-affecting arg indices."""
+    ix, iy = inputs
+    def mk(x, y):
+        v = [0] * arity; v[ix] = x; v[iy] = y; return v
+    pairs = [(0, 0), (1, 0), (0, 1), (1, 1), (2, 3), (3, 2), (5, 7), (255, 1), (1, 255),
+             (0x100, 0x10), (0x1234, 0x5678), (0x12345678, 0x9ABCDEF0), (0xFFFF, 0xFFFF),
+             (0xFF00, 0x00FF)]
+    obs = {}
+    for (x, y) in pairs:
+        r = _oracle_vec(module, func, mk(x, y), insn_cap)
+        if r is not None:
+            obs[(x, y)] = r
+    outputs = set(obs.values())
+    survivors = [(l, c, fn) for (l, c, fn) in _grammar2(outputs)
+                 if all((fn(x, y) & MASK) == o for (x, y), o in obs.items())]
+    rng = random.Random(result["func_va"])
+    extra = [(rng.getrandbits(32), rng.getrandbits(32)) for _ in range(trials)]
+    ex = {(x, y): _oracle_vec(module, func, mk(x, y), insn_cap) for (x, y) in extra}
+    pruned = [(l, c, fn) for (l, c, fn) in survivors
+              if all(ex[p] is None or (fn(*p) & MASK) == ex[p] for p in extra)]
+    pruned.sort(key=lambda t: len(t[1]))
+    tested = len(obs) + sum(1 for v in ex.values() if v is not None)
+    result.update({"input_args": [ix, iy], "arity": arity, "tested_inputs": tested,
+                   "input_arg": None,
+                   "samples": {("0x%x,0x%x" % k): ("0x%x" % v) for k, v in list(obs.items())[:8]},
+                   "candidates": [{"expr": l, "c": c} for (l, c, _) in pruned[:5]]})
+    if pruned:
+        best_c = pruned[0][1]
+        params = ", ".join(("unsigned x" if i == ix else "unsigned y" if i == iy
+                            else "unsigned a%d" % i) for i in range(arity))
+        result["emitted_c"] = "unsigned sub_%x(%s)\n{\n    %s\n}\n" % (result["func_va"], params, best_c)
+        result["confirm"] = {"available": None, "note": "2-var gcc confirm not wired in v1"}
     return result
 
 
@@ -210,9 +282,14 @@ def main():
     print("synthesis: %s  func VA 0x%x" % (res["module"], res["func_va"]))
     if not res["candidate"]:
         print("  NOT a v1 synthesis candidate: %s" % res["reason"]); return
-    print("  input arg : %s   arity: %d   tested on %d inputs" %
-          (("arg%d" % res["input_arg"]) if res["input_arg"] is not None else "(none/constant)",
-           res["arity"], res["tested_inputs"]))
+    if res.get("input_args"):
+        inlabel = "args %s" % ", ".join("arg%d" % i for i in res["input_args"])
+    elif res.get("input_arg") is not None:
+        inlabel = "arg%d" % res["input_arg"]
+    else:
+        inlabel = "(none/constant)"
+    print("  input     : %s   arity: %d   tested on %d inputs" %
+          (inlabel, res["arity"], res["tested_inputs"]))
     ex = "  ".join("%s->%s" % (k, v) for k, v in list(res["samples"].items())[:6])
     print("  oracle    : %s" % ex)
     if not res["candidates"]:

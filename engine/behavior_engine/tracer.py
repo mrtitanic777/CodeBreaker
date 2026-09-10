@@ -218,13 +218,20 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
                 rec["mnemonics"][address] = "?"
 
     def hook_mem(uc, access, address, msize, value, _ud):
-        bucket = rec["mem_writes"] if access == U.UC_MEM_WRITE else rec["mem_reads"]
+        is_write = access == U.UC_MEM_WRITE
+        bucket = rec["mem_writes"] if is_write else rec["mem_reads"]
         if len(bucket) < _MAX_MEM:
             pc = uc.reg_read(UC_X86_REG_EIP)
-            # on a read, Unicorn passes value=0; read it back post-hoc is unreliable, so record
-            # the write value as given and leave read value as observed (0-fill where lazy-mapped).
-            bucket.append({"pc": pc, "addr": address, "size": msize,
-                           "value": int(value) & 0xFFFFFFFF if access == U.UC_MEM_WRITE else None})
+            if is_write:
+                v = int(value) & 0xFFFFFFFF
+            else:
+                # Unicorn passes value=0 on a READ, but the bytes being read are already in
+                # memory at hook time -- read them back to capture the ACTUAL value observed.
+                try:
+                    v = int.from_bytes(uc.mem_read(address, min(msize, 8)), "little")
+                except Exception:
+                    v = None
+            bucket.append({"pc": pc, "addr": address, "size": msize, "value": v})
 
     def hook_unmapped(uc, access, address, msize, value, _ud):
         # Lazily map the faulting page (zeroed) and continue -- this is the difference that lets
