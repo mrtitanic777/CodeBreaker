@@ -120,41 +120,98 @@ def reconstruct(module, func=None, ptr_i=None, other_args=None, insn_cap=6000):
     else:
         ret_src = None
 
-    # 2. differential verification: random field values, predict writes + return
+    # 2. collect N runs with random field values, then EXPLAIN each output field and the return
+    #    as an expression over the INPUT fields (const / copy / +c / ^c / shift / two-field op /
+    #    pack). A slot we cannot explain stays "computed" (flagged, never faked). This upgrades
+    #    the earlier copy/const-only model to synthesize computed fields.
     rng = random.Random(base["func_va"])
-    field_offsets = sorted(set(in_off) | {m.get("src") for m in out_model.values()
-                                          if m["kind"] == "copy"})
-    rand_vals = {o: rng.getrandbits(32) for o in field_offsets if o is not None}
-    tv, _, vwrites = probe(module, func, ptr_i, arity, other_args, rand_vals, insn_cap)
-    actual = {w["off"]: w["value"] for w in vwrites}
-    ok = True
-    for off, m in out_model.items():
-        if m["kind"] == "copy":
-            pred = rand_vals.get(m["src"], SENT(m["src"]))
-        elif m["kind"] == "const":
-            pred = m["const"]
+    in_offs = sorted(in_off)
+    N = 8
+    runs = []
+    for _ in range(N):
+        vals = {o: rng.getrandbits(32) for o in in_offs}
+        tv, _, vw = probe(module, func, ptr_i, arity, other_args, vals, insn_cap)
+        runs.append({"fields": vals, "writes": {w["off"]: w["value"] for w in vw},
+                     "ret": tv.get("ret")})
+    final_out, ok = {}, True
+    for off in sorted(out_model):
+        series = [(r["fields"], r["writes"].get(off)) for r in runs if r["writes"].get(off) is not None]
+        m = {"size": out_model[off]["size"]}
+        if len(series) < N:                          # not written on every run -> conditional
+            m["kind"] = "conditional"; ok = False
         else:
-            continue                      # computed outputs aren't predicted by v1 -> don't claim
-        if actual.get(off) != (pred & MASK if pred is not None else None):
-            ok = False
-    if ret_kind == "field":
-        if tv.get("ret") != (rand_vals.get(ret_src, SENT(ret_src)) & MASK):
-            ok = False
+            ex = _field_expr(series, in_offs)
+            if ex:
+                m["kind"], m["desc"], m["expr"] = "expr", ex[0], ex[1]
+            else:
+                m["kind"] = "computed"; ok = False
+        final_out[off] = m
+    ret_series = [(r["fields"], r["ret"]) for r in runs if r["ret"] is not None]
+    ret_model = _field_expr(ret_series, in_offs) if len(ret_series) == N else None
 
     res.update({
         "reconstructed": True,
         "arity": arity,
         "in_fields": [{"off": o, "size": s} for o, s in sorted(in_off.items())],
-        "out_fields": [dict(off=o, **m) for o, m in sorted(out_model.items())],
-        "returns": {"kind": ret_kind, "src": ret_src},
-        "verified": ok,
-        "struct_c": _emit_struct(res["func_va"], in_off, out_model, ret_kind, ret_src, ptr_i, arity),
+        "out_fields": [dict(off=o, **m) for o, m in sorted(final_out.items())],
+        "returns": {"desc": ret_model[0] if ret_model else "value (not a field expression)",
+                    "expr": ret_model[1] if ret_model else None},
+        "verified": ok,                              # every claimed write reproduced across N runs
+        "struct_c": _emit_struct(res["func_va"], in_off, final_out,
+                                 ret_model[1] if ret_model else None, ptr_i, arity),
     })
     return res
 
 
-def _emit_struct(va, in_off, out_model, ret_kind, ret_src, ptr_i, arity):
-    offsets = sorted(set(in_off) | set(out_model))
+def _field_expr(series, in_offs):
+    """Explain target = f(input fields) across all runs. series=[(fields{off:val}, target)].
+    Returns (human_desc, c_expr) or None. Fields are rendered as p->f_<off>."""
+    if not series:
+        return None
+    tgt = [t & MASK for _, t in series]
+    fs = [f for f, _ in series]
+    if len(set(tgt)) == 1:                           # constant
+        return ("0x%x" % tgt[0], "0x%xU" % tgt[0])
+    offs = [o for o in in_offs if all(o in f for f in fs)]
+    # unary over one input field
+    for o in offs:
+        xs = [f[o] & MASK for f in fs]
+        if all(x == t for x, t in zip(xs, tgt)):
+            return ("p->f_%x" % o, "p->f_%x" % o)                         # copy
+        cs = {(t - x) & MASK for x, t in zip(xs, tgt)}
+        if len(cs) == 1 and 0 not in cs:
+            c = cs.pop(); return ("f_%x + 0x%x" % (o, c), "p->f_%x + 0x%xU" % (o, c))
+        cs = {(t ^ x) & MASK for x, t in zip(xs, tgt)}
+        if len(cs) == 1 and 0 not in cs:
+            c = cs.pop(); return ("f_%x ^ 0x%x" % (o, c), "p->f_%x ^ 0x%xU" % (o, c))
+        for k in range(1, 32):
+            if all(((x << k) & MASK) == t for x, t in zip(xs, tgt)):
+                return ("f_%x << %d" % (o, k), "p->f_%x << %d" % (o, k))
+            if all((x >> k) == t for x, t in zip(xs, tgt)):
+                return ("f_%x >> %d" % (o, k), "p->f_%x >> %d" % (o, k))
+    # binary over two input fields
+    ops = [("+", lambda x, y: (x + y) & MASK), ("-", lambda x, y: (x - y) & MASK),
+           ("|", lambda x, y: x | y), ("&", lambda x, y: x & y), ("^", lambda x, y: x ^ y),
+           ("*", lambda x, y: (x * y) & MASK)]
+    for i, a in enumerate(offs):
+        xa = [f[a] & MASK for f in fs]
+        for b in offs[i + 1:]:
+            xb = [f[b] & MASK for f in fs]
+            for sym, fn in ops:
+                if all(fn(x, y) == t for x, y, t in zip(xa, xb, tgt)):
+                    return ("f_%x %s f_%x" % (a, sym, b), "p->f_%x %s p->f_%x" % (a, sym, b))
+            for s in (8, 16):
+                if all(((x | (y << s)) & MASK) == t for x, y, t in zip(xa, xb, tgt)):
+                    return ("f_%x | (f_%x<<%d)" % (a, b, s),
+                            "p->f_%x | (p->f_%x << %d)" % (a, b, s))
+                if all(((y | (x << s)) & MASK) == t for x, y, t in zip(xa, xb, tgt)):
+                    return ("f_%x | (f_%x<<%d)" % (b, a, s),
+                            "p->f_%x | (p->f_%x << %d)" % (b, a, s))
+    return None
+
+
+def _emit_struct(va, in_off, final_out, ret_expr, ptr_i, arity):
+    offsets = sorted(set(in_off) | set(final_out))
     lines, cur = [], 0
     for o in offsets:
         if o > cur:
@@ -163,14 +220,14 @@ def _emit_struct(va, in_off, out_model, ret_kind, ret_src, ptr_i, arity):
         cur = o + 4
     struct = "struct S_%x {\n%s\n};" % (va, "\n".join(lines) if lines else "    int _empty;")
     body = []
-    for o, m in sorted(out_model.items()):
-        if m["kind"] == "copy":
-            body.append("    p->f_%x = p->f_%x;" % (o, m["src"]))
-        elif m["kind"] == "const":
-            body.append("    p->f_%x = 0x%xU;" % (o, m["const"]))
+    for o, m in sorted(final_out.items()):
+        if m.get("kind") == "expr":
+            body.append("    p->f_%x = %s;" % (o, m["expr"]))
+        elif m.get("kind") == "conditional":
+            body.append("    /* p->f_%x = <written only on some inputs; conditional> */" % o)
         else:
-            body.append("    /* p->f_%x = <computed; not reconstructed in v1> */" % o)
-    ret = ("    return p->f_%x;" % ret_src) if ret_kind == "field" else "    return 0; /* value */"
+            body.append("    /* p->f_%x = <computed; not reconstructed> */" % o)
+    ret = ("    return %s;" % ret_expr) if ret_expr else "    return 0; /* value */"
     params = ", ".join(("struct S_%x *p" % va) if i == ptr_i else "unsigned a%d" % i
                        for i in range(arity))
     return "%s\n\nunsigned sub_%x(%s)\n{\n%s\n%s\n}\n" % (
