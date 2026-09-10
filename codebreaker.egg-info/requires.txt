@@ -1,8 +1,0 @@
-capstone>=5.0
-pycdlib>=1.14
-pycryptodome>=3.18
-
-[ui]
-
-[ui:platform_system == "Windows"]
-pythonnet>=3.0

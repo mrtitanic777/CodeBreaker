@@ -48,3 +48,6 @@ tools/vmm32boot/vmm32stage/
 /recovered/*.log
 /recovered/vxd_loadable.json
 /recovered/loadable_phased.json
+
+# editable-install metadata
+*.egg-info/
