@@ -25,7 +25,7 @@ Usage: python3 validate.py MODULE [--all]      MODULE = KERNEL|USER|GDI|...
 import sys, os, subprocess, tempfile, re, glob
 from collections import Counter
 from idord import open_module
-from codebreaker.disasm_engine.disasm import open_ne, build_fixup_map
+from codebreaker.disasm.disasm import open_ne, build_fixup_map
 
 
 def _objdump(blob, vma=0):

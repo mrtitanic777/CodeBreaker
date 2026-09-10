@@ -18,7 +18,7 @@ assembler boots, and 12-way fan-out oversubscribes DOSBox (the same crash that h
 import os
 import sys
 
-from codebreaker.foundation import layout
+from codebreaker.core import layout
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
@@ -52,7 +52,7 @@ def _link_one(name):
 
 def main():
     os.chdir(os.path.dirname(ROOT) if os.path.basename(ROOT) == "tools" else ".")
-    from codebreaker.foundation import parallel
+    from codebreaker.core import parallel
     jobs = parallel.resolve_jobs(sys.argv, default=6)
     mods = _modules()
     if not mods:

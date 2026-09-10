@@ -23,8 +23,8 @@ Usage:
 """
 import glob, re, sys, collections
 import trace
-from codebreaker.foundation import layout
-from codebreaker.disasm_engine.disasm import open_ne
+from codebreaker.core import layout
+from codebreaker.disasm.disasm import open_ne
 
 # Which reconstruction files are ABOUT which EXE. Nothing is inferred from the
 # name at match time: the mapping is written out so a mistake is visible.

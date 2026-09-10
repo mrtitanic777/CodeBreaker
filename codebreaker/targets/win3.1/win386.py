@@ -67,9 +67,9 @@ def _split_oversized(sg, start, end, max_fn=4096):
 
 def conduct_submodule(name, le, jobs, limit):
     """Reconstruct one embedded LE submodule; return its ledger dict."""
-    from codebreaker.format_loaders.le_seg import LeSeg
+    from codebreaker.formats.le_seg import LeSeg
     import asmrecon32
-    from codebreaker.foundation import parallel
+    from codebreaker.core import parallel
     ledger = {}
     objs = le.objects()
     exe = [i for i, o in enumerate(objs, 1) if o["exec"]]
@@ -125,7 +125,7 @@ def _tally(ledger):
 
 
 def main():
-    from codebreaker.foundation import parallel
+    from codebreaker.core import parallel
     jobs = parallel.resolve_jobs(sys.argv, default=6)
     limit = None
     if "--limit" in sys.argv:

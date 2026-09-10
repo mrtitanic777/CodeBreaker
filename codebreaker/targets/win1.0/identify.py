@@ -8,8 +8,8 @@ back for the nearest AH/AX load to recover the DOS function number — which nam
 the wrapper. Purely derived from the code.
 """
 import subprocess, sys, re
-from codebreaker.format_loaders.ne import NEFile
-from codebreaker.disasm_engine.disasm import open_ne, build_fixup_map
+from codebreaker.formats.ne import NEFile
+from codebreaker.disasm.disasm import open_ne, build_fixup_map
 
 # MS-DOS INT 21h AH -> service (the ones a windowing kernel actually wraps)
 DOS = {

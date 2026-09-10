@@ -48,8 +48,8 @@ import re
 import sys
 
 import target
-from codebreaker.disasm_engine import trace
-from codebreaker.foundation import layout
+from codebreaker.disasm import trace
+from codebreaker.core import layout
 
 RECON = layout.written_c_globs()
 
@@ -162,7 +162,7 @@ def carve_pe(path):
     """{('R', rva): size} for every carved PE function, keyed by RVA (stable
     across rebasing). Uses pe_trace (capstone). The ('R', ...) pseudo-segment
     lets read_funcs treat PE citations exactly like NE seg:off ones."""
-    from codebreaker.format_loaders import pe_trace
+    from codebreaker.formats import pe_trace
     try:
         c = pe_trace.PeCarve(path)
     except Exception:
@@ -388,7 +388,7 @@ def source_backed_owners():
 
 def main():
     argv = sys.argv[1:]
-    from codebreaker.foundation import parallel
+    from codebreaker.core import parallel
     jobs = parallel.resolve_jobs(argv)     # -j/--jobs N; strips it from argv
     carve_all = "all" in argv[argv.index("--carve") + 1:argv.index("--carve") + 2] \
         if "--carve" in argv else False

@@ -34,7 +34,7 @@ Usage:
 """
 import sys, re, struct, collections
 import trace, rsrc
-from codebreaker.disasm_engine.disasm import open_ne
+from codebreaker.disasm.disasm import open_ne
 
 NOISY_BELOW = 0x0100
 

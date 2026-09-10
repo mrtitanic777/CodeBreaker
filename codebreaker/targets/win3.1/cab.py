@@ -211,7 +211,7 @@ def extract(directory, outdir, head=None):
 
 def cabs_from_iso(iso_path, outdir):
     """Extract just the installable cabinets from a Win95 ISO into outdir."""
-    from codebreaker.build_engine import iso9660
+    from codebreaker.engines.build import iso9660
     os.makedirs(outdir, exist_ok=True)
     iso = iso9660.Iso9660(iso_path)
     n = 0

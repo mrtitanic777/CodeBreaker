@@ -23,7 +23,7 @@ import re
 import subprocess
 import sys
 
-from codebreaker.foundation import layout
+from codebreaker.core import layout
 HERE = os.path.dirname(os.path.abspath(__file__))
 from _wtroot import data_root as _data_root
 ROOT = _data_root(HERE)   # DATA root (build16/ reconstructed/ refs/ files/); tools live at HERE
@@ -136,7 +136,7 @@ def main():
 def resources_match(stem, app):
     """Do the bound resources match the shipped binary, type for type?"""
     try:
-        from codebreaker.disasm_engine.disasm import open_ne
+        from codebreaker.disasm.disasm import open_ne
         import collections
         a = collections.Counter(
             r["type"] for r in open_ne(os.path.join(

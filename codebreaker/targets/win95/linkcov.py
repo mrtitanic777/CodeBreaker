@@ -22,7 +22,7 @@ import glob
 import json
 import os
 import sys
-from codebreaker.foundation import layout
+from codebreaker.core import layout
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
@@ -97,7 +97,7 @@ def _run_sample(rows, per_tier, maxfuncs=900):
     reconstructed .asm on disk; append verdicts to SAMPLE_JSONL. Auto-sample skips
     modules over `maxfuncs` functions (giant core DLLs) to stay fast -- those link
     on demand via `linkfile.py <module>`. Prefers smaller modules (fast)."""
-    from codebreaker.foundation import config
+    from codebreaker.core import config
     config.apply_config()
     import linkfile
     have = _load_sample()

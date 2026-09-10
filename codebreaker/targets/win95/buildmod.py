@@ -19,7 +19,7 @@ from the original?* Every byte is put in one of three buckets:
 """
 import os
 import sys
-from codebreaker.foundation import layout
+from codebreaker.core import layout
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
@@ -43,8 +43,8 @@ def build(module):
     rsrc_content = rsrc_filler = 0
     rsrc_ok = None
     if fmt == "PE":
-        from codebreaker.format_loaders import pe
-        from codebreaker.build_engine import resrc
+        from codebreaker.formats import pe
+        from codebreaker.engines.build import resrc
         pf = pe.open_pe(path)
         for s in pf.sections:
             if s["name"].lower().startswith(".reloc"):
@@ -81,8 +81,8 @@ def prov_fast(module):
     total = os.path.getsize(path)
     code = rsrc_c = linker = 0
     if fmt == "PE":
-        from codebreaker.format_loaders import pe
-        from codebreaker.build_engine import resrc
+        from codebreaker.formats import pe
+        from codebreaker.engines.build import resrc
         pf = pe.open_pe(path)
         for s in pf.sections:
             nm = s["name"].lower()
@@ -98,7 +98,7 @@ def prov_fast(module):
             except Exception:
                 pass
         try:                                         # export + import tables reconstructed
-            from codebreaker.build_engine import impexp
+            from codebreaker.engines.build import impexp
             ie = impexp.relink(module)
             e = ie.get("edata")
             if e and e[0]:
@@ -109,8 +109,8 @@ def prov_fast(module):
         except Exception:
             pass
     elif fmt == "NE":
-        from codebreaker.format_loaders import ne
-        from codebreaker.build_engine import resrc
+        from codebreaker.formats import ne
+        from codebreaker.engines.build import resrc
         nf = ne.NEFile(path)
         for s in nf.segments():
             if s.get("kind") == "CODE":
@@ -142,7 +142,7 @@ def prov_fast(module):
         except Exception:
             pass
         try:                                         # LE loader tables reconstructed
-            from codebreaker.format_loaders import leloader
+            from codebreaker.formats import leloader
             for _nm, (match, nb) in leloader.relink(module).items():
                 if match:
                     rsrc_c += nb
@@ -153,7 +153,7 @@ def prov_fast(module):
     # "retained" so the honest remainder is just headers/tables.
     data = 0
     if fmt == "PE":
-        from codebreaker.format_loaders import pe
+        from codebreaker.formats import pe
         for s in pe.open_pe(path).sections:
             nm = s["name"].lower().lstrip(".")
             if (s["chars"] & 0x20) or (s["chars"] & 0x20000000):
@@ -162,7 +162,7 @@ def prov_fast(module):
                 continue
             data += s["rawsize"]
     elif fmt == "NE":
-        from codebreaker.format_loaders import ne
+        from codebreaker.formats import ne
         for s in ne.NEFile(path).segments():
             if s.get("kind") != "CODE":
                 data += s["length"]
@@ -179,7 +179,7 @@ def prov_fast(module):
                 data += max(0, ob["page_count"] * _lf.page_size - ob["vsize"])
 
     try:                                             # container headers + loader tables
-        from codebreaker.build_engine import headergen
+        from codebreaker.engines.build import headergen
         h = headergen.relink(module)
         if not h.get("skip"):
             rsrc_c += h["reconstructed"]
@@ -225,7 +225,7 @@ def _pct(x, t):
 
 def main():
     if "--corpus" in sys.argv:
-        from codebreaker.foundation import config
+        from codebreaker.core import config
         config.apply_config()
         print("building provenance over the corpus...", flush=True)
         agg, byfmt, n, ok = _corpus()
@@ -263,7 +263,7 @@ def main():
     if len(sys.argv) < 2:
         sys.exit("usage: buildmod.py MODULE | --corpus")
     os.chdir(os.path.dirname(ROOT) if os.path.basename(ROOT) == "tools" else ".")
-    from codebreaker.foundation import config
+    from codebreaker.core import config
     config.apply_config()
     r = build(sys.argv[1])
     t = r["total"]

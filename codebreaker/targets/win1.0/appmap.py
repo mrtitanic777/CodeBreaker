@@ -29,7 +29,7 @@ Usage:
 """
 import os, re, sys, collections
 import segprofile, rsrc, idord, trace
-from codebreaker.foundation import layout
+from codebreaker.core import layout
 
 # Human readings, added as segments are actually examined. Keyed (APP, seg).
 # Each is prose a person wrote after reading that segment's profile. Segments

@@ -17,7 +17,7 @@ import glob
 import os
 import re
 import sys
-from codebreaker.foundation import layout
+from codebreaker.core import layout
 
 _OFF = re.compile(r";\s*([0-9a-f]{4})\b")
 # ORDINALS.md rows: `| KERNEL.15 | `GLOBALALLOC` |` (NE) and
@@ -77,7 +77,7 @@ def annotate(asm_text, sg, start, end):
       * `-> MODULE.Api` on each external call site (from the fixup table),
       * a `; ---- data: string "..." ----` label on each data region.
     """
-    from codebreaker.build_engine import datacode
+    from codebreaker.engines.build import datacode
     lines = _strip(asm_text).splitlines()
     line_off = [(i, int(m.group(1), 16)) for i, ln in enumerate(lines)
                 if (m := _OFF.search(ln))]
@@ -137,7 +137,7 @@ def annotate(asm_text, sg, start, end):
 
 def _annotate_module(module):
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from codebreaker.format_loaders import ne as ne_mod
+    from codebreaker.formats import ne as ne_mod
     import trace, target
     o = trace.load_ordinals("ORDINALS.md")
     ne = ne_mod.NEFile(target.resolve(module))

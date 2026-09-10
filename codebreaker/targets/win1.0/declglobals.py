@@ -26,7 +26,7 @@ Usage:
     python declglobals.py --apply
 """
 import re, subprocess, glob, sys, collections
-from codebreaker.foundation import layout
+from codebreaker.core import layout
 
 INC = ["-Ibuild/include", "-I" + layout.recon_dir(), "-I" + layout.recon_sub("system")]
 CC = ["gcc", "-fsyntax-only", "-std=gnu89", "-w"]

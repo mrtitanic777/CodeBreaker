@@ -11,7 +11,7 @@ makes. Internal functions are left as commented stubs to fill in.
 Usage: python3 scaffold.py FILE.EXE > out.c
 """
 import sys, os
-from codebreaker.format_loaders.ne import NEFile
+from codebreaker.formats.ne import NEFile
 from wndproc import analyze, WM
 from names import label
 

@@ -31,7 +31,7 @@ import argparse
 import os
 import sys
 
-from codebreaker.foundation import layout
+from codebreaker.core import layout
 
 
 def _hex(s):

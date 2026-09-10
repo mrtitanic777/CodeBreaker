@@ -38,7 +38,7 @@ import subprocess
 import sys
 import tempfile
 
-from codebreaker.recon_engine import segdiff
+from codebreaker.engines.recon import segdiff
 import target
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -229,7 +229,7 @@ def shipped_pe_function(module, rva):
     Mask = base-reloc absolute fields + relative branch displacements — the same
     fixup classes carryover masks, so the compare is opcode-stream only."""
     import capstone
-    from codebreaker.format_loaders import pe_trace
+    from codebreaker.formats import pe_trace
     path = target.resolve(module)
     c = pe_trace.PeCarve(path)
     base = c.pe.image_base

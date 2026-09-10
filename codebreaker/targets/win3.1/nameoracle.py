@@ -27,7 +27,7 @@ it produces the identical result.
     python nameoracle.py DDEML.DLL --stats  # coverage summary only
 """
 import os
-from codebreaker.foundation import paths
+from codebreaker.core import paths
 import re
 import sys
 
@@ -278,7 +278,7 @@ def _reachable_imports(node, direct, edges, depth=4):
 
 
 def name_module(module):
-    from codebreaker.format_loaders import ne
+    from codebreaker.formats import ne
     import target, linkfile
     nf = ne.NEFile(target.resolve(module))
     exports = _exports(nf)
@@ -357,7 +357,7 @@ def name_module(module):
 
 def run_all():
     """Name every conducted module from the binary; stage name maps + a report."""
-    from codebreaker.foundation import layout
+    from codebreaker.core import layout
     import json, target
     outdir = os.path.join("reports", "nameoracle")
     os.makedirs(outdir, exist_ok=True)

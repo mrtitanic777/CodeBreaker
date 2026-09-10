@@ -30,7 +30,7 @@ import struct
 import sys
 
 import rsrc
-from codebreaker.disasm_engine.disasm import open_ne
+from codebreaker.disasm.disasm import open_ne
 
 # Windows 1.0 virtual-key names worth spelling out in an accelerator table.
 VK = {0x08: "VK_BACK", 0x09: "VK_TAB", 0x0D: "VK_RETURN", 0x1B: "VK_ESCAPE",

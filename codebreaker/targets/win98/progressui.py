@@ -457,7 +457,7 @@ class ProgressWindow:
     # ---- Tools launcher (merged tab) --------------------------------------
     def _tool_registry(self):
         try:
-            from codebreaker.foundation import config
+            from codebreaker.core import config
             reg = [(n, d) for n, _s, d in win98re.BUILTINS if n != "explore"]
             try:
                 reg += [(n, d) for n, _p, d in config.load_plugins()]
@@ -525,7 +525,7 @@ class ProgressWindow:
     def _load_module(self, name):
         self.set_status_bar("analyzing %s ..." % name)
         try:
-            from codebreaker.ir_engine import explore_model
+            from codebreaker.ir import explore_model
             self._model = explore_model.analyze_module(name)
         except Exception as e:
             self.set_status_bar("analyze error: %r" % e); return

@@ -25,8 +25,8 @@ Usage:
     python argfix.py --apply
 """
 import re, sys, glob
-from codebreaker.recon_engine import argcheck
-from codebreaker.foundation import layout
+from codebreaker.engines.recon import argcheck
+from codebreaker.core import layout
 
 # 32-bit parameter types. POINT and DWORD-shaped structs count: a POINT is two
 # words on the stack exactly as a far pointer is.

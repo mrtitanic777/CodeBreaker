@@ -41,7 +41,7 @@ import subprocess
 import sys
 import threading
 import time
-from codebreaker.foundation import layout
+from codebreaker.core import layout
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 HERE = os.path.dirname(os.path.abspath(__file__))

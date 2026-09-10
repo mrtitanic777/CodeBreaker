@@ -141,7 +141,7 @@ def _imp_sym(r, mods, o):
         return "%s_%s" % (mod, re.sub(r"\W", "_", nm) or "sym")
     ordn = r.get("ordinal", 0)
     try:                                                  # ordinal -> real API name (ground truth)
-        from codebreaker.symbol_engine import impresolve
+        from codebreaker.engines.symbol import impresolve
         nm = impresolve.resolve(raw_mod, ordn)
     except Exception:
         nm = None
@@ -222,7 +222,7 @@ def _decompile_il(all_insns, bits, tmp, sec_imports=None):
     decompile of LIVE disassembly, not a byte-exact reconstruction -- readable but
     unverified. Imported calls are renamed from the NE import tables (see sec_imports, a
     per-section {offset: symbol} map). Returns (c_text, lifted, skipped, capped, externs)."""
-    from codebreaker.ir_engine import il
+    from codebreaker.ir import il
     out, lifted, skipped, capped, externs = [], 0, 0, False, {}
     for si, (base, end, insns) in enumerate(all_insns):
         if not insns:
@@ -329,7 +329,7 @@ def reverse(path, progress=None, outbase=None):
     emit("stage", 1, "Parsing structure")
     try:
         if fmt.startswith("PE"):
-            from codebreaker.format_loaders import pe
+            from codebreaker.formats import pe
             P = pe.PEFile(path)
             disbits = 64 if P.is_plus else 32
             rep["format"] = fmt = "%s (%s)" % ("PE32+" if P.is_plus else "PE32", P.machine_name())
@@ -356,7 +356,7 @@ def reverse(path, progress=None, outbase=None):
             # {IAT VA -> C symbol}: by-name imports carry the API name; by-ordinal (#N) resolve
             # via the exporting DLL's export table (impresolve), else fall back to MODULE_ordN.
             try:
-                from codebreaker.symbol_engine import impresolve
+                from codebreaker.engines.symbol import impresolve
                 gm = {}
                 for va, (dll, nm) in P.imports().items():
                     modid = re.sub(r"\W", "_", dll.rsplit(".", 1)[0]).upper()
@@ -386,7 +386,7 @@ def reverse(path, progress=None, outbase=None):
             seeds = [P.image_base + P.entry] + [P.image_base + rva for _o, nm, rva in
                                                 (list(P.exports()) if rep["exports"] else [])]
         elif fmt.startswith("NE"):
-            from codebreaker.format_loaders import ne
+            from codebreaker.formats import ne
             o = ne.NEFile(path)
             rep["module"] = o.module_name()
             segs = o.segments()

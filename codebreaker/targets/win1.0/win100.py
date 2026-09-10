@@ -21,8 +21,8 @@ import sys
 
 import cfg
 import masmlift
-from codebreaker.format_loaders import objextract
-from codebreaker.foundation import layout
+from codebreaker.formats import objextract
+from codebreaker.core import layout
 
 # MASM 4.0 lacks a native `retf`; this is the macro masmlift assembles it with.
 RETF_MACRO = ["retf    macro   n", "        ifb     <n>", "        db      0cbh",

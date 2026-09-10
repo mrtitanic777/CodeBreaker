@@ -28,13 +28,13 @@ import sys
 import threading
 import time
 
-from codebreaker.recon_engine import asmrecon
+from codebreaker.engines.recon import asmrecon
 import asmrecon32
-from codebreaker.foundation import parallel
+from codebreaker.core import parallel
 import segdiff
 import target
-from codebreaker.disasm_engine import trace
-from codebreaker.foundation import layout
+from codebreaker.disasm import trace
+from codebreaker.core import layout
 
 LEDGER_DIR = os.path.join(layout.runtime_dir(), "conduct")
 CHUNK = 40                 # functions assembled per DOSBox boot (batched reconcile)
@@ -123,7 +123,7 @@ def _tier_modules(tier):
 
 
 def _segments(module):
-    from codebreaker.format_loaders import ne as ne_mod
+    from codebreaker.formats import ne as ne_mod
     ne = ne_mod.NEFile(target.resolve(module))
     o = trace.load_ordinals("ORDINALS.md")
     for i, s in enumerate(ne.segments(), 1):
@@ -136,9 +136,9 @@ def _count_code_segs(module):
     denominator for the disassembly-phase progress bar."""
     try:
         if _is_pe(module):
-            from codebreaker.format_loaders.pe import open_pe
+            from codebreaker.formats.pe import open_pe
             return len(open_pe(target.resolve(module)).code_sections()) or 1
-        from codebreaker.format_loaders import ne as ne_mod
+        from codebreaker.formats import ne as ne_mod
         ne = ne_mod.NEFile(target.resolve(module))
         return sum(1 for s in ne.segments() if s.get("kind") == "CODE") or 1
     except Exception:
@@ -148,8 +148,8 @@ def _count_code_segs(module):
 def _pe_sections(module):
     """The PE analog of _segments: yield (index, PeSeg) per executable section.
     Index is 1-based over code sections so the ledger key format is shared."""
-    from codebreaker.format_loaders.pe import open_pe
-    from codebreaker.format_loaders.pe_seg import PeSeg
+    from codebreaker.formats.pe import open_pe
+    from codebreaker.formats.pe_seg import PeSeg
     pe = open_pe(target.resolve(module))
     names = [name for _va, _b, name in pe.code_sections()]
     for i, name in enumerate(names, 1):
@@ -202,8 +202,8 @@ def recover_c_pe(module, emitdir=None, limit=None):
     sec<i>_<off>.c beside each sec<i>_<off>.asm.  Returns (recovered, sampled).  Every emitted C
     is byte-exact by construction (self-verified through msvc2model.emit); the rest are declined."""
     import capstone
-    from codebreaker.format_loaders.pe_trace import PeCarve
-    from codebreaker.inverse_engine import oracle_router, msvc2cov
+    from codebreaker.formats.pe_trace import PeCarve
+    from codebreaker.engines.inverse import oracle_router, msvc2cov
     md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
     carve = PeCarve(module)
     secbase = {va: i for i, (va, _d, _n) in enumerate(carve.sections, 1)}
@@ -267,9 +267,9 @@ def _disasm_segjobs(module, only_seg=None):
     bn = os.path.basename(module).upper()
     raw = []
     if is_pe:
-        from codebreaker.format_loaders.pe import open_pe
-        from codebreaker.format_loaders.pe_seg import PeSeg
-        from codebreaker.format_loaders.pe_trace import PeCarve
+        from codebreaker.formats.pe import open_pe
+        from codebreaker.formats.pe_seg import PeSeg
+        from codebreaker.formats.pe_trace import PeCarve
         path = target.resolve(module)
         sections = open_pe(path).code_sections()          # [(va, bytes, name)]
         secbytes = sum(len(b) for _v, b, _n in sections) or 1
@@ -435,7 +435,7 @@ def _reconstruct_core(module, fmt, raw, ledger, ledger_path, emitdir, jobs,
         # Cap the fan-out at the warm-pool size: more threads than workers just
         # block on lease(). masmlift.POOL_MAX is env-tunable (WT_POOL_MAX), so the
         # launcher controls how many DOSBoxes run at once (e.g. 10 on a 12-core box).
-        from codebreaker.recon_engine import masmlift
+        from codebreaker.engines.recon import masmlift
         nested = parallel.tmap(work_chunk, chunks, jobs=min(jobs, masmlift.POOL_MAX),
                                label="conduct seg%d" % seg_i)
         for chunk_res in nested:
@@ -685,7 +685,7 @@ def _selftest():
 
 def main():
     try:                                       # wire DOSBox/MASM tool paths (idempotent;
-        from codebreaker.foundation import config
+        from codebreaker.core import config
         config.apply_config()                 # conduct.py directly must work too)
     except Exception:
         pass
@@ -894,7 +894,7 @@ def main():
         else:
             progress.set_ui_state("ok")
     try:
-        from codebreaker.recon_engine import masmlift
+        from codebreaker.engines.recon import masmlift
         masmlift.close_pools()                 # shut down the warm DOSBox workers
     except Exception:
         pass

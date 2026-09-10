@@ -42,7 +42,7 @@ import opc8086
 import idord
 import ledger
 import trace
-from codebreaker.disasm_engine.disasm import open_ne
+from codebreaker.disasm.disasm import open_ne
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 from _wtroot import data_root as _data_root

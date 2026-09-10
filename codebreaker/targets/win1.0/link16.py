@@ -31,7 +31,7 @@ import subprocess
 import sys
 
 import mkdef
-from codebreaker.foundation import layout
+from codebreaker.core import layout
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 from _wtroot import data_root as _data_root
@@ -888,7 +888,7 @@ def _bind_resources(outdir, stem, rcname, exe, link_clean):
 
 def compare(built, shipped):
     """Put the rebuilt NE beside the shipped one, header field by header field."""
-    from codebreaker.format_loaders.ne import NEFile
+    from codebreaker.formats.ne import NEFile
     try:
         a, b = NEFile(built), NEFile(shipped)
     except Exception as e:

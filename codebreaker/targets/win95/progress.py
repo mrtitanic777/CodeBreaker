@@ -17,7 +17,7 @@ import json
 import os
 import sys
 import time
-from codebreaker.foundation import layout
+from codebreaker.core import layout
 
 _enabled = False
 _managed = False

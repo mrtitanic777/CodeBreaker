@@ -25,7 +25,7 @@ import json
 import string
 import sys
 
-from codebreaker.foundation import parallel
+from codebreaker.core import parallel
 import segdiff
 
 MAX_PRODUCT = 200

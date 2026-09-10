@@ -24,7 +24,7 @@ Usage:
 """
 import re, sys, glob, collections
 import idord, trace
-from codebreaker.foundation import layout
+from codebreaker.core import layout
 
 RT = {1: "RT_CURSOR", 2: "RT_BITMAP", 3: "RT_ICON", 4: "RT_MENU",
       5: "RT_DIALOG", 6: "RT_STRING", 8: "RT_FONT", 10: "RT_ACCEL"}

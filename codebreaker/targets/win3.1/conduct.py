@@ -30,11 +30,11 @@ import time
 
 import asmrecon
 import asmrecon32
-from codebreaker.foundation import layout
-from codebreaker.foundation import parallel
-from codebreaker.recon_engine import segdiff
+from codebreaker.core import layout
+from codebreaker.core import parallel
+from codebreaker.engines.recon import segdiff
 import target
-from codebreaker.disasm_engine import trace
+from codebreaker.disasm import trace
 
 LEDGER_DIR = os.path.join("reports", "conduct")
 CHUNK = 40                 # functions assembled per DOSBox boot (batched reconcile)
@@ -66,7 +66,7 @@ def _tier_modules(tier):
 
 
 def _segments(module):
-    from codebreaker.format_loaders import ne as ne_mod
+    from codebreaker.formats import ne as ne_mod
     ne = ne_mod.NEFile(target.resolve(module))
     o = trace.load_ordinals("ORDINALS.md")
     for i, s in enumerate(ne.segments(), 1):
@@ -79,9 +79,9 @@ def _count_code_segs(module):
     denominator for the disassembly-phase progress bar."""
     try:
         if _is_pe(module):
-            from codebreaker.format_loaders.pe import open_pe
+            from codebreaker.formats.pe import open_pe
             return len(open_pe(target.resolve(module)).code_sections()) or 1
-        from codebreaker.format_loaders import ne as ne_mod
+        from codebreaker.formats import ne as ne_mod
         ne = ne_mod.NEFile(target.resolve(module))
         return sum(1 for s in ne.segments() if s.get("kind") == "CODE") or 1
     except Exception:
@@ -91,8 +91,8 @@ def _count_code_segs(module):
 def _pe_sections(module):
     """The PE analog of _segments: yield (index, PeSeg) per executable section.
     Index is 1-based over code sections so the ledger key format is shared."""
-    from codebreaker.format_loaders.pe import open_pe
-    from codebreaker.format_loaders.pe_seg import PeSeg
+    from codebreaker.formats.pe import open_pe
+    from codebreaker.formats.pe_seg import PeSeg
     pe = open_pe(target.resolve(module))
     names = [name for _va, _b, name in pe.code_sections()]
     for i, name in enumerate(names, 1):
@@ -105,7 +105,7 @@ def _reconcile_one(sg, seg_i, start, end, seg_mask, emitdir=None):
         exact = bool(res and res["exact"])
         if emitdir and exact:                  # save the byte-exact reconstruction
             try:                               # comment-only readability labels
-                from codebreaker.symbol_engine import annotate
+                from codebreaker.engines.symbol import annotate
                 asm = annotate.annotate(asm, sg, start, end)
             except Exception:
                 pass
@@ -148,7 +148,7 @@ def _record(sg, seg_i, start, end, asm, res, fdb, n, is_pe, emitdir):
             fname = "sec%d_%05x.asm" % (seg_i, start)
         else:
             try:
-                from codebreaker.symbol_engine import annotate
+                from codebreaker.engines.symbol import annotate
                 asm = annotate.annotate(asm, sg, start, end)
             except Exception:
                 pass
@@ -167,7 +167,7 @@ def _record(sg, seg_i, start, end, asm, res, fdb, n, is_pe, emitdir):
 
 def run(module, jobs=6, limit=None, only_seg=None, ledger_path=None, quiet=False,
         emit=False):
-    from codebreaker.foundation import progress
+    from codebreaker.core import progress
     ledger_path = ledger_path or os.path.join(LEDGER_DIR, module.lower() + ".json")
     os.makedirs(os.path.dirname(ledger_path), exist_ok=True)
     ledger = json.load(open(ledger_path)) if os.path.exists(ledger_path) else {}
@@ -192,9 +192,9 @@ def run(module, jobs=6, limit=None, only_seg=None, ledger_path=None, quiet=False
     # bar (objdump is an opaque subprocess, and NE segments are small anyway).
     segjobs = []
     if is_pe:
-        from codebreaker.format_loaders.pe import open_pe
-        from codebreaker.format_loaders.pe_seg import PeSeg
-        from codebreaker.format_loaders.pe_trace import PeCarve
+        from codebreaker.formats.pe import open_pe
+        from codebreaker.formats.pe_seg import PeSeg
+        from codebreaker.formats.pe_trace import PeCarve
         path = target.resolve(module)
         sections = open_pe(path).code_sections()          # [(va, bytes, name)]
         secbytes = sum(len(b) for _v, b, _n in sections) or 1
@@ -434,7 +434,7 @@ def main():
     if not modules:
         ap.error("give a module, --tier, or --selftest")
 
-    from codebreaker.foundation import progress
+    from codebreaker.core import progress
     # The progress UI is ALWAYS on unless explicitly suppressed for CI: the tool
     # must never run without the user being able to watch it.
     if not args.no_ui:

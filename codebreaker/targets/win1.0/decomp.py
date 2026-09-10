@@ -36,7 +36,7 @@ Usage:
 """
 import sys, re, collections
 import idord, trace, mfn
-from codebreaker.disasm_engine.disasm import open_ne
+from codebreaker.disasm.disasm import open_ne
 
 JCC = re.compile(r"^(j\w+)\s+0x([0-9a-f]+)$")
 UNCOND = ("jmp",)

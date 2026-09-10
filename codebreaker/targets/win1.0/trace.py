@@ -24,7 +24,7 @@ Usage:
 Add --ords PATH to point at a non-default ORDINALS.md.
 """
 import re, sys, os, subprocess, tempfile
-from codebreaker.disasm_engine.disasm import open_ne, build_fixup_map
+from codebreaker.disasm.disasm import open_ne, build_fixup_map
 
 # Window message names (mirrors wndproc.py's table).
 WM = {

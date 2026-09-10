@@ -21,7 +21,7 @@ import re
 import struct
 import sys
 
-from codebreaker.foundation import layout
+from codebreaker.core import layout
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
@@ -50,7 +50,7 @@ def _submodules(d):
 
 
 def link():
-    from codebreaker.format_loaders import objextract
+    from codebreaker.formats import objextract
     import target, le as le_mod, masmlift, asmrecon32
     path = target.resolve("WIN386.EXE")
     d = open(path, "rb").read()

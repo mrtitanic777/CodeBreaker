@@ -34,7 +34,7 @@ STAGES = [
 def _done(module):
     """(reconstructed?, complete?) from .asm on disk + the conductor's report,
     trying both the full-filename and extensionless-stem naming."""
-    from codebreaker.recon_engine import linkfile
+    from codebreaker.engines.recon import linkfile
     import target
     try:
         path = target.resolve(module)
@@ -51,7 +51,7 @@ def _done(module):
             with open(path, "rb") as f:
                 f.seek(lfa)
                 if f.read(2) == b"W3":
-                    from codebreaker.format_loaders import w3
+                    from codebreaker.formats import w3
                     a = w3.analyze(base)
                     # inner LE reconstructed? (conduct wrote its report)
                     rt = os.path.join("reports", "conduct", base.lower() + ".report.txt")
@@ -82,7 +82,7 @@ def _done(module):
 
 def main():
     os.chdir(os.path.dirname(ROOT) if os.path.basename(ROOT) == "tools" else ".")
-    from codebreaker.foundation import config
+    from codebreaker.core import config
     config.apply_config()
     verify = "--verify" in sys.argv
 
@@ -107,7 +107,7 @@ def main():
             extra = ""
             if verify and d["complete"]:
                 try:
-                    from codebreaker.recon_engine import linkfile
+                    from codebreaker.engines.recon import linkfile
                     lr = linkfile.link_module(m)
                     extra = "  -> LINK %s" % ("byte-identical" if lr["match"] else "DIFF %d" % lr["n_diff"])
                 except Exception as e:

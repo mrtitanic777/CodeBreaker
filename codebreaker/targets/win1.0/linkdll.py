@@ -21,7 +21,7 @@ consolidation are the same flagged deviations the grafted apps carry.
 """
 import os, re, sys, subprocess, shutil
 import link16, mkdef, cfg, graft
-from codebreaker.foundation import layout
+from codebreaker.core import layout
 
 ROOT, B16, DBX, CONF = link16.ROOT, link16.B16, link16.DBX, link16.CONF
 HERE = os.path.dirname(os.path.abspath(__file__))   # sibling tools live here
@@ -188,7 +188,7 @@ def run_dosbox(outdir):
 def dll_compare(built_path, mod, shipped_ne):
     """Structural compare: the built DLL NE vs the shipped raw module NE
     (loaded via cfg.open_any, which handles the MZ-less boot-image format)."""
-    from codebreaker.format_loaders import ne as nemod
+    from codebreaker.formats import ne as nemod
     b = nemod.NEFile(built_path)
     s = shipped_ne
     def exps(n):

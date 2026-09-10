@@ -97,7 +97,7 @@ def main():
     boot = opt("--boot")
     volid = opt("--volid", "WIN98")
     os.chdir(os.path.dirname(ROOT) if os.path.basename(ROOT) == "tools" else ".")
-    from codebreaker.foundation import config
+    from codebreaker.core import config
     config.apply_config()
     if not os.path.isdir(files_dir):
         sys.exit("expanded media dir not found: %s (run the CAB expansion first)" % files_dir)

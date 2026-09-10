@@ -34,7 +34,7 @@ import collections
 import _wtroot
 import ledger
 import trace
-from codebreaker.foundation import layout
+from codebreaker.core import layout
 
 ROOT = _wtroot.data_root(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(layout.recon_sub("system", ROOT), "_recovered_citations.c")

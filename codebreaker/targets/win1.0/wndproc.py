@@ -10,7 +10,7 @@ handler lists the KERNEL/GDI/USER calls it makes — a behavioral map of the app
 Usage: python3 wndproc.py FILE --entry ORDINAL
 """
 import subprocess, sys, re
-from codebreaker.disasm_engine.disasm import open_ne, build_fixup_map
+from codebreaker.disasm.disasm import open_ne, build_fixup_map
 
 WM = {
  0x0001:"WM_CREATE",0x0002:"WM_DESTROY",0x0003:"WM_MOVE",0x0005:"WM_SIZE",

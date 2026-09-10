@@ -21,8 +21,8 @@ import subprocess
 import sys
 
 sys.path.insert(0, paths.package_root())
-from codebreaker.foundation import layout
-from codebreaker.foundation import paths
+from codebreaker.core import layout
+from codebreaker.core import paths
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 SEP = ";" if os.name == "nt" else ":"          # PyInstaller add-data separator

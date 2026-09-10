@@ -23,8 +23,8 @@ Usage:
     python dropdecls.py [--apply]
 """
 import re, glob, sys
-from codebreaker.recon_engine import argcheck
-from codebreaker.foundation import layout
+from codebreaker.engines.recon import argcheck
+from codebreaker.core import layout
 
 DECL = re.compile(r"(?m)^[ \t]*extern[^;{\n]*?\b(\w+)\s*\([^;{)]*\)\s*;[ \t]*(?:/\*[^\n]*)?\n")
 

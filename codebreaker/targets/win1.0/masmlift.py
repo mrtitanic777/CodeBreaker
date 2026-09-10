@@ -22,7 +22,7 @@ import re, sys, os, subprocess, shutil, struct, bisect
 import tempfile, time
 import cfg, trace
 import link16   # reuse the DOSBox-X + MASM machinery
-from codebreaker.foundation import layout
+from codebreaker.core import layout
 
 # ---------------------------------------------------------------------------
 # CodeBreaker assemble primitive (Inc 1 — unify). The ported orchestration
@@ -80,7 +80,7 @@ def _assemble_items(items, timeout=None):
         f.write(_ASM_CONF.format(masm=masm, work=work, cmd=cmd))
     env = dict(os.environ, SDL_VIDEODRIVER="dummy")
     try:
-        from codebreaker.foundation import progress as _pr
+        from codebreaker.core import progress as _pr
         aborted = _pr.cancelled
     except Exception:
         aborted = lambda: False

@@ -20,7 +20,7 @@ import json
 import os
 import re
 import sys
-from codebreaker.foundation import layout
+from codebreaker.core import layout
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 LEDGER_DIR = os.path.join(layout.runtime_dir(), "conduct")
@@ -90,8 +90,8 @@ def _verdict(rec):
 # per-format builders
 # --------------------------------------------------------------------------
 def _pe_model(path, base_name):
-    from codebreaker.format_loaders import pe
-    from codebreaker.format_loaders.pe_trace import PeCarve
+    from codebreaker.formats import pe
+    from codebreaker.formats.pe_trace import PeCarve
     pf = pe.open_pe(path)
     ib = getattr(pf, "image_base", 0)
     model = {"format": "PE", "image_base": ib,
@@ -155,8 +155,8 @@ def _pe_kind(chars):
 
 
 def _ne_model(path, base_name):
-    from codebreaker.format_loaders import ne
-    from codebreaker.disasm_engine import trace
+    from codebreaker.formats import ne
+    from codebreaker.disasm import trace
     nf = ne.open_ne(path) if hasattr(ne, "open_ne") else ne.NEFile(path)
     ordinals = _safe(lambda: trace.load_ordinals("ORDINALS.md"), {})
     model = {"format": "NE", "image_base": 0,

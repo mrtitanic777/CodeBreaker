@@ -28,10 +28,10 @@ import sys
 
 import asmrecon
 import masmlift
-from codebreaker.format_loaders import objextract
-from codebreaker.recon_engine import segdiff
+from codebreaker.formats import objextract
+from codebreaker.engines.recon import segdiff
 from asmrecon import JMPCC, to_masm, _emit_db, _divergers, _cancelled
-from codebreaker.format_loaders.pe_seg import PeSeg
+from codebreaker.formats.pe_seg import PeSeg
 
 # MASM 5.10A (386-capable), vendored under tools/ — kept separate from the
 # proven 16-bit MASM 4.00 root so the NE path is never perturbed. Resolve the

@@ -102,7 +102,7 @@ def main():
     if len(sys.argv) < 2:
         sys.exit("usage: w3.py MODULE")
     os.chdir(os.path.dirname(ROOT) if os.path.basename(ROOT) == "tools" else ".")
-    from codebreaker.foundation import config
+    from codebreaker.core import config
     config.apply_config()
     r = analyze(sys.argv[1])
     if r.get("skip"):

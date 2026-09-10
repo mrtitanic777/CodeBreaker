@@ -19,7 +19,7 @@ provably-byte-exact C automatically, and reports exactly what's left.
 """
 import json
 import os
-from codebreaker.foundation import paths
+from codebreaker.core import paths
 import re
 import sys
 
@@ -181,7 +181,7 @@ def _match_obj(obj, size, tgt, tmask, far=False):
     fixed 2-byte substitution -- rewriting it lets the compiler codegen be compared."""
     if not obj:
         return False
-    from codebreaker.format_loaders import objextract
+    from codebreaker.formats import objextract
     try:
         g = objextract.Obj(obj).functions()
     except Exception:
@@ -206,7 +206,7 @@ def _match_obj(obj, size, tgt, tmask, far=False):
 
 
 def _asm_dir(module):
-    from codebreaker.foundation import layout
+    from codebreaker.core import layout
     stem = module.rsplit(".", 1)[0]
     idx = layout.asm_dir_index()                    # resolve at any depth (component tree)
     for cand in (module.lower(), stem.lower()):
@@ -258,8 +258,8 @@ def run_module(module, jobs):
     are generated first (cheap, no DOSBox), then compiled in batches of COMPILE_BATCH
     per DOSBox boot -- with `jobs` boots running concurrently -- instead of one boot
     per candidate. The DOSBox boot dominates cost, so this is the decisive speedup."""
-    from codebreaker.foundation import parallel
-    from codebreaker.recon_engine import segdiff
+    from codebreaker.core import parallel
+    from codebreaker.engines.recon import segdiff
     import target, cc16
     funcs = _module_funcs(module)
     if not funcs:
@@ -340,7 +340,7 @@ def run_module(module, jobs):
 
 
 def main():
-    from codebreaker.foundation import parallel
+    from codebreaker.core import parallel
     jobs = parallel.resolve_jobs(sys.argv, default=6)
     mods = None
     if "--module" in sys.argv:

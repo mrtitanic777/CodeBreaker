@@ -39,7 +39,7 @@ import sys
 
 import idord
 import trace
-from codebreaker.foundation import layout
+from codebreaker.core import layout
 
 WM = getattr(trace, "WM", {})
 OUT = layout.generated_dir()

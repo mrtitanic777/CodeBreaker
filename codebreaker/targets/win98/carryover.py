@@ -48,8 +48,8 @@ import re
 import sys
 
 import target
-from codebreaker.recon_engine import segdiff
-from codebreaker.foundation import layout
+from codebreaker.engines.recon import segdiff
+from codebreaker.core import layout
 
 # --------------------------------------------------------------------------
 # locating the Windows 95 project (its files/ and reconstructed/)
@@ -113,7 +113,7 @@ def md5(path):
 def _ne_code_segs(path):
     """[(idx, code, mask)] for every CODE segment, mask = relocation-affected
     byte offsets (reuses segdiff's fixup-chain-following extractor)."""
-    from codebreaker.format_loaders import ne as ne_mod
+    from codebreaker.formats import ne as ne_mod
     ne = ne_mod.NEFile(path)
     out = []
     for i, s in enumerate(ne.segments(), 1):
@@ -173,8 +173,8 @@ def compare_ne(p95, p98):
 
 def _carve_ne(path):
     """{(seg, off): (masked_bytes, size, name)} for every carved NE function."""
-    from codebreaker.format_loaders import ne as ne_mod
-    from codebreaker.disasm_engine import trace
+    from codebreaker.formats import ne as ne_mod
+    from codebreaker.disasm import trace
     ne = ne_mod.NEFile(path)
     try:
         ordinals = trace.load_ordinals("ORDINALS.md")
@@ -216,7 +216,7 @@ def _carve_pe(path):
         only cost matches, never invent one.
     """
     import capstone
-    from codebreaker.format_loaders import pe_trace
+    from codebreaker.formats import pe_trace
     c = pe_trace.PeCarve(target.resolve(path))
     base = c.pe.image_base
     reloc_va = {base + r for r in c.pe.base_relocs()}
@@ -316,7 +316,7 @@ def compare_pe(p95, p98):
     usually rebased/reordered, so a non-match here means 'needs a function-level
     pass', not 'nothing reusable'. Kept deliberately honest."""
     try:
-        from codebreaker.format_loaders import pe as pe_mod
+        from codebreaker.formats import pe as pe_mod
     except Exception:
         return None
     def text(path):

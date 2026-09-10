@@ -22,7 +22,7 @@ builds, so masking them is what makes a true opcode-stream match possible.
 import argparse
 import sys
 
-from codebreaker.format_loaders import objextract
+from codebreaker.formats import objextract
 
 # NE relocation source-type -> width in bytes of the relocated field
 NE_SRC_WIDTH = {0: 1, 2: 2, 3: 4, 5: 2, 11: 6}
@@ -45,7 +45,7 @@ def compile_group(csrc, flags="/AM /Ox /c"):
 # shipped side: pull a segment's bytes + a relocation mask from an NE module
 # ---------------------------------------------------------------------------
 def shipped_ne_segment(module_path, seg_index):
-    from codebreaker.format_loaders import ne as ne_mod
+    from codebreaker.formats import ne as ne_mod
     ne = ne_mod.NEFile(module_path)
     seg = ne.segments()[seg_index - 1]
     code = ne.data[seg["file_off"]:seg["file_off"] + seg["length"]]

@@ -288,10 +288,10 @@ def open_module(name):
     path = resolve(name)
     fmt = format_of(path)
     if fmt == "NE":
-        from codebreaker.disasm_engine.disasm import open_ne
+        from codebreaker.disasm.disasm import open_ne
         return open_ne(path)
     if fmt == "PE":
-        from codebreaker.format_loaders.pe import open_pe
+        from codebreaker.formats.pe import open_pe
         return open_pe(path)
     if fmt in ("LE", "LX"):
         raise NotImplementedError(
@@ -312,11 +312,11 @@ def code_bytes(path):
     fmt = format_of(path)
     try:
         if fmt == "NE":
-            from codebreaker.disasm_engine.disasm import open_ne
+            from codebreaker.disasm.disasm import open_ne
             ne = open_ne(path)
             return sum(s["length"] for s in ne.segments() if s["kind"] == "CODE")
         if fmt == "PE":
-            from codebreaker.format_loaders.pe import open_pe
+            from codebreaker.formats.pe import open_pe
             return open_pe(path).code_bytes()
         if fmt in ("LE", "LX"):
             from le import LEFile

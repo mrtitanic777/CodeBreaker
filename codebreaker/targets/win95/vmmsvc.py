@@ -37,7 +37,7 @@ import os
 import re
 import sys
 
-from codebreaker.foundation import layout
+from codebreaker.core import layout
 
 DDK_INC = os.path.join(layout.reference_sub("win95ddk"), "INC32")
 

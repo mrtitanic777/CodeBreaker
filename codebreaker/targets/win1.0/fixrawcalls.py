@@ -21,7 +21,7 @@ Usage:
     python fixrawcalls.py [--apply]
 """
 import re, glob, sys, os
-from codebreaker.foundation import layout
+from codebreaker.core import layout
 
 RAW = re.compile(r"(?<![\w.])0x([0-9a-fA-F]{2,4})\s*\(")
 MARK = "/* ---- intra-module calls with no confirmed name (fixrawcalls.py)"

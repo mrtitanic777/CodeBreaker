@@ -7,7 +7,7 @@ its exports and, crucially, what it imports from the other modules.
 This reconstructs the Windows 1.0 module dependency graph.
 """
 import struct, sys, os, re
-from codebreaker.format_loaders.ne import NEFile, bits, SEG_FLAGS
+from codebreaker.formats.ne import NEFile, bits, SEG_FLAGS
 
 def find_ne_modules(data):
     """Locate every embedded NE header that looks structurally valid."""

@@ -25,7 +25,7 @@ import contextlib
 
 import cfg
 import trace
-from codebreaker.foundation import layout
+from codebreaker.core import layout
 
 SYSMODS = ["KERNEL", "GDI", "USER", "SYSTEM", "KEYBOARD",
            "MOUSE", "DISPLAY", "SOUND", "COMM"]

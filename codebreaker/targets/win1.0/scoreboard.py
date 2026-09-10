@@ -21,7 +21,7 @@ scoreboard says exactly what each file still needs.
 Usage:  python scoreboard.py
 """
 import os, re, sys, shutil, subprocess
-from codebreaker.foundation import layout
+from codebreaker.core import layout
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 from _wtroot import data_root as _data_root

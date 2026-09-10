@@ -25,7 +25,7 @@ Usage:
     python fixcomments.py --apply
 """
 import glob, sys, re, os
-from codebreaker.foundation import layout
+from codebreaker.core import layout
 
 
 def scan(src):

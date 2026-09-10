@@ -116,7 +116,7 @@ DEPS = [
 
 def _load_cfg():
     try:
-        from codebreaker.foundation import config
+        from codebreaker.core import config
         return config.load_config() or {}
     except Exception:
         return {}

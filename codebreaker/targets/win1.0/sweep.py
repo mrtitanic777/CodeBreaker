@@ -22,7 +22,7 @@ Usage:
 """
 import glob, os, re, sys
 import trace
-from codebreaker.foundation import layout
+from codebreaker.core import layout
 
 
 def main():

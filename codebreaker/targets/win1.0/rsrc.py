@@ -19,7 +19,7 @@ Usage:
     python rsrc.py APP --dialog 19
 """
 import sys, struct
-from codebreaker.disasm_engine.disasm import open_ne
+from codebreaker.disasm.disasm import open_ne
 
 
 def _sz(d, p):

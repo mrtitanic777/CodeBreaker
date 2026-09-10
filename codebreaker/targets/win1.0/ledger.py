@@ -25,8 +25,8 @@ Usage:
 """
 import glob, re, sys, collections, os
 import idord, trace
-from codebreaker.foundation import layout
-from codebreaker.disasm_engine.disasm import open_ne
+from codebreaker.core import layout
+from codebreaker.disasm.disasm import open_ne
 
 SYSMODS = ["KERNEL", "GDI", "USER", "SYSTEM", "KEYBOARD",
            "MOUSE", "DISPLAY", "SOUND", "COMM"]

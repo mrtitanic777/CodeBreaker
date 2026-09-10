@@ -23,7 +23,7 @@ import os
 import re
 import sys
 
-from codebreaker.foundation import layout
+from codebreaker.core import layout
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
@@ -35,7 +35,7 @@ def _code_sections(path, fmt):
     1-based ordinal among code sections (sec1 = first code section); for NE it is the
     segment index (seg3 = NE segment 3, since code/data segments interleave)."""
     if fmt == "PE":
-        from codebreaker.format_loaders import pe
+        from codebreaker.formats import pe
         pf = pe.open_pe(path)
         out = []
         k = 0
@@ -45,7 +45,7 @@ def _code_sections(path, fmt):
                 out.append((s["name"], s["rawptr"], k, s["rawsize"]))
         return out
     if fmt == "NE":
-        from codebreaker.format_loaders import ne
+        from codebreaker.formats import ne
         nf = ne.open_ne(path) if hasattr(ne, "open_ne") else ne.NEFile(path)
         return [("seg%d" % s["idx"], s["file_off"], s["idx"], s["length"])
                 for s in nf.segments() if s.get("kind") == "CODE"]
@@ -99,7 +99,7 @@ def _asm_index(base):
 def link_module(name, masmroot=None):
     """Rebuild `name` from its reconstructed .asm and byte-compare to the shipped
     file. Returns {match, n_diff, first_diff, placed, sections, rebuilt}."""
-    from codebreaker.format_loaders import objextract
+    from codebreaker.formats import objextract
     import target, masmlift, asmrecon32
     path = target.resolve(name)
     fmt = target.format_of(path)
@@ -181,7 +181,7 @@ def link_module(name, masmroot=None):
     # resolves to the shipped dword. This is the link's relocation pass.
     relocs = 0
     if fmt == "PE":
-        from codebreaker.format_loaders import pe as _pe
+        from codebreaker.formats import pe as _pe
         pf2 = _pe.open_pe(path)
         smap = [(s["rawptr"], s["vaddr"], max(s.get("vsize", 0), s["rawsize"]))
                 for s in pf2.sections]
@@ -202,7 +202,7 @@ def link_module(name, masmroot=None):
         # assembled OBJ emits the base operand instead, so restore the shipped on-
         # disk bytes at every reloc source (conduct proves the function byte-exact
         # WITH these sites masked; the PE path above does the same for base relocs).
-        from codebreaker.format_loaders import ne as _ne
+        from codebreaker.formats import ne as _ne
         nf2 = _ne.open_ne(path) if hasattr(_ne, "open_ne") else _ne.NEFile(path)
         WIDTH = {0: 1, 2: 2, 3: 4, 5: 2, 11: 6, 13: 4}   # NE source-type -> byte width
         for s in nf2.segments():

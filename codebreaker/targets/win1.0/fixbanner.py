@@ -24,7 +24,7 @@ Usage:
     python fixbanner.py [--apply]
 """
 import glob, sys, re
-from codebreaker.foundation import layout
+from codebreaker.core import layout
 
 
 def fix(src):

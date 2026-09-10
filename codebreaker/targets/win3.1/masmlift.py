@@ -70,7 +70,7 @@ def assemble(asm_src, stem="t", timeout=180, masmroot=None):
     # Run DOSBox as a Popen and poll a cancel check so a Cancel press kills the
     # assembler immediately instead of waiting out the run (fast power-off).
     try:
-        from codebreaker.foundation import progress as _pr
+        from codebreaker.core import progress as _pr
         aborted = _pr.cancelled
     except Exception:
         aborted = lambda: False
@@ -122,7 +122,7 @@ def assemble_many(items, timeout=None, masmroot=None):
         f.write(CONF.format(masm=masm, work=work, cmd=cmd))
     env = dict(os.environ, SDL_VIDEODRIVER="dummy")
     try:
-        from codebreaker.foundation import progress as _pr
+        from codebreaker.core import progress as _pr
         aborted = _pr.cancelled
     except Exception:
         aborted = lambda: False
@@ -152,7 +152,7 @@ def assemble_many(items, timeout=None, masmroot=None):
 
 def functions(asm_src, flags=None):
     """Assemble and return {name: (bytes, mask)} via objextract (same as cc16)."""
-    from codebreaker.format_loaders import objextract
+    from codebreaker.formats import objextract
     r = assemble(asm_src)
     if "obj" not in r:
         raise RuntimeError("MASM produced no OBJ:\n" + r.get("log", "")[:600])
@@ -177,7 +177,7 @@ _TEXT   ends
 
 
 def _selftest():
-    from codebreaker.format_loaders import objextract
+    from codebreaker.formats import objextract
     r = assemble(SELF_ASM)
     if "obj" not in r:
         print("no OBJ; MASM log:\n" + r.get("log", "")[:800])
@@ -205,7 +205,7 @@ def main():
         sys.exit(0 if _selftest() else 1)
     if not args.asm:
         ap.error("give a .ASM file or --selftest")
-    from codebreaker.format_loaders import objextract
+    from codebreaker.formats import objextract
     r = assemble(open(args.asm).read())
     if "obj" not in r:
         sys.exit("no OBJ produced; MASM log:\n" + r.get("log", "")[:1000])

@@ -8,7 +8,7 @@ parts of the Windows 1.0 API actually carried the load.
 """
 import os, glob, sys
 from collections import Counter, defaultdict
-from codebreaker.format_loaders.ne import NEFile
+from codebreaker.formats.ne import NEFile
 
 def app_imports(path):
     ne = NEFile(path)

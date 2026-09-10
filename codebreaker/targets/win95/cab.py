@@ -162,7 +162,7 @@ _SEVENZIP_CANDIDATES = [
 
 def find_7zip():
     try:                                              # configured path wins (config.json sevenzip)
-        from codebreaker.foundation import config
+        from codebreaker.core import config
         cfg7 = config.load_config().get("sevenzip")
         if cfg7 and os.path.exists(cfg7):
             return cfg7
@@ -218,7 +218,7 @@ def extract(directory, outdir, head=None):
 
 def cabs_from_iso(iso_path, outdir):
     """Extract just the installable cabinets from a Win95 ISO into outdir."""
-    from codebreaker.build_engine import iso9660
+    from codebreaker.engines.build import iso9660
     os.makedirs(outdir, exist_ok=True)
     iso = iso9660.Iso9660(iso_path)
     n = 0

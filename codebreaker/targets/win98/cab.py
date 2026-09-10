@@ -253,7 +253,7 @@ _INSTALL_PREFIXES = ("WIN98_", "BASE", "DRIVER", "NET", "CATALOG",
 
 def cabs_from_iso(iso_path, outdir):
     """Extract just the installable cabinets from a Win98 ISO into outdir."""
-    from codebreaker.build_engine import iso9660
+    from codebreaker.engines.build import iso9660
     os.makedirs(outdir, exist_ok=True)
     iso = iso9660.Iso9660(iso_path)
     n = 0

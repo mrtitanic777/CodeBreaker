@@ -21,7 +21,7 @@ import re
 import subprocess
 import sys
 
-from codebreaker.foundation import layout
+from codebreaker.core import layout
 
 
 def run(cmd):

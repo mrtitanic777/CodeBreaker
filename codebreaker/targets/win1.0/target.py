@@ -83,7 +83,7 @@ def all_apps():
 def code_bytes(path):
     """Code size in bytes (sum of CODE segment lengths) via win1.0's NE loader."""
     try:
-        from codebreaker.format_loaders import ne as ne_mod
+        from codebreaker.formats import ne as ne_mod
         ne = ne_mod.NEFile(path)
         return sum(s["length"] for s in ne.segments() if s.get("kind") == "CODE")
     except Exception:

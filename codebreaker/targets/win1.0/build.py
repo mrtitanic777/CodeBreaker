@@ -37,7 +37,7 @@ Usage:
     python build.py --errors        # every diagnostic, grouped by kind
 """
 import os, re, subprocess, sys, glob, collections
-from codebreaker.foundation import layout
+from codebreaker.core import layout
 
 INC = ["-Ibuild/include", "-I" + layout.recon_dir(), "-I" + layout.recon_sub("system")]
 CC = ["gcc", "-fsyntax-only", "-std=gnu89", "-w"]

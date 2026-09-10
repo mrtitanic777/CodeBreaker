@@ -290,7 +290,7 @@ def _selftest():
     write_iso(os.path.join(d, "src"), iso, volid="TESTVOL")
     print("wrote %s (%d bytes)" % (iso, os.path.getsize(iso)))
     _s.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from codebreaker.build_engine.iso9660 import Iso9660
+    from codebreaker.engines.build.iso9660 import Iso9660
     it = Iso9660(iso)
     found = {}
     for path, rec in it.walk():

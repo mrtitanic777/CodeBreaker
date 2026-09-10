@@ -23,7 +23,7 @@ Usage:
     python dropshims.py [--apply]
 """
 import re, glob, sys, collections
-from codebreaker.foundation import layout
+from codebreaker.core import layout
 
 HDR = "refs/sdk101/d06/WINDOWS.H"
 

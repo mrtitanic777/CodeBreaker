@@ -30,8 +30,8 @@ Usage:
       --apps  = include the app-side call-site evidence (slower)
 """
 import subprocess, sys, os, re, tempfile, glob
-from codebreaker.format_loaders.ne import NEFile
-from codebreaker.disasm_engine.disasm import open_ne, build_fixup_map
+from codebreaker.formats.ne import NEFile
+from codebreaker.disasm.disasm import open_ne, build_fixup_map
 from split_bundle import find_ne_modules
 
 BUNDLE  = "files/WF/WIN100.BIN"
@@ -76,7 +76,7 @@ def open_module(modname):
     if modname.upper() not in ("KERNEL", "GDI", "USER", "SYSTEM", "KEYBOARD",
                                "MOUSE", "DISPLAY", "SOUND", "COMM") \
             and os.path.exists(exe):
-        from codebreaker.disasm_engine.disasm import open_ne
+        from codebreaker.disasm.disasm import open_ne
         return open_ne(exe)
 
     binimg = open(BUNDLE, "rb").read()

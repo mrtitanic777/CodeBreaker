@@ -18,7 +18,7 @@ import os
 import re
 import subprocess
 import sys
-from codebreaker.foundation import layout
+from codebreaker.core import layout
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 from _wtroot import data_root as _data_root

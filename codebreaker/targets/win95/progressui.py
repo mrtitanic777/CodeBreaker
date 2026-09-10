@@ -31,7 +31,7 @@ if sys.platform != "win32":
 
 import ctypes as C
 from ctypes import wintypes as W
-from codebreaker.foundation import layout
+from codebreaker.core import layout
 
 user32 = C.WinDLL("user32", use_last_error=True)
 kernel32 = C.WinDLL("kernel32")
@@ -462,7 +462,7 @@ class ProgressWindow:
     # ---- Tools launcher (merged tab) --------------------------------------
     def _tool_registry(self):
         try:
-            from codebreaker.foundation import config
+            from codebreaker.core import config
             reg = [(n, d) for n, _s, d in win95re.BUILTINS if n != "explore"]
             try:
                 reg += [(n, d) for n, _p, d in config.load_plugins()]

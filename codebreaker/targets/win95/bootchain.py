@@ -14,7 +14,7 @@ rebuilt file into a Win95 install yields a bit-identical, bootable system.
 import json
 import os
 import sys
-from codebreaker.foundation import layout
+from codebreaker.core import layout
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
@@ -82,7 +82,7 @@ def _done(module):
 
 def main():
     os.chdir(os.path.dirname(ROOT) if os.path.basename(ROOT) == "tools" else ".")
-    from codebreaker.foundation import config
+    from codebreaker.core import config
     config.apply_config()
     verify = "--verify" in sys.argv
 

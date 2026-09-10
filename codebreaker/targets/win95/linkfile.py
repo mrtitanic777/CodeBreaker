@@ -23,7 +23,7 @@ import os
 import re
 import struct
 import sys
-from codebreaker.foundation import layout
+from codebreaker.core import layout
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
@@ -35,7 +35,7 @@ def _code_sections(path, fmt):
     1-based ordinal among code sections (sec1 = first code section); for NE it is the
     segment index (seg3 = NE segment 3, since code/data segments interleave)."""
     if fmt == "PE":
-        from codebreaker.format_loaders import pe
+        from codebreaker.formats import pe
         pf = pe.open_pe(path)
         out = []
         k = 0
@@ -45,7 +45,7 @@ def _code_sections(path, fmt):
                 out.append((s["name"], s["rawptr"], k, s["rawsize"]))
         return out
     if fmt == "NE":
-        from codebreaker.format_loaders import ne
+        from codebreaker.formats import ne
         nf = ne.open_ne(path) if hasattr(ne, "open_ne") else ne.NEFile(path)
         return [("seg%d" % s["idx"], s["file_off"], s["idx"], s["length"])
                 for s in nf.segments() if s.get("kind") == "CODE"]
@@ -123,8 +123,8 @@ def _link_w3(name, path, orig):
     The mask IS the LE relocation-restore pass (mirroring the PE base-reloc / NE reloc-chain
     restore) -- so no separate LE reloc pass is needed, and standalone LE modules verify the same
     way (e.g. biosxlat.vxd -> match, relocs=0)."""
-    from codebreaker.recon_engine import masmlift
-    from codebreaker.format_loaders import objextract
+    from codebreaker.engines.recon import masmlift
+    from codebreaker.formats import objextract
     import w3, asmrecon32
     les = w3.embedded_les(name)
     if not les:
@@ -187,8 +187,8 @@ def _link_w3(name, path, orig):
 def link_module(name, masmroot=None):
     """Rebuild `name` from its reconstructed .asm and byte-compare to the shipped
     file. Returns {match, n_diff, first_diff, placed, sections, rebuilt}."""
-    from codebreaker.recon_engine import masmlift
-    from codebreaker.format_loaders import objextract
+    from codebreaker.engines.recon import masmlift
+    from codebreaker.formats import objextract
     import target, asmrecon32
     path = target.resolve(name)
     fmt = target.format_of(path)
@@ -274,7 +274,7 @@ def link_module(name, masmroot=None):
     # resolves to the shipped dword. This is the link's relocation pass.
     relocs = 0
     if fmt == "PE":
-        from codebreaker.format_loaders import pe as _pe
+        from codebreaker.formats import pe as _pe
         pf2 = _pe.open_pe(path)
         smap = [(s["rawptr"], s["vaddr"], max(s.get("vsize", 0), s["rawsize"]))
                 for s in pf2.sections]

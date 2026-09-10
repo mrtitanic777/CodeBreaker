@@ -16,7 +16,7 @@ Usage:
     python3 fon.py FILE --index N --sample   # render the printable ASCII set
 """
 import struct, sys
-from codebreaker.format_loaders.ne import NEFile
+from codebreaker.formats.ne import NEFile
 
 def parse_fnt(data, base):
     u16 = lambda o: struct.unpack_from("<H", data, base+o)[0]

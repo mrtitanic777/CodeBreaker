@@ -42,8 +42,8 @@ Usage:
 """
 import glob, os, re, sys, collections
 import idord, trace
-from codebreaker.foundation import layout
-from codebreaker.disasm_engine.disasm import open_ne
+from codebreaker.core import layout
+from codebreaker.disasm.disasm import open_ne
 
 FNDEF = re.compile(r"^([A-Za-z_][A-Za-z0-9_ \t\*]*?\b)([A-Za-z_]\w*)\s*\(([^;{]*)\)\s*\{", re.M)
 SYS = {"kernel_": "KERNEL", "gdi_": "GDI", "user_": "USER", "comm": "COMM",

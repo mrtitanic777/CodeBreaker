@@ -36,8 +36,8 @@ import _wtroot
 import ledger
 import appledger
 import trace
-from codebreaker.foundation import layout
-from codebreaker.disasm_engine.disasm import open_ne
+from codebreaker.core import layout
+from codebreaker.disasm.disasm import open_ne
 
 ROOT = _wtroot.data_root(os.path.dirname(os.path.abspath(__file__)))
 CARDFILE_NOTE = "CARDFILE shipped with MS source — cross-checkable, not blind."

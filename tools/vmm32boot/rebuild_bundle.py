@@ -28,9 +28,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 CB = os.path.abspath(os.path.join(HERE, "..", ".."))
 sys.path.insert(0, CB)
 
-from codebreaker.format_loaders import le
-from codebreaker.inverse_engine.vxd_asm import VxDDisasm
-from codebreaker.inverse_engine import vxd_le_writer as W
+from codebreaker.formats import le
+from codebreaker.engines.inverse.vxd_asm import VxDDisasm
+from codebreaker.engines.inverse import vxd_le_writer as W
 from w4 import decompress_w4
 
 

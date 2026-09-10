@@ -121,7 +121,7 @@ def open_any(mod):
     only difference worth having is which loader opens the file."""
     if mod in SYSMODS:
         return idord.open_module(mod)
-    from codebreaker.disasm_engine.disasm import open_ne
+    from codebreaker.disasm.disasm import open_ne
     return open_ne("files/WF/%s.EXE" % mod)
 
 

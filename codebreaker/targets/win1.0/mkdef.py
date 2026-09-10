@@ -32,7 +32,7 @@ Usage:  python mkdef.py CARDFILE [-o build16/CARDSP/CARD.DEF] [--stem CARD]
 import os
 import sys
 
-from codebreaker.format_loaders.ne import NEFile
+from codebreaker.formats.ne import NEFile
 
 SEG_MOVEABLE    = 0x0010
 SEG_PRELOAD     = 0x0040

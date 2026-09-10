@@ -17,7 +17,7 @@ from wndproc import analyze
 # Which exported ordinal is each app's WndProc? Nearly all export it @1, but a
 # few export additional procs; we scan the obvious window-proc export names.
 def wndproc_ordinals(path):
-    from codebreaker.disasm_engine.disasm import open_ne
+    from codebreaker.disasm.disasm import open_ne
     ne = open_ne(path)
     res = ne.resident_names()
     nonres = ne.nonresident_names()

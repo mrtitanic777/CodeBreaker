@@ -24,7 +24,7 @@ Usage:
 """
 import sys, re, os
 import idord, trace
-from codebreaker.foundation import layout
+from codebreaker.core import layout
 
 
 def openmod(mod, fixed):

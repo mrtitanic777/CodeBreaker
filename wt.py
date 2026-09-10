@@ -25,7 +25,7 @@ path, then runs the requested command. WT_DATA_ROOT / WT_TOOLS_DIR / WT_TARGET
 are exported so a tool can locate its data even when its own file lives elsewhere.
 """
 import json
-from codebreaker.foundation import cores
+from codebreaker.core import cores
 import os
 import runpy
 import sys
@@ -115,20 +115,22 @@ def cmd_targets():
     print("\nrun:  wt --target <name> <command> [args...]")
 
 
-_SUBSYS = ("targets", "diff", "recompile95", "studio", "inverse_engine", "goldens", "xbox", "__pycache__")
-
-
 def _engine_commands():
-    """command name -> script path, across the engine's cluster subpackages."""
+    """command name -> script path, across the shared engine clusters. Post-regroup the clusters
+    are the top-level analysis groups (core/formats/disasm/ir) plus one level into engines/ and
+    toolchain/; targets/xbox/studio/cli have their own dispatch and are not shared commands."""
+    scan = [os.path.join(ENGINE, c) for c in ("core", "formats", "disasm", "ir")]
+    for grp in ("engines", "toolchain"):
+        gdir = os.path.join(ENGINE, grp)
+        if os.path.isdir(gdir):
+            scan += [os.path.join(gdir, s) for s in sorted(os.listdir(gdir))]
     out = {}
-    if os.path.isdir(ENGINE):
-        for c in sorted(os.listdir(ENGINE)):
-            d = os.path.join(ENGINE, c)
-            if c in _SUBSYS or not os.path.isdir(d):
-                continue
-            for f in sorted(os.listdir(d)):
-                if f.endswith(".py") and not f.startswith("_") and f != "cores.py":
-                    out.setdefault(f[:-3], os.path.join(d, f))
+    for d in scan:
+        if not os.path.isdir(d):
+            continue
+        for f in sorted(os.listdir(d)):
+            if f.endswith(".py") and not f.startswith("_") and f != "cores.py":
+                out.setdefault(f[:-3], os.path.join(d, f))
     return out
 
 
@@ -165,20 +167,20 @@ def cmd_doctor():
 # directory, executed as __main__. This table is the per-subsystem config; `_run_scripts` is the
 # ONE dispatcher that replaced four near-identical cmd_* functions.
 _SCRIPT_SUBSYS = {
-    "recompile": dict(subdir=("recompile95", "tools"), win95=True,
-                      header="recompile commands  (engine/recompile95/tools):\n"),
-    "behavior":  dict(subdir=("behavior_engine",), win95=True, behavior_env=True,
+    "recompile": dict(subdir=("engines", "recompile", "tools"), win95=True,
+                      header="recompile commands  (codebreaker/engines/recompile/tools):\n"),
+    "behavior":  dict(subdir=("engines", "behavior"), win95=True, behavior_env=True,
                       skip={"__init__.py", "tracer.py", "corpus.py", "perturb.py",
                             "hypothesis.py", "env.py"},
-                      header="behavior-engine commands (engine/behavior_engine) -- dynamic evidence "
-                             "via Unicorn:\n",
+                      header="behavior-engine commands (codebreaker/engines/behavior) -- dynamic "
+                             "evidence via Unicorn:\n",
                       footer="\n(trace: record a function's behavior; show: print a stored trace)"),
-    "inverse":   dict(subdir=("inverse_engine",), skip={"oracle16.py"},
-                      header="inverse-engine commands  (engine/inverse_engine):\n"),
-    "msc6":      dict(subdir=("msc6",),
+    "inverse":   dict(subdir=("engines", "inverse"), skip={"oracle16.py"},
+                      header="inverse-engine commands  (codebreaker/engines/inverse):\n"),
+    "msc6":      dict(subdir=("engines", "msc6"),
                       skip={"paths.py", "toolchain.py", "__init__.py", "bruteforce.py", "autoaxis.py"},
-                      header="msc6-engine commands (engine/msc6) -- byte-exact MSC-6.0a NE "
-                             "reconstruction:\n",
+                      header="msc6-engine commands (codebreaker/engines/msc6) -- byte-exact MSC-6.0a "
+                             "NE reconstruction:\n",
                       footer="\n(recipe: auto-detect a DLL's compiler flags; normalize: compact an "
                              "NE's DOS stub)"),
 }
@@ -215,7 +217,7 @@ def _run_scripts(rest, *, subdir, skip=frozenset(), win95=False, behavior_env=Fa
         cores.set_target(os.path.join(ENGINE, "targets", "win95"))
     if behavior_env:                                         # enable API-call stubbing if SDK configured
         try:
-            from codebreaker.behavior_engine import env
+            from codebreaker.engines.behavior import env
             env.apply_defaults()
         except Exception:
             pass
@@ -291,14 +293,14 @@ def main():
         cmd_xbox(argv[1:]); return
     if argv[0] == "diff":
         # Cross-version analysis: target-agnostic, over the whole corpus.
-        sys.path.insert(0, os.path.join(ENGINE, "diff"))     # diff's own local sibling modules
-        from codebreaker.diff import cli as diff_cli
+        sys.path.insert(0, os.path.join(ENGINE, "engines", "diff"))  # diff's own local sibling modules
+        from codebreaker.engines.diff import cli as diff_cli
         diff_cli.main(argv[1:]); return
     if argv[0] == "backbone":
-        from codebreaker.backbone.__main__ import main as bb_main
+        from codebreaker.toolchain.backbone.__main__ import main as bb_main
         sys.exit(bb_main(argv[1:]))
     if argv[0] == "sdk":
-        from codebreaker.sdk.__main__ import main as sdk_main
+        from codebreaker.toolchain.sdk.__main__ import main as sdk_main
         sys.exit(sdk_main(argv[1:]))
     if argv[0] == "ui":
         # Native WinForms UI; owner-drawn GDI fallback if pythonnet/.NET is unavailable.

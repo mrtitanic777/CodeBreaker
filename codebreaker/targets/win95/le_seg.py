@@ -18,7 +18,7 @@ import capstone
 
 import target
 from le import LEFile
-from codebreaker.format_loaders.pe_seg import disasm_whole32
+from codebreaker.formats.pe_seg import disasm_whole32
 
 _MD = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
 _MD.detail = True

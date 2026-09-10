@@ -26,10 +26,10 @@ import re
 import sys
 
 import masmlift
-from codebreaker.format_loaders import objextract
-from codebreaker.recon_engine import segdiff
+from codebreaker.formats import objextract
+from codebreaker.engines.recon import segdiff
 import target
-from codebreaker.disasm_engine import trace
+from codebreaker.disasm import trace
 
 JMPCC = {"jmp", "call", "je", "jne", "jz", "jnz", "jl", "jle", "jg", "jge",
          "jb", "jbe", "ja", "jae", "jc", "jnc", "jo", "jno", "js", "jns",
@@ -71,7 +71,7 @@ RETF_MACRO = ["retf    macro   n", "        ifb     <n>", "        db      0cbh"
 
 def _cancelled():
     try:
-        from codebreaker.foundation import progress
+        from codebreaker.core import progress
         return progress.cancelled()
     except Exception:
         return False
@@ -266,7 +266,7 @@ def _safe_data_spans(sg, start, end):
     inside), snapped to row boundaries, then RE-checked so snapping never absorbs
     a branch target. Guarantees no needed label is dropped -> byte-exact safe."""
     try:
-        from codebreaker.disasm_engine import reachability
+        from codebreaker.disasm import reachability
         regs = reachability.safe_data_regions(sg)
         bt = reachability.branch_targets(sg)
     except Exception:
@@ -475,7 +475,7 @@ def reconcile_many(sg, funcs, seg_mask, max_passes=200):
 
 def _pick():
     """Find a real, substantive (16..120 byte) carved function to reconstruct."""
-    from codebreaker.format_loaders import ne as ne_mod
+    from codebreaker.formats import ne as ne_mod
     o = trace.load_ordinals("ORDINALS.md")
     for name in ("MOUSE", "KEYBOARD", "SYSTEM", "GDI", "USER"):
         try:
@@ -494,7 +494,7 @@ def _pick():
 
 
 def _run(module, seg_index, func_off):
-    from codebreaker.format_loaders import ne as ne_mod
+    from codebreaker.formats import ne as ne_mod
     o = trace.load_ordinals("ORDINALS.md") if hasattr(trace, "load_ordinals") else {}
     ne = ne_mod.NEFile(target.resolve(module))
     sg = trace.Seg(ne, seg_index, o)
