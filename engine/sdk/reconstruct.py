@@ -19,7 +19,6 @@ No fabrication: a function msc6dec can't model is emitted as a stub with the rea
 never a guess; an import whose ordinal we can't name is labelled MODULE.<ord>.
 """
 import os, sys, struct
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from engine.format_loaders import ne
 from engine.inverse_engine import msc6dec
 from engine.inverse_engine.msc6fn import PROLOGUE

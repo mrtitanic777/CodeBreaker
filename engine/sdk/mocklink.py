@@ -21,7 +21,6 @@ We try whichever form the shipped bytes indicate first, then the other as a fall
     mocklink.verify(target_bytes, candidate_c)   # {'exact': True/False, 'recipe': ...}
 """
 import os, re, sys
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from engine.inverse_engine import msc6_oracle as ora
 from engine.inverse_engine.msc6fn import _mask, EPI
 

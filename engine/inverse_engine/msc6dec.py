@@ -13,7 +13,6 @@ byte-exact via the oracle (relocs masked); declines at the first unmodeled instr
 import os, re, sys
 from capstone import Cs, CS_ARCH_X86, CS_MODE_16
 _MD = Cs(CS_ARCH_X86, CS_MODE_16)
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from engine.inverse_engine.msc6fn import _mask, PROLOGUE, EPI
 
 # The far-loadds prologue ships in two encodings that differ only in how DS reaches AX:

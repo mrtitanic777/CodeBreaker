@@ -12,7 +12,6 @@ recovered C recompile byte-exact -- so SDK symbol/API data directly raises accur
     src, meta = assist.invert(db, "LZSeek", code_bytes, imports={0:"_llseek"})
 """
 import os, sys
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from engine.inverse_engine import msc6dec
 
 

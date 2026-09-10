@@ -17,7 +17,6 @@ different candidates pass without human effort.
     print(r["exact"], r.get("report"))
 """
 import os, sys
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from capstone import Cs, CS_ARCH_X86, CS_MODE_16
 from engine.inverse_engine import msc6_oracle as ora
 from engine.inverse_engine.msc6fn import _mask

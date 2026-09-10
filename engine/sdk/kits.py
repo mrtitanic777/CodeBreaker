@@ -17,7 +17,6 @@ constants, structs, and libraries to a skeleton .c whose function bodies the too
     reg.apidb(16)                            # merged apidb for all 16-bit kits
 """
 import os, re, sys
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from engine.sdk import apidb as _apidb
 
 

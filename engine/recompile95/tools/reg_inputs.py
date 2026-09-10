@@ -5,7 +5,6 @@ INPUT. Everything else can be deregisterized to a local. Answers milestone-2's k
 what fraction of functions have ZERO real register inputs (=> fully localizable)?
 Run from the win95 data root. Usage: reg_inputs.py MODULE.DLL [...]"""
 import os, sys, glob, random, collections
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from engine.foundation import cores
 cores.set_target(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "engine", "targets", "win95"))

@@ -15,7 +15,6 @@ No fabrication: a stub is never a guess -- it is the raw evidence plus a TODO. T
 module .def and makefile reproduce the shipped ordinals and the MSC 6.0a recipe.
 """
 import os, struct, sys
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from capstone import Cs, CS_ARCH_X86, CS_MODE_16
 from engine.format_loaders import ne
 
@@ -188,7 +187,6 @@ def _write_def(f, out_dir, mod):
 
 if __name__ == "__main__":
     import sys
-    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     from engine.sdk import reconstruct as R
     from engine.sdk import w95paths
     binp = sys.argv[1] if len(sys.argv) > 1 else w95paths.input_dll("setup", "inf", "lzexpand.dll")
