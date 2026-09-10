@@ -21,7 +21,7 @@ terms of already-recovered callees, the callees are ready first.
 import os
 import sys
 
-from engine.behavior_engine import tracer, graph, synth, corpus
+from engine.behavior_engine import tracer, graph, synth, corpus, globals as globmod
 from engine.behavior_engine import struct as structmod
 from engine.behavior_engine import cfg as cfgmod
 
@@ -75,6 +75,14 @@ def reconstruct_module(module, limit=20, trace_n=0):
         if cf.get("reconstructed"):
             entry.update(method="cfg", verified=cf.get("verified"),
                          summary=cf.get("predicate"), c=cf.get("emitted_c"))
+            results.append(entry); continue
+        try:
+            gl = globmod.reconstruct_globals(module, func=hex(va))
+        except Exception:
+            gl = {"reconstructed": False}
+        if gl.get("reconstructed") and gl.get("writes"):
+            entry.update(method="globals", verified=gl.get("verified"),
+                         summary="%d global write(s)" % len(gl["writes"]), c=gl.get("c"))
             results.append(entry); continue
         entry["summary"] = (s.get("reason") or "no v1 reconstructor applies")
         results.append(entry)

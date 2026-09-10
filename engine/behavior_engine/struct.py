@@ -181,12 +181,12 @@ def reconstruct(module, func=None, ptr_i=None, other_args=None, insn_cap=6000):
 
 
 def _vc(k):
-    """C rendering of a variable key: ('f',off) -> p->f_<off>, ('a',i) -> a<i>."""
-    return ("p->f_%x" % k[1]) if k[0] == "f" else ("a%d" % k[1])
+    """C rendering of a variable key: ('f',off)->p->f_<off>, ('a',i)->a<i>, ('g',addr)->g_<addr>."""
+    return {"f": "p->f_%x", "a": "a%d", "g": "g_%x"}[k[0]] % k[1]
 
 
 def _vd(k):
-    return ("f_%x" % k[1]) if k[0] == "f" else ("a%d" % k[1])
+    return {"f": "f_%x", "a": "a%d", "g": "g_%x"}[k[0]] % k[1]
 
 
 def _expr(series, vars_):

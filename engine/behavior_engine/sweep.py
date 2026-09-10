@@ -18,7 +18,7 @@ import collections
 import os
 import sys
 
-from engine.behavior_engine import tracer, synth, corpus
+from engine.behavior_engine import tracer, synth, corpus, globals as GL
 from engine.behavior_engine import struct as S
 from engine.behavior_engine import cfg as C
 
@@ -48,6 +48,12 @@ def classify(module, va, insn_cap=6000):
         cf = {"reconstructed": False}
     if cf.get("reconstructed"):
         return "cfg_verified", None
+    try:
+        gl = GL.reconstruct_globals(module, func=hex(va))
+    except Exception:
+        gl = {"reconstructed": False}
+    if gl.get("reconstructed") and gl.get("writes"):
+        return ("globals_verified", None) if gl.get("verified") else ("globals_partial", "globals-unmodeled")
     # unresolved -> a coarse, actionable reason
     if base.get("truncated"):
         return "unresolved", "non-terminating"           # runaway loop under current environment
@@ -91,7 +97,8 @@ def main():
     limit = int(_opt(argv, "--limit", 30))
     rep = sweep(module, limit=limit)
     total = rep["attempted"]
-    done = sum(rep["outcomes"].get(k, 0) for k in ("synth", "struct_verified", "cfg_verified"))
+    done = sum(rep["outcomes"].get(k, 0) for k in
+               ("synth", "struct_verified", "cfg_verified", "globals_verified"))
     print("reconstruction sweep: %s  (%d functions)" % (rep["module"], total))
     print("  reconstructed & verified: %d  (%.0f%%)" % (done, 100.0 * done / max(total, 1)))
     for k, n in sorted(rep["outcomes"].items(), key=lambda kv: -kv[1]):

@@ -263,6 +263,7 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
 
     sec_lo, sec_hi = secbase, secbase + max(size, _PAGE)
     pending = [None]        # index of a call whose actual destination is the next instruction
+    zeros = [0]             # consecutive 00-00 ("add [eax],al") instructions -> crawling zeros
 
     def hook_code(uc, address, csize, _ud):
         c = rec["insn_count"]
@@ -271,6 +272,19 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
             uc.emu_stop()
             return
         rec["insn_count"] = c + 1
+        # Fast-fail a zero-memory crawl: a function that fell through its end into 00-padding (or
+        # followed a null jump) executes `add [eax],al` forever. Stop early instead of to the cap.
+        try:
+            if uc.mem_read(address, 2) == b"\x00\x00":
+                zeros[0] += 1
+                if zeros[0] > 16:
+                    rec["truncated"] = True
+                    rec["ran_into_zeros"] = True
+                    uc.emu_stop(); return
+            else:
+                zeros[0] = 0
+        except Exception:
+            zeros[0] = 0
         # EXTERNAL-LANDING STUB. Execution reaching an IAT sentinel means an import was entered
         # -- by `call [iat]` OR by `jmp [iat]` (a tail call / thunk). Either way [esp] holds the
         # return address to resume at, so emulate the API's return instead of crawling into the
