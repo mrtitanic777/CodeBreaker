@@ -117,9 +117,20 @@ def _candidacy(module, func, insn_cap=3000):
     base = tracer.trace_function(module, func=func, insn_cap=insn_cap)
     if base["exit"] != "ret":
         return False, {"reason": "does not return cleanly (%s)" % base["exit"], "base": base}
-    if base.get("calls"):
-        return False, {"reason": "calls other functions (not a leaf) -- out of v1 grammar scope",
-                       "base": base}
+    # synth models only the RETURN VALUE, so it must not accept a function with SIDE EFFECTS:
+    # any write outside the function's own stack frame (globals, heap, a buffer, a null deref)
+    # is behaviour the emitted `return <expr>;` would silently drop -- claiming equivalence then
+    # would be a lie. Decline those (struct handles the pointer/field-writing ones).
+    _STK_LO, _STK_HI = 0x206000, 0x208100
+    if any(not (_STK_LO <= w["addr"] < _STK_HI) for w in base.get("mem_writes", [])):
+        return False, {"reason": "has memory side effects (writes outside its stack frame) -- "
+                       "return-only synth can't capture; struct's territory", "base": base}
+    # NOTE: a function that calls others is NOT rejected. Intra-module callees execute correctly
+    # during the trace and stubbed externals return deterministically, so the function's net
+    # behavior is still a well-defined function of its inputs. If it reduces to an expression,
+    # the differential test proves it (behavioral, not textual, equivalence -- spec Section 19);
+    # if it doesn't, no candidate survives and it stays honestly unresolved. This is the
+    # inter-procedural path: reconstruct the caller by its observed I/O, callees included.
     _, report = perturb.run_experiment(module, func=func, insn_cap=insn_cap)
     affect = [a["index"] for a in report["args"]
               if "ret" in a["influence"] or any(h["as"] == "return_value" for h in a["dataflow"])]

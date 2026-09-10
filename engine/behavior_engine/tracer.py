@@ -271,42 +271,42 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
             uc.emu_stop()
             return
         rec["insn_count"] = c + 1
-        # The first instruction executed after a call IS the callee's entry -- this resolves
-        # indirect (register/memory) call targets the decoder can't read statically, and
-        # classifies every target as intra-module or external.
+        # EXTERNAL-LANDING STUB. Execution reaching an IAT sentinel means an import was entered
+        # -- by `call [iat]` OR by `jmp [iat]` (a tail call / thunk). Either way [esp] holds the
+        # return address to resume at, so emulate the API's return instead of crawling into the
+        # zero-filled sentinel page (the cause of most "runaway loop" truncations). Catching JMP
+        # here, not just CALL, is the fix.
+        if stub_externals and address in sentinel_map:
+            dll, name = sentinel_map[address]
+            api = "%s!%s" % (dll, name)
+            rec.setdefault("api_deps", [])
+            if api not in rec["api_deps"]:
+                rec["api_deps"].append(api)
+            argc = sig_resolver(dll, name) if sig_resolver else None
+            cleanup = 4 * argc if argc is not None else stub_cleanup
+            try:
+                esp_now = uc.reg_read(UC_X86_REG_ESP)
+                ret_addr = int.from_bytes(uc.mem_read(esp_now, 4), "little")
+                uc.reg_write(UC_X86_REG_ESP, (esp_now + 4 + cleanup) & 0xFFFFFFFF)
+                uc.reg_write(UC_X86_REG_EAX, stub_ret & 0xFFFFFFFF)
+                uc.reg_write(UC_X86_REG_EIP, ret_addr)
+                rec["stubbed_externals"] = rec.get("stubbed_externals", 0) + 1
+                if pending[0] is not None:                   # annotate the call record, if via CALL
+                    cr = rec["calls"][pending[0]]
+                    cr.update(resolved_target=address, external=True, api=api, stubbed=True)
+                    if argc is not None:
+                        cr["argc"] = argc
+                    pending[0] = None
+                return                          # skip the external; resume in the caller
+            except Exception:
+                pass
+        # The first instruction after a CALL is the callee entry -- resolve indirect (register/
+        # memory) intra-module targets the decoder can't read statically, and classify them.
         if pending[0] is not None:
             cr = rec["calls"][pending[0]]
             cr["resolved_target"] = address
-            ext = not (sec_lo <= address < sec_hi)
-            cr["external"] = ext
+            cr["external"] = not (sec_lo <= address < sec_hi)
             pending[0] = None
-            if ext and stub_externals:
-                # name the API from the sentinel, look up its stdcall arg count for cleanup
-                cleanup = stub_cleanup
-                info = sentinel_map.get(address)
-                if info:
-                    dll, name = info
-                    cr["api"] = "%s!%s" % (dll, name)
-                    rec.setdefault("api_deps", [])
-                    if cr["api"] not in rec["api_deps"]:
-                        rec["api_deps"].append(cr["api"])
-                    argc = sig_resolver(dll, name) if sig_resolver else None
-                    if argc is not None:
-                        cr["argc"] = argc
-                        cleanup = 4 * argc          # stdcall: callee pops argc dwords
-                # emulate a return instead of executing the external target. At the callee's
-                # entry [esp] holds the return address the call pushed.
-                try:
-                    esp_now = uc.reg_read(UC_X86_REG_ESP)
-                    ret_addr = int.from_bytes(uc.mem_read(esp_now, 4), "little")
-                    uc.reg_write(UC_X86_REG_ESP, (esp_now + 4 + cleanup) & 0xFFFFFFFF)
-                    uc.reg_write(UC_X86_REG_EAX, stub_ret & 0xFFFFFFFF)
-                    uc.reg_write(UC_X86_REG_EIP, ret_addr)
-                    cr["stubbed"] = True
-                    rec["stubbed_externals"] = rec.get("stubbed_externals", 0) + 1
-                    return                      # skip the external; resume in the caller
-                except Exception:
-                    pass
         if len(rec["path"]) < _MAX_PATH:
             rec["path"].append(address)
         if address not in rec["mnemonics"]:
