@@ -20,7 +20,7 @@ inputs; next it will propose competing meanings and pick the input change that s
 """
 import sys
 
-from engine.behavior_engine import perturb, corpus
+from engine.behavior_engine import perturb, corpus, hypothesis
 
 
 def _opt(args, name, default=None):
@@ -55,6 +55,8 @@ def main():
     # raw: the baseline trace is evidence too
     corpus.record(baseline)
     fp = corpus.record_derived("experiments", report)
+    # fold the verdicts into the cumulative hypothesis store (this experiment is new evidence)
+    hstore = hypothesis.ingest_experiment(report)
 
     b = report["baseline"]
     print("experiment: %s  func VA 0x%x  (off 0x%x)" %
@@ -83,6 +85,8 @@ def main():
             elif h["as"] == "return_value":
                 print("        dataflow: tag is the return value (returned verbatim)")
     print("\n  stored (derived): %s" % fp)
+    print("  hypotheses now  : %d for this function  (wt behavior hyp %s 0x%x)" %
+          (len(hstore["hypotheses"]), report["module"], report["func_va"]))
 
 
 if __name__ == "__main__":

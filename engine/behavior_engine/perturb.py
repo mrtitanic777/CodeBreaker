@@ -126,7 +126,10 @@ def run_experiment(module, func=None, base_args=None, arity=None, insn_cap=4000)
         "module": baseline["module"], "func_va": baseline["func_va"],
         "func_off": baseline["func_off"], "arity": n, "base_args": base,
         "baseline": {"exit": baseline["exit"], "ret": baseline["ret"],
-                     "insn_count": baseline["insn_count"]},
+                     "insn_count": baseline["insn_count"],
+                     "calls": len(baseline.get("calls", [])),
+                     "mem_reads": len(baseline.get("mem_reads", [])),
+                     "mem_writes": len(baseline.get("mem_writes", []))},
         "args": out_args,
     }
     return baseline, report
