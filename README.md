@@ -114,27 +114,33 @@ tools cannot decode is flagged, never faked.
 
 ### Layout
 
+CodeBreaker is an installable package (`pip install -e .`); `wt.py` is the single CLI entry.
+
 ```
+pyproject.toml   packaging (makes `codebreaker` importable; deps; the `wt` console script)
 wt.py            single dispatcher / CLI (and the double-click entry point)
 config.json      local external-tool paths (git-ignored; copy config.json.example)
-engine/          the tool's core — a Python package of subsystem subpackages
-  foundation/      shared base: layout, config, toolchain, parallel, progress
-  ir_engine/       IR engine: asm → typed IR → readable C
-  disasm_engine/   disassembly & carving
-  format_loaders/  NE / PE / LE / OMF parsers
-  recon_engine/    byte-exact reconstruction + conductor
-  inverse_engine/  compiler-inverse: bytes → byte-exact C (Lattice C / MS C 2.03) → wt inverse
-  behavior_engine/ dynamic reconstruction: trace/experiment/hypotheses/graph/synth/
-                   struct/cfg/recon (run the binary as an oracle)                   → wt behavior
-  msc6/            MSC-6.0a byte-exact 16-bit NE reconstruction                    → wt msc6
-  recompile95/     make the lifted C compile/link                                 → wt recompile
-  diff/            cross-version fingerprint / match / propagate + git-style UI    → wt diff
-  backbone/        uniform compiler/assembler/linker/disassembler interface        → wt backbone
-  sdk/             SDK/DDK ingestion → typed signatures                            → wt sdk
-  studio/          the workbench UI (native WinForms, GDI fallback)                → wt ui
-  xbox/            Xbox 360: XEX2/PowerPC recon + console/crypto/forensics         → wt xbox
-  targets/         per-era overrides (win1.0 … win98)                             → wt --target
-tools/           vendored build-time tooling (source only; binaries not committed)
+codebreaker/     the tool's core — one package, grouped by role
+  core/            shared base: paths resolver, layout, config, toolchain, parallel, progress
+  formats/         NE / PE / LE / OMF parsers
+  disasm/          disassembly & carving
+  ir/              IR engine: asm → typed IR → readable C
+  cli/             shared CLI helpers
+  engines/         the reconstruction engines
+    inverse/         compiler-inverse: bytes → byte-exact C (Lattice C / MS C 2.03)  → wt inverse
+    recon/           byte-exact reconstruction + conductor
+    behavior/        dynamic reconstruction: trace/experiment/hypotheses/graph/synth/
+                     struct/cfg/globals/recon (run the binary as an oracle)          → wt behavior
+    msc6/            MSC-6.0a byte-exact 16-bit NE reconstruction                     → wt msc6
+    recompile/       make the lifted C compile/link                                  → wt recompile
+    diff/            cross-version fingerprint / match / propagate + git-style UI     → wt diff
+    match/ symbol/ build/ coverage/   supporting engines
+  toolchain/       backbone (uniform compiler/asm/linker interface → wt backbone),
+                   sdk (→ wt sdk), reference, ghidra
+  studio/          the workbench UI (native WinForms, GDI fallback)                   → wt ui
+  xbox/            Xbox 360: XEX2/PowerPC recon + console/crypto/forensics            → wt xbox
+  targets/         per-era overrides (win1.0 … win98), loaded by path as DI           → wt --target
+tools/           vendored build-time tooling + smoke.py (source only; binaries not committed)
   nasm-masm/       NASM fork with MASM-matching output (the native assembler)
 binaries/        git-ignored DATA HOME: corpus, toolchains, VMs, build output (attach your own)
 ```

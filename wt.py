@@ -15,8 +15,8 @@ CodeBreaker — a deterministic reverse-engineering workbench.
 
 A single entry point over era-specific toolchains, selected by `--target`
 (win1.0, win3.1, win95, win98). The shared, target-agnostic core lives
-in `engine/`; each era's quirk tools live as a submodule under
-`engine/targets/<era>/`, holding only what genuinely differs for that platform.
+in `codebreaker/`; each era's quirk tools live as a submodule under
+`codebreaker/targets/<era>/`, holding only what genuinely differs for that platform.
 
 Dispatch establishes the context a tool expects: it changes into the selected
 era's data directory (so relative paths such as files/ and reconstructed/
@@ -52,7 +52,7 @@ ENGINE = os.path.join(WT_DIR, "codebreaker")                 # shared, target-ag
                                                         # (the IR engine: il/validate_il/decompile)
 
 # The five eras. Each era's tool code is a submodule under the core, at
-# `engine/targets/<era>/`; its DATA (files/, reconstructed/, ...) is external and
+# `codebreaker/targets/<era>/`; its DATA (files/, reconstructed/, ...) is external and
 # resolved under DATA_ROOT/<era> (the user's checkout / working directory).
 _ERAS = ("win1.0", "win3.1", "win95", "win98")
 
@@ -233,10 +233,10 @@ def usage():
 def cmd_xbox(rest):
     """The Xbox 360 subsystem (integrated from XboxTranspiler): XEX2/PowerPC byte-exact
     reconstruction + console/format/crypto/forensics tooling. Its package sets up its own
-    flat import path; data/samples/console-secrets live outside git (engine/xbox/.gitignore)."""
+    flat import path; data/samples/console-secrets live outside git (codebreaker/xbox/.gitignore)."""
     launcher = os.path.join(ENGINE, "xbox", "XboxTranspiler.py")
     if not os.path.exists(launcher):
-        print("error: xbox subsystem not present (engine/xbox)"); sys.exit(2)
+        print("error: xbox subsystem not present (codebreaker/xbox)"); sys.exit(2)
     sys.path.insert(0, WT_DIR)                            # the engine package on path
     sys.argv = [launcher] + list(rest)
     runpy.run_path(launcher, run_name="__main__")
