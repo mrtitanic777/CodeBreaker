@@ -70,6 +70,27 @@ def _sha256(path):
     return h.hexdigest()
 
 
+# Carving a PE (PeCarve disassembles the whole code section) is the dominant per-trace cost.
+# The behavioral commands call trace_function HUNDREDS of times per function (sweeps, probes,
+# binary searches), so memoize the expensive load per resolved path.
+_PE_CACHE = {}
+
+
+def _load(module):
+    """(path, va0, code, secname, funcs, sha) for a module, carved once and cached."""
+    target = cores.get("target")
+    path = target.resolve(module)
+    ce = _PE_CACHE.get(path)
+    if ce is None:
+        pe = open_pe(path)
+        va0, code, secname = pe.code_sections()[0]
+        sg = PeSeg(module, section=secname, carve=PeCarve(path))
+        funcs = {off: {"end": f["end"]} for off, f in sg.funcs.items()}
+        ce = (path, va0, bytes(code), secname, funcs, _sha256(path))
+        _PE_CACHE[path] = ce
+    return ce
+
+
 def _arities(module):
     """sigrecover.arities(module) lives in recompile95/tools; import it lazily and tolerate
     its absence (a corpus/data-shape dependency, not a hard one for tracing)."""
@@ -86,13 +107,9 @@ def _arities(module):
 def list_functions(module):
     """(off, va, size) for each recovered function in the module's first code section,
     smallest offset first. The caller picks one to trace."""
-    target = cores.get("target")
-    path = target.resolve(module)
-    pe = open_pe(path)
-    va0, code, secname = pe.code_sections()[0]
-    sg = PeSeg(module, section=secname, carve=PeCarve(path))
+    _, va0, code, secname, funcs, _ = _load(module)
     out = []
-    for off, f in sorted(sg.funcs.items()):
+    for off, f in sorted(funcs.items()):
         size = f["end"] - off
         if size >= 8:
             out.append((off, va0 + off, size))
@@ -105,12 +122,8 @@ def _resolve_func(module, func):
     func may be: None (first function), a section offset or VA as hex ('0x...') or int,
     or a decimal offset. A VA (>= va0) is converted to an offset; an offset is taken as-is.
     """
-    target = cores.get("target")
-    path = target.resolve(module)
-    pe = open_pe(path)
-    va0, code, secname = pe.code_sections()[0]
-    sg = PeSeg(module, section=secname, carve=PeCarve(path))
-    funcs = {off: f for off, f in sg.funcs.items() if (f["end"] - off) >= 8}
+    _, va0, code, secname, allfuncs, _ = _load(module)
+    funcs = {off: f for off, f in allfuncs.items() if (f["end"] - off) >= 8}
     if not funcs:
         raise ValueError("%s: no functions recovered in section %s" % (module, secname))
     if func is None:
@@ -143,8 +156,7 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
     import unicorn as U
     from unicorn.x86_const import UC_X86_REG_ESP, UC_X86_REG_EAX, UC_X86_REG_EIP
 
-    target = cores.get("target")
-    path = target.resolve(module)
+    path, _, _, _, _, sha = _load(module)
     off, va0, code, end, secname = _resolve_func(module, func)
     fva = va0 + off
     if args is None:
@@ -184,7 +196,7 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
         "schema": "cb.behavior.trace/1",
         "module": os.path.basename(module),                 # clean label (module may be a path)
         "module_path": path,                                # the resolved file actually traced
-        "target_sha256": _sha256(path),
+        "target_sha256": sha,
         "section": secname,
         "func_off": off,
         "func_va": fva,
