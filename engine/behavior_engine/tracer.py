@@ -128,7 +128,7 @@ def _resolve_func(module, func):
     return off, va0, code, funcs[off]["end"], secname
 
 
-def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS):
+def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS, mem_init=None):
     """Run one function under Unicorn with full hooks; return a TraceRecord (a plain dict).
 
     module  -- e.g. "gdi32.dll"; resolved through the active target like difftest.
@@ -136,6 +136,9 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
     args    -- explicit list of dword stdcall args; if None, `arity` zero dwords are pushed.
     arity   -- number of stdcall dword slots to push when args is None; defaults to the
                recovered arity for the function, else 4.
+    mem_init-- optional list of (addr, bytes) to write into memory before running (pages mapped
+               as needed). Lets a caller point a pointer argument at a controlled buffer -- the
+               basis of struct/pointer-field reconstruction.
     """
     import unicorn as U
     from unicorn.x86_const import UC_X86_REG_ESP, UC_X86_REG_EAX, UC_X86_REG_EIP
@@ -155,6 +158,17 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
     uc.mem_write(va0, bytes(code))
     uc.mem_map(_SCRATCH_BASE, _SCRATCH_SIZE)
     mapped = {secbase, _SCRATCH_BASE}                        # page-group bases we've mapped
+
+    # pre-load caller-supplied memory (e.g. a controlled struct buffer a pointer arg points at)
+    for addr, data in (mem_init or []):
+        a = addr
+        while a < addr + len(data):
+            base = a & ~(_PAGE - 1)
+            if base not in mapped and not (secbase <= base < secbase + max(size, _PAGE)) \
+                    and not (_SCRATCH_BASE <= base < _SCRATCH_BASE + _SCRATCH_SIZE):
+                uc.mem_map(base, _PAGE); mapped.add(base)
+            a = base + _PAGE
+        uc.mem_write(addr, bytes(data))
 
     # Build the stdcall frame: args in order above a RET sentinel the emulation halts on.
     esp = _STACK_TOP
