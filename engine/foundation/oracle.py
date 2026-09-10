@@ -27,8 +27,8 @@ import hashlib
 import subprocess
 import tempfile
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(os.path.dirname(HERE))                 # CodeBreaker/
+from engine.foundation import paths
+ROOT = paths.repo_root()                                      # CodeBreaker/ (canonical resolver)
 
 
 def _cfg(key, default=""):

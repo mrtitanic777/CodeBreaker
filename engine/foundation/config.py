@@ -18,30 +18,25 @@ they wire config themselves, incl. standalone runs).
 """
 import json
 from engine.foundation import cores
+from engine.foundation import paths
 import os
-
-_FOUND = os.path.dirname(os.path.abspath(__file__))   # engine/foundation
-_ENGINE = os.path.dirname(_FOUND)                     # engine
-_WT_DIR = os.path.dirname(_ENGINE)                    # CodeBreaker/  (repo root: config.json lives here)
-_ROOT = _WT_DIR                                       # relative tool paths resolve against the repo root
 
 
 def _resolve(cfg):
     """Make config.json portable: a RELATIVE tool path is resolved against the repo root, so a
     clone anywhere just works (dosbox_x/masm/msvc152c live inside the repo). ABSOLUTE paths --
     genuinely-external tools like ghidra / 7-Zip -- pass through unchanged."""
+    root = paths.repo_root()
     out = {}
     for k, v in cfg.items():
-        out[k] = os.path.normpath(os.path.join(_ROOT, v)) if isinstance(v, str) and v and not os.path.isabs(v) else v
+        out[k] = os.path.normpath(os.path.join(root, v)) if isinstance(v, str) and v and not os.path.isabs(v) else v
     return out
 
 
 def load_config():
     """The external-tool config dict (dosbox_x / masm / ...), or {} if none set. Repo-relative
     paths are resolved to absolute against the repo root (see _resolve)."""
-    cands = [os.path.join(_WT_DIR, "config.json"),
-             os.path.join(_WT_DIR, "CodeBreaker.config.json"),
-             os.path.join(os.environ.get("WT_TOOLS_DIR", ""), "CodeBreaker.config.json")]
+    cands = paths.config_candidates()
     for p in cands:
         if p and os.path.exists(p):
             try:
@@ -78,7 +73,7 @@ def apply_config():
 def load_plugins(tools_dir=None):
     """[(name, path, desc)] for every plugins/*.py (under the target's tool dir)
     that defines a module-level DESCRIPTION string."""
-    pdir = os.path.join(tools_dir or os.environ.get("WT_TOOLS_DIR", "") or _WT_DIR, "plugins")
+    pdir = os.path.join(tools_dir or os.environ.get("WT_TOOLS_DIR", "") or paths.repo_root(), "plugins")
     out = []
     if not os.path.isdir(pdir):
         return out

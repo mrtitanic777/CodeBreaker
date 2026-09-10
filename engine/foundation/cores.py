@@ -97,7 +97,8 @@ def get(name):
 
 def _find_default(name):
     """Best-effort: locate a not-pre-registered module in an engine cluster."""
-    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # engine/
+    from engine.foundation import paths
+    here = paths.package_root()                                          # engine/
     for d in sorted(os.listdir(here)):
         if os.path.isfile(os.path.join(here, d, name + ".py")):
             return d

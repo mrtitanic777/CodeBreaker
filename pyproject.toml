@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "codebreaker"
+version = "0.1.0"
+description = "CodeBreaker — a deterministic reverse-engineering workbench"
+requires-python = ">=3.10"
+dependencies = [
+    "capstone>=5.0",      # multi-arch disassembly
+    "pycdlib>=1.14",      # ISO 9660 read/write
+    "pycryptodome>=3.18", # Xbox 360 crypto
+]
+
+[project.optional-dependencies]
+ui = ["pythonnet>=3.0 ; platform_system == 'Windows'"]  # native WinForms UI (wt ui)
+
+[project.scripts]
+wt = "wt:main"
+
+# The tool code is the `engine` package (+ the wt.py entry module). Installing editable
+# (`pip install -e .`) puts `engine` on the import path process-wide, which is what lets the
+# ~150 `sys.path.insert` hacks be removed. The deeply-nested targets/ and xbox/ subtrees are
+# NOT normal importable packages (they are dispatched by file path via runpy), so they are
+# shipped as package DATA rather than imported modules.
+[tool.setuptools]
+py-modules = ["wt"]
+
+[tool.setuptools.packages.find]
+include = ["engine*"]
+
+[tool.setuptools.package-data]
+"*" = ["*.json", "*.txt", "*.html", "*.sql", "*.inc", "*.h", "*.c"]
