@@ -67,6 +67,19 @@ def record(rec):
     return fp
 
 
+def record_derived(kind, rec):
+    """Persist a DERIVED artifact (hypothesis, experiment report, graph slice, ...) under
+    derived/<kind>/<module>/<func_va>.json. Derived data is regenerable from raw/, so this is
+    freely overwritten. Returns the path. `rec` must carry 'module' and 'func_va'."""
+    import json as _json
+    d = os.path.join(derived_dir(), kind, os.path.basename(rec["module"]))
+    os.makedirs(d, exist_ok=True)
+    fp = os.path.join(d, "0x%x.json" % rec["func_va"])
+    with open(fp, "w", encoding="utf-8") as fh:
+        _json.dump(rec, fh, indent=1)
+    return fp
+
+
 def load(module, func_va):
     """Load the latest stored trace for a function, or None."""
     fp = os.path.join(raw_dir(), module, "0x%x.json" % int(func_va))
