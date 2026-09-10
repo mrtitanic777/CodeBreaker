@@ -185,6 +185,38 @@ def cmd_recompile(rest):
     runpy.run_path(script, run_name="__main__")
 
 
+def cmd_behavior(rest):
+    """Dispatch a behavior-engine command in the win95 data context. The behavioral engine
+    runs the real machine code as an oracle and stores dynamic evidence under <data>/behavior/,
+    so it shares recompile's win95 context (target + corpus location)."""
+    be_dir = os.path.join(ENGINE, "behavior_engine")
+    skip = {"__init__.py", "tracer.py", "corpus.py"}         # library modules, not commands
+    tools = {}
+    if os.path.isdir(be_dir):
+        for f in sorted(os.listdir(be_dir)):
+            if f.endswith(".py") and not f.startswith("_") and f not in skip:
+                tools[f[:-3]] = os.path.join(be_dir, f)
+    if not rest or rest[0] in ("list", "-h", "--help"):
+        print("behavior-engine commands (engine/behavior_engine) -- dynamic evidence via Unicorn:\n")
+        for name in sorted(tools):
+            print("  %s" % name)
+        print("\n(trace: record a function's behavior; show: print a stored trace)")
+        return
+    cmd, cmd_args = rest[0], rest[1:]
+    script = tools.get(cmd)
+    if not script:
+        print("error: no behavior command %r (try: wt behavior list)" % cmd); sys.exit(2)
+    data_dir = os.path.join(DATA_ROOT, "win95")              # the behavior corpus lives in win95 data
+    os.environ["WT_TARGET"] = "win95"
+    os.environ["WT_DATA_ROOT"] = data_dir
+    if os.path.isdir(data_dir):
+        os.chdir(data_dir)
+    sys.path.insert(0, WT_DIR)                               # the engine package
+    cores.set_target(os.path.join(ENGINE, "targets", "win95"))
+    sys.argv = [os.path.basename(script)] + cmd_args
+    runpy.run_path(script, run_name="__main__")
+
+
 def cmd_inverse(rest):
     """Dispatch an inverse-engine tool. The compiler-inverse engine (Lattice C 2.12 /
     MS C 2.03) is target-agnostic -- it models a period compiler, not a Windows era -- so it
@@ -310,6 +342,11 @@ def main():
         # The compiler-inverse engine: bytes -> byte-exact C by inverting the Lattice C /
         # MS C 2.03 codegen. Target-agnostic; the oracle is set in config.json.
         cmd_inverse(argv[1:]); return
+    if argv[0] == "behavior":
+        # The behavioral-reconstruction engine: run the real machine code as an oracle,
+        # observe what it does, and store that as dynamic evidence (the corpus). Operates
+        # on the win95 corpus, so run it in win95's data context like recompile.
+        cmd_behavior(argv[1:]); return
     if argv[0] == "msc6":
         # The MSC-6.0a byte-exact engine (merged from w95recon): reconstruct NE (16-bit
         # Windows) DLLs to source that re-links to the EXACT shipped bytes via the authentic
