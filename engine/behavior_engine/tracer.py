@@ -272,11 +272,24 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
             uc.emu_stop()
             return
         rec["insn_count"] = c + 1
-        # Fast-fail a zero-memory crawl: a function that fell through its end into 00-padding (or
-        # followed a null jump) executes `add [eax],al` forever. Stop early instead of to the cap.
+        # A landing in a 00-padding region (executing `add [eax],al`, which real code never does)
+        # means a call/jmp went through a pointer that resolved to nothing -- an import our IAT
+        # scan didn't cover, or an uninitialised function pointer. Rather than crawl the zeros to
+        # the cap, STUB-RETURN from it (like an external call): pop the return address and resume
+        # in the caller with EAX=0. This recovers functions whose only obstacle was a bogus
+        # indirect call. Bounded so a pathological case still terminates.
         try:
             if uc.mem_read(address, 2) == b"\x00\x00":
                 zeros[0] += 1
+                if zeros[0] == 2 and rec.get("bogus_stubs", 0) < 64:
+                    esp_now = uc.reg_read(UC_X86_REG_ESP)
+                    ret_addr = int.from_bytes(uc.mem_read(esp_now, 4), "little")
+                    uc.reg_write(UC_X86_REG_ESP, (esp_now + 4) & 0xFFFFFFFF)
+                    uc.reg_write(UC_X86_REG_EAX, 0)
+                    uc.reg_write(UC_X86_REG_EIP, ret_addr)
+                    rec["bogus_stubs"] = rec.get("bogus_stubs", 0) + 1
+                    zeros[0] = 0
+                    return
                 if zeros[0] > 16:
                     rec["truncated"] = True
                     rec["ran_into_zeros"] = True
