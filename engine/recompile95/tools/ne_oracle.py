@@ -9,6 +9,7 @@ machine code.
     python ne_oracle.py <module> seg<N>:0x<off>       e.g. winsock.dll seg1:0x077fc
 """
 import os, re, sys, glob, ctypes, tempfile, subprocess, random
+from engine.foundation import paths
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import hybrid_emit as H
@@ -102,7 +103,7 @@ def main():
     module = sys.argv[1]
     seg, off = re.match(r"seg(\d+):0x([0-9a-f]+)", sys.argv[2]).groups()
     seg, off = int(seg), int(off, 16)
-    os.environ.setdefault("WT_DATA_ROOT", os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "binaries", "win95"))
+    os.environ.setdefault("WT_DATA_ROOT", paths.binaries("win95"))
     code = fn_bytes(module, seg, off)
     ent = H._index().get(module.lower())
     apath = os.path.join(ent[0], "seg%d_%04x.asm" % (seg, off))

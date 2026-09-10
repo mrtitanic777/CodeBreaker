@@ -14,10 +14,11 @@ pointers. This emits the SPEC the harness needs, as a C header:
     python imgrecon.py <module.dll> [--out DIR]     reads the byte-exact PE from disc/staged/bin
 """
 import os, sys
-W = os.environ.get("WT_DATA_ROOT", os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "binaries", "win95"))
+W = os.environ.get("WT_DATA_ROOT", paths.binaries("win95"))
 _HERE = os.path.abspath(__file__)                            # engine/recompile95/tools/imgrecon.py
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(_HERE)))))  # -> CB root
 from engine.format_loaders.pe import open_pe
+from engine.foundation import paths
 
 
 def spec(module, outdir):

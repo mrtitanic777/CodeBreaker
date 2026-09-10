@@ -14,9 +14,10 @@ and censuses the lift defects, then classifies:
     python certify.py <module> [<module> ...]      (or --corpus for all PE modules)
 """
 import os, re, sys, glob, subprocess
+from engine.foundation import paths
 
 CB = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-W = os.environ.get("WT_DATA_ROOT", os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "binaries", "win95"))
+W = os.environ.get("WT_DATA_ROOT", paths.binaries("win95"))
 GEN = os.path.join(W, "src", "generated")
 
 

@@ -17,7 +17,8 @@ import os, re, sys, glob
 _HERE = os.path.abspath(__file__)
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(_HERE)))))
 from engine.format_loaders.pe import open_pe
-W = os.environ.get("WT_DATA_ROOT", os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "binaries", "win95"))
+from engine.foundation import paths
+W = os.environ.get("WT_DATA_ROOT", paths.binaries("win95"))
 
 
 def analyze(module):

@@ -12,8 +12,9 @@ import os, re, sys, glob, json
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(HERE)))))
 from engine.foundation import cores
-cores.set_target(os.path.join(os.path.dirname(os.path.dirname(HERE)), "targets", "win95"))
+cores.set_target(paths.target_dir("win95"))
 from engine.format_loaders.pe import open_pe
+from engine.foundation import paths
 
 _IDENT = re.compile(r"^[A-Za-z_]\w*$")
 _GEN = os.path.join(os.environ.get("WT_DATA_ROOT", "."), "src", "generated")

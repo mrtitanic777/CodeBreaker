@@ -26,12 +26,13 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(HERE)))))
 from engine.foundation import cores
-cores.set_target(os.path.join(os.path.dirname(os.path.dirname(HERE)), "targets", "win95"))
+cores.set_target(paths.target_dir("win95"))
 from engine.format_loaders.pe import open_pe
 from engine.format_loaders.pe_seg import PeSeg
 from engine.format_loaders.pe_trace import PeCarve
 from engine.foundation import layout
 from engine.ir_engine import il
+from engine.foundation import paths
 import clean_graph
 
 

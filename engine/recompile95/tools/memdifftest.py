@@ -23,12 +23,13 @@ from engine.format_loaders.pe import open_pe                 # noqa: E402
 from engine.format_loaders.pe_seg import PeSeg               # noqa: E402
 from engine.format_loaders.pe_trace import PeCarve           # noqa: E402
 from engine.ir_engine import il                              # noqa: E402
+from engine.foundation import paths
 import certify_fn, clean_graph                               # noqa: E402
 CLEAN = "--clean" in sys.argv       # test the DEREGISTERIZED clean lift instead of the register-machine C
 GRAPH = "--graph" in sys.argv       # WHOLE-GRAPH memory: allow NON-leaf mem fns (compile the closure in)
 MANIFEST = sys.argv[sys.argv.index("--manifest") + 1] if "--manifest" in sys.argv else None
 if __name__ == "__main__":          # standalone run: register the win95 target (wt sets it normally)
-    cores.set_target(os.path.join(os.path.dirname(os.path.dirname(HERE)), "targets", "win95"))
+    cores.set_target(paths.target_dir("win95"))
 
 I686 = os.environ.get("I686_GCC", r"C:\msys64\mingw32\bin\gcc.exe")
 os.environ["PATH"] = os.path.dirname(I686) + os.pathsep + os.environ.get("PATH", "")

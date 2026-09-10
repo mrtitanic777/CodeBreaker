@@ -22,6 +22,7 @@ from engine.foundation import cores                          # noqa: E402
 from engine.format_loaders.pe import open_pe                 # noqa: E402
 from engine.format_loaders.pe_seg import PeSeg               # noqa: E402
 from engine.format_loaders.pe_trace import PeCarve           # noqa: E402
+from engine.foundation import paths
 
 I686 = os.environ.get("I686_GCC", r"C:\msys64\mingw32\bin\gcc.exe")
 os.environ["PATH"] = os.path.dirname(I686) + os.pathsep + os.environ.get("PATH", "")
@@ -131,7 +132,7 @@ def build(out_iso, modules):
         "C, running natively on this OS, computes exactly what Microsoft's machine code computes.\r\n"
         "%d functions across %d win95 DLLs.\r\n" % (len(tests), len(used)))
 
-    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(HERE)), "targets", "win95"))
+    sys.path.insert(0, paths.target_dir("win95"))
     import isowrite
     isowrite.write_iso(stage, out_iso, volid="LIFTEDC")
     print("ISO:", out_iso, os.path.getsize(out_iso), "bytes")
