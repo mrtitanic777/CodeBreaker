@@ -28,7 +28,7 @@ def main():
     if not argv or argv[0] in ("-h", "--help"):
         print(__doc__); return
     module = argv[0]
-    flags = {"--args", "--arity", "--insns"}
+    flags = {"--args", "--arity", "--insns", "--stub-cleanup"}
     # positional func = first bare token after the module that isn't a flag or a flag's value
     func = None
     i = 1
@@ -54,7 +54,10 @@ def main():
     insns = _opt(argv, "--insns")
     insns = int(insns) if insns is not None else tracer._MAX_INSNS
 
-    rec = tracer.trace_function(module, func=func, args=args, arity=arity, insn_cap=insns)
+    stub = "--stub-externals" in argv
+    cleanup = int(_opt(argv, "--stub-cleanup", "0"), 0)
+    rec = tracer.trace_function(module, func=func, args=args, arity=arity, insn_cap=insns,
+                                stub_externals=stub, stub_cleanup=cleanup)
     fp = corpus.record(rec)
 
     print("traced %s  func VA 0x%x  (off 0x%x, %s)" %

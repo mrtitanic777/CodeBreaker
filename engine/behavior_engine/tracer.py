@@ -141,7 +141,8 @@ def _resolve_func(module, func):
     return off, va0, code, funcs[off]["end"], secname
 
 
-def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS, mem_init=None):
+def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS, mem_init=None,
+                   stub_externals=False, stub_ret=0, stub_cleanup=0):
     """Run one function under Unicorn with full hooks; return a TraceRecord (a plain dict).
 
     module  -- e.g. "gdi32.dll"; resolved through the active target like difftest.
@@ -152,6 +153,13 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
     mem_init-- optional list of (addr, bytes) to write into memory before running (pages mapped
                as needed). Lets a caller point a pointer argument at a controlled buffer -- the
                basis of struct/pointer-field reconstruction.
+    stub_externals -- when a call transfers to an address OUTSIDE the module's code section (an
+               import thunk / API), don't run into zero-filled memory: emulate a return to the
+               caller with EAX=stub_ret and pop stub_cleanup extra bytes (0 = cdecl; a stdcall
+               API needs 4*argc, ideally supplied later from the SDK signatures). The external
+               call is recorded as a dependency. This is the first step of the controlled
+               environment -- enough to get past benign API calls and discover dependencies;
+               it does not model the API's real effects.
     """
     import unicorn as U
     from unicorn.x86_const import UC_X86_REG_ESP, UC_X86_REG_EAX, UC_X86_REG_EIP
@@ -233,8 +241,23 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
         if pending[0] is not None:
             cr = rec["calls"][pending[0]]
             cr["resolved_target"] = address
-            cr["external"] = not (sec_lo <= address < sec_hi)
+            ext = not (sec_lo <= address < sec_hi)
+            cr["external"] = ext
             pending[0] = None
+            if ext and stub_externals:
+                # emulate a return instead of executing the external target. At the callee's
+                # entry [esp] holds the return address the call pushed.
+                try:
+                    esp_now = uc.reg_read(UC_X86_REG_ESP)
+                    ret_addr = int.from_bytes(uc.mem_read(esp_now, 4), "little")
+                    uc.reg_write(UC_X86_REG_ESP, (esp_now + 4 + stub_cleanup) & 0xFFFFFFFF)
+                    uc.reg_write(UC_X86_REG_EAX, stub_ret & 0xFFFFFFFF)
+                    uc.reg_write(UC_X86_REG_EIP, ret_addr)
+                    cr["stubbed"] = True
+                    rec["stubbed_externals"] = rec.get("stubbed_externals", 0) + 1
+                    return                      # skip the external; resume in the caller
+                except Exception:
+                    pass
         if len(rec["path"]) < _MAX_PATH:
             rec["path"].append(address)
         if address not in rec["mnemonics"]:
