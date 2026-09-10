@@ -25,13 +25,13 @@ if ROOT not in sys.path:
 
 # (2) representative import per subpackage -- adjust the dotted path if modules are renamed.
 IMPORTS = [
-    "engine.foundation.config", "engine.foundation.cores", "engine.foundation.layout",
-    "engine.format_loaders.pe", "engine.format_loaders.ne",
-    "engine.disasm_engine.disasm", "engine.ir_engine.il",
-    "engine.inverse_engine", "engine.recon_engine", "engine.behavior_engine.tracer",
-    "engine.behavior_engine.synth", "engine.match_engine", "engine.symbol_engine",
-    "engine.build_engine", "engine.backbone", "engine.sdk.apidb", "engine.diff.cli",
-    "engine.coverage", "engine.studio.app",
+    "codebreaker.foundation.config", "codebreaker.foundation.cores", "codebreaker.foundation.layout",
+    "codebreaker.format_loaders.pe", "codebreaker.format_loaders.ne",
+    "codebreaker.disasm_engine.disasm", "codebreaker.ir_engine.il",
+    "codebreaker.inverse_engine", "codebreaker.recon_engine", "codebreaker.behavior_engine.tracer",
+    "codebreaker.behavior_engine.synth", "codebreaker.match_engine", "codebreaker.symbol_engine",
+    "codebreaker.build_engine", "codebreaker.backbone", "codebreaker.sdk.apidb", "codebreaker.diff.cli",
+    "codebreaker.coverage", "codebreaker.studio.app",
 ]
 
 # (3) command-surface checks. (argv, needs_no_data). A traceback in output = FAIL.

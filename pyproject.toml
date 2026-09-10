@@ -28,7 +28,7 @@ wt = "wt:main"
 py-modules = ["wt"]
 
 [tool.setuptools.packages.find]
-include = ["engine*"]
+include = ["codebreaker*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.json", "*.txt", "*.html", "*.sql", "*.inc", "*.h", "*.c"]

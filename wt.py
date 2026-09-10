@@ -25,7 +25,7 @@ path, then runs the requested command. WT_DATA_ROOT / WT_TOOLS_DIR / WT_TARGET
 are exported so a tool can locate its data even when its own file lives elsewhere.
 """
 import json
-from engine.foundation import cores
+from codebreaker.foundation import cores
 import os
 import runpy
 import sys
@@ -48,7 +48,7 @@ else:
         DATA_ROOT = _env
     else:
         DATA_ROOT = os.path.dirname(WT_DIR)              # holds per-era data dirs (dev checkout)
-ENGINE = os.path.join(WT_DIR, "engine")                 # shared, target-agnostic tools
+ENGINE = os.path.join(WT_DIR, "codebreaker")                 # shared, target-agnostic tools
                                                         # (the IR engine: il/validate_il/decompile)
 
 # The five eras. Each era's tool code is a submodule under the core, at
@@ -215,7 +215,7 @@ def _run_scripts(rest, *, subdir, skip=frozenset(), win95=False, behavior_env=Fa
         cores.set_target(os.path.join(ENGINE, "targets", "win95"))
     if behavior_env:                                         # enable API-call stubbing if SDK configured
         try:
-            from engine.behavior_engine import env
+            from codebreaker.behavior_engine import env
             env.apply_defaults()
         except Exception:
             pass
@@ -292,21 +292,21 @@ def main():
     if argv[0] == "diff":
         # Cross-version analysis: target-agnostic, over the whole corpus.
         sys.path.insert(0, os.path.join(ENGINE, "diff"))     # diff's own local sibling modules
-        from engine.diff import cli as diff_cli
+        from codebreaker.diff import cli as diff_cli
         diff_cli.main(argv[1:]); return
     if argv[0] == "backbone":
-        from engine.backbone.__main__ import main as bb_main
+        from codebreaker.backbone.__main__ import main as bb_main
         sys.exit(bb_main(argv[1:]))
     if argv[0] == "sdk":
-        from engine.sdk.__main__ import main as sdk_main
+        from codebreaker.sdk.__main__ import main as sdk_main
         sys.exit(sdk_main(argv[1:]))
     if argv[0] == "ui":
         # Native WinForms UI; owner-drawn GDI fallback if pythonnet/.NET is unavailable.
         try:
-            from engine.studio import winforms_app
+            from codebreaker.studio import winforms_app
             winforms_app.main(argv[1:])
         except ImportError:
-            from engine.studio import app as studio
+            from codebreaker.studio import app as studio
             studio.main(argv[1:])
         return
 

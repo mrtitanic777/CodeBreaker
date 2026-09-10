@@ -29,7 +29,7 @@ _KEEP_EXT = (".py", ".json", ".txt", ".html", ".sql", ".inc")
 
 # The whole tool lives under engine/ (shared core + engine/targets/<era>/ submodules),
 # so collecting engine/ recursively bundles every `wt --target <t>` toolchain.
-_CODE_DIRS = ["engine"]
+_CODE_DIRS = ["codebreaker"]
 
 
 def collect_code(subdir):
@@ -67,7 +67,7 @@ datas += _c[0]; binaries += _c[1]; hiddenimports += _c[2]
 
 a = Analysis(
     ["wt.py"],
-    pathex=[HERE, os.path.join(HERE, "engine")],
+    pathex=[HERE, os.path.join(HERE, "codebreaker")],
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
