@@ -76,13 +76,18 @@ def build(module):
             "roles": roles, "exit": t["exit"],
         }
         for c in t.get("calls", []):
-            if c["target"] is None:
+            # prefer the static direct target; fall back to the dynamically resolved one (the
+            # first instruction executed after the call) for indirect calls.
+            tgt = c["target"] if c["target"] is not None else c.get("resolved_target")
+            if tgt is None:
                 continue
-            tgt = c["target"]
             tnode = "0x%x" % tgt
             if tnode not in nodes:
-                nodes[tnode] = {"kind": "function" if tgt in known else "external", "va": tgt}
-            edges.append({"from": "0x%x" % fva, "to": tnode, "kind": "call_direct", "pc": c["pc"]})
+                nodes[tnode] = {"kind": "function" if tgt in known else "external", "va": tgt,
+                                "external": bool(c.get("external"))}
+            edges.append({"from": "0x%x" % fva, "to": tnode,
+                          "kind": "call_indirect" if c.get("indirect") else "call_direct",
+                          "pc": c["pc"]})
         for m in t.get("mem_writes", [])[:200]:
             edges.append({"from": "0x%x" % fva, "to": _region(m["addr"]), "kind": "writes"})
         for m in t.get("mem_reads", [])[:200]:
@@ -105,14 +110,17 @@ def build(module):
     return g
 
 
+_CALL = ("call_direct", "call_indirect")
+
+
 def callers(g, va):
     t = "0x%x" % (int(va, 0) if isinstance(va, str) else va)
-    return sorted({e["from"] for e in g["edges"] if e["kind"] == "call_direct" and e["to"] == t})
+    return sorted({e["from"] for e in g["edges"] if e["kind"] in _CALL and e["to"] == t})
 
 
 def callees(g, va):
     f = "0x%x" % (int(va, 0) if isinstance(va, str) else va)
-    return sorted({e["to"] for e in g["edges"] if e["kind"] == "call_direct" and e["from"] == f})
+    return sorted({e["to"] for e in g["edges"] if e["kind"] in _CALL and e["from"] == f})
 
 
 # --------------------------------------------------------------------------
@@ -135,9 +143,10 @@ def main():
     g = build(module)
     fcount = sum(1 for v in g["nodes"].values() if v["kind"] == "function")
     ecount = sum(1 for v in g["nodes"].values() if v["kind"] == "external")
-    calls = sum(1 for e in g["edges"] if e["kind"] == "call_direct")
-    print("graph %s: %d function nodes, %d external targets, %d call edges  (%s)" %
-          (g["module"], fcount, ecount, calls, g["_path"]))
+    calls = sum(1 for e in g["edges"] if e["kind"] in ("call_direct", "call_indirect"))
+    indirect = sum(1 for e in g["edges"] if e["kind"] == "call_indirect")
+    print("graph %s: %d function nodes, %d external targets, %d call edges (%d indirect)  (%s)" %
+          (g["module"], fcount, ecount, calls, indirect, g["_path"]))
 
     if "--callers" in argv:
         va = _opt(argv, "--callers")
@@ -149,7 +158,7 @@ def main():
         leaves = [k for k, v in g["nodes"].items() if v.get("leaf")]
         callers_ct = {}
         for e in g["edges"]:
-            if e["kind"] == "call_direct":
+            if e["kind"] in ("call_direct", "call_indirect"):
                 callers_ct[e["to"]] = callers_ct.get(e["to"], 0) + 1
         hot = sorted(callers_ct.items(), key=lambda kv: -kv[1])[:8]
         print("  leaf functions : %d" % len(leaves))

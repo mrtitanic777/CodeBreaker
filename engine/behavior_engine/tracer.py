@@ -217,6 +217,9 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
     md = _md()
     func_lo, func_hi = fva, va0 + end
 
+    sec_lo, sec_hi = secbase, secbase + max(size, _PAGE)
+    pending = [None]        # index of a call whose actual destination is the next instruction
+
     def hook_code(uc, address, csize, _ud):
         c = rec["insn_count"]
         if c >= insn_cap:
@@ -224,6 +227,14 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
             uc.emu_stop()
             return
         rec["insn_count"] = c + 1
+        # The first instruction executed after a call IS the callee's entry -- this resolves
+        # indirect (register/memory) call targets the decoder can't read statically, and
+        # classifies every target as intra-module or external.
+        if pending[0] is not None:
+            cr = rec["calls"][pending[0]]
+            cr["resolved_target"] = address
+            cr["external"] = not (sec_lo <= address < sec_hi)
+            pending[0] = None
         if len(rec["path"]) < _MAX_PATH:
             rec["path"].append(address)
         if address not in rec["mnemonics"]:
@@ -231,15 +242,16 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
                 ins = next(md.disasm(uc.mem_read(address, min(csize or 15, 15)), address))
                 rec["mnemonics"][address] = ("%s %s" % (ins.mnemonic, ins.op_str)).strip()
                 if ins.mnemonic == "call":
-                    # resolve an immediate (direct) call target; register/mem calls stay None
+                    # static (immediate) target if direct; register/mem calls resolve on next insn
                     import capstone
                     tgt = None
                     for op in ins.operands:
                         if op.type == capstone.x86.X86_OP_IMM:
                             tgt = op.imm & 0xFFFFFFFF
-                    rec["calls"].append({"pc": address, "target": tgt,
+                    rec["calls"].append({"pc": address, "target": tgt, "indirect": tgt is None,
                                          "into_func": bool(tgt is not None
                                                            and func_lo <= tgt < func_hi)})
+                    pending[0] = len(rec["calls"]) - 1
             except StopIteration:
                 rec["mnemonics"][address] = "?"
 
