@@ -56,8 +56,12 @@ def main():
 
     stub = "--stub-externals" in argv
     cleanup = int(_opt(argv, "--stub-cleanup", "0"), 0)
+    sig = None
+    if stub:
+        from engine.behavior_engine import env
+        sig = env.resolver()
     rec = tracer.trace_function(module, func=func, args=args, arity=arity, insn_cap=insns,
-                                stub_externals=stub, stub_cleanup=cleanup)
+                                stub_externals=stub, stub_cleanup=cleanup, sig_resolver=sig)
     fp = corpus.record(rec)
 
     print("traced %s  func VA 0x%x  (off 0x%x, %s)" %
@@ -68,6 +72,8 @@ def main():
     print("  instructions: %d%s" % (rec["insn_count"], "  [TRUNCATED]" if rec["truncated"] else ""))
     print("  mem reads  : %d   mem writes: %d   lazy maps: %d   calls: %d" %
           (len(rec["mem_reads"]), len(rec["mem_writes"]), len(rec["lazy_maps"]), len(rec["calls"])))
+    if rec.get("api_deps"):
+        print("  API deps   : %s" % ", ".join(rec["api_deps"][:12]))
     print("  stored     : %s" % fp)
 
 

@@ -191,7 +191,7 @@ def cmd_behavior(rest):
     so it shares recompile's win95 context (target + corpus location)."""
     be_dir = os.path.join(ENGINE, "behavior_engine")
     skip = {"__init__.py", "tracer.py", "corpus.py", "perturb.py",  # library modules, not commands
-            "hypothesis.py"}
+            "hypothesis.py", "env.py"}
     tools = {}
     if os.path.isdir(be_dir):
         for f in sorted(os.listdir(be_dir)):

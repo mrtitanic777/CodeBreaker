@@ -48,6 +48,10 @@ _MAX_INSNS = 20000
 _MAX_MEM = 40000
 _MAX_PATH = 20000
 
+# IAT sentinels: a unique, recognizable landing address per import slot (see trace_function).
+_SENT_BASE = 0xE1000000
+_SENT_STRIDE = 0x10
+
 _MD = None
 
 
@@ -77,7 +81,8 @@ _PE_CACHE = {}
 
 
 def _load(module):
-    """(path, va0, code, secname, funcs, sha) for a module, carved once and cached."""
+    """(path, va0, code, secname, funcs, sha, imports) for a module, carved once and cached.
+    imports is {iat_slot_va: (dll, name)} from the PE import directory (may be empty)."""
     target = cores.get("target")
     path = target.resolve(module)
     ce = _PE_CACHE.get(path)
@@ -86,7 +91,11 @@ def _load(module):
         va0, code, secname = pe.code_sections()[0]
         sg = PeSeg(module, section=secname, carve=PeCarve(path))
         funcs = {off: {"end": f["end"]} for off, f in sg.funcs.items()}
-        ce = (path, va0, bytes(code), secname, funcs, _sha256(path))
+        try:
+            imports = dict(pe.imports())
+        except Exception:
+            imports = {}
+        ce = (path, va0, bytes(code), secname, funcs, _sha256(path), imports)
         _PE_CACHE[path] = ce
     return ce
 
@@ -107,7 +116,7 @@ def _arities(module):
 def list_functions(module):
     """(off, va, size) for each recovered function in the module's first code section,
     smallest offset first. The caller picks one to trace."""
-    _, va0, code, secname, funcs, _ = _load(module)
+    _, va0, code, secname, funcs, _, _imp = _load(module)
     out = []
     for off, f in sorted(funcs.items()):
         size = f["end"] - off
@@ -122,7 +131,7 @@ def _resolve_func(module, func):
     func may be: None (first function), a section offset or VA as hex ('0x...') or int,
     or a decimal offset. A VA (>= va0) is converted to an offset; an offset is taken as-is.
     """
-    _, va0, code, secname, allfuncs, _ = _load(module)
+    _, va0, code, secname, allfuncs, _, _imp = _load(module)
     funcs = {off: f for off, f in allfuncs.items() if (f["end"] - off) >= 8}
     if not funcs:
         raise ValueError("%s: no functions recovered in section %s" % (module, secname))
@@ -142,7 +151,7 @@ def _resolve_func(module, func):
 
 
 def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS, mem_init=None,
-                   stub_externals=False, stub_ret=0, stub_cleanup=0):
+                   stub_externals=False, stub_ret=0, stub_cleanup=0, sig_resolver=None):
     """Run one function under Unicorn with full hooks; return a TraceRecord (a plain dict).
 
     module  -- e.g. "gdi32.dll"; resolved through the active target like difftest.
@@ -164,7 +173,7 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
     import unicorn as U
     from unicorn.x86_const import UC_X86_REG_ESP, UC_X86_REG_EAX, UC_X86_REG_EIP
 
-    path, _, _, _, _, sha = _load(module)
+    path, _, _, _, _, sha, imports = _load(module)
     off, va0, code, end, secname = _resolve_func(module, func)
     fva = va0 + off
     if args is None:
@@ -178,6 +187,19 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
     uc.mem_write(va0, bytes(code))
     uc.mem_map(_SCRATCH_BASE, _SCRATCH_SIZE)
     mapped = {secbase, _SCRATCH_BASE}                        # page-group bases we've mapped
+
+    # When stubbing externals, plant a unique SENTINEL address in each IAT slot so a
+    # `call [iat_slot]` resolves to a NAMED import (not a null pointer), and we can look up its
+    # stdcall arg count for correct stack cleanup. Naming works with no SDK; cleanup needs one.
+    sentinel_map = {}                                        # sentinel addr -> (dll, name)
+    mem_init = list(mem_init or [])
+    if stub_externals and imports:
+        for i, (iat_va, (dll, name)) in enumerate(sorted(imports.items())):
+            sent = _SENT_BASE + i * _SENT_STRIDE
+            mem_init.append((iat_va, sent.to_bytes(4, "little")))
+            sentinel_map[sent] = (dll, name)
+        span = (len(imports) * _SENT_STRIDE + (_PAGE - 1)) & ~(_PAGE - 1)
+        mem_init.append((_SENT_BASE, bytes(span)))           # map+zero the sentinel landing region
 
     # pre-load caller-supplied memory (e.g. a controlled struct buffer a pointer arg points at)
     for addr, data in (mem_init or []):
@@ -245,12 +267,25 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
             cr["external"] = ext
             pending[0] = None
             if ext and stub_externals:
+                # name the API from the sentinel, look up its stdcall arg count for cleanup
+                cleanup = stub_cleanup
+                info = sentinel_map.get(address)
+                if info:
+                    dll, name = info
+                    cr["api"] = "%s!%s" % (dll, name)
+                    rec.setdefault("api_deps", [])
+                    if cr["api"] not in rec["api_deps"]:
+                        rec["api_deps"].append(cr["api"])
+                    argc = sig_resolver(dll, name) if sig_resolver else None
+                    if argc is not None:
+                        cr["argc"] = argc
+                        cleanup = 4 * argc          # stdcall: callee pops argc dwords
                 # emulate a return instead of executing the external target. At the callee's
                 # entry [esp] holds the return address the call pushed.
                 try:
                     esp_now = uc.reg_read(UC_X86_REG_ESP)
                     ret_addr = int.from_bytes(uc.mem_read(esp_now, 4), "little")
-                    uc.reg_write(UC_X86_REG_ESP, (esp_now + 4 + stub_cleanup) & 0xFFFFFFFF)
+                    uc.reg_write(UC_X86_REG_ESP, (esp_now + 4 + cleanup) & 0xFFFFFFFF)
                     uc.reg_write(UC_X86_REG_EAX, stub_ret & 0xFFFFFFFF)
                     uc.reg_write(UC_X86_REG_EIP, ret_addr)
                     cr["stubbed"] = True

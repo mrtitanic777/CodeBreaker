@@ -48,10 +48,14 @@ def trace_sample(module, n, insn_cap=3000):
     """Populate the corpus with traces of the n LARGEST functions (most likely to contain calls
     and branches; the tiny ones at the start are import thunks that just run away), so the graph
     has data. Returns how many produced a clean (non-truncated) trace."""
+    from engine.behavior_engine import env
+    sig = env.resolver()
     biggest = sorted(tracer.list_functions(module), key=lambda x: -x[2])[:n]
     ok = 0
     for off, va, size in biggest:
-        rec = tracer.trace_function(module, func=hex(va), insn_cap=insn_cap)
+        # stub externals so calls into the API resolve to NAMED dependencies, not null pointers
+        rec = tracer.trace_function(module, func=hex(va), insn_cap=insn_cap,
+                                    stub_externals=True, sig_resolver=sig)
         corpus.record(rec)
         if not rec["truncated"]:
             ok += 1
@@ -76,15 +80,20 @@ def build(module):
             "roles": roles, "exit": t["exit"],
         }
         for c in t.get("calls", []):
-            # prefer the static direct target; fall back to the dynamically resolved one (the
-            # first instruction executed after the call) for indirect calls.
-            tgt = c["target"] if c["target"] is not None else c.get("resolved_target")
-            if tgt is None:
-                continue
-            tnode = "0x%x" % tgt
-            if tnode not in nodes:
-                nodes[tnode] = {"kind": "function" if tgt in known else "external", "va": tgt,
-                                "external": bool(c.get("external"))}
+            # a stubbed external call carries its resolved API name -> use that as the node, so
+            # the graph shows real dependencies (KERNEL32.dll!GlobalAlloc), not bare addresses.
+            if c.get("api"):
+                tnode = c["api"]
+                nodes.setdefault(tnode, {"kind": "external", "api": c["api"]})
+            else:
+                # prefer the static direct target; else the dynamically resolved indirect target
+                tgt = c["target"] if c["target"] is not None else c.get("resolved_target")
+                if tgt is None:
+                    continue
+                tnode = "0x%x" % tgt
+                if tnode not in nodes:
+                    nodes[tnode] = {"kind": "function" if tgt in known else "external", "va": tgt,
+                                    "external": bool(c.get("external"))}
             edges.append({"from": "0x%x" % fva, "to": tnode,
                           "kind": "call_indirect" if c.get("indirect") else "call_direct",
                           "pc": c["pc"]})
