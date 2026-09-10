@@ -15,8 +15,8 @@ def win95_root():
     r = os.environ.get("WT_WIN95_ROOT")
     if r and os.path.isdir(r):
         return r
-    cb = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # CodeBreaker/
-    return os.path.join(os.path.dirname(cb), "Windows95")                              # ../Windows95
+    from engine.foundation import paths
+    return os.path.join(os.path.dirname(paths.repo_root()), "Windows95")               # ../Windows95
 
 
 def _cfg(key, default=""):

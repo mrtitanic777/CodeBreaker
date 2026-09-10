@@ -26,12 +26,8 @@ import hashlib
 import os
 import sys
 
-_ENGINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_ROOT = os.path.dirname(_ENGINE)
-if _ROOT not in sys.path:
-    sys.path.insert(0, _ROOT)                                # for engine.* imports
-
 from engine.foundation import cores                          # noqa: E402
+from engine.foundation import paths                          # noqa: E402
 from engine.format_loaders.pe import open_pe                 # noqa: E402
 from engine.format_loaders.pe_seg import PeSeg               # noqa: E402
 from engine.format_loaders.pe_trace import PeCarve           # noqa: E402
@@ -113,7 +109,7 @@ def _load(module):
 def _arities(module):
     """sigrecover.arities(module) lives in recompile95/tools; import it lazily and tolerate
     its absence (a corpus/data-shape dependency, not a hard one for tracing)."""
-    tools = os.path.join(_ENGINE, "recompile95", "tools")
+    tools = paths.engine_dir("recompile95", "tools")
     if tools not in sys.path:
         sys.path.insert(0, tools)
     try:

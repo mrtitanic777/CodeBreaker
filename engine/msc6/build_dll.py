@@ -26,8 +26,9 @@ import shutil
 import subprocess
 import tempfile
 
+from engine.foundation import paths
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(os.path.dirname(HERE))                 # CodeBreaker/
+ROOT = paths.repo_root()                                      # CodeBreaker/ (canonical resolver)
 
 
 def _cfg(key, default=""):
@@ -120,7 +121,7 @@ def reconstruct_module(dll_path, verify=True):
     from engine.sdk import reconstruct as R
     from engine.format_loaders import ne
     from engine.inverse_engine.auto_sweep import signature
-    solved_path = os.path.join(HERE.replace("msc6", "inverse_engine"), "_sweepdb", "solved.json")
+    solved_path = paths.engine_dir("inverse_engine", "_sweepdb", "solved.json")
     solved = json.load(open(solved_path)) if os.path.exists(solved_path) else {}
     d = open(dll_path, "rb").read(); lfa = struct.unpack_from("<I", d, 0x3c)[0]
     f = ne.NEFile.from_buffer(d, lfa, dll_path)

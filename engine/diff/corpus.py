@@ -29,7 +29,8 @@ def _data_root():
     env = os.environ.get("WT_DATA_ROOT")
     if env and os.path.isdir(env):
         return env
-    parent = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))   # repo parent
+    from engine.foundation import paths
+    parent = os.path.dirname(paths.repo_root())                        # repo parent
     if os.path.isdir(os.path.join(parent, "win95", "src")):
         return parent
     return parent
