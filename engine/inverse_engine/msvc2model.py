@@ -1063,7 +1063,7 @@ def _oracle():
     here = os.path.dirname(os.path.abspath(__file__))
     cb = os.path.dirname(os.path.dirname(here))
     if cores._active_dir is None:
-        cores.set_target(os.path.join(cb, "engine", "targets", "win95"))
+        cores.set_target(paths.target_dir("win95"))
     # locate the win95 data root (has docs/reference/toolchain/msvc20/VC/BIN/CL.EXE)
     roots = []
     if os.environ.get("WT_DATA_ROOT"):

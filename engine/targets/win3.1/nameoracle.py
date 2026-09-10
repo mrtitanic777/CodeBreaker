@@ -27,12 +27,13 @@ it produces the identical result.
     python nameoracle.py DDEML.DLL --stats  # coverage summary only
 """
 import os
+from engine.foundation import paths
 import re
 import sys
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
-_ENG = os.path.join(os.path.dirname(ROOT), "engine")
+_ENG = paths.package_root()
 if os.path.isdir(_ENG):
     sys.path.insert(0, _ENG)
 

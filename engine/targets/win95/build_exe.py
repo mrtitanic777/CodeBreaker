@@ -20,8 +20,9 @@ import os
 import subprocess
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "engine"))
+sys.path.insert(0, paths.package_root())
 from engine.foundation import layout
+from engine.foundation import paths
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 SEP = ";" if os.name == "nt" else ":"          # PyInstaller add-data separator

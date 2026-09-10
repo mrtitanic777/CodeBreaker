@@ -10,6 +10,7 @@ model bytes equal the shipped bytes with relocation slots masked (byte-exact by 
     python -m engine.inverse_engine.msvc2cov [limit] [module]
 """
 import os
+from engine.foundation import paths
 import sys
 from collections import Counter
 
@@ -20,7 +21,7 @@ def _setup():
     here = os.path.dirname(os.path.abspath(__file__))
     cb = os.path.dirname(os.path.dirname(here))
     if cores._active_dir is None:
-        cores.set_target(os.path.join(cb, "engine", "targets", "win95"))
+        cores.set_target(paths.target_dir("win95"))
     roots = ([os.path.join(os.environ["WT_DATA_ROOT"], "win95")] if os.environ.get("WT_DATA_ROOT") else [])
     roots += [os.path.join(cb, "binaries", "win95"), os.path.join(os.path.dirname(cb), "win95"), os.getcwd()]
     for r in roots:

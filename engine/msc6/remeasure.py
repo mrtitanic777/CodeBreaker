@@ -25,6 +25,7 @@ ROOT = os.path.dirname(os.path.dirname(HERE))            # CodeBreaker/
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 from engine.sdk import w95paths
+from engine.foundation import paths
 
 _COUNT = re.compile(r"(\d+)\s+verified byte-exact,\s+(\d+)\s+candidate,\s+"
                     r"(\d+)\s+pending-link,\s+(\d+)\s+@RECON-UNKNOWN")
@@ -81,7 +82,7 @@ def remeasure_one(dll_dir, timeout=600):
     if not inp:
         return {"dll": dll_dir, "skip": "no input binary (%s.*)" % dllname}
     with tempfile.TemporaryDirectory(prefix="remeasure_") as staging:
-        cmd = [sys.executable, os.path.join(ROOT, "engine", "sdk", "emit.py"), inp, staging, "--verify"]
+        cmd = [sys.executable, paths.engine_dir("sdk", "emit.py"), inp, staging, "--verify"]
         try:
             r = subprocess.run(cmd, capture_output=True, text=True, cwd=ROOT, timeout=timeout)
         except subprocess.TimeoutExpired:

@@ -25,6 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # engine/
 import corpus  # noqa: E402
 from engine.format_loaders import ne as ne_mod
+from engine.foundation import paths
 
 DATA_ROOT = corpus.DATA_ROOT
 _SEGOFF = re.compile(r"se[gc](\w+?):0x([0-9a-fA-F]+)", re.I)  # "seg1:0x051c" (NE) / "sec1:0x0012f40" (PE)
@@ -48,7 +49,7 @@ def _ensure_pe_target(version_id):
         from engine.foundation import cores
         here = os.path.dirname(os.path.abspath(__file__))
         cb = os.path.dirname(os.path.dirname(here))            # engine/ -> repo root
-        cores.set_target(os.path.join(cb, "engine", "targets", tgt))
+        cores.set_target(paths.target_dir(tgt))
         _pe_target_set = tgt
     return True
 

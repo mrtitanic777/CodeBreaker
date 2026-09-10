@@ -19,6 +19,7 @@ provably-byte-exact C automatically, and reports exactly what's left.
 """
 import json
 import os
+from engine.foundation import paths
 import re
 import sys
 
@@ -26,7 +27,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.environ.get("WT_DATA_ROOT", os.getcwd()))
 # engine (segdiff lives per-target; ne lives in engine)
-_ENG = os.path.join(os.path.dirname(ROOT), "engine")
+_ENG = paths.package_root()
 if os.path.isdir(_ENG):
     sys.path.insert(0, _ENG)
 

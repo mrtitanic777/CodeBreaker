@@ -7,10 +7,11 @@ Run from the win95 data root. Usage: reg_inputs.py MODULE.DLL [...]"""
 import os, sys, glob, random, collections
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from engine.foundation import cores
-cores.set_target(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "engine", "targets", "win95"))
+cores.set_target(paths.target_dir("win95"))
 from engine.format_loaders.pe import open_pe
 from engine.format_loaders.pe_seg import PeSeg
 from engine.format_loaders.pe_trace import PeCarve
+from engine.foundation import paths
 
 GP = ["eax", "ecx", "edx", "ebx", "esi", "edi", "ebp"]
 MARK = 0x5A5A5A5A
