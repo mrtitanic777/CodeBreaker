@@ -47,7 +47,9 @@ setup is the **byte-exact rebuild** loop, which drives real period compilers —
   oracle (Unicorn), records structured evidence of what it does, actively experiments to learn
   what each input means, builds hypotheses with confidence, and — for the functions the evidence
   pins down — synthesizes C that it then differential-tests back against the binary. Empirical,
-  not guesswork: `wt behavior trace | experiment | explore | hyp | graph | synth`.
+  reconstructs struct layouts from pointer arguments, recovers branch conditions, and
+  orchestrates it across a module. Empirical, not guesswork:
+  `wt behavior trace | experiment | explore | hyp | graph | synth | struct | cfg | recon`.
 - **Xbox 360** — the same discipline for XEX2 / PowerPC, plus package, crypto, and forensics tools.
 
 ## Get the dependencies
@@ -120,7 +122,8 @@ engine/          the tool's core — a Python package of subsystem subpackages
   format_loaders/  NE / PE / LE / OMF parsers
   recon_engine/    byte-exact reconstruction + conductor
   inverse_engine/  compiler-inverse: bytes → byte-exact C (Lattice C / MS C 2.03) → wt inverse
-  behavior_engine/ dynamic reconstruction: trace/experiment/hypotheses/graph/synth → wt behavior
+  behavior_engine/ dynamic reconstruction: trace/experiment/hypotheses/graph/synth/
+                   struct/cfg/recon (run the binary as an oracle)                   → wt behavior
   msc6/            MSC-6.0a byte-exact 16-bit NE reconstruction                    → wt msc6
   recompile95/     make the lifted C compile/link                                 → wt recompile
   diff/            cross-version fingerprint / match / propagate + git-style UI    → wt diff
