@@ -52,6 +52,16 @@ _MAX_PATH = 20000
 _SENT_BASE = 0xE1000000
 _SENT_STRIDE = 0x10
 
+# Process-wide default for external-call stubbing, set once (e.g. by the command dispatcher when
+# an SDK is configured) so EVERY trace in the analysis pipeline inherits it without threading the
+# flag through every call site. An explicit argument to trace_function always overrides this.
+_DEFAULT_STUB = {"enabled": False, "resolver": None}
+
+
+def set_default_stub(enabled, resolver=None):
+    _DEFAULT_STUB["enabled"] = bool(enabled)
+    _DEFAULT_STUB["resolver"] = resolver
+
 _MD = None
 
 
@@ -151,7 +161,7 @@ def _resolve_func(module, func):
 
 
 def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS, mem_init=None,
-                   stub_externals=False, stub_ret=0, stub_cleanup=0, sig_resolver=None):
+                   stub_externals=None, stub_ret=0, stub_cleanup=0, sig_resolver=None):
     """Run one function under Unicorn with full hooks; return a TraceRecord (a plain dict).
 
     module  -- e.g. "gdi32.dll"; resolved through the active target like difftest.
@@ -173,6 +183,10 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
     import unicorn as U
     from unicorn.x86_const import UC_X86_REG_ESP, UC_X86_REG_EAX, UC_X86_REG_EIP
 
+    if stub_externals is None:                               # inherit the process default
+        stub_externals = _DEFAULT_STUB["enabled"]
+    if sig_resolver is None:
+        sig_resolver = _DEFAULT_STUB["resolver"]
     path, _, _, _, _, sha, imports = _load(module)
     off, va0, code, end, secname = _resolve_func(module, func)
     fva = va0 + off

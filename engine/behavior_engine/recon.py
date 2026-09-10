@@ -32,10 +32,10 @@ def _topo_order(module, limit):
     known = {int(k, 16) for k, v in g["nodes"].items() if v.get("kind") == "function"}
     succ = {}
     for e in g["edges"]:
-        if e["kind"] in ("call_direct", "call_indirect"):
-            f, t = int(e["from"], 16), int(e["to"], 16)
+        if e["kind"] in ("call_direct", "call_indirect") and e["to"].startswith("0x"):
+            t = int(e["to"], 16)                     # API-name targets (externals) aren't hex; skip
             if t in known:
-                succ.setdefault(f, set()).add(t)
+                succ.setdefault(int(e["from"], 16), set()).add(t)
     # order by number of intra-module callees (0 = leaf) ascending, then address
     traced = [int(k, 16) for k, v in g["nodes"].items()
               if v.get("kind") == "function" and "leaf" in v]

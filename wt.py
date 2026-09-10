@@ -214,6 +214,11 @@ def cmd_behavior(rest):
         os.chdir(data_dir)
     sys.path.insert(0, WT_DIR)                               # the engine package
     cores.set_target(os.path.join(ENGINE, "targets", "win95"))
+    try:                                                     # enable external-call stubbing across
+        from engine.behavior_engine import env               # the pipeline iff an SDK is configured
+        env.apply_defaults()                                 # (gates correct stdcall cleanup)
+    except Exception:
+        pass
     sys.argv = [os.path.basename(script)] + cmd_args
     runpy.run_path(script, run_name="__main__")
 
