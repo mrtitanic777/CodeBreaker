@@ -62,10 +62,14 @@ def _in_buf(addr):
     return BUF_BASE <= addr < BUF_BASE + BUF_SIZE
 
 
-def probe(module, func, ptr_i, arity, other_args, fill_values=None, insn_cap=6000):
-    """Run with ptr arg -> the controlled buffer; return (trace, reads, writes) scoped to it."""
+def probe(module, func, ptr_i, arity, other_args, fill_values=None, insn_cap=6000, arg_vals=None):
+    """Run with ptr arg -> the controlled buffer; return (trace, reads, writes) scoped to it.
+    arg_vals {i: value} overrides individual scalar args (to vary them as expression inputs)."""
     args = list(other_args) + [0] * (arity - len(other_args))
     args[ptr_i] = BUF_BASE
+    for i, v in (arg_vals or {}).items():
+        if i != ptr_i:
+            args[i] = v & MASK
     t = tracer.trace_function(module, func=func, args=args, insn_cap=insn_cap,
                               mem_init=[(BUF_BASE, _fill(fill_values))])
     reads = [{"off": m["addr"] - BUF_BASE, "size": m["size"], "value": m["value"]}
@@ -120,41 +124,54 @@ def reconstruct(module, func=None, ptr_i=None, other_args=None, insn_cap=6000):
     else:
         ret_src = None
 
-    # 2. collect N runs with random field values, then EXPLAIN each output field and the return
-    #    as an expression over the INPUT fields (const / copy / +c / ^c / shift / two-field op /
-    #    pack). A slot we cannot explain stays "computed" (flagged, never faked). This upgrades
-    #    the earlier copy/const-only model to synthesize computed fields.
+    # 2. collect N runs varying BOTH struct fields AND scalar args, then EXPLAIN each output and
+    #    the return as an expression over that unified variable space; an output written only on
+    #    some runs gets a recovered GATING condition (`if (...) p->f = ...`). Anything we can't
+    #    explain stays flagged -- never faked.
+    # Variables are the struct's INPUT FIELDS. Scalar args are held at their baseline: varying
+    # them would change which branch runs and erase the very struct writes we're analyzing (they
+    # are often gated on an arg/flag). The _expr/_gate engine also accepts arg variables, but
+    # struct keeps args fixed so field behavior stays observable.
     rng = random.Random(base["func_va"])
     in_offs = sorted(in_off)
-    N = 8
+    vars_ = [("f", o) for o in in_offs]
+    N = 12
     runs = []
     for _ in range(N):
-        vals = {o: rng.getrandbits(32) for o in in_offs}
-        tv, _, vw = probe(module, func, ptr_i, arity, other_args, vals, insn_cap)
-        runs.append({"fields": vals, "writes": {w["off"]: w["value"] for w in vw},
-                     "ret": tv.get("ret")})
+        vmap = {("f", o): rng.getrandbits(32) for o in in_offs}
+        tv, _, vw = probe(module, func, ptr_i, arity, other_args,
+                          {o: vmap[("f", o)] for o in in_offs}, insn_cap)
+        runs.append({"vars": vmap, "writes": {w["off"]: w["value"] for w in vw}, "ret": tv.get("ret")})
+
     final_out, ok = {}, True
     for off in sorted(out_model):
-        series = [(r["fields"], r["writes"].get(off)) for r in runs if r["writes"].get(off) is not None]
+        wrote = [off in r["writes"] and r["writes"][off] is not None for r in runs]
         m = {"size": out_model[off]["size"]}
-        if len(series) < N:                          # not written on every run -> conditional
-            m["kind"] = "conditional"; ok = False
-        else:
-            ex = _field_expr(series, in_offs)
+        if all(wrote):                                       # unconditional write -> expression
+            ex = _expr([(r["vars"], r["writes"][off]) for r in runs], vars_)
             if ex:
-                m["kind"], m["desc"], m["expr"] = "expr", ex[0], ex[1]
+                m.update(kind="expr", desc=ex[0], expr=ex[1])
             else:
                 m["kind"] = "computed"; ok = False
+        elif any(wrote):                                     # conditional write -> gate + value
+            gate = _gate([(r["vars"], w) for r, w in zip(runs, wrote)], vars_)
+            val = _expr([(r["vars"], r["writes"][off]) for r, w in zip(runs, wrote) if w], vars_)
+            if gate and val:
+                m.update(kind="cond", gate=gate[0], gate_c=gate[1], desc=val[0], expr=val[1])
+            else:
+                m["kind"] = "conditional"; ok = False
+        else:
+            m["kind"] = "none"
         final_out[off] = m
-    ret_series = [(r["fields"], r["ret"]) for r in runs if r["ret"] is not None]
-    ret_model = _field_expr(ret_series, in_offs) if len(ret_series) == N else None
+    ret_series = [(r["vars"], r["ret"]) for r in runs if r["ret"] is not None]
+    ret_model = _expr(ret_series, vars_) if len(ret_series) == N else None
 
     res.update({
         "reconstructed": True,
         "arity": arity,
         "in_fields": [{"off": o, "size": s} for o, s in sorted(in_off.items())],
         "out_fields": [dict(off=o, **m) for o, m in sorted(final_out.items())],
-        "returns": {"desc": ret_model[0] if ret_model else "value (not a field expression)",
+        "returns": {"desc": ret_model[0] if ret_model else "value (not an expression)",
                     "expr": ret_model[1] if ret_model else None},
         "verified": ok,                              # every claimed write reproduced across N runs
         "struct_c": _emit_struct(res["func_va"], in_off, final_out,
@@ -163,50 +180,86 @@ def reconstruct(module, func=None, ptr_i=None, other_args=None, insn_cap=6000):
     return res
 
 
-def _field_expr(series, in_offs):
-    """Explain target = f(input fields) across all runs. series=[(fields{off:val}, target)].
-    Returns (human_desc, c_expr) or None. Fields are rendered as p->f_<off>."""
+def _vc(k):
+    """C rendering of a variable key: ('f',off) -> p->f_<off>, ('a',i) -> a<i>."""
+    return ("p->f_%x" % k[1]) if k[0] == "f" else ("a%d" % k[1])
+
+
+def _vd(k):
+    return ("f_%x" % k[1]) if k[0] == "f" else ("a%d" % k[1])
+
+
+def _expr(series, vars_):
+    """Explain target = f(vars) across all runs. series=[(varmap, target)]; vars are field/arg
+    keys. Returns (human_desc, c_expr) or None."""
     if not series:
         return None
     tgt = [t & MASK for _, t in series]
-    fs = [f for f, _ in series]
-    if len(set(tgt)) == 1:                           # constant
+    vm = [v for v, _ in series]
+    if len(set(tgt)) == 1:                               # constant
         return ("0x%x" % tgt[0], "0x%xU" % tgt[0])
-    offs = [o for o in in_offs if all(o in f for f in fs)]
-    # unary over one input field
-    for o in offs:
-        xs = [f[o] & MASK for f in fs]
+    use = [k for k in vars_ if all(k in v for v in vm)]
+    for k in use:                                        # unary over one variable
+        xs = [v[k] & MASK for v in vm]
         if all(x == t for x, t in zip(xs, tgt)):
-            return ("p->f_%x" % o, "p->f_%x" % o)                         # copy
+            return (_vd(k), _vc(k))                      # copy / identity
         cs = {(t - x) & MASK for x, t in zip(xs, tgt)}
         if len(cs) == 1 and 0 not in cs:
-            c = cs.pop(); return ("f_%x + 0x%x" % (o, c), "p->f_%x + 0x%xU" % (o, c))
+            c = cs.pop(); return ("%s + 0x%x" % (_vd(k), c), "%s + 0x%xU" % (_vc(k), c))
         cs = {(t ^ x) & MASK for x, t in zip(xs, tgt)}
         if len(cs) == 1 and 0 not in cs:
-            c = cs.pop(); return ("f_%x ^ 0x%x" % (o, c), "p->f_%x ^ 0x%xU" % (o, c))
-        for k in range(1, 32):
-            if all(((x << k) & MASK) == t for x, t in zip(xs, tgt)):
-                return ("f_%x << %d" % (o, k), "p->f_%x << %d" % (o, k))
-            if all((x >> k) == t for x, t in zip(xs, tgt)):
-                return ("f_%x >> %d" % (o, k), "p->f_%x >> %d" % (o, k))
-    # binary over two input fields
+            c = cs.pop(); return ("%s ^ 0x%x" % (_vd(k), c), "%s ^ 0x%xU" % (_vc(k), c))
+        for s in range(1, 32):
+            if all(((x << s) & MASK) == t for x, t in zip(xs, tgt)):
+                return ("%s << %d" % (_vd(k), s), "%s << %d" % (_vc(k), s))
+            if all((x >> s) == t for x, t in zip(xs, tgt)):
+                return ("%s >> %d" % (_vd(k), s), "%s >> %d" % (_vc(k), s))
     ops = [("+", lambda x, y: (x + y) & MASK), ("-", lambda x, y: (x - y) & MASK),
            ("|", lambda x, y: x | y), ("&", lambda x, y: x & y), ("^", lambda x, y: x ^ y),
            ("*", lambda x, y: (x * y) & MASK)]
-    for i, a in enumerate(offs):
-        xa = [f[a] & MASK for f in fs]
-        for b in offs[i + 1:]:
-            xb = [f[b] & MASK for f in fs]
+    for i, a in enumerate(use):                          # binary over two variables
+        xa = [v[a] & MASK for v in vm]
+        for b in use[i + 1:]:
+            xb = [v[b] & MASK for v in vm]
             for sym, fn in ops:
                 if all(fn(x, y) == t for x, y, t in zip(xa, xb, tgt)):
-                    return ("f_%x %s f_%x" % (a, sym, b), "p->f_%x %s p->f_%x" % (a, sym, b))
+                    return ("%s %s %s" % (_vd(a), sym, _vd(b)), "%s %s %s" % (_vc(a), sym, _vc(b)))
             for s in (8, 16):
                 if all(((x | (y << s)) & MASK) == t for x, y, t in zip(xa, xb, tgt)):
-                    return ("f_%x | (f_%x<<%d)" % (a, b, s),
-                            "p->f_%x | (p->f_%x << %d)" % (a, b, s))
+                    return ("%s | (%s<<%d)" % (_vd(a), _vd(b), s),
+                            "%s | (%s << %d)" % (_vc(a), _vc(b), s))
                 if all(((y | (x << s)) & MASK) == t for x, y, t in zip(xa, xb, tgt)):
-                    return ("f_%x | (f_%x<<%d)" % (b, a, s),
-                            "p->f_%x | (p->f_%x << %d)" % (b, a, s))
+                    return ("%s | (%s<<%d)" % (_vd(b), _vd(a), s),
+                            "%s | (%s << %d)" % (_vc(b), _vc(a), s))
+    return None
+
+
+def _gate(series, vars_):
+    """Find a predicate over vars matching a boolean pattern. series=[(varmap, bool)].
+    Returns (human_desc, c_expr) or None."""
+    vm = [v for v, _ in series]
+    bits = [bool(b) for _, b in series]
+    use = [k for k in vars_ if all(k in v for v in vm)]
+
+    def match(pred):
+        return all(pred(v) == b for v, b in zip(vm, bits))
+    for k in use:
+        if match(lambda v, k=k: (v[k] & MASK) != 0):
+            return ("%s != 0" % _vd(k), "%s != 0" % _vc(k))
+        if match(lambda v, k=k: (v[k] & MASK) == 0):
+            return ("%s == 0" % _vd(k), "%s == 0" % _vc(k))
+        if match(lambda v, k=k: (v[k] & 0x80000000) != 0):
+            return ("(int)%s < 0" % _vd(k), "(int)%s < 0" % _vc(k))
+        if match(lambda v, k=k: (v[k] & 0x80000000) == 0):
+            return ("(int)%s >= 0" % _vd(k), "(int)%s >= 0" % _vc(k))
+    for i, a in enumerate(use):
+        for b in use[i + 1:]:
+            if match(lambda v, a=a, b=b: (v[a] & MASK) < (v[b] & MASK)):
+                return ("%s < %s" % (_vd(a), _vd(b)), "%s < %s" % (_vc(a), _vc(b)))
+            if match(lambda v, a=a, b=b: (v[a] & MASK) > (v[b] & MASK)):
+                return ("%s > %s" % (_vd(a), _vd(b)), "%s > %s" % (_vc(a), _vc(b)))
+            if match(lambda v, a=a, b=b: (v[a] & MASK) == (v[b] & MASK)):
+                return ("%s == %s" % (_vd(a), _vd(b)), "%s == %s" % (_vc(a), _vc(b)))
     return None
 
 
@@ -216,15 +269,21 @@ def _emit_struct(va, in_off, final_out, ret_expr, ptr_i, arity):
     for o in offsets:
         if o > cur:
             lines.append("    unsigned char _pad_%x[0x%x];" % (cur, o - cur))
-        lines.append("    unsigned f_%x;" % o)      # dword members (v1)
-        cur = o + 4
+        sz = final_out.get(o, {}).get("size") or in_off.get(o, 4)
+        ctype = {1: "unsigned char", 2: "unsigned short"}.get(sz, "unsigned")
+        lines.append("    %s f_%x;" % (ctype, o))
+        cur = o + (sz if sz in (1, 2, 4) else 4)
     struct = "struct S_%x {\n%s\n};" % (va, "\n".join(lines) if lines else "    int _empty;")
     body = []
     for o, m in sorted(final_out.items()):
         if m.get("kind") == "expr":
             body.append("    p->f_%x = %s;" % (o, m["expr"]))
+        elif m.get("kind") == "cond":
+            body.append("    if (%s) p->f_%x = %s;" % (m["gate_c"], o, m["expr"]))
+        elif m.get("kind") == "none":
+            pass
         elif m.get("kind") == "conditional":
-            body.append("    /* p->f_%x = <written only on some inputs; conditional> */" % o)
+            body.append("    /* p->f_%x = <conditional write; gate not recovered> */" % o)
         else:
             body.append("    /* p->f_%x = <computed; not reconstructed> */" % o)
     ret = ("    return %s;" % ret_expr) if ret_expr else "    return 0; /* value */"
