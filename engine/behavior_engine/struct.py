@@ -294,8 +294,7 @@ def _emit_struct(va, in_off, final_out, ret_expr, ptr_i, arity):
 
 
 # --------------------------------------------------------------------------
-def _opt(a, name, d=None):
-    return a[a.index(name) + 1] if name in a and a.index(name) + 1 < len(a) else d
+from engine.cli.common import opt as _opt
 
 
 def main():

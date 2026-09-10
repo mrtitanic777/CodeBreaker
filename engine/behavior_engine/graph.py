@@ -136,8 +136,7 @@ def callees(g, va):
 import sys  # noqa: E402
 
 
-def _opt(a, name, d=None):
-    return a[a.index(name) + 1] if name in a and a.index(name) + 1 < len(a) else d
+from engine.cli.common import opt as _opt
 
 
 def main():

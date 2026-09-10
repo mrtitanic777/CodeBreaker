@@ -161,114 +161,64 @@ def cmd_doctor():
     chk("CPU", True, "%d cores" % (os.cpu_count() or 1))
 
 
-def cmd_recompile(rest):
-    """Dispatch a recompile95 tool in the win95 data context."""
-    rc_dir = os.path.join(ENGINE, "recompile95", "tools")
-    if not rest or rest[0] == "list":
-        print("recompile commands  (engine/recompile95/tools):\n")
-        for f in sorted(os.listdir(rc_dir)) if os.path.isdir(rc_dir) else []:
-            if f.endswith(".py") and not f.startswith("_"):
-                print("  %s" % f[:-3])
-        return
-    cmd, cmd_args = rest[0], rest[1:]
-    script = os.path.join(rc_dir, cmd + ".py")
-    if not os.path.exists(script):
-        print("error: no recompile command %r (try: wt recompile list)" % cmd); sys.exit(2)
-    data_dir = os.path.join(DATA_ROOT, "win95")             # recompile95 works on the win95 corpus
-    os.environ["WT_TARGET"] = "win95"
-    os.environ["WT_DATA_ROOT"] = data_dir
-    if os.path.isdir(data_dir):
-        os.chdir(data_dir)
-    sys.path.insert(0, WT_DIR)                               # the engine package
-    cores.set_target(os.path.join(ENGINE, "targets", "win95"))
-    sys.argv = [os.path.basename(script)] + cmd_args
-    runpy.run_path(script, run_name="__main__")
+# Script-directory subsystems: a subsystem's commands are the non-underscore .py files in a
+# directory, executed as __main__. This table is the per-subsystem config; `_run_scripts` is the
+# ONE dispatcher that replaced four near-identical cmd_* functions.
+_SCRIPT_SUBSYS = {
+    "recompile": dict(subdir=("recompile95", "tools"), win95=True,
+                      header="recompile commands  (engine/recompile95/tools):\n"),
+    "behavior":  dict(subdir=("behavior_engine",), win95=True, behavior_env=True,
+                      skip={"__init__.py", "tracer.py", "corpus.py", "perturb.py",
+                            "hypothesis.py", "env.py"},
+                      header="behavior-engine commands (engine/behavior_engine) -- dynamic evidence "
+                             "via Unicorn:\n",
+                      footer="\n(trace: record a function's behavior; show: print a stored trace)"),
+    "inverse":   dict(subdir=("inverse_engine",), skip={"oracle16.py"},
+                      header="inverse-engine commands  (engine/inverse_engine):\n"),
+    "msc6":      dict(subdir=("msc6",),
+                      skip={"paths.py", "toolchain.py", "__init__.py", "bruteforce.py", "autoaxis.py"},
+                      header="msc6-engine commands (engine/msc6) -- byte-exact MSC-6.0a NE "
+                             "reconstruction:\n",
+                      footer="\n(recipe: auto-detect a DLL's compiler flags; normalize: compact an "
+                             "NE's DOS stub)"),
+}
 
 
-def cmd_behavior(rest):
-    """Dispatch a behavior-engine command in the win95 data context. The behavioral engine
-    runs the real machine code as an oracle and stores dynamic evidence under <data>/behavior/,
-    so it shares recompile's win95 context (target + corpus location)."""
-    be_dir = os.path.join(ENGINE, "behavior_engine")
-    skip = {"__init__.py", "tracer.py", "corpus.py", "perturb.py",  # library modules, not commands
-            "hypothesis.py", "env.py"}
+def _run_scripts(rest, *, subdir, skip=frozenset(), win95=False, behavior_env=False,
+                 header="", footer=""):
+    """Dispatch a script-directory subsystem: list its commands, or run one as __main__.
+    (`engine` is importable via the installed package; the runpy'd scripts self-insert their own
+    dir for sibling imports, so no repo-root sys.path hack is needed here.)"""
+    directory = os.path.join(ENGINE, *subdir)
     tools = {}
-    if os.path.isdir(be_dir):
-        for f in sorted(os.listdir(be_dir)):
+    if os.path.isdir(directory):
+        for f in sorted(os.listdir(directory)):
             if f.endswith(".py") and not f.startswith("_") and f not in skip:
-                tools[f[:-3]] = os.path.join(be_dir, f)
+                tools[f[:-3]] = os.path.join(directory, f)
     if not rest or rest[0] in ("list", "-h", "--help"):
-        print("behavior-engine commands (engine/behavior_engine) -- dynamic evidence via Unicorn:\n")
+        print(header)
         for name in sorted(tools):
             print("  %s" % name)
-        print("\n(trace: record a function's behavior; show: print a stored trace)")
+        if footer:
+            print(footer)
         return
     cmd, cmd_args = rest[0], rest[1:]
     script = tools.get(cmd)
     if not script:
-        print("error: no behavior command %r (try: wt behavior list)" % cmd); sys.exit(2)
-    data_dir = os.path.join(DATA_ROOT, "win95")              # the behavior corpus lives in win95 data
-    os.environ["WT_TARGET"] = "win95"
-    os.environ["WT_DATA_ROOT"] = data_dir
-    if os.path.isdir(data_dir):
-        os.chdir(data_dir)
-    sys.path.insert(0, WT_DIR)                               # the engine package
-    cores.set_target(os.path.join(ENGINE, "targets", "win95"))
-    try:                                                     # enable external-call stubbing across
-        from engine.behavior_engine import env               # the pipeline iff an SDK is configured
-        env.apply_defaults()                                 # (gates correct stdcall cleanup)
-    except Exception:
-        pass
-    sys.argv = [os.path.basename(script)] + cmd_args
-    runpy.run_path(script, run_name="__main__")
-
-
-def cmd_inverse(rest):
-    """Dispatch an inverse-engine tool. The compiler-inverse engine (Lattice C 2.12 /
-    MS C 2.03) is target-agnostic -- it models a period compiler, not a Windows era -- so it
-    takes no --target. Its oracle (MC1/MC2 under DOSBox-X) is configured in config.json."""
-    iv_dir = os.path.join(ENGINE, "inverse_engine")
-    tools = {}
-    if os.path.isdir(iv_dir):
-        for f in sorted(os.listdir(iv_dir)):
-            if f.endswith(".py") and not f.startswith("_") and f != "oracle16.py":
-                tools[f[:-3]] = os.path.join(iv_dir, f)
-    if not rest or rest[0] == "list":
-        print("inverse-engine commands  (engine/inverse_engine):\n")
-        for name in sorted(tools):
-            print("  %s" % name)
-        return
-    cmd, cmd_args = rest[0], rest[1:]
-    script = tools.get(cmd)
-    if not script:
-        print("error: no inverse command %r (try: wt inverse list)" % cmd); sys.exit(2)
-    sys.path.insert(0, WT_DIR)                               # the engine package
-    sys.argv = [os.path.basename(script)] + cmd_args
-    runpy.run_path(script, run_name="__main__")
-
-
-def cmd_msc6(rest):
-    """Dispatch an msc6-engine tool -- byte-exact MSC-6.0a reconstruction of NE (16-bit
-    Windows) DLLs (merged from the standalone w95recon tool). Toolchain + corpus paths
-    come from config.json (msc6_toolchain / msc6_data / dosbox_x)."""
-    m6_dir = os.path.join(ENGINE, "msc6")
-    skip = {"paths.py", "toolchain.py", "__init__.py", "bruteforce.py", "autoaxis.py"}
-    tools = {}
-    if os.path.isdir(m6_dir):
-        for f in sorted(os.listdir(m6_dir)):
-            if f.endswith(".py") and not f.startswith("_") and f not in skip:
-                tools[f[:-3]] = os.path.join(m6_dir, f)
-    if not rest or rest[0] in ("list", "-h", "--help"):
-        print("msc6-engine commands (engine/msc6) -- byte-exact MSC-6.0a NE reconstruction:\n")
-        for name in sorted(tools):
-            print("  %s" % name)
-        print("\n(recipe: auto-detect a DLL's compiler flags; normalize: compact an NE's DOS stub)")
-        return
-    cmd, cmd_args = rest[0], rest[1:]
-    script = tools.get(cmd)
-    if not script:
-        print("error: no msc6 command %r (try: wt msc6 list)" % cmd); sys.exit(2)
-    sys.path.insert(0, WT_DIR)                                # the engine package on path
+        print("error: unknown command %r (try: list)" % cmd); sys.exit(2)
+    if win95:                                                # recompile/behavior run on the win95 corpus
+        data_dir = os.path.join(DATA_ROOT, "win95")
+        os.environ["WT_TARGET"] = "win95"
+        os.environ["WT_DATA_ROOT"] = data_dir
+        if os.path.isdir(data_dir):
+            os.chdir(data_dir)
+        cores.set_target(os.path.join(ENGINE, "targets", "win95"))
+    if behavior_env:                                         # enable API-call stubbing if SDK configured
+        try:
+            from engine.behavior_engine import env
+            env.apply_defaults()
+        except Exception:
+            pass
     sys.argv = [os.path.basename(script)] + cmd_args
     runpy.run_path(script, run_name="__main__")
 
@@ -332,52 +282,26 @@ def main():
         cmd_targets(); return
     if argv[0] == "doctor":
         cmd_doctor(); return
+    # Subsystem dispatch. The four script-directory subsystems (recompile/behavior/inverse/msc6)
+    # share one dispatcher via the _SCRIPT_SUBSYS table; the rest have their own import entry.
+    # (No sys.path.insert(WT_DIR) anywhere now -- `engine` is importable via the installed package.)
+    if argv[0] in _SCRIPT_SUBSYS:
+        _run_scripts(argv[1:], **_SCRIPT_SUBSYS[argv[0]]); return
+    if argv[0] == "xbox":
+        cmd_xbox(argv[1:]); return
     if argv[0] == "diff":
-        # Cross-version analysis (CodeBreaker Diff): target-agnostic, so it does not
-        # take --target. Delegates to the shared engine/diff CLI over the whole corpus.
-        sys.path.insert(0, WT_DIR)                       # the engine package
-        sys.path.insert(0, os.path.join(ENGINE, "diff")) # diff's own local modules
+        # Cross-version analysis: target-agnostic, over the whole corpus.
+        sys.path.insert(0, os.path.join(ENGINE, "diff"))     # diff's own local sibling modules
         from engine.diff import cli as diff_cli
         diff_cli.main(argv[1:]); return
-    if argv[0] == "recompile":
-        # The recompile95 subsystem: take the IR engine's lifted C the rest of the way
-        # (compile -> link). It operates on the win95 corpus, so run it in win95's data
-        # context (the tools set up their own import path).
-        cmd_recompile(argv[1:]); return
-    if argv[0] == "inverse":
-        # The compiler-inverse engine: bytes -> byte-exact C by inverting the Lattice C /
-        # MS C 2.03 codegen. Target-agnostic; the oracle is set in config.json.
-        cmd_inverse(argv[1:]); return
-    if argv[0] == "behavior":
-        # The behavioral-reconstruction engine: run the real machine code as an oracle,
-        # observe what it does, and store that as dynamic evidence (the corpus). Operates
-        # on the win95 corpus, so run it in win95's data context like recompile.
-        cmd_behavior(argv[1:]); return
-    if argv[0] == "msc6":
-        # The MSC-6.0a byte-exact engine (merged from w95recon): reconstruct NE (16-bit
-        # Windows) DLLs to source that re-links to the EXACT shipped bytes via the authentic
-        # MSC 6.0a / MASM 5.1 / LINK 5.20+5.60 toolchain. Paths from config.json (msc6_*).
-        cmd_msc6(argv[1:]); return
-    if argv[0] == "xbox":
-        # The Xbox 360 subsystem (integrated from XboxTranspiler): XEX2/PowerPC byte-exact
-        # reconstruction + console/format/crypto/forensics. Data/secrets live outside git.
-        cmd_xbox(argv[1:]); return
     if argv[0] == "backbone":
-        # The modular toolchain API backbone: one uniform interface over
-        # compilers/assemblers/linkers/disassemblers, swappable by name (Phase 2).
-        sys.path.insert(0, WT_DIR)
         from engine.backbone.__main__ import main as bb_main
         sys.exit(bb_main(argv[1:]))
     if argv[0] == "sdk":
-        # SDK/DDK ingestion: scan a kit, auto-detect its toolchain via the backbone,
-        # parse headers/defs into typed signatures that raise inverse accuracy (Phase 3).
-        sys.path.insert(0, WT_DIR)
         from engine.sdk.__main__ import main as sdk_main
         sys.exit(sdk_main(argv[1:]))
     if argv[0] == "ui":
-        # CodeBreaker Workbench: the native WinForms UI (visual styles follow the OS).
-        # Falls back to the owner-drawn GDI app only if pythonnet/.NET is unavailable.
-        sys.path.insert(0, WT_DIR)
+        # Native WinForms UI; owner-drawn GDI fallback if pythonnet/.NET is unavailable.
         try:
             from engine.studio import winforms_app
             winforms_app.main(argv[1:])

@@ -94,8 +94,7 @@ def _emit(va, g_reads, out, arity):
     return "%s\n\nvoid sub_%x(%s)\n{\n%s\n}\n" % ("\n".join(lines), va, params, "\n".join(body))
 
 
-def _opt(a, name, d=None):
-    return a[a.index(name) + 1] if name in a and a.index(name) + 1 < len(a) else d
+from engine.cli.common import opt as _opt
 
 
 def main():

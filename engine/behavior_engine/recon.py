@@ -95,8 +95,7 @@ def reconstruct_module(module, limit=20, trace_n=0):
 
 
 # --------------------------------------------------------------------------
-def _opt(a, name, d=None):
-    return a[a.index(name) + 1] if name in a and a.index(name) + 1 < len(a) else d
+from engine.cli.common import opt as _opt
 
 
 def main():

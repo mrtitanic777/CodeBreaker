@@ -14,8 +14,7 @@ import sys
 from engine.behavior_engine import corpus
 
 
-def _opt(args, name, default=None):
-    return args[args.index(name) + 1] if name in args and args.index(name) + 1 < len(args) else default
+from engine.cli.common import opt as _opt
 
 
 def main():

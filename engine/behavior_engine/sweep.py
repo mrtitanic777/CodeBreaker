@@ -85,8 +85,7 @@ def sweep(module, limit=30, insn_cap=6000):
     return report
 
 
-def _opt(a, name, d=None):
-    return a[a.index(name) + 1] if name in a and a.index(name) + 1 < len(a) else d
+from engine.cli.common import opt as _opt
 
 
 def main():
