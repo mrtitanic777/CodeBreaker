@@ -114,7 +114,9 @@ def _arg_claims(arg):
 
 def ingest_experiment(report):
     """Fold an experiment report into the hypothesis store for its function. Returns the store."""
-    module, func_va = report["module"], report["func_va"]
+    # normalize to a bare module label: a caller may pass a path, and subjects keyed by path vs
+    # basename would never dedupe (they'd split into duplicate hypotheses for the same function).
+    module, func_va = os.path.basename(report["module"]), report["func_va"]
     store = load(module, func_va)
     cond = "exp:base=%s" % ",".join("0x%x" % a for a in report["base_args"])
 

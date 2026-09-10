@@ -66,20 +66,63 @@ def diff_traces(base, var):
     return d
 
 
-def _dataflow(tag, trace):
-    """Where did this arg's tag value show up in the variant trace? Direct-flow evidence."""
+_PTR_MIN = 0x1000   # a value below this is in the zero page -- not a plausible pointer, so a
+                    # "deref" of it is a null-ish artifact, not evidence that the arg is a pointer.
+
+
+def dataflow(value, trace, baseline=None):
+    """Where did `value` (the tag, or any probe value we put in an arg) show up in the trace?
+    Direct-flow evidence: used as a memory address, stored, or returned.
+
+    Two guards against false positives (learned the hard way -- a small probe value matched a
+    PRE-EXISTING write to address 0 via slop):
+      * NOVELTY: when `baseline` is given, only count an access the baseline did NOT already make
+        -- the hit must be CAUSED by this arg, not coincident with a constant the function always
+        touches.
+      * PLAUSIBILITY: a value is only treated as a memory ADDRESS if it is address-like
+        (>= _PTR_MIN); a deref of ~0 is a null artifact, not a pointer role.
+    """
+    b_read = {m["addr"] for m in baseline.get("mem_reads", [])} if baseline else set()
+    b_write = {m["addr"] for m in baseline.get("mem_writes", [])} if baseline else set()
+    b_wval = {m.get("value") for m in baseline.get("mem_writes", [])} if baseline else set()
+    b_ret = baseline.get("ret") if baseline else None
     hits = []
-    for m in trace.get("mem_reads", []):
-        if _near(tag, m["addr"]):
-            hits.append({"as": "read_address", "pc": m["pc"], "addr": m["addr"]})
+    addr_like = (value & 0xFFFFFFFF) >= _PTR_MIN
+    if addr_like:
+        for m in trace.get("mem_reads", []):
+            if m["addr"] not in b_read and _near(value, m["addr"]):
+                hits.append({"as": "read_address", "pc": m["pc"], "addr": m["addr"]})
+        for m in trace.get("mem_writes", []):
+            if m["addr"] not in b_write and _near(value, m["addr"]):
+                hits.append({"as": "write_address", "pc": m["pc"], "addr": m["addr"]})
     for m in trace.get("mem_writes", []):
-        if _near(tag, m["addr"]):
-            hits.append({"as": "write_address", "pc": m["pc"], "addr": m["addr"]})
-        if _near(tag, m.get("value"), slop=0):
+        if _near(value, m.get("value"), slop=0) and m.get("value") not in b_wval:
             hits.append({"as": "written_value", "pc": m["pc"], "value": m["value"]})
-    if _near(tag, trace.get("ret"), slop=0):
+    if _near(value, trace.get("ret"), slop=0) and trace.get("ret") != b_ret:
         hits.append({"as": "return_value", "value": trace.get("ret")})
     return hits
+
+
+def arg_entry(baseline, variant, index, tracked_value):
+    """Build the per-arg evidence+verdict dict (shared by run_experiment's tag sweep and the
+    active-exploration probes). `tracked_value` is what we placed in arg[index] for this run."""
+    infl = diff_traces(baseline, variant)
+    flow = dataflow(tracked_value, variant, baseline=baseline)
+    verdict = []
+    if any(h["as"] == "return_value" for h in flow):
+        verdict.append("returned verbatim")
+    elif "ret" in infl:
+        verdict.append("influences return")
+    if any(h["as"] in ("read_address", "write_address") for h in flow):
+        verdict.append("used as a pointer (flows to a memory address)")
+    if any(h["as"] == "written_value" for h in flow):
+        verdict.append("stored to memory")
+    if "path_diverges_at" in infl:
+        verdict.append("influences control flow")
+    if not verdict and (infl.get("new_read_addrs") or infl.get("new_write_addrs")):
+        verdict.append("changes which memory is touched")
+    return {"index": index, "tag": tracked_value, "influence": infl, "dataflow": flow,
+            "verdict": " + ".join(verdict) if verdict else "no observed effect"}
 
 
 def run_experiment(module, func=None, base_args=None, arity=None, insn_cap=4000):
@@ -101,26 +144,7 @@ def run_experiment(module, func=None, base_args=None, arity=None, insn_cap=4000)
         variant = list(base)
         variant[i] = tag
         vt = tracer.trace_function(module, func=func, args=variant, insn_cap=insn_cap)
-        infl = diff_traces(baseline, vt)
-        flow = _dataflow(tag, vt)
-        verdict = []
-        if any(h["as"] == "return_value" for h in flow):
-            verdict.append("returned verbatim")
-        elif "ret" in infl:
-            verdict.append("influences return")
-        if any(h["as"] in ("read_address", "write_address") for h in flow):
-            verdict.append("used as a pointer (flows to a memory address)")
-        if any(h["as"] == "written_value" for h in flow):
-            verdict.append("stored to memory")
-        if "path_diverges_at" in infl:
-            verdict.append("influences control flow")
-        if not verdict and (infl.get("new_read_addrs") or infl.get("new_write_addrs")):
-            verdict.append("changes which memory is touched")
-        out_args.append({
-            "index": i, "tag": tag,
-            "influence": infl, "dataflow": flow,
-            "verdict": " + ".join(verdict) if verdict else "no observed effect",
-        })
+        out_args.append(arg_entry(baseline, vt, i, tag))
     report = {
         "schema": "cb.behavior.experiment/1",
         "module": baseline["module"], "func_va": baseline["func_va"],
