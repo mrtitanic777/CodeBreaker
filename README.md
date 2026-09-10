@@ -49,8 +49,9 @@ setup is the **byte-exact rebuild** loop, which drives real period compilers —
   pins down — synthesizes C that it then differential-tests back against the binary. Empirical,
   reconstructs struct layouts from pointer arguments, recovers branch conditions, and
   orchestrates it across a module. Empirical, not guesswork:
-  `wt behavior trace | experiment | explore | hyp | graph | synth | struct | cfg | recon | sweep`
-  (`sweep` reports reconstruction coverage across a module and what blocks the rest).
+  `wt behavior trace | experiment | explore | hyp | graph | synth | struct | cfg | globals | recon | sweep`
+  (`globals` reconstructs global-variable side effects; `sweep` reports reconstruction coverage
+  across a module and what blocks the rest).
 - **Xbox 360** — the same discipline for XEX2 / PowerPC, plus package, crypto, and forensics tools.
 
 ## Get the dependencies
