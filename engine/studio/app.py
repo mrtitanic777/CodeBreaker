@@ -58,6 +58,10 @@ NAV = [
                             "Fingerprint every function and match it across releases.")),
     ("act", "Xbox 360", "xbox", ("cmd", "xbox", "",
                             "XEX2 / PowerPC reconstruction + package, crypto & forensics tools.")),
+    ("grp", "Observe & reconstruct (dynamic)"),
+    ("act", "Behavioral engine", "binary", ("cmd", "behavior", "list",
+                            "Run the binary as an oracle: trace, experiment, form hypotheses, "
+                            "graph dependencies, and synthesize verified C.")),
     ("grp", "Build & set up"),
     ("act", "Toolchain (backbone)", "backbone", ("cmd", "backbone", "list",
                             "One uniform interface over compilers / assemblers / linkers.")),

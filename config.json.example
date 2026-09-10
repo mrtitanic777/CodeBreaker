@@ -11,5 +11,6 @@
   "msvc_cl": "",
   "msvc_include": "",
   "msvc_lib": "",
-  "msvc_env_path": ""
+  "msvc_env_path": "",
+  "behavior_sdk": ""
 }

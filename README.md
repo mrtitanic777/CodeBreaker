@@ -43,6 +43,15 @@ setup is the **byte-exact rebuild** loop, which drives real period compilers —
   Windows 95 to the logon** (see [`tools/vmm32boot`](tools/vmm32boot)).
 - **Compare across versions** — line the same function up across releases (even 16-bit → 32-bit)
   and carry a recovered name forward onto its twin.
+- **Reconstruct it by experiment** — the *behavioral engine* runs the real machine code as an
+  oracle (Unicorn), records structured evidence of what it does, actively experiments to learn
+  what each input means, builds hypotheses with confidence, and — for the functions the evidence
+  pins down — synthesizes C that it then differential-tests back against the binary. Empirical,
+  reconstructs struct layouts from pointer arguments, recovers branch conditions, and
+  orchestrates it across a module. Empirical, not guesswork:
+  `wt behavior trace | experiment | explore | hyp | graph | synth | struct | cfg | globals | recon | sweep`
+  (`globals` reconstructs global-variable side effects; `sweep` reports reconstruction coverage
+  across a module and what blocks the rest).
 - **Xbox 360** — the same discipline for XEX2 / PowerPC, plus package, crypto, and forensics tools.
 
 ## Get the dependencies
@@ -85,6 +94,7 @@ is a friendly face over the same commands:
 wt ui                    the workbench (also what a double-click opens)
 wt diff <cmd>            compare a function across releases (+ a git-style browser)
 wt inverse <cmd>         recover byte-exact C (Lattice C 2.12 / MS C 2.03)
+wt behavior <cmd>        run the binary as an oracle: trace -> experiment -> hypotheses -> synthesize
 wt msc6 <cmd>            byte-exact 16-bit Windows (NE) DLL reconstruction
 wt recompile <cmd>       take recovered C the rest of the way (compile → link)
 wt backbone <cmd>        the uniform compiler / assembler / linker / disassembler interface
@@ -114,6 +124,8 @@ engine/          the tool's core — a Python package of subsystem subpackages
   format_loaders/  NE / PE / LE / OMF parsers
   recon_engine/    byte-exact reconstruction + conductor
   inverse_engine/  compiler-inverse: bytes → byte-exact C (Lattice C / MS C 2.03) → wt inverse
+  behavior_engine/ dynamic reconstruction: trace/experiment/hypotheses/graph/synth/
+                   struct/cfg/recon (run the binary as an oracle)                   → wt behavior
   msc6/            MSC-6.0a byte-exact 16-bit NE reconstruction                    → wt msc6
   recompile95/     make the lifted C compile/link                                 → wt recompile
   diff/            cross-version fingerprint / match / propagate + git-style UI    → wt diff
