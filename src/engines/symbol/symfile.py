@@ -54,34 +54,59 @@ def clean_name(name):
 _ALIAS = {"KERNEL": "KRNL386", "KRNL386": "KRNL386", "KRNL286": "KRNL286"}
 
 
+_INDEX = None
+
+
+def _index():
+    """{SYM_STEM_UPPER: [paths]} built once by globbing the reference tree (expensive recursive
+    glob, so do it a single time and cache)."""
+    global _INDEX
+    if _INDEX is not None:
+        return _INDEX
+    from src.core import paths
+    _INDEX = {}
+    for p in glob.glob(os.path.join(paths.design_root(), "**", "*.[sS][yY][mM]"), recursive=True):
+        _INDEX.setdefault(os.path.splitext(os.path.basename(p))[0].upper(), []).append(p)
+    return _INDEX
+
+
 def find(module):
     """Locate the .SYM for a module name (e.g. 'user.exe', 'shell32.dll', 'VMM'). Searches the
     reference SDK/DDK DEBUG trees. Returns a path or None."""
-    from src.core import paths
     base = os.path.basename(str(module)).upper()
     for ext in (".DLL", ".EXE", ".DRV", ".VXD", ".386"):
         if base.endswith(ext):
             base = base[:-len(ext)]; break
     base = _ALIAS.get(base, base)
-    root = paths.design_root()
-    hits = []
-    for cand in (base, base + "32"):
-        hits += glob.glob(os.path.join(root, "**", cand + ".SYM"), recursive=True)
-        hits += glob.glob(os.path.join(root, "**", cand + ".sym"), recursive=True)
+    idx = _index()
+    hits = idx.get(base, []) + idx.get(base + "32", [])
     if not hits:
         return None
-    # The corpus is x86, but the SDK also ships PowerPC/Alpha/MIPS cross-build .sym (under SCT/
-    # DEBUG16/<arch>/) whose layout + offsets are a DIFFERENT architecture -- reject those. Among the
-    # x86 copies (incl. localized ARABIC/HEBREW builds, whose symbol names are identical) any is fine.
+    # Reject PowerPC/Alpha/MIPS cross-builds (different arch layout). Among x86 copies, prefer the
+    # structurally RICHEST -- the build carrying the most source-object segments (the retail
+    # MSTOOLS/DEBUG builds keep _MSGBOX/_MESSAGES/...; the SCT/DEBUG16 builds are flattened to
+    # _TEXT/DGROUP). More objects = the real source-file map we want.
     _NONX86 = ("PPC", "ALPHA", "AXP", "MIPS", "R4000", "R4100")
-    def _rank(p):
-        u = p.upper()
-        nonx86 = any(("\\%s\\" % a) in u or ("/%s/" % a) in u for a in _NONX86)
-        return (nonx86, 0 if ("I386" in u or "X86" in u) else 1, len(p))
-    hits.sort(key=_rank)
-    # drop non-x86 entirely if any x86 copy exists
-    x86 = [h for h in hits if not _rank(h)[0]]
-    return (x86 or hits)[0]
+    x86 = [h for h in hits if not any(("\\%s\\" % a) in h.upper() or ("/%s/" % a) in h.upper()
+                                      for a in _NONX86)]
+    cands = x86 or hits
+    def _objscore(p):
+        try:
+            segs = parse(p)["segments"]
+            return sum(1 for s in segs if _is_source_object(s["name"]))
+        except Exception:
+            return 0
+    return max(cands, key=lambda p: (_objscore(p), -len(p)))
+
+
+_GENERIC_SEG = {"", "_TEXT", "TEXT", "DGROUP", "BSS", "_BSS", "RDATA", "_DATA", "DATA", "CONST",
+                "IGROUP", "LGROUP", "_LGROUP", "_IGROUP", "EDATA", "IDATA", "RELOC", "RSRC",
+                "CODE", "_CODE", "AUTO", "STACK", "HEAP", "_INIT", "INIT"}
+
+
+def _is_source_object(name):
+    n = (name or "").upper()
+    return bool(n) and n not in _GENERIC_SEG and not n.startswith("IDATA")
 
 
 # ---------------------------------------------------------------- parsing (MAPSYM)
