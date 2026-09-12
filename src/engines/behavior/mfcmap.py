@@ -101,6 +101,17 @@ def _cstr(pe, va, maxlen=128):
     return s.decode("latin1") if s and all(32 <= b < 127 for b in s) else None
 
 
+def _is_data_va(pe, va):
+    """True if va lands in an initialized, NON-executable section -- where a real IID constant
+    lives. A piid that points into code is not an IID pointer (it's a coincidental data value that
+    would otherwise read x86 prologue bytes, e.g. 55 8B EC, as a bogus GUID)."""
+    rva = va - pe.image_base
+    for s in pe.sections:
+        if s["vaddr"] <= rva < s["vaddr"] + max(s.get("rawsize", 0), s.get("vsize", 0)):
+            return not (s["chars"] & (_CNT_CODE | _MEM_EXEC))
+    return False
+
+
 def find_interface_maps(pe, data_ranges, code):
     """[(array_va, [iid_guid, ...])] -- AFX_INTERFACEMAP_ENTRY {const IID* piid; size_t nOffset}."""
     ib = pe.image_base
@@ -117,8 +128,8 @@ def find_interface_maps(pe, data_ranges, code):
                 if piid == 0:                                # {NULL, offset} terminator
                     break
                 goff = pe._rva_to_off(piid - ib) if piid > ib else None
-                if goff is None or noff > 0x10000:
-                    iids = []; break
+                if goff is None or noff > 0x10000 or not _is_data_va(pe, piid):
+                    iids = []; break                         # piid must point into read-only DATA
                 gb = pe.data[goff:goff + 16]
                 if len(gb) < 16 or gb == b"\x00" * 16:
                     iids = []; break
@@ -163,15 +174,20 @@ def find_dispatch_maps(pe):
     return out
 
 
-def reconstruct(module):
-    """Recover MFC message / interface / dispatch maps as source. {'ok','nmaps','c'}."""
+def reconstruct(module, include_interface_maps=False):
+    """Recover MFC message / interface / dispatch maps as source. {'ok','nmaps','c'}.
+
+    Interface maps are OFF by default: find_interface_maps is a byte-pattern scan that yields many
+    false positives on library modules (a data pointer-pair whose target 16 bytes aren't a string
+    reads as a bogus IID), and it is not yet anchored to each class's GetInterfaceMap vtable slot.
+    Message maps (AFX_MSGMAP, anchored) and dispatch maps (name-anchored) are reliable."""
     from src.formats.pe import PEFile
     from src.core import cores
     try:
         maps, va0 = find_msgmaps(module)
         pe = PEFile(cores.get("target").resolve(module))
         code = _code_sections(pe)
-        imaps = find_interface_maps(pe, None, code)
+        imaps = find_interface_maps(pe, None, code) if include_interface_maps else []
         dmaps = find_dispatch_maps(pe)
     except Exception as e:
         return {"ok": False, "reason": "%r" % e}

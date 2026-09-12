@@ -90,6 +90,39 @@ def _md16():
     return md
 
 
+_SYS_ALIAS = {"KERNEL": "KRNL386", "KRNL286": "KRNL386"}
+_SYS_EXPORTS = {}
+
+
+def _sys_exports(mod):
+    """{ordinal: NAME} for a Win16 system module's OWN exports (USER/GDI/KRNL386/COMMDLG/...),
+    read straight from its NE name tables in the corpus -- the ground-truth ordinal oracle when the
+    SDK import-lib map (symdb.ord16) is absent. Cached per module; '' path -> empty."""
+    key = mod.upper()
+    if key in _SYS_EXPORTS:
+        return _SYS_EXPORTS[key]
+    out = {}
+    try:
+        import os as _os
+        from src.core import cores
+        from src.formats.ne import NEFile
+        from src.engines.behavior import recon16
+        tgt = cores.get("target")
+        base = _SYS_ALIAS.get(key, key)
+        for ext in (".EXE", ".DLL", ".DRV", ".386", ".VXD", ""):
+            try:
+                p = tgt.resolve(base + ext)
+            except Exception:
+                p = None
+            if p and _os.path.exists(p):
+                out = recon16.export_names(NEFile(p))
+                break
+    except Exception:
+        out = {}
+    _SYS_EXPORTS[key] = out
+    return out
+
+
 def _namer(nef):
     """reloc-record -> 'MODULE.API' / 'sub_seg_entry', using the Win16 ordinal oracle."""
     try:
@@ -110,6 +143,8 @@ def _namer(nef):
             mod = modrefs[mi - 1] if mi and 0 < mi <= len(modrefs) else "MOD%s" % mi
             o = r.get("ordinal")
             nm = ord16.get(mod.upper(), {}).get(o)
+            if not nm:                                        # SDK OMF map absent -> corpus export table
+                nm = _sys_exports(mod).get(o)
             return "%s.%s" % (mod, nm or ("@%d" % o))
         if k == "IMPORTNAME":
             mi = r.get("module")

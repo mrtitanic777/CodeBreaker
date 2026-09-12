@@ -116,13 +116,12 @@ def preamble(module):
         except Exception:
             pass
     # module-scope reconstructions that render C. Only engines whose output is backed by a real
-    # on-disk structure (RTTI typeinfo, linked CRuntimeClass, vtable pointer arrays,
-    # __CxxFrameHandler FuncInfo) are included -- they cannot emit a false positive from code bytes.
-    # mfcmap is intentionally EXCLUDED here: its interface-map detection byte-scans for IID-shaped
-    # runs and misreads x86 prologues as GUIDs, which would pollute the corpus. Re-add once its
-    # interface-map scan is gated to the data section with a validity check.
+    # on-disk structure (RTTI typeinfo, linked CRuntimeClass, vtable pointer arrays, AFX_MSGMAP
+    # arrays, __CxxFrameHandler FuncInfo) are included -- they cannot emit a false positive from
+    # code bytes. mfcmap runs with interface maps OFF (its byte-scan is unreliable until anchored);
+    # its reliable message + dispatch maps still come through.
     for key, title in (("rtti", "C++ classes (RTTI)"), ("mfcclass", "MFC CRuntimeClass hierarchy"),
-                       ("classlayout", "vtable / COM class layouts"),
+                       ("classlayout", "vtable / COM class layouts"), ("mfcmap", "MFC message/dispatch maps"),
                        ("cxxeh", "C++ exception frames")):
         eng = _ENG.get(key)
         if eng is None:
