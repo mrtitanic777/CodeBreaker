@@ -96,7 +96,14 @@ def find(module):
             return sum(1 for s in segs if _is_source_object(s["name"]))
         except Exception:
             return 0
-    return max(cands, key=lambda p: (_objscore(p), -len(p)))
+    def _key(p):
+        u = p.upper()
+        # prefer the shipped RETAIL product symbols (MSTOOLS) over SDK cross-builds (SCT), and the
+        # canonical USA locale; then the structurally richest; then the shortest path.
+        return (0 if ("MSTOOLS" in u) else 1,
+                0 if (("\\USA\\" in u) or ("/USA/" in u)) else 1,
+                -_objscore(p), len(p))
+    return min(cands, key=_key)
 
 
 _GENERIC_SEG = {"", "_TEXT", "TEXT", "DGROUP", "BSS", "_BSS", "RDATA", "_DATA", "DATA", "CONST",
