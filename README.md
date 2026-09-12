@@ -60,8 +60,10 @@ A single installable Python package (`src/`), driven by one CLI (`wt.py`) and bu
 
 **Reconstruction engines** (`src/engines/`, modules per group): **behavior 82** · **inverse 52** ·
 **recompile 24** · **recon 19** · **symbol 15** · **msc6 10** · **match 9** · **diff 8** ·
-**build 7** · **coverage 3** — ~230 engine modules in all, each routed by a cascade that sends every
-function to whatever can best explain it.
+**build 7** · **coverage 3** — **229 modules** in all, of which roughly **188 are distinct
+reconstruction/analysis engines** and the rest are the Unicorn oracle runtime, the per-compiler
+models/oracles, and the pipeline/verification tooling they run on. A cascade routes every function to
+whichever engine can best explain it.
 
 ## How it works
 
