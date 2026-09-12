@@ -63,6 +63,13 @@ def _pct(a, b):
 
 def corpus():
     mods = sorted(os.path.basename(d) for d in layout.asm_module_dirs())
+    if not mods:
+        # No per-module asm tree in this corpus -> enumerate the binaries directly (classify32
+        # carves from the binary, the asm tree is not required). Mirrors behav_sweep95's fallback.
+        try:
+            mods = sorted({os.path.basename(p) for p in target.all_modules()})
+        except Exception:
+            mods = []
     tot = {k: 0 for k in ("c_simple_b", "c_logic_b", "asm_b", "other_b",
                           "n_c_simple", "n_c_logic", "n_asm", "n_other", "n", "code_b")}
     n_pe = n_seen = 0
