@@ -17,7 +17,7 @@ import target
 from src.core import layout
 
 
-def run(outdir, limit_mods=None):
+def run(outdir, limit_mods=None, progress=None):
     os.makedirs(outdir, exist_ok=True)
     mods = sorted(os.path.basename(d) for d in layout.asm_module_dirs())
     if not mods:
@@ -34,7 +34,10 @@ def run(outdir, limit_mods=None):
     except Exception:
         recon16 = None
     totals = {"pe": 0, "pe_wrappers": 0, "ne": 0, "ne_recon": 0, "files": 0, "err": 0}
-    for m in mods:
+    total = len(mods)
+    for _i, m in enumerate(mods, 1):
+        if progress:
+            progress(_i, total, m, totals)
         stem = m.replace(".", "_")
         # resume: skip a module already emitted (lets a timed-out sweep continue)
         if os.path.exists(os.path.join(outdir, stem + ".wrappers.c")) or \

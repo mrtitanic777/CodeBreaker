@@ -40,13 +40,16 @@ def _modules():
     return ordered
 
 
-def run(outdir, per, mods=None):
+def run(outdir, per, mods=None, progress=None):
     os.makedirs(outdir, exist_ok=True)
     import compose
     mods = mods or _modules()
     tot = collections.Counter()
     done = 0
-    for m in mods:
+    total = len(mods)
+    for _i, m in enumerate(mods, 1):
+        if progress:
+            progress(_i, total, m, tot)
         stem = m.replace(".", "_")
         outp = os.path.join(outdir, stem + ".fused.c")
         if os.path.exists(outp):
