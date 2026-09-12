@@ -30,7 +30,7 @@ def run(outdir, limit_mods=None, progress=None):
         mods = mods[:limit_mods]
     import recon32wrap
     try:
-        import recon16
+        from src.engines.behavior import recon16   # behavior engine (qualified; not a targets sibling)
     except Exception:
         recon16 = None
     totals = {"pe": 0, "pe_wrappers": 0, "ne": 0, "ne_recon": 0, "files": 0, "err": 0}
