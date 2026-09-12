@@ -27,6 +27,14 @@ PRIORITY = ["shell32.dll", "ole32.dll", "oleaut32.dll", "comctl32.dll", "mapi32.
 def _modules():
     from src.core import layout
     allm = sorted(os.path.basename(d) for d in layout.asm_module_dirs())
+    if not allm:
+        # No per-module asm tree in this corpus -> enumerate the binaries directly (the behavioral
+        # lane carves from the binary, so the asm tree is not required). target.all_modules() returns
+        # every NE/PE/LE/LX module path under files/.
+        try:
+            allm = sorted({os.path.basename(p) for p in target.all_modules()})
+        except Exception:
+            allm = []
     allset = set(allm)
     ordered = [m for m in PRIORITY if m in allset] + [m for m in allm if m not in set(PRIORITY)]
     return ordered

@@ -20,6 +20,12 @@ from src.core import layout
 def run(outdir, limit_mods=None):
     os.makedirs(outdir, exist_ok=True)
     mods = sorted(os.path.basename(d) for d in layout.asm_module_dirs())
+    if not mods:
+        # binary-only corpus (no per-module asm tree) -> enumerate the NE/PE/LE binaries directly
+        try:
+            mods = sorted({os.path.basename(p) for p in target.all_modules()})
+        except Exception:
+            mods = []
     if limit_mods:
         mods = mods[:limit_mods]
     import recon32wrap
