@@ -25,13 +25,13 @@ if ROOT not in sys.path:
 
 # (2) representative import per subpackage -- adjust the dotted path if modules are renamed.
 IMPORTS = [
-    "codebreaker.core.config", "codebreaker.core.cores", "codebreaker.core.layout",
-    "codebreaker.formats.pe", "codebreaker.formats.ne",
-    "codebreaker.disasm.disasm", "codebreaker.ir.il",
-    "codebreaker.engines.inverse", "codebreaker.engines.recon", "codebreaker.engines.behavior.tracer",
-    "codebreaker.engines.behavior.synth", "codebreaker.engines.match", "codebreaker.engines.symbol",
-    "codebreaker.engines.build", "codebreaker.toolchain.backbone", "codebreaker.toolchain.sdk.apidb", "codebreaker.engines.diff.cli",
-    "codebreaker.engines.coverage", "codebreaker.studio.app",
+    "src.core.config", "src.core.cores", "src.core.layout",
+    "src.formats.pe", "src.formats.ne",
+    "src.disasm.disasm", "src.ir.il",
+    "src.engines.inverse", "src.engines.recon", "src.engines.behavior.tracer",
+    "src.engines.behavior.synth", "src.engines.match", "src.engines.symbol",
+    "src.engines.build", "src.toolchain.backbone", "src.toolchain.sdk.apidb", "src.engines.diff.cli",
+    "src.engines.coverage", "src.studio.app",
 ]
 
 # (3) command-surface checks. (argv, needs_no_data). A traceback in output = FAIL.

@@ -17,9 +17,9 @@ import argparse, os, sys, glob, time
 HERE = os.path.dirname(os.path.abspath(__file__))
 CB = os.path.abspath(os.path.join(HERE, "..", ".."))
 sys.path.insert(0, CB)
-from codebreaker.formats import le
-from codebreaker.engines.inverse.vxd_asm import VxDDisasm
-from codebreaker.engines.inverse import vxd_le_writer as W
+from src.formats import le
+from src.engines.inverse.vxd_asm import VxDDisasm
+from src.engines.inverse import vxd_le_writer as W
 
 
 def main():

@@ -71,7 +71,7 @@ file). Two overrides are also honored, in this order of precedence:
 ### 3. Verify it is active
 
 ```sh
-python -c "from codebreaker.engines.inverse import vxd_masm; print(vxd_masm.find_nasm())"
+python -c "from src.engines.inverse import vxd_masm; print(vxd_masm.find_nasm())"
 ```
 
 A path means the native assembler is in use. `None` means none qualified and the

@@ -1,0 +1,199 @@
+#!/usr/bin/env python3
+import re
+"""
+mkdef.py — write a LINK4 module-definition file (.DEF) for an app, with every
+field READ OUT OF THE SHIPPED BINARY rather than chosen.
+
+A .DEF is the one input to a 1985 Windows link that is pure metadata: module
+name, description, segment attributes, heap and stack, and the exported entry
+points with their ordinals. All of it survives in the NE header and tables of
+the retail EXE, so all of it is evidence:
+
+    NAME        <- the module name in the resident-name table
+    DESCRIPTION <- the first non-resident name (that is where it lives)
+    CODE/DATA   <- the segment flags: MOVEABLE (0x0010), DISCARDABLE (0x1000),
+                   PRELOAD (0x0040), and MULTIPLE from the header's flag word
+    HEAPSIZE    <- header +0x10
+    STACKSIZE   <- header +0x12
+    SEGMENTS    <- one line per code segment, attributes from its own flags,
+                   in the binary's own segment ORDER (which is what makes the
+                   linked NE comparable to the shipped one)
+    EXPORTS     <- the resident/non-resident name tables, with the ordinals
+                   they are actually bound to
+
+Only the segment NAMES are ours: an NE stores segment attributes but not names,
+so segments are called SEG1..SEGn — a name that says exactly what is known, in
+the spirit of the ds_0xNNN convention. The C modules are compiled into the
+matching name with `msc /NT SEGn`, so segment N of the rebuilt app holds the
+functions recovered from segment N of the original.
+
+Usage:  python mkdef.py CARDFILE [-o build16/CARDSP/CARD.DEF] [--stem CARD]
+"""
+import os
+import sys
+
+from src.formats.ne import NEFile
+
+SEG_MOVEABLE    = 0x0010
+SEG_PRELOAD     = 0x0040
+SEG_DISCARDABLE = 0x1000
+
+NE_MULTIPLEDATA = 0x0002
+NE_SINGLEDATA   = 0x0001
+NE_LIBRARY      = 0x8000
+
+
+def seg_name(idx):
+    """Segment 1 is called _TEXT, the rest SEG2..SEGn.
+
+    Not cosmetic: the C runtime's own code (SLIBW winstart and friends) is
+    compiled into a segment literally named _TEXT, so unless OUR first segment
+    carries that name the runtime is handed a segment of its own and the
+    rebuilt NE has one more segment than the shipped one. Microsoft's CARDFILE
+    .DEF names it exactly this way — `_TEXT PRELOAD FIXED` — and their seg 1 is
+    the fixed resident segment for the same reason.
+    """
+    return "_TEXT" if idx == 1 else "SEG%d" % idx
+
+
+def seg_attrs(flags):
+    """The attribute words LINK4 wants, from an NE segment's own flag bits."""
+    out = []
+    out.append("PRELOAD" if flags & SEG_PRELOAD else "LOADONCALL")
+    out.append("MOVEABLE" if flags & SEG_MOVEABLE else "FIXED")
+    if flags & SEG_DISCARDABLE:
+        out.append("DISCARDABLE")
+    return " ".join(out)
+
+
+def build(app, path, stem=None, ne=None):
+    if ne is None:
+        ne = NEFile(path)
+    h = ne.h
+    segs = ne.segments()
+    code = [s for s in segs if s["kind"] == "CODE"]
+    data = [s for s in segs if s["kind"] == "DATA"]
+
+    is_lib = bool(h["flags"] & NE_LIBRARY)
+
+    def clean_name(n):
+        return bool(n) and all(0x20 <= ord(c) < 0x7f for c in n) \
+            and re.match(r"^[A-Za-z_]\w*$", n)
+
+    # exports: ordinal -> name. The retail SYSTEM MODULES are STRIPPED — the boot
+    # image binds them by ORDINAL, and their name-table slots hold GARBAGE bytes
+    # (nulls, control chars), not names. So for a library, IGNORE the name tables
+    # and synthesize a name per exported ordinal straight from the ENTRY TABLE
+    # (the ordinal is the evidence; the name `<MOD>_<ord>` is ours, like the
+    # segment names — callers bind by ordinal, so any name at the right ordinal
+    # reproduces the export). Apps keep their real, clean export names.
+    exports = []
+    if not is_lib:
+        for name, ordv in ne.resident_names()[1:]:      # [0] is the module name
+            if clean_name(name):
+                exports.append((ordv, name))
+        for name, ordv in ne.nonresident_names()[1:]:   # [0] is the description
+            if clean_name(name):
+                exports.append((ordv, name))
+    named = {o for o, _ in exports}
+    for e in ne.entries():
+        if e.get("kind") in ("MOVEABLE", "FIXED") and e["ordinal"] not in named:
+            exports.append((e["ordinal"],
+                            "%s_%d" % (ne.module_name(), e["ordinal"])))
+    exports.sort()
+
+    desc = ""
+    nr = ne.nonresident_names()
+    if nr:
+        desc = nr[0][0]
+    # The stripped SYSTEM MODULES have no real description — that name-table slot
+    # holds GARBAGE bytes (nulls, control chars) that, written into the .DEF,
+    # corrupt LINK4's parse (a 0x1A is DOS EOF; a null truncates the line). It is
+    # not evidence, so drop it for a library. For apps, keep only clean printable
+    # text.
+    if is_lib or any(not (0x20 <= ord(c) < 0x7f) for c in desc):
+        desc = ""
+    modname = ne.module_name()
+
+    L = []
+    L.append("; %s.DEF — generated by mkdef.py from %s" % (stem or app, path))
+    L.append("; Every field below is read from that binary's NE header and")
+    L.append("; tables. Segment NAMES are ours (an NE has none); everything")
+    L.append("; else — order, attributes, heap, stack, ordinals — is evidence.")
+    L.append("")
+    # A system module is a LIBRARY (NE flag 0x8000); an app is a program (NAME).
+    # A library has no DOS stub — it is loaded, never run from DOS.
+    L.append("%s %s" % ("LIBRARY" if is_lib else "NAME", modname))
+    L.append("")
+    if desc:
+        L.append("DESCRIPTION '%s'" % desc.replace("'", "''"))
+        L.append("")
+    if not is_lib:
+        L.append("STUB 'WINSTUB.EXE'")
+        L.append("")
+    # CODE/DATA defaults: take the commonest code-segment shape
+    if code:
+        # the CODE default describes the app's code segments as a class, so it
+        # takes the shape MOST of them have — not segment 1's, which is the
+        # fixed resident one and atypical by definition.
+        moveable = sum(1 for s in code if s["flags"] & SEG_MOVEABLE)
+        discard = sum(1 for s in code if s["flags"] & SEG_DISCARDABLE)
+        bits = ["MOVEABLE" if moveable * 2 >= len(code) else "FIXED"]
+        if discard * 2 >= len(code):
+            bits.append("DISCARDABLE")
+        L.append("CODE %s" % " ".join(bits))
+    dflag = "MULTIPLE" if h["flags"] & NE_MULTIPLEDATA else (
+            "SINGLE" if h["flags"] & NE_SINGLEDATA else "NONE")
+    L.append("DATA MOVEABLE %s" % dflag)
+    L.append("")
+    L.append("SEGMENTS")
+    for s in code:
+        L.append("    %-10s %s" % (seg_name(s["idx"]), seg_attrs(s["flags"])))
+    L.append("")
+    L.append("HEAPSIZE    %d" % h["heap"])
+    L.append("STACKSIZE   %d" % h["stack"])
+    if exports:
+        L.append("")
+        L.append("EXPORTS")
+        for ordv, name in exports:
+            L.append("    %-18s @%d" % (name, ordv))
+    L.append("")
+    info = dict(n_code=len(code), n_data=len(data), exports=exports,
+                heap=h["heap"], stack=h["stack"],
+                segs=[(s["idx"], s["flags"]) for s in code])
+    return "\n".join(L) + "\n", info
+
+
+def main():
+    if len(sys.argv) < 2:
+        print(__doc__); return 1
+    app = sys.argv[1].upper()
+    stem = None
+    if "--stem" in sys.argv:
+        stem = sys.argv[sys.argv.index("--stem") + 1].upper()
+    # A system module lives inside the WIN100.BIN/OVL bundle (raw NE, no MZ
+    # wrapper), loaded via cfg.open_any; an app is an ordinary files/WF/*.EXE.
+    import cfg
+    ne = None
+    if app in cfg.SYSMODS:
+        ne = cfg.open_any(app)
+        path = os.path.join("modules", app + ".ne")
+    else:
+        path = os.path.join("files", "WF", app + ".EXE")
+        if not os.path.exists(path):
+            print("no such binary: %s" % path); return 1
+    text, info = build(app, path, stem, ne=ne)
+    out = None
+    if "-o" in sys.argv:
+        out = sys.argv[sys.argv.index("-o") + 1]
+    if out:
+        open(out, "w", newline="\r\n").write(text)
+        print("%s: %d code segments, %d exports -> %s"
+              % (app, info["n_code"], len(info["exports"]), out))
+    else:
+        sys.stdout.write(text)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

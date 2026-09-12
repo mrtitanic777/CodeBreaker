@@ -54,7 +54,7 @@ tools are **shared engine commands** run as `wt --target <era> <cmd>`.
 
 ---
 
-## 3. The layered package (`codebreaker/`)
+## 3. The layered package (`src/`)
 
 Installable (`pip install -e .`); one package, grouped by role.
 
@@ -136,8 +136,8 @@ Only what genuinely differs per platform, loaded by path as DI overrides.
 - **win95** (richest) — three layers: (a) **LE/VxD byte-exact recon**
   (`le`/`w3`/`asmrecon32`/`ml32`/`vmmsvc`/`buildmod`); (b) the **Layer-2 recompile
   pipeline** (`classify32`→`emit_c`/`emit_cpp`→ML floor→`l2pipe`/`l2sweep`/
-  `l2report`/`l2predict`) — see [`../codebreaker/targets/win95/L2_PIPELINE.md`](../codebreaker/targets/win95/L2_PIPELINE.md)
-  and [`WIN95_MAP.md`](../codebreaker/targets/win95/WIN95_MAP.md); (c) **packaging/
+  `l2report`/`l2predict`) — see [`../src/targets/win95/L2_PIPELINE.md`](../src/targets/win95/L2_PIPELINE.md)
+  and [`WIN95_MAP.md`](../src/targets/win95/WIN95_MAP.md); (c) **packaging/
   boot** (`cab`/`isowrite`/`disc_build`/`bootchain`).
 
 ### Build-time tooling — `tools/` (source only)
@@ -169,9 +169,9 @@ Only what genuinely differs per platform, loaded by path as DI overrides.
 - [`README.md`](../README.md) — front door / getting started.
 - [`docs/NOT_IN_REPO.md`](NOT_IN_REPO.md) — the git-ignored data home (corpus, toolchains, VMs) + re-attach steps.
 - [`docs/NATIVE_ASSEMBLER.md`](NATIVE_ASSEMBLER.md) — the `--masm` NASM fast path.
-- Win95 Layer-2: [`L2_PIPELINE.md`](../codebreaker/targets/win95/L2_PIPELINE.md), [`WIN95_MAP.md`](../codebreaker/targets/win95/WIN95_MAP.md).
+- Win95 Layer-2: [`L2_PIPELINE.md`](../src/targets/win95/L2_PIPELINE.md), [`WIN95_MAP.md`](../src/targets/win95/WIN95_MAP.md).
 - Win95 architecture & VxD reference docs moved to the **Windows95 project repo** under `design/` (`WIN95_ARCHITECTURE_VERIFIED.md`, `win95/*`, the VxD chain: `VXD_COVERAGE.md`, `VXD_FROM_SOURCE.md`, `WIN95_VXD_TOOLCHAIN.md`) — see [`docs/NOT_IN_REPO.md`](NOT_IN_REPO.md).
-- Per-engine detail: `codebreaker/engines/*/README.md` and `*/docs/`.
+- Per-engine detail: `src/engines/*/README.md` and `*/docs/`.
 
 > Doc-debt still open (content, not paths): the `inverse` README/STATUS/ROADMAP
 > describe only the 16-bit core and predate the MSC6/MSVC2/VxD tracks now in that

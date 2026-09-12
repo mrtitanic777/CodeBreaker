@@ -15,8 +15,8 @@ CodeBreaker — a deterministic reverse-engineering workbench.
 
 A single entry point over era-specific toolchains, selected by `--target`
 (win1.0, win3.1, win95, win98). The shared, target-agnostic core lives
-in `codebreaker/`; each era's quirk tools live as a submodule under
-`codebreaker/targets/<era>/`, holding only what genuinely differs for that platform.
+in `src/`; each era's quirk tools live as a submodule under
+`src/targets/<era>/`, holding only what genuinely differs for that platform.
 
 Dispatch establishes the context a tool expects: it changes into the selected
 era's data directory (so relative paths such as files/ and reconstructed/
@@ -25,7 +25,7 @@ path, then runs the requested command. WT_DATA_ROOT / WT_TOOLS_DIR / WT_TARGET
 are exported so a tool can locate its data even when its own file lives elsewhere.
 """
 import json
-from codebreaker.core import cores
+from src.core import cores
 import os
 import runpy
 import sys
@@ -48,11 +48,11 @@ else:
         DATA_ROOT = _env
     else:
         DATA_ROOT = os.path.dirname(WT_DIR)              # holds per-era data dirs (dev checkout)
-ENGINE = os.path.join(WT_DIR, "codebreaker")                 # shared, target-agnostic tools
+ENGINE = os.path.join(WT_DIR, "src")                 # shared, target-agnostic tools
                                                         # (the IR engine: il/validate_il/decompile)
 
 # The five eras. Each era's tool code is a submodule under the core, at
-# `codebreaker/targets/<era>/`; its DATA (files/, reconstructed/, ...) is external and
+# `src/targets/<era>/`; its DATA (files/, reconstructed/, ...) is external and
 # resolved under DATA_ROOT/<era> (the user's checkout / working directory).
 _ERAS = ("win1.0", "win3.1", "win95", "win98")
 
@@ -168,18 +168,18 @@ def cmd_doctor():
 # ONE dispatcher that replaced four near-identical cmd_* functions.
 _SCRIPT_SUBSYS = {
     "recompile": dict(subdir=("engines", "recompile", "tools"), win95=True,
-                      header="recompile commands  (codebreaker/engines/recompile/tools):\n"),
+                      header="recompile commands  (src/engines/recompile/tools):\n"),
     "behavior":  dict(subdir=("engines", "behavior"), win95=True, behavior_env=True,
                       skip={"__init__.py", "tracer.py", "corpus.py", "perturb.py",
                             "hypothesis.py", "env.py"},
-                      header="behavior-engine commands (codebreaker/engines/behavior) -- dynamic "
+                      header="behavior-engine commands (src/engines/behavior) -- dynamic "
                              "evidence via Unicorn:\n",
                       footer="\n(trace: record a function's behavior; show: print a stored trace)"),
     "inverse":   dict(subdir=("engines", "inverse"), skip={"oracle16.py"},
-                      header="inverse-engine commands  (codebreaker/engines/inverse):\n"),
+                      header="inverse-engine commands  (src/engines/inverse):\n"),
     "msc6":      dict(subdir=("engines", "msc6"),
                       skip={"paths.py", "toolchain.py", "__init__.py", "bruteforce.py", "autoaxis.py"},
-                      header="msc6-engine commands (codebreaker/engines/msc6) -- byte-exact MSC-6.0a "
+                      header="msc6-engine commands (src/engines/msc6) -- byte-exact MSC-6.0a "
                              "NE reconstruction:\n",
                       footer="\n(recipe: auto-detect a DLL's compiler flags; normalize: compact an "
                              "NE's DOS stub)"),
@@ -217,7 +217,7 @@ def _run_scripts(rest, *, subdir, skip=frozenset(), win95=False, behavior_env=Fa
         cores.set_target(os.path.join(ENGINE, "targets", "win95"))
     if behavior_env:                                         # enable API-call stubbing if SDK configured
         try:
-            from codebreaker.engines.behavior import env
+            from src.engines.behavior import env
             env.apply_defaults()
         except Exception:
             pass
@@ -233,10 +233,10 @@ def usage():
 def cmd_xbox(rest):
     """The Xbox 360 subsystem (integrated from XboxTranspiler): XEX2/PowerPC byte-exact
     reconstruction + console/format/crypto/forensics tooling. Its package sets up its own
-    flat import path; data/samples/console-secrets live outside git (codebreaker/xbox/.gitignore)."""
+    flat import path; data/samples/console-secrets live outside git (src/xbox/.gitignore)."""
     launcher = os.path.join(ENGINE, "xbox", "XboxTranspiler.py")
     if not os.path.exists(launcher):
-        print("error: xbox subsystem not present (codebreaker/xbox)"); sys.exit(2)
+        print("error: xbox subsystem not present (src/xbox)"); sys.exit(2)
     sys.path.insert(0, WT_DIR)                            # the engine package on path
     sys.argv = [launcher] + list(rest)
     runpy.run_path(launcher, run_name="__main__")
@@ -294,25 +294,25 @@ def main():
     if argv[0] == "diff":
         # Cross-version analysis: target-agnostic, over the whole corpus.
         sys.path.insert(0, os.path.join(ENGINE, "engines", "diff"))  # diff's own local sibling modules
-        from codebreaker.engines.diff import cli as diff_cli
+        from src.engines.diff import cli as diff_cli
         diff_cli.main(argv[1:]); return
     if argv[0] == "backbone":
-        from codebreaker.toolchain.backbone.__main__ import main as bb_main
+        from src.toolchain.backbone.__main__ import main as bb_main
         sys.exit(bb_main(argv[1:]))
     if argv[0] == "sdk":
-        from codebreaker.toolchain.sdk.__main__ import main as sdk_main
+        from src.toolchain.sdk.__main__ import main as sdk_main
         sys.exit(sdk_main(argv[1:]))
     if argv[0] == "ui":
         if len(argv) > 1 and argv[1] == "decode":               # the Live Reconstruction window
-            from codebreaker.studio import decoder
+            from src.studio import decoder
             decoder.main(argv[2:])
             return
         # Native WinForms UI; owner-drawn GDI fallback if pythonnet/.NET is unavailable.
         try:
-            from codebreaker.studio import winforms_app
+            from src.studio import winforms_app
             winforms_app.main(argv[1:])
         except ImportError:
-            from codebreaker.studio import app as studio
+            from src.studio import app as studio
             studio.main(argv[1:])
         return
 

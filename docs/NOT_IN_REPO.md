@@ -14,7 +14,7 @@ Three `.gitignore` files enforce this, innermost-wins:
 | File | Scope |
 |---|---|
 | `.gitignore` | repo root — toolchains, data caches, build output, local config, user inputs |
-| `codebreaker/xbox/.gitignore` | the Xbox 360 subsystem — samples, console secrets, vendored/third-party tools |
+| `src/xbox/.gitignore` | the Xbox 360 subsystem — samples, console secrets, vendored/third-party tools |
 | `tools/nasm-masm/.gitignore` | the vendored assembler — built `nasm`/`*.exe`/`*.o` output |
 
 A fresh clone plus `pip install -r requirements.txt` plus a filled-in `config.json` is a
@@ -70,9 +70,9 @@ oracle / legacy siblings from the corpus parent automatically (override with `WT
 | Path | Size | What it is |
 |---|---:|---|
 | `toolchains/…` (DOSBox-X, DOS-era MS C/MASM/LINK, vc71sp1) | ~1.6 GB (§1) | period build toolchain — attach your own |
-| `binaries/ghidra_gdt/*.gdt` | ~1.3 MB | **generated** Ghidra type archives (Win32/Win16/VxD), built by `codebreaker/toolchain/ghidra/BuildGDT.py` from the reference SDK/DDK headers; regenerable |
-| `codebreaker/xbox/xbt/crypto/bin/*.exe` | ~2.6 MB | PowerPC toolchain (`xenon-as.exe`, `xenon-objcopy.exe`) for the Xbox path |
-| `codebreaker/xbox/xbt/vendor/` | ~31 MB | third-party libraries vendored on disk for the Xbox subsystem |
+| `binaries/ghidra_gdt/*.gdt` | ~1.3 MB | **generated** Ghidra type archives (Win32/Win16/VxD), built by `src/toolchain/ghidra/BuildGDT.py` from the reference SDK/DDK headers; regenerable |
+| `src/xbox/xbt/crypto/bin/*.exe` | ~2.6 MB | PowerPC toolchain (`xenon-as.exe`, `xenon-objcopy.exe`) for the Xbox path |
+| `src/xbox/xbt/vendor/` | ~31 MB | third-party libraries vendored on disk for the Xbox subsystem |
 | `tools/nasm-masm/nasm.exe` (+ `*.o`) | ~11 MB | the **built** nasm-masm assembler — *source is tracked, binary is not* |
 
 > `tools/nasm-masm/` ships as **source**. Build it (`sh autogen.sh && ./configure && make`, or
@@ -86,9 +86,9 @@ excluded on both regenerability and copyright grounds.
 
 | Path | Size | What it is |
 |---|---:|---|
-| `codebreaker/xbox/NexGen_Review/` | ~21 MB | Xbox console research material incl. device secrets — **kept strictly local** |
-| `codebreaker/xbox/samples/` | — | copyrighted game assets / regenerable sample data (`samples/README.md` is tracked) |
-| `codebreaker/xbox/files/` | — | user-dropped title binaries (copyrighted) |
+| `src/xbox/NexGen_Review/` | ~21 MB | Xbox console research material incl. device secrets — **kept strictly local** |
+| `src/xbox/samples/` | — | copyrighted game assets / regenerable sample data (`samples/README.md` is tracked) |
+| `src/xbox/files/` | — | user-dropped title binaries (copyrighted) |
 
 ## 6. Build artifacts, caches & generated data (regenerable)
 
@@ -98,7 +98,7 @@ excluded on both regenerability and copyright grounds.
 | `build/`, `dist/`, `*.manifest` | PyInstaller packaging output |
 | `reports/` | generated coverage ledgers, conduct/*.json, logs |
 | `*.o`, `*.obj` | object files (recompile / assembler build output) |
-| `codebreaker/engines/diff/*.db`, `*.db-wal`, `*.db-shm` | the Transpiler-Diff corpus database (rebuild via `wt diff ingest`) |
+| `src/engines/diff/*.db`, `*.db-wal`, `*.db-shm` | the Transpiler-Diff corpus database (rebuild via `wt diff ingest`) |
 | `reference/`, `files/`, `*.iso` | user-supplied reference trees / inputs / disc images |
 
 ## Re-attaching on a fresh clone — checklist

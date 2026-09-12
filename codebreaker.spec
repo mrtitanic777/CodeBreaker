@@ -27,9 +27,9 @@ HERE = SPECPATH                                          # CodeBreaker/ (dir of 
 _EXCLUDE_DIR = {"__pycache__", "masm32bin", "dist", "build"}
 _KEEP_EXT = (".py", ".json", ".txt", ".html", ".sql", ".inc")
 
-# The whole tool lives under engine/ (shared core + engine/targets/<era>/ submodules),
-# so collecting engine/ recursively bundles every `wt --target <t>` toolchain.
-_CODE_DIRS = ["codebreaker"]
+# The whole tool lives under src/ (shared core + src/targets/<era>/ submodules),
+# so collecting src/ recursively bundles every `wt --target <t>` toolchain.
+_CODE_DIRS = ["src"]
 
 
 def collect_code(subdir):
@@ -67,7 +67,7 @@ datas += _c[0]; binaries += _c[1]; hiddenimports += _c[2]
 
 a = Analysis(
     ["wt.py"],
-    pathex=[HERE, os.path.join(HERE, "codebreaker")],
+    pathex=[HERE, os.path.join(HERE, "src")],
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,

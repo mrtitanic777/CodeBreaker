@@ -52,13 +52,13 @@ def _sample_pe():
 # ---- the subsystem checks -------------------------------------------------------------
 
 def t_foundation():
-    from codebreaker.core import layout, config, cores, parallel, progress  # noqa: F401
+    from src.core import layout, config, cores, parallel, progress  # noqa: F401
     config.load_config()                       # must not raise
     return "layout, config, cores, parallel, progress"
 
 
 def t_format_loaders():
-    from codebreaker.formats import pe, ne, objextract  # noqa: F401
+    from src.formats import pe, ne, objextract  # noqa: F401
     P = pe.PEFile(_sample_pe())
     secs = getattr(P, "sections", [])
     if not secs:
@@ -67,7 +67,7 @@ def t_format_loaders():
 
 
 def t_ir_engine():
-    from codebreaker.ir import il
+    from src.ir import il
     # il is the IR core; confirm it exposes the lifting surface.
     if not any(hasattr(il, a) for a in ("lift", "Program", "Function", "emit_c", "decompile")):
         raise RuntimeError("il module missing its expected lifting surface")
@@ -84,7 +84,7 @@ def t_disasm_engine():
 
 
 def t_inverse_engine():
-    from codebreaker.engines.inverse import framemodel, mc2inv, mc2model, raiser16, oracle16  # noqa: F401
+    from src.engines.inverse import framemodel, mc2inv, mc2model, raiser16, oracle16  # noqa: F401
     ok = framemodel._self_test()               # prints "framemodel self-test: N/N ..."
     if not ok:
         raise RuntimeError("frame-allocator self-test did not reach 25/25")
@@ -95,7 +95,7 @@ def t_inverse_engine():
 
 
 def t_studio_pipeline():
-    from codebreaker.studio import pipeline
+    from src.studio import pipeline
     out = os.path.join(tempfile.gettempdir(), "cb_selftest_out")
     rep = pipeline.reverse(_sample_pe(), outbase=out)
     if rep.get("error"):
@@ -107,12 +107,12 @@ def t_studio_pipeline():
 
 
 def t_studio_ui():
-    from codebreaker.studio import app  # noqa: F401  (import only; no window created)
+    from src.studio import app  # noqa: F401  (import only; no window created)
     return "native Studio module import ok"
 
 
 def t_diff():
-    from codebreaker.engines.diff import cli  # noqa: F401
+    from src.engines.diff import cli  # noqa: F401
     return "cross-version diff CLI import ok"
 
 
@@ -121,8 +121,8 @@ def t_pe_analysis():
     # string scan (pe_strings), helper recognition (symbol_engine.sigscan), and
     # data cross-references (pe_trace.PeCarve.data_refs). All target-agnostic.
     import capstone
-    from codebreaker.formats import pe, pe_strings, pe_trace
-    from codebreaker.engines.symbol import sigscan
+    from src.formats import pe, pe_strings, pe_trace
+    from src.engines.symbol import sigscan
     if not pe_strings._selftest() or not sigscan._selftest():
         raise RuntimeError("pe_strings/sigscan module selftest failed")
     P = pe.PEFile(_sample_pe())

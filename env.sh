@@ -27,8 +27,8 @@ fi
 # --- the CodeBreaker engine (this repo) -------------------------------------
 export CODEBREAKER="$PROJECT"
 export PYTHONPATH="$CODEBREAKER${PYTHONPATH:+:$PYTHONPATH}"
-export TOOLS="$CODEBREAKER/codebreaker/recompile95/tools"   # package_ff, memdifftest, clean_*, triage, il
-export INC="$CODEBREAKER/codebreaker/recompile95/include"   # win95c.h, win95rt.c
+export TOOLS="$CODEBREAKER/src/engines/recompile/tools"     # package_ff, memdifftest, clean_*, triage, il
+export INC="$CODEBREAKER/src/engines/recompile/include"     # win95c.h, win95rt.c
 
 # --- the reconstructed WIN95 SOURCE TREE (separate, clean repo) --------------
 # The published Win95 source tree; win95tree.py `place` files reconstructed
