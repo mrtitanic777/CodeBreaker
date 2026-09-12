@@ -43,6 +43,35 @@ _PAGE = 0x1000
 _MAX_INSNS = 20000
 _MAX_MEM = 40000
 _MAX_PATH = 20000
+# Hard ceiling on distinct pages lazily mapped in ONE trace. A function that scans/writes an
+# ever-increasing address range faults on a new page each step; hook_unmapped maps + retries, and
+# the instruction never RETIRES -- so the instruction cap never fires, and (because Unicorn's
+# mem_map slows as regions accumulate) the trace crawls through maps for a very long time. Bounding
+# the map count abandons such a runaway deterministically (by page count, not a clock). 2048 pages
+# = 2 MB, still far more than any real function's working set (legit functions touch a handful of
+# pages; a scan/copy runaway marches through hundreds+ and is what we want to cut off fast).
+_MAX_MAPS = 512
+# Hard ceiling on memory ops per trace: bounds a `rep` flood over already-mapped memory (one
+# instruction, millions of element accesses) that the instruction caps can't see.
+_MAX_MEMOPS = 3_000_000
+
+# Per-FUNCTION instruction governor. A single emulation is capped (_MAX_INSNS), but reconstructing
+# one function runs MANY emulations across the cascade (synth trials, struct, effect, envprov, fuzz,
+# terminate, ...). A pathological function (e.g. jgdwmie!sub_22c0) can make that explode and spin for
+# hours. This is a DETERMINISTIC ceiling on TOTAL instructions emulated per function (not a wall-clock
+# timeout): recon.reconstruct_one resets it; hook_code stops emulation once it's exceeded, so the
+# cascade runs dry fast and the function is honestly SKIPPED -- one bad function never stalls the run.
+_GOV = {"n": 0, "ceil": 0}
+
+
+def budget_reset(ceiling=0):
+    """Start a fresh per-function instruction budget (0 = unlimited)."""
+    _GOV["n"] = 0
+    _GOV["ceil"] = ceiling
+
+
+def budget_exceeded():
+    return bool(_GOV["ceil"]) and _GOV["n"] > _GOV["ceil"]
 
 # IAT sentinels: a unique, recognizable landing address per import slot (see trace_function).
 _SENT_BASE = 0xE1000000
@@ -293,6 +322,15 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
     zeros = [0]             # consecutive 00-00 ("add [eax],al") instructions -> crawling zeros
 
     def hook_code(uc, address, csize, _ud):
+        # per-function instruction governor: once this function's cumulative emulation across the
+        # whole cascade exceeds the ceiling, stop immediately so the function is abandoned (skipped),
+        # never spinning for hours on a pathological body.
+        _GOV["n"] += 1
+        if _GOV["ceil"] and _GOV["n"] > _GOV["ceil"]:
+            rec["truncated"] = True
+            rec["governed"] = True
+            uc.emu_stop()
+            return
         c = rec["insn_count"]
         if c >= insn_cap:
             rec["truncated"] = True
@@ -401,6 +439,13 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
                 rec["mnemonics"][address] = "?"
 
     def hook_mem(uc, access, address, msize, value, _ud):
+        # A single `rep movs/stos/scas` with a huge (often uninitialised) count floods memory within
+        # already-mapped pages: ONE retired instruction, so hook_code's instruction cap + governor
+        # never fire, but hook_mem fires per element. Bound total mem ops per trace and bail -- a
+        # deterministic ceiling (op count, not a clock) so the runaway function is skipped.
+        rec["memops"] = rec.get("memops", 0) + 1
+        if rec["memops"] > _MAX_MEMOPS:
+            rec["truncated"] = True; rec["governed"] = True; uc.emu_stop(); return
         is_write = access == U.UC_MEM_WRITE
         bucket = rec["mem_writes"] if is_write else rec["mem_reads"]
         if len(bucket) < _MAX_MEM:
@@ -417,21 +462,41 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
             bucket.append({"pc": pc, "addr": address, "size": msize, "value": v})
 
     def hook_unmapped(uc, access, address, msize, value, _ud):
-        # Lazily map the faulting page (zeroed) and continue -- this is the difference that lets
+        # Lazily map the faulting page(s) (zeroed) and continue -- this is the difference that lets
         # us trace memory-touching functions. Record the fault as first-class evidence.
-        base = address & ~(_PAGE - 1)
-        if base not in mapped:
+        # Map EVERY page the access spans (a read/write crossing into the next unmapped page would
+        # otherwise re-fault at the same address forever). Two deterministic bails (no wall clock):
+        #   * total pages mapped exceeds _MAX_MAPS  -> a runaway scan/copy over an ever-growing range
+        #   * faults that map no NEW page keep recurring -> a fault we can't satisfy (loop)
+        if os.environ.get("WT_DBG"):
+            rec["_hu"] = rec.get("_hu", 0) + 1
+            if rec["_hu"] % 2000 == 1:
+                print("  [hu #%d] addr=0x%x size=%s mapped=%d stuck=%s" %
+                      (rec["_hu"], address, msize, len(mapped), rec.get("_stuck", 0)), flush=True)
+        lo = address & ~(_PAGE - 1)
+        hi = (address + max(msize, 1) - 1) & ~(_PAGE - 1)
+        newly = 0
+        for base in range(lo, hi + _PAGE, _PAGE):
+            if base in mapped:
+                continue
+            _GOV["n"] += 1                                   # maps count toward the per-function budget
+            if len(mapped) >= _MAX_MAPS or (_GOV["ceil"] and _GOV["n"] > _GOV["ceil"]):
+                rec["truncated"] = True; rec["governed"] = True; uc.emu_stop(); return False
             try:
-                uc.mem_map(base, _PAGE)
-                mapped.add(base)
+                uc.mem_map(base, _PAGE); mapped.add(base); newly += 1
             except U.UcError:
                 return False                                 # truly can't map -> let it fault
         kind = {U.UC_MEM_READ_UNMAPPED: "read", U.UC_MEM_WRITE_UNMAPPED: "write",
                 U.UC_MEM_FETCH_UNMAPPED: "fetch"}.get(access, "?")
         if len(rec["lazy_maps"]) < _MAX_MEM:
-            pc = uc.reg_read(UC_X86_REG_EIP)
-            rec["lazy_maps"].append({"pc": pc, "addr": address, "page": base,
-                                     "access": kind, "size": msize})
+            rec["lazy_maps"].append({"pc": uc.reg_read(UC_X86_REG_EIP), "addr": address,
+                                     "page": lo, "access": kind, "size": msize})
+        if newly == 0:                                       # couldn't make progress -> guard a loop
+            rec["_stuck"] = rec.get("_stuck", 0) + 1
+            if rec["_stuck"] > 64:
+                rec["truncated"] = True; rec["governed"] = True; uc.emu_stop(); return False
+        else:
+            rec["_stuck"] = 0
         return True                                          # retry the access now that it's mapped
 
     def hook_intr(uc, intno, user):

@@ -24,6 +24,12 @@ terms of already-recovered callees, the callees are ready first.
 import os
 import sys
 
+# Hard ceiling on TOTAL instructions emulated while reconstructing ONE function (across every
+# cascade engine). Generous -- a normal function needs a tiny fraction -- but bounds a runaway so it
+# is skipped deterministically rather than spinning. Override via WT_FUNC_INSN_CEILING.
+import os as _os
+_FUNC_INSN_CEILING = int(_os.environ.get("WT_FUNC_INSN_CEILING", "40000000"))
+
 from src.engines.behavior import tracer, graph, synth, corpus, globals as globmod
 from src.engines.behavior import struct as structmod
 from src.engines.behavior import cfg as cfgmod
@@ -56,6 +62,13 @@ def reconstruct_one(module, va, trials=20):
     cleanliness; return {func_va, method, verified, summary, c}. Reusable by the module
     sweep AND by the fused static+dynamic reconstruct (compose)."""
     entry = {"func_va": va, "method": None, "verified": None, "summary": None, "c": None}
+    # Per-function instruction budget: cap the TOTAL emulation across the whole cascade so a
+    # pathological function (runaway loop re-run by many engines) is deterministically abandoned
+    # and SKIPPED instead of spinning for hours. Normal functions use far less than the ceiling.
+    try:
+        tracer.budget_reset(_FUNC_INSN_CEILING)
+    except Exception:
+        pass
     # ORIGIN TRIAGE FIRST: if this IS the CRT / a compiler helper, identify it -- don't reconstruct
     # the toolchain's own code (it isn't the author's source). Emit a named declaration, not a body.
     try:
