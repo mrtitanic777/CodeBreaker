@@ -56,6 +56,13 @@ def run(outdir, limit_mods=None):
                     stem = m.replace(".", "_")
                     with open(os.path.join(outdir, stem + ".recon16.c"), "w", encoding="utf-8") as f:
                         f.write("/* %s -- 16-bit reconstruction (recon16) */\n\n" % m)
+                        try:
+                            import enrich95
+                            pre = enrich95.preamble16(m, path)
+                        except Exception:
+                            pre = ""
+                        if pre:
+                            f.write(pre + "\n")
                         for r in rec:
                             f.write("/* %s */\n%s\n" % (r.get("label", "?"), r.get("emitted_c", "")))
                     totals["ne"] += 1; totals["ne_recon"] += len(rec); totals["files"] += 1

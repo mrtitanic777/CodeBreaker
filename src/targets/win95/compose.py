@@ -38,6 +38,13 @@ import sigfactory
 import emit_c
 import emit_cpp
 
+# The ENRICHMENT layer: the C++/MFC/typing/naming engines that recover what the body pass doesn't
+# (classes, layouts, maps, EH, real names, globals, annotations). Optional; guarded everywhere.
+try:
+    import enrich95
+except Exception:
+    enrich95 = None
+
 # The DYNAMIC lane (behavioral synthesis), for the static->dynamic fallback. Imported as a
 # package so this stays the ONE place the two reconstruction philosophies are fused.
 try:
@@ -62,6 +69,7 @@ class Result:
     note: str | None = None
     elapsed_ms: float = 0.0
     provenance: dict = field(default_factory=dict)
+    display_name: str | None = None   # a real recovered name (demangle / rtti class method), if any
 
 
 # --- reflected delegation ---------------------------------------------------
@@ -176,11 +184,12 @@ def reconstruct(module, rva, fuse=True):
     if fuse and res.status == "floor":
         b = _behavioral(module, rva, desc, sig)
         if b is not None:
-            return b
+            res = b
+    _enrich(module, [res], annotate_limit=1)
     return res
 
 
-def reconstruct_module(module, limit=None, fuse=True, behav_limit=30):
+def reconstruct_module(module, limit=None, fuse=True, behav_limit=30, annotate_limit=40):
     """Module facade: reconstruct every named function. Uses the batched emit_module
     for the emit_c/emit_cpp buckets (one compile per chunk, not per function), then
     packages uniform Results -- the composition layer at corpus speed."""
@@ -224,7 +233,47 @@ def reconstruct_module(module, limit=None, fuse=True, behav_limit=30):
             b = _behavioral(module, r.rva, d, sig)
             if b is not None:
                 out[by_rva[r.rva]] = b
+    # ENRICHMENT: real names (rtti/demangle), recovered-global rewriting, and per-function
+    # annotations (types/strings/enums). Additive + guarded; never rewrites a verified body's bytes.
+    _enrich(module, out, annotate_limit=annotate_limit)
     return out
+
+
+def _enrich(module, out, annotate_limit=0):
+    """Upgrade names, rewrite recovered globals, and annotate -- in place, best-effort."""
+    if enrich95 is None:
+        return
+    try:
+        nm = enrich95.name_map(module)
+        gm = enrich95.globals_map(module)
+    except Exception:
+        nm, gm = {}, {}
+    annotated = 0
+    for r in out:
+        try:
+            disp = nm.get(r.rva) or enrich95.display_name(r.name)
+            if disp and disp != r.name:
+                r.display_name = disp
+            if r.source and str(r.status).startswith("behav"):
+                r.source = enrich95.apply_globals(r.source, gm)
+            if r.source and r.status != "floor" and (annotate_limit == 0 or annotated < annotate_limit):
+                ann = enrich95.annotate(module, r.rva)
+                if ann:
+                    r.source = ann + "\n" + r.source
+                    annotated += 1
+        except Exception:
+            continue
+
+
+def module_preamble(module):
+    """The module-scope recovered-source header (classes/layouts/maps/EH/globals/xrefs/toolchain),
+    for a writer to place at the top of <module>.fused.c. '' when nothing is recovered / disabled."""
+    if enrich95 is None:
+        return ""
+    try:
+        return enrich95.preamble(module)
+    except Exception:
+        return ""
 
 
 def main():
@@ -265,10 +314,20 @@ def main():
         with open(os.path.join(a.emit, stem + ".fused.c"), "w", encoding="utf-8") as f:
             f.write("/* %s -- FUSED reconstruction: static byte-exact clean C/C++ where provable,\n"
                     "   faithful behavioral synthesis where the static lane floored. */\n\n" % a.target)
+            pre = module_preamble(a.target)
+            if pre:
+                f.write(pre + "\n")
             for r in rs:
                 if r.source:
-                    f.write("/* sub_%x [%s %s] */\n%s\n\n" % (r.rva, r.status, r.verify, r.source.rstrip()))
+                    f.write(_fn_header(r) + "%s\n\n" % r.source.rstrip())
         print("  wrote %s.fused.c" % stem)
+
+
+def _fn_header(r):
+    """The per-function comment banner: real recovered name when we have one, else sub_<rva>."""
+    nm = r.display_name or ("sub_%x" % r.rva)
+    tail = "" if nm == ("sub_%x" % r.rva) else "  (sub_%x)" % r.rva
+    return "/* %s%s [%s %s] */\n" % (nm, tail, r.status, r.verify)
 
 
 if __name__ == "__main__":

@@ -56,9 +56,15 @@ def run(outdir, per, mods=None):
         with open(outp, "w", encoding="utf-8") as f:
             f.write("/* %s -- behavioral reconstruction (compose): readable C where recoverable,\n"
                     "   validated against the binary oracle. */\n\n" % m)
+            try:
+                pre = compose.module_preamble(m)
+            except Exception:
+                pre = ""
+            if pre:
+                f.write(pre + "\n")
             for r in rs:
                 if r.source:
-                    f.write("/* sub_%x [%s %s] */\n%s\n\n" % (r.rva, r.status, r.verify, r.source.rstrip()))
+                    f.write(compose._fn_header(r) + "%s\n\n" % r.source.rstrip())
         meth = collections.Counter(r.status for r in rs)
         tot["funcs"] += len(rs); tot["readable"] += len(readable); tot["mods"] += 1
         done += 1
