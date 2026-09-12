@@ -31,6 +31,24 @@ _MAP_CACHE = {}
 _SEG_MARKER16 = 0xFF00
 _SEG_MARKER32 = 0xFF000000
 
+import re as _re
+_DECORATE = _re.compile(r"^_+|@\d+$")
+
+
+def _norm(name):
+    """Canonical key for matching: strip stdcall decoration (leading _, trailing @N) + uppercase."""
+    return _DECORATE.sub("", _DECORATE.sub("", name)).upper()
+
+
+def clean_name(name):
+    """A readable form of a .sym symbol: drop the stdcall decoration (_Foo@12 -> Foo)."""
+    n = name
+    if n.startswith("_") and "@" in n:
+        n = n.lstrip("_").split("@")[0]
+    elif "@" in n and n.split("@")[-1].isdigit():
+        n = n.split("@")[0]
+    return n or name
+
 
 # ---------------------------------------------------------------- locating a .sym
 _ALIAS = {"KERNEL": "KRNL386", "KRNL386": "KRNL386", "KRNL286": "KRNL286"}
@@ -174,23 +192,21 @@ def _ne_exports(module):
 
 
 def _fmt(module):
+    """('PE'|'NE'|'LE'|None, path) from the MZ e_lfanew signature -- format, not a lenient parse."""
     from src.core import cores
     try:
-        from src.targets.win95 import target  # optional
-    except Exception:
-        target = None
-    try:
-        p = cores.get("target").resolve(module)
-        from src.formats.pe import PEFile
-        from src.formats.ne import NEFile
+        p = cores.get("target").resolve(module) if not os.path.isabs(str(module)) else module
         with open(p, "rb") as f:
-            head = f.read(2)
-        # quick: try NE then PE
-        try:
-            NEFile(p); return "NE", p
-        except Exception:
-            pass
-        PEFile(p); return "PE", p
+            d = f.read(0x1000)
+        if d[:2] != b"MZ":
+            return None, p
+        e = struct.unpack_from("<I", d, 0x3c)[0]
+        if e + 2 > len(d):
+            with open(p, "rb") as f:
+                f.seek(e); sig = f.read(2)
+        else:
+            sig = d[e:e + 2]
+        return ({b"PE": "PE", b"NE": "NE", b"LE": "LE", b"LX": "LE"}.get(sig), p)
     except Exception:
         return None, None
 
@@ -209,19 +225,19 @@ def name_map(module):
     fmt, _p = _fmt(module)
     sym = parse(sp)
     if fmt == "PE":
-        exp = _pe_exports(module)
+        exp = {_norm(k): v for k, v in _pe_exports(module).items()}
         if exp:
             for seg in sym["segments"]:
                 names = seg["symbols"]
-                anchors = [(exp[nm.upper()], off) for off, nm in names if nm.upper() in exp]
-                if not anchors:
+                anchors = [(exp[_norm(nm)], off) for off, nm in names if _norm(nm) in exp]
+                if len(anchors) < 2:                                   # need >=2 agreeing export anchors
                     continue
                 bases = [rva - off for rva, off in anchors]
-                base = max(set(bases), key=bases.count)               # modal base
-                if bases.count(base) < max(1, len(anchors) // 2):     # anchors must agree
+                base = max(set(bases), key=bases.count)                # modal base
+                if bases.count(base) < max(2, len(anchors) * 2 // 3):  # 2/3 of anchors must agree
                     continue
                 for off, nm in names:
-                    out[base + off] = nm
+                    out[base + off] = clean_name(nm)
     elif fmt == "NE":
         exp = _ne_exports(module)    # {NAME:(seg,off)}
         if exp:
