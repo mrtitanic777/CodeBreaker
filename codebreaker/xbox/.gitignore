@@ -1,0 +1,98 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+
+# --- PyInstaller build output (build_exe.py) ---
+build/
+dist/
+*.spec
+
+# --- Generated runtime reports / live progress + temp files ---
+reports/*
+!reports/.gitkeep
+tools/reports/*
+!tools/reports/.gitkeep
+*.tmp
+
+# --- User-dropped title binaries (copyrighted; keep out of the repo) ---
+files/*
+!files/.gitkeep
+
+# --- Sample data: regenerable AND copyrighted game assets; excluded on both counts ---
+samples/*
+!samples/README.md
+
+# --- OS cruft ---
+.DS_Store
+Thumbs.db
+
+# --- reference/ : third-party tools kept on disk, not part of the repo ---
+# (size / authorship / build artifacts). License-compatible Python is integrated
+# under xbt/crypto/ with attribution instead of vendored here.
+/reference/
+/build_exe.log
+/XEXtractor v1.02/
+/XeXtractor/
+build_exe*.log
+
+# --- more third-party tools dropped in (git-ignored; RE into xbt/ as needed) ---
+/God2Iso.exe
+/Iso2God/
+/iso2god/
+/god2iso/
+/XZP-Tool-v2.0/
+/xex2god/
+/XboxTranspiler.spec
+# XexTool-RE / NexGen / re_tools: clean-room reference projects kept on disk for
+# review; their functionality is ported natively into xbt/ (xex.py, lzx_encode.py,
+# etc.). Not part of the committed tree (size / build artifacts / prebuilt exes).
+/XexTool-RE/
+/NexGen/
+/re_tools/
+# Velocity (GPLv3): read for STFS format facts only, reimplemented clean-room in
+# xbt/xbox/stfs.py -- see docs/STFS-CON-Resigning.md. Not vendored.
+/Velocity/
+
+# --- never commit console-unique secrets / MS binaries (belt-and-suspenders) ---
+id_ed25519
+id_ed25519.pub
+**/KV_dec.bin
+**/KV_en.bin
+**/CPUKey.bin
+**/*_fuses.txt
+**/smc_config.bin
+**/flashdmp.bin
+corona_forensics.json
+corona_full.json
+kernel_17559.bin
+
+# --- integration hardening: never commit secrets, samples, or regenerable data ---
+/NexGen_Review/
+/misc/
+/v3media_extracted/
+/v3media.xzp
+xbt/vendor/
+*.xex
+*.7z
+*.rar
+*.zip
+*.iso
+id_ed25519*
+*CPUKey*
+*KV_dec*
+*KV_en*
+*keyvault*.bin
+
+xbt/cli/XboxTranspiler.config.json
+*.config.json
+
+# Third-party Xbox 360 PowerPC toolchain binaries (attach your own)
+xbt/crypto/bin/*.exe
+xbt/crypto/bin/*.dll
+# specific secret/dump .bin (empty_live.bin is a legit tracked resource)
+*_dec.bin
+*flashdmp*
+*smc_config*
+xbt/crypto/Keys/

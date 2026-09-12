@@ -1,0 +1,408 @@
+# CodeBreaker — full master commit log of the pre-snapshot history
+# 404 commits, 2026-08-07 .. 2026-09-11. Captured 2026-09-11 before re-init (root fa46252).
+# format: <date> <short-hash> <subject>
+
+2026-09-11 1ca714e paths: relocate oracle/legacy ISOs + oracle tree out of binaries; fix win95 dangling refs
+2026-09-11 0876738 paths: move DDK/WIN32SDK reference trees to the Win95 design arena
+2026-09-11 303b550 chore: drop the in-repo corpus duplicate; point engine defaults at the real corpus
+2026-09-11 06d58b5 chore: sanitize the tool tree -- drop stale outputs + build artifacts
+2026-09-11 02ec3bb docs: document resxref16 (16-bit resource<->code correlation, wave 13)
+2026-09-11 16c6e57 win95/behavior: resource<->code correlation for 16-bit (resxref16)
+2026-09-11 080acf0 docs: document 16-bit callback signatures, datainit16, WM_ dispatch (wave 12)
+2026-09-11 25fb8cf win95/behavior: WM_ message-dispatch naming for 16-bit WndProc/DlgProc (conservative)
+2026-09-11 dfa36e9 win95/recon: 16-bit DGROUP non-string data recovery (datainit16)
+2026-09-11 4ab65fc win95/behavior: type 16-bit callback signatures (WndProc/DlgProc/hook/enum)
+2026-09-11 f69f7c3 docs: document 16-bit names/args/data/proto engines (wave 11)
+2026-09-11 e4d0698 win95/symbol: Win16 API prototype DB -- type the recovered 16-bit calls
+2026-09-11 18af93a win95/recon: 16-bit DGROUP string + data recovery (datarec16)
+2026-09-11 7a65e1e win95/behavior: 16-bit call-argument recovery (Pascal args -> named/typed args)
+2026-09-11 ddd28f9 win95/behavior: recover 16-bit function names from the NE name tables
+2026-09-11 5e7e7ef docs: document the 16-bit code cascade (interproc16 + whole-module coverage)
+2026-09-11 3f38629 win95/behavior: recon16 whole-module driver covers every function (exports + internal)
+2026-09-11 867b1be win95/behavior: discover near-called internal functions (16-bit coverage)
+2026-09-11 aa624fb win95/behavior: 16-bit interproc covers INTERNAL functions, not just exports
+2026-09-11 dc312a4 win95/behavior: 16-bit interproc -- reconstruct Win16 callers as their call sequence
+2026-09-11 aaf4f31 docs: document NE resources, VxD DDB, thunk32, VBX, installer (wave 9)
+2026-09-11 ac15aec win95/recon: installer/packaging identification + embedded INF extraction (niche)
+2026-09-11 92616d6 win95/behavior: VBX control property/event name recovery (niche)
+2026-09-11 a5adab7 win95/behavior: 32<->16 thunk-layer detection (niche)
+2026-09-11 ee33d45 win95/behavior: VxD DDB + control-message recovery (what a VxD IS)
+2026-09-11 cf56a49 win95/recon: NE (16-bit) resource decoding -- the Win16 UI surface as .rc
+2026-09-11 c050abd docs: document the 16-bit / driver frontier engines (wave 8)
+2026-09-11 f502328 win95/recon: delay-load imports + TLS callbacks + RCDATA classification (peextra)
+2026-09-11 308d8b6 win95/behavior: Win16 NE idioms (far/exported prologs, __loadds, thunks, internal fixups)
+2026-09-11 69058f5 win95/behavior: DOS / BIOS interrupt naming (INT 21h / 10h / 13h / 16h / 1Ah / 33h)
+2026-09-11 5f88595 win95/behavior: VxD ring-0 service-call recovery (INT 20h + service id -> name)
+2026-09-11 90a746a win95/symbol: Win16 API ordinal->name resolution (USER/GDI/KERNEL + all)
+2026-09-11 26082ef docs: document the MFC / C++ EH / navigation engines (wave 7)
+2026-09-11 d1f5187 win95/behavior: forward constant propagation through registers
+2026-09-11 6853ff7 win95/behavior: whole-program cross-reference index
+2026-09-11 65fadb8 win95/behavior: stack-string recovery (inline byte/dword stores -> literal)
+2026-09-11 8e929a2 win95/behavior: C++ exception-handling recovery (__CxxFrameHandler try/catch)
+2026-09-11 3193b6e win95/behavior: MFC CRuntimeClass recovery (class names + inheritance without RTTI)
+2026-09-11 cedb219 win95/behavior: MFC interface + dispatch map recovery (OLE/ActiveX wiring)
+2026-09-11 205dc3c win95/symbol: MFC ordinal->name resolution (MFC250/MFC42 imports)
+2026-09-11 e1606ba docs: document the MFC / cross-function engines (wave 6)
+2026-09-11 d53ac00 win95/behavior: signature refinements -- varargs, bool params, duplicate folding
+2026-09-11 c7cdbc9 win95/behavior: app-specific enum reconstruction
+2026-09-11 e76d883 win95/behavior: compiler / toolchain fingerprint
+2026-09-11 6523775 win95/behavior: bit-field recovery in structsynth (mask/shift -> unsigned x : n)
+2026-09-11 4b38d12 win95/behavior: arity consensus -- pin parameter count across call sites
+2026-09-11 82d35a4 win95/symbol: template-name demangling (?$CArray@H@@ -> CArray<int>)
+2026-09-11 bde1a70 win95/behavior: MFC message-map recovery (the app's event wiring as source)
+2026-09-11 4199d3f docs: document the C++/advanced engines (demangle, rtti, structsynth, globalname, tailcall, strdispatch)
+2026-09-11 bb22279 win95/behavior: string-dispatch recognition (strcmp chains -> verb table)
+2026-09-11 3c17a23 win95/behavior: import-thunk + tail-call identification (tailcall)
+2026-09-11 e5bbd1a win95/behavior: name + type module globals from use (g_hInstance, g_count, g_ptr)
+2026-09-11 53554f1 win95/behavior: synthesize novel struct layouts from field use
+2026-09-11 0a1ded0 win95/behavior: RTTI recovery -- C++ class names + inheritance
+2026-09-11 a7b8ac4 win95/symbol: MSVC C++ name demangler
+2026-09-11 b891090 docs: document the Tier 1-4 engines (origin triage, typing, idioms, COM)
+2026-09-11 f7bc079 win95/behavior: vtable -> C++/COM class-layout recovery (classlayout)
+2026-09-11 246ba3f win95/recon: type-library recovery toward IDL (MSFT full, SLTG partial)
+2026-09-11 7baac08 win95/recon: decode accelerator tables + message tables
+2026-09-11 330849f win95/behavior: switch case-value + default recovery
+2026-09-11 fd4a668 win95/behavior: short-circuit && / || recovery (+ Blk slots fix)
+2026-09-11 227e63c win95/behavior: do-while + for canonicalization
+2026-09-11 7de1a16 win95/behavior: widen string-loop idioms (strcpy/strcat/strcmp/wcslen/memcmp)
+2026-09-11 bb1ed8e win95/behavior: return-type inference (void / value / pointer)
+2026-09-11 ce5927b win95/behavior: name local variables from use (local_8 -> i, local_c -> p)
+2026-09-11 e228309 win95/behavior: cross-block SSA -- resolve values across basic blocks
+2026-09-11 6378952 win95/behavior: printf/format-string vararg typing (fmtargs)
+2026-09-11 ff4172d win95/behavior: FLIRT-style statically-linked library identifier (libsig)
+2026-09-11 2ce505c win95/behavior: CRT / compiler-helper signature identifier (origin triage)
+2026-09-11 1942b73 studio: Live Reconstruction window -- watch a binary decode in place
+2026-09-11 38214d6 docs: document the structure/naming/SIMD engines + resource upgrades
+2026-09-11 9f0fcb4 win95/behavior: MMX/SSE-aware block recovery (simdblock)
+2026-09-11 aed97b8 win95/behavior: FP-aware cfgstruct -- recover embedded x87 float expressions
+2026-09-11 f6d8b74 win95/behavior: interproc v3 -- bottom-up whole-module reconstruction
+2026-09-11 c5b53f3 win95/behavior: lift goto/label CFG into structured if / if-else / while
+2026-09-11 b0c435e win95/behavior: calling-convention detector (stdcall/cdecl/thiscall/fastcall)
+2026-09-11 d6f56a6 win95/recon: decode RT_DIALOG / RT_MENU templates back to .rc source
+2026-09-11 3f273a6 win95/recon: decode VS_VERSION_INFO + extract .bmp/.ico/.cur from .rsrc
+2026-09-11 28d0da5 win95/behavior: heuristic function naming from API fingerprint
+2026-09-11 a2c3041 win95/behavior: struct-field naming from SDK layouts
+2026-09-11 b9eaf32 win95/behavior: call-graph engine (static, per module)
+2026-09-11 6f20a2d docs: document the second engine wave (constants/thiscall/fpsynth/typeunify/stackframe/resources/datainit)
+2026-09-11 c0a026b win95/recon: data / initializer recovery -- pointer tables & string globals as C
+2026-09-11 ecf7ae9 win95/recon: resource reconstruction (.rc) from the PE .rsrc section
+2026-09-11 e537b7c win95/behavior: stack-frame / local-variable recovery
+2026-09-11 59e99e2 win95/behavior: interprocedural type unification
+2026-09-11 746e981 win95/behavior: floating-point (x87) reconstruction engine
+2026-09-11 7eedcde win95/behavior: register-argument / thiscall recovery
+2026-09-11 6725bcb win95/behavior: flag / enum recovery -- magic constants -> SDK names
+2026-09-11 633ad31 docs: document the readability/rigor engines (datarec/typeprop/switch/vtable/SEH/dataflow/structverify)
+2026-09-11 9539bd0 win95/behavior: data-flow (SSA-lite) -- name predicate operands by their source
+2026-09-11 4b7e1d7 win95/behavior: structural-tier verifier (single-path -> verified)
+2026-09-11 630ea3d win95/behavior: SEH recovery -- __try/__except frames
+2026-09-11 16ba06b win95/behavior: vtable / COM virtual-dispatch recovery
+2026-09-11 9016399 win95/behavior: switch / jump-table recovery in cfgstruct
+2026-09-11 868517a win95/behavior: type propagation from SDK signatures
+2026-09-11 923d4e0 win95/behavior: string/data recovery -- pointer args render as literals
+2026-09-11 d13f056 docs: document the behavioral floor engines (loops/cfgstruct/interproc/envprov)
+2026-09-11 fb58437 win95/behavior: globals deepening + interproc v2 (value flow) + env provisioner
+2026-09-11 a308db3 win95/behavior: CFG structuring engine -- the skeleton that assembles the fragments
+2026-09-11 cea63b6 win95/behavior: activate loops in cascade + add strlen/memcpy idioms + interproc engine
+2026-09-11 35847c6 win95/behavior: capture call-site argument snapshots (enables interproc pass)
+2026-09-11 9434bf3 win95/behavior: stop emitting degenerate self-assign no-op writes
+2026-09-11 834fdeb win95: reach W3-bundled VxDs (vmm32) and cover all exec objects
+2026-09-11 8c31e5a win95: harden tracer16 with a dense GDT (16-bit trace viability 33%->65%)
+2026-09-11 f0de959 win95: LE->tracer bridge for ring-0 VxD behavioral reconstruction
+2026-09-11 2f7f6fd win95: behav_sweep95 -- corpus-wide behavioral reconstruction sweep (deep C lane)
+2026-09-11 67d6157 win95: emit_all95 resume (skip already-emitted modules)
+2026-09-11 85fab68 win95: emit_all95 -- corpus-wide reconstructed-source emission driver
+2026-09-11 84c07a0 win95: recon32wrap precision gate -- reject real functions, keep genuine wrappers
+2026-09-11 9b603b6 win95: recon32wrap --emit writes reconstructed wrapper .c files
+2026-09-11 ff6123e win95: recon32wrap recognizes forwarding-thunk workers (completes the ring-3 chain)
+2026-09-11 961b9ff win95: recon32wrap -- reconstruct 32-bit validated-delegation wrappers (Phase C payoff)
+2026-09-10 805d901 behavior: tracer resolves explicit export VAs the recovery missed
+2026-09-10 72e5f2a behavior: handleprov -- construct valid GDI handles (Phase C keystone cracked)
+2026-09-10 a4620c0 win95: ledger95 -- master reconstruction ledger (roadmap Phase A)
+2026-09-10 152744c symbol/win95: crtsig PE-export CRT oracle + triage corpus finding
+2026-09-10 22bd17b win95: triage -- identify-first front-end (coverage over the app-specific base)
+2026-09-10 aba645f symbol: crtsig -- identify CRT + compiler-generated functions by signature (triage)
+2026-09-10 e3715e9 behavior: terminating-input provisioning for the no-ret class (synth baseline)
+2026-09-10 098d2c5 behavior: gptr -- recover global-pointer (runtime-state) functions as readable C
+2026-09-10 2eef93b win95: finishline -- authored-source recovery ledger (NOT byte-exact asm)
+2026-09-10 a997ef5 behavior: recon16 template-delegation tier -- reconstruct Win16 dispatcher wrappers
+2026-09-10 f6760e7 behavior: recon16 -- faithful 16-bit pure-leaf reconstruction lane
+2026-09-10 9c06584 symbol+behavior: Win16 API naming oracle + tracer16 import naming
+2026-09-10 d4cb374 behavior: tracer16 -- NE loading + real 16-bit function tracing
+2026-09-10 ef769ac behavior: tracer16 harness -- validated Win16 segmented-PM Unicorn setup
+2026-09-10 593982b win95: archfloor -- classify architectural floor vs genuinely unresolved
+2026-09-10 517a492 behavior: multi-statement program synthesis (Frontier B), oracle-validated
+2026-09-10 cf8854b Merge l2/emit-cpp-v1: Layer-2 emit_cpp + dynamic reconstruction + SDK typing
+2026-09-10 bee07fc docs(win95): repoint WIN95_MAP reference to the migrated architecture doc
+2026-09-10 0b5dad3 docs: migrate Win95 architecture/VxD docs to the Windows95 project repo
+2026-09-10 4ff026f symbol: parse the OLE/COM STDAPI/WINOLEAPI cohort; self-locate the DB
+2026-09-10 8b25b95 docs(win95)+fix: pin the SDK typing oracle to the in-repo Chicago SDK
+2026-09-10 527f942 docs(win95): cited VMM/VxD service-call deep-doc from the DDK
+2026-09-10 45f85f6 vxd: restore per-object LE flags from the oracle (from-source loadable)
+2026-09-10 dca3a74 docs/win95: file-system/IFS + registry deep cited sub-docs
+2026-09-10 aec4429 docs/win95: deep cited sub-docs -- COM ABI, thunking, Device-I/O/VxD
+2026-09-10 8ffcfda docs: WIN95_ARCHITECTURE_VERIFIED -- every reconstruction assumption, cross-validated
+2026-09-10 c69ea7d WIN95_MAP: adopt the authoritative Win32 taxonomy + OLE/COM subsystem (per Win95Design.md)
+2026-09-10 fcfad97 behavior/loops: counted-loop synthesis (memset/fill class) -- first rung of system B
+2026-09-10 5c31a44 compose: fuse the static + dynamic lanes -- one reconstruct, best-available source (C)
+2026-09-10 71b54ab behavior/effect: byte/word field-width support for sub-dword writes
+2026-09-10 392110e behavior/effect v2: two-pointer field-copy reconstruction (CopyRect) + router wiring
+2026-09-10 6ef9389 behavior/bsweep: corpus-wide behavioral reconstruction sweep + readable-source yield
+2026-09-10 49e5320 behavior/piecewise: generalize to N-way (recursive greedy peel) + ranges/char classes
+2026-09-10 4590596 behavior/recon: --emit writes the verified reconstructions to <module>.behav.c
+2026-09-10 c7892e6 behavior/recon: route to piecewise + effect; report readable-source yield
+2026-09-10 03a991a behavior/effect: synth<->struct composition -- return value + memory writes over the unified field+arg variable space
+2026-09-10 786e787 behavior/piecewise: multi-block synthesis -- guard(x) ? A(x) : B(x)
+2026-09-10 52aca94 behavior/gatebust: get the bare oracle past a handle-validation gate (strategies 4+2)
+2026-09-10 d1a3f32 behavior/exectree: derived execution-tree discovery (dynamic cluster, system #8)
+2026-09-10 a4112a0 behavior/fracture: fractured-branch reconstruction (dynamic cluster, system #7)
+2026-09-10 9256278 behavior/fuzz: coverage-guided input discovery (dynamic cluster, system #6)
+2026-09-10 d51571f compose: reconstruction composition layer -- reflected delegation, delegated decorators, linked facades (systems #3-#5)
+2026-09-10 1175f39 sigfactory: the signature factory (system #2)
+2026-09-10 918b735 introspect: unified function introspection service (+ classify32 precision)
+2026-09-10 09fbfd8 classify32: route custom-convention asm thunks out of the 'c' route
+2026-09-10 e15b738 docs: authoritative architecture overview + L2 pipeline doc + de-stale paths
+2026-09-10 7d6594f l2: emit_cpp v2 (return-this) + WIN95_MAP + l2predict route-mix triage
+2026-09-10 b4ad370 l2: emit_cpp v1 -- byte-exact clean C++ for __thiscall methods
+2026-09-10 7c14061 l2: chunk emit_module compiles + per-module floor watchdog
+2026-09-10 0b13255 emit_c: ~2x clean-C yield -- internal fns, empty fns, global-load leaves
+2026-09-10 b9ffdc6 cc32: fix MSVC 2.0 C1007 by invoking CL via the 8.3 short path
+2026-09-10 4d8fe84 Merge wip/on-restructure: pre-restructure work reapplied to codebreaker/ layout
+2026-09-10 6b10b05 wip: rebase pre-restructure work onto the codebreaker/ layout
+2026-09-10 d95d17e Merge restructure: engine/ -> installable codebreaker/ package
+2026-09-10 c49adaa restructure stage 6: docs for the codebreaker/ layout
+2026-09-10 7af9767 restructure stage 3b: regroup packages into a clean taxonomy
+2026-09-10 6fec56f restructure: gitignore *.egg-info (editable-install metadata)
+2026-09-10 8fa1ee4 restructure stage 3a: rename engine/ -> codebreaker/
+2026-09-10 ad55727 restructure stage 3-prep: convert literal engine/ path joins to paths.* (rename-safe)
+2026-09-10 2b1aeb0 restructure stage 2: unified dispatch + shared CLI helper
+2026-09-10 a085d30 restructure stage 1d: remove redundant repo-root sys.path inserts
+2026-09-10 b3bc932 restructure stage 1c: convert recompile/inverse data-root chains to paths
+2026-09-10 419f439 restructure stage 1b: convert value-bearing root chains to paths resolver
+2026-09-10 6a4120c restructure stage 1a: installable package + canonical path resolver
+2026-09-10 adb18dd restructure stage 0: smoke-test safety net
+2026-09-10 010f678 Merge behavior_engine: empirical behavioral reconstruction
+2026-09-10 9238778 behavior: stub-return from bogus indirect-call landings (user32 fall-throughs)
+2026-09-10 76e8412 behavior: document globals command in README
+2026-09-10 7d9d3a0 behavior: global-state side-effect reconstruction + zero-crawl guard
+2026-09-10 80bfabb behavior: environment (tail-call stubs) + inter-procedural synth, guarded
+2026-09-10 868b92a behavior: wt behavior sweep -- measured reconstruction coverage
+2026-09-10 5e107e3 behavior: struct -- word/byte fields, conditional-write gates, arg-aware engine
+2026-09-10 34731e6 behavior: synthesize computed struct fields (expressions over input fields)
+2026-09-10 adc6554 behavior: stubbing on by default across the pipeline + built-in API argc
+2026-09-10 abec826 behavior: add behavior_sdk config key (include dir for API signatures)
+2026-09-10 e094907 behavior: SDK-driven environment -- named API deps + stdcall cleanup
+2026-09-10 9f85696 behavior: document struct/cfg/recon in README
+2026-09-10 e6273c4 behavior: controlled environment -- stub external calls
+2026-09-10 9b81230 behavior: indirect-call resolution + whole-module reconstruction
+2026-09-10 2641ee8 behavior: control-flow reconstruction + per-module PE cache
+2026-09-10 a18cbd7 behavior: pointer/struct-field reconstruction (spec Section 7/12)
+2026-09-10 a8fc360 behavior: v1 upgrade -- read values, 2-arg synthesis, UI + docs
+2026-09-10 d3863c6 behavior: slice 6 -- constraint-guided synthesis, verified by the binary
+2026-09-10 bc172ee behavior: slice 5 -- observed execution/dependency graph
+2026-09-10 be1e91b behavior: slice 4 -- active experimentation (close the loop)
+2026-09-10 ac2cb1e behavior: slice 3 -- cumulative hypothesis store with confidence
+2026-09-10 74d017b behavior: slice 2 -- controlled one-variable-at-a-time experiments
+2026-09-10 d2bf678 behavior: flight-recorder v1 -- trace oracle -> evidence corpus
+2026-09-07 eb669da engine: msvc2 interpreter -- store statements
+2026-09-07 1af261c engine: msvc2 interpreter -- memory-operand loads + globals + general materialize
+2026-09-07 993b422 engine: begin the unified msvc2 register-dataflow interpreter
+2026-09-07 d35679e engine: msvc2 M2 -- callee-saved (esi) two-call combine
+2026-09-07 ce1facb engine: scope the msvc2 register-dataflow model + M1 (branch on call result)
+2026-09-07 b5de9f7 engine: msvc2 breadth -- if-guard control flow
+2026-09-07 9f244d5 engine: msvc2 seq -- indirect (IAT) calls + leave epilogue
+2026-09-07 7d83087 engine: msvc2 breadth -- straight-line multi-statement bodies
+2026-09-07 cc2bcd9 engine: msvc2 __fastcall/__thiscall register-convention leaf mode
+2026-09-07 8103b06 engine: msvc2 frameless (/Oy) leaf mode
+2026-09-07 f10af0d engine: fix msvc2inv reloc-mask so tail-call thunks recover on real code
+2026-09-07 1680667 engine: msvc2 class -- square (imul eax,eax) + call-result-combined-with-operand
+2026-09-07 b890f89 engine: grow the msvc2 modeled class -- empty bodies + unary neg/not/lognot
+2026-09-07 dc1f25e engine: wire msvc2 C-inversion into the win95 conduct pipeline
+2026-09-07 f7efe81 engine: add 32-bit PE (msvc2) routing to oracle_router
+2026-09-07 46fa0b7 engine: give msvc2cov a self-contained direct-carve coverage mode
+2026-09-07 6471de3 engine: re-derive the msvc2 inverse recognizer to the standard /Oy- frame
+2026-09-07 5d13b5d engine: recalibrate the MSVC 2.0 forward model to the standard /Oy- frame
+2026-09-07 ddabe89 engine: graded best-effort naming from the debug build's function order
+2026-09-07 288cece engine: recover exact internal names from a matching debug build
+2026-09-07 8b55a32 fix(ne): emit uncarved segments instead of dropping them to empty
+2026-09-07 5c9de4b feat(ne): DOSBox-free reconcile via the nasm-masm cMacros backend
+2026-09-07 144b5c2 feat(ne): whole-segment idiomatic emission (byte-exact, residuals handled)
+2026-09-07 383e049 feat(ne): idiomatic cMacros emitter for 16-bit KERNEL/USER/GDI
+2026-09-07 fff76e3 chore: ignore recovered/ per-run build scratch
+2026-09-06 1ab72be docs: from-source loadable build now covers all 222 modules
+2026-09-06 35d6e31 le.ddb: device-id-matched fallback for uncommon DDK version stamps
+2026-09-06 b406c50 loadable emit: don't re-emit the split span's own start label (fixes A2005)
+2026-09-06 4c5cd13 loadable emit: define every internal fixup target (eliminate A2006 class)
+2026-09-06 fecb3d8 vxd_idiom: force-split labels are 'label near' not 'label byte' (fixes A2024)
+2026-09-06 560f22e vxd_from_source: don't split the DDB tail when code resumes past the DDB (A1010)
+2026-09-06 5ced56d vxd_from_source: unique valid segment names for NUL/blank/reserved/duplicate object tags
+2026-09-06 e1c9e9e vxd loadable: keep out-of-bounds (absolute/linear) fixup targets raw, not symbolic
+2026-09-06 bc2cd9c vxd_idiom: force-split any mid-instruction fixup target robustly (loadable mode)
+2026-09-06 039a375 vxd_from_source: generalize the from-source loadable build beyond VKD
+2026-09-06 9e10918 vxd_masm: CB_FORCE_ML env switch to force the authentic ML.EXE over native nasm
+2026-09-06 455d07a vxd corpus: include IOS port drivers + misc-extension VxDs; complete coverage (222 drivers)
+2026-09-06 3cbf3bc vxd_from_source: build with the authentic DDK toolchain, drop the container reimplementation
+2026-09-06 1b91449 vxd: build a loadable VxD from source, no byte transplant (VKD boots Win95)
+2026-09-06 893d57f ghidra: apply a caller-supplied symbol map before decompile
+2026-09-05 49f6673 backbone: MSVC x86 cl.exe adapter; ghidra: fix 0-byte decompile on non-ASCII
+2026-09-05 c1f935f x86/PE engine: native debug-info, string scan, data xrefs, helper ID
+2026-09-05 03b5f8b vxd: harden from-source object matching in the container-writer path
+2026-09-05 1f93499 vxd: from-source VKD boots the real Win95 loader
+2026-09-05 122602d vxd_idiom: loadable DDB declares the V86/PM API procs (was a NULL API entry)
+2026-09-04 890c381 vxd_idiom: loadable mode emits a relocation as one 4-byte dd even when it spans a mis-decoded instruction
+2026-09-04 9995211 vxd_idiom/vxd_link: loadable mode emits per-object segments (no class merge)
+2026-09-04 642f730 vxd_idiom: loadable mode resolves DDB-struct fixup targets to <name>_DDB
+2026-09-04 75e91e5 vxd_idiom: loadable mode -> boot a VxD built from the idiomatic DDK-macro source
+2026-09-04 41f8889 w4: byte-exact W4 codec in pure Python (decode + encode + compress), no emulator
+2026-09-04 fc29a5a vxd_le_writer: fix fixup src-type analysis for W3-bundled modules; rebuild exact vmm32 bundle
+2026-09-04 c5d9d97 tools/vmm32boot/w4.py: decompress the compressed W4 vmm32.vxd container
+2026-09-04 f8218b9 tools/vmm32boot: boot the fully reconstructed Win95 kernel + driver stack
+2026-09-04 25069b5 vxd_le_writer: build_w3 -- reconstruct the vmm32.vxd W3 container (VMM byte-exact bar fixup order)
+2026-09-04 830e8ae vxd_le_writer: 213/215 byte-exact bar fixup order (perfect src-type via instruction-end test)
+2026-09-04 e18e2ea vxd_le_writer: 207/215 byte-exact bar fixup order (hybrid src-type, page map + partial-page/trailing recovery)
+2026-09-04 c7f1598 vxd_le_writer: reconstruct more loader structures (157/215 byte-exact bar fixup order; 215/215 round-trip)
+2026-09-04 423ae74 vxd_le_writer: emit VMM-loadable LE VxDs (source-list fixups, device id + version resource, sector-aligned pages)
+2026-09-04 9bd949c vxd_le_writer: preserve module description + loader header fields
+2026-09-04 a33b986 Add Python LE writer: synthesize a VxD's LE container from recovered pieces
+2026-09-04 a5f9ea7 Add functional (loadable) VxD rebuild for objects without cross-object calls
+2026-09-03 7bd00c7 Carve string data out of code + recover the 11 zero-addend service tables
+2026-09-03 980fc2d README: cite 215/215 byte-exact on the Win95 VxD target
+2026-09-03 cb3cfc1 Resolve native nasm via config.json + fix the bundled fork
+2026-09-03 9b90b9b Add native nasm --masm path for byte-exact verification
+2026-09-03 5788873 vxd_idiom: batched corpus assembly verify (fewer DOSBox launches)
+2026-09-03 61c8437 recovered: full deterministic (PYTHONHASHSEED=0) byte-exact re-verify
+2026-09-03 85d59b6 recovered: re-verify VMM byte-exact after service-table disasm fix
+2026-09-03 4a3dc89 vxd: correct VMM's 406-service table (cap, reserved slots, shared handlers)
+2026-09-03 548d219 vxd_asm: service-table/DDB entry points are hard instruction boundaries
+2026-09-03 81043f2 vxd_idiom: correct service tables + fix control-dispatch code loss
+2026-09-03 abcc6ab vxd_idiom: cover the .386 stub modules too
+2026-09-03 add8cd0 vxd_idiom: complete the byte-preserve tail for corpus-wide clean assembly
+2026-09-03 c08013f vxd_idiom: idiomatic DDK-macro emitter that assembles through ML
+2026-09-03 7e3879b vxd: idiomatic DDK-macro form -- proven byte-exact for DDB + service calls
+2026-09-03 5aaf267 vxd: move recovered VxD source out of CodeBreaker to the Windows95 golden tree
+2026-09-03 412d9b5 vxd: retain the multi-file recovered source tree for all 215 VxDs
+2026-09-03 8025d63 vxd: raw_fallback flag only for code objects (not empty data objects)
+2026-09-03 3d0091d vxd: corpus byte-exact -- 94.5% genuinely re-assembled (was 17.7%)
+2026-09-03 a53c08b vxd: emit proper multi-file source tree (per segment + function)
+2026-09-03 ec15b94 vxd: name control-dispatch handlers + internal functions from the DDK
+2026-09-03 b464a79 vxd: split large objects into function-aligned files (real multi-file source)
+2026-09-03 27036ed vxd: corpus byte-exact results -- 82.2% genuinely re-assembled
+2026-09-03 6afb8cc vxd: probe-labelled per-instruction convergence -- kill the wholesale byte-copy
+2026-09-03 3e05bde vxd: emit only real page bytes (fix BSS-tail empty db lines)
+2026-09-03 fd60ea5 vxd: scale assembly timeout for large all-raw fallback objects
+2026-09-03 b3e52ca vxd: pin branch size + pre-force segment prefixes for convergence
+2026-09-03 44c5a97 vxd: corpus-scale byte-exact runner + robust convergence
+2026-09-03 1542e04 vxd: LINK /VXD full-file rebuild pipeline + object_body refactor
+2026-09-03 c3bbcef vxd: assemble-and-compare -- byte-exact rebuild of a VxD object
+2026-09-03 c48f574 vxd: retain recovered 32-bit source for all 215 VxD modules
+2026-09-03 a779741 vxd: resolve service ordinals to DDK names
+2026-09-03 0739b2e vxd: mark jump tables / DDB / service table as data; object-qualify labels
+2026-09-03 5294e61 vxd: overlap guard for descent + per-byte faithfulness verifier
+2026-09-03 acf2fc8 vxd: LE fixup resolution + recursive-descent 32-bit disassembler
+2026-09-03 cbba08f format_loaders: le.py -- Linear Executable loader for VxDs (the .386/.vxd campaign)
+2026-09-02 ea4c1e9 auto_sweep: harvest also segment-verifies needs-link functions via mocklink
+2026-09-02 a7eb10c msc6dec: body far/long evidence overrides a wrong callsig placement
+2026-09-02 53f5bfa msc6dec: pack far-pointer arg pushed from memory lanes (hi from [bp+N])
+2026-09-02 67cb04d msc6dec: model COM vtable dispatch (les es:[obj]; lcall es:[bx+N] -> lpVtbl[N/4](...))
+2026-09-02 44f1d71 inverse_engine: struct_verify -- structural (source-fidelity) verification
+2026-09-02 54be62f oracle_router: chunk large compile batches (reliable module-scale verification)
+2026-09-02 add3237 msc6dec: correct pascal param naming for callsig-less multi-param functions
+2026-09-02 6769597 msc6dec: byte load of a char param (mov al, byte ptr [bp+K])
+2026-09-02 b8eb847 msc6dec: far-pointer param recovery + long-variable arg packing
+2026-09-02 fcb3ba6 build_dll: Level-0-driven whole-module reconstruction + coverage
+2026-09-02 d20f490 auto_sweep: add harvest -- bank msc6dec-inverted C functions the router proves exact
+2026-09-02 057f1b0 inverse_engine: seg_thunk -- whole-function template banks the segment-switch thunks
+2026-09-02 751b068 msc6dec: recognize the sub-bp,2 far-frame epilogue variant
+2026-09-02 af22d41 msc6dec: declare stack locals in bp-offset order (match 1.52c rigid layout)
+2026-09-02 48cc217 reconstruct: tag asm-origin frames, route them off the C decompiler
+2026-09-02 765ab65 msc6dec: pack the dx:ax long-constant call argument
+2026-09-02 1d1cef5 msc6dec + router: accept the near-loadds frame (whole-module verification only)
+2026-09-02 320384f synth_search: route synthesis + verification by frame (auto_sweep now spans both compilers)
+2026-09-02 d824e35 inverse_engine: add oracle_router -- verify each function against its own compiler
+2026-09-02 f17d8db msc6dec: unoptimized control flow -- if/else, long conditionals, return threading
+2026-09-02 7522643 msc6dec: unoptimized-frame skip (imm16 sub sp) + push local-by-value
+2026-09-02 2cc72a3 inverse_engine: add msvc152_oracle -- the corpus's second compiler
+2026-09-02 201cef7 msc6dec: lea-variant epilogue, long/far dword-push args, param-order fix
+2026-09-02 4215e62 msc6dec: accept the mov-ax,ds prologue encoding -- unblock the 8cd8 corpus
+2026-09-02 5ce944d reconstruct: generalize framing to the prologue family -- corpus-wide reach
+2026-09-02 abb9d00 msc6dec: DX:AX 32-bit long-store idiom -- first yield-grammar, a whole class converts
+2026-09-02 7924559 msc6_oracle: batched compilation + dynamic core -- defeat the DOSBox spawn tax
+2026-09-02 ef92cdf inverse_engine: SPEED DIAL -- directed verification + parallel workers
+2026-09-02 f06586c inverse_engine: add auto_sweep.py daemon + fix g_bufread long-variant grammar
+2026-09-02 02da624 inverse_engine: add synth_search.py -- enumerative synthesis (the machine writes its rules)
+2026-09-02 1c5c0aa msc6dec: address-to-lvalue -- near-indexed reads + push-sr far-ptr packing
+2026-09-02 837075b inverse_engine: pipeline corpus regression -- track template:msc6dec:gap corpus-wide
+2026-09-02 84ca6c2 inverse_engine: add pipeline.py -- two-pass reconstruction + gap instrumentation
+2026-09-02 01d54a7 inverse_engine: add templates.py -- whole-function template synthesis (inverse codegen)
+2026-09-02 791f81d msc6: add build_dll.py -- two-toolchain whole-DLL build + per-segment oracle verify
+2026-09-02 628ddf5 foundation: add oracle.py -- extract canonical originals from the install-disc cabs
+2026-09-02 93e4d1c ghidra_batch: widen the code-file filter beyond dll/exe/vxd
+2026-09-02 a2929f8 ghidra: add ghidra_manifest.py -- index/prioritize the decompile drafts
+2026-09-02 db0d2dd ghidra_batch: parallelize (N concurrent workers) + resumable + live progress
+2026-09-02 85cb42c ghidra_batch: decompile 16-bit NE too (Ghidra x86:LE:16 + Win16 GDT)
+2026-09-02 45a2933 ghidra: add the 32-bit decompilation pipeline + period Win95 GDT builder
+2026-09-02 38829d5 msc6dec: fix intra-segment call duplication (cdecl cleanup + or-test)
+2026-09-02 99cbb13 mocklink: verify the push cs;call near (far-call optimization) case too
+2026-09-01 b872f3a sdk: try 8086 recipes too in the byte-exact verifier (refine + mocklink)
+2026-09-01 d666762 msc6dec: recover the materialized-boolean idiom (olecli seg4:0x28aa)
+2026-09-01 ab6ad3a msc6: add the Windows95-tree verified re-measure driver (wt msc6 remeasure)
+2026-09-01 af1bba4 sdk: resolve the Win95 reconstruction tree from WT_WIN95_ROOT + config
+2026-09-01 b32c3f7 package: ship config.json.example (not the live config) in the exe
+2026-09-01 7af9ff9 docs: rework README for a non-technical reader + dependency sources
+2026-09-01 6323fb8 package: hybrid ship exe -- double-click opens the UI, args run the CLI
+2026-09-01 198abd3 studio: native WinForms workbench (wt ui) — OS-themed, resizable
+2026-09-01 7f45c13 studio: unified native GDI workbench UI
+2026-09-01 82ec714 docs: rebuild README for the shipped tool + add not-in-repo inventory
+2026-09-01 09a82fd Integrate merged projects into CodeBreaker
+2026-09-01 4b307e8 CodeBreaker ship-ready: repo-relative paths, no leaked secrets/local paths, retired winnt4, refreshed docs
+2026-09-01 1401a73 CodeBreaker: unified RE tool state
+2026-08-30 6d73734 package_ff: byte-exact export wrapper must preserve caller callee-saved regs
+2026-08-30 b4bd08a package_ff: base-relocate the reconstituted image in DllMain (fixes shared-arena drop-ins)
+2026-08-30 ad7f2f5 package_ff: drop redundant static __cf0 decl (unbreaks byte-exact drop-in builds)
+2026-08-30 57a347f package_ff --redirect: propagate multi-register outputs through the detour thunk
+2026-08-30 df68fea package_ff --redirect: entry-point detour thunks make clean internals reachable
+2026-08-30 83c64d8 il/package_ff: symbolize clean-lift module globals to relocatable (_imgbase + rva)
+2026-08-30 15cf1f1 oracle: reject clean fns with non-relocatable absolute-global access (all widths)
+2026-08-30 5716cdb package_ff: global-relocation guard -- absolute-address globals in clean fns -> byte-exact
+2026-08-30 bf47749 recompile95: sound whole-graph gate + pointer-identity oracle (raises proven-clean yield)
+2026-08-30 639d2b3 @ engine: assorted updates (coverage goldens, diff cli/server, studio, recon_engine)
+2026-08-30 6890bb2 @ inverse_engine: 16-bit MZ/OMF reconstruction subsystem
+2026-08-30 6566f71 @ foundation: cwd-independent data-root + config path resolution (the silently-byte-exact fix)
+2026-08-30 163eeab @ recompile95: deregisterized --clean drop-in emission + shared lift/emission fixes
+2026-08-09 ec9a7c5 il.py: fix the subregister (8/16-bit) class -- width, sign, and byte-lane
+2026-08-09 fc83403 difftest: raise per-module budget 45s->90s so mfc40's 84 fns finish
+2026-08-09 6de6857 difftest: reuse one capstone engine (perf) so big modules finish in budget
+2026-08-09 bb331a5 difftest: map params to true esp-adjusted stack slots (not positional)
+2026-08-09 5cf2657 difftest: seed inputs per-function -> reproducible results
+2026-08-09 4c749f3 recompile95: recover dropped arg-load-into-eax (the gccnc class) in rc.adapt
+2026-08-09 981deac recompile95: memdifftest -- differential-test MEMORY (buffer) functions of the Lifted C
+2026-08-08 2d2321e recompile95: implement div/idiv/mulhi intrinsics for real (were compile stubs) + difftest timeout
+2026-08-08 2d5e575 difftest: skip void-return functions (they have no value to differential-test)
+2026-08-08 3954b93 vmdifftest: SELF-only clean harness -- SELF *is* the sound comparison vs win95's code
+2026-08-08 48aa076 vmdifftest: build LIFT.DLL freestanding so it loads on win95
+2026-08-08 db31f41 recompile95: vmdifftest -- VM differential-test ISO (Lifted C runs natively in 32-bit)
+2026-08-08 6fa946c recompile95: difftest -- the 32-bit differential harness (Lifted C provably RUNS)
+2026-08-08 fd581eb recompile95: unresolved jumps trap instead of silently falling through (Lifted C integrity)
+2026-08-08 27e15f8 symbol_engine: real CodeView 4 (NB09) name<->offset parser + internal-name propagation
+2026-08-08 b293045 diff: carve_pe (fast PE twin carve) + register win98_gold -> real cross-version propagate
+2026-08-08 24c786c diff: enrich win95 PE exports -> unblock cross-version name propagation
+2026-08-08 0b754bb sigrecover: fold SDK arities into signature recovery (ret N > SDK, doctrine-ordered)
+2026-08-08 eb63863 symbol_engine: symdb (unified symbol/type DB) + wire SDK signatures into impresolve
+2026-08-08 09afff5 symbol_engine: sdksyms += header parse (prototypes + struct layouts)
+2026-08-08 fa34de6 symbol_engine: sdksyms -- extract API name/arity DB from a period Windows SDK
+2026-08-08 cfd26f5 inverse_engine: globals (getters/setters) + indirect calls; 59/59; re-measure 0.9%
+2026-08-08 eb9f884 inverse_engine: msvc2cov -- real-win95 coverage harness + first honest number
+2026-08-08 b9757ed inverse_engine: model function calls (#1, biggest gap) + reloc-masked verify; 53/53
+2026-08-08 5b66d9c inverse_engine: model the last 2 declined shapes (a&b&c, a*b-c*d); 48/48
+2026-08-08 5e1e1f1 inverse_engine: finish the pop-flip family (n>=4 add, (a+b)*c, a*b+c*d); 46/46
+2026-08-08 90ad71a inverse_engine: crack the sched.c base-flip -> unlock sub-chains + p[i]; 42/42
+2026-08-08 33e204f inverse_engine: MSVC-2.0 model += inc/dec (+/-1) and stores; 38/38 both ways
+2026-08-08 4400f7c inverse_engine: widen MSVC-2.0 model to pointer/deref + comparison shapes
+2026-08-08 adfb140 inverse_engine: msvc2inv -- MSVC 2.0 bytes -> byte-exact C (25/25 round-trip)
+2026-08-08 324f7e3 docs: C2.EXE reversing map -- source inventory, code ranges, scheduler located
+2026-08-08 8e58ca3 docs: MSVC 2.0 C2.EXE diagnostic-switch probe results (/d2 dump attempt)
+2026-08-08 56edc04 inverse_engine: MSVC-2.0 forward model -- two-register additive/mixed evaluator
+2026-08-08 3e66fd5 inverse_engine: MSVC-2.0 forward model -- multiplicative chains (multi-op)
+2026-08-08 06dd5df symbol_engine: impresolve -- import (module,ordinal) -> API name resolver
+2026-08-08 464aec0 inverse_engine: MSVC-2.0 32-bit frame-layout model, 8/8 byte-exact
+2026-08-08 c06c4f9 inverse_engine: MSVC-2.0 forward model (32-bit), first class 18/18 byte-exact
+2026-08-07 409e4ef Initial commit: CodeBreaker — deterministic reverse-engineering workbench

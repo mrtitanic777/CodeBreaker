@@ -1,0 +1,94 @@
+#!/usr/bin/env python3
+r"""pe32util.py -- shared 32-bit PE helpers for the Layer-2 reconstruction
+pipeline (classify32 / emit_c / ml32 / l2pipe).
+
+Thin conveniences over the engine PE loader + capstone: carve a module, slice a
+function's bytes, enumerate its named (exported) functions, disassemble. Resolves
+the module through the active win95 target; `ensure_target()` makes the tools
+runnable standalone as well as under `wt --target win95`.
+"""
+import os
+import re
+import sys
+
+import capstone
+
+from codebreaker.core import paths
+
+_MD = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
+_CARVE = {}
+_NAMED = {}
+_IMPORTS = {}
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Bootstrap: put the target dir on sys.path so bare sibling imports (cc32,
+# segdiff, target, classify32, ...) resolve, and activate the win95 target so
+# cc32's cores-based `target` works -- for standalone `python -m` use. Idempotent
+# and harmless when `wt` already did this. Importing pe32util FIRST in each
+# pipeline module is enough to arm the whole set.
+if APP_DIR not in sys.path:
+    sys.path.insert(0, APP_DIR)
+try:
+    from codebreaker.core import cores as _cores
+    if _cores._active_dir is None:
+        _cores.set_target(APP_DIR)
+except Exception:
+    pass
+
+
+def ensure_target():
+    """Point cores at win95 + cd into a data root, idempotently (mirrors
+    msvc2cov._setup so a tool works with no `wt` wrapper)."""
+    from codebreaker.core import cores
+    if cores._active_dir is None:
+        cores.set_target(APP_DIR)
+    roots = ([os.path.join(os.environ["WT_DATA_ROOT"], "win95")]
+             if os.environ.get("WT_DATA_ROOT") else [])
+    roots += [paths.data_root(), os.getcwd()]
+    for r in roots:
+        if os.path.isdir(os.path.join(r, "files")) or os.path.isdir(os.path.join(r, "src")):
+            os.chdir(r)
+            return
+
+
+def carve(module):
+    ensure_target()
+    if module not in _CARVE:
+        import target
+        from codebreaker.formats import pe_trace
+        _CARVE[module] = pe_trace.PeCarve(target.resolve(module))
+    return _CARVE[module]
+
+
+def image_base(module):
+    return carve(module).pe.image_base
+
+
+def func_bytes(c, start, end):
+    for sva, data, _nm in c.sections:
+        if sva <= start < sva + len(data):
+            return bytes(data[start - sva:end - sva])
+    return b""
+
+
+def named_funcs(module):
+    if module not in _NAMED:                              # memoized: rebuilt-per-function was O(n^2)
+        c = carve(module); base = c.pe.image_base
+        out = [(s - base, f["name"], s, f["end"]) for s, f in c.funcs.items() if f.get("name")]
+        out.sort()
+        _NAMED[module] = out
+    return _NAMED[module]
+
+
+def imports(module):
+    if module not in _IMPORTS:                            # memoized: re-parsed-per-function was O(n^2)
+        _IMPORTS[module] = dict(carve(module).pe.imports())
+    return _IMPORTS[module]
+
+
+def disasm(b, va=0):
+    return list(_MD.disasm(b, va))
+
+
+def hexs(b):
+    return " ".join("%02x" % x for x in b)
