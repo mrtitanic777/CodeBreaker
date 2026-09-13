@@ -14,7 +14,7 @@ Runs Ghidra headless (`analyzeHeadless`) on `files/<module>`, imports + analyzes
 it once into a reusable project, and runs `ghidra_scripts/win95_decomp.py` to
 dump each function's decompiled C to `reports/ghidra/<module>/`.
 
-Requires a JDK (Ghidra 11.3.2 needs 17+) on PATH or JAVA_HOME.
+Requires a JDK (Ghidra 12.1.3 needs 21+) on PATH or JAVA_HOME.
 
     python ghidra.py USER.EXE
     python ghidra.py SHELL32.DLL --keep     # keep the Ghidra project
@@ -60,7 +60,7 @@ def run(module, keep=False, timeout=1800):
     n = len([f for f in os.listdir(outdir) if f.endswith(".c")])
     print("# %s: %d decompiled functions -> %s" % (base, n, outdir))
     if n == 0 and ("JAVA_HOME" in (r.stdout + r.stderr) or "java" in (r.stdout + r.stderr).lower()):
-        print("# (looks like a JDK issue — Ghidra 11.3.2 needs JDK 17+ on PATH/JAVA_HOME)")
+        print("# (looks like a JDK issue — Ghidra 12.1.3 needs JDK 21+ on PATH/JAVA_HOME)")
     return outdir, n
 
 

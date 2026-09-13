@@ -36,7 +36,7 @@ def _cfg(key, default=""):
 # `ghidra`/`java` keys that config.json.example actually ships, so a install is
 # found however the user spelled it.
 GHIDRA = os.environ.get("GHIDRA_HOME") or _cfg("ghidra_home") or _cfg("ghidra") or \
-    r"C:\Users\mrtit\Desktop\My Projects\Xbox 360\ghidra_11.3.2_PUBLIC"
+    r"C:\Users\mrtit\Desktop\My Projects\Xbox 360\ghidra_12.1.3_PUBLIC"
 JAVA_HOME = os.environ.get("JAVA_HOME") or _cfg("java_home") or _cfg("java") or \
     r"C:\Program Files\Java\jdk-21"
 GDT_DIR = os.path.join(ROOT, "binaries", "ghidra_gdt")

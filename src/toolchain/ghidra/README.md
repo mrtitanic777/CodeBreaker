@@ -37,7 +37,7 @@ Hex-Rays/NSA made building their archive; it is **not** a Ghidra-parser bug to b
 
 ## Usage
 
-Requires Ghidra 11.3.2 + JDK 21 (set `GHIDRA_HOME`/`JAVA_HOME`, or `ghidra_home`/`java_home`
+Requires Ghidra 12.1.3 + JDK 21 (set `GHIDRA_HOME`/`JAVA_HOME`, or `ghidra_home`/`java_home`
 in `config.json`).
 
 ```
