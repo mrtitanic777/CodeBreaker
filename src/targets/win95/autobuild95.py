@@ -610,7 +610,7 @@ _PROVENANCE = (
 
 def recover_from_decompile(decompile_path, outdir, module=None, seg_names=None, name_map=None,
                            struct_map=None, param_map=None, raise_bodies=True, header=None,
-                           ne=False, far_names=None, far_type="BYTE"):
+                           ne=False, far_names=None, far_type="BYTE", dword_names=None):
     """Ingest a Ghidra C export and emit per-segment .c files + a shared header, grouped by the real
     NE code segments. With raise_bodies (default), each function body is put through the raise95 pass
     (Ghidra-C -> authored-style period C: real types, MAKELONG/HIWORD/etc., real API casing, and --
@@ -624,6 +624,7 @@ def recover_from_decompile(decompile_path, outdir, module=None, seg_names=None, 
     struct_map = struct_map or {}
     param_map = param_map or {}
     far_names = dict(far_names or {})
+    dword_names = dict(dword_names or {})
 
     def _load(modname):
         try:
@@ -675,7 +676,7 @@ def recover_from_decompile(decompile_path, outdir, module=None, seg_names=None, 
     # NE far-pointer pre-scan (module-wide): coalesce Ghidra's off/sel word pairs into single FAR
     # pointers. Detection uses MAKELONG evidence + Ghidra's own pointer typing of the offset slot.
     far_pairs, far_types, pair_off, pair_sel = {}, {}, set(), set()
-    dword_pairs, dword_names, dw_lo, dw_hi = {}, {}, set(), set()
+    dword_pairs, dw_lo, dw_hi = {}, set(), set()
     if ne:
         def _addr(nm):
             mm = _re2.match(r"_?DAT_([0-9a-fA-F]{2,4}_[0-9a-fA-F]{2,4})$", nm)

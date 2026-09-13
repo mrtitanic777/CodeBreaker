@@ -225,10 +225,19 @@ def analyze_dword_pairs(text, exclude=None):
                     pairs[off] = sel
             except ValueError:
                 pass
+    A = r"[0-9a-fA-F]{2,4}_[0-9a-fA-F]{2,4}"
     # 2-line store idiom (either order)
-    for m in re.finditer(r"DAT_(%s) = \(WORD\)\(\(DWORD\)[^;]*>> 0x10\);\s*\n\s*DAT_(%s) = \(WORD\)"
-                         % (r"[0-9a-fA-F]{2,4}_[0-9a-fA-F]{2,4}", r"[0-9a-fA-F]{2,4}_[0-9a-fA-F]{2,4}"), text):
+    for m in re.finditer(r"DAT_(%s) = \(WORD\)\(\(DWORD\)[^;]*>> 0x10\);\s*\n\s*DAT_(%s) = \(WORD\)" % (A, A), text):
         hi, lo = m.group(1), m.group(2)
+        try:
+            if _plus2(lo) == hi and lo not in exclude:
+                pairs[lo] = hi
+        except ValueError:
+            pass
+    # 32-bit increment-with-carry idiom: DAT_lo = DAT_lo + x; DAT_hi = DAT_hi + (UINT)<carry>;
+    # (the carry is a CARRY2()/overflow bool) -- strong evidence of a DWORD counter split in two.
+    for m in re.finditer(r"DAT_(%s) = DAT_\1 \+ \w+;\s*\n\s*DAT_(%s) = DAT_\2 \+ \(UINT\)" % (A, A), text):
+        lo, hi = m.group(1), m.group(2)
         try:
             if _plus2(lo) == hi and lo not in exclude:
                 pairs[lo] = hi
