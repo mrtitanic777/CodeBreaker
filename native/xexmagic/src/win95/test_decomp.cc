@@ -14,6 +14,19 @@ int main(int argc, char** argv) {
   uint32_t end   = (uint32_t)strtoul(argv[3], nullptr, 16);
   std::string name = argc > 4 ? argv[4] : "func";
 
+  // Complete import naming: read the system DLLs' own export name tables.
+  std::string dir(argv[1]);
+  size_t sl = dir.find_last_of("/\\"); dir = sl == std::string::npos ? "." : dir.substr(0, sl);
+  std::map<std::string, std::map<int, std::string>> sysExports;
+  auto loadSys = [&](const std::string& mod, const std::string& file) {
+    win95::NEImage d = win95::LoadNE(dir + "/" + file);
+    if (!d.ok) return;
+    auto& mm = sysExports[mod];
+    for (auto& pr : d.resident_names)    if (pr.second) mm[pr.second] = pr.first;
+    for (auto& pr : d.nonresident_names) if (pr.second) mm[pr.second] = pr.first;
+  };
+  loadSys("KERNEL", "krnl386.exe"); loadSys("USER", "user.exe"); loadSys("GDI", "gdi.exe");
+
   win95::X86Lifter lifter;
   std::map<uint32_t, std::string> names;
   for (auto& e : img.entries) if (e.addr) names[e.addr] = "export_" + std::to_string(e.ordinal);
@@ -34,7 +47,11 @@ int main(int argc, char** argv) {
       } else if (r.kind == win95::NEReloc::IMPORTORD) {
         std::string mod = (r.module >= 1 && r.module <= (int)img.module_refs.size())
                               ? img.module_refs[r.module - 1] : "IMP";
-        std::string known = win95::Win16Name(mod, r.ordinal);
+        std::string um = mod; for (auto& ch : um) ch = (char)toupper((unsigned char)ch);
+        auto me = sysExports.find(um);
+        std::string known;
+        if (me != sysExports.end()) { auto oi = me->second.find(r.ordinal); if (oi != me->second.end()) known = oi->second; }
+        if (known.empty()) known = win95::Win16Name(mod, r.ordinal);   // seed fallback
         nm = !known.empty() ? known : (mod + "_" + std::to_string(r.ordinal));
       } else if (r.kind == win95::NEReloc::IMPORTNAME) {
         std::string mod = (r.module >= 1 && r.module <= (int)img.module_refs.size())
