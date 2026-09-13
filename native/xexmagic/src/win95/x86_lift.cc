@@ -208,6 +208,19 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
       else if (m == "shl" || m == "sal") binop(ILOp::Shl);
       else if (m == "shr") binop(ILOp::Shr);
       else if (m == "sar") binop(ILOp::Sar);
+      else if ((m == "rol" || m == "ror") && in.ops[1].kind == OpKind::Imm) {
+        // rotate by immediate -> the recognizable ((x<<n)|(x>>(w-n))) C idiom
+        int w = in.ops[0].size * 8;
+        int n = (int)(in.ops[1].imm % w);
+        ILValue x = srcValue(in.ops[0]);
+        ILType t = WidthType(in.ops[0].size);
+        int ln = (m == "rol") ? n : (w - n);   // left-shift amount
+        int rn = w - ln;                        // right-shift amount
+        ILInstr sl; sl.op = ILOp::Shl; sl.address = a; sl.src1 = x; sl.imm = ln; sl.dst = fn.AllocValue(t); bb.instrs.push_back(sl);
+        ILInstr sr; sr.op = ILOp::Shr; sr.address = a; sr.src1 = x; sr.imm = rn; sr.dst = fn.AllocValue(t); bb.instrs.push_back(sr);
+        ILInstr o; o.op = ILOp::Or; o.address = a; o.src1 = sl.dst; o.src2 = sr.dst; o.dst = fn.AllocValue(t); bb.instrs.push_back(o);
+        storeTo(in.ops[0], o.dst);
+      }
       else if (m == "neg" || m == "not") {
         ILInstr x; x.op = (m == "neg") ? ILOp::Neg : ILOp::Not; x.address = a;
         x.src1 = srcValue(in.ops[0]); x.dst = fn.AllocValue(WidthType(in.ops[0].size));
@@ -317,6 +330,10 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
           x.src1 = getReg(kGpBase, 2); x.src2 = srcValue(in.ops[0]);
           x.dst = fn.AllocValue(ILType::U16); bb.instrs.push_back(x); setReg(kGpBase, x.dst);
         }
+      } else if (m == "div" || m == "idiv") {
+        ILInstr x; x.op = (m == "idiv") ? ILOp::Div : ILOp::DivU; x.address = a;
+        x.src1 = getReg(kGpBase, 2); x.src2 = srcValue(in.ops[0]);
+        x.dst = fn.AllocValue(ILType::U16); bb.instrs.push_back(x); setReg(kGpBase, x.dst);
       } else if (m == "xchg") {
         ILValue v0 = srcValue(in.ops[0]), v1 = srcValue(in.ops[1]);
         storeTo(in.ops[0], v1); storeTo(in.ops[1], v0);
@@ -331,9 +348,36 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
         if (in.ops[0].kind == OpKind::Rel) br.target = (uint32_t)in.ops[0].imm;
         bb.instrs.push_back(br);
         bb.successors.push_back(br.target); bb.successors.push_back(next);
+      } else if (m.rfind("movs", 0) == 0 || m.rfind("stos", 0) == 0 || m.rfind("lods", 0) == 0) {
+        int esz = m.back() == 'b' ? 1 : m.back() == 'd' ? 4 : 2;
+        int DI = kGpBase + 7, SI = kGpBase + 6, CX = kGpBase + 1, AX = kGpBase;
+        auto stageCall = [&](const char* nm, std::initializer_list<ILValue> args) {
+          int i = 0;
+          for (ILValue v : args) { ILInstr ar; ar.op = ILOp::Assign; ar.address = a;
+            ar.src1 = v; ar.dst = fn.AllocValue(v.type, 3 + i++); bb.instrs.push_back(ar); }
+          ILInstr c; c.op = ILOp::Call; c.address = a; c.call_name = nm;
+          c.dst = fn.AllocValue(ILType::U16, kGpBase); bb.instrs.push_back(c);
+        };
+        if (m[0] == 'm') {                    // movs: copy [si]->[di]
+          if (in.rep) stageCall("memcpy", {getReg(DI, 2), getReg(SI, 2), getReg(CX, 2)});
+          else { ILInstr ld; ld.op = ILOp::Load; ld.address = a; ld.src1 = getReg(SI, 2);
+                 ld.access_type = WidthType(esz); ld.dst = fn.AllocValue(WidthType(esz));
+                 bb.instrs.push_back(ld);
+                 ILInstr st; st.op = ILOp::Store; st.address = a; st.src1 = getReg(DI, 2);
+                 st.src2 = ld.dst; st.access_type = WidthType(esz); bb.instrs.push_back(st); }
+        } else if (m[0] == 's') {             // stos: fill [di] with al/ax
+          if (in.rep) stageCall("memset", {getReg(DI, 2), getReg(AX, esz), getReg(CX, 2)});
+          else { ILInstr st; st.op = ILOp::Store; st.address = a; st.src1 = getReg(DI, 2);
+                 st.src2 = getReg(AX, esz); st.access_type = WidthType(esz); bb.instrs.push_back(st); }
+        } else {                              // lods: al/ax = [si]
+          ILInstr ld; ld.op = ILOp::Load; ld.address = a; ld.src1 = getReg(SI, 2);
+          ld.access_type = WidthType(esz); ld.dst = fn.AllocValue(WidthType(esz));
+          bb.instrs.push_back(ld); setReg(AX, ld.dst);
+        }
       } else {
         ILInstr x; x.op = ILOp::InlineAsm; x.address = a; x.asm_text = FormatX86(in);
         bb.instrs.push_back(x);
+        if (getenv("LIFT_DIAG")) std::fprintf(stderr, "UNHANDLED %s\n", m.c_str());
       }
       a = next;
     }
