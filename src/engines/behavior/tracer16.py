@@ -362,6 +362,18 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
         rec["path"] = []; rec["insn_count"] = 0; rec["prelude_ran"] = len(prelude)
         _enter(seg, offset, args)
 
+    # snapshot the register file the main function sees at entry (the implicit inputs behind
+    # Ghidra's in_/unaff_ pseudo-vars). Meaningful for an in-context run (real caller via prelude).
+    from unicorn.x86_const import (UC_X86_REG_EBX, UC_X86_REG_ECX, UC_X86_REG_ESI, UC_X86_REG_EDI,
+                                   UC_X86_REG_EBP)
+    rec["entry_regs"] = {
+        "AX": uc.reg_read(UC_X86_REG_EAX) & 0xFFFF, "BX": uc.reg_read(UC_X86_REG_EBX) & 0xFFFF,
+        "CX": uc.reg_read(UC_X86_REG_ECX) & 0xFFFF, "DX": uc.reg_read(UC_X86_REG_EDX) & 0xFFFF,
+        "SI": uc.reg_read(UC_X86_REG_ESI) & 0xFFFF, "DI": uc.reg_read(UC_X86_REG_EDI) & 0xFFFF,
+        "BP": uc.reg_read(UC_X86_REG_EBP) & 0xFFFF, "CS": uc.reg_read(UC_X86_REG_CS),
+        "DS": uc.reg_read(UC_X86_REG_DS), "ES": uc.reg_read(UC_X86_REG_ES),
+        "SS": uc.reg_read(UC_X86_REG_SS)}
+
     try:
         uc.emu_start(offset, SENT_BASE, count=insn_cap + 1)
         rec["exit"] = "truncated" if rec["truncated"] else "ret"

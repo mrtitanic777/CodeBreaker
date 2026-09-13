@@ -126,7 +126,33 @@ def probe(dll, ordinal=None, seg=None, offset=None, args=None, stub=default_stub
                              args=args, arity=len(args or []), import_stub=_stub,
                              prelude=prelude, **kw)
     rec["heaps"] = {"base": HEAP_BASE, "stride": HEAP_STRIDE}
+    ctx = ctx_box.get("ctx")
+    rec["heap_sels"] = {s: b for s, (b, _sz) in ctx.heaps.items()} if ctx else {}
     return rec
+
+
+def _identify(v, rec):
+    """Classify an observed 16-bit value: far-heap selector, LZ handle, stub file handle, or const."""
+    if v in (rec.get("heap_sels") or {}):
+        return "far-heap selector (a GlobalAlloc'd buffer)"
+    if 0x400 <= v <= 0x40F:
+        return "LZ handle (0x400 + state index %d)" % (v - 0x400)
+    if v == 0x0080:
+        return "open file handle (from _lopen/_lcreat stub)"
+    return "constant 0x%x" % v
+
+
+def resolve_inputs(rec):
+    """Oracle-assisted resolution of a function's in_/unaff_ inputs: report the register file the
+    function received at entry, and the ACTUAL arguments observed at every API call (which is what
+    the decompile's `unaff_X`/`in_X` call-args really are). Turns blind pseudo-vars into observed,
+    identified values."""
+    out = {"entry_regs": rec.get("entry_regs", {}), "calls": []}
+    for h in rec.get("imports_hit", []):
+        a = h.get("args_stack", [])[:4]
+        out["calls"].append({"api": _api(h), "args": a,
+                             "identified": [_identify(x, rec) for x in a]})
+    return out
 
 
 def classify(rec):
