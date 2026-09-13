@@ -18,8 +18,8 @@ import struct
 import subprocess
 import tempfile
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(os.path.dirname(HERE))                 # CodeBreaker/
+HERE = os.path.dirname(os.path.abspath(__file__))            # src/toolchain/ghidra
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))  # CodeBreaker/ (src/toolchain/ghidra -> up 3)
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
@@ -84,8 +84,8 @@ def decompile_one(dll, out_c):
     headless = os.path.join(GHIDRA, "support", "analyzeHeadless.bat")
     with tempfile.TemporaryDirectory(prefix="ghproj_") as proj:
         args = [headless, proj, "b", "-import", dll, "-scriptPath", HERE,
-                "-preScript", "AggressivePre.py",
-                "-postScript", "DecompilePipeline.py", out_c]
+                "-preScript", "AggressivePre.java",
+                "-postScript", "DecompilePipeline.java", out_c]
         if gdt and os.path.exists(gdt):
             args.append(gdt)
         args += ["-deleteProject", "-analysisTimeoutPerFile", "900"]
