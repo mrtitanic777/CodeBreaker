@@ -447,17 +447,20 @@ def recover_flat_thunk(pe_path, outdir):
 
     # 4) veneer .c scaffold -- DllMain + a thunk-through per export (logic flagged for curation)
     with open(os.path.join(outdir, module + ".c"), "w") as f:
-        f.write("/* %s.c -- 32-bit flat-thunk veneer (SCAFFOLD). DllMain + per-export thunk-through;\n"
-                " * real arg marshalling, A/W handling, and any pre/post logic need curation. */\n"
+        f.write("/* %s.c -- 32-bit flat-thunk veneer (SCAFFOLD). DllMain + per-export thunk-through.\n"
+                " * Per-function tags: documented/undocumented = is it a published API; behavioral =\n"
+                " * body reconstructed from observed behavior (not byte-exact); scaffold = not yet\n"
+                " * implemented. Curation fills in the marshalling and sets each function's real tags. */\n"
                 "#define WIN32_LEAN_AND_MEAN\n#include <windows.h>\n\n"
                 "extern BOOL __stdcall %s_ThunkConnect32(LPSTR,LPSTR,HINSTANCE,DWORD);\n\n"
+                "/* DLL entry; scaffold */\n"
                 "BOOL WINAPI DllMain(HINSTANCE h, DWORD r, LPVOID res)\n{\n"
                 "    if (r == DLL_PROCESS_ATTACH) { DisableThreadLibraryCalls(h);\n"
                 "        if (!%s_ThunkConnect32(\"?16.DLL\", \"%s.DLL\", h, r)) return FALSE; }\n"
                 "    else if (r == DLL_PROCESS_DETACH) %s_ThunkConnect32(\"?16.DLL\", \"%s.DLL\", h, r);\n"
                 "    return TRUE;\n}\n\n" % (module, module, module, module.upper(), module, module.upper()))
         for ordv, nm in exps:
-            f.write("/* @%d %s -- TODO: marshal args, call the thunk, handle return */\n"
+            f.write("/* @%d %s -- API (mark documented/undocumented); scaffold. TODO: marshal + thunk + return */\n"
                     "INT WINAPI %s(void) { return 0; }\n\n" % (ordv, nm, nm))
 
     return {"module": module, "n_exports": len(exps), "k32_ordinals": ords,
