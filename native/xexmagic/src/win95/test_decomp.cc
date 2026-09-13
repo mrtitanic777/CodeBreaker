@@ -7,11 +7,17 @@
 #include "decompiler_c.h"
 
 int main(int argc, char** argv) {
-  if (argc < 4) { std::printf("usage: %s <ne> <hexentry> <hexend> [name]\n", argv[0]); return 2; }
+  bool modeFlag = argc >= 3 && argv[2][0] == '-' && argv[2][1] == '-';
+  if (argc < 4 && !modeFlag) {
+    std::printf("usage: %s <ne> <hexentry> <hexend> [name]\n"
+                "       %s <ne> --module 0        (decompile whole module)\n"
+                "       %s <ne> --disasm          (disassemble whole module)\n",
+                argv[0], argv[0], argv[0]); return 2;
+  }
   win95::NEImage img = win95::LoadNE(argv[1]);
   if (!img.ok) { std::printf("FAIL: %s\n", img.error.c_str()); return 1; }
   uint32_t entry = (uint32_t)strtoul(argv[2], nullptr, 16);
-  uint32_t end   = (uint32_t)strtoul(argv[3], nullptr, 16);
+  uint32_t end   = argc > 3 ? (uint32_t)strtoul(argv[3], nullptr, 16) : 0;
   std::string name = argc > 4 ? argv[4] : "func";
 
   // Complete import naming: read the system DLLs' own export name tables.
@@ -81,6 +87,36 @@ int main(int argc, char** argv) {
     }
   }
   lifter.SetCallSites(sites);
+
+  // Disassembler engine: emit an instruction listing (addr: bytes  mnem ops),
+  // annotating call targets with resolved names. Whole module by default.
+  if (std::string(argv[2]) == "--disasm") {
+    for (auto& s : img.segments) {
+      if (s.is_data) continue;
+      std::printf("; ---- segment %d  (%u bytes) ----\n", s.idx, s.length);
+      for (uint32_t a = s.base_addr, e2 = s.base_addr + s.length; a < e2;) {
+        auto nn = names.find(a);
+        if (nn != names.end()) std::printf("\n%s:\n", nn->second.c_str());
+        win95::X86Insn in = win95::DecodeX86(img.image.data(), img.image.size(), a, a, true);
+        int len = in.valid ? in.len : 1;
+        std::string bytes;
+        for (int i = 0; i < len && a + i < img.image.size(); ++i) {
+          char b[4]; std::snprintf(b, sizeof b, "%02X", img.image[a + i]); bytes += b;
+        }
+        std::string text = in.valid ? win95::FormatX86(in) : "(bad)";
+        // annotate resolved call / branch targets
+        auto si = sites.find(a);
+        if (si != sites.end()) { text += "  ; -> "; text += si->second.second; }
+        else if (in.valid && (in.mnem == "call" || in.mnem[0] == 'j') && in.ops[0].kind == win95::OpKind::Rel) {
+          auto tn = names.find((uint32_t)in.ops[0].imm);
+          if (tn != names.end()) { text += "  ; -> "; text += tn->second; }
+        }
+        std::printf("  %04X:%04X %-14s %s\n", a >> 16, a & 0xFFFF, bytes.c_str(), text.c_str());
+        a += len;
+      }
+    }
+    return 0;
+  }
 
   // Whole-module mode: discover function starts and decompile every one.
   if (std::string(argv[2]) == "--module") {

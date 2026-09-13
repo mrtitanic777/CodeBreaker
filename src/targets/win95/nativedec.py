@@ -43,6 +43,15 @@ def decompile_function(ne_path, entry, end, name="func", timeout=120):
     return r.stdout
 
 
+def disassemble_module(ne_path, timeout=300):
+    """Disassemble every code segment; returns the instruction listing text."""
+    if not available():
+        raise RuntimeError("win95dec not built: cmake --build native/xexmagic/build --target win95dec")
+    r = subprocess.run([_BIN, ne_path, "--disasm"],
+                       capture_output=True, text=True, timeout=timeout)
+    return r.stdout
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) < 2:
