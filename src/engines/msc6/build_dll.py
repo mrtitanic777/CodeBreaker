@@ -75,7 +75,9 @@ def build(recon_dir, work_dir=None, modules=None):
     with open(os.path.join(work, "b.conf"), "w", newline="") as f:
         f.write("[cpu]\r\ncycles=max\r\n[autoexec]\r\n")
         f.write("mount c %s\r\nmount e %s\r\nmount d %s\r\n" % (_win(msc6), _win(msvc), _win(work)))
-        f.write("set PATH=C:\\BIN;E:\\BIN\r\nset LIB=E:\\LIB\r\n")
+        # windows.h/OFSTRUCT live in the SDK (msvc-1.52c) INCLUDE, the CRT headers in msc-6.0a;
+        # CL needs both on INCLUDE or a <windows.h> module won't compile.
+        f.write("set PATH=C:\\BIN;E:\\BIN\r\nset INCLUDE=C:\\INCLUDE;E:\\INCLUDE\r\nset LIB=E:\\LIB\r\n")
         f.write("d:\r\ncall BUILD.BAT\r\nexit\r\n")
     subprocess.run([dbx, "-conf", os.path.join(work, "b.conf"), "-fastlaunch"],
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=600)
