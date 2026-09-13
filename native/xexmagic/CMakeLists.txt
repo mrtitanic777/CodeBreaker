@@ -180,3 +180,22 @@ add_custom_command(TARGET xexmagic POST_BUILD
             $<TARGET_FILE_DIR:xexmagic>/rt360_runtime.h
     COMMENT "Staging runtime data next to xexmagic"
 )
+
+# ---------------------------------------------------------------------------
+# win95dec -- the Win95 x86 disassembler+decompiler CLI (the x86 port).
+# NE loader + x86 decode + x86->IL lift -> reused DecompileToC back-end.
+# ---------------------------------------------------------------------------
+add_executable(win95dec
+    src/win95/ne_loader.cc
+    src/win95/x86_decode.cc
+    src/win95/x86_lift.cc
+    src/win95/test_decomp.cc
+    src/decompiler_c.cc
+    src/var_allocator.cc
+    ${SRC_PPC_TABLES}
+)
+target_include_directories(win95dec PRIVATE src third_party src/ppc/compat)
+if(MSVC)
+    target_compile_definitions(win95dec PRIVATE _CRT_SECURE_NO_WARNINGS)
+    target_compile_options(win95dec PRIVATE /bigobj)
+endif()
