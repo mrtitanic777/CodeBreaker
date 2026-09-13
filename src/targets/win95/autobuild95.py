@@ -595,15 +595,38 @@ def _parse_decompile(text):
     return globals_lines, funcs
 
 
-def recover_from_decompile(decompile_path, outdir, module=None):
+# Standard provenance banner -- what is real vs inferred in a reconstructed source file. A shipped
+# binary does NOT preserve source file names, the split into files, internal function names, locals,
+# or comments; it DOES preserve the NE segment layout and the exported/imported name tables. So the
+# filename + split are inferred from the segment layout, exported names are real, internals inferred.
+_PROVENANCE = (
+    " * RECONSTRUCTION PROVENANCE: this filename and the split into files are INFERRED from the\n"
+    " * binary's NE segment layout -- a shipped binary does not record source names or how code was\n"
+    " * split across .c files. EXPORTED names (from the DLL name table) are REAL; internal function\n"
+    " * names are INFERRED from behaviour/refs (and, where possible, the SDK/DDK + clean-room refs).\n"
+    " * Bodies are translated from a Ghidra decompile and verified against the binary -- authentic\n"
+    " * method + binary-verified, NOT source-text-exact.")
+
+
+def recover_from_decompile(decompile_path, outdir, module=None, seg_names=None, name_map=None):
     """Ingest a Ghidra C export and emit per-segment .c scaffolds + a shared header, grouped by the
     real NE code segments. Each function keeps the decompiler body as an inline reference to translate
-    to clean period C (curation). This is the Recover stage for logic modules where a decompile exists."""
+    to clean period C (curation). This is the Recover stage for logic modules where a decompile exists.
+
+    seg_names: optional {seg_num: "rolename"} -> emit "<rolename>.c" (inferred role-based filenames)
+      instead of "<mod>_seg%02d.c". name_map: optional {FUN_name: "inferred"} -> emit each function
+      under its inferred name (noting the original), for both the prototypes and the scaffolds."""
+    seg_names = seg_names or {}
+    name_map = name_map or {}
     text = open(decompile_path, encoding="latin1", errors="replace").read()
     module = (module or os.path.splitext(os.path.basename(decompile_path))[0]).lower()
     module = _re2.sub(r"\.dll$|\.txt$|^g|^bn", "", module) or "mod"
     os.makedirs(outdir, exist_ok=True)
     gl, funcs = _parse_decompile(text)
+
+    def disp(f):
+        return name_map.get(f["name"], f["name"])
+
     by_seg = {}
     for f in funcs:
         by_seg.setdefault(f["seg"], []).append(f)
@@ -641,27 +664,35 @@ def recover_from_decompile(decompile_path, outdir, module=None):
                 note = ("  /* also: %s */" % ", ".join(views[1:])) if len(views) > 1 else ""
                 h.write("extern %s %s;%s\n" % (views[0], nm, note))
             h.write("\n")
-        h.write("/* function prototypes */\n")
+        h.write("/* function prototypes (inferred names; original FUN_ noted where renamed) */\n")
         for f in funcs:
-            h.write("%s %s(%s);\n" % (f["ret"], f["name"], f["params"] or "void"))
+            note = ("  /* was %s */" % f["name"]) if disp(f) != f["name"] else ""
+            h.write("%s %s(%s);%s\n" % (f["ret"], disp(f), f["params"] or "void", note))
         h.write("\n#endif\n")
 
-    # per-segment .c scaffolds
+    # per-segment .c scaffolds -- filename from the inferred role name (seg_names) or seg-numbered.
+    seg_file = {}
     for seg in sorted(by_seg):
-        fn = "%s_seg%02d.c" % (module, seg)
+        role = seg_names.get(seg) or seg_names.get(str(seg))
+        fn = ("%s.c" % role) if role else ("%s_seg%02d.c" % (module, seg))
+        seg_file[seg] = fn
         with open(os.path.join(outdir, fn), "w", encoding="utf-8") as c:
-            c.write("/* %s -- NE code segment %d (recovered from decompile). Each function carries the\n"
-                    " * decompiler output as a reference; translate to clean period C, then delete the\n"
-                    " * reference block. Tag each: doc/undoc + verified/behavioral. */\n"
-                    "#include \"%sh.h\"\n\n" % (fn, seg, module))
+            c.write("/* %s -- %s: NE code segment %d%s.\n%s\n"
+                    " * Each function carries its decompiler output as a reference; translate to clean\n"
+                    " * period C, then delete the reference block. Tag each: doc/undoc + verified/behavioral. */\n"
+                    "#include \"%sh.h\"\n\n"
+                    % (fn, module, seg, (" (%s)" % role) if role else "", _PROVENANCE, module))
             for f in by_seg[seg]:
-                c.write("/* %s -- scaffold (from decompile); mark doc/undoc + accuracy */\n"
-                        "%s %s(%s)\n{\n" % (f["name"], f["ret"], f["name"], f["params"] or "void"))
+                was = ("  (was %s)" % f["name"]) if disp(f) != f["name"] else ""
+                c.write("/* %s%s -- scaffold (from decompile); mark doc/undoc + accuracy */\n"
+                        "%s %s(%s)\n{\n" % (disp(f), was, f["ret"], disp(f), f["params"] or "void"))
                 ref = "\n".join("    " + l for l in f["body"].split("\n")[1:-1] if l.strip())
                 c.write("    /* === decompiler reference -- translate + delete ===\n")
                 c.write(ref + "\n    === end reference === */\n}\n\n")
 
-    manifest = {"module": module, "segments": {str(s): [f["name"] for f in by_seg[s]] for s in sorted(by_seg)},
+    manifest = {"module": module,
+                "segments": {str(s): {"file": seg_file[s], "role": seg_names.get(s) or seg_names.get(str(s)),
+                                      "functions": [disp(f) for f in by_seg[s]]} for s in sorted(by_seg)},
                 "n_functions": len(funcs), "n_globals": len(gl)}
     json.dump(manifest, open(os.path.join(outdir, "DECOMPILE_MANIFEST.json"), "w"), indent=1)
     return manifest
