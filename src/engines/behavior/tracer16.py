@@ -245,10 +245,15 @@ def _patch_chain(uc, base, r, tsel, toff):
 
 
 def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity=0,
-                     insn_cap=_MAX_INSNS):
+                     insn_cap=_MAX_INSNS, import_stub=None):
     """Trace one exported 16-bit function. Identify it by `ordinal` (entry-table) or explicit
     (seg, offset). `args` are 16-bit Pascal args (pushed left-to-right); a far-RET sentinel sits
-    under them. Returns a TraceRecord dict like tracer.trace_function."""
+    under them. Returns a TraceRecord dict like tracer.trace_function.
+
+    import_stub(hit, uc, U) -> dict|None lets a caller model Win16 API calls (the dynamic NE
+    oracle): return {"ax":.., "dx":.., "pop":arg_bytes} to set the DX:AX result and pop the callee's
+    Pascal args (keeping the caller's stack balanced). Default (None) keeps the old AX=0, pop-none
+    behavior. `hit` carries the resolved "MODULE.FUNC" in hit["api"] plus args_stack."""
     import unicorn as U
     from unicorn.x86_const import (UC_X86_REG_CS, UC_X86_REG_DS, UC_X86_REG_SS, UC_X86_REG_ES,
                                    UC_X86_REG_ESP, UC_X86_REG_EIP, UC_X86_REG_EAX, UC_X86_REG_EDX)
@@ -288,6 +293,9 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
            "mem_reads": [], "mem_writes": [], "calls": [], "imports_hit": [],
            "truncated": False, "exit": None, "ret": None, "ret32": None}
     base_to_seg = {b: i for i, b in seg_bases.items()}
+    rec["layout"] = {"seg_bases": dict(seg_bases), "ds_base": seg_bases.get(auto),
+                     "autodata_seg": auto, "seg_stride": SEG_STRIDE,
+                     "stack_base": STACK_BASE, "scratch_base": SCRATCH_BASE, "sent_base": SENT_BASE}
 
     def hook_code(uc, address, size, _ud):
         if rec["insn_count"] >= insn_cap:
@@ -307,8 +315,13 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
             hit = dict(imports.get(slot, {"slot": slot}))
             hit["args_stack"] = args_stack
             rec["imports_hit"].append(hit)
-            uc.reg_write(UC_X86_REG_ESP, (spn + 4) & 0xFFFF)
-            uc.reg_write(UC_X86_REG_EAX, 0)
+            res = import_stub(hit, uc, U) if import_stub else None
+            ax = (res or {}).get("ax", 0) & 0xFFFF
+            dx = (res or {}).get("dx", 0) & 0xFFFF
+            pop = (res or {}).get("pop", 0)
+            uc.reg_write(UC_X86_REG_ESP, (spn + 4 + pop) & 0xFFFF)   # far-ret addr + callee's pascal args
+            uc.reg_write(UC_X86_REG_EAX, (dx << 16) | ax)
+            uc.reg_write(UC_X86_REG_EDX, dx)
             uc.reg_write(UC_X86_REG_CS, cs); uc.reg_write(UC_X86_REG_EIP, ip)
 
     def hook_mem(uc, access, address, size, value, _ud):
