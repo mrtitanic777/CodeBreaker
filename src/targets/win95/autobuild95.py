@@ -15,6 +15,7 @@ exports, imports, size -- never "we guessed the names."
 """
 import os
 import sys
+import json
 import struct
 
 
@@ -469,6 +470,203 @@ def recover_flat_thunk(pe_path, outdir):
             "scaffolded": ["%s.thk" % module, "%s.c" % module]}
 
 
+# ------------------------------------------------------------------ RECOVER from a decompile (logic modules)
+import re as _re2
+
+
+def _strip_literals(line):
+    """Blank out char literals, string literals, and // line comments so brace/paren counting is not
+    fooled by punctuation inside them (e.g. Ghidra emits `< '{'` in range tests)."""
+    out, i, n = [], 0, len(line)
+    while i < n:
+        c = line[i]
+        if c == "/" and i + 1 < n and line[i + 1] == "/":
+            break
+        if c in "'\"":
+            q = c
+            i += 1
+            while i < n and line[i] != q:
+                if line[i] == "\\":
+                    i += 1
+                i += 1
+            i += 1
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
+def _parse_decompile(text):
+    """Parse a Ghidra C export (NE or PE). Returns (globals_lines, functions) where each function is a
+    dict {name, ret, conv, params, body, seg, frame}.
+
+    Segment assignment is the hard part for NE modules: Ghidra's `// Segment: N` comment is emitted
+    only on the *first* function it lists for a segment, and it lists functions out of linear order,
+    so some segments get no comment at all. But `FUN_<frame>_<offset>` names encode the NE load frame,
+    and frames sort in segment order. We therefore: (1) anchor frame->segment from the comments that
+    land on FUN_ functions, (2) interpolate the gaps by sorted-frame order, (3) fall back to linear
+    comment carry-forward for named exports (no frame) and for PE exports (no frame pattern at all)."""
+    lines = text.split("\n")
+    sig_re = _re2.compile(r"^([\w ]*?\**)\s*(__(?:cdecl|stdcall|fastcall|pascal)(?:16)?(?:far|near)?)\s+([A-Za-z_]\w*)\s*\(")
+    frame_re = _re2.compile(r"^FUN_([0-9a-fA-F]{3,8})_[0-9a-fA-F]+$")
+    funcs = []
+    i, n = 0, len(lines)
+    globals_lines = []
+    seen_first_func = False
+    while i < n:
+        ln = lines[i]
+        m = sig_re.match(ln)
+        if not m and not seen_first_func and _re2.match(r"^[\w ]+\**\s*[A-Za-z_]\w*\s*;\s*$", ln):
+            globals_lines.append(ln.strip())
+            i += 1
+            continue
+        if m:
+            sigtext = ln
+            scln = _strip_literals(ln)
+            depth = scln.count("(") - scln.count(")")
+            j = i
+            while depth > 0 and j + 1 < n:
+                j += 1
+                sigtext += " " + lines[j].strip()
+                sj = _strip_literals(lines[j])
+                depth += sj.count("(") - sj.count(")")
+            k = j + 1
+            while k < n and lines[k].strip() == "":
+                k += 1
+            if k >= n or not lines[k].lstrip().startswith("{"):
+                i = j + 1
+                continue
+            bstart = k
+            bdepth = 0
+            body = []
+            while k < n:
+                body.append(lines[k])
+                sk = _strip_literals(lines[k])
+                bdepth += sk.count("{") - sk.count("}")
+                if bdepth == 0 and k >= bstart:
+                    break
+                k += 1
+            bodytext = "\n".join(body)
+            sm = _re2.search(r"//\s*Segment:\s*(\d+)", bodytext)
+            name = m.group(3)
+            fm = frame_re.match(name)
+            funcs.append({"name": name, "ret": (m.group(1) or "void").strip() or "void",
+                          "conv": m.group(2),
+                          "params": sigtext[sigtext.index("(") + 1: sigtext.rindex(")")].strip(),
+                          "body": bodytext, "seg_comment": int(sm.group(1)) if sm else None,
+                          "frame": fm.group(1).lower() if fm else None})
+            seen_first_func = True
+            i = k + 1
+            continue
+        i += 1
+
+    # resolve segments
+    anchors = {f["frame"]: f["seg_comment"] for f in funcs
+               if f["frame"] and f["seg_comment"] is not None}
+    frames = sorted({f["frame"] for f in funcs if f["frame"]}, key=lambda x: int(x, 16))
+    frame_seg = {}
+    if anchors:
+        for idx, fr in enumerate(frames):
+            if fr in anchors:
+                frame_seg[fr] = anchors[fr]
+        # interpolate frames with no direct anchor: walk the sorted list, offsetting from
+        # the nearest preceding anchor by how many frames sit between them.
+        last_anchor_i, last_anchor_seg = None, None
+        for idx, fr in enumerate(frames):
+            if fr in anchors:
+                last_anchor_i, last_anchor_seg = idx, anchors[fr]
+            elif last_anchor_seg is not None:
+                frame_seg[fr] = last_anchor_seg + (idx - last_anchor_i)
+        # frames before the first anchor: back-fill downward
+        first_anchor_i = next((idx for idx, fr in enumerate(frames) if fr in anchors), None)
+        if first_anchor_i:
+            base = anchors[frames[first_anchor_i]]
+            for idx in range(first_anchor_i):
+                frame_seg[frames[idx]] = base - (first_anchor_i - idx)
+    cur_seg = 0
+    for f in funcs:
+        if f["frame"] and f["frame"] in frame_seg:
+            f["seg"] = frame_seg[f["frame"]]
+        elif f["seg_comment"] is not None:
+            f["seg"] = f["seg_comment"]
+        else:
+            f["seg"] = cur_seg          # carry-forward for named exports / PE
+        cur_seg = f["seg"]
+    return globals_lines, funcs
+
+
+def recover_from_decompile(decompile_path, outdir, module=None):
+    """Ingest a Ghidra C export and emit per-segment .c scaffolds + a shared header, grouped by the
+    real NE code segments. Each function keeps the decompiler body as an inline reference to translate
+    to clean period C (curation). This is the Recover stage for logic modules where a decompile exists."""
+    text = open(decompile_path, encoding="latin1", errors="replace").read()
+    module = (module or os.path.splitext(os.path.basename(decompile_path))[0]).lower()
+    module = _re2.sub(r"\.dll$|\.txt$|^g|^bn", "", module) or "mod"
+    os.makedirs(outdir, exist_ok=True)
+    gl, funcs = _parse_decompile(text)
+    by_seg = {}
+    for f in funcs:
+        by_seg.setdefault(f["seg"], []).append(f)
+
+    # de-duplicate globals by address: Ghidra emits one DGROUP slot under several conflicting views
+    # (int / uint / byte * ...). Collapse to one declaration per address, noting the other views so
+    # the curator can pick the real type (often a union or a reused field).
+    slot_re = _re2.compile(r"([A-Za-z_]\w*?)\s*\**\s*(DAT_[0-9a-fA-F_]+|[A-Za-z_]\w*)\s*;?\s*$")
+    slots = {}
+    order = []
+    for g in gl:
+        mm = slot_re.match(g.rstrip(";"))
+        if not mm:
+            continue
+        typ, nm = mm.group(1) + ("*" if "*" in g else ""), mm.group(2)
+        if nm not in slots:
+            slots[nm] = []
+            order.append(nm)
+        if typ not in slots[nm]:
+            slots[nm].append(typ)
+
+    # shared header: globals + prototypes
+    with open(os.path.join(outdir, module + "h.h"), "w", encoding="utf-8") as h:
+        h.write("/* %sh.h -- shared globals + prototypes (recovered from decompile; curate types).\n"
+                " * Ghidra pseudo-types in the scaffolds map to period Win16 types:\n"
+                " *   undefined/undefined1/byte -> BYTE   undefined2 -> WORD   undefined4 -> DWORD\n"
+                " *   uint -> unsigned   ulong -> DWORD   CONCAT22(h,l)/(x)._n_m_ -> field packing.\n"
+                " * Replace them with the authored types as each function is translated. */\n"
+                "#ifndef _INC_%sH\n#define _INC_%sH\n\n" % (module, module.upper(), module.upper()))
+        if order:
+            h.write("/* module globals (DGROUP) -- one slot per address; curate type + name.\n"
+                    " * Multiple views on a slot (e.g. int | byte *) mean a reused field or union. */\n")
+            for nm in order:
+                views = slots[nm]
+                note = ("  /* also: %s */" % ", ".join(views[1:])) if len(views) > 1 else ""
+                h.write("extern %s %s;%s\n" % (views[0], nm, note))
+            h.write("\n")
+        h.write("/* function prototypes */\n")
+        for f in funcs:
+            h.write("%s %s(%s);\n" % (f["ret"], f["name"], f["params"] or "void"))
+        h.write("\n#endif\n")
+
+    # per-segment .c scaffolds
+    for seg in sorted(by_seg):
+        fn = "%s_seg%02d.c" % (module, seg)
+        with open(os.path.join(outdir, fn), "w", encoding="utf-8") as c:
+            c.write("/* %s -- NE code segment %d (recovered from decompile). Each function carries the\n"
+                    " * decompiler output as a reference; translate to clean period C, then delete the\n"
+                    " * reference block. Tag each: doc/undoc + verified/behavioral. */\n"
+                    "#include \"%sh.h\"\n\n" % (fn, seg, module))
+            for f in by_seg[seg]:
+                c.write("/* %s -- scaffold (from decompile); mark doc/undoc + accuracy */\n"
+                        "%s %s(%s)\n{\n" % (f["name"], f["ret"], f["name"], f["params"] or "void"))
+                ref = "\n".join("    " + l for l in f["body"].split("\n")[1:-1] if l.strip())
+                c.write("    /* === decompiler reference -- translate + delete ===\n")
+                c.write(ref + "\n    === end reference === */\n}\n\n")
+
+    manifest = {"module": module, "segments": {str(s): [f["name"] for f in by_seg[s]] for s in sorted(by_seg)},
+                "n_functions": len(funcs), "n_globals": len(gl)}
+    json.dump(manifest, open(os.path.join(outdir, "DECOMPILE_MANIFEST.json"), "w"), indent=1)
+    return manifest
+
+
 from src.cli.common import opt as _opt
 
 
@@ -484,7 +682,15 @@ def main():
     for k, v in c.items():
         print("  %-12s %s" % (k, v))
     recdir = _opt(argv, "--recover")
-    if recdir:
+    decomp = _opt(argv, "--from-decompile")
+    if recdir and decomp:
+        print("=== recover (decompile-driven) %s -> %s ===" % (os.path.basename(decomp), recdir))
+        mf = recover_from_decompile(decomp, recdir, module=os.path.splitext(os.path.basename(path))[0])
+        print("  module=%s  functions=%d  globals=%d  segments=%d" % (
+            mf["module"], mf["n_functions"], mf["n_globals"], len(mf["segments"])))
+        for s in sorted(mf["segments"], key=int):
+            print("    seg %2s: %s" % (s, ", ".join(mf["segments"][s])))
+    elif recdir:
         print("=== recover (flat-thunk) -> %s ===" % recdir)
         rr = recover_flat_thunk(path, recdir)
         if rr.get("error"):
