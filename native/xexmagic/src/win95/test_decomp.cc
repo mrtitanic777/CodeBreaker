@@ -29,7 +29,17 @@ int main(int argc, char** argv) {
 
   win95::X86Lifter lifter;
   std::map<uint32_t, std::string> names;
-  for (auto& e : img.entries) if (e.addr) names[e.addr] = "export_" + std::to_string(e.ordinal);
+  // real export names: the module's own resident/nonresident name tables give
+  // name<->ordinal (entry 0 is the module/description, skip it); join via entries.
+  std::map<int, std::string> ordName;
+  for (size_t i = 1; i < img.resident_names.size(); ++i)
+    ordName[img.resident_names[i].second] = img.resident_names[i].first;
+  for (size_t i = 1; i < img.nonresident_names.size(); ++i)
+    ordName[img.nonresident_names[i].second] = img.nonresident_names[i].first;
+  for (auto& e : img.entries) if (e.addr) {
+    auto it = ordName.find(e.ordinal);
+    names[e.addr] = it != ordName.end() ? it->second : ("export_" + std::to_string(e.ordinal));
+  }
   lifter.SetNames(names);
 
   // Build far-call-site -> (target,name) from the relocation table, following the
