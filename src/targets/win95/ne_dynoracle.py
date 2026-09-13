@@ -102,10 +102,16 @@ def default_stub(hit, uc, U, ctx):
 
 
 def probe(dll, ordinal=None, seg=None, offset=None, args=None, stub=default_stub, insn_cap=None,
-          prelude=None):
+          prelude=None, cdecl=False):
     """Run one NE function under the controlled Win16 environment. Returns the tracer16 TraceRecord
-    (with rec['layout'] + rec['imports_hit'] + rec['mem_*'] + rec['ret'])."""
+    (with rec['layout'] + rec['imports_hit'] + rec['mem_*'] + rec['ret']).
+
+    cdecl=True reverses `args` before pushing: the tracer pushes Pascal order (left-to-right), but
+    INTERNAL functions are often __cdecl16far (args pushed right-to-left), so their args must be
+    reversed to land in the right slots (this is how the LZDecompress reset path was reached)."""
     import unicorn as U
+    if cdecl and args:
+        args = list(reversed(args))
     ctx_box = {}
 
     def _stub(hit, uc, u):
