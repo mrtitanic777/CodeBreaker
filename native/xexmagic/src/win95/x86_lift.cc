@@ -374,6 +374,32 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
           ld.access_type = WidthType(esz); ld.dst = fn.AllocValue(WidthType(esz));
           bb.instrs.push_back(ld); setReg(AX, ld.dst);
         }
+      } else if (m.rfind("scas", 0) == 0 || m.rfind("cmps", 0) == 0) {
+        int esz = m.back() == 'b' ? 1 : m.back() == 'd' ? 4 : 2;
+        int DI = kGpBase + 7, SI = kGpBase + 6, CX = kGpBase + 1, AX = kGpBase;
+        if (in.rep || in.repne) {
+          // rep scas -> memchr(edi, al, cx); rep cmps -> memcmp(esi, edi, cx)
+          std::initializer_list<ILValue> args = (m[0] == 's')
+              ? std::initializer_list<ILValue>{getReg(DI, 2), getReg(AX, esz), getReg(CX, 2)}
+              : std::initializer_list<ILValue>{getReg(SI, 2), getReg(DI, 2), getReg(CX, 2)};
+          int i = 0;
+          for (ILValue v : args) { ILInstr ar; ar.op = ILOp::Assign; ar.address = a;
+            ar.src1 = v; ar.dst = fn.AllocValue(v.type, 3 + i++); bb.instrs.push_back(ar); }
+          ILInstr c; c.op = ILOp::Call; c.address = a;
+          c.call_name = (m[0] == 's') ? "memchr" : "memcmp";
+          c.dst = fn.AllocValue(ILType::U16, kGpBase); bb.instrs.push_back(c);
+          setReg(kGpBase, c.dst);
+        } else {
+          // single: compare and set flags (scas: al/ax vs [di]; cmps: [si] vs [di])
+          ILInstr ld1; ld1.op = ILOp::Load; ld1.address = a;
+          ld1.src1 = getReg(m[0] == 's' ? DI : SI, 2); ld1.access_type = WidthType(esz);
+          ld1.dst = fn.AllocValue(WidthType(esz)); bb.instrs.push_back(ld1);
+          if (m[0] == 's') { flag_kind = FK_CMP; flagA = getReg(AX, esz); flagB = ld1.dst; flag_imm = false; }
+          else { ILInstr ld2; ld2.op = ILOp::Load; ld2.address = a; ld2.src1 = getReg(DI, 2);
+                 ld2.access_type = WidthType(esz); ld2.dst = fn.AllocValue(WidthType(esz)); bb.instrs.push_back(ld2);
+                 flag_kind = FK_CMP; flagA = ld1.dst; flagB = ld2.dst; flag_imm = false; }
+          flag_sz = esz;
+        }
       } else {
         ILInstr x; x.op = ILOp::InlineAsm; x.address = a; x.asm_text = FormatX86(in);
         bb.instrs.push_back(x);
@@ -385,6 +411,30 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
     if (!bb.is_return && bb.successors.empty() && bend < end)
       bb.successors.push_back(bend);   // fallthrough to next block
     fn.blocks.push_back(bb);
+  }
+
+  // Prune blocks unreachable from entry: module-mode function bounds run to the
+  // next leader, so trailing alignment/data past the final `ret` gets decoded as
+  // a block with no predecessor. Drop those (kills misdecoded padding tails).
+  if (!fn.blocks.empty()) {
+    std::map<uint32_t, size_t> bidx;
+    for (size_t i = 0; i < fn.blocks.size(); ++i) bidx[fn.blocks[i].start_addr] = i;
+    std::set<size_t> reach;
+    std::vector<size_t> work{0};
+    while (!work.empty()) {
+      size_t b = work.back(); work.pop_back();
+      if (!reach.insert(b).second) continue;
+      for (uint32_t s : fn.blocks[b].successors) {
+        auto it = bidx.find(s);
+        if (it != bidx.end() && !reach.count(it->second)) work.push_back(it->second);
+      }
+    }
+    if (reach.size() < fn.blocks.size()) {
+      std::vector<ILBasicBlock> kept;
+      for (size_t i = 0; i < fn.blocks.size(); ++i)
+        if (reach.count(i)) kept.push_back(std::move(fn.blocks[i]));
+      fn.blocks = std::move(kept);
+    }
   }
 
   fn.total_instructions = (int)insns.size();
