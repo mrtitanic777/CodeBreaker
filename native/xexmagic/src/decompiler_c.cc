@@ -19,8 +19,10 @@
 #include <sstream>
 #include <cctype>
 
+#ifndef WIN95DEC_NO_PPC          // x86-only builds don't link the PPC opcode tables
 #include "ppc/ppc_opcode.h"
 #include "ppc/ppc_opcode_info.h"
+#endif
 #include <unordered_map>
 #include <unordered_set>
 
@@ -740,10 +742,13 @@ bool IsVectorOp(const ILInstr& in) {
 // mnemonic is not lost - it moves to the annotation, so a line still matches
 // up against the disassembly.
 std::string VectorOpName(const ILInstr& in) {
-  using namespace xe::cpu::ppc;
   const char* fallback_mnem =
       in.call_name.empty() ? "vectorop" : in.call_name.c_str();
   if (!in.ppc_word) return std::string("__") + fallback_mnem;
+#ifdef WIN95DEC_NO_PPC
+  return std::string("__") + fallback_mnem;   // no PPC tables in x86-only build
+#else
+  using namespace xe::cpu::ppc;
   PPCOpcode opcode = LookupOpcode(in.ppc_word);
   if (opcode == PPCOpcode::kInvalid) return std::string("__") + fallback_mnem;
   const char* desc = GetOpcodeDisasmInfo(opcode).description;
@@ -759,6 +764,7 @@ std::string VectorOpName(const ILInstr& in) {
     }
   }
   return name.empty() ? std::string("__") + fallback_mnem : name;
+#endif  // WIN95DEC_NO_PPC
 }
 
 // The mnemonic the line came from, so the C and the disassembly line up.

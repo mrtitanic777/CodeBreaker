@@ -185,6 +185,8 @@ add_custom_command(TARGET xexmagic POST_BUILD
 # win95dec -- the Win95 x86 disassembler+decompiler CLI (the x86 port).
 # NE loader + x86 decode + x86->IL lift -> reused DecompileToC back-end.
 # ---------------------------------------------------------------------------
+# x86-only: WIN95DEC_NO_PPC compiles out decompiler_c's PPC-opcode annotation
+# path, so the 5 PPC opcode-table .cc files are no longer needed here.
 add_executable(win95dec
     src/win95/ne_loader.cc
     src/win95/x86_decode.cc
@@ -192,9 +194,9 @@ add_executable(win95dec
     src/win95/test_decomp.cc
     src/decompiler_c.cc
     src/var_allocator.cc
-    ${SRC_PPC_TABLES}
 )
 target_include_directories(win95dec PRIVATE src third_party src/ppc/compat)
+target_compile_definitions(win95dec PRIVATE WIN95DEC_NO_PPC)
 if(MSVC)
     target_compile_definitions(win95dec PRIVATE _CRT_SECURE_NO_WARNINGS)
     target_compile_options(win95dec PRIVATE /bigobj)
