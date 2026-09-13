@@ -163,34 +163,53 @@ def emit32(pfx, funcs, cs, out):
     w(";************************ START OF THUNK BODIES************************\n\n")
 
     n = len(funcs)
-    for i, f in enumerate(funcs):
-        cl = (n - 1) - i
-        nm = f["name"]
+
+    def sig(f):
+        return (tuple(a["cls"] for a in f["args"]), f["ret"])
+
+    def emit_body(f):
         stackb = 4 * len(f["args"])
-        # STDCALL C decoration: the 32-bit veneer (wcc386) references these as
-        # _NAME@N, so define them that way. (No II split -- we don't merge bodies.)
-        w(f"\npublic _{nm}@{stackb}\n_{nm}@{stackb}:\n\tmov\tcl,{cl}\n")
         w("\tpush\tebp\n\tmov\tebp,esp\n\tpush\tecx\n\tsub\tesp,60\n")
-        off = 8
-        unmaps = []
+        off = 8; unmaps = []
         for a in f["args"]:
             if a["cls"] == PTR:
-                w(f"\tcall\tSMapLS_IP_EBP_{off}\n\tpush\teax\n")
-                unmaps.append(off)
+                w(f"\tcall\tSMapLS_IP_EBP_{off}\n\tpush\teax\n"); unmaps.append(off)
             elif a["cls"] == DWORD:
                 w(f"\tpush\tdword ptr [ebp+{off}]\t;{a['name']}: dword->dword\n")
             else:
                 w(f"\tpush\tword ptr [ebp+{off}]\t;{a['name']}: dword->word\n")
             off += 4
         w(f"\tcall\tdword ptr [pfnQT_Thunk_{pfx}]\n")
-        if f["ret"] == DWORD:
-            w("\tshl\teax,16\n\tshrd\teax,edx,16\n")
-        elif f["ret"] == WORD:
-            w("\tcwde\n")
-        for o in unmaps:
-            w(f"\tcall\tSUnMapLS_IP_EBP_{o}\n")
+        if f["ret"] == DWORD: w("\tshl\teax,16\n\tshrd\teax,edx,16\n")
+        elif f["ret"] == WORD: w("\tcwde\n")
+        for o in unmaps: w(f"\tcall\tSUnMapLS_IP_EBP_{o}\n")
         w("\tleave\n")
         w(f"\tretn\t{stackb}\n" if stackb else "\tretn\n")
+
+    # Merge consecutive identical-signature functions (as thunk.exe does): the
+    # entries (cl-ascending) share one II<name> body; all but the last jmp to it,
+    # the last falls through. cl = (N-1)-declaration_index; cl-ascending within a
+    # group = reverse declaration order, and the body is named for its lowest-cl
+    # member (the first emitted).
+    i = 0
+    while i < n:
+        j = i
+        while j + 1 < n and sig(funcs[j+1]) == sig(funcs[i]): j += 1
+        stackb = 4 * len(funcs[i]["args"])
+        if j == i:
+            f = funcs[i]; cl = (n-1)-i
+            w(f"\npublic _{f['name']}@{stackb}\n_{f['name']}@{stackb}:\n\tmov\tcl,{cl}\n")
+            emit_body(f)
+        else:
+            grp = sorted(range(i, j+1), key=lambda k: (n-1)-k)  # cl ascending
+            body_nm = "II" + funcs[grp[0]]["name"]
+            for idx, k in enumerate(grp):
+                cl = (n-1)-k
+                w(f"\npublic _{funcs[k]['name']}@{stackb}\n_{funcs[k]['name']}@{stackb}:\n\tmov\tcl,{cl}\n")
+                if idx < len(grp)-1: w(f"\tjmp\t_{body_nm}@{stackb}\n")
+            w(f"public _{body_nm}@{stackb}\n_{body_nm}@{stackb}:\n")
+            emit_body(funcs[grp[0]])
+        i = j + 1
 
 
 # ---- 16-bit emit --------------------------------------------------------------

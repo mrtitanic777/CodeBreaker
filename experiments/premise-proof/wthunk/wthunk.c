@@ -166,6 +166,30 @@ static unsigned checksum(void) {
 
 static FILE *out;
 
+static int sig_eq(Func *a, Func *b) {
+    int i;
+    if (a->ret != b->ret || a->nargs != b->nargs) return 0;
+    for (i=0;i<a->nargs;i++) if (a->args[i].cls != b->args[i].cls) return 0;
+    return 1;
+}
+
+static void emit_body(const char *pfx, Func *f) {
+    int stackb=4*f->nargs; int off=8; int unmaps[16]; int nun=0; int a, u;
+    fprintf(out,"\tpush\tebp\n\tmov\tebp,esp\n\tpush\tecx\n\tsub\tesp,60\n");
+    for (a=0;a<f->nargs;a++){
+        if (f->args[a].cls==CPTR){ fprintf(out,"\tcall\tSMapLS_IP_EBP_%d\n\tpush\teax\n",off); unmaps[nun++]=off; }
+        else if (f->args[a].cls==CDWORD) fprintf(out,"\tpush\tdword ptr [ebp+%d]\t;%s: dword->dword\n",off,f->args[a].name);
+        else fprintf(out,"\tpush\tword ptr [ebp+%d]\t;%s: dword->word\n",off,f->args[a].name);
+        off+=4;
+    }
+    fprintf(out,"\tcall\tdword ptr [pfnQT_Thunk_%s]\n",pfx);
+    if (f->ret==CDWORD) fprintf(out,"\tshl\teax,16\n\tshrd\teax,edx,16\n");
+    else if (f->ret==CWORD) fprintf(out,"\tcwde\n");
+    for (u=0;u<nun;u++) fprintf(out,"\tcall\tSUnMapLS_IP_EBP_%d\n",unmaps[u]);
+    fprintf(out,"\tleave\n");
+    if (stackb) fprintf(out,"\tretn\t%d\n",stackb); else fprintf(out,"\tretn\n");
+}
+
 static void emit32(const char *pfx, unsigned cs) {
     const char *rt[7]; int i, n;
     rt[0]="MapHInstLS"; rt[1]="MapHInstLS_PN"; rt[2]="MapHInstSL"; rt[3]="MapHInstSL_PN";
@@ -193,23 +217,29 @@ static void emit32(const char *pfx, unsigned cs) {
     fprintf(out,"QT_Thunk_%s label byte\n\tdb\t32 dup(0cch)\t;Patch space.\n\n",pfx);
     fprintf(out,"FT_Prolog_%s label byte\n\tdb\t32 dup(0cch)\t;Patch space.\n\n\t.code \n\n",pfx);
     fprintf(out,";************************ START OF THUNK BODIES************************\n\n");
-    for (i=0;i<nfuncs;i++) {
-        Func *f=&funcs[i]; int cl=(nfuncs-1)-i; int stackb=4*f->nargs;
-        int off=8; int unmaps[16]; int nun=0; int a, u;
-        fprintf(out,"\npublic _%s@%d\n_%s@%d:\n\tmov\tcl,%d\n",f->name,stackb,f->name,stackb,cl);
-        fprintf(out,"\tpush\tebp\n\tmov\tebp,esp\n\tpush\tecx\n\tsub\tesp,60\n");
-        for (a=0;a<f->nargs;a++){
-            if (f->args[a].cls==CPTR){ fprintf(out,"\tcall\tSMapLS_IP_EBP_%d\n\tpush\teax\n",off); unmaps[nun++]=off; }
-            else if (f->args[a].cls==CDWORD) fprintf(out,"\tpush\tdword ptr [ebp+%d]\t;%s: dword->dword\n",off,f->args[a].name);
-            else fprintf(out,"\tpush\tword ptr [ebp+%d]\t;%s: dword->word\n",off,f->args[a].name);
-            off+=4;
+    /* Merge consecutive identical-signature functions (as thunk.exe does): the
+       entries (cl-ascending = reverse decl order, k from j down to i) share one
+       II<name> body; all but the last jmp to it, the last falls through. */
+    i = 0;
+    while (i < nfuncs) {
+        int j = i; int stackb = 4*funcs[i].nargs; int k, cl;
+        while (j+1 < nfuncs && sig_eq(&funcs[j+1], &funcs[i])) j++;
+        if (j == i) {
+            cl = (nfuncs-1)-i;
+            fprintf(out,"\npublic _%s@%d\n_%s@%d:\n\tmov\tcl,%d\n",funcs[i].name,stackb,funcs[i].name,stackb,cl);
+            emit_body(pfx, &funcs[i]);
+        } else {
+            char bodynm[80];
+            sprintf(bodynm, "II%s", funcs[j].name);     /* lowest cl = highest index j */
+            for (k=j;k>=i;k--) {
+                cl = (nfuncs-1)-k;
+                fprintf(out,"\npublic _%s@%d\n_%s@%d:\n\tmov\tcl,%d\n",funcs[k].name,stackb,funcs[k].name,stackb,cl);
+                if (k > i) fprintf(out,"\tjmp\t_%s@%d\n",bodynm,stackb);
+            }
+            fprintf(out,"public _%s@%d\n_%s@%d:\n",bodynm,stackb,bodynm,stackb);
+            emit_body(pfx, &funcs[j]);
         }
-        fprintf(out,"\tcall\tdword ptr [pfnQT_Thunk_%s]\n",pfx);
-        if (f->ret==CDWORD) fprintf(out,"\tshl\teax,16\n\tshrd\teax,edx,16\n");
-        else if (f->ret==CWORD) fprintf(out,"\tcwde\n");
-        for (u=0;u<nun;u++) fprintf(out,"\tcall\tSUnMapLS_IP_EBP_%d\n",unmaps[u]);
-        fprintf(out,"\tleave\n");
-        if (stackb) fprintf(out,"\tretn\t%d\n",stackb); else fprintf(out,"\tretn\n");
+        i = j+1;
     }
 }
 
