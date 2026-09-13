@@ -609,7 +609,7 @@ _PROVENANCE = (
 
 
 def recover_from_decompile(decompile_path, outdir, module=None, seg_names=None, name_map=None,
-                           struct_map=None, param_map=None, raise_bodies=True):
+                           struct_map=None, param_map=None, raise_bodies=True, header=None):
     """Ingest a Ghidra C export and emit per-segment .c files + a shared header, grouped by the real
     NE code segments. With raise_bodies (default), each function body is put through the raise95 pass
     (Ghidra-C -> authored-style period C: real types, MAKELONG/HIWORD/etc., real API casing, and --
@@ -637,6 +637,13 @@ def recover_from_decompile(decompile_path, outdir, module=None, seg_names=None, 
     def disp(f):
         return name_map.get(f["name"], f["name"])
 
+    # internal shared-header name -- MUST be 8.3-safe for the DOS (MSC 6.0a/DOSBox) build, and
+    # distinct from the public <module>.h. Default: <module>h.h when it fits in 8.3, else the module
+    # truncated to 6 + ".h" (still distinct from the full public name). Override with `header`.
+    hdr = header if header else ((module + "h.h") if len(module) + 1 <= 8 else (module[:6] + ".h"))
+    hdr_stem = os.path.splitext(hdr)[0]
+    hdr_guard = "_INC_" + _re2.sub(r"\W", "", hdr_stem).upper()
+
     by_seg = {}
     for f in funcs:
         by_seg.setdefault(f["seg"], []).append(f)
@@ -659,13 +666,13 @@ def recover_from_decompile(decompile_path, outdir, module=None, seg_names=None, 
             slots[nm].append(typ)
 
     # shared header: globals + prototypes
-    with open(os.path.join(outdir, module + "h.h"), "w", encoding="utf-8") as h:
-        h.write("/* %sh.h -- shared globals + prototypes (recovered from decompile; curate types).\n"
+    with open(os.path.join(outdir, hdr), "w", encoding="utf-8") as h:
+        h.write("/* %s -- shared globals + prototypes (recovered from decompile; curate types).\n"
                 " * Ghidra pseudo-types in the scaffolds map to period Win16 types:\n"
                 " *   undefined/undefined1/byte -> BYTE   undefined2 -> WORD   undefined4 -> DWORD\n"
                 " *   uint -> unsigned   ulong -> DWORD   CONCAT22(h,l)/(x)._n_m_ -> field packing.\n"
                 " * Replace them with the authored types as each function is translated. */\n"
-                "#ifndef _INC_%sH\n#define _INC_%sH\n\n" % (module, module.upper(), module.upper()))
+                "#ifndef %s\n#define %s\n\n" % (hdr, hdr_guard, hdr_guard))
         if order:
             h.write("/* module globals (DGROUP) -- one slot per address; curate type + name.\n"
                     " * Multiple views on a slot (e.g. int | byte *) mean a reused field or union. */\n")
@@ -694,8 +701,8 @@ def recover_from_decompile(decompile_path, outdir, module=None, seg_names=None, 
             c.write("/* %s -- %s: NE code segment %d%s.\n%s\n"
                     " * Each function carries its decompiler output as a reference; translate to clean\n"
                     " * period C, then delete the reference block. Tag each: doc/undoc + verified/behavioral. */\n"
-                    "#include \"%sh.h\"\n\n"
-                    % (fn, module, seg, (" (%s)" % role) if role else "", _PROVENANCE, module))
+                    "#include \"%s\"\n\n"
+                    % (fn, module, seg, (" (%s)" % role) if role else "", _PROVENANCE, hdr))
             for f in by_seg[seg]:
                 was = ("  (was %s)" % f["name"]) if disp(f) != f["name"] else ""
                 inner = "\n".join(f["body"].split("\n")[1:-1])           # strip the outer { }
@@ -715,7 +722,7 @@ def recover_from_decompile(decompile_path, outdir, module=None, seg_names=None, 
                     c.write("    /* === decompiler reference -- translate + delete ===\n")
                     c.write(raw + "\n    === end reference === */\n}\n\n")
 
-    manifest = {"module": module,
+    manifest = {"module": module, "header": hdr,
                 "segments": {str(s): {"file": seg_file[s], "role": seg_names.get(s) or seg_names.get(str(s)),
                                       "functions": [disp(f) for f in by_seg[s]]} for s in sorted(by_seg)},
                 "n_functions": len(funcs), "n_globals": len(gl)}
