@@ -131,9 +131,22 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
         return base;
       };
 
+      // A [bp - N] operand (base=BP, no index, negative disp) is a stack local.
+      // Give each distinct offset its own virtual slot (base 1000, off the GPR
+      // 20-27, param r3.., and frame ranges) so loads/stores become tracked SSA
+      // locals -- rendered as named vNN, not raw *(r25 - N) memory refs.
+      auto frameSlotOf = [](const X86Op& o) -> int {
+        if (o.kind == OpKind::Mem && o.base != kNoReg && (o.base % 16) == 5 &&
+            o.index == kNoReg && o.disp < 0)
+          return 1000 + (-o.disp);
+        return -1;
+      };
+
       auto srcValue = [&](const X86Op& o) -> ILValue {
         if (IsGpr(o)) return getReg(RegSlot(o.reg), o.size);
         if (o.kind == OpKind::Mem) {
+          int fs = frameSlotOf(o);
+          if (fs >= 0) return getReg(fs, o.size);
           // [bp + disp], disp >= 6 == an incoming parameter (far frame: saved bp +
           // far return addr = 6). Map to r3.. so the back-end names them a1, a2...
           if (o.base != kNoReg && (o.base % 16) == 5 && o.index == kNoReg && o.disp >= 6) {
@@ -161,6 +174,8 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
       auto storeTo = [&](const X86Op& dst, ILValue v) {
         if (IsGpr(dst)) { setReg(RegSlot(dst.reg), v); return; }
         if (dst.kind == OpKind::Mem) {
+          int fs = frameSlotOf(dst);
+          if (fs >= 0) { setReg(fs, v); return; }   // [bp - N] local <- v
           ILInstr st; st.op = ILOp::Store; st.address = a;
           st.src1 = emitMemAddr(dst, st); st.src2 = v;
           bb.instrs.push_back(st);
