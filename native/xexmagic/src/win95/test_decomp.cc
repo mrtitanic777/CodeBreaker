@@ -72,6 +72,41 @@ int main(int argc, char** argv) {
   }
   lifter.SetCallSites(sites);
 
+  // Whole-module mode: discover function starts and decompile every one.
+  if (std::string(argv[2]) == "--module") {
+    std::map<int, std::set<uint32_t>> starts;   // seg idx -> function start addrs
+    for (auto& s : img.segments) if (!s.is_data) starts[s.idx].insert(s.base_addr);
+    for (auto& e : img.entries) if (e.addr) starts[e.seg].insert(e.addr);
+    for (auto& kv : sites) { uint32_t t = kv.second.first; if (t) starts[t >> 16].insert(t); }
+    // near-call (E8) targets via a linear decode scan
+    for (auto& s : img.segments) {
+      if (s.is_data) continue;
+      for (uint32_t a = s.base_addr, e2 = s.base_addr + s.length; a < e2;) {
+        win95::X86Insn in = win95::DecodeX86(img.image.data(), img.image.size(), a, a, true);
+        if (in.valid && in.mnem == "call" && in.ops[0].kind == win95::OpKind::Rel)
+          starts[s.idx].insert((uint32_t)in.ops[0].imm);
+        a += in.valid ? in.len : 1;
+      }
+    }
+    int nfuncs = 0;
+    for (auto& s : img.segments) {
+      if (s.is_data) continue;
+      std::vector<uint32_t> fs(starts[s.idx].begin(), starts[s.idx].end());
+      for (size_t i = 0; i < fs.size(); ++i) {
+        uint32_t fstart = fs[i];
+        uint32_t fend = (i + 1 < fs.size()) ? fs[i + 1] : s.base_addr + s.length;
+        if (fstart >= s.base_addr + s.length) continue;
+        char nm[32]; std::snprintf(nm, sizeof nm, "sub_%06X", fstart);
+        auto nn = names.find(fstart); std::string fn2 = nn != names.end() ? nn->second : nm;
+        ILFunction f = lifter.LiftFunction(img.image.data(), img.image.size(), fstart, fend, fn2);
+        std::printf("%s\n", DecompileToC(f, {}).c_str());
+        nfuncs++;
+      }
+    }
+    std::fprintf(stderr, "decompiled %d functions across %zu code segments\n", nfuncs, starts.size());
+    return 0;
+  }
+
   ILFunction fn = lifter.LiftFunction(img.image.data(), img.image.size(), entry, end, name);
   std::printf("// lifted %s: %zu blocks, %zu SSA values, %d instrs\n",
               name.c_str(), fn.blocks.size(), fn.values.size(), fn.total_instructions);
