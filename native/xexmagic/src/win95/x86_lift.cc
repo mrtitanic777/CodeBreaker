@@ -173,12 +173,28 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
         storeTo(in.ops[0], x.dst);
       } else if (m == "add") binop(ILOp::Add);
       else if (m == "sub") binop(ILOp::Sub);
+      else if (m == "adc") binop(ILOp::AddCarry);
+      else if (m == "sbb") binop(ILOp::SubCarry);
       else if (m == "and") binop(ILOp::And);
       else if (m == "or")  binop(ILOp::Or);
       else if (m == "xor") binop(ILOp::Xor);
       else if (m == "shl" || m == "sal") binop(ILOp::Shl);
       else if (m == "shr") binop(ILOp::Shr);
       else if (m == "sar") binop(ILOp::Sar);
+      else if (m == "neg" || m == "not") {
+        ILInstr x; x.op = (m == "neg") ? ILOp::Neg : ILOp::Not; x.address = a;
+        x.src1 = srcValue(in.ops[0]); x.dst = fn.AllocValue(WidthType(in.ops[0].size));
+        bb.instrs.push_back(x); storeTo(in.ops[0], x.dst);
+        flag_kind = FK_ARITH; flagA = x.dst; flag_imm = true; flag_immv = 0; flag_sz = in.ops[0].size;
+      }
+      else if (m == "cbw" || m == "cwde") {     // AX = sign-extend AL (EAX = sext AX)
+        ILInstr x; x.op = ILOp::ExtendByte; x.address = a; x.src1 = getReg(0, 1);
+        x.dst = fn.AllocValue(ILType::U16); bb.instrs.push_back(x); setReg(0, x.dst);
+      }
+      else if (m == "cwd" || m == "cdq") {       // DX = (AX < 0) ? -1 : 0  (sign fill)
+        ILInstr x; x.op = ILOp::SarImm; x.address = a; x.src1 = getReg(0, 2); x.imm = 15;
+        x.dst = fn.AllocValue(ILType::U16); bb.instrs.push_back(x); setReg(2, x.dst);
+      }
       else if (m == "inc") { ILInstr x; x.op=ILOp::Add; x.address=a; x.src1=srcValue(in.ops[0]); x.imm=1; x.dst=fn.AllocValue(WidthType(in.ops[0].size)); bb.instrs.push_back(x); storeTo(in.ops[0],x.dst);}
       else if (m == "dec") { ILInstr x; x.op=ILOp::Sub; x.address=a; x.src1=srcValue(in.ops[0]); x.imm=1; x.dst=fn.AllocValue(WidthType(in.ops[0].size)); bb.instrs.push_back(x); storeTo(in.ops[0],x.dst);}
       else if (m == "cmp") { flag_kind=FK_CMP; flagA = srcValue(in.ops[0]); if (in.ops[1].kind==OpKind::Imm){flag_imm=true;flag_immv=in.ops[1].imm;}else{flagB=srcValue(in.ops[1]);flag_imm=false;} flag_sz=in.ops[0].size; }
@@ -194,9 +210,14 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
         } else {
           x.call_name = "indirect";                    // call through reg/mem (v1)
         }
-        x.dst = fn.AllocValue(ILType::U16, 0);   // result in AX
+        x.dst = fn.AllocValue(ILType::U32, 0);   // DX:AX (long returns); AX truncates on 16-bit use
         bb.instrs.push_back(x);
         setReg(0, x.dst);
+        // DX = high word of the return (for long-returning calls like _llseek);
+        // dropped by DCE when the caller only uses AX.
+        ILInstr hi; hi.op = ILOp::Shr; hi.address = a; hi.src1 = x.dst; hi.imm = 16;
+        hi.dst = fn.AllocValue(ILType::U16, 2); bb.instrs.push_back(hi);
+        setReg(2, hi.dst);
       } else if (m == "ret" || m == "retf") {
         ILInstr x; x.op = ILOp::Return; x.address = a;
         auto it = reg.find(0); if (it != reg.end()) x.src1 = it->second;
