@@ -66,3 +66,5 @@ experiments/premise-proof/open-watcom-v2/
 experiments/premise-proof/*.log
 experiments/premise-proof/smoke/*.exe
 experiments/premise-proof/lz32-build/
+experiments/premise-proof/wthunk/*.asm
+experiments/premise-proof/wthunk/*.obj
