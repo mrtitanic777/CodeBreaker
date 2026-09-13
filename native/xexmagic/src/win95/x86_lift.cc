@@ -301,8 +301,36 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
           save = true;
         }
         if (!save) pend_args.push_back(srcValue(o));
-      } else if (m == "pop" || m == "nop") {
-        // epilogue restore / no-op: nothing to model
+      } else if (m == "pop" || m == "nop" || m == "leave" || m == "enter" ||
+                 m == "cld" || m == "std" || m == "cli" || m == "sti" ||
+                 m == "push" /*unreached*/) {
+        // frame teardown/setup + flag-only ops carry no meaning for a reader
+      } else if (m == "mul" || m == "imul") {
+        // group3 one-operand: DX:AX = AX * rm; two/three-operand imul: reg = reg*rm
+        if (in.nops >= 2) {
+          ILInstr x; x.op = ILOp::Mul; x.address = a;
+          x.src1 = srcValue(in.ops[in.nops - 2]); x.src2 = srcValue(in.ops[in.nops - 1]);
+          x.dst = fn.AllocValue(WidthType(in.ops[0].size));
+          bb.instrs.push_back(x); storeTo(in.ops[0], x.dst);
+        } else {
+          ILInstr x; x.op = ILOp::Mul; x.address = a;
+          x.src1 = getReg(kGpBase, 2); x.src2 = srcValue(in.ops[0]);
+          x.dst = fn.AllocValue(ILType::U16); bb.instrs.push_back(x); setReg(kGpBase, x.dst);
+        }
+      } else if (m == "xchg") {
+        ILValue v0 = srcValue(in.ops[0]), v1 = srcValue(in.ops[1]);
+        storeTo(in.ops[0], v1); storeTo(in.ops[1], v0);
+      } else if (m == "loop" || m == "loope" || m == "loopne") {
+        int cx = kGpBase + 1;                          // CX
+        ILInstr d; d.op = ILOp::Sub; d.address = a; d.src1 = getReg(cx, 2); d.imm = 1;
+        d.dst = fn.AllocValue(ILType::U16); bb.instrs.push_back(d); setReg(cx, d.dst);
+        ILInstr cmp; cmp.op = ILOp::CompareImm; cmp.address = a; cmp.src1 = d.dst; cmp.imm = 0;
+        cmp.dst = fn.AllocValue(ILType::Bool); bb.instrs.push_back(cmp);
+        ILInstr br; br.op = ILOp::BranchCond; br.address = a; br.cmp_ref = cmp.dst.id;
+        br.cmp_kind = ILCmpKind::NE;
+        if (in.ops[0].kind == OpKind::Rel) br.target = (uint32_t)in.ops[0].imm;
+        bb.instrs.push_back(br);
+        bb.successors.push_back(br.target); bb.successors.push_back(next);
       } else {
         ILInstr x; x.op = ILOp::InlineAsm; x.address = a; x.asm_text = FormatX86(in);
         bb.instrs.push_back(x);
