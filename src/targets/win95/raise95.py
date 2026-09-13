@@ -180,11 +180,21 @@ def map_types(s):
     return s
 
 
-def raise_c(text, struct_map=None, param_names=None, api_map=None):
-    """Raise a block of Ghidra decompile C toward authored period C (all three layers)."""
+def raise_c(text, struct_map=None, param_names=None, api_map=None,
+            far_pairs=None, far_names=None, far_types=None):
+    """Raise a block of Ghidra decompile C toward authored period C. Layers: mechanical, then
+    (NE) far-pointer coalescing, then structural DAT_->name, then light semantic."""
     if api_map:
         _API_MAP.update(api_map)
     text = _mechanical(text)
+    if far_pairs and far_names:
+        try:
+            from src.targets.win95 import neraise95
+        except Exception:
+            import importlib.util as _il, os as _os
+            _sp = _il.spec_from_file_location("neraise95", _os.path.join(_os.path.dirname(__file__), "neraise95.py"))
+            neraise95 = _il.module_from_spec(_sp); _sp.loader.exec_module(neraise95)
+        text = neraise95.coalesce_far_pointers(text, far_pairs, far_names, far_types)
     text = _structural(text, struct_map)
     text = _semantic(text, param_names)
     return text

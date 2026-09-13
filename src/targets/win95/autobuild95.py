@@ -609,7 +609,8 @@ _PROVENANCE = (
 
 
 def recover_from_decompile(decompile_path, outdir, module=None, seg_names=None, name_map=None,
-                           struct_map=None, param_map=None, raise_bodies=True, header=None):
+                           struct_map=None, param_map=None, raise_bodies=True, header=None,
+                           ne=False, far_names=None, far_type="BYTE"):
     """Ingest a Ghidra C export and emit per-segment .c files + a shared header, grouped by the real
     NE code segments. With raise_bodies (default), each function body is put through the raise95 pass
     (Ghidra-C -> authored-style period C: real types, MAKELONG/HIWORD/etc., real API casing, and --
@@ -622,12 +623,18 @@ def recover_from_decompile(decompile_path, outdir, module=None, seg_names=None, 
     name_map = name_map or {}
     struct_map = struct_map or {}
     param_map = param_map or {}
-    try:
-        from src.targets.win95 import raise95
-    except Exception:
-        import importlib.util as _il
-        _sp = _il.spec_from_file_location("raise95", os.path.join(os.path.dirname(__file__), "raise95.py"))
-        raise95 = _il.module_from_spec(_sp); _sp.loader.exec_module(raise95)
+    far_names = dict(far_names or {})
+
+    def _load(modname):
+        try:
+            import importlib
+            return importlib.import_module("src.targets.win95." + modname)
+        except Exception:
+            import importlib.util as _il
+            _sp = _il.spec_from_file_location(modname, os.path.join(os.path.dirname(__file__), modname + ".py"))
+            _m = _il.module_from_spec(_sp); _sp.loader.exec_module(_m); return _m
+    raise95 = _load("raise95")
+    neraise95 = _load("neraise95")
     text = open(decompile_path, encoding="latin1", errors="replace").read()
     module = (module or os.path.splitext(os.path.basename(decompile_path))[0]).lower()
     module = _re2.sub(r"\.dll$|\.txt$|^g|^bn", "", module) or "mod"
@@ -665,6 +672,22 @@ def recover_from_decompile(decompile_path, outdir, module=None, seg_names=None, 
         if typ not in slots[nm]:
             slots[nm].append(typ)
 
+    # NE far-pointer pre-scan (module-wide): coalesce Ghidra's off/sel word pairs into single FAR
+    # pointers. Detection uses MAKELONG evidence + Ghidra's own pointer typing of the offset slot.
+    far_pairs, far_types, pair_off, pair_sel = {}, {}, set(), set()
+    if ne:
+        def _addr(nm):
+            mm = _re2.match(r"_?DAT_([0-9a-fA-F]{2,4}_[0-9a-fA-F]{2,4})$", nm)
+            return mm.group(1) if mm else None
+        all_slots = set(a for a in (_addr(n) for n in slots) if a)
+        ptr_slots = set(a for n in slots for a in [_addr(n)]
+                        if a and any("*" in v for v in slots[n]))
+        far_pairs = neraise95.analyze_far_pairs(raise95._mechanical(text), ptr_slots, all_slots)
+        for off in far_pairs:
+            far_names.setdefault(off, "g_p" + off.split("_")[1])
+            far_types[off] = far_type
+            pair_off.add(off); pair_sel.add(far_pairs[off])
+
     # shared header: globals + prototypes
     with open(os.path.join(outdir, hdr), "w", encoding="utf-8") as h:
         h.write("/* %s -- shared globals + prototypes (recovered from decompile; curate types).\n"
@@ -672,11 +695,21 @@ def recover_from_decompile(decompile_path, outdir, module=None, seg_names=None, 
                 " *   undefined/undefined1/byte -> BYTE   undefined2 -> WORD   undefined4 -> DWORD\n"
                 " *   uint -> unsigned   ulong -> DWORD   CONCAT22(h,l)/(x)._n_m_ -> field packing.\n"
                 " * Replace them with the authored types as each function is translated. */\n"
-                "#ifndef %s\n#define %s\n\n" % (hdr, hdr_guard, hdr_guard))
+                "#ifndef %s\n#define %s\n\n#include <windows.h>\n\n" % (hdr, hdr_guard, hdr_guard))
         if order:
             h.write("/* module globals (DGROUP) -- one slot per address; curate type + name.\n"
                     " * Multiple views on a slot (e.g. int | byte *) mean a reused field or union. */\n")
+            func_names = set(disp(f) for f in funcs) | set(f["name"] for f in funcs)
             for nm in order:
+                if nm in func_names:
+                    continue                                    # name is a function, not a data global
+                addr = _re2.sub(r"^_?DAT_", "", nm)
+                if addr in pair_sel:
+                    continue                                    # selector folded into its FAR pointer
+                if addr in pair_off:
+                    h.write("extern %s FAR *%s;  /* far pointer (offset+selector pair) */\n"
+                            % (far_types[addr], far_names[addr]))
+                    continue
                 views = slots[nm]
                 gname = struct_map.get(nm, nm)
                 gtype = raise95.map_types(views[0])
@@ -709,9 +742,15 @@ def recover_from_decompile(decompile_path, outdir, module=None, seg_names=None, 
                 sig = "%s %s(%s)" % (raise95.map_types(f["ret"]), disp(f),
                                      raise95.map_types(f["params"] or "void"))
                 raw = "\n".join("    " + l for l in inner.split("\n") if l.strip())
+                # rename FUN_ call sites to their inferred names (name_map renames defs; do call sites too)
+                named = inner
+                for _old, _new in name_map.items():
+                    named = _re2.sub(r"\b%s\b" % _re2.escape(_old), _new, named)
                 if raise_bodies:
-                    body = raise95.raise_c(inner, struct_map=struct_map,
-                                           param_names=param_map.get(f["name"]))
+                    body = raise95.raise_c(named, struct_map=struct_map,
+                                           param_names=param_map.get(f["name"]),
+                                           far_pairs=far_pairs or None, far_names=far_names or None,
+                                           far_types=far_types or None)
                     c.write("/* %s%s -- raised from decompile; refine local names + tag doc/undoc + accuracy */\n"
                             "%s\n{\n%s\n" % (disp(f), was, sig, body))
                     c.write("    /* --- original Ghidra decompile (verify against) ---\n")
