@@ -675,6 +675,7 @@ def recover_from_decompile(decompile_path, outdir, module=None, seg_names=None, 
     # NE far-pointer pre-scan (module-wide): coalesce Ghidra's off/sel word pairs into single FAR
     # pointers. Detection uses MAKELONG evidence + Ghidra's own pointer typing of the offset slot.
     far_pairs, far_types, pair_off, pair_sel = {}, {}, set(), set()
+    dword_pairs, dword_names, dw_lo, dw_hi = {}, {}, set(), set()
     if ne:
         def _addr(nm):
             mm = _re2.match(r"_?DAT_([0-9a-fA-F]{2,4}_[0-9a-fA-F]{2,4})$", nm)
@@ -682,11 +683,17 @@ def recover_from_decompile(decompile_path, outdir, module=None, seg_names=None, 
         all_slots = set(a for a in (_addr(n) for n in slots) if a)
         ptr_slots = set(a for n in slots for a in [_addr(n)]
                         if a and any("*" in v for v in slots[n]))
-        far_pairs = neraise95.analyze_far_pairs(raise95._mechanical(text), ptr_slots, all_slots)
+        mech_all = raise95._mechanical(text)
+        far_pairs = neraise95.analyze_far_pairs(mech_all, ptr_slots, all_slots)
         for off in far_pairs:
             far_names.setdefault(off, "g_p" + off.split("_")[1])
             far_types[off] = far_type
             pair_off.add(off); pair_sel.add(far_pairs[off])
+        # 32-bit low/high word pairs (excluding the far-pointer pairs)
+        dword_pairs = neraise95.analyze_dword_pairs(mech_all, exclude=pair_off)
+        for lo in dword_pairs:
+            dword_names.setdefault(lo, "g_dw" + lo.split("_")[1])
+            dw_lo.add(lo); dw_hi.add(dword_pairs[lo])
 
     # shared header: globals + prototypes
     with open(os.path.join(outdir, hdr), "w", encoding="utf-8") as h:
@@ -704,11 +711,15 @@ def recover_from_decompile(decompile_path, outdir, module=None, seg_names=None, 
                 if nm in func_names:
                     continue                                    # name is a function, not a data global
                 addr = _re2.sub(r"^_?DAT_", "", nm)
-                if addr in pair_sel:
-                    continue                                    # selector folded into its FAR pointer
+                if addr in pair_sel or addr in dw_hi:
+                    continue                                    # folded into its FAR pointer / DWORD
                 if addr in pair_off:
                     h.write("extern %s FAR *%s;  /* far pointer (offset+selector pair) */\n"
                             % (far_types[addr], far_names[addr]))
+                    continue
+                if addr in dw_lo:
+                    h.write("extern DWORD %s;  /* 32-bit value (low+high word pair) */\n"
+                            % dword_names[addr])
                     continue
                 views = slots[nm]
                 gname = struct_map.get(nm, nm)
@@ -750,7 +761,9 @@ def recover_from_decompile(decompile_path, outdir, module=None, seg_names=None, 
                     body = raise95.raise_c(named, struct_map=struct_map,
                                            param_names=param_map.get(f["name"]),
                                            far_pairs=far_pairs or None, far_names=far_names or None,
-                                           far_types=far_types or None)
+                                           far_types=far_types or None,
+                                           dword_pairs=dword_pairs or None, dword_names=dword_names or None,
+                                           clean_frames=ne)
                     c.write("/* %s%s -- raised from decompile; refine local names + tag doc/undoc + accuracy */\n"
                             "%s\n{\n%s\n" % (disp(f), was, sig, body))
                     c.write("    /* --- original Ghidra decompile (verify against) ---\n")

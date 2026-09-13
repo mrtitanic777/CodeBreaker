@@ -80,6 +80,11 @@ def analyze_far_pairs(text, ptr_slots=None, all_slots=None):
     Returns {A: A+2} as address strings (e.g. '1058_0050': '1058_0052')."""
     pairs = {}
     for m in _MK.finditer(text):
+        # far-pointer MAKELONG evidence only counts in a POINTER context (cast to `... *)` just
+        # before it); a MAKELONG assigned to a long is a 32-bit VALUE pair, not a pointer.
+        pre = text[max(0, m.start() - 14):m.start()]
+        if not re.search(r"\*\s*\)\s*$", pre):
+            continue
         got = _makelong_args(text, m.start())
         if not got:
             continue
@@ -191,4 +196,107 @@ def coalesce_far_pointers(body, pairs, names, types=None):
         body = re.sub(r"\bDAT_%s\b" % re.escape(off), "FP_OFF(%s)" % names[off], body)
     # (9) residual MAKELONG cast to a pointer must be FAR (medium model)
     body = re.sub(r"\(([A-Za-z_]\w*) \*\)MAKELONG\(", r"(\1 FAR *)MAKELONG(", body)
+    return body
+
+
+# ------------------------------------------------------------------ 32-bit word-pair coalescing
+def analyze_dword_pairs(text, exclude=None):
+    """Detect 32-bit value pairs (low word A + high word A+2) that Ghidra split, EXCLUDING the
+    far-pointer pairs (pass their offset addresses in `exclude`). Evidence: MAKELONG(DAT_A, DAT_{A+2})
+    used as a value (not a pointer), or the 2-line store `DAT_A=(WORD)X; DAT_{A+2}=(WORD)(X>>0x10)`.
+    Returns {A: A+2}."""
+    exclude = exclude or set()
+    pairs = {}
+    for m in _MK.finditer(text):
+        got = _makelong_args(text, m.start())
+        if not got:
+            continue
+        lo, hi, end = got
+        # skip if this MAKELONG is cast to a pointer (that's a far pointer, handled elsewhere)
+        pre = text[max(0, m.start() - 12):m.start()]
+        if re.search(r"\*\s*\)\s*$", pre):
+            continue
+        mh = re.fullmatch(_DAT, hi.strip())
+        ml = re.search(_DAT, lo)
+        if mh and ml:
+            sel, off = mh.group(1), ml.group(1)
+            try:
+                if _plus2(off) == sel and off not in exclude:
+                    pairs[off] = sel
+            except ValueError:
+                pass
+    # 2-line store idiom (either order)
+    for m in re.finditer(r"DAT_(%s) = \(WORD\)\(\(DWORD\)[^;]*>> 0x10\);\s*\n\s*DAT_(%s) = \(WORD\)"
+                         % (r"[0-9a-fA-F]{2,4}_[0-9a-fA-F]{2,4}", r"[0-9a-fA-F]{2,4}_[0-9a-fA-F]{2,4}"), text):
+        hi, lo = m.group(1), m.group(2)
+        try:
+            if _plus2(lo) == hi and lo not in exclude:
+                pairs[lo] = hi
+        except ValueError:
+            pass
+    return pairs
+
+
+def coalesce_dwords(body, pairs, names):
+    """Coalesce 32-bit low/high word pairs into single DWORDs. Conservative: try each pair, and if
+    the rewrite would leave an invalid LOWORD/HIWORD lvalue, REVERT that pair (leave it as words)."""
+    for lo in sorted(pairs):
+        hi = pairs[lo]
+        D = names[lo]
+        trial = body
+        # store: DAT_hi = (WORD)((DWORD)X >> 0x10);  DAT_lo = (WORD)X;   (either order) -> D = X;
+        trial = re.sub(
+            r"(?m)^([ \t]*)DAT_%s = \(WORD\)\(\(DWORD\)([^;]*?) >> 0x10\);\n[ \t]*DAT_%s = \(WORD\)\2;"
+            % (re.escape(hi), re.escape(lo)), r"\1%s = \2;" % D, trial)
+        trial = re.sub(
+            r"(?m)^([ \t]*)DAT_%s = \(WORD\)([^;]*);\n[ \t]*DAT_%s = \(WORD\)\(\(DWORD\)\2 >> 0x10\);"
+            % (re.escape(lo), re.escape(hi)), r"\1%s = \2;" % D, trial)
+        # 32-bit increment with carry: DAT_lo = DAT_lo + k; DAT_hi = DAT_hi + (uint)(<carry>); -> D += k;
+        trial = re.sub(
+            r"(?m)^([ \t]*)DAT_%s = DAT_%s \+ (\w+);\n[ \t]*DAT_%s = DAT_%s \+ \(uint\)[^;]*;"
+            % (re.escape(lo), re.escape(lo), re.escape(hi), re.escape(hi)),
+            r"\1%s = %s + \2;" % (D, D), trial)
+        # read: MAKELONG(DAT_lo, DAT_hi) -> D
+        trial = re.sub(r"MAKELONG\(DAT_%s,\s*DAT_%s\)" % (re.escape(lo), re.escape(hi)), D, trial)
+        # bare word reads -> LOWORD/HIWORD (rvalue)
+        trial = re.sub(r"\bDAT_%s\b" % re.escape(lo), "LOWORD(%s)" % D, trial)
+        trial = re.sub(r"\bDAT_%s\b" % re.escape(hi), "HIWORD(%s)" % D, trial)
+        # safety: reject if we created an invalid LOWORD/HIWORD lvalue
+        if re.search(r"(LOWORD|HIWORD)\([^)]*\)\s*(?:[-+*/&|^]?=(?!=)|<<=|>>=)", trial):
+            continue          # revert this pair (leave as raw words)
+        body = trial
+    return body
+
+
+# ------------------------------------------------------------------ frame / segment artifact cleanup
+def clean_frame_artifacts(body):
+    """Remove Ghidra's medium-model prologue/untracked-register noise: locals that are assigned but
+    never read, whose assignments are side-effect-free (e.g. `uStack_4 = 0x1058;` DGROUP-selector
+    save, `iStack_2 = unaff_BP + 1;`). Keeps anything that is actually read (e.g. `unaff_CS` used as
+    a handle) and never drops an assignment whose RHS calls a function. Iterates to a fixpoint."""
+    decl_re = re.compile(r"^\s*[A-Za-z_][\w ]*?\**\s*([A-Za-z_]\w*)\s*;\s*$")
+    for _ in range(4):
+        lines = body.split("\n")
+        decls = {}
+        for i, ln in enumerate(lines):
+            m = decl_re.match(ln)
+            if m and "return" not in ln and "(" not in ln:
+                decls[m.group(1)] = i
+        to_remove = set()
+        for name, di in decls.items():
+            asgn, safe, reads = [], True, 0
+            for i, ln in enumerate(lines):
+                am = re.match(r"^\s*%s\s*=\s*(.*);\s*$" % re.escape(name), ln)
+                if am:
+                    asgn.append(i)
+                    if re.search(r"[A-Za-z_]\w*\s*\(", am.group(1)):    # RHS has a call -> keep
+                        safe = False
+                elif i != di and re.search(r"\b%s\b" % re.escape(name), ln):
+                    reads += 1
+            if reads == 0 and safe:
+                to_remove.add(di); to_remove.update(asgn)
+        if to_remove:
+            body = "\n".join(l for i, l in enumerate(lines) if i not in to_remove)
+        else:
+            break
     return body

@@ -180,23 +180,35 @@ def map_types(s):
     return s
 
 
+def _load_ne():
+    try:
+        from src.targets.win95 import neraise95
+        return neraise95
+    except Exception:
+        import importlib.util as _il, os as _os
+        _sp = _il.spec_from_file_location("neraise95", _os.path.join(_os.path.dirname(__file__), "neraise95.py"))
+        _m = _il.module_from_spec(_sp); _sp.loader.exec_module(_m); return _m
+
+
 def raise_c(text, struct_map=None, param_names=None, api_map=None,
-            far_pairs=None, far_names=None, far_types=None):
+            far_pairs=None, far_names=None, far_types=None,
+            dword_pairs=None, dword_names=None, clean_frames=False):
     """Raise a block of Ghidra decompile C toward authored period C. Layers: mechanical, then
-    (NE) far-pointer coalescing, then structural DAT_->name, then light semantic."""
+    (NE) far-pointer + 32-bit-pair coalescing, structural DAT_->name, light semantic, and
+    (NE) frame-artifact cleanup."""
     if api_map:
         _API_MAP.update(api_map)
     text = _mechanical(text)
-    if far_pairs and far_names:
-        try:
-            from src.targets.win95 import neraise95
-        except Exception:
-            import importlib.util as _il, os as _os
-            _sp = _il.spec_from_file_location("neraise95", _os.path.join(_os.path.dirname(__file__), "neraise95.py"))
-            neraise95 = _il.module_from_spec(_sp); _sp.loader.exec_module(neraise95)
-        text = neraise95.coalesce_far_pointers(text, far_pairs, far_names, far_types)
+    if (far_pairs and far_names) or (dword_pairs and dword_names) or clean_frames:
+        ne = _load_ne()
+        if far_pairs and far_names:
+            text = ne.coalesce_far_pointers(text, far_pairs, far_names, far_types)
+        if dword_pairs and dword_names:
+            text = ne.coalesce_dwords(text, dword_pairs, dword_names)
     text = _structural(text, struct_map)
     text = _semantic(text, param_names)
+    if clean_frames:
+        text = ne.clean_frame_artifacts(text)
     return text
 
 
