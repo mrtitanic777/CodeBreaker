@@ -610,7 +610,7 @@ _PROVENANCE = (
 
 def recover_from_decompile(decompile_path, outdir, module=None, seg_names=None, name_map=None,
                            struct_map=None, param_map=None, raise_bodies=True, header=None,
-                           ne=False, far_names=None, far_type="BYTE", dword_names=None):
+                           ne=False, far_names=None, far_type="BYTE", dword_names=None, far_force=None):
     """Ingest a Ghidra C export and emit per-segment .c files + a shared header, grouped by the real
     NE code segments. With raise_bodies (default), each function body is put through the raise95 pass
     (Ghidra-C -> authored-style period C: real types, MAKELONG/HIWORD/etc., real API casing, and --
@@ -686,6 +686,8 @@ def recover_from_decompile(decompile_path, outdir, module=None, seg_names=None, 
                         if a and any("*" in v for v in slots[n]))
         mech_all = raise95._mechanical(text)
         far_pairs = neraise95.analyze_far_pairs(mech_all, ptr_slots, all_slots)
+        for off in (far_force or []):                       # inject known far pairs (verified, not auto-detectable)
+            far_pairs.setdefault(off, neraise95._plus2(off))
         for off in far_pairs:
             far_names.setdefault(off, "g_p" + off.split("_")[1])
             far_types[off] = far_type
