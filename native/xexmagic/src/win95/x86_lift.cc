@@ -164,6 +164,15 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
       if (m == "mov" || m == "movzx" || m == "movsx") {
         ILValue v = srcValue(in.ops[1]);
         storeTo(in.ops[0], v);
+      } else if (m == "les" || m == "lds") {
+        // far-ptr load: reg = *(far*)mem. Keep the whole 32-bit far pointer in the
+        // register slot so a later es:[reg]/ds:[reg] deref reads through it.
+        ILInstr x; x.op = ILOp::Load; x.address = a;
+        x.src1 = emitMemAddr(in.ops[1], x);
+        x.access_type = ILType::Ptr;
+        x.dst = fn.AllocValue(ILType::Ptr);
+        bb.instrs.push_back(x);
+        storeTo(in.ops[0], x.dst);
       } else if (m == "lea") {
         ILInstr x; x.op = ILOp::Add; x.address = a;
         x.src1 = (in.ops[1].base != kNoReg) ? getReg(RegSlot(in.ops[1].base), 2) : fn.AllocValue(ILType::U16);
