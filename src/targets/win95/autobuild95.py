@@ -608,16 +608,26 @@ _PROVENANCE = (
     " * method + binary-verified, NOT source-text-exact.")
 
 
-def recover_from_decompile(decompile_path, outdir, module=None, seg_names=None, name_map=None):
-    """Ingest a Ghidra C export and emit per-segment .c scaffolds + a shared header, grouped by the
-    real NE code segments. Each function keeps the decompiler body as an inline reference to translate
-    to clean period C (curation). This is the Recover stage for logic modules where a decompile exists.
+def recover_from_decompile(decompile_path, outdir, module=None, seg_names=None, name_map=None,
+                           struct_map=None, param_map=None, raise_bodies=True):
+    """Ingest a Ghidra C export and emit per-segment .c files + a shared header, grouped by the real
+    NE code segments. With raise_bodies (default), each function body is put through the raise95 pass
+    (Ghidra-C -> authored-style period C: real types, MAKELONG/HIWORD/etc., real API casing, and --
+    given struct_map/param_map -- named struct fields + params); the original Ghidra decompile is kept
+    beneath each function as a verification reference. This is the Recover stage for logic modules.
 
-    seg_names: optional {seg_num: "rolename"} -> emit "<rolename>.c" (inferred role-based filenames)
-      instead of "<mod>_seg%02d.c". name_map: optional {FUN_name: "inferred"} -> emit each function
-      under its inferred name (noting the original), for both the prototypes and the scaffolds."""
+    seg_names {seg: role} -> role-based filenames; name_map {FUN: name} -> inferred function names;
+    struct_map {DAT_addr: field} -> DGROUP slots to struct fields; param_map {func: [names]}."""
     seg_names = seg_names or {}
     name_map = name_map or {}
+    struct_map = struct_map or {}
+    param_map = param_map or {}
+    try:
+        from src.targets.win95 import raise95
+    except Exception:
+        import importlib.util as _il
+        _sp = _il.spec_from_file_location("raise95", os.path.join(os.path.dirname(__file__), "raise95.py"))
+        raise95 = _il.module_from_spec(_sp); _sp.loader.exec_module(raise95)
     text = open(decompile_path, encoding="latin1", errors="replace").read()
     module = (module or os.path.splitext(os.path.basename(decompile_path))[0]).lower()
     module = _re2.sub(r"\.dll$|\.txt$|^g|^bn", "", module) or "mod"
@@ -661,13 +671,17 @@ def recover_from_decompile(decompile_path, outdir, module=None, seg_names=None, 
                     " * Multiple views on a slot (e.g. int | byte *) mean a reused field or union. */\n")
             for nm in order:
                 views = slots[nm]
-                note = ("  /* also: %s */" % ", ".join(views[1:])) if len(views) > 1 else ""
-                h.write("extern %s %s;%s\n" % (views[0], nm, note))
+                gname = struct_map.get(nm, nm)
+                gtype = raise95.map_types(views[0])
+                extra = [raise95.map_types(v) for v in views[1:]]
+                note = ("  /* also: %s */" % ", ".join(extra)) if extra else ""
+                h.write("extern %s %s;%s\n" % (gtype, gname, note))
             h.write("\n")
         h.write("/* function prototypes (inferred names; original FUN_ noted where renamed) */\n")
         for f in funcs:
             note = ("  /* was %s */" % f["name"]) if disp(f) != f["name"] else ""
-            h.write("%s %s(%s);%s\n" % (f["ret"], disp(f), f["params"] or "void", note))
+            h.write("%s %s(%s);%s\n" % (raise95.map_types(f["ret"]), disp(f),
+                                        raise95.map_types(f["params"] or "void"), note))
         h.write("\n#endif\n")
 
     # per-segment .c scaffolds -- filename from the inferred role name (seg_names) or seg-numbered.
@@ -684,11 +698,22 @@ def recover_from_decompile(decompile_path, outdir, module=None, seg_names=None, 
                     % (fn, module, seg, (" (%s)" % role) if role else "", _PROVENANCE, module))
             for f in by_seg[seg]:
                 was = ("  (was %s)" % f["name"]) if disp(f) != f["name"] else ""
-                c.write("/* %s%s -- scaffold (from decompile); mark doc/undoc + accuracy */\n"
-                        "%s %s(%s)\n{\n" % (disp(f), was, f["ret"], disp(f), f["params"] or "void"))
-                ref = "\n".join("    " + l for l in f["body"].split("\n")[1:-1] if l.strip())
-                c.write("    /* === decompiler reference -- translate + delete ===\n")
-                c.write(ref + "\n    === end reference === */\n}\n\n")
+                inner = "\n".join(f["body"].split("\n")[1:-1])           # strip the outer { }
+                sig = "%s %s(%s)" % (raise95.map_types(f["ret"]), disp(f),
+                                     raise95.map_types(f["params"] or "void"))
+                raw = "\n".join("    " + l for l in inner.split("\n") if l.strip())
+                if raise_bodies:
+                    body = raise95.raise_c(inner, struct_map=struct_map,
+                                           param_names=param_map.get(f["name"]))
+                    c.write("/* %s%s -- raised from decompile; refine local names + tag doc/undoc + accuracy */\n"
+                            "%s\n{\n%s\n" % (disp(f), was, sig, body))
+                    c.write("    /* --- original Ghidra decompile (verify against) ---\n")
+                    c.write(raw + "\n    --- end original --- */\n}\n\n")
+                else:
+                    c.write("/* %s%s -- scaffold (from decompile); mark doc/undoc + accuracy */\n"
+                            "%s\n{\n" % (disp(f), was, sig))
+                    c.write("    /* === decompiler reference -- translate + delete ===\n")
+                    c.write(raw + "\n    === end reference === */\n}\n\n")
 
     manifest = {"module": module,
                 "segments": {str(s): {"file": seg_file[s], "role": seg_names.get(s) or seg_names.get(str(s)),
