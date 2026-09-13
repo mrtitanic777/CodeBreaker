@@ -152,16 +152,16 @@ static void parse_funcs(char *text) {
 }
 
 static unsigned checksum(void) {
-    unsigned h = 0x1505; int i, a; char *c;
+    /* thunk.exe's exact algorithm (reverse-engineered): sum over functions of
+       the uppercased-name char sum times its weight (nfuncs - index); first-
+       declared is heaviest. Args/return type do not contribute. */
+    unsigned total = 0; int i; char *c;
     for (i=0;i<nfuncs;i++) {
-        for (c=funcs[i].name; *c; c++) h = (h*33) ^ (unsigned char)*c;
-        for (a=0;a<funcs[i].nargs;a++) {
-            int cl = funcs[i].args[a].cls;
-            char fc = cl==CWORD?'W':cl==CDWORD?'D':cl==CPTR?'P':'V';
-            h = (h*33) ^ (unsigned char)fc;
-        }
+        unsigned s = 0;
+        for (c=funcs[i].name; *c; c++) s += (unsigned char)toupper((unsigned char)*c);
+        total += s * (unsigned)(nfuncs - i);
     }
-    return h;
+    return total;
 }
 
 static FILE *out;

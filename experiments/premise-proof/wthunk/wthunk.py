@@ -108,13 +108,16 @@ def parse_thk(text):
 # ---- checksum (self-consistent; see module docstring) -------------------------
 
 def checksum(funcs):
-    h = 0x1505
-    for f in funcs:
-        for ch in f["name"]:
-            h = ((h * 33) ^ ord(ch)) & 0xFFFFFFFF
-        for a in f["args"]:
-            h = ((h * 33) ^ ord(a["cls"][0])) & 0xFFFFFFFF
-    return h & 0xFFFFFFFF
+    # thunk.exe's exact algorithm (reverse-engineered): sum over functions of
+    # the uppercased-name char sum times its weight (N - declaration index);
+    # first-declared is heaviest. Args/return type do not contribute. Win16
+    # names are case-insensitive, so letters are uppercased before summing.
+    n = len(funcs)
+    total = 0
+    for i, f in enumerate(funcs):
+        cs = sum(ord(c.upper()) for c in f["name"])
+        total += cs * (n - i)
+    return total & 0xFFFFFFFF
 
 
 # ---- 32-bit emit --------------------------------------------------------------
