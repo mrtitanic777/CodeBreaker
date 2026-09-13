@@ -1,6 +1,8 @@
 // End-to-end proof: NE load -> x86 lift -> shared DecompileToC -> readable C.
 #include <cstdio>
 #include <cstdlib>
+#include <string>
+#include <vector>
 #include "win95/ne_loader.h"
 #include "win95/x86_lift.h"
 #include "win95/win16_names.h"
@@ -46,6 +48,42 @@ int main(int argc, char** argv) {
     auto it = ordName.find(e.ordinal);
     names[e.addr] = it != ordName.end() ? it->second : ("export_" + std::to_string(e.ordinal));
   }
+
+  // Optional --sigs FILE: demangled names + prototypes, addr-keyed, produced by
+  // the Python demangler (CodeBreaker's, the sole source of truth). One record
+  // per line: <addrhex>\t<display>\t<ret>\t<argtype[|name]>\t...  A display name
+  // overrides the raw (mangled) export name for the definition AND its call
+  // sites; ret/args feed the decompiler's per-function signature. arg i -> a(i+1).
+  std::map<uint32_t, FuncSignature> sigMap;
+  for (int ai = 2; ai + 1 < argc; ++ai) {
+    if (std::string(argv[ai]) != "--sigs") continue;
+    FILE* sf = std::fopen(argv[ai + 1], "r");
+    if (!sf) { std::fprintf(stderr, "warning: --sigs %s not found\n", argv[ai + 1]); break; }
+    char buf[8192];
+    while (std::fgets(buf, sizeof buf, sf)) {
+      std::string L(buf);
+      while (!L.empty() && (L.back() == '\n' || L.back() == '\r')) L.pop_back();
+      if (L.empty()) continue;
+      std::vector<std::string> f; size_t p = 0;
+      for (;;) { size_t t = L.find('\t', p);
+        if (t == std::string::npos) { f.push_back(L.substr(p)); break; }
+        f.push_back(L.substr(p, t - p)); p = t + 1; }
+      if (f.size() < 2) continue;
+      uint32_t ad = (uint32_t)strtoul(f[0].c_str(), nullptr, 16);
+      if (!f[1].empty()) names[ad] = f[1];
+      FuncSignature sig;
+      if (f.size() >= 3) sig.ret = f[2];
+      for (size_t i = 3; i < f.size(); ++i) {
+        if (f[i].empty()) continue;
+        std::string ty = f[i], nm; size_t bar = f[i].find('|');
+        if (bar != std::string::npos) { ty = f[i].substr(0, bar); nm = f[i].substr(bar + 1); }
+        sig.args[(int)(i - 3) + 1] = {ty, nm};    // a1 = first detected arg (r3)
+      }
+      sigMap[ad] = sig;
+    }
+    std::fclose(sf);
+  }
+
   lifter.SetNames(names);
 
   // Build far-call-site -> (target,name) from the relocation table, following the
@@ -118,14 +156,13 @@ int main(int argc, char** argv) {
     return 0;
   }
 
-  // Whole-module mode: discover function starts and decompile every one.
-  if (std::string(argv[2]) == "--module") {
+  // Function-start discovery shared by --names and --module.
+  auto discover = [&]() {
     std::map<int, std::set<uint32_t>> starts;   // seg idx -> function start addrs
     for (auto& s : img.segments) if (!s.is_data) starts[s.idx].insert(s.base_addr);
     for (auto& e : img.entries) if (e.addr) starts[e.seg].insert(e.addr);
     for (auto& kv : sites) { uint32_t t = kv.second.first; if (t) starts[t >> 16].insert(t); }
-    // near-call (E8) targets via a linear decode scan
-    for (auto& s : img.segments) {
+    for (auto& s : img.segments) {              // near-call (E8) targets via linear scan
       if (s.is_data) continue;
       for (uint32_t a = s.base_addr, e2 = s.base_addr + s.length; a < e2;) {
         win95::X86Insn in = win95::DecodeX86(img.image.data(), img.image.size(), a, a, true);
@@ -134,6 +171,28 @@ int main(int argc, char** argv) {
         a += in.valid ? in.len : 1;
       }
     }
+    return starts;
+  };
+
+  // --names: dump discovered function starts (addr<TAB>name). Feeds the Python
+  // demangler, which writes back a --sigs file.
+  if (std::string(argv[2]) == "--names") {
+    auto starts = discover();
+    for (auto& s : img.segments) {
+      if (s.is_data) continue;
+      for (uint32_t fstart : starts[s.idx]) {
+        if (fstart >= s.base_addr + s.length) continue;
+        auto nn = names.find(fstart);
+        char ab[16]; std::snprintf(ab, sizeof ab, "%X", fstart);
+        std::printf("%s\t%s\n", ab, nn != names.end() ? nn->second.c_str() : "");
+      }
+    }
+    return 0;
+  }
+
+  // Whole-module mode: discover function starts and decompile every one.
+  if (std::string(argv[2]) == "--module") {
+    auto starts = discover();
     int nfuncs = 0;
     for (auto& s : img.segments) {
       if (s.is_data) continue;
@@ -145,7 +204,10 @@ int main(int argc, char** argv) {
         char nm[32]; std::snprintf(nm, sizeof nm, "sub_%06X", fstart);
         auto nn = names.find(fstart); std::string fn2 = nn != names.end() ? nn->second : nm;
         ILFunction f = lifter.LiftFunction(img.image.data(), img.image.size(), fstart, fend, fn2);
+        auto sg = sigMap.find(fstart);
+        SetSignature(sg != sigMap.end() ? &sg->second : nullptr);
         std::printf("%s\n", DecompileToC(f, {}).c_str());
+        SetSignature(nullptr);
         nfuncs++;
       }
     }
