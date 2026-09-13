@@ -69,3 +69,6 @@ experiments/premise-proof/lz32-build/
 experiments/premise-proof/wthunk/*.asm
 experiments/premise-proof/wthunk/*.obj
 experiments/premise-proof/lzexpand-build/
+experiments/premise-proof/vmtest/*.exe
+experiments/premise-proof/vmtest/*.dll
+experiments/premise-proof/vmtest/*.obj
