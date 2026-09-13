@@ -22,7 +22,8 @@ wcc386 -bt=nt -q lz32.c            || goto err
 echo [2/4] wrc lz32.rc
 wrc -q -r -bt=nt lz32.rc           || goto err
 echo [3/4] wthunk lz.thk + wasm (32-bit half)
-python "%HERE%wthunk\wthunk.py" -o lz.asm lz.thk || goto err
+if not exist "%HERE%wthunk\wthunk.exe" call "%HERE%build_wthunk.bat" >nul
+"%HERE%wthunk\wthunk.exe" -o lz.asm lz.thk || goto err
 wasm -zcm=masm -zzo -dIS_32=1 -fo=lz32t.obj lz.asm || goto err
 echo [4/4] wlink -^> lz32.dll
 wlink @lz32.lnk                    || goto err
