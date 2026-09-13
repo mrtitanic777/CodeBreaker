@@ -53,3 +53,8 @@ tools/vmm32boot/vmm32stage/
 
 # editable-install metadata
 *.egg-info/
+
+# native C++ engine build output
+native/**/build/
+native/**/dist/
+*.obj
