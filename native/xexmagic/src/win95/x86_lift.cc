@@ -11,8 +11,11 @@
 namespace win95 {
 
 namespace {
-// x86 GPR index (0..7) -> an ILValue "register slot" id reused as ppc_reg.
-int RegSlot(int regid) { return regid % 16; }  // GPR index 0..7
+// x86 GPR index (0..7) -> an ILValue "register slot" id, based at 20 so it never
+// collides with the decompiler's arg/param registers r3..r10 (which we populate
+// from x86 stack pushes / [bp+N] params instead). ax=20,cx,dx,bx,sp,bp,si,di=27.
+constexpr int kGpBase = 20;
+int RegSlot(int regid) { return kGpBase + (regid % 16); }  // GPR index 0..7
 bool IsGpr(const X86Op& o) { return o.kind == OpKind::Reg && o.reg / 16 == RC_GPR; }
 
 ILCmpKind JccKind(const std::string& m) {
@@ -75,10 +78,14 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
 
   // --- function-global register state (approximate SSA) ---
   std::map<int, ILValue> reg;   // GPR slot -> current value
+  std::map<int, ILValue> params;      // param index -> value (from [bp+N]), r3..->a1..
+  std::vector<ILValue> pend_args;     // pushed values awaiting the next call
+  std::set<int> incoming;             // value ids that are undefined entry-reg values
   auto getReg = [&](int slot, int sz) -> ILValue {
     auto it = reg.find(slot);
     if (it != reg.end()) return it->second;
     ILValue v = fn.AllocValue(WidthType(sz), slot);  // incoming/undefined
+    incoming.insert(v.id);
     reg[slot] = v;
     return v;
   };
@@ -106,6 +113,7 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
     ILBasicBlock bb;
     bb.start_addr = bstart;
     bb.block_id = (int)li;
+    pend_args.clear();   // args are pushed within the block that calls
 
     for (uint32_t a = bstart; a < bend;) {
       auto iit = at.find(a);
@@ -126,6 +134,16 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
       auto srcValue = [&](const X86Op& o) -> ILValue {
         if (IsGpr(o)) return getReg(RegSlot(o.reg), o.size);
         if (o.kind == OpKind::Mem) {
+          // [bp + disp], disp >= 6 == an incoming parameter (far frame: saved bp +
+          // far return addr = 6). Map to r3.. so the back-end names them a1, a2...
+          if (o.base != kNoReg && (o.base % 16) == 5 && o.index == kNoReg && o.disp >= 6) {
+            int pidx = (o.disp - 6) / 2;
+            auto pit = params.find(pidx);
+            if (pit != params.end()) return pit->second;
+            ILValue pv = fn.AllocValue(WidthType(o.size), 3 + pidx);
+            params[pidx] = pv;
+            return pv;
+          }
           ILInstr ld; ld.op = ILOp::Load; ld.address = a;
           ld.src1 = emitMemAddr(o, ld);
           ld.dst = fn.AllocValue(WidthType(o.size));
@@ -197,12 +215,12 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
         flag_kind = FK_ARITH; flagA = x.dst; flag_imm = true; flag_immv = 0; flag_sz = in.ops[0].size;
       }
       else if (m == "cbw" || m == "cwde") {     // AX = sign-extend AL (EAX = sext AX)
-        ILInstr x; x.op = ILOp::ExtendByte; x.address = a; x.src1 = getReg(0, 1);
-        x.dst = fn.AllocValue(ILType::U16); bb.instrs.push_back(x); setReg(0, x.dst);
+        ILInstr x; x.op = ILOp::ExtendByte; x.address = a; x.src1 = getReg(kGpBase, 1);
+        x.dst = fn.AllocValue(ILType::U16); bb.instrs.push_back(x); setReg(kGpBase, x.dst);
       }
       else if (m == "cwd" || m == "cdq") {       // DX = (AX < 0) ? -1 : 0  (sign fill)
-        ILInstr x; x.op = ILOp::SarImm; x.address = a; x.src1 = getReg(0, 2); x.imm = 15;
-        x.dst = fn.AllocValue(ILType::U16); bb.instrs.push_back(x); setReg(2, x.dst);
+        ILInstr x; x.op = ILOp::SarImm; x.address = a; x.src1 = getReg(kGpBase, 2); x.imm = 15;
+        x.dst = fn.AllocValue(ILType::U16); bb.instrs.push_back(x); setReg(kGpBase + 2, x.dst);
       }
       else if (m == "inc") { ILInstr x; x.op=ILOp::Add; x.address=a; x.src1=srcValue(in.ops[0]); x.imm=1; x.dst=fn.AllocValue(WidthType(in.ops[0].size)); bb.instrs.push_back(x); storeTo(in.ops[0],x.dst);}
       else if (m == "dec") { ILInstr x; x.op=ILOp::Sub; x.address=a; x.src1=srcValue(in.ops[0]); x.imm=1; x.dst=fn.AllocValue(WidthType(in.ops[0].size)); bb.instrs.push_back(x); storeTo(in.ops[0],x.dst);}
@@ -219,17 +237,25 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
         } else {
           x.call_name = "indirect";                    // call through reg/mem (v1)
         }
-        x.dst = fn.AllocValue(ILType::U32, 0);   // DX:AX (long returns); AX truncates on 16-bit use
+        // stage pushed args into the arg registers r3.. (PASCAL push order); the
+        // back-end reads r3..r10 as the call's arguments.
+        for (size_t i = 0; i < pend_args.size() && i < 8; ++i) {
+          ILInstr ar; ar.op = ILOp::Assign; ar.address = a; ar.src1 = pend_args[i];
+          ar.dst = fn.AllocValue(pend_args[i].type, 3 + (int)i);
+          bb.instrs.push_back(ar);
+        }
+        pend_args.clear();
+        x.dst = fn.AllocValue(ILType::U32, kGpBase);   // DX:AX (long returns); AX truncates on 16-bit use
         bb.instrs.push_back(x);
-        setReg(0, x.dst);
+        setReg(kGpBase, x.dst);
         // DX = high word of the return (for long-returning calls like _llseek);
         // dropped by DCE when the caller only uses AX.
         ILInstr hi; hi.op = ILOp::Shr; hi.address = a; hi.src1 = x.dst; hi.imm = 16;
-        hi.dst = fn.AllocValue(ILType::U16, 2); bb.instrs.push_back(hi);
-        setReg(2, hi.dst);
+        hi.dst = fn.AllocValue(ILType::U16, kGpBase + 2); bb.instrs.push_back(hi);
+        setReg(kGpBase + 2, hi.dst);
       } else if (m == "ret" || m == "retf") {
         ILInstr x; x.op = ILOp::Return; x.address = a;
-        auto it = reg.find(0); if (it != reg.end()) x.src1 = it->second;
+        auto it = reg.find(kGpBase); if (it != reg.end()) x.src1 = it->second;
         bb.instrs.push_back(x);
         bb.is_return = true;
       } else if (m == "jmp") {
@@ -262,12 +288,24 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
         bb.instrs.push_back(br);
         bb.successors.push_back(br.target);
         bb.successors.push_back(next);   // fallthrough
-      } else {
-        // push/pop/nop/string/misc: model as InlineAsm annotation (DCE-friendly)
-        if (m != "nop" && m != "push" && m != "pop") {
-          ILInstr x; x.op = ILOp::InlineAsm; x.address = a; x.asm_text = FormatX86(in);
-          bb.instrs.push_back(x);
+      } else if (m == "push") {
+        // An outgoing argument, unless it is a prologue save: push of an untouched
+        // incoming callee-saved reg (bp/si/di) or a segment reg.
+        const X86Op& o = in.ops[0];
+        bool save = false;
+        if (IsGpr(o)) {
+          int idx = o.reg % 16;
+          ILValue cur = getReg(RegSlot(o.reg), 2);
+          if ((idx == 5 || idx == 6 || idx == 7) && incoming.count(cur.id)) save = true;
+        } else if (o.kind == OpKind::Reg && o.reg / 16 == RC_SEG) {
+          save = true;
         }
+        if (!save) pend_args.push_back(srcValue(o));
+      } else if (m == "pop" || m == "nop") {
+        // epilogue restore / no-op: nothing to model
+      } else {
+        ILInstr x; x.op = ILOp::InlineAsm; x.address = a; x.asm_text = FormatX86(in);
+        bb.instrs.push_back(x);
       }
       a = next;
     }
