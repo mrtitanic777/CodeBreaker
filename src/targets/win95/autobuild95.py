@@ -388,6 +388,84 @@ def build_flat_thunk(srcdir, outdir=None):
             "module": module, "log": log}
 
 
+# ------------------------------------------------------------------ RECOVER (flat-thunk)
+# KERNEL32 by-ordinal flat-thunk / handle helpers (names from the Windows Me symbol file; Geoff
+# Chappell, "Ordinal-Only Exports In KERNEL32 4.0"). Value = (name, stdcall-arg-bytes or None).
+_KERNEL32_ORDINALS = {
+    17: ("CommonUnimpStub", 0), 20: ("DosFileHandleToWin32Handle", 4),
+    21: ("Win32HandleToDosFileHandle", 4), 22: ("DisposeLZ32Handle", 4),
+    41: ("ThunkInitLSF", None), 89: ("FT_PrologPrime", None), 90: ("QT_ThunkPrime", None),
+}
+
+
+def recover_flat_thunk(pe_path, outdir):
+    """Emit recovered flat-thunk source from the binary. The .def (exports) and <mod>k32.def
+    (KERNEL32 by-ordinal imports) are recovered VERBATIM from the binary's tables; the .thk and
+    veneer .c are scaffolds (signatures/logic need curation -- flagged). Returns a summary dict."""
+    pe = PE(pe_path)
+    if not pe.is_pe:
+        return {"error": "not a PE: %s" % pe_path}
+    module = os.path.splitext(os.path.basename(pe_path))[0].lower()
+    os.makedirs(outdir, exist_ok=True)
+    exps = pe.exports()
+    imps = pe.imports()
+    k32 = imps.get("KERNEL32.dll") or imps.get("KERNEL32.DLL") or []
+
+    # 1) module .def -- exports, verbatim
+    with open(os.path.join(outdir, module + ".def"), "w") as f:
+        f.write("LIBRARY   %s\nEXPORTS\n" % module.upper())
+        for ordv, nm in exps:
+            f.write("    %-18s @%d\n" % (nm, ordv))
+
+    # 2) <mod>k32.def -- the KERNEL32 by-ordinal helpers this binary imports, named via the oracle
+    ords = sorted(int(n[1:]) for n in k32 if n.startswith("@"))
+    unknown = [o for o in ords if o not in _KERNEL32_ORDINALS]
+    with open(os.path.join(outdir, module + "k32.def"), "w") as f:
+        f.write("; KERNEL32 by-ordinal flat-thunk / handle helpers imported by %s.\n" % module.upper())
+        f.write("; Names from the Windows Me symbol file (Geoff Chappell). NONAME = by-ordinal import.\n")
+        f.write("; NOTE: ThunkInitLSF@41 is the Microsoft-INTERNAL connect (never in a public SDK); we\n")
+        f.write(";       connect via the public ThunkConnect32 instead -- see the engine docs.\n")
+        f.write("LIBRARY KERNEL32\nEXPORTS\n")
+        for o in ords:
+            if o == 41:       # internal ThunkInitLSF -- deliberately not imported (use ThunkConnect32)
+                continue
+            nm, argb = _KERNEL32_ORDINALS.get(o, ("Kernel32_Ord%d" % o, None))
+            dec = ("%s@%d" % (nm, argb)) if argb is not None else nm
+            f.write("    %-28s @%d NONAME\n" % (dec, o))
+
+    # 3) .thk scaffold -- one thunked function per export, signatures flagged for curation
+    with open(os.path.join(outdir, module + ".thk"), "w") as f:
+        f.write("/* %s.thk -- flat-thunk script (SCAFFOLD). Function list recovered from the export\n"
+                " * table; SIGNATURES + pointer annotations need curation (decompile the stubs). */\n"
+                "enablemapdirect3216 = true;\n\n"
+                "typedef unsigned short WORD;  typedef unsigned long DWORD;  typedef int INT;\n"
+                "typedef long LONG;  typedef char *LPSTR;  typedef void VOID;  typedef int HFILE;\n\n" % module)
+        for ordv, nm in exps:
+            base = nm[:-1] if nm.endswith(("A", "W")) else nm        # collapse A/W to one 16-bit target
+            f.write("/* @%d %s -- TODO: real signature + input/output/inout pointer annotations */\n"
+                    "INT %s16(void)\n{\n}\n\n" % (ordv, nm, base))
+
+    # 4) veneer .c scaffold -- DllMain + a thunk-through per export (logic flagged for curation)
+    with open(os.path.join(outdir, module + ".c"), "w") as f:
+        f.write("/* %s.c -- 32-bit flat-thunk veneer (SCAFFOLD). DllMain + per-export thunk-through;\n"
+                " * real arg marshalling, A/W handling, and any pre/post logic need curation. */\n"
+                "#define WIN32_LEAN_AND_MEAN\n#include <windows.h>\n\n"
+                "extern BOOL __stdcall %s_ThunkConnect32(LPSTR,LPSTR,HINSTANCE,DWORD);\n\n"
+                "BOOL WINAPI DllMain(HINSTANCE h, DWORD r, LPVOID res)\n{\n"
+                "    if (r == DLL_PROCESS_ATTACH) { DisableThreadLibraryCalls(h);\n"
+                "        if (!%s_ThunkConnect32(\"?16.DLL\", \"%s.DLL\", h, r)) return FALSE; }\n"
+                "    else if (r == DLL_PROCESS_DETACH) %s_ThunkConnect32(\"?16.DLL\", \"%s.DLL\", h, r);\n"
+                "    return TRUE;\n}\n\n" % (module, module, module, module.upper(), module, module.upper()))
+        for ordv, nm in exps:
+            f.write("/* @%d %s -- TODO: marshal args, call the thunk, handle return */\n"
+                    "INT WINAPI %s(void) { return 0; }\n\n" % (ordv, nm, nm))
+
+    return {"module": module, "n_exports": len(exps), "k32_ordinals": ords,
+            "unknown_ordinals": unknown, "outdir": outdir,
+            "recovered": ["%s.def" % module, "%sk32.def" % module],
+            "scaffolded": ["%s.thk" % module, "%s.c" % module]}
+
+
 from src.cli.common import opt as _opt
 
 
@@ -402,6 +480,17 @@ def main():
     print("=== classify %s ===" % os.path.basename(path))
     for k, v in c.items():
         print("  %-12s %s" % (k, v))
+    recdir = _opt(argv, "--recover")
+    if recdir:
+        print("=== recover (flat-thunk) -> %s ===" % recdir)
+        rr = recover_flat_thunk(path, recdir)
+        if rr.get("error"):
+            print("  " + rr["error"]); return
+        print("  module=%s  exports=%d  KERNEL32 ordinals=%s%s" % (
+            rr["module"], rr["n_exports"], rr["k32_ordinals"],
+            ("  UNKNOWN=%s" % rr["unknown_ordinals"]) if rr["unknown_ordinals"] else ""))
+        print("  recovered (verbatim from binary): %s" % ", ".join(rr["recovered"]))
+        print("  scaffolded (need curation):       %s" % ", ".join(rr["scaffolded"]))
     built = _opt(argv, "--diff")
     srcdir = _opt(argv, "--build")
     if srcdir:
