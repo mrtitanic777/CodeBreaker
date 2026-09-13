@@ -58,3 +58,10 @@ tools/vmm32boot/vmm32stage/
 native/**/build/
 native/**/dist/
 *.obj
+
+# premise-proof experiment: third-party toolchain clone + build output
+experiments/premise-proof/open-watcom-v2/
+
+# premise-proof local build logs + smoke output
+experiments/premise-proof/*.log
+experiments/premise-proof/smoke/*.exe
