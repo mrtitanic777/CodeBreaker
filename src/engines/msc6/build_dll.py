@@ -51,6 +51,16 @@ def _win(p):
     return p.replace("/", "\\")
 
 
+def _find_libentry():
+    """Locate the Win16 DLL entry object (LIBENTRY.OBJ) -- a toolchain artifact, not committed."""
+    for p in (os.path.join(ROOT, "toolchains", "period", "libs", "win31-kit", "LIBENTRY.OBJ"),
+              os.path.join(os.path.dirname(ROOT), "Windows95", "design", "reference",
+                           "Microsoft Windows 95 DDK", "LIB", "LIBENTRY.OBJ")):
+        if os.path.exists(p):
+            return p
+    return None
+
+
 def build(recon_dir, work_dir=None, modules=None):
     """Stage the reconstruction, build the DLL with the two toolchains, return its path."""
     dbx, msc6, msvc = _paths()
@@ -58,17 +68,28 @@ def build(recon_dir, work_dir=None, modules=None):
         raise RuntimeError("dosbox_x not configured")
     work = work_dir or tempfile.mkdtemp(prefix="lzwhole_")
     os.makedirs(work, exist_ok=True)
-    for fn in os.listdir(recon_dir):
-        if fn.lower().endswith((".c", ".h", ".lnk", ".def")):
+    for fn in os.listdir(recon_dir):                          # .obj = prebuilt (e.g. a staged LIBENTRY)
+        if fn.lower().endswith((".c", ".h", ".lnk", ".def", ".obj")):
             shutil.copy2(os.path.join(recon_dir, fn), work)
     ws = os.path.join(msvc, "BIN", "WINSTUB.EXE")             # for the .def STUB directive
     if os.path.exists(ws):
         shutil.copy2(ws, work)
-    if modules is None:                                       # module order from lz.lnk
-        lnk = open(os.path.join(work, "lz.lnk")).read()
-        modules = re.findall(r"([A-Za-z_]\w*)\.obj", lnk)
+    lnk = open(os.path.join(work, "lz.lnk")).read()
+    objs = re.findall(r"([A-Za-z_]\w*)\.obj", lnk)
+    # Stage the Win16 DLL entry object (LIBENTRY.OBJ) the link references but which has no .c -- it is
+    # the NE entry that calls LibMain and drags the real MSC CRT out of the runtime lib.
+    if any(o.lower() == "libentry" for o in objs) and not os.path.exists(os.path.join(work, "LIBENTRY.OBJ")):
+        le = _find_libentry()
+        if le:
+            shutil.copy2(le, os.path.join(work, "LIBENTRY.OBJ"))
+    # compile only the objects that have a matching .c; the rest (LIBENTRY) are prebuilt + staged
+    if modules is None:
+        modules = [m for m in objs if os.path.exists(os.path.join(work, m + ".c"))]
     with open(os.path.join(work, "BUILD.BAT"), "w", newline="") as f:
-        f.write("@echo off\r\ndel *.obj\r\ndel lzexpand.dll\r\ndel done.txt\r\n")
+        f.write("@echo off\r\n")
+        for m in modules:                                     # clear only compiled objs; keep prebuilt
+            f.write("del %s.obj\r\n" % m)
+        f.write("del lzexpand.dll\r\ndel done.txt\r\n")
         for m in modules:
             f.write("cl /c /AM /G2 /Gsw /Ox %s.c >> CL.TXT\r\n" % m)
         f.write("link @lz.lnk > LINK.TXT\r\nrc lzexpand.dll > RC.TXT\r\necho DONE > done.txt\r\n")

@@ -129,7 +129,9 @@ def gen_linkfile(recon_dir, module):
         return {"engine": "linkfile", "changed": False,
                 "notes": "kept %s (no manifest to reorder from)" % os.path.basename(existing[0])}
     order = _segment_order(recon_dir)
-    objs = "+".join("%s.obj" % o for o in order)
+    # LIBENTRY.obj (the Win16 DLL entry, staged at build time) trails the module objs: it is the NE
+    # entry, calls LibMain, and pulls the real MSC CRT out of mdllcew.lib.
+    objs = "+".join("%s.obj" % o for o in order) + "+LIBENTRY.obj"
     lnk = ("/NOD /NOE /NOPACKCODE /ALIGN:16 %s\n%s.dll\n%s.map\nmdllcew.lib libw.lib\n%s\n"
            % (objs, stem, stem, os.path.basename(defs[0])))
     path = existing[0] if existing else os.path.join(recon_dir, "%s.lnk" % stem)
