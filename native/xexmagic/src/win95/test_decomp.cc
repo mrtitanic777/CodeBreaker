@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include "win95/ne_loader.h"
 #include "win95/x86_lift.h"
+#include "win95/win16_names.h"
 #include "decompiler_c.h"
 
 int main(int argc, char** argv) {
@@ -33,7 +34,8 @@ int main(int argc, char** argv) {
       } else if (r.kind == win95::NEReloc::IMPORTORD) {
         std::string mod = (r.module >= 1 && r.module <= (int)img.module_refs.size())
                               ? img.module_refs[r.module - 1] : "IMP";
-        nm = mod + "_" + std::to_string(r.ordinal);
+        std::string known = win95::Win16Name(mod, r.ordinal);
+        nm = !known.empty() ? known : (mod + "_" + std::to_string(r.ordinal));
       } else if (r.kind == win95::NEReloc::IMPORTNAME) {
         std::string mod = (r.module >= 1 && r.module <= (int)img.module_refs.size())
                               ? img.module_refs[r.module - 1] : "IMP";
