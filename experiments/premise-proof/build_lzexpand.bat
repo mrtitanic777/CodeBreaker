@@ -22,8 +22,11 @@ for %%m in (%MODS%) do (
 )
 if "%FAIL%"=="1" (echo COMPILE STAGE HAD FAILURES & goto done)
 echo   all modules compiled OK
+echo === exports from lzexpand.def via wdef ===
+if not exist "%HERE%wdef\wdef.exe" call "%HERE%build_wdef.bat" >nul
+"%HERE%wdef\wdef.exe" "%SRC%\lzexpand.def" > lzexpand.exports.lnk
 echo === link (wlink system windows_dll) ===
-wlink @lzexpand.lnk
+wlink @lzexpand.lnk @lzexpand.exports.lnk
 echo LINK_EL=%ERRORLEVEL%
 dir lzexpand.dll 2>nul | findstr lzexpand.dll
 :done

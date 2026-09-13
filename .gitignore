@@ -73,3 +73,5 @@ experiments/premise-proof/vmtest/*.exe
 experiments/premise-proof/vmtest/*.dll
 experiments/premise-proof/vmtest/*.obj
 experiments/premise-proof/wthunk/*.exe
+experiments/premise-proof/wdef/*.exe
+experiments/premise-proof/wdef/*.obj
