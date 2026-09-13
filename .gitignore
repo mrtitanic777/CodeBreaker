@@ -65,3 +65,4 @@ experiments/premise-proof/open-watcom-v2/
 # premise-proof local build logs + smoke output
 experiments/premise-proof/*.log
 experiments/premise-proof/smoke/*.exe
+experiments/premise-proof/lz32-build/
