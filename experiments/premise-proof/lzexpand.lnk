@@ -1,0 +1,16 @@
+system windows_dll
+name lzexpand.dll
+option quiet
+option map=lzexpand.map
+file lzalloc,lzread,lzwep,lzcopy,lzstate,lzio,lzcopyf,lzhdr,lzdecomp,lzname,lzdata
+export LZCOPY.1
+export LZOPENFILE.2
+export LZINIT.3
+export LZSEEK.4
+export LZREAD.5
+export LZCLOSE.6
+export LZSTART.7
+export COPYLZFILE.8
+export LZDONE.9
+export GETEXPANDEDNAME.10
+export WEP.11

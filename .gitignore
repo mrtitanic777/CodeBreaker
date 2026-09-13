@@ -68,3 +68,4 @@ experiments/premise-proof/smoke/*.exe
 experiments/premise-proof/lz32-build/
 experiments/premise-proof/wthunk/*.asm
 experiments/premise-proof/wthunk/*.obj
+experiments/premise-proof/lzexpand-build/
