@@ -1,0 +1,28 @@
+system nt_dll
+name lz32.dll
+option quiet
+option map=lz32.map
+option resource=lz32.res
+file lz32.obj
+file lz32t.obj
+export LZCopy.1='_LZCopy@8'
+export LZOpenFileA.2='_LZOpenFileA@12'
+export LZInit.3='_LZInit@4'
+export LZSeek.4='_LZSeek@12'
+export LZRead.5='_LZRead@12'
+export LZClose.6='_LZClose@4'
+export LZStart.7='_LZStart@0'
+export CopyLZFile.8='_CopyLZFile@8'
+export LZDone.9='_LZDone@0'
+export GetExpandedNameA.10='_GetExpandedNameA@8'
+export LZOpenFileW.11='_LZOpenFileW@12'
+export GetExpandedNameW.12='_GetExpandedNameW@8'
+import 'ThunkConnect32@24' KERNEL32.'ThunkConnect32'
+import SMapLS_IP_EBP_8 KERNEL32.SMapLS_IP_EBP_8
+import SUnMapLS_IP_EBP_8 KERNEL32.SUnMapLS_IP_EBP_8
+import SMapLS_IP_EBP_12 KERNEL32.SMapLS_IP_EBP_12
+import SUnMapLS_IP_EBP_12 KERNEL32.SUnMapLS_IP_EBP_12
+import '_Win32HandleToDosFileHandle@4' KERNEL32.21
+import '_DosFileHandleToWin32Handle@4' KERNEL32.20
+import '_DisposeLZ32Handle@4' KERNEL32.22
+import '_CommonUnimpStub@0' KERNEL32.17

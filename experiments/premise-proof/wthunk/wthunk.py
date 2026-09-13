@@ -149,7 +149,7 @@ def emit32(pfx, funcs, cs, out):
     w(f"\tdd\toffset QT_Thunk_{pfx} - offset {pfx}_ThunkData32\n")
     w(f"\tdd\toffset FT_Prolog_{pfx} - offset {pfx}_ThunkData32\n\n\t.code \n\n")
     w("externdef ThunkConnect32@24:near\n")
-    w(f"public {pfx}_ThunkConnect32@16\n{pfx}_ThunkConnect32@16:\n")
+    w(f"public _{pfx}_ThunkConnect32@16\n_{pfx}_ThunkConnect32@16:\n")
     w(f"\tpop\tedx\n\tpush\toffset {pfx}_ThkData16\n\tpush\toffset {pfx}_ThunkData32\n")
     w(f"\tpush\tedx\n\tjmp\tThunkConnect32@24\n")
     w(f"{pfx}_ThkData16 label byte\n\tdb\t\"{pfx}_ThunkData16\",0\n\n")
@@ -164,8 +164,9 @@ def emit32(pfx, funcs, cs, out):
         cl = (n - 1) - i
         nm = f["name"]
         stackb = 4 * len(f["args"])
-        w(f"\npublic {nm}@{stackb}\n{nm}@{stackb}:\n\tmov\tcl,{cl}\n")
-        w(f"public II{nm}@{stackb}\nII{nm}@{stackb}:\n")
+        # STDCALL C decoration: the 32-bit veneer (wcc386) references these as
+        # _NAME@N, so define them that way. (No II split -- we don't merge bodies.)
+        w(f"\npublic _{nm}@{stackb}\n_{nm}@{stackb}:\n\tmov\tcl,{cl}\n")
         w("\tpush\tebp\n\tmov\tebp,esp\n\tpush\tecx\n\tsub\tesp,60\n")
         off = 8
         unmaps = []
