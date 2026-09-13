@@ -26,12 +26,20 @@ class X86Lifter {
   // Resolve a call target address to a name (exports/imports/known functions).
   void SetNames(const std::map<uint32_t, std::string>& names) { names_ = names; }
 
+  // Resolve a far call/jmp by the instruction's linear address to (target, name),
+  // from the NE relocation table. Far operands in an unlinked/relocated NE encode
+  // 0, so the fixup table is the only source of the real target.
+  void SetCallSites(const std::map<uint32_t, std::pair<uint32_t, std::string>>& cs) {
+    call_sites_ = cs;
+  }
+
   // Lift one function spanning [entry, end) in the flat image into IL.
   ILFunction LiftFunction(const uint8_t* image, size_t image_size,
                           uint32_t entry, uint32_t end, const std::string& name);
 
  private:
   std::map<uint32_t, std::string> names_;
+  std::map<uint32_t, std::pair<uint32_t, std::string>> call_sites_;
 };
 
 }  // namespace win95

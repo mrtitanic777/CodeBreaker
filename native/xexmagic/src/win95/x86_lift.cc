@@ -185,9 +185,15 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
       else if (m == "test") { flag_kind=FK_TEST; flagA = srcValue(in.ops[0]); flagB = srcValue(in.ops[1]); flag_imm=false; flag_sz=in.ops[0].size; }
       else if (m == "call") {
         ILInstr x; x.op = ILOp::Call; x.address = a;
-        if (in.ops[0].kind == OpKind::Rel) x.target = (uint32_t)in.ops[0].imm;
-        auto nit = names_.find(x.target);
-        x.call_name = nit != names_.end() ? nit->second : ("sub_" + std::to_string(x.target));
+        auto cs = call_sites_.find(a);                 // far call resolved via relocation
+        if (cs != call_sites_.end()) { x.target = cs->second.first; x.call_name = cs->second.second; }
+        else if (in.ops[0].kind == OpKind::Rel) {
+          x.target = (uint32_t)in.ops[0].imm;
+          auto nit = names_.find(x.target);
+          x.call_name = nit != names_.end() ? nit->second : ("sub_" + std::to_string(x.target));
+        } else {
+          x.call_name = "indirect";                    // call through reg/mem (v1)
+        }
         x.dst = fn.AllocValue(ILType::U16, 0);   // result in AX
         bb.instrs.push_back(x);
         setReg(0, x.dst);
