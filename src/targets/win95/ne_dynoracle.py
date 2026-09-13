@@ -101,7 +101,8 @@ def default_stub(hit, uc, U, ctx):
     return {"ax": 0}                                     # unknown: benign 0 (stack may drift)
 
 
-def probe(dll, ordinal=None, seg=None, offset=None, args=None, stub=default_stub, insn_cap=None):
+def probe(dll, ordinal=None, seg=None, offset=None, args=None, stub=default_stub, insn_cap=None,
+          prelude=None):
     """Run one NE function under the controlled Win16 environment. Returns the tracer16 TraceRecord
     (with rec['layout'] + rec['imports_hit'] + rec['mem_*'] + rec['ret'])."""
     import unicorn as U
@@ -116,7 +117,8 @@ def probe(dll, ordinal=None, seg=None, offset=None, args=None, stub=default_stub
     if insn_cap:
         kw["insn_cap"] = insn_cap
     rec = T.trace_function16(dll, ordinal=ordinal, seg=seg, offset=offset,
-                             args=args, arity=len(args or []), import_stub=_stub, **kw)
+                             args=args, arity=len(args or []), import_stub=_stub,
+                             prelude=prelude, **kw)
     rec["heaps"] = {"base": HEAP_BASE, "stride": HEAP_STRIDE}
     return rec
 

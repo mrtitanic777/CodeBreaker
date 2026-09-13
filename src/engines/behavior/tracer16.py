@@ -245,7 +245,7 @@ def _patch_chain(uc, base, r, tsel, toff):
 
 
 def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity=0,
-                     insn_cap=_MAX_INSNS, import_stub=None):
+                     insn_cap=_MAX_INSNS, import_stub=None, prelude=None):
     """Trace one exported 16-bit function. Identify it by `ordinal` (entry-table) or explicit
     (seg, offset). `args` are 16-bit Pascal args (pushed left-to-right); a far-RET sentinel sits
     under them. Returns a TraceRecord dict like tracer.trace_function.
@@ -274,18 +274,21 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
     ds_sel = sels.get(auto, stack_sel)                        # DGROUP; fall back to stack
     args = [int(a) & 0xFFFF for a in (args or [0] * arity)]
 
-    # Pascal far frame: push args left-to-right, then far-ret sentinel (IP=0, CS=sent_sel)
-    sp = 0xFFF0
-    def push16(v):
-        nonlocal sp
-        sp = (sp - 2) & 0xFFFF
-        uc.mem_write(STACK_BASE + sp, (v & 0xFFFF).to_bytes(2, "little"))
-    for a in args:
-        push16(a)
-    push16(sent_sel); push16(0)                               # far return addr: CS then IP (popped IP first)
-    uc.reg_write(UC_X86_REG_SS, stack_sel); uc.reg_write(UC_X86_REG_ESP, sp)
-    uc.reg_write(UC_X86_REG_DS, ds_sel); uc.reg_write(UC_X86_REG_ES, ds_sel)
-    uc.reg_write(UC_X86_REG_CS, cs_sel); uc.reg_write(UC_X86_REG_EIP, offset)
+    def _enter(sseg, soff, sargs):
+        """Set up a Pascal far frame for one call: push args left-to-right, then a far-ret sentinel,
+        and point CS:IP at (sseg:soff) with DS/ES = DGROUP. Returns the effective code offset."""
+        sp = 0xFFF0
+        for a in sargs:
+            sp = (sp - 2) & 0xFFFF
+            uc.mem_write(STACK_BASE + sp, (int(a) & 0xFFFF).to_bytes(2, "little"))
+        sp = (sp - 2) & 0xFFFF; uc.mem_write(STACK_BASE + sp, sels[sseg].to_bytes(2, "little"))
+        sp = (sp - 2) & 0xFFFF; uc.mem_write(STACK_BASE + sp, (0).to_bytes(2, "little"))
+        uc.reg_write(UC_X86_REG_SS, stack_sel); uc.reg_write(UC_X86_REG_ESP, sp)
+        uc.reg_write(UC_X86_REG_DS, ds_sel); uc.reg_write(UC_X86_REG_ES, ds_sel)
+        uc.reg_write(UC_X86_REG_CS, sels[sseg]); uc.reg_write(UC_X86_REG_EIP, soff)
+        return soff
+
+    _enter(seg, offset, args)
 
     rec = {"schema": "cb.behavior.trace16/1", "module": os.path.basename(path),
            "seg": seg, "offset": offset, "ordinal": ordinal,
@@ -341,6 +344,24 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
     uc.hook_add(U.UC_HOOK_MEM_READ | U.UC_HOOK_MEM_WRITE, hook_mem)
     uc.hook_add(U.UC_HOOK_MEM_READ_UNMAPPED | U.UC_HOOK_MEM_WRITE_UNMAPPED
                 | U.UC_HOOK_MEM_FETCH_UNMAPPED, hook_unmapped)
+
+    # prelude: run setup calls first (sharing this uc's DGROUP state + the import_stub ctx), then
+    # discard their trace so only the main function's memory/imports are captured.
+    for pc in (prelude or []):
+        pseg, poff = pc.get("seg"), pc.get("offset")
+        if pc.get("ordinal") is not None:
+            pe = nef.entries()[pc["ordinal"] - 1]
+            pseg, poff = pe["seg"], pe["offset"]
+        _enter(pseg, poff, [int(a) & 0xFFFF for a in pc.get("args", [])])
+        try:
+            uc.emu_start(poff, SENT_BASE, count=insn_cap + 1)
+        except U.UcError:
+            pass
+    if prelude:
+        rec["mem_reads"] = []; rec["mem_writes"] = []; rec["imports_hit"] = []
+        rec["path"] = []; rec["insn_count"] = 0; rec["prelude_ran"] = len(prelude)
+        _enter(seg, offset, args)
+
     try:
         uc.emu_start(offset, SENT_BASE, count=insn_cap + 1)
         rec["exit"] = "truncated" if rec["truncated"] else "ret"
