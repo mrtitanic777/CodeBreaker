@@ -238,6 +238,156 @@ def _fmt_diff(r):
     return "\n".join(L)
 
 
+# ------------------------------------------------------------------ toolchain resolver
+def _first(*cands):
+    for c in cands:
+        if c and os.path.exists(c):
+            return c
+    return None
+
+
+def _reference_roots():
+    """Candidate 'reference' dirs (Win95 DDK + WIN32SDK + our persisted thunk-1.01). Robust across
+    however data_root/design_root resolve under a given dispatch -- we search all plausible roots."""
+    from src.core import paths
+    cands = []
+    env = os.environ.get("WT_REFERENCE_ROOT")
+    if env:
+        cands.append(env)
+    try:
+        cands.append(os.path.join(paths.design_root(), "reference"))
+    except Exception:
+        pass
+    dr = os.environ.get("WT_DATA_ROOT", "")
+    if dr:
+        cands.append(os.path.join(os.path.dirname(dr), "reference"))   # corpus parent = design
+        cands.append(os.path.join(dr, "reference"))
+    # last-resort absolute (this project's layout)
+    cands.append(r"C:\Users\mrtit\Documents\GitHub\Windows95\design\reference")
+    seen, out = set(), []
+    for c in cands:
+        if c and c not in seen and os.path.isdir(c):
+            seen.add(c); out.append(c)
+    return out
+
+
+def toolchain():
+    """Locate the period build tools. Flat-thunk path is all native (runs on modern Windows):
+    thunk.exe (prefer the v1.01 from the Chicago beta SDK -> closest imports), MASM 6.11c, MSVC 2.0."""
+    from src.core import paths
+    refs = _reference_roots()
+
+    def ref_find(*rel):
+        return _first(*[os.path.join(r, *rel) for r in refs])
+
+    cb = paths.repo_root()
+    msvc2 = os.path.join(cb, "toolchains", "period", "compilers", "msvc-2.0")
+    win32lib = ref_find("WIN32SDK", "MSTOOLS", "LIB", "I386", "THUNK32.LIB")
+    tc = {
+        "thunk": ref_find("thunk-1.01", "THUNK.EXE") or ref_find("WIN32SDK", "MSTOOLS", "BIN", "I386", "THUNK.EXE"),
+        "ml": ref_find("Microsoft Windows 95 DDK", "MASM611C", "ML.EXE"),
+        "cl": os.path.join(msvc2, "BIN", "CL.EXE"),
+        "link": os.path.join(msvc2, "BIN", "LINK.EXE"),
+        "lib": os.path.join(msvc2, "BIN", "LIB.EXE"),
+        "rc": os.path.join(msvc2, "BIN", "RC.EXE"),
+        "include": os.path.join(msvc2, "INCLUDE"),
+        "lib_dirs": [os.path.join(msvc2, "LIB")] + ([os.path.dirname(win32lib)] if win32lib else []),
+    }
+    return tc
+
+
+def _winpath(p):
+    return p.replace("/", "\\")
+
+
+import glob as _glob
+import re as _re
+
+
+def _discover_flat_thunk(srcdir):
+    """Find the pieces of a flat-thunk module in srcdir. Returns a dict or {'error':..}.
+      thk   = the *.thk thunk script
+      cfiles= every *.c (veneer)
+      moddef= the module .def (LIBRARY <MODULE>, not the *k32 import-lib def)
+      k32def= the *k32.def (KERNEL32 by-ordinal import lib)
+      rc    = optional *.rc ; module = LIBRARY name from moddef (lowercased)
+    """
+    thk = _glob.glob(os.path.join(srcdir, "*.thk"))
+    defs = _glob.glob(os.path.join(srcdir, "*.def"))
+    k32 = [d for d in defs if os.path.basename(d).lower().endswith("k32.def")]
+    moddefs = [d for d in defs if d not in k32]
+    cfiles = _glob.glob(os.path.join(srcdir, "*.c"))
+    rc = _glob.glob(os.path.join(srcdir, "*.rc"))
+    if not thk:
+        return {"error": "no .thk in %s" % srcdir}
+    if not moddefs:
+        return {"error": "no module .def in %s" % srcdir}
+    if not k32:
+        return {"error": "no *k32.def (KERNEL32 ordinal import lib) in %s" % srcdir}
+    if not cfiles:
+        return {"error": "no veneer .c in %s" % srcdir}
+    m = _re.search(r"^\s*LIBRARY\s+(\w+)", open(moddefs[0], encoding="latin1").read(), _re.M | _re.I)
+    module = (m.group(1) if m else os.path.splitext(os.path.basename(moddefs[0]))[0]).lower()
+    return {"thk": thk[0], "cfiles": cfiles, "moddef": moddefs[0], "k32def": k32[0],
+            "rc": rc[0] if rc else None, "module": module}
+
+
+def build_flat_thunk(srcdir, outdir=None):
+    """Build a flat-thunk module from its recovered source (native chain, no DOSBox):
+      thunk.exe -> .asm ; ml -DIS_32 -> thunk obj ; cl each veneer .c -> obj ; rc (opt) ;
+      lib (KERNEL32 by-ordinal import lib) ; link /NODEFAULTLIB /ENTRY:DllMain@12 -> <module>.dll.
+    Discovers the pieces in srcdir. Returns {ok, dll, module, log}."""
+    import subprocess, shutil
+    srcdir = os.path.abspath(srcdir)
+    outdir = os.path.abspath(outdir or os.path.join(srcdir, "_build"))
+    os.makedirs(outdir, exist_ok=True)
+    tc = toolchain()
+    for k in ("thunk", "ml", "cl", "link", "lib"):
+        if not tc[k] or not os.path.exists(tc[k]):
+            return {"ok": False, "log": "missing tool: %s (%s)" % (k, tc[k])}
+    disc = _discover_flat_thunk(srcdir)
+    if disc.get("error"):
+        return {"ok": False, "log": disc["error"]}
+    module = disc["module"]
+    # stage sources into outdir (keep the tracked tree clean)
+    for f in os.listdir(srcdir):
+        if f.rsplit(".", 1)[-1].lower() in ("thk", "c", "h", "def", "rc", "ico", "res"):
+            shutil.copy2(os.path.join(srcdir, f), outdir)
+    thk = os.path.basename(disc["thk"]); thkstem = os.path.splitext(thk)[0]
+    cobjs = [os.path.splitext(os.path.basename(c))[0] + ".obj" for c in disc["cfiles"]]
+    k32 = os.path.basename(disc["k32def"]); k32stem = os.path.splitext(k32)[0]
+    moddef = os.path.basename(disc["moddef"])
+    rc = os.path.basename(disc["rc"]) if disc["rc"] else None
+    res = (module + ".res") if rc else ""
+    L = ["@echo off", "cd /d " + _winpath(outdir),
+         "set INCLUDE=" + _winpath(tc["include"]),
+         "set LIB=" + ";".join(_winpath(x) for x in tc["lib_dirs"]),
+         "set PATH=" + _winpath(os.path.dirname(tc["cl"])) + ";%PATH%",
+         "del %s.dll *.obj %s.asm %s 2>nul" % (module, thkstem, res),
+         '"%s" -o %s.asm %s > _t.log 2>&1' % (_winpath(tc["thunk"]), thkstem, thk),
+         '"%s" /c /W0 /DIS_32 /Fo%s_thk.obj %s.asm >> _t.log 2>&1' % (_winpath(tc["ml"]), thkstem, thkstem)]
+    for c in disc["cfiles"]:
+        L.append('"%s" /c /W3 /DWIN32 %s >> _t.log 2>&1' % (_winpath(tc["cl"]), os.path.basename(c)))
+    if rc:
+        L.append('"%s" /r /fo %s %s >> _t.log 2>&1' % (_winpath(tc["rc"]), res, rc))
+    L += ['"%s" /NOLOGO /DEF:%s /OUT:%s.lib /MACHINE:IX86 >> _t.log 2>&1'
+          % (_winpath(tc["lib"]), k32, k32stem),
+          '"%s" /DLL /NOLOGO /NODEFAULTLIB /ENTRY:DllMain@12 /DEF:%s /OUT:%s.dll %s %s_thk.obj %s %s.lib kernel32.lib thunk32.lib >> _t.log 2>&1'
+          % (_winpath(tc["link"]), moddef, module, " ".join(cobjs), thkstem, res, k32stem),
+          "echo RC=%errorlevel% >> _t.log"]
+    bat = os.path.join(outdir, "_build.bat")
+    open(bat, "w").write("\r\n".join(L) + "\r\n")
+    try:
+        subprocess.run(["cmd", "/c", _winpath(bat)], capture_output=True, text=True, timeout=300)
+    except Exception as e:
+        return {"ok": False, "log": "build run failed: %r" % e}
+    tlog = os.path.join(outdir, "_t.log")
+    log = open(tlog, encoding="latin1").read() if os.path.exists(tlog) else ""
+    dll = os.path.join(outdir, module + ".dll")
+    return {"ok": os.path.exists(dll), "dll": dll if os.path.exists(dll) else None,
+            "module": module, "log": log}
+
+
 from src.cli.common import opt as _opt
 
 
@@ -253,6 +403,15 @@ def main():
     for k, v in c.items():
         print("  %-12s %s" % (k, v))
     built = _opt(argv, "--diff")
+    srcdir = _opt(argv, "--build")
+    if srcdir:
+        print("=== build (flat-thunk) from %s ===" % srcdir)
+        res = build_flat_thunk(srcdir)
+        if not res["ok"]:
+            print("  BUILD FAILED:\n" + "\n".join("    " + l for l in res["log"].splitlines()[-12:]))
+            return
+        built = res["dll"]
+        print("  built %s (%d bytes)" % (os.path.basename(built), os.path.getsize(built)))
     if built:
         print("=== diff %s vs %s ===" % (os.path.basename(built), os.path.basename(path)))
         print(_fmt_diff(bindiff(built, path)))
