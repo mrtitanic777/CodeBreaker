@@ -51,14 +51,22 @@ def _win(p):
     return p.replace("/", "\\")
 
 
+def _win16_kit():
+    """The Win3.1 DLL build kit: the PERIOD-CORRECT (lean) MDLLCEW.LIB + LIBW.LIB + LIBENTRY.OBJ for a
+    Win16 NE DLL. The later msvc-1.52c MDLLCEW.LIB (314 KB vs this 185 KB) links a much fatter CRT --
+    heap manager / env / message machinery the original components never carried. Toolchain artifacts,
+    never committed."""
+    d = os.path.join(ROOT, "toolchains", "period", "libs", "win31-kit")
+    return d if os.path.exists(os.path.join(d, "MDLLCEW.LIB")) else None
+
+
 def _find_libentry():
-    """Locate the Win16 DLL entry object (LIBENTRY.OBJ) -- a toolchain artifact, not committed."""
-    for p in (os.path.join(ROOT, "toolchains", "period", "libs", "win31-kit", "LIBENTRY.OBJ"),
-              os.path.join(os.path.dirname(ROOT), "Windows95", "design", "reference",
-                           "Microsoft Windows 95 DDK", "LIB", "LIBENTRY.OBJ")):
-        if os.path.exists(p):
-            return p
-    return None
+    k = _win16_kit()
+    if k and os.path.exists(os.path.join(k, "LIBENTRY.OBJ")):
+        return os.path.join(k, "LIBENTRY.OBJ")
+    p = os.path.join(os.path.dirname(ROOT), "Windows95", "design", "reference",
+                     "Microsoft Windows 95 DDK", "LIB", "LIBENTRY.OBJ")
+    return p if os.path.exists(p) else None
 
 
 def build(recon_dir, work_dir=None, modules=None):
@@ -78,10 +86,17 @@ def build(recon_dir, work_dir=None, modules=None):
     objs = re.findall(r"([A-Za-z_]\w*)\.obj", lnk)
     # Stage the Win16 DLL entry object (LIBENTRY.OBJ) the link references but which has no .c -- it is
     # the NE entry that calls LibMain and drags the real MSC CRT out of the runtime lib.
+    kit = _win16_kit()
     if any(o.lower() == "libentry" for o in objs) and not os.path.exists(os.path.join(work, "LIBENTRY.OBJ")):
         le = _find_libentry()
         if le:
             shutil.copy2(le, os.path.join(work, "LIBENTRY.OBJ"))
+    # Stage the period-correct (lean) Win16 CRT libs into the work dir so the link uses them (LINK
+    # searches the current dir) instead of msvc-1.52c's much fatter MDLLCEW.LIB.
+    if kit and re.search(r"mdllcew\.lib", lnk, re.I):
+        for lib in ("MDLLCEW.LIB", "LIBW.LIB"):
+            if os.path.exists(os.path.join(kit, lib)):
+                shutil.copy2(os.path.join(kit, lib), os.path.join(work, lib))
     # compile only the objects that have a matching .c; the rest (LIBENTRY) are prebuilt + staged
     if modules is None:
         modules = [m for m in objs if os.path.exists(os.path.join(work, m + ".c"))]
@@ -98,7 +113,8 @@ def build(recon_dir, work_dir=None, modules=None):
         f.write("mount c %s\r\nmount e %s\r\nmount d %s\r\n" % (_win(msc6), _win(msvc), _win(work)))
         # windows.h/OFSTRUCT live in the SDK (msvc-1.52c) INCLUDE, the CRT headers in msc-6.0a;
         # CL needs both on INCLUDE or a <windows.h> module won't compile.
-        f.write("set PATH=C:\\BIN;E:\\BIN\r\nset INCLUDE=C:\\INCLUDE;E:\\INCLUDE\r\nset LIB=E:\\LIB\r\n")
+        # LIB: the work dir (D:, holding the staged win31-kit libs) first, then msvc-1.52c as fallback.
+        f.write("set PATH=C:\\BIN;E:\\BIN\r\nset INCLUDE=C:\\INCLUDE;E:\\INCLUDE\r\nset LIB=D:\\;E:\\LIB\r\n")
         f.write("d:\r\ncall BUILD.BAT\r\nexit\r\n")
     subprocess.run([dbx, "-conf", os.path.join(work, "b.conf"), "-fastlaunch"],
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=600)
