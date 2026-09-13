@@ -26,7 +26,13 @@ ILCmpKind JccKind(const std::string& m) {
   if (m == "jae") return ILCmpKind::GEU;
   if (m == "jbe") return ILCmpKind::LEU;
   if (m == "ja")  return ILCmpKind::GTU;
-  return ILCmpKind::NE;  // js/jns/jo/... approximated
+  if (m == "js")  return ILCmpKind::LT;   // sign set <=> result < 0 (signed)
+  if (m == "jns") return ILCmpKind::GE;
+  return ILCmpKind::NE;  // jo/jno/jp/jnp approximated
+}
+inline bool JccUnsigned(ILCmpKind k) {
+  return k == ILCmpKind::LTU || k == ILCmpKind::GTU ||
+         k == ILCmpKind::LEU || k == ILCmpKind::GEU;
 }
 ILType WidthType(int sz, bool sign=false) {
   if (sz == 1) return sign ? ILType::S8  : ILType::U8;
@@ -78,7 +84,8 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
   };
   auto setReg = [&](int slot, ILValue v) { v.ppc_reg = slot; reg[slot] = v; };
 
-  // last flag-setting compare operands (for jcc)
+  // last flag-setting op, so a following jcc builds the right Compare.
+  enum FlagKind { FK_CMP, FK_TEST, FK_ARITH } flag_kind = FK_ARITH;
   ILValue flagA = ILNoVal(), flagB = ILNoVal();
   bool flag_imm = false; int64_t flag_immv = 0; int flag_sz = 2;
 
@@ -149,8 +156,9 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
         x.dst = fn.AllocValue(WidthType(in.ops[0].size));
         bb.instrs.push_back(x);
         storeTo(in.ops[0], x.dst);
-        // arithmetic sets flags
-        flagA = x.dst; flagB = ILNoVal(); flag_imm = false; flag_sz = in.ops[0].size;
+        // arithmetic sets flags: condition is result vs 0
+        flag_kind = FK_ARITH; flagA = x.dst; flag_imm = true; flag_immv = 0;
+        flag_sz = in.ops[0].size;
       };
 
       if (m == "mov" || m == "movzx" || m == "movsx") {
@@ -173,8 +181,8 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
       else if (m == "sar") binop(ILOp::Sar);
       else if (m == "inc") { ILInstr x; x.op=ILOp::Add; x.address=a; x.src1=srcValue(in.ops[0]); x.imm=1; x.dst=fn.AllocValue(WidthType(in.ops[0].size)); bb.instrs.push_back(x); storeTo(in.ops[0],x.dst);}
       else if (m == "dec") { ILInstr x; x.op=ILOp::Sub; x.address=a; x.src1=srcValue(in.ops[0]); x.imm=1; x.dst=fn.AllocValue(WidthType(in.ops[0].size)); bb.instrs.push_back(x); storeTo(in.ops[0],x.dst);}
-      else if (m == "cmp") { flagA = srcValue(in.ops[0]); if (in.ops[1].kind==OpKind::Imm){flag_imm=true;flag_immv=in.ops[1].imm;}else{flagB=srcValue(in.ops[1]);flag_imm=false;} flag_sz=in.ops[0].size; }
-      else if (m == "test") { flagA = srcValue(in.ops[0]); flagB = srcValue(in.ops[1]); flag_imm=false; flag_sz=in.ops[0].size; }
+      else if (m == "cmp") { flag_kind=FK_CMP; flagA = srcValue(in.ops[0]); if (in.ops[1].kind==OpKind::Imm){flag_imm=true;flag_immv=in.ops[1].imm;}else{flagB=srcValue(in.ops[1]);flag_imm=false;} flag_sz=in.ops[0].size; }
+      else if (m == "test") { flag_kind=FK_TEST; flagA = srcValue(in.ops[0]); flagB = srcValue(in.ops[1]); flag_imm=false; flag_sz=in.ops[0].size; }
       else if (m == "call") {
         ILInstr x; x.op = ILOp::Call; x.address = a;
         if (in.ops[0].kind == OpKind::Rel) x.target = (uint32_t)in.ops[0].imm;
@@ -193,13 +201,27 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
         if (in.ops[0].kind == OpKind::Rel) { x.target = (uint32_t)in.ops[0].imm; bb.successors.push_back(x.target); }
         bb.instrs.push_back(x);
       } else if (m.size() && m[0] == 'j') {   // jcc
-        ILInstr cmp; cmp.op = flag_imm ? ILOp::CompareImm : ILOp::Compare;
-        cmp.address = a; cmp.src1 = flagA;
-        if (flag_imm) cmp.imm = (int32_t)flag_immv; else cmp.src2 = flagB;
+        ILCmpKind kind = JccKind(m);
+        bool uns = JccUnsigned(kind);
+        ILValue cmpA = flagA;
+        bool useImm = flag_imm;
+        int64_t immv = flag_immv;
+        if (flag_kind == FK_TEST) {
+          // test a,b -> condition on (a & b); test r,r collapses to (r vs 0)
+          if (flagA.id == flagB.id) { useImm = true; immv = 0; }
+          else {
+            ILInstr an; an.op = ILOp::And; an.address = a; an.src1 = flagA; an.src2 = flagB;
+            an.dst = fn.AllocValue(WidthType(flag_sz)); bb.instrs.push_back(an);
+            cmpA = an.dst; useImm = true; immv = 0;
+          }
+        }
+        ILInstr cmp; cmp.address = a; cmp.src1 = cmpA;
+        if (useImm) { cmp.op = uns ? ILOp::CompareImmU : ILOp::CompareImm; cmp.imm = (int32_t)immv; }
+        else { cmp.op = uns ? ILOp::CompareU : ILOp::Compare; cmp.src2 = flagB; }
         cmp.dst = fn.AllocValue(ILType::Bool);
         bb.instrs.push_back(cmp);
         ILInstr br; br.op = ILOp::BranchCond; br.address = a;
-        br.cmp_ref = cmp.dst.id; br.cmp_kind = JccKind(m);
+        br.cmp_ref = cmp.dst.id; br.cmp_kind = kind;
         if (in.ops[0].kind == OpKind::Rel) br.target = (uint32_t)in.ops[0].imm;
         bb.instrs.push_back(br);
         bb.successors.push_back(br.target);
