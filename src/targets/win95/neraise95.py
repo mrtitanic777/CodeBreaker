@@ -260,9 +260,19 @@ def coalesce_dwords(body, pairs, names):
         trial = re.sub(
             r"(?m)^([ \t]*)DAT_%s = \(WORD\)([^;]*);\n[ \t]*DAT_%s = \(WORD\)\(\(DWORD\)\2 >> 0x10\);"
             % (re.escape(lo), re.escape(hi)), r"\1%s = \2;" % D, trial)
+        # zero-init: DAT_lo = 0; DAT_hi = 0;  (either order) -> D = 0;
+        trial = re.sub(r"(?m)^([ \t]*)DAT_%s = 0;\n[ \t]*DAT_%s = 0;" % (re.escape(lo), re.escape(hi)),
+                       r"\1%s = 0;" % D, trial)
+        trial = re.sub(r"(?m)^([ \t]*)DAT_%s = 0;\n[ \t]*DAT_%s = 0;" % (re.escape(hi), re.escape(lo)),
+                       r"\1%s = 0;" % D, trial)
         # 32-bit increment with carry: DAT_lo = DAT_lo + k; DAT_hi = DAT_hi + (uint)(<carry>); -> D += k;
         trial = re.sub(
             r"(?m)^([ \t]*)DAT_%s = DAT_%s \+ (\w+);\n[ \t]*DAT_%s = DAT_%s \+ \(uint\)[^;]*;"
+            % (re.escape(lo), re.escape(lo), re.escape(hi), re.escape(hi)),
+            r"\1%s = %s + \2;" % (D, D), trial)
+        # increment with a UINT-cast carry already raised: DAT_lo = DAT_lo + k; DAT_hi = DAT_hi + (UINT)...;
+        trial = re.sub(
+            r"(?m)^([ \t]*)DAT_%s = DAT_%s \+ (\w+);\n[ \t]*DAT_%s = DAT_%s \+ \(UINT\)[^;]*;"
             % (re.escape(lo), re.escape(lo), re.escape(hi), re.escape(hi)),
             r"\1%s = %s + \2;" % (D, D), trial)
         # read: MAKELONG(DAT_lo, DAT_hi) -> D
