@@ -41,10 +41,15 @@ def classify(name, body):
     stmts = body.count(";")
     calls = len(re.findall(r"\b[A-Z][A-Z0-9_]{2,}\s*\(", body))   # UPPERCASE api-style calls
     fields = body.count("->")
+    svc = body.count("VxDCall_")                                  # VxD service invocations
     named = not name.startswith("sub_") and not name.startswith("export_")
 
     if CRT_RE.match(name):
         return "crt/compiler", "name"
+    # VxD service shim: body dominated by VMM/VxD service calls -> OS-service code,
+    # identified (like a thunk), not a from-scratch reconstruction target.
+    if svc >= 2 and svc * 3 >= max(stmts, 1):
+        return "vxd/service", "service-heavy"
     # asm-dominant: hardware/driver port I/O, genuine asm -> identify, keep as asm
     if asm >= 3 and asm * 3 >= max(stmts, 1):
         return "asm/hardware", "asm-heavy"
@@ -82,14 +87,19 @@ def split_functions(text):
 
 def main(argv):
     ap = argparse.ArgumentParser(prog="origin_triage", description=__doc__.splitlines()[0])
-    ap.add_argument("--lane", choices=("ne", "pe"), default="ne",
+    ap.add_argument("--lane", choices=("ne", "pe", "le", "mz"), default="ne",
                     help="which decompile lane to triage (default: ne)")
     ap.add_argument("--dir", default=None, help="lane dir (default: <design>/<lane>_lane)")
     a = ap.parse_args(argv)
     d = a.dir
     if not d:
-        corpus = os.environ.get("WT_DATA_ROOT", "")
-        design = os.path.dirname(os.path.dirname(corpus)) if corpus else paths.design_root()
+        # Resolve <design>/<lane>_lane the SAME way the *_scale sweeps do, so triage
+        # reads exactly where the sweep wrote.
+        corpus = os.environ.get("WT_DATA_ROOT")
+        if not corpus or not os.path.isdir(corpus):
+            corpus = r"C:\Users\mrtit\Documents\GitHub\Windows95\design\corpus\files"
+        design = os.path.dirname(os.path.dirname(corpus)) \
+            if corpus.lower().rstrip("\\/").endswith("files") else os.path.dirname(corpus)
         d = os.path.join(design, a.lane + "_lane")
     if not os.path.isdir(d):
         sys.exit("no %s_lane dir at %s (run %s_scale first)" % (a.lane, d, a.lane))
