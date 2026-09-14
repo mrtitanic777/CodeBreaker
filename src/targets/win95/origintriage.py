@@ -172,6 +172,7 @@ def run(limit=None, out=None, root=None):
 
     per_module = []
     body_modules = {}          # struct-hash -> set(modules)
+    body_meta = {}             # struct-hash -> [func_count, a representative name, max size]
     all_funcs = []             # (module, name, size, sh)
     for fn, p in bins:
         fs = triage_module(p, None)
@@ -182,6 +183,11 @@ def run(limit=None, out=None, root=None):
             all_funcs.append((fn, f["name"], f["size"], f["sh"], f["name"] in exps))
             if f["sh"]:
                 body_modules.setdefault(f["sh"], set()).add(fn)
+                m = body_meta.setdefault(f["sh"], [0, "", 0])
+                m[0] += 1
+                if f["name"] and not m[1]:
+                    m[1] = f["name"]
+                m[2] = max(m[2], f["size"])
         per_module.append((fn, len(fs)))
 
     # classify
@@ -214,8 +220,20 @@ def run(limit=None, out=None, root=None):
         w.writerow(["module", "functions"])
         for mod, nf in sorted(per_module):
             w.writerow([mod, nf])
+    # shared-body catalog: the identify-once list -- every body linked into >= _DUP_MODULES modules,
+    # ranked by reach (module count x size = the reconstruction effort SAVED by not repeating it).
+    catalog = os.path.join(os.path.dirname(out), "origin_shared_catalog.csv")
+    shared = [(sh, len(mods), body_meta[sh][0], body_meta[sh][1], body_meta[sh][2])
+              for sh, mods in body_modules.items() if len(mods) >= _DUP_MODULES]
+    shared.sort(key=lambda r: (r[1], r[4]), reverse=True)
+    with open(catalog, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["struct_hash", "in_modules", "instances", "example_name", "max_size"])
+        for sh, nmods, insts, nm, sz in shared:
+            w.writerow([sh[:16], nmods, insts, nm, sz])
     return {"modules": len(per_module), "total_functions": total, "unique_bodies": unique_bodies,
-            "buckets": buckets, "genuine_unique_targets": len(genuine_bodies), "out": out}
+            "buckets": buckets, "genuine_unique_targets": len(genuine_bodies), "out": out,
+            "catalog": catalog, "n_shared_bodies": len(shared)}
 
 
 def main(argv):
@@ -237,6 +255,8 @@ def main(argv):
         print("    %-16s %8d  (%.1f%%)" % (k, v, 100.0 * v / max(r["total_functions"], 1)))
     print("  GENUINE UNIQUE TARGETS  %d   <- the real reconstruction work-list" %
           r["genuine_unique_targets"])
+    print("  shared-body catalog     %d bodies (identify once) -> %s" %
+          (r.get("n_shared_bodies", 0), r.get("catalog", "")))
     print("  ledger -> %s" % r["out"])
 
 
