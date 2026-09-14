@@ -105,17 +105,17 @@ def _beautify(c):
         return c
 
 
-# decompiler abstractions a static body can't be made faithful with (unresolved indirect call, a
-# leaked physical register the lifter didn't resolve, packed-value pseudo-ops, in/unaff inputs).
+# decompiler abstractions a static body can't be made faithful with (unresolved indirect call,
+# packed-value pseudo-ops, in/unaff inputs). Leaked registers (rN) are NO LONGER rejected -- they are
+# frame-backed in compile_body -- so the oracle gets to judge them.
 _UNRESOLVABLE = ("indirect(", "CONCAT", "SUB84", "ZEXT", "SEXT", "in_", "unaff_", "extraout_")
-_LEAKED_REG = re.compile(r"\br\d{1,2}\b")
 _IMPLICIT = re.compile(r"\b(result|eax|ebx|ecx|edx|esi|edi)\b")
 
 
 def _cure_body(blk):
     """Param-preserving cure of one decompiler function block -> compilable C, or None if it uses an
     abstraction that cannot be made statically faithful (punt to the behavior engine)."""
-    if any(u in blk for u in _UNRESOLVABLE) or _LEAKED_REG.search(blk):
+    if any(u in blk for u in _UNRESOLVABLE):
         return None
     from src.targets.win95 import raise95
     return _declare_implicits(raise95.map_types(blk))     # undefined4->DWORD, uint->unsigned, ...
@@ -188,7 +188,22 @@ def compile_body(c_text, fname, outdir):
                   "undefined2", "undefined4", "DWORD", "WORD", "BYTE", "LONG", "UINT", "HDC",
                   "HANDLE", "HGDIOBJ", "__fastcall", "__cdecl", "__stdcall", "__watcall"}
     undecl = sorted(used - refs - declared - params - _TYPEWORDS - {fname})
-    gdecl = ["unsigned %s;" % g for g in undecl if not g.isdigit()]
+    # FRAME RECOVERY: leaked physical registers (rN = EBP/ESP/... the lifter left unresolved) are
+    # backed by a shared valid scratch buffer, initialised at function entry, so frame accesses
+    # (rN +/- off, and LEA-of-local passed to APIs) hit REAL memory and the body runs its true
+    # control flow instead of dereferencing a null. The oracle fingerprint is address-independent
+    # (call sequence + ret + exit, not pointer values), so this resolves frame-only divergences.
+    rregs = sorted(g for g in undecl if re.fullmatch(r"r\d{1,2}", g))
+    other = [g for g in undecl if not g.isdigit() and g not in rregs]
+    gdecl = ["unsigned %s;" % g for g in other]
+    if rregs:
+        gdecl.append("static unsigned char _frame[0x8000];")
+        gdecl += ["unsigned %s;" % r for r in rregs]
+        init = "".join("  %s=(unsigned)(_frame+0x4000);\n" % r for r in rregs)
+        dm2 = _DEF_RE.search(c_text)
+        if dm2:
+            br = dm2.end() - 1 if c_text[dm2.end() - 1] == "{" else c_text.index("{", dm2.end() - 1)
+            c_text = c_text[:br + 1] + "\n" + init + c_text[br + 1:]
     # force an int return type on the body (decompiler emits `return f();` tail-calls even in a
     # void function -> E1051; the oracle reads EAX regardless of the declared type, so int is safe).
     c_text = re.sub(r"\bvoid(\s+(?:__fastcall|__cdecl|__stdcall|__watcall)?\s*%s\s*\()"
