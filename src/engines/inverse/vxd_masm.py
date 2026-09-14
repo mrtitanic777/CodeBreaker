@@ -79,6 +79,11 @@ def _masm_line(D, oi, row):
     branch whose numeric target has no label -- MASM rejects `jmp <number>`)."""
     from src.engines.inverse.vxd_asm import _render_ops, _direct_target_row, _BRANCHES
     mnem = _MNEM.get(row["mnem"], row["mnem"])
+    # A far absolute jmp/call decodes (in Capstone) as `ljmp seg:off' / `lcall seg:off',
+    # which is neither MASM nor NASM syntax and mostly appears where data was walked as
+    # code. Byte-preserve it exactly (raw db) rather than emit an un-assemblable mnemonic.
+    if row["mnem"] in ("ljmp", "lcall"):
+        return None
     if mnem.split()[-1] in _STRING_OPS:                    # `lodsb al, [esi]` -> `lodsb` (+ rep)
         return "        " + mnem.rstrip()
     ops, resolved = _render_ops(D, oi, row)
