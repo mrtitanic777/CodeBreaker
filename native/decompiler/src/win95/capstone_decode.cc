@@ -118,10 +118,11 @@ X86Insn DecodeX86Cap(const uint8_t* data, size_t size, size_t pos, uint32_t addr
 
 X86Insn DecodeX86Auto(const uint8_t* data, size_t size, size_t pos, uint32_t addr,
                       bool default_op16) {
+  // Capstone is the default decoder; WT_CAPSTONE=0 falls back to the native decoder.
   static int mode = -1;
   if (mode < 0) {
     const char* e = std::getenv("WT_CAPSTONE");
-    mode = (e && e[0] && e[0] != '0') ? 1 : 0;
+    mode = (e && e[0] == '0') ? 0 : 1;
   }
   return mode ? DecodeX86Cap(data, size, pos, addr, default_op16)
               : DecodeX86(data, size, pos, addr, default_op16);
