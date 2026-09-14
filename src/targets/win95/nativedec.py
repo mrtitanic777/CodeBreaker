@@ -2,15 +2,17 @@
 """nativedec.py -- CodeBreaker hook to our OWN native x86 disassembler+decompiler,
 CodeBreaker's native engine (XEXMagic core + our x86 front-end).
 
-One engine, two loaders, so a single call handles whichever class a module is:
-  - NE (16-bit) -> win95dec     (NE load  -> x86 decode -> lift[16] -> DecompileToC)
-  - PE (32-bit) -> win95pedec   (PE load  -> x86 decode -> lift[32] -> DecompileToC)
+One engine, three loaders, so a single call handles whichever class a module is:
+  - NE (16-bit)  -> win95dec     (NE load -> x86 decode -> lift[16] -> DecompileToC)
+  - PE (32-bit)  -> win95pedec   (PE load -> x86 decode -> lift[32] -> DecompileToC)
+  - LE (VxD/386) -> win95ledec   (LE load -> x86 decode -> lift[32,VxD] -> DecompileToC)
 The format is detected from the file header and the right binary is invoked, the
 same way CodeBreaker invoked Ghidra -- as a subprocess returning C text.
 
     from src.targets.win95 import nativedec
     c = nativedec.decompile_module(r"...\\WINDOWS\\SYSTEM\\lzexpand.dll")  # NE
     c = nativedec.decompile_module(r"...\\WINDOWS\\SYSTEM\\kernel32.dll")  # PE
+    c = nativedec.decompile_module(r"...\\WINDOWS\\SYSTEM\\vmm32.vxd")     # LE
 """
 import os
 import struct
@@ -27,6 +29,7 @@ except Exception:                       # symbol engine optional; sigs just skip
 _BINDIR = os.path.join(paths.repo_root(), "native", "decompiler", "build", "bin")
 _BIN = os.path.join(_BINDIR, "win95dec.exe")          # NE engine (back-compat alias)
 _PEBIN = os.path.join(_BINDIR, "win95pedec.exe")      # PE engine
+_LEBIN = os.path.join(_BINDIR, "win95ledec.exe")      # LE (VxD) engine
 
 
 def binary_path():
@@ -52,6 +55,8 @@ def detect_format(path):
                 return "PE"
             if sig == b"NE":
                 return "NE"
+            if sig == b"LE" or sig == b"LX":
+                return "LE"
     except OSError:
         return None
     return None
@@ -59,12 +64,16 @@ def detect_format(path):
 
 def _engine(path):
     """(exe, module_args, disasm_args, names_args) for this module's format.
-    NE's module mode takes a trailing '0'; PE's does not."""
+    NE's module mode takes a trailing '0'; PE/LE's do not."""
     fmt = detect_format(path)
     if fmt == "PE":
         if not os.path.exists(_PEBIN):
             raise RuntimeError("win95pedec not built: cmake --build native/decompiler/build --target win95pedec")
         return _PEBIN, ["--module"], ["--disasm"], ["--names"]
+    if fmt == "LE":
+        if not os.path.exists(_LEBIN):
+            raise RuntimeError("win95ledec not built: cmake --build native/decompiler/build --target win95ledec")
+        return _LEBIN, ["--module"], ["--disasm"], ["--names"]
     if not os.path.exists(_BIN):
         raise RuntimeError("win95dec not built: cmake --build native/decompiler/build --target win95dec")
     return _BIN, ["--module", "0"], ["--disasm"], ["--names"]

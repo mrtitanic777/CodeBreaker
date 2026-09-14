@@ -61,6 +61,15 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
   const int  slot_sz   = bits32_ ? 4 : 2;
   const int  signfill_bits = bits32_ ? 31 : 15;
 
+  // Bytes an instruction consumes beyond its own length: a VxD `int 20h` swallows
+  // the 4-byte service-id dword that follows it (so decode resumes after it).
+  auto extraBytes = [&](const X86Insn& in) -> uint32_t {
+    if (vxd_mode_ && in.valid && in.mnem == "int" &&
+        in.ops[0].kind == OpKind::Imm && in.ops[0].imm == 0x20)
+      return 4;
+    return 0;
+  };
+
   // --- pass 1: recursive-descent decode from entry. Follow the control flow
   // (fallthrough + branch targets), decoding ONLY reachable code -- so data and
   // inter-function padding is never decoded as instructions (the main source of
@@ -76,7 +85,7 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
       X86Insn in = DecodeX86(image, image_size, a, a, def_op16);
       at[a] = insns.size();
       insns.push_back(in);
-      uint32_t next = a + (in.valid ? in.len : 1);
+      uint32_t next = a + (in.valid ? in.len : 1) + extraBytes(in);
       const std::string& m = in.mnem;
       bool isJcc = m.size() && m[0] == 'j' && m != "jmp";
       if (m == "jmp") {
@@ -140,7 +149,7 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
       auto iit = at.find(a);
       if (iit == at.end()) break;
       const X86Insn& in = insns[iit->second];
-      uint32_t next = a + (in.valid ? in.len : 1);
+      uint32_t next = a + (in.valid ? in.len : 1) + extraBytes(in);
       const std::string& m = in.mnem;
 
       auto emitMemAddr = [&](const X86Op& o, ILInstr& ins) {
@@ -438,6 +447,20 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
                  flag_kind = FK_CMP; flagA = ld1.dst; flagB = ld2.dst; flag_imm = false; }
           flag_sz = esz;
         }
+      } else if (vxd_mode_ && m == "int" && in.ops[0].kind == OpKind::Imm &&
+                 in.ops[0].imm == 0x20) {
+        // VxD service call: int 20h; dd <(VxD id << 16) | service ordinal>. Render
+        // as a named call so the reader sees the invoked service, and DX:AX holds
+        // the (documented) return.
+        uint32_t svc = 0;
+        if (a + in.len + 4 <= image_size)
+          svc = image[a + in.len] | (image[a + in.len + 1] << 8) |
+                (image[a + in.len + 2] << 16) | ((uint32_t)image[a + in.len + 3] << 24);
+        char nm[24]; std::snprintf(nm, sizeof nm, "VxDCall_%08X", svc);
+        ILInstr x; x.op = ILOp::Call; x.address = a; x.call_name = nm;
+        x.dst = fn.AllocValue(ILType::U32, kGpBase);
+        bb.instrs.push_back(x);
+        setReg(kGpBase, x.dst);
       } else {
         ILInstr x; x.op = ILOp::InlineAsm; x.address = a; x.asm_text = FormatX86(in);
         bb.instrs.push_back(x);

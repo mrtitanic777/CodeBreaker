@@ -30,8 +30,8 @@ CAPABILITIES = {
                                   "note": "runs any wt command; returns {argv,exit,stdout,stderr}"}},
     "subsystems": ["recompile", "behavior", "inverse", "msc6", "xbox", "diff", "backbone", "sdk"],
     "targets": ["win1.0..win98 (use --target <era>)"],
-    "win95_commands": ["decompile", "disasm", "ne_scale", "pe_scale", "origin_triage",
-                       "oracle_equiv", "autobuild95", "classify32", "..."],
+    "win95_commands": ["decompile", "disasm", "ne_scale", "pe_scale", "le_scale",
+                       "origin_triage", "oracle_equiv", "autobuild95", "classify32", "..."],
     "typed_routes": {
         "GET /api/health": "liveness",
         "GET /api/capabilities": "this document",

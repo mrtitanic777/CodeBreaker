@@ -220,3 +220,22 @@ if(MSVC)
     target_compile_definitions(win95pedec PRIVATE _CRT_SECURE_NO_WARNINGS)
     target_compile_options(win95pedec PRIVATE /bigobj)
 endif()
+
+# ---------------------------------------------------------------------------
+# win95ledec -- the same engine over LE (VxD / *.386, the 223 ring-0 drivers).
+# LE loader + shared x86 decode/lift (32-bit flat) -> DecompileToC.
+# ---------------------------------------------------------------------------
+add_executable(win95ledec
+    src/win95/le_loader.cc
+    src/win95/x86_decode.cc
+    src/win95/x86_lift.cc
+    src/win95/le_decomp.cc
+    src/decompiler_c.cc
+    src/var_allocator.cc
+)
+target_include_directories(win95ledec PRIVATE src third_party src/ppc/compat)
+target_compile_definitions(win95ledec PRIVATE WIN95DEC_NO_PPC)
+if(MSVC)
+    target_compile_definitions(win95ledec PRIVATE _CRT_SECURE_NO_WARNINGS)
+    target_compile_options(win95ledec PRIVATE /bigobj)
+endif()

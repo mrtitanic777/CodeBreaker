@@ -32,6 +32,11 @@ class X86Lifter {
   // is width-agnostic.
   void SetBits32(bool on) { bits32_ = on; }
 
+  // VxD (LE) mode: model the `int 20h; dd <service id>` idiom as a single VxD
+  // service call -- consuming the 4-byte service dword so it is not misdecoded as
+  // instructions, and rendering a readable VxDCall_<id>() instead of `__asm int`.
+  void SetVxDMode(bool on) { vxd_mode_ = on; }
+
   // Resolve a far call/jmp by the instruction's linear address to (target, name),
   // from the NE relocation table. Far operands in an unlinked/relocated NE encode
   // 0, so the fixup table is the only source of the real target.
@@ -47,6 +52,7 @@ class X86Lifter {
   std::map<uint32_t, std::string> names_;
   std::map<uint32_t, std::pair<uint32_t, std::string>> call_sites_;
   bool bits32_ = false;
+  bool vxd_mode_ = false;
 };
 
 }  // namespace win95
