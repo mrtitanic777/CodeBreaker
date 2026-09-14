@@ -1023,6 +1023,33 @@ def recover_from_decompile(decompile_path, outdir, module=None, seg_names=None, 
     def disp(f):
         return name_map.get(f["name"], f["name"])
 
+    # Real SDK signatures for the module's exported entry points: when a function's (displayed) name
+    # is a documented API in the header-derived table, its return type + parameter list come from the
+    # shipped SDK header -- the authored signature -- instead of the decompiler's inferred types. The
+    # same lz32 fidelity the flat-thunk lane gets, applied to the win32-c/win16-c logic modules.
+    _protos = _load_sdk_protos()
+
+    def _sdk_sig(f):
+        p = _protos.get(disp(f))
+        if not p:
+            return None
+        ret = (p.get("ret") or "void").strip()
+        params = (p.get("params") or "void").strip()
+        return ret, params
+
+    def _sdk_param_names(params):
+        """Ordered parameter identifiers from an SDK parameter list ('LPSTR lpsz, DWORD n' ->
+        ['lpsz','n']), so a body's param_1/param_2 references can be renamed to the real names."""
+        if not params or params.strip() in ("void", ""):
+            return []
+        out = []
+        for part in params.split(","):
+            ids = _re2.findall(r"[A-Za-z_]\w*", part)
+            out.append(ids[-1] if ids else None)         # trailing token is the variable name
+        return out
+
+    n_sdk_sigs = sum(1 for f in funcs if _sdk_sig(f))
+
     # internal shared-header name -- MUST be 8.3-safe for the DOS (MSC 6.0a/DOSBox) build, and
     # distinct from the public <module>.h. Default: <module>h.h when it fits in 8.3, else the module
     # truncated to 6 + ".h" (still distinct from the full public name). Override with `header`.
@@ -1109,11 +1136,17 @@ def recover_from_decompile(decompile_path, outdir, module=None, seg_names=None, 
                 note = ("  /* also: %s */" % ", ".join(extra)) if extra else ""
                 h.write("extern %s %s;%s\n" % (gtype, gname, note))
             h.write("\n")
-        h.write("/* function prototypes (inferred names; original FUN_ noted where renamed) */\n")
+        h.write("/* function prototypes -- exported APIs carry their real SDK signature (marked\n"
+                " * [SDK]); other names are inferred, original FUN_ noted where renamed. */\n")
         for f in funcs:
-            note = ("  /* was %s */" % f["name"]) if disp(f) != f["name"] else ""
-            h.write("%s %s(%s);%s\n" % (raise95.map_types(f["ret"]), disp(f),
-                                        raise95.map_types(f["params"] or "void"), note))
+            sdk = _sdk_sig(f)
+            if sdk:
+                note = "  /* [SDK] %s */" % (("was %s" % f["name"]) if disp(f) != f["name"] else "documented")
+                h.write("%s %s(%s);%s\n" % (sdk[0], disp(f), sdk[1], note))
+            else:
+                note = ("  /* was %s */" % f["name"]) if disp(f) != f["name"] else ""
+                h.write("%s %s(%s);%s\n" % (raise95.map_types(f["ret"]), disp(f),
+                                            raise95.map_types(f["params"] or "void"), note))
         h.write("\n#endif\n")
 
     # per-segment .c scaffolds -- filename from the inferred role name (seg_names) or seg-numbered.
@@ -1131,16 +1164,24 @@ def recover_from_decompile(decompile_path, outdir, module=None, seg_names=None, 
             for f in by_seg[seg]:
                 was = ("  (was %s)" % f["name"]) if disp(f) != f["name"] else ""
                 inner = "\n".join(f["body"].split("\n")[1:-1])           # strip the outer { }
-                sig = "%s %s(%s)" % (raise95.map_types(f["ret"]), disp(f),
-                                     raise95.map_types(f["params"] or "void"))
+                sdk = _sdk_sig(f)
+                if sdk:
+                    sig = "%s %s(%s)" % (sdk[0], disp(f), sdk[1])
+                    was = (was + "  [SDK signature]").strip() if was else "  [SDK signature]"
+                else:
+                    sig = "%s %s(%s)" % (raise95.map_types(f["ret"]), disp(f),
+                                         raise95.map_types(f["params"] or "void"))
                 raw = "\n".join("    " + l for l in inner.split("\n") if l.strip())
                 # rename FUN_ call sites to their inferred names (name_map renames defs; do call sites too)
                 named = inner
                 for _old, _new in name_map.items():
                     named = _re2.sub(r"\b%s\b" % _re2.escape(_old), _new, named)
                 if raise_bodies:
+                    pnames = param_map.get(f["name"])
+                    if sdk and not pnames:                        # rename param_N to the SDK names
+                        pnames = _sdk_param_names(sdk[1])         # positional; None placeholders kept
                     body = raise95.raise_c(named, struct_map=struct_map,
-                                           param_names=param_map.get(f["name"]),
+                                           param_names=pnames,
                                            far_pairs=far_pairs or None, far_names=far_names or None,
                                            far_types=far_types or None,
                                            dword_pairs=dword_pairs or None, dword_names=dword_names or None,
@@ -1158,7 +1199,7 @@ def recover_from_decompile(decompile_path, outdir, module=None, seg_names=None, 
     manifest = {"module": module, "header": hdr,
                 "segments": {str(s): {"file": seg_file[s], "role": seg_names.get(s) or seg_names.get(str(s)),
                                       "functions": [disp(f) for f in by_seg[s]]} for s in sorted(by_seg)},
-                "n_functions": len(funcs), "n_globals": len(gl)}
+                "n_functions": len(funcs), "n_globals": len(gl), "n_sdk_signatures": n_sdk_sigs}
     json.dump(manifest, open(os.path.join(outdir, "DECOMPILE_MANIFEST.json"), "w"), indent=1)
     return manifest
 
