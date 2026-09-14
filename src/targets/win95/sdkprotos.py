@@ -103,11 +103,14 @@ def extract_header(path):
         if depth != 0:
             continue
         params = _norm_params(text[i + 1:j])
-        tail = text[j + 1:j + 3]
-        if ";" not in tail and " " + name not in text:      # must look like a prototype, not a call
-            pass
+        # STDAPI / STDAPI_(type): the COM export macro expands to `EXTERN_C <type> STDAPICALLTYPE`,
+        # so the real return is HRESULT (or the STDAPI_ argument), not the empty text before it.
+        if conv in ("STDAPI", "STDMETHODIMP"):
+            ret, conv = "HRESULT", "WINAPI"
+        elif ret in ("", "void") and conv.endswith("API") and not ret:
+            ret = "void"
         if name not in out:
-            out[name] = {"ret": ret, "params": params, "conv": conv, "header": hdr,
+            out[name] = {"ret": ret or "void", "params": params, "conv": conv, "header": hdr,
                          "doc": "documented"}
     return out
 
@@ -115,14 +118,27 @@ def extract_header(path):
 # header -> which reference dirs to look in.  win32: the 32-bit SDK + DDK 32-bit includes.
 # win16: the DDK's 16-bit INC16 (the headers for the actual 16-bit NE DLLs -- VER, COMMDLG,
 # SHELL, MMSYSTEM, the very partners the 32-bit flat thunks target).
+def _ow_header_dirs():
+    """OpenWatcom's own Win32 headers -- the toolchain we actually BUILD with, so prototypes
+    extracted here match exactly what wcc386 compiles against (no E1071/E1062/E1051 header-skew)."""
+    from src.core import paths
+    ow = os.path.join(paths.repo_root(), "experiments", "premise-proof", "open-watcom-v2", "rel")
+    return [d for d in (os.path.join(ow, "h", "nt"), os.path.join(ow, "h")) if os.path.isdir(d)]
+
+
 def _header_paths(variant="win32"):
     from src.targets.win95 import autobuild95 as A
     roots = A._reference_roots()
-    subs = (("Microsoft Windows 95 DDK", "INC16"),) if variant == "win16" else (
-        ("WIN32SDK", "MSTOOLS", "INCLUDE"),
-        ("Microsoft Windows 95 DDK", "INC32"),
-        ("Microsoft Windows 95 DDK", "MMEDIA", "INC"))
-    dirs = []
+    if variant == "win16":
+        subs = (("Microsoft Windows 95 DDK", "INC16"),)
+        dirs = []
+    else:
+        # OpenWatcom headers FIRST (our build toolchain), then the MS SDK/DDK as a fallback for
+        # any API OW does not ship -- OW wins so the extracted signature matches the OW header.
+        subs = (("WIN32SDK", "MSTOOLS", "INCLUDE"),
+                ("Microsoft Windows 95 DDK", "INC32"),
+                ("Microsoft Windows 95 DDK", "MMEDIA", "INC"))
+        dirs = list(_ow_header_dirs())
     for r in roots:
         for sub in subs:
             d = os.path.join(r, *sub)
@@ -136,7 +152,8 @@ def _header_paths(variant="win32"):
 # the table also serves the win32-c lane.
 _HEADERS = ["MMSYSTEM.H", "MSACM.H", "VFW.H", "COMMCTRL.H", "PRSHT.H", "SHELLAPI.H", "WINVER.H",
             "COMMDLG.H", "DLGS.H", "WINNETWK.H", "MCIAVI.H", "DIGITALV.H", "MSVIDEO.H",
-            "WINUSER.H", "WINGDI.H", "WINBASE.H", "WINREG.H", "WINSPOOL.H", "WINNLS.H", "DDRAW.H"]
+            "WINUSER.H", "WINGDI.H", "WINBASE.H", "WINREG.H", "WINSPOOL.H", "WINNLS.H", "DDRAW.H",
+            "OBJBASE.H", "OLE2.H", "UNKNWN.H"]      # COM DLL exports: DllCanUnloadNow (HRESULT) etc.
 
 
 def build(outjson=None, verbose=False, variant="win32"):

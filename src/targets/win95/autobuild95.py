@@ -797,11 +797,16 @@ def _def_params(params):
             continue
         # the parameter is named iff its trailing identifier (ignoring a glued `*`, e.g. `int*pn`
         # or `UINT FAR *puMxId`) is a mixed/lower-case name -- SDK types are ALL-CAPS or keywords.
-        m = _re.search(r"([A-Za-z_]\w*)\s*$", part)
-        last = m.group(1) if m else ""
-        # a type token is a keyword or a multi-char ALL-CAPS name (HWND, LPSTR); a single upper
-        # letter (X, Y, W, H) is a legitimate parameter name, so require len>=2 for the type test.
-        is_type = (not last) or last.lower() in _CKW or (last.isupper() and len(last) >= 2)
+        toks = part.split()
+        if len(toks) == 1:
+            # a single token is always a bare type (HWND, LPCSTR, int, va_list) -- no name present
+            is_type = True
+        else:
+            m = _re.search(r"([A-Za-z_]\w*)\s*$", part)
+            last = m.group(1) if m else ""
+            # a type token is a keyword or a multi-char ALL-CAPS name (HWND, LPSTR); a single upper
+            # letter (X, Y, W, H) is a legitimate parameter name, so require len>=2 for the type test.
+            is_type = (not last) or last.lower() in _CKW or (last.isupper() and len(last) >= 2)
         out.append(part if not is_type else (part + " a%d" % i))
     return ", ".join(out)
 
@@ -981,9 +986,10 @@ def recover_flat_thunk(pe_path, outdir):
             n_ptr += nptr
             tag = ("documented" if (proto and proto.get("doc") == "documented") else
                    ("%d-arg" % (argbytes // 4)) + (", %d ptr" % nptr if nptr else ""))
+            body = "{ }" if ret.strip().lower() == "void" else "{ return 0; }"   # void: no return value
             f.write("/* @%d %s -- %s; scaffold. TODO: marshal args, thunk to %s, return */\n"
-                    "%s%s %s %s(%s) { return 0; }\n\n" % (ordv, nm, tag, dll16, undef, ret,
-                                                          _sig_conv(proto), nm, _def_params(params)))
+                    "%s%s %s %s(%s) %s\n\n" % (ordv, nm, tag, dll16, undef, ret,
+                                               _sig_conv(proto), nm, _def_params(params), body))
 
     return {"module": module, "n_exports": len(exps), "k32_ordinals": ords,
             "unknown_ordinals": unknown, "outdir": outdir, "target16": target16,
