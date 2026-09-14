@@ -52,29 +52,41 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
   fn.entry = entry;
   fn.end = end;
 
-  // --- pass 1: decode all instructions, collect block leaders ---
+  // --- pass 1: recursive-descent decode from entry. Follow the control flow
+  // (fallthrough + branch targets), decoding ONLY reachable code -- so data and
+  // inter-function padding is never decoded as instructions (the main source of
+  // bogus __asm and misdecodes at scale). Indirect jumps end a run (no target
+  // to follow -- jump-table recovery is a later lever). ---
   std::vector<X86Insn> insns;
   std::set<uint32_t> leaders{entry};
-  for (uint32_t a = entry; a < end;) {
-    X86Insn in = DecodeX86(image, image_size, a, a, true);
-    insns.push_back(in);
-    uint32_t next = a + (in.valid ? in.len : 1);
-    const std::string& m = in.mnem;
-    bool isJcc = m.size() && m[0] == 'j' && m != "jmp";
-    if (m == "jmp" || isJcc) {
-      if (in.ops[0].kind == OpKind::Rel) {
-        leaders.insert((uint32_t)in.ops[0].imm);
-        if (isJcc) leaders.insert(next);   // fallthrough
-      }
-    } else if (m == "ret" || m == "retf" || m == "iret") {
-      leaders.insert(next);
-    }
-    a = next;
-  }
-
-  // index instructions by address
   std::map<uint32_t, size_t> at;
-  for (size_t i = 0; i < insns.size(); ++i) at[insns[i].addr] = i;
+  std::vector<uint32_t> work{entry};
+  while (!work.empty()) {
+    uint32_t a = work.back(); work.pop_back();
+    while (a >= entry && a < end && !at.count(a)) {
+      X86Insn in = DecodeX86(image, image_size, a, a, true);
+      at[a] = insns.size();
+      insns.push_back(in);
+      uint32_t next = a + (in.valid ? in.len : 1);
+      const std::string& m = in.mnem;
+      bool isJcc = m.size() && m[0] == 'j' && m != "jmp";
+      if (m == "jmp") {
+        if (in.ops[0].kind == OpKind::Rel) {
+          leaders.insert((uint32_t)in.ops[0].imm); work.push_back((uint32_t)in.ops[0].imm);
+        }
+        break;                              // unconditional: no fallthrough
+      }
+      if (isJcc) {
+        if (in.ops[0].kind == OpKind::Rel) {
+          leaders.insert((uint32_t)in.ops[0].imm); work.push_back((uint32_t)in.ops[0].imm);
+        }
+        leaders.insert(next);               // fallthrough is a block leader
+        a = next; continue;                 // and follow it
+      }
+      if (m == "ret" || m == "retf" || m == "iret") break;   // no successors
+      a = next;                             // call + ordinary ops: fall through
+    }
+  }
 
   // --- function-global register state (approximate SSA) ---
   std::map<int, ILValue> reg;   // GPR slot -> current value
