@@ -297,7 +297,17 @@ _BOOT_CRITICAL = ["gdi32.dll", "user32.dll", "kernel32.dll", "advapi32.dll", "sh
 
 
 def main(argv):
-    pos = [x for x in argv if not x.startswith("--")]
+    # positional args = module names; exclude flags AND the values that follow --max/--va
+    _valued = {"--max", "--va"}
+    pos, skip = [], False
+    for i, x in enumerate(argv):
+        if skip:
+            skip = False; continue
+        if x in _valued:
+            skip = True; continue
+        if x.startswith("--"):
+            continue
+        pos.append(x)
     maxn = int(argv[argv.index("--max") + 1]) if "--max" in argv else 40
     if "--sweep" in argv:
         mods = pos or _BOOT_CRITICAL
