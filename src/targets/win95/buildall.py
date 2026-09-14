@@ -202,6 +202,13 @@ def main(argv):
     import threading
     from concurrent.futures import ThreadPoolExecutor
 
+    # Only one "giant" module (mapi, msjt3032 -- 2k+ functions, a ~3-minute
+    # single-TU wcc compile) may compile at a time. Two of them overlapping under
+    # 12-wide load starves each other and one can spuriously fail; serializing the
+    # giants keeps the board deterministic without slowing the small modules.
+    giant_lock = threading.Lock()
+    GIANT_FUNCS = 1500
+
     def _work(key):
         """Per-module frontier work (thread-safe; each spawns its own subprocesses)."""
         path = dlls[key]
@@ -248,7 +255,11 @@ def main(argv):
                     cf = os.path.join(sd, mod.split(".")[0] + ".c")
                     with open(cf, "w", encoding="utf-8", newline="\n") as f:
                         f.write(cured)
-                    cc = autocure._compile(cf, fmt)
+                    if funcs >= GIANT_FUNCS:
+                        with giant_lock:            # serialize the multi-minute giants
+                            cc = autocure._compile(cf, fmt)
+                    else:
+                        cc = autocure._compile(cf, fmt)
                     cure = "compiles" if cc.get("ok") else "err:%d" % cc.get("errors", -1)
                     if cc.get("ok"):
                         status = "compiles"
