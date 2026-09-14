@@ -55,11 +55,19 @@ def _static_body(module, va):
     return blocks.get(rva) or blocks.get(va)
 
 
+_DEF_RE = re.compile(r"(?m)^\s*[A-Za-z_][\w \*]*?\b(?:__fastcall|__cdecl|__stdcall|__watcall)?\s*"
+                     r"([A-Za-z_]\w*)\s*\([^;{]*\)\s*\{")
+
+
+def _defined_name(c):
+    m = _DEF_RE.search(c)
+    return m.group(1) if m else None
+
+
 def synth(module, va, arity=4):
     """Clean C body for one function. Ladder: interproc (call-flow) -> env-provisioned (fault paths)
-    -> static decompile (leaf/compute). Returns (fname, c_text) or (None, reason). The function is
-    renamed to a stable fn_<va> so the compiled body exports a predictable symbol."""
-    fname = "fn_%x" % va
+    -> static decompile (leaf/compute). Returns (fname, c_text) or (None, reason), where fname is the
+    ACTUAL function name defined in the emitted C (so the compiled body exports the right symbol)."""
     try:
         r = interproc.reconstruct(module, func=hex(va), arity=arity)
         if not r.get("reconstructed"):
@@ -67,15 +75,51 @@ def synth(module, va, arity=4):
     except Exception:
         r = {"reconstructed": False}
     if r.get("reconstructed") and r.get("emitted_c"):
-        return fname, r["emitted_c"]
-    # static leaf/compute fallback: rename the block's own sub_<addr> (its definition name) to fname
+        c = _declare_implicits(r["emitted_c"])
+        return (_defined_name(c) or "fn_%x" % va), c
+    # static leaf/compute fallback: clean the decompiler block into compilable C, KEEPING the
+    # signature (so stdcall args still flow to the oracle). Reject blocks with idioms that can't be
+    # made statically faithful -- they belong to the behavior engine's dynamic lane, not here.
     blk = _static_body(module, va)
     if blk:
-        m = re.search(r"\bsub_[0-9a-fA-F]+\b", blk)      # first token = this function's own name
-        if m:
-            blk = blk.replace(m.group(0), fname)
-        return fname, blk
+        cured = _cure_body(blk)
+        if cured is None:
+            return None, "static block not statically faithful (indirect/leaked-reg/CONCAT/in_)"
+        return (_defined_name(cured) or "fn_%x" % va), cured
     return None, "no synth (leaf skipped by call-flow; static block missing)"
+
+
+# decompiler abstractions a static body can't be made faithful with (unresolved indirect call, a
+# leaked physical register the lifter didn't resolve, packed-value pseudo-ops, in/unaff inputs).
+_UNRESOLVABLE = ("indirect(", "CONCAT", "SUB84", "ZEXT", "SEXT", "in_", "unaff_", "extraout_")
+_LEAKED_REG = re.compile(r"\br\d{1,2}\b")
+_IMPLICIT = re.compile(r"\b(result|eax|ebx|ecx|edx|esi|edi)\b")
+
+
+def _cure_body(blk):
+    """Param-preserving cure of one decompiler function block -> compilable C, or None if it uses an
+    abstraction that cannot be made statically faithful (punt to the behavior engine)."""
+    if any(u in blk for u in _UNRESOLVABLE) or _LEAKED_REG.search(blk):
+        return None
+    from src.targets.win95 import raise95
+    return _declare_implicits(raise95.map_types(blk))     # undefined4->DWORD, uint->unsigned, ...
+
+
+_TYPES = (r"(?:unsigned|signed|int|long|short|char|void|DWORD|WORD|BYTE|LONG|UINT|float|double|"
+          r"HDC|HGDIOBJ|HANDLE|struct\s+\w+)")
+
+
+def _declare_implicits(c):
+    """Declare the implicit result/register pseudo-vars the emitters can leave undeclared, as locals
+    at the top of the function body (so the body compiles without stripping its signature/params)."""
+    m = _DEF_RE.search(c)                                 # the FUNCTION header (skip any leading struct)
+    if not m:
+        return c
+    brace = m.end() - 1 if c[m.end() - 1] == "{" else c.index("{", m.end() - 1)
+    implicit = [n for n in sorted(set(_IMPLICIT.findall(c)))
+                if not re.search(r"\b%s\s+\**%s\b" % (_TYPES, re.escape(n)), c)]
+    decl = "".join("  unsigned %s;\n" % r for r in implicit)
+    return c[:brace + 1] + "\n" + decl + c[brace + 1:]
 
 
 def _stub_refs(c_text, fname):
@@ -106,15 +150,21 @@ def compile_body(c_text, fname, outdir):
     src = "\n".join(pre) + "\n" + "\n".join(stubs) + "\n" + c_text + "\n"
     cf = os.path.join(outdir, fname + ".c")
     open(cf, "w", newline="\n").write(src)
-    env = dict(os.environ); env["WATCOM"] = ow["root"]; env["INCLUDE"] = ";".join(ow["inc"])
-    r = subprocess.run([ow["wcc"], "-bt=nt", "-zq", "-w0", fname + ".c"], cwd=outdir, env=env,
+    env = dict(os.environ)
+    env["WATCOM"] = ow["root"]
+    env["INCLUDE"] = ";".join(ow["inc"])
+    env["PATH"] = os.path.join(ow["root"], "binnt64") + os.pathsep + env.get("PATH", "")
+    # -s: no stack-overflow probe (drops the __CHK reference so the body links self-contained)
+    r = subprocess.run([ow["wcc"], "-bt=nt", "-zq", "-w0", "-s", fname + ".c"], cwd=outdir, env=env,
                        capture_output=True, text=True, timeout=120)
     if r.returncode != 0:
         return None, "compile: " + (r.stdout + r.stderr).strip().split("\n")[-1][:80]
+    from src.targets.win95 import autobuild95 as A
     obj = open(os.path.join(outdir, fname + ".obj"), "rb").read()
-    m = re.search((r"_%s@\d+" % re.escape(fname)).encode(), obj) or re.search(
-        (r"_%s\b" % re.escape(fname)).encode(), obj)
-    internal = m.group(0).decode() if m else ("_" + fname)
+    # exact public symbol from the OMF PUBDEF records (handles _f@N stdcall / f_ register / _f)
+    pubs = A._omf_publics(obj)
+    cand = [s for s in pubs if s.strip("_").split("@")[0].rstrip("_") == fname]
+    internal = cand[0] if cand else ("_" + fname)
     with open(os.path.join(outdir, "b.lnk"), "w", newline="\n") as f:
         f.write("system nt_dll\nname %s.dll\noption quiet\nfile %s.obj\nexport %s='%s'\n"
                 % (fname, fname, fname, internal))
@@ -172,12 +222,54 @@ def run(module, va=None, maxn=40):
     print("  --- " + "  ".join("%s=%d" % (k, v) for k, v in c.most_common()) + " ---")
 
 
+def harvest(module, maxn=400):
+    """Verify every function in `module` and CREDIT the equivalent ones to the master ledger
+    (va -> body_id via triage). Returns counts. This is the automatic harvest -- no hand-work."""
+    from src.core import paths
+    retail = _retail(module)
+    design = os.path.join(os.path.dirname(paths.repo_root()), "Windows95", "design")
+    ledger = os.path.join(design, "body_ledger.csv")
+    import csv as _csv
+    rows = list(_csv.DictReader(open(ledger)))
+    present = {r["body_id"] for r in rows}
+    from src.targets.win95 import autobuild95 as A
+    try:
+        base = A._imagebase(A.PE(retail))
+    except Exception:
+        base = 0
+    _lane, fns = OT.triage_module(retail)
+    rva2id = {f["addr"]: f["sh"][:16] for f in (fns or []) if f.get("addr") is not None and f.get("sh")}
+    from collections import Counter
+    c = Counter()
+    verified_ids = set()
+    for off, va, size in tracer.list_functions(retail)[:maxn]:
+        r = verify_body(retail, va)
+        c[r["verdict"]] += 1
+        if r["verdict"] == "equivalent":
+            bid = rva2id.get(va - base)
+            if bid and bid in present:
+                verified_ids.add(bid)
+    for r in rows:
+        if r["body_id"] in verified_ids:
+            r["verified"], r["state"] = "1", "verified"
+    with open(ledger, "w", newline="") as f:
+        w = _csv.DictWriter(f, fieldnames=rows[0].keys())
+        w.writeheader(); w.writerows(rows)
+    return {"module": module, "counts": dict(c), "credited": len(verified_ids)}
+
+
 def main(argv):
     pos = [x for x in argv if not x.startswith("--")]
     if not pos:
         print(__doc__); return
-    va = int(argv[argv.index("--va") + 1], 0) if "--va" in argv else None
     maxn = int(argv[argv.index("--max") + 1]) if "--max" in argv else 40
+    if "--harvest" in argv:
+        r = harvest(pos[0], maxn=maxn)
+        print("=== bodyverify --harvest %s ===" % pos[0])
+        print("  " + "  ".join("%s=%d" % (k, v) for k, v in sorted(r["counts"].items())))
+        print("  bodies credited VERIFIED in ledger: %d" % r["credited"])
+        return
+    va = int(argv[argv.index("--va") + 1], 0) if "--va" in argv else None
     print("=== bodyverify %s (synth -> compile -> oracle-verify) ===" % pos[0])
     run(pos[0], va=va, maxn=maxn)
 
