@@ -35,6 +35,7 @@ from src.core import paths
 _OW = os.path.join(paths.repo_root(), "experiments", "premise-proof", "open-watcom-v2", "rel")
 _PP = os.path.join(paths.repo_root(), "experiments", "premise-proof")
 _WDEF = os.path.join(_PP, "wdef", "wdef.exe")
+_WTHUNK = os.path.join(_PP, "wthunk", "wthunk.exe")
 
 
 def _win95_root():
@@ -88,13 +89,17 @@ def _run(cmd, cwd, env, log):
     return r.returncode
 
 
-def _ensure_wdef():
-    if os.path.exists(_WDEF):
+def _ensure_tool(exe, bat_name):
+    if os.path.exists(exe):
         return True
-    bat = os.path.join(_PP, "build_wdef.bat")
+    bat = os.path.join(_PP, bat_name)
     if os.path.exists(bat):
         subprocess.run([bat], cwd=_PP, capture_output=True, text=True, shell=True)
-    return os.path.exists(_WDEF)
+    return os.path.exists(exe)
+
+
+def _ensure_wdef():
+    return _ensure_tool(_WDEF, "build_wdef.bat")
 
 
 def build(module, do_diff=False, keep=False):
@@ -112,7 +117,7 @@ def build(module, do_diff=False, keep=False):
     bld = os.path.join(src, "_build")
     os.makedirs(bld, exist_ok=True)
     for f in os.listdir(src):
-        if f.lower().endswith((".c", ".h", ".asm", ".def")):
+        if f.lower().endswith((".c", ".h", ".asm", ".def", ".thk", ".rc")):
             shutil.copy2(os.path.join(src, f), bld)
     env = _ow_env(cls)
     log = []
@@ -131,6 +136,27 @@ def build(module, do_diff=False, keep=False):
     for a in m.get("asm", []):
         if _run(["wasm", "-q", "-zcm=masm", "-zzo", a + ".asm"], bld, env, log) != 0:
             fails.append(a)
+    # --- thunk: <thk> -> wthunk -> <asm> -> wasm -> <obj> (flat-thunk half) ---
+    thunk_obj = None
+    th = m.get("thunk")
+    if th:
+        if not _ensure_tool(_WTHUNK, "build_wthunk.bat"):
+            return {"ok": False, "error": "wthunk.exe unavailable (build_wthunk.bat failed)", "log": log}
+        asm = th.get("asm", "thunk.asm"); thunk_obj = th.get("obj", "thunk.obj")
+        r = subprocess.run([_WTHUNK, "-o", asm, th["thk"]], cwd=bld, capture_output=True, text=True)
+        log.append("$ wthunk -o %s %s" % (asm, th["thk"]))
+        if r.returncode != 0:
+            log.append(r.stdout + r.stderr)
+            return {"ok": False, "error": "wthunk failed on " + th["thk"], "log": log, "dir": bld}
+        wa = ["wasm", "-zcm=masm", "-zzo"] + ["-d" + d for d in th.get("defs", [])] + ["-fo=" + thunk_obj, asm]
+        if _run(wa, bld, env, log) != 0:
+            fails.append(asm)
+    # --- resources: <rc> -> wrc -> <base>.res ---
+    res_file = None
+    if m.get("rc"):
+        rc = m["rc"]; res_file = os.path.splitext(rc)[0] + ".res"
+        if _run(["wrc", "-q", "-r", "-bt=" + bt, rc], bld, env, log) != 0:
+            fails.append(rc)
     if fails:
         return {"ok": False, "error": "compile failed: " + ", ".join(fails), "log": log, "dir": bld}
 
@@ -140,20 +166,27 @@ def build(module, do_diff=False, keep=False):
         if not _ensure_wdef():
             return {"ok": False, "error": "wdef.exe unavailable (build_wdef.bat failed)", "log": log}
         exports_lnk = "exports.lnk"
-        r = subprocess.run([_WDEF, os.path.join(src, m["def"])], cwd=bld, capture_output=True, text=True)
+        # PE STDCALL decoration is resolved by feeding wdef the .obj symbols.
+        objargs = [o if o.lower().endswith(".obj") else o + ".obj" for o in m.get("def_objs", [])]
+        r = subprocess.run([_WDEF, os.path.join(src, m["def"])] + objargs,
+                           cwd=bld, capture_output=True, text=True)
         with open(os.path.join(bld, exports_lnk), "w", newline="\n") as f:
             f.write(r.stdout)
-        log.append("$ wdef %s  (%d export lines)" % (m["def"], r.stdout.count("\n")))
+        log.append("$ wdef %s %s  (%d export lines)" % (m["def"], " ".join(objargs), r.stdout.count("\n")))
 
     # --- link ---
     out = m.get("output", module + (".dll"))
     lnk = os.path.join(bld, "link.lnk")
-    objs = m.get("modules", []) + m.get("asm", [])
+    objs = list(m.get("modules", [])) + list(m.get("asm", []))
+    if thunk_obj:
+        objs.append(os.path.splitext(thunk_obj)[0])
     with open(lnk, "w", newline="\n") as f:
         f.write("system %s\n" % m.get("system", "windows_dll" if cls == "ne" else "nt_dll"))
         f.write("name %s\n" % out)
         f.write("option quiet\n")
         f.write("option map=%s.map\n" % os.path.splitext(out)[0])
+        if res_file:
+            f.write("option resource=%s\n" % res_file)
         f.write("file " + ",".join(objs) + "\n")
         for line in m.get("link_extra", []):
             f.write(line + "\n")
