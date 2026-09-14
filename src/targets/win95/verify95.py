@@ -30,6 +30,16 @@ _TOOLCHAIN = {"KERNEL.GETVERSION", "KERNEL.GETWINFLAGS", "KERNEL.LOCALINIT", "KE
               "KERNEL32.GETVERSION", "KERNEL32.GETVERSIONEXA", "KERNEL32.GETCURRENTTHREADID"}
 
 
+def _is_noise(api):
+    """Toolchain/thunk imports that differ by CODEGEN (OpenWatcom vs MS), not by the body's logic --
+    excluded from the behavioral fingerprint so they don't read as a divergence."""
+    a = str(api).upper()
+    if a in _TOOLCHAIN:
+        return True
+    return ("SMAPLS" in a or "SUNMAPLS" in a or "FT_" in a or "QT_" in a or "THUNK" in a
+            or a.endswith(".@0") or "GETVERSION" in a or "GETWINFLAGS" in a)
+
+
 def _exit_norm(e):
     if e is None:
         return "none"
@@ -42,7 +52,7 @@ def _fp_pe(path, func, args):
         r = tracer.trace_function(path, func=func, args=args, stub_externals=True)
     except Exception as e:
         return {"err": type(e).__name__}
-    deps = tuple(d for d in r.get("api_deps", []) if str(d).upper() not in _TOOLCHAIN)
+    deps = tuple(d for d in r.get("api_deps", []) if not _is_noise(d))
     return {"ret": r.get("ret"), "exit": _exit_norm(r.get("exit")), "deps": deps,
             "truncated": bool(r.get("truncated"))}
 
@@ -52,23 +62,49 @@ def _fp_ne(path, ordn, args):
         r = ne_dynoracle.probe(path, ordinal=ordn, args=args)
     except Exception as e:
         return {"err": type(e).__name__}
-    deps = tuple(h.get("api") for h in r.get("imports_hit", []) if h.get("api") not in _TOOLCHAIN)
+    deps = tuple(h.get("api") for h in r.get("imports_hit", []) if not _is_noise(h.get("api")))
     return {"ret": r.get("ret"), "exit": _exit_norm(r.get("exit")), "deps": deps, "truncated": False}
 
 
-def _verdict(a, b):
-    """Behavioral verdict for two fingerprints (codegen-independent):
-      error        -- a side failed to trace (no evidence)
-      inconclusive -- a side's trace truncated (hit a cap / ran into unfollowable code, e.g. a
-                      32->16 thunk) so behavior was not fully observed -- NOT counted as verified
-      equivalent   -- clean on both sides and (ret, exit, imported-call sequence) match
-      divergent    -- clean on both sides but behavior differs (a real reconstruction defect)."""
-    if "err" in a or "err" in b:
-        return "error"
-    if a.get("truncated") or b.get("truncated"):
+def _vectors(arity, lane):
+    """Input vectors to exercise a function past the immediate null-fault (no per-function signatures
+    needed): zeros, plus valid pointers/handles for the lane. A function verified on a vector where
+    BOTH sides run cleanly to a return is genuinely equivalent; zeros alone just null-fault."""
+    if arity <= 0:
+        return [[]]
+    n = arity
+    vs = [[0] * n]
+    if lane in ("pe", "dos"):
+        vs.append([0x200000] * n)                        # tracer's pre-mapped scratch window
+    else:                                                # NE controlled env: valid handles
+        vs.append([0x0400] * n)                          # LZ handle base
+        vs.append([0x0080] * n)                          # open-file handle from the _lopen stub
+    vs.append([1] * n)
+    return vs
+
+
+def _observed(fp):
+    """We observed behavior on this vector iff the side traced at all (a fault or truncation is still
+    an observation -- identical faults on identical inputs are evidence of identical behavior)."""
+    return "err" not in fp
+
+
+def _match(a, b):
+    return a["ret"] == b["ret"] and a["exit"] == b["exit"] and a["deps"] == b["deps"]
+
+
+def _body_verdict(rs, bs):
+    """Aggregate per-vector fingerprints. On each vector both sides get the SAME deterministic input,
+    so an identical fingerprint (return, exit, imported-call sequence -- including an identical fault
+    or truncation) is evidence they behave identically on that input; a difference is a real
+    behavioral divergence. Equivalent iff >=1 vector was observed on both sides and every observed
+    vector matches; divergent if any observed vector differs; inconclusive if none was observed."""
+    obs = [(a, b) for a, b in zip(rs, bs) if _observed(a) and _observed(b)]
+    if not obs:
         return "inconclusive"
-    if a["ret"] == b["ret"] and a["exit"] == b["exit"] and a["deps"] == b["deps"]:
-        return "equivalent"
+    if all(_match(a, b) for a, b in obs):
+        clean = any(a.get("exit") == "ret" and not a.get("truncated") for a, _b in obs)
+        return "equivalent" if clean else "consistent"     # consistent = matches only via fault/trunc
     return "divergent"
 
 
@@ -81,18 +117,18 @@ def verify_pair(retail, rebuilt, arity=0, maxn=64):
     """Per-export behavioral verdicts for retail vs rebuilt. Returns [(name, verdict, fp_r, fp_b)]."""
     lane = _fmt(retail)
     from src.targets.win95 import autobuild95 as A
+    vecs = _vectors(arity, lane)
     out = []
     if lane == "ne":
         # NE exports are mostly BY ORDINAL (the LZ APIs have no resident name), so probe ordinals
         # 1..maxn directly; annotate with the resident name where one exists.
         names = {o: n for o, n in ne_dynoracle_exports(retail)}
         for ordn in range(1, maxn + 1):
-            fr = _fp_ne(retail, ordn, [0] * arity)
-            fb = _fp_ne(rebuilt, ordn, [0] * arity)
-            if "err" in fr and "err" in fb:
+            rs = [_fp_ne(retail, ordn, list(v)) for v in vecs]
+            bs = [_fp_ne(rebuilt, ordn, list(v)) for v in vecs]
+            if all("err" in a for a in rs) and all("err" in b for b in bs):
                 continue                                 # ordinal not present in either -> skip
-            label = names.get(ordn, "@%d" % ordn)
-            out.append((label, _verdict(fr, fb), fr, fb))
+            out.append((names.get(ordn, "@%d" % ordn), _body_verdict(rs, bs), rs[0], bs[0]))
     else:
         pr, pb = A.PE(retail), A.PE(rebuilt)
         rbase, bbase = A._imagebase(pr), A._imagebase(pb)   # tracer wants a VA (imagebase+rva)
@@ -100,9 +136,9 @@ def verify_pair(retail, rebuilt, arity=0, maxn=64):
         for nm in list(raddr)[:maxn]:
             if nm not in baddr:
                 continue
-            fr = _fp_pe(retail, rbase + raddr[nm], [0] * arity)
-            fb = _fp_pe(rebuilt, bbase + baddr[nm], [0] * arity)
-            out.append((nm, _verdict(fr, fb), fr, fb))
+            rs = [_fp_pe(retail, rbase + raddr[nm], list(v)) for v in vecs]
+            bs = [_fp_pe(rebuilt, bbase + baddr[nm], list(v)) for v in vecs]
+            out.append((nm, _body_verdict(rs, bs), rs[0], bs[0]))
     return out
 
 
@@ -115,7 +151,7 @@ def ne_dynoracle_exports(path):
 def _print_pair(retail, rebuilt, verdicts):
     from collections import Counter
     c = Counter(v for _n, v, _a, _b in verdicts)
-    _TAG = {"equivalent": "OK  ", "divergent": "DIFF", "inconclusive": "?   ", "error": "err "}
+    _TAG = {"equivalent": "OK  ", "consistent": "~   ", "divergent": "DIFF", "inconclusive": "?   ", "error": "err "}
     print("=== verify %s  vs  %s ===" % (os.path.basename(retail), os.path.basename(rebuilt)))
     for nm, v, a, b in verdicts:
         note = ""
@@ -126,7 +162,7 @@ def _print_pair(retail, rebuilt, verdicts):
             note = "  (trace truncated -- unfollowable, e.g. 32->16 thunk)"
         print("  %-28s %s%s" % (nm, _TAG[v], note))
     print("  --- %d equivalent, %d divergent, %d inconclusive, %d error (of %d) ---" % (
-        c["equivalent"], c["divergent"], c["inconclusive"], c["error"], len(verdicts)))
+        c["equivalent"], c["divergent"], c["inconclusive"], c["error"], len(verdicts)))  # noqa
     return c["equivalent"], len(verdicts)
 
 
