@@ -15,6 +15,7 @@ if not exist "%BLD%" mkdir "%BLD%"
 copy /y "%SRC%\lz32.c"   "%BLD%\" >nul
 copy /y "%SRC%\lz32.rc"  "%BLD%\" >nul
 copy /y "%SRC%\lz.thk"   "%BLD%\" >nul
+copy /y "%SRC%\lz32.def" "%BLD%\" >nul
 copy /y "%HERE%lz32.lnk" "%BLD%\" >nul
 cd /d "%BLD%"
 echo [1/4] wcc386 lz32.c
@@ -25,8 +26,10 @@ echo [3/4] wthunk lz.thk + wasm (32-bit half)
 if not exist "%HERE%wthunk\wthunk.exe" call "%HERE%build_wthunk.bat" >nul
 "%HERE%wthunk\wthunk.exe" -o lz.asm lz.thk || goto err
 wasm -zcm=masm -zzo -dIS_32=1 -fo=lz32t.obj lz.asm || goto err
-echo [4/4] wlink -^> lz32.dll
-wlink @lz32.lnk                    || goto err
+echo [4/4] exports+imports from lz32.def via wdef, then wlink -^> lz32.dll
+if not exist "%HERE%wdef\wdef.exe" call "%HERE%build_wdef.bat" >nul
+"%HERE%wdef\wdef.exe" lz32.def lz32.obj lz32t.obj > lz32.defexp.lnk || goto err
+wlink @lz32.lnk @lz32.defexp.lnk  || goto err
 echo.
 echo BUILT: & dir lz32.dll | findstr lz32.dll
 goto done
