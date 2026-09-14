@@ -169,7 +169,9 @@ def main(argv):
     ap.add_argument("--class", dest="cls", choices=("ne", "pe"), default=None)
     ap.add_argument("--build", action="store_true", help="run owbuild where curated source exists")
     ap.add_argument("--cure", action="store_true",
-                    help="autocure the decompiled C and attempt a compile (records the compile frontier)")
+                    help="decompile fresh, autocure, and compile each module (the compile frontier)")
+    ap.add_argument("--jobs", type=int, default=0, help="parallel workers (default: min(12, cpus))")
+    ap.add_argument("--timeout", type=int, default=240, help="per-module decompile timeout")
     a = ap.parse_args(argv)
 
     corpus, design = _corpus(), _design()
@@ -194,43 +196,50 @@ def main(argv):
         names = names[:a.limit]
 
     curated_base = os.path.join(paths.data_root(), "Windows95", "base")
-    rows = []
-    for i, key in enumerate(names):
+    import tempfile
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _work(key):
+        """Per-module frontier work (thread-safe; each spawns its own subprocesses)."""
         path = dlls[key]
         mod = key
         fmt, exports = extract_exports(path)
         if a.cls and (fmt or "").lower() != a.cls:
-            continue
-        funcs, readable = _lane_stats(design, fmt, mod)
+            return None
         sd = os.path.join(scaffold_root, mod.split(".")[0])
         os.makedirs(sd, exist_ok=True)
         def_ok = False
         if exports:
             write_def(mod, fmt, exports, sd)
             def_ok = True
-            manifest = {
-                "class": "ne" if fmt == "NE" else "pe",
-                "target": "windows" if fmt == "NE" else "nt",
-                "model": "m" if fmt == "NE" else None,
-                "system": "windows_dll" if fmt == "NE" else "nt_dll",
-                "output": mod,
-                "def": mod.split(".")[0] + ".def",
-                "modules": [],       # curation fills these with the split .c basenames
-                "status": "scaffold -- needs curated source in base/%s/" % mod.split(".")[0],
-            }
-            json.dump(manifest, open(os.path.join(sd, "owbuild.json"), "w"), indent=2)
+            json.dump({"class": "ne" if fmt == "NE" else "pe",
+                       "target": "windows" if fmt == "NE" else "nt",
+                       "model": "m" if fmt == "NE" else None,
+                       "system": "windows_dll" if fmt == "NE" else "nt_dll",
+                       "output": mod, "def": mod.split(".")[0] + ".def", "modules": [],
+                       "status": "scaffold -- needs curated source"},
+                      open(os.path.join(sd, "owbuild.json"), "w"), indent=2)
 
-        status = "scaffolded"
-        build = ""
-        cure = ""
-        if a.cure and funcs:
+        status, cure, build, funcs, readable = "scaffolded", "", "", 0, ""
+        if a.cure and fmt in ("NE", "PE", "LE", "MZ"):
             try:
                 from src.targets.win95 import autocure
-                cr = autocure.cure_module(mod, do_compile=True)
-                c = cr.get("compile", {})
-                cure = "compiles" if c.get("ok") else "err:%d" % c.get("errors", -1)
-                if c.get("ok"):
-                    status = "compiles"
+                # decompile FRESH (current emitter), cure, compile -- one pass, no
+                # dependence on a stale *_lane sweep.
+                # sigs=False: one decode pass (skip the --names + demangle pass we
+                # don't need for the compile frontier) -- ~2x faster on PE.
+                ctext = nativedec.decompile_module(path, timeout=a.timeout, sigs=False)
+                funcs = ctext.count("__fastcall")
+                if funcs:
+                    cured, _st = autocure.cure_text(ctext)
+                    cf = os.path.join(sd, mod.split(".")[0] + ".c")
+                    with open(cf, "w", encoding="utf-8", newline="\n") as f:
+                        f.write(cured)
+                    cc = autocure._compile(cf, fmt)
+                    cure = "compiles" if cc.get("ok") else "err:%d" % cc.get("errors", -1)
+                    if cc.get("ok"):
+                        status = "compiles"
             except Exception as ex:
                 cure = "cure-error:" + type(ex).__name__
         curated = os.path.isfile(os.path.join(curated_base, mod.split(".")[0], "owbuild.json"))
@@ -244,12 +253,27 @@ def main(argv):
                 status = "build-error"; build = type(ex).__name__
         elif curated:
             status = "curated"
+        return (mod, fmt or "?", len(exports), funcs, readable, "def" if def_ok else "",
+                status, cure, build)
 
-        rows.append((mod, fmt or "?", len(exports), funcs, readable if readable is not None else "",
-                     "def" if def_ok else "", status, cure, build))
-        print("[%d/%d] %-20s %-3s exp=%-4d fns=%-5d rd=%-5s %s %s %s"
-              % (i + 1, len(names), mod, fmt or "?", len(exports), funcs,
-                 readable if readable is not None else "-", status, cure, build), flush=True)
+    jobs = a.jobs or min(12, (os.cpu_count() or 4))
+    rows = []
+    done = 0
+    from concurrent.futures import as_completed
+    with ThreadPoolExecutor(max_workers=jobs) as ex:
+        futs = {ex.submit(_work, k): k for k in names}
+        for fut in as_completed(futs):          # print as each finishes (live progress)
+            try:
+                row = fut.result()
+            except Exception:
+                row = None
+            if row is None:
+                continue
+            rows.append(row)
+            done += 1
+            print("[%d/%d] %-20s %-3s exp=%-4d fns=%-5d %s %s %s"
+                  % (done, len(names), row[0], row[1], row[2], row[3],
+                     row[6], row[7], row[8]), flush=True)
 
     out = os.path.join(design, "BUILDALL.csv")
     with open(out, "w", newline="") as f:

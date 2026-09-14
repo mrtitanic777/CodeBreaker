@@ -63,10 +63,16 @@ X86Insn DecodeX86Cap(const uint8_t* data, size_t size, size_t pos, uint32_t addr
   const uint8_t* p = data + pos;
   size_t avail = size - pos;
   uint64_t a = addr;
-  cs_insn* insn = cs_malloc(h);
+  // Reuse one cs_insn per (mode) for the whole run -- cs_disasm_iter is built for
+  // this. Allocating/freeing a cs_insn per instruction was the decode hot-path
+  // cost. Never freed (process lifetime), like the handles.
+  static thread_local cs_insn* insn16 = nullptr;
+  static thread_local cs_insn* insn32 = nullptr;
+  cs_insn*& slot = default_op16 ? insn16 : insn32;
+  if (!slot) slot = cs_malloc(h);
+  cs_insn* insn = slot;
   if (!insn) return out;
-  bool ok = cs_disasm_iter(h, &p, &avail, &a, insn);
-  if (!ok) { cs_free(insn, 1); return out; }
+  if (!cs_disasm_iter(h, &p, &avail, &a, insn)) return out;
 
   std::string mn = insn->mnemonic;
   // strip rep/repne prefixes folded into the mnemonic, recording them as flags
@@ -112,8 +118,7 @@ X86Insn DecodeX86Cap(const uint8_t* data, size_t size, size_t pos, uint32_t addr
   if (mn == "lcall") out.mnem = "call";     // normalize to the lifter's names
   if (mn == "ljmp")  out.mnem = "jmp";
 
-  cs_free(insn, 1);
-  return out;
+  return out;                                 // insn is reused, not freed per call
 }
 
 X86Insn DecodeX86Auto(const uint8_t* data, size_t size, size_t pos, uint32_t addr,
