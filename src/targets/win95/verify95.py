@@ -30,6 +30,16 @@ _TOOLCHAIN = {"KERNEL.GETVERSION", "KERNEL.GETWINFLAGS", "KERNEL.LOCALINIT", "KE
               "KERNEL32.GETVERSION", "KERNEL32.GETVERSIONEXA", "KERNEL32.GETCURRENTTHREADID"}
 
 
+def _norm_dep(d):
+    """Canonicalise an imported-call name so the two builds' import-table SPELLINGS of the same
+    import compare equal: uppercase, drop a .DLL/.EXE on the module half, unify the separator.
+    ('KERNEL32.dll!#21' and 'KERNEL32!#21' are the same ordinal import -> same behavior)."""
+    s = str(d).upper().replace("!", ".").replace(":", ".")
+    parts = s.split(".")
+    parts = [p for p in parts if p not in ("DLL", "EXE", "DRV")]
+    return ".".join(parts)
+
+
 def _is_noise(api):
     """Toolchain/thunk imports that differ by CODEGEN (OpenWatcom vs MS), not by the body's logic --
     excluded from the behavioral fingerprint so they don't read as a divergence."""
@@ -47,39 +57,55 @@ def _exit_norm(e):
     return "ret" if e == "ret" else ("fault" if e.startswith("exception") else e.split(":")[0])
 
 
-def _fp_pe(path, func, args):
+import struct as _struct
+
+# provisioned environment (mirrors envprov): a region of pointers that all resolve to a safe RET, so
+# a pointer/handle argument that gets dereferenced OR called through lands on a clean return instead
+# of a null fault. Both regions live inside the tracer's pre-mapped scratch window (0x200000..0x210000).
+_OBJ, _SAFE = 0x206000, 0x207800
+
+
+def _prov_meminit():
+    return [(_OBJ, _struct.pack("<I", _SAFE) * 0x400),   # 4 KB of "-> _SAFE" pointers
+            (_SAFE, b"\xc3" * 16)]                        # RET landing pad
+
+
+def _fp_pe(path, func, spec):
     try:
-        r = tracer.trace_function(path, func=func, args=args, stub_externals=True)
+        r = tracer.trace_function(path, func=func, args=spec["args"], mem_init=spec.get("mem_init"),
+                                  stub_externals=True)
     except Exception as e:
         return {"err": type(e).__name__}
-    deps = tuple(d for d in r.get("api_deps", []) if not _is_noise(d))
+    deps = tuple(_norm_dep(d) for d in r.get("api_deps", []) if not _is_noise(d))
     return {"ret": r.get("ret"), "exit": _exit_norm(r.get("exit")), "deps": deps,
             "truncated": bool(r.get("truncated"))}
 
 
-def _fp_ne(path, ordn, args):
+def _fp_ne(path, ordn, spec):
     try:
-        r = ne_dynoracle.probe(path, ordinal=ordn, args=args)
+        r = ne_dynoracle.probe(path, ordinal=ordn, args=spec["args"])
     except Exception as e:
         return {"err": type(e).__name__}
-    deps = tuple(h.get("api") for h in r.get("imports_hit", []) if not _is_noise(h.get("api")))
+    deps = tuple(_norm_dep(h.get("api")) for h in r.get("imports_hit", []) if not _is_noise(h.get("api")))
     return {"ret": r.get("ret"), "exit": _exit_norm(r.get("exit")), "deps": deps, "truncated": False}
 
 
 def _vectors(arity, lane):
     """Input vectors to exercise a function past the immediate null-fault (no per-function signatures
-    needed): zeros, plus valid pointers/handles for the lane. A function verified on a vector where
-    BOTH sides run cleanly to a return is genuinely equivalent; zeros alone just null-fault."""
+    needed). Each is {args, mem_init}. Beyond zeros/handles, the PROVISIONED vector points every arg
+    at a valid object region whose contents resolve dereference/call chains to a safe RET -- so a
+    pointer-taking function runs its real path to completion instead of faulting (env-provisioned)."""
     if arity <= 0:
-        return [[]]
+        return [{"args": []}]
     n = arity
-    vs = [[0] * n]
+    vs = [{"args": [0] * n}]
     if lane in ("pe", "dos"):
-        vs.append([0x200000] * n)                        # tracer's pre-mapped scratch window
-    else:                                                # NE controlled env: valid handles
-        vs.append([0x0400] * n)                          # LZ handle base
-        vs.append([0x0080] * n)                          # open-file handle from the _lopen stub
-    vs.append([1] * n)
+        vs.append({"args": [0x200000] * n})                      # bare scratch pointer
+        vs.append({"args": [_OBJ] * n, "mem_init": _prov_meminit()})   # provisioned objects
+    else:                                                        # NE controlled env: valid handles
+        vs.append({"args": [0x0400] * n})                        # LZ handle base
+        vs.append({"args": [0x0080] * n})                        # open-file handle
+    vs.append({"args": [1] * n})
     return vs
 
 
@@ -124,8 +150,8 @@ def verify_pair(retail, rebuilt, arity=0, maxn=64):
         # 1..maxn directly; annotate with the resident name where one exists.
         names = {o: n for o, n in ne_dynoracle_exports(retail)}
         for ordn in range(1, maxn + 1):
-            rs = [_fp_ne(retail, ordn, list(v)) for v in vecs]
-            bs = [_fp_ne(rebuilt, ordn, list(v)) for v in vecs]
+            rs = [_fp_ne(retail, ordn, v) for v in vecs]
+            bs = [_fp_ne(rebuilt, ordn, v) for v in vecs]
             if all("err" in a for a in rs) and all("err" in b for b in bs):
                 continue                                 # ordinal not present in either -> skip
             out.append((names.get(ordn, "@%d" % ordn), _body_verdict(rs, bs), rs[0], bs[0]))
@@ -136,8 +162,8 @@ def verify_pair(retail, rebuilt, arity=0, maxn=64):
         for nm in list(raddr)[:maxn]:
             if nm not in baddr:
                 continue
-            rs = [_fp_pe(retail, rbase + raddr[nm], list(v)) for v in vecs]
-            bs = [_fp_pe(rebuilt, bbase + baddr[nm], list(v)) for v in vecs]
+            rs = [_fp_pe(retail, rbase + raddr[nm], v) for v in vecs]
+            bs = [_fp_pe(rebuilt, bbase + baddr[nm], v) for v in vecs]
             out.append((nm, _body_verdict(rs, bs), rs[0], bs[0]))
     return out
 
