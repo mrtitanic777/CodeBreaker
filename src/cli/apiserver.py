@@ -122,6 +122,22 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(404, json.dumps({"error": "module not found", "module": m}))
             from src.formats import exeinfo
             return self._send(200, json.dumps(exeinfo.parse(p)))
+        if u.path == "/api/exe/resdata":
+            m = (q.get("module") or [None])[0]
+            p = _resolve_module(m)
+            if not p:
+                return self._send(404, json.dumps({"error": "module not found", "module": m}))
+            from src.formats import resview
+            try:
+                foff = int((q.get("foff") or ["0"])[0], 0)
+                size = int((q.get("size") or ["0"])[0], 0)
+                tid = int((q.get("type") or ["-1"])[0], 0)
+            except ValueError:
+                return self._send(400, json.dumps({"error": "bad foff/size/type"}))
+            r = resview.render(p, foff, size, tid)
+            if r.get("kind") == "image" and r.get("bytes") is not None:
+                return self._send(200, r["bytes"], r.get("content_type", "application/octet-stream"))
+            return self._send(200, json.dumps({"kind": r.get("kind"), "text": r.get("text", "")}))
         if u.path in ("/api/pe/hex", "/api/exe/hex"):
             m = (q.get("module") or [None])[0]
             p = _resolve_module(m)

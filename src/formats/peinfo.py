@@ -294,8 +294,11 @@ def _resources(pe, rva, size):
                         if not (loff & 0x80000000):      # data entry
                             de = base + loff
                             if de + 16 <= len(d):
+                                drva = _u32(d, de)
                                 items.append({"name": nlabel or str(nid), "lang": lid,
-                                              "rva": _u32(d, de), "size": _u32(d, de + 4)})
+                                              "rva": drva, "foff": pe.rva2off(drva),
+                                              "size": _u32(d, de + 4),
+                                              "type_id": tid})
         types.append({"type": tname, "id": tid, "count": len(items), "items": items})
     return {"count": sum(t["count"] for t in types), "types": types}
 

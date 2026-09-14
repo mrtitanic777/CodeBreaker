@@ -69,6 +69,12 @@
   table.petbl tr:hover td{background:#12171e}
   .hexctl{display:flex;gap:12px;align-items:center;margin-bottom:8px;color:var(--dim);font:12px var(--mono)}
   pre.hexdump{margin:0;font:12px/1.5 var(--mono);color:#cdd6e0;white-space:pre}
+  .respreview{margin-top:14px;border:1px solid var(--edge);border-radius:8px;background:#0e131a;min-height:0}
+  .respreview:empty{display:none}
+  .pvhdr{padding:8px 12px;border-bottom:1px solid var(--edge);color:var(--amber2);font:12px var(--mono)}
+  .pvbody{padding:12px;overflow:auto}
+  .pvimg{image-rendering:pixelated;max-width:100%;background:repeating-conic-gradient(#333 0 25%,#222 0 50%) 0/16px 16px;border:1px solid var(--edge)}
+  pre.pvtext{margin:0;white-space:pre-wrap;font:12px/1.5 var(--mono);color:#cdd6e0}
 </style>
 </head>
 <body>
@@ -222,9 +228,14 @@ function peTab(t){
     } else body=PE.imports&&PE.imports.length? `<h3>imported modules</h3>`+tbl(["module"],PE.imports.map(l=>[esc(l.name)])):"<p>no imported modules</p>";
   } else if(t=="resources"){
     const r=PE.resources||{count:0,types:[]};
-    body=`<p>${r.count} resources in ${r.types.length} types</p>`+r.types.map(ty=>
-      `<h3>${esc(ty.type)} (${ty.count})</h3>`+(ty.items.length?tbl(["name/id","lang","offset/rva","size"],
-        ty.items.map(it=>[esc(it.name),it.lang==null?"":it.lang,hex(it.rva!=null?it.rva:it.offset),it.size])):"")).join("");
+    body=`<p>${r.count} resources in ${r.types.length} types — click one to preview</p>`+r.types.map(ty=>
+      `<h3>${esc(ty.type)} (${ty.count})</h3>`+(ty.items.length?tbl(["name/id","lang","kind","size",""],
+        ty.items.map(it=>{
+          const call=`resPreview(${it.foff},${it.size},${it.type_id},'${it.kind}','${esc(ty.type)} ${esc(it.name)}')`;
+          return [`<a class="link" onclick="${call}">${esc(it.name)}</a>`,
+                  it.lang==null?"":it.lang,it.kind,it.size,
+                  `<button class="ghost" style="padding:1px 8px" onclick="${call}">view</button>`];
+        })):"")).join("")+`<div id="respreview" class="respreview"></div>`;
   }
   $("out").innerHTML=nav+`<div class="pebody">${body}</div>`;
 }
@@ -237,6 +248,19 @@ async function peHex(off){
   $("out").innerHTML=nav+ctl+`<pre class="hexdump">${esc(j.dump)}</pre>`;
 }
 const hex=n=>"0x"+((n>>>0).toString(16).toUpperCase());
+async function resPreview(foff,size,type,kind,label){
+  const pv=$("respreview"); if(!pv) return;
+  const url=`/api/exe/resdata?module=${encodeURIComponent(PEMOD)}&foff=${foff}&size=${size}&type=${type}`;
+  pv.innerHTML=`<div class="pvhdr">${esc(label)} — ${size} bytes</div><div class="pvbody">loading…</div>`;
+  const bd=pv.querySelector('.pvbody');
+  if(kind=="image"){
+    bd.innerHTML=`<img class="pvimg" src="${url}" alt="${esc(label)}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{textContent:'(image failed to render)'}))">`;
+  } else {
+    try{ const j=await (await fetch(url)).json(); bd.innerHTML=`<pre class="pvtext">${esc(j.text||"(empty)")}</pre>`; }
+    catch(e){ bd.textContent="preview failed: "+e; }
+  }
+  pv.scrollIntoView({behavior:"smooth",block:"nearest"});
+}
 async function health(){
   try{ const j=await (await fetch("/api/health")).json();
     if(j.ok){ $("dot").className="dot up"; $("hstat").textContent="server up"; return; } }catch(e){}

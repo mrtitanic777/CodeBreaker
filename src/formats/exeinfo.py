@@ -51,17 +51,22 @@ def detect(path):
 def parse(path):
     fmt = detect(path)
     if fmt == "PE":
-        r = peinfo.parse(path)
-        r["format"] = "PE"
-        return r
-    d = open(path, "rb").read()
-    if fmt == "NE":
-        return _ne(d, path)
-    if fmt == "LE":
-        return _le(d, path)
-    if fmt == "MZ":
-        return _mz(d, path)
-    return {"format": None, "path": path, "ok": False, "error": "unrecognized"}
+        r = peinfo.parse(path); r["format"] = "PE"
+    elif fmt == "NE":
+        r = _ne(open(path, "rb").read(), path)
+    elif fmt == "LE":
+        r = _le(open(path, "rb").read(), path)
+    elif fmt == "MZ":
+        r = _mz(open(path, "rb").read(), path)
+    else:
+        return {"format": None, "path": path, "ok": False, "error": "unrecognized"}
+    # tag each resource with how the previewer should render it
+    if r.get("resources"):
+        from src.formats import resview
+        for ty in r["resources"].get("types", []):
+            for it in ty.get("items", []):
+                it["kind"] = resview.preview_kind(it.get("type_id", -1))
+    return r
 
 
 # --------------------------------------------------------------------------- NE
@@ -182,7 +187,8 @@ def _ne_resources(d, e, align):
                 break
             off = _u16(d, p) << shift; ln = _u16(d, p + 2) << shift; rid = _u16(d, p + 6)
             items.append({"name": ("#%d" % (rid & 0x7FFF)) if rid & 0x8000 else str(rid),
-                          "offset": off, "size": ln})
+                          "offset": off, "foff": off, "size": ln,
+                          "type_id": tid & 0x7FFF if tid & 0x8000 else tid})
             p += 12
         types.append({"type": tname, "count": len(items), "items": items})
         guard += 1
