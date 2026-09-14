@@ -15,12 +15,16 @@ arity we chose matches the true prototype.
 import argparse
 import sys
 
-from src.engines.behavior.tracer16 import trace_function16
+from src.targets.win95 import ne_dynoracle
 
 
 def _beh(path, ordn, arity):
+    # Run inside the controlled Win16 environment (ne_dynoracle): GlobalAlloc hands
+    # out real far-heap blocks, GlobalLock returns pointers, file APIs feed data --
+    # so allocations SUCCEED and both modules run their real paths, not just the
+    # allocation-failure error path. Fair behavioral comparison.
     try:
-        r = trace_function16(path, ordinal=ordn, args=[0] * arity, arity=arity)
+        r = ne_dynoracle.probe(path, ordinal=ordn, args=[0] * arity)
     except Exception as e:
         return {"exit": "trace-error:" + type(e).__name__, "ret": None, "insn_count": 0, "imps": ()}
     return {"exit": r.get("exit"), "ret": r.get("ret"), "insn_count": r.get("insn_count"),
