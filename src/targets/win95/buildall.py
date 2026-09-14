@@ -233,6 +233,16 @@ def main(argv):
                 # don't need for the compile frontier) -- ~2x faster on PE.
                 ctext = nativedec.decompile_module(path, timeout=a.timeout, sigs=False)
                 funcs = ctext.count("__fastcall")
+                if not funcs and fmt in ("NE", "PE"):
+                    # A code-less resource container (icons/bitmaps/strings, no
+                    # .text / entry / exports): nothing to compile, but it is still
+                    # a real DLL -- rebuild it from its resources (verbatim).
+                    from src.targets.win95 import resbuild
+                    rb = resbuild.build(path, sd)
+                    if rb.get("ok"):
+                        status = "resbuilt"; build = "res"
+                        v = rb.get("verify", {})
+                        cure = "res:%d/%d" % (v.get("byte_exact", 0), rb.get("resources", 0))
                 if funcs:
                     cured, _st = autocure.cure_text(ctext)
                     cf = os.path.join(sd, mod.split(".")[0] + ".c")
