@@ -39,12 +39,23 @@ _db16 = None
 _db16_built = False
 
 # CRT / MFC static libraries carry the toolchain floor. The 16-bit DB is built from
-# every OMF C-runtime and MFC lib under toolchains -- across memory models (S/M/C/L),
-# math packages (E emulator / A alternate / 7 x87), and the Windows DLL runtime
-# (*DLLC*W / *LIBC*W, which the corpus's 16-bit NE DLLs actually link). The 32-bit
-# DB adds the i386 COFF C-runtime (msvc-2.0 LIBC/LIBCMT etc.) to the shipped-CRT-DLL
+# every OMF C/C++-runtime and MFC lib we have -- across compilers (MS MSC/MSVC and
+# OpenWatcom), memory models (S/M/C/L / clib[cshlm]), math packages, and the Windows
+# runtime -- so a function is recognized whichever toolchain built it. The 32-bit DB
+# adds the i386 COFF C-runtime (msvc-2.0 LIBC/LIBCMT etc.) to the shipped-CRT-DLL
 # signatures. Debug variants are excluded (not shipped in the retail corpus).
-_CRT_LIB_RE = re.compile(r"(LIBC|DLLC|AFXC)", re.I)
+#   MS/MFC:   *LIBC* / *DLLC* / *AFXC*
+#   Watcom:   clib* (C runtime), plib* (C++ runtime), math*
+_CRT_LIB_RE = re.compile(r"(LIBC|DLLC|AFXC)|^(CLIB|PLIB|MATH)", re.I)
+
+# Search roots for the 16-bit OMF DB. Watcom is restricted to its 16-bit release tree
+# (rel/lib286); its 32-bit libs are ALSO OMF but must not enter the 16-bit DB (they'd
+# be masked with 16-bit call rules). MS 16-bit OMF lives under toolchains/.
+_OMF_ROOTS = [
+    ("toolchains",),
+    ("experiments", "premise-proof", "open-watcom-v2", "rel", "lib286"),
+]
+_COFF_ROOTS = [("toolchains",)]
 
 
 def _is_debug_lib(fn):
@@ -53,31 +64,35 @@ def _is_debug_lib(fn):
 
 
 def _discover_libs(want_omf):
-    """Unique CRT/MFC libs under toolchains/, of the requested container (OMF vs
-    COFF), retail only. Deduped by (name, size)."""
+    """Unique CRT/MFC libs of the requested container (OMF vs COFF), retail only,
+    across the roots for that container. Deduped by (name, size)."""
     from src.core import paths
-    root = os.path.join(paths.repo_root(), "toolchains")
+    roots = _OMF_ROOTS if want_omf else _COFF_ROOTS
     seen, out = set(), []
-    for dp, _, fs in os.walk(root):
-        for fn in fs:
-            if not fn.lower().endswith(".lib") or not _CRT_LIB_RE.search(fn):
-                continue
-            if _is_debug_lib(fn):
-                continue
-            p = os.path.join(dp, fn)
-            try:
-                with open(p, "rb") as f:
-                    is_omf = f.read(1) == b"\xf0"
-                sz = os.path.getsize(p)
-            except OSError:
-                continue
-            if is_omf != want_omf:
-                continue
-            key = (fn.lower(), sz)
-            if key in seen:
-                continue
-            seen.add(key)
-            out.append(p)
+    for parts in roots:
+        base = os.path.join(paths.repo_root(), *parts)
+        if not os.path.isdir(base):
+            continue
+        for dp, _, fs in os.walk(base):
+            for fn in fs:
+                if not fn.lower().endswith(".lib") or not _CRT_LIB_RE.search(fn):
+                    continue
+                if _is_debug_lib(fn):
+                    continue
+                p = os.path.join(dp, fn)
+                try:
+                    with open(p, "rb") as f:
+                        is_omf = f.read(1) == b"\xf0"
+                    sz = os.path.getsize(p)
+                except OSError:
+                    continue
+                if is_omf != want_omf:
+                    continue
+                key = (fn.lower(), sz)
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append(p)
     return sorted(out)
 
 
