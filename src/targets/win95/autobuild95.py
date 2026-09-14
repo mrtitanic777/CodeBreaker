@@ -392,15 +392,25 @@ def build_flat_thunk(srcdir, outdir=None):
     moddef = os.path.basename(disc["moddef"])
     rc = os.path.basename(disc["rc"]) if disc["rc"] else None
     res = (module + ".res") if rc else ""
+    # INCLUDE: the compiler's own headers PLUS the Win32 SDK headers (msacm.h/vfw.h/commctrl.h...),
+    # so a veneer's real SDK-typed signatures resolve -- the authentic build config.
+    win32inc = None
+    for r in _reference_roots():
+        p = os.path.join(r, "WIN32SDK", "MSTOOLS", "INCLUDE")
+        if os.path.isdir(p):
+            win32inc = p
+            break
+    incdirs = ([win32inc] if win32inc else []) + [tc["include"]]
     L = ["@echo off", "cd /d " + _winpath(outdir),
-         "set INCLUDE=" + _winpath(tc["include"]),
+         "set INCLUDE=" + ";".join(_winpath(x) for x in incdirs),
          "set LIB=" + ";".join(_winpath(x) for x in tc["lib_dirs"]),
          "set PATH=" + _winpath(os.path.dirname(tc["cl"])) + ";%PATH%",
          "del %s.dll *.obj %s.asm %s 2>nul" % (module, thkstem, res),
          '"%s" -o %s.asm %s > _t.log 2>&1' % (_winpath(tc["thunk"]), thkstem, thk),
          '"%s" /c /W0 /DIS_32 /Fo%s_thk.obj %s.asm >> _t.log 2>&1' % (_winpath(tc["ml"]), thkstem, thkstem)]
     for c in disc["cfiles"]:
-        L.append('"%s" /c /W3 /DWIN32 %s >> _t.log 2>&1' % (_winpath(tc["cl"]), os.path.basename(c)))
+        # /DWIN32 /D_WIN32: the SDK headers gate their 32-bit types on _WIN32 (msacm.h:288 etc.)
+        L.append('"%s" /c /W3 /DWIN32 /D_WIN32 %s >> _t.log 2>&1' % (_winpath(tc["cl"]), os.path.basename(c)))
     if rc:
         L.append('"%s" /r /fo %s %s >> _t.log 2>&1' % (_winpath(tc["rc"]), res, rc))
     L += ['"%s" /NOLOGO /DEF:%s /OUT:%s.lib /MACHINE:IX86 >> _t.log 2>&1'
@@ -731,19 +741,35 @@ _IN_WINDOWS_H = {"WINUSER.H", "WINGDI.H", "WINBASE.H", "WINREG.H", "WINNLS.H", "
                  "WINDOWS.H", "WINDEF.H", "WINCON.H", "WINSVC.H", "WINERROR.H"}
 
 
+# some SDK headers only compile if a prerequisite is included first (the original source did so):
+# msacm.h/vfw.h use the multimedia types from mmsystem.h; mciavi.h builds on both.
+_HEADER_PREREQ = {"msacm.h": ["mmsystem.h", "mmreg.h"], "vfw.h": ["mmsystem.h"],
+                  "digitalv.h": ["mmsystem.h"], "mmreg.h": ["mmsystem.h"],
+                  "mciavi.h": ["mmsystem.h", "vfw.h"]}
+
+
 def _needed_includes(protos_used):
     """The #include lines a recovered module needs so its SDK-typed signatures resolve: the real
     header each used prototype came from (msacm.h/vfw.h/commctrl.h/...), minus the ones <windows.h>
-    already provides. Emitting the authentic headers is how the original source compiled -- the
-    struct/handle types (LPACMFORMATDETAILS, OPENFILENAME, ...) are then real, not fabricated."""
+    already provides, with each header's prerequisites emitted first (mmsystem.h before msacm.h) so
+    it parses. Emitting the authentic headers is how the original source compiled -- the struct/handle
+    types (LPACMFORMATDETAILS, OPENFILENAME, ...) are then real, not fabricated."""
     hdrs = []
     seen = set()
+
+    def add(h):
+        hl = h.lower()
+        if hl in seen or h.upper() in _IN_WINDOWS_H:
+            return
+        for pre in _HEADER_PREREQ.get(hl, []):
+            add(pre)
+        seen.add(hl)
+        hdrs.append(hl)
+
     for p in protos_used:
         h = (p or {}).get("header")
-        if not h or h.upper() in _IN_WINDOWS_H or h.upper() in seen:
-            continue
-        seen.add(h.upper())
-        hdrs.append(h.lower())
+        if h:
+            add(h)
     return hdrs
 
 
