@@ -83,11 +83,16 @@ def verify_pair(retail, rebuilt, arity=0, maxn=64):
     from src.targets.win95 import autobuild95 as A
     out = []
     if lane == "ne":
-        import struct
-        for ordn, nm in ne_dynoracle_exports(retail)[:maxn]:
+        # NE exports are mostly BY ORDINAL (the LZ APIs have no resident name), so probe ordinals
+        # 1..maxn directly; annotate with the resident name where one exists.
+        names = {o: n for o, n in ne_dynoracle_exports(retail)}
+        for ordn in range(1, maxn + 1):
             fr = _fp_ne(retail, ordn, [0] * arity)
             fb = _fp_ne(rebuilt, ordn, [0] * arity)
-            out.append((nm or ("@%d" % ordn), _verdict(fr, fb), fr, fb))
+            if "err" in fr and "err" in fb:
+                continue                                 # ordinal not present in either -> skip
+            label = names.get(ordn, "@%d" % ordn)
+            out.append((label, _verdict(fr, fb), fr, fb))
     else:
         pr, pb = A.PE(retail), A.PE(rebuilt)
         rbase, bbase = A._imagebase(pr), A._imagebase(pb)   # tracer wants a VA (imagebase+rva)
