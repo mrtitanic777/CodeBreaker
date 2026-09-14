@@ -210,18 +210,24 @@ def _bindiff(name, built):
     """Byte comparison against the retail binary of the same name in the corpus."""
     roots = [os.path.join(_win95_root(), "design", "corpus", "files"),
              os.environ.get("WT_DATA_ROOT", "")]
-    retail = None
+    matches = []
     for corpus in roots:
         if not corpus or not os.path.isdir(corpus):
             continue
         for dp, _, fs in os.walk(corpus):
             for f in fs:
                 if f.lower() == name.lower():
-                    retail = os.path.join(dp, f); break
-            if retail:
-                break
-        if retail:
+                    matches.append(os.path.join(dp, f))
+        if matches:
             break
+    # Prefer the INSTALLED copy (WINDOWS\SYSTEM) over setup/inf or other variants --
+    # that is the DLL the OS actually loads and the reconstruction target.
+    retail = None
+    for m in matches:
+        if "system" in m.lower().replace("\\", "/").split("/"):
+            retail = m; break
+    if not retail and matches:
+        retail = matches[0]
     if not retail:
         return {"retail": None, "note": "no retail %s in corpus" % name}
     a = open(built, "rb").read(); b = open(retail, "rb").read()
