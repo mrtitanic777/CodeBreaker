@@ -56,6 +56,19 @@
   .out .cmt{color:var(--faint)} .out .kw{color:var(--cyan)} .out .name{color:var(--amber2)}
   .hint{color:var(--faint);font-size:11.5px;font-family:var(--mono)}
   a.link{color:var(--cyan);text-decoration:none} a.link:hover{text-decoration:underline}
+  /* PE Explorer views */
+  .out .petabs,.out .pebody,.out .hexctl{white-space:normal}
+  .petabs{display:flex;gap:2px;flex-wrap:wrap;margin:-4px -4px 12px;position:sticky;top:-14px;background:#0a0d12;padding:8px 0}
+  .petabs span{padding:5px 12px;cursor:pointer;color:var(--dim);border:1px solid var(--edge);border-radius:6px;font:12px var(--mono)}
+  .petabs span:hover{color:var(--ink)} .petabs span.on{color:var(--amber2);border-color:var(--amber);background:var(--panel2)}
+  .pebody h2{font-size:15px;color:var(--amber);margin:18px 0 6px} .pebody h3{font-size:13px;color:var(--amber2);margin:14px 0 4px}
+  .pebody p{color:var(--dim);margin:4px 0}
+  table.petbl{border-collapse:collapse;width:100%;margin:4px 0 10px;font:12px var(--mono)}
+  table.petbl th{color:var(--faint);text-align:left;font-weight:600;border-bottom:1px solid var(--edge);padding:3px 10px 3px 0}
+  table.petbl td{padding:2px 10px 2px 0;border-bottom:1px solid #1a2028;color:#cdd6e0;vertical-align:top}
+  table.petbl tr:hover td{background:#12171e}
+  .hexctl{display:flex;gap:12px;align-items:center;margin-bottom:8px;color:var(--dim);font:12px var(--mono)}
+  pre.hexdump{margin:0;font:12px/1.5 var(--mono);color:#cdd6e0;white-space:pre}
 </style>
 </head>
 <body>
@@ -80,6 +93,9 @@ const TOOLS = [
   desc:"Native disassembler (NE + PE) — per-segment/section listing with resolved call targets.",
   fields:[{n:"module",ph:"LZEXPAND / KERNEL32  or  full path",w:1}],
   run:f=>({get:`/api/win95/disasm?module=${encodeURIComponent(f.module)}`})},
+ {id:"pe", k:"E", ttl:"PE Explorer", pe:true,
+  desc:"Full PE inspector — headers, data directories, sections, exports, imports, resources, hex. Parity with PEExplorerV2's PEParser.",
+  fields:[{n:"module",ph:"KERNEL32 / ADVPACK  or  full path",w:1}]},
  {id:"triage", k:"T", ttl:"Origin Triage",
   desc:"Classify decompiled NE functions by origin (app vs CRT/compiler/asm/stub).",
   fields:[], run:_=>({argv:["--target","win95","origin_triage"]})},
@@ -128,6 +144,7 @@ function select(id){
 }
 function fields(){const o={};cur.fields.forEach(f=>o[f.n]=($("f_"+f.n)||{}).value||"");return o;}
 async function go(){
+  if(cur.pe){ return goPE(fields().module); }
   const spec=cur.run(fields());
   $("out").textContent="running…"; $("badge").textContent=""; $("stat").textContent=spec.get||("wt "+(spec.argv||[]).join(" "));
   let j;
@@ -141,6 +158,69 @@ async function go(){
   const body=(j.stdout||"")+(j.stderr?("\n\n── stderr ──\n"+j.stderr):"");
   $("out").textContent=body||"(no output)";
 }
+// ---- PE Explorer (parity with PEExplorerV2's views) ----
+let PE=null, PEMOD="";
+const esc=s=>String(s==null?"":s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+function tbl(cols, rows){
+  return `<table class="petbl"><thead><tr>${cols.map(c=>`<th>${c}</th>`).join("")}</tr></thead>`+
+    `<tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+}
+const kv=o=>`<table class="petbl">${Object.entries(o).map(([k,v])=>
+  `<tr><th style="text-align:right">${k}</th><td>${esc(typeof v==="object"?JSON.stringify(v):v)}</td></tr>`).join("")}</table>`;
+async function goPE(m){
+  if(!m){ $("out").textContent="enter a module (e.g. KERNEL32)"; return; }
+  PEMOD=m; $("out").innerHTML="parsing…"; $("stat").textContent="/api/pe/parse?module="+m; $("badge").textContent="";
+  try{ PE=await (await fetch("/api/pe/parse?module="+encodeURIComponent(m))).json(); }
+  catch(e){ $("out").textContent="request failed: "+e; return; }
+  if(!PE.ok){ $("badge").className="badge err"; $("badge").textContent="error"; $("out").textContent=PE.error||"parse failed"; return; }
+  $("badge").className="badge ok"; $("badge").textContent=PE.file_header.machine+(PE.pe_plus?" PE32+":" PE32");
+  peTab("summary");
+}
+const PETABS=["summary","sections","directories","exports","imports","resources","hex"];
+function peTab(t){
+  const nav=`<div class="petabs">${PETABS.map(x=>`<span class="${x==t?'on':''}" onclick="peTab('${x}')">${x}</span>`).join("")}</div>`;
+  let body="";
+  if(t=="summary"){
+    body=`<h3>File header</h3>${kv(PE.file_header)}<h3>Optional header</h3>${kv(PE.optional_header)}`+
+         `<h3>DOS header</h3>${kv(PE.dos)}`+(PE.rich?`<h3>Rich header</h3>${kv(PE.rich)}`:"")+
+         (PE.clr?`<h3>.NET / CLR</h3>${kv(PE.clr)}`:"")+
+         (PE.tls?`<h3>TLS</h3>${kv(PE.tls)}`:"")+
+         (PE.certificates.length?`<h3>Certificates (${PE.certificates.length})</h3>`+tbl(["length","revision","type"],PE.certificates.map(c=>[c.length,c.revision,c.type])):"")+
+         (PE.debug.length?`<h3>Debug</h3>`+tbl(["type","size","timestamp"],PE.debug.map(d=>[d.type,d.size,d.timestamp])):"")+
+         `<h3>Base relocations</h3>${kv(PE.base_relocations)}`;
+  } else if(t=="sections"){
+    body=tbl(["name","vaddr","vsize","raw off","raw size","flags"],PE.sections.map(s=>
+      [esc(s.name),hex(s.vaddr),hex(s.vsize),hex(s.raw_offset),hex(s.raw_size),s.characteristics.join(" ")]));
+  } else if(t=="directories"){
+    body=tbl(["#","directory","rva","size"],PE.data_directories.map((d,i)=>[i,d.name,hex(d.rva),d.size]));
+  } else if(t=="exports"){
+    const e=PE.exports;
+    body=`<p>${esc(e.module||"")} — ${e.count} exports</p>`+tbl(["ordinal","hint","name","rva","forward"],
+      e.symbols.map(s=>[s.ordinal,s.hint<0?"":s.hint,esc(s.undecorated||s.name||"(by ordinal)"),hex(s.rva),esc(s.forward)]));
+  } else if(t=="imports"){
+    body=PE.imports.length? PE.imports.map(l=>`<h3>${esc(l.name)} (${l.count})</h3>`+
+      tbl(["name","ordinal","hint"],l.symbols.map(s=>[esc(s.undecorated||s.name||"(by ordinal)"),s.ordinal<0?"":s.ordinal,s.hint<0?"":s.hint]))).join("")
+      :"<p>no imports</p>";
+    if(PE.delay_imports.length) body+="<h2>Delay imports</h2>"+PE.delay_imports.map(l=>`<h3>${esc(l.name)} (${l.count})</h3>`+
+      tbl(["name","ordinal","hint"],l.symbols.map(s=>[esc(s.name||"(ord)"),s.ordinal<0?"":s.ordinal,s.hint<0?"":s.hint]))).join("");
+  } else if(t=="resources"){
+    const r=PE.resources;
+    body=`<p>${r.count} resources in ${r.types.length} types</p>`+r.types.map(ty=>
+      `<h3>${esc(ty.type)} (${ty.count})</h3>`+(ty.items.length?tbl(["name/id","lang","rva","size"],
+        ty.items.map(it=>[esc(it.name),it.lang,hex(it.rva),it.size])):"")).join("");
+  } else if(t=="hex"){
+    peHex(0); return;
+  }
+  $("out").innerHTML=nav+`<div class="pebody">${body}</div>`;
+}
+async function peHex(off){
+  const nav=`<div class="petabs">${PETABS.map(x=>`<span class="${x=='hex'?'on':''}" onclick="peTab('${x}')">${x}</span>`).join("")}</div>`;
+  const j=await (await fetch(`/api/pe/hex?module=${encodeURIComponent(PEMOD)}&off=${off}&len=1024`)).json();
+  const ctl=`<div class="hexctl"><button class="ghost" onclick="peHex(${Math.max(0,off-1024)})">◀ prev</button>`+
+    `<span>offset ${hex(off)}</span><button class="ghost" onclick="peHex(${off+1024})">next ▶</button></div>`;
+  $("out").innerHTML=nav+ctl+`<pre class="hexdump">${esc(j.dump)}</pre>`;
+}
+const hex=n=>"0x"+((n>>>0).toString(16).toUpperCase());
 async function health(){
   try{ const j=await (await fetch("/api/health")).json();
     if(j.ok){ $("dot").className="dot up"; $("hstat").textContent="server up"; return; } }catch(e){}

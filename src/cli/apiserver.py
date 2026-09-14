@@ -39,6 +39,8 @@ CAPABILITIES = {
         "GET /api/win95/decompile?module=<name|path>": "native decompiler -> C",
         "GET /api/win95/disasm?module=<name|path>": "native disassembler -> listing",
         "GET /api/win95/list": "wt --target win95 list",
+        "GET /api/pe/parse?module=<name|path>": "full PE parse (headers, dirs, sections, exports, imports, resources, ...)",
+        "GET /api/pe/hex?module=<name|path>&off=<n>&len=<n>": "raw hex dump window",
     },
 }
 
@@ -53,6 +55,30 @@ def index_html():
             return f.read()
     except OSError:
         return _FALLBACK
+
+
+_CORPUS = os.environ.get("WT_DATA_ROOT") or \
+    r"C:\Users\mrtit\Documents\GitHub\Windows95\design\corpus\files"
+_mod_index = None
+
+
+def _resolve_module(m):
+    """A module name (kernel32.dll) or a full path -> an absolute file path. Prefers
+    the installed WINDOWS\\SYSTEM copy when a name matches more than once."""
+    if not m:
+        return None
+    if os.path.isfile(m):
+        return m
+    global _mod_index
+    if _mod_index is None:
+        _mod_index = {}
+        for dp, _, fs in os.walk(_CORPUS):
+            for f in fs:
+                k = f.lower()
+                prefer = "system" in dp.lower().replace("\\", "/").split("/")
+                if k not in _mod_index or prefer:
+                    _mod_index[k] = os.path.join(dp, f)
+    return _mod_index.get(m.lower())
 
 
 def run_wt(argv, timeout=900):
@@ -89,6 +115,23 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(400, json.dumps({"error": "module= required"}))
             cmd = "decompile" if u.path.endswith("decompile") else "disasm"
             return self._send(200, json.dumps(run_wt(["--target", "win95", cmd, m])))
+        if u.path == "/api/pe/parse":
+            m = (q.get("module") or [None])[0]
+            p = _resolve_module(m)
+            if not p:
+                return self._send(404, json.dumps({"error": "module not found", "module": m}))
+            from src.formats import peinfo
+            return self._send(200, json.dumps(peinfo.parse(p)))
+        if u.path == "/api/pe/hex":
+            m = (q.get("module") or [None])[0]
+            p = _resolve_module(m)
+            if not p:
+                return self._send(404, json.dumps({"error": "module not found", "module": m}))
+            from src.formats import peinfo
+            off = int((q.get("off") or ["0"])[0], 0)
+            ln = min(int((q.get("len") or ["512"])[0], 0), 65536)
+            return self._send(200, json.dumps({"module": m, "offset": off,
+                                               "dump": peinfo.hexdump(p, off, ln)}))
         return self._send(404, json.dumps({"error": "not found", "path": u.path}))
 
     def do_POST(self):
