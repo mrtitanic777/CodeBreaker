@@ -521,9 +521,18 @@ std::string Render(const ExprRef& e, int parent_prec) {
     case EK::Name:
     case EK::Raw:
       return e->text;
-    case EK::Unary:
+    case EK::Unary: {
       if (!e->a) return "0";
-      return e->text + RenderChild(e->a, e->prec);
+      std::string c = RenderChild(e->a, e->prec);
+      // Never let a unary -/+ fuse with a child that begins with the same sign:
+      // `-` applied to `-0xFFFF` would print `--0xFFFF`, which C parses as a
+      // pre-decrement of a constant (E1014). A space keeps it `- -0xFFFF`.
+      if (!c.empty() && !e->text.empty() &&
+          (e->text.back() == '-' || e->text.back() == '+') &&
+          c[0] == e->text.back())
+        return e->text + " " + c;
+      return e->text + c;
+    }
     case EK::Binary:
       // Guard a missing operand (an unresolved sub-expression) so we never emit a
       // dangling operator like `x + ` that would splice the next statement into the
@@ -1721,6 +1730,40 @@ std::string CDecompiler::Run() {
                   const std::string& pure_def = std::string()) {
     body.push_back({s, addr, pure_def});
   };
+
+  // Field-type pre-pass: fix every struct field's declared (widest) type BEFORE
+  // any body renders. Otherwise an integer read that renders before a wider float
+  // access at the same offset misses the bit-reinterpret, and the field -- later
+  // widened to float -- breaks its integer uses (`f & 1`, `f >> 1`: E1079). This
+  // mirrors the Deref field-inference (base = a v/a pointer var + small constant
+  // offset) so the two agree on which offsets are fields and how wide.
+  {
+    auto isVA = [](const std::string& n) {
+      if (n.size() < 2 || (n[0] != 'v' && n[0] != 'a')) return false;
+      for (size_t i = 1; i < n.size(); i++)
+        if (!std::isdigit((unsigned char)n[i])) return false;
+      return true;
+    };
+    for (const auto& b : func_.blocks) {
+      for (const ILInstr& in : b.instrs) {
+        switch (in.op) {
+          case ILOp::Load: case ILOp::LoadUpdate:
+          case ILOp::Store: case ILOp::StoreUpdate:
+          case ILOp::FLoad: case ILOp::FLoadUpdate:
+          case ILOp::FStore: case ILOp::FStoreUpdate: break;
+          default: continue;
+        }
+        if (in.src1.id == kILNoValue || !(in.imm > 0 && in.imm < 0x10000))
+          continue;
+        std::string base = VarName(in.src1.id);
+        if (!isVA(base)) continue;
+        auto& fields = g_field_uses[base];
+        auto it = fields.find((uint32_t)in.imm);
+        if (it == fields.end() || TypeSize(in.access_type) > TypeSize(it->second))
+          fields[(uint32_t)in.imm] = in.access_type;
+      }
+    }
+  }
 
   // Blocks in address order so the listing follows the original layout.
   std::vector<const ILBasicBlock*> blocks;
