@@ -736,6 +736,14 @@ def _sig_ret(proto):
     return proto["ret"] if (proto and proto.get("ret")) else "DWORD"
 
 
+def _sig_conv(proto):
+    """The function's calling-convention keyword. From the SDK prototype when known (WINAPI, or the
+    varargs VFWAPIV for ICCompress-style APIs) -- so the definition's convention matches the header
+    and does not clash (C2373); else WINAPI (flat thunks are stdcall)."""
+    c = (proto or {}).get("conv")
+    return c if c else "WINAPI"
+
+
 # SDK headers whose contents <windows.h> already pulls in -- an explicit #include would be redundant.
 _IN_WINDOWS_H = {"WINUSER.H", "WINGDI.H", "WINBASE.H", "WINREG.H", "WINNLS.H", "WINNT.H",
                  "WINDOWS.H", "WINDEF.H", "WINCON.H", "WINSVC.H", "WINERROR.H"}
@@ -743,9 +751,59 @@ _IN_WINDOWS_H = {"WINUSER.H", "WINGDI.H", "WINBASE.H", "WINREG.H", "WINNLS.H", "
 
 # some SDK headers only compile if a prerequisite is included first (the original source did so):
 # msacm.h/vfw.h use the multimedia types from mmsystem.h; mciavi.h builds on both.
-_HEADER_PREREQ = {"msacm.h": ["mmsystem.h", "mmreg.h"], "vfw.h": ["mmsystem.h"],
+_HEADER_PREREQ = {"msacm.h": ["mmsystem.h", "mmreg.h"], "vfw.h": ["mmsystem.h", "commdlg.h"],
                   "digitalv.h": ["mmsystem.h"], "mmreg.h": ["mmsystem.h"],
-                  "mciavi.h": ["mmsystem.h", "vfw.h"]}
+                  "mciavi.h": ["mmsystem.h", "vfw.h"], "prsht.h": ["commctrl.h"],
+                  "commctrl.h": ["objbase.h"]}       # IStream in ImageList_Read/Write, prop sheets
+
+_CKW = {"void", "char", "int", "long", "short", "unsigned", "signed", "double", "float",
+        "const", "struct", "union", "enum", "far", "near", "huge", "volatile"}
+
+
+def _split_params(s):
+    """Split a parameter list on top-level commas (respecting nested parens, e.g. a function-pointer
+    parameter's own arg list)."""
+    out, depth, cur = [], 0, ""
+    for ch in s:
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        if ch == "," and depth == 0:
+            out.append(cur)
+            cur = ""
+        else:
+            cur += ch
+    if cur.strip():
+        out.append(cur)
+    return out
+
+
+def _def_params(params):
+    """Ensure every parameter in a list has a NAME, so the text is valid in a function DEFINITION
+    (the period C compiler rejects unnamed params in a definition: `void f(HWND,BOOL){}` -> C2055).
+    SDK prototypes often omit names (`DragAcceptFiles(HWND, BOOL)`); synthesize aN for the bare ones.
+    A parameter is considered named when its last token is a lowercase/mixed-case identifier that is
+    not a type keyword and the param does not end in `*` (SDK types are ALL-CAPS or keywords, names
+    are camelCase)."""
+    p = (params or "").strip()
+    if p == "" or p.lower() == "void":
+        return "void"
+    out = []
+    for i, part in enumerate(_split_params(p), 1):
+        part = part.strip()
+        if part in ("...", ""):
+            out.append(part or "void")
+            continue
+        # the parameter is named iff its trailing identifier (ignoring a glued `*`, e.g. `int*pn`
+        # or `UINT FAR *puMxId`) is a mixed/lower-case name -- SDK types are ALL-CAPS or keywords.
+        m = _re.search(r"([A-Za-z_]\w*)\s*$", part)
+        last = m.group(1) if m else ""
+        # a type token is a keyword or a multi-char ALL-CAPS name (HWND, LPSTR); a single upper
+        # letter (X, Y, W, H) is a legitimate parameter name, so require len>=2 for the type test.
+        is_type = (not last) or last.lower() in _CKW or (last.isupper() and len(last) >= 2)
+        out.append(part if not is_type else (part + " a%d" % i))
+    return ", ".join(out)
 
 
 def _needed_includes(protos_used):
@@ -898,6 +956,15 @@ def recover_flat_thunk(pe_path, outdir):
                         " * exported by name in the .def, no C definition here) */\n\n"
                         % (ordv, nm, module))
                 continue
+            if not _re.match(r"^[A-Za-z_]\w*$", nm):   # decorated/non-identifier export (e.g. _f@4)
+                f.write("/* @%d %s -- decorated/non-identifier export name; kept in the .def, no C\n"
+                        " * definition here (the name is not a legal C identifier) */\n\n" % (ordv, nm))
+                continue
+            # #undef the name before defining it: many SDK names are macros in the headers -- A/W
+            # aliases (`#define PlaySound PlaySoundA`) and function-like macros (`ICCompress` ->
+            # ICSendMessage in vfw.h) -- which would corrupt our real definition. A no-op when the
+            # name is not a macro.
+            undef = "#undef %s\n" % nm
             proto = protos.get(nm)
             sig = sigs.get(nm, (None, 0))
             params, known = _sig_params(sig, proto)
@@ -907,7 +974,7 @@ def recover_flat_thunk(pe_path, outdir):
             if params is None:                       # stub unresolved -> honest scaffold
                 f.write("/* @%d %s -- API (mark documented/undocumented); scaffold. "
                         "TODO: signature + marshal + thunk + return */\n"
-                        "DWORD WINAPI %s(void) { return 0; }\n\n" % (ordv, nm, nm))
+                        "%sDWORD WINAPI %s(void) { return 0; }\n\n" % (ordv, nm, undef, nm))
                 continue
             n_arity += 1
             argbytes, nptr = sig
@@ -915,7 +982,8 @@ def recover_flat_thunk(pe_path, outdir):
             tag = ("documented" if (proto and proto.get("doc") == "documented") else
                    ("%d-arg" % (argbytes // 4)) + (", %d ptr" % nptr if nptr else ""))
             f.write("/* @%d %s -- %s; scaffold. TODO: marshal args, thunk to %s, return */\n"
-                    "%s WINAPI %s(%s) { return 0; }\n\n" % (ordv, nm, tag, dll16, ret, nm, params))
+                    "%s%s %s %s(%s) { return 0; }\n\n" % (ordv, nm, tag, dll16, undef, ret,
+                                                          _sig_conv(proto), nm, _def_params(params)))
 
     return {"module": module, "n_exports": len(exps), "k32_ordinals": ords,
             "unknown_ordinals": unknown, "outdir": outdir, "target16": target16,

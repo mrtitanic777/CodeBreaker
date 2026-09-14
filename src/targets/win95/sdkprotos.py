@@ -79,7 +79,9 @@ def extract_header(path):
         if not pretok:
             continue
         conv = pretok[-1]
-        is_conv = conv in _CONV or (conv.isupper() and conv.endswith("API"))
+        # convention markers: WINAPI/APIENTRY/ACMAPI + any <UPPER>API, and the varargs forms
+        # <UPPER>APIV (VFWAPIV = cdecl varargs, used by ICCompress etc.).
+        is_conv = conv in _CONV or (conv.isupper() and (conv.endswith("API") or conv.endswith("APIV")))
         if not is_conv:
             continue
         # return type = tokens before the convention marker, back to the start of this declaration
@@ -132,9 +134,9 @@ def _header_paths(variant="win32"):
 # the headers whose APIs the flat-thunk / thunked modules export (multimedia, shell, common
 # controls, version, networking); the big base headers (winuser/wingdi/winbase) are parsed too so
 # the table also serves the win32-c lane.
-_HEADERS = ["MMSYSTEM.H", "MSACM.H", "VFW.H", "COMMCTRL.H", "SHELLAPI.H", "WINVER.H",
-            "COMMDLG.H", "WINNETWK.H", "MCIAVI.H", "DIGITALV.H", "MSVIDEO.H",
-            "WINUSER.H", "WINGDI.H", "WINBASE.H", "WINREG.H", "WINSPOOL.H", "DDRAW.H"]
+_HEADERS = ["MMSYSTEM.H", "MSACM.H", "VFW.H", "COMMCTRL.H", "PRSHT.H", "SHELLAPI.H", "WINVER.H",
+            "COMMDLG.H", "DLGS.H", "WINNETWK.H", "MCIAVI.H", "DIGITALV.H", "MSVIDEO.H",
+            "WINUSER.H", "WINGDI.H", "WINBASE.H", "WINREG.H", "WINSPOOL.H", "WINNLS.H", "DDRAW.H"]
 
 
 def build(outjson=None, verbose=False, variant="win32"):
