@@ -95,7 +95,12 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
       insns.push_back(in);
       uint32_t next = a + advBytes(in);
       const std::string& m = in.mnem;
-      bool isJcc = m.size() && m[0] == 'j' && m != "jmp";
+      // loop/loope/loopne decrement CX and branch conditionally -- pass 2 emits a
+      // BranchCond for them, so their target must be a leader (else the goto has
+      // no label: E1018). jcxz/jecxz already match the j* test below.
+      bool isLoop = m == "loop" || m == "loope" || m == "loopne" ||
+                    m == "loopz" || m == "loopnz";
+      bool isJcc = (m.size() && m[0] == 'j' && m != "jmp") || isLoop;
       if (m == "jmp") {
         if (in.ops[0].kind == OpKind::Rel) {
           leaders.insert((uint32_t)in.ops[0].imm); work.push_back((uint32_t)in.ops[0].imm);
