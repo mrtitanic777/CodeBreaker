@@ -255,12 +255,24 @@ def main(argv):
                     cf = os.path.join(sd, mod.split(".")[0] + ".c")
                     with open(cf, "w", encoding="utf-8", newline="\n") as f:
                         f.write(cured)
-                    if funcs >= GIANT_FUNCS:
+                    # An NE module far larger than a 16-bit code segment (64 KB) can
+                    # never compile as one TU (E1118). Split it into multiple TUs up
+                    # front -- the DLL was itself multi-segment -- rather than waste a
+                    # multi-minute doomed single-TU compile.
+                    if fmt == "NE" and len(cured) > 200000:
+                        from src.targets.win95 import nesplit
+                        sr = nesplit.compile_split(cured, mod.split(".")[0],
+                                                   os.path.join(sd, "split"))
+                        cc = {"ok": sr.get("ok"), "errors": len(sr.get("failed", []))}
+                        cure = ("compiles(split:%d)" % sr.get("chunks", 0)
+                                if sr.get("ok") else "split-err:%d" % len(sr.get("failed", [])))
+                    elif funcs >= GIANT_FUNCS:
                         with giant_lock:            # serialize the multi-minute giants
                             cc = autocure._compile(cf, fmt)
+                        cure = "compiles" if cc.get("ok") else "err:%d" % cc.get("errors", -1)
                     else:
                         cc = autocure._compile(cf, fmt)
-                    cure = "compiles" if cc.get("ok") else "err:%d" % cc.get("errors", -1)
+                        cure = "compiles" if cc.get("ok") else "err:%d" % cc.get("errors", -1)
                     if cc.get("ok"):
                         status = "compiles"
                         # optional: link the compiled module into a DLL (PE scaffold)
