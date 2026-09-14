@@ -342,18 +342,22 @@ def sweep_corpus(modules, maxper=100000):
     present = {r["body_id"] for r in rows}
     verified_now = set()
     per = []
+
+    def _flush():                                        # persist after each module so a timeout
+        for r in rows:                                   # never loses completed modules' credits
+            if r["body_id"] in verified_now:
+                r["verified"], r["state"] = "1", "verified"
+        with open(_ledger_path(), "w", newline="") as fp:
+            w = _csv.DictWriter(fp, fieldnames=rows[0].keys())
+            w.writeheader(); w.writerows(rows)
+
     for m in modules:
         try:
             r = harvest(m, maxn=maxper, rows=rows, present=present, verified_now=verified_now)
             per.append((m, r["counts"]))
         except Exception as e:
             per.append((m, {"error": type(e).__name__}))
-    for r in rows:
-        if r["body_id"] in verified_now:
-            r["verified"], r["state"] = "1", "verified"
-    with open(_ledger_path(), "w", newline="") as fp:
-        w = _csv.DictWriter(fp, fieldnames=rows[0].keys())
-        w.writeheader(); w.writerows(rows)
+        _flush()                                         # incremental checkpoint
     return {"modules": per, "credited": len(verified_now),
             "total_verified": sum(1 for r in rows if r.get("verified") == "1")}
 
