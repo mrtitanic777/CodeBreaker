@@ -139,20 +139,20 @@ def triage_module(path):
             if len(parts) > 1 and parts[1].strip():
                 name_of[k] = parts[1].strip()
     funcs = []
-    cur_name, cur = None, []
+    cur_name, cur, cur_addr = None, [], None
 
     def flush():
         if cur:
             h = hashlib.sha1("\n".join(cur).encode()).hexdigest()
-            funcs.append({"name": cur_name or "", "size": len(cur), "sh": h})
+            funcs.append({"name": cur_name or "", "size": len(cur), "sh": h, "addr": cur_addr})
 
     for line in disasm.splitlines():
         if line.startswith("; ----"):                    # segment/section header -> boundary
-            flush(); cur_name, cur = None, []
+            flush(); cur_name, cur, cur_addr = None, [], None
             continue
         ml = _LBL_RE.match(line)
         if ml:
-            flush(); cur_name, cur = ml.group(1), []
+            flush(); cur_name, cur, cur_addr = ml.group(1), [], None
             continue
         mi = _INS_RE.match(line)
         if not mi:
@@ -160,9 +160,11 @@ def triage_module(path):
         key = _addr_key(mi.group(1))
         if key in starts and cur:                        # a --names start begins a new function
             nm = name_of.get(key, "")
-            flush(); cur_name, cur = nm, []
+            flush(); cur_name, cur, cur_addr = nm, [], None
         elif key in starts and not cur and not cur_name:
             cur_name = name_of.get(key, "")
+        if cur_addr is None:
+            cur_addr = key                               # first instruction's address = function start
         instr = _NUM_RE.sub("#", mi.group(2).split(";")[0]).strip()
         cur.append(instr)
     flush()
