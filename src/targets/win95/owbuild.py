@@ -309,6 +309,66 @@ def autolink(module, fmt, export_names, imports, cured_c, outdir):
     return {"ok": False, "error": "link produced no output", "log": log[-6:]}
 
 
+def autolink_exe(module, fmt, imports, cured_c, outdir):
+    """Link an auto-cured module toward an EXECUTABLE (not a DLL): `system nt`
+    (PE) / `system windows` (NE) / `system dos` (MZ), a synthesized entry point
+    (the decompiled bag of sub_* has no real one), imports resolved from the table,
+    everything else stubbed, no export table. Surface-level -- proves the link
+    closes; behavior needs curation. Returns {ok, output|error}."""
+    sysmap = {"PE": ("nt", "wcc386", ["-bt=nt", "-q", "-wcd=138", "-s"], "pe"),
+              "NE": ("windows", "wcc", ["-bt=windows", "-mm", "-q", "-s"], "ne"),
+              "MZ": ("dos", "wcc", ["-bt=dos", "-ms", "-q", "-s"], "ne")}
+    if fmt not in sysmap:
+        return {"ok": False, "error": "autolink_exe: unsupported %s" % fmt}
+    system, cc, ccflags, envcls = sysmap[fmt]
+    env = _ow_env(envcls)
+    text = open(cured_c, encoding="utf-8", errors="replace").read()
+    base = module.split(".")[0]
+    obj = base + ".obj"
+    log = []
+    if _run([_tool(cc)] + ccflags + [os.path.basename(cured_c)], outdir, env, log) != 0:
+        return {"ok": False, "error": "compile failed", "log": log}
+
+    called = set(_re.findall(r"\b([A-Za-z_]\w*)\s*\(", text))
+    defined = set(_re.findall(r"(?m)^int ([A-Za-z_]\w*)\(\)", text))
+    import_names = set()
+    imp_lines = []
+    if fmt == "PE":                         # NE/MZ imports resolve differently; scaffold stubs them
+        for lib in imports:
+            libbase = lib["name"].split(".")[0].upper()
+            for s in lib.get("symbols", []):
+                if s.get("name"):
+                    internal = "%s_%s_" % (libbase, s["name"])
+                    import_names.add("%s_%s" % (libbase, s["name"]))
+                    imp_lines.append("import %s '%s'.'%s'" % (internal, libbase, s["name"]))
+
+    # a synthesized entry point: the decompiled functions are a bag of sub_*, so the
+    # scaffold supplies its own start symbol and points the linker at it.
+    dec = "_" if fmt == "PE" else "_"   # wcc/wcc386 register calling both append '_'
+    stubs = sorted(called - defined - import_names - _CRT_SYMS - _C_KW)
+    with open(os.path.join(outdir, "stubs.c"), "w", newline="\n") as f:
+        f.write("/* auto stubs + synthesized entry for the exe scaffold */\n")
+        f.write("int resexe_start(){return 0;}\n")
+        for s in stubs:
+            f.write("int %s(){return 0;}\n" % s)
+    if _run([_tool(cc)] + ccflags + ["stubs.c"], outdir, env, log) != 0:
+        return {"ok": False, "error": "stub compile failed", "log": log}
+
+    out = base + ".exe"
+    with open(os.path.join(outdir, "link.lnk"), "w", newline="\n") as f:
+        f.write("system %s\nname %s\noption quiet\noption map=%s.map\n" % (system, out, base))
+        f.write("option start=resexe_start%s\n" % dec)
+        f.write("file %s\nfile stubs.obj\n" % obj)
+        for l in imp_lines:
+            f.write(l + "\n")
+    _run([_tool("wlink"), "@link.lnk"], outdir, env, log)
+    outpath = os.path.join(outdir, out)
+    if os.path.isfile(outpath):
+        return {"ok": True, "output": outpath, "size": os.path.getsize(outpath),
+                "stubs": len(stubs), "imports": len(imp_lines)}
+    return {"ok": False, "error": "link produced no output", "log": log[-8:]}
+
+
 def main(argv):
     ap = argparse.ArgumentParser(prog="owbuild", description=__doc__.splitlines()[0])
     ap.add_argument("module")

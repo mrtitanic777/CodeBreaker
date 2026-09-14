@@ -124,6 +124,31 @@ def _build_sigs(names):
     return "\n".join(lines) + ("\n" if lines else "")
 
 
+def _wrap_raw_mz(path):
+    """Wrap a headerless real-mode blob (no MZ/NE/PE/LE header -- e.g. a .COM-style
+    or overlay binary that begins directly with 16-bit code) in a synthetic MZ so the
+    DOS/MZ 16-bit lifter can load it as a flat code image at CS:IP=0:0. Returns the
+    path to a temp .exe, or None if the file already has a real header."""
+    if detect_format(path) is not None:
+        return None
+    blob = open(path, "rb").read()
+    if len(blob) < 8 or len(blob) > 0x10000:      # must fit one real-mode segment
+        return None
+    hdr = bytearray(64)
+    hdr[0:2] = b"MZ"
+    total = 64 + len(blob)
+    struct.pack_into("<H", hdr, 0x02, total % 512)     # bytes in last page
+    struct.pack_into("<H", hdr, 0x04, (total + 511) // 512)  # pages
+    struct.pack_into("<H", hdr, 0x08, 4)               # header paragraphs (64/16)
+    struct.pack_into("<H", hdr, 0x0C, 0xFFFF)          # maxalloc
+    struct.pack_into("<H", hdr, 0x10, 0xFFFE)          # sp
+    struct.pack_into("<H", hdr, 0x18, 0x40)            # reloc-table offset
+    struct.pack_into("<I", hdr, 0x3C, 0)               # e_lfanew=0 -> no new header
+    tf = tempfile.NamedTemporaryFile("wb", suffix=".exe", delete=False)
+    tf.write(bytes(hdr) + blob); tf.close()
+    return tf.name
+
+
 def decompile_module(ne_path, timeout=300, sigs=True):
     """Decompile every function of a module (NE or PE, auto-detected); returns the
     C source text.
@@ -131,6 +156,19 @@ def decompile_module(ne_path, timeout=300, sigs=True):
     When the module has mangled C++ exports (MFC/OLE/C++ DLLs) and `sigs` is on,
     a first --names pass is demangled into prototypes (names, return + arg types,
     `this`) fed back via --sigs -- SDK-free typing straight from the symbols."""
+    # Headerless real-mode blob: load it via a synthetic MZ wrapper on the MZ engine.
+    if detect_format(ne_path) is None:
+        wrapped = _wrap_raw_mz(ne_path)
+        if wrapped:
+            try:
+                r = subprocess.run([_MZBIN, wrapped, "--module"],
+                                   capture_output=True, text=True, timeout=timeout)
+                return r.stdout
+            finally:
+                try:
+                    os.unlink(wrapped)
+                except OSError:
+                    pass
     exe, mod_args, _dis, _names = _engine(ne_path)
     sig_text = _build_sigs(_dump_names(ne_path, timeout)) if sigs else ""
     if not sig_text:

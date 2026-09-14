@@ -235,7 +235,10 @@ def main(argv):
                       open(os.path.join(sd, "owbuild.json"), "w"), indent=2)
 
         status, cure, build, funcs, readable = "scaffolded", "", "", 0, ""
-        if a.cure and fmt in ("NE", "PE", "LE", "MZ"):
+        # a headerless real-mode blob (detect_format None) decompiles via nativedec's
+        # synthetic-MZ wrap -> compile it as 16-bit (NE flags).
+        cfmt = fmt if fmt in ("NE", "PE", "LE", "MZ") else "NE"
+        if a.cure and (fmt in ("NE", "PE", "LE", "MZ") or fmt is None):
             try:
                 from src.targets.win95 import autocure
                 # decompile FRESH (current emitter), cure, compile -- one pass, no
@@ -263,7 +266,7 @@ def main(argv):
                     # never compile as one TU (E1118). Split it into multiple TUs up
                     # front -- the DLL was itself multi-segment -- rather than waste a
                     # multi-minute doomed single-TU compile.
-                    if fmt == "NE" and len(cured) > 200000:
+                    if cfmt == "NE" and len(cured) > 200000:
                         from src.targets.win95 import nesplit
                         sr = nesplit.compile_split(cured, mod.split(".")[0],
                                                    os.path.join(sd, "split"))
@@ -272,19 +275,27 @@ def main(argv):
                                 if sr.get("ok") else "split-err:%d" % len(sr.get("failed", [])))
                     elif funcs >= GIANT_FUNCS:
                         with giant_lock:            # serialize the multi-minute giants
-                            cc = autocure._compile(cf, fmt)
+                            cc = autocure._compile(cf, cfmt)
                         cure = "compiles" if cc.get("ok") else "err:%d" % cc.get("errors", -1)
                     else:
-                        cc = autocure._compile(cf, fmt)
+                        cc = autocure._compile(cf, cfmt)
                         cure = "compiles" if cc.get("ok") else "err:%d" % cc.get("errors", -1)
                     if cc.get("ok"):
                         status = "compiles"
-                        # optional: link the compiled module into a DLL (PE scaffold)
-                        if a.link and fmt == "PE" and exports:
+                        # optional: link the compiled module (PE scaffold). A DLL
+                        # links via its export table (autolink); an EXE links to an
+                        # entry point with no exports (autolink_exe).
+                        if a.link and fmt == "PE":
                             from src.targets.win95 import owbuild
-                            enames = [n for n, _o in exports]
                             imps = __import__("src.formats.exeinfo", fromlist=["exeinfo"]).parse(path).get("imports", [])
-                            lr = owbuild.autolink(mod, fmt, enames, imps, cf, sd)
+                            is_exe = mod.lower().endswith(".exe")
+                            if is_exe:
+                                lr = owbuild.autolink_exe(mod, fmt, imps, cf, sd)
+                            elif exports:
+                                enames = [n for n, _o in exports]
+                                lr = owbuild.autolink(mod, fmt, enames, imps, cf, sd)
+                            else:
+                                lr = {"ok": False}
                             build = "linked" if lr.get("ok") else "link-fail"
                             if lr.get("ok"):
                                 status = "linked"
