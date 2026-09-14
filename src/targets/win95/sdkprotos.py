@@ -9,8 +9,10 @@ persisted table (reference/flat_thunk_protos.json) and stamps the real prototype
 it names -- so a recovered veneer reads `MMRESULT acmStreamOpen(LPHACMSTREAM, HACMDRIVER, ...)`, the
 authored signature, instead of the arity-only fallback.
 
-    wt --target win95 sdkprotos            # regenerate reference/flat_thunk_protos.json
-    wt --target win95 sdkprotos --stats
+    wt --target win95 sdkprotos            # 32-bit table -> reference/flat_thunk_protos.json
+    wt --target win95 sdkprotos --win16    # 16-bit table (INC16) -> reference/win16_protos.json
+    wt --target win95 sdkprotos --all      # both (PE lane uses the 32-bit, NE lane the 16-bit)
+    wt --target win95 sdkprotos --all --stats
 """
 import os
 import re
@@ -108,15 +110,19 @@ def extract_header(path):
     return out
 
 
-# header -> which reference dirs to look in (32-bit SDK first, then DDK).
-def _header_paths():
+# header -> which reference dirs to look in.  win32: the 32-bit SDK + DDK 32-bit includes.
+# win16: the DDK's 16-bit INC16 (the headers for the actual 16-bit NE DLLs -- VER, COMMDLG,
+# SHELL, MMSYSTEM, the very partners the 32-bit flat thunks target).
+def _header_paths(variant="win32"):
     from src.targets.win95 import autobuild95 as A
     roots = A._reference_roots()
+    subs = (("Microsoft Windows 95 DDK", "INC16"),) if variant == "win16" else (
+        ("WIN32SDK", "MSTOOLS", "INCLUDE"),
+        ("Microsoft Windows 95 DDK", "INC32"),
+        ("Microsoft Windows 95 DDK", "MMEDIA", "INC"))
     dirs = []
     for r in roots:
-        for sub in (("WIN32SDK", "MSTOOLS", "INCLUDE"),
-                    ("Microsoft Windows 95 DDK", "INC32"),
-                    ("Microsoft Windows 95 DDK", "MMEDIA", "INC")):
+        for sub in subs:
             d = os.path.join(r, *sub)
             if os.path.isdir(d):
                 dirs.append(d)
@@ -131,11 +137,16 @@ _HEADERS = ["MMSYSTEM.H", "MSACM.H", "VFW.H", "COMMCTRL.H", "SHELLAPI.H", "WINVE
             "WINUSER.H", "WINGDI.H", "WINBASE.H", "WINREG.H", "WINSPOOL.H", "DDRAW.H"]
 
 
-def build(outjson=None, verbose=False):
-    dirs = _header_paths()
+def build(outjson=None, verbose=False, variant="win32"):
+    dirs = _header_paths(variant)
+    # win16: parse every INC16 header (they are all 16-bit API headers). win32: the curated set.
+    if variant == "win16":
+        headers = sorted({f for d in dirs for f in os.listdir(d) if f.upper().endswith(".H")})
+    else:
+        headers = _HEADERS
     protos = {}
     per_hdr = {}
-    for hname in _HEADERS:
+    for hname in headers:
         for d in dirs:
             p = os.path.join(d, hname)
             if os.path.isfile(p):
@@ -143,24 +154,28 @@ def build(outjson=None, verbose=False):
                 new = {k: v for k, v in got.items() if k not in protos}
                 protos.update(new)
                 per_hdr[hname] = len(got)
-                if verbose:
+                if verbose and got:
                     print("  %-14s %-40s %4d protos (%4d new)" % (hname, d.split("reference")[-1], len(got), len(new)))
                 break
     if outjson is None:
         from src.targets.win95 import autobuild95 as A
         roots = A._reference_roots()
-        outjson = os.path.join(roots[0], "flat_thunk_protos.json") if roots else "flat_thunk_protos.json"
+        name = "win16_protos.json" if variant == "win16" else "flat_thunk_protos.json"
+        outjson = os.path.join(roots[0], name) if roots else name
     json.dump(protos, open(outjson, "w", encoding="utf-8"), indent=0, sort_keys=True)
     return {"outjson": outjson, "n": len(protos), "per_header": per_hdr}
 
 
 def main(argv):
     verbose = "--stats" in argv or "-v" in argv
-    r = build(verbose=verbose)
-    print("sdkprotos: %d prototypes -> %s" % (r["n"], r["outjson"]))
-    if verbose:
-        for h, n in sorted(r["per_header"].items()):
-            print("  %-14s %d" % (h, n))
+    variants = ["win16"] if "--win16" in argv else (["win32", "win16"] if "--all" in argv else ["win32"])
+    for variant in variants:
+        r = build(verbose=verbose, variant=variant)
+        print("sdkprotos[%s]: %d prototypes -> %s" % (variant, r["n"], r["outjson"]))
+        if verbose:
+            for h, n in sorted(r["per_header"].items()):
+                if n:
+                    print("  %-14s %d" % (h, n))
 
 
 if __name__ == "__main__":
