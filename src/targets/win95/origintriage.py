@@ -21,6 +21,7 @@ unique-target count -- the number the full-reconstruction roadmap is actually si
 """
 import os
 import sys
+import re
 import csv
 import glob
 import hashlib
@@ -58,84 +59,114 @@ def _canon(name):
     return n
 
 
-def _decompiler_for(path):
-    b = A.load(path)
-    if isinstance(b, A.PE):
-        return "win95pedec.exe"
-    return None                                          # PE-only for this pass (flat address space)
+import struct as _struct
+
+# format -> native decompiler (one engine family, four loaders). Same --names/--disasm interface.
+_DECOMP = {"pe": "win95pedec.exe", "ne": "win95dec.exe", "le": "win95ledec.exe", "dos": "win95mzdec.exe"}
 
 
-def _func_starts(exe, path):
-    """(rva, name) for every function, from the native decompiler's --names."""
+def _detect(path):
+    """(lane, decompiler_exe) for a binary by its header -- PE/NE/LE(VxD)/DOS -- or (None, None)."""
+    try:
+        with open(path, "rb") as f:
+            d = f.read(0x40)
+            if len(d) < 0x40 or d[:2] != b"MZ":
+                return (None, None)
+            e = _struct.unpack("<I", d[0x3c:0x40])[0]
+            f.seek(e)
+            sig = f.read(2)
+    except OSError:
+        return (None, None)
+    if sig == b"PE":
+        return ("pe", _DECOMP["pe"])
+    if sig == b"NE":
+        return ("ne", _DECOMP["ne"])
+    if sig in (b"LE", b"LX"):
+        return ("le", _DECOMP["le"])
+    return ("dos", _DECOMP["dos"])
+
+
+def _dec(exe, path, mode):
     dec = os.path.join(paths.repo_root(), "native", "decompiler", "build", "bin", exe)
     if not os.path.exists(dec):
         return None
     try:
-        r = subprocess.run([dec, path, "--names"], capture_output=True, text=True, timeout=180)
+        r = subprocess.run([dec, path, mode], capture_output=True, text=True, timeout=240)
+        return r.stdout
     except Exception:
         return None
-    out = []
-    for line in r.stdout.splitlines():
-        parts = line.split("\t")
+
+
+def _addr_key(tok):
+    """Normalise an address token to one integer key across formats: 'SSSS:OOOO' (NE/LE seg:off) ->
+    (seg<<16)|off; a flat hex 'RVA' -> its int. So --names starts and --disasm lines share a key."""
+    tok = tok.strip()
+    if ":" in tok:
+        s, o = tok.split(":", 1)
         try:
-            rva = int(parts[0].strip(), 16)
+            return (int(s, 16) << 16) | int(o, 16)
         except ValueError:
-            continue
-        name = parts[1].strip() if len(parts) > 1 else ""
-        out.append((rva, name))
-    return out
-
-
-def _struct_hash(pe, lo, hi):
-    """Address-independent structural hash of a function body [lo,hi): the sequence of opcode bytes
-    + instruction lengths, with all operand bytes dropped. Two copies of the same function linked at
-    different addresses hash identically -- so statically-linked shared code is detectable."""
-    d = pe.read_at(lo, hi - lo)
-    if not d:
+            return None
+    try:
+        return int(tok, 16)
+    except ValueError:
         return None
-    h = hashlib.sha1()
-    i, n = 0, len(d)
-    count = 0
-    while i < n:
-        ln = A._ilen(d, i)
-        if ln <= 0:
-            h.update(b"\xff" + d[i:i + 1])               # undecoded byte: record it, advance one
-            i += 1
-            count += 1
-            continue
-        op = d[i:i + 2] if d[i] == 0x0F else d[i:i + 1]  # opcode (1-2 bytes), operands dropped
-        h.update(op + bytes([ln & 0xFF]))
-        i += ln
-        count += 1
-    return (h.hexdigest(), count)
 
 
-def triage_module(path, exports_set):
-    """-> list of {name, size, origin, sh} for each function in one PE, plus its export names."""
-    pe = A.PE(path)
-    if not pe.is_pe:
-        return None
-    raw = _func_starts("win95pedec.exe", path)
-    if not raw:
-        return None
-    # section VA ranges (a function's body ends at the next function start, capped at its section end)
-    secs = [(va, va + max(vs, rs)) for nm, va, vs, rs, pr in pe.secs if max(vs, rs) > 0]
+_INS_RE = re.compile(r"^\s*([0-9A-Fa-f]{4}:[0-9A-Fa-f]+|[0-9A-Fa-f]+)\s+[0-9A-Fa-f]{2,}\s+(.*)$")
+_LBL_RE = re.compile(r"^([A-Za-z_]\w*):\s*$")
+_NUM_RE = re.compile(r"0x[0-9A-Fa-f]+|\b\d+\b")
 
-    def sec_end(r):
-        return next((b for a, b in secs if a <= r < b), None)
-    name_of = {rva: nm for rva, nm in raw}
-    starts = sorted({rva for rva, _n in raw if sec_end(rva) is not None})
+
+def triage_module(path):
+    """Format-agnostic: parse the decompiler's --disasm into functions (delimited by the --names
+    starts and by labels), and structural-hash each function's NORMALISED instruction stream
+    (mnemonic+operands with numeric literals masked, comments dropped) -- so the same code linked at
+    different addresses in different modules hashes identically. Returns (lane, [func...])."""
+    lane, exe = _detect(path)
+    if lane is None:
+        return (None, None)
+    names = _dec(exe, path, "--names")
+    disasm = _dec(exe, path, "--disasm")
+    if not disasm:
+        return (lane, None)
+    starts, name_of = set(), {}
+    for line in (names or "").splitlines():
+        parts = line.split("\t")
+        k = _addr_key(parts[0]) if parts else None
+        if k is not None:
+            starts.add(k)
+            if len(parts) > 1 and parts[1].strip():
+                name_of[k] = parts[1].strip()
     funcs = []
-    for i, lo in enumerate(starts):
-        se = sec_end(lo)
-        nxt = starts[i + 1] if i + 1 < len(starts) else se
-        hi = min(nxt, se) if (nxt and se) else (nxt or se or lo)
-        if hi <= lo or hi - lo > 1 << 16:
-            hi = min(lo + 4096, se or (lo + 4096))
-        sh = _struct_hash(pe, lo, hi)
-        funcs.append({"rva": lo, "name": name_of.get(lo, ""), "size": hi - lo,
-                      "sh": sh[0] if sh else None})
-    return funcs
+    cur_name, cur = None, []
+
+    def flush():
+        if cur:
+            h = hashlib.sha1("\n".join(cur).encode()).hexdigest()
+            funcs.append({"name": cur_name or "", "size": len(cur), "sh": h})
+
+    for line in disasm.splitlines():
+        if line.startswith("; ----"):                    # segment/section header -> boundary
+            flush(); cur_name, cur = None, []
+            continue
+        ml = _LBL_RE.match(line)
+        if ml:
+            flush(); cur_name, cur = ml.group(1), []
+            continue
+        mi = _INS_RE.match(line)
+        if not mi:
+            continue
+        key = _addr_key(mi.group(1))
+        if key in starts and cur:                        # a --names start begins a new function
+            nm = name_of.get(key, "")
+            flush(); cur_name, cur = nm, []
+        elif key in starts and not cur and not cur_name:
+            cur_name = name_of.get(key, "")
+        instr = _NUM_RE.sub("#", mi.group(2).split(";")[0]).strip()
+        cur.append(instr)
+    flush()
+    return (lane, funcs)
 
 
 def _corpus_root():
@@ -149,19 +180,21 @@ def _corpus_root():
     return cands[0]
 
 
-def run(limit=None, out=None, root=None):
+def run(limit=None, out=None, root=None, lanes=None):
     root = root or _corpus_root()
-    # discover PE binaries
+    lanes = lanes or ("pe", "ne", "le", "dos")
+    # discover EVERY shipping binary and detect its lane by header (not extension alone)
     bins = []
     seen = set()
+    exts = (".dll", ".exe", ".drv", ".ocx", ".cpl", ".vxd", ".386", ".mpd", ".pdr", ".com", ".sys")
     for dp, _d, fs in os.walk(root):
         for fn in fs:
-            if not fn.lower().endswith((".dll", ".exe", ".drv", ".ocx", ".cpl")) or fn.lower() in seen:
+            if not fn.lower().endswith(exts) or fn.lower() in seen:
                 continue
             p = os.path.join(dp, fn)
-            b = A.load(p)
-            if isinstance(b, A.PE):
-                seen.add(fn.lower()); bins.append((fn, p))
+            lane, _exe = _detect(p)
+            if lane in lanes:
+                seen.add(fn.lower()); bins.append((fn, p, lane))
     if limit:
         bins = bins[:limit]
 
@@ -171,14 +204,20 @@ def run(limit=None, out=None, root=None):
         protos |= set(A._load_sdk_protos(win16=w16).keys())
 
     per_module = []
+    lane_funcs = {}            # lane -> total function count
     body_modules = {}          # struct-hash -> set(modules)
     body_meta = {}             # struct-hash -> [func_count, a representative name, max size]
-    all_funcs = []             # (module, name, size, sh)
-    for fn, p in bins:
-        fs = triage_module(p, None)
-        if fs is None:
+    all_funcs = []             # (module, name, size, sh, is_exp)
+    for fn, p, lane in bins:
+        _lane, fs = triage_module(p)
+        if not fs:
             continue
-        exps = {n for _o, n in A.PE(p).exports()}
+        exps = set()
+        if lane == "pe":
+            try:
+                exps = {n for _o, n in A.PE(p).exports()}
+            except Exception:
+                exps = set()
         for f in fs:
             all_funcs.append((fn, f["name"], f["size"], f["sh"], f["name"] in exps))
             if f["sh"]:
@@ -189,6 +228,7 @@ def run(limit=None, out=None, root=None):
                     m[1] = f["name"]
                 m[2] = max(m[2], f["size"])
         per_module.append((fn, len(fs)))
+        lane_funcs[lane] = lane_funcs.get(lane, 0) + len(fs)
 
     # classify
     buckets = {"shared-runtime": 0, "crt": 0, "thunk": 0, "documented-api": 0, "genuine": 0}
@@ -214,7 +254,7 @@ def run(limit=None, out=None, root=None):
     if not out:
         # root is .../design/corpus/files -> write the ledger up in .../design
         design = os.path.dirname(os.path.dirname(root))
-        out = os.path.join(design, "origin_triage_pe.csv")
+        out = os.path.join(design, "origin_triage.csv")
     with open(out, "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["module", "functions"])
@@ -233,7 +273,7 @@ def run(limit=None, out=None, root=None):
             w.writerow([sh[:16], nmods, insts, nm, sz])
     return {"modules": len(per_module), "total_functions": total, "unique_bodies": unique_bodies,
             "buckets": buckets, "genuine_unique_targets": len(genuine_bodies), "out": out,
-            "catalog": catalog, "n_shared_bodies": len(shared)}
+            "catalog": catalog, "n_shared_bodies": len(shared), "lane_funcs": lane_funcs}
 
 
 def main(argv):
@@ -243,9 +283,13 @@ def main(argv):
     out = None
     if "--out" in argv:
         out = argv[argv.index("--out") + 1]
-    r = run(limit=limit, out=out)
-    print("=== origin triage (PE corpus) ===")
-    print("  modules analysed        %d" % r["modules"])
+    lanes = None
+    if "--lanes" in argv:
+        lanes = tuple(argv[argv.index("--lanes") + 1].split(","))
+    r = run(limit=limit, out=out, lanes=lanes)
+    print("=== origin triage (all lanes) ===")
+    print("  modules analysed        %d   %s" % (
+        r["modules"], "  ".join("%s=%d" % (k, v) for k, v in sorted(r["lane_funcs"].items()))))
     print("  total functions         %d" % r["total_functions"])
     print("  unique bodies (dedup)   %d   (%.1f%% collapse)" % (
         r["unique_bodies"], 100.0 * (1 - r["unique_bodies"] / max(r["total_functions"], 1))))
