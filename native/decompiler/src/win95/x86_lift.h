@@ -26,6 +26,12 @@ class X86Lifter {
   // Resolve a call target address to a name (exports/imports/known functions).
   void SetNames(const std::map<uint32_t, std::string>& names) { names_ = names; }
 
+  // Select the ABI/decode width: false = 16-bit NE (default; params at [bp+6],
+  // 2-byte slots, 16-bit operand default), true = 32-bit PE/LE (params at
+  // [ebp+8], 4-byte slots, 32-bit operand default). Everything else in the lift
+  // is width-agnostic.
+  void SetBits32(bool on) { bits32_ = on; }
+
   // Resolve a far call/jmp by the instruction's linear address to (target, name),
   // from the NE relocation table. Far operands in an unlinked/relocated NE encode
   // 0, so the fixup table is the only source of the real target.
@@ -40,6 +46,7 @@ class X86Lifter {
  private:
   std::map<uint32_t, std::string> names_;
   std::map<uint32_t, std::pair<uint32_t, std::string>> call_sites_;
+  bool bits32_ = false;
 };
 
 }  // namespace win95

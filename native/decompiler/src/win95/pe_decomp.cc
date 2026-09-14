@@ -1,0 +1,231 @@
+// End-to-end PE (32-bit) proof: PE load -> x86 lift (32-bit ABI) -> shared
+// DecompileToC -> readable C. The PE-side sibling of test_decomp.cc: same lift and
+// back-end, PE-specific loading, function discovery and IAT call resolution.
+//
+//   win95pedec <pe> --module          decompile the whole module (interproc cascade)
+//   win95pedec <pe> --disasm          per-section instruction listing
+//   win95pedec <pe> --names           discovered function starts (addr<TAB>name)
+//   win95pedec <pe> --module --sigs F apply demangled sigs/prototypes from file F
+#include <cctype>
+#include <cstdio>
+#include <cstdlib>
+#include <map>
+#include <set>
+#include <string>
+#include <vector>
+#include "win95/pe_loader.h"
+#include "win95/x86_lift.h"
+#include "decompiler_c.h"
+
+namespace {
+// A memory operand of the form [disp32] with no base/index -> an absolute VA. On a
+// call/jmp this is the classic IAT indirection: call dword [__imp__X]. Returns the
+// RVA, or 0 if not that shape.
+uint32_t AbsMemRVA(const win95::X86Op& o, uint32_t image_base) {
+  if (o.kind == win95::OpKind::Mem && o.base == win95::kNoReg &&
+      o.index == win95::kNoReg && (uint32_t)o.disp >= image_base)
+    return (uint32_t)o.disp - image_base;
+  return 0;
+}
+}  // namespace
+
+int main(int argc, char** argv) {
+  if (argc < 3) {
+    std::printf("usage: %s <pe> --module|--disasm|--names [--sigs FILE]\n", argv[0]);
+    return 2;
+  }
+  win95::PEImage img = win95::LoadPE(argv[1]);
+  if (!img.ok) { std::printf("FAIL: %s\n", img.error.c_str()); return 1; }
+  std::string mode = argv[2];
+
+  const uint8_t* image = img.image.data();
+  size_t image_size = img.image.size();
+
+  // Names: exports (RVA -> export name) resolve definitions and direct-call sites.
+  std::map<uint32_t, std::string> names;
+  for (auto& e : img.exports) names[e.second] = e.first;
+
+  // Optional --sigs FILE: demangled display names + prototypes, addr(RVA)-keyed,
+  // produced by CodeBreaker's Python demangler. Same record format as the NE lane.
+  std::map<uint32_t, FuncSignature> sigMap;
+  for (int ai = 2; ai + 1 < argc; ++ai) {
+    if (std::string(argv[ai]) != "--sigs") continue;
+    FILE* sf = std::fopen(argv[ai + 1], "r");
+    if (!sf) { std::fprintf(stderr, "warning: --sigs %s not found\n", argv[ai + 1]); break; }
+    char buf[8192];
+    while (std::fgets(buf, sizeof buf, sf)) {
+      std::string L(buf);
+      while (!L.empty() && (L.back() == '\n' || L.back() == '\r')) L.pop_back();
+      if (L.empty()) continue;
+      std::vector<std::string> f; size_t p = 0;
+      for (;;) { size_t t = L.find('\t', p);
+        if (t == std::string::npos) { f.push_back(L.substr(p)); break; }
+        f.push_back(L.substr(p, t - p)); p = t + 1; }
+      if (f.size() < 2) continue;
+      uint32_t ad = (uint32_t)strtoul(f[0].c_str(), nullptr, 16);
+      if (!f[1].empty()) names[ad] = f[1];
+      FuncSignature sig;
+      if (f.size() >= 3) sig.ret = f[2];
+      for (size_t i = 3; i < f.size(); ++i) {
+        if (f[i].empty()) continue;
+        std::string ty = f[i], nm; size_t bar = f[i].find('|');
+        if (bar != std::string::npos) { ty = f[i].substr(0, bar); nm = f[i].substr(bar + 1); }
+        sig.args[(int)(i - 3) + 1] = {ty, nm};
+      }
+      sigMap[ad] = sig;
+    }
+    std::fclose(sf);
+  }
+
+  win95::X86Lifter lifter;
+  lifter.SetBits32(true);           // 32-bit PE ABI
+
+  // Scan code sections once: resolve IAT-indirect call/jmp sites to import names,
+  // and record direct near-call (E8) targets as function starts.
+  std::map<uint32_t, std::pair<uint32_t, std::string>> sites;   // insn addr -> (target, name)
+  std::set<uint32_t> callTargets;
+  for (auto& s : img.sections) {
+    if (!s.code) continue;
+    uint32_t a = s.va, e2 = s.va + (s.vsize ? s.vsize : s.raw_size);
+    while (a < e2 && a < image_size) {
+      win95::X86Insn in = win95::DecodeX86(image, image_size, a, a, false);
+      int len = in.valid ? in.len : 1;
+      if (in.valid && (in.mnem == "call" || in.mnem == "jmp")) {
+        if (in.ops[0].kind == win95::OpKind::Rel) {
+          if (in.mnem == "call") callTargets.insert((uint32_t)in.ops[0].imm);
+        } else {
+          uint32_t rva = AbsMemRVA(in.ops[0], img.image_base);
+          auto imp = img.imports.find(rva);
+          if (imp != img.imports.end()) sites[a] = {0, imp->second};
+        }
+      }
+      a += len;
+    }
+  }
+  lifter.SetNames(names);
+  lifter.SetCallSites(sites);
+
+  // --disasm: per-section listing with resolved import/target annotations.
+  if (mode == "--disasm") {
+    for (auto& s : img.sections) {
+      if (!s.code) continue;
+      std::printf("; ---- section %s  rva %08X  (%u bytes) ----\n",
+                  s.name.c_str(), s.va, s.vsize ? s.vsize : s.raw_size);
+      uint32_t e2 = s.va + (s.vsize ? s.vsize : s.raw_size);
+      for (uint32_t a = s.va; a < e2 && a < image_size;) {
+        auto nn = names.find(a);
+        if (nn != names.end()) std::printf("\n%s:\n", nn->second.c_str());
+        win95::X86Insn in = win95::DecodeX86(image, image_size, a, a, false);
+        int len = in.valid ? in.len : 1;
+        std::string bytes;
+        for (int i = 0; i < len && a + i < image_size; ++i) {
+          char b[4]; std::snprintf(b, sizeof b, "%02X", image[a + i]); bytes += b;
+        }
+        std::string text = in.valid ? win95::FormatX86(in) : "(bad)";
+        auto si = sites.find(a);
+        if (si != sites.end()) { text += "  ; -> "; text += si->second.second; }
+        else if (in.valid && (in.mnem == "call" || in.mnem[0] == 'j') &&
+                 in.ops[0].kind == win95::OpKind::Rel) {
+          auto tn = names.find((uint32_t)in.ops[0].imm);
+          if (tn != names.end()) { text += "  ; -> "; text += tn->second; }
+        }
+        std::printf("  %08X %-16s %s\n", a, bytes.c_str(), text.c_str());
+        a += len;
+      }
+    }
+    return 0;
+  }
+
+  // Function-start discovery: entry + exports + direct-call targets, each snapped
+  // to the code section that contains it.
+  auto discover = [&]() {
+    std::map<int, std::set<uint32_t>> starts;         // section index -> starts
+    auto secOf = [&](uint32_t rva) -> int {
+      for (size_t i = 0; i < img.sections.size(); ++i) {
+        auto& s = img.sections[i];
+        if (s.code && rva >= s.va && rva < s.va + (s.vsize ? s.vsize : s.raw_size)) return (int)i;
+      }
+      return -1;
+    };
+    auto add = [&](uint32_t rva) { int si = secOf(rva); if (si >= 0) starts[si].insert(rva); };
+    if (img.entry) add(img.entry);
+    for (auto& e : img.exports) add(e.second);
+    for (uint32_t t : callTargets) add(t);
+    return starts;
+  };
+
+  if (mode == "--names") {
+    auto starts = discover();
+    for (auto& kv : starts)
+      for (uint32_t fstart : kv.second) {
+        auto nn = names.find(fstart);
+        char ab[16]; std::snprintf(ab, sizeof ab, "%X", fstart);
+        std::printf("%s\t%s\n", ab, nn != names.end() ? nn->second.c_str() : "");
+      }
+    return 0;
+  }
+
+  if (mode == "--module") {
+    auto starts = discover();
+    struct FE { uint32_t fstart, fend; std::string name; };
+    std::vector<FE> fns;
+    for (auto& kv : starts) {
+      auto& s = img.sections[kv.first];
+      uint32_t send = s.va + (s.vsize ? s.vsize : s.raw_size);
+      std::vector<uint32_t> fs(kv.second.begin(), kv.second.end());
+      for (size_t i = 0; i < fs.size(); ++i) {
+        uint32_t fstart = fs[i];
+        uint32_t fend = (i + 1 < fs.size()) ? fs[i + 1] : send;
+        char nm[32]; std::snprintf(nm, sizeof nm, "sub_%06X", fstart);
+        auto nn = names.find(fstart);
+        fns.push_back({fstart, fend, nn != names.end() ? nn->second : nm});
+      }
+    }
+    // Seed every discovered start's name so internal call sites render the SAME
+    // symbol as the definition (call -> sub_0014AD, not the back-end's decimal
+    // fallback) -- cross-references link and the C reads as one program.
+    for (auto& fe : fns) names[fe.fstart] = fe.name;
+    lifter.SetNames(names);
+    auto is_var = [](const std::string& v) {
+      if (v.size() < 2 || (v[0] != 'a' && v[0] != 'v')) return false;
+      for (size_t k = 1; k < v.size(); ++k) if (!std::isdigit((unsigned char)v[k])) return false;
+      return true;
+    };
+    std::map<std::string, std::string> kEmpty;
+    std::map<uint32_t, std::map<std::string, std::string>> overrides;
+    // Pass 1: harvest argument flows, propagate known callee param types.
+    for (auto& fe : fns) {
+      ILFunction f = lifter.LiftFunction(image, image_size, fe.fstart, fe.fend, fe.name);
+      auto sg = sigMap.find(fe.fstart);
+      SetSignature(sg != sigMap.end() ? &sg->second : nullptr);
+      SetTypeOverrides(kEmpty);
+      DecompileToC(f, {});
+      SetSignature(nullptr);
+      for (auto& fl : GetArgFlows()) {
+        if (fl.offset != 0 || !fl.callee_target) continue;
+        auto cs = sigMap.find(fl.callee_target);
+        if (cs == sigMap.end()) continue;
+        auto ai = cs->second.args.find(fl.position + 1);
+        if (ai == cs->second.args.end() || ai->second.first.empty()) continue;
+        if (!is_var(fl.arg)) continue;
+        overrides[fe.fstart][fl.arg] = ai->second.first;
+      }
+    }
+    // Pass 2: emit with propagated overrides.
+    for (auto& fe : fns) {
+      ILFunction f = lifter.LiftFunction(image, image_size, fe.fstart, fe.fend, fe.name);
+      auto sg = sigMap.find(fe.fstart);
+      SetSignature(sg != sigMap.end() ? &sg->second : nullptr);
+      auto ov = overrides.find(fe.fstart);
+      SetTypeOverrides(ov != overrides.end() ? ov->second : kEmpty);
+      std::printf("%s\n", DecompileToC(f, {}).c_str());
+      SetSignature(nullptr); SetTypeOverrides(kEmpty);
+    }
+    std::fprintf(stderr, "decompiled %zu functions across %zu code sections (PE, interproc cascade)\n",
+                 fns.size(), starts.size());
+    return 0;
+  }
+
+  std::printf("unknown mode: %s\n", mode.c_str());
+  return 2;
+}

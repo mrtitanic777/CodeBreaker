@@ -82,15 +82,17 @@ def split_functions(text):
 
 def main(argv):
     ap = argparse.ArgumentParser(prog="origin_triage", description=__doc__.splitlines()[0])
-    ap.add_argument("--dir", default=None, help="ne_lane dir (default: <design>/ne_lane)")
+    ap.add_argument("--lane", choices=("ne", "pe"), default="ne",
+                    help="which decompile lane to triage (default: ne)")
+    ap.add_argument("--dir", default=None, help="lane dir (default: <design>/<lane>_lane)")
     a = ap.parse_args(argv)
     d = a.dir
     if not d:
         corpus = os.environ.get("WT_DATA_ROOT", "")
         design = os.path.dirname(os.path.dirname(corpus)) if corpus else paths.design_root()
-        d = os.path.join(design, "ne_lane")
+        d = os.path.join(design, a.lane + "_lane")
     if not os.path.isdir(d):
-        sys.exit("no ne_lane dir at %s (run ne_scale first)" % d)
+        sys.exit("no %s_lane dir at %s (run %s_scale first)" % (a.lane, d, a.lane))
 
     rows = []
     from collections import Counter

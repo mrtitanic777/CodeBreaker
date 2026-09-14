@@ -52,6 +52,15 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
   fn.entry = entry;
   fn.end = end;
 
+  // ABI/decode width. 16-bit far frame: [bp + 6] first param (saved bp + far
+  // return = 6), 2-byte slots. 32-bit near frame: [ebp + 8] first param (saved
+  // ebp + near return = 8), 4-byte slots. def_op16 drives the decoder's default
+  // operand size.
+  const bool def_op16 = !bits32_;
+  const int  param_base = bits32_ ? 8 : 6;
+  const int  slot_sz   = bits32_ ? 4 : 2;
+  const int  signfill_bits = bits32_ ? 31 : 15;
+
   // --- pass 1: recursive-descent decode from entry. Follow the control flow
   // (fallthrough + branch targets), decoding ONLY reachable code -- so data and
   // inter-function padding is never decoded as instructions (the main source of
@@ -64,7 +73,7 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
   while (!work.empty()) {
     uint32_t a = work.back(); work.pop_back();
     while (a >= entry && a < end && !at.count(a)) {
-      X86Insn in = DecodeX86(image, image_size, a, a, true);
+      X86Insn in = DecodeX86(image, image_size, a, a, def_op16);
       at[a] = insns.size();
       insns.push_back(in);
       uint32_t next = a + (in.valid ? in.len : 1);
@@ -159,10 +168,12 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
         if (o.kind == OpKind::Mem) {
           int fs = frameSlotOf(o);
           if (fs >= 0) return getReg(fs, o.size);
-          // [bp + disp], disp >= 6 == an incoming parameter (far frame: saved bp +
-          // far return addr = 6). Map to r3.. so the back-end names them a1, a2...
-          if (o.base != kNoReg && (o.base % 16) == 5 && o.index == kNoReg && o.disp >= 6) {
-            int pidx = (o.disp - 6) / 2;
+          // [bp + disp], disp >= param_base == an incoming parameter (16-bit far
+          // frame: saved bp + far return = 6, 2-byte slots; 32-bit near frame:
+          // saved ebp + near return = 8, 4-byte slots). Map to r3.. so the
+          // back-end names them a1, a2...
+          if (o.base != kNoReg && (o.base % 16) == 5 && o.index == kNoReg && o.disp >= param_base) {
+            int pidx = (o.disp - param_base) / slot_sz;
             auto pit = params.find(pidx);
             if (pit != params.end()) return pit->second;
             ILValue pv = fn.AllocValue(WidthType(o.size), 3 + pidx);
@@ -259,7 +270,7 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
         x.dst = fn.AllocValue(ILType::U16); bb.instrs.push_back(x); setReg(kGpBase, x.dst);
       }
       else if (m == "cwd" || m == "cdq") {       // DX = (AX < 0) ? -1 : 0  (sign fill)
-        ILInstr x; x.op = ILOp::SarImm; x.address = a; x.src1 = getReg(kGpBase, 2); x.imm = 15;
+        ILInstr x; x.op = ILOp::SarImm; x.address = a; x.src1 = getReg(kGpBase, slot_sz); x.imm = signfill_bits;
         x.dst = fn.AllocValue(ILType::U16); bb.instrs.push_back(x); setReg(kGpBase + 2, x.dst);
       }
       else if (m == "inc") { ILInstr x; x.op=ILOp::Add; x.address=a; x.src1=srcValue(in.ops[0]); x.imm=1; x.dst=fn.AllocValue(WidthType(in.ops[0].size)); bb.instrs.push_back(x); storeTo(in.ops[0],x.dst);}

@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
-"""nativedec.py -- CodeBreaker hook to our OWN native x86 disassembler+decompiler
-(native/decompiler/win95dec), CodeBreaker's native engine (XEXMagic core + our x86 front-end).
+"""nativedec.py -- CodeBreaker hook to our OWN native x86 disassembler+decompiler,
+CodeBreaker's native engine (XEXMagic core + our x86 front-end).
 
-Replaces the Ghidra dependency for NE (16-bit) modules: NE load -> x86 decode ->
-x86->IL lift -> the reused DecompileToC back-end. Invokes the built binary the
+One engine, two loaders, so a single call handles whichever class a module is:
+  - NE (16-bit) -> win95dec     (NE load  -> x86 decode -> lift[16] -> DecompileToC)
+  - PE (32-bit) -> win95pedec   (PE load  -> x86 decode -> lift[32] -> DecompileToC)
+The format is detected from the file header and the right binary is invoked, the
 same way CodeBreaker invoked Ghidra -- as a subprocess returning C text.
 
     from src.targets.win95 import nativedec
-    c = nativedec.decompile_module(r"...\\WINDOWS\\SYSTEM\\lzexpand.dll")
+    c = nativedec.decompile_module(r"...\\WINDOWS\\SYSTEM\\lzexpand.dll")  # NE
+    c = nativedec.decompile_module(r"...\\WINDOWS\\SYSTEM\\kernel32.dll")  # PE
 """
 import os
+import struct
 import subprocess
 import tempfile
 
@@ -20,7 +24,9 @@ try:
 except Exception:                       # symbol engine optional; sigs just skipped
     _demangle = None
 
-_BIN = os.path.join(paths.repo_root(), "native", "decompiler", "build", "bin", "win95dec.exe")
+_BINDIR = os.path.join(paths.repo_root(), "native", "decompiler", "build", "bin")
+_BIN = os.path.join(_BINDIR, "win95dec.exe")          # NE engine (back-compat alias)
+_PEBIN = os.path.join(_BINDIR, "win95pedec.exe")      # PE engine
 
 
 def binary_path():
@@ -31,9 +37,43 @@ def available():
     return os.path.exists(_BIN)
 
 
+def detect_format(path):
+    """'PE', 'NE', or None from the MZ/new-header. Picks the engine to use."""
+    try:
+        with open(path, "rb") as f:
+            d = f.read(0x40)
+            if d[:2] != b"MZ" or len(d) < 0x40:
+                return None
+            e = struct.unpack("<I", d[0x3C:0x40])[0]
+            with open(path, "rb") as g:
+                g.seek(e)
+                sig = g.read(2)
+            if sig == b"PE":
+                return "PE"
+            if sig == b"NE":
+                return "NE"
+    except OSError:
+        return None
+    return None
+
+
+def _engine(path):
+    """(exe, module_args, disasm_args, names_args) for this module's format.
+    NE's module mode takes a trailing '0'; PE's does not."""
+    fmt = detect_format(path)
+    if fmt == "PE":
+        if not os.path.exists(_PEBIN):
+            raise RuntimeError("win95pedec not built: cmake --build native/decompiler/build --target win95pedec")
+        return _PEBIN, ["--module"], ["--disasm"], ["--names"]
+    if not os.path.exists(_BIN):
+        raise RuntimeError("win95dec not built: cmake --build native/decompiler/build --target win95dec")
+    return _BIN, ["--module", "0"], ["--disasm"], ["--names"]
+
+
 def _dump_names(ne_path, timeout):
-    """(addr_hex, name) for every function win95dec discovers."""
-    r = subprocess.run([_BIN, ne_path, "--names"], capture_output=True, text=True, timeout=timeout)
+    """(addr_hex, name) for every function the engine discovers."""
+    exe, _mod, _dis, names_args = _engine(ne_path)
+    r = subprocess.run([exe, ne_path] + names_args, capture_output=True, text=True, timeout=timeout)
     out = []
     for line in r.stdout.splitlines():
         if "\t" in line:
@@ -65,22 +105,22 @@ def _build_sigs(names):
 
 
 def decompile_module(ne_path, timeout=300, sigs=True):
-    """Decompile every function of an NE module; returns the C source text.
+    """Decompile every function of a module (NE or PE, auto-detected); returns the
+    C source text.
 
     When the module has mangled C++ exports (MFC/OLE/C++ DLLs) and `sigs` is on,
     a first --names pass is demangled into prototypes (names, return + arg types,
     `this`) fed back via --sigs -- SDK-free typing straight from the symbols."""
-    if not available():
-        raise RuntimeError("win95dec not built: cmake --build native/decompiler/build --target win95dec")
+    exe, mod_args, _dis, _names = _engine(ne_path)
     sig_text = _build_sigs(_dump_names(ne_path, timeout)) if sigs else ""
     if not sig_text:
-        r = subprocess.run([_BIN, ne_path, "--module", "0"],
+        r = subprocess.run([exe, ne_path] + mod_args,
                            capture_output=True, text=True, timeout=timeout)
         return r.stdout
     sf = tempfile.NamedTemporaryFile("w", suffix=".sigs", delete=False, encoding="utf-8", newline="\n")
     try:
         sf.write(sig_text); sf.close()
-        r = subprocess.run([_BIN, ne_path, "--module", "0", "--sigs", sf.name],
+        r = subprocess.run([exe, ne_path] + mod_args + ["--sigs", sf.name],
                            capture_output=True, text=True, timeout=timeout)
         return r.stdout
     finally:
@@ -100,10 +140,9 @@ def decompile_function(ne_path, entry, end, name="func", timeout=120):
 
 
 def disassemble_module(ne_path, timeout=300):
-    """Disassemble every code segment; returns the instruction listing text."""
-    if not available():
-        raise RuntimeError("win95dec not built: cmake --build native/decompiler/build --target win95dec")
-    r = subprocess.run([_BIN, ne_path, "--disasm"],
+    """Disassemble every code segment/section (NE or PE); returns the listing text."""
+    exe, _mod, dis_args, _names = _engine(ne_path)
+    r = subprocess.run([exe, ne_path] + dis_args,
                        capture_output=True, text=True, timeout=timeout)
     return r.stdout
 

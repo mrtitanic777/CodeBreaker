@@ -201,3 +201,22 @@ if(MSVC)
     target_compile_definitions(win95dec PRIVATE _CRT_SECURE_NO_WARNINGS)
     target_compile_options(win95dec PRIVATE /bigobj)
 endif()
+
+# ---------------------------------------------------------------------------
+# win95pedec -- the same engine over 32-bit PE (kernel32/gdi32/... the 638 PE
+# class). PE loader + shared x86 decode/lift (32-bit ABI) -> DecompileToC.
+# ---------------------------------------------------------------------------
+add_executable(win95pedec
+    src/win95/pe_loader.cc
+    src/win95/x86_decode.cc
+    src/win95/x86_lift.cc
+    src/win95/pe_decomp.cc
+    src/decompiler_c.cc
+    src/var_allocator.cc
+)
+target_include_directories(win95pedec PRIVATE src third_party src/ppc/compat)
+target_compile_definitions(win95pedec PRIVATE WIN95DEC_NO_PPC)
+if(MSVC)
+    target_compile_definitions(win95pedec PRIVATE _CRT_SECURE_NO_WARNINGS)
+    target_compile_options(win95pedec PRIVATE /bigobj)
+endif()
