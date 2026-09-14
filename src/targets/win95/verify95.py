@@ -246,9 +246,18 @@ def verify_ledger(maxmods=None):
         except Exception:
             continue
         okset = {nm for nm, v, _a, _b in verdicts if v == "equivalent"}
-        for r in brs:
-            if r["example_name"] in okset:
-                verified_ids.add(r["body_id"])
+        # map each verified export to the ACTUAL body in THIS module by re-triaging it
+        # (name->body_id), rather than the ledger's first-seen example_name -- precise crediting.
+        try:
+            _lane, fns = OT.triage_module(rp)
+        except Exception:
+            fns = None
+        name2id = {f["name"]: f["sh"][:16] for f in (fns or []) if f.get("name") and f.get("sh")}
+        present = {r["body_id"] for r in rows}
+        for nm in okset:
+            bid = name2id.get(nm)
+            if bid and bid in present:
+                verified_ids.add(bid)
         done_mods += 1
         if maxmods and done_mods >= maxmods:
             break
