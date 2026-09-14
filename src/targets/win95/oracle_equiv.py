@@ -17,6 +17,16 @@ import sys
 
 from src.targets.win95 import ne_dynoracle
 
+# Toolchain-runtime imports the COMPILER/CRT emits, not the module's own logic --
+# ignored when comparing behavior so OpenWatcom-vs-MSC codegen noise doesn't count
+# as a reconstruction divergence (e.g. OW's Win16 startup calls GetVersion).
+_TOOLCHAIN_IMPORTS = {"KERNEL.GETVERSION", "KERNEL.@3", "KERNEL.GETWINFLAGS",
+                      "KERNEL.LOCALINIT", "KERNEL.@4", "KERNEL.GETVERSION16"}
+
+
+def _sem_imps(hits):
+    return tuple(h.get("api") for h in hits if h.get("api") not in _TOOLCHAIN_IMPORTS)
+
 
 def _beh(path, ordn, arity):
     # Run inside the controlled Win16 environment (ne_dynoracle): GlobalAlloc hands
@@ -28,7 +38,7 @@ def _beh(path, ordn, arity):
     except Exception as e:
         return {"exit": "trace-error:" + type(e).__name__, "ret": None, "insn_count": 0, "imps": ()}
     return {"exit": r.get("exit"), "ret": r.get("ret"), "insn_count": r.get("insn_count"),
-            "imps": tuple(h.get("api") for h in r.get("imports_hit", []))}
+            "imps": _sem_imps(r.get("imports_hit", []))}
 
 
 def main(argv):
