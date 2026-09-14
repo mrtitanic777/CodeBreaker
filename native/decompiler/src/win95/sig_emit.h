@@ -15,6 +15,7 @@
 #include <map>
 #include <vector>
 #include "win95/x86_decode.h"
+#include "win95/capstone_decode.h"
 
 namespace win95 {
 
@@ -46,7 +47,7 @@ inline void EmitSigDump(const uint8_t* image, size_t image_size,
     int guard = 0;
     bool firsti = true;
     while (x < end && x < image_size && guard++ < 256) {
-      X86Insn in = DecodeX86(image, image_size, x, x, op16);
+      X86Insn in = DecodeX86Auto(image, image_size, x, x, op16);
       std::string t = in.valid ? FormatX86(in) : "?";
       std::printf("%s%s", firsti ? "" : "|", t.c_str());
       firsti = false;

@@ -6,6 +6,7 @@
 #include <vector>
 #include "win95/ne_loader.h"
 #include "win95/x86_lift.h"
+#include "win95/capstone_decode.h"
 #include "win95/win16_names.h"
 #include "win95/sig_emit.h"
 #include "decompiler_c.h"
@@ -137,7 +138,7 @@ int main(int argc, char** argv) {
       for (uint32_t a = s.base_addr, e2 = s.base_addr + s.length; a < e2;) {
         auto nn = names.find(a);
         if (nn != names.end()) std::printf("\n%s:\n", nn->second.c_str());
-        win95::X86Insn in = win95::DecodeX86(img.image.data(), img.image.size(), a, a, true);
+        win95::X86Insn in = win95::DecodeX86Auto(img.image.data(), img.image.size(), a, a, true);
         int len = in.valid ? in.len : 1;
         std::string bytes;
         for (int i = 0; i < len && a + i < img.image.size(); ++i) {
@@ -167,7 +168,7 @@ int main(int argc, char** argv) {
     for (auto& s : img.segments) {              // near-call (E8) targets via linear scan
       if (s.is_data) continue;
       for (uint32_t a = s.base_addr, e2 = s.base_addr + s.length; a < e2;) {
-        win95::X86Insn in = win95::DecodeX86(img.image.data(), img.image.size(), a, a, true);
+        win95::X86Insn in = win95::DecodeX86Auto(img.image.data(), img.image.size(), a, a, true);
         if (in.valid && in.mnem == "call" && in.ops[0].kind == win95::OpKind::Rel)
           starts[s.idx].insert((uint32_t)in.ops[0].imm);
         a += in.valid ? in.len : 1;

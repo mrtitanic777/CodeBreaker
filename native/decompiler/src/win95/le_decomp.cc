@@ -14,6 +14,7 @@
 #include <vector>
 #include "win95/le_loader.h"
 #include "win95/x86_lift.h"
+#include "win95/capstone_decode.h"
 #include "win95/sig_emit.h"
 #include "decompiler_c.h"
 
@@ -52,7 +53,7 @@ int main(int argc, char** argv) {
   std::set<uint32_t> callTargets;
   for (auto& r : code) {
     for (uint32_t a = r.lo; a < r.hi && a < image_size;) {
-      win95::X86Insn in = win95::DecodeX86(image, image_size, a, a, false);
+      win95::X86Insn in = win95::DecodeX86Auto(image, image_size, a, a, false);
       int len = in.valid ? in.len : 1;
       if (in.valid && in.mnem == "call" && in.ops[0].kind == win95::OpKind::Rel) {
         uint32_t t = (uint32_t)in.ops[0].imm;
@@ -81,7 +82,7 @@ int main(int argc, char** argv) {
       for (uint32_t a = o.base_addr; a < hi;) {
         auto nn = names.find(a);
         if (nn != names.end()) std::printf("\n%s:\n", nn->second.c_str());
-        win95::X86Insn in = win95::DecodeX86(image, image_size, a, a, false);
+        win95::X86Insn in = win95::DecodeX86Auto(image, image_size, a, a, false);
         int len = in.valid ? in.len : 1;
         std::string bytes;
         for (int i = 0; i < len && a + i < image_size; ++i) {

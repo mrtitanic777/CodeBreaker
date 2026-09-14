@@ -4,6 +4,7 @@
 // register map advanced in address order (exact across straight-line and forward
 // code; cross-join phi handling is a later refinement).
 #include "win95/x86_lift.h"
+#include "win95/capstone_decode.h"
 
 #include <algorithm>
 #include <set>
@@ -89,7 +90,7 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
   while (!work.empty()) {
     uint32_t a = work.back(); work.pop_back();
     while (a >= entry && a < end && !at.count(a)) {
-      X86Insn in = DecodeX86(image, image_size, a, a, def_op16);
+      X86Insn in = DecodeX86Auto(image, image_size, a, a, def_op16);
       at[a] = insns.size();
       insns.push_back(in);
       uint32_t next = a + advBytes(in);

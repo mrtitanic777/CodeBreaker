@@ -121,7 +121,7 @@ source_group("Web UI"     FILES ${SRC_UI})
 source_group("App"        FILES ${SRC_APP})
 source_group("Headers"    FILES ${SRC_HEADERS})
 
-target_include_directories(xexmagic PRIVATE src third_party src/ppc/compat)
+target_include_directories(xexmagic PRIVATE src third_party third_party/capstone src/ppc/compat)
 target_link_libraries(xexmagic PRIVATE mspack crypto)
 
 if(WIN32)
@@ -151,7 +151,7 @@ add_executable(test_il
     ${SRC_SYMBOLS}
     ${SRC_PPC_TABLES}
 )
-target_include_directories(test_il PRIVATE src third_party src/ppc/compat)
+target_include_directories(test_il PRIVATE src third_party third_party/capstone src/ppc/compat)
 target_link_libraries(test_il PRIVATE mspack crypto)
 if(WIN32)
     target_link_libraries(test_il PRIVATE dbghelp)
@@ -191,12 +191,14 @@ add_executable(win95dec
     src/win95/ne_loader.cc
     src/win95/x86_decode.cc
     src/win95/x86_lift.cc
+    src/win95/capstone_decode.cc
     src/win95/test_decomp.cc
     src/decompiler_c.cc
     src/var_allocator.cc
 )
-target_include_directories(win95dec PRIVATE src third_party src/ppc/compat)
+target_include_directories(win95dec PRIVATE src third_party third_party/capstone src/ppc/compat)
 target_compile_definitions(win95dec PRIVATE WIN95DEC_NO_PPC)
+target_link_libraries(win95dec PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/capstone/capstone.lib)
 if(MSVC)
     target_compile_definitions(win95dec PRIVATE _CRT_SECURE_NO_WARNINGS)
     target_compile_options(win95dec PRIVATE /bigobj)
@@ -210,12 +212,14 @@ add_executable(win95pedec
     src/win95/pe_loader.cc
     src/win95/x86_decode.cc
     src/win95/x86_lift.cc
+    src/win95/capstone_decode.cc
     src/win95/pe_decomp.cc
     src/decompiler_c.cc
     src/var_allocator.cc
 )
-target_include_directories(win95pedec PRIVATE src third_party src/ppc/compat)
+target_include_directories(win95pedec PRIVATE src third_party third_party/capstone src/ppc/compat)
 target_compile_definitions(win95pedec PRIVATE WIN95DEC_NO_PPC)
+target_link_libraries(win95pedec PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/capstone/capstone.lib)
 if(MSVC)
     target_compile_definitions(win95pedec PRIVATE _CRT_SECURE_NO_WARNINGS)
     target_compile_options(win95pedec PRIVATE /bigobj)
@@ -229,12 +233,14 @@ add_executable(win95ledec
     src/win95/le_loader.cc
     src/win95/x86_decode.cc
     src/win95/x86_lift.cc
+    src/win95/capstone_decode.cc
     src/win95/le_decomp.cc
     src/decompiler_c.cc
     src/var_allocator.cc
 )
-target_include_directories(win95ledec PRIVATE src third_party src/ppc/compat)
+target_include_directories(win95ledec PRIVATE src third_party third_party/capstone src/ppc/compat)
 target_compile_definitions(win95ledec PRIVATE WIN95DEC_NO_PPC)
+target_link_libraries(win95ledec PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/capstone/capstone.lib)
 if(MSVC)
     target_compile_definitions(win95ledec PRIVATE _CRT_SECURE_NO_WARNINGS)
     target_compile_options(win95ledec PRIVATE /bigobj)
@@ -248,12 +254,14 @@ add_executable(win95mzdec
     src/win95/mz_loader.cc
     src/win95/x86_decode.cc
     src/win95/x86_lift.cc
+    src/win95/capstone_decode.cc
     src/win95/mz_decomp.cc
     src/decompiler_c.cc
     src/var_allocator.cc
 )
-target_include_directories(win95mzdec PRIVATE src third_party src/ppc/compat)
+target_include_directories(win95mzdec PRIVATE src third_party third_party/capstone src/ppc/compat)
 target_compile_definitions(win95mzdec PRIVATE WIN95DEC_NO_PPC)
+target_link_libraries(win95mzdec PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/capstone/capstone.lib)
 if(MSVC)
     target_compile_definitions(win95mzdec PRIVATE _CRT_SECURE_NO_WARNINGS)
     target_compile_options(win95mzdec PRIVATE /bigobj)
