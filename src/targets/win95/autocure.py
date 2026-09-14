@@ -236,9 +236,12 @@ def _compile(cfile, fmt):
     env["INCLUDE"] = os.pathsep.join([h, os.path.join(h, "win" if fmt == "NE" else "nt")])
     flags = ["-bt=nt", "-q", "-wcd=138"] if fmt != "NE" else ["-bt=windows", "-mm", "-zW", "-q"]
     try:
+        # 300s: the largest modules (mapi, msjt3032 -- 2k+ functions in one file)
+        # need well over the old 90s for a single-TU wcc compile. Small modules
+        # finish in seconds, so the higher ceiling only affects the giants.
         r = subprocess.run([cc] + flags + [os.path.basename(cfile)],
                            cwd=os.path.dirname(cfile), env=env, capture_output=True,
-                           text=True, timeout=90)
+                           text=True, timeout=300)
     except subprocess.TimeoutExpired:
         return {"ok": False, "errors": -1, "sample": ["compile timeout"]}
     errs = [l for l in (r.stdout + r.stderr).splitlines() if "Error!" in l]
