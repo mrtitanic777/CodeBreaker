@@ -75,3 +75,7 @@ experiments/premise-proof/vmtest/*.obj
 experiments/premise-proof/wthunk/*.exe
 experiments/premise-proof/wdef/*.exe
 experiments/premise-proof/wdef/*.obj
+
+# PEExplorerV2 (zodiacon, MIT) folded in as reference; engine uses native/decompiler/third_party/capstone
+src/PEExplorerV2/PEExplorerV2/Capstone/capstone.lib
+src/PEExplorerV2/PEParser/*.lib

@@ -258,3 +258,16 @@ if(MSVC)
     target_compile_definitions(win95mzdec PRIVATE _CRT_SECURE_NO_WARNINGS)
     target_compile_options(win95mzdec PRIVATE /bigobj)
 endif()
+
+# ---------------------------------------------------------------------------
+# capstone_probe -- prove the bundled Capstone 4.0.2 static lib (from
+# PEExplorerV2, MIT+BSD) links + decodes 16/32-bit x86 in our build. If good,
+# Capstone becomes an accurate decode backend for the lifter.
+# ---------------------------------------------------------------------------
+add_executable(capstone_probe src/win95/capstone_probe.cc)
+target_include_directories(capstone_probe PRIVATE third_party/capstone)
+target_link_libraries(capstone_probe PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/capstone/capstone.lib)
+if(MSVC)
+    target_compile_definitions(capstone_probe PRIVATE _CRT_SECURE_NO_WARNINGS)
+endif()
