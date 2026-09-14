@@ -3,18 +3,23 @@
 reconstruction surface (app/OS-specific code) is separated from what must be
 IDENTIFIED not reconstructed (CRT, compiler helpers, hardware asm, stubs).
 
-    wt --target win95 origin_triage [--dir <ne_lane>]
+    wt --target win95 origin_triage [--lane ne|pe|le|mz] [--sig] [--dir <lane>]
 
 Core methodology (identify-don't-reconstruct-crt-compiler): only app/OS-specific
 code is a reconstruction target; CRT + compiler-generated code belongs to the
 toolchain and is identified by signature, not re-authored.
 
-This first pass works on the ne_lane/*.c output using signals we can compute
-reliably: export-name ground truth, CRT/compiler NAME patterns, and body shape
-(asm-dominant = hardware/driver asm; trivial = stub; structured = app). It writes
-TRIAGE.csv + a histogram. PRECISION UPGRADE (noted): fold in the symbol engine's
-crtsig (FLIRT-style CRT/compiler DB from the period 16-bit CRT lib) and sigscan
-to separate the sub_ CRT/helper bulk from genuine app-internal leaf functions.
+Works on the <lane>_lane/*.c output using signals computed reliably from the C:
+export-name ground truth, CRT/compiler NAME patterns, body shape (asm-dominant =
+hardware/driver asm; trivial = stub; VxDCall_-dominant = OS service shim;
+structured = app). Writes TRIAGE.csv + a histogram.
+
+--sig folds in the BINARY-level CRT/compiler floor via nativesig (crtsig
+reloc-masked byte-prefix matching against the shipped Win95 CRT DLLs + sigscan
+structural x86 shapes). This is the precision upgrade: it separates the sub_
+CRT/helper bulk from genuine app leaf functions using the actual bytes, not names.
+Byte-prefix matching is 32-bit (PE + LE); 16-bit lanes (NE/MZ) get sigscan shapes
+only (a 16-bit CRT byte DB needs an OMF-lib reader -- a follow-up).
 """
 import argparse
 import csv
@@ -34,8 +39,13 @@ CRT_RE = re.compile(r"""^_{1,3}(
     Fmemcpy|Fmemset)$""", re.X | re.I)
 
 
-def classify(name, body):
-    """Return (origin, why)."""
+def classify(name, body, crt_hit=None):
+    """Return (origin, why). crt_hit=(matched_name, source) from nativesig (crtsig
+    byte-prefix or sigscan shape) is ground truth from the binary and wins over the
+    name/shape heuristics -- this is the CRT/compiler floor, identified not
+    reconstructed."""
+    if crt_hit:
+        return "crt/compiler", "%s:%s" % (crt_hit[1], crt_hit[0])
     lines = body.count("\n") + 1
     asm = body.count("__asm")
     stmts = body.count(";")
@@ -68,10 +78,19 @@ FUNC_RE = re.compile(
     r"^[A-Za-z_].*?\b__fastcall\s+([A-Za-z_]\w*)\s*\([^)]*\)\s*\n\{", re.M)
 
 
+_ADDR_RE = re.compile(r"@ 0x([0-9A-Fa-f]+)")
+
+
 def split_functions(text):
-    """Yield (name, body) for each function in a ne_lane .c file (brace-matched)."""
+    """Yield (name, addr, body) for each function (brace-matched). addr is the linear
+    address from the decompiler's `// <name>  @ 0x...` header (int), or None."""
     for m in FUNC_RE.finditer(text):
         name = m.group(1)
+        # the emitted function header just above the signature carries `@ 0x<addr>`
+        am = None
+        for am in _ADDR_RE.finditer(text, max(0, m.start() - 200), m.start()):
+            pass
+        addr = int(am.group(1), 16) if am else None
         i = text.find("{", m.start())
         depth = 0; j = i
         while j < len(text):
@@ -82,7 +101,7 @@ def split_functions(text):
                 if depth == 0:
                     break
             j += 1
-        yield name, text[i:j + 1]
+        yield name, addr, text[i:j + 1]
 
 
 def main(argv):
@@ -90,19 +109,33 @@ def main(argv):
     ap.add_argument("--lane", choices=("ne", "pe", "le", "mz"), default="ne",
                     help="which decompile lane to triage (default: ne)")
     ap.add_argument("--dir", default=None, help="lane dir (default: <design>/<lane>_lane)")
+    ap.add_argument("--sig", action="store_true",
+                    help="identify the CRT/compiler floor on the BINARIES via "
+                         "nativesig (crtsig byte-prefix + sigscan shapes), not names")
     a = ap.parse_args(argv)
+    corpus = os.environ.get("WT_DATA_ROOT")
+    if not corpus or not os.path.isdir(corpus):
+        corpus = r"C:\Users\mrtit\Documents\GitHub\Windows95\design\corpus\files"
     d = a.dir
     if not d:
         # Resolve <design>/<lane>_lane the SAME way the *_scale sweeps do, so triage
         # reads exactly where the sweep wrote.
-        corpus = os.environ.get("WT_DATA_ROOT")
-        if not corpus or not os.path.isdir(corpus):
-            corpus = r"C:\Users\mrtit\Documents\GitHub\Windows95\design\corpus\files"
         design = os.path.dirname(os.path.dirname(corpus)) \
             if corpus.lower().rstrip("\\/").endswith("files") else os.path.dirname(corpus)
         d = os.path.join(design, a.lane + "_lane")
     if not os.path.isdir(d):
         sys.exit("no %s_lane dir at %s (run %s_scale first)" % (a.lane, d, a.lane))
+
+    # --sig: index the corpus binaries by name so each <module>.c maps to its binary,
+    # which nativesig identifies the CRT/compiler floor on.
+    binindex = {}
+    nativesig = None
+    if a.sig:
+        from src.targets.win95 import nativesig as _ns
+        nativesig = _ns
+        for dp, _, fs in os.walk(corpus):
+            for fnm in fs:
+                binindex.setdefault(fnm.lower(), os.path.join(dp, fnm))
 
     rows = []
     from collections import Counter
@@ -112,9 +145,17 @@ def main(argv):
             continue
         mod = fn[:-2]
         text = open(os.path.join(d, fn), encoding="utf-8", errors="replace").read()
+        crtmap = {}
+        if nativesig:
+            binp = binindex.get(mod.lower())
+            if binp:
+                try:
+                    crtmap = nativesig.identify_module(binp)
+                except Exception:
+                    crtmap = {}
         mc = Counter()
-        for name, body in split_functions(text):
-            origin, why = classify(name, body)
+        for name, addr, body in split_functions(text):
+            origin, why = classify(name, body, crtmap.get(addr) if addr is not None else None)
             rows.append((mod, name, origin, why))
             hist[origin] += 1; mc[origin] += 1
         per_mod[mod] = mc
@@ -129,8 +170,8 @@ def main(argv):
     targets = hist["app-export"] + hist["app-internal"]
     print("\nreconstruction targets (app-export + app-internal): %d  (%.1f%%)"
           % (targets, 100.0 * targets / max(total, 1)))
-    print("identify-only (crt/compiler + asm/hardware + stub): %d"
-          % (hist["crt/compiler"] + hist["asm/hardware"] + hist["stub"]))
+    print("identify-only (crt/compiler + vxd/service + asm/hardware + stub): %d"
+          % (hist["crt/compiler"] + hist["vxd/service"] + hist["asm/hardware"] + hist["stub"]))
     print("TRIAGE.csv -> %s" % os.path.join(d, "TRIAGE.csv"))
 
 

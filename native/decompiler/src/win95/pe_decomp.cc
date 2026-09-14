@@ -15,6 +15,7 @@
 #include <vector>
 #include "win95/pe_loader.h"
 #include "win95/x86_lift.h"
+#include "win95/sig_emit.h"
 #include "decompiler_c.h"
 
 namespace {
@@ -162,6 +163,23 @@ int main(int argc, char** argv) {
         char ab[16]; std::snprintf(ab, sizeof ab, "%X", fstart);
         std::printf("%s\t%s\n", ab, nn != names.end() ? nn->second.c_str() : "");
       }
+    return 0;
+  }
+
+  if (mode == "--sigdump") {
+    auto starts = discover();
+    std::vector<uint32_t> ss, ee;
+    for (auto& kv : starts) {
+      auto& s = img.sections[kv.first];
+      uint32_t send = s.va + (s.vsize ? s.vsize : s.raw_size);
+      std::vector<uint32_t> fs(kv.second.begin(), kv.second.end());
+      for (size_t i = 0; i < fs.size(); ++i) {
+        ss.push_back(fs[i]);
+        ee.push_back((i + 1 < fs.size()) ? fs[i + 1] : send);
+      }
+    }
+    std::set<uint32_t> relocs(img.base_relocs.begin(), img.base_relocs.end());
+    win95::EmitSigDump(image, image_size, ss, ee, false, &relocs);
     return 0;
   }
 

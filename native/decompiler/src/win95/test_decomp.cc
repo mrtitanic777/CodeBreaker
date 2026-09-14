@@ -7,6 +7,7 @@
 #include "win95/ne_loader.h"
 #include "win95/x86_lift.h"
 #include "win95/win16_names.h"
+#include "win95/sig_emit.h"
 #include "decompiler_c.h"
 
 int main(int argc, char** argv) {
@@ -188,6 +189,24 @@ int main(int argc, char** argv) {
         std::printf("%s\t%s\n", ab, nn != names.end() ? nn->second.c_str() : "");
       }
     }
+    return 0;
+  }
+
+  // --sigdump: per-function raw prefix bytes + mnemonics, for the cross-lane
+  // crtsig/sigscan pass (nativesig.py).
+  if (std::string(argv[2]) == "--sigdump") {
+    auto starts = discover();
+    std::vector<uint32_t> ss, ee;
+    for (auto& s : img.segments) {
+      if (s.is_data) continue;
+      std::vector<uint32_t> fs(starts[s.idx].begin(), starts[s.idx].end());
+      for (size_t i = 0; i < fs.size(); ++i) {
+        if (fs[i] >= s.base_addr + s.length) continue;
+        ss.push_back(fs[i]);
+        ee.push_back((i + 1 < fs.size()) ? fs[i + 1] : s.base_addr + s.length);
+      }
+    }
+    win95::EmitSigDump(img.image.data(), img.image.size(), ss, ee, true);
     return 0;
   }
 

@@ -31,6 +31,7 @@ struct PEImage {
   std::vector<PESection> sections;
   std::vector<std::pair<std::string, uint32_t>> exports;   // (name, RVA)
   std::map<uint32_t, std::string> imports;                 // IAT slot RVA -> "MODULE.func"
+  std::vector<uint32_t> base_relocs;                       // RVAs of HIGHLOW (type 3) fixups
   bool contains(uint32_t rva) const { return rva < image.size(); }
 };
 

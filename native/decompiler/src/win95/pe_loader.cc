@@ -132,6 +132,24 @@ PEImage LoadPEFromBuffer(const std::vector<uint8_t>& data) {
     }
   }
 
+  // --- base relocations (directory 5): each block = {PageRVA, BlockSize, entries}
+  // where an entry is (type<<12 | offset12); type 3 = HIGHLOW (a 32-bit absolute
+  // address patched at load). Their byte spans are masked when matching CRT
+  // signatures, since the address differs per module.
+  uint32_t rel_rva = dir_rva(5), rel_sz = dir_size(5);
+  uint32_t rp = rel_rva, rend = rel_rva + rel_sz;
+  while (rel_rva && rp + 8 <= rend && rp + 8 <= pe.image.size()) {
+    uint32_t page = rd32(pe.image.data() + rp);
+    uint32_t bsize = rd32(pe.image.data() + rp + 4);
+    if (bsize < 8 || rp + bsize > pe.image.size()) break;
+    uint32_t nent = (bsize - 8) / 2;
+    for (uint32_t i = 0; i < nent; ++i) {
+      uint16_t e = rd16(pe.image.data() + rp + 8 + i * 2);
+      if ((e >> 12) == 3) pe.base_relocs.push_back(page + (e & 0xFFF));   // HIGHLOW
+    }
+    rp += bsize;
+  }
+
   pe.ok = true;
   return pe;
 }

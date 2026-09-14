@@ -13,6 +13,7 @@
 #include <vector>
 #include "win95/mz_loader.h"
 #include "win95/x86_lift.h"
+#include "win95/sig_emit.h"
 #include "decompiler_c.h"
 
 int main(int argc, char** argv) {
@@ -78,6 +79,18 @@ int main(int argc, char** argv) {
       char ab[16]; std::snprintf(ab, sizeof ab, "%X", f);
       std::printf("%s\t%s\n", ab, nn != names.end() ? nn->second.c_str() : "");
     }
+    return 0;
+  }
+
+  if (mode == "--sigdump") {
+    std::set<uint32_t> starts = discover();
+    std::vector<uint32_t> fs(starts.begin(), starts.end());
+    std::vector<uint32_t> ss, ee;
+    for (size_t i = 0; i < fs.size(); ++i) {
+      ss.push_back(fs[i]);
+      ee.push_back((i + 1 < fs.size()) ? fs[i + 1] : (uint32_t)image_size);
+    }
+    win95::EmitSigDump(image, image_size, ss, ee, true);
     return 0;
   }
 
