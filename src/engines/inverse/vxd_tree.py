@@ -72,9 +72,24 @@ def _converge_buildable(D, oi, lo, hi, extra_labels, head, tail, probe, maxit=20
         lines = {int(m.group(1)) for m in errre.finditer(errtext)}
         new = {linemap[L] for L in lines if L in linemap} - force
         if not new:
-            return body            # nothing further we can pin -- leave as is
+            break                  # error not pinnable per-instruction -> full-raw fallback
         force |= new
-    return body
+    # Last resort: an error the linemap can't pin (e.g. a re-encode-drift SHORT jump
+    # reported at its TARGET label, not the jump). Byte-preserve the WHOLE object --
+    # all db, still byte-exact -- so it assembles. Only reached for the rare object
+    # that won't converge per-instruction.
+    alloff = {a for (o, a) in D.insns if o == oi and lo <= a < hi}
+    body_raw, _ = vxd_masm.object_body(D, oi, force_raw=(force | alloff),
+                                       extra_labels=extra_labels, base_line=len(head),
+                                       crange=(lo, hi))
+    with tempfile.NamedTemporaryFile("w", suffix=".asm", delete=False, newline="") as tf:
+        tf.write("\r\n".join(head + body_raw + tail)); path = tf.name
+    try:
+        rc, _, _ = probe(path)
+    finally:
+        try: os.unlink(path)
+        except OSError: pass
+    return body_raw if rc == 0 else body
 
 # LE object flags -> DDK segment class / name (inferred; the class strings are the DDK's own).
 def seg_class(flags):

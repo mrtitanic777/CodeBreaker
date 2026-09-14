@@ -156,6 +156,21 @@ def object_body(D, oi, force_raw=None, base_line=0, extra_labels=None, probe=Fal
                 L.append(_db(code[i:min(i + 16, b)]))
             a = b
             continue
+        # An extra_label (e.g. VXD_DDB) can land STRICTLY INSIDE a decoded
+        # instruction when data was walked as code -- the DDB's rva is the 2nd byte
+        # of a 2-byte insn. Stepping by instruction size would skip that offset and
+        # the label would never be emitted. Emit this instruction as raw db, split at
+        # each interior label offset so the label sits exactly on its byte.
+        interior = sorted(o for o in extra_labels if a < o < a + row["size"])
+        if interior:
+            segs = [a] + interior + [a + row["size"]]
+            for s, e in zip(segs, segs[1:]):
+                if s in extra_labels:
+                    L.append("public %s" % extra_labels[s])
+                    L.append("%s label byte" % extra_labels[s])
+                L.append(_db(code[s:e]))
+            a += row["size"]
+            continue
         if probe:
             L.append("public Q%x" % a)                     # per-instruction offset probe (public so
             L.append("Q%x:" % a)                           #  it lands in the COFF symbol table)
