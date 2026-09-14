@@ -1058,6 +1058,16 @@ def recover_from_decompile(decompile_path, outdir, module=None, seg_names=None, 
     # same lz32 fidelity the flat-thunk lane gets, applied to the win32-c/win16-c logic modules. NE
     # modules use the 16-bit table (INC16: FAR pointers, UINT/WORD), PE modules the 32-bit one.
     _protos = _load_sdk_protos(win16=ne)
+    # NE export names arrive UPPERCASED (the resident-name table convention: VERQUERYVALUE); match
+    # the SDK table case-insensitively and adopt the header's authored casing (VerQueryValue) as the
+    # function's display name so the recovered source reads as written, not shouted.
+    _protos_ci = {k.upper(): k for k in _protos}
+    for f in funcs:
+        if disp(f) in _protos:
+            continue
+        canon = _protos_ci.get(disp(f).upper())
+        if canon and f["name"] not in name_map:
+            name_map[f["name"]] = canon           # rename def + call sites to the SDK casing
 
     def _sdk_sig(f):
         p = _protos.get(disp(f))
