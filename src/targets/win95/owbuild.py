@@ -236,6 +236,79 @@ def _bindiff(name, built):
             "bytes_equal": same, "pct": round(100.0 * same / max(len(b), 1), 2)}
 
 
+# CRT symbols the OpenWatcom runtime resolves at link -- never stubbed.
+_CRT_SYMS = set()  # stub everything undefined -> self-contained scaffold link
+_C_KW = {"if", "while", "for", "switch", "return", "sizeof", "do", "else", "goto",
+         "case", "default", "break", "continue", "struct", "union", "int", "char",
+         "void", "unsigned", "static", "const"}
+import re as _re
+
+
+def autolink(module, fmt, export_names, imports, cured_c, outdir):
+    """Link an auto-cured single-.c module toward a DLL: resolve its imports from the
+    import table, stub the engine intrinsics it references (indirect/VxDCall_/etc.),
+    let the CRT resolve mem/str, and export its own .def. Surface-level -- proves the
+    link closes; behavior needs curation. PE for now. Returns {ok, output|error}."""
+    if fmt != "PE":
+        return {"ok": False, "error": "autolink: PE only for now"}
+    env = _ow_env("pe")
+    text = open(cured_c, encoding="utf-8", errors="replace").read()
+    base = module.split(".")[0]
+    obj = base + ".obj"
+    log = []
+    # -s: no stack-overflow probe (drops the __CHK reference the CRT would supply),
+    # keeping the scaffold self-contained (no CRT lib needed).
+    ccflags = ["-bt=nt", "-q", "-wcd=138", "-s"]
+    if _run([_tool("wcc386")] + ccflags + [os.path.basename(cured_c)],
+            outdir, env, log) != 0:
+        return {"ok": False, "error": "compile failed", "log": log}
+
+    # symbols the code CALLS, minus those it defines, minus imports, CRT, keywords.
+    called = set(_re.findall(r"\b([A-Za-z_]\w*)\s*\(", text))
+    defined = set(_re.findall(r"(?m)^int ([A-Za-z_]\w*)\(\)", text))
+    import_names = set()
+    imp_lines = []
+    for lib in imports:
+        libbase = lib["name"].split(".")[0].upper()
+        for s in lib.get("symbols", []):
+            if s.get("name"):
+                # wcc386's default register calling convention appends '_' to the
+                # symbol, so the object references KERNEL32_lstrcpyA_ -- match that.
+                internal = "%s_%s_" % (libbase, s["name"])
+                import_names.add("%s_%s" % (libbase, s["name"]))
+                imp_lines.append("import %s '%s'.'%s'" % (internal, libbase, s["name"]))
+    stubs = sorted(called - defined - import_names - _CRT_SYMS - _C_KW)
+    with open(os.path.join(outdir, "stubs.c"), "w", newline="\n") as f:
+        f.write("/* auto stubs for engine intrinsics + unresolved leaf refs */\n")
+        for s in stubs:
+            f.write("int %s(){return 0;}\n" % s)
+    if _run([_tool("wcc386"), "-bt=nt", "-q", "-wcd=138", "-s", "stubs.c"], outdir, env, log) != 0:
+        return {"ok": False, "error": "stub compile failed", "log": log}
+
+    # exports: the auto-cured functions are register-calling (symbol NAME_), so alias
+    # each real export name to its decorated symbol -- `export DllMain=DllMain_`. Only
+    # export names that are actually defined as functions in this object.
+    exp_lines = []
+    for name in export_names:
+        if name in defined:
+            exp_lines.append("export %s=%s_" % (name, name))
+
+    out = base + ".dll"
+    with open(os.path.join(outdir, "link.lnk"), "w", newline="\n") as f:
+        f.write("system nt_dll\nname %s\noption quiet\noption map=%s.map\n" % (out, base))
+        f.write("file %s\nfile stubs.obj\n" % obj)
+        for l in imp_lines:
+            f.write(l + "\n")
+        for l in exp_lines:
+            f.write(l + "\n")
+    _run([_tool("wlink"), "@link.lnk"], outdir, env, log)
+    outpath = os.path.join(outdir, out)
+    if os.path.isfile(outpath):
+        return {"ok": True, "output": outpath, "size": os.path.getsize(outpath),
+                "stubs": len(stubs), "imports": len(imp_lines)}
+    return {"ok": False, "error": "link produced no output", "log": log[-6:]}
+
+
 def main(argv):
     ap = argparse.ArgumentParser(prog="owbuild", description=__doc__.splitlines()[0])
     ap.add_argument("module")

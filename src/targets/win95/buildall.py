@@ -170,6 +170,8 @@ def main(argv):
     ap.add_argument("--build", action="store_true", help="run owbuild where curated source exists")
     ap.add_argument("--cure", action="store_true",
                     help="decompile fresh, autocure, and compile each module (the compile frontier)")
+    ap.add_argument("--link", action="store_true",
+                    help="after a clean compile, autolink the module into a DLL (PE; scaffold)")
     ap.add_argument("--jobs", type=int, default=0, help="parallel workers (default: min(12, cpus))")
     ap.add_argument("--timeout", type=int, default=240, help="per-module decompile timeout")
     a = ap.parse_args(argv)
@@ -240,6 +242,15 @@ def main(argv):
                     cure = "compiles" if cc.get("ok") else "err:%d" % cc.get("errors", -1)
                     if cc.get("ok"):
                         status = "compiles"
+                        # optional: link the compiled module into a DLL (PE scaffold)
+                        if a.link and fmt == "PE" and exports:
+                            from src.targets.win95 import owbuild
+                            enames = [n for n, _o in exports]
+                            imps = __import__("src.formats.exeinfo", fromlist=["exeinfo"]).parse(path).get("imports", [])
+                            lr = owbuild.autolink(mod, fmt, enames, imps, cf, sd)
+                            build = "linked" if lr.get("ok") else "link-fail"
+                            if lr.get("ok"):
+                                status = "linked"
             except Exception as ex:
                 cure = "cure-error:" + type(ex).__name__
         curated = os.path.isfile(os.path.join(curated_base, mod.split(".")[0], "owbuild.json"))
