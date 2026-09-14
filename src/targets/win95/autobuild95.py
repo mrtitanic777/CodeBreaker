@@ -365,6 +365,45 @@ def _discover_flat_thunk(srcdir):
             "rc": rc[0] if rc else None, "module": module}
 
 
+_OW_ROOT = None
+
+
+def _ow_paths():
+    """(wcc386, wlink, include-dirs) for the from-source OpenWatcom toolchain -- the compiler the
+    project builds with (no Microsoft tools). None if the OW tree is not present."""
+    from src.core import paths
+    ow = os.path.join(paths.repo_root(), "experiments", "premise-proof", "open-watcom-v2", "rel")
+    wcc = os.path.join(ow, "binnt64", "wcc386.exe")
+    wlink = os.path.join(ow, "binnt64", "wlink.exe")
+    incs = [os.path.join(ow, "h", "nt"), os.path.join(ow, "h")]
+    if not os.path.exists(wcc):
+        return None
+    return {"root": ow, "wcc386": wcc, "wlink": wlink, "include": incs}
+
+
+def compile_ow(srcdir):
+    """Compile every recovered veneer .c in `srcdir` with OpenWatcom wcc386 against OpenWatcom's own
+    Win32 headers -- the from-source toolchain, no Microsoft tools. This is the project's real build
+    compiler (owbuild/vmm32 lanes); it verifies the recovered source is compilable as authored.
+    Returns {ok, results:[(file, rc, first_error)]}."""
+    import subprocess, glob as _g
+    ow = _ow_paths()
+    if not ow:
+        return {"ok": False, "error": "OpenWatcom not built (experiments/premise-proof/open-watcom-v2)"}
+    env = dict(os.environ)
+    env["WATCOM"] = ow["root"]
+    env["INCLUDE"] = ";".join(ow["include"])
+    env["PATH"] = os.path.dirname(ow["wcc386"]) + os.pathsep + env.get("PATH", "")
+    results = []
+    for c in sorted(_g.glob(os.path.join(srcdir, "*.c"))):
+        r = subprocess.run([ow["wcc386"], "-bt=nt", "-zq", "-w0", os.path.basename(c)],
+                           cwd=srcdir, env=env, capture_output=True, text=True, timeout=180)
+        err = next((l for l in (r.stdout + r.stderr).splitlines() if "Error" in l), "")
+        results.append((os.path.basename(c), r.returncode, err.strip()[:100]))
+    ok = all(rc == 0 for _f, rc, _e in results)
+    return {"ok": ok, "results": results}
+
+
 def build_flat_thunk(srcdir, outdir=None):
     """Build a flat-thunk module from its recovered source (native chain, no DOSBox):
       thunk.exe -> .asm ; ml -DIS_32 -> thunk obj ; cl each veneer .c -> obj ; rc (opt) ;
@@ -1410,6 +1449,13 @@ def main():
             rr["n_signatures_recovered"], rr["n_exports"], rr["n_pointer_args"], rr["n_sdk_prototypes"]))
         print("  recovered (from binary): %s" % ", ".join(rr["recovered"]))
         print("  scaffolded (need curation): %s" % ", ".join(rr["scaffolded"]))
+        if "--ow-compile" in argv:                          # verify with the from-source OpenWatcom cc
+            cr = compile_ow(recdir)
+            if cr.get("error"):
+                print("  ow-compile: " + cr["error"])
+            else:
+                for fn, rc, err in cr["results"]:
+                    print("  ow-compile %-16s %s%s" % (fn, "OK" if rc == 0 else "FAIL", "  " + err if err else ""))
     built = _opt(argv, "--diff")
     srcdir = _opt(argv, "--build")
     if srcdir:
