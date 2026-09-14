@@ -239,3 +239,22 @@ if(MSVC)
     target_compile_definitions(win95ledec PRIVATE _CRT_SECURE_NO_WARNINGS)
     target_compile_options(win95ledec PRIVATE /bigobj)
 endif()
+
+# ---------------------------------------------------------------------------
+# win95mzdec -- the same engine over plain DOS/MZ 16-bit executables (~92).
+# MZ loader + shared x86 decode/lift (16-bit real mode) -> DecompileToC.
+# ---------------------------------------------------------------------------
+add_executable(win95mzdec
+    src/win95/mz_loader.cc
+    src/win95/x86_decode.cc
+    src/win95/x86_lift.cc
+    src/win95/mz_decomp.cc
+    src/decompiler_c.cc
+    src/var_allocator.cc
+)
+target_include_directories(win95mzdec PRIVATE src third_party src/ppc/compat)
+target_compile_definitions(win95mzdec PRIVATE WIN95DEC_NO_PPC)
+if(MSVC)
+    target_compile_definitions(win95mzdec PRIVATE _CRT_SECURE_NO_WARNINGS)
+    target_compile_options(win95mzdec PRIVATE /bigobj)
+endif()

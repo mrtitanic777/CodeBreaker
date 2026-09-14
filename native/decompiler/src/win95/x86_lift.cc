@@ -69,6 +69,13 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
       return 4;
     return 0;
   };
+  // Bytes to advance past an instruction -- always >= 1 so decode makes forward
+  // progress even if the decoder ever reports a zero length (guards against an
+  // infinite loop in the pass-2 walk, which has no visited-set of its own).
+  auto advBytes = [&](const X86Insn& in) -> uint32_t {
+    uint32_t adv = (in.valid && in.len > 0) ? (uint32_t)in.len : 1;
+    return adv + extraBytes(in);
+  };
 
   // --- pass 1: recursive-descent decode from entry. Follow the control flow
   // (fallthrough + branch targets), decoding ONLY reachable code -- so data and
@@ -85,7 +92,7 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
       X86Insn in = DecodeX86(image, image_size, a, a, def_op16);
       at[a] = insns.size();
       insns.push_back(in);
-      uint32_t next = a + (in.valid ? in.len : 1) + extraBytes(in);
+      uint32_t next = a + advBytes(in);
       const std::string& m = in.mnem;
       bool isJcc = m.size() && m[0] == 'j' && m != "jmp";
       if (m == "jmp") {
@@ -149,7 +156,7 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
       auto iit = at.find(a);
       if (iit == at.end()) break;
       const X86Insn& in = insns[iit->second];
-      uint32_t next = a + (in.valid ? in.len : 1) + extraBytes(in);
+      uint32_t next = a + advBytes(in);
       const std::string& m = in.mnem;
 
       auto emitMemAddr = [&](const X86Op& o, ILInstr& ins) {

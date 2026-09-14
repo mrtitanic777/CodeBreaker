@@ -2,10 +2,11 @@
 """nativedec.py -- CodeBreaker hook to our OWN native x86 disassembler+decompiler,
 CodeBreaker's native engine (XEXMagic core + our x86 front-end).
 
-One engine, three loaders, so a single call handles whichever class a module is:
+One engine, four loaders, so a single call handles whichever class a module is:
   - NE (16-bit)  -> win95dec     (NE load -> x86 decode -> lift[16] -> DecompileToC)
   - PE (32-bit)  -> win95pedec   (PE load -> x86 decode -> lift[32] -> DecompileToC)
   - LE (VxD/386) -> win95ledec   (LE load -> x86 decode -> lift[32,VxD] -> DecompileToC)
+  - DOS/MZ       -> win95mzdec   (MZ load -> x86 decode -> lift[16] -> DecompileToC)
 The format is detected from the file header and the right binary is invoked, the
 same way CodeBreaker invoked Ghidra -- as a subprocess returning C text.
 
@@ -30,6 +31,7 @@ _BINDIR = os.path.join(paths.repo_root(), "native", "decompiler", "build", "bin"
 _BIN = os.path.join(_BINDIR, "win95dec.exe")          # NE engine (back-compat alias)
 _PEBIN = os.path.join(_BINDIR, "win95pedec.exe")      # PE engine
 _LEBIN = os.path.join(_BINDIR, "win95ledec.exe")      # LE (VxD) engine
+_MZBIN = os.path.join(_BINDIR, "win95mzdec.exe")      # DOS/MZ engine
 
 
 def binary_path():
@@ -41,22 +43,27 @@ def available():
 
 
 def detect_format(path):
-    """'PE', 'NE', or None from the MZ/new-header. Picks the engine to use."""
+    """'PE'/'NE'/'LE'/'MZ' from the MZ + new-header signature, or None. A file whose
+    new-header signature is none of NE/PE/LE/LX (or whose e_lfanew is unusable) is a
+    plain DOS/MZ executable -> 'MZ'."""
     try:
         with open(path, "rb") as f:
             d = f.read(0x40)
-            if d[:2] != b"MZ" or len(d) < 0x40:
+            if len(d) < 0x40 or d[:2] != b"MZ":
                 return None
             e = struct.unpack("<I", d[0x3C:0x40])[0]
-            with open(path, "rb") as g:
-                g.seek(e)
-                sig = g.read(2)
+            sig = b""
+            if 0 < e < 0x10000000:
+                with open(path, "rb") as g:
+                    g.seek(e)
+                    sig = g.read(2)
             if sig == b"PE":
                 return "PE"
             if sig == b"NE":
                 return "NE"
             if sig == b"LE" or sig == b"LX":
                 return "LE"
+            return "MZ"                       # MZ with no (recognized) new header = DOS exe
     except OSError:
         return None
     return None
@@ -74,6 +81,10 @@ def _engine(path):
         if not os.path.exists(_LEBIN):
             raise RuntimeError("win95ledec not built: cmake --build native/decompiler/build --target win95ledec")
         return _LEBIN, ["--module"], ["--disasm"], ["--names"]
+    if fmt == "MZ":
+        if not os.path.exists(_MZBIN):
+            raise RuntimeError("win95mzdec not built: cmake --build native/decompiler/build --target win95mzdec")
+        return _MZBIN, ["--module"], ["--disasm"], ["--names"]
     if not os.path.exists(_BIN):
         raise RuntimeError("win95dec not built: cmake --build native/decompiler/build --target win95dec")
     return _BIN, ["--module", "0"], ["--disasm"], ["--names"]
