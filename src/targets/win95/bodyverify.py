@@ -222,47 +222,94 @@ def run(module, va=None, maxn=40):
     print("  --- " + "  ".join("%s=%d" % (k, v) for k, v in c.most_common()) + " ---")
 
 
-def harvest(module, maxn=400):
-    """Verify every function in `module` and CREDIT the equivalent ones to the master ledger
-    (va -> body_id via triage). Returns counts. This is the automatic harvest -- no hand-work."""
+def _ledger_path():
     from src.core import paths
-    retail = _retail(module)
-    design = os.path.join(os.path.dirname(paths.repo_root()), "Windows95", "design")
-    ledger = os.path.join(design, "body_ledger.csv")
+    return os.path.join(os.path.dirname(paths.repo_root()), "Windows95", "design", "body_ledger.csv")
+
+
+def harvest(module, maxn=100000, rows=None, present=None, verified_now=None):
+    """Verify every function in `module`, driving off the TRIAGE function list so each verified body
+    maps 1:1 to its ledger body_id (aligned crediting). Marks equivalent bodies verified. If `rows`
+    is passed it credits into that shared list (for a corpus sweep) and the caller writes the ledger;
+    otherwise it writes the ledger itself. Returns counts + credited body_ids."""
     import csv as _csv
-    rows = list(_csv.DictReader(open(ledger)))
-    present = {r["body_id"] for r in rows}
+    from collections import Counter
     from src.targets.win95 import autobuild95 as A
+    retail = _retail(module)
+    own = rows is None
+    if own:
+        rows = list(_csv.DictReader(open(_ledger_path())))
+        present = {r["body_id"] for r in rows}
+    verified_now = set() if verified_now is None else verified_now
+    already = {r["body_id"] for r in rows if r.get("verified") == "1"}
     try:
         base = A._imagebase(A.PE(retail))
     except Exception:
         base = 0
     _lane, fns = OT.triage_module(retail)
-    rva2id = {f["addr"]: f["sh"][:16] for f in (fns or []) if f.get("addr") is not None and f.get("sh")}
-    from collections import Counter
     c = Counter()
-    verified_ids = set()
-    for off, va, size in tracer.list_functions(retail)[:maxn]:
-        r = verify_body(retail, va)
+    for f in (fns or [])[:maxn]:
+        if f.get("addr") is None or not f.get("sh"):
+            continue
+        bid = f["sh"][:16]
+        if bid not in present or bid in already or bid in verified_now:
+            continue                                     # not a ledger body, or already verified
+        r = verify_body(retail, base + f["addr"])
         c[r["verdict"]] += 1
         if r["verdict"] == "equivalent":
-            bid = rva2id.get(va - base)
-            if bid and bid in present:
-                verified_ids.add(bid)
+            verified_now.add(bid)
+    if own:
+        for r in rows:
+            if r["body_id"] in verified_now:
+                r["verified"], r["state"] = "1", "verified"
+        with open(_ledger_path(), "w", newline="") as fp:
+            w = _csv.DictWriter(fp, fieldnames=rows[0].keys())
+            w.writeheader(); w.writerows(rows)
+    return {"module": module, "counts": dict(c), "credited": len(verified_now)}
+
+
+def sweep_corpus(modules, maxper=100000):
+    """Run harvest across several modules, crediting into one shared ledger write. `modules` is a list
+    of module names/paths (boot-critical order recommended). Resumable: already-verified bodies skip."""
+    import csv as _csv
+    rows = list(_csv.DictReader(open(_ledger_path())))
+    present = {r["body_id"] for r in rows}
+    verified_now = set()
+    per = []
+    for m in modules:
+        try:
+            r = harvest(m, maxn=maxper, rows=rows, present=present, verified_now=verified_now)
+            per.append((m, r["counts"]))
+        except Exception as e:
+            per.append((m, {"error": type(e).__name__}))
     for r in rows:
-        if r["body_id"] in verified_ids:
+        if r["body_id"] in verified_now:
             r["verified"], r["state"] = "1", "verified"
-    with open(ledger, "w", newline="") as f:
-        w = _csv.DictWriter(f, fieldnames=rows[0].keys())
+    with open(_ledger_path(), "w", newline="") as fp:
+        w = _csv.DictWriter(fp, fieldnames=rows[0].keys())
         w.writeheader(); w.writerows(rows)
-    return {"module": module, "counts": dict(c), "credited": len(verified_ids)}
+    return {"modules": per, "credited": len(verified_now),
+            "total_verified": sum(1 for r in rows if r.get("verified") == "1")}
+
+
+_BOOT_CRITICAL = ["gdi32.dll", "user32.dll", "kernel32.dll", "advapi32.dll", "shell32.dll",
+                  "comdlg32.dll", "comctl32.dll", "winmm.dll", "version.dll", "lz32.dll"]
 
 
 def main(argv):
     pos = [x for x in argv if not x.startswith("--")]
+    maxn = int(argv[argv.index("--max") + 1]) if "--max" in argv else 40
+    if "--sweep" in argv:
+        mods = pos or _BOOT_CRITICAL
+        r = sweep_corpus(mods, maxper=maxn if "--max" in argv else 100000)
+        print("=== bodyverify --sweep (automatic harvest) ===")
+        for m, cts in r["modules"]:
+            print("  %-14s %s" % (m, "  ".join("%s=%d" % (k, v) for k, v in sorted(cts.items()))))
+        print("  bodies newly credited this sweep: %d" % r["credited"])
+        print("  TOTAL VERIFIED in ledger:         %d" % r["total_verified"])
+        return
     if not pos:
         print(__doc__); return
-    maxn = int(argv[argv.index("--max") + 1]) if "--max" in argv else 40
     if "--harvest" in argv:
         r = harvest(pos[0], maxn=maxn)
         print("=== bodyverify --harvest %s ===" % pos[0])
