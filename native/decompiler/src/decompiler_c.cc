@@ -458,6 +458,18 @@ ExprRef MkDeref(ExprRef addr, ILType access) {
   return e;
 }
 
+// A float value used in an integer/bitwise context must have its BITS read, not
+// be numerically converted -- `*(unsigned int *)&(x)`. Compiler FP-bit tricks
+// (and the x87 lifter's float temps/fields) reach `&`, `|`, `^`, `~` and shifts
+// this way; without the reinterpret wcc rejects them (E1079 not integral). The
+// operand is an lvalue in these cases (a named temp, or a `base->field` the
+// struct-field inference still types float, so its bits are the float's). Only
+// float-typed exprs are wrapped; everything else passes through unchanged.
+ExprRef BitsAsInt(ExprRef e) {
+  if (!e || !ILTypeIsFloat(e->type)) return e;
+  return MkDeref(MkUnary("&", e, ILType::Ptr), ILType::U32);
+}
+
 std::string HexLit(uint64_t v) {
   char buf[32];
   if (v < 10) snprintf(buf, sizeof(buf), "%llu", (unsigned long long)v);
@@ -1285,31 +1297,32 @@ ExprRef CDecompiler::BuildExpr(const ILInstr& in, bool* pure) {
     case ILOp::Div: case ILOp::DivU:
       return MkBin("/", a, b, kPrecMul, t);
     case ILOp::And:
-      return MkBin("&", a, b ? b : MkConst((uint32_t)in.imm, t), kPrecBitAnd, t);
+      return MkBin("&", BitsAsInt(a), b ? BitsAsInt(b) : MkConst((uint32_t)in.imm, t), kPrecBitAnd, t);
     case ILOp::Or:
       {
-        ExprRef rb = b ? b : MkConst((uint32_t)in.imm, t);
+        ExprRef rb = b ? BitsAsInt(b) : MkConst((uint32_t)in.imm, t);
+        ExprRef la = BitsAsInt(a);
         Resolver rs = [this](const ExprRef& x) -> ExprRef {
           return ResolveDef(x);
         };
-        if (ExprRef sel = FoldSelect(a, rb, rs)) return sel;
-        if (ExprRef sel = FoldSelect(rb, a, rs)) return sel;
-        return MkBin("|", a, rb, kPrecBitOr, t);
+        if (ExprRef sel = FoldSelect(la, rb, rs)) return sel;
+        if (ExprRef sel = FoldSelect(rb, la, rs)) return sel;
+        return MkBin("|", la, rb, kPrecBitOr, t);
       }
     case ILOp::Xor:
-      return MkBin("^", a, b ? b : MkConst((uint32_t)in.imm, t), kPrecBitXor, t);
-    case ILOp::Not: return MkUnary("~", a, t);
-    case ILOp::Andc: return MkBin("&", a, MkUnary("~", b), kPrecBitAnd, t);
-    case ILOp::Orc: return MkBin("|", a, MkUnary("~", b), kPrecBitOr, t);
-    case ILOp::Nand: return MkUnary("~", MkBin("&", a, b, kPrecBitAnd), t);
-    case ILOp::Nor: return MkUnary("~", MkBin("|", a, b, kPrecBitOr), t);
-    case ILOp::Eqv: return MkUnary("~", MkBin("^", a, b, kPrecBitXor), t);
+      return MkBin("^", BitsAsInt(a), b ? BitsAsInt(b) : MkConst((uint32_t)in.imm, t), kPrecBitXor, t);
+    case ILOp::Not: return MkUnary("~", BitsAsInt(a), t);
+    case ILOp::Andc: return MkBin("&", BitsAsInt(a), MkUnary("~", BitsAsInt(b)), kPrecBitAnd, t);
+    case ILOp::Orc: return MkBin("|", BitsAsInt(a), MkUnary("~", BitsAsInt(b)), kPrecBitOr, t);
+    case ILOp::Nand: return MkUnary("~", MkBin("&", BitsAsInt(a), BitsAsInt(b), kPrecBitAnd), t);
+    case ILOp::Nor: return MkUnary("~", MkBin("|", BitsAsInt(a), BitsAsInt(b), kPrecBitOr), t);
+    case ILOp::Eqv: return MkUnary("~", MkBin("^", BitsAsInt(a), BitsAsInt(b), kPrecBitXor), t);
     case ILOp::Shl:
-      return MkBin("<<", a, b ? b : MkConst((uint32_t)in.imm), kPrecShift, t);
+      return MkBin("<<", BitsAsInt(a), b ? BitsAsInt(b) : MkConst((uint32_t)in.imm), kPrecShift, t);
     case ILOp::Shr:
-      return MkBin(">>", a, b ? b : MkConst((uint32_t)in.imm), kPrecShift, t);
+      return MkBin(">>", BitsAsInt(a), b ? BitsAsInt(b) : MkConst((uint32_t)in.imm), kPrecShift, t);
     case ILOp::Sar: case ILOp::SarImm:
-      return MkBin(">>", a, b ? b : MkConst((uint32_t)in.imm), kPrecShift,
+      return MkBin(">>", BitsAsInt(a), b ? BitsAsInt(b) : MkConst((uint32_t)in.imm), kPrecShift,
                    ILType::S32);
     // One vector instruction, spelled as the intrinsic it came from. Modelling
     // the lanes would not make it more readable - what matters is that the
