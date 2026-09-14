@@ -55,6 +55,12 @@ class PE:
                 return pr + (r - va)
         return None
 
+    def _file2rva(self, o):
+        for nm, va, vs, rs, pr in self.secs:
+            if rs and pr <= o < pr + rs:
+                return va + (o - pr)
+        return None
+
     def exports(self):
         out = []
         rva = struct.unpack("<I", self.d[self.dd:self.dd + 4])[0]
@@ -98,6 +104,32 @@ class PE:
                     names.append(self.d[self._o2(v) + 2:].split(b"\x00")[0].decode("latin1"))
             out[dll] = names
         return out
+
+    def export_addrs(self):
+        """-> dict name -> function RVA (AddressOfFunctions[ordinal]); the stub location, so we can
+        read each export's code (arity, marshalling) straight from the binary."""
+        rva = struct.unpack("<I", self.d[self.dd:self.dd + 4])[0]
+        if not rva:
+            return {}
+        eo = self._o2(rva)
+        nnam = struct.unpack("<I", self.d[eo + 24:eo + 28])[0]
+        afun = struct.unpack("<I", self.d[eo + 28:eo + 32])[0]
+        anam = struct.unpack("<I", self.d[eo + 32:eo + 36])[0]
+        aord = struct.unpack("<I", self.d[eo + 36:eo + 40])[0]
+        fo, no, oo = self._o2(afun), self._o2(anam), self._o2(aord)
+        out = {}
+        for i in range(nnam):
+            nr = struct.unpack("<I", self.d[no + i * 4:no + i * 4 + 4])[0]
+            od = struct.unpack("<H", self.d[oo + i * 2:oo + i * 2 + 2])[0]
+            frva = struct.unpack("<I", self.d[fo + od * 4:fo + od * 4 + 4])[0]
+            nm = self.d[self._o2(nr):].split(b"\x00")[0].decode("latin1")
+            out[nm] = frva
+        return out
+
+    def read_at(self, rva, n):
+        """Raw bytes at an RVA (for reading a stub's code)."""
+        o = self._o2(rva)
+        return self.d[o:o + n] if o is not None else b""
 
 
 class NE:
@@ -399,10 +431,306 @@ _KERNEL32_ORDINALS = {
 }
 
 
+# ------------------------------------------------------------------ stub analysis (x86-32)
+# A flat-thunk export is a tiny stdcall stub: set up args, marshal 32:16 pointers via SMapLS,
+# call the 16-bit side through QT_Thunk/FT_Prolog, unmap, and `ret N`. From the stub bytes alone
+# we can recover the REAL signature the compiler enforced -- the `ret N` epilogue pops exactly the
+# argument bytes (stdcall), so N/4 = the DWORD-sized argument count; and each SMapLS call marshals
+# one 32-bit pointer argument down to a 16:16 far pointer, so counting them bounds the pointer args.
+#
+# A conservative, table-driven length decoder walks the stub; on an opcode it does not model it
+# stops (returns 0) rather than mis-measure -- so arity is recovered where the walk is certain and
+# the module cleanly falls back to the (void) scaffold where it is not. Never a WRONG signature.
+_ARITH_RM = set(range(0x00, 0x04)) | set(range(0x08, 0x0C)) | set(range(0x10, 0x14)) | \
+    set(range(0x18, 0x1C)) | set(range(0x20, 0x24)) | set(range(0x28, 0x2C)) | \
+    set(range(0x30, 0x34)) | set(range(0x38, 0x3C))                       # add..cmp r/m,r & r,r/m
+_ARITH_AL = {0x04, 0x0C, 0x14, 0x1C, 0x24, 0x2C, 0x34, 0x3C}              # op al,imm8
+_ARITH_AX = {0x05, 0x0D, 0x15, 0x1D, 0x25, 0x2D, 0x35, 0x3D}              # op eax,imm
+_MODRM_ONLY = _ARITH_RM | {0x62, 0x63, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8A, 0x8B,
+                           0x8C, 0x8D, 0x8E, 0x8F, 0xD0, 0xD1, 0xD2, 0xD3, 0xFE,
+                           0xD8, 0xD9, 0xDA, 0xDB, 0xDC, 0xDD, 0xDE, 0xDF}   # x87 FPU (ModRM form)
+_MODRM_IMM8 = {0x6B, 0x80, 0x82, 0x83, 0xC0, 0xC1, 0xC6}
+_MODRM_IMMW = {0x69, 0x81, 0xC7}
+
+
+def _modrm_len(d, i):
+    """Bytes in the ModRM (+SIB +disp) cluster starting at d[i]."""
+    if i >= len(d):
+        return 0
+    modrm = d[i]
+    mod, rm = modrm >> 6, modrm & 7
+    n = 1
+    if mod == 3:
+        return n
+    if rm == 4:                                              # SIB
+        n += 1
+        base = d[i + 1] & 7 if i + 1 < len(d) else 0
+        if mod == 0 and base == 5:
+            n += 4
+    if mod == 1:
+        n += 1
+    elif mod == 2:
+        n += 4
+    elif mod == 0 and rm == 5:
+        n += 4
+    return n
+
+
+def _ilen(d, i):
+    """Length of the x86-32 instruction at d[i]; 0 if the opcode is not modelled (caller stops)."""
+    start = i
+    opsize = False
+    while i < len(d) and d[i] in (0xF0, 0xF2, 0xF3, 0x2E, 0x36, 0x3E, 0x26, 0x64, 0x65, 0x66, 0x67):
+        if d[i] == 0x66:
+            opsize = True
+        i += 1
+    if i >= len(d):
+        return 0
+    immw = 2 if opsize else 4
+    op = d[i]
+    i += 1
+    if op == 0x0F:                                           # two-byte
+        if i >= len(d):
+            return 0
+        op2 = d[i]
+        i += 1
+        if 0x80 <= op2 <= 0x8F:                              # jcc rel32
+            return i - start + immw
+        if op2 in (0x1F,) or 0x90 <= op2 <= 0x9F or op2 in (0xA3, 0xA5, 0xAB, 0xAD, 0xAF,
+                                                            0xB6, 0xB7, 0xBE, 0xBF, 0xB0, 0xB1) \
+                or 0x40 <= op2 <= 0x4F:                       # setcc/movzx/movsx/imul/cmov/bt/nop r/m
+            return i - start + _modrm_len(d, i)
+        if op2 in (0xA2, 0x31, 0x77, 0x05, 0x34, 0x0B):       # cpuid/rdtsc/emms/sysenter/ud2 -- no operand
+            return i - start
+        return 0
+    if op in _MODRM_ONLY:
+        return i - start + _modrm_len(d, i)
+    if op in _MODRM_IMM8:
+        return i - start + _modrm_len(d, i) + 1
+    if op in _MODRM_IMMW:
+        return i - start + _modrm_len(d, i) + immw
+    if op in (0xF6, 0xF7):                                    # grp3: test(/0,/1) has imm; rest don't
+        ml = _modrm_len(d, i)
+        reg = (d[i] >> 3) & 7 if i < len(d) else 7
+        return i - start + ml + ((1 if op == 0xF6 else immw) if reg in (0, 1) else 0)
+    if op in (0xFF,):                                         # grp5 inc/dec/call/jmp/push r/m
+        return i - start + _modrm_len(d, i)
+    if 0x50 <= op <= 0x5F or 0x90 <= op <= 0x9D or 0x40 <= op <= 0x4F \
+            or op in (0xC3, 0xC9, 0xCB, 0xCC, 0xF4, 0xF5, 0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0x98, 0x99):
+        return i - start                                     # push/pop/inc/dec/nop/ret/leave/flags/one-byte
+    if 0xB8 <= op <= 0xBF:                                    # mov reg,imm32
+        return i - start + immw
+    if 0xB0 <= op <= 0xB7:                                    # mov reg8,imm8
+        return i - start + 1
+    if op in (0x68,):                                         # push imm32
+        return i - start + immw
+    if op in (0x6A, 0xEB) or 0x70 <= op <= 0x7F or op in (0xA8, 0x04, 0x0C, 0x14, 0x1C, 0x24, 0x2C, 0x34, 0x3C):
+        return i - start + 1                                 # push imm8 / jmp rel8 / jcc rel8 / test al / op al,imm8
+    if op in (0xE8, 0xE9):                                    # call/jmp rel32
+        return i - start + immw
+    if op in (0xA9,) or op in _ARITH_AX:                     # test eax,imm / op eax,imm
+        return i - start + immw
+    if op in (0xA0, 0xA1, 0xA2, 0xA3):                       # mov moffs (address-sized)
+        return i - start + 4
+    if op == 0xC2:                                           # ret imm16
+        return i - start + 2
+    return 0
+
+
+def _imagebase(pe):
+    return struct.unpack("<I", pe.d[pe.opt + 28:pe.opt + 32])[0]
+
+
+def _smapls_iat_rvas(pe):
+    """Absolute VAs that, when the target of a stub's call, mark a 32:16 pointer marshalling:
+    the IAT slots of KERNEL32!SMapLS/SUnMapLS, plus any `jmp [slot]` incremental-link thunks that
+    forward to them. Used to count pointer arguments in a stub."""
+    base = _imagebase(pe)
+    d = pe.d
+    rva = struct.unpack("<I", d[pe.dd + 8:pe.dd + 12])[0]
+    if not rva:
+        return set()
+    io = pe._o2(rva)
+    slot_vas = set()
+    while io is not None:
+        oft, ts, fw, nr, ft = struct.unpack("<IIIII", d[io:io + 20])
+        io += 20
+        if nr == 0:
+            break
+        dll = d[pe._o2(nr):].split(b"\x00")[0].decode("latin1").upper()
+        t = pe._o2(oft or ft)
+        slot_rva = ft
+        while t is not None:
+            v = struct.unpack("<I", d[t:t + 4])[0]
+            if v == 0:
+                break
+            if "KERNEL32" in dll and not (v & 0x80000000):
+                nm = d[pe._o2(v) + 2:].split(b"\x00")[0].decode("latin1")
+                if nm.startswith("SMapLS") or nm.startswith("SUnMapLS"):
+                    slot_vas.add((base + slot_rva) & 0xFFFFFFFF)
+            t += 4
+            slot_rva += 4
+    trig = set(slot_vas)
+    # scan for `jmp dword ptr [slot]` (FF 25 abs32) thunks that forward to those IAT slots
+    for m in _re.finditer(rb"\xff\x25", d):
+        o = m.start()
+        try:
+            operand = struct.unpack("<I", d[o + 2:o + 6])[0]
+        except struct.error:
+            continue
+        if operand in slot_vas:
+            thunk_rva = pe._file2rva(o) if hasattr(pe, "_file2rva") else None
+            if thunk_rva is not None:
+                trig.add((base + thunk_rva) & 0xFFFFFFFF)
+    return trig
+
+
+def _stub_signature(pe, frva, maxlen=8192):
+    """Recover (argbytes, nptr) for an export at RVA `frva`, or (None, 0) if it does not cleanly
+    resolve. argbytes = stdcall bytes popped by `ret N` (every stdcall return in a function pops the
+    same N, so the first one reached on the linearly-decoded path is authoritative); nptr = SMapLS
+    marshalling calls seen (32-bit pointer args). `maxlen` bounds the walk to the function's extent.
+    A `ret N` is only accepted when N is a plausible stdcall count (N%4==0, N<=256) so a decode
+    desync at inline data cannot fabricate a signature -- unresolved beats wrong."""
+    d = pe.read_at(frva, maxlen)
+    if not d:
+        return None, 0
+    trig = getattr(pe, "_smapls_rvas", None) or set()
+    base = _imagebase(pe)
+    i, nptr = 0, 0
+    while i < len(d):
+        b = d[i]
+        if b == 0xC2:                                        # ret imm16 -> stdcall epilogue
+            n = struct.unpack("<H", d[i + 1:i + 3])[0]
+            return (n, nptr) if (n % 4 == 0 and n <= 256) else (None, nptr)
+        if b == 0xC3:                                        # ret -> no stack cleanup (0 args, or cdecl)
+            return 0, nptr
+        if b == 0xCC:                                        # int3 padding before a ret -> unknown
+            return None, nptr
+        if b == 0xE8 and i + 5 <= len(d):                    # call rel32 -> SMapLS jump-thunk?
+            tgt = (base + frva + i + 5 + struct.unpack("<i", d[i + 1:i + 5])[0]) & 0xFFFFFFFF
+            if tgt in trig:
+                nptr += 1
+        elif b == 0xFF and i + 6 <= len(d) and d[i + 1] == 0x15:   # call dword ptr [abs] -> IAT SMapLS?
+            if struct.unpack("<I", d[i + 2:i + 6])[0] in trig:
+                nptr += 1
+        ln = _ilen(d, i)
+        if ln <= 0:                                          # opcode not modelled (e.g. inline jump
+            break                                            # table) -> try the epilogue mode-scan
+        i += ln
+    # Fallback: a function with an inline switch jump table defeats linear sweep. Its stdcall
+    # epilogue `ret N` still appears at every return site with the SAME N, so pattern-scan for
+    # `C2 NN 00` (N a plausible stdcall count) and accept N only if it repeats -- a lone data
+    # coincidence will not, but a real multi-return epilogue does.
+    n = _argbytes_by_epilogue(d)
+    return (n, nptr) if n is not None else (None, nptr)
+
+
+def _argbytes_by_epilogue(d):
+    """Plausible `ret N` immediate from a function's bytes (N%4==0, N<=256) without decoding -- robust
+    to a decode desync at an inline jump table. Accept a value if it either repeats (>=2 return sites,
+    the usual multi-return case) or occurs once immediately after an epilogue terminator (pop reg /
+    leave -- a single-return function); an ambiguous single-occurrence set is left unresolved."""
+    from collections import Counter
+    _TERM = set(range(0x58, 0x60)) | {0xC9}          # pop eax..edi / leave
+    c, termd = Counter(), {}
+    for i in range(len(d) - 2):
+        if d[i] == 0xC2 and d[i + 2] == 0x00:
+            n = d[i + 1]
+            if n % 4 == 0 and 0 < n <= 256:
+                c[n] += 1
+                if i > 0 and d[i - 1] in _TERM:
+                    termd[n] = termd.get(n, 0) + 1
+    if not c:
+        return None
+    n, cnt = c.most_common(1)[0]
+    if cnt >= 2:
+        return n
+    if len(termd) == 1:                              # exactly one terminator-preceded candidate
+        return next(iter(termd))
+    return None
+
+
+def _thunk_dll_targets(pe, module):
+    """The 16-bit target DLL name for a flat-thunk module, read from the ThunkConnect32 string
+    args in the image ("<x>.DLL","<module>.DLL"). Returns (target16, candidates)."""
+    d = pe.d
+    up = module.upper()
+    cands, seen = [], set()
+    for m in _re.finditer(rb"[A-Za-z_][A-Za-z0-9_]{1,10}\.[Dd][Ll][Ll]", d):
+        nm = m.group(0).decode("latin1").upper()
+        if nm in seen:
+            continue
+        seen.add(nm)
+        cands.append(nm)
+    # a flat-thunk's 16-bit partner is almost always the 32-bit name with a trailing "32" dropped
+    # (AVICAP32->AVICAP, MSACM32->MSACM); a few well-known ones rename (COMCTL32->COMMCTRL,
+    # MSVFW32->MSVIDEO). Take the partner name only if it is actually present in the image --
+    # authoritative -- else fall back to the lone non-system .DLL string; else leave it ambiguous.
+    _ALIAS = {"COMCTL32": "COMMCTRL.DLL", "MSVFW32": "MSVIDEO.DLL", "WINMM": "MMSYSTEM.DLL",
+              "SHELL32": "SHELL.DLL", "COMDLG32": "COMMDLG.DLL", "MPR": "PMSPL.DLL",
+              "VERSION": "VER.DLL", "WSOCK32": "WINSOCK.DLL", "OLE32": "OLE2.DLL"}
+    candidates_16 = []
+    if up in _ALIAS:
+        candidates_16.append(_ALIAS[up])
+    candidates_16.append((up[:-2] if up.endswith("32") else up) + ".DLL")
+    for c16 in candidates_16:
+        if c16 in cands:
+            return c16, cands
+    sysdlls = {"KERNEL32.DLL", "USER32.DLL", "GDI32.DLL", "ADVAPI32.DLL", "WINMM.DLL",
+               "SHELL32.DLL", "COMDLG32.DLL", "COMCTL32.DLL", "OLE32.DLL", "OLEAUT32.DLL",
+               "RPCRT4.DLL", "VERSION.DLL", "LZ32.DLL", "MPR.DLL", "WSOCK32.DLL", "IMM32.DLL",
+               "WINSPOOL.DRV", "DDEML.DLL", "MSVCRT.DLL", "MSVCRT20.DLL", "CRTDLL.DLL",
+               "WOW32.DLL", "DCIMAN32.DLL", "MMSYSTEM.DLL", up + ".DLL"}
+    others = [c for c in cands if c not in sysdlls]
+    target = others[0] if len(others) == 1 else None
+    return target, cands
+
+
+def _load_sdk_protos():
+    """Optional per-export SDK prototypes for documented flat-thunk APIs, keyed by export name ->
+    {"ret": str, "params": str, "doc": "documented"|"undocumented"}. Loaded from a reference JSON
+    (reference/flat_thunk_protos.json) when present so the table grows without code edits. When
+    absent we fall back to the arity recovered from the stub -- never a fabricated prototype."""
+    for r in _reference_roots():
+        p = os.path.join(r, "flat_thunk_protos.json")
+        if os.path.isfile(p):
+            try:
+                return json.load(open(p, encoding="utf-8"))
+            except Exception:
+                pass
+    return {}
+
+
+def _sig_params(sig, proto):
+    """Parameter list text for an export. Real SDK prototype wins; else the stdcall arity recovered
+    from `ret N` (each arg a machine word, the first `nptr` flagged as marshalled pointers); None if
+    the stub did not resolve (keeps the honest (void)+TODO scaffold)."""
+    if proto and proto.get("params") is not None:
+        return proto["params"], False
+    argbytes, nptr = sig
+    if argbytes is None:
+        return None, False
+    nargs = argbytes // 4
+    if nargs == 0:
+        return "void", (nptr == 0)
+    ps = []
+    for i in range(nargs):
+        ps.append(("LPVOID p%d" % (i + 1)) if i < nptr else ("DWORD a%d" % (i + 1)))
+    return ", ".join(ps), True
+
+
+def _sig_ret(proto):
+    return proto["ret"] if (proto and proto.get("ret")) else "DWORD"
+
+
+# ------------------------------------------------------------------ RECOVER (flat-thunk)
 def recover_flat_thunk(pe_path, outdir):
     """Emit recovered flat-thunk source from the binary. The .def (exports) and <mod>k32.def
-    (KERNEL32 by-ordinal imports) are recovered VERBATIM from the binary's tables; the .thk and
-    veneer .c are scaffolds (signatures/logic need curation -- flagged). Returns a summary dict."""
+    (KERNEL32 by-ordinal imports) are recovered VERBATIM from the binary's tables; per-export
+    SIGNATURES (stdcall arity + pointer-arg count) and the 16-bit target DLL are recovered from the
+    stub code and the ThunkConnect32 strings; bodies remain scaffolds (marshalling flagged for
+    curation). Returns a summary dict."""
     pe = PE(pe_path)
     if not pe.is_pe:
         return {"error": "not a PE: %s" % pe_path}
@@ -411,6 +739,18 @@ def recover_flat_thunk(pe_path, outdir):
     exps = pe.exports()
     imps = pe.imports()
     k32 = imps.get("KERNEL32.dll") or imps.get("KERNEL32.DLL") or []
+
+    # locate SMapLS in the IAT so a `call SMapLS` in a stub is recognisable (marks a pointer arg).
+    addrs = pe.export_addrs()
+    pe._smapls_rvas = _smapls_iat_rvas(pe)
+    sa = sorted(addrs.values())
+
+    def _extent(rva):
+        nxt = [a for a in sa if a > rva]
+        return min((nxt[0] - rva) if nxt else 8192, 8192)   # bound the walk to this function
+
+    sigs = {nm: _stub_signature(pe, rva, _extent(rva)) for nm, rva in addrs.items()}
+    target16, dll_cands = _thunk_dll_targets(pe, module)
 
     # 1) module .def -- exports, verbatim
     with open(os.path.join(outdir, module + ".def"), "w") as f:
@@ -434,39 +774,77 @@ def recover_flat_thunk(pe_path, outdir):
             dec = ("%s@%d" % (nm, argb)) if argb is not None else nm
             f.write("    %-28s @%d NONAME\n" % (dec, o))
 
-    # 3) .thk scaffold -- one thunked function per export, signatures flagged for curation
+    protos = _load_sdk_protos()
+    dll16 = target16 or "?16.DLL"          # real 16-bit target when unambiguous, else placeholder
+    n_arity, n_ptr, n_proto = 0, 0, 0
+
+    # 3) .thk -- one thunked function per export; arity recovered from the stub's stdcall epilogue,
+    #    pointer args (from SMapLS) flagged with input/output/inout markers for the thunk compiler.
     with open(os.path.join(outdir, module + ".thk"), "w") as f:
-        f.write("/* %s.thk -- flat-thunk script (SCAFFOLD). Function list recovered from the export\n"
-                " * table; SIGNATURES + pointer annotations need curation (decompile the stubs). */\n"
+        f.write("/* %s.thk -- flat-thunk script. Function list from the export table; per-function\n"
+                " * ARITY recovered from the stub's `ret N` (stdcall) and pointer args from the SMapLS\n"
+                " * marshalling. Pointer input/output DIRECTION is defaulted to input -- curate where a\n"
+                " * function writes back through a pointer (mark output/inout). 16-bit target: %s. */\n"
                 "enablemapdirect3216 = true;\n\n"
                 "typedef unsigned short WORD;  typedef unsigned long DWORD;  typedef int INT;\n"
-                "typedef long LONG;  typedef char *LPSTR;  typedef void VOID;  typedef int HFILE;\n\n" % module)
+                "typedef long LONG;  typedef char *LPSTR;  typedef void *LPVOID;\n"
+                "typedef void VOID;  typedef int HFILE;\n\n" % (module, dll16))
         for ordv, nm in exps:
             base = nm[:-1] if nm.endswith(("A", "W")) else nm        # collapse A/W to one 16-bit target
-            f.write("/* @%d %s -- TODO: real signature + input/output/inout pointer annotations */\n"
-                    "INT %s16(void)\n{\n}\n\n" % (ordv, nm, base))
+            proto = protos.get(nm)
+            params, known = _sig_params(sigs.get(nm, (None, 0)), proto)
+            ret = _sig_ret(proto)
+            if params is None:
+                f.write("/* @%d %s -- stub did not resolve; TODO: signature + pointer directions */\n"
+                        "%s %s16(void)\n{\n}\n\n" % (ordv, nm, ret, base))
+                continue
+            f.write("/* @%d %s -- arity recovered from stub%s */\n"
+                    "%s %s16(%s)\n{\n}\n\n" % (ordv, nm,
+                    " (SDK prototype)" if proto else "", ret, base, params))
 
-    # 4) veneer .c scaffold -- DllMain + a thunk-through per export (logic flagged for curation)
+    # 4) veneer .c -- DllMain (real 16-bit target) + a thunk-through per export with its recovered
+    #    signature. Bodies remain scaffolds (the marshal/thunk/return is filled during curation).
     with open(os.path.join(outdir, module + ".c"), "w") as f:
-        f.write("/* %s.c -- 32-bit flat-thunk veneer (SCAFFOLD). DllMain + per-export thunk-through.\n"
-                " * Per-function tags: documented/undocumented = is it a published API; behavioral =\n"
-                " * body reconstructed from observed behavior (not byte-exact); scaffold = not yet\n"
-                " * implemented. Curation fills in the marshalling and sets each function's real tags. */\n"
+        f.write("/* %s.c -- 32-bit flat-thunk veneer. DllMain + per-export thunk-through.\n"
+                " * SIGNATURES are recovered from each stub (stdcall arity via `ret N`; pointer args\n"
+                " * via SMapLS). Per-function tags: documented/undocumented = published API; behavioral\n"
+                " * = body reconstructed from observed behaviour (not byte-exact); scaffold = body not\n"
+                " * yet implemented. Curation fills the marshalling and confirms doc/undoc + accuracy. */\n"
                 "#define WIN32_LEAN_AND_MEAN\n#include <windows.h>\n\n"
                 "extern BOOL __stdcall %s_ThunkConnect32(LPSTR,LPSTR,HINSTANCE,DWORD);\n\n"
-                "/* DLL entry; scaffold */\n"
+                "/* DLL entry -- connects the 32:16 thunk to the 16-bit target %s */\n"
                 "BOOL WINAPI DllMain(HINSTANCE h, DWORD r, LPVOID res)\n{\n"
                 "    if (r == DLL_PROCESS_ATTACH) { DisableThreadLibraryCalls(h);\n"
-                "        if (!%s_ThunkConnect32(\"?16.DLL\", \"%s.DLL\", h, r)) return FALSE; }\n"
-                "    else if (r == DLL_PROCESS_DETACH) %s_ThunkConnect32(\"?16.DLL\", \"%s.DLL\", h, r);\n"
-                "    return TRUE;\n}\n\n" % (module, module, module, module.upper(), module, module.upper()))
+                "        if (!%s_ThunkConnect32(\"%s\", \"%s.DLL\", h, r)) return FALSE; }\n"
+                "    else if (r == DLL_PROCESS_DETACH) %s_ThunkConnect32(\"%s\", \"%s.DLL\", h, r);\n"
+                "    return TRUE;\n}\n\n" % (module, module, dll16, module, dll16, module.upper(),
+                                            module, dll16, module.upper()))
         for ordv, nm in exps:
-            f.write("/* @%d %s -- API (mark documented/undocumented); scaffold. TODO: marshal + thunk + return */\n"
-                    "INT WINAPI %s(void) { return 0; }\n\n" % (ordv, nm, nm))
+            proto = protos.get(nm)
+            sig = sigs.get(nm, (None, 0))
+            params, known = _sig_params(sig, proto)
+            ret = _sig_ret(proto)
+            if proto:
+                n_proto += 1
+            if params is None:                       # stub unresolved -> honest scaffold
+                f.write("/* @%d %s -- API (mark documented/undocumented); scaffold. "
+                        "TODO: signature + marshal + thunk + return */\n"
+                        "DWORD WINAPI %s(void) { return 0; }\n\n" % (ordv, nm, nm))
+                continue
+            n_arity += 1
+            argbytes, nptr = sig
+            n_ptr += nptr
+            tag = ("documented" if (proto and proto.get("doc") == "documented") else
+                   ("%d-arg" % (argbytes // 4)) + (", %d ptr" % nptr if nptr else ""))
+            f.write("/* @%d %s -- %s; scaffold. TODO: marshal args, thunk to %s, return */\n"
+                    "%s WINAPI %s(%s) { return 0; }\n\n" % (ordv, nm, tag, dll16, ret, nm, params))
 
     return {"module": module, "n_exports": len(exps), "k32_ordinals": ords,
-            "unknown_ordinals": unknown, "outdir": outdir,
-            "recovered": ["%s.def" % module, "%sk32.def" % module],
+            "unknown_ordinals": unknown, "outdir": outdir, "target16": target16,
+            "dll_candidates": dll_cands, "n_signatures_recovered": n_arity,
+            "n_pointer_args": n_ptr, "n_sdk_prototypes": n_proto,
+            "recovered": ["%s.def" % module, "%sk32.def" % module,
+                          "%d/%d signatures (stub arity)" % (n_arity, len(exps))],
             "scaffolded": ["%s.thk" % module, "%s.c" % module]}
 
 
@@ -816,8 +1194,13 @@ def main():
         print("  module=%s  exports=%d  KERNEL32 ordinals=%s%s" % (
             rr["module"], rr["n_exports"], rr["k32_ordinals"],
             ("  UNKNOWN=%s" % rr["unknown_ordinals"]) if rr["unknown_ordinals"] else ""))
-        print("  recovered (verbatim from binary): %s" % ", ".join(rr["recovered"]))
-        print("  scaffolded (need curation):       %s" % ", ".join(rr["scaffolded"]))
+        print("  16-bit target: %s%s" % (
+            rr.get("target16") or "?16.DLL (ambiguous)",
+            ("   candidates=%s" % rr["dll_candidates"]) if not rr.get("target16") else ""))
+        print("  signatures recovered from stubs: %d/%d  (%d pointer args, %d SDK prototypes)" % (
+            rr["n_signatures_recovered"], rr["n_exports"], rr["n_pointer_args"], rr["n_sdk_prototypes"]))
+        print("  recovered (from binary): %s" % ", ".join(rr["recovered"]))
+        print("  scaffolded (need curation): %s" % ", ".join(rr["scaffolded"]))
     built = _opt(argv, "--diff")
     srcdir = _opt(argv, "--build")
     if srcdir:
