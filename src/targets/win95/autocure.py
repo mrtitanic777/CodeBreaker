@@ -70,12 +70,28 @@ def cure_text(text):
 
     # dedupe struct definitions: the emitter repeats a tag (V10_t) once per function
     # that uses it -> keep the first, drop the rest.
-    seen_tags = set()
+    # A struct tag (e.g. V13_t) recurs across functions -- but each function's use
+    # of that base recorded DIFFERENT fields, and the tag name collides. So MERGE
+    # the union of all fields seen for a tag into one complete definition; otherwise
+    # a `->field` in one function references a field another function's (kept)
+    # definition lacks. Fields keyed by the identifier before ';', first type wins.
+    _FIELD_RE = re.compile(r"([A-Za-z_]\w*)\s*;")
+    merged = {}                                  # tag -> {fieldname: full line}
+    for mm in _STRUCT_RE.finditer(text):
+        tag = mm.group(1)
+        fields = merged.setdefault(tag, {})
+        for line in mm.group(0).splitlines():
+            fm = _FIELD_RE.search(line)
+            if fm and "{" not in line and "}" not in line:
+                fields.setdefault(fm.group(1), line.rstrip())
+    emitted = set()
     def _dedup(m):
         tag = m.group(1)
-        if tag in seen_tags:
+        if tag in emitted:
             return "/* dup struct %s */" % tag
-        seen_tags.add(tag); return m.group(0)
+        emitted.add(tag)
+        body = "\n".join(merged.get(tag, {}).values())
+        return "struct %s {\n%s\n};" % (tag, body)
     text = _STRUCT_RE.sub(_dedup, text)
 
     # drop the emitter's local declarations -- every vN/aN becomes a uniform global

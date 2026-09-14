@@ -423,8 +423,10 @@ std::string LocalPtrType(const std::string& name) {
 // int. Local evidence wins so cross-function guesses never fight what the body
 // actually does.
 std::string FullType(const std::string& name) {
-  std::string t = LocalPtrType(name);
-  if (!t.empty()) return t;
+  // Inference-based pointer types (field/bare-deref uses) are NOT spelled in the
+  // declaration -- the deref sites cast instead, so a base that is also used as an
+  // integer keeps one consistent type and the C compiles. Only an asserted
+  // interprocedural override (SDK/demangled prototype) sets a real declared type.
   auto oit = g_type_overrides.find(name);
   if (oit != g_type_overrides.end() && !oit->second.empty()) return oit->second;
   return "int";
@@ -508,8 +510,15 @@ std::string Render(const ExprRef& e, int parent_prec) {
     case EK::Raw:
       return e->text;
     case EK::Unary:
+      if (!e->a) return "0";
       return e->text + RenderChild(e->a, e->prec);
     case EK::Binary:
+      // Guard a missing operand (an unresolved sub-expression) so we never emit a
+      // dangling operator like `x + ` that would splice the next statement into the
+      // expression -- render the present side alone (or 0 if both are gone).
+      if (!e->a && !e->b) return "0";
+      if (!e->b) return RenderChild(e->a, e->prec);
+      if (!e->a) return RenderChild(e->b, e->prec);
       return RenderChild(e->a, e->prec) + " " + e->text + " " +
              RenderChild(e->b, e->prec);
     case EK::Deref: {
@@ -549,7 +558,13 @@ std::string Render(const ExprRef& e, int parent_prec) {
           // Keep the widest access seen at this offset.
           if (it == fields.end() || TypeSize(e->type) > TypeSize(it->second))
             fields[(uint32_t)off] = e->type;
-          return base + "->" + FieldName(base, (uint32_t)off);
+          // Cast the base at the deref site rather than declaring it a struct
+          // pointer: the same value is often also used as an integer, so a pointer
+          // declaration would clash (ptr == int, arithmetic). Casting here keeps
+          // the readable `->field` form AND a single consistent (integer) type for
+          // the base, so the C compiles.
+          return "((struct " + StructNameFor(base) + " *)" + base + ")->" +
+                 FieldName(base, (uint32_t)off);
         }
       }
       // Bare pointer deref of a plain variable: record it so the base can be
@@ -2017,9 +2032,10 @@ std::string CDecompiler::Run() {
         }
 
         case ILOp::BranchCond: {
-          char lbl[80];
-          snprintf(lbl, sizeof(lbl), "if ( %s )", CondText(in, false).c_str());
-          std::string s = lbl;
+          // std::string, not a fixed buffer: a long condition (e.g. a nested
+          // bit-test) must not be truncated -- truncation left a dangling operator
+          // and spliced the goto into the expression.
+          std::string s = "if ( " + CondText(in, false) + " )";
           // Conditional branch out of the function is a conditional tail call.
           if (!label_targets_.count(in.target)) {
             emit(s + " " + RenderTailCall(in), in.address);
