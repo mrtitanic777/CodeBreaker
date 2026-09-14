@@ -13,7 +13,7 @@ non-Microsoft toolchain** — no `thunk.exe`, no `ml`, no period `cl` required.
 ## Pipeline under test
 
 1. **binary → readable source** — CodeBreaker's own disassembler/decompiler
-   (`native/xexmagic` → `wt --target win95 decompile`), names/types from the
+   (`native/decompiler` → `wt --target win95 decompile`), names/types from the
    demangler + value inference (SDK-free).
 2. **source → object/module** — compiled by a modern/maintainable compiler:
    **OpenWatcom v2** for the 16-bit segmented (NE) side, clang/gcc/OpenWatcom

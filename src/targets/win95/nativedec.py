@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """nativedec.py -- CodeBreaker hook to our OWN native x86 disassembler+decompiler
-(native/xexmagic/win95dec), the XEXMagic-derived engine ported to Win95 x86.
+(native/decompiler/win95dec), CodeBreaker's native engine (XEXMagic core + our x86 front-end).
 
 Replaces the Ghidra dependency for NE (16-bit) modules: NE load -> x86 decode ->
 x86->IL lift -> the reused DecompileToC back-end. Invokes the built binary the
@@ -20,7 +20,7 @@ try:
 except Exception:                       # symbol engine optional; sigs just skipped
     _demangle = None
 
-_BIN = os.path.join(paths.repo_root(), "native", "xexmagic", "build", "bin", "win95dec.exe")
+_BIN = os.path.join(paths.repo_root(), "native", "decompiler", "build", "bin", "win95dec.exe")
 
 
 def binary_path():
@@ -71,7 +71,7 @@ def decompile_module(ne_path, timeout=300, sigs=True):
     a first --names pass is demangled into prototypes (names, return + arg types,
     `this`) fed back via --sigs -- SDK-free typing straight from the symbols."""
     if not available():
-        raise RuntimeError("win95dec not built: cmake --build native/xexmagic/build --target win95dec")
+        raise RuntimeError("win95dec not built: cmake --build native/decompiler/build --target win95dec")
     sig_text = _build_sigs(_dump_names(ne_path, timeout)) if sigs else ""
     if not sig_text:
         r = subprocess.run([_BIN, ne_path, "--module", "0"],
@@ -102,7 +102,7 @@ def decompile_function(ne_path, entry, end, name="func", timeout=120):
 def disassemble_module(ne_path, timeout=300):
     """Disassemble every code segment; returns the instruction listing text."""
     if not available():
-        raise RuntimeError("win95dec not built: cmake --build native/xexmagic/build --target win95dec")
+        raise RuntimeError("win95dec not built: cmake --build native/decompiler/build --target win95dec")
     r = subprocess.run([_BIN, ne_path, "--disasm"],
                        capture_output=True, text=True, timeout=timeout)
     return r.stdout

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """wt --target win95 disasm <module> [-o out.asm]
 
-CodeBreaker's own x86 disassembler engine (native/xexmagic/win95dec) -- no
+CodeBreaker's own x86 disassembler engine (native/decompiler/win95dec) -- no
 Ghidra, no objdump. Loads the NE module and emits a per-segment instruction
 listing (addr: bytes  mnem ops) with call/branch targets resolved to names.
 """
@@ -12,7 +12,7 @@ import target
 from src.targets.win95 import nativedec
 
 _HINT = ("win95dec not built: "
-         "cmake --build native/xexmagic/build --config Release --target win95dec")
+         "cmake --build native/decompiler/build --config Release --target win95dec")
 
 
 def main(argv):

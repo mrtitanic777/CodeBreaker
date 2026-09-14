@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """wt --target win95 decompile <module> [-o out.c]
 
-CodeBreaker's own x86 decompiler engine (native/xexmagic/win95dec, the
+CodeBreaker's own x86 decompiler engine (native/decompiler/win95dec, the
 XEXMagic-derived pipeline ported to Win95 x86) -- no Ghidra. Loads the NE
 module, decodes + lifts every function to the SSA IL, and emits readable C.
 """
@@ -12,7 +12,7 @@ import target
 from src.targets.win95 import nativedec
 
 _HINT = ("win95dec not built: "
-         "cmake --build native/xexmagic/build --config Release --target win95dec")
+         "cmake --build native/decompiler/build --config Release --target win95dec")
 
 
 def main(argv):
