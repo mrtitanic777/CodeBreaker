@@ -75,18 +75,34 @@ def synth(module, va, arity=4):
     except Exception:
         r = {"reconstructed": False}
     if r.get("reconstructed") and r.get("emitted_c"):
-        c = _declare_implicits(r["emitted_c"])
+        c = _declare_implicits(_beautify(r["emitted_c"]))
         return (_defined_name(c) or "fn_%x" % va), c
     # static leaf/compute fallback: clean the decompiler block into compilable C, KEEPING the
     # signature (so stdcall args still flow to the oracle). Reject blocks with idioms that can't be
     # made statically faithful -- they belong to the behavior engine's dynamic lane, not here.
     blk = _static_body(module, va)
     if blk:
-        cured = _cure_body(blk)
+        cured = _cure_body(_beautify(blk))
         if cured is None:
             return None, "static block not statically faithful (indirect/leaked-reg/CONCAT/in_)"
         return (_defined_name(cured) or "fn_%x" % va), cured
     return None, "no synth (leaf skipped by call-flow; static block missing)"
+
+
+_PROTOS = None
+
+
+def _beautify(c):
+    """Real API names (KERNEL32_LocalAlloc->LocalAlloc) + real Win32 types -- so the harvested body
+    is BEAUTIFUL and compiles against the typedef prelude. Evidence-based (import table + SDK)."""
+    global _PROTOS
+    try:
+        from src.targets.win95 import beautify95
+        if _PROTOS is None:
+            _PROTOS = beautify95._load_protos()
+        return beautify95.beautify_text(c, _PROTOS)[0]
+    except Exception:
+        return c
 
 
 # decompiler abstractions a static body can't be made faithful with (unresolved indirect call, a
@@ -137,17 +153,47 @@ def compile_body(c_text, fname, outdir):
     if not os.path.exists(ow["wcc"]):
         return None, "OpenWatcom not built"
     os.makedirs(outdir, exist_ok=True)
-    refs = _stub_refs(c_text, fname)
+    # strip decompiler artifacts that look like preprocessor directives ('#350' from switch/line info)
+    c_text = re.sub(r"(?m)^\s*#\d.*$", "", c_text)
+    refs = _stub_refs(c_text, fname)                      # CALLED names -> function stubs
     pre = ["typedef unsigned u32;", "typedef unsigned uint;", "typedef unsigned long ulong;",
            "typedef unsigned short ushort;", "typedef unsigned char uchar;",
            "typedef unsigned char undefined1;", "typedef unsigned short undefined2;",
-           "typedef unsigned undefined4;", "typedef unsigned undefined;", "typedef int bool;"]
+           "typedef unsigned undefined4;", "typedef unsigned undefined;", "typedef int bool;",
+           # Win32 types so beautify's real-typed signatures compile standalone (no windows.h needed;
+           # external API calls are stubbed, so these only need to be size-compatible machine words).
+           "typedef unsigned long DWORD;typedef unsigned short WORD;typedef unsigned char BYTE;",
+           "typedef long LONG;typedef unsigned UINT;typedef int BOOL;typedef int INT;",
+           "typedef void*LPVOID;typedef char*LPSTR;typedef const char*LPCSTR;typedef unsigned*LPDWORD;",
+           "typedef void*HANDLE;typedef void*HDC;typedef void*HWND;typedef void*HGDIOBJ;",
+           "typedef void*HGLOBAL;typedef void*HLOCAL;typedef void*HINSTANCE;typedef unsigned MMRESULT;",
+           "typedef void*HMODULE;typedef unsigned HRESULT;typedef unsigned WPARAM;typedef long LPARAM;",
+           "typedef unsigned short*LPWSTR;typedef const unsigned short*LPCWSTR;typedef unsigned*PUINT;"]
     stubs = ["int %s(){return 0;}" % r for r in sorted(refs)]
+    # declare every identifier the body USES but does not declare (undeclared globals data_XXXX /
+    # DAT_ / locals the decompiler left implicit on some path) as a file-scope global -> kills the
+    # E1011/E1147 cascade. Excludes callees (stubbed above), params, keywords/types, and the fn name.
+    used = set(re.findall(r"\b([A-Za-z_]\w*)\b", c_text))
+    declared = set(re.findall(r"\b(?:unsigned|signed|int|long|short|char|void|float|double|struct\s+\w+|"
+                              r"DWORD|WORD|BYTE|LONG|UINT|HDC|HANDLE|HGDIOBJ)\s+\**([A-Za-z_]\w*)", c_text))
+    dm = _DEF_RE.search(c_text)
+    params = set()
+    if dm:
+        sig = c_text[dm.start():dm.end()]
+        params = set(re.findall(r"\b([A-Za-z_]\w*)\s*[,)]", sig))
+    _TYPEWORDS = {"unsigned", "signed", "int", "long", "short", "char", "void", "float", "double",
+                  "struct", "union", "enum", "const", "static", "return", "if", "else", "while",
+                  "for", "do", "switch", "case", "goto", "break", "continue", "sizeof", "default",
+                  "u32", "uint", "ulong", "ushort", "uchar", "bool", "undefined", "undefined1",
+                  "undefined2", "undefined4", "DWORD", "WORD", "BYTE", "LONG", "UINT", "HDC",
+                  "HANDLE", "HGDIOBJ", "__fastcall", "__cdecl", "__stdcall", "__watcall"}
+    undecl = sorted(used - refs - declared - params - _TYPEWORDS - {fname})
+    gdecl = ["unsigned %s;" % g for g in undecl if not g.isdigit()]
     # force an int return type on the body (decompiler emits `return f();` tail-calls even in a
     # void function -> E1051; the oracle reads EAX regardless of the declared type, so int is safe).
     c_text = re.sub(r"\bvoid(\s+(?:__fastcall|__cdecl|__stdcall|__watcall)?\s*%s\s*\()"
                     % re.escape(fname), r"int\1", c_text)
-    src = "\n".join(pre) + "\n" + "\n".join(stubs) + "\n" + c_text + "\n"
+    src = "\n".join(pre + stubs + gdecl) + "\n" + c_text + "\n"
     cf = os.path.join(outdir, fname + ".c")
     open(cf, "w", newline="\n").write(src)
     env = dict(os.environ)
@@ -191,7 +237,27 @@ def verify_body(retail, va, arity=4, outdir=None):
     vecs = verify95._vectors(arity, "pe")
     rs = [verify95._fp_pe(retail, va, v) for v in vecs]
     bs = [verify95._fp_pe(dll, bbase + baddr, v) for v in vecs] if baddr else [{"err": "noexport"}]
-    return {"va": va, "verdict": verify95._body_verdict(rs, bs), "fname": fname}
+    verdict = verify95._body_verdict(rs, bs)
+    if verdict == "equivalent":
+        _save_verified(retail, fname, c)                 # bank the beautiful, verified source
+    return {"va": va, "verdict": verdict, "fname": fname}
+
+
+def _save_verified(retail, fname, c):
+    """Write a verified body's beautiful source into the recovered tree, tagged oracle-verified."""
+    from src.core import paths
+    modbase = os.path.splitext(os.path.basename(retail))[0]
+    d = os.path.join(os.path.dirname(paths.repo_root()), "Windows95", "design", "recovered",
+                     "verified", modbase)
+    try:
+        os.makedirs(d, exist_ok=True)
+        open(os.path.join(d, fname + ".c"), "w", newline="\n").write(
+            "/* %s -- ORACLE-VERIFIED reconstruction (behaves identically to retail %s on the\n"
+            " * Unicorn oracle). Names/types recovered from the import/export tables + SDK/DDK;\n"
+            " * internal callees (sub_) and locals (vN) are inferred, not claimed as recovered. */\n\n"
+            % (fname, os.path.basename(retail)) + c + "\n")
+    except OSError:
+        pass
 
 
 def _retail(module):
