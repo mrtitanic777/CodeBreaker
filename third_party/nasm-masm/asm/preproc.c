@@ -3093,9 +3093,27 @@ static void masm_xlat_ops(char *dst, size_t dsz, const char *src)
         {"or","|"}, {"xor","^"}, {"not","~"}, {NULL,NULL}
     };
     char sbuf[1024];
+    char cbuf[1024];
+    const char *comment = NULL;
     char *o = dst;
     const char *p;
     char q = 0;
+    /* Split off a trailing `;' comment first: operator words (shl/shr/and/or/...)
+     * inside a comment (`equ 4000h  ; SS_CapLock shl 8' in vkd.inc) must NOT be
+     * translated -- paren-wrapping `shl' there emits an unbalanced `(' ("expecting
+     * )").  Translate only the code, then re-append the comment verbatim. */
+    {
+        const char *s = src;
+        size_t n = 0;
+        char cq = 0;
+        while (*s && n + 1 < sizeof cbuf) {
+            if (cq) { if (*s == cq) cq = 0; }
+            else if (*s == '\'' || *s == '"') cq = *s;
+            else if (*s == ';') { comment = s; break; }
+            cbuf[n++] = *s++;
+        }
+        if (comment) { cbuf[n] = '\0'; src = cbuf; }
+    }
     if (strlen(src) < sizeof sbuf) {    /* fix SHL/SHR precedence before translating ops */
         masm_paren_shifts(sbuf, sizeof sbuf, src);
         src = sbuf;
@@ -3116,6 +3134,14 @@ static void masm_xlat_ops(char *dst, size_t dsz, const char *src)
             memcpy(o, p, wl); o += wl; p += wl; continue;
         }
         *o++ = *p++;
+    }
+    if (comment) {                      /* re-append the untranslated comment */
+        size_t cl = strlen(comment);
+        if ((size_t)(o - dst) + cl + 2 < dsz) {
+            *o++ = ' ';
+            memcpy(o, comment, cl);
+            o += cl;
+        }
     }
     *o = '\0';
 }
@@ -3931,6 +3957,20 @@ static char *masm_pp_xform(char *line)
             line = masm_subst_outer(line, masm_ppstk->oparam,
                                     masm_ppstk->noparam, masm_ppstk->oseq);
         line = masm_subst_params(line, masm_ppstk->param, masm_ppstk->nparam);
+    }
+    /* An IRP nested inside a MACRO may reference the ENCLOSING macro's params in its
+     * body (`"&classname&CODE"', `_&grpname GROUP segname' in MakeCodeSeg).  The IRP
+     * frame snapshots those params into `_mo<oseq>_<N>' %xdefines (see the IRP
+     * lowering), so resolve them the same way a nested macro definition does -- to
+     * `%[_mo<oseq>_<N>]' -- BEFORE the loop-var paste.  Without this the enclosing
+     * `&param' is left as a stray `&' (`_ &grpname': "instruction expected, _ &"). */
+    if (masm_ppstk && masm_ppstk->is_for && masm_ppstk->oparam) {
+        line = masm_subst_outer(line, masm_ppstk->oparam,
+                                masm_ppstk->noparam, masm_ppstk->oseq);
+        /* subst_outer turns `_&grpname' into `_&%[_mo..]'; the `&' that pasted the
+         * (now-substituted) enclosing param must still be dropped.  masm_subst_params
+         * with no own-params does exactly the `&'-paste drop (and `%sym' handling). */
+        line = masm_subst_params(line, NULL, 0);
     }
     /* A FOR/IRP body's `&<loopvar>' paste: `??_foo_&x' -> `??_foo_%[x]', and the FOR temp macro's
      * `%define <var> %1' then expands `%[x]' to the current list item.  Guarded to the innermost FOR
@@ -5096,6 +5136,26 @@ static char *masm_pp_xform(char *line)
                 } }
         }
 
+        /* If this IRP sits inside a MACRO, snapshot the enclosing macro's params
+         * into `_mo<oseq>_<N>' %xdefines NOW (bound to the enclosing args at its
+         * expand time), so the IRP body can resolve an enclosing `&param' via
+         * `%[_mo<oseq>_<N>]' -- same device the nested-macro-def path uses. */
+        {
+            char **oparam = NULL;
+            int nouter = 0, oseq = 0, k;
+            if (masm_ppstk && masm_ppstk->is_macro && masm_ppstk->nparam > 0 &&
+                masm_ppstk->param) {
+                nouter = masm_ppstk->nparam;
+                oseq = ++masm_for_seq;
+                for (k = 0; k < nouter; k++) {
+                    char xd[80];
+                    snprintf(xd, sizeof xd, "%%xdefine _mo%d_%d %%{%d}", oseq, k + 1, k + 1);
+                    masm_ppq_add(nasm_strdup(xd));
+                    oparam = nasm_realloc(oparam, (k + 1) * sizeof(char *));
+                    oparam[k] = nasm_strdup(masm_ppstk->param[k]);
+                }
+            }
+
         snprintf(nm, sizeof nm, "__?masm_for%d?__", ++masm_for_seq);
         snprintf(tmp, sizeof tmp, "%%macro %s 0-*", nm);   /* variadic + self-iterating (%rep %0 / */
         masm_ppq_add(nasm_strdup(tmp));                    /*   %rotate) so the list is walked at CALL */
@@ -5112,8 +5172,12 @@ static char *masm_pp_xform(char *line)
         b->item = item;
         b->nitem = nitem;
         b->forvar = nasm_strdup(param);           /* for the body's `&<var>' paste (%[<var>]) */
+        b->oparam = oparam;                       /* enclosing-macro params (for `&param' in the body) */
+        b->noparam = nouter;
+        b->oseq = oseq;
         b->next = masm_ppstk;
         masm_ppstk = b;
+        }
         nasm_free(line);
         return masm_ppq_get();
     }
