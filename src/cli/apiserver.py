@@ -41,25 +41,17 @@ CAPABILITIES = {
     },
 }
 
-INDEX = """<!doctype html><meta charset=utf-8><title>CodeBreaker API</title>
-<style>body{font:14px system-ui;margin:2rem;max-width:60rem}h1{font-size:1.3rem}
-input,button,select{font:inherit;padding:.3rem}textarea,pre{width:100%;box-sizing:border-box}
-pre{background:#111;color:#ddd;padding:.6rem;overflow:auto;max-height:28rem}code{background:#eee;padding:0 .2rem}</style>
-<h1>CodeBreaker &mdash; localhost API</h1>
-<p>Run any <code>wt</code> command. Args, space-separated:</p>
-<p><input id=a size=70 value="--target win95 disasm LZEXPAND"> <button onclick=run()>Run</button></p>
-<pre id=o>ready.</pre>
-<p>Endpoints: <code>POST /api/run</code> {argv:[...]}, <code>GET /api/capabilities</code>,
-<code>GET /api/win95/decompile?module=</code>, <code>GET /api/win95/disasm?module=</code></p>
-<script>
-async function run(){
- const argv=document.getElementById('a').value.trim().split(/\\s+/);
- document.getElementById('o').textContent='running...';
- const r=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({argv})});
- const j=await r.json();
- document.getElementById('o').textContent='exit '+j.exit+'\\n\\n'+(j.stdout||'')+(j.stderr?('\\n[stderr]\\n'+j.stderr):'');
-}
-</script>"""
+_WEBUI = os.path.join(os.path.dirname(os.path.abspath(__file__)), "webui.html")
+_FALLBACK = ("<!doctype html><title>CodeBreaker API</title><h1>CodeBreaker API</h1>"
+             "<p>webui.html missing. POST /api/run {argv:[...]}, GET /api/capabilities.</p>")
+
+
+def index_html():
+    try:
+        with open(_WEBUI, encoding="utf-8") as f:
+            return f.read()
+    except OSError:
+        return _FALLBACK
 
 
 def run_wt(argv, timeout=900):
@@ -83,7 +75,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         u = urlparse(self.path); q = parse_qs(u.query)
         if u.path == "/":
-            return self._send(200, INDEX, "text/html; charset=utf-8")
+            return self._send(200, index_html(), "text/html; charset=utf-8")
         if u.path == "/api/health":
             return self._send(200, json.dumps({"ok": True}))
         if u.path == "/api/capabilities":

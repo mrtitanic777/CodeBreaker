@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CodeBreaker Console</title>
+<style>
+  :root{
+    --bg:#0e1117; --panel:#151b24; --panel2:#1b232e; --edge:#26303c;
+    --ink:#e6edf3; --dim:#8b98a8; --faint:#5b6673;
+    --amber:#e0a44c; --amber2:#f2c179; --cyan:#5cc8d8; --good:#5bd6a0; --bad:#e5646b;
+    --mono:"Cascadia Code",ui-monospace,"SF Mono",Consolas,"Liberation Mono",monospace;
+    --ui:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 var(--ui);
+       display:grid;grid-template-columns:236px 1fr;grid-template-rows:100vh}
+  /* sidebar */
+  aside{background:var(--panel);border-right:1px solid var(--edge);padding:18px 0;overflow:auto}
+  .brand{padding:0 20px 16px;border-bottom:1px solid var(--edge);margin-bottom:10px}
+  .brand h1{margin:0;font:700 17px/1 var(--ui);letter-spacing:.14em}
+  .brand h1 b{color:var(--amber)}
+  .brand p{margin:6px 0 0;color:var(--faint);font-size:11px;letter-spacing:.08em;text-transform:uppercase}
+  nav a{display:flex;gap:10px;align-items:center;padding:9px 20px;color:var(--dim);
+        cursor:pointer;border-left:3px solid transparent;font-size:13.5px}
+  nav a:hover{color:var(--ink);background:var(--panel2)}
+  nav a.on{color:var(--amber2);border-left-color:var(--amber);background:var(--panel2)}
+  nav a .k{width:1.3em;text-align:center;color:var(--faint);font:12px var(--mono)}
+  nav a.on .k{color:var(--amber)}
+  .health{display:flex;gap:8px;align-items:center;padding:14px 20px 0;color:var(--faint);font-size:11px}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--faint)}
+  .dot.up{background:var(--good);box-shadow:0 0 8px var(--good)}
+  /* main */
+  main{overflow:auto;padding:26px 30px;display:flex;flex-direction:column;gap:16px;min-width:0}
+  .head h2{margin:0;font-size:19px;font-weight:650}
+  .head h2 span{color:var(--amber)}
+  .head p{margin:5px 0 0;color:var(--dim);max-width:60ch}
+  .form{background:var(--panel);border:1px solid var(--edge);border-radius:10px;padding:16px;
+        display:flex;flex-wrap:wrap;gap:12px;align-items:end}
+  .field{display:flex;flex-direction:column;gap:5px;flex:1;min-width:180px}
+  .field label{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}
+  input,select{background:var(--bg);border:1px solid var(--edge);color:var(--ink);
+        border-radius:7px;padding:9px 11px;font:13px var(--mono)}
+  input:focus,select:focus{outline:none;border-color:var(--amber)}
+  button{background:var(--amber);color:#1a1206;border:0;border-radius:7px;padding:10px 18px;
+        font:600 13px var(--ui);cursor:pointer;letter-spacing:.02em}
+  button:hover{background:var(--amber2)}
+  button.ghost{background:transparent;color:var(--dim);border:1px solid var(--edge)}
+  button.ghost:hover{color:var(--ink);border-color:var(--amber)}
+  .status{display:flex;gap:14px;align-items:center;font-size:12px;color:var(--dim);min-height:20px}
+  .badge{font:12px var(--mono);padding:2px 8px;border-radius:5px;border:1px solid var(--edge)}
+  .badge.ok{color:var(--good);border-color:#254c3c}
+  .badge.err{color:var(--bad);border-color:#4c2528}
+  .out{flex:1;min-height:220px;background:#0a0d12;border:1px solid var(--edge);border-radius:10px;
+       padding:14px 16px;overflow:auto;font:12.5px/1.55 var(--mono);white-space:pre;color:#cdd6e0;tab-size:4}
+  .out .cmt{color:var(--faint)} .out .kw{color:var(--cyan)} .out .name{color:var(--amber2)}
+  .hint{color:var(--faint);font-size:11.5px;font-family:var(--mono)}
+  a.link{color:var(--cyan);text-decoration:none} a.link:hover{text-decoration:underline}
+</style>
+</head>
+<body>
+<aside>
+  <div class="brand"><h1>CODE<b>BREAKER</b></h1><p>Win95 reconstruction console</p></div>
+  <nav id="nav"></nav>
+  <div class="health"><span class="dot" id="dot"></span><span id="hstat">checking…</span></div>
+</aside>
+<main>
+  <div class="head"><h2 id="ttl"></h2><p id="desc"></p></div>
+  <div class="form" id="form"></div>
+  <div class="status"><span id="badge"></span><span id="stat"></span></div>
+  <div class="out" id="out">Select a tool.</div>
+</main>
+<script>
+const TOOLS = [
+ {id:"decompile", k:"C", ttl:"Decompile", accent:"module",
+  desc:"Native x86 decompiler (NE 16-bit) — readable C, no Ghidra.",
+  fields:[{n:"module",ph:"LZEXPAND  or  full path.dll",w:1}],
+  run:f=>({get:`/api/win95/decompile?module=${encodeURIComponent(f.module)}`})},
+ {id:"disasm", k:"D", ttl:"Disassemble", accent:"module",
+  desc:"Native disassembler — per-segment listing with resolved call targets.",
+  fields:[{n:"module",ph:"LZEXPAND  or  full path",w:1}],
+  run:f=>({get:`/api/win95/disasm?module=${encodeURIComponent(f.module)}`})},
+ {id:"triage", k:"T", ttl:"Origin Triage",
+  desc:"Classify decompiled NE functions by origin (app vs CRT/compiler/asm/stub).",
+  fields:[], run:_=>({argv:["--target","win95","origin_triage"]})},
+ {id:"oracle", k:"O", ttl:"Oracle Equivalence",
+  desc:"Run two NE modules on the Unicorn oracle and compare behavior export-by-export.",
+  fields:[{n:"retail",ph:"retail .dll path",w:1},{n:"rebuilt",ph:"rebuilt .dll path",w:1},
+          {n:"arity",ph:"arity (0)",w:0}],
+  run:f=>({argv:["--target","win95","oracle_equiv",f.retail,f.rebuilt].concat(f.arity?["--arity",f.arity]:[])})},
+ {id:"sweep", k:"N", ttl:"NE Sweep",
+  desc:"Decompile every code-bearing NE module in the corpus → scoreboard.",
+  fields:[{n:"limit",ph:"limit (blank = all)",w:0}],
+  run:f=>({argv:["--target","win95","ne_scale"].concat(f.limit?["--limit",f.limit]:[]), timeout:1800})},
+ {id:"console", k:">", ttl:"Command Console",
+  desc:"Run any wt command. Every subsystem and target command is reachable here.",
+  fields:[{n:"argv",ph:"--target win95 decompile LZEXPAND",w:1}],
+  run:f=>({argv:f.argv.trim().split(/\s+/)})},
+];
+let cur=TOOLS[0];
+const $=id=>document.getElementById(id);
+
+function paintNav(){
+  $("nav").innerHTML=TOOLS.map(t=>`<a data-id="${t.id}" class="${t.id==cur.id?'on':''}"><span class="k">${t.k}</span>${t.ttl}</a>`).join("");
+  $("nav").querySelectorAll("a").forEach(a=>a.onclick=()=>select(a.dataset.id));
+}
+function select(id){
+  cur=TOOLS.find(t=>t.id==id); paintNav();
+  $("ttl").innerHTML=cur.ttl.replace(/^(\w)/,'<span>$1</span>');
+  $("desc").textContent=cur.desc;
+  $("form").innerHTML=cur.fields.map(f=>
+    `<div class="field" style="flex:${f.w||0}">
+       <label>${f.n}</label><input id="f_${f.n}" placeholder="${f.ph}"></div>`).join("")
+    + `<button onclick="go()">Run ▸</button>`;
+  $("badge").textContent=""; $("stat").textContent=""; $("out").textContent="ready.";
+}
+function fields(){const o={};cur.fields.forEach(f=>o[f.n]=($("f_"+f.n)||{}).value||"");return o;}
+async function go(){
+  const spec=cur.run(fields());
+  $("out").textContent="running…"; $("badge").textContent=""; $("stat").textContent=spec.get||("wt "+(spec.argv||[]).join(" "));
+  let j;
+  try{
+    if(spec.get){ j=await (await fetch(spec.get)).json(); }
+    else{ j=await (await fetch("/api/run",{method:"POST",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({argv:spec.argv,timeout:spec.timeout||900})})).json(); }
+  }catch(e){ $("out").textContent="request failed: "+e; return; }
+  const ok=j.exit===0;
+  $("badge").className="badge "+(ok?"ok":"err"); $("badge").textContent="exit "+j.exit;
+  const body=(j.stdout||"")+(j.stderr?("\n\n── stderr ──\n"+j.stderr):"");
+  $("out").textContent=body||"(no output)";
+}
+async function health(){
+  try{ const j=await (await fetch("/api/health")).json();
+    if(j.ok){ $("dot").className="dot up"; $("hstat").textContent="server up"; return; } }catch(e){}
+  $("dot").className="dot"; $("hstat").textContent="offline";
+}
+paintNav(); select("decompile"); health(); setInterval(health,5000);
+</script>
+</body>
+</html>
