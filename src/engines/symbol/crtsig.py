@@ -141,6 +141,157 @@ def build(lib_path):
     return db
 
 
+# --- 16-bit OMF library reader (MSC 6.0a / MSVC 1.5x .LIB) -------------------
+# The 32-bit path above reads COFF (._ar_members/_coff_funcs). The 16-bit CRT ships
+# as Intel OMF -- a different container entirely -- so NE/DOS lanes need this reader
+# to get a real CRT byte-prefix DB (previously they had sigscan shapes only). We
+# extract each PUBDEF function's code from its segment's assembled LEDATA and key it
+# by a 16-bit-masked prefix (near/far call+jmp displacements zeroed), matching how
+# the query side masks a linked 16-bit function.
+
+def _omf_index(b, i):
+    """OMF index field: 1 byte if < 0x80, else 2 bytes (big-endian, 15-bit)."""
+    v = b[i]
+    if v & 0x80:
+        return ((v & 0x7f) << 8) | b[i + 1], i + 2
+    return v, i + 1
+
+
+def mask_prefix16(code, sig_len=SIG_LEN):
+    """16-bit reloc-masked prefix: zero the displacement bytes of near (E8/E9, rel16)
+    and far (9A/EA, seg:off) call/jmp -- the bytes that differ between an unlinked
+    .obj and a linked module. Deterministic opcode walk, so the DB and the query
+    mask identical positions on identical code. Returns None if too short / too
+    masked (needs >= MIN_SIG real bytes)."""
+    pref = bytearray(code[:sig_len])
+    n = len(pref)
+    if n < MIN_SIG:
+        return None
+    masked = 0
+    i = 0
+    while i < n:
+        op = pref[i]
+        if op in (0xE8, 0xE9):                       # near call/jmp rel16
+            for k in range(1, 3):
+                if i + k < n:
+                    pref[i + k] = 0; masked += 1
+            i += 3
+        elif op in (0x9A, 0xEA):                     # far call/jmp seg:off
+            for k in range(1, 5):
+                if i + k < n:
+                    pref[i + k] = 0; masked += 1
+            i += 5
+        else:
+            i += 1
+    if n - masked < MIN_SIG:
+        return None
+    return bytes(pref)
+
+
+def _omf_modules(data):
+    """Yield each object module blob from an OMF .LIB (or the whole buffer if it is a
+    bare .OBJ). Modules are page-aligned; the library ends at an 0xF1 record."""
+    if not data or data[0] != 0xF0:
+        yield data
+        return
+    page = struct.unpack_from("<H", data, 1)[0] + 3
+    n = len(data)
+    p = page
+    while p < n:
+        if data[p] == 0xF1:                          # library end
+            break
+        start = p
+        while p + 3 <= n:
+            t = data[p]
+            ln = struct.unpack_from("<H", data, p + 1)[0]
+            p += 3 + ln
+            if t in (0x8A, 0x8B):                    # MODEND
+                break
+        yield data[start:p]
+        if page and (p % page):                      # next module is page-aligned
+            p += page - (p % page)
+
+
+def _omf_records(mod):
+    p, n = 0, len(mod)
+    while p + 3 <= n:
+        t = mod[p]
+        ln = struct.unpack_from("<H", mod, p + 1)[0]
+        yield t, mod[p + 3:p + 3 + ln - 1]           # body without the checksum byte
+        p += 3 + ln
+
+
+def _build_omf_module(mod, db):
+    lnames = [""]                                     # 1-indexed
+    segs = []                                         # [dict(class_idx,length,buf)]
+    pubs = []                                         # [(seg_index, name, offset)]
+    for t, b in _omf_records(mod):
+        if t == 0x96:                                # LNAMES
+            i = 0
+            while i < len(b):
+                l = b[i]; i += 1
+                lnames.append(b[i:i + l].decode("latin1", "replace")); i += l
+        elif t == 0x98:                              # SEGDEF (16-bit)
+            i = 0; acbp = b[i]; i += 1
+            if (acbp >> 5) & 7 == 0:                  # absolute segment: frame+offset
+                i += 3
+            length = struct.unpack_from("<H", b, i)[0]; i += 2
+            _segname, i = _omf_index(b, i)
+            class_idx, i = _omf_index(b, i)
+            if (acbp >> 1) & 1:                       # 'big' -> 64K
+                length = 0x10000
+            segs.append(dict(class_idx=class_idx, length=length,
+                             buf=bytearray(min(length, 0x10000))))
+        elif t == 0xA0:                              # LEDATA (16-bit)
+            i = 0; seg, i = _omf_index(b, i)
+            off = struct.unpack_from("<H", b, i)[0]; i += 2
+            chunk = b[i:]
+            if 1 <= seg <= len(segs):
+                buf = segs[seg - 1]["buf"]
+                if off + len(chunk) > len(buf):
+                    buf.extend(b"\x00" * (off + len(chunk) - len(buf)))
+                buf[off:off + len(chunk)] = chunk
+        elif t == 0x90:                              # PUBDEF (16-bit)
+            i = 0
+            _grp, i = _omf_index(b, i)
+            seg, i = _omf_index(b, i)
+            if seg == 0:                             # base frame present when seg==0
+                i += 2
+            while i < len(b):
+                l = b[i]; i += 1
+                name = b[i:i + l].decode("latin1", "replace"); i += l
+                off = struct.unpack_from("<H", b, i)[0]; i += 2
+                _typ, i = _omf_index(b, i)
+                pubs.append((seg, name, off))
+    # emit a signature for each public function in a CODE-class segment
+    for seg_idx in sorted(set(s for s, _, _ in pubs)):
+        if not (1 <= seg_idx <= len(segs)):
+            continue
+        ci = segs[seg_idx - 1]["class_idx"]
+        cls = lnames[ci] if 0 <= ci < len(lnames) else ""
+        if "CODE" not in cls.upper():
+            continue
+        buf = segs[seg_idx - 1]["buf"]
+        items = sorted((o, nm) for s, nm, o in pubs if s == seg_idx)
+        for j, (off, name) in enumerate(items):
+            end = items[j + 1][0] if j + 1 < len(items) else len(buf)
+            sig = mask_prefix16(bytes(buf[off:end]))
+            if sig and sig not in db:
+                db[sig] = name
+
+
+def build_omf(lib_path):
+    """Return {16-bit-masked signature: name} for an OMF .LIB's public functions."""
+    data = open(lib_path, "rb").read()
+    db = {}
+    for mod in _omf_modules(data):
+        try:
+            _build_omf_module(mod, db)
+        except Exception:
+            continue
+    return db
+
+
 def _pe_masked_prefix(data, relocs_rva, fn_rva, fn_off, size):
     """Reloc-masked prefix of a carved PE function: mask base-reloc sites (absolute addrs) AND
     call/jmp rel32 displacement sites (E8/E9 -> next 4 bytes), matching how the lib masks COFF

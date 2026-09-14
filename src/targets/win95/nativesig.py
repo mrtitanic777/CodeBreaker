@@ -13,11 +13,10 @@ engine's `--sigdump` emits, per discovered function,
 
 and this module applies BOTH matchers to that:
 
-  * crtsig byte-prefix (crtsig.build_from_pe DB from the shipped Win95 CRT DLLs) --
-    precise, names the exact CRT function. 32-bit code only (PE + LE): the DB is
-    32-bit, so it does not match 16-bit NE/MZ code (which would need a 16-bit CRT
-    reference; the period MSC lib is OMF, which crtsig's COFF reader can't parse --
-    a known follow-up).
+  * crtsig byte-prefix -- precise, names the exact CRT function. Two DBs, chosen by
+    the module's bitness: PE/LE match the 32-bit DB built from the shipped Win95 CRT
+    DLLs (crtsig.build_from_pe); NE/MZ match the 16-bit DB built from the period MSC
+    6.0a / MSVC 1.5x OMF model libraries (crtsig.build_omf), with 16-bit call masking.
   * sigscan structural predicates (crt shapes: byteswap / memcpy / memset / stack
     cookie) -- generic x86, so they fire on every lane.
 
@@ -33,6 +32,21 @@ from src.targets.win95 import nativedec
 _HEX = re.compile(r"0x[0-9a-fA-F]+")
 _db32 = None
 _db32_built = False
+_db16 = None
+_db16_built = False
+
+# 16-bit CRT model libraries (OMF). Win95's 16-bit modules were built across memory
+# models and MSC/MSVC versions, so the DB merges several; a masked prefix is
+# model-independent for the shared leaf helpers we care about.
+_LIB16 = [
+    ("compilers", "msc-6.0a", "LIB", "SLIBCR.LIB"),
+    ("compilers", "msc-6.0a", "LIB", "MLIBCR.LIB"),
+    ("compilers", "msc-6.0a", "LIB", "CLIBCR.LIB"),
+    ("compilers", "msc-6.0a", "LIB", "LLIBCR.LIB"),
+    ("compilers", "msvc-1.52c", "LIB", "SLIBCE.LIB"),
+    ("compilers", "msvc-1.52c", "LIB", "MLIBCE.LIB"),
+    ("compilers", "msvc-1.52c", "LIB", "LLIBCE.LIB"),
+]
 
 
 def _corpus_root():
@@ -78,6 +92,32 @@ def crt_db32():
     except Exception:
         _db32 = {}
     return _db32
+
+
+def crt_db16():
+    """Build (once) the 16-bit CRT signature DB from the period OMF model libraries.
+    Empty dict if none are present."""
+    global _db16, _db16_built
+    if _db16_built:
+        return _db16
+    _db16_built = True
+    _db16 = {}
+    try:
+        from src.engines.symbol import crtsig
+        from src.core import paths
+        root = paths.repo_root()
+        for parts in _LIB16:
+            p = os.path.join(root, "toolchains", "period", *parts)
+            if not os.path.exists(p):
+                continue
+            try:
+                for sig, nm in crtsig.build_omf(p).items():
+                    _db16.setdefault(sig, nm)
+            except Exception:
+                continue
+    except Exception:
+        _db16 = {}
+    return _db16
 
 
 class _Fn:
@@ -138,15 +178,25 @@ def _sigdump(path, timeout):
 
 def identify_module(path, timeout=300):
     """Identify CRT/compiler functions in a module. Returns {addr:int -> (name, src)}
-    where src is 'crtsig' (byte-prefix, precise) or 'sigscan' (structural shape)."""
+    where src is 'crtsig' (byte-prefix, precise) or 'sigscan' (structural shape).
+
+    The byte-prefix matcher is chosen by the module's bitness: PE/LE use the 32-bit
+    CRT DLL DB with 32-bit call masking; NE/MZ use the 16-bit OMF-lib DB with 16-bit
+    call masking. sigscan structural shapes run on every lane."""
     from src.engines.symbol import crtsig
-    db = crt_db32()
+    fmt = nativedec.detect_format(path)
+    if fmt in ("NE", "MZ"):
+        db, bits = crt_db16(), 16
+    else:
+        db, bits = crt_db32(), 32
     out = {}
     for addr, size, raw, insns in _sigdump(path, timeout):
-        # crtsig byte-prefix (32-bit CRT DB; only matches 32-bit code)
         if db and len(raw) >= crtsig.MIN_SIG:
-            sig = crtsig._pe_masked_prefix(raw, set(), 0, 0, crtsig.SIG_LEN)
-            nm = db.get(sig)
+            if bits == 16:
+                sig = crtsig.mask_prefix16(raw)
+            else:
+                sig = crtsig._pe_masked_prefix(raw, set(), 0, 0, crtsig.SIG_LEN)
+            nm = db.get(sig) if sig else None
             if nm:
                 out[addr] = (nm, "crtsig")
                 continue
