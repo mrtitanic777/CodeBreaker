@@ -1,0 +1,227 @@
+#!/usr/bin/env python3
+"""owbuild.py -- the OpenWatcom build lane: compile a Win95 module's reconstructed
+source into its binary with the FROM-SOURCE OpenWatcom toolchain (no Microsoft
+tools). This is the forward half of the reconstruction premise -- the recovered C
+must actually build -- and the compiler CodeBreaker will use for Win95 going forward.
+
+    wt --target win95 owbuild <module> [--diff] [--keep]
+
+The module directory (under the Win95 source tree, e.g. base/<module>) carries an
+`owbuild.json` manifest describing its build:
+
+    class   "ne" (16-bit, wcc)  |  "pe" (32-bit, wcc386)
+    target  wcc -bt= value      ("windows" for Win16, "nt" for Win32)
+    model   Watcom memory-model letter for -m<x> (ne only: s/m/c/l/h)
+    system  wlink `system` directive (windows_dll | nt_dll)
+    output  the DLL/EXE filename
+    def     Microsoft .def whose EXPORTS are turned into wlink directives via wdef
+    modules list of .c basenames to compile
+    asm     (optional) list of .asm basenames assembled with wasm (e.g. thunks)
+    link_extra (optional) list of raw wlink directive lines appended verbatim
+              (e.g. flat-thunk IMPORT lines for a PE veneer)
+
+Compile -> resolve exports (wdef) -> link (wlink). Reports pass/fail, the output
+binary + size, and with --diff a byte comparison against the retail binary.
+"""
+import argparse
+import json
+import os
+import shutil
+import subprocess
+import sys
+
+from src.core import paths
+
+_OW = os.path.join(paths.repo_root(), "experiments", "premise-proof", "open-watcom-v2", "rel")
+_PP = os.path.join(paths.repo_root(), "experiments", "premise-proof")
+_WDEF = os.path.join(_PP, "wdef", "wdef.exe")
+
+
+def _win95_root():
+    """The one Win95 source tree (sibling of CodeBreaker under the data root)."""
+    r = os.path.join(paths.data_root(), "Windows95")
+    return r if os.path.isdir(r) else paths.data_root()
+
+
+def _find_module_dir(module):
+    """Locate <module>'s source dir under the Win95 tree (base/ first, then a walk)."""
+    root = _win95_root()
+    cand = os.path.join(root, "base", module)
+    if os.path.isfile(os.path.join(cand, "owbuild.json")):
+        return cand
+    for dp, dns, fs in os.walk(root):
+        if os.path.basename(dp).lower() == module.lower() and "owbuild.json" in fs:
+            return dp
+    return cand if os.path.isdir(cand) else None
+
+
+def _ow_env(cls):
+    """Environment for the from-source OpenWatcom release tree. Win16 build uses the
+    h\\win headers; Win32 uses h\\nt."""
+    env = dict(os.environ)
+    env["NoDefaultCurrentDirectoryInExePath"] = ""     # OW runs its own tools from cwd
+    env["WATCOM"] = _OW
+    env["PATH"] = os.path.join(_OW, "binnt64") + os.pathsep + env.get("PATH", "")
+    h = os.path.join(_OW, "h")
+    if cls == "ne":
+        env["INCLUDE"] = os.pathsep.join([h, os.path.join(h, "win")])
+    else:
+        env["INCLUDE"] = os.pathsep.join([h, os.path.join(h, "nt")])
+    return env
+
+
+def _tool(name):
+    """Absolute path to an OW tool. Windows CreateProcess searches the CALLER's PATH,
+    not the env we pass, so tools must be named by full path."""
+    return os.path.join(_OW, "binnt64", name + ".exe")
+
+
+def _run(cmd, cwd, env, log):
+    if cmd and not os.path.isabs(cmd[0]) and not cmd[0].lower().endswith(".exe"):
+        cmd = [_tool(cmd[0])] + cmd[1:]
+    r = subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, text=True)
+    log.append("$ " + " ".join(cmd))
+    if r.stdout:
+        log.append(r.stdout.rstrip())
+    if r.stderr:
+        log.append(r.stderr.rstrip())
+    return r.returncode
+
+
+def _ensure_wdef():
+    if os.path.exists(_WDEF):
+        return True
+    bat = os.path.join(_PP, "build_wdef.bat")
+    if os.path.exists(bat):
+        subprocess.run([bat], cwd=_PP, capture_output=True, text=True, shell=True)
+    return os.path.exists(_WDEF)
+
+
+def build(module, do_diff=False, keep=False):
+    src = _find_module_dir(module)
+    if not src:
+        return {"ok": False, "error": "no source dir for module %r under %s" % (module, _win95_root())}
+    manifest = os.path.join(src, "owbuild.json")
+    if not os.path.isfile(manifest):
+        return {"ok": False, "error": "no owbuild.json in %s" % src}
+    m = json.load(open(manifest, encoding="utf-8"))
+    if not os.path.isdir(os.path.join(_OW, "binnt64")):
+        return {"ok": False, "error": "OpenWatcom not built at %s" % _OW}
+
+    cls = m.get("class", "ne")
+    bld = os.path.join(src, "_build")
+    os.makedirs(bld, exist_ok=True)
+    for f in os.listdir(src):
+        if f.lower().endswith((".c", ".h", ".asm", ".def")):
+            shutil.copy2(os.path.join(src, f), bld)
+    env = _ow_env(cls)
+    log = []
+
+    # --- compile C ---
+    cc = "wcc" if cls == "ne" else "wcc386"
+    bt = m.get("target", "windows" if cls == "ne" else "nt")
+    cflags = ["-bt=" + bt, "-zW", "-q"] if cls == "ne" else ["-bt=" + bt, "-q"]
+    if cls == "ne" and m.get("model"):
+        cflags.insert(1, "-m" + m["model"])
+    fails = []
+    for mod in m.get("modules", []):
+        if _run([cc] + cflags + [mod + ".c"], bld, env, log) != 0:
+            fails.append(mod)
+    # --- assemble asm (thunks etc.) ---
+    for a in m.get("asm", []):
+        if _run(["wasm", "-q", "-zcm=masm", "-zzo", a + ".asm"], bld, env, log) != 0:
+            fails.append(a)
+    if fails:
+        return {"ok": False, "error": "compile failed: " + ", ".join(fails), "log": log, "dir": bld}
+
+    # --- exports: MS .def -> wlink directives via wdef ---
+    exports_lnk = None
+    if m.get("def"):
+        if not _ensure_wdef():
+            return {"ok": False, "error": "wdef.exe unavailable (build_wdef.bat failed)", "log": log}
+        exports_lnk = "exports.lnk"
+        r = subprocess.run([_WDEF, os.path.join(src, m["def"])], cwd=bld, capture_output=True, text=True)
+        with open(os.path.join(bld, exports_lnk), "w", newline="\n") as f:
+            f.write(r.stdout)
+        log.append("$ wdef %s  (%d export lines)" % (m["def"], r.stdout.count("\n")))
+
+    # --- link ---
+    out = m.get("output", module + (".dll"))
+    lnk = os.path.join(bld, "link.lnk")
+    objs = m.get("modules", []) + m.get("asm", [])
+    with open(lnk, "w", newline="\n") as f:
+        f.write("system %s\n" % m.get("system", "windows_dll" if cls == "ne" else "nt_dll"))
+        f.write("name %s\n" % out)
+        f.write("option quiet\n")
+        f.write("option map=%s.map\n" % os.path.splitext(out)[0])
+        f.write("file " + ",".join(objs) + "\n")
+        for line in m.get("link_extra", []):
+            f.write(line + "\n")
+        if exports_lnk:
+            f.write("@" + exports_lnk + "\n")
+    _run(["wlink", "@link.lnk"], bld, env, log)
+
+    outpath = os.path.join(bld, out)
+    if not os.path.isfile(outpath):
+        return {"ok": False, "error": "link produced no %s" % out, "log": log, "dir": bld}
+    res = {"ok": True, "output": outpath, "size": os.path.getsize(outpath), "log": log, "dir": bld}
+
+    if do_diff:
+        res["diff"] = _bindiff(out, outpath)
+    if not keep:
+        pass  # leave _build for inspection; nothing to clean that's outside it
+    return res
+
+
+def _bindiff(name, built):
+    """Byte comparison against the retail binary of the same name in the corpus."""
+    roots = [os.path.join(_win95_root(), "design", "corpus", "files"),
+             os.environ.get("WT_DATA_ROOT", "")]
+    retail = None
+    for corpus in roots:
+        if not corpus or not os.path.isdir(corpus):
+            continue
+        for dp, _, fs in os.walk(corpus):
+            for f in fs:
+                if f.lower() == name.lower():
+                    retail = os.path.join(dp, f); break
+            if retail:
+                break
+        if retail:
+            break
+    if not retail:
+        return {"retail": None, "note": "no retail %s in corpus" % name}
+    a = open(built, "rb").read(); b = open(retail, "rb").read()
+    same = sum(1 for i in range(min(len(a), len(b))) if a[i] == b[i])
+    return {"retail": retail, "built_size": len(a), "retail_size": len(b),
+            "bytes_equal": same, "pct": round(100.0 * same / max(len(b), 1), 2)}
+
+
+def main(argv):
+    ap = argparse.ArgumentParser(prog="owbuild", description=__doc__.splitlines()[0])
+    ap.add_argument("module")
+    ap.add_argument("--diff", action="store_true", help="byte-compare against retail")
+    ap.add_argument("--keep", action="store_true", help="(reserved) keep intermediates")
+    a = ap.parse_args(argv)
+    r = build(a.module, do_diff=a.diff, keep=a.keep)
+    if r.get("log"):
+        print("\n".join(r["log"]))
+    if not r["ok"]:
+        print("\nBUILD FAILED: %s" % r.get("error"))
+        if r.get("dir"):
+            print("  intermediates: %s" % r["dir"])
+        sys.exit(1)
+    print("\nBUILD OK: %s  (%d bytes)" % (r["output"], r["size"]))
+    if "diff" in r:
+        d = r["diff"]
+        if d.get("retail"):
+            print("  vs retail %s: built %d / retail %d bytes, %d equal (%.2f%%)"
+                  % (os.path.basename(d["retail"]), d["built_size"], d["retail_size"],
+                     d["bytes_equal"], d["pct"]))
+            print("  (byte-diff is a weak signal; the standard is builds + behaves-as-original)")
+        else:
+            print("  diff: %s" % d.get("note"))
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
