@@ -205,9 +205,8 @@ def run(limit=None, out=None, root=None, lanes=None):
 
     per_module = []
     lane_funcs = {}            # lane -> total function count
-    body_modules = {}          # struct-hash -> set(modules)
-    body_meta = {}             # struct-hash -> [func_count, a representative name, max size]
-    all_funcs = []             # (module, name, size, sh, is_exp)
+    bodies = {}                # struct-hash -> per-unique-body record
+    total = 0
     for fn, p, lane in bins:
         _lane, fs = triage_module(p)
         if not fs:
@@ -219,38 +218,51 @@ def run(limit=None, out=None, root=None, lanes=None):
             except Exception:
                 exps = set()
         for f in fs:
-            all_funcs.append((fn, f["name"], f["size"], f["sh"], f["name"] in exps))
-            if f["sh"]:
-                body_modules.setdefault(f["sh"], set()).add(fn)
-                m = body_meta.setdefault(f["sh"], [0, "", 0])
-                m[0] += 1
-                if f["name"] and not m[1]:
-                    m[1] = f["name"]
-                m[2] = max(m[2], f["size"])
+            total += 1
+            sh = f["sh"]
+            if not sh:
+                continue
+            b = bodies.get(sh)
+            if b is None:
+                b = bodies[sh] = {"modules": set(), "instances": 0, "name": "", "module": fn,
+                                  "lane": lane, "size": 0, "documented": False}
+            b["modules"].add(fn)
+            b["instances"] += 1
+            b["size"] = max(b["size"], f["size"])
+            if f["name"] and not b["name"]:
+                b["name"] = f["name"]
+            if f["name"] in exps and f["name"] in protos:
+                b["documented"] = True
         per_module.append((fn, len(fs)))
         lane_funcs[lane] = lane_funcs.get(lane, 0) + len(fs)
 
-    # classify
-    buckets = {"shared-runtime": 0, "crt": 0, "thunk": 0, "documented-api": 0, "genuine": 0}
-    genuine_bodies = set()
-    for mod, name, size, sh, is_exp in all_funcs:
-        cn = _canon(name) if name else ""
-        nmods = len(body_modules.get(sh, ())) if sh else 1
-        if sh and nmods >= _DUP_MODULES:
-            buckets["shared-runtime"] += 1
-        elif cn in _CRT:
-            buckets["crt"] += 1
-        elif name and any(t.lower() in name.lower() for t in _THUNK):
-            buckets["thunk"] += 1
-        elif is_exp and name in protos:
-            buckets["documented-api"] += 1
-            genuine_bodies.add(sh or (mod + name))       # documented is still a genuine body to build
-        else:
-            buckets["genuine"] += 1
-            genuine_bodies.add(sh or (mod + name))
+    # per-unique-body origin + initial pipeline state
+    def _origin(b):
+        if len(b["modules"]) >= _DUP_MODULES:
+            return "shared-runtime"
+        if _canon(b["name"]) in _CRT:
+            return "crt"
+        if b["name"] and any(t.lower() in b["name"].lower() for t in _THUNK):
+            return "thunk"
+        if b["documented"]:
+            return "documented-api"
+        return "genuine"
 
-    total = len(all_funcs)
-    unique_bodies = len({sh for _m, _n, _s, sh, _e in all_funcs if sh})
+    _STATE0 = {"shared-runtime": "shared", "crt": "crt", "thunk": "thunk",
+               "documented-api": "documented", "genuine": "decompiled"}
+    buckets = {k: 0 for k in ("shared-runtime", "crt", "thunk", "documented-api", "genuine")}
+    genuine_bodies = 0
+    for sh, b in bodies.items():
+        o = _origin(b)
+        b["origin"] = o
+        b["state"] = _STATE0[o]
+        buckets[o] += 1
+        if o in ("genuine", "documented-api"):
+            genuine_bodies += 1
+
+    unique_bodies = len(bodies)
+    body_modules = {sh: b["modules"] for sh, b in bodies.items()}
+    body_meta = {sh: [b["instances"], b["name"], b["size"]] for sh, b in bodies.items()}
     if not out:
         # root is .../design/corpus/files -> write the ledger up in .../design
         design = os.path.dirname(os.path.dirname(root))
@@ -271,9 +283,24 @@ def run(limit=None, out=None, root=None, lanes=None):
         w.writerow(["struct_hash", "in_modules", "instances", "example_name", "max_size"])
         for sh, nmods, insts, nm, sz in shared:
             w.writerow([sh[:16], nmods, insts, nm, sz])
+
+    # THE MASTER TRACKER (step 2.0): one row per unique body -- identity + origin + pipeline state.
+    # State machine: decompiled -> raised -> typed -> verified (genuine); shared/crt/thunk/documented
+    # carry their identify-once state. Re-running triage refreshes it; body-recovery passes update
+    # `state`/`verified`/`language` per body_id. This is the auditable denominator for "% to boot".
+    ledger = os.path.join(os.path.dirname(out), "body_ledger.csv")
+    with open(ledger, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["body_id", "lane", "origin", "state", "verified", "language",
+                    "instances", "in_modules", "size", "example_name", "example_module"])
+        for sh, b in sorted(bodies.items(), key=lambda kv: (-kv[1]["instances"], kv[0])):
+            w.writerow([sh[:16], b["lane"], b["origin"], b["state"], 0, "",
+                        b["instances"], len(b["modules"]), b["size"], b["name"], b["module"]])
+
     return {"modules": len(per_module), "total_functions": total, "unique_bodies": unique_bodies,
-            "buckets": buckets, "genuine_unique_targets": len(genuine_bodies), "out": out,
-            "catalog": catalog, "n_shared_bodies": len(shared), "lane_funcs": lane_funcs}
+            "buckets": buckets, "genuine_unique_targets": genuine_bodies, "out": out,
+            "catalog": catalog, "n_shared_bodies": len(shared), "lane_funcs": lane_funcs,
+            "ledger": ledger}
 
 
 def main(argv):
@@ -301,7 +328,8 @@ def main(argv):
           r["genuine_unique_targets"])
     print("  shared-body catalog     %d bodies (identify once) -> %s" %
           (r.get("n_shared_bodies", 0), r.get("catalog", "")))
-    print("  ledger -> %s" % r["out"])
+    print("  MASTER BODY LEDGER      %d rows -> %s" % (r["unique_bodies"], r.get("ledger", "")))
+    print("  triage ledger -> %s" % r["out"])
 
 
 if __name__ == "__main__":
