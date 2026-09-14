@@ -1,4 +1,5 @@
 // End-to-end proof: NE load -> x86 lift -> shared DecompileToC -> readable C.
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
@@ -190,10 +191,12 @@ int main(int argc, char** argv) {
     return 0;
   }
 
-  // Whole-module mode: discover function starts and decompile every one.
+  // Whole-module mode: discover function starts and decompile every one, with a
+  // two-pass interprocedural value/type cascade.
   if (std::string(argv[2]) == "--module") {
     auto starts = discover();
-    int nfuncs = 0;
+    struct FE { uint32_t fstart, fend; std::string name; };
+    std::vector<FE> fns;
     for (auto& s : img.segments) {
       if (s.is_data) continue;
       std::vector<uint32_t> fs(starts[s.idx].begin(), starts[s.idx].end());
@@ -202,16 +205,50 @@ int main(int argc, char** argv) {
         uint32_t fend = (i + 1 < fs.size()) ? fs[i + 1] : s.base_addr + s.length;
         if (fstart >= s.base_addr + s.length) continue;
         char nm[32]; std::snprintf(nm, sizeof nm, "sub_%06X", fstart);
-        auto nn = names.find(fstart); std::string fn2 = nn != names.end() ? nn->second : nm;
-        ILFunction f = lifter.LiftFunction(img.image.data(), img.image.size(), fstart, fend, fn2);
-        auto sg = sigMap.find(fstart);
-        SetSignature(sg != sigMap.end() ? &sg->second : nullptr);
-        std::printf("%s\n", DecompileToC(f, {}).c_str());
-        SetSignature(nullptr);
-        nfuncs++;
+        auto nn = names.find(fstart);
+        fns.push_back({fstart, fend, nn != names.end() ? nn->second : nm});
       }
     }
-    std::fprintf(stderr, "decompiled %d functions across %zu code segments\n", nfuncs, starts.size());
+    auto is_var = [](const std::string& v) {
+      if (v.size() < 2 || (v[0] != 'a' && v[0] != 'v')) return false;
+      for (size_t k = 1; k < v.size(); ++k) if (!std::isdigit((unsigned char)v[k])) return false;
+      return true;
+    };
+    std::map<std::string,std::string> kEmpty;
+    // Pass 1: decompile once per function to harvest argument flows; propagate a
+    // callee's known parameter types (from demangled/asserted sigs) onto the
+    // caller variables passed there. Only where the callee's param type is known
+    // and the arg is a plain local/param (aN/vN); struct-offset flows skipped.
+    std::map<uint32_t, std::map<std::string,std::string>> overrides;   // caller fstart -> var -> type
+    for (auto& fe : fns) {
+      ILFunction f = lifter.LiftFunction(img.image.data(), img.image.size(), fe.fstart, fe.fend, fe.name);
+      auto sg = sigMap.find(fe.fstart);
+      SetSignature(sg != sigMap.end() ? &sg->second : nullptr);
+      SetTypeOverrides(kEmpty);
+      DecompileToC(f, {});                     // discard; populates GetArgFlows()
+      SetSignature(nullptr);
+      for (auto& fl : GetArgFlows()) {
+        if (fl.offset != 0 || !fl.callee_target) continue;
+        auto cs = sigMap.find(fl.callee_target);
+        if (cs == sigMap.end()) continue;
+        auto ai = cs->second.args.find(fl.position + 1);     // arg key is 1-based (a1=r3)
+        if (ai == cs->second.args.end() || ai->second.first.empty()) continue;
+        if (!is_var(fl.arg)) continue;
+        overrides[fe.fstart][fl.arg] = ai->second.first;
+      }
+    }
+    // Pass 2: emit with the propagated type overrides applied.
+    for (auto& fe : fns) {
+      ILFunction f = lifter.LiftFunction(img.image.data(), img.image.size(), fe.fstart, fe.fend, fe.name);
+      auto sg = sigMap.find(fe.fstart);
+      SetSignature(sg != sigMap.end() ? &sg->second : nullptr);
+      auto ov = overrides.find(fe.fstart);
+      SetTypeOverrides(ov != overrides.end() ? ov->second : kEmpty);
+      std::printf("%s\n", DecompileToC(f, {}).c_str());
+      SetSignature(nullptr); SetTypeOverrides(kEmpty);
+    }
+    std::fprintf(stderr, "decompiled %zu functions across %zu code segments (interproc cascade)\n",
+                 fns.size(), starts.size());
     return 0;
   }
 
