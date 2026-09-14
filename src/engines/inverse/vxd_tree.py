@@ -14,9 +14,44 @@ so files are named by segment/role rather than fabricated Microsoft filenames.
     vxd_tree.emit_tree(le.LEFile.from_file("vkd.vxd"), "VKD", "recovered/vxd_src")
 """
 import os
+import re
+import subprocess
+import tempfile
 
 from src.engines.inverse.vxd_asm import VxDDisasm
 from src.engines.inverse import vxd_masm
+
+_ERRLINE = re.compile(r":(\d+):\s*(?:error|fatal)", re.I)
+
+
+def _converge_buildable(D, oi, lo, hi, extra_labels, head, tail, nasm, maxit=20):
+    """Emit body, assemble with `nasm --masm -f bin`, byte-preserve (force_raw) every
+    instruction the assembler rejects, and repeat until it assembles clean. db == the
+    exact bytes, so this only trades an un-assemblable disassembly (data walked as code,
+    a mnemonic neither assembler spells) for its raw bytes -- byte-exact preserved and
+    now buildable. Returns the converged body lines."""
+    force = set()
+    body = None
+    for _ in range(maxit):
+        body, linemap = vxd_masm.object_body(D, oi, force_raw=force, extra_labels=extra_labels,
+                                             base_line=len(head), crange=(lo, hi))
+        with tempfile.NamedTemporaryFile("w", suffix=".asm", delete=False, newline="") as tf:
+            tf.write("\r\n".join(head + body + tail))
+            path = tf.name
+        try:
+            r = subprocess.run([nasm, "--masm", "-f", "bin", path, "-o", os.devnull],
+                               capture_output=True, text=True)
+        finally:
+            try: os.unlink(path)
+            except OSError: pass
+        if r.returncode == 0:
+            return body
+        lines = {int(m.group(1)) for m in _ERRLINE.finditer(r.stderr)}
+        new = {linemap[L] for L in lines if L in linemap} - force
+        if not new:
+            return body            # nothing further we can pin -- leave as is
+        force |= new
+    return body
 
 # LE object flags -> DDK segment class / name (inferred; the class strings are the DDK's own).
 def seg_class(flags):
@@ -31,8 +66,10 @@ def seg_class(flags):
     return ("PCODE", "_PTEXT")                              # pageable
 
 
-def emit_tree(v, name, outdir, max_ins=6000):
-    """Write the multi-file source tree for one VxD; returns the list of files written."""
+def emit_tree(v, name, outdir, max_ins=6000, probe_nasm=None):
+    """Write the multi-file source tree for one VxD; returns the list of files written.
+    With probe_nasm (path to a `nasm --masm` binary), each file is converged to assemble
+    clean by byte-preserving (db) the instructions the assembler rejects."""
     D = VxDDisasm(v).run()
     D.v = v
     d = os.path.join(outdir, name.lower())
@@ -57,11 +94,14 @@ def emit_tree(v, name, outdir, max_ins=6000):
             suffix = "" if len(ranges) == 1 else "_%02d" % (i + 1)
             fn = "%s_%s_%02d%s.asm" % (name.lower(), cls.lower(), oi, suffix)
             extra = {db["rva"]: "VXD_DDB"} if (db and db["obj"] == oi and lo <= db["rva"] < hi) else {}
-            body, _ = vxd_masm.object_body(D, oi, extra_labels=extra, crange=(lo, hi))
             head = ["; %s -- %s object %d segment %s%s" % (
                 fn, name, oi, seg, "  (part %d/%d)" % (i + 1, len(ranges)) if len(ranges) > 1 else ""),
                 ".386p", "%s segment dword public use32 '%s'" % (seg, cls), ""]
             tail = ["%s ends" % seg, "        end", ""]
+            if probe_nasm:
+                body = _converge_buildable(D, oi, lo, hi, extra, head, tail, probe_nasm)
+            else:
+                body, _ = vxd_masm.object_body(D, oi, extra_labels=extra, crange=(lo, hi))
             open(os.path.join(d, fn), "w").write("\r\n".join(head + body + tail))
             written.append(fn)
             index.append(";   %-28s object %d %s [0x%x-0x%x)" % (fn, oi, seg, lo, hi))
