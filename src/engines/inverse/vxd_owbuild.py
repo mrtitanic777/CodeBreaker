@@ -73,6 +73,80 @@ def build_vxd(vxd_path, name, outroot):
     return {"ok": False, "error": "link produced no .vxd (missing DDB export?)"}
 
 
+def _w3_components(data):
+    """Parse a W3 bundle header -> (lfa, [(name, offset, size)])."""
+    import struct
+    lfa = struct.unpack_from("<I", data, 0x3C)[0]
+    if data[lfa:lfa + 2] != b"W3":
+        return None, []
+    count = struct.unpack_from("<I", data, lfa + 4)[0]
+    recs = []
+    for i in range(count):
+        e = lfa + 16 + i * 16
+        name = data[e:e + 8].split(b"\0")[0].decode("latin1").strip()
+        off, size = struct.unpack_from("<II", data, e + 8)
+        recs.append((name, off, size))
+    return lfa, recs
+
+
+def build_w3(w3_path, outroot):
+    """Build a W3 VxD bundle (e.g. vmm32.vxd) with OpenWatcom: extract each bundled
+    LE module, rebuild it from recovered source (build_vxd), and repack -- the DOS/
+    real-mode front is byte-preserved (it is a real-mode loader, not LE-VxD source),
+    the W3 header + records regenerated, each rebuilt LE placed page-aligned."""
+    import struct, tempfile
+    data = open(w3_path, "rb").read()
+    lfa, recs = _w3_components(data)
+    if lfa is None:
+        return {"ok": False, "error": "not a W3 bundle"}
+    front = bytearray(data[:lfa])                      # MZ + real-mode loader, preserved
+    built = []
+    for name, off, size in recs:
+        # the LE module runs from its offset to the next module (or EOF)
+        end = min([o for _n, o, _s in recs if o > off] + [len(data)])
+        with tempfile.NamedTemporaryFile("wb", suffix=".vxd", delete=False) as tf:
+            tf.write(data[off:end]); modpath = tf.name
+        try:
+            for nm, v in le.open_vxds(modpath):
+                r = build_vxd(modpath, name, outroot)
+                built.append((name, r))
+                break
+        finally:
+            try: os.unlink(modpath)
+            except OSError: pass
+    if not all(r.get("ok") for _n, r in built):
+        return {"ok": False, "error": "component build failed",
+                "components": [(n, r.get("ok")) for n, r in built]}
+
+    # assemble the W3: front + header + records + page-aligned LE modules
+    hdr_size = 16 + len(recs) * 16
+    body_start = (lfa + hdr_size + 0x3FF) & ~0x3FF     # page-align the first module
+    out = bytearray(front)
+    out += b"W3" + struct.pack("<HI", 0x0400, len(recs)) + b"\0" * 8   # 16-byte header
+    rec_off = len(out)
+    out += b"\0" * (len(recs) * 16)                    # placeholder records
+    while len(out) < body_start:
+        out += b"\0"
+    records = []
+    for name, r in built:
+        mod = open(r["output"], "rb").read()
+        moff = len(out)
+        out += mod
+        while len(out) % 0x400:                        # page-align next module
+            out += b"\0"
+        records.append((name, moff, len(mod)))
+    for i, (name, moff, msize) in enumerate(records):
+        e = rec_off + i * 16
+        out[e:e + 8] = name.encode("latin1")[:8].ljust(8, b" ")
+        struct.pack_into("<II", out, e + 8, moff, msize)
+
+    outp = os.path.join(outroot, os.path.basename(w3_path).lower())
+    os.makedirs(outroot, exist_ok=True)
+    open(outp, "wb").write(out)
+    return {"ok": True, "output": outp, "bytes": len(out),
+            "components": [n for n, _r in built]}
+
+
 def main(argv):
     import argparse
     ap = argparse.ArgumentParser(prog="vxd_owbuild", description=__doc__.splitlines()[0])

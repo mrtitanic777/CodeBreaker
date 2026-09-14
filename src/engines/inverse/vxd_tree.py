@@ -104,6 +104,25 @@ def seg_class(flags):
     return ("PCODE", "_PTEXT")                              # pageable
 
 
+def _entrytab_ddb(v):
+    """(obj, rva) of the DDB from the LE entry table's ordinal-1 export -- the
+    authoritative location every VxD publishes, used when the heuristic scan
+    (D.ddb) misses it (e.g. VMM itself). Returns None if unparseable."""
+    import struct
+    raw = getattr(v, "d", None)          # LEFile keeps the raw image in .d
+    if raw is None:
+        return None
+    et = v.entrytab
+    if et <= 0 or et + 9 > len(raw):
+        return None
+    cnt, typ = raw[et], raw[et + 1]
+    if cnt < 1 or typ != 3:                 # 32-bit entry bundle
+        return None
+    obj = struct.unpack_from("<H", raw, et + 2)[0]
+    rva = struct.unpack_from("<I", raw, et + 5)[0]   # ordinal-1 entry: flags[1] + offset[4]
+    return (obj, rva)
+
+
 def emit_tree(v, name, outdir, max_ins=6000, probe_nasm=None, probe_wasm=None):
     """Write the multi-file source tree for one VxD; returns the list of files written.
     With probe_nasm (a `nasm --masm` binary) or probe_wasm (an OpenWatcom `wasm` binary),
@@ -115,6 +134,14 @@ def emit_tree(v, name, outdir, max_ins=6000, probe_nasm=None, probe_wasm=None):
     d = os.path.join(outdir, name.lower())
     os.makedirs(d, exist_ok=True)
     db = D.ddb
+    # DDB location for the exported VXD_DDB label: prefer the heuristic scan, but fall
+    # back to the LE entry table's ordinal-1 export when it misses (e.g. VMM itself).
+    ddb_obj = db["obj"] if db else None
+    ddb_rva = db["rva"] if db else None
+    if ddb_obj is None:
+        et = _entrytab_ddb(v)
+        if et:
+            ddb_obj, ddb_rva = et
     written = []
     index = ["; %s -- recovered VxD source tree (multi-file, by segment + function)" % name, ";"]
     if db:
@@ -133,7 +160,8 @@ def emit_tree(v, name, outdir, max_ins=6000, probe_nasm=None, probe_wasm=None):
         for i, (lo, hi) in enumerate(ranges):
             suffix = "" if len(ranges) == 1 else "_%02d" % (i + 1)
             fn = "%s_%s_%02d%s.asm" % (name.lower(), cls.lower(), oi, suffix)
-            extra = {db["rva"]: "VXD_DDB"} if (db and db["obj"] == oi and lo <= db["rva"] < hi) else {}
+            extra = {ddb_rva: "VXD_DDB"} if (ddb_obj == oi and ddb_rva is not None
+                                             and lo <= ddb_rva < hi) else {}
             head = ["; %s -- %s object %d segment %s%s" % (
                 fn, name, oi, seg, "  (part %d/%d)" % (i + 1, len(ranges)) if len(ranges) > 1 else ""),
                 ".386p", "%s segment dword public use32 '%s'" % (seg, cls), ""]
