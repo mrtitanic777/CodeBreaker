@@ -567,16 +567,27 @@ std::string Render(const ExprRef& e, int parent_prec) {
           std::string base = a->a->text;
           auto& fields = g_field_uses[base];
           auto it = fields.find((uint32_t)off);
-          // Keep the widest access seen at this offset.
-          if (it == fields.end() || TypeSize(e->type) > TypeSize(it->second))
+          // Keep the widest access seen at this offset (this fixes the field's
+          // declared type). A type-punned field -- declared float from FP math but
+          // also read/written as an integer at the same offset (common in graphics
+          // code), or vice versa -- would otherwise emit `float f; ... f >> n`,
+          // which wcc rejects (E1079/E1090). Since the field type and THIS access
+          // can disagree in class (int vs float), read the exact bytes this access
+          // wants via a reinterpret when they do: `*(accessT *)&(field)`.
+          if (it == fields.end() || TypeSize(e->type) > TypeSize(it->second)) {
             fields[(uint32_t)off] = e->type;
+            it = fields.find((uint32_t)off);
+          }
           // Cast the base at the deref site rather than declaring it a struct
           // pointer: the same value is often also used as an integer, so a pointer
           // declaration would clash (ptr == int, arithmetic). Casting here keeps
           // the readable `->field` form AND a single consistent (integer) type for
           // the base, so the C compiles.
-          return "((struct " + StructNameFor(base) + " *)" + base + ")->" +
-                 FieldName(base, (uint32_t)off);
+          std::string acc = "((struct " + StructNameFor(base) + " *)" + base +
+                            ")->" + FieldName(base, (uint32_t)off);
+          if (ILTypeIsFloat(e->type) != ILTypeIsFloat(it->second))
+            acc = "*(" + std::string(CTypeName(e->type)) + " *)&(" + acc + ")";
+          return acc;
         }
       }
       // Bare pointer deref of a plain variable: record it so the base can be
