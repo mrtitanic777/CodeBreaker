@@ -166,6 +166,8 @@ def main(argv):
     ap = argparse.ArgumentParser(prog="buildall", description=__doc__.splitlines()[0])
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--only", default=None)
+    ap.add_argument("--ext", default="dll",
+                    help="comma-separated extensions to build (default dll; e.g. exe or dll,exe,drv,cpl)")
     ap.add_argument("--class", dest="cls", choices=("ne", "pe"), default=None)
     ap.add_argument("--build", action="store_true", help="run owbuild where curated source exists")
     ap.add_argument("--cure", action="store_true",
@@ -180,11 +182,13 @@ def main(argv):
     scaffold_root = os.path.join(design, "scaffold")
     os.makedirs(scaffold_root, exist_ok=True)
 
-    # enumerate DLLs (code-bearing NE/PE), deduped by name, prefer WINDOWS/SYSTEM
+    # code-bearing files to enumerate: DLLs by default; --ext widens to executables
+    # and driver-class modules (all really NE/PE/LE/MZ under the hood).
+    exts = tuple("." + e.lstrip(".").lower() for e in (a.ext or "dll").split(","))
     dlls = {}
     for dp, _, fs in os.walk(corpus):
         for fn in fs:
-            if not fn.lower().endswith(".dll"):
+            if not fn.lower().endswith(exts):
                 continue
             if a.only and a.only.lower() not in fn.lower():
                 continue
@@ -319,7 +323,9 @@ def main(argv):
                   % (done, len(names), row[0], row[1], row[2], row[3],
                      row[6], row[7], row[8]), flush=True)
 
-    out = os.path.join(design, "BUILDALL.csv")
+    # keep the DLL scoreboard as BUILDALL.csv; other ext sets get their own file.
+    tag = "" if (a.ext or "dll") == "dll" else "_" + (a.ext or "dll").replace(",", "-")
+    out = os.path.join(design, "BUILDALL%s.csv" % tag)
     with open(out, "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["module", "format", "exports", "functions", "pct_readable", "def", "status", "cure", "build"])
