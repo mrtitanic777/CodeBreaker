@@ -284,6 +284,9 @@ def main():
         cmd_targets(); return
     if argv[0] == "doctor":
         cmd_doctor(); return
+    if argv[0] == "serve":                                   # localhost HTTP API over the whole toolset
+        from src.cli import apiserver
+        apiserver.main(argv[1:]); return
     # Subsystem dispatch. The four script-directory subsystems (recompile/behavior/inverse/msc6)
     # share one dispatcher via the _SCRIPT_SUBSYS table; the rest have their own import entry.
     # (No sys.path.insert(WT_DIR) anywhere now -- `engine` is importable via the installed package.)
