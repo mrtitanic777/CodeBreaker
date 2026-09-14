@@ -115,14 +115,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(400, json.dumps({"error": "module= required"}))
             cmd = "decompile" if u.path.endswith("decompile") else "disasm"
             return self._send(200, json.dumps(run_wt(["--target", "win95", cmd, m])))
-        if u.path == "/api/pe/parse":
+        if u.path in ("/api/pe/parse", "/api/exe/parse"):
             m = (q.get("module") or [None])[0]
             p = _resolve_module(m)
             if not p:
                 return self._send(404, json.dumps({"error": "module not found", "module": m}))
-            from src.formats import peinfo
-            return self._send(200, json.dumps(peinfo.parse(p)))
-        if u.path == "/api/pe/hex":
+            from src.formats import exeinfo
+            return self._send(200, json.dumps(exeinfo.parse(p)))
+        if u.path in ("/api/pe/hex", "/api/exe/hex"):
             m = (q.get("module") or [None])[0]
             p = _resolve_module(m)
             if not p:
