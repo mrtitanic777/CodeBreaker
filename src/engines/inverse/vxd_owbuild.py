@@ -23,6 +23,7 @@ from src.engines.inverse import vxd_tree
 _OW = os.path.join(paths.repo_root(), "experiments", "premise-proof", "open-watcom-v2")
 _WASM = os.path.join(_OW, "bld", "wasm", "nt386", "wasm.exe")
 _WLINK = os.path.join(_OW, "rel", "binnt64", "wlink.exe")
+_NASM = os.path.join(paths.repo_root(), "..", "nasm-masm", "nasm.exe")
 
 
 def _env():
@@ -32,16 +33,24 @@ def _env():
     return e
 
 
-def build_vxd(vxd_path, name, outroot):
+def build_vxd(vxd_path, name, outroot, byte_exact=True):
     """Assemble (wasm) + link (wlink system win_vxd) one VxD's recovered source into a
     loadable .vxd. Returns {ok, output|error, bytes}."""
     if not (os.path.exists(_WASM) and os.path.exists(_WLINK)):
         return {"ok": False, "error": "OpenWatcom wasm/wlink not built"}
     v = le.LEFile.from_file(vxd_path)
     env = _env()
-    # emit UNSPLIT (max_ins huge) so cross-object branch targets stay internal, and
-    # converge each object to assemble under wasm (byte-preserve what it rejects).
-    files = vxd_tree.emit_tree(v, name.upper(), outroot, max_ins=10 ** 9, probe_wasm=_WASM)
+    # emit UNSPLIT (max_ins huge) so cross-object branch targets stay internal.
+    # byte_exact: db every instruction the assembler re-encodes differently from the
+    # oracle (the verified force-raw set) so the built binary is byte-identical to
+    # retail; otherwise just converge to assemble (buildable, may drift).
+    fr_map = None
+    if byte_exact:
+        from src.engines.inverse import vxd_link
+        fr_map, _ok = vxd_link.byte_exact_force_raw(v)
+    files = vxd_tree.emit_tree(v, name.upper(), outroot, max_ins=10 ** 9,
+                               probe_wasm=(None if byte_exact else _WASM),
+                               force_raw_map=fr_map)
     d = os.path.join(outroot, name.lower())
     objs, asmfail = [], []
     ddb = False
@@ -52,8 +61,14 @@ def build_vxd(vxd_path, name, outroot):
         if "public VXD_DDB" in open(src, encoding="utf-8", errors="replace").read():
             ddb = True
         ob = fn[:-4] + ".obj"
-        r = subprocess.run([_WASM, "-zcm=masm", "-q", "-fo=" + ob, fn],
-                           cwd=d, env=env, capture_output=True, text=True)
+        # byte-exact build uses the same nasm-masm (COFF) the force-raw set was
+        # verified against; the buildable build uses wasm.
+        if byte_exact:
+            r = subprocess.run([_NASM, "--masm", "-f", "win32", fn, "-o", ob],
+                               cwd=d, env=env, capture_output=True, text=True)
+        else:
+            r = subprocess.run([_WASM, "-zcm=masm", "-q", "-fo=" + ob, fn],
+                               cwd=d, env=env, capture_output=True, text=True)
         if r.returncode == 0 and os.path.exists(os.path.join(d, ob)):
             objs.append(ob)
         else:

@@ -123,7 +123,8 @@ def _entrytab_ddb(v):
     return (obj, rva)
 
 
-def emit_tree(v, name, outdir, max_ins=6000, probe_nasm=None, probe_wasm=None):
+def emit_tree(v, name, outdir, max_ins=6000, probe_nasm=None, probe_wasm=None,
+              force_raw_map=None):
     """Write the multi-file source tree for one VxD; returns the list of files written.
     With probe_nasm (a `nasm --masm` binary) or probe_wasm (an OpenWatcom `wasm` binary),
     each file is converged to assemble clean under that assembler by byte-preserving (db)
@@ -166,7 +167,11 @@ def emit_tree(v, name, outdir, max_ins=6000, probe_nasm=None, probe_wasm=None):
                 fn, name, oi, seg, "  (part %d/%d)" % (i + 1, len(ranges)) if len(ranges) > 1 else ""),
                 ".386p", "%s segment dword public use32 '%s'" % (seg, cls), ""]
             tail = ["%s ends" % seg, "        end", ""]
-            if probe:
+            if force_raw_map is not None:                 # byte-exact build: db the drift set
+                fr = {a for a in force_raw_map.get(oi, set()) if lo <= a < hi}
+                body, _ = vxd_masm.object_body(D, oi, force_raw=fr, extra_labels=extra,
+                                               crange=(lo, hi))
+            elif probe:
                 body = _converge_buildable(D, oi, lo, hi, extra, head, tail, probe)
             else:
                 body, _ = vxd_masm.object_body(D, oi, extra_labels=extra, crange=(lo, hi))
