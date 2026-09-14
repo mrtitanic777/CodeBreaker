@@ -157,35 +157,88 @@ def _omf_index(b, i):
     return v, i + 1
 
 
-def mask_prefix16(code, sig_len=SIG_LEN):
-    """16-bit reloc-masked prefix: zero the displacement bytes of near (E8/E9, rel16)
-    and far (9A/EA, seg:off) call/jmp -- the bytes that differ between an unlinked
-    .obj and a linked module. Deterministic opcode walk, so the DB and the query
-    mask identical positions on identical code. Returns None if too short / too
-    masked (needs >= MIN_SIG real bytes)."""
+def mask_prefix16(code, reloc_offs=(), sig_len=SIG_LEN):
+    """16-bit reloc-masked prefix. Two masks, applied identically when building the DB
+    (from an unlinked .obj) and when querying (a linked module), so the same code
+    yields the same key:
+      * relocation sites -- reloc_offs is a list of (offset, width) from the module's
+        fixups/relocations; those absolute-address bytes differ per link, so they are
+        zeroed. This is what lets a function whose prefix carries a data fixup match.
+      * near (E8/E9 rel16) / far (9A/EA seg:off) call+jmp displacements -- a
+        deterministic opcode walk zeroes these too (a belt-and-suspenders for
+        inter-segment calls, harmless on self-relative ones since both sides mask
+        identically).
+    Returns None if too short or too masked (needs >= MIN_SIG surviving bytes)."""
     pref = bytearray(code[:sig_len])
     n = len(pref)
     if n < MIN_SIG:
         return None
-    masked = 0
+    masked = [False] * n
+    for off, width in reloc_offs:                    # relocation sites
+        for k in range(width):
+            if 0 <= off + k < n:
+                masked[off + k] = True
     i = 0
-    while i < n:
+    while i < n:                                     # call/jmp displacements
         op = pref[i]
-        if op in (0xE8, 0xE9):                       # near call/jmp rel16
+        if op in (0xE8, 0xE9):
             for k in range(1, 3):
                 if i + k < n:
-                    pref[i + k] = 0; masked += 1
+                    masked[i + k] = True
             i += 3
-        elif op in (0x9A, 0xEA):                     # far call/jmp seg:off
+        elif op in (0x9A, 0xEA):
             for k in range(1, 5):
                 if i + k < n:
-                    pref[i + k] = 0; masked += 1
+                    masked[i + k] = True
             i += 5
         else:
             i += 1
-    if n - masked < MIN_SIG:
+    for k in range(n):
+        if masked[k]:
+            pref[k] = 0
+    if n - sum(masked) < MIN_SIG:
         return None
     return bytes(pref)
+
+
+# FIXUPP location type -> masked width in bytes.
+_FIXUP_WIDTH = {0: 1, 1: 2, 2: 2, 3: 4, 4: 1, 5: 2, 9: 4, 11: 6, 13: 4}
+
+
+def _omf_fixupp(b, last_seg, last_off, seg_fixups):
+    """Parse a FIXUPP record's subrecords, recording (segment-relative offset, width)
+    for each FIXUP that applies to the preceding LEDATA (at last_seg/last_off).
+    THREAD subrecords are parsed only enough to advance correctly."""
+    i, n = 0, len(b)
+    while i < n:
+        first = b[i]
+        if not (first & 0x80):                       # THREAD subrecord
+            i += 1
+            m3 = (first >> 2) & 0x07                  # method (frame or target)
+            if m3 in (0, 1, 2):                       # SEGDEF/GRPDEF/EXTDEF index follows
+                _idx, i = _omf_index(b, i)
+            continue
+        if i + 2 > n:
+            break
+        loc = (first >> 2) & 0x0F
+        data_off = ((first & 0x03) << 8) | b[i + 1]
+        i += 2
+        if i >= n:
+            break
+        fixdata = b[i]; i += 1
+        F = (fixdata >> 7) & 1
+        frame_meth = (fixdata >> 4) & 7
+        T = (fixdata >> 3) & 1
+        P = (fixdata >> 2) & 1
+        if F == 0 and frame_meth in (0, 1, 2):       # frame datum index
+            _fi, i = _omf_index(b, i)
+        if T == 0:                                   # target datum index
+            _ti, i = _omf_index(b, i)
+        if P == 0:                                   # target displacement (16-bit)
+            i += 2
+        if last_seg is not None:
+            seg_fixups.setdefault(last_seg, []).append(
+                (last_off + data_off, _FIXUP_WIDTH.get(loc, 2)))
 
 
 def _omf_modules(data):
@@ -225,6 +278,8 @@ def _build_omf_module(mod, db):
     lnames = [""]                                     # 1-indexed
     segs = []                                         # [dict(class_idx,length,buf)]
     pubs = []                                         # [(seg_index, name, offset)]
+    seg_fixups = {}                                   # seg_index -> [(seg-rel off, width)]
+    last_seg = last_off = None                        # the LEDATA a FIXUPP applies to
     for t, b in _omf_records(mod):
         if t == 0x96:                                # LNAMES
             i = 0
@@ -246,11 +301,17 @@ def _build_omf_module(mod, db):
             i = 0; seg, i = _omf_index(b, i)
             off = struct.unpack_from("<H", b, i)[0]; i += 2
             chunk = b[i:]
+            last_seg, last_off = seg, off             # FIXUPP offsets are relative here
             if 1 <= seg <= len(segs):
                 buf = segs[seg - 1]["buf"]
                 if off + len(chunk) > len(buf):
                     buf.extend(b"\x00" * (off + len(chunk) - len(buf)))
                 buf[off:off + len(chunk)] = chunk
+        elif t == 0x9C:                              # FIXUPP (16-bit)
+            try:
+                _omf_fixupp(b, last_seg, last_off or 0, seg_fixups)
+            except Exception:
+                pass
         elif t == 0x90:                              # PUBDEF (16-bit)
             i = 0
             _grp, i = _omf_index(b, i)
@@ -272,10 +333,12 @@ def _build_omf_module(mod, db):
         if "CODE" not in cls.upper():
             continue
         buf = segs[seg_idx - 1]["buf"]
+        fixups = seg_fixups.get(seg_idx, [])
         items = sorted((o, nm) for s, nm, o in pubs if s == seg_idx)
         for j, (off, name) in enumerate(items):
             end = items[j + 1][0] if j + 1 < len(items) else len(buf)
-            sig = mask_prefix16(bytes(buf[off:end]))
+            rel = [(fo - off, w) for (fo, w) in fixups if off <= fo < off + SIG_LEN]
+            sig = mask_prefix16(bytes(buf[off:end]), rel)
             if sig and sig not in db:
                 db[sig] = name
 

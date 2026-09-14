@@ -37,6 +37,20 @@ MZImage LoadMZFromBuffer(const std::vector<uint8_t>& data) {
 
   mz.image.assign(d + hdr, d + hdr + img_size);
   mz.entry = (uint32_t)mz.init_cs * 16 + mz.init_ip;
+
+  // Relocation table: e_crlc entries at e_lfarlc, each {offset(2), segment(2)}.
+  // The patched location is at segment*16 + offset in the load image; the fixup
+  // rewrites the 16-bit segment word there (width 2).
+  uint16_t nrel = rd16(d + 6);
+  uint16_t rel_off = rd16(d + 0x18);
+  for (uint16_t i = 0; i < nrel; ++i) {
+    uint32_t e = (uint32_t)rel_off + i * 4;
+    if (e + 4 > n) break;
+    uint16_t roff = rd16(d + e), rseg = rd16(d + e + 2);
+    uint32_t lin = (uint32_t)rseg * 16 + roff;
+    if (lin + 2 <= mz.image.size()) mz.relocs.push_back(lin);
+  }
+
   mz.ok = true;
   return mz;
 }

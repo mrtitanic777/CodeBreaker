@@ -178,7 +178,8 @@ int main(int argc, char** argv) {
         ee.push_back((i + 1 < fs.size()) ? fs[i + 1] : send);
       }
     }
-    std::set<uint32_t> relocs(img.base_relocs.begin(), img.base_relocs.end());
+    std::map<uint32_t, int> relocs;                   // RVA -> 4-byte HIGHLOW span
+    for (uint32_t r : img.base_relocs) relocs[r] = 4;
     win95::EmitSigDump(image, image_size, ss, ee, false, &relocs);
     return 0;
   }

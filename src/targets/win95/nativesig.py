@@ -159,7 +159,8 @@ def _sigscan_name(fn):
 
 
 def _sigdump(path, timeout):
-    """Yield (addr, size, raw_bytes, [insn_text,...]) from an engine's --sigdump."""
+    """Yield (addr, size, raw_bytes, [(reloc_off,width),...], [insn_text,...]) from an
+    engine's --sigdump."""
     exe, _mod, _dis, _names = nativedec._engine(path)
     r = subprocess.run([exe, path, "--sigdump"], capture_output=True, text=True, timeout=timeout)
     for line in r.stdout.splitlines():
@@ -172,8 +173,16 @@ def _sigdump(path, timeout):
         except ValueError:
             continue
         raw = bytes.fromhex(f[2]) if f[2] else b""
-        insns = f[3].split("|") if len(f) > 3 and f[3] else []
-        yield addr, size, raw, insns
+        relocs = []
+        if len(f) > 3 and f[3]:
+            for pair in f[3].split(","):
+                o, _, w = pair.partition(":")
+                try:
+                    relocs.append((int(o), int(w)))
+                except ValueError:
+                    pass
+        insns = f[4].split("|") if len(f) > 4 and f[4] else []
+        yield addr, size, raw, relocs, insns
 
 
 def identify_module(path, timeout=300):
@@ -190,12 +199,13 @@ def identify_module(path, timeout=300):
     else:
         db, bits = crt_db32(), 32
     out = {}
-    for addr, size, raw, insns in _sigdump(path, timeout):
+    for addr, size, raw, relocs, insns in _sigdump(path, timeout):
         if db and len(raw) >= crtsig.MIN_SIG:
             if bits == 16:
-                sig = crtsig.mask_prefix16(raw)
+                sig = crtsig.mask_prefix16(raw, relocs)
             else:
-                sig = crtsig._pe_masked_prefix(raw, set(), 0, 0, crtsig.SIG_LEN)
+                # 32-bit path masks each reloc's 4-byte span (relative offsets) + E8/E9
+                sig = crtsig._pe_masked_prefix(raw, set(o for o, _w in relocs), 0, 0, crtsig.SIG_LEN)
             nm = db.get(sig) if sig else None
             if nm:
                 out[addr] = (nm, "crtsig")

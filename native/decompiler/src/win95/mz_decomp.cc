@@ -90,7 +90,9 @@ int main(int argc, char** argv) {
       ss.push_back(fs[i]);
       ee.push_back((i + 1 < fs.size()) ? fs[i + 1] : (uint32_t)image_size);
     }
-    win95::EmitSigDump(image, image_size, ss, ee, true);
+    std::map<uint32_t, int> relocs;                   // segment-word fixups, 2 bytes
+    for (uint32_t r : img.relocs) relocs[r] = 2;
+    win95::EmitSigDump(image, image_size, ss, ee, true, &relocs);
     return 0;
   }
 

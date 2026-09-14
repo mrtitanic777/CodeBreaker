@@ -16,6 +16,7 @@ struct MZImage {
   std::string module_name;
   uint32_t entry = 0;           // cs*16 + ip, linear into image
   uint16_t init_cs = 0, init_ip = 0, init_ss = 0, init_sp = 0;
+  std::vector<uint32_t> relocs; // linear offsets of 16-bit segment fixups
   bool contains(uint32_t a) const { return a < image.size(); }
 };
 

@@ -206,7 +206,27 @@ int main(int argc, char** argv) {
         ee.push_back((i + 1 < fs.size()) ? fs[i + 1] : s.base_addr + s.length);
       }
     }
-    win95::EmitSigDump(img.image.data(), img.image.size(), ss, ee, true);
+    // Relocation sites (linear addr -> width), walking each fixup chain. NE src_type
+    // low nibble: 0=lobyte(1), 2=segment(2), 3=far pointer(4), 5=offset(2).
+    std::map<uint32_t, int> relocs;
+    auto rwidth = [](uint8_t st) { st &= 0x0F; return st == 0 ? 1 : st == 3 ? 4 : 2; };
+    for (auto& s : img.segments) {
+      auto rit = img.relocs.find(s.idx);
+      if (rit == img.relocs.end()) continue;
+      for (auto& r : rit->second) {
+        int w = rwidth(r.src_type);
+        uint32_t off = r.offset;
+        for (int guard = 0; guard < 4096; ++guard) {
+          uint32_t lin = s.base_addr + off;
+          if (lin < 1 || lin + 1 >= img.image.size()) break;
+          relocs[lin] = w;
+          uint16_t nxt = img.image[lin] | (img.image[lin + 1] << 8);
+          if (r.additive || nxt == 0xFFFF || nxt == off) break;
+          off = nxt;
+        }
+      }
+    }
+    win95::EmitSigDump(img.image.data(), img.image.size(), ss, ee, true, &relocs);
     return 0;
   }
 
