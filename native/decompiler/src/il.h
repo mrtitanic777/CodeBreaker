@@ -262,6 +262,10 @@ enum class ILOp {
 
   Nop,
 
+  // x86 setcc: dst = (src1 <cmp_kind> src2)  -- a relational as a VALUE (unlike
+  // Compare, whose operator lives on the consuming branch).
+  SetCond,
+
   // Last resort — the disassembler decoded it but our IL builder
   // hasn't mapped it yet. Emitted as an inline asm comment.
   InlineAsm,
@@ -393,6 +397,7 @@ inline const char* ILOpName(ILOp op) {
     case ILOp::StackAlloc: return "stackalloc";
     case ILOp::VectorOp: return "vectorop";
     case ILOp::Nop: return "nop";
+    case ILOp::SetCond: return "setcc";
     case ILOp::InlineAsm: return "asm";
   }
   return "???";

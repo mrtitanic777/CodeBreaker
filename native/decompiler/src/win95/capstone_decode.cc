@@ -41,6 +41,14 @@ int mapReg(unsigned r) {
     case X86_REG_DS: return RegId(RC_SEG, 3);
     case X86_REG_FS: return RegId(RC_SEG, 4);
     case X86_REG_GS: return RegId(RC_SEG, 5);
+    case X86_REG_ST0: return RegId(RC_ST, 0);
+    case X86_REG_ST1: return RegId(RC_ST, 1);
+    case X86_REG_ST2: return RegId(RC_ST, 2);
+    case X86_REG_ST3: return RegId(RC_ST, 3);
+    case X86_REG_ST4: return RegId(RC_ST, 4);
+    case X86_REG_ST5: return RegId(RC_ST, 5);
+    case X86_REG_ST6: return RegId(RC_ST, 6);
+    case X86_REG_ST7: return RegId(RC_ST, 7);
     default: return kNoReg;
   }
 }

@@ -1516,6 +1516,19 @@ ExprRef CDecompiler::BuildExpr(const ILInstr& in, bool* pure) {
     case ILOp::MoveSPR:
       return MkName(in.spr == ILSPR::LR ? "LR"
                     : in.spr == ILSPR::CTR ? "CTR" : "SPR", t);
+    case ILOp::SetCond: {
+      // x86 setcc: a relational rendered as a value, e.g. dst = (a < b).
+      if (!a || !b) return nullptr;
+      const char* op = CmpOp(in.cmp_kind);
+      int prec = CmpPrec(in.cmp_kind);
+      auto e = std::make_shared<Expr>();
+      e->kind = EK::Raw;
+      e->text = "(" + RenderChild(a, prec) + " " + op + " " +
+                RenderChild(b, prec) + ")";
+      e->type = ILType::Bool;
+      e->prec = kPrecPrimary;
+      return e;
+    }
     default:
       return nullptr;
   }

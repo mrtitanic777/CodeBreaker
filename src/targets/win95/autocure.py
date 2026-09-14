@@ -41,6 +41,9 @@ static unsigned int r0,r1,r2,r3,r4,r5,r6,r7,r8,r9,r10,r11,r12,r13,r14,r15;
 static unsigned int r16,r17,r18,r19,r20,r21,r22,r23,r24,r25,r26,r27,r28,r29,r30,r31;
 /* condition-flag pseudo-vars the lifter emits when it can't fold a flag (adc/sbb) */
 static unsigned int CA,CF,OF,ZF,SF,PF,AF,DF;
+/* x87 FP stack temporaries the lifter names f0..f7 (incoming/uncaptured FP values) */
+static double f0,f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13,f14,f15;
+static double f16,f17,f18,f19,f20,f21,f22,f23,f24,f25,f26,f27,f28,f29,f30,f31;
 """
 
 _ASM_RE = re.compile(r"__asm\s*\{[^}]*\}")
@@ -83,7 +86,16 @@ def cure_text(text):
         for line in mm.group(0).splitlines():
             fm = _FIELD_RE.search(line)
             if fm and "{" not in line and "}" not in line:
-                fields.setdefault(fm.group(1), line.rstrip())
+                name, ln = fm.group(1), line.rstrip()
+                cur = fields.get(name)
+                # First type wins, EXCEPT: a field the FP lifter typed float/double
+                # but that another function accesses as an integer or pointer (a
+                # type-punned field, common in graphics code) is downgraded to the
+                # integral form -- floats can't take `&`/`>>` or be cast to a
+                # pointer (E1079/E1090). Pure-FP fields keep their float type.
+                fp = lambda s: "float" in s or "double" in s
+                if cur is None or (fp(cur) and not fp(ln)):
+                    fields[name] = ln
     emitted = set()
     def _dedup(m):
         tag = m.group(1)

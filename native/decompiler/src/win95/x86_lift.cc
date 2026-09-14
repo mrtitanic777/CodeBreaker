@@ -119,6 +119,10 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
   std::map<int, ILValue> params;      // param index -> value (from [bp+N]), r3..->a1..
   std::vector<ILValue> pend_args;     // pushed values awaiting the next call
   std::set<int> incoming;             // value ids that are undefined entry-reg values
+  // x87 FP register stack, modeled at lift time. back() == ST(0) (top). Compiler
+  // FP code balances the stack within an expression, so a straight per-function
+  // simulation recovers ordinary float/double arithmetic (see the "f*" handlers).
+  std::vector<ILValue> fpst;
   auto getReg = [&](int slot, int sz) -> ILValue {
     auto it = reg.find(slot);
     if (it != reg.end()) return it->second;
@@ -232,6 +236,82 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
         // arithmetic sets flags: condition is result vs 0
         flag_kind = FK_ARITH; flagA = x.dst; flag_imm = true; flag_immv = 0;
         flag_sz = in.ops[0].size;
+      };
+
+      // --- x87 FP stack helpers (back() == ST0) -----------------------------
+      auto fnewUndef = [&]() -> ILValue {          // an undefined incoming FP value
+        ILValue v = fn.AllocValue(ILType::F64); incoming.insert(v.id); return v;
+      };
+      auto fpush = [&](ILValue v) { fpst.push_back(v); };
+      auto ftop  = [&]() -> ILValue {
+        if (fpst.empty()) fpst.push_back(fnewUndef());
+        return fpst.back();
+      };
+      auto fnth  = [&](int i) -> ILValue {
+        int idx = (int)fpst.size() - 1 - i;
+        if (idx < 0) { ILValue v = fnewUndef(); fpst.insert(fpst.begin(), v); return v; }
+        return fpst[(size_t)idx];
+      };
+      auto fsetnth = [&](int i, ILValue v) {
+        int idx = (int)fpst.size() - 1 - i;
+        if (idx >= 0 && idx < (int)fpst.size()) fpst[(size_t)idx] = v;
+        else if (fpst.empty()) fpst.push_back(v);
+      };
+      auto fsetTop = [&](ILValue v) { if (fpst.empty()) fpst.push_back(v); else fpst.back() = v; };
+      auto fpop = [&]() { if (!fpst.empty()) fpst.pop_back(); };
+      auto stIndex = [&](const X86Op& o) -> int {  // st(i) reg -> i, else -1
+        if (o.kind == OpKind::Reg && o.reg >= RegId(RC_ST, 0) && o.reg < RegId(RC_ST, 8))
+          return o.reg - RegId(RC_ST, 0);
+        return -1;
+      };
+      auto fpMemType = [&](const X86Op& o) { return o.size == 4 ? ILType::F32 : ILType::F64; };
+      // Load a real (float/double) memory operand as an FP value.
+      auto fLoadReal = [&](const X86Op& o) -> ILValue {
+        ILInstr ld; ld.op = ILOp::FLoad; ld.address = a;
+        ld.src1 = emitMemAddr(o, ld);            // sets imm/access_type (overridden below)
+        ld.access_type = fpMemType(o);
+        ld.dst = fn.AllocValue(fpMemType(o));
+        bb.instrs.push_back(ld);
+        return ld.dst;
+      };
+      // Load an integer memory operand and convert to FP (fild).
+      auto fLoadInt = [&](const X86Op& o) -> ILValue {
+        ILValue iv = srcValue(o);
+        ILInstr cv; cv.op = ILOp::FConvFromInt; cv.address = a; cv.src1 = iv;
+        cv.dst = fn.AllocValue(ILType::F64); bb.instrs.push_back(cv);
+        return cv.dst;
+      };
+      // Store ST0 to a real memory operand.
+      auto fStoreReal = [&](const X86Op& o, ILValue v) {
+        ILInstr st; st.op = ILOp::FStore; st.address = a;
+        st.src1 = emitMemAddr(o, st); st.src2 = v; st.access_type = fpMemType(o);
+        bb.instrs.push_back(st);
+      };
+      // Convert ST0 to int and store (fist/fistp).
+      auto fStoreInt = [&](const X86Op& o, ILValue v) {
+        ILInstr cv; cv.op = ILOp::FConvToIntWordTrunc; cv.address = a; cv.src1 = v;
+        cv.dst = fn.AllocValue(WidthType(o.size)); bb.instrs.push_back(cv);
+        ILInstr st; st.op = ILOp::Store; st.address = a;
+        st.src1 = emitMemAddr(o, st); st.src2 = cv.dst; st.access_type = WidthType(o.size);
+        bb.instrs.push_back(st);
+      };
+      auto fpConst = [&](int val) -> ILValue {     // fld1/fldz -> 1.0 / 0.0
+        ILInstr c; c.op = ILOp::Assign; c.address = a; c.imm = val;
+        c.dst = fn.AllocValue(ILType::F64); bb.instrs.push_back(c); return c.dst;
+      };
+      auto fpBin = [&](ILOp op, ILValue x, ILValue y) -> ILValue {
+        ILInstr i; i.op = op; i.address = a; i.src1 = x; i.src2 = y;
+        i.dst = fn.AllocValue(ILType::F64); bb.instrs.push_back(i); return i.dst;
+      };
+      auto fpUn = [&](ILOp op) {                    // fchs/fabs/fsqrt on ST0
+        ILInstr i; i.op = op; i.address = a; i.src1 = ftop();
+        i.dst = fn.AllocValue(ILType::F64); bb.instrs.push_back(i); fsetTop(i.dst);
+      };
+      auto fpArithOp = [&](const std::string& mn) -> ILOp {
+        if (mn.find("add") != std::string::npos) return ILOp::FAdd;
+        if (mn.find("mul") != std::string::npos) return ILOp::FMul;
+        if (mn.find("div") != std::string::npos) return ILOp::FDiv;
+        return ILOp::FSub;
       };
 
       if (m == "mov" || m == "movzx" || m == "movsx") {
@@ -455,6 +535,125 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
                  flag_kind = FK_CMP; flagA = ld1.dst; flagB = ld2.dst; flag_imm = false; }
           flag_sz = esz;
         }
+      } else if (m == "fld") {
+        const X86Op& o = in.ops[0]; int si = stIndex(o);
+        fpush(si >= 0 ? fnth(si) : fLoadReal(o));
+      } else if (m == "fild") {
+        fpush(fLoadInt(in.ops[0]));
+      } else if (m == "fld1") { fpush(fpConst(1));
+      } else if (m == "fldz") { fpush(fpConst(0));
+      } else if (m == "fldpi" || m == "fldl2e" || m == "fldl2t" ||
+                 m == "fldlg2" || m == "fldln2" || m == "fbld") {
+        fpush(fnewUndef());          // transcendental/BCD constant: defined, unmodeled
+      } else if (m == "fst" || m == "fstp") {
+        const X86Op& o = in.ops[0]; int si = stIndex(o);
+        ILValue t = ftop();
+        if (si >= 0) fsetnth(si, t); else fStoreReal(o, t);
+        if (m == "fstp") fpop();
+      } else if (m == "fist" || m == "fistp" || m == "fisttp" || m == "fbstp") {
+        fStoreInt(in.ops[0], ftop());
+        if (m != "fist") fpop();
+      } else if (m == "fchs") { fpUn(ILOp::FNeg);
+      } else if (m == "fabs") { fpUn(ILOp::FAbs);
+      } else if (m == "fsqrt") { fpUn(ILOp::FSqrt);
+      } else if (m == "fxch") {
+        int i = 1; if (in.nops >= 1) { int x = stIndex(in.ops[0]); if (x >= 0) i = x; }
+        ILValue a0 = ftop(), ai = fnth(i);
+        fsetTop(ai); fsetnth(i, a0);
+      } else if (m == "fadd" || m == "fsub" || m == "fmul" || m == "fdiv" ||
+                 m == "fsubr" || m == "fdivr" || m == "faddp" || m == "fsubp" ||
+                 m == "fmulp" || m == "fdivp" || m == "fsubrp" || m == "fdivrp" ||
+                 m == "fiadd" || m == "fisub" || m == "fimul" || m == "fidiv" ||
+                 m == "fisubr" || m == "fidivr") {
+        ILOp op = fpArithOp(m);
+        bool rev = m.find("subr") != std::string::npos || m.find("divr") != std::string::npos;
+        bool pop = m.back() == 'p';
+        bool integer = m.size() > 1 && m[1] == 'i';
+        int dstIdx = 0; ILValue rhs;
+        if (in.nops == 0) {
+          if (pop) { dstIdx = 1; rhs = ftop(); }        // fADDp -> ST1 op= ST0, pop
+          else     { dstIdx = 0; rhs = fnth(1); }        // fADD  -> ST0 op= ST1
+        } else if (in.nops == 1) {
+          const X86Op& o = in.ops[0]; int si = stIndex(o);
+          if (si >= 0) { if (pop) { dstIdx = si; rhs = ftop(); }
+                         else     { dstIdx = 0;  rhs = fnth(si); } }
+          else { dstIdx = 0; rhs = integer ? fLoadInt(o) : fLoadReal(o); }
+        } else {
+          int d = stIndex(in.ops[0]), s = stIndex(in.ops[1]);
+          dstIdx = (d >= 0) ? d : 0;
+          rhs = (s >= 0) ? fnth(s) : (integer ? fLoadInt(in.ops[1]) : fLoadReal(in.ops[1]));
+        }
+        ILValue lhs = fnth(dstIdx);
+        ILValue r = rev ? fpBin(op, rhs, lhs) : fpBin(op, lhs, rhs);
+        fsetnth(dstIdx, r);
+        if (pop) fpop();
+      } else if (m == "fcom" || m == "fcomp" || m == "fcompp" || m == "fucom" ||
+                 m == "fucomp" || m == "fucompp" || m == "fcomi" || m == "fcomip" ||
+                 m == "fucomi" || m == "fucomip" || m == "ficom" || m == "ficomp" ||
+                 m == "ftst") {
+        ILValue A = ftop(), B;
+        if (m == "ftst") B = fpConst(0);
+        else if (in.nops >= 1) { int si = stIndex(in.ops[0]);
+          B = (si >= 0) ? fnth(si)
+                        : ((m[1] == 'i') ? fLoadInt(in.ops[0]) : fLoadReal(in.ops[0])); }
+        else B = fnth(1);
+        // Record the FP compare. A following (fnstsw ax; sahf) jcc, or a fcomi
+        // jcc, reads it -- the unsigned jcc mapping matches fcom+sahf exactly.
+        flag_kind = FK_ARITH; flagA = A; flagB = B; flag_imm = false; flag_sz = 4;
+        if (m == "fcompp" || m == "fucompp") { fpop(); fpop(); }
+        else if (m.back() == 'p') fpop();
+      } else if (m == "fnstsw" || m == "fstsw" || m == "fnstcw" || m == "fstcw" ||
+                 m == "fldcw" || m == "fnstenv" || m == "fstenv" || m == "fldenv" ||
+                 m == "fnclex" || m == "fclex" || m == "finit" || m == "fninit" ||
+                 m == "fnsave" || m == "fsave" || m == "frstor" || m == "fwait" ||
+                 m == "fnop" || m == "fdecstp" || m == "fincstp" || m == "ffree" ||
+                 m == "ffreep") {
+        // FP control/status/no-data-effect ops. Crucially fnstsw is a no-op here
+        // so the recorded FP compare survives to the following jcc.
+        if (m == "ffreep") fpop();
+      } else if (m.rfind("set", 0) == 0 && m.size() > 3 && m != "setssbsy") {
+        // setcc: dst = (cond), built from the pending flag state (like jcc).
+        ILCmpKind kind = JccKind("j" + m.substr(3));
+        ILInstr sc; sc.op = ILOp::SetCond; sc.address = a; sc.cmp_kind = kind;
+        auto mkImm = [&](int64_t v) -> ILValue {
+          ILInstr z; z.op = ILOp::Assign; z.address = a; z.imm = (int32_t)v;
+          z.dst = fn.AllocValue(WidthType(flag_sz)); bb.instrs.push_back(z); return z.dst;
+        };
+        if (flag_kind == FK_TEST && flagA.id != flagB.id) {
+          ILInstr an; an.op = ILOp::And; an.address = a; an.src1 = flagA; an.src2 = flagB;
+          an.dst = fn.AllocValue(WidthType(flag_sz)); bb.instrs.push_back(an);
+          sc.src1 = an.dst; sc.src2 = mkImm(0);
+        } else if (flag_kind == FK_TEST) { sc.src1 = flagA; sc.src2 = mkImm(0);
+        } else if (flag_imm) { sc.src1 = flagA; sc.src2 = mkImm(flag_immv);
+        } else { sc.src1 = flagA; sc.src2 = flagB; }
+        sc.dst = fn.AllocValue(WidthType(in.ops[0].size));
+        bb.instrs.push_back(sc);
+        storeTo(in.ops[0], sc.dst);
+      } else if (m == "shld" || m == "shrd") {
+        // double-precision shift: shld d,s,c -> d = (d<<c)|(s>>(bits-c)); shrd is
+        // the mirror. Count may be imm or CL -- modelled as a value either way.
+        int sz = in.ops[0].size, bits = sz * 8;
+        ILValue d = srcValue(in.ops[0]), s = srcValue(in.ops[1]), c = srcValue(in.ops[2]);
+        ILInstr bc; bc.op = ILOp::Assign; bc.address = a; bc.imm = bits;
+        bc.dst = fn.AllocValue(WidthType(sz)); bb.instrs.push_back(bc);
+        ILInstr sub; sub.op = ILOp::Sub; sub.address = a; sub.src1 = bc.dst; sub.src2 = c;
+        sub.dst = fn.AllocValue(WidthType(sz)); bb.instrs.push_back(sub);
+        ILInstr s1; s1.op = (m == "shld") ? ILOp::Shl : ILOp::Shr; s1.address = a;
+        s1.src1 = d; s1.src2 = c; s1.dst = fn.AllocValue(WidthType(sz)); bb.instrs.push_back(s1);
+        ILInstr s2; s2.op = (m == "shld") ? ILOp::Shr : ILOp::Shl; s2.address = a;
+        s2.src1 = s; s2.src2 = sub.dst; s2.dst = fn.AllocValue(WidthType(sz)); bb.instrs.push_back(s2);
+        ILInstr orr; orr.op = ILOp::Or; orr.address = a; orr.src1 = s1.dst; orr.src2 = s2.dst;
+        orr.dst = fn.AllocValue(WidthType(sz)); bb.instrs.push_back(orr);
+        storeTo(in.ops[0], orr.dst);
+        flag_kind = FK_ARITH; flagA = orr.dst; flag_imm = true; flag_immv = 0; flag_sz = sz;
+      } else if (m == "pushad" || m == "popad" || m == "pusha" || m == "popa" ||
+                 m == "pushal" || m == "popal" || m == "pushaw" || m == "popaw" ||
+                 m == "pushfd" || m == "popfd" || m == "pushf" || m == "popf" ||
+                 m == "pushfw" || m == "popfw" || m == "sahf" || m == "lahf" ||
+                 m == "clc" || m == "stc" || m == "cmc" || m == "wait" ||
+                 m == "hlt" || m == "int3") {
+        // register/flag block save-restore + flag manipulation: no data meaning
+        // for a reader (sahf after fnstsw is the FP-compare idiom, handled above).
       } else if (vxd_mode_ && m == "int" && in.ops[0].kind == OpKind::Imm &&
                  in.ops[0].imm == 0x20) {
         // VxD service call: int 20h; dd <(VxD id << 16) | service ordinal>. Render
