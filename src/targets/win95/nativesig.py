@@ -23,9 +23,12 @@ and this module applies BOTH matchers to that:
     from src.targets.win95 import nativesig
     hits = nativesig.identify_module(path)   # {addr:int -> (name, source)}
 """
+import hashlib
 import os
+import pickle
 import re
 import subprocess
+import tempfile
 
 from src.targets.win95 import nativedec
 
@@ -35,18 +38,73 @@ _db32_built = False
 _db16 = None
 _db16_built = False
 
-# 16-bit CRT model libraries (OMF). Win95's 16-bit modules were built across memory
-# models and MSC/MSVC versions, so the DB merges several; a masked prefix is
-# model-independent for the shared leaf helpers we care about.
-_LIB16 = [
-    ("compilers", "msc-6.0a", "LIB", "SLIBCR.LIB"),
-    ("compilers", "msc-6.0a", "LIB", "MLIBCR.LIB"),
-    ("compilers", "msc-6.0a", "LIB", "CLIBCR.LIB"),
-    ("compilers", "msc-6.0a", "LIB", "LLIBCR.LIB"),
-    ("compilers", "msvc-1.52c", "LIB", "SLIBCE.LIB"),
-    ("compilers", "msvc-1.52c", "LIB", "MLIBCE.LIB"),
-    ("compilers", "msvc-1.52c", "LIB", "LLIBCE.LIB"),
-]
+# CRT / MFC static libraries carry the toolchain floor. The 16-bit DB is built from
+# every OMF C-runtime and MFC lib under toolchains -- across memory models (S/M/C/L),
+# math packages (E emulator / A alternate / 7 x87), and the Windows DLL runtime
+# (*DLLC*W / *LIBC*W, which the corpus's 16-bit NE DLLs actually link). The 32-bit
+# DB adds the i386 COFF C-runtime (msvc-2.0 LIBC/LIBCMT etc.) to the shipped-CRT-DLL
+# signatures. Debug variants are excluded (not shipped in the retail corpus).
+_CRT_LIB_RE = re.compile(r"(LIBC|DLLC|AFXC)", re.I)
+
+
+def _is_debug_lib(fn):
+    stem = os.path.splitext(fn)[0].upper()
+    return stem.endswith("D")                        # e.g. *CRD / *CWD / *CEWD
+
+
+def _discover_libs(want_omf):
+    """Unique CRT/MFC libs under toolchains/, of the requested container (OMF vs
+    COFF), retail only. Deduped by (name, size)."""
+    from src.core import paths
+    root = os.path.join(paths.repo_root(), "toolchains")
+    seen, out = set(), []
+    for dp, _, fs in os.walk(root):
+        for fn in fs:
+            if not fn.lower().endswith(".lib") or not _CRT_LIB_RE.search(fn):
+                continue
+            if _is_debug_lib(fn):
+                continue
+            p = os.path.join(dp, fn)
+            try:
+                with open(p, "rb") as f:
+                    is_omf = f.read(1) == b"\xf0"
+                sz = os.path.getsize(p)
+            except OSError:
+                continue
+            if is_omf != want_omf:
+                continue
+            key = (fn.lower(), sz)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(p)
+    return sorted(out)
+
+
+def _cache_path(tag, libs):
+    h = hashlib.sha1()
+    for p in libs:
+        try:
+            h.update(("%s:%d;" % (os.path.basename(p), os.path.getsize(p))).encode())
+        except OSError:
+            pass
+    return os.path.join(tempfile.gettempdir(), "cb_crtsig_%s_%s.pkl" % (tag, h.hexdigest()[:16]))
+
+
+def _load_cache(path):
+    try:
+        with open(path, "rb") as f:
+            return pickle.load(f)
+    except Exception:
+        return None
+
+
+def _save_cache(path, db):
+    try:
+        with open(path, "wb") as f:
+            pickle.dump(db, f, pickle.HIGHEST_PROTOCOL)
+    except Exception:
+        pass
 
 
 def _corpus_root():
@@ -65,8 +123,8 @@ def _find(root, name):
 
 
 def crt_db32():
-    """Build (once) the 32-bit CRT signature DB from the shipped Win95 CRT DLLs.
-    Empty dict if none are present or the symbol engine can't load."""
+    """32-bit CRT signature DB: shipped Win95 CRT DLLs (crtdll/msvcrt*) + the i386
+    COFF C-runtime static libs (msvc-2.0 LIBC/LIBCMT, ...). Cached to disk."""
     global _db32, _db32_built
     if _db32_built:
         return _db32
@@ -80,23 +138,36 @@ def crt_db32():
         except Exception:
             pass
         root = _corpus_root()
-        for name in ("crtdll.dll", "msvcrt20.dll", "msvcrt40.dll", "msvcrt.dll"):
-            p = _find(root, name)
-            if not p:
-                continue
+        dlls = [p for p in (_find(root, n) for n in
+                            ("crtdll.dll", "msvcrt20.dll", "msvcrt40.dll", "msvcrt.dll")) if p]
+        coff_libs = _discover_libs(want_omf=False)
+        cache = _cache_path("db32", dlls + coff_libs)
+        cached = _load_cache(cache)
+        if cached is not None:
+            _db32 = cached
+            return _db32
+        for p in dlls:
             try:
                 for sig, nm in crtsig.build_from_pe(p).items():
                     _db32.setdefault(sig, nm)
             except Exception:
                 continue
+        for p in coff_libs:                          # i386 COFF (non-i386 auto-skipped)
+            try:
+                for sig, nm in crtsig.build(p).items():
+                    _db32.setdefault(sig, nm)
+            except Exception:
+                continue
+        _save_cache(cache, _db32)
     except Exception:
         _db32 = {}
     return _db32
 
 
 def crt_db16():
-    """Build (once) the 16-bit CRT signature DB from the period OMF model libraries.
-    Empty dict if none are present."""
+    """16-bit CRT/MFC signature DB, built from every retail OMF C-runtime and MFC lib
+    under toolchains/ (all models, math packages, and the Windows DLL runtime). Cached
+    to disk -- the merged set is large to parse."""
     global _db16, _db16_built
     if _db16_built:
         return _db16
@@ -104,17 +175,19 @@ def crt_db16():
     _db16 = {}
     try:
         from src.engines.symbol import crtsig
-        from src.core import paths
-        root = paths.repo_root()
-        for parts in _LIB16:
-            p = os.path.join(root, "toolchains", "period", *parts)
-            if not os.path.exists(p):
-                continue
+        libs = _discover_libs(want_omf=True)
+        cache = _cache_path("db16", libs)
+        cached = _load_cache(cache)
+        if cached is not None:
+            _db16 = cached
+            return _db16
+        for p in libs:
             try:
                 for sig, nm in crtsig.build_omf(p).items():
                     _db16.setdefault(sig, nm)
             except Exception:
                 continue
+        _save_cache(cache, _db16)
     except Exception:
         _db16 = {}
     return _db16
