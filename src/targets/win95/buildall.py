@@ -1,0 +1,255 @@
+#!/usr/bin/env python3
+"""buildall.py -- the corpus-wide reconstruction frontier for Win95's DLLs. For every
+DLL it: reads the export surface straight from the binary (-> a .def), notes the
+decompiled function count + how readable/app-heavy it is, generates an owbuild.json
+build scaffold, and -- where curated source exists -- runs the OpenWatcom build. One
+scoreboard shows exactly where each DLL stands so the frontier can be driven up.
+
+    wt --target win95 buildall [--limit N] [--only substr] [--class ne|pe] [--build]
+
+Stages per module (each recorded in BUILDALL.csv):
+  exports   read from the binary's own tables (NE resident/nonresident, PE export dir)
+  decompile function count + %readable (from the *_lane sweep, if present)
+  scaffold  .def + owbuild.json written to <design>/scaffold/<module>/
+  build     if base/<module>/owbuild.json (curated) exists and --build: owbuild -> C
+
+Scaffolds are staging (design/), never the one source tree; curation promotes a
+module into base/<module>/ with real split C.
+"""
+import argparse
+import csv
+import json
+import os
+import struct
+import sys
+
+from src.core import paths
+from src.targets.win95 import nativedec
+
+
+def _corpus():
+    c = os.environ.get("WT_DATA_ROOT")
+    if c and os.path.isdir(c):
+        return c
+    return r"C:\Users\mrtit\Documents\GitHub\Windows95\design\corpus\files"
+
+
+def _design():
+    c = _corpus()
+    return os.path.dirname(os.path.dirname(c)) if c.lower().rstrip("\\/").endswith("files") \
+        else os.path.dirname(c)
+
+
+# --- export extraction straight from the binary ---------------------------------
+def exports_ne(d):
+    """[(name, ordinal)] from an NE module's resident + nonresident name tables."""
+    e = struct.unpack_from("<H", d, 0x3C)[0]
+    out = []
+
+    def read_table(off, first_is_module):
+        p = off
+        idx = 0
+        while p < len(d):
+            ln = d[p]
+            if ln == 0:
+                break
+            name = d[p + 1:p + 1 + ln].decode("latin1", "replace")
+            ordn = struct.unpack_from("<H", d, p + 1 + ln)[0]
+            if not (first_is_module and idx == 0):      # entry 0 = module/description
+                out.append((name, ordn))
+            p += 1 + ln + 2
+            idx += 1
+
+    rn = e + struct.unpack_from("<H", d, e + 0x26)[0]    # resident names (from NE hdr)
+    read_table(rn, True)
+    nr = struct.unpack_from("<I", d, e + 0x2C)[0]        # nonresident names (from file start)
+    if 0 < nr < len(d):
+        read_table(nr, True)
+    return out
+
+
+def exports_pe(d):
+    """[(name, ordinal)] from a PE32 module's export directory."""
+    e = struct.unpack_from("<I", d, 0x3C)[0]
+    if d[e:e + 4] != b"PE\0\0":
+        return []
+    opt = e + 24
+    magic = struct.unpack_from("<H", d, opt)[0]
+    if magic != 0x10B:
+        return []
+    ndir = struct.unpack_from("<I", d, opt + 92)[0]
+    if ndir < 1:
+        return []
+    exp_rva = struct.unpack_from("<I", d, opt + 96)[0]
+    if not exp_rva:
+        return []
+    nsec = struct.unpack_from("<H", d, e + 6)[0]
+    optsz = struct.unpack_from("<H", d, e + 20)[0]
+    sh = opt + optsz
+    secs = []
+    for i in range(nsec):
+        s = sh + i * 40
+        secs.append((struct.unpack_from("<I", d, s + 12)[0], struct.unpack_from("<I", d, s + 8)[0],
+                     struct.unpack_from("<I", d, s + 16)[0], struct.unpack_from("<I", d, s + 20)[0]))
+
+    def r2o(rva):
+        for va, vs, rs, ro in secs:
+            if va <= rva < va + max(vs, rs):
+                return ro + (rva - va)
+        return None
+
+    ed = r2o(exp_rva)
+    if ed is None:
+        return []
+    base = struct.unpack_from("<I", d, ed + 16)[0]
+    nname = struct.unpack_from("<I", d, ed + 24)[0]
+    an = r2o(struct.unpack_from("<I", d, ed + 32)[0])
+    ao = r2o(struct.unpack_from("<I", d, ed + 36)[0])
+    out = []
+    if an is None or ao is None:
+        return []
+    for i in range(nname):
+        nrva = struct.unpack_from("<I", d, an + i * 4)[0]
+        no = r2o(nrva)
+        if no is None:
+            continue
+        end = d.find(b"\0", no)
+        name = d[no:end].decode("latin1", "replace")
+        ordn = struct.unpack_from("<H", d, ao + i * 2)[0] + base
+        out.append((name, ordn))
+    return out
+
+
+def extract_exports(path):
+    try:
+        d = open(path, "rb").read()
+    except OSError:
+        return None, []
+    fmt = nativedec.detect_format(path)
+    if fmt == "NE":
+        return fmt, exports_ne(d)
+    if fmt == "PE":
+        return fmt, exports_pe(d)
+    return fmt, []
+
+
+def write_def(module, fmt, exports, outdir):
+    lines = ["LIBRARY %s" % module.upper().split(".")[0]]
+    if fmt == "NE":
+        lines.append("EXETYPE WINDOWS")
+    lines.append("EXPORTS")
+    for name, ordn in sorted(exports, key=lambda x: x[1]):
+        lines.append("    %-24s @%d" % (name, ordn))
+    p = os.path.join(outdir, module.split(".")[0] + ".def")
+    with open(p, "w", newline="\n") as f:
+        f.write("\n".join(lines) + "\n")
+    return p
+
+
+def _lane_stats(design, fmt, module):
+    """(functions, pct_readable) from the *_lane sweep's .c for this module, if present."""
+    lane = {"NE": "ne_lane", "PE": "pe_lane", "LE": "le_lane", "MZ": "mz_lane"}.get(fmt)
+    if not lane:
+        return 0, None
+    c = os.path.join(design, lane, module + ".c")
+    if not os.path.isfile(c):
+        return 0, None
+    text = open(c, encoding="utf-8", errors="replace").read()
+    funcs = text.count("__fastcall")
+    asm = text.count("__asm")
+    # bounded readability: share of "clean" units among functions + inline-asm blocks
+    pct = round(100.0 * funcs / (funcs + asm), 1) if funcs else None
+    return funcs, pct
+
+
+def main(argv):
+    ap = argparse.ArgumentParser(prog="buildall", description=__doc__.splitlines()[0])
+    ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--only", default=None)
+    ap.add_argument("--class", dest="cls", choices=("ne", "pe"), default=None)
+    ap.add_argument("--build", action="store_true", help="run owbuild where curated source exists")
+    a = ap.parse_args(argv)
+
+    corpus, design = _corpus(), _design()
+    scaffold_root = os.path.join(design, "scaffold")
+    os.makedirs(scaffold_root, exist_ok=True)
+
+    # enumerate DLLs (code-bearing NE/PE), deduped by name, prefer WINDOWS/SYSTEM
+    dlls = {}
+    for dp, _, fs in os.walk(corpus):
+        for fn in fs:
+            if not fn.lower().endswith(".dll"):
+                continue
+            if a.only and a.only.lower() not in fn.lower():
+                continue
+            p = os.path.join(dp, fn)
+            key = fn.lower()
+            prefer = "system" in dp.lower().replace("\\", "/").split("/")
+            if key not in dlls or (prefer and "system" not in dlls[key].lower().replace("\\", "/").split("/")):
+                dlls[key] = p
+    names = sorted(dlls)
+    if a.limit:
+        names = names[:a.limit]
+
+    curated_base = os.path.join(paths.data_root(), "Windows95", "base")
+    rows = []
+    for i, key in enumerate(names):
+        path = dlls[key]
+        mod = key
+        fmt, exports = extract_exports(path)
+        if a.cls and (fmt or "").lower() != a.cls:
+            continue
+        funcs, readable = _lane_stats(design, fmt, mod)
+        sd = os.path.join(scaffold_root, mod.split(".")[0])
+        os.makedirs(sd, exist_ok=True)
+        def_ok = False
+        if exports:
+            write_def(mod, fmt, exports, sd)
+            def_ok = True
+            manifest = {
+                "class": "ne" if fmt == "NE" else "pe",
+                "target": "windows" if fmt == "NE" else "nt",
+                "model": "m" if fmt == "NE" else None,
+                "system": "windows_dll" if fmt == "NE" else "nt_dll",
+                "output": mod,
+                "def": mod.split(".")[0] + ".def",
+                "modules": [],       # curation fills these with the split .c basenames
+                "status": "scaffold -- needs curated source in base/%s/" % mod.split(".")[0],
+            }
+            json.dump(manifest, open(os.path.join(sd, "owbuild.json"), "w"), indent=2)
+
+        status = "scaffolded"
+        build = ""
+        curated = os.path.isfile(os.path.join(curated_base, mod.split(".")[0], "owbuild.json"))
+        if curated and a.build:
+            try:
+                from src.targets.win95 import owbuild
+                r = owbuild.build(mod.split(".")[0], do_diff=False)
+                status = "built" if r.get("ok") else "build-fail"
+                build = "ok" if r.get("ok") else (r.get("error", "")[:40])
+            except Exception as ex:
+                status = "build-error"; build = type(ex).__name__
+        elif curated:
+            status = "curated"
+
+        rows.append((mod, fmt or "?", len(exports), funcs, readable if readable is not None else "",
+                     "def" if def_ok else "", status, build))
+        print("[%d/%d] %-20s %-3s exp=%-4d fns=%-5d rd=%-5s %s %s"
+              % (i + 1, len(names), mod, fmt or "?", len(exports), funcs,
+                 readable if readable is not None else "-", status, build), flush=True)
+
+    out = os.path.join(design, "BUILDALL.csv")
+    with open(out, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["module", "format", "exports", "functions", "pct_readable", "def", "status", "build"])
+        w.writerows(rows)
+
+    from collections import Counter
+    st = Counter(r[6] for r in rows)
+    tot_exp = sum(r[2] for r in rows)
+    print("\n=== %d DLLs: %s ===" % (len(rows), dict(st)))
+    print("total exports catalogued: %d ; scoreboard -> %s" % (tot_exp, out))
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
