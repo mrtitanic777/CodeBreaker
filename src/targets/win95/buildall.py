@@ -168,6 +168,8 @@ def main(argv):
     ap.add_argument("--only", default=None)
     ap.add_argument("--class", dest="cls", choices=("ne", "pe"), default=None)
     ap.add_argument("--build", action="store_true", help="run owbuild where curated source exists")
+    ap.add_argument("--cure", action="store_true",
+                    help="autocure the decompiled C and attempt a compile (records the compile frontier)")
     a = ap.parse_args(argv)
 
     corpus, design = _corpus(), _design()
@@ -220,6 +222,17 @@ def main(argv):
 
         status = "scaffolded"
         build = ""
+        cure = ""
+        if a.cure and funcs:
+            try:
+                from src.targets.win95 import autocure
+                cr = autocure.cure_module(mod, do_compile=True)
+                c = cr.get("compile", {})
+                cure = "compiles" if c.get("ok") else "err:%d" % c.get("errors", -1)
+                if c.get("ok"):
+                    status = "compiles"
+            except Exception as ex:
+                cure = "cure-error:" + type(ex).__name__
         curated = os.path.isfile(os.path.join(curated_base, mod.split(".")[0], "owbuild.json"))
         if curated and a.build:
             try:
@@ -233,15 +246,15 @@ def main(argv):
             status = "curated"
 
         rows.append((mod, fmt or "?", len(exports), funcs, readable if readable is not None else "",
-                     "def" if def_ok else "", status, build))
-        print("[%d/%d] %-20s %-3s exp=%-4d fns=%-5d rd=%-5s %s %s"
+                     "def" if def_ok else "", status, cure, build))
+        print("[%d/%d] %-20s %-3s exp=%-4d fns=%-5d rd=%-5s %s %s %s"
               % (i + 1, len(names), mod, fmt or "?", len(exports), funcs,
-                 readable if readable is not None else "-", status, build), flush=True)
+                 readable if readable is not None else "-", status, cure, build), flush=True)
 
     out = os.path.join(design, "BUILDALL.csv")
     with open(out, "w", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["module", "format", "exports", "functions", "pct_readable", "def", "status", "build"])
+        w.writerow(["module", "format", "exports", "functions", "pct_readable", "def", "status", "cure", "build"])
         w.writerows(rows)
 
     from collections import Counter
