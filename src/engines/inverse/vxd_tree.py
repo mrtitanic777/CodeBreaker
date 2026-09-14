@@ -21,15 +21,39 @@ import tempfile
 from src.engines.inverse.vxd_asm import VxDDisasm
 from src.engines.inverse import vxd_masm
 
-_ERRLINE = re.compile(r":(\d+):\s*(?:error|fatal)", re.I)
+_ERRLINE = re.compile(r":(\d+):\s*(?:error|fatal)", re.I)          # nasm / gas style
+_ERRLINE_WASM = re.compile(r"\((\d+)\):\s*Error", re.I)            # wasm: file(NN): Error!
 
 
-def _converge_buildable(D, oi, lo, hi, extra_labels, head, tail, nasm, maxit=20):
-    """Emit body, assemble with `nasm --masm -f bin`, byte-preserve (force_raw) every
-    instruction the assembler rejects, and repeat until it assembles clean. db == the
-    exact bytes, so this only trades an un-assemblable disassembly (data walked as code,
-    a mnemonic neither assembler spells) for its raw bytes -- byte-exact preserved and
-    now buildable. Returns the converged body lines."""
+def _nasm_probe(nasm):
+    """(rc, err_text, errline_re) probe using `nasm --masm -f bin`."""
+    def go(path):
+        r = subprocess.run([nasm, "--masm", "-f", "bin", path, "-o", os.devnull],
+                           capture_output=True, text=True)
+        return r.returncode, r.stderr, _ERRLINE
+    return go
+
+
+def _wasm_probe(wasm):
+    """(rc, err_text, errline_re) probe using OpenWatcom `wasm -zcm=masm`."""
+    def go(path):
+        o = tempfile.NamedTemporaryFile(suffix=".obj", delete=False); o.close()
+        try:
+            r = subprocess.run([wasm, "-zcm=masm", "-q", "-fo=" + o.name, path],
+                               capture_output=True, text=True)
+        finally:
+            try: os.unlink(o.name)
+            except OSError: pass
+        return r.returncode, r.stdout + r.stderr, _ERRLINE_WASM
+    return go
+
+
+def _converge_buildable(D, oi, lo, hi, extra_labels, head, tail, probe, maxit=20):
+    """Emit body, assemble via `probe` (a nasm/wasm assembler callable), byte-preserve
+    (force_raw -> db) every instruction the assembler rejects, and repeat until it
+    assembles clean. db == the exact bytes, so this only trades an un-assemblable
+    disassembly (data walked as code, a mnemonic/operand the assembler won't spell) for
+    its raw bytes -- byte-exact preserved and now buildable. Returns the body lines."""
     force = set()
     body = None
     for _ in range(maxit):
@@ -39,14 +63,13 @@ def _converge_buildable(D, oi, lo, hi, extra_labels, head, tail, nasm, maxit=20)
             tf.write("\r\n".join(head + body + tail))
             path = tf.name
         try:
-            r = subprocess.run([nasm, "--masm", "-f", "bin", path, "-o", os.devnull],
-                               capture_output=True, text=True)
+            rc, errtext, errre = probe(path)
         finally:
             try: os.unlink(path)
             except OSError: pass
-        if r.returncode == 0:
+        if rc == 0:
             return body
-        lines = {int(m.group(1)) for m in _ERRLINE.finditer(r.stderr)}
+        lines = {int(m.group(1)) for m in errre.finditer(errtext)}
         new = {linemap[L] for L in lines if L in linemap} - force
         if not new:
             return body            # nothing further we can pin -- leave as is
@@ -66,10 +89,12 @@ def seg_class(flags):
     return ("PCODE", "_PTEXT")                              # pageable
 
 
-def emit_tree(v, name, outdir, max_ins=6000, probe_nasm=None):
+def emit_tree(v, name, outdir, max_ins=6000, probe_nasm=None, probe_wasm=None):
     """Write the multi-file source tree for one VxD; returns the list of files written.
-    With probe_nasm (path to a `nasm --masm` binary), each file is converged to assemble
-    clean by byte-preserving (db) the instructions the assembler rejects."""
+    With probe_nasm (a `nasm --masm` binary) or probe_wasm (an OpenWatcom `wasm` binary),
+    each file is converged to assemble clean under that assembler by byte-preserving (db)
+    the instructions it rejects."""
+    probe = _nasm_probe(probe_nasm) if probe_nasm else (_wasm_probe(probe_wasm) if probe_wasm else None)
     D = VxDDisasm(v).run()
     D.v = v
     d = os.path.join(outdir, name.lower())
@@ -98,8 +123,8 @@ def emit_tree(v, name, outdir, max_ins=6000, probe_nasm=None):
                 fn, name, oi, seg, "  (part %d/%d)" % (i + 1, len(ranges)) if len(ranges) > 1 else ""),
                 ".386p", "%s segment dword public use32 '%s'" % (seg, cls), ""]
             tail = ["%s ends" % seg, "        end", ""]
-            if probe_nasm:
-                body = _converge_buildable(D, oi, lo, hi, extra, head, tail, probe_nasm)
+            if probe:
+                body = _converge_buildable(D, oi, lo, hi, extra, head, tail, probe)
             else:
                 body, _ = vxd_masm.object_body(D, oi, extra_labels=extra, crange=(lo, hi))
             open(os.path.join(d, fn), "w").write("\r\n".join(head + body + tail))
