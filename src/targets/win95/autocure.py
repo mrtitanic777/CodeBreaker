@@ -119,16 +119,44 @@ def cure_text(text):
     text = _DEFHEAD_RE.sub(r"int \1()", text)
 
     # declare the vN / aN temporaries the emitter can leave undeclared on some paths,
-    # as globals up to the max index seen (real per-function locals shadow these).
-    def _maxidx(letter):
-        idx = [int(x) for x in re.findall(r"\b%s(\d+)\b" % letter, text)]
-        return max(idx) if idx else -1
-    vmax, amax = _maxidx("v"), _maxidx("a")
+    # as globals. Declare only the indices that ACTUALLY appear (not a contiguous
+    # 0..max range) -- value ids are sparse/high, and a full range blows the 16-bit
+    # 64KB data segment (E1118). Real per-function locals shadow these.
+    def _idxset(letter):
+        return sorted(set(int(x) for x in re.findall(r"\b%s(\d+)\b" % letter, text)))
     decls = []
-    if vmax >= 0:
-        decls.append("static unsigned int " + ",".join("v%d" % i for i in range(vmax + 1)) + ";")
-    if amax >= 0:
-        decls.append("static unsigned int " + ",".join("a%d" % i for i in range(amax + 1)) + ";")
+    for letter in ("v", "a"):
+        ids = _idxset(letter)
+        if ids:
+            decls.append("static unsigned int " +
+                         ",".join("%s%d" % (letter, i) for i in ids) + ";")
+
+    # Drop duplicate function DEFINITIONS -- C forbids redefinition. The same name
+    # can be emitted twice (e.g. an NE bogus sub_000000 discovered in several
+    # segments). Keep the first; brace-match and remove the rest.
+    _FN_OPEN = re.compile(r"(?m)^int ([A-Za-z_]\w*)\(\)\s*$")
+    kept, cut = set(), []
+    for m in _FN_OPEN.finditer(text):
+        br = text.find("{", m.end())
+        if br < 0:
+            continue
+        depth, j = 0, br
+        while j < len(text):
+            ch = text[j]
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    break
+            j += 1
+        name = m.group(1)
+        if name in kept:
+            cut.append((m.start(), j + 1, name))
+        else:
+            kept.add(name)
+    for s, e, name in reversed(cut):          # splice out later, back-to-front
+        text = text[:s] + ("/* dup fn %s removed */\n" % name) + text[e:]
 
     regs = len(set(re.findall(r"\br\d{1,2}\b", text)))
     head = _PRELUDE + "\n" + "\n".join(decls) + "\n\n/* forward declarations */\n" + "\n".join(protos) + "\n\n"
@@ -191,8 +219,12 @@ def _compile(cfile, fmt):
     h = os.path.join(ow, "h")
     env["INCLUDE"] = os.pathsep.join([h, os.path.join(h, "win" if fmt == "NE" else "nt")])
     flags = ["-bt=nt", "-q", "-wcd=138"] if fmt != "NE" else ["-bt=windows", "-mm", "-zW", "-q"]
-    r = subprocess.run([cc] + flags + [os.path.basename(cfile)],
-                       cwd=os.path.dirname(cfile), env=env, capture_output=True, text=True)
+    try:
+        r = subprocess.run([cc] + flags + [os.path.basename(cfile)],
+                           cwd=os.path.dirname(cfile), env=env, capture_output=True,
+                           text=True, timeout=90)
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "errors": -1, "sample": ["compile timeout"]}
     errs = [l for l in (r.stdout + r.stderr).splitlines() if "Error!" in l]
     return {"ok": r.returncode == 0, "errors": len(errs), "sample": errs[:5]}
 

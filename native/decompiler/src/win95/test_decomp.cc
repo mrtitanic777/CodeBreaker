@@ -243,7 +243,10 @@ int main(int argc, char** argv) {
       for (size_t i = 0; i < fs.size(); ++i) {
         uint32_t fstart = fs[i];
         uint32_t fend = (i + 1 < fs.size()) ? fs[i + 1] : s.base_addr + s.length;
-        if (fstart >= s.base_addr + s.length) continue;
+        // Reject starts outside this segment's range: a bogus target (e.g. an
+        // unresolved 0) below the base would otherwise span a giant range and
+        // render a runaway body (and duplicate across segments).
+        if (fstart < s.base_addr || fstart >= s.base_addr + s.length) continue;
         char nm[32]; std::snprintf(nm, sizeof nm, "sub_%06X", fstart);
         auto nn = names.find(fstart);
         fns.push_back({fstart, fend, nn != names.end() ? nn->second : nm});
