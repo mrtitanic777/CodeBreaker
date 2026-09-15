@@ -28,14 +28,21 @@ MSZIP, STORED = 1, 0
 _BLOCK = 32756
 
 
-def _mszip_block(chunk):
-    """One MSZIP CFDATA payload: 'CK' + a raw-deflate STORED stream. MSZIP carries the LZ window
-    across consecutive CFDATA blocks (FDI/7-Zip seed each block from the previous block's output);
-    emitting independently-compressed blocks corrupts every file past the first block. STORED blocks
-    (deflate level 0, literal) have no cross-block back-references, so each decodes standalone and the
-    data comes out byte-exact regardless of the reader's window handling. Larger, but valid."""
-    co = zlib.compressobj(0, zlib.DEFLATED, -15)   # raw deflate, STORED (no back-references)
-    return b"CK" + co.compress(chunk) + co.flush(zlib.Z_FINISH)
+def _mszip_block(chunk, zdict=b""):
+    """One MSZIP CFDATA payload: 'CK' + a raw-deflate stream. MSZIP carries the LZ window across
+    consecutive CFDATA blocks -- the decoder (FDI / Win95 SETUP) seeds each block's 32K window from
+    the PREVIOUS block's uncompressed output -- so block N+1 is compressed with that as the deflate
+    preset dictionary (zlib zdict). This yields small, valid, byte-exact cabs (STORED works but is
+    ~3x bigger, which overflows Setup's precopy buffer for the mini-Windows cabinet)."""
+    if zdict:
+        co = zlib.compressobj(9, zlib.DEFLATED, -15, 8, 0, zdict[-32768:])
+    else:
+        co = zlib.compressobj(9, zlib.DEFLATED, -15)
+    body = co.compress(chunk) + co.flush(zlib.Z_FINISH)
+    if len(body) + 2 > 32768:                      # payload must fit the 32768 CFDATA cap -> STORED
+        co = zlib.compressobj(0, zlib.DEFLATED, -15)
+        body = co.compress(chunk) + co.flush(zlib.Z_FINISH)
+    return b"CK" + body
 
 
 def _chk(data, seed):
@@ -72,12 +79,14 @@ def write_cab(files, out_path, compress=MSZIP, set_id=0, cab_index=0,
     cabinet SET so period tools that walk the chain (Win95 SETUP's precopy) find
     files split across cabinets. Omit for a standalone cabinet."""
     folder = b"".join(data for _n, data in files)   # one folder, files concatenated
-    # split into CFDATA blocks
+    # split into CFDATA blocks, carrying the previous block's output as the MSZIP window dictionary
     blocks = []
+    pdict = b""                                     # previous block's output = MSZIP window dictionary
     for i in range(0, len(folder) or 1, _BLOCK):
         chunk = folder[i:i + _BLOCK]
-        payload = _mszip_block(chunk) if compress == MSZIP else chunk
+        payload = _mszip_block(chunk, pdict) if compress == MSZIP else chunk
         blocks.append((payload, len(chunk)))
+        pdict = chunk
     if not folder:
         blocks = [(b"CK" if compress == MSZIP else b"", 0)]
 

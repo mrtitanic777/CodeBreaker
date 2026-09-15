@@ -24,6 +24,34 @@ from src.core import paths
 from src.targets.win95 import cab as cabmod, cabwrite
 
 
+def _makecab(entries, out_cab):
+    """Repack [(name, bytes)] into a VALID MSZIP cabinet using Windows makecab -- FDI/Setup and 7-Zip
+    accept it with zero errors (cabwrite's hand-rolled MSZIP tripped strict readers). Falls back to
+    cabwrite if makecab is unavailable."""
+    tmp = tempfile.mkdtemp(prefix="mkcab_")
+    try:
+        for name, data in entries:
+            with open(os.path.join(tmp, name), "wb") as f:
+                f.write(data)
+        cabname = os.path.basename(out_cab)
+        ddf = os.path.join(tmp, "_c.ddf")
+        with open(ddf, "w") as f:
+            f.write(".OPTION EXPLICIT\n.Set CabinetNameTemplate=%s\n.Set DiskDirectory1=%s\n"
+                    ".Set Cabinet=on\n.Set Compress=on\n.Set CompressionType=MSZIP\n.Set MaxDiskSize=0\n"
+                    % (cabname, tmp))
+            for name, _ in entries:
+                f.write('"%s" "%s"\n' % (os.path.join(tmp, name), name))
+        r = subprocess.run(["makecab.exe", "/F", ddf], cwd=tmp, capture_output=True, text=True)
+        produced = os.path.join(tmp, cabname)
+        if os.path.isfile(produced):
+            shutil.move(produced, out_cab)
+            return True
+        cabwrite.write_cab(entries, out_cab)         # fallback
+        return False
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def _design_root():
     dr = paths.design_root()
     if os.path.isdir(os.path.join(dr, "corpus")):
@@ -111,7 +139,7 @@ def main(argv):
             shutil.copy2(os.path.join(src, cab), os.path.join(out, cab))
             print("  %-14s copied unchanged (no swaps)" % cab)
             continue
-        cabwrite.write_cab(entries, os.path.join(out, cab))
+        _makecab(entries, os.path.join(out, cab))
         for s in swapped:
             swapped_total[s] = cab
         print("  %-14s repacked (%d files)%s" % (cab, len(entries),
