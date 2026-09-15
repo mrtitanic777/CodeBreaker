@@ -78,29 +78,105 @@ def _namemap(path, fmt):
     return namemap
 
 
+# --- INT-service resolution (correlate the AH/AX value at each int site from the disasm) ------
+def _int_services(path, fmt):
+    """{func_addr:int -> [service label per int site, in order]}. For each `int 0xNN`, scan back for
+    the AH/AX it was set with and map to the authentic service name (DOS 21h / 2Fh / XMS / EMS)."""
+    dec = _native(fmt)
+    dis = subprocess.run([dec, path, "--disasm"], capture_output=True, text=True).stdout
+    starts = sorted({int(l.split("\t")[0], 16) for l in
+                     subprocess.run([dec, path, "--names"], capture_output=True, text=True).stdout.splitlines()
+                     if l.split("\t")[0]})
+    import bisect
+
+    def func_of(a):
+        i = bisect.bisect_right(starts, a) - 1
+        return starts[i] if i >= 0 else None
+    out, ah, ax = {}, None, None
+    for line in dis.splitlines():
+        m = re.match(r"^\s+([0-9A-Fa-f]{4,8})\s+", line)      # "  ADDR  BYTES  text" (indented)
+        if not m:
+            continue
+        addr = int(m.group(1), 16)
+        txt = line.split(None, 2)[-1] if len(line.split(None, 2)) == 3 else ""
+        mah = re.search(r"mov ah, 0x([0-9a-fA-F]+)", txt)
+        max_ = re.search(r"mov ax, 0x([0-9a-fA-F]+)", txt)
+        if mah:
+            ah = int(mah.group(1), 16)
+        if max_:
+            ax = int(max_.group(1), 16); ah = (ax >> 8) & 0xFF
+        mint = re.search(r"int 0x([0-9a-fA-F]+)", txt)
+        if mint:
+            cur = func_of(addr)
+            if cur is None:
+                continue
+            out.setdefault(cur, [])
+            iv = int(mint.group(1), 16)
+            lab = None
+            if iv == 0x21 and ah in DR._DOS21:
+                lab = "DOS 0x%02X %s" % (ah, DR._DOS21[ah])
+            elif iv == 0x2f and ax in DR._INT2F:
+                lab = "INT 2Fh %s" % DR._INT2F[ax]
+            elif iv == 0x2f and ah == 0x43:
+                lab = "XMS"
+            elif iv == 0x67:
+                lab = "EMS"
+            elif iv == 0x10:
+                lab = "BIOS video"
+            elif iv == 0x13:
+                lab = "BIOS disk"
+            else:
+                lab = "int 0x%02X" % iv
+            out[cur].append(lab)
+    return out
+
+
 # --- author the decompiled C ----------------------------------------------------------------
-_INT_DOC = {"0x21": ("DOS", DR._DOS21), "0x2f": ("INT 2Fh", DR._INT2F)}
+def _simplify_c(c):
+    """Clean common decompiler artifacts so bodies read closer to authored C (safe text rewrites)."""
+    c = re.sub(r"\(([A-Za-z_]\w*) \^ \1\)", "0", c)                    # (x ^ x) -> 0
+    c = re.sub(r"\((\d+) \^ \1\)", "0", c)                             # (4 ^ 4) -> 0
+    c = re.sub(r"\b(\w+) \^ \1\b", "0", c)                             # x ^ x   -> 0
+    c = c.replace(" + 0 + ", " + ").replace(" - 0 + ", " + ").replace(" + 0;", ";")
+    c = re.sub(r" \+ 0\b", "", c)
+    return c
 
 
 def _author_c(path, fmt, out):
     dec = _native(fmt)
     c = subprocess.run([dec, path, "--module"], capture_output=True, text=True).stdout
     names = _namemap(path, fmt)
+    svcs = _int_services(path, fmt)
 
     def sub_name(m):
-        a = int(m.group(1), 16)
-        return names.get(a, m.group(0))
+        return names.get(int(m.group(1), 16), m.group(0))
     c = re.sub(r"sub_([0-9A-Fa-f]{4,8})", sub_name, c)                 # behavioral function names
-    # annotate raw INT sites with the interrupt's role (service-specific naming needs AH context,
-    # which the C often folds away -- annotate the interrupt so the call site is legible)
-    c = re.sub(r"__asm \{ int (0x[0-9a-fA-F]+) \}",
-               lambda m: "__asm { int %s }   /* %s service */"
-               % (m.group(1), _INT_DOC.get(m.group(1).lower(), ("software interrupt",))[0]), c)
+    c = _simplify_c(c)
+
+    # per-function INT-service annotation: within each function (identified by its _XXXXXX address
+    # suffix), replace the int sites in order with the specific resolved service.
+    outlines = []
+    cur_addr = None
+    idx = 0
+    for line in c.splitlines():
+        fm = re.match(r"^[A-Za-z_].*_([0-9A-Fa-f]{4,8})\(.*\)\s*$", line)
+        if fm:
+            cur_addr = int(fm.group(1), 16); idx = 0
+        im = re.search(r"__asm \{ int (0x[0-9a-fA-F]+) \}", line)
+        if im and cur_addr is not None:
+            seq = svcs.get(cur_addr, [])
+            lab = seq[idx] if idx < len(seq) else (im.group(1) + " service")
+            idx += 1
+            line = re.sub(r"__asm \{ int 0x[0-9a-fA-F]+ \}",
+                          "__asm { int %s }   /* %s */" % (im.group(1), lab), line)
+        outlines.append(line)
+    c = "\n".join(outlines)
+
     hdr = ("/* %s -- authored-source reconstruction (CodeBreaker authsrc).\n"
-           " * Original language: C (%d functions). Decompiled from the real Win95 binary and\n"
-           " * authored: behavioral function names, INT-service annotations. Names are evidence-based\n"
-           " * reconstruction labels, not recovered private symbols. */\n\n"
-           % (os.path.basename(path), c.count("\n(")))
+           " * Original language: C. Decompiled from the real Win95 binary and authored: behavioral\n"
+           " * function names, resolved INT-service call sites (DOS/2Fh/XMS/EMS/BIOS), artifact\n"
+           " * cleanup. Names are evidence-based reconstruction labels, not recovered symbols. */\n\n"
+           % os.path.basename(path))
     os.makedirs(os.path.dirname(out), exist_ok=True)
     open(out, "w", encoding="utf-8", errors="replace").write(hdr + c)
     named = sum(1 for v in names.values() if not v.startswith(("sub_", "helper_", "thunk_")))
