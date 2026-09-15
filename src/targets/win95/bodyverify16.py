@@ -34,27 +34,75 @@ def _ow():
             "inc": [os.path.join(root, "h", "win"), os.path.join(root, "h")]}
 
 
-_DEF_RE = re.compile(r"(?m)^\s*(?:WORD|int|unsigned|long|void|LRESULT|BOOL|LONG)\s+"
-                     r"(?:__far\s+|__pascal\s+|__export\s+|FAR\s+|PASCAL\s+)*"
-                     r"([A-Za-z_]\w*)\s*\(")
+_DEF_RE = re.compile(r"(?m)^\s*(?:WORD|int|unsigned|long|void|LRESULT|BOOL|LONG|char|short|"
+                     r"unsigned\s+\w+)\s+(?:__far\s+|__pascal\s+|__export\s+|__fastcall\s+|"
+                     r"__cdecl\s+|__stdcall\s+|FAR\s+|PASCAL\s+)*([A-Za-z_]\w*)\s*\(")
+
+
+_NE_BLOCKS = {}
+
+
+def _ne_blocks(module):
+    """{linear_addr: source-block} from win95dec --module (NE). The decompiler keys functions by
+    linear address = (seg<<16)|off and names them with the recovered export name (or sub_<lin>)."""
+    if module in _NE_BLOCKS:
+        return _NE_BLOCKS[module]
+    from src.core import paths
+    dec = os.path.join(paths.repo_root(), "native", "decompiler", "build", "bin", "win95dec.exe")
+    out = {}
+    try:
+        r = subprocess.run([dec, module, "--module", "0"], capture_output=True, text=True, timeout=300)
+        text = r.stdout or ""
+    except Exception:
+        text = ""
+    for m in re.finditer(r"//\s+\w+\s+@\s+0x([0-9A-Fa-f]+)\s*\n", text):
+        lin = int(m.group(1), 16)
+        b = text.find("{", m.end())
+        if b < 0:
+            continue
+        depth, j = 0, b                                   # brace-match the function body
+        while j < len(text):
+            if text[j] == "{":
+                depth += 1
+            elif text[j] == "}":
+                depth -= 1
+                if depth == 0:
+                    break
+            j += 1
+        if depth == 0:
+            # include the signature line (between the @addr comment and the brace)
+            sig = text[m.end():b]
+            out[lin] = sig + text[b:j + 1]
+    _NE_BLOCKS[module] = out
+    return out
 
 
 def synth16(module, seg, off):
-    """Clean C for one 16-bit function, or (None, reason). fname is the emitted function's name."""
+    """Clean C for one 16-bit function, or (None, reason). Ladder: interproc16 call-flow -> static
+    decompile (win95dec --module block, full logic). fname is the emitted function's name."""
     try:
         r = interproc16.reconstruct_at(module, seg, off)
-    except Exception as e:
-        return None, "synth error: " + type(e).__name__
-    if not r.get("reconstructed") or not r.get("emitted_c"):
-        return None, r.get("reason", "no synth")
-    c = r["emitted_c"]
-    m = _DEF_RE.search(c)
-    return (m.group(1) if m else "sub_%d_%x" % (seg, off)), c
+    except Exception:
+        r = {"reconstructed": False}
+    if r.get("reconstructed") and r.get("emitted_c"):
+        c = r["emitted_c"]
+        m = _DEF_RE.search(c)
+        return (m.group(1) if m else "sub_%d_%x" % (seg, off)), c
+    # static fallback: the full-logic decompiled body (named with its recovered export name)
+    blk = _ne_blocks(module).get((seg << 16) | off)
+    if blk:
+        m = _DEF_RE.search(blk)
+        if m:
+            return m.group(1), blk
+    return None, r.get("reason", "no synth (leaf + static block missing)")
 
 
 _C_KW = {"if", "else", "while", "for", "do", "switch", "case", "return", "goto", "break", "continue",
          "sizeof", "void", "int", "char", "short", "long", "unsigned", "signed", "struct", "union",
-         "enum", "const", "static", "default", "WORD", "BYTE", "DWORD", "LONG", "BOOL"}
+         "enum", "const", "static", "default", "WORD", "BYTE", "DWORD", "LONG", "BOOL", "UINT",
+         "HANDLE", "HWND", "LPSTR", "LPCSTR", "undefined", "undefined1", "undefined2", "undefined4",
+         "__far", "__near", "__huge", "__pascal", "__cdecl", "__stdcall", "__fastcall", "__export",
+         "__thiscall", "__interrupt", "FAR", "PASCAL", "far", "near"}
 
 
 def compile_body16(c_text, fname, outdir):
@@ -64,21 +112,49 @@ def compile_body16(c_text, fname, outdir):
     if not os.path.exists(ow["wcc"]):
         return None, "OpenWatcom 16-bit (wcc) not built"
     os.makedirs(outdir, exist_ok=True)
-    # give the exported body the Win16 DLL export decoration (far + pascal + __export)
-    c_text = re.sub(r"(?m)^(\s*)(WORD|int|unsigned|long|void)\s+(%s)\s*\(" % re.escape(fname),
-                    r"\1\2 __far __pascal __export \3(", c_text, count=1)
-    # every called identifier that isn't defined here / a keyword -> a far cdecl stub (caller cleans,
-    # so the body's own stack stays balanced regardless of the call's arg count).
+    # --- cure the raw decompiler output into compilable 16-bit C ---------------------------------
+    c_text = re.sub(r"(?m)^\s*#\d.*$", "", c_text)                     # strip #<line> artifacts
+    c_text = re.sub(r"\b__int8\b", "char", c_text)                     # MSVC sized ints -> standard
+    c_text = re.sub(r"\bunsigned\s+__int16\b", "unsigned", c_text)
+    c_text = re.sub(r"\b__int16\b", "int", c_text)
+    c_text = re.sub(r"\bunsigned\s+__int32\b", "unsigned long", c_text)
+    c_text = re.sub(r"\b__int32\b", "long", c_text)
+    c_text = re.sub(r"\b(?:__thiscall|__usercall|__userpurge)\b", "", c_text)  # unknown conventions
+    # the body signature: replace its convention with the DLL export decoration
+    c_text = re.sub(r"(?m)^(\s*)([A-Za-z_][\w ]*?)\b(?:__fastcall|__cdecl|__stdcall|__pascal)?\s*(%s)\s*\("
+                    % re.escape(fname), r"\1\2 __far __pascal __export \3(", c_text, count=1)
     called = set(re.findall(r"\b([A-Za-z_]\w*)\s*\(", c_text))
     defined = set(re.findall(r"\b(%s)\s*\(" % re.escape(fname), c_text)) | {"LibMain", "WEP"}
     stubs = ["WORD __far __cdecl %s(){return 0;}" % s for s in sorted(called - defined - _C_KW)]
     pre = ["typedef unsigned WORD;", "typedef unsigned char BYTE;", "typedef unsigned long DWORD;",
            "typedef int BOOL;", "typedef long LONG;", "typedef unsigned UINT;",
+           "typedef unsigned undefined;", "typedef unsigned char undefined1;",
+           "typedef unsigned undefined2;", "typedef unsigned long undefined4;",
            "typedef unsigned HANDLE;", "typedef unsigned HWND;", "typedef char __far* LPSTR;",
            "typedef const char __far* LPCSTR;"]
+    # FRAME RECOVERY: the NE lifter leaves 16-bit registers r20..r27 (ax..di) unresolved; back them
+    # with a shared scratch buffer so register-relative accesses hit real memory (the oracle
+    # fingerprint is address-independent), and declare any other undeclared identifiers as globals.
+    used = set(re.findall(r"\b([A-Za-z_]\w*)\b", c_text))
+    decl_types = re.findall(r"\b(?:WORD|BYTE|DWORD|int|unsigned|long|short|char|void)\s+\**([A-Za-z_]\w*)", c_text)
+    rregs = sorted(g for g in used if re.fullmatch(r"r\d{1,2}", g))
+    labels = set(re.findall(r"(?m)^\s*([A-Za-z_]\w*)\s*:(?!:)", c_text)) | set(re.findall(r"\bgoto\s+(\w+)", c_text))
+    undecl = sorted(used - set(decl_types) - _C_KW - labels - set(rregs) - set(called)
+                    - {fname, "LibMain", "WEP", "result"})
+    gdecl = ["WORD %s;" % g for g in undecl if not g.isdigit()] + ["WORD result;"]
+    frame = []
+    if rregs:
+        frame = ["static unsigned char _frame[0x4000];"] + ["WORD %s;" % r for r in rregs]
     entry = ["int __far __pascal LibMain(unsigned h,unsigned ds,unsigned hp,char __far*cl){return 1;}",
              "int __far __pascal WEP(int n){return 1;}"]
-    src = "\n".join(pre + stubs + entry) + "\n\n" + c_text + "\n"
+    # init the frame registers at the top of the body
+    if rregs:
+        mm = _DEF_RE.search(c_text)
+        if mm:
+            br = c_text.index("{", mm.end() - 1)
+            init = "".join("  %s=(WORD)_frame+0x2000;\n" % r for r in rregs)
+            c_text = c_text[:br + 1] + "\n" + init + c_text[br + 1:]
+    src = "\n".join(pre + gdecl + frame + stubs + entry) + "\n\n" + c_text + "\n"
     cf = os.path.join(outdir, fname + ".c")
     open(cf, "w", newline="\n").write(src)
     env = dict(os.environ)
@@ -86,7 +162,7 @@ def compile_body16(c_text, fname, outdir):
     env["INCLUDE"] = ";".join(ow["inc"])
     env["WLINK_LNK"] = ow["wlink_lnk"]                        # so `system windows` resolves
     env["PATH"] = os.path.join(ow["root"], "binnt64") + os.pathsep + env.get("PATH", "")
-    r = subprocess.run([ow["wcc"], "-bt=windows", "-mc", "-zq", "-w0", fname + ".c"],
+    r = subprocess.run([ow["wcc"], "-bt=windows", "-mc", "-zq", "-w0", "-zastd=c99", fname + ".c"],
                        cwd=outdir, env=env, capture_output=True, text=True, timeout=120)
     if r.returncode != 0:
         return None, "compile: " + (r.stdout + r.stderr).strip().split("\n")[-1][:90]
