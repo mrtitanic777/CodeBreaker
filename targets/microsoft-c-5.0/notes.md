@@ -225,3 +225,8 @@ si/di with no stack home; two `return`s → two full epilogues (no shared tail a
   correctly ("150 iterations: 1027 primes"). Carved ~5,700 functions corpus-wide.
   `idlib.py`: CRT triage across all 19 binaries. `objfn.py` + oracle: first **byte-exact**
   reconstruction (`inset`). Pipeline proven end to end.
+- **2026-09-14** — Phase-5 scale-out started on ERROUT. Added `tools/sheet.py` (recovery
+  worksheet) and `tools/asmid.py` (asm-helper ID: `__chkstk` named in 15/19 binaries).
+  ERROUT mapped: ~6 genuine app functions (rest CRT); `inset`@0x12ce byte-exact,
+  `err1`@0x174 source-recovered. Report: `work/recover/ERROUT.md`. Confirmed several
+  "app" functions are unmatched CRT (`_output`/printf) — extend idlib, don't reconstruct.

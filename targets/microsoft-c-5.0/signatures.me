@@ -87,8 +87,14 @@
 ;;   __NMSG_TEXT __cintDIV __ctermsub __find __inittime ...
 ;;
 ;; Compiler-helper (toolchain, [ID]) — recurring internal call targets:
-[helper __chkstk]  called as  B8 <framesize:iw> E8 <rel:iw>   (mov ax,n; call __chkstk)
-                   in CL.EXE __chkstk = image 0x44e6; every framed fn probes it.
+[helper __chkstk]  body  59 8B DC 2B D8 72 ?? 3B 1E ?? ?? 72 ?? 8B E3 FF E1
+                   (pop cx; mov bx,sp; sub bx,ax; jb; cmp bx,[heaptop]; jb; mov sp,bx; jmp cx)
+                   call site: [B8 framesize:iw] E8 rel:iw  (frameless -> 33 C0 = xor ax,ax).
+                   found by tools/asmid.py in 15/19 binaries (small/compact model):
+                   C3@0xb37e CL@0x44e6 CVPACK@0x51ae ERROUT@0x3f6 EXEMOD@0xa9e
+                   EXEPACK@0x1f82 LIB@0x5160 LIBBUILD@0x15a8 LINK@0xccda MAKE@0x1f0e
+                   QCL@0x3a66 QLIB@0x2b4c SETENV@0x11d2 SETUP@0x2024
+                   (C1/C1L/C2/CV/QC use a large-model far variant — pattern TODO)
 [helper __dosret/criterr]  55 8B EC 83 C5 02 B0 04 ... 1F 9E F9 CB  (retf; sahf; stc)
                    shared verbatim across CL@0x4345, SETENV@0x0aad (global addr differs).
 
@@ -105,3 +111,15 @@
   verify  BYTE-EXACT vs EXEMOD@0x1ade (only the 2-byte set pointer differs; it is a
           relocatable fixup). Same idiom recurs in ERROUT/SETENV/MAKE/LIB.
   note    template for Phase-5 recovery; see work/recover/inset.c
+
+[fn ERROUT:_TEXT:0x12ce  [BX]  name=inset  size=34]
+  verify  BYTE-EXACT — byte-identical to the EXEMOD inset idiom modulo the mov si,table
+          fixup (table @DGROUP:0x228). Confirms the idiom cross-binary.
+
+[fn ERROUT:_TEXT:0x174  [~]  name=err1  size=37]
+  proto   err1(int n)                     ; error-print-and-exit helper
+  source  fprintf(&stderr, _NMSG_TEXT(n)); exit(1);      (work/recover/err.c)
+  build   cl /AS /c   (stack-check prologue: xor ax,ax; call __chkstk)
+  verify  SOURCE-CORRECT, not yet byte-exact: shipped object defers the inner-call arg
+          cleanup (one add sp,2 omitted, legal since exit() is noreturn). Flag TODO.
+  twin    ERROUT:0x19a (err2) — same body, different message-base global.
