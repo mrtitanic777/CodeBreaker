@@ -438,7 +438,11 @@ def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, 
         a = s
         seglen = min(e, len(image))
         n = 0
-        while a < seglen and n < 6000:
+        # cap is proportional to the region size (at most one instruction/byte) so a large trailing
+        # region is emitted in full -- a fixed cap truncated the tail (e.g. COMMAND.COM's 25KB data
+        # region), leaving the rebuilt image short. Oversized (>0xE000) regions are force-db'd upstream.
+        nmax = (seglen - s) + 16
+        while a < seglen and n < nmax:
             got = list(md.disasm(bytes(image[a:min(a + 15, seglen)]), a))
             if not got:
                 out.append((a, None)); a += 1; n += 1; continue
@@ -1102,15 +1106,22 @@ def _emit_image(outroot, which, image):
         # segment's FILE base, derived from the first region header (absolute file addr) minus its
         # emit offset. This gives full coverage with no per-function gaps.
         code = _omf_ledata(obj)
+        # Segment file base = (a region header's absolute file addr) - (that region's segment-relative
+        # emit offset from the LST). base is constant per segment, so the first header whose region has
+        # a locatable emit offset fixes it. Search a small window after each header for the first LST
+        # content line carrying an offset, so a region that opens with a label/directive still resolves.
         seg_base = None
         pending = None
+        window = 0
         for line in open(lst, encoding="latin1", errors="replace"):
-            hm = re.search(r";----- \S+ \(0x([0-9A-Fa-f]+),", line)
+            hm = re.search(r";-----.*\(0x([0-9A-Fa-f]+),", line)   # code AND data-block headers
             if hm:
-                pending = int(hm.group(1), 16); continue
-            om = re.match(r"\s+([0-9A-Fa-f]{4,8})\s+[0-9A-Fa-f]{2}", line)
-            if om and pending is not None:
-                seg_base = pending - int(om.group(1), 16); break
+                pending = int(hm.group(1), 16); window = 12; continue
+            if pending is not None and window > 0:
+                window -= 1
+                om = re.match(r"\s+([0-9A-Fa-f]{4,8})\s+([0-9A-Fa-f]{2})", line)
+                if om:
+                    seg_base = pending - int(om.group(1), 16); break
         if seg_base is None:
             continue
         for k in range(len(code)):
