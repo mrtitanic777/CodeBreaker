@@ -45,7 +45,7 @@ def module_functions(data, mstart):
         elif rt in (0xa0,0xa1):
             seg,j=rd_index(body,0); do=struct.unpack_from("<H",body,j)[0]; j+=2; pl=body[j:]
             sn=segs[seg-1] if 0<seg<=len(segs) else ""
-            if sn in ("PROG","CODE","BASE"):
+            if sn in ("PROG","CODE","BASE") or sn.endswith("_TEXT"):   # MSC code seg = _TEXT / <mod>_TEXT
                 end=do+len(pl)
                 if end>len(image): image.extend(b"\0"*(end-len(image))); mask.extend(b"\0"*(end-len(mask)))
                 image[do:end]=pl; cur=do
