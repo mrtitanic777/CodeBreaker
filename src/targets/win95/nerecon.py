@@ -295,7 +295,21 @@ def _recon_ne(which, outroot, extra_db=None, path=None, desc=None):
             namemap[fo] = _san_ne(name)
     segs.sort()
     starts = sorted(s for s in starts if s < len(image))
-    ends = {s: (starts[i + 1] if i + 1 < len(starts) else len(image)) for i, s in enumerate(starts)}
+    # A function's end is the next start, but CLAMPED to the end of its own NE segment: a body must
+    # never spill into the following segment. Without this the last function in a segment runs to the
+    # next segment's start (and the final one to end-of-image), over-filling the segment past the 64K
+    # USE16 limit -> wlink E3011 "invalid object file attribute".
+    seg_bounds = sorted((s["file"], s["file"] + s["len"]) for s in ne.segs)
+
+    def _seg_end(fo):
+        for b, e in seg_bounds:
+            if b <= fo < e:
+                return e
+        return len(image)
+    ends = {}
+    for i, s in enumerate(starts):
+        nxt = starts[i + 1] if i + 1 < len(starts) else len(image)
+        ends[s] = min(nxt, _seg_end(s))
 
     # behavioral naming for the non-exported internals (reuse dosrecon's engine)
     finfo = {}
