@@ -92,6 +92,10 @@ def _layout(data):
     import struct
     if data[:2] != b"MZ":
         return False, 0, 0, data          # raw .SYS device driver: whole file flat, entry 0
+    if len(data) >= 0x40:                  # NE module: reconstruction uses whole-file offsets
+        nepos = struct.unpack("<I", data[0x3c:0x40])[0]
+        if 0 < nepos < len(data) - 1 and data[nepos:nepos + 2] == b"NE":
+            return False, 0, 0, data
     last_page, pages, _rel, hdr_par = struct.unpack("<HHHH", data[2:10])
     hdr = hdr_par * 16
     total = pages * 512
@@ -568,16 +572,26 @@ def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, 
                 # region misdecoded as code) -> emit their raw bytes as db, keeping the disasm as a
                 # comment. Faithful and always assembles.
                 hard = (mn in ("aad", "aam", "salc", "shufps", "icebp", "invd", "wbinvd",
-                               "xadd", "lar", "lsl", "ud2", "rsm", "sysenter", "sysexit",
-                               "cmpxchg", "cmpxchg8b", "rdtsc", "rdmsr", "wrmsr", "syscall", "sysret")
+                               "xadd", "lar", "lsl", "ud2", "ud0", "ud1", "rsm", "sysenter",
+                               "sysexit", "cmpxchg", "cmpxchg8b", "rdtsc", "rdmsr", "wrmsr",
+                               "syscall", "sysret", "fisttp", "fbld", "fbstp", "lss", "lfs", "lgs")
+                        or mn.startswith("bnd") or mn.startswith("prefetch")   # MPX/3DNow misdecode
+                        or (mn.split()[0] in ("repne", "repnz", "repe", "repz")
+                            and mn.split()[-1] in ("stosw", "stosb", "stosd", "lodsw", "lodsb",
+                                                   "lodsd", "movsw", "movsb", "movsd", "insw",
+                                                   "insb", "outsw", "outsb"))   # invalid rep combo
+                        or (mn in ("lds", "les", "lfs", "lgs", "lss") and re.match(r"e[a-z]{2},", ops))
+                        or (mn in ("jmp", "call") and ops.startswith("ptr "))   # stray-ptr misdecode
                         or mn.startswith("cmov") or mn.startswith("fcmov") or mn.startswith("set")
                         or any(t in ops for t in ("xmm", "ymm", "mm0", "mm1", "mm2", "mm3",
                                                   "mm4", "mm5", "mm6", "mm7", "st(", "cr0", "cr2",
                                                   "cr3", "cr4", "dr0", "dr7", "tr6", "tr7"))
                         or (mn in ("call", "jmp", "lcall", "ljmp") and ("," in ops or ":" in ops))
-                        or (mn in ("movzx", "movsx")           # 16<-16 movzx/movsx is invalid (misdecode)
-                            and re.search(r",\s*(ax|bx|cx|dx|si|di|bp|sp)\b", ops)
-                            and not re.search(r"^(e[a-z]{2})", ops))
+                        or (mn in ("movzx", "movsx")           # movzx/movsx to a 16-bit dest needs a
+                            # BYTE source; a word source (word ptr / word reg) is invalid -> misdecode
+                            and re.match(r"(ax|bx|cx|dx|si|di|bp|sp),", ops)
+                            and ("word ptr" in ops
+                                 or re.search(r",\s*(ax|bx|cx|dx|si|di|bp|sp)\b", ops)))
                         or (ins.bytes and (ins.bytes[0] in (0x9A, 0xEA)
                                            or (len(ins.bytes) > 1 and ins.bytes[0] == 0x66
                                                and ins.bytes[1] in (0x9A, 0xEA)))))  # far direct
@@ -603,6 +617,9 @@ def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, 
                     mn, ops = "popad", ""
                 elif mn == "nop" and ops:            # multi-byte nop -> MASM nop takes no operand
                     ops = ""
+                elif mn in ("rcl", "rcr", "rol", "ror", "shl", "shr", "sal", "sar") \
+                        and ops and "," not in ops:  # short form -> explicit ,1 count for MASM
+                    ops = ops + ", 1"
                 # string ops carry implicit operands in MASM; capstone spells them out (and may
                 # merge a rep/repe/repne prefix into the mnemonic) -> keep mnemonic, drop operands
                 elif mn.split()[-1] in ("lodsb", "lodsw", "lodsd", "stosb", "stosw", "stosd",

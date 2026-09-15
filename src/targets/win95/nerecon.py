@@ -171,6 +171,104 @@ class NE:
         return out
 
 
+def _discover(image, base, length, md):
+    """Discover function starts within one NE segment [base, base+length): 55 8B EC prologues and
+    near-call (E8) targets that land inside the segment. Returns a set of file offsets."""
+    starts = set()
+    end = base + length
+    a = base
+    while a < end - 2:
+        if image[a] == 0x55 and image[a + 1] == 0x8B and image[a + 2] == 0xEC:
+            starts.add(a)
+        a += 1
+    a = base
+    while a < end:
+        g = list(md.disasm(bytes(image[a:min(a + 8, end)]), a))
+        if not g:
+            a += 1; continue
+        ins = g[0]
+        if ins.mnemonic == "call" and ins.op_str.startswith("0x"):
+            try:
+                t = int(ins.op_str, 16)
+                if base <= t < end:
+                    starts.add(t)
+            except ValueError:
+                pass
+        a += ins.size
+    return starts
+
+
+def _recon_ne(which, outroot):
+    """Decode + emit the NE module as multi-segment MASM (one SEGMENT per NE segment), exported
+    functions named authentically. Reuses the proven MZ emitter/assembler/verifier from dosrecon."""
+    from src.targets.win95 import dosrecon as DR
+    fname, desc = _MODS[which]
+    path = _corpus(fname)
+    if not path:
+        print("  MISSING: %s" % fname); return None
+    data = open(path, "rb").read()
+    ne = NE(data)
+    defn = _load_def(which)
+    emap = ne.export_map(defn)
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    image = data
+    strings = DR._string_regions(image)
+
+    segs = []                     # (seg_file_offset, seg_name) for the emitter
+    starts = set()
+    force_db = set()
+    for s in ne.segs:
+        base = s["file"]
+        nm = ("DGROUP%d" % s["idx"]) if s["data"] else ("CSEG%d" % s["idx"])
+        segs.append((base, nm))
+        starts.add(base)
+        if s["data"]:
+            force_db.add(base)                     # data segment -> emit as db
+        else:
+            starts |= _discover(image, base, s["len"], md)
+    # exported entry points are function starts, named authentically
+    namemap = {}
+    for (seg, off), name in emap.items():
+        if 1 <= seg <= len(ne.segs):
+            fo = ne.segs[seg - 1]["file"] + off
+            starts.add(fo)
+            namemap[fo] = _san_ne(name)
+    segs.sort()
+    starts = sorted(s for s in starts if s < len(image))
+    ends = {s: (starts[i + 1] if i + 1 < len(starts) else len(image)) for i, s in enumerate(starts)}
+
+    # behavioral naming for the non-exported internals (reuse dosrecon's engine)
+    finfo = {}
+    fkind = {}
+    for s in starts:
+        e = min(ends[s], s + 0x4000)
+        kind, ni, nb, ints, strs, services, callees = DR._analyze_fn(image, s, e, strings, md)
+        fkind[s] = kind
+        finfo[s] = {"services": services, "callees": callees, "strs": strs, "ints": ints, "kind": kind}
+        if s not in namemap:
+            namemap[s] = DR._beautify_name(s, kind, ints, strs, "")
+    for s in force_db:
+        namemap[s] = "seg_data_%06X" % s
+        fkind[s] = "data"
+    DR._name_by_behavior(namemap, finfo, set(starts))
+    # re-assert authentic export names (behavioral naming may not override them, but be explicit)
+    for (seg, off), name in emap.items():
+        if 1 <= seg <= len(ne.segs):
+            namemap[ne.segs[seg - 1]["file"] + off] = _san_ne(name)
+
+    outdir = os.path.join(outroot, "ne", which)
+    os.makedirs(outdir, exist_ok=True)
+    regions = DR._emit_asm(which, os.path.join(outroot, "ne"), image, False, 0, starts, ends,
+                           strings, md, namemap, fkind, desc, segs, force_db)
+    print("  emitted %d NE segment(s): %s" % (len(regions), ", ".join(regions)))
+    return {"which": which, "path": path, "outdir": outdir, "nsegs": len(segs),
+            "nfuncs": len(starts), "nexports": len(emap)}
+
+
+def _san_ne(name):
+    return re.sub(r"[^A-Za-z0-9_]", "_", name)
+
+
 def _analyze(which):
     fname, desc = _MODS[which]
     path = _corpus(fname)
@@ -194,14 +292,40 @@ def main(argv):
     if capstone is None:
         print("nerecon: needs capstone"); return 2
     which = "all"
+    do_build = do_verify = do_analyze = False
     for a in argv:
         if a in ("--krnl386", "--gdi", "--user"):
             which = a[2:]
         elif a == "--all":
             which = "all"
+        elif a == "--build":
+            do_build = True
+        elif a == "--verify":
+            do_build = do_verify = True
+        elif a == "--analyze":
+            do_analyze = True
     targets = ["krnl386", "gdi", "user"] if which == "all" else [which]
+    outroot = os.path.join(paths.design_root() if os.path.isdir(os.path.join(paths.design_root(), "corpus"))
+                           else os.path.join(_win95_root(), "design"), "recon")
+    if do_analyze:
+        for t in targets:
+            _analyze(t)
+        return 0
+    from src.targets.win95 import dosrecon as DR
+    results = []
     for t in targets:
-        _analyze(t)
+        print("== nerecon %s ==" % t)
+        r = _recon_ne(t, outroot)
+        if r:
+            print("  %d segments, %d functions, %d authentic export names"
+                  % (r["nsegs"], r["nfuncs"], r["nexports"]))
+            r["which_dir"] = os.path.join("ne", t)
+            results.append(r)
+    if do_build or do_verify:
+        rr = [{"which": os.path.join("ne", r["which"]), "path": r["path"]} for r in results]
+        DR._assemble(outroot, rr)
+    if do_verify:
+        DR._verify(outroot, rr)
     return 0
 
 
