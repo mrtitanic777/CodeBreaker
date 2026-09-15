@@ -593,6 +593,7 @@ def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, 
                 hard = (mn in ("aad", "aam", "salc", "shufps", "icebp", "invd", "wbinvd",
                                "xadd", "lar", "lsl", "ud2", "ud0", "ud1", "rsm", "sysenter",
                                "sysexit", "cmpxchg", "cmpxchg8b", "rdtsc", "rdmsr", "wrmsr",
+                               "cpuid", "rdpmc", "rdtscp",   # Pentium+ ops, misdecoded from data
                                "syscall", "sysret", "fisttp", "fbld", "fbstp", "lss", "lfs", "lgs")
                         or mn in ("bound", "arpl")             # 286-only / rare -> data misdecode
                         or (mn.startswith("lock") and "[" not in ops.split(",")[0])  # LOCK needs mem dest
