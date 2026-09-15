@@ -127,9 +127,12 @@ def _meaningful(s):
 
 # --- per-function analysis ------------------------------------------------------------------
 def _analyze_fn(image, fstart, fend, strings, md):
-    """Disassemble one function; return (kind, ninsn, nbad, ints:set, strs:list)."""
-    ints, strs = set(), []
+    """Disassemble one function; return (kind, ninsn, nbad, ints, strs, services, callees).
+    `services` = specific DOS/BIOS/XMS/EMS calls it issues (AH/AX resolved); `callees` = near
+    call-target addresses (for call-graph naming)."""
+    ints, strs, services, callees = set(), [], [], []
     ninsn = nbad = 0
+    pend_ah = pend_ax = None
     a = fstart
     seglen = min(fend, len(image))
     while a < seglen:
@@ -142,9 +145,26 @@ def _analyze_fn(image, fstart, fend, strings, md):
         ins = got[0]
         ninsn += 1
         mn = ins.mnemonic
+        if mn == "mov" and ins.op_str.startswith("ah,") and "0x" in ins.op_str:
+            try: pend_ah = int(ins.op_str.split(",")[1], 16)
+            except ValueError: pend_ah = None
+        elif mn == "mov" and ins.op_str.startswith("ax,") and "0x" in ins.op_str:
+            try:
+                pend_ax = int(ins.op_str.split(",")[1], 16); pend_ah = (pend_ax >> 8) & 0xFF
+            except ValueError: pend_ax = pend_ah = None
         if mn == "int":
             op = ins.op_str.strip()
             ints.add(op)
+            svc = None
+            if op == "0x21" and pend_ah in _DOS21: svc = _DOS21[pend_ah]
+            elif op == "0x2f" and pend_ax in _INT2F: svc = _INT2F[pend_ax]
+            elif op == "0x67" and pend_ah in _EMS: svc = _EMS[pend_ah]
+            elif op == "0x13" and pend_ah in _INT13: svc = _INT13[pend_ah]
+            elif op == "0x10" and pend_ah in _INT10: svc = _INT10[pend_ah]
+            if svc: services.append(svc)
+        elif mn == "call" and ins.op_str.startswith("0x"):
+            try: callees.append(int(ins.op_str, 16))
+            except ValueError: pass
         # string xref: try first-segment (disp==offset) and the code's own 64KB block
         for tok in re.findall(r"0x[0-9a-fA-F]+", ins.op_str):
             v = int(tok, 16)
@@ -153,7 +173,6 @@ def _analyze_fn(image, fstart, fend, strings, md):
                 if s and _meaningful(s) and len(s) <= 64:
                     strs.append(s); break
         a += ins.size
-    # classify code vs data: data regions decode as mostly-bad or trivial
     total = ninsn + nbad
     if total == 0:
         kind = "empty"
@@ -163,7 +182,7 @@ def _analyze_fn(image, fstart, fend, strings, md):
         kind = "stub"
     else:
         kind = "code"
-    return kind, ninsn, nbad, ints, strs
+    return kind, ninsn, nbad, ints, strs, services, callees
 
 
 # --- naming heuristics for the Win95 real-mode layer ----------------------------------------
@@ -294,6 +313,73 @@ def _beautify_name(fstart, kind, ints, strs, region):
     return nm or ("sub_%06X" % fstart)
 
 
+def _san(s):
+    """Sanitize a token to a valid MASM identifier fragment."""
+    return re.sub(r"[^A-Za-z0-9_]", "_", s)[:28]
+
+
+def _name_by_behavior(namemap, finfo, startset):
+    """Name every remaining code function by evidence: the specific DOS/BIOS service it issues,
+    else its call-graph role (private helper of a named caller / caller of a named routine). Only
+    the truly evidence-free internal leaves fall back to a generic label. Names are inferred labels
+    (a stripped binary holds no authentic name for a private routine) -- the banner says so."""
+    _WEAK = ("sub_", "dos21_", "int2f_", "disk13_", "video10_")
+
+    def weak(a):
+        return namemap.get(a, "").startswith(_WEAK)
+
+    def strong(a):
+        n = namemap.get(a, "")
+        return n and not n.startswith(_WEAK + ("helper_", "data_", "thunk_"))
+
+    def prefix(n):
+        return re.sub(r"_[0-9A-F]{6}$", "", n)
+
+    # 1. specific-service naming (prefer file/process/memory over console/status)
+    def primary(svcs):
+        if not svcs:
+            return None
+        pref = [s for s in svcs if not s.startswith(("Std_", "Raw_"))
+                and s not in ("Get_Version", "Get_InDOS_Flag", "Get_DMA", "Set_DMA")]
+        return (pref or svcs)[0]
+    for a, info in finfo.items():
+        if info["kind"] == "code" and weak(a):
+            ps = primary(info["services"])
+            if ps:
+                namemap[a] = "%s_%06X" % (_san(ps), a)
+
+    # caller map (named-only edges resolve through the call graph)
+    callers = {}
+    for a, info in finfo.items():
+        for c in info["callees"]:
+            if c in startset:
+                callers.setdefault(c, []).append(a)
+
+    # 2. propagate names across the call graph to a fixpoint
+    from collections import Counter
+    for _ in range(6):
+        changed = False
+        for a, info in finfo.items():
+            if info["kind"] != "code" or not namemap.get(a, "").startswith("sub_"):
+                continue
+            cs = [prefix(namemap[x]) for x in callers.get(a, []) if strong(x)]
+            named_callees = [prefix(namemap[c]) for c in info["callees"] if strong(c)]
+            new = None
+            if cs and len(set(cs)) == 1:                       # sole named caller -> its helper
+                new = "%s_helper_%06X" % (_san(cs[0]), a)
+            elif named_callees:                                # dominant named callee -> its caller
+                new = "%s_caller_%06X" % (_san(Counter(named_callees).most_common(1)[0][0]), a)
+            if new and new != namemap[a]:
+                namemap[a] = new; changed = True
+        if not changed:
+            break
+
+    # 3. evidence-free internals: generic-but-typed label (no bare sub_ remains)
+    for a, info in finfo.items():
+        if namemap.get(a, "").startswith("sub_"):
+            namemap[a] = ("thunk_%06X" % a) if info["kind"] == "stub" else ("helper_%06X" % a)
+
+
 def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, md,
               namemap=None, fkind=None, desc=""):
     r"""Emit annotated MASM-style reconstruction per region, with DS-tracked string xref
@@ -397,10 +483,16 @@ def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, 
             ";   region: %s   (reverse-engineered from the REAL Win95 binary, not the 6.0 tree)\n"
             ";==============================================================================\n"
             "; Reconstructed by CodeBreaker dosrecon. 16-bit real-mode; assembles with the period\n"
-            "; Microsoft MASM 6.13 (ML /c). Beautified: evidence-based names (Win95-layer strings,\n"
-            "; INT services), label-resolved control flow, DS-tracked string xrefs, service comments,\n"
-            "; code/data separation. Names lacking evidence keep the sub_<fileoffset> reconstruction\n"
-            "; label -- a stripped binary holds no name for a private routine.\n"
+            "; Microsoft MASM 6.13 (ML /c). Every function is named; the naming scheme, honestly:\n"
+            ";   <Service>_<addr>        issues that specific DOS/BIOS/XMS/EMS/2Fh call (evidence);\n"
+            ";   <Win95 role>_<addr>     registry/config/winbootdir/banner/... (string evidence);\n"
+            ";   <driver>_strategy|...   device-header + command-dispatch structure (evidence);\n"
+            ";   shared_<hash>_<addr>    identical structure in >=2 components (shared runtime);\n"
+            ";   <X>_helper_<addr>       private helper called only by X (call-graph, inferred);\n"
+            ";   <X>_caller_<addr>       predominantly calls X (call-graph, inferred);\n"
+            ";   helper_<addr>/thunk_    evidence-free internal routine (inferred label only).\n"
+            "; label-resolved control flow, DS-tracked string xrefs, service comments, code/data\n"
+            "; separation. Inferred names are labels, not claims of the authentic private-symbol name.\n"
             ";\n"
             "; Naming references (public / open-source, for the API surface only -- NOT leaked source):\n"
             ";   * the documented interrupt catalog (DOS/BIOS/XMS/EMS/IFS/Windows INT 2Fh);\n"
@@ -756,19 +848,21 @@ def _run_one(which, outroot, shared=None):
     win95_layer = []
     namemap = {}                       # addr -> beautified name (for labels + call refs)
     fkind = {}                         # addr -> kind (for role comments)
+    finfo = {}                         # addr -> dict(services, callees, strs, ints, kind)
     for s in starts:
         e = ends[s]
         if e - s > 0x4000:      # cap runaway (data gaps); analyze the head
             e = s + 0x4000
-        kind, ni, nb, ints, strs = _analyze_fn(image, s, e, strings, md)
+        kind, ni, nb, ints, strs, services, callees = _analyze_fn(image, s, e, strings, md)
         counts[kind] = counts.get(kind, 0) + 1
         nm = _name_for(s, kind, ints, strs, region_of(s))
         base = _beautify_name(s, kind, ints, strs, region_of(s))
-        # shared runtime (identical structure in >=2 components) overrides a bare sub_ label
         if shared and (which, s) in shared and base.startswith("sub_"):
             base = "%s_%06X" % (shared[(which, s)], s)
         namemap[s] = base
         fkind[s] = kind
+        finfo[s] = {"services": services, "callees": callees, "strs": strs,
+                    "ints": ints, "kind": kind}
         rows.append({
             "addr": "0x%06X" % s, "end": "0x%06X" % ends[s], "size": ends[s] - s,
             "region": region_of(s), "kind": kind, "ninsn": ni,
@@ -784,6 +878,9 @@ def _run_one(which, outroot, shared=None):
     for addr, dn in _device_names(which, is_iosys, image, md).items():
         if addr in namemap and namemap[addr].startswith(("sub_", "shared_", "data_")):
             namemap[addr] = dn
+
+    # call-graph + behavioral naming: give every remaining sub_ a descriptive, inferred name
+    _name_by_behavior(namemap, finfo, set(starts))
 
     outdir = os.path.join(outroot, which)
     os.makedirs(outdir, exist_ok=True)
