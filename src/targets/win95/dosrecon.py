@@ -50,6 +50,8 @@ _BINS = {
     "ramdrive": ("ramdrive.sys", "RAMDRIVE.SYS -- the RAM-disk device driver"),
     "oemsetup": ("oemsetup.exe", "OEMSETUP.EXE -- the real-mode DOS launcher for Win95 Setup "
                                  "(AUTOEXEC runs it from the CD; it starts the Windows setup engine)"),
+    "mscdex":   ("mscdex.exe",  "MSCDEX.EXE -- MS CD-ROM Extensions (assigns the CD-ROM a drive letter)"),
+    "cd1":      ("CD1.SYS",     "CD1.SYS -- Oak Technology IDE CD-ROM driver (the Setup boot disk's CD driver)"),
 }
 _CORE = ("iosys", "command")
 _DRIVERS = ("himem", "emm386", "drvspace", "ifshlp", "setver", "ramdrive")
@@ -75,11 +77,13 @@ def _corpus(name):
     ):
         if os.path.isfile(cand):
             return cand
-    # last resort: search
-    for dp, _dn, fn in os.walk(os.path.join(root, "corpus")):
-        for f in fn:
-            if f.lower() == name.lower():
-                return os.path.join(dp, f)
+    # last resort: search the corpus, then the boot-disk extraction (bootrecon unpacks boot.img's
+    # originals -- e.g. the OEM CD driver CD1.SYS -- there; they are genuine shipped files).
+    for base in (os.path.join(root, "corpus"), os.path.join(root, "recon", "bootdisk", "files")):
+        for dp, _dn, fn in os.walk(base):
+            for f in fn:
+                if f.lower() == name.lower():
+                    return os.path.join(dp, f)
     return None
 
 
@@ -1141,27 +1145,37 @@ def _emit_image(outroot, which, image, mz_data=None):
         if last_page:
             total = (pages - 1) * 512 + last_page
         total = min(total, len(mz_data))
+        filelen = len(mz_data)
+
+        def _db_asm(raw, tag):
+            """Assemble a byte range as db (data reconstructed as source) via ML; return its bytes."""
+            a = os.path.join(outdir, "_" + tag + ".asm")
+            with open(a, "w") as hf:
+                hf.write("; %s (data), reconstructed as db, assembled by ML 6.13\n" % tag)
+                hf.write("_%s SEGMENT byte public 'CODE'\n        ASSUME cs:_%s\n" % (tag, tag))
+                for off in range(0, len(raw), 16):
+                    hf.write("        db " + ",".join("0%02Xh" % b for b in raw[off:off + 16]) + "\n")
+                hf.write("_%s ENDS\n        END\n" % tag)
+            o = os.path.join(outdir, "_" + tag + ".obj")
+            subprocess.run([ml, "/c", "/Fo", o, a], capture_output=True, text=True, cwd=outdir)
+            return _omf_ledata(o) if os.path.isfile(o) else b""
+
         if 0 < hdr < total:
-            hasm = os.path.join(outdir, "_mzhdr.asm")
-            with open(hasm, "w") as hf:
-                hf.write("; MZ header + relocation table (data), reconstructed as db, assembled by ML 6.13\n")
-                hf.write("_HDR SEGMENT byte public 'CODE'\n        ASSUME cs:_HDR\n")
-                for off in range(0, hdr, 16):
-                    chunk = mz_data[off:min(off + 16, hdr)]
-                    hf.write("        db " + ",".join("0%02Xh" % b for b in chunk) + "\n")
-                hf.write("_HDR ENDS\n        END\n")
-            hobj = os.path.join(outdir, "_mzhdr.obj")
-            subprocess.run([ml, "/c", "/Fo", hobj, hasm], capture_output=True, text=True, cwd=outdir)
-            hdr_bytes = _omf_ledata(hobj) if os.path.isfile(hobj) else b""
-            full = bytearray(total)
-            full[:len(hdr_bytes)] = hdr_bytes[:total]
+            hdr_bytes = _db_asm(mz_data[:hdr], "mzhdr")               # MZ header + reloc table
+            full = bytearray(filelen)
+            full[:len(hdr_bytes)] = hdr_bytes[:filelen]
             full[hdr:hdr + len(img)] = bytes(img)[:total - hdr]
-            fullcov = bytearray(total)
-            fullcov[:len(hdr_bytes)] = b"\x01" * min(len(hdr_bytes), total)
+            fullcov = bytearray(filelen)
+            fullcov[:len(hdr_bytes)] = b"\x01" * min(len(hdr_bytes), filelen)
             for j in range(hdr, min(hdr + len(covered), total)):
                 fullcov[j] = covered[j - hdr]
+            if filelen > total:                                       # appended overlay (e.g. MSCDEX)
+                ov = _db_asm(mz_data[total:filelen], "mzovl")
+                full[total:total + len(ov)] = ov[:filelen - total]
+                for j in range(total, min(total + len(ov), filelen)):
+                    fullcov[j] = 1
             img = full
-            image = mz_data[:total]
+            image = mz_data[:filelen]
             covered = fullcov
     matched = sum(1 for j in range(len(image)) if covered[j] and img[j] == image[j])
     total = sum(covered)
@@ -1358,7 +1372,7 @@ def main(argv):
     while i < len(argv):
         a = argv[i]
         if a in ("--iosys", "--command", "--himem", "--emm386", "--drvspace",
-                 "--ifshlp", "--setver", "--ramdrive", "--oemsetup"):
+                 "--ifshlp", "--setver", "--ramdrive", "--oemsetup", "--mscdex", "--cd1"):
             which = a[2:]
         elif a == "--both":
             which = "both"
