@@ -181,6 +181,14 @@ def compile_body(c_text, fname, outdir):
     os.makedirs(outdir, exist_ok=True)
     # strip decompiler artifacts that look like preprocessor directives ('#350' from switch/line info)
     c_text = re.sub(r"(?m)^\s*#\d.*$", "", c_text)
+    # MSVC sized-int keywords the decompiler emits (unsigned __int16 ...) aren't OpenWatcom types and
+    # derail the parse (a bad declaration closes the function scope -> E1099 on the next statement).
+    # Map them to standard C types, longest first, unsigned-qualified forms before the bare ones.
+    for a, b in ((r"unsigned\s+__int64", "unsigned long long"), (r"__int64", "long long"),
+                 (r"unsigned\s+__int32", "unsigned int"), (r"__int32", "int"),
+                 (r"unsigned\s+__int16", "unsigned short"), (r"__int16", "short"),
+                 (r"unsigned\s+__int8", "unsigned char"), (r"__int8", "char")):
+        c_text = re.sub(r"\b" + a + r"\b", b, c_text)
     refs = _stub_refs(c_text, fname)                      # CALLED names -> function stubs
     pre = ["typedef unsigned u32;", "typedef unsigned uint;", "typedef unsigned long ulong;",
            "typedef unsigned short ushort;", "typedef unsigned char uchar;",
@@ -213,7 +221,11 @@ def compile_body(c_text, fname, outdir):
                   "u32", "uint", "ulong", "ushort", "uchar", "bool", "undefined", "undefined1",
                   "undefined2", "undefined4", "DWORD", "WORD", "BYTE", "LONG", "UINT", "HDC",
                   "HANDLE", "HGDIOBJ", "__fastcall", "__cdecl", "__stdcall", "__watcall"}
-    undecl = sorted(used - refs - declared - params - _TYPEWORDS - {fname})
+    # goto labels are NOT variables: `goto LABEL_x;` + `LABEL_x:` share C's label namespace, so
+    # declaring them as file-scope globals is wrong (and clutters/confuses the scope).
+    labels = set(re.findall(r"(?m)^\s*([A-Za-z_]\w*)\s*:(?!:)", c_text))
+    labels |= set(re.findall(r"\bgoto\s+([A-Za-z_]\w*)", c_text))
+    undecl = sorted(used - refs - declared - params - _TYPEWORDS - labels - {fname})
     # FRAME RECOVERY: leaked physical registers (rN = EBP/ESP/... the lifter left unresolved) are
     # backed by a shared valid scratch buffer, initialised at function entry, so frame accesses
     # (rN +/- off, and LEA-of-local passed to APIs) hit REAL memory and the body runs its true
@@ -241,16 +253,23 @@ def compile_body(c_text, fname, outdir):
     env["WATCOM"] = ow["root"]
     env["INCLUDE"] = ";".join(ow["inc"])
     env["PATH"] = os.path.join(ow["root"], "binnt64") + os.pathsep + env.get("PATH", "")
-    # -s: no stack-overflow probe (drops the __CHK reference so the body links self-contained)
-    r = subprocess.run([ow["wcc"], "-bt=nt", "-zq", "-w0", "-s", fname + ".c"], cwd=outdir, env=env,
-                       capture_output=True, text=True, timeout=120)
+    # -s: no stack-overflow probe (drops the __CHK reference so the body links self-contained).
+    # -zastd=c99: allow declarations to follow statements (decompiler bodies + our frame-init prologue
+    # mix decl/stmt freely; C89 rejects that as E1099 "statement must be inside function").
+    r = subprocess.run([ow["wcc"], "-bt=nt", "-zq", "-w0", "-s", "-zastd=c99", fname + ".c"],
+                       cwd=outdir, env=env, capture_output=True, text=True, timeout=120)
     if r.returncode != 0:
         return None, "compile: " + (r.stdout + r.stderr).strip().split("\n")[-1][:80]
     from src.targets.win95 import autobuild95 as A
     obj = open(os.path.join(outdir, fname + ".obj"), "rb").read()
     # exact public symbol from the OMF PUBDEF records (handles _f@N stdcall / f_ register / _f)
     pubs = A._omf_publics(obj)
-    cand = [s for s in pubs if s.strip("_").split("@")[0].rstrip("_") == fname]
+    # normalise any convention decoration to the bare name: leading _ (cdecl) or @ (fastcall),
+    # trailing _ (watcall), and an @N stdcall/fastcall byte-count suffix -- so the body's own public
+    # (e.g. __fastcall '@sub_x@0', __stdcall '_sub_x@N', __watcall 'sub_x_') always resolves.
+    def _base(s):
+        return s.lstrip("_@").split("@")[0].rstrip("_")
+    cand = [s for s in pubs if _base(s) == fname]
     internal = cand[0] if cand else ("_" + fname)
     with open(os.path.join(outdir, "b.lnk"), "w", newline="\n") as f:
         f.write("system nt_dll\nname %s.dll\noption quiet\nfile %s.obj\nexport %s='%s'\n"
