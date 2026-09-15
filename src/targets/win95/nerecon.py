@@ -429,6 +429,63 @@ def _relink(which, outroot):
         print("  output signature: %r" % sig)
 
 
+def _relink_ow(which, outroot):
+    """Runnable-NE via the from-source OpenWatcom toolchain: wasm assembles each segment, wlink
+    (system windows_dll) links them into an NE, with exports from the module .def. No MS tools."""
+    import subprocess
+    from src.targets.win95 import dosrecon as DR
+    ne = NE(open(_corpus(_MODS[which][0]), "rb").read())
+    defn = _load_def(which)
+    outdir = os.path.join(outroot, "ne", which)
+    ow = DR._ow_dir()
+    wasm = os.path.join(ow, "binnt64", "wasm.exe")
+    wlink = os.path.join(ow, "binnt64", "wlink.exe")
+    env = dict(os.environ); env["WATCOM"] = ow
+    objs = []
+    total_err = 0
+    for s in ne.segs:
+        nm = ("DGROUP%d" if s["data"] else "CSEG%d") % s["idx"]
+        asm = os.path.join(outdir, nm + ".asm")
+        if not os.path.isfile(asm):
+            continue
+        obj = nm + ".obj"
+        p = subprocess.run([wasm, "-q", "-zcm=masm", "-zzo", "-fpi87", "-fo=" + obj, nm + ".asm"],
+                           capture_output=True, text=True, cwd=outdir, env=env)
+        e = (p.stdout + p.stderr).count("Error!")
+        total_err += e
+        if e:
+            open(os.path.join(outdir, nm + ".owlog"), "w").write(p.stdout + p.stderr)
+        if os.path.isfile(os.path.join(outdir, obj)):
+            objs.append(obj)
+    print("  wasm: %d segment objs, %d errors" % (len(objs), total_err))
+    if total_err or not objs:
+        return
+    # exports: emit wlink `export` directives from the placed ordinals
+    modname = {"krnl386": "KERNEL", "gdi": "GDI", "user": "USER"}[which]
+    lnk = os.path.join(outdir, which + "_ow.lnk")
+    exe = which + "_ow.exe"
+    with open(lnk, "w", newline="\n") as f:
+        f.write("format windows dll\n")          # 16-bit NE DLL
+        f.write("name %s\n" % exe)
+        f.write("option quiet\n")
+        f.write("file " + ",".join(objs) + "\n")
+        for ordn in sorted(ne.ent):
+            if ordn and ordn in defn and 1 <= ne.ent[ordn][0] <= len(ne.segs):
+                f.write("export %s.%d\n" % (_san_ne(defn[ordn]), ordn))
+    lk = subprocess.run([wlink, "@" + which + "_ow.lnk"], capture_output=True, text=True,
+                        cwd=outdir, env=env)
+    open(os.path.join(outdir, which + "_ow.linklog"), "w").write(lk.stdout + lk.stderr)
+    p = os.path.join(outdir, exe)
+    if os.path.isfile(p):
+        import struct
+        d = open(p, "rb").read(); nepos = struct.unpack("<I", d[0x3c:0x40])[0]
+        sig = d[nepos:nepos + 2] if nepos < len(d) - 1 else b"??"
+        print("  wlink: produced %s (%d bytes, sig=%r)" % (exe, len(d), sig))
+    else:
+        errs = lk.stdout.count("Error!") + lk.stderr.count("Error!")
+        print("  wlink: FAILED (%d errors) -- see %s_ow.linklog" % (errs, which))
+
+
 def _analyze(which):
     fname, desc = _MODS[which]
     path = _corpus(fname)
@@ -452,7 +509,7 @@ def main(argv):
     if capstone is None:
         print("nerecon: needs capstone"); return 2
     which = "all"
-    do_build = do_verify = do_analyze = do_link = False
+    do_build = do_verify = do_analyze = do_link = do_ow = False
     for a in argv:
         if a in ("--krnl386", "--gdi", "--user"):
             which = a[2:]
@@ -466,6 +523,8 @@ def main(argv):
             do_analyze = True
         elif a == "--link":
             do_link = True
+        elif a == "--ow":
+            do_ow = True
     targets = ["krnl386", "gdi", "user"] if which == "all" else [which]
     outroot = os.path.join(paths.design_root() if os.path.isdir(os.path.join(paths.design_root(), "corpus"))
                            else os.path.join(_win95_root(), "design"), "recon")
@@ -485,16 +544,19 @@ def main(argv):
                   % (r["nsegs"], r["nfuncs"], r["nexports"]))
             r["which_dir"] = os.path.join("ne", t)
             results.append(r)
-    if do_build or do_verify:
+    if do_build or do_verify or do_ow:
         rr = [{"which": os.path.join("ne", r["which"]), "path": r["path"]} for r in results]
+    if do_ow:
+        DR._assemble_ow(outroot, rr)
+    if do_build or do_verify:
         DR._assemble(outroot, rr)
     if do_verify:
         DR._verify(outroot, rr)
     if do_link:
-        print("\n== NE relink (merge segments -> LINK 5.60 -> NE) ==")
+        print("\n== NE relink -> runnable NE (OpenWatcom wasm + wlink, from-source toolchain) ==")
         for t in targets:
             print("-- %s" % t)
-            _relink(t, outroot)
+            _relink_ow(t, outroot)
     return 0
 
 
