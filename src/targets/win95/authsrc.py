@@ -79,6 +79,18 @@ def _namemap(path, fmt):
         namemap[s] = DR._beautify_name(s, kind, ints, strs, "")
         finfo[s] = {"services": services, "callees": callees, "strs": strs, "ints": ints, "kind": kind}
     DR._name_by_behavior(namemap, finfo, set(starts))
+    # the corpus name store wins: a curated name (keyed by body_id -> propagates from any module, or
+    # module-local) overrides the engine's inferred name, so names set once render everywhere.
+    try:
+        from src.targets.win95 import namestore
+        module = os.path.basename(path)
+        bidm = namestore.bodyid_map(path)
+        for s in starts:
+            cur = namestore.resolve(module, s, bidm.get(s))
+            if cur:
+                namemap[s] = cur
+    except Exception:                                        # noqa: BLE001 -- store is optional
+        pass
     return namemap
 
 
