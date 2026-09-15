@@ -655,18 +655,24 @@ def _emit_ne_image(which, outroot):
         img[base:base + len(put)] = put
         for j in range(base, base + min(len(put), L)):
             cov[j] = 1
-    # 2) db-emit every non-segment gap (headers/tables/reloc records) from our source
+    # 2) db-emit every non-segment gap (headers/tables/reloc records) from our source, in <=60KB
+    # chunks (one MASM SEGMENT can't exceed 64KB -- a larger gap would overflow and be dropped).
     i = g = 0
+    CH = 0xF000
     while i < len(orig):
         if cov[i]:
             i += 1; continue
         j = i
         while j < len(orig) and not cov[j]:
             j += 1
-        blob = db_asm(orig[i:j], "g%d" % g); g += 1
-        img[i:i + len(blob)] = blob[:j - i]
-        for k in range(i, min(i + len(blob), j)):
-            cov[k] = 1
+        p = i
+        while p < j:
+            q = min(p + CH, j)
+            blob = db_asm(orig[p:q], "g%d" % g); g += 1
+            img[p:p + len(blob)] = blob[:q - p]
+            for k in range(p, min(p + len(blob), q)):
+                cov[k] = 1
+            p = q
         i = j
     matched = sum(1 for k in range(len(orig)) if img[k] == orig[k])
     ext = ".dll" if _MODS[which][0].lower().endswith(".dll") else ".exe"
