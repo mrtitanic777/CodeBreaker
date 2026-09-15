@@ -184,6 +184,103 @@ def _name_for(fstart, kind, ints, strs, region):
     return None
 
 
+def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, md):
+    r"""Emit annotated MASM-style reconstruction per region, with DS-tracked string xref
+    resolution and INT-service comments. This is the faithful authored form for 16-bit real-mode
+    code (MS-DOS/COMMAND.COM were written in assembly). The body loads at real-mode segment 0x0070,
+    so a runtime DS value D addresses file offset (D*16 + disp) - 0x0700."""
+    LOAD_LIN = 0x0070 * 16 if is_iosys else 0
+
+    def region_of(a):
+        if not is_iosys:
+            return "command"
+        if a < 0x0800:
+            return "msload"
+        if a < body_end:
+            return "msbio"
+        return "sysinit"
+
+    def resolve_str(ds_base, disp):
+        if ds_base is None:
+            return None
+        lin = ds_base * 16 + disp
+        off = lin - LOAD_LIN
+        if off in strings and 4 <= len(strings[off]) <= 96:
+            return strings[off]
+        return None
+
+    outdir = os.path.join(outroot, which)
+    os.makedirs(outdir, exist_ok=True)
+    rf = {}
+
+    def region_file(r):
+        if r in rf:
+            return rf[r]
+        f = open(os.path.join(outdir, r + ".asm"), "w")
+        f.write("; %s.asm -- reconstructed from the REAL Win95 %s (%s region).\n"
+                "; 16-bit real-mode. Annotated by CodeBreaker dosrecon: DS-tracked string xrefs,\n"
+                "; INT-service comments, sub_<fileoffset> labels (authored names where triaged).\n\n"
+                "        .8086\n_TEXT   SEGMENT byte public 'CODE'\n        ASSUME cs:_TEXT\n\n"
+                % (r, which.upper(), r))
+        rf[r] = f
+        return f
+
+    for s in starts:
+        e = ends[s]
+        r = region_of(s)
+        f = region_file(r)
+        f.write("\n%s_%06X proc near\n" % ("sub", s))
+        ds_base = None
+        pend_ax = None
+        a = s
+        seglen = min(e, len(image))
+        n = 0
+        while a < seglen and n < 4000:
+            got = list(md.disasm(bytes(image[a:min(a + 15, seglen)]), a))
+            if not got:
+                f.write("        db 0%02Xh\n" % image[a]); a += 1; n += 1; continue
+            ins = got[0]
+            txt = "%s %s" % (ins.mnemonic, ins.op_str)
+            cmt = ""
+            # track mov ax,imm ; mov ds,ax  (also es/ss ignored for strings)
+            if ins.mnemonic == "mov" and ins.op_str.startswith(("ax,", "bx,")) and "0x" in ins.op_str:
+                try: pend_ax = int(ins.op_str.split(",")[1], 16)
+                except ValueError: pend_ax = None
+            elif ins.mnemonic == "mov" and ins.op_str.startswith("ds,"):
+                ds_base = pend_ax
+            elif ins.mnemonic in ("push",) and ins.op_str == "cs":
+                pend_ax = None
+            elif ins.mnemonic == "pop" and ins.op_str == "ds":
+                ds_base = (s + LOAD_LIN) // 16 if False else ds_base  # push cs;pop ds -> cs seg
+            # INT service comment
+            if ins.mnemonic == "int":
+                cmt = _int_comment(ins.op_str)
+            # string xref via displacement in a ds-relative mem operand or mov dx,imm
+            for tok in re.findall(r"0x[0-9a-fA-F]+", ins.op_str):
+                v = int(tok, 16)
+                st = strings.get(v - LOAD_LIN) or resolve_str(ds_base, v)
+                if st and 4 <= len(st) <= 96:
+                    cmt = '"%s"' % st.replace('"', "'"); break
+            if cmt:
+                f.write("        %-32s ; %s\n" % (txt, cmt))
+            else:
+                f.write("        %s\n" % txt)
+            if ins.mnemonic in ("ret", "retf", "iret"):
+                pass
+            a += ins.size; n += 1
+        f.write("sub_%06X endp\n" % s)
+    for f in rf.values():
+        f.write("\n_TEXT   ENDS\n        END\n"); f.close()
+    return list(rf.keys())
+
+
+def _int_comment(op):
+    m = {"0x21": "DOS", "0x2f": "multiplex", "0x13": "BIOS disk", "0x10": "BIOS video",
+         "0x16": "BIOS kbd", "0x15": "BIOS misc", "0x25": "set int vec", "0x26": "abs disk write",
+         "0x19": "reboot", "0x11": "equip", "0x12": "memsize", "0x2a": "network"}
+    return "INT %s (%s)" % (op, m.get(op, "?"))
+
+
 def _run_one(which, outroot):
     fname, desc = _BINS[which]
     path = _corpus(fname)
@@ -250,6 +347,8 @@ def _run_one(which, outroot):
                                           "ninsn", "ints", "name", "strings"])
         w.writeheader()
         w.writerows(rows)
+    asm_regions = _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, md)
+    print("  emitted annotated asm: %s" % ", ".join("%s.asm" % r for r in asm_regions))
     return {
         "which": which, "path": path, "desc": desc, "is_iosys": is_iosys,
         "body_end": body_end, "nfuncs": len(starts), "counts": counts,
