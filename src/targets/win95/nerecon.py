@@ -612,17 +612,18 @@ def _analyze(which):
     return ne
 
 
-def _emit_ne_image(which, outroot):
+def _emit_ne_image(which, outroot, path=None):
     """Build the whole NE file from OUR source: place each segment's byte-identical assembled bytes
     (from the --exact pass) at its file offset, and db-emit every non-segment region (MZ stub, NE
     header, all tables, per-segment relocation records) from our source, assembled by ML. After
     --exact the segments are byte-identical, so the emitted file IS the module -- produced by our
-    toolchain, not copied. Returns (path, identical, matched, total)."""
+    toolchain, not copied. `path` overrides the corpus lookup (e.g. a Setup-mini NE). Returns
+    (path, identical, matched, total)."""
     from src.targets.win95 import dosrecon as DR
     ml = DR._ml()
     if not os.path.isfile(ml):
         return None, False, 0, 0
-    ne = NE(open(_corpus(_MODS[which][0]), "rb").read())
+    ne = NE(open(path or _corpus(_MODS[which][0]), "rb").read())
     orig = ne.data
     outdir = os.path.join(outroot, "ne", which)
     img = bytearray(len(orig))
@@ -675,7 +676,8 @@ def _emit_ne_image(which, outroot):
             p = q
         i = j
     matched = sum(1 for k in range(len(orig)) if img[k] == orig[k])
-    ext = ".dll" if _MODS[which][0].lower().endswith(".dll") else ".exe"
+    _fn = path or _MODS[which][0]
+    ext = ".dll" if _fn.lower().endswith(".dll") else ".exe"
     builtdir = os.path.join(outdir, "_built"); os.makedirs(builtdir, exist_ok=True)
     p = os.path.join(builtdir, which + ext)
     open(p, "wb").write(bytes(img))

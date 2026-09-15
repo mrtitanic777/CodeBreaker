@@ -61,7 +61,9 @@ def _design_root():
 
 
 def _our_modules():
-    """Map UPPER filename -> path of our reconstructed BYTE-IDENTICAL build (recon _built + base)."""
+    """Map UPPER filename -> [paths] of our reconstructed BYTE-IDENTICAL builds. A name can have
+    MULTIPLE builds (e.g. the installed KRNL386.EXE and the smaller Setup-mini KRNL386.EXE); the
+    swap picks the candidate whose size matches the cabinet file, so each cabinet gets its own."""
     root = _design_root()
     recon = os.path.join(root, "recon")
     win95 = os.path.dirname(root)                       # .../Windows95
@@ -69,7 +71,7 @@ def _our_modules():
 
     def add(name, path):
         if os.path.isfile(path):
-            m[name.upper()] = path
+            m.setdefault(name.upper(), []).append(path)
     for key, name in (("command", "COMMAND.COM"), ("himem", "HIMEM.SYS"), ("emm386", "EMM386.EXE"),
                       ("ifshlp", "IFSHLP.SYS"), ("setver", "SETVER.EXE"), ("ramdrive", "RAMDRIVE.SYS"),
                       ("mscdex", "MSCDEX.EXE"), ("fdisk", "FDISK.EXE"), ("format", "FORMAT.COM"),
@@ -77,9 +79,10 @@ def _our_modules():
         add(name, os.path.join(recon, key, "_built", key + ".bin"))
     add("LZ32.DLL", os.path.join(win95, "base", "lz32", "_build", "lz32.dll"))
     add("LZEXPAND.DLL", os.path.join(win95, "base", "lzexpand", "_build", "lzexpand.dll"))
-    # the GUI Setup + mini-Windows core (whole-file byte-identical NE, from nerecon --neimage)
+    # the GUI Setup + BOTH mini-Windows cores (installed + Setup-mini), whole-file byte-identical NE
     for key, name in (("krnl386", "KRNL386.EXE"), ("gdi", "GDI.EXE"), ("user", "USER.EXE"),
-                      ("setupx", "SETUPX.DLL"), ("suwin", "SUWIN.EXE")):
+                      ("setupx", "SETUPX.DLL"), ("suwin", "SUWIN.EXE"),
+                      ("krnl386mini", "KRNL386.EXE"), ("gdimini", "GDI.EXE"), ("usermini", "USER.EXE")):
         add(name, os.path.join(recon, "ne", key, "_built", name.split(".")[0].lower()
                                + (".dll" if name.endswith(".DLL") else ".exe")))
     return m
@@ -122,12 +125,11 @@ def main(argv):
         swapped = []
         for cf in files:
             name = cf.name
-            srcf = ours.get(name.upper())
-            # only swap when OUR file is the SAME module/version as the cabinet's (size identity).
-            # Some cabinets carry a DIFFERENT build under the same name -- e.g. MINI.CAB holds the
-            # smaller Setup mini-Windows KRNL386/GDI/USER, not the installed Win95 ones -- and swapping
-            # our installed build in breaks Setup's mini-Windows ("KERNEL: Unable to initialize heap").
-            if srcf and os.path.getsize(srcf) == cf.size:
+            # pick the build whose size matches the cabinet file's (module/version identity). A name
+            # may have several builds (installed vs Setup-mini KRNL386/GDI/USER); matching by size
+            # keeps each cabinet's own module -- swapping the wrong build broke Setup's mini-Windows.
+            srcf = next((p for p in ours.get(name.upper(), []) if os.path.getsize(p) == cf.size), None)
+            if srcf:
                 data = open(srcf, "rb").read(); swapped.append(name)
             else:
                 pf = os.path.join(pool, name)
