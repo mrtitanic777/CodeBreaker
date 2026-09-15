@@ -19,6 +19,7 @@ import os
 import re
 import sys
 import struct
+import subprocess
 
 from src.core import paths
 
@@ -242,17 +243,21 @@ def _discover(image, base, length, md):
     return starts
 
 
-def _recon_ne(which, outroot, extra_db=None):
+def _recon_ne(which, outroot, extra_db=None, path=None, desc=None):
     """Decode + emit the NE module as multi-segment MASM (one SEGMENT per NE segment), exported
-    functions named authentically. Reuses the proven MZ emitter/assembler/verifier from dosrecon."""
+    functions named authentically. Reuses the proven MZ emitter/assembler/verifier from dosrecon.
+    Core modules (krnl386/gdi/user) use the repo .def for ordinal names; any other NE module uses
+    its own resident/non-resident name tables."""
     from src.targets.win95 import dosrecon as DR
-    fname, desc = _MODS[which]
-    path = _corpus(fname)
-    if not path:
-        print("  MISSING: %s" % fname); return None
+    if path is None:
+        fname, desc = _MODS[which]
+        path = _corpus(fname)
+    if not path or not os.path.isfile(path):
+        print("  MISSING: %s" % which); return None
+    desc = desc or (which + " (NE module)")
     data = open(path, "rb").read()
     ne = NE(data)
-    defn = _load_def(which)
+    defn = _load_def(which) if which in _DEFS else {}
     emap = ne.export_map(defn)
     md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
     image = data
@@ -491,6 +496,66 @@ def _relink_ow(which, outroot):
         print("  wlink: FAILED (%d errors) -- see %s_ow.linklog" % (errs, which))
 
 
+def _sweep_ne(outroot, limit=None):
+    """Reconstruct + OpenWatcom-assemble EVERY code-bearing NE module in the corpus (fonts and
+    resource-only NE files have no code segments and are skipped). Scoreboard of coverage."""
+    from src.targets.win95 import dosrecon as DR
+    root = paths.design_root()
+    if not os.path.isdir(os.path.join(root, "corpus")):
+        root = os.path.join(_win95_root(), "design")
+    ow = DR._ow_dir(); wasm = os.path.join(ow, "binnt64", "wasm.exe")
+    env = dict(os.environ); env["WATCOM"] = ow
+    mods = []
+    for dp, _dn, fn in os.walk(os.path.join(root, "corpus")):
+        for f in fn:
+            p = os.path.join(dp, f)
+            try:
+                d = open(p, "rb").read(0x40)
+                if d[:2] != b"MZ" or len(d) < 0x40:
+                    continue
+                off = struct.unpack("<I", d[0x3c:0x40])[0]
+                head = open(p, "rb").read(off + 2)
+                if off + 2 <= len(head) and head[off:off + 2] == b"NE":
+                    mods.append((f, p))
+            except Exception:
+                pass
+    mods = sorted(set(mods))
+    if limit:
+        mods = mods[:limit]
+    import csv
+    rows = []
+    ok = clean = skipped = 0
+    for f, p in mods:
+        label = re.sub(r"[^A-Za-z0-9_]", "_", f)
+        try:
+            ne = NE(open(p, "rb").read())
+        except Exception:
+            skipped += 1; continue
+        if not any(not s["data"] for s in ne.segs):     # no code segments (font/resource)
+            skipped += 1; continue
+        r = _recon_ne(label, os.path.join(outroot, "corpus_ne"), path=p, desc=f)
+        if not r:
+            skipped += 1; continue
+        ok += 1
+        d = os.path.join(outroot, "corpus_ne", "ne", label)
+        errs = 0
+        for a in sorted(x for x in os.listdir(d) if x.endswith(".asm")):
+            pr = subprocess.run([wasm, "-q", "-zcm=masm", "-zzo", "-fpi87", "-fo=" + a[:-4] + ".obj", a],
+                                capture_output=True, text=True, cwd=d, env=env)
+            errs += (pr.stdout + pr.stderr).count("Error!")
+        if errs == 0:
+            clean += 1
+        rows.append((f, r["nsegs"], r["nfuncs"], r["nexports"], errs))
+    outdir = os.path.join(outroot, "corpus_ne")
+    os.makedirs(outdir, exist_ok=True)
+    with open(os.path.join(outdir, "SWEEP.csv"), "w", newline="") as w:
+        cw = csv.writer(w); cw.writerow(["module", "segs", "funcs", "exports", "wasm_errors"])
+        cw.writerows(rows)
+    print("NE corpus sweep: %d code modules reconstructed, %d assemble CLEAN with OpenWatcom, "
+          "%d skipped (fonts/resource/non-NE)" % (ok, clean, skipped))
+    print("  scoreboard: design/recon/corpus_ne/SWEEP.csv")
+
+
 def _analyze(which):
     fname, desc = _MODS[which]
     path = _corpus(fname)
@@ -515,6 +580,15 @@ def main(argv):
         print("nerecon: needs capstone"); return 2
     which = "all"
     do_build = do_verify = do_analyze = do_link = do_ow = do_exact = False
+    do_sweep = False
+    limit = None
+    i2 = 0
+    while i2 < len(argv):
+        if argv[i2] == "--sweep":
+            do_sweep = True
+        elif argv[i2] == "--limit" and i2 + 1 < len(argv):
+            limit = int(argv[i2 + 1]); i2 += 1
+        i2 += 1
     for a in argv:
         if a in ("--krnl386", "--gdi", "--user"):
             which = a[2:]
@@ -538,6 +612,9 @@ def main(argv):
     if do_analyze:
         for t in targets:
             _analyze(t)
+        return 0
+    if do_sweep:
+        _sweep_ne(outroot, limit)
         return 0
     if do_link:
         os.environ["NE_RELINK"] = "1"
