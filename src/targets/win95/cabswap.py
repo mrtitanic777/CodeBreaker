@@ -123,7 +123,11 @@ def main(argv):
         for cf in files:
             name = cf.name
             srcf = ours.get(name.upper())
-            if srcf:
+            # only swap when OUR file is the SAME module/version as the cabinet's (size identity).
+            # Some cabinets carry a DIFFERENT build under the same name -- e.g. MINI.CAB holds the
+            # smaller Setup mini-Windows KRNL386/GDI/USER, not the installed Win95 ones -- and swapping
+            # our installed build in breaks Setup's mini-Windows ("KERNEL: Unable to initialize heap").
+            if srcf and os.path.getsize(srcf) == cf.size:
                 data = open(srcf, "rb").read(); swapped.append(name)
             else:
                 pf = os.path.join(pool, name)
