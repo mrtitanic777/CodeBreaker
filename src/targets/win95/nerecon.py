@@ -612,11 +612,75 @@ def _analyze(which):
     return ne
 
 
+def _emit_ne_image(which, outroot):
+    """Build the whole NE file from OUR source: place each segment's byte-identical assembled bytes
+    (from the --exact pass) at its file offset, and db-emit every non-segment region (MZ stub, NE
+    header, all tables, per-segment relocation records) from our source, assembled by ML. After
+    --exact the segments are byte-identical, so the emitted file IS the module -- produced by our
+    toolchain, not copied. Returns (path, identical, matched, total)."""
+    from src.targets.win95 import dosrecon as DR
+    ml = DR._ml()
+    if not os.path.isfile(ml):
+        return None, False, 0, 0
+    ne = NE(open(_corpus(_MODS[which][0]), "rb").read())
+    orig = ne.data
+    outdir = os.path.join(outroot, "ne", which)
+    img = bytearray(len(orig))
+    cov = bytearray(len(orig))
+    env = dict(os.environ)
+
+    def asm_ledata(name):
+        subprocess.run([ml, "/c", "/Fo", name + ".obj", name + ".asm"],
+                       capture_output=True, text=True, cwd=outdir, env=env)
+        o = os.path.join(outdir, name + ".obj")
+        return DR._omf_ledata(o) if os.path.isfile(o) else b""
+
+    def db_asm(raw, tag):
+        a = os.path.join(outdir, "_" + tag + ".asm")
+        with open(a, "w") as f:
+            f.write("_%s SEGMENT byte public 'CODE'\n        ASSUME cs:_%s\n" % (tag, tag))
+            for o in range(0, len(raw), 16):
+                f.write("        db " + ",".join("0%02Xh" % b for b in raw[o:o + 16]) + "\n")
+            f.write("_%s ENDS\n        END\n" % tag)
+        return asm_ledata("_" + tag)
+
+    # 1) segments (byte-identical from --exact) placed at their file offsets
+    for s in ne.segs:
+        nm = ("DGROUP%d" if s["data"] else "CSEG%d") % s["idx"]
+        if not os.path.isfile(os.path.join(outdir, nm + ".asm")):
+            continue
+        code = asm_ledata(nm)
+        base, L = s["file"], s["len"]
+        put = code[:L]
+        img[base:base + len(put)] = put
+        for j in range(base, base + min(len(put), L)):
+            cov[j] = 1
+    # 2) db-emit every non-segment gap (headers/tables/reloc records) from our source
+    i = g = 0
+    while i < len(orig):
+        if cov[i]:
+            i += 1; continue
+        j = i
+        while j < len(orig) and not cov[j]:
+            j += 1
+        blob = db_asm(orig[i:j], "g%d" % g); g += 1
+        img[i:i + len(blob)] = blob[:j - i]
+        for k in range(i, min(i + len(blob), j)):
+            cov[k] = 1
+        i = j
+    matched = sum(1 for k in range(len(orig)) if img[k] == orig[k])
+    ext = ".dll" if _MODS[which][0].lower().endswith(".dll") else ".exe"
+    builtdir = os.path.join(outdir, "_built"); os.makedirs(builtdir, exist_ok=True)
+    p = os.path.join(builtdir, which + ext)
+    open(p, "wb").write(bytes(img))
+    return p, bytes(img) == orig, matched, len(orig)
+
+
 def main(argv):
     if capstone is None:
         print("nerecon: needs capstone"); return 2
     which = "all"
-    do_build = do_verify = do_analyze = do_link = do_ow = do_exact = False
+    do_build = do_verify = do_analyze = do_link = do_ow = do_exact = do_neimage = False
     do_sweep = False
     limit = None
     i2 = 0
@@ -645,6 +709,8 @@ def main(argv):
             do_ow = True
         elif a == "--exact":
             do_exact = True
+        elif a == "--neimage":
+            do_exact = do_neimage = True
     if which == "all":
         targets = ["krnl386", "gdi", "user"]
     elif which == "setup":
@@ -694,6 +760,13 @@ def main(argv):
                 _recon_ne(t, outroot, extra)
             bad = DR._mismatch_funcs(outdir, image)
             print("  %-8s %d functions forced to db; %d divergent" % (t, len(extra), len(bad)))
+    if do_neimage:
+        print("\n== NE whole-file emit (segments byte-identical + tables db, from our source) ==")
+        for t in targets:
+            p, ident, m, tot = _emit_ne_image(t, outroot)
+            if p:
+                print("  %-8s -> %s  (%d/%d bytes match%s)"
+                      % (t, os.path.relpath(p, outroot), m, tot, "; BYTE-IDENTICAL" if ident else ""))
     if do_link:
         print("\n== NE relink -> runnable NE (OpenWatcom wasm + wlink, from-source toolchain) ==")
         for t in targets:
