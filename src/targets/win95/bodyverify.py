@@ -308,6 +308,18 @@ def _ledger_path():
     return os.path.join(os.path.dirname(paths.repo_root()), "Windows95", "design", "body_ledger.csv")
 
 
+def _write_rows(rows):
+    """Atomically rewrite the ledger: write a sibling temp file, then os.replace() it into place. A
+    crash (or a concurrent reader) can never see a half-written/truncated ledger this way."""
+    import csv as _csv
+    path = _ledger_path()
+    tmp = path + ".tmp.%d" % os.getpid()
+    with open(tmp, "w", newline="") as fp:
+        w = _csv.DictWriter(fp, fieldnames=rows[0].keys())
+        w.writeheader(); w.writerows(rows)
+    os.replace(tmp, path)                                 # atomic on Windows + POSIX
+
+
 def harvest(module, maxn=100000, rows=None, present=None, verified_now=None):
     """Verify every function in `module`, driving off the TRIAGE function list so each verified body
     maps 1:1 to its ledger body_id (aligned crediting). Marks equivalent bodies verified. If `rows`
@@ -358,9 +370,7 @@ def harvest(module, maxn=100000, rows=None, present=None, verified_now=None):
         for r in rows:
             if r["body_id"] in verified_now:
                 r["verified"], r["state"] = "1", "verified"
-        with open(_ledger_path(), "w", newline="") as fp:
-            w = _csv.DictWriter(fp, fieldnames=rows[0].keys())
-            w.writeheader(); w.writerows(rows)
+        _write_rows(rows)
     # exhausted = we saw the WHOLE function list (not cut off by the cap): re-running with the same
     # engine would re-try the identical non-verified bodies for the same verdicts, so it's safe to
     # skip this module next run (clear verify_swept.txt whenever synth/cure/lifter improves).
@@ -396,9 +406,7 @@ def sweep_corpus(modules, maxper=100000, skip_swept=False):
         for r in rows:                                   # never loses completed modules' credits
             if r["body_id"] in verified_now:
                 r["verified"], r["state"] = "1", "verified"
-        with open(_ledger_path(), "w", newline="") as fp:
-            w = _csv.DictWriter(fp, fieldnames=rows[0].keys())
-            w.writeheader(); w.writerows(rows)
+        _write_rows(rows)                                 # atomic (temp + os.replace)
 
     newly_swept = []
     for m in modules:
