@@ -186,6 +186,16 @@ reuse what transfers, author a C-4.0 model for the rest.)
 
 _Log entries below, newest last._
 
+### 2026-09-14 — session 6
+Rewrote `lift40.py` v2: **datarec** (DS-offset→string literal via DGROUP base = mode of reloc
+words ×16; boundary-checked so numeric args like `exit(55)` stay numeric) + **recursive if/else**
+structuring (simple-if + `jcc;jmp` diamond). PI `main` now lifts with correct
+`if(argc==2){sscanf}else{printf("Usage: pi [precision]\n");exit(55)}`, `if(q>4000){...exit(66)}`,
+`time(&v4)` — matches PI.C. MSC app: **22 faithful** (up from 16) + 68 partial. Built
+`cross_match.py` (SIG-XREF-001): **MSC≡CL 139 matching fns**, C2^C3 74, C1^C3L 56; cross-model
+pairs ~8–11 — quantitatively confirms the source-map + model hypothesis. Matrix in
+`workspace/recon/cross_match_matrix.txt`. Assembler backend still parked (last).
+
 ### 2026-09-14 — session 5
 Scaled triage to the passes (per-model libsig): C1→Large(47), C3L→Large(81) clear; C2/C3 best-match
 small-model CRT (model not overclaimed). App/lib splits: C1 47L/419A, C2 37L/487A, C3 81L/386A,

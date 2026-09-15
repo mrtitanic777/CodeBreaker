@@ -148,4 +148,25 @@ units) in **[docs/SOURCE_MAP.md](docs/SOURCE_MAP.md)**. Anchors (MSC image): `cc
 
 ---
 
+## 8. Cross-tool module identification `[CONFIRMED]`
+
+### SIG-XREF-001 — normalized function signature
+`workspace/scripts/cross_match.py`: per-function signature = disasm with all numeric
+literals blanked (`0x..`→`#`), so the same `.c` compiled at the same rev+model is
+byte/shape-identical across tools regardless of layout. Clusters shared modules.
+Validated matrix (matching functions):
+
+| | CL | C1 | C2 | C3 | C3L |
+|--|--|--|--|--|--|
+| **MSC** | **139** | 9 | 39 | 51 | 9 |
+| **C2** | 37 | 8 | — | **74** | 8 |
+| **C1** | 9 | — | 8 | 11 | **56** |
+
+Same-model pairs overlap massively (MSC≡CL drivers 139; C2/C3 small 74; C1/C3L large 56);
+cross-model pairs stay ~8–11 (only model-independent code) — a clean confirmation of the
+SOURCE_MAP + memory-model hypothesis. 226 signatures shared across ≥2 tools. Full matrix:
+`workspace/recon/cross_match_matrix.txt`.
+
+---
+
 _Add new signatures with the next free ID in each section. Cite the file + offset where confirmed._
