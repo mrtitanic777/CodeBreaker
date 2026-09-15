@@ -119,7 +119,44 @@ def match(img, sigs):
             pos = img.find(bytes([c0]), pos + 1)
     return hits
 
+_ALLFNS = None
+def _all_lib_fns():
+    global _ALLFNS
+    if _ALLFNS is None:
+        _ALLFNS = []
+        for lib in all_libs():
+            data = open(lib, "rb").read()
+            try:
+                for ms in iter_modules(data):
+                    for nm, code, mask in module_functions(data, ms):
+                        _ALLFNS.append((nm, code, mask, os.path.basename(lib)))
+            except Exception:
+                pass
+    return _ALLFNS
+
+def best_lib_match(window):
+    """Best fuzzy library match for a code window: (frac, name, liblen, lib). frac near 1.0
+    => it IS that library function; low (~0.4) => genuine app code. The triage cross-check."""
+    best = (0.0, "-", 0, "-")
+    for nm, code, mask, lib in _all_lib_fns():
+        L = min(len(code), len(window))
+        if L < 8:
+            continue
+        good = sum(1 for i in range(L) if mask[i] or code[i] == window[i])
+        frac = good / max(len(code), len(window))
+        if frac > best[0]:
+            best = (frac, nm, len(code), lib)
+    return best
+
 if __name__ == "__main__":
+    if sys.argv[1] == "--classify":
+        # idlib.py --classify <name> <hexoff> <size>
+        nm = sys.argv[2]; off = int(sys.argv[3], 16); size = int(sys.argv[4])
+        img = load_img(os.path.join(ROOT, "unpacked", nm + ".EXE"))
+        frac, lname, ll, lib = best_lib_match(img[off:off+size])
+        verdict = "LIBRARY" if frac > 0.90 else ("app code" if frac < 0.70 else "uncertain")
+        print(f"{nm}@{off:#x} ({size}b): best lib {lname} ({ll}b {lib}) {frac*100:.0f}% -> {verdict}")
+        sys.exit(0)
     path = sys.argv[1]
     minlen = int(sys.argv[sys.argv.index("--min")+1]) if "--min" in sys.argv else 10
     name = os.path.splitext(os.path.basename(path))[0]
