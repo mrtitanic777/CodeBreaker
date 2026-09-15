@@ -160,10 +160,19 @@ _SEVENZIP_CANDIDATES = [
 ]
 
 
+def _cli_7z(p):
+    """Never return the GUI file manager (7zFM.exe) -- it pops a window per call. Remap it to the
+    CLI 7z.exe in the same directory when present."""
+    if p and os.path.basename(p).lower() == "7zfm.exe":
+        cli = os.path.join(os.path.dirname(p), "7z.exe")
+        return cli if os.path.exists(cli) else None
+    return p
+
+
 def find_7zip():
     try:                                              # configured path wins (config.json sevenzip)
         from src.core import config
-        cfg7 = config.load_config().get("sevenzip")
+        cfg7 = _cli_7z(config.load_config().get("sevenzip"))
         if cfg7 and os.path.exists(cfg7):
             return cfg7
     except Exception:
