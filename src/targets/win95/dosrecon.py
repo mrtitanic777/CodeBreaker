@@ -1077,8 +1077,65 @@ def _omf_ledata(path):
     return bytes(out)
 
 
+def _emit_image(outroot, which, image):
+    """Build the FINAL binary image of a DOS module from OUR assembled objects. Reuses the verify
+    alignment (orig file offset <- LST, assembled bytes <- OMF LEDATA) to place every function's
+    real assembled bytes at its file offset. After the --exact fixpoint these bytes are byte-
+    identical to the original, so the emitted image IS the module -- but produced by ML.EXE 6.13
+    assembling our reconstructed source, not copied from the corpus. Returns (path, matched, total)."""
+    ml = _ml()
+    if not os.path.isfile(ml):
+        return None, 0, 0
+    outdir = os.path.join(outroot, which)
+    img = bytearray(len(image))
+    covered = bytearray(len(image))       # 1 where an assembled byte was placed
+    for asm in sorted(f for f in os.listdir(outdir) if f.endswith(".asm") and not f.startswith("reginit")):
+        base = asm[:-4]
+        obj = os.path.join(outdir, base + ".obj")
+        subprocess.run([ml, "/c", "/Fl", "/Fo", obj, os.path.join(outdir, asm)],
+                       capture_output=True, text=True, cwd=outdir)
+        lst = os.path.join(outdir, base + ".LST")
+        if not (os.path.isfile(obj) and os.path.isfile(lst)):
+            continue
+        # The OMF LEDATA of one segment object is the WHOLE segment image at segment-relative
+        # offsets (code AND data -- device headers, string tables, everything). Place it at the
+        # segment's FILE base, derived from the first region header (absolute file addr) minus its
+        # emit offset. This gives full coverage with no per-function gaps.
+        code = _omf_ledata(obj)
+        seg_base = None
+        pending = None
+        for line in open(lst, encoding="latin1", errors="replace"):
+            hm = re.search(r";----- \S+ \(0x([0-9A-Fa-f]+),", line)
+            if hm:
+                pending = int(hm.group(1), 16); continue
+            om = re.match(r"\s+([0-9A-Fa-f]{4,8})\s+[0-9A-Fa-f]{2}", line)
+            if om and pending is not None:
+                seg_base = pending - int(om.group(1), 16); break
+        if seg_base is None:
+            continue
+        for k in range(len(code)):
+            fo = seg_base + k
+            if 0 <= fo < len(img):
+                img[fo] = code[k]; covered[fo] = 1
+    matched = sum(1 for j in range(len(image)) if covered[j] and img[j] == image[j])
+    total = sum(covered)
+    builtdir = os.path.join(outdir, "_built")
+    os.makedirs(builtdir, exist_ok=True)
+    p = os.path.join(builtdir, which + ".bin")
+    open(p, "wb").write(bytes(img))
+    return p, matched, total
+
+
 def _ml():
-    return os.path.join(paths.repo_root(), "toolchains", "period", "assemblers", "masm-6.13", "ML.EXE")
+    """Locate ML.EXE 6.13 -- the assembler that built the Win95 originals (used for the byte-fidelity
+    proof). It lives in the dedicated Microsoft-Assemblers-Compilers repo (sibling of CodeBreaker);
+    the old in-repo toolchains/period path is kept as a fallback."""
+    gh = os.path.dirname(paths.repo_root())          # .../GitHub
+    for c in (os.path.join(gh, "Microsoft-Assemblers-Compilers", "binaries", "masm-6.13", "ML.EXE"),
+              os.path.join(paths.repo_root(), "toolchains", "period", "assemblers", "masm-6.13", "ML.EXE")):
+        if os.path.isfile(c):
+            return c
+    return c                                          # last candidate (for a clear error message)
 
 
 def _mismatch_funcs(outdir, image):
@@ -1121,7 +1178,7 @@ def _verify(outroot, results):
     Matching bytes are behavior-identical (same bytes = same behavior). MASM 6.13 is the assembler
     that built the original (verified: matching operand-size/seg prefix order and short-jump
     auto-sizing); 5.10A differs (26/66 prefix order, near jumps)."""
-    ml = os.path.join(paths.repo_root(), "toolchains", "period", "assemblers", "masm-6.13", "ML.EXE")
+    ml = _ml()
     if not os.path.isfile(ml):
         print("  (ML.EXE not found; skipping verify)"); return
     print("\n== byte-fidelity round-trip (MASM 6.13 object bytes vs original) ==")
@@ -1216,7 +1273,7 @@ def _assemble_ow(outroot, results):
 def _assemble(outroot, results):
     """Assemble the emitted region .asm files with the period MASM 6.13 (ML /c). Proves the
     reconstruction is compilable (the 'C' in Logan's premise) with a from-that-era toolchain."""
-    ml = os.path.join(paths.repo_root(), "toolchains", "period", "assemblers", "masm-6.13", "ML.EXE")
+    ml = _ml()
     if not os.path.isfile(ml):
         print("  (ML.EXE not found; skipping assemble)"); return
     print("\n== assemble (MASM 6.13 ML /c) ==")
@@ -1250,6 +1307,7 @@ def main(argv):
     do_verify = False
     do_exact = False
     do_ow = False
+    do_emit = False
     i = 0
     while i < len(argv):
         a = argv[i]
@@ -1270,6 +1328,8 @@ def main(argv):
             do_exact = True
         elif a == "--ow":
             do_ow = True
+        elif a == "--emit":
+            do_emit = True
         elif a == "--out" and i + 1 < len(argv):
             outroot = argv[i + 1]; i += 1
         i += 1
@@ -1320,6 +1380,19 @@ def main(argv):
             bad = _mismatch_funcs(outdir, image)
             print("  %-9s %d functions forced to db; %d still divergent"
                   % (which, len(extra), len(bad)))
+
+    if do_emit:
+        print("\n== emit final images (built from OUR assembled objects, ML.EXE 6.13) ==")
+        for r in results:
+            data = open(r["path"], "rb").read()
+            is_iosys, _be, _lb, image = _layout(data)
+            if is_iosys:
+                image = data
+            p, m, t = _emit_image(outroot, r["which"], image)
+            if p:
+                ident = " -- BYTE-IDENTICAL" if (m == t and t == len(image)) else ""
+                print("  %-9s -> %s  (%d/%d covered bytes match original, %d/%d total)%s"
+                      % (r["which"], os.path.relpath(p, outroot), m, t, t, len(image), ident))
 
     # combined REPORT.md
     rep = os.path.join(outroot, "REPORT.md")

@@ -81,14 +81,15 @@ def _components(recon):
               "setupx.dll", "Setup INF+registry engine (NE, OpenWatcom)"))
     C.append(("WIN95/SUWIN.EXE", os.path.join(recon, "ne", "suwin", "suwin_ow.exe"),
               "suwin.exe", "Setup wizard (NE, OpenWatcom)"))
-    C.append(("WIN95/OEMSETUP.EXE", os.path.join(recon, "oemsetup", "_built", "oemsetup.exe"),
+    C.append(("WIN95/OEMSETUP.EXE", os.path.join(recon, "oemsetup", "_built", "oemsetup.bin"),
               "oemsetup.exe", "real-mode Setup launcher (DOS/MZ)"))
-    # DOS 7.10 layer (byte-identical images from dosrecon --exact)
-    for m, orig in (("iosys", "IO.SYS"), ("command", "COMMAND.COM"), ("himem", "HIMEM.SYS"),
-                    ("drvspace", "DRVSPACE.SYS"), ("ifshlp", "IFSHLP.SYS"),
-                    ("setver", "SETVER.EXE"), ("ramdrive", "RAMDRIVE.SYS")):
-        C.append(("WIN95/%s" % orig, os.path.join(recon, m, "_built", orig.lower().replace(".", "_") + ".bin"),
-                  {"IO.SYS": "winboot.sys"}.get(orig, orig.lower()), "MS-DOS 7.10 (byte-identical)"))
+    # DOS 7.10 layer (byte-identical images from dosrecon --exact --emit -> recon/<key>/_built/<key>.bin)
+    for key, cdname, orig in (("iosys", "IO.SYS", "winboot.sys"), ("command", "COMMAND.COM", "command.com"),
+                              ("himem", "HIMEM.SYS", "himem.sys"), ("emm386", "EMM386.EXE", "emm386.exe"),
+                              ("drvspace", "DRVSPACE.SYS", "drvspace.sys"), ("ifshlp", "IFSHLP.SYS", "ifshlp.sys"),
+                              ("setver", "SETVER.EXE", "setver.exe"), ("ramdrive", "RAMDRIVE.SYS", "ramdrive.sys")):
+        C.append(("WIN95/%s" % cdname, os.path.join(recon, key, "_built", key + ".bin"),
+                  orig, "MS-DOS 7.10 (ML 6.13, byte-identical)"))
     return C
 
 
