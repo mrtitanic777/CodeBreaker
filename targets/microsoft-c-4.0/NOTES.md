@@ -186,6 +186,19 @@ reuse what transfers, author a C-4.0 model for the rest.)
 
 _Log entries below, newest last._
 
+### 2026-09-14 — session 5
+Scaled triage to the passes (per-model libsig): C1→Large(47), C3L→Large(81) clear; C2/C3 best-match
+small-model CRT (model not overclaimed). App/lib splits: C1 47L/419A, C2 37L/487A, C3 81L/386A,
+C3L 81L/343A (app = upper bound, some prologue FPs). Found CodeBreaker's `raiser16`/`mc2inv` is the
+**MS-C 2.03** inverse — produces garbage on 4.0 (can't parse the `xor ax,ax; call __chkstk` prologue),
+confirming 4.0 needs its own model. **Built `workspace/scripts/lift40.py`** — a 4.0-aware leaf lifter
+from our calibrated SIG-CG model (prologue+chkstk, cdecl args, globals, simple `if`, libsig-named
+callees; loops/irreducible flow emitted as raw-asm comments per the honesty rule). Validated on
+hand-checked functions. **First reconstruction:** MSC 101 app fns → **16 faithful** + 74 partial +
+11 non-std → `workspace/recon/MSC/app_leaves.c` (e.g. `f_1298 = strcpy;strcat`, `f_186d =
+signal;...;exit`). PI `main` lifts to a faithful partial (all calls + conditions recovered).
+Reconstruction engine (M6) online at the leaf tier. Assembler backend still parked.
+
 ### 2026-09-14 — session 4
 Improved `carve.py` (far-call following via capstone's `SEG, OFF` form + whole-image prologue
 scan): C1 466 / C2 524 / C3 467 / C3L 424 fns (C3L large-model = 1292 far calls; C3 near = 0).
