@@ -81,12 +81,16 @@ FLIRT-style, built **from the .LIB itself** (CodeBreaker `wt inverse omf` + `lib
 Each model's C library: `SLIBC/CLIBC/MLIBC/LLIBC` (small/compact/medium/large), float packs
 `?LIBFA` (alt math) / `?LIBFP` (emulator), `EM.LIB` (emulator), `87.LIB` (8087), `LIBH.LIB` (helpers).
 
+Matcher: `workspace/scripts/libsig_scan.py` (walks the .LIB into modules → `Obj.functions()` →
+per-function byte sig with FIXUPP sites wildcarded → scans carved function starts).
+
 | ID | Scope | Source | Method | Status |
 |---|---|---|---|---|
-| SIG-LIB-001 | small-model C RTL | `SLIBC.LIB` | OMF module/pubdef extraction → per-function byte sig w/ FIXUPP mask | TODO |
+| SIG-LIB-001 | small-model C RTL | `SLIBC.LIB` (243 mods / 390 pubs, 278 usable sigs) | OMF pubdef slice + FIXUPP mask | **CONFIRMED** — 53 fns in PI.EXE, 56 in MSC.EXE; cross-verified (chkstk/exit/printf/sscanf/time match PI main's call targets exactly) |
 | SIG-LIB-002 | float (emulator) | `SLIBFP.LIB` etc. | same | TODO |
 | SIG-LIB-003 | float (8087/alt) | `SLIBFA.LIB`,`87.LIB` | same | TODO |
 | SIG-LIB-004 | Windows glue | `?LIBW.LIB`,`?WINLIBC.LIB` | same (disk08) | TODO |
+| SIG-LIB-005 | medium/compact/large | `MLIBC/CLIBC/LLIBC.LIB` | same (for C1/C2/C3/C3L per model) | TODO |
 
 The `.OBJ`s shipped loose (`SSETARGV.OBJ`, `SVARSTCK.OBJ`, `BINMODE.OBJ`, model variants) give
 single-function, self-labelled signatures — the cleanest FLIRT seeds.
@@ -99,14 +103,23 @@ single-function, self-labelled signatures — the cleanest FLIRT seeds.
 > (CIRCLE/COUNT/PI) and the disk06 CRT. These let the inverse engine attribute a code sequence to
 > a specific C construct. Populate as calibration proceeds.
 
-| ID | Idiom | Pattern (to capture) | Status |
+Calibrated on the disk07 sample **PI.C ↔ PI.EXE** (small model): `main` at image 0x10, aligned
+statement-by-statement. C 4.0 default codegen = **small model, cdecl, stack-checking ON**, register
+vars in SI/DI.
+
+| ID | Idiom | Pattern | Status |
 |---|---|---|---|
-| SIG-CG-001 | function prologue | `push bp / mov bp,sp / sub sp,N` (+ far variant, + `__chkstk` when frame large) | TODO |
-| SIG-CG-002 | epilogue | `mov sp,bp / pop bp / ret`(near) or `retf` | TODO |
-| SIG-CG-003 | switch/jump-table | table-in-CS indexed `jmp` layout | TODO |
-| SIG-CG-004 | far-call thunking | model-dependent `call far`/`push cs;call near` | TODO |
-| SIG-CG-005 | printf-family varargs | argument push order + stack cleanup (cdecl) | TODO |
-| SIG-CG-006 | 32-bit long ops | `__aFldiv`/`__aFuldiv`/helper calls into LIBH | TODO |
+| SIG-CG-001 | function prologue | `55 8B EC` `push bp / mov bp,sp`, then **`B8 <framesize> E8 <__chkstk>`** `mov ax,N / call __chkstk` (N = local bytes; stack-check default-on), then `push di`/`push si` for each register var used | **CONFIRMED** (PI main @0x10) |
+| SIG-CG-002 | epilogue | restore `pop si/di`, `mov sp,bp / pop bp / ret` (near, small model) | HYP (tail not yet dumped) |
+| SIG-CG-003 | switch/jump-table | table-indexed `jmp` — TBD from COUNT.EXE | TODO |
+| SIG-CG-004 | far-call model | large model: `9A off,seg` far call; small: `E8 rel16` near | **CONFIRMED** (near in MSC/PI; far in C1/C3L) |
+| SIG-CG-005 | cdecl call + cleanup | args pushed **right-to-left**, each `B8 imm / 50` (`mov ax,imm; push ax`) or `push [mem]`; **caller** cleans `83 C4 N` (`add sp,N`) | **CONFIRMED** (sscanf/printf/exit in PI) |
+| SIG-CG-006 | global variable access | absolute `[imm16]` DS-relative (`813E <off> <imm>` `cmp word [q],4000`) | **CONFIRMED** (PI global q @DS:0x1930) |
+| SIG-CG-007 | arg/local frame | args at `[bp+4]`,`[bp+6]`… (small model, near ret); locals at `[bp-N]` | **CONFIRMED** (PI: argc@bp+4, argv@bp+6, startime@bp-4) |
+| SIG-CG-008 | 32-bit long ops | `__aFldiv`/`__aFuldiv`/helper calls (LIBH) | TODO |
+
+**CRT call targets seen in PI main** (to cross-verify against SLIBC libsig): `__chkstk`@0x3cf,
+`sscanf`@0x5dd, `printf`@0x5a7, `exit`@0x53c, `time`@0x614; `arctan`@0xfa (from MATH.C).
 
 ---
 

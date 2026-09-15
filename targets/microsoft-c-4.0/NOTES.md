@@ -186,6 +186,17 @@ reuse what transfers, author a C-4.0 model for the rest.)
 
 _Log entries below, newest last._
 
+### 2026-09-14 — session 4
+Improved `carve.py` (far-call following via capstone's `SEG, OFF` form + whole-image prologue
+scan): C1 466 / C2 524 / C3 467 / C3L 424 fns (C3L large-model = 1292 far calls; C3 near = 0).
+**Codegen calibrated** on PI.C↔PI.EXE (`main`@0x10): confirmed SIG-CG-001/004/005/006/007 (prologue
+`push bp;mov bp,sp;mov ax,N;call __chkstk`, cdecl right-to-left + caller `add sp`, abs-addressed
+globals, small-model frame). **libsig built** (`libsig_scan.py`, SLIBC.LIB→278 sigs); triage:
+PI 53 LIB+28 APP, MSC 56 LIB+102 APP — CRT now *identified/named*, cross-verified against PI's
+call targets. Artifacts: `workspace/disasm/{PI,MSC}/{functions,callgraph,strings,triage}.txt`.
+**M4 origin-triage engine online.** Next: medium/large libs for C1/C2/C3; switch/jump-table idiom
+(COUNT.EXE); then per-module reconstruction of MSC's 102 app functions.
+
 ### 2026-09-14 — session 3
 Wrote `workspace/scripts/carve.py` (recursive-descent carve + call graph + strings, no assembler).
 MSC.EXE: 151 fns, 528 edges, 0 far calls (small model confirmed), _TEXT≈[0,0x4bda), data after.

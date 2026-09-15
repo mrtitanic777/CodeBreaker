@@ -27,22 +27,32 @@ def load(path):
     return img, cs*16 + ip, relocs
 
 
-def carve(img, entry, relocs):
+def prologue_seeds(img, hi):
+    """Scan [0,hi) for common 16-bit C entry prologues."""
+    seeds = set()
+    # 55 8B EC        push bp / mov bp,sp
+    # 55 8B EC 83 EC  ... / sub sp,imm8   (frame)
+    # 8B EC ... far entry variants also start with push bp
+    for m in re.finditer(rb'\x55\x8b\xec', img[:hi]):
+        seeds.add(m.start())
+    return seeds
+
+
+def carve(img, entry, relocs, code_hi_hint=None):
     seen = set()            # instruction start addresses decoded
     funcs = set([entry])    # function entry points
     edges = []              # (caller_func, callee_addr)
     calls_far = set()
-    worklist = [entry]
-    fn_of = {}              # addr -> owning function (approx, by discovery)
+    fn_of = {}
+    hi_guess = code_hi_hint or min((s*16+o for o, s in relocs), default=len(img)) or len(img)
 
-    def decode_run(start, owner):
+    def decode_run(start, owner, worklist):
         addr = start
         while 0 <= addr < len(img) and addr not in seen:
             ins = next(MD.disasm(img[addr:addr+16], addr), None)
             if ins is None:
                 break
-            seen.add(addr)
-            fn_of[addr] = owner
+            seen.add(addr); fn_of[addr] = owner
             op = ins.bytes[0]
             m = re.match(r"^0x([0-9a-fA-F]+)$", ins.op_str.strip())
             tgt = int(m.group(1), 16) if m else None
@@ -52,8 +62,13 @@ def carve(img, entry, relocs):
                     funcs.add(tgt); worklist.append(tgt)
             elif op == FAR_CALL:
                 calls_far.add(addr)
-            elif ins.mnemonic in ("jmp",) and tgt is not None:
-                # tail-jump within image: treat target as code, continue there
+                # capstone prints an absolute far target as "0xSEG, 0xOFF"
+                mm = re.match(r"0x([0-9a-fA-F]+)\s*,\s*0x([0-9a-fA-F]+)$", ins.op_str.strip())
+                if mm:
+                    ft = int(mm.group(1), 16) * 16 + int(mm.group(2), 16)
+                    if 0 <= ft < len(img) and ft not in funcs:
+                        edges.append((owner, ft)); funcs.add(ft); worklist.append(ft)
+            elif ins.mnemonic == "jmp" and tgt is not None:
                 if tgt not in seen:
                     worklist.append(("cont", tgt, owner))
                 break
@@ -64,15 +79,24 @@ def carve(img, entry, relocs):
                 break
             addr += ins.size
 
-    while worklist:
-        item = worklist.pop()
-        if isinstance(item, tuple):
-            _, a, owner = item
-            decode_run(a, owner)
-        else:
-            decode_run(item, item)
+    def run(seeds):
+        wl = list(seeds)
+        while wl:
+            item = wl.pop()
+            if isinstance(item, tuple):
+                decode_run(item[1], item[2], wl)
+            else:
+                decode_run(item, item, wl)
 
-    # size each function = bytes from its entry to the next function entry it flows into
+    # pass 1: from the real entry + far/near reachable
+    run([entry])
+    # pass 2: prologue-scan seeds not yet decoded (indirect-only functions).
+    # Large model interleaves code/data by segment, so scan the whole image;
+    # data false-positives mostly fail to decode into sane runs.
+    extra = {s for s in prologue_seeds(img, len(img)) if s not in seen}
+    funcs |= extra
+    run(list(extra))
+
     fentries = sorted(funcs)
     return fentries, edges, seen, calls_far
 
