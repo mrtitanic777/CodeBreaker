@@ -192,6 +192,18 @@ def _pe_namemap(path):
             continue
         top = max(set(calls), key=lambda x: (calls.count(x), len(x)))   # most-called, then longest
         names[addr] = "%s_helper_%06X" % (top, addr)
+    # lever 2: the corpus name store wins -- a shared-body name (seeded from body_ledger, or curated)
+    # propagates here from any module that shares the body.
+    try:
+        from src.targets.win95 import namestore
+        module = os.path.basename(path)
+        bidm = namestore.bodyid_map(path)
+        for a, bid in bidm.items():
+            cur = namestore.resolve(module, a, bid)
+            if cur:
+                names[a] = cur
+    except Exception:                                            # noqa: BLE001
+        pass
     return names
 
 

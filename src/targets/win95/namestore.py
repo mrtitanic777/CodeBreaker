@@ -121,6 +121,32 @@ def bodyid_map(path):
     return out
 
 
+def seed_from_ledger(min_modules=2):
+    """Lever 2: seed by_body from body_ledger.csv -- for each SHARED body (in >= min_modules), take a
+    meaningful example_name as the canonical name so it propagates to every module with that body.
+    Skips placeholder names (sub_/data_/helper_/thunk_) and bodies already curated. Returns count."""
+    import csv
+    led = os.path.join(_win95_design(), "body_ledger.csv")
+    if not os.path.isfile(led):
+        return 0
+    d = load()
+    n = 0
+    for r in csv.DictReader(open(led, encoding="utf-8", errors="replace")):
+        try:
+            inm = int(r.get("in_modules") or 0)
+        except ValueError:
+            continue
+        nm = (r.get("example_name") or "").strip()
+        bid = r.get("body_id")
+        if (inm >= min_modules and nm and bid and bid not in d["by_body"]
+                and not nm.lower().startswith(("sub_", "data_", "seg_", "helper_", "thunk_", "loc_"))):
+            d["by_body"][bid] = nm
+            n += 1
+    save(d)
+    global _CACHE; _CACHE = None
+    return n
+
+
 def main(argv):
     if not argv:
         print(__doc__); return 0
@@ -130,6 +156,10 @@ def main(argv):
         print("namestore: %d body-keyed names (propagate corpus-wide), %d module-local names in %d modules"
               % (len(s["by_body"]), sum(len(v) for v in s["by_module"].values()), len(s["by_module"])))
         print("  -> %s" % _path())
+    elif a == "--seed-ledger":
+        mm = int(argv[1]) if len(argv) > 1 else 2
+        n = seed_from_ledger(mm)
+        print("seeded %d shared-body names from body_ledger (in >= %d modules) -> propagate corpus-wide" % (n, mm))
     elif a == "--set-body" and len(argv) >= 3:
         set_body(argv[1], argv[2]); print("set by_body[%s] = %s (propagates to every module with this body)" % (argv[1], argv[2]))
     elif a == "--set" and len(argv) >= 4:
