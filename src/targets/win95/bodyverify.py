@@ -345,7 +345,8 @@ def harvest(module, maxn=100000, rows=None, present=None, verified_now=None):
                 break
         return lo                                        # enclosing triage function's body id
     c = Counter()
-    for off, va, size in tracer.list_functions(retail)[:maxn]:
+    allfns = tracer.list_functions(retail)
+    for off, va, size in allfns[:maxn]:
         bid = _bid_for(va - base)
         if not bid or bid not in present or bid in already or bid in verified_now:
             continue
@@ -360,17 +361,36 @@ def harvest(module, maxn=100000, rows=None, present=None, verified_now=None):
         with open(_ledger_path(), "w", newline="") as fp:
             w = _csv.DictWriter(fp, fieldnames=rows[0].keys())
             w.writeheader(); w.writerows(rows)
-    return {"module": module, "counts": dict(c), "credited": len(verified_now)}
+    # exhausted = we saw the WHOLE function list (not cut off by the cap): re-running with the same
+    # engine would re-try the identical non-verified bodies for the same verdicts, so it's safe to
+    # skip this module next run (clear verify_swept.txt whenever synth/cure/lifter improves).
+    return {"module": module, "counts": dict(c), "credited": len(verified_now),
+            "exhausted": len(allfns) <= maxn}
 
 
-def sweep_corpus(modules, maxper=100000):
-    """Run harvest across several modules, crediting into one shared ledger write. `modules` is a list
-    of module names/paths (boot-critical order recommended). Resumable: already-verified bodies skip."""
+def _swept_path():
+    return os.path.join(os.path.dirname(_ledger_path()), "verify_swept.txt")
+
+
+def _load_swept():
+    try:
+        return set(l.strip().lower() for l in open(_swept_path()) if l.strip())
+    except OSError:
+        return set()
+
+
+def sweep_corpus(modules, maxper=100000, skip_swept=False):
+    """Run harvest across several modules, crediting into one shared ledger write. Resumable: already
+    -verified bodies skip; with skip_swept, whole modules already processed are skipped so each run
+    advances to NEW modules instead of re-decompiling finished ones."""
     import csv as _csv
     rows = list(_csv.DictReader(open(_ledger_path())))
     present = {r["body_id"] for r in rows}
     verified_now = set()
     per = []
+    swept = _load_swept() if skip_swept else set()
+    if skip_swept:
+        modules = [m for m in modules if os.path.basename(m).lower() not in swept]
 
     def _flush():                                        # persist after each module so a timeout
         for r in rows:                                   # never loses completed modules' credits
@@ -380,14 +400,21 @@ def sweep_corpus(modules, maxper=100000):
             w = _csv.DictWriter(fp, fieldnames=rows[0].keys())
             w.writeheader(); w.writerows(rows)
 
+    newly_swept = []
     for m in modules:
         try:
             r = harvest(m, maxn=maxper, rows=rows, present=present, verified_now=verified_now)
             per.append((m, r["counts"]))
+            if skip_swept and r.get("exhausted"):
+                newly_swept.append(os.path.basename(m).lower())
         except Exception as e:
             per.append((m, {"error": type(e).__name__}))
         _flush()                                         # incremental checkpoint
-    return {"modules": per, "credited": len(verified_now),
+        if newly_swept:                                  # persist swept list incrementally too
+            with open(_swept_path(), "a") as fp:
+                fp.write("".join(s + "\n" for s in newly_swept))
+            swept.update(newly_swept); newly_swept = []
+    return {"modules": per, "credited": len(verified_now), "skipped": len(swept),
             "total_verified": sum(1 for r in rows if r.get("verified") == "1")}
 
 
@@ -417,9 +444,10 @@ def main(argv):
                     p = os.path.join(dp, fn)
                     if OT._detect(p)[0] == "pe":
                         seen.add(fn.lower()); mods.append(p)
-        r = sweep_corpus(mods, maxper=maxn if "--max" in argv else 100000)
+        r = sweep_corpus(mods, maxper=maxn if "--max" in argv else 100000, skip_swept=True)
         print("=== bodyverify --broad (%d PE modules) ===" % len(mods))
         print("  bodies newly credited: %d" % r["credited"])
+        print("  modules skipped (swept): %d" % r.get("skipped", 0))
         print("  TOTAL VERIFIED:        %d" % r["total_verified"])
         return
     if "--sweep" in argv:
