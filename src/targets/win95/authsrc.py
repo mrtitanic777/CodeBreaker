@@ -158,6 +158,43 @@ def _simplify_c(c):
     return c
 
 
+_PE_API = re.compile(r"\b([A-Z][A-Za-z0-9]{3,}[AW]?)\(")   # a Win32-API-looking call
+_PE_SKIP = {"If", "While", "For", "Switch", "Return", "Sizeof"}
+
+
+def _pe_namemap(path):
+    """PE (Win32) name map (lever 1): exported functions -> their authentic export name; internal
+    sub_ functions -> named after the most distinctive Win32 API they call. The decompiler already
+    resolves imports to named API calls in the emitted C, so this reads them straight from it."""
+    dec = _native("PE")
+    names = {}
+    for l in subprocess.run([dec, path, "--names"], capture_output=True, text=True).stdout.splitlines():
+        p = l.split("\t")
+        if len(p) > 1 and p[1].strip():
+            try:
+                names[int(p[0], 16)] = p[1].strip()               # authentic export name
+            except ValueError:
+                pass
+    c = subprocess.run([dec, path, "--module"], capture_output=True, text=True).stdout
+    cur, apis = None, {}
+    for line in c.splitlines():
+        fm = re.match(r"^[A-Za-z_].*\bsub_([0-9A-Fa-f]{4,8})\(.*\)\s*$", line)
+        if fm:
+            cur = int(fm.group(1), 16); apis.setdefault(cur, [])
+            continue
+        if cur is not None:
+            for m in _PE_API.finditer(line):
+                a = m.group(1)
+                if a not in _PE_SKIP and not a.startswith(("sub_", "v")):
+                    apis[cur].append(a)
+    for addr, calls in apis.items():
+        if addr in names or not calls:
+            continue
+        top = max(set(calls), key=lambda x: (calls.count(x), len(x)))   # most-called, then longest
+        names[addr] = "%s_helper_%06X" % (top, addr)
+    return names
+
+
 def _author_c(path, fmt, out):
     dec = _native(fmt)
     c = subprocess.run([dec, path, "--module"], capture_output=True, text=True).stdout
@@ -169,6 +206,11 @@ def _author_c(path, fmt, out):
             names = _namemap(path, fmt); svcs = _int_services(path, fmt)
         except Exception:                                             # noqa: BLE001 -- best effort
             names, svcs = {}, {}
+    elif fmt == "PE":                                                # lever 1: Win32 export + API naming
+        try:
+            names = _pe_namemap(path)
+        except Exception:                                             # noqa: BLE001
+            names = {}
 
     def sub_name(m):
         return names.get(int(m.group(1), 16), m.group(0))
