@@ -1,0 +1,318 @@
+#!/usr/bin/env python3
+r"""dosrecon.py -- reconstruction organizer for the Win95 real-mode base (IO.SYS + COMMAND.COM).
+
+The real Win95 IO.SYS is WINBOOT.SYS: the MS-DOS 7.0 real-mode kernel (MSLOAD + MSBIO + MSDOS)
+with a Win95-specific real-mode layer bolted on -- the registry preloader, the INT 2Fh AX=1613h
+"WinBootDir" provider, IFSHLP/DoubleSpace auto-mount, the LOGO, and the MSDOS.SYS [Paths]/[Options]
+handling. The DOS 6.0-derived `msdos/` tree has the shared kernel but NOT that Win95 layer -- which
+is exactly the registry gate the VMM32 boot hits.
+
+win95mzdec produces a raw whole-file decode (`--tree`), but a raw dump mixes code with data (the
+device-driver header table, the BPB, message/string tables) and gives every routine a `sub_<off>`
+label. This pass turns that census into an organized, navigable reconstruction:
+
+  * CODE vs DATA classification per discovered function (data = the device table, BPB, string/message
+    regions, or runs the 16-bit decoder can't validate);
+  * per-function characterization: the INT services it issues and the strings it references;
+  * NAMING of the Win95 real-mode layer from those signals (registry_load references SYSTEM.DAT, the
+    2Fh dispatcher that answers AX=1613h, the CONFIG.SYS parser, the logo, ...);
+  * an organized source tree + a triage REPORT.md with real counts and the Win95-layer work-list.
+
+    wt --target win95 dosrecon [--iosys|--command|--both] [--out DIR]
+
+Read-only against the corpus; writes only under design/recon/.
+"""
+import os
+import re
+import sys
+import csv
+import subprocess
+
+from src.core import paths
+
+try:
+    import capstone
+except ImportError:
+    capstone = None
+
+# --- corpus binaries (the REAL Win95 real-mode files) ---------------------------------------
+_BINS = {
+    "iosys":   ("winboot.sys", "IO.SYS (WINBOOT.SYS) -- MS-DOS 7.0 real-mode kernel"),
+    "command": ("command.com", "COMMAND.COM -- the Win95 command interpreter"),
+}
+
+
+def _design_root():
+    """The Win95 design arena that actually holds the corpus. Prefer the resolver, but fall back to
+    the sibling Windows95 repo (<...>/GitHub/Windows95/design) when the resolver can't find it."""
+    dr = paths.design_root()
+    if os.path.isdir(os.path.join(dr, "corpus")):
+        return dr
+    sib = os.path.join(os.path.dirname(paths.repo_root()), "Windows95", "design")
+    if os.path.isdir(os.path.join(sib, "corpus")):
+        return sib
+    return dr
+
+
+def _corpus(name):
+    root = _design_root()
+    for cand in (
+        os.path.join(root, "corpus", "files", "setup", "inf", name),
+        os.path.join(root, "corpus", "files", "WINDOWS", "COMMAND", name),
+    ):
+        if os.path.isfile(cand):
+            return cand
+    # last resort: search
+    for dp, _dn, fn in os.walk(os.path.join(root, "corpus")):
+        for f in fn:
+            if f.lower() == name.lower():
+                return os.path.join(dp, f)
+    return None
+
+
+def _mzdec():
+    b = os.path.join(paths.repo_root(), "native", "decompiler", "build", "bin", "win95mzdec.exe")
+    return b if os.path.isfile(b) else None
+
+
+# --- IO.SYS layout (mirror of the native loader) --------------------------------------------
+def _layout(data):
+    """Return (is_iosys, body_end, load_base, image) matching win95mzdec's loader."""
+    import struct
+    last_page, pages, _rel, hdr_par = struct.unpack("<HHHH", data[2:10])
+    hdr = hdr_par * 16
+    total = pages * 512
+    if last_page:
+        total = (pages - 1) * 512 + last_page
+    total = min(total, len(data))
+    is_iosys = hdr > total // 2
+    if is_iosys:
+        return True, hdr, 0x0070, data[:total]
+    # normal MZ: image is past the header
+    return False, 0, 0, data[hdr:total]
+
+
+# --- string table ---------------------------------------------------------------------------
+def _string_regions(image):
+    """Map linear offset -> string for printable runs >= 4, used for code->string xref."""
+    strings = {}
+    for m in re.finditer(rb"[\x20-\x7e]{4,}", image):
+        strings[m.start()] = m.group().decode("latin1")
+    return strings
+
+
+def _nearest_string(strings, off, window=0):
+    s = strings.get(off)
+    return s
+
+
+# --- per-function analysis ------------------------------------------------------------------
+def _analyze_fn(image, fstart, fend, strings, md):
+    """Disassemble one function; return (kind, ninsn, nbad, ints:set, strs:list)."""
+    ints, strs = set(), []
+    ninsn = nbad = 0
+    a = fstart
+    seglen = min(fend, len(image))
+    while a < seglen:
+        chunk = bytes(image[a:min(a + 15, seglen)])
+        got = list(md.disasm(chunk, a))
+        if not got:
+            nbad += 1
+            a += 1
+            continue
+        ins = got[0]
+        ninsn += 1
+        mn = ins.mnemonic
+        if mn == "int":
+            op = ins.op_str.strip()
+            ints.add(op)
+        # string xref: any immediate/displacement that lands on a string start
+        for tok in re.findall(r"0x[0-9a-fA-F]+", ins.op_str):
+            v = int(tok, 16)
+            if v in strings and 4 <= len(strings[v]) <= 64:
+                strs.append(strings[v])
+        a += ins.size
+    # classify code vs data: data regions decode as mostly-bad or trivial
+    total = ninsn + nbad
+    if total == 0:
+        kind = "empty"
+    elif nbad > ninsn:
+        kind = "data"
+    elif ninsn <= 2 and not ints and not strs:
+        kind = "stub"
+    else:
+        kind = "code"
+    return kind, ninsn, nbad, ints, strs
+
+
+# --- naming heuristics for the Win95 real-mode layer ----------------------------------------
+_NAME_RULES = [
+    (re.compile(r"SYSTEM\.DA", re.I),      "registry"),
+    (re.compile(r"\.DAT\b", re.I),          "registry"),
+    (re.compile(r"CONFIG\.SYS", re.I),      "config_parse"),
+    (re.compile(r"AUTOEXEC", re.I),         "autoexec"),
+    (re.compile(r"COMMAND\.COM", re.I),     "load_command"),
+    (re.compile(r"WINBOOT|\\WINDOWS", re.I),"winbootdir"),
+    (re.compile(r"IFSHLP", re.I),           "ifshlp"),
+    (re.compile(r"HIMEM|XMS", re.I),        "xms_himem"),
+    (re.compile(r"DBLSPACE|DRVSPACE", re.I),"cvf_mount"),
+    (re.compile(r"Windows 95|MS-DOS", re.I),"banner"),
+    (re.compile(r"LOGO", re.I),             "logo"),
+    (re.compile(r"MSDOS\.SYS", re.I),       "msdossys_cfg"),
+]
+
+
+def _name_for(fstart, kind, ints, strs, region):
+    if kind != "code":
+        return None
+    tags = []
+    for s in strs:
+        for rx, tag in _NAME_RULES:
+            if rx.search(s) and tag not in tags:
+                tags.append(tag)
+    if tags:
+        return "%s_%06X" % (tags[0], fstart)
+    # int-service based
+    if "0x2f" in ints:
+        return "int2f_%06X" % fstart
+    if "0x21" in ints:
+        return "dos21_%06X" % fstart
+    if "0x13" in ints:
+        return "disk13_%06X" % fstart
+    if "0x10" in ints:
+        return "video10_%06X" % fstart
+    return None
+
+
+def _run_one(which, outroot):
+    fname, desc = _BINS[which]
+    path = _corpus(fname)
+    if not path:
+        print("  MISSING corpus file: %s" % fname)
+        return None
+    data = open(path, "rb").read()
+    is_iosys, body_end, load_base, image = _layout(data)
+    # for iosys the image is the whole file; for MZ it's the load module
+    strings = _string_regions(image if not is_iosys else data)
+    if is_iosys:
+        image = data  # whole-file flat, matches loader linear==fileoffset
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+
+    # function starts from win95mzdec --names
+    mz = _mzdec()
+    starts = []
+    if mz:
+        out = subprocess.run([mz, path, "--names"], capture_output=True, text=True).stdout
+        for line in out.splitlines():
+            p = line.split("\t")
+            if p and p[0]:
+                try:
+                    starts.append(int(p[0], 16))
+                except ValueError:
+                    pass
+    starts = sorted(set(starts))
+    ends = {s: (starts[i + 1] if i + 1 < len(starts) else len(image)) for i, s in enumerate(starts)}
+
+    def region_of(a):
+        if not is_iosys:
+            return "command"
+        if a < 0x0800:
+            return "msload"
+        if a < body_end:
+            return "msbio"
+        return "sysinit"
+
+    rows = []
+    counts = {"code": 0, "data": 0, "stub": 0, "empty": 0}
+    win95_layer = []
+    for s in starts:
+        e = ends[s]
+        if e - s > 0x4000:      # cap runaway (data gaps); analyze the head
+            e = s + 0x4000
+        kind, ni, nb, ints, strs = _analyze_fn(image, s, e, strings, md)
+        counts[kind] = counts.get(kind, 0) + 1
+        nm = _name_for(s, kind, ints, strs, region_of(s))
+        rows.append({
+            "addr": "0x%06X" % s, "end": "0x%06X" % ends[s], "size": ends[s] - s,
+            "region": region_of(s), "kind": kind, "ninsn": ni,
+            "ints": " ".join(sorted(ints)), "name": nm or "",
+            "strings": " | ".join(dict.fromkeys(strs))[:200],
+        })
+        if nm and any(t in nm for t in ("registry", "config", "winbootdir", "ifshlp",
+                                        "load_command", "cvf_mount", "msdossys", "logo",
+                                        "banner", "autoexec", "int2f")):
+            win95_layer.append((s, nm, sorted(ints), list(dict.fromkeys(strs))[:6]))
+
+    outdir = os.path.join(outroot, which)
+    os.makedirs(outdir, exist_ok=True)
+    with open(os.path.join(outdir, "triage.csv"), "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=["addr", "end", "size", "region", "kind",
+                                          "ninsn", "ints", "name", "strings"])
+        w.writeheader()
+        w.writerows(rows)
+    return {
+        "which": which, "path": path, "desc": desc, "is_iosys": is_iosys,
+        "body_end": body_end, "nfuncs": len(starts), "counts": counts,
+        "win95_layer": win95_layer, "outdir": outdir,
+    }
+
+
+def main(argv):
+    if capstone is None:
+        print("dosrecon: needs capstone (pip install capstone)")
+        return 2
+    which = "both"
+    outroot = os.path.join(_design_root(), "recon")
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a == "--iosys":
+            which = "iosys"
+        elif a == "--command":
+            which = "command"
+        elif a == "--both":
+            which = "both"
+        elif a == "--out" and i + 1 < len(argv):
+            outroot = argv[i + 1]; i += 1
+        i += 1
+
+    targets = ["iosys", "command"] if which == "both" else [which]
+    results = []
+    for t in targets:
+        print("== dosrecon %s ==" % t)
+        r = _run_one(t, outroot)
+        if r:
+            results.append(r)
+            c = r["counts"]
+            print("  %d functions: code=%d data=%d stub=%d empty=%d"
+                  % (r["nfuncs"], c.get("code", 0), c.get("data", 0),
+                     c.get("stub", 0), c.get("empty", 0)))
+            print("  Win95 real-mode layer candidates: %d" % len(r["win95_layer"]))
+
+    # combined REPORT.md
+    rep = os.path.join(outroot, "REPORT.md")
+    with open(rep, "w") as f:
+        f.write("# Win95 real-mode base reconstruction -- triage report\n\n")
+        f.write("Reverse-engineered from the REAL corpus binaries (not the 6.0-derived tree).\n\n")
+        for r in results:
+            c = r["counts"]
+            f.write("## %s\n\n%s\n\n" % (r["which"].upper(), r["desc"]))
+            f.write("- source: `%s`\n" % os.path.basename(r["path"]))
+            f.write("- layout: %s\n" % ("IO.SYS (body+SYSINIT, body_end=0x%06X)" % r["body_end"]
+                                        if r["is_iosys"] else "normal MZ"))
+            f.write("- functions: **%d** (code=%d, data=%d, stub=%d, empty=%d)\n"
+                    % (r["nfuncs"], c.get("code", 0), c.get("data", 0),
+                       c.get("stub", 0), c.get("empty", 0)))
+            f.write("- **Win95 real-mode layer candidates: %d**\n\n" % len(r["win95_layer"]))
+            if r["win95_layer"]:
+                f.write("| addr | name | INT | strings |\n|---|---|---|---|\n")
+                for s, nm, ints, strs in r["win95_layer"]:
+                    f.write("| 0x%06X | %s | %s | %s |\n"
+                            % (s, nm, " ".join(ints), "; ".join(strs).replace("|", "\\|")[:80]))
+                f.write("\n")
+    print("\nwrote %s" % rep)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
