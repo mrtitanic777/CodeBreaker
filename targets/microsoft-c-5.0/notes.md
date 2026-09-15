@@ -216,6 +216,19 @@ Codegen notes learned: MS C 5.0 `for(p=x;*p;p++)` emits jump-into-loop with the 
 at the top (`jmp .test / nop / inc si / .test: cmp[si],0`); `register` pointers live in
 si/di with no stack home; two `return`s → two full epilogues (no shared tail at /Ox).
 
+**Methodological boundary (found on `err1`).** Self-contained, side-effect-poor functions
+(`inset`) recover byte-exact by compiling one function in isolation. But many functions
+depend on MS C 5.0 codegen heuristics that are **whole-module / context sensitive** — e.g.
+`err1` leaves an inner call's argument on the stack (deferring cleanup, legal since `exit`
+is noreturn), a "loose stack" optimization the compiler applies in-context but not for a
+lone function; no standalone flag reproduces it. **Implication:** scaling byte-exact past
+leaf functions needs either (a) an inverted MS C 5.0 **codegen model** (CodeBreaker's
+`inverse` approach — recognize templates, undo the optimizer), or (b) **whole-module**
+reconstruction (recover all functions of one .obj together and compile the module so the
+context-sensitive heuristics match). Per-function isolation is a floor, not the ceiling.
+This is the "years → weeks" problem CodeBreaker exists to attack; the environment here is
+now ready to attack it.
+
 ## §Log
 - **2026-09-14** — Phases 0–1 complete. Extracted 9 disks; built + validated
   `tools/unexepack.py` (partial-packing / in-place seed bug found & fixed). 19/19
