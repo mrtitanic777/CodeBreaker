@@ -205,20 +205,35 @@ def _name_for(fstart, kind, ints, strs, region):
     return None
 
 
-# INT 21h function names by AH (the documented DOS API) -- annotated at each call site as evidence.
+# INT 21h function names by AH -- the AUTHENTIC Microsoft names, extracted from the MIT-licensed
+# MS-DOS source (DOS/DISPATCH.ASM function table). Annotated at each call site as evidence.
 _DOS21 = {
-    0x00: "terminate", 0x01: "char_in", 0x02: "char_out", 0x05: "printer_out", 0x06: "dcon_io",
-    0x07: "dchar_in", 0x08: "char_in_noecho", 0x09: "print_string", 0x0A: "buffered_input",
-    0x0B: "check_kbd", 0x0C: "flush_read", 0x0D: "disk_reset", 0x0E: "set_drive",
-    0x19: "get_drive", 0x1A: "set_dta", 0x25: "set_int_vec", 0x2A: "get_date", 0x2C: "get_time",
-    0x2F: "get_dta", 0x30: "get_version", 0x31: "tsr", 0x33: "ctrl_break", 0x35: "get_int_vec",
-    0x36: "get_disk_space", 0x39: "mkdir", 0x3A: "rmdir", 0x3B: "chdir", 0x3C: "creat",
-    0x3D: "open", 0x3E: "close", 0x3F: "read", 0x40: "write", 0x41: "unlink", 0x42: "lseek",
-    0x43: "chmod", 0x44: "ioctl", 0x45: "dup", 0x47: "getcwd", 0x48: "alloc", 0x49: "free",
-    0x4A: "realloc", 0x4B: "exec", 0x4C: "exit", 0x4D: "get_retcode", 0x4E: "findfirst",
-    0x4F: "findnext", 0x56: "rename", 0x57: "file_time", 0x59: "get_ext_err", 0x5A: "creat_temp",
-    0x5B: "creat_new", 0x62: "get_psp", 0x65: "get_ext_country", 0x68: "fflush",
-    0x71: "lfn", 0x73: "fat32_ext",
+    0x00: "Abort", 0x01: "Std_Con_Input", 0x02: "Std_Con_Output", 0x03: "Std_Aux_Input",
+    0x04: "Std_Aux_Output", 0x05: "Std_Printer_Output", 0x06: "Raw_Con_IO",
+    0x07: "Raw_Con_Input", 0x08: "Std_Con_Input_No_Echo", 0x09: "Std_Con_String_Output",
+    0x0A: "Std_Con_String_Input", 0x0B: "Std_Con_Input_Status", 0x0C: "Std_Con_Input_Flush",
+    0x0D: "Disk_Reset", 0x0E: "Set_Default_Drive", 0x0F: "FCB_Open", 0x10: "FCB_Close",
+    0x11: "Dir_Search_First", 0x12: "Dir_Search_Next", 0x13: "FCB_Delete",
+    0x14: "FCB_Seq_Read", 0x15: "FCB_Seq_Write", 0x16: "FCB_Create", 0x17: "FCB_Rename",
+    0x19: "Get_Default_Drive", 0x1A: "Set_DMA", 0x1F: "Get_Default_DPB",
+    0x21: "FCB_Random_Read", 0x22: "FCB_Random_Write", 0x23: "Get_FCB_File_Length",
+    0x24: "Get_FCB_Position", 0x25: "Set_Interrupt_Vector", 0x26: "Create_Process_Data_Block",
+    0x27: "FCB_Random_Read_Block", 0x28: "FCB_Random_Write_Block",
+    0x29: "Parse_File_Descriptor", 0x2A: "Get_Date", 0x2B: "Set_Date", 0x2C: "Get_Time",
+    0x2D: "Set_Time", 0x2E: "Set_Verify_On_Write", 0x2F: "Get_DMA", 0x30: "Get_Version",
+    0x31: "Keep_Process", 0x32: "Get_DPB", 0x33: "Set_CTRL_C_Trapping", 0x34: "Get_InDOS_Flag",
+    0x35: "Get_Interrupt_Vector", 0x36: "Get_Drive_Freespace", 0x37: "Char_Oper",
+    0x38: "International", 0x39: "MKDir", 0x3A: "RMDir", 0x3B: "CHDir", 0x3C: "Creat",
+    0x3D: "Open", 0x3E: "Close", 0x3F: "Read", 0x40: "Write", 0x41: "Unlink", 0x42: "LSeek",
+    0x43: "CHMod", 0x44: "IOCtl", 0x45: "XDup", 0x46: "XDup2", 0x47: "Current_Dir",
+    0x48: "Alloc", 0x49: "Dealloc", 0x4A: "Setblock", 0x4B: "Exec", 0x4C: "Exit", 0x4D: "Wait",
+    0x4E: "Find_First", 0x4F: "Find_Next", 0x50: "Set_Current_PDB", 0x51: "Get_Current_PDB",
+    0x52: "Get_In_Vars", 0x53: "SetDPB", 0x54: "Get_Verify_On_Write", 0x55: "Dup_PDB",
+    0x56: "Rename", 0x57: "File_Times", 0x58: "AllocOper", 0x59: "GetExtendedError",
+    0x5A: "CreateTempFile", 0x5B: "CreateNewFile", 0x5C: "LockOper", 0x5D: "ServerCall",
+    0x5E: "UserOper", 0x5F: "AssignOper", 0x60: "TrueName", 0x62: "Get_PSP",
+    0x63: "Get_DBCS_Vector", 0x65: "Get_Extended_Country", 0x66: "Get_Set_Codepage",
+    0x68: "Commit_File", 0x6C: "Extended_Open", 0x71: "LFN", 0x73: "FAT32_Ext",
 }
 _INT_NAME = {"0x21": "DOS", "0x2f": "multiplex", "0x13": "BIOS disk", "0x10": "BIOS video",
              "0x16": "BIOS kbd", "0x15": "BIOS misc", "0x25": "set int vec",
@@ -383,9 +398,14 @@ def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, 
             ";==============================================================================\n"
             "; Reconstructed by CodeBreaker dosrecon. 16-bit real-mode; assembles with the period\n"
             "; Microsoft MASM 6.13 (ML /c). Beautified: evidence-based names (Win95-layer strings,\n"
-            "; INT services), label-resolved control flow, DS-tracked string xrefs, INT-21h service\n"
-            "; comments, code/data separation. Names lacking evidence keep the sub_<fileoffset>\n"
-            "; reconstruction label -- a stripped binary holds no name for a private routine.\n\n"
+            "; INT services), label-resolved control flow, DS-tracked string xrefs, service comments,\n"
+            "; code/data separation. Names lacking evidence keep the sub_<fileoffset> reconstruction\n"
+            "; label -- a stripped binary holds no name for a private routine.\n"
+            ";\n"
+            "; Naming references (public / open-source, for the API surface only -- NOT leaked source):\n"
+            ";   * the documented interrupt catalog (DOS/BIOS/XMS/EMS/IFS/Windows INT 2Fh);\n"
+            ";   * authentic Microsoft DOS function names from the MIT-licensed MS-DOS source\n"
+            ";     (github.com/microsoft/MS-DOS, DISPATCH.ASM function table).\n\n"
             "        .386p\n" % (r, desc or which.upper(), r))
         if externs:
             f.write("\n; ---- imported from sibling regions of this module ----\n")
