@@ -34,4 +34,8 @@ MZImage LoadMZFromBuffer(const std::vector<uint8_t>& data);
 MZImage LoadIOSYS(const std::string& path);
 MZImage LoadIOSYSFromBuffer(const std::vector<uint8_t>& data);
 
+// Raw real-mode binary with no MZ header: a DOS .SYS device driver (himem/ifshlp/ramdrive/
+// drvspace) loaded flat by CONFIG.SYS. The whole file is the image, entry 0, linear == offset.
+MZImage LoadFlat(const std::string& path);
+
 }  // namespace win95

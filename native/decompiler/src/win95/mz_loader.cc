@@ -119,6 +119,24 @@ MZImage LoadIOSYS(const std::string& path) {
   return mz;
 }
 
+MZImage LoadFlat(const std::string& path) {
+  MZImage mz;
+  FILE* f = std::fopen(path.c_str(), "rb");
+  if (!f) { mz.error = "cannot open " + path; return mz; }
+  std::fseek(f, 0, SEEK_END); long sz = std::ftell(f); std::fseek(f, 0, SEEK_SET);
+  if (sz <= 0) { std::fclose(f); mz.error = "empty file"; return mz; }
+  std::vector<uint8_t> data((size_t)sz);
+  size_t got = std::fread(data.data(), 1, (size_t)sz, f);
+  std::fclose(f);
+  data.resize(got);
+  mz.image = data;
+  mz.entry = 0;
+  mz.ok = true;
+  size_t sl = path.find_last_of("/\\");
+  mz.module_name = sl == std::string::npos ? path : path.substr(sl + 1);
+  return mz;
+}
+
 MZImage LoadMZ(const std::string& path) {
   MZImage mz;
   FILE* f = std::fopen(path.c_str(), "rb");
