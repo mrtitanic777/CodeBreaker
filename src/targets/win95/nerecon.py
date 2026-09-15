@@ -495,10 +495,18 @@ def _relink_ow(which, outroot):
     print("  wasm: %d segment objs, %d errors" % (len(objs), total_err))
     if total_err or not objs:
         return
-    # exports: emit wlink `export` directives from the placed ordinals. Core modules take names
-    # from the repo .def; any other NE module (e.g. the Setup chain) uses its own NE export names.
-    names = dict(ne.exports)
-    names.update(defn)                           # .def wins where present
+    # exports: emit wlink `export` directives from the placed ordinals. Core modules take names from
+    # the repo .def (matches the emit's export_map, which prefers .def); any other NE module (e.g. the
+    # Setup chain, which has no .def) uses its own NE export names.
+    names = defn or dict(ne.exports)
+    # Only export symbols actually emitted as PUBLIC. Some ordinals are forwarders / point outside any
+    # emitted segment (no local implementation) -- exporting those is an undefined reference at link.
+    pubs = set()
+    for _a in os.listdir(outdir):
+        if _a.endswith(".asm"):
+            for _ln in open(os.path.join(outdir, _a), encoding="latin1", errors="replace"):
+                if _ln.startswith("        PUBLIC "):
+                    pubs.add(_ln.split()[1])
     lnk = os.path.join(outdir, which + "_ow.lnk")
     exe = which + "_ow.exe"
     with open(lnk, "w", newline="\n") as f:
@@ -508,7 +516,9 @@ def _relink_ow(which, outroot):
         f.write("file " + ",".join(objs) + "\n")
         for ordn in sorted(ne.ent):
             if ordn and ordn in names and 1 <= ne.ent[ordn][0] <= len(ne.segs):
-                f.write("export %s.%d\n" % (_san_ne(names[ordn]), ordn))
+                sym = _san_ne(names[ordn])
+                if sym in pubs:                      # only export symbols we actually emitted
+                    f.write("export %s.%d\n" % (sym, ordn))
     lk = subprocess.run([wlink, "@" + which + "_ow.lnk"], capture_output=True, text=True,
                         cwd=outdir, env=env)
     open(os.path.join(outdir, which + "_ow.linklog"), "w").write(lk.stdout + lk.stderr)
