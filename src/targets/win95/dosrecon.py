@@ -101,9 +101,15 @@ def _string_regions(image):
     return strings
 
 
-def _nearest_string(strings, off, window=0):
-    s = strings.get(off)
-    return s
+def _meaningful(s):
+    """Filter coincidental immediate->offset matches: keep strings that read like real text/paths,
+    not short punctuation runs from misdecoded operand bytes."""
+    if not s or len(s) < 5:
+        return False
+    letters = sum(c.isalpha() for c in s)
+    if letters < max(3, len(s) // 2):
+        return False
+    return True
 
 
 # --- per-function analysis ------------------------------------------------------------------
@@ -126,11 +132,13 @@ def _analyze_fn(image, fstart, fend, strings, md):
         if mn == "int":
             op = ins.op_str.strip()
             ints.add(op)
-        # string xref: any immediate/displacement that lands on a string start
+        # string xref: try first-segment (disp==offset) and the code's own 64KB block
         for tok in re.findall(r"0x[0-9a-fA-F]+", ins.op_str):
             v = int(tok, 16)
-            if v in strings and 4 <= len(strings[v]) <= 64:
-                strs.append(strings[v])
+            for off in (v, (a & ~0xFFFF) + v):
+                s = strings.get(off)
+                if s and _meaningful(s) and len(s) <= 64:
+                    strs.append(s); break
         a += ins.size
     # classify code vs data: data regions decode as mostly-bad or trivial
     total = ninsn + nbad
@@ -200,13 +208,19 @@ def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, 
             return "msbio"
         return "sysinit"
 
-    def resolve_str(ds_base, disp):
-        if ds_base is None:
-            return None
-        lin = ds_base * 16 + disp
-        off = lin - LOAD_LIN
-        if off in strings and 4 <= len(strings[off]) <= 96:
-            return strings[off]
+    def resolve_str(ds_base, disp, faddr=0):
+        """Resolve a displacement to a string. Try (a) a known DS base, (b) the first body
+        segment (disp == file offset), (c) the code's own 64KB block (position-independent
+        CS-relative data lives in the same segment as the code)."""
+        cands = []
+        if ds_base is not None:
+            cands.append(ds_base * 16 + disp - LOAD_LIN)
+        cands.append(disp)                                  # seg 0x70 / first block
+        cands.append((faddr & ~0xFFFF) + disp)              # code's 64KB block
+        for off in cands:
+            s = strings.get(off)
+            if s and _meaningful(s) and len(s) <= 96:
+                return s
         return None
 
     outdir = os.path.join(outroot, which)
@@ -289,8 +303,8 @@ def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, 
                 cmt = _int_comment(ins.op_str)
             for tok in re.findall(r"0x[0-9a-fA-F]+", ins.op_str):
                 v = int(tok, 16)
-                st = strings.get(v - LOAD_LIN) or resolve_str(ds_base, v)
-                if st and 4 <= len(st) <= 96:
+                st = resolve_str(ds_base, v, a)
+                if st:
                     cmt = '"%s"' % st.replace('"', "'"); break
             txt = ("%s %s" % (mn, ops)).rstrip()
             if cmt:
