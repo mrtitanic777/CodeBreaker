@@ -454,11 +454,18 @@ def _swept_path():
 _W = {}
 
 
-def _winit(target_dir, present, already):
+def _results_dir():
+    d = os.path.join(os.path.dirname(_ledger_path()), "verify_results")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def _winit(target_dir, present, already, resdir):
     from src.core import cores
     cores.set_target(target_dir)
     _W["present"] = present
     _W["already"] = already
+    _W["resfile"] = os.path.join(resdir, "w%d.txt" % os.getpid())
 
 
 def _wjob(args):
@@ -500,6 +507,11 @@ def _wjob(args):
             c[r["verdict"]] += 1
             if r["verdict"] == "equivalent":
                 got.add(bid)
+                try:                                      # incremental checkpoint: survive a kill
+                    with open(_W["resfile"], "a") as rf:  # mid-module (giant modules never lose work)
+                        rf.write(bid + "\n"); rf.flush()
+                except OSError:
+                    pass
         return (module, sorted(got), len(allfns) <= maxn, dict(c))
     except Exception as e:
         return (module, [], False, {"error": type(e).__name__})
@@ -518,19 +530,38 @@ def sweep_parallel(modules, workers=10, maxper=100000, skip_swept=True):
     if skip_swept:
         modules = [m for m in modules if os.path.basename(m).lower() not in swept]
     verified_now = set(); newly_swept = []; done = 0
+    resdir = _results_dir()
 
-    def _flush():
-        for r in rows:
-            if r["body_id"] in verified_now:
+    def _absorb_results():
+        """Fold any per-worker result files (partial progress from a prior KILLED run, and this run's
+        streamed writes) into verified_now, then remove them -- so a giant module cut off by the
+        harness timeout never loses the bodies it already verified."""
+        import glob
+        for rf in glob.glob(os.path.join(resdir, "w*.txt")):
+            try:
+                for line in open(rf):
+                    b = line.strip()
+                    if b:
+                        verified_now.add(b)
+                os.remove(rf)
+            except OSError:
+                pass
+
+    def _flush():                                         # per-module: credit RETURNED ids (result
+        for r in rows:                                    # files are absorbed only at start/end, to
+            if r["body_id"] in verified_now:              # avoid racing workers still appending)
                 r["verified"], r["state"] = "1", "verified"
         _write_rows(rows)
         if newly_swept:
             with open(_swept_path(), "a") as fp:
                 fp.write("".join(s + "\n" for s in newly_swept))
 
+    _absorb_results()                                     # recover a prior killed run's partials first
+    if verified_now:
+        _flush()
     tdir = paths.target_dir("win95")
     jobs = [(m, maxper) for m in modules]
-    with mp.Pool(workers, initializer=_winit, initargs=(tdir, present, already)) as pool:
+    with mp.Pool(workers, initializer=_winit, initargs=(tdir, present, already, resdir)) as pool:
         for module, ids, exhausted, counts in pool.imap_unordered(_wjob, jobs):
             done += 1
             for bid in ids:
@@ -541,6 +572,7 @@ def sweep_parallel(modules, workers=10, maxper=100000, skip_swept=True):
                 _flush(); newly_swept = []
             print("  [%d/%d] %-16s +%d  %s" % (done, len(jobs), os.path.basename(module),
                   len(ids), "  ".join("%s=%d" % kv for kv in sorted(counts.items()))), flush=True)
+    _absorb_results()                                     # fold this run's streamed writes + clean up
     _flush()
     return {"credited": len(verified_now), "skipped": len(swept),
             "total_verified": sum(1 for r in rows if r.get("verified") == "1")}
