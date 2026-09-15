@@ -205,7 +205,42 @@ def _name_for(fstart, kind, ints, strs, region):
     return None
 
 
-def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, md):
+# INT 21h function names by AH (the documented DOS API) -- annotated at each call site as evidence.
+_DOS21 = {
+    0x00: "terminate", 0x01: "char_in", 0x02: "char_out", 0x05: "printer_out", 0x06: "dcon_io",
+    0x07: "dchar_in", 0x08: "char_in_noecho", 0x09: "print_string", 0x0A: "buffered_input",
+    0x0B: "check_kbd", 0x0C: "flush_read", 0x0D: "disk_reset", 0x0E: "set_drive",
+    0x19: "get_drive", 0x1A: "set_dta", 0x25: "set_int_vec", 0x2A: "get_date", 0x2C: "get_time",
+    0x2F: "get_dta", 0x30: "get_version", 0x31: "tsr", 0x33: "ctrl_break", 0x35: "get_int_vec",
+    0x36: "get_disk_space", 0x39: "mkdir", 0x3A: "rmdir", 0x3B: "chdir", 0x3C: "creat",
+    0x3D: "open", 0x3E: "close", 0x3F: "read", 0x40: "write", 0x41: "unlink", 0x42: "lseek",
+    0x43: "chmod", 0x44: "ioctl", 0x45: "dup", 0x47: "getcwd", 0x48: "alloc", 0x49: "free",
+    0x4A: "realloc", 0x4B: "exec", 0x4C: "exit", 0x4D: "get_retcode", 0x4E: "findfirst",
+    0x4F: "findnext", 0x56: "rename", 0x57: "file_time", 0x59: "get_ext_err", 0x5A: "creat_temp",
+    0x5B: "creat_new", 0x62: "get_psp", 0x65: "get_ext_country", 0x68: "fflush",
+    0x71: "lfn", 0x73: "fat32_ext",
+}
+_INT_NAME = {"0x21": "DOS", "0x2f": "multiplex", "0x13": "BIOS disk", "0x10": "BIOS video",
+             "0x16": "BIOS kbd", "0x15": "BIOS misc", "0x25": "set int vec",
+             "0x26": "abs disk write", "0x19": "reboot", "0x11": "equip", "0x12": "memsize",
+             "0x2a": "network", "0x14": "serial", "0x17": "printer", "0x1a": "RTC", "0x67": "EMS"}
+
+
+def _beautify_name(fstart, kind, ints, strs, region):
+    """Always return a name: evidence-based where possible (Win95 layer strings, INT service),
+    else the sub_<addr> reconstruction label. Address suffix keeps every name unique."""
+    if kind == "data":
+        # a run that is mostly one printable string -> str_, else data_
+        for s in strs:
+            if len(s) >= 6:
+                return "data_%06X" % fstart
+        return "data_%06X" % fstart
+    nm = _name_for(fstart, kind, ints, strs, region)
+    return nm or ("sub_%06X" % fstart)
+
+
+def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, md,
+              namemap=None, fkind=None, desc=""):
     r"""Emit annotated MASM-style reconstruction per region, with DS-tracked string xref
     resolution and INT-service comments. This is the faithful authored form for 16-bit real-mode
     code (MS-DOS/COMMAND.COM were written in assembly). The body loads at real-mode segment 0x0070,
@@ -239,6 +274,11 @@ def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, 
     outdir = os.path.join(outroot, which)
     os.makedirs(outdir, exist_ok=True)
     start_set = set(starts)
+    namemap = namemap or {}
+    fkind = fkind or {}
+
+    def nm(a):
+        return namemap.get(a, "sub_%06X" % a)
     _JCC = {"jmp", "je", "jne", "jz", "jnz", "jb", "jnb", "jbe", "ja", "jae", "jl", "jle",
             "jg", "jge", "js", "jns", "jc", "jnc", "jo", "jno", "jp", "jnp", "jcxz", "jecxz",
             "jpe", "jpo", "jna", "jnae", "jnb", "jnbe", "jng", "jnge", "jnl", "jnle",
@@ -296,12 +336,21 @@ def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, 
                             labels.setdefault(t, "L%06X" % t)
 
         f = open(os.path.join(outdir, r + ".asm"), "w")
-        f.write("; %s.asm -- reconstructed from the REAL Win95 %s (%s region).\n"
-                "; 16-bit real-mode; assembles with MASM 6.13 (ML /c). CodeBreaker dosrecon:\n"
-                "; label-resolved branches, DS-tracked string xrefs, INT-service comments.\n\n"
-                "        .386p\n" % (r, which.upper(), r))
-        for t in sorted(externs):
-            f.write("        EXTRN sub_%06X:NEAR\n" % t)
+        f.write(
+            ";==============================================================================\n"
+            "; %s.asm -- %s\n"
+            ";   region: %s   (reverse-engineered from the REAL Win95 binary, not the 6.0 tree)\n"
+            ";==============================================================================\n"
+            "; Reconstructed by CodeBreaker dosrecon. 16-bit real-mode; assembles with the period\n"
+            "; Microsoft MASM 6.13 (ML /c). Beautified: evidence-based names (Win95-layer strings,\n"
+            "; INT services), label-resolved control flow, DS-tracked string xrefs, INT-21h service\n"
+            "; comments, code/data separation. Names lacking evidence keep the sub_<fileoffset>\n"
+            "; reconstruction label -- a stripped binary holds no name for a private routine.\n\n"
+            "        .386p\n" % (r, desc or which.upper(), r))
+        if externs:
+            f.write("\n; ---- imported from sibling regions of this module ----\n")
+            for t in sorted(externs):
+                f.write("        EXTRN %s:NEAR\n" % nm(t))
         f.write("\n_TEXT   SEGMENT byte public 'CODE'\n        ASSUME cs:_TEXT\n")
 
         # a 16-bit 1995 kernel has no SSE/MMX/32-bit-only forms; their presence means the run is
@@ -322,7 +371,9 @@ def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, 
         for s in rstarts:
             dec = fdecode[s]
             if is_data_fn(dec):
-                f.write("\nsub_%06X label near              ; data (not decoded as code)\n" % s)
+                f.write("\n;----- %s : data block (0x%06X, %d bytes) ----------------------\n"
+                        % (nm(s), s, ends[s] - s))
+                f.write("%s label near\n" % nm(s))
                 end = min(ends[s], len(image))
                 a = s
                 while a < end:
@@ -333,12 +384,19 @@ def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, 
                     for j in range(1, run):
                         if (a + j) in labels:
                             run = j; break
-                    f.write("        db " + ",".join("0%02Xh" % image[a + k] for k in range(run)) + "\n")
+                    chunk = bytes(image[a:a + run])
+                    asc = "".join(chr(b) if 32 <= b < 127 else "." for b in chunk)
+                    f.write("        db " + ",".join("0%02Xh" % b for b in chunk)
+                            + (" " * max(1, 52 - 5 * run)) + "; " + asc + "\n")
                     a += run
                 continue
-            f.write("\nsub_%06X label near\n" % s)
+            rc = fkind.get(s, "code")
+            f.write("\n;----- %s (0x%06X, %s) %s\n"
+                    % (nm(s), s, rc, "-" * max(0, 40 - len(nm(s)))))
+            f.write("%s label near\n" % nm(s))
             ds_base = None
             pend_ax = None
+            pend_ah = None
             for a, ins in fdecode[s]:
                 if a in labels:
                     f.write("%s:\n" % labels[a])
@@ -409,7 +467,7 @@ def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, 
                         if t in start_set:
                             if not (rlo <= t < rhi):
                                 externs.add(t)
-                            ops = "sub_%06X" % t
+                            ops = nm(t)
                         elif t in labels:
                             ops = labels[t]
                         else:
@@ -424,14 +482,22 @@ def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, 
                 # lgdt/lidt/sgdt/sidt take a 6-byte (fword) descriptor; capstone omits the size
                 if mn in ("lgdt", "lidt", "sgdt", "sidt") and "[" in ops and "ptr" not in ops:
                     ops = "fword ptr " + ops
-                # DS tracking
+                # DS + AH tracking (for string xrefs and the DOS service annotation)
                 if mn == "mov" and ops.startswith(("ax,", "bx,")) and "0x" in ops:
                     try: pend_ax = int(ops.split(",")[1], 16)
                     except ValueError: pend_ax = None
                 elif mn == "mov" and ops.startswith("ds,"):
                     ds_base = pend_ax
+                if mn == "mov" and ops.startswith("ah,") and "0x" in ops:
+                    try: pend_ah = int(ops.split(",")[1], 16)
+                    except ValueError: pend_ah = None
+                elif mn == "mov" and ops.startswith("ax,") and "0x" in ops:
+                    try: pend_ah = (int(ops.split(",")[1], 16) >> 8) & 0xFF
+                    except ValueError: pend_ah = None
                 if ins.mnemonic == "int":
                     cmt = _int_comment(ins.op_str)
+                    if ins.op_str == "0x21" and pend_ah in _DOS21:
+                        cmt = "INT 21h AH=%02Xh %s" % (pend_ah, _DOS21[pend_ah])
                 for tok in re.findall(r"0x[0-9a-fA-F]+", ins.op_str):
                     v = int(tok, 16)
                     st = resolve_str(ds_base, v, a)
@@ -441,7 +507,7 @@ def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, 
                 # jcxz/loop* are short-only (+-127); MASM re-encodes sizes differently from the
                 # original build, so a genuine in-range jump can drift out of reach. Emit a
                 # trampoline (short branch to a near jmp) so range is guaranteed regardless.
-                if mn in ("jcxz", "jecxz", "loop", "loope", "loopne") and ops and ops[0] in "Ls":
+                if mn in ("jcxz", "jecxz", "loop", "loope", "loopne") and ops and ops[0].isalpha():
                     tl = "Tj%06X" % a
                     f.write("        %s %s\n        jmp short %s_s\n%s_h: jmp %s\n%s_s:\n"
                             % (mn, tl + "_h", tl, tl, ops, tl))
@@ -464,7 +530,60 @@ def _int_comment(op):
     return "INT %s (%s)" % (op, m.get(op, "?"))
 
 
-def _run_one(which, outroot):
+def _struct_hash(image, s, e, md):
+    """Structural hash of a function: opcode mnemonics + operand shapes, with immediates/
+    displacements masked so link-time addresses don't matter. Identifies the same routine
+    statically linked into multiple components."""
+    import hashlib
+    seq = []
+    a = s
+    end = min(e, len(image))
+    n = 0
+    while a < end and n < 400:
+        g = list(md.disasm(bytes(image[a:min(a + 15, end)]), a))
+        if not g:
+            seq.append("db"); a += 1; n += 1; continue
+        i = g[0]
+        shape = re.sub(r"0x[0-9a-f]+", "#", i.op_str)      # mask constants
+        seq.append(i.mnemonic + "|" + shape)
+        a += i.size; n += 1
+    if len(seq) < 6:
+        return None
+    return hashlib.md5("\n".join(seq).encode()).hexdigest()[:10]
+
+
+def _global_dedup(targets):
+    """Across all components, find functions with identical structure in >=2 components -> shared
+    runtime/library code. Returns {(which, addr): 'shared_<h>'} for those functions."""
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    mz = _mzdec()
+    by_hash = {}                       # hash -> set(which); and per-(which,addr)
+    per = {}                           # (which, addr) -> hash
+    for which in targets:
+        fname, _ = _BINS[which]
+        path = _corpus(fname)
+        if not path or not mz:
+            continue
+        data = open(path, "rb").read()
+        _is, _be, _lb, image = _layout(data)
+        if _is:
+            image = data
+        out = subprocess.run([mz, path, "--names"], capture_output=True, text=True).stdout
+        starts = sorted({int(l.split("\t")[0], 16) for l in out.splitlines() if l.split("\t")[0]})
+        ends = {s: (starts[i + 1] if i + 1 < len(starts) else len(image)) for i, s in enumerate(starts)}
+        for s in starts:
+            h = _struct_hash(image, s, ends[s], md)
+            if h:
+                per[(which, s)] = h
+                by_hash.setdefault(h, set()).add(which)
+    shared = {}
+    for (which, s), h in per.items():
+        if len(by_hash.get(h, ())) >= 2:
+            shared[(which, s)] = "shared_%s" % h
+    return shared
+
+
+def _run_one(which, outroot, shared=None):
     fname, desc = _BINS[which]
     path = _corpus(fname)
     if not path:
@@ -510,6 +629,8 @@ def _run_one(which, outroot):
     rows = []
     counts = {"code": 0, "data": 0, "stub": 0, "empty": 0}
     win95_layer = []
+    namemap = {}                       # addr -> beautified name (for labels + call refs)
+    fkind = {}                         # addr -> kind (for role comments)
     for s in starts:
         e = ends[s]
         if e - s > 0x4000:      # cap runaway (data gaps); analyze the head
@@ -517,6 +638,12 @@ def _run_one(which, outroot):
         kind, ni, nb, ints, strs = _analyze_fn(image, s, e, strings, md)
         counts[kind] = counts.get(kind, 0) + 1
         nm = _name_for(s, kind, ints, strs, region_of(s))
+        base = _beautify_name(s, kind, ints, strs, region_of(s))
+        # shared runtime (identical structure in >=2 components) overrides a bare sub_ label
+        if shared and (which, s) in shared and base.startswith("sub_"):
+            base = "%s_%06X" % (shared[(which, s)], s)
+        namemap[s] = base
+        fkind[s] = kind
         rows.append({
             "addr": "0x%06X" % s, "end": "0x%06X" % ends[s], "size": ends[s] - s,
             "region": region_of(s), "kind": kind, "ninsn": ni,
@@ -535,7 +662,8 @@ def _run_one(which, outroot):
                                           "ninsn", "ints", "name", "strings"])
         w.writeheader()
         w.writerows(rows)
-    asm_regions = _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, md)
+    asm_regions = _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, md,
+                            namemap, fkind, desc)
     print("  emitted annotated asm: %s" % ", ".join("%s.asm" % r for r in asm_regions))
     return {
         "which": which, "path": path, "desc": desc, "is_iosys": is_iosys,
@@ -604,10 +732,17 @@ def main(argv):
         targets = list(_CORE) + list(_DRIVERS)
     else:
         targets = [which]
+    # cross-component structural dedup names shared runtime/library code (identify-once)
+    shared = {}
+    if len(targets) > 1:
+        print("== cross-component dedup ==")
+        shared = _global_dedup(targets)
+        ncomp = len(set(w for (w, _a) in shared))
+        print("  %d shared-runtime function instances across %d components" % (len(shared), ncomp))
     results = []
     for t in targets:
         print("== dosrecon %s ==" % t)
-        r = _run_one(t, outroot)
+        r = _run_one(t, outroot, shared)
         if r:
             results.append(r)
             c = r["counts"]
