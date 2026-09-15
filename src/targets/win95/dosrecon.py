@@ -52,6 +52,8 @@ _BINS = {
                                  "(AUTOEXEC runs it from the CD; it starts the Windows setup engine)"),
     "mscdex":   ("mscdex.exe",  "MSCDEX.EXE -- MS CD-ROM Extensions (assigns the CD-ROM a drive letter)"),
     "cd1":      ("CD1.SYS",     "CD1.SYS -- Oak Technology IDE CD-ROM driver (the Setup boot disk's CD driver)"),
+    "fdisk":    ("fdisk.exe",  "FDISK.EXE -- the DOS fixed-disk partition editor"),
+    "format":   ("format.com", "FORMAT.COM -- the DOS disk formatter"),
 }
 _CORE = ("iosys", "command")
 _DRIVERS = ("himem", "emm386", "drvspace", "ifshlp", "setver", "ramdrive")
@@ -614,7 +616,8 @@ def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, 
                         or mn.startswith("cmov") or mn.startswith("fcmov") or mn.startswith("set")
                         or any(t in ops for t in ("xmm", "ymm", "mm0", "mm1", "mm2", "mm3",
                                                   "mm4", "mm5", "mm6", "mm7", "st(", "cr0", "cr2",
-                                                  "cr3", "cr4", "dr0", "dr7", "tr6", "tr7"))
+                                                  "cr3", "cr4", "dr0", "dr7", "tr6", "tr7",
+                                                  "xword", "tbyte", "xmmword", "ymmword"))  # not MASM sizes -> misdecode
                         or (mn in ("call", "jmp", "lcall", "ljmp") and ("," in ops or ":" in ops))
                         or (mn in ("movzx", "movsx")           # movzx/movsx to a 16-bit dest needs a
                             # BYTE source; a word source (word ptr / word reg) is invalid -> misdecode
@@ -1372,7 +1375,8 @@ def main(argv):
     while i < len(argv):
         a = argv[i]
         if a in ("--iosys", "--command", "--himem", "--emm386", "--drvspace",
-                 "--ifshlp", "--setver", "--ramdrive", "--oemsetup", "--mscdex", "--cd1"):
+                 "--ifshlp", "--setver", "--ramdrive", "--oemsetup", "--mscdex", "--cd1",
+                 "--fdisk", "--format"):
             which = a[2:]
         elif a == "--both":
             which = "both"
