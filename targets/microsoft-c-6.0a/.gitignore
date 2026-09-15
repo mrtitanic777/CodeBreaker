@@ -1,0 +1,9 @@
+# Input corpus — copyrighted Microsoft binaries, never commit
+Microsoft C Professional Development System 6.0a (5.25)/
+# Derived verbatim binaries (unpacked/extracted MS code)
+work/unpacked/
+work/extracted/
+work/oracle/
+work/**/*.exe
+work/**/*.bin
+*.tmp

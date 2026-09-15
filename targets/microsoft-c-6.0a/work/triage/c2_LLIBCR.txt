@@ -1,0 +1,27 @@
+library toolchains/period/compilers/msc-6.0a/LIB/LLIBCR.LIB: 340 funcs extracted; 28 placements found in image
+  0x1464b  _exit           7B  (0 fixups)
+  0x14652  __exit          8B  (0 fixups)
+  0x1465a  __cexit        10B  (0 fixups)
+  0x146ce  __ctermsub     64B  (12 fixups)
+  0x14714  __NMSG_TEXT    43B  (2 fixups)
+  0x1473f  __NMSG_WRITE   54B  (8 fixups)
+  0x14ccc  __ffree        19B  (0 fixups)
+  0x14cdf  __fmalloc     125B  (28 fixups)
+  0x1511a  __nfreect      44B  (6 fixups)
+  0x15146  __bheapseg     37B  (4 fixups)
+  0x1516c  __bfree        26B  (0 fixups)
+  0x15186  __bmalloc      65B  (12 fixups)
+  0x15b54  __adbgmsg      34B  (8 fixups)
+  0x15ba0  __nullcheck    36B  (4 fixups)
+  0x15f8a  _lseek        122B  (6 fixups)
+  0x16102  __nfree        33B  (2 fixups)
+  0x16123  __nmalloc      40B  (8 fixups)
+  0x16254  __incseg       81B  (2 fixups)
+  0x162a5  __findlast     32B  (0 fixups)
+  0x162c6  __newseg       68B  (10 fixups)
+  0x16384  __scanseg      74B  (2 fixups)
+  0x163ce  __growscan     21B  (0 fixups)
+
+SUMMARY: 22/991 Ghidra functions matched a LIBRARY function by name
+         1198 image bytes (0%) are identified library code
+         969 Ghidra functions remain = compiler-original
