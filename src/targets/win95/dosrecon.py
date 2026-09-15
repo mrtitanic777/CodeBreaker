@@ -225,27 +225,13 @@ def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, 
 
     outdir = os.path.join(outroot, which)
     os.makedirs(outdir, exist_ok=True)
-    rf = {}
-
-    def region_file(r):
-        if r in rf:
-            return rf[r]
-        f = open(os.path.join(outdir, r + ".asm"), "w")
-        f.write("; %s.asm -- reconstructed from the REAL Win95 %s (%s region).\n"
-                "; 16-bit real-mode. Annotated by CodeBreaker dosrecon: DS-tracked string xrefs,\n"
-                "; INT-service comments, sub_<fileoffset> labels (authored names where triaged).\n\n"
-                "        .8086\n_TEXT   SEGMENT byte public 'CODE'\n        ASSUME cs:_TEXT\n\n"
-                % (r, which.upper(), r))
-        rf[r] = f
-        return f
-
     start_set = set(starts)
     _JCC = {"jmp", "je", "jne", "jz", "jnz", "jb", "jnb", "jbe", "ja", "jae", "jl", "jle",
-            "jg", "jge", "js", "jns", "jc", "jnc", "jo", "jno", "jp", "jnp", "jcxz",
-            "loop", "loope", "loopne", "call"}
+            "jg", "jge", "js", "jns", "jc", "jnc", "jo", "jno", "jp", "jnp", "jcxz", "jecxz",
+            "jpe", "jpo", "jna", "jnae", "jnb", "jnbe", "jng", "jnge", "jnl", "jnle",
+            "loop", "loope", "loopne", "loopz", "loopnz", "call"}
 
     def fn_insns(s, e):
-        """Decode a function once; return list of (addr, ins)."""
         out = []
         a = s
         seglen = min(e, len(image))
@@ -257,64 +243,199 @@ def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, 
             out.append((a, got[0])); a += got[0].size; n += 1
         return out
 
+    # group functions by region, in address order
+    regions = {}
     for s in starts:
-        e = ends[s]
-        r = region_of(s)
-        f = region_file(r)
-        insns = fn_insns(s, e)
-        seglen = min(e, len(image))
-        # pass 1: collect intra-function jump targets -> local labels
-        labels = {}
-        for a, ins in insns:
-            if ins and ins.mnemonic in _JCC and ins.op_str.startswith("0x"):
-                try: t = int(ins.op_str, 16)
-                except ValueError: continue
-                if ins.mnemonic != "call" and s <= t < seglen:
-                    labels.setdefault(t, "L%06X" % t)
-        f.write("\n%s_%06X proc near\n" % ("sub", s))
-        ds_base = None
-        pend_ax = None
-        for a, ins in insns:
-            if a in labels:
-                f.write("%s:\n" % labels[a])
-            if ins is None:
-                f.write("        db 0%02Xh\n" % image[a]); continue
-            mn, ops = ins.mnemonic, ins.op_str
-            cmt = ""
-            # branch/call operand -> label or sub_ name
-            if mn in _JCC and ops.startswith("0x"):
-                try:
-                    t = int(ops, 16)
-                    if mn == "call":
-                        ops = ("sub_%06X" % t) if t in start_set else ("near ptr 0%06Xh" % t)
-                    elif t in labels:
-                        ops = labels[t]
+        regions.setdefault(region_of(s), []).append(s)
+
+    def masm_hex(ops):
+        """Rewrite capstone syntax to MASM: 0xNN -> 0NNh radix form, and add an explicit ds:
+        override to bare direct-numeric memory operands ([043Fh] -> ds:[043Fh]) which MASM
+        requires (capstone omits the default segment)."""
+        ops = re.sub(r"0x[0-9a-fA-F]+", lambda m: "0" + m.group(0)[2:].upper() + "h", ops)
+        # bare [<number>] direct memory (hex ...h or decimal), no register / no existing seg
+        # override -> add ds: (MASM omits the default segment that capstone drops)
+        ops = re.sub(r"(?<![a-zA-Z0-9:\]])\[([0-9A-Fa-f]+h|\d+)\]", r"ds:[\1]", ops)
+        return ops
+
+    written = []
+    for r, rstarts in regions.items():
+        # pass 1 over the whole region: decode every function, collect all branch/call targets
+        fdecode = {s: fn_insns(s, ends[s]) for s in rstarts}
+        rlo, rhi = min(rstarts), max(ends[s] for s in rstarts)
+        boundaries = {a for s in rstarts for a, ins in fdecode[s]}   # real instruction starts
+        labels = {}          # intra-region branch targets -> global label
+        externs = set()      # sub_ referenced but outside this region
+        for s in rstarts:
+            for a, ins in fdecode[s]:
+                if ins and ins.mnemonic in _JCC and ins.op_str.startswith("0x"):
+                    try: t = int(ins.op_str, 16)
+                    except ValueError: continue
+                    if ins.mnemonic == "call":
+                        if t in start_set and not (rlo <= t < rhi):
+                            externs.add(t)                       # call to a function in another region
                     else:
-                        ops = ("sub_%06X" % t) if t in start_set else ("0%06Xh" % t)
-                except ValueError:
-                    pass
-            # DS tracking for string xref
-            if mn == "mov" and ops.startswith(("ax,", "bx,")) and "0x" in ops:
-                try: pend_ax = int(ops.split(",")[1], 16)
-                except ValueError: pend_ax = None
-            elif mn == "mov" and ops.startswith("ds,"):
-                ds_base = pend_ax
-            if mn == "int":
-                cmt = _int_comment(ins.op_str)
-            for tok in re.findall(r"0x[0-9a-fA-F]+", ins.op_str):
-                v = int(tok, 16)
-                st = resolve_str(ds_base, v, a)
-                if st:
-                    cmt = '"%s"' % st.replace('"', "'"); break
-            txt = ("%s %s" % (mn, ops)).rstrip()
-            if cmt:
-                f.write("        %-34s ; %s\n" % (txt, cmt))
-            else:
-                f.write("        %s\n" % txt)
-        f.write("sub_%06X endp\n" % s)
-    for f in rf.values():
-        f.write("\n_TEXT   ENDS\n        END\n"); f.close()
-    return list(rf.keys())
+                        if t in start_set and not (rlo <= t < rhi):
+                            externs.add(t)                       # branch to a function in another region
+                        elif rlo <= t < rhi and t not in start_set and t in boundaries:
+                            # only label a target that is a real instruction boundary; misaligned
+                            # targets (jumps into data-as-code) are emitted as db at their site
+                            labels.setdefault(t, "L%06X" % t)
+
+        f = open(os.path.join(outdir, r + ".asm"), "w")
+        f.write("; %s.asm -- reconstructed from the REAL Win95 %s (%s region).\n"
+                "; 16-bit real-mode; assembles with MASM 6.13 (ML /c). CodeBreaker dosrecon:\n"
+                "; label-resolved branches, DS-tracked string xrefs, INT-service comments.\n\n"
+                "        .386\n" % (r, which.upper(), r))
+        for t in sorted(externs):
+            f.write("        EXTRN sub_%06X:NEAR\n" % t)
+        f.write("\n_TEXT   SEGMENT byte public 'CODE'\n        ASSUME cs:_TEXT\n")
+
+        # a 16-bit 1995 kernel has no SSE/MMX/32-bit-only forms; their presence means the run is
+        # DATA misdecoded as code -> emit the whole function as db bytes instead of instructions.
+        _SUSPECT = ("xmm", "ymm", "mm0", "mm1", "mm2", "mm3", "mm4", "mm5", "mm6", "mm7")
+        _SUSPECT_MN = {"shufps", "aad", "aam", "salc", "icebp", "fcmovb", "vmcall"}
+
+        def is_data_fn(dec):
+            n = len(dec) or 1
+            bad = 0
+            for _a, ins in dec:
+                if ins is None:
+                    bad += 1; continue
+                if ins.mnemonic in _SUSPECT_MN or any(t in ins.op_str for t in _SUSPECT):
+                    bad += 1
+            return bad * 100 // n >= 12       # >=12% implausible -> data
+
+        for s in rstarts:
+            dec = fdecode[s]
+            if is_data_fn(dec):
+                f.write("\nsub_%06X label near              ; data (not decoded as code)\n" % s)
+                end = min(ends[s], len(image))
+                a = s
+                while a < end:
+                    if a in labels:
+                        f.write("%s:\n" % labels[a])
+                    # emit up to 16 bytes, but never past the next label (so labels stay aligned)
+                    run = min(16, end - a)
+                    for j in range(1, run):
+                        if (a + j) in labels:
+                            run = j; break
+                    f.write("        db " + ",".join("0%02Xh" % image[a + k] for k in range(run)) + "\n")
+                    a += run
+                continue
+            f.write("\nsub_%06X label near\n" % s)
+            ds_base = None
+            pend_ax = None
+            for a, ins in fdecode[s]:
+                if a in labels:
+                    f.write("%s:\n" % labels[a])
+                if ins is None:
+                    f.write("        db 0%02Xh\n" % image[a]); continue
+                mn, ops = ins.mnemonic, ins.op_str
+                cmt = ""
+                # instructions MASM 16-bit won't accept in these forms (mostly bytes from a data
+                # region misdecoded as code) -> emit their raw bytes as db, keeping the disasm as a
+                # comment. Faithful and always assembles.
+                hard = (mn in ("aad", "aam", "salc", "shufps", "icebp", "invd", "wbinvd",
+                               "xadd", "lar", "lsl", "ud2", "rsm", "sysenter", "sysexit",
+                               "cmpxchg", "cmpxchg8b", "rdtsc", "rdmsr", "wrmsr")
+                        or mn.startswith("cmov") or mn.startswith("fcmov") or mn.startswith("set")
+                        or any(t in ops for t in ("xmm", "ymm", "mm0", "mm1", "mm2", "mm3",
+                                                  "mm4", "mm5", "mm6", "mm7", "st(", "cr0", "cr2",
+                                                  "cr3", "cr4", "dr0", "dr7", "tr6", "tr7"))
+                        or (mn in ("call", "jmp", "lcall", "ljmp") and ("," in ops or ":" in ops))
+                        or (ins.bytes and (ins.bytes[0] in (0x9A, 0xEA)
+                                           or (len(ins.bytes) > 1 and ins.bytes[0] == 0x66
+                                               and ins.bytes[1] in (0x9A, 0xEA)))))  # far direct
+                # short-only jumps (jcxz/loop*) to a far target are misdecoded data -> db
+                if mn in ("jcxz", "jecxz", "loop", "loope", "loopne") and ops.startswith("0x"):
+                    try:
+                        if abs(int(ops, 16) - (a + ins.size)) > 120:
+                            hard = True
+                    except ValueError:
+                        pass
+                if hard:
+                    bys = ",".join("0%02Xh" % b for b in ins.bytes)
+                    f.write("        db %-28s ; %s %s\n" % (bys, mn, ops))
+                    continue
+                # capstone->MASM mnemonic fixups
+                if mn == "int3":
+                    mn, ops = "int", "3"
+                elif mn == "int1":
+                    mn, ops = "int", "1"
+                elif mn == "pushal":
+                    mn, ops = "pushad", ""
+                elif mn == "popal":
+                    mn, ops = "popad", ""
+                elif mn == "nop" and ops:            # multi-byte nop -> MASM nop takes no operand
+                    ops = ""
+                # string ops carry implicit operands in MASM; capstone spells them out (and may
+                # merge a rep/repe/repne prefix into the mnemonic) -> keep mnemonic, drop operands
+                elif mn.split()[-1] in ("lodsb", "lodsw", "lodsd", "stosb", "stosw", "stosd",
+                                        "scasb", "scasw", "scasd", "movsb", "movsw", "movsd",
+                                        "cmpsb", "cmpsw", "cmpsd", "insb", "insw", "insd",
+                                        "outsb", "outsw", "outsd"):
+                    ops = ""
+                # lds/les/l?s load a far pointer; capstone emits a stray "ptr" -> size it
+                elif mn in ("lds", "les", "lfs", "lgs", "lss") and ", ptr " in ops:
+                    ops = ops.replace(", ptr ", ", dword ptr ")
+                # normalize far call/jmp
+                far = mn in ("lcall", "ljmp")
+                if mn == "lcall": mn = "call"
+                elif mn == "ljmp": mn = "jmp"
+                # branch/call operand -> label / sub_ name; unresolvable numeric target -> db
+                if mn in _JCC and ops.startswith("0x"):
+                    try:
+                        t = int(ops, 16)
+                    except ValueError:
+                        t = None
+                    if t is not None:
+                        if t in start_set:
+                            if not (rlo <= t < rhi):
+                                externs.add(t)
+                            ops = "sub_%06X" % t
+                        elif t in labels:
+                            ops = labels[t]
+                        else:
+                            bys = ",".join("0%02Xh" % b for b in ins.bytes)
+                            f.write("        db %-28s ; %s 0%06Xh (misaligned/data target)\n"
+                                    % (bys, mn, t)); continue
+                elif far and "[" in ops and "ptr" not in ops:
+                    ops = "fword ptr " + ops           # indirect far through memory
+                # near indirect jmp/call through memory needs an explicit size (MASM)
+                if mn in ("jmp", "call") and "[" in ops and "ptr" not in ops and not far:
+                    ops = "word ptr " + ops
+                # DS tracking
+                if mn == "mov" and ops.startswith(("ax,", "bx,")) and "0x" in ops:
+                    try: pend_ax = int(ops.split(",")[1], 16)
+                    except ValueError: pend_ax = None
+                elif mn == "mov" and ops.startswith("ds,"):
+                    ds_base = pend_ax
+                if ins.mnemonic == "int":
+                    cmt = _int_comment(ins.op_str)
+                for tok in re.findall(r"0x[0-9a-fA-F]+", ins.op_str):
+                    v = int(tok, 16)
+                    st = resolve_str(ds_base, v, a)
+                    if st:
+                        cmt = '"%s"' % st.replace('"', "'"); break
+                ops = masm_hex(ops)
+                # jcxz/loop* are short-only (+-127); MASM re-encodes sizes differently from the
+                # original build, so a genuine in-range jump can drift out of reach. Emit a
+                # trampoline (short branch to a near jmp) so range is guaranteed regardless.
+                if mn in ("jcxz", "jecxz", "loop", "loope", "loopne") and ops and ops[0] in "Ls":
+                    tl = "Tj%06X" % a
+                    f.write("        %s %s\n        jmp short %s_s\n%s_h: jmp %s\n%s_s:\n"
+                            % (mn, tl + "_h", tl, tl, ops, tl))
+                    continue
+                txt = ("%s %s" % (mn, ops)).rstrip()
+                if cmt:
+                    f.write("        %-34s ; %s\n" % (txt, cmt))
+                else:
+                    f.write("        %s\n" % txt)
+        f.write("\n_TEXT   ENDS\n        END\n")
+        f.close()
+        written.append(r)
+    return written
 
 
 def _int_comment(op):
@@ -399,12 +520,40 @@ def _run_one(which, outroot):
     }
 
 
+def _assemble(outroot, results):
+    """Assemble the emitted region .asm files with the period MASM 6.13 (ML /c). Proves the
+    reconstruction is compilable (the 'C' in Logan's premise) with a from-that-era toolchain."""
+    ml = os.path.join(paths.repo_root(), "toolchains", "period", "assemblers", "masm-6.13", "ML.EXE")
+    if not os.path.isfile(ml):
+        print("  (ML.EXE not found; skipping assemble)"); return
+    print("\n== assemble (MASM 6.13 ML /c) ==")
+    total_err = total_obj = 0
+    for r in results:
+        d = os.path.join(outroot, r["which"])
+        for asm in sorted(f for f in os.listdir(d) if f.endswith(".asm")):
+            base = asm[:-4]
+            obj = os.path.join(d, base + ".obj")
+            log = os.path.join(d, base + ".asmlog")
+            p = subprocess.run([ml, "/c", "/Fo", obj, os.path.join(d, asm)],
+                               capture_output=True, text=True, cwd=d)
+            out = (p.stdout or "") + (p.stderr or "")
+            open(log, "w").write(out)
+            errs = out.count("error A")
+            sz = os.path.getsize(obj) if os.path.isfile(obj) else 0
+            total_err += errs; total_obj += sz
+            print("  %-8s/%-12s errors=%-3d obj=%d bytes" % (r["which"], asm, errs, sz))
+    print("  TOTAL: %d errors, %d bytes of object code" % (total_err, total_obj))
+    if total_err == 0:
+        print("  *** the reconstruction assembles clean with the period MASM ***")
+
+
 def main(argv):
     if capstone is None:
         print("dosrecon: needs capstone (pip install capstone)")
         return 2
     which = "both"
     outroot = os.path.join(_design_root(), "recon")
+    do_build = False
     i = 0
     while i < len(argv):
         a = argv[i]
@@ -414,6 +563,8 @@ def main(argv):
             which = "command"
         elif a == "--both":
             which = "both"
+        elif a == "--build":
+            do_build = True
         elif a == "--out" and i + 1 < len(argv):
             outroot = argv[i + 1]; i += 1
         i += 1
@@ -453,6 +604,8 @@ def main(argv):
                             % (s, nm, " ".join(ints), "; ".join(strs).replace("|", "\\|")[:80]))
                 f.write("\n")
     print("\nwrote %s" % rep)
+    if do_build:
+        _assemble(outroot, results)
     return 0
 
 
