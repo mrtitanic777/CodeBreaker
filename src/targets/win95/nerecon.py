@@ -32,7 +32,14 @@ _MODS = {
     "krnl386": ("krnl386.exe", "KRNL386.EXE -- the Win95 16-bit KERNEL (memory, tasks, modules, files)"),
     "gdi":     ("gdi.exe",     "GDI.EXE -- the Win95 16-bit Graphics Device Interface"),
     "user":    ("user.exe",    "USER.EXE -- the Win95 16-bit window/message/input manager"),
+    # --- the Win95 Setup chain (NE 16-bit) -- the subsystem that GENERATES the registry ---
+    "setupx":  ("setupx.dll",  "SETUPX.DLL -- the Win95 Setup INF interpreter + registry engine "
+                               "(GENINSTALL processes INF [AddReg]; the SUREG* API builds/saves SYSTEM.DAT)"),
+    "suwin":   ("suwin.exe",   "SUWIN.EXE -- the Win95 Setup wizard/driver (the GUI setup engine)"),
 }
+# The Setup chain also includes oemsetup.exe, but that is a real-mode DOS/MZ launcher -- it is
+# reconstructed through the DOS lane (dosrecon --oemsetup), not here.
+_SETUP = ("setupx", "suwin")
 
 
 def _win95_root():
@@ -91,9 +98,13 @@ class NE:
         self.resnam_tbl = struct.unpack("<H", ne[0x26:0x28])[0]
         self.modref_tbl = struct.unpack("<H", ne[0x28:0x2a])[0]
         self.impnam_tbl = struct.unpack("<H", ne[0x2a:0x2c])[0]
-        self.ent_tbl = struct.unpack("<I", ne[0x2c:0x30])[0]
-        self.ent_len = struct.unpack("<H", ne[0x30:0x32])[0]
-        self.nonres_tbl = struct.unpack("<I", ne[0x36:0x3a])[0]
+        # NE header field offsets (relative to the NE header): entry table @0x04 (offset,len are
+        # WORDs, offset is relative to the NE header); non-resident name table @0x2c is an ABSOLUTE
+        # file offset with its size @0x20. (The earlier +0x2c/+0x30/+0x36 reads were wrong -- they
+        # aimed the entry-table walk at the non-resident name table.)
+        self.ent_tbl = struct.unpack("<H", ne[0x04:0x06])[0]
+        self.ent_len = struct.unpack("<H", ne[0x06:0x08])[0]
+        self.nonres_tbl = struct.unpack("<I", ne[0x2c:0x30])[0]
         self.nonres_sz = struct.unpack("<H", ne[0x20:0x22])[0]
         self.align = struct.unpack("<H", ne[0x32:0x34])[0] or 9
         self._segs()
@@ -590,8 +601,10 @@ def main(argv):
             limit = int(argv[i2 + 1]); i2 += 1
         i2 += 1
     for a in argv:
-        if a in ("--krnl386", "--gdi", "--user"):
+        if a in ("--krnl386", "--gdi", "--user", "--setupx", "--suwin"):
             which = a[2:]
+        elif a == "--setup":
+            which = "setup"
         elif a == "--all":
             which = "all"
         elif a == "--build":
@@ -606,7 +619,12 @@ def main(argv):
             do_ow = True
         elif a == "--exact":
             do_exact = True
-    targets = ["krnl386", "gdi", "user"] if which == "all" else [which]
+    if which == "all":
+        targets = ["krnl386", "gdi", "user"]
+    elif which == "setup":
+        targets = list(_SETUP)
+    else:
+        targets = [which]
     outroot = os.path.join(paths.design_root() if os.path.isdir(os.path.join(paths.design_root(), "corpus"))
                            else os.path.join(_win95_root(), "design"), "recon")
     if do_analyze:
