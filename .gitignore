@@ -79,3 +79,7 @@ experiments/premise-proof/wdef/*.obj
 # PEExplorerV2 (zodiacon, MIT) folded in as reference; engine uses native/decompiler/third_party/capstone
 src/PEExplorerV2/PEExplorerV2/Capstone/capstone.lib
 src/PEExplorerV2/PEParser/*.lib
+
+# bodyverify compile scratch
+src/targets/win95/_bodyverify/
+Windows95/design/body_ledger.csv.bak.*
