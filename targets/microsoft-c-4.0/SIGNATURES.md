@@ -115,11 +115,23 @@ single-function, self-labelled signatures — the cleanest FLIRT seeds.
 Record the exact version/copyright strings once unpacked (they pin the exact build and often the
 internal component versions of C1/C2/C3/LINK). Table seeded, values TBD.
 
-| Binary | Expected string | Value | Status |
-|---|---|---|---|
-| C1.EXE | "Microsoft C Compiler ... Version 4.00" | — | TODO |
-| LINK.EXE | "Microsoft ... Linker Version 3.xx" | — | TODO |
-| CV.EXE | "Microsoft CodeView Version 1.xx" | — | TODO |
+| Binary | String | Status |
+|---|---|---|
+| MSC/CL | `Microsoft (R) C Compiler  Version 4.00` (@MSC image 0x5222) | **CONFIRMED** |
+| MSC/CL | `Copyright (C) Microsoft Corp 1984, 1985, 1986.  All rights reserved.` | **CONFIRMED** |
+| MSC | internal build stamp `4.02 Mon Jun 23 10:13:47 PDT 1986` (@0x638c) | **CONFIRMED** |
+| MSC/CL | driver spawns `c0.exe c1.exe c2.exe c3.exe masm.exe link.exe` (@0x4d01) | **CONFIRMED** |
+
+---
+
+## 7. Source-module attribution — SCCS `@(#)` markers `[CONFIRMED]`
+
+### SIG-SRC-001 — `@(#)what` version strings
+Every tool embeds one `@(#)<file>.c:<rev>` string per translation unit (regex `@\(#\)([ -~]{3,60})`).
+Ground-truth module names — used to cluster carved functions by owning source file and to identify
+a module shared across tools (cross-pass libsig). Full inventory (11 tools; C1=40, C2=48, C3=35
+units) in **[docs/SOURCE_MAP.md](docs/SOURCE_MAP.md)**. Anchors (MSC image): `cc_main.c:1.28`
+@0x4cd6, `getflags.c:1.30` @0x6718, `error.c:1.4` @0x6264. CV/CVR/DOSSEG carry none (stripped).
 
 ---
 

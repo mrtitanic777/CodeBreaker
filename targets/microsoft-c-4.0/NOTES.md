@@ -186,6 +186,16 @@ reuse what transfers, author a C-4.0 model for the rest.)
 
 _Log entries below, newest last._
 
+### 2026-09-14 — session 3
+Wrote `workspace/scripts/carve.py` (recursive-descent carve + call graph + strings, no assembler).
+MSC.EXE: 151 fns, 528 edges, 0 far calls (small model confirmed), _TEXT≈[0,0x4bda), data after.
+**Breakthrough:** every tool embeds SCCS `@(#)` markers → recovered the **entire original
+source-file tree** of the toolchain (C1=40, C2=48, C3=35 units, etc.) with revisions — see
+[docs/SOURCE_MAP.md](docs/SOURCE_MAP.md). Confirmed version/build strings (SIG-VER, SIG-SRC-001).
+Pipeline = driver(cc_main)→c1(front end, incl. `grammar.y` yacc)→c2(optimizer)→c3(OMF emit), IL
+temp files between. MSC≡CL except the DOS-glue unit. Reconstruction is now **per-module**, shared
+modules identified across passes. Assembler-backend decision still deferred (per request).
+
 ### 2026-09-14 — session 2
 Wrote `workspace/scripts/unexepack.py`. Unpacked **all 10** EXEPACK tools; OEPs verified against
 `CRT0.ASM` (`__astart`). Found the EXEPACK "uncompressed leading region" sub-variant (SIG-PACK-002).
