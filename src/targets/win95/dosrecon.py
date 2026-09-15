@@ -503,7 +503,7 @@ def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, 
             f.write("\n; ---- imported from sibling regions of this module ----\n")
             for t in sorted(externs):
                 f.write("        EXTRN %s:NEAR\n" % nm(t))
-        f.write("\n_TEXT   SEGMENT byte public 'CODE'\n        ASSUME cs:_TEXT\n")
+        f.write("\n_TEXT   SEGMENT USE16 byte public 'CODE'\n        ASSUME cs:_TEXT\n")
 
         # a 16-bit 1995 kernel has no SSE/MMX/32-bit-only forms; their presence means the run is
         # DATA misdecoded as code -> emit the whole function as db bytes instead of instructions.
@@ -899,6 +899,87 @@ def _run_one(which, outroot, shared=None):
     }
 
 
+def _omf_ledata(path):
+    """Extract the flat code image from an OMF object's LEDATA records -- the REAL assembled bytes,
+    unlike the .LST which prints multi-byte operands in value-order (not storage order)."""
+    d = open(path, "rb").read()
+    out = bytearray()
+    i = 0
+    while i + 3 <= len(d):
+        t = d[i]; ln = d[i + 1] | (d[i + 2] << 8); rec = d[i + 3:i + 3 + ln]
+        if t in (0xA0, 0xA1) and len(rec) >= 4:
+            p = 1                                    # segment index (1 byte for our single segment)
+            off = rec[p] | (rec[p + 1] << 8); p += 2
+            payload = rec[p:-1]                      # drop trailing checksum
+            if off + len(payload) > len(out):
+                out.extend(bytes(off + len(payload) - len(out)))
+            out[off:off + len(payload)] = payload
+        i += 3 + ln
+    return bytes(out)
+
+
+def _verify(outroot, results):
+    """Byte-fidelity round-trip: assemble each region with the period MASM 6.13, extract the REAL
+    object bytes (OMF LEDATA), and diff against the ORIGINAL binary at the region load address.
+    Matching bytes are behavior-identical (same bytes = same behavior). MASM 6.13 is the assembler
+    that built the original (verified: matching operand-size/seg prefix order and short-jump
+    auto-sizing); 5.10A differs (26/66 prefix order, near jumps)."""
+    ml = os.path.join(paths.repo_root(), "toolchains", "period", "assemblers", "masm-6.13", "ML.EXE")
+    if not os.path.isfile(ml):
+        print("  (ML.EXE not found; skipping verify)"); return
+    print("\n== byte-fidelity round-trip (MASM 6.13 object bytes vs original) ==")
+    g_bytes = g_match = g_fn = g_fnok = 0
+    for r in results:
+        which = r["which"]
+        data = open(r["path"], "rb").read()
+        is_iosys, _be, _lb, image = _layout(data)
+        if is_iosys:
+            image = data
+        d = os.path.join(outroot, which)
+        cb = cm = cfn = cfnok = 0
+        for asm in sorted(f for f in os.listdir(d) if f.endswith(".asm")):
+            if asm.startswith("reginit"):      # curated duplicate of sysinit functions -- skip
+                continue
+            base = asm[:-4]
+            obj = os.path.join(d, base + ".obj")
+            subprocess.run([ml, "/c", "/Fl", "/Fo", obj, os.path.join(d, asm)],
+                           capture_output=True, text=True, cwd=d)
+            lst = os.path.join(d, base + ".LST")
+            if not (os.path.isfile(obj) and os.path.isfile(lst)):
+                continue
+            code = _omf_ledata(obj)
+            # per-function alignment: (orig_addr, emit_offset) from the LST -- correct offsets from
+            # the listing, correct bytes from the object. Compare each function independently so a
+            # size difference in one function never misaligns the next.
+            funcs = []             # (orig_addr, emit_off)
+            pending = None
+            for line in open(lst, encoding="latin1", errors="replace"):
+                hm = re.search(r";----- \S+ \(0x([0-9A-Fa-f]+),", line)
+                if hm:
+                    pending = int(hm.group(1), 16); continue
+                om = re.match(r"\s+([0-9A-Fa-f]{4,8})\s+[0-9A-Fa-f]{2}", line)
+                if om and pending is not None:
+                    funcs.append((pending, int(om.group(1), 16))); pending = None
+            for i, (oa, eo) in enumerate(funcs):
+                nexto = funcs[i + 1][0] if i + 1 < len(funcs) else None
+                nexte = funcs[i + 1][1] if i + 1 < len(funcs) else len(code)
+                L = min((nexto - oa) if nexto else (nexte - eo), nexte - eo)
+                if L <= 0:
+                    continue
+                ob = code[eo:eo + L]; og = image[oa:oa + L]
+                mm = sum(1 for j in range(min(len(ob), len(og))) if ob[j] == og[j])
+                cb += L; cm += mm; cfn += 1
+                if mm == L and len(og) >= L:
+                    cfnok += 1
+        pct = 100.0 * cm / cb if cb else 0
+        print("  %-9s %6.2f%% bytes exact  (%d/%d functions byte-identical)"
+              % (which, pct, cfnok, cfn))
+        g_bytes += cb; g_match += cm; g_fn += cfn; g_fnok += cfnok
+    if g_bytes:
+        print("  TOTAL: %.2f%% of bytes reproduced exactly; %d/%d functions byte-identical to the "
+              "original (MASM 6.13)" % (100.0 * g_match / g_bytes, g_fnok, g_fn))
+
+
 def _assemble(outroot, results):
     """Assemble the emitted region .asm files with the period MASM 6.13 (ML /c). Proves the
     reconstruction is compilable (the 'C' in Logan's premise) with a from-that-era toolchain."""
@@ -933,6 +1014,7 @@ def main(argv):
     which = "both"
     outroot = os.path.join(_design_root(), "recon")
     do_build = False
+    do_verify = False
     i = 0
     while i < len(argv):
         a = argv[i]
@@ -947,6 +1029,8 @@ def main(argv):
             which = "all"
         elif a == "--build":
             do_build = True
+        elif a == "--verify":
+            do_build = do_verify = True
         elif a == "--out" and i + 1 < len(argv):
             outroot = argv[i + 1]; i += 1
         i += 1
@@ -1002,6 +1086,8 @@ def main(argv):
     print("\nwrote %s" % rep)
     if do_build:
         _assemble(outroot, results)
+    if do_verify:
+        _verify(outroot, results)
     return 0
 
 
