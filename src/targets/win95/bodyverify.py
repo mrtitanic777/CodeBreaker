@@ -363,7 +363,7 @@ def run(module, va=None, maxn=40):
         r = verify_body(retail, fva)
         c[r["verdict"]] += 1
         print("  0x%-8x %-12s %s" % (fva, r["verdict"], r.get("reason", "")[:60]))
-    print("  --- " + "  ".join("%s=%d" % (k, v) for k, v in c.most_common()) + " ---")
+    print("  --- " + "  ".join("%s=%s" % (k, v) for k, v in c.most_common()) + " ---")
 
 
 def _ledger_path():
@@ -571,7 +571,7 @@ def sweep_parallel(modules, workers=10, maxper=100000, skip_swept=True):
             if done % max(1, workers) == 0 or ids:       # checkpoint often (cheap, atomic)
                 _flush(); newly_swept = []
             print("  [%d/%d] %-16s +%d  %s" % (done, len(jobs), os.path.basename(module),
-                  len(ids), "  ".join("%s=%d" % kv for kv in sorted(counts.items()))), flush=True)
+                  len(ids), "  ".join("%s=%s" % kv for kv in sorted(counts.items()))), flush=True)
     _absorb_results()                                     # fold this run's streamed writes + clean up
     _flush()
     return {"credited": len(verified_now), "skipped": len(swept),
@@ -665,7 +665,7 @@ def main(argv):
         r = sweep_corpus(mods, maxper=maxn if "--max" in argv else 100000)
         print("=== bodyverify --sweep (automatic harvest) ===")
         for m, cts in r["modules"]:
-            print("  %-14s %s" % (m, "  ".join("%s=%d" % (k, v) for k, v in sorted(cts.items()))))
+            print("  %-14s %s" % (m, "  ".join("%s=%s" % (k, v) for k, v in sorted(cts.items()))))
         print("  bodies newly credited this sweep: %d" % r["credited"])
         print("  TOTAL VERIFIED in ledger:         %d" % r["total_verified"])
         return
@@ -674,7 +674,7 @@ def main(argv):
     if "--harvest" in argv:
         r = harvest(pos[0], maxn=maxn)
         print("=== bodyverify --harvest %s ===" % pos[0])
-        print("  " + "  ".join("%s=%d" % (k, v) for k, v in sorted(r["counts"].items())))
+        print("  " + "  ".join("%s=%s" % (k, v) for k, v in sorted(r["counts"].items())))
         print("  bodies credited VERIFIED in ledger: %d" % r["credited"])
         return
     va = int(argv[argv.index("--va") + 1], 0) if "--va" in argv else None
