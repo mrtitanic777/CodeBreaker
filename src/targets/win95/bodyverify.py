@@ -408,6 +408,20 @@ def main(argv):
             continue
         pos.append(x)
     maxn = int(argv[argv.index("--max") + 1]) if "--max" in argv else 40
+    if "--broad" in argv:                                # every PE corpus module (resumable sweep)
+        root = OT._corpus_root()
+        seen, mods = set(), []
+        for dp, _d, fs in os.walk(root):
+            for fn in fs:
+                if fn.lower().endswith((".dll", ".exe", ".drv", ".ocx", ".cpl")) and fn.lower() not in seen:
+                    p = os.path.join(dp, fn)
+                    if OT._detect(p)[0] == "pe":
+                        seen.add(fn.lower()); mods.append(p)
+        r = sweep_corpus(mods, maxper=maxn if "--max" in argv else 100000)
+        print("=== bodyverify --broad (%d PE modules) ===" % len(mods))
+        print("  bodies newly credited: %d" % r["credited"])
+        print("  TOTAL VERIFIED:        %d" % r["total_verified"])
+        return
     if "--sweep" in argv:
         mods = pos or _BOOT_CRITICAL
         r = sweep_corpus(mods, maxper=maxn if "--max" in argv else 100000)
