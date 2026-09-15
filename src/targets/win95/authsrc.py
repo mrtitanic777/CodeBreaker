@@ -1,0 +1,178 @@
+#!/usr/bin/env python3
+r"""authsrc.py -- automated AUTHORED-SOURCE reconstruction for Win95 files.
+
+The deliverable is source as close to Microsoft's original as the binary allows -- readable, named,
+in each file's ORIGINAL LANGUAGE -- NOT byte-identical binary transcription. This driver automates
+that per file:
+
+  * classify the file's dominant language from the C-calling-convention density (push bp / mov bp,sp
+    frames): the real-mode DOS/boot layer is ASM, the Windows Setup layer is C;
+  * ASM-dominant -> route to dosrecon, whose emitter already produces named, INT-service-annotated,
+    string-xref'd MASM (bring it toward the msboot.asm authored gold standard);
+  * C-dominant   -> decompile to C (the native win95 decompiler) and AUTHOR it: substitute behavioral
+    function names (reusing dosrecon's naming engine on the same image), annotate INT-service call
+    sites (DOS 21h / 2Fh / XMS / EMS from dosrecon's authentic-name tables), and add a provenance
+    header. This lifts machine-C toward authored C.
+
+    wt --target win95 authsrc <file> [--out DIR]        # one file
+    wt --target win95 authsrc --chain [--out DIR]       # the whole boot->Setup chain + a scoreboard
+
+Names/comments/file-split are not in a stripped binary -- ours are labeled, evidence-based
+reconstructions; "authored" here means correct logic in the right language, named and readable.
+"""
+import os
+import re
+import sys
+import subprocess
+
+from src.core import paths
+from src.targets.win95 import dosrecon as DR
+
+
+def _native(fmt):
+    b = {"MZ": "win95mzdec", "NE": "win95dec"}.get(fmt, "win95mzdec")
+    p = os.path.join(paths.repo_root(), "native", "decompiler", "build", "bin", b + ".exe")
+    return p if os.path.isfile(p) else None
+
+
+def _c_frames(path, fmt):
+    dec = _native(fmt)
+    dis = subprocess.run([dec, path, "--disasm"], capture_output=True, text=True).stdout if dec else ""
+    return dis.count("push bp"), dis
+
+
+def classify(path):
+    """(fmt, language, nfuncs, c_frames): language 'c' if the C-frame density is high, else 'asm'."""
+    from src.targets.win95 import nativedec
+    fmt = nativedec.detect_format(path)
+    dec = _native(fmt)
+    n = len(subprocess.run([dec, path, "--names"], capture_output=True, text=True).stdout.splitlines()) if dec else 0
+    cf, _ = _c_frames(path, fmt)
+    lang = "c" if (n and cf * 100 // max(n, 1) >= 45) else "asm"
+    return fmt, lang, n, cf
+
+
+# --- behavioral name map (reuse dosrecon's engine on the same image) ------------------------
+def _namemap(path, fmt):
+    """{addr:int -> behavioral name} for the file's functions, via dosrecon's analysis."""
+    data = open(path, "rb").read()
+    is_iosys, body_end, _lb, image = DR._layout(data)
+    if is_iosys:
+        image = data
+    dec = _native(fmt)
+    starts = sorted({int(l.split("\t")[0], 16) for l in
+                     subprocess.run([dec, path, "--names"], capture_output=True, text=True).stdout.splitlines()
+                     if l.split("\t")[0]})
+    starts = [s for s in starts if s < len(image)]
+    ends = {s: (starts[i + 1] if i + 1 < len(starts) else len(image)) for i, s in enumerate(starts)}
+    strings = DR._string_regions(image)
+    import capstone
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    namemap, finfo = {}, {}
+    for s in starts:
+        e = min(ends[s], s + 0x4000)
+        kind, ni, nb, ints, strs, services, callees = DR._analyze_fn(image, s, e, strings, md)
+        namemap[s] = DR._beautify_name(s, kind, ints, strs, "")
+        finfo[s] = {"services": services, "callees": callees, "strs": strs, "ints": ints, "kind": kind}
+    DR._name_by_behavior(namemap, finfo, set(starts))
+    return namemap
+
+
+# --- author the decompiled C ----------------------------------------------------------------
+_INT_DOC = {"0x21": ("DOS", DR._DOS21), "0x2f": ("INT 2Fh", DR._INT2F)}
+
+
+def _author_c(path, fmt, out):
+    dec = _native(fmt)
+    c = subprocess.run([dec, path, "--module"], capture_output=True, text=True).stdout
+    names = _namemap(path, fmt)
+
+    def sub_name(m):
+        a = int(m.group(1), 16)
+        return names.get(a, m.group(0))
+    c = re.sub(r"sub_([0-9A-Fa-f]{4,8})", sub_name, c)                 # behavioral function names
+    # annotate raw INT sites with the interrupt's role (service-specific naming needs AH context,
+    # which the C often folds away -- annotate the interrupt so the call site is legible)
+    c = re.sub(r"__asm \{ int (0x[0-9a-fA-F]+) \}",
+               lambda m: "__asm { int %s }   /* %s service */"
+               % (m.group(1), _INT_DOC.get(m.group(1).lower(), ("software interrupt",))[0]), c)
+    hdr = ("/* %s -- authored-source reconstruction (CodeBreaker authsrc).\n"
+           " * Original language: C (%d functions). Decompiled from the real Win95 binary and\n"
+           " * authored: behavioral function names, INT-service annotations. Names are evidence-based\n"
+           " * reconstruction labels, not recovered private symbols. */\n\n"
+           % (os.path.basename(path), c.count("\n(")))
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    open(out, "w", encoding="utf-8", errors="replace").write(hdr + c)
+    named = sum(1 for v in names.values() if not v.startswith(("sub_", "helper_", "thunk_")))
+    return len(names), named
+
+
+# --- the boot -> Setup chain ----------------------------------------------------------------
+_CHAIN = [
+    ("VBR",         "recon/bootdisk/msboot.asm", "asm-authored (gold standard)"),
+    ("IO.SYS",      "corpus/files/setup/inf/winboot.sys", None),
+    ("COMMAND.COM", "corpus/files/setup/inf/command.com", None),
+    ("HIMEM.SYS",   "corpus/files/WINDOWS/SYSTEM/himem.sys", None),
+    ("CD1.SYS",     "recon/bootdisk/files/CD1.SYS", None),
+    ("MSCDEX.EXE",  "corpus/files/WINDOWS/COMMAND/mscdex.exe", None),
+    ("FDISK.EXE",   "corpus/files/WINDOWS/COMMAND/fdisk.exe", None),
+    ("FORMAT.COM",  "corpus/files/WINDOWS/COMMAND/format.com", None),
+    ("OEMSETUP.EXE", "corpus/disc/src/WIN95/OEMSETUP.EXE", None),
+    ("SETUPX.DLL",  "corpus/files/setup/inf/setupx.dll", None),
+    ("SUWIN.EXE",   "corpus/files/setup/inf/suwin.exe", None),
+]
+
+
+def _dr():
+    dr = paths.design_root()
+    if os.path.isdir(os.path.join(dr, "corpus")):
+        return dr
+    sib = os.path.join(os.path.dirname(paths.repo_root()), "Windows95", "design")
+    return sib if os.path.isdir(os.path.join(sib, "corpus")) else dr
+
+
+def main(argv):
+    outroot = os.path.join(_dr(), "recon", "authored")
+    chain = False
+    target = None
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a == "--chain":
+            chain = True
+        elif a == "--out" and i + 1 < len(argv):
+            outroot = argv[i + 1]; i += 1
+        elif not a.startswith("-"):
+            target = a
+        i += 1
+
+    items = []
+    if chain:
+        for nm, rel, note in _CHAIN:
+            items.append((nm, os.path.join(_dr(), rel), note))
+    elif target:
+        items.append((os.path.basename(target), target, None))
+    else:
+        print(__doc__); return 0
+
+    print("%-14s %-4s %-6s %-9s %s" % ("FILE", "LANG", "FUNCS", "NAMED", "authored source"))
+    for nm, path, note in items:
+        if note and path.endswith(".asm"):
+            print("%-14s %-4s %-6s %-9s %s" % (nm, "asm", "-", "-", note)); continue
+        if not os.path.isfile(path):
+            print("%-14s  MISSING %s" % (nm, path)); continue
+        fmt, lang, n, cf = classify(path)
+        if lang == "c":
+            out = os.path.join(outroot, nm.split(".")[0].lower() + ".c")
+            tot, named = _author_c(path, fmt, out)
+            print("%-14s %-4s %-6d %-9s -> %s"
+                  % (nm, "C", n, "%d/%d" % (named, tot), os.path.relpath(out, _dr())))
+        else:
+            print("%-14s %-4s %-6d %-9s %s"
+                  % (nm, "asm", n, "-", "route: dosrecon named MASM (asm-dominant)"))
+    print("\nauthored C -> %s" % outroot)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
