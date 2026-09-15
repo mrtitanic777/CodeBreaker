@@ -1,0 +1,5 @@
+# Large / regenerable
+workspace/unpacked/
+workspace/disasm/
+workspace/recon/
+*.tmp
