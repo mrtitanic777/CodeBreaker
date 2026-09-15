@@ -29,15 +29,13 @@ _BLOCK = 32756
 
 
 def _mszip_block(chunk):
-    """One MSZIP CFDATA payload: 'CK' + a self-contained raw-deflate stream, guaranteed
-    <= 32768 bytes. If normal compression EXPANDS an (incompressible) block, re-emit it
-    with deflate STORED blocks (level 0) so it can't grow past the decode window."""
-    co = zlib.compressobj(9, zlib.DEFLATED, -15)   # raw deflate, no zlib header
-    body = co.compress(chunk) + co.flush(zlib.Z_FINISH)
-    if len(body) > len(chunk):                     # compression expanded it -> store raw
-        co = zlib.compressobj(0, zlib.DEFLATED, -15)   # level 0 = deflate STORED blocks
-        body = co.compress(chunk) + co.flush(zlib.Z_FINISH)
-    return b"CK" + body
+    """One MSZIP CFDATA payload: 'CK' + a raw-deflate STORED stream. MSZIP carries the LZ window
+    across consecutive CFDATA blocks (FDI/7-Zip seed each block from the previous block's output);
+    emitting independently-compressed blocks corrupts every file past the first block. STORED blocks
+    (deflate level 0, literal) have no cross-block back-references, so each decodes standalone and the
+    data comes out byte-exact regardless of the reader's window handling. Larger, but valid."""
+    co = zlib.compressobj(0, zlib.DEFLATED, -15)   # raw deflate, STORED (no back-references)
+    return b"CK" + co.compress(chunk) + co.flush(zlib.Z_FINISH)
 
 
 def _chk(data, seed):
@@ -104,7 +102,10 @@ def write_cab(files, out_path, compress=MSZIP, set_id=0, cab_index=0,
     # CFDATA blocks
     cfdata = bytearray()
     for payload, ucomp in blocks:
-        cfdata += struct.pack("<IHH", _cfdata_cksum(payload, ucomp), len(payload), ucomp) + payload
+        # CFDATA checksum = 0 -> verification skipped (spec-compliant; MS's own cabs do this). A
+        # computed checksum that a strict reader (7-Zip / Win95 SETUP's FDI) rejects corrupts the
+        # extract; 0 is always accepted and the data still decompresses byte-exact.
+        cfdata += struct.pack("<IHH", 0, len(payload), ucomp) + payload
 
     total = cfdata_off + len(cfdata)
     hdr = struct.pack("<4sIIIIIBBHHHHH", b"MSCF", 0, total, 0, cffile_off, 0,
