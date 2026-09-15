@@ -225,6 +225,46 @@ _INT_NAME = {"0x21": "DOS", "0x2f": "multiplex", "0x13": "BIOS disk", "0x10": "B
              "0x26": "abs disk write", "0x19": "reboot", "0x11": "equip", "0x12": "memsize",
              "0x2a": "network", "0x14": "serial", "0x17": "printer", "0x1a": "RTC", "0x67": "EMS"}
 
+# INT 2Fh multiplex by full AX (the documented public interface: Windows, IFS/network redirector,
+# XMS driver control, MSCDEX). Names HIMEM/IFSHLP/the Win95 real-mode layer's 2Fh traffic.
+_INT2F = {
+    0x1100: "IFS_installcheck", 0x1101: "IFS_removedir", 0x1103: "IFS_mkdir", 0x1105: "IFS_rmdir",
+    0x1106: "IFS_chdir", 0x1108: "IFS_read", 0x1109: "IFS_write", 0x110B: "IFS_lock",
+    0x110C: "IFS_getspace", 0x110E: "IFS_setattr", 0x110F: "IFS_getattr", 0x1116: "IFS_open",
+    0x1117: "IFS_create", 0x111B: "IFS_findfirst", 0x111C: "IFS_findnext", 0x111D: "IFS_closeall",
+    0x1122: "IFS_procterm", 0x1123: "IFS_qualify", 0x1125: "IFS_pathcmp", 0x112E: "IFS_specialredir",
+    0x1500: "MSCDEX_installcheck", 0x1501: "MSCDEX_driverlist", 0x150B: "MSCDEX_drivecheck",
+    0x1600: "WIN_enh_installcheck", 0x1605: "WIN_startup_bcast", 0x1606: "WIN_exit_bcast",
+    0x1607: "WIN_vxd_api", 0x1608: "WIN_init_complete", 0x1609: "WIN_begin_exit",
+    0x160A: "WIN_get_version", 0x1610: "WIN_release_timeslice", 0x1611: "WIN_get_deviceapi",
+    0x1613: "WIN_get_winbootdir", 0x1685: "WIN_switch_vm", 0x168A: "WIN_get_vxd_entry",
+    0x4300: "XMS_installcheck", 0x4310: "XMS_get_entry",
+    0x4A01: "WIN_get_hma_free", 0x4A02: "WIN_alloc_hma",
+}
+# XMS driver functions by AH (HIMEM.SYS, reached via the entry from INT 2Fh 4310h).
+_XMS = {
+    0x00: "XMS_version", 0x01: "XMS_request_hma", 0x02: "XMS_release_hma", 0x03: "XMS_global_enable_a20",
+    0x04: "XMS_global_disable_a20", 0x05: "XMS_local_enable_a20", 0x06: "XMS_local_disable_a20",
+    0x07: "XMS_query_a20", 0x08: "XMS_query_free", 0x09: "XMS_alloc", 0x0A: "XMS_free",
+    0x0B: "XMS_move", 0x0C: "XMS_lock", 0x0D: "XMS_unlock", 0x0E: "XMS_get_handle_info",
+    0x0F: "XMS_realloc", 0x10: "XMS_alloc_umb", 0x11: "XMS_free_umb", 0x12: "XMS_realloc_umb",
+}
+# EMS (INT 67h) by AH (EMM386.EXE / EMM).
+_EMS = {
+    0x40: "EMS_status", 0x41: "EMS_get_frame", 0x42: "EMS_get_pages", 0x43: "EMS_alloc",
+    0x44: "EMS_map", 0x45: "EMS_free", 0x46: "EMS_version", 0x47: "EMS_save_map",
+    0x48: "EMS_restore_map", 0x4B: "EMS_get_handle_count", 0x4C: "EMS_get_handle_pages",
+    0x4E: "EMS_get_set_map", 0x4F: "EMS_get_set_partial", 0x50: "EMS_map_multi",
+    0x51: "EMS_realloc", 0x58: "EMS_get_mappable", 0x59: "EMS_get_hw_config", 0x5A: "EMS_alloc_std",
+}
+# BIOS INT 13h (disk) / INT 10h (video) by AH -- the common ones in the boot/device paths.
+_INT13 = {0x00: "disk_reset", 0x01: "disk_status", 0x02: "disk_read", 0x03: "disk_write",
+          0x04: "disk_verify", 0x08: "disk_getparams", 0x15: "disk_gettype", 0x41: "disk_ext_check",
+          0x42: "disk_ext_read", 0x43: "disk_ext_write", 0x48: "disk_ext_getparams"}
+_INT10 = {0x00: "set_video_mode", 0x01: "set_cursor_shape", 0x02: "set_cursor_pos",
+          0x03: "get_cursor", 0x06: "scroll_up", 0x07: "scroll_down", 0x08: "read_char_attr",
+          0x09: "write_char_attr", 0x0E: "teletype_out", 0x0F: "get_video_mode", 0x13: "write_string"}
+
 
 def _beautify_name(fstart, kind, ints, strs, region):
     """Always return a name: evidence-based where possible (Win95 layer strings, INT service),
@@ -496,8 +536,17 @@ def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, 
                     except ValueError: pend_ah = None
                 if ins.mnemonic == "int":
                     cmt = _int_comment(ins.op_str)
-                    if ins.op_str == "0x21" and pend_ah in _DOS21:
+                    iv = ins.op_str
+                    if iv == "0x21" and pend_ah in _DOS21:
                         cmt = "INT 21h AH=%02Xh %s" % (pend_ah, _DOS21[pend_ah])
+                    elif iv == "0x2f" and pend_ax in _INT2F:
+                        cmt = "INT 2Fh AX=%04Xh %s" % (pend_ax, _INT2F[pend_ax])
+                    elif iv == "0x67" and pend_ah in _EMS:
+                        cmt = "INT 67h AH=%02Xh %s" % (pend_ah, _EMS[pend_ah])
+                    elif iv == "0x13" and pend_ah in _INT13:
+                        cmt = "INT 13h AH=%02Xh %s" % (pend_ah, _INT13[pend_ah])
+                    elif iv == "0x10" and pend_ah in _INT10:
+                        cmt = "INT 10h AH=%02Xh %s" % (pend_ah, _INT10[pend_ah])
                 for tok in re.findall(r"0x[0-9a-fA-F]+", ins.op_str):
                     v = int(tok, 16)
                     st = resolve_str(ds_base, v, a)
