@@ -49,6 +49,11 @@ def _our_modules():
         add(name, os.path.join(recon, key, "_built", key + ".bin"))
     add("LZ32.DLL", os.path.join(win95, "base", "lz32", "_build", "lz32.dll"))
     add("LZEXPAND.DLL", os.path.join(win95, "base", "lzexpand", "_build", "lzexpand.dll"))
+    # the GUI Setup + mini-Windows core (whole-file byte-identical NE, from nerecon --neimage)
+    for key, name in (("krnl386", "KRNL386.EXE"), ("gdi", "GDI.EXE"), ("user", "USER.EXE"),
+                      ("setupx", "SETUPX.DLL"), ("suwin", "SUWIN.EXE")):
+        add(name, os.path.join(recon, "ne", key, "_built", name.split(".")[0].lower()
+                               + (".dll" if name.endswith(".DLL") else ".exe")))
     return m
 
 
