@@ -327,15 +327,29 @@ def harvest(module, maxn=100000, rows=None, present=None, verified_now=None):
         base = A._imagebase(A.PE(retail))
     except Exception:
         base = 0
-    _lane, fns = OT.triage_module(retail)
+    # trace off the TRACER's function starts (accurate traces), but CREDIT via the triage body_id
+    # that CONTAINS each verified address -- the two enumerators' boundaries differ, so match by
+    # containment, not exact equality.
+    _lane, tfns = OT.triage_module(retail)
+    tri = sorted((f["addr"], f["sh"][:16]) for f in (tfns or [])
+                 if f.get("addr") is not None and f.get("sh"))
+
+    def _bid_for(rva):
+        lo = None
+        for a, sh in tri:
+            if a == rva:
+                return sh
+            if a <= rva:
+                lo = sh
+            else:
+                break
+        return lo                                        # enclosing triage function's body id
     c = Counter()
-    for f in (fns or [])[:maxn]:
-        if f.get("addr") is None or not f.get("sh"):
+    for off, va, size in tracer.list_functions(retail)[:maxn]:
+        bid = _bid_for(va - base)
+        if not bid or bid not in present or bid in already or bid in verified_now:
             continue
-        bid = f["sh"][:16]
-        if bid not in present or bid in already or bid in verified_now:
-            continue                                     # not a ledger body, or already verified
-        r = verify_body(retail, base + f["addr"])
+        r = verify_body(retail, va)
         c[r["verdict"]] += 1
         if r["verdict"] == "equivalent":
             verified_now.add(bid)
