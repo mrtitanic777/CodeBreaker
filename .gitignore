@@ -83,3 +83,4 @@ src/PEExplorerV2/PEParser/*.lib
 # bodyverify compile scratch
 src/targets/win95/_bodyverify/
 Windows95/design/body_ledger.csv.bak.*
+src/targets/win95/_bodyverify16/
