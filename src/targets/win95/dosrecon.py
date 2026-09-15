@@ -1081,7 +1081,7 @@ def _omf_ledata(path):
     return bytes(out)
 
 
-def _emit_image(outroot, which, image):
+def _emit_image(outroot, which, image, mz_data=None):
     """Build the FINAL binary image of a DOS module from OUR assembled objects. Reuses the verify
     alignment (orig file offset <- LST, assembled bytes <- OMF LEDATA) to place every function's
     real assembled bytes at its file offset. After the --exact fixpoint these bytes are byte-
@@ -1128,6 +1128,40 @@ def _emit_image(outroot, which, image):
             fo = seg_base + k
             if 0 <= fo < len(img):
                 img[fo] = code[k]; covered[fo] = 1
+    # Normal MZ EXE: the reconstruction covers the LOAD MODULE (image == data[hdr:total]). Wrap it
+    # with the MZ header + relocation table -- emitted as db from our source and assembled by ML --
+    # to form the COMPLETE file (the header/relocs are data, reconstructed the same way any data
+    # region is). IO.SYS and flat .SYS drivers are already whole-file images (mz_data is None).
+    if mz_data is not None and mz_data[:2] == b"MZ":
+        import struct
+        last_page, pages, _rel, hdr_par = struct.unpack("<HHHH", mz_data[2:10])
+        hdr = hdr_par * 16
+        total = pages * 512
+        if last_page:
+            total = (pages - 1) * 512 + last_page
+        total = min(total, len(mz_data))
+        if 0 < hdr < total:
+            hasm = os.path.join(outdir, "_mzhdr.asm")
+            with open(hasm, "w") as hf:
+                hf.write("; MZ header + relocation table (data), reconstructed as db, assembled by ML 6.13\n")
+                hf.write("_HDR SEGMENT byte public 'CODE'\n        ASSUME cs:_HDR\n")
+                for off in range(0, hdr, 16):
+                    chunk = mz_data[off:min(off + 16, hdr)]
+                    hf.write("        db " + ",".join("0%02Xh" % b for b in chunk) + "\n")
+                hf.write("_HDR ENDS\n        END\n")
+            hobj = os.path.join(outdir, "_mzhdr.obj")
+            subprocess.run([ml, "/c", "/Fo", hobj, hasm], capture_output=True, text=True, cwd=outdir)
+            hdr_bytes = _omf_ledata(hobj) if os.path.isfile(hobj) else b""
+            full = bytearray(total)
+            full[:len(hdr_bytes)] = hdr_bytes[:total]
+            full[hdr:hdr + len(img)] = bytes(img)[:total - hdr]
+            fullcov = bytearray(total)
+            fullcov[:len(hdr_bytes)] = b"\x01" * min(len(hdr_bytes), total)
+            for j in range(hdr, min(hdr + len(covered), total)):
+                fullcov[j] = covered[j - hdr]
+            img = full
+            image = mz_data[:total]
+            covered = fullcov
     matched = sum(1 for j in range(len(image)) if covered[j] and img[j] == image[j])
     total = sum(covered)
     builtdir = os.path.join(outdir, "_built")
@@ -1399,7 +1433,9 @@ def main(argv):
             is_iosys, _be, _lb, image = _layout(data)
             if is_iosys:
                 image = data
-            p, m, t = _emit_image(outroot, r["which"], image)
+            # normal MZ EXE -> wrap the load module with the header for a complete file
+            mzd = data if (not is_iosys and data[:2] == b"MZ") else None
+            p, m, t = _emit_image(outroot, r["which"], image, mzd)
             if p:
                 ident = " -- BYTE-IDENTICAL" if (m == t and t == len(image)) else ""
                 print("  %-9s -> %s  (%d/%d covered bytes match original, %d/%d total)%s"
