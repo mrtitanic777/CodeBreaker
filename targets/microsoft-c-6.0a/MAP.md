@@ -76,18 +76,23 @@ verify + segment grouping refined later.)
 **Exit:** ✅ first-pass origin split done (CRT vs authored, per pass). Recall-improvement + idiom
 signatures carried forward; authored worklist = the "remain" columns.
 
-## Phase 4 — Behavioral & inverse reconstruction of authored code
+## Phase 4 — Behavioral & inverse reconstruction of authored code  ← baseline run; gap pinned
 **Goal:** turn authored functions into readable, faithful C, evidence-backed and tiered.
-- [ ] Bottom-up over the call graph (callees before callers).
-- [ ] Leaf/pure functions → `wt behavior synth` (input→output expressions) on the Unicorn oracle.
+- [x] Baseline: ran `msc6dec.invert()` on every authored function (`tools/recover.py`). **100% decline
+      at "prologue miss"** — the MSC6 inverse models only the Win95 DLLs' **far-loadds** prologue;
+      our passes use the **near-frame `55 8B EC`** prologue (measured — `signatures.md` §6).
+- [ ] **Unblock:** add a near-frame prologue/epilogue template to the MSC6 inverse (`msc6inv`/`msc6dec`)
+      — the single gating change. Then re-run the baseline; expect leaf/simple functions to invert
+      byte-exact. Extend templates one class at a time (probe → model → invert → verify), MSC6-style.
+- [ ] Bottom-up over the call graph (callees before callers); tier every function.
+- [ ] Leaf/pure → `wt behavior synth` on the Unicorn oracle (independent evidence path; check it
+      supports real-mode 16-bit first).
 - [ ] Structs/globals/loops → `behavior struct|globals|loops`; CFG → `behavior cfg|structure`.
 - [ ] Orchestrators → `behavior interproc` (named call sequences, arg mapping).
-- [ ] Where code matches MSC6 output patterns → `wt inverse msc6dec|msc6fn|msc6inv` for
-      **byte-exact C** candidates; validate against the oracle.
-- [ ] Type propagation, constant/flag naming, stack-string and message recovery.
-- [ ] Assign a **confidence tier** to every function; floor un-recovered ones at verified ASM.
+- [ ] Type propagation, constant/flag naming, stack-string + message recovery; floor the rest at ASM.
 
-**Exit:** per-pass recovered C at mixed tiers, nothing faked, ASM floor everywhere else.
+**Exit:** per-pass recovered C at mixed tiers, nothing faked, ASM floor everywhere else. *(Blocked on
+the near-frame template; baseline + gap analysis done.)*
 
 ## Phase 5 — Architecture recovery (make it a *compiler*, not a pile of functions)
 **Goal:** recover the design, not just bodies. This is where it becomes readable as MSC6 internals.

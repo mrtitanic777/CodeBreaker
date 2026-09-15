@@ -93,12 +93,33 @@ ground truth. Build signatures from them and use to mark library code as *toolch
 Plan: `wt inverse omf` to read each `.LIB` → per-function byte patterns → signature DB →
 apply during triage (MAP Phase 3). Record coverage stats here as built.
 
-_(empty — awaiting Phase 3)_
+**Done (first pass, `tools/triage.py` + `wt inverse libmatch`):** matched each pass against its
+model's CRT + math (`*FA`/`*FP`) + `LIBH` + `EM` + `87`. Library functions **identified** (named):
+CL 41 · C1 56 · C1L 55 · C2 34 · C3 40. Per-function origin tags in `work/<pass>/origin.json`;
+counts in `work/triage_summary.md`. CL's spawn/tempfile hits (`_spawnve`, `__dospawn`, `__cenvarg`,
+`_mktemp`) prove the driver chains passes via child processes + temp files. Recall is a floor, not a
+ceiling (sweep-leader alignment + compile-flag variance) — improvable with exact-entry alignment.
 
-## 6. Compiler code-idiom signatures (TO BUILD)
+## 6. Compiler code-idiom signatures (measured)
 
-MSC6-emitted idioms (prologue/epilogue, `__chkstk`, far-call thunks, switch/jump tables, stack-frame
-setup, `__aNchkstk`, entry stubs) — seed from CodeBreaker `src/engines/msc6/IDIOMS.md` and refine
-against the unpacked passes. These let us separate compiler-emitted glue from authored logic.
+**Dominant prologue = the near-frame `55 8B EC`** (`push bp; mov bp,sp`), then the local-frame /
+saved-reg byte. Measured over authored functions:
 
-_(empty — awaiting Phase 2/3)_
+| First 4 bytes | Meaning | CL | C2 |
+|---|---|---:|---:|
+| `55 8B EC 83` | push bp; mov bp,sp; **sub sp,imm8** (locals) | 7 | **200** |
+| `55 8B EC 57` | …; push di (reg var) | — | 121 |
+| `55 8B EC 56` | …; push si (reg var) | 2 | 115 |
+| `55 8B EC 8B` | …; mov … | 3 | 52 |
+| `55 8B EC 81` | …; sub sp,imm16 (big frame) | — | 36 |
+| `55 8B EC B8` | …; mov ax,imm (e.g. `__chkstk` size) | 56 | 13 |
+| `55 8B EC 33` | …; xor … | 33 | — |
+
+**Key Phase-4 finding:** CodeBreaker's `msc6dec.invert` declines **100%** of our functions with
+*"prologue miss"* — it models only the **far-loadds** prologue (`1E 58 90 45 55 8BEC 1E 8ED8…`) of
+the Win95 medium-model DLLs it was built against. Our passes keep DS fixed (single DGROUP) and use
+the **near-frame** prologue above. So Phase 4 needs a near-frame prologue template added to the MSC6
+inverse (tractable — near-frame is simpler than far-loadds). This is *the* gating template.
+
+Still to model: epilogues (`8B E5 5D C3` / `…CA nn nn` far ret), `__chkstk`/`__aNchkstk` size-in-AX
+call, far-call thunks, switch/jump tables. Seed from `src/engines/msc6/IDIOMS.md`.

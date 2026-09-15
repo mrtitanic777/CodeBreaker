@@ -1,0 +1,12584 @@
+{
+ "functions": [
+  {
+   "start": 0,
+   "end": 181,
+   "size": 181,
+   "ninsns": 53,
+   "calls": [],
+   "has_ret": false,
+   "reach": 1956,
+   "origin": "authored"
+  },
+  {
+   "start": 181,
+   "end": 307,
+   "size": 126,
+   "ninsns": 79,
+   "calls": [
+    20863
+   ],
+   "has_ret": true,
+   "reach": 2088,
+   "origin": "authored"
+  },
+  {
+   "start": 307,
+   "end": 874,
+   "size": 567,
+   "ninsns": 93,
+   "calls": [
+    20863
+   ],
+   "has_ret": true,
+   "reach": 2088,
+   "origin": "authored"
+  },
+  {
+   "start": 874,
+   "end": 916,
+   "size": 42,
+   "ninsns": 84,
+   "calls": [
+    20863
+   ],
+   "has_ret": true,
+   "reach": 2088,
+   "origin": "authored"
+  },
+  {
+   "start": 916,
+   "end": 947,
+   "size": 31,
+   "ninsns": 70,
+   "calls": [
+    20863
+   ],
+   "has_ret": true,
+   "reach": 2088,
+   "origin": "authored"
+  },
+  {
+   "start": 947,
+   "end": 1034,
+   "size": 87,
+   "ninsns": 20,
+   "calls": [],
+   "has_ret": true,
+   "reach": 2088,
+   "origin": "authored"
+  },
+  {
+   "start": 1034,
+   "end": 1282,
+   "size": 248,
+   "ninsns": 85,
+   "calls": [
+    20863
+   ],
+   "has_ret": true,
+   "reach": 2088,
+   "origin": "authored"
+  },
+  {
+   "start": 1282,
+   "end": 1494,
+   "size": 212,
+   "ninsns": 78,
+   "calls": [
+    20600,
+    20863,
+    24572,
+    25288
+   ],
+   "has_ret": true,
+   "reach": 2088,
+   "origin": "authored"
+  },
+  {
+   "start": 1494,
+   "end": 1499,
+   "size": 5,
+   "ninsns": 53,
+   "calls": [
+    10921
+   ],
+   "has_ret": false,
+   "reach": 1956,
+   "origin": "authored"
+  },
+  {
+   "start": 1499,
+   "end": 1739,
+   "size": 240,
+   "ninsns": 52,
+   "calls": [
+    10921
+   ],
+   "has_ret": false,
+   "reach": 1956,
+   "origin": "authored"
+  },
+  {
+   "start": 1739,
+   "end": 1943,
+   "size": 204,
+   "ninsns": 12,
+   "calls": [],
+   "has_ret": true,
+   "reach": 2088,
+   "origin": "authored"
+  },
+  {
+   "start": 1943,
+   "end": 1956,
+   "size": 13,
+   "ninsns": 46,
+   "calls": [],
+   "has_ret": false,
+   "reach": 1956,
+   "origin": "authored"
+  },
+  {
+   "start": 2088,
+   "end": 2286,
+   "size": 198,
+   "ninsns": 22,
+   "calls": [
+    13966
+   ],
+   "has_ret": true,
+   "reach": 2652,
+   "origin": "authored"
+  },
+  {
+   "start": 2286,
+   "end": 2490,
+   "size": 204,
+   "ninsns": 23,
+   "calls": [
+    23861
+   ],
+   "has_ret": true,
+   "reach": 2652,
+   "origin": "authored"
+  },
+  {
+   "start": 2490,
+   "end": 2652,
+   "size": 162,
+   "ninsns": 11,
+   "calls": [],
+   "has_ret": true,
+   "reach": 2652,
+   "origin": "authored"
+  },
+  {
+   "start": 2652,
+   "end": 2847,
+   "size": 195,
+   "ninsns": 79,
+   "calls": [
+    9710
+   ],
+   "has_ret": true,
+   "reach": 2847,
+   "origin": "authored"
+  },
+  {
+   "start": 2848,
+   "end": 3023,
+   "size": 175,
+   "ninsns": 63,
+   "calls": [
+    0,
+    7042
+   ],
+   "has_ret": true,
+   "reach": 3023,
+   "origin": "authored"
+  },
+  {
+   "start": 3023,
+   "end": 3792,
+   "size": 769,
+   "ninsns": 38,
+   "calls": [],
+   "has_ret": true,
+   "reach": 3792,
+   "origin": "authored"
+  },
+  {
+   "start": 3792,
+   "end": 3910,
+   "size": 118,
+   "ninsns": 45,
+   "calls": [
+    3910
+   ],
+   "has_ret": true,
+   "reach": 3910,
+   "origin": "authored"
+  },
+  {
+   "start": 3910,
+   "end": 3994,
+   "size": 84,
+   "ninsns": 38,
+   "calls": [
+    2848,
+    3994
+   ],
+   "has_ret": true,
+   "reach": 3994,
+   "origin": "authored"
+  },
+  {
+   "start": 3994,
+   "end": 4049,
+   "size": 55,
+   "ninsns": 26,
+   "calls": [
+    2848,
+    3023,
+    4049
+   ],
+   "has_ret": true,
+   "reach": 4049,
+   "origin": "authored"
+  },
+  {
+   "start": 4049,
+   "end": 4104,
+   "size": 55,
+   "ninsns": 26,
+   "calls": [
+    2848,
+    3023,
+    4104
+   ],
+   "has_ret": true,
+   "reach": 4104,
+   "origin": "authored"
+  },
+  {
+   "start": 4104,
+   "end": 4137,
+   "size": 33,
+   "ninsns": 18,
+   "calls": [
+    2848,
+    3023,
+    4137
+   ],
+   "has_ret": true,
+   "reach": 4137,
+   "origin": "authored"
+  },
+  {
+   "start": 4137,
+   "end": 4140,
+   "size": 3,
+   "ninsns": 18,
+   "calls": [
+    2848,
+    3023,
+    4170
+   ],
+   "has_ret": true,
+   "reach": 4170,
+   "origin": "authored"
+  },
+  {
+   "start": 4140,
+   "end": 4170,
+   "size": 30,
+   "ninsns": 17,
+   "calls": [
+    2848,
+    3023,
+    4170
+   ],
+   "has_ret": true,
+   "reach": 4170,
+   "origin": "authored"
+  },
+  {
+   "start": 4170,
+   "end": 4203,
+   "size": 33,
+   "ninsns": 18,
+   "calls": [
+    2848,
+    3023,
+    4203
+   ],
+   "has_ret": true,
+   "reach": 4203,
+   "origin": "authored"
+  },
+  {
+   "start": 4203,
+   "end": 4250,
+   "size": 47,
+   "ninsns": 26,
+   "calls": [
+    2848,
+    3023,
+    4250
+   ],
+   "has_ret": true,
+   "reach": 4250,
+   "origin": "authored"
+  },
+  {
+   "start": 4250,
+   "end": 4325,
+   "size": 75,
+   "ninsns": 40,
+   "calls": [
+    2848,
+    3023,
+    4325
+   ],
+   "has_ret": true,
+   "reach": 4325,
+   "origin": "authored"
+  },
+  {
+   "start": 4325,
+   "end": 4372,
+   "size": 47,
+   "ninsns": 26,
+   "calls": [
+    2848,
+    3023,
+    4372
+   ],
+   "has_ret": true,
+   "reach": 4372,
+   "origin": "authored"
+  },
+  {
+   "start": 4372,
+   "end": 4429,
+   "size": 57,
+   "ninsns": 30,
+   "calls": [
+    2848,
+    3023,
+    4429
+   ],
+   "has_ret": true,
+   "reach": 4429,
+   "origin": "authored"
+  },
+  {
+   "start": 4429,
+   "end": 4490,
+   "size": 61,
+   "ninsns": 32,
+   "calls": [
+    2848,
+    3023,
+    4490
+   ],
+   "has_ret": true,
+   "reach": 4490,
+   "origin": "authored"
+  },
+  {
+   "start": 4490,
+   "end": 4560,
+   "size": 70,
+   "ninsns": 36,
+   "calls": [
+    2848,
+    3023,
+    4560
+   ],
+   "has_ret": true,
+   "reach": 4560,
+   "origin": "authored"
+  },
+  {
+   "start": 4560,
+   "end": 4661,
+   "size": 101,
+   "ninsns": 51,
+   "calls": [
+    2848,
+    3910
+   ],
+   "has_ret": true,
+   "reach": 4661,
+   "origin": "authored"
+  },
+  {
+   "start": 4662,
+   "end": 4687,
+   "size": 25,
+   "ninsns": 9,
+   "calls": [],
+   "has_ret": true,
+   "reach": 4687,
+   "origin": "authored"
+  },
+  {
+   "start": 4687,
+   "end": 4789,
+   "size": 102,
+   "ninsns": 83,
+   "calls": [
+    13565,
+    13780
+   ],
+   "has_ret": true,
+   "reach": 4893,
+   "origin": "authored"
+  },
+  {
+   "start": 4789,
+   "end": 4886,
+   "size": 97,
+   "ninsns": 44,
+   "calls": [],
+   "has_ret": true,
+   "reach": 4893,
+   "origin": "authored"
+  },
+  {
+   "start": 4886,
+   "end": 4889,
+   "size": 3,
+   "ninsns": 1,
+   "calls": [],
+   "has_ret": true,
+   "reach": 4889,
+   "origin": "authored"
+  },
+  {
+   "start": 4893,
+   "end": 5468,
+   "size": 575,
+   "ninsns": 75,
+   "calls": [
+    7364,
+    9749,
+    13484,
+    14025,
+    20863
+   ],
+   "has_ret": true,
+   "reach": 6332,
+   "origin": "authored"
+  },
+  {
+   "start": 5468,
+   "end": 5540,
+   "size": 72,
+   "ninsns": 72,
+   "calls": [
+    6465,
+    6732,
+    24035,
+    24804
+   ],
+   "has_ret": true,
+   "reach": 6332,
+   "origin": "authored"
+  },
+  {
+   "start": 5540,
+   "end": 6332,
+   "size": 792,
+   "ninsns": 33,
+   "calls": [
+    24035
+   ],
+   "has_ret": true,
+   "reach": 6332,
+   "origin": "authored"
+  },
+  {
+   "start": 6332,
+   "end": 6363,
+   "size": 31,
+   "ninsns": 13,
+   "calls": [
+    6884
+   ],
+   "has_ret": false,
+   "reach": 6363,
+   "origin": "authored"
+  },
+  {
+   "start": 6369,
+   "end": 6370,
+   "size": 1,
+   "ninsns": 1,
+   "calls": [],
+   "has_ret": true,
+   "reach": 6370,
+   "origin": "authored"
+  },
+  {
+   "start": 6465,
+   "end": 6732,
+   "size": 267,
+   "ninsns": 102,
+   "calls": [
+    24035
+   ],
+   "has_ret": true,
+   "reach": 6732,
+   "origin": "authored"
+  },
+  {
+   "start": 6732,
+   "end": 6776,
+   "size": 44,
+   "ninsns": 18,
+   "calls": [
+    7364,
+    13565
+   ],
+   "has_ret": true,
+   "reach": 6776,
+   "origin": "authored"
+  },
+  {
+   "start": 6776,
+   "end": 6884,
+   "size": 108,
+   "ninsns": 45,
+   "calls": [
+    13780,
+    20863
+   ],
+   "has_ret": true,
+   "reach": 6884,
+   "origin": "authored"
+  },
+  {
+   "start": 6884,
+   "end": 7042,
+   "size": 158,
+   "ninsns": 66,
+   "calls": [
+    6776,
+    9749,
+    13565,
+    14025,
+    20863
+   ],
+   "has_ret": true,
+   "reach": 7042,
+   "origin": "authored"
+  },
+  {
+   "start": 7042,
+   "end": 7265,
+   "size": 223,
+   "ninsns": 127,
+   "calls": [
+    2652,
+    9749,
+    15584,
+    19817,
+    20360
+   ],
+   "has_ret": true,
+   "reach": 7364,
+   "origin": "authored"
+  },
+  {
+   "start": 7265,
+   "end": 7267,
+   "size": 2,
+   "ninsns": 1,
+   "calls": [],
+   "has_ret": false,
+   "reach": 7267,
+   "origin": "authored"
+  },
+  {
+   "start": 7320,
+   "end": 7364,
+   "size": 44,
+   "ninsns": 20,
+   "calls": [],
+   "has_ret": true,
+   "reach": 7364,
+   "origin": "authored"
+  },
+  {
+   "start": 7364,
+   "end": 7411,
+   "size": 47,
+   "ninsns": 21,
+   "calls": [
+    13484,
+    20863
+   ],
+   "has_ret": true,
+   "reach": 7411,
+   "origin": "authored"
+  },
+  {
+   "start": 7411,
+   "end": 7451,
+   "size": 40,
+   "ninsns": 16,
+   "calls": [
+    20863
+   ],
+   "has_ret": true,
+   "reach": 7451,
+   "origin": "authored"
+  },
+  {
+   "start": 7452,
+   "end": 7480,
+   "size": 28,
+   "ninsns": 15,
+   "calls": [
+    0
+   ],
+   "has_ret": true,
+   "reach": 7480,
+   "origin": "authored"
+  },
+  {
+   "start": 7480,
+   "end": 7526,
+   "size": 46,
+   "ninsns": 18,
+   "calls": [
+    7364,
+    7452
+   ],
+   "has_ret": true,
+   "reach": 7526,
+   "origin": "authored"
+  },
+  {
+   "start": 7526,
+   "end": 7549,
+   "size": 23,
+   "ninsns": 11,
+   "calls": [
+    7480,
+    7673
+   ],
+   "has_ret": true,
+   "reach": 7549,
+   "origin": "authored"
+  },
+  {
+   "start": 7549,
+   "end": 7673,
+   "size": 124,
+   "ninsns": 49,
+   "calls": [
+    7452
+   ],
+   "has_ret": true,
+   "reach": 7673,
+   "origin": "authored"
+  },
+  {
+   "start": 7673,
+   "end": 8046,
+   "size": 373,
+   "ninsns": 140,
+   "calls": [
+    7452
+   ],
+   "has_ret": true,
+   "reach": 8046,
+   "origin": "authored"
+  },
+  {
+   "start": 8046,
+   "end": 8511,
+   "size": 465,
+   "ninsns": 93,
+   "calls": [
+    0,
+    6732,
+    7364,
+    7452,
+    14145
+   ],
+   "has_ret": true,
+   "reach": 9569,
+   "origin": "authored"
+  },
+  {
+   "start": 8511,
+   "end": 8694,
+   "size": 183,
+   "ninsns": 16,
+   "calls": [
+    7364
+   ],
+   "has_ret": true,
+   "reach": 9569,
+   "origin": "authored"
+  },
+  {
+   "start": 8694,
+   "end": 8810,
+   "size": 116,
+   "ninsns": 28,
+   "calls": [
+    6732
+   ],
+   "has_ret": true,
+   "reach": 9569,
+   "origin": "authored"
+  },
+  {
+   "start": 8810,
+   "end": 8997,
+   "size": 187,
+   "ninsns": 14,
+   "calls": [
+    6732,
+    9569
+   ],
+   "has_ret": true,
+   "reach": 9569,
+   "origin": "authored"
+  },
+  {
+   "start": 8997,
+   "end": 9569,
+   "size": 572,
+   "ninsns": 17,
+   "calls": [
+    6732,
+    7526,
+    26226
+   ],
+   "has_ret": true,
+   "reach": 9569,
+   "origin": "authored"
+  },
+  {
+   "start": 9569,
+   "end": 9709,
+   "size": 140,
+   "ninsns": 35,
+   "calls": [],
+   "has_ret": true,
+   "reach": 9709,
+   "origin": "authored"
+  },
+  {
+   "start": 9710,
+   "end": 9749,
+   "size": 39,
+   "ninsns": 16,
+   "calls": [],
+   "has_ret": true,
+   "reach": 9749,
+   "origin": "authored"
+  },
+  {
+   "start": 9749,
+   "end": 9827,
+   "size": 78,
+   "ninsns": 82,
+   "calls": [
+    9710,
+    13660,
+    25288
+   ],
+   "has_ret": true,
+   "reach": 9953,
+   "origin": "authored"
+  },
+  {
+   "start": 9827,
+   "end": 9953,
+   "size": 126,
+   "ninsns": 70,
+   "calls": [
+    9710,
+    13660,
+    25288
+   ],
+   "has_ret": true,
+   "reach": 9953,
+   "origin": "authored"
+  },
+  {
+   "start": 9953,
+   "end": 10143,
+   "size": 190,
+   "ninsns": 200,
+   "calls": [
+    13660,
+    13780,
+    20863
+   ],
+   "has_ret": true,
+   "reach": 10460,
+   "origin": "authored"
+  },
+  {
+   "start": 10143,
+   "end": 10341,
+   "size": 198,
+   "ninsns": 188,
+   "calls": [
+    13660,
+    13780,
+    20863
+   ],
+   "has_ret": true,
+   "reach": 10460,
+   "origin": "authored"
+  },
+  {
+   "start": 10341,
+   "end": 10422,
+   "size": 81,
+   "ninsns": 189,
+   "calls": [
+    13660,
+    13780,
+    20863
+   ],
+   "has_ret": true,
+   "reach": 10460,
+   "origin": "authored"
+  },
+  {
+   "start": 10422,
+   "end": 10460,
+   "size": 38,
+   "ninsns": 189,
+   "calls": [
+    13660,
+    13780,
+    20863
+   ],
+   "has_ret": true,
+   "reach": 10460,
+   "origin": "authored"
+  },
+  {
+   "start": 10460,
+   "end": 10713,
+   "size": 253,
+   "ninsns": 100,
+   "calls": [
+    12431,
+    13780,
+    20863
+   ],
+   "has_ret": true,
+   "reach": 10713,
+   "origin": "authored"
+  },
+  {
+   "start": 10713,
+   "end": 10746,
+   "size": 33,
+   "ninsns": 83,
+   "calls": [
+    12431,
+    13780,
+    20863
+   ],
+   "has_ret": true,
+   "reach": 10921,
+   "origin": "authored"
+  },
+  {
+   "start": 10746,
+   "end": 10921,
+   "size": 175,
+   "ninsns": 80,
+   "calls": [
+    12431,
+    13780,
+    20863
+   ],
+   "has_ret": true,
+   "reach": 10921,
+   "origin": "authored"
+  },
+  {
+   "start": 10921,
+   "end": 10990,
+   "size": 69,
+   "ninsns": 29,
+   "calls": [],
+   "has_ret": true,
+   "reach": 11187,
+   "origin": "authored"
+  },
+  {
+   "start": 10990,
+   "end": 11187,
+   "size": 197,
+   "ninsns": 39,
+   "calls": [
+    13660,
+    20600
+   ],
+   "has_ret": true,
+   "reach": 11187,
+   "origin": "authored"
+  },
+  {
+   "start": 11187,
+   "end": 11639,
+   "size": 452,
+   "ninsns": 178,
+   "calls": [
+    11639,
+    12039,
+    12287,
+    12329,
+    12355,
+    12375,
+    13780
+   ],
+   "has_ret": true,
+   "reach": 11639,
+   "origin": "authored"
+  },
+  {
+   "start": 11639,
+   "end": 11812,
+   "size": 173,
+   "ninsns": 159,
+   "calls": [
+    13780
+   ],
+   "has_ret": true,
+   "reach": 12039,
+   "origin": "authored"
+  },
+  {
+   "start": 11812,
+   "end": 12039,
+   "size": 227,
+   "ninsns": 77,
+   "calls": [],
+   "has_ret": true,
+   "reach": 12039,
+   "origin": "authored"
+  },
+  {
+   "start": 12039,
+   "end": 12287,
+   "size": 248,
+   "ninsns": 110,
+   "calls": [],
+   "has_ret": true,
+   "reach": 12287,
+   "origin": "authored"
+  },
+  {
+   "start": 12287,
+   "end": 12329,
+   "size": 42,
+   "ninsns": 17,
+   "calls": [
+    12355
+   ],
+   "has_ret": true,
+   "reach": 12329,
+   "origin": "authored"
+  },
+  {
+   "start": 12329,
+   "end": 12355,
+   "size": 26,
+   "ninsns": 12,
+   "calls": [],
+   "has_ret": true,
+   "reach": 12355,
+   "origin": "authored"
+  },
+  {
+   "start": 12355,
+   "end": 12375,
+   "size": 20,
+   "ninsns": 9,
+   "calls": [],
+   "has_ret": true,
+   "reach": 12375,
+   "origin": "authored"
+  },
+  {
+   "start": 12375,
+   "end": 12395,
+   "size": 20,
+   "ninsns": 9,
+   "calls": [],
+   "has_ret": true,
+   "reach": 12395,
+   "origin": "authored"
+  },
+  {
+   "start": 12395,
+   "end": 12431,
+   "size": 36,
+   "ninsns": 14,
+   "calls": [],
+   "has_ret": true,
+   "reach": 12431,
+   "origin": "authored"
+  },
+  {
+   "start": 12431,
+   "end": 12473,
+   "size": 42,
+   "ninsns": 174,
+   "calls": [
+    12395,
+    13660,
+    13780,
+    20600
+   ],
+   "has_ret": true,
+   "reach": 12847,
+   "origin": "authored"
+  },
+  {
+   "start": 12473,
+   "end": 12721,
+   "size": 248,
+   "ninsns": 169,
+   "calls": [
+    12395,
+    13660,
+    13780,
+    20600
+   ],
+   "has_ret": true,
+   "reach": 12847,
+   "origin": "authored"
+  },
+  {
+   "start": 12721,
+   "end": 12847,
+   "size": 126,
+   "ninsns": 7,
+   "calls": [],
+   "has_ret": true,
+   "reach": 12847,
+   "origin": "authored"
+  },
+  {
+   "start": 12847,
+   "end": 12877,
+   "size": 30,
+   "ninsns": 13,
+   "calls": [
+    13780
+   ],
+   "has_ret": true,
+   "reach": 12877,
+   "origin": "authored"
+  },
+  {
+   "start": 12877,
+   "end": 12928,
+   "size": 51,
+   "ninsns": 16,
+   "calls": [
+    7411,
+    12928
+   ],
+   "has_ret": true,
+   "reach": 12928,
+   "origin": "authored"
+  },
+  {
+   "start": 12928,
+   "end": 12997,
+   "size": 69,
+   "ninsns": 76,
+   "calls": [
+    13660,
+    20600,
+    20863
+   ],
+   "has_ret": true,
+   "reach": 13115,
+   "origin": "authored"
+  },
+  {
+   "start": 12997,
+   "end": 13115,
+   "size": 118,
+   "ninsns": 63,
+   "calls": [
+    13660,
+    20600,
+    20863
+   ],
+   "has_ret": true,
+   "reach": 13115,
+   "origin": "authored"
+  },
+  {
+   "start": 13115,
+   "end": 13172,
+   "size": 57,
+   "ninsns": 93,
+   "calls": [
+    12847,
+    13660,
+    20600,
+    20863
+   ],
+   "has_ret": true,
+   "reach": 13340,
+   "origin": "authored"
+  },
+  {
+   "start": 13172,
+   "end": 13340,
+   "size": 168,
+   "ninsns": 80,
+   "calls": [
+    12847,
+    13660,
+    20600,
+    20863
+   ],
+   "has_ret": true,
+   "reach": 13340,
+   "origin": "authored"
+  },
+  {
+   "start": 13340,
+   "end": 13476,
+   "size": 136,
+   "ninsns": 59,
+   "calls": [
+    20863
+   ],
+   "has_ret": true,
+   "reach": 13484,
+   "origin": "authored"
+  },
+  {
+   "start": 13476,
+   "end": 13484,
+   "size": 8,
+   "ninsns": 6,
+   "calls": [],
+   "has_ret": true,
+   "reach": 13484,
+   "origin": "authored"
+  },
+  {
+   "start": 13484,
+   "end": 13565,
+   "size": 81,
+   "ninsns": 28,
+   "calls": [
+    12847,
+    12877,
+    13115,
+    13340
+   ],
+   "has_ret": true,
+   "reach": 13565,
+   "origin": "authored"
+  },
+  {
+   "start": 13565,
+   "end": 13570,
+   "size": 5,
+   "ninsns": 41,
+   "calls": [
+    13484,
+    13660,
+    20863
+   ],
+   "has_ret": true,
+   "reach": 13660,
+   "origin": "authored"
+  },
+  {
+   "start": 13570,
+   "end": 13660,
+   "size": 90,
+   "ninsns": 40,
+   "calls": [
+    13484,
+    13660,
+    20863
+   ],
+   "has_ret": true,
+   "reach": 13660,
+   "origin": "authored"
+  },
+  {
+   "start": 13660,
+   "end": 13780,
+   "size": 120,
+   "ninsns": 46,
+   "calls": [
+    20863
+   ],
+   "has_ret": true,
+   "reach": 13780,
+   "origin": "authored"
+  },
+  {
+   "start": 13780,
+   "end": 13850,
+   "size": 70,
+   "ninsns": 27,
+   "calls": [
+    13660,
+    20600,
+    20863
+   ],
+   "has_ret": true,
+   "reach": 13850,
+   "origin": "authored"
+  },
+  {
+   "start": 13850,
+   "end": 13966,
+   "size": 116,
+   "ninsns": 55,
+   "calls": [],
+   "has_ret": true,
+   "reach": 13966,
+   "origin": "authored"
+  },
+  {
+   "start": 13966,
+   "end": 14000,
+   "size": 34,
+   "ninsns": 16,
+   "calls": [
+    13850
+   ],
+   "has_ret": true,
+   "reach": 14000,
+   "origin": "authored"
+  },
+  {
+   "start": 14000,
+   "end": 14025,
+   "size": 25,
+   "ninsns": 10,
+   "calls": [
+    13850
+   ],
+   "has_ret": true,
+   "reach": 14025,
+   "origin": "authored"
+  },
+  {
+   "start": 14025,
+   "end": 14145,
+   "size": 120,
+   "ninsns": 55,
+   "calls": [],
+   "has_ret": true,
+   "reach": 14145,
+   "origin": "authored"
+  },
+  {
+   "start": 14145,
+   "end": 14267,
+   "size": 122,
+   "ninsns": 56,
+   "calls": [],
+   "has_ret": true,
+   "reach": 14267,
+   "origin": "authored"
+  },
+  {
+   "start": 14268,
+   "end": 14347,
+   "size": 79,
+   "ninsns": 24,
+   "calls": [],
+   "has_ret": true,
+   "reach": 14347,
+   "origin": "authored"
+  },
+  {
+   "start": 14347,
+   "end": 14519,
+   "size": 172,
+   "ninsns": 100,
+   "calls": [
+    23821
+   ],
+   "has_ret": true,
+   "reach": 14593,
+   "origin": "authored"
+  },
+  {
+   "start": 14519,
+   "end": 14593,
+   "size": 74,
+   "ninsns": 35,
+   "calls": [
+    23821
+   ],
+   "has_ret": true,
+   "reach": 14593,
+   "origin": "authored"
+  },
+  {
+   "start": 14593,
+   "end": 14618,
+   "size": 25,
+   "ninsns": 85,
+   "calls": [
+    7364,
+    9749,
+    13484,
+    13565,
+    14806,
+    15183,
+    15776,
+    20863
+   ],
+   "has_ret": true,
+   "reach": 14806,
+   "origin": "authored"
+  },
+  {
+   "start": 14618,
+   "end": 14806,
+   "size": 188,
+   "ninsns": 12,
+   "calls": [
+    7364
+   ],
+   "has_ret": true,
+   "reach": 14806,
+   "origin": "authored"
+  },
+  {
+   "start": 14806,
+   "end": 15020,
+   "size": 214,
+   "ninsns": 154,
+   "calls": [
+    13565,
+    13660,
+    16521,
+    20531,
+    25288
+   ],
+   "has_ret": true,
+   "reach": 15183,
+   "origin": "authored"
+  },
+  {
+   "start": 15020,
+   "end": 15174,
+   "size": 154,
+   "ninsns": 150,
+   "calls": [
+    13565,
+    13660,
+    16521,
+    20531,
+    25288
+   ],
+   "has_ret": true,
+   "reach": 15183,
+   "origin": "authored"
+  },
+  {
+   "start": 15174,
+   "end": 15183,
+   "size": 9,
+   "ninsns": 149,
+   "calls": [
+    13565,
+    13660,
+    16521,
+    20531,
+    25288
+   ],
+   "has_ret": true,
+   "reach": 15183,
+   "origin": "authored"
+  },
+  {
+   "start": 15183,
+   "end": 15584,
+   "size": 401,
+   "ninsns": 152,
+   "calls": [
+    15584,
+    15692,
+    23484
+   ],
+   "has_ret": true,
+   "reach": 15584,
+   "origin": "authored"
+  },
+  {
+   "start": 15584,
+   "end": 15692,
+   "size": 108,
+   "ninsns": 47,
+   "calls": [],
+   "has_ret": true,
+   "reach": 15692,
+   "origin": "authored"
+  },
+  {
+   "start": 15692,
+   "end": 15704,
+   "size": 12,
+   "ninsns": 40,
+   "calls": [],
+   "has_ret": true,
+   "reach": 15776,
+   "origin": "authored"
+  },
+  {
+   "start": 15704,
+   "end": 15705,
+   "size": 1,
+   "ninsns": 1,
+   "calls": [],
+   "has_ret": true,
+   "reach": 15705,
+   "origin": "authored"
+  },
+  {
+   "start": 15737,
+   "end": 15776,
+   "size": 39,
+   "ninsns": 13,
+   "calls": [],
+   "has_ret": true,
+   "reach": 15776,
+   "origin": "authored"
+  },
+  {
+   "start": 15776,
+   "end": 15810,
+   "size": 34,
+   "ninsns": 285,
+   "calls": [
+    13484,
+    13565,
+    13780,
+    16521,
+    16630,
+    16669,
+    20863
+   ],
+   "has_ret": true,
+   "reach": 16521,
+   "origin": "authored"
+  },
+  {
+   "start": 15810,
+   "end": 15859,
+   "size": 49,
+   "ninsns": 272,
+   "calls": [
+    13484,
+    13565,
+    13780,
+    16521,
+    16630,
+    16669,
+    20863
+   ],
+   "has_ret": true,
+   "reach": 16521,
+   "origin": "authored"
+  },
+  {
+   "start": 15859,
+   "end": 15916,
+   "size": 57,
+   "ninsns": 273,
+   "calls": [
+    13484,
+    13565,
+    13780,
+    16521,
+    16630,
+    16669,
+    20863
+   ],
+   "has_ret": true,
+   "reach": 16521,
+   "origin": "authored"
+  },
+  {
+   "start": 15916,
+   "end": 16065,
+   "size": 149,
+   "ninsns": 273,
+   "calls": [
+    13484,
+    13565,
+    13780,
+    16521,
+    16630,
+    16669,
+    20863
+   ],
+   "has_ret": true,
+   "reach": 16521,
+   "origin": "authored"
+  },
+  {
+   "start": 16065,
+   "end": 16521,
+   "size": 456,
+   "ninsns": 273,
+   "calls": [
+    13484,
+    13565,
+    13780,
+    16521,
+    16630,
+    16669,
+    20863
+   ],
+   "has_ret": true,
+   "reach": 16521,
+   "origin": "authored"
+  },
+  {
+   "start": 16521,
+   "end": 16630,
+   "size": 109,
+   "ninsns": 47,
+   "calls": [],
+   "has_ret": true,
+   "reach": 16630,
+   "origin": "authored"
+  },
+  {
+   "start": 16630,
+   "end": 16669,
+   "size": 39,
+   "ninsns": 17,
+   "calls": [],
+   "has_ret": true,
+   "reach": 16669,
+   "origin": "authored"
+  },
+  {
+   "start": 16669,
+   "end": 16859,
+   "size": 190,
+   "ninsns": 78,
+   "calls": [
+    13780,
+    20863
+   ],
+   "has_ret": true,
+   "reach": 16859,
+   "origin": "authored"
+  },
+  {
+   "start": 16859,
+   "end": 16908,
+   "size": 49,
+   "ninsns": 333,
+   "calls": [
+    7042,
+    13484,
+    15584,
+    16669,
+    17994,
+    18798,
+    19051,
+    19392,
+    19513,
+    19817,
+    20268,
+    20360,
+    20531,
+    20863,
+    23821
+   ],
+   "has_ret": true,
+   "reach": 17994,
+   "origin": "authored"
+  },
+  {
+   "start": 16908,
+   "end": 17070,
+   "size": 162,
+   "ninsns": 320,
+   "calls": [
+    7042,
+    13484,
+    15584,
+    16669,
+    17994,
+    18798,
+    19051,
+    19392,
+    19513,
+    19817,
+    20268,
+    20360,
+    20531,
+    20863,
+    23821
+   ],
+   "has_ret": true,
+   "reach": 17994,
+   "origin": "authored"
+  },
+  {
+   "start": 17070,
+   "end": 17223,
+   "size": 153,
+   "ninsns": 324,
+   "calls": [
+    7042,
+    13484,
+    15584,
+    16669,
+    17994,
+    18798,
+    19051,
+    19316,
+    19392,
+    19513,
+    19817,
+    20268,
+    20360,
+    20531,
+    20863,
+    23821
+   ],
+   "has_ret": true,
+   "reach": 17994,
+   "origin": "authored"
+  },
+  {
+   "start": 17223,
+   "end": 17342,
+   "size": 119,
+   "ninsns": 322,
+   "calls": [
+    7042,
+    13484,
+    15584,
+    16669,
+    17994,
+    18798,
+    19051,
+    19392,
+    19513,
+    19817,
+    20268,
+    20360,
+    20531,
+    20863,
+    23821
+   ],
+   "has_ret": true,
+   "reach": 17994,
+   "origin": "authored"
+  },
+  {
+   "start": 17342,
+   "end": 17398,
+   "size": 56,
+   "ninsns": 319,
+   "calls": [
+    7042,
+    13484,
+    15584,
+    16669,
+    17994,
+    18798,
+    19051,
+    19392,
+    19513,
+    19817,
+    20268,
+    20360,
+    20531,
+    20863,
+    23821
+   ],
+   "has_ret": true,
+   "reach": 17994,
+   "origin": "authored"
+  },
+  {
+   "start": 17398,
+   "end": 17529,
+   "size": 131,
+   "ninsns": 319,
+   "calls": [
+    7042,
+    13484,
+    15584,
+    16669,
+    17994,
+    18798,
+    19051,
+    19392,
+    19513,
+    19817,
+    20268,
+    20360,
+    20531,
+    20863,
+    23821
+   ],
+   "has_ret": true,
+   "reach": 17994,
+   "origin": "authored"
+  },
+  {
+   "start": 17529,
+   "end": 17613,
+   "size": 84,
+   "ninsns": 322,
+   "calls": [
+    7042,
+    13484,
+    15584,
+    16669,
+    17994,
+    18798,
+    19051,
+    19392,
+    19513,
+    19817,
+    20268,
+    20360,
+    20531,
+    20863,
+    23821
+   ],
+   "has_ret": true,
+   "reach": 17994,
+   "origin": "authored"
+  },
+  {
+   "start": 17613,
+   "end": 17663,
+   "size": 50,
+   "ninsns": 319,
+   "calls": [
+    7042,
+    13484,
+    15584,
+    16669,
+    17994,
+    18798,
+    19051,
+    19392,
+    19513,
+    19817,
+    20268,
+    20360,
+    20531,
+    20863,
+    23821
+   ],
+   "has_ret": true,
+   "reach": 17994,
+   "origin": "authored"
+  },
+  {
+   "start": 17663,
+   "end": 17963,
+   "size": 300,
+   "ninsns": 319,
+   "calls": [
+    7042,
+    13484,
+    15584,
+    16669,
+    17994,
+    18798,
+    19051,
+    19392,
+    19513,
+    19817,
+    20268,
+    20360,
+    20531,
+    20863,
+    23821
+   ],
+   "has_ret": true,
+   "reach": 17994,
+   "origin": "authored"
+  },
+  {
+   "start": 17963,
+   "end": 17985,
+   "size": 22,
+   "ninsns": 320,
+   "calls": [
+    7042,
+    13484,
+    15584,
+    16669,
+    17994,
+    18798,
+    19051,
+    19392,
+    19513,
+    19817,
+    20268,
+    20360,
+    20531,
+    20863,
+    23821
+   ],
+   "has_ret": true,
+   "reach": 17994,
+   "origin": "authored"
+  },
+  {
+   "start": 17985,
+   "end": 17994,
+   "size": 9,
+   "ninsns": 6,
+   "calls": [],
+   "has_ret": true,
+   "reach": 17994,
+   "origin": "authored"
+  },
+  {
+   "start": 17994,
+   "end": 18387,
+   "size": 393,
+   "ninsns": 110,
+   "calls": [
+    13484,
+    19392,
+    19590,
+    20360,
+    20531
+   ],
+   "has_ret": true,
+   "reach": 18798,
+   "origin": "authored"
+  },
+  {
+   "start": 18387,
+   "end": 18550,
+   "size": 163,
+   "ninsns": 52,
+   "calls": [
+    19316,
+    19683,
+    20531
+   ],
+   "has_ret": false,
+   "reach": 18715,
+   "origin": "authored"
+  },
+  {
+   "start": 18550,
+   "end": 18715,
+   "size": 165,
+   "ninsns": 38,
+   "calls": [
+    13780
+   ],
+   "has_ret": false,
+   "reach": 18715,
+   "origin": "authored"
+  },
+  {
+   "start": 18798,
+   "end": 18936,
+   "size": 138,
+   "ninsns": 42,
+   "calls": [
+    20531
+   ],
+   "has_ret": true,
+   "reach": 18936,
+   "origin": "authored"
+  },
+  {
+   "start": 18936,
+   "end": 19051,
+   "size": 115,
+   "ninsns": 47,
+   "calls": [
+    20531
+   ],
+   "has_ret": true,
+   "reach": 19051,
+   "origin": "authored"
+  },
+  {
+   "start": 19051,
+   "end": 19088,
+   "size": 37,
+   "ninsns": 107,
+   "calls": [
+    20531
+   ],
+   "has_ret": true,
+   "reach": 19316,
+   "origin": "authored"
+  },
+  {
+   "start": 19088,
+   "end": 19316,
+   "size": 228,
+   "ninsns": 94,
+   "calls": [
+    20531
+   ],
+   "has_ret": true,
+   "reach": 19316,
+   "origin": "authored"
+  },
+  {
+   "start": 19316,
+   "end": 19392,
+   "size": 76,
+   "ninsns": 30,
+   "calls": [
+    20531
+   ],
+   "has_ret": true,
+   "reach": 19392,
+   "origin": "authored"
+  },
+  {
+   "start": 19392,
+   "end": 19513,
+   "size": 121,
+   "ninsns": 37,
+   "calls": [],
+   "has_ret": true,
+   "reach": 19513,
+   "origin": "authored"
+  },
+  {
+   "start": 19513,
+   "end": 19546,
+   "size": 33,
+   "ninsns": 10,
+   "calls": [],
+   "has_ret": true,
+   "reach": 19546,
+   "origin": "authored"
+  },
+  {
+   "start": 19546,
+   "end": 19590,
+   "size": 44,
+   "ninsns": 18,
+   "calls": [],
+   "has_ret": true,
+   "reach": 19590,
+   "origin": "authored"
+  },
+  {
+   "start": 19590,
+   "end": 19641,
+   "size": 51,
+   "ninsns": 23,
+   "calls": [
+    19513,
+    19546
+   ],
+   "has_ret": true,
+   "reach": 19641,
+   "origin": "authored"
+  },
+  {
+   "start": 19641,
+   "end": 19683,
+   "size": 42,
+   "ninsns": 14,
+   "calls": [],
+   "has_ret": true,
+   "reach": 19683,
+   "origin": "authored"
+  },
+  {
+   "start": 19683,
+   "end": 19736,
+   "size": 53,
+   "ninsns": 53,
+   "calls": [
+    19641
+   ],
+   "has_ret": true,
+   "reach": 19817,
+   "origin": "authored"
+  },
+  {
+   "start": 19736,
+   "end": 19817,
+   "size": 81,
+   "ninsns": 34,
+   "calls": [
+    19641
+   ],
+   "has_ret": true,
+   "reach": 19817,
+   "origin": "authored"
+  },
+  {
+   "start": 19817,
+   "end": 19962,
+   "size": 145,
+   "ninsns": 158,
+   "calls": [
+    9710,
+    19683,
+    20531
+   ],
+   "has_ret": true,
+   "reach": 20268,
+   "origin": "authored"
+  },
+  {
+   "start": 19962,
+   "end": 20119,
+   "size": 157,
+   "ninsns": 146,
+   "calls": [
+    9710,
+    19683,
+    20531
+   ],
+   "has_ret": true,
+   "reach": 20268,
+   "origin": "authored"
+  },
+  {
+   "start": 20119,
+   "end": 20268,
+   "size": 149,
+   "ninsns": 55,
+   "calls": [
+    9710
+   ],
+   "has_ret": true,
+   "reach": 20268,
+   "origin": "authored"
+  },
+  {
+   "start": 20268,
+   "end": 20360,
+   "size": 92,
+   "ninsns": 37,
+   "calls": [],
+   "has_ret": true,
+   "reach": 20360,
+   "origin": "authored"
+  },
+  {
+   "start": 20360,
+   "end": 20368,
+   "size": 8,
+   "ninsns": 62,
+   "calls": [
+    20531,
+    20863
+   ],
+   "has_ret": true,
+   "reach": 20531,
+   "origin": "authored"
+  },
+  {
+   "start": 20368,
+   "end": 20531,
+   "size": 163,
+   "ninsns": 57,
+   "calls": [
+    20531,
+    20863
+   ],
+   "has_ret": true,
+   "reach": 20531,
+   "origin": "authored"
+  },
+  {
+   "start": 20531,
+   "end": 20555,
+   "size": 24,
+   "ninsns": 10,
+   "calls": [],
+   "has_ret": true,
+   "reach": 20555,
+   "origin": "authored"
+  },
+  {
+   "start": 20555,
+   "end": 20600,
+   "size": 45,
+   "ninsns": 18,
+   "calls": [
+    20531,
+    25288
+   ],
+   "has_ret": true,
+   "reach": 20600,
+   "origin": "authored"
+  },
+  {
+   "start": 20600,
+   "end": 20628,
+   "size": 28,
+   "ninsns": 95,
+   "calls": [
+    20555
+   ],
+   "has_ret": true,
+   "reach": 20863,
+   "origin": "authored"
+  },
+  {
+   "start": 20628,
+   "end": 20664,
+   "size": 36,
+   "ninsns": 95,
+   "calls": [
+    20555
+   ],
+   "has_ret": true,
+   "reach": 20863,
+   "origin": "authored"
+  },
+  {
+   "start": 20664,
+   "end": 20720,
+   "size": 56,
+   "ninsns": 79,
+   "calls": [
+    20555
+   ],
+   "has_ret": true,
+   "reach": 20863,
+   "origin": "authored"
+  },
+  {
+   "start": 20720,
+   "end": 20764,
+   "size": 44,
+   "ninsns": 30,
+   "calls": [],
+   "has_ret": true,
+   "reach": 20863,
+   "origin": "authored"
+  },
+  {
+   "start": 20764,
+   "end": 20863,
+   "size": 99,
+   "ninsns": 11,
+   "calls": [],
+   "has_ret": true,
+   "reach": 20863,
+   "origin": "authored"
+  },
+  {
+   "start": 20863,
+   "end": 21164,
+   "size": 301,
+   "ninsns": 103,
+   "calls": [
+    13660,
+    18798,
+    18936,
+    19590,
+    20555,
+    20600,
+    23936
+   ],
+   "has_ret": true,
+   "reach": 21164,
+   "origin": "authored"
+  },
+  {
+   "start": 21190,
+   "end": 21195,
+   "size": 5,
+   "ninsns": 436,
+   "calls": [
+    14000,
+    22874,
+    23943,
+    25471
+   ],
+   "has_ret": true,
+   "reach": 22394,
+   "origin": "authored"
+  },
+  {
+   "start": 21195,
+   "end": 21259,
+   "size": 64,
+   "ninsns": 432,
+   "calls": [
+    14000,
+    22874,
+    23943,
+    25471
+   ],
+   "has_ret": true,
+   "reach": 22394,
+   "origin": "authored"
+  },
+  {
+   "start": 21259,
+   "end": 21296,
+   "size": 37,
+   "ninsns": 410,
+   "calls": [
+    14000,
+    22874,
+    23943,
+    25471
+   ],
+   "has_ret": true,
+   "reach": 22394,
+   "origin": "authored"
+  },
+  {
+   "start": 21296,
+   "end": 21363,
+   "size": 67,
+   "ninsns": 409,
+   "calls": [
+    14000,
+    22874,
+    23943,
+    25471
+   ],
+   "has_ret": true,
+   "reach": 22394,
+   "origin": "authored"
+  },
+  {
+   "start": 21363,
+   "end": 21454,
+   "size": 91,
+   "ninsns": 370,
+   "calls": [
+    14000,
+    22874,
+    23943,
+    25471
+   ],
+   "has_ret": true,
+   "reach": 22394,
+   "origin": "authored"
+  },
+  {
+   "start": 21454,
+   "end": 21577,
+   "size": 123,
+   "ninsns": 332,
+   "calls": [
+    14000,
+    23943,
+    25471
+   ],
+   "has_ret": true,
+   "reach": 22394,
+   "origin": "authored"
+  },
+  {
+   "start": 21577,
+   "end": 21754,
+   "size": 177,
+   "ninsns": 297,
+   "calls": [
+    14000,
+    23943,
+    25471
+   ],
+   "has_ret": true,
+   "reach": 22394,
+   "origin": "authored"
+  },
+  {
+   "start": 21754,
+   "end": 21896,
+   "size": 142,
+   "ninsns": 223,
+   "calls": [
+    23943,
+    25471
+   ],
+   "has_ret": true,
+   "reach": 22394,
+   "origin": "authored"
+  },
+  {
+   "start": 21896,
+   "end": 22394,
+   "size": 498,
+   "ninsns": 172,
+   "calls": [
+    25471
+   ],
+   "has_ret": true,
+   "reach": 22394,
+   "origin": "authored"
+  },
+  {
+   "start": 22394,
+   "end": 22781,
+   "size": 387,
+   "ninsns": 138,
+   "calls": [
+    21190,
+    23022
+   ],
+   "has_ret": true,
+   "reach": 22781,
+   "origin": "authored"
+  },
+  {
+   "start": 22781,
+   "end": 22811,
+   "size": 30,
+   "ninsns": 15,
+   "calls": [],
+   "has_ret": true,
+   "reach": 22811,
+   "origin": "authored"
+  },
+  {
+   "start": 22811,
+   "end": 22874,
+   "size": 63,
+   "ninsns": 24,
+   "calls": [],
+   "has_ret": true,
+   "reach": 22874,
+   "origin": "authored"
+  },
+  {
+   "start": 22874,
+   "end": 23022,
+   "size": 148,
+   "ninsns": 34,
+   "calls": [],
+   "has_ret": true,
+   "reach": 23022,
+   "origin": "authored"
+  },
+  {
+   "start": 23022,
+   "end": 23092,
+   "size": 70,
+   "ninsns": 35,
+   "calls": [
+    0
+   ],
+   "has_ret": true,
+   "reach": 23092,
+   "origin": "authored"
+  },
+  {
+   "start": 23092,
+   "end": 23124,
+   "size": 32,
+   "ninsns": 11,
+   "calls": [],
+   "has_ret": true,
+   "reach": 23124,
+   "origin": "authored"
+  },
+  {
+   "start": 23124,
+   "end": 23337,
+   "size": 213,
+   "ninsns": 141,
+   "calls": [
+    22781,
+    23124
+   ],
+   "has_ret": true,
+   "reach": 23484,
+   "origin": "authored"
+  },
+  {
+   "start": 23337,
+   "end": 23466,
+   "size": 129,
+   "ninsns": 111,
+   "calls": [
+    22781
+   ],
+   "has_ret": true,
+   "reach": 23484,
+   "origin": "authored"
+  },
+  {
+   "start": 23466,
+   "end": 23484,
+   "size": 18,
+   "ninsns": 110,
+   "calls": [
+    22781
+   ],
+   "has_ret": true,
+   "reach": 23484,
+   "origin": "authored"
+  },
+  {
+   "start": 23484,
+   "end": 23540,
+   "size": 56,
+   "ninsns": 20,
+   "calls": [
+    23124
+   ],
+   "has_ret": true,
+   "reach": 23540,
+   "origin": "authored"
+  },
+  {
+   "start": 23540,
+   "end": 23821,
+   "size": 281,
+   "ninsns": 64,
+   "calls": [
+    23092,
+    23124
+   ],
+   "has_ret": true,
+   "reach": 23821,
+   "origin": "authored"
+  },
+  {
+   "start": 23821,
+   "end": 23861,
+   "size": 40,
+   "ninsns": 15,
+   "calls": [
+    23124
+   ],
+   "has_ret": true,
+   "reach": 23861,
+   "origin": "authored"
+  },
+  {
+   "start": 23861,
+   "end": 23912,
+   "size": 51,
+   "ninsns": 21,
+   "calls": [
+    23092,
+    23124
+   ],
+   "has_ret": true,
+   "reach": 23912,
+   "origin": "authored"
+  },
+  {
+   "start": 23912,
+   "end": 23936,
+   "size": 24,
+   "ninsns": 11,
+   "calls": [
+    23092,
+    23124
+   ],
+   "has_ret": true,
+   "reach": 23936,
+   "origin": "authored"
+  },
+  {
+   "start": 23936,
+   "end": 23943,
+   "size": 7,
+   "ninsns": 4,
+   "calls": [
+    23124
+   ],
+   "has_ret": true,
+   "reach": 23943,
+   "origin": "authored"
+  },
+  {
+   "start": 23943,
+   "end": 23950,
+   "size": 7,
+   "ninsns": 4,
+   "calls": [
+    23124
+   ],
+   "has_ret": true,
+   "reach": 23950,
+   "origin": "authored"
+  },
+  {
+   "start": 23950,
+   "end": 23957,
+   "size": 7,
+   "ninsns": 4,
+   "calls": [
+    23124
+   ],
+   "has_ret": true,
+   "reach": 23957,
+   "origin": "authored"
+  },
+  {
+   "start": 23957,
+   "end": 23964,
+   "size": 7,
+   "ninsns": 4,
+   "calls": [
+    23124
+   ],
+   "has_ret": true,
+   "reach": 23964,
+   "origin": "authored"
+  },
+  {
+   "start": 23964,
+   "end": 23971,
+   "size": 7,
+   "ninsns": 4,
+   "calls": [
+    23124
+   ],
+   "has_ret": true,
+   "reach": 23971,
+   "origin": "authored"
+  },
+  {
+   "start": 23971,
+   "end": 23978,
+   "size": 7,
+   "ninsns": 4,
+   "calls": [
+    23124
+   ],
+   "has_ret": true,
+   "reach": 23978,
+   "origin": "authored"
+  },
+  {
+   "start": 23978,
+   "end": 24005,
+   "size": 27,
+   "ninsns": 14,
+   "calls": [],
+   "has_ret": true,
+   "reach": 24005,
+   "origin": "authored"
+  },
+  {
+   "start": 24006,
+   "end": 24035,
+   "size": 29,
+   "ninsns": 12,
+   "calls": [],
+   "has_ret": true,
+   "reach": 24035,
+   "origin": "authored"
+  },
+  {
+   "start": 24035,
+   "end": 24048,
+   "size": 13,
+   "ninsns": 167,
+   "calls": [
+    22811,
+    23950,
+    25179,
+    25288
+   ],
+   "has_ret": true,
+   "reach": 24539,
+   "origin": "authored"
+  },
+  {
+   "start": 24048,
+   "end": 24368,
+   "size": 320,
+   "ninsns": 161,
+   "calls": [
+    22811,
+    23950,
+    25179,
+    25288
+   ],
+   "has_ret": true,
+   "reach": 24539,
+   "origin": "authored"
+  },
+  {
+   "start": 24368,
+   "end": 24435,
+   "size": 67,
+   "ninsns": 56,
+   "calls": [
+    23950,
+    25179,
+    25288
+   ],
+   "has_ret": true,
+   "reach": 24539,
+   "origin": "authored"
+  },
+  {
+   "start": 24435,
+   "end": 24539,
+   "size": 104,
+   "ninsns": 36,
+   "calls": [
+    23950,
+    25179,
+    25288
+   ],
+   "has_ret": true,
+   "reach": 24539,
+   "origin": "authored"
+  },
+  {
+   "start": 24539,
+   "end": 24572,
+   "size": 33,
+   "ninsns": 11,
+   "calls": [],
+   "has_ret": true,
+   "reach": 24572,
+   "origin": "authored"
+  },
+  {
+   "start": 24572,
+   "end": 24660,
+   "size": 88,
+   "ninsns": 75,
+   "calls": [
+    23957,
+    25179,
+    25288
+   ],
+   "has_ret": true,
+   "reach": 24804,
+   "origin": "authored"
+  },
+  {
+   "start": 24660,
+   "end": 24756,
+   "size": 96,
+   "ninsns": 46,
+   "calls": [
+    25179,
+    25288
+   ],
+   "has_ret": true,
+   "reach": 24804,
+   "origin": "authored"
+  },
+  {
+   "start": 24756,
+   "end": 24804,
+   "size": 48,
+   "ninsns": 17,
+   "calls": [
+    25179,
+    25288
+   ],
+   "has_ret": true,
+   "reach": 24804,
+   "origin": "authored"
+  },
+  {
+   "start": 24804,
+   "end": 25068,
+   "size": 264,
+   "ninsns": 105,
+   "calls": [
+    24035
+   ],
+   "has_ret": true,
+   "reach": 25068,
+   "origin": "authored"
+  },
+  {
+   "start": 25068,
+   "end": 25179,
+   "size": 111,
+   "ninsns": 48,
+   "calls": [],
+   "has_ret": true,
+   "reach": 25179,
+   "origin": "authored"
+  },
+  {
+   "start": 25179,
+   "end": 25288,
+   "size": 109,
+   "ninsns": 50,
+   "calls": [
+    25068
+   ],
+   "has_ret": true,
+   "reach": 25288,
+   "origin": "authored"
+  },
+  {
+   "start": 25288,
+   "end": 25471,
+   "size": 183,
+   "ninsns": 66,
+   "calls": [
+    23978
+   ],
+   "has_ret": true,
+   "reach": 25471,
+   "origin": "authored"
+  },
+  {
+   "start": 25471,
+   "end": 26226,
+   "size": 755,
+   "ninsns": 334,
+   "calls": [
+    9710,
+    14268,
+    15183,
+    24035
+   ],
+   "has_ret": true,
+   "reach": 26226,
+   "origin": "authored"
+  },
+  {
+   "start": 26226,
+   "end": 26272,
+   "size": 46,
+   "ninsns": 23,
+   "calls": [],
+   "has_ret": true,
+   "reach": 26272,
+   "origin": "authored"
+  },
+  {
+   "start": 26272,
+   "end": 26276,
+   "size": 4,
+   "ninsns": 2,
+   "calls": [
+    13780
+   ],
+   "has_ret": true,
+   "reach": 26276,
+   "origin": "authored"
+  },
+  {
+   "start": 26276,
+   "end": 26280,
+   "size": 4,
+   "ninsns": 2,
+   "calls": [
+    20863
+   ],
+   "has_ret": true,
+   "reach": 26280,
+   "origin": "authored"
+  },
+  {
+   "start": 26280,
+   "end": 26284,
+   "size": 4,
+   "ninsns": 2,
+   "calls": [
+    7411
+   ],
+   "has_ret": true,
+   "reach": 26284,
+   "origin": "authored"
+  },
+  {
+   "start": 26284,
+   "end": 26305,
+   "size": 21,
+   "ninsns": 9,
+   "calls": [
+    12039
+   ],
+   "has_ret": true,
+   "reach": 26305,
+   "origin": "authored"
+  },
+  {
+   "start": 26305,
+   "end": 26309,
+   "size": 4,
+   "ninsns": 2,
+   "calls": [
+    10921
+   ],
+   "has_ret": true,
+   "reach": 26309,
+   "origin": "authored"
+  },
+  {
+   "start": 26310,
+   "end": 26322,
+   "size": 12,
+   "ninsns": 71,
+   "calls": [],
+   "has_ret": true,
+   "reach": 26497,
+   "origin": "authored"
+  },
+  {
+   "start": 26322,
+   "end": 26497,
+   "size": 175,
+   "ninsns": 10,
+   "calls": [],
+   "has_ret": true,
+   "reach": 26497,
+   "origin": "authored"
+  },
+  {
+   "start": 26497,
+   "end": 26593,
+   "size": 96,
+   "ninsns": 39,
+   "calls": [],
+   "has_ret": true,
+   "reach": 26593,
+   "origin": "authored"
+  },
+  {
+   "start": 26593,
+   "end": 26725,
+   "size": 132,
+   "ninsns": 57,
+   "calls": [],
+   "has_ret": true,
+   "reach": 26725,
+   "origin": "authored"
+  },
+  {
+   "start": 26725,
+   "end": 26813,
+   "size": 88,
+   "ninsns": 39,
+   "calls": [],
+   "has_ret": true,
+   "reach": 26813,
+   "origin": "authored"
+  },
+  {
+   "start": 26813,
+   "end": 26844,
+   "size": 31,
+   "ninsns": 17,
+   "calls": [],
+   "has_ret": true,
+   "reach": 26844,
+   "origin": "authored"
+  },
+  {
+   "start": 26844,
+   "end": 26970,
+   "size": 126,
+   "ninsns": 241,
+   "calls": [
+    26310,
+    26497,
+    26593
+   ],
+   "has_ret": true,
+   "reach": 31049,
+   "origin": "authored"
+  },
+  {
+   "start": 26970,
+   "end": 26970,
+   "size": 0,
+   "ninsns": 0,
+   "calls": [],
+   "has_ret": false,
+   "reach": 26970,
+   "origin": "authored"
+  },
+  {
+   "start": 27521,
+   "end": 28834,
+   "size": 1313,
+   "ninsns": 237,
+   "calls": [
+    26310,
+    26497,
+    26593
+   ],
+   "has_ret": true,
+   "reach": 31049,
+   "origin": "authored"
+  },
+  {
+   "start": 28834,
+   "end": 30635,
+   "size": 1801,
+   "ninsns": 234,
+   "calls": [
+    19962,
+    26310,
+    26497,
+    26593
+   ],
+   "has_ret": true,
+   "reach": 31049,
+   "origin": "authored"
+  },
+  {
+   "start": 30635,
+   "end": 30950,
+   "size": 315,
+   "ninsns": 156,
+   "calls": [],
+   "has_ret": true,
+   "reach": 30950,
+   "origin": "authored"
+  },
+  {
+   "start": 31050,
+   "end": 31091,
+   "size": 41,
+   "ninsns": 18,
+   "calls": [
+    48413,
+    50010
+   ],
+   "has_ret": true,
+   "reach": 31091,
+   "origin": "authored"
+  },
+  {
+   "start": 31091,
+   "end": 31243,
+   "size": 152,
+   "ninsns": 55,
+   "calls": [
+    31243,
+    31430
+   ],
+   "has_ret": true,
+   "reach": 31243,
+   "origin": "authored"
+  },
+  {
+   "start": 31243,
+   "end": 31430,
+   "size": 187,
+   "ninsns": 79,
+   "calls": [
+    31788,
+    32857,
+    33173,
+    33731,
+    35302,
+    38186
+   ],
+   "has_ret": true,
+   "reach": 31430,
+   "origin": "authored"
+  },
+  {
+   "start": 31430,
+   "end": 31727,
+   "size": 297,
+   "ninsns": 111,
+   "calls": [
+    20628,
+    24435,
+    31050,
+    46392,
+    49929,
+    64000
+   ],
+   "has_ret": true,
+   "reach": 31727,
+   "origin": "authored"
+  },
+  {
+   "start": 31727,
+   "end": 31788,
+   "size": 61,
+   "ninsns": 22,
+   "calls": [
+    49582,
+    60544
+   ],
+   "has_ret": true,
+   "reach": 31788,
+   "origin": "authored"
+  },
+  {
+   "start": 31788,
+   "end": 32857,
+   "size": 1069,
+   "ninsns": 368,
+   "calls": [
+    31727,
+    36190,
+    48413
+   ],
+   "has_ret": true,
+   "reach": 32857,
+   "origin": "authored"
+  },
+  {
+   "start": 32857,
+   "end": 33173,
+   "size": 316,
+   "ninsns": 124,
+   "calls": [
+    33953,
+    34332,
+    35929,
+    36033,
+    60610
+   ],
+   "has_ret": true,
+   "reach": 33173,
+   "origin": "authored"
+  },
+  {
+   "start": 33173,
+   "end": 33331,
+   "size": 158,
+   "ninsns": 201,
+   "calls": [
+    34332,
+    35302,
+    35929,
+    36033
+   ],
+   "has_ret": true,
+   "reach": 33731,
+   "origin": "authored"
+  },
+  {
+   "start": 33331,
+   "end": 33731,
+   "size": 400,
+   "ninsns": 196,
+   "calls": [
+    34332,
+    35302,
+    35929,
+    36033
+   ],
+   "has_ret": true,
+   "reach": 33731,
+   "origin": "authored"
+  },
+  {
+   "start": 33731,
+   "end": 33908,
+   "size": 177,
+   "ninsns": 73,
+   "calls": [
+    35302,
+    60610
+   ],
+   "has_ret": true,
+   "reach": 33908,
+   "origin": "authored"
+  },
+  {
+   "start": 33908,
+   "end": 33953,
+   "size": 45,
+   "ninsns": 18,
+   "calls": [
+    49696
+   ],
+   "has_ret": true,
+   "reach": 33953,
+   "origin": "authored"
+  },
+  {
+   "start": 33953,
+   "end": 34266,
+   "size": 313,
+   "ninsns": 102,
+   "calls": [],
+   "has_ret": true,
+   "reach": 34266,
+   "origin": "authored"
+  },
+  {
+   "start": 34266,
+   "end": 34332,
+   "size": 66,
+   "ninsns": 25,
+   "calls": [
+    20664,
+    46392,
+    64000
+   ],
+   "has_ret": true,
+   "reach": 34332,
+   "origin": "authored"
+  },
+  {
+   "start": 34332,
+   "end": 34631,
+   "size": 299,
+   "ninsns": 105,
+   "calls": [
+    34631,
+    34761,
+    35045
+   ],
+   "has_ret": true,
+   "reach": 34631,
+   "origin": "authored"
+  },
+  {
+   "start": 34631,
+   "end": 34761,
+   "size": 130,
+   "ninsns": 55,
+   "calls": [],
+   "has_ret": true,
+   "reach": 34761,
+   "origin": "authored"
+  },
+  {
+   "start": 34761,
+   "end": 34900,
+   "size": 139,
+   "ninsns": 54,
+   "calls": [
+    60610
+   ],
+   "has_ret": true,
+   "reach": 34900,
+   "origin": "authored"
+  },
+  {
+   "start": 34900,
+   "end": 35045,
+   "size": 145,
+   "ninsns": 58,
+   "calls": [],
+   "has_ret": true,
+   "reach": 35045,
+   "origin": "authored"
+  },
+  {
+   "start": 35045,
+   "end": 35302,
+   "size": 257,
+   "ninsns": 99,
+   "calls": [
+    34900,
+    46231,
+    49326
+   ],
+   "has_ret": true,
+   "reach": 35302,
+   "origin": "authored"
+  },
+  {
+   "start": 35302,
+   "end": 35442,
+   "size": 140,
+   "ninsns": 54,
+   "calls": [],
+   "has_ret": true,
+   "reach": 35442,
+   "origin": "authored"
+  },
+  {
+   "start": 35442,
+   "end": 35645,
+   "size": 203,
+   "ninsns": 84,
+   "calls": [],
+   "has_ret": true,
+   "reach": 35645,
+   "origin": "authored"
+  },
+  {
+   "start": 35645,
+   "end": 35748,
+   "size": 103,
+   "ninsns": 48,
+   "calls": [],
+   "has_ret": true,
+   "reach": 35748,
+   "origin": "authored"
+  },
+  {
+   "start": 35748,
+   "end": 35929,
+   "size": 181,
+   "ninsns": 73,
+   "calls": [
+    35645
+   ],
+   "has_ret": true,
+   "reach": 35929,
+   "origin": "authored"
+  },
+  {
+   "start": 35929,
+   "end": 36033,
+   "size": 104,
+   "ninsns": 45,
+   "calls": [],
+   "has_ret": true,
+   "reach": 36033,
+   "origin": "authored"
+  },
+  {
+   "start": 36033,
+   "end": 36042,
+   "size": 9,
+   "ninsns": 35,
+   "calls": [
+    35645
+   ],
+   "has_ret": true,
+   "reach": 36132,
+   "origin": "authored"
+  },
+  {
+   "start": 36042,
+   "end": 36132,
+   "size": 90,
+   "ninsns": 33,
+   "calls": [
+    35645
+   ],
+   "has_ret": true,
+   "reach": 36132,
+   "origin": "authored"
+  },
+  {
+   "start": 36132,
+   "end": 36190,
+   "size": 58,
+   "ninsns": 21,
+   "calls": [
+    35929
+   ],
+   "has_ret": true,
+   "reach": 36190,
+   "origin": "authored"
+  },
+  {
+   "start": 36190,
+   "end": 37124,
+   "size": 934,
+   "ninsns": 720,
+   "calls": [
+    16065,
+    48103,
+    48413,
+    48704,
+    50120
+   ],
+   "has_ret": true,
+   "reach": 38186,
+   "origin": "authored"
+  },
+  {
+   "start": 37124,
+   "end": 38186,
+   "size": 1062,
+   "ninsns": 476,
+   "calls": [
+    16065,
+    48704,
+    50120
+   ],
+   "has_ret": true,
+   "reach": 38186,
+   "origin": "authored"
+  },
+  {
+   "start": 38186,
+   "end": 38212,
+   "size": 26,
+   "ninsns": 9,
+   "calls": [],
+   "has_ret": true,
+   "reach": 38212,
+   "origin": "authored"
+  },
+  {
+   "start": 38212,
+   "end": 38266,
+   "size": 54,
+   "ninsns": 22,
+   "calls": [],
+   "has_ret": true,
+   "reach": 38266,
+   "origin": "authored"
+  },
+  {
+   "start": 38266,
+   "end": 38372,
+   "size": 106,
+   "ninsns": 38,
+   "calls": [],
+   "has_ret": true,
+   "reach": 38372,
+   "origin": "authored"
+  },
+  {
+   "start": 38372,
+   "end": 38502,
+   "size": 130,
+   "ninsns": 49,
+   "calls": [
+    38266,
+    61009
+   ],
+   "has_ret": true,
+   "reach": 38502,
+   "origin": "authored"
+  },
+  {
+   "start": 38502,
+   "end": 38685,
+   "size": 183,
+   "ninsns": 75,
+   "calls": [
+    36132,
+    38186,
+    38266,
+    61009
+   ],
+   "has_ret": true,
+   "reach": 38685,
+   "origin": "authored"
+  },
+  {
+   "start": 38685,
+   "end": 38968,
+   "size": 283,
+   "ninsns": 107,
+   "calls": [
+    35929,
+    49929
+   ],
+   "has_ret": true,
+   "reach": 38968,
+   "origin": "authored"
+  },
+  {
+   "start": 38968,
+   "end": 39046,
+   "size": 78,
+   "ninsns": 27,
+   "calls": [
+    64000
+   ],
+   "has_ret": true,
+   "reach": 39046,
+   "origin": "authored"
+  },
+  {
+   "start": 39046,
+   "end": 39144,
+   "size": 98,
+   "ninsns": 35,
+   "calls": [
+    8810,
+    34266,
+    39144,
+    64000
+   ],
+   "has_ret": true,
+   "reach": 39144,
+   "origin": "authored"
+  },
+  {
+   "start": 39144,
+   "end": 39197,
+   "size": 53,
+   "ninsns": 37,
+   "calls": [],
+   "has_ret": true,
+   "reach": 39221,
+   "origin": "authored"
+  },
+  {
+   "start": 39197,
+   "end": 39221,
+   "size": 24,
+   "ninsns": 12,
+   "calls": [],
+   "has_ret": true,
+   "reach": 39221,
+   "origin": "authored"
+  },
+  {
+   "start": 39221,
+   "end": 39338,
+   "size": 117,
+   "ninsns": 52,
+   "calls": [
+    61009,
+    61613
+   ],
+   "has_ret": true,
+   "reach": 39338,
+   "origin": "authored"
+  },
+  {
+   "start": 39396,
+   "end": 39440,
+   "size": 44,
+   "ninsns": 14,
+   "calls": [],
+   "has_ret": true,
+   "reach": 39440,
+   "origin": "authored"
+  },
+  {
+   "start": 39440,
+   "end": 39545,
+   "size": 105,
+   "ninsns": 41,
+   "calls": [],
+   "has_ret": true,
+   "reach": 39547,
+   "origin": "authored"
+  },
+  {
+   "start": 39545,
+   "end": 39547,
+   "size": 2,
+   "ninsns": 23,
+   "calls": [
+    39396,
+    51563
+   ],
+   "has_ret": true,
+   "reach": 39599,
+   "origin": "authored"
+  },
+  {
+   "start": 39547,
+   "end": 39599,
+   "size": 52,
+   "ninsns": 22,
+   "calls": [
+    39396,
+    51563
+   ],
+   "has_ret": true,
+   "reach": 39599,
+   "origin": "authored"
+  },
+  {
+   "start": 39599,
+   "end": 39613,
+   "size": 14,
+   "ninsns": 50,
+   "calls": [
+    39396,
+    46599
+   ],
+   "has_ret": true,
+   "reach": 41888,
+   "origin": "authored"
+  },
+  {
+   "start": 39613,
+   "end": 39613,
+   "size": 0,
+   "ninsns": 0,
+   "calls": [],
+   "has_ret": false,
+   "reach": 39613,
+   "origin": "authored"
+  },
+  {
+   "start": 41050,
+   "end": 41888,
+   "size": 838,
+   "ninsns": 137,
+   "calls": [
+    8810,
+    24048,
+    39547,
+    39599,
+    49356,
+    49582
+   ],
+   "has_ret": true,
+   "reach": 41888,
+   "origin": "authored"
+  },
+  {
+   "start": 41888,
+   "end": 41996,
+   "size": 108,
+   "ninsns": 41,
+   "calls": [
+    16065,
+    18387,
+    49356
+   ],
+   "has_ret": true,
+   "reach": 41996,
+   "origin": "authored"
+  },
+  {
+   "start": 41996,
+   "end": 42036,
+   "size": 40,
+   "ninsns": 19,
+   "calls": [],
+   "has_ret": true,
+   "reach": 42036,
+   "origin": "authored"
+  },
+  {
+   "start": 42036,
+   "end": 42965,
+   "size": 929,
+   "ninsns": 584,
+   "calls": [
+    10990,
+    16065,
+    18387,
+    39396,
+    39599,
+    41996,
+    46599,
+    46786,
+    49356,
+    49582,
+    49648,
+    49696,
+    51563,
+    74346
+   ],
+   "has_ret": true,
+   "reach": 43610,
+   "origin": "authored"
+  },
+  {
+   "start": 42965,
+   "end": 42999,
+   "size": 34,
+   "ninsns": 33,
+   "calls": [
+    16065,
+    49696
+   ],
+   "has_ret": true,
+   "reach": 43610,
+   "origin": "authored"
+  },
+  {
+   "start": 42999,
+   "end": 43610,
+   "size": 611,
+   "ninsns": 23,
+   "calls": [
+    16065,
+    49696
+   ],
+   "has_ret": true,
+   "reach": 43610,
+   "origin": "authored"
+  },
+  {
+   "start": 43610,
+   "end": 44263,
+   "size": 653,
+   "ninsns": 41,
+   "calls": [],
+   "has_ret": true,
+   "reach": 44263,
+   "origin": "authored"
+  },
+  {
+   "start": 44263,
+   "end": 44328,
+   "size": 65,
+   "ninsns": 25,
+   "calls": [
+    44328
+   ],
+   "has_ret": true,
+   "reach": 44328,
+   "origin": "authored"
+  },
+  {
+   "start": 44328,
+   "end": 44445,
+   "size": 117,
+   "ninsns": 116,
+   "calls": [
+    44639
+   ],
+   "has_ret": true,
+   "reach": 44639,
+   "origin": "authored"
+  },
+  {
+   "start": 44445,
+   "end": 44639,
+   "size": 194,
+   "ninsns": 75,
+   "calls": [],
+   "has_ret": true,
+   "reach": 44639,
+   "origin": "authored"
+  },
+  {
+   "start": 44639,
+   "end": 45347,
+   "size": 708,
+   "ninsns": 454,
+   "calls": [
+    19736,
+    44639,
+    45872,
+    45989,
+    46231,
+    49326,
+    60577,
+    60610
+   ],
+   "has_ret": true,
+   "reach": 45872,
+   "origin": "authored"
+  },
+  {
+   "start": 45347,
+   "end": 45872,
+   "size": 525,
+   "ninsns": 353,
+   "calls": [
+    19736,
+    44639,
+    45872,
+    45989,
+    46231,
+    60577,
+    60610
+   ],
+   "has_ret": true,
+   "reach": 45872,
+   "origin": "authored"
+  },
+  {
+   "start": 45872,
+   "end": 45989,
+   "size": 117,
+   "ninsns": 50,
+   "calls": [],
+   "has_ret": true,
+   "reach": 45989,
+   "origin": "authored"
+  },
+  {
+   "start": 45989,
+   "end": 46030,
+   "size": 41,
+   "ninsns": 101,
+   "calls": [],
+   "has_ret": true,
+   "reach": 46231,
+   "origin": "authored"
+  },
+  {
+   "start": 46030,
+   "end": 46231,
+   "size": 201,
+   "ninsns": 115,
+   "calls": [],
+   "has_ret": true,
+   "reach": 46231,
+   "origin": "authored"
+  },
+  {
+   "start": 46231,
+   "end": 46345,
+   "size": 114,
+   "ninsns": 50,
+   "calls": [],
+   "has_ret": true,
+   "reach": 46345,
+   "origin": "authored"
+  },
+  {
+   "start": 46345,
+   "end": 46392,
+   "size": 47,
+   "ninsns": 20,
+   "calls": [
+    39396
+   ],
+   "has_ret": true,
+   "reach": 46392,
+   "origin": "authored"
+  },
+  {
+   "start": 46392,
+   "end": 46548,
+   "size": 156,
+   "ninsns": 57,
+   "calls": [
+    39396,
+    49582,
+    51090
+   ],
+   "has_ret": true,
+   "reach": 46548,
+   "origin": "authored"
+  },
+  {
+   "start": 46548,
+   "end": 46599,
+   "size": 51,
+   "ninsns": 21,
+   "calls": [],
+   "has_ret": true,
+   "reach": 46599,
+   "origin": "authored"
+  },
+  {
+   "start": 46599,
+   "end": 46725,
+   "size": 126,
+   "ninsns": 50,
+   "calls": [
+    46725
+   ],
+   "has_ret": true,
+   "reach": 46725,
+   "origin": "authored"
+  },
+  {
+   "start": 46725,
+   "end": 46786,
+   "size": 61,
+   "ninsns": 22,
+   "calls": [],
+   "has_ret": true,
+   "reach": 46786,
+   "origin": "authored"
+  },
+  {
+   "start": 46786,
+   "end": 47003,
+   "size": 217,
+   "ninsns": 83,
+   "calls": [
+    18387,
+    60610
+   ],
+   "has_ret": true,
+   "reach": 47003,
+   "origin": "authored"
+  },
+  {
+   "start": 47003,
+   "end": 47051,
+   "size": 48,
+   "ninsns": 19,
+   "calls": [],
+   "has_ret": true,
+   "reach": 47051,
+   "origin": "authored"
+  },
+  {
+   "start": 47051,
+   "end": 47218,
+   "size": 167,
+   "ninsns": 116,
+   "calls": [
+    16065,
+    39396,
+    46548,
+    49356
+   ],
+   "has_ret": true,
+   "reach": 47342,
+   "origin": "authored"
+  },
+  {
+   "start": 47218,
+   "end": 47234,
+   "size": 16,
+   "ninsns": 46,
+   "calls": [
+    16065,
+    49356
+   ],
+   "has_ret": true,
+   "reach": 47342,
+   "origin": "authored"
+  },
+  {
+   "start": 47234,
+   "end": 47342,
+   "size": 108,
+   "ninsns": 41,
+   "calls": [
+    16065,
+    49356
+   ],
+   "has_ret": true,
+   "reach": 47342,
+   "origin": "authored"
+  },
+  {
+   "start": 47342,
+   "end": 47386,
+   "size": 44,
+   "ninsns": 14,
+   "calls": [],
+   "has_ret": true,
+   "reach": 47386,
+   "origin": "authored"
+  },
+  {
+   "start": 47386,
+   "end": 47426,
+   "size": 40,
+   "ninsns": 168,
+   "calls": [
+    50271,
+    60610
+   ],
+   "has_ret": true,
+   "reach": 47786,
+   "origin": "authored"
+  },
+  {
+   "start": 47426,
+   "end": 47786,
+   "size": 360,
+   "ninsns": 14,
+   "calls": [],
+   "has_ret": true,
+   "reach": 47786,
+   "origin": "authored"
+  },
+  {
+   "start": 47786,
+   "end": 47890,
+   "size": 104,
+   "ninsns": 46,
+   "calls": [
+    48704
+   ],
+   "has_ret": true,
+   "reach": 47896,
+   "origin": "authored"
+  },
+  {
+   "start": 47890,
+   "end": 47896,
+   "size": 6,
+   "ninsns": 3,
+   "calls": [],
+   "has_ret": true,
+   "reach": 47896,
+   "origin": "authored"
+  },
+  {
+   "start": 47896,
+   "end": 47922,
+   "size": 26,
+   "ninsns": 67,
+   "calls": [
+    47386,
+    47786,
+    50010
+   ],
+   "has_ret": true,
+   "reach": 48103,
+   "origin": "authored"
+  },
+  {
+   "start": 47922,
+   "end": 47938,
+   "size": 16,
+   "ninsns": 58,
+   "calls": [
+    47386,
+    47786,
+    50010
+   ],
+   "has_ret": true,
+   "reach": 48103,
+   "origin": "authored"
+  },
+  {
+   "start": 47938,
+   "end": 48082,
+   "size": 144,
+   "ninsns": 52,
+   "calls": [
+    47386,
+    47786
+   ],
+   "has_ret": true,
+   "reach": 48103,
+   "origin": "authored"
+  },
+  {
+   "start": 48082,
+   "end": 48103,
+   "size": 21,
+   "ninsns": 8,
+   "calls": [],
+   "has_ret": true,
+   "reach": 48103,
+   "origin": "authored"
+  },
+  {
+   "start": 48103,
+   "end": 48194,
+   "size": 91,
+   "ninsns": 38,
+   "calls": [],
+   "has_ret": true,
+   "reach": 48194,
+   "origin": "authored"
+  },
+  {
+   "start": 48194,
+   "end": 48223,
+   "size": 29,
+   "ninsns": 11,
+   "calls": [
+    50010
+   ],
+   "has_ret": true,
+   "reach": 48223,
+   "origin": "authored"
+  },
+  {
+   "start": 48223,
+   "end": 48288,
+   "size": 65,
+   "ninsns": 69,
+   "calls": [
+    48413
+   ],
+   "has_ret": true,
+   "reach": 48413,
+   "origin": "authored"
+  },
+  {
+   "start": 48288,
+   "end": 48354,
+   "size": 66,
+   "ninsns": 45,
+   "calls": [
+    48413
+   ],
+   "has_ret": true,
+   "reach": 48413,
+   "origin": "authored"
+  },
+  {
+   "start": 48354,
+   "end": 48354,
+   "size": 0,
+   "ninsns": 0,
+   "calls": [],
+   "has_ret": false,
+   "reach": 48354,
+   "origin": "authored"
+  },
+  {
+   "start": 48402,
+   "end": 48413,
+   "size": 11,
+   "ninsns": 93,
+   "calls": [
+    48413,
+    49582,
+    78257
+   ],
+   "has_ret": true,
+   "reach": 48704,
+   "origin": "authored"
+  },
+  {
+   "start": 48413,
+   "end": 48418,
+   "size": 5,
+   "ninsns": 106,
+   "calls": [
+    48413,
+    49582,
+    78257
+   ],
+   "has_ret": true,
+   "reach": 48704,
+   "origin": "authored"
+  },
+  {
+   "start": 48418,
+   "end": 48434,
+   "size": 16,
+   "ninsns": 102,
+   "calls": [
+    48413,
+    49582,
+    78257
+   ],
+   "has_ret": true,
+   "reach": 48704,
+   "origin": "authored"
+  },
+  {
+   "start": 48434,
+   "end": 48450,
+   "size": 16,
+   "ninsns": 98,
+   "calls": [
+    48413,
+    49582,
+    78257
+   ],
+   "has_ret": true,
+   "reach": 48704,
+   "origin": "authored"
+  },
+  {
+   "start": 48450,
+   "end": 48466,
+   "size": 16,
+   "ninsns": 93,
+   "calls": [
+    48413,
+    49582,
+    78257
+   ],
+   "has_ret": true,
+   "reach": 48704,
+   "origin": "authored"
+  },
+  {
+   "start": 48466,
+   "end": 48482,
+   "size": 16,
+   "ninsns": 89,
+   "calls": [
+    48413,
+    49582,
+    78257
+   ],
+   "has_ret": true,
+   "reach": 48704,
+   "origin": "authored"
+  },
+  {
+   "start": 48482,
+   "end": 48578,
+   "size": 96,
+   "ninsns": 87,
+   "calls": [
+    48413,
+    49582,
+    78257
+   ],
+   "has_ret": true,
+   "reach": 48704,
+   "origin": "authored"
+  },
+  {
+   "start": 48578,
+   "end": 48599,
+   "size": 21,
+   "ninsns": 47,
+   "calls": [
+    48413,
+    49582,
+    78257
+   ],
+   "has_ret": true,
+   "reach": 48704,
+   "origin": "authored"
+  },
+  {
+   "start": 48599,
+   "end": 48658,
+   "size": 59,
+   "ninsns": 39,
+   "calls": [
+    48413,
+    49582,
+    78257
+   ],
+   "has_ret": true,
+   "reach": 48704,
+   "origin": "authored"
+  },
+  {
+   "start": 48658,
+   "end": 48704,
+   "size": 46,
+   "ninsns": 16,
+   "calls": [
+    48413,
+    49582
+   ],
+   "has_ret": true,
+   "reach": 48704,
+   "origin": "authored"
+  },
+  {
+   "start": 48704,
+   "end": 48818,
+   "size": 114,
+   "ninsns": 130,
+   "calls": [
+    48985
+   ],
+   "has_ret": true,
+   "reach": 48985,
+   "origin": "authored"
+  },
+  {
+   "start": 48818,
+   "end": 48834,
+   "size": 16,
+   "ninsns": 86,
+   "calls": [
+    48985
+   ],
+   "has_ret": true,
+   "reach": 48985,
+   "origin": "authored"
+  },
+  {
+   "start": 48834,
+   "end": 48885,
+   "size": 51,
+   "ninsns": 85,
+   "calls": [
+    48985
+   ],
+   "has_ret": true,
+   "reach": 48985,
+   "origin": "authored"
+  },
+  {
+   "start": 48885,
+   "end": 48962,
+   "size": 77,
+   "ninsns": 85,
+   "calls": [
+    48985
+   ],
+   "has_ret": true,
+   "reach": 48985,
+   "origin": "authored"
+  },
+  {
+   "start": 48962,
+   "end": 48978,
+   "size": 16,
+   "ninsns": 14,
+   "calls": [],
+   "has_ret": true,
+   "reach": 48985,
+   "origin": "authored"
+  },
+  {
+   "start": 48978,
+   "end": 48985,
+   "size": 7,
+   "ninsns": 4,
+   "calls": [],
+   "has_ret": true,
+   "reach": 48985,
+   "origin": "authored"
+  },
+  {
+   "start": 48985,
+   "end": 49010,
+   "size": 25,
+   "ninsns": 40,
+   "calls": [],
+   "has_ret": true,
+   "reach": 49085,
+   "origin": "authored"
+  },
+  {
+   "start": 49010,
+   "end": 49057,
+   "size": 47,
+   "ninsns": 37,
+   "calls": [],
+   "has_ret": true,
+   "reach": 49085,
+   "origin": "authored"
+  },
+  {
+   "start": 49057,
+   "end": 49074,
+   "size": 17,
+   "ninsns": 13,
+   "calls": [],
+   "has_ret": true,
+   "reach": 49085,
+   "origin": "authored"
+  },
+  {
+   "start": 49074,
+   "end": 49085,
+   "size": 11,
+   "ninsns": 5,
+   "calls": [],
+   "has_ret": true,
+   "reach": 49085,
+   "origin": "authored"
+  },
+  {
+   "start": 49085,
+   "end": 49218,
+   "size": 133,
+   "ninsns": 93,
+   "calls": [
+    48413,
+    48704,
+    50120,
+    81601
+   ],
+   "has_ret": true,
+   "reach": 49326,
+   "origin": "authored"
+  },
+  {
+   "start": 49218,
+   "end": 49326,
+   "size": 108,
+   "ninsns": 38,
+   "calls": [
+    48413,
+    48704
+   ],
+   "has_ret": true,
+   "reach": 49326,
+   "origin": "authored"
+  },
+  {
+   "start": 49326,
+   "end": 49356,
+   "size": 30,
+   "ninsns": 12,
+   "calls": [],
+   "has_ret": true,
+   "reach": 49356,
+   "origin": "authored"
+  },
+  {
+   "start": 49356,
+   "end": 49426,
+   "size": 70,
+   "ninsns": 87,
+   "calls": [
+    48413,
+    48704,
+    50120
+   ],
+   "has_ret": true,
+   "reach": 49582,
+   "origin": "authored"
+  },
+  {
+   "start": 49426,
+   "end": 49442,
+   "size": 16,
+   "ninsns": 59,
+   "calls": [
+    48413,
+    48704
+   ],
+   "has_ret": true,
+   "reach": 49582,
+   "origin": "authored"
+  },
+  {
+   "start": 49442,
+   "end": 49458,
+   "size": 16,
+   "ninsns": 54,
+   "calls": [
+    48413,
+    48704
+   ],
+   "has_ret": true,
+   "reach": 49582,
+   "origin": "authored"
+  },
+  {
+   "start": 49458,
+   "end": 49474,
+   "size": 16,
+   "ninsns": 50,
+   "calls": [
+    48413,
+    48704
+   ],
+   "has_ret": true,
+   "reach": 49582,
+   "origin": "authored"
+  },
+  {
+   "start": 49474,
+   "end": 49570,
+   "size": 96,
+   "ninsns": 42,
+   "calls": [
+    48413,
+    48704
+   ],
+   "has_ret": true,
+   "reach": 49582,
+   "origin": "authored"
+  },
+  {
+   "start": 49570,
+   "end": 49582,
+   "size": 12,
+   "ninsns": 6,
+   "calls": [],
+   "has_ret": true,
+   "reach": 49582,
+   "origin": "authored"
+  },
+  {
+   "start": 49582,
+   "end": 49648,
+   "size": 66,
+   "ninsns": 32,
+   "calls": [
+    47342
+   ],
+   "has_ret": true,
+   "reach": 49648,
+   "origin": "authored"
+  },
+  {
+   "start": 49648,
+   "end": 49696,
+   "size": 48,
+   "ninsns": 21,
+   "calls": [
+    49696,
+    81601
+   ],
+   "has_ret": true,
+   "reach": 49696,
+   "origin": "authored"
+  },
+  {
+   "start": 49696,
+   "end": 49781,
+   "size": 85,
+   "ninsns": 35,
+   "calls": [
+    47342,
+    50120
+   ],
+   "has_ret": true,
+   "reach": 49781,
+   "origin": "authored"
+  },
+  {
+   "start": 49781,
+   "end": 49848,
+   "size": 67,
+   "ninsns": 28,
+   "calls": [
+    48413,
+    48704,
+    50010,
+    50120
+   ],
+   "has_ret": true,
+   "reach": 49848,
+   "origin": "authored"
+  },
+  {
+   "start": 49848,
+   "end": 49874,
+   "size": 26,
+   "ninsns": 29,
+   "calls": [
+    49696
+   ],
+   "has_ret": true,
+   "reach": 49929,
+   "origin": "authored"
+  },
+  {
+   "start": 49874,
+   "end": 49929,
+   "size": 55,
+   "ninsns": 20,
+   "calls": [
+    49696
+   ],
+   "has_ret": true,
+   "reach": 49929,
+   "origin": "authored"
+  },
+  {
+   "start": 49929,
+   "end": 50010,
+   "size": 81,
+   "ninsns": 29,
+   "calls": [
+    49781
+   ],
+   "has_ret": true,
+   "reach": 50010,
+   "origin": "authored"
+  },
+  {
+   "start": 50010,
+   "end": 50073,
+   "size": 63,
+   "ninsns": 29,
+   "calls": [],
+   "has_ret": true,
+   "reach": 50073,
+   "origin": "authored"
+  },
+  {
+   "start": 50073,
+   "end": 50120,
+   "size": 47,
+   "ninsns": 18,
+   "calls": [
+    50120
+   ],
+   "has_ret": true,
+   "reach": 50120,
+   "origin": "authored"
+  },
+  {
+   "start": 50120,
+   "end": 50271,
+   "size": 151,
+   "ninsns": 65,
+   "calls": [
+    50294
+   ],
+   "has_ret": true,
+   "reach": 50271,
+   "origin": "authored"
+  },
+  {
+   "start": 50271,
+   "end": 50294,
+   "size": 23,
+   "ninsns": 11,
+   "calls": [],
+   "has_ret": true,
+   "reach": 50294,
+   "origin": "authored"
+  },
+  {
+   "start": 50294,
+   "end": 50511,
+   "size": 217,
+   "ninsns": 80,
+   "calls": [],
+   "has_ret": true,
+   "reach": 50511,
+   "origin": "authored"
+  },
+  {
+   "start": 50511,
+   "end": 50655,
+   "size": 144,
+   "ninsns": 58,
+   "calls": [
+    35442
+   ],
+   "has_ret": true,
+   "reach": 50655,
+   "origin": "authored"
+  },
+  {
+   "start": 50655,
+   "end": 50835,
+   "size": 180,
+   "ninsns": 66,
+   "calls": [
+    35442
+   ],
+   "has_ret": true,
+   "reach": 50835,
+   "origin": "authored"
+  },
+  {
+   "start": 50835,
+   "end": 50854,
+   "size": 19,
+   "ninsns": 60,
+   "calls": [
+    35442
+   ],
+   "has_ret": true,
+   "reach": 50997,
+   "origin": "authored"
+  },
+  {
+   "start": 50854,
+   "end": 50997,
+   "size": 143,
+   "ninsns": 11,
+   "calls": [],
+   "has_ret": true,
+   "reach": 50997,
+   "origin": "authored"
+  },
+  {
+   "start": 50997,
+   "end": 51030,
+   "size": 33,
+   "ninsns": 14,
+   "calls": [],
+   "has_ret": true,
+   "reach": 51030,
+   "origin": "authored"
+  },
+  {
+   "start": 51030,
+   "end": 51090,
+   "size": 60,
+   "ninsns": 24,
+   "calls": [
+    49326
+   ],
+   "has_ret": true,
+   "reach": 51090,
+   "origin": "authored"
+  },
+  {
+   "start": 51090,
+   "end": 51099,
+   "size": 9,
+   "ninsns": 117,
+   "calls": [
+    39396,
+    39547,
+    46392
+   ],
+   "has_ret": true,
+   "reach": 51399,
+   "origin": "authored"
+  },
+  {
+   "start": 51099,
+   "end": 51399,
+   "size": 300,
+   "ninsns": 113,
+   "calls": [
+    39396,
+    39547,
+    46392
+   ],
+   "has_ret": true,
+   "reach": 51399,
+   "origin": "authored"
+  },
+  {
+   "start": 51399,
+   "end": 51563,
+   "size": 164,
+   "ninsns": 64,
+   "calls": [
+    39396,
+    51030,
+    51090,
+    51563
+   ],
+   "has_ret": true,
+   "reach": 51563,
+   "origin": "authored"
+  },
+  {
+   "start": 51563,
+   "end": 51640,
+   "size": 77,
+   "ninsns": 31,
+   "calls": [
+    39396,
+    51090
+   ],
+   "has_ret": true,
+   "reach": 51640,
+   "origin": "authored"
+  },
+  {
+   "start": 51640,
+   "end": 51746,
+   "size": 106,
+   "ninsns": 45,
+   "calls": [],
+   "has_ret": true,
+   "reach": 51746,
+   "origin": "authored"
+  },
+  {
+   "start": 51746,
+   "end": 51860,
+   "size": 114,
+   "ninsns": 51,
+   "calls": [
+    51640
+   ],
+   "has_ret": true,
+   "reach": 51860,
+   "origin": "authored"
+  },
+  {
+   "start": 51860,
+   "end": 52510,
+   "size": 650,
+   "ninsns": 228,
+   "calls": [
+    35302,
+    38186,
+    48413,
+    51640
+   ],
+   "has_ret": true,
+   "reach": 52510,
+   "origin": "authored"
+  },
+  {
+   "start": 52510,
+   "end": 52654,
+   "size": 144,
+   "ninsns": 56,
+   "calls": [
+    35302,
+    48413
+   ],
+   "has_ret": true,
+   "reach": 52654,
+   "origin": "authored"
+  },
+  {
+   "start": 52654,
+   "end": 52661,
+   "size": 7,
+   "ninsns": 106,
+   "calls": [
+    38186,
+    48413,
+    51746,
+    52510
+   ],
+   "has_ret": true,
+   "reach": 52935,
+   "origin": "authored"
+  },
+  {
+   "start": 52661,
+   "end": 52836,
+   "size": 175,
+   "ninsns": 102,
+   "calls": [
+    38186,
+    48413,
+    51746,
+    52510
+   ],
+   "has_ret": true,
+   "reach": 52935,
+   "origin": "authored"
+  },
+  {
+   "start": 52836,
+   "end": 52935,
+   "size": 99,
+   "ninsns": 35,
+   "calls": [
+    48413,
+    52510
+   ],
+   "has_ret": true,
+   "reach": 52935,
+   "origin": "authored"
+  },
+  {
+   "start": 52935,
+   "end": 53250,
+   "size": 315,
+   "ninsns": 150,
+   "calls": [
+    35302,
+    35929,
+    38186,
+    78009
+   ],
+   "has_ret": true,
+   "reach": 53340,
+   "origin": "authored"
+  },
+  {
+   "start": 53250,
+   "end": 53333,
+   "size": 83,
+   "ninsns": 29,
+   "calls": [
+    38186,
+    78009
+   ],
+   "has_ret": true,
+   "reach": 53340,
+   "origin": "authored"
+  },
+  {
+   "start": 53333,
+   "end": 53340,
+   "size": 7,
+   "ninsns": 4,
+   "calls": [],
+   "has_ret": true,
+   "reach": 53340,
+   "origin": "authored"
+  },
+  {
+   "start": 53340,
+   "end": 53534,
+   "size": 194,
+   "ninsns": 70,
+   "calls": [
+    56408,
+    78708
+   ],
+   "has_ret": true,
+   "reach": 53534,
+   "origin": "authored"
+  },
+  {
+   "start": 53534,
+   "end": 53635,
+   "size": 101,
+   "ninsns": 43,
+   "calls": [],
+   "has_ret": true,
+   "reach": 53635,
+   "origin": "authored"
+  },
+  {
+   "start": 53635,
+   "end": 53885,
+   "size": 250,
+   "ninsns": 95,
+   "calls": [
+    53534
+   ],
+   "has_ret": true,
+   "reach": 53885,
+   "origin": "authored"
+  },
+  {
+   "start": 53885,
+   "end": 54335,
+   "size": 450,
+   "ninsns": 184,
+   "calls": [
+    31788,
+    54400,
+    54575,
+    54967,
+    55666,
+    55786,
+    60610
+   ],
+   "has_ret": true,
+   "reach": 54400,
+   "origin": "authored"
+  },
+  {
+   "start": 54335,
+   "end": 54400,
+   "size": 65,
+   "ninsns": 152,
+   "calls": [
+    31788,
+    54400,
+    54967,
+    55666,
+    55786
+   ],
+   "has_ret": true,
+   "reach": 54400,
+   "origin": "authored"
+  },
+  {
+   "start": 54400,
+   "end": 54575,
+   "size": 175,
+   "ninsns": 68,
+   "calls": [],
+   "has_ret": true,
+   "reach": 54575,
+   "origin": "authored"
+  },
+  {
+   "start": 54575,
+   "end": 54645,
+   "size": 70,
+   "ninsns": 136,
+   "calls": [
+    54400,
+    55690,
+    55786
+   ],
+   "has_ret": true,
+   "reach": 54967,
+   "origin": "authored"
+  },
+  {
+   "start": 54645,
+   "end": 54917,
+   "size": 272,
+   "ninsns": 110,
+   "calls": [
+    54400,
+    55690,
+    55786
+   ],
+   "has_ret": true,
+   "reach": 54967,
+   "origin": "authored"
+  },
+  {
+   "start": 54917,
+   "end": 54967,
+   "size": 50,
+   "ninsns": 18,
+   "calls": [
+    55690
+   ],
+   "has_ret": true,
+   "reach": 54967,
+   "origin": "authored"
+  },
+  {
+   "start": 54967,
+   "end": 55195,
+   "size": 228,
+   "ninsns": 248,
+   "calls": [
+    55666,
+    56408,
+    60610
+   ],
+   "has_ret": true,
+   "reach": 55666,
+   "origin": "authored"
+  },
+  {
+   "start": 55195,
+   "end": 55261,
+   "size": 66,
+   "ninsns": 166,
+   "calls": [
+    55666,
+    56408,
+    60610
+   ],
+   "has_ret": true,
+   "reach": 55666,
+   "origin": "authored"
+  },
+  {
+   "start": 55261,
+   "end": 55262,
+   "size": 1,
+   "ninsns": 1,
+   "calls": [],
+   "has_ret": true,
+   "reach": 55262,
+   "origin": "authored"
+  },
+  {
+   "start": 55666,
+   "end": 55678,
+   "size": 12,
+   "ninsns": 10,
+   "calls": [
+    55690
+   ],
+   "has_ret": true,
+   "reach": 55690,
+   "origin": "authored"
+  },
+  {
+   "start": 55678,
+   "end": 55690,
+   "size": 12,
+   "ninsns": 5,
+   "calls": [
+    55690
+   ],
+   "has_ret": true,
+   "reach": 55690,
+   "origin": "authored"
+  },
+  {
+   "start": 55690,
+   "end": 55706,
+   "size": 16,
+   "ninsns": 31,
+   "calls": [],
+   "has_ret": true,
+   "reach": 55786,
+   "origin": "authored"
+  },
+  {
+   "start": 55706,
+   "end": 55707,
+   "size": 1,
+   "ninsns": 26,
+   "calls": [],
+   "has_ret": true,
+   "reach": 55786,
+   "origin": "authored"
+  },
+  {
+   "start": 55707,
+   "end": 55747,
+   "size": 40,
+   "ninsns": 25,
+   "calls": [],
+   "has_ret": true,
+   "reach": 55786,
+   "origin": "authored"
+  },
+  {
+   "start": 55747,
+   "end": 55786,
+   "size": 39,
+   "ninsns": 12,
+   "calls": [],
+   "has_ret": true,
+   "reach": 55786,
+   "origin": "authored"
+  },
+  {
+   "start": 55786,
+   "end": 56293,
+   "size": 507,
+   "ninsns": 214,
+   "calls": [
+    24435,
+    49582,
+    56408,
+    60610
+   ],
+   "has_ret": true,
+   "reach": 56408,
+   "origin": "authored"
+  },
+  {
+   "start": 56293,
+   "end": 56394,
+   "size": 101,
+   "ninsns": 37,
+   "calls": [],
+   "has_ret": true,
+   "reach": 56408,
+   "origin": "authored"
+  },
+  {
+   "start": 56394,
+   "end": 56408,
+   "size": 14,
+   "ninsns": 7,
+   "calls": [],
+   "has_ret": true,
+   "reach": 56408,
+   "origin": "authored"
+  },
+  {
+   "start": 56408,
+   "end": 56657,
+   "size": 249,
+   "ninsns": 93,
+   "calls": [
+    55666
+   ],
+   "has_ret": true,
+   "reach": 56657,
+   "origin": "authored"
+  },
+  {
+   "start": 56657,
+   "end": 56729,
+   "size": 72,
+   "ninsns": 29,
+   "calls": [
+    56657
+   ],
+   "has_ret": true,
+   "reach": 56729,
+   "origin": "authored"
+  },
+  {
+   "start": 56729,
+   "end": 56890,
+   "size": 161,
+   "ninsns": 264,
+   "calls": [
+    39396,
+    39547,
+    46345,
+    48413,
+    49356,
+    50010,
+    56657,
+    74346
+   ],
+   "has_ret": true,
+   "reach": 57444,
+   "origin": "authored"
+  },
+  {
+   "start": 56890,
+   "end": 57444,
+   "size": 554,
+   "ninsns": 225,
+   "calls": [
+    39396,
+    39547,
+    46345,
+    48413,
+    49356,
+    50010,
+    56657,
+    74346
+   ],
+   "has_ret": true,
+   "reach": 57444,
+   "origin": "authored"
+  },
+  {
+   "start": 57444,
+   "end": 57485,
+   "size": 41,
+   "ninsns": 14,
+   "calls": [
+    38186
+   ],
+   "has_ret": true,
+   "reach": 57485,
+   "origin": "authored"
+  },
+  {
+   "start": 57485,
+   "end": 57634,
+   "size": 149,
+   "ninsns": 61,
+   "calls": [
+    35645
+   ],
+   "has_ret": true,
+   "reach": 57634,
+   "origin": "authored"
+  },
+  {
+   "start": 57634,
+   "end": 57810,
+   "size": 176,
+   "ninsns": 68,
+   "calls": [
+    39396,
+    57444,
+    57485,
+    66410
+   ],
+   "has_ret": true,
+   "reach": 57810,
+   "origin": "authored"
+  },
+  {
+   "start": 57810,
+   "end": 57907,
+   "size": 97,
+   "ninsns": 40,
+   "calls": [
+    57444
+   ],
+   "has_ret": true,
+   "reach": 57907,
+   "origin": "authored"
+  },
+  {
+   "start": 57907,
+   "end": 58057,
+   "size": 150,
+   "ninsns": 55,
+   "calls": [
+    61613
+   ],
+   "has_ret": true,
+   "reach": 58057,
+   "origin": "authored"
+  },
+  {
+   "start": 58057,
+   "end": 58143,
+   "size": 86,
+   "ninsns": 42,
+   "calls": [],
+   "has_ret": true,
+   "reach": 58143,
+   "origin": "authored"
+  },
+  {
+   "start": 58143,
+   "end": 58192,
+   "size": 49,
+   "ninsns": 20,
+   "calls": [
+    39396
+   ],
+   "has_ret": true,
+   "reach": 58192,
+   "origin": "authored"
+  },
+  {
+   "start": 58192,
+   "end": 58455,
+   "size": 263,
+   "ninsns": 351,
+   "calls": [
+    39396,
+    48413,
+    50010,
+    51399,
+    51563,
+    58143,
+    59162,
+    59356,
+    60544,
+    76526,
+    90292
+   ],
+   "has_ret": true,
+   "reach": 59162,
+   "origin": "authored"
+  },
+  {
+   "start": 58455,
+   "end": 59162,
+   "size": 707,
+   "ninsns": 271,
+   "calls": [
+    39396,
+    48413,
+    50010,
+    51399,
+    51563,
+    58143,
+    59162,
+    59356,
+    76526
+   ],
+   "has_ret": true,
+   "reach": 59162,
+   "origin": "authored"
+  },
+  {
+   "start": 59162,
+   "end": 59356,
+   "size": 194,
+   "ninsns": 80,
+   "calls": [
+    60610
+   ],
+   "has_ret": true,
+   "reach": 59356,
+   "origin": "authored"
+  },
+  {
+   "start": 59356,
+   "end": 59563,
+   "size": 207,
+   "ninsns": 92,
+   "calls": [],
+   "has_ret": true,
+   "reach": 59563,
+   "origin": "authored"
+  },
+  {
+   "start": 59563,
+   "end": 59626,
+   "size": 63,
+   "ninsns": 27,
+   "calls": [],
+   "has_ret": true,
+   "reach": 59626,
+   "origin": "authored"
+  },
+  {
+   "start": 59626,
+   "end": 59747,
+   "size": 121,
+   "ninsns": 50,
+   "calls": [
+    59747
+   ],
+   "has_ret": true,
+   "reach": 59747,
+   "origin": "authored"
+  },
+  {
+   "start": 59747,
+   "end": 59862,
+   "size": 115,
+   "ninsns": 43,
+   "calls": [
+    74346,
+    89971
+   ],
+   "has_ret": true,
+   "reach": 59862,
+   "origin": "authored"
+  },
+  {
+   "start": 59862,
+   "end": 59930,
+   "size": 68,
+   "ninsns": 29,
+   "calls": [],
+   "has_ret": true,
+   "reach": 59930,
+   "origin": "authored"
+  },
+  {
+   "start": 59930,
+   "end": 60015,
+   "size": 85,
+   "ninsns": 34,
+   "calls": [],
+   "has_ret": true,
+   "reach": 60015,
+   "origin": "authored"
+  },
+  {
+   "start": 60015,
+   "end": 60253,
+   "size": 238,
+   "ninsns": 94,
+   "calls": [
+    38186,
+    50010,
+    52510
+   ],
+   "has_ret": true,
+   "reach": 60253,
+   "origin": "authored"
+  },
+  {
+   "start": 60253,
+   "end": 60482,
+   "size": 229,
+   "ninsns": 95,
+   "calls": [
+    35645,
+    39396,
+    57444,
+    66410
+   ],
+   "has_ret": true,
+   "reach": 60516,
+   "origin": "authored"
+  },
+  {
+   "start": 60482,
+   "end": 60516,
+   "size": 34,
+   "ninsns": 15,
+   "calls": [
+    39396,
+    57444,
+    66410
+   ],
+   "has_ret": true,
+   "reach": 60516,
+   "origin": "authored"
+  },
+  {
+   "start": 60516,
+   "end": 60544,
+   "size": 28,
+   "ninsns": 12,
+   "calls": [],
+   "has_ret": true,
+   "reach": 60544,
+   "origin": "authored"
+  },
+  {
+   "start": 60544,
+   "end": 60577,
+   "size": 33,
+   "ninsns": 13,
+   "calls": [],
+   "has_ret": true,
+   "reach": 60577,
+   "origin": "authored"
+  },
+  {
+   "start": 60577,
+   "end": 60610,
+   "size": 33,
+   "ninsns": 14,
+   "calls": [],
+   "has_ret": true,
+   "reach": 60610,
+   "origin": "authored"
+  },
+  {
+   "start": 60610,
+   "end": 60649,
+   "size": 39,
+   "ninsns": 16,
+   "calls": [],
+   "has_ret": true,
+   "reach": 60649,
+   "origin": "authored"
+  },
+  {
+   "start": 60649,
+   "end": 60678,
+   "size": 29,
+   "ninsns": 11,
+   "calls": [],
+   "has_ret": true,
+   "reach": 60678,
+   "origin": "authored"
+  },
+  {
+   "start": 60678,
+   "end": 60707,
+   "size": 29,
+   "ninsns": 11,
+   "calls": [],
+   "has_ret": true,
+   "reach": 60707,
+   "origin": "authored"
+  },
+  {
+   "start": 60707,
+   "end": 60736,
+   "size": 29,
+   "ninsns": 13,
+   "calls": [],
+   "has_ret": true,
+   "reach": 60736,
+   "origin": "authored"
+  },
+  {
+   "start": 60736,
+   "end": 61009,
+   "size": 273,
+   "ninsns": 23,
+   "calls": [],
+   "has_ret": true,
+   "reach": 61009,
+   "origin": "authored"
+  },
+  {
+   "start": 61009,
+   "end": 61195,
+   "size": 186,
+   "ninsns": 68,
+   "calls": [
+    61613
+   ],
+   "has_ret": true,
+   "reach": 61195,
+   "origin": "authored"
+  },
+  {
+   "start": 61195,
+   "end": 61272,
+   "size": 77,
+   "ninsns": 37,
+   "calls": [],
+   "has_ret": true,
+   "reach": 61272,
+   "origin": "authored"
+  },
+  {
+   "start": 61272,
+   "end": 61409,
+   "size": 137,
+   "ninsns": 63,
+   "calls": [],
+   "has_ret": true,
+   "reach": 61409,
+   "origin": "authored"
+  },
+  {
+   "start": 61409,
+   "end": 61500,
+   "size": 91,
+   "ninsns": 93,
+   "calls": [],
+   "has_ret": true,
+   "reach": 61613,
+   "origin": "authored"
+  },
+  {
+   "start": 61500,
+   "end": 61534,
+   "size": 34,
+   "ninsns": 52,
+   "calls": [],
+   "has_ret": true,
+   "reach": 61613,
+   "origin": "authored"
+  },
+  {
+   "start": 61534,
+   "end": 61545,
+   "size": 11,
+   "ninsns": 36,
+   "calls": [],
+   "has_ret": true,
+   "reach": 61613,
+   "origin": "authored"
+  },
+  {
+   "start": 61545,
+   "end": 61613,
+   "size": 68,
+   "ninsns": 37,
+   "calls": [],
+   "has_ret": true,
+   "reach": 61613,
+   "origin": "authored"
+  },
+  {
+   "start": 61613,
+   "end": 61837,
+   "size": 224,
+   "ninsns": 73,
+   "calls": [],
+   "has_ret": true,
+   "reach": 63170,
+   "origin": "authored"
+  },
+  {
+   "start": 61837,
+   "end": 62149,
+   "size": 312,
+   "ninsns": 42,
+   "calls": [
+    49326,
+    61409
+   ],
+   "has_ret": true,
+   "reach": 63170,
+   "origin": "authored"
+  },
+  {
+   "start": 62149,
+   "end": 62687,
+   "size": 538,
+   "ninsns": 30,
+   "calls": [
+    61195
+   ],
+   "has_ret": true,
+   "reach": 63170,
+   "origin": "authored"
+  },
+  {
+   "start": 62687,
+   "end": 62693,
+   "size": 6,
+   "ninsns": 2,
+   "calls": [],
+   "has_ret": false,
+   "reach": 62693,
+   "origin": "authored"
+  },
+  {
+   "start": 63170,
+   "end": 63195,
+   "size": 25,
+   "ninsns": 12,
+   "calls": [
+    63195,
+    64000
+   ],
+   "has_ret": true,
+   "reach": 63195,
+   "origin": "authored"
+  },
+  {
+   "start": 63195,
+   "end": 63381,
+   "size": 186,
+   "ninsns": 166,
+   "calls": [
+    39396,
+    46392,
+    60736,
+    63195,
+    63630,
+    64000,
+    74047
+   ],
+   "has_ret": true,
+   "reach": 63630,
+   "origin": "authored"
+  },
+  {
+   "start": 63381,
+   "end": 63559,
+   "size": 178,
+   "ninsns": 51,
+   "calls": [
+    46392,
+    63195,
+    63630,
+    64000
+   ],
+   "has_ret": true,
+   "reach": 63630,
+   "origin": "authored"
+  },
+  {
+   "start": 63559,
+   "end": 63630,
+   "size": 71,
+   "ninsns": 21,
+   "calls": [
+    64000
+   ],
+   "has_ret": true,
+   "reach": 63630,
+   "origin": "authored"
+  },
+  {
+   "start": 63630,
+   "end": 63648,
+   "size": 18,
+   "ninsns": 13,
+   "calls": [
+    64000
+   ],
+   "has_ret": true,
+   "reach": 63659,
+   "origin": "authored"
+  },
+  {
+   "start": 63648,
+   "end": 63659,
+   "size": 11,
+   "ninsns": 6,
+   "calls": [
+    64000
+   ],
+   "has_ret": true,
+   "reach": 63659,
+   "origin": "authored"
+  },
+  {
+   "start": 63659,
+   "end": 63796,
+   "size": 137,
+   "ninsns": 63,
+   "calls": [],
+   "has_ret": true,
+   "reach": 63796,
+   "origin": "authored"
+  },
+  {
+   "start": 63796,
+   "end": 64000,
+   "size": 204,
+   "ninsns": 93,
+   "calls": [],
+   "has_ret": true,
+   "reach": 64000,
+   "origin": "authored"
+  },
+  {
+   "start": 64000,
+   "end": 65016,
+   "size": 1016,
+   "ninsns": 50,
+   "calls": [],
+   "has_ret": true,
+   "reach": 65501,
+   "origin": "authored"
+  },
+  {
+   "start": 65016,
+   "end": 65025,
+   "size": 9,
+   "ninsns": 52,
+   "calls": [
+    63796
+   ],
+   "has_ret": true,
+   "reach": 65501,
+   "origin": "authored"
+  },
+  {
+   "start": 65025,
+   "end": 65501,
+   "size": 476,
+   "ninsns": 29,
+   "calls": [
+    63796
+   ],
+   "has_ret": true,
+   "reach": 65501,
+   "origin": "authored"
+  },
+  {
+   "start": 65501,
+   "end": 65678,
+   "size": 177,
+   "ninsns": 131,
+   "calls": [
+    46725,
+    57810,
+    63195,
+    64000,
+    65501,
+    66410
+   ],
+   "has_ret": true,
+   "reach": 65843,
+   "origin": "authored"
+  },
+  {
+   "start": 65678,
+   "end": 65689,
+   "size": 11,
+   "ninsns": 27,
+   "calls": [
+    57810,
+    65501,
+    66410
+   ],
+   "has_ret": true,
+   "reach": 65843,
+   "origin": "authored"
+  },
+  {
+   "start": 65689,
+   "end": 65843,
+   "size": 154,
+   "ninsns": 26,
+   "calls": [
+    57810,
+    65501,
+    66410
+   ],
+   "has_ret": true,
+   "reach": 65843,
+   "origin": "authored"
+  },
+  {
+   "start": 65843,
+   "end": 66359,
+   "size": 516,
+   "ninsns": 59,
+   "calls": [],
+   "has_ret": true,
+   "reach": 66410,
+   "origin": "authored"
+  },
+  {
+   "start": 66359,
+   "end": 66399,
+   "size": 40,
+   "ninsns": 24,
+   "calls": [],
+   "has_ret": true,
+   "reach": 66410,
+   "origin": "authored"
+  },
+  {
+   "start": 66399,
+   "end": 66410,
+   "size": 11,
+   "ninsns": 3,
+   "calls": [],
+   "has_ret": true,
+   "reach": 66410,
+   "origin": "authored"
+  },
+  {
+   "start": 66410,
+   "end": 66440,
+   "size": 30,
+   "ninsns": 14,
+   "calls": [
+    64000
+   ],
+   "has_ret": true,
+   "reach": 66440,
+   "origin": "authored"
+  },
+  {
+   "start": 66440,
+   "end": 66542,
+   "size": 102,
+   "ninsns": 39,
+   "calls": [
+    39396,
+    46392,
+    69995,
+    74346
+   ],
+   "has_ret": true,
+   "reach": 66542,
+   "origin": "authored"
+  },
+  {
+   "start": 66542,
+   "end": 66635,
+   "size": 93,
+   "ninsns": 44,
+   "calls": [
+    66440,
+    66635,
+    74346,
+    84086
+   ],
+   "has_ret": true,
+   "reach": 66635,
+   "origin": "authored"
+  },
+  {
+   "start": 66635,
+   "end": 66660,
+   "size": 25,
+   "ninsns": 22,
+   "calls": [
+    46345,
+    63170,
+    74346
+   ],
+   "has_ret": true,
+   "reach": 66681,
+   "origin": "authored"
+  },
+  {
+   "start": 66660,
+   "end": 66681,
+   "size": 21,
+   "ninsns": 10,
+   "calls": [
+    46345,
+    63170,
+    74346
+   ],
+   "has_ret": true,
+   "reach": 66681,
+   "origin": "authored"
+  },
+  {
+   "start": 66681,
+   "end": 66951,
+   "size": 270,
+   "ninsns": 111,
+   "calls": [
+    60610,
+    66440,
+    66635,
+    67246,
+    69884,
+    74346,
+    84086,
+    89971
+   ],
+   "has_ret": true,
+   "reach": 66951,
+   "origin": "authored"
+  },
+  {
+   "start": 66951,
+   "end": 67102,
+   "size": 151,
+   "ninsns": 122,
+   "calls": [
+    39547,
+    39599,
+    46392,
+    63170,
+    74346,
+    82188
+   ],
+   "has_ret": true,
+   "reach": 67246,
+   "origin": "authored"
+  },
+  {
+   "start": 67102,
+   "end": 67246,
+   "size": 144,
+   "ninsns": 67,
+   "calls": [
+    39547,
+    39599,
+    46392,
+    63170,
+    74346
+   ],
+   "has_ret": true,
+   "reach": 67246,
+   "origin": "authored"
+  },
+  {
+   "start": 67246,
+   "end": 67275,
+   "size": 29,
+   "ninsns": 14,
+   "calls": [
+    39547,
+    39599,
+    63170
+   ],
+   "has_ret": true,
+   "reach": 67275,
+   "origin": "authored"
+  },
+  {
+   "start": 67275,
+   "end": 67479,
+   "size": 204,
+   "ninsns": 71,
+   "calls": [
+    96627
+   ],
+   "has_ret": true,
+   "reach": 67479,
+   "origin": "authored"
+  },
+  {
+   "start": 67479,
+   "end": 67822,
+   "size": 343,
+   "ninsns": 138,
+   "calls": [
+    44328,
+    46392,
+    49582,
+    66681,
+    67246,
+    69884,
+    69995,
+    71361,
+    71474,
+    71595,
+    71758,
+    71893
+   ],
+   "has_ret": true,
+   "reach": 67822,
+   "origin": "authored"
+  },
+  {
+   "start": 67822,
+   "end": 68026,
+   "size": 204,
+   "ninsns": 69,
+   "calls": [
+    69995,
+    70088,
+    71758
+   ],
+   "has_ret": true,
+   "reach": 68026,
+   "origin": "authored"
+  },
+  {
+   "start": 68026,
+   "end": 68066,
+   "size": 40,
+   "ninsns": 224,
+   "calls": [
+    44328,
+    49582,
+    60610,
+    66681,
+    66951,
+    68660,
+    69242,
+    69884,
+    71474,
+    71595,
+    72093
+   ],
+   "has_ret": true,
+   "reach": 68660,
+   "origin": "authored"
+  },
+  {
+   "start": 68066,
+   "end": 68638,
+   "size": 572,
+   "ninsns": 13,
+   "calls": [],
+   "has_ret": true,
+   "reach": 68660,
+   "origin": "authored"
+  },
+  {
+   "start": 68638,
+   "end": 68660,
+   "size": 22,
+   "ninsns": 11,
+   "calls": [],
+   "has_ret": true,
+   "reach": 68660,
+   "origin": "authored"
+  },
+  {
+   "start": 68660,
+   "end": 68722,
+   "size": 62,
+   "ninsns": 28,
+   "calls": [
+    68722,
+    69884,
+    69995
+   ],
+   "has_ret": true,
+   "reach": 68722,
+   "origin": "authored"
+  },
+  {
+   "start": 68722,
+   "end": 68899,
+   "size": 177,
+   "ninsns": 177,
+   "calls": [
+    49582,
+    69884,
+    69995,
+    70088
+   ],
+   "has_ret": true,
+   "reach": 69242,
+   "origin": "authored"
+  },
+  {
+   "start": 68899,
+   "end": 69242,
+   "size": 343,
+   "ninsns": 35,
+   "calls": [],
+   "has_ret": true,
+   "reach": 69242,
+   "origin": "authored"
+  },
+  {
+   "start": 69242,
+   "end": 69884,
+   "size": 642,
+   "ninsns": 211,
+   "calls": [
+    69242,
+    71595,
+    89971
+   ],
+   "has_ret": true,
+   "reach": 69884,
+   "origin": "authored"
+  },
+  {
+   "start": 69884,
+   "end": 69995,
+   "size": 111,
+   "ninsns": 38,
+   "calls": [],
+   "has_ret": true,
+   "reach": 69995,
+   "origin": "authored"
+  },
+  {
+   "start": 69995,
+   "end": 70088,
+   "size": 93,
+   "ninsns": 37,
+   "calls": [],
+   "has_ret": true,
+   "reach": 70088,
+   "origin": "authored"
+  },
+  {
+   "start": 70088,
+   "end": 70325,
+   "size": 237,
+   "ninsns": 92,
+   "calls": [],
+   "has_ret": true,
+   "reach": 70325,
+   "origin": "authored"
+  },
+  {
+   "start": 70422,
+   "end": 70516,
+   "size": 94,
+   "ninsns": 35,
+   "calls": [
+    69242,
+    70516,
+    70571,
+    71595
+   ],
+   "has_ret": true,
+   "reach": 70516,
+   "origin": "authored"
+  },
+  {
+   "start": 70516,
+   "end": 70571,
+   "size": 55,
+   "ninsns": 22,
+   "calls": [
+    69242,
+    70571
+   ],
+   "has_ret": true,
+   "reach": 70571,
+   "origin": "authored"
+  },
+  {
+   "start": 70571,
+   "end": 70647,
+   "size": 76,
+   "ninsns": 158,
+   "calls": [
+    71595,
+    89699,
+    89971
+   ],
+   "has_ret": true,
+   "reach": 71039,
+   "origin": "authored"
+  },
+  {
+   "start": 70647,
+   "end": 70922,
+   "size": 275,
+   "ninsns": 23,
+   "calls": [
+    89699
+   ],
+   "has_ret": true,
+   "reach": 71039,
+   "origin": "authored"
+  },
+  {
+   "start": 70922,
+   "end": 71039,
+   "size": 117,
+   "ninsns": 90,
+   "calls": [
+    89971
+   ],
+   "has_ret": true,
+   "reach": 71039,
+   "origin": "authored"
+  },
+  {
+   "start": 71039,
+   "end": 71076,
+   "size": 37,
+   "ninsns": 16,
+   "calls": [],
+   "has_ret": true,
+   "reach": 71076,
+   "origin": "authored"
+  },
+  {
+   "start": 71076,
+   "end": 71146,
+   "size": 70,
+   "ninsns": 99,
+   "calls": [
+    49356,
+    70422,
+    71039,
+    71893,
+    89971
+   ],
+   "has_ret": true,
+   "reach": 71361,
+   "origin": "authored"
+  },
+  {
+   "start": 71146,
+   "end": 71361,
+   "size": 215,
+   "ninsns": 75,
+   "calls": [
+    49356,
+    71039,
+    71893,
+    89971
+   ],
+   "has_ret": true,
+   "reach": 71361,
+   "origin": "authored"
+  },
+  {
+   "start": 71361,
+   "end": 71425,
+   "size": 64,
+   "ninsns": 43,
+   "calls": [
+    49356
+   ],
+   "has_ret": true,
+   "reach": 71474,
+   "origin": "authored"
+  },
+  {
+   "start": 71425,
+   "end": 71468,
+   "size": 43,
+   "ninsns": 19,
+   "calls": [
+    49356
+   ],
+   "has_ret": true,
+   "reach": 71474,
+   "origin": "authored"
+  },
+  {
+   "start": 71468,
+   "end": 71474,
+   "size": 6,
+   "ninsns": 3,
+   "calls": [],
+   "has_ret": true,
+   "reach": 71474,
+   "origin": "authored"
+  },
+  {
+   "start": 71474,
+   "end": 71595,
+   "size": 121,
+   "ninsns": 48,
+   "calls": [
+    49326
+   ],
+   "has_ret": true,
+   "reach": 71595,
+   "origin": "authored"
+  },
+  {
+   "start": 71595,
+   "end": 71701,
+   "size": 106,
+   "ninsns": 56,
+   "calls": [
+    39547,
+    39599,
+    66542,
+    66681,
+    72093,
+    74346
+   ],
+   "has_ret": true,
+   "reach": 71721,
+   "origin": "authored"
+  },
+  {
+   "start": 71701,
+   "end": 71721,
+   "size": 20,
+   "ninsns": 11,
+   "calls": [
+    66681,
+    74346
+   ],
+   "has_ret": true,
+   "reach": 71721,
+   "origin": "authored"
+  },
+  {
+   "start": 71722,
+   "end": 71758,
+   "size": 36,
+   "ninsns": 14,
+   "calls": [
+    71758,
+    71905
+   ],
+   "has_ret": true,
+   "reach": 71758,
+   "origin": "authored"
+  },
+  {
+   "start": 71758,
+   "end": 71816,
+   "size": 58,
+   "ninsns": 56,
+   "calls": [
+    72093
+   ],
+   "has_ret": true,
+   "reach": 71893,
+   "origin": "authored"
+  },
+  {
+   "start": 71816,
+   "end": 71893,
+   "size": 77,
+   "ninsns": 47,
+   "calls": [
+    72093
+   ],
+   "has_ret": true,
+   "reach": 71893,
+   "origin": "authored"
+  },
+  {
+   "start": 71893,
+   "end": 71905,
+   "size": 12,
+   "ninsns": 5,
+   "calls": [
+    71905
+   ],
+   "has_ret": true,
+   "reach": 71905,
+   "origin": "authored"
+  },
+  {
+   "start": 71905,
+   "end": 71939,
+   "size": 34,
+   "ninsns": 14,
+   "calls": [],
+   "has_ret": true,
+   "reach": 71939,
+   "origin": "authored"
+  },
+  {
+   "start": 71939,
+   "end": 72093,
+   "size": 154,
+   "ninsns": 57,
+   "calls": [],
+   "has_ret": true,
+   "reach": 72093,
+   "origin": "authored"
+  },
+  {
+   "start": 72093,
+   "end": 72413,
+   "size": 320,
+   "ninsns": 232,
+   "calls": [
+    49326,
+    69884,
+    73766,
+    74047,
+    74346
+   ],
+   "has_ret": true,
+   "reach": 73766,
+   "origin": "authored"
+  },
+  {
+   "start": 72413,
+   "end": 73702,
+   "size": 1289,
+   "ninsns": 43,
+   "calls": [
+    73766
+   ],
+   "has_ret": true,
+   "reach": 73766,
+   "origin": "authored"
+  },
+  {
+   "start": 73702,
+   "end": 73766,
+   "size": 64,
+   "ninsns": 25,
+   "calls": [],
+   "has_ret": true,
+   "reach": 73766,
+   "origin": "authored"
+  },
+  {
+   "start": 73766,
+   "end": 73992,
+   "size": 226,
+   "ninsns": 91,
+   "calls": [
+    71474,
+    73766,
+    73992,
+    74047
+   ],
+   "has_ret": true,
+   "reach": 73992,
+   "origin": "authored"
+  },
+  {
+   "start": 73992,
+   "end": 74047,
+   "size": 55,
+   "ninsns": 22,
+   "calls": [],
+   "has_ret": true,
+   "reach": 74047,
+   "origin": "authored"
+  },
+  {
+   "start": 74047,
+   "end": 74230,
+   "size": 183,
+   "ninsns": 65,
+   "calls": [
+    46392,
+    49848,
+    61009,
+    71722,
+    103722
+   ],
+   "has_ret": true,
+   "reach": 74230,
+   "origin": "authored"
+  },
+  {
+   "start": 74230,
+   "end": 74346,
+   "size": 116,
+   "ninsns": 44,
+   "calls": [
+    48413,
+    48704,
+    50120
+   ],
+   "has_ret": true,
+   "reach": 74346,
+   "origin": "authored"
+  },
+  {
+   "start": 74346,
+   "end": 74533,
+   "size": 187,
+   "ninsns": 38,
+   "calls": [
+    48413,
+    104932
+   ],
+   "has_ret": true,
+   "reach": 74533,
+   "origin": "authored"
+  },
+  {
+   "start": 74533,
+   "end": 74708,
+   "size": 175,
+   "ninsns": 273,
+   "calls": [
+    74346,
+    76098
+   ],
+   "has_ret": true,
+   "reach": 76098,
+   "origin": "authored"
+  },
+  {
+   "start": 74708,
+   "end": 76098,
+   "size": 1390,
+   "ninsns": 18,
+   "calls": [
+    74346
+   ],
+   "has_ret": true,
+   "reach": 76098,
+   "origin": "authored"
+  },
+  {
+   "start": 76098,
+   "end": 76526,
+   "size": 428,
+   "ninsns": 18,
+   "calls": [],
+   "has_ret": true,
+   "reach": 76526,
+   "origin": "authored"
+  },
+  {
+   "start": 76526,
+   "end": 76576,
+   "size": 50,
+   "ninsns": 24,
+   "calls": [],
+   "has_ret": true,
+   "reach": 76576,
+   "origin": "authored"
+  },
+  {
+   "start": 76576,
+   "end": 76656,
+   "size": 80,
+   "ninsns": 51,
+   "calls": [
+    76691
+   ],
+   "has_ret": true,
+   "reach": 76691,
+   "origin": "authored"
+  },
+  {
+   "start": 76656,
+   "end": 76691,
+   "size": 35,
+   "ninsns": 15,
+   "calls": [],
+   "has_ret": true,
+   "reach": 76691,
+   "origin": "authored"
+  },
+  {
+   "start": 76691,
+   "end": 76790,
+   "size": 99,
+   "ninsns": 43,
+   "calls": [],
+   "has_ret": true,
+   "reach": 76790,
+   "origin": "authored"
+  },
+  {
+   "start": 76790,
+   "end": 76918,
+   "size": 128,
+   "ninsns": 34,
+   "calls": [
+    76691
+   ],
+   "has_ret": true,
+   "reach": 76918,
+   "origin": "authored"
+  },
+  {
+   "start": 76918,
+   "end": 76954,
+   "size": 36,
+   "ninsns": 12,
+   "calls": [],
+   "has_ret": true,
+   "reach": 76954,
+   "origin": "authored"
+  },
+  {
+   "start": 76954,
+   "end": 77043,
+   "size": 89,
+   "ninsns": 40,
+   "calls": [],
+   "has_ret": true,
+   "reach": 77043,
+   "origin": "authored"
+  },
+  {
+   "start": 77043,
+   "end": 77734,
+   "size": 691,
+   "ninsns": 38,
+   "calls": [],
+   "has_ret": true,
+   "reach": 77734,
+   "origin": "authored"
+  },
+  {
+   "start": 77734,
+   "end": 77855,
+   "size": 121,
+   "ninsns": 77,
+   "calls": [
+    76918
+   ],
+   "has_ret": true,
+   "reach": 77929,
+   "origin": "authored"
+  },
+  {
+   "start": 77855,
+   "end": 77929,
+   "size": 74,
+   "ninsns": 32,
+   "calls": [],
+   "has_ret": true,
+   "reach": 77929,
+   "origin": "authored"
+  },
+  {
+   "start": 77929,
+   "end": 78009,
+   "size": 80,
+   "ninsns": 28,
+   "calls": [],
+   "has_ret": true,
+   "reach": 78009,
+   "origin": "authored"
+  },
+  {
+   "start": 78009,
+   "end": 78012,
+   "size": 3,
+   "ninsns": 1,
+   "calls": [],
+   "has_ret": true,
+   "reach": 78012,
+   "origin": "authored"
+  },
+  {
+   "start": 78012,
+   "end": 78062,
+   "size": 50,
+   "ninsns": 24,
+   "calls": [
+    76918,
+    77043
+   ],
+   "has_ret": true,
+   "reach": 78062,
+   "origin": "authored"
+  },
+  {
+   "start": 78062,
+   "end": 78160,
+   "size": 98,
+   "ninsns": 39,
+   "calls": [
+    77734,
+    77929
+   ],
+   "has_ret": true,
+   "reach": 78160,
+   "origin": "authored"
+  },
+  {
+   "start": 78160,
+   "end": 78257,
+   "size": 97,
+   "ninsns": 39,
+   "calls": [
+    77734,
+    77929
+   ],
+   "has_ret": true,
+   "reach": 78257,
+   "origin": "authored"
+  },
+  {
+   "start": 78257,
+   "end": 78708,
+   "size": 451,
+   "ninsns": 167,
+   "calls": [
+    48413,
+    76576,
+    76790,
+    76918,
+    77043,
+    78160
+   ],
+   "has_ret": true,
+   "reach": 78708,
+   "origin": "authored"
+  },
+  {
+   "start": 78708,
+   "end": 79012,
+   "size": 304,
+   "ninsns": 111,
+   "calls": [
+    77043,
+    77734,
+    77929,
+    78012
+   ],
+   "has_ret": true,
+   "reach": 79012,
+   "origin": "authored"
+  },
+  {
+   "start": 79012,
+   "end": 79027,
+   "size": 15,
+   "ninsns": 7,
+   "calls": [
+    78257
+   ],
+   "has_ret": true,
+   "reach": 79027,
+   "origin": "authored"
+  },
+  {
+   "start": 79027,
+   "end": 79169,
+   "size": 142,
+   "ninsns": 57,
+   "calls": [
+    48413,
+    76918,
+    77043,
+    78062
+   ],
+   "has_ret": true,
+   "reach": 79169,
+   "origin": "authored"
+  },
+  {
+   "start": 79169,
+   "end": 79209,
+   "size": 40,
+   "ninsns": 17,
+   "calls": [],
+   "has_ret": true,
+   "reach": 79209,
+   "origin": "authored"
+  },
+  {
+   "start": 79210,
+   "end": 79703,
+   "size": 493,
+   "ninsns": 182,
+   "calls": [
+    49085,
+    50120,
+    81601,
+    100838,
+    103722
+   ],
+   "has_ret": true,
+   "reach": 79703,
+   "origin": "authored"
+  },
+  {
+   "start": 79703,
+   "end": 79818,
+   "size": 115,
+   "ninsns": 54,
+   "calls": [],
+   "has_ret": true,
+   "reach": 79818,
+   "origin": "authored"
+  },
+  {
+   "start": 79818,
+   "end": 79950,
+   "size": 132,
+   "ninsns": 50,
+   "calls": [
+    79703,
+    100978
+   ],
+   "has_ret": true,
+   "reach": 79950,
+   "origin": "authored"
+  },
+  {
+   "start": 79950,
+   "end": 80055,
+   "size": 105,
+   "ninsns": 42,
+   "calls": [
+    79703,
+    100978
+   ],
+   "has_ret": true,
+   "reach": 80055,
+   "origin": "authored"
+  },
+  {
+   "start": 80055,
+   "end": 80062,
+   "size": 7,
+   "ninsns": 43,
+   "calls": [
+    100978
+   ],
+   "has_ret": true,
+   "reach": 80154,
+   "origin": "authored"
+  },
+  {
+   "start": 80062,
+   "end": 80154,
+   "size": 92,
+   "ninsns": 39,
+   "calls": [
+    100978
+   ],
+   "has_ret": true,
+   "reach": 80154,
+   "origin": "authored"
+  },
+  {
+   "start": 80154,
+   "end": 80166,
+   "size": 12,
+   "ninsns": 195,
+   "calls": [
+    48413,
+    49582,
+    57810,
+    63195,
+    64000,
+    65843,
+    89971,
+    96779,
+    111881,
+    111928
+   ],
+   "has_ret": true,
+   "reach": 80710,
+   "origin": "authored"
+  },
+  {
+   "start": 80166,
+   "end": 80710,
+   "size": 544,
+   "ninsns": 190,
+   "calls": [
+    48413,
+    49582,
+    57810,
+    63195,
+    64000,
+    65843,
+    89971,
+    96779,
+    111881,
+    111928
+   ],
+   "has_ret": true,
+   "reach": 80710,
+   "origin": "authored"
+  },
+  {
+   "start": 80710,
+   "end": 80858,
+   "size": 148,
+   "ninsns": 229,
+   "calls": [
+    49326,
+    49356,
+    64000,
+    65843,
+    79027,
+    85272,
+    86164,
+    87786,
+    111928
+   ],
+   "has_ret": true,
+   "reach": 81346,
+   "origin": "authored"
+  },
+  {
+   "start": 80858,
+   "end": 81289,
+   "size": 431,
+   "ninsns": 186,
+   "calls": [
+    49356,
+    64000,
+    65843,
+    79027,
+    85272,
+    86164,
+    87786,
+    111928
+   ],
+   "has_ret": true,
+   "reach": 81346,
+   "origin": "authored"
+  },
+  {
+   "start": 81289,
+   "end": 81346,
+   "size": 57,
+   "ninsns": 22,
+   "calls": [
+    65843,
+    79027,
+    87786
+   ],
+   "has_ret": true,
+   "reach": 81346,
+   "origin": "authored"
+  },
+  {
+   "start": 81527,
+   "end": 81601,
+   "size": 74,
+   "ninsns": 28,
+   "calls": [
+    64000,
+    74346,
+    104582,
+    104874
+   ],
+   "has_ret": true,
+   "reach": 81601,
+   "origin": "authored"
+  },
+  {
+   "start": 81601,
+   "end": 82188,
+   "size": 587,
+   "ninsns": 226,
+   "calls": [],
+   "has_ret": true,
+   "reach": 82188,
+   "origin": "authored"
+  },
+  {
+   "start": 82188,
+   "end": 82408,
+   "size": 220,
+   "ninsns": 84,
+   "calls": [
+    100838,
+    103722
+   ],
+   "has_ret": true,
+   "reach": 82408,
+   "origin": "authored"
+  },
+  {
+   "start": 82408,
+   "end": 82444,
+   "size": 36,
+   "ninsns": 15,
+   "calls": [
+    82188
+   ],
+   "has_ret": true,
+   "reach": 82444,
+   "origin": "authored"
+  },
+  {
+   "start": 82444,
+   "end": 82606,
+   "size": 162,
+   "ninsns": 63,
+   "calls": [
+    85498,
+    103722
+   ],
+   "has_ret": true,
+   "reach": 82606,
+   "origin": "authored"
+  },
+  {
+   "start": 82606,
+   "end": 82759,
+   "size": 153,
+   "ninsns": 58,
+   "calls": [
+    99444,
+    112878
+   ],
+   "has_ret": true,
+   "reach": 82759,
+   "origin": "authored"
+  },
+  {
+   "start": 82759,
+   "end": 82878,
+   "size": 119,
+   "ninsns": 45,
+   "calls": [
+    99444
+   ],
+   "has_ret": true,
+   "reach": 82878,
+   "origin": "authored"
+  },
+  {
+   "start": 82878,
+   "end": 83065,
+   "size": 187,
+   "ninsns": 69,
+   "calls": [
+    83149
+   ],
+   "has_ret": true,
+   "reach": 83065,
+   "origin": "authored"
+  },
+  {
+   "start": 83065,
+   "end": 83149,
+   "size": 84,
+   "ninsns": 29,
+   "calls": [
+    82878,
+    83149
+   ],
+   "has_ret": true,
+   "reach": 83149,
+   "origin": "authored"
+  },
+  {
+   "start": 83149,
+   "end": 83199,
+   "size": 50,
+   "ninsns": 21,
+   "calls": [
+    115609
+   ],
+   "has_ret": true,
+   "reach": 83199,
+   "origin": "authored"
+  },
+  {
+   "start": 83199,
+   "end": 83499,
+   "size": 300,
+   "ninsns": 117,
+   "calls": [
+    60610,
+    82408,
+    83499,
+    100978,
+    101284,
+    105083,
+    111928,
+    115232
+   ],
+   "has_ret": true,
+   "reach": 83499,
+   "origin": "authored"
+  },
+  {
+   "start": 83499,
+   "end": 83923,
+   "size": 424,
+   "ninsns": 160,
+   "calls": [
+    74346,
+    83923,
+    84014,
+    111881,
+    115118,
+    115184,
+    115232
+   ],
+   "has_ret": true,
+   "reach": 83923,
+   "origin": "authored"
+  },
+  {
+   "start": 83923,
+   "end": 84014,
+   "size": 91,
+   "ninsns": 40,
+   "calls": [],
+   "has_ret": true,
+   "reach": 84014,
+   "origin": "authored"
+  },
+  {
+   "start": 84014,
+   "end": 84086,
+   "size": 72,
+   "ninsns": 28,
+   "calls": [],
+   "has_ret": true,
+   "reach": 84086,
+   "origin": "authored"
+  },
+  {
+   "start": 84086,
+   "end": 84130,
+   "size": 44,
+   "ninsns": 21,
+   "calls": [
+    84130
+   ],
+   "has_ret": true,
+   "reach": 84130,
+   "origin": "authored"
+  },
+  {
+   "start": 84130,
+   "end": 85126,
+   "size": 996,
+   "ninsns": 375,
+   "calls": [
+    59563,
+    90292,
+    104932,
+    109864,
+    113949,
+    114240,
+    116935
+   ],
+   "has_ret": true,
+   "reach": 85126,
+   "origin": "authored"
+  },
+  {
+   "start": 85126,
+   "end": 85272,
+   "size": 146,
+   "ninsns": 58,
+   "calls": [],
+   "has_ret": true,
+   "reach": 85272,
+   "origin": "authored"
+  },
+  {
+   "start": 85272,
+   "end": 85498,
+   "size": 226,
+   "ninsns": 81,
+   "calls": [
+    59563,
+    60610,
+    111767,
+    112539
+   ],
+   "has_ret": true,
+   "reach": 85498,
+   "origin": "authored"
+  },
+  {
+   "start": 85498,
+   "end": 85655,
+   "size": 157,
+   "ninsns": 63,
+   "calls": [
+    59930
+   ],
+   "has_ret": true,
+   "reach": 85655,
+   "origin": "authored"
+  },
+  {
+   "start": 85655,
+   "end": 85904,
+   "size": 249,
+   "ninsns": 93,
+   "calls": [
+    82188,
+    100978,
+    101284,
+    104932,
+    105083,
+    111928,
+    115184
+   ],
+   "has_ret": true,
+   "reach": 85904,
+   "origin": "authored"
+  },
+  {
+   "start": 85904,
+   "end": 86163,
+   "size": 259,
+   "ninsns": 98,
+   "calls": [
+    97324
+   ],
+   "has_ret": true,
+   "reach": 86163,
+   "origin": "authored"
+  },
+  {
+   "start": 86164,
+   "end": 86200,
+   "size": 36,
+   "ninsns": 17,
+   "calls": [],
+   "has_ret": true,
+   "reach": 86200,
+   "origin": "authored"
+  },
+  {
+   "start": 86200,
+   "end": 86220,
+   "size": 20,
+   "ninsns": 11,
+   "calls": [],
+   "has_ret": true,
+   "reach": 86220,
+   "origin": "authored"
+  },
+  {
+   "start": 86220,
+   "end": 86256,
+   "size": 36,
+   "ninsns": 16,
+   "calls": [
+    57810,
+    86164
+   ],
+   "has_ret": true,
+   "reach": 86256,
+   "origin": "authored"
+  },
+  {
+   "start": 86300,
+   "end": 86573,
+   "size": 273,
+   "ninsns": 99,
+   "calls": [
+    63195,
+    86220,
+    86573,
+    104932,
+    113949,
+    115546
+   ],
+   "has_ret": true,
+   "reach": 86573,
+   "origin": "authored"
+  },
+  {
+   "start": 86573,
+   "end": 86731,
+   "size": 158,
+   "ninsns": 64,
+   "calls": [
+    86573
+   ],
+   "has_ret": true,
+   "reach": 86731,
+   "origin": "authored"
+  },
+  {
+   "start": 86731,
+   "end": 86832,
+   "size": 101,
+   "ninsns": 38,
+   "calls": [
+    63195,
+    66410,
+    111881
+   ],
+   "has_ret": true,
+   "reach": 86832,
+   "origin": "authored"
+  },
+  {
+   "start": 86832,
+   "end": 87242,
+   "size": 410,
+   "ninsns": 175,
+   "calls": [
+    57810,
+    59356,
+    66410
+   ],
+   "has_ret": true,
+   "reach": 87290,
+   "origin": "authored"
+  },
+  {
+   "start": 87242,
+   "end": 87290,
+   "size": 48,
+   "ninsns": 45,
+   "calls": [],
+   "has_ret": true,
+   "reach": 87290,
+   "origin": "authored"
+  },
+  {
+   "start": 87290,
+   "end": 87432,
+   "size": 142,
+   "ninsns": 53,
+   "calls": [
+    63170,
+    64000,
+    65501,
+    66410,
+    86220
+   ],
+   "has_ret": true,
+   "reach": 87432,
+   "origin": "authored"
+  },
+  {
+   "start": 87500,
+   "end": 87533,
+   "size": 33,
+   "ninsns": 16,
+   "calls": [],
+   "has_ret": true,
+   "reach": 87533,
+   "origin": "authored"
+  },
+  {
+   "start": 87533,
+   "end": 87565,
+   "size": 32,
+   "ninsns": 16,
+   "calls": [],
+   "has_ret": true,
+   "reach": 87565,
+   "origin": "authored"
+  },
+  {
+   "start": 87565,
+   "end": 87625,
+   "size": 60,
+   "ninsns": 31,
+   "calls": [],
+   "has_ret": true,
+   "reach": 87625,
+   "origin": "authored"
+  },
+  {
+   "start": 87625,
+   "end": 87786,
+   "size": 161,
+   "ninsns": 70,
+   "calls": [],
+   "has_ret": true,
+   "reach": 87786,
+   "origin": "authored"
+  },
+  {
+   "start": 87786,
+   "end": 88032,
+   "size": 246,
+   "ninsns": 107,
+   "calls": [
+    88032,
+    88990
+   ],
+   "has_ret": true,
+   "reach": 88032,
+   "origin": "authored"
+  },
+  {
+   "start": 88032,
+   "end": 88123,
+   "size": 91,
+   "ninsns": 36,
+   "calls": [
+    87500,
+    88123,
+    88794
+   ],
+   "has_ret": true,
+   "reach": 88123,
+   "origin": "authored"
+  },
+  {
+   "start": 88123,
+   "end": 88598,
+   "size": 475,
+   "ninsns": 194,
+   "calls": [
+    87500,
+    88598,
+    114862
+   ],
+   "has_ret": true,
+   "reach": 88598,
+   "origin": "authored"
+  },
+  {
+   "start": 88598,
+   "end": 88794,
+   "size": 196,
+   "ninsns": 83,
+   "calls": [
+    87500,
+    89026,
+    89196
+   ],
+   "has_ret": true,
+   "reach": 88794,
+   "origin": "authored"
+  },
+  {
+   "start": 88794,
+   "end": 88990,
+   "size": 196,
+   "ninsns": 79,
+   "calls": [
+    87500,
+    87625
+   ],
+   "has_ret": true,
+   "reach": 88990,
+   "origin": "authored"
+  },
+  {
+   "start": 88990,
+   "end": 89026,
+   "size": 36,
+   "ninsns": 16,
+   "calls": [],
+   "has_ret": true,
+   "reach": 89026,
+   "origin": "authored"
+  },
+  {
+   "start": 89026,
+   "end": 89196,
+   "size": 170,
+   "ninsns": 70,
+   "calls": [
+    87500,
+    88032
+   ],
+   "has_ret": true,
+   "reach": 89196,
+   "origin": "authored"
+  },
+  {
+   "start": 89196,
+   "end": 89584,
+   "size": 388,
+   "ninsns": 166,
+   "calls": [
+    87533,
+    87565
+   ],
+   "has_ret": true,
+   "reach": 89584,
+   "origin": "authored"
+  },
+  {
+   "start": 89584,
+   "end": 89699,
+   "size": 115,
+   "ninsns": 43,
+   "calls": [
+    89699
+   ],
+   "has_ret": true,
+   "reach": 89699,
+   "origin": "authored"
+  },
+  {
+   "start": 89699,
+   "end": 89971,
+   "size": 272,
+   "ninsns": 109,
+   "calls": [
+    89699,
+    90138,
+    90292
+   ],
+   "has_ret": true,
+   "reach": 89971,
+   "origin": "authored"
+  },
+  {
+   "start": 89971,
+   "end": 90068,
+   "size": 97,
+   "ninsns": 62,
+   "calls": [
+    89699,
+    90138,
+    90292,
+    114862
+   ],
+   "has_ret": true,
+   "reach": 90138,
+   "origin": "authored"
+  },
+  {
+   "start": 90068,
+   "end": 90138,
+   "size": 70,
+   "ninsns": 24,
+   "calls": [],
+   "has_ret": true,
+   "reach": 90138,
+   "origin": "authored"
+  },
+  {
+   "start": 90138,
+   "end": 90177,
+   "size": 39,
+   "ninsns": 21,
+   "calls": [],
+   "has_ret": true,
+   "reach": 90196,
+   "origin": "authored"
+  },
+  {
+   "start": 90177,
+   "end": 90196,
+   "size": 19,
+   "ninsns": 8,
+   "calls": [],
+   "has_ret": true,
+   "reach": 90196,
+   "origin": "authored"
+  },
+  {
+   "start": 90196,
+   "end": 90292,
+   "size": 96,
+   "ninsns": 38,
+   "calls": [
+    90138,
+    90292
+   ],
+   "has_ret": true,
+   "reach": 90292,
+   "origin": "authored"
+  },
+  {
+   "start": 90292,
+   "end": 90358,
+   "size": 66,
+   "ninsns": 17,
+   "calls": [],
+   "has_ret": true,
+   "reach": 90358,
+   "origin": "authored"
+  },
+  {
+   "start": 90358,
+   "end": 90373,
+   "size": 15,
+   "ninsns": 7,
+   "calls": [
+    89971
+   ],
+   "has_ret": true,
+   "reach": 90373,
+   "origin": "authored"
+  },
+  {
+   "start": 90373,
+   "end": 90388,
+   "size": 15,
+   "ninsns": 7,
+   "calls": [
+    101284
+   ],
+   "has_ret": true,
+   "reach": 90388,
+   "origin": "authored"
+  },
+  {
+   "start": 90388,
+   "end": 90403,
+   "size": 15,
+   "ninsns": 7,
+   "calls": [
+    123021
+   ],
+   "has_ret": true,
+   "reach": 90403,
+   "origin": "authored"
+  },
+  {
+   "start": 90403,
+   "end": 90421,
+   "size": 18,
+   "ninsns": 8,
+   "calls": [
+    122980
+   ],
+   "has_ret": true,
+   "reach": 90421,
+   "origin": "authored"
+  },
+  {
+   "start": 90421,
+   "end": 90440,
+   "size": 19,
+   "ninsns": 9,
+   "calls": [
+    82188
+   ],
+   "has_ret": true,
+   "reach": 90440,
+   "origin": "authored"
+  },
+  {
+   "start": 90440,
+   "end": 90464,
+   "size": 24,
+   "ninsns": 10,
+   "calls": [
+    101181
+   ],
+   "has_ret": true,
+   "reach": 90464,
+   "origin": "authored"
+  },
+  {
+   "start": 90464,
+   "end": 90500,
+   "size": 36,
+   "ninsns": 14,
+   "calls": [
+    115118
+   ],
+   "has_ret": true,
+   "reach": 90500,
+   "origin": "authored"
+  },
+  {
+   "start": 90500,
+   "end": 90519,
+   "size": 19,
+   "ninsns": 9,
+   "calls": [
+    74346
+   ],
+   "has_ret": true,
+   "reach": 90519,
+   "origin": "authored"
+  },
+  {
+   "start": 90519,
+   "end": 90534,
+   "size": 15,
+   "ninsns": 7,
+   "calls": [
+    100978
+   ],
+   "has_ret": true,
+   "reach": 90534,
+   "origin": "authored"
+  },
+  {
+   "start": 90534,
+   "end": 90552,
+   "size": 18,
+   "ninsns": 8,
+   "calls": [
+    58057
+   ],
+   "has_ret": true,
+   "reach": 90552,
+   "origin": "authored"
+  },
+  {
+   "start": 90552,
+   "end": 90556,
+   "size": 4,
+   "ninsns": 2,
+   "calls": [
+    103722
+   ],
+   "has_ret": true,
+   "reach": 90556,
+   "origin": "authored"
+  },
+  {
+   "start": 90556,
+   "end": 90571,
+   "size": 15,
+   "ninsns": 7,
+   "calls": [
+    76526
+   ],
+   "has_ret": true,
+   "reach": 90571,
+   "origin": "authored"
+  },
+  {
+   "start": 90571,
+   "end": 90586,
+   "size": 15,
+   "ninsns": 7,
+   "calls": [
+    113949
+   ],
+   "has_ret": true,
+   "reach": 90586,
+   "origin": "authored"
+  },
+  {
+   "start": 90586,
+   "end": 90602,
+   "size": 16,
+   "ninsns": 8,
+   "calls": [
+    65843
+   ],
+   "has_ret": true,
+   "reach": 90602,
+   "origin": "authored"
+  },
+  {
+   "start": 90602,
+   "end": 90620,
+   "size": 18,
+   "ninsns": 8,
+   "calls": [
+    64000
+   ],
+   "has_ret": true,
+   "reach": 90620,
+   "origin": "authored"
+  },
+  {
+   "start": 90620,
+   "end": 90624,
+   "size": 4,
+   "ninsns": 2,
+   "calls": [
+    104874
+   ],
+   "has_ret": true,
+   "reach": 90624,
+   "origin": "authored"
+  },
+  {
+   "start": 90624,
+   "end": 90628,
+   "size": 4,
+   "ninsns": 2,
+   "calls": [
+    92380
+   ],
+   "has_ret": true,
+   "reach": 90628,
+   "origin": "authored"
+  },
+  {
+   "start": 90628,
+   "end": 90643,
+   "size": 15,
+   "ninsns": 7,
+   "calls": [
+    74047
+   ],
+   "has_ret": true,
+   "reach": 90643,
+   "origin": "authored"
+  },
+  {
+   "start": 90643,
+   "end": 90658,
+   "size": 15,
+   "ninsns": 7,
+   "calls": [
+    74230
+   ],
+   "has_ret": true,
+   "reach": 90658,
+   "origin": "authored"
+  },
+  {
+   "start": 90658,
+   "end": 90662,
+   "size": 4,
+   "ninsns": 2,
+   "calls": [
+    104932
+   ],
+   "has_ret": true,
+   "reach": 90662,
+   "origin": "authored"
+  },
+  {
+   "start": 90662,
+   "end": 90680,
+   "size": 18,
+   "ninsns": 8,
+   "calls": [
+    114621
+   ],
+   "has_ret": true,
+   "reach": 90680,
+   "origin": "authored"
+  },
+  {
+   "start": 90680,
+   "end": 90698,
+   "size": 18,
+   "ninsns": 8,
+   "calls": [
+    90196
+   ],
+   "has_ret": true,
+   "reach": 90698,
+   "origin": "authored"
+  },
+  {
+   "start": 90698,
+   "end": 90748,
+   "size": 50,
+   "ninsns": 27,
+   "calls": [
+    102244
+   ],
+   "has_ret": true,
+   "reach": 90748,
+   "origin": "authored"
+  },
+  {
+   "start": 90748,
+   "end": 90884,
+   "size": 136,
+   "ninsns": 71,
+   "calls": [
+    102244
+   ],
+   "has_ret": true,
+   "reach": 90884,
+   "origin": "authored"
+  },
+  {
+   "start": 90884,
+   "end": 90977,
+   "size": 93,
+   "ninsns": 47,
+   "calls": [
+    102244
+   ],
+   "has_ret": true,
+   "reach": 90977,
+   "origin": "authored"
+  },
+  {
+   "start": 90977,
+   "end": 91198,
+   "size": 221,
+   "ninsns": 111,
+   "calls": [
+    102244
+   ],
+   "has_ret": true,
+   "reach": 91198,
+   "origin": "authored"
+  },
+  {
+   "start": 91198,
+   "end": 91225,
+   "size": 27,
+   "ninsns": 14,
+   "calls": [
+    101832
+   ],
+   "has_ret": true,
+   "reach": 91225,
+   "origin": "authored"
+  },
+  {
+   "start": 91225,
+   "end": 91252,
+   "size": 27,
+   "ninsns": 14,
+   "calls": [
+    101832
+   ],
+   "has_ret": true,
+   "reach": 91252,
+   "origin": "authored"
+  },
+  {
+   "start": 91252,
+   "end": 91279,
+   "size": 27,
+   "ninsns": 14,
+   "calls": [
+    101832
+   ],
+   "has_ret": true,
+   "reach": 91279,
+   "origin": "authored"
+  },
+  {
+   "start": 91279,
+   "end": 91307,
+   "size": 28,
+   "ninsns": 15,
+   "calls": [
+    90698
+   ],
+   "has_ret": true,
+   "reach": 91307,
+   "origin": "authored"
+  },
+  {
+   "start": 91307,
+   "end": 91373,
+   "size": 66,
+   "ninsns": 33,
+   "calls": [
+    102244
+   ],
+   "has_ret": true,
+   "reach": 91373,
+   "origin": "authored"
+  },
+  {
+   "start": 91373,
+   "end": 91406,
+   "size": 33,
+   "ninsns": 17,
+   "calls": [
+    90698,
+    90748
+   ],
+   "has_ret": true,
+   "reach": 91406,
+   "origin": "authored"
+  },
+  {
+   "start": 91406,
+   "end": 91433,
+   "size": 27,
+   "ninsns": 16,
+   "calls": [
+    102094
+   ],
+   "has_ret": true,
+   "reach": 91433,
+   "origin": "authored"
+  },
+  {
+   "start": 91433,
+   "end": 91522,
+   "size": 89,
+   "ninsns": 39,
+   "calls": [
+    102094
+   ],
+   "has_ret": true,
+   "reach": 91522,
+   "origin": "authored"
+  },
+  {
+   "start": 91522,
+   "end": 91645,
+   "size": 123,
+   "ninsns": 56,
+   "calls": [
+    102094
+   ],
+   "has_ret": true,
+   "reach": 91645,
+   "origin": "authored"
+  },
+  {
+   "start": 91645,
+   "end": 91841,
+   "size": 196,
+   "ninsns": 86,
+   "calls": [
+    102094
+   ],
+   "has_ret": true,
+   "reach": 91841,
+   "origin": "authored"
+  },
+  {
+   "start": 91841,
+   "end": 91878,
+   "size": 37,
+   "ninsns": 18,
+   "calls": [
+    101604
+   ],
+   "has_ret": true,
+   "reach": 91878,
+   "origin": "authored"
+  },
+  {
+   "start": 91878,
+   "end": 91930,
+   "size": 52,
+   "ninsns": 30,
+   "calls": [
+    101604
+   ],
+   "has_ret": true,
+   "reach": 91930,
+   "origin": "authored"
+  },
+  {
+   "start": 91930,
+   "end": 91983,
+   "size": 53,
+   "ninsns": 28,
+   "calls": [
+    101604
+   ],
+   "has_ret": true,
+   "reach": 91983,
+   "origin": "authored"
+  },
+  {
+   "start": 91983,
+   "end": 92040,
+   "size": 57,
+   "ninsns": 30,
+   "calls": [
+    91406,
+    92102
+   ],
+   "has_ret": true,
+   "reach": 92040,
+   "origin": "authored"
+  },
+  {
+   "start": 92040,
+   "end": 92102,
+   "size": 62,
+   "ninsns": 31,
+   "calls": [
+    91406,
+    91522,
+    92102
+   ],
+   "has_ret": true,
+   "reach": 92102,
+   "origin": "authored"
+  },
+  {
+   "start": 92102,
+   "end": 92125,
+   "size": 23,
+   "ninsns": 13,
+   "calls": [
+    94906
+   ],
+   "has_ret": true,
+   "reach": 92125,
+   "origin": "authored"
+  },
+  {
+   "start": 92125,
+   "end": 92264,
+   "size": 139,
+   "ninsns": 71,
+   "calls": [
+    94906,
+    101582
+   ],
+   "has_ret": true,
+   "reach": 92264,
+   "origin": "authored"
+  },
+  {
+   "start": 92264,
+   "end": 92283,
+   "size": 19,
+   "ninsns": 41,
+   "calls": [
+    94906,
+    102472,
+    103218
+   ],
+   "has_ret": true,
+   "reach": 92351,
+   "origin": "authored"
+  },
+  {
+   "start": 92283,
+   "end": 92351,
+   "size": 68,
+   "ninsns": 32,
+   "calls": [
+    94906,
+    103218
+   ],
+   "has_ret": true,
+   "reach": 92351,
+   "origin": "authored"
+  },
+  {
+   "start": 92352,
+   "end": 92380,
+   "size": 28,
+   "ninsns": 91,
+   "calls": [
+    92537,
+    92572,
+    95567,
+    105732
+   ],
+   "has_ret": true,
+   "reach": 92537,
+   "origin": "authored"
+  },
+  {
+   "start": 92380,
+   "end": 92537,
+   "size": 157,
+   "ninsns": 76,
+   "calls": [
+    92537,
+    92572,
+    95567,
+    105732
+   ],
+   "has_ret": true,
+   "reach": 92537,
+   "origin": "authored"
+  },
+  {
+   "start": 92537,
+   "end": 92550,
+   "size": 13,
+   "ninsns": 16,
+   "calls": [],
+   "has_ret": true,
+   "reach": 92572,
+   "origin": "authored"
+  },
+  {
+   "start": 92550,
+   "end": 92572,
+   "size": 22,
+   "ninsns": 9,
+   "calls": [],
+   "has_ret": true,
+   "reach": 92572,
+   "origin": "authored"
+  },
+  {
+   "start": 92572,
+   "end": 92702,
+   "size": 130,
+   "ninsns": 66,
+   "calls": [],
+   "has_ret": true,
+   "reach": 92702,
+   "origin": "authored"
+  },
+  {
+   "start": 92702,
+   "end": 92742,
+   "size": 40,
+   "ninsns": 31,
+   "calls": [],
+   "has_ret": true,
+   "reach": 92760,
+   "origin": "authored"
+  },
+  {
+   "start": 92742,
+   "end": 92760,
+   "size": 18,
+   "ninsns": 11,
+   "calls": [],
+   "has_ret": true,
+   "reach": 92760,
+   "origin": "authored"
+  },
+  {
+   "start": 92760,
+   "end": 92841,
+   "size": 81,
+   "ninsns": 37,
+   "calls": [
+    96378
+   ],
+   "has_ret": true,
+   "reach": 92841,
+   "origin": "authored"
+  },
+  {
+   "start": 92841,
+   "end": 92899,
+   "size": 58,
+   "ninsns": 30,
+   "calls": [
+    96323
+   ],
+   "has_ret": true,
+   "reach": 92899,
+   "origin": "authored"
+  },
+  {
+   "start": 92899,
+   "end": 92923,
+   "size": 24,
+   "ninsns": 29,
+   "calls": [
+    96378
+   ],
+   "has_ret": true,
+   "reach": 92956,
+   "origin": "authored"
+  },
+  {
+   "start": 92923,
+   "end": 92956,
+   "size": 33,
+   "ninsns": 17,
+   "calls": [],
+   "has_ret": true,
+   "reach": 92956,
+   "origin": "authored"
+  },
+  {
+   "start": 92956,
+   "end": 93023,
+   "size": 67,
+   "ninsns": 34,
+   "calls": [
+    96378
+   ],
+   "has_ret": true,
+   "reach": 93023,
+   "origin": "authored"
+  },
+  {
+   "start": 93023,
+   "end": 93060,
+   "size": 37,
+   "ninsns": 17,
+   "calls": [],
+   "has_ret": true,
+   "reach": 93060,
+   "origin": "authored"
+  },
+  {
+   "start": 93060,
+   "end": 93287,
+   "size": 227,
+   "ninsns": 104,
+   "calls": [
+    93287,
+    93725,
+    93765
+   ],
+   "has_ret": true,
+   "reach": 93287,
+   "origin": "authored"
+  },
+  {
+   "start": 93287,
+   "end": 93636,
+   "size": 349,
+   "ninsns": 155,
+   "calls": [
+    93636,
+    94906,
+    104726
+   ],
+   "has_ret": true,
+   "reach": 93636,
+   "origin": "authored"
+  },
+  {
+   "start": 93636,
+   "end": 93725,
+   "size": 89,
+   "ninsns": 47,
+   "calls": [
+    94906,
+    103762
+   ],
+   "has_ret": true,
+   "reach": 93725,
+   "origin": "authored"
+  },
+  {
+   "start": 93725,
+   "end": 93765,
+   "size": 40,
+   "ninsns": 22,
+   "calls": [],
+   "has_ret": true,
+   "reach": 93765,
+   "origin": "authored"
+  },
+  {
+   "start": 93765,
+   "end": 93844,
+   "size": 79,
+   "ninsns": 38,
+   "calls": [],
+   "has_ret": true,
+   "reach": 93844,
+   "origin": "authored"
+  },
+  {
+   "start": 93844,
+   "end": 93890,
+   "size": 46,
+   "ninsns": 26,
+   "calls": [
+    103538
+   ],
+   "has_ret": true,
+   "reach": 93890,
+   "origin": "authored"
+  },
+  {
+   "start": 93890,
+   "end": 94092,
+   "size": 202,
+   "ninsns": 90,
+   "calls": [
+    93844
+   ],
+   "has_ret": true,
+   "reach": 94092,
+   "origin": "authored"
+  },
+  {
+   "start": 94094,
+   "end": 94254,
+   "size": 160,
+   "ninsns": 70,
+   "calls": [
+    105498,
+    105626
+   ],
+   "has_ret": true,
+   "reach": 94254,
+   "origin": "authored"
+  },
+  {
+   "start": 94254,
+   "end": 94353,
+   "size": 99,
+   "ninsns": 43,
+   "calls": [
+    94353,
+    94701,
+    101582,
+    104088
+   ],
+   "has_ret": true,
+   "reach": 94353,
+   "origin": "authored"
+  },
+  {
+   "start": 94353,
+   "end": 94488,
+   "size": 135,
+   "ninsns": 65,
+   "calls": [
+    94488,
+    94567,
+    94626,
+    101065,
+    103894,
+    104214
+   ],
+   "has_ret": true,
+   "reach": 94488,
+   "origin": "authored"
+  },
+  {
+   "start": 94488,
+   "end": 94567,
+   "size": 79,
+   "ninsns": 38,
+   "calls": [],
+   "has_ret": true,
+   "reach": 94567,
+   "origin": "authored"
+  },
+  {
+   "start": 94567,
+   "end": 94626,
+   "size": 59,
+   "ninsns": 30,
+   "calls": [],
+   "has_ret": true,
+   "reach": 94626,
+   "origin": "authored"
+  },
+  {
+   "start": 94626,
+   "end": 94701,
+   "size": 75,
+   "ninsns": 31,
+   "calls": [],
+   "has_ret": true,
+   "reach": 94701,
+   "origin": "authored"
+  },
+  {
+   "start": 94701,
+   "end": 94789,
+   "size": 88,
+   "ninsns": 57,
+   "calls": [],
+   "has_ret": true,
+   "reach": 94839,
+   "origin": "authored"
+  },
+  {
+   "start": 94789,
+   "end": 94839,
+   "size": 50,
+   "ninsns": 49,
+   "calls": [],
+   "has_ret": true,
+   "reach": 94839,
+   "origin": "authored"
+  },
+  {
+   "start": 94839,
+   "end": 94891,
+   "size": 52,
+   "ninsns": 30,
+   "calls": [
+    94254,
+    94906,
+    95141
+   ],
+   "has_ret": true,
+   "reach": 94906,
+   "origin": "authored"
+  },
+  {
+   "start": 94891,
+   "end": 94906,
+   "size": 15,
+   "ninsns": 10,
+   "calls": [
+    94906
+   ],
+   "has_ret": true,
+   "reach": 94906,
+   "origin": "authored"
+  },
+  {
+   "start": 94906,
+   "end": 95074,
+   "size": 168,
+   "ninsns": 81,
+   "calls": [
+    94254,
+    95141,
+    100592,
+    101065,
+    103218
+   ],
+   "has_ret": true,
+   "reach": 95074,
+   "origin": "authored"
+  },
+  {
+   "start": 95074,
+   "end": 95129,
+   "size": 55,
+   "ninsns": 30,
+   "calls": [
+    94254,
+    94839,
+    95141
+   ],
+   "has_ret": true,
+   "reach": 95141,
+   "origin": "authored"
+  },
+  {
+   "start": 95129,
+   "end": 95141,
+   "size": 12,
+   "ninsns": 8,
+   "calls": [
+    94839
+   ],
+   "has_ret": true,
+   "reach": 95141,
+   "origin": "authored"
+  },
+  {
+   "start": 95141,
+   "end": 95473,
+   "size": 332,
+   "ninsns": 193,
+   "calls": [
+    95567,
+    95588,
+    96937,
+    101296,
+    101832,
+    102472
+   ],
+   "has_ret": true,
+   "reach": 95567,
+   "origin": "authored"
+  },
+  {
+   "start": 95473,
+   "end": 95567,
+   "size": 94,
+   "ninsns": 45,
+   "calls": [
+    101832,
+    102472
+   ],
+   "has_ret": true,
+   "reach": 95567,
+   "origin": "authored"
+  },
+  {
+   "start": 95567,
+   "end": 95588,
+   "size": 21,
+   "ninsns": 11,
+   "calls": [
+    95588
+   ],
+   "has_ret": true,
+   "reach": 95588,
+   "origin": "authored"
+  },
+  {
+   "start": 95588,
+   "end": 95604,
+   "size": 16,
+   "ninsns": 137,
+   "calls": [
+    93023,
+    94094
+   ],
+   "has_ret": true,
+   "reach": 95891,
+   "origin": "authored"
+  },
+  {
+   "start": 95604,
+   "end": 95891,
+   "size": 287,
+   "ninsns": 134,
+   "calls": [
+    93023,
+    94094
+   ],
+   "has_ret": true,
+   "reach": 95891,
+   "origin": "authored"
+  },
+  {
+   "start": 95892,
+   "end": 96013,
+   "size": 121,
+   "ninsns": 49,
+   "calls": [],
+   "has_ret": true,
+   "reach": 96013,
+   "origin": "authored"
+  },
+  {
+   "start": 96013,
+   "end": 96323,
+   "size": 310,
+   "ninsns": 127,
+   "calls": [
+    94906,
+    96635,
+    103577
+   ],
+   "has_ret": true,
+   "reach": 96323,
+   "origin": "authored"
+  },
+  {
+   "start": 96323,
+   "end": 96378,
+   "size": 55,
+   "ninsns": 24,
+   "calls": [
+    96013
+   ],
+   "has_ret": true,
+   "reach": 96378,
+   "origin": "authored"
+  },
+  {
+   "start": 96378,
+   "end": 96441,
+   "size": 63,
+   "ninsns": 27,
+   "calls": [
+    96013
+   ],
+   "has_ret": true,
+   "reach": 96441,
+   "origin": "authored"
+  },
+  {
+   "start": 96441,
+   "end": 96496,
+   "size": 55,
+   "ninsns": 24,
+   "calls": [
+    96013
+   ],
+   "has_ret": true,
+   "reach": 96496,
+   "origin": "authored"
+  },
+  {
+   "start": 96496,
+   "end": 96627,
+   "size": 131,
+   "ninsns": 63,
+   "calls": [
+    94906,
+    103577,
+    103637
+   ],
+   "has_ret": true,
+   "reach": 96635,
+   "origin": "authored"
+  },
+  {
+   "start": 96627,
+   "end": 96635,
+   "size": 8,
+   "ninsns": 5,
+   "calls": [],
+   "has_ret": true,
+   "reach": 96635,
+   "origin": "authored"
+  },
+  {
+   "start": 96635,
+   "end": 96744,
+   "size": 109,
+   "ninsns": 52,
+   "calls": [
+    94906,
+    100598,
+    103577,
+    103637
+   ],
+   "has_ret": true,
+   "reach": 96744,
+   "origin": "authored"
+  },
+  {
+   "start": 96760,
+   "end": 96779,
+   "size": 19,
+   "ninsns": 14,
+   "calls": [],
+   "has_ret": true,
+   "reach": 96792,
+   "origin": "authored"
+  },
+  {
+   "start": 96779,
+   "end": 96792,
+   "size": 13,
+   "ninsns": 6,
+   "calls": [],
+   "has_ret": true,
+   "reach": 96792,
+   "origin": "authored"
+  },
+  {
+   "start": 96792,
+   "end": 96819,
+   "size": 27,
+   "ninsns": 12,
+   "calls": [],
+   "has_ret": true,
+   "reach": 96819,
+   "origin": "authored"
+  },
+  {
+   "start": 96819,
+   "end": 96887,
+   "size": 68,
+   "ninsns": 32,
+   "calls": [],
+   "has_ret": true,
+   "reach": 96887,
+   "origin": "authored"
+  },
+  {
+   "start": 96888,
+   "end": 96937,
+   "size": 49,
+   "ninsns": 23,
+   "calls": [],
+   "has_ret": true,
+   "reach": 96937,
+   "origin": "authored"
+  },
+  {
+   "start": 96937,
+   "end": 96950,
+   "size": 13,
+   "ninsns": 32,
+   "calls": [
+    94906
+   ],
+   "has_ret": true,
+   "reach": 96999,
+   "origin": "authored"
+  },
+  {
+   "start": 96950,
+   "end": 96999,
+   "size": 49,
+   "ninsns": 26,
+   "calls": [],
+   "has_ret": true,
+   "reach": 96999,
+   "origin": "authored"
+  },
+  {
+   "start": 97000,
+   "end": 97033,
+   "size": 33,
+   "ninsns": 19,
+   "calls": [],
+   "has_ret": true,
+   "reach": 97033,
+   "origin": "authored"
+  },
+  {
+   "start": 97034,
+   "end": 97073,
+   "size": 39,
+   "ninsns": 20,
+   "calls": [],
+   "has_ret": true,
+   "reach": 97073,
+   "origin": "authored"
+  },
+  {
+   "start": 97074,
+   "end": 97128,
+   "size": 54,
+   "ninsns": 30,
+   "calls": [],
+   "has_ret": true,
+   "reach": 97128,
+   "origin": "authored"
+  },
+  {
+   "start": 97128,
+   "end": 97160,
+   "size": 32,
+   "ninsns": 20,
+   "calls": [],
+   "has_ret": true,
+   "reach": 97160,
+   "origin": "authored"
+  },
+  {
+   "start": 97160,
+   "end": 97186,
+   "size": 26,
+   "ninsns": 16,
+   "calls": [],
+   "has_ret": true,
+   "reach": 97186,
+   "origin": "authored"
+  },
+  {
+   "start": 97186,
+   "end": 97324,
+   "size": 138,
+   "ninsns": 70,
+   "calls": [
+    98190,
+    98434
+   ],
+   "has_ret": true,
+   "reach": 97325,
+   "origin": "authored"
+  },
+  {
+   "start": 97324,
+   "end": 97325,
+   "size": 1,
+   "ninsns": 9,
+   "calls": [],
+   "has_ret": true,
+   "reach": 97342,
+   "origin": "authored"
+  },
+  {
+   "start": 97325,
+   "end": 97342,
+   "size": 17,
+   "ninsns": 9,
+   "calls": [],
+   "has_ret": true,
+   "reach": 97342,
+   "origin": "authored"
+  },
+  {
+   "start": 97342,
+   "end": 97373,
+   "size": 31,
+   "ninsns": 17,
+   "calls": [],
+   "has_ret": true,
+   "reach": 97373,
+   "origin": "authored"
+  },
+  {
+   "start": 97373,
+   "end": 97442,
+   "size": 69,
+   "ninsns": 28,
+   "calls": [
+    98150
+   ],
+   "has_ret": true,
+   "reach": 97442,
+   "origin": "authored"
+  },
+  {
+   "start": 97442,
+   "end": 97511,
+   "size": 69,
+   "ninsns": 42,
+   "calls": [],
+   "has_ret": true,
+   "reach": 115944,
+   "origin": "authored"
+  },
+  {
+   "start": 97511,
+   "end": 97580,
+   "size": 69,
+   "ninsns": 29,
+   "calls": [
+    98150
+   ],
+   "has_ret": true,
+   "reach": 97580,
+   "origin": "authored"
+  },
+  {
+   "start": 97580,
+   "end": 97649,
+   "size": 69,
+   "ninsns": 29,
+   "calls": [
+    98150
+   ],
+   "has_ret": true,
+   "reach": 97649,
+   "origin": "authored"
+  },
+  {
+   "start": 97649,
+   "end": 97689,
+   "size": 40,
+   "ninsns": 22,
+   "calls": [],
+   "has_ret": true,
+   "reach": 97689,
+   "origin": "authored"
+  },
+  {
+   "start": 97689,
+   "end": 97729,
+   "size": 40,
+   "ninsns": 21,
+   "calls": [
+    98190
+   ],
+   "has_ret": true,
+   "reach": 97729,
+   "origin": "authored"
+  },
+  {
+   "start": 97729,
+   "end": 97759,
+   "size": 30,
+   "ninsns": 15,
+   "calls": [
+    98181
+   ],
+   "has_ret": true,
+   "reach": 97759,
+   "origin": "authored"
+  },
+  {
+   "start": 97759,
+   "end": 97789,
+   "size": 30,
+   "ninsns": 15,
+   "calls": [
+    98181
+   ],
+   "has_ret": true,
+   "reach": 97789,
+   "origin": "authored"
+  },
+  {
+   "start": 97789,
+   "end": 97819,
+   "size": 30,
+   "ninsns": 15,
+   "calls": [
+    98181
+   ],
+   "has_ret": true,
+   "reach": 97819,
+   "origin": "authored"
+  },
+  {
+   "start": 97819,
+   "end": 97864,
+   "size": 45,
+   "ninsns": 23,
+   "calls": [
+    98181
+   ],
+   "has_ret": true,
+   "reach": 97864,
+   "origin": "authored"
+  },
+  {
+   "start": 97864,
+   "end": 97907,
+   "size": 43,
+   "ninsns": 21,
+   "calls": [
+    98190
+   ],
+   "has_ret": true,
+   "reach": 97907,
+   "origin": "authored"
+  },
+  {
+   "start": 97907,
+   "end": 97976,
+   "size": 69,
+   "ninsns": 34,
+   "calls": [
+    98184
+   ],
+   "has_ret": true,
+   "reach": 97976,
+   "origin": "authored"
+  },
+  {
+   "start": 97976,
+   "end": 98048,
+   "size": 72,
+   "ninsns": 45,
+   "calls": [
+    98120,
+    98190
+   ],
+   "has_ret": true,
+   "reach": 98048,
+   "origin": "authored"
+  },
+  {
+   "start": 98048,
+   "end": 98120,
+   "size": 72,
+   "ninsns": 35,
+   "calls": [],
+   "has_ret": true,
+   "reach": 98120,
+   "origin": "authored"
+  },
+  {
+   "start": 98120,
+   "end": 98150,
+   "size": 30,
+   "ninsns": 13,
+   "calls": [],
+   "has_ret": true,
+   "reach": 98150,
+   "origin": "authored"
+  },
+  {
+   "start": 98150,
+   "end": 98181,
+   "size": 31,
+   "ninsns": 21,
+   "calls": [
+    98190
+   ],
+   "has_ret": true,
+   "reach": 98190,
+   "origin": "authored"
+  },
+  {
+   "start": 98181,
+   "end": 98184,
+   "size": 3,
+   "ninsns": 4,
+   "calls": [],
+   "has_ret": true,
+   "reach": 98189,
+   "origin": "authored"
+  },
+  {
+   "start": 98184,
+   "end": 98189,
+   "size": 5,
+   "ninsns": 3,
+   "calls": [],
+   "has_ret": true,
+   "reach": 98189,
+   "origin": "authored"
+  },
+  {
+   "start": 98190,
+   "end": 98248,
+   "size": 58,
+   "ninsns": 108,
+   "calls": [
+    98422
+   ],
+   "has_ret": true,
+   "reach": 98422,
+   "origin": "authored"
+  },
+  {
+   "start": 98248,
+   "end": 98422,
+   "size": 174,
+   "ninsns": 72,
+   "calls": [
+    98422
+   ],
+   "has_ret": true,
+   "reach": 98422,
+   "origin": "authored"
+  },
+  {
+   "start": 98422,
+   "end": 98433,
+   "size": 11,
+   "ninsns": 6,
+   "calls": [],
+   "has_ret": true,
+   "reach": 98433,
+   "origin": "authored"
+  },
+  {
+   "start": 98434,
+   "end": 98696,
+   "size": 262,
+   "ninsns": 270,
+   "calls": [
+    98248,
+    99754
+   ],
+   "has_ret": true,
+   "reach": 99057,
+   "origin": "authored"
+  },
+  {
+   "start": 98696,
+   "end": 99057,
+   "size": 361,
+   "ninsns": 145,
+   "calls": [
+    98248,
+    99754
+   ],
+   "has_ret": true,
+   "reach": 99057,
+   "origin": "authored"
+  },
+  {
+   "start": 99196,
+   "end": 99201,
+   "size": 5,
+   "ninsns": 22,
+   "calls": [],
+   "has_ret": true,
+   "reach": 99201,
+   "origin": "authored"
+  },
+  {
+   "start": 99444,
+   "end": 99493,
+   "size": 49,
+   "ninsns": 27,
+   "calls": [],
+   "has_ret": true,
+   "reach": 99493,
+   "origin": "authored"
+  },
+  {
+   "start": 99654,
+   "end": 99732,
+   "size": 78,
+   "ninsns": 30,
+   "calls": [
+    107596
+   ],
+   "has_ret": false,
+   "reach": 99732,
+   "origin": "authored"
+  },
+  {
+   "start": 99754,
+   "end": 99902,
+   "size": 148,
+   "ninsns": 65,
+   "calls": [],
+   "has_ret": true,
+   "reach": 99902,
+   "origin": "authored"
+  },
+  {
+   "start": 99968,
+   "end": 100357,
+   "size": 389,
+   "ninsns": 153,
+   "calls": [],
+   "has_ret": true,
+   "reach": 100357,
+   "origin": "authored"
+  },
+  {
+   "start": 100358,
+   "end": 100452,
+   "size": 94,
+   "ninsns": 47,
+   "calls": [],
+   "has_ret": true,
+   "reach": 100452,
+   "origin": "authored"
+  },
+  {
+   "start": 100452,
+   "end": 100507,
+   "size": 55,
+   "ninsns": 31,
+   "calls": [],
+   "has_ret": true,
+   "reach": 100507,
+   "origin": "authored"
+  },
+  {
+   "start": 100507,
+   "end": 100511,
+   "size": 4,
+   "ninsns": 44,
+   "calls": [],
+   "has_ret": true,
+   "reach": 100591,
+   "origin": "authored"
+  },
+  {
+   "start": 100511,
+   "end": 100514,
+   "size": 3,
+   "ninsns": 44,
+   "calls": [],
+   "has_ret": true,
+   "reach": 100591,
+   "origin": "authored"
+  },
+  {
+   "start": 100514,
+   "end": 100591,
+   "size": 77,
+   "ninsns": 42,
+   "calls": [],
+   "has_ret": true,
+   "reach": 100591,
+   "origin": "authored"
+  },
+  {
+   "start": 100592,
+   "end": 100598,
+   "size": 6,
+   "ninsns": 2,
+   "calls": [],
+   "has_ret": true,
+   "reach": 100598,
+   "origin": "authored"
+  },
+  {
+   "start": 100598,
+   "end": 100628,
+   "size": 30,
+   "ninsns": 17,
+   "calls": [],
+   "has_ret": true,
+   "reach": 100628,
+   "origin": "authored"
+  },
+  {
+   "start": 100628,
+   "end": 100815,
+   "size": 187,
+   "ninsns": 84,
+   "calls": [
+    100868,
+    101065,
+    105744,
+    105826,
+    106228,
+    106397
+   ],
+   "has_ret": true,
+   "reach": 100815,
+   "origin": "authored"
+  },
+  {
+   "start": 100838,
+   "end": 100868,
+   "size": 30,
+   "ninsns": 100,
+   "calls": [
+    101241,
+    105744,
+    106397
+   ],
+   "has_ret": true,
+   "reach": 105784,
+   "origin": "authored"
+  },
+  {
+   "start": 100868,
+   "end": 100978,
+   "size": 110,
+   "ninsns": 100,
+   "calls": [
+    101241,
+    105744,
+    106397
+   ],
+   "has_ret": true,
+   "reach": 105784,
+   "origin": "authored"
+  },
+  {
+   "start": 100978,
+   "end": 101065,
+   "size": 87,
+   "ninsns": 50,
+   "calls": [
+    101241
+   ],
+   "has_ret": true,
+   "reach": 101065,
+   "origin": "authored"
+  },
+  {
+   "start": 101065,
+   "end": 101072,
+   "size": 7,
+   "ninsns": 45,
+   "calls": [
+    101196,
+    101241,
+    105790
+   ],
+   "has_ret": true,
+   "reach": 101196,
+   "origin": "authored"
+  },
+  {
+   "start": 101072,
+   "end": 101080,
+   "size": 8,
+   "ninsns": 45,
+   "calls": [
+    101196,
+    101241,
+    105790
+   ],
+   "has_ret": true,
+   "reach": 101196,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "__exit"
+  },
+  {
+   "start": 101080,
+   "end": 101090,
+   "size": 10,
+   "ninsns": 47,
+   "calls": [
+    101196,
+    101241,
+    105790
+   ],
+   "has_ret": true,
+   "reach": 101196,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "__cexit"
+  },
+  {
+   "start": 101090,
+   "end": 101181,
+   "size": 91,
+   "ninsns": 46,
+   "calls": [
+    101196,
+    101241,
+    105790
+   ],
+   "has_ret": true,
+   "reach": 101196,
+   "origin": "authored"
+  },
+  {
+   "start": 101181,
+   "end": 101196,
+   "size": 15,
+   "ninsns": 9,
+   "calls": [],
+   "has_ret": true,
+   "reach": 101196,
+   "origin": "authored"
+  },
+  {
+   "start": 101196,
+   "end": 101241,
+   "size": 45,
+   "ninsns": 18,
+   "calls": [],
+   "has_ret": true,
+   "reach": 101241,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "__ctermsub"
+  },
+  {
+   "start": 101241,
+   "end": 101260,
+   "size": 19,
+   "ninsns": 9,
+   "calls": [],
+   "has_ret": true,
+   "reach": 101260,
+   "origin": "authored"
+  },
+  {
+   "start": 101284,
+   "end": 101296,
+   "size": 12,
+   "ninsns": 138,
+   "calls": [
+    101241,
+    105744,
+    106397
+   ],
+   "has_ret": true,
+   "reach": 105784,
+   "origin": "authored"
+  },
+  {
+   "start": 101296,
+   "end": 101353,
+   "size": 57,
+   "ninsns": 34,
+   "calls": [],
+   "has_ret": true,
+   "reach": 101353,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "__FMSG_TEXT"
+  },
+  {
+   "start": 101354,
+   "end": 101540,
+   "size": 186,
+   "ninsns": 83,
+   "calls": [
+    102472,
+    102620,
+    106538,
+    107634,
+    107698,
+    107918,
+    108098
+   ],
+   "has_ret": true,
+   "reach": 101540,
+   "origin": "authored"
+  },
+  {
+   "start": 101540,
+   "end": 101582,
+   "size": 42,
+   "ninsns": 24,
+   "calls": [
+    106650,
+    106882
+   ],
+   "has_ret": true,
+   "reach": 101582,
+   "origin": "authored"
+  },
+  {
+   "start": 101582,
+   "end": 101603,
+   "size": 21,
+   "ninsns": 12,
+   "calls": [
+    101540
+   ],
+   "has_ret": true,
+   "reach": 101603,
+   "origin": "authored"
+  },
+  {
+   "start": 101604,
+   "end": 101831,
+   "size": 227,
+   "ninsns": 111,
+   "calls": [
+    102094,
+    106934,
+    108018
+   ],
+   "has_ret": true,
+   "reach": 101831,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "_fread"
+  },
+  {
+   "start": 101832,
+   "end": 102093,
+   "size": 261,
+   "ninsns": 131,
+   "calls": [
+    102244,
+    102472,
+    103218,
+    108018
+   ],
+   "has_ret": true,
+   "reach": 102093,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "_fwrite"
+  },
+  {
+   "start": 102094,
+   "end": 102243,
+   "size": 149,
+   "ninsns": 65,
+   "calls": [
+    106582,
+    106934
+   ],
+   "has_ret": true,
+   "reach": 102243,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "__filbuf"
+  },
+  {
+   "start": 102244,
+   "end": 102471,
+   "size": 227,
+   "ninsns": 103,
+   "calls": [
+    102652,
+    103218,
+    106582
+   ],
+   "has_ret": true,
+   "reach": 102471,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "__flsbuf"
+  },
+  {
+   "start": 102472,
+   "end": 102574,
+   "size": 102,
+   "ninsns": 45,
+   "calls": [
+    103218
+   ],
+   "has_ret": true,
+   "reach": 102574,
+   "origin": "authored"
+  },
+  {
+   "start": 102574,
+   "end": 102582,
+   "size": 8,
+   "ninsns": 20,
+   "calls": [
+    102244
+   ],
+   "has_ret": true,
+   "reach": 102619,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "_fputchar"
+  },
+  {
+   "start": 102582,
+   "end": 102619,
+   "size": 37,
+   "ninsns": 19,
+   "calls": [
+    102244
+   ],
+   "has_ret": true,
+   "reach": 102619,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "_putc"
+  },
+  {
+   "start": 102620,
+   "end": 102652,
+   "size": 32,
+   "ninsns": 24,
+   "calls": [
+    106492
+   ],
+   "has_ret": true,
+   "reach": 106486,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "_close"
+  },
+  {
+   "start": 102652,
+   "end": 102724,
+   "size": 72,
+   "ninsns": 53,
+   "calls": [
+    106492
+   ],
+   "has_ret": true,
+   "reach": 106486,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "_lseek"
+  },
+  {
+   "start": 102724,
+   "end": 102774,
+   "size": 50,
+   "ninsns": 28,
+   "calls": [
+    106492
+   ],
+   "has_ret": true,
+   "reach": 106486,
+   "origin": "authored"
+  },
+  {
+   "start": 102774,
+   "end": 102800,
+   "size": 26,
+   "ninsns": 170,
+   "calls": [
+    103201,
+    106492
+   ],
+   "has_ret": true,
+   "reach": 106486,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "_sopen"
+  },
+  {
+   "start": 102800,
+   "end": 103201,
+   "size": 401,
+   "ninsns": 164,
+   "calls": [
+    103201,
+    106492
+   ],
+   "has_ret": true,
+   "reach": 106486,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "_open"
+  },
+  {
+   "start": 103201,
+   "end": 103218,
+   "size": 17,
+   "ninsns": 8,
+   "calls": [],
+   "has_ret": true,
+   "reach": 103218,
+   "origin": "authored"
+  },
+  {
+   "start": 103218,
+   "end": 103398,
+   "size": 180,
+   "ninsns": 154,
+   "calls": [
+    103398,
+    105784,
+    106492,
+    107168
+   ],
+   "has_ret": true,
+   "reach": 106486,
+   "origin": "authored"
+  },
+  {
+   "start": 103398,
+   "end": 103509,
+   "size": 111,
+   "ninsns": 51,
+   "calls": [
+    106492
+   ],
+   "has_ret": true,
+   "reach": 106486,
+   "origin": "authored"
+  },
+  {
+   "start": 103509,
+   "end": 103538,
+   "size": 29,
+   "ninsns": 9,
+   "calls": [
+    106492
+   ],
+   "has_ret": true,
+   "reach": 106486,
+   "origin": "authored"
+  },
+  {
+   "start": 103538,
+   "end": 103544,
+   "size": 6,
+   "ninsns": 22,
+   "calls": [
+    107188,
+    107312
+   ],
+   "has_ret": true,
+   "reach": 103617,
+   "origin": "authored"
+  },
+  {
+   "start": 103544,
+   "end": 103577,
+   "size": 33,
+   "ninsns": 17,
+   "calls": [],
+   "has_ret": true,
+   "reach": 103577,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "__nfree"
+  },
+  {
+   "start": 103577,
+   "end": 103617,
+   "size": 40,
+   "ninsns": 21,
+   "calls": [
+    107188,
+    107312
+   ],
+   "has_ret": true,
+   "reach": 103617,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "__nmalloc"
+  },
+  {
+   "start": 103618,
+   "end": 103637,
+   "size": 19,
+   "ninsns": 10,
+   "calls": [],
+   "has_ret": true,
+   "reach": 103637,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "__ffree"
+  },
+  {
+   "start": 103637,
+   "end": 103701,
+   "size": 64,
+   "ninsns": 61,
+   "calls": [
+    107188,
+    107566
+   ],
+   "has_ret": true,
+   "reach": 103762,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "__fmalloc"
+  },
+  {
+   "start": 103701,
+   "end": 103722,
+   "size": 21,
+   "ninsns": 50,
+   "calls": [
+    107188,
+    107566
+   ],
+   "has_ret": true,
+   "reach": 103762,
+   "origin": "authored"
+  },
+  {
+   "start": 103722,
+   "end": 103762,
+   "size": 40,
+   "ninsns": 12,
+   "calls": [
+    107188
+   ],
+   "has_ret": true,
+   "reach": 103762,
+   "origin": "authored"
+  },
+  {
+   "start": 103762,
+   "end": 103766,
+   "size": 4,
+   "ninsns": 48,
+   "calls": [],
+   "has_ret": true,
+   "reach": 107918,
+   "origin": "authored"
+  },
+  {
+   "start": 103766,
+   "end": 103777,
+   "size": 11,
+   "ninsns": 6,
+   "calls": [],
+   "has_ret": true,
+   "reach": 103777,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "__toupper"
+  },
+  {
+   "start": 103778,
+   "end": 103800,
+   "size": 22,
+   "ninsns": 10,
+   "calls": [],
+   "has_ret": true,
+   "reach": 103800,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "_toupper"
+  },
+  {
+   "start": 103800,
+   "end": 103893,
+   "size": 93,
+   "ninsns": 48,
+   "calls": [
+    107748,
+    107776
+   ],
+   "has_ret": true,
+   "reach": 103893,
+   "origin": "authored"
+  },
+  {
+   "start": 103894,
+   "end": 104009,
+   "size": 115,
+   "ninsns": 65,
+   "calls": [
+    102094
+   ],
+   "has_ret": true,
+   "reach": 104009,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "_fgets"
+  },
+  {
+   "start": 104010,
+   "end": 104087,
+   "size": 77,
+   "ninsns": 35,
+   "calls": [
+    101354,
+    106650
+   ],
+   "has_ret": true,
+   "reach": 104087,
+   "origin": "authored"
+  },
+  {
+   "start": 104088,
+   "end": 104213,
+   "size": 125,
+   "ninsns": 51,
+   "calls": [
+    102472,
+    102652,
+    104214
+   ],
+   "has_ret": true,
+   "reach": 104213,
+   "origin": "authored"
+  },
+  {
+   "start": 104214,
+   "end": 104582,
+   "size": 368,
+   "ninsns": 147,
+   "calls": [
+    102652
+   ],
+   "has_ret": true,
+   "reach": 104588,
+   "origin": "authored"
+  },
+  {
+   "start": 104582,
+   "end": 104588,
+   "size": 6,
+   "ninsns": 5,
+   "calls": [],
+   "has_ret": true,
+   "reach": 104588,
+   "origin": "authored"
+  },
+  {
+   "start": 104588,
+   "end": 104644,
+   "size": 56,
+   "ninsns": 31,
+   "calls": [
+    106492
+   ],
+   "has_ret": true,
+   "reach": 106486,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "_dup"
+  },
+  {
+   "start": 104644,
+   "end": 104684,
+   "size": 40,
+   "ninsns": 31,
+   "calls": [
+    106492
+   ],
+   "has_ret": true,
+   "reach": 106486,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "_dup2"
+  },
+  {
+   "start": 104684,
+   "end": 104726,
+   "size": 42,
+   "ninsns": 24,
+   "calls": [],
+   "has_ret": true,
+   "reach": 104726,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "_strchr"
+  },
+  {
+   "start": 104726,
+   "end": 104766,
+   "size": 40,
+   "ninsns": 26,
+   "calls": [
+    103538,
+    107698,
+    107748
+   ],
+   "has_ret": true,
+   "reach": 104766,
+   "origin": "authored"
+  },
+  {
+   "start": 104766,
+   "end": 104787,
+   "size": 21,
+   "ninsns": 12,
+   "calls": [
+    104788
+   ],
+   "has_ret": true,
+   "reach": 104787,
+   "origin": "authored"
+  },
+  {
+   "start": 104788,
+   "end": 104874,
+   "size": 86,
+   "ninsns": 75,
+   "calls": [
+    103538,
+    107698,
+    107748,
+    107946,
+    108062
+   ],
+   "has_ret": true,
+   "reach": 104954,
+   "origin": "authored"
+  },
+  {
+   "start": 104874,
+   "end": 104932,
+   "size": 58,
+   "ninsns": 37,
+   "calls": [
+    103538,
+    107698
+   ],
+   "has_ret": true,
+   "reach": 104954,
+   "origin": "authored"
+  },
+  {
+   "start": 104932,
+   "end": 104954,
+   "size": 22,
+   "ninsns": 6,
+   "calls": [],
+   "has_ret": true,
+   "reach": 104954,
+   "origin": "authored"
+  },
+  {
+   "start": 104954,
+   "end": 105083,
+   "size": 129,
+   "ninsns": 73,
+   "calls": [],
+   "has_ret": true,
+   "reach": 105108,
+   "origin": "library",
+   "lib": "LIBH.LIB",
+   "name": "__aFldiv"
+  },
+  {
+   "start": 105083,
+   "end": 105108,
+   "size": 25,
+   "ninsns": 16,
+   "calls": [],
+   "has_ret": true,
+   "reach": 105108,
+   "origin": "authored"
+  },
+  {
+   "start": 105108,
+   "end": 105135,
+   "size": 27,
+   "ninsns": 23,
+   "calls": [],
+   "has_ret": true,
+   "reach": 105158,
+   "origin": "library",
+   "lib": "LIBH.LIB",
+   "name": "__aFulmul"
+  },
+  {
+   "start": 105135,
+   "end": 105158,
+   "size": 23,
+   "ninsns": 27,
+   "calls": [],
+   "has_ret": true,
+   "reach": 105158,
+   "origin": "authored"
+  },
+  {
+   "start": 105158,
+   "end": 105318,
+   "size": 160,
+   "ninsns": 72,
+   "calls": [],
+   "has_ret": true,
+   "reach": 105318,
+   "origin": "library",
+   "lib": "LIBH.LIB",
+   "name": "__aFlrem"
+  },
+  {
+   "start": 105318,
+   "end": 105329,
+   "size": 11,
+   "ninsns": 6,
+   "calls": [],
+   "has_ret": true,
+   "reach": 105329,
+   "origin": "authored"
+  },
+  {
+   "start": 105330,
+   "end": 105341,
+   "size": 11,
+   "ninsns": 6,
+   "calls": [],
+   "has_ret": true,
+   "reach": 105341,
+   "origin": "authored"
+  },
+  {
+   "start": 105342,
+   "end": 105374,
+   "size": 32,
+   "ninsns": 15,
+   "calls": [
+    104954
+   ],
+   "has_ret": true,
+   "reach": 105374,
+   "origin": "library",
+   "lib": "LIBH.LIB",
+   "name": "__aFNaldiv"
+  },
+  {
+   "start": 105374,
+   "end": 105406,
+   "size": 32,
+   "ninsns": 15,
+   "calls": [
+    105108
+   ],
+   "has_ret": true,
+   "reach": 105406,
+   "origin": "library",
+   "lib": "LIBH.LIB",
+   "name": "__aFNaulmul"
+  },
+  {
+   "start": 105406,
+   "end": 105438,
+   "size": 32,
+   "ninsns": 15,
+   "calls": [
+    105158
+   ],
+   "has_ret": true,
+   "reach": 105438,
+   "origin": "library",
+   "lib": "LIBH.LIB",
+   "name": "__aFNaldiv"
+  },
+  {
+   "start": 105438,
+   "end": 105467,
+   "size": 29,
+   "ninsns": 14,
+   "calls": [
+    105318
+   ],
+   "has_ret": true,
+   "reach": 105467,
+   "origin": "library",
+   "lib": "LIBH.LIB",
+   "name": "__aFNalshl"
+  },
+  {
+   "start": 105468,
+   "end": 105497,
+   "size": 29,
+   "ninsns": 14,
+   "calls": [
+    105330
+   ],
+   "has_ret": true,
+   "reach": 105497,
+   "origin": "library",
+   "lib": "LIBH.LIB",
+   "name": "__aFNalshl"
+  },
+  {
+   "start": 105498,
+   "end": 105530,
+   "size": 32,
+   "ninsns": 15,
+   "calls": [
+    105530
+   ],
+   "has_ret": true,
+   "reach": 105530,
+   "origin": "library",
+   "lib": "LIBH.LIB",
+   "name": "__aFNaldiv"
+  },
+  {
+   "start": 105530,
+   "end": 105625,
+   "size": 95,
+   "ninsns": 46,
+   "calls": [],
+   "has_ret": true,
+   "reach": 105625,
+   "origin": "library",
+   "lib": "LIBH.LIB",
+   "name": "__aFuldiv"
+  },
+  {
+   "start": 105626,
+   "end": 105732,
+   "size": 106,
+   "ninsns": 47,
+   "calls": [],
+   "has_ret": true,
+   "reach": 105732,
+   "origin": "library",
+   "lib": "LIBH.LIB",
+   "name": "__aFulrem"
+  },
+  {
+   "start": 105732,
+   "end": 105743,
+   "size": 11,
+   "ninsns": 6,
+   "calls": [],
+   "has_ret": true,
+   "reach": 105743,
+   "origin": "authored"
+  },
+  {
+   "start": 105744,
+   "end": 105778,
+   "size": 34,
+   "ninsns": 16,
+   "calls": [
+    106397
+   ],
+   "has_ret": true,
+   "reach": 105778,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "__adbgmsg"
+  },
+  {
+   "start": 105784,
+   "end": 105786,
+   "size": 2,
+   "ninsns": 153,
+   "calls": [
+    101241,
+    105744,
+    106397
+   ],
+   "has_ret": true,
+   "reach": 105787,
+   "origin": "authored"
+  },
+  {
+   "start": 105786,
+   "end": 105790,
+   "size": 4,
+   "ninsns": 21,
+   "calls": [
+    105744,
+    106397
+   ],
+   "has_ret": true,
+   "reach": 105826,
+   "origin": "authored"
+  },
+  {
+   "start": 105790,
+   "end": 105826,
+   "size": 36,
+   "ninsns": 19,
+   "calls": [
+    105744,
+    106397
+   ],
+   "has_ret": true,
+   "reach": 105826,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "__nullcheck"
+  },
+  {
+   "start": 105826,
+   "end": 106228,
+   "size": 402,
+   "ninsns": 270,
+   "calls": [
+    108180
+   ],
+   "has_ret": true,
+   "reach": 106353,
+   "origin": "authored"
+  },
+  {
+   "start": 106228,
+   "end": 106353,
+   "size": 125,
+   "ninsns": 65,
+   "calls": [
+    108180
+   ],
+   "has_ret": true,
+   "reach": 106353,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "__setenvp"
+  },
+  {
+   "start": 106354,
+   "end": 106397,
+   "size": 43,
+   "ninsns": 26,
+   "calls": [],
+   "has_ret": true,
+   "reach": 106397,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "__NMSG_TEXT"
+  },
+  {
+   "start": 106397,
+   "end": 106451,
+   "size": 54,
+   "ninsns": 25,
+   "calls": [
+    106354
+   ],
+   "has_ret": true,
+   "reach": 106451,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "__NMSG_WRITE"
+  },
+  {
+   "start": 106486,
+   "end": 106492,
+   "size": 6,
+   "ninsns": 3,
+   "calls": [
+    106492
+   ],
+   "has_ret": true,
+   "reach": 106492,
+   "origin": "authored"
+  },
+  {
+   "start": 106492,
+   "end": 106537,
+   "size": 45,
+   "ninsns": 21,
+   "calls": [],
+   "has_ret": true,
+   "reach": 106537,
+   "origin": "authored"
+  },
+  {
+   "start": 106538,
+   "end": 106582,
+   "size": 44,
+   "ninsns": 22,
+   "calls": [
+    108218
+   ],
+   "has_ret": true,
+   "reach": 106582,
+   "origin": "authored"
+  },
+  {
+   "start": 106582,
+   "end": 106649,
+   "size": 67,
+   "ninsns": 27,
+   "calls": [
+    103538
+   ],
+   "has_ret": true,
+   "reach": 106649,
+   "origin": "authored"
+  },
+  {
+   "start": 106650,
+   "end": 106882,
+   "size": 232,
+   "ninsns": 92,
+   "calls": [
+    102774
+   ],
+   "has_ret": true,
+   "reach": 106882,
+   "origin": "authored"
+  },
+  {
+   "start": 106882,
+   "end": 106934,
+   "size": 52,
+   "ninsns": 21,
+   "calls": [],
+   "has_ret": true,
+   "reach": 106934,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "__getstream"
+  },
+  {
+   "start": 106934,
+   "end": 107056,
+   "size": 122,
+   "ninsns": 101,
+   "calls": [
+    106492
+   ],
+   "has_ret": true,
+   "reach": 107167,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "_read"
+  },
+  {
+   "start": 107056,
+   "end": 107059,
+   "size": 3,
+   "ninsns": 1,
+   "calls": [],
+   "has_ret": true,
+   "reach": 107059,
+   "origin": "authored"
+  },
+  {
+   "start": 107168,
+   "end": 107188,
+   "size": 20,
+   "ninsns": 12,
+   "calls": [],
+   "has_ret": true,
+   "reach": 107188,
+   "origin": "authored"
+  },
+  {
+   "start": 107188,
+   "end": 107312,
+   "size": 124,
+   "ninsns": 63,
+   "calls": [],
+   "has_ret": true,
+   "reach": 107312,
+   "origin": "authored"
+  },
+  {
+   "start": 107312,
+   "end": 107452,
+   "size": 140,
+   "ninsns": 68,
+   "calls": [
+    107452,
+    107533
+   ],
+   "has_ret": true,
+   "reach": 107452,
+   "origin": "authored"
+  },
+  {
+   "start": 107452,
+   "end": 107533,
+   "size": 81,
+   "ninsns": 39,
+   "calls": [],
+   "has_ret": true,
+   "reach": 107533,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "__incseg"
+  },
+  {
+   "start": 107533,
+   "end": 107565,
+   "size": 32,
+   "ninsns": 17,
+   "calls": [],
+   "has_ret": true,
+   "reach": 107565,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "__findlast"
+  },
+  {
+   "start": 107566,
+   "end": 107596,
+   "size": 30,
+   "ninsns": 29,
+   "calls": [
+    108224,
+    108276
+   ],
+   "has_ret": true,
+   "reach": 107634,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "__newseg"
+  },
+  {
+   "start": 107596,
+   "end": 107601,
+   "size": 5,
+   "ninsns": 4,
+   "calls": [],
+   "has_ret": true,
+   "reach": 107601,
+   "origin": "authored"
+  },
+  {
+   "start": 107634,
+   "end": 107697,
+   "size": 63,
+   "ninsns": 30,
+   "calls": [],
+   "has_ret": true,
+   "reach": 107697,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "_strcat"
+  },
+  {
+   "start": 107698,
+   "end": 107748,
+   "size": 50,
+   "ninsns": 26,
+   "calls": [],
+   "has_ret": true,
+   "reach": 107748,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "_strcpy"
+  },
+  {
+   "start": 107748,
+   "end": 107775,
+   "size": 27,
+   "ninsns": 15,
+   "calls": [],
+   "has_ret": true,
+   "reach": 107775,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "_strlen"
+  },
+  {
+   "start": 107776,
+   "end": 107834,
+   "size": 58,
+   "ninsns": 32,
+   "calls": [],
+   "has_ret": true,
+   "reach": 107834,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "_strncmp"
+  },
+  {
+   "start": 107834,
+   "end": 107918,
+   "size": 84,
+   "ninsns": 47,
+   "calls": [],
+   "has_ret": true,
+   "reach": 107918,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "__catox"
+  },
+  {
+   "start": 107918,
+   "end": 107946,
+   "size": 28,
+   "ninsns": 61,
+   "calls": [],
+   "has_ret": true,
+   "reach": 108425,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "_itoa"
+  },
+  {
+   "start": 107946,
+   "end": 108018,
+   "size": 72,
+   "ninsns": 33,
+   "calls": [
+    106486
+   ],
+   "has_ret": true,
+   "reach": 108018,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "_intdos"
+  },
+  {
+   "start": 108018,
+   "end": 108062,
+   "size": 44,
+   "ninsns": 23,
+   "calls": [],
+   "has_ret": true,
+   "reach": 108062,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "_memcpy"
+  },
+  {
+   "start": 108062,
+   "end": 108070,
+   "size": 8,
+   "ninsns": 5,
+   "calls": [],
+   "has_ret": true,
+   "reach": 108070,
+   "origin": "authored"
+  },
+  {
+   "start": 108070,
+   "end": 108097,
+   "size": 27,
+   "ninsns": 15,
+   "calls": [],
+   "has_ret": true,
+   "reach": 108097,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "__chdrive"
+  },
+  {
+   "start": 108098,
+   "end": 108111,
+   "size": 13,
+   "ninsns": 17,
+   "calls": [
+    106492
+   ],
+   "has_ret": true,
+   "reach": 108111,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "_unlink"
+  },
+  {
+   "start": 108180,
+   "end": 108217,
+   "size": 37,
+   "ninsns": 120,
+   "calls": [
+    101241,
+    103538,
+    105744,
+    106397
+   ],
+   "has_ret": true,
+   "reach": 108217,
+   "origin": "authored"
+  },
+  {
+   "start": 108218,
+   "end": 108221,
+   "size": 3,
+   "ninsns": 18,
+   "calls": [],
+   "has_ret": true,
+   "reach": 108221,
+   "origin": "authored"
+  },
+  {
+   "start": 108224,
+   "end": 108276,
+   "size": 52,
+   "ninsns": 31,
+   "calls": [],
+   "has_ret": true,
+   "reach": 108276,
+   "origin": "library",
+   "lib": "MLIBCR.LIB",
+   "name": "__initseg"
+  },
+  {
+   "start": 108276,
+   "end": 108289,
+   "size": 13,
+   "ninsns": 18,
+   "calls": [],
+   "has_ret": true,
+   "reach": 108330,
+   "origin": "authored"
+  },
+  {
+   "start": 108289,
+   "end": 108317,
+   "size": 28,
+   "ninsns": 7,
+   "calls": [],
+   "has_ret": true,
+   "reach": 108330,
+   "origin": "authored"
+  },
+  {
+   "start": 108317,
+   "end": 108330,
+   "size": 13,
+   "ninsns": 4,
+   "calls": [],
+   "has_ret": true,
+   "reach": 108330,
+   "origin": "authored"
+  },
+  {
+   "start": 108372,
+   "end": 108425,
+   "size": 53,
+   "ninsns": 31,
+   "calls": [],
+   "has_ret": true,
+   "reach": 108425,
+   "origin": "authored"
+  },
+  {
+   "start": 108426,
+   "end": 108453,
+   "size": 27,
+   "ninsns": 11,
+   "calls": [],
+   "has_ret": true,
+   "reach": 108453,
+   "origin": "authored"
+  },
+  {
+   "start": 108498,
+   "end": 108641,
+   "size": 143,
+   "ninsns": 80,
+   "calls": [
+    92841,
+    94906,
+    108719,
+    110034
+   ],
+   "has_ret": true,
+   "reach": 108719,
+   "origin": "authored"
+  },
+  {
+   "start": 108641,
+   "end": 108658,
+   "size": 17,
+   "ninsns": 11,
+   "calls": [],
+   "has_ret": true,
+   "reach": 108719,
+   "origin": "authored"
+  },
+  {
+   "start": 108658,
+   "end": 108681,
+   "size": 23,
+   "ninsns": 22,
+   "calls": [
+    110034
+   ],
+   "has_ret": true,
+   "reach": 108719,
+   "origin": "authored"
+  },
+  {
+   "start": 108681,
+   "end": 108704,
+   "size": 23,
+   "ninsns": 15,
+   "calls": [
+    110034
+   ],
+   "has_ret": true,
+   "reach": 108719,
+   "origin": "authored"
+  },
+  {
+   "start": 108704,
+   "end": 108719,
+   "size": 15,
+   "ninsns": 7,
+   "calls": [],
+   "has_ret": true,
+   "reach": 108719,
+   "origin": "authored"
+  },
+  {
+   "start": 108719,
+   "end": 108722,
+   "size": 3,
+   "ninsns": 140,
+   "calls": [
+    95074,
+    109107,
+    109267
+   ],
+   "has_ret": true,
+   "reach": 109107,
+   "origin": "authored"
+  },
+  {
+   "start": 108722,
+   "end": 109107,
+   "size": 385,
+   "ninsns": 138,
+   "calls": [
+    95074,
+    109107,
+    109267
+   ],
+   "has_ret": true,
+   "reach": 109107,
+   "origin": "authored"
+  },
+  {
+   "start": 109107,
+   "end": 109267,
+   "size": 160,
+   "ninsns": 59,
+   "calls": [],
+   "has_ret": true,
+   "reach": 109267,
+   "origin": "authored"
+  },
+  {
+   "start": 109267,
+   "end": 109427,
+   "size": 160,
+   "ninsns": 59,
+   "calls": [],
+   "has_ret": true,
+   "reach": 109427,
+   "origin": "authored"
+  },
+  {
+   "start": 109427,
+   "end": 109512,
+   "size": 85,
+   "ninsns": 38,
+   "calls": [
+    94839
+   ],
+   "has_ret": true,
+   "reach": 109512,
+   "origin": "authored"
+  },
+  {
+   "start": 109512,
+   "end": 109864,
+   "size": 352,
+   "ninsns": 202,
+   "calls": [
+    94839,
+    101832,
+    109427
+   ],
+   "has_ret": true,
+   "reach": 110034,
+   "origin": "authored"
+  },
+  {
+   "start": 109864,
+   "end": 110034,
+   "size": 170,
+   "ninsns": 52,
+   "calls": [
+    94839,
+    101832,
+    109427
+   ],
+   "has_ret": true,
+   "reach": 110034,
+   "origin": "authored"
+  },
+  {
+   "start": 110034,
+   "end": 110165,
+   "size": 131,
+   "ninsns": 58,
+   "calls": [
+    101832,
+    102244
+   ],
+   "has_ret": true,
+   "reach": 110165,
+   "origin": "authored"
+  },
+  {
+   "start": 110165,
+   "end": 110217,
+   "size": 52,
+   "ninsns": 17,
+   "calls": [],
+   "has_ret": true,
+   "reach": 110217,
+   "origin": "authored"
+  },
+  {
+   "start": 110218,
+   "end": 110246,
+   "size": 28,
+   "ninsns": 11,
+   "calls": [
+    110246
+   ],
+   "has_ret": true,
+   "reach": 110246,
+   "origin": "authored"
+  },
+  {
+   "start": 110246,
+   "end": 110357,
+   "size": 111,
+   "ninsns": 46,
+   "calls": [],
+   "has_ret": true,
+   "reach": 110357,
+   "origin": "authored"
+  },
+  {
+   "start": 110357,
+   "end": 110438,
+   "size": 81,
+   "ninsns": 32,
+   "calls": [
+    94839
+   ],
+   "has_ret": true,
+   "reach": 110438,
+   "origin": "authored"
+  },
+  {
+   "start": 110438,
+   "end": 110486,
+   "size": 48,
+   "ninsns": 24,
+   "calls": [
+    94839,
+    111464
+   ],
+   "has_ret": true,
+   "reach": 110486,
+   "origin": "authored"
+  },
+  {
+   "start": 110486,
+   "end": 110558,
+   "size": 72,
+   "ninsns": 32,
+   "calls": [
+    95074
+   ],
+   "has_ret": true,
+   "reach": 110558,
+   "origin": "authored"
+  },
+  {
+   "start": 110558,
+   "end": 110668,
+   "size": 110,
+   "ninsns": 42,
+   "calls": [],
+   "has_ret": true,
+   "reach": 110668,
+   "origin": "authored"
+  },
+  {
+   "start": 110668,
+   "end": 110741,
+   "size": 73,
+   "ninsns": 27,
+   "calls": [],
+   "has_ret": true,
+   "reach": 110741,
+   "origin": "authored"
+  },
+  {
+   "start": 110741,
+   "end": 110855,
+   "size": 114,
+   "ninsns": 29,
+   "calls": [],
+   "has_ret": true,
+   "reach": 110855,
+   "origin": "authored"
+  },
+  {
+   "start": 110855,
+   "end": 111194,
+   "size": 339,
+   "ninsns": 127,
+   "calls": [
+    94839,
+    95074,
+    110558,
+    110741,
+    111464
+   ],
+   "has_ret": true,
+   "reach": 111194,
+   "origin": "authored"
+  },
+  {
+   "start": 111194,
+   "end": 111217,
+   "size": 23,
+   "ninsns": 9,
+   "calls": [],
+   "has_ret": true,
+   "reach": 111217,
+   "origin": "authored"
+  },
+  {
+   "start": 111217,
+   "end": 111238,
+   "size": 21,
+   "ninsns": 106,
+   "calls": [
+    92899,
+    94839,
+    96378,
+    111464
+   ],
+   "has_ret": true,
+   "reach": 111464,
+   "origin": "authored"
+  },
+  {
+   "start": 111238,
+   "end": 111464,
+   "size": 226,
+   "ninsns": 96,
+   "calls": [
+    92899,
+    94839,
+    96378,
+    111464
+   ],
+   "has_ret": true,
+   "reach": 111464,
+   "origin": "authored"
+  },
+  {
+   "start": 111464,
+   "end": 111630,
+   "size": 166,
+   "ninsns": 82,
+   "calls": [
+    96323,
+    101296,
+    111630
+   ],
+   "has_ret": true,
+   "reach": 111630,
+   "origin": "authored"
+  },
+  {
+   "start": 111630,
+   "end": 111659,
+   "size": 29,
+   "ninsns": 17,
+   "calls": [],
+   "has_ret": true,
+   "reach": 111667,
+   "origin": "authored"
+  },
+  {
+   "start": 111659,
+   "end": 111667,
+   "size": 8,
+   "ninsns": 3,
+   "calls": [],
+   "has_ret": true,
+   "reach": 111667,
+   "origin": "authored"
+  },
+  {
+   "start": 111667,
+   "end": 111719,
+   "size": 52,
+   "ninsns": 14,
+   "calls": [
+    110218,
+    118505
+   ],
+   "has_ret": true,
+   "reach": 111719,
+   "origin": "authored"
+  },
+  {
+   "start": 111720,
+   "end": 111767,
+   "size": 47,
+   "ninsns": 72,
+   "calls": [
+    94839,
+    95074
+   ],
+   "has_ret": true,
+   "reach": 111883,
+   "origin": "authored"
+  },
+  {
+   "start": 111767,
+   "end": 111789,
+   "size": 22,
+   "ninsns": 27,
+   "calls": [
+    94839
+   ],
+   "has_ret": true,
+   "reach": 111883,
+   "origin": "authored"
+  },
+  {
+   "start": 111789,
+   "end": 111881,
+   "size": 92,
+   "ninsns": 11,
+   "calls": [],
+   "has_ret": true,
+   "reach": 111883,
+   "origin": "authored"
+  },
+  {
+   "start": 111881,
+   "end": 111883,
+   "size": 2,
+   "ninsns": 118,
+   "calls": [
+    94839,
+    95074,
+    111464
+   ],
+   "has_ret": true,
+   "reach": 112202,
+   "origin": "authored"
+  },
+  {
+   "start": 111883,
+   "end": 111928,
+   "size": 45,
+   "ninsns": 117,
+   "calls": [
+    94839,
+    95074,
+    111464
+   ],
+   "has_ret": true,
+   "reach": 112202,
+   "origin": "authored"
+  },
+  {
+   "start": 111928,
+   "end": 112009,
+   "size": 81,
+   "ninsns": 104,
+   "calls": [
+    94839,
+    95074,
+    111464
+   ],
+   "has_ret": true,
+   "reach": 112202,
+   "origin": "authored"
+  },
+  {
+   "start": 112009,
+   "end": 112202,
+   "size": 193,
+   "ninsns": 94,
+   "calls": [
+    94839,
+    95074,
+    111464
+   ],
+   "has_ret": true,
+   "reach": 112202,
+   "origin": "authored"
+  },
+  {
+   "start": 112202,
+   "end": 112261,
+   "size": 59,
+   "ninsns": 182,
+   "calls": [
+    95074,
+    111883,
+    114638,
+    114729
+   ],
+   "has_ret": true,
+   "reach": 112638,
+   "origin": "authored"
+  },
+  {
+   "start": 112261,
+   "end": 112454,
+   "size": 193,
+   "ninsns": 82,
+   "calls": [
+    95074,
+    114729
+   ],
+   "has_ret": true,
+   "reach": 112638,
+   "origin": "authored"
+  },
+  {
+   "start": 112454,
+   "end": 112539,
+   "size": 85,
+   "ninsns": 57,
+   "calls": [
+    95074
+   ],
+   "has_ret": true,
+   "reach": 112638,
+   "origin": "authored"
+  },
+  {
+   "start": 112539,
+   "end": 112638,
+   "size": 99,
+   "ninsns": 45,
+   "calls": [
+    95074
+   ],
+   "has_ret": true,
+   "reach": 112638,
+   "origin": "authored"
+  },
+  {
+   "start": 112638,
+   "end": 112663,
+   "size": 25,
+   "ninsns": 13,
+   "calls": [],
+   "has_ret": true,
+   "reach": 112663,
+   "origin": "authored"
+  },
+  {
+   "start": 112663,
+   "end": 112878,
+   "size": 215,
+   "ninsns": 64,
+   "calls": [
+    110246,
+    118010
+   ],
+   "has_ret": true,
+   "reach": 113010,
+   "origin": "authored"
+  },
+  {
+   "start": 112878,
+   "end": 112881,
+   "size": 3,
+   "ninsns": 1,
+   "calls": [],
+   "has_ret": false,
+   "reach": 112881,
+   "origin": "authored"
+  },
+  {
+   "start": 112917,
+   "end": 113010,
+   "size": 93,
+   "ninsns": 16,
+   "calls": [
+    110246,
+    118010
+   ],
+   "has_ret": true,
+   "reach": 113010,
+   "origin": "authored"
+  },
+  {
+   "start": 113010,
+   "end": 113106,
+   "size": 96,
+   "ninsns": 37,
+   "calls": [],
+   "has_ret": true,
+   "reach": 113106,
+   "origin": "authored"
+  },
+  {
+   "start": 113106,
+   "end": 113747,
+   "size": 641,
+   "ninsns": 49,
+   "calls": [
+    112202,
+    112638,
+    113010
+   ],
+   "has_ret": true,
+   "reach": 113747,
+   "origin": "authored"
+  },
+  {
+   "start": 113747,
+   "end": 113834,
+   "size": 87,
+   "ninsns": 30,
+   "calls": [],
+   "has_ret": true,
+   "reach": 113834,
+   "origin": "authored"
+  },
+  {
+   "start": 113834,
+   "end": 113949,
+   "size": 115,
+   "ninsns": 55,
+   "calls": [],
+   "has_ret": true,
+   "reach": 113976,
+   "origin": "authored"
+  },
+  {
+   "start": 113949,
+   "end": 113976,
+   "size": 27,
+   "ninsns": 11,
+   "calls": [],
+   "has_ret": true,
+   "reach": 113976,
+   "origin": "authored"
+  },
+  {
+   "start": 113976,
+   "end": 114008,
+   "size": 32,
+   "ninsns": 13,
+   "calls": [],
+   "has_ret": true,
+   "reach": 114008,
+   "origin": "authored"
+  },
+  {
+   "start": 114008,
+   "end": 114240,
+   "size": 232,
+   "ninsns": 95,
+   "calls": [
+    113834,
+    113976
+   ],
+   "has_ret": true,
+   "reach": 114414,
+   "origin": "authored"
+  },
+  {
+   "start": 114240,
+   "end": 114414,
+   "size": 174,
+   "ninsns": 70,
+   "calls": [
+    113834,
+    113976
+   ],
+   "has_ret": true,
+   "reach": 114414,
+   "origin": "authored"
+  },
+  {
+   "start": 114414,
+   "end": 114417,
+   "size": 3,
+   "ninsns": 76,
+   "calls": [],
+   "has_ret": true,
+   "reach": 114604,
+   "origin": "authored"
+  },
+  {
+   "start": 114417,
+   "end": 114432,
+   "size": 15,
+   "ninsns": 74,
+   "calls": [],
+   "has_ret": true,
+   "reach": 114604,
+   "origin": "authored"
+  },
+  {
+   "start": 114432,
+   "end": 114604,
+   "size": 172,
+   "ninsns": 69,
+   "calls": [],
+   "has_ret": true,
+   "reach": 114604,
+   "origin": "authored"
+  },
+  {
+   "start": 114604,
+   "end": 114621,
+   "size": 17,
+   "ninsns": 16,
+   "calls": [],
+   "has_ret": true,
+   "reach": 114638,
+   "origin": "authored"
+  },
+  {
+   "start": 114621,
+   "end": 114638,
+   "size": 17,
+   "ninsns": 8,
+   "calls": [],
+   "has_ret": true,
+   "reach": 114638,
+   "origin": "authored"
+  },
+  {
+   "start": 114638,
+   "end": 114729,
+   "size": 91,
+   "ninsns": 36,
+   "calls": [],
+   "has_ret": true,
+   "reach": 114729,
+   "origin": "authored"
+  },
+  {
+   "start": 114729,
+   "end": 114764,
+   "size": 35,
+   "ninsns": 16,
+   "calls": [],
+   "has_ret": true,
+   "reach": 114764,
+   "origin": "authored"
+  },
+  {
+   "start": 114764,
+   "end": 114862,
+   "size": 98,
+   "ninsns": 108,
+   "calls": [],
+   "has_ret": true,
+   "reach": 115944,
+   "origin": "authored"
+  },
+  {
+   "start": 114862,
+   "end": 114892,
+   "size": 30,
+   "ninsns": 68,
+   "calls": [],
+   "has_ret": true,
+   "reach": 115944,
+   "origin": "authored"
+  },
+  {
+   "start": 114892,
+   "end": 115118,
+   "size": 226,
+   "ninsns": 69,
+   "calls": [],
+   "has_ret": true,
+   "reach": 115944,
+   "origin": "authored"
+  },
+  {
+   "start": 115118,
+   "end": 115184,
+   "size": 66,
+   "ninsns": 24,
+   "calls": [
+    114604
+   ],
+   "has_ret": true,
+   "reach": 115944,
+   "origin": "authored"
+  },
+  {
+   "start": 115184,
+   "end": 115232,
+   "size": 48,
+   "ninsns": 57,
+   "calls": [
+    114604
+   ],
+   "has_ret": true,
+   "reach": 115944,
+   "origin": "authored"
+  },
+  {
+   "start": 115232,
+   "end": 115384,
+   "size": 152,
+   "ninsns": 40,
+   "calls": [
+    114604
+   ],
+   "has_ret": true,
+   "reach": 115944,
+   "origin": "authored"
+  },
+  {
+   "start": 115384,
+   "end": 115424,
+   "size": 40,
+   "ninsns": 53,
+   "calls": [],
+   "has_ret": true,
+   "reach": 115944,
+   "origin": "authored"
+  },
+  {
+   "start": 115424,
+   "end": 115435,
+   "size": 11,
+   "ninsns": 44,
+   "calls": [],
+   "has_ret": true,
+   "reach": 115944,
+   "origin": "authored"
+  },
+  {
+   "start": 115435,
+   "end": 115546,
+   "size": 111,
+   "ninsns": 39,
+   "calls": [],
+   "has_ret": true,
+   "reach": 115944,
+   "origin": "authored"
+  },
+  {
+   "start": 115546,
+   "end": 115609,
+   "size": 63,
+   "ninsns": 23,
+   "calls": [],
+   "has_ret": true,
+   "reach": 115944,
+   "origin": "authored"
+  },
+  {
+   "start": 115609,
+   "end": 115656,
+   "size": 47,
+   "ninsns": 19,
+   "calls": [],
+   "has_ret": true,
+   "reach": 115944,
+   "origin": "authored"
+  },
+  {
+   "start": 115656,
+   "end": 115662,
+   "size": 6,
+   "ninsns": 15,
+   "calls": [],
+   "has_ret": true,
+   "reach": 115944,
+   "origin": "authored"
+  },
+  {
+   "start": 115662,
+   "end": 115944,
+   "size": 282,
+   "ninsns": 18,
+   "calls": [],
+   "has_ret": true,
+   "reach": 115944,
+   "origin": "authored"
+  },
+  {
+   "start": 115944,
+   "end": 115997,
+   "size": 53,
+   "ninsns": 23,
+   "calls": [
+    94839,
+    113106,
+    114008,
+    114414,
+    114764
+   ],
+   "has_ret": true,
+   "reach": 115997,
+   "origin": "authored"
+  },
+  {
+   "start": 115998,
+   "end": 116012,
+   "size": 14,
+   "ninsns": 8,
+   "calls": [
+    96323
+   ],
+   "has_ret": true,
+   "reach": 116012,
+   "origin": "authored"
+  },
+  {
+   "start": 116012,
+   "end": 116513,
+   "size": 501,
+   "ninsns": 69,
+   "calls": [
+    94839,
+    111464,
+    115998
+   ],
+   "has_ret": true,
+   "reach": 116513,
+   "origin": "authored"
+  },
+  {
+   "start": 116513,
+   "end": 116522,
+   "size": 9,
+   "ninsns": 100,
+   "calls": [
+    94839,
+    111464,
+    115998
+   ],
+   "has_ret": true,
+   "reach": 116752,
+   "origin": "authored"
+  },
+  {
+   "start": 116522,
+   "end": 116752,
+   "size": 230,
+   "ninsns": 97,
+   "calls": [
+    94839,
+    111464,
+    115998
+   ],
+   "has_ret": true,
+   "reach": 116752,
+   "origin": "authored"
+  },
+  {
+   "start": 116752,
+   "end": 116909,
+   "size": 157,
+   "ninsns": 69,
+   "calls": [
+    94839,
+    111464,
+    115998
+   ],
+   "has_ret": true,
+   "reach": 116909,
+   "origin": "authored"
+  },
+  {
+   "start": 116909,
+   "end": 116935,
+   "size": 26,
+   "ninsns": 13,
+   "calls": [
+    115998
+   ],
+   "has_ret": true,
+   "reach": 116941,
+   "origin": "authored"
+  },
+  {
+   "start": 116935,
+   "end": 116941,
+   "size": 6,
+   "ninsns": 3,
+   "calls": [],
+   "has_ret": true,
+   "reach": 116941,
+   "origin": "authored"
+  },
+  {
+   "start": 116941,
+   "end": 117338,
+   "size": 397,
+   "ninsns": 153,
+   "calls": [
+    94839,
+    95074,
+    110558,
+    110741,
+    111217,
+    111464,
+    115998,
+    117669,
+    117898
+   ],
+   "has_ret": true,
+   "reach": 117338,
+   "origin": "authored"
+  },
+  {
+   "start": 117338,
+   "end": 117432,
+   "size": 94,
+   "ninsns": 38,
+   "calls": [
+    94839,
+    111464
+   ],
+   "has_ret": true,
+   "reach": 117432,
+   "origin": "authored"
+  },
+  {
+   "start": 117432,
+   "end": 117434,
+   "size": 2,
+   "ninsns": 39,
+   "calls": [
+    94839
+   ],
+   "has_ret": true,
+   "reach": 117532,
+   "origin": "authored"
+  },
+  {
+   "start": 117434,
+   "end": 117532,
+   "size": 98,
+   "ninsns": 38,
+   "calls": [
+    94839
+   ],
+   "has_ret": true,
+   "reach": 117532,
+   "origin": "authored"
+  },
+  {
+   "start": 117532,
+   "end": 117669,
+   "size": 137,
+   "ninsns": 55,
+   "calls": [
+    94839,
+    111464
+   ],
+   "has_ret": true,
+   "reach": 117669,
+   "origin": "authored"
+  },
+  {
+   "start": 117669,
+   "end": 117898,
+   "size": 229,
+   "ninsns": 101,
+   "calls": [
+    94839,
+    111464,
+    115998
+   ],
+   "has_ret": true,
+   "reach": 117898,
+   "origin": "authored"
+  },
+  {
+   "start": 117898,
+   "end": 118010,
+   "size": 112,
+   "ninsns": 39,
+   "calls": [
+    115998,
+    117669
+   ],
+   "has_ret": true,
+   "reach": 118010,
+   "origin": "authored"
+  },
+  {
+   "start": 118010,
+   "end": 118073,
+   "size": 63,
+   "ninsns": 63,
+   "calls": [
+    94839,
+    111464,
+    115998,
+    117898
+   ],
+   "has_ret": true,
+   "reach": 118159,
+   "origin": "authored"
+  },
+  {
+   "start": 118073,
+   "end": 118077,
+   "size": 4,
+   "ninsns": 15,
+   "calls": [
+    115998
+   ],
+   "has_ret": true,
+   "reach": 118159,
+   "origin": "authored"
+  },
+  {
+   "start": 118077,
+   "end": 118079,
+   "size": 2,
+   "ninsns": 1,
+   "calls": [],
+   "has_ret": false,
+   "reach": 118079,
+   "origin": "authored"
+  },
+  {
+   "start": 118160,
+   "end": 118256,
+   "size": 96,
+   "ninsns": 44,
+   "calls": [
+    94839,
+    111464
+   ],
+   "has_ret": true,
+   "reach": 118256,
+   "origin": "authored"
+  },
+  {
+   "start": 118256,
+   "end": 118336,
+   "size": 80,
+   "ninsns": 23,
+   "calls": [],
+   "has_ret": true,
+   "reach": 118372,
+   "origin": "authored"
+  },
+  {
+   "start": 118336,
+   "end": 118372,
+   "size": 36,
+   "ninsns": 11,
+   "calls": [],
+   "has_ret": true,
+   "reach": 118372,
+   "origin": "authored"
+  },
+  {
+   "start": 118372,
+   "end": 118385,
+   "size": 13,
+   "ninsns": 45,
+   "calls": [
+    94839,
+    94906,
+    111464
+   ],
+   "has_ret": true,
+   "reach": 118474,
+   "origin": "authored"
+  },
+  {
+   "start": 118385,
+   "end": 118474,
+   "size": 89,
+   "ninsns": 39,
+   "calls": [
+    94839,
+    94906,
+    111464
+   ],
+   "has_ret": true,
+   "reach": 118474,
+   "origin": "authored"
+  },
+  {
+   "start": 118474,
+   "end": 118505,
+   "size": 31,
+   "ninsns": 17,
+   "calls": [],
+   "has_ret": true,
+   "reach": 118505,
+   "origin": "authored"
+  },
+  {
+   "start": 118505,
+   "end": 120164,
+   "size": 1659,
+   "ninsns": 240,
+   "calls": [
+    108498,
+    118160,
+    118256,
+    118372
+   ],
+   "has_ret": true,
+   "reach": 120164,
+   "origin": "authored"
+  },
+  {
+   "start": 120268,
+   "end": 120283,
+   "size": 15,
+   "ninsns": 6,
+   "calls": [],
+   "has_ret": true,
+   "reach": 120283,
+   "origin": "authored"
+  },
+  {
+   "start": 120291,
+   "end": 120347,
+   "size": 56,
+   "ninsns": 27,
+   "calls": [],
+   "has_ret": true,
+   "reach": 120347,
+   "origin": "authored"
+  },
+  {
+   "start": 120347,
+   "end": 120369,
+   "size": 22,
+   "ninsns": 11,
+   "calls": [],
+   "has_ret": true,
+   "reach": 120369,
+   "origin": "authored"
+  },
+  {
+   "start": 120369,
+   "end": 120385,
+   "size": 16,
+   "ninsns": 5,
+   "calls": [],
+   "has_ret": true,
+   "reach": 120385,
+   "origin": "authored"
+  },
+  {
+   "start": 120385,
+   "end": 120391,
+   "size": 6,
+   "ninsns": 2,
+   "calls": [],
+   "has_ret": true,
+   "reach": 120391,
+   "origin": "authored"
+  },
+  {
+   "start": 120484,
+   "end": 120494,
+   "size": 10,
+   "ninsns": 4,
+   "calls": [],
+   "has_ret": true,
+   "reach": 120494,
+   "origin": "authored"
+  },
+  {
+   "start": 120595,
+   "end": 120637,
+   "size": 42,
+   "ninsns": 61,
+   "calls": [],
+   "has_ret": true,
+   "reach": 120637,
+   "origin": "authored"
+  },
+  {
+   "start": 121012,
+   "end": 121012,
+   "size": 0,
+   "ninsns": 0,
+   "calls": [],
+   "has_ret": false,
+   "reach": 121012,
+   "origin": "authored"
+  },
+  {
+   "start": 121111,
+   "end": 121143,
+   "size": 32,
+   "ninsns": 15,
+   "calls": [],
+   "has_ret": false,
+   "reach": 121143,
+   "origin": "authored"
+  },
+  {
+   "start": 121173,
+   "end": 121211,
+   "size": 38,
+   "ninsns": 17,
+   "calls": [],
+   "has_ret": false,
+   "reach": 121211,
+   "origin": "authored"
+  },
+  {
+   "start": 121333,
+   "end": 121468,
+   "size": 135,
+   "ninsns": 86,
+   "calls": [
+    120385
+   ],
+   "has_ret": true,
+   "reach": 121553,
+   "origin": "authored"
+  },
+  {
+   "start": 121468,
+   "end": 121498,
+   "size": 30,
+   "ninsns": 14,
+   "calls": [],
+   "has_ret": true,
+   "reach": 121498,
+   "origin": "authored"
+  },
+  {
+   "start": 121553,
+   "end": 121563,
+   "size": 10,
+   "ninsns": 3,
+   "calls": [],
+   "has_ret": false,
+   "reach": 121563,
+   "origin": "authored"
+  },
+  {
+   "start": 121563,
+   "end": 121573,
+   "size": 10,
+   "ninsns": 3,
+   "calls": [],
+   "has_ret": false,
+   "reach": 121573,
+   "origin": "authored"
+  },
+  {
+   "start": 121771,
+   "end": 121777,
+   "size": 6,
+   "ninsns": 2,
+   "calls": [],
+   "has_ret": true,
+   "reach": 121777,
+   "origin": "authored"
+  },
+  {
+   "start": 121806,
+   "end": 121845,
+   "size": 39,
+   "ninsns": 17,
+   "calls": [],
+   "has_ret": false,
+   "reach": 121845,
+   "origin": "authored"
+  },
+  {
+   "start": 121910,
+   "end": 121914,
+   "size": 4,
+   "ninsns": 10,
+   "calls": [],
+   "has_ret": true,
+   "reach": 121933,
+   "origin": "authored"
+  },
+  {
+   "start": 121914,
+   "end": 121933,
+   "size": 19,
+   "ninsns": 9,
+   "calls": [],
+   "has_ret": true,
+   "reach": 121933,
+   "origin": "authored"
+  },
+  {
+   "start": 121933,
+   "end": 121941,
+   "size": 8,
+   "ninsns": 12,
+   "calls": [],
+   "has_ret": true,
+   "reach": 121954,
+   "origin": "authored"
+  },
+  {
+   "start": 121941,
+   "end": 121954,
+   "size": 13,
+   "ninsns": 9,
+   "calls": [],
+   "has_ret": true,
+   "reach": 121954,
+   "origin": "authored"
+  },
+  {
+   "start": 122631,
+   "end": 122818,
+   "size": 187,
+   "ninsns": 201,
+   "calls": [
+    121914
+   ],
+   "has_ret": true,
+   "reach": 123424,
+   "origin": "authored"
+  },
+  {
+   "start": 122818,
+   "end": 122825,
+   "size": 7,
+   "ninsns": 63,
+   "calls": [],
+   "has_ret": true,
+   "reach": 122956,
+   "origin": "authored"
+  },
+  {
+   "start": 122825,
+   "end": 122838,
+   "size": 13,
+   "ninsns": 61,
+   "calls": [],
+   "has_ret": true,
+   "reach": 122956,
+   "origin": "authored"
+  },
+  {
+   "start": 122838,
+   "end": 122864,
+   "size": 26,
+   "ninsns": 44,
+   "calls": [],
+   "has_ret": true,
+   "reach": 122926,
+   "origin": "authored"
+  },
+  {
+   "start": 122864,
+   "end": 122926,
+   "size": 62,
+   "ninsns": 30,
+   "calls": [],
+   "has_ret": true,
+   "reach": 122926,
+   "origin": "authored"
+  },
+  {
+   "start": 122980,
+   "end": 123021,
+   "size": 41,
+   "ninsns": 965,
+   "calls": [
+    137963,
+    139906
+   ],
+   "has_ret": true,
+   "reach": 144988,
+   "origin": "authored"
+  },
+  {
+   "start": 123021,
+   "end": 123307,
+   "size": 286,
+   "ninsns": 181,
+   "calls": [
+    121914
+   ],
+   "has_ret": true,
+   "reach": 123424,
+   "origin": "authored"
+  },
+  {
+   "start": 123307,
+   "end": 123346,
+   "size": 39,
+   "ninsns": 44,
+   "calls": [
+    121914
+   ],
+   "has_ret": true,
+   "reach": 123424,
+   "origin": "authored"
+  },
+  {
+   "start": 123346,
+   "end": 123358,
+   "size": 12,
+   "ninsns": 5,
+   "calls": [
+    121914
+   ],
+   "has_ret": true,
+   "reach": 123358,
+   "origin": "authored"
+  },
+  {
+   "start": 123361,
+   "end": 123424,
+   "size": 63,
+   "ninsns": 25,
+   "calls": [
+    121914
+   ],
+   "has_ret": true,
+   "reach": 123424,
+   "origin": "authored"
+  },
+  {
+   "start": 123593,
+   "end": 123791,
+   "size": 198,
+   "ninsns": 105,
+   "calls": [],
+   "has_ret": true,
+   "reach": 123904,
+   "origin": "authored"
+  },
+  {
+   "start": 123791,
+   "end": 123820,
+   "size": 29,
+   "ninsns": 21,
+   "calls": [],
+   "has_ret": true,
+   "reach": 123820,
+   "origin": "authored"
+  },
+  {
+   "start": 124811,
+   "end": 124892,
+   "size": 81,
+   "ninsns": 34,
+   "calls": [
+    125229
+   ],
+   "has_ret": true,
+   "reach": 124897,
+   "origin": "authored"
+  },
+  {
+   "start": 124892,
+   "end": 124897,
+   "size": 5,
+   "ninsns": 2,
+   "calls": [],
+   "has_ret": true,
+   "reach": 124897,
+   "origin": "authored"
+  },
+  {
+   "start": 124915,
+   "end": 124956,
+   "size": 41,
+   "ninsns": 62,
+   "calls": [
+    120369,
+    125104
+   ],
+   "has_ret": true,
+   "reach": 125229,
+   "origin": "authored"
+  },
+  {
+   "start": 124956,
+   "end": 124961,
+   "size": 5,
+   "ninsns": 30,
+   "calls": [
+    125104
+   ],
+   "has_ret": true,
+   "reach": 125229,
+   "origin": "authored"
+  },
+  {
+   "start": 124961,
+   "end": 125005,
+   "size": 44,
+   "ninsns": 28,
+   "calls": [],
+   "has_ret": true,
+   "reach": 125229,
+   "origin": "authored"
+  },
+  {
+   "start": 125005,
+   "end": 125099,
+   "size": 94,
+   "ninsns": 38,
+   "calls": [
+    120385,
+    125104,
+    125229
+   ],
+   "has_ret": true,
+   "reach": 125104,
+   "origin": "authored"
+  },
+  {
+   "start": 125099,
+   "end": 125104,
+   "size": 5,
+   "ninsns": 12,
+   "calls": [
+    120385
+   ],
+   "has_ret": true,
+   "reach": 125104,
+   "origin": "authored"
+  },
+  {
+   "start": 125104,
+   "end": 125123,
+   "size": 19,
+   "ninsns": 9,
+   "calls": [],
+   "has_ret": true,
+   "reach": 125123,
+   "origin": "authored"
+  },
+  {
+   "start": 125123,
+   "end": 125160,
+   "size": 37,
+   "ninsns": 25,
+   "calls": [
+    125190,
+    125229
+   ],
+   "has_ret": true,
+   "reach": 125190,
+   "origin": "authored"
+  },
+  {
+   "start": 125160,
+   "end": 125168,
+   "size": 8,
+   "ninsns": 4,
+   "calls": [
+    125190
+   ],
+   "has_ret": true,
+   "reach": 125168,
+   "origin": "authored"
+  },
+  {
+   "start": 125190,
+   "end": 125211,
+   "size": 21,
+   "ninsns": 18,
+   "calls": [],
+   "has_ret": true,
+   "reach": 125229,
+   "origin": "authored"
+  },
+  {
+   "start": 125211,
+   "end": 125229,
+   "size": 18,
+   "ninsns": 7,
+   "calls": [],
+   "has_ret": true,
+   "reach": 125229,
+   "origin": "authored"
+  },
+  {
+   "start": 125229,
+   "end": 125374,
+   "size": 145,
+   "ninsns": 63,
+   "calls": [],
+   "has_ret": true,
+   "reach": 125374,
+   "origin": "authored"
+  },
+  {
+   "start": 125466,
+   "end": 125476,
+   "size": 10,
+   "ninsns": 10,
+   "calls": [],
+   "has_ret": true,
+   "reach": 125485,
+   "origin": "authored"
+  },
+  {
+   "start": 125476,
+   "end": 125485,
+   "size": 9,
+   "ninsns": 7,
+   "calls": [],
+   "has_ret": true,
+   "reach": 125485,
+   "origin": "authored"
+  },
+  {
+   "start": 126066,
+   "end": 126099,
+   "size": 33,
+   "ninsns": 86,
+   "calls": [
+    120385,
+    121941
+   ],
+   "has_ret": true,
+   "reach": 126099,
+   "origin": "authored"
+  },
+  {
+   "start": 126146,
+   "end": 126172,
+   "size": 26,
+   "ninsns": 10,
+   "calls": [
+    120369,
+    121941
+   ],
+   "has_ret": true,
+   "reach": 126172,
+   "origin": "authored"
+  },
+  {
+   "start": 126238,
+   "end": 126451,
+   "size": 213,
+   "ninsns": 1457,
+   "calls": [],
+   "has_ret": false,
+   "reach": 129266,
+   "origin": "authored"
+  },
+  {
+   "start": 126451,
+   "end": 126545,
+   "size": 94,
+   "ninsns": 1330,
+   "calls": [],
+   "has_ret": false,
+   "reach": 129266,
+   "origin": "authored"
+  },
+  {
+   "start": 126545,
+   "end": 127030,
+   "size": 485,
+   "ninsns": 1254,
+   "calls": [],
+   "has_ret": false,
+   "reach": 129266,
+   "origin": "authored"
+  },
+  {
+   "start": 127030,
+   "end": 127072,
+   "size": 42,
+   "ninsns": 1012,
+   "calls": [],
+   "has_ret": false,
+   "reach": 129266,
+   "origin": "authored"
+  },
+  {
+   "start": 127072,
+   "end": 127130,
+   "size": 58,
+   "ninsns": 986,
+   "calls": [],
+   "has_ret": false,
+   "reach": 129266,
+   "origin": "authored"
+  },
+  {
+   "start": 127130,
+   "end": 127207,
+   "size": 77,
+   "ninsns": 962,
+   "calls": [],
+   "has_ret": false,
+   "reach": 129266,
+   "origin": "authored"
+  },
+  {
+   "start": 127207,
+   "end": 128337,
+   "size": 1130,
+   "ninsns": 925,
+   "calls": [],
+   "has_ret": false,
+   "reach": 129266,
+   "origin": "authored"
+  },
+  {
+   "start": 128337,
+   "end": 128434,
+   "size": 97,
+   "ninsns": 408,
+   "calls": [],
+   "has_ret": false,
+   "reach": 129266,
+   "origin": "authored"
+  },
+  {
+   "start": 128434,
+   "end": 128706,
+   "size": 272,
+   "ninsns": 360,
+   "calls": [],
+   "has_ret": false,
+   "reach": 129266,
+   "origin": "authored"
+  },
+  {
+   "start": 128706,
+   "end": 128731,
+   "size": 25,
+   "ninsns": 229,
+   "calls": [],
+   "has_ret": false,
+   "reach": 129266,
+   "origin": "authored"
+  },
+  {
+   "start": 128731,
+   "end": 129195,
+   "size": 464,
+   "ninsns": 222,
+   "calls": [],
+   "has_ret": false,
+   "reach": 129266,
+   "origin": "authored"
+  },
+  {
+   "start": 129195,
+   "end": 129266,
+   "size": 71,
+   "ninsns": 34,
+   "calls": [],
+   "has_ret": false,
+   "reach": 129266,
+   "origin": "authored"
+  },
+  {
+   "start": 129536,
+   "end": 129683,
+   "size": 147,
+   "ninsns": 69,
+   "calls": [],
+   "has_ret": false,
+   "reach": 129683,
+   "origin": "authored"
+  },
+  {
+   "start": 129717,
+   "end": 129720,
+   "size": 3,
+   "ninsns": 1,
+   "calls": [],
+   "has_ret": false,
+   "reach": 129720,
+   "origin": "authored"
+  },
+  {
+   "start": 129794,
+   "end": 130098,
+   "size": 304,
+   "ninsns": 5241,
+   "calls": [],
+   "has_ret": true,
+   "reach": 136620,
+   "origin": "authored"
+  },
+  {
+   "start": 130098,
+   "end": 130198,
+   "size": 100,
+   "ninsns": 5093,
+   "calls": [],
+   "has_ret": true,
+   "reach": 136620,
+   "origin": "authored"
+  },
+  {
+   "start": 130198,
+   "end": 130275,
+   "size": 77,
+   "ninsns": 5043,
+   "calls": [],
+   "has_ret": true,
+   "reach": 136620,
+   "origin": "authored"
+  },
+  {
+   "start": 130275,
+   "end": 130649,
+   "size": 374,
+   "ninsns": 5004,
+   "calls": [],
+   "has_ret": true,
+   "reach": 136620,
+   "origin": "authored"
+  },
+  {
+   "start": 130649,
+   "end": 131037,
+   "size": 388,
+   "ninsns": 4830,
+   "calls": [],
+   "has_ret": true,
+   "reach": 136620,
+   "origin": "authored"
+  },
+  {
+   "start": 131037,
+   "end": 131196,
+   "size": 159,
+   "ninsns": 4621,
+   "calls": [],
+   "has_ret": true,
+   "reach": 136620,
+   "origin": "authored"
+  },
+  {
+   "start": 131196,
+   "end": 131392,
+   "size": 196,
+   "ninsns": 2798,
+   "calls": [],
+   "has_ret": true,
+   "reach": 136620,
+   "origin": "authored"
+  },
+  {
+   "start": 131392,
+   "end": 136620,
+   "size": 5228,
+   "ninsns": 2700,
+   "calls": [],
+   "has_ret": true,
+   "reach": 136620,
+   "origin": "authored"
+  },
+  {
+   "start": 137963,
+   "end": 138279,
+   "size": 316,
+   "ninsns": 134,
+   "calls": [],
+   "has_ret": true,
+   "reach": 138279,
+   "origin": "authored"
+  },
+  {
+   "start": 139906,
+   "end": 139952,
+   "size": 46,
+   "ninsns": 23,
+   "calls": [],
+   "has_ret": false,
+   "reach": 139952,
+   "origin": "authored"
+  },
+  {
+   "start": 140646,
+   "end": 140860,
+   "size": 214,
+   "ninsns": 108,
+   "calls": [],
+   "has_ret": false,
+   "reach": 140860,
+   "origin": "authored"
+  },
+  {
+   "start": 146066,
+   "end": 147562,
+   "size": 1496,
+   "ninsns": 928,
+   "calls": [
+    147562
+   ],
+   "has_ret": false,
+   "reach": 147900,
+   "origin": "authored"
+  },
+  {
+   "start": 147562,
+   "end": 147900,
+   "size": 338,
+   "ninsns": 161,
+   "calls": [],
+   "has_ret": false,
+   "reach": 147900,
+   "origin": "authored"
+  }
+ ],
+ "lib_hits": 60
+}

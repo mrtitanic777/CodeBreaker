@@ -155,3 +155,13 @@ format is the headline artifact to recover (MAP Phase 5).
   driver chains passes via spawn + temp files. **Edited CodeBreaker** `src/engines/inverse/libmatch.py`:
   its module walker only accepted Lattice's `PROG` code segment → 0 hits on MSC; added `_TEXT`/`*_TEXT`
   (one line, backward-compatible). This is a real fix for any MSC target — offer to upstream it.
+- 2026-09-14 — **Committed** both repos. Project repo (`git init` → master): docs + tools + analysis
+  artifacts (input binaries git-ignored). CodeBreaker: libmatch fix on branch
+  `fix/libmatch-msc-text-seg`, fast-forwarded into master so the tool works for the rest of the project.
+- 2026-09-14 — **Phase 3 deepened + Phase 4 baseline.** `tools/triage.py` matches each pass vs its full
+  model lib set → per-function `work/<pass>/origin.json`; recall up (C1 45→56, C1L 43→55, C2 22→34,
+  C3 24→40). `tools/recover.py` ran `msc6dec.invert` on all authored functions: **100% decline —
+  "prologue miss"**. Root cause pinned: the MSC6 inverse models the Win95 DLLs' **far-loadds**
+  prologue, our passes use the **near-frame `55 8B EC`** (measured, `signatures.md` §6). Phase 4 is
+  gated on adding that one prologue template to the inverse. Round-trip ASM verify still deferred
+  (no keystone; MASM-under-DOSBox won't scale) — floor remains a faithful full-coverage byte-decode.
