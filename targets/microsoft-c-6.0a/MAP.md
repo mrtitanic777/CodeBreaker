@@ -131,7 +131,8 @@ prioritized by interest (LINK + LIB first: they complete the build story and cro
    headers/hashes logged, internal module map harvested. *(Phase 1 — done 2026-09-14)*
 2. **M2 — Mapped:** ✅ inventory + call graph + byte-exact ASM floor for all 5 passes
    (~4,150 funcs, 96–99% decoded). *(Phase 2 — done 2026-09-14; round-trip verify deferred to M-verify)*
-3. **M3 — Triaged:** every function origin-tagged; authored worklist locked. *(Phase 3)*
+3. **M3 — Triaged:** ✅ every function origin-tagged (`work/<pass>/origin.json`); authored worklist =
+   the "remain" columns. *(Phase 3 first pass — done 2026-09-14; recall improvable)*
 4. **M4 — CL recovered:** the driver fully recovered & verified end-to-end (proof of method). *(Phase 4–6 on CL)*
 5. **M5 — Front end (C1) recovered:** incl. the C1→C2 IL format documented. *(Phase 4–6 on C1)*
 6. **M6 — Code generator (C2) recovered:** the hard target, incl. overlay + OMF emitter. *(Phase 4–6 on C2)*
