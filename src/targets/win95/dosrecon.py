@@ -872,7 +872,7 @@ def _global_dedup(targets):
     return shared
 
 
-def _run_one(which, outroot, shared=None):
+def _run_one(which, outroot, shared=None, extra_db=None):
     fname, desc = _BINS[which]
     path = _corpus(fname)
     if not path:
@@ -923,6 +923,10 @@ def _run_one(which, outroot, shared=None):
     if inject:
         starts = sorted(set(starts) | set(inject))
         ends = {s: (starts[i + 1] if i + 1 < len(starts) else len(image)) for i, s in enumerate(starts)}
+    # byte-exact mode: functions the assembler encodes differently from the original are forced to
+    # db (their exact original bytes) so the image becomes byte-identical (runnable + behavior-proof)
+    if extra_db:
+        force_db |= set(a for a in extra_db if a in ends)
 
     # recover the ORIGINAL segment structure (multi-segment like the real binary)
     segs = _segments(which, data, is_iosys, body_end, starts, len(image))
@@ -1011,6 +1015,44 @@ def _omf_ledata(path):
             out[off:off + len(payload)] = payload
         i += 3 + ln
     return bytes(out)
+
+
+def _ml():
+    return os.path.join(paths.repo_root(), "toolchains", "period", "assemblers", "masm-6.13", "ML.EXE")
+
+
+def _mismatch_funcs(outdir, image):
+    """Assemble each segment and return the set of function addresses whose assembled bytes differ
+    from the ORIGINAL (used by --exact to force those to db and reach a byte-identical image)."""
+    ml = _ml()
+    bad = set()
+    for asm in sorted(f for f in os.listdir(outdir) if f.endswith(".asm") and not f.startswith("reginit")):
+        base = asm[:-4]
+        obj = os.path.join(outdir, base + ".obj")
+        subprocess.run([ml, "/c", "/Fl", "/Fo", obj, os.path.join(outdir, asm)],
+                       capture_output=True, text=True, cwd=outdir)
+        lst = os.path.join(outdir, base + ".LST")
+        if not (os.path.isfile(obj) and os.path.isfile(lst)):
+            continue
+        code = _omf_ledata(obj)
+        funcs = []
+        pending = None
+        for line in open(lst, encoding="latin1", errors="replace"):
+            hm = re.search(r";----- \S+ \(0x([0-9A-Fa-f]+),", line)
+            if hm:
+                pending = int(hm.group(1), 16); continue
+            om = re.match(r"\s+([0-9A-Fa-f]{4,8})\s+[0-9A-Fa-f]{2}", line)
+            if om and pending is not None:
+                funcs.append((pending, int(om.group(1), 16))); pending = None
+        for i, (oa, eo) in enumerate(funcs):
+            nexte = funcs[i + 1][1] if i + 1 < len(funcs) else len(code)
+            nexto = funcs[i + 1][0] if i + 1 < len(funcs) else None
+            L = min((nexto - oa) if nexto else (nexte - eo), nexte - eo)
+            if L <= 0:
+                continue
+            if bytes(code[eo:eo + L]) != bytes(image[oa:oa + L]):
+                bad.add(oa)
+    return bad
 
 
 def _verify(outroot, results):
@@ -1110,6 +1152,7 @@ def main(argv):
     outroot = os.path.join(_design_root(), "recon")
     do_build = False
     do_verify = False
+    do_exact = False
     i = 0
     while i < len(argv):
         a = argv[i]
@@ -1126,6 +1169,8 @@ def main(argv):
             do_build = True
         elif a == "--verify":
             do_build = do_verify = True
+        elif a == "--exact":
+            do_exact = True
         elif a == "--out" and i + 1 < len(argv):
             outroot = argv[i + 1]; i += 1
         i += 1
@@ -1156,6 +1201,26 @@ def main(argv):
                   % (r["nfuncs"], c.get("code", 0), c.get("data", 0),
                      c.get("stub", 0), c.get("empty", 0)))
             print("  Win95 real-mode layer candidates: %d" % len(r["win95_layer"]))
+
+    if do_exact:
+        print("\n== byte-exact pass (force db where MASM re-encodes; -> byte-identical image) ==")
+        for r in results:
+            which = r["which"]
+            data = open(r["path"], "rb").read()
+            is_iosys, _be, _lb, image = _layout(data)
+            if is_iosys:
+                image = data
+            outdir = os.path.join(outroot, which)
+            extra = set()
+            for it in range(6):
+                bad = _mismatch_funcs(outdir, image)
+                if not bad or bad <= extra:
+                    break
+                extra |= bad
+                _run_one(which, outroot, shared, extra)
+            bad = _mismatch_funcs(outdir, image)
+            print("  %-9s %d functions forced to db; %d still divergent"
+                  % (which, len(extra), len(bad)))
 
     # combined REPORT.md
     rep = os.path.join(outroot, "REPORT.md")
