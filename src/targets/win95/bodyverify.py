@@ -55,6 +55,26 @@ def _static_body(module, va):
     return blocks.get(rva) or blocks.get(va)
 
 
+def _ondemand_block(module, rva):
+    """Decompile ONE function on demand (win95pedec --at RVA) when the module-wide --module discovery
+    never classified this tracer-found address as a function head. Returns the emitted source (struct
+    defs + the function, so struct-using bodies still compile), or None. PE lane only."""
+    lane, exe = OT._detect(module)
+    if lane != "pe":
+        return None
+    from src.core import paths
+    dec = os.path.join(paths.repo_root(), "native", "decompiler", "build", "bin", exe)
+    if not os.path.exists(dec):
+        return None
+    try:
+        r = subprocess.run([dec, module, "--at", "%x" % rva], capture_output=True, text=True,
+                           timeout=120)
+    except Exception:
+        return None
+    text = (r.stdout or "").strip()
+    return text if _DEF_RE.search(text) else None          # only if a real function was emitted
+
+
 _DEF_RE = re.compile(r"(?m)^\s*[A-Za-z_][\w \*]*?\b(?:__fastcall|__cdecl|__stdcall|__watcall)?\s*"
                      r"([A-Za-z_]\w*)\s*\([^;{]*\)\s*\{")
 
@@ -81,12 +101,18 @@ def synth(module, va, arity=4):
     # signature (so stdcall args still flow to the oracle). Reject blocks with idioms that can't be
     # made statically faithful -- they belong to the behavior engine's dynamic lane, not here.
     blk = _static_body(module, va)
+    if not blk:                                          # module-wide discovery missed it: decompile
+        try:                                             # this one address on demand (win95pedec --at)
+            from src.targets.win95 import autobuild95 as A
+            blk = _ondemand_block(module, va - A._imagebase(A.PE(module)))
+        except Exception:
+            blk = None
     if blk:
         cured = _cure_body(_beautify(blk))
         if cured is None:
             return None, "static block not statically faithful (indirect/leaked-reg/CONCAT/in_)"
         return (_defined_name(cured) or "fn_%x" % va), cured
-    return None, "no synth (leaf skipped by call-flow; static block missing)"
+    return None, "no synth (leaf skipped by call-flow; static + on-demand decompile empty)"
 
 
 _PROTOS = None

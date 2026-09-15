@@ -156,6 +156,37 @@ int main(int argc, char** argv) {
     return starts;
   };
 
+  // --at <hexRVA>: decompile the ONE function beginning at the given RVA, even when the module-wide
+  // discovery never classified it as a function head (a tracer found it via exports+heuristics). The
+  // function end is the next discovered start above it in the same code section, else the section end.
+  if (mode == "--at") {
+    if (argc < 4) { std::fprintf(stderr, "usage: %s <pe> --at <hexRVA>\n", argv[0]); return 2; }
+    uint32_t fstart = (uint32_t)strtoul(argv[3], nullptr, 16);
+    // locate the containing code section
+    int si = -1; uint32_t send = 0;
+    for (size_t i = 0; i < img.sections.size(); ++i) {
+      auto& s = img.sections[i];
+      uint32_t se = s.va + (s.vsize ? s.vsize : s.raw_size);
+      if (s.code && fstart >= s.va && fstart < se) { si = (int)i; send = se; break; }
+    }
+    if (si < 0) { std::fprintf(stderr, "FAIL: RVA %X not in a code section\n", fstart); return 1; }
+    uint32_t fend = send;                                 // next known start above fstart, else send
+    auto starts = discover();
+    auto it = starts.find(si);
+    if (it != starts.end())
+      for (uint32_t s : it->second) if (s > fstart && s < fend) fend = s;
+    char nm[32]; std::snprintf(nm, sizeof nm, "sub_%06X", fstart);
+    auto nn = names.find(fstart);
+    std::string fname = nn != names.end() ? nn->second : nm;
+    names[fstart] = fname; lifter.SetNames(names);        // self-calls render the same symbol
+    ILFunction f = lifter.LiftFunction(image, image_size, fstart, fend, fname);
+    auto sg = sigMap.find(fstart);
+    SetSignature(sg != sigMap.end() ? &sg->second : nullptr);
+    std::printf("%s\n", DecompileToC(f, {}).c_str());
+    SetSignature(nullptr);
+    return 0;
+  }
+
   if (mode == "--names") {
     auto starts = discover();
     for (auto& kv : starts)
