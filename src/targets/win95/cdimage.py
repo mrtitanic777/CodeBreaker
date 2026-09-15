@@ -93,6 +93,32 @@ def _components(recon):
     return C
 
 
+def _build_payload(win95dir):
+    """Build the curated payload modules (Windows95/base/<m>) with owbuild and pack the ones that
+    produce a real DLL into a functional CAB in the CD's \\WIN95 dir (extractable by Win95 SETUP via
+    the cabwrite MSZIP writer). Returns (built_names, cab_path_or_None)."""
+    from src.targets.win95 import owbuild, cabwrite
+    base = os.path.join(os.path.dirname(paths.repo_root()), "Windows95", "base")
+    built = []
+    if os.path.isdir(base):
+        for m in sorted(os.listdir(base)):
+            if not os.path.isfile(os.path.join(base, m, "owbuild.json")):
+                continue
+            try:
+                r = owbuild.build(m)                    # {ok, output}
+            except Exception:                           # noqa: BLE001
+                r = None
+            dll = r.get("output") if isinstance(r, dict) else None
+            if r and r.get("ok") and dll and os.path.isfile(dll):
+                built.append((m, dll))
+    cab = None
+    if built:
+        cab = os.path.join(win95dir, "WIN95_02.CAB")
+        entries = [(os.path.basename(d), open(d, "rb").read()) for _m, d in built]
+        cabwrite.write_cab(entries, cab)
+    return [m for m, _d in built], cab
+
+
 def _build_vbr(recon):
     nasm = _nasm()
     asm = os.path.join(recon, "bootdisk", "msboot.asm")
@@ -134,6 +160,13 @@ def main(argv):
     for d in (win95, sysdir, os.path.join(outdir, "_boot")):
         os.makedirs(d, exist_ok=True)
 
+    # payload: build the curated base modules and pack the real DLLs into a CAB on the CD
+    payload_mods, payload_cab = [], None
+    if do_build:
+        print("== building payload (curated base modules -> CAB) ==")
+        payload_mods, payload_cab = _build_payload(win95)
+        print("  payload DLLs built: %d (%s)" % (len(payload_mods), ", ".join(payload_mods) or "none"))
+
     rows = []
     for cd_path, built, orig, note in comps:
         status, detail, dest = "PENDING", note, None
@@ -169,6 +202,13 @@ def main(argv):
         f.write("| CD path | provenance | our image | detail |\n|---|---|---|---|\n")
         for cd_path, status, img, detail in rows:
             f.write("| `%s` | %s | %s | %s |\n" % (cd_path, status, img or "-", detail))
+        if payload_cab:
+            f.write("\n## Payload CAB (`WIN95/WIN95_02.CAB`)\n\n")
+            f.write("Curated base modules built from reconstructed source (owbuild) and packed with the\n")
+            f.write("cabwrite MSZIP writer (Win95 SETUP / expand.exe extractable, byte-identical delivery):\n\n")
+            for m in payload_mods:
+                f.write("- `%s.dll`\n" % m)
+            f.write("\nThe remaining CAB payload (hundreds of DLLs/VxDs) is the multi-session build-out.\n")
         f.write("\nBoot-test our Setup from this tree (no ISO needed):\n\n")
         f.write("    qemu-system-i386 -fda <our-dos-floppy> "
                 "-drive file=fat:rw:%s,media=cdrom\n" % outdir)
