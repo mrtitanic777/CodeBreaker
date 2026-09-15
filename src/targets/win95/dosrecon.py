@@ -48,6 +48,8 @@ _BINS = {
     "ifshlp":   ("ifshlp.sys",  "IFSHLP.SYS -- the IFS (installable file system) real-mode helper"),
     "setver":   ("setver.exe",  "SETVER.EXE -- the DOS version-table TSR"),
     "ramdrive": ("ramdrive.sys", "RAMDRIVE.SYS -- the RAM-disk device driver"),
+    "oemsetup": ("oemsetup.exe", "OEMSETUP.EXE -- the real-mode DOS launcher for Win95 Setup "
+                                 "(AUTOEXEC runs it from the CD; it starts the Windows setup engine)"),
 }
 _CORE = ("iosys", "command")
 _DRIVERS = ("himem", "emm386", "drvspace", "ifshlp", "setver", "ramdrive")
@@ -1252,7 +1254,7 @@ def main(argv):
     while i < len(argv):
         a = argv[i]
         if a in ("--iosys", "--command", "--himem", "--emm386", "--drvspace",
-                 "--ifshlp", "--setver", "--ramdrive"):
+                 "--ifshlp", "--setver", "--ramdrive", "--oemsetup"):
             which = a[2:]
         elif a == "--both":
             which = "both"
