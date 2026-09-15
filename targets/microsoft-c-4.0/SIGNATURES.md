@@ -28,8 +28,18 @@ The wrapper on every Tier-A/B tool (MSC, C1, C2, C3, C3L, CL, CV, LINK, LIB).
   ```
 - **Trailer strings:** ASCII `RB` signature word + `"Packed file is corrupt"` near loader end.
 - **Action:** unpack to recover real OEP + relocation table before any disassembly.
-- **Confirmed:** MSC.EXE (`RB`@~0x68de, msg@file 0x69e1), and header-pattern-identical across
-  C1/C2/C3/C3L/CL/CV/LINK/LIB.
+- **Confirmed:** MSC.EXE header @image 0x66d0 = `c030 0000 0000 b501 0008 9807 bb06 5242`
+  → real_ip=0x30c0, real_cs=0, exepack_size=0x1b5, real_sp=0x800, real_ss=0x798, dest_len=0x6bb,
+  sig=`RB`@+0x0E. **Decompressor stub byte-identical across all 10 packed tools** (same EXEPACK
+  version): `8CC0 0510 00 0E 1F A304 00 0306 0C00 8EC0 …`.
+- **Unpacker:** `workspace/scripts/unexepack.py` (deterministic, no deps). Decompress downward,
+  skip `0xFF` padding, `0xB0`=FILL / `0xB2`=COPY, bit0 = last-block. Verified on all 10.
+
+### SIG-PACK-002 — EXEPACK uncompressed leading region `[CONFIRMED]`
+Sub-variant: some images leave the first *K* bytes uncompressed in place; the command stream only
+regenerates `image[K:]`, so decompression ends with a `K`-byte residual that is filled verbatim
+from the packed module's own low bytes. Observed K: C1=76, LINK=32, CV=8271, CVR=8378; K=0 for
+MSC/CL/LIB/C2/C3/C3L.
 
 ### SIG-PACK-000 — Unpacked MZ (control) `[CONFIRMED]`
 `MAKE.EXE` (relocs=8) and `LINK4.EXE` (relocs=1) are **plain MZ**, not packed — useful as
@@ -53,7 +63,7 @@ Memory model per binary TBD from CRT startup fingerprint (see SIG-CRT-*).
 
 | ID | Function | Source file (disk06) | Detect by | Status |
 |---|---|---|---|---|
-| SIG-CRT-001 | `__astart` / entry | `CRT0.ASM` | entry prologue: DGROUP setup, `_psp`/`_osmajor` init, `_setargv`/`_setenvp` calls | HYP |
+| SIG-CRT-001 | `__astart` / entry | `CRT0.ASM` | entry prologue **`B4 30 CD 21 3C 02 73`** = `mov ah,30h/int 21h/cmp al,2/jae` (DOS-2.0 gate), then DGROUP/stack setup. Small model → near `call` to msg printer; large model → `9A` far `lcall`. | **CONFIRMED** — at OEP of MSC (0x30c0, near), C1 (0x2382, far), CV (0x417b, far). Matches disk06 `CRT0.ASM`. |
 | SIG-CRT-002 | `_chkstk` | `CHKSTK.ASM` | stack-probe idiom (`sub sp` loop touching pages) | HYP |
 | SIG-CRT-003 | `_setargv` | `STDARGV.ASM`/`SETARGV.ASM` | command-tail parse from PSP:0x80 | HYP |
 | SIG-CRT-004 | `_setenvp` | `STDENVP.ASM` | environment-segment copy loop | HYP |

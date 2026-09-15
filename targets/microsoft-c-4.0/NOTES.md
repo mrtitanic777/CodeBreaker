@@ -91,11 +91,40 @@ with **Microsoft EXEPACK**. Evidence, uniform across MSC/C1/C2/C3/C3L/CL/CV/LINK
 **Consequence:** disassembly of the raw file only shows the ~256-byte EXEPACK loader. **We must
 unpack first** to recover the true code/data image, real CS:IP, and the relocation table.
 
-**Unpack options (to be chosen in Milestone 1):**
-1. Pure-Python EXEPACK decompressor (deterministic, no external deps, fits CodeBreaker doctrine) — preferred.
-2. `unp`/`unexepack` community tools in DOSBox-X (already configured in CodeBreaker).
-3. Run the program under the DOSBox-X debugger, dump memory at the real entry (OEP).
-Cross-check any two so the unpacked image is trustworthy before it becomes the RE input.
+**SOLVED (session 2): pure-Python unpacker `workspace/scripts/unexepack.py`.** Deterministic,
+no deps. EXEPACK header is the 16-byte variant (`RB` at +0x0E); algorithm = read the compressed
+stream downward, skipping 0xFF paragraph padding, opcodes `0xB0`=FILL / `0xB2`=COPY with
+bit0 = last-block flag. **Two sub-variants seen, both handled:** some images leave the first *K*
+bytes of the image **uncompressed in place** (the command stream regenerates only `image[K:]`),
+so a nonzero decompress residual is filled from the packed module's own low bytes. The decompressor
+**stub is byte-identical** across all packed tools (same EXEPACK version).
+
+**Result — all 10 packed tools unpacked to coherent images (verified at OEP):**
+
+| Tool | OEP CS:IP | SS:SP | image | relocs | notes |
+|---|---|---|---:|---:|---|
+| MSC | 0000:30c0 | 0798:0800 | 27,568 | 55 | `__astart`, small model (near call) |
+| CL | 0000:2f1a | 0760:0800 | ~27.7K | — | `__astart` |
+| LIB | 0000:42e6 | 0873:0800 | ~28.7K | — | `__astart` |
+| C1 | 0172:0c62 | 222f:2000 | 131,680 | 2,951 | `__astart`, **large model** (`lcall`) |
+| C2 | 0000:ea77 | 2025:2000 | ~127K | — | large model |
+| C3 | 0000:c9bd | 163e:2000 | ~84K | — | |
+| C3L | 0000:09ac | 1d64:2000 | ~126K | — | large-model pass-3 |
+| CV | 0204:213b | 28b5:1000 | 139,088 | 2,260 | `__astart`, large model |
+| CVR | 020b:2136 | 28c2:1000 | 139,296 | 2,270 | CodeView (learning build) |
+| LINK | 0000:0120 | 10b4:0100 | 47,968 | 10 | **own** startup (older, not CRT `__astart`) |
+
+Each unpacked file + a `.json` manifest (OEP/SS:SP/relocs) is in `workspace/unpacked/`.
+OEP verified by disassembly: C1/CV/MSC land exactly on the MS-C `__astart` prologue
+(`mov ah,30h / int 21h / cmp al,2 / jae`) that matches `CRT0.ASM` on disk06.
+
+**Plain MZ (no unpack needed) — direct disasm targets:** `MAKE.EXE`, `LINK4.EXE`, `EXEMOD.EXE`,
+`SETENV.EXE`, `DOSSEG.EXE`, and **`EXEPACK.EXE` itself** (relocs=5; it merely *contains* the
+"Packed file is corrupt" string as its own message — it is not self-packed).
+
+**Remaining verification (M1 close-out):** boot one unpacked tool in DOSBox-X (e.g. `C1 -?`) as an
+independent runtime check, and optionally reproduce the EXEPACK wrapper to match the shipped file
+byte-for-byte (stretch).
 
 ---
 
@@ -156,6 +185,13 @@ reuse what transfers, author a C-4.0 model for the rest.)
 ---
 
 _Log entries below, newest last._
+
+### 2026-09-14 — session 2
+Wrote `workspace/scripts/unexepack.py`. Unpacked **all 10** EXEPACK tools; OEPs verified against
+`CRT0.ASM` (`__astart`). Found the EXEPACK "uncompressed leading region" sub-variant (SIG-PACK-002).
+Classified the 4 non-EXEPACK files as plain MZ. **M1 essentially done** (pending a DOSBox run check).
+Promoted SIG-PACK-001, added SIG-PACK-002, confirmed SIG-CRT-001. Next: shake out `mzdis` byte-exact
+floor on MAKE/LINK4 (M2), then C1/C2/C3.
 
 ### 2026-09-14 — session 1
 Extracted all 8 disks (FAT12 walker). Classified corpus. Identified universal **EXEPACK** on the
