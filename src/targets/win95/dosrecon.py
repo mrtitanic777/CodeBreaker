@@ -599,6 +599,58 @@ def _int_comment(op):
     return "INT %s (%s)" % (op, m.get(op, "?"))
 
 
+# DOS device-driver request command codes (the interrupt routine dispatches on request[2]).
+_DEV_CMD = {
+    0x00: "cmd_init", 0x01: "cmd_media_check", 0x02: "cmd_build_bpb", 0x03: "cmd_ioctl_in",
+    0x04: "cmd_read", 0x05: "cmd_nd_read", 0x06: "cmd_input_status", 0x07: "cmd_flush_input",
+    0x08: "cmd_write", 0x09: "cmd_write_verify", 0x0A: "cmd_output_status",
+    0x0B: "cmd_flush_output", 0x0C: "cmd_ioctl_out", 0x0D: "cmd_open", 0x0E: "cmd_close",
+    0x0F: "cmd_removable", 0x10: "cmd_output_busy", 0x13: "cmd_generic_ioctl",
+    0x17: "cmd_get_logical", 0x18: "cmd_set_logical", 0x19: "cmd_ioctl_query",
+}
+
+
+def _device_names(which, is_iosys, image, md):
+    """Name a DOS device driver's strategy + interrupt routines from its device header (at offset 0
+    for a raw .SYS), and its command handlers from the interrupt routine's dispatch table -- all
+    documented structure. Returns {addr: name}."""
+    out = {}
+    if is_iosys or len(image) < 18 or image[:2] == b"MZ":
+        return out
+    strat = image[6] | (image[7] << 8)
+    intr = image[8] | (image[9] << 8)
+    if not (0 < strat < len(image)) or not (0 < intr < len(image)):
+        return out
+    out[strat] = "%s_strategy" % which
+    out[intr] = "%s_interrupt" % which
+    # command dispatch: within the interrupt routine, find a word table indexed by the request
+    # command byte -> name each entry with its DOS device command.
+    end = min(intr + 0x400, len(image))
+    a = intr
+    tbl = None
+    while a < end:
+        g = list(md.disasm(bytes(image[a:min(a + 15, end)]), a))
+        if not g:
+            a += 1; continue
+        i = g[0]
+        if i.mnemonic in ("jmp", "call") and "[" in i.op_str:
+            m = re.search(r"\+\s*0x([0-9a-f]+)\]", i.op_str)
+            if m:
+                tbl = int(m.group(1), 16); break
+        a += i.size
+    if tbl is not None and tbl + 2 * len(_DEV_CMD) <= len(image):
+        import struct
+        for code, cname in _DEV_CMD.items():
+            off = struct.unpack("<H", image[tbl + code * 2: tbl + code * 2 + 2])[0]
+            if 0 < off < len(image):
+                out.setdefault(off, "%s_%s" % (which, cname))
+    return out
+
+
+def _device_entry_addrs(is_iosys, image, md):
+    return list(_device_names("dev", is_iosys, image, md).keys())
+
+
 def _struct_hash(image, s, e, md):
     """Structural hash of a function: opcode mnemonics + operand shapes, with immediates/
     displacements masked so link-time addresses don't matter. Identifies the same routine
@@ -683,6 +735,10 @@ def _run_one(which, outroot, shared=None):
     starts.append(0)
     if is_iosys and body_end:
         starts.append(body_end)
+    # device-driver entry points (strategy/interrupt/command handlers) are reached via far call from
+    # DOS, not internal calls, so the scanner misses them -- inject them so they get real labels.
+    dev_entries = _device_entry_addrs(is_iosys, image, md)
+    starts.extend(dev_entries)
     starts = sorted(set(s for s in starts if s < len(image)))
     ends = {s: (starts[i + 1] if i + 1 < len(starts) else len(image)) for i, s in enumerate(starts)}
 
@@ -723,6 +779,11 @@ def _run_one(which, outroot, shared=None):
                                         "load_command", "cvf_mount", "msdossys", "logo",
                                         "banner", "autoexec", "int2f")):
             win95_layer.append((s, nm, sorted(ints), list(dict.fromkeys(strs))[:6]))
+
+    # device-driver structure names (strategy/interrupt/command handlers) override bare sub_ labels
+    for addr, dn in _device_names(which, is_iosys, image, md).items():
+        if addr in namemap and namemap[addr].startswith(("sub_", "shared_", "data_")):
+            namemap[addr] = dn
 
     outdir = os.path.join(outroot, which)
     os.makedirs(outdir, exist_ok=True)
