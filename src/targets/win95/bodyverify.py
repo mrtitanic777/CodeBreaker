@@ -408,6 +408,107 @@ def _swept_path():
     return os.path.join(os.path.dirname(_ledger_path()), "verify_swept.txt")
 
 
+# ---------------------------------------------------------------------------
+# Parallel sweep: workers verify whole modules concurrently and RETURN their verified body-ids to
+# the parent, which is the SOLE ledger writer (single-threaded, atomic) -- so parallelism gives a
+# ~core-count speedup with zero ledger-contention (the corruption that killed the earlier detached
+# attempt). Module-level parallelism reuses each module's cached decompile inside its worker.
+# ---------------------------------------------------------------------------
+_W = {}
+
+
+def _winit(target_dir, present, already):
+    from src.core import cores
+    cores.set_target(target_dir)
+    _W["present"] = present
+    _W["already"] = already
+
+
+def _wjob(args):
+    """Worker: verify every function in one module; return (module, [verified body_ids], exhausted,
+    counts). No ledger access -- the parent credits and writes."""
+    module, maxn = args
+    from collections import Counter
+    from src.targets.win95 import autobuild95 as A
+    present, already = _W["present"], _W["already"]
+    try:
+        retail = _retail(module)
+        try:
+            base = A._imagebase(A.PE(retail))
+        except Exception:
+            base = 0
+        _lane, tfns = OT.triage_module(retail)
+        tri = sorted((f["addr"], f["sh"][:16]) for f in (tfns or [])
+                     if f.get("addr") is not None and f.get("sh"))
+
+        def _bid_for(rva):
+            lo = None
+            for a, sh in tri:
+                if a == rva:
+                    return sh
+                if a <= rva:
+                    lo = sh
+                else:
+                    break
+            return lo
+        c = Counter(); got = set()
+        allfns = tracer.list_functions(retail)
+        for off, va, size in allfns[:maxn]:
+            bid = _bid_for(va - base)
+            if not bid or bid not in present or bid in already or bid in got:
+                continue
+            outdir = os.path.join(os.path.dirname(__file__), "_bodyverify",
+                                  "w%d" % os.getpid(), "%x" % va)
+            r = verify_body(retail, va, outdir=outdir)
+            c[r["verdict"]] += 1
+            if r["verdict"] == "equivalent":
+                got.add(bid)
+        return (module, sorted(got), len(allfns) <= maxn, dict(c))
+    except Exception as e:
+        return (module, [], False, {"error": type(e).__name__})
+
+
+def sweep_parallel(modules, workers=10, maxper=100000, skip_swept=True):
+    """Corpus sweep across `workers` processes. The parent is the only ledger writer; it checkpoints
+    atomically as workers return, so a stop at any point keeps every credited body."""
+    import csv as _csv
+    import multiprocessing as mp
+    from src.core import paths
+    rows = list(_csv.DictReader(open(_ledger_path())))
+    present = {r["body_id"] for r in rows}
+    already = {r["body_id"] for r in rows if r.get("verified") == "1"}
+    swept = _load_swept() if skip_swept else set()
+    if skip_swept:
+        modules = [m for m in modules if os.path.basename(m).lower() not in swept]
+    verified_now = set(); newly_swept = []; done = 0
+
+    def _flush():
+        for r in rows:
+            if r["body_id"] in verified_now:
+                r["verified"], r["state"] = "1", "verified"
+        _write_rows(rows)
+        if newly_swept:
+            with open(_swept_path(), "a") as fp:
+                fp.write("".join(s + "\n" for s in newly_swept))
+
+    tdir = paths.target_dir("win95")
+    jobs = [(m, maxper) for m in modules]
+    with mp.Pool(workers, initializer=_winit, initargs=(tdir, present, already)) as pool:
+        for module, ids, exhausted, counts in pool.imap_unordered(_wjob, jobs):
+            done += 1
+            for bid in ids:
+                verified_now.add(bid)
+            if skip_swept and exhausted:
+                newly_swept.append(os.path.basename(module).lower())
+            if done % max(1, workers) == 0 or ids:       # checkpoint often (cheap, atomic)
+                _flush(); newly_swept = []
+            print("  [%d/%d] %-16s +%d  %s" % (done, len(jobs), os.path.basename(module),
+                  len(ids), "  ".join("%s=%d" % kv for kv in sorted(counts.items()))), flush=True)
+    _flush()
+    return {"credited": len(verified_now), "skipped": len(swept),
+            "total_verified": sum(1 for r in rows if r.get("verified") == "1")}
+
+
 def _load_swept():
     try:
         return set(l.strip().lower() for l in open(_swept_path()) if l.strip())
@@ -458,7 +559,7 @@ _BOOT_CRITICAL = ["gdi32.dll", "user32.dll", "kernel32.dll", "advapi32.dll", "sh
 
 def main(argv):
     # positional args = module names; exclude flags AND the values that follow --max/--va
-    _valued = {"--max", "--va"}
+    _valued = {"--max", "--va", "--workers"}
     pos, skip = [], False
     for i, x in enumerate(argv):
         if skip:
@@ -469,6 +570,7 @@ def main(argv):
             continue
         pos.append(x)
     maxn = int(argv[argv.index("--max") + 1]) if "--max" in argv else 40
+    workers = int(argv[argv.index("--workers") + 1]) if "--workers" in argv else 10
     if "--broad" in argv:                                # every PE corpus module (resumable sweep)
         root = OT._corpus_root()
         seen, mods = set(), []
@@ -478,8 +580,13 @@ def main(argv):
                     p = os.path.join(dp, fn)
                     if OT._detect(p)[0] == "pe":
                         seen.add(fn.lower()); mods.append(p)
-        r = sweep_corpus(mods, maxper=maxn if "--max" in argv else 100000, skip_swept=True)
-        print("=== bodyverify --broad (%d PE modules) ===" % len(mods))
+        mp = maxn if "--max" in argv else 100000
+        if "--parallel" in argv:                         # N worker processes (default 10 of 12 cores)
+            print("=== bodyverify --broad --parallel (%d PE modules, %d workers) ===" % (len(mods), workers), flush=True)
+            r = sweep_parallel(mods, workers=workers, maxper=mp, skip_swept=True)
+        else:
+            r = sweep_corpus(mods, maxper=mp, skip_swept=True)
+            print("=== bodyverify --broad (%d PE modules) ===" % len(mods))
         print("  bodies newly credited: %d" % r["credited"])
         print("  modules skipped (swept): %d" % r.get("skipped", 0))
         print("  TOTAL VERIFIED:        %d" % r["total_verified"])
