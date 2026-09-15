@@ -385,13 +385,14 @@ def _name_by_behavior(namemap, finfo, startset):
 
 
 def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, md,
-              namemap=None, fkind=None, desc="", segs=None, force_db=None):
+              namemap=None, fkind=None, desc="", segs=None, force_db=None, reloc_syms=None):
     r"""Emit annotated MASM-style reconstruction, one file per ORIGINAL segment (recovered by
     _segments), so the reconstruction is multi-segment like the real binary. DS-tracked string
     xref resolution and INT-service comments. The body loads at real-mode segment 0x0070."""
     LOAD_LIN = 0x0070 * 16 if is_iosys else 0
     segs = segs or [(0, "_TEXT")]
     force_db = force_db or set()
+    reloc_syms = reloc_syms or {}
 
     def region_of(a):
         nm = segs[0][1]
@@ -515,7 +516,19 @@ def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, 
             for t in sorted(externs):
                 f.write("        EXTRN %s:NEAR\n" % nm(t))
         segnm = re.sub(r"[^A-Za-z0-9_]", "_", r)[:30]
+        # relink mode: forward-declare the OTHER module segments (empty) so inter-segment
+        # `SEG segname` references resolve in this compilation unit; LINK combines them by name.
+        if reloc_syms:
+            f.write("\n; ---- sibling segments (forward decls so SEG refs resolve; LINK combines) ----\n")
+            for _sa, snm2 in segs:
+                sn = re.sub(r"[^A-Za-z0-9_]", "_", snm2)[:30]
+                if sn != segnm:
+                    cls = "'DATA'" if snm2.startswith("DGROUP") else "'CODE'"
+                    f.write("%s   SEGMENT USE16 byte public %s\n%s   ENDS\n" % (sn, cls, sn))
         f.write("\n%s   SEGMENT USE16 byte public 'CODE'\n        ASSUME cs:%s\n" % (segnm, segnm))
+        if reloc_syms:                     # relink: make functions visible across segment objs
+            for s in rstarts:
+                f.write("        PUBLIC %s\n" % nm(s))
 
         # a 16-bit 1995 kernel has no SSE/MMX/32-bit-only forms; their presence means the run is
         # DATA misdecoded as code -> emit the whole function as db bytes instead of instructions.
@@ -641,9 +654,16 @@ def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, 
                     except ValueError:
                         t = None
                     if t is not None:
-                        if t in start_set:
-                            if not (rlo <= t < rhi):
-                                externs.add(t)
+                        if t in start_set and (rlo <= t < rhi):
+                            ops = nm(t)
+                        elif t in start_set and reloc_syms:
+                            # NE relink: a near branch/call to another segment can't reach it (fixup
+                            # overflow) -- it is a decode artifact; emit the raw bytes as db
+                            bys = ",".join("0%02Xh" % b for b in ins.bytes)
+                            f.write("        db %-28s ; %s to other segment (near, db)\n"
+                                    % (bys, mn)); continue
+                        elif t in start_set:
+                            externs.add(t)
                             ops = nm(t)
                         elif t in labels:
                             ops = labels[t]
@@ -690,6 +710,18 @@ def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, 
                     if st:
                         cmt = '"%s"' % st.replace('"', "'"); break
                 ops = masm_hex(ops)
+                # NE relocation: if a fixup site lands in this instruction's immediate, replace the
+                # last hex literal with the symbolic reference (SEG segname / import) so LINK
+                # regenerates the relocation record.
+                if reloc_syms and any((a + k) in reloc_syms for k in range(len(ins.bytes))):
+                    sym = next(reloc_syms[a + k] for k in range(len(ins.bytes)) if (a + k) in reloc_syms)
+                    # a segment-value fixup is valid only as the imm of `mov r16,imm16` or `push imm16`;
+                    # anywhere else the site is really a data word -> leave for the data path (db).
+                    m = re.match(r"(ax|bx|cx|dx|si|di|bp),\s*0[0-9A-Fa-f]+h$", ops)
+                    if mn == "mov" and m:
+                        ops = "%s, %s" % (m.group(1), sym)
+                    elif mn == "push" and re.match(r"0[0-9A-Fa-f]+h$", ops):
+                        ops = sym
                 # jcxz/loop* are short-only (+-127); MASM re-encodes sizes differently from the
                 # original build, so a genuine in-range jump can drift out of reach. Emit a
                 # trampoline (short branch to a near jmp) so range is guaranteed regardless.

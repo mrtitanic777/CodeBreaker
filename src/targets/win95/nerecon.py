@@ -300,10 +300,24 @@ def _recon_ne(which, outroot):
         if 1 <= seg <= len(ne.segs):
             namemap[ne.segs[seg - 1]["file"] + off] = _san_ne(name)
 
+    # relocation symbols: at each fixup site, the symbolic reference LINK will regenerate. Only
+    # used for the (in-progress) runnable-NE relink path; the default readable build omits them so
+    # cross-segment SEG refs (which need all segments in one assembly unit) don't break assembly.
+    def _segname(idx):
+        s2 = ne.segs[idx - 1]
+        return ("DGROUP%d" if s2["data"] else "CSEG%d") % idx
+    reloc_syms = {}
+    if os.environ.get("NE_RELINK"):
+        for s in ne.segs:
+            for site, (at, kind, tgt) in ne.relocs.get(s["idx"], {}).items():
+                fo = s["file"] + site
+                if kind == "segref" and 1 <= tgt <= len(ne.segs):
+                    reloc_syms[fo] = "SEG %s" % _segname(tgt)
+
     outdir = os.path.join(outroot, "ne", which)
     os.makedirs(outdir, exist_ok=True)
     regions = DR._emit_asm(which, os.path.join(outroot, "ne"), image, False, 0, starts, ends,
-                           strings, md, namemap, fkind, desc, segs, force_db)
+                           strings, md, namemap, fkind, desc, segs, force_db, reloc_syms)
     print("  emitted %d NE segment(s): %s" % (len(regions), ", ".join(regions)))
     return {"which": which, "path": path, "outdir": outdir, "nsegs": len(segs),
             "nfuncs": len(starts), "nexports": len(emap)}
@@ -311,6 +325,108 @@ def _recon_ne(which, outroot):
 
 def _san_ne(name):
     return re.sub(r"[^A-Za-z0-9_]", "_", name)
+
+
+def _merge_module(which, ne, outdir):
+    """Merge the per-segment .asm files into ONE module .asm (all SEGMENT blocks together) so that
+    inter-segment `SEG segname` references resolve within a single assembly unit. Returns its path."""
+    order = []
+    for s in ne.segs:
+        nm = ("DGROUP%d" if s["data"] else "CSEG%d") % s["idx"]
+        p = os.path.join(outdir, nm + ".asm")
+        if os.path.isfile(p):
+            order.append((nm, p))
+    defined = set()                       # labels defined across all segments (to drop stale EXTRN)
+    for nm, p in order:
+        for line in open(p, encoding="latin1"):
+            m = re.match(r"([A-Za-z_][A-Za-z0-9_]*) label near", line)
+            if m:
+                defined.add(m.group(1))
+    out = os.path.join(outdir, which + ".asm")
+    with open(out, "w") as w:
+        w.write("; %s.asm -- full module (all NE segments together for inter-segment SEG refs)\n"
+                "        .386p\n\n" % which)
+        for nm, p in order:
+            inseg = False
+            for line in open(p, encoding="latin1"):
+                if re.match(r"\S+\s+SEGMENT ", line):
+                    inseg = True
+                if inseg:
+                    if line.strip().startswith("END") and not line.strip().startswith("ENDS"):
+                        continue
+                    w.write(line)
+                    if re.match(r"\S+\s+ENDS", line):
+                        inseg = False
+        w.write("\n        END\n")
+    return out
+
+
+def _write_def(which, ne, defn, outdir):
+    """Emit a module .def (LIBRARY + EXPORTS by ordinal) for LINK 5.60. Export only the ordinals we
+    actually placed as PUBLIC symbols (entry-table ordinal mapped to a named function), so every
+    export resolves."""
+    p = os.path.join(outdir, which + ".def")
+    modname = {"krnl386": "KERNEL", "gdi": "GDI", "user": "USER"}[which]
+    with open(p, "w") as w:
+        w.write("LIBRARY %s\n" % modname)
+        w.write("EXETYPE WINDOWS\n")
+        w.write("EXPORTS\n")
+        for ordn in sorted(ne.ent):
+            if ordn == 0 or ordn not in defn:
+                continue
+            seg, off = ne.ent[ordn]
+            if 1 <= seg <= len(ne.segs):
+                w.write("    %s @%d\n" % (_san_ne(defn[ordn]), ordn))
+    return p
+
+
+def _relink(which, outroot):
+    """Merge segments + .def -> LINK 5.60 -> NE module (the runnable-image path). Requires the
+    per-segment .asm already emitted with NE_RELINK (symbolic SEG refs)."""
+    ne = NE(open(_corpus(_MODS[which][0]), "rb").read())
+    defn = _load_def(which)
+    outdir = os.path.join(outroot, "ne", which)
+    ml = os.path.join(paths.repo_root(), "toolchains", "period", "assemblers", "masm-6.13", "ML.EXE")
+    link = os.path.join(paths.repo_root(), "toolchains", "period", "linkers", "link-5.60", "LINK.EXE")
+    _write_def(which, ne, defn, outdir)
+    import subprocess
+    # assemble each per-segment .asm to its own obj (the merged file would exceed MASM's line limit)
+    objs = []
+    total_err = 0
+    for s in ne.segs:
+        nm = ("DGROUP%d" if s["data"] else "CSEG%d") % s["idx"]
+        asm = os.path.join(outdir, nm + ".asm")
+        if not os.path.isfile(asm):
+            continue
+        obj = os.path.join(outdir, nm + ".obj")
+        r = subprocess.run([ml, "/c", "/Fo", obj, asm], capture_output=True, text=True, cwd=outdir)
+        e = (r.stdout + r.stderr).count("error A")
+        total_err += e
+        if e:
+            open(os.path.join(outdir, nm + ".asmlog"), "w").write(r.stdout + r.stderr)
+        if os.path.isfile(obj):
+            objs.append(nm + ".obj")
+    print("  assembled %d segment objs, %d errors" % (len(objs), total_err))
+    if total_err or not objs:
+        return
+    exe = os.path.join(outdir, which + "_rebuilt.exe")
+    # response file (many objs overflow LINK's command-line limit)
+    rsp = os.path.join(outdir, which + ".lnk")
+    with open(rsp, "w") as w:
+        w.write(" +\n".join(objs) + "\n")
+        w.write(os.path.basename(exe) + "\n")   # output
+        w.write("NUL\n")                         # map
+        w.write("\n")                            # libraries
+        w.write(which + ".def\n")                # module definition
+    lk = subprocess.run([link, "/NOLOGO", "@" + which + ".lnk"],
+                        capture_output=True, text=True, cwd=outdir)
+    open(os.path.join(outdir, which + ".linklog"), "w").write(lk.stdout + lk.stderr)
+    ok = os.path.isfile(exe)
+    print("  LINK 5.60: %s%s" % ("produced " + os.path.basename(exe) if ok else "FAILED",
+                                 " (%d bytes)" % os.path.getsize(exe) if ok else ""))
+    if ok:
+        sig = open(exe, "rb").read(2)
+        print("  output signature: %r" % sig)
 
 
 def _analyze(which):
@@ -336,7 +452,7 @@ def main(argv):
     if capstone is None:
         print("nerecon: needs capstone"); return 2
     which = "all"
-    do_build = do_verify = do_analyze = False
+    do_build = do_verify = do_analyze = do_link = False
     for a in argv:
         if a in ("--krnl386", "--gdi", "--user"):
             which = a[2:]
@@ -348,6 +464,8 @@ def main(argv):
             do_build = do_verify = True
         elif a == "--analyze":
             do_analyze = True
+        elif a == "--link":
+            do_link = True
     targets = ["krnl386", "gdi", "user"] if which == "all" else [which]
     outroot = os.path.join(paths.design_root() if os.path.isdir(os.path.join(paths.design_root(), "corpus"))
                            else os.path.join(_win95_root(), "design"), "recon")
@@ -355,6 +473,8 @@ def main(argv):
         for t in targets:
             _analyze(t)
         return 0
+    if do_link:
+        os.environ["NE_RELINK"] = "1"
     from src.targets.win95 import dosrecon as DR
     results = []
     for t in targets:
@@ -370,6 +490,11 @@ def main(argv):
         DR._assemble(outroot, rr)
     if do_verify:
         DR._verify(outroot, rr)
+    if do_link:
+        print("\n== NE relink (merge segments -> LINK 5.60 -> NE) ==")
+        for t in targets:
+            print("-- %s" % t)
+            _relink(t, outroot)
     return 0
 
 
