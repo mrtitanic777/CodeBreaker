@@ -43,6 +43,8 @@ int main(int argc, char** argv) {
   }
   bool iosys = LooksLikeIOSYS(argv[1]);
   win95::MZImage img = iosys ? win95::LoadIOSYS(argv[1]) : win95::LoadMZ(argv[1]);
+  // raw DOS .SYS device drivers have no MZ header -> load the whole file flat (entry 0)
+  if (!img.ok) img = win95::LoadFlat(argv[1]);
   if (!img.ok) { std::printf("FAIL: %s\n", img.error.c_str()); return 1; }
   std::string mode = argv[2];
 

@@ -36,10 +36,21 @@ except ImportError:
     capstone = None
 
 # --- corpus binaries (the REAL Win95 real-mode files) ---------------------------------------
+# Core MS-DOS 7.10 = IO.SYS + COMMAND.COM. The rest are the bundled real-mode drivers/utilities
+# shipped with 7.10 (HIMEM/EMM386/DRVSPACE/IFSHLP/SETVER/RAMDRIVE) -- reconstructed for a complete
+# port. The .SYS device drivers have no MZ header (loaded flat by CONFIG.SYS).
 _BINS = {
-    "iosys":   ("winboot.sys", "IO.SYS (WINBOOT.SYS) -- MS-DOS 7.0 real-mode kernel"),
-    "command": ("command.com", "COMMAND.COM -- the Win95 command interpreter"),
+    "iosys":    ("winboot.sys", "IO.SYS (WINBOOT.SYS) -- MS-DOS 7.0 real-mode kernel"),
+    "command":  ("command.com", "COMMAND.COM -- the Win95 command interpreter"),
+    "himem":    ("himem.sys",   "HIMEM.SYS -- XMS / HMA extended-memory manager"),
+    "emm386":   ("emm386.exe",  "EMM386.EXE -- expanded-memory / UMB provider"),
+    "drvspace": ("drvspace.sys", "DRVSPACE.SYS -- DriveSpace compressed-volume real-mode driver"),
+    "ifshlp":   ("ifshlp.sys",  "IFSHLP.SYS -- the IFS (installable file system) real-mode helper"),
+    "setver":   ("setver.exe",  "SETVER.EXE -- the DOS version-table TSR"),
+    "ramdrive": ("ramdrive.sys", "RAMDRIVE.SYS -- the RAM-disk device driver"),
 }
+_CORE = ("iosys", "command")
+_DRIVERS = ("himem", "emm386", "drvspace", "ifshlp", "setver", "ramdrive")
 
 
 def _design_root():
@@ -79,6 +90,8 @@ def _mzdec():
 def _layout(data):
     """Return (is_iosys, body_end, load_base, image) matching win95mzdec's loader."""
     import struct
+    if data[:2] != b"MZ":
+        return False, 0, 0, data          # raw .SYS device driver: whole file flat, entry 0
     last_page, pages, _rel, hdr_par = struct.unpack("<HHHH", data[2:10])
     hdr = hdr_par * 16
     total = pages * 512
@@ -201,7 +214,7 @@ def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, 
 
     def region_of(a):
         if not is_iosys:
-            return "command"
+            return which
         if a < 0x0800:
             return "msload"
         if a < body_end:
@@ -286,7 +299,7 @@ def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, 
         f.write("; %s.asm -- reconstructed from the REAL Win95 %s (%s region).\n"
                 "; 16-bit real-mode; assembles with MASM 6.13 (ML /c). CodeBreaker dosrecon:\n"
                 "; label-resolved branches, DS-tracked string xrefs, INT-service comments.\n\n"
-                "        .386\n" % (r, which.upper(), r))
+                "        .386p\n" % (r, which.upper(), r))
         for t in sorted(externs):
             f.write("        EXTRN sub_%06X:NEAR\n" % t)
         f.write("\n_TEXT   SEGMENT byte public 'CODE'\n        ASSUME cs:_TEXT\n")
@@ -338,12 +351,15 @@ def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, 
                 # comment. Faithful and always assembles.
                 hard = (mn in ("aad", "aam", "salc", "shufps", "icebp", "invd", "wbinvd",
                                "xadd", "lar", "lsl", "ud2", "rsm", "sysenter", "sysexit",
-                               "cmpxchg", "cmpxchg8b", "rdtsc", "rdmsr", "wrmsr")
+                               "cmpxchg", "cmpxchg8b", "rdtsc", "rdmsr", "wrmsr", "syscall", "sysret")
                         or mn.startswith("cmov") or mn.startswith("fcmov") or mn.startswith("set")
                         or any(t in ops for t in ("xmm", "ymm", "mm0", "mm1", "mm2", "mm3",
                                                   "mm4", "mm5", "mm6", "mm7", "st(", "cr0", "cr2",
                                                   "cr3", "cr4", "dr0", "dr7", "tr6", "tr7"))
                         or (mn in ("call", "jmp", "lcall", "ljmp") and ("," in ops or ":" in ops))
+                        or (mn in ("movzx", "movsx")           # 16<-16 movzx/movsx is invalid (misdecode)
+                            and re.search(r",\s*(ax|bx|cx|dx|si|di|bp|sp)\b", ops)
+                            and not re.search(r"^(e[a-z]{2})", ops))
                         or (ins.bytes and (ins.bytes[0] in (0x9A, 0xEA)
                                            or (len(ins.bytes) > 1 and ins.bytes[0] == 0x66
                                                and ins.bytes[1] in (0x9A, 0xEA)))))  # far direct
@@ -405,6 +421,9 @@ def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, 
                 # near indirect jmp/call through memory needs an explicit size (MASM)
                 if mn in ("jmp", "call") and "[" in ops and "ptr" not in ops and not far:
                     ops = "word ptr " + ops
+                # lgdt/lidt/sgdt/sidt take a 6-byte (fword) descriptor; capstone omits the size
+                if mn in ("lgdt", "lidt", "sgdt", "sidt") and "[" in ops and "ptr" not in ops:
+                    ops = "fword ptr " + ops
                 # DS tracking
                 if mn == "mov" and ops.startswith(("ax,", "bx,")) and "0x" in ops:
                     try: pend_ax = int(ops.split(",")[1], 16)
@@ -471,12 +490,17 @@ def _run_one(which, outroot):
                     starts.append(int(p[0], 16))
                 except ValueError:
                     pass
-    starts = sorted(set(starts))
+    # synthetic starts at region heads so EVERY byte is covered: file start (MZ header + the
+    # MSLOAD/PSP entry before the first discovered function) and, for IO.SYS, the SYSINIT boundary.
+    starts.append(0)
+    if is_iosys and body_end:
+        starts.append(body_end)
+    starts = sorted(set(s for s in starts if s < len(image)))
     ends = {s: (starts[i + 1] if i + 1 < len(starts) else len(image)) for i, s in enumerate(starts)}
 
     def region_of(a):
         if not is_iosys:
-            return "command"
+            return which
         if a < 0x0800:
             return "msload"
         if a < body_end:
@@ -557,19 +581,29 @@ def main(argv):
     i = 0
     while i < len(argv):
         a = argv[i]
-        if a == "--iosys":
-            which = "iosys"
-        elif a == "--command":
-            which = "command"
+        if a in ("--iosys", "--command", "--himem", "--emm386", "--drvspace",
+                 "--ifshlp", "--setver", "--ramdrive"):
+            which = a[2:]
         elif a == "--both":
             which = "both"
+        elif a == "--drivers":
+            which = "drivers"
+        elif a == "--all":
+            which = "all"
         elif a == "--build":
             do_build = True
         elif a == "--out" and i + 1 < len(argv):
             outroot = argv[i + 1]; i += 1
         i += 1
 
-    targets = ["iosys", "command"] if which == "both" else [which]
+    if which == "both":
+        targets = list(_CORE)
+    elif which == "drivers":
+        targets = list(_DRIVERS)
+    elif which == "all":
+        targets = list(_CORE) + list(_DRIVERS)
+    else:
+        targets = [which]
     results = []
     for t in targets:
         print("== dosrecon %s ==" % t)
