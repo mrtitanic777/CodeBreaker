@@ -381,21 +381,22 @@ def _name_by_behavior(namemap, finfo, startset):
 
 
 def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, md,
-              namemap=None, fkind=None, desc=""):
-    r"""Emit annotated MASM-style reconstruction per region, with DS-tracked string xref
-    resolution and INT-service comments. This is the faithful authored form for 16-bit real-mode
-    code (MS-DOS/COMMAND.COM were written in assembly). The body loads at real-mode segment 0x0070,
-    so a runtime DS value D addresses file offset (D*16 + disp) - 0x0700."""
+              namemap=None, fkind=None, desc="", segs=None, force_db=None):
+    r"""Emit annotated MASM-style reconstruction, one file per ORIGINAL segment (recovered by
+    _segments), so the reconstruction is multi-segment like the real binary. DS-tracked string
+    xref resolution and INT-service comments. The body loads at real-mode segment 0x0070."""
     LOAD_LIN = 0x0070 * 16 if is_iosys else 0
+    segs = segs or [(0, "_TEXT")]
+    force_db = force_db or set()
 
     def region_of(a):
-        if not is_iosys:
-            return which
-        if a < 0x0800:
-            return "msload"
-        if a < body_end:
-            return "msbio"
-        return "sysinit"
+        nm = segs[0][1]
+        for sa, snm in segs:
+            if a >= sa:
+                nm = snm
+            else:
+                break
+        return nm
 
     def resolve_str(ds_base, disp, faddr=0):
         """Resolve a displacement to a string. Try (a) a known DS base, (b) the first body
@@ -437,7 +438,13 @@ def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, 
             out.append((a, got[0])); a += got[0].size; n += 1
         return out
 
-    # group functions by region, in address order
+    # clear stale outputs (segment layout may have changed between runs)
+    for f in os.listdir(outdir):
+        if f.endswith((".asm", ".obj", ".lst", ".LST")) and not f.startswith("reginit"):
+            try: os.remove(os.path.join(outdir, f))
+            except OSError: pass
+
+    # group functions by region (= recovered segment), in address order
     regions = {}
     for s in starts:
         regions.setdefault(region_of(s), []).append(s)
@@ -503,7 +510,8 @@ def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, 
             f.write("\n; ---- imported from sibling regions of this module ----\n")
             for t in sorted(externs):
                 f.write("        EXTRN %s:NEAR\n" % nm(t))
-        f.write("\n_TEXT   SEGMENT USE16 byte public 'CODE'\n        ASSUME cs:_TEXT\n")
+        segnm = re.sub(r"[^A-Za-z0-9_]", "_", r)[:30]
+        f.write("\n%s   SEGMENT USE16 byte public 'CODE'\n        ASSUME cs:%s\n" % (segnm, segnm))
 
         # a 16-bit 1995 kernel has no SSE/MMX/32-bit-only forms; their presence means the run is
         # DATA misdecoded as code -> emit the whole function as db bytes instead of instructions.
@@ -522,7 +530,7 @@ def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, 
 
         for s in rstarts:
             dec = fdecode[s]
-            if is_data_fn(dec):
+            if s in force_db or is_data_fn(dec):
                 f.write("\n;----- %s : data block (0x%06X, %d bytes) ----------------------\n"
                         % (nm(s), s, ends[s] - s))
                 f.write("%s label near\n" % nm(s))
@@ -678,7 +686,7 @@ def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, 
                     f.write("        %-34s ; %s\n" % (txt, cmt))
                 else:
                     f.write("        %s\n" % txt)
-        f.write("\n_TEXT   ENDS\n        END\n")
+        f.write("\n%s   ENDS\n        END\n" % segnm)
         f.close()
         written.append(r)
     return written
@@ -741,6 +749,74 @@ def _device_names(which, is_iosys, image, md):
 
 def _device_entry_addrs(is_iosys, image, md):
     return list(_device_names("dev", is_iosys, image, md).keys())
+
+
+_MAXSEG = 0xC000            # segment cap with headroom for re-encoding growth (64KB hard limit)
+
+
+def _pack_segs(starts, imglen, forced, name_at):
+    """Greedily pack functions into segments each < _MAXSEG. Start a new segment at a 'forced'
+    boundary (a real segment base, snapped to a function start) or as soon as the current function
+    sits >= _MAXSEG from the segment start. Boundaries land on function starts, so no function is
+    split. name_at(addr,index) names each segment. Returns [(seg_start, seg_name)]."""
+    sset = sorted(s for s in set(starts) if s < imglen)
+    if not sset:
+        return [(0, name_at(0, 0))]
+    forced = set(forced)
+    seg_starts = [sset[0]]
+    for i in range(1, len(sset)):
+        s = sset[i]
+        s_end = sset[i + 1] if i + 1 < len(sset) else imglen   # end of function s
+        # start a new segment at s if it is a real segment base, or if including s would push the
+        # current segment's END past a 16-bit segment
+        if s in forced or (s_end - seg_starts[-1]) > _MAXSEG:
+            seg_starts.append(s)
+    return [(a, name_at(a, i)) for i, a in enumerate(seg_starts)]
+
+
+def _segments(which, data, is_iosys, body_end, starts, imglen):
+    """Recover the ORIGINAL segment structure so the reconstruction is multi-segment like the real
+    binary (a 16-bit segment is <64KB). Evidence, in order:
+      * MZ EXEs with a relocation table -> the distinct segment values referenced ARE the segment
+        bases (+ the header CS/SS) -> forced boundaries;
+      * raw .SYS device drivers (<64KB) -> one segment (that is how they are built);
+      * IO.SYS / 0-reloc images >64KB -> pack functions into <64KB segments (the runtime-computed
+        sub-segment bases are not encoded in the binary), forcing a boundary at MSLOAD/SYSINIT."""
+    import struct
+    forced = {0}
+    if is_iosys:
+        forced.add(0x800)                       # MSLOAD stub -> MSBIO
+        forced.add(body_end)                    # -> SYSINIT load module
+
+        def namer(a, idx):
+            if a < 0x800:
+                return "MSLOAD"
+            if a >= body_end:
+                return "SYSINIT"
+            return "MSBIO" if a < 0x10000 else "MSDOS%d" % idx
+        return _pack_segs(starts, imglen, forced, namer)
+    if data[:2] == b"MZ":
+        e_crlc = struct.unpack("<H", data[6:8])[0]
+        e_cparhdr = struct.unpack("<H", data[8:10])[0]
+        e_ss = struct.unpack("<H", data[14:16])[0]
+        e_cs = struct.unpack("<H", data[22:24])[0]
+        e_lfarlc = struct.unpack("<H", data[24:26])[0]
+        hdr = e_cparhdr * 16
+        bases = set()
+        for i in range(e_crlc):
+            off, seg = struct.unpack("<HH", data[e_lfarlc + i * 4:e_lfarlc + i * 4 + 4])
+            lin = seg * 16 + off
+            if hdr + lin + 2 <= len(data):
+                bases.add(struct.unpack("<H", data[hdr + lin:hdr + lin + 2])[0])
+        bases |= {0, e_cs, e_ss}
+        sset = sorted(set(s for s in starts if s < imglen))
+        # snap each reloc paragraph-base down to a real function start, use as forced boundaries
+        for b in bases:
+            a = b * 16
+            if 0 <= a < imglen:
+                cand = [s for s in sset if s <= a]
+                forced.add(cand[-1] if cand else 0)
+    return _pack_segs(starts, imglen, forced, lambda a, idx: "SEG_%06X" % a if idx else "_TEXT")
 
 
 def _struct_hash(image, s, e, md):
@@ -833,15 +909,32 @@ def _run_one(which, outroot, shared=None):
     starts.extend(dev_entries)
     starts = sorted(set(s for s in starts if s < len(image)))
     ends = {s: (starts[i + 1] if i + 1 < len(starts) else len(image)) for i, s in enumerate(starts)}
+    # No unit may exceed a 16-bit segment. A span > ~56KB is a big DATA block (a message/table/
+    # registry-template region) decoded as one function -- split it into 56KB chunks and force those
+    # to emit as db (byte-exact, and lets each land in its own <64KB segment).
+    force_db = set()
+    inject = []
+    for s in list(starts):
+        if ends[s] - s > 0xE000:
+            force_db.add(s)
+            p = s + 0xE000
+            while p < ends[s]:
+                inject.append(p); force_db.add(p); p += 0xE000
+    if inject:
+        starts = sorted(set(starts) | set(inject))
+        ends = {s: (starts[i + 1] if i + 1 < len(starts) else len(image)) for i, s in enumerate(starts)}
+
+    # recover the ORIGINAL segment structure (multi-segment like the real binary)
+    segs = _segments(which, data, is_iosys, body_end, starts, len(image))
 
     def region_of(a):
-        if not is_iosys:
-            return which
-        if a < 0x0800:
-            return "msload"
-        if a < body_end:
-            return "msbio"
-        return "sysinit"
+        nm = segs[0][1]
+        for sa, snm in segs:
+            if a >= sa:
+                nm = snm
+            else:
+                break
+        return nm
 
     rows = []
     counts = {"code": 0, "data": 0, "stub": 0, "empty": 0}
@@ -881,6 +974,8 @@ def _run_one(which, outroot, shared=None):
 
     # call-graph + behavioral naming: give every remaining sub_ a descriptive, inferred name
     _name_by_behavior(namemap, finfo, set(starts))
+    for s in force_db:                      # oversized data chunks -> data_ label, emitted as db
+        namemap[s] = "data_%06X" % s
 
     outdir = os.path.join(outroot, which)
     os.makedirs(outdir, exist_ok=True)
@@ -890,8 +985,8 @@ def _run_one(which, outroot, shared=None):
         w.writeheader()
         w.writerows(rows)
     asm_regions = _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, md,
-                            namemap, fkind, desc)
-    print("  emitted annotated asm: %s" % ", ".join("%s.asm" % r for r in asm_regions))
+                            namemap, fkind, desc, segs, force_db)
+    print("  emitted %d segment(s): %s" % (len(asm_regions), ", ".join(asm_regions)))
     return {
         "which": which, "path": path, "desc": desc, "is_iosys": is_iosys,
         "body_end": body_end, "nfuncs": len(starts), "counts": counts,
