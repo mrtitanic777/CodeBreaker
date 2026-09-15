@@ -189,6 +189,24 @@ def compile_body(c_text, fname, outdir):
                  (r"unsigned\s+__int16", "unsigned short"), (r"__int16", "short"),
                  (r"unsigned\s+__int8", "unsigned char"), (r"__int8", "char")):
         c_text = re.sub(r"\b" + a + r"\b", b, c_text)
+    # calling conventions wcc386 doesn't accept (IDA/decompiler-isms): __thiscall -> __stdcall (both
+    # put args on the stack, matching the oracle's stdcall frame), and strip __usercall/__userpurge.
+    c_text = re.sub(r"\b__thiscall\b", "__stdcall", c_text)
+    c_text = re.sub(r"\b__(?:usercall|userpurge|noreturn|far|near|huge)\b", "", c_text)
+    # struct field access on incompletely-inferred types (E1031: 'field_2 not in V1_t'). The decompiler
+    # names members field_<hexoffset>, so drop the (partial) struct defs and rewrite every field access
+    # to a direct dword access at that byte offset -- faithful for dword fields, and always compiles.
+    #  a) cast form: ((struct VN_t *)ident)->field_X  -> *(unsigned*)((uchar*)(ident)+0xX)
+    c_text = re.sub(r"\(\(struct\s+V\d+_t\s*\*\)\s*([A-Za-z_]\w*)\s*\)\s*->\s*field_([0-9a-fA-F]+)",
+                    r"*(unsigned *)((unsigned char*)(\1)+0x\2)", c_text)
+    #  b) drop the struct definitions (now largely unreferenced)
+    c_text = re.sub(r"(?s)struct\s+V\d+_t\s*\{.*?\}\s*;", "", c_text)
+    #  c) any remaining struct-pointer/value type uses -> plain machine words
+    c_text = re.sub(r"\bstruct\s+V\d+_t\s*\*", "unsigned char *", c_text)
+    c_text = re.sub(r"\bstruct\s+V\d+_t\b", "unsigned", c_text)
+    #  d) any remaining `ident->field_X` (now on an untyped pointer) -> the same offset access
+    c_text = re.sub(r"([A-Za-z_]\w*)\s*->\s*field_([0-9a-fA-F]+)",
+                    r"*(unsigned *)((unsigned char*)(\1)+0x\2)", c_text)
     refs = _stub_refs(c_text, fname)                      # CALLED names -> function stubs
     pre = ["typedef unsigned u32;", "typedef unsigned uint;", "typedef unsigned long ulong;",
            "typedef unsigned short ushort;", "typedef unsigned char uchar;",
