@@ -588,6 +588,11 @@ def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, 
                                "xadd", "lar", "lsl", "ud2", "ud0", "ud1", "rsm", "sysenter",
                                "sysexit", "cmpxchg", "cmpxchg8b", "rdtsc", "rdmsr", "wrmsr",
                                "syscall", "sysret", "fisttp", "fbld", "fbstp", "lss", "lfs", "lgs")
+                        or mn in ("bound", "arpl")             # 286-only / rare -> data misdecode
+                        or (mn.startswith("lock") and "[" not in ops.split(",")[0])  # LOCK needs mem dest
+                        or re.search(r"\[[^\]]*0x[0-9a-fA-F]{5,}", ops)   # >16-bit displacement misdecode
+                        or (mn in ("ret", "retf", "retn") and re.match(r"0x[0-9a-fA-F]+$", ops)
+                            and int(ops, 16) > 0x200)          # ret <huge imm> = misdecode
                         or mn.startswith("bnd") or mn.startswith("prefetch")   # MPX/3DNow misdecode
                         or (mn.split()[0] in ("repne", "repnz", "repe", "repz")
                             and mn.split()[-1] in ("stosw", "stosb", "stosd", "lodsw", "lodsb",
@@ -628,6 +633,10 @@ def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, 
                     mn, ops = "pushad", ""
                 elif mn == "popal":
                     mn, ops = "popad", ""
+                elif mn == "pushaw":                 # OpenWatcom wasm spells the 16-bit forms
+                    mn, ops = "pusha", ""
+                elif mn == "popaw":
+                    mn, ops = "popa", ""
                 elif mn == "nop" and ops:            # multi-byte nop -> MASM nop takes no operand
                     ops = ""
                 elif mn in ("rcl", "rcr", "rol", "ror", "shl", "shr", "sal", "sar") \
@@ -1166,6 +1175,42 @@ def _verify(outroot, results):
               "original (MASM 6.13)" % (100.0 * g_match / g_bytes, g_fnok, g_fn))
 
 
+def _ow_dir():
+    return os.path.join(paths.repo_root(), "experiments", "premise-proof", "open-watcom-v2", "rel")
+
+
+def _assemble_ow(outroot, results):
+    """Assemble with the from-SOURCE OpenWatcom toolchain (wasm -zcm=masm) -- the project's build
+    toolchain (open, ours to extend; no MS tools). ML 6.13 is used only for the byte-fidelity proof
+    (it is the assembler that built the originals)."""
+    ow = _ow_dir()
+    wasm = os.path.join(ow, "binnt64", "wasm.exe")
+    if not os.path.isfile(wasm):
+        print("  (OpenWatcom wasm not found; skipping)"); return
+    env = dict(os.environ); env["WATCOM"] = ow
+    print("\n== assemble with OpenWatcom wasm (-zcm=masm) ==")
+    tot_err = tot_obj = 0
+    for r in results:
+        d = os.path.join(outroot, r["which"])
+        for asm in sorted(f for f in os.listdir(d) if f.endswith(".asm")):
+            if asm.startswith("reginit"):      # curated doc extract of sysinit; not a build unit
+                continue
+            base = asm[:-4]
+            obj = os.path.join(d, base + ".obj")
+            p = subprocess.run([wasm, "-q", "-zcm=masm", "-zzo", "-fo=" + obj, asm],
+                               capture_output=True, text=True, cwd=d, env=env)
+            out = (p.stdout or "") + (p.stderr or "")
+            errs = out.count("Error!")
+            if errs:
+                open(os.path.join(d, base + ".owlog"), "w").write(out)
+            sz = os.path.getsize(obj) if os.path.isfile(obj) else 0
+            tot_err += errs; tot_obj += sz
+            print("  %-14s/%-12s errors=%-3d obj=%d bytes" % (r["which"], asm, errs, sz))
+    print("  TOTAL: %d errors, %d bytes of object code (OpenWatcom)" % (tot_err, tot_obj))
+    if tot_err == 0:
+        print("  *** the reconstruction assembles clean with the from-source OpenWatcom wasm ***")
+
+
 def _assemble(outroot, results):
     """Assemble the emitted region .asm files with the period MASM 6.13 (ML /c). Proves the
     reconstruction is compilable (the 'C' in Logan's premise) with a from-that-era toolchain."""
@@ -1202,6 +1247,7 @@ def main(argv):
     do_build = False
     do_verify = False
     do_exact = False
+    do_ow = False
     i = 0
     while i < len(argv):
         a = argv[i]
@@ -1220,6 +1266,8 @@ def main(argv):
             do_build = do_verify = True
         elif a == "--exact":
             do_exact = True
+        elif a == "--ow":
+            do_ow = True
         elif a == "--out" and i + 1 < len(argv):
             outroot = argv[i + 1]; i += 1
         i += 1
@@ -1293,6 +1341,8 @@ def main(argv):
                             % (s, nm, " ".join(ints), "; ".join(strs).replace("|", "\\|")[:80]))
                 f.write("\n")
     print("\nwrote %s" % rep)
+    if do_ow:
+        _assemble_ow(outroot, results)
     if do_build:
         _assemble(outroot, results)
     if do_verify:
