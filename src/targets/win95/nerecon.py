@@ -99,6 +99,7 @@ class NE:
         self._entries()
         self._names()
         self._modrefs()
+        self._relocs()
 
     def _segs(self):
         self.segs = []          # (idx, file_off, length, flags, is_data, moveable, has_reloc)
@@ -158,6 +159,49 @@ class NE:
             p = self.nepos + self.impnam_tbl + noff
             ln = d[p]
             self.modrefs.append(d[p + 1:p + 1 + ln].decode("latin1", "replace"))
+
+    def _relocs(self):
+        """Per-segment relocation records, chains walked to individual fixup sites. Each site ->
+        (kind, target): kind 'segref' internal segment base (target=seg#), 'ptr' internal far
+        (target=(seg#,off)), 'impord' (target=(modidx,ord)), 'impname' (target=(modidx,nameoff))."""
+        self.relocs = {}          # segidx -> {site_offset: (atype, kind, target)}
+        d = self.data
+        for s in self.segs:
+            if not s["reloc"]:
+                continue
+            fbase = s["file"]
+            rpos = fbase + s["len"]
+            nrel = struct.unpack("<H", d[rpos:rpos + 2])[0]
+            sites = {}
+            for r in range(nrel):
+                rec = d[rpos + 2 + r * 8:rpos + 2 + r * 8 + 8]
+                atype = rec[0]; rflag = rec[1]; head = struct.unpack("<H", rec[2:4])[0]
+                rtype = rflag & 3
+                additive = bool(rflag & 4)
+                if rtype == 0:                    # internal ref
+                    tseg = rec[4]; toff = struct.unpack("<H", rec[6:8])[0]
+                    kind = "segref" if atype == 2 else "ptr"
+                    target = tseg if kind == "segref" else (tseg, toff)
+                elif rtype == 1:                  # import by ordinal
+                    kind = "impord"; target = (struct.unpack("<H", rec[4:6])[0],
+                                               struct.unpack("<H", rec[6:8])[0])
+                elif rtype == 2:                  # import by name
+                    kind = "impname"; target = (struct.unpack("<H", rec[4:6])[0],
+                                                struct.unpack("<H", rec[6:8])[0])
+                else:                             # OSFIXUP
+                    kind = "osfixup"; target = None
+                # walk the chain: the word at each site is the next site offset (0xFFFF ends it)
+                off = head
+                seen = 0
+                while off != 0xFFFF and seen < 100000:
+                    sites[off] = (atype, kind, target)
+                    if additive or off + 2 > s["len"]:
+                        break
+                    nxt = struct.unpack("<H", d[fbase + off:fbase + off + 2])[0]
+                    if nxt == off:
+                        break
+                    off = nxt; seen += 1
+            self.relocs[s["idx"]] = sites
 
     def export_map(self, defnames=None):
         """{(segidx, offset): name} for exported functions. Prefer the authentic .def ordinal name;
