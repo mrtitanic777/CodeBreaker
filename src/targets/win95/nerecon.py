@@ -481,8 +481,10 @@ def _relink_ow(which, outroot):
     print("  wasm: %d segment objs, %d errors" % (len(objs), total_err))
     if total_err or not objs:
         return
-    # exports: emit wlink `export` directives from the placed ordinals
-    modname = {"krnl386": "KERNEL", "gdi": "GDI", "user": "USER"}[which]
+    # exports: emit wlink `export` directives from the placed ordinals. Core modules take names
+    # from the repo .def; any other NE module (e.g. the Setup chain) uses its own NE export names.
+    names = dict(ne.exports)
+    names.update(defn)                           # .def wins where present
     lnk = os.path.join(outdir, which + "_ow.lnk")
     exe = which + "_ow.exe"
     with open(lnk, "w", newline="\n") as f:
@@ -491,8 +493,8 @@ def _relink_ow(which, outroot):
         f.write("option quiet\n")
         f.write("file " + ",".join(objs) + "\n")
         for ordn in sorted(ne.ent):
-            if ordn and ordn in defn and 1 <= ne.ent[ordn][0] <= len(ne.segs):
-                f.write("export %s.%d\n" % (_san_ne(defn[ordn]), ordn))
+            if ordn and ordn in names and 1 <= ne.ent[ordn][0] <= len(ne.segs):
+                f.write("export %s.%d\n" % (_san_ne(names[ordn]), ordn))
     lk = subprocess.run([wlink, "@" + which + "_ow.lnk"], capture_output=True, text=True,
                         cwd=outdir, env=env)
     open(os.path.join(outdir, which + "_ow.linklog"), "w").write(lk.stdout + lk.stderr)
