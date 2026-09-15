@@ -102,6 +102,10 @@ def main(argv):
             shutil.copy2(os.path.join(src, cab), os.path.join(out, cab))
             print("  %-14s copied unchanged (unextractable member)" % cab)
             continue
+        if not swapped:                              # nothing of ours here -> keep the original CAB
+            shutil.copy2(os.path.join(src, cab), os.path.join(out, cab))
+            print("  %-14s copied unchanged (no swaps)" % cab)
+            continue
         cabwrite.write_cab(entries, os.path.join(out, cab))
         for s in swapped:
             swapped_total[s] = cab
