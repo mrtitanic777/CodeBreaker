@@ -242,7 +242,7 @@ def _discover(image, base, length, md):
     return starts
 
 
-def _recon_ne(which, outroot):
+def _recon_ne(which, outroot, extra_db=None):
     """Decode + emit the NE module as multi-segment MASM (one SEGMENT per NE segment), exported
     functions named authentically. Reuses the proven MZ emitter/assembler/verifier from dosrecon."""
     from src.targets.win95 import dosrecon as DR
@@ -299,6 +299,11 @@ def _recon_ne(which, outroot):
     for (seg, off), name in emap.items():
         if 1 <= seg <= len(ne.segs):
             namemap[ne.segs[seg - 1]["file"] + off] = _san_ne(name)
+    # byte-exact mode: functions the assembler encodes differently from the original -> db (exact bytes)
+    if extra_db:
+        for a in extra_db:
+            if a in ends:
+                force_db.add(a); namemap[a] = "data_%06X" % a
 
     # relocation symbols: at each fixup site, the symbolic reference LINK will regenerate. Only
     # used for the (in-progress) runnable-NE relink path; the default readable build omits them so
@@ -509,7 +514,7 @@ def main(argv):
     if capstone is None:
         print("nerecon: needs capstone"); return 2
     which = "all"
-    do_build = do_verify = do_analyze = do_link = do_ow = False
+    do_build = do_verify = do_analyze = do_link = do_ow = do_exact = False
     for a in argv:
         if a in ("--krnl386", "--gdi", "--user"):
             which = a[2:]
@@ -525,6 +530,8 @@ def main(argv):
             do_link = True
         elif a == "--ow":
             do_ow = True
+        elif a == "--exact":
+            do_exact = True
     targets = ["krnl386", "gdi", "user"] if which == "all" else [which]
     outroot = os.path.join(paths.design_root() if os.path.isdir(os.path.join(paths.design_root(), "corpus"))
                            else os.path.join(_win95_root(), "design"), "recon")
@@ -552,6 +559,20 @@ def main(argv):
         DR._assemble(outroot, rr)
     if do_verify:
         DR._verify(outroot, rr)
+    if do_exact:
+        print("\n== NE byte-exact pass (db-force segment content to byte-identical) ==")
+        for t in targets:
+            path = _corpus(_MODS[t][0]); image = open(path, "rb").read()
+            outdir = os.path.join(outroot, "ne", t)
+            extra = set()
+            for _it in range(6):
+                bad = DR._mismatch_funcs(outdir, image)
+                if not bad or bad <= extra:
+                    break
+                extra |= bad
+                _recon_ne(t, outroot, extra)
+            bad = DR._mismatch_funcs(outdir, image)
+            print("  %-8s %d functions forced to db; %d divergent" % (t, len(extra), len(bad)))
     if do_link:
         print("\n== NE relink -> runnable NE (OpenWatcom wasm + wlink, from-source toolchain) ==")
         for t in targets:
