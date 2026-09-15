@@ -225,49 +225,78 @@ def _emit_asm(which, outroot, image, is_iosys, body_end, starts, ends, strings, 
         rf[r] = f
         return f
 
+    start_set = set(starts)
+    _JCC = {"jmp", "je", "jne", "jz", "jnz", "jb", "jnb", "jbe", "ja", "jae", "jl", "jle",
+            "jg", "jge", "js", "jns", "jc", "jnc", "jo", "jno", "jp", "jnp", "jcxz",
+            "loop", "loope", "loopne", "call"}
+
+    def fn_insns(s, e):
+        """Decode a function once; return list of (addr, ins)."""
+        out = []
+        a = s
+        seglen = min(e, len(image))
+        n = 0
+        while a < seglen and n < 6000:
+            got = list(md.disasm(bytes(image[a:min(a + 15, seglen)]), a))
+            if not got:
+                out.append((a, None)); a += 1; n += 1; continue
+            out.append((a, got[0])); a += got[0].size; n += 1
+        return out
+
     for s in starts:
         e = ends[s]
         r = region_of(s)
         f = region_file(r)
+        insns = fn_insns(s, e)
+        seglen = min(e, len(image))
+        # pass 1: collect intra-function jump targets -> local labels
+        labels = {}
+        for a, ins in insns:
+            if ins and ins.mnemonic in _JCC and ins.op_str.startswith("0x"):
+                try: t = int(ins.op_str, 16)
+                except ValueError: continue
+                if ins.mnemonic != "call" and s <= t < seglen:
+                    labels.setdefault(t, "L%06X" % t)
         f.write("\n%s_%06X proc near\n" % ("sub", s))
         ds_base = None
         pend_ax = None
-        a = s
-        seglen = min(e, len(image))
-        n = 0
-        while a < seglen and n < 4000:
-            got = list(md.disasm(bytes(image[a:min(a + 15, seglen)]), a))
-            if not got:
-                f.write("        db 0%02Xh\n" % image[a]); a += 1; n += 1; continue
-            ins = got[0]
-            txt = "%s %s" % (ins.mnemonic, ins.op_str)
+        for a, ins in insns:
+            if a in labels:
+                f.write("%s:\n" % labels[a])
+            if ins is None:
+                f.write("        db 0%02Xh\n" % image[a]); continue
+            mn, ops = ins.mnemonic, ins.op_str
             cmt = ""
-            # track mov ax,imm ; mov ds,ax  (also es/ss ignored for strings)
-            if ins.mnemonic == "mov" and ins.op_str.startswith(("ax,", "bx,")) and "0x" in ins.op_str:
-                try: pend_ax = int(ins.op_str.split(",")[1], 16)
+            # branch/call operand -> label or sub_ name
+            if mn in _JCC and ops.startswith("0x"):
+                try:
+                    t = int(ops, 16)
+                    if mn == "call":
+                        ops = ("sub_%06X" % t) if t in start_set else ("near ptr 0%06Xh" % t)
+                    elif t in labels:
+                        ops = labels[t]
+                    else:
+                        ops = ("sub_%06X" % t) if t in start_set else ("0%06Xh" % t)
+                except ValueError:
+                    pass
+            # DS tracking for string xref
+            if mn == "mov" and ops.startswith(("ax,", "bx,")) and "0x" in ops:
+                try: pend_ax = int(ops.split(",")[1], 16)
                 except ValueError: pend_ax = None
-            elif ins.mnemonic == "mov" and ins.op_str.startswith("ds,"):
+            elif mn == "mov" and ops.startswith("ds,"):
                 ds_base = pend_ax
-            elif ins.mnemonic in ("push",) and ins.op_str == "cs":
-                pend_ax = None
-            elif ins.mnemonic == "pop" and ins.op_str == "ds":
-                ds_base = (s + LOAD_LIN) // 16 if False else ds_base  # push cs;pop ds -> cs seg
-            # INT service comment
-            if ins.mnemonic == "int":
+            if mn == "int":
                 cmt = _int_comment(ins.op_str)
-            # string xref via displacement in a ds-relative mem operand or mov dx,imm
             for tok in re.findall(r"0x[0-9a-fA-F]+", ins.op_str):
                 v = int(tok, 16)
                 st = strings.get(v - LOAD_LIN) or resolve_str(ds_base, v)
                 if st and 4 <= len(st) <= 96:
                     cmt = '"%s"' % st.replace('"', "'"); break
+            txt = ("%s %s" % (mn, ops)).rstrip()
             if cmt:
-                f.write("        %-32s ; %s\n" % (txt, cmt))
+                f.write("        %-34s ; %s\n" % (txt, cmt))
             else:
                 f.write("        %s\n" % txt)
-            if ins.mnemonic in ("ret", "retf", "iret"):
-                pass
-            a += ins.size; n += 1
         f.write("sub_%06X endp\n" % s)
     for f in rf.values():
         f.write("\n_TEXT   ENDS\n        END\n"); f.close()
