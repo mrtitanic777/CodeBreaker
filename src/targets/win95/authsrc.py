@@ -30,25 +30,29 @@ from src.targets.win95 import dosrecon as DR
 
 
 def _native(fmt):
-    b = {"MZ": "win95mzdec", "NE": "win95dec"}.get(fmt, "win95mzdec")
+    b = {"MZ": "win95mzdec", "NE": "win95dec", "PE": "win95pedec",
+         "LE": "win95ledec"}.get(fmt, "win95mzdec")
     p = os.path.join(paths.repo_root(), "native", "decompiler", "build", "bin", b + ".exe")
     return p if os.path.isfile(p) else None
 
 
-def _c_frames(path, fmt):
-    dec = _native(fmt)
-    dis = subprocess.run([dec, path, "--disasm"], capture_output=True, text=True).stdout if dec else ""
-    return dis.count("push bp"), dis
-
-
 def classify(path):
-    """(fmt, language, nfuncs, c_frames): language 'c' if the C-frame density is high, else 'asm'."""
+    """(fmt, language, nfuncs, c_frames). Format is the reliable era/language signal: PE (Win32) and
+    NE (Win16) are C; LE (VxD) is asm; MZ (DOS) is decided by C-calling-convention density."""
     from src.targets.win95 import nativedec
     fmt = nativedec.detect_format(path)
     dec = _native(fmt)
     n = len(subprocess.run([dec, path, "--names"], capture_output=True, text=True).stdout.splitlines()) if dec else 0
-    cf, _ = _c_frames(path, fmt)
-    lang = "c" if (n and cf * 100 // max(n, 1) >= 45) else "asm"
+    if fmt in ("PE", "NE"):
+        lang = "c"
+        cf = 0
+    elif fmt == "LE":
+        lang = "asm"
+        cf = 0
+    else:                                                             # MZ (DOS): asm kernel vs C tool
+        dis = subprocess.run([dec, path, "--disasm"], capture_output=True, text=True).stdout if dec else ""
+        cf = dis.count("push bp") + dis.count("push ebp")
+        lang = "c" if (n and cf * 100 // max(n, 1) >= 30) else "asm"
     return fmt, lang, n, cf
 
 
@@ -145,8 +149,14 @@ def _simplify_c(c):
 def _author_c(path, fmt, out):
     dec = _native(fmt)
     c = subprocess.run([dec, path, "--module"], capture_output=True, text=True).stdout
-    names = _namemap(path, fmt)
-    svcs = _int_services(path, fmt)
+    # the behavioral-naming + INT-service passes reuse dosrecon's 16-bit real-mode engine; apply them
+    # for the 16-bit classes (MZ/NE) and skip cleanly for 32-bit PE (still cleaned + headered).
+    names, svcs = {}, {}
+    if fmt in ("MZ", "NE"):
+        try:
+            names = _namemap(path, fmt); svcs = _int_services(path, fmt)
+        except Exception:                                             # noqa: BLE001 -- best effort
+            names, svcs = {}, {}
 
     def sub_name(m):
         return names.get(int(m.group(1), 16), m.group(0))
@@ -207,15 +217,35 @@ def _dr():
     return sib if os.path.isdir(os.path.join(sib, "corpus")) else dr
 
 
+def _all_binaries():
+    """Every code-bearing Win95 binary under corpus/files (dedup by name, prefer SYSTEM/)."""
+    root = os.path.join(_dr(), "corpus", "files")
+    exts = (".exe", ".dll", ".sys", ".com", ".drv", ".vxd", ".cpl", ".386", ".scr")
+    found = {}
+    for dp, _dn, fns in os.walk(root):
+        for fn in fns:
+            if fn.lower().endswith(exts):
+                key = fn.lower()
+                prefer = "system" in dp.lower().replace("\\", "/").split("/")
+                if key not in found or (prefer and "system" not in found[key].lower().replace("\\", "/").split("/")):
+                    found[key] = os.path.join(dp, fn)
+    return [(os.path.basename(p), p, None) for p in sorted(found.values(), key=lambda x: os.path.basename(x).lower())]
+
+
 def main(argv):
     outroot = os.path.join(_dr(), "recon", "authored")
-    chain = False
+    chain = do_all = False
     target = None
+    limit = 0
     i = 0
     while i < len(argv):
         a = argv[i]
         if a == "--chain":
             chain = True
+        elif a == "--all":
+            do_all = True
+        elif a == "--limit" and i + 1 < len(argv):
+            limit = int(argv[i + 1]); i += 1
         elif a == "--out" and i + 1 < len(argv):
             outroot = argv[i + 1]; i += 1
         elif not a.startswith("-"):
@@ -223,7 +253,13 @@ def main(argv):
         i += 1
 
     items = []
-    if chain:
+    scoreboard = None
+    if do_all:
+        items = _all_binaries()
+        if limit:
+            items = items[:limit]
+        scoreboard = os.path.join(outroot, "AUTHORED.csv")
+    elif chain:
         for nm, rel, note in _CHAIN:
             items.append((nm, os.path.join(_dr(), rel), note))
     elif target:
@@ -231,22 +267,51 @@ def main(argv):
     else:
         print(__doc__); return 0
 
-    print("%-14s %-4s %-6s %-9s %s" % ("FILE", "LANG", "FUNCS", "NAMED", "authored source"))
+    rows = []
+    quiet = do_all and len(items) > 30
+    if not quiet:
+        print("%-14s %-4s %-6s %-9s %s" % ("FILE", "LANG", "FUNCS", "NAMED", "authored source"))
+    done = 0
     for nm, path, note in items:
-        if note and path.endswith(".asm"):
-            print("%-14s %-4s %-6s %-9s %s" % (nm, "asm", "-", "-", note)); continue
+        if note and str(path).endswith(".asm"):
+            rows.append((nm, "asm", 0, 0, 0, note)); continue
         if not os.path.isfile(path):
-            print("%-14s  MISSING %s" % (nm, path)); continue
-        fmt, lang, n, cf = classify(path)
-        if lang == "c":
-            out = os.path.join(outroot, nm.split(".")[0].lower() + ".c")
-            tot, named = _author_c(path, fmt, out)
-            print("%-14s %-4s %-6d %-9s -> %s"
-                  % (nm, "C", n, "%d/%d" % (named, tot), os.path.relpath(out, _dr())))
-        else:
-            print("%-14s %-4s %-6d %-9s %s"
-                  % (nm, "asm", n, "-", "route: dosrecon named MASM (asm-dominant)"))
-    print("\nauthored C -> %s" % outroot)
+            rows.append((nm, "?", 0, 0, 0, "MISSING")); continue
+        try:
+            fmt, lang, n, cf = classify(path)
+            if lang == "c":
+                out = os.path.join(outroot, "c", nm.split(".")[0].lower() + ".c")
+                tot, named = _author_c(path, fmt, out)
+                rows.append((nm, "C/" + fmt, n, tot, named, os.path.relpath(out, _dr())))
+                line = "%-14s %-6s %-6d %-9s -> %s" % (nm, "C/" + fmt, n, "%d/%d" % (named, tot), rows[-1][5])
+            else:
+                rows.append((nm, "asm/" + fmt, n, 0, 0, "dosrecon/asm route"))
+                line = "%-14s %-6s %-6d %-9s %s" % (nm, "asm/" + fmt, n, "-", "asm route")
+            if not quiet:
+                print(line)
+        except Exception as e:                                       # noqa: BLE001 -- keep the sweep going
+            rows.append((nm, "ERR", 0, 0, 0, str(e)[:60]))
+        done += 1
+        if quiet and done % 50 == 0:
+            print("  ... %d/%d authored" % (done, len(items)))
+
+    if scoreboard:
+        import csv
+        os.makedirs(os.path.dirname(scoreboard), exist_ok=True)
+        with open(scoreboard, "w", newline="") as f:
+            w = csv.writer(f); w.writerow(["file", "lang", "funcs", "total", "named", "out_or_note"])
+            for r in rows:
+                w.writerow(r)
+        c_files = sum(1 for r in rows if r[1].startswith("C"))
+        asm_files = sum(1 for r in rows if r[1].startswith("asm"))
+        errs = sum(1 for r in rows if r[1] == "ERR")
+        tot_named = sum(r[4] for r in rows); tot_funcs = sum(r[3] for r in rows)
+        print("\n== authsrc corpus scoreboard ==")
+        print("  %d files: %d C-authored, %d asm-route, %d errors" % (len(rows), c_files, asm_files, errs))
+        print("  C functions named: %d / %d (%.0f%%)"
+              % (tot_named, tot_funcs, 100.0 * tot_named / max(tot_funcs, 1)))
+        print("  -> %s" % scoreboard)
+    print("\nauthored source -> %s" % outroot)
     return 0
 
 
