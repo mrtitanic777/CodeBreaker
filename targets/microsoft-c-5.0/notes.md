@@ -14,14 +14,18 @@ images, using **CodeBreaker** as the workbench.
 
 | Phase | What | State |
 |---|---|---|
-| 0 | Extract files from floppy images | ✅ done → `extracted/` |
+| 0 | Extract files from floppy images (incl. subdirs) | ✅ done → `extracted/` |
 | 1 | Unpack EXEPACK compression | ✅ done → `unpacked/` (19/19 validated) |
-| 2 | Build MS C 5.0 compile oracle (DOSBox-X) | ⬜ next |
-| 3 | Disassemble + carve functions (`mzdis`) | ⬜ |
-| 4 | Origin triage: CRT/lib vs. app code (`libsig`/`omf`) | ⬜ |
-| 5 | Byte-exact recovery cascade (`inverse`/`behavior`) | ⬜ |
-| 6 | Attribute functions to original `.c` modules (SCCS map) | ⬜ ongoing |
-| 7 | Verify by recompile → byte-diff | ⬜ |
+| 2 | Build MS C 5.0 compile oracle (DOSBox-X) | ✅ done → `tools/oracle5.py` |
+| 3 | Disassemble + carve functions | ✅ done → `tools/carve.py` (~5,700 fns) |
+| 4 | Origin triage: CRT/lib vs. app code | ✅ done → `tools/idlib.py` |
+| 5 | Byte-exact recovery cascade | 🔄 loop proven (`inset` verified); scaling |
+| 6 | Attribute functions to original `.c` modules (SCCS map) | 🔄 map built (80 modules) |
+| 7 | Verify by recompile → byte-diff | ✅ primitive works → `tools/objfn.py` |
+
+**The full pipeline is proven end to end.** All tooling is in `tools/`. The remaining
+work (Phase 5/6) is *scale*: driving the recovery loop across the ~3,000 app functions
+and, where the codegen isn't yet trivially matched, extending an MS C 5.0 codegen model.
 
 ---
 
@@ -185,7 +189,39 @@ Route every app function to the engine that explains it:
 - CV.EXE and QC.EXE use **overlays** — need overlay-aware carving before their code is whole.
 - MASM 5.1 not yet attached — required for the recompile-verify floor (Phase 2/7).
 
+## §Tooling (all in `tools/`)
+| Tool | Phase | Does |
+|---|---|---|
+| `fat12_extract.py` | 0 | recursive FAT12 extraction of the floppy images |
+| `unexepack.py` | 1 | EXEPACK decompressor (in-place seed; rebuilds relocations) |
+| `oracle5.py` | 2 | drives extracted CL→C1/C2/C3 headless under DOSBox-X (`init`/`compile`/`build`/`cc`) |
+| `carve.py` | 3 | MS C prologue-based function carver → `work/<bin>/functions.json` |
+| `idlib.py` | 4 | FLIRT-style CRT identification from the OMF libs → `work/<bin>/identified.json` |
+| `objfn.py` | 7 | extract a function + fixup mask from an OMF `.OBJ`; masked byte-diff vs the image |
+
+## §Phase-4 corpus triage (lib% = share of carved fns that are CRT/library)
+Small utilities are 50–70% CRT (nearly done once named); the **compiler passes are the
+real targets**: C1 6%, C1L 7%, C2 7%, C3 18%, CL 40% library — i.e. C1/C2 are ~93%
+original authored code. Full table via `idlib.py`; per-binary lists in `work/<bin>/identified.json`.
+
+## §Phase-5 method (proven)
+The recovery loop: **carve → read disasm → hypothesize C → compile with the real oracle
+→ extract OBJ bytes + fixup mask → masked byte-diff → refine.** First verified recovery:
+`inset()` (the char-in-set search shared by ERROUT/SETENV/EXEMOD/MAKE/LIB). Two iterations
+pinned the exact source idiom (`register char *p`; `*p == c` operand order; `/AS /Ox`) to
+reproduce EXEMOD@0x1ade **byte-for-byte** (modulo the one `mov si,set` pointer fixup). See
+`work/recover/inset.c`. This is the template for the rest of Phase 5.
+
+Codegen notes learned: MS C 5.0 `for(p=x;*p;p++)` emits jump-into-loop with the increment
+at the top (`jmp .test / nop / inc si / .test: cmp[si],0`); `register` pointers live in
+si/di with no stack home; two `return`s → two full epilogues (no shared tail at /Ox).
+
 ## §Log
-- **2026-09-14** — Phases 0–1 complete. Extracted 9 disks (44 files); built + validated
-  `tools/unexepack.py` (discovered partial-packing / in-place seed bug, fixed). 19/19
+- **2026-09-14** — Phases 0–1 complete. Extracted 9 disks; built + validated
+  `tools/unexepack.py` (partial-packing / in-place seed bug found & fixed). 19/19
   binaries unpacked & entry-validated. Toolchain fingerprinted (C 5.00, LINK 3.61).
+- **2026-09-14** — Phases 2–5 online. Re-extracted with subdir recursion (headers,
+  STARTUP CRT source). `oracle5.py`: extracted MS C 5.0 compiles+links+runs SIEVE.C
+  correctly ("150 iterations: 1027 primes"). Carved ~5,700 functions corpus-wide.
+  `idlib.py`: CRT triage across all 19 binaries. `objfn.py` + oracle: first **byte-exact**
+  reconstruction (`inset`). Pipeline proven end to end.

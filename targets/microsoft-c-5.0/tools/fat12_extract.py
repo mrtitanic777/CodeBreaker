@@ -28,22 +28,32 @@ def parse(img):
             c = fat12(c)
         return out[:size]
 
-    files = []
-    for i in range(nroot):
-        e = d[root_start + i*32: root_start + i*32 + 32]
-        if e[0] in (0x00,): break
-        if e[0] == 0xE5: continue
-        attr = e[11]
-        if attr & 0x08 or attr & 0x10:  # vol label / dir
-            continue
-        name = e[0:8].decode('latin1').rstrip()
-        ext = e[8:11].decode('latin1').rstrip()
-        fn = name + ('.' + ext if ext else '')
-        start = struct.unpack('<H', e[26:28])[0]
-        size = struct.unpack('<I', e[28:32])[0]
-        data = read_chain(start, size)
-        files.append((fn, size, data))
-    return files
+    def read_dir(entries_bytes, prefix):
+        out = []
+        n = len(entries_bytes) // 32
+        for i in range(n):
+            e = entries_bytes[i*32: i*32+32]
+            if e[0] == 0x00: break
+            if e[0] == 0xE5: continue
+            attr = e[11]
+            if attr & 0x08:  # volume label
+                continue
+            name = e[0:8].decode('latin1').rstrip()
+            ext = e[8:11].decode('latin1').rstrip()
+            fn = name + ('.' + ext if ext else '')
+            start = struct.unpack('<H', e[26:28])[0]
+            size = struct.unpack('<I', e[28:32])[0]
+            if attr & 0x10:  # directory
+                if name in ('.', '..'):
+                    continue
+                subraw = read_chain(start, spc*bps*4096)  # generous; chain-terminated
+                out += read_dir(subraw, prefix + fn + '/')
+            else:
+                out.append((prefix + fn, size, read_chain(start, size)))
+        return out
+
+    root_bytes = d[root_start: root_start + nroot*32]
+    return read_dir(root_bytes, '')
 
 def sig(data):
     if data[:2] == b'MZ': return 'MZ-exe'
@@ -65,7 +75,9 @@ if __name__ == '__main__':
         os.makedirs(os.path.join(out, disk), exist_ok=True)
         entries = []
         for fn, size, data in files:
-            with open(os.path.join(out, disk, fn), 'wb') as f:
+            dst = os.path.join(out, disk, fn)
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            with open(dst, 'wb') as f:
                 f.write(data)
             entries.append({'name': fn, 'size': size, 'sig': sig(data)})
         catalog[disk] = entries
