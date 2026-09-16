@@ -48,10 +48,10 @@ def _find_binary(module):
 
 
 def _imports(binpath, fmt):
-    """[(module, apiname)] from the binary's own import table (NE only for now)."""
-    if fmt != "NE":
+    """[(module, apiname)] from the binary's own import table (NE + PE)."""
+    if fmt not in ("NE", "PE"):
         return []
-    dec = _dec("NE")
+    dec = _dec(fmt)
     out = subprocess.run([dec, binpath, "--imports"], capture_output=True, text=True).stdout
     imps = []
     for line in out.splitlines():
@@ -62,17 +62,44 @@ def _imports(binpath, fmt):
 
 
 def _exports(binpath, fmt):
-    """[(ordinal, name)] from the module's own export/entry table (NE)."""
-    if fmt != "NE":
+    """[(ordinal_or_None, name)] from the module's own export/entry table. NE has ordinals; PE lists
+    names only (ordinal None)."""
+    if fmt not in ("NE", "PE"):
         return []
-    dec = _dec("NE")
+    dec = _dec(fmt)
     out = subprocess.run([dec, binpath, "--exports"], capture_output=True, text=True).stdout
     exps = []
     for line in out.splitlines():
         p = line.split("\t")
-        if len(p) == 2 and p[1].strip():
+        if fmt == "NE" and len(p) == 2 and p[1].strip():
             exps.append((p[0].strip(), p[1].strip()))
+        elif fmt == "PE" and p and p[0].strip():
+            exps.append((None, p[0].strip()))
     return exps
+
+
+def _entry(binpath, fmt):
+    """The entry-point address (RVA for PE) or '' if unavailable."""
+    if fmt != "PE":
+        return ""
+    dec = _dec(fmt)
+    out = subprocess.run([dec, binpath, "--entry"], capture_output=True, text=True).stdout.strip()
+    return out.splitlines()[0].strip() if out else ""
+
+
+def _name_at(binpath, fmt, addr):
+    """The discovered function name at a given address (from --names: addr<TAB>name)."""
+    dec = _dec(fmt)
+    out = subprocess.run([dec, binpath, "--names"], capture_output=True, text=True).stdout
+    for line in out.splitlines():
+        p = line.split("\t")
+        if len(p) >= 2 and p[1].strip():
+            try:
+                if int(p[0], 16) == addr:
+                    return p[1].strip()
+            except ValueError:
+                pass
+    return ""
 
 
 def link_module(module, do_diff=False):
@@ -128,11 +155,15 @@ def link_module(module, do_diff=False):
     if not objs:
         return {"ok": False, "error": "compile produced no obj"}
 
-    # real Win16 imports -> wlink `import` directives (name-consistent with the C's symbols)
+    # real imports -> wlink `import` directives (name-consistent with the C's symbols), so the module
+    # calls the actual API instead of a return-0 stub. NE: by ordinal or name from KERNEL/USER/GDI/...
+    # PE: from the IAT (MODULE.func); the decompiler names the call MODULE_func.
     imps = _imports(binpath, fmt)
     imp_lines = []
     for mod, api in imps:
-        # by-ordinal names surface as MOD_<n>; resolve those to `import SYM 'MOD'.<n>`, else by name
+        if fmt == "PE":
+            imp_lines.append("import %s_%s '%s'.'%s'" % (mod, api, mod, api))
+            continue
         mo = re.match(r"^%s_(\d+)$" % re.escape(mod), api)
         if mo:
             imp_lines.append("import %s '%s'.%s" % (api, mod, mo.group(1)))
@@ -148,13 +179,21 @@ def link_module(module, do_diff=False):
     exp_lines = []
     if is_dll:                                             # DLLs export; an EXE keeps code via its entry
         for ordn, name in _exports(binpath, fmt):
-            # alias the clean export name to wcc's decorated internal symbol. 16-bit __fastcall decorates
-            # with a LEADING '@' (@NAME), so `export NAME='@NAME'.ordinal`; this publishes the export
-            # and forces wlink to keep the function + everything it calls.
-            if name in defined:
+            if name not in defined:
+                continue
+            if fmt == "PE":                               # PE: export by name (wcc386 '_' decoration)
+                exp_lines.append("export %s='%s_'" % (name, name))
+            else:                                         # NE 16-bit __fastcall: LEADING '@' decoration
                 # quote the internal symbol: an unquoted leading @ is wlink's read-directives-from-file
                 # syntax, not a symbol reference.
                 exp_lines.append("export %s.%s='@%s'" % (name, ordn, name))
+    entry_sym = ""
+    if not is_dll and fmt == "PE":                        # EXE: pull the call tree in via the entry
+        ev = _entry(binpath, fmt)
+        if ev and ev != "0":
+            nm = _name_at(binpath, fmt, int(ev, 16))      # function at the entry RVA -> its symbol
+            if nm and nm in defined:
+                entry_sym = nm + "_"                       # wcc386 '_' decoration
 
     # iterative link: whatever is still undefined (internal sub_ the decompiler didn't emit, CRT
     # helpers) gets a return-0 stub -- flagged as the completeness gap, NOT the real imports.
@@ -170,6 +209,8 @@ def link_module(module, do_diff=False):
         subprocess.run([cc] + stubflags + ["stubs.c"], cwd=bld, capture_output=True, text=True, env=env)
         with open(os.path.join(bld, "link.lnk"), "w", newline="\n") as f:
             f.write("system %s\nname %s\noption quiet\noption map=%s.map\n" % (system, out, module))
+            if entry_sym:
+                f.write("option start=%s\n" % entry_sym)
             if bits == 16:
                 # the Watcom large-model runtime provides the compiler math/util helpers (__U4D divide,
                 # etc.) our code references; link them for real (not stubbed -- these are toolchain code).

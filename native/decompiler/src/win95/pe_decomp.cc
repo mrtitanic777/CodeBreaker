@@ -47,6 +47,31 @@ int main(int argc, char** argv) {
   std::map<uint32_t, std::string> names;
   for (auto& e : img.exports) names[e.second] = e.first;
 
+  // --imports: `MODULE<TAB>func` per distinct import (from the IAT slot -> "MODULE.func" map), so the
+  // build lane can emit real wlink imports instead of stubbing the Win32 API to return 0.
+  if (mode == "--imports") {
+    std::set<std::string> seen;
+    for (auto& kv : img.imports) {
+      const std::string& mf = kv.second;                  // "MODULE.func"
+      size_t dot = mf.rfind('.');
+      if (dot == std::string::npos) continue;
+      std::string line = mf.substr(0, dot) + "\t" + mf.substr(dot + 1);
+      if (seen.insert(line).second) std::printf("%s\n", line.c_str());
+    }
+    return 0;
+  }
+  // --exports: `name` per export, so the build can emit `export name` (publishes + keeps the code).
+  if (mode == "--exports") {
+    for (auto& e : img.exports) std::printf("%s\n", e.first.c_str());
+    return 0;
+  }
+  // --entry: the entry-point RVA (AddressOfEntryPoint), so an EXE build can set `option start` and
+  // keep the whole call tree instead of dead-code-eliminating everything.
+  if (mode == "--entry") {
+    std::printf("%X\n", img.entry);
+    return 0;
+  }
+
   // Optional --sigs FILE: demangled display names + prototypes, addr(RVA)-keyed,
   // produced by CodeBreaker's Python demangler. Same record format as the NE lane.
   std::map<uint32_t, FuncSignature> sigMap;
