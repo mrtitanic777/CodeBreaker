@@ -2,6 +2,7 @@
 #include "win95/x86_decode.h"
 
 #include <cstdio>
+#include <cstring>
 
 namespace win95 {
 
@@ -271,29 +272,41 @@ std::string RegName(int reg, int size) {
   return size == 1 ? kGpr8[idx] : size == 4 ? kGpr32[idx] : kGpr16[idx];
 }
 
-static std::string HexI(int64_t v) {
+// One unsigned hex literal in the chosen syntax: NASM `0x1f`, MASM/Watcom `1fh` (leading 0
+// when it would start with a letter, so `ffh` -> `0ffh`, which wasm/ML require).
+static std::string HexU(unsigned long long u, AsmSyntax syn) {
   char b[32];
-  if (v < 0) std::snprintf(b, sizeof b, "-0x%llx", (unsigned long long)(-v));
-  else std::snprintf(b, sizeof b, "0x%llx", (unsigned long long)v);
-  return b;
+  if (syn == AsmSyntax::Nasm) { std::snprintf(b, sizeof b, "0x%llx", u); return b; }
+  std::snprintf(b, sizeof b, "%llx", u);
+  std::string s = b;
+  if (!s.empty() && s[0] >= 'a' && s[0] <= 'f') s = "0" + s;
+  return s + "h";
 }
 
-static std::string OpStr(const X86Op& o) {
+static std::string HexI(int64_t v, AsmSyntax syn) {
+  return v < 0 ? "-" + HexU((unsigned long long)(-v), syn) : HexU((unsigned long long)v, syn);
+}
+
+static std::string OpStr(const X86Op& o, AsmSyntax syn) {
   switch (o.kind) {
     case OpKind::Reg: return RegName(o.reg, o.size);
-    case OpKind::Imm: return HexI(o.imm);
-    case OpKind::Rel: { char b[24]; std::snprintf(b, sizeof b, "0x%x", (unsigned)o.imm); return b; }
-    case OpKind::FarPtr: { char b[32]; std::snprintf(b, sizeof b, "0x%x:0x%x", o.far_seg, o.far_off); return b; }
+    case OpKind::Imm: return HexI(o.imm, syn);
+    case OpKind::Rel: return HexU((unsigned)o.imm, syn);
+    case OpKind::FarPtr: return HexU(o.far_seg, syn) + ":" + HexU(o.far_off, syn);
     case OpKind::Mem: {
-      std::string s;
-      const char* szp = o.size == 1 ? "byte " : o.size == 4 ? "dword " : "word ";
-      s += szp;
-      if (o.seg != kNoReg) s += RegName(o.seg, 2) + ":";
+      // size specifier: MASM needs `ptr` (`word ptr [..]`), NASM does not (`word [..]`).
+      const char* sz = o.size == 1 ? "byte" : o.size == 4 ? "dword" : "word";
+      std::string s = sz;
+      s += (syn == AsmSyntax::Masm) ? " ptr " : " ";
+      // segment override: MASM places it before the brackets (`es:[si]`), NASM inside (`[es:si]`).
+      std::string seg = (o.seg != kNoReg) ? RegName(o.seg, 2) + ":" : "";
+      if (syn == AsmSyntax::Masm) s += seg;
       s += "[";
+      if (syn == AsmSyntax::Nasm) s += seg;
       bool any = false;
       if (o.base != kNoReg) { s += RegName(o.base, 2); any = true; }
       if (o.index != kNoReg) { if (any) s += "+"; s += RegName(o.index, 2); if (o.scale > 1) s += "*" + std::to_string(o.scale); any = true; }
-      if (o.disp || !any) { if (any && o.disp >= 0) s += "+"; s += HexI(o.disp); }
+      if (o.disp || !any) { if (any && o.disp >= 0) s += "+"; s += HexI(o.disp, syn); }
       s += "]";
       return s;
     }
@@ -301,14 +314,32 @@ static std::string OpStr(const X86Op& o) {
   }
 }
 
-std::string FormatX86(const X86Insn& in) {
+// String / port instructions (movs, stos, lods, scas, cmps, ins, outs) carry their
+// operands implicitly in x86: the addressing is fixed to [(e)si]/[(e)di]/DX and a size
+// suffix, so an assembler wants only the bare mnemonic (`movsb`, `rep stosw`). Our decoder
+// attaches explicit operands for its own IL, but printing them (`outsw dx, word ptr [si]`)
+// is both wrong disassembly and unassemblable -- suppress them for these mnemonics.
+static bool ImplicitOperandString(const char* m) {
+  static const char* kPfx[] = {"movs", "stos", "lods", "scas", "cmps", "ins", "outs"};
+  for (const char* p : kPfx) {
+    size_t n = std::strlen(p);
+    if (std::strncmp(m, p, n) != 0) continue;
+    char t = m[n];
+    if (t == '\0') return true;                                 // bare "movs"
+    if ((t == 'b' || t == 'w' || t == 'd') && m[n + 1] == '\0') return true;  // "movsb"/"stosw"/...
+  }
+  return false;
+}
+
+std::string FormatX86(const X86Insn& in, AsmSyntax syn) {
   if (!in.valid) return "(bad)";
   std::string s;
   if (in.lock) s += "lock ";
   if (in.rep) s += "rep ";
   if (in.repne) s += "repne ";
   s += in.mnem;
-  for (int i = 0; i < in.nops; ++i) { s += i ? ", " : " "; s += OpStr(in.ops[i]); }
+  if (ImplicitOperandString(in.mnem.c_str())) return s; // bare mnemonic, no explicit operands
+  for (int i = 0; i < in.nops; ++i) { s += i ? ", " : " "; s += OpStr(in.ops[i], syn); }
   return s;
 }
 

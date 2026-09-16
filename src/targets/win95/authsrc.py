@@ -174,6 +174,301 @@ _PE_API = re.compile(r"\b([A-Z][A-Za-z0-9]{3,}[AW]?)\(")   # a Win32-API-looking
 _PE_SKIP = {"If", "While", "For", "Switch", "Return", "Sizeof"}
 
 
+# --- compilability pass: make the authored C a translation unit OpenWatcom accepts -----------
+# The decompiler emits legal-looking C with a handful of mechanical defects Watcom rejects (it is
+# stricter than MSVC): pseudo-register temps used without a declaration (E1011), and value-returning
+# `return EXPR;` inside a function typed void (E1051/E1010). Both are fixable per function without
+# touching the logic, so the recovered source actually BUILDS with our only-OpenWatcom toolchain.
+# Unresolved temps are declared + flagged honestly (their binding is what the decompiler lost, not
+# the structure); everything else is behaviour-preserving.
+_FN_OPEN = re.compile(r"^([A-Za-z_].*?)\b([A-Za-z_]\w*)\s*\(([^;]*)\)\s*$")
+_DECL = re.compile(r"^\s*(?:unsigned\s+|signed\s+|const\s+)*"
+                   r"(?:void|char|short|int|long|float|double|__int8|__int16|__int32|__int64|"
+                   r"struct\s+\w+|[A-Za-z_]\w*_t)\b[\s\*]+([A-Za-z_][\w,\s\*]*);")
+_TEMP = re.compile(r"\b([rvaf]\d{1,3}|indirect\d+)\b")      # temps: r/v/a/f pseudo-regs + indirect
+_FLAGS = ("CA", "OV", "SF", "ZF", "PF", "AF", "DF", "CF")   # decompiler condition-flag pseudos
+
+
+def _fix_asm(line):
+    """Normalise the decompiler's NASM-ish inline asm to the MASM syntax Watcom's built-in assembler
+    wants: size specifiers need `ptr` (`word [si]` -> `word ptr [si]`), and immediates use the `h`
+    suffix, not `0x` (`0x1` -> `1h`). Only the text inside an `__asm { ... }` block is touched."""
+    def fix(m):
+        a = m.group(1)
+        a = re.sub(r"\b(byte|word|dword|qword|tbyte|fword)\s+\[", r"\1 ptr [", a)
+        a = re.sub(r"\b0x([0-9A-Fa-f]+)\b",
+                   lambda h: ("0" if h.group(1)[0].lower() in "abcdef" else "") + h.group(1) + "h", a)
+        # string / port instructions carry implicit operands in MASM: the decompiler's explicit
+        # operands make Watcom reject them, so reduce to the bare mnemonic (same instruction).
+        a = re.sub(r"\b(movs|stos|lods|scas|cmps|ins|outs)([bwd]?)\b[^}]*", r"\1\2", a)
+        return "__asm {" + a + "}"
+    return re.sub(r"__asm \{([^}]*)\}", fix, line)
+
+
+def _fn_blocks(lines):
+    """Yield (start_idx, sig_idx, open_idx, close_idx) for each top-level function: the sig line,
+    its `{`, and the matching `}`. Non-function spans are skipped by the caller."""
+    i, n = 0, len(lines)
+    while i < n:
+        m = _FN_OPEN.match(lines[i].rstrip())
+        # a function definition: signature line, then a line that is just `{`
+        if m and i + 1 < n and lines[i + 1].strip() == "{" and "=" not in lines[i]:
+            depth, j = 0, i + 1
+            while j < n:
+                depth += lines[j].count("{") - lines[j].count("}")
+                if depth == 0:
+                    break
+                j += 1
+            yield (i, i, i + 1, j)
+            i = j + 1
+        else:
+            i += 1
+
+
+def make_compilable(c):
+    """Rewrite authored decompiler-C into a translation unit OpenWatcom compiles. Returns the text."""
+    lines = c.split("\n")
+    edits = {}                                              # line_idx -> replacement line(s)
+    inject = {}                                             # open-brace idx -> [decl lines]
+    protos = []                                             # forward declarations (fixes E1057/E1062)
+    seen_proto = set()
+    # value-used detection: a void-typed function whose result is consumed in an expression must be
+    # promoted to a non-void return type (Watcom E1052 'expression has void type'). A call is
+    # value-used when `name(` is preceded by an operator/`=`/`return`/`(` rather than standing alone.
+    fn_names = set()
+    param_types = {}                                        # function -> [param type strings]
+    for _s, sig, _o, _cl in _fn_blocks(lines):
+        mm = _FN_OPEN.match(lines[sig].rstrip())
+        if mm:
+            fn_names.add(mm.group(2))
+            pp = mm.group(3).strip()
+            param_types[mm.group(2)] = [] if pp in ("", "void") else [
+                _param_type(p) for p in _split_args(pp)]
+    value_used = set()
+    for nm in fn_names:
+        if re.search(r"(?:[=(,?:+\-*/%<>&|!~\[]|\breturn)\s*" + re.escape(nm) + r"\s*\(", c):
+            value_used.add(nm)
+
+    for _s, sig, opn, close in _fn_blocks(lines):
+        m = _FN_OPEN.match(lines[sig].rstrip())
+        if not m:
+            continue
+        ret, params = m.group(1).strip(), m.group(3)
+        fname = m.group(2)
+        # promote a void function whose result is consumed -> int (fixes E1052); rewrite its sig line
+        promoted = re.match(r"^\s*void\b", ret) and fname in value_used
+        if promoted:
+            ret = re.sub(r"^\s*void\b", "int", ret)
+            edits[sig] = re.sub(r"\bvoid\b", "int", lines[sig], count=1)
+        if fname not in seen_proto:                         # one prototype per function
+            seen_proto.add(fname)
+            # empty-param `()` form: declares return type + calling convention (kills the implicit-int
+            # E1057/E1062 mismatches) but leaves params unspecified, so the decompiler's noisy call-site
+            # arg counts are not checked against it (avoids E1151/E1052 param-count churn).
+            protos.append("%s %s();" % (ret, fname))
+        body = lines[opn + 1:close]
+        # declared names = params + local declarations
+        declared = set(re.findall(r"\b([A-Za-z_]\w*)\b\s*(?:,|\)|$)", params))
+        declared |= {mm for mm in _TEMP.findall(params)}
+        for bl in body:
+            dm = _DECL.match(bl)
+            if dm:
+                for nm in dm.group(1).replace("*", "").split(","):
+                    declared.add(nm.strip())
+        # 1) undeclared decompiler temps (r-regs, v-vars, a-args, condition flags) -> declare them
+        #    (honestly flagged; the decompiler lost their binding, so garbage-but-typed is the floor).
+        used = set()
+        btext = "\n".join(body)
+        for bl in body:
+            used |= set(_TEMP.findall(bl))
+        used |= {f for f in _FLAGS if re.search(r"\b" + f + r"\b", btext)}
+        undecl = sorted(used - declared, key=lambda x: (x[0], x[1:]))
+        if undecl:
+            decl = ("    unsigned long %s;   /* unresolved decompiler temps (binding not recovered) */"
+                    % ", ".join(undecl))
+            inject.setdefault(opn, []).append(decl)
+        # 2) make every return consistent with the function's type (Watcom E1096 rejects mixing bare
+        #    `return;` with `return EXPR;`). A void function: turn value returns into `{ EXPR; return; }`
+        #    (braces keep it valid as an inline `if (...)` body). A non-void function (incl. one promoted
+        #    above): turn bare returns into `return 0;`.
+        if re.match(r"^\s*void\b", ret):
+            for k in range(opn + 1, close):
+                if re.search(r"\breturn\s+[^;]+;", lines[k]):
+                    edits[k] = re.sub(r"\breturn\s+([^;]+);", r"{ \1; return; }", lines[k])
+        else:
+            for k in range(opn + 1, close):
+                if re.search(r"\breturn\s*;", lines[k]):     # any bare return, incl. inline `{...; return;}`
+                    edits[k] = re.sub(r"\breturn\s*;", "return 0;", edits.get(k, lines[k]))
+    out = []
+    for idx, ln in enumerate(lines):
+        ln = edits.get(idx, ln)
+        if "__asm {" in ln:
+            ln = _fix_asm(ln)
+        out.append(ln)
+        if idx in inject:
+            out.extend(inject[idx])
+    # a label immediately before `}` has no statement (Watcom E1082); give it an empty one.
+    for k in range(len(out) - 1):
+        if re.match(r"^\s*[A-Za-z_]\w*:\s*$", out[k]):
+            nxt = next((out[j] for j in range(k + 1, len(out)) if out[j].strip()), "")
+            if nxt.strip() == "}":
+                out[k] = out[k].rstrip() + " ;"
+    body = _normalize_call_args("\n".join(out), param_types)
+    body = _merge_structs(body)
+    # unresolved code-label references: the decompiler names a call/address target it never actually
+    # emitted a body for (helper_/sub_/loc_ + address). Declaring them extern lets the reference compile
+    # (they resolve at link, or stay honestly external). Skip ones defined here (they have prototypes).
+    referenced = set(re.findall(r"\b(?:helper|sub|loc)_[0-9A-Fa-f]{2,}\b", body))
+    externs = ["extern int %s();" % nm for nm in sorted(referenced - fn_names)]
+    if protos or externs:
+        body = ("/* forward declarations (authored -- lets the file compile in any order) */\n"
+                + "\n".join(externs + protos) + "\n\n" + body)
+    return body
+
+
+def _split_args(s):
+    """Split an argument/parameter list at top-level commas (ignoring commas nested in (), [], {})."""
+    args, depth, cur = [], 0, ""
+    for ch in s:
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+        if ch == "," and depth == 0:
+            args.append(cur.strip()); cur = ""
+        else:
+            cur += ch
+    if cur.strip():
+        args.append(cur.strip())
+    return args
+
+
+def _param_type(p):
+    """The type portion of one parameter declaration ('struct V10_t *a3' -> 'struct V10_t *')."""
+    pm = re.match(r"^(.*?)([A-Za-z_]\w*)\s*$", p.strip())
+    return pm.group(1).strip() if (pm and pm.group(1).strip()) else "int"
+
+
+def _normalize_call_args(c, param_types):
+    """The decompiler's per-call and per-definition argument recovery frequently disagree: a call
+    passes a different NUMBER of arguments than its callee is defined to take (Watcom E1151), or an
+    argument of an incompatible TYPE (E1071). Normalise every call to a locally-defined function to
+    the callee's declared signature: drop extra trailing args (never read) or pad missing ones with 0,
+    then cast each arg to the declared parameter type so it always agrees. Casts are how the recovered
+    call-site type is reconciled with the recovered definition; behaviour-preserving for the common
+    over-supply case. Function-pointer params (type contains '(') are left uncast. Definition and
+    prototype lines re-emit unchanged."""
+    if not param_types:
+        return c
+    names = "|".join(re.escape(n) for n in sorted(param_types, key=len, reverse=True))
+    pat = re.compile(r"\b(" + names + r")\s*\(")
+    out, i, n = [], 0, len(c)
+    while i < n:
+        m = pat.match(c, i)
+        if not m:
+            out.append(c[i]); i += 1; continue
+        j = m.end() - 1                                    # index of '('
+        depth, k = 0, j
+        while k < n:
+            if c[k] == "(":
+                depth += 1
+            elif c[k] == ")":
+                depth -= 1
+                if depth == 0:
+                    break
+            k += 1
+        types = param_types[m.group(1)]
+        want = len(types)
+        args = _split_args(c[j + 1:k])
+        # skip the function's own definition / prototype (its "args" are parameter declarations, a type
+        # followed by a name) -- only real call sites get normalised.
+        if args and re.match(r"^(?:unsigned |signed |const )*"
+                             r"(?:void|char|short|int|long|struct\s+\w+|[A-Za-z_]\w*_t|__int\d+)\b"
+                             r"[\s\*]+[A-Za-z_]\w*$", args[0].strip()):
+            out.append(m.group(0)); i = m.end(); continue
+        if len(args) > want:
+            args = args[:want]
+        elif len(args) < want:
+            args += ["0"] * (want - len(args))
+        cast = []
+        for ai, a in enumerate(args):
+            ty = types[ai] if ai < len(types) else ""
+            # cast every arg to the declared parameter type (int included): the call may precede the
+            # definition, so Watcom otherwise infers the arg's own type (e.g. an `unsigned long` temp)
+            # and the later definition disagrees (E1071). A function-pointer param is left uncast.
+            if ty and "(" not in ty:
+                cast.append("(%s)(%s)" % (ty, a))
+            else:
+                cast.append(a)
+        out.append(m.group(1) + "(" + ", ".join(cast) + ")")
+        i = k + 1
+    return "".join(out)
+
+
+def _merge_structs(c):
+    """The decompiler re-emits `struct Tag { ... };` at every referencing function, often with a
+    DIFFERENT subset of fields each time (Watcom E1019 'already defined', and E1031 'field not found'
+    when a later access needs a field an earlier definition lacked). Merge every definition of a tag
+    into ONE struct holding the UNION of its fields (deduped by name); the first occurrence carries
+    the merged body, the rest are dropped. Also completes each synthesized V<n>_t placeholder with any
+    field_<off> the code accesses but no definition declared, so member access always resolves."""
+    lines = c.split("\n")
+    # pass 1: collect field-line sets per tag, and each definition's span
+    defs = {}                                              # tag -> [(start,end)]
+    fields = {}                                            # tag -> {fieldname: full_decl_line}
+    i, n = 0, len(lines)
+    while i < n:
+        m = re.match(r"^\s*struct\s+(\w+)\s*\{", lines[i])
+        if m:
+            tag = m.group(1)
+            depth, j = 0, i
+            while j < n:
+                depth += lines[j].count("{") - lines[j].count("}")
+                if depth == 0 and "}" in lines[j]:
+                    break
+                j += 1
+            defs.setdefault(tag, []).append((i, j))
+            fm = fields.setdefault(tag, {})
+            for k in range(i + 1, j):
+                dm = re.search(r"\b([A-Za-z_]\w*)\s*(?:\[[^\]]*\])?\s*;", lines[k])
+                if dm and "{" not in lines[k]:
+                    fm.setdefault(dm.group(1), lines[k].rstrip())
+            i = j + 1
+            continue
+        i += 1
+    # complete synthesized V<n>_t placeholders with any accessed-but-undeclared field_<off>
+    accessed = set(re.findall(r"(?:->|\.)\s*(field_[0-9A-Fa-f]+)\b", c))
+    for tag, fm in fields.items():
+        if re.match(r"V\d+_t$", tag):
+            for fld in sorted(accessed):
+                if fld not in fm:
+                    fm[fld] = "  unsigned long %s;   /* accessed; offset unrecovered */" % fld
+    # pass 2: rewrite -- first def of each tag becomes the merged body, later defs are dropped
+    emitted = set()
+    out, i = [], 0
+    while i < n:
+        m = re.match(r"^\s*struct\s+(\w+)\s*\{", lines[i])
+        if m and m.group(1) in defs:
+            tag = m.group(1)
+            _s, e = defs[tag][0]
+            span_here = next(((s2, e2) for (s2, e2) in defs[tag] if s2 == i), None)
+            if span_here is None:
+                out.append(lines[i]); i += 1; continue
+            if tag in emitted or i != _s:
+                i = span_here[1] + 1                        # drop repeat definition
+                continue
+            emitted.add(tag)
+            out.append(lines[i])
+            for decl in fields[tag].values():
+                out.append(decl if decl.lstrip().startswith(("unsigned", "signed", "int", "char",
+                           "short", "long", "float", "double", "struct", "void", "__int")) else "  " + decl.strip())
+            out.append("};")
+            i = span_here[1] + 1
+            continue
+        out.append(lines[i]); i += 1
+    return "\n".join(out)
+
+
 def _pe_namemap(path):
     """PE (Win32) name map (lever 1): exported functions -> their authentic export name; internal
     sub_ functions -> named after the most distinctive Win32 API they call. The decompiler already
@@ -259,6 +554,13 @@ def _author_c(path, fmt, out):
                           "__asm { int %s }   /* %s */" % (im.group(1), lab), line)
         outlines.append(line)
     c = "\n".join(outlines)
+
+    # compilability pass: make the authored C a translation unit OpenWatcom accepts (our only C
+    # toolchain). Best-effort -- never let a transform bug drop the authored output.
+    try:
+        c = make_compilable(c)
+    except Exception:                                                # noqa: BLE001
+        pass
 
     hdr = ("/* %s -- authored-source reconstruction (CodeBreaker authsrc).\n"
            " * Original language: C. Decompiled from the real Win95 binary and authored: behavioral\n"

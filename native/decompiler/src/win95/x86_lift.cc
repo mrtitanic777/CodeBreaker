@@ -674,7 +674,10 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
         bb.instrs.push_back(x);
         setReg(kGpBase, x.dst);
       } else {
-        ILInstr x; x.op = ILOp::InlineAsm; x.address = a; x.asm_text = FormatX86(in);
+        // The fallback text lands in an __asm{} block, so emit MASM/Watcom syntax that our
+        // assemblers can actually build (word ptr [..], 21h, bare string mnemonics).
+        ILInstr x; x.op = ILOp::InlineAsm; x.address = a;
+        x.asm_text = FormatX86(in, AsmSyntax::Masm);
         bb.instrs.push_back(x);
         if (getenv("LIFT_DIAG")) std::fprintf(stderr, "UNHANDLED %s\n", m.c_str());
       }
