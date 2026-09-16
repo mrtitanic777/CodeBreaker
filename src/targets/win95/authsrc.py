@@ -273,8 +273,11 @@ def make_compilable(c):
         if mm:
             fn_names.add(mm.group(2))
             pp = mm.group(3).strip()
-            param_types[mm.group(2)] = [] if pp in ("", "void") else [
-                _param_type(p) for p in _split_args(pp)]
+            # first definition wins: a duplicate name keeps the FIRST body's signature (later dups are
+            # renamed and calls bind to the first), so the param count used to normalise calls must be
+            # the first def's, not whatever a later same-named def had.
+            param_types.setdefault(mm.group(2), [] if pp in ("", "void") else [
+                _param_type(p) for p in _split_args(pp)])
     # value-used in ONE pass over the file (a per-name full-file search was O(functions x filesize),
     # which dominated authoring time on large modules): find every call preceded by a value context.
     value_used = set()
@@ -288,6 +291,15 @@ def make_compilable(c):
             continue
         ret, params = m.group(1).strip(), m.group(3)
         fname = m.group(2)
+        # malformed decompiler param list: a bare literal as a param (`f(void, 0)`), or `void` mixed
+        # with others -- not valid C. Rewrite to count-preserving `int a0, int a1, ...` (the body uses
+        # temps, not these names; the count matches param_types so calls still agree).
+        pp = _split_args(params)
+        if pp and (any(re.match(r"^-?\d", p.strip()) for p in pp)
+                   or ("void" in [p.strip() for p in pp] and len(pp) > 1)):
+            newp = ", ".join("int a%d" % i for i in range(len(pp)))
+            lines[sig] = re.sub(r"\(([^()]*)\)", "(" + newp + ")", lines[sig], count=1)
+            params = newp
         # promote a void function whose result is consumed -> int (fixes E1052); rewrite its sig line
         promoted = re.match(r"^\s*void\b", ret) and fname in value_used
         if promoted:
@@ -447,8 +459,16 @@ def _normalize_call_args(c, param_types):
             k += 1
         if k >= n:
             continue
+        # skip a function DEFINITION -- its `(...)` is followed by `{`, and its contents are the
+        # parameter list, not call arguments (casting them, e.g. a malformed `ULADDREF(void,0)` def,
+        # produces `(int)(void)` garbage). Peek past the ')' for the opening brace.
+        p2 = k + 1
+        while p2 < n and c[p2] in " \t\r\n":
+            p2 += 1
+        if p2 < n and c[p2] == "{":
+            continue
         args = _split_args(c[j + 1:k])
-        # skip the function's own definition / prototype (its "args" are parameter declarations).
+        # skip the function's own prototype too (its "args" are parameter declarations).
         if args and decl0.match(args[0].strip()):
             continue
         want = len(types)
