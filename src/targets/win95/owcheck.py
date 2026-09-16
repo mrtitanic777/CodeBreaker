@@ -80,6 +80,10 @@ def compile_c(cpath, bits=16, extra=None):
                 first.append(line.strip())
         else:
             warns += 1
+    # E1119 = a wcc optimizer internal-compiler-error on a specific construct. Retry once with the
+    # optimizer disabled (-od): the codegen bug is avoided and the real code still compiles.
+    if "E1119" in by_code and not (extra and "-od" in extra):
+        return compile_c(cpath, bits, extra=list(extra or []) + ["-od"])
     return {"ok": r.returncode == 0 and errs == 0, "errors": errs,
             "warnings": warns, "by_code": by_code, "first": first}
 
