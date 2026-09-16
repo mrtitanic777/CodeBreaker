@@ -56,8 +56,15 @@ def compile_c(cpath, bits=16, extra=None):
         args[1:1] = ["-mc", "-3"]                           # compact model + 386 CPU (Win16/krnl386)
     if extra:
         args[1:1] = extra
-    r = subprocess.run(args, capture_output=True, text=True, env=_env(),
-                       cwd=os.path.dirname(os.path.abspath(cpath)) or ".")
+    # hard timeout: a pathological translation unit can send wcc into an unbounded compile, which
+    # would stall the whole parallel corpus sweep (one hung worker blocks as_completed forever). Cap
+    # it and treat a timeout as "does not compile" so the sweep always makes progress.
+    try:
+        r = subprocess.run(args, capture_output=True, text=True, env=_env(),
+                           cwd=os.path.dirname(os.path.abspath(cpath)) or ".", timeout=90)
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "errors": 1, "warnings": 0,
+                "by_code": {"ETIMEOUT": 1}, "first": ["wcc timed out (>90s)"]}
     out = (r.stdout or "") + (r.stderr or "")
     errs = warns = 0
     by_code, first = {}, []
@@ -86,8 +93,11 @@ def _asm_error_lines(cpath, bits):
             "-fo=" + os.path.join(os.environ.get("TEMP", "/tmp"), "owcheck_%d.o" % os.getpid())]
     if bits == 16:
         args[1:1] = ["-mc", "-3"]
-    r = subprocess.run(args, capture_output=True, text=True, env=_env(),
-                       cwd=os.path.dirname(os.path.abspath(cpath)) or ".")
+    try:
+        r = subprocess.run(args, capture_output=True, text=True, env=_env(),
+                           cwd=os.path.dirname(os.path.abspath(cpath)) or ".", timeout=90)
+    except subprocess.TimeoutExpired:
+        return set()
     out = (r.stdout or "") + (r.stderr or "")
     lns = set()
     for m in re.finditer(r"\((\d+)\):\s+Error!\s+E1156", out):
