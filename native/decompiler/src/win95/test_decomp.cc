@@ -93,11 +93,12 @@ int main(int argc, char** argv) {
   // per-segment fixup chains. The instruction is 1 byte before the patched operand.
   std::map<uint32_t, std::pair<uint32_t, std::string>> sites;
   std::set<uint32_t> reloc_sites;                 // linear addrs of fixup operands (pointer data)
+  std::set<std::string> imports;                  // "MODULE\tAPINAME" for the --imports link dump
   for (auto& s : img.segments) {
     auto rit = img.relocs.find(s.idx);
     if (rit == img.relocs.end()) continue;
     for (auto& r : rit->second) {
-      std::string nm; uint32_t tgt = 0;
+      std::string nm, impmod; uint32_t tgt = 0;
       if (r.kind == win95::NEReloc::INTERNAL) {
         tgt = img.LinearAddr(r.seg, r.entry);
         auto n = names.find(tgt);
@@ -111,11 +112,15 @@ int main(int argc, char** argv) {
         if (me != sysExports.end()) { auto oi = me->second.find(r.ordinal); if (oi != me->second.end()) known = oi->second; }
         if (known.empty()) known = win95::Win16Name(mod, r.ordinal);   // seed fallback
         nm = !known.empty() ? known : (mod + "_" + std::to_string(r.ordinal));
+        impmod = um;
       } else if (r.kind == win95::NEReloc::IMPORTNAME) {
         std::string mod = (r.module >= 1 && r.module <= (int)img.module_refs.size())
                               ? img.module_refs[r.module - 1] : "IMP";
         nm = mod + "_name" + std::to_string(r.name_off);
+        for (auto& ch : mod) ch = (char)toupper((unsigned char)ch);
+        impmod = mod;
       } else continue;
+      if (!impmod.empty()) imports.insert(impmod + "\t" + nm);   // for the --imports link dump
       // walk the fixup chain (word at each site points to the next, 0xFFFF ends)
       uint32_t site = r.offset;
       for (int guard = 0; guard < 4096; ++guard) {
@@ -131,6 +136,14 @@ int main(int argc, char** argv) {
   }
   lifter.SetCallSites(sites);
   lifter.SetRelocSites(reloc_sites);
+
+  // --imports: dump the module's resolved imports as `MODULE<TAB>APINAME`, one per line, so the
+  // build lane can emit real wlink `import` directives (resolve APIs to KERNEL/USER/GDI/...), not
+  // stub them. This is what makes a linked module call the real Win16 API instead of a hollow stub.
+  if (std::string(argv[2]) == "--imports") {
+    for (const auto& s : imports) std::printf("%s\n", s.c_str());
+    return 0;
+  }
 
   // Disassembler engine: emit an instruction listing (addr: bytes  mnem ops),
   // annotating call targets with resolved names. Whole module by default.
