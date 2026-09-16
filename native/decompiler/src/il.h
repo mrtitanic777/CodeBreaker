@@ -464,7 +464,10 @@ struct ILInstr {
   uint32_t ppc_word = 0;             // raw PPC instruction word (for cycle counter)
 
   std::string call_name;   // resolved function name for Call
-  std::string asm_text;    // for InlineAsm: raw disassembly text
+  std::string asm_text;    // for InlineAsm: raw disassembly text (readable mnemonic)
+  std::string raw_hex;     // for InlineAsm: the instruction's raw bytes, so an assembler that
+                           // cannot spell the mnemonic (undocumented/rare opcodes -- salc, ...)
+                           // can still emit the exact bytes via `db`, preserving behaviour
 
   // Inserted when leaving SSA, to give a merge point one value per register.
   // These are not instructions the CPU executes, so a reader should never see

@@ -95,11 +95,14 @@ def _asm_error_lines(cpath, bits):
 
 
 def neutralize_unassemblable(cpath, bits, max_iter=12):
-    """Use the assembler as a code/data oracle. An `__asm{}` block wcc rejects (E1156) is not valid
-    executable code in context -- it is the decoder having mis-decoded DATA (or misaligned bytes) as an
-    instruction. Replace each such line with a flagged data comment (the original text preserved), then
-    recompile and repeat (wcc caps the errors it prints per run) until no assembler error remains.
-    Behaviour-preserving: the neutralised bytes were never a real instruction. Returns (result, n)."""
+    """Resolve `__asm{}` blocks the assembler rejects (E1156) by falling back to the instruction's RAW
+    BYTES via `db`, never by dropping the instruction. The decoder emits each inline-asm line with a
+    `/*=<hexbytes>*/` marker; when wcc cannot spell the mnemonic (an undocumented/rare opcode like
+    `salc`, or a form the assembler lacks), rewrite `__asm { <mnem> } /*=BYTES*/` to
+    `__asm { db BYTES } /* was: <mnem> */`. The CPU executes the exact bytes either way, so behaviour
+    is preserved for real instructions AND faithful for any data that slipped through data-typing.
+    Only if the bytes are unavailable is the line commented out as a last resort. Returns (result, n).
+    """
     total = 0
     for _ in range(max_iter):
         lns = _asm_error_lines(cpath, bits)
@@ -109,11 +112,17 @@ def neutralize_unassemblable(cpath, bits, max_iter=12):
         changed = False
         for ln in lns:
             k = ln - 1
-            if 0 <= k < len(lines) and "__asm {" in lines[k]:
-                indent = lines[k][:len(lines[k]) - len(lines[k].lstrip())]
-                lines[k] = ("%s/* data (unassemblable -- decoder mis-decoded data as code): %s */"
-                            % (indent, lines[k].strip()))
-                total += 1; changed = True
+            if not (0 <= k < len(lines) and "__asm {" in lines[k]):
+                continue
+            indent = lines[k][:len(lines[k]) - len(lines[k].lstrip())]
+            mk = re.search(r"/\*=([0-9A-Fa-fhx,]+)\*/", lines[k])
+            mnem = re.search(r"__asm \{([^}]*)\}", lines[k])
+            if mk:
+                asmtxt = (mnem.group(1).strip() if mnem else "")
+                lines[k] = "%s__asm { db %s }   /* was: %s */" % (indent, mk.group(1), asmtxt)
+            else:
+                lines[k] = "%s/* unassemblable, no bytes: %s */" % (indent, lines[k].strip())
+            total += 1; changed = True
         if not changed:
             break
         open(cpath, "w", encoding="utf-8", errors="replace").write("\n".join(lines))

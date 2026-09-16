@@ -2135,7 +2135,12 @@ std::string CDecompiler::Run() {
       ExprRef e = BuildExpr(in, &pure);
       if (!e) {
         if (in.op == ILOp::InlineAsm && !in.asm_text.empty()) {
-          emit("__asm { " + in.asm_text + " }", in.address);
+          // Carry the raw bytes in a compact marker comment so the build can fall back to `db`
+          // if the assembler cannot spell the mnemonic (undocumented/rare opcodes), without
+          // dropping the instruction. Readable mnemonic stays the code; bytes ride along.
+          std::string line = "__asm { " + in.asm_text + " }";
+          if (!in.raw_hex.empty()) line += "   /*=" + in.raw_hex + "*/";
+          emit(line, in.address);
           continue;
         }
         // No expression was built, but the instruction still defines a value.
