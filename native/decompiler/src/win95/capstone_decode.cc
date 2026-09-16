@@ -82,6 +82,25 @@ X86Insn DecodeX86Cap(const uint8_t* data, size_t size, size_t pos, uint32_t addr
   if (!insn) return out;
   if (!cs_disasm_iter(h, &p, &avail, &a, insn)) return out;
 
+  // Win95's task scheduler predates the XMM register file and CR4.OSFXSR, so it never saves
+  // or restores SSE state -- SSE (and everything built on XMM: SSE2/3/4x, AVX, FMA, AES,
+  // PCLMUL) cannot be real code in this corpus and, run under Win95, would #UD or corrupt
+  // state. When Capstone decodes such an instruction here it has mis-decoded DATA as code, so
+  // reject it (out.valid stays false -> the caller advances a byte and treats the span as
+  // data). NOTE the era line is deliberately at SSE, not earlier: MMX aliases the x87 register
+  // stack (no OS support needed) and the P6 integer ops (CMOV/FCOMI/RDPMC) are decodable and
+  // runnable inside 16-bit segments, so those are legitimate and are NOT rejected here --
+  // MMX/P6 mis-decodes belong to code/data separation, not the era gate.
+  static const uint8_t kNoXmm[] = {
+      X86_GRP_SSE1, X86_GRP_SSE2, X86_GRP_SSE3, X86_GRP_SSE41, X86_GRP_SSE42,
+      X86_GRP_SSE4A, X86_GRP_AVX, X86_GRP_AVX2, X86_GRP_AVX512, X86_GRP_FMA,
+      X86_GRP_FMA4, X86_GRP_AES, X86_GRP_PCLMUL};
+  if (insn->detail) {
+    for (uint8_t gi = 0; gi < insn->detail->groups_count; ++gi)
+      for (uint8_t k : kNoXmm)
+        if (insn->detail->groups[gi] == k) return out;   // XMM-based: data, not Win95 code
+  }
+
   std::string mn = insn->mnemonic;
   // strip rep/repne prefixes folded into the mnemonic, recording them as flags
   if (mn.rfind("rep ", 0) == 0) { out.rep = true; mn = mn.substr(4); }
