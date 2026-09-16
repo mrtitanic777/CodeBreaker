@@ -145,6 +145,20 @@ int main(int argc, char** argv) {
     return 0;
   }
 
+  // --exports: dump the module's own exports as `ordinal<TAB>name`, one per entry-table slot with a
+  // real address. The build lane turns these into wlink `export` directives so the linked module
+  // actually exports its functions (and wlink pulls the exported code + its call tree in, instead of
+  // dead-code-eliminating everything down to the entry stub).
+  if (std::string(argv[2]) == "--exports") {
+    for (auto& e : img.entries) {
+      if (!e.addr) continue;
+      auto it = ordName.find(e.ordinal);
+      std::string nm = it != ordName.end() ? it->second : ("export_" + std::to_string(e.ordinal));
+      std::printf("%d\t%s\n", e.ordinal, nm.c_str());
+    }
+    return 0;
+  }
+
   // Disassembler engine: emit an instruction listing (addr: bytes  mnem ops),
   // annotating call targets with resolved names. Whole module by default.
   if (std::string(argv[2]) == "--disasm") {
