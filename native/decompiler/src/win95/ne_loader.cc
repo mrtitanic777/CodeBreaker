@@ -155,6 +155,13 @@ NEImage LoadNEFromBuffer(const std::vector<uint8_t>& data) {
   }
 
   img.base_address = 0;
+  // header CS:IP entry point (0x14 = IP, 0x16 = CS 1-based segment) -> linear address (0 for a DLL,
+  // which has no CS:IP). Lets an EXE build set `option start` and keep its call tree.
+  {
+    uint16_t ip = U16(data, ne_off + 0x14);
+    uint16_t cs = U16(data, ne_off + 0x16);
+    if (cs) img.entry = img.LinearAddr(cs, ip);
+  }
   img.ok = true;
   return img;
 }

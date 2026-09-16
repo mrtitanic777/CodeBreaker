@@ -158,6 +158,11 @@ int main(int argc, char** argv) {
     }
     return 0;
   }
+  // --entry: the linear entry point (header CS:IP); an EXE build sets `option start` from it.
+  if (std::string(argv[2]) == "--entry") {
+    std::printf("%X\n", img.entry);
+    return 0;
+  }
 
   // Disassembler engine: emit an instruction listing (addr: bytes  mnem ops),
   // annotating call targets with resolved names. Whole module by default.
