@@ -460,7 +460,12 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
         else if (in.ops[0].kind == OpKind::Rel) {
           x.target = (uint32_t)in.ops[0].imm;
           auto nit = names_.find(x.target);
-          x.call_name = nit != names_.end() ? nit->second : ("sub_" + std::to_string(x.target));
+          // Unnamed target: spell it sub_%06X (hex linear addr) to EXACTLY match the definition
+          // name the module driver emits (test_decomp.cc `sub_%06X`). Decimal here (std::to_string)
+          // made every unnamed call name disagree with its definition -> an undefined reference the
+          // linker had to stub. Hex on both sides makes the call resolve to the real body.
+          char sb[24]; std::snprintf(sb, sizeof sb, "sub_%06X", x.target);
+          x.call_name = nit != names_.end() ? nit->second : sb;
         } else {
           x.call_name = "indirect";                    // call through reg/mem (v1)
         }

@@ -38,8 +38,21 @@ def _dec(fmt):
 
 def _find_binary(module):
     dr = authsrc._dr()
-    for p in glob.glob(os.path.join(dr, "corpus", "files", "**", module + ".*"), recursive=True):
-        return p
+    cands = glob.glob(os.path.join(dr, "corpus", "files", "**", module + ".*"), recursive=True)
+    # The decoder resolves imported ordinals -> API names by loading the sibling KERNEL/USER/GDI
+    # modules from the TARGET binary's own directory. Several corpus locations hold the same file
+    # (WINDOWS/SYSTEM, setup/inf, ...) but only the real system directory carries those siblings, so
+    # a copy from setup/inf resolves every import to a bare MOD_ordinal that never matches the call
+    # names in the authored C (which WAS decompiled from the WINDOWS/SYSTEM copy). Prefer the copy
+    # whose directory actually contains kernel/gdi/user so imports resolve to real names and link.
+    def _has_siblings(p):
+        d = os.path.dirname(p)
+        return any(os.path.isfile(os.path.join(d, n)) for n in
+                   ("KERNEL.EXE", "kernel.exe", "GDI.EXE", "gdi.exe", "USER.EXE", "user.exe"))
+    cands.sort(key=lambda p: (0 if _has_siblings(p) else 1,
+                              0 if os.path.sep + "SYSTEM" + os.path.sep in p.upper() else 1))
+    if cands:
+        return cands[0]
     for rel in (("corpus/files/setup/inf/%s.exe" % module), ("corpus/files/setup/inf/%s.dll" % module)):
         p = os.path.join(dr, rel)
         if os.path.isfile(p):
@@ -116,6 +129,17 @@ def link_module(module, do_diff=False):
     bld = os.path.join(authsrc._dr(), "recon", "authored", "_link", module)
     os.makedirs(bld, exist_ok=True)
     import shutil
+    # Clear stale build inputs first. This dir persists across runs, and an earlier split (or a
+    # single-file authoring) leaves pieces behind -- e.g. a 100k-line `setupx.c` from when the module
+    # was one file, which now fails E1118 (segment too large) and drops every function defined in it,
+    # or duplicate pieces from a prior split shape. Start from a clean tree so only the CURRENT pieces
+    # are compiled and linked.
+    for f in os.listdir(bld):
+        if f.endswith((".c", ".h", ".obj", ".o")):
+            try:
+                os.remove(os.path.join(bld, f))
+            except OSError:
+                pass
     env = owcheck._env()
     cc = os.path.join(ow, "binnt", "wcc.exe" if bits == 16 else "wcc386.exe")
     tgt = "windows" if bits == 16 else "nt"
@@ -164,36 +188,51 @@ def link_module(module, do_diff=False):
         if fmt == "PE":
             imp_lines.append("import %s_%s '%s'.'%s'" % (mod, api, mod, api))
             continue
+        # NE 16-bit: the authored C declares each imported API as a plain `extern int API()`, which
+        # wcc (compact-model __watcall) references with a TRAILING underscore -- the obj carries the
+        # symbol `API_`, not `API`. The wlink `import` directive's internal name must therefore be the
+        # decorated `API_` (mapped onto the real export `API`); an undecorated internal name never
+        # matched the reference, so every Win16 API call fell through to a return-0 stub instead of
+        # calling the real KERNEL/USER/GDI export.
         mo = re.match(r"^%s_(\d+)$" % re.escape(mod), api)
         if mo:
-            imp_lines.append("import %s '%s'.%s" % (api, mod, mo.group(1)))
+            imp_lines.append("import %s_ '%s'.%s" % (api, mod, mo.group(1)))
         else:
-            imp_lines.append("import %s '%s'.'%s'" % (api, mod, api))
+            imp_lines.append("import %s_ '%s'.'%s'" % (api, mod, api))
 
     # real exports -> wlink `export` directives, so the module exports its functions AND wlink keeps
     # the exported code + everything it calls (otherwise it dead-code-eliminates to the entry stub).
     # Only export names actually DEFINED here (an undefined export aborts the link).
-    is_dll = binpath.lower().endswith(".dll")
+    exports_list = _exports(binpath, fmt)
+    # A module is a LIBRARY (emit export directives) if it actually exports functions -- not by file
+    # extension. The Win16 core (KRNL386.EXE, GDI.EXE, USER.EXE) ships as .EXE yet is a library that
+    # exports hundreds of APIs; gating exports on `.dll` gave them 0 exports, so wlink dead-code-
+    # eliminated every function not reached from the entry point and stubbed all their callers.
+    is_lib = binpath.lower().endswith(".dll") or (fmt == "NE" and len(exports_list) > 0)
     defined = set(re.findall(r"(?m)^[A-Za-z].*?\b([A-Za-z_]\w*)\s*\([^;]*\)\s*$",
                              open(src, encoding="utf-8", errors="replace").read()))
     exp_lines = []
-    if is_dll:                                             # DLLs export; an EXE keeps code via its entry
-        for ordn, name in _exports(binpath, fmt):
+    if is_lib:
+        for ordn, name in exports_list:
             if name not in defined:
                 continue
-            if fmt == "PE":                               # PE: export by name (wcc386 '_' decoration)
+            # Symbol decoration must match how the decompiler DECLARED the function. The recovered
+            # bodies are `int __fastcall NAME(...)`, and Watcom's 16-bit __fastcall decoration is a
+            # LEADING '@' (symbol `@NAME`); wcc386's register calling convention is a TRAILING '_'.
+            # (Imported Win16 APIs are the other case -- declared plain `extern`, decorated `NAME_` --
+            # handled in the import block above.) Quote the NE symbol: an unquoted leading '@' is
+            # wlink's read-directives-from-file syntax, not a symbol reference.
+            if fmt == "PE":
                 exp_lines.append("export %s='%s_'" % (name, name))
-            else:                                         # NE 16-bit __fastcall: LEADING '@' decoration
-                # quote the internal symbol: an unquoted leading @ is wlink's read-directives-from-file
-                # syntax, not a symbol reference.
+            else:
                 exp_lines.append("export %s.%s='@%s'" % (name, ordn, name))
     entry_sym = ""
-    if not is_dll and fmt in ("NE", "PE"):                # EXE: pull the call tree in via the entry
+    if not is_lib and fmt in ("NE", "PE"):                # application EXE: pull the call tree via entry
         ev = _entry(binpath, fmt)
         if ev and ev != "0":
             nm = _name_at(binpath, fmt, int(ev, 16))      # function at the entry addr -> its symbol
             if nm and nm in defined:
-                entry_sym = ("'@%s'" % nm) if fmt == "NE" else (nm + "_")   # NE @ / PE _ decoration
+                entry_sym = ("'@%s'" % nm) if fmt == "NE" else (nm + "_")   # NE __fastcall @ / PE _
 
     # iterative link: whatever is still undefined (internal sub_ the decompiler didn't emit, CRT
     # helpers) gets a return-0 stub -- flagged as the completeness gap, NOT the real imports.
