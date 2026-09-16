@@ -60,8 +60,13 @@ struct X86Insn {
 X86Insn DecodeX86(const uint8_t* data, size_t size, size_t pos, uint32_t addr,
                   bool default_op16 = true);
 
-// Human-readable disassembly of a decoded instruction (Intel syntax).
-std::string FormatX86(const X86Insn& in);
+// Assembly syntax flavour for FormatX86. Nasm is the readable objdump/NASM display
+// (`word [si]`, `0x21`); Masm is the MASM/Watcom form (`word ptr [si]`, `21h`) our
+// assemblers (wasm/ML) accept -- required when the text is used as an __asm fallback.
+enum class AsmSyntax { Nasm, Masm };
+
+// Disassembly of a decoded instruction, in the requested assembler syntax (default NASM).
+std::string FormatX86(const X86Insn& in, AsmSyntax syn = AsmSyntax::Nasm);
 
 // Register name for a (reg id, size) pair, e.g. (RC_GPR+0, 2) -> "ax".
 std::string RegName(int reg, int size);

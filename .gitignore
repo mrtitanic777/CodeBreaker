@@ -84,3 +84,7 @@ src/PEExplorerV2/PEParser/*.lib
 src/targets/win95/_bodyverify/
 Windows95/design/body_ledger.csv.bak.*
 src/targets/win95/_bodyverify16/
+
+# assembler scratch error files
+*.err
+tmp*.err
