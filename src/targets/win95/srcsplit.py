@@ -81,15 +81,85 @@ def _parse(text):
     return preamble, structs, funcs
 
 
+# Conventional short (<=8 char) source-file stems by functional area, matching how Microsoft actually
+# named Win16/Win32 sources under the DOS 8.3 limit (documented in Pietrek/Schulman; mirrored by
+# ReactOS): a file is named for its subsystem, not a single long API. Keyed by an API-name substring,
+# longest-match-first so `imagelist` beats `image`.
+_STEM_MAP = {
+    # comctl32 controls
+    "imagelist": "imglist", "statuswindow": "status", "status": "status", "toolbar": "toolbar",
+    "listview": "listview", "treeview": "treeview", "updown": "updown", "progress": "progress",
+    "tooltip": "tooltip", "trackbar": "trackbar", "propertysheet": "propsht", "propsheet": "propsht",
+    "header": "header", "animate": "animate", "hotkey": "hotkey", "tabcontrol": "tab", "rebar": "rebar",
+    "flatsb": "flatsb", "drawinsert": "draw", "commoncontrol": "comctl",
+    # kernel32
+    "virtualalloc": "virtual", "virtualfree": "virtual", "virtualquery": "virtual", "virtual": "virtual",
+    "heap": "heap", "globalalloc": "heap", "localalloc": "heap", "criticalsection": "sync",
+    "semaphore": "sync", "mutex": "sync", "waitforsingle": "sync", "waitformultiple": "sync",
+    "event": "sync", "thread": "thread", "createprocess": "process", "process": "process",
+    "loadlibrary": "module", "getprocaddress": "module", "module": "module", "freelibrary": "module",
+    "createfile": "file", "readfile": "file", "writefile": "file", "findfirst": "find",
+    "findclose": "find", "findnext": "find", "tape": "tape", "comm": "comm", "atom": "atom",
+    "profile": "profile", "getprivateprofile": "profile", "locale": "nls", "codepage": "nls",
+    "multibyte": "nls", "widechar": "nls", "lstr": "lstr", "console": "console", "toolhelp": "toolhelp",
+    "thunk": "thunk", "mapls": "thunk", "dosmem": "dosmem", "vxd": "vxdcall", "getlasterror": "error",
+    "setlasterror": "error", "getcommand": "cmdline", "environment": "environ",
+    # user32
+    "createwindow": "window", "defwindow": "window", "showwindow": "window", "destroywindow": "window",
+    "window": "window", "dialog": "dialog", "dlgitem": "dialog", "menu": "menu", "editwnd": "edit",
+    "listbox": "listbox", "combo": "combo", "button": "button", "static": "static", "scroll": "scroll",
+    "caret": "caret", "cursor": "cursor", "icon": "icon", "hook": "hook", "clipboard": "clipbrd",
+    "message": "message", "dispatchmessage": "message", "peekmessage": "message", "sendmessage": "message",
+    "keyboard": "keybd", "getkey": "keybd", "mouse": "mouse", "timer": "timer", "getprop": "prop",
+    "setprop": "prop", "registerclass": "class", "wndclass": "class", "rect": "rect", "paint": "paint",
+    "beginpaint": "paint", "messagebox": "msgbox", "systemmetrics": "sysmet",
+    # gdi32
+    "createdc": "dc", "deletedc": "dc", "getdc": "dc", "bitblt": "bitblt", "stretchblt": "bitblt",
+    "bitmap": "bitmap", "createbrush": "brush", "brush": "brush", "createpen": "pen", "pen": "pen",
+    "createfont": "font", "font": "font", "textout": "text", "drawtext": "text", "region": "region",
+    "rgn": "region", "path": "path", "metafile": "metafile", "palette": "palette", "getpixel": "pixel",
+    "setpixel": "pixel", "polygon": "shape", "ellipse": "shape", "rectangle": "shape", "arc": "arc",
+    "escape": "print", "startdoc": "print", "enumfont": "enumfont",
+    # cross-cutting / other DLLs
+    "mapi": "mapi", "ole": "ole", "storage": "storage", "moniker": "moniker", "rpc": "rpc",
+    "crypt": "crypt", "socket": "socket", "wsa": "socket", "http": "http", "internet": "wininet",
+    "reg": "registry", "shell": "shell", "sh": "shell", "commdlg": "commdlg", "getopenfile": "filedlg",
+    "printdlg": "printdlg", "choosefont": "fontdlg", "choosecolor": "colordlg",
+}
+_VERBS = ("create", "destroy", "delete", "free", "alloc", "get", "set", "init", "open", "close",
+          "is", "register", "unregister", "new", "make", "begin", "end", "load", "enum", "query",
+          "internal", "default", "dll", "helper", "proc", "do", "on", "handle", "the")
+
+
 def _family(name):
-    """A functional-family key for grouping/naming: the leading run of a name before its address/dup
-    suffix, lowercased (MAPILogon -> mapilogon; ULADDREF -> uladdref; sub_1234 -> sub)."""
+    """A functional-family key for grouping: the leading run of a name before its address/dup suffix.
+    (Used for cohesion in grouping; final file naming goes through _stem for the conventional form.)"""
     base = re.sub(r"_r\d+$", "", name)                       # drop dup-rename suffix
     base = re.sub(r"_?[0-9A-Fa-f]{4,}$", "", base)           # drop trailing address
     base = base.strip("_")
     if not base or base.lower() in ("sub", "helper", "loc", "fn"):
         return "core"
     return base.lower()
+
+
+def _stem(name):
+    """A conventional short (<=8 char) source-file stem for a function's functional area, the way
+    Microsoft named the file (status.c, heap.c, imglist.c) -- not the full API name. Returns '' if the
+    name is an unnamed placeholder (caller groups those as util/core)."""
+    fam = _family(name)
+    if fam == "core":
+        return ""
+    key = re.sub(r"[^a-z0-9]", "", fam)
+    for k in sorted(_STEM_MAP, key=len, reverse=True):       # longest substring wins
+        if k in key:
+            return _STEM_MAP[k]
+    # fallback: strip a leading verb, drop a trailing 'a'/'w' ANSI/wide tag, cap at 8 chars
+    s = key
+    for v in sorted(_VERBS, key=len, reverse=True):
+        if s.startswith(v) and len(s) > len(v) + 2:
+            s = s[len(v):]; break
+    s = re.sub(r"(a|w)$", "", s) if len(s) > 4 else s
+    return s[:8] or ""
 
 
 def _group(funcs):
@@ -111,18 +181,17 @@ def _group(funcs):
                 groups.append(cur); cur = []
     if cur:
         groups.append(cur)
-    # name each group after the functional family it is really about: prefer the most common
-    # RECOVERED-name family (an export/behavioural name), since the many sub_ placeholders would
-    # otherwise drown everything as "core". Only truly all-placeholder groups fall back to core.
+    # name each group after the functional AREA it is really about, using the conventional short
+    # (<=8 char) stem -- the most common recovered stem in the group (placeholders don't vote). An
+    # all-placeholder group is `util`. Collisions get a numeric suffix.
     import collections
     named, seen = [], {}
     for g in groups:
-        fams = collections.Counter(f for f in (_family(x[0]) for x in g) if f != "core")
-        fam = fams.most_common(1)[0][0] if fams else "core"
-        stem = re.sub(r"[^a-z0-9]", "", fam)[:24] or "core"
+        stems = collections.Counter(s for s in (_stem(x[0]) for x in g) if s)
+        stem = stems.most_common(1)[0][0] if stems else "util"
         seen[stem] = seen.get(stem, 0) + 1
         if seen[stem] > 1:
-            stem = "%s%d" % (stem, seen[stem])
+            stem = ("%s%d" % (stem[:7], seen[stem]))[:8]
         named.append((stem, g))
     return named
 
@@ -134,6 +203,10 @@ def split_module(cpath, module, outroot):
     if not funcs:
         return None
     moddir = os.path.join(outroot, module)
+    if os.path.isdir(moddir):                                # clear stale pieces from a prior split
+        for f in os.listdir(moddir):
+            if f.endswith((".c", ".h")):
+                os.remove(os.path.join(moddir, f))
     os.makedirs(moddir, exist_ok=True)
     hdr = module + ".h"
     guard = "_%s_H" % re.sub(r"[^A-Za-z0-9]", "_", module).upper()
@@ -151,8 +224,8 @@ def split_module(cpath, module, outroot):
     groups = _group(funcs)
     files = []
     for stem, g in groups:
-        fn = "%s_%s.c" % (module, stem)
-        out = ['/* %s -- part of the reconstructed %s (functional group: %s). */' % (fn, module, stem),
+        fn = "%s.c" % stem                                   # bare short name inside <module>/ (no prefix)
+        out = ['/* %s -- %s (functional group, reconstructed). */' % (fn, module),
                '#include "%s"' % hdr, ""]
         for name, addr, body in g:
             out += body + [""]
