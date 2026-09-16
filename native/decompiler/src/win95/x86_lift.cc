@@ -7,6 +7,7 @@
 #include "win95/capstone_decode.h"
 
 #include <algorithm>
+#include <cctype>
 #include <set>
 
 namespace win95 {
@@ -110,6 +111,11 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
     while (a >= entry && a < end && !at.count(a)) {
       if (dataRunAt(a)) break;              // walked into an embedded string literal -> stop (data)
       X86Insn in = DecodeX86Auto(image, image_size, a, a, def_op16);
+      // An undecodable byte on a reachable path means the walk has run off the end of the code into
+      // data (a table, padding, a literal): real reachable code never contains an invalid opcode.
+      // Stop the run here instead of advancing one byte and grinding through the data (which is what
+      // produced the cascades of `(bad)` / sysexit / MMX-on-data). The byte is left undecoded (data).
+      if (!in.valid) break;
       at[a] = insns.size();
       insns.push_back(in);
       uint32_t next = a + advBytes(in);
@@ -134,6 +140,30 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
         a = next; continue;                 // and follow it
       }
       if (m == "ret" || m == "retf" || m == "iret") break;   // no successors
+      // A call to a function that never returns (FatalExit, abort, exit, ...) has no
+      // fallthrough: what follows is data (a message string, a jump/dispatch table). Falling
+      // through decodes that data as code, the main remaining source of mis-decodes. Resolve
+      // the callee name (far calls via the relocation-built call_sites_, near via names_) and
+      // stop the run at a no-return target, so the trailing data is never decoded.
+      if (m == "call") {
+        std::string tn;
+        auto cs = call_sites_.find(a);
+        if (cs != call_sites_.end()) tn = cs->second.second;
+        else if (in.ops[0].kind == OpKind::Rel || in.ops[0].kind == OpKind::Imm) {
+          auto nit = names_.find((uint32_t)in.ops[0].imm);
+          if (nit != names_.end()) tn = nit->second;
+        }
+        std::string u;
+        size_t dot = tn.find_last_of(".:");        // strip a KERNEL. / module: prefix
+        for (size_t ci = (dot == std::string::npos ? 0 : dot + 1); ci < tn.size(); ++ci)
+          u += (char)std::toupper((unsigned char)tn[ci]);
+        static const char* kNoRet[] = {
+            "FATALEXIT", "FATALAPPEXIT", "EXITKERNEL", "ABORT", "_ABORT", "EXIT", "_EXIT",
+            "_CEXIT", "_AMSG_EXIT", "_AMSGEXIT", "EXITPROCESS", "TERMINATEAPP"};
+        bool noret = false;
+        for (const char* s : kNoRet) if (u == s) { noret = true; break; }
+        if (noret) break;                          // no-return: stop; trailing bytes are data
+      }
       a = next;                             // call + ordinary ops: fall through
     }
   }
