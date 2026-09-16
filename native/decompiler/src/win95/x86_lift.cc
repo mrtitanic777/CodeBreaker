@@ -113,6 +113,18 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
     return n >= 2;
   };
 
+  // A run of zero bytes is zero-initialized data, inter-function padding, or a thunk's connection-data
+  // blob -- never code. The byte 0x00 decodes as the degenerate `add [mem],al`, so a walk that runs off
+  // the end of a real function into such a run emits thousands of identical `add` lines: this is exactly
+  // what turned FT_TAPIFTHKTHKCONNECTIONDATA into a 32,468-line "function" (its few real thunk bytes,
+  // then its zero-filled connection-data blob). >=8 consecutive zeros at the decode point is
+  // unambiguously data -- no compiler emits `add [bx+si],al` four times over -- so stop the walk here.
+  auto zeroRunAt = [&](uint32_t a) -> bool {
+    if (a + 8 > image_size) return false;
+    for (uint32_t i = a; i < a + 8; ++i) if (image[i] != 0x00) return false;
+    return true;
+  };
+
   std::vector<X86Insn> insns;
   std::set<uint32_t> leaders{entry};
   std::map<uint32_t, size_t> at;
@@ -122,6 +134,7 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
     while (a >= entry && a < end && !at.count(a)) {
       if (dataRunAt(a)) break;              // walked into an embedded string literal -> stop (data)
       if (relocDenseAt(a)) break;           // walked into a relocated pointer/jump table -> stop (data)
+      if (zeroRunAt(a)) break;              // walked into a zero-fill data/padding region -> stop (data)
       X86Insn in = DecodeX86Auto(image, image_size, a, a, def_op16);
       // An undecodable byte on a reachable path means the walk has run off the end of the code into
       // data (a table, padding, a literal): real reachable code never contains an invalid opcode.
