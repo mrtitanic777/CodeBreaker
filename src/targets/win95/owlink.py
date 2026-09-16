@@ -89,8 +89,6 @@ def link_module(module, do_diff=False):
     bld = os.path.join(authsrc._dr(), "recon", "authored", "_link", module)
     os.makedirs(bld, exist_ok=True)
     import shutil
-    src = os.path.join(bld, module + ".c")
-    shutil.copy2(cpath, src)
     env = owcheck._env()
     cc = os.path.join(ow, "binnt", "wcc.exe" if bits == 16 else "wcc386.exe")
     tgt = "windows" if bits == 16 else "nt"
@@ -98,11 +96,37 @@ def link_module(module, do_diff=False):
     cflags = ["-bt=" + tgt, "-q", "-s"]
     if bits == 16:
         cflags += ["-mc", "-3"]
-    r = subprocess.run([cc] + cflags + [module + ".c"], cwd=bld, capture_output=True, text=True,
+    # Prefer the multi-file split tree: compile each piece to its own obj (separate segments), which is
+    # how the module was really built AND the only way a big 16-bit module fits (one giant .c overruns
+    # the 64K code segment). Fall back to the single authored .c for small/un-split modules.
+    treedir = os.path.join(authsrc._dr(), "recon", "authored", "tree", module)
+    objs = []
+    if os.path.isdir(treedir) and any(f.endswith(".c") for f in os.listdir(treedir)):
+        for f in sorted(os.listdir(treedir)):
+            if f.endswith((".c", ".h")):
+                shutil.copy2(os.path.join(treedir, f), os.path.join(bld, f))
+        for f in sorted(os.listdir(treedir)):
+            if f.endswith(".c"):
+                # each piece into its OWN code segment (-nt): 16-bit NE caps a segment at 64K, and
+                # wlink merges same-named segments, so without this every piece's code piles into one
+                # _TEXT and overruns. Large model (-ml, far code) so a call from one piece's segment to
+                # a function in another links as a FAR call -- a near call cannot cross segments (E2052).
+                pcf = (["-bt=" + tgt, "-q", "-s", "-ml", "-3", "-nt=%s_TEXT" % f[:-2]]
+                       if bits == 16 else cflags)
+                subprocess.run([cc] + pcf + [f], cwd=bld, capture_output=True, text=True,
+                               env=env, timeout=180)
+                o = f[:-2] + ".obj"
+                if os.path.isfile(os.path.join(bld, o)):
+                    objs.append(o)
+    else:
+        shutil.copy2(cpath, os.path.join(bld, module + ".c"))
+        subprocess.run([cc] + cflags + [module + ".c"], cwd=bld, capture_output=True, text=True,
                        env=env, timeout=180)
-    obj = os.path.join(bld, module + ".obj")
-    if not os.path.isfile(obj):
-        return {"ok": False, "error": "compile produced no obj", "log": (r.stdout + r.stderr)[-800:]}
+        if os.path.isfile(os.path.join(bld, module + ".obj")):
+            objs.append(module + ".obj")
+    src = cpath                                            # for the defined-exports scan
+    if not objs:
+        return {"ok": False, "error": "compile produced no obj"}
 
     # real Win16 imports -> wlink `import` directives (name-consistent with the C's symbols)
     imps = _imports(binpath, fmt)
@@ -142,10 +166,17 @@ def link_module(module, do_diff=False):
             f.write("/* internal targets the decompiler has not recovered -- flagged stubs */\n")
             for s in sorted(stubs):
                 f.write("int %s(){return 0;}\n" % s)
-        subprocess.run([cc] + cflags + ["stubs.c"], cwd=bld, capture_output=True, text=True, env=env)
+        stubflags = (["-bt=" + tgt, "-q", "-s", "-ml", "-3"] if bits == 16 else cflags)
+        subprocess.run([cc] + stubflags + ["stubs.c"], cwd=bld, capture_output=True, text=True, env=env)
         with open(os.path.join(bld, "link.lnk"), "w", newline="\n") as f:
             f.write("system %s\nname %s\noption quiet\noption map=%s.map\n" % (system, out, module))
-            f.write("file %s.obj\nfile stubs.obj\n" % module)
+            if bits == 16:
+                # the Watcom large-model runtime provides the compiler math/util helpers (__U4D divide,
+                # etc.) our code references; link them for real (not stubbed -- these are toolchain code).
+                f.write("libpath '%s'\nlibrary clibl\n" % os.path.join(ow, "lib286").replace("\\", "/"))
+            for o in objs:
+                f.write("file %s\n" % o)
+            f.write("file stubs.obj\n")
             for l in imp_lines:
                 f.write(l + "\n")
             for l in exp_lines:
