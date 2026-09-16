@@ -79,8 +79,8 @@ def _exports(binpath, fmt):
 
 
 def _entry(binpath, fmt):
-    """The entry-point address (RVA for PE) or '' if unavailable."""
-    if fmt != "PE":
+    """The entry-point address (PE RVA / NE linear from CS:IP) or '' if unavailable."""
+    if fmt not in ("NE", "PE"):
         return ""
     dec = _dec(fmt)
     out = subprocess.run([dec, binpath, "--entry"], capture_output=True, text=True).stdout.strip()
@@ -188,12 +188,12 @@ def link_module(module, do_diff=False):
                 # syntax, not a symbol reference.
                 exp_lines.append("export %s.%s='@%s'" % (name, ordn, name))
     entry_sym = ""
-    if not is_dll and fmt == "PE":                        # EXE: pull the call tree in via the entry
+    if not is_dll and fmt in ("NE", "PE"):                # EXE: pull the call tree in via the entry
         ev = _entry(binpath, fmt)
         if ev and ev != "0":
-            nm = _name_at(binpath, fmt, int(ev, 16))      # function at the entry RVA -> its symbol
+            nm = _name_at(binpath, fmt, int(ev, 16))      # function at the entry addr -> its symbol
             if nm and nm in defined:
-                entry_sym = nm + "_"                       # wcc386 '_' decoration
+                entry_sym = ("'@%s'" % nm) if fmt == "NE" else (nm + "_")   # NE @ / PE _ decoration
 
     # iterative link: whatever is still undefined (internal sub_ the decompiler didn't emit, CRT
     # helpers) gets a return-0 stub -- flagged as the completeness gap, NOT the real imports.

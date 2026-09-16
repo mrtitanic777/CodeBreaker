@@ -62,6 +62,7 @@ struct NEImage {
 
   uint16_t autodata_seg = 0;
   uint16_t align_shift = 9;
+  uint32_t entry = 0;                 // linear entry point (from the header CS:IP), 0 for a DLL
 
   // address of a segment:offset in the flat space, or 0 if seg unknown
   uint32_t LinearAddr(int seg, uint32_t off) const {
