@@ -232,7 +232,12 @@ def _sanitize_cxx(c):
     consistently at its definition, calls and comments. The ternary `? ` (space after) is not touched."""
     def fix(m):
         return "cxx_" + re.sub(r"[^A-Za-z0-9_]", "_", m.group(0)[1:])
-    return re.sub(r"\?[A-Za-z0-9_@$?]+", fix, c)
+    c = re.sub(r"\?[A-Za-z0-9_@$?]+", fix, c)
+    # stdcall-decorated names carry an `@<N>` byte-count suffix (FreeAllIMEObject@0,
+    # _JgGetMiniatureDIB@8) that is not a legal C identifier; fold the `@` to `_` consistently at
+    # every definition and call site so the decorated name becomes a plain identifier.
+    c = re.sub(r"\b([A-Za-z_]\w*)@(\d+)\b", r"\1_\2", c)
+    return c
 
 
 def make_compilable(c):
@@ -343,7 +348,13 @@ def make_compilable(c):
     # unresolved code-label references: the decompiler names a call/address target it never actually
     # emitted a body for (helper_/sub_/loc_ + address). Declaring them extern lets the reference compile
     # (they resolve at link, or stay honestly external). Skip ones defined here (they have prototypes).
+    # unresolved code-label references, two shapes: a bare helper_/sub_/loc_ + address, and a
+    # behavioural name carrying a trailing _<address> (e.g. LFN_helper_helper_0002F80). Both are
+    # call/address targets the decompiler named but never emitted a body for; declare them extern so
+    # the reference compiles. LABEL_ (goto targets) is excluded -- it is a label, not a symbol.
     referenced = set(re.findall(r"\b(?:helper|sub|loc)_[0-9A-Fa-f]{2,}\b", body))
+    referenced |= {nm for nm in re.findall(r"\b([A-Za-z_]\w*_[0-9A-Fa-f]{4,})\b", body)
+                   if not nm.startswith("LABEL_")}
     externs = ["extern int %s();" % nm for nm in sorted(referenced - fn_names)]
     if protos or externs:
         body = ("/* forward declarations (authored -- lets the file compile in any order) */\n"
