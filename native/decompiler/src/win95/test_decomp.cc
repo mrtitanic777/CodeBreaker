@@ -92,6 +92,7 @@ int main(int argc, char** argv) {
   // Build far-call-site -> (target,name) from the relocation table, following the
   // per-segment fixup chains. The instruction is 1 byte before the patched operand.
   std::map<uint32_t, std::pair<uint32_t, std::string>> sites;
+  std::set<uint32_t> reloc_sites;                 // linear addrs of fixup operands (pointer data)
   for (auto& s : img.segments) {
     auto rit = img.relocs.find(s.idx);
     if (rit == img.relocs.end()) continue;
@@ -121,6 +122,7 @@ int main(int argc, char** argv) {
         uint32_t lin = s.base_addr + site;
         if (lin < 1 || lin >= img.image.size()) break;
         sites[lin - 1] = {tgt, nm};                 // instruction is opcode before operand
+        reloc_sites.insert(lin);                    // the fixup operand itself is pointer data
         uint16_t nxt = img.image[s.base_addr + site] | (img.image[s.base_addr + site + 1] << 8);
         if (r.additive || nxt == 0xFFFF || nxt == site) break;
         site = nxt;
@@ -128,6 +130,7 @@ int main(int argc, char** argv) {
     }
   }
   lifter.SetCallSites(sites);
+  lifter.SetRelocSites(reloc_sites);
 
   // Disassembler engine: emit an instruction listing (addr: bytes  mnem ops),
   // annotating call targets with resolved names. Whole module by default.
