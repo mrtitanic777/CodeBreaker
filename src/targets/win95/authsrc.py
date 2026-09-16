@@ -255,10 +255,12 @@ def make_compilable(c):
             pp = mm.group(3).strip()
             param_types[mm.group(2)] = [] if pp in ("", "void") else [
                 _param_type(p) for p in _split_args(pp)]
+    # value-used in ONE pass over the file (a per-name full-file search was O(functions x filesize),
+    # which dominated authoring time on large modules): find every call preceded by a value context.
     value_used = set()
-    for nm in fn_names:
-        if re.search(r"(?:[=(,?:+\-*/%<>&|!~\[]|\breturn)\s*" + re.escape(nm) + r"\s*\(", c):
-            value_used.add(nm)
+    for mm2 in re.finditer(r"(?:[=(,?:+\-*/%<>&|!~\[]|\breturn)\s*([A-Za-z_]\w*)\s*\(", c):
+        value_used.add(mm2.group(1))
+    value_used &= fn_names
 
     for _s, sig, opn, close in _fn_blocks(lines):
         m = _FN_OPEN.match(lines[sig].rstrip())
@@ -371,14 +373,22 @@ def _normalize_call_args(c, param_types):
     prototype lines re-emit unchanged."""
     if not param_types:
         return c
-    names = "|".join(re.escape(n) for n in sorted(param_types, key=len, reverse=True))
-    pat = re.compile(r"\b(" + names + r")\s*\(")
-    out, i, n = [], 0, len(c)
-    while i < n:
-        m = pat.match(c, i)
-        if not m:
-            out.append(c[i]); i += 1; continue
-        j = m.end() - 1                                    # index of '('
+    # ONE finditer pass over call-like tokens. The previous version scanned every character with a
+    # regex built from an alternation of ALL function names -- O(filesize x names), which made
+    # make_compilable take tens of seconds on large modules. Here each candidate token is an O(1)
+    # dict lookup; only real call sites are rewritten, everything else is copied verbatim.
+    n = len(c)
+    out, last = [], 0
+    decl0 = re.compile(r"^(?:unsigned |signed |const )*"
+                       r"(?:void|char|short|int|long|struct\s+\w+|[A-Za-z_]\w*_t|__int\d+)\b"
+                       r"[\s\*]+[A-Za-z_]\w*$")
+    for m in re.finditer(r"\b([A-Za-z_]\w*)\s*\(", c):
+        if m.start() < last:                              # nested call inside an already-consumed span
+            continue
+        types = param_types.get(m.group(1))
+        if types is None:
+            continue
+        j = m.end() - 1                                   # index of '('
         depth, k = 0, j
         while k < n:
             if c[k] == "(":
@@ -388,15 +398,13 @@ def _normalize_call_args(c, param_types):
                 if depth == 0:
                     break
             k += 1
-        types = param_types[m.group(1)]
-        want = len(types)
+        if k >= n:
+            continue
         args = _split_args(c[j + 1:k])
-        # skip the function's own definition / prototype (its "args" are parameter declarations, a type
-        # followed by a name) -- only real call sites get normalised.
-        if args and re.match(r"^(?:unsigned |signed |const )*"
-                             r"(?:void|char|short|int|long|struct\s+\w+|[A-Za-z_]\w*_t|__int\d+)\b"
-                             r"[\s\*]+[A-Za-z_]\w*$", args[0].strip()):
-            out.append(m.group(0)); i = m.end(); continue
+        # skip the function's own definition / prototype (its "args" are parameter declarations).
+        if args and decl0.match(args[0].strip()):
+            continue
+        want = len(types)
         if len(args) > want:
             args = args[:want]
         elif len(args) < want:
@@ -404,15 +412,14 @@ def _normalize_call_args(c, param_types):
         cast = []
         for ai, a in enumerate(args):
             ty = types[ai] if ai < len(types) else ""
-            # cast every arg to the declared parameter type (int included): the call may precede the
-            # definition, so Watcom otherwise infers the arg's own type (e.g. an `unsigned long` temp)
-            # and the later definition disagrees (E1071). A function-pointer param is left uncast.
-            if ty and "(" not in ty:
-                cast.append("(%s)(%s)" % (ty, a))
-            else:
-                cast.append(a)
+            # cast every arg to the declared parameter type (int included): a call before the
+            # definition otherwise makes Watcom infer the arg's own type and the definition disagrees
+            # (E1071). A function-pointer param is left uncast.
+            cast.append("(%s)(%s)" % (ty, a) if ty and "(" not in ty else a)
+        out.append(c[last:m.start()])
         out.append(m.group(1) + "(" + ", ".join(cast) + ")")
-        i = k + 1
+        last = k + 1
+    out.append(c[last:])
     return "".join(out)
 
 
@@ -480,10 +487,11 @@ def _merge_structs(c):
     return "\n".join(out)
 
 
-def _pe_namemap(path):
+def _pe_namemap(path, module_c=None):
     """PE (Win32) name map (lever 1): exported functions -> their authentic export name; internal
     sub_ functions -> named after the most distinctive Win32 API they call. The decompiler already
-    resolves imports to named API calls in the emitted C, so this reads them straight from it."""
+    resolves imports to named API calls in the emitted C, so this reads them straight from it.
+    module_c: the already-decoded `--module` text, reused to avoid a second decode of the binary."""
     dec = _native("PE")
     names = {}
     for l in subprocess.run([dec, path, "--names"], capture_output=True, text=True).stdout.splitlines():
@@ -493,7 +501,8 @@ def _pe_namemap(path):
                 names[int(p[0], 16)] = p[1].strip()               # authentic export name
             except ValueError:
                 pass
-    c = subprocess.run([dec, path, "--module"], capture_output=True, text=True).stdout
+    c = module_c if module_c is not None else \
+        subprocess.run([dec, path, "--module"], capture_output=True, text=True).stdout
     cur, apis = None, {}
     for line in c.splitlines():
         fm = re.match(r"^[A-Za-z_].*\bsub_([0-9A-Fa-f]{4,8})\(.*\)\s*$", line)
@@ -538,7 +547,7 @@ def _author_c(path, fmt, out):
             names, svcs = {}, {}
     elif fmt == "PE":                                                # lever 1: Win32 export + API naming
         try:
-            names = _pe_namemap(path)
+            names = _pe_namemap(path, module_c=c)                     # reuse the already-decoded C
         except Exception:                                             # noqa: BLE001
             names = {}
 
@@ -641,6 +650,26 @@ def _finish_c(outpath, bits):
     return r["ok"], r["errors"]
 
 
+def _author_job(job):
+    """Author + compile-verify ONE binary; a picklable unit of work for the parallel corpus sweep.
+    Returns a row dict (also carries the source sha + compile verdict for the cache)."""
+    nm, path, outroot = job
+    try:
+        fmt, lang, n, cf = classify(path)
+        if lang != "c":
+            return {"nm": nm, "row": (nm, "asm/" + fmt, n, 0, 0, "dosrecon/asm route")}
+        out = os.path.join(outroot, "c", nm.split(".")[0].lower() + ".c")
+        tot, named = _author_c(path, fmt, out)
+        bits = 32 if fmt == "PE" else 16
+        ok, errs = _finish_c(out, bits)
+        return {"nm": nm, "fmt": fmt, "n": n, "total": tot, "named": named, "compiles": bool(ok),
+                "errors": errs, "sha": _src_sha(path), "path": path,
+                "row": (nm, "C/" + fmt, n, tot, named,
+                        os.path.relpath(out, _dr()) + ("  [build:OK]" if ok else "  [build:%d err]" % errs))}
+    except Exception as e:                                            # noqa: BLE001 -- keep the sweep going
+        return {"nm": nm, "row": (nm, "ERR", 0, 0, 0, str(e)[:60])}
+
+
 def _all_binaries():
     """Every code-bearing Win95 binary under corpus/files (dedup by name, prefer SYSTEM/)."""
     root = os.path.join(_dr(), "corpus", "files")
@@ -661,6 +690,7 @@ def main(argv):
     chain = do_all = verify = force = False
     target = None
     limit = 0
+    jobs_n = min((os.cpu_count() or 4), 12)                  # parallel workers for the corpus sweep
     i = 0
     while i < len(argv):
         a = argv[i]
@@ -672,6 +702,8 @@ def main(argv):
             verify = True
         elif a == "--force":                                 # ignore the incremental cache; redo all
             force = True
+        elif a in ("--jobs", "-j") and i + 1 < len(argv):
+            jobs_n = int(argv[i + 1]); i += 1
         elif a == "--limit" and i + 1 < len(argv):
             limit = int(argv[i + 1]); i += 1
         elif a == "--out" and i + 1 < len(argv):
@@ -712,50 +744,58 @@ def main(argv):
     quiet = do_all and len(items) > 30
     if not quiet:
         print("%-14s %-4s %-6s %-9s %s" % ("FILE", "LANG", "FUNCS", "NAMED", "authored source"))
-    done = skipped = compiled = c_total = 0
+    skipped = compiled = c_total = 0
+
+    # Phase 1 (serial, cheap): resolve notes / missing / cache-hits without any decode; the rest
+    # become jobs for the parallel workers. A cache hit needs only the source sha (no decompile).
+    jobs = []
     for nm, path, note in items:
         if note and str(path).endswith(".asm"):
             rows.append((nm, "asm", 0, 0, 0, note)); continue
         if not os.path.isfile(path):
             rows.append((nm, "?", 0, 0, 0, "MISSING")); continue
-        try:
-            fmt, lang, n, cf = classify(path)
-            if lang == "c":
-                out = os.path.join(outroot, "c", nm.split(".")[0].lower() + ".c")
-                key = os.path.relpath(path, _dr())
-                sha = _src_sha(path)
-                ce = cache.get(key)
-                if (verify and not force and ce and ce.get("sha") == sha and ce.get("engine") == ever
-                        and ce.get("compiles") and os.path.isfile(out)):
-                    c_total += 1; compiled += 1; skipped += 1
-                    rows.append((nm, "C/" + fmt, n, ce.get("total", 0), ce.get("named", 0),
-                                 "cached (compiles) -- skipped"))
-                    done += 1
-                    if quiet and done % 50 == 0:
-                        print("  ... %d/%d (%d skipped)" % (done, len(items), skipped))
-                    continue
-                tot, named = _author_c(path, fmt, out)
-                ok = errs = None
-                if verify:
-                    bits = 32 if fmt == "PE" else 16
-                    ok, errs = _finish_c(out, bits)
-                    c_total += 1
-                    compiled += 1 if ok else 0
-                    cache[key] = {"sha": sha, "engine": ever, "compiles": bool(ok),
-                                  "errors": errs, "total": tot, "named": named}
-                tag = ("build:OK" if ok else "build:%d err" % errs) if verify else "authored"
-                rows.append((nm, "C/" + fmt, n, tot, named, os.path.relpath(out, _dr()) + "  [" + tag + "]"))
-                line = "%-14s %-6s %-6d %-9s %s" % (nm, "C/" + fmt, n, "%d/%d" % (named, tot), tag)
-            else:
-                rows.append((nm, "asm/" + fmt, n, 0, 0, "dosrecon/asm route"))
-                line = "%-14s %-6s %-6d %-9s %s" % (nm, "asm/" + fmt, n, "-", "asm route")
-            if not quiet:
-                print(line)
-        except Exception as e:                                       # noqa: BLE001 -- keep the sweep going
-            rows.append((nm, "ERR", 0, 0, 0, str(e)[:60]))
-        done += 1
-        if quiet and done % 50 == 0:
-            print("  ... %d/%d authored (%d skipped)" % (done, len(items), skipped))
+        key = os.path.relpath(path, _dr())
+        out = os.path.join(outroot, "c", nm.split(".")[0].lower() + ".c")
+        ce = cache.get(key)
+        if (verify and not force and ce and ce.get("sha") == _src_sha(path) and ce.get("engine") == ever
+                and ce.get("compiles") and os.path.isfile(out)):
+            c_total += 1; compiled += 1; skipped += 1
+            rows.append((nm, "C/" + ce.get("fmt", "PE"), ce.get("n", 0), ce.get("total", 0),
+                         ce.get("named", 0), "cached (compiles) -- skipped"))
+            continue
+        jobs.append((nm, path, outroot))
+
+    # Phase 2 (parallel): author + compile-verify every remaining file across worker processes. The
+    # decompiler and wcc are the cost and they are per-file independent, so this scales ~linearly with
+    # cores -- the corpus sweep goes from serial-hours to minutes. -j1 forces the serial path.
+    def _apply(res):
+        nonlocal compiled, c_total
+        rows.append(res["row"])
+        if "compiles" in res:
+            c_total += 1
+            if res["compiles"]:
+                compiled += 1
+            cache[os.path.relpath(res["path"], _dr())] = {
+                "sha": res["sha"], "engine": ever, "compiles": res["compiles"],
+                "errors": res["errors"], "total": res["total"], "named": res["named"],
+                "fmt": res["fmt"], "n": res["n"]}
+
+    done = 0
+    if jobs_n > 1 and len(jobs) > 1:
+        from concurrent.futures import ProcessPoolExecutor, as_completed
+        with ProcessPoolExecutor(max_workers=jobs_n) as ex:
+            futs = {ex.submit(_author_job, j): j for j in jobs}
+            for fut in as_completed(futs):
+                _apply(fut.result()); done += 1
+                if not quiet:
+                    print("  %s" % (rows[-1][0]))
+                elif done % 50 == 0:
+                    print("  ... %d/%d authored (%d skipped, %d workers)" % (done, len(jobs), skipped, jobs_n))
+    else:
+        for j in jobs:
+            _apply(_author_job(j)); done += 1
+            if quiet and done % 50 == 0:
+                print("  ... %d/%d authored (%d skipped)" % (done, len(jobs), skipped))
 
     if verify:
         try:

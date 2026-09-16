@@ -49,8 +49,9 @@ def compile_c(cpath, bits=16, extra=None):
     ow = _ow()
     cc = os.path.join(ow, "binnt", "wcc.exe" if bits == 16 else "wcc386.exe")
     tgt = "windows" if bits == 16 else "nt"
-    args = [cc, os.path.abspath(cpath), "-bt=" + tgt, "-q", "-fo=" +
-            os.path.join(os.environ.get("TEMP", "/tmp"), "owcheck.o")]
+    # per-process object file so parallel workers never clobber each other's output
+    obj = os.path.join(os.environ.get("TEMP", "/tmp"), "owcheck_%d.o" % os.getpid())
+    args = [cc, os.path.abspath(cpath), "-bt=" + tgt, "-q", "-fo=" + obj]
     if bits == 16:
         args[1:1] = ["-mc", "-3"]                           # compact model + 386 CPU (Win16/krnl386)
     if extra:
@@ -82,7 +83,7 @@ def _asm_error_lines(cpath, bits):
     ow = _ow()
     cc = os.path.join(ow, "binnt", "wcc.exe" if bits == 16 else "wcc386.exe")
     args = [cc, os.path.abspath(cpath), "-bt=" + ("windows" if bits == 16 else "nt"), "-q",
-            "-fo=" + os.path.join(os.environ.get("TEMP", "/tmp"), "owcheck.o")]
+            "-fo=" + os.path.join(os.environ.get("TEMP", "/tmp"), "owcheck_%d.o" % os.getpid())]
     if bits == 16:
         args[1:1] = ["-mc", "-3"]
     r = subprocess.run(args, capture_output=True, text=True, env=_env(),
