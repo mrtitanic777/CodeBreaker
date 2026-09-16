@@ -736,9 +736,20 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
         setReg(kGpBase, x.dst);
       } else {
         // The fallback text lands in an __asm{} block, so emit MASM/Watcom syntax that our
-        // assemblers can actually build (word ptr [..], 21h, bare string mnemonics).
+        // assemblers can actually build (word ptr [..], 21h, bare string mnemonics). Also carry the
+        // raw bytes: an assembler that cannot spell the mnemonic (undocumented/rare opcodes) can
+        // still emit the exact instruction via `db`, so no real behaviour is ever dropped.
         ILInstr x; x.op = ILOp::InlineAsm; x.address = a;
         x.asm_text = FormatX86(in, AsmSyntax::Masm);
+        {
+          char hb[8]; std::string hx;
+          uint32_t n = (in.valid && in.len > 0) ? (uint32_t)in.len : 1;
+          for (uint32_t bi = 0; bi < n && a + bi < image_size; ++bi) {
+            std::snprintf(hb, sizeof hb, "%s0%02Xh", bi ? "," : "", image[a + bi]);
+            hx += hb;
+          }
+          x.raw_hex = hx;
+        }
         bb.instrs.push_back(x);
         if (getenv("LIFT_DIAG")) std::fprintf(stderr, "UNHANDLED %s\n", m.c_str());
       }
