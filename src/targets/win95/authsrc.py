@@ -79,6 +79,18 @@ def _namemap(path, fmt):
         namemap[s] = DR._beautify_name(s, kind, ints, strs, "")
         finfo[s] = {"services": services, "callees": callees, "strs": strs, "ints": ints, "kind": kind}
     DR._name_by_behavior(namemap, finfo, set(starts))
+    # NE modules: name exported functions from the NE entry+name tables (authentic Win16 API names --
+    # Win16 GUI code is API-driven, so INT/string behavioral evidence alone leaves most unnamed).
+    if fmt == "NE":
+        try:
+            from src.targets.win95.nerecon import NE
+            ne = NE(data)
+            for (seg, off), nm in ne.export_map().items():
+                if 1 <= seg <= len(ne.segs):
+                    fo = ne.segs[seg - 1]["file"] + off
+                    namemap[fo] = nm
+        except Exception:                                    # noqa: BLE001
+            pass
     # the corpus name store wins: a curated name (keyed by body_id -> propagates from any module, or
     # module-local) overrides the engine's inferred name, so names set once render everywhere.
     try:
