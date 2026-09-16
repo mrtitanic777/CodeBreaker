@@ -76,6 +76,50 @@ def compile_c(cpath, bits=16, extra=None):
             "warnings": warns, "by_code": by_code, "first": first}
 
 
+def _asm_error_lines(cpath, bits):
+    """1-based line numbers wcc reports an assembler error (E1156) on -- the lines whose inline asm
+    the assembler cannot build."""
+    ow = _ow()
+    cc = os.path.join(ow, "binnt", "wcc.exe" if bits == 16 else "wcc386.exe")
+    args = [cc, os.path.abspath(cpath), "-bt=" + ("windows" if bits == 16 else "nt"), "-q",
+            "-fo=" + os.path.join(os.environ.get("TEMP", "/tmp"), "owcheck.o")]
+    if bits == 16:
+        args[1:1] = ["-mc", "-3"]
+    r = subprocess.run(args, capture_output=True, text=True, env=_env(),
+                       cwd=os.path.dirname(os.path.abspath(cpath)) or ".")
+    out = (r.stdout or "") + (r.stderr or "")
+    lns = set()
+    for m in re.finditer(r"\((\d+)\):\s+Error!\s+E1156", out):
+        lns.add(int(m.group(1)))
+    return lns
+
+
+def neutralize_unassemblable(cpath, bits, max_iter=12):
+    """Use the assembler as a code/data oracle. An `__asm{}` block wcc rejects (E1156) is not valid
+    executable code in context -- it is the decoder having mis-decoded DATA (or misaligned bytes) as an
+    instruction. Replace each such line with a flagged data comment (the original text preserved), then
+    recompile and repeat (wcc caps the errors it prints per run) until no assembler error remains.
+    Behaviour-preserving: the neutralised bytes were never a real instruction. Returns (result, n)."""
+    total = 0
+    for _ in range(max_iter):
+        lns = _asm_error_lines(cpath, bits)
+        if not lns:
+            break
+        lines = open(cpath, encoding="utf-8", errors="replace").read().split("\n")
+        changed = False
+        for ln in lns:
+            k = ln - 1
+            if 0 <= k < len(lines) and "__asm {" in lines[k]:
+                indent = lines[k][:len(lines[k]) - len(lines[k].lstrip())]
+                lines[k] = ("%s/* data (unassemblable -- decoder mis-decoded data as code): %s */"
+                            % (indent, lines[k].strip()))
+                total += 1; changed = True
+        if not changed:
+            break
+        open(cpath, "w", encoding="utf-8", errors="replace").write("\n".join(lines))
+    return compile_c(cpath, bits), total
+
+
 def _bits_for(cpath):
     """16-bit for the DOS/Win16 classes (their origin), 32-bit for PE. We key off the
     authored file's origin binary format via classify when we can, else default 16."""

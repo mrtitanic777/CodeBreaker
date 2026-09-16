@@ -225,8 +225,19 @@ def _fn_blocks(lines):
             i += 1
 
 
+def _sanitize_cxx(c):
+    """C++ modules (e.g. fdisk's INET_PARSER) carry MSVC-mangled export names like
+    `?NextParam@INET_PARSER@@QAEPADXZ`, which are not legal C identifiers -- they break the parser and
+    the compiler. Rewrite every mangled token (starts with `?`, no spaces) to a valid identifier,
+    consistently at its definition, calls and comments. The ternary `? ` (space after) is not touched."""
+    def fix(m):
+        return "cxx_" + re.sub(r"[^A-Za-z0-9_]", "_", m.group(0)[1:])
+    return re.sub(r"\?[A-Za-z0-9_@$?]+", fix, c)
+
+
 def make_compilable(c):
     """Rewrite authored decompiler-C into a translation unit OpenWatcom compiles. Returns the text."""
+    c = _sanitize_cxx(c)
     lines = c.split("\n")
     edits = {}                                              # line_idx -> replacement line(s)
     inject = {}                                             # open-brace idx -> [decl lines]
@@ -597,6 +608,39 @@ def _dr():
     return sib if os.path.isdir(os.path.join(sib, "corpus")) else dr
 
 
+def _engine_ver():
+    """A signature of the authoring engine (this module + owcheck + the decompiler binaries). When it
+    changes, the incremental cache is invalidated so a corpus re-run re-authors with the new engine."""
+    import hashlib
+    h = hashlib.sha1()
+    here = os.path.dirname(os.path.abspath(__file__))
+    for f in ("authsrc.py", "owcheck.py"):
+        p = os.path.join(here, f)
+        if os.path.isfile(p):
+            h.update(("%s:%d;" % (f, int(os.path.getmtime(p)))).encode())
+    bindir = os.path.join(paths.repo_root(), "native", "decompiler", "build", "bin")
+    for b in ("win95mzdec.exe", "win95dec.exe", "win95pedec.exe"):
+        p = os.path.join(bindir, b)
+        if os.path.isfile(p):
+            h.update(("%s:%d;" % (b, int(os.path.getmtime(p)))).encode())
+    return h.hexdigest()[:16]
+
+
+def _src_sha(path):
+    import hashlib
+    return hashlib.sha1(open(path, "rb").read()).hexdigest()[:16]
+
+
+def _finish_c(outpath, bits):
+    """Compile the authored C with OpenWatcom; if only inline-asm (E1156) blocks the build, neutralise
+    the mis-decoded ones and recompile. Returns (compiles: bool, errors: int)."""
+    from src.targets.win95 import owcheck
+    r = owcheck.compile_c(outpath, bits)
+    if not r["ok"] and r["by_code"].get("E1156"):
+        r, _n = owcheck.neutralize_unassemblable(outpath, bits)
+    return r["ok"], r["errors"]
+
+
 def _all_binaries():
     """Every code-bearing Win95 binary under corpus/files (dedup by name, prefer SYSTEM/)."""
     root = os.path.join(_dr(), "corpus", "files")
@@ -614,7 +658,7 @@ def _all_binaries():
 
 def main(argv):
     outroot = os.path.join(_dr(), "recon", "authored")
-    chain = do_all = False
+    chain = do_all = verify = force = False
     target = None
     limit = 0
     i = 0
@@ -624,6 +668,10 @@ def main(argv):
             chain = True
         elif a == "--all":
             do_all = True
+        elif a == "--verify":                                # compile each authored C with OpenWatcom
+            verify = True
+        elif a == "--force":                                 # ignore the incremental cache; redo all
+            force = True
         elif a == "--limit" and i + 1 < len(argv):
             limit = int(argv[i + 1]); i += 1
         elif a == "--out" and i + 1 < len(argv):
@@ -631,6 +679,7 @@ def main(argv):
         elif not a.startswith("-"):
             target = a
         i += 1
+    verify = verify or do_all or chain                       # corpus/chain runs verify by default
 
     items = []
     scoreboard = None
@@ -647,11 +696,23 @@ def main(argv):
     else:
         print(__doc__); return 0
 
+    # incremental cache: skip files already authored + verified-compilable whose source and the engine
+    # are unchanged, so a corpus re-run does NOT redo work that is already correct.
+    import json
+    cache_path = os.path.join(outroot, ".authcache.json")
+    cache = {}
+    if verify and not force and os.path.isfile(cache_path):
+        try:
+            cache = json.load(open(cache_path))
+        except Exception:                                            # noqa: BLE001
+            cache = {}
+    ever = _engine_ver() if verify else ""
+
     rows = []
     quiet = do_all and len(items) > 30
     if not quiet:
         print("%-14s %-4s %-6s %-9s %s" % ("FILE", "LANG", "FUNCS", "NAMED", "authored source"))
-    done = 0
+    done = skipped = compiled = c_total = 0
     for nm, path, note in items:
         if note and str(path).endswith(".asm"):
             rows.append((nm, "asm", 0, 0, 0, note)); continue
@@ -661,9 +722,30 @@ def main(argv):
             fmt, lang, n, cf = classify(path)
             if lang == "c":
                 out = os.path.join(outroot, "c", nm.split(".")[0].lower() + ".c")
+                key = os.path.relpath(path, _dr())
+                sha = _src_sha(path)
+                ce = cache.get(key)
+                if (verify and not force and ce and ce.get("sha") == sha and ce.get("engine") == ever
+                        and ce.get("compiles") and os.path.isfile(out)):
+                    c_total += 1; compiled += 1; skipped += 1
+                    rows.append((nm, "C/" + fmt, n, ce.get("total", 0), ce.get("named", 0),
+                                 "cached (compiles) -- skipped"))
+                    done += 1
+                    if quiet and done % 50 == 0:
+                        print("  ... %d/%d (%d skipped)" % (done, len(items), skipped))
+                    continue
                 tot, named = _author_c(path, fmt, out)
-                rows.append((nm, "C/" + fmt, n, tot, named, os.path.relpath(out, _dr())))
-                line = "%-14s %-6s %-6d %-9s -> %s" % (nm, "C/" + fmt, n, "%d/%d" % (named, tot), rows[-1][5])
+                ok = errs = None
+                if verify:
+                    bits = 32 if fmt == "PE" else 16
+                    ok, errs = _finish_c(out, bits)
+                    c_total += 1
+                    compiled += 1 if ok else 0
+                    cache[key] = {"sha": sha, "engine": ever, "compiles": bool(ok),
+                                  "errors": errs, "total": tot, "named": named}
+                tag = ("build:OK" if ok else "build:%d err" % errs) if verify else "authored"
+                rows.append((nm, "C/" + fmt, n, tot, named, os.path.relpath(out, _dr()) + "  [" + tag + "]"))
+                line = "%-14s %-6s %-6d %-9s %s" % (nm, "C/" + fmt, n, "%d/%d" % (named, tot), tag)
             else:
                 rows.append((nm, "asm/" + fmt, n, 0, 0, "dosrecon/asm route"))
                 line = "%-14s %-6s %-6d %-9s %s" % (nm, "asm/" + fmt, n, "-", "asm route")
@@ -673,7 +755,14 @@ def main(argv):
             rows.append((nm, "ERR", 0, 0, 0, str(e)[:60]))
         done += 1
         if quiet and done % 50 == 0:
-            print("  ... %d/%d authored" % (done, len(items)))
+            print("  ... %d/%d authored (%d skipped)" % (done, len(items), skipped))
+
+    if verify:
+        try:
+            os.makedirs(outroot, exist_ok=True)
+            json.dump(cache, open(cache_path, "w"), indent=0, sort_keys=True)
+        except Exception:                                            # noqa: BLE001
+            pass
 
     if scoreboard:
         import csv
@@ -690,6 +779,9 @@ def main(argv):
         print("  %d files: %d C-authored, %d asm-route, %d errors" % (len(rows), c_files, asm_files, errs))
         print("  C functions named: %d / %d (%.0f%%)"
               % (tot_named, tot_funcs, 100.0 * tot_named / max(tot_funcs, 1)))
+        if verify:
+            print("  C files compiling with OpenWatcom: %d / %d (%.0f%%)   [%d skipped as already-correct]"
+                  % (compiled, c_total, 100.0 * compiled / max(c_total, 1), skipped))
         print("  -> %s" % scoreboard)
     print("\nauthored source -> %s" % outroot)
     return 0
