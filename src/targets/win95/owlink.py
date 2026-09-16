@@ -61,6 +61,20 @@ def _imports(binpath, fmt):
     return imps
 
 
+def _exports(binpath, fmt):
+    """[(ordinal, name)] from the module's own export/entry table (NE)."""
+    if fmt != "NE":
+        return []
+    dec = _dec("NE")
+    out = subprocess.run([dec, binpath, "--exports"], capture_output=True, text=True).stdout
+    exps = []
+    for line in out.splitlines():
+        p = line.split("\t")
+        if len(p) == 2 and p[1].strip():
+            exps.append((p[0].strip(), p[1].strip()))
+    return exps
+
+
 def link_module(module, do_diff=False):
     binpath = _find_binary(module)
     if not binpath:
@@ -101,6 +115,23 @@ def link_module(module, do_diff=False):
         else:
             imp_lines.append("import %s '%s'.'%s'" % (api, mod, api))
 
+    # real exports -> wlink `export` directives, so the module exports its functions AND wlink keeps
+    # the exported code + everything it calls (otherwise it dead-code-eliminates to the entry stub).
+    # Only export names actually DEFINED here (an undefined export aborts the link).
+    is_dll = binpath.lower().endswith(".dll")
+    defined = set(re.findall(r"(?m)^[A-Za-z].*?\b([A-Za-z_]\w*)\s*\([^;]*\)\s*$",
+                             open(src, encoding="utf-8", errors="replace").read()))
+    exp_lines = []
+    if is_dll:                                             # DLLs export; an EXE keeps code via its entry
+        for ordn, name in _exports(binpath, fmt):
+            # alias the clean export name to wcc's decorated internal symbol. 16-bit __fastcall decorates
+            # with a LEADING '@' (@NAME), so `export NAME='@NAME'.ordinal`; this publishes the export
+            # and forces wlink to keep the function + everything it calls.
+            if name in defined:
+                # quote the internal symbol: an unquoted leading @ is wlink's read-directives-from-file
+                # syntax, not a symbol reference.
+                exp_lines.append("export %s.%s='@%s'" % (name, ordn, name))
+
     # iterative link: whatever is still undefined (internal sub_ the decompiler didn't emit, CRT
     # helpers) gets a return-0 stub -- flagged as the completeness gap, NOT the real imports.
     system = "windows" if bits == 16 else "nt"
@@ -117,6 +148,8 @@ def link_module(module, do_diff=False):
             f.write("file %s.obj\nfile stubs.obj\n" % module)
             for l in imp_lines:
                 f.write(l + "\n")
+            for l in exp_lines:
+                f.write(l + "\n")
         lr = subprocess.run([os.path.join(ow, "binnt", "wlink.exe"), "@link.lnk"], cwd=bld,
                             capture_output=True, text=True, env=env)
         undef = set(re.findall(r"E2028: (\w+) is an undefined reference", lr.stdout + lr.stderr))
@@ -127,7 +160,7 @@ def link_module(module, do_diff=False):
         stubs |= new
     outpath = os.path.join(bld, out)
     res = {"ok": os.path.isfile(outpath), "output": outpath if os.path.isfile(outpath) else None,
-           "fmt": fmt, "imports": len(imp_lines), "stubs": len(stubs),
+           "fmt": fmt, "imports": len(imp_lines), "exports": len(exp_lines), "stubs": len(stubs),
            "size": os.path.getsize(outpath) if os.path.isfile(outpath) else 0,
            "retail_size": os.path.getsize(binpath)}
     if not res["ok"]:
@@ -143,9 +176,9 @@ def main(argv):
     for m in mods:
         r = link_module(m, do_diff)
         if r.get("ok"):
-            print("  LINK-OK %-12s [%s]  %d real imports, %d internal stubs -> %s (%d bytes; retail %d)"
-                  % (m, r["fmt"], r["imports"], r["stubs"], os.path.basename(r["output"]),
-                     r["size"], r["retail_size"]))
+            print("  LINK-OK %-12s [%s]  %d imports, %d exports, %d stubs -> %s (%d bytes; retail %d, %.0f%%)"
+                  % (m, r["fmt"], r["imports"], r.get("exports", 0), r["stubs"], os.path.basename(r["output"]),
+                     r["size"], r["retail_size"], 100.0 * r["size"] / max(r["retail_size"], 1)))
         else:
             print("  LINK-NO %-12s  %s" % (m, r.get("error") or r.get("log", "")[-200:]))
     return 0
