@@ -160,19 +160,82 @@ def split_module(cpath, module, outroot):
     return {"dir": moddir, "header": hdr, "files": files, "funcs": len(funcs)}
 
 
+def _verify_one(job):
+    """Compile every .c piece of a split module against its header; return (module, ok, total)."""
+    from src.targets.win95 import owcheck
+    moddir, bits = job
+    ow = _ow_bin = os.path.join(_ow(), "binnt")
+    cc = os.path.join(_ow_bin, "wcc.exe" if bits == 16 else "wcc386.exe")
+    env = owcheck._env()
+    tgt = "windows" if bits == 16 else "nt"
+    ok = tot = 0
+    for f in sorted(os.listdir(moddir)):
+        if not f.endswith(".c"):
+            continue
+        tot += 1
+        args = [cc, os.path.join(moddir, f), "-bt=" + tgt, "-q", "-i=" + moddir,
+                "-fo=" + os.path.join(os.environ.get("TEMP", "/tmp"), "v_%d.o" % os.getpid())]
+        if bits == 16:
+            args[1:1] = ["-mc", "-3"]
+        try:
+            r = subprocess.run(args, capture_output=True, text=True, env=env, timeout=90)
+            if r.returncode == 0 and "Error!" not in (r.stdout + r.stderr):
+                ok += 1
+        except subprocess.TimeoutExpired:
+            pass
+    return (os.path.basename(moddir), ok, tot)
+
+
+def _ow():
+    return os.path.join(paths.repo_root(), "experiments", "premise-proof", "open-watcom-v2", "rel")
+
+
 def main(argv):
     outroot = os.path.join(_dr(), "recon", "authored", "tree")
     cdir = os.path.join(_dr(), "recon", "authored", "c")
-    do_all = False
+    do_all = verify = False
+    jobs_n = min((os.cpu_count() or 4), 12)
     mods = []
     i = 0
     while i < len(argv):
         a = argv[i]
         if a == "--all":
             do_all = True
+        elif a == "--verify":
+            verify = True
+        elif a in ("--jobs", "-j") and i + 1 < len(argv):
+            jobs_n = int(argv[i + 1]); i += 1
         elif not a.startswith("-"):
             mods.append(a)
         i += 1
+
+    if verify:
+        # compile every split piece across the tree, in parallel; report per-module and totals.
+        import json
+        cache = json.load(open(os.path.join(_dr(), "recon", "authored", ".authcache.json")))
+        fmt_by = {os.path.basename(k).split(".")[0].lower(): v.get("fmt", "PE") for k, v in cache.items()}
+        moddirs = [d for d in sorted(os.listdir(outroot)) if os.path.isdir(os.path.join(outroot, d))]
+        jobs = [(os.path.join(outroot, d), 32 if fmt_by.get(d, "PE") == "PE" else 16) for d in moddirs]
+        tok = ttot = full = 0
+        from concurrent.futures import ProcessPoolExecutor, as_completed
+        rows = []
+        with ProcessPoolExecutor(max_workers=jobs_n) as ex:
+            futs = [ex.submit(_verify_one, j) for j in jobs]
+            for k, fut in enumerate(as_completed(futs)):
+                mod, ok, tot = fut.result(); rows.append((mod, ok, tot))
+                tok += ok; ttot += tot; full += 1 if ok == tot and tot else 0
+                if (k + 1) % 100 == 0:
+                    print("  ... %d/%d modules" % (k + 1, len(jobs)))
+        with open(os.path.join(outroot, "VERIFY.csv"), "w", newline="") as f:
+            import csv
+            w = csv.writer(f); w.writerow(["module", "pieces_ok", "pieces_total"])
+            for r in sorted(rows):
+                w.writerow(r)
+        print("\n== split-tree compile verification ==")
+        print("  modules fully compiling: %d / %d" % (full, len(jobs)))
+        print("  pieces compiling: %d / %d (%.1f%%)" % (tok, ttot, 100.0 * tok / max(ttot, 1)))
+        print("  -> %s" % os.path.join(outroot, "VERIFY.csv"))
+        return 0
     if do_all:
         mods = [f[:-2] for f in sorted(os.listdir(cdir)) if f.endswith(".c")]
     elif not mods:
