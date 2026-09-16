@@ -44,7 +44,11 @@ def _parse(text):
     preamble = []
     i = 0
     if lines and lines[0].startswith("/*"):
-        while i < len(lines) and not lines[i].startswith("//"):   # header comment + fwd-decls
+        # collect ONLY the header comment + forward-decl block; stop at the first function comment
+        # (`//`) or struct definition so struct bodies are never swept into the preamble (their field
+        # lines end in ';' and would leak as orphaned decls, and `};` as a stray brace, in the header).
+        while i < len(lines) and not (lines[i].startswith("//")
+                                      or lines[i].lstrip().startswith("struct ")):
             preamble.append(lines[i]); i += 1
     structs, funcs = [], []
     n = len(lines)
