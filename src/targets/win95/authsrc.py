@@ -185,7 +185,7 @@ _FN_OPEN = re.compile(r"^([A-Za-z_].*?)\b([A-Za-z_]\w*)\s*\(([^;]*)\)\s*$")
 _DECL = re.compile(r"^\s*(?:unsigned\s+|signed\s+|const\s+)*"
                    r"(?:void|char|short|int|long|float|double|__int8|__int16|__int32|__int64|"
                    r"struct\s+\w+|[A-Za-z_]\w*_t)\b[\s\*]+([A-Za-z_][\w,\s\*]*);")
-_TEMP = re.compile(r"\b([rvaf]\d{1,3}|indirect\d+)\b")      # temps: r/v/a/f pseudo-regs + indirect
+_TEMP = re.compile(r"\b([rvaf]\d{1,4}|indirect\d+)\b")      # temps: r/v/a/f pseudo-regs (up to 4 digits) + indirect
 _FLAGS = ("CA", "OV", "SF", "ZF", "PF", "AF", "DF", "CF")   # decompiler condition-flag pseudos
 
 
@@ -352,10 +352,20 @@ def make_compilable(c):
     # behavioural name carrying a trailing _<address> (e.g. LFN_helper_helper_0002F80). Both are
     # call/address targets the decompiler named but never emitted a body for; declare them extern so
     # the reference compiles. LABEL_ (goto targets) is excluded -- it is a label, not a symbol.
+    _EXT_KW = {"__int8", "__int16", "__int32", "__int64", "__fastcall", "__cdecl", "__stdcall",
+               "__asm", "__declspec", "__pascal", "__far", "__near", "__huge"}
     referenced = set(re.findall(r"\b(?:helper|sub|loc)_[0-9A-Fa-f]{2,}\b", body))
     referenced |= {nm for nm in re.findall(r"\b([A-Za-z_]\w*_[0-9A-Fa-f]{4,})\b", body)
                    if not nm.startswith("LABEL_")}
-    externs = ["extern int %s();" % nm for nm in sorted(referenced - fn_names)]
+    # also unresolved imported/CRT references used as values (addresses): a resolved import name
+    # (KERNEL32_CloseHandle0), a CRT symbol (__threadid0), or a Win16 all-caps export (MESSAGEBEEP0).
+    referenced |= {nm for nm in re.findall(
+        r"\b(__[A-Za-z]\w*|[A-Z][A-Z0-9]{4,}_[A-Za-z0-9_]+|[A-Z][A-Z0-9]{6,})\b", body)
+        if nm not in _EXT_KW}
+    # exclude everything that already has a prototype here (canonical AND dup-renamed definitions,
+    # which carry __fastcall) -- externing them would clash with that prototype (E1057).
+    proto_names = set(re.findall(r"\b([A-Za-z_]\w*)\(\);", "\n".join(protos)))
+    externs = ["extern int %s();" % nm for nm in sorted(referenced - fn_names - proto_names - _EXT_KW)]
     if protos or externs:
         body = ("/* forward declarations (authored -- lets the file compile in any order) */\n"
                 + "\n".join(externs + protos) + "\n\n" + body)
