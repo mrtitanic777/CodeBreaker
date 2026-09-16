@@ -83,6 +83,24 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
   // inter-function padding is never decoded as instructions (the main source of
   // bogus __asm and misdecodes at scale). Indirect jumps end a run (no target
   // to follow -- jump-table recovery is a later lever). ---
+  // A C string literal embedded in a code segment (e.g. `push offset msg; call FatalExit` where
+  // FatalExit never returns, then the message bytes follow) must not be decoded as instructions.
+  // English text decodes into exactly the garbage we otherwise emit ("Unable" -> push/outs/popa/
+  // bound...). Detect a NUL-terminated printable run of >=8 bytes (or a very long printable run) and
+  // treat that address as data: the reachability walk stops there instead of decoding the string.
+  auto dataRunAt = [&](uint32_t a) -> bool {
+    if (a >= image_size) return false;
+    uint32_t i = a;
+    while (i < image_size && i < a + 256) {
+      uint8_t b = image[i];
+      if (b == 0x00) break;                 // terminator
+      if (b < 0x20 || b > 0x7E) return false;   // non-printable -> not a C string
+      ++i;
+    }
+    uint32_t runlen = i - a;
+    return runlen >= 8;                      // >=8 printable then NUL (or >=256): a string, not code
+  };
+
   std::vector<X86Insn> insns;
   std::set<uint32_t> leaders{entry};
   std::map<uint32_t, size_t> at;
@@ -90,6 +108,7 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
   while (!work.empty()) {
     uint32_t a = work.back(); work.pop_back();
     while (a >= entry && a < end && !at.count(a)) {
+      if (dataRunAt(a)) break;              // walked into an embedded string literal -> stop (data)
       X86Insn in = DecodeX86Auto(image, image_size, a, a, def_op16);
       at[a] = insns.size();
       insns.push_back(in);
