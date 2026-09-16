@@ -133,8 +133,16 @@ X86Insn DecodeX86Cap(const uint8_t* data, size_t size, size_t pos, uint32_t addr
       d.kind = OpKind::Reg;
       d.reg = mapReg(op.reg);
     } else if (op.type == X86_OP_IMM) {
-      if (branch) { d.kind = OpKind::Rel; d.imm = (int64_t)op.imm; }
-      else        { d.kind = OpKind::Imm; d.imm = (int64_t)op.imm; }
+      if (branch) {
+        d.kind = OpKind::Rel; d.imm = (int64_t)op.imm;
+        // In 16-bit mode Capstone wraps a near branch target to the 16-bit segment offset, dropping
+        // the segment base -- so a call lands on offset 0x10 while the callee is defined at the linear
+        // address seg_base|0x10. A near branch stays in-segment, so re-attach the segment base (the
+        // high 16 bits of this instruction's linear address). Keeps call targets consistent with the
+        // function definitions/discovery -- otherwise the whole intra-segment call graph is unlinkable.
+        if (default_op16 && (addr & 0xFFFF0000u) && (uint64_t)d.imm < 0x10000u)
+          d.imm = (int64_t)((addr & 0xFFFF0000u) | ((uint32_t)d.imm & 0xFFFFu));
+      } else      { d.kind = OpKind::Imm; d.imm = (int64_t)op.imm; }
     } else if (op.type == X86_OP_MEM) {
       d.kind = OpKind::Mem;
       d.base = mapReg(op.mem.base);
