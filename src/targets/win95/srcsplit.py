@@ -23,6 +23,7 @@ cross-file calls resolve, and each is verified to compile with OpenWatcom.
 import os
 import re
 import sys
+import subprocess
 
 from src.core import paths
 from src.targets.win95 import authsrc
