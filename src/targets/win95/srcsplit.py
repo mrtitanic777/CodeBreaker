@@ -258,9 +258,14 @@ def _verify_one(job):
         if bits == 16:
             args[1:1] = ["-mc", "-3"]
         try:
-            r = subprocess.run(args, capture_output=True, text=True, env=env, timeout=90)
-            out = r.stdout + r.stderr
-            if "E1119" in out:                               # wcc optimizer ICE -> retry without opt
+            try:
+                r = subprocess.run(args, capture_output=True, text=True, env=env, timeout=90)
+                out = r.stdout + r.stderr
+                ice = "E1119" in out
+            except subprocess.TimeoutExpired:
+                ice = True                                   # unbounded compile == the same optimizer bug
+                out = ""
+            if ice:                                          # wcc optimizer ICE / hang -> retry without opt
                 r = subprocess.run(args[:1] + ["-od"] + args[1:], capture_output=True,
                                    text=True, env=env, timeout=90)
                 out = r.stdout + r.stderr
