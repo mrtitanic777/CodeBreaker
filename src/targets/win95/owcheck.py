@@ -63,8 +63,13 @@ def compile_c(cpath, bits=16, extra=None):
         r = subprocess.run(args, capture_output=True, text=True, env=_env(),
                            cwd=os.path.dirname(os.path.abspath(cpath)) or ".", timeout=90)
     except subprocess.TimeoutExpired:
+        # An unbounded compile is the OTHER face of the wcc optimizer pathology (the E1119 ICE is
+        # the same bug that here just spins). Retry once with the optimizer off (-od): these units
+        # then compile in well under a second. Only if -od also times out is it a genuine hang.
+        if not (extra and "-od" in extra):
+            return compile_c(cpath, bits, extra=list(extra or []) + ["-od"])
         return {"ok": False, "errors": 1, "warnings": 0,
-                "by_code": {"ETIMEOUT": 1}, "first": ["wcc timed out (>90s)"]}
+                "by_code": {"ETIMEOUT": 1}, "first": ["wcc timed out (>90s, even with -od)"]}
     out = (r.stdout or "") + (r.stderr or "")
     errs = warns = 0
     by_code, first = {}, []
