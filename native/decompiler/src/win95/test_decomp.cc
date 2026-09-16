@@ -102,7 +102,8 @@ int main(int argc, char** argv) {
       if (r.kind == win95::NEReloc::INTERNAL) {
         tgt = img.LinearAddr(r.seg, r.entry);
         auto n = names.find(tgt);
-        nm = n != names.end() ? n->second : ("sub_" + std::to_string(tgt));
+        char sb[24]; std::snprintf(sb, sizeof sb, "sub_%06X", tgt);   // hex, matches the definition name
+        nm = n != names.end() ? n->second : sb;
       } else if (r.kind == win95::NEReloc::IMPORTORD) {
         std::string mod = (r.module >= 1 && r.module <= (int)img.module_refs.size())
                               ? img.module_refs[r.module - 1] : "IMP";
@@ -197,16 +198,69 @@ int main(int argc, char** argv) {
   // Function-start discovery shared by --names and --module.
   auto discover = [&]() {
     std::map<int, std::set<uint32_t>> starts;   // seg idx -> function start addrs
-    for (auto& s : img.segments) if (!s.is_data) starts[s.idx].insert(s.base_addr);
-    for (auto& e : img.entries) if (e.addr) starts[e.seg].insert(e.addr);
-    for (auto& kv : sites) { uint32_t t = kv.second.first; if (t) starts[t >> 16].insert(t); }
-    for (auto& s : img.segments) {              // near-call (E8) targets via linear scan
+    std::map<int, const win95::NESegment*> byidx;
+    for (auto& s : img.segments) byidx[s.idx] = &s;
+    std::vector<uint32_t> seeds;
+    auto addSeed = [&](uint32_t a) {
+      auto it = byidx.find((int)(a >> 16));
+      if (it == byidx.end() || it->second->is_data) return;
+      const win95::NESegment* s = it->second;
+      if (a < s->base_addr || a >= s->base_addr + s->length) return;   // in-range only
+      if (starts[s->idx].insert(a).second) seeds.push_back(a);
+    };
+    for (auto& s : img.segments) if (!s.is_data) addSeed(s.base_addr);   // segment head
+    for (auto& e : img.entries) if (e.addr) addSeed(e.addr);            // exports / entry table
+    for (auto& kv : sites) if (kv.second.first) addSeed(kv.second.first);  // far-call / reloc targets
+    // Also seed every near-call (E8) target found by a straight linear scan of each code segment.
+    // Recursive-descent alone only reaches functions called (directly) from something already seeded,
+    // so a cluster entered ONLY through an indirect/table/vtable call -- common in GDI/USER object and
+    // window-proc dispatch -- is never walked, and the direct calls INSIDE that cluster go undiscovered
+    // (setupx didn't need this; gdi/user/krnl386 leave ~250 such targets). The linear scan catches
+    // those entry points by brute force; feeding them as seeds lets recursive-descent then walk each
+    // cluster properly. A mis-framed E8 in data seeds a bogus start, but recursive-descent from it hits
+    // an invalid byte almost immediately, so the blast radius is a stub or two, not a runaway body.
+    for (auto& s : img.segments) {
       if (s.is_data) continue;
       for (uint32_t a = s.base_addr, e2 = s.base_addr + s.length; a < e2;) {
         win95::X86Insn in = win95::DecodeX86Auto(img.image.data(), img.image.size(), a, a, true);
         if (in.valid && in.mnem == "call" && in.ops[0].kind == win95::OpKind::Rel)
-          starts[s.idx].insert((uint32_t)in.ops[0].imm);
+          addSeed((uint32_t)in.ops[0].imm);
         a += in.valid ? in.len : 1;
+      }
+    }
+    // Recursive-descent: walk each function's reachable code following its jumps, and harvest every
+    // near-call (E8) target as a NEW function seed. A linear byte scan desyncs on inline data/padding
+    // and skips real call instructions past that point; following control flow from real starts
+    // decodes the true instruction stream, so it finds the functions interleaved in a segment that
+    // the linear scan misses (setupx: ~500 call targets the lifter emits but the old scan never
+    // seeded -> undefined references the linker had to stub). `seeds` grows as bodies reveal callees,
+    // and the index-based loop re-reads size() each turn, so this iterates to a fixpoint.
+    for (size_t qi = 0; qi < seeds.size(); ++qi) {
+      uint32_t f = seeds[qi];
+      const win95::NESegment* s = byidx[(int)(f >> 16)];
+      uint32_t segend = s->base_addr + s->length;
+      std::set<uint32_t> vis;
+      std::vector<uint32_t> w{f};
+      while (!w.empty()) {
+        uint32_t a = w.back(); w.pop_back();
+        while (a >= s->base_addr && a < segend && !vis.count(a)) {
+          vis.insert(a);
+          win95::X86Insn in = win95::DecodeX86Auto(img.image.data(), img.image.size(), a, a, true);
+          if (!in.valid) break;                          // ran into data -> stop this path
+          const std::string& m = in.mnem;
+          if (m == "call" && in.ops[0].kind == win95::OpKind::Rel)
+            addSeed((uint32_t)in.ops[0].imm);            // callee is a function start
+          if (m == "jmp") {
+            if (in.ops[0].kind == win95::OpKind::Rel) w.push_back((uint32_t)in.ops[0].imm);
+            break;                                       // unconditional: no fallthrough
+          }
+          if (m.size() && m[0] == 'j') {                 // jcc: follow both target and fallthrough
+            if (in.ops[0].kind == win95::OpKind::Rel) w.push_back((uint32_t)in.ops[0].imm);
+            a += in.len; continue;
+          }
+          if (m == "ret" || m == "retf" || m == "iret") break;   // terminator
+          a += in.len;                                   // ordinary / call: fall through
+        }
       }
     }
     return starts;
