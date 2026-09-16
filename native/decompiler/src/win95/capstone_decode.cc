@@ -100,6 +100,17 @@ X86Insn DecodeX86Cap(const uint8_t* data, size_t size, size_t pos, uint32_t addr
       for (uint8_t k : kNoXmm)
         if (insn->detail->groups[gi] == k) return out;   // XMM-based: data, not Win95 code
   }
+  {
+    // A few more that Capstone groups under MMX (they run on the MM registers) but that actually
+    // require SSE support Win95 never enables (the SSE-era integer extensions -- pavgw/pshufw/...),
+    // plus the ring-0 fast-syscall pair -- none can be real Win16/Win95 user code, so a decode of
+    // them here is data. (Base MMX, which truly aliases x87 and needs no OS support, is NOT listed.)
+    static const char* kNo[] = {
+        "pavgb", "pavgw", "pshufw", "pmulhuw", "pminub", "pmaxub", "pminsw", "pmaxsw", "psadbw",
+        "pmovmskb", "pextrw", "pinsrw", "maskmovq", "movntq", "pshufb", "sysenter", "sysexit"};
+    const char* mm = insn->mnemonic;
+    for (const char* s : kNo) if (!std::strcmp(mm, s)) return out;
+  }
 
   std::string mn = insn->mnemonic;
   // strip rep/repne prefixes folded into the mnemonic, recording them as flags

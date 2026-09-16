@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <string>
 #include <map>
+#include <set>
 #include <vector>
 
 #include "il.h"
@@ -44,6 +45,11 @@ class X86Lifter {
     call_sites_ = cs;
   }
 
+  // Linear addresses of NE relocation fixup sites. A pointer/jump table carries a fixup
+  // every 2-4 bytes; real code never has that density, so a reloc-dense window is data and
+  // the reachability walk stops there instead of decoding the table as instructions.
+  void SetRelocSites(const std::set<uint32_t>& r) { reloc_sites_ = r; }
+
   // Lift one function spanning [entry, end) in the flat image into IL.
   ILFunction LiftFunction(const uint8_t* image, size_t image_size,
                           uint32_t entry, uint32_t end, const std::string& name);
@@ -51,6 +57,7 @@ class X86Lifter {
  private:
   std::map<uint32_t, std::string> names_;
   std::map<uint32_t, std::pair<uint32_t, std::string>> call_sites_;
+  std::set<uint32_t> reloc_sites_;
   bool bits32_ = false;
   bool vxd_mode_ = false;
 };

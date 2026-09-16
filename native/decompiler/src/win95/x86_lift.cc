@@ -102,6 +102,17 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
     return runlen >= 8;                      // >=8 printable then NUL (or >=256): a string, not code
   };
 
+  // A pointer / jump table carries an NE relocation fixup every 2-4 bytes; ordinary code never
+  // packs relocations that densely. If >=2 fixup sites fall within the next 8 bytes, we are at a
+  // relocated data table, not code -- stop the walk (data-region typing from the NE reloc records).
+  auto relocDenseAt = [&](uint32_t a) -> bool {
+    if (reloc_sites_.empty()) return false;
+    auto it = reloc_sites_.lower_bound(a);
+    int n = 0;
+    for (; it != reloc_sites_.end() && *it < a + 8; ++it) ++n;
+    return n >= 2;
+  };
+
   std::vector<X86Insn> insns;
   std::set<uint32_t> leaders{entry};
   std::map<uint32_t, size_t> at;
@@ -110,6 +121,7 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
     uint32_t a = work.back(); work.pop_back();
     while (a >= entry && a < end && !at.count(a)) {
       if (dataRunAt(a)) break;              // walked into an embedded string literal -> stop (data)
+      if (relocDenseAt(a)) break;           // walked into a relocated pointer/jump table -> stop (data)
       X86Insn in = DecodeX86Auto(image, image_size, a, a, def_op16);
       // An undecodable byte on a reachable path means the walk has run off the end of the code into
       // data (a table, padding, a literal): real reachable code never contains an invalid opcode.
