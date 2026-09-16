@@ -243,6 +243,7 @@ def make_compilable(c):
     inject = {}                                             # open-brace idx -> [decl lines]
     protos = []                                             # forward declarations (fixes E1057/E1062)
     seen_proto = set()
+    dupcount = {}                                            # function name -> count, to rename dup defs
     # value-used detection: a void-typed function whose result is consumed in an expression must be
     # promoted to a non-void return type (Watcom E1052 'expression has void type'). A call is
     # value-used when `name(` is preceded by an operator/`=`/`return`/`(` rather than standing alone.
@@ -273,7 +274,18 @@ def make_compilable(c):
         if promoted:
             ret = re.sub(r"^\s*void\b", "int", ret)
             edits[sig] = re.sub(r"\bvoid\b", "int", lines[sig], count=1)
-        if fname not in seen_proto:                         # one prototype per function
+        # duplicate DEFINITIONS: the decompiler names several thunk addresses identically (e.g. many
+        # `__threadid` slots), which C forbids (Watcom E1034 'already defined'). Keep the first with
+        # the shared name (calls, rendered by that name, bind to it) and rename every later definition
+        # uniquely -- it becomes an uncalled but compilable copy, preserving the file.
+        if fname in seen_proto:
+            dupN = dupcount.get(fname, 1) + 1
+            dupcount[fname] = dupN
+            eff = "%s_r%d" % (fname, dupN)
+            base_line = edits.get(sig, lines[sig])
+            edits[sig] = re.sub(r"\b" + re.escape(fname) + r"\s*\(", eff + "(", base_line, count=1)
+            protos.append("%s %s();" % (ret, eff))
+        else:                                               # one prototype per function
             seen_proto.add(fname)
             # empty-param `()` form: declares return type + calling convention (kills the implicit-int
             # E1057/E1062 mismatches) but leaves params unspecified, so the decompiler's noisy call-site
