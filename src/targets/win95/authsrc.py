@@ -237,6 +237,9 @@ def _sanitize_cxx(c):
     # _JgGetMiniatureDIB@8) that is not a legal C identifier; fold the `@` to `_` consistently at
     # every definition and call site so the decorated name becomes a plain identifier.
     c = re.sub(r"\b([A-Za-z_]\w*)@(\d+)\b", r"\1_\2", c)
+    # compiler-helper names with a leading/embedded `$` (MSVC's `$I10_OUTPUT`, etc.) -- fold `$`
+    # adjacent to an identifier to `_` so it is a legal C identifier at def and call sites.
+    c = re.sub(r"\$(?=\w)|(?<=\w)\$", "_", c)
     return c
 
 
@@ -494,6 +497,15 @@ def _merge_structs(c):
             for fld in sorted(accessed):
                 if fld not in fm:
                     fm[fld] = "  unsigned long %s;   /* accessed; offset unrecovered */" % fld
+            # These UNIDENTIFIED placeholder structs are used as raw 32-bit slots: the same field is
+            # read as float in one place and masked/shifted as an int in another. The decompiler picked
+            # `float`/`double` from a single FP use, which then breaks every integer/pointer use of the
+            # field (Watcom E1079 'must be integral', E1090 'invalid conversion'). Retype float->unsigned
+            # int and double->unsigned __int64 (same width) so the slot is integral: bitwise/pointer
+            # uses compile, and an FP use still converts. (Flagged; real field types need type recovery.)
+            for k2, dl in list(fm.items()):
+                fm[k2] = re.sub(r"\bfloat\b", "unsigned int",
+                                re.sub(r"\bdouble\b", "unsigned __int64", dl))
     # pass 2: rewrite -- first def of each tag becomes the merged body, later defs are dropped
     emitted = set()
     out, i = [], 0
