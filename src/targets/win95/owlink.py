@@ -213,6 +213,24 @@ def link_module(module, do_diff=False):
         else:
             imp_lines.append("import %s_ '%s'.'%s'" % (api, mod, api))
 
+    # C-DERIVED IMPORT SAFETY NET (PE): a few modules' IAT parse under-reads (jetadmin.cpl: --imports
+    # sees 14 but the code calls 166 APIs), so those calls would stub. The authored C already spells
+    # every import as MODULE_ApiName -- derive a directive for any MODULE_ApiName the C references that
+    # we didn't already import. `MODULE` must be a known Win32 DLL so an internal name never masquerades
+    # as an import; the func is everything after the first '_' (ImageList_Create keeps its own '_').
+    if fmt == "PE":
+        _PE_IMPORT_MODS = ("KERNEL32", "USER32", "GDI32", "ADVAPI32", "COMCTL32", "COMDLG32", "SHELL32",
+                           "OLE32", "OLEAUT32", "WINMM", "VERSION", "WINSPOOL", "RPCRT4", "MPR",
+                           "NETAPI32", "LZ32", "SHLWAPI", "WSOCK32", "CRTDLL", "DDRAW", "DPLAY")
+        already = set(re.findall(r"import (\S+)_ '", "\n".join(imp_lines)))
+        ctext = open(src, encoding="utf-8", errors="replace").read()
+        for mod, fn in set(re.findall(r"\b(%s)_([A-Za-z][A-Za-z0-9_]*)\b" % "|".join(_PE_IMPORT_MODS),
+                                      ctext)):
+            internal = "%s_%s" % (mod, fn)
+            if internal not in already:
+                imp_lines.append("import %s_ '%s'.'%s'" % (internal, mod, fn))
+                already.add(internal)
+
     # real exports -> wlink `export` directives, so the module exports its functions AND wlink keeps
     # the exported code + everything it calls (otherwise it dead-code-eliminates to the entry stub).
     # Only export names actually DEFINED here (an undefined export aborts the link).
