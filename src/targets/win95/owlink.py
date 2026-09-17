@@ -221,6 +221,14 @@ def link_module(module, do_diff=False):
     # calls the actual API instead of a return-0 stub. NE: by ordinal or name from KERNEL/USER/GDI/...
     # PE: from the IAT (MODULE.func); the decompiler names the call MODULE_func.
     imps = _imports(binpath, fmt)
+
+    def _q(sym):
+        # Quote a wlink symbol ONLY when it contains a character wlink parses specially (a C++ mangled
+        # name: '@' is its response-file operator, '?'/'$' are directive punctuation). A plain
+        # identifier must stay UNQUOTED -- wlink matches a quoted 'NAME_' as a distinct literal that does
+        # NOT resolve the obj's reference to NAME_, so quoting every symbol breaks normal imports.
+        return ("'%s'" % sym) if re.search(r"[@?$]", sym) else sym
+
     imp_lines = []
     for mod, api in imps:
         if fmt == "PE":
@@ -235,13 +243,12 @@ def link_module(module, do_diff=False):
             # gets stubbed instead of linked -- this was stubbing most PE imports corpus-wide.
             mo = re.match(r"^@(\d+)$", api)
             if mo:
-                imp_lines.append("import '%s_%s_' '%s'.%s" % (mod, mo.group(1), mod, mo.group(1)))
+                imp_lines.append("import %s '%s'.%s" % (_q("%s_%s_" % (mod, mo.group(1))), mod, mo.group(1)))
             else:
-                # Quote the internal name: a C++ mangled import (??2@YAPAXI@Z ...) carries '@', which
-                # wlink otherwise reads as its response-file operator (E2093: cannot open ...). Quoting
-                # makes it a literal symbol; if the (sanitized) C never references it, the import is
-                # simply unused rather than a hard parse failure that kills the whole link.
-                imp_lines.append("import '%s_%s_' '%s'.'%s'" % (mod, api, mod, api))
+                # A C++ mangled import (??2@YAPAXI@Z ...) carries '@'/'?', which wlink otherwise reads as
+                # its response-file operator (E2093) -- _q() quotes only those so the link doesn't die,
+                # while plain imports stay unquoted so they still resolve the obj's reference.
+                imp_lines.append("import %s '%s'.'%s'" % (_q("%s_%s_" % (mod, api)), mod, api))
             continue
         # NE 16-bit: the authored C declares each imported API as a plain `extern int API()`, which
         # wcc (compact-model __watcall) references with a TRAILING underscore -- the obj carries the
@@ -251,9 +258,9 @@ def link_module(module, do_diff=False):
         # calling the real KERNEL/USER/GDI export.
         mo = re.match(r"^%s_(\d+)$" % re.escape(mod), api)
         if mo:
-            imp_lines.append("import '%s_' '%s'.%s" % (api, mod, mo.group(1)))
+            imp_lines.append("import %s '%s'.%s" % (_q(api + "_"), mod, mo.group(1)))
         else:
-            imp_lines.append("import '%s_' '%s'.'%s'" % (api, mod, api))
+            imp_lines.append("import %s '%s'.'%s'" % (_q(api + "_"), mod, api))
 
     # C-DERIVED IMPORT SAFETY NET (PE): a few modules' IAT parse under-reads (jetadmin.cpl: --imports
     # sees 14 but the code calls 166 APIs), so those calls would stub. The authored C already spells
@@ -264,13 +271,13 @@ def link_module(module, do_diff=False):
         _PE_IMPORT_MODS = ("KERNEL32", "USER32", "GDI32", "ADVAPI32", "COMCTL32", "COMDLG32", "SHELL32",
                            "OLE32", "OLEAUT32", "WINMM", "VERSION", "WINSPOOL", "RPCRT4", "MPR",
                            "NETAPI32", "LZ32", "SHLWAPI", "WSOCK32", "CRTDLL", "DDRAW", "DPLAY")
-        already = set(re.findall(r"import '(\S+)_' '", "\n".join(imp_lines)))
+        already = set(re.findall(r"import '?(\S+?)_'? '", "\n".join(imp_lines)))
         ctext = open(src, encoding="utf-8", errors="replace").read()
         for mod, fn in set(re.findall(r"\b(%s)_([A-Za-z][A-Za-z0-9_]*)\b" % "|".join(_PE_IMPORT_MODS),
                                       ctext)):
             internal = "%s_%s" % (mod, fn)
             if internal not in already:
-                imp_lines.append("import '%s_' '%s'.'%s'" % (internal, mod, fn))
+                imp_lines.append("import %s '%s'.'%s'" % (_q(internal + "_"), mod, fn))
                 already.add(internal)
 
     # real exports -> wlink `export` directives, so the module exports its functions AND wlink keeps
@@ -312,23 +319,23 @@ def link_module(module, do_diff=False):
             # whose '@' wlink would otherwise read as its response-file operator (E2093).
             if name in defined:                            # retail name matches a recovered function
                 if fmt == "PE":
-                    exp_lines.append("export '%s'='%s_'" % (name, name))
+                    exp_lines.append("export %s='%s_'" % (_q(name), name))
                 else:
-                    exp_lines.append("export '%s'.%s='@%s'" % (name, ordn, name))
+                    exp_lines.append("export %s.%s='@%s'" % (_q(name), ordn, name))
                 continue
             # Name didn't match; resolve by ADDRESS. Our recovered function at the export's address may
             # carry a different symbol (sub_XXXXX) -- export the real retail name/ordinal aliased to it.
             our = addr2name.get(addr) if addr is not None else None
             if fmt == "NE" and our and not is_data and our in defined:
-                exp_lines.append("export '%s'.%s='@%s'" % (name, ordn, our))
+                exp_lines.append("export %s.%s='@%s'" % (_q(name), ordn, our))
             elif fmt == "PE" and our and our in defined:
                 # PE export whose retail name we didn't propagate onto the recovered function: export
                 # the real name aliased to our recovered symbol at that RVA (trailing '_' decoration).
-                exp_lines.append("export '%s'='%s_'" % (name, our))
+                exp_lines.append("export %s='%s_'" % (_q(name), our))
             elif is_data and name in data_export_names:
                 # exported data reconstructed by the DGROUP data lane (dataseg): export the data symbol
                 # (an assembly PUBLIC label, undecorated) at its real ordinal.
-                exp_lines.append("export '%s'.%s=%s" % (name, ordn, name))
+                exp_lines.append("export %s.%s=%s" % (_q(name), ordn, name))
             elif is_data:
                 missing_exports.append((ordn, name, "data-export (not reconstructed)"))
             elif addr is not None and our is None:
