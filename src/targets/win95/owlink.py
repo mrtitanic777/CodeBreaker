@@ -75,8 +75,10 @@ def _imports(binpath, fmt):
 
 
 def _exports(binpath, fmt):
-    """[(ordinal_or_None, name)] from the module's own export/entry table. NE has ordinals; PE lists
-    names only (ordinal None)."""
+    """[(ordinal_or_None, name, addr_or_None, is_data)] from the module's own export/entry table. NE
+    has ordinals + a linear address + a code/data tag per export (addr lets the build lane resolve an
+    export by ADDRESS when our recovered function name differs from the retail export name); PE lists
+    names only."""
     if fmt not in ("NE", "PE"):
         return []
     dec = _dec(fmt)
@@ -84,10 +86,12 @@ def _exports(binpath, fmt):
     exps = []
     for line in out.splitlines():
         p = line.split("\t")
-        if fmt == "NE" and len(p) == 2 and p[1].strip():
-            exps.append((p[0].strip(), p[1].strip()))
+        if fmt == "NE" and len(p) >= 2 and p[1].strip():
+            addr = int(p[2], 16) if len(p) >= 3 and p[2].strip() else None
+            is_data = len(p) >= 4 and p[3].strip() == "DATA"
+            exps.append((p[0].strip(), p[1].strip(), addr, is_data))
         elif fmt == "PE" and p and p[0].strip():
-            exps.append((None, p[0].strip()))
+            exps.append((None, p[0].strip(), None, False))
     return exps
 
 
@@ -101,17 +105,24 @@ def _entry(binpath, fmt):
 
 
 def _name_at(binpath, fmt, addr):
-    """The discovered function name at a given address (from --names: addr<TAB>name)."""
+    """The name the emitted C uses for the function at `addr`. --names lists every discovered start as
+    `addr<TAB>name`; an unnamed start (e.g. the header entry point, which no call site references) prints
+    an empty name, but --module still emits it with the `sub_%06X` fallback. Mirror that fallback so a
+    discovered-but-unnamed entry resolves to the symbol the C actually defines (else `option start` is
+    never set and CS:IP links as 0:0)."""
     dec = _dec(fmt)
     out = subprocess.run([dec, binpath, "--names"], capture_output=True, text=True).stdout
     for line in out.splitlines():
         p = line.split("\t")
-        if len(p) >= 2 and p[1].strip():
-            try:
-                if int(p[0], 16) == addr:
-                    return p[1].strip()
-            except ValueError:
-                pass
+        if not p or not p[0].strip():
+            continue
+        try:
+            a = int(p[0], 16)
+        except ValueError:
+            continue
+        if a == addr:
+            nm = p[1].strip() if len(p) >= 2 else ""
+            return nm if nm else ("sub_%06X" % addr)
     return ""
 
 
@@ -240,34 +251,79 @@ def link_module(module, do_diff=False):
     # exports hundreds of APIs; gating exports on `.dll` gave them 0 exports, so wlink dead-code-
     # eliminated every function not reached from the entry point and stubbed all their callers.
     is_lib = binpath.lower().endswith(".dll") or (fmt == "NE" and len(exports_list) > 0)
-    defined = set(re.findall(r"(?m)^[A-Za-z].*?\b([A-Za-z_]\w*)\s*\([^;]*\)\s*$",
+    # A function DEFINITION's opening line: `<type...> NAME(<args>)` with no trailing `;`. The arg span
+    # must be `[^;\n]*` NOT `[^;]*` -- a negated class matches newlines too, so `[^;]*` lets one match
+    # swallow following lines up to the next `;`, and findall (non-overlapping) then never emits the
+    # definitions inside that swallowed span. That silently dropped real exports corpus-wide (krnl386
+    # FREEMODULE/LOADRESOURCE/ADDATOM/OPENPATHNAME/ALLOCCSTODSALIAS among them).
+    defined = set(re.findall(r"(?m)^[A-Za-z].*?\b([A-Za-z_]\w*)\s*\([^;\n]*\)\s*$",
                              open(src, encoding="utf-8", errors="replace").read()))
+    # Address -> OUR recovered function name, from the authored C's `// <name>  @ 0x<addr>` annotations.
+    # Lets us resolve an export whose retail NAME we didn't propagate onto the recovered function (the
+    # function IS recovered, just named sub_XXXXX): we then export it under the real retail name at the
+    # real ordinal, aliased to our symbol -- instead of dropping the export.
+    addr2name = {}
+    for m in re.finditer(r"//\s*([A-Za-z_]\w*)\s+@ 0x([0-9A-Fa-f]+)",
+                         open(src, encoding="utf-8", errors="replace").read()):
+        addr2name[int(m.group(2), 16)] = m.group(1)
     exp_lines = []
+    missing_exports = []                                   # (ordinal, name, reason) -- honest residue
     if is_lib:
-        for ordn, name in exports_list:
-            if name not in defined:
-                continue
+        for ordn, name, addr, is_data in exports_list:
             # Symbol decoration must match how the decompiler DECLARED the function. The recovered
             # bodies are `int __fastcall NAME(...)`, and Watcom's 16-bit __fastcall decoration is a
             # LEADING '@' (symbol `@NAME`); wcc386's register calling convention is a TRAILING '_'.
             # (Imported Win16 APIs are the other case -- declared plain `extern`, decorated `NAME_` --
             # handled in the import block above.) Quote the NE symbol: an unquoted leading '@' is
             # wlink's read-directives-from-file syntax, not a symbol reference.
-            if fmt == "PE":
-                exp_lines.append("export %s='%s_'" % (name, name))
+            if name in defined:                            # retail name matches a recovered function
+                if fmt == "PE":
+                    exp_lines.append("export %s='%s_'" % (name, name))
+                else:
+                    exp_lines.append("export %s.%s='@%s'" % (name, ordn, name))
+                continue
+            # Name didn't match; resolve by ADDRESS. Our recovered function at the export's address may
+            # carry a different symbol (sub_XXXXX) -- export the real retail name/ordinal aliased to it.
+            our = addr2name.get(addr) if addr is not None else None
+            if fmt == "NE" and our and not is_data and our in defined:
+                exp_lines.append("export %s.%s='@%s'" % (name, ordn, our))
+            elif is_data:
+                missing_exports.append((ordn, name, "data-export (segment DATA)"))
+            elif addr is not None and our is None:
+                missing_exports.append((ordn, name, "no function recovered @ 0x%X" % addr))
             else:
-                exp_lines.append("export %s.%s='@%s'" % (name, ordn, name))
+                missing_exports.append((ordn, name, "unresolved"))
+    # Entry point (CS:IP in the NE header / AddressOfEntryPoint in PE). For an application it pulls the
+    # call tree; for a LIBRARY it is the DLL init (LibMain) the loader calls at load time. A Win16 core
+    # library (KRNL386/GDI/USER) with CS:IP=0:0 is UNLOADABLE -- WIN.COM can't call its LibMain, so
+    # loading it as the enhanced kernel fails and Windows falls back to standard mode. Map retail's
+    # entry addr to our recovered function and set it for BOTH applications and libraries.
     entry_sym = ""
-    if not is_lib and fmt in ("NE", "PE"):                # application EXE: pull the call tree via entry
+    if fmt in ("NE", "PE"):
         ev = _entry(binpath, fmt)
         if ev and ev != "0":
-            nm = _name_at(binpath, fmt, int(ev, 16))      # function at the entry addr -> its symbol
+            eaddr = int(ev, 16)
+            # The authored C annotates every function `// <name>  @ 0x<8-hex-addr>`; authsrc's naming
+            # engine RENAMES the raw sub_XXXXX (e.g. the entry becomes helper_01B453), so resolve the
+            # entry symbol from the C's own annotation at the entry addr -- that is exactly the symbol
+            # the C defines. Fall back to the decoder's raw name only if the annotation isn't present.
+            ctext = open(src, encoding="utf-8", errors="replace").read()
+            m = re.search(r"//\s*([A-Za-z_]\w*)\s+@ 0x0*%X\b" % eaddr, ctext)
+            nm = m.group(1) if m else _name_at(binpath, fmt, eaddr)
             if nm and nm in defined:
                 entry_sym = ("'@%s'" % nm) if fmt == "NE" else (nm + "_")   # NE __fastcall @ / PE _
 
     # iterative link: whatever is still undefined (internal sub_ the decompiler didn't emit, CRT
     # helpers) gets a return-0 stub -- flagged as the completeness gap, NOT the real imports.
+    # A 16-bit NE library MUST carry the NE library flag (0x8000) or the loader treats it as an
+    # application and won't load it as a DLL/kernel -- our krnl386 was 0x0302 (application, MULTIPLEDATA)
+    # vs retail 0x8301 (library|SINGLEDATA), which made it unloadable as the enhanced kernel. The
+    # library bit comes from wlink's `option dll` (added below for NE libs); NOT from `system
+    # windows_dll`, whose DLL template pulls in libentry.obj -> an undefined LIBMAIN our recovered code
+    # can't satisfy in Watcom's decoration. Keep the plain `system windows` startup and set the bit
+    # directly.
     system = "windows" if bits == 16 else "nt"
+    dll_opt = (bits == 16 and is_lib)
     out = module + (".dll" if binpath.lower().endswith(".dll") else ".exe")
     stubs = set()
     for _it in range(20):
@@ -278,7 +334,19 @@ def link_module(module, do_diff=False):
         stubflags = (["-bt=" + tgt, "-q", "-s", "-ml", "-3"] if bits == 16 else cflags)
         subprocess.run([cc] + stubflags + ["stubs.c"], cwd=bld, capture_output=True, text=True, env=env)
         with open(os.path.join(bld, "link.lnk"), "w", newline="\n") as f:
-            f.write("system %s\nname %s\noption quiet\noption map=%s.map\n" % (system, out, module))
+            if dll_opt:
+                # NE library: the 0x8000 library bit comes from `format windows dll`, but `system
+                # windows` locks `format windows` first (E3057 if we then re-establish it), and the
+                # `windows_dll` template that WOULD set dll-format also drags in `libfile libentry.obj`
+                # -> an undefined LIBMAIN our recovered code can't satisfy. So expand the `windows`
+                # template by hand with `format windows dll` and WITHOUT libentry: the produced NE then
+                # carries the library flag (retail KRNL386 = 0x8301) yet needs no Watcom DLL startup.
+                lp = os.path.join(ow, "lib286").replace("\\", "/")
+                f.write("format windows dll\nname %s\noption quiet\noption map=%s.map\n" % (out, module))
+                f.write("libpath '%s'\nlibpath '%s/win'\noption nocaseexact\n"
+                        "option stack=8k, heapsize=1k\n" % (lp, lp))
+            else:
+                f.write("system %s\nname %s\noption quiet\noption map=%s.map\n" % (system, out, module))
             if entry_sym:
                 f.write("option start=%s\n" % entry_sym)
             if bits == 16:
@@ -311,7 +379,8 @@ def link_module(module, do_diff=False):
     res = {"ok": os.path.isfile(outpath), "output": outpath if os.path.isfile(outpath) else None,
            "fmt": fmt, "imports": len(imp_lines), "exports": len(exp_lines), "stubs": len(stubs),
            "size": os.path.getsize(outpath) if os.path.isfile(outpath) else 0,
-           "retail_size": os.path.getsize(binpath)}
+           "retail_size": os.path.getsize(binpath),
+           "missing_exports": missing_exports if is_lib else []}
     if not res["ok"]:
         res["log"] = (lr.stdout + lr.stderr)[-800:]
     return res
