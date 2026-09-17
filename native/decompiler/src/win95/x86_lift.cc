@@ -493,6 +493,17 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
       } else if (m == "jmp") {
         ILInstr x; x.op = ILOp::Branch; x.address = a;
         if (in.ops[0].kind == OpKind::Rel) { x.target = (uint32_t)in.ops[0].imm; bb.successors.push_back(x.target); }
+        // A tail jmp into another function is emitted as `T(); return;`. Resolve T's name the same way
+        // a call does -- far jmp via the relocation call_sites_, near via names_ -- so the tail-call
+        // name matches the DEFINITION's name (both come from the names map). Without this the tail call
+        // fell back to sub_<addr> while the body was defined under its real name (e.g. PEEKMESSAGE32's
+        // shared body) -> an undefined reference. Harmless for an intra-function goto: the emitter uses
+        // call_name only when the branch actually leaves the function.
+        {
+          auto cs = call_sites_.find(a);
+          if (cs != call_sites_.end()) { x.target = cs->second.first; x.call_name = cs->second.second; }
+          else { auto nit = names_.find(x.target); if (nit != names_.end()) x.call_name = nit->second; }
+        }
         bb.instrs.push_back(x);
       } else if (m.size() && m[0] == 'j') {   // jcc
         ILCmpKind kind = JccKind(m);
@@ -517,6 +528,8 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
         ILInstr br; br.op = ILOp::BranchCond; br.address = a;
         br.cmp_ref = cmp.dst.id; br.cmp_kind = kind;
         if (in.ops[0].kind == OpKind::Rel) br.target = (uint32_t)in.ops[0].imm;
+        { auto nit = names_.find(br.target);   // conditional tail branch: name it like the definition
+          if (nit != names_.end()) br.call_name = nit->second; }
         bb.instrs.push_back(br);
         bb.successors.push_back(br.target);
         bb.successors.push_back(next);   // fallthrough
