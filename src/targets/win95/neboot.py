@@ -79,9 +79,24 @@ def main(argv):
         print("expanding install media (7-Zip) ...")
         cab.extract(src, media)
 
+    # --runtime: the Setup-runtime cabinets (MINI/PRECOPY) carry members that live NOWHERE else (DOSX,
+    # MINIKBD, the mini mouse/sound drivers) so the flat media pool lacks them and disc_build's
+    # all-or-nothing repack would pass those cabinets through STOCK. Extract each runtime cabinet's
+    # ORIGINAL members (7-Zip on the retail cab, which is standard MSZIP/QUANTUM) into the media pool so
+    # every member resolves and our binaries actually go in. our_dir still overrides the substituted
+    # names, so name collisions with the full-Windows variants don't matter.
+    import glob as _glob
+    if runtime:
+        for cb in _glob.glob(os.path.join(src, "*.[cC][aA][bB]")):
+            if os.path.basename(cb).upper() in RUNTIME_CABS:
+                try:
+                    cab.extract(cb, media, head=cb)
+                except Exception as e:                               # noqa: BLE001
+                    print("  (could not expand %s: %s)" % (os.path.basename(cb), e))
+
     # which cabinets get our binaries
     allcabs = {os.path.basename(c).upper() for c in
-               __import__("glob").glob(os.path.join(src, "*.[cC][aA][bB]"))}
+               _glob.glob(os.path.join(src, "*.[cC][aA][bB]"))}
     subst = None if runtime else (allcabs - RUNTIME_CABS)
 
     print("== neboot: substituting %d our-NE binaries into %s ==" % (
