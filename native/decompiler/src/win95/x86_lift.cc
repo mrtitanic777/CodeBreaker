@@ -197,6 +197,7 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
   std::map<int, ILValue> reg;   // GPR slot -> current value
   std::map<int, ILValue> params;      // param index -> value (from [bp+N]), r3..->a1..
   std::vector<ILValue> pend_args;     // pushed values awaiting the next call
+  std::map<int, ILValue> esp_args;    // 32-bit: [esp+N] arg writes (offset -> value) awaiting a call
   std::set<int> incoming;             // value ids that are undefined entry-reg values
   // x87 FP register stack, modeled at lift time. back() == ST(0) (top). Compiler
   // FP code balances the stack within an expression, so a straight per-function
@@ -235,6 +236,7 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
     bb.start_addr = bstart;
     bb.block_id = (int)li;
     pend_args.clear();   // args are pushed within the block that calls
+    esp_args.clear();    // ...and stack-written args likewise don't cross block boundaries
 
     for (uint32_t a = bstart; a < bend;) {
       auto iit = at.find(a);
@@ -299,6 +301,15 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
         if (dst.kind == OpKind::Mem) {
           int fs = frameSlotOf(dst);
           if (fs >= 0) { setReg(fs, v); return; }   // [bp - N] local <- v
+          // 32-bit outgoing argument written directly to the stack: `mov [esp+N], v` (optimized MSVC
+          // sets up call args this way instead of `push`). Record it by offset as a pending arg
+          // instead of a store; consumed at the next call in offset order ([esp+0]=arg0). This is the
+          // call-site half of arity recovery -- without it, mov-style calls emit `f()` (no args).
+          if (bits32_ && dst.base != kNoReg && (dst.base % 16) == 4 &&
+              dst.index == kNoReg && dst.disp >= 0 && dst.disp < 256) {
+            esp_args[dst.disp] = v;
+            return;
+          }
           ILInstr st; st.op = ILOp::Store; st.address = a;
           st.src1 = emitMemAddr(dst, st); st.src2 = v;
           bb.instrs.push_back(st);
@@ -469,6 +480,12 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
         } else {
           x.call_name = "indirect";                    // call through reg/mem (v1)
         }
+        // If this call's args were written to the stack (`mov [esp+N],v`) rather than pushed,
+        // pend_args is empty -- pull them from esp_args in ascending-offset order ([esp+0]=arg0).
+        if (pend_args.empty() && !esp_args.empty()) {
+          for (auto& kv : esp_args) pend_args.push_back(kv.second);   // std::map iterates by key asc
+        }
+        esp_args.clear();
         // stage pushed args into the arg registers r3.. (PASCAL push order); the
         // back-end reads r3..r10 as the call's arguments.
         for (size_t i = 0; i < pend_args.size() && i < 8; ++i) {
