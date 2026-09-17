@@ -108,8 +108,21 @@ int main(int argc, char** argv) {
   win95::X86Lifter lifter;
   lifter.SetBits32(true);           // 32-bit PE ABI
 
-  // Scan code sections once: resolve IAT-indirect call/jmp sites to import names,
-  // and record direct near-call (E8) targets as function starts.
+  auto secOf = [&](uint32_t rva) -> int {
+    for (size_t i = 0; i < img.sections.size(); ++i) {
+      auto& s = img.sections[i];
+      if (s.code && rva >= s.va && rva < s.va + (s.vsize ? s.vsize : s.raw_size)) return (int)i;
+    }
+    return -1;
+  };
+  auto secEnd = [&](int si) -> uint32_t {
+    auto& s = img.sections[si]; return s.va + (s.vsize ? s.vsize : s.raw_size);
+  };
+  std::set<uint32_t> reloc_set(img.base_relocs.begin(), img.base_relocs.end());
+
+  // Scan code sections once: resolve IAT-indirect call/jmp sites to import names, resolve global
+  // function-pointer calls (`call [g_pfn]`) through the relocated pointer's value, and record direct
+  // near-call (E8) targets as function starts.
   std::map<uint32_t, std::pair<uint32_t, std::string>> sites;   // insn addr -> (target, name)
   std::set<uint32_t> callTargets;
   for (auto& s : img.sections) {
@@ -124,7 +137,23 @@ int main(int argc, char** argv) {
         } else {
           uint32_t rva = AbsMemRVA(in.ops[0], img.image_base);
           auto imp = img.imports.find(rva);
-          if (imp != img.imports.end()) sites[a] = {0, imp->second};
+          if (imp != img.imports.end()) {
+            sites[a] = {0, imp->second};
+          } else if (rva && reloc_set.count(rva) && rva + 4 <= image_size) {
+            // DATA-FLOW (memory): `call [abs]` where abs is a relocated slot holding a code pointer =
+            // a global function-pointer / dispatch call. Read the pointer's value and resolve it to the
+            // pointed function (and seed it) instead of leaving the call `indirect`.
+            uint32_t va = image[rva] | (image[rva + 1] << 8) | (image[rva + 2] << 16) |
+                          ((uint32_t)image[rva + 3] << 24);
+            if (va > img.image_base) {
+              uint32_t t = va - img.image_base;
+              if (secOf(t) >= 0) {
+                char sb[24]; std::snprintf(sb, sizeof sb, "sub_%06X", t);
+                sites[a] = {t, sb};
+                callTargets.insert(t);
+              }
+            }
+          }
         }
       }
       a += len;
@@ -176,16 +205,7 @@ int main(int argc, char** argv) {
   //   (3) tail-jmp/jcc recovery: a jmp/jcc that crosses a discovered function boundary is a tail call
   //       into a shared body / alternate entry -- seed its target (the cross-slot test keeps intra-
   //       function loops and if/else, which never cross a boundary, from being split).
-  auto secOf = [&](uint32_t rva) -> int {
-    for (size_t i = 0; i < img.sections.size(); ++i) {
-      auto& s = img.sections[i];
-      if (s.code && rva >= s.va && rva < s.va + (s.vsize ? s.vsize : s.raw_size)) return (int)i;
-    }
-    return -1;
-  };
-  auto secEnd = [&](int si) -> uint32_t {
-    auto& s = img.sections[si]; return s.va + (s.vsize ? s.vsize : s.raw_size);
-  };
+  // (secOf / secEnd / reloc_set defined above, before the call-site scan)
   // A relocated DWORD that points into code is either a function pointer (vtable / dispatch table /
   // window proc -- a real function entry) or a switch jump-table entry (points MID-function). Only the
   // former should seed a function start; splitting a function at a switch target corrupts it. Gate on
