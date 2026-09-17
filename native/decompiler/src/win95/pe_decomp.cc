@@ -61,9 +61,11 @@ int main(int argc, char** argv) {
     }
     return 0;
   }
-  // --exports: `name` per export, so the build can emit `export name` (publishes + keeps the code).
+  // --exports: `name<TAB>RVA` per export, so the build can emit `export name` (publishes + keeps the
+  // code) AND resolve an export by ADDRESS when the recovered function carries a different symbol
+  // (sub_<RVA>) than the export name -- mirroring the NE lane.
   if (mode == "--exports") {
-    for (auto& e : img.exports) std::printf("%s\n", e.first.c_str());
+    for (auto& e : img.exports) std::printf("%s\t%X\n", e.first.c_str(), e.second);
     return 0;
   }
   // --entry: the entry-point RVA (AddressOfEntryPoint), so an EXE build can set `option start` and

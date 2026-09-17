@@ -42,15 +42,30 @@ def available():
     return os.path.exists(_BIN)
 
 
+# Data-file magics that share a real-mode extension (.sys/.bin) but are NOT code -- excluded from
+# code detection. The Win95 boot/shutdown logos ship as LOGO*.SYS / SULOGO.SYS but are BMP bitmaps.
+_DATA_MAGICS = (b"BM", b"\x89P", b"GI", b"II", b"MM", b"RI")   # BMP, PNG, GIF, TIFF, RIFF
+
+
+def _has_mz(path):
+    """True if the file starts with the 'MZ' DOS-header magic."""
+    try:
+        with open(path, "rb") as f:
+            return f.read(2) == b"MZ"
+    except OSError:
+        return False
+
+
 def detect_format(path):
-    """'PE'/'NE'/'LE'/'MZ' from the MZ + new-header signature, or None. A file whose
-    new-header signature is none of NE/PE/LE/LX (or whose e_lfanew is unusable) is a
-    plain DOS/MZ executable -> 'MZ'."""
+    """'PE'/'NE'/'LE'/'MZ' from the MZ + new-header signature, or None. A file whose new-header
+    signature is none of NE/PE/LE/LX (or whose e_lfanew is unusable) is a plain DOS/MZ executable.
+    A HEADERLESS real-mode binary (a .COM loaded flat at CS:0x100, or a DOS device driver whose header
+    is the 0xFFFFFFFF next-driver pointer, not 'MZ') is also real-mode code -> 'MZ' (the decoders wrap
+    it in a synthetic MZ). Bitmap/data files that merely share a .SYS/.BIN extension return None."""
     try:
         with open(path, "rb") as f:
             d = f.read(0x40)
-            if len(d) < 0x40 or d[:2] != b"MZ":
-                return None
+        if len(d) >= 2 and d[:2] == b"MZ" and len(d) >= 0x40:
             e = struct.unpack("<I", d[0x3C:0x40])[0]
             sig = b""
             if 0 < e < 0x10000000:
@@ -64,6 +79,13 @@ def detect_format(path):
             if sig == b"LE" or sig == b"LX":
                 return "LE"
             return "MZ"                       # MZ with no (recognized) new header = DOS exe
+        # headerless: distinguish real-mode CODE from data files sharing the extension.
+        if len(d) >= 2 and d[:2] in _DATA_MAGICS:
+            return None                       # bitmap/image/other data, not code
+        ext = os.path.splitext(path)[1].lower()
+        if ext in (".com", ".sys", ".drv", ".bin", ".exe", ".ovl"):
+            return "MZ"                       # raw real-mode image (.COM / DOS device driver)
+        return None
     except OSError:
         return None
     return None
@@ -128,8 +150,8 @@ def _wrap_raw_mz(path):
     """Wrap a headerless real-mode blob (no MZ/NE/PE/LE header -- e.g. a .COM-style
     or overlay binary that begins directly with 16-bit code) in a synthetic MZ so the
     DOS/MZ 16-bit lifter can load it as a flat code image at CS:IP=0:0. Returns the
-    path to a temp .exe, or None if the file already has a real header."""
-    if detect_format(path) is not None:
+    path to a temp .exe, or None if the file already has an MZ header."""
+    if _has_mz(path):                             # a real DOS header -> load it directly, no wrapper
         return None
     blob = open(path, "rb").read()
     if len(blob) < 8 or len(blob) > 0x10000:      # must fit one real-mode segment
@@ -156,8 +178,9 @@ def decompile_module(ne_path, timeout=300, sigs=True):
     When the module has mangled C++ exports (MFC/OLE/C++ DLLs) and `sigs` is on,
     a first --names pass is demangled into prototypes (names, return + arg types,
     `this`) fed back via --sigs -- SDK-free typing straight from the symbols."""
-    # Headerless real-mode blob: load it via a synthetic MZ wrapper on the MZ engine.
-    if detect_format(ne_path) is None:
+    # Headerless real-mode blob (a .COM or DOS device driver -- detected as 'MZ' but with no actual MZ
+    # header): load it via a synthetic MZ wrapper on the MZ engine.
+    if not _has_mz(ne_path):
         wrapped = _wrap_raw_mz(ne_path)
         if wrapped:
             try:

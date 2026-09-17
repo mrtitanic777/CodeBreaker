@@ -944,12 +944,20 @@ def _global_dedup(targets):
     return shared
 
 
-def _run_one(which, outroot, shared=None, extra_db=None):
-    fname, desc = _BINS[which]
-    path = _corpus(fname)
-    if not path:
-        print("  MISSING corpus file: %s" % fname)
-        return None
+def author_dos(path, module, outroot):
+    """Author ANY real-mode DOS binary (a .COM tool or a DOS device driver) as annotated MASM, using
+    the same analysis + emitter as the IO.SYS/COMMAND.COM lane. `module` is the output subdir name.
+    Returns the _run_one result dict (or None on failure)."""
+    return _run_one(module, outroot, path=path, desc="DOS real-mode binary (%s)" % os.path.basename(path))
+
+
+def _run_one(which, outroot, shared=None, extra_db=None, path=None, desc=None):
+    if path is None:
+        fname, desc = _BINS[which]
+        path = _corpus(fname)
+        if not path:
+            print("  MISSING corpus file: %s" % fname)
+            return None
     data = open(path, "rb").read()
     is_iosys, body_end, load_base, image = _layout(data)
     # for iosys the image is the whole file; for MZ it's the load module
