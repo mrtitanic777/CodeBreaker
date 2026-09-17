@@ -211,7 +211,13 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
     reg[slot] = v;
     return v;
   };
-  auto setReg = [&](int slot, ILValue v) { v.ppc_reg = slot; reg[slot] = v; };
+  // Constant/value tracking for indirect-call resolution: regConst[slot] = the immediate address last
+  // loaded into that GPR, if any. `mov reg, imm` / `lea reg, [imm]` set it; ANY other write clears it
+  // (so a stale constant never resolves a real computed call). At `call reg` / `jmp reg` a live entry
+  // that points at a function turns the indirect call into a direct one -- the data-flow lever that
+  // recovers `mov reg, offset FUNC; call reg` (callback registration, dispatch trampolines).
+  std::map<int, int64_t> regConst;
+  auto setReg = [&](int slot, ILValue v) { v.ppc_reg = slot; reg[slot] = v; regConst.erase(slot); };
 
   // last flag-setting op, so a following jcc builds the right Compare.
   enum FlagKind { FK_CMP, FK_TEST, FK_ARITH } flag_kind = FK_ARITH;
@@ -237,6 +243,7 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
     bb.block_id = (int)li;
     pend_args.clear();   // args are pushed within the block that calls
     esp_args.clear();    // ...and stack-written args likewise don't cross block boundaries
+    regConst.clear();    // tracked constants don't survive a control-flow merge; re-derive per block
 
     for (uint32_t a = bstart; a < bend;) {
       auto iit = at.find(a);
@@ -406,7 +413,9 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
 
       if (m == "mov" || m == "movzx" || m == "movsx") {
         ILValue v = srcValue(in.ops[1]);
-        storeTo(in.ops[0], v);
+        storeTo(in.ops[0], v);                          // storeTo->setReg cleared any old constant
+        if (IsGpr(in.ops[0]) && in.ops[1].kind == OpKind::Imm)
+          regConst[RegSlot(in.ops[0].reg)] = in.ops[1].imm;   // mov reg, imm  -> track the constant
       } else if (m == "les" || m == "lds") {
         // far-ptr load: reg = *(far*)mem. Keep the whole 32-bit far pointer in the
         // register slot so a later es:[reg]/ds:[reg] deref reads through it.
@@ -477,6 +486,16 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
           // linker had to stub. Hex on both sides makes the call resolve to the real body.
           char sb[24]; std::snprintf(sb, sizeof sb, "sub_%06X", x.target);
           x.call_name = nit != names_.end() ? nit->second : sb;
+        } else if (in.ops[0].kind == OpKind::Reg &&
+                   regConst.count(RegSlot(in.ops[0].reg))) {
+          // DATA-FLOW: the called register holds a constant address (`mov reg, offset FUNC; call reg`)
+          // -- resolve the indirect call to that direct target instead of the opaque `indirect`.
+          uint32_t t = (uint32_t)regConst[RegSlot(in.ops[0].reg)];
+          auto nit = names_.find(t);
+          if (nit != names_.end()) { x.target = t; x.call_name = nit->second; }      // known function
+          else if (t >= 0x1000 && t < 0x10000000u) {                                 // plausible code addr
+            x.target = t; char sb[24]; std::snprintf(sb, sizeof sb, "sub_%06X", t); x.call_name = sb;
+          } else x.call_name = "indirect";
         } else {
           x.call_name = "indirect";                    // call through reg/mem (v1)
         }
