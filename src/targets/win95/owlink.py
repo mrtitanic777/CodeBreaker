@@ -177,6 +177,10 @@ def link_module(module, do_diff=False):
     # -s: no stack-overflow probe -> no __STK CRT dependency (self-contained scaffold)
     cflags = ["-bt=" + tgt, "-q", "-s"]
     if bits == 16:
+        # -fpc: floating point via library CALLS, not inline 8087. Inline 8087 (-fpi, the default) emits
+        # FI*RQQ/FJ*RQQ fp-fixup symbols resolved by a linker fp-fixup mechanism that our custom NE
+        # template doesn't wire up (left FIFRQQ/FJFRQQ undefined in any float-using module); -fpc calls
+        # the ordinary math-library helpers instead, which link normally.
         cflags += ["-mc", "-3"]
     # Prefer the multi-file split tree: compile each piece to its own obj (separate segments), which is
     # how the module was really built AND the only way a big 16-bit module fits (one giant .c overruns
@@ -408,24 +412,32 @@ def link_module(module, do_diff=False):
         subprocess.run([cc] + stubflags + ["stubs.c"], cwd=bld, capture_output=True, text=True, env=env)
         with open(os.path.join(bld, "link.lnk"), "w", newline="\n") as f:
             if dll_opt:
-                # NE library: the 0x8000 library bit comes from `format windows dll`, but `system
-                # windows` locks `format windows` first (E3057 if we then re-establish it), and the
-                # `windows_dll` template that WOULD set dll-format also drags in `libfile libentry.obj`
-                # -> an undefined LIBMAIN our recovered code can't satisfy. So expand the `windows`
-                # template by hand with `format windows dll` and WITHOUT libentry: the produced NE then
-                # carries the library flag (retail KRNL386 = 0x8301) yet needs no Watcom DLL startup.
+                # NE library: `format windows dll` sets the 0x8000 library bit without the stock
+                # `windows_dll` system's `libfile libentry.obj` (-> undefined LIBMAIN). `library windows`
+                # gives the CRT startup its INITTASK/WAITEVENT/INITAPP. Keep the bare format (not a custom
+                # `system`, which would override wlink's default runtime libraries and lose __U4M &c.).
                 lp = os.path.join(ow, "lib286").replace("\\", "/")
                 f.write("format windows dll\nname %s\noption quiet\noption map=%s.map\n" % (out, module))
-                f.write("libpath '%s'\nlibpath '%s/win'\noption nocaseexact\n"
+                f.write("libpath '%s'\nlibpath '%s/win'\nlibrary windows\noption nocaseexact\n"
                         "option stack=8k, heapsize=1k\n" % (lp, lp))
             else:
                 f.write("system %s\nname %s\noption quiet\noption map=%s.map\n" % (system, out, module))
             if entry_sym:
                 f.write("option start=%s\n" % entry_sym)
             if bits == 16:
-                # the Watcom large-model runtime provides the compiler math/util helpers (__U4D divide,
-                # etc.) our code references; link them for real (not stubbed -- these are toolchain code).
-                f.write("libpath '%s'\nlibrary clibl\n" % os.path.join(ow, "lib286").replace("\\", "/"))
+                # The compiler emits code-generator helper calls -- __U4M/__U4D/__I4M/__I4D (32-bit
+                # integer mul/div), FIFRQQ/FJFRQQ (8087 fp conversions), etc. -- that live in the C
+                # support library. This from-source Watcom's rel/lib286/clibl.lib is an empty STUB; the
+                # real 16-bit large-model Windows support objs are the ones actually built, under
+                # bld/clib/cgsupp/library/windows.086/ml (its own clibl.lib). Put that libpath FIRST so
+                # its clibl wins over the empty rel stub; emu87 supplies the 8087 emulator fp fixups.
+                cgsupp = os.path.join(paths.repo_root(), "experiments", "premise-proof",
+                                      "open-watcom-v2", "bld", "clib", "cgsupp", "library",
+                                      "windows.086", "ml").replace("\\", "/")
+                # Reference the real clibl by FULL PATH (not by libpath search): rel/lib286 also holds an
+                # empty clibl.lib that would win the libpath order otherwise.
+                f.write("libpath '%s'\nlibrary '%s/clibl.lib',emu87\n"
+                        % (os.path.join(ow, "lib286").replace("\\", "/"), cgsupp))
             else:
                 # 32-bit: the wcc386 runtime (clib3r) + FP pack (math3r) supply the compiler helpers our
                 # PE code references -- __8087 and the FP/util routines float ops pull in. Real toolchain
