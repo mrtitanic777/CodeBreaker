@@ -102,7 +102,8 @@ _C_KW = {"if", "else", "while", "for", "do", "switch", "case", "return", "goto",
          "enum", "const", "static", "default", "WORD", "BYTE", "DWORD", "LONG", "BOOL", "UINT",
          "HANDLE", "HWND", "LPSTR", "LPCSTR", "undefined", "undefined1", "undefined2", "undefined4",
          "__far", "__near", "__huge", "__pascal", "__cdecl", "__stdcall", "__fastcall", "__export",
-         "__thiscall", "__interrupt", "FAR", "PASCAL", "far", "near"}
+         "__thiscall", "__interrupt", "FAR", "PASCAL", "far", "near",
+         "__asm", "_asm", "asm", "__emit", "__based", "__self"}
 
 
 def compile_body16(c_text, fname, outdir):
@@ -114,6 +115,12 @@ def compile_body16(c_text, fname, outdir):
     os.makedirs(outdir, exist_ok=True)
     # --- cure the raw decompiler output into compilable 16-bit C ---------------------------------
     c_text = re.sub(r"(?m)^\s*#\d.*$", "", c_text)                     # strip #<line> artifacts
+    # sanitize characters that are legal in decorated/mangled symbols but not in C identifiers:
+    # `@` (Watcom __fastcall leading @, e.g. an imported `KERNEL_@4` ordinal call) and `$`. Never
+    # touch `?` -- it is the ternary operator. Do this before any identifier analysis so the call/
+    # stub/decl passes see clean names (an `@` split a name and produced an invalid declarator +
+    # an E1147 cascade).
+    c_text = c_text.replace("@", "_").replace("$", "_")
     c_text = re.sub(r"\b__int8\b", "char", c_text)                     # MSVC sized ints -> standard
     c_text = re.sub(r"\bunsigned\s+__int16\b", "unsigned", c_text)
     c_text = re.sub(r"\b__int16\b", "int", c_text)
@@ -139,7 +146,20 @@ def compile_body16(c_text, fname, outdir):
     decl_types = re.findall(r"\b(?:WORD|BYTE|DWORD|int|unsigned|long|short|char|void)\s+\**([A-Za-z_]\w*)", c_text)
     rregs = sorted(g for g in used if re.fullmatch(r"r\d{1,2}", g))
     labels = set(re.findall(r"(?m)^\s*([A-Za-z_]\w*)\s*:(?!:)", c_text)) | set(re.findall(r"\bgoto\s+(\w+)", c_text))
+    # STRUCT SYNTHESIS: the raise engine casts through `(struct V<n>_t *)x` and reads `->field`, but
+    # leaves V<n>_t and its fields undefined. Declaring them as scalar globals (below) makes
+    # `((struct V11_t*)v11)->field_3B2` fail E1031 (no such member). Instead emit a real struct for
+    # each V<n>_t tag carrying every member accessed anywhere (union is safe -- Watcom only needs the
+    # member to exist), and keep the tags + members OUT of the scalar-global set. Mirrors authsrc's
+    # _merge_structs for the single-body synth path.
+    struct_tags = sorted(set(re.findall(r"\bstruct\s+(V\d+_t)\b", c_text)))
+    members = sorted(set(re.findall(r"(?:->|\.)\s*([A-Za-z_]\w*)", c_text)))
+    struct_defs = []
+    for tag in struct_tags:
+        body = "".join("  WORD %s;\n" % m for m in members) or "  WORD _pad;\n"
+        struct_defs.append("struct %s {\n%s};" % (tag, body))
     undecl = sorted(used - set(decl_types) - _C_KW - labels - set(rregs) - set(called)
+                    - set(struct_tags) - set(members)
                     - {fname, "LibMain", "WEP", "result"})
     gdecl = ["WORD %s;" % g for g in undecl if not g.isdigit()] + ["WORD result;"]
     frame = []
@@ -154,7 +174,7 @@ def compile_body16(c_text, fname, outdir):
             br = c_text.index("{", mm.end() - 1)
             init = "".join("  %s=(WORD)_frame+0x2000;\n" % r for r in rregs)
             c_text = c_text[:br + 1] + "\n" + init + c_text[br + 1:]
-    src = "\n".join(pre + gdecl + frame + stubs + entry) + "\n\n" + c_text + "\n"
+    src = "\n".join(pre + struct_defs + gdecl + frame + stubs + entry) + "\n\n" + c_text + "\n"
     cf = os.path.join(outdir, fname + ".c")
     open(cf, "w", newline="\n").write(src)
     env = dict(os.environ)
