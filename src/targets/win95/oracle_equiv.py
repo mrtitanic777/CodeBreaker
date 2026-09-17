@@ -40,9 +40,13 @@ def _beh(path, ordn, arity):
         n = arity or ne_dynoracle.SAFE_ARITY
         r = ne_dynoracle.probe(path, ordinal=ordn, args=[ne_dynoracle.SAFE_ARG] * n)
     except Exception as e:
-        return {"exit": "trace-error:" + type(e).__name__, "ret": None, "insn_count": 0, "imps": ()}
+        # The oracle could NOT run this binary (e.g. a PE/LE/MZ image fed to the 16-bit NE oracle ->
+        # "no NE signature"). This is NOT behavior -- flag it `ran=False` so the caller excludes the
+        # pair entirely instead of scoring two identical exceptions as "equivalent" (a false positive).
+        return {"exit": "trace-error:" + type(e).__name__, "ret": None, "insn_count": 0,
+                "imps": (), "ran": False}
     return {"exit": r.get("exit"), "ret": r.get("ret"), "insn_count": r.get("insn_count"),
-            "imps": _sem_imps(r.get("imports_hit", []))}
+            "imps": _sem_imps(r.get("imports_hit", [])), "ran": True}
 
 
 def main(argv):
@@ -59,6 +63,8 @@ def main(argv):
         rb = _beh(a.retail, o, a.arity)
         bb = _beh(a.rebuilt, o, a.arity)
         if str(rb["exit"]).startswith("bad-ordinal") and str(bb["exit"]).startswith("bad-ordinal"):
+            continue
+        if not rb.get("ran"):        # the oracle couldn't run RETAIL -> no ground truth -> not testable
             continue
         tot += 1
         same = (rb["ret"] == bb["ret"] and rb["imps"] == bb["imps"])
