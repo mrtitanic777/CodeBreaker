@@ -186,7 +186,16 @@ def link_module(module, do_diff=False):
     imp_lines = []
     for mod, api in imps:
         if fmt == "PE":
-            imp_lines.append("import %s_%s '%s'.'%s'" % (mod, api, mod, api))
+            # Ordinal-only import: the decoder names it `@N`. Emitting `'MOD'.'@N'` makes wlink read the
+            # leading `@` as its response-file operator and try to open a file "N" (E2093: cannot open N,
+            # a hard parse failure that killed the whole link -- most PE modules import something by
+            # ordinal). Emit the numeric ordinal form `import MOD_N 'MOD'.N` instead; if the recovered C
+            # never references it, the directive is simply unused.
+            mo = re.match(r"^@(\d+)$", api)
+            if mo:
+                imp_lines.append("import %s_%s '%s'.%s" % (mod, mo.group(1), mod, mo.group(1)))
+            else:
+                imp_lines.append("import %s_%s '%s'.'%s'" % (mod, api, mod, api))
             continue
         # NE 16-bit: the authored C declares each imported API as a plain `extern int API()`, which
         # wcc (compact-model __watcall) references with a TRAILING underscore -- the obj carries the
@@ -279,8 +288,56 @@ def link_module(module, do_diff=False):
     return res
 
 
+def _link_job(args):
+    """Picklable worker: link one module, never raise (a crash in one must not kill the sweep)."""
+    module, do_diff = args
+    try:
+        return module, link_module(module, do_diff)
+    except Exception as e:                                          # noqa: BLE001
+        return module, {"ok": False, "error": "exception: %s" % e}
+
+
+def _all_modules():
+    """Every module we have authored C for (the compile+link candidates)."""
+    cdir = os.path.join(authsrc._dr(), "recon", "authored", "c")
+    return [f[:-2] for f in sorted(os.listdir(cdir)) if f.endswith(".c")]
+
+
 def main(argv):
     do_diff = "--diff" in argv
+    if "--all" in argv:
+        import csv, time
+        from concurrent.futures import ProcessPoolExecutor, as_completed
+        jobs_n = int(argv[argv.index("-j") + 1]) if "-j" in argv else min((os.cpu_count() or 4), 12)
+        mods = _all_modules()
+        t0 = time.time()
+        rows, okn, iden, total_stubs = [], 0, 0, 0
+        outcsv = os.path.join(authsrc._dr(), "recon", "authored", "BUILDLINK.csv")
+        print("== owlink --all: compiling + linking %d modules with OpenWatcom (%d workers) ==" % (len(mods), jobs_n))
+        with ProcessPoolExecutor(max_workers=jobs_n) as ex:
+            futs = [ex.submit(_link_job, (m, False)) for m in mods]
+            for k, fut in enumerate(as_completed(futs)):
+                m, r = fut.result()
+                if r.get("ok"):
+                    okn += 1; total_stubs += r.get("stubs", 0)
+                    pct = 100.0 * r["size"] / max(r.get("retail_size", 1), 1)
+                    rows.append((m, r["fmt"], "OK", r["imports"], r.get("exports", 0), r["stubs"],
+                                 r["size"], r.get("retail_size", 0), "%.0f" % pct))
+                else:
+                    rows.append((m, r.get("fmt", "?"), "FAIL", 0, 0, 0, 0, 0,
+                                 (r.get("error") or r.get("log", ""))[:60]))
+                if (k + 1) % 50 == 0:
+                    print("  ... %d/%d linked (%d ok)" % (k + 1, len(mods), okn))
+        with open(outcsv, "w", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(["module", "fmt", "status", "imports", "exports", "stubs", "size", "retail_size", "pct"])
+            for r in sorted(rows):
+                w.writerow(r)
+        print("\n== corpus link ==")
+        print("  linked OK: %d / %d modules  (%.0f%%)" % (okn, len(mods), 100.0 * okn / max(len(mods), 1)))
+        print("  residual internal stubs across all: %d (avg %.1f/module)" % (total_stubs, total_stubs / max(okn, 1)))
+        print("  %.0fs -> %s" % (time.time() - t0, outcsv))
+        return 0
     mods = [a for a in argv if not a.startswith("-")]
     if not mods:
         print(__doc__); return 0
