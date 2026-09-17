@@ -34,6 +34,8 @@ def _sweep_one(job):
             continue
         if str(rb["exit"]).startswith("bad-ordinal") and str(bb["exit"]).startswith("bad-ordinal"):
             continue
+        if not rb.get("ran"):        # oracle couldn't run RETAIL (wrong format for this oracle) -> skip
+            continue
         tested += 1
         if rb["ret"] == bb["ret"] and rb["imps"] == bb["imps"]:
             equiv += 1
