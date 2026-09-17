@@ -6,6 +6,7 @@
 //   win95pedec <pe> --disasm          per-section instruction listing
 //   win95pedec <pe> --names           discovered function starts (addr<TAB>name)
 //   win95pedec <pe> --module --sigs F apply demangled sigs/prototypes from file F
+#include <algorithm>
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
@@ -165,19 +166,91 @@ int main(int argc, char** argv) {
 
   // Function-start discovery: entry + exports + direct-call targets, each snapped
   // to the code section that contains it.
+  // Function-start discovery -- the same three-part recovery the NE decoder uses, ported to PE
+  // (32-bit near, sections instead of segments). Weak linear-only discovery left ~150 undefined
+  // internal calls per PE module (user32 etc.); this recovers them:
+  //   (1) seeds: entry + exports + linear E8 near-call targets (the union base);
+  //   (2) recursive-descent from every seed, following jmp/jcc and harvesting near-call targets as
+  //       NEW seeds to a fixpoint -- finds functions interleaved past inline data a linear scan skips
+  //       and whole clusters entered only through the calls inside them;
+  //   (3) tail-jmp/jcc recovery: a jmp/jcc that crosses a discovered function boundary is a tail call
+  //       into a shared body / alternate entry -- seed its target (the cross-slot test keeps intra-
+  //       function loops and if/else, which never cross a boundary, from being split).
+  auto secOf = [&](uint32_t rva) -> int {
+    for (size_t i = 0; i < img.sections.size(); ++i) {
+      auto& s = img.sections[i];
+      if (s.code && rva >= s.va && rva < s.va + (s.vsize ? s.vsize : s.raw_size)) return (int)i;
+    }
+    return -1;
+  };
+  auto secEnd = [&](int si) -> uint32_t {
+    auto& s = img.sections[si]; return s.va + (s.vsize ? s.vsize : s.raw_size);
+  };
   auto discover = [&]() {
     std::map<int, std::set<uint32_t>> starts;         // section index -> starts
-    auto secOf = [&](uint32_t rva) -> int {
-      for (size_t i = 0; i < img.sections.size(); ++i) {
-        auto& s = img.sections[i];
-        if (s.code && rva >= s.va && rva < s.va + (s.vsize ? s.vsize : s.raw_size)) return (int)i;
-      }
-      return -1;
+    std::vector<uint32_t> seeds;
+    auto addSeed = [&](uint32_t rva) {
+      int si = secOf(rva);
+      if (si >= 0 && starts[si].insert(rva).second) seeds.push_back(rva);
     };
-    auto add = [&](uint32_t rva) { int si = secOf(rva); if (si >= 0) starts[si].insert(rva); };
-    if (img.entry) add(img.entry);
-    for (auto& e : img.exports) add(e.second);
-    for (uint32_t t : callTargets) add(t);
+    if (img.entry) addSeed(img.entry);
+    for (auto& e : img.exports) addSeed(e.second);
+    for (uint32_t t : callTargets) addSeed(t);
+    // (2) recursive-descent, harvesting near-call targets to a fixpoint
+    for (size_t qi = 0; qi < seeds.size(); ++qi) {
+      uint32_t f = seeds[qi];
+      int si = secOf(f); if (si < 0) continue;
+      uint32_t send = secEnd(si);
+      std::set<uint32_t> vis;
+      std::vector<uint32_t> w{f};
+      while (!w.empty()) {
+        uint32_t a = w.back(); w.pop_back();
+        while (a >= img.sections[si].va && a < send && a < image_size && !vis.count(a)) {
+          vis.insert(a);
+          win95::X86Insn in = win95::DecodeX86Auto(image, image_size, a, a, false);
+          if (!in.valid) break;
+          const std::string& m = in.mnem;
+          if (m == "call" && in.ops[0].kind == win95::OpKind::Rel)
+            addSeed((uint32_t)in.ops[0].imm);
+          if (m == "jmp") {
+            if (in.ops[0].kind == win95::OpKind::Rel) w.push_back((uint32_t)in.ops[0].imm);
+            break;
+          }
+          if (m.size() && m[0] == 'j') {                 // jcc: target + fallthrough
+            if (in.ops[0].kind == win95::OpKind::Rel) w.push_back((uint32_t)in.ops[0].imm);
+            a += in.len; continue;
+          }
+          if (m == "ret" || m == "retf" || m == "iret") break;
+          a += in.len;
+        }
+      }
+    }
+    // (3) tail-jmp/jcc cross-slot recovery, to a fixpoint
+    bool grew = true;
+    while (grew) {
+      grew = false;
+      for (size_t si = 0; si < img.sections.size(); ++si) {
+        if (!img.sections[si].code) continue;
+        std::vector<uint32_t> fs(starts[si].begin(), starts[si].end());
+        std::sort(fs.begin(), fs.end());
+        uint32_t send = secEnd((int)si);
+        for (size_t i = 0; i < fs.size(); ++i) {
+          uint32_t f0 = fs[i], f1 = (i + 1 < fs.size()) ? fs[i + 1] : send;
+          for (uint32_t a = f0; a < f1 && a < image_size;) {
+            win95::X86Insn in = win95::DecodeX86Auto(image, image_size, a, a, false);
+            if (!in.valid) break;
+            if (in.mnem.size() && in.mnem[0] == 'j' && in.ops[0].kind == win95::OpKind::Rel) {
+              uint32_t t = (uint32_t)in.ops[0].imm;
+              if (t < f0 || t >= f1) {
+                size_t b = seeds.size(); addSeed(t);
+                if (seeds.size() != b) grew = true;
+              }
+            }
+            a += in.len;
+          }
+        }
+      }
+    }
     return starts;
   };
 
