@@ -26,6 +26,17 @@ from src.engines.behavior import tracer16 as T   # the validated 16-bit substrat
 HEAP_BASE = 0xB00000        # first far-heap block (distinct from seg/stack/scratch/sentinel windows)
 HEAP_STRIDE = 0x10000
 
+# A Win16 far function reads its parameters as far pointers / handles; a NULL (0) arg deref's
+# selector 0 (the null descriptor) and #GPs immediately -- so calling with all-zero args faults even
+# RETAIL, making behavioral comparison meaningless. The tracer's DENSE GDT fills every selector index
+# with a present, r/w descriptor pointing at the shared 64K scratch window, so ANY non-zero selector
+# is a valid, mapped far segment. Fill each 16-bit arg WORD with such a selector value: read as a
+# far-pointer segment it maps to scratch, read as the offset it stays inside the 64K limit, read as a
+# handle/int it is a benign non-zero number. Functions then run their real logic instead of faulting.
+SAFE_ARG = T._sel(200)      # dense-GDT scratch selector: valid segment AND in-range (small) offset
+SAFE_ARITY = 16             # over-provision (covers up to 8 far-ptr / 16 word params); Pascal retf N
+                            # returns to the sentinel regardless, so surplus args are harmless
+
 
 class _Ctx(object):
     """Per-run oracle state: a far-heap allocator that installs real GDT descriptors so GlobalAlloc

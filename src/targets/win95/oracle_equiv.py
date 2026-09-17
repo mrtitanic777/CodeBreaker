@@ -34,7 +34,11 @@ def _beh(path, ordn, arity):
     # so allocations SUCCEED and both modules run their real paths, not just the
     # allocation-failure error path. Fair behavioral comparison.
     try:
-        r = ne_dynoracle.probe(path, ordinal=ordn, args=[0] * arity)
+        # Pass VALID far-pointer-safe args, not NULLs: a Win16 far function derefs a 0 arg and #GPs
+        # (faulting even retail). ne_dynoracle.SAFE_ARG is a mapped scratch selector; over-provision
+        # the count (SAFE_ARITY) when the caller gives none so functions get enough valid params.
+        n = arity or ne_dynoracle.SAFE_ARITY
+        r = ne_dynoracle.probe(path, ordinal=ordn, args=[ne_dynoracle.SAFE_ARG] * n)
     except Exception as e:
         return {"exit": "trace-error:" + type(e).__name__, "ret": None, "insn_count": 0, "imps": ()}
     return {"exit": r.get("exit"), "ret": r.get("ret"), "insn_count": r.get("insn_count"),
