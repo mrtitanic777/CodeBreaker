@@ -96,6 +96,25 @@ def _exports(binpath, fmt):
     return exps
 
 
+def _ne_is_library(binpath):
+    """True if an NE module has the LIBRARY flag (0x8000) set -- i.e. it is a DLL, not an application.
+    The Win16 core (KRNL386/GDI/USER) ships as .EXE yet sets this; real apps (dialer, ...) do not, even
+    though they also have entry-table entries. Determines whether to build a DLL or an application."""
+    try:
+        import struct
+        d = open(binpath, "rb").read(0x40)
+        ne = struct.unpack("<I", d[0x3c:0x40])[0]
+        with open(binpath, "rb") as f:
+            f.seek(ne)
+            h = f.read(0x10)
+        if h[:2] != b"NE":
+            return False
+        flags = struct.unpack("<H", h[0x0c:0x0e])[0]
+        return bool(flags & 0x8000)
+    except (OSError, struct.error, IndexError):
+        return False
+
+
 def _entry(binpath, fmt):
     """The entry-point address (PE RVA / NE linear from CS:IP) or '' if unavailable."""
     if fmt not in ("NE", "PE"):
@@ -284,11 +303,16 @@ def link_module(module, do_diff=False):
     # the exported code + everything it calls (otherwise it dead-code-eliminates to the entry stub).
     # Only export names actually DEFINED here (an undefined export aborts the link).
     exports_list = _exports(binpath, fmt)
-    # A module is a LIBRARY (emit export directives) if it actually exports functions -- not by file
-    # extension. The Win16 core (KRNL386.EXE, GDI.EXE, USER.EXE) ships as .EXE yet is a library that
-    # exports hundreds of APIs; gating exports on `.dll` gave them 0 exports, so wlink dead-code-
-    # eliminated every function not reached from the entry point and stubbed all their callers.
-    is_lib = binpath.lower().endswith(".dll") or (fmt == "NE" and len(exports_list) > 0)
+    # DLL vs application is the NE LIBRARY flag (0x8000), NOT the presence of exports. The Win16 core
+    # (KRNL386/GDI/USER) ships as .EXE yet sets the library flag -> a DLL. A real application (dialer,
+    # winfile, ...) also has entry-table entries but is NOT a library: building it as `format windows
+    # dll` pulls the app startup into a DLL build and collides (undefined WinMain-side symbols, stub-vs-
+    # import W1171). Classify by the flag; emit export directives whenever there IS an export surface.
+    is_dll = binpath.lower().endswith((".dll", ".cpl", ".drv", ".ocx")) \
+        or (fmt == "NE" and _ne_is_library(binpath))
+    # emit export directives whenever there IS an export surface: every NE module (apps export via the
+    # entry table too), and PE DLLs. A PE .exe app is not exported.
+    emit_exports = len(exports_list) > 0 and (fmt == "NE" or is_dll)
     # A function DEFINITION's opening line: `<type...> NAME(<args>)` with no trailing `;`. The arg span
     # must be `[^;\n]*` NOT `[^;]*` -- a negated class matches newlines too, so `[^;]*` lets one match
     # swallow following lines up to the next `;`, and findall (non-overlapping) then never emits the
@@ -307,7 +331,7 @@ def link_module(module, do_diff=False):
     data_export_names = {nm for _o, nm, _off in data_exports}   # data exports the DGROUP lane rebuilt
     exp_lines = []
     missing_exports = []                                   # (ordinal, name, reason) -- honest residue
-    if is_lib:
+    if emit_exports:
         for ordn, name, addr, is_data in exports_list:
             # Symbol decoration must match how the decompiler DECLARED the function. The recovered
             # bodies are `int __fastcall NAME(...)`, and Watcom's 16-bit __fastcall decoration is a
@@ -372,7 +396,7 @@ def link_module(module, do_diff=False):
     # can't satisfy in Watcom's decoration. Keep the plain `system windows` startup and set the bit
     # directly.
     system = "windows" if bits == 16 else "nt"
-    dll_opt = (bits == 16 and is_lib)
+    dll_opt = (bits == 16 and is_dll)
     out = module + (".dll" if binpath.lower().endswith(".dll") else ".exe")
     stubs = set()
     for _it in range(20):
@@ -429,7 +453,7 @@ def link_module(module, do_diff=False):
            "fmt": fmt, "imports": len(imp_lines), "exports": len(exp_lines), "stubs": len(stubs),
            "size": os.path.getsize(outpath) if os.path.isfile(outpath) else 0,
            "retail_size": os.path.getsize(binpath),
-           "missing_exports": missing_exports if is_lib else []}
+           "missing_exports": missing_exports if emit_exports else []}
     if not res["ok"]:
         res["log"] = (lr.stdout + lr.stderr)[-800:]
     return res
