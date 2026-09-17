@@ -867,7 +867,15 @@ std::string CDecompiler::RenderTailCall(const ILInstr& in) {
     callee = in.call_name;
   } else {
     char nb[32];
+    // The Win95 lane names function DEFINITIONS sub_%06X (6-digit linear addr); this fallback fires
+    // for a call/tail-jmp whose call_name wasn't set, so it must use the SAME width or the reference
+    // (sub_0012015E) never matches the definition (sub_12015E) and the linker stubs it. PPC/Xbox keeps
+    // its historical %08X (its definitions use %08X too).
+#ifdef WIN95DEC_NO_PPC
+    snprintf(nb, sizeof(nb), "sub_%06X", in.target);
+#else
     snprintf(nb, sizeof(nb), "sub_%08X", in.target);
+#endif
     callee = nb;
   }
 
@@ -1955,7 +1963,11 @@ std::string CDecompiler::Run() {
               callee = "(*(int (**)())0 /*unresolved*/)";
             } else {
               char nb[32];
+#ifdef WIN95DEC_NO_PPC
+              snprintf(nb, sizeof(nb), "sub_%06X", in.target);   // match Win95 def naming (sub_%06X)
+#else
               snprintf(nb, sizeof(nb), "sub_%08X", in.target);
+#endif
               callee = nb;
             }
           }

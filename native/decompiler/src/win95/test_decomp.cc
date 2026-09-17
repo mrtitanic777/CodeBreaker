@@ -1,4 +1,5 @@
 // End-to-end proof: NE load -> x86 lift -> shared DecompileToC -> readable C.
+#include <algorithm>
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
@@ -260,6 +261,48 @@ int main(int argc, char** argv) {
           }
           if (m == "ret" || m == "retf" || m == "iret") break;   // terminator
           a += in.len;                                   // ordinary / call: fall through
+        }
+      }
+    }
+    // Tail-jmp / multi-entry recovery. Win16 code is full of multi-entry functions: an exported entry
+    // sets a discriminator and `jmp`s into a shared body, and an adjacent alternate entry (its own
+    // export) falls through into that same body. The shared body is then reached ONLY by an
+    // unconditional jmp that crosses a discovered function boundary. The C emitter renders such a jmp
+    // as `sub_T(); return;` (a tail call), so T must be its own defined function or the call is an
+    // undefined reference (gdi/user/krnl386: ~250 of these). Seed every unconditional-jmp target that
+    // leaves the slot of the function it sits in. The presence of a DISCOVERED start between the jmp
+    // and its target is the safety signal that this is a real function transition, not an intra-
+    // function loop back-edge (which never has a function boundary inside it) -- so we never split a
+    // real loop into a broken tail call. Iterate: a freshly seeded body can tail-jmp onward again.
+    bool grew = true;
+    while (grew) {
+      grew = false;
+      for (auto& s : img.segments) {
+        if (s.is_data) continue;
+        std::vector<uint32_t> fs(starts[s.idx].begin(), starts[s.idx].end());
+        std::sort(fs.begin(), fs.end());
+        uint32_t segend = s.base_addr + s.length;
+        for (size_t i = 0; i < fs.size(); ++i) {
+          uint32_t f0 = fs[i], f1 = (i + 1 < fs.size()) ? fs[i + 1] : segend;
+          for (uint32_t a = f0; a < f1;) {               // straight-line scan of the slot
+            win95::X86Insn in = win95::DecodeX86Auto(img.image.data(), img.image.size(), a, a, true);
+            if (!in.valid) break;
+            // Any relative jump -- unconditional `jmp` OR a conditional `jcc` -- whose target leaves
+            // this slot is a function transition (the emitter renders it `sub_T(); return;` or
+            // `if (cond) return sub_T();`). Conditional cross-function tail branches are common in the
+            // Win16 core (gdi/user: `if (cond) return sub_X()`). The cross-slot test (a discovered
+            // boundary lies between the branch and its target) keeps intra-function if/else and loop
+            // edges -- which never cross a boundary -- from being seeded and split.
+            if (in.mnem.size() && in.mnem[0] == 'j' && in.ops[0].kind == win95::OpKind::Rel) {
+              uint32_t t = (uint32_t)in.ops[0].imm;
+              if (t < f0 || t >= f1) {                   // leaves this function's slot -> a real entry
+                size_t before = seeds.size();
+                addSeed(t);
+                if (seeds.size() != before) grew = true;
+              }
+            }
+            a += in.len;
+          }
         }
       }
     }
