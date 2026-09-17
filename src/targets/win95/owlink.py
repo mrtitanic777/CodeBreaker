@@ -146,7 +146,7 @@ def link_module(module, do_diff=False):
     # or duplicate pieces from a prior split shape. Start from a clean tree so only the CURRENT pieces
     # are compiled and linked.
     for f in os.listdir(bld):
-        if f.endswith((".c", ".h", ".obj", ".o")):
+        if f.endswith((".c", ".h", ".obj", ".o", ".asm")):
             try:
                 os.remove(os.path.join(bld, f))
             except OSError:
@@ -162,6 +162,18 @@ def link_module(module, do_diff=False):
     # how the module was really built AND the only way a big 16-bit module fits (one giant .c overruns
     # the 64K code segment). Fall back to the single authored .c for small/un-split modules.
     treedir = os.path.join(authsrc._dr(), "recon", "authored", "tree", module)
+    # DATA-segment lane (16-bit NE): reconstruct the module's DGROUP as authored assembly so the code's
+    # DGROUP-relative accesses resolve and exported data (THHOOK, __GP, ...) is present. Writes
+    # tree/<module>/<module>_data.asm; the tree loop below assembles it. PE data is handled by wcc386.
+    data_exports = []
+    if fmt == "NE":
+        try:
+            from src.targets.win95 import dataseg
+            dr = dataseg.write_module(module)
+            if dr.get("ok"):
+                data_exports = dr["data_exports"]
+        except Exception:                                          # noqa: BLE001
+            pass
     objs = []
     if os.path.isdir(treedir) and any(f.endswith(".c") for f in os.listdir(treedir)):
         for f in sorted(os.listdir(treedir)):
@@ -180,6 +192,20 @@ def link_module(module, do_diff=False):
                 o = f[:-2] + ".obj"
                 if os.path.isfile(os.path.join(bld, o)):
                     objs.append(o)
+        # authored assembly pieces (the reconstructed DGROUP data module): assemble with wasm. Its
+        # obj must link FIRST so its _DATA sits at DGROUP offset 0 -- the code accesses globals by
+        # DGROUP-relative offset, so the authored data image has to start at 0 even if wcc also emits
+        # incidental _DATA (string literals) that then follows harmlessly above the real data.
+        data_objs = []
+        for f in sorted(os.listdir(treedir)):
+            if f.endswith(".asm"):
+                shutil.copy2(os.path.join(treedir, f), os.path.join(bld, f))
+                subprocess.run([os.path.join(ow, "binnt", "wasm.exe"), "-q", "-zq", f],
+                               cwd=bld, capture_output=True, text=True, env=env, timeout=180)
+                o = f[:-4] + ".obj"
+                if os.path.isfile(os.path.join(bld, o)):
+                    data_objs.append(o)
+        objs = data_objs + objs
     else:
         shutil.copy2(cpath, os.path.join(bld, module + ".c"))
         subprocess.run([cc] + cflags + [module + ".c"], cwd=bld, capture_output=True, text=True,
@@ -266,6 +292,7 @@ def link_module(module, do_diff=False):
     for m in re.finditer(r"//\s*([A-Za-z_]\w*)\s+@ 0x([0-9A-Fa-f]+)",
                          open(src, encoding="utf-8", errors="replace").read()):
         addr2name[int(m.group(2), 16)] = m.group(1)
+    data_export_names = {nm for _o, nm, _off in data_exports}   # data exports the DGROUP lane rebuilt
     exp_lines = []
     missing_exports = []                                   # (ordinal, name, reason) -- honest residue
     if is_lib:
@@ -287,8 +314,12 @@ def link_module(module, do_diff=False):
             our = addr2name.get(addr) if addr is not None else None
             if fmt == "NE" and our and not is_data and our in defined:
                 exp_lines.append("export %s.%s='@%s'" % (name, ordn, our))
+            elif is_data and name in data_export_names:
+                # exported data reconstructed by the DGROUP data lane (dataseg): export the data symbol
+                # (an assembly PUBLIC label, undecorated) at its real ordinal.
+                exp_lines.append("export %s.%s=%s" % (name, ordn, name))
             elif is_data:
-                missing_exports.append((ordn, name, "data-export (segment DATA)"))
+                missing_exports.append((ordn, name, "data-export (not reconstructed)"))
             elif addr is not None and our is None:
                 missing_exports.append((ordn, name, "no function recovered @ 0x%X" % addr))
             else:
