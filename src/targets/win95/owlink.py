@@ -96,6 +96,45 @@ def _exports(binpath, fmt):
     return exps
 
 
+def _valid_obj(op):
+    """A real OMF object exists and is non-empty (starts with THEADR/LHEADR 0x80/0x82). A 0-byte or
+    truncated file (wcc killed mid-write) is NOT valid and must not be linked (E2146)."""
+    try:
+        with open(op, "rb") as f:
+            b = f.read(1)
+        return len(b) == 1 and b[0] in (0x80, 0x82)
+    except OSError:
+        return False
+
+
+def _compile_piece(cc, flags, cfile, bld, env):
+    """Compile one .c piece, returning its .obj name or None. If wcc HANGS (the optimizer runs away on
+    a pathological function -- what left kernel32's heap.obj truncated/empty -> E2146) the run is killed
+    and retried with -od (optimizations disabled), which sidesteps the hang; the -od pass gets a longer
+    budget since it is the reliable path. The obj is validated (non-empty OMF) before being accepted."""
+    o = (cfile[:-2] if cfile.endswith(".c") else cfile) + ".obj"
+    op = os.path.join(bld, o)
+
+    def _try(extra, timeout):
+        try:
+            if os.path.isfile(op):
+                os.remove(op)
+        except OSError:
+            pass
+        try:
+            subprocess.run([cc] + flags + extra + [cfile], cwd=bld, capture_output=True,
+                           text=True, env=env, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            pass
+        return _valid_obj(op)
+
+    if _try([], 150):
+        return o
+    if _try(["-od"], 400):                                  # optimizer hang -> unoptimized, more time
+        return o
+    return None
+
+
 def _cgsupp_lib():
     """Path to the combined 16-bit code-generator support library (built once, cached). This
     from-source Watcom's rel/lib286/clibl.lib is an empty stub; the real helper objects (__U4M/__U4D/
@@ -242,10 +281,8 @@ def link_module(module, do_diff=False):
                 # a function in another links as a FAR call -- a near call cannot cross segments (E2052).
                 pcf = (["-bt=" + tgt, "-q", "-s", "-ml", "-3", "-nt=%s_TEXT" % f[:-2]]
                        if bits == 16 else cflags)
-                subprocess.run([cc] + pcf + [f], cwd=bld, capture_output=True, text=True,
-                               env=env, timeout=180)
-                o = f[:-2] + ".obj"
-                if os.path.isfile(os.path.join(bld, o)):
+                o = _compile_piece(cc, pcf, f, bld, env)
+                if o:
                     objs.append(o)
         # authored assembly pieces (the reconstructed DGROUP data module): assemble with wasm. Its
         # obj must link FIRST so its _DATA sits at DGROUP offset 0 -- the code accesses globals by
@@ -263,10 +300,9 @@ def link_module(module, do_diff=False):
         objs = data_objs + objs
     else:
         shutil.copy2(cpath, os.path.join(bld, module + ".c"))
-        subprocess.run([cc] + cflags + [module + ".c"], cwd=bld, capture_output=True, text=True,
-                       env=env, timeout=180)
-        if os.path.isfile(os.path.join(bld, module + ".obj")):
-            objs.append(module + ".obj")
+        o = _compile_piece(cc, cflags, module + ".c", bld, env)
+        if o:
+            objs.append(o)
     src = cpath                                            # for the defined-exports scan
     if not objs:
         return {"ok": False, "error": "compile produced no obj"}
