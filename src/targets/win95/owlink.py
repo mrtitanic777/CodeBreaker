@@ -191,11 +191,15 @@ def link_module(module, do_diff=False):
             # a hard parse failure that killed the whole link -- most PE modules import something by
             # ordinal). Emit the numeric ordinal form `import MOD_N 'MOD'.N` instead; if the recovered C
             # never references it, the directive is simply unused.
+            # The C calls a PE import as MOD_api / MOD_ordinal; wcc386's default (register) convention
+            # decorates the reference with a TRAILING '_' (obj symbol `MOD_api_`). The import
+            # directive's INTERNAL name must carry that '_' or the reference is undefined and the import
+            # gets stubbed instead of linked -- this was stubbing most PE imports corpus-wide.
             mo = re.match(r"^@(\d+)$", api)
             if mo:
-                imp_lines.append("import %s_%s '%s'.%s" % (mod, mo.group(1), mod, mo.group(1)))
+                imp_lines.append("import %s_%s_ '%s'.%s" % (mod, mo.group(1), mod, mo.group(1)))
             else:
-                imp_lines.append("import %s_%s '%s'.'%s'" % (mod, api, mod, api))
+                imp_lines.append("import %s_%s_ '%s'.'%s'" % (mod, api, mod, api))
             continue
         # NE 16-bit: the authored C declares each imported API as a plain `extern int API()`, which
         # wcc (compact-model __watcall) references with a TRAILING underscore -- the obj carries the
@@ -263,6 +267,13 @@ def link_module(module, do_diff=False):
                 # the Watcom large-model runtime provides the compiler math/util helpers (__U4D divide,
                 # etc.) our code references; link them for real (not stubbed -- these are toolchain code).
                 f.write("libpath '%s'\nlibrary clibl\n" % os.path.join(ow, "lib286").replace("\\", "/"))
+            else:
+                # 32-bit: the wcc386 runtime (clib3r) + FP pack (math3r) supply the compiler helpers our
+                # PE code references -- __8087 and the FP/util routines float ops pull in. Real toolchain
+                # code, linked not stubbed.
+                f.write("libpath '%s'\nlibpath '%s'\nlibrary clib3r,math3r\n" %
+                        (os.path.join(ow, "lib386", "nt").replace("\\", "/"),
+                         os.path.join(ow, "lib386").replace("\\", "/")))
             for o in objs:
                 f.write("file %s\n" % o)
             f.write("file stubs.obj\n")

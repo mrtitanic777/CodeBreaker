@@ -186,6 +186,22 @@ int main(int argc, char** argv) {
   auto secEnd = [&](int si) -> uint32_t {
     auto& s = img.sections[si]; return s.va + (s.vsize ? s.vsize : s.raw_size);
   };
+  // A relocated DWORD that points into code is either a function pointer (vtable / dispatch table /
+  // window proc -- a real function entry) or a switch jump-table entry (points MID-function). Only the
+  // former should seed a function start; splitting a function at a switch target corrupts it. Gate on
+  // a recognizable 32-bit function prologue -- switch-table blocks don't start with one.
+  auto looksLikeProlog = [&](uint32_t rva) -> bool {
+    if (rva + 3 > image_size) return false;
+    uint8_t b0 = image[rva], b1 = image[rva + 1], b2 = image[rva + 2];
+    if (b0 == 0x8B && b1 == 0xFF) return true;                       // mov edi,edi (hot-patch pad)
+    if (b0 == 0x55 && b1 == 0x8B && b2 == 0xEC) return true;         // push ebp; mov ebp,esp
+    if (b0 == 0x55 && (b1 == 0x53 || b1 == 0x56 || b1 == 0x57)) return true;  // push ebp; push reg
+    if (b0 == 0x83 && b1 == 0xEC) return true;                       // sub esp, imm8
+    if (b0 == 0x81 && b1 == 0xEC) return true;                       // sub esp, imm32
+    if ((b0 == 0x53 || b0 == 0x56 || b0 == 0x57) &&
+        (b1 == 0x53 || b1 == 0x56 || b1 == 0x57 || b1 == 0x8B)) return true;  // push reg; push/mov
+    return false;
+  };
   auto discover = [&]() {
     std::map<int, std::set<uint32_t>> starts;         // section index -> starts
     std::vector<uint32_t> seeds;
@@ -196,6 +212,18 @@ int main(int argc, char** argv) {
     if (img.entry) addSeed(img.entry);
     for (auto& e : img.exports) addSeed(e.second);
     for (uint32_t t : callTargets) addSeed(t);
+    // (1c) relocated code-pointers that begin with a function prologue: vtable / dispatch-table /
+    // callback (window-proc) targets reached only through `call [reg]`, which control-flow discovery
+    // can't follow. Prologue-gated so switch jump-table entries (mid-function, no prologue) never split
+    // a real function.
+    for (uint32_t r : img.base_relocs) {
+      if (r + 4 > image_size) continue;
+      uint32_t va = image[r] | (image[r + 1] << 8) | (image[r + 2] << 16) |
+                    ((uint32_t)image[r + 3] << 24);
+      if (va <= img.image_base) continue;
+      uint32_t t = va - img.image_base;
+      if (secOf(t) >= 0 && looksLikeProlog(t)) addSeed(t);
+    }
     // (2) recursive-descent, harvesting near-call targets to a fixpoint
     for (size_t qi = 0; qi < seeds.size(); ++qi) {
       uint32_t f = seeds[qi];
