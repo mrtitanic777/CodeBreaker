@@ -251,7 +251,7 @@ def link_module(module, do_diff=False):
         # FI*RQQ/FJ*RQQ fp-fixup symbols resolved by a linker fp-fixup mechanism that our custom NE
         # template doesn't wire up (left FIFRQQ/FJFRQQ undefined in any float-using module); -fpc calls
         # the ordinary math-library helpers instead, which link normally.
-        cflags += ["-mc", "-3"]
+        cflags += ["-mc", "-3", "-fpi87"]
     # Prefer the multi-file split tree: compile each piece to its own obj (separate segments), which is
     # how the module was really built AND the only way a big 16-bit module fits (one giant .c overruns
     # the 64K code segment). Fall back to the single authored .c for small/un-split modules.
@@ -279,7 +279,7 @@ def link_module(module, do_diff=False):
                 # wlink merges same-named segments, so without this every piece's code piles into one
                 # _TEXT and overruns. Large model (-ml, far code) so a call from one piece's segment to
                 # a function in another links as a FAR call -- a near call cannot cross segments (E2052).
-                pcf = (["-bt=" + tgt, "-q", "-s", "-ml", "-3", "-nt=%s_TEXT" % f[:-2]]
+                pcf = (["-bt=" + tgt, "-q", "-s", "-ml", "-3", "-fpi87", "-nt=%s_TEXT" % f[:-2]]
                        if bits == 16 else cflags)
                 o = _compile_piece(cc, pcf, f, bld, env)
                 if o:
@@ -489,7 +489,7 @@ def link_module(module, do_diff=False):
             f.write("/* internal targets the decompiler has not recovered -- flagged stubs */\n")
             for s in sorted(stubs):
                 f.write("int %s(){return 0;}\n" % s)
-        stubflags = (["-bt=" + tgt, "-q", "-s", "-ml", "-3"] if bits == 16 else cflags)
+        stubflags = (["-bt=" + tgt, "-q", "-s", "-ml", "-3", "-fpi87"] if bits == 16 else cflags)
         subprocess.run([cc] + stubflags + ["stubs.c"], cwd=bld, capture_output=True, text=True, env=env)
         with open(os.path.join(bld, "link.lnk"), "w", newline="\n") as f:
             if dll_opt:
