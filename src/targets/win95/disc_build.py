@@ -94,7 +94,11 @@ def _resolve(name, our, files_dir):
 
 
 def build(src_win95, files_dir, out_iso, our=None, boot=None, volid="WIN95",
-          out_root=None, progress=None):
+          out_root=None, progress=None, subst_cabs=None):
+    """subst_cabs: if given (a set of upper-case CAB basenames), OUR binaries are substituted ONLY into
+    those cabinets; every other cabinet is repacked from the original media only. Lets a caller put our
+    binaries into the INSTALLED cabinets while leaving the Setup-runtime cabinets (MINI/PRECOPY*)
+    original -- so Setup runs on stock code and our binaries are exercised on first boot."""
     import cab, cabwrite, isowrite
     out_root = out_root or os.path.join("disc", "out")
     win95_out = os.path.join(out_root, "WIN95")
@@ -108,10 +112,13 @@ def build(src_win95, files_dir, out_iso, our=None, boot=None, volid="WIN95",
         except Exception:
             shutil.copy2(cabpath, win95_out)          # unreadable header: pass through
             continue
+        # gate substitution to the requested cabinets (None = all)
+        cab_our = our if (subst_cabs is None or
+                          os.path.basename(cabpath).upper() in subst_cabs) else None
         payload = []
         complete = True
         for cf in cfiles:
-            path, kind = _resolve(cf.name, our, files_dir)
+            path, kind = _resolve(cf.name, cab_our, files_dir)
             if path is None:
                 complete = False
                 break
