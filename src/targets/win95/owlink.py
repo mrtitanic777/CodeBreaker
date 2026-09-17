@@ -96,6 +96,37 @@ def _exports(binpath, fmt):
     return exps
 
 
+def _cgsupp_lib():
+    """Path to the combined 16-bit code-generator support library (built once, cached). This
+    from-source Watcom's rel/lib286/clibl.lib is an empty stub; the real helper objects (__U4M/__U4D/
+    __I4M/__I4D integer mul-div, __FDU87 fp, ...) are the per-model builds under bld/clib/cgsupp/library/
+    windows.086/ml. Archive that model's clibl.lib + its loose helper objs into one lib the linker can
+    search. Returns the lib path, or "" if the cgsupp tree isn't present."""
+    ow = _ow()
+    cg = os.path.join(paths.repo_root(), "experiments", "premise-proof", "open-watcom-v2",
+                      "bld", "clib", "cgsupp", "library", "windows.086", "ml")
+    if not os.path.isdir(cg):
+        return ""
+    out = os.path.join(ow, "lib286", "owcg16.lib")
+    base = os.path.join(cg, "clibl.lib")
+    # rebuild if missing or older than the cgsupp clibl.lib
+    if os.path.isfile(out) and os.path.isfile(base) and os.path.getmtime(out) >= os.path.getmtime(base):
+        return out
+    import shutil
+    wlib = os.path.join(ow, "binnt", "wlib.exe")
+    try:
+        if os.path.isfile(out):
+            os.remove(out)
+        shutil.copy2(base, out)
+        for f in sorted(os.listdir(cg)):
+            if f.endswith(".obj"):
+                subprocess.run([wlib, "-q", "-b", out, "+" + os.path.join(cg, f)],
+                               capture_output=True, text=True)
+    except OSError:
+        return base if os.path.isfile(base) else ""
+    return out
+
+
 def _ne_is_library(binpath):
     """True if an NE module has the LIBRARY flag (0x8000) set -- i.e. it is a DLL, not an application.
     The Win16 core (KRNL386/GDI/USER) ships as .EXE yet sets this; real apps (dialer, ...) do not, even
@@ -239,6 +270,20 @@ def link_module(module, do_diff=False):
     src = cpath                                            # for the defined-exports scan
     if not objs:
         return {"ok": False, "error": "compile produced no obj"}
+
+    # fp-init shim (16-bit): the Watcom C startup defines `__8087` (the fp-level flag the inline-8087
+    # math checks) -- our reconstruction sets its own entry and never links that startup, so any
+    # float-using NE/DOS module left `__8087` undefined. Provide it: 3 = 387-class FPU present, true on
+    # every Win95 machine. A tiny assembled data obj, harmless (unused) in non-float modules.
+    if bits == 16:
+        with open(os.path.join(bld, "owfp87.asm"), "w", newline="\n") as f:
+            f.write("; fp-init shim: __8087 fp-level flag (387 present), normally from the C startup.\n"
+                    "DGROUP group _DATA\n_DATA segment word public 'DATA'\n"
+                    "\tpublic __8087\n__8087 dw 3\n_DATA ends\n\tend\n")
+        subprocess.run([os.path.join(ow, "binnt", "wasm.exe"), "-q", "-zq", "owfp87.asm"],
+                       cwd=bld, capture_output=True, text=True, env=env)
+        if os.path.isfile(os.path.join(bld, "owfp87.obj")):
+            objs.append("owfp87.obj")
 
     # real imports -> wlink `import` directives (name-consistent with the C's symbols), so the module
     # calls the actual API instead of a return-0 stub. NE: by ordinal or name from KERNEL/USER/GDI/...
@@ -431,13 +476,11 @@ def link_module(module, do_diff=False):
                 # real 16-bit large-model Windows support objs are the ones actually built, under
                 # bld/clib/cgsupp/library/windows.086/ml (its own clibl.lib). Put that libpath FIRST so
                 # its clibl wins over the empty rel stub; emu87 supplies the 8087 emulator fp fixups.
-                cgsupp = os.path.join(paths.repo_root(), "experiments", "premise-proof",
-                                      "open-watcom-v2", "bld", "clib", "cgsupp", "library",
-                                      "windows.086", "ml").replace("\\", "/")
-                # Reference the real clibl by FULL PATH (not by libpath search): rel/lib286 also holds an
-                # empty clibl.lib that would win the libpath order otherwise.
-                f.write("libpath '%s'\nlibrary '%s/clibl.lib',emu87\n"
-                        % (os.path.join(ow, "lib286").replace("\\", "/"), cgsupp))
+                cglib = (_cgsupp_lib() or os.path.join(ow, "lib286", "clibl.lib")).replace("\\", "/")
+                # Reference the real support lib by FULL PATH (rel/lib286 holds an empty clibl.lib stub
+                # that would win libpath order otherwise). emu87 = 8087 fp fixups.
+                f.write("libpath '%s'\nlibrary '%s',emu87\n"
+                        % (os.path.join(ow, "lib286").replace("\\", "/"), cglib))
             else:
                 # 32-bit: the wcc386 runtime (clib3r) + FP pack (math3r) supply the compiler helpers our
                 # PE code references -- __8087 and the FP/util routines float ops pull in. Real toolchain
