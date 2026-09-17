@@ -38,21 +38,35 @@ def _native(fmt):
 
 def classify(path):
     """(fmt, language, nfuncs, c_frames). Format is the reliable era/language signal: PE (Win32) and
-    NE (Win16) are C; LE (VxD) is asm; MZ (DOS) is decided by C-calling-convention density."""
+    NE (Win16) are C; LE (VxD) is asm; MZ (DOS) is decided by C-calling-convention density. A headerless
+    real-mode binary (.COM / DOS device driver, no MZ header) decodes via a synthetic MZ wrapper."""
     from src.targets.win95 import nativedec
     fmt = nativedec.detect_format(path)
     dec = _native(fmt)
-    n = len(subprocess.run([dec, path, "--names"], capture_output=True, text=True).stdout.splitlines()) if dec else 0
-    if fmt in ("PE", "NE"):
-        lang = "c"
-        cf = 0
-    elif fmt == "LE":
-        lang = "asm"
-        cf = 0
-    else:                                                             # MZ (DOS): asm kernel vs C tool
-        dis = subprocess.run([dec, path, "--disasm"], capture_output=True, text=True).stdout if dec else ""
-        cf = dis.count("push bp") + dis.count("push ebp")
-        lang = "c" if (n and cf * 100 // max(n, 1) >= 30) else "asm"
+    # headerless real-mode: the MZ engine needs a synthetic MZ wrapper (win95mzdec expects a header).
+    decpath, wrapped = path, None
+    if fmt == "MZ" and not nativedec._has_mz(path):
+        wrapped = nativedec._wrap_raw_mz(path)
+        if wrapped:
+            decpath = wrapped
+    try:
+        n = len(subprocess.run([dec, decpath, "--names"], capture_output=True, text=True).stdout.splitlines()) if dec else 0
+        if fmt in ("PE", "NE"):
+            lang = "c"
+            cf = 0
+        elif fmt == "LE":
+            lang = "asm"
+            cf = 0
+        else:                                                        # MZ (DOS): asm kernel vs C tool
+            dis = subprocess.run([dec, decpath, "--disasm"], capture_output=True, text=True).stdout if dec else ""
+            cf = dis.count("push bp") + dis.count("push ebp")
+            lang = "c" if (n and cf * 100 // max(n, 1) >= 30) else "asm"
+    finally:
+        if wrapped:
+            try:
+                os.remove(wrapped)
+            except OSError:
+                pass
     return fmt, lang, n, cf
 
 
@@ -733,7 +747,20 @@ def _author_job(job):
     try:
         fmt, lang, n, cf = classify(path)
         if lang != "c":
-            return {"nm": nm, "row": (nm, "asm/" + fmt, n, 0, 0, "dosrecon/asm route")}
+            # Real-mode DOS binaries (.COM tools, DOS device drivers -- fmt MZ) are ASM: author them as
+            # annotated MASM via dosrecon, into asm/<module>/. LE (VxD) asm is owned by the VxD lane, so
+            # leave it be here.
+            if fmt == "MZ":
+                try:
+                    from src.targets.win95 import dosrecon
+                    module = nm.split(".")[0].lower()
+                    r = dosrecon.author_dos(path, module, os.path.join(outroot, "asm"))
+                    if r:
+                        return {"nm": nm, "row": (nm, "asm/MZ", n, r.get("nfuncs", 0), 0,
+                                                  "asm/%s (MASM, %d funcs)" % (module, r.get("nfuncs", 0)))}
+                except Exception as e:                                # noqa: BLE001
+                    return {"nm": nm, "row": (nm, "asm/MZ", n, 0, 0, "dosrecon FAIL: %s" % str(e)[:50])}
+            return {"nm": nm, "row": (nm, "asm/" + str(fmt), n, 0, 0, "dosrecon/asm route")}
         out = os.path.join(outroot, "c", nm.split(".")[0].lower() + ".c")
         tot, named = _author_c(path, fmt, out)
         bits = 32 if fmt == "PE" else 16

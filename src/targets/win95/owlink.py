@@ -91,7 +91,8 @@ def _exports(binpath, fmt):
             is_data = len(p) >= 4 and p[3].strip() == "DATA"
             exps.append((p[0].strip(), p[1].strip(), addr, is_data))
         elif fmt == "PE" and p and p[0].strip():
-            exps.append((None, p[0].strip(), None, False))
+            rva = int(p[1], 16) if len(p) >= 2 and p[1].strip() else None
+            exps.append((None, p[0].strip(), rva, False))
     return exps
 
 
@@ -314,6 +315,10 @@ def link_module(module, do_diff=False):
             our = addr2name.get(addr) if addr is not None else None
             if fmt == "NE" and our and not is_data and our in defined:
                 exp_lines.append("export %s.%s='@%s'" % (name, ordn, our))
+            elif fmt == "PE" and our and our in defined:
+                # PE export whose retail name we didn't propagate onto the recovered function: export
+                # the real name aliased to our recovered symbol at that RVA (trailing '_' decoration).
+                exp_lines.append("export %s='%s_'" % (name, our))
             elif is_data and name in data_export_names:
                 # exported data reconstructed by the DGROUP data lane (dataseg): export the data symbol
                 # (an assembly PUBLIC label, undecorated) at its real ordinal.
