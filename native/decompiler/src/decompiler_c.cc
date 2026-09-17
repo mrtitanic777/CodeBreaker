@@ -2406,7 +2406,18 @@ std::string CDecompiler::Run() {
   std::string ret_ty = (g_signature && !g_signature->ret.empty())
                            ? g_signature->ret
                            : (last_r3_ != kILNoValue ? "int" : "void");
+  // Calling convention: 16-bit Watcom __fastcall decorates `@NAME` (arity-independent), so NE/MZ
+  // definitions, prototypes and call sites always agree even when call-site arg recovery is imperfect.
+  // 32-bit wcc386 __fastcall decorates `@name@N` where N is the argument-byte count -- so a call that
+  // emits `name()` (N=0) never matches a definition with recovered args (N>0), leaving every such
+  // symbol undefined at link. Emit 32-bit bodies in the DEFAULT (register/__watcall) convention, which
+  // decorates `name_` with NO arity suffix -- arity-independent, matching owlink's PE export/import
+  // decoration -- until true call-site arity recovery lands.
+#ifdef WIN95DEC_TARGET32
+  out << ret_ty << " " << fname << "(";
+#else
   out << ret_ty << " __fastcall " << fname << "(";
+#endif
   if (live_in_args_.empty() && stack_args.empty()) {
     out << "void";
   } else {

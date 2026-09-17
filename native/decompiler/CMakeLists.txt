@@ -218,7 +218,7 @@ add_executable(win95pedec
     src/var_allocator.cc
 )
 target_include_directories(win95pedec PRIVATE src third_party third_party/capstone src/ppc/compat)
-target_compile_definitions(win95pedec PRIVATE WIN95DEC_NO_PPC)
+target_compile_definitions(win95pedec PRIVATE WIN95DEC_NO_PPC WIN95DEC_TARGET32)
 target_link_libraries(win95pedec PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/capstone/capstone.lib)
 if(MSVC)
     target_compile_definitions(win95pedec PRIVATE _CRT_SECURE_NO_WARNINGS)
@@ -239,7 +239,7 @@ add_executable(win95ledec
     src/var_allocator.cc
 )
 target_include_directories(win95ledec PRIVATE src third_party third_party/capstone src/ppc/compat)
-target_compile_definitions(win95ledec PRIVATE WIN95DEC_NO_PPC)
+target_compile_definitions(win95ledec PRIVATE WIN95DEC_NO_PPC WIN95DEC_TARGET32)
 target_link_libraries(win95ledec PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/capstone/capstone.lib)
 if(MSVC)
     target_compile_definitions(win95ledec PRIVATE _CRT_SECURE_NO_WARNINGS)
