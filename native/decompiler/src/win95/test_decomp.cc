@@ -156,10 +156,18 @@ int main(int argc, char** argv) {
       if (!e.addr) continue;
       auto it = ordName.find(e.ordinal);
       std::string nm = it != ordName.end() ? it->second : ("export_" + std::to_string(e.ordinal));
-      std::printf("%d\t%s\n", e.ordinal, nm.c_str());
+      // Third column: the export's linear address, and whether it lands in a DATA segment. The build
+      // lane needs the address to resolve an export whose retail NAME differs from OUR recovered
+      // function name (match by ADDRESS, not name), and the code/data tag to route data exports
+      // (THHOOK, __GP) to a data-symbol export instead of a function export.
+      int segidx = (int)(e.addr >> 16);
+      bool isdata = false;
+      for (auto& s : img.segments) if (s.idx == segidx) { isdata = s.is_data; break; }
+      std::printf("%d\t%s\t%X\t%s\n", e.ordinal, nm.c_str(), e.addr, isdata ? "DATA" : "CODE");
     }
     return 0;
   }
+
   // --entry: the linear entry point (header CS:IP); an EXE build sets `option start` from it.
   if (std::string(argv[2]) == "--entry") {
     std::printf("%X\n", img.entry);
@@ -211,6 +219,10 @@ int main(int argc, char** argv) {
     };
     for (auto& s : img.segments) if (!s.is_data) addSeed(s.base_addr);   // segment head
     for (auto& e : img.entries) if (e.addr) addSeed(e.addr);            // exports / entry table
+    if (img.entry) addSeed(img.entry);   // header CS:IP entry (DLL LibMain / app start) -- the loader
+                                         // calls it externally, so nothing INSIDE the module references
+                                         // it; without seeding it the kernel's init routine (krnl386
+                                         // @1B453) is never discovered and CS:IP links as 0:0.
     for (auto& kv : sites) if (kv.second.first) addSeed(kv.second.first);  // far-call / reloc targets
     // Also seed every near-call (E8) target found by a straight linear scan of each code segment.
     // Recursive-descent alone only reaches functions called (directly) from something already seeded,
