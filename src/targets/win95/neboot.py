@@ -29,31 +29,44 @@ from src.targets.win95 import authsrc, owlink, disc_build, cab
 RUNTIME_CABS = {"MINI.CAB", "PRECOPY1.CAB", "PRECOPY2.CAB"}
 
 
-def _ne_modules():
-    """NE modules that link OK, from BUILDLINK.csv -> {module: rebuilt-binary-path}."""
+def _our_modules(fmts=("NE", "PE")):
+    """Every module that links OK in the given formats, from BUILDLINK.csv -> {filename: rebuilt path}.
+    Default NE+PE = the whole Win16 core AND the Win32 subsystem, so the disc is entirely ours, not just
+    the 16-bit core. The output filename keeps the retail extension (.dll/.exe/.cpl/...) so it matches
+    and replaces the media member of the same name."""
     dr = authsrc._dr()
     out = {}
     csvp = os.path.join(dr, "recon", "authored", "BUILDLINK.csv")
     for r in csv.DictReader(open(csvp)):
-        if r["fmt"] != "NE" or r["status"] != "OK":
+        if r["fmt"] not in fmts or r["status"] != "OK":
             continue
         retail = owlink._find_binary(r["module"])
         if not retail:
             continue
-        outfn = r["module"] + (".dll" if retail.lower().endswith(".dll") else ".exe")
-        p = os.path.join(dr, "recon", "authored", "_link", r["module"], outfn)
-        if os.path.isfile(p) and os.path.getsize(p) > 4096:
+        ext = os.path.splitext(retail)[1] or (".dll" if r["fmt"] == "PE" else ".exe")
+        outfn = r["module"] + (".dll" if retail.lower().endswith(".dll") else
+                               ".exe" if retail.lower().endswith(".exe") else ext)
+        p = os.path.join(dr, "recon", "authored", "_link", r["module"], r["module"] +
+                         (".dll" if retail.lower().endswith(".dll") else ".exe"))
+        if os.path.isfile(p) and os.path.getsize(p) > 512:
             out[outfn.lower()] = p
     return out
+
+
+def _ne_modules():
+    return _our_modules(("NE",))
 
 
 def main(argv):
     dr = authsrc._dr()
     only = None
+    exc = set()
     out_iso = os.path.join(os.path.expanduser("~"), "Documents", "Win95-VMware", "win95-ne.iso")
     runtime = "--runtime" in argv
     if "--only" in argv:
         only = {m.strip().lower() for m in argv[argv.index("--only") + 1].split(",")}
+    if "--except" in argv:                                    # substitute all our NE EXCEPT these
+        exc = {m.strip().lower() for m in argv[argv.index("--except") + 1].split(",")}
     if "--out" in argv:
         out_iso = argv[argv.index("--out") + 1]
 
@@ -61,12 +74,16 @@ def main(argv):
     if not os.path.isdir(src):
         print("no install source at %s" % src); return 1
 
-    # our NE binaries -> a flat `our` dir (lowercase names, as disc_build._resolve expects)
-    ne = _ne_modules()
+    # our binaries -> a flat `our` dir (lowercase names, as disc_build._resolve expects). Default is the
+    # WHOLE thing: NE (Win16 core) + PE (Win32 subsystem). `--ne-only` restricts to the 16-bit core.
+    fmts = ("NE",) if "--ne-only" in argv else ("NE", "PE")
+    ne = _our_modules(fmts)
     if only:
         ne = {fn: p for fn, p in ne.items() if os.path.splitext(fn)[0] in only}
+    if exc:
+        ne = {fn: p for fn, p in ne.items() if os.path.splitext(fn)[0] not in exc}
     if not ne:
-        print("no matching our-built NE binaries (run owlink --all first)"); return 1
+        print("no matching our-built binaries (run owlink --all first)"); return 1
     our_dir = os.path.join(dr, "recon", "authored", "_neboot", "our")
     os.makedirs(our_dir, exist_ok=True)
     for fn, p in ne.items():
