@@ -102,7 +102,10 @@ def main(argv):
     # A file that also lives in an installed WIN95_*.CAB must be checked THERE (that's the copy the
     # installed system gets); a file that lives ONLY in a runtime cabinet is stock-by-design, not a
     # breach.
-    RUNTIME = ("MINI.CAB", "PRECOPY1.CAB", "PRECOPY2.CAB", "SETUPW95.CAB", "SETUPPP.CAB", "DXMINI.CAB")
+    # In --runtime mode the runtime cabinets WERE substituted, so verify them like any other; else
+    # they're stock-by-design (installed-only) and excluded from the breach check.
+    RUNTIME = () if "--runtime" in argv else \
+        ("MINI.CAB", "PRECOPY1.CAB", "PRECOPY2.CAB", "SETUPW95.CAB", "SETUPPP.CAB", "DXMINI.CAB")
     from src.targets.win95 import cab
     loc = {}                                               # name -> installed cab (preferred)
     runtime_only = {}                                      # name -> runtime cab (fallback)
