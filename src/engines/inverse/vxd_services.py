@@ -28,19 +28,43 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 
 def _candidates():
+    dr = paths.data_root()
     return [
         paths.reference("Microsoft Windows 95 DDK", "INC32"),   # the moved reference SDK/DDK tree
-        paths.data_root() + "/docs/reference/win95ddk/INC32",
-        paths.data_root() + "/docs/reference/loganxp/win95ddk/INC32",
+        # the sibling Win95 source repo (data_root is the checkouts' parent), tried directly so the
+        # bounded fallback below is not needed in the normal layout
+        os.path.join(dr, "Windows95", "design", "reference", "Microsoft Windows 95 DDK", "INC32"),
+        dr + "/docs/reference/win95ddk/INC32",
+        dr + "/docs/reference/loganxp/win95ddk/INC32",
     ]
+
+
+# directories never worth descending into when searching for the DDK headers
+_PRUNE = {".git", ".hg", ".svn", "node_modules", "__pycache__", ".venv", "venv",
+          "open-watcom-v2", "binaries", "corpus"}
 
 
 def _find_inc_dir():
     for p in _candidates():
-        if os.path.isdir(p):
+        if p and os.path.isdir(p):
             return p
-    hits = glob.glob(os.path.join(paths.design_root(), "**", "INC32", "VMM.INC"), recursive=True)
-    return os.path.dirname(hits[0]) if hits else None
+    # Bounded fallback. The old code did glob("**", recursive=True) over design_root(),
+    # which -- because data_root()/design_root() default to the PARENT of the checkout --
+    # crawled every sibling repo on disk and appeared to hang. Walk a shallow depth only,
+    # pruning VCS/build/corpus dirs, so a missing config degrades gracefully instead of
+    # scanning the whole tree.
+    root = paths.design_root()
+    if not root or not os.path.isdir(root):
+        return None
+    base = root.rstrip(os.sep).count(os.sep)
+    for dirpath, dirs, files in os.walk(root):
+        if dirpath.count(os.sep) - base >= 4:      # cap depth
+            dirs[:] = []
+            continue
+        dirs[:] = [d for d in dirs if d not in _PRUNE and not d.startswith(".")]
+        if os.path.basename(dirpath).upper() == "INC32" and "VMM.INC" in files:
+            return dirpath
+    return None
 
 
 @functools.lru_cache(maxsize=8)
