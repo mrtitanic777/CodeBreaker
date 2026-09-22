@@ -752,10 +752,19 @@ def emit_idiomatic(D, loadable=False):
                             or (tgt is not None and (oi, tgt) not in emitted):
                         line = None                            # target we don't emit a label for
                     else:                                      #  (bare number / mid-instruction) -> raw
-                        line = line.replace("SHORT ", "").replace("NEAR PTR ", "")   # let ML size the
-                #  branch: keeping the oracle's rel8/rel32 is the byte-exact tree's job; the readable
-                #  form's object layout shifts (macros, skipped DDB, size-drifting db) can push a pinned
-                #  SHORT out of range, and unpinned reads more like MS source anyway.
+                        line = line.replace("SHORT ", "").replace("NEAR PTR ", "")
+                        # Preserve the ORIGINAL near/short encoding. A near branch (jcc rel32 = 6 bytes,
+                        # jmp rel32 = 5) is re-emitted `near ptr` so the assembler keeps rel32 instead of
+                        # shrinking it to rel8 -- reproducing the oracle's bytes (the dominant cause of the
+                        # from-source object-size drift + jump-displacement cascade) with NONE of the out-
+                        # of-range risk that pinning SHORT carries (rel32 always reaches). Short originals
+                        # stay unsized -- the assembler picks, and may legitimately re-widen if the layout
+                        # shifted. loop*/jcxz have no near form, so gate on jmp(>=5)/jcc(>=6).
+                        near = (row["mnem"] == "jmp" and row["size"] >= 5) or \
+                               (row["mnem"][:1] == "j" and row["mnem"] != "jmp" and row["size"] >= 6)
+                        if near:
+                            mn, _, opnd = line.strip().partition(" ")
+                            line = "        %-6s near ptr %s" % (mn, opnd.strip())
                 L.append(line or _db(row["raw"]))
             a += row["size"]
         if cur_proc:
