@@ -359,6 +359,10 @@ def _ddb_size(D, db):
         sz = int.from_bytes(code[r + 0x40:r + 0x44], "little")
         if 0x34 <= sz <= 0x80:
             return sz
+        return 0x50                                       # modern DDB (Prev marker present) but its DDB_Size
+        #  field is zeroed in the image (the loader fills it) -- Declare_Virtual_Device still emits the full
+        #  0x50-byte VxD_Desc_Block, so skip 0x50 or the walk re-emits the 0x34..0x50 tail (a 28-byte dup
+        #  that broke every such VxD's object layout).
     return 0x34
 
 
