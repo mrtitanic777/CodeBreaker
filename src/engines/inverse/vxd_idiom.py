@@ -342,6 +342,22 @@ def _addr16(row):
     return False
 
 
+def _opnd16(row):
+    """True if the instruction carries a 0x66 operand-size prefix -- a 16-bit-operand op inside a use32
+    segment (`push word ..`, `mov word ptr .., cx`, `push word imm`). The readable re-emit loses the
+    prefix: capstone renders a size the assembler then drops (a word `push imm` comes back `push 2` ->
+    32-bit `6a 02`, no 0x66), so the rebuilt op pushes/moves 4 bytes where the oracle moved 2 --
+    corrupting the stack/data at run time (this is what faulted the from-source BIOS VxD, which drives
+    real-mode BIOS with 16-bit values). Byte-preserve to keep the exact operand size. Fixup-bearing
+    ops never reach here -- _loadable_insn handles them first -- so no relocation is lost."""
+    for b in row["raw"][:4]:
+        if b == 0x66:
+            return True
+        if b not in _PREFIX_BYTES:
+            break
+    return False
+
+
 def _ddb_size(D, db):
     """Byte length of the on-disk VxD_Desc_Block, so the object walk can skip it (the top-level
     Declare_Virtual_Device re-emits it). The modern DDB carries a DDB_Prev='Prev' marker at +0x3C and
@@ -739,7 +755,7 @@ def emit_idiomatic(D, loadable=False):
                 L.append(m if m else _db(row["raw"]))
             elif load_lines is not None:                       # loadable: internal fixup -> symbolic ref
                 L.extend(load_lines)
-            elif row["fx"] or has_abs_mem(row) or has_seg_prefix(row) or _addr16(row) \
+            elif row["fx"] or has_abs_mem(row) or has_seg_prefix(row) or _addr16(row) or _opnd16(row) \
                     or _shift_no_count(row) or _ml611_unknown(row) or _x87_stack(row) \
                     or _indirect_branch(row) or _cap_size(row) or row["mnem"] in _RAW_MNEMS:
                 L.append(_db(row["raw"]))                       # byte-preserve the encodings ML will
