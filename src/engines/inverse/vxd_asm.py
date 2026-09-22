@@ -122,6 +122,37 @@ class VxDDisasm:
         for k in range(start, start + length):
             s.data.add((oi, k))
 
+    def _remark_data_from_fixups(s):
+        """A relocation always targets a clean address (a label the linker resolves), never the
+        middle of a real instruction. So an INTERNAL fixup target that lands INSIDE a decoded
+        instruction proves that 'instruction' is actually DATA the linear sweep mis-decoded (a
+        pointer/variable in a data region). Reclassify the whole covering instruction as data --
+        drop it from insns and mark its bytes -- so _collect_labels can place a label at the
+        target and the loadable emit preserves the region's bytes / emits `dd offset` for its
+        pointers instead of re-encoding it as an instruction (which can change the bytes and leave
+        a data pointer holding a garbage address -> a mid-init fault, e.g. VKD's hot-key list).
+        Iterate: reclassifying one span can expose targets a longer mis-decode had shadowed."""
+        for _ in range(32):
+            cover = {}                                      # (oi, byte) -> covering instruction start
+            for (oi, a), row in s.insns.items():
+                for k in range(a, a + row["size"]):
+                    cover[(oi, k)] = a
+            victims = set()
+            for (soi, soff), f in s.fx.items():
+                if f["kind"] != "internal" or f.get("target") is None:
+                    continue
+                start = cover.get((f["obj"], f["target"]))
+                if start is not None and start != f["target"]:   # target sits mid-instruction
+                    victims.add((f["obj"], start))
+            if not victims:
+                break
+            for (oi, a) in victims:
+                row = s.insns.pop((oi, a), None)
+                if row:
+                    for k in range(a, a + row["size"]):
+                        s.mark.discard((oi, k))
+                    s._mark_data(oi, a, row["size"])
+
     # ---- recursive descent -----------------------------------------------------
     def run(s):
         seeds = s._seeds()                                 # resolve entry points (control/service) FIRST
@@ -138,6 +169,7 @@ class VxDDisasm:
             if not more:
                 break
             s._descend(more)
+        s._remark_data_from_fixups()                       # reclassify data the sweep decoded as code
         s._collect_labels()
         s._apply_ddk_names()
         return s
