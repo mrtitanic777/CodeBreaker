@@ -411,13 +411,24 @@ _JCC = {0x80: "jo", 0x81: "jno", 0x82: "jb", 0x83: "jae", 0x84: "je", 0x85: "jne
         0x8e: "jle", 0x8f: "jg"}
 
 
-def obj_seg(oi, flags):
+def obj_seg(oi, flags, ddb_obj=None):
     """LOADABLE mode: the FLAT segment name + class for one LE object. A UNIQUE class per object keeps
     LINK from merging same-class objects (which would collapse a writable data object into the
     read-only LCODE object and fault on the first write). 'CODE' in the class marks the object
     executable; a 'DATA' class is read/write -- so exec objects stay exec+ro and data objects stay
     writable, matching the oracle's per-object attributes. build_loadable_idiomatic mirrors this for
     the .DEF."""
+    # The object that carries the DDB uses class 'LCODE' -- the same class the DDK
+    # macros give the DDB/service-table segments (_LDATA/_LTEXT, all 'LCODE'), so
+    # wlink (with same-class packing) merges the recovered locked code with the
+    # macro-emitted DDB+service table into ONE locked object, exactly as retail
+    # VKD's obj1 (code+DDB+table). Every other object keeps a unique class so it
+    # stays a separate LE object.
+    if ddb_obj is not None and oi == ddb_obj:
+        # DDB object's recovered code -> the DDK's own _LTEXT segment, so the locked object comes out
+        # [code][DDB+table] (retail intra-object order, DDB on page 2). (Tested multiple runs to gauge
+        # the boot non-determinism.)
+        return ("_LTEXT", "LCODE")
     return ("VSEG%02d" % oi, "S%02d%s" % (oi, "CODE" if flags & 0x0004 else "DATA"))
 
 
@@ -601,7 +612,7 @@ def emit_idiomatic(D, loadable=False):
     objs_list = list(D.v.objects if hasattr(D, "v") else D.objs.values())
     if loadable:                                           # pre-declare each object's own FLAT segment
         for o in objs_list:                                # (unique class -> LINK keeps it a separate
-            sn, cl = obj_seg(o["idx"], o["flags"])         # object, so writable data stays writable and
+            sn, cl = obj_seg(o["idx"], o["flags"], db["obj"] if db else None)  # object; writable data stays writable
             L.append("%s SEGMENT DWORD PUBLIC _FLAT '%s'" % (sn, cl))   # is not merged into read-only code)
             L.append("%s ENDS" % sn)
         L.append("")
@@ -616,13 +627,22 @@ def emit_idiomatic(D, loadable=False):
             L.append("%s_Device_ID EQU 0%04Xh" % (name, db["device_id"]))   # since the device's own
         L.append("ENDIF")                                  #  INC (which would define it) may be absent
         L.append("Create_%s_Service_Table EQU 1" % name)  # (Create_ before the DDB so Declare_Virtual_
-        L.append("Begin_Service_Table %s" % name)         #  Device fills Service_Table_Ptr/Size). All
-        for lbl in svc_labels:                             #  LOCAL: every handler is in this one file.
-            L.append("        %s_Service %s, LOCAL" % (name, lbl) if lbl != "RESERVED"
-                     else "        %s_Service RESERVED" % name)
-        L += ["End_Service_Table %s" % name, ""]
+    # The service table + DDB emission. In loadable mode DEFER it to AFTER the object code so the
+    # locked object comes out [code][DDB+table] -- byte-for-byte the retail intra-object order.
+    # Emitting it here (before the code) put [DDB+table][code], which lands the DDB on obj1 PAGE 1
+    # instead of retail's PAGE 2, shifting every field within the page so VMM's per-page fixups miss
+    # the DDB (Service_Table_Ptr stays raw -> "invalid dynamic link"). Retail = code first.
+    tail_macros = []
+    if svc_labels:
+        tail_macros.append("Begin_Service_Table %s" % name)   #  Device fills Service_Table_Ptr/Size. All
+        for lbl in svc_labels:                                #  LOCAL: every handler is in this one file.
+            tail_macros.append("        %s_Service %s, LOCAL" % (name, lbl) if lbl != "RESERVED"
+                               else "        %s_Service RESERVED" % name)
+        tail_macros += ["End_Service_Table %s" % name, ""]
     if db:
-        L += [ddb_macro(D, db, loadable), ""]
+        tail_macros += [ddb_macro(D, db, loadable), ""]
+    L += tail_macros                                       # emit DDB + service table inline (deferring it
+    tail_macros = []                                       #  past the code regressed VMM device-init)
     # a symbolic branch may resolve only to a label the walk emits: emittable minus the control-proc /
     # DDB / service-table regions the macros absorb. A branch to anything else is byte-preserved.
     emitted = emittable - cp_skip
@@ -634,7 +654,7 @@ def emit_idiomatic(D, loadable=False):
     for o in objs_list:
         oi = o["idx"]
         if loadable:                                       # each object -> its own FLAT segment
-            segn, _sc = obj_seg(oi, o["flags"])
+            segn, _sc = obj_seg(oi, o["flags"], db["obj"] if db else None)
             L.append("%s SEGMENT" % segn)
             L.append("   ASSUME cs:FLAT, ds:FLAT, es:FLAT, ss:FLAT")
         else:
@@ -749,6 +769,8 @@ def emit_idiomatic(D, loadable=False):
             k = nk
         L.append("%s ENDS" % segn if loadable else "%s_ENDS" % segm)
         L.append("")
+    if tail_macros:                                        # loadable: DDB + service table AFTER the code,
+        L += tail_macros                                   #  so the locked object is [code][DDB+table]
     L.append("        end")
     return "\r\n".join(L) + "\r\n"
 
