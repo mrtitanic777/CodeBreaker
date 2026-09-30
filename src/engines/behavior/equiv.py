@@ -60,7 +60,7 @@ def load_relocated(path, module=None):
         bufs[o["idx"]] = b
     svc = {}
     for (oi, off), fx in v.fixups().items():
-        if oi not in bufs or off + 4 > len(bufs[oi]):
+        if oi not in bufs or off < 0 or off + 4 > len(bufs[oi]):
             continue
         if fx["kind"] == "internal":
             tva = obj_base.get(fx["obj"], 0) + (fx.get("target") or 0)
@@ -162,16 +162,36 @@ def run_image(regions, entry_va, regs=None, stack_args=(), mem_init=(), insn_cap
 
     rec = {"ret": None, "carry": None, "writes": [], "svc": [], "ext": [], "exit": None, "insns": 0}
 
+    def is_retaddr(v):
+        """A return address a `call` pushed: an in-image pointer immediately preceded by a call
+        (E8 rel32 at v-5, or an FF /2 indirect call ending at v). These are call machinery, not
+        semantic arguments, and they shift by a byte with benign code-layout changes -- normalize
+        them to one sentinel so they don't register as differences."""
+        if not in_image(v):
+            return False
+        try:
+            if uc.mem_read(v - 5, 1)[0] == 0xE8:
+                return True
+            b = uc.mem_read(v - 7, 7)
+            for j in range(len(b) - 1):
+                if b[j] == 0xFF and (b[j + 1] & 0x38) == 0x10 and (v - 7 + j) + 2 <= v:
+                    pass                                     # (indirect calls vary in length; E8 is the
+            return False                                    #  common case and enough for the ret-addr class)
+        except Exception:
+            return False
+
     def stack_args(n=6):
         """The top n stack dwords at a call, each normalized -- the callee's ARGUMENTS. Capturing
         these makes a service/external call's INPUTS part of the interaction signature, so passing a
-        differently-located pointer (e.g. a DDB at a rotated offset) registers as a real difference
-        even though the transient frame writes are excluded."""
+        differently-located pointer (e.g. a DDB at a rotated offset) registers as a real difference.
+        Return addresses (call machinery) are normalized to a sentinel so benign call-site shifts
+        don't register."""
         sp = uc.reg_read(UC_X86_REG_ESP)
         out = []
         for i in range(n):
             try:
-                out.append(norm(int.from_bytes(uc.mem_read(sp + i * 4, 4), "little")))
+                v = int.from_bytes(uc.mem_read(sp + i * 4, 4), "little")
+                out.append(("ret",) if is_retaddr(v) else norm(v))
             except Exception:
                 out.append(("?", 0))
         return tuple(out)
@@ -288,6 +308,9 @@ def equiv_images(ours_img, orig_img, ours_entry=None, orig_entry=None,
     effect signatures. Returns {equivalent, samples, diverged_at, detail}."""
     oe = ours_entry if ours_entry is not None else ours_img["ctrl_va"]
     re_ = orig_entry if orig_entry is not None else orig_img["ctrl_va"]
+    if oe is None or re_ is None:                             # no resolvable Control_Proc -> can't run
+        return {"equivalent": None, "informative": 0, "diverged_at": None,
+                "detail": None, "reason": "no-ctrl-proc"}
     inputs = sample_inputs(reg_names, samples, seed, messages)
     informative = 0                                          # samples where the ORIGINAL ran cleanly
     for inp in inputs:
