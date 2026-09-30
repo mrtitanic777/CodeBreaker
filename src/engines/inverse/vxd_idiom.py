@@ -616,14 +616,17 @@ def emit_idiomatic(D, loadable=False):
     cp = next((k for k, nm in D.labels.items()               #  table / compare chain -> then emit
               if nm == name + "_Control"), None) if handlers else None   # Begin_Control_Dispatch and
     #                                                          skip it; else emit the proc verbatim
-    if db:                                                    # the DDB struct is re-emitted by the
-        cp_skip |= {(db["obj"], k)                            #  top-level Declare_Virtual_Device, so
-                    for k in range(db["rva"], db["rva"] + _ddb_size(D, db))}   # skip it in the walk
+    if db and not loadable:                                   # readable/byte-exact: the macro re-emits
+        cp_skip |= {(db["obj"], k)                            #  the DDB, so skip it in the walk. LOADABLE
+                    for k in range(db["rva"], db["rva"] + _ddb_size(D, db))}   #  emits it IN-PLACE (below)
+        #  at its real rva instead -- so a pointer handed to a VxD service carries the oracle's offset,
+        #  not one floated to wherever the macro's _LDATA segment lands (the bios/vcomm/vcond fault class).
     svc_labels, svc_loc, svc_extra = service_table(D, emittable - cp_skip)   # own exported service table;
     svc_extra = svc_extra or {}                                   #  handlers must be emitted, not skipped
-    if svc_loc:
+    if svc_loc and not loadable:
         so, sp, sc = svc_loc                                  # skip the raw service-table pointers;
-        cp_skip |= {(so, k) for k in range(sp, sp + 4 * sc)}  #  Begin_Service_Table re-emits them
+        cp_skip |= {(so, k) for k in range(sp, sp + 4 * sc)}  #  Begin_Service_Table re-emits them (LOADABLE
+        #                                                        emits the table in-place, below)
     if ldctx is not None:                                     # let _dd_target_expr raw-emit a pointer whose
         ldctx["skip"] = cp_skip                               #  target sits in a macro-absorbed region
     # .586p (privileged, superset of .386p) so ring-0 486/Pentium ops -- invd/wbinvd/cpuid/cmpxchg/
@@ -653,13 +656,13 @@ def emit_idiomatic(D, loadable=False):
     # instead of retail's PAGE 2, shifting every field within the page so VMM's per-page fixups miss
     # the DDB (Service_Table_Ptr stays raw -> "invalid dynamic link"). Retail = code first.
     tail_macros = []
-    if svc_labels:
+    if svc_labels and not loadable:
         tail_macros.append("Begin_Service_Table %s" % name)   #  Device fills Service_Table_Ptr/Size. All
         for lbl in svc_labels:                                #  LOCAL: every handler is in this one file.
             tail_macros.append("        %s_Service %s, LOCAL" % (name, lbl) if lbl != "RESERVED"
                                else "        %s_Service RESERVED" % name)
         tail_macros += ["End_Service_Table %s" % name, ""]
-    if db:
+    if db and not loadable:
         tail_macros += [ddb_macro(D, db, loadable), ""]
     L += tail_macros                                       # emit DDB + service table inline (deferring it
     tail_macros = []                                       #  past the code regressed VMM device-init)
@@ -671,6 +674,23 @@ def emit_idiomatic(D, loadable=False):
     # reference an undefined symbol -- drop it, and that message falls through to the macro default.
     emitted_names = {D.labels[k] for k in emitted}
     handlers = [(m, h) for (m, h) in handlers if h in emitted_names]
+    _inplace_stops = set()                                  # loadable: offsets the walk must LAND on so
+    if loadable and db:                                     #  the in-place DDB / service-table branches
+        _inplace_stops.add((db["obj"], db["rva"]))          #  fire (else a data span coalesces past them
+    if loadable and svc_loc:                                #  and the public <name>_DDB label is dropped)
+        _inplace_stops.add((svc_loc[0], svc_loc[1]))
+    # A data byte just before the DDB/table can be mis-decoded as an instruction that SPANS the region
+    # start, so the walk jumps over the landing offset. Drop any insn that overlaps an in-place region
+    # (start or interior) -- it is data, and the in-place branch emits the region correctly.
+    _regions = []
+    if loadable and db:
+        _regions.append((db["obj"], db["rva"], db["rva"] + _ddb_size(D, db)))
+    if loadable and svc_loc:
+        _regions.append((svc_loc[0], svc_loc[1], svc_loc[1] + 4 * svc_loc[2]))
+    for (roi, rlo, rhi) in _regions:
+        for (o, aa) in list(D.insns):
+            if o == roi and aa < rhi and aa + D.insns[(o, aa)]["size"] > rlo:
+                del D.insns[(o, aa)]
     for o in objs_list:
         oi = o["idx"]
         if loadable:                                       # each object -> its own FLAT segment
@@ -693,6 +713,24 @@ def emit_idiomatic(D, loadable=False):
                 L.append("End_Control_Dispatch %s" % name)
                 a += 1
                 continue
+            if loadable and db and oi == db["obj"] and a == db["rva"]:
+                # LOADABLE: emit the DDB struct IN-PLACE at its real rva as relocatable data (dd offset
+                # for the pointer fields via _loadable_data), with the exported public label -- so the
+                # DDB lands at the oracle offset and a pointer to it (passed to a VxD service) is right.
+                end = db["rva"] + _ddb_size(D, db)
+                L.append("public %s_DDB" % name)
+                L.append("%s_DDB label byte" % name)
+                L.extend(_loadable_data(D, oi, a, end, ldctx))
+                a = end
+                continue
+            if loadable and svc_loc and oi == svc_loc[0] and a == svc_loc[1]:
+                so, sp, sc = svc_loc                       # the exported service table, in-place: each
+                slbl = D.labels.get((so, sp))              #  entry is a fixup -> `dd offset <handler>`
+                if slbl:
+                    L.append("%s:" % slbl)
+                L.extend(_loadable_data(D, oi, a, a + 4 * sc, ldctx))
+                a = a + 4 * sc
+                continue
             if (oi, a) in cp_skip:                          # rest of the control proc / dispatch
                 a += 1                                      #  table is generated by the macros above
                 continue
@@ -710,7 +748,8 @@ def emit_idiomatic(D, loadable=False):
             if row is None:                                # data
                 b = a
                 while b < n and (oi, b) not in D.insns and (oi, b) not in cp_skip \
-                        and (b == a or (not D.labels.get((oi, b)) and (oi, b) not in svc_extra)):
+                        and (b == a or ((oi, b) not in _inplace_stops
+                                        and not D.labels.get((oi, b)) and (oi, b) not in svc_extra)):
                     b += 1
                 if loadable:                            # data pointers / jump tables -> real relocations
                     L.extend(_loadable_data(D, oi, a, b, ldctx))
