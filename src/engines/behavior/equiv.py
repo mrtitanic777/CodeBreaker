@@ -68,7 +68,15 @@ def load_relocated(path, module=None):
             key = (fx.get("module"), fx.get("ordinal"))
             sent = svc.setdefault(key, _SVC_BASE + len(svc) * 0x10)
             tva = sent
-        struct.pack_into("<I", bufs[oi], off, tva & 0xFFFFFFFF)
+        # Self-relative source (srctype 0x08: an E8/E9 call/jmp displacement to another object) must
+        # be patched as target - (source+4), NOT as the absolute VA -- otherwise every inter-object
+        # call lands in garbage. Absolute sources (0x07: `dd offset`, `push imm`) take the VA.
+        if fx.get("srctype") == 0x08:
+            src_va = obj_base[oi] + off
+            val = (tva - (src_va + 4)) & 0xFFFFFFFF
+        else:
+            val = tva & 0xFFFFFFFF
+        struct.pack_into("<I", bufs[oi], off, val)
     for idx in sorted(bufs):
         regions.append((obj_base[idx], bytes(bufs[idx])))
     db = v.ddb()
@@ -101,7 +109,8 @@ def run_image(regions, entry_va, regs=None, stack_args=(), mem_init=(), insn_cap
     import unicorn as U
     from unicorn.x86_const import (UC_X86_REG_ESP, UC_X86_REG_EAX, UC_X86_REG_EBX,
                                    UC_X86_REG_ECX, UC_X86_REG_EDX, UC_X86_REG_ESI,
-                                   UC_X86_REG_EDI, UC_X86_REG_EBP, UC_X86_REG_EIP)
+                                   UC_X86_REG_EDI, UC_X86_REG_EBP, UC_X86_REG_EIP,
+                                   UC_X86_REG_EFLAGS)
     REG = {"eax": UC_X86_REG_EAX, "ebx": UC_X86_REG_EBX, "ecx": UC_X86_REG_ECX,
            "edx": UC_X86_REG_EDX, "esi": UC_X86_REG_ESI, "edi": UC_X86_REG_EDI,
            "ebp": UC_X86_REG_EBP}
@@ -153,6 +162,20 @@ def run_image(regions, entry_va, regs=None, stack_args=(), mem_init=(), insn_cap
 
     rec = {"ret": None, "carry": None, "writes": [], "svc": [], "ext": [], "exit": None, "insns": 0}
 
+    def stack_args(n=6):
+        """The top n stack dwords at a call, each normalized -- the callee's ARGUMENTS. Capturing
+        these makes a service/external call's INPUTS part of the interaction signature, so passing a
+        differently-located pointer (e.g. a DDB at a rotated offset) registers as a real difference
+        even though the transient frame writes are excluded."""
+        sp = uc.reg_read(UC_X86_REG_ESP)
+        out = []
+        for i in range(n):
+            try:
+                out.append(norm(int.from_bytes(uc.mem_read(sp + i * 4, 4), "little")))
+            except Exception:
+                out.append(("?", 0))
+        return tuple(out)
+
     def hook_code(uc, address, csize, _ud):
         rec["insns"] += 1
         try:
@@ -161,15 +184,32 @@ def run_image(regions, entry_va, regs=None, stack_args=(), mem_init=(), insn_cap
             return
         if len(ins) >= 2 and ins[0] == 0xCD and ins[1] == 0x20:      # int 20h VxD service
             sid = int.from_bytes(uc.mem_read(address + 2, 4), "little")
-            rec["svc"].append((sid, uc.reg_read(UC_X86_REG_EAX) & 0xFFFFFFFF,
-                               uc.reg_read(UC_X86_REG_EBX) & 0xFFFFFFFF,
-                               uc.reg_read(UC_X86_REG_ECX) & 0xFFFFFFFF))
-            uc.reg_write(UC_X86_REG_EIP, address + 6)
+            rec["svc"].append((sid, norm(uc.reg_read(UC_X86_REG_EAX) & 0xFFFFFFFF),
+                               norm(uc.reg_read(UC_X86_REG_EBX) & 0xFFFFFFFF),
+                               norm(uc.reg_read(UC_X86_REG_ECX) & 0xFFFFFFFF),
+                               norm(uc.reg_read(UC_X86_REG_EDX) & 0xFFFFFFFF), stack_args()))
+            # Benign success stub, applied identically to ours and the original so the comparison is
+            # fair. A Jmp-type service (ordinal bit 0x8000 -> VxDJmp/VMMJmp) transfers control away and
+            # returns to the THUNK'S CALLER, so pop the return address; a Call-type service returns to
+            # the instruction after the `int 20h; dd id` (address+6). Modelling this is what lets an
+            # init path (Device_Init) run to a clean RET instead of hitting the `int3` service padding.
+            uc.reg_write(UC_X86_REG_EAX, 0)
+            eflags = uc.reg_read(UC_X86_REG_EFLAGS) & ~1     # clear CF (success)
+            uc.reg_write(UC_X86_REG_EFLAGS, eflags)
+            if sid & 0x8000:                                 # Jmp service -> return to the caller
+                sp = uc.reg_read(UC_X86_REG_ESP)
+                ret_to = int.from_bytes(uc.mem_read(sp, 4), "little")
+                uc.reg_write(UC_X86_REG_ESP, sp + 4)
+                uc.reg_write(UC_X86_REG_EIP, ret_to)
+            else:
+                uc.reg_write(UC_X86_REG_EIP, address + 6)
             return
         if ins[0] == 0xE8:                                            # call rel32
             tgt = (address + 5 + int.from_bytes(ins[1:5], "little", signed=True)) & 0xFFFFFFFF
             if not in_image(tgt):
-                rec["ext"].append(("call", norm(tgt)))
+                # the call has NOT pushed its return address yet (we intercept at the call insn), so
+                # the current stack top already holds the callee's first argument
+                rec["ext"].append(("call", norm(tgt), stack_args()))
                 uc.reg_write(UC_X86_REG_EAX, 0)
                 uc.reg_write(UC_X86_REG_EIP, address + 5)
 
@@ -193,7 +233,6 @@ def run_image(regions, entry_va, regs=None, stack_args=(), mem_init=(), insn_cap
         uc.emu_start(entry_va, _RET, count=insn_cap + 1)
         rec["exit"] = "ret"
         rec["ret"] = uc.reg_read(UC_X86_REG_EAX) & 0xFFFFFFFF
-        from unicorn.x86_const import UC_X86_REG_EFLAGS
         rec["carry"] = uc.reg_read(UC_X86_REG_EFLAGS) & 1     # VxD control procs signal status in CF
     except U.UcError as e:
         rec["exit"] = "fault:%s" % e
@@ -207,6 +246,11 @@ def effect_sig(rec):
     memory writes (last value wins per slot), and the ORDERED external/service interactions."""
     last = {}
     for slot, sz, val in rec["writes"]:
+        if slot[0] == "stk":
+            continue                                         # transient stack frame: private, not
+            #                                                  caller-observable -- excluding it drops
+            #                                                  the false-positive class of shifted
+            #                                                  return-addresses / spilled self-pointers
         last[(slot, sz)] = val
     return (rec["exit"], rec["ret"], rec.get("carry"), tuple(sorted(last.items())),
             tuple(rec["svc"]), tuple(rec["ext"]))
