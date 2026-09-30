@@ -30,6 +30,7 @@ _STACK_TOP, _RET = 0x208000, 0xDEAD0000
 _LOAD_VA = 0x400000                                          # both images map here (identical base)
 _PAGE = 0x1000
 _MAX_INSNS = 20000
+_RUN_TIMEOUT_US = 2_000_000                                  # hard 2s wall-clock cap per run (no hang)
 _ARGBUF_BASE = 0x300000                                      # where sampled pointer-args point
 _OBJ_BASE, _OBJ_STRIDE = 0x10000000, 0x01000000             # relocated object bases (spaced, big)
 _SVC_BASE = 0xE1000000                                       # sentinel base for imported VxD services
@@ -279,14 +280,18 @@ def run_image(regions, entry_va, regs=None, stack_args=(), mem_init=(), insn_cap
     uc.hook_add(U.UC_HOOK_MEM_READ_UNMAPPED | U.UC_HOOK_MEM_WRITE_UNMAPPED
                 | U.UC_HOOK_MEM_FETCH_UNMAPPED, hook_unmapped)
     try:
-        uc.emu_start(entry_va, _RET, count=insn_cap + 1)
-        rec["exit"] = "ret"
-        rec["ret"] = uc.reg_read(UC_X86_REG_EAX) & 0xFFFFFFFF
-        rec["carry"] = uc.reg_read(UC_X86_REG_EFLAGS) & 1     # VxD control procs signal status in CF
+        # HARD wall-clock timeout (microseconds) in addition to the instruction cap -- a run can NEVER
+        # hang the survey. On a clean return the emulator stops with EIP at the _RET sentinel; on a
+        # timeout or count-exhaust it stops elsewhere, which we treat as non-clean (timeout).
+        uc.emu_start(entry_va, _RET, timeout=_RUN_TIMEOUT_US, count=insn_cap + 1)
+        if (uc.reg_read(UC_X86_REG_EIP) & 0xFFFFFFFF) == _RET and rec["insns"] <= insn_cap:
+            rec["exit"] = "ret"
+            rec["ret"] = uc.reg_read(UC_X86_REG_EAX) & 0xFFFFFFFF
+            rec["carry"] = uc.reg_read(UC_X86_REG_EFLAGS) & 1   # VxD control procs signal status in CF
+        else:
+            rec["exit"] = "timeout"
     except U.UcError as e:
         rec["exit"] = "fault:%s" % e
-    if rec["insns"] > insn_cap:
-        rec["exit"] = "timeout"
     return rec
 
 
