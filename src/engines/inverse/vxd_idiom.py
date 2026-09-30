@@ -342,6 +342,39 @@ def _addr16(row):
     return False
 
 
+import capstone as _cap
+_MDD = _cap.Cs(_cap.CS_ARCH_X86, _cap.CS_MODE_32)
+_MDD.detail = True
+_DISP0_CACHE = {}
+
+
+def _disp0(row):
+    """An instruction whose ORIGINAL encoding carries an explicit zero displacement -- a memory
+    operand with ModRM mod=01/10 and disp==0 (e.g. `mov [esp],ecx` encoded `89 4c 24 00` as
+    `[esp+0]`). The assembler re-encodes it minimally (mod=00, dropping the zero disp: `89 0c 24`),
+    making our code a byte shorter and shifting every later offset -- so an internal call/branch
+    target drifts and, a few handlers in, faults. Byte-preserve to keep the oracle's exact size.
+    ([ebp+0] is mod=01 disp8=0 too but the assembler keeps it anyway, so preserving is harmless.)
+    Cached by raw bytes -- detail-disasm is costly and instruction bytes repeat heavily."""
+    raw = bytes(row["raw"])
+    hit = _DISP0_CACHE.get(raw)
+    if hit is not None:
+        return hit
+    res = False
+    try:
+        for insn in _MDD.disasm(raw, 0):
+            mod = (insn.modrm >> 6) & 3
+            if mod in (1, 2):
+                for op in insn.operands:
+                    if op.type == _cap.x86.X86_OP_MEM and op.mem.disp == 0:
+                        res = True
+            break
+    except Exception:
+        res = False
+    _DISP0_CACHE[raw] = res
+    return res
+
+
 def _opnd16(row):
     """True if the instruction carries a 0x66 operand-size prefix -- a 16-bit-operand op inside a use32
     segment (`push word ..`, `mov word ptr .., cx`, `push word imm`). The readable re-emit loses the
@@ -795,7 +828,7 @@ def emit_idiomatic(D, loadable=False):
             elif load_lines is not None:                       # loadable: internal fixup -> symbolic ref
                 L.extend(load_lines)
             elif row["fx"] or has_abs_mem(row) or has_seg_prefix(row) or _addr16(row) or _opnd16(row) \
-                    or _shift_no_count(row) or _ml611_unknown(row) or _x87_stack(row) \
+                    or _disp0(row) or _shift_no_count(row) or _ml611_unknown(row) or _x87_stack(row) \
                     or _indirect_branch(row) or _cap_size(row) or row["mnem"] in _RAW_MNEMS:
                 L.append(_db(row["raw"]))                       # byte-preserve the encodings ML will
             else:                                              #  not reproduce (abs-mem, seg-override,
