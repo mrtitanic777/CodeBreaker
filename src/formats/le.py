@@ -89,7 +89,7 @@ class LEFile:
                         tv = struct.unpack_from("<I", d, p)[0]; p += 4
                     else:
                         tv = struct.unpack_from("<H", d, p)[0]; p += 2
-                    fx = {"kind": "internal", "obj": objn, "target": tv}
+                    fx = {"kind": "internal", "obj": objn, "target": tv, "srctype": src & 0x0f}
                 elif tt == 0x01:                            # import by ordinal (VMM/VxD service)
                     mod = struct.unpack_from("<H", d, p)[0] if (tflags & 0x40) else d[p]
                     p += 2 if (tflags & 0x40) else 1
