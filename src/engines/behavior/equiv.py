@@ -92,8 +92,37 @@ def load_relocated(path, module=None):
             rva = db["rva"]
             cva = struct.unpack_from("<I", bufs[ddb_obj], rva + 0x18)[0]
             ctrl_off = cva - obj_base[ddb_obj]
+
+    def _in_any(va):
+        return any(b <= va < b + len(bufs[i]) for i, b in obj_base.items())
+
+    # The rest of the VxD's entry surface the boot exercises beyond the control proc: the exported
+    # service handlers (other VxDs call them) and the V86 / PM API procs. Read them from the RELOCATED
+    # image (fixups already applied), so each is an absolute VA into the mapped regions.
+    svc_handlers, v86_api, pm_api = [], None, None
+    if db:
+        r = db["rva"]
+        for fld, dst in ((0x1c, "v86"), (0x20, "pm")):
+            va = struct.unpack_from("<I", bufs[ddb_obj], r + fld)[0]
+            if _in_any(va):
+                if dst == "v86":
+                    v86_api = va
+                else:
+                    pm_api = va
+        st = v.fixups().get((ddb_obj, r + 0x30))             # Service_Table_Ptr -> the table
+        if st and st.get("kind") == "internal":
+            sobj, soff = st["obj"], st.get("target") or 0
+            count = struct.unpack_from("<I", bufs[ddb_obj], r + 0x34)[0]
+            if sobj in bufs and 0 < count < 4096:
+                for i in range(count):
+                    p = soff + 4 * i
+                    if p + 4 <= len(bufs[sobj]):
+                        hva = struct.unpack_from("<I", bufs[sobj], p)[0]
+                        if _in_any(hva):
+                            svc_handlers.append(hva)
     return {"regions": regions, "obj_base": obj_base, "ddb_obj": ddb_obj,
             "ctrl_off": ctrl_off, "ctrl_va": (obj_base[ddb_obj] + ctrl_off) if ctrl_off is not None else None,
+            "svc_handlers": svc_handlers, "v86_api": v86_api, "pm_api": pm_api,
             "svc": {v_: k for k, v_ in svc.items()}}
 
 
@@ -329,6 +358,51 @@ def equiv_images(ours_img, orig_img, ours_entry=None, orig_entry=None,
                                "first_field": _first_field(effect_sig(ro), effect_sig(rr))}}
     return {"equivalent": True, "informative": informative, "total": len(inputs),
             "diverged_at": None, "detail": None}
+
+
+def equiv_entry(ours_img, orig_img, ours_va, orig_va, reg_names=("eax", "ebx", "ecx", "edx", "esi", "edi"),
+                stack_arity=4, samples=32, seed=0, insn_cap=_MAX_INSNS):
+    """Behavioural-equivalence for ONE entry pair (a service handler / API proc), with generic register
+    + stack sampling (handlers take arbitrary args, not a control message). The original defines valid
+    behaviour: inputs where it doesn't reach a clean RET are skipped."""
+    if ours_va is None or orig_va is None:
+        return {"equivalent": None, "informative": 0, "reason": "no-entry"}
+    rng = random.Random(seed)
+    edge = [0, 1, 2, 0xFFFFFFFF, _ARGBUF_BASE]
+    informative = 0
+    for i in range(samples):
+        regs = {r: (edge[i] if i < len(edge) else rng.choice(edge + [rng.randint(0, 0xFFFFFFFF)]))
+                for r in reg_names}
+        stk = [rng.choice(edge) for _ in range(stack_arity)]
+        buf = bytes(rng.randint(0, 255) for _ in range(64))
+        mem = [(_ARGBUF_BASE, buf)]
+        rr = run_image(orig_img["regions"], orig_va, regs, stk, mem, insn_cap)
+        if rr["exit"] != "ret":
+            continue
+        informative += 1
+        ro = run_image(ours_img["regions"], ours_va, regs, stk, mem, insn_cap)
+        if effect_sig(ro) != effect_sig(rr):
+            return {"equivalent": False, "informative": informative, "diverged_at": regs,
+                    "detail": {"ours": _brief(ro), "orig": _brief(rr),
+                               "first_field": _first_field(effect_sig(ro), effect_sig(rr))}}
+    return {"equivalent": True, "informative": informative, "detail": None}
+
+
+def equiv_surface(ours_img, orig_img, messages=(), **kw):
+    """Gate a VxD's WHOLE tested entry surface -- control proc + every exported service handler +
+    the V86/PM API procs -- ours vs original. Returns {entry_label: verdict}. Control-proc equivalence
+    is necessary but not sufficient for boot; the boot also calls the service handlers and API procs."""
+    out = {}
+    if ours_img["ctrl_va"] is not None and orig_img["ctrl_va"] is not None:
+        out["control"] = equiv_images(ours_img, orig_img, messages=messages,
+                                      samples=(len(messages) or 32))
+    oh, rh = ours_img.get("svc_handlers", []), orig_img.get("svc_handlers", [])
+    for i in range(min(len(oh), len(rh))):
+        out["svc[%d]" % i] = equiv_entry(ours_img, orig_img, oh[i], rh[i], **kw)
+    for k in ("v86_api", "pm_api"):
+        if ours_img.get(k) is not None and orig_img.get(k) is not None:
+            out[k] = equiv_entry(ours_img, orig_img, ours_img[k], orig_img[k], **kw)
+    return out
 
 
 def equiv_vxd(ours_path, orig_path, **kw):
