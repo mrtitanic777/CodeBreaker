@@ -827,6 +827,16 @@ def emit_idiomatic(D, loadable=False):
                 L.append(m if m else _db(row["raw"]))
             elif load_lines is not None:                       # loadable: internal fixup -> symbolic ref
                 L.extend(load_lines)
+            elif loadable:
+                # LOADABLE: byte-preserve EVERY remaining (non-relocation) instruction. Any instruction
+                # reached here carries no internal fixup (those went through load_lines), so its exact
+                # bytes are reproducible as `db` and need no symbol. Re-encoding it through ML can pick a
+                # shorter form (a mis-decoded string/data region is the common case: "HTREE\RESERVED" etc.
+                # decode to instructions ML then shrinks), which shifts every later label and leaves data
+                # pointers holding wrong offsets -> mid-init fault (configmg, ios). Byte-preserving makes
+                # the object layout exact by construction, so intra-object branch displacements and data
+                # pointers all stay correct without the near-ptr re-encoding heuristic.
+                L.append(_db(row["raw"]))
             elif row["fx"] or has_abs_mem(row) or has_seg_prefix(row) or _addr16(row) or _opnd16(row) \
                     or _disp0(row) or _shift_no_count(row) or _ml611_unknown(row) or _x87_stack(row) \
                     or _indirect_branch(row) or _cap_size(row) or row["mnem"] in _RAW_MNEMS:
