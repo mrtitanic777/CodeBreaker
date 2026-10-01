@@ -153,6 +153,40 @@ class VxDDisasm:
                         s.mark.discard((oi, k))
                     s._mark_data(oi, a, row["size"])
 
+    def _remark_pointer_tables(s):
+        """A run of consecutive INTERNAL-fixup SOURCES at 4-byte stride is a pointer table (dispatch
+        table, vtable, handler array): each source dword is a relocated pointer, i.e. DATA. The linear
+        sweep can mis-decode such a table as code (it is reached only through an indirect `[base+i*4]`
+        load, never by the control graph). When it does, the per-instruction loadable emit can only
+        relocate the entries that happen to fall on an imm32 operand and silently drops the rest -- in
+        practice every OTHER entry loses its fixup, leaving an unrelocated pointer that faults the
+        moment the dispatcher jumps/returns through it (vpicd's IRQ dispatch, and the whole 9-module
+        divergence tail). `_remark_data_from_fixups` only catches fixup TARGETS landing mid-instruction,
+        never the SOURCES, so a cleanly-decoded-but-wrong pointer table slips past it. Reclassify the
+        whole run as data so the walk emits it through `_loadable_data` (a `dd offset` per entry = one
+        real relocation each). A no-op when the table is already data (the common, already-correct case)."""
+        from collections import defaultdict
+        srcs = defaultdict(list)
+        for (oi, off), f in s.fx.items():
+            if f.get("kind") == "internal" and f.get("target") is not None:
+                srcs[oi].append(off)
+        for oi, offs in srcs.items():
+            offs = sorted(set(offs))
+            i = 0
+            while i < len(offs):
+                j = i
+                while j + 1 < len(offs) and offs[j + 1] == offs[j] + 4:
+                    j += 1
+                if j - i + 1 >= 3:                              # >=3 stride-4 pointers = a table
+                    lo, hi = offs[i], offs[j] + 4
+                    for (moi, a), row in [(k, r) for k, r in s.insns.items() if k[0] == oi]:
+                        if a < hi and a + row["size"] > lo:    # instruction overlaps the table -> mis-decode
+                            s.insns.pop((moi, a), None)
+                            for k in range(a, a + row["size"]):
+                                s.mark.discard((moi, k))
+                            s._mark_data(moi, a, row["size"])
+                i = j + 1
+
     # ---- recursive descent -----------------------------------------------------
     def run(s):
         seeds = s._seeds()                                 # resolve entry points (control/service) FIRST
@@ -170,6 +204,7 @@ class VxDDisasm:
                 break
             s._descend(more)
         s._remark_data_from_fixups()                       # reclassify data the sweep decoded as code
+        s._remark_pointer_tables()                          # reclassify mis-swept pointer tables as data
         s._collect_labels()
         s._apply_ddk_names()
         return s
