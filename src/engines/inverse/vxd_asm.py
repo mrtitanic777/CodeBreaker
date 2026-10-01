@@ -187,6 +187,45 @@ class VxDDisasm:
                             s._mark_data(moi, a, row["size"])
                 i = j + 1
 
+    def _remark_split_fixup_sources(s):
+        """A single INTERNAL fixup SOURCE dword [S,S+4) is a relocated pointer -- four contiguous DATA
+        bytes. If the linear sweep decoded code that only PARTIALLY overlaps it (the dword straddles a
+        gap/code boundary or two instructions -- e.g. a data pointer whose high bytes the sweep read as
+        the start of the next function), neither the per-instruction emit nor `_loadable_data` can place
+        the relocation: a `dd offset` would cross the boundary, so the pointer is byte-preserved and
+        loses its fixup -> unrelocated address -> fault. Reclassify every instruction straddling such a
+        dword as data and mark the dword's bytes data, so `_loadable_data` emits one clean `dd offset`
+        (ifsmgr's indexed table-base pointer straddling a mis-decoded function entry). A dword fully
+        inside ONE instruction's operand (mov/push offset X) is the normal relocation -- left untouched."""
+        for _ in range(8):
+            cover = {}
+            for (oi, a), row in s.insns.items():
+                for k in range(a, a + row["size"]):
+                    cover[(oi, k)] = a
+            victims = set()
+            for (soi, soff), f in list(s.fx.items()):
+                if f.get("kind") != "internal" or f.get("target") is None:
+                    continue
+                starts = {cover.get((soi, soff + d)) for d in range(4)}
+                starts.discard(None)
+                if not starts:
+                    continue                               # dword entirely in a gap -> _loadable_data handles
+                if len(starts) == 1:
+                    st = next(iter(starts))
+                    row = s.insns.get((soi, st))
+                    if row and st <= soff and soff + 4 <= st + row["size"]:
+                        continue                           # dword fully inside one instruction's operand -> ok
+                for st in starts:                          # straddles a boundary -> reclassify the overlap
+                    row = s.insns.pop((soi, st), None)
+                    if row:
+                        for k in range(st, st + row["size"]):
+                            s.mark.discard((soi, k))
+                        s._mark_data(soi, st, row["size"])
+                s._mark_data(soi, soff, 4)
+                victims.add((soi, soff))
+            if not victims:
+                break
+
     # ---- recursive descent -----------------------------------------------------
     def run(s):
         seeds = s._seeds()                                 # resolve entry points (control/service) FIRST
@@ -205,6 +244,7 @@ class VxDDisasm:
             s._descend(more)
         s._remark_data_from_fixups()                       # reclassify data the sweep decoded as code
         s._remark_pointer_tables()                          # reclassify mis-swept pointer tables as data
+        s._remark_split_fixup_sources()                     # reclassify pointers straddling a mis-decode
         s._collect_labels()
         s._apply_ddk_names()
         return s
