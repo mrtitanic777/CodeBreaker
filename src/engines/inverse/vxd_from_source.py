@@ -333,9 +333,21 @@ def restore_oracle_object_flags(vxd_bytes, v):
     rows = []
     for i, (mo, vo) in enumerate(zip(m.objects, v.objects)):
         bld, orc = mo["flags"], vo["flags"]
-        target = (orc & ~0x3000) | (bld & 0x3000)            # oracle attrs; keep build's BIG32/16:16 bitness
+        # BITNESS (BIG32 0x2000 / 16:16-alias 0x1000): normally keep the BUILD's, because a retail
+        # real-mode segment (0x1005) is genuinely assembled 32-bit here and forcing 16:16 would
+        # misdescribe it. BUT when the built object is BYTE-IDENTICAL to the oracle (the loadable lane
+        # now byte-preserves, so this is the common case), our bytes ARE the oracle's bytes -- including
+        # a real-mode-init (RCOD) 16-bit segment -- so the oracle's bitness is the CORRECT description;
+        # keeping BIG32 there marks a 16-bit segment as 32-bit and VMM rejects the load (vshare's RCOD
+        # LoadFailed). Take the full oracle flags for a byte-identical object; keep build-bitness only
+        # where our code genuinely differs (re-encoded) from the oracle.
+        try:
+            identical = bytes(m.object_bytes(mo)) == bytes(v.object_bytes(vo))
+        except Exception:
+            identical = False
+        target = orc if identical else ((orc & ~0x3000) | (bld & 0x3000))
         struct.pack_into("<I", b, ot + i * 24 + 8, target)
-        rows.append({"obj": i + 1, "build": bld, "oracle": orc, "final": target,
+        rows.append({"obj": i + 1, "build": bld, "oracle": orc, "final": target, "identical": identical,
                      "write_restored": bool((orc & 0x02) and not (bld & 0x02) and (target & 0x02))})
     return bytes(b), {"applied": True, "objects": rows,
                       "writable_restored": sum(1 for r in rows if r["write_restored"])}
