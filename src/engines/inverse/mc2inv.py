@@ -141,6 +141,9 @@ class R:
             else: s.ax=s.rhs(src); s.axsrc=None
         elif mn=="mov" and ops.startswith("si, "): s.si=s.memname(ops[4:])
         elif mn=="mov" and ops.startswith("di, "): s.di=s.memname(ops[4:])
+        elif mn in ("les","lds"):                              # load far pointer -> reg (near model)
+            dst, _, src = ops.partition(", ")
+            if dst in ("ax","bx","cx","dx","si","di"): setattr(s, dst, s.memname(src))
         elif mn=="mov" and ops.startswith("bx, "):
             s.bx=s.rhs(ops[4:]); s.bxsrc=i if re.match(r"(0x[0-9a-f]+|\d+)$",ops[4:]) else None
         elif mn=="mov" and ops.startswith("cx, "): s.cx=s.rhs(ops[4:])
