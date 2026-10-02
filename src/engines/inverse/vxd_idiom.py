@@ -646,6 +646,7 @@ def emit_idiomatic(D, loadable=False):
     for k in [k for k, nm in D.labels.items() if nm in (name + "_DDB", name + "_Service_Table")]:
         D.labels[k] = "sub_%d_%04X" % k
     force_lbl = {}                                            # (oi,off) -> label, for a fixup target that
+    fx_interior = {}                                          # (oi,off) inside a fixup-src dword -> its start
     ldctx = None                                             # lands MID-INSTRUCTION (a data byte the
     if loadable:                                              # disassembler swept into an instruction).
         from src.engines.inverse.vxd_link import _label_fixup_targets   # loadable: every internal
@@ -672,6 +673,19 @@ def emit_idiomatic(D, loadable=False):
                 #  to-run into different instruction boundaries -- PYTHONHASHSEED -- so a target skipped as a
                 #  `data byte' there can be mid-instruction here; without the split the `dd offset loc_..' is
                 #  undefined. Idempotent: a start/data target is untouched.
+        # NARROW overlapping-pointer case: a LABEL strictly inside an internal-fixup SOURCE dword [S+1,S+4)
+        # -- two relocated pointers overlap in a mis-decoded data region (a `dd offset' whose target lands
+        # mid-another-pointer). The interior label can't be emitted inline (that splits the dd and drops a
+        # relocation). Record it, anchor the dword start, and emit it later as `EQU <S-label> + delta' so
+        # the dd stays whole and every referrer (name resolves via the EQU) still works. Gated on an
+        # existing label, so byte-exact modules with no such overlap are completely unaffected.
+        for (soi, soff), f in D.fx.items():
+            if f.get("kind") != "internal":
+                continue
+            for dlt in (1, 2, 3):
+                if (soi, soff + dlt) in D.labels and (soi, soff + dlt) not in fx_interior:
+                    fx_interior[(soi, soff + dlt)] = soff
+                    D.labels.setdefault((soi, soff), "loc_%d_%04X" % (soi, soff))
     # base set of offsets that will carry an emitted label -- a label at an instruction start, or on a
     # data byte, but NOT one landing mid-instruction. control_dispatch needs it to only reference
     # handlers we actually emit; the branch gate below needs it minus the macro-absorbed regions.
@@ -705,6 +719,15 @@ def emit_idiomatic(D, loadable=False):
     # .586p (privileged, superset of .386p) so ring-0 486/Pentium ops -- invd/wbinvd/cpuid/cmpxchg/
     # rdmsr/wrmsr/rdtsc -- assemble as themselves instead of hitting A2085 (not-in-current-CPU-mode).
     L = [".586p"] + ["include %s.inc" % i.lower() for i in _all_incs(D)] + [""]
+    # EQU aliases for labels that land inside a relocated-pointer dword (overlapping pointers in mis-decoded
+    # data): defined here at the TOP so every forward reference resolves, while the dword itself emits as one
+    # whole `dd offset' (its interior label is NOT emitted inline). `<interior> EQU <dword-start> + delta`.
+    for (oi, off), start in sorted(fx_interior.items()):
+        ilab = D.labels.get((oi, off)); slab = D.labels.get((oi, start))
+        if ilab and slab and ilab != slab:
+            L.append("%s EQU %s + %d" % (ilab, slab, off - start))
+    if fx_interior:
+        L.append("")
     objs_list = list(D.v.objects if hasattr(D, "v") else D.objs.values())
     if loadable:                                           # pre-declare each object's own FLAT segment
         for o in objs_list:                                # (unique class -> LINK keeps it a separate
@@ -809,7 +832,7 @@ def emit_idiomatic(D, loadable=False):
                 continue
             for xnm in svc_extra.get((oi, a), ()):         # extra service-name labels: several services
                 L.append("%s:" % xnm)                      #  may share one handler routine
-            lbl = D.labels.get((oi, a))
+            lbl = None if (oi, a) in fx_interior else D.labels.get((oi, a))  # interior label -> EQU, not inline
             if lbl and lbl.startswith(("sub_", name + "_")) and not lbl.endswith("_Control"):
                 if cur_proc:
                     L.append("EndProc %s" % cur_proc)
@@ -822,7 +845,8 @@ def emit_idiomatic(D, loadable=False):
                 b = a
                 while b < n and (oi, b) not in D.insns and (oi, b) not in cp_skip \
                         and (b == a or ((oi, b) not in _inplace_stops
-                                        and not D.labels.get((oi, b)) and (oi, b) not in svc_extra)):
+                                        and (not D.labels.get((oi, b)) or (oi, b) in fx_interior)
+                                        and (oi, b) not in svc_extra)):
                     b += 1
                 if loadable:                            # data pointers / jump tables -> real relocations
                     L.extend(_loadable_data(D, oi, a, b, ldctx))
