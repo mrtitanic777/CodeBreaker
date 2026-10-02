@@ -351,10 +351,17 @@ class R:
         # forms -> pointer deref with post-increment. di/si/cx/al come from the tracked registers
         # (fall back to the register name, never None). Comparison forms (scas/cmps) are left
         # UNMODELED on purpose (flag/compare semantics) so the correctness gate declines them.
-        if mn in ("rep movsb","rep movsw"):
-            s.emit(out,"memcpy(%s, %s, %s);"%(s.di or "di", s.si or "si", s.cx or "cx")); return i+1
-        if mn in ("rep stosb","rep stosw"):
-            s.emit(out,"memset(%s, %s, %s);"%(s.di or "di", s.ax if s.ax is not None else "ax", s.cx or "cx")); return i+1
+        # rep/repne movs|stos: on string moves/stores the repne (F2) prefix is identical to rep
+        # (F3) -- neither movs nor stos tests ZF -- so treat both as the block idiom. The word
+        # (movsw/stosw) forms count CX *words*, so the byte length passed to memcpy/memset is CX*2.
+        if mn in ("rep movsb","rep movsw","repne movsb","repne movsw"):
+            n=s.cx or "cx"
+            if mn.endswith("movsw"): n=str(int(n)*2) if str(n).isdigit() else "(%s * 2)"%n
+            s.emit(out,"memcpy(%s, %s, %s);"%(s.di or "di", s.si or "si", n)); return i+1
+        if mn in ("rep stosb","rep stosw","repne stosb","repne stosw"):
+            n=s.cx or "cx"
+            if mn.endswith("stosw"): n=str(int(n)*2) if str(n).isdigit() else "(%s * 2)"%n
+            s.emit(out,"memset(%s, %s, %s);"%(s.di or "di", s.ax if s.ax is not None else "ax", n)); return i+1
         if mn in ("movsb","movsw"):
             s.emit(out,"*%s++ = *%s++;"%(s.di or "di", s.si or "si")); return i+1
         if mn in ("stosb","stosw"):
