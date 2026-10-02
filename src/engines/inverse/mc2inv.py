@@ -274,7 +274,7 @@ class R:
         if mn in ("inc","dec") and ops in ("ax","bx"):
             s.ax="(%s %s 1)"%(s.ax,"+" if mn=="inc" else "-"); s.retlive=True; return i+1
         if mn in ("inc","dec"):
-            nm=s.memname(ops); o="+" if mn=="inc" else "-"
+            nm=s.memname(ops) or ops; o="+" if mn=="inc" else "-"
             # fs>0 means MC1 allocated a temp -> source used the temp form x = x OP 1 (not x++/x--)
             s.emit(out,"%s = %s %s 1;"%(nm,nm,o) if s.fs>0 else "%s%s;"%(nm,"++" if mn=="inc" else "--"))
             return i+1
@@ -307,10 +307,13 @@ class R:
                 cm=s.ins[ci]; jcc=s.ins[J].mnemonic
                 if cm.mnemonic=="cmp":
                     p=cm.op_str.split(", ")
-                    def rv(t): return s.ax if t=="ax" else s.bx if t=="bx" else (s.memname(t) or (str(s.num(t)) if re.match(r"(0x[0-9a-f]+|\d+)$",t) else t))
+                    def rv(t):
+                        if t=="ax": return s.ax if s.ax is not None else "ax"
+                        if t=="bx": return s.bx if s.bx is not None else "bx"
+                        return s.memname(t) or (str(s.num(t)) if re.match(r"(0x[0-9a-f]+|\d+)$",t) else t)
                     l,r=rv(p[0]),rv(p[1])
                     cond=(l if str(r)=="0" else "(%s %s %s)"%(l, JCC.get(jcc, "!=" if jcc=="jne" else "=="), r))
-                else: cond=s.ax
+                else: cond=s.ax if s.ax is not None else "ax"   # bare value test -> the register
                 body=s.walk(i, ci)
                 out.append("do {"); out+=["    "+b for b in body]; out.append("} while (%s);"%cond)
                 i=J+1; continue
