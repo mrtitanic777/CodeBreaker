@@ -353,12 +353,45 @@ def restore_oracle_object_flags(vxd_bytes, v):
                       "writable_restored": sum(1 for r in rows if r["write_restored"])}
 
 
+def _result(final, v, D, asm=None, deftext=None, llog="", rlog="", oflags=None):
+    """Assemble the build_from_source return dict + container validation from the finished LE bytes."""
+    m = _le.LEFile.from_buffer(final)
+    d, lfa = m.d, m.lfa
+    pm = struct.unpack_from("<I", d, lfa + 0x48)[0]
+    npg = struct.unpack_from("<I", d, lfa + 0x14)[0]
+    phys = [(d[lfa + pm + k * 4] << 16) | (d[lfa + pm + k * 4 + 1] << 8) | d[lfa + pm + k * 4 + 2]
+            for k in range(npg)]
+    identity = phys == list(range(1, npg + 1))
+    dd = m.ddb()
+    dev = struct.unpack_from("<H", d, lfa + 0xc0)[0]              # device id stamped from the DDB
+    reslen = struct.unpack_from("<I", d, lfa + 0xbc)[0]          # version resource embedded
+    o = bytes(v.object_bytes(v.objects[0])); r = bytes(m.object_bytes(m.objects[0]))
+    o1diffs = sum(1 for k in range(min(len(o), len(r))) if o[k] != r[k])
+    return {"ok": True, "vxd": final, "vxd_len": len(final), "oracle_len": len(v.d), "asm": asm,
+            "def": deftext, "objects": len(m.objects), "page_map_identity": identity,
+            "ddb_rva": dd and dd["rva"], "oracle_ddb_rva": D.ddb and D.ddb["rva"],
+            "device_id": dev, "device_id_ok": bool(D.ddb) and dev == D.ddb["device_id"],
+            "resource_len": reslen, "obj1_diffs": o1diffs, "link_log": llog[-300:], "res_log": rlog[-300:],
+            "object_flags": oflags}
+
+
 def build_from_source(v, name=None, root="."):
     """Build a loadable from-source VxD (no transplant). Returns
     {ok, vxd, vxd_len, oracle_len, asm, def, objects, page_map_identity, ddb_rva, obj1_diffs, ...}."""
     root = os.path.abspath(root)
     D = VxDDisasm(v).run(); D.v = v
     name = name or (D.ddb and D.ddb["name"]) or "VXD"
+    # Page-size fallback: our compile+link lane always emits 4096-byte LE pages, but the original linker
+    # paginated a few modules differently -- BIOS.VXD uses 512-byte pages (33 of them). VMM faults on BIOS
+    # specifically when its pagination differs from retail's (its early real-mode-init path is page-
+    # granularity sensitive; proven by bisect: all 34 other from-source VxDs boot, BIOS alone triple-faults
+    # at Device_Init, and re-paginating it to 512 fixes the full-set boot). For such a module, emit the LE
+    # directly from the recovered disassembly at the original page size via the proven synthesis path, which
+    # preserves our recovered code/fixups while matching the original's page layout. (This also sidesteps
+    # the compile lane's segment-assumption on BIOS.)
+    if v.pagesize != 0x1000:
+        from src.engines.inverse import vxd_le_writer
+        return _result(vxd_le_writer.build_le(D, v, name), v, D)
     names = object_names(v)
     tail0 = _reclassify_ddb_tail_as_data(D, v)
     asm = realseg_source(D, v, names, tail0)
@@ -380,25 +413,7 @@ def build_from_source(v, name=None, root="."):
     # (wlink leaves it 0:0 -> VMM calls a null init and the load hangs). Both verified by booting.
     from src.engines.inverse import vxd_coalesce
     final = vxd_coalesce.finalize(final, v)
-    # verification: identity page map, DDB back at the oracle offset, DDB object near-exact
-    m = _le.LEFile.from_buffer(final)
-    d, lfa = m.d, m.lfa
-    pm = struct.unpack_from("<I", d, lfa + 0x48)[0]
-    npg = struct.unpack_from("<I", d, lfa + 0x14)[0]
-    phys = [(d[lfa + pm + k * 4] << 16) | (d[lfa + pm + k * 4 + 1] << 8) | d[lfa + pm + k * 4 + 2]
-            for k in range(npg)]
-    identity = phys == list(range(1, npg + 1))
-    dd = m.ddb()
-    dev = struct.unpack_from("<H", d, lfa + 0xc0)[0]              # device id LINK 2.60 stamped from the DDB
-    reslen = struct.unpack_from("<I", d, lfa + 0xbc)[0]          # version resource ADRC2VXD embedded
-    o = bytes(v.object_bytes(v.objects[0])); r = bytes(m.object_bytes(m.objects[0]))
-    o1diffs = sum(1 for k in range(min(len(o), len(r))) if o[k] != r[k])
-    return {"ok": True, "vxd": final, "vxd_len": len(final), "oracle_len": len(v.d), "asm": asm,
-            "def": deftext, "objects": len(m.objects), "page_map_identity": identity,
-            "ddb_rva": dd and dd["rva"], "oracle_ddb_rva": D.ddb and D.ddb["rva"],
-            "device_id": dev, "device_id_ok": bool(D.ddb) and dev == D.ddb["device_id"],
-            "resource_len": reslen, "obj1_diffs": o1diffs, "link_log": llog[-300:], "res_log": rlog[-300:],
-            "object_flags": oflags}
+    return _result(final, v, D, asm=asm, deftext=deftext, llog=llog, rlog=rlog, oflags=oflags)
 
 
 if __name__ == "__main__":
