@@ -320,7 +320,7 @@ class VxDDisasm:
             for (foi, foff), f in s.fx.items():
                 if f["kind"] != "internal" or f["obj"] != oi:
                     continue
-                t = f["target"]
+                t = None if f["target"] is None else (f["target"] & 0x7FFFFFFF)   # mask alias bit
                 if t is None or not (0 <= t < n) or (oi, t) in s.mark or (oi, t) in s.data:
                     continue
                 if s._looks_code(oi, code, t):
@@ -461,7 +461,7 @@ class VxDDisasm:
         """Queue a branch target. A relocated (cross-object) branch has rel32=0 and a fixup that
         names the real destination; a plain intra-object branch uses the disassembled operand."""
         if fx and fx["kind"] == "internal":
-            work.append((fx["obj"], fx["target"]))
+            work.append((fx["obj"], fx["target"] & 0x7FFFFFFF))   # mask high-linear-alias bit
             return
         t = _direct_target(ins)
         if t is not None:
