@@ -495,17 +495,25 @@ def _fx_label(D, oi, k):
 
 def _dd_target_expr(D, tobj, toff, ctx):
     """The `dd` operand for a fixup target: `offset <name>_DDB [+ N]` when it lands inside the DDB
-    struct the macro regenerates (no loc_ label exists there), else `offset <label>`, else None."""
-    if ctx and tobj == ctx["ddb_obj"] and ctx["ddb_rva"] <= toff < ctx["ddb_hi"]:
-        d = toff - ctx["ddb_rva"]
-        return "offset %s_DDB%s" % (ctx["name"], (" + %02Xh" % d) if d else "")
-    if ctx and (tobj, toff) in ctx.get("skip", ()):     # target lands in a macro-absorbed region (the
+    struct the macro regenerates (no loc_ label exists there), else `offset <label>`, else None.
+
+    A target with bit 0x80000000 is a HIGH-LINEAR ALIAS (Win95 maps the object into the 0x80000000+
+    shared arena): the real object offset is the low 31 bits, and the pointer is emitted as
+    `offset <label> + 80000000h` so LINK writes a relocation whose loaded value carries the alias --
+    exactly what retail does. Dropping these (as a bogus out-of-bounds target) was the multi-VxD
+    init-hang: the alias pointer stayed unrelocated and the VxD dereferenced low garbage."""
+    alias = " + 80000000h" if (toff & 0x80000000) else ""
+    base = toff & 0x7FFFFFFF
+    if ctx and tobj == ctx["ddb_obj"] and ctx["ddb_rva"] <= base < ctx["ddb_hi"]:
+        d = base - ctx["ddb_rva"]
+        return "offset %s_DDB%s%s" % (ctx["name"], (" + %02Xh" % d) if d else "", alias)
+    if ctx and (tobj, base) in ctx.get("skip", ()):     # target lands in a macro-absorbed region (the
         return None                                     #  service table / control-dispatch table the
         #  Begin_Service_Table / Begin_Control_Dispatch macros regenerate): no loc_ label is emitted
         #  there, so a symbolic `offset loc_..' would be undefined (A2006). Byte-preserve the pointer
         #  instead -- it loses its relocation, but the region is macro-owned and the build assembles.
-    lab = D.labels.get((tobj, toff))
-    return "offset %s" % lab if lab else None
+    lab = D.labels.get((tobj, base))
+    return "offset %s%s" % (lab, alias) if lab else None
 
 
 def _loadable_insn(D, oi, a, row, ctx=None):
@@ -621,9 +629,9 @@ def emit_idiomatic(D, loadable=False):
         for (soi, soff), f in list(D.fx.items()):
             if f["kind"] != "internal" or f.get("target") is None:
                 continue
-            tgt = (f["obj"], f["target"])
-            if tgt[0] in _ovs and tgt[1] >= _ovs[tgt[0]]:   # target beyond the object: an absolute/linear
-                continue                                     #  fixup value, not object-relative -> keep raw
+            tgt = (f["obj"], f["target"] & 0x7FFFFFFF)       # mask the 0x80000000 high-linear-alias bit;
+            if tgt[0] in _ovs and tgt[1] >= _ovs[tgt[0]]:   #  the low 31 bits are the real object offset
+                continue                                     #  (genuinely beyond object -> keep raw)
             lab = D.labels.get(tgt) or ("loc_%d_%04X" % tgt)
             D.labels.setdefault(tgt, lab)
             if tgt in interior_of:            # target lands MID-INSTRUCTION -> force its instruction to raw

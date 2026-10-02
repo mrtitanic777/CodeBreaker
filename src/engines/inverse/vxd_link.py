@@ -92,11 +92,17 @@ def _label_fixup_targets(D):
     for (soi, soff), f in list(D.fx.items()):
         if f["kind"] != "internal" or f["target"] is None:
             continue
-        tgt = (f["obj"], f["target"])
+        # A target with bit 0x80000000 set is a HIGH-LINEAR ALIAS reference: Win95 maps a VxD object
+        # into the shared 0x80000000+ system arena, and these fixups point at obj:(off) through that
+        # alias. The real object offset is the low 31 bits -- label THAT; the +0x80000000 is restored
+        # at emit. Without masking, the aliased offset reads as "beyond the object" and the fixup is
+        # dropped, leaving an unrelocated low pointer -> the VxD faults on init (the multi-VxD hang).
+        base = f["target"] & 0x7FFFFFFF
+        tgt = (f["obj"], base)
         if tgt in D.labels:
             continue
-        if tgt[0] in ovs and tgt[1] >= ovs[tgt[0]]:   # target beyond the object: an absolute/linear fixup
-            continue                                   #  value (0x8000.., 0xFFFF..), not object-relative
+        if tgt[0] in ovs and tgt[1] >= ovs[tgt[0]]:   # genuinely beyond the object -> keep raw
+            continue
         if tgt in D.insns or tgt[1] not in covered.get(tgt[0], ()):   # insn start or a data byte
             D.labels[tgt] = "loc_%d_%04X" % tgt
 
