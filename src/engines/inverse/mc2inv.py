@@ -69,6 +69,9 @@ class R:
                 o=s.num(m.group(1)) if m else 0
                 if o < s.fs: s.locals.add(o); return "v%d"%o  # local (below saved BP)
                 return s.pname(o)                             # parameter
+        m=re.search(r"\[bp - (0x[0-9a-f]+|\d+)\]",op)         # negative bp offset is always a
+        if m:                                                  # local (even when the chkstk prologue
+            o=s.num(m.group(1)); s.locals.add(o); return "v%d"%o  # wasn't detected to set msc3)
         for reg in ("si","bx","di"):                          # pointer-register derefs
             m=re.search(r"\[%s \+ (0x[0-9a-f]+|\d+)\]"%reg,op)
             if m: return "%s->f%d"%(s._ptrbase(reg),s.num(m.group(1)))
@@ -77,6 +80,8 @@ class R:
         if m: return "%s[%s]"%(s._ptrbase(op[1:3]), op.split(" + ")[1].rstrip("]"))
         m=re.search(r"\[(0x[0-9a-f]+|\d+)\]",op)
         if m: return "g_%x"%s.num(m.group(1))       # distinct global per address
+        if op.strip() in ("ax","bx","cx","dx","si","di","bp"):
+            return op.strip()                        # bare register -> expose as a variable
         return None
     def rhs(s,op): return str(s.num(op)) if re.match(r"(0x[0-9a-f]+|\d+)$",op) else s.memname(op)
 
@@ -159,7 +164,9 @@ class R:
             mn=s.ins[j].mnemonic; ops=s.ins[j].op_str
             if mn=="cmp":
                 p=ops.split(", "); s._cmp=(resolve(p[0]), resolve(p[1]))
-            elif mn=="test": s._cmp=None
+            elif mn=="test":                                   # test X,Y; jcc == cmp (X & Y), 0
+                p=ops.split(", "); a0=resolve(p[0])
+                s._cmp=((a0 if len(p)>1 and p[0]==p[1] else "(%s & %s)"%(a0, resolve(p[1]))), "0")
             else: s.expr_step(j)
             j+=1
         if j>=len(s.ins):                                 # no conditional jump before the end
@@ -213,7 +220,9 @@ class R:
             while i<len(s.ins) and s.ins[i].op_str!="ax, bx": i+=1
             return i+1
         if mn=="push":
-            s.args.append(s.ax if ops=="ax" else (s.memname(ops) or ops)); return i+1
+            if ops=="ax": s.args.append(s.ax if s.ax is not None else "ax")
+            else: s.args.append(s.memname(ops) or ops)
+            return i+1
         if mn=="call":
             m=re.match(r"(0x[0-9a-f]+|\d+)$", ops); tgt=s.num(m.group(1)) if m else 0
             expr="sub_%x(%s)"%(tgt, ", ".join(str(a) for a in reversed(s.args))); s.args=[]
