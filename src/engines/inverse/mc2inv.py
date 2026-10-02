@@ -28,6 +28,7 @@ class R:
         s.axsrc=None; s.bxsrc=None                      # instr idx where ax/bx const value was LOADED
         s.ranks=[]; s.regconst=[]                        # per top-level stmt: source rank + reg-routed-const flag
         s.callstmt=False                                # force calls to emit as statements (empty-body re-lift)
+        s.gototargets=set(); s.emitgoto=False           # goto-fallback: target addrs needing a label; pass-2 flag
         s.tgt={}                                        # branch idx -> target idx
         a2i={ii.address:i for i,ii in enumerate(ins)}
         for i,ii in enumerate(ins):
@@ -407,9 +408,39 @@ class R:
                     s.emit(out,"return sub_%x(%s);"%(t & 0xFFFF, ", ".join(str(a) for a in reversed(s.args)))); s.args=[]
                 elif s.epi is not None and t>=s.epi and s.ax is not None and s.retlive:
                     s.emit(out,"return %s;"%s.ax)              # jmp to common epilogue w/ live result
+                elif not (i+1<len(s.ins) and t==s.ins[i+1].address):   # not a no-op jmp-to-next
+                    s.gototargets.add(t); s.emit(out,"goto L_%x;"%t)    # unstructured jump -> goto+label
             return i+1
         if mn=="ret" and s.ax is not None and s.retlive: s.emit(out,"return %s;"%s.ax); return i+1
         s.expr_step(i); return i+1
+
+    def _reset(s):
+        """Reset value-tracking + emission state for goto pass 2, keeping gototargets/tgt/epi."""
+        s.ax=s.si=s.di=s.cx=s.bx=s.dx=s.div=None
+        s.maxidx=-1; s.lmax=-1; s.args=[]; s.longfn=False; s.floatfn=False
+        s.hoisted=set(); s.out=None; s.i=0; s.retlive=False; s.axsrc=None; s.bxsrc=None
+        s.ranks=[]; s.regconst=[]; s.locals=set(); s.callstmt=False
+
+    _REGS=("ax","si","di","cx","bx","dx")
+    def _snap(s):
+        d={r:getattr(s,r) for r in s._REGS}
+        d.update(div=s.div, retlive=s.retlive, axsrc=s.axsrc, bxsrc=s.bxsrc, args=list(s.args))
+        return d
+    def _rest(s,d):
+        for r in s._REGS: setattr(s,r,d[r])
+        s.div=d["div"]; s.retlive=d["retlive"]; s.axsrc=d["axsrc"]; s.bxsrc=d["bxsrc"]; s.args=list(d["args"])
+    def _phi(s, then_snap, else_snap, then_b, else_b):
+        """Merge two branch register-states. For a register the branches leave DIFFERENT, emit
+        `reg = <value>;` at the end of each branch (materializing the conditional assignment that
+        value-tracking would otherwise defer and lose at the merge) and expose the bare register
+        afterwards; where the branches agree, keep the shared value."""
+        for r in s._REGS:
+            tv, ev = then_snap[r], else_snap[r]
+            if tv==ev:
+                setattr(s, r, tv); continue
+            if tv is not None and str(tv)!=r: then_b.append("%s = %s;"%(r,tv))
+            if ev is not None and str(ev)!=r: else_b.append("%s = %s;"%(r,ev))
+            setattr(s, r, None)                      # merged -> bare register after the branch
 
     def _body(s,lo,hi):
         """walk a structured body; if it comes back empty, its work was side-effect calls whose
@@ -431,6 +462,8 @@ class R:
         out=[]; i=lo
         while i<hi:
             s.out=out                                          # current block (for hoisted stores)
+            if s.emitgoto and s.ins[i].address in s.gototargets:  # label a goto target (pass 2),
+                out.append("L_%x:"%s.ins[i].address)              # before structuring/stepping it
             # do-while: i is the target of a backward CONDITIONAL jump (test at the bottom)
             backc=[j for j,t in s.tgt.items() if t==i and s.ins[j].mnemonic in CJMP and i<j<hi]
             if backc:
@@ -464,7 +497,28 @@ class R:
             if s.ins[i].mnemonic in ("cmp","test") and i+1<hi and s.ins[i+1].mnemonic in CJMP \
                and tt is not None and tt>i+1 and not (i+2<len(s.ins) and s.ins[i+2].mnemonic=="xor"):
                 cond,jcc=s.cond_at(i); tgt=s.tgt.get(jcc)
+                if tgt is not None and not (jcc+1<=tgt<=hi):
+                    # conditional jump OUT of this block (e.g. a short-circuit guard to a shared
+                    # else/exit): structuring would drop it, so represent it as a guarded goto.
+                    ta=s.ins[tgt].address if 0<=tgt<len(s.ins) else (tgt & 0xFFFF)
+                    s.gototargets.add(ta); out.append("if (!(%s)) goto L_%x;"%(cond, ta))
+                    i=jcc+1; continue
                 if tgt is not None and jcc+1<=tgt<=hi:
+                    # if-else: the then-block ends with `jmp END` that skips an else-block
+                    # [tgt, END).  END must be a forward join strictly past the else; a jmp to the
+                    # epilogue is a `return` (plain if), so require END before the epilogue.
+                    je=tgt-1
+                    end=s.tgt.get(je) if (je>=jcc+1 and s.ins[je].mnemonic=="jmp") else None
+                    end_ok=(end is not None and tgt<end<=hi
+                            and (s.epi is None or s.ins[end].address<s.epi))
+                    if end_ok:
+                        pre=s._snap()
+                        then_b=s._body(jcc+1, je); then_s=s._snap()
+                        s._rest(pre); else_b=s._body(tgt, end); else_s=s._snap()
+                        s._phi(then_s, else_s, then_b, else_b)   # materialize conditional assignments
+                        out.append("if (%s) {"%cond); out+=["    "+b for b in then_b]
+                        out.append("} else {"); out+=["    "+b for b in else_b]; out.append("}")
+                        i=end; continue
                     body=s._body(jcc+1, tgt)
                     out.append("if (%s) {"%cond); out+=["    "+b for b in body]; out.append("}")
                     i=tgt; continue
@@ -541,10 +595,14 @@ def recover(code, base=0, cxmap=None):
         elif ins[k].mnemonic=="xor" and ins[k].op_str.replace(" ","")=="ax,ax":
             fs=0; msc3=True; k+=2
     r=R(ins,fs,base,cxmap,msc3=msc3); stmts=r.walk(k,len(ins))
+    # Goto fallback: unstructured jumps/branches emitted `goto L_x` + registered target x. If any
+    # fired, re-walk with emitgoto so the (possibly earlier) target labels get placed (2-pass).
+    if r.gototargets:
+        r._reset(); r.emitgoto=True; stmts=r.walk(k,len(ins))
     # UN-SCHEDULE: MC2 defers a reused const's store while its load stays at the source
     # position. For straight-line blocks, reorder statements by source rank (load index for
     # reused consts, store index otherwise) so the recompile reproduces the same emission.
-    if stmts and len(r.ranks)==len(stmts) and not any("{" in x or "}" in x for x in stmts):
+    if stmts and len(r.ranks)==len(stmts) and not any("{" in x or "}" in x or "goto" in x or x.startswith("L_") for x in stmts):
         perm=sorted(range(len(stmts)), key=lambda j: r.ranks[j])
         stmts=[stmts[j] for j in perm]; rc=[r.regconst[j] for j in perm]
         stmts=_dead_store_recover(stmts, rc)               # recover elided dead stores + copies
