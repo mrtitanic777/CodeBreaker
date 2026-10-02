@@ -15,6 +15,7 @@ ALU={"add":"+","sub":"-","and":"&","or":"|","xor":"^"}
 JCC={"jl":"<","jle":"<=","jg":">","jge":">=","je":"==","jne":"!="}      # materialized value
 INV={"jge":"<","jg":"<=","jle":">","jl":">=","jne":"==","je":"!=","jz":"!=","jnz":"=="}  # skip/exit-if-not
 CJMP=set(JCC)|{"jz","jnz"}
+BYTEREG=("al","bl","cl","dl","ah","bh","ch","dh")        # 8-bit sub-registers (exposed as vars)
 
 class R:
     def __init__(s, ins, fs, base=0, cxmap=None, msc3=False):
@@ -271,7 +272,7 @@ class R:
         if n: s.retlive=True; return i+n
         n=s.long_stmt(i,out)
         if n: return i+n
-        ii=s.ins[i]; mn=ii.mnemonic; ops=ii.op_str
+        ii=s.ins[i]; mn=ii.mnemonic; ops=ii.op_str; d0=ops.split(",")[0].strip()
         if mn=="cmp" and ops.startswith("ax, ") and i+2<len(s.ins) and s.ins[i+1].mnemonic in JCC and s.ins[i+2].mnemonic=="xor":
             s.ax="(%s %s %s)"%(s.ax, JCC[s.ins[i+1].mnemonic], s.memname(ops[4:])); s.retlive=True; s.axsrc=None
             while i<len(s.ins) and s.ins[i].op_str!="ax, bx": i+=1
@@ -322,6 +323,13 @@ class R:
             op="<<" if mn in ("shl","sal") else ">>"; s.emit(out,"%s = %s %s %s;"%(d,d,op,cnt)); return i+1
         if mn in ("neg","not") and "[" in ops:                 # memory-dest unary
             d=s.memname(ops); s.emit(out,"%s = %s%s;"%(d,"-" if mn=="neg" else "~",d)); return i+1
+        # byte-register shift/unary: al/bl/.. are low sub-registers the word model doesn't track,
+        # so emit them as statements on the exposed byte-register variable (faithful transcription).
+        if d0 in BYTEREG and mn in ("shl","sal","shr","sar"):
+            cnt="cl" if ops.endswith("cl") else s._val(ops.split(", ")[1])
+            op="<<" if mn in ("shl","sal") else ">>"; s.emit(out,"%s = %s %s %s;"%(d0,d0,op,cnt)); return i+1
+        if d0 in BYTEREG and mn in ("neg","not"):
+            s.emit(out,"%s = %s%s;"%(d0,"-" if mn=="neg" else "~",d0)); return i+1
         # 16-bit string ops. Block (rep-prefixed) forms -> the C library idiom; single-byte/word
         # forms -> pointer deref with post-increment. di/si/cx/al come from the tracked registers
         # (fall back to the register name, never None). Comparison forms (scas/cmps) are left
