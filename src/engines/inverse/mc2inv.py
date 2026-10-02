@@ -144,6 +144,10 @@ class R:
         elif mn in ("les","lds"):                              # load far pointer -> reg (near model)
             dst, _, src = ops.partition(", ")
             if dst in ("ax","bx","cx","dx","si","di"): setattr(s, dst, s.memname(src))
+        elif mn=="lea":                                        # effective address -> reg = &addr
+            dst, _, src = ops.partition(", ")
+            nm = s.memname(src)
+            if dst in ("ax","bx","cx","dx","si","di") and nm: setattr(s, dst, "&"+nm)
         elif mn=="mov" and ops.startswith("bx, "):
             s.bx=s.rhs(ops[4:]); s.bxsrc=i if re.match(r"(0x[0-9a-f]+|\d+)$",ops[4:]) else None
         elif mn=="mov" and ops.startswith("cx, "): s.cx=s.rhs(ops[4:])
