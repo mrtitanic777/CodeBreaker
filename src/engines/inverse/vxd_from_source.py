@@ -375,6 +375,11 @@ def build_from_source(v, name=None, root="."):
     # restore each object's LE flags from the oracle (LINK 2.60 flattens every object to 0x2045, dropping
     # the WRITE bit on data objects -> ring-0 write fault in init). Order-preserving: see the helper.
     final, oflags = restore_oracle_object_flags(final, v)
+    # LE-format finalize so VMM's real-mode loader accepts it like retail: coalesce fixups into
+    # source-list records (wlink emits individual ones) and restore the real-mode-init entry point
+    # (wlink leaves it 0:0 -> VMM calls a null init and the load hangs). Both verified by booting.
+    from src.engines.inverse import vxd_coalesce
+    final = vxd_coalesce.finalize(final, v)
     # verification: identity page map, DDB back at the oracle offset, DDB object near-exact
     m = _le.LEFile.from_buffer(final)
     d, lfa = m.d, m.lfa
