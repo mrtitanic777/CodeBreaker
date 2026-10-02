@@ -306,6 +306,13 @@ class R:
             s.emit(out,"*%s++ = %s;"%(s.di or "di", s.ax if s.ax is not None else "ax")); return i+1
         if mn in ("lodsb","lodsw"):
             s.ax="*%s++"%(s.si or "si"); s.retlive=True; return i+1
+        if mn=="jmp":                                          # tail-call: jmp to an external target
+            m=re.match(r"(0x[0-9a-f]+|\d+)$", ops)
+            if m:
+                t=s.num(m.group(1))
+                if t>s.ins[-1].address or t<s.ins[0].address:  # outside this function -> tail call
+                    s.emit(out,"return sub_%x(%s);"%(t & 0xFFFF, ", ".join(str(a) for a in reversed(s.args)))); s.args=[]
+            return i+1
         if mn=="ret" and s.ax is not None and s.retlive: s.emit(out,"return %s;"%s.ax); return i+1
         s.expr_step(i); return i+1
 
