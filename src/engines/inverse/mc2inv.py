@@ -165,11 +165,16 @@ class R:
         else:
             axv = s.ax if s.ax is not None else "ax"             # untracked ax -> the register
             cxv = s.cx if s.cx is not None else "cx"
+            R=("ax","bx","cx","dx","si","di"); d0=ops.split(",")[0].strip()
+            def rv(r): v=getattr(s,r,None); return v if v is not None else r
+            def shcnt(): return cxv if ops.endswith("cl") else s._val(ops.split(", ")[1])
             if mn in ALU and ops.startswith("ax, "): s.ax="(%s %s %s)"%(axv,ALU[mn],s._val(ops[4:]))
-            elif mn=="imul": s.ax="(%s * %s)"%(axv,s._val(ops))
-            elif mn=="idiv": rn=s._val(ops); s.div=(axv,rn); s.ax="(%s / %s)"%(axv,rn)
-            elif mn=="shl" and ops=="ax, cl": s.ax="(%s << %s)"%(axv,cxv)
-            elif mn=="sar" and ops=="ax, cl": s.ax="(%s >> %s)"%(axv,cxv)
+            elif mn in ("imul","mul"): s.ax="(%s * %s)"%(axv,s._val(ops))
+            elif mn in ("idiv","div"): rn=s._val(ops); s.div=(axv,rn); s.ax="(%s / %s)"%(axv,rn)
+            elif mn in ("shl","sal") and d0 in R: setattr(s,d0,"(%s << %s)"%(rv(d0),shcnt()))
+            elif mn in ("shr","sar") and d0 in R: setattr(s,d0,"(%s >> %s)"%(rv(d0),shcnt()))
+            elif mn=="neg" and d0 in R: setattr(s,d0,"(-%s)"%rv(d0))
+            elif mn=="not" and d0 in R: setattr(s,d0,"(~%s)"%rv(d0))
         if s.ax is not old: s.retlive=True                    # ax got a live computed value
 
     def cond_at(s,i):
