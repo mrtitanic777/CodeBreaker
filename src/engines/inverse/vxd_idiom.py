@@ -572,19 +572,33 @@ def _db_split_labels(code, a, b, labels):
 def _loadable_data(D, oi, a, b, ctx=None):
     """LOADABLE mode: emit a data span [a,b), turning each INTERNAL-fixup DWORD into `dd offset
     <label>` / `dd offset <name>_DDB + N` (a real relocation) and the rest through the readable
-    _db_data (strings/bytes)."""
+    _db_data (strings/bytes).
+
+    A SELF-RELATIVE fixup (srctype 8) whose opcode byte (E8 call / E9 jmp) sits immediately before it
+    is a cross-object branch that the descent left in a data-classified gap. Emit it as the branch
+    (`call`/`jmp <label>`, which LINK relocates self-relative, srctype 8) instead of `dd offset`
+    (absolute, srctype 7) -- the absolute form corrupts the branch target and faults the VxD on init
+    (the residual multi-VxD hang in dosmgr/vxdldr/vshare after the gap-seeding fix)."""
     out = []; run = a; k = a; code = D.code[oi]
     while k < b:
         f = D.fx.get((oi, k))
-        expr = _dd_target_expr(D, f["obj"], f.get("target"), ctx) if (
-            f and f["kind"] == "internal") else None
-        if expr and k + 4 <= b:
-            if k > run:
-                out.extend(_db_data(code[run:k]))
-            out.append("        dd  %s" % expr)
-            k += 4; run = k
-        else:
-            k += 1
+        if f and f["kind"] == "internal":
+            if f.get("srctype") == 8 and k >= a + 1 and code[k - 1] in (0xE8, 0xE9) and k + 4 <= b:
+                lab = D.labels.get((f["obj"], (f.get("target") or 0) & 0x7FFFFFFF))
+                if lab:
+                    if k - 1 > run:
+                        out.extend(_db_data(code[run:k - 1]))
+                    out.append("        %-6s %s" % ("call" if code[k - 1] == 0xE8 else "jmp", lab))
+                    k += 4; run = k
+                    continue
+            expr = _dd_target_expr(D, f["obj"], f.get("target"), ctx)
+            if expr and k + 4 <= b:
+                if k > run:
+                    out.extend(_db_data(code[run:k]))
+                out.append("        dd  %s" % expr)
+                k += 4; run = k
+                continue
+        k += 1
     if run < b:
         out.extend(_db_data(code[run:b]))
     return out
