@@ -277,7 +277,8 @@ class R:
         if mn in ALU and "[" in ops.split(", ")[0] and ops.endswith(", ax"):   # mem <op>= ax
             d=s.memname(ops.split(",")[0]); s.emit(out,"%s = %s %s %s;"%(d,d,ALU[mn],s.ax)); return i+1
         if mn in ("inc","dec") and ops in ("ax","bx"):
-            s.ax="(%s %s 1)"%(s.ax,"+" if mn=="inc" else "-"); s.retlive=True; return i+1
+            base = getattr(s, ops) if getattr(s, ops) is not None else ops   # untracked -> reg name
+            s.ax="(%s %s 1)"%(base,"+" if mn=="inc" else "-"); s.retlive=True; return i+1
         if mn in ("inc","dec"):
             nm=s.memname(ops) or ops; o="+" if mn=="inc" else "-"
             # fs>0 means MC1 allocated a temp -> source used the temp form x = x OP 1 (not x++/x--)
@@ -286,7 +287,8 @@ class R:
         if mn=="int":                                          # software interrupt -> named syscall
             s.emit(out,"int_%s();"%ops.replace("0x","").replace(" ","")); return i+1
         if mn in ("shl","sal","shr","sar") and "[" in ops.split(",")[0]:   # memory-dest shift
-            d=s.memname(ops.split(",")[0]); cnt=s.cx if ops.endswith("cl") else s._val(ops.split(", ")[1])
+            d=s.memname(ops.split(",")[0])
+            cnt=(s.cx if s.cx is not None else "cx") if ops.endswith("cl") else s._val(ops.split(", ")[1])
             op="<<" if mn in ("shl","sal") else ">>"; s.emit(out,"%s = %s %s %s;"%(d,d,op,cnt)); return i+1
         if mn in ("neg","not") and "[" in ops:                 # memory-dest unary
             d=s.memname(ops); s.emit(out,"%s = %s%s;"%(d,"-" if mn=="neg" else "~",d)); return i+1
