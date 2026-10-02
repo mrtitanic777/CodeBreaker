@@ -227,7 +227,7 @@ class R:
             def shcnt(): return cxv if ops.endswith("cl") else s._val(ops.split(", ")[1])
             if mn in ALU and ops.startswith("ax, "): s.ax="(%s %s %s)"%(axv,ALU[mn],s._val(ops[4:]))
             elif mn in ("imul","mul"): s.ax="(%s * %s)"%(axv,s._val(ops))
-            elif mn in ("idiv","div"): rn=s._val(ops); s.div=(axv,rn); s.ax="(%s / %s)"%(axv,rn)
+            elif mn in ("idiv","div"): rn=s._val(ops); s.div=(axv,rn); s.ax="(%s / %s)"%(axv,rn); s.dx="(%s %% %s)"%(axv,rn)
             elif mn in ("shl","sal") and d0 in R: setattr(s,d0,"(%s << %s)"%(rv(d0),shcnt()))
             elif mn in ("shr","sar") and d0 in R: setattr(s,d0,"(%s >> %s)"%(rv(d0),shcnt()))
             elif mn=="neg" and d0 in R: setattr(s,d0,"(-%s)"%rv(d0))
@@ -372,7 +372,7 @@ class R:
                 rc = (s.axsrc is not None) and bool(re.match(r"-?\d+$|-?0x[0-9a-f]+$", str(s.ax)))
                 s.emit(out,"%s = %s;"%(s.memname(dest), s.ax if s.ax is not None else "ax"), rank, rc)
                 s.ax=s.memname(dest); s.axsrc=None; s.retlive=False; return i+1   # aliases var
-            if src in ("bx","cx"):
+            if src in ("bx","cx","dx","si","di"):
                 rank = s.bxsrc if (src=="bx" and s.bxsrc is not None and s.bxsrc < i) else i
                 rv = getattr(s,src) if getattr(s,src) is not None else src          # untracked -> reg name
                 s.emit(out,"%s = %s;"%(s.memname(dest), rv), rank)
@@ -417,6 +417,9 @@ class R:
         # a clear; or r,r is a flag-only test (consumed by cond_at) -> no statement.
         if mn in ALU and d0 in ("bx","cx","dx","si","di") and len(ops.split(", "))==2:
             src=ops.split(", ")[1].strip()
+            if src==d0 and mn in ("sub","xor") and d0=="dx" \
+               and i+1<len(s.ins) and s.ins[i+1].mnemonic in ("div","idiv"):
+                setattr(s,"dx",None); return i+1          # `sub/xor dx,dx` before div = setup, no stmt
             if src==d0 and mn in ("sub","xor"):
                 s.emit(out,"%s = 0;"%d0)
             elif src==d0 and mn=="or":
