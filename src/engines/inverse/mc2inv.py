@@ -27,6 +27,7 @@ class R:
         s.retlive=False                                 # ax currently holds a live return value?
         s.axsrc=None; s.bxsrc=None                      # instr idx where ax/bx const value was LOADED
         s.ranks=[]; s.regconst=[]                        # per top-level stmt: source rank + reg-routed-const flag
+        s.callstmt=False                                # force calls to emit as statements (empty-body re-lift)
         s.tgt={}                                        # branch idx -> target idx
         a2i={ii.address:i for i,ii in enumerate(ins)}
         for i,ii in enumerate(ins):
@@ -314,7 +315,7 @@ class R:
         if mn=="call":
             m=re.match(r"(0x[0-9a-f]+|\d+)$", ops); tgt=s.num(m.group(1)) if m else 0
             expr="sub_%x(%s)"%(tgt, ", ".join(str(a) for a in reversed(s.args))); s.args=[]
-            if s.fs==0: s.emit(out,expr+";"); s.ax=None; s.retlive=False   # statement (result discarded)
+            if s.fs==0 or s.callstmt: s.emit(out,expr+";"); s.ax=None; s.retlive=False  # discarded
             else: s.ax=expr; s.retlive=True                    # result used
             return i+1
         if mn=="mov" and ops=="sp, bp": return i+1             # post-call arg cleanup
@@ -410,6 +411,22 @@ class R:
         if mn=="ret" and s.ax is not None and s.retlive: s.emit(out,"return %s;"%s.ax); return i+1
         s.expr_step(i); return i+1
 
+    def _body(s,lo,hi):
+        """walk a structured body; if it comes back empty, its work was side-effect calls whose
+        results were tracked as values and never emitted -- re-lift the SAME range with calls
+        forced to statements so the branch isn't silently dropped. Additive by construction: it
+        only changes output when the normal walk produced nothing, so it can't regress a body
+        that already had statements. Value-state is snapshotted and restored around the re-lift."""
+        body=s.walk(lo,hi)
+        if any(b.strip() for b in body) or s.callstmt:
+            return body
+        snap=(s.ax,s.si,s.di,s.bx,s.cx,s.dx,list(s.args),s.div,s.retlive,s.axsrc,s.bxsrc,s.out)
+        s.callstmt=True
+        body2=s.walk(lo,hi)
+        s.callstmt=False
+        s.ax,s.si,s.di,s.bx,s.cx,s.dx,s.args,s.div,s.retlive,s.axsrc,s.bxsrc,s.out=snap
+        return body2 if any(b.strip() for b in body2) else body
+
     def walk(s,lo,hi):
         out=[]; i=lo
         while i<hi:
@@ -429,14 +446,14 @@ class R:
                     l,r=rv(p[0]),rv(p[1])
                     cond=(l if str(r)=="0" else "(%s %s %s)"%(l, JCC.get(jcc, "!=" if jcc=="jne" else "=="), r))
                 else: cond=s.ax if s.ax is not None else "ax"   # bare value test -> the register
-                body=s.walk(i, ci)
+                body=s._body(i, ci)
                 out.append("do {"); out+=["    "+b for b in body]; out.append("} while (%s);"%cond)
                 i=J+1; continue
             # while-loop: some later jmp targets i (back-edge to a loop top)
             back=[j for j,t in s.tgt.items() if t==i and s.ins[j].mnemonic=="jmp" and i<j<hi]
             if back:
                 J=min(back); cond,jcc=s.cond_at(i); exit_idx=s.tgt[jcc]
-                body=s.walk(jcc+1, J)
+                body=s._body(jcc+1, J)
                 out.append("while (%s) {"%cond); out+=["    "+b for b in body]; out.append("}")
                 i=J+1; continue
             # if: cmp/test + forward conditional jump that skips a block (not materialized).
@@ -448,7 +465,7 @@ class R:
                and tt is not None and tt>i+1 and not (i+2<len(s.ins) and s.ins[i+2].mnemonic=="xor"):
                 cond,jcc=s.cond_at(i); tgt=s.tgt.get(jcc)
                 if tgt is not None and jcc+1<=tgt<=hi:
-                    body=s.walk(jcc+1, tgt)
+                    body=s._body(jcc+1, tgt)
                     out.append("if (%s) {"%cond); out+=["    "+b for b in body]; out.append("}")
                     i=tgt; continue
             i=s.step(i,out)
