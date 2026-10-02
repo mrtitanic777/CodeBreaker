@@ -75,6 +75,8 @@ class R:
         for reg in ("si","bx","di"):                          # pointer-register derefs
             m=re.search(r"\[%s \+ (0x[0-9a-f]+|\d+)\]"%reg,op)
             if m: return "%s->f%d"%(s._ptrbase(reg),s.num(m.group(1)))
+            m=re.search(r"\[%s - (0x[0-9a-f]+|\d+)\]"%reg,op)  # negative offset -> index back
+            if m: return "%s[-%d]"%(s._ptrbase(reg),s.num(m.group(1)))
             if "[%s]"%reg in op: return "*%s"%s._ptrbase(reg)
         m=re.search(r"\[bx \+ si\]|\[bx \+ di\]|\[si \+ di\]",op)  # indexed; name by base reg
         if m: return "%s[%s]"%(s._ptrbase(op[1:3]), op.split(" + ")[1].rstrip("]"))
@@ -175,8 +177,8 @@ class R:
         Return (cond_str, jcc_idx)."""
         j=i
         def resolve(t):
-            if t=="ax": return s.ax
-            if t=="bx": return s.bx
+            if t=="ax": return s.ax if s.ax is not None else "ax"   # untracked -> the register
+            if t=="bx": return s.bx if s.bx is not None else "bx"
             v=s.memname(t)
             return v if v is not None else (str(s.num(t)) if re.match(r"(0x[0-9a-f]+|\d+)$",t) else t)
         while j<len(s.ins) and s.ins[j].mnemonic not in CJMP:
@@ -191,7 +193,8 @@ class R:
         if j>=len(s.ins):                                 # no conditional jump before the end
             return (s.ax if s.ax is not None else "0"), j
         jcc=s.ins[j].mnemonic
-        cond="(%s %s %s)"%(s._cmp[0], INV.get(jcc,"?"), s._cmp[1]) if s._cmp else s.ax
+        cond="(%s %s %s)"%(s._cmp[0], INV.get(jcc,"?"), s._cmp[1]) if s._cmp \
+             else (s.ax if s.ax is not None else "ax")   # bare value test -> the register
         return cond, j
 
     def lparam(s,op):
