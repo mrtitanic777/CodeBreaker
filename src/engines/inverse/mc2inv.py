@@ -339,6 +339,11 @@ class R:
                 s.emit(out,"%s = %s;"%(s.memname(dest), s.num(src))); return i+1
         if mn in ALU and "[" in ops.split(", ")[0] and ops.endswith(", ax"):   # mem <op>= ax
             d=s.memname(ops.split(",")[0]); s.emit(out,"%s = %s %s %s;"%(d,d,ALU[mn],s.ax)); return i+1
+        if mn in ALU and "[" in ops.split(", ")[0]:            # mem <op>= imm | reg
+            dst,_,src=ops.rpartition(", ")
+            if re.match(r"(0x[0-9a-f]+|\d+)$",src) or src in ("bx","cx","dx","si","di"):
+                d=s.memname(dst); rv=s.num(src) if re.match(r"(0x[0-9a-f]+|\d+)$",src) else s._val(src)
+                s.emit(out,"%s = %s %s %s;"%(d,d,ALU[mn],rv)); return i+1
         if mn in ("inc","dec") and ops in ("ax","bx"):
             base = getattr(s, ops) if getattr(s, ops) is not None else ops   # untracked -> reg name
             s.ax="(%s %s 1)"%(base,"+" if mn=="inc" else "-"); s.retlive=True; return i+1
