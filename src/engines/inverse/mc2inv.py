@@ -314,8 +314,13 @@ class R:
             else: s.args.append(s.memname(ops) or ops)
             return i+1
         if mn=="call":
-            m=re.match(r"(0x[0-9a-f]+|\d+)$", ops); tgt=s.num(m.group(1)) if m else 0
-            expr="sub_%x(%s)"%(tgt, ", ".join(str(a) for a in reversed(s.args))); s.args=[]
+            m=re.match(r"(0x[0-9a-f]+|\d+)$", ops)
+            args=", ".join(str(a) for a in reversed(s.args)); s.args=[]
+            if m:
+                expr="sub_%x(%s)"%(s.num(m.group(1)), args)
+            else:                                              # indirect call: through a ptr/reg
+                fp=s.memname(ops) or ops
+                expr="(*%s)(%s)"%(fp, args)
             if s.fs==0 or s.callstmt: s.emit(out,expr+";"); s.ax=None; s.retlive=False  # discarded
             else: s.ax=expr; s.retlive=True                    # result used
             return i+1
