@@ -233,6 +233,34 @@ class R:
             s.longfn=True; a=s.lparam(ins[i+1].op_str); b=s.lparam(ins[i+3].op_str)
             op=s.call_op(i+4,"*")                  # CXM33=* / CXD33=/ (resolved via cxmap, else default *)
             s.ax="(%s %s %s)"%(a,op,b); return 6
+        # long += imm on a bp-local: mov ax,[bp-A]; mov dx,[bp-B]; add ax,IMM; adc dx,0  (dx:ax=L)
+        if (i+3<len(ins) and ins[i].mnemonic=="mov" and re.match(r"ax, word ptr \[bp - ",ins[i].op_str)
+                and ins[i+1].mnemonic=="mov" and re.match(r"dx, word ptr \[bp - ",ins[i+1].op_str)
+                and ins[i+2].mnemonic in ("add","sub") and re.match(r"ax, (0x[0-9a-f]+|\d+)$",ins[i+2].op_str)
+                and ins[i+3].mnemonic in ("adc","sbb") and ins[i+3].op_str=="dx, 0"
+                and (ins[i+2].mnemonic=="add")==(ins[i+3].mnemonic=="adc")):
+            s.longfn=True; lo=s.memname(ins[i].op_str.split(", ",1)[1])
+            op="+" if ins[i+2].mnemonic=="add" else "-"
+            s.ax="(%s %s %s)"%(lo,op,s.num(ins[i+2].op_str.split(", ")[1])); return 4
+        return 0
+
+    def long_stmt(s,i,out):
+        """A 32-bit (long) statement carried across a lo/hi word pair; return #instrs or 0.
+        add/sub word ptr [LO],IMM ; adc/sbb word ptr [LO+2],0  ==  *(long*)&LO += IMM
+        (the compiler splits a `long` += const into a low-word op plus a carry into the high
+        word; LO+2 is the contiguous high word in the little-endian data segment)."""
+        ins=s.ins
+        if i+1>=len(ins): return 0
+        a,b=ins[i],ins[i+1]
+        if a.mnemonic in ("add","sub") and b.mnemonic in ("adc","sbb") and \
+                (a.mnemonic=="add")==(b.mnemonic=="adc"):
+            ma=re.match(r"word ptr \[0x([0-9a-f]+)\], (0x[0-9a-f]+|\d+)$",a.op_str)
+            mb=re.match(r"word ptr \[0x([0-9a-f]+)\], 0$",b.op_str)
+            if ma and mb:
+                lo=int(ma.group(1),16); hi=int(mb.group(1),16)
+                if hi==lo+2:
+                    op="+" if a.mnemonic=="add" else "-"
+                    s.emit(out,"*(long *)&g_%x %s= %s;"%(lo,op,s.num(ma.group(2)))); return 2
         return 0
 
     def step(s,i,out):
@@ -241,6 +269,8 @@ class R:
         if i in s.hoisted: return i+1                          # store already emitted (hoisted)
         n=s.long_pat(i)
         if n: s.retlive=True; return i+n
+        n=s.long_stmt(i,out)
+        if n: return i+n
         ii=s.ins[i]; mn=ii.mnemonic; ops=ii.op_str
         if mn=="cmp" and ops.startswith("ax, ") and i+2<len(s.ins) and s.ins[i+1].mnemonic in JCC and s.ins[i+2].mnemonic=="xor":
             s.ax="(%s %s %s)"%(s.ax, JCC[s.ins[i+1].mnemonic], s.memname(ops[4:])); s.retlive=True; s.axsrc=None
