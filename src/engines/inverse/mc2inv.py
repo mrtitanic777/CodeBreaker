@@ -17,7 +17,8 @@ INV={"jge":"<","jg":"<=","jle":">","jl":">=","jne":"==","je":"!=","jz":"!=","jnz
 CJMP=set(JCC)|{"jz","jnz"}
 
 class R:
-    def __init__(s, ins, fs, base=0, cxmap=None):
+    def __init__(s, ins, fs, base=0, cxmap=None, msc3=False):
+        s.msc3=msc3                                     # MS-C 3.0 frame convention (bp at frame top)
         s.ins=ins; s.fs=fs; s.ax=None; s.si=None; s.cx=None; s.div=None; s.maxidx=-1; s.args=[]
         s.longfn=False; s.lmax=-1; s.floatfn=False; s.bx=None; s.dx=None; s._cmp=None
         s.base=base; s.cxmap=cxmap or {}; s.locals=set()
@@ -40,15 +41,26 @@ class R:
         return s.cxmap.get(tgt, default)
     def num(s,x): return int(x,0)
     def pname(s,off):
-        idx=(off-s.fs-4)//2; s.maxidx=max(s.maxidx,idx)
+        # param index from the bp+ offset. 2.03 (bp at frame bottom): off-fs-4; 3.0 (bp at
+        # frame top, standard): params at [bp+4],[bp+6],... -> off-4.
+        idx=((off-4)//2) if s.msc3 else ((off-s.fs-4)//2); s.maxidx=max(s.maxidx,idx)
         return chr(ord('a')+idx) if 0<=idx<26 else "p%d"%idx
     def memname(s,op):
         op=op.replace("word ptr ","").replace("byte ptr ","")
-        m=re.search(r"\[bp \+ (0x[0-9a-f]+|\d+)\]",op)
-        if m or "[bp]" in op:                                 # [bp] == offset 0
-            o=s.num(m.group(1)) if m else 0
-            if o < s.fs: s.locals.add(o); return "v%d"%o     # local (below saved BP)
-            return s.pname(o)                                 # parameter
+        if s.msc3:                                            # 3.0: locals [bp-N], params [bp+N>=4]
+            m=re.search(r"\[bp - (0x[0-9a-f]+|\d+)\]",op)
+            if m:
+                o=s.num(m.group(1)); s.locals.add(o); return "v%d"%o
+            m=re.search(r"\[bp \+ (0x[0-9a-f]+|\d+)\]",op)
+            if m:
+                return s.pname(s.num(m.group(1)))
+            # fall through to si/global handling below
+        else:
+            m=re.search(r"\[bp \+ (0x[0-9a-f]+|\d+)\]",op)
+            if m or "[bp]" in op:                             # [bp] == offset 0
+                o=s.num(m.group(1)) if m else 0
+                if o < s.fs: s.locals.add(o); return "v%d"%o  # local (below saved BP)
+                return s.pname(o)                             # parameter
         m=re.search(r"\[si \+ (0x[0-9a-f]+|\d+)\]",op)
         if m: return "%s->f%d"%(s.si,s.num(m.group(1)))
         if "[si]" in op: return "*%s"%s.si
@@ -313,7 +325,21 @@ def recover(code, base=0, cxmap=None):
         fs=int(ins[k].op_str.split(",")[1],16); k+=1
         while "bp, sp" not in ins[k].op_str: k+=1
     k+=1
-    r=R(ins,fs,base,cxmap); stmts=r.walk(k,len(ins))
+    # MS-C 3.00 stack-check prologue (absent in 2.03): after `mov bp,sp`, the frame is
+    # allocated by `mov ax,<framesize>; call __chkstk` (or `xor ax,ax; call __chkstk` for a
+    # zero-size frame) rather than an explicit `sub sp,N`. Detect it, take the framesize from
+    # the ax load, skip both, and switch to the 3.0 frame convention (bp at the frame top:
+    # locals [bp-N], params [bp+N]). Gated on fs==0 so a genuine 2.03 `sub sp` frame is kept.
+    msc3=False
+    if fs==0 and k+1 < len(ins) and ins[k+1].mnemonic=="call":
+        if ins[k].mnemonic=="mov" and ins[k].op_str.startswith("ax,"):
+            try:
+                fs=int(ins[k].op_str.split(",")[1].strip(),16); msc3=True; k+=2
+            except ValueError:
+                pass
+        elif ins[k].mnemonic=="xor" and ins[k].op_str.replace(" ","")=="ax,ax":
+            fs=0; msc3=True; k+=2
+    r=R(ins,fs,base,cxmap,msc3=msc3); stmts=r.walk(k,len(ins))
     # UN-SCHEDULE: MC2 defers a reused const's store while its load stays at the source
     # position. For straight-line blocks, reorder statements by source rank (load index for
     # reused consts, store index otherwise) so the recompile reproduces the same emission.
