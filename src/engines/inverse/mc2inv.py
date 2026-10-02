@@ -127,7 +127,7 @@ class R:
         """Does instruction (mn,dst) overwrite register reg (so its value is lost)?"""
         if dst==reg: return True
         if reg in ("ax","dx") and mn in ("imul","idiv","mul","div","cwd"): return True
-        if reg=="ax" and mn=="call": return True
+        if reg=="ax" and mn in ("call","lcall"): return True
         return False
 
     def future_store(s,reg,i):
@@ -352,6 +352,16 @@ class R:
                 expr="(*%s)(%s)"%(fp, args)
             if s.fs==0 or s.callstmt: s.emit(out,expr+";"); s.ax=None; s.retlive=False  # discarded
             else: s.ax=expr; s.retlive=True                    # result used
+            return i+1
+        if mn=="lcall":                                        # far call `lcall seg, off`: the target's
+            args=", ".join(str(a) for a in reversed(s.args)); s.args=[]   # load-module offset is seg*16+off
+            mm=re.match(r"(0x[0-9a-f]+|\d+),\s*(0x[0-9a-f]+|\d+)$", ops)   # (verified: lands on fn starts)
+            if mm:
+                expr="sub_%x(%s)"%(s.num(mm.group(1))*16 + s.num(mm.group(2)), args)
+            else:                                              # indirect far call through a ptr/reg
+                fp=s.memname(ops) or ops; expr="(*%s)(%s)"%(fp, args)
+            if s.fs==0 or s.callstmt: s.emit(out,expr+";"); s.ax=None; s.retlive=False
+            else: s.ax=expr; s.retlive=True
             return i+1
         if mn=="mov" and ops=="sp, bp": return i+1             # post-call arg cleanup
         if mn=="mov" and "[" in ops.split(", ")[0]:            # store: mem = reg | immediate
