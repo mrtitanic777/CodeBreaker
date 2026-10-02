@@ -19,7 +19,7 @@ CJMP=set(JCC)|{"jz","jnz"}
 class R:
     def __init__(s, ins, fs, base=0, cxmap=None, msc3=False):
         s.msc3=msc3                                     # MS-C 3.0 frame convention (bp at frame top)
-        s.ins=ins; s.fs=fs; s.ax=None; s.si=None; s.cx=None; s.div=None; s.maxidx=-1; s.args=[]
+        s.ins=ins; s.fs=fs; s.ax=None; s.si=None; s.di=None; s.cx=None; s.div=None; s.maxidx=-1; s.args=[]
         s.longfn=False; s.lmax=-1; s.floatfn=False; s.bx=None; s.dx=None; s._cmp=None
         s.base=base; s.cxmap=cxmap or {}; s.locals=set()
         s.hoisted=set(); s.out=None; s.i=0             # register value-tracking state
@@ -139,6 +139,7 @@ class R:
             elif re.match(r"(0x[0-9a-f]+|\d+)$",src): s.ax=s.rhs(src); s.axsrc=i  # LOADED const
             else: s.ax=s.rhs(src); s.axsrc=None
         elif mn=="mov" and ops.startswith("si, "): s.si=s.memname(ops[4:])
+        elif mn=="mov" and ops.startswith("di, "): s.di=s.memname(ops[4:])
         elif mn=="mov" and ops.startswith("bx, "):
             s.bx=s.rhs(ops[4:]); s.bxsrc=i if re.match(r"(0x[0-9a-f]+|\d+)$",ops[4:]) else None
         elif mn=="mov" and ops.startswith("cx, "): s.cx=s.rhs(ops[4:])
@@ -255,6 +256,20 @@ class R:
             # fs>0 means MC1 allocated a temp -> source used the temp form x = x OP 1 (not x++/x--)
             s.emit(out,"%s = %s %s 1;"%(nm,nm,o) if s.fs>0 else "%s%s;"%(nm,"++" if mn=="inc" else "--"))
             return i+1
+        # 16-bit string ops. Block (rep-prefixed) forms -> the C library idiom; single-byte/word
+        # forms -> pointer deref with post-increment. di/si/cx/al come from the tracked registers
+        # (fall back to the register name, never None). Comparison forms (scas/cmps) are left
+        # UNMODELED on purpose (flag/compare semantics) so the correctness gate declines them.
+        if mn in ("rep movsb","rep movsw"):
+            s.emit(out,"memcpy(%s, %s, %s);"%(s.di or "di", s.si or "si", s.cx or "cx")); return i+1
+        if mn in ("rep stosb","rep stosw"):
+            s.emit(out,"memset(%s, %s, %s);"%(s.di or "di", s.ax if s.ax is not None else "ax", s.cx or "cx")); return i+1
+        if mn in ("movsb","movsw"):
+            s.emit(out,"*%s++ = *%s++;"%(s.di or "di", s.si or "si")); return i+1
+        if mn in ("stosb","stosw"):
+            s.emit(out,"*%s++ = %s;"%(s.di or "di", s.ax if s.ax is not None else "ax")); return i+1
+        if mn in ("lodsb","lodsw"):
+            s.ax="*%s++"%(s.si or "si"); s.retlive=True; return i+1
         if mn=="ret" and s.ax is not None and s.retlive: s.emit(out,"return %s;"%s.ax); return i+1
         s.expr_step(i); return i+1
 
