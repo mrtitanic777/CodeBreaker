@@ -262,13 +262,18 @@ class R:
                 body=s.walk(jcc+1, J)
                 out.append("while (%s) {"%cond); out+=["    "+b for b in body]; out.append("}")
                 i=J+1; continue
-            # if: cmp/test + forward conditional jump that skips a block (not materialized)
+            # if: cmp/test + forward conditional jump that skips a block (not materialized).
+            # A branch whose target address isn't an instruction boundary in this range has
+            # tgt == None -> decline the structured form and fall through to linear emission
+            # (never crash, never guess the structure).
+            tt=s.tgt.get(i+1)
             if s.ins[i].mnemonic in ("cmp","test") and i+1<hi and s.ins[i+1].mnemonic in CJMP \
-               and s.tgt.get(i+1,-1)>i+1 and not (i+2<len(s.ins) and s.ins[i+2].mnemonic=="xor"):
-                cond,jcc=s.cond_at(i); tgt=s.tgt[jcc]
-                body=s.walk(jcc+1, tgt)
-                out.append("if (%s) {"%cond); out+=["    "+b for b in body]; out.append("}")
-                i=tgt; continue
+               and tt is not None and tt>i+1 and not (i+2<len(s.ins) and s.ins[i+2].mnemonic=="xor"):
+                cond,jcc=s.cond_at(i); tgt=s.tgt.get(jcc)
+                if tgt is not None and jcc+1<=tgt<=hi:
+                    body=s.walk(jcc+1, tgt)
+                    out.append("if (%s) {"%cond); out+=["    "+b for b in body]; out.append("}")
+                    i=tgt; continue
             i=s.step(i,out)
         return out
 
