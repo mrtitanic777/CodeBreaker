@@ -591,6 +591,15 @@ def _loadable_data(D, oi, a, b, ctx=None):
                     out.append("        %-6s %s" % ("call" if code[k - 1] == 0xE8 else "jmp", lab))
                     k += 4; run = k
                     continue
+            # a two-byte jcc (0F 8x rel32) self-relative branch in a data gap -> emit the jcc, not dd offset
+            if f.get("srctype") == 8 and k >= a + 2 and code[k - 2] == 0x0F and code[k - 1] in _JCC and k + 4 <= b:
+                lab = D.labels.get((f["obj"], (f.get("target") or 0) & 0x7FFFFFFF))
+                if lab:
+                    if k - 2 > run:
+                        out.extend(_db_data(code[run:k - 2]))
+                    out.append("        %-6s %s" % (_JCC[code[k - 1]], lab))
+                    k += 4; run = k
+                    continue
             expr = _dd_target_expr(D, f["obj"], f.get("target"), ctx)
             if expr and k + 4 <= b:
                 if k > run:
