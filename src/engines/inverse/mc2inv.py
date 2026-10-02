@@ -20,6 +20,8 @@ INV={"jge":"<","jg":"<=","jle":">","jl":">=","jne":"==","je":"!=","jz":"!=","jnz
      "ja":"<=","jae":"<","jb":">=","jbe":">","jc":">=","jnc":"<"}        # unsigned, negated (fall-through)
 CJMP=set(JCC)|{"jz","jnz"}
 BYTEREG=("al","bl","cl","dl","ah","bh","ch","dh")        # 8-bit sub-registers (exposed as vars)
+BYTEPARENT={"al":"ax","ah":"ax","bl":"bx","bh":"bx","cl":"cx","ch":"cx","dl":"dx","dh":"dx"}
+WORDHALVES={"ax":("al","ah"),"bx":("bl","bh"),"cx":("cl","ch"),"dx":("dl","dh")}
 
 class R:
     def __init__(s, ins, fs, base=0, cxmap=None, msc3=False):
@@ -27,6 +29,7 @@ class R:
         s.ins=ins; s.fs=fs; s.ax=None; s.si=None; s.di=None; s.cx=None; s.div=None; s.maxidx=-1; s.args=[]
         s.longfn=False; s.lmax=-1; s.floatfn=False; s.bx=None; s.dx=None; s._cmp=None
         s.base=base; s.cxmap=cxmap or {}; s.locals=set()
+        s.breg={}                                       # 8-bit sub-register -> tracked value (byte loads)
         s.hoisted=set(); s.out=None; s.i=0             # register value-tracking state
         s.retlive=False                                 # ax currently holds a live return value?
         s.axsrc=None; s.bxsrc=None                      # instr idx where ax/bx const value was LOADED
@@ -165,9 +168,26 @@ class R:
         register-routed constant store (a signal for dead-store recovery)."""
         out.append(text); s.ranks.append(s.i if rank is None else rank); s.regconst.append(rc)
 
+    def _binval(s, mn, d0):
+        """Invalidate byte-register tracking that an instruction clobbers: a call returns in
+        ax (al/ah); a write to a word register redefines both its 8-bit halves."""
+        if mn in ("call","lcall"): s.breg.pop("al",None); s.breg.pop("ah",None)
+        elif d0 in WORDHALVES and mn not in ("cmp","test","push"):
+            for h in WORDHALVES[d0]: s.breg.pop(h,None)
+
     def expr_step(s,i):
         """Update ax/si/cx from a value-producing instruction (no statement)."""
         s.i=i; old=s.ax; ii=s.ins[i]; mn=ii.mnemonic; ops=ii.op_str
+        s._binval(mn, ops.split(",")[0].strip())
+        if mn=="mov" and ops.split(", ")[0] in BYTEREG:        # byte load/copy: r8 = mem | imm | r8'
+            d8=ops.split(", ")[0]; src=ops.split(", ",1)[1]
+            if re.match(r"(0x[0-9a-f]+|\d+)$",src): s.breg[d8]=str(s.num(src))
+            elif src in BYTEREG: s.breg[d8]=s.breg.get(src,src)
+            else: s.breg[d8]=s.memname(src) or d8
+            if BYTEPARENT[d8] in ("ax","bx","cx","dx","si","di"): setattr(s,BYTEPARENT[d8],None)
+            return
+        if mn in ("cbw","cwde") and "al" in s.breg:            # sign-extend al -> ax (int)al
+            s.ax=s.breg["al"]; s.axsrc=None; return
         if mn=="mov" and ops.startswith("ax, "):
             src=ops[4:]
             if src=="dx" and s.div: s.ax="(%s %% %s)"%s.div; s.axsrc=None
@@ -309,6 +329,11 @@ class R:
         n=s.long_stmt(i,out)
         if n: return i+n
         ii=s.ins[i]; mn=ii.mnemonic; ops=ii.op_str; d0=ops.split(",")[0].strip()
+        s._binval(mn, d0)
+        if mn=="mov" and "[" in d0 and ops.rpartition(", ")[2] in BYTEREG:   # store: mem = byte-reg
+            src=ops.rpartition(", ")[2]
+            s.emit(out,"%s = %s;"%(s.memname(d0.replace("byte ptr ","")), s.breg.get(src, src)))
+            return i+1
         if mn=="cmp" and ops.startswith("ax, ") and i+2<len(s.ins) and s.ins[i+1].mnemonic in JCC and s.ins[i+2].mnemonic=="xor":
             s.ax="(%s %s %s)"%(s.ax, JCC[s.ins[i+1].mnemonic], s.memname(ops[4:])); s.retlive=True; s.axsrc=None
             while i<len(s.ins) and s.ins[i].op_str!="ax, bx": i+=1
@@ -430,7 +455,7 @@ class R:
 
     def _reset(s):
         """Reset value-tracking + emission state for goto pass 2, keeping gototargets/tgt/epi."""
-        s.ax=s.si=s.di=s.cx=s.bx=s.dx=s.div=None
+        s.ax=s.si=s.di=s.cx=s.bx=s.dx=s.div=None; s.breg={}
         s.maxidx=-1; s.lmax=-1; s.args=[]; s.longfn=False; s.floatfn=False
         s.hoisted=set(); s.out=None; s.i=0; s.retlive=False; s.axsrc=None; s.bxsrc=None
         s.ranks=[]; s.regconst=[]; s.locals=set(); s.callstmt=False
@@ -438,11 +463,11 @@ class R:
     _REGS=("ax","si","di","cx","bx","dx")
     def _snap(s):
         d={r:getattr(s,r) for r in s._REGS}
-        d.update(div=s.div, retlive=s.retlive, axsrc=s.axsrc, bxsrc=s.bxsrc, args=list(s.args))
+        d.update(div=s.div, retlive=s.retlive, axsrc=s.axsrc, bxsrc=s.bxsrc, args=list(s.args), breg=dict(s.breg))
         return d
     def _rest(s,d):
         for r in s._REGS: setattr(s,r,d[r])
-        s.div=d["div"]; s.retlive=d["retlive"]; s.axsrc=d["axsrc"]; s.bxsrc=d["bxsrc"]; s.args=list(d["args"])
+        s.div=d["div"]; s.retlive=d["retlive"]; s.axsrc=d["axsrc"]; s.bxsrc=d["bxsrc"]; s.args=list(d["args"]); s.breg=dict(d["breg"])
     def _phi(s, then_snap, else_snap, then_b, else_b):
         """Merge two branch register-states. For a register the branches leave DIFFERENT, emit
         `reg = <value>;` at the end of each branch (materializing the conditional assignment that
@@ -465,11 +490,11 @@ class R:
         body=s.walk(lo,hi)
         if any(b.strip() for b in body) or s.callstmt:
             return body
-        snap=(s.ax,s.si,s.di,s.bx,s.cx,s.dx,list(s.args),s.div,s.retlive,s.axsrc,s.bxsrc,s.out)
+        snap=(s.ax,s.si,s.di,s.bx,s.cx,s.dx,list(s.args),s.div,s.retlive,s.axsrc,s.bxsrc,s.out,dict(s.breg))
         s.callstmt=True
         body2=s.walk(lo,hi)
         s.callstmt=False
-        s.ax,s.si,s.di,s.bx,s.cx,s.dx,s.args,s.div,s.retlive,s.axsrc,s.bxsrc,s.out=snap
+        s.ax,s.si,s.di,s.bx,s.cx,s.dx,s.args,s.div,s.retlive,s.axsrc,s.bxsrc,s.out,s.breg=snap
         return body2 if any(b.strip() for b in body2) else body
 
     def walk(s,lo,hi):
