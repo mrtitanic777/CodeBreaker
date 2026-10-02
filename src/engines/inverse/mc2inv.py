@@ -33,6 +33,16 @@ class R:
             if ii.mnemonic in CJMP or ii.mnemonic=="jmp":
                 m=re.match(r"0x([0-9a-f]+)$", ii.op_str)
                 if m: s.tgt[i]=a2i.get(int(m.group(1),16))
+        # Address of the common epilogue: the trailing run of mov sp,bp / leave / pop / ret.
+        # A jmp into it is `return <value in ax>` (the "set result, goto exit" idiom), not a
+        # no-op -- missing this dropped the returned value and left empty if-bodies.
+        s.epi=None
+        if ins and ins[-1].mnemonic in ("ret","retf"):
+            e=ins[-1].address; j=len(ins)-2
+            while j>=0 and (ins[j].mnemonic in ("leave","pop") or
+                            (ins[j].mnemonic=="mov" and ins[j].op_str=="sp, bp")):
+                e=ins[j].address; j-=1
+            s.epi=e
     def call_op(s, ci, default):
         """Resolve a CALL instruction's target to a C operator via the CX-helper map."""
         b=s.ins[ci].bytes
@@ -394,6 +404,8 @@ class R:
                 t=s.num(m.group(1))
                 if t>s.ins[-1].address or t<s.ins[0].address:  # outside this function -> tail call
                     s.emit(out,"return sub_%x(%s);"%(t & 0xFFFF, ", ".join(str(a) for a in reversed(s.args)))); s.args=[]
+                elif s.epi is not None and t>=s.epi and s.ax is not None and s.retlive:
+                    s.emit(out,"return %s;"%s.ax)              # jmp to common epilogue w/ live result
             return i+1
         if mn=="ret" and s.ax is not None and s.retlive: s.emit(out,"return %s;"%s.ax); return i+1
         s.expr_step(i); return i+1
