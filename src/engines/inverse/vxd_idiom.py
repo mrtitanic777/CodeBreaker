@@ -512,6 +512,14 @@ def _dd_target_expr(D, tobj, toff, ctx):
         #  Begin_Service_Table / Begin_Control_Dispatch macros regenerate): no loc_ label is emitted
         #  there, so a symbolic `offset loc_..' would be undefined (A2006). Byte-preserve the pointer
         #  instead -- it loses its relocation, but the region is macro-owned and the build assembles.
+    # A target BEYOND the object's vsize is a reference to obj_base + a large offset (e.g. a VxD's DOS/
+    # V86 memory window at obj+0x400000). No loc_ label exists that far in; anchor on the object's base
+    # label (obj:0) plus the full offset, so LINK writes a relocation to that object with the addend --
+    # matching retail. Dropping these left the pointer unrelocated -> init protection fault (dosmgr/vfat).
+    _ovs = {o["idx"]: o["vsize"] for o in (D.v.objects if hasattr(D, "v") else [])}
+    if tobj in _ovs and base >= _ovs[tobj]:
+        anchor = D.labels.get((tobj, 0))
+        return "offset %s + %Xh%s" % (anchor, base, alias) if anchor else None
     lab = D.labels.get((tobj, base))
     return "offset %s%s" % (lab, alias) if lab else None
 
@@ -654,7 +662,8 @@ def emit_idiomatic(D, loadable=False):
                 continue
             tgt = (f["obj"], f["target"] & 0x7FFFFFFF)       # mask the 0x80000000 high-linear-alias bit;
             if tgt[0] in _ovs and tgt[1] >= _ovs[tgt[0]]:   #  the low 31 bits are the real object offset
-                continue                                     #  (genuinely beyond object -> keep raw)
+                D.labels.setdefault((tgt[0], 0), "loc_%d_0000" % tgt[0])   # beyond-object: anchor the ref
+                continue                                                   #  on the object-base label (+addend)
             lab = D.labels.get(tgt) or ("loc_%d_%04X" % tgt)
             D.labels.setdefault(tgt, lab)
             if tgt in interior_of:            # target lands MID-INSTRUCTION -> force its instruction to raw
