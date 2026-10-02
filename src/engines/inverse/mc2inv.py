@@ -148,6 +148,13 @@ class R:
             dst, _, src = ops.partition(", ")
             nm = s.memname(src)
             if dst in ("ax","bx","cx","dx","si","di") and nm: setattr(s, dst, "&"+nm)
+        elif mn=="xchg":                                       # register swap -> exchange tracked values
+            o = ops.split(", ")
+            R = ("ax","bx","cx","dx","si","di")
+            if len(o)==2 and o[0] in R and o[1] in R:
+                va = getattr(s,o[0]); vb = getattr(s,o[1])
+                setattr(s, o[0], vb if vb is not None else o[1])
+                setattr(s, o[1], va if va is not None else o[0])
         elif mn=="mov" and ops.startswith("bx, "):
             s.bx=s.rhs(ops[4:]); s.bxsrc=i if re.match(r"(0x[0-9a-f]+|\d+)$",ops[4:]) else None
         elif mn=="mov" and ops.startswith("cx, "): s.cx=s.rhs(ops[4:])
