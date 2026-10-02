@@ -45,8 +45,16 @@ class R:
         # frame top, standard): params at [bp+4],[bp+6],... -> off-4.
         idx=((off-4)//2) if s.msc3 else ((off-s.fs-4)//2); s.maxidx=max(s.maxidx,idx)
         return chr(ord('a')+idx) if 0<=idx<26 else "p%d"%idx
+    def _ptrbase(s,reg):
+        """Readable base for a pointer-register deref: the register's tracked pointer value
+        if it has one (not a plain number), else the register name itself (an implicit
+        struct pointer). Keeps [bx+N] etc. readable instead of leaking raw asm."""
+        v=getattr(s,reg,None)
+        if v is None or re.match(r"-?\d+$|-?0x[0-9a-f]+$",str(v)): return reg
+        return str(v)
     def memname(s,op):
         op=op.replace("word ptr ","").replace("byte ptr ","")
+        op=re.sub(r"\b(es|ds|ss|cs|fs|gs):","",op)            # drop segment override (far deref)
         if s.msc3:                                            # 3.0: locals [bp-N], params [bp+N>=4]
             m=re.search(r"\[bp - (0x[0-9a-f]+|\d+)\]",op)
             if m:
@@ -61,9 +69,12 @@ class R:
                 o=s.num(m.group(1)) if m else 0
                 if o < s.fs: s.locals.add(o); return "v%d"%o  # local (below saved BP)
                 return s.pname(o)                             # parameter
-        m=re.search(r"\[si \+ (0x[0-9a-f]+|\d+)\]",op)
-        if m: return "%s->f%d"%(s.si,s.num(m.group(1)))
-        if "[si]" in op: return "*%s"%s.si
+        for reg in ("si","bx","di"):                          # pointer-register derefs
+            m=re.search(r"\[%s \+ (0x[0-9a-f]+|\d+)\]"%reg,op)
+            if m: return "%s->f%d"%(s._ptrbase(reg),s.num(m.group(1)))
+            if "[%s]"%reg in op: return "*%s"%s._ptrbase(reg)
+        m=re.search(r"\[bx \+ si\]|\[bx \+ di\]|\[si \+ di\]",op)  # indexed; name by base reg
+        if m: return "%s[%s]"%(s._ptrbase(op[1:3]), op.split(" + ")[1].rstrip("]"))
         m=re.search(r"\[(0x[0-9a-f]+|\d+)\]",op)
         if m: return "g_%x"%s.num(m.group(1))       # distinct global per address
         return None
@@ -144,15 +155,17 @@ class R:
             if t=="bx": return s.bx
             v=s.memname(t)
             return v if v is not None else (str(s.num(t)) if re.match(r"(0x[0-9a-f]+|\d+)$",t) else t)
-        while s.ins[j].mnemonic not in CJMP:
+        while j<len(s.ins) and s.ins[j].mnemonic not in CJMP:
             mn=s.ins[j].mnemonic; ops=s.ins[j].op_str
             if mn=="cmp":
                 p=ops.split(", "); s._cmp=(resolve(p[0]), resolve(p[1]))
             elif mn=="test": s._cmp=None
             else: s.expr_step(j)
             j+=1
+        if j>=len(s.ins):                                 # no conditional jump before the end
+            return (s.ax if s.ax is not None else "0"), j
         jcc=s.ins[j].mnemonic
-        cond="(%s %s %s)"%(s._cmp[0], INV[jcc], s._cmp[1]) if s._cmp else s.ax
+        cond="(%s %s %s)"%(s._cmp[0], INV.get(jcc,"?"), s._cmp[1]) if s._cmp else s.ax
         return cond, j
 
     def lparam(s,op):
@@ -203,7 +216,7 @@ class R:
             s.args.append(s.ax if ops=="ax" else (s.memname(ops) or ops)); return i+1
         if mn=="call":
             m=re.match(r"(0x[0-9a-f]+|\d+)$", ops); tgt=s.num(m.group(1)) if m else 0
-            expr="sub_%x(%s)"%(tgt, ", ".join(reversed(s.args))); s.args=[]
+            expr="sub_%x(%s)"%(tgt, ", ".join(str(a) for a in reversed(s.args))); s.args=[]
             if s.fs==0: s.emit(out,expr+";"); s.ax=None; s.retlive=False   # statement (result discarded)
             else: s.ax=expr; s.retlive=True                    # result used
             return i+1
@@ -325,10 +338,12 @@ def _dead_store_recover(stmts, rc):
 
 def recover(code, base=0, cxmap=None):
     ins=list(_MD.disasm(code,0))
+    if len(ins) < 2:
+        return 0, [], [], "int", []                       # too small to be a real function
     fs=0; k=1
     if ins[k].mnemonic=="sub" and ins[k].op_str.startswith("sp"):
         fs=int(ins[k].op_str.split(",")[1],16); k+=1
-        while "bp, sp" not in ins[k].op_str: k+=1
+        while k<len(ins) and "bp, sp" not in ins[k].op_str: k+=1
     k+=1
     # MS-C 3.00 stack-check prologue (absent in 2.03): after `mov bp,sp`, the frame is
     # allocated by `mov ax,<framesize>; call __chkstk` (or `xor ax,ax; call __chkstk` for a
