@@ -519,7 +519,19 @@ class R:
                         out.append("if (%s) {"%cond); out+=["    "+b for b in then_b]
                         out.append("} else {"); out+=["    "+b for b in else_b]; out.append("}")
                         i=end; continue
-                    body=s._body(jcc+1, tgt)
+                    # plain if: phi against the implicit else (registers keep their pre-if value).
+                    # A register the then-branch changes is materialized `reg = <then>;` inside and
+                    # `reg = <pre>;` BEFORE the if (so the not-taken path is defined), then exposed
+                    # as the bare register -- otherwise `if(c){reg=V}; use reg` kept V unconditionally.
+                    pre=s._snap()
+                    body=s._body(jcc+1, tgt); then_s=s._snap()
+                    for r in s._REGS:
+                        if then_s[r]==pre[r]:
+                            setattr(s,r,then_s[r]); continue
+                        pv,tv=pre[r],then_s[r]
+                        if pv is not None and str(pv)!=r: out.append("%s = %s;"%(r,pv))
+                        if tv is not None and str(tv)!=r: body.append("%s = %s;"%(r,tv))
+                        setattr(s,r,None)
                     out.append("if (%s) {"%cond); out+=["    "+b for b in body]; out.append("}")
                     i=tgt; continue
             i=s.step(i,out)
