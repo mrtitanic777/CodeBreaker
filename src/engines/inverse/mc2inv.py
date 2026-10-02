@@ -117,11 +117,12 @@ class R:
                 if j not in s.hoisted and s.out is not None:
                     s.emit(s.out,"%s = %s;"%(var,cur)); s.hoisted.add(j)
                 setattr(s,reg,var); return var
-        return cur
+        return cur if cur is not None else reg                # untracked -> expose the register
 
     def _val(s,tok):
-        """Resolve a source operand token: register->tracked value (rsrc), else imm/mem."""
-        if tok=="ax": return s.ax                             # accumulator self-operand (add ax,ax)
+        """Resolve a source operand token: register->tracked value (rsrc), else imm/mem.
+        Never yields None: an untracked register falls back to its own name (a live variable)."""
+        if tok=="ax": return s.ax if s.ax is not None else "ax"
         return s.rsrc(tok) if tok in ("bx","cx","dx") else s.rhs(tok)
 
     def emit(s, out, text, rank=None, rc=False):
@@ -145,11 +146,14 @@ class R:
         elif mn=="mov" and ops.startswith("cx, "): s.cx=s.rhs(ops[4:])
         elif mn=="mov" and ops.startswith("dx, "): s.dx=s.rhs(ops[4:])
         elif mn=="xor" and ops in ("ax, ax","bx, bx"): s.ax="0"     # self-xor = clear (return 0)
-        elif mn in ALU and ops.startswith("ax, "): s.ax="(%s %s %s)"%(s.ax,ALU[mn],s._val(ops[4:]))
-        elif mn=="imul": s.ax="(%s * %s)"%(s.ax,s._val(ops))
-        elif mn=="idiv": rn=s._val(ops); s.div=(s.ax,rn); s.ax="(%s / %s)"%(s.ax,rn)
-        elif mn=="shl" and ops=="ax, cl": s.ax="(%s << %s)"%(s.ax,s.cx)
-        elif mn=="sar" and ops=="ax, cl": s.ax="(%s >> %s)"%(s.ax,s.cx)
+        else:
+            axv = s.ax if s.ax is not None else "ax"             # untracked ax -> the register
+            cxv = s.cx if s.cx is not None else "cx"
+            if mn in ALU and ops.startswith("ax, "): s.ax="(%s %s %s)"%(axv,ALU[mn],s._val(ops[4:]))
+            elif mn=="imul": s.ax="(%s * %s)"%(axv,s._val(ops))
+            elif mn=="idiv": rn=s._val(ops); s.div=(axv,rn); s.ax="(%s / %s)"%(axv,rn)
+            elif mn=="shl" and ops=="ax, cl": s.ax="(%s << %s)"%(axv,cxv)
+            elif mn=="sar" and ops=="ax, cl": s.ax="(%s >> %s)"%(axv,cxv)
         if s.ax is not old: s.retlive=True                    # ax got a live computed value
 
     def cond_at(s,i):
@@ -237,11 +241,12 @@ class R:
                 # a reused CONST loaded earlier: rank the store at its LOAD (un-schedule the defer)
                 rank = s.axsrc if (s.axsrc is not None and s.axsrc < i) else i
                 rc = (s.axsrc is not None) and bool(re.match(r"-?\d+$|-?0x[0-9a-f]+$", str(s.ax)))
-                s.emit(out,"%s = %s;"%(s.memname(dest), s.ax), rank, rc)
+                s.emit(out,"%s = %s;"%(s.memname(dest), s.ax if s.ax is not None else "ax"), rank, rc)
                 s.ax=s.memname(dest); s.axsrc=None; s.retlive=False; return i+1   # aliases var
             if src in ("bx","cx"):
                 rank = s.bxsrc if (src=="bx" and s.bxsrc is not None and s.bxsrc < i) else i
-                s.emit(out,"%s = %s;"%(s.memname(dest), getattr(s,src)), rank)  # raw tracked value
+                rv = getattr(s,src) if getattr(s,src) is not None else src          # untracked -> reg name
+                s.emit(out,"%s = %s;"%(s.memname(dest), rv), rank)
                 setattr(s,src,s.memname(dest))
                 if src=="bx": s.bxsrc=None
                 return i+1                                      # backward alias
