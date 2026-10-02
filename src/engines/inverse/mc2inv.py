@@ -330,6 +330,23 @@ class R:
             op="<<" if mn in ("shl","sal") else ">>"; s.emit(out,"%s = %s %s %s;"%(d0,d0,op,cnt)); return i+1
         if d0 in BYTEREG and mn in ("neg","not"):
             s.emit(out,"%s = %s%s;"%(d0,"-" if mn=="neg" else "~",d0)); return i+1
+        # ALU on a non-ax word register (bx/cx/dx/si/di): the symbolic model tracks only ax, so
+        # these were silently dropped. Emit as statements on the register variable (clearing any
+        # stale pointer track so later derefs stay consistent with the bare name). sub/xor r,r is
+        # a clear; or r,r is a flag-only test (consumed by cond_at) -> no statement.
+        if mn in ALU and d0 in ("bx","cx","dx","si","di") and len(ops.split(", "))==2:
+            src=ops.split(", ")[1].strip()
+            if src==d0 and mn in ("sub","xor"):
+                s.emit(out,"%s = 0;"%d0)
+            elif src==d0 and mn=="or":
+                pass
+            else:
+                rhs=s._val(src) if src in ("ax","bx","cx","dx","si","di") else s.rhs(src)
+                base=getattr(s,d0,None)
+                base=base if (base is not None and re.match(r"^[A-Za-z_]\w*$",str(base))) else d0
+                s.emit(out,"%s = %s %s %s;"%(base,base,ALU[mn],rhs))
+            setattr(s,d0,None)
+            return i+1
         # 16-bit string ops. Block (rep-prefixed) forms -> the C library idiom; single-byte/word
         # forms -> pointer deref with post-increment. di/si/cx/al come from the tracked registers
         # (fall back to the register name, never None). Comparison forms (scas/cmps) are left
