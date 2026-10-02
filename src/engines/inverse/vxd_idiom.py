@@ -682,10 +682,21 @@ def emit_idiomatic(D, loadable=False):
         for (soi, soff), f in D.fx.items():
             if f.get("kind") != "internal":
                 continue
-            for dlt in (1, 2, 3):
-                if (soi, soff + dlt) in D.labels and (soi, soff + dlt) not in fx_interior:
-                    fx_interior[(soi, soff + dlt)] = soff
-                    D.labels.setdefault((soi, soff), "loc_%d_%04X" % (soi, soff))
+            code = D.code.get(soi, b"")
+            # The emittable ANCHOR of a fixup unit: for a data pointer (srctype 7) it is the dword start;
+            # for a self-relative BRANCH (srctype 8) it is the branch OPCODE (E8/E9 one byte before the
+            # rel32, or 0F 8x two bytes before) -- because _loadable_data re-emits the whole branch from
+            # the opcode. Any LABEL inside the unit (but not at the anchor) is emitted as an EQU alias.
+            anchor = soff
+            if f.get("srctype") == 8:
+                if soff >= 1 and soff - 1 < len(code) and code[soff - 1] in (0xE8, 0xE9):
+                    anchor = soff - 1
+                elif soff >= 2 and soff - 1 < len(code) and code[soff - 2] == 0x0F and code[soff - 1] in _JCC:
+                    anchor = soff - 2
+            for o in range(anchor + 1, soff + 4):
+                if (soi, o) in D.labels and (soi, o) not in fx_interior:
+                    fx_interior[(soi, o)] = anchor
+                    D.labels.setdefault((soi, anchor), "loc_%d_%04X" % (soi, anchor))
     # base set of offsets that will carry an emitted label -- a label at an instruction start, or on a
     # data byte, but NOT one landing mid-instruction. control_dispatch needs it to only reference
     # handlers we actually emit; the branch gate below needs it minus the macro-absorbed regions.
