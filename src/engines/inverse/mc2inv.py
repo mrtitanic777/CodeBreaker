@@ -88,6 +88,22 @@ class R:
         return None
     def rhs(s,op): return str(s.num(op)) if re.match(r"(0x[0-9a-f]+|\d+)$",op) else s.memname(op)
 
+    def movptr(s,d,src):
+        """mov si/di, X.  A pointer register kept as a bare source-register NAME is wrong once
+        that source is clobbered (e.g. `mov si,ax` then ax reused -> si->f became ax->f). So
+        snapshot a volatile source (a live register, or a side-effecting expression) into the
+        destination as its own variable `d = <val>;`, and only alias a stable name/field/global
+        directly (re-referenceable, no clobber risk)."""
+        REGS=("ax","bx","cx","dx","si","di","bp","sp")
+        if src in REGS:
+            val=getattr(s,src,None); val=src if val is None else str(val)
+            if val in REGS or "(" in val:                 # volatile register / expression
+                s.emit(s.out,"%s = %s;"%(d,val)); setattr(s,d,d)
+            else:                                          # stable name/field/global -> alias
+                setattr(s,d,val)
+        else:
+            setattr(s,d,s.memname(src))
+
     def _writes(s,mn,dst,reg):
         """Does instruction (mn,dst) overwrite register reg (so its value is lost)?"""
         if dst==reg: return True
@@ -142,8 +158,8 @@ class R:
             elif src in ("bx","cx","dx"): s.ax=s.rsrc(src); s.axsrc=None   # reg->reg copy
             elif re.match(r"(0x[0-9a-f]+|\d+)$",src): s.ax=s.rhs(src); s.axsrc=i  # LOADED const
             else: s.ax=s.rhs(src); s.axsrc=None
-        elif mn=="mov" and ops.startswith("si, "): s.si=s.memname(ops[4:])
-        elif mn=="mov" and ops.startswith("di, "): s.di=s.memname(ops[4:])
+        elif mn=="mov" and ops.startswith(("si, ","di, ")):
+            d=ops[:2]; src=ops[4:]; s.movptr(d,src)
         elif mn in ("les","lds"):                              # load far pointer -> reg (near model)
             dst, _, src = ops.partition(", ")
             if dst in ("ax","bx","cx","dx","si","di"): setattr(s, dst, s.memname(src))
@@ -159,9 +175,13 @@ class R:
                 setattr(s, o[0], vb if vb is not None else o[1])
                 setattr(s, o[1], va if va is not None else o[0])
         elif mn=="mov" and ops.startswith("bx, "):
-            s.bx=s.rhs(ops[4:]); s.bxsrc=i if re.match(r"(0x[0-9a-f]+|\d+)$",ops[4:]) else None
-        elif mn=="mov" and ops.startswith("cx, "): s.cx=s.rhs(ops[4:])
-        elif mn=="mov" and ops.startswith("dx, "): s.dx=s.rhs(ops[4:])
+            src=ops[4:]
+            if src in ("ax","cx","dx","si","di","bp"): s.movptr("bx",src); s.bxsrc=None
+            else: s.bx=s.rhs(src); s.bxsrc=i if re.match(r"(0x[0-9a-f]+|\d+)$",src) else None
+        elif mn=="mov" and ops.startswith("cx, "):
+            src=ops[4:]; s.movptr("cx",src) if src in ("ax","bx","dx","si","di","bp") else setattr(s,"cx",s.rhs(src))
+        elif mn=="mov" and ops.startswith("dx, "):
+            src=ops[4:]; s.movptr("dx",src) if src in ("ax","bx","cx","si","di","bp") else setattr(s,"dx",s.rhs(src))
         elif mn=="xor" and ops in ("ax, ax","bx, bx"): s.ax="0"     # self-xor = clear (return 0)
         else:
             axv = s.ax if s.ax is not None else "ax"             # untracked ax -> the register
