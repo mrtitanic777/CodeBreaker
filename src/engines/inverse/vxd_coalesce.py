@@ -118,10 +118,64 @@ def restore_entry_point(vxd_bytes, v):
     return bytes(b)
 
 
+def restore_metadata(vxd_bytes, v):
+    """Splice the oracle's loader-section metadata -- the resource table, resident-name table and entry
+    (export) table -- verbatim into our LE, and slide the (coalesced) fixup tables to follow.
+
+    LINK 2.60 / wlink produce these tables differently from retail's LINK386: the module name is space-
+    padded to 8 (retail "DOSMGR" 6 vs ours "DOSMGR  "), the DDB is published as an extra *named* resident
+    export (DOSMGR_DDB) retail does not carry, and the resource-table pointer (hdr 0x50) is non-zero.
+    load_relocated() only compares object DATA, so these pass the relocation gate yet differ byte-for-byte
+    from retail; VMM reads this metadata during init and faults on the mismatch (dosmgr: diff==0 yet a
+    Device_Init triple-fault). The tables are pure link output, not source -- recovering them verbatim is
+    the same category as restore_entry_point (copying the oracle's real-mode-init EIP).
+
+    The object table + page map precede this region and are byte-identical for a diff==0 module, so the
+    oracle's resident-name offset (hdr 0x58) equals ours; we guard on that and bail otherwise. The entry
+    table points the DDB at an obj:rva our object bytes reproduce exactly, so the oracle's table is valid
+    as-is. Only shrinks (retail's tables are the compact form), so everything fits; freed bytes before the
+    unchanged data-pages offset are zeroed as slack."""
+    b = bytearray(vxd_bytes)
+    from src.formats import le
+    m = le.LEFile.from_buffer(bytes(b))
+    L, rL = m.lfa, v.lfa
+    U = lambda buf, base, off: struct.unpack_from("<I", buf, base + off)[0]
+    o_res, o_fxp, o_dp = U(b, L, 0x58), U(b, L, 0x68), U(b, L, 0x80)
+    r_res, r_ent, r_fxp = U(v.d, rL, 0x58), U(v.d, rL, 0x5c), U(v.d, rL, 0x68)
+    # 0x40..0x78 are lfa-relative; the data-pages offset (0x80) is FILE-ABSOLUTE -- object data begins at
+    # file offset o_dp, not L+o_dp. Mixing the two frames would fold the first 0x80 bytes of object data
+    # into the moved table block and shift every object left (relocation breaks).
+    if not (r_fxp > r_ent > r_res > 0 and o_fxp > o_res > 0 and o_dp > L + o_fxp):
+        return bytes(b)                                     # no recoverable loader tables -> leave as built
+    if o_res != r_res:
+        return bytes(b)                                     # objtab/pagemap sizes differ (not diff==0) -> skip
+    delta = o_fxp - r_fxp                                   # how much shorter retail's loader tables are
+    if delta < 0:
+        return bytes(b)                                     # ours already smaller than retail -> leave it
+    blob = bytes(v.d[rL + r_res: rL + r_fxp])              # retail resource+resident-name+entry region
+    tables = bytes(b[L + o_fxp: o_dp])                      # our coalesced fixup page/record tables + tail
+    pre = bytes(b[: L + o_res]) + blob + tables
+    if len(pre) > o_dp:
+        return bytes(b)                                     # would overrun the data pages -> leave it
+    new = bytearray(pre + b"\x00" * (o_dp - len(pre)) + bytes(b[o_dp:]))
+    for off in (0x50, 0x54, 0x58, 0x5c, 0x60, 0x64):        # resource/resident-name/entry/directives ptrs
+        struct.pack_into("<I", new, L + off, U(v.d, rL, off))
+    struct.pack_into("<I", new, L + 0x68, r_fxp)            # fixup page table now at retail's offset
+    struct.pack_into("<I", new, L + 0x6c, U(b, L, 0x6c) - delta)   # fixup records slid left by delta
+    for off in (0x70, 0x78):                                # import module / procedure name tables slid too
+        struct.pack_into("<I", new, L + off, U(b, L, off) - delta)
+    return bytes(new)
+
+
 def finalize(vxd_bytes, v):
-    """Apply both LE-format fixes (coalesce fixups, restore entry point). Best-effort per step."""
+    """Apply the LE-format fixes (coalesce fixups, restore loader metadata, restore entry point). Each
+    step is best-effort so a module that defeats one still gets the others."""
     try:
         vxd_bytes = coalesce(vxd_bytes)
+    except Exception:
+        pass
+    try:
+        vxd_bytes = restore_metadata(vxd_bytes, v)
     except Exception:
         pass
     try:
