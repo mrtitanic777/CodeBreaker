@@ -12,8 +12,12 @@ from src.engines.inverse import framemodel
 _MD = Cs(CS_ARCH_X86, CS_MODE_16)
 
 ALU={"add":"+","sub":"-","and":"&","or":"|","xor":"^"}
-JCC={"jl":"<","jle":"<=","jg":">","jge":">=","je":"==","jne":"!="}      # materialized value
-INV={"jge":"<","jg":"<=","jle":">","jl":">=","jne":"==","je":"!=","jz":"!=","jnz":"=="}  # skip/exit-if-not
+JCC={"jl":"<","jle":"<=","jg":">","jge":">=","je":"==","jne":"!=",      # jump's OWN taken condition
+      "ja":">","jae":">=","jb":"<","jbe":"<=","jc":"<","jnc":">="}       # unsigned (signedness is an
+                                                                         # approximation; size/count cmps
+                                                                         # compare small positive values)
+INV={"jge":"<","jg":"<=","jle":">","jl":">=","jne":"==","je":"!=","jz":"!=","jnz":"==",  # skip/exit-if-not
+     "ja":"<=","jae":"<","jb":">=","jbe":">","jc":">=","jnc":"<"}        # unsigned, negated (fall-through)
 CJMP=set(JCC)|{"jz","jnz"}
 BYTEREG=("al","bl","cl","dl","ah","bh","ch","dh")        # 8-bit sub-registers (exposed as vars)
 
