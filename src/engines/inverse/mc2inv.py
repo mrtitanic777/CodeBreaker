@@ -283,6 +283,13 @@ class R:
             # fs>0 means MC1 allocated a temp -> source used the temp form x = x OP 1 (not x++/x--)
             s.emit(out,"%s = %s %s 1;"%(nm,nm,o) if s.fs>0 else "%s%s;"%(nm,"++" if mn=="inc" else "--"))
             return i+1
+        if mn=="int":                                          # software interrupt -> named syscall
+            s.emit(out,"int_%s();"%ops.replace("0x","").replace(" ","")); return i+1
+        if mn in ("shl","sal","shr","sar") and "[" in ops.split(",")[0]:   # memory-dest shift
+            d=s.memname(ops.split(",")[0]); cnt=s.cx if ops.endswith("cl") else s._val(ops.split(", ")[1])
+            op="<<" if mn in ("shl","sal") else ">>"; s.emit(out,"%s = %s %s %s;"%(d,d,op,cnt)); return i+1
+        if mn in ("neg","not") and "[" in ops:                 # memory-dest unary
+            d=s.memname(ops); s.emit(out,"%s = %s%s;"%(d,"-" if mn=="neg" else "~",d)); return i+1
         # 16-bit string ops. Block (rep-prefixed) forms -> the C library idiom; single-byte/word
         # forms -> pointer deref with post-increment. di/si/cx/al come from the tracked registers
         # (fall back to the register name, never None). Comparison forms (scas/cmps) are left
