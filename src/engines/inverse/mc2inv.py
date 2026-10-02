@@ -660,6 +660,7 @@ def recover(code, base=0, cxmap=None):
     # fired, re-walk with emitgoto so the (possibly earlier) target labels get placed (2-pass).
     if r.gototargets:
         r._reset(); r.emitgoto=True; stmts=r.walk(k,len(ins))
+        stmts=_fold_shortcircuit(stmts)                    # recover && short-circuits from guarded gotos
     # UN-SCHEDULE: MC2 defers a reused const's store while its load stays at the source
     # position. For straight-line blocks, reorder statements by source rank (load index for
     # reused consts, store index otherwise) so the recompile reproduces the same emission.
@@ -672,6 +673,46 @@ def recover(code, base=0, cxmap=None):
         pt="float" if r.floatfn else "long"
         return fs, [chr(ord('a')+j) for j in range(r.lmax+1)], stmts, pt, loc
     return fs, [chr(ord('a')+j) for j in range(r.maxidx+1)], stmts, "int", loc
+
+def _fold_shortcircuit(lines):
+    """Recover an `&&` short-circuit the goto-fallback left as a jump into the else block:
+        if (A) {                         if ((A) && (B)) {
+            if (!(B)) goto L_X;   ==>         <then-rest>
+            <then-rest>                   } else {
+        } else {                              <else-rest>
+            L_X:                          }
+            <else-rest>
+        }
+    Equivalent: originally A&&!B jumps to L_X (= else entry), A&&B falls into then, !A falls into
+    else. Only fires when the guard is the then's FIRST line, `L_X:` is the else's FIRST line, and
+    L_X is referenced exactly once (so removing it orphans nothing). Idempotent; loops to chain
+    A&&B&&C. Pure structural rewrite -- no value state crosses, so it cannot drop logic."""
+    guard=re.compile(r"^(\s*)if \(!\((.*)\)\) goto (L_[0-9a-f]+);$")
+    changed=True
+    while changed:
+        changed=False
+        for i,ln in enumerate(lines):
+            m=re.match(r"^(\s*)if \((.*)\) \{$", ln)
+            if not m: continue
+            ind, A = m.group(1), m.group(2)
+            g=guard.match(lines[i+1]) if i+1<len(lines) else None
+            if not g or g.group(1)!=ind+"    ": continue
+            B, L = g.group(2), g.group(3)
+            # find this if's own `} else {` by EXACT indent: a nested else inside the then-block is
+            # indented deeper, so the first line equal to `<ind>} else {` is ours. A plain `<ind>}`
+            # first means the if had no else -> not our pattern.
+            je=None
+            for j in range(i+2, len(lines)):
+                s=lines[j].rstrip()
+                if s==ind+"} else {": je=j; break
+                if s==ind+"}": break
+            if je is None or je+1>=len(lines): continue
+            if lines[je+1].strip()!=L+":": continue            # label must be the else's first line
+            if sum(1 for x in lines if x.strip()==L+":")!=1: continue
+            if sum(1 for x in lines if re.search(r"goto %s;"%L, x))!=1: continue
+            lines=lines[:i]+["%sif ((%s) && (%s)) {"%(ind,A,B)]+lines[i+2:je+1]+lines[je+2:]
+            changed=True; break
+    return lines
 
 def detect_copies(stmts):
     """Find live local-to-local copies `vX = vY;` in straight-line stmts, as
