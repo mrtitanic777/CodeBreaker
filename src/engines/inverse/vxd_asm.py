@@ -31,12 +31,17 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from capstone import Cs, CS_ARCH_X86, CS_MODE_32
+from capstone import Cs, CS_ARCH_X86, CS_MODE_32, CS_MODE_16
 from src.engines.inverse import vxd_services
 from src.core import paths
 
 _MD = Cs(CS_ARCH_X86, CS_MODE_32)
 _MD.detail = True
+# A 16-bit decoder for the real-mode-init (RCOD) and any 16:16 segment. An LE object is 32-bit iff
+# its BIG bit (0x2000) is set; without it the segment is USE16 and MUST decode as 16-bit, or a VxD's
+# real-mode init (and, for the broader 16-bit Win95 modules, nearly everything) decodes to garbage.
+_MD16 = Cs(CS_ARCH_X86, CS_MODE_16)
+_MD16.detail = True
 _SVC = vxd_services.load()          # DDK service-name tables (ordinal -> name)
 
 # Canonical Win95 VxD device ids -> names (DDK VxD service tables). The high word of an INT 20h
@@ -318,7 +323,7 @@ class VxDDisasm:
                 t = f["target"]
                 if t is None or not (0 <= t < n) or (oi, t) in s.mark or (oi, t) in s.data:
                     continue
-                if s._looks_code(code, t):
+                if s._looks_code(oi, code, t):
                     seeds.append((oi, t))
             # bare `push ebp; mov ebp, esp` prologues in gaps
             i = 0
@@ -331,12 +336,18 @@ class VxDDisasm:
                     i += 1
         return seeds
 
-    def _looks_code(s, code, t):
+    def _dec(s, oi):
+        """The capstone decoder for object oi, picked from its bitness: 16-bit for a USE16 segment
+        (BIG bit 0x2000 clear -- a VxD's RCOD real-mode init, or any 16:16 segment), else 32-bit."""
+        o = s.objs.get(oi)
+        return _MD16 if (o is not None and not (o["flags"] & 0x2000)) else _MD
+
+    def _looks_code(s, oi, code, t):
         """Cheap plausibility gate for a gap seed: a valid instruction decodes and it isn't a run
         of NUL padding (which decodes as `add [eax],al` forever)."""
         if code[t] == 0x00:
             return False
-        ins = next(_MD.disasm(code[t:t + 16], t), None)
+        ins = next(s._dec(oi).disasm(code[t:t + 16], t), None)
         return ins is not None
 
     def _seeds(s):
@@ -413,7 +424,7 @@ class VxDDisasm:
                         s.mark.add((oi, k))
                     a += 6
                     continue
-                ins = next(_MD.disasm(code[a:a + 16], a), None)
+                ins = next(s._dec(oi).disasm(code[a:a + 16], a), None)
                 if ins is None:
                     break
                 if not s._free(oi, a, ins.size):            # would overlap authoritative code
