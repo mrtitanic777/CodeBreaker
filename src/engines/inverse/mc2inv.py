@@ -495,17 +495,28 @@ class R:
     def _rest(s,d):
         for r in s._REGS: setattr(s,r,d[r])
         s.div=d["div"]; s.retlive=d["retlive"]; s.axsrc=d["axsrc"]; s.bxsrc=d["bxsrc"]; s.args=list(d["args"]); s.breg=dict(d["breg"])
+    @staticmethod
+    def _terminal(body):
+        """A branch body that already ends in break/continue/return/goto does NOT fall through to
+        the merge, so phi materialization appended to it would be unreachable (dead) code."""
+        for ln in reversed(body):
+            if ln.strip():
+                return re.match(r"(break|continue|return\b|goto )", ln.strip()) is not None
+        return False
+
     def _phi(s, then_snap, else_snap, then_b, else_b):
         """Merge two branch register-states. For a register the branches leave DIFFERENT, emit
         `reg = <value>;` at the end of each branch (materializing the conditional assignment that
         value-tracking would otherwise defer and lose at the merge) and expose the bare register
-        afterwards; where the branches agree, keep the shared value."""
+        afterwards; where the branches agree, keep the shared value. A branch that ends in a
+        terminal (break/return/...) does not reach the merge -> skip its materialization (dead)."""
+        tterm, eterm = s._terminal(then_b), s._terminal(else_b)
         for r in s._REGS:
             tv, ev = then_snap[r], else_snap[r]
             if tv==ev:
                 setattr(s, r, tv); continue
-            if tv is not None and str(tv)!=r: then_b.append("%s = %s;"%(r,tv))
-            if ev is not None and str(ev)!=r: else_b.append("%s = %s;"%(r,ev))
+            if tv is not None and str(tv)!=r and not tterm: then_b.append("%s = %s;"%(r,tv))
+            if ev is not None and str(ev)!=r and not eterm: else_b.append("%s = %s;"%(r,ev))
             setattr(s, r, None)                      # merged -> bare register after the branch
         tbr, ebr = then_snap["breg"], else_snap["breg"]       # 8-bit sub-registers set per branch
         for r in BYTEREG:
@@ -513,8 +524,8 @@ class R:
             if tv==ev:
                 if tv is not None: s.breg[r]=tv
                 continue
-            if tv is not None and str(tv)!=r: then_b.append("%s = %s;"%(r,tv))
-            if ev is not None and str(ev)!=r: else_b.append("%s = %s;"%(r,ev))
+            if tv is not None and str(tv)!=r and not tterm: then_b.append("%s = %s;"%(r,tv))
+            if ev is not None and str(ev)!=r and not eterm: else_b.append("%s = %s;"%(r,ev))
             s.breg.pop(r, None)
 
     def _body(s,lo,hi):
@@ -663,11 +674,12 @@ class R:
         """Emit a plain if(cond){body}: materialize the phi against the implicit (not-taken) else --
         a register the body changes is set `reg=<then>;` inside and `reg=<pre>;` before, then exposed
         bare. Skips emitting when the body is empty (a no-op guard)."""
+        bterm = s._terminal(body)                              # body falls through to the merge?
         for r in s._REGS:
             if then_s[r] == pre[r]:
                 setattr(s, r, then_s[r]); continue
             if pre[r] is not None and str(pre[r]) != r: out.append("%s = %s;" % (r, pre[r]))
-            if then_s[r] is not None and str(then_s[r]) != r: body.append("%s = %s;" % (r, then_s[r]))
+            if then_s[r] is not None and str(then_s[r]) != r and not bterm: body.append("%s = %s;" % (r, then_s[r]))
             setattr(s, r, None)
         pbr, tbr = pre["breg"], then_s["breg"]                 # 8-bit sub-registers vs the implicit else
         for r in BYTEREG:
@@ -676,7 +688,7 @@ class R:
                 if tv is not None: s.breg[r] = tv
                 continue
             if pv is not None and str(pv) != r: out.append("%s = %s;" % (r, pv))
-            if tv is not None and str(tv) != r: body.append("%s = %s;" % (r, tv))
+            if tv is not None and str(tv) != r and not bterm: body.append("%s = %s;" % (r, tv))
             s.breg.pop(r, None)
         if any(x.strip() for x in body):
             out.append("if (%s) {" % cond); out += ["    " + x for x in body]; out.append("}")
