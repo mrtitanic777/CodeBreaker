@@ -696,6 +696,10 @@ class R:
             body = []; s._emit_seq(blocks, body_t[:-1], body)      # body minus the latch block node
             cond = s._emit_cond(blocks[latch], body)
             out.append("do {"); out += ["    " + x for x in body]; out.append("} while (%s);" % cond)
+        elif kind == "break":
+            out.append("break;")
+        elif kind == "continue":
+            out.append("continue;")
         elif kind == "goto":
             b, t = node[1], node[2]
             if t is not None:
