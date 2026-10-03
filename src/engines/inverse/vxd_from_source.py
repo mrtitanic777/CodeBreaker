@@ -159,40 +159,15 @@ def realseg_source(D, v, names, tail0):
         if me:
             res.append(open_close(int(me.group(1)))[1]); continue
         res.append(ln)
-    # 3) split the DDB object's _LTEXT: code stays in _LTEXT; the tail (>= tail0) goes to _LDATA.
-    # emit_idiomatic emits the DDB object as a real `_LTEXT SEGMENT` (not a VSEGnn and not the
-    # VxD_LOCKED_CODE_SEG macro), so split THAT content segment -- its bare open line `_LTEXT SEGMENT`,
-    # distinct from the `_LTEXT SEGMENT DWORD PUBLIC _FLAT 'LCODE'` predeclaration. Skip gracefully when
-    # there is no such segment (defensive; previously a hard StopIteration broke dosmgr et al.).
-    if tail0 is not None:
-        lc_open = next((k for k, x in enumerate(res) if x.strip() == "_LTEXT SEGMENT"), None)
-        lc_close = (next((k for k in range(lc_open + 1, len(res)) if res[k].strip() == "_LTEXT ENDS"), None)
-                    if lc_open is not None else None)
-        if lc_open is not None and lc_close is not None:
-            lab = re.compile(r"^(?:loc|sub)_%d_([0-9A-Fa-f]+):?$" % ddb_obj)
-            L1 = next((k for k in range(lc_open + 1, lc_close)
-                       if (m := lab.match(res[k].strip())) and int(m.group(1), 16) >= tail0), None)
-            if L1 is not None:
-                # A proc whose body was over-read PAST the tail start keeps its EndProc in _LTEXT and moves
-                # the straddling body to _LDATA (VKD). A data-only DDB object -- no proc at/after the tail
-                # start, the DDB struct + tables are the whole object -- splits cleanly at the tail start
-                # (~45 modules whose code lives in other objects). Guarding on an EndProc after L1 avoids
-                # max() over an empty sequence and never duplicates an EndProc that precedes the tail.
-                begins_after = any(res[k].strip().startswith("BeginProc") for k in range(L1, lc_close))
-                ends_after = [k for k in range(L1, lc_close) if res[k].strip().startswith("EndProc")]
-                if begins_after:
-                    pass    # CODE resumes past the DDB in the DDB object (service handlers in obj1, e.g.
-                    #  NDIS): splitting at the tail would straddle a proc across the _LTEXT/_LDATA boundary
-                    #  (its BeginProc in _LDATA, EndProc in _LTEXT -> A1010). Leave the whole object in _LTEXT.
-                else:
-                    if ends_after:
-                        L2 = max(ends_after)
-                        head, body = res[:L1] + [res[L2], "_LTEXT ENDS"], res[L1:L2]
-                    else:
-                        head, body = res[:L1] + ["_LTEXT ENDS"], res[L1:lc_close]
-                    res = (head + ["_LDATA SEGMENT DWORD PUBLIC _FLAT 'LCODE'",
-                                   "   ASSUME cs:FLAT, ds:FLAT, es:FLAT, ss:FLAT"]
-                           + body + ["_LDATA ENDS"] + res[lc_close + 1:])
+    # 3) The DDB object stays ONE contiguous `_LTEXT` segment (code + DDB struct + post-DDB data tail).
+    # An earlier version split the tail (>= tail0) into a separate `_LDATA` segment, but LINK /VXD orders
+    # same-class ('LCODE') segments ALPHABETICALLY, and "_LDATA" sorts before "_LTEXT" -- so the data tail
+    # landed at object offset 0 and the code after it, shifting EVERY tail label by -tail0. Then every
+    # cross-object `dd/mov offset <tail-label>` resolved to the wrong offset and the VxD faulted mid-init
+    # (dosmgr: 727 relocated-byte diffs -> Device_Init triple-fault). Keeping the object contiguous makes
+    # the compile-lane output byte-exact (relocated-diff 0); the tail is data via db/dd regardless of the
+    # segment's class, and the final LE object attributes are restored from the oracle (restore_oracle_
+    # object_flags), so nothing depends on the tail living in a 'DATA'-class segment.
     # 4) predeclare the custom segments in the _FLAT model, right after the includes
     decls = []
     for idx in sorted(segs):
