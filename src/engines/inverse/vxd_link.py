@@ -236,7 +236,7 @@ def _link_vxd(obj_bytes, def_text, root, work):
 def _stage_link260(root):
     """Copy LINK 2.60 + its DLLs into a cached SPACE-FREE dir (its /VXD self-spawn cannot handle spaces
     in its own path) and return the staged LINK.EXE path."""
-    src = paths.reference(*_LINK260_REF)
+    src = os.path.join(vxd_masm._ddk_root(), "MSVC20")
     dst = os.path.join(tempfile.gettempdir(), "cb_link260")
     os.makedirs(dst, exist_ok=True)
     for f in _LINK260_FILES:
@@ -330,22 +330,23 @@ def build_functional(v, vxdname, root="."):
 
 
 def _assemble_idiomatic(asm_text, root):
-    """Assemble idiomatic DDK-macro source to COFF -- needs the DDK INC32 headers on the include path
-    (the raw-segment build in _assemble_coff does not include them)."""
-    import glob
-    tc = vxd_masm._stage_toolchain(root)
-    incdst = os.path.join(tc, "inc"); os.makedirs(incdst, exist_ok=True)
-    incsrc = paths.reference("Microsoft Windows 95 DDK", "INC32")
-    for f in glob.glob(incsrc + "/*.INC"):
-        d = os.path.join(incdst, os.path.basename(f))
-        if not os.path.exists(d):
-            shutil.copy(f, d)
-    _, out, work = run_dos({"c": tc},
-                           [r"c:\ml.exe -coff -c -DBLD_COFF -DIS_32 -DMASM6 -Ic:\inc -Fom.obj m.asm > a.txt"],
-                           ["m.obj", "a.txt"], files={"m.asm": asm_text}, timeout=300)
-    log = open(os.path.join(work, "a.txt"), errors="replace").read() if work and os.path.exists(
-        os.path.join(work, "a.txt")) else ""
-    return out.get("m.obj"), log, work
+    """Assemble idiomatic DDK-macro source to COFF with the NATIVE ML.EXE (MASM 6.11d), pointing -I at the
+    DDK INC32 headers (VMM.INC + the per-device service .INC files). Runs directly on modern Windows -- no
+    DOSBox round-trip -- which is both faster and works where no DOS emulator is installed. Returns
+    (obj_bytes, log, work_dir); work_dir is reused by link_vxd_260, which writes m.obj/m.def there."""
+    inc = os.path.join(vxd_masm._ddk_root(), "INC32")
+    ml = vxd_masm.native_ml()
+    work = tempfile.mkdtemp(prefix="cb_idiom_")
+    with open(os.path.join(work, "m.asm"), "w", newline="\r\n") as f:
+        f.write(asm_text)
+    cmd = [ml, "-coff", "-c", "-DBLD_COFF", "-DIS_32", "-DMASM6", "-I" + inc, "-Fom.obj", "m.asm"]
+    try:
+        p = subprocess.run(cmd, cwd=work, capture_output=True, text=True, timeout=600)
+    except Exception as e:
+        return None, "ml exec failed: %s" % e, work
+    log = (p.stdout or "") + (p.stderr or "")
+    objp = os.path.join(work, "m.obj")
+    return (open(objp, "rb").read() if os.path.exists(objp) else None), log, work
 
 
 def _stage_inc32(root):

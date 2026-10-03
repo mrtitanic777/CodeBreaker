@@ -38,6 +38,27 @@ _ML_REF = ("Microsoft Windows 95 DDK", "MASM611C")   # inside the reference SDK 
 _DOSXNT_SRC = "toolchains/period/compilers/msvc-1.52c/BIN/DOSXNT.EXE"
 
 
+def _ddk_root():
+    """Locate the 'Microsoft Windows 95 DDK' dir (holds INC32 / MSVC20 / MASM611C), robust to a
+    design_root() that points at the checkouts' parent instead of the Win95 design arena. Mirrors
+    vxd_services' candidate search so the compile lane finds the headers + LINK the same place the
+    service-name resolver already finds them."""
+    cands = [paths.reference("Microsoft Windows 95 DDK"),
+             os.path.join(paths.data_root(), "Windows95", "design", "reference", "Microsoft Windows 95 DDK")]
+    for c in cands:
+        if c and os.path.isdir(c):
+            return c
+    return cands[0]
+
+
+def native_ml():
+    """Path to a NATIVE (Win32) ML.EXE -- MASM 6.11d from the NT 3.51 DDK, which runs directly on modern
+    Windows (no DOSBox, unlike the Win95 DDK's Phar Lap TNT ML.EXE). Falls back to the Win95 DDK ML."""
+    cand = os.path.join(paths.repo_root(), "toolchains", "period", "sdks", "nt351-ddk",
+                        "DDK", "BIN", "I386", "FREE", "ML.EXE")
+    return cand if os.path.exists(cand) else os.path.join(_ddk_root(), "MASM611C", "ML.EXE")
+
+
 def _stage_toolchain(root):
     os.makedirs(_TC, exist_ok=True)
     _ml = paths.reference(*_ML_REF)
