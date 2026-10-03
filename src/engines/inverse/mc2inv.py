@@ -22,6 +22,7 @@ CJMP=set(JCC)|{"jz","jnz"}
 BYTEREG=("al","bl","cl","dl","ah","bh","ch","dh")        # 8-bit sub-registers (exposed as vars)
 BYTEPARENT={"al":"ax","ah":"ax","bl":"bx","bh":"bx","cl":"cx","ch":"cx","dl":"dx","dh":"dx"}
 WORDHALVES={"ax":("al","ah"),"bx":("bl","bh"),"cx":("cl","ch"),"dx":("dl","dh")}
+TRACKED_BYTE={"mov","add","sub","or","and","xor","inc","dec"}   # byte-reg ops tracked as breg values
 
 class R:
     def __init__(s, ins, fs, base=0, cxmap=None, msc3=False):
@@ -174,6 +175,9 @@ class R:
         if mn in ("call","lcall"): s.breg.pop("al",None); s.breg.pop("ah",None)
         elif d0 in WORDHALVES and mn not in ("cmp","test","push"):
             for h in WORDHALVES[d0]: s.breg.pop(h,None)
+        elif d0 in BYTEREG and mn not in ("cmp","test","push"):
+            setattr(s, BYTEPARENT[d0], None)             # byte write makes the parent word unknown
+            if mn not in TRACKED_BYTE: s.breg.pop(d0, None)   # statement-emitting/unmodeled -> clear
 
     def expr_step(s,i):
         """Update ax/si/cx from a value-producing instruction (no statement)."""
@@ -186,6 +190,16 @@ class R:
             else: s.breg[d8]=s.memname(src) or d8
             if BYTEPARENT[d8] in ("ax","bx","cx","dx","si","di"): setattr(s,BYTEPARENT[d8],None)
             return
+        if mn in ("add","sub","or","and","xor") and ops.split(", ")[0] in BYTEREG:   # byte-reg ALU
+            d8=ops.split(", ")[0]; src=ops.split(", ",1)[1]
+            if mn in ("sub","xor") and src==d8: s.breg[d8]="0"; return   # sub/xor r8,r8 -> clear to 0
+            cur=s.breg.get(d8,d8); opc={"add":"+","sub":"-","or":"|","and":"&","xor":"^"}[mn]
+            if re.match(r"(0x[0-9a-f]+|\d+)$",src): sv=str(s.num(src))
+            elif src in BYTEREG: sv=s.breg.get(src,src)
+            else: sv=s.memname(src) or src
+            s.breg[d8]="(%s %s %s)"%(cur,opc,sv); return
+        if mn in ("inc","dec") and ops in BYTEREG:             # byte-reg inc/dec
+            s.breg[ops]="(%s %s 1)"%(s.breg.get(ops,ops), "+" if mn=="inc" else "-"); return
         if mn in ("cbw","cwde") and "al" in s.breg:            # sign-extend al -> ax (int)al
             s.ax=s.breg["al"]; s.axsrc=None; return
         if mn=="mov" and ops.startswith("ax, "):
@@ -493,6 +507,15 @@ class R:
             if tv is not None and str(tv)!=r: then_b.append("%s = %s;"%(r,tv))
             if ev is not None and str(ev)!=r: else_b.append("%s = %s;"%(r,ev))
             setattr(s, r, None)                      # merged -> bare register after the branch
+        tbr, ebr = then_snap["breg"], else_snap["breg"]       # 8-bit sub-registers set per branch
+        for r in BYTEREG:
+            tv, ev = tbr.get(r), ebr.get(r)
+            if tv==ev:
+                if tv is not None: s.breg[r]=tv
+                continue
+            if tv is not None and str(tv)!=r: then_b.append("%s = %s;"%(r,tv))
+            if ev is not None and str(ev)!=r: else_b.append("%s = %s;"%(r,ev))
+            s.breg.pop(r, None)
 
     def _body(s,lo,hi):
         """walk a structured body; if it comes back empty, its work was side-effect calls whose
@@ -646,6 +669,15 @@ class R:
             if pre[r] is not None and str(pre[r]) != r: out.append("%s = %s;" % (r, pre[r]))
             if then_s[r] is not None and str(then_s[r]) != r: body.append("%s = %s;" % (r, then_s[r]))
             setattr(s, r, None)
+        pbr, tbr = pre["breg"], then_s["breg"]                 # 8-bit sub-registers vs the implicit else
+        for r in BYTEREG:
+            pv, tv = pbr.get(r), tbr.get(r)
+            if pv == tv:
+                if tv is not None: s.breg[r] = tv
+                continue
+            if pv is not None and str(pv) != r: out.append("%s = %s;" % (r, pv))
+            if tv is not None and str(tv) != r: body.append("%s = %s;" % (r, tv))
+            s.breg.pop(r, None)
         if any(x.strip() for x in body):
             out.append("if (%s) {" % cond); out += ["    " + x for x in body]; out.append("}")
 
