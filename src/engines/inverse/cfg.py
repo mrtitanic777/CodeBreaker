@@ -205,13 +205,20 @@ def structure(blocks, entry=0):
         latch.setdefault(h, t)
 
     active = set()        # blocks currently being expanded on the recursion stack (ancestor guard)
+    loopstack = []        # enclosing loops as (header, follow): edges to follow -> break, to header -> continue
 
-    def seq_from(b, stop):
+    def seq_from(b, stops):
         out = []
         local = set()     # blocks emitted in THIS linear run (sibling tail-dup across calls is OK;
                           # re-entering one on the current PATH is a back-edge -> goto)
-        while b is not None and b != stop and b != EXIT:
-            if b in active or b in local:                   # ancestor/loop re-entry -> goto fallback
+        while b is not None and b != EXIT:
+            if loopstack:                                   # break/continue for the innermost loop
+                h, fol = loopstack[-1]
+                if b == fol: out.append(('break',)); return out
+                if b == h: out.append(('continue',)); return out
+            if b in stops:
+                break
+            if b in active or b in local:                   # ancestor/irreducible re-entry -> goto
                 out.append(('goto', None, b)); break
             local.add(b)
             if b in headers:
@@ -222,57 +229,63 @@ def structure(blocks, entry=0):
             blk = blocks[b]
             if blk.term == "cond":
                 active.add(b)
-                node, after = do_if(b, stop)
+                node, after = do_if(b, stops)
                 active.discard(b)
                 out.append(node); b = after; continue
             out.append(('block', b))
             b = blk.succ[0] if blk.succ else None
         return out
 
-    def do_if(b, stop):
+    def do_if(b, stops):
         blk = blocks[b]
         join = ipdom(pdom, EXIT, b)
         taken = blk.succ[0]
         fall = blk.succ[1] if len(blk.succ) > 1 else None
-        # Normalize: then = the fall-through branch, else = the taken (jcc) branch.
-        then_s, else_s = fall, taken
+        then_s, else_s = fall, taken                        # then = fall-through, else = taken (jcc)
+        sub = stops | ({join} if join is not None else set())
+        # 'if' node carries a `neg` flag (see emitter): False => cond_at's fall-through condition;
+        # True => the structured branch is the TAKEN side, so the emitter negates the condition.
         if join is not None and else_s == join:            # if-then: taken goes straight to join
-            then_t = seq_from(then_s, join)
-            return ('if', b, then_t, join), join
-        if join is not None and then_s == join:            # if-then with empty fall -> guard on taken
-            else_t = seq_from(else_s, join)
-            return ('if', b, else_t, join), join            # (caller negates the condition)
+            return ('if', b, seq_from(then_s, sub), join, False), join
+        if join is not None and then_s == join:            # if-then, empty fall -> guard on taken
+            return ('if', b, seq_from(else_s, sub), join, True), join
         if join is not None:                                # if-then-else
-            then_t = seq_from(then_s, join)
-            else_t = seq_from(else_s, join)
-            return ('ifelse', b, then_t, else_t, join), join
-        # no clean join -> guarded gotos for both successors
-        return ('goto', b, taken), fall
+            return ('ifelse', b, seq_from(then_s, sub), seq_from(else_s, sub), join), join
+        # no clean join (e.g. both arms break/continue/return) -> structure each arm to its own end
+        return ('ifelse', b, seq_from(then_s, stops), seq_from(else_s, stops), None), None
 
     def do_loop(h):
         body = headers[h]
         hblk = blocks[h]
-        # exit target(s): successors of loop blocks that leave `body`
-        exits = set()
+        exits = set()                                       # successors leaving the loop body
         for n in body:
             for s in blocks[n].succ:
                 if s not in body:
                     exits.add(s)
-        join = next(iter(exits)) if len(exits) == 1 else None
-        if hblk.term == "cond" and any(s not in body for s in hblk.succ):
-            # pre-tested while: header tests, one succ exits
-            inside = [s for s in hblk.succ if s in body]
-            body_t = seq_from(inside[0], h) if inside else []
-            return ('while', h, body_t, join), join
+        follow = next(iter(exits)) if len(exits) == 1 else None
         lb = latch.get(h)
+        # pre-tested while: header is the test and one successor exits the loop
+        if hblk.term == "cond" and any(s not in body for s in hblk.succ):
+            inside = [s for s in hblk.succ if s in body]
+            fol = [s for s in hblk.succ if s not in body][0]
+            loopstack.append((h, fol))
+            body_t = seq_from(inside[0], {h}) if inside else []
+            loopstack.pop()
+            return ('while', h, body_t, fol), fol
+        # post-tested do-while: the latch is the test and one successor exits
         if lb is not None and blocks[lb].term == "cond" and any(s not in body for s in blocks[lb].succ):
-            body_t = seq_from(h, lb) + [('block', lb)]
-            return ('dowhile', h, body_t, lb), join
-        # endless/complex loop -> body as a region, exits via goto
-        body_t = seq_from(h, None)
-        return ('loop', h, body_t, join), join
+            fol = [s for s in blocks[lb].succ if s not in body][0]
+            loopstack.append((h, fol))
+            body_t = seq_from(h, {lb}) + [('block', lb)]
+            loopstack.pop()
+            return ('dowhile', h, body_t, lb), fol
+        # endless/multi-exit loop: body with breaks to the (single) follow if there is one
+        loopstack.append((h, follow))
+        body_t = seq_from(h, {h})
+        loopstack.pop()
+        return ('loop', h, body_t, follow), follow
 
-    return seq_from(entry, None)
+    return seq_from(entry, set())
 
 
 def _fmt_tree(t, blocks, ind=0):
@@ -282,7 +295,8 @@ def _fmt_tree(t, blocks, ind=0):
     if t[0] == 'seq':
         return "\n".join(_fmt_tree(c, blocks, ind) for c in t[1])
     if t[0] == 'if':
-        return "%sif B%d:\n%s" % (pad, t[1], "\n".join(_fmt_tree(c, blocks, ind+1) for c in t[2]))
+        return "%sif%s B%d:\n%s" % (pad, "(!)" if (len(t) > 4 and t[4]) else "", t[1],
+                                     "\n".join(_fmt_tree(c, blocks, ind+1) for c in t[2]))
     if t[0] == 'ifelse':
         return "%sif B%d:\n%s\n%selse:\n%s" % (pad, t[1],
                "\n".join(_fmt_tree(c, blocks, ind+1) for c in t[2]), pad,
@@ -293,6 +307,8 @@ def _fmt_tree(t, blocks, ind=0):
         return "%sdo:\n%s\n%swhile B%d" % (pad, "\n".join(_fmt_tree(c, blocks, ind+1) for c in t[2]), pad, t[3])
     if t[0] == 'goto':
         return "%sgoto B%s" % (pad, t[2])
+    if t[0] in ('break', 'continue'):
+        return "%s%s" % (pad, t[0])
     return "%s?%r" % (pad, t)
 
 
