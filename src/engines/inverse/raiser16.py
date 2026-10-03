@@ -26,7 +26,11 @@ def reconstruct(image, off, size, verify=True):
     if len(code) < 4:
         return None, False, "too-small (not a function)"
     try:
-        _rec = mc2inv.recover_cfg if os.environ.get("USE_CFG") else mc2inv.recover
+        # The CFG structure-tree emitter (recover_cfg) is the DEFAULT: validated strictly superior
+        # to the linear walk on the MASM4 corpus (trustworthy-complete 228 -> ~304; the handful of
+        # linear-only "completes" it drops were all dropped-loop / dead-code-after-goto false-
+        # completes or linear crashes). Set NO_CFG=1 to fall back to the legacy linear walk.
+        _rec = mc2inv.recover if os.environ.get("NO_CFG") else mc2inv.recover_cfg
         fs, params, stmts, pt, loc = _rec(code)             # pt = int|long|float (param type)
     except Exception as e:
         return None, False, "inverse-failed: %s"%e
