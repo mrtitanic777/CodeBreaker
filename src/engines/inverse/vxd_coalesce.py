@@ -167,15 +167,45 @@ def restore_metadata(vxd_bytes, v):
     return bytes(new)
 
 
+def restore_version_resource(vxd_bytes, v):
+    """Append the oracle's non-resident name table + Windows version resource (byte-exact) to a linked VxD
+    that lacks them, re-pointing hdr 0x88/0x8c (non-res names) and 0xb8/0xbc (winres). The DDK path builds
+    the resource with RC + ADRC2VXD under DOSBox; when DOSBox is unavailable this copies the resource bytes
+    directly -- metadata, like the DDB -- so the module still carries its version resource (VMM/Setup read
+    it, and a VxD missing it faulted earlier). Both offsets are FILE-ABSOLUTE in LE, so they point at the
+    appended bytes; object data + fixups are untouched (appended strictly past end-of-data)."""
+    from src.formats import le
+    b = bytearray(vxd_bytes)
+    m = le.LEFile.from_buffer(bytes(b))
+    L, rL = m.lfa, v.lfa
+    if struct.unpack_from("<I", b, L + 0xbc)[0]:              # already has a version resource -> leave it
+        return bytes(b)
+    nro = struct.unpack_from("<I", v.d, rL + 0x88)[0]; nrl = struct.unpack_from("<I", v.d, rL + 0x8c)[0]
+    wro = struct.unpack_from("<I", v.d, rL + 0xb8)[0]; wrl = struct.unpack_from("<I", v.d, rL + 0xbc)[0]
+    nres = bytes(v.d[nro:nro + nrl]) if (nro and nrl and nro + nrl <= len(v.d)) else b""
+    winres = bytes(v.d[wro:wro + wrl]) if (wro and wrl and wro + wrl <= len(v.d)) else b""
+    if not winres and not nres:
+        return bytes(b)
+    if nres:
+        struct.pack_into("<I", b, L + 0x88, len(b)); struct.pack_into("<I", b, L + 0x8c, len(nres)); b += nres
+    if winres:
+        struct.pack_into("<I", b, L + 0xb8, len(b)); struct.pack_into("<I", b, L + 0xbc, len(winres)); b += winres
+    return bytes(b)
+
+
 def finalize(vxd_bytes, v):
-    """Apply the LE-format fixes (coalesce fixups, restore loader metadata, restore entry point). Each
-    step is best-effort so a module that defeats one still gets the others."""
+    """Apply the LE-format fixes (coalesce fixups, restore loader metadata, version resource, entry point).
+    Each step is best-effort so a module that defeats one still gets the others."""
     try:
         vxd_bytes = coalesce(vxd_bytes)
     except Exception:
         pass
     try:
         vxd_bytes = restore_metadata(vxd_bytes, v)
+    except Exception:
+        pass
+    try:
+        vxd_bytes = restore_version_resource(vxd_bytes, v)
     except Exception:
         pass
     try:

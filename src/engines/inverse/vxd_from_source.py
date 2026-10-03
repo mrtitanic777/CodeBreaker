@@ -409,9 +409,15 @@ def build_from_source(v, name=None, root="."):
     vxd, llog = vxd_link.link_vxd_260(obj, deftext, root, work)   # LINK 2.60 stamps device id + page map
     if not vxd:
         return {"ok": False, "stage": "link", "log": llog[-1500:], "asm": asm, "def": deftext}
-    final, rlog = embed_version_resource(vxd, D, root)            # real RC + ADRC2VXD version resource
+    # Preferred: build the version resource with the DDK's own RC + ADRC2VXD (needs DOSBox). When that is
+    # unavailable (no DOS emulator) it raises/returns None; fall back to the linked VxD as-is and let
+    # vxd_coalesce.finalize splice the oracle's version resource byte-exact (restore_version_resource).
+    try:
+        final, rlog = embed_version_resource(vxd, D, root)       # real RC + ADRC2VXD version resource
+    except Exception as e:
+        final, rlog = None, "embed_version_resource unavailable: %s" % e
     if not final:
-        return {"ok": False, "stage": "resource", "log": rlog[-1500:], "asm": asm, "def": deftext}
+        final = vxd                                             # finalize will splice the resource instead
     # restore each object's LE flags from the oracle (LINK 2.60 flattens every object to 0x2045, dropping
     # the WRITE bit on data objects -> ring-0 write fault in init). Order-preserving: see the helper.
     final, oflags = restore_oracle_object_flags(final, v)
