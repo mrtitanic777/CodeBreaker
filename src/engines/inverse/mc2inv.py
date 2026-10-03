@@ -589,6 +589,110 @@ class R:
             i=s.step(i,out)
         return out
 
+    # ------------------------------------------------------------------ CFG tree emitter (Phase B)
+    _NEG = {"==":"!=","!=":"==","<":">=",">=":"<",">":"<=","<=":">"}
+    def _negate(s, cond):
+        m = re.match(r"^\((.*) (==|!=|<=|>=|<|>) (.*)\)$", cond)
+        if m: return "(%s %s %s)" % (m.group(1), s._NEG[m.group(2)], m.group(3))
+        return "!(%s)" % cond
+
+    def _cmp_start(s, jcc_idx, lo):
+        """Index where the condition feeding the jcc begins: the nearest cmp/test at or before the
+        jcc (within the block), else the jcc itself (a bare-value test)."""
+        j = jcc_idx - 1
+        while j >= lo and s.ins[j].mnemonic not in ("cmp", "test"):
+            j -= 1
+        return j if j >= lo and s.ins[j].mnemonic in ("cmp", "test") else jcc_idx
+
+    def _emit_range(s, lo, hi, out):
+        """Emit straight-line statements for instruction indices [lo, hi) via step().
+        Skips indices before s.emit_start (the prologue)."""
+        i = max(lo, getattr(s, "emit_start", 0))
+        while i < hi:
+            ni = s.step(i, out)
+            i = ni if ni > i else i + 1
+
+    def _emit_block(s, blk, out):
+        """A leaf basic block: emit its statements, dropping the terminator (the tree owns control
+        flow). A ret with a live ax becomes `return <ax>`; an out-of-range jmp is a tail call."""
+        end = blk.hi - 1 if blk.term in ("jmp", "cond", "ret", "tailcall") else blk.hi
+        s._emit_range(blk.lo, end, out)
+        if blk.term == "ret" and s.ax is not None and s.retlive:
+            out.append("return %s;" % s.ax)
+        elif blk.term == "tailcall":
+            last = s.ins[blk.hi - 1]
+            m = re.match(r"0x([0-9a-f]+)$", last.op_str)
+            if m:
+                out.append("return sub_%x(%s);" % (int(m.group(1), 16) & 0xFFFF,
+                            ", ".join(str(a) for a in reversed(s.args)))); s.args = []
+
+    def _emit_cond(s, blk, out):
+        """Emit a cond block's leading statements and return its branch condition (fall-through
+        sense, matching cond_at/INV)."""
+        jcc = blk.hi - 1
+        cs = s._cmp_start(jcc, blk.lo)
+        s._emit_range(blk.lo, cs, out)
+        s._cmp = None                              # avoid a stale compare leaking into a bare-value test
+        cond, _ = s.cond_at(cs)
+        return cond
+
+    def _emit_seq(s, blocks, nodes, out):
+        for node in nodes:
+            s._emit_node(blocks, node, out)
+
+    def _emit_node(s, blocks, node, out):
+        kind = node[0]
+        if kind == "block":
+            s._emit_block(blocks[node[1]], out)
+        elif kind == "if":
+            b, then_t, join, neg = node[1], node[2], node[3], node[4]
+            cond = s._emit_cond(blocks[b], out)
+            if neg: cond = s._negate(cond)
+            pre = s._snap()
+            body = []; s._emit_seq(blocks, then_t, body); then_s = s._snap()
+            s._rest(pre)
+            for r in s._REGS:                      # plain-if phi vs the implicit (skip) else
+                if then_s[r] == pre[r]:
+                    setattr(s, r, then_s[r]); continue
+                if pre[r] is not None and str(pre[r]) != r: out.append("%s = %s;" % (r, pre[r]))
+                if then_s[r] is not None and str(then_s[r]) != r: body.append("%s = %s;" % (r, then_s[r]))
+                setattr(s, r, None)
+            out.append("if (%s) {" % cond); out += ["    " + x for x in body]; out.append("}")
+        elif kind == "ifelse":
+            b, then_t, else_t, join = node[1], node[2], node[3], node[4]
+            cond = s._emit_cond(blocks[b], out)
+            pre = s._snap()
+            tb = []; s._emit_seq(blocks, then_t, tb); ts = s._snap()
+            s._rest(pre)
+            eb = []; s._emit_seq(blocks, else_t, eb); es = s._snap()
+            s._phi(ts, es, tb, eb)
+            out.append("if (%s) {" % cond); out += ["    " + x for x in tb]
+            out.append("} else {"); out += ["    " + x for x in eb]; out.append("}")
+        elif kind in ("while", "loop"):
+            b, body_t = node[1], node[2]
+            if kind == "while":
+                cond = s._emit_cond(blocks[b], out)
+                body = []; s._emit_seq(blocks, body_t, body)
+                out.append("while (%s) {" % cond); out += ["    " + x for x in body]; out.append("}")
+            else:                                  # endless/complex loop
+                body = []; s._emit_seq(blocks, body_t, body)
+                out.append("for (;;) {"); out += ["    " + x for x in body]; out.append("}")
+        elif kind == "dowhile":
+            b, body_t, latch = node[1], node[2], node[3]
+            body = []; s._emit_seq(blocks, body_t[:-1], body)      # body minus the latch block node
+            cond = s._emit_cond(blocks[latch], body)
+            out.append("do {"); out += ["    " + x for x in body]; out.append("} while (%s);" % cond)
+        elif kind == "goto":
+            b, t = node[1], node[2]
+            if t is not None:
+                ta = s.ins[t].address if isinstance(t, int) and 0 <= t < len(s.ins) else t
+                s.gototargets.add(ta); out.append("goto L_%x;" % ta)
+
+    def emit_tree(s, blocks, tree):
+        s.out = []
+        s._emit_seq(blocks, tree, s.out)
+        return s.out
+
 CX_OP = {"CXA":"+","CXS":"-","CXM":"*","CXD":"/"}   # helper family -> binary operator
 
 def build_cxmap(image, libpaths):
@@ -671,6 +775,44 @@ def recover(code, base=0, cxmap=None):
         perm=sorted(range(len(stmts)), key=lambda j: r.ranks[j])
         stmts=[stmts[j] for j in perm]; rc=[r.regconst[j] for j in perm]
         stmts=_dead_store_recover(stmts, rc)               # recover elided dead stores + copies
+    loc=sorted(r.locals)
+    if r.floatfn or r.longfn:
+        pt="float" if r.floatfn else "long"
+        return fs, [chr(ord('a')+j) for j in range(r.lmax+1)], stmts, pt, loc
+    return fs, [chr(ord('a')+j) for j in range(r.maxidx+1)], stmts, "int", loc
+
+
+def _prologue(ins):
+    """Shared prologue detection: returns (fs, k, msc3) for the start of the real body."""
+    fs=0; k=1
+    if ins[k].mnemonic=="sub" and ins[k].op_str.startswith("sp"):
+        fs=int(ins[k].op_str.split(",")[1],16); k+=1
+        while k<len(ins) and "bp, sp" not in ins[k].op_str: k+=1
+    k+=1
+    msc3=False
+    if fs==0 and k+1 < len(ins) and ins[k+1].mnemonic=="call":
+        if ins[k].mnemonic=="mov" and ins[k].op_str.startswith("ax,"):
+            try: fs=int(ins[k].op_str.split(",")[1].strip(),16); msc3=True; k+=2
+            except ValueError: pass
+        elif ins[k].mnemonic=="xor" and ins[k].op_str.replace(" ","")=="ax,ax":
+            fs=0; msc3=True; k+=2
+    return fs, k, msc3
+
+
+def recover_cfg(code, base=0, cxmap=None):
+    """EXPERIMENTAL Phase-B path: structure the CFG (cfg.structure) and emit via R.emit_tree,
+    reusing the SAME R value model as recover(). Not the default; used behind a flag / for A/B
+    comparison against recover() until it is proven >= the linear walk on every function."""
+    from src.engines.inverse import cfg as _cfg
+    ins=list(_MD.disasm(code,0))
+    if len(ins) < 2:
+        return 0, [], [], "int", []
+    fs, k, msc3 = _prologue(ins)
+    r=R(ins,fs,base,cxmap,msc3=msc3); r.emit_start=k
+    end_addr = ins[-1].address + ins[-1].size
+    blocks,_,entry = _cfg.build_cfg(ins, 0, end_addr)
+    tree = _cfg.structure(blocks, entry)
+    stmts = r.emit_tree(blocks, tree)
     loc=sorted(r.locals)
     if r.floatfn or r.longfn:
         pt="float" if r.floatfn else "long"
