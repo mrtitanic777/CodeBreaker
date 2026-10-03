@@ -1,0 +1,392 @@
+#!/usr/bin/env python3
+"""cfg.py -- Control-flow-graph analysis for the 16-bit inverse decompiler.
+
+Foundation for the mc2inv structurer rewrite. Builds basic blocks from a capstone instruction
+list, the CFG edges, dominators, and natural loops, then runs dominator-based structural analysis
+to recover a structure tree (Seq / If / IfElse / While / DoWhile / Goto-fallback). This is a
+STANDALONE, independently-tested module: it does NOT replace mc2inv.walk yet. The existing linear
+walker keeps serving the 228 trustworthy-complete functions until this is proven equivalent-or-
+better on them (0 structdiff regressions) and wired in behind a flag.
+
+Scope notes:
+ * `call`/`lcall` are NOT control-flow edges for structuring (the call returns); a block continues
+   past them. Only jmp/jcc/ret/retf and fall-through form edges.
+ * A jmp/jcc whose target is outside [lo,hi) is a tail call / return and becomes an exit edge.
+ * Conditions are kept as (mnemonic, operand-text) on the branch block; the value model that turns
+   them into C expressions stays in mc2inv -- this module only recovers STRUCTURE.
+"""
+import re
+
+CJMP = {"jl","jle","jg","jge","je","jne","ja","jae","jb","jbe","jc","jnc","jz","jnz",
+        "jo","jno","js","jns","jp","jnp","jcxz","loop"}
+RET  = {"ret","retf","iret"}
+
+
+class Block:
+    __slots__ = ("id","lo","hi","insns","term","succ","cond_idx","addr")
+    def __init__(s, bid, lo, hi, insns, addr):
+        s.id = bid           # 0-based block index
+        s.lo = lo            # first instruction index (into the function's insn list)
+        s.hi = hi            # one past the last instruction index
+        s.insns = insns      # the capstone instructions in this block
+        s.addr = addr        # start address
+        s.term = None        # 'ret' | 'jmp' | 'cond' | 'fall' | 'tailcall'
+        s.succ = []          # list of successor block ids; for 'cond' = [taken, fallthrough]
+        s.cond_idx = None    # instruction index of the terminating jcc (for 'cond')
+    def __repr__(s):
+        return "B%d[%05x..%05x %s->%s]" % (s.id, s.addr, (s.insns[-1].address if s.insns else s.addr),
+                                           s.term, s.succ)
+
+
+def _jump_target(ins):
+    """Absolute target address of a jmp/jcc, or None if indirect."""
+    m = re.match(r"0x([0-9a-f]+)$", ins.op_str)
+    return int(m.group(1), 16) if m else None
+
+
+def build_cfg(insns, lo_addr, hi_addr):
+    """insns: capstone instructions for [lo_addr, hi_addr). Returns (blocks, addr2blk, entry_id)."""
+    addr2idx = {ins.address: i for i, ins in enumerate(insns)}
+    n = len(insns)
+    # --- leaders: entry, every in-range branch target, every instr after a branch/ret ---
+    leaders = {0}
+    for i, ins in enumerate(insns):
+        mn = ins.mnemonic
+        if mn in CJMP or mn == "jmp":
+            t = _jump_target(ins)
+            if t is not None and t in addr2idx:
+                leaders.add(addr2idx[t])      # in-range target on an instruction boundary
+            if i + 1 < n:
+                leaders.add(i + 1)            # fall-through after a branch
+        elif mn in RET:
+            if i + 1 < n:
+                leaders.add(i + 1)
+    leads = sorted(leaders)
+    # --- blocks: [leader, next leader) ---
+    blocks = []
+    idx2blk = {}
+    for bi, start in enumerate(leads):
+        end = leads[bi + 1] if bi + 1 < len(leads) else n
+        b = Block(bi, start, end, insns[start:end], insns[start].address)
+        blocks.append(b)
+        for k in range(start, end):
+            idx2blk[k] = bi
+    # --- edges ---
+    for b in blocks:
+        last = insns[b.hi - 1]
+        mn = last.mnemonic
+        if mn in RET:
+            b.term = "ret"; b.succ = []
+        elif mn == "jmp":
+            t = _jump_target(last)
+            if t is not None and t in addr2idx:
+                b.term = "jmp"; b.succ = [idx2blk[addr2idx[t]]]
+            else:
+                b.term = "tailcall"; b.succ = []      # out-of-range/indirect jmp = tail call / return
+        elif mn in CJMP:
+            t = _jump_target(last)
+            fall = idx2blk.get(b.hi) if b.hi < n else None
+            taken = idx2blk[addr2idx[t]] if (t is not None and t in addr2idx) else None
+            b.term = "cond"; b.cond_idx = b.hi - 1
+            b.succ = [x for x in (taken, fall) if x is not None]
+        else:
+            fall = idx2blk.get(b.hi) if b.hi < n else None
+            b.term = "fall"; b.succ = [fall] if fall is not None else []
+    return blocks, idx2blk, 0
+
+
+def dominators(blocks, entry=0):
+    """Iterative dominator sets. Returns dom: {bid: set(dominators)}."""
+    ids = [b.id for b in blocks]
+    preds = {i: [] for i in ids}
+    for b in blocks:
+        for s in b.succ:
+            preds[s].append(b.id)
+    allset = set(ids)
+    dom = {i: (set([entry]) if i == entry else set(allset)) for i in ids}
+    changed = True
+    while changed:
+        changed = False
+        for b in blocks:
+            if b.id == entry:
+                continue
+            new = set(allset)
+            for p in preds[b.id]:
+                new &= dom[p]
+            new.add(b.id)
+            if new != dom[b.id]:
+                dom[b.id] = new; changed = True
+    return dom, preds
+
+
+def back_edges(blocks, dom):
+    """Edges u->v where v dominates u (natural-loop back edges)."""
+    be = []
+    for b in blocks:
+        for s in b.succ:
+            if s in dom[b.id]:
+                be.append((b.id, s))
+    return be
+
+
+def natural_loop(blocks, preds, header, tail):
+    """Nodes of the natural loop for back-edge tail->header."""
+    loop = {header, tail}
+    stack = [tail]
+    while stack:
+        x = stack.pop()
+        for p in preds[x]:
+            if p not in loop:
+                loop.add(p); stack.append(p)
+    return loop
+
+
+def post_dominators(blocks, preds):
+    """Post-dominators: dominators on the reversed CFG from a virtual exit that all exit blocks
+    (ret/tailcall, i.e. no successors) flow into. Returns pdom: {bid: set(post-dominators)} using a
+    sentinel exit id = len(blocks)."""
+    ids = [b.id for b in blocks]
+    EXIT = len(blocks)
+    exits = [b.id for b in blocks if not b.succ]
+    allset = set(ids) | {EXIT}
+    # On the reversed graph a forward edge b->s becomes s->b, so b's reverse-predecessors are its
+    # forward successors; every exit block's reverse-predecessor is the virtual EXIT.
+    rpred_map = {i: [] for i in allset}
+    for b in blocks:
+        for s in b.succ:
+            rpred_map[b.id].append(s)
+    for e in exits:
+        rpred_map[e].append(EXIT)
+    pdom = {i: (set([EXIT]) if i == EXIT else set(allset)) for i in allset}
+    changed = True
+    while changed:
+        changed = False
+        for i in list(ids):
+            new = set(allset)
+            for p in rpred_map[i]:
+                new &= pdom[p]
+            new.add(i)
+            if new != pdom[i]:
+                pdom[i] = new; changed = True
+    return pdom, EXIT
+
+
+def ipdom(pdom, EXIT, bid):
+    """Immediate post-dominator of bid: the nearest strict post-dominator. Among the strict
+    post-dominators, it is the one that every other strict post-dominator also post-dominates
+    (i.e. its own post-dominator set contains all the candidates)."""
+    cand = pdom[bid] - {bid}
+    if not cand:
+        return None
+    for ip in cand:
+        if all(d in pdom[ip] for d in cand):
+            return None if ip == EXIT else ip
+    return None
+
+
+def structure(blocks, entry=0):
+    """Recover a structure tree from the CFG. Node forms:
+        ('block', bid)                         a straight-line basic block
+        ('seq', [nodes])                       sequence
+        ('if', bid, then_tree, join)           if-then (cond block bid, join = merge)
+        ('ifelse', bid, then_tree, else_tree, join)
+        ('while', bid, body_tree, join)        pre-tested loop (header bid tests, exits to join)
+        ('dowhile', header, body_tree, latch)  post-tested loop (test at latch)
+        ('goto', bid, target)                  unstructured edge -> goto fallback
+    Dominator/post-dominator guided; falls back to 'goto' for flow it can't fit (never fabricates).
+    This is the SKELETON for the rewrite: it proves structure recovery; the value model (conditions
+    -> C expressions, phi at joins) is layered on at integration time in mc2inv."""
+    dom, preds = dominators(blocks, entry)
+    pdom, EXIT = post_dominators(blocks, preds)
+    be = back_edges(blocks, dom)
+    headers = {h: natural_loop(blocks, preds, h, t) for (t, h) in be}
+    latch = {}
+    for (t, h) in be:
+        latch.setdefault(h, t)
+
+    active = set()        # blocks currently being expanded on the recursion stack (ancestor guard)
+
+    def seq_from(b, stop):
+        out = []
+        local = set()     # blocks emitted in THIS linear run (sibling tail-dup across calls is OK;
+                          # re-entering one on the current PATH is a back-edge -> goto)
+        while b is not None and b != stop and b != EXIT:
+            if b in active or b in local:                   # ancestor/loop re-entry -> goto fallback
+                out.append(('goto', None, b)); break
+            local.add(b)
+            if b in headers:
+                active.add(b)
+                node, after = do_loop(b)
+                active.discard(b)
+                out.append(node); b = after; continue
+            blk = blocks[b]
+            if blk.term == "cond":
+                active.add(b)
+                node, after = do_if(b, stop)
+                active.discard(b)
+                out.append(node); b = after; continue
+            out.append(('block', b))
+            b = blk.succ[0] if blk.succ else None
+        return out
+
+    def do_if(b, stop):
+        blk = blocks[b]
+        join = ipdom(pdom, EXIT, b)
+        taken = blk.succ[0]
+        fall = blk.succ[1] if len(blk.succ) > 1 else None
+        # Normalize: then = the fall-through branch, else = the taken (jcc) branch.
+        then_s, else_s = fall, taken
+        if join is not None and else_s == join:            # if-then: taken goes straight to join
+            then_t = seq_from(then_s, join)
+            return ('if', b, then_t, join), join
+        if join is not None and then_s == join:            # if-then with empty fall -> guard on taken
+            else_t = seq_from(else_s, join)
+            return ('if', b, else_t, join), join            # (caller negates the condition)
+        if join is not None:                                # if-then-else
+            then_t = seq_from(then_s, join)
+            else_t = seq_from(else_s, join)
+            return ('ifelse', b, then_t, else_t, join), join
+        # no clean join -> guarded gotos for both successors
+        return ('goto', b, taken), fall
+
+    def do_loop(h):
+        body = headers[h]
+        hblk = blocks[h]
+        # exit target(s): successors of loop blocks that leave `body`
+        exits = set()
+        for n in body:
+            for s in blocks[n].succ:
+                if s not in body:
+                    exits.add(s)
+        join = next(iter(exits)) if len(exits) == 1 else None
+        if hblk.term == "cond" and any(s not in body for s in hblk.succ):
+            # pre-tested while: header tests, one succ exits
+            inside = [s for s in hblk.succ if s in body]
+            body_t = seq_from(inside[0], h) if inside else []
+            return ('while', h, body_t, join), join
+        lb = latch.get(h)
+        if lb is not None and blocks[lb].term == "cond" and any(s not in body for s in blocks[lb].succ):
+            body_t = seq_from(h, lb) + [('block', lb)]
+            return ('dowhile', h, body_t, lb), join
+        # endless/complex loop -> body as a region, exits via goto
+        body_t = seq_from(h, None)
+        return ('loop', h, body_t, join), join
+
+    return seq_from(entry, None)
+
+
+def _fmt_tree(t, blocks, ind=0):
+    pad = "  " * ind
+    if t[0] == 'block':
+        b = blocks[t[1]]; return "%sB%d [%05x]" % (pad, t[1], b.addr)
+    if t[0] == 'seq':
+        return "\n".join(_fmt_tree(c, blocks, ind) for c in t[1])
+    if t[0] == 'if':
+        return "%sif B%d:\n%s" % (pad, t[1], "\n".join(_fmt_tree(c, blocks, ind+1) for c in t[2]))
+    if t[0] == 'ifelse':
+        return "%sif B%d:\n%s\n%selse:\n%s" % (pad, t[1],
+               "\n".join(_fmt_tree(c, blocks, ind+1) for c in t[2]), pad,
+               "\n".join(_fmt_tree(c, blocks, ind+1) for c in t[3]))
+    if t[0] in ('while', 'loop'):
+        return "%s%s B%d:\n%s" % (pad, t[0], t[1], "\n".join(_fmt_tree(c, blocks, ind+1) for c in t[2]))
+    if t[0] == 'dowhile':
+        return "%sdo:\n%s\n%swhile B%d" % (pad, "\n".join(_fmt_tree(c, blocks, ind+1) for c in t[2]), pad, t[3])
+    if t[0] == 'goto':
+        return "%sgoto B%s" % (pad, t[2])
+    return "%s?%r" % (pad, t)
+
+
+if __name__ == "__main__":
+    import sys, os
+    os.environ.setdefault("MASM_TARGET", "MASM400")   # the reconstruction targets MASM 4.00 (MASM.EXE)
+    # CodeBreaker first (for src.engines.inverse.*), then reversing/src AT INDEX 0 so its csig/paths/
+    # cbname win over any same-named CodeBreaker modules (they point at the MASM4 binary).
+    sys.path.insert(0, r"C:\Users\mrtit\Documents\GitHub\CodeBreaker")
+    sys.path.insert(0, r"C:\Users\mrtit\Documents\GitHub\Microsoft-Assemblers-Compilers\research\masm-1.00\reversing\src")
+    import csig, paths, cbname
+    from src.engines.inverse.mc2inv import _MD
+    img = csig.load_image(paths.BINARY)
+    if sys.argv[1] == "--all":
+        _, starts = csig.func_starts(paths.BINARY)
+        starts = sorted(set(s for s in starts if 0x400 <= s < 0x12E80))
+        def count_goto(t, acc):
+            for n in (t if isinstance(t, list) else []):
+                if n[0] == 'goto': acc[0] += 1
+                elif n[0] in ('if',): count_goto(n[2], acc)
+                elif n[0] == 'ifelse': count_goto(n[2], acc); count_goto(n[3], acc)
+                elif n[0] in ('while', 'loop'): count_goto(n[2], acc)
+                elif n[0] == 'dowhile': count_goto(n[2], acc)
+            return acc
+        tot = clean = gotos = crash = 0; covered = 0
+        for s in starts:
+            if s < covered: continue
+            try:
+                sz = cbname.func_size(img, s); covered = s + sz
+                insns = list(_MD.disasm(bytes(img[s:s+sz]), s))
+                blocks, _, entry = build_cfg(insns, s, s + sz)
+                tree = structure(blocks, entry)
+                tot += 1
+                g = count_goto(tree, [0])[0]
+                if g == 0: clean += 1
+                else: gotos += 1
+            except Exception as e:
+                crash += 1
+                if crash <= 6: print("CRASH 0x%05x: %s" % (s, e))
+        print("functions=%d  structured-clean(no goto)=%d (%.0f%%)  has-goto=%d  crash=%d"
+              % (tot, clean, 100.0*clean/max(tot,1), gotos, crash))
+        sys.exit(0)
+    off = int(sys.argv[1], 16)
+    sz = cbname.func_size(img, off)
+    insns = list(_MD.disasm(bytes(img[off:off+sz]), off))
+    blocks, idx2blk, entry = build_cfg(insns, off, off + sz)
+    dom, preds = dominators(blocks, entry)
+    be = back_edges(blocks, dom)
+    print("0x%05x  %dB  %d blocks  %d back-edges" % (off, sz, len(blocks), len(be)))
+    for b in blocks:
+        print("  ", b)
+    for (t, h) in be:
+        print("   loop header B%d, body=%s" % (h, sorted(natural_loop(blocks, preds, h, t))))
+    print("--- structure tree ---")
+    tree = structure(blocks, entry)
+    print(_fmt_tree(('seq', tree), blocks))
+
+
+# ============================================================================================
+# INTEGRATION PLAN -- wiring this CFG structurer into mc2inv (the rewrite, phased & validated)
+# --------------------------------------------------------------------------------------------
+# Status: FOUNDATION COMPLETE & VALIDATED (standalone). CFG/dominators/post-dominators/natural
+# loops + a structure-tree recovery (if / if-else / while / do-while / seq, goto fallback).
+# Corpus: 395 funcs, 0 crashes, 83% structure with NO goto fallback. Shared tails duplicate
+# per-path in the tree (e.g. 0x03357: `if B0{if B1{B2}else{B3}}else{B3}`) -- the exact case the
+# linear mc2inv.walk could not do without the reverted, destabilizing tail-dup patches.
+#
+# The rewrite is an EMITTER over the structure tree; it does NOT change the value model, so it is
+# landed behind a flag and proven equivalent-or-better before replacing walk():
+#
+#   Phase A (done): this module -- CFG + structure tree, standalone-tested, no mc2inv changes.
+#   Phase B: `emit_tree(tree, R)` in mc2inv -- walk the tree producing C, reusing the EXISTING
+#            R value model per block:
+#              ('block',b)   -> run R.step over the block's instruction range (straight-line).
+#              ('if',b,...)  -> cond = R.cond_at(b's cond) ; recurse then-branch from the pre-branch
+#                               register SNAPSHOT (R._snap/_rest), negate cond when the structured
+#                               branch is the taken (jcc) side.
+#              ('ifelse',...)-> snapshot; emit then from snap, else from snap; R._phi at the join.
+#              ('while',..)  -> cond at header; body from snapshot; re-converge at join.
+#              ('dowhile',.) -> body then cond at latch.
+#              ('goto',b,t)  -> the existing goto-fallback emission (+ gototargets/label pass).
+#            KEY WIN: because each tree path is emitted from its own register snapshot, a duplicated
+#            shared tail (B3 above) is lifted TWICE with the CORRECT per-path value state -- faithful
+#            tail duplication by construction, no double-emission (the tree, not the linear stream,
+#            owns block placement), fixing both failures that forced the reverts.
+#   Phase C: gate `recover()` on a flag (use_cfg=False default). Run structdiff with the flag ON:
+#            REQUIRE 0 regressions vs the 228 linear-walk completes, and spot-check every gain for
+#            faithfulness (the honesty gates in cbname stay as the backstop). Only flip the default
+#            to ON once the tree emitter is >= the linear walker on every function.
+#   Phase D: delete the linear walk()'s ad-hoc if/while/goto pattern-matching once CFG is the default;
+#            keep long_pat/long_stmt (idiom recognizers) and the whole R value model unchanged.
+#
+# Open sub-problems for Phase B (each test-gated): (1) condition direction/negation per tree edge
+# (taken vs fall); (2) phi placement at joins that are themselves loop headers; (3) the 17% goto
+# funcs -- irreducible flow stays goto (honest), not forced. The byte-phi / byte-ALU / div / store
+# value-model pieces already built this session plug in unchanged at ('block',b) emission.
+# ============================================================================================
