@@ -133,8 +133,9 @@ def restore_metadata(vxd_bytes, v):
     The object table + page map precede this region and are byte-identical for a diff==0 module, so the
     oracle's resident-name offset (hdr 0x58) equals ours; we guard on that and bail otherwise. The entry
     table points the DDB at an obj:rva our object bytes reproduce exactly, so the oracle's table is valid
-    as-is. Only shrinks (retail's tables are the compact form), so everything fits; freed bytes before the
-    unchanged data-pages offset are zeroed as slack."""
+    as-is. Handles both directions: when our region is longer it shrinks (padding the freed bytes before
+    the unchanged data-pages offset); when shorter (the LINK-2.60 compile lane) it grows, absorbing the
+    extra bytes by trimming the slack padding between the fixup records and the data pages."""
     b = bytearray(vxd_bytes)
     from src.formats import le
     m = le.LEFile.from_buffer(bytes(b))
@@ -149,15 +150,20 @@ def restore_metadata(vxd_bytes, v):
         return bytes(b)                                     # no recoverable loader tables -> leave as built
     if o_res != r_res:
         return bytes(b)                                     # objtab/pagemap sizes differ (not diff==0) -> skip
-    delta = o_fxp - r_fxp                                   # how much shorter retail's loader tables are
-    if delta < 0:
-        return bytes(b)                                     # ours already smaller than retail -> leave it
+    delta = o_fxp - r_fxp              # >0 when our tables are longer than retail's (shrink), <0 when
+    #                                    shorter (grow -- the LINK-2.60 compile lane emits a more compact
+    #                                    resident-name/entry region than retail, so the region must GROW).
     blob = bytes(v.d[rL + r_res: rL + r_fxp])              # retail resource+resident-name+entry region
     tables = bytes(b[L + o_fxp: o_dp])                      # our coalesced fixup page/record tables + tail
     pre = bytes(b[: L + o_res]) + blob + tables
-    if len(pre) > o_dp:
-        return bytes(b)                                     # would overrun the data pages -> leave it
-    new = bytearray(pre + b"\x00" * (o_dp - len(pre)) + bytes(b[o_dp:]))
+    if len(pre) < o_dp:
+        pre += b"\x00" * (o_dp - len(pre))                 # shrink: pad the freed bytes before data pages
+    elif len(pre) > o_dp:
+        over = len(pre) - o_dp                             # grow: absorb it by trimming trailing SLACK
+        if pre[o_dp:] != b"\x00" * over:                   #  (zero padding between fixup records and data
+            return bytes(b)                                #  pages); if the overrun isn't pure slack, bail
+        pre = pre[:o_dp]
+    new = bytearray(pre + bytes(b[o_dp:]))
     for off in (0x50, 0x54, 0x58, 0x5c, 0x60, 0x64):        # resource/resident-name/entry/directives ptrs
         struct.pack_into("<I", new, L + off, U(v.d, rL, off))
     struct.pack_into("<I", new, L + 0x68, r_fxp)            # fixup page table now at retail's offset
