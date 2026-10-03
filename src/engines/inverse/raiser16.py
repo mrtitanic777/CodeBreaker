@@ -26,7 +26,8 @@ def reconstruct(image, off, size, verify=True):
     if len(code) < 4:
         return None, False, "too-small (not a function)"
     try:
-        fs, params, stmts, pt, loc = mc2inv.recover(code)  # pt = int|long|float (param type)
+        _rec = mc2inv.recover_cfg if os.environ.get("USE_CFG") else mc2inv.recover
+        fs, params, stmts, pt, loc = _rec(code)             # pt = int|long|float (param type)
     except Exception as e:
         return None, False, "inverse-failed: %s"%e
     name = "f%05x"%off                                    # empty stmts -> empty-body function f(){}

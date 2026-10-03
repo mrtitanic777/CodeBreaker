@@ -636,6 +636,19 @@ class R:
         cond, _ = s.cond_at(cs)
         return cond
 
+    def _plain_if(s, cond, body, pre, then_s, out):
+        """Emit a plain if(cond){body}: materialize the phi against the implicit (not-taken) else --
+        a register the body changes is set `reg=<then>;` inside and `reg=<pre>;` before, then exposed
+        bare. Skips emitting when the body is empty (a no-op guard)."""
+        for r in s._REGS:
+            if then_s[r] == pre[r]:
+                setattr(s, r, then_s[r]); continue
+            if pre[r] is not None and str(pre[r]) != r: out.append("%s = %s;" % (r, pre[r]))
+            if then_s[r] is not None and str(then_s[r]) != r: body.append("%s = %s;" % (r, then_s[r]))
+            setattr(s, r, None)
+        if any(x.strip() for x in body):
+            out.append("if (%s) {" % cond); out += ["    " + x for x in body]; out.append("}")
+
     def _emit_seq(s, blocks, nodes, out):
         for node in nodes:
             s._emit_node(blocks, node, out)
@@ -651,13 +664,7 @@ class R:
             pre = s._snap()
             body = []; s._emit_seq(blocks, then_t, body); then_s = s._snap()
             s._rest(pre)
-            for r in s._REGS:                      # plain-if phi vs the implicit (skip) else
-                if then_s[r] == pre[r]:
-                    setattr(s, r, then_s[r]); continue
-                if pre[r] is not None and str(pre[r]) != r: out.append("%s = %s;" % (r, pre[r]))
-                if then_s[r] is not None and str(then_s[r]) != r: body.append("%s = %s;" % (r, then_s[r]))
-                setattr(s, r, None)
-            out.append("if (%s) {" % cond); out += ["    " + x for x in body]; out.append("}")
+            s._plain_if(cond, body, pre, then_s, out)
         elif kind == "ifelse":
             b, then_t, else_t, join = node[1], node[2], node[3], node[4]
             cond = s._emit_cond(blocks[b], out)
@@ -665,9 +672,16 @@ class R:
             tb = []; s._emit_seq(blocks, then_t, tb); ts = s._snap()
             s._rest(pre)
             eb = []; s._emit_seq(blocks, else_t, eb); es = s._snap()
-            s._phi(ts, es, tb, eb)
-            out.append("if (%s) {" % cond); out += ["    " + x for x in tb]
-            out.append("} else {"); out += ["    " + x for x in eb]; out.append("}")
+            # A genuinely-empty tree branch -> collapse to a plain if (the CFG proves the region is
+            # empty, so this is faithful, not a dropped-statement mask as it would be in walk()).
+            if not any(x.strip() for x in tb) and any(x.strip() for x in eb):
+                s._plain_if(s._negate(cond), eb, pre, es, out)
+            elif not any(x.strip() for x in eb) and any(x.strip() for x in tb):
+                s._plain_if(cond, tb, pre, ts, out)
+            else:
+                s._phi(ts, es, tb, eb)
+                out.append("if (%s) {" % cond); out += ["    " + x for x in tb]
+                out.append("} else {"); out += ["    " + x for x in eb]; out.append("}")
         elif kind in ("while", "loop"):
             b, body_t = node[1], node[2]
             if kind == "while":
