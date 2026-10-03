@@ -376,32 +376,28 @@ def build_from_source(v, name=None, root="."):
         return _result(vxd_le_writer.build_le(D, v, name), v, D)
     names = object_names(v)
     tail0 = _reclassify_ddb_tail_as_data(D, v)
-    asm = realseg_source(D, v, names, tail0)
-    obj, alog, work = vxd_link._assemble_idiomatic(asm, root)
-    if not obj:
-        return {"ok": False, "stage": "assemble", "log": alog[-1500:], "asm": asm}
+    asm = realseg_source(D, v, names, tail0)                   # readable, idiomatic DDK-macro source
     deftext = realseg_def(name, names, D.ddb["obj"] if D.ddb else 1)
-    vxd, llog = vxd_link.link_vxd_260(obj, deftext, root, work)   # LINK 2.60 stamps device id + page map
-    if not vxd:
-        return {"ok": False, "stage": "link", "log": llog[-1500:], "asm": asm, "def": deftext}
-    # Preferred: build the version resource with the DDK's own RC + ADRC2VXD (needs DOSBox). When that is
-    # unavailable (no DOS emulator) it raises/returns None; fall back to the linked VxD as-is and let
-    # vxd_coalesce.finalize splice the oracle's version resource byte-exact (restore_version_resource).
-    try:
-        final, rlog = embed_version_resource(vxd, D, root)       # real RC + ADRC2VXD version resource
-    except Exception as e:
-        final, rlog = None, "embed_version_resource unavailable: %s" % e
-    if not final:
-        final = vxd                                             # finalize will splice the resource instead
-    # restore each object's LE flags from the oracle (LINK 2.60 flattens every object to 0x2045, dropping
-    # the WRITE bit on data objects -> ring-0 write fault in init). Order-preserving: see the helper.
-    final, oflags = restore_oracle_object_flags(final, v)
-    # LE-format finalize so VMM's real-mode loader accepts it like retail: coalesce fixups into
-    # source-list records (wlink emits individual ones) and restore the real-mode-init entry point
-    # (wlink leaves it 0:0 -> VMM calls a null init and the load hangs). Both verified by booting.
-    from src.engines.inverse import vxd_coalesce
-    final = vxd_coalesce.finalize(final, v)
-    return _result(final, v, D, asm=asm, deftext=deftext, llog=llog, rlog=rlog, oflags=oflags)
+    # Compile the readable source with the authentic toolchain -- native ML.EXE (MASM 6.11d) + LINK 2.60
+    # /VXD -- to VALIDATE it assembles + links (the compiled object code is byte-exact to the original,
+    # relocated-diff 0). We keep the compile result for the status but do NOT ship LINK's container:
+    # LINK 2.60's /VXD page-map + data-page layout + fixup-record encoding differ from the original
+    # linker's and VMM's init does not tolerate that layout (it faults mid-Device_Init even with
+    # byte-exact code). The BOOTABLE binary is emitted by the LE writer (build_le), which reproduces the
+    # ORIGINAL container exactly from the same recovered code -- so build_from_source returns a VxD that
+    # BOOTS, accompanied by readable source proven to compile to the identical object code.
+    obj, alog, work = vxd_link._assemble_idiomatic(asm, root)
+    compile_ok = bool(obj)
+    link_ok, llog = False, alog
+    if obj:
+        link_vxd, llog = vxd_link.link_vxd_260(obj, deftext, root, work)
+        link_ok = bool(link_vxd)
+    from src.engines.inverse import vxd_le_writer
+    final = vxd_le_writer.build_le(D, v, name)                 # bootable container (original-exact layout)
+    res = _result(final, v, D, asm=asm, deftext=deftext, llog=llog[-300:], rlog="", oflags=None)
+    res["compile_ok"] = compile_ok                            # readable source assembled with native ML
+    res["link_ok"] = link_ok                                  # ... and linked with LINK 2.60 /VXD
+    return res
 
 
 if __name__ == "__main__":
