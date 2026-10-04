@@ -682,6 +682,11 @@ def emit_idiomatic(D, loadable=False):
         for (soi, soff), f in D.fx.items():
             if f.get("kind") != "internal":
                 continue
+            if soff < 0:
+                continue        # a fixup-source dword straddling IN from the previous object (recorded at a
+                #  negative offset here): its dword start lives in that other object, so there is no valid
+                #  `loc_<obj>_<off>` anchor here (a negative offset formats as the invalid label
+                #  "loc_4_-002" -> A2006). Any label at offset 0 is the object base, emitted inline anyway.
             code = D.code.get(soi, b"")
             # The emittable ANCHOR of a fixup unit: for a data pointer (srctype 7) it is the dword start;
             # for a self-relative BRANCH (srctype 8) it is the branch OPCODE (E8/E9 one byte before the
