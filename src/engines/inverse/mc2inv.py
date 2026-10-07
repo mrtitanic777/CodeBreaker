@@ -401,7 +401,8 @@ class R:
             if re.match(r"(0x[0-9a-f]+|\d+)$",src):
                 s.emit(out,"%s = %s;"%(s.memname(dest), s.num(src))); return i+1
         if mn in ALU and "[" in ops.split(", ")[0] and ops.endswith(", ax"):   # mem <op>= ax
-            d=s.memname(ops.split(",")[0]); s.emit(out,"%s = %s %s %s;"%(d,d,ALU[mn],s.ax)); return i+1
+            d=s.memname(ops.split(",")[0]); av=s.ax if s.ax is not None else "ax"   # untracked -> bare ax
+            s.emit(out,"%s = %s %s %s;"%(d,d,ALU[mn],av)); return i+1
         if mn in ALU and "[" in ops.split(", ")[0]:            # mem <op>= imm | reg
             dst,_,src=ops.rpartition(", ")
             if re.match(r"(0x[0-9a-f]+|\d+)$",src) or src in ("bx","cx","dx","si","di"):
