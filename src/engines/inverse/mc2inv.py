@@ -233,6 +233,9 @@ class R:
         elif mn=="mov" and ops.startswith("dx, "):
             src=ops[4:]; s.movptr("dx",src) if src in ("ax","bx","cx","si","di","bp") else setattr(s,"dx",s.rhs(src))
         elif mn=="xor" and ops in ("ax, ax","bx, bx"): s.ax="0"     # self-xor = clear (return 0)
+        elif mn in ("or","and") and ops=="ax, ax": pass             # `or/and ax,ax` is flag-only (ax
+                                                                    # unchanged) -- never `(ax|ax)`, which
+                                                                    # would DUPLICATE a call in s.ax
         else:
             axv = s.ax if s.ax is not None else "ax"             # untracked ax -> the register
             cxv = s.cx if s.cx is not None else "cx"
