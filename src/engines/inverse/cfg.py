@@ -279,9 +279,20 @@ def structure(blocks, entry=0):
             body_t = seq_from(h, {lb}) + [('block', lb)]
             loopstack.pop()
             return ('dowhile', h, body_t, lb), fol
-        # endless/multi-exit loop: body with breaks to the (single) follow if there is one
+        # endless/multi-exit loop: emit the body STARTING WITH the header (seq_from(h,...) would hit
+        # the b==h continue-check immediately and drop the whole body). Process the header block/if
+        # first, then walk onward; re-reaching h is the back-edge -> continue, reaching follow -> break.
         loopstack.append((h, follow))
-        body_t = seq_from(h, {h})
+        hblk = blocks[h]
+        if hblk.term == "cond":
+            node, after = do_if(h, {h})
+            body_t = [node]
+            if after is not None and after != h and after != EXIT:
+                body_t += seq_from(after, {h})
+        else:
+            body_t = [('block', h)]
+            if hblk.succ:
+                body_t += seq_from(hblk.succ[0], {h})
         loopstack.pop()
         return ('loop', h, body_t, follow), follow
 
