@@ -99,6 +99,8 @@ class R:
             m=re.search(r"\[%s - (0x[0-9a-f]+|\d+)\]"%reg,op)  # negative offset -> index back
             if m: return "%s[-%d]"%(s._ptrbase(reg),s.num(m.group(1)))
             if "[%s]"%reg in op: return "*%s"%s._ptrbase(reg)
+        m=re.search(r"\[(bx|bp|si|di) \+ (si|di) \+ (0x[0-9a-f]+|\d+)\]",op)   # base+index+disp
+        if m: return "%s[%s + %d]"%(s._ptrbase(m.group(1)), m.group(2), s.num(m.group(3)))
         m=re.search(r"\[bx \+ si\]|\[bx \+ di\]|\[si \+ di\]",op)  # indexed; name by base reg
         if m: return "%s[%s]"%(s._ptrbase(op[1:3]), op.split(" + ")[1].rstrip("]"))
         m=re.search(r"\[(0x[0-9a-f]+|\d+)\]",op)
