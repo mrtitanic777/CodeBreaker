@@ -276,10 +276,35 @@ def autolink(module, fmt, export_names, imports, cured_c, outdir):
                 # symbol, so the object references KERNEL32_lstrcpyA_ -- match that.
                 internal = "%s_%s_" % (libbase, s["name"])
                 import_names.add("%s_%s" % (libbase, s["name"]))
-                imp_lines.append("import %s '%s'.'%s'" % (internal, libbase, s["name"]))
+                # A C++ mangled import name (e.g. ??2@YAPAXI@Z = operator new) carries
+                # '?'/'@' that wlink's directive parser splits on -> E2093 "cannot open
+                # YAPAXI@Z_". Quote the internal symbol so it stays one token. The recovered
+                # C can only reference valid-identifier imports, so a mangled one is an
+                # (unused) available import -- quoting keeps it harmless. Only names with
+                # non-identifier chars are quoted, so every KERNEL32_*/plain import line is
+                # byte-for-byte unchanged and the modules that already link are unaffected.
+                iname = "'%s'" % internal if _re.search(r"[^A-Za-z0-9_$]", internal) else internal
+                imp_lines.append("import %s '%s'.'%s'" % (iname, libbase, s["name"]))
     stubs = sorted(called - defined - import_names - _CRT_SYMS - _C_KW)
+    # Floating-point runtime markers: a module that uses FP makes wcc386 reference the
+    # data symbols _fltused_ (FP-used flag) and __8087 (387-present flag), normally
+    # supplied by the Watcom math library. autolink stays CRT/math-lib-free, so define
+    # them as inert data when the compiled object references them -- C `fltused_`/`_8087`
+    # get the leading-underscore prepend -> exactly _fltused_ / __8087. Gated on the
+    # reference so FP-free modules (and the ones that already link) emit nothing new.
+    try:
+        _mo = open(os.path.join(outdir, obj), "rb").read()
+    except OSError:
+        _mo = b""
+    fp_defs = []
+    if b"_fltused_" in _mo or b"fltused" in _mo:
+        fp_defs.append("int fltused_ = 0x9875;")
+    if b"__8087" in _mo or b"8087" in _mo:
+        fp_defs.append("int _8087 = 0;")
     with open(os.path.join(outdir, "stubs.c"), "w", newline="\n") as f:
         f.write("/* auto stubs for engine intrinsics + unresolved leaf refs */\n")
+        for d in fp_defs:
+            f.write(d + "\n")
         for s in stubs:
             f.write("int %s(){return 0;}\n" % s)
     if _run([_tool("wcc386"), "-bt=nt", "-q", "-wcd=138", "-s", "stubs.c"], outdir, env, log) != 0:
