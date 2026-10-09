@@ -588,6 +588,26 @@ def _loadable_data(D, oi, a, b, ctx=None):
     (absolute, srctype 7) -- the absolute form corrupts the branch target and faults the VxD on init
     (the residual multi-VxD hang in dosmgr/vxdldr/vshare after the gap-seeding fix)."""
     out = []; run = a; k = a; code = D.code[oi]
+    # Interior labels INSIDE this data span (a fixup target elsewhere that lands here -- common when the
+    # span is an in-place DDB / service-table block holding a pointer table, each entry of which is both a
+    # `dd offset' and the target of a `call [loc_..]'). _db_data does not define labels, so without this
+    # those `dd offset loc_..' / `call [loc_..]' are undefined (A2006). Emit `<name> label near' at each,
+    # splitting the readable db runs -- byte-preserving (a label directive emits no bytes). Offset `a` is
+    # excluded: the caller emits it (the data-span walk, the DDB public label, the service-table label).
+    # The normal data-span path has NO interior labels (its walk breaks at the first), so this is a no-op
+    # there; it only fires for the fixed-range in-place blocks.
+    dl = {off: D.labels[(oi, off)] for (o2, off) in D.labels if o2 == oi and a < off < b}
+
+    def _flush(lo, hi):                                    # emit code[lo:hi] as readable data, inserting
+        r = lo                                             #  interior `label near' at any dl offset inside
+        for off in sorted(o for o in dl if lo < o < hi):   #  (lo,hi) -- never at a dd interior (run jumps
+            if off > r:                                    #  past those), so no relocation is split
+                out.extend(_db_data(code[r:off]))
+            out.append("%s label near" % dl[off])
+            r = off
+        if r < hi:
+            out.extend(_db_data(code[r:hi]))
+
     while k < b:
         f = D.fx.get((oi, k))
         if f and f["kind"] == "internal":
@@ -595,7 +615,9 @@ def _loadable_data(D, oi, a, b, ctx=None):
                 lab = D.labels.get((f["obj"], (f.get("target") or 0) & 0x7FFFFFFF))
                 if lab:
                     if k - 1 > run:
-                        out.extend(_db_data(code[run:k - 1]))
+                        _flush(run, k - 1)
+                    if (k - 1) in dl:                      # label on the branch opcode byte
+                        out.append("%s label near" % dl[k - 1])
                     out.append("        %-6s %s" % ("call" if code[k - 1] == 0xE8 else "jmp", lab))
                     k += 4; run = k
                     continue
@@ -604,20 +626,24 @@ def _loadable_data(D, oi, a, b, ctx=None):
                 lab = D.labels.get((f["obj"], (f.get("target") or 0) & 0x7FFFFFFF))
                 if lab:
                     if k - 2 > run:
-                        out.extend(_db_data(code[run:k - 2]))
+                        _flush(run, k - 2)
+                    if (k - 2) in dl:
+                        out.append("%s label near" % dl[k - 2])
                     out.append("        %-6s %s" % (_JCC[code[k - 1]], lab))
                     k += 4; run = k
                     continue
             expr = _dd_target_expr(D, f["obj"], f.get("target"), ctx)
             if expr and k + 4 <= b:
                 if k > run:
-                    out.extend(_db_data(code[run:k]))
+                    _flush(run, k)
+                if k in dl:                                # label at the dd (pointer-table entry) start
+                    out.append("%s label near" % dl[k])
                 out.append("        dd  %s" % expr)
                 k += 4; run = k
                 continue
         k += 1
     if run < b:
-        out.extend(_db_data(code[run:b]))
+        _flush(run, b)
     return out
 
 
