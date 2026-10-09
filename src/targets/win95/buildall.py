@@ -98,25 +98,44 @@ def exports_pe(d):
                 return ro + (rva - va)
         return None
 
+    exp_size = struct.unpack_from("<I", d, opt + 100)[0]
     ed = r2o(exp_rva)
     if ed is None:
         return []
     base = struct.unpack_from("<I", d, ed + 16)[0]
+    nfunc = struct.unpack_from("<I", d, ed + 20)[0]            # Export Address Table size
     nname = struct.unpack_from("<I", d, ed + 24)[0]
+    eat = r2o(struct.unpack_from("<I", d, ed + 28)[0])
     an = r2o(struct.unpack_from("<I", d, ed + 32)[0])
     ao = r2o(struct.unpack_from("<I", d, ed + 36)[0])
     out = []
-    if an is None or ao is None:
-        return []
-    for i in range(nname):
-        nrva = struct.unpack_from("<I", d, an + i * 4)[0]
-        no = r2o(nrva)
-        if no is None:
-            continue
-        end = d.find(b"\0", no)
-        name = d[no:end].decode("latin1", "replace")
-        ordn = struct.unpack_from("<H", d, ao + i * 2)[0] + base
-        out.append((name, ordn))
+    namedidx = set()
+    # Named exports (unchanged): the name-pointer table + name-ordinal table. An ordinal-
+    # only module (nname=0, no name table) has an/ao == None here -- that path is handled
+    # by the EAT walk below, NOT by bailing out (the old `return []` dropped every export
+    # of MFC30/riched32/msjt3032, which export entirely by ordinal).
+    if an is not None and ao is not None:
+        for i in range(nname):
+            nrva = struct.unpack_from("<I", d, an + i * 4)[0]
+            no = r2o(nrva)
+            if no is None:
+                continue
+            end = d.find(b"\0", no)
+            name = d[no:end].decode("latin1", "replace")
+            oi = struct.unpack_from("<H", d, ao + i * 2)[0]
+            namedidx.add(oi)
+            out.append((name, oi + base))
+    # Ordinal-only exports: every Export Address Table slot with no name-table entry.
+    # Skip empty slots (unused ordinals) and forwarders (RVA inside the export directory,
+    # which re-export another DLL's symbol rather than defining a function here).
+    if eat is not None:
+        for j in range(nfunc):
+            if j in namedidx:
+                continue
+            frva = struct.unpack_from("<I", d, eat + j * 4)[0]
+            if not frva or exp_rva <= frva < exp_rva + exp_size:
+                continue
+            out.append(("", base + j))
     return out
 
 
