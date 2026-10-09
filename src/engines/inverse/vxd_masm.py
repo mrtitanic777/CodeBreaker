@@ -399,12 +399,55 @@ def _assemble_coff_nasm(masm_text, nasm):
     return obj, log
 
 
+_native_ml_cache = None
+
+
+def _native_ml_ok():
+    """Is the native DDK ML.EXE (MASM 6.11d, runs on modern Windows) present? Probed once, cached.
+    CB_FORCE_ML pins the authentic DOSBox/Phar Lap ML instead, so this defers to it."""
+    global _native_ml_cache
+    if os.environ.get("CB_FORCE_ML"):
+        return False
+    if _native_ml_cache is None:
+        try:
+            _native_ml_cache = os.path.exists(native_ml())
+        except Exception:
+            _native_ml_cache = False
+    return _native_ml_cache
+
+
+def _assemble_coff_native_ml(masm_text, root):
+    """Assemble one MASM text to a COFF object with the native DDK ML.EXE (MASM 6.11d) -- directly on
+    modern Windows, no DOSBox round-trip. This is the same assembler the from-source loadable lane
+    (vxd_link._assemble_idiomatic) uses, so object-level compare runs wherever that lane does, even
+    with no nasm-masm fork and no DOS emulator installed. Returns (obj_bytes, log)."""
+    inc = os.path.join(_ddk_root(), "INC32")
+    ml = native_ml()
+    wd = tempfile.mkdtemp()
+    ap = os.path.join(wd, "m.asm"); op = os.path.join(wd, "m.obj")
+    open(ap, "w", newline="\r\n").write(masm_text)
+    tmo = 600 if len(masm_text) > 60000 else 180
+    try:
+        p = subprocess.run([ml, "-coff", "-c", "-DBLD_COFF", "-DIS_32", "-DMASM6", "-I" + inc,
+                            "-Fom.obj", "m.asm"], cwd=wd, capture_output=True, text=True, timeout=tmo)
+        log = (p.stdout or "") + (p.stderr or "")
+        obj = open(op, "rb").read() if os.path.exists(op) else None
+    except Exception as e:
+        obj, log = None, "native ml: %s" % e
+    finally:
+        shutil.rmtree(wd, ignore_errors=True)
+    return obj, log
+
+
 def assemble_coff(masm_text, root):
     """Assemble to a COFF object (so section bytes + a symbol table are available). Returns
-    (obj_bytes, log). Uses nasm --masm natively when installed, else ML.EXE under DOSBox."""
+    (obj_bytes, log). Uses nasm --masm natively when installed, else the native DDK ML.EXE, else
+    ML.EXE under DOSBox."""
     nasm = find_nasm()
     if nasm:
         return _assemble_coff_nasm(masm_text, nasm)
+    if _native_ml_ok():
+        return _assemble_coff_native_ml(masm_text, root)
     tc = _stage_toolchain(root)
     tmo = 300 if len(masm_text) > 60000 else 120
     ok, out, work = run_dos({"c": tc},
@@ -427,6 +470,8 @@ def assemble_coff_batch(masm_list, root, budget=300000, maxfiles=32):
     nasm = find_nasm()
     if nasm:
         return [_assemble_coff_nasm(m, nasm) for m in masm_list]
+    if _native_ml_ok():                                    # native DDK ML.EXE: no cold start either
+        return [_assemble_coff_native_ml(m, root) for m in masm_list]
     tc = _stage_toolchain(root)
     results = [(None, "")] * len(masm_list)
     batches, cur, cl = [], [], 0
