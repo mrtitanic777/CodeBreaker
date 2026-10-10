@@ -305,7 +305,7 @@ class R:
     _IMPLW={"mul":("ax","dx"),"imul":("ax","dx"),"div":("ax","dx"),"idiv":("ax","dx"),
             "cwd":("dx",),"cdq":("dx",),"cbw":("ax",),"cwde":("ax",),"xlatb":("ax",),
             "lodsb":("ax","si"),"lodsw":("ax","si"),"stosb":("di",),"stosw":("di",),
-            "movsb":("si","di"),"movsw":("si","di"),"scasb":("di",),"scasw":("di",),
+            "movsb":("si","di"),"movsw":("si","di"),"scasb":("di",),"scasw":("di",),"xlatb":("ax",),
             "cmpsb":("si","di"),"cmpsw":("si","di"),"loop":("cx",),
             "call":("ax","bx","cx","dx"),"lcall":("ax","bx","cx","dx")}
     def _wregs(s, mn, ops):
@@ -1221,12 +1221,38 @@ class R:
             s.emit(out,"%s(%s, %s, %s);"%(("memset_w" if mn.endswith("w") else "memset_b") if MARK else "memset",
                                           s.di or "di", s.ax if s.ax is not None else "ax", n))
             s.di=None; s.cx="0"; return i+1
-        if mn in ("movsb","movsw"):
-            s.emit(out,"*%s++ = *%s++;"%(s.di or "di", s.si or "si")); return i+1
-        if mn in ("stosb","stosw"):
-            s.emit(out,"*%s++ = %s;"%(s.di or "di", s.ax if s.ax is not None else "ax")); return i+1
-        if mn in ("lodsb","lodsw"):
-            s.ax="*%s++"%(s.si or "si"); s.retlive=True; return i+1
+        # Single string instructions (hand-written assembly loops), direction flag clear: each is
+        # a load/store through si/di followed by the pointer step, written as plain statements on
+        # the register variables. Every register involved is settled into its variable first.
+        if mn in ("movsb","movsw","stosb","stosw","lodsb","lodsw","xlatb"):
+            w=2 if mn.endswith("w") else 1
+            def pinreg(r):
+                v=getattr(s,r,None)
+                if v is not None and str(v)!=r: s._materialize(out,r)
+                setattr(s,r,None)
+            def settle_ax():
+                pinreg("ax")
+                for b8 in ("al","ah"):
+                    if b8 in s.breg:
+                        v=s.breg.pop(b8)
+                        if str(v)!=b8: s.emit(out,"%s = %s;"%(b8,v))
+            B=(lambda x:"BYTE(%s)"%x) if MARK else (lambda x:"*(char *)%s"%x[1:] if x.startswith("*") else x)
+            if mn[:4]=="movs":
+                pinreg("si"); pinreg("di")
+                s.emit(out,("%s = %s;"%(B("*di"),B("*si"))) if w==1 else "*di = *si;")
+                s.emit(out,"si = si + %d;"%w); s.emit(out,"di = di + %d;"%w)
+            elif mn[:4]=="stos":
+                pinreg("di"); settle_ax()
+                s.emit(out,("%s = al;"%B("*di")) if w==1 else "*di = ax;")
+                s.emit(out,"di = di + %d;"%w)
+            elif mn[:4]=="lods":
+                pinreg("si"); settle_ax()
+                s.emit(out,("al = %s;"%B("*si")) if w==1 else "ax = *si;")
+                s.emit(out,"si = si + %d;"%w); s.axsrc=None; s.retlive=True
+            else:                                              # xlatb: al = table[al], table at bx
+                pinreg("bx"); settle_ax()
+                s.emit(out,"al = %s;"%B("*(bx + al)")); s.axsrc=None; s.retlive=True
+            return i+1
         if mn=="jmp":                                          # tail-call: jmp to an external target
             m=re.match(r"(0x[0-9a-f]+|\d+)$", ops)
             if m:
