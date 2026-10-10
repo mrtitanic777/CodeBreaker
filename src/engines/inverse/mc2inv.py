@@ -1299,10 +1299,28 @@ class R:
     def _terminal(body):
         """A branch body that already ends in break/continue/return/goto does NOT fall through to
         the merge, so phi materialization appended to it would be unreachable (dead) code."""
-        for ln in reversed(body):
-            if ln.strip():
-                return re.match(r"(break|continue|return\b|goto )", ln.strip()) is not None
-        return False
+        lines = [ln for ln in body if ln.strip()]
+        if not lines: return False
+        last = lines[-1].strip()
+        if last != "}":
+            return re.match(r"(break|continue|return\b|goto )", last) is not None
+        # The body ends with an if / else-if / else chain: it is terminal when the chain has a
+        # final `else` and EVERY arm is terminal (`if (a) { goto X; } else { ...; goto Y; }`).
+        ind = lambda t: len(t) - len(t.lstrip(" "))
+        d = ind(lines[-1]); arms = []; cur = []; k = len(lines) - 2; has_else = False
+        while k >= 0:
+            t = lines[k]
+            if ind(t) == d:
+                st = t.strip()
+                if st == "} else {": arms.append(cur[::-1]); cur = []; has_else = True
+                elif re.match(r"\} else if \(.*\) \{$", st): arms.append(cur[::-1]); cur = []
+                elif re.match(r"if \(.*\) \{$", st): arms.append(cur[::-1]); break
+                else: return False                         # a loop or switch: not analysed
+            elif ind(t) < d: return False
+            else: cur.append(t)
+            k -= 1
+        else: return False
+        return has_else and all(R._terminal(x) for x in arms)
 
     def _phi_args(s, a_args, b_args, a_body, b_body, a_term, b_term):
         """Merge the pending-argument stacks of two converging paths: a slot the paths filled
