@@ -339,7 +339,10 @@ def structure(blocks, entry=0):
             # Inside a loop, a join that lies OUTSIDE the loop (and is not its follow) is not a
             # merge point of this if: its arms leave the loop separately (handled as exits).
             _h, _fol, _lbody, _lf = loopstack[-1]
-            if join not in _lbody and join != _fol: join = None
+            # ... and the loop's FOLLOW is not a merge inside the loop either: an arm reaching it
+            # is a `break`, while the other arm may run on to the latch. (Treating it as the join
+            # produced `if (c) {} break;` -- the loop exited unconditionally.)
+            if join not in _lbody: join = None
         taken = blk.succ[0]
         fall = blk.succ[1] if len(blk.succ) > 1 else None
         then_s, else_s = fall, taken                        # then = fall-through, else = taken (jcc)
