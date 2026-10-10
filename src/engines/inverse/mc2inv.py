@@ -35,6 +35,38 @@ MARK=False
 # whole-program "is the result ever read by a caller" analysis; None -> local heuristic.)
 RETVAL=None
 
+_WREG=("ax","bx","cx","dx","si","di")
+def _memparts(op):
+    """('word'|'byte', base_text, signed_offset) of a memory operand, else None."""
+    m=re.match(r"(word|byte) ptr (?:\w\w:)?\[(.*)\]$", op.strip())
+    if not m: return None
+    inner=m.group(2)
+    m2=re.match(r"(.*?)(?: ([+-]) )?(0x[0-9a-f]+|\d+)$", inner)
+    if m2 and (m2.group(1)=="" or m2.group(2)):
+        off=int(m2.group(3),0); return m.group(1), m2.group(1), -off if m2.group(2)=="-" else off
+    return m.group(1), inner, 0
+
+def carry_kind(ins, k):
+    """Classify the adc/sbb at ins[k] as part of a multi-word idiom the lifter models:
+      'pair'  add|sub LO,x ; adc|sbb HI,y      (HI:LO a register pair or two adjacent words)
+      'neg'   neg LO ; adc HI,0 ; neg HI        (32-bit negate)
+      'setcc' cmp a,b ; sbb r,r                 (r = -(a < b), unsigned)
+    else None. Used by BOTH the lifter and the driver's gate, so acceptance implies emission."""
+    if k<1 or k>=len(ins): return None
+    c=ins[k]; p=ins[k-1]
+    if c.mnemonic not in ("adc","sbb") or ", " not in c.op_str or ", " not in (p.op_str or ""):
+        if not (c.mnemonic in ("adc","sbb") and p.mnemonic=="neg"): return None
+    cd,_,cs=c.op_str.partition(", "); pd,_,ps=(p.op_str or "").partition(", ")
+    if c.mnemonic=="sbb" and cd==cs and cd in _WREG and p.mnemonic=="cmp": return "setcc"
+    if c.mnemonic=="adc" and cs=="0" and p.mnemonic=="neg" and p.op_str in _WREG and cd in _WREG \
+       and cd!=p.op_str and k+1<len(ins) and ins[k+1].mnemonic=="neg" and ins[k+1].op_str==cd:
+        return "neg"
+    if (p.mnemonic,c.mnemonic) not in (("add","adc"),("sub","sbb")): return None
+    if pd in _WREG and cd in _WREG and pd!=cd: return "pair"
+    a,b=_memparts(pd),_memparts(cd)
+    if a and b and a[0]==b[0]=="word" and a[1]==b[1] and b[2]-a[2]==2: return "pair"
+    return None
+
 class R:
     def __init__(s, ins, fs, base=0, cxmap=None, msc3=False):
         s.msc3=msc3                                     # MS-C 3.0 frame convention (bp at frame top)
@@ -379,14 +411,29 @@ class R:
             if s._hascall(a) and str(a) not in text:
                 s._tn=getattr(s,"_tn",0)+1; t="t%d"%s._tn
                 out.append("%s = %s;"%(t,a)); s.ranks.append(s.i); s.regconst.append(False); s.args[k]=t
+        for r in s._WR:
+            v=getattr(s,r,None)
+            if v is None or str(v)==r or not s._hascall(v) or str(v) not in text: continue
+            if text.endswith(" = %s;"%v): continue             # plain store: the caller aliases it
+            if s._live(r, s.i):
+                s._materialize(out, r, rank); text=text.replace(str(v), r)
+            else: setattr(s, r, None)                          # evaluated here, never read again
         m=re.match(r"(.+?)(?: = (.*);|\+\+;|--;)$", text)
+        if m:
+            core=re.sub(r"^BYTE\((.*)\)$", r"\1", m.group(1))
+            pat8=re.compile(r"(?<![\w>.])%s(?![\w(])"%re.escape(core))
+            for b8,v in list(s.breg.items()):
+                if str(v)!=b8 and pat8.search(str(v)) and str(v)!=(m.group(2) or ""):
+                    s.breg.pop(b8)
+                    if s._live(BYTEPARENT[b8], s.i):
+                        out.append("%s = %s;"%(b8,v)); s.ranks.append(s.i); s.regconst.append(False)
         if MARK and m and re.search(r"->|\*|\[|g_", m.group(1)):
             for r in s._WR:
                 v=getattr(s,r,None)
                 if v is None or str(v)==r or (m.group(2) is not None and str(v)==m.group(2)): continue
                 if re.search(r"->|\*|\[|g_", str(v)) and s._live(r, s.i): s._materialize(out, r, rank)
         if m and m.group(1) not in ("ax","bx","cx","dx","si","di") and m.group(1) not in BYTEREG:
-            lhs=m.group(1); rhs=m.group(2)
+            lhs=re.sub(r"^BYTE\((.*)\)$", r"\1", m.group(1)); rhs=m.group(2)
             pat=re.compile(r"(?<![\w>.])%s(?![\w(])"%re.escape(lhs))
             for r in ("ax","bx","cx","dx","si","di"):
                 v=getattr(s,r,None)
@@ -464,11 +511,15 @@ class R:
         if mn in ("inc","dec") and ops in BYTEREG:             # byte-reg inc/dec
             s.breg[ops]="(%s %s 1)"%(s.breg.get(ops,pre8 if pre8 is not None else ops), "+" if mn=="inc" else "-"); return
         if mn in ("cbw","cwde") and "al" in s.breg:            # sign-extend al -> ax (int)al
-            s.ax=s.breg["al"]; s.axsrc=None; return
+            s.ax=("SX(%s)"%s.breg["al"]) if MARK else s.breg["al"]; s.axsrc=None; return
+        if mn in ("cbw","cwde") and MARK:                      # ax = (int)(char)ax
+            s.ax="SX(%s)"%(s.ax if s.ax is not None else "ax"); s.axsrc=None; s.retlive=True; return
         if mn=="mov" and ops.startswith("ax, "):
             src=ops[4:]
             if src=="dx" and s.div: s.ax="(%s %% %s)"%s.div; s.axsrc=None
             elif src in ("bx","cx","dx"): s.ax=s.rsrc(src); s.axsrc=None   # reg->reg copy
+            elif src in ("si","di"):
+                v=getattr(s,src,None); s.ax=v if v is not None else src; s.axsrc=None
             elif re.match(r"(0x[0-9a-f]+|\d+)$",src): s.ax=s.rhs(src); s.axsrc=i  # LOADED const
             else: s.ax=s.rhs(src); s.axsrc=None
         elif mn=="mov" and ops.startswith(("si, ","di, ")):
@@ -655,6 +706,58 @@ class R:
                     s.emit(out,"*(long *)&g_%x %s= %s;"%(lo,op,s.num(ma.group(2)))); return 2
         return 0
 
+    def _opval(s, tok):
+        """Current value of an instruction operand (immediate / register / memory)."""
+        tok=tok.strip()
+        if re.match(r"(0x[0-9a-f]+|\d+)$",tok): return str(s.num(tok))
+        if tok=="ax": return s.ax if s.ax is not None else "ax"
+        if tok in s._WR:
+            v=getattr(s,tok,None); return v if v is not None else tok
+        if tok in BYTEREG: return s._bval(tok, True)
+        return s.memname(tok) or tok
+
+    def _carry(s, i, out):
+        """Multi-word arithmetic through the carry flag (see carry_kind). The 32-bit value is
+        written LONG(hi, lo); LO()/HI() take its halves. Faithful rather than pretty: a later
+        readability pass can fold `x = LO(e); x2 = HI(e)` into a long assignment."""
+        ins=s.ins
+        if ins[i].mnemonic=="sbb" and carry_kind(ins,i)=="setcc":
+            s._kill_aliases(i)
+            a,_,b=ins[i-1].op_str.partition(", ")
+            r=ins[i].op_str.split(",")[0].strip()
+            s._binval("mov", r)
+            setattr(s,r,"(0 - (%s < %s))"%(s._opval(a),s._opval(b)))
+            if r=="ax": s.axsrc=None; s.retlive=True
+            if r=="bx": s.bxsrc=None
+            return 1
+        kind=carry_kind(ins,i+1) if i+1<len(ins) else None
+        if kind not in ("pair","neg"): return 0
+        for r in s._WR:                                    # never duplicate a deferred call
+            if s._hascall(getattr(s,r,None) or ""): s._materialize(out,r)
+        p,c=ins[i],ins[i+1]
+        if kind=="neg":
+            lo=p.op_str.strip(); hi=c.op_str.split(",")[0].strip()
+            s._kill_aliases(i); s._kill_aliases(i+1)
+            E="0 - LONG(%s, %s)"%(s._opval(hi),s._opval(lo)); n=3
+        else:
+            lo,_,x=p.op_str.partition(", "); hi,_,y=c.op_str.partition(", ")
+            op="+" if p.mnemonic=="add" else "-"
+            X,Y=s._opval(x),s._opval(y)
+            if lo not in s._WR:                            # two adjacent memory words
+                ml,mh=s.memname(lo),s.memname(hi)
+                s._tn=getattr(s,"_tn",0)+1; t="t%d"%s._tn
+                s.emit(out,"%s = LONG(%s, %s) %s LONG(%s, %s);"%(t,mh,ml,op,Y,X))
+                s.emit(out,"%s = LO(%s);"%(ml,t)); s.emit(out,"%s = HI(%s);"%(mh,t))
+                return 2
+            lo0,hi0=s._opval(lo),s._opval(hi)
+            s._kill_aliases(i); s._kill_aliases(i+1)
+            E="LONG(%s, %s) %s LONG(%s, %s)"%(hi0,lo0,op,Y,X); n=2
+        s._binval("mov",lo); s._binval("mov",hi)
+        setattr(s,lo,"LO(%s)"%E); setattr(s,hi,"HI(%s)"%E)
+        if "ax" in (lo,hi): s.axsrc=None; s.retlive=True
+        if "bx" in (lo,hi): s.bxsrc=None
+        return n
+
     def _take_args(s, i, kind, target):
         """Arguments of the call at ins[i], in C source order. Pascal callees (CALLINFO says they
         pop N bytes) consume exactly N/2 pushed words, in push order; C callees consume what the
@@ -775,21 +878,31 @@ class R:
         """Straight-line: process ins[i], maybe append a statement. Return next i."""
         s.i=i; s.out=out
         if i in s.hoisted: return i+1                          # store already emitted (hoisted)
+        if MARK:                                           # checker mode: the explicit LONG form
+            n=s._carry(i,out)                              # (the `*(long *)&x += 1` sugar below is
+            if n: return i+n                               # for readers, not for the interpreter)
         n=s.long_pat(i)
         if n: s.retlive=True; return i+n
         n=s.long_stmt(i,out)
+        if n: return i+n
+        n=s._carry(i,out)
         if n: return i+n
         ii=s.ins[i]; mn=ii.mnemonic; ops=ii.op_str; d0=ops.split(",")[0].strip()
         if mn in ("or","and","test") and ops.count(",")==1 and d0==ops.split(",")[1].strip() \
            and "[" not in ops: return i+1                 # `or r,r` = flags only: value/tracking unchanged
         s._kill_aliases(i)
         if s._byte_on_word(mn, ops): return i+1
+        for _t in re.findall(r"\b[abcd][lh]\b", ops):       # a byte op on a register still holding
+            if _t not in s.breg and s._hascall(getattr(s,BYTEPARENT[_t],None) or ""):   # a deferred
+                s._materialize(out, BYTEPARENT[_t])        # call: evaluate the call first, once
         s._p8=(i, s._bval(d0)) if d0 in BYTEREG else None
         _o=ops.split(", ")
         s._s8=(i, s._bval(_o[1])) if (mn=="mov" and len(_o)==2 and _o[0] in BYTEREG and _o[1] in BYTEREG) else None
         s._binval(mn, d0)
         if mn=="mov" and "[" in d0 and ops.rpartition(", ")[2] in BYTEREG:   # store: mem = byte-reg
             src=ops.rpartition(", ")[2]
+            if src not in s.breg and s._hascall(getattr(s,BYTEPARENT[src],None) or ""):
+                s._materialize(out, BYTEPARENT[src])
             s.emit(out,"%s = %s;"%(s.memname(d0 if "byte ptr" in d0 else "byte ptr "+d0), s._bval(src)))
             return i+1
         if mn=="cmp" and ops.startswith("ax, ") and i+2<len(s.ins) and s.ins[i+1].mnemonic in JCC and s.ins[i+2].mnemonic=="xor":
@@ -870,7 +983,8 @@ class R:
             s.emit(out,"int_%s();"%ops.replace("0x","").replace(" ","")); return i+1
         if mn in ("shl","sal","shr","sar") and "[" in ops.split(",")[0]:   # memory-dest shift
             d=s.memname(ops.split(",")[0])
-            cnt=(s.cx if s.cx is not None else "cx") if ops.endswith("cl") else s._val(ops.split(", ")[1])
+            cnt=(s.breg["cl"] if "cl" in s.breg else (s.cx if s.cx is not None else "cx")) \
+                if ops.endswith("cl") else s._val(ops.split(", ")[1])
             op="<<" if mn in ("shl","sal") else ">>"; s.emit(out,"%s = %s %s %s;"%(d,d,op,cnt)); return i+1
         if mn in ("neg","not") and "[" in ops:                 # memory-dest unary
             d=s.memname(ops); s.emit(out,"%s = %s%s;"%(d,"-" if mn=="neg" else "~",d)); return i+1
