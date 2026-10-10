@@ -1984,7 +1984,7 @@ def _dead_regs(lines):
                     if tgt is None: bad[0] = True; return "end", None
                     op(succ=[tgt]); continue
                 m = re.match(r"return\b(.*);$", ln)
-                if m: op(uses(m.group(1)), succ=[]); continue
+                if m: op(uses(m.group(1)) | ({"dl", "dh"} if m.group(1).strip() else set()), succ=[]); continue   # (dx: a long result)
                 m = re.match(r"goto (\w+);$", ln)
                 if m: op(succ=[("label", m.group(1))]); continue
                 m = re.match(r"(\w+):$", ln)
@@ -2011,7 +2011,8 @@ def _dead_regs(lines):
             if any(x is None or x == -1 for x in s_): return lines
             succ.append(s_)
         allr = {"al", "ah", "bl", "bh", "cl", "ch", "dl", "dh", "si", "di"}
-        livein = [set() for _ in range(n + 1)]; livein[n] = {"al", "ah", "dl", "dh"}   # a result may be read after the end (si/di are restored, bx/cx are scratch)
+        livein = [set() for _ in range(n + 1)]                 # nothing is read after the end: a function that
+                                                             # returns a value says so with `return ax;`
         changed = True
         while changed:
             changed = False
