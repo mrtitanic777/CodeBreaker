@@ -265,6 +265,11 @@ def structure(blocks, entry=0):
     def do_if(b, stops):
         blk = blocks[b]
         join = ipdom(pdom, EXIT, b)
+        if loopstack and join is not None:
+            # Inside a loop, a join that lies OUTSIDE the loop (and is not its follow) is not a
+            # merge point of this if: its arms leave the loop separately (handled as exits).
+            _h, _fol, _lbody = loopstack[-1]
+            if join not in _lbody and join != _fol: join = None
         taken = blk.succ[0]
         fall = blk.succ[1] if len(blk.succ) > 1 else None
         then_s, else_s = fall, taken                        # then = fall-through, else = taken (jcc)
