@@ -88,6 +88,19 @@ def synth(module, va, arity=4):
     """Clean C body for one function. Ladder: interproc (call-flow) -> env-provisioned (fault paths)
     -> static decompile (leaf/compute). Returns (fname, c_text) or (None, reason), where fname is the
     ACTUAL function name defined in the emitted C (so the compiled body exports the right symbol)."""
+    # FAST PATH for LEAF functions (no calls): interproc/envprov reconstruct the call SEQUENCE of
+    # orchestrator functions by running oracle traces (~200ms+ for the two attempts). A leaf makes no
+    # calls, so they have nothing to reconstruct and fall through to the static decompile anyway -- the
+    # static decompile IS the faithful reconstruction for a leaf. Serve it directly from the cached
+    # whole-module decompile (_BLOCK_CACHE), skipping the wasted traces. Only when the static block is
+    # present, cures cleanly, and calls nothing (no sub_/API refs) -- any caller still takes the ladder.
+    blk0 = _static_body(module, va)
+    if blk0:
+        cured0 = _cure_body(_beautify(blk0))
+        if cured0 is not None:
+            fn0 = _defined_name(cured0) or "fn_%x" % va
+            if not _stub_refs(cured0, fn0):              # no called names -> genuine leaf
+                return fn0, cured0
     try:
         r = interproc.reconstruct(module, func=hex(va), arity=arity)
         if not r.get("reconstructed"):
