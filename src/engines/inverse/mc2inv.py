@@ -1925,10 +1925,10 @@ def _dead_regs(lines):
         return out
     def pure(e):
         return "++" not in e and "--" not in e and all(m.group(1) in _DR_PURE for m in re.finditer(r"([A-Za-z_]\w*)\s*\(", e))
-    for _round in range(8):
+    for _round in range(16):
         ops = []; labels = {}; fix = []
         def op(use=(), dfn=(), line=None, succ=None, rem=False):
-            ops.append(dict(use=set(use), dfn=set(dfn), line=line, succ=succ, rem=rem)); return ops[-1]
+            ops.append(dict(use=set(use), dfn=set(dfn), line=line, succ=succ, rem=rem, src=pos[0] - 1)); return ops[-1]
         pos = [0]; bad = [False]
         def block(brk, cont):
             while pos[0] < len(lines):
@@ -2023,7 +2023,40 @@ def _dead_regs(lines):
                 new = (out - o["dfn"]) | o["use"]
                 if new != livein[k]: livein[k] = new; changed = True
         kill = {o["line"] for o in ops if o["rem"] and o["line"] is not None and not (o["dfn"] & o["out"])}
-        if not kill: break
+        # A register (or temporary) set on one line and read exactly once on the next, dead after
+        # it: put the value where it is read (`ax = f(); v4 = ax;` -> `v4 = f();`). Not into a
+        # loop test (re-evaluated), not past another call or a short-circuit that could reorder
+        # or skip the evaluation.
+        calls = lambda t: sum(1 for m in re.finditer(r"([A-Za-z_]\w*)\s*\(", t) if m.group(1) not in _DR_PURE
+                              and m.group(1) not in ("if", "switch", "return", "while"))
+        sub = {}; busy = set(kill)
+        for k in range(n - 1):
+            o, q = ops[k], ops[k + 1]
+            i = o["src"]
+            if succ[k] != [k + 1] or q["src"] != i + 1 or i in busy or i + 1 in busy: continue
+            m = re.match(r"(\s*)(ax|bx|cx|dx|si|di|t\d+) = (.*);$", lines[i])
+            if not m or " = " in m.group(3): continue
+            reg, e = m.group(2), m.group(3); nxt = lines[i + 1]; t = nxt.strip()
+            if not (t.endswith(";") or re.match(r"(if|switch) \(.*\) \{$", t)) or re.match(r"if \(.*\) (break|continue);$", t): continue
+            if t.startswith(("goto ", "break", "continue")): continue
+            pat = re.compile(r"(?<![\w>.&])%s(?![\w(])" % reg)
+            if len(pat.findall(nxt)) != 1: continue
+            if re.search(r"(BYTE|HIBYTE|LONG|LO|HI)\(%s\)" % reg, nxt) or re.match(r"\s*%s\b" % reg, nxt): continue
+            if reg[0] == "t":
+                if "LONG(" in e or "(long" in e or sum(len(re.findall(r"\b%s\b" % reg, x)) for x in lines) != 2: continue
+            else:
+                at = set(_DR_ATOMS[reg])
+                if (at & q["out"]) - q["dfn"]: continue                      # still read later
+                if any(h in _DR_ATOMS and h != reg and set(_DR_ATOMS[h]) & at for h in _DR_TOK.findall(nxt)): continue   # al/ah of it
+            ce, cn = calls(e), calls(nxt)
+            if (ce and cn) or cn > 1 or "++" in e or "--" in e: continue
+            if ("&&" in nxt or "||" in nxt) and (ce or cn): continue
+            if not pure(e) and re.match(r"\s*[^=]*[\[*>][^=]* = ", nxt) and False: continue
+            atom = re.match(r"(\w+|\d+|[A-Za-z_]\w*\([^()]*\))$", e) or (e.startswith("(") and e.endswith(")"))
+            sub[i] = pat.sub(lambda _m: e if atom else "(%s)" % e, nxt); busy.update((i, i + 1))
+        if not kill and not sub: break
+        for i, v in sub.items(): lines[i + 1] = v
+        kill |= set(sub)
         lines = [l for i, l in enumerate(lines) if i not in kill]
         ch = True                                            # empty shells left behind
         while ch:
