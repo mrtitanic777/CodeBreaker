@@ -1247,8 +1247,17 @@ class R:
     def _phi_args(s, a_args, b_args, a_body, b_body, a_term, b_term):
         """Merge the pending-argument stacks of two converging paths: a slot the paths filled
         differently becomes a temp assigned on each path (`if (c) t = x; else t = y; f(t)`)."""
-        if a_term and not b_term: s.args=list(b_args); return
-        if b_term and not a_term: s.args=list(a_args); return
+        rr0=re.compile(r"(?<![\w>.])(ax|bx|cx|dx|si|di|al|ah|bl|bh|cl|ch|dl|dh)(?![\w(])")
+        def one(args, body):                               # only one path reaches the merge: its
+            out=[]                                         # register-reading args are still frozen,
+            for x in args:                                 # because the merge may assign the register
+                if rr0.search(str(x)):
+                    s._tn=getattr(s,"_tn",0)+1; t="t%d"%s._tn
+                    body.append("%s = %s;"%(t,x)); out.append(t)
+                else: out.append(x)
+            s.args=out
+        if a_term and not b_term: one(b_args, b_body); return
+        if b_term and not a_term: one(a_args, a_body); return
         if len(a_args)!=len(b_args): return
         # (an argument whose text reads a REGISTER is frozen too, even when both paths agree on
         #  the text: the merge may assign that register variable right after)
