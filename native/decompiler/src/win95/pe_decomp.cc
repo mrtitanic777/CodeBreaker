@@ -319,10 +319,19 @@ int main(int argc, char** argv) {
     }
     if (si < 0) { std::fprintf(stderr, "FAIL: RVA %X not in a code section\n", fstart); return 1; }
     uint32_t fend = send;                                 // next known start above fstart, else send
-    auto starts = discover();
-    auto it = starts.find(si);
-    if (it != starts.end())
-      for (uint32_t s : it->second) if (s > fstart && s < fend) fend = s;
+    // Optional 4th arg: the caller-supplied function end (the next discovered start above fstart, which
+    // the Python driver already knows from its cached whole-module decompile). When present, SKIP the
+    // full module discovery -- its only use here is to find this one boundary, and it costs ~1.5s per
+    // call (nearly the whole-module analysis). The supplied value is clamped into (fstart, send].
+    if (argc >= 5) {
+      uint32_t given = (uint32_t)strtoul(argv[4], nullptr, 16);
+      if (given > fstart && given <= send) fend = given;
+    } else {
+      auto starts = discover();
+      auto it = starts.find(si);
+      if (it != starts.end())
+        for (uint32_t s : it->second) if (s > fstart && s < fend) fend = s;
+    }
     char nm[32]; std::snprintf(nm, sizeof nm, "sub_%06X", fstart);
     auto nn = names.find(fstart);
     std::string fname = nn != names.end() ? nn->second : nm;

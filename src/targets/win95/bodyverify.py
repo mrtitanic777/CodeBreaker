@@ -66,9 +66,22 @@ def _ondemand_block(module, rva):
     dec = os.path.join(paths.repo_root(), "native", "decompiler", "build", "bin", exe)
     if not os.path.exists(dec):
         return None
+    # Pass the function end so --at skips its ~1.5s whole-module discovery (whose only use is to find
+    # this boundary). The next discovered start above `rva` is a key of the cached --module decompile
+    # (_BLOCK_CACHE) -- identical to what discovery would compute. Best-effort: omit on any doubt so
+    # --at falls back to its own discovery (unchanged behaviour).
+    cmd = [dec, module, "--at", "%x" % rva]
     try:
-        r = subprocess.run([dec, module, "--at", "%x" % rva], capture_output=True, text=True,
-                           timeout=120)
+        from src.targets.win95 import sharedruntime as SR
+        if module not in _BLOCK_CACHE:
+            _BLOCK_CACHE[module] = SR._module_blocks(module)
+        nexts = [k for k in _BLOCK_CACHE[module] if isinstance(k, int) and k > rva]
+        if nexts:
+            cmd.append("%x" % min(nexts))
+    except Exception:
+        pass
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
     except Exception:
         return None
     text = (r.stdout or "").strip()
