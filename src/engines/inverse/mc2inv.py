@@ -1167,11 +1167,12 @@ class R:
     _REGS=("ax","si","di","cx","bx","dx")
     def _snap(s):
         d={r:getattr(s,r) for r in s._REGS}
-        d.update(div=s.div, retlive=s.retlive, axsrc=s.axsrc, bxsrc=s.bxsrc, args=list(s.args), breg=dict(s.breg))
+        d.update(div=s.div, retlive=s.retlive, axsrc=s.axsrc, bxsrc=s.bxsrc, args=list(s.args), breg=dict(s.breg), i=s.i)
         return d
     def _rest(s,d):
         for r in s._REGS: setattr(s,r,d[r])
         s.div=d["div"]; s.retlive=d["retlive"]; s.axsrc=d["axsrc"]; s.bxsrc=d["bxsrc"]; s.args=list(d["args"]); s.breg=dict(d["breg"])
+        s.i=d.get("i",s.i)                                 # "where we are" drives the liveness queries
     @staticmethod
     def _terminal(body):
         """A branch body that already ends in break/continue/return/goto does NOT fall through to
@@ -1420,11 +1421,18 @@ class R:
             if a in s.labels and a not in s._labeled:
                 # A goto lands here with every register in its variable, so the fall-in path must
                 # agree: pin what it still tracks lazily (nothing to pin after a terminal).
+                # Arguments already pushed when control arrives (pushed on each path before the
+                # shared call) travel in per-slot temporaries so every path agrees on them.
+                na = getattr(s, "gotoargs", {}).get(a, 0)
                 if s._terminal(out):
                     for r in s._WR: setattr(s, r, None)
                     s.breg = {}
                 else:
+                    s.i = blocks[node[1]].lo - 1           # liveness as seen from the label
                     s._pin(out, set(s._WR))
+                    for k2, v2 in enumerate(s.args[-na:] if na else []):
+                        out.append("targ%d = %s;" % (k2, v2))
+                if na: s.args = (s.args[:-na] if len(s.args) >= na else []) + ["targ%d" % k2 for k2 in range(na)]
                 out.append("L_%x:" % a); s._labeled.add(a)
         if kind == "block":
             s._emit_block(blocks[node[1]], out)
@@ -1475,6 +1483,7 @@ class R:
                 hs = s._snap()
                 body = []; s._emit_seq(blocks, body_t, body)
                 if not s._terminal(body): s._pin(body, W)
+                while body and body[-1].strip() == "continue;": body.pop()    # falls to the test anyway
                 s._loops.pop(); s._rest(hs)
                 if any(x.strip() for x in lead):
                     # the header block has statements before its test: they run EVERY iteration,
@@ -1487,6 +1496,7 @@ class R:
             else:                                  # endless/complex loop
                 body = []; s._emit_seq(blocks, body_t, body)
                 if not s._terminal(body): s._pin(body, W)
+                while body and body[-1].strip() == "continue;": body.pop()
                 s._loops.pop()
                 for r in W: setattr(s, r, None)
                 for b8 in [x for x in s.breg if BYTEPARENT[x] in W]: s.breg.pop(b8)
@@ -1552,7 +1562,12 @@ class R:
             b, t = node[1], node[2]
             if t is not None:
                 ta = blocks[t].addr                        # t is a BLOCK id
+                s.i = blocks[t].lo - 1                     # liveness as seen from the TARGET
                 s._pin(out, set(s._WR))                    # registers live in their variables at a goto
+                s.gotoargs = getattr(s, "gotoargs", {})
+                if s.args:
+                    s.gotoargs[ta] = max(s.gotoargs.get(ta, 0), len(s.args))
+                    for k2, v2 in enumerate(s.args): out.append("targ%d = %s;" % (k2, v2))
                 s.gototargets.add(ta); out.append("goto L_%x;" % ta)
 
     def emit_tree(s, blocks, tree):
@@ -1697,7 +1712,7 @@ def recover_cfg(code, base=0, cxmap=None):
     stmts = r.emit_tree(blocks, tree)
     if r.gototargets:                                      # pass 2: place each target's label once
         r2=R(ins,fs,base,cxmap,msc3=msc3); r2.emit_start=k
-        r2.labels=set(r.gototargets); r2._labeled=set()
+        r2.labels=set(r.gototargets); r2._labeled=set(); r2.gotoargs=dict(getattr(r,"gotoargs",{}))
         stmts = r2.emit_tree(blocks, tree); r=r2
     loc=sorted(r.locals)
     if r.floatfn or r.longfn:

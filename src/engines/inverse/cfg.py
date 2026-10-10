@@ -228,6 +228,21 @@ def structure(blocks, entry=0):
     for (t, h) in be:
         latch.setdefault(h, t)
 
+    # Duplication budget. A shared tail reached from several paths is copied onto each path only
+    # while it is SMALL; a large shared region is emitted once and reached by `goto` from the
+    # other paths (registers are pinned at every goto/label, so that is sound). Without the cap
+    # nested shared tails multiply: one MASM 5.10 function came out at 39,000 lines.
+    emitted = set()
+    _big = {}
+    def big(b):
+        if b not in _big:
+            seen = {b}; work = [b]
+            while work and len(seen) <= 5:
+                for t in blocks[work.pop()].succ:
+                    if t not in seen: seen.add(t); work.append(t)
+            _big[b] = len(seen) > 5 or sum(blocks[x].hi - blocks[x].lo for x in seen) > 24
+        return _big[b]
+
     active = set()        # blocks currently being expanded on the recursion stack (ancestor guard)
     loopstack = []        # enclosing loops as (header, follow): edges to follow -> break, to header -> continue
 
@@ -276,6 +291,9 @@ def structure(blocks, entry=0):
                 break
             if b in active or b in local:                   # ancestor/irreducible re-entry -> goto
                 out.append(('goto', None, b)); break
+            if b in emitted and big(b):                     # large region already emitted elsewhere
+                out.append(('goto', None, b)); break
+            emitted.add(b)
             local.add(b)
             if b in headers:
                 active.add(b)
