@@ -564,7 +564,7 @@ class R:
                 s.breg[d8]="0"
                 lo={"ah":"al","bh":"bl","ch":"cl","dh":"dl"}.get(d8)
                 if lo and lo in s.breg:                                   # zero-extend: word = low byte
-                    setattr(s, BYTEPARENT[d8], s.breg[lo])
+                    setattr(s, BYTEPARENT[d8], s._b8(s.breg[lo]))
                     if d8=="ah": s.axsrc=None; s.retlive=True
                 else:
                     _w=getattr(s,"_pw",None); _w=_w[1] if (_w and _w[0]==i) else None
@@ -743,10 +743,19 @@ class R:
             k-=1
         return s.ax if s.ax is not None else "ax"
 
+    @staticmethod
+    def _b8(v):
+        """A byte-register value used as a number (compared, zero-extended): byte arithmetic wraps
+        at 8 bits, so anything but a plain byte read / small constant / masked value is masked."""
+        v=str(v)
+        if re.match(r"(BYTE\([^()]*(\([^()]*\))*[^()]*\)|\d{1,2}|1\d\d|2[0-4]\d|25[0-5]|[a-d][lh])$", v)            or v.endswith("& 0xff)") or not re.search(r"[-+*<>]", v):
+            return v
+        return "(%s & 0xff)"%v
+
     def _bval(s, r8, trunc=False):
         """Current value of an 8-bit register: its own tracked byte value, else (low halves) the
         tracked value of the parent word -- e.g. `call f; mov [p],al` stores f()'s low byte."""
-        if r8 in s.breg: return s.breg[r8]
+        if r8 in s.breg: return s._b8(s.breg[r8]) if trunc else s.breg[r8]
         pv=getattr(s,BYTEPARENT[r8],None)
         if pv is None: return r8
         if not r8.endswith("l"): return "((%s >> 8) & 0xff)"%pv      # high half of a tracked word

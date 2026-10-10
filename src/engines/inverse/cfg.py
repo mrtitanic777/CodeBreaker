@@ -15,7 +15,7 @@ Scope notes:
  * Conditions are kept as (mnemonic, operand-text) on the branch block; the value model that turns
    them into C expressions stays in mc2inv -- this module only recovers STRUCTURE.
 """
-import re
+import re, os
 
 CJMP = {"jl","jle","jg","jge","je","jne","ja","jae","jb","jbe","jc","jnc","jz","jnz",
         "jo","jno","js","jns","jp","jnp","jcxz","loop"}
@@ -293,7 +293,7 @@ def structure(blocks, entry=0):
                 break
             if b in active or b in local:                   # ancestor/irreducible re-entry -> goto
                 out.append(('goto', None, b)); break
-            if b in emitted and big(b):                     # large region already emitted elsewhere
+            if b in emitted and big(b) and not os.environ.get("CFG_NOCAP"):   # large region already emitted elsewhere
                 out.append(('goto', None, b)); break
             emitted.add(b)
             local.add(b)
