@@ -540,6 +540,25 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
           if (cs != call_sites_.end()) { x.target = cs->second.first; x.call_name = cs->second.second; }
           else { auto nit = names_.find(x.target); if (nit != names_.end()) x.call_name = nit->second; }
         }
+        // Register-convention tail call: a dispatch thunk that sets an argument register then jumps to
+        // a shared worker (`mov eax,<idx> ; jmp worker`) passes that register AS the worker's argument.
+        // Stage the x86 GPR arg registers that hold a CONSTANT, in Watcom __watcall order (AX,DX,BX,CX),
+        // into r3.. so the tail call emits `worker(<idx>)` instead of dropping the value -- matching the
+        // worker's register param (the decompiler_c register live-in promotion). Gated on a constant
+        // (mov reg,imm), taken contiguously from AX, and only when the jmp LEAVES the function (a tail
+        // call, not an intra-function goto -- the worker is often unnamed so call_name is empty here).
+        // Must run before the Branch is pushed so the args precede it.
+        if (in.ops[0].kind == OpKind::Rel && (x.target < entry || x.target >= end)) {
+          static const int kArgReg[4] = {kGpBase + 0, kGpBase + 2, kGpBase + 3, kGpBase + 1};  // AX,DX,BX,CX
+          for (int p = 0; p < 4; p++) {
+            if (!regConst.count(kArgReg[p])) break;      // contiguous constants from AX
+            auto rv = reg.find(kArgReg[p]);
+            if (rv == reg.end()) break;
+            ILInstr ar; ar.op = ILOp::Assign; ar.address = a;
+            ar.src1 = rv->second; ar.dst = fn.AllocValue(rv->second.type, 3 + p);
+            bb.instrs.push_back(ar);
+          }
+        }
         bb.instrs.push_back(x);
       } else if (m.size() && m[0] == 'j') {   // jcc
         ILCmpKind kind = JccKind(m);
