@@ -24,6 +24,11 @@ BYTEPARENT={"al":"ax","ah":"ax","bl":"bx","bh":"bx","cl":"cx","ch":"cx","dl":"dx
 WORDHALVES={"ax":("al","ah"),"bx":("bl","bh"),"cx":("cl","ch"),"dx":("dl","dh")}
 TRACKED_BYTE={"mov","add","sub","or","and","xor","inc","dec"}   # byte-reg ops tracked as breg values
 
+# Optional driver hook: CALLINFO(call_addr_0based, "near"|"far", target) -> number of bytes the
+# CALLEE pops on return (`ret N`: N>0 = Pascal convention, args pushed left-to-right and N/2
+# words consumed), 0 for a plain `ret` (C convention), or None when unknown.
+CALLINFO=None
+
 class R:
     def __init__(s, ins, fs, base=0, cxmap=None, msc3=False):
         s.msc3=msc3                                     # MS-C 3.0 frame convention (bp at frame top)
@@ -41,8 +46,8 @@ class R:
         a2i={ii.address:i for i,ii in enumerate(ins)}
         for i,ii in enumerate(ins):
             if ii.mnemonic in CJMP or ii.mnemonic=="jmp":
-                m=re.match(r"0x([0-9a-f]+)$", ii.op_str)
-                if m: s.tgt[i]=a2i.get(int(m.group(1),16))
+                m=re.match(r"(0x[0-9a-f]+|\d+)$", ii.op_str)   # targets < 10 print without 0x
+                if m: s.tgt[i]=a2i.get(int(m.group(1),0))
         # Address of the common epilogue: the trailing run of mov sp,bp / leave / pop / ret.
         # A jmp into it is `return <value in ax>` (the "set result, goto exit" idiom), not a
         # no-op -- missing this dropped the returned value and left empty if-bodies.
@@ -55,6 +60,13 @@ class R:
             s.epi=e
         # far function (retf): the return address is 4 bytes, so params start at [bp+6]
         s.pbase=6 if any(x.mnemonic=="retf" for x in ins) else 4
+        # `ret N` = this function is Pascal-convention with N/2 word params: the FIRST declared
+        # param is the one pushed first = the HIGHEST bp offset.
+        s.retn=0
+        for x in ins:
+            if x.mnemonic in ("ret","retf") and re.match(r"(0x[0-9a-f]+|\d+)$", x.op_str or ""):
+                s.retn=int(x.op_str,0); break
+        if s.retn: s.maxidx=s.retn//2-1
     def call_op(s, ci, default):
         """Resolve a CALL instruction's target to a C operator via the CX-helper map."""
         b=s.ins[ci].bytes
@@ -67,7 +79,9 @@ class R:
         # param index from the bp+ offset. 2.03 (bp at frame bottom): off-fs-4; 3.0 (bp at
         # frame top, standard): params at [bp+4],[bp+6],... -> off-4.
         pb=getattr(s,"pbase",4)
-        idx=((off-pb)//2) if s.msc3 else ((off-s.fs-pb)//2); s.maxidx=max(s.maxidx,idx)
+        idx=((off-pb)//2) if s.msc3 else ((off-s.fs-pb)//2)
+        if getattr(s,"retn",0) and 0<=idx<s.retn//2: idx=s.retn//2-1-idx      # Pascal: reversed
+        s.maxidx=max(s.maxidx,idx)
         return chr(ord('a')+idx) if 0<=idx<26 else "p%d"%idx
     def _ptrbase(s,reg):
         """Readable base for a pointer-register deref: the register's tracked pointer value
@@ -124,6 +138,9 @@ class R:
             val=getattr(s,src,None); val=src if val is None else str(val)
             if val in REGS or "(" in val:                 # volatile register / expression
                 s.emit(s.out,"%s = %s;"%(d,val)); setattr(s,d,d)
+                if "(" in val and src in ("ax","bx","cx","dx","si","di"):
+                    setattr(s,src,d)                       # src == the copy now: don't re-evaluate
+                    if src=="ax": s.axsrc=None
             else:                                          # stable name/field/global -> alias
                 setattr(s,d,val)
         else:
@@ -169,9 +186,142 @@ class R:
         if tok=="ax": return s.ax if s.ax is not None else "ax"
         return s.rsrc(tok) if tok in ("bx","cx","dx") else s.rhs(tok)
 
+    _HALF={"ax":"ax|al|ah","bx":"bx|bl|bh","cx":"cx|cl|ch","dx":"dx|dl|dh","si":"si","di":"di"}
+    def _live(s, reg, i):
+        """Is `reg` read after ins[i] before being redefined, on any path?"""
+        rx=re.compile(r"\b(%s)\b"%s._HALF[reg]); seen=set(); work=[i+1]
+        while work:
+            j=work.pop()
+            while j is not None and 0<=j<len(s.ins) and j not in seen:
+                seen.add(j); ii=s.ins[j]; mn=ii.mnemonic; ops=ii.op_str or ""
+                d0,_,src=ops.partition(", ")
+                if mn in ("ret","retf"):
+                    if reg=="ax" and s._retval(): return True
+                    break
+                if mn in ("mov","lea","les","lds","pop") and d0==reg:
+                    if rx.search(src): return True
+                    break                                  # redefined
+                if mn in ("xor","sub") and d0==reg and src==reg: break
+                if rx.search(ops): return True
+                if mn in ("call","lcall") and reg in ("ax","bx","cx","dx"): break   # caller-saved
+                if mn=="jmp": j=s.tgt.get(j); continue
+                if mn in CJMP: work.append(s.tgt.get(j))
+                j+=1
+        return False
+
+    _WR=("ax","bx","cx","dx","si","di")
+    _IMPLW={"mul":("ax","dx"),"imul":("ax","dx"),"div":("ax","dx"),"idiv":("ax","dx"),
+            "cwd":("dx",),"cdq":("dx",),"cbw":("ax",),"cwde":("ax",),"xlatb":("ax",),
+            "lodsb":("ax","si"),"lodsw":("ax","si"),"stosb":("di",),"stosw":("di",),
+            "movsb":("si","di"),"movsw":("si","di"),"scasb":("di",),"scasw":("di",),
+            "cmpsb":("si","di"),"cmpsw":("si","di"),"loop":("cx",),
+            "call":("ax","bx","cx","dx"),"lcall":("ax","bx","cx","dx")}
+    def _wregs(s, mn, ops):
+        """Word registers an instruction (re)defines."""
+        base=mn.split()[-1]
+        w=set(s._IMPLW.get(base,()))
+        if mn.startswith("rep"): w.add("cx")
+        if base in ("cmp","test","push","jmp","ret","retf","nop","mul","imul","div","idiv") \
+           or base in CJMP or base in s._IMPLW:
+            return w
+        p=[x.strip() for x in ops.split(",")] if ops else []
+        if p:
+            d=BYTEPARENT.get(p[0],p[0])
+            if d in s._WR: w.add(d)
+            if base=="xchg" and len(p)>1:
+                d=BYTEPARENT.get(p[1],p[1])
+                if d in s._WR: w.add(d)
+        return w
+
+    def _kill_aliases(s, i):
+        """ins[i] is about to redefine some register(s) W. Any OTHER lazily tracked value whose
+        text reads W (e.g. di = `bx->f6` and now `les bx,..`) would silently change meaning: pin
+        it into its register first if still needed. Pending call arguments are pinned to temps."""
+        ii=s.ins[i]; w=s._wregs(ii.mnemonic, ii.op_str or "")
+        if not w or s.out is None: return
+        for W in w:
+            rx=re.compile(r"(?<![\w>.])(%s)(?![\w(])"%s._HALF[W])
+            for O in s._WR:
+                if O==W: continue
+                v=getattr(s,O,None)
+                if v is None or str(v)==O: continue
+                if rx.search(str(v)):
+                    if s._live(O,i-1) or s._hascall(v): s._materialize(s.out,O)
+                    else: setattr(s,O,None)
+            for b8,v in list(s.breg.items()):
+                if BYTEPARENT[b8]!=W and rx.search(str(v)):
+                    if s._live(BYTEPARENT[b8],i-1):
+                        s.out.append("%s = %s;"%(b8,v)); s.ranks.append(i); s.regconst.append(False)
+                    s.breg.pop(b8,None)
+            for k,a in enumerate(s.args):
+                if ii.mnemonic in ("call","lcall"): break  # this call consumes the pending args now
+                if rx.search(str(a)):
+                    s._tn=getattr(s,"_tn",0)+1; t="t%d"%s._tn
+                    s.out.append("%s = %s;"%(t,a)); s.ranks.append(i); s.regconst.append(False)
+                    s.args[k]=t
+
+    def _pin(s, out, regs):
+        """Pin the lazily tracked values of `regs` into the register variables (if still read
+        later), leaving them bare -- used wherever control flow re-converges on a loop."""
+        for r in s._WR:
+            if r not in regs: continue
+            for b8 in [b for b in s.breg if BYTEPARENT[b]==r]:
+                v=s.breg.pop(b8)
+                if str(v)!=b8 and s._live(r,s.i):
+                    out.append("%s = %s;"%(b8,v)); s.ranks.append(s.i); s.regconst.append(False)
+            v=getattr(s,r,None)
+            if v is None or str(v)==r: continue
+            if s._live(r,s.i) or s._hascall(v): s._materialize(out,r)
+            else: setattr(s,r,None)
+
+    def _tree_bids(s, nodes, acc):
+        for n in nodes:
+            k=n[0]
+            if k=="block": acc.add(n[1])
+            elif k=="if": acc.add(n[1]); s._tree_bids(n[2],acc)
+            elif k=="ifelse": acc.add(n[1]); s._tree_bids(n[2],acc); s._tree_bids(n[3],acc)
+            elif k in ("while","loop"): acc.add(n[1]); s._tree_bids(n[2],acc)
+            elif k=="dowhile": acc.add(n[1]); acc.add(n[3]); s._tree_bids(n[2],acc)
+        return acc
+
+    def _has_break(s, nodes):
+        for n in nodes:
+            k=n[0]
+            if k=="break": return True
+            if k=="if" and s._has_break(n[2]): return True
+            if k=="ifelse" and (s._has_break(n[2]) or s._has_break(n[3])): return True
+        return False
+
+    def _loop_written(s, blocks, bids):
+        w=set()
+        for b in bids:
+            for ii in blocks[b].insns: w |= s._wregs(ii.mnemonic, ii.op_str or "")
+        return w
+
+    @staticmethod
+    def _hascall(v): return re.search(r"[A-Za-z_]\w*\(", str(v)) is not None
+
+    def _materialize(s, out, reg, rank=None):
+        """Pin a lazily-tracked register value into the register variable (`reg = <value>;`)."""
+        v=getattr(s,reg,None)
+        if v is None or str(v)==reg: return
+        out.append("%s = %s;"%(reg,v)); s.ranks.append(s.i if rank is None else rank); s.regconst.append(False)
+        setattr(s,reg,"ax" if reg=="ax" else None)
+
     def emit(s, out, text, rank=None, rc=False):
         """Append a statement, its source rank (for un-scheduling), and whether it is a
-        register-routed constant store (a signal for dead-store recovery)."""
+        register-routed constant store (a signal for dead-store recovery).
+        A statement that WRITES a variable first pins every still-live register whose lazily
+        tracked value reads that variable (`mov bx,[p]; inc [p]; mov [bx],al` is `bx = p; p++;
+        *bx = ..`, not `p++; *p = ..`)."""
+        m=re.match(r"(.+?)(?: = (.*);|\+\+;|--;)$", text)
+        if m and m.group(1) not in ("ax","bx","cx","dx","si","di") and m.group(1) not in BYTEREG:
+            lhs=m.group(1); rhs=m.group(2)
+            pat=re.compile(r"(?<![\w>.])%s(?![\w(])"%re.escape(lhs))
+            for r in ("ax","bx","cx","dx","si","di"):
+                v=getattr(s,r,None)
+                if v is None or str(v)==r or (rhs is not None and str(v)==rhs): continue
+                if pat.search(str(v)) and s._live(r, s.i): s._materialize(out, r, rank)
         out.append(text); s.ranks.append(s.i if rank is None else rank); s.regconst.append(rc)
 
     def _binval(s, mn, d0):
@@ -206,6 +356,9 @@ class R:
     def expr_step(s,i):
         """Update ax/si/cx from a value-producing instruction (no statement)."""
         s.i=i; old=s.ax; ii=s.ins[i]; mn=ii.mnemonic; ops=ii.op_str
+        if mn in ("or","and","test") and ops.count(",")==1 and "[" not in ops \
+           and ops.split(",")[0].strip()==ops.split(",")[1].strip(): return   # flags-only self test
+        s._kill_aliases(i)
         if s._byte_on_word(mn, ops): return
         s._binval(mn, ops.split(",")[0].strip())
         if mn=="mov" and ops.split(", ")[0] in BYTEREG:        # byte load/copy: r8 = mem | imm | r8'
@@ -217,7 +370,13 @@ class R:
             return
         if mn in ("add","sub","or","and","xor") and ops.split(", ")[0] in BYTEREG:   # byte-reg ALU
             d8=ops.split(", ")[0]; src=ops.split(", ",1)[1]
-            if mn in ("sub","xor") and src==d8: s.breg[d8]="0"; return   # sub/xor r8,r8 -> clear to 0
+            if mn in ("sub","xor") and src==d8:                           # sub/xor r8,r8 -> clear to 0
+                s.breg[d8]="0"
+                lo={"ah":"al","bh":"bl","ch":"cl","dh":"dl"}.get(d8)
+                if lo and lo in s.breg:                                   # zero-extend: word = low byte
+                    setattr(s, BYTEPARENT[d8], s.breg[lo])
+                    if d8=="ah": s.axsrc=None; s.retlive=True
+                return
             cur=s.breg.get(d8,d8); opc={"add":"+","sub":"-","or":"|","and":"&","xor":"^"}[mn]
             if re.match(r"(0x[0-9a-f]+|\d+)$",src): sv=str(s.num(src))
             elif src in BYTEREG: sv=s.breg.get(src,src)
@@ -267,7 +426,9 @@ class R:
             cxv = s.cx if s.cx is not None else "cx"
             R=("ax","bx","cx","dx","si","di"); d0=ops.split(",")[0].strip()
             def rv(r): v=getattr(s,r,None); return v if v is not None else r
-            def shcnt(): return cxv if ops.endswith("cl") else s._val(ops.split(", ")[1])
+            def shcnt():
+                if ops.endswith("cl"): return s.breg["cl"] if "cl" in s.breg else cxv
+                return s._val(ops.split(", ")[1])
             if mn in ALU and ops.startswith("ax, "): s.ax="(%s %s %s)"%(axv,ALU[mn],s._val(ops[4:]))
             elif mn in ("imul","mul"): s.ax="(%s * %s)"%(axv,s._val(ops))
             elif mn in ("idiv","div"): rn=s._val(ops); s.div=(axv,rn); s.ax="(%s / %s)"%(axv,rn); s.dx="(%s %% %s)"%(axv,rn)
@@ -284,6 +445,7 @@ class R:
         def resolve(t):
             if t=="ax": return s.ax if s.ax is not None else "ax"   # untracked -> the register
             if t=="bx": return s.bx if s.bx is not None else "bx"
+            if t in BYTEREG: return s._bval(t)
             v=s.memname(t)
             return v if v is not None else (str(s.num(t)) if re.match(r"(0x[0-9a-f]+|\d+)$",t) else t)
         while j<len(s.ins) and s.ins[j].mnemonic not in CJMP:
@@ -298,9 +460,43 @@ class R:
         if j>=len(s.ins):                                 # no conditional jump before the end
             return (s.ax if s.ax is not None else "0"), j
         jcc=s.ins[j].mnemonic
-        cond="(%s %s %s)"%(s._cmp[0], INV.get(jcc,"?"), s._cmp[1]) if s._cmp \
-             else (s.ax if s.ax is not None else "ax")   # bare value test -> the register
+        if s._cmp:
+            cond="(%s %s %s)"%(s._cmp[0], INV.get(jcc,"?"), s._cmp[1])
+        else:                                             # flags from the last ALU result: test it
+            val=s._flagval(j)                             # against 0 in the jcc's own sense (was a
+            op=INV.get(jcc)                               # bare `ax` regardless of je/jne or of
+            cond="(%s %s 0)"%(val,op) if op else str(val) # which register set the flags)
         return cond, j
+
+    _FLAGSET=("add","sub","and","or","xor","inc","dec","neg","shl","sal","shr","sar","adc","sbb")
+    def _flagval(s, j):
+        """Value whose flags the conditional jump at ins[j] tests: the destination of the nearest
+        preceding flag-setting instruction (current tracked value). Falls back to ax."""
+        k=j-1
+        while k>=0:
+            mn=s.ins[k].mnemonic
+            if mn in ("call","lcall","jmp","ret","retf") or mn in CJMP: break
+            if mn in s._FLAGSET:
+                d0=s.ins[k].op_str.split(",")[0].strip()
+                if d0=="ax": break
+                if d0 in ("bx","cx","dx","si","di"):
+                    v=getattr(s,d0,None); return v if v is not None else d0
+                if d0 in BYTEREG:
+                    if d0 in s.breg: return s.breg[d0]
+                    pv=getattr(s,BYTEPARENT[d0],None)
+                    return pv if (pv is not None and d0.endswith("l")) else d0
+                if "[" in d0:
+                    return s.memname(d0) or "ax"
+                break
+            k-=1
+        return s.ax if s.ax is not None else "ax"
+
+    def _bval(s, r8):
+        """Current value of an 8-bit register: its own tracked byte value, else (low halves) the
+        tracked value of the parent word -- e.g. `call f; mov [p],al` stores f()'s low byte."""
+        if r8 in s.breg: return s.breg[r8]
+        pv=getattr(s,BYTEPARENT[r8],None)
+        return pv if (pv is not None and r8.endswith("l")) else r8
 
     def lparam(s,op):
         m=re.search(r"\[bp \+ (0x[0-9a-f]+|\d+)\]",op); off=s.num(m.group(1))
@@ -363,6 +559,112 @@ class R:
                     s.emit(out,"*(long *)&g_%x %s= %s;"%(lo,op,s.num(ma.group(2)))); return 2
         return 0
 
+    def _take_args(s, i, kind, target):
+        """Arguments of the call at ins[i], in C source order. Pascal callees (CALLINFO says they
+        pop N bytes) consume exactly N/2 pushed words, in push order; C callees consume what the
+        caller's `add sp,N` cleans up (reversed). Unknown -> every pending push (legacy)."""
+        n=None; pascal=False
+        if CALLINFO is not None:
+            try: rn=CALLINFO(s.ins[i].address, kind, target)
+            except Exception: rn=None
+            if rn: pascal=True; n=rn//2
+        if n is None and i+1<len(s.ins):
+            nx=s.ins[i+1]
+            if nx.mnemonic=="add" and re.match(r"sp, (0x[0-9a-f]+|\d+)$", nx.op_str):
+                n=s.num(nx.op_str[4:])//2
+        if n is None or n>len(s.args): take=s.args; s.args=[]
+        else: take=s.args[len(s.args)-n:]; s.args=s.args[:len(s.args)-n]
+        return [str(a) for a in (take if pascal else reversed(take))]
+
+    _AXR=re.compile(r"\b(ax|al|ah)\b")
+    def _axrw(s, mn, ops):
+        """How an instruction treats the value in ax: 'def' (overwrites it), 'use' (its value is
+        emitted/consumed), 'xform' (updates ax in place -- stays tracked), 'ret', or None."""
+        if mn in ("call","lcall","lodsb","lodsw"): return "def"
+        if mn in ("ret","retf"): return "ret"
+        p=[x.strip() for x in ops.split(",")] if ops else []
+        d0=p[0] if p else ""; src=p[1] if len(p)>1 else ""
+        if mn in ("mov","lea","les","lds","pop"):
+            if d0 in ("ax","al"): return "use" if s._AXR.search(src) else "def"
+            if d0=="ah": return "xform"
+            return "use" if s._AXR.search(ops) else None
+        if mn in ("xor","sub") and ops.replace(" ","")=="ax,ax": return "def"
+        if mn in ("or","and","test") and ops.replace(" ","") in ("ax,ax","al,al"): return "use"
+        if mn in ("cbw","cwde","cwd","cdq"): return "xform"
+        if mn in ("mul","imul","div","idiv"): return "xform"
+        if mn in ("cmp","test","push","stosb","stosw","scasb","scasw","out","xchg"):
+            return "use" if (s._AXR.search(ops) or mn in ("stosb","stosw","scasb","scasw")) else None
+        if d0 in ("ax","al","ah"): return "xform"
+        return "use" if s._AXR.search(ops) else None
+
+    def _retval(s):
+        """Does this function return a value? A value-returning C function leaves a result in ax
+        on EVERY path; if some path from the entry reaches a ret without ax ever being written,
+        the function is void and its final ret does not consume ax."""
+        if getattr(s, "_rv", None) is None:
+            seen=set(); work=[(getattr(s,"emit_start",0), False)]; rv=True
+            while work and rv:
+                j,d=work.pop()
+                while j is not None and 0<=j<len(s.ins) and (j,d) not in seen:
+                    seen.add((j,d)); ii=s.ins[j]; mn=ii.mnemonic
+                    if mn in ("ret","retf"):
+                        if not d: rv=False
+                        break
+                    if s._axrw(mn, ii.op_str or "")=="def": d=True
+                    if mn=="jmp": j=s.tgt.get(j); continue
+                    if mn in CJMP: work.append((s.tgt.get(j), d))
+                    j+=1
+            s._rv=rv
+        return s._rv
+
+    def _ax_fate(s, i):
+        """Follow the value ax holds after ins[i] along every path until it is redefined.
+        Returns (uses, reaches_ret, store_first): the instruction indices that consume it, whether
+        it is still live at a ret, and whether the very next consumer (straight-line) is a plain
+        store `mov [mem], ax` (after which the value is aliased to that variable)."""
+        seen=set(); work=[i+1]; uses=[]; ret=False; first=None; linear=True; s._retlin=False
+        while work:
+            j=work.pop()
+            while j is not None and 0<=j<len(s.ins) and j not in seen:
+                seen.add(j); ii=s.ins[j]; mn=ii.mnemonic; k=s._axrw(mn, ii.op_str)
+                if k=="def": break
+                if k=="ret":
+                    if s._retval():
+                        ret=True
+                        if linear: s._retlin=True
+                    break
+                if k=="use":
+                    uses.append(j)
+                    if first is None and linear: first=j
+                if mn=="jmp": j=s.tgt.get(j); linear=False; continue
+                if mn in CJMP:
+                    work.append(s.tgt.get(j)); linear=False
+                j+=1
+        sf=False
+        if first is not None:
+            f=s.ins[first]; d=f.op_str.split(", ")[0]
+            sf=(f.mnemonic=="mov" and "[" in d and f.op_str.endswith(", ax"))
+        return uses, ret, sf
+
+    def _call_result(s, i, out, expr):
+        """A call's value lives in ax. Dead (never read before being overwritten) -> a statement;
+        read once (or first stored to a variable) -> embedded at its use; read several times ->
+        materialized `ax = f();` so the call is not textually duplicated."""
+        for r in ("si","di"):                              # callee-saved copies of memory the
+            v=getattr(s,r,None)                            # callee may change: pin before the call
+            if v is not None and not re.match(r"^&?[A-Za-z_]\w*$",str(v)) and s._live(r,i):
+                s._materialize(out, r)
+        uses, ret, sf = s._ax_fate(i)
+        if s.callstmt or (not uses and not ret):
+            s.emit(out,expr+";"); s.ax=None; s.retlive=False
+        elif not uses and not s._retlin:                   # only reaches the ret, across a branch/
+            s.emit(out,"ax = %s;"%expr); s.ax="ax"; s.retlive=True   # merge: pin it (never defer a
+        elif sf or len(uses)<=1:                           # call over control flow)
+            s.ax=expr; s.retlive=True
+        else:
+            s.emit(out,"ax = %s;"%expr); s.ax="ax"; s.retlive=True
+        s.axsrc=None
+
     def step(s,i,out):
         """Straight-line: process ins[i], maybe append a statement. Return next i."""
         s.i=i; s.out=out
@@ -372,11 +674,14 @@ class R:
         n=s.long_stmt(i,out)
         if n: return i+n
         ii=s.ins[i]; mn=ii.mnemonic; ops=ii.op_str; d0=ops.split(",")[0].strip()
+        if mn in ("or","and","test") and ops.count(",")==1 and d0==ops.split(",")[1].strip() \
+           and "[" not in ops: return i+1                 # `or r,r` = flags only: value/tracking unchanged
+        s._kill_aliases(i)
         if s._byte_on_word(mn, ops): return i+1
         s._binval(mn, d0)
         if mn=="mov" and "[" in d0 and ops.rpartition(", ")[2] in BYTEREG:   # store: mem = byte-reg
             src=ops.rpartition(", ")[2]
-            s.emit(out,"%s = %s;"%(s.memname(d0.replace("byte ptr ","")), s.breg.get(src, src)))
+            s.emit(out,"%s = %s;"%(s.memname(d0.replace("byte ptr ","")), s._bval(src)))
             return i+1
         if mn=="cmp" and ops.startswith("ax, ") and i+2<len(s.ins) and s.ins[i+1].mnemonic in JCC and s.ins[i+2].mnemonic=="xor":
             s.ax="(%s %s %s)"%(s.ax, JCC[s.ins[i+1].mnemonic], s.memname(ops[4:])); s.retlive=True; s.axsrc=None
@@ -385,28 +690,28 @@ class R:
         if mn=="push":
             if ops=="cs" and i+1<len(s.ins) and s.ins[i+1].mnemonic=="call": return i+1
             if ops=="ax": s.args.append(s.ax if s.ax is not None else "ax")
+            elif ops in ("bx","cx","dx","si","di"):
+                v=getattr(s,ops,None); s.args.append(v if v is not None else ops)
             else: s.args.append(s.memname(ops) or ops)
             return i+1
         if mn=="call":
             m=re.match(r"(0x[0-9a-f]+|\d+)$", ops)
-            args=", ".join(str(a) for a in reversed(s.args)); s.args=[]
+            args=", ".join(s._take_args(i, "near", s.num(m.group(1)) if m else None))
             if m:
                 expr="sub_%x(%s)"%(s.num(m.group(1)), args)
             else:                                              # indirect call: through a ptr/reg
                 fp=s.memname(ops) or ops
                 expr="(*%s)(%s)"%(fp, args)
-            if s.fs==0 or s.callstmt: s.emit(out,expr+";"); s.ax=None; s.retlive=False  # discarded
-            else: s.ax=expr; s.retlive=True                    # result used
+            s._call_result(i, out, expr)
             return i+1
         if mn=="lcall":                                        # far call `lcall seg, off`: the target's
-            args=", ".join(str(a) for a in reversed(s.args)); s.args=[]   # load-module offset is seg*16+off
-            mm=re.match(r"(0x[0-9a-f]+|\d+),\s*(0x[0-9a-f]+|\d+)$", ops)   # (verified: lands on fn starts)
+            mm=re.match(r"(0x[0-9a-f]+|\d+),\s*(0x[0-9a-f]+|\d+)$", ops)   # load-module offset is seg*16+off
+            args=", ".join(s._take_args(i, "far", (s.num(mm.group(1)), s.num(mm.group(2))) if mm else None))
             if mm:
                 expr="sub_%x(%s)"%(s.num(mm.group(1))*16 + s.num(mm.group(2)), args)
             else:                                              # indirect far call through a ptr/reg
                 fp=s.memname(ops) or ops; expr="(*%s)(%s)"%(fp, args)
-            if s.fs==0 or s.callstmt: s.emit(out,expr+";"); s.ax=None; s.retlive=False
-            else: s.ax=expr; s.retlive=True
+            s._call_result(i, out, expr)
             return i+1
         if mn=="mov" and ops=="sp, bp": return i+1             # post-call arg cleanup
         if mn=="mov" and "[" in ops.split(", ")[0]:            # store: mem = reg | immediate
@@ -684,22 +989,36 @@ class R:
         s._emit_range(blk.lo, end, out)
         if blk.term == "ret" and s.ax is not None and s.retlive:
             out.append("return %s;" % s.ax)
+        elif blk.term == "ret" and s._retval():            # value-returning fn, result merged into
+            out.append("return ax;")                       # the register variable on the way here
         elif blk.term == "tailcall":
             last = s.ins[blk.hi - 1]
-            m = re.match(r"0x([0-9a-f]+)$", last.op_str)
+            m = re.match(r"(0x[0-9a-f]+|\d+)$", last.op_str)
             if m:
-                out.append("return sub_%x(%s);" % (int(m.group(1), 16) & 0xFFFF,
+                out.append("return sub_%x(%s);" % (int(m.group(1), 0) & 0xFFFF,
                             ", ".join(str(a) for a in reversed(s.args)))); s.args = []
 
-    def _emit_cond(s, blk, out):
+    def _emit_cond(s, blk, out, flush=None):
         """Emit a cond block's leading statements and return its branch condition (fall-through
         sense, matching cond_at/INV)."""
         jcc = blk.hi - 1
         cs = s._cmp_start(jcc, blk.lo)
         s._emit_range(blk.lo, cs, out)
+        s.out = out                                # statements cond_at pins/hoists belong HERE
+        if flush is not None: flush(out)
         s._cmp = None                              # avoid a stale compare leaking into a bare-value test
         cond, _ = s.cond_at(cs)
         return cond
+
+    def _flush_calls(s, snap, pre, body):
+        """A structured branch ended with a CALL still deferred in a tracked register (not yet
+        stored/passed/tested). Emit it in the branch (`reg = f();`) -- otherwise the branch can
+        look empty and be collapsed, silently dropping the call."""
+        if s._terminal(body): return
+        for r in s._REGS:
+            v=snap.get(r)
+            if v is not None and v!=pre.get(r) and re.search(r"[A-Za-z_]\w*\(", str(v)):
+                body.append("%s = %s;"%(r,v)); snap[r]="ax" if r=="ax" else None
 
     def _plain_if(s, cond, body, pre, then_s, out):
         """Emit a plain if(cond){body}: materialize the phi against the implicit (not-taken) else --
@@ -709,7 +1028,10 @@ class R:
         for r in s._REGS:
             if then_s[r] == pre[r]:
                 setattr(s, r, then_s[r]); continue
-            if pre[r] is not None and str(pre[r]) != r: out.append("%s = %s;" % (r, pre[r]))
+            if pre[r] is not None and str(pre[r]) != r:
+                out.append("%s = %s;" % (r, pre[r]))
+                if re.search(r"[A-Za-z_]\w*\(", str(pre[r])) and str(pre[r]) in cond:
+                    cond = cond.replace(str(pre[r]), r)        # don't re-evaluate the call in the test
             if then_s[r] is not None and str(then_s[r]) != r and not bterm: body.append("%s = %s;" % (r, then_s[r]))
             setattr(s, r, None)
         pbr, tbr = pre["breg"], then_s["breg"]                 # 8-bit sub-registers vs the implicit else
@@ -738,6 +1060,7 @@ class R:
             if neg: cond = s._negate(cond)
             pre = s._snap()
             body = []; s._emit_seq(blocks, then_t, body); then_s = s._snap()
+            s._flush_calls(then_s, pre, body)
             s._rest(pre)
             s._plain_if(cond, body, pre, then_s, out)
         elif kind == "ifelse":
@@ -745,8 +1068,10 @@ class R:
             cond = s._emit_cond(blocks[b], out)
             pre = s._snap()
             tb = []; s._emit_seq(blocks, then_t, tb); ts = s._snap()
+            s._flush_calls(ts, pre, tb)
             s._rest(pre)
             eb = []; s._emit_seq(blocks, else_t, eb); es = s._snap()
+            s._flush_calls(es, pre, eb)
             # A genuinely-empty tree branch -> collapse to a plain if (the CFG proves the region is
             # empty, so this is faithful, not a dropped-statement mask as it would be in walk()).
             if not any(x.strip() for x in tb) and any(x.strip() for x in eb):
@@ -759,21 +1084,54 @@ class R:
                 out.append("} else {"); out += ["    " + x for x in eb]; out.append("}")
         elif kind in ("while", "loop"):
             b, body_t = node[1], node[2]
+            # Loop-carried registers: value tracking is lazy (a register holds an expression until
+            # it is consumed), which is only valid along straight-line/forked flow. Anything a
+            # loop writes must live in the register variable at the loop head, at every back-edge
+            # (end of body / continue) and at every break -- pinned here.
+            W = s._loop_written(blocks, s._tree_bids(body_t, {b}))
+            s._pin(out, W)
+            s._loops = getattr(s, "_loops", []); s._loops.append(W)
             if kind == "while":
-                cond = s._emit_cond(blocks[b], out)
+                lead = []
+                cond = s._emit_cond(blocks[b], lead)
+                if len(node) > 4 and node[4]: cond = s._negate(cond)
+                if s._has_break(body_t): s._pin(lead, W)       # exits must agree on the state
+                hs = s._snap()
                 body = []; s._emit_seq(blocks, body_t, body)
-                out.append("while (%s) {" % cond); out += ["    " + x for x in body]; out.append("}")
+                if not s._terminal(body): s._pin(body, W)
+                s._loops.pop(); s._rest(hs)
+                if any(x.strip() for x in lead):
+                    # the header block has statements before its test: they run EVERY iteration,
+                    # so they belong inside the loop (hoisting them ran them once -> wrong).
+                    out.append("for (;;) {"); out += ["    " + x for x in lead]
+                    out.append("    if (%s) break;" % s._negate(cond))
+                    out += ["    " + x for x in body]; out.append("}")
+                else:
+                    out.append("while (%s) {" % cond); out += ["    " + x for x in body]; out.append("}")
             else:                                  # endless/complex loop
                 body = []; s._emit_seq(blocks, body_t, body)
+                if not s._terminal(body): s._pin(body, W)
+                s._loops.pop()
+                for r in W: setattr(s, r, None)
+                for b8 in [x for x in s.breg if BYTEPARENT[x] in W]: s.breg.pop(b8)
                 out.append("for (;;) {"); out += ["    " + x for x in body]; out.append("}")
         elif kind == "dowhile":
             b, body_t, latch = node[1], node[2], node[3]
+            W = s._loop_written(blocks, s._tree_bids(body_t, {b, latch}))
+            s._pin(out, W)
+            s._loops = getattr(s, "_loops", []); s._loops.append(W)
             body = []; s._emit_seq(blocks, body_t[:-1], body)      # body minus the latch block node
-            cond = s._emit_cond(blocks[latch], body)
+            cond = s._emit_cond(blocks[latch], body, flush=lambda o: s._pin(o, W))
+            if len(node) > 4 and node[4]: cond = s._negate(cond)
+            s._loops.pop()
+            for r in W: setattr(s, r, None)
+            for b8 in [x for x in s.breg if BYTEPARENT[x] in W]: s.breg.pop(b8)
             out.append("do {"); out += ["    " + x for x in body]; out.append("} while (%s);" % cond)
         elif kind == "break":
+            if getattr(s, "_loops", None): s._pin(out, s._loops[-1])
             out.append("break;")
         elif kind == "continue":
+            if getattr(s, "_loops", None): s._pin(out, s._loops[-1])
             out.append("continue;")
         elif kind == "goto":
             b, t = node[1], node[2]
@@ -782,9 +1140,9 @@ class R:
                 s.gototargets.add(ta); out.append("goto L_%x;" % ta)
 
     def emit_tree(s, blocks, tree):
-        s.out = []
-        s._emit_seq(blocks, tree, s.out)
-        return s.out
+        top = []; s.out = top                      # s.out is re-pointed at branch lists while
+        s._emit_seq(blocks, tree, top)             # emitting -- return the TOP-LEVEL list
+        return top
 
 CX_OP = {"CXA":"+","CXS":"-","CXM":"*","CXD":"/"}   # helper family -> binary operator
 
@@ -877,6 +1235,8 @@ def recover(code, base=0, cxmap=None):
 
 def _prologue(ins):
     """Shared prologue detection: returns (fs, k, msc3) for the start of the real body."""
+    if not (ins[0].mnemonic=="push" and ins[0].op_str=="bp"):
+        return 0, 0, False                                # frameless: the body starts at once
     fs=0; k=1
     if ins[k].mnemonic=="sub" and ins[k].op_str.startswith("sp"):
         fs=int(ins[k].op_str.split(",")[1],16); k+=1
