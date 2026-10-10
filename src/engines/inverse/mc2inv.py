@@ -374,6 +374,18 @@ class R:
             if s._live(r,s.i) or s._hascall(v): s._materialize(out,r)
             else: setattr(s,r,None)
 
+    def _mem_lazy(s):
+        """Registers whose lazily tracked value READS MEMORY (anything but a plain constant). A
+        loop may change that memory, so such a value must be captured before the loop is entered
+        (`di = p; while (..) p++;` -- not `di = p` re-evaluated inside the loop)."""
+        out=set()
+        for r in s._WR:
+            v=getattr(s,r,None)
+            if v is not None and str(v)!=r and not re.match(r"-?\d+$",str(v)): out.add(r)
+        for b8 in s.breg:
+            if not re.match(r"-?\d+$",str(s.breg[b8])): out.add(BYTEPARENT[b8])
+        return out
+
     def _tree_bids(s, nodes, acc):
         for n in nodes:
             k=n[0]
@@ -1496,7 +1508,7 @@ class R:
             # loop writes must live in the register variable at the loop head, at every back-edge
             # (end of body / continue) and at every break -- pinned here.
             W = s._loop_written(blocks, s._tree_bids(body_t, {b}))
-            s._pin(out, W)
+            s._pin(out, W | s._mem_lazy())
             s._loops = getattr(s, "_loops", []); s._loops.append(W)
             if kind == "while":
                 lead = []
@@ -1527,7 +1539,7 @@ class R:
         elif kind == "dowhile":
             b, body_t, latch = node[1], node[2], node[3]
             W = s._loop_written(blocks, s._tree_bids(body_t, {b, latch}))
-            s._pin(out, W)
+            s._pin(out, W | s._mem_lazy())
             s._loops = getattr(s, "_loops", []); s._loops.append(W)
             body = []; s._emit_seq(blocks, body_t[:-1], body)      # body minus the latch block node
             cond = s._emit_cond(blocks[latch], body, flush=lambda o: s._pin(o, W))
