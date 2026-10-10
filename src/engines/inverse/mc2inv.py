@@ -31,6 +31,7 @@ CALLINFO=None
 # Verification aid: when True, byte-wide memory operands are emitted as BYTE(x) so a checker can
 # tell 8-bit from 16-bit accesses. Off for normal (readable) output.
 MARK=False
+DEADREGS=os.environ.get("MC2INV_DEADREGS","0")=="1"     # drop register assignments nothing reads
 UNSIGNED_CAST=os.environ.get("MC2INV_UNSIGNED","0")=="1"   # readable listings: mark unsigned compares
 # Optional driver fact: does the function being lifted return a value? (True/False from a
 # whole-program "is the result ever read by a caller" analysis; None -> local heuristic.)
@@ -1907,6 +1908,138 @@ def _fold_longs(lines):
         i += n
     return out
 
+_DR_ATOMS = {"ax": ("al", "ah"), "bx": ("bl", "bh"), "cx": ("cl", "ch"), "dx": ("dl", "dh"), "si": ("si",), "di": ("di",),
+             "al": ("al",), "ah": ("ah",), "bl": ("bl",), "bh": ("bh",), "cl": ("cl",), "ch": ("ch",), "dl": ("dl",), "dh": ("dh",)}
+_DR_TOK = re.compile(r"(?<![\w>.])(ax|bx|cx|dx|si|di|al|ah|bl|bh|cl|ch|dl|dh)(?![\w(])")
+_DR_PURE = {"BYTE", "HIBYTE", "SX", "S8", "S16", "LONG", "LO", "HI", "LSHR", "LSAR", "unsigned", "int", "char", "long"}
+
+def _dead_regs(lines):
+    """Remove assignments to register variables that no path reads (`ax = x;` left behind by
+    conservative pinning at merges and gotos). Liveness over the structured statements, gotos
+    and switch arms included; only side-effect-free `reg = expr;` lines are removed, and a
+    register is assumed read after the function's end. Then drop the empty `else {}` / `if {}`
+    shells this leaves."""
+    def uses(t):
+        out = set()
+        for m in _DR_TOK.finditer(t): out.update(_DR_ATOMS[m.group(1)])
+        return out
+    def pure(e):
+        return "++" not in e and "--" not in e and all(m.group(1) in _DR_PURE for m in re.finditer(r"([A-Za-z_]\w*)\s*\(", e))
+    for _round in range(8):
+        ops = []; labels = {}; fix = []
+        def op(use=(), dfn=(), line=None, succ=None, rem=False):
+            ops.append(dict(use=set(use), dfn=set(dfn), line=line, succ=succ, rem=rem)); return ops[-1]
+        pos = [0]; bad = [False]
+        def block(brk, cont):
+            while pos[0] < len(lines):
+                i = pos[0]; ln = lines[i].strip(); pos[0] += 1
+                if not ln or ln.startswith("/*"): continue
+                if ln == "}": return "end", None
+                if ln == "} else {": return "else", None
+                m = re.match(r"\} else if \((.*)\) \{$", ln)
+                if m: return "elif", m.group(1)
+                m = re.match(r"\} while \((.*)\);$", ln)
+                if m: return "dowhile", m.group(1)
+                m = re.match(r"if \((.*)\) (break|continue);$", ln)
+                if m:
+                    o = op(uses(m.group(1))); tgt = brk if m.group(2) == "break" else cont
+                    if tgt is None: bad[0] = True; return "end", None
+                    o["succ"] = ["next", tgt]; continue
+                m = re.match(r"if \((.*)\) \{$", ln)
+                if m:
+                    def chain(c):
+                        jz = op(uses(c)); jz["succ"] = ["next", None]
+                        end, arg = block(brk, cont)
+                        if end in ("else", "elif"):
+                            jm = op(); jm["succ"] = [None]; jz["succ"][1] = len(ops)
+                            if end == "else": block(brk, cont)
+                            else: chain(arg)
+                            jm["succ"][0] = len(ops)
+                        else: jz["succ"][1] = len(ops)
+                    chain(m.group(1)); continue
+                m = re.match(r"while \((.*)\) \{$", ln)
+                if m or ln == "for (;;) {":
+                    top = len(ops); b = ["tgt", None]
+                    jz = op(uses(m.group(1))) if m else None
+                    block(b, ["tgt", top]); op(succ=[top])
+                    b[1] = len(ops)
+                    if jz: jz["succ"] = ["next", len(ops)]
+                    continue
+                if ln == "do {":
+                    top = len(ops); b = ["tgt", None]; c = ["tgt", None]
+                    end, arg = block(b, c)
+                    if end != "dowhile": bad[0] = True; return "end", None
+                    c[1] = len(ops); op(uses(arg), succ=["next", top]); b[1] = len(ops); continue
+                m = re.match(r"switch \((.*)\) \{$", ln)
+                if m:
+                    sw = op(uses(m.group(1))); sw["succ"] = []; b = ["tgt", None]
+                    fix.append((sw, b)); sw["_cases"] = True
+                    stack_sw.append(sw); block(b, cont); stack_sw.pop()
+                    b[1] = len(ops); sw["succ"].append(len(ops)); continue
+                if re.match(r"(case -?\w+|default):$", ln):
+                    if not stack_sw: bad[0] = True; return "end", None
+                    stack_sw[-1]["succ"].append(len(ops)); continue
+                if ln in ("break;", "continue;"):
+                    tgt = brk if ln == "break;" else cont
+                    if tgt is None: bad[0] = True; return "end", None
+                    op(succ=[tgt]); continue
+                m = re.match(r"return\b(.*);$", ln)
+                if m: op(uses(m.group(1)), succ=[]); continue
+                m = re.match(r"goto (\w+);$", ln)
+                if m: op(succ=[("label", m.group(1))]); continue
+                m = re.match(r"(\w+):$", ln)
+                if m: labels[m.group(1)] = len(ops); continue
+                if not ln.endswith(";"): bad[0] = True; return "end", None
+                m = re.match(r"(ax|bx|cx|dx|si|di|al|ah|bl|bh|cl|ch|dl|dh) = (.*);$", ln)
+                if m and " = " not in m.group(2):
+                    op(uses(m.group(2)), _DR_ATOMS[m.group(1)], line=i, rem=pure(m.group(2)))
+                else:
+                    op(uses(ln))
+            return "eof", None
+        stack_sw = []
+        end, _ = block(None, None)
+        if bad[0] or end != "eof": return lines
+        n = len(ops)
+        def res(x, k):
+            if x == "next": return k + 1
+            if isinstance(x, list): return x[1]
+            if isinstance(x, tuple): return labels.get(x[1], -1)
+            return x
+        succ = []
+        for k, o in enumerate(ops):
+            s_ = [k + 1] if o["succ"] is None else [res(x, k) for x in o["succ"]]
+            if any(x is None or x == -1 for x in s_): return lines
+            succ.append(s_)
+        allr = {"al", "ah", "bl", "bh", "cl", "ch", "dl", "dh", "si", "di"}
+        livein = [set() for _ in range(n + 1)]; livein[n] = {"al", "ah", "dl", "dh"}   # a result may be read after the end (si/di are restored, bx/cx are scratch)
+        changed = True
+        while changed:
+            changed = False
+            for k in range(n - 1, -1, -1):
+                o = ops[k]; out = set()
+                for x in succ[k]: out |= livein[min(x, n)]
+                o["out"] = out
+                new = (out - o["dfn"]) | o["use"]
+                if new != livein[k]: livein[k] = new; changed = True
+        kill = {o["line"] for o in ops if o["rem"] and o["line"] is not None and not (o["dfn"] & o["out"])}
+        if not kill: break
+        lines = [l for i, l in enumerate(lines) if i not in kill]
+        ch = True                                            # empty shells left behind
+        while ch:
+            ch = False
+            for i in range(len(lines) - 1):
+                a, b = lines[i].strip(), lines[i+1].strip()
+                if a == "} else {" and b == "}":
+                    del lines[i]; ch = True; break
+                m = re.match(r"if \((.*)\) \{$", a)
+                if m and b == "}" and pure(m.group(1)):
+                    del lines[i:i+2]; ch = True; break
+                m = re.match(r"(\s*)((?:\} else )?if) \((.*)\) \{$", lines[i])
+                if m and b == "} else {":                    # empty then-arm: test the opposite
+                    lines[i:i+2] = ["%s%s (!%s) {" % (m.group(1), m.group(2), m.group(3) if m.group(3).startswith("(") else "(%s)" % m.group(3))]
+                    ch = True; break
+    return lines
+
 def recover_cfg(code, base=0, cxmap=None):
     """EXPERIMENTAL Phase-B path: structure the CFG (cfg.structure) and emit via R.emit_tree,
     reusing the SAME R value model as recover(). Not the default; used behind a flag / for A/B
@@ -1928,6 +2061,7 @@ def recover_cfg(code, base=0, cxmap=None):
         r2.labels=set(r.gototargets); r2._labeled=set(); r2.gotoargs=dict(getattr(r,"gotoargs",{}))
         stmts = r2.emit_tree(blocks, tree); r=r2
     stmts = _tidy(list(stmts))
+    if DEADREGS: stmts = _dead_regs(list(stmts))
     if not MARK:
         stmts = _fold_longs(stmts)
         used = [x for x in ("ax","bx","cx","dx","si","di")
