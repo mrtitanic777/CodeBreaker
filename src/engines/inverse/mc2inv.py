@@ -1187,6 +1187,15 @@ class R:
             s.ax="(%s %s %s)"%(s.ax, JCC[s.ins[i+1].mnemonic], s.memname(ops[4:])); s.retlive=True; s.axsrc=None
             while i<len(s.ins) and s.ins[i].op_str!="ax, bx": i+=1
             return i+1
+        if mn=="pop" and DEADREGS and ops in ("ax","bx","cx","dx","si","di") and s.args:
+            # the other half of a `push r ... pop r` save: the pushed value is no pending argument
+            v=str(s.args.pop())
+            if ops in s._WR and getattr(s,ops,None) is not None and str(getattr(s,ops))!=ops: setattr(s,ops,None)
+            for b8 in WORDHALVES.get(ops,()): s.breg.pop(b8,None)
+            if v!=ops: s.emit(out,"%s = %s;"%(ops,v))
+            setattr(s,ops,None)
+            if ops=="ax": s.axsrc=None; s.retlive=True
+            return i+1
         if mn=="push":
             if ops=="cs" and i+1<len(s.ins) and s.ins[i+1].mnemonic=="call": return i+1
             if ops=="ax": s.args.append(s.ax if s.ax is not None else "ax")
@@ -1699,6 +1708,28 @@ class R:
         for node in nodes:
             s._emit_node(blocks, node, out)
 
+    def _slot_args(s, out):
+        """Arguments already pushed when control changes hands at a label (pushed on each path
+        before a shared call) travel in one temporary per STACK SLOT -- slot k is the k-th pending
+        push, counted from the newest (the top of the stack: older pushes may be ones this model
+        never saw consumed) -- so every path into the label agrees on where each is.
+        Assigned as a parallel move: a slot that is read by a later assignment is saved first."""
+        n_ = len(s.args)
+        mv = [(n_ - 1 - k, str(v)) for k, v in enumerate(s.args) if str(v) != "targ%d" % (n_ - 1 - k)]
+        done = []
+        for k, v in mv:
+            hit = [d for d in done if re.search(r"\btarg%d\b" % d, v)]
+            if hit:                                        # v reads a slot this batch already overwrote
+                for d in hit:
+                    v = re.sub(r"\btarg%d\b" % d, "tsave%d" % d, v)
+                    for q, ln in enumerate(out):
+                        pass
+                    idx = next(q for q in range(len(out) - 1, -1, -1) if out[q].startswith("targ%d = " % d))
+                    if not (idx and out[idx - 1] == "tsave%d = targ%d;" % (d, d)):
+                        out.insert(idx, "tsave%d = targ%d;" % (d, d))
+            out.append("targ%d = %s;" % (k, v)); done.append(k)
+        s.args = ["targ%d" % (n_ - 1 - k) for k in range(n_)]
+
     def _emit_node(s, blocks, node, out):
         kind = node[0]
         if kind in ("block", "if", "ifelse", "while", "loop", "dowhile", "switch") and getattr(s, "labels", None):
@@ -1715,9 +1746,12 @@ class R:
                 else:
                     s.i = blocks[node[1]].lo - 1           # liveness as seen from the label
                     s._pin(out, set(s._WR))
-                    for k2, v2 in enumerate(s.args[-na:] if na else []):
-                        out.append("targ%d = %s;" % (k2, v2))
-                if na: s.args = (s.args[:-na] if len(s.args) >= na else []) + ["targ%d" % k2 for k2 in range(na)]
+                    if na and DEADREGS: s._slot_args(out)
+                    else:
+                        for k2, v2 in enumerate(s.args[-na:] if na else []):
+                            out.append("targ%d = %s;" % (k2, v2))
+                if na and DEADREGS: s.args = ["targ%d" % (na - 1 - k2) for k2 in range(na)]
+                elif na: s.args = (s.args[:-na] if len(s.args) >= na else []) + ["targ%d" % k2 for k2 in range(na)]
                 out.append("L_%x:" % a); s._labeled.add(a)
         if kind == "block":
             s._emit_block(blocks[node[1]], out)
@@ -1852,7 +1886,9 @@ class R:
                 s.gotoargs = getattr(s, "gotoargs", {})
                 if s.args:
                     s.gotoargs[ta] = max(s.gotoargs.get(ta, 0), len(s.args))
-                    for k2, v2 in enumerate(s.args): out.append("targ%d = %s;" % (k2, v2))
+                    if DEADREGS: s._slot_args(out)
+                    else:
+                        for k2, v2 in enumerate(s.args): out.append("targ%d = %s;" % (k2, v2))
                 s.gototargets.add(ta); out.append("goto L_%x;" % ta)
 
     def emit_tree(s, blocks, tree):
