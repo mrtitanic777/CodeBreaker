@@ -23,7 +23,7 @@ RET  = {"ret","retf","iret"}
 
 
 class Block:
-    __slots__ = ("id","lo","hi","insns","term","succ","cond_idx","addr")
+    __slots__ = ("id","lo","hi","insns","term","succ","cond_idx","addr", "table")
     def __init__(s, bid, lo, hi, insns, addr):
         s.id = bid           # 0-based block index
         s.lo = lo            # first instruction index (into the function's insn list)
@@ -37,6 +37,15 @@ class Block:
         return "B%d[%05x..%05x %s->%s]" % (s.id, s.addr, (s.insns[-1].address if s.insns else s.addr),
                                            s.term, s.succ)
 
+
+# Optional driver hook: SWITCH(addr) -> list of case-target addresses (table order) for the
+# indirect `jmp cs:[bx+table]` at `addr`, or None. Set by mc2inv from its own SWITCH hook.
+SWITCH = None
+
+def _switch_targets(ins):
+    if SWITCH is None or ins.mnemonic != "jmp" or "[" not in ins.op_str: return None
+    try: return SWITCH(ins.address)
+    except Exception: return None
 
 def _jump_target(ins):
     """Absolute target address of a jmp/jcc, or None if indirect."""
@@ -54,6 +63,8 @@ def build_cfg(insns, lo_addr, hi_addr):
         mn = ins.mnemonic
         if mn in CJMP or mn == "jmp":
             t = _jump_target(ins)
+            for st in (_switch_targets(ins) or []):
+                if st in addr2idx: leaders.add(addr2idx[st])
             if t is not None and t in addr2idx:
                 leaders.add(addr2idx[t])      # in-range target on an instruction boundary
             if i + 1 < n:
@@ -79,8 +90,12 @@ def build_cfg(insns, lo_addr, hi_addr):
             b.term = "ret"; b.succ = []
         elif mn == "jmp":
             t = _jump_target(last)
+            sw = _switch_targets(last)
             if t is not None and t in addr2idx:
                 b.term = "jmp"; b.succ = [idx2blk[addr2idx[t]]]
+            elif sw and all(x in addr2idx for x in sw):
+                b.term = "switch"; b.table = [idx2blk[addr2idx[x]] for x in sw]
+                b.succ = list(dict.fromkeys(b.table))
             else:
                 b.term = "tailcall"; b.succ = []      # out-of-range/indirect jmp = tail call / return
         elif mn in CJMP:
@@ -222,6 +237,7 @@ def structure(blocks, entry=0):
         if n[0] in ('break', 'continue', 'goto'): return True
         if n[0] == 'block': return blocks[n[1]].term in ('ret', 'tailcall')
         if n[0] == 'ifelse': return ends_terminal(n[2]) and ends_terminal(n[3])
+        if n[0] == 'switch': return n[3] is None and all(ends_terminal(a) for _, a in n[2])
         return False
 
     def seq_from(b, stops):
@@ -272,9 +288,29 @@ def structure(blocks, entry=0):
                 node, after = do_if(b, stops)
                 active.discard(b)
                 out.append(node); b = after; continue
+            if blk.term == "switch":
+                active.add(b)
+                node, after = do_switch(b, stops)
+                active.discard(b)
+                out.append(node); b = after; continue
             out.append(('block', b))
             b = blk.succ[0] if blk.succ else None
         return out
+
+    def do_switch(b, stops):
+        """('switch', bid, [(case_values, arm_tree)], join): one arm per distinct table target,
+        each structured up to the switch's join (the implicit `break`)."""
+        blk = blocks[b]
+        join = ipdom(pdom, EXIT, b)
+        if loopstack and join is not None:
+            _h, _fol, _lbody, _lf = loopstack[-1]
+            if join not in _lbody and join != _fol: join = None
+        sub = stops | ({join} if join is not None else set())
+        cases = []
+        for t in blk.succ:
+            vals = [i for i, x in enumerate(blk.table) if x == t]
+            cases.append((vals, seq_from(t, sub)))
+        return ('switch', b, cases, join), join
 
     def do_if(b, stops):
         blk = blocks[b]

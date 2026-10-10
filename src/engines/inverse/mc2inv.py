@@ -34,6 +34,34 @@ MARK=False
 # Optional driver fact: does the function being lifted return a value? (True/False from a
 # whole-program "is the result ever read by a caller" analysis; None -> local heuristic.)
 RETVAL=None
+# Optional driver hook: SWITCH(addr_0based) -> case-target addresses (0-based, table order) of the
+# jump-table dispatch `jmp cs:[bx+table]` at that address, or None.
+SWITCH=None
+
+def _decode(code):
+    """Instruction list for a function. Linear sweep, unless it dispatches through a jump table:
+    the table (and anything after it) would be swept as garbage, so follow control flow instead
+    (fall-through, direct jumps, table targets) and decode only reachable bytes."""
+    lin=list(_MD.disasm(code,0))
+    if SWITCH is None or not any(i.mnemonic=="jmp" and "[" in i.op_str for i in lin): return lin
+    seen={}; work=[0]
+    while work:
+        a=work.pop()
+        while 0<=a<len(code) and a not in seen:
+            ii=next(_MD.disasm(code[a:a+16],a),None)
+            if ii is None: break
+            seen[a]=ii; mn=ii.mnemonic
+            m=re.match(r"(0x[0-9a-f]+|\d+)$", ii.op_str or "")
+            if mn in ("ret","retf"): break
+            if mn=="jmp":
+                if m: work.append(int(m.group(1),0))
+                else:
+                    try: work.extend(SWITCH(a) or [])
+                    except Exception: pass
+                break
+            if mn in CJMP and m: work.append(int(m.group(1),0))
+            a+=ii.size
+    return [seen[a] for a in sorted(seen)]
 
 _WREG=("ax","bx","cx","dx","si","di")
 def _memparts(op):
@@ -335,6 +363,9 @@ class R:
             elif k=="if": acc.add(n[1]); s._tree_bids(n[2],acc)
             elif k=="ifelse": acc.add(n[1]); s._tree_bids(n[2],acc); s._tree_bids(n[3],acc)
             elif k in ("while","loop"): acc.add(n[1]); s._tree_bids(n[2],acc)
+            elif k=="switch":
+                acc.add(n[1])
+                for _,arm in n[2]: s._tree_bids(arm,acc)
             elif k=="dowhile": acc.add(n[1]); acc.add(n[3]); s._tree_bids(n[2],acc)
         return acc
 
@@ -344,6 +375,7 @@ class R:
             if k=="break": return True
             if k=="if" and s._has_break(n[2]): return True
             if k=="ifelse" and (s._has_break(n[2]) or s._has_break(n[3])): return True
+            if k=="switch" and any(s._has_break(arm) for _,arm in n[2]): return True
         return False
 
     def _loop_written(s, blocks, bids):
@@ -1309,7 +1341,7 @@ class R:
 
     def _emit_node(s, blocks, node, out):
         kind = node[0]
-        if kind in ("block", "if", "ifelse", "while", "loop", "dowhile") and getattr(s, "labels", None):
+        if kind in ("block", "if", "ifelse", "while", "loop", "dowhile", "switch") and getattr(s, "labels", None):
             a = blocks[node[1]].addr
             if a in s.labels and a not in s._labeled:
                 # A goto lands here with every register in its variable, so the fall-in path must
@@ -1397,6 +1429,45 @@ class R:
             for r in W: setattr(s, r, None)
             for b8 in [x for x in s.breg if BYTEPARENT[x] in W]: s.breg.pop(b8)
             out.append("do {"); out += ["    " + x for x in body]; out.append("} while (%s);" % cond)
+        elif kind == "switch":
+            b, cases = node[1], node[2]
+            blk = blocks[b]; hi = blk.hi
+            t3 = [(x.mnemonic, x.op_str.replace(" ", "")) for x in s.ins[max(blk.lo, hi-3):hi]]
+            if len(t3) != 3 or t3[1] != ("xchg", "bx,ax") or t3[0] not in (("add", "ax,ax"), ("shl", "ax,1")):
+                raise ValueError("unrecognized jump-table dispatch")
+            s._emit_range(blk.lo, hi-3, out)
+            allr = set(s._WR)
+            if s._hascall(s.ax or ""): s._materialize(out, "ax")
+            sel = s.ax if s.ax is not None else "ax"
+            s._pin(out, allr - {"ax", "bx"})               # arms start from plain register variables
+            s.ax = None; s.bx = None; s.breg = {}          # (the dispatch itself clobbers ax/bx)
+            pre = s._snap(); arms = []
+            for vals, arm in cases:
+                s._rest(pre); body = []; s._emit_seq(blocks, arm, body)
+                if not s._terminal(body): s._pin(body, allr)
+                arms.append((vals, body))
+            for r in allr: setattr(s, r, None)
+            s.breg = {}
+            if any(s._has_break(arm) for _, arm in cases):
+                # an arm leaves an enclosing LOOP with `break`: inside a C switch that would only
+                # leave the switch, so render the dispatch as an if-chain on the selector.
+                s._tn = getattr(s, "_tn", 0) + 1; t = "t%d" % s._tn
+                out.append("%s = %s;" % (t, sel))
+                def chain(k, ind):
+                    if k == len(arms): return []
+                    vals, body = arms[k]
+                    c = " || ".join("(%s == %d)" % (t, v) for v in vals)
+                    L = [ind + "if (%s) {" % c] + [ind + "    " + x for x in body]
+                    rest = chain(k + 1, ind + "    ")
+                    return L + ([ind + "} else {"] + rest + [ind + "}"] if rest else [ind + "}"])
+                out += chain(0, "")
+            else:
+                out.append("switch (%s) {" % sel)
+                for vals, body in arms:
+                    out += ["case %d:" % v for v in vals]
+                    out += ["    " + x for x in body]
+                    if not s._terminal(body): out.append("    break;")
+                out.append("}")
         elif kind == "break":
             if getattr(s, "_loops", None): s._pin(out, s._loops[-1])
             out.append("break;")
@@ -1536,7 +1607,8 @@ def recover_cfg(code, base=0, cxmap=None):
     reusing the SAME R value model as recover(). Not the default; used behind a flag / for A/B
     comparison against recover() until it is proven >= the linear walk on every function."""
     from src.engines.inverse import cfg as _cfg
-    ins=list(_MD.disasm(code,0))
+    _cfg.SWITCH=SWITCH
+    ins=_decode(code)
     if len(ins) < 2:
         return 0, [], [], "int", []
     fs, k, msc3 = _prologue(ins)
