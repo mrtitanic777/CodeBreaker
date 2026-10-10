@@ -216,16 +216,24 @@ def structure(blocks, entry=0):
     active = set()        # blocks currently being expanded on the recursion stack (ancestor guard)
     loopstack = []        # enclosing loops as (header, follow): edges to follow -> break, to header -> continue
 
+    def ends_terminal(nodes):
+        if not nodes: return False
+        n = nodes[-1]
+        if n[0] in ('break', 'continue', 'goto'): return True
+        if n[0] == 'block': return blocks[n[1]].term in ('ret', 'tailcall')
+        if n[0] == 'ifelse': return ends_terminal(n[2]) and ends_terminal(n[3])
+        return False
+
     def seq_from(b, stops):
         out = []
         local = set()     # blocks emitted in THIS linear run (sibling tail-dup across calls is OK;
                           # re-entering one on the current PATH is a back-edge -> goto)
         while b is not None and b != EXIT:
             if loopstack:                                   # break/continue for the innermost loop
-                h, fol, lbody = loopstack[-1]
+                h, fol, lbody, lflag = loopstack[-1]
                 if b == fol: out.append(('break',)); return out
                 if b == h: out.append(('continue',)); return out
-                if b not in lbody:
+                if b not in lbody and not lflag[0]:
                     # A SECOND exit: this edge leaves the loop to somewhere other than its follow
                     # (typically `found: return 1` inside a search loop). It is NOT "reaching the
                     # join" -- treating it so made the early return fall through and keep looping.
@@ -239,8 +247,14 @@ def structure(blocks, entry=0):
                         c = blocks[c].succ[0] if (blocks[c].term in ("jmp", "fall") and blocks[c].succ) else None
                     if c is not None and blocks[c].term == "ret" and chain[-1] == c:
                         out.extend(('block', x) for x in chain)
-                    else:
-                        out.append(('goto', None, b))
+                        return out
+                    # Otherwise structure the exit path in place (it is code that runs once, on the
+                    # way out). Valid only if it never falls back into the loop body: it must end in
+                    # a return, a break to the loop's follow, a continue, or a goto.
+                    lflag[0] = True
+                    try: sub = seq_from(b, stops)
+                    finally: lflag[0] = False
+                    out.extend(sub) if ends_terminal(sub) else out.append(('goto', None, b))
                     return out
             if b in stops:
                 break
@@ -268,7 +282,7 @@ def structure(blocks, entry=0):
         if loopstack and join is not None:
             # Inside a loop, a join that lies OUTSIDE the loop (and is not its follow) is not a
             # merge point of this if: its arms leave the loop separately (handled as exits).
-            _h, _fol, _lbody = loopstack[-1]
+            _h, _fol, _lbody, _lf = loopstack[-1]
             if join not in _lbody and join != _fol: join = None
         taken = blk.succ[0]
         fall = blk.succ[1] if len(blk.succ) > 1 else None
@@ -299,7 +313,7 @@ def structure(blocks, entry=0):
         if hblk.term == "cond" and any(s not in body for s in hblk.succ):
             inside = [s for s in hblk.succ if s in body]
             fol = [s for s in hblk.succ if s not in body][0]
-            loopstack.append((h, fol, body))
+            loopstack.append((h, fol, body, [False]))
             body_t = seq_from(inside[0], {h}) if inside else []
             loopstack.pop()
             # 5th field: True when the loop is entered on the jcc's TAKEN edge (the bottom-tested
@@ -309,7 +323,7 @@ def structure(blocks, entry=0):
         # post-tested do-while: the latch is the test and one successor exits
         if lb is not None and blocks[lb].term == "cond" and any(s not in body for s in blocks[lb].succ):
             fol = [s for s in blocks[lb].succ if s not in body][0]
-            loopstack.append((h, fol, body))
+            loopstack.append((h, fol, body, [False]))
             # Emit the body STARTING WITH the header: seq_from(h, ..) hits its own `b == h ->
             # continue` check on the first step and would drop the entire body.
             if h == lb:
@@ -332,7 +346,7 @@ def structure(blocks, entry=0):
         # endless/multi-exit loop: emit the body STARTING WITH the header (seq_from(h,...) would hit
         # the b==h continue-check immediately and drop the whole body). Process the header block/if
         # first, then walk onward; re-reaching h is the back-edge -> continue, reaching follow -> break.
-        loopstack.append((h, follow, body))
+        loopstack.append((h, follow, body, [False]))
         hblk = blocks[h]
         if hblk.term == "cond":
             node, after = do_if(h, {h})

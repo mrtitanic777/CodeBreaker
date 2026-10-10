@@ -1309,6 +1309,17 @@ class R:
 
     def _emit_node(s, blocks, node, out):
         kind = node[0]
+        if kind in ("block", "if", "ifelse", "while", "loop", "dowhile") and getattr(s, "labels", None):
+            a = blocks[node[1]].addr
+            if a in s.labels and a not in s._labeled:
+                # A goto lands here with every register in its variable, so the fall-in path must
+                # agree: pin what it still tracks lazily (nothing to pin after a terminal).
+                if s._terminal(out):
+                    for r in s._WR: setattr(s, r, None)
+                    s.breg = {}
+                else:
+                    s._pin(out, set(s._WR))
+                out.append("L_%x:" % a); s._labeled.add(a)
         if kind == "block":
             s._emit_block(blocks[node[1]], out)
         elif kind == "if":
@@ -1395,7 +1406,8 @@ class R:
         elif kind == "goto":
             b, t = node[1], node[2]
             if t is not None:
-                ta = s.ins[t].address if isinstance(t, int) and 0 <= t < len(s.ins) else t
+                ta = blocks[t].addr                        # t is a BLOCK id
+                s._pin(out, set(s._WR))                    # registers live in their variables at a goto
                 s.gototargets.add(ta); out.append("goto L_%x;" % ta)
 
     def emit_tree(s, blocks, tree):
@@ -1532,7 +1544,12 @@ def recover_cfg(code, base=0, cxmap=None):
     end_addr = ins[-1].address + ins[-1].size
     blocks,_,entry = _cfg.build_cfg(ins, 0, end_addr)
     tree = _cfg.structure(blocks, entry)
+    r.labels=set(); r._labeled=set()
     stmts = r.emit_tree(blocks, tree)
+    if r.gototargets:                                      # pass 2: place each target's label once
+        r2=R(ins,fs,base,cxmap,msc3=msc3); r2.emit_start=k
+        r2.labels=set(r.gototargets); r2._labeled=set()
+        stmts = r2.emit_tree(blocks, tree); r=r2
     loc=sorted(r.locals)
     if r.floatfn or r.longfn:
         pt="float" if r.floatfn else "long"
