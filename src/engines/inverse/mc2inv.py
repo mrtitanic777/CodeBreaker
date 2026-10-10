@@ -202,8 +202,8 @@ class R:
             m=re.search(r"\[%s - (0x[0-9a-f]+|\d+)\]"%reg,op)  # negative offset -> index back
             if m: return "%s[-%d]"%(s._ptrbase(reg),s.num(m.group(1)))
             if "[%s]"%reg in op: return "*%s"%s._ptrbase(reg)
-        m=re.search(r"\[(bx|bp|si|di) \+ (si|di) \+ (0x[0-9a-f]+|\d+)\]",op)   # base+index+disp
-        if m: return "%s[%s + %d]"%(s._ptrbase(m.group(1)), s._ptrbase(m.group(2)), s.num(m.group(3)))
+        m=re.search(r"\[(bx|bp|si|di) \+ (si|di) ([+-]) (0x[0-9a-f]+|\d+)\]",op)   # base+index+/-disp
+        if m: return "%s[%s %s %d]"%(s._ptrbase(m.group(1)), s._ptrbase(m.group(2)), m.group(3), s.num(m.group(4)))
         m=re.search(r"\[bx \+ si\]|\[bx \+ di\]|\[si \+ di\]",op)  # indexed; name by base reg
         if m: return "%s[%s]"%(s._ptrbase(op[1:3]), s._ptrbase(op.split(" + ")[1].rstrip("]")))
         m=re.search(r"\[(0x[0-9a-f]+|\d+)\]",op)
@@ -667,6 +667,17 @@ class R:
             while k>=0 and s.ins[k].mnemonic in ("mov","lea","push","pop","les","cbw","cwde"): k-=1
             o=s.ins[k].op_str if k>=0 else ""
             sg="S8" if ("byte ptr" in o or o.split(",")[0].strip() in BYTEREG) else "S16"
+        if not s._cmp:                                    # a cmp/test earlier in this block whose flags
+            k=j-1; lo=getattr(s,"_cond_lo",0)             # survive the (non-flag) statements after it
+            while k>=lo and k>=0:
+                mk=s.ins[k].mnemonic
+                if mk=="cmp":
+                    p=s.ins[k].op_str.split(", "); s._cmp=(resolve(p[0]), resolve(p[1])); break
+                if mk=="test":
+                    p=s.ins[k].op_str.split(", "); a0=resolve(p[0])
+                    s._cmp=((a0 if p[0]==p[1] else "(%s & %s)"%(a0, resolve(p[1]))), "0"); break
+                if mk in s._FLAGSET or mk in ("call","lcall","jmp","ret","retf") or mk in CJMP: break
+                k-=1
         if not s._cmp and getattr(s,"_lastcmp",None):
             # A jcc with no flag-setting instruction of its own in this block tests the flags of
             # the PREVIOUS compare (`cmp a,b; ja X; jb Y` -- the long-compare ladder): reuse it.
@@ -1329,10 +1340,20 @@ class R:
     def _cmp_start(s, jcc_idx, lo):
         """Index where the condition feeding the jcc begins: the nearest cmp/test at or before the
         jcc (within the block), else the jcc itself (a bare-value test)."""
+        # Only PURE REGISTER LOADS may sit between the compare and the jump (they are replayed
+        # value-only by cond_at). Anything else -- an ALU op that resets the flags, a store, a
+        # call -- means the instructions up to the jump are ordinary statements: emit them all,
+        # and let cond_at find the flag source (it used to grab an earlier, unrelated cmp and
+        # silently skip `sbb ax,ax; neg ax; mov [x],al` in between).
         j = jcc_idx - 1
-        while j >= lo and s.ins[j].mnemonic not in ("cmp", "test"):
-            j -= 1
-        return j if j >= lo and s.ins[j].mnemonic in ("cmp", "test") else jcc_idx
+        while j >= lo:
+            mn = s.ins[j].mnemonic; d0 = (s.ins[j].op_str or "").split(",")[0].strip()
+            if mn in ("cmp", "test"): return j
+            if mn in ("cbw", "cwde", "nop") or (mn in ("mov", "lea", "les") and "[" not in d0
+                                                 and d0 in s._WR + BYTEREG):
+                j -= 1; continue
+            break
+        return jcc_idx
 
     def _emit_range(s, lo, hi, out):
         """Emit straight-line statements for instruction indices [lo, hi) via step().
