@@ -459,6 +459,25 @@ class R:
         """Pin a lazily-tracked register value into the register variable (`reg = <value>;`)."""
         v=getattr(s,reg,None)
         if v is None or str(v)==reg: return
+        # The assignment changes the VARIABLE `reg`. Any other pending text that mentions it must
+        # be settled first: text holding exactly this value now simply IS the variable; text that
+        # read the old variable (a pushed argument `bx->f4`, another register's `(bx + 2)`) is
+        # frozen into a temporary / its own register before the variable changes.
+        rx=re.compile(r"(?<![\w>.])(%s)(?![\w(])"%s._HALF[reg]); sv=str(v)
+        for k2,a2 in enumerate(s.args):
+            a2=str(a2)
+            if sv in a2 and len(sv)>len(reg): s.args[k2]=a2.replace(sv,reg)
+            elif rx.search(a2):
+                s._tn=getattr(s,"_tn",0)+1; t="t%d"%s._tn
+                out.append("%s = %s;"%(t,a2)); s.ranks.append(s.i); s.regconst.append(False); s.args[k2]=t
+        for o in s._WR:
+            if o==reg: continue
+            ov=getattr(s,o,None)
+            if ov is None or str(ov)==o: continue
+            if sv in str(ov) and len(sv)>len(reg): setattr(s,o,str(ov).replace(sv,reg))
+            elif rx.search(str(ov)):
+                out.append("%s = %s;"%(o,ov)); s.ranks.append(s.i); s.regconst.append(False)
+                setattr(s,o,"ax" if o=="ax" else None)
         out.append("%s = %s;"%(reg,v)); s.ranks.append(s.i if rank is None else rank); s.regconst.append(False)
         setattr(s,reg,"ax" if reg=="ax" else None)
 
@@ -547,6 +566,10 @@ class R:
         if mn=="mov" and ops.count(", ")==1 and ops.split(", ")[0] in BYTEREG and ops.split(", ")[1] in BYTEREG:
             _q=getattr(s,"_s8",None)
             _sv=_q[1] if (_q and _q[0]==i) else s._bval(ops.split(", ")[1])
+        _q=getattr(s,"_sm",None)
+        if not (_q and _q[0]==i):
+            _o2=ops.split(", ",1)
+            s._sm=(i, s.memname(_o2[1])) if (mn=="mov" and _d in BYTEREG and len(_o2)==2 and "[" in _o2[1]) else None
         _p=getattr(s,"_p8",None)
         pre8=_p[1] if (_p and _p[0]==i) else (s._bval(_d) if _d in BYTEREG else None)   # byte value BEFORE the write
         s._binval(mn, _d)
@@ -554,7 +577,9 @@ class R:
             d8=ops.split(", ")[0]; src=ops.split(", ",1)[1]
             if re.match(r"(0x[0-9a-f]+|\d+)$",src): s.breg[d8]=str(s.num(src))
             elif src in BYTEREG: s.breg[d8]=_sv if _sv is not None else s.breg.get(src,src)
-            else: s.breg[d8]=s.memname(src) or d8
+            else:
+                _q=getattr(s,"_sm",None)
+                s.breg[d8]=(_q[1] if (_q and _q[0]==i and _q[1]) else s.memname(src)) or d8
             if BYTEPARENT[d8] in ("ax","bx","cx","dx","si","di"): setattr(s,BYTEPARENT[d8],None)
             s._byte_settle(d8, i)
             return
@@ -1029,6 +1054,8 @@ class R:
             if _t not in s.breg and s._hascall(getattr(s,BYTEPARENT[_t],None) or ""):   # a deferred
                 s._materialize(out, BYTEPARENT[_t])        # call: evaluate the call first, once
         s._p8=(i, s._bval(d0)) if d0 in BYTEREG else None
+        _o2=ops.split(", ",1)                              # `mov bl,[bx]`: read the SOURCE through the
+        s._sm=(i, s.memname(_o2[1])) if (mn=="mov" and d0 in BYTEREG and len(_o2)==2 and "[" in _o2[1]) else None   # old bx
         s._pw=(i, getattr(s,BYTEPARENT[d0],None)) if d0 in BYTEREG else None
         _o=ops.split(", ")
         s._s8=(i, s._bval(_o[1])) if (mn=="mov" and len(_o)==2 and _o[0] in BYTEREG and _o[1] in BYTEREG) else None
@@ -1222,10 +1249,14 @@ class R:
         differently becomes a temp assigned on each path (`if (c) t = x; else t = y; f(t)`)."""
         if a_term and not b_term: s.args=list(b_args); return
         if b_term and not a_term: s.args=list(a_args); return
-        if list(a_args)==list(b_args) or len(a_args)!=len(b_args): return
+        if len(a_args)!=len(b_args): return
+        # (an argument whose text reads a REGISTER is frozen too, even when both paths agree on
+        #  the text: the merge may assign that register variable right after)
+        rr=re.compile(r"(?<![\w>.])(ax|bx|cx|dx|si|di|al|ah|bl|bh|cl|ch|dl|dh)(?![\w(])")
+        if list(a_args)==list(b_args) and not any(rr.search(str(x)) for x in a_args): return
         out=[]
         for x,y in zip(a_args,b_args):
-            if str(x)==str(y): out.append(x); continue
+            if str(x)==str(y) and not rr.search(str(x)): out.append(x); continue
             s._tn=getattr(s,"_tn",0)+1; t="t%d"%s._tn
             a_body.append("%s = %s;"%(t,x)); b_body.append("%s = %s;"%(t,y)); out.append(t)
         s.args=out
