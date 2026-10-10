@@ -373,14 +373,29 @@ def _ledger_path():
 
 def _write_rows(rows):
     """Atomically rewrite the ledger: write a sibling temp file, then os.replace() it into place. A
-    crash (or a concurrent reader) can never see a half-written/truncated ledger this way."""
+    crash (or a concurrent reader) can never see a half-written/truncated ledger this way. On Windows
+    os.replace fails with PermissionError (WinError 5) if ANY process has the destination open for
+    read at that instant (a monitor reading the ledger, an indexer, antivirus) -- a transient that must
+    not kill a multi-hour sweep, so retry with backoff before giving up."""
     import csv as _csv
+    import time as _time
     path = _ledger_path()
     tmp = path + ".tmp.%d" % os.getpid()
     with open(tmp, "w", newline="") as fp:
         w = _csv.DictWriter(fp, fieldnames=rows[0].keys())
         w.writeheader(); w.writerows(rows)
-    os.replace(tmp, path)                                 # atomic on Windows + POSIX
+    for attempt in range(12):
+        try:
+            os.replace(tmp, path)                         # atomic on Windows + POSIX
+            return
+        except PermissionError:
+            if attempt == 11:
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
+                raise
+            _time.sleep(0.25 * (attempt + 1))             # brief backoff; the lock is momentary
 
 
 def harvest(module, maxn=100000, rows=None, present=None, verified_now=None):
