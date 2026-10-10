@@ -620,7 +620,8 @@ class R:
         elif mn in ("xor","sub") and ops=="ax, ax": s.ax="0"; s.axsrc=None   # self-xor/sub = clear
         elif mn in ("xor","sub") and ops=="bx, bx": s.bx="0"; s.bxsrc=None   # (clears bx, NOT ax)
         elif mn in ("cwd","cdq"):
-            s.dx="(0 - (%s >> 15))"%(s.ax if s.ax is not None else "ax")
+            _v=str(s.ax if s.ax is not None else "ax")
+            s.dx=("65535" if int(_v)&0x8000 else "0") if re.match(r"\d+$",_v) else "(0 - (%s >> 15))"%_v
         elif mn in ("or","and") and ops=="ax, ax": pass             # `or/and ax,ax` is flag-only (ax
                                                                     # unchanged) -- never `(ax|ax)`, which
                                                                     # would DUPLICATE a call in s.ax
