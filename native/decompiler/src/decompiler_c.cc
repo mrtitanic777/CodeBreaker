@@ -739,6 +739,7 @@ class CDecompiler {
   }
   std::unordered_map<int, const ILInstr*> def_of_;
   std::unordered_map<int, int> def_barrier_;    // store/call counter at def time
+  std::unordered_map<int, int> use_barrier_;    // store/call counter at a value's (last) use
   std::unordered_map<int, std::string> pending_cmp_;  // SSA id -> rendered cmp
   std::unordered_map<int, ILCmpKind> cmp_kind_of_;
   std::unordered_set<uint32_t> label_targets_;
@@ -1241,6 +1242,43 @@ void CDecompiler::IndexUses() {
     }
   }
   CoalesceMergeCopies();
+
+  // Barrier at each value's (last) use -- mirrors the emit loop's `barrier_` (incremented on every
+  // store/call, blocks in address order). Lets the fold pass keep a memory-reading load folded only
+  // when no store/call sits between its def and use (same barrier), and materialise it as a named temp
+  // otherwise -- so the use site's barrier-mismatch rejection never leaves a dangling name, without
+  // de-folding the common store-free case. Conservative where a value has no recorded use: not folded.
+  auto bumps = [](ILOp op) {
+    switch (op) {
+      case ILOp::Store: case ILOp::StoreUpdate: case ILOp::StoreIndexed:
+      case ILOp::StoreMultiple: case ILOp::StoreConditional:
+      case ILOp::FStore: case ILOp::FStoreUpdate: case ILOp::StoreFPSCR:
+      case ILOp::Call: case ILOp::CallCTR:
+      case ILOp::MoveCR: case ILOp::MoveCRField: case ILOp::MoveMSR:
+      case ILOp::CROrc: case ILOp::CREqv:
+      case ILOp::VMXOp: case ILOp::VMXStore: case ILOp::VMXStore128:
+      case ILOp::LoadMultiple:
+        return true;
+      default: return false;
+    }
+  };
+  {
+    std::vector<const ILBasicBlock*> ub_blocks;
+    for (const auto& b : func_.blocks) ub_blocks.push_back(&b);
+    std::sort(ub_blocks.begin(), ub_blocks.end(),
+              [](const ILBasicBlock* x, const ILBasicBlock* y) {
+                return x->start_addr < y->start_addr;
+              });
+    int bar = 0;
+    auto rec = [&](const ILValue& v) { if (v.id != kILNoValue) use_barrier_[v.id] = bar; };
+    for (const ILBasicBlock* bp : ub_blocks) {
+      for (const ILInstr& in : bp->instrs) {
+        rec(in.src1); rec(in.src2); rec(in.src3);
+        if (in.cmp_ref != kILNoValue) use_barrier_[in.cmp_ref] = bar;
+        if (bumps(in.op)) bar++;
+      }
+    }
+  }
 
   // One declared type per variable. Where the definitions in a coalesced web
   // disagree, the widest reading of the register wins and the definitions that
@@ -2218,7 +2256,18 @@ std::string CDecompiler::Run() {
       // so fold it however many times it's read (kills `v4 = a1;` chains that
       // come from callee-saved register shuffling).
       bool trivial = e && (e->kind == EK::Name || e->kind == EK::Const);
-      if ((uses <= 1 || trivial) && pure && !opts_.no_fold && single_def) {
+      // A memory-reading expression is folded into its consumer ONLY when no store/call sits between
+      // its def and use (same barrier). Otherwise the use site (Get) rejects the fold on a barrier
+      // mismatch and falls back to the value's name -- but a folded def was never emitted, leaving a
+      // dangling `return vN` (the xchg/atomic-exchange old-value return, among others). In that case
+      // materialise it as a named temp so a definition always exists; behaviour is identical. A
+      // trivial name/const fold has no def to lose, so it always folds.
+      bool mem_fold_ok = true;
+      if (e && e->reads_memory && !trivial) {
+        auto ub = use_barrier_.find(in.dst.id);
+        mem_fold_ok = (ub != use_barrier_.end() && ub->second == barrier_);
+      }
+      if ((uses <= 1 || trivial) && pure && !opts_.no_fold && single_def && mem_fold_ok) {
         expr_of_[in.dst.id] = e;
         def_barrier_[in.dst.id] = barrier_;
         if (in.dst.ppc_reg >= 3 && in.dst.ppc_reg <= 10)
