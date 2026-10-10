@@ -28,6 +28,10 @@ TRACKED_BYTE={"mov","add","sub","or","and","xor","inc","dec","shl","sal","shr","
 # CALLEE pops on return (`ret N`: N>0 = Pascal convention, args pushed left-to-right and N/2
 # words consumed), 0 for a plain `ret` (C convention), or None when unknown.
 CALLINFO=None
+# Optional driver hook: CALLREGS(call_addr_0based, "near"|"far", target) -> the scratch registers
+# (ax/bx/cx/dx) the callee reads before writing: arguments passed in registers. Those registers
+# are settled into their variables before the call and the call is preceded by `USE(regs);`.
+CALLREGS=None
 # Verification aid: when True, byte-wide memory operands are emitted as BYTE(x) so a checker can
 # tell 8-bit from 16-bit accesses. Off for normal (readable) output.
 MARK=False
@@ -435,7 +439,7 @@ class R:
     @staticmethod
     def _hascall(v):
         """Does this value text contain a real CALL (not one of the width/long pseudo-operators)?"""
-        return any(n not in ("BYTE","HIBYTE","SX","S8","S16","LONG","LO","HI","LSHR","LSAR","FARM","FAROFF","U32","S32")
+        return any(n not in ("BYTE","HIBYTE","SX","S8","S16","LONG","LO","HI","LSHR","LSAR","FARM","FAROFF","U32","S32","USE")
                    for n in re.findall(r"([A-Za-z_]\w*)\(", str(v)))
 
     def _wlive(s, reg, i):
@@ -973,6 +977,19 @@ class R:
         pop N bytes) consume exactly N/2 pushed words, in push order; C callees consume what the
         caller's `add sp,N` cleans up (reversed). Unknown -> every pending push (legacy)."""
         n=None; pascal=False
+        if CALLREGS is not None and s.out is not None:
+            try: rr=CALLREGS(s.ins[i].address, kind, target)
+            except Exception: rr=None
+            if rr:
+                for r in rr:
+                    v=getattr(s,r,None)
+                    if v is not None and str(v)!=r: s._materialize(s.out,r)
+                    for b8 in WORDHALVES.get(r,()):
+                        if b8 in s.breg:
+                            bv=s.breg.pop(b8)
+                            if str(bv)!=b8: s.out.append("%s = %s;"%(b8,bv)); s.ranks.append(i); s.regconst.append(False)
+                    setattr(s,r,None)
+                s.out.append("USE(%s);"%", ".join(rr)); s.ranks.append(i); s.regconst.append(False)
         if CALLINFO is not None:
             try: rn=CALLINFO(s.ins[i].address, kind, target)
             except Exception: rn=None
@@ -1095,8 +1112,8 @@ class R:
         if MARK:                                           # checker mode: the explicit LONG form
             n=s._carry(i,out)                              # (the `*(long *)&x += 1` sugar below is
             if n: return i+n                               # for readers, not for the interpreter)
-        n=s.long_pat(i)
-        if n: s.retlive=True; return i+n
+        n=0 if DEADREGS else s.long_pat(i)                 # (the older one-register long patterns keep only
+        if n: s.retlive=True; return i+n                   # the low word; _carry models both halves)
         n=s.long_stmt(i,out)
         if n: return i+n
         n=s._carry(i,out)
@@ -2159,6 +2176,7 @@ def _dead_regs(lines):
             if not m or " = " in m.group(3): continue
             reg, e = m.group(2), m.group(3); nxt = lines[i + 1]; t = nxt.strip()
             if not (t.endswith(";") or re.match(r"(if|switch) \(.*\) \{$", t)) or re.match(r"if \(.*\) (break|continue);$", t): continue
+            if t.startswith("USE("): continue                    # the register itself must hold the value
             if t.startswith(("goto ", "break", "continue")): continue
             pat = re.compile(r"(?<![\w>.&])%s(?![\w(])" % reg)
             if len(pat.findall(nxt)) != 1: continue
@@ -2462,6 +2480,7 @@ def recover_cfg(code, base=0, cxmap=None):
         if MARK or UNSIGNED_CAST: stmts = _fold_ladders(list(stmts))   # (needs to know which compares are unsigned)
         stmts = _tidy(_fold_goto_or(list(stmts)))            # `||` left as a jump into the guarded block
     if not MARK:
+        stmts = [re.sub(r"^(\s*)USE\((.*)\);$", r"\1/* the next call takes \2 in registers */", x) for x in stmts]
         stmts = _fold_longs(stmts)
         used = [x for x in ("ax","bx","cx","dx","si","di")
                 if any(re.search(r"(?<![\w>.])%s(?![\w(])" % x, ln) for ln in stmts)]
