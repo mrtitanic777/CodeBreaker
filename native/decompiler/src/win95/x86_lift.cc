@@ -217,7 +217,14 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
   // that points at a function turns the indirect call into a direct one -- the data-flow lever that
   // recovers `mov reg, offset FUNC; call reg` (callback registration, dispatch trampolines).
   std::map<int, int64_t> regConst;
-  auto setReg = [&](int slot, ILValue v) { v.ppc_reg = slot; reg[slot] = v; regConst.erase(slot); };
+  // Return-address-in-register idiom (shared stdcall-cleanup return trampolines): a `pop reg` taken
+  // while the stack is still at entry depth loads the caller's return address, and a later `jmp reg`
+  // on that register is a RETURN (value in AX), not an indirect call. Track the register that holds
+  // it and whether the stack has been disturbed yet (any push/call/enter or write to ESP).
+  int retaddr_reg = -1; bool stack_dirty = false;
+  auto setReg = [&](int slot, ILValue v) { v.ppc_reg = slot; reg[slot] = v; regConst.erase(slot);
+                                           if (slot == retaddr_reg) retaddr_reg = -1;
+                                           if (slot == kGpBase + 4) stack_dirty = true; };
 
   // last flag-setting op, so a following jcc builds the right Compare.
   enum FlagKind { FK_CMP, FK_TEST, FK_ARITH } flag_kind = FK_ARITH;
@@ -251,6 +258,8 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
       const X86Insn& in = insns[iit->second];
       uint32_t next = a + advBytes(in);
       const std::string& m = in.mnem;
+      if (m == "push" || m == "pushad" || m == "pusha" || m == "pushfd" || m == "pushf" ||
+          m == "call" || m == "enter") stack_dirty = true;   // stack no longer at entry depth
 
       auto emitMemAddr = [&](const X86Op& o, ILInstr& ins) {
         // base value for a memory operand; index folded as Add if present
@@ -526,6 +535,23 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
         auto it = reg.find(kGpBase); if (it != reg.end()) x.src1 = it->second;
         bb.instrs.push_back(x);
         bb.is_return = true;
+      } else if (m == "jmp" && in.ops[0].kind == OpKind::Reg && IsGpr(in.ops[0]) &&
+                 RegSlot(in.ops[0].reg) == retaddr_reg) {
+        // `jmp reg` on the entry-popped return address == RETURN (value in AX). The shared
+        // stdcall-cleanup return trampoline (pop edx; lea esp,[esp+eax*4]; mov eax,V; jmp edx) --
+        // without this it mis-lifts to an indirect branch to sub_000000. AX is unambiguously the
+        // return value here, so promote it into r3 (the back-end's return register, which x86's AX
+        // slot 20 does not otherwise feed) so the body renders `return V` instead of a void `return;`.
+        ILInstr x; x.op = ILOp::Return; x.address = a;
+        auto it = reg.find(kGpBase);
+        if (it != reg.end()) {
+          ILInstr cp; cp.op = ILOp::Assign; cp.address = a; cp.src1 = it->second;
+          cp.dst = fn.AllocValue(ILType::U32, 3);
+          bb.instrs.push_back(cp);
+          x.src1 = cp.dst;
+        }
+        bb.instrs.push_back(x);
+        bb.is_return = true;
       } else if (m == "jmp") {
         ILInstr x; x.op = ILOp::Branch; x.address = a;
         if (in.ops[0].kind == OpKind::Rel) { x.target = (uint32_t)in.ops[0].imm; bb.successors.push_back(x.target); }
@@ -601,7 +627,15 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
           save = true;
         }
         if (!save) pend_args.push_back(srcValue(o));
-      } else if (m == "pop" || m == "nop" || m == "leave" || m == "enter" ||
+      } else if (m == "pop") {
+        // An entry `pop reg` (stack still at entry depth) loads the caller's return address; mark it
+        // so a later `jmp reg` on it is recognised as a return. A later pop of that reg clears it.
+        if (in.nops >= 1 && IsGpr(in.ops[0])) {
+          int sl = RegSlot(in.ops[0].reg);
+          if (!stack_dirty) retaddr_reg = sl;
+          else if (sl == retaddr_reg) retaddr_reg = -1;
+        }
+      } else if (m == "nop" || m == "leave" || m == "enter" ||
                  m == "cld" || m == "std" || m == "cli" || m == "sti" ||
                  m == "push" /*unreached*/) {
         // frame teardown/setup + flag-only ops carry no meaning for a reader
