@@ -346,7 +346,9 @@ def structure(blocks, entry=0):
         follow = next(iter(exits)) if len(exits) == 1 else None
         lb = latch.get(h)
         # pre-tested while: header is the test and one successor exits the loop
-        if hblk.term == "cond" and any(s not in body for s in hblk.succ):
+        # (a block that branches back to ITSELF runs its body before its test: that is the
+        #  do-while form below, not a pre-tested while)
+        if hblk.term == "cond" and any(s not in body for s in hblk.succ) and h not in hblk.succ:
             inside = [s for s in hblk.succ if s in body]
             fol = [s for s in hblk.succ if s not in body][0]
             loopstack.append((h, fol, body, [False]))
