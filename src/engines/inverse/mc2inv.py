@@ -2034,7 +2034,26 @@ def _dead_regs(lines):
                 m = re.match(r"if \((.*)\) \{$", a)
                 if m and b == "}" and pure(m.group(1)):
                     del lines[i:i+2]; ch = True; break
+                m = re.match(r"(\s*)if \(\((.*) [!=]= 0\)\) \{$", lines[i])
+                if m and b == "}":                           # only the test's call matters: keep it
+                    lines[i:i+2] = ["%s%s;" % (m.group(1), m.group(2))]; ch = True; break
                 m = re.match(r"(\s*)((?:\} else )?if) \((.*)\) \{$", lines[i])
+                m2 = re.match(r"\} else if \((.*)\) \{$", b)
+                if m and m2:                                 # empty then-arm before an else-if: nest
+                    d = 0; j = i + 2                         # the rest of the chain under the opposite test
+                    while j < len(lines):
+                        t = lines[j].strip()
+                        if t.startswith("}") and d == 0 and t == "}": break
+                        if t.startswith("}"): d -= 1
+                        if t.endswith("{"): d += 1
+                        j += 1
+                    if j < len(lines):
+                        ind = m.group(1)
+                        lines[i+2:j+1] = ["    " + x for x in lines[i+2:j+1]]
+                        lines.insert(j + 1, ind + "}")
+                        lines[i:i+2] = ["%s%s (!%s) {" % (ind, m.group(2), m.group(3) if m.group(3).startswith("(") else "(%s)" % m.group(3)),
+                                        "%s    if (%s) {" % (ind, m2.group(1))]
+                        ch = True; break
                 if m and b == "} else {":                    # empty then-arm: test the opposite
                     lines[i:i+2] = ["%s%s (!%s) {" % (m.group(1), m.group(2), m.group(3) if m.group(3).startswith("(") else "(%s)" % m.group(3))]
                     ch = True; break
