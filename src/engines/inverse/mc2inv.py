@@ -776,6 +776,9 @@ class R:
                 for q in preds:
                     if q in getattr(s,"_cmpat",{}): seen[repr(s._cmpat[q])]=s._cmpat[q]
                 if len(seen)==1: src=next(iter(seen.values()))
+                bc=getattr(s,"_blockcmp",None)             # ... or the compare this very path just
+                if bc is not None and not seen and (bc==lo-1 or (s.tgt.get(bc+1)==lo and s.ins[bc+1].mnemonic=="jmp")):
+                    src=s._lastcmp                         # stepped over (fall-through / jmp into here)
                 s._cmp=src[0]
                 if MARK and jcc in ("jl","jle","jg","jge"): sg=src[1]
         if s._cmp:
@@ -1119,6 +1122,18 @@ class R:
         n=s._carry(i,out)
         if n: return i+n
         ii=s.ins[i]; mn=ii.mnemonic; ops=ii.op_str; d0=ops.split(",")[0].strip()
+        if mn in ("cmp","test") and ops.count(", ")==1:
+            # A compare stepped over here is not followed by its jump in the same block: the
+            # jump sits in a block reached by fall-through or by a plain jmp (a conditional jump
+            # shared by two paths, each bringing its own flags). Remember the compare so that
+            # jump, emitted next on this path, tests the right operands.
+            _a,_b=ops.split(", ")
+            try:
+                _x,_y=s._opval(_a),s._opval(_b)
+                _w="S8" if ("byte ptr" in ops or _a in BYTEREG) else "S16"
+                s._lastcmp=(((_x,_y) if mn=="cmp" else ((_x if _a==_b else "(%s & %s)"%(_x,_y)),"0")), _w)
+                s._blockcmp=i
+            except Exception: pass
         if mn in ("or","and","test") and ops.count(",")==1 and d0==ops.split(",")[1].strip() \
            and "[" not in ops: return i+1                 # `or r,r` = flags only: value/tracking unchanged
         s._kill_aliases(i)
@@ -1348,11 +1363,14 @@ class R:
                 if t>s.ins[-1].address or t<s.ins[0].address:  # outside this function -> tail call
                     s.emit(out,"return sub_%x(%s);"%(t & 0xFFFF, ", ".join(str(a) for a in reversed(s.args)))); s.args=[]
                 elif s.epi is not None and t>=s.epi and s.ax is not None and s.retlive:
+                    if s.dx is not None and str(s.dx)!="dx": s.emit(out,"dx = %s;"%s.dx); s.dx="dx"   # (high half)
                     s.emit(out,"return %s;"%s.ax)              # jmp to common epilogue w/ live result
                 elif not (i+1<len(s.ins) and t==s.ins[i+1].address):   # not a no-op jmp-to-next
                     s.gototargets.add(t); s.emit(out,"goto L_%x;"%t)    # unstructured jump -> goto+label
             return i+1
-        if mn=="ret" and s.ax is not None and s.retlive: s.emit(out,"return %s;"%s.ax); return i+1
+        if mn=="ret" and s.ax is not None and s.retlive:
+            if s.dx is not None and str(s.dx)!="dx": s.emit(out,"dx = %s;"%s.dx); s.dx="dx"
+            s.emit(out,"return %s;"%s.ax); return i+1
         s.expr_step(i); return i+1
 
     def _reset(s):
@@ -1587,6 +1605,9 @@ class R:
         flow). A ret with a live ax becomes `return <ax>`; an out-of-range jmp is a tail call."""
         end = blk.hi - 1 if blk.term in ("jmp", "cond", "ret", "tailcall") else blk.hi
         s._emit_range(blk.lo, end, out)
+        if blk.term == "ret" and s._retval() and s.dx is not None and str(s.dx) != "dx":
+            out.append("dx = %s;" % s.dx); s.dx = "dx"       # a value loaded into dx right before the
+                                                           # return: the high half of a long / far result
         if blk.term == "ret" and s.ax is not None and s.retlive:
             out.append("return %s;" % s.ax)
         elif blk.term == "ret" and s._retval():            # value-returning fn, result merged into
