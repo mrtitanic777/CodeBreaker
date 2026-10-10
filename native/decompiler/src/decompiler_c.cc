@@ -978,6 +978,14 @@ std::string CDecompiler::NameForLiveIn(const ILValue& v) {
     return "a" + std::to_string(v.ppc_reg - 2);  // r3->a1 .. r10->a8
   }
   if (v.ppc_reg == 1) return "sp";
+  // x86 GPR home slots (x86_lift kGpBase=20): ax=20,cx,dx,bx,sp,bp,si,di=27. A value homed in one
+  // of these is a register variable; name it by the REAL register (ax/cx/...) rather than the opaque
+  // r20..r27. This makes register-convention Win16/PE arguments self-documenting and reads as C the
+  // original author would recognise -- pure naming, the decompiler already coalesces by home slot.
+  if (v.ppc_reg >= 20 && v.ppc_reg <= 27) {
+    static const char* kGp[8] = {"ax", "cx", "dx", "bx", "sp", "bp", "si", "di"};
+    return kGp[v.ppc_reg - 20];
+  }
   if (v.ppc_reg >= 0 && v.ppc_reg < 32) return "r" + std::to_string(v.ppc_reg);
   if (v.ppc_reg >= 32 && v.ppc_reg < 64)
     return "f" + std::to_string(v.ppc_reg - 32);
