@@ -82,6 +82,12 @@ def carry_kind(ins, k):
     else None. Used by BOTH the lifter and the driver's gate, so acceptance implies emission."""
     if k<1 or k>=len(ins): return None
     c=ins[k]; p=ins[k-1]
+    if c.mnemonic in ("rcl","rcr"):                       # 32-bit shift by one through the carry
+        cd,_,cs=c.op_str.partition(", "); pd,_,ps=(p.op_str or "").partition(", ")
+        if cs!="1" or ps!="1" or cd not in _WREG or pd not in _WREG or cd==pd: return None
+        if c.mnemonic=="rcl" and p.mnemonic in ("shl","sal"): return "shl1"      # shl LO,1 ; rcl HI,1
+        if c.mnemonic=="rcr" and p.mnemonic in ("shr","sar"): return "shr1" if p.mnemonic=="shr" else "sar1"
+        return None
     if c.mnemonic not in ("adc","sbb") or ", " not in c.op_str or ", " not in (p.op_str or ""):
         if not (c.mnemonic in ("adc","sbb") and p.mnemonic=="neg"): return None
     cd,_,cs=c.op_str.partition(", "); pd,_,ps=(p.op_str or "").partition(", ")
@@ -781,6 +787,19 @@ class R:
             if r=="bx": s.bxsrc=None
             return 1
         kind=carry_kind(ins,i+1) if i+1<len(ins) else None
+        if kind in ("shl1","shr1","sar1"):
+            for r in s._WR:
+                if s._hascall(getattr(s,r,None) or ""): s._materialize(out,r)
+            a=ins[i].op_str.split(",")[0].strip(); b=ins[i+1].op_str.split(",")[0].strip()
+            lo,hi=(a,b) if kind=="shl1" else (b,a)         # shr/sar HI,1 ; rcr LO,1
+            v="LONG(%s, %s)"%(s._opval(hi),s._opval(lo))
+            s._kill_aliases(i); s._kill_aliases(i+1)
+            E="%s + %s"%(v,v) if kind=="shl1" else "%s(%s)"%("LSHR" if kind=="shr1" else "LSAR",v)
+            s._binval("mov",lo); s._binval("mov",hi)
+            setattr(s,lo,"LO(%s)"%E); setattr(s,hi,"HI(%s)"%E)
+            if "ax" in (lo,hi): s.axsrc=None; s.retlive=True
+            if "bx" in (lo,hi): s.bxsrc=None
+            return 2
         if kind not in ("pair","neg"): return 0
         for r in s._WR:                                    # never duplicate a deferred call
             if s._hascall(getattr(s,r,None) or ""): s._materialize(out,r)
