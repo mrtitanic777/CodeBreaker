@@ -539,7 +539,13 @@ class R:
                 if lo and lo in s.breg:                                   # zero-extend: word = low byte
                     setattr(s, BYTEPARENT[d8], s.breg[lo])
                     if d8=="ah": s.axsrc=None; s.retlive=True
-                else: s._byte_settle(d8, i)
+                else:
+                    _w=getattr(s,"_pw",None); _w=_w[1] if (_w and _w[0]==i) else None
+                    if lo and _w is not None and str(_w)!=BYTEPARENT[d8]:   # clear the HIGH half of a
+                        setattr(s, BYTEPARENT[d8], "(%s & 0xff)"%_w)         # tracked word
+                        s.breg.pop(d8,None)
+                        if d8=="ah": s.axsrc=None; s.retlive=True
+                    else: s._byte_settle(d8, i)
                 return
             cur=s.breg.get(d8,pre8 if pre8 is not None else d8); opc={"add":"+","sub":"-","or":"|","and":"&","xor":"^"}[mn]
             if re.match(r"(0x[0-9a-f]+|\d+)$",src): sv=str(s.num(src))
@@ -965,6 +971,7 @@ class R:
             if _t not in s.breg and s._hascall(getattr(s,BYTEPARENT[_t],None) or ""):   # a deferred
                 s._materialize(out, BYTEPARENT[_t])        # call: evaluate the call first, once
         s._p8=(i, s._bval(d0)) if d0 in BYTEREG else None
+        s._pw=(i, getattr(s,BYTEPARENT[d0],None)) if d0 in BYTEREG else None
         _o=ops.split(", ")
         s._s8=(i, s._bval(_o[1])) if (mn=="mov" and len(_o)==2 and _o[0] in BYTEREG and _o[1] in BYTEREG) else None
         s._binval(mn, d0)
