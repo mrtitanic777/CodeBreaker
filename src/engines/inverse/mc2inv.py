@@ -470,15 +470,25 @@ class R:
             elif rx.search(a2):
                 s._tn=getattr(s,"_tn",0)+1; t="t%d"%s._tn
                 out.append("%s = %s;"%(t,a2)); s.ranks.append(s.i); s.regconst.append(False); s.args[k2]=t
+        batch=[]
         for o in s._WR:
             if o==reg: continue
             ov=getattr(s,o,None)
             if ov is None or str(ov)==o: continue
             if sv in str(ov) and len(sv)>len(reg): setattr(s,o,str(ov).replace(sv,reg))
-            elif rx.search(str(ov)):
-                out.append("%s = %s;"%(o,ov)); s.ranks.append(s.i); s.regconst.append(False)
-                setattr(s,o,"ax" if o=="ax" else None)
-        out.append("%s = %s;"%(reg,v)); s.ranks.append(s.i if rank is None else rank); s.regconst.append(False)
+            elif rx.search(str(ov)): batch.append((o,str(ov)))
+        if batch:
+            # several register variables change together (dx:ax pairs): each new value is computed
+            # from the OLD variables, so evaluate them all before assigning any.
+            batch.append((reg,sv)); tmp=[]
+            for o,ov in batch:
+                s._tn=getattr(s,"_tn",0)+1; t="t%d"%s._tn; tmp.append((o,t))
+                out.append("%s = %s;"%(t,ov)); s.ranks.append(s.i); s.regconst.append(False)
+            for o,t in tmp:
+                out.append("%s = %s;"%(o,t)); s.ranks.append(s.i); s.regconst.append(False)
+                if o!=reg: setattr(s,o,"ax" if o=="ax" else None)
+        else:
+            out.append("%s = %s;"%(reg,v)); s.ranks.append(s.i if rank is None else rank); s.regconst.append(False)
         setattr(s,reg,"ax" if reg=="ax" else None)
 
     def emit(s, out, text, rank=None, rc=False):
@@ -507,6 +517,9 @@ class R:
             core=re.sub(r"^BYTE\((.*)\)$", r"\1", m.group(1))
             pat8=re.compile(r"(?<![\w>.])%s(?![\w(])"%re.escape(core))
             for b8,v in list(s.breg.items()):
+                if str(v)!=b8 and pat8.search(str(v)) and str(v)==(m.group(2) or ""):
+                    s.breg[b8]=m.group(1)                  # `x = <al's value>`: al now simply equals x
+                    continue                               # (its old text would re-read the changed x)
                 if str(v)!=b8 and pat8.search(str(v)) and str(v)!=(m.group(2) or ""):
                     s.breg.pop(b8)
                     if s._live(BYTEPARENT[b8], s.i):
@@ -879,8 +892,8 @@ class R:
                 if s._hascall(getattr(s,r,None) or ""): s._materialize(out,r)
             a=ins[i].op_str.split(",")[0].strip(); b=ins[i+1].op_str.split(",")[0].strip()
             lo,hi=(a,b) if kind=="shl1" else (b,a)         # shr/sar HI,1 ; rcr LO,1
+            s._kill_aliases(i); s._kill_aliases(i+1)       # settle dependants FIRST, then read operands
             v="LONG(%s, %s)"%(s._opval(hi),s._opval(lo))
-            s._kill_aliases(i); s._kill_aliases(i+1)
             E="%s + %s"%(v,v) if kind=="shl1" else "%s(%s)"%("LSHR" if kind=="shr1" else "LSAR",v)
             s._binval("mov",lo); s._binval("mov",hi)
             setattr(s,lo,"LO(%s)"%E); setattr(s,hi,"HI(%s)"%E)
@@ -898,6 +911,8 @@ class R:
         else:
             lo,_,x=p.op_str.partition(", "); hi,_,y=c.op_str.partition(", ")
             op="+" if p.mnemonic=="add" else "-"
+            if lo in s._WR:                                # settle dependants FIRST, then read operands
+                s._kill_aliases(i); s._kill_aliases(i+1)
             X,Y=s._opval(x),s._opval(y)
             if lo not in s._WR:                            # two adjacent memory words
                 ml,mh=s.memname(lo),s.memname(hi)
@@ -906,7 +921,6 @@ class R:
                 s.emit(out,"%s = LO(%s);"%(ml,t)); s.emit(out,"%s = HI(%s);"%(mh,t))
                 return 2
             lo0,hi0=s._opval(lo),s._opval(hi)
-            s._kill_aliases(i); s._kill_aliases(i+1)
             E="LONG(%s, %s) %s LONG(%s, %s)"%(hi0,lo0,op,Y,X); n=2
         s._binval("mov",lo); s._binval("mov",hi)
         setattr(s,lo,"LO(%s)"%E); setattr(s,hi,"HI(%s)"%E)
