@@ -31,6 +31,7 @@ CALLINFO=None
 # Verification aid: when True, byte-wide memory operands are emitted as BYTE(x) so a checker can
 # tell 8-bit from 16-bit accesses. Off for normal (readable) output.
 MARK=False
+UNSIGNED_CAST=os.environ.get("MC2INV_UNSIGNED","0")=="1"   # readable listings: mark unsigned compares
 # Optional driver fact: does the function being lifted return a value? (True/False from a
 # whole-program "is the result ever read by a caller" analysis; None -> local heuristic.)
 RETVAL=None
@@ -750,6 +751,10 @@ class R:
             else: w=sg
             s._lastcmp=((a_,b_), w or "S16")
             if sg: a_,b_="%s(%s)"%(sg,a_),"%s(%s)"%(sg,b_)
+            elif UNSIGNED_CAST and not MARK and jcc in ("jb","jae","ja","jbe","jnb","jnae","jna","jnbe","jc","jnc"):
+                # the variables are declared int, so an unsigned compare has to say so
+                if re.match(r"-\d+$", str(b_)): b_="0x%x"%(int(b_)&0xFFFF)
+                a_="(unsigned)%s"%a_
             cond="(%s %s %s)"%(a_, INV.get(jcc,"?"), b_)
         else:                                             # flags from the last ALU result: test it
             val=s._flagval(j)                             # against 0 in the jcc's own sense (was a
