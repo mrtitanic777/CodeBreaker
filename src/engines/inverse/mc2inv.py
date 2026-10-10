@@ -1020,10 +1020,10 @@ class R:
         """A call's value lives in ax. Dead (never read before being overwritten) -> a statement;
         read once (or first stored to a variable) -> embedded at its use; read several times ->
         materialized `ax = f();` so the call is not textually duplicated."""
-        for r in ("si","di"):                              # callee-saved copies of memory the
-            v=getattr(s,r,None)                            # callee may change: pin before the call
-            if v is not None and not re.match(r"^&?[A-Za-z_]\w*$",str(v)) and s._live(r,i):
-                s._materialize(out, r)
+        for r in ("si","di"):                              # callee-saved copies of a VARIABLE: the
+            v=getattr(s,r,None)                            # callee may change it (a global, or a local
+            if v is not None and str(v)!=r and not re.match(r"^&|^-?\d+$",str(v)) and s._live(r,i):   # whose
+                s._materialize(out, r)                     # address escaped), so capture the value now
         for r in s._WR:                                    # an earlier deferred call that is not
             v=getattr(s,r,None)                            # an argument of this one runs first
             if v is not None and str(v)!=r and s._hascall(v) and str(v) not in expr:
@@ -1480,6 +1480,13 @@ class R:
             if v is not None and v!=pre.get(r) and s._hascall(v):
                 body.append("%s = %s;"%(r,v)); snap[r]="ax" if r=="ax" else None
 
+    @staticmethod
+    def _selfref(r, v):
+        """Does the lazily tracked text `v` read the register variable `r` (or a half of it)?
+        Once `r = v;` is emitted, `v` no longer denotes the same value."""
+        names = {r} | {h for h, par in BYTEPARENT.items() if par == r or h == r} | ({BYTEPARENT[r]} if r in BYTEPARENT else set())
+        return any(re.search(r"(?<![\w>.])%s(?![\w(])" % n, str(v)) for n in names)
+
     def _plain_if(s, cond, body, pre, then_s, out):
         """Emit a plain if(cond){body}: materialize the phi against the implicit (not-taken) else --
         a register the body changes is set `reg=<then>;` inside and `reg=<pre>;` before, then exposed
@@ -1493,8 +1500,9 @@ class R:
                 setattr(s, r, None); continue                  # dead after the merge
             if pre[r] is not None and str(pre[r]) != r:
                 out.append("%s = %s;" % (r, pre[r]))
-                if s._hascall(pre[r]) and str(pre[r]) in cond:
+                if (s._hascall(pre[r]) or s._selfref(r, pre[r])) and str(pre[r]) in cond:
                     cond = cond.replace(str(pre[r]), r)        # don't re-evaluate the call in the test
+                                                               # (nor a value that reads r itself)
             if then_s[r] is not None and str(then_s[r]) != r and not bterm: body.append("%s = %s;" % (r, then_s[r]))
             setattr(s, r, None)
         pbr, tbr = pre["breg"], then_s["breg"]                 # 8-bit sub-registers vs the implicit else
@@ -1503,7 +1511,10 @@ class R:
             if pv == tv:
                 if tv is not None: s.breg[r] = tv
                 continue
-            if pv is not None and str(pv) != r: out.append("%s = %s;" % (r, pv))
+            if pv is not None and str(pv) != r:
+                out.append("%s = %s;" % (r, pv))
+                if s._selfref(r, pv) and str(pv) in cond:      # `al = al << n; if (al & m)` -- not the
+                    cond = cond.replace(str(pv), r)            # shift applied a second time in the test
             if tv is not None and str(tv) != r and not bterm: body.append("%s = %s;" % (r, tv))
             s.breg.pop(r, None)
         if any(x.strip() for x in body):
