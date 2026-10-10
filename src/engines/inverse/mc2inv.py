@@ -95,7 +95,9 @@ class R:
         struct pointer). Keeps [bx+N] etc. readable instead of leaking raw asm."""
         v=getattr(s,reg,None)
         if v is None or re.match(r"-?\d+$|-?0x[0-9a-f]+$",str(v)): return reg
-        return str(v)
+        v=str(v)                                          # a non-trivial base must be parenthesized:
+        if re.match(r"^[A-Za-z_]\w*(->f\d+)*$",v) or (v.startswith("(") and v.endswith(")")): return v
+        return "(%s)"%v                                   # `*a` + `->f3` is (*a)->f3, not *(a->f3)
     def memname(s,op):
         r=s._memname0(op)
         if MARK and r is not None and "byte ptr" in op and "[" in op: return "BYTE(%s)"%r
@@ -135,9 +137,9 @@ class R:
             if m: return "%s[-%d]"%(s._ptrbase(reg),s.num(m.group(1)))
             if "[%s]"%reg in op: return "*%s"%s._ptrbase(reg)
         m=re.search(r"\[(bx|bp|si|di) \+ (si|di) \+ (0x[0-9a-f]+|\d+)\]",op)   # base+index+disp
-        if m: return "%s[%s + %d]"%(s._ptrbase(m.group(1)), m.group(2), s.num(m.group(3)))
+        if m: return "%s[%s + %d]"%(s._ptrbase(m.group(1)), s._ptrbase(m.group(2)), s.num(m.group(3)))
         m=re.search(r"\[bx \+ si\]|\[bx \+ di\]|\[si \+ di\]",op)  # indexed; name by base reg
-        if m: return "%s[%s]"%(s._ptrbase(op[1:3]), op.split(" + ")[1].rstrip("]"))
+        if m: return "%s[%s]"%(s._ptrbase(op[1:3]), s._ptrbase(op.split(" + ")[1].rstrip("]")))
         m=re.search(r"\[(0x[0-9a-f]+|\d+)\]",op)
         if m: return "g_%x"%s.num(m.group(1))       # distinct global per address
         if op.strip() in ("ax","bx","cx","dx","si","di","bp","ds","es","ss","cs"):
@@ -429,13 +431,17 @@ class R:
         s._kill_aliases(i)
         if s._byte_on_word(mn, ops): return
         _d=ops.split(",")[0].strip()
+        _sv=None                                           # `mov r8, r8'`: read the source half first
+        if mn=="mov" and ops.count(", ")==1 and ops.split(", ")[0] in BYTEREG and ops.split(", ")[1] in BYTEREG:
+            _q=getattr(s,"_s8",None)
+            _sv=_q[1] if (_q and _q[0]==i) else s._bval(ops.split(", ")[1])
         _p=getattr(s,"_p8",None)
         pre8=_p[1] if (_p and _p[0]==i) else (s._bval(_d) if _d in BYTEREG else None)   # byte value BEFORE the write
         s._binval(mn, _d)
         if mn=="mov" and ops.split(", ")[0] in BYTEREG:        # byte load/copy: r8 = mem | imm | r8'
             d8=ops.split(", ")[0]; src=ops.split(", ",1)[1]
             if re.match(r"(0x[0-9a-f]+|\d+)$",src): s.breg[d8]=str(s.num(src))
-            elif src in BYTEREG: s.breg[d8]=s.breg.get(src,src)
+            elif src in BYTEREG: s.breg[d8]=_sv if _sv is not None else s.breg.get(src,src)
             else: s.breg[d8]=s.memname(src) or d8
             if BYTEPARENT[d8] in ("ax","bx","cx","dx","si","di"): setattr(s,BYTEPARENT[d8],None)
             s._byte_settle(d8, i)
@@ -520,6 +526,8 @@ class R:
         def resolve(t):
             if t=="ax": return s.ax if s.ax is not None else "ax"   # untracked -> the register
             if t=="bx": return s.bx if s.bx is not None else "bx"
+            if t in ("cx","dx","si","di"):                # compare a register by its tracked value
+                v=getattr(s,t,None); return v if v is not None else t
             if t in BYTEREG: return s._bval(t, True)
             v=s.memname(t)
             return v if v is not None else (str(s.num(t)) if re.match(r"(0x[0-9a-f]+|\d+)$",t) else t)
@@ -580,7 +588,8 @@ class R:
         tracked value of the parent word -- e.g. `call f; mov [p],al` stores f()'s low byte."""
         if r8 in s.breg: return s.breg[r8]
         pv=getattr(s,BYTEPARENT[r8],None)
-        if pv is None or not r8.endswith("l"): return r8
+        if pv is None: return r8
+        if not r8.endswith("l"): return "((%s >> 8) & 0xff)"%pv      # high half of a tracked word
         if trunc and not re.match(r"(BYTE\(.*\)|\d{1,2}|1\d\d|2[0-4]\d|25[0-5])$", str(pv)):
             return "(%s & 0xff)"%pv                       # a TEST of the low byte only (`or al,al`)
         return pv
@@ -776,6 +785,8 @@ class R:
         s._kill_aliases(i)
         if s._byte_on_word(mn, ops): return i+1
         s._p8=(i, s._bval(d0)) if d0 in BYTEREG else None
+        _o=ops.split(", ")
+        s._s8=(i, s._bval(_o[1])) if (mn=="mov" and len(_o)==2 and _o[0] in BYTEREG and _o[1] in BYTEREG) else None
         s._binval(mn, d0)
         if mn=="mov" and "[" in d0 and ops.rpartition(", ")[2] in BYTEREG:   # store: mem = byte-reg
             src=ops.rpartition(", ")[2]
