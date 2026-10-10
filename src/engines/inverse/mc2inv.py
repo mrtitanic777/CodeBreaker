@@ -22,12 +22,18 @@ CJMP=set(JCC)|{"jz","jnz"}
 BYTEREG=("al","bl","cl","dl","ah","bh","ch","dh")        # 8-bit sub-registers (exposed as vars)
 BYTEPARENT={"al":"ax","ah":"ax","bl":"bx","bh":"bx","cl":"cx","ch":"cx","dl":"dx","dh":"dx"}
 WORDHALVES={"ax":("al","ah"),"bx":("bl","bh"),"cx":("cl","ch"),"dx":("dl","dh")}
-TRACKED_BYTE={"mov","add","sub","or","and","xor","inc","dec"}   # byte-reg ops tracked as breg values
+TRACKED_BYTE={"mov","add","sub","or","and","xor","inc","dec","shl","sal","shr","sar","neg","not"}   # byte-reg ops tracked as breg values
 
 # Optional driver hook: CALLINFO(call_addr_0based, "near"|"far", target) -> number of bytes the
 # CALLEE pops on return (`ret N`: N>0 = Pascal convention, args pushed left-to-right and N/2
 # words consumed), 0 for a plain `ret` (C convention), or None when unknown.
 CALLINFO=None
+# Verification aid: when True, byte-wide memory operands are emitted as BYTE(x) so a checker can
+# tell 8-bit from 16-bit accesses. Off for normal (readable) output.
+MARK=False
+# Optional driver fact: does the function being lifted return a value? (True/False from a
+# whole-program "is the result ever read by a caller" analysis; None -> local heuristic.)
+RETVAL=None
 
 class R:
     def __init__(s, ins, fs, base=0, cxmap=None, msc3=False):
@@ -91,6 +97,10 @@ class R:
         if v is None or re.match(r"-?\d+$|-?0x[0-9a-f]+$",str(v)): return reg
         return str(v)
     def memname(s,op):
+        r=s._memname0(op)
+        if MARK and r is not None and "byte ptr" in op and "[" in op: return "BYTE(%s)"%r
+        return r
+    def _memname0(s,op):
         op=op.replace("word ptr ","").replace("byte ptr ","")
         op=re.sub(r"\b(es|ds|ss|cs|fs|gs):","",op)            # drop segment override (far deref)
         if s.msc3:                                            # 3.0: locals [bp-N], params [bp+N>=4]
@@ -314,6 +324,14 @@ class R:
         A statement that WRITES a variable first pins every still-live register whose lazily
         tracked value reads that variable (`mov bx,[p]; inc [p]; mov [bx],al` is `bx = p; p++;
         *bx = ..`, not `p++; *p = ..`)."""
+        for r in s._WR:                                    # evaluation order: a call still deferred
+            v=getattr(s,r,None)                            # in a register runs BEFORE this statement
+            if v is not None and str(v)!=r and s._hascall(v) and str(v) not in text:
+                s._materialize(out, r, rank)
+        for k,a in enumerate(s.args):
+            if s._hascall(a) and str(a) not in text:
+                s._tn=getattr(s,"_tn",0)+1; t="t%d"%s._tn
+                out.append("%s = %s;"%(t,a)); s.ranks.append(s.i); s.regconst.append(False); s.args[k]=t
         m=re.match(r"(.+?)(?: = (.*);|\+\+;|--;)$", text)
         if m and m.group(1) not in ("ax","bx","cx","dx","si","di") and m.group(1) not in BYTEREG:
             lhs=m.group(1); rhs=m.group(2)
@@ -360,7 +378,10 @@ class R:
            and ops.split(",")[0].strip()==ops.split(",")[1].strip(): return   # flags-only self test
         s._kill_aliases(i)
         if s._byte_on_word(mn, ops): return
-        s._binval(mn, ops.split(",")[0].strip())
+        _d=ops.split(",")[0].strip()
+        _p=getattr(s,"_p8",None)
+        pre8=_p[1] if (_p and _p[0]==i) else (s._bval(_d) if _d in BYTEREG else None)   # byte value BEFORE the write
+        s._binval(mn, _d)
         if mn=="mov" and ops.split(", ")[0] in BYTEREG:        # byte load/copy: r8 = mem | imm | r8'
             d8=ops.split(", ")[0]; src=ops.split(", ",1)[1]
             if re.match(r"(0x[0-9a-f]+|\d+)$",src): s.breg[d8]=str(s.num(src))
@@ -377,13 +398,13 @@ class R:
                     setattr(s, BYTEPARENT[d8], s.breg[lo])
                     if d8=="ah": s.axsrc=None; s.retlive=True
                 return
-            cur=s.breg.get(d8,d8); opc={"add":"+","sub":"-","or":"|","and":"&","xor":"^"}[mn]
+            cur=s.breg.get(d8,pre8 if pre8 is not None else d8); opc={"add":"+","sub":"-","or":"|","and":"&","xor":"^"}[mn]
             if re.match(r"(0x[0-9a-f]+|\d+)$",src): sv=str(s.num(src))
             elif src in BYTEREG: sv=s.breg.get(src,src)
             else: sv=s.memname(src) or src
             s.breg[d8]="(%s %s %s)"%(cur,opc,sv); return
         if mn in ("inc","dec") and ops in BYTEREG:             # byte-reg inc/dec
-            s.breg[ops]="(%s %s 1)"%(s.breg.get(ops,ops), "+" if mn=="inc" else "-"); return
+            s.breg[ops]="(%s %s 1)"%(s.breg.get(ops,pre8 if pre8 is not None else ops), "+" if mn=="inc" else "-"); return
         if mn in ("cbw","cwde") and "al" in s.breg:            # sign-extend al -> ax (int)al
             s.ax=s.breg["al"]; s.axsrc=None; return
         if mn=="mov" and ops.startswith("ax, "):
@@ -445,7 +466,7 @@ class R:
         def resolve(t):
             if t=="ax": return s.ax if s.ax is not None else "ax"   # untracked -> the register
             if t=="bx": return s.bx if s.bx is not None else "bx"
-            if t in BYTEREG: return s._bval(t)
+            if t in BYTEREG: return s._bval(t, True)
             v=s.memname(t)
             return v if v is not None else (str(s.num(t)) if re.match(r"(0x[0-9a-f]+|\d+)$",t) else t)
         while j<len(s.ins) and s.ins[j].mnemonic not in CJMP:
@@ -460,12 +481,24 @@ class R:
         if j>=len(s.ins):                                 # no conditional jump before the end
             return (s.ax if s.ax is not None else "0"), j
         jcc=s.ins[j].mnemonic
+        sg=None
+        if MARK and jcc in ("jl","jle","jg","jge"):
+            k=j-1
+            while k>=0 and s.ins[k].mnemonic in ("mov","lea","push","pop","les","cbw","cwde"): k-=1
+            o=s.ins[k].op_str if k>=0 else ""
+            sg="S8" if ("byte ptr" in o or o.split(",")[0].strip() in BYTEREG) else "S16"
         if s._cmp:
-            cond="(%s %s %s)"%(s._cmp[0], INV.get(jcc,"?"), s._cmp[1])
+            a_,b_=s._cmp
+            if sg: a_,b_="%s(%s)"%(sg,a_),"%s(%s)"%(sg,b_)
+            cond="(%s %s %s)"%(a_, INV.get(jcc,"?"), b_)
         else:                                             # flags from the last ALU result: test it
             val=s._flagval(j)                             # against 0 in the jcc's own sense (was a
             op=INV.get(jcc)                               # bare `ax` regardless of je/jne or of
-            cond="(%s %s 0)"%(val,op) if op else str(val) # which register set the flags)
+            if sg: val="%s(%s)"%(sg,val)                  # which register set the flags)
+            cond="(%s %s 0)"%(val,op) if op else str(val)
+        for r in s._WR:                                   # a call evaluated in this test is spent
+            v=getattr(s,r,None)
+            if v is not None and s._hascall(v) and str(v) in cond: setattr(s,r,None)
         return cond, j
 
     _FLAGSET=("add","sub","and","or","xor","inc","dec","neg","shl","sal","shr","sar","adc","sbb")
@@ -481,22 +514,22 @@ class R:
                 if d0=="ax": break
                 if d0 in ("bx","cx","dx","si","di"):
                     v=getattr(s,d0,None); return v if v is not None else d0
-                if d0 in BYTEREG:
-                    if d0 in s.breg: return s.breg[d0]
-                    pv=getattr(s,BYTEPARENT[d0],None)
-                    return pv if (pv is not None and d0.endswith("l")) else d0
+                if d0 in BYTEREG: return s._bval(d0, True)
                 if "[" in d0:
                     return s.memname(d0) or "ax"
                 break
             k-=1
         return s.ax if s.ax is not None else "ax"
 
-    def _bval(s, r8):
+    def _bval(s, r8, trunc=False):
         """Current value of an 8-bit register: its own tracked byte value, else (low halves) the
         tracked value of the parent word -- e.g. `call f; mov [p],al` stores f()'s low byte."""
         if r8 in s.breg: return s.breg[r8]
         pv=getattr(s,BYTEPARENT[r8],None)
-        return pv if (pv is not None and r8.endswith("l")) else r8
+        if pv is None or not r8.endswith("l"): return r8
+        if trunc and not re.match(r"(BYTE\(.*\)|\d{1,2}|1\d\d|2[0-4]\d|25[0-5])$", str(pv)):
+            return "(%s & 0xff)"%pv                       # a TEST of the low byte only (`or al,al`)
+        return pv
 
     def lparam(s,op):
         m=re.search(r"\[bp \+ (0x[0-9a-f]+|\d+)\]",op); off=s.num(m.group(1))
@@ -601,6 +634,7 @@ class R:
         """Does this function return a value? A value-returning C function leaves a result in ax
         on EVERY path; if some path from the entry reaches a ret without ax ever being written,
         the function is void and its final ret does not consume ax."""
+        if getattr(s, "_rv", None) is None and RETVAL is not None: s._rv=bool(RETVAL)
         if getattr(s, "_rv", None) is None:
             seen=set(); work=[(getattr(s,"emit_start",0), False)]; rv=True
             while work and rv:
@@ -654,11 +688,18 @@ class R:
             v=getattr(s,r,None)                            # callee may change: pin before the call
             if v is not None and not re.match(r"^&?[A-Za-z_]\w*$",str(v)) and s._live(r,i):
                 s._materialize(out, r)
+        for r in s._WR:                                    # an earlier deferred call that is not
+            v=getattr(s,r,None)                            # an argument of this one runs first
+            if v is not None and str(v)!=r and s._hascall(v) and str(v) not in expr:
+                s._materialize(out, r)
         uses, ret, sf = s._ax_fate(i)
         if s.callstmt or (not uses and not ret):
             s.emit(out,expr+";"); s.ax=None; s.retlive=False
         elif not uses and not s._retlin:                   # only reaches the ret, across a branch/
             s.emit(out,"ax = %s;"%expr); s.ax="ax"; s.retlive=True   # merge: pin it (never defer a
+        elif not sf and len(uses)==1 and s.ins[uses[0]].mnemonic in ("cmp","test","or","and") \
+             and (lambda f: f[0] or f[1])(s._ax_fate(uses[0])):
+            s.emit(out,"ax = %s;"%expr); s.ax="ax"; s.retlive=True   # tested AND read again: pin
         elif sf or len(uses)<=1:                           # call over control flow)
             s.ax=expr; s.retlive=True
         else:
@@ -678,10 +719,11 @@ class R:
            and "[" not in ops: return i+1                 # `or r,r` = flags only: value/tracking unchanged
         s._kill_aliases(i)
         if s._byte_on_word(mn, ops): return i+1
+        s._p8=(i, s._bval(d0)) if d0 in BYTEREG else None
         s._binval(mn, d0)
         if mn=="mov" and "[" in d0 and ops.rpartition(", ")[2] in BYTEREG:   # store: mem = byte-reg
             src=ops.rpartition(", ")[2]
-            s.emit(out,"%s = %s;"%(s.memname(d0.replace("byte ptr ","")), s._bval(src)))
+            s.emit(out,"%s = %s;"%(s.memname(d0 if "byte ptr" in d0 else "byte ptr "+d0), s._bval(src)))
             return i+1
         if mn=="cmp" and ops.startswith("ax, ") and i+2<len(s.ins) and s.ins[i+1].mnemonic in JCC and s.ins[i+2].mnemonic=="xor":
             s.ax="(%s %s %s)"%(s.ax, JCC[s.ins[i+1].mnemonic], s.memname(ops[4:])); s.retlive=True; s.axsrc=None
@@ -721,12 +763,13 @@ class R:
                 rank = s.axsrc if (s.axsrc is not None and s.axsrc < i) else i
                 rc = (s.axsrc is not None) and bool(re.match(r"-?\d+$|-?0x[0-9a-f]+$", str(s.ax)))
                 s.emit(out,"%s = %s;"%(s.memname(dest), s.ax if s.ax is not None else "ax"), rank, rc)
-                s.ax=s.memname(dest); s.axsrc=None; s.retlive=False; return i+1   # aliases var
+                if s.ax is not None and str(s.ax)!="ax": s.ax=s.memname(dest)     # expr -> aliases var
+                s.axsrc=None; s.retlive=False; return i+1
             if src in ("bx","cx","dx","si","di"):
                 rank = s.bxsrc if (src=="bx" and s.bxsrc is not None and s.bxsrc < i) else i
                 rv = getattr(s,src) if getattr(s,src) is not None else src          # untracked -> reg name
                 s.emit(out,"%s = %s;"%(s.memname(dest), rv), rank)
-                setattr(s,src,s.memname(dest))
+                if str(rv)!=src: setattr(s,src,s.memname(dest))
                 if src=="bx": s.bxsrc=None
                 return i+1                                      # backward alias
             if re.match(r"(0x[0-9a-f]+|\d+)$",src):
@@ -739,9 +782,18 @@ class R:
             if re.match(r"(0x[0-9a-f]+|\d+)$",src) or src in ("bx","cx","dx","si","di"):
                 d=s.memname(dst); rv=s.num(src) if re.match(r"(0x[0-9a-f]+|\d+)$",src) else s._val(src)
                 s.emit(out,"%s = %s %s %s;"%(d,d,ALU[mn],rv)); return i+1
-        if mn in ("inc","dec") and ops in ("ax","bx"):
-            base = getattr(s, ops) if getattr(s, ops) is not None else ops   # untracked -> reg name
-            s.ax="(%s %s 1)"%(base,"+" if mn=="inc" else "-"); s.retlive=True; return i+1
+            if src in BYTEREG:
+                d=s.memname(dst if "byte ptr" in dst else "byte ptr "+dst)
+                s.emit(out,"%s = %s %s %s;"%(d,d,ALU[mn],s._bval(src))); return i+1
+        if mn in ("inc","dec") and ops=="ax":
+            base = s.ax if s.ax is not None else "ax"       # untracked -> reg name
+            s.ax="(%s %s 1)"%(base,"+" if mn=="inc" else "-"); s.retlive=True; s.axsrc=None; return i+1
+        if mn in ("inc","dec") and ops in ("bx","cx","dx","si","di"):
+            cur=getattr(s,ops,None)
+            s.emit(out,"%s = %s %s 1;"%(ops, ops if cur is None else cur, "+" if mn=="inc" else "-"))
+            setattr(s,ops,None)
+            if ops=="bx": s.bxsrc=None
+            return i+1
         if mn in ("inc","dec"):
             nm=s.memname(ops) or ops; o="+" if mn=="inc" else "-"
             # fs>0 means MC1 allocated a temp -> source used the temp form x = x OP 1 (not x++/x--)
@@ -758,10 +810,14 @@ class R:
         # byte-register shift/unary: al/bl/.. are low sub-registers the word model doesn't track,
         # so emit them as statements on the exposed byte-register variable (faithful transcription).
         if d0 in BYTEREG and mn in ("shl","sal","shr","sar"):
-            cnt="cl" if ops.endswith("cl") else s._val(ops.split(", ")[1])
-            op="<<" if mn in ("shl","sal") else ">>"; s.emit(out,"%s = %s %s %s;"%(d0,d0,op,cnt)); return i+1
+            cur=s._p8[1] if s._p8 else d0
+            cnt=(s.breg["cl"] if "cl" in s.breg else (s.cx if s.cx is not None else "cl")) \
+                if ops.endswith("cl") else s._val(ops.split(", ")[1])
+            op="<<" if mn in ("shl","sal") else ">>"
+            s.breg[d0]="((%s %s %s) & 0xff)"%(cur,op,cnt); return i+1
         if d0 in BYTEREG and mn in ("neg","not"):
-            s.emit(out,"%s = %s%s;"%(d0,"-" if mn=="neg" else "~",d0)); return i+1
+            cur=s._p8[1] if s._p8 else d0
+            s.breg[d0]="((%s%s) & 0xff)"%("-" if mn=="neg" else "~",cur); return i+1
         # ALU on a non-ax word register (bx/cx/dx/si/di): the symbolic model tracks only ax, so
         # these were silently dropped. Emit as statements on the register variable (clearing any
         # stale pointer track so later derefs stay consistent with the bare name). sub/xor r,r is
@@ -851,6 +907,8 @@ class R:
             tv, ev = then_snap[r], else_snap[r]
             if tv==ev:
                 setattr(s, r, tv); continue
+            if r in s._WR and not s._live(r, s.i) and not s._hascall(tv) and not s._hascall(ev):
+                setattr(s, r, None); continue              # dead after the merge: nothing to keep
             if tv is not None and str(tv)!=r and not tterm: then_b.append("%s = %s;"%(r,tv))
             if ev is not None and str(ev)!=r and not eterm: else_b.append("%s = %s;"%(r,ev))
             setattr(s, r, None)                      # merged -> bare register after the branch
@@ -990,7 +1048,8 @@ class R:
         if blk.term == "ret" and s.ax is not None and s.retlive:
             out.append("return %s;" % s.ax)
         elif blk.term == "ret" and s._retval():            # value-returning fn, result merged into
-            out.append("return ax;")                       # the register variable on the way here
+            v = s.ax if s.ax is not None else (s.breg.get("al") or "ax")   # the register variable
+            out.append("return %s;" % v)
         elif blk.term == "tailcall":
             last = s.ins[blk.hi - 1]
             m = re.match(r"(0x[0-9a-f]+|\d+)$", last.op_str)
@@ -1028,6 +1087,8 @@ class R:
         for r in s._REGS:
             if then_s[r] == pre[r]:
                 setattr(s, r, then_s[r]); continue
+            if r in s._WR and not s._live(r, s.i) and not s._hascall(pre[r]) and not s._hascall(then_s[r]):
+                setattr(s, r, None); continue                  # dead after the merge
             if pre[r] is not None and str(pre[r]) != r:
                 out.append("%s = %s;" % (r, pre[r]))
                 if re.search(r"[A-Za-z_]\w*\(", str(pre[r])) and str(pre[r]) in cond:
@@ -1072,16 +1133,18 @@ class R:
             s._rest(pre)
             eb = []; s._emit_seq(blocks, else_t, eb); es = s._snap()
             s._flush_calls(es, pre, eb)
-            # A genuinely-empty tree branch -> collapse to a plain if (the CFG proves the region is
-            # empty, so this is faithful, not a dropped-statement mask as it would be in walk()).
-            if not any(x.strip() for x in tb) and any(x.strip() for x in eb):
-                s._plain_if(s._negate(cond), eb, pre, es, out)
-            elif not any(x.strip() for x in eb) and any(x.strip() for x in tb):
-                s._plain_if(cond, tb, pre, ts, out)
-            else:
-                s._phi(ts, es, tb, eb)
+            # Merge FIRST (each branch gets the register values it leaves that are read later),
+            # THEN drop a branch that is still empty. Collapsing before the merge lost a branch
+            # whose only effect was a register result (`else ax = 0`).
+            s._phi(ts, es, tb, eb)
+            te, ee = any(x.strip() for x in tb), any(x.strip() for x in eb)
+            if te and ee:
                 out.append("if (%s) {" % cond); out += ["    " + x for x in tb]
                 out.append("} else {"); out += ["    " + x for x in eb]; out.append("}")
+            elif te:
+                out.append("if (%s) {" % cond); out += ["    " + x for x in tb]; out.append("}")
+            elif ee:
+                out.append("if (%s) {" % s._negate(cond)); out += ["    " + x for x in eb]; out.append("}")
         elif kind in ("while", "loop"):
             b, body_t = node[1], node[2]
             # Loop-carried registers: value tracking is lazy (a register holds an expression until
