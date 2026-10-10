@@ -40,8 +40,8 @@ class Block:
 
 def _jump_target(ins):
     """Absolute target address of a jmp/jcc, or None if indirect."""
-    m = re.match(r"0x([0-9a-f]+)$", ins.op_str)
-    return int(m.group(1), 16) if m else None
+    m = re.match(r"(0x[0-9a-f]+|\d+)$", ins.op_str)       # capstone prints targets < 10 without 0x
+    return int(m.group(1), 0) if m else None
 
 
 def build_cfg(insns, lo_addr, hi_addr):
@@ -222,9 +222,26 @@ def structure(blocks, entry=0):
                           # re-entering one on the current PATH is a back-edge -> goto)
         while b is not None and b != EXIT:
             if loopstack:                                   # break/continue for the innermost loop
-                h, fol = loopstack[-1]
+                h, fol, lbody = loopstack[-1]
                 if b == fol: out.append(('break',)); return out
                 if b == h: out.append(('continue',)); return out
+                if b not in lbody:
+                    # A SECOND exit: this edge leaves the loop to somewhere other than its follow
+                    # (typically `found: return 1` inside a search loop). It is NOT "reaching the
+                    # join" -- treating it so made the early return fall through and keep looping.
+                    # A returning block is duplicated in place; anything else is a goto.
+                    # A short straight-line exit path that ends in a ret (`found: x = ..; return 1`)
+                    # is duplicated in place; anything else is a goto.
+                    chain = []; c = b
+                    while c is not None and len(chain) < 4:
+                        chain.append(c)
+                        if blocks[c].term == "ret": break
+                        c = blocks[c].succ[0] if (blocks[c].term in ("jmp", "fall") and blocks[c].succ) else None
+                    if c is not None and blocks[c].term == "ret" and chain[-1] == c:
+                        out.extend(('block', x) for x in chain)
+                    else:
+                        out.append(('goto', None, b))
+                    return out
             if b in stops:
                 break
             if b in active or b in local:                   # ancestor/irreducible re-entry -> goto
@@ -277,21 +294,40 @@ def structure(blocks, entry=0):
         if hblk.term == "cond" and any(s not in body for s in hblk.succ):
             inside = [s for s in hblk.succ if s in body]
             fol = [s for s in hblk.succ if s not in body][0]
-            loopstack.append((h, fol))
+            loopstack.append((h, fol, body))
             body_t = seq_from(inside[0], {h}) if inside else []
             loopstack.pop()
-            return ('while', h, body_t, fol), fol
+            # 5th field: True when the loop is entered on the jcc's TAKEN edge (the bottom-tested
+            # `jmp test; body; test: cmp; jcc body` shape) -> the emitter must negate cond_at's
+            # fall-through-sense condition. Without it every such while came out inverted.
+            return ('while', h, body_t, fol, bool(inside) and inside[0] == hblk.succ[0]), fol
         # post-tested do-while: the latch is the test and one successor exits
         if lb is not None and blocks[lb].term == "cond" and any(s not in body for s in blocks[lb].succ):
             fol = [s for s in blocks[lb].succ if s not in body][0]
-            loopstack.append((h, fol))
-            body_t = seq_from(h, {lb}) + [('block', lb)]
+            loopstack.append((h, fol, body))
+            # Emit the body STARTING WITH the header: seq_from(h, ..) hits its own `b == h ->
+            # continue` check on the first step and would drop the entire body.
+            if h == lb:
+                body_t = []                                 # single-block loop: the latch IS the body
+            elif hblk.term == "cond":
+                active.add(h)
+                node, after = do_if(h, {lb})
+                active.discard(h)
+                body_t = [node]
+                if after is not None and after not in (h, lb, EXIT):
+                    body_t += seq_from(after, {lb})
+            else:
+                body_t = [('block', h)]
+                if hblk.succ and hblk.succ[0] != lb:
+                    body_t += seq_from(hblk.succ[0], {lb})
+            body_t = body_t + [('block', lb)]
             loopstack.pop()
-            return ('dowhile', h, body_t, lb), fol
+            # 5th field: True when the latch's TAKEN edge continues the loop (the usual `jcc top`).
+            return ('dowhile', h, body_t, lb, blocks[lb].succ[0] in body), fol
         # endless/multi-exit loop: emit the body STARTING WITH the header (seq_from(h,...) would hit
         # the b==h continue-check immediately and drop the whole body). Process the header block/if
         # first, then walk onward; re-reaching h is the back-edge -> continue, reaching follow -> break.
-        loopstack.append((h, follow))
+        loopstack.append((h, follow, body))
         hblk = blocks[h]
         if hblk.term == "cond":
             node, after = do_if(h, {h})
