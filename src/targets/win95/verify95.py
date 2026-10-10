@@ -251,10 +251,13 @@ def verify_pair(retail, rebuilt, arity=0, maxn=64):
     vecs = _vectors(arity, lane)
     out = []
     if lane == "ne":
-        # NE exports are mostly BY ORDINAL (the LZ APIs have no resident name), so probe ordinals
-        # 1..maxn directly; annotate with the resident name where one exists.
+        # NE exports are mostly BY ORDINAL (the LZ APIs have no resident name). Probe only the
+        # ordinals the entry table ACTUALLY exports -- blindly probing 1..maxn tests non-exports
+        # (unused ordinals resolve to different garbage in a smaller rebuild) and floods the verdict
+        # with false divergences. Fall back to 1..maxn only if the entry table can't be read.
         names = {o: n for o, n in ne_dynoracle_exports(retail)}
-        for ordn in range(1, maxn + 1):
+        ords = A.NE(retail).export_ordinals() if A.NE(retail).is_ne else []
+        for ordn in (ords[:maxn] or list(range(1, maxn + 1))):
             rs = [_fp_ne(retail, ordn, v) for v in vecs]
             bs = [_fp_ne(rebuilt, ordn, v) for v in vecs]
             if all("err" in a for a in rs) and all("err" in b for b in bs):

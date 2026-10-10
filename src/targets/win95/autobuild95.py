@@ -167,6 +167,31 @@ class NE:
             p += 1 + ln + 2
         return out
 
+    def export_ordinals(self):
+        """The ordinals the NE ENTRY TABLE actually exports (by-name AND by-ordinal), skipping gaps.
+        Ordinals are numbered sequentially from 1; a bundle of type 0 is a run of UNUSED ordinals.
+        Needed to verify only real exports -- LZ-style APIs export by ordinal with no resident name,
+        so resident_names() alone misses them."""
+        d, e = self.d, self.e
+        et = e + struct.unpack("<H", d[e + 0x04:e + 0x06])[0]
+        out, ordn, p = [], 1, et
+        try:
+            while p < len(d):
+                cnt = d[p]
+                if cnt == 0:                       # terminating bundle
+                    break
+                typ = d[p + 1]
+                p += 2
+                if typ == 0x00:                    # unused bundle -> `cnt` gaps in the ordinal space
+                    ordn += cnt
+                    continue
+                step = 6 if typ == 0xFF else 3     # 0xFF moveable (6 bytes), else fixed-in-seg (3)
+                for _ in range(cnt):
+                    out.append(ordn); ordn += 1; p += step
+        except IndexError:
+            pass
+        return out
+
 
 def load(path):
     pe = PE(path)

@@ -206,8 +206,10 @@ def build(module, do_diff=False, keep=False):
     return res
 
 
-def _bindiff(name, built):
-    """Byte comparison against the retail binary of the same name in the corpus."""
+def _find_retail(name):
+    """Locate the retail binary of `name` in the corpus. Prefer the INSTALLED copy (WINDOWS\\SYSTEM)
+    over setup/inf or other variants -- that is the DLL the OS actually loads and the reconstruction
+    target. Returns an absolute path or None."""
     roots = [os.path.join(_win95_root(), "design", "corpus", "files"),
              os.environ.get("WT_DATA_ROOT", "")]
     matches = []
@@ -220,20 +222,45 @@ def _bindiff(name, built):
                     matches.append(os.path.join(dp, f))
         if matches:
             break
-    # Prefer the INSTALLED copy (WINDOWS\SYSTEM) over setup/inf or other variants --
-    # that is the DLL the OS actually loads and the reconstruction target.
-    retail = None
     for m in matches:
         if "system" in m.lower().replace("\\", "/").split("/"):
-            retail = m; break
-    if not retail and matches:
-        retail = matches[0]
+            return m
+    return matches[0] if matches else None
+
+
+def _bindiff(name, built):
+    """Byte comparison against the retail binary of the same name in the corpus."""
+    retail = _find_retail(name)
     if not retail:
         return {"retail": None, "note": "no retail %s in corpus" % name}
     a = open(built, "rb").read(); b = open(retail, "rb").read()
     same = sum(1 for i in range(min(len(a), len(b))) if a[i] == b[i])
     return {"retail": retail, "built_size": len(a), "retail_size": len(b),
             "bytes_equal": same, "pct": round(100.0 * same / max(len(b), 1), 2)}
+
+
+def _behverify(name, built, maxn=64):
+    """Behaves-as-original gate: run the recovered build against the retail binary on the Unicorn
+    oracle (verify95.verify_pair) and summarise the per-export verdicts. This is the PREMISE's real
+    'done' test -- source that BEHAVES like the original -- distinct from the byte-identity --diff
+    (which is a weak signal). A module behaves-as-original when no export diverges and at least one
+    is observed equivalent/consistent. Uses the cached fingerprint oracle, so re-runs are cheap."""
+    retail = _find_retail(name)
+    if not retail:
+        return {"retail": None, "note": "no retail %s in corpus" % name}
+    try:
+        from collections import Counter
+        from src.targets.win95 import verify95
+        vs = verify95.verify_pair(retail, built, maxn=maxn)
+        c = Counter(v for _n, v, _a, _b in vs)
+        verdict = ("behaves-as-original" if (c["divergent"] == 0 and (c["equivalent"] + c["consistent"]) > 0)
+                   else "divergent" if c["divergent"] else "inconclusive")
+        return {"retail": retail, "verdict": verdict, "equivalent": c["equivalent"],
+                "consistent": c["consistent"], "divergent": c["divergent"],
+                "inconclusive": c["inconclusive"], "total": len(vs),
+                "divergent_exports": [n for n, v, _a, _b in vs if v == "divergent"][:10]}
+    except Exception as e:
+        return {"retail": retail, "error": "%s: %s" % (type(e).__name__, e)}
 
 
 # CRT symbols the OpenWatcom runtime resolves at link -- never stubbed.
@@ -397,7 +424,9 @@ def autolink_exe(module, fmt, imports, cured_c, outdir):
 def main(argv):
     ap = argparse.ArgumentParser(prog="owbuild", description=__doc__.splitlines()[0])
     ap.add_argument("module")
-    ap.add_argument("--diff", action="store_true", help="byte-compare against retail")
+    ap.add_argument("--diff", action="store_true", help="byte-compare against retail (weak signal)")
+    ap.add_argument("--verify", action="store_true",
+                    help="behaves-as-original gate: run the build vs retail on the oracle")
     ap.add_argument("--keep", action="store_true", help="(reserved) keep intermediates")
     a = ap.parse_args(argv)
     r = build(a.module, do_diff=a.diff, keep=a.keep)
@@ -418,6 +447,18 @@ def main(argv):
             print("  (byte-diff is a weak signal; the standard is builds + behaves-as-original)")
         else:
             print("  diff: %s" % d.get("note"))
+    if a.verify:
+        v = _behverify(os.path.basename(r["output"]), r["output"])
+        if not v.get("retail"):
+            print("  verify: %s" % v.get("note", v.get("error")))
+        elif v.get("error"):
+            print("  verify ERROR: %s" % v["error"])
+        else:
+            print("  BEHAVES-AS-ORIGINAL: %s  (%d equivalent, %d consistent, %d divergent, "
+                  "%d inconclusive of %d exports)" % (v["verdict"].upper(), v["equivalent"],
+                  v["consistent"], v["divergent"], v["inconclusive"], v["total"]))
+            if v["divergent_exports"]:
+                print("    divergent: %s" % ", ".join(v["divergent_exports"]))
 
 
 if __name__ == "__main__":
