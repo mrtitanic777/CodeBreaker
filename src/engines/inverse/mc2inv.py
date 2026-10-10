@@ -109,18 +109,26 @@ class R:
                 o=s.num(m.group(1)); s.locals.add(o); return "v%d"%o
             m=re.search(r"\[bp \+ (0x[0-9a-f]+|\d+)\]",op)
             if m:
-                return s.pname(s.num(m.group(1)))
+                o=s.num(m.group(1)); nm=s.pname(o)
+                return "(%s >> 8)"%nm if (o-getattr(s,"pbase",4))%2 else nm
             # fall through to si/global handling below
         else:
             m=re.search(r"\[bp \+ (0x[0-9a-f]+|\d+)\]",op)
             if m or "[bp]" in op:                             # [bp] == offset 0
                 o=s.num(m.group(1)) if m else 0
                 if o < s.fs: s.locals.add(o); return "v%d"%o  # local (below saved BP)
-                return s.pname(o)                             # parameter
+                nm=s.pname(o)                                 # parameter
+                return "(%s >> 8)"%nm if (o-s.fs-getattr(s,"pbase",4))%2 else nm
         m=re.search(r"\[bp - (0x[0-9a-f]+|\d+)\]",op)         # negative bp offset is always a
         if m:                                                  # local (even when the chkstk prologue
             o=s.num(m.group(1)); s.locals.add(o); return "v%d"%o  # wasn't detected to set msc3)
         for reg in ("si","bx","di"):                          # pointer-register derefs
+            cv=getattr(s,reg,None)
+            if cv is not None and re.match(r"\d+$",str(cv)):  # reg = constant address -> global
+                m=re.search(r"\[%s(?: ([+-]) (0x[0-9a-f]+|\d+))?\]"%reg,op)
+                if m:
+                    d=s.num(m.group(2)) if m.group(2) else 0
+                    return "g_%x"%((int(cv)+(d if m.group(1)!="-" else -d))&0xffff)
             m=re.search(r"\[%s \+ (0x[0-9a-f]+|\d+)\]"%reg,op)
             if m: return "%s->f%d"%(s._ptrbase(reg),s.num(m.group(1)))
             m=re.search(r"\[%s - (0x[0-9a-f]+|\d+)\]"%reg,op)  # negative offset -> index back
@@ -132,7 +140,7 @@ class R:
         if m: return "%s[%s]"%(s._ptrbase(op[1:3]), op.split(" + ")[1].rstrip("]"))
         m=re.search(r"\[(0x[0-9a-f]+|\d+)\]",op)
         if m: return "g_%x"%s.num(m.group(1))       # distinct global per address
-        if op.strip() in ("ax","bx","cx","dx","si","di","bp"):
+        if op.strip() in ("ax","bx","cx","dx","si","di","bp","ds","es","ss","cs"):
             return op.strip()                        # bare register -> expose as a variable
         return None
     def rhs(s,op): return str(s.num(op)) if re.match(r"(0x[0-9a-f]+|\d+)$",op) else s.memname(op)
@@ -153,6 +161,8 @@ class R:
                     if src=="ax": s.axsrc=None
             else:                                          # stable name/field/global -> alias
                 setattr(s,d,val)
+        elif re.match(r"(0x[0-9a-f]+|\d+)$",src):            # constant (often a data address)
+            setattr(s,d,str(s.num(src)))
         else:
             setattr(s,d,s.memname(src))
 
@@ -311,6 +321,41 @@ class R:
     @staticmethod
     def _hascall(v): return re.search(r"[A-Za-z_]\w*\(", str(v)) is not None
 
+    def _wlive(s, reg, i):
+        """Is the full WORD register read after ins[i] before either it or one of its halves'
+        parents is redefined?"""
+        rx=re.compile(r"\b%s\b"%reg); seen=set(); work=[i+1]
+        while work:
+            j=work.pop()
+            while j is not None and 0<=j<len(s.ins) and j not in seen:
+                seen.add(j); ii=s.ins[j]; mn=ii.mnemonic; ops=ii.op_str or ""
+                d0,_,src=ops.partition(", ")
+                if mn in ("ret","retf"):
+                    if reg=="ax" and s._retval(): return True
+                    break
+                if mn in ("mov","lea","les","lds","pop") and d0==reg:
+                    if rx.search(src): return True
+                    break
+                if mn in ("xor","sub") and d0==reg and src==reg: break
+                if mn in ("cbw","cwde") and reg=="ax": break            # ax rebuilt from al
+                if mn in ("call","lcall"): break
+                if rx.search(ops): return True
+                if mn=="jmp": j=s.tgt.get(j); continue
+                if mn in CJMP: work.append(s.tgt.get(j))
+                j+=1
+        return False
+
+    def _byte_settle(s, d8, i):
+        """A byte half just got a lazily tracked value while its parent word is an untracked
+        register variable. If the WORD is read later (`mov al,x` on one path, `push ax` after the
+        merge), the byte write must really happen in the variable: emit it now."""
+        par=BYTEPARENT[d8]
+        if getattr(s,par,None) is not None or s.out is None or d8 not in s.breg: return
+        if s._wlive(par, i):
+            v=s.breg.pop(d8)
+            if str(v)!=d8:
+                s.out.append("%s = %s;"%(d8,v)); s.ranks.append(i); s.regconst.append(False)
+
     def _materialize(s, out, reg, rank=None):
         """Pin a lazily-tracked register value into the register variable (`reg = <value>;`)."""
         v=getattr(s,reg,None)
@@ -333,6 +378,11 @@ class R:
                 s._tn=getattr(s,"_tn",0)+1; t="t%d"%s._tn
                 out.append("%s = %s;"%(t,a)); s.ranks.append(s.i); s.regconst.append(False); s.args[k]=t
         m=re.match(r"(.+?)(?: = (.*);|\+\+;|--;)$", text)
+        if MARK and m and re.search(r"->|\*|\[|g_", m.group(1)):
+            for r in s._WR:
+                v=getattr(s,r,None)
+                if v is None or str(v)==r or (m.group(2) is not None and str(v)==m.group(2)): continue
+                if re.search(r"->|\*|\[|g_", str(v)) and s._live(r, s.i): s._materialize(out, r, rank)
         if m and m.group(1) not in ("ax","bx","cx","dx","si","di") and m.group(1) not in BYTEREG:
             lhs=m.group(1); rhs=m.group(2)
             pat=re.compile(r"(?<![\w>.])%s(?![\w(])"%re.escape(lhs))
@@ -388,6 +438,7 @@ class R:
             elif src in BYTEREG: s.breg[d8]=s.breg.get(src,src)
             else: s.breg[d8]=s.memname(src) or d8
             if BYTEPARENT[d8] in ("ax","bx","cx","dx","si","di"): setattr(s,BYTEPARENT[d8],None)
+            s._byte_settle(d8, i)
             return
         if mn in ("add","sub","or","and","xor") and ops.split(", ")[0] in BYTEREG:   # byte-reg ALU
             d8=ops.split(", ")[0]; src=ops.split(", ",1)[1]
@@ -397,12 +448,13 @@ class R:
                 if lo and lo in s.breg:                                   # zero-extend: word = low byte
                     setattr(s, BYTEPARENT[d8], s.breg[lo])
                     if d8=="ah": s.axsrc=None; s.retlive=True
+                else: s._byte_settle(d8, i)
                 return
             cur=s.breg.get(d8,pre8 if pre8 is not None else d8); opc={"add":"+","sub":"-","or":"|","and":"&","xor":"^"}[mn]
             if re.match(r"(0x[0-9a-f]+|\d+)$",src): sv=str(s.num(src))
             elif src in BYTEREG: sv=s.breg.get(src,src)
             else: sv=s.memname(src) or src
-            s.breg[d8]="(%s %s %s)"%(cur,opc,sv); return
+            s.breg[d8]="(%s %s %s)"%(cur,opc,sv); s._byte_settle(d8, i); return
         if mn in ("inc","dec") and ops in BYTEREG:             # byte-reg inc/dec
             s.breg[ops]="(%s %s 1)"%(s.breg.get(ops,pre8 if pre8 is not None else ops), "+" if mn=="inc" else "-"); return
         if mn in ("cbw","cwde") and "al" in s.breg:            # sign-extend al -> ax (int)al
@@ -439,6 +491,8 @@ class R:
             src=ops[4:]; s.movptr("dx",src) if src in ("ax","bx","cx","si","di","bp") else setattr(s,"dx",s.rhs(src))
         elif mn in ("xor","sub") and ops=="ax, ax": s.ax="0"; s.axsrc=None   # self-xor/sub = clear
         elif mn in ("xor","sub") and ops=="bx, bx": s.bx="0"; s.bxsrc=None   # (clears bx, NOT ax)
+        elif mn in ("cwd","cdq"):
+            s.dx="(0 - (%s >> 15))"%(s.ax if s.ax is not None else "ax")
         elif mn in ("or","and") and ops=="ax, ax": pass             # `or/and ax,ax` is flag-only (ax
                                                                     # unchanged) -- never `(ax|ax)`, which
                                                                     # would DUPLICATE a call in s.ax
@@ -692,6 +746,8 @@ class R:
             v=getattr(s,r,None)                            # an argument of this one runs first
             if v is not None and str(v)!=r and s._hascall(v) and str(v) not in expr:
                 s._materialize(out, r)
+        s.bx=s.cx=s.dx=None; s.bxsrc=None
+        for b8 in ("bl","bh","cl","ch","dl","dh","al","ah"): s.breg.pop(b8,None)
         uses, ret, sf = s._ax_fate(i)
         if s.callstmt or (not uses and not ret):
             s.emit(out,expr+";"); s.ax=None; s.retlive=False
@@ -794,7 +850,7 @@ class R:
             setattr(s,ops,None)
             if ops=="bx": s.bxsrc=None
             return i+1
-        if mn in ("inc","dec"):
+        if mn in ("inc","dec") and ops not in BYTEREG:
             nm=s.memname(ops) or ops; o="+" if mn=="inc" else "-"
             # fs>0 means MC1 allocated a temp -> source used the temp form x = x OP 1 (not x++/x--)
             s.emit(out,"%s = %s %s 1;"%(nm,nm,o) if s.fs>0 else "%s%s;"%(nm,"++" if mn=="inc" else "--"))
@@ -896,6 +952,19 @@ class R:
                 return re.match(r"(break|continue|return\b|goto )", ln.strip()) is not None
         return False
 
+    def _phi_args(s, a_args, b_args, a_body, b_body, a_term, b_term):
+        """Merge the pending-argument stacks of two converging paths: a slot the paths filled
+        differently becomes a temp assigned on each path (`if (c) t = x; else t = y; f(t)`)."""
+        if a_term and not b_term: s.args=list(b_args); return
+        if b_term and not a_term: s.args=list(a_args); return
+        if list(a_args)==list(b_args) or len(a_args)!=len(b_args): return
+        out=[]
+        for x,y in zip(a_args,b_args):
+            if str(x)==str(y): out.append(x); continue
+            s._tn=getattr(s,"_tn",0)+1; t="t%d"%s._tn
+            a_body.append("%s = %s;"%(t,x)); b_body.append("%s = %s;"%(t,y)); out.append(t)
+        s.args=out
+
     def _phi(s, then_snap, else_snap, then_b, else_b):
         """Merge two branch register-states. For a register the branches leave DIFFERENT, emit
         `reg = <value>;` at the end of each branch (materializing the conditional assignment that
@@ -903,6 +972,7 @@ class R:
         afterwards; where the branches agree, keep the shared value. A branch that ends in a
         terminal (break/return/...) does not reach the merge -> skip its materialization (dead)."""
         tterm, eterm = s._terminal(then_b), s._terminal(else_b)
+        s._phi_args(then_snap["args"], else_snap["args"], then_b, else_b, tterm, eterm)
         for r in s._REGS:
             tv, ev = then_snap[r], else_snap[r]
             if tv==ev:
@@ -1084,6 +1154,7 @@ class R:
         a register the body changes is set `reg=<then>;` inside and `reg=<pre>;` before, then exposed
         bare. Skips emitting when the body is empty (a no-op guard)."""
         bterm = s._terminal(body)                              # body falls through to the merge?
+        s._phi_args(then_s["args"], pre["args"], body, out, bterm, False)
         for r in s._REGS:
             if then_s[r] == pre[r]:
                 setattr(s, r, then_s[r]); continue
