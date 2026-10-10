@@ -92,6 +92,15 @@ def build_cfg(insns, lo_addr, hi_addr):
         else:
             fall = idx2blk.get(b.hi) if b.hi < n else None
             b.term = "fall"; b.succ = [fall] if fall is not None else []
+    # Unreachable blocks (alignment `nop` padding after a jmp -- MS-C 5.0 pads branch targets --
+    # or dead bytes) must not contribute edges: an unreachable block "falling into" its successor
+    # is vacuously dominated by everything, which fabricates a back-edge and a phantom loop.
+    seen = {0}; work = [0]
+    while work:
+        for t in blocks[work.pop()].succ:
+            if t not in seen: seen.add(t); work.append(t)
+    for blk in blocks:
+        if blk.id not in seen: blk.succ = []; blk.term = "dead"
     return blocks, idx2blk, 0
 
 

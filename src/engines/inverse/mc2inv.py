@@ -53,6 +53,8 @@ class R:
                             (ins[j].mnemonic=="mov" and ins[j].op_str=="sp, bp")):
                 e=ins[j].address; j-=1
             s.epi=e
+        # far function (retf): the return address is 4 bytes, so params start at [bp+6]
+        s.pbase=6 if any(x.mnemonic=="retf" for x in ins) else 4
     def call_op(s, ci, default):
         """Resolve a CALL instruction's target to a C operator via the CX-helper map."""
         b=s.ins[ci].bytes
@@ -64,7 +66,8 @@ class R:
     def pname(s,off):
         # param index from the bp+ offset. 2.03 (bp at frame bottom): off-fs-4; 3.0 (bp at
         # frame top, standard): params at [bp+4],[bp+6],... -> off-4.
-        idx=((off-4)//2) if s.msc3 else ((off-s.fs-4)//2); s.maxidx=max(s.maxidx,idx)
+        pb=getattr(s,"pbase",4)
+        idx=((off-pb)//2) if s.msc3 else ((off-s.fs-pb)//2); s.maxidx=max(s.maxidx,idx)
         return chr(ord('a')+idx) if 0<=idx<26 else "p%d"%idx
     def _ptrbase(s,reg):
         """Readable base for a pointer-register deref: the register's tracked pointer value
@@ -181,9 +184,29 @@ class R:
             setattr(s, BYTEPARENT[d0], None)             # byte write makes the parent word unknown
             if mn not in TRACKED_BYTE: s.breg.pop(d0, None)   # statement-emitting/unmodeled -> clear
 
+    def _byte_on_word(s, mn, ops):
+        """`and|or|xor r8, imm` where the PARENT word register holds a tracked value and the byte
+        half is not separately tracked: a bit-field edit of the word (`mov ax,[x]; and al,0xf8;
+        or al,5; mov [x],ax`). Exact as a word op: and al,K == W & (0xFF00|K); or/xor al,K ==
+        W |/^ K; the ah forms shift K by 8. Without this the byte write just invalidated the word
+        and the whole computation was dropped (`x = ax`). Returns True if handled."""
+        if mn not in ("and","or","xor") or ", " not in ops: return False
+        d8, src = ops.split(", ",1)
+        if d8 not in BYTEREG or d8 in s.breg or not re.match(r"(0x[0-9a-f]+|\d+)$", src): return False
+        par=BYTEPARENT[d8]; cur=getattr(s,par,None)
+        if par not in ("ax","bx","cx","dx") or cur is None: return False
+        k=s.num(src); hi=d8.endswith("h")
+        if mn=="and": k=((k<<8)|0xFF) if hi else (0xFF00|k)
+        elif hi: k<<=8
+        setattr(s,par,"(%s %s 0x%x)"%(cur,ALU[mn],k))
+        if par=="ax": s.axsrc=None; s.retlive=True
+        if par=="bx": s.bxsrc=None
+        return True
+
     def expr_step(s,i):
         """Update ax/si/cx from a value-producing instruction (no statement)."""
         s.i=i; old=s.ax; ii=s.ins[i]; mn=ii.mnemonic; ops=ii.op_str
+        if s._byte_on_word(mn, ops): return
         s._binval(mn, ops.split(",")[0].strip())
         if mn=="mov" and ops.split(", ")[0] in BYTEREG:        # byte load/copy: r8 = mem | imm | r8'
             d8=ops.split(", ")[0]; src=ops.split(", ",1)[1]
@@ -234,7 +257,8 @@ class R:
             src=ops[4:]; s.movptr("cx",src) if src in ("ax","bx","dx","si","di","bp") else setattr(s,"cx",s.rhs(src))
         elif mn=="mov" and ops.startswith("dx, "):
             src=ops[4:]; s.movptr("dx",src) if src in ("ax","bx","cx","si","di","bp") else setattr(s,"dx",s.rhs(src))
-        elif mn=="xor" and ops in ("ax, ax","bx, bx"): s.ax="0"     # self-xor = clear (return 0)
+        elif mn in ("xor","sub") and ops=="ax, ax": s.ax="0"; s.axsrc=None   # self-xor/sub = clear
+        elif mn in ("xor","sub") and ops=="bx, bx": s.bx="0"; s.bxsrc=None   # (clears bx, NOT ax)
         elif mn in ("or","and") and ops=="ax, ax": pass             # `or/and ax,ax` is flag-only (ax
                                                                     # unchanged) -- never `(ax|ax)`, which
                                                                     # would DUPLICATE a call in s.ax
@@ -348,6 +372,7 @@ class R:
         n=s.long_stmt(i,out)
         if n: return i+n
         ii=s.ins[i]; mn=ii.mnemonic; ops=ii.op_str; d0=ops.split(",")[0].strip()
+        if s._byte_on_word(mn, ops): return i+1
         s._binval(mn, d0)
         if mn=="mov" and "[" in d0 and ops.rpartition(", ")[2] in BYTEREG:   # store: mem = byte-reg
             src=ops.rpartition(", ")[2]
@@ -358,6 +383,7 @@ class R:
             while i<len(s.ins) and s.ins[i].op_str!="ax, bx": i+=1
             return i+1
         if mn=="push":
+            if ops=="cs" and i+1<len(s.ins) and s.ins[i+1].mnemonic=="call": return i+1
             if ops=="ax": s.args.append(s.ax if s.ax is not None else "ax")
             else: s.args.append(s.memname(ops) or ops)
             return i+1
@@ -446,9 +472,8 @@ class R:
                 pass
             else:
                 rhs=s._val(src) if src in ("ax","bx","cx","dx","si","di") else s.rhs(src)
-                base=getattr(s,d0,None)
-                base=base if (base is not None and re.match(r"^[A-Za-z_]\w*$",str(base))) else d0
-                s.emit(out,"%s = %s %s %s;"%(base,base,ALU[mn],rhs))
+                cur=getattr(s,d0,None)             # reg = <its current value> op rhs (the value lives
+                s.emit(out,"%s = %s %s %s;"%(d0, d0 if cur is None else cur, ALU[mn], rhs))   # in the reg)
             setattr(s,d0,None)
             return i+1
         # 16-bit string ops. Block (rep-prefixed) forms -> the C library idiom; single-byte/word
@@ -858,12 +883,20 @@ def _prologue(ins):
         while k<len(ins) and "bp, sp" not in ins[k].op_str: k+=1
     k+=1
     msc3=False
-    if fs==0 and k+1 < len(ins) and ins[k+1].mnemonic=="call":
+    if fs==0 and k+1 < len(ins) and ins[k+1].mnemonic in ("call","lcall"):
         if ins[k].mnemonic=="mov" and ins[k].op_str.startswith("ax,"):
             try: fs=int(ins[k].op_str.split(",")[1].strip(),16); msc3=True; k+=2
             except ValueError: pass
         elif ins[k].mnemonic=="xor" and ins[k].op_str.replace(" ","")=="ax,ax":
             fs=0; msc3=True; k+=2
+    if fs==0 and not msc3 and k < len(ins) and ins[1].op_str=="bp, sp"        and ins[k].mnemonic=="sub" and ins[k].op_str.startswith("sp,"):
+        try: fs=int(ins[k].op_str.split(",")[1].strip(),16); msc3=True; k+=1   # MS-C 5: sub sp AFTER mov bp,sp
+        except ValueError: pass
+    # callee-saved register variables: `push di` / `push si` right after the frame setup, restored
+    # by a matching pop in the epilogue -- register saves, NOT call arguments.
+    if ins[1].op_str=="bp, sp":
+        while k < len(ins) and ins[k].mnemonic=="push" and ins[k].op_str in ("si","di")               and any(x.mnemonic=="pop" and x.op_str==ins[k].op_str for x in ins[k+1:]):
+            k+=1
     return fs, k, msc3
 
 
