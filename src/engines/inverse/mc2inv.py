@@ -642,13 +642,15 @@ class R:
                 return
             cur=s.breg.get(d8,pre8 if pre8 is not None else d8); opc={"add":"+","sub":"-","or":"|","and":"&","xor":"^"}[mn]
             if re.match(r"(0x[0-9a-f]+|\d+)$",src): sv=str(s.num(src))
-            elif src in BYTEREG: sv=s.breg.get(src,src)
+            elif src in BYTEREG: sv=s._bval(src) if DEADREGS else s.breg.get(src,src)
             else: sv=s.memname(src) or src
             s.breg[d8]="(%s %s %s)"%(cur,opc,sv); s._byte_settle(d8, i); return
         if mn in ("inc","dec") and ops in BYTEREG:             # byte-reg inc/dec
             s.breg[ops]="(%s %s 1)"%(s.breg.get(ops,pre8 if pre8 is not None else ops), "+" if mn=="inc" else "-"); return
         if mn in ("cbw","cwde") and "al" in s.breg:            # sign-extend al -> ax (int)al
-            s.ax=("SX(%s)"%s.breg["al"]) if MARK else s.breg["al"]; s.axsrc=None; return
+            s.ax=("SX(%s)"%s.breg["al"]) if MARK else s.breg["al"]; s.axsrc=None
+            if DEADREGS: s.breg.pop("al",None); s.breg.pop("ah",None); s.retlive=True   # al is now the low byte of that ax
+            return
         if mn in ("cbw","cwde") and MARK:                      # ax = (int)(char)ax
             s.ax="SX(%s)"%(s.ax if s.ax is not None else "ax"); s.axsrc=None; s.retlive=True; return
         if mn=="mov" and ops.startswith("ax, "):
@@ -703,7 +705,7 @@ class R:
             elif mn in ("imul","mul"): s.ax="(%s * %s)"%(axv,s._val(ops))
             elif mn in ("idiv","div"): rn=s._val(ops); s.div=(axv,rn); s.ax="(%s / %s)"%(axv,rn); s.dx="(%s %% %s)"%(axv,rn)
             elif mn in ("shl","sal") and d0 in R: setattr(s,d0,"(%s << %s)"%(rv(d0),shcnt()))
-            elif mn in ("shr","sar") and d0 in R: setattr(s,d0,"(%s >> %s)"%(rv(d0),shcnt()))
+            elif mn in ("shr","sar") and d0 in R: setattr(s,d0,"(%s)"%_shr(mn,rv(d0),shcnt()))
             elif mn=="neg" and d0 in R: setattr(s,d0,"(-%s)"%rv(d0))
             elif mn=="not" and d0 in R: setattr(s,d0,"(~%s)"%rv(d0))
         if s.ax is not old: s.retlive=True                    # ax got a live computed value
@@ -1001,6 +1003,11 @@ class R:
             nx=s.ins[i+1]
             if nx.mnemonic=="add" and re.match(r"sp, (0x[0-9a-f]+|\d+)$", nx.op_str):
                 n=s.num(nx.op_str[4:])//2
+            elif DEADREGS and nx.mnemonic=="jmp" and s.tgt.get(i+1) is not None:
+                # the clean-up is in a tail shared with another path: `call f ; jmp L ... L: add sp,N`
+                tx=s.ins[s.tgt[i+1]]
+                if tx.mnemonic=="add" and re.match(r"sp, (0x[0-9a-f]+|\d+)$", tx.op_str):
+                    n=s.num(tx.op_str[4:])//2
         if n is None or n>len(s.args): take=s.args; s.args=[]
         else: take=s.args[len(s.args)-n:]; s.args=s.args[:len(s.args)-n]
         return [str(a) for a in (take if pascal else reversed(take))]
@@ -1259,7 +1266,8 @@ class R:
             d=s.memname(ops.split(",")[0])
             cnt=(s.breg["cl"] if "cl" in s.breg else (s.cx if s.cx is not None else "cx")) \
                 if ops.endswith("cl") else s._val(ops.split(", ")[1])
-            op="<<" if mn in ("shl","sal") else ">>"; s.emit(out,"%s = %s %s %s;"%(d,d,op,cnt)); return i+1
+            if mn in ("shr","sar"): s.emit(out,"%s = %s;"%(d,_shr(mn,d,cnt,"byte ptr" in ops))); return i+1
+            s.emit(out,"%s = %s << %s;"%(d,d,cnt)); return i+1
         if mn in ("neg","not") and "[" in ops:                 # memory-dest unary
             d=s.memname(ops); s.emit(out,"%s = %s%s;"%(d,"-" if mn=="neg" else "~",d)); return i+1
         # byte-register shift/unary: al/bl/.. are low sub-registers the word model doesn't track,
@@ -1268,8 +1276,8 @@ class R:
             cur=s._p8[1] if s._p8 else d0
             cnt=(s.breg["cl"] if "cl" in s.breg else (s.cx if s.cx is not None else "cl")) \
                 if ops.endswith("cl") else s._val(ops.split(", ")[1])
-            op="<<" if mn in ("shl","sal") else ">>"
-            s.breg[d0]="((%s %s %s) & 0xff)"%(cur,op,cnt); return i+1
+            if mn in ("shr","sar"): s.breg[d0]="((%s) & 0xff)"%_shr(mn,cur,cnt,True); return i+1
+            s.breg[d0]="((%s << %s) & 0xff)"%(cur,cnt); return i+1
         if d0 in BYTEREG and mn in ("neg","not"):
             cur=s._p8[1] if s._p8 else d0
             s.breg[d0]="((%s%s) & 0xff)"%("-" if mn=="neg" else "~",cur); return i+1
@@ -2475,6 +2483,41 @@ def _strip_tail_returns(lines):
             del lines[i]; changed = True; break
     return lines
 
+class _FakeIns:
+    """A synthetic instruction (see _unshare_jcc)."""
+    def __init__(s, address, size, mnemonic, op_str):
+        s.address = address; s.size = size; s.mnemonic = mnemonic; s.op_str = op_str
+
+def _unshare_jcc(ins):
+    """`cmp a,b ; jmp L` where L is a bare conditional jump: the compiler has cross-jumped two
+    tests onto one `jcc`, so that jump tests DIFFERENT compares depending on the path it is
+    reached by. No single condition describes it. Give this path its own copy:
+
+        cmp a,b ; jmp L        ==>     cmp a,b ; jcc T ; jmp F        (L: jcc T ; F: ...)
+
+    The copies take the place (and the bytes' addresses) of the `jmp`, so every other address
+    is unchanged. When no jump targets L any more it joins the block that falls into it."""
+    a2i = {x.address: k for k, x in enumerate(ins)}
+    out = []; changed = False
+    for k, x in enumerate(ins):
+        if x.mnemonic == "jmp" and k and ins[k-1].mnemonic in ("cmp", "test") and x.size >= 2:
+            m = re.match(r"(0x[0-9a-f]+|\d+)$", x.op_str or "")
+            t = a2i.get(int(m.group(1), 0)) if m else None
+            if t is not None and t + 1 < len(ins) and ins[t].mnemonic in CJMP and ins[t].mnemonic not in ("jcxz", "jecxz") \
+               and re.match(r"(0x[0-9a-f]+|\d+)$", ins[t].op_str or ""):
+                out.append(_FakeIns(x.address, 1, ins[t].mnemonic, ins[t].op_str))
+                out.append(_FakeIns(x.address + 1, x.size - 1, "jmp", "0x%x" % ins[t+1].address))
+                changed = True; continue
+        out.append(x)
+    return out if changed else ins
+
+def _shr(mn, x, n, byte=False):
+    """Right shift as C. `sar` is the signed shift (`>>` of an int), `shr` the unsigned one: the
+    checker is told which (SAR / SAR8); in the listing the unsigned one carries its cast."""
+    if not DEADREGS: return "%s >> %s" % (x, n)
+    if mn == "sar": return ("SAR8(%s, %s)" if byte else "SAR(%s, %s)") % (x, n) if MARK else "%s >> %s" % (x, n)
+    return "%s >> %s" % (x, n) if MARK or byte else "(unsigned)%s >> %s" % (x, n)
+
 def recover_cfg(code, base=0, cxmap=None):
     """EXPERIMENTAL Phase-B path: structure the CFG (cfg.structure) and emit via R.emit_tree,
     reusing the SAME R value model as recover(). Not the default; used behind a flag / for A/B
@@ -2484,6 +2527,7 @@ def recover_cfg(code, base=0, cxmap=None):
     ins=_decode(code)
     if len(ins) < 2:
         return 0, [], [], "int", []
+    if DEADREGS: ins=_unshare_jcc(ins)
     fs, k, msc3 = _prologue(ins)
     r=R(ins,fs,base,cxmap,msc3=msc3); r.emit_start=k
     end_addr = ins[-1].address + ins[-1].size
