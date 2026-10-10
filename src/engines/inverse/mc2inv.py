@@ -632,8 +632,26 @@ class R:
             while k>=0 and s.ins[k].mnemonic in ("mov","lea","push","pop","les","cbw","cwde"): k-=1
             o=s.ins[k].op_str if k>=0 else ""
             sg="S8" if ("byte ptr" in o or o.split(",")[0].strip() in BYTEREG) else "S16"
+        if not s._cmp and getattr(s,"_lastcmp",None):
+            # A jcc with no flag-setting instruction of its own in this block tests the flags of
+            # the PREVIOUS compare (`cmp a,b; ja X; jb Y` -- the long-compare ladder): reuse it.
+            k=j-1; lo=getattr(s,"_cond_lo",0); own=False
+            while k>=lo:
+                if s.ins[k].mnemonic not in ("mov","lea","les","lds","push","pop","nop","xchg","cbw","cwde","cwd","cdq"):
+                    own=True; break
+                k-=1
+            if not own:
+                s._cmp=s._lastcmp[0]
+                if MARK and jcc in ("jl","jle","jg","jge"): sg=s._lastcmp[1]
         if s._cmp:
             a_,b_=s._cmp
+            if sg is None and MARK:
+                k=j-1
+                while k>=0 and s.ins[k].mnemonic in ("mov","lea","push","pop","les","cbw","cwde"): k-=1
+                o=s.ins[k].op_str if k>=0 else ""
+                w="S8" if ("byte ptr" in o or o.split(",")[0].strip() in BYTEREG) else "S16"
+            else: w=sg
+            s._lastcmp=((a_,b_), w or "S16")
             if sg: a_,b_="%s(%s)"%(sg,a_),"%s(%s)"%(sg,b_)
             cond="(%s %s %s)"%(a_, INV.get(jcc,"?"), b_)
         else:                                             # flags from the last ALU result: test it
@@ -1291,6 +1309,8 @@ class R:
         cs = s._cmp_start(jcc, blk.lo)
         s._emit_range(blk.lo, cs, out)
         s.out = out                                # statements cond_at pins/hoists belong HERE
+        s._cond_lo = blk.lo
+        if cs > blk.lo or any(x.mnemonic in ("call","lcall") for x in s.ins[blk.lo:jcc]): pass
         if flush is not None: flush(out)
         s._cmp = None                              # avoid a stale compare leaking into a bare-value test
         cond, _ = s.cond_at(cs)
