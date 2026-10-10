@@ -1033,6 +1033,8 @@ class R:
         uses, ret, sf = s._ax_fate(i)
         if s.callstmt or (not uses and not ret):
             s.emit(out,expr+";"); s.ax=None; s.retlive=False
+        elif s._live("dx", i):                             # a long result: dx is read too, so the
+            s.emit(out,"ax = %s;"%expr); s.ax="ax"; s.retlive=True   # call must run before that read
         elif uses and s._firstlin is None:                 # first read is past a branch: pin it
             s.emit(out,"ax = %s;"%expr); s.ax="ax"; s.retlive=True
         elif not uses and not s._retlin:                   # only reaches the ret, across a branch/
