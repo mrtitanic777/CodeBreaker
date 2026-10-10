@@ -223,7 +223,9 @@ def structure(blocks, entry=0):
     dom, preds = dominators(blocks, entry)
     pdom, EXIT = post_dominators(blocks, preds)
     be = back_edges(blocks, dom)
-    headers = {h: natural_loop(blocks, preds, h, t) for (t, h) in be}
+    headers = {}
+    for (t, h) in be:                                       # several back-edges to one header (each
+        headers.setdefault(h, set()).update(natural_loop(blocks, preds, h, t))   # `continue`) = ONE loop
     latch = {}
     for (t, h) in be:
         latch.setdefault(h, t)
