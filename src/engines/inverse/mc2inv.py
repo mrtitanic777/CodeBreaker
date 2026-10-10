@@ -938,7 +938,7 @@ class R:
                 if mn in CJMP:
                     work.append(s.tgt.get(j)); linear=False
                 j+=1
-        sf=False
+        sf=False; s._firstlin=first
         if first is not None:
             f=s.ins[first]; d=f.op_str.split(", ")[0]
             sf=(f.mnemonic=="mov" and "[" in d and f.op_str.endswith(", ax"))
@@ -961,6 +961,8 @@ class R:
         uses, ret, sf = s._ax_fate(i)
         if s.callstmt or (not uses and not ret):
             s.emit(out,expr+";"); s.ax=None; s.retlive=False
+        elif uses and s._firstlin is None:                 # first read is past a branch: pin it
+            s.emit(out,"ax = %s;"%expr); s.ax="ax"; s.retlive=True
         elif not uses and not s._retlin:                   # only reaches the ret, across a branch/
             s.emit(out,"ax = %s;"%expr); s.ax="ax"; s.retlive=True   # merge: pin it (never defer a
         elif not sf and len(uses)==1 and s.ins[uses[0]].mnemonic in ("cmp","test","or","and") \
