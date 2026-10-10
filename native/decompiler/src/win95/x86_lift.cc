@@ -532,7 +532,19 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
         setReg(kGpBase + 2, hi.dst);
       } else if (m == "ret" || m == "retf") {
         ILInstr x; x.op = ILOp::Return; x.address = a;
-        auto it = reg.find(kGpBase); if (it != reg.end()) x.src1 = it->second;
+        // If the body WROTE AX, that is the return value (x86 returns in AX). Promote it into r3 so
+        // the back-end renders `return <value>` -- the back-end's return register is r3, which x86's
+        // AX slot 20 does not otherwise feed, so without this a value-computing function renders a
+        // void `return;` and its whole AX-producing chain is dead-code-eliminated (sbb/neg boolean
+        // idioms, xchg old-value returns, etc). Guarded on AX having been written in the body, so a
+        // function that never touches AX stays void.
+        auto it = reg.find(kGpBase);
+        if (it != reg.end()) {
+          ILInstr cp; cp.op = ILOp::Assign; cp.address = a; cp.src1 = it->second;
+          cp.dst = fn.AllocValue(ILType::U32, 3);
+          bb.instrs.push_back(cp);
+          x.src1 = cp.dst;
+        }
         bb.instrs.push_back(x);
         bb.is_return = true;
       } else if (m == "jmp" && in.ops[0].kind == OpKind::Reg && IsGpr(in.ops[0]) &&
