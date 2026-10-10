@@ -1115,11 +1115,15 @@ class R:
         if mn in ("rep movsb","rep movsw","repne movsb","repne movsw"):
             n=s.cx or "cx"
             if mn.endswith("movsw"): n=str(int(n)*2) if str(n).isdigit() else "(%s * 2)"%n
-            s.emit(out,"memcpy(%s, %s, %s);"%(s.di or "di", s.si or "si", n)); return i+1
+            s.emit(out,"%s(%s, %s, %s);"%(("memcpy_w" if mn.endswith("w") else "memcpy_b") if MARK else "memcpy",
+                                          s.di or "di", s.si or "si", n))
+            s.si=s.di=None; s.cx="0"; return i+1
         if mn in ("rep stosb","rep stosw","repne stosb","repne stosw"):
             n=s.cx or "cx"
             if mn.endswith("stosw"): n=str(int(n)*2) if str(n).isdigit() else "(%s * 2)"%n
-            s.emit(out,"memset(%s, %s, %s);"%(s.di or "di", s.ax if s.ax is not None else "ax", n)); return i+1
+            s.emit(out,"%s(%s, %s, %s);"%(("memset_w" if mn.endswith("w") else "memset_b") if MARK else "memset",
+                                          s.di or "di", s.ax if s.ax is not None else "ax", n))
+            s.di=None; s.cx="0"; return i+1
         if mn in ("movsb","movsw"):
             s.emit(out,"*%s++ = *%s++;"%(s.di or "di", s.si or "si")); return i+1
         if mn in ("stosb","stosw"):
