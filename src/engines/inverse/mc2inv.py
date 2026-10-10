@@ -611,7 +611,13 @@ class R:
             else:
                 _q=getattr(s,"_sm",None)
                 s.breg[d8]=(_q[1] if (_q and _q[0]==i and _q[1]) else s.memname(src)) or d8
-            if BYTEPARENT[d8] in ("ax","bx","cx","dx","si","di"): setattr(s,BYTEPARENT[d8],None)
+            _par=BYTEPARENT[d8]
+            if _par in ("ax","bx","cx","dx","si","di"):
+                _pv=getattr(s,_par,None)                   # `xor ax,ax; mov al,2; push ax`: the word still
+                if _pv is not None and str(_pv)!=_par and s._wlive(_par, i):   # carries its other half, so
+                    _keep=s.breg.pop(d8)                   # the tracked word goes into the variable first
+                    s._materialize(out,_par); s.breg[d8]=_keep
+                setattr(s,_par,None)
             s._byte_settle(d8, i)
             return
         if mn in ("add","sub","or","and","xor") and ops.split(", ")[0] in BYTEREG:   # byte-reg ALU
@@ -1276,6 +1282,18 @@ class R:
         # Single string instructions (hand-written assembly loops), direction flag clear: each is
         # a load/store through si/di followed by the pointer step, written as plain statements on
         # the register variables. Every register involved is settled into its variable first.
+        if mn=="xchg" and "[" in ops:                          # word register <-> memory: swap through a temp
+            o_=[x.strip() for x in ops.split(", ")]
+            reg=next((x for x in o_ if x in ("ax","bx","cx","dx","si","di")), None)
+            mem=next((x for x in o_ if "[" in x), None)
+            if reg and mem:
+                nm=s.memname(mem); rv=getattr(s,reg,None); rv=rv if rv is not None else reg
+                s._tn=getattr(s,"_tn",0)+1; t="t%d"%s._tn
+                s.emit(out,"%s = %s;"%(t,nm)); s.emit(out,"%s = %s;"%(nm,rv))
+                setattr(s,reg,t)
+                if reg=="ax": s.axsrc=None; s.retlive=True
+                if reg=="bx": s.bxsrc=None
+                return i+1
         if mn in ("movsb","movsw","stosb","stosw","lodsb","lodsw","xlatb"):
             w=2 if mn.endswith("w") else 1
             def pinreg(r):
