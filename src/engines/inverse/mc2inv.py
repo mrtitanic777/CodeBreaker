@@ -1729,6 +1729,45 @@ def _prologue(ins):
     return fs, k, msc3
 
 
+def _tidy(lines):
+    """Purely syntactic, equivalence-preserving clean-up of the emitted statements:
+         } else {                              } else if (c) {
+             if (c) { X } [else ...]    ==>        X
+         }                                     } [else ...]
+       and
+         if (a) {                              if (a && b) {
+             if (b) { X }               ==>        X
+         }                                     }
+    (the second only when neither `if` has an else). Each fires only when the inner `if` is the
+    sole statement of the enclosing block, so no statement changes its guard."""
+    def ind(s): return len(s) - len(s.lstrip(" "))
+    changed = True
+    while changed:
+        changed = False
+        for i in range(len(lines) - 2):
+            a = lines[i]; n = ind(a); pad = " " * n; inner = pad + "    "
+            b = lines[i + 1]
+            if not (b.startswith(inner + "if (") and b.endswith(") {") and ind(b) == n + 4): continue
+            is_else = a == pad + "} else {"
+            is_if = a.startswith(pad + "if (") and a.endswith(") {") and not a.startswith(pad + "if (!(") is None
+            if not (is_else or (a.startswith(pad + "if (") and a.endswith(") {"))): continue
+            # end of the inner if-chain: first plain close at the inner indent
+            j = i + 2; has_else = False
+            while j < len(lines):
+                if lines[j] == inner + "}": break
+                if ind(lines[j]) == n + 4 and lines[j].startswith(inner + "} else"): has_else = True
+                if ind(lines[j]) <= n and lines[j].strip(): j = None; break
+                j += 1
+            if j is None or j >= len(lines) - 1 or lines[j + 1] != pad + "}": continue
+            if is_else:
+                lines[i:j + 2] = [pad + "} else " + b.strip()] + [x[4:] for x in lines[i + 2:j]] + [pad + "}"]
+                changed = True; break
+            if not has_else:                                    # `if (a) { if (b) { X } }`
+                ca = a[n + 3:-2]; cb = b[n + 7:-2]
+                lines[i:j + 2] = [pad + "if (%s && %s) {" % (ca, cb)] + [x[4:] for x in lines[i + 2:j]] + [pad + "}"]
+                changed = True; break
+    return lines
+
 def recover_cfg(code, base=0, cxmap=None):
     """EXPERIMENTAL Phase-B path: structure the CFG (cfg.structure) and emit via R.emit_tree,
     reusing the SAME R value model as recover(). Not the default; used behind a flag / for A/B
@@ -1749,6 +1788,7 @@ def recover_cfg(code, base=0, cxmap=None):
         r2=R(ins,fs,base,cxmap,msc3=msc3); r2.emit_start=k
         r2.labels=set(r.gototargets); r2._labeled=set(); r2.gotoargs=dict(getattr(r,"gotoargs",{}))
         stmts = r2.emit_tree(blocks, tree); r=r2
+    stmts = _tidy(list(stmts))
     loc=sorted(r.locals)
     if r.floatfn or r.longfn:
         pt="float" if r.floatfn else "long"
