@@ -1832,6 +1832,63 @@ def _tidy(lines):
                 changed = True; break
     return lines
 
+def _adjacent(lo, hi):
+    """Are `lo` and `hi` the low and high word of one 32-bit object (hi sits 2 bytes above lo)?"""
+    m, n = re.fullmatch(r"g_([0-9a-f]+)", lo), re.fullmatch(r"g_([0-9a-f]+)", hi)
+    if m and n: return int(n.group(1), 16) == int(m.group(1), 16) + 2
+    m, n = re.fullmatch(r"v(\d+)", lo), re.fullmatch(r"v(\d+)", hi)
+    if m and n: return int(n.group(1)) == int(m.group(1)) - 2          # locals are named by bp-N
+    m, n = re.fullmatch(r"(.+)->f(\d+)", lo), re.fullmatch(r"(.+)->f(\d+)", hi)
+    if m and n: return m.group(1) == n.group(1) and int(n.group(2)) == int(m.group(2)) + 2
+    return False
+
+def _fold_long_expr(e):
+    """Rewrite LONG(hi, lo) terms as C long values where that is exact: an adjacent word pair is
+    the long object itself, a zero high word is a widened int. Other terms are left as they are."""
+    out = []; i = 0
+    while i < len(e):
+        if e.startswith("LONG(", i) and (i == 0 or not (e[i-1].isalnum() or e[i-1] == "_")):
+            d = 0; j = i + 5; cut = None
+            while j < len(e):
+                if e[j] == "(": d += 1
+                elif e[j] == ")":
+                    if d == 0: break
+                    d -= 1
+                elif e[j] == "," and d == 0 and cut is None: cut = j
+                j += 1
+            if cut is not None and j < len(e):
+                hi = e[i+5:cut].strip(); lo = e[cut+1:j].strip()
+                if _adjacent(lo, hi): out.append("*(long *)&%s" % lo); i = j + 1; continue
+                if hi == "0":
+                    out.append("(long)%s" % (lo if re.fullmatch(r"[\w>.\-]+", lo) else "(%s)" % lo)); i = j + 1; continue
+        out.append(e[i]); i += 1
+    return "".join(out)
+
+def _fold_longs(lines):
+    """Presentation only (not used in checker mode): a 32-bit result stored as two adjacent words
+         lo = LO(E);  hi = HI(E);          (or through a temporary  t = E; lo = LO(t); hi = HI(t);)
+    is one long assignment `*(long *)&lo = E;`, and `+=` / `-=` when E starts from that object."""
+    out = []; i = 0
+    while i < len(lines):
+        a = lines[i]; b = lines[i+1] if i + 1 < len(lines) else ""; c = lines[i+2] if i + 2 < len(lines) else ""
+        m1 = re.fullmatch(r"(\s*)(.+?) = LO\((.*)\);", a); m2 = re.fullmatch(r"(\s*)(.+?) = HI\((.*)\);", b)
+        E = None; n = 0
+        if m1 and m2 and m1.group(1) == m2.group(1) and m1.group(3) == m2.group(3) and _adjacent(m1.group(2), m2.group(2)):
+            E = m1.group(3); n = 2; ind = m1.group(1); lo = m1.group(2)
+        else:
+            m0 = re.fullmatch(r"(\s*)(t\d+) = (.*LONG\(.*);", a)
+            m1 = re.fullmatch(r"(\s*)(.+?) = LO\((t\d+)\);", b); m2 = re.fullmatch(r"(\s*)(.+?) = HI\((t\d+)\);", c)
+            if m0 and m1 and m2 and m1.group(3) == m2.group(3) == m0.group(2) and _adjacent(m1.group(2), m2.group(2)) \
+               and not any(re.search(r"\b%s\b" % m0.group(2), x) for x in lines[i+3:]):
+                E = m0.group(3); n = 3; ind = m0.group(1); lo = m1.group(2)
+        if E is None: out.append(a); i += 1; continue
+        e2 = _fold_long_expr(E); obj = "*(long *)&%s" % lo
+        if e2.startswith(obj + " + "): out.append("%s%s += %s;" % (ind, obj, e2[len(obj)+3:]))
+        elif e2.startswith(obj + " - "): out.append("%s%s -= %s;" % (ind, obj, e2[len(obj)+3:]))
+        else: out.append("%s%s = %s;" % (ind, obj, e2))
+        i += n
+    return out
+
 def recover_cfg(code, base=0, cxmap=None):
     """EXPERIMENTAL Phase-B path: structure the CFG (cfg.structure) and emit via R.emit_tree,
     reusing the SAME R value model as recover(). Not the default; used behind a flag / for A/B
@@ -1853,6 +1910,12 @@ def recover_cfg(code, base=0, cxmap=None):
         r2.labels=set(r.gototargets); r2._labeled=set(); r2.gotoargs=dict(getattr(r,"gotoargs",{}))
         stmts = r2.emit_tree(blocks, tree); r=r2
     stmts = _tidy(list(stmts))
+    if not MARK:
+        stmts = _fold_longs(stmts)
+        used = [x for x in ("ax","bx","cx","dx","si","di")
+                if any(re.search(r"(?<![\w>.])%s(?![\w(])" % x, ln) for ln in stmts)]
+        if used and any(ln.strip() for ln in stmts):               # which names are machine registers
+            stmts = ["/* register variables: %s */" % ", ".join(used)] + stmts
     loc=sorted(r.locals)
     if r.floatfn or r.longfn:
         pt="float" if r.floatfn else "long"
