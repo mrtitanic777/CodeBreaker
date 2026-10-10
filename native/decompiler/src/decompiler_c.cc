@@ -745,6 +745,8 @@ class CDecompiler {
   std::vector<std::string> locals_;
   std::unordered_set<int> spr_values_;   // SSA ids holding LR/CTR (frame setup)
   std::unordered_set<int> live_in_args_; // ppc_reg of used, never-defined regs
+  std::unordered_set<int> live_in_regs_; // x86 GPR home slots (20-23 ax/cx/dx/bx) read before
+                                         // written = register-convention arguments
   std::map<int, ExprRef> cur_arg_val_;   // r3-r10 -> value currently held
   // Stores that are really outgoing arguments (see MarkOutgoingStackArgs),
   // and the values they staged, keyed by frame offset so the call can take
@@ -1266,6 +1268,11 @@ void CDecompiler::IndexUses() {
         if (def_of_.count(v.id)) return;
         if (v.ppc_reg >= 3 && v.ppc_reg <= 10 && !defined_regs.count(v.ppc_reg))
           live_in_args_.insert(v.ppc_reg);
+        // x86 GPR arg registers (ax=20,cx=21,dx=22,bx=23) read before ever written = a
+        // register-convention incoming argument (Watcom __watcall/__fastcall). bp/si/di (25-27)
+        // are callee-saved, not arg registers, so they are NOT promoted.
+        if (v.ppc_reg >= 20 && v.ppc_reg <= 23 && !defined_regs.count(v.ppc_reg))
+          live_in_regs_.insert(v.ppc_reg);
       };
       note(in.src1);
       note(in.src2);
@@ -2426,8 +2433,31 @@ std::string CDecompiler::Run() {
 #else
   out << ret_ty << " __fastcall " << fname << "(";
 #endif
-  if (live_in_args_.empty() && stack_args.empty()) {
+  if (live_in_args_.empty() && stack_args.empty() && live_in_regs_.empty()) {
     out << "void";
+  } else if (live_in_args_.empty() && stack_args.empty()) {
+    // PURE register-convention function: args arrive in GPRs, none on the stack ([bp+N]). Declare
+    // them in Watcom register order (AX, DX, BX, CX) up to the highest register actually used, so
+    // the compiler passes each argument in the register the body reads; name the used ones by their
+    // register (matching the Step-1 body names ax/dx/bx/cx) and pad any skipped position with an
+    // unreferenced dummy (a later register only lands correctly if the earlier positions exist).
+    // Only the pure case -- a mixed register+stack convention would interleave arg indices, so that
+    // is left to the readable rename. This turns a leaking `ax`-referencing void() into a real,
+    // compilable, behaviourally-correct signature.
+    static const int kOrder[4] = {20, 22, 23, 21};        // AX, DX, BX, CX (Watcom reg-arg order)
+    static const char* kNm[4] = {"ax", "dx", "bx", "cx"};
+    int maxpos = 0;
+    for (int p = 0; p < 4; p++)
+      if (live_in_regs_.count(kOrder[p])) maxpos = p + 1;
+    bool wrote = false;
+    for (int p = 0; p < maxpos; p++) {
+      if (wrote) out << ", ";
+      wrote = true;
+      if (live_in_regs_.count(kOrder[p]))
+        out << "unsigned int " << kNm[p];
+      else
+        out << "unsigned int _pad" << (p + 1);
+    }
   } else {
     // Arguments are contiguous from r3; a gap means we mis-detected, so print
     // through the highest one actually read. Types are inferred from usage.
