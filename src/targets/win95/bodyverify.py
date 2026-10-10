@@ -115,6 +115,58 @@ def synth(module, va, arity=4):
     return None, "no synth (leaf skipped by call-flow; static + on-demand decompile empty)"
 
 
+def _callee_body(module, rva):
+    """Faithful EXACT decompile of one internal callee at `rva` (win95pedec --at). Used for closure
+    verification instead of interproc, which TRACE-reconstructs and (a) cannot model a function reached
+    only by tail-jmp -- the trace jumps to the fake return frame -- and (b) snaps a non-entry address
+    to the enclosing discovered function (reconstructing the wrong body entirely). The static decompile
+    at the exact address has neither problem. Returns cured C or None."""
+    blk = _ondemand_block(module, rva)
+    if not blk:
+        return None
+    cured = _cure_body(_beautify(blk))
+    if cured:
+        # A caller may pass a register argument (a stdcall-cleanup count, a dispatch index) that the
+        # callee reads but the decompiler did not promote to a parameter, leaving it `name(void)`.
+        # Relax that one signature to K&R `name()` (accepts and ignores extra args) so the caller's
+        # call compiles; the ignored register never changes the callee's observable behaviour.
+        cured = re.sub(r"\(\s*void\s*\)\s*\{", "() {", cured, count=1)
+    return cured
+
+
+def synth_closure(module, va, arity=4, depth=2, _seen=None, _base=None, _top=True):
+    """Like synth, but for the TOP function's internal callees (sub_XXXX) it appends their REAL
+    decompiled bodies (recursively, to `depth`) instead of leaving them as compile_body's zero stubs.
+    This makes the reconstructed call graph -- not a stub returning 0 -- face the oracle, so a function
+    whose behaviour flows through a callee is judged on the real reconstruction. Returns (fname, c)."""
+    if _seen is None:
+        _seen = set()
+    if _base is None:
+        from src.targets.win95 import autobuild95 as A
+        _base = A._imagebase(A.PE(module))
+    if _top:
+        fname, cc = synth(module, va, arity)
+    else:
+        cc = _callee_body(module, va - _base)
+        fname = _defined_name(cc) if cc else None
+    if not fname:
+        return None, cc
+    parts = [cc]
+    if depth > 0:
+        for h in sorted(set(re.findall(r"\bsub_([0-9a-fA-F]+)\b", cc))):
+            nm = "sub_" + h
+            if nm in _seen:
+                continue
+            _seen.add(nm)
+            try:
+                _, sub = synth_closure(module, _base + int(h, 16), 4, depth - 1, _seen, _base, False)
+                if sub:
+                    parts.append(sub)
+            except Exception:
+                pass
+    return fname, "\n".join(parts)
+
+
 _PROTOS = None
 
 
@@ -297,10 +349,24 @@ def compile_body(c_text, fname, outdir):
     return (dll if os.path.exists(dll) else None), ("ok" if os.path.exists(dll) else "link failed")
 
 
-def verify_body(retail, va, arity=4, outdir=None):
+def verify_body(retail, va, arity=4, outdir=None, closure=0):
     """Full primitive: synth -> compile -> oracle-verify vs the original body. `retail` is a PATH.
-    Returns a verdict dict."""
-    fname, c = synth(retail, va, arity)
+    Returns a verdict dict. `closure` > 0 ALSO tries a run that inlines the real internal-callee bodies
+    to that depth (see synth_closure) -- the remedy for the call-graph-stubbing artifact, where a
+    function whose behaviour flows through a callee is spuriously divergent against zero stubs. The
+    closure run is STRICTLY NON-REGRESSING: it is attempted only when the stub run did not already pass
+    and is adopted only if it passes, so inlining a callee body that fails to compile (common for deep
+    or struct-heavy callees) can never downgrade a result."""
+    res = _verify_one(retail, va, arity, outdir, 0)
+    if closure > 0 and res.get("verdict") not in ("equivalent", "consistent"):
+        clo = _verify_one(retail, va, arity, (outdir + "_cl") if outdir else None, closure)
+        if clo.get("verdict") in ("equivalent", "consistent"):
+            return clo
+    return res
+
+
+def _verify_one(retail, va, arity, outdir, closure):
+    fname, c = synth_closure(retail, va, arity, closure) if closure > 0 else synth(retail, va, arity)
     if not fname:
         return {"va": va, "verdict": "no-synth", "reason": c}
     outdir = outdir or os.path.join(os.path.dirname(__file__), "_bodyverify", "%x" % va)
