@@ -2187,33 +2187,52 @@ def _neg_cond(c):
     return "(!(%s))" % c
 
 def _fold_goto_or(lines):
-    """A short-circuit `||` that structuring left as a jump into the guarded block:
-        if (A) {                         if ((!A) || (B)) {
-            if (B) {                         X
-                L: X              ==>    } [else { Y }]
-            } [else { Y }]
-        } else {
-            goto L;
-        }
-    A is still evaluated first and B only when A holds, exactly as before. The label goes when
-    this was its last goto."""
+    """Short-circuit conditions that structuring left as a jump into a guarded block. With L the
+    first statement of an arm of the inner `if` (which is the whole then-arm of the outer one):
+
+        if (A) { if (B) { L: X } [else { Y }] } else { goto L; }   ==>  if (!A || B) { X } [else { Y }]
+        if (A) { if (B) { X } else { L: Y } }   else { goto L; }   ==>  if (A && B) { X } else { Y }
+        if (P) { L: X } else if (Q) { goto L; } ...                ==>  if (P || Q) { X } ...
+
+    The tests still run in the same order and under the same conditions. A label goes when this
+    was its last goto."""
     def ind(s): return len(s) - len(s.lstrip(" "))
     def close(i, d):
         j = i + 1
         while j < len(lines) and not (ind(lines[j]) == d and lines[j].strip().startswith("}")): j += 1
         return j if j < len(lines) else None
+    def top_or(c):
+        d = 0
+        for i, ch in enumerate(c):
+            d += ch == "("; d -= ch == ")"
+            if d == 0 and c.startswith(" || ", i): return True
+        return False
+    def par(c): return "(%s)" % c if top_or(c) else c
+    def others(L, skip): return sum(1 for q, x in enumerate(lines) if q != skip and re.search(r"\bgoto %s;" % L, x))
+    def dedent(xs): return [x[4:] if x.startswith("    ") else x for x in xs]
     changed = True
     while changed:
         changed = False
-        for i in range(len(lines) - 6):
+        for i in range(len(lines) - 3):
             m = re.match(r"( *)((?:\} else )?if) \((.*)\) \{$", lines[i])
             if not m: continue
-            d = len(m.group(1)); j = close(i, d)
-            if j is None or lines[j].strip() != "} else {" or j + 2 >= len(lines): continue
+            d = len(m.group(1)); pad = m.group(1); j = close(i, d)
+            if j is None: continue
+            # --- if (P) { L: X } else if (Q) { goto L; } ...
+            mq = re.match(r"\} else if \((.*)\) \{$", lines[j].strip())
+            lab = re.match(r"(\w+):$", lines[i + 1].strip())
+            if mq and lab and j + 2 < len(lines) and lines[j + 1].strip() == "goto %s;" % lab.group(1) \
+               and ind(lines[j + 2]) == d and lines[j + 2].strip().startswith("}"):
+                L = lab.group(1); keep = others(L, j + 1)
+                lines[i] = "%s%s (%s || %s) {" % (pad, m.group(2), m.group(3), mq.group(1))
+                del lines[j:j + 2]
+                if not keep: del lines[i + 1]
+                changed = True; break
+            if lines[j].strip() != "} else {" or j + 2 >= len(lines): continue
             g = re.match(r"goto (\w+);$", lines[j + 1].strip())
             if not g or lines[j + 2].strip() != "}" or ind(lines[j + 2]) != d: continue
             mi = re.match(r"( *)if \((.*)\) \{$", lines[i + 1])
-            if not mi or len(mi.group(1)) != d + 4 or lines[i + 2].strip() != g.group(1) + ":": continue
+            if not mi or len(mi.group(1)) != d + 4: continue
             k = close(i + 1, d + 4)                           # end of the inner then-arm
             if k is None: continue
             t = lines[k].strip()
@@ -2224,13 +2243,16 @@ def _fold_goto_or(lines):
                 ybody = lines[k + 1:e_end]
             else: continue
             if e_end + 1 != j: continue                       # the inner if is the whole then-arm
-            L = g.group(1)
-            others = sum(1 for q, x in enumerate(lines) if q != j + 1 and re.search(r"\bgoto %s;" % L, x))
-            xbody = lines[i + 3:k] if not others else lines[i + 2:k]
-            pad = m.group(1)
-            new = ["%s%s (%s || %s) {" % (pad, m.group(2), _neg_cond(m.group(3)), mi.group(2))]
-            new += [x[4:] if x.startswith("    ") else x for x in xbody]
-            if ybody is not None: new += [pad + "} else {"] + [x[4:] if x.startswith("    ") else x for x in ybody]
+            L = g.group(1); keep = others(L, j + 1); xbody = lines[i + 2:k]
+            if xbody and xbody[0].strip() == L + ":":
+                if not keep: xbody = xbody[1:]
+                cond = "%s || %s" % (_neg_cond(m.group(3)), mi.group(2))
+            elif ybody and ybody[0].strip() == L + ":":
+                if not keep: ybody = ybody[1:]
+                cond = "%s && %s" % (par(m.group(3)), par(mi.group(2)))
+            else: continue
+            new = ["%s%s (%s) {" % (pad, m.group(2), cond)] + dedent(xbody)
+            if ybody is not None: new += [pad + "} else {"] + dedent(ybody)
             new.append(pad + "}")
             lines[i:j + 3] = new; changed = True; break
     return lines
