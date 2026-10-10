@@ -2536,11 +2536,18 @@ def _unshare_jcc(ins):
     a2i = {x.address: k for k, x in enumerate(ins)}
     out = []; changed = False
     for k, x in enumerate(ins):
-        if x.mnemonic == "jmp" and k and ins[k-1].mnemonic in ("cmp", "test") and x.size >= 2:
+        if x.mnemonic == "jmp" and k and ins[k-1].mnemonic in ("cmp", "test", "or", "and", "xor", "add", "sub", "inc", "dec", "neg") and x.size >= 2:
             m = re.match(r"(0x[0-9a-f]+|\d+)$", x.op_str or "")
             t = a2i.get(int(m.group(1), 0)) if m else None
             if t is not None and t + 1 < len(ins) and ins[t].mnemonic in CJMP and ins[t].mnemonic not in ("jcxz", "jecxz") \
                and re.match(r"(0x[0-9a-f]+|\d+)$", ins[t].op_str or ""):
+                out.append(_FakeIns(x.address, 1, ins[t].mnemonic, ins[t].op_str))
+                out.append(_FakeIns(x.address + 1, x.size - 1, "jmp", "0x%x" % ins[t+1].address))
+                changed = True; continue
+            # ... the same with any other instruction that READS the flags of the compare (the
+            # `sbb ax,ax` of `x < 1`): two compares cross-jumped onto one flag consumer.
+            if t is not None and t + 1 < len(ins) and ins[t].mnemonic in ("sbb", "adc", "rcl", "rcr", "cmc", "lahf", "pushf") \
+               and ins[t+1].mnemonic not in ("sbb", "adc", "rcl", "rcr") and ins[t+1].mnemonic not in CJMP:
                 out.append(_FakeIns(x.address, 1, ins[t].mnemonic, ins[t].op_str))
                 out.append(_FakeIns(x.address + 1, x.size - 1, "jmp", "0x%x" % ins[t+1].address))
                 changed = True; continue
