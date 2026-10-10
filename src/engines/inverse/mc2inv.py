@@ -178,7 +178,7 @@ class R:
             m=re.search(r"\[bp \+ (0x[0-9a-f]+|\d+)\]",op)
             if m:
                 o=s.num(m.group(1)); nm=s.pname(o)
-                return "(%s >> 8)"%nm if (o-getattr(s,"pbase",4))%2 else nm
+                return "HIBYTE(%s)"%nm if (o-getattr(s,"pbase",4))%2 else nm
             # fall through to si/global handling below
         else:
             m=re.search(r"\[bp \+ (0x[0-9a-f]+|\d+)\]",op)
@@ -186,7 +186,7 @@ class R:
                 o=s.num(m.group(1)) if m else 0
                 if o < s.fs: s.locals.add(o); return "v%d"%o  # local (below saved BP)
                 nm=s.pname(o)                                 # parameter
-                return "(%s >> 8)"%nm if (o-s.fs-getattr(s,"pbase",4))%2 else nm
+                return "HIBYTE(%s)"%nm if (o-s.fs-getattr(s,"pbase",4))%2 else nm
         m=re.search(r"\[bp - (0x[0-9a-f]+|\d+)\]",op)         # negative bp offset is always a
         if m:                                                  # local (even when the chkstk prologue
             o=s.num(m.group(1)); s.locals.add(o); return "v%d"%o  # wasn't detected to set msc3)
@@ -353,6 +353,16 @@ class R:
     def _pin(s, out, regs):
         """Pin the lazily tracked values of `regs` into the register variables (if still read
         later), leaving them bare -- used wherever control flow re-converges on a loop."""
+        # Parallel assignment: if one pinned value reads a register that this same batch assigns
+        # (dx:ax = f(dx:ax)), evaluate every value into a temporary first.
+        batch=[r for r in s._WR if r in regs and getattr(s,r,None) is not None and str(getattr(s,r))!=r
+               and (s._live(r,s.i) or s._hascall(getattr(s,r)))]
+        if len(batch)>1 and any(re.search(r"(?<![\w>.])(%s)(?![\w(])"%s._HALF[a], str(getattr(s,b2)))
+                                for a in batch for b2 in batch if a!=b2):
+            for r in batch:
+                s._tn=getattr(s,"_tn",0)+1; t="t%d"%s._tn
+                out.append("%s = %s;"%(t,getattr(s,r))); s.ranks.append(s.i); s.regconst.append(False)
+                setattr(s,r,t)
         for r in s._WR:
             if r not in regs: continue
             for b8 in [b for b in s.breg if BYTEPARENT[b]==r]:
@@ -393,7 +403,10 @@ class R:
         return w
 
     @staticmethod
-    def _hascall(v): return re.search(r"[A-Za-z_]\w*\(", str(v)) is not None
+    def _hascall(v):
+        """Does this value text contain a real CALL (not one of the width/long pseudo-operators)?"""
+        return any(n not in ("BYTE","HIBYTE","SX","S8","S16","LONG","LO","HI","LSHR","LSAR")
+                   for n in re.findall(r"([A-Za-z_]\w*)\(", str(v)))
 
     def _wlive(s, reg, i):
         """Is the full WORD register read after ins[i] before either it or one of its halves'
@@ -1364,7 +1377,7 @@ class R:
         if s._terminal(body): return
         for r in s._REGS:
             v=snap.get(r)
-            if v is not None and v!=pre.get(r) and re.search(r"[A-Za-z_]\w*\(", str(v)):
+            if v is not None and v!=pre.get(r) and s._hascall(v):
                 body.append("%s = %s;"%(r,v)); snap[r]="ax" if r=="ax" else None
 
     def _plain_if(s, cond, body, pre, then_s, out):
@@ -1380,7 +1393,7 @@ class R:
                 setattr(s, r, None); continue                  # dead after the merge
             if pre[r] is not None and str(pre[r]) != r:
                 out.append("%s = %s;" % (r, pre[r]))
-                if re.search(r"[A-Za-z_]\w*\(", str(pre[r])) and str(pre[r]) in cond:
+                if s._hascall(pre[r]) and str(pre[r]) in cond:
                     cond = cond.replace(str(pre[r]), r)        # don't re-evaluate the call in the test
             if then_s[r] is not None and str(then_s[r]) != r and not bterm: body.append("%s = %s;" % (r, then_s[r]))
             setattr(s, r, None)
