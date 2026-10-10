@@ -18,7 +18,7 @@ JCC={"jl":"<","jle":"<=","jg":">","jge":">=","je":"==","jne":"!=",      # jump's
                                                                          # compare small positive values)
 INV={"jge":"<","jg":"<=","jle":">","jl":">=","jne":"==","je":"!=","jz":"!=","jnz":"==",  # skip/exit-if-not
      "ja":"<=","jae":"<","jb":">=","jbe":">","jc":">=","jnc":"<"}        # unsigned, negated (fall-through)
-CJMP=set(JCC)|{"jz","jnz"}
+CJMP=set(JCC)|{"jz","jnz","js","jns"}
 BYTEREG=("al","bl","cl","dl","ah","bh","ch","dh")        # 8-bit sub-registers (exposed as vars)
 BYTEPARENT={"al":"ax","ah":"ax","bl":"bx","bh":"bx","cl":"cx","ch":"cx","dl":"dx","dh":"dx"}
 WORDHALVES={"ax":("al","ah"),"bx":("bl","bh"),"cx":("cl","ch"),"dx":("dl","dh")}
@@ -272,6 +272,8 @@ class R:
         """Resolve a source operand token: register->tracked value (rsrc), else imm/mem.
         Never yields None: an untracked register falls back to its own name (a live variable)."""
         if tok=="ax": return s.ax if s.ax is not None else "ax"
+        if tok in ("si","di"):
+            v=getattr(s,tok,None); return v if v is not None else tok
         return s.rsrc(tok) if tok in ("bx","cx","dx") else s.rhs(tok)
 
     _HALF={"ax":"ax|al|ah","bx":"bx|bl|bh","cx":"cx|cl|ch","dx":"dx|dl|dh","si":"si","di":"di"}
@@ -638,6 +640,14 @@ class R:
         if j>=len(s.ins):                                 # no conditional jump before the end
             return (s.ax if s.ax is not None else "0"), j
         jcc=s.ins[j].mnemonic
+        if jcc in ("js","jns"):
+            k=j-1
+            while k>=0 and s.ins[k].mnemonic in ("mov","lea","push","pop","les","cbw","cwde"): k-=1
+            o=s.ins[k].op_str if k>=0 else ""
+            w="S8" if ("byte ptr" in o or o.split(",")[0].strip() in BYTEREG) else "S16"
+            val=("(%s - %s)"%s._cmp) if s._cmp else s._flagval(j)
+            if MARK: val="%s(%s)"%(w,val)
+            return "(%s %s 0)"%(val, ">=" if jcc=="js" else "<"), j     # fall-through sense
         sg=None
         if MARK and jcc in ("jl","jle","jg","jge"):
             k=j-1
@@ -1053,7 +1063,8 @@ class R:
         if mn in ("inc","dec") and ops not in BYTEREG:
             nm=s.memname(ops) or ops; o="+" if mn=="inc" else "-"
             # fs>0 means MC1 allocated a temp -> source used the temp form x = x OP 1 (not x++/x--)
-            s.emit(out,"%s = %s %s 1;"%(nm,nm,o) if s.fs>0 else "%s%s;"%(nm,"++" if mn=="inc" else "--"))
+            pn=nm if re.match(r"^[A-Za-z_]\w*(->f\d+)*$",nm) or nm.startswith("BYTE(") else "(%s)"%nm   # (*p)++, not *p++
+            s.emit(out,"%s = %s %s 1;"%(nm,nm,o) if s.fs>0 else "%s%s;"%(pn,"++" if mn=="inc" else "--"))
             return i+1
         if mn=="int":                                          # software interrupt -> named syscall
             s.emit(out,"int_%s();"%ops.replace("0x","").replace(" ","")); return i+1
@@ -1624,7 +1635,10 @@ def recover(code, base=0, cxmap=None):
 def _prologue(ins):
     """Shared prologue detection: returns (fs, k, msc3) for the start of the real body."""
     if not (ins[0].mnemonic=="push" and ins[0].op_str=="bp"):
-        return 0, 0, False                                # frameless: the body starts at once
+        k=0                                               # frameless: the body starts at once,
+        while k < len(ins) and ins[k].mnemonic=="push" and ins[k].op_str in ("si","di")               and any(x.mnemonic=="pop" and x.op_str==ins[k].op_str for x in ins[k+1:]):
+            k+=1                                          # after any callee-saved register pushes
+        return 0, k, False
     fs=0; k=1
     if ins[k].mnemonic=="sub" and ins[k].op_str.startswith("sp"):
         fs=int(ins[k].op_str.split(",")[1],16); k+=1
