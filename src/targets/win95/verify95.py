@@ -70,15 +70,120 @@ def _prov_meminit():
             (_SAFE, b"\xc3" * 16)]                        # RET landing pad
 
 
+# --- behavioral-fingerprint cache -------------------------------------------------------------
+# A PE fingerprint is a pure function of (module bytes, func addr, input vector): the trace is
+# deterministic given those. The RETAIL side (the corpus binary) is reconstruction-independent, so
+# its fingerprint is identical across every body and every sweep re-run -- yet it was re-traced each
+# time, making it ~half of the oracle cost (4 of 8 traces/body). Cache fingerprints keyed by the
+# module's content hash so a re-run (the common case after any synth/lifter change) skips the retail
+# traces entirely. Keying on content hash (not path) makes it correct for both sides and for shared
+# bodies: a rebuilt DLL gets a fresh hash each build, so it never stales. Disabled by CB_NO_FP_CACHE.
+import hashlib as _hashlib
+import pickle as _pickle
+import sqlite3 as _sqlite3
+
+_SHA_MEMO = {}
+_FP_DB = None
+
+
+def _fp_cache_path():
+    try:
+        from src.core import paths
+        return os.path.join(paths.design_root(), "verify_fp_cache.sqlite")
+    except Exception:
+        return os.path.join(os.path.dirname(os.path.abspath(__file__)), "verify_fp_cache.sqlite")
+
+
+def _fp_db():
+    """Open (once per process) the WAL-mode sqlite fp cache, or False if it cannot be used. WAL lets
+    the 10 sweep workers read concurrently; a write that loses the lock is swallowed (re-traced next
+    time), so the cache never affects correctness."""
+    global _FP_DB
+    if _FP_DB is None:
+        try:
+            db = _sqlite3.connect(_fp_cache_path(), timeout=5.0)
+            db.execute("PRAGMA journal_mode=WAL")
+            db.execute("PRAGMA synchronous=NORMAL")
+            db.execute("CREATE TABLE IF NOT EXISTS fp(k TEXT PRIMARY KEY, v BLOB)")
+            db.commit()
+            _FP_DB = db
+        except Exception:
+            _FP_DB = False
+    return _FP_DB or None
+
+
+def _mod_sha(path):
+    """sha256 of a module file, memoized by (path, mtime, size) so a stable corpus binary is hashed
+    once per process."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    key = (path, int(st.st_mtime), st.st_size)
+    s = _SHA_MEMO.get(key)
+    if s is None:
+        h = _hashlib.sha256()
+        try:
+            with open(path, "rb") as f:
+                for chunk in iter(lambda: f.read(1 << 20), b""):
+                    h.update(chunk)
+        except OSError:
+            return None
+        s = h.hexdigest()
+        _SHA_MEMO[key] = s
+    return s
+
+
+def _fp_key(sha, func, spec):
+    args = tuple(int(a) for a in spec.get("args", []))
+    mi = tuple((int(a), bytes(b)) for a, b in (spec.get("mem_init") or []))
+    return sha + ":" + _hashlib.sha1(repr((func, args, mi)).encode()).hexdigest()
+
+
+def _fp_cache_get(key):
+    db = _fp_db()
+    if not db:
+        return None
+    try:
+        row = db.execute("SELECT v FROM fp WHERE k=?", (key,)).fetchone()
+        return _pickle.loads(row[0]) if row else None
+    except Exception:
+        return None
+
+
+def _fp_cache_put(key, fp):
+    db = _fp_db()
+    if not db:
+        return
+    try:
+        db.execute("INSERT OR REPLACE INTO fp(k,v) VALUES(?,?)", (key, _pickle.dumps(fp)))
+        db.commit()
+    except Exception:
+        pass
+
+
 def _fp_pe(path, func, spec):
+    key = None
+    if not os.environ.get("CB_NO_FP_CACHE"):
+        sha = _mod_sha(path)
+        if sha:
+            key = _fp_key(sha, func, spec)
+            hit = _fp_cache_get(key)
+            if hit is not None:
+                return hit
     try:
         r = tracer.trace_function(path, func=func, args=spec["args"], mem_init=spec.get("mem_init"),
                                   stub_externals=True)
     except Exception as e:
-        return {"err": type(e).__name__}
+        return {"err": type(e).__name__}          # transient trace errors are never cached
     deps = tuple(_norm_dep(d) for d in r.get("api_deps", []) if not _is_noise(d))
-    return {"ret": r.get("ret"), "exit": _exit_norm(r.get("exit")), "deps": deps,
-            "truncated": bool(r.get("truncated"))}
+    fp = {"ret": r.get("ret"), "exit": _exit_norm(r.get("exit")), "deps": deps,
+          "truncated": bool(r.get("truncated"))}
+    # Cache only settled results. A truncated trace can differ by wall-clock (the tracer's 2s cap),
+    # so caching it could record a machine-dependent fingerprint -- re-trace those instead.
+    if key and not fp["truncated"]:
+        _fp_cache_put(key, fp)
+    return fp
 
 
 def _fp_ne(path, ordn, spec):
