@@ -740,8 +740,18 @@ class R:
                     own=True; break
                 k-=1
             if not own:
-                s._cmp=s._lastcmp[0]
-                if MARK and jcc in ("jl","jle","jg","jge"): sg=s._lastcmp[1]
+                # WHICH compare: the one whose flags actually reach this jump - the compare of the
+                # conditional jump that branches (or falls) into this block - not merely the last
+                # one emitted, which can belong to an unrelated block emitted in between.
+                src=s._lastcmp
+                preds=[q for q,t in s.tgt.items() if t==lo and s.ins[q].mnemonic in CJMP]
+                if lo>0 and s.ins[lo-1].mnemonic in CJMP: preds.append(lo-1)
+                seen={}
+                for q in preds:
+                    if q in getattr(s,"_cmpat",{}): seen[repr(s._cmpat[q])]=s._cmpat[q]
+                if len(seen)==1: src=next(iter(seen.values()))
+                s._cmp=src[0]
+                if MARK and jcc in ("jl","jle","jg","jge"): sg=src[1]
         if s._cmp:
             a_,b_=s._cmp
             if sg is None and MARK:
@@ -751,6 +761,8 @@ class R:
                 w="S8" if ("byte ptr" in o or o.split(",")[0].strip() in BYTEREG) else "S16"
             else: w=sg
             s._lastcmp=((a_,b_), w or "S16")
+            if not hasattr(s,"_cmpat"): s._cmpat={}
+            s._cmpat[j]=s._lastcmp                            # flags as they stand at this jump
             if sg: a_,b_="%s(%s)"%(sg,a_),"%s(%s)"%(sg,b_)
             elif UNSIGNED_CAST and not MARK and jcc in ("jb","jae","ja","jbe","jnb","jnae","jna","jnbe","jc","jnc"):
                 # the variables are declared int, so an unsigned compare has to say so
@@ -1330,8 +1342,11 @@ class R:
             tv, ev = then_snap[r], else_snap[r]
             if tv==ev:
                 setattr(s, r, tv); continue
-            if r in s._WR and not s._live(r, s.i) and not s._hascall(tv) and not s._hascall(ev):
+            if not DEADREGS and r in s._WR and not s._live(r, s.i) and not s._hascall(tv) and not s._hascall(ev):
                 setattr(s, r, None); continue              # dead after the merge: nothing to keep
+            # (with DEADREGS the assignment is always written: "where we are" can sit inside a
+            # nested arm that redefines r, which made this test drop live values; the liveness
+            # pass over the finished code removes what really is dead)
             if tv is not None and str(tv)!=r and not tterm: then_b.append("%s = %s;"%(r,tv))
             if ev is not None and str(ev)!=r and not eterm: else_b.append("%s = %s;"%(r,ev))
             setattr(s, r, None)                      # merged -> bare register after the branch
@@ -1483,6 +1498,9 @@ class R:
         elif blk.term == "ret" and s._retval():            # value-returning fn, result merged into
             v = s.ax if s.ax is not None else (s.breg.get("al") or "ax")   # the register variable
             out.append("return %s;" % v)
+        elif blk.term == "ret":                            # a void return is still a return: inside a
+            out.append("return;")                          # loop the code must not run on (stripped
+                                                           # again where it is the function's end)
         elif blk.term == "tailcall":
             last = s.ins[blk.hi - 1]
             m = re.match(r"(0x[0-9a-f]+|\d+)$", last.op_str)
@@ -1530,7 +1548,7 @@ class R:
         for r in s._REGS:
             if then_s[r] == pre[r]:
                 setattr(s, r, then_s[r]); continue
-            if r in s._WR and not s._live(r, s.i) and not s._hascall(pre[r]) and not s._hascall(then_s[r]):
+            if not DEADREGS and r in s._WR and not s._live(r, s.i) and not s._hascall(pre[r]) and not s._hascall(then_s[r]):
                 setattr(s, r, None); continue                  # dead after the merge
             if pre[r] is not None and str(pre[r]) != r:
                 out.append("%s = %s;" % (r, pre[r]))
@@ -2283,6 +2301,42 @@ def _fold_goto_or(lines):
             lines[i:j + 3] = new; changed = True; break
     return lines
 
+def _strip_tail_returns(lines):
+    """Drop `return;` where nothing can run after it anyway (the end of the function, possibly
+    through closing braces of if/else arms). Kept everywhere else - inside loops and switches,
+    before a label - where leaving it out would let the code run on."""
+    def ind(s): return len(s) - len(s.lstrip(" "))
+    changed = True
+    while changed:
+        changed = False
+        for i, l in enumerate(lines):
+            if l.strip() != "return;": continue
+            j = i + 1; tail = False
+            while True:
+                if j >= len(lines): tail = True; break
+                t = lines[j].strip(); d = ind(lines[j])
+                if not t: j += 1; continue
+                if not t.startswith("}"): break
+                k = j - 1
+                while k >= 0 and not (ind(lines[k]) == d and lines[k].rstrip().endswith("{")): k -= 1
+                if k < 0 or not re.match(r"(\} else )?if \(.*\) \{$|\} else \{$", lines[k].strip()): break
+                if t == "}": j += 1; continue
+                e = j                                       # `} else ...`: skip the other arms
+                while True:
+                    e += 1
+                    while e < len(lines) and not (ind(lines[e]) == d and lines[e].strip().startswith("}")): e += 1
+                    if e >= len(lines) or lines[e].strip() == "}": break
+                if e >= len(lines): break
+                j = e + 1
+            if not tail: continue
+            prev = lines[i - 1].strip() if i else ""
+            nxt = lines[i + 1].strip() if i + 1 < len(lines) else ""
+            if prev == "} else {" and nxt == "}":
+                del lines[i - 1:i + 1]; changed = True; break       # the whole empty else arm
+            if prev.endswith("{") and prev != "{": continue         # sole statement of an arm: keep it
+            del lines[i]; changed = True; break
+    return lines
+
 def recover_cfg(code, base=0, cxmap=None):
     """EXPERIMENTAL Phase-B path: structure the CFG (cfg.structure) and emit via R.emit_tree,
     reusing the SAME R value model as recover(). Not the default; used behind a flag / for A/B
@@ -2303,7 +2357,7 @@ def recover_cfg(code, base=0, cxmap=None):
         r2=R(ins,fs,base,cxmap,msc3=msc3); r2.emit_start=k
         r2.labels=set(r.gototargets); r2._labeled=set(); r2.gotoargs=dict(getattr(r,"gotoargs",{}))
         stmts = r2.emit_tree(blocks, tree); r=r2
-    stmts = _tidy(list(stmts))
+    stmts = _strip_tail_returns(_tidy(list(stmts)))
     if DEADREGS:
         stmts = _dead_regs(list(stmts))
         if MARK or UNSIGNED_CAST: stmts = _fold_ladders(list(stmts))   # (needs to know which compares are unsigned)
