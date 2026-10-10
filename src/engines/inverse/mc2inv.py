@@ -31,6 +31,7 @@ CALLINFO=None
 # Verification aid: when True, byte-wide memory operands are emitted as BYTE(x) so a checker can
 # tell 8-bit from 16-bit accesses. Off for normal (readable) output.
 MARK=False
+FARPTR=os.environ.get("MC2INV_FAR","0")=="1"           # checker mode: es is a real register, far derefs are FARM(es, x)
 DEADREGS=os.environ.get("MC2INV_DEADREGS","0")=="1"     # drop register assignments nothing reads
 UNSIGNED_CAST=os.environ.get("MC2INV_UNSIGNED","0")=="1"   # readable listings: mark unsigned compares
 # Optional driver fact: does the function being lifted return a value? (True/False from a
@@ -166,8 +167,22 @@ class R:
         v=str(v)                                          # a non-trivial base must be parenthesized:
         if re.match(r"^[A-Za-z_]\w*(->f\d+)*$",v) or (v.startswith("(") and v.endswith(")")): return v
         return "(%s)"%v                                   # `*a` + `->f3` is (*a)->f3, not *(a->f3)
+    @staticmethod
+    def _plus2(op):
+        """The memory operand two bytes further on (the segment word of a far pointer)."""
+        m=re.search(r"\[(.*)\]", op)
+        if not m: return op
+        e=m.group(1)
+        m2=re.match(r"(.*) ([+-]) (0x[0-9a-f]+|\d+)$", e)
+        if m2:
+            v=int(m2.group(3),0)*(1 if m2.group(2)=="+" else -1)+2
+            e=m2.group(1) if v==0 else "%s %s 0x%x"%(m2.group(1), "+" if v>0 else "-", abs(v))
+        elif re.match(r"(0x[0-9a-f]+|\d+)$", e): e="0x%x"%(int(e,0)+2)
+        else: e=e+" + 2"
+        return op[:m.start()]+"["+e+"]"+op[m.end():]
     def memname(s,op):
         r=s._memname0(op)
+        if MARK and FARPTR and r is not None and re.search(r"\bes:", op): r="FARM(es, %s)"%r   # through es, not ds
         if MARK and r is not None and "byte ptr" in op and "[" in op: return "BYTE(%s)"%r
         return r
     def _memname0(s,op):
@@ -278,7 +293,7 @@ class R:
             v=getattr(s,tok,None); return v if v is not None else tok
         return s.rsrc(tok) if tok in ("bx","cx","dx") else s.rhs(tok)
 
-    _HALF={"ax":"ax|al|ah","bx":"bx|bl|bh","cx":"cx|cl|ch","dx":"dx|dl|dh","si":"si","di":"di"}
+    _HALF={"ax":"ax|al|ah","bx":"bx|bl|bh","cx":"cx|cl|ch","dx":"dx|dl|dh","si":"si","di":"di","es":"es"}
     def _live(s, reg, i):
         """Is `reg` read after ins[i] before being redefined, on any path?"""
         rx=re.compile(r"\b(%s)\b"%s._HALF[reg]); seen=set(); work=[i+1]
@@ -317,6 +332,7 @@ class R:
            or base in CJMP or base in s._IMPLW:
             return w
         p=[x.strip() for x in ops.split(",")] if ops else []
+        if MARK and FARPTR and (base=="les" or (p and p[0]=="es" and base in ("mov","pop"))): w.add("es")
         if p:
             d=BYTEPARENT.get(p[0],p[0])
             if d in s._WR: w.add(d)
@@ -419,7 +435,7 @@ class R:
     @staticmethod
     def _hascall(v):
         """Does this value text contain a real CALL (not one of the width/long pseudo-operators)?"""
-        return any(n not in ("BYTE","HIBYTE","SX","S8","S16","LONG","LO","HI","LSHR","LSAR")
+        return any(n not in ("BYTE","HIBYTE","SX","S8","S16","LONG","LO","HI","LSHR","LSAR","FARM","FAROFF","U32","S32")
                    for n in re.findall(r"([A-Za-z_]\w*)\(", str(v)))
 
     def _wlive(s, reg, i):
@@ -1083,6 +1099,28 @@ class R:
         if mn in ("or","and","test") and ops.count(",")==1 and d0==ops.split(",")[1].strip() \
            and "[" not in ops: return i+1                 # `or r,r` = flags only: value/tracking unchanged
         s._kill_aliases(i)
+        if MARK and FARPTR:
+            # es as a register variable, assigned eagerly (values that read the old es were
+            # settled just above). `les r,[m]`: es = the word after m; the offset half is the
+            # ordinary lazy load below.
+            if mn=="les":
+                dst,_,src=ops.partition(", ")
+                seg=s.memname(s._plus2(src))
+                if seg is None: seg="es"
+                if "es:" in src:                           # the pointer itself is read through es
+                    s._tn=getattr(s,"_tn",0)+1; t="t%d"%s._tn
+                    s.emit(out,"%s = %s;"%(t,seg))
+                    s.expr_step(i)
+                    if dst in s._WR and getattr(s,dst,None) is not None: s._materialize(out,dst)
+                    s.emit(out,"es = %s;"%t); return i+1
+                s.emit(out,"es = %s;"%seg)
+            elif mn=="mov" and ops.startswith("es, "):
+                r_=ops[4:].strip(); v=getattr(s,r_,None) if r_ in s._WR else None
+                s.emit(out,"es = %s;"%(v if v is not None else (s.memname(r_) or r_))); return i+1
+            elif mn=="pop" and ops=="es":
+                v=s.args.pop() if s.args else "es"
+                if str(v)!="es": s.emit(out,"es = %s;"%v)
+                return i+1
         if s._byte_on_word(mn, ops): return i+1
         for _t in re.findall(r"\b[abcd][lh]\b", ops):       # a byte op on a register still holding
             if _t not in s.breg and s._hascall(getattr(s,BYTEPARENT[_t],None) or ""):   # a deferred
@@ -1149,6 +1187,8 @@ class R:
                 return i+1                                      # backward alias
             if re.match(r"(0x[0-9a-f]+|\d+)$",src):
                 s.emit(out,"%s = %s;"%(s.memname(dest), s.num(src))); return i+1
+            if src in ("ds","es","ss","cs"):                    # a segment value stored (the segment half
+                s.emit(out,"%s = %s;"%(s.memname(dest), src)); return i+1     # of a far pointer to near data)
         if mn in ALU and "[" in ops.split(", ")[0] and ops.endswith(", ax"):   # mem <op>= ax
             d=s.memname(ops.split(",")[0]); av=s.ax if s.ax is not None else "ax"   # untracked -> bare ax
             s.emit(out,"%s = %s %s %s;"%(d,d,ALU[mn],av)); return i+1
@@ -1225,13 +1265,13 @@ class R:
             n=s.cx or "cx"
             if mn.endswith("movsw"): n=str(int(n)*2) if str(n).isdigit() else "(%s * 2)"%n
             s.emit(out,"%s(%s, %s, %s);"%(("memcpy_w" if mn.endswith("w") else "memcpy_b") if MARK else "memcpy",
-                                          s.di or "di", s.si or "si", n))
+                                          ("FAROFF(es, %s)"%(s.di or "di")) if (MARK and FARPTR) else (s.di or "di"), s.si or "si", n))
             s.si=s.di=None; s.cx="0"; return i+1
         if mn in ("rep stosb","rep stosw","repne stosb","repne stosw"):
             n=s.cx or "cx"
             if mn.endswith("stosw"): n=str(int(n)*2) if str(n).isdigit() else "(%s * 2)"%n
             s.emit(out,"%s(%s, %s, %s);"%(("memset_w" if mn.endswith("w") else "memset_b") if MARK else "memset",
-                                          s.di or "di", s.ax if s.ax is not None else "ax", n))
+                                          ("FAROFF(es, %s)"%(s.di or "di")) if (MARK and FARPTR) else (s.di or "di"), s.ax if s.ax is not None else "ax", n))
             s.di=None; s.cx="0"; return i+1
         # Single string instructions (hand-written assembly loops), direction flag clear: each is
         # a load/store through si/di followed by the pointer step, written as plain statements on
@@ -1249,13 +1289,14 @@ class R:
                         v=s.breg.pop(b8)
                         if str(v)!=b8: s.emit(out,"%s = %s;"%(b8,v))
             B=(lambda x:"BYTE(%s)"%x) if MARK else (lambda x:"*(char *)%s"%x[1:] if x.startswith("*") else x)
+            DI="FARM(es, *di)" if (MARK and FARPTR) else "*di"     # stos/movs store through es:di
             if mn[:4]=="movs":
                 pinreg("si"); pinreg("di")
-                s.emit(out,("%s = %s;"%(B("*di"),B("*si"))) if w==1 else "*di = *si;")
+                s.emit(out,("%s = %s;"%(B(DI),B("*si"))) if w==1 else "%s = *si;"%DI)
                 s.emit(out,"si = si + %d;"%w); s.emit(out,"di = di + %d;"%w)
             elif mn[:4]=="stos":
                 pinreg("di"); settle_ax()
-                s.emit(out,("%s = al;"%B("*di")) if w==1 else "*di = ax;")
+                s.emit(out,("%s = al;"%B(DI)) if w==1 else "%s = ax;"%DI)
                 s.emit(out,"di = di + %d;"%w)
             elif mn[:4]=="lods":
                 pinreg("si"); settle_ax()
@@ -1973,7 +2014,7 @@ def _fold_longs(lines):
 _DR_ATOMS = {"ax": ("al", "ah"), "bx": ("bl", "bh"), "cx": ("cl", "ch"), "dx": ("dl", "dh"), "si": ("si",), "di": ("di",),
              "al": ("al",), "ah": ("ah",), "bl": ("bl",), "bh": ("bh",), "cl": ("cl",), "ch": ("ch",), "dl": ("dl",), "dh": ("dh",)}
 _DR_TOK = re.compile(r"(?<![\w>.])(ax|bx|cx|dx|si|di|al|ah|bl|bh|cl|ch|dl|dh)(?![\w(])")
-_DR_PURE = {"BYTE", "HIBYTE", "SX", "S8", "S16", "LONG", "LO", "HI", "LSHR", "LSAR", "U32", "S32", "unsigned", "int", "char", "long"}
+_DR_PURE = {"BYTE", "HIBYTE", "SX", "S8", "S16", "LONG", "LO", "HI", "LSHR", "LSAR", "U32", "S32", "FARM", "FAROFF", "unsigned", "int", "char", "long"}
 
 def _dead_regs(lines):
     """Remove assignments to register variables that no path reads (`ax = x;` left behind by
@@ -2112,6 +2153,28 @@ def _dead_regs(lines):
                 if any(h in _DR_ATOMS and h != reg and set(_DR_ATOMS[h]) & at for h in _DR_TOK.findall(nxt)): continue   # al/ah of it
             ce, cn = calls(e), calls(nxt)
             if (ce and cn) or cn > 1 or "++" in e or "--" in e: continue
+            mo = pat.search(nxt)
+            if ce:
+                # A call moved into the statement must not change WHEN anything else in it is
+                # read: a call clobbers ax/bx/cx/dx and may change memory. So the rest of the
+                # right-hand side (or of the test) may hold nothing but constants:
+                #   v4 = ax;   if ((ax != 0)) {   return ax;      - yes
+                #   dx = dx | ax;   v = g_x + ax;                 - no
+                rest = nxt[:mo.start()] + nxt[mo.end():]
+                cut = re.search(r"(?<![=!<>]) = ", rest)
+                rhs = rest[cut.end():] if cut else rest
+                if any(w not in _DR_PURE and w not in ("if", "switch", "return") for w in re.findall(r"[A-Za-z_]\w*", rhs)): continue
+            elif cn:
+                # A plain value moved into a statement that makes a call is read before the call
+                # only as one of its arguments; anywhere else it would be read after it.
+                mc = [m for m in re.finditer(r"([A-Za-z_]\w*)\s*\(", nxt) if m.group(1) not in _DR_PURE and m.group(1) not in ("if", "switch", "return", "while")]
+                d = 0; end = None
+                for q in range(mc[0].end(), len(nxt)):
+                    if nxt[q] == "(": d += 1
+                    elif nxt[q] == ")":
+                        if d == 0: end = q; break
+                        d -= 1
+                if end is None or not (mc[0].end() <= mo.start() < end): continue
             if ("&&" in nxt or "||" in nxt) and (ce or cn): continue
             if not pure(e) and re.match(r"\s*[^=]*[\[*>][^=]* = ", nxt) and False: continue
             atom = re.match(r"(\w+|\d+|[A-Za-z_]\w*\([^()]*\))$", e) or (e.startswith("(") and e.endswith(")"))
