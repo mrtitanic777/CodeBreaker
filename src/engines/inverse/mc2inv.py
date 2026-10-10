@@ -1911,7 +1911,7 @@ def _fold_longs(lines):
 _DR_ATOMS = {"ax": ("al", "ah"), "bx": ("bl", "bh"), "cx": ("cl", "ch"), "dx": ("dl", "dh"), "si": ("si",), "di": ("di",),
              "al": ("al",), "ah": ("ah",), "bl": ("bl",), "bh": ("bh",), "cl": ("cl",), "ch": ("ch",), "dl": ("dl",), "dh": ("dh",)}
 _DR_TOK = re.compile(r"(?<![\w>.])(ax|bx|cx|dx|si|di|al|ah|bl|bh|cl|ch|dl|dh)(?![\w(])")
-_DR_PURE = {"BYTE", "HIBYTE", "SX", "S8", "S16", "LONG", "LO", "HI", "LSHR", "LSAR", "unsigned", "int", "char", "long"}
+_DR_PURE = {"BYTE", "HIBYTE", "SX", "S8", "S16", "LONG", "LO", "HI", "LSHR", "LSAR", "U32", "S32", "unsigned", "int", "char", "long"}
 
 def _dead_regs(lines):
     """Remove assignments to register variables that no path reads (`ax = x;` left behind by
@@ -2093,6 +2093,148 @@ def _dead_regs(lines):
                     ch = True; break
     return lines
 
+def _fold_ladders(lines):
+    """The compiler tests a 32-bit value as a ladder - high words first, low words only when
+    those are equal - which structuring leaves as three nested ifs with the body duplicated:
+        if (Ah <= Bh) { if (Ah >= Bh) { if (Al < Bl) { X } } else { X } }
+    Fold it back into one comparison of LONG(hi, lo) values when the three arms really are the
+    truth table of a single relation (every body compared textually)."""
+    def ind(s): return len(s) - len(s.lstrip(" "))
+    def parse_if(i):
+        """lines[i] is `if (c) {` -> (cond, then_lines, else_lines|None, index after the closing brace)"""
+        m = re.match(r"( *)if \((.*)\) \{$", lines[i])
+        if not m: return None
+        d = len(m.group(1)); j = i + 1
+        while j < len(lines) and not (ind(lines[j]) == d and lines[j].strip().startswith("}")): j += 1
+        if j >= len(lines): return None
+        t = lines[j].strip()
+        if t == "}": return m.group(2), lines[i+1:j], None, j + 1
+        if t != "} else {": return None
+        k = j + 1
+        while k < len(lines) and not (ind(lines[k]) == d and lines[k].strip().startswith("}")): k += 1
+        if k >= len(lines) or lines[k].strip() != "}": return None
+        return m.group(2), lines[i+1:j], lines[j+1:k], k + 1
+    def rel(c):
+        """`(A op B)` -> (A, op, B, signedness 'u'|'s') with the top-level operator"""
+        if not (c.startswith("(") and c.endswith(")")): return None
+        c = c[1:-1]; d = 0
+        for i, ch in enumerate(c):
+            if ch == "(": d += 1
+            elif ch == ")": d -= 1
+            elif d == 0 and ch == " ":
+                for op in ("<=", ">=", "<", ">"):
+                    if c.startswith(op + " ", i + 1):
+                        a, b = c[:i], c[i + len(op) + 2:]
+                        if "&&" in a or "||" in a or "&&" in b or "||" in b or "S8(" in a + b: return None
+                        ms, mb = re.fullmatch(r"S16\((.*)\)", a), re.fullmatch(r"S16\((.*)\)", b)
+                        if ms and mb: return ms.group(1), op, mb.group(1), "s"
+                        if a.startswith("(unsigned)"): return a[10:], op, b, "u"
+                        return a, op, b, ("u" if MARK else "s")
+        return None
+    def same(x, y): return [l.strip() for l in (x or [])] == [l.strip() for l in (y or [])]
+    i = 0; out = list(lines); changed = False
+    while i < len(lines):
+        O = parse_if(i)
+        r1 = rel(O[0]) if O else None
+        if not r1 or r1[1] not in ("<=", ">=") or not O[1] or O is None: i += 1; continue
+        I = parse_if(i + 1)
+        if not I or I[3] != i + 1 + len(O[1]): i += 1; continue
+        r2 = rel(I[0])
+        if not r2 or (r2[0], r2[2], r2[3]) != (r1[0], r1[2], r1[3]) or {r1[1], r2[1]} != {"<=", ">="}: i += 1; continue
+        Lw = parse_if(i + 2)
+        if not Lw or Lw[3] != i + 2 + len(I[1]): i += 1; continue
+        r3 = rel(Lw[0])
+        if not r3 or r3[3] != "u" or not Lw[1]: i += 1; continue
+        X, Y1 = Lw[1], Lw[2]
+        lt_body, gt_body = (I[2], O[2]) if r1[1] == "<=" else (O[2], I[2])
+        c_lt, c_gt = r3[1] in ("<", "<="), r3[1] in (">", ">=")
+        if not same(lt_body, X if c_lt else Y1) or not same(gt_body, X if c_gt else Y1): i += 1; continue
+        d = " " * ind(lines[i])
+        w = ("U32", "S32")[r1[3] == "s"]
+        if MARK: c = "(%s(LONG(%s, %s)) %s %s(LONG(%s, %s)))" % (w, r1[0], r3[0], r3[1], w, r1[2], r3[2])
+        else:
+            c = _fold_long_expr("(%sLONG(%s, %s) %s LONG(%s, %s))" % ("(unsigned long)" if r1[3] == "u" else "", r1[0], r3[0], r3[1], r1[2], r3[2]))
+        new = [d + "if (%s) {" % c] + [l[8:] if l.startswith(" " * 8) else l for l in X]
+        if Y1: new += [d + "} else {"] + [l[8:] if l.startswith(" " * 8) else l for l in Y1]
+        new.append(d + "}")
+        lines[i:O[3]] = new; changed = True
+    return lines
+
+def _neg_cond(c):
+    """Negation of a condition text: flip a single relation, otherwise `!(c)`."""
+    if c.startswith("(") and c.endswith(")"):
+        x = c[1:-1]; d = 0; ok = True; at = None
+        for i, ch in enumerate(x):
+            if ch == "(": d += 1
+            elif ch == ")":
+                d -= 1
+                if d < 0: ok = False; break
+            elif d == 0 and ch == " ":
+                for op in ("==", "!=", "<=", ">=", "<", ">", "&&", "||"):
+                    if x.startswith(op + " ", i + 1):
+                        if op in ("&&", "||") or at is not None: ok = False
+                        else: at = (i, op)
+        if ok and d == 0 and at:
+            i, op = at
+            flip = {"==": "!=", "!=": "==", "<": ">=", ">=": "<", ">": "<=", "<=": ">"}[op]
+            return "(%s %s %s)" % (x[:i], flip, x[i + len(op) + 2:])
+        if ok and d == 0 and x.startswith("!") and x[1:].startswith("(") and x.endswith(")"):
+            dd = 0
+            for j, ch in enumerate(x[1:]):
+                dd += ch == "("; dd -= ch == ")"
+                if dd == 0: break
+            if j == len(x) - 2: return x[1:]
+    return "(!(%s))" % c
+
+def _fold_goto_or(lines):
+    """A short-circuit `||` that structuring left as a jump into the guarded block:
+        if (A) {                         if ((!A) || (B)) {
+            if (B) {                         X
+                L: X              ==>    } [else { Y }]
+            } [else { Y }]
+        } else {
+            goto L;
+        }
+    A is still evaluated first and B only when A holds, exactly as before. The label goes when
+    this was its last goto."""
+    def ind(s): return len(s) - len(s.lstrip(" "))
+    def close(i, d):
+        j = i + 1
+        while j < len(lines) and not (ind(lines[j]) == d and lines[j].strip().startswith("}")): j += 1
+        return j if j < len(lines) else None
+    changed = True
+    while changed:
+        changed = False
+        for i in range(len(lines) - 6):
+            m = re.match(r"( *)((?:\} else )?if) \((.*)\) \{$", lines[i])
+            if not m: continue
+            d = len(m.group(1)); j = close(i, d)
+            if j is None or lines[j].strip() != "} else {" or j + 2 >= len(lines): continue
+            g = re.match(r"goto (\w+);$", lines[j + 1].strip())
+            if not g or lines[j + 2].strip() != "}" or ind(lines[j + 2]) != d: continue
+            mi = re.match(r"( *)if \((.*)\) \{$", lines[i + 1])
+            if not mi or len(mi.group(1)) != d + 4 or lines[i + 2].strip() != g.group(1) + ":": continue
+            k = close(i + 1, d + 4)                           # end of the inner then-arm
+            if k is None: continue
+            t = lines[k].strip()
+            if t == "}": e_end = k; ybody = None
+            elif t == "} else {":
+                e_end = close(k, d + 4)
+                if e_end is None or lines[e_end].strip() != "}": continue
+                ybody = lines[k + 1:e_end]
+            else: continue
+            if e_end + 1 != j: continue                       # the inner if is the whole then-arm
+            L = g.group(1)
+            others = sum(1 for q, x in enumerate(lines) if q != j + 1 and re.search(r"\bgoto %s;" % L, x))
+            xbody = lines[i + 3:k] if not others else lines[i + 2:k]
+            pad = m.group(1)
+            new = ["%s%s (%s || %s) {" % (pad, m.group(2), _neg_cond(m.group(3)), mi.group(2))]
+            new += [x[4:] if x.startswith("    ") else x for x in xbody]
+            if ybody is not None: new += [pad + "} else {"] + [x[4:] if x.startswith("    ") else x for x in ybody]
+            new.append(pad + "}")
+            lines[i:j + 3] = new; changed = True; break
+    return lines
+
 def recover_cfg(code, base=0, cxmap=None):
     """EXPERIMENTAL Phase-B path: structure the CFG (cfg.structure) and emit via R.emit_tree,
     reusing the SAME R value model as recover(). Not the default; used behind a flag / for A/B
@@ -2114,7 +2256,10 @@ def recover_cfg(code, base=0, cxmap=None):
         r2.labels=set(r.gototargets); r2._labeled=set(); r2.gotoargs=dict(getattr(r,"gotoargs",{}))
         stmts = r2.emit_tree(blocks, tree); r=r2
     stmts = _tidy(list(stmts))
-    if DEADREGS: stmts = _dead_regs(list(stmts))
+    if DEADREGS:
+        stmts = _dead_regs(list(stmts))
+        if MARK or UNSIGNED_CAST: stmts = _fold_ladders(list(stmts))   # (needs to know which compares are unsigned)
+        stmts = _tidy(_fold_goto_or(list(stmts)))            # `||` left as a jump into the guarded block
     if not MARK:
         stmts = _fold_longs(stmts)
         used = [x for x in ("ax","bx","cx","dx","si","di")
