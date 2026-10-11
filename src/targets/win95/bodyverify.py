@@ -59,7 +59,11 @@ def _ondemand_block(module, rva):
     if lane != "pe":
         return None
     from src.core import paths
-    dec = os.path.join(paths.repo_root(), "native", "decompiler", "build", "bin", exe)
+    # CB_DECOMPILER_BIN pins a specific decompiler build dir (e.g. a frozen pre-change copy) so an
+    # A/B verdict sweep can compare two decompiler versions on the same oracle. Defaults to build/bin.
+    bindir = os.environ.get("CB_DECOMPILER_BIN") or os.path.join(
+        paths.repo_root(), "native", "decompiler", "build", "bin")
+    dec = os.path.join(bindir, exe)
     if not os.path.exists(dec):
         return None
     # Pass the function end so --at skips its ~1.5s whole-module discovery (whose only use is to find

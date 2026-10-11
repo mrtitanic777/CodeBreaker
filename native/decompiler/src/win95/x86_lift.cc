@@ -241,6 +241,13 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
   std::vector<uint32_t> leadv(leaders.begin(), leaders.end());
   std::sort(leadv.begin(), leadv.end());
 
+  // Per-block AX snapshot for return-phi recovery (below): the AX value live at
+  // each block's END, and whether the block WROTE AX itself. Register slot tags
+  // live in `reg`, not on instruction dsts, so this is the only place to capture
+  // which value each path would return.
+  std::map<uint32_t, ILValue> blkAxOut;
+  std::map<uint32_t, bool> blkWroteAx;
+
   for (size_t li = 0; li < leadv.size(); ++li) {
     uint32_t bstart = leadv[li];
     if (bstart >= end) break;
@@ -251,6 +258,7 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
     pend_args.clear();   // args are pushed within the block that calls
     esp_args.clear();    // ...and stack-written args likewise don't cross block boundaries
     regConst.clear();    // tracked constants don't survive a control-flow merge; re-derive per block
+    int axInId = reg.count(kGpBase) ? reg[kGpBase].id : kILNoValue;
 
     for (uint32_t a = bstart; a < bend;) {
       auto iit = at.find(a);
@@ -890,6 +898,10 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
     bb.end_addr = bend;
     if (!bb.is_return && bb.successors.empty() && bend < end)
       bb.successors.push_back(bend);   // fallthrough to next block
+    if (reg.count(kGpBase)) {
+      blkAxOut[bb.start_addr] = reg[kGpBase];
+      blkWroteAx[bb.start_addr] = (reg[kGpBase].id != axInId);   // AX changed within THIS block
+    }
     fn.blocks.push_back(bb);
   }
 
@@ -914,6 +926,63 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
       for (size_t i = 0; i < fn.blocks.size(); ++i)
         if (reach.count(i)) kept.push_back(std::move(fn.blocks[i]));
       fn.blocks = std::move(kept);
+    }
+  }
+
+  // --- return-phi recovery -------------------------------------------------
+  // The register map above is function-global and lifted in ADDRESS order, so a
+  // single `ret` reached from several paths only sees the address-previous
+  // path's AX. When paths carry DIFFERENT return values into one shared `ret`
+  // (a phi of returns), that collapses to one value and the other paths' AX
+  // computations are dead-code-eliminated. Recover it: a block that reaches a
+  // *bare* ret block (one that returns the incoming AX unchanged -- it writes
+  // no AX of its own) by an explicit BRANCH, while holding its own AX, gets its
+  // own `return <that AX>`. Fall-through into the shared ret still returns via
+  // the linear promotion, so only the branch-reached paths need splitting.
+  // (kernel32 GetLastError: the `jmp`-reached per-thread-error path had its
+  // `mov eax,[eax+0x70]` dropped and returned the global error like the
+  // fall-through path; now each path returns its own value.)
+  {
+    constexpr int kAX = kGpBase;                       // x86 EAX slot
+    // bare-ret block = is_return and does NOT write AX of its own (returns the
+    // incoming AX). A block's AX writes are tracked in blkWroteAx; its promotion
+    // cp to r3 (ppc_reg 3) is not an AX write, so a `ret`-only block is bare.
+    auto isBareRet = [&](const ILBasicBlock& b) {
+      auto w = blkWroteAx.find(b.start_addr);
+      return b.is_return && !(w != blkWroteAx.end() && w->second);
+    };
+    std::set<uint32_t> bareRet;
+    for (const auto& b : fn.blocks) if (isBareRet(b)) bareRet.insert(b.start_addr);
+    if (!bareRet.empty()) {
+      for (auto& b : fn.blocks) {
+        if (b.instrs.empty() || isBareRet(b)) continue;
+        auto wit = blkWroteAx.find(b.start_addr);
+        if (wit == blkWroteAx.end() || !wit->second) continue;   // no own AX: returns incoming, no divergence
+        ILValue axval = blkAxOut[b.start_addr];        // this block's live AX-out (the value it returns)
+        ILInstr& term = b.instrs.back();
+        if (axval.id == kILNoValue) continue;
+        if (term.op == ILOp::Branch && bareRet.count(term.target)) {
+          // unconditional jmp -> this block returns its own AX
+          uint32_t at = term.address;
+          b.instrs.pop_back();
+          ILInstr cp; cp.op = ILOp::Assign; cp.address = at; cp.src1 = axval;
+          cp.dst = fn.AllocValue(ILType::U32, 3);      // promote into the return register
+          b.instrs.push_back(cp);
+          ILInstr ret; ret.op = ILOp::Return; ret.address = at; ret.src1 = cp.dst;
+          b.instrs.push_back(ret);
+          b.is_return = true; b.successors.clear();
+        } else if (term.op == ILOp::BranchCond && bareRet.count(term.target)) {
+          // conditional jcc -> `if (cond) return <AX>;` then fall through. Carry
+          // the value in src3 (src1/src2/cmp_ref hold the condition) and let the
+          // back-end render it; no r3 promotion, so the fall-through path's
+          // return is never polluted. src3 is use-counted, so the AX def survives.
+          term.is_cond_return = true;
+          term.src3 = axval;
+          std::vector<uint32_t> keep;                  // drop the taken (ret) edge, keep fall-through
+          for (uint32_t s : b.successors) if (s != term.target) keep.push_back(s);
+          b.successors = keep;
+        }
+      }
     }
   }
 

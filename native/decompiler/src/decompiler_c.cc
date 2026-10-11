@@ -2181,6 +2181,19 @@ std::string CDecompiler::Run() {
           // bit-test) must not be truncated -- truncation left a dangling operator
           // and spliced the goto into the expression.
           std::string s = "if ( " + CondText(in, false) + " )";
+          // Conditional return (the lifter's return-phi recovery turned a jcc to a
+          // bare-ret block into `if (cond) return <AX>`). The returned value rides
+          // in src3 (src1/src2/cmp_ref carry the condition); render it directly so
+          // the taken path returns its own value and the fall-through is untouched.
+          if (in.is_cond_return) {
+            if (in.src3.id != kILNoValue) {
+              ExprRef e = Get(in.src3);
+              emit(s + " return " + (e ? Render(e, kPrecAssign) : "0") + ";", in.address);
+            } else {
+              emit(s + " return;", in.address);
+            }
+            continue;
+          }
           // Conditional branch out of the function is a conditional tail call.
           if (!label_targets_.count(in.target)) {
             emit(s + " " + RenderTailCall(in), in.address);
