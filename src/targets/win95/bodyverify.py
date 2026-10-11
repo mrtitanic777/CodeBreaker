@@ -90,10 +90,13 @@ def _defined_name(c):
     m = _DEF_RE.search(c)
     return m.group(1) if m else None
 
-def synth(module, va, arity=4):
+def synth(module, va, arity=4, fast=False):
     """Clean C body for one function. Ladder: interproc (call-flow) -> env-provisioned (fault paths)
     -> static decompile (leaf/compute). Returns (fname, c_text) or (None, reason), where fname is the
-    ACTUAL function name defined in the emitted C (so the compiled body exports the right symbol)."""
+    ACTUAL function name defined in the emitted C (so the compiled body exports the right symbol).
+    `fast` skips the interproc/envprov oracle traces (the per-body bottleneck) and takes the static
+    decompile for EVERY body, not just leaves -- for the batched grind, where the batch links real
+    intra-module callees anyway, so caller behaviour is still exercised without the expensive traces."""
     # FAST PATH for LEAF functions (no calls): interproc/envprov reconstruct the call SEQUENCE of
     # orchestrator functions by running oracle traces (~200ms+ for the two attempts). A leaf makes no
     # calls, so they have nothing to reconstruct and fall through to the static decompile anyway -- the
@@ -105,7 +108,7 @@ def synth(module, va, arity=4):
         cured0 = _cure_body(_beautify(blk0))
         if cured0 is not None:
             fn0 = _defined_name(cured0) or "fn_%x" % va
-            if not _stub_refs(cured0, fn0):              # no called names -> genuine leaf
+            if fast or not _stub_refs(cured0, fn0):      # fast: any body; else only a genuine leaf
                 return fn0, cured0
     try:
         r = interproc.reconstruct(module, func=hex(va), arity=arity)
@@ -413,7 +416,7 @@ def _batch_or_bisect(items, outdir, tag="b"):
             _batch_or_bisect(items[mid:], outdir, tag + "R"))
 
 
-def verify_module_batched(retail, vas=None, arity=4, outdir=None, bank=True):
+def verify_module_batched(retail, vas=None, arity=4, outdir=None, bank=True, fast=True):
     """Behavioural-verify MANY functions of one module with batched compilation (one wcc386+wlink per
     ~batch instead of per body). synth each -> batch_compile (bisecting around failures) -> oracle each
     export vs retail -> bank equivalents. Returns a verdict Counter. Intra-batch calls link to the real
@@ -432,7 +435,7 @@ def verify_module_batched(retail, vas=None, arity=4, outdir=None, bank=True):
     items = []; seen = {}; synth_c = {}
     for va in vas:
         try:
-            fn, cc = synth(retail, va, arity)
+            fn, cc = synth(retail, va, arity, fast=fast)
         except Exception:
             cnt["no-synth"] += 1; continue
         if not fn:
