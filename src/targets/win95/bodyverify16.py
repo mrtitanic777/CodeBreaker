@@ -48,7 +48,10 @@ def _ne_blocks(module):
     if module in _NE_BLOCKS:
         return _NE_BLOCKS[module]
     from src.core import paths
-    dec = os.path.join(paths.repo_root(), "native", "decompiler", "build", "bin", "win95dec.exe")
+    # CB_WIN95DEC lets a long-running grind pin a FROZEN copy of win95dec.exe, so a concurrent rebuild
+    # of the decompiler (e.g. the return-merge refactor lane) can never swap the binary mid-sweep.
+    dec = os.environ.get("CB_WIN95DEC") or os.path.join(
+        paths.repo_root(), "native", "decompiler", "build", "bin", "win95dec.exe")
     out = {}
     try:
         r = subprocess.run([dec, module, "--module", "0"], capture_output=True, text=True, timeout=300)
@@ -115,6 +118,16 @@ def compile_body16(c_text, fname, outdir):
     os.makedirs(outdir, exist_ok=True)
     # --- cure the raw decompiler output into compilable 16-bit C ---------------------------------
     c_text = re.sub(r"(?m)^\s*#\d.*$", "", c_text)                     # strip #<line> artifacts
+    # IMPORTS (keystone of behavioural fidelity): the decompiler writes a Win16 API call as
+    # `MODULE_@ordinal(...)` (e.g. KERNEL_@88). These MUST be linked as REAL NE imports, not stubbed
+    # as local no-op functions -- otherwise the rebuilt body calls a local stub the oracle never sees,
+    # its api-dep sequence loses every KERNEL/USER/GDI call, and EVERY body diverges from retail on
+    # deps. Detect them on the RAW text (before the @->_ sanitize) and map the sanitized C identifier
+    # `MODULE__ordinal` to (MODULE, ordinal); emit `import`/extern below so they resolve to real
+    # import thunks the oracle intercepts symmetrically with retail.
+    ne_imports = {}
+    for _mod, _ordn in re.findall(r"\b([A-Za-z][A-Za-z0-9]*)_@(\d+)\s*\(", c_text):
+        ne_imports["%s__%s" % (_mod, _ordn)] = (_mod, int(_ordn))
     # sanitize characters that are legal in decorated/mangled symbols but not in C identifiers:
     # `@` (Watcom __fastcall leading @, e.g. an imported `KERNEL_@4` ordinal call) and `$`. Never
     # touch `?` -- it is the ternary operator. Do this before any identifier analysis so the call/
@@ -132,7 +145,11 @@ def compile_body16(c_text, fname, outdir):
                     % re.escape(fname), r"\1\2 __far __pascal __export \3(", c_text, count=1)
     called = set(re.findall(r"\b([A-Za-z_]\w*)\s*\(", c_text))
     defined = set(re.findall(r"\b(%s)\s*\(" % re.escape(fname), c_text)) | {"LibMain", "WEP"}
-    stubs = ["WORD __far __cdecl %s(){return 0;}" % s for s in sorted(called - defined - _C_KW)]
+    # imported Win16 APIs are declared extern far-pascal (linked as real NE imports below), NOT
+    # stubbed; only genuinely-internal callees (sub_*, indirect artifacts) become local no-op stubs.
+    impdecl = ["extern WORD __far __pascal %s();" % nm for nm in sorted(ne_imports)]
+    stubs = ["WORD __far __cdecl %s(){return 0;}" % s
+             for s in sorted(called - defined - _C_KW - set(ne_imports))]
     pre = ["typedef unsigned WORD;", "typedef unsigned char BYTE;", "typedef unsigned long DWORD;",
            "typedef int BOOL;", "typedef long LONG;", "typedef unsigned UINT;",
            "typedef unsigned undefined;", "typedef unsigned char undefined1;",
@@ -174,7 +191,7 @@ def compile_body16(c_text, fname, outdir):
             br = c_text.index("{", mm.end() - 1)
             init = "".join("  %s=(WORD)_frame+0x2000;\n" % r for r in rregs)
             c_text = c_text[:br + 1] + "\n" + init + c_text[br + 1:]
-    src = "\n".join(pre + struct_defs + gdecl + frame + stubs + entry) + "\n\n" + c_text + "\n"
+    src = "\n".join(pre + impdecl + struct_defs + gdecl + frame + stubs + entry) + "\n\n" + c_text + "\n"
     cf = os.path.join(outdir, fname + ".c")
     open(cf, "w", newline="\n").write(src)
     env = dict(os.environ)
@@ -186,9 +203,14 @@ def compile_body16(c_text, fname, outdir):
                        cwd=outdir, env=env, capture_output=True, text=True, timeout=120)
     if r.returncode != 0:
         return None, "compile: " + (r.stdout + r.stderr).strip().split("\n")[-1][:90]
+    imp_lines = "".join("import %s %s.%d\n" % (nm, mod, ordn)
+                        for nm, (mod, ordn) in sorted(ne_imports.items()))
+    # PIN the body to ordinal 1 and WEP to 2 -- the verifier always probes the rebuilt at ordinal 1,
+    # so the export's ordinal must be deterministic (letting wlink auto-number produced bad-ordinal
+    # faults when resident-name->ordinal recovery guessed wrong on truncated NE names).
     lnk = ("system windows dll initinstance memory\nname %s.dll\noption quiet\n"
-           "libpath %s\nlibfile libentry.obj\nfile %s.obj\nlibrary clibc.lib,windows.lib\n"
-           "export %s\nexport WEP RESIDENT\n" % (fname, ow["lib"], fname, fname))
+           "libpath %s\nlibfile libentry.obj\nfile %s.obj\nlibrary clibc.lib,windows.lib\n%s"
+           "export %s.1\nexport WEP.2 RESIDENT\n" % (fname, ow["lib"], fname, imp_lines, fname))
     open(os.path.join(outdir, "b.lnk"), "w", newline="\n").write(lnk)
     subprocess.run([ow["wlink"], "@b.lnk"], cwd=outdir, env=env, capture_output=True, text=True,
                    timeout=120)
@@ -197,11 +219,21 @@ def compile_body16(c_text, fname, outdir):
 
 
 def _fp(probe_result):
-    """verify95-shaped fingerprint from an ne_dynoracle probe record."""
+    """verify95-shaped fingerprint from an ne_dynoracle probe record.
+
+    NE SPECIFIC: when the run does not reach a clean RET (it faults or truncates), the value left in
+    AX is undefined -- it reflects the controlled env's fault point and the module's segment layout,
+    NOT the function's behaviour (retail lzexpand returns the SAME 0x4201 at fault for six unrelated
+    exports). A rebuilt body has a different layout, so its AX-at-fault differs even when it calls the
+    identical import sequence and faults identically. Comparing that garbage would make EVERY faulting
+    body spuriously divergent. So we keep `ret` only on a clean return; on a fault/trunc we null it and
+    let the deps (the observed Win16 API call sequence) + the exit kind carry the comparison -- the
+    same 'consistent via fault' standard owbuild._behverify already banks."""
     r = probe_result
     deps = tuple(verify95._norm_dep(h.get("api")) for h in r.get("imports_hit", [])
                  if not verify95._is_noise(h.get("api")))
-    return {"ret": r.get("ret"), "exit": verify95._exit_norm(r.get("exit")), "deps": deps,
+    ex = verify95._exit_norm(r.get("exit"))
+    return {"ret": (r.get("ret") if ex == "ret" else None), "exit": ex, "deps": deps,
             "truncated": bool(r.get("truncated"))}
 
 
@@ -217,16 +249,18 @@ def _rebuilt_ordinal(dll, fname):
     return 1
 
 
-def verify_body16(retail, seg, off, arity=4, outdir=None):
-    """synth -> compile (real Win16 NE) -> probe retail(seg,off) vs rebuilt(ordinal) -> verdict."""
+def verify_body16(retail, seg, off, arity=4, outdir=None, bank=True):
+    """synth -> compile (real Win16 NE) -> probe retail(seg,off) vs rebuilt(ordinal) -> verdict.
+    Banks equivalent (clean-return match) and consistent (fault/trunc-matched: same observed Win16 API
+    sequence + same exit) bodies to the recovered tree, labelling which so provenance stays honest."""
     fname, c = synth16(retail, seg, off)
-    if not fname:
-        return {"seg": seg, "off": off, "verdict": "no-synth", "reason": c}
+    if not fname or fname in ("LibMain", "WEP"):            # the DLL's own entry/exit aren't targets
+        return {"seg": seg, "off": off, "verdict": "no-synth", "reason": c if not fname else "entry"}
     outdir = outdir or os.path.join(os.path.dirname(__file__), "_bodyverify16", "%d_%x" % (seg, off))
     dll, clog = compile_body16(c, fname, outdir)
     if not dll:
         return {"seg": seg, "off": off, "verdict": "no-compile", "reason": clog, "c": c}
-    ordn = _rebuilt_ordinal(dll, fname)
+    ordn = 1                                               # the body is pinned to ordinal 1 at link
     vecs = verify95._vectors(arity, "ne")
     rs, bs = [], []
     for v in vecs:
@@ -238,7 +272,32 @@ def verify_body16(retail, seg, off, arity=4, outdir=None):
             bs.append(_fp(NO.probe(dll, ordinal=ordn, args=v["args"])))
         except Exception as e:
             bs.append({"err": type(e).__name__})
-    return {"seg": seg, "off": off, "verdict": verify95._body_verdict(rs, bs), "fname": fname}
+    verdict = verify95._body_verdict(rs, bs)
+    if bank and verdict in ("equivalent", "consistent"):
+        _save_verified16(retail, fname, c, verdict)
+    return {"seg": seg, "off": off, "verdict": verdict, "fname": fname}
+
+
+def _save_verified16(retail, fname, c, verdict):
+    """Write a behaviourally-verified NE body's source into the recovered tree, tagged with the oracle
+    verdict (equivalent = clean-return match; consistent = fault/trunc-matched on identical inputs)."""
+    from src.core import paths
+    modbase = os.path.splitext(os.path.basename(retail))[0]
+    d = os.path.join(os.path.dirname(paths.repo_root()), "Windows95", "design", "recovered",
+                     "verified16", modbase)
+    tag = ("behaves identically to retail %s (clean-return match on the NE oracle)" % os.path.basename(retail)
+           if verdict == "equivalent" else
+           "matches retail %s on the NE oracle: identical Win16 API call sequence and identical fault\n"
+           " * on every probed input (consistent -- no clean return is reachable under the controlled env)"
+           % os.path.basename(retail))
+    try:
+        os.makedirs(d, exist_ok=True)
+        open(os.path.join(d, fname + ".c"), "w", newline="\n").write(
+            "/* %s -- ORACLE-VERIFIED 16-bit reconstruction. %s.\n"
+            " * Names/types from the NE entry/import tables + Win16 SDK; internal callees (sub_) and\n"
+            " * locals are inferred, not claimed as recovered. */\n\n" % (fname, tag) + c + "\n")
+    except OSError:
+        pass
 
 
 def run(module, seg=None, off=None, maxn=40):
