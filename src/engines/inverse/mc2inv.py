@@ -1210,6 +1210,9 @@ class R:
                 expr="sub_%x(%s)"%(s.num(m.group(1)), args)
             else:                                              # indirect call: through a ptr/reg
                 fp=s.memname(ops) or ops
+                if DEADREGS and ops in ("ax","bx","cx","dx","si","di"):   # `mov ax,si ; call ax`: the VALUE the register holds
+                    v_=getattr(s,ops,None)
+                    if v_ is not None: fp=str(v_)
                 expr="(*%s)(%s)"%(fp, args)
             s._call_result(i, out, expr)
             return i+1
