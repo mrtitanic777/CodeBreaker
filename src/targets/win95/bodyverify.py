@@ -107,6 +107,7 @@ def synth(module, va, arity=4, fast=False):
     # static decompile IS the faithful reconstruction for a leaf. Serve it directly from the cached
     # whole-module decompile (_BLOCK_CACHE), skipping the wasted traces. Only when the static block is
     # present, cures cleanly, and calls nothing (no sub_/API refs) -- any caller still takes the ladder.
+    verify95._arm()
     blk0 = _static_body(module, va)
     if blk0:
         cured0 = _cure_body(_beautify(blk0))
@@ -504,7 +505,12 @@ def _verify_one(retail, va, arity, outdir, closure):
     verdict = verify95._body_verdict(rs, bs)
     if verdict == "equivalent":
         _save_verified(retail, fname, c)                 # bank the beautiful, verified source
-    return {"va": va, "verdict": verdict, "fname": fname}
+    out = {"va": va, "verdict": verdict, "fname": fname}
+    if verdict == "inconclusive":                        # say WHY nothing could be observed
+        errs = sorted({"retail: " + a["err"] for a in rs if "err" in a} |
+                      {"rebuilt: " + b["err"] for b in bs if "err" in b})
+        out["reason"] = "; ".join(errs)
+    return out
 
 def _save_verified(retail, fname, c):
     """Write a verified body's beautiful source into the recovered tree, tagged oracle-verified."""

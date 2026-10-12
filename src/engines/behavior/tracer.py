@@ -115,6 +115,37 @@ def _sha256(path):
 _PE_CACHE = {}
 
 
+_MAX_CODE_SPAN = 64 << 20     # give up joining code sections spread wider than this
+
+
+def _pe_code_image(module, path, pe):
+    """(va0, code, secname, funcs) covering EVERY executable section of a PE.
+
+    A PE can have several code sections (kernel32: _FREQASM, .text, _INIT). Taking only the first
+    left every function in the others untraceable -- the address fell outside `code`, the trace
+    raised, and the body was reported "inconclusive" -- which hid about 91% of kernel32's code from
+    verification. The sections are laid out at their real addresses in one buffer starting at the
+    lowest; the gaps between them (data sections) are zero-filled, which is exactly what an unmapped
+    page reads as on demand, so nothing outside the code changes. Function offsets are relative to
+    that buffer, as callers expect (`va0 + off`)."""
+    secs = pe.code_sections()                                  # [(va, bytes, name)]
+    carve = PeCarve(path)
+    lo = min(va for va, _raw, _nm in secs)
+    hi = max(va + len(raw) for va, raw, _nm in secs)
+    if len(secs) > 1 and hi - lo > _MAX_CODE_SPAN:
+        secs = secs[:1]                                        # pathological layout: first only
+        lo, hi = secs[0][0], secs[0][0] + len(secs[0][1])
+    code = bytearray(hi - lo)
+    funcs = {}
+    for va, raw, name in secs:
+        base = va - lo
+        code[base:base + len(raw)] = raw
+        sg = PeSeg(module, section=name, carve=carve)
+        for off, f in sg.funcs.items():
+            funcs[base + off] = {"end": base + f["end"]}
+    return lo, code, "+".join(nm for _va, _raw, nm in secs), funcs
+
+
 def _load(module):
     """(path, va0, code, secname, funcs, sha, imports) for a module, carved once and cached.
     imports is {iat_slot_va: (dll, name)} from the PE import directory (may be empty)."""
@@ -142,9 +173,7 @@ def _load(module):
             _PE_CACHE[cache_key] = ce
             return ce
         pe = open_pe(path)
-        va0, code, secname = pe.code_sections()[0]
-        sg = PeSeg(module, section=secname, carve=PeCarve(path))
-        funcs = {off: {"end": f["end"]} for off, f in sg.funcs.items()}
+        va0, code, secname, funcs = _pe_code_image(module, path, pe)
         try:
             imports = dict(pe.imports())
         except Exception:
@@ -168,8 +197,8 @@ def _arities(module):
 
 
 def list_functions(module):
-    """(off, va, size) for each recovered function in the module's first code section,
-    smallest offset first. The caller picks one to trace."""
+    """(off, va, size) for each recovered function across the module's code sections, smallest
+    offset first (offsets are relative to the lowest code section). The caller picks one to trace."""
     _, va0, code, secname, funcs, _, _imp = _load(module)
     out = []
     for off, f in sorted(funcs.items()):
