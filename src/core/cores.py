@@ -60,6 +60,18 @@ def _load(name):
     raise ImportError("cores.get(%r): no target override and no engine default" % name)
 
 
+def active_target():
+    """The active target's tool directory, or None when no target has been set."""
+    return _active_dir
+
+
+def ensure_target(tool_dir):
+    """Set the active target only if none is set. For library entry points that need SOME
+    target to resolve their engines but must not override one a caller (wt) already chose."""
+    if _active_dir is None:
+        set_target(tool_dir)
+
+
 class _Proxy:
     """Lazy module handle: resolution is deferred until first attribute use, so a
     module can be imported before a target is set — the target only has to be set

@@ -21,6 +21,7 @@ import os
 import sys
 import csv
 
+from src.core import cores, paths
 from src.engines.behavior import tracer
 from src.targets.win95 import ne_dynoracle, origintriage as OT
 
@@ -162,7 +163,15 @@ def _fp_cache_put(key, fp):
         pass
 
 
+def _arm():
+    """The oracle resolves its engines through the active target. Called from a library (not
+    through wt) nothing had set one, every trace failed inside the registry, and the failure
+    was reported as an 'inconclusive' verdict. Default to win95 when no target is active."""
+    cores.ensure_target(paths.target_dir("win95"))
+
+
 def _fp_pe(path, func, spec):
+    _arm()
     key = None
     if not os.environ.get("CB_NO_FP_CACHE"):
         sha = _mod_sha(path)
@@ -174,6 +183,8 @@ def _fp_pe(path, func, spec):
     try:
         r = tracer.trace_function(path, func=func, args=spec["args"], mem_init=spec.get("mem_init"),
                                   stub_externals=True)
+    except ImportError:
+        raise                                     # a broken setup is not an observation
     except Exception as e:
         return {"err": type(e).__name__}          # transient trace errors are never cached
     deps = tuple(_norm_dep(d) for d in r.get("api_deps", []) if not _is_noise(d))
@@ -187,8 +198,11 @@ def _fp_pe(path, func, spec):
 
 
 def _fp_ne(path, ordn, spec):
+    _arm()
     try:
         r = ne_dynoracle.probe(path, ordinal=ordn, args=spec["args"])
+    except ImportError:
+        raise
     except Exception as e:
         return {"err": type(e).__name__}
     deps = tuple(_norm_dep(h.get("api")) for h in r.get("imports_hit", []) if not _is_noise(h.get("api")))
