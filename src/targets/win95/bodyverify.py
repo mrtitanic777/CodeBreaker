@@ -422,54 +422,13 @@ def _batch_or_bisect(items, outdir, tag="b"):
             _batch_or_bisect(items[mid:], outdir, tag + "R"))
 
 
-def verify_module_batched(retail, vas=None, arity=4, outdir=None, bank=True, fast=True):
-    """Behavioural-verify MANY functions of one module with batched compilation (one wcc386+wlink per
-    ~batch instead of per body). synth each -> batch_compile (bisecting around failures) -> oracle each
-    export vs retail -> bank equivalents. Returns a verdict Counter. Intra-batch calls link to the real
-    member, so a body that calls a sibling is verified against the real sibling (closure-like) for free.
-    This is the throughput path for the corpus grind; closure>0 refinement of the residue is separate."""
-    from collections import Counter
-    from src.targets.win95 import autobuild95 as A
-    import pe32util as H
-    outdir = outdir or _scratch("batch", os.path.basename(retail).lower())
-    os.makedirs(outdir, exist_ok=True)
-    c = H.carve(retail); base = c.pe.image_base
-    if vas is None:
-        vas = sorted(c.funcs)
-    cnt = Counter()
-    # synth every body; keep (fname, synth_c, va). Dedup by fname (a shared body reached at two vas).
-    items = []; seen = {}; synth_c = {}
-    for va in vas:
-        try:
-            fn, cc = synth(retail, va, arity, fast=fast)
-        except Exception:
-            cnt["no-synth"] += 1; continue
-        if not fn:
-            cnt["no-synth"] += 1; continue
-        if fn in seen:
-            continue
-        seen[fn] = va; synth_c[fn] = cc; items.append((fn, cc))
-    subs = _batch_or_bisect(items, outdir)
-    compiled = set()
-    vecs = verify95._vectors(arity, "pe")
-    for dll, exports in subs:
-        if not dll:
-            continue
-        pb = A.PE(dll); bbase = A._imagebase(pb); addrs = pb.export_addrs()
-        for fn in exports:
-            ba = addrs.get(fn)
-            if not ba:
-                continue
-            compiled.add(fn)
-            va = seen[fn]
-            rs = [verify95._fp_pe(retail, va, v) for v in vecs]
-            bs = [verify95._fp_pe(dll, bbase + ba, v) for v in vecs]
-            verdict = verify95._body_verdict(rs, bs)
-            cnt[verdict] += 1
-            if verdict == "equivalent" and bank:
-                _save_verified(retail, fn, synth_c[fn])
-    cnt["no-compile"] += len([fn for fn in seen if fn not in compiled])
-    return cnt
+def verify_module_batched(retail, vas=None, arity=4, outdir=None, bank=True, fast=True, store=None):
+    """Behavioural-verify many functions of one PE module and return a verdict Counter. Kept as
+    the familiar entry point; the work is the shared pipeline (verification/pipeline.py), which
+    batches compilation, links batch-mates to their real bodies and, given a `store`, reuses
+    verdicts whose inputs have not changed."""
+    from src.targets.win95.verification import pipeline
+    return pipeline.tally(pipeline.verify("pe", retail, vas, outdir=outdir, store=store, bank=bank))
 
 
 def verify_body(retail, va, arity=4, outdir=None, closure=0):
