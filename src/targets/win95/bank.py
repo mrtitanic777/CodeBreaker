@@ -144,6 +144,16 @@ def report(lane):
                                                                100.0 * good / total))
     for v, n in sorted(s.items(), key=lambda kv: -kv[1]):
         print("  %-13s %7d  %5.1f%%" % (v, n, 100.0 * n / total))
+    lim = db.limits(lane)
+    if lim:
+        print("of the %d verified, %d carry no limitation; the rest:" % (good, lim.get("", 0)))
+        for code, n in sorted(lim.items(), key=lambda kv: -kv[1]):
+            if code:
+                print("  %7d  %s" % (n, code))
+    cov = sorted(db.coverage(lane))
+    if cov:
+        print("how much of each verified body actually ran: median %d%%; %d of %d ran under half" % (
+            cov[len(cov) // 2], sum(1 for c in cov if c < 50), len(cov)))
     for verdict in ("divergent", "inconclusive", "no-compile"):
         rs = db.reasons(lane, verdict)
         if rs:

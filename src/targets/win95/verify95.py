@@ -62,19 +62,28 @@ def _argc(dll, name):
     return n if n is not None else env._builtin_argc(name)
 
 
-def _norm_arg(v, ins):
+def _norm_arg(v, ins, own=None):
     """An argument value in a form two builds of the same code agree on: which input it is, a small
-    constant, or just 'a pointer' (addresses differ between the retail image and a rebuilt one)."""
+    constant, a stack address ('S') or an address inside the rebuilt image ('p') -- those two
+    differ by build -- and otherwise the value itself. Reconstructed code refers to the original's
+    data by its literal address, so a pointer into the original image is the same number on both
+    sides and is compared as one: passing the wrong string or the wrong table is a difference."""
     if v in ins:
         return "a%d" % ins.index(v)
     sv = v - (1 << 32) if v & 0x80000000 else v
-    return "%d" % sv if -0x10000 < sv < 0x10000 else "p"
+    if -0x10000 < sv < 0x10000:
+        return "%d" % sv
+    if 0x207000 <= v < 0x208100:
+        return "S"
+    if own and own[0] <= v < own[1]:
+        return "p"
+    return "%x" % v
 
 
 _MAX_CALLS = 64
 
 
-def _call_seq(calls, ins):
+def _call_seq(calls, ins, own=None):
     """The imported-call part of a fingerprint: every call in order, with normalised arguments."""
     out = []
     for api, args in calls:
@@ -84,7 +93,7 @@ def _call_seq(calls, ins):
             out.append("...")
             break
         out.append(_norm_dep(api) if args is None else
-                   "%s(%s)" % (_norm_dep(api), ",".join(_norm_arg(a, ins) for a in args)))
+                   "%s(%s)" % (_norm_dep(api), ",".join(_norm_arg(a, ins, own) for a in args)))
     return tuple(out)
 
 
@@ -176,14 +185,16 @@ def _mod_sha(path):
 # the old behaviour are not reused. 2: every PE code section is mapped (calls into another code
 # section now run instead of being stub-returned). 3: the import stub removes the arguments a
 # stdcall import takes, and the fingerprint is the full call sequence WITH arguments, not the set of
-# import names reached.
-_ORACLE_REV = 3
+# import names reached. 4: the fingerprint also carries the memory the function wrote and which of
+# its instructions ran; inputs can set what imported calls return.
+_ORACLE_REV = 8
 
 
 def _fp_key(sha, func, spec):
     args = tuple(int(a) for a in spec.get("args", []))
     mi = tuple((int(a), bytes(b)) for a, b in (spec.get("mem_init") or []))
-    return "r%d:%s:%s" % (_ORACLE_REV, sha, _hashlib.sha1(repr((func, args, mi)).encode()).hexdigest())
+    return "r%d:%s:%s" % (_ORACLE_REV, sha, _hashlib.sha1(
+        repr((func, args, mi, int(spec.get("stub_ret", 0)))).encode()).hexdigest())
 
 
 def _fp_cache_get(key):
@@ -215,7 +226,94 @@ def _arm():
     cores.ensure_target(paths.target_dir("win95"))
 
 
-def _fp_pe(path, func, spec):
+# The oracle's stack (and the RET landing pad just under it) sits at the top of the scratch region.
+# Writes there are the function's own frame, laid out differently by every compiler.
+_STACK_LO, _STACK_HI = 0x207000, 0x208100
+_IMAGE_SPAN = {}
+_INSN_COUNT = {}
+
+
+def _image_span(path):
+    """(lo, hi) addresses of a PE image as loaded."""
+    if path not in _IMAGE_SPAN:
+        try:
+            pe = open_pe(path)
+            top = max([s["vaddr"] + max(s["vsize"], s["rawsize"]) for s in pe.sections] or [0])
+            _IMAGE_SPAN[path] = (pe.image_base, pe.image_base + top)
+        except Exception:
+            _IMAGE_SPAN[path] = (0, 0)
+    return _IMAGE_SPAN[path]
+
+
+def _effects(r, own):
+    """What the function left in memory outside its own frame: a digest of the final value of every
+    byte it wrote. A function that stores to a global or through a pointer argument is judged on
+    what it stored and where -- the return value alone says nothing about either.
+
+    `own` is the address range of a REBUILT image: writes into it are that build's own statics
+    (compiler temporaries, register stand-ins), which the original has no counterpart for. The
+    original's globals are reached by their literal addresses on both sides, so they compare.
+    A stored stack address is recorded as such (its value differs by build). None = too many
+    writes were made to record them all."""
+    ws = r.get("mem_writes") or []
+    if len(ws) >= tracer._MAX_MEM:
+        return None
+    # A call through a pointer that resolves to nothing lands in zero bytes; the oracle returns
+    # from it after one `add [eax], al`. That write is the harness's, not the function's.
+    mn = r.get("mnemonics") or {}
+    state = {}
+    for w in ws:
+        a, n, v = w["addr"], w["size"], w["value"] or 0
+        if mn.get("0x%x" % w["pc"]) == "add byte ptr [eax], al":
+            continue
+        if _STACK_LO <= a < _STACK_HI or (own and own[0] <= a < own[1]):
+            continue
+        if n == 4 and (_STACK_LO <= v < _STACK_HI or (own and own[0] <= v < own[1])):
+            for i in range(4):
+                state[a + i] = "S"
+        else:
+            for i in range(min(n, 8)):
+                state[a + i] = (v >> (8 * i)) & 0xFF
+    if not state:
+        return ""
+    return "%d:%s" % (len(state), _hashlib.sha1(repr(sorted(state.items())).encode()).hexdigest()[:16])
+
+
+_MAX_REACH = 6000
+
+
+def _coverage(r):
+    """(own, reach): offsets of the function's own instructions that ran, and the addresses of
+    every instruction that ran anywhere in the module (the function and the callees it entered)."""
+    lo, hi = r.get("func_va") or 0, r.get("func_end_va") or 0
+    own, reach = [], []
+    for k in r.get("mnemonics") or ():
+        a = int(k, 16) if isinstance(k, str) else k
+        reach.append(a)
+        if lo <= a < hi:
+            own.append(a - lo)
+    return tuple(sorted(own)), tuple(sorted(reach)[:_MAX_REACH])
+
+
+def insn_count(path, func):
+    """How many instructions the function at `func` has (linear decode of its extent), or 0."""
+    key = (path, func)
+    if key not in _INSN_COUNT:
+        n = 0
+        try:
+            off, va0, code, end, _sec = tracer._resolve_func(path, func)
+            import capstone
+            md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
+            n = sum(1 for _ in md.disasm_lite(bytes(code[off:end]), va0 + off))
+        except Exception:
+            n = 0
+        _INSN_COUNT[key] = n
+    return _INSN_COUNT[key]
+
+
+def _fp_pe(path, func, spec, rebuilt=False):
+    """Fingerprint one run. For a REBUILT image pass `rebuilt=<path of the original>`: its own
+    statics are then left out of the comparison and the original's code is mapped beside it."""
     _arm()
     key = None
     if not os.environ.get("CB_NO_FP_CACHE"):
@@ -227,14 +325,28 @@ def _fp_pe(path, func, spec):
                 return hit
     try:
         r = tracer.trace_function(path, func=func, args=spec["args"], mem_init=spec.get("mem_init"),
-                                  stub_externals=True, sig_resolver=_argc)
+                                  stub_externals=True, sig_resolver=_argc,
+                                  stub_ret=int(spec.get("stub_ret", 0)),
+                                  overlay=rebuilt if isinstance(rebuilt, str) else None)
     except ImportError:
         raise                                     # a broken setup is not an observation
     except Exception as e:
         return {"err": type(e).__name__}          # transient trace errors are never cached
-    deps = _call_seq(r.get("api_calls", []), [int(a) for a in spec["args"]])
-    fp = {"ret": r.get("ret"), "exit": _exit_norm(r.get("exit")), "deps": deps,
-          "truncated": bool(r.get("truncated"))}
+    # A call that landed in zero bytes went through a pointer nothing in this environment fills
+    # in (a 32->16 thunk entry the loader would set, an uninitialised callback). What the ORIGINAL
+    # does after that is the harness's doing, not the function's: the run is not an observation.
+    # A REBUILT body that does it where the original did not has simply gone somewhere wrong.
+    wild = bool(r.get("bogus_stubs") or r.get("ran_into_zeros"))
+    if wild and not rebuilt:
+        return {"err": "call-into-nothing"}
+    deps = _call_seq(r.get("api_calls", []), [int(a) for a in spec["args"]],
+                     _image_span(path) if rebuilt else None)
+    fp = {"ret": r.get("ret"), "exit": "wild-call" if wild else _exit_norm(r.get("exit")), "deps": deps,
+          "truncated": bool(r.get("truncated")),
+          "writes": _effects(r, _image_span(path) if rebuilt else None),
+          "cov": (), "reach": ()}
+    if not rebuilt:
+        fp["cov"], fp["reach"] = _coverage(r)
     # Cache only settled results. A truncated trace can differ by wall-clock (the tracer's 2s cap),
     # so caching it could record a machine-dependent fingerprint -- re-trace those instead.
     if key and not fp["truncated"]:
@@ -274,6 +386,233 @@ def _vectors(arity, lane):
         vs.append({"args": [0x0080] * n})                        # open-file handle
     vs.append({"args": [i + 1 for i in range(n)]})
     return vs
+
+
+def _confirm_vectors(arity, lane):
+    """More inputs, run only for a body that already matched on every basic vector. Four inputs
+    are few; these add boundary integers, a reversed ordering and mixes of pointers and integers,
+    so a body is not called verified on the strength of four lucky inputs."""
+    if arity <= 0 or lane not in ("pe", "dos"):
+        return []
+    n = arity
+    mi = _prov_meminit()
+    obj = [_OBJ + 0x40 * (i % 32) for i in range(n)]
+    edge = [0x7FFFFFFF, 0x80000000, 0x10000, 0xFFFF, 0xFF, 0x100, 0x8000, 0x7FFF]
+    ints = [i + 1 for i in range(n)]
+    # Objects whose fields are not pointers: all-ones (every flag bit set, counts large) and small
+    # counts. A field tested with `& 0x40` or compared with an index is false on the pointer-filled
+    # object above, so everything behind such a test never ran.
+    ones = [(_OBJ, b"\xff" * 0x1000), (_SAFE, b"\xc3" * 16)]
+    small = [(_OBJ, _struct.pack("<I", 3) * 0x400), (_SAFE, b"\xc3" * 16)]
+    return [
+        # Imported calls return 0 by default, so the code after `if (!CreateThing()) return` never
+        # ran. Run again with imports succeeding: returning 1, and returning a valid object.
+        {"args": obj, "mem_init": mi, "stub_ret": 1},
+        {"args": obj, "mem_init": mi, "stub_ret": _OBJ + 0x800},
+        {"args": ints, "stub_ret": 1},
+        {"args": obj, "mem_init": ones, "stub_ret": 1},
+        {"args": obj, "mem_init": small, "stub_ret": 1},
+        {"args": obj, "mem_init": small},
+        {"args": [0xFFFFFFFF - i for i in range(n)]},                          # small negatives
+        {"args": [edge[i % len(edge)] for i in range(n)]},                     # boundary integers
+        {"args": [n - i for i in range(n)]},                                   # distinct, reversed
+        {"args": [obj[0]] + [i + 2 for i in range(1, n)], "mem_init": mi},     # pointer, then integers
+        {"args": [5] + obj[1:], "mem_init": mi},                               # integer, then pointers
+        {"args": [obj[i] if i % 2 else 0x100 + i for i in range(n)], "mem_init": mi},
+    ]
+
+
+_HARVEST = {}
+MAX_DIRECTED = 12                # directed inputs kept per body
+_HARVEST_DEPTH = 2               # how far into callees to look for what branches test
+_HARVEST_FUNCS = 12
+_DIRECT_BELOW = 85               # look for directed inputs when less than this % of the body ran
+
+
+def _harvest(path, func):
+    """(constants, globals) read off the function's own instructions: the immediates it compares
+    or masks with, and the absolute data addresses it reads. These are what its branches test, so
+    they are what an input has to contain to get past them."""
+    key = (path, func)
+    if key not in _HARVEST:
+        consts, globs = [], []
+        try:
+            import capstone
+            from capstone import x86_const as X
+            lo, hi = _image_span(path)
+            iat = set(open_pe(path).imports())
+            md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
+            md.detail = True
+            # The function first, then the functions it calls: a caller often cannot get past
+            # `if (!helper(x)) return` until the input satisfies what the HELPER tests.
+            todo, seen = [(func, 0)], set()
+            while todo and len(seen) < _HARVEST_FUNCS:
+                f, depth = todo.pop(0)
+                if f in seen:
+                    continue
+                seen.add(f)
+                try:
+                    off, va0, code, end, _sec = tracer._resolve_func(path, f)
+                except Exception:
+                    continue
+                for ins in md.disasm(bytes(code[off:end]), va0 + off):
+                    if ins.mnemonic == "call" and depth < _HARVEST_DEPTH and ins.operands and \
+                            ins.operands[0].type == X.X86_OP_IMM:
+                        todo.append((ins.operands[0].imm & 0xFFFFFFFF, depth + 1))
+                        continue
+                    for op in ins.operands:
+                        if op.type == X.X86_OP_IMM and ins.mnemonic in ("cmp", "test", "sub", "and"):
+                            v = op.imm & 0xFFFFFFFF
+                            if v and v not in consts:
+                                consts.append(v)
+                        elif op.type == X.X86_OP_MEM and not op.mem.base and not op.mem.index:
+                            a = op.mem.disp & 0xFFFFFFFF
+                            if lo <= a < hi and a not in iat and a not in globs and ins.mnemonic != "lea":
+                                globs.append(a)
+        except Exception:
+            pass
+        _HARVEST[key] = (consts[:10], globs[:24])
+    return _HARVEST[key]
+
+
+def directed_vectors(path, func, covered, arity=4, reached=()):
+    """Inputs chosen for THIS function. Generic inputs stop at the first guard (`if (msg != 0x4E)
+    return`, `if (!g_initialised) return`), so most of a body never ran and was 'verified' on its
+    first few instructions. Candidates put each constant the function compares against into each
+    argument, and set the globals it reads to non-zero values; a candidate is kept only if the
+    ORIGINAL then runs instructions no earlier input reached. Returns at most MAX_DIRECTED."""
+    consts, globs = _harvest(path, func)
+    if not consts and not globs:
+        return []
+    n = arity
+    mi = _prov_meminit()
+    obj = [_OBJ + 0x40 * (i % 32) for i in range(n)]
+    ints = [i + 1 for i in range(n)]
+    cands = []
+    gsets = [[(a, _struct.pack("<I", val)) for a in globs] for val in (1, _SAFE, _OBJ + 0x800)] if globs else []
+    for g in gsets:
+        cands.append({"args": obj, "mem_init": mi + g, "stub_ret": 1})
+        cands.append({"args": ints, "mem_init": mi + g})
+    for k in consts:
+        for i in range(n):
+            a = list(obj)
+            a[i] = k
+            cands.append({"args": a, "mem_init": mi, "stub_ret": 1})
+            if gsets:
+                cands.append({"args": a, "mem_init": mi + gsets[1], "stub_ret": 1})
+        cands.append({"args": [k] * n, "stub_ret": 1})
+        # ...and into every field of the objects the arguments point at (`if (p->flags & 0x40)`).
+        fill = [(_OBJ, _struct.pack("<I", k) * 0x400), (_SAFE, b"\xc3" * 16)]
+        cands.append({"args": obj, "mem_init": fill, "stub_ret": 1})
+        cands.append({"args": obj, "mem_init": fill})
+    # "New code" is counted over everything that ran, callees included: an input that drives a
+    # helper down a different path exercises the caller's use of it even at 100% own coverage.
+    keep, seen = [], set(reached)
+    for v in cands:
+        f = _fp_pe(path, func, v)
+        if "err" in f:
+            continue
+        new = set(f.get("reach") or ()) - seen
+        if new:
+            keep.append(v)
+            seen |= new
+            if len(keep) >= MAX_DIRECTED:
+                break
+    return keep
+
+
+def first_difference(a, b):
+    """The first observable difference between two fingerprints of the same input, or ''."""
+    if a["exit"] != b["exit"]:
+        return "exit-differs"
+    if a["deps"] != b["deps"]:
+        return "deps-differ"
+    if a["ret"] != b["ret"]:
+        return "ret-differs"
+    wa, wb = a.get("writes"), b.get("writes")
+    if wa is not None and wb is not None and wa != wb:
+        return "writes-differ"
+    return ""
+
+
+def compare(fp_retail, fp_rebuilt, vectors, confirm=(), insns=0, directed=None):
+    """Judge one body. `fp_retail(v)` / `fp_rebuilt(v)` fingerprint each side on input `v`.
+    Returns (verdict, reason, limits). With `insns` (the original function's instruction count),
+    the share of them that ran on some input is appended to limits as `coverage=NN`.
+
+    Stops at the first input on which the two sides differ -- one difference settles it, and most
+    bodies that fail do so on the first input. A body that matches every basic input with at least
+    one clean return is then run on the `confirm` inputs too.
+
+    `limits` are the reasons a match is weaker than it looks, as codes that can be counted:
+      fault-only      no input returned cleanly; the two sides only fault/stop alike
+      truncated       a trace hit the step or time cap
+      argc-unknown    an imported call was compared by name only (its argument count is unknown)
+      calls-capped    the call sequence was longer than is compared
+      unobserved      some inputs could not be traced on one side
+      writes-capped   a trace wrote more memory than is recorded, so its writes were not compared
+      low-coverage    under half of the original's instructions ran on any input
+    """
+    limits = set()
+    covered = set()
+    reached = set()
+    seen = clean = 0
+    errs = set()
+
+    def run(vs):
+        nonlocal seen, clean
+        for v in vs:
+            a = fp_retail(v)
+            b = fp_rebuilt(v)
+            if "err" in a or "err" in b:
+                limits.add("unobserved")
+                if "err" in a:
+                    errs.add("retail: " + a["err"])
+                if "err" in b:
+                    errs.add("rebuilt: " + b["err"])
+                continue
+            seen += 1
+            d = first_difference(a, b)
+            if d:
+                return d
+            covered.update(a.get("cov") or ())
+            reached.update(a.get("reach") or ())
+            if a.get("writes") is None or b.get("writes") is None:
+                limits.add("writes-capped")
+            if a.get("truncated") or b.get("truncated"):
+                limits.add("truncated")
+            elif a.get("exit") == "ret":
+                clean += 1
+            for dep in a.get("deps", ()):
+                if dep == "...":
+                    limits.add("calls-capped")
+                elif "(" not in dep:
+                    limits.add("argc-unknown")
+        return ""
+
+    d = run(vectors)
+    if d:
+        return "divergent", d, []
+    if not seen:
+        return "inconclusive", "; ".join(sorted(errs)), sorted(limits)
+    if clean and confirm:
+        d = run(confirm)
+        if d:
+            return "divergent", d, []
+    # `directed(covered, reached)` supplies inputs aimed at code no input has reached yet.
+    if directed and clean:
+        d = run(directed(covered, reached))
+        if d:
+            return "divergent", d, []
+    if insns:
+        pct = min(100, 100 * len(covered) // insns)
+        if pct < 50:
+            limits.add("low-coverage")
+        limits.add("coverage=%d" % pct)
+    if not clean:
+        limits.add("fault-only")
+        return "consistent", "", sorted(limits)
+    return "equivalent", "", sorted(limits)
 
 
 def _observed(fp):
