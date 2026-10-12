@@ -208,7 +208,6 @@ wt diff <cmd>            compare a function across releases (+ a git-style brows
 wt behavior <cmd>        run the binary as an oracle: trace → experiment → hypotheses → synthesize
 wt inverse <cmd>         recover byte-exact C (Lattice C 2.12 / MS C 2.03)
 wt msc6 <cmd>            byte-exact 16-bit Windows (NE) DLL reconstruction
-wt recompile <cmd>       take recovered C the rest of the way (compile → link)
 wt backbone <cmd>        the uniform compiler / assembler / linker / disassembler interface
 wt sdk <cmd>             read an SDK/DDK into typed signatures
 wt xbox <cmd>            Xbox 360 (XEX2 / PowerPC) reconstruction + console tools

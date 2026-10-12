@@ -9,7 +9,6 @@ CodeBreaker — a deterministic reverse-engineering workbench.
     wt targets                             # list eras and where their tools live
     wt doctor                              # external-dependency check
     wt diff <cmd>                          # cross-version analysis (target-agnostic)
-    wt recompile <cmd>                     # make the lifted C compile/link (win95 corpus)
     wt inverse <cmd>                       # compiler-inverse engine (Lattice C 2.12 / MS C 2.03)
     wt ui                                  # CodeBreaker Studio: the themed drag-and-drop UI
 
@@ -166,9 +165,13 @@ def cmd_doctor():
 # Script-directory subsystems: a subsystem's commands are the non-underscore .py files in a
 # directory, executed as __main__. This table is the per-subsystem config; `_run_scripts` is the
 # ONE dispatcher that replaced four near-identical cmd_* functions.
+# Subsystems moved out of the active package (see archive/README.md). Nothing imports them.
+_ARCHIVED = {
+    "recompile": "the GCC compile/link lane is in archive/engines/recompile, superseded by the "
+                 "OpenWatcom lane (wt --target win95 owbuild / owlink)",
+}
+
 _SCRIPT_SUBSYS = {
-    "recompile": dict(subdir=("engines", "recompile", "tools"), win95=True,
-                      header="recompile commands  (src/engines/recompile/tools):\n"),
     "behavior":  dict(subdir=("engines", "behavior"), win95=True, behavior_env=True,
                       skip={"__init__.py", "tracer.py", "corpus.py", "perturb.py",
                             "hypothesis.py", "env.py"},
@@ -287,9 +290,11 @@ def main():
     if argv[0] == "serve":                                   # localhost HTTP API over the whole toolset
         from src.cli import apiserver
         apiserver.main(argv[1:]); return
-    # Subsystem dispatch. The four script-directory subsystems (recompile/behavior/inverse/msc6)
-    # share one dispatcher via the _SCRIPT_SUBSYS table; the rest have their own import entry.
+    # Subsystem dispatch. The script-directory subsystems (behavior/inverse/msc6) share one
+    # dispatcher via the _SCRIPT_SUBSYS table; the rest have their own import entry.
     # (No sys.path.insert(WT_DIR) anywhere now -- `engine` is importable via the installed package.)
+    if argv[0] in _ARCHIVED:
+        print("'%s' was archived: %s" % (argv[0], _ARCHIVED[argv[0]])); return
     if argv[0] in _SCRIPT_SUBSYS:
         _run_scripts(argv[1:], **_SCRIPT_SUBSYS[argv[0]]); return
     if argv[0] == "xbox":
