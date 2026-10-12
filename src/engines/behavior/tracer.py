@@ -245,7 +245,7 @@ _RETSENT_BASE = 0xB1B10000                                # unique per-call exte
 
 def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS, mem_init=None,
                    stub_externals=None, stub_ret=0, stub_cleanup=0, sig_resolver=None,
-                   stub_ret_unique=False):
+                   stub_ret_unique=False, overlay=None):
     """Run one function under Unicorn with full hooks; return a TraceRecord (a plain dict).
 
     module  -- e.g. "gdi32.dll"; resolved through the active target like difftest.
@@ -292,6 +292,19 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
     # stdcall arg count for correct stack cleanup. Naming works with no SDK; cleanup needs one.
     sentinel_map = {}                                        # sentinel addr -> (dll, name)
     mem_init = list(mem_init or [])
+    # `overlay` is another module whose code is mapped alongside at its own addresses. A rebuilt
+    # body refers to the ORIGINAL's code and data by literal address (a function pointer, a thunk
+    # target); without the original there, those addresses read as zeros in the rebuilt run only,
+    # and the two runs differ for a reason that has nothing to do with the body.
+    if overlay:
+        try:
+            _op, ova0, ocode, _on, _of, _os, oimports = _load(overlay)
+            own_hi = secbase + max(size, _PAGE)
+            if ova0 + len(ocode) <= secbase or ova0 >= own_hi:      # never over the traced image
+                mem_init.insert(0, (ova0, ocode))
+                imports = dict(oimports, **imports)
+        except Exception:
+            pass
     if stub_externals and imports:
         for i, (iat_va, (dll, name)) in enumerate(sorted(imports.items())):
             sent = _SENT_BASE + i * _SENT_STRIDE

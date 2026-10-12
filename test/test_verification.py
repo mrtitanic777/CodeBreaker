@@ -75,7 +75,10 @@ def test_pe_pipeline_is_incremental():
     p = corpus.retail("lz32.dll")
     first = pipeline.verify("pe", p, store=db, bank=False)
     t = pipeline.tally(first)
-    assert t["equivalent"] >= 15, dict(t)                    # lz32 verifies 21 of 36 today
+    # lz32 is nearly all 32->16 thunk stubs. 21 of 36 "verified" until call arguments, memory
+    # writes and the stack were compared; the stubs pass their argument in CL, which the
+    # reconstruction turns into a pushed argument, so 6 hold up today.
+    assert t["equivalent"] >= 5, dict(t)
     assert not any(r["cached"] for r in first.values())
     assert all(r["reason"] for r in first.values() if r["verdict"] == "divergent")
     second = pipeline.verify("pe", p, store=db, bank=False)
