@@ -43,6 +43,7 @@ import os
 import struct
 
 FILES = "files"
+PRODUCT = "Windows 98 (Second Edition)"     # how generated documents name this era
 
 # --------------------------------------------------------------------------
 # Tiers, most-central first. Order is the recommended work order.
