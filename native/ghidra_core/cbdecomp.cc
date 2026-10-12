@@ -91,14 +91,12 @@ class CbArchitecture : public SleighArchitecture {
 void applyProto(CbArchitecture& arch, Funcdata* fd, const std::string& name, int pop) {
   if (pop < 0) return;
   FuncProto& fp = fd->getFuncProto();
-  if (pop == 0) {
-    ProtoModel* callerPops = arch.getModel("__cdecl");
-    if (callerPops) { fp.setModel(callerPops); fp.setModelLock(true); }
-    return;
-  }
   PrototypePieces pieces;
-  pieces.model = arch.getModel("__stdcall");
+  pieces.model = arch.getModel(pop == 0 ? "__cdecl" : "__stdcall");
   pieces.name = name;
+  // Every x86 function leaves a value in EAX and callers are free to use it; declaring the
+  // result keeps it. Left to itself the analysis calls a function `void` whenever it does not
+  // see the value used, and the function then returns nothing.
   pieces.outtype = arch.types->getBase(4, TYPE_INT);
   pieces.firstVarArgSlot = -1;
   for (int i = 0; i < pop / 4; ++i) {
@@ -106,11 +104,11 @@ void applyProto(CbArchitecture& arch, Funcdata* fd, const std::string& name, int
     pieces.innames.push_back("a" + std::to_string(i + 1));
   }
   fp.setPieces(pieces);
-  fp.setInputLock(true);
+  // With `ret N` the argument count is known; with a plain `ret` it is left to the analysis.
+  // The argument TYPES are placeholders either way (four bytes each).
+  fp.setInputLock(pop > 0);
   fp.setModelLock(true);
-  // The types are placeholders (every argument is four bytes; whether it is a pointer is for the
-  // analysis to find), and so is the return type.
-  fp.setOutputLock(false);
+  fp.setOutputLock(std::getenv("CB_CORE_NORET") == nullptr);
 }
 
 }  // namespace
