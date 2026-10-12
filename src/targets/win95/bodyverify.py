@@ -335,6 +335,13 @@ _CFLAGS = ["-bt=nt", "-zq", "-w0", "-s", "-zastd=c99", "-ecc"]
 # for a body's callees are defined in the object and still take precedence.
 _RTL = "library clib3r.lib\n"
 
+# Where a rebuilt DLL is based. The linker's default (0x400000) is exactly where ordinary computed
+# values fall -- the sum of two of the oracle's scratch pointers, say -- and a value inside the
+# rebuilt image is taken for "an address of this build's own data", which the original cannot
+# have: a correct body was then reported as passing a different argument. Up here nothing collides.
+IMAGE_BASE = 0x6E000000
+_BASE = "option offset=0x%X\n" % IMAGE_BASE
+
 
 def _prep_body(c_text, fname):
     """Transform ONE synthesised body into compilable C and compute its external surface. Returns
@@ -502,7 +509,7 @@ def compile_body(c_text, fname, outdir, imports=None):
     obj = open(os.path.join(outdir, fname + ".obj"), "rb").read()
     internal = _omf_export_name(obj, fname)
     with open(os.path.join(outdir, "b.lnk"), "w", newline="\n") as f:
-        f.write(("system nt_dll\nname %s.dll\noption quiet\nfile %s.obj\n" + _RTL)
+        f.write(("system nt_dll\nname %s.dll\noption quiet\n" + _BASE + "file %s.obj\n" + _RTL)
                 % (fname, fname) + _import_lines(obj, imp, imports) +
                 "export %s='%s'\n" % (fname, internal))
     subprocess.run([ow["wlink"], "@b.lnk"], cwd=outdir, env=env, capture_output=True, text=True)
@@ -656,7 +663,7 @@ def batch_compile(items, outdir, imports=None, errors=None):
     obj = open(os.path.join(outdir, base + ".obj"), "rb").read()
     exports = []
     with open(os.path.join(outdir, base + ".lnk"), "w", newline="\n") as f:
-        f.write("system nt_dll\nname %s.dll\noption quiet\nfile %s.obj\n" % (base, base) + _RTL +
+        f.write(("system nt_dll\nname %s.dll\noption quiet\n" + _BASE + "file %s.obj\n") % (base, base) + _RTL +
                 _import_lines(obj, imp, imports))
         for fn in sorted(members):
             f.write("export %s='%s'\n" % (fn, _omf_export_name(obj, fn)))
