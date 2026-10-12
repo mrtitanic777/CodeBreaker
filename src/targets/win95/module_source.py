@@ -34,6 +34,8 @@ WHY = {
     "deps-differ": "makes different API calls, or passes them different arguments",
     "exit-differs": "ends differently (one side faults or runs away)",
     "writes-differ": "leaves different values in memory",
+    "stack-differs": "removes a different number of bytes from the stack (convention or argument count)",
+    "registers-differ": "changes a register it must preserve",
     "retail: call-into-nothing": "the original calls through a pointer the loader fills in (a thunk entry)",
 }
 WEAK = {

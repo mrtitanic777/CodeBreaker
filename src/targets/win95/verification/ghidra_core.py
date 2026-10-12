@@ -19,11 +19,12 @@ import subprocess
 
 from src.core import paths
 
-REV = 8                                    # bump when what is fed to / taken from the core changes
+REV = 9                                    # bump when what is fed to / taken from the core changes
 
 # The core prints a function in the module's default convention (stdcall) without saying so, and
-# spells the others out. Compile with stdcall as the default so the text means what it says.
-CFLAGS = ["-bt=nt", "-zq", "-w0", "-s", "-zastd=c99", "-ecs"]
+# spells the others out. Compile with stdcall as the default (-ecd; -ecs is __syscall) so the text
+# means what it says.
+CFLAGS = ["-bt=nt", "-zq", "-w0", "-s", "-zastd=c99", "-ecd"]
 
 _TYPES = """#pragma pack(1)
 typedef signed char int1; typedef short int2; typedef int int4; typedef long long int8;

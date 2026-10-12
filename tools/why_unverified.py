@@ -51,6 +51,10 @@ def cause(reason, detail):
         a, _, b = d[7:].partition(" vs ")
         return "memory written: " + ("only the rebuilt writes" if a == "none" else
                                      "only the original writes" if b == "none" else "both write, differently")
+    if reason == "stack-differs":
+        return "stack on return: " + d
+    if reason == "registers-differ":
+        return "changes a register it must preserve"
     return reason or "(no reason)"
 
 
