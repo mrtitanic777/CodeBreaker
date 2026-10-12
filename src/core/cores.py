@@ -36,22 +36,38 @@ _cache = {}
 
 
 def set_target(tool_dir):
-    """Point the registry at an active target's tool directory (or None)."""
+    """Point the registry at an active target's tool directory (or None). A target whose tools
+    are spread over several directories (the Xbox tool: core/, win/, match/) passes them all;
+    they are searched in order."""
     global _active_dir
     _active_dir = tool_dir
     _cache.clear()
-    if tool_dir and tool_dir not in sys.path:
-        sys.path.insert(0, tool_dir)     # so an override's own local siblings import
+    for d in _dirs():
+        if d not in sys.path:
+            sys.path.insert(0, d)        # so an override's own local siblings import
+
+
+def _dirs():
+    if not _active_dir:
+        return ()
+    return (_active_dir,) if isinstance(_active_dir, str) else tuple(_active_dir)
 
 
 def _load(name):
-    if _active_dir:
-        p = os.path.join(_active_dir, name + ".py")
+    for d in _dirs():
+        p = os.path.join(d, name + ".py")
         if os.path.exists(p):
+            # A target that imports its tools by bare name already has this file loaded: hand back
+            # that one, so the override is a single module, not two with separate state.
+            have = sys.modules.get(name)
+            if have is not None and os.path.normcase(os.path.abspath(getattr(have, "__file__", "") or ""))                     == os.path.normcase(os.path.abspath(p)):
+                return have
             spec = importlib.util.spec_from_file_location("cb_target_%s" % name, p)
             mod = importlib.util.module_from_spec(spec)
+            sys.modules.pop(spec.name, None)
             spec.loader.exec_module(mod)
-            return mod
+            # A file that is only an alias for a shared module swaps itself out on import.
+            return sys.modules.pop(spec.name, mod)
     cluster = _DEFAULT.get(name)
     if cluster is None and name not in _DEFAULT:
         cluster = _find_default(name)
@@ -61,8 +77,9 @@ def _load(name):
 
 
 def active_target():
-    """The active target's tool directory, or None when no target has been set."""
-    return _active_dir
+    """The active target's (first) tool directory, or None when no target has been set."""
+    d = _dirs()
+    return d[0] if d else None
 
 
 def ensure_target(tool_dir):
