@@ -25,15 +25,14 @@ import re
 import sys
 import subprocess
 
-from src.core import paths
+from src.core import paths, toolchain
 from src.targets.win95 import dosrecon as DR
 
 
 def _native(fmt):
     b = {"MZ": "win95mzdec", "NE": "win95dec", "PE": "win95pedec",
          "LE": "win95ledec"}.get(fmt, "win95mzdec")
-    p = os.path.join(paths.repo_root(), "native", "decompiler", "build", "bin", b + ".exe")
-    return p if os.path.isfile(p) else None
+    return toolchain.decompiler(b) or None
 
 
 def classify(path):
@@ -717,7 +716,7 @@ def _engine_ver():
         p = os.path.join(here, f)
         if os.path.isfile(p):
             h.update(("%s:%d;" % (f, int(os.path.getmtime(p)))).encode())
-    bindir = os.path.join(paths.repo_root(), "native", "decompiler", "build", "bin")
+    bindir = toolchain.decompiler_dir()
     for b in ("win95mzdec.exe", "win95dec.exe", "win95pedec.exe"):
         p = os.path.join(bindir, b)
         if os.path.isfile(p):

@@ -22,7 +22,7 @@ import re
 import subprocess
 import sys
 
-from src.core import paths
+from src.core import paths, toolchain
 from src.targets.win95 import nativedec
 
 _PRELUDE = """\
@@ -190,10 +190,8 @@ def _lane_c(module, fmt):
 
 
 def _corpus():
-    c = os.environ.get("WT_DATA_ROOT")
-    if c and os.path.isdir(c):
-        return c
-    return r"C:\Users\mrtit\Documents\GitHub\Windows95\design\corpus\files"
+    from src.core import corpus
+    return corpus.root()
 
 
 def cure_module(module, do_compile=False):
@@ -224,16 +222,11 @@ def cure_module(module, do_compile=False):
 
 
 def _compile(cfile, fmt):
-    ow = os.path.join(paths.repo_root(), "experiments", "premise-proof", "open-watcom-v2", "rel")
-    cc = os.path.join(ow, "binnt64", "wcc386.exe" if fmt != "NE" else "wcc.exe")
-    if not os.path.exists(cc):
+    cls = "ne" if fmt == "NE" else "pe"
+    cc = toolchain.ow_cc(cls)
+    if not cc:
         return {"ok": False, "error": "wcc not built"}
-    env = dict(os.environ)
-    env["NoDefaultCurrentDirectoryInExePath"] = ""
-    env["WATCOM"] = ow
-    env["PATH"] = os.path.join(ow, "binnt64") + os.pathsep + env.get("PATH", "")
-    h = os.path.join(ow, "h")
-    env["INCLUDE"] = os.pathsep.join([h, os.path.join(h, "win" if fmt == "NE" else "nt")])
+    env = toolchain.ow_env(cls)
     flags = ["-bt=nt", "-q", "-wcd=138"] if fmt != "NE" else ["-bt=windows", "-mm", "-zW", "-q"]
     try:
         # 300s: the largest modules (mapi, msjt3032 -- 2k+ functions in one file)

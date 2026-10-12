@@ -20,14 +20,14 @@ import struct
 import subprocess
 import tempfile
 
-from src.core import paths
+from src.core import paths, toolchain
 
 try:
     from src.engines.symbol import demangle as _demangle
 except Exception:                       # symbol engine optional; sigs just skipped
     _demangle = None
 
-_BINDIR = os.path.join(paths.repo_root(), "native", "decompiler", "build", "bin")
+_BINDIR = toolchain.decompiler_dir()
 _BIN = os.path.join(_BINDIR, "win95dec.exe")          # NE engine (back-compat alias)
 _PEBIN = os.path.join(_BINDIR, "win95pedec.exe")      # PE engine
 _LEBIN = os.path.join(_BINDIR, "win95ledec.exe")      # LE (VxD) engine

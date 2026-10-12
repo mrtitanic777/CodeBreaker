@@ -24,12 +24,12 @@ import sys
 import glob
 import subprocess
 
-from src.core import paths
+from src.core import paths, toolchain
 from src.targets.win95 import authsrc, owcheck
 
 
 def _ow():
-    return os.path.join(paths.repo_root(), "experiments", "premise-proof", "open-watcom-v2", "rel")
+    return toolchain.openwatcom_root()
 
 
 def _dec(fmt):
@@ -140,8 +140,8 @@ def _clib16_lib():
     rel/lib286/clibl.lib is an empty 1.5KB stub -- the complete library (5500+ symbols: __U4M/__U4D
     integer mul-div, __HugeValue, __8087/__FDU87 fp, and the full CRT) is the actual per-target build
     under bld/clib/library/windows.086/ml. Reference it directly. Returns its path, or "" if absent."""
-    lib = os.path.join(paths.repo_root(), "experiments", "premise-proof", "open-watcom-v2",
-                       "bld", "clib", "library", "windows.086", "ml", "clibl.lib")
+    lib = os.path.join(toolchain.openwatcom_src(), "bld", "clib", "library", "windows.086", "ml",
+                       "clibl.lib")
     return lib if os.path.isfile(lib) else ""
 
 

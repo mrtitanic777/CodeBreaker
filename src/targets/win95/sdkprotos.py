@@ -122,7 +122,8 @@ def _ow_header_dirs():
     """OpenWatcom's own Win32 headers -- the toolchain we actually BUILD with, so prototypes
     extracted here match exactly what wcc386 compiles against (no E1071/E1062/E1051 header-skew)."""
     from src.core import paths
-    ow = os.path.join(paths.repo_root(), "experiments", "premise-proof", "open-watcom-v2", "rel")
+    from src.core import toolchain
+    ow = toolchain.openwatcom_root()
     return [d for d in (os.path.join(ow, "h", "nt"), os.path.join(ow, "h")) if os.path.isdir(d)]
 
 
