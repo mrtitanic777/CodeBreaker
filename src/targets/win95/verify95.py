@@ -73,10 +73,10 @@ def _norm_arg(v, ins, own=None):
     sv = v - (1 << 32) if v & 0x80000000 else v
     if -0x10000 < sv < 0x10000:
         return "%d" % sv
-    if 0x207000 <= v < 0x208100:
+    # A rebuilt body's locals live in its stand-in frame, inside its own image: like a stack
+    # address, that is "somewhere in this call's frame".
+    if _STACK_LO <= v < _STACK_HI or (own and own[0] <= v < own[1]):
         return "S"
-    if own and own[0] <= v < own[1]:
-        return "p"
     return "%x" % v
 
 
@@ -187,7 +187,7 @@ def _mod_sha(path):
 # stdcall import takes, and the fingerprint is the full call sequence WITH arguments, not the set of
 # import names reached. 4: the fingerprint also carries the memory the function wrote and which of
 # its instructions ran; inputs can set what imported calls return.
-_ORACLE_REV = 8
+_ORACLE_REV = 10
 
 
 def _fp_key(sha, func, spec):
@@ -228,7 +228,7 @@ def _arm():
 
 # The oracle's stack (and the RET landing pad just under it) sits at the top of the scratch region.
 # Writes there are the function's own frame, laid out differently by every compiler.
-_STACK_LO, _STACK_HI = 0x207000, 0x208100
+_STACK_LO, _STACK_HI = tracer._STACK_BASE, tracer._STACK_BASE + tracer._STACK_SIZE
 _IMAGE_SPAN = {}
 _INSN_COUNT = {}
 
@@ -535,7 +535,46 @@ def first_difference(a, b):
     return ""
 
 
-def compare(fp_retail, fp_rebuilt, vectors, confirm=(), insns=0, directed=None):
+def difference_detail(a, b, v=None):
+    """One line saying exactly what differed between two fingerprints, for triage by cause:
+    which call first differs and how, or the two return values / exits."""
+    d = first_difference(a, b)
+    if d == "exit-differs":
+        out = "exit %s vs %s" % (a["exit"], b["exit"])
+    elif d == "ret-differs":
+        out = "ret %s vs %s" % (_norm_arg(a["ret"] or 0, v["args"] if v else ()),
+                                _norm_arg(b["ret"] or 0, v["args"] if v else ()))
+    elif d == "writes-differ":
+        out = "writes %s vs %s" % ((a.get("writes") or "none").split(":")[0],
+                                   (b.get("writes") or "none").split(":")[0])
+    elif d == "deps-differ":
+        da, db = list(a["deps"]), list(b["deps"])
+        i = 0
+        while i < len(da) and i < len(db) and da[i] == db[i]:
+            i += 1
+        ra = da[i] if i < len(da) else "(nothing)"
+        rb = db[i] if i < len(db) else "(nothing)"
+        na, nb = ra.split("(")[0], rb.split("(")[0]
+        if rb == "(nothing)":
+            kind = "rebuilt stops calling"
+        elif ra == "(nothing)":
+            kind = "rebuilt calls extra"
+        elif na != nb:
+            kind = "different call"
+        else:
+            aa, ab = ra[len(na):].strip("()").split(","), rb[len(nb):].strip("()").split(",")
+            bad = [str(k) for k in range(min(len(aa), len(ab))) if aa[k] != ab[k]]
+            kind = "same call, argument %s differs" % "+".join(bad)
+        out = "call #%d %s: %s vs %s" % (i, kind, ra, rb)
+    else:
+        return ""
+    if v is not None:
+        out += "  [input %s%s]" % (",".join("%x" % x for x in v["args"]),
+                                    " ret=%x" % v["stub_ret"] if v.get("stub_ret") else "")
+    return out[:300]
+
+
+def compare(fp_retail, fp_rebuilt, vectors, confirm=(), insns=0, directed=None, info=None):
     """Judge one body. `fp_retail(v)` / `fp_rebuilt(v)` fingerprint each side on input `v`.
     Returns (verdict, reason, limits). With `insns` (the original function's instruction count),
     the share of them that ran on some input is appended to limits as `coverage=NN`.
@@ -574,6 +613,8 @@ def compare(fp_retail, fp_rebuilt, vectors, confirm=(), insns=0, directed=None):
             seen += 1
             d = first_difference(a, b)
             if d:
+                if info is not None:
+                    info["detail"] = difference_detail(a, b, v)
                 return d
             covered.update(a.get("cov") or ())
             reached.update(a.get("reach") or ())

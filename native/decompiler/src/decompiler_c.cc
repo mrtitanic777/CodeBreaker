@@ -2033,8 +2033,16 @@ std::string CDecompiler::Run() {
           // area. They only exist once r3..r10 are full, so anything staged
           // without a full register set was a local after all and is emitted
           // as the store it is.
+          // An explicit count from the lifter (Win95 lanes): 0x100 + n.
+#ifdef WIN95DEC_NO_PPC
+          const int explicit_n = (in.op == ILOp::Call && in.imm >= 0x100 && in.imm <= 0x108)
+                                     ? in.imm - 0x100 : -1;
+#else
+          const int explicit_n = -1;
+#endif
           int reg_args = 0;
           for (int rr = 3; rr <= 10; rr++) {
+            if (explicit_n >= 0 && rr - 3 >= explicit_n) break;
             if (!cur_arg_val_.count(rr)) break;
             reg_args++;
           }
@@ -2062,6 +2070,7 @@ std::string CDecompiler::Run() {
             int& argc = g_called_functions[ce->text];
             int here = 0;
             for (int rr = 3; rr <= 10; rr++) {
+              if (explicit_n >= 0 && rr - 3 >= explicit_n) break;
               if (!cur_arg_val_.count(rr)) break;
               here++;
             }
@@ -2072,6 +2081,7 @@ std::string CDecompiler::Run() {
           // the contiguous run of argument registers r3.. that currently hold a
           // value; that is what the caller just set up.
           for (int r = 3; r <= 10; r++) {
+            if (explicit_n >= 0 && r - 3 >= explicit_n) break;
             auto vit = cur_arg_val_.find(r);
             if (vit == cur_arg_val_.end()) break;
             ce->args.push_back(vit->second);
@@ -2500,9 +2510,16 @@ std::string CDecompiler::Run() {
 #else
   out << ret_ty << " __fastcall " << fname << "(";
 #endif
-  if (live_in_args_.empty() && stack_args.empty() && live_in_regs_.empty()) {
+  // A 32-bit function that returns with `ret N` takes N/4 stack arguments whether or not it reads
+  // them all; declare that many, so its definition and its callers agree.
+#ifdef WIN95DEC_TARGET32
+  const int pop_args = func_.callee_pop > 0 ? func_.callee_pop / 4 : 0;
+#else
+  const int pop_args = 0;
+#endif
+  if (live_in_args_.empty() && stack_args.empty() && live_in_regs_.empty() && pop_args == 0) {
     out << "void";
-  } else if (live_in_args_.empty() && stack_args.empty()) {
+  } else if (live_in_args_.empty() && stack_args.empty() && pop_args == 0) {
     // PURE register-convention function: args arrive in GPRs, none on the stack ([bp+N]). Declare
     // them in Watcom register order (AX, DX, BX, CX) up to the highest register actually used, so
     // the compiler passes each argument in the register the body reads; name the used ones by their
@@ -2531,6 +2548,7 @@ std::string CDecompiler::Run() {
     bool wrote = false;
     int hi = live_in_args_.empty() ? 2 : 3;
     for (int r : live_in_args_) hi = std::max(hi, r);
+    if (pop_args > 0) hi = std::min(10, std::max(hi, 2 + pop_args));
     for (int r = 3; r <= hi; r++) {
       if (wrote) out << ", ";
       wrote = true;

@@ -63,6 +63,11 @@ class X86Lifter {
   std::map<uint32_t, std::pair<uint32_t, std::string>> call_sites_;
   std::set<uint32_t> reloc_sites_;
   std::map<uint32_t, std::string> import_slots_;
+  // The image being lifted, for looking at a call's target; and what each target pops.
+  const uint8_t* img_ = nullptr;
+  size_t img_size_ = 0;
+  std::map<uint32_t, int> pop_cache_;
+  int CalleePop(uint32_t target);
   bool bits32_ = false;
   bool vxd_mode_ = false;
 };

@@ -46,9 +46,38 @@ ILType WidthType(int sz, bool sign=false) {
 }
 }  // namespace
 
+// Bytes of arguments the function at `target` removes on return: N of its first `ret N` (0 for a
+// plain `ret`), following a direct tail jump; -1 when that cannot be read off the code. This is
+// what a caller needs to know how many of the values it pushed belong to THIS call.
+int X86Lifter::CalleePop(uint32_t target) {
+  auto it = pop_cache_.find(target);
+  if (it != pop_cache_.end()) return it->second;
+  int result = -1;
+  uint32_t a = target;
+  int hops = 0;
+  for (int n = 0; n < 4000 && img_ && a < img_size_; ++n) {
+    X86Insn in = DecodeX86Auto(img_, img_size_, a, a, !bits32_);
+    if (!in.valid) break;
+    if (in.mnem == "ret") {
+      result = (in.nops > 0 && in.ops[0].kind == OpKind::Imm) ? (int)in.ops[0].imm : 0;
+      break;
+    }
+    if (in.mnem == "retf" || in.mnem == "iret" || in.mnem == "int3") break;
+    if (in.mnem == "jmp") {
+      if (in.ops[0].kind != OpKind::Rel || ++hops > 4) break;
+      a = (uint32_t)in.ops[0].imm;
+      continue;
+    }
+    a += in.len;
+  }
+  pop_cache_[target] = result;
+  return result;
+}
+
 ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
                                    uint32_t entry, uint32_t end,
                                    const std::string& name) {
+  img_ = image; img_size_ = image_size;
   ILFunction fn;
   fn.name = name;
   fn.entry = entry;
@@ -897,7 +926,32 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
         }
         // If this call's args were written to the stack (`mov [esp+N],v`) rather than pushed,
         // pend_args is empty -- pull them from esp_args in ascending-offset order ([esp+0]=arg0).
-        const size_t npushed = pend_args.size();
+        size_t npushed = pend_args.size();
+        // How many of the pushed values are THIS call's arguments. A stdcall callee says so
+        // itself (`ret N` -> N/4); for a caller-cleans call the `add esp, N` after it does.
+        // Values pushed earlier than that belong to a later call and stay pending. Without this
+        // a call took every value on the list, so callers and callees disagreed on argument
+        // counts all over a module.
+        std::vector<ILValue> later_args;
+        int known_pop = -1;
+        if (bits32_ && in.ops[0].kind == OpKind::Rel && cs == call_sites_.end()) {
+          known_pop = CalleePop((uint32_t)in.ops[0].imm);
+          int want = -1;
+          if (known_pop > 0) want = known_pop / 4;
+          else if (known_pop == 0 && iit->second + 1 < insns.size()) {
+            const X86Insn& nx = insns[iit->second + 1];
+            if (nx.mnem == "add" && nx.nops >= 2 && IsGpr(nx.ops[0]) && (nx.ops[0].reg % 16) == 4 &&
+                nx.ops[1].kind == OpKind::Imm)
+              want = (int)nx.ops[1].imm / 4;
+            else
+              want = 0;      // plain `ret` and nothing cleaned up after the call: no stack arguments
+          }
+          if (want >= 0 && npushed > (size_t)want) {
+            later_args.assign(pend_args.begin(), pend_args.end() - want);
+            pend_args.erase(pend_args.begin(), pend_args.end() - want);
+            npushed = pend_args.size();
+          }
+        }
         if (pend_args.empty() && !esp_args.empty()) {
           for (auto& kv : esp_args) pend_args.push_back(kv.second);   // std::map iterates by key asc
         }
@@ -915,7 +969,9 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
           bool cdeclCallee = cn.find("CRTDLL") != std::string::npos ||
                              cn.find("MSVCRT") != std::string::npos ||
                              cn.find("wsprintf") != std::string::npos;
-          if (!cdeclCallee) { sp_off += 4 * (int)npushed; assumed_pop += 4 * (int)npushed; }
+          if (known_pop > 0) sp_off += known_pop;            // exact: the callee's own `ret N`
+          else if (known_pop == 0) { /* the caller cleans up; its `add esp` is counted when seen */ }
+          else if (!cdeclCallee) { sp_off += 4 * (int)npushed; assumed_pop += 4 * (int)npushed; }
         }
         // stage pushed args into the arg registers r3.. (PASCAL push order); the
         // back-end reads r3..r10 as the call's arguments.
@@ -924,7 +980,11 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
           ar.dst = fn.AllocValue(pend_args[i].type, 3 + (int)i);
           bb.instrs.push_back(ar);
         }
-        pend_args.clear();
+        // Tell the back-end exactly how many arguments this call has. It otherwise takes every
+        // argument register that holds a value -- and this function's OWN parameters live in
+        // those registers, so a call with no arguments was printed passing the caller's a1.
+        if (bits32_) x.imm = 0x100 + (int)std::min<size_t>(pend_args.size(), 8);
+        pend_args = later_args;
         x.dst = fn.AllocValue(ILType::U32, kGpBase);   // DX:AX (long returns); AX truncates on 16-bit use
         bb.instrs.push_back(x);
         setReg(kGpBase, x.dst);
@@ -935,6 +995,11 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
         setReg(kGpBase + 2, hi.dst);
       } else if (m == "ret" || m == "retf") {
         if (sptrack && sp_known && sp_off != 0) sp_bad = true;   // the stack model did not balance
+        {
+          int popn = (in.nops > 0 && in.ops[0].kind == OpKind::Imm) ? (int)in.ops[0].imm : 0;
+          if (fn.callee_pop == -1) fn.callee_pop = popn;
+          else if (fn.callee_pop != popn) fn.callee_pop = -2;
+        }
         ILInstr x; x.op = ILOp::Return; x.address = a;
         // If the body WROTE AX, that is the return value (x86 returns in AX). Promote it into r3 so
         // the back-end renders `return <value>` -- the back-end's return register is r3, which x86's

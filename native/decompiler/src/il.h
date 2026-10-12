@@ -522,6 +522,12 @@ struct ILFunction {
   std::vector<ILValue> params;
   ILType return_type = ILType::Void;
 
+  // Bytes of arguments the function removes from the stack when it returns (`ret N`): 0 for a
+  // plain `ret`, -1 when it has no return of its own, -2 when its returns disagree. For a 32-bit
+  // stdcall function N/4 is its argument count -- taken from the code, not from how many
+  // arguments happen to be read.
+  int callee_pop = -1;
+
   std::vector<ILBasicBlock> blocks;
 
   // SSA value pool

@@ -35,7 +35,11 @@ from src.formats.pe_trace import PeCarve           # noqa: E402
 # Entry-state constants, identical to difftest._emulate so traces are comparable to the
 # oracle difftest already trusts.
 _SCRATCH_BASE, _SCRATCH_SIZE = 0x200000, 0x10000
-_STACK_TOP, _RET = 0x208000, 0xDEAD0000
+# The stack has a region of its own. It used to sit at the top of the scratch region, 2 KB above
+# the objects pointer arguments are aimed at, so a function with a large frame or a deep call chain
+# wrote over its own inputs.
+_STACK_BASE, _STACK_SIZE = 0x300000, 0x40000
+_STACK_TOP, _RET = _STACK_BASE + _STACK_SIZE - 0x1000, 0xDEAD0000
 _PAGE = 0x1000
 
 # Recording caps -- a pathological loop can execute millions of instructions; a trace is
@@ -285,7 +289,9 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
     uc.mem_map(secbase, max(size, _PAGE))
     uc.mem_write(va0, bytes(code))
     uc.mem_map(_SCRATCH_BASE, _SCRATCH_SIZE)
+    uc.mem_map(_STACK_BASE, _STACK_SIZE)
     mapped = {secbase, _SCRATCH_BASE}                        # page-group bases we've mapped
+    mapped.update(range(_STACK_BASE, _STACK_BASE + _STACK_SIZE, _PAGE))
 
     # When stubbing externals, plant a unique SENTINEL address in each IAT slot so a
     # `call [iat_slot]` resolves to a NAMED import (not a null pointer), and we can look up its

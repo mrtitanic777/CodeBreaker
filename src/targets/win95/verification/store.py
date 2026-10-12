@@ -35,9 +35,9 @@ CREATE INDEX IF NOT EXISTS body_module ON body(lane, module);
 CREATE TABLE IF NOT EXISTS profile(digest TEXT PRIMARY KEY, lane TEXT, settings TEXT, ts REAL);
 """
 _COLS = ("lane", "mod_sha", "key", "module", "fname", "sig", "verdict", "reason", "build", "ts",
-         "prev_verdict", "changed_build", "limits", "profile")
+         "prev_verdict", "changed_build", "limits", "profile", "detail")
 # Columns added after the first version of the table; older databases gain them on open.
-_ADDED = (("limits", "TEXT"), ("profile", "TEXT"))
+_ADDED = (("limits", "TEXT"), ("profile", "TEXT"), ("detail", "TEXT"))
 
 
 def default_path():
@@ -91,6 +91,7 @@ class Store(object):
                 lane, module, mod_sha, key, fname, sig, verdict, reason, build = row[:9]
                 limits = row[9] if len(row) > 9 else ""
                 profile = row[10] if len(row) > 10 else ""
+                detail = row[11] if len(row) > 11 else ""
                 old = self.db.execute("SELECT verdict, prev_verdict, changed_build FROM body "
                                       "WHERE lane=? AND mod_sha=? AND key=?",
                                       (lane, mod_sha, key)).fetchone()
@@ -98,9 +99,9 @@ class Store(object):
                 if old and old[0] != verdict:
                     prev, cb = old[0], build
                 self.db.execute(
-                    "INSERT OR REPLACE INTO body(%s) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)" % ",".join(_COLS),
+                    "INSERT OR REPLACE INTO body(%s) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)" % ",".join(_COLS),
                     (lane, mod_sha, key, module, fname, sig, verdict, reason or "", build, now, prev, cb,
-                     limits or "", profile or ""))
+                     limits or "", profile or "", detail or ""))
 
     def put_profile(self, digest, lane, settings):
         """Record what a profile digest stands for (the settings a verdict was reached under)."""

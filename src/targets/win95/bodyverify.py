@@ -343,14 +343,21 @@ def _prep_body(c_text, fname):
     labels = set(re.findall(r"(?m)^\s*([A-Za-z_]\w*)\s*:(?!:)", c_text))
     labels |= set(re.findall(r"\bgoto\s+([A-Za-z_]\w*)", c_text))
     undecl = sorted(used - refs - declared - params - _TYPEWORDS - labels - {fname})
-    rregs = sorted(g for g in undecl if re.fullmatch(r"r\d{1,2}", g))
+    # A leaked stack or frame pointer (`sp - 0x40` is the address of a local buffer) needs somewhere
+    # to point: give it the stand-in frame, as for a leaked rNN. Left as a zero global, every local
+    # the function passes by address became a small negative number.
+    rregs = sorted(g for g in undecl if re.fullmatch(r"r\d{1,2}|sp|bp|esp|ebp", g))
     other = [g for g in undecl if not g.isdigit() and g not in rregs]
-    if rregs:                                             # inject the frame-init prologue into THIS body
-        init = "".join("  %s=(unsigned)(_frame+0x4000);\n" % r for r in rregs)
+    if rregs:
+        # The stand-in frame is a LOCAL of this function, so each call has its own -- a shared
+        # static one was overwritten by every callee that also needed a frame.
+        init = "  unsigned char _fr[0x1000];\n" + "".join(
+            "  unsigned %s=(unsigned)(_fr+0x800);\n" % r for r in rregs)
         dm2 = _DEF_RE.search(c_text)
         if dm2:
             br = dm2.end() - 1 if c_text[dm2.end() - 1] == "{" else c_text.index("{", dm2.end() - 1)
             c_text = c_text[:br + 1] + "\n" + init + c_text[br + 1:]
+            rregs = []                                    # declared in the body; nothing global
     c_text = re.sub(r"\bvoid(\s+(?:__fastcall|__cdecl|__stdcall|__watcall)?\s*%s\s*\()"
                     % re.escape(fname), r"int\1", c_text)
     return c_text, refs, other, rregs
@@ -467,7 +474,82 @@ def compile_body(c_text, fname, outdir, imports=None):
     dll = os.path.join(outdir, fname + ".dll")
     return (dll if os.path.exists(dll) else None), ("ok" if os.path.exists(dll) else "link failed")
 
-def batch_compile(items, outdir, imports=None):
+def _param_count(c_text, fname):
+    """Number of parameters `fname` is DEFINED with in c_text, or None (not found / `()`)."""
+    m = re.search(r"(?m)^[^\n;{}#/]*\b%s\s*\(([^;{}]*)\)\s*\{" % re.escape(fname), c_text)
+    if not m:
+        return None
+    inner = m.group(1).strip()
+    if inner == "":
+        return None                                   # K&R `()`: takes anything
+    return 0 if inner == "void" else inner.count(",") + 1
+
+
+def _call_arg_counts(c_text, names):
+    """[(callee, argument count)] for every call in c_text to one of `names`."""
+    out = []
+    for m in re.finditer(r"\b([A-Za-z_]\w*)\s*\(", c_text):
+        if m.group(1) not in names:
+            continue
+        i, depth, n, any_tok = m.end(), 1, 0, False
+        while i < len(c_text) and depth:
+            ch = c_text[i]
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+            elif ch == "," and depth == 1:
+                n += 1
+            elif not ch.isspace():
+                any_tok = True
+            i += 1
+        out.append((m.group(1), n + 1 if any_tok else 0))
+    return out
+
+
+def arity_mismatches(items):
+    """{caller: reason} for bodies that call another body of the batch with a different number of
+    arguments than it is defined with. The compiler rejects these, but reports only the first bad
+    call of each callee per run -- found here, they are all known at once."""
+    defined = {}
+    for fn, c in items:
+        n = _param_count(c, fn)
+        if n is not None:
+            defined[fn] = n
+    bad = {}
+    for fn, c in items:
+        body = c[c.find("{"):] if "{" in c else c
+        for callee, n in _call_arg_counts(body, defined):
+            if callee != fn and n != defined[callee]:
+                bad[fn] = "calls %s with %d argument(s); it is defined with %d" % (callee, n, defined[callee])
+                break
+    return bad
+
+
+def batch_build(items, outdir, imports=None, rounds=10):
+    """Build as many of `items` as possible into ONE DLL. When the compiler rejects the batch, the
+    bodies its errors point at are dropped and the rest is built again -- so every body that
+    compiles ends up linked against every other one's real code. Bisecting instead scattered the
+    good bodies over many small DLLs, where a callee in another DLL was a `return 0` stand-in.
+    Returns (dll | None, [exported names], {dropped name: the compiler's message})."""
+    rejected = arity_mismatches(items)
+    items = [it for it in items if it[0] not in rejected]
+    for n in range(rounds):
+        errors = []
+        dll, exports = batch_compile(items, os.path.join(outdir, "r%d" % n), imports, errors=errors)
+        if dll:
+            return dll, exports, rejected
+        if not errors:
+            break
+        for fn, why in errors:
+            rejected.setdefault(fn, why)
+        items = [it for it in items if it[0] not in rejected]
+        if not items:
+            break
+    return None, [], rejected
+
+
+def batch_compile(items, outdir, imports=None, errors=None):
     """Compile MANY synthesised bodies into ONE DLL exporting all of them -- a single wcc386 + wlink
     instead of two subprocess spawns per body (the ~45%/body compile cost). `items` = [(fname, c_text)].
     Returns (dll_path, [fname...exported]) or (None, []) if even a single body won't compile alone.
@@ -490,7 +572,8 @@ def batch_compile(items, outdir, imports=None):
     members = {fn for fn, _ in preps}
     all_refs, all_other, all_rregs, bodies = set(), set(), set(), []
     for fname, (ct, refs, other, rregs) in preps:
-        all_refs |= refs; all_other |= set(other); all_rregs |= set(rregs); bodies.append(ct)
+        all_refs |= refs; all_other |= set(other); all_rregs |= set(rregs)
+        bodies.append("/*@@ %s */\n%s" % (fname, ct))        # the marker names the body below it
     imports = imports or {}
     imp = {r for r in all_refs - members if r in imports}
     stub_refs = sorted(all_refs - members - imp)         # intra-batch calls link to the real member
@@ -509,9 +592,31 @@ def batch_compile(items, outdir, imports=None):
     cf = os.path.join(outdir, base + ".c")
     open(cf, "w", newline="\n").write(src)
     env = _ow_env(ow)
-    r = subprocess.run([ow["wcc"]] + _CFLAGS + [base + ".c"],
-                       cwd=outdir, env=env, capture_output=True, text=True, timeout=300)
+    # -e: report every error, not the first twenty -- each names a body to drop (batch_build).
+    r = subprocess.run([ow["wcc"]] + _CFLAGS + ["-e=100000", base + ".c"],
+                       cwd=outdir, env=env, capture_output=True, text=True, timeout=600)
     if r.returncode != 0:
+        if errors is not None:
+            # Attribute each error to the body whose lines it falls in.
+            starts = [(i + 1, ln[5:-3]) for i, ln in enumerate(src.split("\n"))
+                      if ln.startswith("/*@@ ") and ln.endswith(" */")]
+            text = (r.stdout or "") + (r.stderr or "")
+            try:
+                text += open(os.path.join(outdir, base + ".err"), errors="replace").read()
+            except OSError:
+                pass
+            seen = set()
+            for m in re.finditer(r"\((\d+)\): Error! (E\d+: [^\r\n]*)", text):
+                ln = int(m.group(1))
+                owner = None
+                for start, fn in starts:
+                    if start <= ln:
+                        owner = fn
+                    else:
+                        break
+                if owner and owner not in seen:
+                    seen.add(owner)
+                    errors.append((owner, m.group(2)[:100]))
         return None, []
     obj = open(os.path.join(outdir, base + ".obj"), "rb").read()
     exports = []
