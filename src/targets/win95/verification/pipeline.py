@@ -28,7 +28,7 @@ from collections import Counter
 
 from src.core import paths, toolchain
 
-PIPE_REV = 17                   # what a verdict means (13: one build per batch; bodies the compiler rejects are dropped by name)
+PIPE_REV = 18                   # what a verdict means (13: one build per batch; bodies the compiler rejects are dropped by name)
 MAX_SUPPORT = 1500              # out-of-batch callee bodies pulled in per batch
 _STATIC_NAME = re.compile(r"sub_([0-9A-Fa-f]{6})")     # the static decompiler's name for an rva
 GOOD = ("equivalent", "consistent")

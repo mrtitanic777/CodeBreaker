@@ -24,7 +24,7 @@ import subprocess
 from src.core import corpus
 
 LANE = "pe-ghidra"
-REV = 5                                    # bump when the adaptation below changes what is compiled
+REV = 6                                    # bump when the adaptation below changes what is compiled
 _FIXUPS = ("typedef unsigned int pointer32;\ntypedef unsigned int undefined3;\ntypedef void *pointer;\n"
            "typedef unsigned long long ulonglong;\ntypedef long long longlong;\n"
            "#define true 1\n#define false 0\n")
@@ -169,6 +169,7 @@ def build(module_path, preamble, funcs, order, used, outdir, rounds=12, cflags=N
     imports = B.import_map(module_path)
     os.makedirs(outdir, exist_ok=True)
     names, dropped = list(order), {}
+    nostub = set()
 
     def stand_in(n):
         """A dropped function keeps its place with the same signature and an empty body, so its
@@ -177,7 +178,7 @@ def build(module_path, preamble, funcs, order, used, outdir, rounds=12, cflags=N
         return "%s { return 0; }" % head if head.endswith(")") else ""
     for rnd in range(rounds):
         src = (preamble + "\n\n".join("/*@@ %s */\n%s" % (n, funcs[n]) for n in names) + "\n"
-               + "/*@@ (stand-ins) */\n" + "\n".join(stand_in(n) for n in order if n in dropped) + "\n")
+               + "/*@@ (stand-ins) */\n" + "\n".join(stand_in(n) for n in order if n in dropped and n not in nostub) + "\n")
         base = "g%d" % rnd
         with open(os.path.join(outdir, base + ".c"), "w", newline="\n", encoding="utf-8") as f:
             f.write(src)
@@ -187,7 +188,7 @@ def build(module_path, preamble, funcs, order, used, outdir, rounds=12, cflags=N
             obj = open(os.path.join(outdir, base + ".obj"), "rb").read()
             with open(os.path.join(outdir, base + ".lnk"), "w", newline="\n") as f:
                 # undefsok: a call to a dropped function is left unresolved (it then fails the test)
-                f.write("system nt_dll\nname %s.dll\noption quiet\noption undefsok\nfile %s.obj\n" % (base, base)
+                f.write(("system nt_dll\nname %s.dll\noption quiet\noption undefsok\n" + B._BASE + "file %s.obj\n") % (base, base)
                         + B._RTL + B._import_lines(obj, set(used), imports))
                 # The public symbol of each function as the compiler decorated it: _name (cdecl),
                 # _name@N (stdcall), @name@N (fastcall). A function with no such symbol is not exported.
@@ -209,6 +210,7 @@ def build(module_path, preamble, funcs, order, used, outdir, rounds=12, cflags=N
         except OSError:
             pass
         bad = {}
+        progressed = False
         for m in re.finditer(r"\((\d+)\): Error! (E\d+: [^\r\n]*)", errs):
             ln, owner = int(m.group(1)), None
             for st, fn in starts:
@@ -218,7 +220,16 @@ def build(module_path, preamble, funcs, order, used, outdir, rounds=12, cflags=N
                     break
             if owner and owner in funcs:
                 bad.setdefault(owner, m.group(2)[:100])
-        if not bad:
+            elif owner == "(stand-ins)":                # a stand-in the compiler will not take
+                q = re.search(r"'([A-Za-z_]\w*)'", m.group(2))
+                text_lines = src.split("\n")
+                line = text_lines[ln - 1] if ln - 1 < len(text_lines) else ""
+                hit = (q.group(1) if q and q.group(1) in funcs else
+                       next((n for n in dropped if re.search(r"\b%s\s*\(" % re.escape(n), line)), None))
+                if hit and hit not in nostub:
+                    nostub.add(hit)
+                    progressed = True
+        if not bad and not progressed:
             break                                       # the preamble itself does not compile
         dropped.update(bad)
         names = [n for n in names if n not in bad]
