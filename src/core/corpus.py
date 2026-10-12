@@ -17,7 +17,6 @@ and verify against another. Everything resolves here now:
 The directory walk happens once per process and is cached.
 """
 import os
-import struct
 
 from src.core import paths
 
@@ -51,16 +50,8 @@ def lane(path):
     is not an MZ executable."""
     if path in _lane_cache:
         return _lane_cache[path]
-    out = None
-    try:
-        with open(path, "rb") as f:
-            d = f.read(0x40)
-            if len(d) >= 0x40 and d[:2] == b"MZ":
-                f.seek(struct.unpack("<I", d[0x3c:0x40])[0])
-                sig = f.read(2)
-                out = {b"PE": "pe", b"NE": "ne", b"LE": "le", b"LX": "le"}.get(sig, "dos")
-    except OSError:
-        out = None
+    from src.formats import detect
+    out = detect.lane(path)
     _lane_cache[path] = out
     return out
 

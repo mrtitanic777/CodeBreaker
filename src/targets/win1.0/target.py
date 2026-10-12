@@ -32,17 +32,9 @@ SYSMODS = {"KERNEL", "GDI", "USER", "SYSTEM", "KEYBOARD", "MOUSE",
 
 def format_of(path):
     """'NE' | 'MZ' | None. Reads only the two headers (win1.0 is NE-only)."""
-    try:
-        with open(path, "rb") as f:
-            h = f.read(0x40)
-            if h[:2] != b"MZ" or len(h) < 0x40:
-                return None
-            off = struct.unpack("<H", h[0x3C:0x3E])[0]
-            f.seek(off)
-            sig = f.read(2)
-    except OSError:
-        return None
-    return {b"NE": "NE"}.get(sig, "MZ")
+    from src.formats import detect
+    fmt = detect.format_of(path)
+    return fmt if fmt in ("NE", None) else "MZ"
 
 
 def resolve(name):
