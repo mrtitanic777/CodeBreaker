@@ -132,6 +132,8 @@ X86Insn DecodeX86Cap(const uint8_t* data, size_t size, size_t pos, uint32_t addr
     if (op.type == X86_OP_REG) {
       d.kind = OpKind::Reg;
       d.reg = mapReg(op.reg);
+      d.hi8 = op.reg == X86_REG_AH || op.reg == X86_REG_CH || op.reg == X86_REG_DH ||
+              op.reg == X86_REG_BH;
     } else if (op.type == X86_OP_IMM) {
       if (branch) {
         d.kind = OpKind::Rel; d.imm = (int64_t)op.imm;
