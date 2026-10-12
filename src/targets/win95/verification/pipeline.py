@@ -27,7 +27,7 @@ from collections import Counter
 
 from src.core import paths, toolchain
 
-PIPE_REV = 5                    # bump when the pipeline changes what a verdict means (5: A<n>_t argument structs build)
+PIPE_REV = 7                    # bump when the pipeline changes what a verdict means (7: real imports; call arguments compared; distinct input values)
 GOOD = ("equivalent", "consistent")
 
 
@@ -132,7 +132,8 @@ class PELane(object):
             need = set()
             for fn in todo:
                 need |= clo[fn]                  # the mates a body links against must be compiled too
-            subs = B._batch_or_bisect([(fn, src[fn]) for fn in order if fn in need], outdir)
+            subs = B._batch_or_bisect([(fn, src[fn]) for fn in order if fn in need], outdir,
+                                      imports=B.import_map(path))
             vecs = verify95._vectors(4, "pe")
             done = set()
             for dll, exports in subs:

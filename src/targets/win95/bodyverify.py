@@ -366,14 +366,85 @@ def _omf_export_name(obj, fname):
     cand = [s for s in pubs if _base(s) == fname]
     return cand[0] if cand else ("_" + fname)
 
-def compile_body(c_text, fname, outdir):
+# ---------------------------------------------------------------------------------------------
+# Real imports. A rebuilt body must call the retail module's imported functions THROUGH AN
+# IMPORT, not through a local stand-in. The oracle records an external call when execution
+# lands on an import; a local `int HeapAlloc(){return 0;}` is invisible to it. With stand-ins
+# the rebuilt side never called anything, so any body whose retail path reached an API could
+# not match -- most of the code that matters. (The 16-bit lane had the same flaw.)
+# ---------------------------------------------------------------------------------------------
+_IMPORT_MAPS = {}
+_CDECL_DLLS = ("CRTDLL", "MSVCRT", "MSVCR", "MSVCIRT")      # the C runtime: the caller cleans up
+
+
+def import_map(module):
+    """{name: dll} for the functions a retail PE imports by name (the first DLL wins)."""
+    if module not in _IMPORT_MAPS:
+        out = {}
+        try:
+            for dll, name in open_pe(module).imports().values():
+                if name and re.fullmatch(r"[A-Za-z_]\w*", name):
+                    out.setdefault(name, os.path.splitext(dll)[0].upper())
+        except Exception:
+            pass
+        _IMPORT_MAPS[module] = out
+    return _IMPORT_MAPS[module]
+
+
+def _import_decls(names, imports):
+    """Declarations for imported functions. Win32 API functions are stdcall (the callee removes
+    its arguments, which is what the oracle's import stub does); C-runtime ones are cdecl."""
+    from src.engines.behavior import apiarity
+    out = []
+    for n in sorted(names):
+        popped = apiarity.stack_bytes(imports[n], n)          # what the exporting module really does
+        cdecl = (popped == 0 if popped is not None else
+                 imports[n].startswith(_CDECL_DLLS) or n.startswith("wsprintf"))
+        out.append("int %s %s();" % ("__cdecl" if cdecl else "__stdcall", n))
+    return out
+
+
+def _omf_externs(data):
+    """External symbol names an OMF object refers to (EXTDEF records, 0x8C)."""
+    out, i, n = [], 0, len(data)
+    while i + 3 <= n:
+        rectype = data[i]
+        end = i + 3 + (data[i + 1] | (data[i + 2] << 8))
+        if end > n:
+            break
+        if rectype == 0x8C:
+            q = i + 3
+            while q < end - 1:                           # end-1 is the record checksum
+                ln = data[q]
+                out.append(data[q + 1:q + 1 + ln].decode("latin1"))
+                q += 1 + ln
+                q += 2 if (q < end and data[q] & 0x80) else 1     # type index
+        i = end
+    return out
+
+
+def _import_lines(obj, names, imports):
+    """wlink `import` directives binding each imported name's decorated symbol to DLL.name."""
+    ext = _omf_externs(obj)
+    out = []
+    for n in sorted(names):
+        for sym in ext:
+            if sym.lstrip("_").split("@")[0] == n:
+                out.append("import '%s' '%s'.'%s'\n" % (sym, imports[n], n))
+                break
+    return "".join(out)
+
+
+def compile_body(c_text, fname, outdir, imports=None):
     """Compile a single synthesised body into a tiny DLL exporting `fname`. Returns dll path|None."""
     ow = _ow()
     if not os.path.exists(ow["wcc"]):
         return None, "OpenWatcom not built"
     os.makedirs(outdir, exist_ok=True)
     c_text, refs, other, rregs = _prep_body(c_text, fname)
-    stubs = ["int %s(){return 0;}" % r for r in sorted(refs)]
+    imports = imports or {}
+    imp = {r for r in refs if r in imports}
+    stubs = _import_decls(imp, imports) + ["int %s(){return 0;}" % r for r in sorted(refs - imp)]
     gdecl = ["unsigned %s;" % g for g in other]
     if rregs:
         gdecl.append("static unsigned char _frame[0x8000];")
@@ -389,13 +460,14 @@ def compile_body(c_text, fname, outdir):
     obj = open(os.path.join(outdir, fname + ".obj"), "rb").read()
     internal = _omf_export_name(obj, fname)
     with open(os.path.join(outdir, "b.lnk"), "w", newline="\n") as f:
-        f.write(("system nt_dll\nname %s.dll\noption quiet\nfile %s.obj\n" + _RTL + "export %s='%s'\n")
-                % (fname, fname, fname, internal))
+        f.write(("system nt_dll\nname %s.dll\noption quiet\nfile %s.obj\n" + _RTL)
+                % (fname, fname) + _import_lines(obj, imp, imports) +
+                "export %s='%s'\n" % (fname, internal))
     subprocess.run([ow["wlink"], "@b.lnk"], cwd=outdir, env=env, capture_output=True, text=True)
     dll = os.path.join(outdir, fname + ".dll")
     return (dll if os.path.exists(dll) else None), ("ok" if os.path.exists(dll) else "link failed")
 
-def batch_compile(items, outdir):
+def batch_compile(items, outdir, imports=None):
     """Compile MANY synthesised bodies into ONE DLL exporting all of them -- a single wcc386 + wlink
     instead of two subprocess spawns per body (the ~45%/body compile cost). `items` = [(fname, c_text)].
     Returns (dll_path, [fname...exported]) or (None, []) if even a single body won't compile alone.
@@ -419,8 +491,10 @@ def batch_compile(items, outdir):
     all_refs, all_other, all_rregs, bodies = set(), set(), set(), []
     for fname, (ct, refs, other, rregs) in preps:
         all_refs |= refs; all_other |= set(other); all_rregs |= set(rregs); bodies.append(ct)
-    stub_refs = sorted(all_refs - members)               # intra-batch calls link to the real member
-    stubs = ["int %s(){return 0;}" % r for r in stub_refs]
+    imports = imports or {}
+    imp = {r for r in all_refs - members if r in imports}
+    stub_refs = sorted(all_refs - members - imp)         # intra-batch calls link to the real member
+    stubs = _import_decls(imp, imports) + ["int %s(){return 0;}" % r for r in stub_refs]
     gdecl = ["unsigned %s;" % g for g in sorted(all_other)]
     if all_rregs:
         gdecl.append("static unsigned char _frame[0x8000];")
@@ -442,7 +516,8 @@ def batch_compile(items, outdir):
     obj = open(os.path.join(outdir, base + ".obj"), "rb").read()
     exports = []
     with open(os.path.join(outdir, base + ".lnk"), "w", newline="\n") as f:
-        f.write("system nt_dll\nname %s.dll\noption quiet\nfile %s.obj\n" % (base, base) + _RTL)
+        f.write("system nt_dll\nname %s.dll\noption quiet\nfile %s.obj\n" % (base, base) + _RTL +
+                _import_lines(obj, imp, imports))
         for fn in sorted(members):
             f.write("export %s='%s'\n" % (fn, _omf_export_name(obj, fn)))
             exports.append(fn)
@@ -450,22 +525,22 @@ def batch_compile(items, outdir):
     dll = os.path.join(outdir, base + ".dll")
     return (dll, exports) if os.path.exists(dll) else (None, [])
 
-def _batch_or_bisect(items, outdir, tag="b"):
+def _batch_or_bisect(items, outdir, tag="b", imports=None):
     """Compile `items` [(fname, c_text)] into as few DLLs as possible: try the whole batch; on failure
     split in half and recurse, down to a single body (compile_body). Returns [(dll, [fname...])] -- the
     bad bodies simply end up as failed singletons, never sinking their neighbours."""
     if not items:
         return []
-    dll, exports = batch_compile(items, os.path.join(outdir, tag))
+    dll, exports = batch_compile(items, os.path.join(outdir, tag), imports)
     if dll:
         return [(dll, exports)]
     if len(items) == 1:
         fn, c = items[0]
-        d, _ = compile_body(c, fn, os.path.join(outdir, tag + "_1"))
+        d, _ = compile_body(c, fn, os.path.join(outdir, tag + "_1"), imports)
         return [(d, [fn])] if d else []
     mid = len(items) // 2
-    return (_batch_or_bisect(items[:mid], outdir, tag + "L") +
-            _batch_or_bisect(items[mid:], outdir, tag + "R"))
+    return (_batch_or_bisect(items[:mid], outdir, tag + "L", imports) +
+            _batch_or_bisect(items[mid:], outdir, tag + "R", imports))
 
 
 def verify_module_batched(retail, vas=None, arity=4, outdir=None, bank=True, fast=True, store=None):
@@ -497,7 +572,7 @@ def _verify_one(retail, va, arity, outdir, closure):
     if not fname:
         return {"va": va, "verdict": "no-synth", "reason": c}
     outdir = outdir or _scratch(os.path.basename(retail).lower(), "%x" % va)
-    dll, clog = compile_body(c, fname, outdir)
+    dll, clog = compile_body(c, fname, outdir, import_map(retail))
     if not dll:
         return {"va": va, "verdict": "no-compile", "reason": clog, "c": c}
     # original: run the retail body; reconstructed: run the compiled body -- same inputs + stubs
