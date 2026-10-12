@@ -168,6 +168,11 @@ def report(lane):
 def sweep(lane, only=None, jobs=5, cores=6, timeout=1500, size=None, retry_failed=False, fresh=False):
     if not toolchain.decompiler(lane):
         raise SystemExit("decompiler for lane %r is not built (%s)" % (lane, toolchain.decompiler_dir()))
+    # A missing compiler is a broken setup, not a result: without this every body would be recorded
+    # as "no-compile" (a checkout elsewhere finds OpenWatcom through CB_OPENWATCOM).
+    cc = "wcc386" if lane == "pe" else "wcc"
+    if not toolchain.ow_tool(cc):
+        raise SystemExit("OpenWatcom (%s) not found under %s -- set CB_OPENWATCOM" % (cc, toolchain.openwatcom_root()))
     size = size or CHUNK[lane]
     mods = corpus.modules(lane)
     if only:
