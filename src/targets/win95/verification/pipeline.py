@@ -27,7 +27,7 @@ from collections import Counter
 
 from src.core import paths, toolchain
 
-PIPE_REV = 1                    # bump when the pipeline changes what a verdict means
+PIPE_REV = 3                    # bump when the pipeline changes what a verdict means (3: SEH bodies build)
 GOOD = ("equivalent", "consistent")
 
 
