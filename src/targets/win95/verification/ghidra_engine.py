@@ -244,6 +244,51 @@ def build(module_path, preamble, funcs, order, used, outdir, rounds=30, cflags=N
 CORE_LANE = "pe-core"
 
 
+def _judge_chunk(module_path, dll, pairs):
+    """Judge [(va, rebuilt address)] in a worker process. -> {va: (verdict, reason, limits, detail)}."""
+    from src.targets.win95 import verify95 as V
+    from src.targets.win95.verification import pipeline
+    pipeline._arm()
+    try:
+        from src.core import parallel
+        parallel.throttle(cores=int(os.environ.get("CB_CORES", "6")), below_normal=True)
+    except Exception:
+        pass
+    vecs, more = V._vectors(4, "pe"), V._confirm_vectors(4, "pe")
+    out = {}
+    for va, addr in pairs:
+        info = {}
+        try:
+            verdict, reason, limits = V.compare(
+                lambda v: V._fp_pe(module_path, va, v),
+                lambda v: V._fp_pe(dll, addr, v, rebuilt=module_path), vecs, more,
+                insns=V.insn_count(module_path, va),
+                directed=lambda cov, rch: V.directed_vectors(module_path, va, cov, reached=rch),
+                info=info)
+        except ImportError:
+            raise
+        except Exception as e:                              # one function must not sink the chunk
+            verdict, reason, limits = "inconclusive", "judge: %s" % type(e).__name__, []
+        out[va] = (verdict, reason, list(limits), info.get("detail", ""))
+    return out
+
+
+def judge_all(module_path, dll, pairs, jobs=None):
+    """Judge every (va, rebuilt address) pair, spread over worker processes: each function is
+    independent, and running the original and the rebuilt code on a dozen inputs is the slow part."""
+    jobs = jobs or int(os.environ.get("CB_JOBS", "5"))
+    if jobs <= 1 or len(pairs) < 24:
+        return _judge_chunk(module_path, dll, pairs)
+    from concurrent.futures import ProcessPoolExecutor
+    size = max(8, -(-len(pairs) // (jobs * 6)))
+    chunks = [pairs[i:i + size] for i in range(0, len(pairs), size)]
+    out = {}
+    with ProcessPoolExecutor(max_workers=jobs) as ex:
+        for part in ex.map(_judge_chunk, [module_path] * len(chunks), [dll] * len(chunks), chunks):
+            out.update(part)
+    return out
+
+
 def verify(module_path, funcs=None, store=None, outdir=None, log=None, engine="export"):
     """Judge a second decompiler's reconstruction of each function. -> ({key: result}, preamble),
     results as from pipeline.verify, each also carrying "source" (the function's text).
@@ -314,6 +359,7 @@ def verify(module_path, funcs=None, store=None, outdir=None, log=None, engine="e
                     if n not in tainted and calls[n] & tainted:
                         tainted.add(n)
                         grew = True
+        todo = []
         for va in fresh:
             k, n = L.key(va), by_va.get(va)
             if not n:
@@ -322,17 +368,13 @@ def verify(module_path, funcs=None, store=None, outdir=None, log=None, engine="e
                 results[k] = {"verdict": "no-compile", "fname": n, "reason": dropped.get(n, ""),
                               "source": gfuncs[n]}
             else:
-                info = {}
-                verdict, reason, limits = V.compare(
-                    lambda v, a=va: V._fp_pe(module_path, a, v),
-                    lambda v, a=base + ex[n]: V._fp_pe(dll, a, v, rebuilt=module_path), vecs, more,
-                    insns=V.insn_count(module_path, va),
-                    directed=lambda cov, rch, a=va: V.directed_vectors(module_path, a, cov, reached=rch),
-                    info=info)
-                if n in tainted and verdict in pipeline.GOOD:
-                    limits = sorted(set(limits) | {"stub-callee"})
-                results[k] = {"verdict": verdict, "fname": n, "reason": reason, "limits": ",".join(limits),
-                              "detail": info.get("detail", ""), "source": gfuncs[n]}
+                todo.append((va, base + ex[n]))
+        for va, (verdict, reason, limits, detail) in judge_all(module_path, dll, todo).items():
+            n = by_va[va]
+            if n in tainted and verdict in pipeline.GOOD:
+                limits = sorted(set(limits) | {"stub-callee"})
+            results[L.key(va)] = {"verdict": verdict, "fname": n, "reason": reason,
+                                  "limits": ",".join(limits), "detail": detail, "source": gfuncs[n]}
         if store and mod_sha:
             module = os.path.basename(module_path).lower()
             store.put_many((lane, module, mod_sha, k, r.get("fname", ""), sig, r["verdict"],
