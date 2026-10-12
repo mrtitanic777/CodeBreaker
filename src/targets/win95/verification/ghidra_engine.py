@@ -244,8 +244,10 @@ def build(module_path, preamble, funcs, order, used, outdir, rounds=30, cflags=N
 CORE_LANE = "pe-core"
 
 
-def _judge_chunk(module_path, dll, pairs):
-    """Judge [(va, rebuilt address)] in a worker process. -> {va: (verdict, reason, limits, detail)}."""
+def _judge_chunk(module_path, dll, pairs, mark=None):
+    """Judge [(va, rebuilt address)] in a worker process. -> {va: (verdict, reason, limits, detail)}.
+    `mark` is a directory where the worker notes which function it is on, so that if the emulator
+    takes the process down, the parent knows which one did it."""
     from src.targets.win95 import verify95 as V
     from src.targets.win95.verification import pipeline
     pipeline._arm()
@@ -255,8 +257,12 @@ def _judge_chunk(module_path, dll, pairs):
     except Exception:
         pass
     vecs, more = V._vectors(4, "pe"), V._confirm_vectors(4, "pe")
+    note = os.path.join(mark, "%d.cur" % os.getpid()) if mark else None
     out = {}
     for va, addr in pairs:
+        if note:
+            with open(note, "w") as f:
+                f.write("%d" % va)
         info = {}
         try:
             verdict, reason, limits = V.compare(
@@ -270,6 +276,9 @@ def _judge_chunk(module_path, dll, pairs):
         except Exception as e:                              # one function must not sink the chunk
             verdict, reason, limits = "inconclusive", "judge: %s" % type(e).__name__, []
         out[va] = (verdict, reason, list(limits), info.get("detail", ""))
+    if note:
+        with open(note, "w") as f:
+            f.write("")
     return out
 
 
@@ -279,13 +288,50 @@ def judge_all(module_path, dll, pairs, jobs=None):
     jobs = jobs or int(os.environ.get("CB_JOBS", "5"))
     if jobs <= 1 or len(pairs) < 24:
         return _judge_chunk(module_path, dll, pairs)
+    import tempfile
     from concurrent.futures import ProcessPoolExecutor
     size = max(8, -(-len(pairs) // (jobs * 6)))
-    chunks = [pairs[i:i + size] for i in range(0, len(pairs), size)]
-    out = {}
-    with ProcessPoolExecutor(max_workers=jobs) as ex:
-        for part in ex.map(_judge_chunk, [module_path] * len(chunks), [dll] * len(chunks), chunks):
-            out.update(part)
+    out, todo = {}, list(pairs)
+    # The emulator can take a worker down, and a dead worker takes the whole pool with it. Each
+    # worker notes the function it is on; whatever was being judged when the pool died is left
+    # without a verdict and everything else unfinished is run again.
+    for _ in range(12):
+        if not todo:
+            break
+        with tempfile.TemporaryDirectory(prefix="cbjudge") as mark:
+            chunks = [todo[i:i + size] for i in range(0, len(todo), size)]
+            with ProcessPoolExecutor(max_workers=jobs) as ex:
+                futs = [ex.submit(_judge_chunk, module_path, dll, c, mark) for c in chunks]
+                for fut in futs:
+                    try:
+                        out.update(fut.result())
+                    except ImportError:
+                        raise
+                    except Exception:
+                        pass
+            suspects = set()
+            for name in os.listdir(mark):
+                with open(os.path.join(mark, name)) as f:
+                    cur = f.read().strip()
+                if cur and int(cur) not in out:
+                    suspects.add(int(cur))
+        todo = [p for p in todo if p[0] not in out]
+        if not todo:
+            break
+        if not suspects:                                    # died outside any function: go one by one
+            size = 1
+            continue
+        for p in [p for p in todo if p[0] in suspects]:     # every worker was on something: try each alone
+            try:
+                with ProcessPoolExecutor(max_workers=1) as ex:
+                    out.update(ex.submit(_judge_chunk, module_path, dll, [p]).result())
+            except ImportError:
+                raise
+            except Exception:
+                out[p[0]] = ("inconclusive", "judge: the emulator crashed on this function", [], "")
+        todo = [p for p in todo if p[0] not in out]
+    for va, _addr in todo:
+        out[va] = ("inconclusive", "judge: not reached", [], "")
     return out
 
 

@@ -19,7 +19,7 @@ import subprocess
 
 from src.core import paths
 
-REV = 10                                    # bump when what is fed to / taken from the core changes
+REV = 11                                    # bump when what is fed to / taken from the core changes
 
 # The core prints a function in the module's default convention (stdcall) without saying so, and
 # spells the others out. Compile with stdcall as the default (-ecd; -ecs is __syscall) so the text
@@ -200,6 +200,10 @@ def _keep_frame(t):
                 fields.append("uint1 _gap_%x[%d];" % (off, gap))
         fields.append("%s %s%s;" % (ty, name, "[%s]" % arr if arr else ""))
         pos = addr + size
+    if pos is not None and pos < 0:
+        # the original's frame runs on to its return address: a callee handed the address of the
+        # last local may fill a whole structure there (a RECT the core saw only two fields of)
+        fields.append("uint1 _rest[%d];" % -pos)
     decl = "  struct { %s } _f;   /* locals at their offsets in the original's frame */" % " ".join(fields)
     first = [True]
 
