@@ -24,7 +24,7 @@ import subprocess
 from src.core import corpus
 
 LANE = "pe-ghidra"
-REV = 4                                    # bump when the adaptation below changes what is compiled
+REV = 5                                    # bump when the adaptation below changes what is compiled
 _FIXUPS = ("typedef unsigned int pointer32;\ntypedef unsigned int undefined3;\ntypedef void *pointer;\n"
            "typedef unsigned long long ulonglong;\ntypedef long long longlong;\n"
            "#define true 1\n#define false 0\n")
@@ -169,8 +169,15 @@ def build(module_path, preamble, funcs, order, used, outdir, rounds=12, cflags=N
     imports = B.import_map(module_path)
     os.makedirs(outdir, exist_ok=True)
     names, dropped = list(order), {}
+
+    def stand_in(n):
+        """A dropped function keeps its place with the same signature and an empty body, so its
+        callers still link and their stack stays balanced (they are then marked stub-callee)."""
+        head = " ".join(funcs[n].split("{", 1)[0].split())
+        return "%s { return 0; }" % head if head.endswith(")") else ""
     for rnd in range(rounds):
-        src = preamble + "\n\n".join("/*@@ %s */\n%s" % (n, funcs[n]) for n in names) + "\n"
+        src = (preamble + "\n\n".join("/*@@ %s */\n%s" % (n, funcs[n]) for n in names) + "\n"
+               + "/*@@ (stand-ins) */\n" + "\n".join(stand_in(n) for n in order if n in dropped) + "\n")
         base = "g%d" % rnd
         with open(os.path.join(outdir, base + ".c"), "w", newline="\n", encoding="utf-8") as f:
             f.write(src)
@@ -209,7 +216,7 @@ def build(module_path, preamble, funcs, order, used, outdir, rounds=12, cflags=N
                     owner = fn
                 else:
                     break
-            if owner:
+            if owner and owner in funcs:
                 bad.setdefault(owner, m.group(2)[:100])
         if not bad:
             break                                       # the preamble itself does not compile
@@ -278,6 +285,19 @@ def verify(module_path, funcs=None, store=None, outdir=None, log=None, engine="e
             pb = open_pe(dll)
             ex, base = pb.export_addrs(), pb.image_base
         vecs, more = V._vectors(4, "pe"), V._confirm_vectors(4, "pe")
+        # functions that reach a dropped one (now a stand-in), directly or through others
+        tainted = set()
+        if dropped:
+            pat = re.compile(r"\b(%s)\s*\(" % "|".join(re.escape(d) for d in dropped))
+            calls = {n: set(re.findall(r"\b([A-Za-z_]\w*)\s*\(", gfuncs[n])) & set(built) for n in built}
+            tainted = {n for n in built if pat.search(gfuncs[n].split("{", 1)[-1])}
+            grew = True
+            while grew:
+                grew = False
+                for n in built:
+                    if n not in tainted and calls[n] & tainted:
+                        tainted.add(n)
+                        grew = True
         for va in fresh:
             k, n = L.key(va), by_va.get(va)
             if not n:
@@ -293,6 +313,8 @@ def verify(module_path, funcs=None, store=None, outdir=None, log=None, engine="e
                     insns=V.insn_count(module_path, va),
                     directed=lambda cov, rch, a=va: V.directed_vectors(module_path, a, cov, reached=rch),
                     info=info)
+                if n in tainted and verdict in pipeline.GOOD:
+                    limits = sorted(set(limits) | {"stub-callee"})
                 results[k] = {"verdict": verdict, "fname": n, "reason": reason, "limits": ",".join(limits),
                               "detail": info.get("detail", ""), "source": gfuncs[n]}
         if store and mod_sha:

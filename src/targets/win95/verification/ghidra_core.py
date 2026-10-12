@@ -19,7 +19,7 @@ import subprocess
 
 from src.core import paths
 
-REV = 3                                    # bump when what is fed to / taken from the core changes
+REV = 5                                    # bump when what is fed to / taken from the core changes
 
 # The core prints a function in the module's default convention (stdcall) without saying so, and
 # spells the others out. Compile with stdcall as the default so the text means what it says.
@@ -34,8 +34,45 @@ typedef unsigned char undefined; typedef unsigned char undefined1; typedef unsig
 typedef unsigned int undefined4; typedef unsigned long long undefined8;
 typedef unsigned char bool; typedef float float4; typedef double float8; typedef long double float10;
 typedef int code();
+typedef unsigned int unkbyte3; typedef unsigned int unkint3; typedef unsigned int unkuint3;
 #define true 1
 #define false 0
+"""
+
+# The core's own operators for things C has no syntax for: joining and splitting values by
+# bytes, widening, and the carry/overflow conditions of an addition or subtraction.
+_HELPERS = """
+#define CONCAT11(a,b) ((uint2)(((uint2)(uint1)(a) << 8) | (uint1)(b)))
+#define CONCAT12(a,b) ((uint4)(((uint4)(uint1)(a) << 16) | (uint2)(b)))
+#define CONCAT13(a,b) ((uint4)(((uint4)(uint1)(a) << 24) | ((uint4)(b) & 0xFFFFFF)))
+#define CONCAT21(a,b) ((uint4)(((uint4)(uint2)(a) << 8) | (uint1)(b)))
+#define CONCAT22(a,b) ((uint4)(((uint4)(uint2)(a) << 16) | (uint2)(b)))
+#define CONCAT31(a,b) ((uint4)(((uint4)(a) << 8) | (uint1)(b)))
+#define CONCAT44(a,b) ((uint8)(((uint8)(uint4)(a) << 32) | (uint4)(b)))
+#define SUB21(x,n) ((uint1)((uint2)(x) >> (8 * (n))))
+#define SUB41(x,n) ((uint1)((uint4)(x) >> (8 * (n))))
+#define SUB42(x,n) ((uint2)((uint4)(x) >> (8 * (n))))
+#define SUB43(x,n) ((uint4)((uint4)(x) >> (8 * (n))) & 0xFFFFFF)
+#define SUB81(x,n) ((uint1)((uint8)(x) >> (8 * (n))))
+#define SUB82(x,n) ((uint2)((uint8)(x) >> (8 * (n))))
+#define SUB84(x,n) ((uint4)((uint8)(x) >> (8 * (n))))
+#define ZEXT12(x) ((uint2)(uint1)(x))
+#define ZEXT14(x) ((uint4)(uint1)(x))
+#define ZEXT24(x) ((uint4)(uint2)(x))
+#define ZEXT48(x) ((uint8)(uint4)(x))
+#define SEXT12(x) ((int2)(int1)(x))
+#define SEXT14(x) ((int4)(int1)(x))
+#define SEXT24(x) ((int4)(int2)(x))
+#define SEXT48(x) ((int8)(int4)(x))
+#define CARRY1(a,b) ((uint1)(a) > (uint1)(0xFF - (uint1)(b)))
+#define CARRY2(a,b) ((uint2)(a) > (uint2)(0xFFFF - (uint2)(b)))
+#define CARRY4(a,b) ((uint4)(a) > 0xFFFFFFFFu - (uint4)(b))
+#define SCARRY4(a,b) ((((int4)(a) ^ (int4)((uint4)(a) + (uint4)(b))) & ((int4)(b) ^ (int4)((uint4)(a) + (uint4)(b)))) < 0)
+#define SBORROW4(a,b) ((((int4)(a) ^ (int4)(b)) & ((int4)(a) ^ (int4)((uint4)(a) - (uint4)(b)))) < 0)
+#define SCARRY2(a,b) ((int2)(((int2)(a) ^ (int2)((a) + (b))) & ((int2)(b) ^ (int2)((a) + (b)))) < 0)
+#define SBORROW2(a,b) ((int2)(((int2)(a) ^ (int2)(b)) & ((int2)(a) ^ (int2)((a) - (b)))) < 0)
+#define SCARRY1(a,b) ((int1)(((int1)(a) ^ (int1)((a) + (b))) & ((int1)(b) ^ (int1)((a) + (b)))) < 0)
+#define SBORROW1(a,b) ((int1)(((int1)(a) ^ (int1)(b)) & ((int1)(a) ^ (int1)((a) - (b)))) < 0)
 """
 _BY_SIZE = {1: "uint1", 2: "uint2", 4: "uint4", 8: "uint8"}
 
@@ -136,8 +173,13 @@ def adapt(module_path, funcs, outdir):
                 sizes.setdefault(int(m.group(1), 16), set()).add(int(m.group(2)))
             else:
                 body.append(ln)
+        t = "\n".join(body).strip()
+        # `x._1_2_` is the core's spelling of "2 bytes of x starting at byte 1"
+        t = re.sub(r"\b([A-Za-z_]\w*)\._(\d+)_(\d+)_",
+                   lambda mm: "(*(%s *)((char *)&%s + %s))" % (_BY_SIZE.get(int(mm.group(3)), "uint4"),
+                                                               mm.group(1), mm.group(2)), t)
         # every function returns a value in EAX whether or not the core saw it used
-        out[n] = re.sub(r"\Avoid(\s)", r"int\1", "\n".join(body).strip())
+        out[n] = re.sub(r"\Avoid(\s)", r"int\1", t)
     text = "\n".join(out.values())
     macros = []
     for pre, addr in sorted(set(re.findall(r"\b([a-z]+)Ram([0-9a-f]{8})\b", text))):
@@ -155,5 +197,5 @@ def adapt(module_path, funcs, outdir):
         head = out[n].split("{", 1)[0].strip()
         if head.endswith(")"):
             decls.append(" ".join(head.split()) + ";")
-    preamble = _TYPES + "\n".join(decls) + "\n" + "\n".join(macros) + "\n"
+    preamble = _TYPES + _HELPERS + "\n".join(decls) + "\n" + "\n".join(macros) + "\n"
     return preamble, out, order, by_va, used
