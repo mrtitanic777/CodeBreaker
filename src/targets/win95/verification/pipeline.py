@@ -20,6 +20,7 @@ fault or truncation), divergent, inconclusive (nothing could be observed), no-sy
 A divergent body carries the first thing that differed as its reason: exit-differs, deps-differ
 (the sequence of external calls) or ret-differs.
 """
+import re
 import hashlib
 import os
 import sys
@@ -27,7 +28,9 @@ from collections import Counter
 
 from src.core import paths, toolchain
 
-PIPE_REV = 7                    # bump when the pipeline changes what a verdict means (7: real imports; call arguments compared; distinct input values)
+PIPE_REV = 8                    # bump when the pipeline changes what a verdict means (8: callees outside the batch link to their real bodies)
+MAX_SUPPORT = 1500              # out-of-batch callee bodies pulled in per batch
+_STATIC_NAME = re.compile(r"sub_([0-9A-Fa-f]{6})")     # the static decompiler's name for an rva
 GOOD = ("equivalent", "consistent")
 
 
@@ -104,9 +107,36 @@ class PELane(object):
                 results[k] = {"verdict": "no-synth", "fname": "", "reason": str(c or "")[:120]}
             elif fn not in src:                  # one body reached at two addresses: keep the first
                 src[fn] = c; va_of[fn] = va; order.append(fn)
-        # A body's verdict depends on its own source AND on every batch-mate it (transitively)
-        # calls, because those link to their real bodies. Sign all of it.
-        calls = {fn: (B._stub_refs(src[fn], fn) & set(src)) for fn in order}
+        # A callee that is not in this batch (a batch is one chunk of a module's functions) would
+        # link to a `return 0` stand-in, and the caller would then be judged on behaviour that is
+        # not the reconstruction's. Pull in the real bodies of such callees, transitively, as
+        # SUPPORT: compiled and linked, not themselves judged here.
+        imports = B.import_map(path)
+        pe = open_pe(path)
+        by_name = pe.export_addrs()
+        support, tried, work = [], set(), list(order)
+        while work and len(support) < MAX_SUPPORT:
+            fn = work.pop()
+            for ref in sorted(B._stub_refs(src[fn], fn)):
+                if ref in src or ref in imports or ref in tried:
+                    continue
+                tried.add(ref)
+                m = _STATIC_NAME.fullmatch(ref)
+                rva = int(m.group(1), 16) if m else by_name.get(ref)
+                if rva is None:
+                    continue
+                try:
+                    blk = B._static_body(path, pe.image_base + rva)
+                    c = B._cure_body(B._beautify(blk)) if blk else None
+                except Exception:
+                    c = None
+                if c and B._defined_name(c) == ref:
+                    src[ref] = c
+                    support.append(ref)
+                    work.append(ref)
+        # A body's verdict depends on its own source AND on every body it (transitively) calls,
+        # because those link to their real bodies. Sign all of it.
+        calls = {fn: (B._stub_refs(src[fn], fn) & set(src)) for fn in order + support}
 
         def closure(fn):
             seen, work = set(), [fn]
@@ -132,8 +162,8 @@ class PELane(object):
             need = set()
             for fn in todo:
                 need |= clo[fn]                  # the mates a body links against must be compiled too
-            subs = B._batch_or_bisect([(fn, src[fn]) for fn in order if fn in need], outdir,
-                                      imports=B.import_map(path))
+            subs = B._batch_or_bisect([(fn, src[fn]) for fn in order + support if fn in need], outdir,
+                                      imports=imports)
             vecs = verify95._vectors(4, "pe")
             done = set()
             for dll, exports in subs:

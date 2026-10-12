@@ -45,6 +45,10 @@ class X86Lifter {
     call_sites_ = cs;
   }
 
+  // Import-table slots by the absolute address code reads them at -> the imported name. Lets
+  // `mov esi, [slot] / call esi` be written as a call to that import.
+  void SetImportSlots(const std::map<uint32_t, std::string>& m) { import_slots_ = m; }
+
   // Linear addresses of NE relocation fixup sites. A pointer/jump table carries a fixup
   // every 2-4 bytes; real code never has that density, so a reloc-dense window is data and
   // the reachability walk stops there instead of decoding the table as instructions.
@@ -58,6 +62,7 @@ class X86Lifter {
   std::map<uint32_t, std::string> names_;
   std::map<uint32_t, std::pair<uint32_t, std::string>> call_sites_;
   std::set<uint32_t> reloc_sites_;
+  std::map<uint32_t, std::string> import_slots_;
   bool bits32_ = false;
   bool vxd_mode_ = false;
 };
