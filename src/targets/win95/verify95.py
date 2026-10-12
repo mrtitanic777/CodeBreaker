@@ -135,10 +135,16 @@ def _mod_sha(path):
     return s
 
 
+# Bump when the oracle changes what a trace of the SAME code observes, so fingerprints cached under
+# the old behaviour are not reused. 2: every PE code section is mapped (calls into another code
+# section now run instead of being stub-returned).
+_ORACLE_REV = 2
+
+
 def _fp_key(sha, func, spec):
     args = tuple(int(a) for a in spec.get("args", []))
     mi = tuple((int(a), bytes(b)) for a, b in (spec.get("mem_init") or []))
-    return sha + ":" + _hashlib.sha1(repr((func, args, mi)).encode()).hexdigest()
+    return "r%d:%s:%s" % (_ORACLE_REV, sha, _hashlib.sha1(repr((func, args, mi)).encode()).hexdigest())
 
 
 def _fp_cache_get(key):
