@@ -160,7 +160,7 @@ def adapt(module_path, c_path):
     return preamble, funcs, order, by_va, used
 
 
-def build(module_path, preamble, funcs, order, used, outdir, rounds=12):
+def build(module_path, preamble, funcs, order, used, outdir, rounds=12, cflags=None):
     """Compile the whole module, dropping the functions the compiler rejects.
     -> (dll | None, [names built], {dropped name: compiler message})."""
     from src.targets.win95 import bodyverify as B
@@ -174,7 +174,7 @@ def build(module_path, preamble, funcs, order, used, outdir, rounds=12):
         base = "g%d" % rnd
         with open(os.path.join(outdir, base + ".c"), "w", newline="\n", encoding="utf-8") as f:
             f.write(src)
-        r = subprocess.run([ow["wcc"]] + B._CFLAGS + ["-e=100000", base + ".c"], cwd=outdir, env=env,
+        r = subprocess.run([ow["wcc"]] + (cflags or B._CFLAGS) + ["-e=100000", base + ".c"], cwd=outdir, env=env,
                            capture_output=True, text=True, timeout=1200)
         if r.returncode == 0:
             obj = open(os.path.join(outdir, base + ".obj"), "rb").read()
@@ -182,8 +182,15 @@ def build(module_path, preamble, funcs, order, used, outdir, rounds=12):
                 # undefsok: a call to a dropped function is left unresolved (it then fails the test)
                 f.write("system nt_dll\nname %s.dll\noption quiet\noption undefsok\nfile %s.obj\n" % (base, base)
                         + B._RTL + B._import_lines(obj, set(used), imports))
+                # The public symbol of each function as the compiler decorated it: _name (cdecl),
+                # _name@N (stdcall), @name@N (fastcall). A function with no such symbol is not exported.
+                from src.targets.win95 import autobuild95 as A
+                pubs = set(A._omf_publics(obj))
                 for n in names:
-                    f.write("export %s='%s'\n" % (n, B._omf_export_name(obj, n)))
+                    sym = next((s for s in pubs if s == "_" + n or s == n or
+                                re.fullmatch(r"[_@]%s@\d+" % re.escape(n), s)), None)
+                    if sym:
+                        f.write("export %s='%s'\n" % (n, sym))
             subprocess.run([ow["wlink"], "@%s.lnk" % base], cwd=outdir, env=env, capture_output=True, text=True)
             dll = os.path.join(outdir, base + ".dll")
             return (dll if os.path.exists(dll) else None), names, dropped
@@ -211,9 +218,16 @@ def build(module_path, preamble, funcs, order, used, outdir, rounds=12):
     return None, [], dropped
 
 
-def verify(module_path, funcs=None, store=None, outdir=None, log=None):
-    """Judge Ghidra's reconstruction of each function. -> {key: result} like pipeline.verify,
-    each result also carrying "source" (the function's text) for the ones that have one."""
+CORE_LANE = "pe-core"
+
+
+def verify(module_path, funcs=None, store=None, outdir=None, log=None, engine="export"):
+    """Judge a second decompiler's reconstruction of each function. -> ({key: result}, preamble),
+    results as from pipeline.verify, each also carrying "source" (the function's text).
+
+    engine="export": Ghidra run headless, its C export adapted (lane "pe-ghidra").
+    engine="core":   the Ghidra decompiler core embedded in CodeBreaker and fed our facts
+                     (lane "pe-core") -- see ghidra_core.py."""
     from src.formats.pe import open_pe
     from src.targets.win95 import bodyverify as B, verify95 as V
     from src.targets.win95.verification import pipeline
@@ -221,15 +235,26 @@ def verify(module_path, funcs=None, store=None, outdir=None, log=None):
     L = pipeline.LANES["pe"]
     if funcs is None:
         funcs = L.functions(module_path)
-    c_path = export(module_path, log)
-    if not c_path:
-        return {}, ""
-    preamble, gfuncs, order, by_va, used = adapt(module_path, c_path)
+    cflags = None
+    if engine == "core":
+        from src.targets.win95.verification import ghidra_core
+        if not ghidra_core.available():
+            return {}, ""
+        lane, rev = CORE_LANE, ghidra_core.REV
+        work = B._scratch(lane, os.path.basename(module_path).lower())
+        preamble, gfuncs, order, by_va, used = ghidra_core.adapt(module_path, L.functions(module_path), work)
+        cflags = ghidra_core.CFLAGS
+    else:
+        lane, rev = LANE, REV
+        c_path = export(module_path, log)
+        if not c_path:
+            return {}, ""
+        preamble, gfuncs, order, by_va, used = adapt(module_path, c_path)
     digest = pipeline.profile("pe")[0]
     whole = hashlib.sha1((preamble + "".join(gfuncs[n] for n in order)).encode("utf-8", "replace")).hexdigest()
-    sig = pipeline._sha(digest, LANE, REV, whole)
+    sig = pipeline._sha(digest, lane, rev, whole)
     mod_sha = V._mod_sha(module_path) or ""
-    known = store.get_many(LANE, mod_sha) if (store and mod_sha) else {}
+    known = store.get_many(lane, mod_sha) if (store and mod_sha) else {}
     results = {}
     fresh = [va for va in funcs if (known.get(L.key(va)) or {}).get("sig") != sig]
     for va in funcs:
@@ -241,13 +266,13 @@ def verify(module_path, funcs=None, store=None, outdir=None, log=None):
                                   "detail": row.get("detail") or "", "cached": True,
                                   "source": gfuncs.get(n) if n else None}
     if fresh:
-        outdir = outdir or B._scratch("pe-ghidra", os.path.basename(module_path).lower())
+        outdir = outdir or B._scratch(lane, os.path.basename(module_path).lower())
         # Only functions with a known address are built. The rest are library routines Ghidra
         # recognised by signature (__allshl, _memcpy): they belong to the C runtime, which is linked,
         # and defining them again collides with it.
         placed = set(by_va.values())
         dll, built, dropped = build(module_path, preamble, gfuncs, [n for n in order if n in placed],
-                                    used, outdir)
+                                    used, outdir, cflags=cflags)
         ex, base = {}, 0
         if dll:
             pb = open_pe(dll)
@@ -272,8 +297,8 @@ def verify(module_path, funcs=None, store=None, outdir=None, log=None):
                               "detail": info.get("detail", ""), "source": gfuncs[n]}
         if store and mod_sha:
             module = os.path.basename(module_path).lower()
-            store.put_many((LANE, module, mod_sha, k, r.get("fname", ""), sig, r["verdict"],
-                            r.get("reason", ""), "ghidra", r.get("limits", ""), digest, r.get("detail", ""))
+            store.put_many((lane, module, mod_sha, k, r.get("fname", ""), sig, r["verdict"],
+                            r.get("reason", ""), engine, r.get("limits", ""), digest, r.get("detail", ""))
                            for k, r in results.items() if not r.get("cached"))
     for r in results.values():
         r.setdefault("cached", False)
