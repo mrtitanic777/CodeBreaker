@@ -22,6 +22,8 @@ import sys
 import csv
 
 from src.core import cores, paths
+from src.formats.ne import NEFile
+from src.formats.pe import open_pe
 from src.engines.behavior import tracer
 from src.targets.win95 import ne_dynoracle, origintriage as OT
 
@@ -276,7 +278,10 @@ def verify_pair(retail, rebuilt, arity=0, maxn=64):
         # (unused ordinals resolve to different garbage in a smaller rebuild) and floods the verdict
         # with false divergences. Fall back to 1..maxn only if the entry table can't be read.
         names = {o: n for o, n in ne_dynoracle_exports(retail)}
-        ords = A.NE(retail).export_ordinals() if A.NE(retail).is_ne else []
+        try:
+            ords = NEFile(retail).export_ordinals()
+        except ValueError:
+            ords = []
         for ordn in (ords[:maxn] or list(range(1, maxn + 1))):
             rs = [_fp_ne(retail, ordn, v) for v in vecs]
             bs = [_fp_ne(rebuilt, ordn, v) for v in vecs]
@@ -284,8 +289,8 @@ def verify_pair(retail, rebuilt, arity=0, maxn=64):
                 continue                                 # ordinal not present in either -> skip
             out.append((names.get(ordn, "@%d" % ordn), _body_verdict(rs, bs), rs[0], bs[0]))
     else:
-        pr, pb = A.PE(retail), A.PE(rebuilt)
-        rbase, bbase = A._imagebase(pr), A._imagebase(pb)   # tracer wants a VA (imagebase+rva)
+        pr, pb = open_pe(retail), open_pe(rebuilt)
+        rbase, bbase = pr.image_base, pb.image_base         # tracer wants a VA (imagebase+rva)
         raddr, baddr = pr.export_addrs(), pb.export_addrs()
         for nm in list(raddr)[:maxn]:
             if nm not in baddr:
@@ -297,9 +302,11 @@ def verify_pair(retail, rebuilt, arity=0, maxn=64):
 
 
 def ne_dynoracle_exports(path):
-    from src.targets.win95 import autobuild95 as A
-    ne = A.NE(path)
-    return [(o, n) for o, n in ne.resident_names()] if ne.is_ne else []
+    """[(ordinal, name)] from the NE resident-name table, or [] when it is not an NE."""
+    try:
+        return [(o, n) for n, o in NEFile(path).resident_names()]
+    except ValueError:
+        return []
 
 
 def _print_pair(retail, rebuilt, verdicts):

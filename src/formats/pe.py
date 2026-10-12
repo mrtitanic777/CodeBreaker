@@ -110,6 +110,10 @@ class PEFile:
         end = self.data.index(b"\0", no)
         return self.data[no:end].decode("latin1", "replace")
 
+    def export_addrs(self):
+        """{name: rva} for every export that has a name."""
+        return {name: rva for _ord, name, rva in self.exports() if name}
+
     def exports(self):
         """[(ordinal, name_or_None, rva)] from the export directory."""
         if not self.datadirs or not self.datadirs[0][0]:

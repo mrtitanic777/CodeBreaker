@@ -91,7 +91,8 @@ class PELane(object):
 
     def verify(self, path, funcs, outdir, known):
         """-> ({key: result}, [(fname, source, verdict)] to bank)."""
-        from src.targets.win95 import autobuild95 as A, bodyverify as B, verify95
+        from src.formats.pe import open_pe
+        from src.targets.win95 import bodyverify as B, verify95
         results, order, src, va_of = {}, [], {}, {}
         for va in funcs:
             k = self.key(va)
@@ -137,7 +138,7 @@ class PELane(object):
             for dll, exports in subs:
                 if not dll:
                     continue
-                pb = A.PE(dll); bbase = A._imagebase(pb); addrs = pb.export_addrs()
+                pb = open_pe(dll); bbase = pb.image_base; addrs = pb.export_addrs()
                 for fn in exports:
                     if fn not in todo or not addrs.get(fn):
                         continue

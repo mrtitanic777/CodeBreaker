@@ -137,11 +137,12 @@ def test_getlasterror_behaves_as_retail():
     tdir = paths.target_dir("win95")
     if tdir not in sys.path:
         sys.path.insert(0, tdir)
-    from src.targets.win95 import autobuild95, bodyverify
+    from src.formats.pe import open_pe
+    from src.targets.win95 import bodyverify
     # No target is set here on purpose: this also pins two oracle fixes. verify_body must arm the
     # win95 target itself, and the oracle must map every code section (GetLastError is in
     # kernel32's second, .text; with only the first mapped it could not be traced at all).
-    va = autobuild95._imagebase(autobuild95.PE(k32)) + 0x12941
+    va = open_pe(k32).image_base + 0x12941
     out = os.path.join(tempfile.mkdtemp(), "getlasterror")
     r = bodyverify.verify_body(k32, va, outdir=out)
     assert r["verdict"] == "equivalent", r
