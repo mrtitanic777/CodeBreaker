@@ -49,6 +49,10 @@ class X86Lifter {
   // `mov esi, [slot] / call esi` be written as a call to that import.
   void SetImportSlots(const std::map<uint32_t, std::string>& m) { import_slots_ = m; }
 
+  // Bytes of arguments each imported function removes on return, by the name calls to it are
+  // given ("MODULE.func", module upper-case). From the DLL that exports it -- see apiarity.py.
+  void SetImportPops(const std::map<std::string, int>& m) { import_pops_ = m; }
+
   // Linear addresses of NE relocation fixup sites. A pointer/jump table carries a fixup
   // every 2-4 bytes; real code never has that density, so a reloc-dense window is data and
   // the reachability walk stops there instead of decoding the table as instructions.
@@ -63,6 +67,7 @@ class X86Lifter {
   std::map<uint32_t, std::pair<uint32_t, std::string>> call_sites_;
   std::set<uint32_t> reloc_sites_;
   std::map<uint32_t, std::string> import_slots_;
+  std::map<std::string, int> import_pops_;
   // The image being lifted, for looking at a call's target; and what each target pops.
   const uint8_t* img_ = nullptr;
   size_t img_size_ = 0;

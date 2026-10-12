@@ -48,11 +48,45 @@ def _scratch(*parts):
 
 _BLOCK_CACHE = {}
 
+_API_ARGS = {}
+
+
+def _api_args(module):
+    """Point the decompiler (CB_API_ARGS) at a file giving, for each function `module` imports,
+    the bytes of arguments it removes on return -- read from the DLL that exports it (apiarity).
+    The decompiler then gives each API call the right number of arguments."""
+    if module not in _API_ARGS:
+        path = ""
+        try:
+            from src.engines.behavior import apiarity
+            lines = []
+            for dll, name in open_pe(module).imports().values():
+                if not name or name.startswith("#"):
+                    continue
+                stem = os.path.splitext(dll)[0].upper()
+                b = apiarity.stack_bytes(stem, name)
+                if b is not None:
+                    lines.append("%s.%s\t%d\n" % (stem, name, b))
+            d = _scratch("apiargs")
+            os.makedirs(d, exist_ok=True)
+            path = os.path.join(d, os.path.basename(module).lower() + ".txt")
+            with open(path, "w", newline="\n") as f:
+                f.write("".join(sorted(set(lines))))
+        except Exception:
+            path = ""
+        _API_ARGS[module] = path
+    if _API_ARGS[module]:
+        os.environ["CB_API_ARGS"] = _API_ARGS[module]
+    else:
+        os.environ.pop("CB_API_ARGS", None)
+
+
 def _static_body(module, va):
     """The native decompiler's C for the function at `va` -- clean+faithful for simple LEAF/compute
     functions the call-flow synthesiser skips. Keyed by RVA (va - imagebase)."""
     from src.targets.win95 import sharedruntime as SR, autobuild95 as A
     if module not in _BLOCK_CACHE:
+        _api_args(module)
         _BLOCK_CACHE[module] = SR._module_blocks(module)
     blocks = _BLOCK_CACHE[module]
     try:
@@ -103,6 +137,7 @@ def _ondemand_block(module, rva):
     # this boundary). The next discovered start above `rva` is a key of the cached --module decompile
     # (_BLOCK_CACHE) -- identical to what discovery would compute. Best-effort: omit on any doubt so
     # --at falls back to its own discovery (unchanged behaviour).
+    _api_args(module)
     cmd = [dec, module, "--at", "%x" % rva]
     try:
         from src.targets.win95 import sharedruntime as SR
