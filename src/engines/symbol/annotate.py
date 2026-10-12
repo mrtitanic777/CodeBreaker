@@ -145,7 +145,7 @@ def _annotate_module(module):
     o = trace.load_ordinals("ORDINALS.md")
     ne = ne_mod.NEFile(target.resolve(module))
     segs = {}
-    d = os.path.join(layout.asm_dir(), module.lower())
+    d = layout.asm_module_dir(module)
     files = glob.glob(os.path.join(d, "seg*_*.asm"))
     n_ann = 0
     for f in files:
