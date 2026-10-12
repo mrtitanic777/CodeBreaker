@@ -250,7 +250,7 @@ _RETSENT_BASE = 0xB1B10000                                # unique per-call exte
 
 def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS, mem_init=None,
                    stub_externals=None, stub_ret=0, stub_cleanup=0, sig_resolver=None,
-                   stub_ret_unique=False, overlay=None):
+                   stub_ret_unique=False, overlay=None, sentinels=None):
     """Run one function under Unicorn with full hooks; return a TraceRecord (a plain dict).
 
     module  -- e.g. "gdi32.dll"; resolved through the active target like difftest.
@@ -343,7 +343,7 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
     # is caught even though its caller here holds nothing of value there. (A function's callers
     # keep live values in these; a rebuilt body that loses one breaks them, not itself.)
     from unicorn.x86_const import UC_X86_REG_EBX, UC_X86_REG_ESI, UC_X86_REG_EDI, UC_X86_REG_EBP
-    for _r, _v in zip((UC_X86_REG_EBX, UC_X86_REG_ESI, UC_X86_REG_EDI, UC_X86_REG_EBP), SAVED_SENTINELS):
+    for _r, _v in zip((UC_X86_REG_EBX, UC_X86_REG_ESI, UC_X86_REG_EDI, UC_X86_REG_EBP), sentinels or SAVED_SENTINELS):
         uc.reg_write(_r, _v)
     entry_esp = esp
 

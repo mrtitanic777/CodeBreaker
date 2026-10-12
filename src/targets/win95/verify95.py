@@ -187,14 +187,15 @@ def _mod_sha(path):
 # stdcall import takes, and the fingerprint is the full call sequence WITH arguments, not the set of
 # import names reached. 4: the fingerprint also carries the memory the function wrote and which of
 # its instructions ran; inputs can set what imported calls return.
-_ORACLE_REV = 13
+_ORACLE_REV = 14
 
 
 def _fp_key(sha, func, spec):
     args = tuple(int(a) for a in spec.get("args", []))
     mi = tuple((int(a), bytes(b)) for a, b in (spec.get("mem_init") or []))
     return "r%d:%s:%s" % (_ORACLE_REV, sha, _hashlib.sha1(
-        repr((func, args, mi, int(spec.get("stub_ret", 0)))).encode()).hexdigest())
+        repr((func, args, mi, int(spec.get("stub_ret", 0))) + (
+            (tuple(spec["sentinels"]),) if spec.get("sentinels") else ())).encode()).hexdigest())
 
 
 def _fp_cache_get(key):
@@ -327,7 +328,8 @@ def _fp_pe(path, func, spec, rebuilt=False):
         r = tracer.trace_function(path, func=func, args=spec["args"], mem_init=spec.get("mem_init"),
                                   stub_externals=True, sig_resolver=_argc,
                                   stub_ret=int(spec.get("stub_ret", 0)),
-                                  overlay=rebuilt if isinstance(rebuilt, str) else None)
+                                  overlay=rebuilt if isinstance(rebuilt, str) else None,
+                                  sentinels=spec.get("sentinels"))
     except ImportError:
         raise                                     # a broken setup is not an observation
     except Exception as e:
@@ -347,7 +349,7 @@ def _fp_pe(path, func, spec, rebuilt=False):
           # how the function left the stack pointer (4 = the caller removes the arguments, 4 + N =
           # the function removed N bytes of them) and whether it preserved EBX/ESI/EDI/EBP
           "pop": r.get("esp_delta") if _exit_norm(r.get("exit")) == "ret" else None,
-          "saved": (tuple(r.get("saved_regs") or ()) == tuple(tracer.SAVED_SENTINELS)
+          "saved": (tuple(r.get("saved_regs") or ()) == tuple(spec.get("sentinels") or tracer.SAVED_SENTINELS)
                     if _exit_norm(r.get("exit")) == "ret" else None),
           "cov": (), "reach": ()}
     if not rebuilt:
@@ -526,13 +528,39 @@ def directed_vectors(path, func, covered, arity=4, reached=()):
     return keep
 
 
-def first_difference(a, b):
-    """The first observable difference between two fingerprints of the same input, or ''."""
+# The saved registers hold these instead when asking which bits of a return value are leftovers.
+_ALT_SENTINELS = tuple(x ^ 0xFFFFFFFF for x in tracer.SAVED_SENTINELS)
+
+
+def undefined_ret_bits(fp_retail, v, a):
+    """Bits of the original's return value that are not a result at all.
+
+    A function returning a 16- or 8-bit value sets AX or AL and leaves whatever was in the rest of
+    EAX -- often a copy of a register the caller owns. Run the original again with those registers
+    holding the opposite bits: every bit of the return value that flips is such a leftover. Only
+    whole upper parts count (the low byte must stay put), so a real result is never excused."""
+    if a.get("exit") != "ret" or a.get("ret") is None:
+        return 0
+    c = fp_retail(dict(v, sentinels=_ALT_SENTINELS))
+    if "err" in c or c.get("exit") != "ret" or c.get("ret") is None or c.get("deps") != a.get("deps"):
+        return 0
+    flips = (a["ret"] ^ c["ret"]) & 0xFFFFFFFF
+    for mask in (0xFFFF0000, 0xFFFFFF00):
+        if flips and not flips & ~mask:
+            return mask
+    return 0
+
+
+def first_difference(a, b, ret_mask=0):
+    """The first observable difference between two fingerprints of the same input, or ''.
+    `ret_mask` marks bits of the return value that are leftovers, not results."""
     if a["exit"] != b["exit"]:
         return "exit-differs"
     if a["deps"] != b["deps"]:
         return "deps-differ"
-    if a["ret"] != b["ret"]:
+    # EAX is a return value only when the function returned: at a fault it holds whatever the
+    # compiler happened to keep there, which says nothing about the function.
+    if a["exit"] == "ret" and ((a["ret"] or 0) ^ (b["ret"] or 0)) & ~ret_mask & 0xFFFFFFFF:
         return "ret-differs"
     wa, wb = a.get("writes"), b.get("writes")
     if wa is not None and wb is not None and wa != wb:
@@ -544,10 +572,10 @@ def first_difference(a, b):
     return ""
 
 
-def difference_detail(a, b, v=None):
+def difference_detail(a, b, v=None, ret_mask=0):
     """One line saying exactly what differed between two fingerprints, for triage by cause:
     which call first differs and how, or the two return values / exits."""
-    d = first_difference(a, b)
+    d = first_difference(a, b, ret_mask)
     if d == "exit-differs":
         out = "exit %s vs %s" % (a["exit"], b["exit"])
     elif d == "ret-differs":
@@ -624,10 +652,16 @@ def compare(fp_retail, fp_rebuilt, vectors, confirm=(), insns=0, directed=None, 
                     errs.add("rebuilt: " + b["err"])
                 continue
             seen += 1
-            d = first_difference(a, b)
+            d, mask = first_difference(a, b), 0
+            if d == "ret-differs":
+                mask = undefined_ret_bits(fp_retail, v, a)
+                if mask:
+                    d = first_difference(a, b, mask)
+                    if info is not None:
+                        info["ret_bits"] = 16 if mask == 0xFFFF0000 else 8
             if d:
                 if info is not None:
-                    info["detail"] = difference_detail(a, b, v)
+                    info["detail"] = difference_detail(a, b, v, mask)
                 return d
             covered.update(a.get("cov") or ())
             reached.update(a.get("reach") or ())

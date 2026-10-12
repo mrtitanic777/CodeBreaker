@@ -67,6 +67,8 @@ def main(argv):
         for side in ("original", "rebuilt"):
             r = res[side]
             print("  %-8s ends: %-22s returns: %s" % (side, r.get("exit"), hex(r.get("ret") or 0)))
+            print("  %-8s ebx,esi,edi,ebp on return: %s   stack moved: %s" % (
+                "", " ".join("%08x" % x for x in r.get("saved_regs") or ()), r.get("esp_delta")))
         ca = [(x[0].split("!")[-1], x[1]) for x in res["original"].get("api_calls") or []]
         cb = [(x[0].split("!")[-1], x[1]) for x in res["rebuilt"].get("api_calls") or []]
         for i in range(max(len(ca), len(cb))):
@@ -107,7 +109,7 @@ def main(argv):
             print("    %s  rebuilt:  %s" % (" " * 18, fb))
         if "--trace" in argv:
             ks = list(res["rebuilt"]["mnemonics"].items())
-            for k, mn in ks[-24:]:
+            for k, mn in (ks if "--all" in argv else ks[-24:]):
                 print("      rebuilt %s %s" % (k, mn))
         return 0
     print("no differing input found now (the build may have changed since it was judged)")
