@@ -248,7 +248,8 @@ def verify_body16(retail, seg, off, arity=4, outdir=None, bank=True):
     fname, c = synth16(retail, seg, off)
     if not fname or fname in ("LibMain", "WEP"):            # the DLL's own entry/exit aren't targets
         return {"seg": seg, "off": off, "verdict": "no-synth", "reason": c if not fname else "entry"}
-    outdir = outdir or os.path.join(os.path.dirname(__file__), "_bodyverify16", "%d_%x" % (seg, off))
+    from src.targets.win95 import bodyverify
+    outdir = outdir or bodyverify._scratch("ne", os.path.basename(retail).lower(), "%d_%x" % (seg, off))
     dll, clog = compile_body16(c, fname, outdir)
     if not dll:
         return {"seg": seg, "off": off, "verdict": "no-compile", "reason": clog, "c": c}
@@ -273,10 +274,9 @@ def verify_body16(retail, seg, off, arity=4, outdir=None, bank=True):
 def _save_verified16(retail, fname, c, verdict):
     """Write a behaviourally-verified NE body's source into the recovered tree, tagged with the oracle
     verdict (equivalent = clean-return match; consistent = fault/trunc-matched on identical inputs)."""
-    from src.core import paths
+    from src.core import corpus
     modbase = os.path.splitext(os.path.basename(retail))[0]
-    d = os.path.join(os.path.dirname(paths.repo_root()), "Windows95", "design", "recovered",
-                     "verified16", modbase)
+    d = os.path.join(corpus.design_dir(), "recovered", "verified16", modbase)
     tag = ("behaves identically to retail %s (clean-return match on the NE oracle)" % os.path.basename(retail)
            if verdict == "equivalent" else
            "matches retail %s on the NE oracle: identical Win16 API call sequence and identical fault\n"

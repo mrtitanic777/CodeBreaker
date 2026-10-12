@@ -31,11 +31,9 @@ _CRT = OT._CRT
 
 
 def _design():
-    for c in (os.path.join(os.path.dirname(paths.repo_root()), "Windows95", "design"),
-              r"C:\Users\mrtit\Documents\GitHub\Windows95\design"):
-        if os.path.isdir(c):
-            return c
-    return None
+    from src.core import corpus
+    d = corpus.design_dir()
+    return d if os.path.isdir(d) else None
 
 
 _MOD_INDEX = None

@@ -67,28 +67,15 @@ _DECOMP = {"pe": "win95pedec.exe", "ne": "win95dec.exe", "le": "win95ledec.exe",
 
 def _detect(path):
     """(lane, decompiler_exe) for a binary by its header -- PE/NE/LE(VxD)/DOS -- or (None, None)."""
-    try:
-        with open(path, "rb") as f:
-            d = f.read(0x40)
-            if len(d) < 0x40 or d[:2] != b"MZ":
-                return (None, None)
-            e = _struct.unpack("<I", d[0x3c:0x40])[0]
-            f.seek(e)
-            sig = f.read(2)
-    except OSError:
-        return (None, None)
-    if sig == b"PE":
-        return ("pe", _DECOMP["pe"])
-    if sig == b"NE":
-        return ("ne", _DECOMP["ne"])
-    if sig in (b"LE", b"LX"):
-        return ("le", _DECOMP["le"])
-    return ("dos", _DECOMP["dos"])
+    from src.formats import detect
+    lane = detect.lane(path)
+    return (lane, _DECOMP[lane]) if lane else (None, None)
 
 
 def _dec(exe, path, mode):
-    dec = os.path.join(paths.repo_root(), "native", "decompiler", "build", "bin", exe)
-    if not os.path.exists(dec):
+    from src.core import toolchain
+    dec = toolchain.decompiler(exe)
+    if not dec:
         return None
     try:
         r = subprocess.run([dec, path, mode], capture_output=True, text=True, timeout=240)
@@ -174,12 +161,8 @@ def triage_module(path):
 def _corpus_root():
     """The Win95 binary corpus (…/Windows95/design/corpus/files). wt.py repoints WT_DATA_ROOT at its
     own win95 data dir, so resolve the corpus canonically from the sibling repo unless it holds PEs."""
-    cands = [os.path.join(os.path.dirname(paths.repo_root()), "Windows95", "design", "corpus", "files"),
-             r"C:\Users\mrtit\Documents\GitHub\Windows95\design\corpus\files"]
-    for c in cands:
-        if os.path.isdir(c):
-            return c
-    return cands[0]
+    from src.core import corpus
+    return corpus.root()
 
 
 def run(limit=None, out=None, root=None, lanes=None):

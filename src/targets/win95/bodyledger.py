@@ -27,11 +27,9 @@ _BOOT = ["kernel32", "gdi32", "user32", "advapi32", "krnl386", "gdi", "user",
 
 
 def _ledger_path():
-    for c in (os.path.join(os.path.dirname(paths.repo_root()), "Windows95", "design", "body_ledger.csv"),
-              r"C:\Users\mrtit\Documents\GitHub\Windows95\design\body_ledger.csv"):
-        if os.path.isfile(c):
-            return c
-    return None
+    from src.core import corpus
+    c = os.path.join(corpus.design_dir(), "body_ledger.csv")
+    return c if os.path.isfile(c) else None
 
 
 def _load(path):

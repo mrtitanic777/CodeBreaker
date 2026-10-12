@@ -320,8 +320,6 @@ def _reference_roots():
     if dr:
         cands.append(os.path.join(os.path.dirname(dr), "reference"))   # corpus parent = design
         cands.append(os.path.join(dr, "reference"))
-    # last-resort absolute (this project's layout)
-    cands.append(r"C:\Users\mrtit\Documents\GitHub\Windows95\design\reference")
     seen, out = set(), []
     for c in cands:
         if c and c not in seen and os.path.isdir(c):
@@ -447,12 +445,12 @@ def _param_bytes(part):
 def _ow_paths():
     """(wcc386, wlink, include-dirs) for the from-source OpenWatcom toolchain -- the compiler the
     project builds with (no Microsoft tools). None if the OW tree is not present."""
-    from src.core import paths
-    ow = os.path.join(paths.repo_root(), "experiments", "premise-proof", "open-watcom-v2", "rel")
-    wcc = os.path.join(ow, "binnt64", "wcc386.exe")
-    wlink = os.path.join(ow, "binnt64", "wlink.exe")
+    from src.core import toolchain
+    ow = toolchain.openwatcom_root()
+    wcc = toolchain.ow_cc("pe")
+    wlink = toolchain.ow_tool("wlink")
     incs = [os.path.join(ow, "h", "nt"), os.path.join(ow, "h")]
-    if not os.path.exists(wcc):
+    if not wcc:
         return None
     return {"root": ow, "wcc386": wcc, "wlink": wlink, "include": incs}
 
