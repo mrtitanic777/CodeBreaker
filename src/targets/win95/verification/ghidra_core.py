@@ -19,7 +19,7 @@ import subprocess
 
 from src.core import paths
 
-REV = 7                                    # bump when what is fed to / taken from the core changes
+REV = 8                                    # bump when what is fed to / taken from the core changes
 
 # The core prints a function in the module's default convention (stdcall) without saying so, and
 # spells the others out. Compile with stdcall as the default so the text means what it says.

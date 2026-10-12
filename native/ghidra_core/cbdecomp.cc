@@ -104,6 +104,11 @@ void applyProto(CbArchitecture& arch, Funcdata* fd, const std::string& name, int
     pieces.innames.push_back("a" + std::to_string(i + 1));
   }
   fp.setPieces(pieces);
+  // The stdcall model says only "the callee removes some bytes"; left at that, the analysis has
+  // to solve for how many, and when it solves wrong every stack reference after the call is off by
+  // four (the next call's arguments shift by one). We know the number: the return address plus
+  // the function's own `ret N`.
+  fp.setExtraPop(4 + pop);
   // With `ret N` the argument count is known; with a plain `ret` it is left to the analysis.
   // The argument TYPES are placeholders either way (four bytes each).
   fp.setInputLock(pop > 0);
