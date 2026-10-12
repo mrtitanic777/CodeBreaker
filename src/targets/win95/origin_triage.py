@@ -113,9 +113,8 @@ def main(argv):
                     help="identify the CRT/compiler floor on the BINARIES via "
                          "nativesig (crtsig byte-prefix + sigscan shapes), not names")
     a = ap.parse_args(argv)
-    corpus = os.environ.get("WT_DATA_ROOT")
-    if not corpus or not os.path.isdir(corpus):
-        corpus = r"C:\Users\mrtit\Documents\GitHub\Windows95\design\corpus\files"
+    from src.core import corpus as _corpus
+    corpus = _corpus.root()
     d = a.dir
     if not d:
         # Resolve <design>/<lane>_lane the SAME way the *_scale sweeps do, so triage

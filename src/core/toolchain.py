@@ -210,6 +210,11 @@ def openwatcom_root():
         _paths.repo_root(), "experiments", "premise-proof", "open-watcom-v2", "rel")
 
 
+def openwatcom_src():
+    """The OpenWatcom SOURCE tree that rel/ was built from (holds bld/, the per-target builds)."""
+    return os.path.dirname(openwatcom_root())
+
+
 def ow_tool(name):
     """Absolute path of an OpenWatcom tool ('wcc', 'wcc386', 'wlink', 'wasm', 'wrc').
     Absolute because Windows CreateProcess searches the CALLER's PATH, not the env passed in.

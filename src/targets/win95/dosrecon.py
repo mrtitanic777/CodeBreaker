@@ -28,7 +28,7 @@ import sys
 import csv
 import subprocess
 
-from src.core import paths
+from src.core import paths, toolchain
 
 try:
     import capstone
@@ -90,8 +90,7 @@ def _corpus(name):
 
 
 def _mzdec():
-    b = os.path.join(paths.repo_root(), "native", "decompiler", "build", "bin", "win95mzdec.exe")
-    return b if os.path.isfile(b) else None
+    return toolchain.decompiler("dos") or None
 
 
 # --- IO.SYS layout (mirror of the native loader) --------------------------------------------
@@ -1306,7 +1305,7 @@ def _verify(outroot, results):
 
 
 def _ow_dir():
-    return os.path.join(paths.repo_root(), "experiments", "premise-proof", "open-watcom-v2", "rel")
+    return toolchain.openwatcom_root()
 
 
 def _assemble_ow(outroot, results):

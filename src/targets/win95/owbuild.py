@@ -30,9 +30,9 @@ import shutil
 import subprocess
 import sys
 
-from src.core import paths
+from src.core import paths, corpus, toolchain
 
-_OW = os.path.join(paths.repo_root(), "experiments", "premise-proof", "open-watcom-v2", "rel")
+_OW = toolchain.openwatcom_root()
 _PP = os.path.join(paths.repo_root(), "experiments", "premise-proof")
 _WDEF = os.path.join(_PP, "wdef", "wdef.exe")
 _WTHUNK = os.path.join(_PP, "wthunk", "wthunk.exe")
@@ -59,22 +59,13 @@ def _find_module_dir(module):
 def _ow_env(cls):
     """Environment for the from-source OpenWatcom release tree. Win16 build uses the
     h\\win headers; Win32 uses h\\nt."""
-    env = dict(os.environ)
-    env["NoDefaultCurrentDirectoryInExePath"] = ""     # OW runs its own tools from cwd
-    env["WATCOM"] = _OW
-    env["PATH"] = os.path.join(_OW, "binnt64") + os.pathsep + env.get("PATH", "")
-    h = os.path.join(_OW, "h")
-    if cls == "ne":
-        env["INCLUDE"] = os.pathsep.join([h, os.path.join(h, "win")])
-    else:
-        env["INCLUDE"] = os.pathsep.join([h, os.path.join(h, "nt")])
-    return env
+    return toolchain.ow_env(cls)
 
 
 def _tool(name):
     """Absolute path to an OW tool. Windows CreateProcess searches the CALLER's PATH,
     not the env we pass, so tools must be named by full path."""
-    return os.path.join(_OW, "binnt64", name + ".exe")
+    return toolchain.ow_tool(name) or os.path.join(_OW, "binnt64", name + ".exe")
 
 
 def _run(cmd, cwd, env, log):
@@ -210,22 +201,7 @@ def _find_retail(name):
     """Locate the retail binary of `name` in the corpus. Prefer the INSTALLED copy (WINDOWS\\SYSTEM)
     over setup/inf or other variants -- that is the DLL the OS actually loads and the reconstruction
     target. Returns an absolute path or None."""
-    roots = [os.path.join(_win95_root(), "design", "corpus", "files"),
-             os.environ.get("WT_DATA_ROOT", "")]
-    matches = []
-    for corpus in roots:
-        if not corpus or not os.path.isdir(corpus):
-            continue
-        for dp, _, fs in os.walk(corpus):
-            for f in fs:
-                if f.lower() == name.lower():
-                    matches.append(os.path.join(dp, f))
-        if matches:
-            break
-    for m in matches:
-        if "system" in m.lower().replace("\\", "/").split("/"):
-            return m
-    return matches[0] if matches else None
+    return corpus.retail(name)
 
 
 def _bindiff(name, built):

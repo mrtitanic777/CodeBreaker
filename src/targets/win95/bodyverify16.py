@@ -24,14 +24,9 @@ from src.targets.win95 import ne_dynoracle as NO, verify95, origintriage as OT
 
 
 def _ow():
-    from src.core import paths
-    root = os.path.join(paths.repo_root(), "experiments", "premise-proof", "open-watcom-v2", "rel")
-    return {"root": root,
-            "wcc": os.path.join(root, "binnt64", "wcc.exe"),
-            "wlink": os.path.join(root, "binnt64", "wlink.exe"),
-            "wlink_lnk": os.path.join(root, "binnt64", "wlink.lnk"),
-            "lib": os.path.join(root, "lib286", "win"),
-            "inc": [os.path.join(root, "h", "win"), os.path.join(root, "h")]}
+    from src.core import toolchain
+    return {"root": toolchain.openwatcom_root(), "wcc": toolchain.ow_cc("ne"),
+            "wlink": toolchain.ow_tool("wlink"), "lib": toolchain.ow_lib("ne")}
 
 
 _DEF_RE = re.compile(r"(?m)^\s*(?:WORD|int|unsigned|long|void|LRESULT|BOOL|LONG|char|short|"
@@ -50,8 +45,8 @@ def _ne_blocks(module):
     from src.core import paths
     # CB_WIN95DEC lets a long-running grind pin a FROZEN copy of win95dec.exe, so a concurrent rebuild
     # of the decompiler (e.g. the return-merge refactor lane) can never swap the binary mid-sweep.
-    dec = os.environ.get("CB_WIN95DEC") or os.path.join(
-        paths.repo_root(), "native", "decompiler", "build", "bin", "win95dec.exe")
+    from src.core import toolchain
+    dec = toolchain.decompiler("ne")
     out = {}
     try:
         r = subprocess.run([dec, module, "--module", "0"], capture_output=True, text=True, timeout=300)
@@ -194,11 +189,8 @@ def compile_body16(c_text, fname, outdir):
     src = "\n".join(pre + impdecl + struct_defs + gdecl + frame + stubs + entry) + "\n\n" + c_text + "\n"
     cf = os.path.join(outdir, fname + ".c")
     open(cf, "w", newline="\n").write(src)
-    env = dict(os.environ)
-    env["WATCOM"] = ow["root"]
-    env["INCLUDE"] = ";".join(ow["inc"])
-    env["WLINK_LNK"] = ow["wlink_lnk"]                        # so `system windows` resolves
-    env["PATH"] = os.path.join(ow["root"], "binnt64") + os.pathsep + env.get("PATH", "")
+    from src.core import toolchain
+    env = toolchain.ow_env("ne")
     r = subprocess.run([ow["wcc"], "-bt=windows", "-mc", "-zq", "-w0", "-zastd=c99", fname + ".c"],
                        cwd=outdir, env=env, capture_output=True, text=True, timeout=120)
     if r.returncode != 0:

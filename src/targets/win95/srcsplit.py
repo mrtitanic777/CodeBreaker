@@ -25,7 +25,7 @@ import re
 import sys
 import subprocess
 
-from src.core import paths
+from src.core import paths, toolchain
 from src.targets.win95 import authsrc
 
 _TARGET_FUNCS = 60          # aim ~this many functions per source file (a typical .c)
@@ -277,7 +277,7 @@ def _verify_one(job):
 
 
 def _ow():
-    return os.path.join(paths.repo_root(), "experiments", "premise-proof", "open-watcom-v2", "rel")
+    return toolchain.openwatcom_root()
 
 
 def main(argv):

@@ -34,10 +34,8 @@ def _is_le(p):
 
 
 def _corpus():
-    c = os.environ.get("WT_DATA_ROOT")
-    if c and os.path.isdir(c):
-        return c
-    return r"C:\Users\mrtit\Documents\GitHub\Windows95\design\corpus\files"
+    from src.core import corpus
+    return corpus.root()
 
 
 def find_le(corpus, only=None):

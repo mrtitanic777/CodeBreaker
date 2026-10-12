@@ -22,12 +22,11 @@ import re
 import sys
 import subprocess
 
-from src.core import paths
+from src.core import paths, toolchain
 
 
 def _ow():
-    return os.path.join(paths.repo_root(), "experiments", "premise-proof",
-                        "open-watcom-v2", "rel")
+    return toolchain.openwatcom_root()
 
 
 def _env():
