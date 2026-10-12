@@ -53,6 +53,41 @@ def _is_noise(api):
             or a.endswith(".@0") or "GETVERSION" in a or "GETWINFLAGS" in a)
 
 
+def _argc(dll, name):
+    """Argument count of an imported function, for the oracle's import stub: read from the retail
+    module that exports it (apiarity), else the small hand table. None = unknown (the stub then
+    removes nothing and the call's arguments are not compared)."""
+    from src.engines.behavior import apiarity, env
+    n = apiarity.argc(dll, name)
+    return n if n is not None else env._builtin_argc(name)
+
+
+def _norm_arg(v, ins):
+    """An argument value in a form two builds of the same code agree on: which input it is, a small
+    constant, or just 'a pointer' (addresses differ between the retail image and a rebuilt one)."""
+    if v in ins:
+        return "a%d" % ins.index(v)
+    sv = v - (1 << 32) if v & 0x80000000 else v
+    return "%d" % sv if -0x10000 < sv < 0x10000 else "p"
+
+
+_MAX_CALLS = 64
+
+
+def _call_seq(calls, ins):
+    """The imported-call part of a fingerprint: every call in order, with normalised arguments."""
+    out = []
+    for api, args in calls:
+        if _is_noise(api):
+            continue
+        if len(out) >= _MAX_CALLS:
+            out.append("...")
+            break
+        out.append(_norm_dep(api) if args is None else
+                   "%s(%s)" % (_norm_dep(api), ",".join(_norm_arg(a, ins) for a in args)))
+    return tuple(out)
+
+
 def _exit_norm(e):
     if e is None:
         return "none"
@@ -139,8 +174,10 @@ def _mod_sha(path):
 
 # Bump when the oracle changes what a trace of the SAME code observes, so fingerprints cached under
 # the old behaviour are not reused. 2: every PE code section is mapped (calls into another code
-# section now run instead of being stub-returned).
-_ORACLE_REV = 2
+# section now run instead of being stub-returned). 3: the import stub removes the arguments a
+# stdcall import takes, and the fingerprint is the full call sequence WITH arguments, not the set of
+# import names reached.
+_ORACLE_REV = 3
 
 
 def _fp_key(sha, func, spec):
@@ -190,12 +227,12 @@ def _fp_pe(path, func, spec):
                 return hit
     try:
         r = tracer.trace_function(path, func=func, args=spec["args"], mem_init=spec.get("mem_init"),
-                                  stub_externals=True)
+                                  stub_externals=True, sig_resolver=_argc)
     except ImportError:
         raise                                     # a broken setup is not an observation
     except Exception as e:
         return {"err": type(e).__name__}          # transient trace errors are never cached
-    deps = tuple(_norm_dep(d) for d in r.get("api_deps", []) if not _is_noise(d))
+    deps = _call_seq(r.get("api_calls", []), [int(a) for a in spec["args"]])
     fp = {"ret": r.get("ret"), "exit": _exit_norm(r.get("exit")), "deps": deps,
           "truncated": bool(r.get("truncated"))}
     # Cache only settled results. A truncated trace can differ by wall-clock (the tracer's 2s cap),
@@ -225,14 +262,17 @@ def _vectors(arity, lane):
     if arity <= 0:
         return [{"args": []}]
     n = arity
+    # Every argument gets a DIFFERENT value wherever the environment allows it: with one value in
+    # every slot, a body that uses its parameters in the wrong order behaves identically.
     vs = [{"args": [0] * n}]
     if lane in ("pe", "dos"):
-        vs.append({"args": [0x200000] * n})                      # bare scratch pointer
-        vs.append({"args": [_OBJ] * n, "mem_init": _prov_meminit()})   # provisioned objects
+        vs.append({"args": [0x200000 + 0x100 * i for i in range(n)]})        # bare scratch pointers
+        vs.append({"args": [_OBJ + 0x40 * (i % 32) for i in range(n)],        # provisioned objects
+                   "mem_init": _prov_meminit()})
     else:                                                        # NE controlled env: valid handles
         vs.append({"args": [0x0400] * n})                        # LZ handle base
         vs.append({"args": [0x0080] * n})                        # open-file handle
-    vs.append({"args": [1] * n})
+    vs.append({"args": [i + 1 for i in range(n)]})
     return vs
 
 

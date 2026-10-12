@@ -409,6 +409,14 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
                 esp_now = uc.reg_read(UC_X86_REG_ESP)
                 ret_addr = int.from_bytes(uc.mem_read(esp_now, 4), "little")
                 uc.reg_write(UC_X86_REG_ESP, (esp_now + 4 + cleanup) & 0xFFFFFFFF)
+                # Every import entered, in order, with the arguments it was given (as many as its
+                # signature says; none when the signature is unknown). `api_deps` only says WHICH
+                # imports were reached -- this says what they were called with.
+                seq = rec.setdefault("api_calls", [])
+                if len(seq) < 256:
+                    seq.append((api, None if argc is None else
+                                [int.from_bytes(uc.mem_read(esp_now + 4 + 4 * i, 4), "little")
+                                 for i in range(argc)]))
                 # unique per-call return marker (interproc v2 value-flow), else the fixed stub_ret
                 nstub = rec.get("stubbed_externals", 0)
                 rv = (_RETSENT_BASE + nstub) if stub_ret_unique else stub_ret
