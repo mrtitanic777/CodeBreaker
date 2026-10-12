@@ -28,7 +28,7 @@ from collections import Counter
 
 from src.core import paths, toolchain
 
-PIPE_REV = 11                   # what a verdict means (11: memory writes compared; imports return success too; inputs directed at unreached code; coverage recorded)
+PIPE_REV = 17                   # what a verdict means (13: one build per batch; bodies the compiler rejects are dropped by name)
 MAX_SUPPORT = 1500              # out-of-batch callee bodies pulled in per batch
 _STATIC_NAME = re.compile(r"sub_([0-9A-Fa-f]{6})")     # the static decompiler's name for an rva
 GOOD = ("equivalent", "consistent")
@@ -206,8 +206,27 @@ class PELane(object):
             need = set()
             for fn in todo:
                 need |= clo[fn]                  # the mates a body links against must be compiled too
-            subs = B._batch_or_bisect([(fn, src[fn]) for fn in order + support if fn in need], outdir,
-                                      imports=imports)
+            wanted = [(fn, src[fn]) for fn in order + support if fn in need]
+            dll, exports, rejected = B.batch_build(wanted, outdir, imports=imports)
+            subs = [(dll, exports)] if dll else B._batch_or_bisect(wanted, outdir, imports=imports)
+            # Bisecting around a body that does not compile leaves the good ones split across
+            # several DLLs, where a callee in another half is a `return 0` stand-in again. Now that
+            # the bad bodies are known, build every good one together.
+            good = [fn for dll, exports in subs if dll for fn in exports]
+            if sum(1 for dll, _e in subs if dll) > 1:
+                dll, exports = B.batch_compile([(fn, src[fn]) for fn in order + support if fn in set(good)],
+                                               os.path.join(outdir, "all"), imports)
+                if dll:
+                    subs = [(dll, exports)]
+            built = {}
+            for dll, exports in subs:
+                if dll:
+                    for fn in exports:
+                        built[fn] = dll
+            # ...and a callee that is still missing from a body's own DLL is a stand-in: say so.
+            for fn in order:
+                if any(built.get(g) != built.get(fn) for g in clo[fn]):
+                    stubbed[fn] = True
             vecs = verify95._vectors(4, "pe")
             more = verify95._confirm_vectors(4, "pe")
             done = set()
@@ -222,21 +241,24 @@ class PELane(object):
                     if fn not in todo or not addrs.get(fn):
                         continue
                     done.add(fn)
+                    info = {}
                     verdict, reason, limits = verify95.compare(
                         lambda v, a=va_of[fn]: verify95._fp_pe(path, a, v),
                         lambda v, a=bbase + addrs[fn]: verify95._fp_pe(dll, a, v, rebuilt=path),
                         vecs, more, insns=verify95.insn_count(path, va_of[fn]),
-                        directed=lambda cov, rch, a=va_of[fn]: verify95.directed_vectors(path, a, cov, reached=rch))
+                        directed=lambda cov, rch, a=va_of[fn]: verify95.directed_vectors(path, a, cov, reached=rch),
+                        info=info)
                     if stubbed[fn] and verdict in GOOD:
                         limits = sorted(set(limits) | {"stub-callee"})
                     results[self.key(va_of[fn])] = {"verdict": verdict, "fname": fn, "reason": reason,
-                                                    "sig": sig[fn], "limits": ",".join(limits)}
+                                                    "sig": sig[fn], "limits": ",".join(limits),
+                                                    "detail": info.get("detail", "")}
                     if verdict == "equivalent":
                         bank.append((fn, src[fn], verdict))
             for fn in todo:
                 if fn not in done:
                     results[self.key(va_of[fn])] = {"verdict": "no-compile", "fname": fn,
-                                                    "reason": "", "sig": sig[fn]}
+                                                    "reason": rejected.get(fn, ""), "sig": sig[fn]}
         return results, bank
 
     def save(self, path, fname, source, verdict):
@@ -339,7 +361,8 @@ def verify(lane, path, funcs=None, outdir=None, store=None, bank=True):
         digest, settings = profile(lane)
         store.put_profile(digest, lane, settings)
         store.put_many((lane, module, mod_sha, k, r.get("fname", ""), r.get("sig", ""),
-                        r["verdict"], r.get("reason", ""), build, r.get("limits", ""), digest)
+                        r["verdict"], r.get("reason", ""), build, r.get("limits", ""), digest,
+                        r.get("detail", ""))
                        for k, r in results.items() if not r.get("cached"))
     for r in results.values():
         r.setdefault("cached", False)
