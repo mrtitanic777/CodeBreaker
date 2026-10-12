@@ -15,6 +15,7 @@ a richer view. `monitor()` is the consumer side: the Ready window.
 """
 import json
 import os
+from src.core import cores
 import sys
 import time
 
@@ -73,7 +74,7 @@ def _get():
         return None
     if _win is None:
         try:
-            import progressui
+            progressui = cores.get('progressui')   # an era may override the meter
             _win = progressui.ProgressWindow()
             if not _win.start():
                 _win = False
@@ -278,7 +279,7 @@ def monitor(sound=True):
     CodeBreaker run's progress live; dings + shows the summary on completion."""
     if sys.platform != "win32":
         print("progress UI requires Windows"); return False
-    import progressui
+    progressui = cores.get('progressui')   # an era may override the meter
     p = progressui.ProgressWindow(caption="CodeBreaker")
     if not p.start():
         return False

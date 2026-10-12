@@ -99,7 +99,8 @@ def build(src_win95, files_dir, out_iso, our=None, boot=None, volid="WIN95",
     those cabinets; every other cabinet is repacked from the original media only. Lets a caller put our
     binaries into the INSTALLED cabinets while leaving the Setup-runtime cabinets (MINI/PRECOPY*)
     original -- so Setup runs on stock code and our binaries are exercised on first boot."""
-    import cab, cabwrite, isowrite
+    import cab, cabwrite
+    from src.engines.build import isowrite
     out_root = out_root or os.path.join("disc", "out")
     win95_out = os.path.join(out_root, "WIN95")
     os.makedirs(win95_out, exist_ok=True)

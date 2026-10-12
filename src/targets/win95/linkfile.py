@@ -125,7 +125,7 @@ def _link_w3(name, path, orig):
     way (e.g. biosxlat.vxd -> match, relocs=0)."""
     from src.engines.recon import masmlift
     from src.formats import objextract
-    import w3
+    from src.formats import w3
     from src.engines.recon import asmrecon32
     les = w3.embedded_les(name)
     if not les:

@@ -41,7 +41,8 @@ def _resolve(name, our, files_dir):
 
 def build(src_win98, files_dir, out_iso, our=None, boot=None, volid="WIN98",
           out_root=None, progress=None):
-    import cab, cabwrite, isowrite
+    import cab, cabwrite
+    from src.engines.build import isowrite
     out_root = out_root or os.path.join("disc_out")
     win98_out = os.path.join(out_root, "WIN98")
     os.makedirs(win98_out, exist_ok=True)

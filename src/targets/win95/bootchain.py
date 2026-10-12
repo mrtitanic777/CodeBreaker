@@ -51,7 +51,7 @@ def _done(module):
             with open(path, "rb") as f:
                 f.seek(lfa)
                 if f.read(2) == b"W3":
-                    import w3
+                    from src.formats import w3
                     a = w3.analyze(base)
                     # inner LE reconstructed? (conduct wrote its report)
                     rt = os.path.join(layout.runtime_dir(), "conduct", base.lower() + ".report.txt")

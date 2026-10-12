@@ -204,7 +204,7 @@ def carve_le(path):
     so conduct_exact credits them directly (no rva; LE objects base at 0)."""
     try:
         from le import LEFile
-        from le_seg import LeSeg
+        from src.formats.le_seg import LeSeg
     except Exception:
         return {}
     out = {}
