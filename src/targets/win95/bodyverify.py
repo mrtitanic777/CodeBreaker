@@ -22,6 +22,7 @@ import re
 import sys
 import subprocess
 
+from src.core import corpus, toolchain
 from src.engines.behavior import tracer, interproc, envprov
 from src.targets.win95 import verify95, origintriage as OT
 
@@ -30,11 +31,15 @@ _C_KW = {"if", "else", "while", "for", "do", "switch", "case", "return", "goto",
          "struct", "union", "enum", "const", "static", "default", "typedef"}
 
 def _ow():
-    from src.core import paths
-    root = os.path.join(paths.repo_root(), "experiments", "premise-proof", "open-watcom-v2", "rel")
-    return {"root": root, "wcc": os.path.join(root, "binnt64", "wcc386.exe"),
-            "wlink": os.path.join(root, "binnt64", "wlink.exe"),
-            "inc": [os.path.join(root, "h", "nt"), os.path.join(root, "h")]}
+    return {"root": toolchain.openwatcom_root(), "wcc": toolchain.ow_cc("pe"),
+            "wlink": toolchain.ow_tool("wlink"), "inc": toolchain.ow_include("pe")}
+
+
+def _scratch(*parts):
+    """Build scratch lives in the temp dir, not beside the source (it grew to many thousands of
+    files under src/targets/win95 and slowed every search of the repo)."""
+    import tempfile
+    return os.path.join(tempfile.gettempdir(), "codebreaker", "bodyverify", *parts)
 
 _BLOCK_CACHE = {}
 
@@ -61,10 +66,8 @@ def _ondemand_block(module, rva):
     from src.core import paths
     # CB_DECOMPILER_BIN pins a specific decompiler build dir (e.g. a frozen pre-change copy) so an
     # A/B verdict sweep can compare two decompiler versions on the same oracle. Defaults to build/bin.
-    bindir = os.environ.get("CB_DECOMPILER_BIN") or os.path.join(
-        paths.repo_root(), "native", "decompiler", "build", "bin")
-    dec = os.path.join(bindir, exe)
-    if not os.path.exists(dec):
+    dec = toolchain.decompiler(exe)
+    if not dec:
         return None
     # Pass the function end so --at skips its ~1.5s whole-module discovery (whose only use is to find
     # this boundary). The next discovered start above `rva` is a key of the cached --module decompile
@@ -307,11 +310,7 @@ def _prep_body(c_text, fname):
     return c_text, refs, other, rregs
 
 def _ow_env(ow):
-    env = dict(os.environ)
-    env["WATCOM"] = ow["root"]
-    env["INCLUDE"] = ";".join(ow["inc"])
-    env["PATH"] = os.path.join(ow["root"], "binnt64") + os.pathsep + env.get("PATH", "")
-    return env
+    return toolchain.ow_env("pe")
 
 def _omf_export_name(obj, fname):
     from src.targets.win95 import autobuild95 as A
@@ -384,7 +383,9 @@ def batch_compile(items, outdir):
     merged = "\n\n".join(bodies)
     merged = re.sub(r"\(\s*void\s*\)\s*\{", "() {", merged) if len(members) > 1 else merged
     src = "\n".join(_PRE + stubs + gdecl) + "\n" + merged + "\n"
-    base = "batch_%x" % (abs(hash(tuple(sorted(members)))) & 0xffffffff)
+    import hashlib
+    # sha1, not hash(): Python salts str hashes per process, so the old name never repeated
+    base = "batch_" + hashlib.sha1("\n".join(sorted(members)).encode()).hexdigest()[:10]
     cf = os.path.join(outdir, base + ".c")
     open(cf, "w", newline="\n").write(src)
     env = _ow_env(ow)
@@ -430,7 +431,7 @@ def verify_module_batched(retail, vas=None, arity=4, outdir=None, bank=True, fas
     from collections import Counter
     from src.targets.win95 import autobuild95 as A
     import pe32util as H
-    outdir = outdir or os.path.join(os.path.dirname(__file__), "_batchverify")
+    outdir = outdir or _scratch("batch", os.path.basename(retail).lower())
     os.makedirs(outdir, exist_ok=True)
     c = H.carve(retail); base = c.pe.image_base
     if vas is None:
@@ -490,7 +491,7 @@ def _verify_one(retail, va, arity, outdir, closure):
     fname, c = synth_closure(retail, va, arity, closure) if closure > 0 else synth(retail, va, arity)
     if not fname:
         return {"va": va, "verdict": "no-synth", "reason": c}
-    outdir = outdir or os.path.join(os.path.dirname(__file__), "_bodyverify", "%x" % va)
+    outdir = outdir or _scratch(os.path.basename(retail).lower(), "%x" % va)
     dll, clog = compile_body(c, fname, outdir)
     if not dll:
         return {"va": va, "verdict": "no-compile", "reason": clog, "c": c}
@@ -514,10 +515,8 @@ def _verify_one(retail, va, arity, outdir, closure):
 
 def _save_verified(retail, fname, c):
     """Write a verified body's beautiful source into the recovered tree, tagged oracle-verified."""
-    from src.core import paths
     modbase = os.path.splitext(os.path.basename(retail))[0]
-    d = os.path.join(os.path.dirname(paths.repo_root()), "Windows95", "design", "recovered",
-                     "verified", modbase)
+    d = os.path.join(corpus.design_dir(), "recovered", "verified", modbase)
     try:
         os.makedirs(d, exist_ok=True)
         open(os.path.join(d, fname + ".c"), "w", newline="\n").write(
@@ -529,8 +528,9 @@ def _save_verified(retail, fname, c):
         pass
 
 def _retail(module):
-    if os.path.sep in module or "/" in module:
-        return module
+    """A module name or path -> the retail binary's path (src.core.corpus picks the installed
+    copy). An unknown name is returned unchanged so the caller's error names it."""
+    return corpus.retail(module) or module
     root = OT._corpus_root()
     base = module if "." in module else module + ".dll"
     for dp, _d, fs in os.walk(root):
@@ -555,8 +555,7 @@ def run(module, va=None, maxn=40):
     print("  --- " + "  ".join("%s=%s" % (k, v) for k, v in c.most_common()) + " ---")
 
 def _ledger_path():
-    from src.core import paths
-    return os.path.join(os.path.dirname(paths.repo_root()), "Windows95", "design", "body_ledger.csv")
+    return os.path.join(corpus.design_dir(), "body_ledger.csv")
 
 def _write_rows(rows):
     """Atomically rewrite the ledger: write a sibling temp file, then os.replace() it into place. A
@@ -644,133 +643,10 @@ def harvest(module, maxn=100000, rows=None, present=None, verified_now=None):
 def _swept_path():
     return os.path.join(os.path.dirname(_ledger_path()), "verify_swept.txt")
 
-# ---------------------------------------------------------------------------
-# Parallel sweep: workers verify whole modules concurrently and RETURN their verified body-ids to
-# the parent, which is the SOLE ledger writer (single-threaded, atomic) -- so parallelism gives a
-# ~core-count speedup with zero ledger-contention (the corruption that killed the earlier detached
-# attempt). Module-level parallelism reuses each module's cached decompile inside its worker.
-# ---------------------------------------------------------------------------
-_W = {}
+# The old sweep_parallel (a multiprocessing.Pool over modules) was removed: on Windows a worker
+# stuck in the in-process oracle has no wall-clock limit, so the pool hung for hours. Corpus
+# sweeps are `python -m src.targets.win95.bank pe|ne` (one subprocess per unit, with a timeout).
 
-def _results_dir():
-    d = os.path.join(os.path.dirname(_ledger_path()), "verify_results")
-    os.makedirs(d, exist_ok=True)
-    return d
-
-def _winit(target_dir, present, already, resdir):
-    from src.core import cores
-    cores.set_target(target_dir)
-    _W["present"] = present
-    _W["already"] = already
-    _W["resfile"] = os.path.join(resdir, "w%d.txt" % os.getpid())
-
-def _wjob(args):
-    """Worker: verify every function in one module; return (module, [verified body_ids], exhausted,
-    counts). No ledger access -- the parent credits and writes."""
-    module, maxn = args
-    from collections import Counter
-    from src.targets.win95 import autobuild95 as A
-    present, already = _W["present"], _W["already"]
-    try:
-        retail = _retail(module)
-        try:
-            base = A._imagebase(A.PE(retail))
-        except Exception:
-            base = 0
-        _lane, tfns = OT.triage_module(retail)
-        tri = sorted((f["addr"], f["sh"][:16]) for f in (tfns or [])
-                     if f.get("addr") is not None and f.get("sh"))
-
-        def _bid_for(rva):
-            lo = None
-            for a, sh in tri:
-                if a == rva:
-                    return sh
-                if a <= rva:
-                    lo = sh
-                else:
-                    break
-            return lo
-        c = Counter(); got = set()
-        allfns = tracer.list_functions(retail)
-        for off, va, size in allfns[:maxn]:
-            bid = _bid_for(va - base)
-            if not bid or bid not in present or bid in already or bid in got:
-                continue
-            outdir = os.path.join(os.path.dirname(__file__), "_bodyverify",
-                                  "w%d" % os.getpid(), "%x" % va)
-            r = verify_body(retail, va, outdir=outdir)
-            c[r["verdict"]] += 1
-            if r["verdict"] == "equivalent":
-                got.add(bid)
-                try:                                      # incremental checkpoint: survive a kill
-                    with open(_W["resfile"], "a") as rf:  # mid-module (giant modules never lose work)
-                        rf.write(bid + "\n"); rf.flush()
-                except OSError:
-                    pass
-        return (module, sorted(got), len(allfns) <= maxn, dict(c))
-    except Exception as e:
-        return (module, [], False, {"error": type(e).__name__})
-
-def sweep_parallel(modules, workers=10, maxper=100000, skip_swept=True):
-    """Corpus sweep across `workers` processes. The parent is the only ledger writer; it checkpoints
-    atomically as workers return, so a stop at any point keeps every credited body."""
-    import csv as _csv
-    import multiprocessing as mp
-    from src.core import paths
-    rows = list(_csv.DictReader(open(_ledger_path())))
-    present = {r["body_id"] for r in rows}
-    already = {r["body_id"] for r in rows if r.get("verified") == "1"}
-    swept = _load_swept() if skip_swept else set()
-    if skip_swept:
-        modules = [m for m in modules if os.path.basename(m).lower() not in swept]
-    verified_now = set(); newly_swept = []; done = 0
-    resdir = _results_dir()
-
-    def _absorb_results():
-        """Fold any per-worker result files (partial progress from a prior KILLED run, and this run's
-        streamed writes) into verified_now, then remove them -- so a giant module cut off by the
-        harness timeout never loses the bodies it already verified."""
-        import glob
-        for rf in glob.glob(os.path.join(resdir, "w*.txt")):
-            try:
-                for line in open(rf):
-                    b = line.strip()
-                    if b:
-                        verified_now.add(b)
-                os.remove(rf)
-            except OSError:
-                pass
-
-    def _flush():                                         # per-module: credit RETURNED ids (result
-        for r in rows:                                    # files are absorbed only at start/end, to
-            if r["body_id"] in verified_now:              # avoid racing workers still appending)
-                r["verified"], r["state"] = "1", "verified"
-        _write_rows(rows)
-        if newly_swept:
-            with open(_swept_path(), "a") as fp:
-                fp.write("".join(s + "\n" for s in newly_swept))
-
-    _absorb_results()                                     # recover a prior killed run's partials first
-    if verified_now:
-        _flush()
-    tdir = paths.target_dir("win95")
-    jobs = [(m, maxper) for m in modules]
-    with mp.Pool(workers, initializer=_winit, initargs=(tdir, present, already, resdir)) as pool:
-        for module, ids, exhausted, counts in pool.imap_unordered(_wjob, jobs):
-            done += 1
-            for bid in ids:
-                verified_now.add(bid)
-            if skip_swept and exhausted:
-                newly_swept.append(os.path.basename(module).lower())
-            if done % max(1, workers) == 0 or ids:       # checkpoint often (cheap, atomic)
-                _flush(); newly_swept = []
-            print("  [%d/%d] %-16s +%d  %s" % (done, len(jobs), os.path.basename(module),
-                  len(ids), "  ".join("%s=%s" % kv for kv in sorted(counts.items()))), flush=True)
-    _absorb_results()                                     # fold this run's streamed writes + clean up
-    _flush()
-    return {"credited": len(verified_now), "skipped": len(swept),
-            "total_verified": sum(1 for r in rows if r.get("verified") == "1")}
 
 def _load_swept():
     try:
@@ -841,9 +717,8 @@ def main(argv):
                     if OT._detect(p)[0] == "pe":
                         seen.add(fn.lower()); mods.append(p)
         mp = maxn if "--max" in argv else 100000
-        if "--parallel" in argv:                         # N worker processes (default 10 of 12 cores)
-            print("=== bodyverify --broad --parallel (%d PE modules, %d workers) ===" % (len(mods), workers), flush=True)
-            r = sweep_parallel(mods, workers=workers, maxper=mp, skip_swept=True)
+        if "--parallel" in argv:
+            print("--parallel was removed; run: python -m src.targets.win95.bank pe"); return
         else:
             r = sweep_corpus(mods, maxper=mp, skip_swept=True)
             print("=== bodyverify --broad (%d PE modules) ===" % len(mods))

@@ -30,11 +30,9 @@ from src.targets.win95 import owbuild
 
 def _design():
     from src.core import paths
-    for c in (os.path.join(os.path.dirname(paths.repo_root()), "Windows95", "design"),
-              r"C:\Users\mrtit\Documents\GitHub\Windows95\design"):
-        if os.path.isdir(c):
-            return c
-    return None
+    from src.core import corpus
+    d = corpus.design_dir()
+    return d if os.path.isdir(d) else None
 
 
 def _retail_path(module):
