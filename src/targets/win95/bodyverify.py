@@ -627,7 +627,14 @@ def batch_compile(items, outdir, imports=None, errors=None):
     # a member called with args but declared (void) -> K&R () so the intra-batch call compiles
     merged = "\n\n".join(bodies)
     merged = re.sub(r"\(\s*void\s*\)\s*\{", "() {", merged) if len(members) > 1 else merged
-    src = "\n".join(_PRE + stubs + gdecl) + "\n" + merged + "\n"
+    # Every member is declared before any is used: a call then sees the callee's convention
+    # (__stdcall functions remove their own arguments) whichever order the bodies come in.
+    protos = []
+    for fn in sorted(members):
+        dm = re.search(r"(?m)^([^\n;{}#/]*\b%s\s*\([^;{}]*\))\s*\{" % re.escape(fn), merged)
+        if dm:
+            protos.append(" ".join(dm.group(1).split()) + ";")
+    src = "\n".join(_PRE + stubs + gdecl + protos) + "\n" + merged + "\n"
     import hashlib
     # sha1, not hash(): Python salts str hashes per process, so the old name never repeated
     base = "batch_" + hashlib.sha1("\n".join(sorted(members)).encode()).hexdigest()[:10]

@@ -2514,7 +2514,10 @@ std::string CDecompiler::Run() {
   // decorates `name_` with NO arity suffix -- arity-independent, matching owlink's PE export/import
   // decoration -- until true call-site arity recovery lands.
 #ifdef WIN95DEC_TARGET32
-  out << ret_ty << " " << fname << "(";
+  // A function that returns with `ret N` removes its own arguments: that is __stdcall, and its
+  // callers rely on it. (The argument count is N/4, declared below, so the decorated name agrees
+  // at every call that has the prototype in scope.)
+  out << ret_ty << (func_.callee_pop > 0 ? " __stdcall " : " ") << fname << "(";
 #else
   out << ret_ty << " __fastcall " << fname << "(";
 #endif
