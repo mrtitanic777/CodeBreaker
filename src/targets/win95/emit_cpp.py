@@ -42,7 +42,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # target dir on 
 
 import pe32util as H
 import cc32
-import segdiff
+from src.engines.recon import segdiff
 
 # a lone empty struct + the out-of-line method definition; `this` arithmetic keeps
 # us free of field-offset alignment/packing entirely.

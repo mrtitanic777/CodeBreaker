@@ -28,11 +28,11 @@ import sys
 import threading
 import time
 
-import asmrecon
+from src.engines.recon import asmrecon
 # asmrecon32 (PE/32-bit) is imported lazily in the PE path only — win1.0 is
 # NE-only, so we never load it (and don't ship it in the win1.0 target).
 from src.core import parallel
-import segdiff
+from src.engines.recon import segdiff
 import target
 import trace
 from src.core import layout

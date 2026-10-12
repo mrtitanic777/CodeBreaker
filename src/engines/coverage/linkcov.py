@@ -20,6 +20,7 @@ Grouped by tier and format.
 """
 import glob
 from src.core import cores
+from src.core import layout
 import json
 import os
 import sys
@@ -28,9 +29,11 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(ROOT)
 os.chdir(os.path.dirname(ROOT) if os.path.basename(ROOT) == "tools" else ".")
 
-LEDGER_DIR = os.path.join("reports", "conduct")
-SAMPLE_JSONL = os.path.join("reports", "link_sample.jsonl")
-REPORT_MD = os.path.join("reports", "link_coverage.md")
+LEDGER_DIR = os.path.join(layout.runtime_dir(), "conduct")
+SAMPLE_JSONL = os.path.join(layout.runtime_dir(), "link_sample.jsonl")
+# Human-readable reports live under docs/reports where a target has that tree, else reports/.
+REPORT_MD = os.path.join(os.path.join("docs", "reports") if os.path.isdir(os.path.join("docs", "reports"))
+                         else "reports", "link_coverage.md")
 
 
 def _load_ledgers():
@@ -202,7 +205,7 @@ def main():
         _run_sample(rows, per_tier)
     sample = _load_sample()
     report = _fmt_report(rows, sample)
-    os.makedirs("reports", exist_ok=True)
+    os.makedirs(os.path.dirname(REPORT_MD), exist_ok=True)
     open(REPORT_MD, "w", encoding="utf-8").write(report)
 
     # concise console tally

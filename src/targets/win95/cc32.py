@@ -46,7 +46,7 @@ import subprocess
 import sys
 import tempfile
 
-import segdiff
+from src.engines.recon import segdiff
 import target
 from src.core import layout
 

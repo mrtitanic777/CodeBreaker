@@ -26,7 +26,7 @@ import string
 import sys
 
 from src.core import parallel
-import segdiff
+from src.engines.recon import segdiff
 
 MAX_PRODUCT = 200
 BIG = 10 ** 9

@@ -14,7 +14,7 @@ import tempfile
 
 import pe32util as H          # first: arms sys.path + active target for the bare imports
 import cc32
-import segdiff
+from src.engines.recon import segdiff
 from src.core import layout
 
 

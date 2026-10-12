@@ -19,6 +19,7 @@ from the original?* Every byte is put in one of three buckets:
 """
 import os
 from src.core import cores
+from src.core import layout
 import sys
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -197,12 +198,11 @@ def prov_fast(module):
 
 def _corpus():
     target = cores.get('target')
-    base = os.path.join("reconstructed", "asm")
     agg = {"total": 0, "reconstructed": 0, "recon_code": 0, "recon_rsrc": 0,
            "linker": 0, "data": 0, "retained": 0}
     byfmt = {}
     n = 0
-    mods = sorted(d for d in os.listdir(base) if os.path.isdir(os.path.join(base, d)))
+    mods = sorted(os.path.basename(d) for d in layout.asm_module_dirs())
     for m in mods:
         try:
             r = prov_fast(m)

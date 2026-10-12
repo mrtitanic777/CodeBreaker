@@ -49,19 +49,31 @@ def shipped_ne_segment(module_path, seg_index):
     seg = ne.segments()[seg_index - 1]
     code = ne.data[seg["file_off"]:seg["file_off"] + seg["length"]]
     mask = set()
+    # The masked set MUST match linkfile's NE relocation restore pass exactly: the
+    # rebuild leaves shipped bytes only at the sites linkfile restores, so any byte
+    # masked here but NOT restored there is a false "already-matching" that lets a
+    # mis-disassembled table entry stay live and then diff in the real rebuild.
+    # linkfile requires the WHOLE fixup site (w bytes) to fit in the segment before
+    # visiting it (`cur + size <= length`); the old bound here (`cur < len(code)-1`)
+    # only required the 2-byte next-link to fit, so a record whose site overran the
+    # segment end was still followed, over-masking a whole chain of interior sites
+    # linkfile never touches. Use linkfile's bound so the two agree.
     for rec in ne.relocations(seg):
         w = NE_SRC_WIDTH.get(rec["src"], 2)
         off = rec["offset"]
         if rec.get("additive"):
-            for k in range(w):
-                mask.add(off + k)
+            if off + w <= len(code):
+                for k in range(w):
+                    mask.add(off + k)
             continue
         seen = set()                      # non-additive: follow the fixup chain
         cur = off
-        while cur != 0xFFFF and 0 <= cur < len(code) - 1 and cur not in seen:
+        while cur != 0xFFFF and 0 <= cur and cur + w <= len(code) and cur not in seen:
             seen.add(cur)
             for k in range(w):
                 mask.add(cur + k)
+            if cur + 1 >= len(code):
+                break                     # can't read the 2-byte next-link
             cur = code[cur] | (code[cur + 1] << 8)
     return code, mask
 

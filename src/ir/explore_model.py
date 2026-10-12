@@ -18,12 +18,13 @@ The only inference is `strings` (a literal scan) — labelled, never a name sour
 """
 import json
 from src.core import cores
+from src.core import layout
 import os
 import re
 import sys
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-LEDGER_DIR = os.path.join("reports", "conduct")
+LEDGER_DIR = os.path.join(layout.runtime_dir(), "conduct")
 
 
 # --------------------------------------------------------------------------

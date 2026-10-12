@@ -29,9 +29,9 @@ import threading
 import time
 
 from src.engines.recon import asmrecon
-import asmrecon32
+from src.engines.recon import asmrecon32
 from src.core import parallel
-import segdiff
+from src.engines.recon import segdiff
 import target
 from src.disasm import trace
 from src.core import layout
@@ -178,7 +178,7 @@ def _reconcile_one(sg, seg_i, start, end, seg_mask, emitdir=None):
 
 def _reconcile_one_pe(sg, sec_i, start, end, seg_mask, emitdir=None):
     """PE (32-bit) counterpart of _reconcile_one, via asmrecon32."""
-    import asmrecon32
+    from src.engines.recon import asmrecon32
     try:
         asm, res, fdb, n = asmrecon32.reconcile32(sg, start, end, seg_mask)
         exact = bool(res and res["exact"])

@@ -530,7 +530,7 @@ class ProgressWindow:
     def _load_module(self, name):
         self.set_status_bar("analyzing %s ..." % name)
         try:
-            import explore_model
+            from src.ir import explore_model
             self._model = explore_model.analyze_module(name)
         except Exception as e:
             self.set_status_bar("analyze error: %r" % e); return
