@@ -125,7 +125,8 @@ def _link_w3(name, path, orig):
     way (e.g. biosxlat.vxd -> match, relocs=0)."""
     from src.engines.recon import masmlift
     from src.formats import objextract
-    import w3, asmrecon32
+    import w3
+    from src.engines.recon import asmrecon32
     les = w3.embedded_les(name)
     if not les:
         return None                                # not a W3 container -> let caller SKIP
@@ -189,7 +190,8 @@ def link_module(name, masmroot=None):
     file. Returns {match, n_diff, first_diff, placed, sections, rebuilt}."""
     from src.engines.recon import masmlift
     from src.formats import objextract
-    import target, asmrecon32
+    import target
+    from src.engines.recon import asmrecon32
     path = target.resolve(name)
     fmt = target.format_of(path)
     orig = open(path, "rb").read()

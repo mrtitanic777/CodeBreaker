@@ -13,7 +13,7 @@ import re
 
 import pe32util as H
 import cc32
-import segdiff
+from src.engines.recon import segdiff
 
 WIN = ("typedef unsigned long DWORD; typedef unsigned int UINT; typedef int BOOL;\n"
        "typedef void *HANDLE, *HDC, *HGDIOBJ, *LPVOID; typedef const char *LPCSTR;\n")

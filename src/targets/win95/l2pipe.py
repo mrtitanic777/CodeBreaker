@@ -31,7 +31,7 @@ import classify32
 import emit_c
 import emit_cpp
 import cc32
-import asmrecon32
+from src.engines.recon import asmrecon32
 from src.formats.pe_seg import PeSeg
 
 _SG = {}

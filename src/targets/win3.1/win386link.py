@@ -51,7 +51,8 @@ def _submodules(d):
 
 def link():
     from src.formats import objextract
-    import target, le as le_mod, masmlift, asmrecon32
+    import target, le as le_mod, masmlift
+    from src.engines.recon import asmrecon32
     path = target.resolve("WIN386.EXE")
     d = open(path, "rb").read()
     orig = bytes(d)

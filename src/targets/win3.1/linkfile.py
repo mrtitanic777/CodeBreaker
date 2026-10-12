@@ -100,7 +100,8 @@ def link_module(name, masmroot=None):
     """Rebuild `name` from its reconstructed .asm and byte-compare to the shipped
     file. Returns {match, n_diff, first_diff, placed, sections, rebuilt}."""
     from src.formats import objextract
-    import target, masmlift, asmrecon32
+    import target, masmlift
+    from src.engines.recon import asmrecon32
     path = target.resolve(name)
     fmt = target.format_of(path)
     orig = open(path, "rb").read()

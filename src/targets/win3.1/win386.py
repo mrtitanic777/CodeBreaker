@@ -68,7 +68,7 @@ def _split_oversized(sg, start, end, max_fn=4096):
 def conduct_submodule(name, le, jobs, limit):
     """Reconstruct one embedded LE submodule; return its ledger dict."""
     from src.formats.le_seg import LeSeg
-    import asmrecon32
+    from src.engines.recon import asmrecon32
     from src.core import parallel
     ledger = {}
     objs = le.objects()

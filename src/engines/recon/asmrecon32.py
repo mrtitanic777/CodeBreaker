@@ -29,7 +29,7 @@ import sys
 from src.engines.recon import asmrecon
 from src.engines.recon import masmlift
 from src.formats import objextract
-import segdiff
+from src.engines.recon import segdiff
 from src.engines.recon.asmrecon import JMPCC, to_masm, _emit_db, _divergers, _cancelled
 from src.formats.pe_seg import PeSeg
 

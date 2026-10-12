@@ -28,7 +28,7 @@ _DEFAULT = {
     "trace": "disasm", "segdiff": "engines.recon", "parallel": "core",
     "cc16": "engines.recon", "masmlift": "engines.recon", "cfg": "ir",
     "idord": "engines.symbol", "matchbatch": "engines.match", "asmrecon": "engines.recon",
-    "refscan": "toolchain.reference", "asmrecon32": None, "le": None,
+    "refscan": "toolchain.reference", "asmrecon32": "engines.recon", "le": None,
 }
 
 _active_dir = None

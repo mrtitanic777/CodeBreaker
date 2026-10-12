@@ -26,8 +26,9 @@ import sys
 import tempfile
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-DBX = r"dosbox-x"
-MSVC = r"reference/msvc152c"
+# External-toolchain defaults; set the real paths in config.json (wt applies them).
+DBX = "dosbox-x"                                                  # DOSBox-X (on PATH, or config)
+MSVC = os.path.join("reference", "msvc152c")
 
 CONF = r"""[sdl]
 autolock=false
