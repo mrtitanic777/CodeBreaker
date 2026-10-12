@@ -44,6 +44,7 @@ import struct
 
 FILES = "files"
 PRODUCT = "Windows 98 (Second Edition)"     # how generated documents name this era
+VOLID = "WIN98"                             # default volume id for a built install disc
 
 # --------------------------------------------------------------------------
 # Tiers, most-central first. Order is the recommended work order.

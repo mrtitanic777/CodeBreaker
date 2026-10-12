@@ -2,15 +2,13 @@
 r"""
 isowrite.py -- write an ISO9660 image (the inverse of iso9660.py's reader).
 
-Builds a valid ISO9660 (8.3 names, no Joliet) from a directory tree, with
-optional El Torito boot so the CD is bootable. Used to assemble our self-hosted
-Windows 98 install disc: our reconstructed SETUP + our byte-exact binaries
-packed into functional CABs (cabwrite) + the data files. The ISO container is a
-delivery wrapper, not a byte-exact reconstruction — note the retail 98 SE disc
-also carries a Joliet tree (for long names), which this plain-ISO9660 writer
-does not reproduce.
+Builds a valid ISO9660 (8.3 names, no Joliet -- matching the Win95 OSR2 disc) from
+a directory tree, with optional El Torito boot so the CD is bootable. Used to
+assemble our self-hosted Windows 95 install disc: our reconstructed SETUP + our
+byte-exact binaries packed into functional CABs (cabwrite) + the data files. The
+ISO container is a delivery wrapper, not a byte-exact reconstruction.
 
-    python isowrite.py OUT.ISO SRCDIR [--boot BOOTIMG] [--volid "WIN98 SE"]
+    python isowrite.py OUT.ISO SRCDIR [--boot BOOTIMG] [--volid WIN95]
     python isowrite.py --selftest
 """
 import os
@@ -131,7 +129,17 @@ def _all_dirs(root):
     return order
 
 
-def write_iso(srcdir, out_path, volid="WIN98", boot_img=None):
+def default_volid():
+    """The era's volume id (target.VOLID); WIN95 when the active era does not declare one."""
+    try:
+        from src.core import cores
+        return getattr(cores.get("target"), "VOLID", "WIN95")
+    except Exception:
+        return "WIN95"
+
+
+def write_iso(srcdir, out_path, volid=None, boot_img=None):
+    volid = volid or default_volid()
     root = _build_tree(srcdir)
     dirs = _all_dirs(root)
 
@@ -283,9 +291,9 @@ def write_iso(srcdir, out_path, volid="WIN98", boot_img=None):
 def _selftest():
     import tempfile, sys as _s
     d = tempfile.mkdtemp()
-    os.makedirs(os.path.join(d, "src", "WIN98"))
+    os.makedirs(os.path.join(d, "src", "WIN95"))
     open(os.path.join(d, "src", "READ.ME"), "wb").write(b"hello iso\n" * 50)
-    open(os.path.join(d, "src", "WIN98", "SETUP.EXE"), "wb").write(bytes(range(256)) * 40)
+    open(os.path.join(d, "src", "WIN95", "SETUP.EXE"), "wb").write(bytes(range(256)) * 40)
     iso = os.path.join(d, "test.iso")
     write_iso(os.path.join(d, "src"), iso, volid="TESTVOL")
     print("wrote %s (%d bytes)" % (iso, os.path.getsize(iso)))
@@ -296,7 +304,7 @@ def _selftest():
     for path, rec in it.walk():
         found[path.lstrip("/").split(";")[0].upper()] = it.read_file(rec)
     ok = (found.get("READ.ME") == b"hello iso\n" * 50 and
-          found.get("WIN98/SETUP.EXE") == bytes(range(256)) * 40)
+          found.get("WIN95/SETUP.EXE") == bytes(range(256)) * 40)
     print("read back files:", sorted(found))
     print("SELFTEST:", "PASS" if ok else "FAIL")
     return ok
@@ -309,7 +317,7 @@ def main():
         sys.exit("usage: isowrite.py OUT.ISO SRCDIR [--boot IMG] [--volid ID]")
     out, src = sys.argv[1], sys.argv[2]
     boot = sys.argv[sys.argv.index("--boot") + 1] if "--boot" in sys.argv else None
-    volid = sys.argv[sys.argv.index("--volid") + 1] if "--volid" in sys.argv else "WIN98"
+    volid = sys.argv[sys.argv.index("--volid") + 1] if "--volid" in sys.argv else None
     n = write_iso(src, out, volid=volid, boot_img=boot)
     print("wrote %s: %d bytes%s" % (out, n, " (bootable)" if boot else ""))
 

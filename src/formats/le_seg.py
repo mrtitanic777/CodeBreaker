@@ -65,7 +65,32 @@ class LeSeg:
         for i in range(n - 3):                        # push ebp; mov ebp,esp
             if code[i] == 0x55 and code[i + 1] == 0x8B and code[i + 2] == 0xEC:
                 starts.add(i)
+        # VxD DDB service-table entries: external entry points reached ONLY via VxDCall
+        # (Device_ID<<16)|index -- invisible to the call-sweep/prologue signals above, so the
+        # carve otherwise swallows them mid-function. le.ddb_services() resolves the DDB service
+        # table (an array of fixups) to (index, obj, offset); take the ones in THIS object. The
+        # off2idx filter below drops any offset that isn't a real instruction boundary, so a
+        # split here is byte-exact-neutral by construction.
+        try:
+            for _idx, _ob, _off in self.le.ddb_services():
+                if _ob == self.obj_index:
+                    starts.add(_off)
+        except Exception:
+            pass
         starts = {s for s in starts if s in self.off2idx}
+        # VMM (the W3-bundled base VxD) hides its service table in the LE preamble with a flat
+        # pointer -- ddb_services() can't see it; vmm_services() decodes it. These handlers are
+        # authoritative VxDCall entry points (real function starts by definition), but VMM's code
+        # interleaves data (its own service table sits in obj1), so the linear disassembler
+        # mis-aligns and off2idx misses ~2/3 of them. Trust them directly, BYPASSING the off2idx
+        # filter: every split still reconstructs byte-exact (asmrecon db's any non-round-tripping
+        # bytes at a seam) and conduct verifies each function. [] for every non-VMM module.
+        try:
+            for _idx, _ob, _off in self.le.vmm_services():
+                if _ob == self.obj_index and 0 <= _off < n:
+                    starts.add(_off)
+        except Exception:
+            pass
         order = sorted(starts)
         out = {}
         for i, s in enumerate(order):

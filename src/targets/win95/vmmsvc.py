@@ -89,7 +89,8 @@ def ddb_device_map():
     """{device_id: DDB_name} read from the DDB_Req_Device_Number (+0x06) of EVERY retail
     VxD's DDB -- the authoritative device table. Static evidence; no execution."""
     import struct, glob as _glob
-    import target, le as le_mod, w3
+    import target, le as le_mod
+    from src.formats import w3
     out = {}
     dirs = [d for d in _glob.glob("src/asm/**/*.vxd", recursive=True) if os.path.isdir(d)]
     dirs += [d for d in _glob.glob("src/asm/**/*.386", recursive=True) if os.path.isdir(d)]

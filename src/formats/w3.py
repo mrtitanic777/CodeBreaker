@@ -17,6 +17,36 @@ import sys
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(ROOT)
+def embedded_les(module):
+    """[(name, file_off, LEFile)] for each LE module bundled inside a W3 container
+    (VMM32.VXD). The W3 entry table indexes standard LE images by (name, off, size); each
+    is parsed via LEFile.from_buffer (no MZ of its own). Returns [] if MODULE isn't a W3.
+    This is the reusable extraction the DDB tooling builds on -- e.g.
+        for name, off, lf in embedded_les('vmm32.vxd'):
+            services = lf.all_ddb_services()      # every static VxD's service table
+    (NB: the base VMM's own service table is non-standard -- see le.find_ddb.)"""
+    target = cores.get('target')
+    le = cores.get('le')
+    d = open(target.resolve(module), "rb").read()
+    if d[:2] != b"MZ":
+        return []
+    lfa = struct.unpack_from("<I", d, 0x3C)[0]
+    if d[lfa:lfa + 2] != b"W3":
+        return []
+    count = struct.unpack_from("<I", d, lfa + 4)[0]
+    out = []
+    for i in range(count):
+        rec = d[lfa + 0x10 + i * 16:lfa + 0x10 + i * 16 + 16]
+        name = rec[:8].rstrip(b" \0").decode("latin1", "replace")
+        off = struct.unpack_from("<I", rec, 8)[0]
+        if d[off:off + 2] in (b"LE", b"LX"):
+            try:
+                out.append((name, off, le.LEFile.from_buffer(d[off:], 0, path=name)))
+            except Exception:
+                pass
+    return out
+
+
 def analyze(module):
     target = cores.get('target')
     path = target.resolve(module)

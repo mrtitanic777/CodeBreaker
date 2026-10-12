@@ -292,7 +292,7 @@ def _disasm_segjobs(module, only_seg=None):
             acc[0] += len(code)
             raw.append((i, sg, sg.mask))
     elif fmt == "LE":
-        from le_seg import LeSeg
+        from src.formats.le_seg import LeSeg
         _le = _le_open(module)                          # inner LE for W3 containers
         objs = _le.objects()
         exe = [(i, ob) for i, ob in enumerate(objs, 1) if ob["exec"]]

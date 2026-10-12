@@ -509,7 +509,8 @@ class ProgressWindow:
         self._modules_loaded = True
         import os as _os
         try:
-            import target
+            from src.core import cores
+            target = cores.get('target')
             names = [_os.path.basename(p) for tier in target.TIER_ORDER
                      for p in target.tiers().get(tier, [])]
         except Exception as e:

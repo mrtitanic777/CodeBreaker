@@ -261,7 +261,7 @@ def _get():
         return None
     if _win is None:
         try:
-            import progressui
+            from src.core import progressui
             _win = progressui.ProgressWindow()
             if not _win.start():
                 _win = False
@@ -475,7 +475,7 @@ def monitor(sound=True):
     CodeBreaker run's progress live; dings + shows the summary on completion."""
     if sys.platform != "win32":
         print("progress UI requires Windows"); return False
-    import progressui
+    from src.core import progressui
     p = progressui.ProgressWindow(caption="CodeBreaker", monitor_only=True)
     if not p.start():
         return False
