@@ -83,6 +83,14 @@ thread_local std::vector<uint32_t> g_string_refs;
 // User-asserted signature for the function being rendered (borrowed).
 thread_local const FuncSignature* g_signature = nullptr;
 
+// Highest argument register. PowerPC passes eight (r3..r10); the Win95 lanes stage stack
+// arguments in the same registers and Windows APIs take up to sixteen (CreateWindowEx has 12).
+#ifdef WIN95DEC_NO_PPC
+static const int kArgHi = 18;
+#else
+static const int kArgHi = 10;
+#endif
+
 // Absolute-address accesses seen this render, and whether we are currently
 // rendering the destination of a store (which makes the access a write).
 thread_local std::vector<DataRef> g_data_refs;
@@ -892,7 +900,7 @@ std::string CDecompiler::RenderTailCall(const ILInstr& in) {
   ce->reads_memory = true;
   // Same heuristic as ILOp::Call: take the contiguous run of argument
   // registers r3.. that currently hold a value.
-  for (int r = 3; r <= 10; r++) {
+  for (int r = 3; r <= kArgHi; r++) {
     auto vit = cur_arg_val_.find(r);
     if (vit == cur_arg_val_.end()) break;
     ce->args.push_back(vit->second);
@@ -970,7 +978,7 @@ bool CDecompiler::IsFrameNoise(const ILInstr& in) const {
 }
 
 std::string CDecompiler::NameForLiveIn(const ILValue& v) {
-  if (v.ppc_reg >= 3 && v.ppc_reg <= 10) {
+  if (v.ppc_reg >= 3 && v.ppc_reg <= kArgHi) {
     // A user-supplied argument name wins over the positional default, so the
     // body reads with real parameter names rather than a1..a8.
     if (g_signature) {
@@ -1304,7 +1312,7 @@ void CDecompiler::IndexUses() {
       auto note = [&](const ILValue& v) {
         if (v.id == kILNoValue) return;
         if (def_of_.count(v.id)) return;
-        if (v.ppc_reg >= 3 && v.ppc_reg <= 10 && !defined_regs.count(v.ppc_reg))
+        if (v.ppc_reg >= 3 && v.ppc_reg <= kArgHi && !defined_regs.count(v.ppc_reg))
           live_in_args_.insert(v.ppc_reg);
         // x86 GPR arg registers (ax=20,cx=21,dx=22,bx=23) read before ever written = a
         // register-convention incoming argument (Watcom __watcall/__fastcall). bp/si/di (25-27)
@@ -2035,13 +2043,13 @@ std::string CDecompiler::Run() {
           // as the store it is.
           // An explicit count from the lifter (Win95 lanes): 0x100 + n.
 #ifdef WIN95DEC_NO_PPC
-          const int explicit_n = (in.op == ILOp::Call && in.imm >= 0x100 && in.imm <= 0x108)
+          const int explicit_n = (in.op == ILOp::Call && in.imm >= 0x100 && in.imm <= 0x100 + kArgHi - 2)
                                      ? in.imm - 0x100 : -1;
 #else
           const int explicit_n = -1;
 #endif
           int reg_args = 0;
-          for (int rr = 3; rr <= 10; rr++) {
+          for (int rr = 3; rr <= kArgHi; rr++) {
             if (explicit_n >= 0 && rr - 3 >= explicit_n) break;
             if (!cur_arg_val_.count(rr)) break;
             reg_args++;
@@ -2069,7 +2077,7 @@ std::string CDecompiler::Run() {
           if (callee[0] != '(') {
             int& argc = g_called_functions[ce->text];
             int here = 0;
-            for (int rr = 3; rr <= 10; rr++) {
+            for (int rr = 3; rr <= kArgHi; rr++) {
               if (explicit_n >= 0 && rr - 3 >= explicit_n) break;
               if (!cur_arg_val_.count(rr)) break;
               here++;
@@ -2080,7 +2088,7 @@ std::string CDecompiler::Run() {
           // Arity isn't recoverable without interprocedural analysis, so take
           // the contiguous run of argument registers r3.. that currently hold a
           // value; that is what the caller just set up.
-          for (int r = 3; r <= 10; r++) {
+          for (int r = 3; r <= kArgHi; r++) {
             if (explicit_n >= 0 && r - 3 >= explicit_n) break;
             auto vit = cur_arg_val_.find(r);
             if (vit == cur_arg_val_.end()) break;
@@ -2142,7 +2150,7 @@ std::string CDecompiler::Run() {
           }
           barrier_++;
           // A call clobbers r4-r12; r3 becomes its result.
-          for (int r = 4; r <= 10; r++) cur_arg_val_.erase(r);
+          for (int r = 4; r <= kArgHi; r++) cur_arg_val_.erase(r);
           if (in.dst.id != kILNoValue)
             cur_arg_val_[3] = MkName(VarName(in.dst.id));
           else
@@ -2258,7 +2266,7 @@ std::string CDecompiler::Run() {
           emit(vn + " = " + rhs + ";", in.address);
           expr_of_[in.dst.id] = MkName(vn, in.dst.type);
           def_barrier_[in.dst.id] = barrier_;
-          if (in.dst.ppc_reg >= 3 && in.dst.ppc_reg <= 10)
+          if (in.dst.ppc_reg >= 3 && in.dst.ppc_reg <= kArgHi)
             cur_arg_val_[in.dst.ppc_reg] = expr_of_[in.dst.id];
         }
         continue;
@@ -2268,7 +2276,7 @@ std::string CDecompiler::Run() {
       // Track argument registers before DCE. The IL doesn't model call
       // operands, so `mr r3, r31` setting up an argument has no IL use and
       // would otherwise be eliminated — taking the call's argument with it.
-      if (in.dst.ppc_reg >= 3 && in.dst.ppc_reg <= 10)
+      if (in.dst.ppc_reg >= 3 && in.dst.ppc_reg <= kArgHi)
         cur_arg_val_[in.dst.ppc_reg] = e;
 
       if (e) orig_expr_[in.dst.id] = e;
@@ -2298,7 +2306,7 @@ std::string CDecompiler::Run() {
       if ((uses <= 1 || trivial) && pure && !opts_.no_fold && single_def && mem_fold_ok) {
         expr_of_[in.dst.id] = e;
         def_barrier_[in.dst.id] = barrier_;
-        if (in.dst.ppc_reg >= 3 && in.dst.ppc_reg <= 10)
+        if (in.dst.ppc_reg >= 3 && in.dst.ppc_reg <= kArgHi)
           cur_arg_val_[in.dst.ppc_reg] = e;
         continue;  // folded into its single consumer
       }
@@ -2321,7 +2329,7 @@ std::string CDecompiler::Run() {
            pure ? vn : std::string());
       expr_of_[in.dst.id] = MkName(vn, in.dst.type);
       def_barrier_[in.dst.id] = barrier_;
-      if (in.dst.ppc_reg >= 3 && in.dst.ppc_reg <= 10)
+      if (in.dst.ppc_reg >= 3 && in.dst.ppc_reg <= kArgHi)
         cur_arg_val_[in.dst.ppc_reg] = expr_of_[in.dst.id];
     }
   }
@@ -2548,7 +2556,7 @@ std::string CDecompiler::Run() {
     bool wrote = false;
     int hi = live_in_args_.empty() ? 2 : 3;
     for (int r : live_in_args_) hi = std::max(hi, r);
-    if (pop_args > 0) hi = std::min(10, std::max(hi, 2 + pop_args));
+    if (pop_args > 0) hi = std::min(kArgHi, std::max(hi, 2 + pop_args));
     for (int r = 3; r <= hi; r++) {
       if (wrote) out << ", ";
       wrote = true;

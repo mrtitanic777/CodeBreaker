@@ -168,6 +168,22 @@ int main(int argc, char** argv) {
     for (const auto& kv : img.imports) slots[img.image_base + kv.first] = kv.second;
     lifter.SetImportSlots(slots);
   }
+  // CB_API_ARGS names a file of `MODULE.func<TAB>bytes`: what each imported function removes from
+  // the stack on return, so a call to it is given the right number of arguments.
+  if (const char* af = std::getenv("CB_API_ARGS")) {
+    if (FILE* fp = std::fopen(af, "r")) {
+      std::map<std::string, int> pops;
+      char buf[1024];
+      while (std::fgets(buf, sizeof buf, fp)) {
+        char* tab = std::strchr(buf, '\t');
+        if (!tab) continue;
+        *tab = 0;
+        pops[buf] = std::atoi(tab + 1);
+      }
+      std::fclose(fp);
+      lifter.SetImportPops(pops);
+    }
+  }
 
   // --disasm: per-section listing with resolved import/target annotations.
   if (mode == "--disasm") {

@@ -414,6 +414,7 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
     int fk = 0; ILValue fa, fb; bool fimm = false; int64_t fimmv = 0; int fsz = 2;
     std::vector<ILValue> fp;
     int sp = 0; bool spk = false; int bp = 0; bool bpk = false;
+    std::vector<ILValue> pend;                     // values pushed and not yet taken by a call
   };
   std::vector<BState> bexit(nblk);
   std::vector<char> lifted(nblk, 0), haveBlk(nblk, 0);
@@ -451,6 +452,25 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
     flag_kind = (FlagKind)fs.fk; flagA = fs.fa; flagB = fs.fb;
     flag_imm = fs.fimm; flag_immv = fs.fimmv; flag_sz = fs.fsz;
     fpst = fs.fp;
+    // Arguments are often pushed in one block and the call made in a later one (a conditional
+    // between the pushes, or a choice of what to push). Carry the pending pushes in when every
+    // way into this block has the same number of them; where the ways in pushed different values
+    // for a position, that position is a merge like any register.
+    {
+      bool same = true;
+      for (size_t p : T) if (bexit[p].pend.size() != bexit[T[0]].pend.size()) same = false;
+      if (same && U.empty()) {
+        for (size_t k = 0; k < bexit[T[0]].pend.size(); ++k) {
+          bool one = true;
+          for (size_t p : T) if (bexit[p].pend[k].id != bexit[T[0]].pend[k].id) one = false;
+          if (one) { pend_args.push_back(bexit[T[0]].pend[k]); continue; }
+          ILValue m = fn.AllocValue(bexit[T[0]].pend[k].type);
+          mergeIds.insert(m.id);
+          for (size_t p : T) pmoves.push_back({p, m, bexit[p].pend[k]});
+          pend_args.push_back(m);
+        }
+      }
+    }
     std::set<int> slots;
     for (size_t p : T) for (const auto& kv : bexit[p].reg) slots.insert(kv.first);
     for (int s : slots) {
@@ -934,8 +954,20 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
         // counts all over a module.
         std::vector<ILValue> later_args;
         int known_pop = -1;
-        if (bits32_ && in.ops[0].kind == OpKind::Rel && cs == call_sites_.end()) {
-          known_pop = CalleePop((uint32_t)in.ops[0].imm);
+        if (bits32_) {
+          if (in.ops[0].kind == OpKind::Rel && cs == call_sites_.end()) {
+            known_pop = CalleePop((uint32_t)in.ops[0].imm);
+          } else if (!import_pops_.empty()) {
+            // An imported function: its size was read from the DLL that exports it.
+            std::string key = x.call_name;
+            size_t dot = key.find('.');
+            for (size_t i = 0; i < key.size() && i < dot; ++i)
+              key[i] = (char)std::toupper((unsigned char)key[i]);
+            auto ip = import_pops_.find(key);
+            if (ip != import_pops_.end()) known_pop = ip->second;
+          }
+        }
+        if (bits32_ && known_pop >= 0) {
           int want = -1;
           if (known_pop > 0) want = known_pop / 4;
           else if (known_pop == 0 && iit->second + 1 < insns.size()) {
@@ -975,7 +1007,7 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
         }
         // stage pushed args into the arg registers r3.. (PASCAL push order); the
         // back-end reads r3..r10 as the call's arguments.
-        for (size_t i = 0; i < pend_args.size() && i < 8; ++i) {
+        for (size_t i = 0; i < pend_args.size() && i < 16; ++i) {
           ILInstr ar; ar.op = ILOp::Assign; ar.address = a; ar.src1 = pend_args[i];
           ar.dst = fn.AllocValue(pend_args[i].type, 3 + (int)i);
           bb.instrs.push_back(ar);
@@ -983,7 +1015,7 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
         // Tell the back-end exactly how many arguments this call has. It otherwise takes every
         // argument register that holds a value -- and this function's OWN parameters live in
         // those registers, so a call with no arguments was printed passing the caller's a1.
-        if (bits32_) x.imm = 0x100 + (int)std::min<size_t>(pend_args.size(), 8);
+        if (bits32_) x.imm = 0x100 + (int)std::min<size_t>(pend_args.size(), 16);
         pend_args = later_args;
         x.dst = fn.AllocValue(ILType::U32, kGpBase);   // DX:AX (long returns); AX truncates on 16-bit use
         bb.instrs.push_back(x);
@@ -1397,6 +1429,7 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
     ex.fimm = flag_imm; ex.fimmv = flag_immv; ex.fsz = flag_sz;
     ex.fp = fpst;
     ex.sp = sp_off; ex.spk = sp_known; ex.bp = bp_off; ex.bpk = bp_known;
+    ex.pend = pend_args;
     if (sptrack && reachable[li] && !sp_known) sp_bad = true;   // lost track of the stack here
     lifted[li] = 1;
     blks[li] = std::move(bb);
