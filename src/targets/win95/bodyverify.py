@@ -28,7 +28,11 @@ from src.targets.win95 import verify95, origintriage as OT
 
 _C_KW = {"if", "else", "while", "for", "do", "switch", "case", "return", "goto", "break",
          "continue", "sizeof", "void", "int", "char", "short", "long", "unsigned", "signed",
-         "struct", "union", "enum", "const", "static", "default", "typedef"}
+         "struct", "union", "enum", "const", "static", "default", "typedef",
+         # structured exception handling: `__except (filter)` reads like a call but is a
+         # keyword. Stubbing it as `int __except(){...}` made every body that uses SEH fail
+         # to compile (59 of the first 120 advapi32 bodies).
+         "__try", "__except", "__finally", "__leave", "_try", "_except", "_finally", "_leave"}
 
 def _ow():
     return {"root": toolchain.openwatcom_root(), "wcc": toolchain.ow_cc("pe"),
@@ -257,6 +261,13 @@ _PRE = ["typedef unsigned u32;", "typedef unsigned uint;", "typedef unsigned lon
         "typedef void*HMODULE;typedef unsigned HRESULT;typedef unsigned WPARAM;typedef long LPARAM;",
         "typedef unsigned short*LPWSTR;typedef const unsigned short*LPCWSTR;typedef unsigned*PUINT;"]
 
+# The compiler emits calls to its own runtime helpers for some constructs: __TryInit/__TryUnwind/
+# __Except for __try/__except, and 64-bit arithmetic and floating-point helpers. They live in the
+# C runtime library; without it every body using such a construct failed to link. Local stubs
+# for a body's callees are defined in the object and still take precedence.
+_RTL = "library clib3r.lib\n"
+
+
 def _prep_body(c_text, fname):
     """Transform ONE synthesised body into compilable C and compute its external surface. Returns
     (c_text, refs, other_globals, rregs): the prepared source (with frame-init + int-return applied),
@@ -293,7 +304,9 @@ def _prep_body(c_text, fname):
                   "for", "do", "switch", "case", "goto", "break", "continue", "sizeof", "default",
                   "u32", "uint", "ulong", "ushort", "uchar", "bool", "undefined", "undefined1",
                   "undefined2", "undefined4", "DWORD", "WORD", "BYTE", "LONG", "UINT", "HDC",
-                  "HANDLE", "HGDIOBJ", "__fastcall", "__cdecl", "__stdcall", "__watcall"}
+                  "HANDLE", "HGDIOBJ", "__fastcall", "__cdecl", "__stdcall", "__watcall",
+                  "__try", "__except", "__finally", "__leave", "_try", "_except", "_finally",
+                  "_leave"}                # SEH keywords are not undeclared globals either
     labels = set(re.findall(r"(?m)^\s*([A-Za-z_]\w*)\s*:(?!:)", c_text))
     labels |= set(re.findall(r"\bgoto\s+([A-Za-z_]\w*)", c_text))
     undecl = sorted(used - refs - declared - params - _TYPEWORDS - labels - {fname})
@@ -343,7 +356,7 @@ def compile_body(c_text, fname, outdir):
     obj = open(os.path.join(outdir, fname + ".obj"), "rb").read()
     internal = _omf_export_name(obj, fname)
     with open(os.path.join(outdir, "b.lnk"), "w", newline="\n") as f:
-        f.write("system nt_dll\nname %s.dll\noption quiet\nfile %s.obj\nexport %s='%s'\n"
+        f.write("system nt_dll\nname %s.dll\noption quiet\nfile %s.obj\n" + _RTL + "export %s='%s'\n"
                 % (fname, fname, fname, internal))
     subprocess.run([ow["wlink"], "@b.lnk"], cwd=outdir, env=env, capture_output=True, text=True)
     dll = os.path.join(outdir, fname + ".dll")
@@ -396,7 +409,7 @@ def batch_compile(items, outdir):
     obj = open(os.path.join(outdir, base + ".obj"), "rb").read()
     exports = []
     with open(os.path.join(outdir, base + ".lnk"), "w", newline="\n") as f:
-        f.write("system nt_dll\nname %s.dll\noption quiet\nfile %s.obj\n" % (base, base))
+        f.write("system nt_dll\nname %s.dll\noption quiet\nfile %s.obj\n" % (base, base) + _RTL)
         for fn in sorted(members):
             f.write("export %s='%s'\n" % (fn, _omf_export_name(obj, fn)))
             exports.append(fn)
