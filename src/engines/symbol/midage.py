@@ -9,19 +9,18 @@ segments, each segment carrying named symbols at offsets.
 
 This turns one component into a flat table:  segment  offset  name
 
-USED AS HYPOTHESIS ONLY (CONTEXT.md). Two caveats — and one big advantage over
-the 95 project:
-  * VERSION (the advantage). For the 16-bit/32-bit CORE (krnl386/user/gdi,
-    kernel32/...) Midage's core data IS **Windows 98** — so for this project it
-    is finally version-matched, not a distant cousin as it was for 95/OSR2.5.
-    Names, segment layout and source-file structure should map closely, and
-    OFFSETS have a real chance of lining up. Still not a free pass: Midage's
-    "Windows 98 Retail" is 98 First Edition, and our corpus is 98 **Second
-    Edition** — FE->SE drift is small but real, so confirm before trusting an
-    exact offset.
+USED AS HYPOTHESIS ONLY (CONTEXT.md). Two caveats:
+  * VERSION. For the 16-bit/32-bit CORE (krnl386/user/gdi, kernel32/...) Midage's
+    earliest data is **Windows 98**. For a Windows 98 corpus that is version-matched
+    (98 First Edition vs our Second Edition: small drift, offsets have a real chance
+    of lining up). For Windows 95 there is no 950/OSR2.5 table: names and
+    segment/source-file structure are a strong lead, but OFFSETS will not map and
+    the function set may differ. Literal "Windows 95" data exists only for 10 VxDs
+    (vmm, vpicd, vdmad, vkd, ios, configmg, vxdldr, vdd, vflatd, scsiport).
+    Which table is preferred is the target profile's MIDAGE_VERSIONS.
   * These are names Microsoft's build gave its own symbols; attach one to a
-    retail 98 SE address only after the bytes agree (match by segment shape /
-    call graph / reference source, never by trusting the offset blindly).
+    retail address only after the bytes agree (match by segment shape /
+    call graph / reference source, never by trusting the offset).
 
 Dependency-free: a line parser for Midage's regular 2-space YAML, no pyyaml.
 
@@ -33,6 +32,24 @@ Usage:
 import argparse
 import os
 import sys
+
+from src.core import cores, layout
+
+target = cores.get('target')
+
+# Which version's table to prefer, and what to remind the reader to confirm against. A target
+# whose corpus IS one of Midage's versions says so in its profile (MIDAGE_VERSIONS / MIDAGE_NOTE);
+# the default is the Windows 95 case, where the nearest table is a later version.
+_VERSIONS = ("Windows 95", "Windows 98 Retail", "Windows 98 Debug", "Windows 98SE Retail",
+             "Windows ME Retail")
+_NOTE = "confirm vs OSR2.5 bytes; offsets are {ver}, not 950"
+
+
+def _profile(name, default):
+    try:
+        return getattr(target, name, default)
+    except ImportError:          # no active target
+        return default
 
 
 def _hex(s):
@@ -105,10 +122,7 @@ def parse(path):
 def pick_version(vers, want):
     if want:
         return want if want in vers else None
-    # Prefer our exact target (98 Second Edition) first, then 98 FE, then the
-    # nearest neighbours; "Windows 95" is the last-resort fallback.
-    for pref in ("Windows 98SE Retail", "Windows 98 Retail", "Windows 98 Debug",
-                 "Windows ME Retail", "Windows 95"):
+    for pref in _profile("MIDAGE_VERSIONS", _VERSIONS):
         if pref in vers:
             return pref
     return next(iter(vers), None)
@@ -125,7 +139,7 @@ def main():
 
     if not os.path.exists(args.component):
         # convenience: accept a bare module name
-        cand = os.path.join("reference/midage/db/components", args.component)
+        cand = os.path.join(layout.reference_sub("midage"), "db", "components", args.component)
         cand = cand if cand.endswith(".yaml") else cand + ".yaml"
         if os.path.exists(cand):
             args.component = cand
@@ -148,7 +162,7 @@ def main():
     d = data[ver]
     g = args.grep.lower() if args.grep else None
     print(f"# {os.path.basename(args.component)}  [{ver}]  "
-          f"(HYPOTHESIS — confirm vs 98 SE bytes; offsets are {ver})")
+          "(HYPOTHESIS — %s)" % _profile("MIDAGE_NOTE", _NOTE).format(ver=ver))
     if d["source_tree"]:
         print(f"# source_tree ({len(d['source_tree'])}): "
               f"{', '.join(d['source_tree'][:16])}"

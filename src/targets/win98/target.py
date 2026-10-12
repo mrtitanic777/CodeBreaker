@@ -44,6 +44,10 @@ import struct
 
 FILES = "files"
 PRODUCT = "Windows 98 (Second Edition)"     # how generated documents name this era
+# Midage's core tables ARE Windows 98, so here they are version-matched: prefer our exact release.
+MIDAGE_VERSIONS = ("Windows 98SE Retail", "Windows 98 Retail", "Windows 98 Debug", "Windows ME Retail",
+                   "Windows 95")
+MIDAGE_NOTE = "confirm vs 98 SE bytes; offsets are {ver}"
 VOLID = "WIN98"                             # default volume id for a built install disc
 
 # --------------------------------------------------------------------------

@@ -38,6 +38,13 @@ def essence(path):
     return out
 
 
+def is_alias(path):
+    """A file that only hands back a shared module under a flat name (the Xbox tool's imports) is
+    not a fork: there is one copy of the code."""
+    with open(os.path.join(ROOT, path), encoding="utf-8", errors="replace") as f:
+        return 'sys.modules[__name__] = importlib.import_module("src.' in f.read(2000)
+
+
 def worklist(shared):
     """Every per-era or Xbox file that shares a name with a shared module (or, lacking one, with a
     file in another era), with the number of lines that really differ once import plumbing is
@@ -47,7 +54,7 @@ def worklist(shared):
     groups = {}
     for p in tracked("src/targets/*.py") + tracked("src/xbox/*.py"):
         base = os.path.basename(p)
-        if "/plugins/" in p or base == "__init__.py":
+        if "/plugins/" in p or base == "__init__.py" or is_alias(p):
             continue
         groups.setdefault(base, []).append(p)
     rows = []
