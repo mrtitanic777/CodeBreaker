@@ -59,7 +59,32 @@ def _static_body(module, va):
         rva = va - open_pe(module).image_base
     except Exception:
         return None
-    return blocks.get(rva) or blocks.get(va)
+    blk = blocks.get(rva) or blocks.get(va)
+    if blk:
+        return blk
+    # An EXPORTED function is emitted under its export name, not sub_<address>, so it is filed by
+    # name only. Looking it up by address alone missed every exported function (68 of advapi32's
+    # 171), which then fell back to the trace-based call skeleton instead of its real decompile.
+    for name in _export_names(module).get(rva, ()):
+        if blocks.get(name):
+            return blocks[name]
+    return None
+
+
+_EXPORT_NAMES = {}
+
+
+def _export_names(module):
+    """{rva: [export names]} for a PE module (several names can alias one address)."""
+    if module not in _EXPORT_NAMES:
+        out = {}
+        try:
+            for name, rva in open_pe(module).export_addrs().items():
+                out.setdefault(rva, []).append(name)
+        except Exception:
+            pass
+        _EXPORT_NAMES[module] = out
+    return _EXPORT_NAMES[module]
 
 def _ondemand_block(module, rva):
     """Decompile ONE function on demand (win95pedec --at RVA) when the module-wide --module discovery
@@ -262,6 +287,13 @@ _PRE = ["typedef unsigned u32;", "typedef unsigned uint;", "typedef unsigned lon
         "typedef void*HMODULE;typedef unsigned HRESULT;typedef unsigned WPARAM;typedef long LPARAM;",
         "typedef unsigned short*LPWSTR;typedef const unsigned short*LPCWSTR;typedef unsigned*PUINT;"]
 
+# -ecc makes __cdecl the DEFAULT calling convention. Without it wcc386 passes arguments in registers
+# (its __watcall), so a rebuilt function read its parameters from EAX/EDX/EBX/ECX while the oracle --
+# like every caller of the original -- puts them on the stack. A rebuilt function that depended on an
+# argument therefore never saw it, and failed verification however good the reconstruction was. A
+# convention written on a signature (__stdcall, __fastcall) still wins.
+_CFLAGS = ["-bt=nt", "-zq", "-w0", "-s", "-zastd=c99", "-ecc"]
+
 # The compiler emits calls to its own runtime helpers for some constructs: __TryInit/__TryUnwind/
 # __Except for __try/__except, and 64-bit arithmetic and floating-point helpers. They live in the
 # C runtime library; without it every body using such a construct failed to link. Local stubs
@@ -284,11 +316,11 @@ def _prep_body(c_text, fname):
         c_text = re.sub(r"\b" + a + r"\b", b, c_text)
     c_text = re.sub(r"\b__thiscall\b", "__stdcall", c_text)
     c_text = re.sub(r"\b__(?:usercall|userpurge|noreturn|far|near|huge)\b", "", c_text)
-    c_text = re.sub(r"\(\(struct\s+V\d+_t\s*\*\)\s*([A-Za-z_]\w*)\s*\)\s*->\s*field_([0-9a-fA-F]+)",
+    c_text = re.sub(r"\(\(struct\s+[A-Z]\d+_t\s*\*\)\s*([A-Za-z_]\w*)\s*\)\s*->\s*field_([0-9a-fA-F]+)",
                     r"*(unsigned *)((unsigned char*)(\1)+0x\2)", c_text)
-    c_text = re.sub(r"(?s)struct\s+V\d+_t\s*\{.*?\}\s*;", "", c_text)
-    c_text = re.sub(r"\bstruct\s+V\d+_t\s*\*", "unsigned char *", c_text)
-    c_text = re.sub(r"\bstruct\s+V\d+_t\b", "unsigned", c_text)
+    c_text = re.sub(r"(?s)struct\s+[A-Z]\d+_t\s*\{.*?\}\s*;", "", c_text)
+    c_text = re.sub(r"\bstruct\s+[A-Z]\d+_t\s*\*", "unsigned char *", c_text)
+    c_text = re.sub(r"\bstruct\s+[A-Z]\d+_t\b", "unsigned", c_text)
     c_text = re.sub(r"([A-Za-z_]\w*)\s*->\s*field_([0-9a-fA-F]+)",
                     r"*(unsigned *)((unsigned char*)(\1)+0x\2)", c_text)
     refs = _stub_refs(c_text, fname)
@@ -350,7 +382,7 @@ def compile_body(c_text, fname, outdir):
     cf = os.path.join(outdir, fname + ".c")
     open(cf, "w", newline="\n").write(src)
     env = _ow_env(ow)
-    r = subprocess.run([ow["wcc"], "-bt=nt", "-zq", "-w0", "-s", "-zastd=c99", fname + ".c"],
+    r = subprocess.run([ow["wcc"]] + _CFLAGS + [fname + ".c"],
                        cwd=outdir, env=env, capture_output=True, text=True, timeout=120)
     if r.returncode != 0:
         return None, "compile: " + (r.stdout + r.stderr).strip().split("\n")[-1][:80]
@@ -403,7 +435,7 @@ def batch_compile(items, outdir):
     cf = os.path.join(outdir, base + ".c")
     open(cf, "w", newline="\n").write(src)
     env = _ow_env(ow)
-    r = subprocess.run([ow["wcc"], "-bt=nt", "-zq", "-w0", "-s", "-zastd=c99", base + ".c"],
+    r = subprocess.run([ow["wcc"]] + _CFLAGS + [base + ".c"],
                        cwd=outdir, env=env, capture_output=True, text=True, timeout=300)
     if r.returncode != 0:
         return None, []

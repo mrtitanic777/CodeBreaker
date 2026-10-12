@@ -87,8 +87,9 @@ GETLASTERROR = bytes.fromhex(
 
 def test_shared_ret_reached_by_jmp_keeps_both_values():
     c = decompile(GETLASTERROR)
-    rets = returns(c)
-    assert len(rets) == 2 and rets[0] != rets[1], "expected two distinct returns:\n" + c
+    # a return on each path, each with its own value (two expressions, or one variable that is
+    # assigned on each path)
+    assert len(returns(c)) == 2, "expected a return on each path:\n" + c
     assert re.search(r"field_70|\+\s*0x70|\+\s*112", c), "the [eax+0x70] load was dropped:\n" + c
     assert "0xBFFBC298" in c, c
 
@@ -105,8 +106,7 @@ COND_RET = bytes.fromhex(
 
 def test_shared_ret_reached_by_jcc_keeps_both_values():
     c = decompile(COND_RET)
-    rets = returns(c)
-    assert len(rets) == 2 and rets[0] != rets[1], "expected two distinct returns:\n" + c
+    assert len(returns(c)) == 2, "expected a return on each path:\n" + c
     assert re.search(r"if\s*\(.*\)\s*return\b", c), "expected a conditional return:\n" + c
     assert "0x20000000" in c and "0x10000000" in c, c
 
@@ -148,10 +148,212 @@ def test_getlasterror_behaves_as_retail():
     assert r["verdict"] == "equivalent", r
 
 
+# ---------------------------------------------------------------------------------------------
+# Register flow. Each case is a few instructions of hand-written machine code that goes through
+# the WHOLE real pipeline: wrapped in a PE, decompiled, recompiled with OpenWatcom, and run beside
+# the original bytes on the oracle with the pipeline's input vectors. "equivalent" means the
+# reconstruction returned what the bytes returned on every vector.
+#
+# They pin how a register or stack local is tracked across blocks: its value at the start of a
+# block must come from the block's predecessors (merged where they differ), not from whichever
+# block happens to precede it in the address space.
+# ---------------------------------------------------------------------------------------------
+def behaves(code, also=()):
+    """Verdict of the real pipeline on the synthetic function at the start of `code`. `also`
+    lists the offsets of further functions in `code` to verify in the same batch, so the first
+    one links to their real reconstructions instead of stubs."""
+    if not (toolchain.decompiler("pe") and toolchain.ow_tool("wcc386")):
+        raise Skip("needs the decompiler and OpenWatcom")
+    tdir = paths.target_dir("win95")
+    if tdir not in sys.path:
+        sys.path.insert(0, tdir)
+    from src.targets.win95.verification import pipeline
+    d = tempfile.mkdtemp()
+    pe = os.path.join(d, "golden.dll")
+    with open(pe, "wb") as f:
+        f.write(make_pe(code))
+    va = 0x400000 + CODE_RVA
+    res = pipeline.verify("pe", pe, [va] + [va + o for o in also],
+                          outdir=os.path.join(d, "out"), bank=False)
+    r = res["%x" % va]
+    return r["verdict"], r.get("reason", ""), d
+
+
+def _assert_equivalent(code, also=()):
+    verdict, reason, d = behaves(code, also)
+    if verdict != "equivalent":
+        try:
+            c = decompile(code)
+        except Exception as e:
+            c = "(decompile failed: %s)" % e
+        raise AssertionError("pipeline verdict %s %s\n%s" % (verdict, reason, c))
+
+
+# Two paths set EAX differently and JOIN before using it. The second path's block precedes the
+# join in the address space, so a straight-line register map gives the join that path's value
+# on both paths.
+JOIN_OF_TWO_VALUES = bytes.fromhex(
+    "837c240400"       # cmp  dword [esp+4], 0
+    "7507"             # jne  second
+    "b801000000"       # mov  eax, 1
+    "eb05"             # jmp  join
+    "b802000000"       # second: mov eax, 2
+    "83c010"           # join: add eax, 0x10
+    "c3")              # ret
+
+
+def test_join_of_two_register_values():
+    _assert_equivalent(JOIN_OF_TWO_VALUES)
+
+
+# A stack local assigned on both arms of an if/else and read after it.
+LOCAL_SET_ON_BOTH_ARMS = bytes.fromhex(
+    "558bec83ec04"     # push ebp; mov ebp, esp; sub esp, 4
+    "837d0800"         # cmp  dword [ebp+8], 0
+    "7409"             # je   else
+    "c745fc07000000"   # mov  dword [ebp-4], 7
+    "eb07"             # jmp  join
+    "c745fc09000000"   # else: mov dword [ebp-4], 9
+    "8b45fc"           # join: mov eax, [ebp-4]
+    "8be55dc3")        # mov esp, ebp; pop ebp; ret
+
+
+def test_local_set_on_both_arms():
+    _assert_equivalent(LOCAL_SET_ON_BOTH_ARMS)
+
+
+# A loop: EAX accumulates, ECX counts down. Both are carried round the back edge.
+LOOP_CARRIED = bytes.fromhex(
+    "8b4c2404"         # mov  ecx, [esp+4]
+    "c1e914"           # shr  ecx, 20
+    "83e107"           # and  ecx, 7
+    "33c0"             # xor  eax, eax
+    "85c9"             # test ecx, ecx
+    "7405"             # jz   done
+    "03c1"             # loop: add eax, ecx
+    "49"               # dec  ecx
+    "75fb"             # jnz  loop
+    "c3")              # done: ret
+
+
+def test_loop_carried_registers():
+    _assert_equivalent(LOOP_CARRIED)
+
+
+# A copy of a loop-carried register must keep the value it captured: EAX takes EDX's value,
+# then EDX changes before the loop goes round. Returning EAX must give the value from before.
+COPY_OF_LOOP_VALUE = bytes.fromhex(
+    "8b4c2404"         # mov  ecx, [esp+4]
+    "c1e914"           # shr  ecx, 20
+    "83e107"           # and  ecx, 7
+    "33c0"             # xor  eax, eax
+    "ba05000000"       # mov  edx, 5
+    "85c9"             # loop: test ecx, ecx
+    "7408"             # jz   done
+    "8bc2"             # mov  eax, edx
+    "83c203"           # add  edx, 3
+    "49"               # dec  ecx
+    "ebf4"             # jmp  loop
+    "c3")              # done: ret
+
+
+def test_copy_of_loop_carried_value():
+    _assert_equivalent(COPY_OF_LOOP_VALUE)
+
+
+# ---------------------------------------------------------------------------------------------
+# Stack and operand modelling.
+# ---------------------------------------------------------------------------------------------
+# 32-bit calls push their LAST argument first. f(1, 2, 3) is `push 3; push 2; push 1; call f`.
+# The callee folds its three arguments into one number, so the caller only verifies if the
+# reconstruction passes them in the right order.
+CALL_ARG_ORDER = bytes.fromhex(
+    "6a03"             # push 3
+    "6a02"             # push 2
+    "6a01"             # push 1
+    "e805000000"       # call callee
+    "83c40c"           # add  esp, 12
+    "c3"               # ret
+    "90"               # (pad)
+    "8b442404"         # callee: mov eax, [esp+4]
+    "c1e004"           # shl  eax, 4
+    "03442408"         # add  eax, [esp+8]
+    "c1e004"           # shl  eax, 4
+    "0344240c"         # add  eax, [esp+12]
+    "c3")              # ret
+
+
+def test_call_arguments_are_in_order():
+    _assert_equivalent(CALL_ARG_ORDER, also=(16,))
+    c = decompile(CALL_ARG_ORDER)
+    assert re.search(r"\(\s*1\s*,\s*2\s*,\s*3\s*\)", c), "arguments must read (1, 2, 3):\n" + c
+
+
+# An address with an index register: a + i*4 + 8. The index used to be dropped.
+INDEXED_ADDRESS = bytes.fromhex(
+    "8b442404"         # mov  eax, [esp+4]
+    "8b4c2408"         # mov  ecx, [esp+8]
+    "8d448808"         # lea  eax, [eax+ecx*4+8]
+    "c3")              # ret
+
+
+def test_indexed_address():
+    _assert_equivalent(INDEXED_ADDRESS)
+
+
+# EBX saved and restored round its use, and an argument read through ESP after the push moved it.
+SAVED_EBX_AND_ESP_ARGUMENT = bytes.fromhex(
+    "53"               # push ebx
+    "8b5c2408"         # mov  ebx, [esp+8]        ; the first argument, one push deeper
+    "8d041b"           # lea  eax, [ebx+ebx]
+    "5b"               # pop  ebx
+    "c3")              # ret
+
+
+def test_saved_register_and_esp_relative_argument():
+    _assert_equivalent(SAVED_EBX_AND_ESP_ARGUMENT)
+    c = decompile(SAVED_EBX_AND_ESP_ARGUMENT)
+    head = c.split("{")[0]
+    assert "bx" not in head, "saving EBX must not make it a parameter:\n" + c
+    assert "sp" not in c.replace("sub_", ""), "the argument must not be read through a raw sp:\n" + c
+
+
+# A value pushed and popped back into another register.
+PUSH_THEN_POP = bytes.fromhex(
+    "ff742404"         # push dword [esp+4]
+    "58"               # pop  eax
+    "83c005"           # add  eax, 5
+    "c3")              # ret
+
+
+def test_push_then_pop_moves_the_value():
+    _assert_equivalent(PUSH_THEN_POP)
+
+
+# AH is the second byte of EAX, not a register of its own (and certainly not SP).
+HIGH_BYTE_REGISTER = bytes.fromhex(
+    "8b442404"         # mov  eax, [esp+4]
+    "b412"             # mov  ah, 0x12
+    "c3")              # ret
+
+
+def test_high_byte_register():
+    _assert_equivalent(HIGH_BYTE_REGISTER)
+
+
 def main():
     for fn in (test_shared_ret_reached_by_jmp_keeps_both_values,
                test_shared_ret_reached_by_jcc_keeps_both_values,
                test_ret_block_with_its_own_value_is_not_split,
+               test_join_of_two_register_values,
+               test_local_set_on_both_arms,
+               test_loop_carried_registers,
+               test_copy_of_loop_carried_value,
+               test_call_arguments_are_in_order,
+               test_indexed_address,
+               test_saved_register_and_esp_relative_argument,
+               test_push_then_pop_moves_the_value,
+               test_high_byte_register,
                test_getlasterror_behaves_as_retail):
         try:
             fn()

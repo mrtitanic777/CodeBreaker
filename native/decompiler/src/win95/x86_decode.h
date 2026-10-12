@@ -23,6 +23,7 @@ struct X86Op {
   int    size = 2;          // operand size in bytes: 1, 2, or 4
   // Reg
   int    reg = kNoReg;
+  bool   hi8 = false;       // AH/CH/DH/BH: the SECOND byte of register `reg`
   // Mem: seg:[base + index*scale + disp]
   int    base = kNoReg;
   int    index = kNoReg;

@@ -196,6 +196,7 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
   // --- function-global register state (approximate SSA) ---
   std::map<int, ILValue> reg;   // GPR slot -> current value
   std::map<int, ILValue> params;      // param index -> value (from [bp+N]), r3..->a1..
+  std::set<int> paramIds;             // the value ids in `params`
   std::vector<ILValue> pend_args;     // pushed values awaiting the next call
   std::map<int, ILValue> esp_args;    // 32-bit: [esp+N] arg writes (offset -> value) awaiting a call
   std::set<int> incoming;             // value ids that are undefined entry-reg values
@@ -203,11 +204,32 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
   // FP code balances the stack within an expression, so a straight per-function
   // simulation recovers ordinary float/double arithmetic (see the "f*" handlers).
   std::vector<ILValue> fpst;
+  // Per-block register flow (see "register flow" below). `reg` is the state of the block being
+  // lifted; a slot no path has written holds the function-entry value, which is ONE value per slot
+  // for the whole function (entryIn), not a fresh one per block.
+  const bool regflow = !getenv("CB_NO_REGFLOW");
+  std::map<int, ILValue> entryIn;     // slot -> its function-entry (incoming) value
+  std::set<int> mergeIds;             // value ids that are merge values (assigned in several preds)
+  ILBasicBlock* cur_bb = nullptr;     // block being lifted (for copies emitted by setReg)
+  uint32_t cur_addr = 0;              // address of the instruction being lifted
+  auto slotIncoming = [&](int slot, ILType t) -> ILValue {
+    auto e = entryIn.find(slot);
+    if (e != entryIn.end()) return e->second;
+    ILValue v = fn.AllocValue(t, slot);              // incoming/undefined
+    incoming.insert(v.id);
+    entryIn[slot] = v;
+    return v;
+  };
   auto getReg = [&](int slot, int sz) -> ILValue {
     auto it = reg.find(slot);
     if (it != reg.end()) return it->second;
-    ILValue v = fn.AllocValue(WidthType(sz), slot);  // incoming/undefined
-    incoming.insert(v.id);
+    ILValue v;
+    if (regflow) {
+      v = slotIncoming(slot, WidthType(sz));
+    } else {
+      v = fn.AllocValue(WidthType(sz), slot);        // incoming/undefined
+      incoming.insert(v.id);
+    }
     reg[slot] = v;
     return v;
   };
@@ -222,14 +244,49 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
   // on that register is a RETURN (value in AX), not an indirect call. Track the register that holds
   // it and whether the stack has been disturbed yet (any push/call/enter or write to ESP).
   int retaddr_reg = -1; bool stack_dirty = false;
-  auto setReg = [&](int slot, ILValue v) { v.ppc_reg = slot; reg[slot] = v; regConst.erase(slot);
-                                           if (slot == retaddr_reg) retaddr_reg = -1;
-                                           if (slot == kGpBase + 4) stack_dirty = true; };
+  auto setReg = [&](int slot, ILValue v) {
+    // A merge value is a VARIABLE (it is assigned at the end of each predecessor), unlike every
+    // other value, which is defined once. Binding it to a second slot (`mov ebx, esi`) must
+    // therefore take a copy: an alias would silently change when the merge value is next assigned
+    // (the loop latch), giving the other register the new value instead of the one it captured.
+    if (cur_bb && v.ppc_reg != slot && mergeIds.count(v.id)) {
+      ILInstr cp; cp.op = ILOp::Assign; cp.address = cur_addr; cp.src1 = v;
+      cp.dst = fn.AllocValue(v.type);
+      cur_bb->instrs.push_back(cp);
+      v = cp.dst;
+    }
+    // The register tag names a value that has no defining instruction: a parameter keeps its own
+    // (a1, a2...) and a function-entry register its own, wherever the value is copied. Retagging
+    // them made `mov ebx, [arg]` print the argument as a register parameter called bx.
+    if (!incoming.count(v.id) && !paramIds.count(v.id)) v.ppc_reg = slot;
+    reg[slot] = v; regConst.erase(slot);
+    if (slot == retaddr_reg) retaddr_reg = -1;
+    if (slot == kGpBase + 4) stack_dirty = true; };
 
   // last flag-setting op, so a following jcc builds the right Compare.
   enum FlagKind { FK_CMP, FK_TEST, FK_ARITH } flag_kind = FK_ARITH;
   ILValue flagA = ILNoVal(), flagB = ILNoVal();
   bool flag_imm = false; int64_t flag_immv = 0; int flag_sz = 2;
+
+  // --- stack-pointer tracking (32-bit) -----------------------------------------------------
+  // sp_off is ESP now minus ESP at function entry (0 at entry, more negative as the stack grows).
+  // Knowing it turns `[esp+N]` into what it is: at an entry-relative offset of 4 or more, an
+  // incoming argument; below 0, a local or a pushed value. Without it every function compiled
+  // without a frame pointer read its arguments as `*(sp + N)` on an undefined `sp`. It also lets
+  // push and pop be modelled as a store to and a load from the slot they touch.
+  // If the tracking does not come back to zero at a `ret`, it was wrong somewhere (an unusual
+  // stack adjustment): the function is lifted again without it rather than trusted.
+  static thread_local bool tl_no_sptrack = false;
+  const bool sptrack = bits32_ && regflow && !tl_no_sptrack && !getenv("CB_NO_SPTRACK");
+  int sp_off = 0; bool sp_known = sptrack;
+  int bp_off = 0; bool bp_known = false;       // EBP = entry ESP + bp_off, once `mov ebp, esp` is seen
+  int assumed_pop = 0;                         // argument bytes assumed popped by callees (see call)
+  bool sp_bad = false;
+  auto stackSlotOf = [&](int e) -> int {       // the tracked-local slot for entry-relative offset e < 0
+    if (e >= 0) return -1;
+    if (bp_known) { int d = e - bp_off; return d < 0 ? 1000 + (-d) : -1; }   // same slot as [ebp+d]
+    return 3000 + (-e);
+  };
 
   // operand -> value (for reg/imm; mem handled by caller via Load)
   auto immVal = [&](int64_t v, int sz) {
@@ -248,9 +305,151 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
   std::map<uint32_t, ILValue> blkAxOut;
   std::map<uint32_t, bool> blkWroteAx;
 
-  for (size_t li = 0; li < leadv.size(); ++li) {
+  // --- register flow -------------------------------------------------------------------
+  // A block's registers and stack locals start from what its PREDECESSORS left, not from
+  // whatever the block before it in address order happened to leave. Lifting used to carry one
+  // register map straight down the address space, so a block reached by a jump inherited the
+  // values of an unrelated block, and a join of two paths kept only the address-last value.
+  // Blocks are now lifted in reverse postorder; a block's entry state is its predecessors' exit
+  // states where they agree, and a MERGE VALUE where they differ (or where a not-yet-lifted
+  // predecessor -- a loop back edge -- may differ). A merge value is assigned at the end of each
+  // predecessor by a merge move, the form the IL back-end already coalesces into one variable.
+  // CB_NO_REGFLOW=1 restores the old straight-line behaviour.
+  const size_t nblk = leadv.size();
+  std::map<uint32_t, size_t> blkIdx;
+  for (size_t i = 0; i < nblk; ++i) blkIdx[leadv[i]] = i;
+  std::vector<std::vector<size_t>> bsucc(nblk), bpred(nblk);
+  for (size_t i = 0; i < nblk; ++i) {
+    uint32_t bs = leadv[i];
+    if (bs >= end) continue;
+    uint32_t be = (i + 1 < nblk) ? leadv[i + 1] : end;
+    const X86Insn* last = nullptr;
+    uint32_t nx = bs;
+    for (uint32_t a = bs; a < be;) {
+      auto it = at.find(a);
+      if (it == at.end()) break;
+      last = &insns[it->second];
+      a += advBytes(*last);
+      nx = a;
+    }
+    if (!last) continue;
+    auto edge = [&](uint32_t t) {
+      auto it = blkIdx.find(t);
+      if (it == blkIdx.end() || t >= end) return;
+      for (size_t s : bsucc[i]) if (s == it->second) return;
+      bsucc[i].push_back(it->second);
+      bpred[it->second].push_back(i);
+    };
+    const std::string& lm = last->mnem;
+    bool lLoop = lm == "loop" || lm == "loope" || lm == "loopne" || lm == "loopz" || lm == "loopnz";
+    bool lJcc = (lm.size() && lm[0] == 'j' && lm != "jmp") || lLoop;
+    if (lm == "ret" || lm == "retf" || lm == "iret") {
+    } else if (lm == "jmp") {
+      if (last->ops[0].kind == OpKind::Rel) edge((uint32_t)last->ops[0].imm);
+    } else if (lJcc) {
+      if (last->ops[0].kind == OpKind::Rel) edge((uint32_t)last->ops[0].imm);
+      edge(nx);
+    } else if (nx >= be && at.count(be)) {
+      edge(be);                                    // ran off the end of the block: falls through
+    }
+  }
+  // lifting order: reverse postorder from the entry block, then anything unreached, by address
+  std::vector<size_t> order;
+  std::vector<char> reachable(nblk, 1);
+  if (regflow && blkIdx.count(entry)) {
+    std::vector<char> seen(nblk, 0);
+    std::vector<size_t> post;
+    std::vector<std::pair<size_t, size_t>> stk{{blkIdx[entry], 0}};
+    seen[blkIdx[entry]] = 1;
+    while (!stk.empty()) {
+      auto& f = stk.back();
+      if (f.second < bsucc[f.first].size()) {
+        size_t s = bsucc[f.first][f.second++];
+        if (!seen[s]) { seen[s] = 1; stk.push_back({s, 0}); }
+      } else {
+        post.push_back(f.first);
+        stk.pop_back();
+      }
+    }
+    order.assign(post.rbegin(), post.rend());
+    for (size_t i = 0; i < nblk; ++i) if (!seen[i]) order.push_back(i);
+    reachable = seen;
+  } else {
+    for (size_t i = 0; i < nblk; ++i) order.push_back(i);
+  }
+  struct BState {
+    std::map<int, ILValue> reg;
+    int fk = 0; ILValue fa, fb; bool fimm = false; int64_t fimmv = 0; int fsz = 2;
+    std::vector<ILValue> fp;
+    int sp = 0; bool spk = false; int bp = 0; bool bpk = false;
+  };
+  std::vector<BState> bexit(nblk);
+  std::vector<char> lifted(nblk, 0), haveBlk(nblk, 0);
+  std::vector<ILBasicBlock> blks(nblk);
+  struct PMove { size_t pred; ILValue dst; ILValue src; };
+  std::vector<PMove> pmoves;                       // merge moves to place at the end of `pred`
+  struct PFix { size_t pred; ILValue dst; int slot; };
+  std::vector<PFix> pfix;                          // back edges: source known once `pred` is lifted
+  auto enterBlock = [&](size_t bi) {
+    reg.clear();
+    std::vector<size_t> T, U;
+    for (size_t p : bpred[bi]) (lifted[p] ? T : U).push_back(p);
+    assumed_pop = 0;
+    if (T.empty()) {                               // function entry, or reached only by back edges
+      flag_kind = FK_ARITH; flagA = ILNoVal(); flagB = ILNoVal();
+      flag_imm = false; flag_immv = 0; flag_sz = 2;
+      fpst.clear();
+      bool isEntry = blkIdx.count(entry) && blkIdx[entry] == bi;
+      sp_off = 0; sp_known = sptrack && isEntry; bp_off = 0; bp_known = false;
+      return;
+    }
+    // The stack depth must be the same on every way into a block; if the predecessors
+    // disagree the tracking is not usable here.
+    sp_off = bexit[T[0]].sp; sp_known = sptrack && bexit[T[0]].spk;
+    bp_off = bexit[T[0]].bp; bp_known = bexit[T[0]].bpk;
+    for (size_t p : T) {
+      if (!bexit[p].spk || bexit[p].sp != sp_off) sp_known = false;
+      if (!bexit[p].bpk || bexit[p].bp != bp_off) bp_known = false;
+    }
+    // Condition flags and the x87 stack are not merged: take them from the fall-through
+    // predecessor when there is one (a jcc reads the flags its own block or that one set).
+    size_t fpred = T[0];
+    for (size_t p : T) if (p + 1 == bi) fpred = p;
+    const BState& fs = bexit[fpred];
+    flag_kind = (FlagKind)fs.fk; flagA = fs.fa; flagB = fs.fb;
+    flag_imm = fs.fimm; flag_immv = fs.fimmv; flag_sz = fs.fsz;
+    fpst = fs.fp;
+    std::set<int> slots;
+    for (size_t p : T) for (const auto& kv : bexit[p].reg) slots.insert(kv.first);
+    for (int s : slots) {
+      // what each lifted predecessor leaves in this slot: its last write; else, for a register,
+      // the function-entry value; else (a stack local it never wrote) nothing
+      std::vector<std::pair<size_t, ILValue>> vals;
+      ILType ty = ILType::U32;
+      for (size_t p : T) {
+        auto it = bexit[p].reg.find(s);
+        if (it != bexit[p].reg.end()) { ty = it->second.type; break; }
+      }
+      std::set<int> distinct;
+      for (size_t p : T) {
+        auto it = bexit[p].reg.find(s);
+        if (it != bexit[p].reg.end()) { vals.push_back({p, it->second}); distinct.insert(it->second.id); }
+        else if (s < 1000) { ILValue v = slotIncoming(s, ty); vals.push_back({p, v}); distinct.insert(v.id); }
+      }
+      if (vals.empty()) continue;
+      if (U.empty() && distinct.size() == 1) { reg[s] = vals[0].second; continue; }
+      ILValue m = fn.AllocValue(ty, s);
+      mergeIds.insert(m.id);
+      for (const auto& pv : vals) pmoves.push_back({pv.first, m, pv.second});
+      for (size_t p : U) pfix.push_back({p, m, s});
+      reg[s] = m;
+    }
+  };
+
+  for (size_t oi = 0; oi < order.size(); ++oi) {
+    size_t li = order[oi];
     uint32_t bstart = leadv[li];
-    if (bstart >= end) break;
+    if (bstart >= end) continue;
     uint32_t bend = (li + 1 < leadv.size()) ? leadv[li + 1] : end;
     ILBasicBlock bb;
     bb.start_addr = bstart;
@@ -258,21 +457,84 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
     pend_args.clear();   // args are pushed within the block that calls
     esp_args.clear();    // ...and stack-written args likewise don't cross block boundaries
     regConst.clear();    // tracked constants don't survive a control-flow merge; re-derive per block
+    if (regflow) enterBlock(li);
+    cur_bb = &bb;
     int axInId = reg.count(kGpBase) ? reg[kGpBase].id : kILNoValue;
 
     for (uint32_t a = bstart; a < bend;) {
       auto iit = at.find(a);
       if (iit == at.end()) break;
+      cur_addr = a;
       const X86Insn& in = insns[iit->second];
       uint32_t next = a + advBytes(in);
       const std::string& m = in.mnem;
       if (m == "push" || m == "pushad" || m == "pusha" || m == "pushfd" || m == "pushf" ||
           m == "call" || m == "enter") stack_dirty = true;   // stack no longer at entry depth
 
+      // Stack-pointer bookkeeping for the instructions that move ESP other than push, pop and
+      // call (those are handled where they are lifted).
+      if (sptrack) {
+        const bool dstEsp = in.nops >= 1 && IsGpr(in.ops[0]) && (in.ops[0].reg % 16) == 4 &&
+                            in.ops[0].size >= 2;
+        if ((m == "sub" || m == "add") && dstEsp && in.nops >= 2 && in.ops[1].kind == OpKind::Imm) {
+          int k = (int)in.ops[1].imm;
+          if (m == "sub") {
+            sp_off -= k;
+          } else {
+            // `add esp, N` after calls whose arguments were assumed popped by the callee is the
+            // CALLER cleaning up (cdecl): that part has been counted already.
+            int undo = std::min(k, assumed_pop);
+            sp_off += k - undo;
+            assumed_pop -= undo;
+          }
+        } else if (m == "mov" && dstEsp && in.nops >= 2 && IsGpr(in.ops[1]) &&
+                   (in.ops[1].reg % 16) == 5) {                        // mov esp, ebp
+          if (bp_known) sp_off = bp_off; else sp_known = false;
+        } else if (m == "mov" && in.nops >= 2 && IsGpr(in.ops[0]) && (in.ops[0].reg % 16) == 5 &&
+                   in.ops[0].size == 4 && IsGpr(in.ops[1]) && (in.ops[1].reg % 16) == 4) {
+          bp_off = sp_off; bp_known = sp_known;                        // mov ebp, esp
+        } else if (m == "leave") {                                     // mov esp, ebp; pop ebp
+          if (bp_known && sp_known) {
+            sp_off = bp_off + 4;
+            bp_known = false;
+            setReg(kGpBase + 5, slotIncoming(kGpBase + 5, ILType::U32));   // caller's EBP again
+          } else {
+            sp_known = false;
+          }
+        } else if (m == "pushfd" || m == "pushf") { sp_off -= 4;
+        } else if (m == "popfd" || m == "popf") { sp_off += 4;
+        } else if (m == "pushad" || m == "pusha") { sp_off -= 32;
+        } else if (m == "popad" || m == "popa") { sp_off += 32;
+        } else if (m == "enter" || (dstEsp && m != "pop" && m != "push" && m != "cmp" && m != "test")) {
+          sp_known = false;                                            // an adjustment we do not model
+        }
+      }
+
       auto emitMemAddr = [&](const X86Op& o, ILInstr& ins) {
-        // base value for a memory operand; index folded as Add if present
+        // The address of a memory operand, less its displacement (which rides on the instruction
+        // as its immediate): base + index*scale. The index used to be dropped, so every indexed
+        // access (`[eax+ecx*4]`, a 16-bit `[bx+si]`) read or wrote the base address alone.
         ILValue base = ILNoVal();
         if (o.base != kNoReg) base = getReg(RegSlot(o.base), 2);
+        if (o.index != kNoReg) {
+          ILType at_ty = bits32_ ? ILType::U32 : ILType::U16;
+          ILValue idx = getReg(RegSlot(o.index), 2);
+          if (o.scale > 1) {
+            ILInstr sh; sh.op = ILOp::Shl; sh.address = a; sh.src1 = idx;
+            sh.imm = (o.scale == 2) ? 1 : (o.scale == 4) ? 2 : 3;
+            sh.dst = fn.AllocValue(at_ty);
+            bb.instrs.push_back(sh);
+            idx = sh.dst;
+          }
+          if (base.id == kILNoValue) {
+            base = idx;
+          } else {
+            ILInstr ad; ad.op = ILOp::Add; ad.address = a; ad.src1 = base; ad.src2 = idx;
+            ad.dst = fn.AllocValue(at_ty);
+            bb.instrs.push_back(ad);
+            base = ad.dst;
+          }
+        }
         ins.imm = o.disp;
         ins.access_type = WidthType(o.size);
         return base;
@@ -282,14 +544,49 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
       // Give each distinct offset its own virtual slot (base 1000, off the GPR
       // 20-27, param r3.., and frame ranges) so loads/stores become tracked SSA
       // locals -- rendered as named vNN, not raw *(r25 - N) memory refs.
-      auto frameSlotOf = [](const X86Op& o) -> int {
+      // [esp + N] with the stack depth known: its entry-relative offset.
+      auto espRel = [&](const X86Op& o, int* e) -> bool {
+        if (!sp_known || o.kind != OpKind::Mem || o.base == kNoReg || (o.base % 16) != 4 ||
+            o.index != kNoReg)
+          return false;
+        *e = sp_off + o.disp;
+        return true;
+      };
+      auto frameSlotOf = [&](const X86Op& o) -> int {
         if (o.kind == OpKind::Mem && o.base != kNoReg && (o.base % 16) == 5 &&
             o.index == kNoReg && o.disp < 0)
           return 1000 + (-o.disp);
+        int e;
+        if (espRel(o, &e) && e < 0) return stackSlotOf(e);     // a local or pushed value
         return -1;
       };
 
+      // AH/CH/DH/BH are encoded as 8-bit registers 4..7, the same numbers as SP/BP/SI/DI. They are
+      // the second byte of AX/CX/DX/BX: treating them as slots 4..7 made `mov ah, x` overwrite SP
+      // and `mov bh, x` overwrite DI.
+      auto isHi8 = [](const X86Op& o) {
+        return o.kind == OpKind::Reg && o.reg / 16 == RC_GPR && o.size == 1 &&
+               (o.hi8 || (o.reg % 16) >= 4);
+      };
+      // slot of the full register a high-byte register belongs to (the Capstone decoder reports
+      // AH as register 0 with hi8 set; the native one as register 4)
+      auto hi8Slot = [](const X86Op& o) { return kGpBase + (o.hi8 ? (o.reg % 16) : (o.reg % 16) - 4); };
+      auto constVal = [&](int32_t k, ILType t) -> ILValue {
+        ILInstr c; c.op = ILOp::Assign; c.address = a; c.imm = k;
+        c.dst = fn.AllocValue(t);
+        bb.instrs.push_back(c);
+        return c.dst;
+      };
       auto srcValue = [&](const X86Op& o) -> ILValue {
+        if (isHi8(o)) {                              // (full >> 8) & 0xFF
+          ILValue full = getReg(hi8Slot(o), 2);
+          ILInstr sh; sh.op = ILOp::Shr; sh.address = a; sh.src1 = full; sh.imm = 8;
+          sh.dst = fn.AllocValue(ILType::U32); bb.instrs.push_back(sh);
+          ILInstr an; an.op = ILOp::And; an.address = a; an.src1 = sh.dst;
+          an.src2 = constVal(0xFF, ILType::U32);
+          an.dst = fn.AllocValue(ILType::U8); bb.instrs.push_back(an);
+          return an.dst;
+        }
         if (IsGpr(o)) return getReg(RegSlot(o.reg), o.size);
         if (o.kind == OpKind::Mem) {
           int fs = frameSlotOf(o);
@@ -304,6 +601,19 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
             if (pit != params.end()) return pit->second;
             ILValue pv = fn.AllocValue(WidthType(o.size), 3 + pidx);
             params[pidx] = pv;
+            paramIds.insert(pv.id);
+            return pv;
+          }
+          // The same parameter reached through ESP (no frame pointer): entry-relative offset 4
+          // is the first argument, just above the return address.
+          int pe;
+          if (espRel(o, &pe) && pe >= 4 && (pe % 4) == 0 && pe < 4 + 4 * 32) {
+            int pidx = (pe - 4) / 4;
+            auto pit = params.find(pidx);
+            if (pit != params.end()) return pit->second;
+            ILValue pv = fn.AllocValue(WidthType(o.size), 3 + pidx);
+            params[pidx] = pv;
+            paramIds.insert(pv.id);
             return pv;
           }
           ILInstr ld; ld.op = ILOp::Load; ld.address = a;
@@ -321,10 +631,32 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
       };
 
       auto storeTo = [&](const X86Op& dst, ILValue v) {
+        if (isHi8(dst)) {                            // full = (full & ~0xFF00) | ((v & 0xFF) << 8)
+          int slot = hi8Slot(dst);
+          ILType ft = bits32_ ? ILType::U32 : ILType::U16;
+          ILValue full = getReg(slot, 2);
+          ILInstr keep; keep.op = ILOp::And; keep.address = a; keep.src1 = full;
+          keep.src2 = constVal(bits32_ ? (int32_t)0xFFFF00FF : 0x00FF, ft);
+          keep.dst = fn.AllocValue(ft); bb.instrs.push_back(keep);
+          ILInstr lo; lo.op = ILOp::And; lo.address = a; lo.src1 = v;
+          lo.src2 = constVal(0xFF, ft);
+          lo.dst = fn.AllocValue(ft); bb.instrs.push_back(lo);
+          ILInstr sh; sh.op = ILOp::Shl; sh.address = a; sh.src1 = lo.dst; sh.imm = 8;
+          sh.dst = fn.AllocValue(ft); bb.instrs.push_back(sh);
+          ILInstr o; o.op = ILOp::Or; o.address = a; o.src1 = keep.dst; o.src2 = sh.dst;
+          o.dst = fn.AllocValue(ft); bb.instrs.push_back(o);
+          setReg(slot, o.dst);
+          return;
+        }
         if (IsGpr(dst)) { setReg(RegSlot(dst.reg), v); return; }
         if (dst.kind == OpKind::Mem) {
           int fs = frameSlotOf(dst);
-          if (fs >= 0) { setReg(fs, v); return; }   // [bp - N] local <- v
+          // A write just above the stack top may be an outgoing argument set up with `mov`
+          // instead of `push`; keep it as a candidate argument as well as a tracked slot.
+          if (fs >= 0 && bits32_ && dst.base != kNoReg && (dst.base % 16) == 4 &&
+              dst.index == kNoReg && dst.disp >= 0 && dst.disp < 256)
+            esp_args[dst.disp] = v;
+          if (fs >= 0) { setReg(fs, v); return; }   // [bp - N] / [esp + N] local <- v
           // 32-bit outgoing argument written directly to the stack: `mov [esp+N], v` (optimized MSVC
           // sets up call args this way instead of `push`). Record it by offset as a pending arg
           // instead of a store; consumed at the next call in offset order ([esp+0]=arg0). This is the
@@ -443,12 +775,25 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
         bb.instrs.push_back(x);
         storeTo(in.ops[0], x.dst);
       } else if (m == "lea") {
+        // reg = base + index*scale + disp. With no base or index it is a plain constant (an Add
+        // with no left operand renders as its immediate).
         ILInstr x; x.op = ILOp::Add; x.address = a;
-        x.src1 = (in.ops[1].base != kNoReg) ? getReg(RegSlot(in.ops[1].base), 2) : fn.AllocValue(ILType::U16);
-        x.imm = in.ops[1].disp;
-        x.dst = fn.AllocValue(ILType::U16);
+        x.src1 = emitMemAddr(in.ops[1], x);              // also sets x.imm = disp
+        x.access_type = ILType::U32;
+        x.dst = fn.AllocValue(bits32_ ? ILType::U32 : ILType::U16);
         bb.instrs.push_back(x);
         storeTo(in.ops[0], x.dst);
+      } else if ((m == "xor" || m == "sub") && IsGpr(in.ops[0]) && IsGpr(in.ops[1]) &&
+                 in.ops[0].reg == in.ops[1].reg && in.ops[0].size == in.ops[1].size) {
+        // `xor r, r` / `sub r, r` is the zeroing idiom: it does not READ the register. Lifting it
+        // as r ^ r made the incoming register look used, which invented a register parameter on
+        // about a third of all functions.
+        ILInstr z; z.op = ILOp::Assign; z.address = a; z.imm = 0;
+        z.dst = fn.AllocValue(WidthType(in.ops[0].size));
+        bb.instrs.push_back(z);
+        storeTo(in.ops[0], z.dst);
+        flag_kind = FK_ARITH; flagA = z.dst; flag_imm = true; flag_immv = 0;
+        flag_sz = in.ops[0].size;
       } else if (m == "add") binop(ILOp::Add);
       else if (m == "sub") binop(ILOp::Sub);
       else if (m == "adc") binop(ILOp::AddCarry);
@@ -486,8 +831,16 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
         ILInstr x; x.op = ILOp::SarImm; x.address = a; x.src1 = getReg(kGpBase, slot_sz); x.imm = signfill_bits;
         x.dst = fn.AllocValue(ILType::U16); bb.instrs.push_back(x); setReg(kGpBase + 2, x.dst);
       }
-      else if (m == "inc") { ILInstr x; x.op=ILOp::Add; x.address=a; x.src1=srcValue(in.ops[0]); x.imm=1; x.dst=fn.AllocValue(WidthType(in.ops[0].size)); bb.instrs.push_back(x); storeTo(in.ops[0],x.dst);}
-      else if (m == "dec") { ILInstr x; x.op=ILOp::Sub; x.address=a; x.src1=srcValue(in.ops[0]); x.imm=1; x.dst=fn.AllocValue(WidthType(in.ops[0].size)); bb.instrs.push_back(x); storeTo(in.ops[0],x.dst);}
+      else if (m == "inc" || m == "dec") {
+        // inc/dec set the zero and sign flags from their result (only carry is left alone), so a
+        // following jz/jnz/js tests THIS result. Without recording that, `dec ecx; jnz loop`
+        // branched on whatever arithmetic came before it.
+        ILInstr x; x.op = (m == "inc") ? ILOp::Add : ILOp::Sub; x.address = a;
+        x.src1 = srcValue(in.ops[0]); x.imm = 1;
+        x.dst = fn.AllocValue(WidthType(in.ops[0].size));
+        bb.instrs.push_back(x); storeTo(in.ops[0], x.dst);
+        flag_kind = FK_ARITH; flagA = x.dst; flag_imm = true; flag_immv = 0; flag_sz = in.ops[0].size;
+      }
       else if (m == "cmp") { flag_kind=FK_CMP; flagA = srcValue(in.ops[0]); if (in.ops[1].kind==OpKind::Imm){flag_imm=true;flag_immv=in.ops[1].imm;}else{flagB=srcValue(in.ops[1]);flag_imm=false;} flag_sz=in.ops[0].size; }
       else if (m == "test") { flag_kind=FK_TEST; flagA = srcValue(in.ops[0]); flagB = srcValue(in.ops[1]); flag_imm=false; flag_sz=in.ops[0].size; }
       else if (m == "call") {
@@ -518,10 +871,26 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
         }
         // If this call's args were written to the stack (`mov [esp+N],v`) rather than pushed,
         // pend_args is empty -- pull them from esp_args in ascending-offset order ([esp+0]=arg0).
+        const size_t npushed = pend_args.size();
         if (pend_args.empty() && !esp_args.empty()) {
           for (auto& kv : esp_args) pend_args.push_back(kv.second);   // std::map iterates by key asc
         }
         esp_args.clear();
+        // 32-bit conventions (stdcall, cdecl) push the LAST argument first, so the first argument
+        // is the last value pushed. Win16 Pascal pushes left to right, which is the order below
+        // without reversal. Staging 32-bit arguments in push order passed every call's arguments
+        // backwards.
+        if (bits32_ && npushed > 1) std::reverse(pend_args.begin(), pend_args.end());
+        if (sp_known && npushed) {
+          // Assume the callee removes its arguments (stdcall, the Win32 API convention). If the
+          // caller does it instead, the `add esp, N` that follows is recognised and not counted
+          // twice. The C runtime and wsprintf are cdecl: nothing is assumed for them.
+          const std::string& cn = x.call_name;
+          bool cdeclCallee = cn.find("CRTDLL") != std::string::npos ||
+                             cn.find("MSVCRT") != std::string::npos ||
+                             cn.find("wsprintf") != std::string::npos;
+          if (!cdeclCallee) { sp_off += 4 * (int)npushed; assumed_pop += 4 * (int)npushed; }
+        }
         // stage pushed args into the arg registers r3.. (PASCAL push order); the
         // back-end reads r3..r10 as the call's arguments.
         for (size_t i = 0; i < pend_args.size() && i < 8; ++i) {
@@ -539,6 +908,7 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
         hi.dst = fn.AllocValue(ILType::U16, kGpBase + 2); bb.instrs.push_back(hi);
         setReg(kGpBase + 2, hi.dst);
       } else if (m == "ret" || m == "retf") {
+        if (sptrack && sp_known && sp_off != 0) sp_bad = true;   // the stack model did not balance
         ILInstr x; x.op = ILOp::Return; x.address = a;
         // If the body WROTE AX, that is the return value (x86 returns in AX). Promote it into r3 so
         // the back-end renders `return <value>` -- the back-end's return register is r3, which x86's
@@ -639,22 +1009,49 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
         // incoming callee-saved reg (bp/si/di) or a segment reg.
         const X86Op& o = in.ops[0];
         bool save = false;
-        if (IsGpr(o)) {
+        ILValue pv;                                  // the value pushed (none for a segment register)
+        if (IsGpr(o) && !isHi8(o)) {
           int idx = o.reg % 16;
-          ILValue cur = getReg(RegSlot(o.reg), 2);
-          if ((idx == 5 || idx == 6 || idx == 7) && incoming.count(cur.id)) save = true;
+          pv = getReg(RegSlot(o.reg), 2);
+          // EBX is callee-saved in 32-bit code too (in Win16, BX is scratch)
+          bool calleeSaved = idx == 5 || idx == 6 || idx == 7 || (bits32_ && idx == 3);
+          if (calleeSaved && incoming.count(pv.id)) save = true;
         } else if (o.kind == OpKind::Reg && o.reg / 16 == RC_SEG) {
           save = true;
+        } else {
+          pv = srcValue(o);
         }
-        if (!save) pend_args.push_back(srcValue(o));
+        if (!save) pend_args.push_back(pv);
+        if (sp_known) {                              // the push is also a store to the new stack top
+          sp_off -= 4;
+          int s = stackSlotOf(sp_off);
+          if (s >= 0 && pv.id != kILNoValue) setReg(s, pv);
+        }
       } else if (m == "pop") {
         // An entry `pop reg` (stack still at entry depth) loads the caller's return address; mark it
         // so a later `jmp reg` on it is recognised as a return. A later pop of that reg clears it.
-        if (in.nops >= 1 && IsGpr(in.ops[0])) {
+        if (in.nops >= 1 && IsGpr(in.ops[0]) && !isHi8(in.ops[0])) {
           int sl = RegSlot(in.ops[0].reg);
           if (!stack_dirty) retaddr_reg = sl;
           else if (sl == retaddr_reg) retaddr_reg = -1;
+          if (sp_known) {
+            // The register receives what is on the stack top. `pop` used to leave the register
+            // unchanged, so a value saved with push and restored with pop was lost, and a
+            // callee-saved register kept its in-function value after being restored.
+            int s = stackSlotOf(sp_off);
+            auto it = s >= 0 ? reg.find(s) : reg.end();
+            if ((in.ops[0].reg % 16) == 5 && bp_known && sp_off == bp_off) {
+              bp_known = false;                      // pop ebp: the frame's saved EBP
+              setReg(sl, slotIncoming(sl, ILType::U32));
+            } else if (it != reg.end()) {
+              ILValue v = it->second;
+              // a value popped back is no longer waiting to be a call argument
+              if (!pend_args.empty() && pend_args.back().id == v.id) pend_args.pop_back();
+              setReg(sl, v);
+            }
+          }
         }
+        if (sp_known) sp_off += 4;
       } else if (m == "nop" || m == "leave" || m == "enter" ||
                  m == "cld" || m == "std" || m == "cli" || m == "sti" ||
                  m == "push" /*unreached*/) {
@@ -902,8 +1299,139 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
       blkAxOut[bb.start_addr] = reg[kGpBase];
       blkWroteAx[bb.start_addr] = (reg[kGpBase].id != axInId);   // AX changed within THIS block
     }
-    fn.blocks.push_back(bb);
+    cur_bb = nullptr;
+    BState& ex = bexit[li];
+    ex.reg = reg;
+    ex.fk = (int)flag_kind; ex.fa = flagA; ex.fb = flagB;
+    ex.fimm = flag_imm; ex.fimmv = flag_immv; ex.fsz = flag_sz;
+    ex.fp = fpst;
+    ex.sp = sp_off; ex.spk = sp_known; ex.bp = bp_off; ex.bpk = bp_known;
+    if (sptrack && reachable[li] && !sp_known) sp_bad = true;   // lost track of the stack here
+    lifted[li] = 1;
+    blks[li] = std::move(bb);
+    haveBlk[li] = 1;
   }
+
+  if (sptrack && sp_bad) {
+    // The stack model failed for this function. Mixing tracked slots with raw memory accesses
+    // would be worse than either, so lift it again the plain way.
+    tl_no_sptrack = true;
+    ILFunction plain = LiftFunction(image, image_size, entry, end, name);
+    tl_no_sptrack = false;
+    return plain;
+  }
+
+  if (regflow) {
+    // Back edges: the predecessor has been lifted now, so its value for the slot is known.
+    for (const PFix& f : pfix) {
+      if (!lifted[f.pred]) continue;
+      auto it = bexit[f.pred].reg.find(f.slot);
+      if (it != bexit[f.pred].reg.end()) pmoves.push_back({f.pred, f.dst, it->second});
+      else if (f.slot < 1000) pmoves.push_back({f.pred, f.dst, slotIncoming(f.slot, f.dst.type)});
+    }
+    // A merge value that every predecessor assigns the SAME value (or itself, round a loop that
+    // never changes it) is not a merge at all: replace it by that value. Loop headers create a
+    // merge for every live slot up front, so this is what leaves only the loop-carried ones.
+    std::map<int, ILValue> subst;
+    auto resolve = [&](ILValue v) {
+      for (int guard = 0; guard < 256; ++guard) {
+        auto it = subst.find(v.id);
+        if (it == subst.end()) break;
+        v = it->second;
+      }
+      return v;
+    };
+    for (bool changed = true; changed;) {
+      changed = false;
+      std::map<int, std::set<int>> srcIds;
+      std::map<int, ILValue> anySrc;
+      for (const PMove& mv : pmoves) {
+        if (subst.count(mv.dst.id)) continue;
+        ILValue s = resolve(mv.src);
+        if (s.id == mv.dst.id) continue;
+        srcIds[mv.dst.id].insert(s.id);
+        anySrc[mv.dst.id] = s;
+      }
+      for (const auto& kv : srcIds) {
+        if (kv.second.size() == 1) { subst[kv.first] = anySrc[kv.first]; changed = true; }
+      }
+    }
+    if (!subst.empty()) {
+      auto fix = [&](ILValue& v) {
+        if (v.id != kILNoValue && subst.count(v.id)) { ILValue r = resolve(v); v.id = r.id; v.type = r.type; }
+      };
+      for (size_t i = 0; i < nblk; ++i) {
+        if (!haveBlk[i]) continue;
+        for (ILInstr& x : blks[i].instrs) { fix(x.src1); fix(x.src2); fix(x.src3); }
+      }
+      for (auto& kv : blkAxOut) fix(kv.second);
+    }
+    // A merge value nothing reads is dead, and so are the moves that feed it. Dropping them
+    // matters beyond tidiness: a move from a register no path has written reads its function-entry
+    // value, and a read of an entry register is what makes it a parameter.
+    std::set<int> used;
+    for (size_t i = 0; i < nblk; ++i) {
+      if (!haveBlk[i]) continue;
+      for (const ILInstr& x : blks[i].instrs)
+        for (const ILValue* v : {&x.src1, &x.src2, &x.src3})
+          if (v->id != kILNoValue) used.insert(v->id);
+    }
+    std::set<int> liveMerge;
+    for (bool grow = true; grow;) {
+      grow = false;
+      for (const PMove& mv : pmoves) {
+        if (subst.count(mv.dst.id)) continue;
+        if (!used.count(mv.dst.id) && !liveMerge.count(mv.dst.id)) continue;
+        ILValue s = resolve(mv.src);
+        if (mergeIds.count(s.id) && !used.count(s.id) && liveMerge.insert(s.id).second) grow = true;
+      }
+    }
+    // Place the surviving merge moves at the end of each predecessor, ahead of its terminator.
+    auto isTerm = [](ILOp op) {
+      return op == ILOp::Branch || op == ILOp::BranchCond || op == ILOp::Return ||
+             op == ILOp::BranchLR || op == ILOp::BranchCTR;
+    };
+    std::map<size_t, std::vector<std::pair<ILValue, ILValue>>> perPred;   // pred -> [(dst, src)]
+    for (const PMove& mv : pmoves) {
+      if (subst.count(mv.dst.id) || !haveBlk[mv.pred]) continue;
+      if (!used.count(mv.dst.id) && !liveMerge.count(mv.dst.id)) continue;      // dead merge
+      ILValue s = resolve(mv.src);
+      if (s.id == mv.dst.id) continue;
+      auto& lst = perPred[mv.pred];
+      bool dup = false;
+      for (const auto& e : lst) if (e.first.id == mv.dst.id) { dup = true; break; }
+      if (!dup) lst.push_back({mv.dst, s});
+    }
+    for (auto& pp : perPred) {
+      auto& ins = blks[pp.first].instrs;
+      size_t pos = ins.size();
+      while (pos > 0 && isTerm(ins[pos - 1].op)) pos--;
+      // the r3 promotion copy that precedes a Return belongs with the terminator
+      uint32_t at_addr = pos > 0 ? ins[pos - 1].address
+                                 : (ins.empty() ? blks[pp.first].start_addr : ins[0].address);
+      std::set<int> dsts;
+      for (const auto& e : pp.second) dsts.insert(e.first.id);
+      std::vector<ILInstr> add;
+      // The moves of one edge happen "at once". If one reads a merge value another writes
+      // (two variables exchanging values round a loop), read it into a temporary first.
+      for (auto& e : pp.second) {
+        if (dsts.count(e.second.id)) {
+          ILInstr t; t.op = ILOp::Assign; t.address = at_addr; t.src1 = e.second;
+          t.dst = fn.AllocValue(e.second.type);
+          add.push_back(t);
+          e.second = t.dst;
+        }
+      }
+      for (const auto& e : pp.second) {
+        ILInstr mv; mv.op = ILOp::Assign; mv.merge_move = true; mv.address = at_addr;
+        mv.dst = e.first; mv.src1 = e.second;
+        add.push_back(mv);
+      }
+      ins.insert(ins.begin() + pos, add.begin(), add.end());
+    }
+  }
+  for (size_t i = 0; i < nblk; ++i)
+    if (haveBlk[i]) fn.blocks.push_back(std::move(blks[i]));
 
   // Prune blocks unreachable from entry: module-mode function bounds run to the
   // next leader, so trailing alignment/data past the final `ret` gets decoded as
