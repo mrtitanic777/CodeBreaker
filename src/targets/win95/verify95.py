@@ -187,7 +187,7 @@ def _mod_sha(path):
 # stdcall import takes, and the fingerprint is the full call sequence WITH arguments, not the set of
 # import names reached. 4: the fingerprint also carries the memory the function wrote and which of
 # its instructions ran; inputs can set what imported calls return.
-_ORACLE_REV = 11
+_ORACLE_REV = 13
 
 
 def _fp_key(sha, func, spec):
@@ -344,6 +344,11 @@ def _fp_pe(path, func, spec, rebuilt=False):
     fp = {"ret": r.get("ret"), "exit": "wild-call" if wild else _exit_norm(r.get("exit")), "deps": deps,
           "truncated": bool(r.get("truncated")),
           "writes": _effects(r, _image_span(path) if rebuilt else None),
+          # how the function left the stack pointer (4 = the caller removes the arguments, 4 + N =
+          # the function removed N bytes of them) and whether it preserved EBX/ESI/EDI/EBP
+          "pop": r.get("esp_delta") if _exit_norm(r.get("exit")) == "ret" else None,
+          "saved": (tuple(r.get("saved_regs") or ()) == tuple(tracer.SAVED_SENTINELS)
+                    if _exit_norm(r.get("exit")) == "ret" else None),
           "cov": (), "reach": ()}
     if not rebuilt:
         fp["cov"], fp["reach"] = _coverage(r)
@@ -532,6 +537,10 @@ def first_difference(a, b):
     wa, wb = a.get("writes"), b.get("writes")
     if wa is not None and wb is not None and wa != wb:
         return "writes-differ"
+    if a.get("pop") is not None and b.get("pop") is not None and a["pop"] != b["pop"]:
+        return "stack-differs"                      # a different calling convention or argument count
+    if a.get("saved") and b.get("saved") is False:
+        return "registers-differ"                   # the original preserves them; this does not
     return ""
 
 
@@ -547,6 +556,10 @@ def difference_detail(a, b, v=None):
     elif d == "writes-differ":
         out = "writes %s vs %s" % ((a.get("writes") or "none").split(":")[0],
                                    (b.get("writes") or "none").split(":")[0])
+    elif d == "stack-differs":
+        out = "removes %s bytes on return vs %s" % (a.get("pop"), b.get("pop"))
+    elif d == "registers-differ":
+        out = "saved registers preserved vs changed"
     elif d == "deps-differ":
         da, db = list(a["deps"]), list(b["deps"])
         i = 0

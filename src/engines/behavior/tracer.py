@@ -39,6 +39,7 @@ _SCRATCH_BASE, _SCRATCH_SIZE = 0x200000, 0x10000
 # the objects pointer arguments are aimed at, so a function with a large frame or a deep call chain
 # wrote over its own inputs.
 _STACK_BASE, _STACK_SIZE = 0x300000, 0x40000
+SAVED_SENTINELS = (0xB0B0B0B0, 0x51515151, 0xD1D1D1D1, 0xBDBDBDBD)      # EBX, ESI, EDI, EBP at entry
 _STACK_TOP, _RET = _STACK_BASE + _STACK_SIZE - 0x1000, 0xDEAD0000
 _PAGE = 0x1000
 
@@ -338,6 +339,12 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
     esp -= 4
     uc.mem_write(esp, _RET.to_bytes(4, "little"))
     uc.reg_write(UC_X86_REG_ESP, esp)
+    # Sentinels in the registers a function must preserve: one that hands a register back changed
+    # is caught even though its caller here holds nothing of value there. (A function's callers
+    # keep live values in these; a rebuilt body that loses one breaks them, not itself.)
+    from unicorn.x86_const import UC_X86_REG_EBX, UC_X86_REG_ESI, UC_X86_REG_EDI, UC_X86_REG_EBP
+    for _r, _v in zip((UC_X86_REG_EBX, UC_X86_REG_ESI, UC_X86_REG_EDI, UC_X86_REG_EBP), SAVED_SENTINELS):
+        uc.reg_write(_r, _v)
     entry_esp = esp
 
     rec = {
@@ -576,7 +583,21 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
     try:
         uc.emu_start(fva, _RET, count=insn_cap + 1)
         rec["exit"] = "truncated" if rec["truncated"] else "ret"
+        # The emulator can stop without raising (a divide by zero does): it only RETURNED if it
+        # stopped at the return sentinel. Anything else is a fault, wherever it stopped.
+        if not rec["truncated"] and uc.reg_read(UC_X86_REG_EIP) != _RET:
+            rec["exit"] = "exception: stopped at 0x%x" % uc.reg_read(UC_X86_REG_EIP)
         rec["ret"] = uc.reg_read(UC_X86_REG_EAX)
+        # The registers a function must hand back unchanged (they are 0 on entry here), and where
+        # the stack pointer ended up relative to entry: 4 = cdecl, 4 + N = stdcall with N bytes.
+        try:
+            from unicorn.x86_const import (UC_X86_REG_EBX, UC_X86_REG_ESI, UC_X86_REG_EDI,
+                                           UC_X86_REG_EBP)
+            rec["saved_regs"] = tuple(uc.reg_read(x) for x in (UC_X86_REG_EBX, UC_X86_REG_ESI,
+                                                               UC_X86_REG_EDI, UC_X86_REG_EBP))
+            rec["esp_delta"] = (uc.reg_read(UC_X86_REG_ESP) - entry_esp) & 0xFFFFFFFF
+        except Exception:
+            pass
         try:                                                 # x87 return (float functions -> st0)
             from unicorn.x86_const import UC_X86_REG_ST0
             rec["st0"] = float(uc.reg_read(UC_X86_REG_ST0))
