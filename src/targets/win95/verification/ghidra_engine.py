@@ -24,8 +24,8 @@ import subprocess
 from src.core import corpus
 
 LANE = "pe-ghidra"
-REV = 1                                    # bump when the adaptation below changes what is compiled
-_FIXUPS = ("typedef unsigned int pointer32;\ntypedef unsigned int undefined3;\n"
+REV = 4                                    # bump when the adaptation below changes what is compiled
+_FIXUPS = ("typedef unsigned int pointer32;\ntypedef unsigned int undefined3;\ntypedef void *pointer;\n"
            "typedef unsigned long long ulonglong;\ntypedef long long longlong;\n"
            "#define true 1\n#define false 0\n")
 
@@ -90,6 +90,29 @@ def adapt(module_path, c_path):
     from src.targets.win95 import bodyverify as B
     globs, funcs, order = parse(c_path)
     header = open(os.path.splitext(c_path)[0] + ".h", encoding="utf-8", errors="replace").read()
+
+    def clean(t):
+        """Spellings a C compiler does not take: a name Ghidra could not settle
+        (`FID_conflict:x`) and the C++-only __thiscall."""
+        return re.sub(r"\b__thiscall\b", "", t.replace("FID_conflict:", "FID_conflict_"))
+    header = clean(header)
+    globs = [clean(g) for g in globs]
+    order = [clean(n) for n in order]
+    funcs = {clean(n): clean(t) for n, t in funcs.items()}
+    # Ghidra names a string after its text, which need not be an identifier
+    # (`s_SOFTWARE\Microsoft\..._bfeca530`, `s_%lu%c%03lu_7fe9f17c`). Rename those by address.
+    renames = {}
+    for i, g in enumerate(globs):
+        m = re.match(r"^(string|unicode)\s+(.+_([0-9a-f]{8}))(\[\d*\])?;\s*$", g)
+        if m and not re.fullmatch(r"[A-Za-z_]\w*", m.group(2)):
+            safe = "%s_%s" % ("s" if m.group(1) == "string" else "u", m.group(3))
+            renames[m.group(2)] = safe
+            globs[i] = "%s %s%s;" % (m.group(1), safe, m.group(4) or "")
+    if renames:
+        for old in sorted(renames, key=len, reverse=True):
+            for n in funcs:
+                if old in funcs[n]:
+                    funcs[n] = funcs[n].replace(old, renames[old])
     text = "\n".join(funcs.values())
     hdr = _FIXUPS + header
     hdr = re.sub(r"\{\s*\}\s*;", "{ int _empty; };", hdr)            # C has no empty structs
@@ -107,7 +130,10 @@ def adapt(module_path, c_path):
         ty, name, addr, arr = m.group(1).strip(), m.group(2), m.group(3), m.group(4)
         if name in funcs:
             continue
-        macros.append(("#define %s ((%s *)0x%s)" if arr else "#define %s (*(%s *)0x%s)") % (name, ty, addr))
+        if ty in ("string", "unicode"):                 # text: the name stands for its address
+            macros.append("#define %s ((%s *)0x%s)" % (name, "char" if ty == "string" else "unsigned short", addr))
+        else:
+            macros.append(("#define %s ((%s *)0x%s)" if arr else "#define %s (*(%s *)0x%s)") % (name, ty, addr))
     for a in sorted(set(re.findall(r"\b_DAT_([0-9a-f]{8})\b", text))):  # the same cell at another width
         macros.append("#define _DAT_%s (*(unsigned int *)0x%s)" % (a, a))
     imports = B.import_map(module_path)
@@ -216,7 +242,12 @@ def verify(module_path, funcs=None, store=None, outdir=None, log=None):
                                   "source": gfuncs.get(n) if n else None}
     if fresh:
         outdir = outdir or B._scratch("pe-ghidra", os.path.basename(module_path).lower())
-        dll, built, dropped = build(module_path, preamble, gfuncs, order, used, outdir)
+        # Only functions with a known address are built. The rest are library routines Ghidra
+        # recognised by signature (__allshl, _memcpy): they belong to the C runtime, which is linked,
+        # and defining them again collides with it.
+        placed = set(by_va.values())
+        dll, built, dropped = build(module_path, preamble, gfuncs, [n for n in order if n in placed],
+                                    used, outdir)
         ex, base = {}, 0
         if dll:
             pb = open_pe(dll)
