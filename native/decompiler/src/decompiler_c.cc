@@ -2007,6 +2007,11 @@ std::string CDecompiler::Run() {
             if (sit != GlobalSyms().end()) callee = sit->second;
           }
           if (callee.empty()) callee = in.call_name;
+          if (in.op == ILOp::Call && callee == "indirect" && in.mask != 0 && in.src1.id != kILNoValue) {
+            // A call through a pointer the lifter kept: write it as one.
+            callee = std::string("((int (") + (in.mask == 1 ? "__stdcall " : "") + "*)())(" +
+                     Render(Get(in.src1), kPrecAssign) + "))";
+          }
           if (callee.empty()) {
             if (in.op == ILOp::CallCTR) {
               callee = "(*(int (**)())CTR)";

@@ -239,6 +239,9 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
   // that points at a function turns the indirect call into a direct one -- the data-flow lever that
   // recovers `mov reg, offset FUNC; call reg` (callback registration, dispatch trampolines).
   std::map<int, int64_t> regConst;
+  // Values loaded from an import-table slot (by IL value id) -> the import's name. Keyed by value,
+  // not register, so it holds wherever the pointer is kept and across blocks.
+  std::map<int, std::string> importVal;
   // Return-address-in-register idiom (shared stdcall-cleanup return trampolines): a `pop reg` taken
   // while the stack is still at entry depth loads the caller's return address, and a later `jmp reg`
   // on that register is a RETURN (value in AX), not an indirect call. Track the register that holds
@@ -762,6 +765,11 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
 
       if (m == "mov" || m == "movzx" || m == "movsx") {
         ILValue v = srcValue(in.ops[1]);
+        if (m == "mov" && in.ops[1].kind == OpKind::Mem && in.ops[1].base == kNoReg &&
+            in.ops[1].index == kNoReg) {
+          auto is = import_slots_.find((uint32_t)in.ops[1].disp);
+          if (is != import_slots_.end()) importVal[v.id] = is->second;
+        }
         storeTo(in.ops[0], v);                          // storeTo->setReg cleared any old constant
         if (IsGpr(in.ops[0]) && in.ops[1].kind == OpKind::Imm)
           regConst[RegSlot(in.ops[0].reg)] = in.ops[1].imm;   // mov reg, imm  -> track the constant
@@ -867,7 +875,25 @@ ILFunction X86Lifter::LiftFunction(const uint8_t* image, size_t image_size,
             x.target = t; char sb[24]; std::snprintf(sb, sizeof sb, "sub_%06X", t); x.call_name = sb;
           } else x.call_name = "indirect";
         } else {
-          x.call_name = "indirect";                    // call through reg/mem (v1)
+          // A call through a register or a memory cell. Keep the pointer it calls through, so the
+          // back-end can write the call (`((int (*)())p)(...)`) instead of a placeholder that
+          // loses where control goes. `mask` records who removes the arguments: an `add esp, N`
+          // right after the call means the caller does (cdecl); otherwise the callee (stdcall).
+          x.call_name = "indirect";
+          if (bits32_ && (in.ops[0].kind == OpKind::Reg || in.ops[0].kind == OpKind::Mem)) {
+            x.src1 = srcValue(in.ops[0]);
+            auto iv = importVal.find(x.src1.id);
+            bool callerPops = false;
+            if (iit->second + 1 < insns.size()) {
+              const X86Insn& nx = insns[iit->second + 1];
+              callerPops = nx.mnem == "add" && nx.nops >= 2 && nx.ops[0].kind == OpKind::Reg &&
+                           IsGpr(nx.ops[0]) && (nx.ops[0].reg % 16) == 4 && nx.ops[1].kind == OpKind::Imm;
+            }
+            x.mask = callerPops ? 2u : 1u;
+            if (iv != importVal.end()) {               // the pointer is an import: call it by name
+              x.call_name = iv->second; x.src1 = ILValue(); x.mask = 0;
+            }
+          }
         }
         // If this call's args were written to the stack (`mov [esp+N],v`) rather than pushed,
         // pend_args is empty -- pull them from esp_args in ascending-offset order ([esp+0]=arg0).

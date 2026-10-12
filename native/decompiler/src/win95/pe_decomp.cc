@@ -163,6 +163,11 @@ int main(int argc, char** argv) {
   }
   lifter.SetNames(names);
   lifter.SetCallSites(sites);
+  {
+    std::map<uint32_t, std::string> slots;
+    for (const auto& kv : img.imports) slots[img.image_base + kv.first] = kv.second;
+    lifter.SetImportSlots(slots);
+  }
 
   // --disasm: per-section listing with resolved import/target annotations.
   if (mode == "--disasm") {
