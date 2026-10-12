@@ -1,0 +1,210 @@
+#!/usr/bin/env python3
+r"""module_source.py -- one source file per module, in the source tree, every function labelled.
+
+The verifier's results used to end as tens of thousands of loose per-function files in staging
+and a percentage. This writes what the project is actually for: the module's source, in the
+Windows 95 tree, where each function says what is known about it.
+
+    python -m src.targets.win95.module_source comctl32.dll            # verify, then write the file
+    python -m src.targets.win95.module_source comctl32.dll --no-verify  # write from stored results
+    python -m src.targets.win95.module_source --scoreboard            # rewrite SCOREBOARD.md only
+
+Each function carries one status line:
+
+    VERIFIED            behaves as the original on every input tried, with most of it exercised
+    VERIFIED (weak)     matched, but the match is thin -- the reason is stated
+    UNVERIFIED          rebuilt and run; it behaves differently (what differed is stated)
+    NOT JUDGED          the original could not be observed in the test environment
+    DOES NOT COMPILE    the reconstructed text is not valid C yet
+    NO SOURCE           nothing usable was produced
+
+Nothing is counted as progress except what these labels say. The scoreboard (SCOREBOARD.md at
+the tree root) is generated from the same results and lists only modules measured on the current
+verifier; older results are not carried forward.
+"""
+import os
+import sys
+import time
+from collections import Counter
+
+from src.core import corpus, toolchain
+
+WHY = {
+    "ret-differs": "returns a different value",
+    "deps-differ": "makes different API calls, or passes them different arguments",
+    "exit-differs": "ends differently (one side faults or runs away)",
+    "writes-differ": "leaves different values in memory",
+    "retail: call-into-nothing": "the original calls through a pointer the loader fills in (a thunk entry)",
+}
+WEAK = {
+    "low-coverage": "under half of the original's instructions ran",
+    "stub-callee": "a function it calls was a stand-in",
+    "fault-only": "both sides only fault alike",
+    "truncated": "a run was cut short",
+    "argc-unknown": "an API call was compared by name only",
+    "calls-capped": "the call sequence was too long to compare in full",
+    "unobserved": "some inputs could not be run",
+    "writes-capped": "too many memory writes to compare",
+}
+ORDER = ("verified", "weak", "unverified", "not-judged", "no-compile", "no-source")
+TITLE = {"verified": "VERIFIED", "weak": "VERIFIED (weak)", "unverified": "UNVERIFIED",
+         "not-judged": "NOT JUDGED", "no-compile": "DOES NOT COMPILE", "no-source": "NO SOURCE"}
+
+
+def classify(row):
+    """(class, detail) for one results row."""
+    v = row.get("verdict")
+    limits = [c for c in (row.get("limits") or "").split(",") if c]
+    cov = next((int(c[9:]) for c in limits if c.startswith("coverage=")), None)
+    weak = [WEAK[c] for c in limits if c in WEAK]
+    if v == "equivalent":
+        if weak:
+            return "weak", "; ".join(weak) + (" (%d%% ran)" % cov if cov is not None else "")
+        return "verified", ("%d%% of it exercised" % cov) if cov is not None else ""
+    if v == "consistent":
+        return "weak", "; ".join(weak or [WEAK["fault-only"]])
+    if v == "divergent":
+        return "unverified", WHY.get(row.get("reason") or "", row.get("reason") or "")
+    if v == "inconclusive":
+        return "not-judged", WHY.get(row.get("reason") or "", row.get("reason") or "")
+    if v == "no-compile":
+        return "no-compile", ""
+    return "no-source", (row.get("reason") or "")[:80]
+
+
+def tree_dir(module):
+    """Where a module's source lives in the Windows 95 tree (the directory already holding it)."""
+    root = os.path.dirname(corpus.design_dir())
+    stem = os.path.splitext(os.path.basename(module))[0].lower()
+    for top in sorted(os.listdir(root)):
+        d = os.path.join(root, top, stem)
+        if top not in ("design", "build", ".git") and os.path.isdir(d):
+            return d
+    return None
+
+
+def write_module(module, verify=True, log=print):
+    from src.formats.pe import open_pe
+    from src.targets.win95 import bodyverify as B, verify95
+    from src.targets.win95.verification import pipeline, store
+    path = corpus.retail(module)
+    if not path:
+        raise SystemExit("no retail module %r in the corpus" % module)
+    name = os.path.basename(path).lower()
+    out_dir = tree_dir(name)
+    if not out_dir:
+        raise SystemExit("%s has no directory in the source tree yet" % name)
+    db = store.open()
+    digest = pipeline.profile("pe")[0]
+    funcs = pipeline.functions("pe", path)
+    if verify:
+        t0 = time.time()
+        pipeline.verify("pe", path, funcs, store=db, bank=False)
+        log("verified %d functions in %.0fs" % (len(funcs), time.time() - t0))
+    rows = db.get_many("pe", verify95._mod_sha(path) or "")
+    pe = open_pe(path)
+    parts, counts = [], Counter()
+    for va in funcs:
+        key = pipeline.LANES["pe"].key(va)
+        row = rows.get(key) or {}
+        if row.get("profile") != digest:
+            row = {}                              # measured on an older verifier: not carried forward
+        cls, detail = classify(row) if row else ("no-source", "not measured on the current verifier")
+        try:
+            fn, c = B.synth(path, va, 4, fast=True)
+        except Exception:
+            fn, c = None, None
+        if not fn:
+            blk = None
+            try:
+                blk = B._static_body(path, va)
+            except Exception:
+                pass
+            fn, c = "sub_%06X" % (va - pe.image_base), blk
+            if cls not in ("no-source",):
+                cls, detail = "no-source", detail
+        counts[cls] += 1
+        head = "/* [%s] %s  @ 0x%08X%s */" % (TITLE[cls], fn, va, (" -- " + detail) if detail else "")
+        parts.append(head + "\n" + ((c or "/* (no reconstruction) */").strip()) + "\n")
+    total = len(funcs)
+    banner = [
+        "/* %s -- reconstructed source." % name, " *",
+        " * STATUS, generated %s by CodeBreaker (verifier settings %s, decompiler %s)." % (
+            time.strftime("%Y-%m-%d"), digest, toolchain.decompiler_build_id()),
+        " * %d functions:" % total]
+    for cls in ORDER:
+        banner.append(" *   %-18s %5d  %5.1f%%" % (TITLE[cls], counts[cls], 100.0 * counts[cls] / max(1, total)))
+    banner += [
+        " *", " * Builds as a whole module: NO. Functions are compiled and checked one at a time; the",
+        " * module's data (globals, tables, resources) is still referred to by its address in the",
+        " * original and has not been reconstructed.",
+        " * Runs in place of the original: NOT TESTED.", " *",
+        " * VERIFIED = rebuilt from this text with OpenWatcom and run beside the original on an x86",
+        " * emulator: same return value, same API calls with the same arguments, same memory written,",
+        " * on every input tried. It is evidence, not proof. Names of internal functions (sub_...)",
+        " * and locals (vN) are placeholders; no original names are claimed.", " */", ""]
+    out = os.path.join(out_dir, os.path.splitext(name)[0] + ".c")
+    with open(out, "w", encoding="utf-8", newline="\n") as f:
+        f.write("\n".join(banner) + "\n" + "\n".join(parts))
+    log("%s: %s" % (out, ", ".join("%s %d" % (TITLE[c], counts[c]) for c in ORDER if counts[c])))
+    return out, counts, total
+
+
+def scoreboard(log=print):
+    """Rewrite SCOREBOARD.md from the results measured on the CURRENT verifier settings."""
+    from src.targets.win95.verification import pipeline, store
+    db = store.open()
+    digest = pipeline.profile("pe")[0]
+    per = {}
+    q = "SELECT module, verdict, reason, limits FROM body WHERE lane='pe' AND profile=?"
+    for module, verdict, reason, limits in db.db.execute(q, (digest,)):
+        cls = classify({"verdict": verdict, "reason": reason, "limits": limits})[0]
+        per.setdefault(module, Counter())[cls] += 1
+    root = os.path.dirname(corpus.design_dir())
+    lines = ["# Windows 95 reconstruction -- scoreboard", "",
+             "Generated %s by `python -m src.targets.win95.module_source --scoreboard` "
+             "(verifier settings `%s`)." % (time.strftime("%Y-%m-%d %H:%M"), digest), "",
+             "Only modules measured on the current verifier are listed. A function is VERIFIED when "
+             "its reconstructed C, rebuilt and run beside the original, returns the same value, makes "
+             "the same API calls with the same arguments and writes the same memory on every input "
+             "tried, with at least half of it exercised. Everything else is not progress.", "",
+             "| Module | Functions | Verified | Verified (weak) | Unverified | Not judged | Does not compile | No source | Builds whole | Runs in place |",
+             "|---|---:|---:|---:|---:|---:|---:|---:|---|---|"]
+    tot = Counter()
+    for module in sorted(per):
+        c = per[module]
+        n = sum(c.values())
+        tot.update(c)
+        lines.append("| %s | %d | %d (%.0f%%) | %d | %d | %d | %d | %d | no | not tested |" % (
+            module, n, c["verified"], 100.0 * c["verified"] / max(1, n), c["weak"], c["unverified"],
+            c["not-judged"], c["no-compile"], c["no-source"]))
+    n = sum(tot.values())
+    if n:
+        lines.append("| **all measured** | %d | %d (%.0f%%) | %d | %d | %d | %d | %d | | |" % (
+            n, tot["verified"], 100.0 * tot["verified"] / n, tot["weak"], tot["unverified"],
+            tot["not-judged"], tot["no-compile"], tot["no-source"]))
+    measured = len(per)
+    lines += ["", "%d of %d 32-bit modules measured so far. The 16-bit modules and the VxD drivers are "
+              "tracked separately (VXD_FROM_SOURCE.md)." % (measured, len(corpus.modules("pe"))), ""]
+    out = os.path.join(root, "SCOREBOARD.md")
+    with open(out, "w", encoding="utf-8", newline="\n") as f:
+        f.write("\n".join(lines))
+    log("wrote %s (%d modules)" % (out, measured))
+    return out
+
+
+def main(argv):
+    if not argv:
+        print(__doc__)
+        return 2
+    from src.targets.win95.verification import pipeline
+    pipeline._arm()
+    mods = [a for a in argv if not a.startswith("--")]
+    for m in mods:
+        write_module(m, verify="--no-verify" not in argv)
+    scoreboard()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
