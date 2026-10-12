@@ -162,7 +162,7 @@ def _reconcile_one(sg, seg_i, start, end, seg_mask, emitdir=None):
         exact = bool(res and res["exact"])
         if emitdir and exact:                  # save the byte-exact reconstruction
             try:                               # comment-only readability labels
-                import annotate
+                from src.engines.symbol import annotate
                 asm = annotate.annotate(asm, sg, start, end)
             except Exception:
                 pass
@@ -238,7 +238,7 @@ def _record(sg, seg_i, start, end, asm, res, fdb, n, fmt, emitdir):
             fname = "obj%d_%05x.asm" % (seg_i, start)
         else:                                    # NE: comment-only readability labels
             try:
-                import annotate
+                from src.engines.symbol import annotate
                 asm = annotate.annotate(asm, sg, start, end)
             except Exception:
                 pass
