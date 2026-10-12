@@ -21,6 +21,7 @@ import subprocess
 import tempfile
 
 from src.core import paths, toolchain
+from src.formats import detect
 
 try:
     from src.engines.symbol import demangle as _demangle
@@ -65,20 +66,9 @@ def detect_format(path):
     try:
         with open(path, "rb") as f:
             d = f.read(0x40)
-        if len(d) >= 2 and d[:2] == b"MZ" and len(d) >= 0x40:
-            e = struct.unpack("<I", d[0x3C:0x40])[0]
-            sig = b""
-            if 0 < e < 0x10000000:
-                with open(path, "rb") as g:
-                    g.seek(e)
-                    sig = g.read(2)
-            if sig == b"PE":
-                return "PE"
-            if sig == b"NE":
-                return "NE"
-            if sig == b"LE" or sig == b"LX":
-                return "LE"
-            return "MZ"                       # MZ with no (recognized) new header = DOS exe
+        if len(d) >= 0x40 and d[:2] == b"MZ":
+            fmt = detect.format_of(path)
+            return "LE" if fmt == "LX" else fmt     # LE and LX share one engine
         # headerless: distinguish real-mode CODE from data files sharing the extension.
         if len(d) >= 2 and d[:2] in _DATA_MAGICS:
             return None                       # bitmap/image/other data, not code

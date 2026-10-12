@@ -100,17 +100,8 @@ _NOCODE_EXT = (".FON", ".FOT", ".TTF", ".BMP", ".CUR", ".ICO", ".WAV",
 
 def format_of(path):
     """'NE' | 'PE' | 'LE' | 'LX' | 'MZ' | None. Reads only the two headers."""
-    try:
-        with open(path, "rb") as f:
-            h = f.read(0x40)
-            if h[:2] != b"MZ" or len(h) < 0x40:
-                return None
-            off = struct.unpack("<H", h[0x3C:0x3E])[0]
-            f.seek(off)
-            sig = f.read(2)
-    except OSError:
-        return None
-    return {b"NE": "NE", b"PE": "PE", b"LE": "LE", b"LX": "LX"}.get(sig, "MZ")
+    from src.formats import detect
+    return detect.format_of(path)
 
 
 def all_modules():

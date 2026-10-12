@@ -109,6 +109,30 @@ def test_corpus_modules():
     assert sizes == sorted(sizes)
 
 
+# --- format detection ------------------------------------------------------------------------
+def test_format_detection():
+    import struct
+    from src.formats import detect
+    d = tempfile.mkdtemp()
+
+    def mk(name, sig, off=0x80):
+        p = os.path.join(d, name)
+        with open(p, "wb") as f:
+            f.write(b"MZ" + b"\0" * 0x3A + struct.pack("<I", off) + b"\0" * (off - 0x40) + sig + b"\0\0")
+        return p
+    assert detect.format_of(mk("pe", b"PE")) == "PE" and detect.lane(mk("pe2", b"PE")) == "pe"
+    assert detect.format_of(mk("ne", b"NE")) == "NE" and detect.lane(mk("ne2", b"NE")) == "ne"
+    assert detect.format_of(mk("lx", b"LX")) == "LX" and detect.lane(mk("lx2", b"LX")) == "le"
+    assert detect.format_of(mk("dos", b"ZZ")) == "MZ" and detect.lane(mk("dos2", b"ZZ")) == "dos"
+    # a DOS stub of 64 KB or more: e_lfanew is 4 bytes (reading 2 mis-located the header)
+    assert detect.format_of(mk("bigstub", b"PE", off=0x12000)) == "PE"
+    with open(os.path.join(d, "text"), "wb") as f:
+        f.write(b"not an executable")
+    assert detect.format_of(os.path.join(d, "text")) is None
+    assert detect.lane(os.path.join(d, "missing")) is None
+    assert corpus.lane(mk("viacorpus", b"NE")) == "ne"     # the corpus resolver delegates here
+
+
 # --- isolated sweep runner -------------------------------------------------------------------
 _CHILD = ("import sys,json,time\n"
           "a=sys.argv[1]\n"
@@ -156,6 +180,7 @@ def test_throttle_is_safe():
 def main():
     for fn in (test_decompiler_resolution, test_decompiler_dir_override, test_openwatcom,
                test_corpus_rank_prefers_installed_copy, test_corpus_retail, test_corpus_modules,
+               test_format_detection,
                test_isolated_map_separates_failures_and_resumes, test_throttle_is_safe):
         check(fn)
     for name, status, detail in RESULTS:
