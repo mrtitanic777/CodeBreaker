@@ -356,7 +356,7 @@ def compile_body(c_text, fname, outdir):
     obj = open(os.path.join(outdir, fname + ".obj"), "rb").read()
     internal = _omf_export_name(obj, fname)
     with open(os.path.join(outdir, "b.lnk"), "w", newline="\n") as f:
-        f.write("system nt_dll\nname %s.dll\noption quiet\nfile %s.obj\n" + _RTL + "export %s='%s'\n"
+        f.write(("system nt_dll\nname %s.dll\noption quiet\nfile %s.obj\n" + _RTL + "export %s='%s'\n")
                 % (fname, fname, fname, internal))
     subprocess.run([ow["wlink"], "@b.lnk"], cwd=outdir, env=env, capture_output=True, text=True)
     dll = os.path.join(outdir, fname + ".dll")
