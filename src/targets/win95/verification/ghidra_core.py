@@ -19,13 +19,14 @@ import subprocess
 
 from src.core import paths
 
-REV = 5                                    # bump when what is fed to / taken from the core changes
+REV = 7                                    # bump when what is fed to / taken from the core changes
 
 # The core prints a function in the module's default convention (stdcall) without saying so, and
 # spells the others out. Compile with stdcall as the default so the text means what it says.
 CFLAGS = ["-bt=nt", "-zq", "-w0", "-s", "-zastd=c99", "-ecs"]
 
-_TYPES = """typedef signed char int1; typedef short int2; typedef int int4; typedef long long int8;
+_TYPES = """#pragma pack(1)
+typedef signed char int1; typedef short int2; typedef int int4; typedef long long int8;
 typedef unsigned char uint1; typedef unsigned short uint2; typedef unsigned int uint4;
 typedef unsigned long long uint8;
 typedef unsigned char xunknown1; typedef unsigned short xunknown2; typedef unsigned int xunknown4;
@@ -156,6 +157,62 @@ def decompile(module_path, funcs, outdir, timeout=3600):
     return out, order, by_va, (r.stderr or "")[-2000:]
 
 
+_LOCAL = re.compile(r"(?m)^  ([A-Za-z_][\w ]*?(?:\s*\*+\s*|\s))([a-z]+Stack_([0-9a-f]+))(?: \[(\d+)\])?;[ \t]*$")
+_SIZEOF = {"int1": 1, "uint1": 1, "xunknown1": 1, "char": 1, "bool": 1, "undefined": 1, "undefined1": 1,
+           "int2": 2, "uint2": 2, "xunknown2": 2, "undefined2": 2,
+           "int4": 4, "uint4": 4, "xunknown4": 4, "undefined4": 4, "float4": 4,
+           "int8": 8, "uint8": 8, "xunknown8": 8, "undefined8": 8, "float8": 8, "float10": 10}
+
+
+def _keep_frame(t):
+    """Keep a function's stack locals where the original had them, relative to one another.
+
+    The original often builds a small structure in its frame and passes its address
+    (`mov [ebp-18h], hwnd / mov [ebp-14h], id / lea edx, [ebp-18h] / push edx`). The core
+    recovers the fields as separate locals; a C compiler then places them wherever it likes, and
+    the callee, reading through the pointer, finds something else. When any stack local's address
+    can escape, the locals are declared as the fields of one frame structure at their original
+    offsets, so every address taken still points at what the original put there."""
+    locs = list(_LOCAL.finditer(t))
+    if not locs:
+        return t
+    names = [m.group(2) for m in locs]
+    if not (any(m.group(4) for m in locs) or re.search(r"&\s*(?:%s)\b" % "|".join(names), t)):
+        return t
+    items = []
+    for m in locs:
+        ty = " ".join(m.group(1).split())
+        size = 4 if ty.endswith("*") else _SIZEOF.get(ty)
+        if size is None:
+            return t                                       # a type whose size we do not know
+        count = int(m.group(4)) if m.group(4) else 1
+        items.append((int(m.group(3), 16), size * count, ty, m.group(2), m.group(4)))
+    items.sort(reverse=True)                               # largest offset = lowest address, first
+    fields, pos = [], None
+    for off, size, ty, name, arr in items:
+        addr = -off
+        if pos is not None:
+            gap = addr - pos
+            if gap < 0:
+                return t                                   # overlapping locals: leave as they are
+            if gap:
+                fields.append("uint1 _gap_%x[%d];" % (off, gap))
+        fields.append("%s %s%s;" % (ty, name, "[%s]" % arr if arr else ""))
+        pos = addr + size
+    decl = "  struct { %s } _f;   /* locals at their offsets in the original's frame */" % " ".join(fields)
+    first = [True]
+
+    def strip(_m):
+        if first[0]:
+            first[0] = False
+            return "\x00FRAME\x00"
+        return ""
+    t = _LOCAL.sub(strip, t)
+    for name in sorted(names, key=len, reverse=True):
+        t = re.sub(r"(?<![\w.])%s\b" % re.escape(name), "_f." + name, t)
+    return t.replace("\x00FRAME\x00", decl)
+
+
 def adapt(module_path, funcs, outdir):
     """-> (preamble, {name: text}, [names], {va: name}, [import names used]) for ghidra_engine:
     the core's output with its base types defined, its globals bound to the original's addresses,
@@ -178,14 +235,18 @@ def adapt(module_path, funcs, outdir):
         t = re.sub(r"\b([A-Za-z_]\w*)\._(\d+)_(\d+)_",
                    lambda mm: "(*(%s *)((char *)&%s + %s))" % (_BY_SIZE.get(int(mm.group(3)), "uint4"),
                                                                mm.group(1), mm.group(2)), t)
+        t = _keep_frame(t)
         # every function returns a value in EAX whether or not the core saw it used
         out[n] = re.sub(r"\Avoid(\s)", r"int\1", t)
     text = "\n".join(out.values())
     macros = []
+    # a global the code calls through holds a function pointer, whatever else it is compared with
+    called_through = set(re.findall(r"\(\*([a-z]+Ram[0-9a-f]{8})\)\s*\(", text))
     for pre, addr in sorted(set(re.findall(r"\b([a-z]+)Ram([0-9a-f]{8})\b", text))):
         szs = sizes.get(int(addr, 16)) or {4}
         size = min(szs) if len(szs) > 1 and pre[0] in "cb" else max(s for s in szs if s <= 8) if any(s <= 8 for s in szs) else 4
-        ty = "code *" if pre == "pc" else ("int%d" % size if pre[0] == "i" else _BY_SIZE.get(size, "uint4"))
+        ty = "code *" if (pre == "pc" or "%sRam%s" % (pre, addr) in called_through) else (
+            "int%d" % size if pre[0] == "i" else _BY_SIZE.get(size, "uint4"))
         macros.append("#define %sRam%s (*(%s *)0x%s)" % (pre, addr, ty, addr))
     called = set(re.findall(r"\b([A-Za-z_]\w*)\s*\(", text))
     used = sorted(n for n in called if n in imports and n not in out)

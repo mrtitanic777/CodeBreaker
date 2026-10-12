@@ -24,7 +24,7 @@ import subprocess
 from src.core import corpus
 
 LANE = "pe-ghidra"
-REV = 6                                    # bump when the adaptation below changes what is compiled
+REV = 7                                    # bump when the adaptation below changes what is compiled
 _FIXUPS = ("typedef unsigned int pointer32;\ntypedef unsigned int undefined3;\ntypedef void *pointer;\n"
            "typedef unsigned long long ulonglong;\ntypedef long long longlong;\n"
            "#define true 1\n#define false 0\n")
@@ -160,7 +160,7 @@ def adapt(module_path, c_path):
     return preamble, funcs, order, by_va, used
 
 
-def build(module_path, preamble, funcs, order, used, outdir, rounds=12, cflags=None):
+def build(module_path, preamble, funcs, order, used, outdir, rounds=30, cflags=None):
     """Compile the whole module, dropping the functions the compiler rejects.
     -> (dll | None, [names built], {dropped name: compiler message})."""
     from src.targets.win95 import bodyverify as B
@@ -170,6 +170,11 @@ def build(module_path, preamble, funcs, order, used, outdir, rounds=12, cflags=N
     os.makedirs(outdir, exist_ok=True)
     names, dropped = list(order), {}
     nostub = set()
+    # A caller that passes a callee a different number of arguments than it is defined with is
+    # rejected by the compiler -- but only the first such call per callee is reported each run, so
+    # a big module took more rounds than there are. Found here they are all known at once.
+    dropped.update(B.arity_mismatches([(n, funcs[n]) for n in names]))
+    names = [n for n in names if n not in dropped]
 
     def stand_in(n):
         """A dropped function keeps its place with the same signature and an empty body, so its
