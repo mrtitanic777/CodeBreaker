@@ -72,16 +72,51 @@ def _detect(path):
     return (lane, _DECOMP[lane]) if lane else (None, None)
 
 
+def _dec_cache_path(dec, path, mode):
+    """Where the cached output of `dec path mode` lives: keyed by the decompiler executable
+    (size + mtime), the input file (size + mtime) and the mode."""
+    import hashlib
+    import tempfile
+    try:
+        a, b = os.stat(dec), os.stat(path)
+    except OSError:
+        return None
+    key = hashlib.sha1(("%s|%d|%d|%s|%d|%d|%s" % (
+        os.path.basename(dec), a.st_size, int(a.st_mtime), os.path.abspath(path).lower(),
+        b.st_size, int(b.st_mtime), mode)).encode()).hexdigest()
+    return os.path.join(tempfile.gettempdir(), "codebreaker", "dec", key[:2], key + ".txt")
+
+
 def _dec(exe, path, mode):
+    """Output of the native decompiler in whole-module `mode` (--module, --names, --disasm).
+    Deterministic for a given binary and decompiler build, and re-run by every worker process of
+    a sweep (once per chunk of a big module), so it is cached on disk. CB_NO_DEC_CACHE=1 skips
+    the cache."""
     from src.core import toolchain
     dec = toolchain.decompiler(exe)
     if not dec:
         return None
+    cp = None if os.environ.get("CB_NO_DEC_CACHE") else _dec_cache_path(dec, path, mode)
+    if cp and os.path.isfile(cp):
+        try:
+            with open(cp, encoding="utf-8", errors="replace") as f:
+                return f.read()
+        except OSError:
+            pass
     try:
         r = subprocess.run([dec, path, mode], capture_output=True, text=True, timeout=240)
-        return r.stdout
     except Exception:
         return None
+    if cp and r.returncode == 0 and r.stdout:
+        try:
+            os.makedirs(os.path.dirname(cp), exist_ok=True)
+            tmp = "%s.%d.tmp" % (cp, os.getpid())
+            with open(tmp, "w", encoding="utf-8", errors="replace") as f:
+                f.write(r.stdout)
+            os.replace(tmp, cp)
+        except OSError:
+            pass
+    return r.stdout
 
 
 def _addr_key(tok):

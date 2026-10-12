@@ -7,6 +7,7 @@ One command for both lanes:
     python -m src.targets.win95.bank pe                 # 32-bit lane, resume where it stopped
     python -m src.targets.win95.bank ne                 # 16-bit lane
     python -m src.targets.win95.bank pe --status        # progress, no work
+    python -m src.targets.win95.bank pe --report        # verdicts, reasons, worst modules, what a build changed
     python -m src.targets.win95.bank pe --only kernel32.dll,user32.dll
     python -m src.targets.win95.bank pe --only @list.txt     # one module name per line
     python -m src.targets.win95.bank pe --retry-failed  # re-run units that timed out / crashed
@@ -57,42 +58,19 @@ def _scratch(lane, module, k):
 
 
 # --- worker: one chunk of one module ---------------------------------------------------------
-def functions(lane, path):
-    """The module's function list in a stable order: PE virtual addresses, NE (segment, offset)."""
-    tdir = paths.target_dir("win95")
-    if tdir not in sys.path:
-        sys.path.insert(0, tdir)                 # several win95 tools still import siblings bare
-    if lane == "pe":
-        import pe32util
-        return sorted(pe32util.carve(path).funcs)
-    from src.engines.behavior import interproc16
-    from src.formats.ne import NEFile
-    return list(interproc16.all_functions(NEFile(path)))
-
-
 def verify_chunk(lane, path, k, size):
     """Verify + bank functions [k*size, (k+1)*size) of one module.
     Returns {module, chunk, total, banked, verdicts, secs}; `total` is the module's function count."""
-    from collections import Counter
+    from src.targets.win95.verification import pipeline, store
     t0 = time.time()
-    fns = functions(lane, path)
+    fns = pipeline.functions(lane, path)
     part = fns[k * size:(k + 1) * size]
-    out = _scratch(lane, path, k)
-    cnt = Counter()
-    if part and lane == "pe":
-        from src.targets.win95 import bodyverify
-        cnt = bodyverify.verify_module_batched(path, vas=part, outdir=out, bank=True, fast=True)
-    elif part:
-        from src.targets.win95 import bodyverify16
-        for seg, off in part:
-            try:
-                r = bodyverify16.verify_body16(path, seg, off,
-                                               outdir=os.path.join(out, "%d_%x" % (seg, off)))
-                cnt[r["verdict"]] += 1
-            except Exception as e:
-                cnt["error:" + type(e).__name__] += 1
+    res = pipeline.verify(lane, path, part, outdir=_scratch(lane, path, k),
+                          store=store.open(), bank=True) if part else {}
+    cnt = pipeline.tally(res)
     return {"module": os.path.basename(path), "chunk": k, "total": len(fns),
             "banked": sum(cnt.get(v, 0) for v in GOOD), "verdicts": dict(cnt),
+            "reused": sum(1 for r in res.values() if r.get("cached")),
             "secs": round(time.time() - t0, 1)}
 
 
@@ -151,6 +129,42 @@ def status(lane, size=None):
     return st
 
 
+def report(lane):
+    """What the results database says about a lane: verdicts, why bodies did not verify, the
+    modules with the most unverified bodies, and what the current decompiler build changed."""
+    from src.targets.win95.verification import store
+    db = store.open()
+    s = db.summary(lane)
+    total = sum(s.values())
+    if not total:
+        print("no %s results recorded yet (%s)" % (lane.upper(), db.path))
+        return
+    good = sum(s.get(v, 0) for v in GOOD)
+    print("%s lane: %d bodies recorded, %d verified (%.1f%%)" % (lane.upper(), total, good,
+                                                               100.0 * good / total))
+    for v, n in sorted(s.items(), key=lambda kv: -kv[1]):
+        print("  %-13s %7d  %5.1f%%" % (v, n, 100.0 * n / total))
+    for verdict in ("divergent", "inconclusive", "no-compile"):
+        rs = db.reasons(lane, verdict)
+        if rs:
+            print("why %s:" % verdict)
+            for r, n in list(rs.items())[:6]:
+                print("  %7d  %s" % (n, r or "(no reason recorded)"))
+    print("modules with the most unverified bodies:")
+    rows = sorted(db.by_module(lane), key=lambda r: -(r[1] - (r[2] or 0)))[:10]
+    for module, n, ok in rows:
+        print("  %-20s %6d bodies, %6d verified (%4.1f%%)" % (module, n, ok or 0, 100.0 * (ok or 0) / n))
+    build = toolchain.decompiler_build_id()
+    fl = db.flips(lane, build)
+    if fl:
+        gained = sum(1 for _m, _k, _f, a, b in fl if b in GOOD and a not in GOOD)
+        lost = sum(1 for _m, _k, _f, a, b in fl if a in GOOD and b not in GOOD)
+        print("decompiler build %s changed %d verdicts: %d newly verified, %d no longer verified"
+              % (build, len(fl), gained, lost))
+        for m, k, f, a, b in [x for x in fl if x[3] in GOOD and x[4] not in GOOD][:10]:
+            print("  REGRESSED %s %s (%s): %s -> %s" % (m, f, k, a, b))
+
+
 def sweep(lane, only=None, jobs=5, cores=6, timeout=1500, size=None, retry_failed=False, fresh=False):
     if not toolchain.decompiler(lane):
         raise SystemExit("decompiler for lane %r is not built (%s)" % (lane, toolchain.decompiler_dir()))
@@ -175,8 +189,9 @@ def sweep(lane, only=None, jobs=5, cores=6, timeout=1500, size=None, retry_faile
             _append_tally(lane, res)
             v = res.get("verdicts", {})
             detail = " ".join("%s=%s" % kv for kv in sorted(v.items())) or "-"
-            print("[%d] %-24s +%-4d (%s)  %.0fs" % (seen[0], _key(unit), res.get("banked", 0),
-                                                    detail, time.time() - t0), flush=True)
+            print("[%d] %-24s +%-4d (%s)%s  %.0fs" % (seen[0], _key(unit), res.get("banked", 0),
+                  detail, "  reused=%d" % res["reused"] if res.get("reused") else "",
+                  time.time() - t0), flush=True)
         else:
             print("[%d] %-24s FAILED %s  %.0fs" % (seen[0], _key(unit), res.get("error"),
                                                    time.time() - t0), flush=True)
@@ -220,6 +235,9 @@ def main(argv):
     size = int(opt("--chunk", CHUNK[lane]))
     if "--status" in argv:
         status(lane, size)
+        return
+    if "--report" in argv:
+        report(lane)
         return
     only = opt("--only")
     if only and only.startswith("@"):

@@ -229,46 +229,17 @@ def _fp(probe_result):
             "truncated": bool(r.get("truncated"))}
 
 
-def _rebuilt_ordinal(dll, fname):
-    """The export ordinal of `fname` in the rebuilt NE DLL (probe addresses the rebuilt by ordinal)."""
-    from src.formats.ne import NEFile
-    try:
-        for name, ordn in NEFile(dll).resident_names():
-            if name.upper() == fname.upper():
-                return ordn
-    except Exception:
-        pass
-    return 1
-
-
 def verify_body16(retail, seg, off, arity=4, outdir=None, bank=True):
-    """synth -> compile (real Win16 NE) -> probe retail(seg,off) vs rebuilt(ordinal) -> verdict.
-    Banks equivalent (clean-return match) and consistent (fault/trunc-matched: same observed Win16 API
-    sequence + same exit) bodies to the recovered tree, labelling which so provenance stays honest."""
-    fname, c = synth16(retail, seg, off)
-    if not fname or fname in ("LibMain", "WEP"):            # the DLL's own entry/exit aren't targets
-        return {"seg": seg, "off": off, "verdict": "no-synth", "reason": c if not fname else "entry"}
+    """synth -> compile (real Win16 NE) -> probe retail(seg,off) vs rebuilt(ordinal 1) -> verdict,
+    for ONE function. The work is the shared pipeline's NE lane (verification/pipeline.py), which
+    banks equivalent and consistent bodies."""
     from src.targets.win95 import bodyverify
-    outdir = outdir or bodyverify._scratch("ne", os.path.basename(retail).lower(), "%d_%x" % (seg, off))
-    dll, clog = compile_body16(c, fname, outdir)
-    if not dll:
-        return {"seg": seg, "off": off, "verdict": "no-compile", "reason": clog, "c": c}
-    ordn = 1                                               # the body is pinned to ordinal 1 at link
-    vecs = verify95._vectors(arity, "ne")
-    rs, bs = [], []
-    for v in vecs:
-        try:
-            rs.append(_fp(NO.probe(retail, seg=seg, offset=off, args=v["args"])))
-        except Exception as e:
-            rs.append({"err": type(e).__name__})
-        try:
-            bs.append(_fp(NO.probe(dll, ordinal=ordn, args=v["args"])))
-        except Exception as e:
-            bs.append({"err": type(e).__name__})
-    verdict = verify95._body_verdict(rs, bs)
-    if bank and verdict in ("equivalent", "consistent"):
-        _save_verified16(retail, fname, c, verdict)
-    return {"seg": seg, "off": off, "verdict": verdict, "fname": fname}
+    from src.targets.win95.verification import pipeline
+    outdir = outdir or bodyverify._scratch("ne", os.path.basename(retail).lower())
+    res = pipeline.verify("ne", retail, [(seg, off)], outdir=outdir, bank=bank)
+    r = res[pipeline.LANES["ne"].key((seg, off))]
+    return {"seg": seg, "off": off, "verdict": r["verdict"], "fname": r.get("fname", ""),
+            "reason": r.get("reason", "")}
 
 
 def _save_verified16(retail, fname, c, verdict):
