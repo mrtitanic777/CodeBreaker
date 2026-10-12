@@ -48,7 +48,9 @@ class NEFile:
         d = self.data
         if d[:2] != b"MZ":
             raise ValueError("not an MZ file")
-        self.ne_off = struct.unpack_from("<H", d, 0x3C)[0]
+        # e_lfanew is a 4-byte field; reading 2 mis-located the header of any file whose DOS stub
+        # is 64 KB or more (uninstal.exe: 0x11080).
+        self.ne_off = struct.unpack_from("<I", d, 0x3C)[0]
         if d[self.ne_off:self.ne_off+2] != b"NE":
             raise ValueError(f"no NE signature at 0x{self.ne_off:x} (got {d[self.ne_off:self.ne_off+2]!r})")
         self._parse_header()
@@ -199,6 +201,11 @@ class NEFile:
         return recs
 
     # ---- entry table -------------------------------------------------------
+    def export_ordinals(self):
+        """The ordinals the entry table actually exports, in order (unused gaps skipped).
+        Exports by ordinal only have no resident name, so the name tables alone miss them."""
+        return [e["ordinal"] for e in self.entries() if e.get("kind") != "UNUSED"]
+
     def entries(self):
         """Parse entry-table bundles -> list of dict(ordinal, seg, offset, flags)."""
         out = []

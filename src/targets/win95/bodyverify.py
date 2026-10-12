@@ -23,6 +23,7 @@ import sys
 import subprocess
 
 from src.core import corpus, toolchain
+from src.formats.pe import open_pe
 from src.engines.behavior import tracer, interproc, envprov
 from src.targets.win95 import verify95, origintriage as OT
 
@@ -55,7 +56,7 @@ def _static_body(module, va):
         _BLOCK_CACHE[module] = SR._module_blocks(module)
     blocks = _BLOCK_CACHE[module]
     try:
-        rva = va - A._imagebase(A.PE(module))
+        rva = va - open_pe(module).image_base
     except Exception:
         return None
     return blocks.get(rva) or blocks.get(va)
@@ -138,7 +139,7 @@ def synth(module, va, arity=4, fast=False):
     if not blk:                                          # module-wide discovery missed it: decompile
         try:                                             # this one address on demand (win95pedec --at)
             from src.targets.win95 import autobuild95 as A
-            blk = _ondemand_block(module, va - A._imagebase(A.PE(module)))
+            blk = _ondemand_block(module, va - open_pe(module).image_base)
         except Exception:
             blk = None
     if blk:
@@ -175,7 +176,7 @@ def synth_closure(module, va, arity=4, depth=2, _seen=None, _base=None, _top=Tru
         _seen = set()
     if _base is None:
         from src.targets.win95 import autobuild95 as A
-        _base = A._imagebase(A.PE(module))
+        _base = open_pe(module).image_base
     if _top:
         fname, cc = synth(module, va, arity)
     else:
@@ -469,9 +470,9 @@ def _verify_one(retail, va, arity, outdir, closure):
         return {"va": va, "verdict": "no-compile", "reason": clog, "c": c}
     # original: run the retail body; reconstructed: run the compiled body -- same inputs + stubs
     from src.targets.win95 import autobuild95 as A
-    pb = A.PE(dll)
+    pb = open_pe(dll)
     baddr = pb.export_addrs().get(fname)
-    bbase = A._imagebase(pb)
+    bbase = pb.image_base
     vecs = verify95._vectors(arity, "pe")
     rs = [verify95._fp_pe(retail, va, v) for v in vecs]
     bs = [verify95._fp_pe(dll, bbase + baddr, v) for v in vecs] if baddr else [{"err": "noexport"}]
@@ -571,7 +572,7 @@ def harvest(module, maxn=100000, rows=None, present=None, verified_now=None):
     verified_now = set() if verified_now is None else verified_now
     already = {r["body_id"] for r in rows if r.get("verified") == "1"}
     try:
-        base = A._imagebase(A.PE(retail))
+        base = open_pe(retail).image_base
     except Exception:
         base = 0
     # trace off the TRACER's function starts (accurate traces), but CREDIT via the triage body_id
