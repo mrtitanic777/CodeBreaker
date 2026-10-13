@@ -159,7 +159,20 @@ def distance(built, original):
 
 def compile_function(cl, env, header, source, name, work, flags):
     """Compile one function's C with the period compiler. -> (bytes, mask) of the function, or
-    None when it does not compile. `header` is the shared types/declarations."""
+    None when it does not compile. `header` is the shared types/declarations. What the compiler
+    made of a text is kept (base/cache.py): a search tries the same text many times."""
+    import pickle
+    from codebreaker.base import cache
+    k = cache.key(cache.tool(cl), flags, header, source, name)
+    had = cache.get("period", k)
+    if had is not None:
+        return pickle.loads(had)
+    built = _compile_function(cl, env, header, source, name, work, flags)
+    cache.put("period", k, pickle.dumps(built))
+    return built
+
+
+def _compile_function(cl, env, header, source, name, work, flags):
     os.makedirs(work, exist_ok=True)
     with open(os.path.join(work, "m.h"), "w", newline="\n", encoding="utf-8") as f:
         f.write(header.replace("unsigned long long", "unsigned __int64").replace("long long", "__int64"))

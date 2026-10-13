@@ -34,6 +34,19 @@ def cpu_count():
     return os.cpu_count() or 4
 
 
+def workers():
+    """How many things run side by side, everywhere: the one number every part of the workbench
+    asks for (compiles, judging, sweeps). settings.json "workers", or CB_JOBS; otherwise half the
+    processors, at most 6 -- so that two parts running at once do not take the whole machine."""
+    from codebreaker.base import settings
+    n = os.environ.get("CB_JOBS") or settings.get("workers")
+    try:
+        n = int(n)
+    except (TypeError, ValueError):
+        n = 0
+    return n if n > 0 else max(1, min(6, cpu_count() // 2))
+
+
 # ---------------------------------------------------------------------------
 # Long sweeps: one isolated subprocess per item.
 #

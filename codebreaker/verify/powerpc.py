@@ -154,13 +154,13 @@ def _judge(context, item):
 
 
 KIND = "powerpc"
+PER_FUNCTION = True             # a verdict holds while the function and what it reaches are unchanged
 
 
 def profile(module_path):
     """(digest, settings) of everything other than the source that a verdict depends on."""
     from codebreaker.build import functions
-    from codebreaker.decompile import decompiler
-    settings = repr(("powerpc", REV, decompiler.REV, compare.REV, functions.CFLAGS_POWERPC, vectors()))
+    settings = repr(("powerpc", REV, compare.REV, functions.CFLAGS_POWERPC, vectors()))
     return hashlib.sha1(settings.encode()).hexdigest()[:12], settings
 
 

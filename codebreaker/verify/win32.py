@@ -17,6 +17,7 @@ import hashlib as _hashlib
 
 
 KIND = "pe"
+PER_FUNCTION = True             # a verdict holds while the function and what it reaches are unchanged
 
 
 def profile(module_path):
@@ -92,7 +93,7 @@ def settings_profile(lane):
     if lane not in _PROFILES:
         import json
         from codebreaker.build import watcom as B
-        from codebreaker.decompile import c_text, decompiler
+        from codebreaker.decompile import c_text
         cc = toolchain.ow_tool("wcc386" if lane == "pe" else "wcc")
         try:
             st = os.stat(cc)
@@ -105,7 +106,8 @@ def settings_profile(lane):
             "confirm_inputs": [v["args"] for v in _confirm_vectors(4, lane)],
             "max_calls": _MAX_CALLS, "max_support": MAX_SUPPORT,
             "directed": [MAX_DIRECTED, _HARVEST_DEPTH] if lane == "pe" else [],
-            "cflags": list(c_text.CFLAGS), "decompiler": decompiler.REV, "runtime": B._RTL,
+            # (not the decompiler's revision: a verdict is for a text, whichever revision wrote it)
+            "cflags": list(c_text.CFLAGS), "runtime": B._RTL,
             "compiler": compiler,
         }
         text = json.dumps(settings, sort_keys=True)
@@ -271,7 +273,7 @@ def _effects(r, own):
     A stored stack address is recorded as such (its value differs by build). None = too many
     writes were made to record them all."""
     ws = r.get("mem_writes") or []
-    if len(ws) >= tracer._MAX_MEM:
+    if r.get("writes_seen", len(ws)) >= tracer._MAX_MEM:
         return None
     # A call through a pointer that resolves to nothing lands in zero bytes; the oracle returns
     # from it after one `add [eax], al`. That write is the harness's, not the function's.
@@ -345,7 +347,8 @@ def _fp_pe(path, func, spec, rebuilt=False):
                                   stub_externals=True, sig_resolver=_argc,
                                   stub_ret=int(spec.get("stub_ret", 0)),
                                   overlay=rebuilt if isinstance(rebuilt, str) else None,
-                                  sentinels=spec.get("sentinels"))
+                                  sentinels=spec.get("sentinels"), reads=False, stop_wild=True,
+                                  quiet_stack=True)
     except ImportError:
         raise                                     # a broken setup is not an observation
     except Exception as e:
@@ -372,7 +375,9 @@ def _fp_pe(path, func, spec, rebuilt=False):
         fp["cov"], fp["reach"] = _coverage(r)
     # Cache only settled results. A truncated trace can differ by wall-clock (the tracer's 2s cap),
     # so caching it could record a machine-dependent fingerprint -- re-trace those instead.
-    if key and not fp["truncated"]:
+    # (That cap is gone: a run now stops on counts alone, the same on every machine, so a
+    # truncated run is as settled as any other -- and they are the slowest to make again.)
+    if key:
         compare.cache_put(key, fp)
     return fp
 

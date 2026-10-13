@@ -51,7 +51,17 @@ def _plain(symbol):
 
 
 def _compile(cc, cflags, env, outdir, stem, text):
-    """Compile one function. -> "" or the first error."""
+    """Compile one function. -> "" or the first error. What the compiler made of this text
+    with this header and these options is kept (base/cache.py) and not made again."""
+    from codebreaker.base import cache
+    k = cache.key(cache.tool(cc), cflags, _HEADER.get(outdir, ""), text) if outdir in _HEADER else None
+    had = cache.get("objects", k) if k else None
+    if had is not None:
+        if had[:2] == b"ER":
+            return had[2:].decode("utf-8", "replace")
+        with open(os.path.join(outdir, stem + ".obj"), "wb") as f:
+            f.write(had[2:])
+        return ""
     with open(os.path.join(outdir, stem + ".c"), "w", newline="\n", encoding="utf-8") as f:
         f.write('#include "m.h"\n\n' + text + "\n")
     for ext in (".obj", ".err"):
@@ -62,6 +72,9 @@ def _compile(cc, cflags, env, outdir, stem, text):
     r = subprocess.run([cc] + cflags + [stem + ".c"], cwd=outdir, env=env, capture_output=True, text=True,
                        errors="replace", timeout=600)
     if r.returncode == 0 and os.path.isfile(os.path.join(outdir, stem + ".obj")):
+        if k:
+            with open(os.path.join(outdir, stem + ".obj"), "rb") as f:
+                cache.put("objects", k, b"OK" + f.read())
         return ""
     log = (r.stdout or "") + (r.stderr or "")
     try:
@@ -69,12 +82,21 @@ def _compile(cc, cflags, env, outdir, stem, text):
     except OSError:
         pass
     m = _ERR.search(log)
-    return (m.group(2) if m else log.strip()[-100:] or "the compiler failed")[:100]
+    why = (m.group(2) if m else log.strip()[-100:] or "the compiler failed")[:100]
+    if k and m:                                  # a rejection is kept; a compiler that fell over is not
+        cache.put("objects", k, b"ER" + why.encode("utf-8", "replace"))
+    return why
 
 
-def compile_all(cc, cflags, env, header, texts, order, outdir, jobs=6):
+_HEADER = {}                     # build folder -> the hash of the header in it
+
+
+def compile_all(cc, cflags, env, header, texts, order, outdir, jobs=None):
     """Compile every function. -> ({name: object file stem}, {name: why it was rejected})"""
+    from codebreaker.base import cache, parallel
+    jobs = jobs or parallel.workers()
     os.makedirs(outdir, exist_ok=True)
+    _HEADER[outdir] = cache.key(header)
     with open(os.path.join(outdir, "m.h"), "w", newline="\n", encoding="utf-8") as f:
         f.write(header)
     stems = {n: "f%04d" % i for i, n in enumerate(order)}
@@ -103,7 +125,7 @@ def _link(wlink, env, outdir, lines):
     return None, ((r.stdout or "") + (r.stderr or "")).strip()[-160:] or "the linker produced nothing"
 
 
-def build16(header, texts, order, imports, outdir, segments=None, jobs=6):
+def build16(header, texts, order, imports, outdir, segments=None, jobs=None):
     wcc, wlink = period_tools.ow_tool("wcc"), period_tools.ow_tool("wlink")
     if not (wcc and wlink):
         raise RuntimeError("OpenWatcom's 16-bit compiler is not set up (settings.json: openwatcom)")
@@ -139,7 +161,7 @@ def build16(header, texts, order, imports, outdir, segments=None, jobs=6):
     return dll, where, dropped
 
 
-def build32(module_path, header, texts, order, used_imports, outdir, cflags, jobs=6):
+def build32(module_path, header, texts, order, used_imports, outdir, cflags, jobs=None):
     from codebreaker.build import watcom as B
     from codebreaker.formats.pe import open_pe
     from codebreaker.build import watcom as A
@@ -193,6 +215,15 @@ def powerpc_tools():
 
 
 def _compile_powerpc(cl, outdir, stem, text):
+    from codebreaker.base import cache
+    k = cache.key(cache.tool(cl), CFLAGS_POWERPC, _HEADER.get(outdir, ""), text) if outdir in _HEADER else None
+    had = cache.get("objects", k) if k else None
+    if had is not None:
+        if had[:2] == b"ER":
+            return had[2:].decode("utf-8", "replace")
+        with open(os.path.join(outdir, stem + ".obj"), "wb") as f:
+            f.write(had[2:])
+        return ""
     with open(os.path.join(outdir, stem + ".c"), "w", newline="\n", encoding="utf-8") as f:
         f.write(text + "\n")
     try:
@@ -202,13 +233,19 @@ def _compile_powerpc(cl, outdir, stem, text):
     r = subprocess.run([cl] + CFLAGS_POWERPC + ["/Fo" + stem + ".obj", stem + ".c"], cwd=outdir,
                        capture_output=True, text=True, errors="replace", timeout=600)
     if r.returncode == 0 and os.path.isfile(os.path.join(outdir, stem + ".obj")):
+        if k:
+            with open(os.path.join(outdir, stem + ".obj"), "rb") as f:
+                cache.put("objects", k, b"OK" + f.read())
         return ""
     log = (r.stdout or "") + (r.stderr or "")
     m = _CL_ERR.search(log)
-    return (m.group(2) if m else log.strip()[-100:] or "the compiler failed")[:100]
+    why = (m.group(2) if m else log.strip()[-100:] or "the compiler failed")[:100]
+    if k and m:
+        cache.put("objects", k, b"ER" + why.encode("utf-8", "replace"))
+    return why
 
 
-def build_powerpc(header, texts, order, externs, outdir, base, jobs=4):
+def build_powerpc(header, texts, order, externs, outdir, base, jobs=None):
     """Compile each function with the PowerPC compiler and link one image at `base`.
     `externs` are the names of functions outside the module (imports): each gets a place of its
     own in the image, so a call to it can be seen when the image is run.
@@ -217,7 +254,10 @@ def build_powerpc(header, texts, order, externs, outdir, base, jobs=4):
     if not tools:
         raise RuntimeError("no PowerPC compiler is set up (settings.json: powerpc_tools, powerpc_lib)")
     cl, link, lib = tools
+    from codebreaker.base import cache, parallel
+    jobs = jobs or parallel.workers()
     os.makedirs(outdir, exist_ok=True)
+    _HEADER[outdir] = cache.key(header)
     with open(os.path.join(outdir, "m.h"), "w", newline="\n", encoding="utf-8") as f:
         f.write(header)
     stems = {n: "f%04d" % i for i, n in enumerate(order)}

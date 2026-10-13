@@ -138,8 +138,52 @@ def test_period_compiler_gives_the_original_back():
     assert match.distance(p.compile(other.source, tempfile.mkdtemp()), u.original)[0] != "identical"
 
 
+def test_a_verdict_holds_until_what_it_was_for_changes():
+    """A function's signature covers its own text and everything it can reach, and nothing else:
+    changing one function re-judges it and its callers, and leaves the rest of the module alone."""
+    from codebreaker.verify import reconstruct
+
+    class M(object):
+        header = "typedef int x;"
+        order = ["a", "b", "c", "d", "e"]
+
+    def sigs(**changed):
+        m = M()
+        m.texts = dict({"a": "int a(){ return b(); }", "b": "int b(){ return 1; }", "c": "int c(){ return 2; }",
+                        "d": "int d(){ return e(); }", "e": "int e(){ return d() + c(); }"}, **changed)
+        return reconstruct.signatures(m, "whole")
+    was = sigs()
+    now = sigs(b="int b(){ return 3; }")
+    assert now["b"] != was["b"] and now["a"] != was["a"]                 # b, and a which calls it
+    assert all(now[n] == was[n] for n in "cde"), (was, now)
+    assert was["d"] == was["e"]                                          # a ring is judged as one
+    now = sigs(c="int c(){ return 4; }")
+    assert all(now[n] != was[n] for n in "cde") and all(now[n] == was[n] for n in "ab")
+    m = M()
+    m.texts = {}
+    assert reconstruct.signatures(m, "whole") == dict.fromkeys(M.order, "whole")
+
+
+def test_cache_files_results_under_what_made_them():
+    from codebreaker.base import cache
+    k = cache.key("tool:1:2", ["-a", "-b"], "text")
+    assert k != cache.key("tool:1:3", ["-a", "-b"], "text") and k != cache.key("tool:1:2", ["-a"], "-b", "text")
+    kind = "test-%d" % os.getpid()
+    assert cache.get(kind, k) is None
+    cache.put(kind, k, b"made once")
+    assert cache.get(kind, k) == b"made once"
+    os.environ["CB_NO_CACHE"] = "1"
+    try:
+        assert cache.get(kind, k) is None
+    finally:
+        del os.environ["CB_NO_CACHE"]
+    import shutil
+    shutil.rmtree(os.path.dirname(os.path.dirname(cache._path(kind, k))), ignore_errors=True)
+
+
 def main():
     for fn in (test_function_store, test_variant_store, test_repair_knobs_preserve_meaning,
+               test_a_verdict_holds_until_what_it_was_for_changes, test_cache_files_results_under_what_made_them,
                test_repair_search_with_any_compiler, test_period_compiler_gives_the_original_back,
                test_reconstruct_is_incremental):
         try:

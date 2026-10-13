@@ -216,13 +216,13 @@ def _spans(nef, where):
 
 
 KIND = "ne"
+PER_FUNCTION = True             # a verdict holds while the function and what it reaches are unchanged
 
 
 def profile(module_path):
     """(digest, settings) of everything other than the source that a verdict depends on."""
     from codebreaker.build import functions
-    from codebreaker.decompile import decompiler
-    settings = repr(("ne", REV, decompiler.REV, compare.REV, functions.CFLAGS16, vectors()))
+    settings = repr(("ne", REV, compare.REV, functions.CFLAGS16, vectors()))
     return hashlib.sha1(settings.encode()).hexdigest()[:12], settings
 
 

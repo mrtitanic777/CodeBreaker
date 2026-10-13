@@ -211,7 +211,10 @@ def _resolve_func(module, func):
 _RETSENT_BASE = 0xB1B10000                                # unique per-call external-return marker
 
 
-def _memory_hooks(U, rec, mapped):
+_INSN = {}                # (module file, its hash) -> {address: (text, is a call, direct target)}
+
+
+def _memory_hooks(U, rec, mapped, reads=True, static=(), quiet=None):
     """The memory side of a run, the same for every processor mode: record reads and writes
     (a write with what was there before, so an unchanged byte can be told from an effect), map
     untouched pages on demand so code that reaches into memory keeps running, and stop a run
@@ -228,6 +231,17 @@ def _memory_hooks(U, rec, mapped):
         if rec["memops"] > _MAX_MEMOPS:
             rec["truncated"] = True; rec["governed"] = True; uc.emu_stop(); return
         is_write = access == U.UC_MEM_WRITE
+        if not is_write and not reads:
+            return                                          # counted above; nobody asked what was read
+        if is_write:
+            for lo, hi in static:                           # code written over: decode it from memory
+                if lo <= address < hi:
+                    rec["_dirty"] = True
+            # every write counts toward the cap, as if recorded; one into `quiet` (the stack: the
+            # function's own frame, most of all writes) is then not looked at any further
+            seen = rec["writes_seen"] = rec.get("writes_seen", 0) + 1
+            if seen > _MAX_MEM or (quiet and quiet[0] <= address < quiet[1]):
+                return
         bucket = rec["mem_writes"] if is_write else rec["mem_reads"]
         if len(bucket) < _MAX_MEM:
             pc = uc.reg_read(UC_X86_REG_EIP)
@@ -292,7 +306,8 @@ def _memory_hooks(U, rec, mapped):
 
 def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS, mem_init=None,
                    stub_externals=None, stub_ret=0, stub_cleanup=0, sig_resolver=None,
-                   stub_ret_unique=False, overlay=None, sentinels=None):
+                   stub_ret_unique=False, overlay=None, sentinels=None, reads=True, stop_wild=False,
+                   quiet_stack=False):
     """Run one function under Unicorn with full hooks; return a TraceRecord (a plain dict).
 
     module  -- e.g. "gdi32.dll"; resolved through the active target like difftest.
@@ -341,6 +356,10 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
     # stdcall arg count for correct stack cleanup. Naming works with no SDK; cleanup needs one.
     sentinel_map = {}                                        # sentinel addr -> (dll, name)
     mem_init = list(mem_init or [])
+    # The module's code as it is in the file: an instruction there is decoded once per process,
+    # not once per run -- unless something was written over it (then memory is what is read).
+    statics = [(va0, va0 + len(code), code, _INSN.setdefault((path, sha), {}))]
+    laid = None
     # `overlay` is another module whose code is mapped alongside at its own addresses. A rebuilt
     # body refers to the ORIGINAL's code and data by literal address (a function pointer, a thunk
     # target); without the original there, those addresses read as zeros in the rebuilt run only,
@@ -350,7 +369,9 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
             _op, ova0, ocode, _on, _of, _os, oimports = _load(overlay)
             own_hi = secbase + max(size, _PAGE)
             if ova0 + len(ocode) <= secbase or ova0 >= own_hi:      # never over the traced image
-                mem_init.insert(0, (ova0, ocode))
+                laid = (ova0, ocode)
+                mem_init.insert(0, laid)
+                statics.append((ova0, ova0 + len(ocode), ocode, _INSN.setdefault((_op, _os), {})))
                 imports = dict(oimports, **imports)
         except Exception:
             pass
@@ -362,6 +383,11 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
         span = (len(imports) * _SENT_STRIDE + (_PAGE - 1)) & ~(_PAGE - 1)
         mem_init.append((_SENT_BASE, bytes(span)))           # map+zero the sentinel landing region
 
+    # pages given other contents before the run are not "as in the file"
+    init_pages = set()
+    for entry in mem_init:
+        if entry is not laid:
+            init_pages.update(range(entry[0] >> 12, ((entry[0] + max(len(entry[1]), 1) - 1) >> 12) + 1))
     # pre-load caller-supplied memory (e.g. a controlled struct buffer a pointer arg points at)
     for addr, data in (mem_init or []):
         a = addr
@@ -441,8 +467,26 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
         # in the caller with EAX=0. This recovers functions whose only obstacle was a bogus
         # indirect call. Bounded so a pathological case still terminates.
         try:
-            if uc.mem_read(address, 2) == b"\x00\x00":
+            # (00 00 is a whole instruction, two bytes long: any other length is not it)
+            two = b""
+            if csize == 2 or not 0 < csize <= 15:
+                two = None
+                if "_dirty" not in rec:                     # as in the file: no need to ask the emulator
+                    for lo, hi, image, _table in statics:
+                        if lo <= address < hi - 1:
+                            if (address >> 12) not in init_pages and ((address + 1) >> 12) not in init_pages:
+                                two = image[address - lo:address - lo + 2]
+                            break
+                if two is None:
+                    two = uc.mem_read(address, 2)
+            if two == b"\x00\x00":
                 zeros[0] += 1
+                if zeros[0] == 2 and stop_wild:
+                    # the caller only wants to know THAT this happened: what follows is the
+                    # harness's doing, and it is the slowest thing a run can do
+                    rec["bogus_stubs"] = 1
+                    rec["truncated"] = True
+                    uc.emu_stop(); return
                 if zeros[0] == 2 and rec.get("bogus_stubs", 0) < 64:
                     esp_now = uc.reg_read(UC_X86_REG_ESP)
                     ret_addr = int.from_bytes(uc.mem_read(esp_now, 4), "little")
@@ -526,24 +570,40 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
         if len(rec["path"]) < _MAX_PATH:
             rec["path"].append(address)
         if address not in rec["mnemonics"]:
-            try:
-                ins = next(md.disasm(uc.mem_read(address, min(csize or 15, 15)), address))
-                rec["mnemonics"][address] = ("%s %s" % (ins.mnemonic, ins.op_str)).strip()
-                if ins.mnemonic == "call":
-                    # static (immediate) target if direct; register/mem calls resolve on next insn
-                    import capstone
+            known = info = raw = None
+            if "_dirty" not in rec:
+                for lo, hi, image, table in statics:
+                    if lo <= address < hi:
+                        if (address >> 12) not in init_pages and ((address + 14) >> 12) not in init_pages:
+                            known, info = table, table.get(address)
+                            raw = image[address - lo:address - lo + min(csize or 15, 15)]
+                        break
+            if info is None:
+                try:
+                    ins = next(md.disasm(raw if raw is not None else uc.mem_read(address, min(csize or 15, 15)),
+                                         address))
                     tgt = None
-                    for op in ins.operands:
-                        if op.type == capstone.x86.X86_OP_IMM:
-                            tgt = op.imm & 0xFFFFFFFF
-                    rec["calls"].append({"pc": address, "target": tgt, "indirect": tgt is None,
-                                         "into_func": bool(tgt is not None
-                                                           and func_lo <= tgt < func_hi)})
-                    pending[0] = len(rec["calls"]) - 1
-            except StopIteration:
-                rec["mnemonics"][address] = "?"
+                    if ins.mnemonic == "call":
+                        # static (immediate) target if direct; register/mem calls resolve on next insn
+                        import capstone
+                        for op in ins.operands:
+                            if op.type == capstone.x86.X86_OP_IMM:
+                                tgt = op.imm & 0xFFFFFFFF
+                    info = (("%s %s" % (ins.mnemonic, ins.op_str)).strip(), ins.mnemonic == "call", tgt)
+                except StopIteration:
+                    info = ("?", False, None)
+                if known is not None:
+                    known[address] = info
+            rec["mnemonics"][address] = info[0]
+            if info[1]:
+                tgt = info[2]
+                rec["calls"].append({"pc": address, "target": tgt, "indirect": tgt is None,
+                                     "into_func": bool(tgt is not None
+                                                       and func_lo <= tgt < func_hi)})
+                pending[0] = len(rec["calls"]) - 1
 
-    hook_mem, hook_unmapped = _memory_hooks(U, rec, mapped)
+    hook_mem, hook_unmapped = _memory_hooks(U, rec, mapped, reads, [(s[0], s[1]) for s in statics],
+                                            (_STACK_BASE, _STACK_BASE + _STACK_SIZE) if quiet_stack else None)
 
     def hook_intr(uc, intno, user):
         # VxD/VMM service call: `INT 20h ; dd <VxD_ID<<16|service>`. There is no IDT here, so a

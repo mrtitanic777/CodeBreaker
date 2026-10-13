@@ -44,7 +44,8 @@ def _first(item):
 
 
 def default_jobs():
-    return int(os.environ.get("CB_JOBS", "5"))
+    from codebreaker.base import parallel
+    return parallel.workers()
 
 
 def run(work, items, context=None, key=_first, jobs=None, crashed=None, small=24):

@@ -47,11 +47,23 @@ def available():
 def run(description, only=(), timeout=3600):
     """Run the native program on a description. -> ({name: text}, [names], {va: name}, stderr)
     Works for any processor it has a language for; `only` limits it to those addresses."""
-    env = dict(os.environ, CB_LANGUAGES=_languages())
-    cmd = [_exe(), description] + (["--at"] + ["%x" % va for va in only] if only else [])
-    r = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=timeout, env=env)
+    # The description holds the module's bytes and every fact given with them, so what the
+    # program says of it is kept under its hash (base/cache.py): a module is decompiled once.
+    from codebreaker.base import cache
+    with open(description, "rb") as f:
+        k = cache.key(cache.tool(_exe()), _language_stamp(), f.read(), ["%x" % va for va in only])
+    had = cache.get("decompiled", k)
+    if had is not None:
+        stdout, stderr = had.decode("utf-8", "replace").split("\x00", 1)
+    else:
+        env = dict(os.environ, CB_LANGUAGES=_languages())
+        cmd = [_exe(), description] + (["--at"] + ["%x" % va for va in only] if only else [])
+        r = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=timeout, env=env)
+        stdout, stderr = r.stdout or "", (r.stderr or "")[-2000:]
+        if r.returncode == 0 and stdout:
+            cache.put("decompiled", k, (stdout + "\x00" + stderr).encode("utf-8", "replace"))
     out, order, by_va = {}, [], {}
-    for m in re.finditer(r"(?ms)^/\*@@ (\S+) ([0-9a-f]+) \*/\n(.*?)(?=^/\*@@ |\Z)", r.stdout or ""):
+    for m in re.finditer(r"(?ms)^/\*@@ (\S+) ([0-9a-f]+) \*/\n(.*?)(?=^/\*@@ |\Z)", stdout):
         name, va, text = m.group(1), int(m.group(2), 16), m.group(3).strip()
         if not text or text.startswith("/* decompile failed"):
             continue
@@ -59,7 +71,17 @@ def run(description, only=(), timeout=3600):
             out[name] = text
             order.append(name)
             by_va[va] = name
-    return out, order, by_va, (r.stderr or "")[-2000:]
+    return out, order, by_va, stderr
+
+
+_STAMP = []
+
+
+def _language_stamp():
+    if not _STAMP:
+        from codebreaker.base import cache
+        _STAMP.append(cache.folder(_languages()))
+    return _STAMP[0]
 
 
 def raw(module_path, funcs, outdir, timeout=3600):

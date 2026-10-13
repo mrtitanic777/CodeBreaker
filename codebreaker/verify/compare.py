@@ -130,6 +130,10 @@ def compare(fp_retail, fp_rebuilt, vectors, confirm=(), insns=0, directed=None, 
         nonlocal seen, clean
         for v in vs:
             a = fp_retail(v)
+            if "err" in a:                      # nothing to compare with: the rebuilt side is not run
+                limits.add("unobserved")
+                errs.add("retail: " + a["err"])
+                continue
             b = fp_rebuilt(v)
             if "err" in a or "err" in b:
                 limits.add("unobserved")
