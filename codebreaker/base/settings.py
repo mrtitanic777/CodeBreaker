@@ -10,6 +10,8 @@ and are named in one file, `settings.json` at the top of the checkout:
     powerpc_tools   folder holding a Microsoft C compiler and linker that target PowerPC
                     (cl.exe, link.exe); only needed to rebuild and judge PowerPC code
     powerpc_lib     that compiler's C runtime library file (its register save/restore helpers)
+    period_compiler folder holding a 32-bit Microsoft C compiler of the original's time (CL.EXE),
+                    for the optional byte-match check (`match`)
     decompiler_bin  folder of the native decompiler executables   (default: native/decompiler/build/bin)
     ghidra_core     folder holding cbdecomp.exe                    (default: native/ghidra_core/build/bin)
     state           where results and caches are kept             (default: state/)
@@ -38,7 +40,7 @@ DEFAULTS = {
     "state": "state",
     "target": "win95",
 }
-_PATHS = ("corpus", "openwatcom", "decompiler_bin", "ghidra_core", "state", "powerpc_tools", "powerpc_lib")
+_PATHS = ("corpus", "openwatcom", "decompiler_bin", "ghidra_core", "state", "powerpc_tools", "powerpc_lib", "period_compiler")
 _loaded = None
 
 

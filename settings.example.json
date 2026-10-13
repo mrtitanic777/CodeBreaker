@@ -8,5 +8,6 @@
     "win98": "../win98/files"
   },
   "powerpc_tools": "<optional: folder of a PowerPC-targeting cl.exe and link.exe>",
-  "powerpc_lib": "<optional: that compiler's libcmt.lib>"
+  "powerpc_lib": "<optional: that compiler's libcmt.lib>",
+  "period_compiler": "<optional: folder of a period 32-bit CL.EXE, for `match`>"
 }
