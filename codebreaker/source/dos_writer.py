@@ -70,6 +70,38 @@ class Writer(object):
             s = dos_interrupts.name(i.number, i.ah, i.al)
             self.calls[i.address - p.base] = s.name + ("(%s)" % s.arguments if s.arguments and s.exact else "")
         self._decode()
+        self._divide()
+
+    def _divide(self):
+        """A stretch of the program no relocated word divides can be longer than a segment may
+        be (COMMAND.COM's code is one such stretch of 75K): the original's segments were set up
+        by the program itself, at run time. For the assembler it is divided where it can be --
+        at a paragraph no jump or call reaches across and no instruction lies over -- which
+        changes no byte: everything inside refers to its own half by label or by number."""
+        img_end = len(self.img)
+        reach = [(min(at, t[3]), max(at, t[3])) for at, t in self.ins.items() if t[3] is not None]
+        inside = {x for at, t in self.ins.items() for x in range(at + 1, at + len(t[0]))}
+        again = True
+        while again:
+            again = False
+            for k, s in enumerate(self.segments):
+                lo = s * 16
+                hi = self.segments[k + 1] * 16 if k + 1 < len(self.segments) else img_end
+                if hi - lo <= 0xFFF0:
+                    continue
+                cut = None
+                for b in range((lo + 0xFFF0) & ~15, lo + 0x1000, -16):
+                    if b in inside or b in self.rel or b - 1 in self.rel:
+                        continue
+                    if any(a < b <= z for a, z in reach if lo <= a and z < hi):
+                        continue
+                    cut = b
+                    break
+                if cut is None:
+                    return                                   # it cannot be divided: left as it is
+                self.segments = sorted(set(self.segments) | {cut // 16})
+                again = True
+                break
 
     def segment_of(self, at):
         best = 0
@@ -320,8 +352,20 @@ class Writer(object):
 def _load_module(path, kind):
     """(bytes as loaded, relocation offsets, (cs, ip, ss, sp)) of a built file."""
     if kind:
-        q = dos.read(path)
-        return bytes(q.image), {a - q.base for a in q.relocations}, (q.cs, q.ip, q.ss, q.sp)
+        # read plainly, as stored: the built file IS the program as it runs. (Read the way an
+        # original is, a program that moves or unpacks itself at start would be undone twice.)
+        with open(path, "rb") as f:
+            data = f.read()
+        h = dos._mz(data)
+        img = bytearray(data[h["header"]:h["size"]])
+        relocs = set()
+        for i in range(h["nreloc"]):
+            off, seg = struct.unpack_from("<HH", data, h["reloc_off"] + 4 * i)
+            at = seg * 16 + off
+            if at + 2 <= len(img):
+                relocs.add(at)
+                struct.pack_into("<H", img, at, (struct.unpack_from("<H", img, at)[0] + dos.LOAD) & 0xFFFF)
+        return bytes(img), relocs, ((dos.LOAD + h["cs"]) & 0xFFFF, h["ip"], (dos.LOAD + h["ss"]) & 0xFFFF, h["sp"])
     with open(path, "rb") as f:
         return f.read(), set(), None
 
