@@ -58,13 +58,13 @@ def _body_key(fn, near):
 
 def scan(min_lines=8, near=False):
     groups = defaultdict(list)
-    for base, dirs, files in os.walk(os.path.join(ROOT, "src")):
-        if any(s in base for s in SKIP):
-            continue
-        for name in files:
-            if not name.endswith(".py"):
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import alias_fork
+    if True:
+        for rel in alias_fork.tracked("src"):
+            path = os.path.join(ROOT, rel)
+            if not rel.endswith(".py") or any(s.replace(os.sep, "/") in rel for s in SKIP):
                 continue
-            path = os.path.join(base, name)
             try:
                 text = open(path, encoding="utf-8", errors="replace").read()
                 if "sys.modules[__name__]" in text and len(text) < 600:
