@@ -37,7 +37,8 @@ def cpu_count():
 
 
 def resolve_jobs(argv=None, default=None):
-    """Pop `-j N` / `--jobs N` from argv (mutating it) or read $WIN95RE_JOBS;
+    """Pop `-j N` / `--jobs N` from argv (mutating it) or read $CB_JOBS (or the older
+    $WIN95RE_JOBS / $WIN98RE_JOBS);
     fall back to `default` or all cores. Always returns >= 1."""
     argv = sys.argv if argv is None else argv
     jobs = None
@@ -49,7 +50,8 @@ def resolve_jobs(argv=None, default=None):
             except (IndexError, ValueError):
                 del argv[i:i + 1]
     if jobs is None:
-        env = os.environ.get("WIN95RE_JOBS", "")
+        env = next((os.environ[k] for k in ("CB_JOBS", "WIN95RE_JOBS", "WIN98RE_JOBS")
+                    if os.environ.get(k, "").isdigit()), "")
         jobs = int(env) if env.isdigit() else (default or cpu_count())
     return max(1, jobs)
 
