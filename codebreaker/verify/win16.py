@@ -32,7 +32,7 @@ def vectors():
     sides, before anything has been compared. So half the inputs are (offset, selector) pairs
     naming a real, writable segment, in both orders (which word is the selector depends on where
     in the argument list a pointer sits)."""
-    from codebreaker.emulate import ne_probe
+    from codebreaker.emulate import trace16 as ne_probe
     n, sel = ARG_WORDS, ne_probe.SAFE_ARG
     return [{"args": [0] * n}, {"args": [0x0400] * n}, {"args": [0x0080] * n},
             {"args": [i + 1 for i in range(n)]}, {"args": [0x100 * (i + 1) for i in range(n)]},
@@ -72,7 +72,7 @@ def _call(hit, inputs, entry):
 
 def fingerprint(path, seg, off, near, wide, v, data_image=None, span=None):
     """What one run of one function did, in a form two builds can be compared on."""
-    from codebreaker.emulate import ne_probe
+    from codebreaker.emulate import trace16 as ne_probe
     from codebreaker.verify import oracle as V
     try:
         r = ne_probe.probe(path, seg=seg, offset=off, args=v["args"], near=near, data_image=data_image)

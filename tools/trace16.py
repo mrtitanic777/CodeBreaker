@@ -22,7 +22,7 @@ def main(argv):
     from codebreaker.base import corpus
     from codebreaker.build import watcom
     from codebreaker.decompile import image16
-    from codebreaker.emulate import ne_probe
+    from codebreaker.emulate import trace16 as ne_probe
     from codebreaker.formats.ne import NEFile
     from codebreaker.verify import win16 as reconstruct16
 

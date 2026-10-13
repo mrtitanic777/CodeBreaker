@@ -15,7 +15,7 @@ if ROOT not in sys.path:
 
 from codebreaker.base import corpus
 from codebreaker.base import parallel
-from codebreaker.base import period_tools as toolchain   # noqa: E402
+from codebreaker.build import watcom as toolchain   # noqa: E402
 
 RESULTS = []
 

@@ -18,7 +18,7 @@ The directory walk happens once per process and is cached.
 """
 import os
 
-from codebreaker.base import paths
+from codebreaker.base import settings as paths
 
 _EXTS = (".dll", ".exe", ".drv", ".ocx", ".cpl", ".vxd", ".386", ".sys", ".com", ".acm", ".ax")
 _index_cache = {}        # root -> {basename_lower: [paths, best first]}

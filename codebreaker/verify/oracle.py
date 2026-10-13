@@ -20,7 +20,7 @@ itself, never scored as a pass.
 import os
 
 from codebreaker.base import registry as cores
-from codebreaker.base import paths
+from codebreaker.base import settings as paths
 from codebreaker.formats.pe import open_pe
 from codebreaker.emulate import trace32 as tracer
 
@@ -54,8 +54,8 @@ def _argc(dll, name):
     """Argument count of an imported function, for the oracle's import stub: read from the retail
     module that exports it (apiarity), else the small hand table. None = unknown (the stub then
     removes nothing and the call's arguments are not compared)."""
-    from codebreaker.emulate import api_stack as apiarity
-    from codebreaker.emulate import env
+    from codebreaker.symbols import api_arguments as apiarity
+    from codebreaker.emulate import trace32 as env
     n = apiarity.argc(dll, name)
     return n if n is not None else env._builtin_argc(name)
 

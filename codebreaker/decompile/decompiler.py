@@ -127,7 +127,7 @@ def function_starts(module_path):
     from codebreaker.formats.pe import open_pe
     pe = open_pe(module_path)
     if pe.machine != 0x01F2:
-        from codebreaker.verify import pipeline
+        from codebreaker.verify import win32 as pipeline
         pipeline._arm()
         return pipeline.LANES["pe"].functions(module_path)
     rva, size = pe.datadirs[3] if len(pe.datadirs) > 3 else (0, 0)
@@ -152,7 +152,7 @@ def describe(module_path, funcs, outdir):
     """Write the description of a PE module for the native program: its processor, where its
     bytes sit in memory, and the facts about `funcs` (addresses) and its imports.
     -> (path of the description, {va: name})"""
-    from codebreaker.emulate import api_stack
+    from codebreaker.symbols import api_arguments as api_stack
     from codebreaker.formats.pe import open_pe
     pe = open_pe(module_path)
     arch = _ARCH.get(pe.machine)
@@ -307,7 +307,7 @@ def compilable(module_path, funcs, outdir):
     """-> (preamble, {name: text}, [names], {va: name}, [import names used]) for a whole-module build:
     the core's output with its base types defined, its globals bound to the original's addresses,
     and every function and import declared before use with its real convention."""
-    from codebreaker.emulate import api_stack as apiarity
+    from codebreaker.symbols import api_arguments as apiarity
     from codebreaker.build import watcom as B
     out, order, by_va, _err = raw(module_path, funcs, outdir)
     imports = B.import_map(module_path)
@@ -374,7 +374,7 @@ class Module(object):
 def decompile(module_path, funcs=None, outdir=None):
     """Decompile a module (every function, or the addresses in `funcs`). -> Module"""
     from codebreaker.build import watcom as B
-    from codebreaker.verify import pipeline
+    from codebreaker.verify import win32 as pipeline
     if funcs is None:
         pipeline._arm()
         funcs = pipeline.LANES["pe"].functions(module_path)

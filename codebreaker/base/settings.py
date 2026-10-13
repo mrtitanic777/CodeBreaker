@@ -19,6 +19,8 @@ CB_OPENWATCOM, ...) overrides the file, for one-off runs.
 """
 import json
 import os
+import sys
+
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FILE = os.path.join(ROOT, "settings.json")
@@ -72,3 +74,44 @@ def export_for_carried_over_code():
             os.environ[env] = get(key)
     os.environ.setdefault("CB_RESULTS_DB", state("results.sqlite"))
     os.environ.setdefault("CB_TARGET", get("target"))
+
+
+_FROZEN = getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS")
+_FOUND = os.path.dirname(os.path.abspath(__file__))     # engine/foundation
+_ENGINE = os.path.dirname(_FOUND)                        # engine/
+
+
+def package_root():
+    """The `engine/` package directory (inside the PyInstaller bundle when frozen)."""
+    return sys._MEIPASS if _FROZEN else _ENGINE          # noqa: SLF001 (documented PyInstaller attr)
+
+
+def repo_root():
+    """The CodeBreaker checkout root (where config.json / wt.py live). When frozen, the bundle."""
+    return sys._MEIPASS if _FROZEN else os.path.dirname(_ENGINE)
+
+
+def engine_dir(*parts):
+    """A path under the engine package, e.g. engine_dir('targets', 'win95')."""
+    return os.path.join(package_root(), *parts)
+
+
+def target_dir(era):
+    """A per-era tool directory: engine/targets/<era>."""
+    return engine_dir("targets", era)
+
+
+_ERAS = ("win95", "win98", "win3.1", "win1.0")
+
+
+def data_root():
+    """The active data corpus root. Mirrors wt.py: honor WT_DATA_ROOT when it actually holds era
+    dirs (or when frozen), else the checkout's parent (the dev monorepo layout)."""
+    env = os.environ.get("WT_DATA_ROOT")
+    if _FROZEN:
+        return env or os.getcwd()
+    if env and any(os.path.isdir(os.path.join(env, e)) for e in _ERAS):
+        return env
+    if env and os.path.isdir(env):
+        return env
+    return os.path.dirname(repo_root())

@@ -13,8 +13,8 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from codebreaker.base import corpus
-from codebreaker.base import period_tools as toolchain                      # noqa: E402
-from codebreaker.verify import pipeline
+from codebreaker.build import watcom as toolchain                      # noqa: E402
+from codebreaker.verify import win32 as pipeline
 
 RESULTS = []
 

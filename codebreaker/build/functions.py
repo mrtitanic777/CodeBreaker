@@ -23,7 +23,7 @@ import re
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 
-from codebreaker.base import period_tools
+from codebreaker.build import watcom as period_tools
 
 # -ecd: a function declared without a convention is __stdcall, the decompiler's default
 CFLAGS16 = ["-bt=windows", "-ms", "-ecd", "-zu", "-zc", "-zl", "-zq", "-w0", "-s", "-3", "-zastd=c99", "-e=20"]
@@ -141,7 +141,7 @@ def build16(header, texts, order, imports, outdir, segments=None, jobs=6):
 def build32(module_path, header, texts, order, used_imports, outdir, cflags, jobs=6):
     from codebreaker.build import watcom as B
     from codebreaker.formats.pe import open_pe
-    from codebreaker.targets.win95 import flat_thunk_build as A
+    from codebreaker.build import watcom as A
     ow = B._ow()
     if not os.path.exists(ow["wcc"]):
         raise RuntimeError("OpenWatcom's 32-bit compiler is not set up (settings.json: openwatcom)")

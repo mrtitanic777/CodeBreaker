@@ -42,13 +42,13 @@ def status(fs, digest, paths, log=print):
 def main(argv):
     from codebreaker.base import corpus
     from codebreaker.store import functions as F
-    from codebreaker.verify import pipeline, reconstruct
-    from codebreaker.base import period_tools
+    from codebreaker.verify import win32 as pipeline, reconstruct
+    from codebreaker.build import watcom as period_tools
     if not period_tools.ow_tool("wcc386"):
         raise SystemExit("OpenWatcom is not set up (settings.json: openwatcom): nothing could be built")
     pipeline._arm()
     fs = F.open()
-    digest = pipeline.profile("pe")[0]
+    digest = pipeline.settings_profile("pe")[0]
     kinds = ("pe", "ne") if "--all" in argv else ("ne",) if "--16" in argv else ("pe",)
     paths = [p for k in kinds for p in corpus.modules(k)]
     only = _wanted(argv)

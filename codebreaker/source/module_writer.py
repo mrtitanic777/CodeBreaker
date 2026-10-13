@@ -126,9 +126,9 @@ def write_module(module, verify=True, out_dir=None, log=print):
 
 def scoreboard(out_dir=None, log=print):
     """Rewrite SCOREBOARD.md from the store: modules judged under the CURRENT verifier settings."""
-    from codebreaker.verify import pipeline
+    from codebreaker.verify import win32 as pipeline
     fs = F.open()
-    digest = pipeline.profile("pe")[0]
+    digest = pipeline.settings_profile("pe")[0]
     lines = ["# Reconstruction scoreboard", "",
              "Generated %s by `python -m codebreaker scoreboard` (verifier settings `%s`)." % (
                  time.strftime("%Y-%m-%d %H:%M"), digest), "",
