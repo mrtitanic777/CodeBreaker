@@ -3,7 +3,7 @@
     module <name> [--no-verify]     reconstruct one module: decompile, build, judge, write its source
     scoreboard                      rewrite the scoreboard from stored results
     sweep [options]                 reconstruct and judge every module (resumable)
-    measure <name> [core|export]    judge one decompiler on one module; writes nothing to the tree
+    measure <name>                  reconstruct and judge one module; writes nothing to the tree
 
 Every command is listed here, by name. Nothing is discovered by scanning folders.
 """

@@ -5,7 +5,6 @@
     python -m codebreaker sweep --only @list.txt   one module name per line
     python -m codebreaker sweep --status           what has been measured; no work
     python -m codebreaker sweep --again            measure modules again even if already done
-    python -m codebreaker sweep ne                 the 16-bit modules (older path, see bank.py)
 
 A module counts as measured when every one of its functions has a result under the current
 verifier settings, so an interrupted sweep picks up at the module it stopped in, and changing
@@ -28,12 +27,11 @@ def _wanted(argv):
 
 
 def status(fs, digest, paths, log=print):
-    from codebreaker.decompile import engines as E
     from codebreaker.store import functions as F
     done = {name: sha for sha, name in fs.modules(digest)}
     tot = dict.fromkeys(F.ORDER, 0)
     for name, sha in sorted(done.items()):
-        for k, n in fs.tally(digest, sha, prefer=E.ORDER).items():
+        for k, n in fs.tally(digest, sha).items():
             tot[k] += n
     n = sum(tot.values())
     log("%d of %d modules measured under verifier settings %s; %d functions: %s" % (
@@ -42,10 +40,6 @@ def status(fs, digest, paths, log=print):
 
 
 def main(argv):
-    if argv and argv[0] == "ne":
-        from codebreaker.verify import bank
-        return bank.main(argv)
-    argv = [a for a in argv if a != "pe"]
     from codebreaker.base import corpus
     from codebreaker.store import functions as F
     from codebreaker.verify import pipeline, reconstruct

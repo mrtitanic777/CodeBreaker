@@ -67,34 +67,31 @@ def test_reason_for_divergence():
 
 
 def _need(lane):
-    if not (corpus.retail("lz32.dll") and toolchain.decompiler(lane) and toolchain.ow_tool("wlink")):
+    from codebreaker.decompile import decompiler
+    if not (corpus.retail("version.dll") and decompiler.available() and toolchain.ow_tool("wlink")):
         raise Skip("needs the retail corpus, OpenWatcom and the decompilers")
 
 
 def test_reconstruct_is_incremental():
-    """One path for every decompiler: results land in the function store, a second run judges
-    nothing again, and a later decompiler is asked only about what an earlier one left."""
+    """Results land in the function store, and a second run judges nothing again."""
     _need("pe")
     from codebreaker.store import functions as F
     from codebreaker.verify import reconstruct
     fs = F.open(os.path.join(tempfile.mkdtemp(), "functions.sqlite"))
-    p = corpus.retail("lz32.dll")
+    p = corpus.retail("version.dll")
     log = []
-    sha, digest = reconstruct.run(p, engines=("native",), fs=fs, log=log.append)
-    first = fs.candidates(sha, digest, "native")
+    sha, digest = reconstruct.run(p, fs=fs, log=log.append)
+    first = fs.candidates(sha, digest)
     t = fs.tally(digest, sha)
-    # lz32 is nearly all 32->16 thunk stubs, which pass their argument in CL; few hold up.
-    assert t["verified"] + t["weak"] >= 5, t
+    assert t["verified"] >= 8 and t["verified"] + t["weak"] >= 24, t     # 8 and 18 today
     assert sum(t.values()) == len(pipeline.functions("pe", p)), t
     assert all(r["reason"] for r in first if r["verdict"] == "divergent")
-    assert all(r["source"] for r in first if r["verdict"] not in ("no-synth",))
+    assert all(r["source"] for r in first if r["verdict"] != "no-synth")
     log[:] = []
-    reconstruct.run(p, engines=("native",), fs=fs, log=log.append)
-    assert "judged 0 now" in log[0], log
+    reconstruct.run(p, fs=fs, log=log.append)
+    assert " 0 judged now" in log[0], log
     assert fs.tally(digest, sha) == t
-    # every function gets the best of its candidates, and a class
-    best = fs.best(sha, digest)
-    assert all(r["class"] in F.ORDER for r in best.values())
+    assert all(r["class"] in F.ORDER for r in fs.best(sha, digest).values())
 
 
 def test_function_store():
@@ -120,22 +117,9 @@ def test_function_store():
     assert [n for _s, n in fs.modules("p1")] == ["a.dll"]
 
 
-def test_ne_pipeline():
-    _need("ne")
-    p = corpus.retail("msmixmgr.dll")
-    if not p:
-        raise Skip("msmixmgr.dll not in the corpus")
-    db = _db()
-    first = pipeline.verify("ne", p, store=db, bank=False)
-    assert pipeline.tally(first)["consistent"] >= 8, dict(pipeline.tally(first))   # 10 today
-    second = pipeline.verify("ne", p, store=db, bank=False)
-    assert all(r["cached"] for r in second.values() if r["verdict"] != "no-synth")
-
-
 def main():
     for fn in (test_store_roundtrip_and_reports, test_store_records_verdict_changes,
-               test_reason_for_divergence, test_function_store, test_reconstruct_is_incremental,
-               test_ne_pipeline):
+               test_reason_for_divergence, test_function_store, test_reconstruct_is_incremental):
         try:
             fn()
             RESULTS.append((fn.__name__, "PASS", ""))

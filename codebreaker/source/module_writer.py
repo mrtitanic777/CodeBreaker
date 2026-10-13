@@ -14,7 +14,6 @@ Each function carries one status line:
     DOES NOT COMPILE    the reconstructed text is not valid C yet
     NO SOURCE           nothing usable was produced
 
-For each function the text comes from whichever decompiler's reconstruction holds up best.
 Nothing is counted as progress except what these labels say. Everything written here is read
 from the function store, so the file and the scoreboard cannot disagree with the results.
 """
@@ -35,7 +34,6 @@ WHY = {
     "retail: call-into-nothing": "the original calls through a pointer the loader fills in (a thunk entry)",
 }
 ORDER, TITLE = F.ORDER, F.TITLE
-ENGINE_TITLE = {"core": "embedded Ghidra core", "native": "CodeBreaker", "export": "Ghidra export"}
 
 
 def describe(row):
@@ -66,7 +64,6 @@ def tree_dir(module):
 
 
 def write_module(module, verify=True, out_dir=None, log=print):
-    from codebreaker.decompile import engines as E
     from codebreaker.verify import pipeline, reconstruct
     path = corpus.retail(module)
     if not path:
@@ -83,10 +80,10 @@ def write_module(module, verify=True, out_dir=None, log=print):
     else:
         sha, digest = reconstruct.identity(path)
     lane = pipeline.LANES["pe"]
-    best = fs.best(sha, digest, prefer=E.ORDER)
+    best = fs.best(sha, digest)
     addrs = lane.functions(path)
     counts = dict.fromkeys(ORDER, 0)
-    by_engine, parts, used = {}, [], set()
+    parts = []
     for va in addrs:
         row = best.get(lane.key(va))
         if not row:
@@ -95,14 +92,9 @@ def write_module(module, verify=True, out_dir=None, log=print):
             continue
         cls = row["class"]
         counts[cls] += 1
-        if cls == "verified":
-            by_engine[row["engine"]] = by_engine.get(row["engine"], 0) + 1
-        if row["source"]:
-            used.add(row["engine"])
         detail = describe(row)
-        parts.append("/* [%s] %s  @ 0x%08X%s  (decompiler: %s) */\n%s\n" % (
+        parts.append("/* [%s] %s  @ 0x%08X%s */\n%s\n" % (
             TITLE[cls], row["name"] or "sub_%x" % va, va, (" -- " + detail) if detail else "",
-            ENGINE_TITLE.get(row["engine"], row["engine"]),
             (row["source"] or "/* (no reconstruction) */").strip()))
     total = len(addrs)
     banner = ["/* %s -- reconstructed source." % name, " *",
@@ -110,8 +102,6 @@ def write_module(module, verify=True, out_dir=None, log=print):
               " * %d functions:" % total]
     for cls in ORDER:
         banner.append(" *   %-18s %5d  %5.1f%%" % (TITLE[cls], counts[cls], 100.0 * counts[cls] / max(1, total)))
-    banner.append(" * Verified functions by decompiler: " + (", ".join(
-        "%s %d" % (ENGINE_TITLE.get(e, e), n) for e, n in sorted(by_engine.items(), key=lambda x: -x[1])) or "none") + ".")
     banner += [
         " *", " * Builds as a whole module: NO. Functions are compiled and checked one at a time; the",
         " * module's data (globals, tables, resources) is still referred to by its address in the",
@@ -121,17 +111,13 @@ def write_module(module, verify=True, out_dir=None, log=print):
         " * emulator: same return value, same API calls with the same arguments, same memory changed,",
         " * same stack and saved registers, on every input tried. It is evidence, not proof. Names of",
         " * internal functions (sub_...) and locals are placeholders; no original names are claimed.", " */", ""]
-    for engine in E.ORDER:
-        header = fs.get_text(sha, engine, "header") if engine in used else ""
-        if not header:
-            continue
-        hname = "%s.h" % stem if engine == E.ORDER[0] else "%s.%s.h" % (stem, engine)
-        with open(os.path.join(out_dir, hname), "w", encoding="utf-8", newline="\n") as f:
-            f.write("/* %s -- types, declarations and globals used by the functions marked\n"
-                    " * (decompiler: %s) in %s.c. Globals are bound to their addresses in the original\n"
-                    " * until the module's data is reconstructed. */\n\n" % (
-                        name, ENGINE_TITLE.get(engine, engine), stem) + header)
-        banner.append("/* functions marked (decompiler: %s) use %s */" % (ENGINE_TITLE.get(engine, engine), hname))
+    header = fs.get_text(sha, reconstruct.SOURCE, "header")
+    if header:
+        with open(os.path.join(out_dir, stem + ".h"), "w", encoding="utf-8", newline="\n") as f:
+            f.write("/* %s -- types, declarations and globals used by the functions in %s.c.\n"
+                    " * Globals are bound to their addresses in the original until the module's data is\n"
+                    " * reconstructed. */\n\n" % (name, stem) + header)
+        banner.append('#include "%s.h"' % stem)
     banner.append("")
     out = os.path.join(out_dir, stem + ".c")
     with open(out, "w", encoding="utf-8", newline="\n") as f:
@@ -142,7 +128,6 @@ def write_module(module, verify=True, out_dir=None, log=print):
 
 def scoreboard(out_dir=None, log=print):
     """Rewrite SCOREBOARD.md from the store: modules judged under the CURRENT verifier settings."""
-    from codebreaker.decompile import engines as E
     from codebreaker.verify import pipeline
     fs = F.open()
     digest = pipeline.profile("pe")[0]
@@ -159,7 +144,7 @@ def scoreboard(out_dir=None, log=print):
     tot = dict.fromkeys(ORDER, 0)
     mods = fs.modules(digest)
     for sha, name in mods:
-        c = fs.tally(digest, sha, prefer=E.ORDER)
+        c = fs.tally(digest, sha)
         n = sum(c.values())
         for k in ORDER:
             tot[k] += c[k]
