@@ -19,7 +19,7 @@ import subprocess
 
 from src.core import paths
 
-REV = 11                                    # bump when what is fed to / taken from the core changes
+REV = 13                                    # bump when what is fed to / taken from the core changes
 
 # The core prints a function in the module's default convention (stdcall) without saying so, and
 # spells the others out. Compile with stdcall as the default (-ecd; -ecs is __syscall) so the text
@@ -174,7 +174,7 @@ def _keep_frame(t):
     the callee, reading through the pointer, finds something else. When any stack local's address
     can escape, the locals are declared as the fields of one frame structure at their original
     offsets, so every address taken still points at what the original put there."""
-    locs = list(_LOCAL.finditer(t))
+    locs = [m for m in _LOCAL.finditer(t) if m.group(1).strip() not in ("return", "goto")]
     if not locs:
         return t
     names = [m.group(2) for m in locs]
@@ -212,10 +212,36 @@ def _keep_frame(t):
             first[0] = False
             return "\x00FRAME\x00"
         return ""
-    t = _LOCAL.sub(strip, t)
+    t = _LOCAL.sub(lambda m: m.group(0) if m.group(1).strip() in ("return", "goto") else strip(m), t)
     for name in sorted(names, key=len, reverse=True):
         t = re.sub(r"(?<![\w.])%s\b" % re.escape(name), "_f." + name, t)
     return t.replace("\x00FRAME\x00", decl)
+
+
+_PTR_DECL = re.compile(r"(?m)^  [A-Za-z_][\w ]*?\*+\s*(\w+)(?: \[\d+\])?;[ \t]*$")
+_OPERAND = r"(?:\(u?int4\))?(?:_f\.)?[A-Za-z_]\w*"
+_COMPARE = re.compile(r"(?<![\w.>)\]*&])(%s) (<=|>=|<|>|==|!=) (%s)(?![\w.(\[]|->)" % (_OPERAND, _OPERAND))
+
+
+def _compare_as_numbers(t):
+    """The core compares a pointer with a plain number freely (`if (pcVar2 < (uint4)a1)`); C does
+    not allow it. Where exactly one side is a pointer variable, compare its value as a number."""
+    ptrs = set(_PTR_DECL.findall(t))
+    for ln in t.split("\n"):
+        if "struct {" in ln and "} _f;" in ln:
+            ptrs.update(re.findall(r"\*+\s*(\w+)(?:\[\d+\])?;", ln))
+    if not ptrs:
+        return t
+
+    def is_ptr(x):
+        return "(" not in x and x.split(".")[-1] in ptrs
+
+    def fix(m):
+        l, op, r = m.groups()
+        if is_ptr(l) == is_ptr(r) or "0" in (l, r):
+            return m.group(0)
+        return "%s %s %s" % ("(uint4)" + l if is_ptr(l) else l, op, "(uint4)" + r if is_ptr(r) else r)
+    return _COMPARE.sub(fix, t)
 
 
 def adapt(module_path, funcs, outdir):
@@ -240,7 +266,9 @@ def adapt(module_path, funcs, outdir):
         t = re.sub(r"\b([A-Za-z_]\w*)\._(\d+)_(\d+)_",
                    lambda mm: "(*(%s *)((char *)&%s + %s))" % (_BY_SIZE.get(int(mm.group(3)), "uint4"),
                                                                mm.group(1), mm.group(2)), t)
-        t = _keep_frame(t)
+        t = _compare_as_numbers(_keep_frame(t))
+        # a function's address stored in a pointer the core typed loosely
+        t = re.sub(r"(?m)(= )((?:%s);)$" % "|".join(re.escape(x) for x in order), r"\1(code *)\2", t)
         # every function returns a value in EAX whether or not the core saw it used
         out[n] = re.sub(r"\Avoid(\s)", r"int\1", t)
     text = "\n".join(out.values())

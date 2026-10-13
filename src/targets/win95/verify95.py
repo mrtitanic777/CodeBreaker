@@ -187,7 +187,7 @@ def _mod_sha(path):
 # stdcall import takes, and the fingerprint is the full call sequence WITH arguments, not the set of
 # import names reached. 4: the fingerprint also carries the memory the function wrote and which of
 # its instructions ran; inputs can set what imported calls return.
-_ORACLE_REV = 14
+_ORACLE_REV = 15
 
 
 def _fp_key(sha, func, spec):
@@ -548,6 +548,10 @@ def undefined_ret_bits(fp_retail, v, a):
     for mask in (0xFFFF0000, 0xFFFFFF00):
         if flips and not flips & ~mask:
             return mask
+    # the whole upper half follows the caller's registers and the low half moves too: the
+    # function returns nothing, and EAX is simply what its last instructions left there
+    if flips & 0xFFFF0000 == 0xFFFF0000 and flips & 0xFFFF:
+        return 0xFFFFFFFF
     return 0
 
 
@@ -658,7 +662,7 @@ def compare(fp_retail, fp_rebuilt, vectors, confirm=(), insns=0, directed=None, 
                 if mask:
                     d = first_difference(a, b, mask)
                     if info is not None:
-                        info["ret_bits"] = 16 if mask == 0xFFFF0000 else 8
+                        info["ret_bits"] = {0xFFFF0000: 16, 0xFFFFFF00: 8}.get(mask, 0)
             if d:
                 if info is not None:
                     info["detail"] = difference_detail(a, b, v, mask)
