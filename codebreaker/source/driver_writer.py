@@ -336,12 +336,36 @@ class Writer(object):
                 out.extend(assembly.data_lines(run))
                 del run[:]
             while a < ob.size:
+                if a in ob.labels and a in ob.fix and a not in ob.ins and ob.fix[a][0] == 8 and len(run) > 1 \
+                        and run[-2] == 0x0F and 0x80 <= run[-1] <= 0x8F:
+                    cc = assembly.CONDITIONS[run.pop() - 0x80]            # the same, for a conditional jump
+                    run.pop()
+                    flush()
+                    kind, to, ta = ob.fix[a]
+                    out.append("        j%-3s near ptr %s" % (cc, self.label(to, ta)))
+                    out.append("%s equ $ - 4" % self.label(i, a))
+                    counts["data"] -= 2
+                    a += 4
+                    continue
+                if a in ob.labels and a in ob.fix and a not in ob.ins and ob.fix[a][0] == 8 and run and run[-1] in (0xE8, 0xE9):
+                    # A call or jump among the data whose distance field is itself referred to (code
+                    # that rewrites the jump): written as the instruction, so the loader's patch
+                    # is kept -- a `dd` of the distance to another object loses it -- and the
+                    # label is the four bytes before the instruction's end.
+                    op = run.pop()
+                    flush()
+                    kind, to, ta = ob.fix[a]
+                    out.append("        %s %s" % ("call" if op == 0xE8 else "jmp ", self.label(to, ta)))
+                    out.append("%s equ $ - 4" % self.label(i, a))
+                    counts["data"] -= 1
+                    a += 4
+                    continue
                 if a in ob.labels:
                     flush()
                     if (i, a) == (self.d.get("obj"), self.d.get("offset")):
                         out.append("public %s" % self.label(i, a))
                     out.append("%s:" % self.label(i, a))
-                if a in ob.ins:
+                if a in ob.ins and a not in ob.fix:          # (bytes the loader patches from their first are an address, not an instruction)
                     flush()
                     text = self.mnemonic(ob, a) if (good is None or (i, a) in good) else None
                     counts["instructions"] += 1
