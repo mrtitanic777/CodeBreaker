@@ -109,6 +109,58 @@ def decompile16(module_path, outdir=None, rounds=4):
     return out, order, by_va, d
 
 
+def _grow(d, line_for, rounds=4):
+    """Decompile a description; then, while the output calls places not yet known as functions
+    (`func_0x...`), add those inside the module's code and decompile them too."""
+    out, order, by_va, _err = run(d.path)
+    for _ in range(rounds):
+        new = {int(x, 16) for t in out.values() for x in _CALLED.findall(t)} - set(d.names)
+        new = {va for va in new if any(lo <= va < lo + n for lo, n in d.spans.values())}
+        if not new:
+            break
+        with open(d.path, "a", newline="\n", encoding="utf-8") as f:
+            for va in sorted(new):
+                name, line = line_for(va)
+                d.names[va] = name
+                f.write(line + "\n")
+        more, _o, more_va, _err = run(d.path, only=sorted(new))
+        out.update(more)
+        by_va.update(more_va)
+    return out, [by_va[va] for va in sorted(by_va)], by_va
+
+
+def decompile_le(module_path, outdir=None):
+    """Decompile a virtual device driver file: one LE image, or every member of a container.
+    -> [(member name, {name: text}, [names], Description)]"""
+    from codebreaker.build import watcom as B
+    from codebreaker.formats import le
+    outdir = outdir or B._scratch("decompiler_le", os.path.basename(module_path).lower())
+    results = []
+    for name, lf in le.open_vxds(module_path):
+        d = describe.describe_le(lf, name, os.path.join(outdir, re.sub(r"\W", "_", name)))
+
+        def line(va):
+            n = "sub_%d_%05X" % ((va - describe.LE_BASE) // describe.LE_STRIDE + 1, (va - describe.LE_BASE) % describe.LE_STRIDE)
+            return n, "F\t%x\t%s\t-1" % (va, n)
+        out, order, _by_va = _grow(d, line)
+        results.append((d.device, out, order, d))
+    return results
+
+
+def decompile_dos(module_path, outdir=None):
+    """Decompile a DOS program. -> ({name: text}, [names], Description)"""
+    from codebreaker.build import watcom as B
+    outdir = outdir or B._scratch("decompiler_dos", os.path.basename(module_path).lower())
+    d = describe.describe_dos(module_path, outdir)
+
+    def line(va):
+        kind, _pop = describe.returns(d.image, va - d.base)
+        n = "sub_%05X" % (va - d.base)
+        return n, "F\t%x\t%s\t-1\t__cdecl16%s" % (va, n, kind or "near")
+    out, order, _by_va = _grow(d, line, rounds=8)
+    return out, order, d
+
+
 def _is_x86(module_path):
     from codebreaker.formats.pe import open_pe
     return open_pe(module_path).machine == 0x014C
@@ -117,8 +169,8 @@ def _is_x86(module_path):
 def main(argv):
     """python -m codebreaker decompile <module> [--out FILE]
 
-    Decompile any module the corpus or a path names -- 32-bit or 16-bit x86, or PowerPC -- and
-    write its functions as C. Nothing is built or judged; `module` does that."""
+    Decompile any module the corpus or a path names -- a 32-bit or 16-bit Windows module, a
+    virtual device driver, a DOS program, a PowerPC image -- and write its functions as C. Nothing is built or judged; `module` does that."""
     if not argv:
         print(main.__doc__)
         return 2
@@ -139,11 +191,22 @@ def main(argv):
         starts = describe.function_starts(path)
         texts, order, _by_va, _err = raw(path, starts, B._scratch("decompiler", os.path.basename(path).lower()))
         header, total = "", len(starts)
+    elif kind == "le":
+        texts, order, header, total = {}, [], "", 0
+        for member, out, names, d in decompile_le(path):
+            total += len(d.names)
+            for n in names:
+                key = "%s.%s" % (member, n)
+                texts[key] = "/* driver %s */\n%s" % (member, out[n])
+                order.append(key)
+    elif kind == "dos":
+        texts, order, d = decompile_dos(path)
+        header, total = "", len(d.names)
     else:
-        raise SystemExit("%s: a %s file; only 32-bit (PE) and 16-bit (NE) modules so far" % (
-            path, kind or "non-executable"))
+        raise SystemExit("%s: not an executable this can read" % path)
     out = argv[argv.index("--out") + 1] if "--out" in argv else \
         os.path.splitext(os.path.basename(path))[0].lower() + ".c"
+    texts = {n: c_text._FACT.sub("", t).strip() for n, t in texts.items()}    # the decompiler's side notes
     with open(out, "w", encoding="utf-8", newline="\n") as f:
         f.write("/* %s -- decompiled by CodeBreaker; not built, not judged. */\n\n" % os.path.basename(path))
         f.write(header + "\n\n" if header else "")

@@ -2,6 +2,8 @@
 
     describe32(module_path, addresses, workdir)   a PE module (x86 or PowerPC)
     describe16(module_path, workdir)              a 16-bit Windows module (NE)
+    describe_le(image, name, workdir)             a virtual device driver (LE), one member at a time
+    describe_dos(module_path, workdir)            a DOS program (MZ)
 
 The native decompiler knows processors, not file formats. A description says which processor,
 where the file's bytes sit in memory, and the facts read from the binary rather than guessed:
@@ -307,4 +309,148 @@ def describe16(module_path, outdir):
     with open(path, "w", newline="\n", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
     d.path = path
+    return d
+
+
+# Virtual device drivers (LE) ---------------------------------------------------------------------
+LE_ARCH = "x86:LE:32:default:windows"
+LE_BASE, LE_STRIDE = 0x01000000, 0x01000000      # object n sits at LE_BASE + (n-1) * LE_STRIDE
+LE_SLOTS = 0x0F000000                            # one pointer per service called, read as that service
+
+
+def le_address(obj, off):
+    return LE_BASE + (obj - 1) * LE_STRIDE + off
+
+
+def describe_le(lf, name, outdir):
+    """Describe one LE image (`lf`, from formats.le) to the decompiler. -> Description
+
+    A driver's objects are relocatable, so each is given an address of its own and the
+    fix-ups the loader would apply are applied: a 32-bit reference to another place in the
+    image gets that place's address. Ring-0 code calls the system and other drivers with
+    `int 20h` followed by a service number -- six bytes the loader rewrites into a call; they
+    are rewritten here into a call through a pointer that stands for that service, so the
+    decompiler sees a named call instead of an interrupt and four bytes of nonsense."""
+    import struct
+    images = {}
+    for o in lf.objects:
+        b = bytearray(lf.object_bytes(o))
+        images[o["idx"]] = b + bytearray(max(0, o["vsize"] - len(b)))
+    execs = {o["idx"] for o in lf.objects if o["exec"]}
+    starts = set()
+    try:
+        fixups = lf.fixups()
+    except Exception:
+        fixups = {}
+    for (obj, off), fx in fixups.items():
+        img = images.get(obj)
+        if img is None or fx is None or off < 0 or off + 4 > len(img):
+            continue
+        if fx["kind"] != "internal" or fx.get("target") is None or fx["obj"] not in images:
+            continue
+        target = le_address(fx["obj"], fx["target"])
+        if fx.get("srctype") == 7:                           # 32-bit offset
+            struct.pack_into("<I", img, off, target & 0xFFFFFFFF)
+        elif fx.get("srctype") == 8:                         # 32-bit self-relative (a call or jump)
+            struct.pack_into("<I", img, off, (target - (le_address(obj, off) + 4)) & 0xFFFFFFFF)
+            if fx["obj"] in execs:
+                starts.add(target)
+    # service calls: CD 20 <service:16> <device:16>
+    services, order = {}, []
+    for obj in sorted(execs):
+        img = images[obj]
+        i = img.find(b"\xCD\x20")
+        while i != -1 and i + 6 <= len(img):
+            svc, dev = struct.unpack_from("<HH", img, i + 2)
+            if 0 < dev < 0x600 and (svc & 0x7FFF) < 0x400:
+                key = (dev, svc & 0x7FFF)
+                if key not in services:
+                    services[key] = LE_SLOTS + 4 * len(order)
+                    order.append(key)
+                img[i:i + 2] = b"\xFF\x25" if svc & 0x8000 else b"\xFF\x15"   # jmp / call [slot]
+                struct.pack_into("<I", img, i + 2, services[key])
+                i = img.find(b"\xCD\x20", i + 6)
+            else:
+                i = img.find(b"\xCD\x20", i + 2)
+    # where functions start: the control procedure, self-relative targets, agreed near calls
+    try:
+        ddb = lf.ddb()
+    except Exception:
+        ddb = None
+    if ddb:
+        img = images.get(ddb["obj"])
+        at = ddb["rva"] + 4 + 20
+        if img is not None and at + 4 <= len(img):
+            cp = struct.unpack_from("<I", img, at)[0]
+            if any(le_address(o, 0) <= cp < le_address(o, len(images[o])) for o in execs):
+                starts.add(cp)
+    for obj in sorted(execs):
+        img, sites = images[obj], {}
+        for i in range(len(img) - 4):
+            if img[i] == 0xE8:
+                t = (i + 5 + struct.unpack_from("<i", img, i + 1)[0])
+                if 0 <= t < len(img):
+                    sites.setdefault(t, set()).add(i)
+        starts |= {le_address(obj, t) for t, ss in sites.items() if len(ss) >= 2}
+    os.makedirs(outdir, exist_ok=True)
+    blob = os.path.abspath(os.path.join(outdir, "image_le.bin"))
+    lines, pos = ["arch\t%s" % LE_ARCH], 0
+    with open(blob, "wb") as f:
+        for obj in sorted(images):
+            if images[obj]:
+                f.write(images[obj])
+                lines.append("bytes\t%x\t%s\t%x\t%x" % (le_address(obj, 0), blob, pos, len(images[obj])))
+                pos += len(images[obj])
+    names = {va: "sub_%d_%05X" % ((va - LE_BASE) // LE_STRIDE + 1, (va - LE_BASE) % LE_STRIDE) for va in sorted(starts)}
+    for va in sorted(names):
+        lines.append("F\t%x\t%s\t-1" % (va, names[va]))
+    for dev, svc in order:
+        lines.append("I\t%x\t%s\t-1" % (services[(dev, svc)],
+                                        ("VMM_%04X" % svc) if dev == 1 else "VxD_%04X_%04X" % (dev, svc)))
+    d = Description(os.path.join(outdir, "description.txt"), names, {}, [])
+    d.spans = {obj: (le_address(obj, 0), len(images[obj])) for obj in execs}
+    d.device = (ddb or {}).get("name") or name
+    with open(d.path, "w", newline="\n", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+    return d
+
+
+# DOS programs (MZ) -------------------------------------------------------------------------------
+DOS_ARCH = "x86:LE:16:Real Mode:default"
+DOS_LOAD = 0x1000                                # the segment the program is loaded at
+
+
+def describe_dos(module_path, outdir):
+    """Describe a DOS program to the decompiler. -> Description
+
+    The load module is placed at segment 0x1000 (address = segment * 16 + offset, the real-mode
+    rule) and the header's relocations are applied: each names a word that holds a segment and
+    needs the load segment added. The one function the file itself names is its entry point;
+    the rest are found from the calls the decompiler shows."""
+    import struct
+    data = open(module_path, "rb").read()
+    if data[:2] not in (b"MZ", b"ZM"):
+        raise ValueError("%s: not a DOS program" % os.path.basename(module_path))
+    (last, pages, nreloc, hdr_paras, _mn, _mx, _ss, _sp, _ck, ip, cs, reloc_off) = struct.unpack_from("<12H", data, 2)
+    size = pages * 512 - ((512 - last) if last else 0)
+    img = bytearray(data[hdr_paras * 16:size])
+    for i in range(nreloc):
+        off, seg = struct.unpack_from("<HH", data, reloc_off + 4 * i)
+        at = seg * 16 + off
+        if at + 2 <= len(img):
+            struct.pack_into("<H", img, at, (struct.unpack_from("<H", img, at)[0] + DOS_LOAD) & 0xFFFF)
+    os.makedirs(outdir, exist_ok=True)
+    blob = os.path.abspath(os.path.join(outdir, "image_dos.bin"))
+    with open(blob, "wb") as f:
+        f.write(img)
+    base = DOS_LOAD * 16
+    entry = ((DOS_LOAD + cs) & 0xFFFF) * 16 + ip
+    lines = ["arch\t%s" % DOS_ARCH, "bytes\t%x\t%s\t0\t%x" % (base, blob, len(img)),
+             "reg\tDS\t%x" % DOS_LOAD, "F\t%x\tentry\t-1\t__cdecl16far" % entry]
+    d = Description(os.path.join(outdir, "description.txt"), {entry: "entry"}, {}, [])
+    d.spans = {1: (base, len(img))}
+    d.image = bytes(img)
+    d.base = base
+    with open(d.path, "w", newline="\n", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
     return d
