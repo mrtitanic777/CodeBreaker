@@ -29,7 +29,6 @@ modern decoder — cross-check anything surprising against objdump/Ghidra.
 """
 import bisect
 from codebreaker.base import registry as cores
-import sys
 
 import capstone
 
@@ -272,38 +271,3 @@ class PeCarve:
             if hits:
                 out[fs] = hits
         return out
-
-
-def main():
-    argv = sys.argv[1:]
-    if not argv:
-        sys.exit(__doc__)
-    mod = argv[0]
-    c = PeCarve(mod)
-
-    if "--stats" in argv:
-        named = sum(1 for f in c.funcs.values() if f["name"])
-        print(f"{mod}: {len(c.funcs)} functions carved "
-              f"({named} = exported, {len(c.funcs) - named} internal), "
-              f"{len(c.exports)} exports, {len(c.imports)} import slots, "
-              f"{len(c.call_targets)} distinct call targets")
-        return
-    if "--func" in argv:
-        va = int(argv[argv.index("--func") + 1], 16)
-        for a, mn, op in c.disasm_func(va):
-            print(f"  {a:#010x}: {mn:<7} {op}")
-        calls = c.calls_in(va)
-        print("  calls:", ", ".join(sorted(set(calls))) or "(none)")
-        return
-    # default: --list
-    rows = sorted(c.funcs.values(), key=lambda f: -(f["end"] - f["start"]))
-    print(f"# {mod}: {len(c.funcs)} functions (largest first)")
-    for f in rows[:40]:
-        nm = f["name"] or ("sub_%x" % f["start"])
-        calls = c.calls_in(f["start"])
-        print(f"  {f['start']:#010x}  {f['end'] - f['start']:6d} B  "
-              f"{nm:<28} calls={len(calls)}")
-
-
-if __name__ == "__main__":
-    main()

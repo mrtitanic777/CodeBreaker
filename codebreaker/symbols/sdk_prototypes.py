@@ -16,7 +16,6 @@ authored signature, instead of the arity-only fallback.
 """
 import os
 import re
-import json
 
 # calling-convention markers that sit between the return type and the function name in a Win32
 # header declaration. Any token of the shape <UPPER>API (WINMMAPI is import-decoration, handled
@@ -126,27 +125,6 @@ def _ow_header_dirs():
     return [d for d in (os.path.join(ow, "h", "nt"), os.path.join(ow, "h")) if os.path.isdir(d)]
 
 
-def _header_paths(variant="win32"):
-    from codebreaker.targets.win95 import flat_thunk_build as A
-    roots = A._reference_roots()
-    if variant == "win16":
-        subs = (("Microsoft Windows 95 DDK", "INC16"),)
-        dirs = []
-    else:
-        # OpenWatcom headers FIRST (our build toolchain), then the MS SDK/DDK as a fallback for
-        # any API OW does not ship -- OW wins so the extracted signature matches the OW header.
-        subs = (("WIN32SDK", "MSTOOLS", "INCLUDE"),
-                ("Microsoft Windows 95 DDK", "INC32"),
-                ("Microsoft Windows 95 DDK", "MMEDIA", "INC"))
-        dirs = list(_ow_header_dirs())
-    for r in roots:
-        for sub in subs:
-            d = os.path.join(r, *sub)
-            if os.path.isdir(d):
-                dirs.append(d)
-    return dirs
-
-
 # the headers whose APIs the flat-thunk / thunked modules export (multimedia, shell, common
 # controls, version, networking); the big base headers (winuser/wingdi/winbase) are parsed too so
 # the table also serves the win32-c lane.
@@ -154,49 +132,3 @@ _HEADERS = ["MMSYSTEM.H", "MSACM.H", "VFW.H", "COMMCTRL.H", "PRSHT.H", "SHELLAPI
             "COMMDLG.H", "DLGS.H", "WINNETWK.H", "MCIAVI.H", "DIGITALV.H", "MSVIDEO.H",
             "WINUSER.H", "WINGDI.H", "WINBASE.H", "WINREG.H", "WINSPOOL.H", "WINNLS.H", "DDRAW.H",
             "OBJBASE.H", "OLE2.H", "UNKNWN.H"]      # COM DLL exports: DllCanUnloadNow (HRESULT) etc.
-
-
-def build(outjson=None, verbose=False, variant="win32"):
-    dirs = _header_paths(variant)
-    # win16: parse every INC16 header (they are all 16-bit API headers). win32: the curated set.
-    if variant == "win16":
-        headers = sorted({f for d in dirs for f in os.listdir(d) if f.upper().endswith(".H")})
-    else:
-        headers = _HEADERS
-    protos = {}
-    per_hdr = {}
-    for hname in headers:
-        for d in dirs:
-            p = os.path.join(d, hname)
-            if os.path.isfile(p):
-                got = extract_header(p)
-                new = {k: v for k, v in got.items() if k not in protos}
-                protos.update(new)
-                per_hdr[hname] = len(got)
-                if verbose and got:
-                    print("  %-14s %-40s %4d protos (%4d new)" % (hname, d.split("reference")[-1], len(got), len(new)))
-                break
-    if outjson is None:
-        from codebreaker.targets.win95 import flat_thunk_build as A
-        roots = A._reference_roots()
-        name = "win16_protos.json" if variant == "win16" else "flat_thunk_protos.json"
-        outjson = os.path.join(roots[0], name) if roots else name
-    json.dump(protos, open(outjson, "w", encoding="utf-8"), indent=0, sort_keys=True)
-    return {"outjson": outjson, "n": len(protos), "per_header": per_hdr}
-
-
-def main(argv):
-    verbose = "--stats" in argv or "-v" in argv
-    variants = ["win16"] if "--win16" in argv else (["win32", "win16"] if "--all" in argv else ["win32"])
-    for variant in variants:
-        r = build(verbose=verbose, variant=variant)
-        print("sdkprotos[%s]: %d prototypes -> %s" % (variant, r["n"], r["outjson"]))
-        if verbose:
-            for h, n in sorted(r["per_header"].items()):
-                if n:
-                    print("  %-14s %d" % (h, n))
-
-
-if __name__ == "__main__":
-    import sys
-    main(sys.argv[1:])

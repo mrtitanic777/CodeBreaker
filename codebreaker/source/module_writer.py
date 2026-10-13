@@ -18,7 +18,6 @@ Nothing is counted as progress except what these labels say. Everything written 
 from the function store, so the file and the scoreboard cannot disagree with the results.
 """
 import os
-import sys
 import time
 
 from codebreaker.base import corpus
@@ -174,7 +173,3 @@ def main(argv):
         write_module(m, verify="--no-verify" not in argv, out_dir=out_dir)
     scoreboard(out_dir)
     return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))

@@ -15,7 +15,6 @@ from codebreaker.base import paths
 
 _MD = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
 _CARVE = {}
-_IMPORTS = {}
 
 # Bootstrap: put the target dir on sys.path so bare sibling imports (cc32,
 # segdiff, target, classify32, ...) resolve, and activate the win95 target so
@@ -44,19 +43,5 @@ def carve(module):
         from codebreaker.formats import pe_trace
         _CARVE[module] = pe_trace.PeCarve(target.resolve(module))
     return _CARVE[module]
-
-
-def image_base(module):
-    return carve(module).pe.image_base
-
-
-def imports(module):
-    if module not in _IMPORTS:                            # memoized: re-parsed-per-function was O(n^2)
-        _IMPORTS[module] = dict(carve(module).pe.imports())
-    return _IMPORTS[module]
-
-
-def disasm(b, va=0):
-    return list(_MD.disasm(b, va))
 
 

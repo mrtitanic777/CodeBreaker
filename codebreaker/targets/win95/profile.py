@@ -104,17 +104,6 @@ def _ensure_from_media(name):
 # Tiers, most-central first. Order is the recommended work order.
 # --------------------------------------------------------------------------
 
-# The core is deliberately BOTH halves. The 16-bit trio still holds the bulk of
-# the window/graphics behaviour; the 32-bit trio is the new public surface.
-CORE = [
-    # 32-bit engines (PE)
-    "KERNEL32.DLL", "USER32.DLL", "GDI32.DLL",
-    # 16-bit compatibility core (NE) — where most of USER/GDI actually lives
-    "KRNL386.EXE", "USER.EXE", "GDI.EXE",
-    # the VMM / VxD bundle — a W4-compressed container (the descendant of
-    # 3.1's WIN386.EXE W3 container), not a plain LE. Needs its own loader.
-    "VMM32.VXD",
-]
 
 # 32-bit system DLLs + their 16-bit companions. Only names that ship in the
 # main WIN95 cabinet set; missing companions live in PRECOPY/bootstrap cabs.
@@ -130,26 +119,6 @@ SYSTEM = [
     "SYSTEM.DRV", "KEYBOARD.DRV", "MOUSE.DRV", "SETUPX.DLL", "DDEML.DLL",
 ]
 
-APPS = [
-    "EXPLORER.EXE", "PROGMAN.EXE", "WINFILE.EXE", "NOTEPAD.EXE", "WRITE.EXE",
-    "WORDPAD.EXE", "MSPAINT.EXE", "PBRUSH.EXE", "CALC.EXE", "CARDFILE.EXE",
-    "SOL.EXE", "WINMINE.EXE", "FREECELL.EXE", "MSHEARTS.EXE", "CHARMAP.EXE",
-    "CLIPBRD.EXE", "REGEDIT.EXE", "SYSEDIT.EXE", "CONTROL.EXE", "WINHELP.EXE",
-    "HH.EXE", "TASKMAN.EXE", "DRWATSON.EXE", "PACKAGER.EXE", "SNDVOL32.EXE",
-    "SNDREC32.EXE", "MPLAYER.EXE", "CDPLAYER.EXE", "DIALER.EXE", "HYPERTRM.EXE",
-    "TELNET.EXE", "WINIPCFG.EXE", "NOTEPAD.EXE", "TERMINAL.EXE",
-]
-
-# Third-party / OEM stacks bundled on the media but not Microsoft's Windows.
-THIRDPARTY_PREFIXES = ("NW", "NETWARE", "NAV", "AOL", "MSN", "PCTCP",
-                       "ODI", "IPX", "SPX", "VREDIR")
-
-TIER_ORDER = ["core", "system", "drivers", "apps", "thirdparty"]
-
-# Driver formats: .DRV is usually NE, VxDs are LE, .MPD/.SYS/.PCI are PE minidrivers.
-_DRIVER_EXT = (".DRV", ".VXD", ".386", ".PDR", ".MPD", ".CPL", ".SCR",
-               ".3GR", ".ACM", ".ACV", ".TSP", ".DRW")
-
 
 # --------------------------------------------------------------------------
 # Format detection — the central new capability vs. 3.1.
@@ -159,82 +128,6 @@ def format_of(path):
     """'NE' | 'PE' | 'LE' | 'LX' | 'MZ' | None. Reads only the two headers."""
     from codebreaker.formats import detect
     return detect.format_of(path)
-
-
-_MODULE_EXTS = (".dll", ".exe", ".drv", ".vxd", ".386", ".pdr", ".cpl", ".scr",
-                ".mpd", ".acm", ".ax", ".tsp", ".ocx", ".mod", ".sys")
-
-
-def _media_module_names():
-    """Executable-looking filenames on the ORIGINAL media (disc/src): loose files + every
-    cabinet's contents. Lets the corpus be ENUMERATED without a pre-extracted files/ tree."""
-    names = set()
-    if not os.path.isdir(MEDIA):
-        return names
-    for dp, _dns, fns in os.walk(MEDIA):
-        for fn in fns:
-            if fn.lower().endswith(_MODULE_EXTS):
-                names.add(fn)
-    try:
-        from codebreaker.formats import cab
-        for cf in cab.manifest(MEDIA):
-            if cf.name.lower().endswith(_MODULE_EXTS):
-                names.add(cf.name)
-    except Exception:
-        pass
-    return names
-
-
-def all_modules():
-    """Every executable (NE/PE/LE/LX) module, as paths under files/, at any depth. When files/
-    is pre-extracted, enumerate it directly (fast). When files/ is EMPTY but the original media
-    (disc/src) is present, enumerate the corpus from the cabinet manifest + loose media files
-    and materialize each on demand via resolve() -- so files/ can be dropped entirely and the
-    tier/coverage tools still see the whole corpus (paying a one-time extract)."""
-    idx = _files_index()
-    if idx:
-        return [p for p in sorted(set(idx.values()))
-                if os.path.isfile(p) and format_of(p) in ("NE", "PE", "LE", "LX")]
-    out = []
-    for name in sorted(_media_module_names()):           # files/ empty -> media-backed
-        try:
-            p = resolve(name)                            # extracts on demand
-            if format_of(p) in ("NE", "PE", "LE", "LX"):
-                out.append(p)
-        except Exception:
-            pass
-    return sorted(set(out))
-
-
-def _in(base, names):
-    up = base.upper()
-    return up in (n.upper() for n in names)
-
-
-def tier_of(path):
-    base = os.path.basename(path).upper()
-    if _in(base, CORE):
-        return "core"
-    if _in(base, SYSTEM):
-        return "system"
-    if _in(base, APPS):
-        return "apps"
-    if base.startswith(THIRDPARTY_PREFIXES):
-        return "thirdparty"
-    fmt = format_of(path)
-    if fmt == "LE" or base.endswith(_DRIVER_EXT) or base.startswith("KBD"):
-        return "drivers"
-    return "apps" if base.endswith(".EXE") else "drivers"
-
-
-def tiers():
-    """{tier: [paths]} over every code-bearing module, in TIER_ORDER."""
-    out = {t: [] for t in TIER_ORDER}
-    for p in all_modules():
-        if code_bytes(p) == 0:
-            continue
-        out[tier_of(p)].append(p)
-    return out
 
 
 # --------------------------------------------------------------------------
@@ -261,89 +154,3 @@ def resolve(name):
     if p:
         return p
     raise ValueError(f"no module matching {name!r} under {FILES}/ (and not on media {MEDIA}/)")
-
-
-def open_module(name):
-    """Open a Win95 module by name or path, dispatched by format.
-
-    NE -> disasm.open_ne (the 16-bit loader ported from 3.1)
-    PE -> pe.open_pe     (the new 32-bit reader)
-    LE -> not yet implemented (VxD/LE loader is the next parser to write)
-    """
-    path = resolve(name)
-    fmt = format_of(path)
-    if fmt == "NE":
-        from codebreaker.disasm.disasm import open_ne
-        return open_ne(path)
-    if fmt == "PE":
-        from codebreaker.formats.pe import open_pe
-        return open_pe(path)
-    if fmt in ("LE", "LX"):
-        raise NotImplementedError(
-            f"{os.path.basename(path)} is {fmt} (VxD) — LE loader not written "
-            f"yet. See PLAN.md Phase 3.")
-    if fmt == "MZ":
-        # e.g. VMM32.VXD: a W3/W4-compressed VxD container, not a flat LE.
-        # Needs a container decompressor before an LE loader can see inside.
-        raise NotImplementedError(
-            f"{os.path.basename(path)} is an MZ/W3/W4 container (compressed VxD "
-            f"bundle) — no container loader yet. See PLAN.md Phase 3.")
-    raise ValueError(f"{path}: unrecognised format {fmt}")
-
-
-def code_bytes(path):
-    """Code size in bytes, by format. LE/LX now measured via le.py (executable
-    objects); a W3/W4 container (VMM32) still returns 0 until it is unbundled."""
-    fmt = format_of(path)
-    try:
-        if fmt == "NE":
-            from codebreaker.disasm.disasm import open_ne
-            ne = open_ne(path)
-            return sum(s["length"] for s in ne.segments() if s["kind"] == "CODE")
-        if fmt == "PE":
-            from codebreaker.formats.pe import open_pe
-            return open_pe(path).code_bytes()
-        if fmt in ("LE", "LX"):
-            from codebreaker.formats.lefile import LEFile
-            return LEFile(path).code_bytes()
-    except Exception:
-        return 0
-    return 0
-
-
-def label(path):
-    """'USER.EXE [NE] (USER)' — file first, format second, names collide."""
-    fmt = format_of(path)
-    try:
-        mod = open_module(path)
-        return f"{os.path.basename(path)} [{fmt}] ({mod.module_name()})"
-    except Exception:
-        return f"{os.path.basename(path)} [{fmt}]"
-
-
-def format_census():
-    """{format: (count, code_bytes)} over files/ — the tri-format picture."""
-    import collections
-    n = collections.Counter()
-    b = collections.Counter()
-    for p in all_modules():
-        fmt = format_of(p)
-        n[fmt] += 1
-        b[fmt] += code_bytes(p)
-    return {k: (n[k], b[k]) for k in n}
-
-
-if __name__ == "__main__":
-    t = tiers()
-    print(f"{'tier':<12} {'modules':>8} {'code bytes':>14}")
-    gt = gb = 0
-    for name in TIER_ORDER:
-        paths = t[name]
-        b = sum(code_bytes(p) for p in paths)
-        gt += len(paths)
-        gb += b
-        print(f"  {name:<10} {len(paths):>8} {b:>14,}")
-    print(f"  {'TOTAL':<10} {gt:>8} {gb:>14,}")
-    print("\nby format (code_bytes; LE pending an LE loader):")
-    for fmt, (c, b) in sorted(format_census().items()):
-        print(f"  {fmt:<5} {c:>5} modules  {b:>14,} b")

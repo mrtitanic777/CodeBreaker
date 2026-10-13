@@ -85,55 +85,5 @@ def _load():
     return _CACHE
 
 
-def _canon(name):
-    return _load()["ci"].get(name.lower())        # canonical proto name for any-case input
-
-
-def signature(name):
-    """'RET name(t1, t2, ...)' from the SDK header prototype (case-insensitive), or None."""
-    db = _load()
-    c = db["ci"].get(name.lower())
-    if not c:
-        return None
-    p = db["proto"][c]
-    return "%s %s(%s)" % (p["ret"], c, ", ".join(p["params"]) or "void")
-
-
-def arity(name):
-    """Argument count from the SDK header prototype (preferred) or the .lib @N decoration."""
-    db = _load()
-    c = db["ci"].get(name.lower())
-    if c is not None:
-        return len(db["proto"][c]["params"])
-    ca = db["ci_arity"].get(name.lower())
-    return db["arity_lib"].get(ca) if ca else None
-
-
 def struct(name):
     return _load()["struct"].get(name)
-
-
-def known(name):
-    db = _load()
-    if name in db["proto"] or name in db["arity_lib"]:
-        return "sdk"
-    if name in db["cvnames"]:
-        return "codeview"
-    return None
-
-
-def stats():
-    db = _load()
-    return {"prototypes": len(db["proto"]), "structs": len(db["struct"]),
-            "lib_arities": len(db["arity_lib"]), "codeview_names": len(db["cvnames"])}
-
-
-def main():
-    import sys
-    print("symdb:", stats())
-    for n in sys.argv[1:] or ("CreateFileA", "GetDC", "SendMessageA", "AttApplyCharFormat"):
-        print("  %-18s known=%s  arity=%s  sig=%s" % (n, known(n), arity(n), signature(n)))
-
-
-if __name__ == "__main__":
-    main()

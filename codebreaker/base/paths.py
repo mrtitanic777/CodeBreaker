@@ -48,18 +48,6 @@ def target_dir(era):
     return engine_dir("targets", era)
 
 
-def binaries(*parts):
-    """A path under the git-ignored data home: <repo>/binaries/<...>."""
-    return os.path.join(repo_root(), "binaries", *parts)
-
-
-def config_candidates():
-    """Ordered paths where the external-tool config may live (first existing one wins)."""
-    return [os.path.join(repo_root(), "config.json"),
-            os.path.join(repo_root(), "CodeBreaker.config.json"),
-            os.path.join(os.environ.get("WT_TOOLS_DIR", ""), "CodeBreaker.config.json")]
-
-
 _ERAS = ("win95", "win98", "win3.1", "win1.0")
 
 
@@ -76,32 +64,3 @@ def data_root():
     return os.path.dirname(repo_root())
 
 
-def design_root():
-    """The Win95 source-tree 'design' arena -- home of the architecture docs, the corpus, and the
-    period reference SDK/DDK trees (Microsoft Windows 95 DDK, WIN32SDK). Honors WT_REFERENCE_ROOT;
-    else derives it from the data corpus (the corpus lives at <design>/corpus, so the design arena
-    is its parent); else falls back to the data root itself."""
-    env = os.environ.get("WT_REFERENCE_ROOT")
-    if env and os.path.isdir(env):
-        return env
-    dr = data_root()
-    parent = os.path.dirname(dr)
-    if os.path.basename(dr).lower() == "corpus" and os.path.isdir(parent):
-        return parent
-    return dr
-
-
-def reference(*parts):
-    """Resolve a path inside the period reference SDK/DDK trees (the DDK / WIN32SDK that were moved
-    out of the tool into the Win95 'design' arena). Tries <design>/reference, then <design> itself,
-    then the legacy in-tool binaries/media location; returns the first that exists, else the primary
-    <design>/reference candidate (so callers get a sensible path to report when nothing is found)."""
-    d = design_root()
-    first = None
-    for r in (os.path.join(d, "reference"), d, binaries("media")):
-        p = os.path.join(r, *parts)
-        if first is None:
-            first = p
-        if os.path.exists(p):
-            return p
-    return first

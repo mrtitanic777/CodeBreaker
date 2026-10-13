@@ -10,36 +10,14 @@ resource table. It is deliberately dependency-free and readable.
 Usage:
     python3 ne.py FILE [--segments] [--relocs] [--resources] [--all]
 """
-import struct, sys, os
+import struct
 
-# ---- NE header flags -------------------------------------------------------
-NE_FLAGS = [
-    (0x0001, "SINGLEDATA (shared DLL)"),
-    (0x0002, "MULTIPLEDATA (per-instance data)"),
-    (0x2000, "ERRORS (linker errors present)"),
-    (0x8000, "LIBRARY (DLL, not a program)"),
-]
-SEG_FLAGS = [
-    (0x0001, "DATA"),          # else CODE
-    (0x0002, "ALLOCATED"),
-    (0x0004, "LOADED"),
-    (0x0010, "MOVEABLE"),      # else FIXED
-    (0x0020, "SHAREABLE"),     # PURE
-    (0x0040, "PRELOAD"),       # else LOADONCALL
-    (0x0080, "EXECUTEONLY/READONLY"),
-    (0x0100, "RELOCINFO"),     # has relocation records
-    (0x0800, "DISCARDABLE"),
-]
-EXETYPE = {0: "unknown", 1: "OS/2", 2: "Windows", 3: "European MS-DOS 4.x",
-           4: "Windows 386", 5: "BOSS"}
 RSRC_TYPES = {  # predefined resource type ids (high bit set)
     1:"CURSOR",2:"BITMAP",3:"ICON",4:"MENU",5:"DIALOG",6:"STRING",
     7:"FONTDIR",8:"FONT",9:"ACCELERATOR",10:"RCDATA",11:"MESSAGETABLE",
     12:"GROUP_CURSOR",14:"GROUP_ICON",16:"VERSION",
 }
 
-def bits(flags, table):
-    return [name for mask, name in table if flags & mask]
 
 class NEFile:
     def __init__(self, path):
@@ -270,80 +248,3 @@ class NEFile:
         p = base + off
         ln = self.data[p]
         return self.data[p+1:p+1+ln].decode("latin1")
-
-
-# ---------------------------------------------------------------------------
-def dump(path, show_segs=False, show_relocs=False, show_res=False):
-    ne = NEFile(path)
-    h = ne.h
-    res = ne.resident_names()
-    modname = res[0][0] if res else "?"
-    nonres = ne.nonresident_names()
-    desc = nonres[0][0] if nonres else ""
-    print("="*74)
-    print(f"{os.path.basename(path)}   module={modname!r}")
-    if desc: print(f"  description: {desc!r}")
-    print("-"*74)
-    print(f"  NE @0x{ne.ne_off:x}  linker {h['linker_ver']}.{h['linker_rev']:02d}"
-          f"  target={EXETYPE.get(h['exetype'],h['exetype'])}"
-          + (f" (win {h['expect_winver']>>8}.{h['expect_winver']&0xff:02d})" if h['expect_winver'] else ""))
-    ftags = bits(h["flags"], NE_FLAGS)
-    print(f"  flags: 0x{h['flags']:04x} {ftags}")
-    print(f"  segments={h['n_segs']}  modrefs={h['n_modrefs']}  "
-          f"resources={h['n_resources']}  movable_entries={h['n_movable']}")
-    print(f"  CS:IP={h['csip']>>16:x}:{h['csip']&0xffff:04x}  "
-          f"SS:SP={h['sssp']>>16:x}:{h['sssp']&0xffff:04x}  "
-          f"heap={h['heap']} stack={h['stack']}  autodata_seg={h['autodata_seg']}")
-
-    mods = ne.module_refs()
-    if mods:
-        print(f"  imports modules: {', '.join(mods)}")
-
-    exports = [(n,o) for n,o in res[1:]] + [(n,o) for n,o in nonres[1:]]
-    if exports:
-        print(f"  exports ({len(exports)}):")
-        for n,o in sorted(exports, key=lambda x:x[1]):
-            print(f"      @{o:<4} {n}")
-
-    if show_segs:
-        print("  segments:")
-        for s in ne.segments():
-            fl = bits(s["flags"], SEG_FLAGS)
-            print(f"    #{s['idx']:<2} {s['kind']:4} off=0x{s['file_off']:06x} "
-                  f"len=0x{s['length']:04x} alloc=0x{s['minalloc']:04x} {fl}")
-
-    if show_relocs:
-        for s in ne.segments():
-            rl = ne.relocations(s)
-            if rl:
-                print(f"  seg #{s['idx']} relocations ({len(rl)}):")
-                for r in rl[:200]:
-                    if r.get("kind")=="IMPORTORD":
-                        m = mods[r['module']-1] if 0 < r['module'] <= len(mods) else f"?{r['module']}"
-                        tgt = f"{m}.{r['ordinal']}"
-                    elif r.get("kind")=="IMPORTNAME":
-                        m = mods[r['module']-1] if 0 < r['module'] <= len(mods) else f"?{r['module']}"
-                        tgt = f"{m}.{ne.imported_name(r['name_off'])}"
-                    else:
-                        tgt = f"seg{r.get('seg')}:{r.get('entry')}"
-                    print(f"      +0x{r['offset']:04x} -> {r.get('kind')}: {tgt}")
-
-    if show_res:
-        rs = ne.resources()
-        if rs:
-            print(f"  resources ({len(rs)}):")
-            for r in rs:
-                print(f"    {r['type']:<12} {r['id']:<10} off=0x{r['off']:06x} len=0x{r['length']:04x}")
-    return ne
-
-
-if __name__ == "__main__":
-    args = sys.argv[1:]
-    if not args:
-        print(__doc__); sys.exit(1)
-    path = args[0]
-    allf = "--all" in args
-    dump(path,
-         show_segs="--segments" in args or allf,
-         show_relocs="--relocs" in args or allf,
-         show_res="--resources" in args or allf)

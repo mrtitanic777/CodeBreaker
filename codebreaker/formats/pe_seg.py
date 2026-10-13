@@ -118,20 +118,3 @@ class PeSeg:
         # fixups: resolved call sites for annotate (site_off -> "DLL!name").
         # objdump/asmrecon don't need it for byte-exactness; annotate uses it.
         self.fixups = {}
-
-
-def _demo():
-    import sys
-    mod = sys.argv[1] if len(sys.argv) > 1 else "USER32.DLL"
-    sg = PeSeg(mod)
-    print("%s section %s: va=%#x  %d bytes  %d rows  %d funcs  %d mask bytes"
-          % (mod, sg.name, sg.va, len(sg.code), len(sg.rows), len(sg.funcs),
-             len(sg.mask)))
-    small = sorted((f["end"] - f["start"], s) for s, f in sg.funcs.items()
-                   if 16 <= f["end"] - f["start"] <= 80)
-    for sz, s in small[:8]:
-        print("   %#06x  %3d B  %s" % (s, sz, sg.funcs[s]["name"] or "sub"))
-
-
-if __name__ == "__main__":
-    _demo()

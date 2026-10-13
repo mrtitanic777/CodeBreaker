@@ -32,13 +32,6 @@ MAX_SUPPORT = 1500              # out-of-batch callee bodies pulled in per batch
 GOOD = ("equivalent", "consistent")
 
 
-def _sha(*parts):
-    h = hashlib.sha1()
-    for p in parts:
-        h.update(str(p).encode("utf-8", "replace")); h.update(b"\0")
-    return h.hexdigest()
-
-
 _PROFILES = {}
 
 

@@ -14,12 +14,7 @@ config.json's `behavior_sdk` at an include directory and its prototypes drive th
 With nothing configured, API calls are still NAMED (that comes from the PE import table, not
 here) -- only the exact stdcall cleanup needs a signature source.
 """
-import os
-import re
 
-_DECOR = re.compile(r"@(\d+)$")
-_DB = None
-_TRIED = False
 
 # Built-in stdcall argument counts for common Win32 APIs. These are public, documented ABI
 # facts (the number of dword arguments each API takes) -- not inferences about the binary -- so
@@ -63,47 +58,5 @@ def _builtin_argc(name):
     if n and n[-1] in ("A", "W") and n[:-1] in _WIN32_ARGC:   # ANSI/Wide variant
         return _WIN32_ARGC[n[:-1]]
     return None
-
-
-def _db():
-    global _DB, _TRIED
-    if not _TRIED:
-        _TRIED = True
-        try:
-            from codebreaker.base import config
-            inc = config.load_config().get("behavior_sdk", "")
-            if inc and os.path.isdir(inc):
-                from codebreaker.symbols import api_db as apidb
-                _DB = apidb.ApiDb().add_dir(inc)
-        except Exception:
-            _DB = None
-    return _DB
-
-
-def argc(dll, name):
-    """Argument count for an imported API, or None if unknown. Sources, in order: the SDK apidb
-    (config `behavior_sdk`), the built-in Win32 table, then the stdcall `@N` name decoration."""
-    db = _db()
-    if db is not None:
-        try:
-            p = db.params(name)
-            if p is not None:
-                if len(p) == 1 and str(p[0]).lower().find("void") >= 0:
-                    return 0                    # a lone 'void' means zero args
-                return len(p)
-        except Exception:
-            pass
-    b = _builtin_argc(name)
-    if b is not None:
-        return b
-    m = _DECOR.search(name or "")                # stdcall decoration encodes the byte count
-    if m:
-        return int(m.group(1)) // 4
-    return None
-
-
-def resolver():
-    """A callable (dll, name) -> argc|None for tracer.trace_function(sig_resolver=...)."""
-    return argc
 
 

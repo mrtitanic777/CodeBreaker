@@ -6,7 +6,6 @@ source tree.
 This is the number to watch while changing the decompiler or the verifier.
 """
 import collections
-import sys
 
 
 def main(argv):
@@ -29,7 +28,3 @@ def main(argv):
     if bad:
         print("does not compile: " + "; ".join("%s (%d)" % kv for kv in bad.most_common(4)))
     return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))

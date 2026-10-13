@@ -13,7 +13,6 @@ the verifier makes the whole corpus due again without anyone having to say so. O
 fails outright is reported and the sweep moves on.
 """
 import os
-import sys
 import time
 
 
@@ -80,7 +79,3 @@ def main(argv):
             "%s %d" % (F.TITLE[k], c[k]) for k in F.ORDER if c[k]), time.time() - t0), flush=True)
     status(fs, digest, paths)
     return 1 if failed else 0
-
-
-if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))

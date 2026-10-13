@@ -309,13 +309,3 @@ class PEFile:
 
 def open_pe(path):
     return PEFile(path)
-
-
-if __name__ == "__main__":
-    import sys
-    for p in sys.argv[1:]:
-        pe = PEFile(p)
-        exp = pe.exports()
-        print(f"{p}: {pe.machine_name()} {'DLL' if pe.is_dll() else 'EXE'} "
-              f"module={pe.module_name()!r} code={pe.code_bytes():,}b "
-              f"sections={len(pe.sections)} exports={len(exp)}")

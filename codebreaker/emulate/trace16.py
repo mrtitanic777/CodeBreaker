@@ -79,45 +79,6 @@ def _build_harness(uc, U, segs):
 
 
 # --------------------------------------------------------------------------
-def _selftest():
-    """Validate the GDT/segmentation harness on a synthetic 16-bit program BEFORE trusting it on
-    real NE modules. Program in a code segment: `mov ax, 0x1234 ; retf`. We push a far-ret
-    sentinel, run, and expect AX=0x1234 and a clean stop at the sentinel."""
-    import unicorn as U
-    from unicorn.x86_const import (UC_X86_REG_CS, UC_X86_REG_DS, UC_X86_REG_SS, UC_X86_REG_ES,
-                                   UC_X86_REG_ESP, UC_X86_REG_EIP, UC_X86_REG_EAX)
-    uc = U.Uc(U.UC_ARCH_X86, U.UC_MODE_32)
-    CODE, STACK, SENT = SEG_ORIGIN, STACK_BASE, SENT_BASE
-    for b in (CODE, STACK, SENT):
-        uc.mem_map(b, 0x10000)                            # full 64K segment window
-    sels = _build_harness(uc, U, [(CODE, 0xFFFF, True), (STACK, 0xFFFF, False), (SENT, 0xFFFF, True)])
-    cs_sel, ss_sel, sent_sel = sels[1], sels[2], sels[3]
-    # mov ax, 0x1234 ; retf
-    uc.mem_write(CODE, b"\x66\xB8\x34\x12" + b"\xCB")      # operand-size prefix: 16-bit in 32-bit seg
-    # actually in a 16-bit (D/B=0) segment, `mov ax,imm16` = B8 34 12 ; retf = CB
-    uc.mem_write(CODE, b"\xB8\x34\x12\xCB")
-    # stack: push far-ret sentinel (IP=0, CS=sent_sel) so retf lands at SENT:0
-    sp = 0xFFF0
-    uc.mem_write(STACK + sp, (0).to_bytes(2, "little") + sent_sel.to_bytes(2, "little"))
-    uc.reg_write(UC_X86_REG_SS, ss_sel); uc.reg_write(UC_X86_REG_ESP, sp)
-    uc.reg_write(UC_X86_REG_DS, ss_sel); uc.reg_write(UC_X86_REG_ES, ss_sel)
-    uc.reg_write(UC_X86_REG_CS, cs_sel); uc.reg_write(UC_X86_REG_EIP, 0)
-    # emu_start's `begin`/`until` are EFFECTIVE (CS-relative) offsets here: Unicorn adds CS.base
-    # for the fetch. begin=0 -> fetch at CS.base(CODE). The retf lands at CS=sent_sel:IP=0, whose
-    # effective offset is 0 -- but `until` is matched on the linear PC, so use SENT_BASE.
-    for until in (SENT_BASE, 0):
-        uc.reg_write(UC_X86_REG_CS, cs_sel); uc.reg_write(UC_X86_REG_EIP, 0)
-        uc.reg_write(UC_X86_REG_ESP, sp)
-        try:
-            uc.emu_start(0, until, count=20)
-            ax = uc.reg_read(UC_X86_REG_EAX) & 0xFFFF
-            return {"ok": ax == 0x1234, "ax": ax, "until": hex(until), "eip": uc.reg_read(UC_X86_REG_EIP)}
-        except U.UcError as e:
-            last = {"ok": False, "error": str(e), "until": hex(until), "eip": uc.reg_read(UC_X86_REG_EIP)}
-    return last
-
-
-# --------------------------------------------------------------------------
 # NE loading + real-function tracing on the validated harness.
 # --------------------------------------------------------------------------
 from codebreaker.formats.ne import NEFile                     # noqa: E402
@@ -428,8 +389,3 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
     rec["ret32"] = ((uc.reg_read(UC_X86_REG_EDX) & 0xFFFF) << 16) | rec["ret"]
     rec["n_imports"] = len(imports)
     return rec
-
-
-if __name__ == "__main__":
-    print("tracer16 harness self-test:", _selftest())
-

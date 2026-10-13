@@ -321,23 +321,3 @@ def argc(dll, name):
     """Argument count for the oracle's import stub (stack bytes / 4), or None if unknown."""
     b = stack_bytes(dll, name)
     return None if b is None or b % 4 else b // 4
-
-
-def warm(dll):
-    """Resolve every export of `dll` in one pass (one cache write). Returns {name: bytes|None}."""
-    stem = _stem(dll)
-    m = _mod(stem)
-    c = _load(stem)
-    if m is not None:
-        for name in m.exports:
-            if name not in c:
-                c[name] = _resolve(stem, name, _MAX_HOPS)
-        _save(stem)
-    return c
-
-
-if __name__ == "__main__":
-    import sys
-    for d in sys.argv[1:]:
-        t = warm(d)
-        print("%-12s %d exports, %d resolved" % (d, len(t), sum(v is not None for v in t.values())))

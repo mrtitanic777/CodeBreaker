@@ -144,13 +144,6 @@ def _open_arguments(text):
     return "%s(%s)\n%s%s%s" % (m.group(1).rstrip(), ",".join(names), decls, brace, body)
 
 
-def prototype(text):
-    """The declaration of the function a text defines (everything before its body)."""
-    head = text.split("{", 1)[0]
-    head = head[:head.index(")") + 1] if ")" in head else head      # without old-style argument lines
-    return " ".join(head.split()) + ";"
-
-
 def declaration(text):
     """A declaration that fixes the function's convention and result but not its arguments.
     The decompiler works out arguments one call at a time and callers do not always agree with
