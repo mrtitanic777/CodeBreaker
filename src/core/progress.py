@@ -15,26 +15,60 @@ a richer view. `monitor()` is the consumer side: the Ready window.
 """
 import json
 import os
-from src.core import cores
 import sys
 import time
+from src.core import layout
 
 _enabled = False
 _managed = False
 _win = None            # own ProgressWindow | False | None
+_separate = False      # UI runs in a SEPARATE process (mirrors the live file)?
+_monitor_proc = None   # the spawned monitor process, if any
 _t0 = None
 _session_t0 = None     # session stopwatch start — set once, spans all modules
 
-LIVE = os.path.join("reports", "live_progress.json")
+LIVE = os.path.join(layout.runtime_dir(), "live_progress.json")
 _state = {"active": False, "caption": "CodeBreaker", "status": "Ready",
           "done": 0, "total": 1, "error": False, "details": [],
           "done_event": 0.0, "summary": "", "ui_state": "work", "next": "",
-          "bytes": "", "left": ""}
+          "bytes": "", "left": "", "eta_txt": ""}
 
 
-def enable():
-    global _enabled
+def enable(separate=None):
+    """Turn on the progress UI. By DEFAULT the window runs in a SEPARATE process
+    that mirrors reports/live_progress.json, so its tkinter event loop and repaints
+    run on their own core and never share the worker's GIL -- the run goes at
+    headless speed. Pass separate=False (or set WT_UI_INPROC=1) for the legacy
+    in-process window (a daemon thread that time-slices against the work)."""
+    global _enabled, _separate
     _enabled = True
+    if separate is None:
+        separate = os.environ.get("WT_UI_INPROC") != "1"
+    if separate and sys.platform == "win32" and _spawn_monitor():
+        _separate = True           # worker stays window-free; the monitor renders LIVE
+    else:
+        capture_output()           # legacy: in-process window text captured from stdout
+
+
+def _spawn_monitor():
+    """Launch the UI as its OWN process, mirroring the live file. Returns True if it
+    started. Decoupling the window this way is the whole point: the child owns the
+    tkinter loop on a separate core, so painting a live view no longer steals cycles
+    (the GIL) from the lifting loop."""
+    global _monitor_proc
+    import subprocess
+    try:
+        _state["active"] = True
+        _write_live()              # seed the file so the window opens 'working', not 'Ready'
+        _monitor_proc = subprocess.Popen(
+            [sys.executable, "-m", "src.core.progress", "--monitor"], cwd=os.getcwd(),
+            env=dict(os.environ, PYTHONPATH=os.pathsep.join(
+                [os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))]
+                + [p for p in os.environ.get("PYTHONPATH", "").split(os.pathsep) if p])))
+        return True
+    except Exception:
+        _monitor_proc = None
+        return False
 
 
 def want_two_tier():          # kept for API compatibility (single bar now)
@@ -45,6 +79,160 @@ def active():
     return _enabled and sys.platform == "win32"
 
 
+# --------------------------------------------------------------------------
+# Console-free operation: the app is a WINDOWED build (no console window). All
+# the report/log text a tool prints is TEE'd into the UI's log pane instead. A
+# console appears ONLY for debugging (WT_CONSOLE=1) or when launched from an
+# existing terminal for a CLI command (doctor/config) — never spawned for a run.
+# --------------------------------------------------------------------------
+
+class _Null:
+    """A never-None stdout so print() can't crash the windowed EXE when there is
+    no console and the UI capture isn't installed (e.g. `doctor` on double-click)."""
+    def write(self, s):
+        return len(s) if s else 0
+
+    def flush(self):
+        pass
+
+    def isatty(self):
+        return False
+
+
+class _Tee:
+    """stdout/stderr replacement: streams every completed line into the UI log
+    pane, and optionally still to a real console (debug)."""
+    def __init__(self, real):
+        self._real = real
+        self._buf = ""
+
+    def write(self, s):
+        if self._real is not None:
+            try:
+                self._real.write(s)
+            except Exception:
+                pass
+        try:
+            self._buf += s
+            while "\n" in self._buf:
+                line, self._buf = self._buf.split("\n", 1)
+                log(line)
+        except Exception:
+            pass
+        return len(s)
+
+    def flush(self):
+        if self._real is not None:
+            try:
+                self._real.flush()
+            except Exception:
+                pass
+
+    def isatty(self):
+        return False
+
+
+def _ensure_console():
+    """Return (out, err) writers onto a REAL console for debug — attaching to the
+    parent terminal if we have one, else allocating a fresh console window."""
+    out, err = sys.__stdout__, sys.__stderr__
+    if out is None and sys.platform == "win32":
+        try:
+            import ctypes
+            ctypes.windll.kernel32.AllocConsole()
+            out = open("CONOUT$", "w", buffering=1)
+            err = open("CONOUT$", "w", buffering=1)
+        except Exception:
+            out = err = None
+    return out, err
+
+
+def init_std():
+    """Called once at EXE startup. In a windowed build sys.stdout/err are None;
+    attach to the parent console if we were launched from a terminal (so CLI
+    commands like `doctor` still print), and never leave them None."""
+    if sys.platform == "win32" and sys.stdout is None:
+        try:
+            import ctypes
+            if ctypes.windll.kernel32.AttachConsole(-1):      # ATTACH_PARENT_PROCESS
+                sys.stdout = open("CONOUT$", "w", buffering=1)
+                sys.stderr = open("CONOUT$", "w", buffering=1)
+        except Exception:
+            pass
+    if sys.stdout is None:
+        sys.stdout = _Null()
+    if sys.stderr is None:
+        sys.stderr = _Null()
+
+
+_captured = False
+
+
+def capture_output(also_console=None):
+    """Redirect stdout/stderr into the UI log pane. Idempotent; only acts when a
+    UI is enabled. also_console (default: env WT_CONSOLE==1) also mirrors to a real
+    console for debugging."""
+    global _captured
+    if _captured or not active():
+        return
+    if also_console is None:
+        also_console = os.environ.get("WT_CONSOLE") == "1"
+    real_out = real_err = None
+    if also_console:
+        real_out, real_err = _ensure_console()
+    _captured = True
+    sys.stdout = _Tee(real_out)
+    sys.stderr = _Tee(real_err)
+
+
+def log(text):
+    """Stream a line/block of text into the UI Log tab — the in-app replacement
+    for console output (analysis reports, per-module verdicts, etc.)."""
+    w = _get()
+    if not w:
+        return
+    for ln in str(text).rstrip("\r\n").split("\n"):
+        try:
+            w.add_log(ln)
+        except Exception:
+            pass
+
+
+def report(text):
+    """Show a module's full analysis report in the UI Report tab (replaces it).
+    Not persisted to the live file — it's large and the Report tab is UI-only."""
+    w = _get()
+    if w:
+        try:
+            w.set_report(text)
+        except Exception:
+            pass
+
+
+def coverage(text):
+    """Show the whole-corpus byte-exact / live summary in the UI Coverage tab."""
+    _state["coverage"] = str(text)
+    if _separate:                  # feed the mirrored window (it can't see our objects)
+        _write_live()
+    w = _get()
+    if w:
+        try:
+            w.set_coverage(text)
+        except Exception:
+            pass
+
+
+def status_bar(text):
+    """Set the window's bottom status-bar line (e.g. tier progress)."""
+    _state["sbar"] = str(text)
+    w = _get()
+    if w:
+        try:
+            w.set_status_bar(text)
+        except Exception:
+            pass
+
+
 def manage():
     global _managed
     _managed = True
@@ -52,7 +240,7 @@ def manage():
 
 def _write_live():
     try:
-        os.makedirs("reports", exist_ok=True)
+        os.makedirs(layout.runtime_dir(), exist_ok=True)
         st = dict(_state); st["ts"] = time.time()
         tmp = LIVE + ".%d.tmp" % os.getpid()
         with open(tmp, "w") as f:
@@ -64,6 +252,8 @@ def _write_live():
 
 def _get():
     global _win
+    if _separate:                  # the window lives in the monitor process, not here
+        return None
     if not active():
         return None
     # ONLY the main process may own a window. If any multiprocessing child ever
@@ -74,7 +264,8 @@ def _get():
         return None
     if _win is None:
         try:
-            progressui = cores.get('progressui')   # an era may override the meter
+            from src.core import cores
+            progressui = cores.get('progressui')   # a target may supply its own meter
             _win = progressui.ProgressWindow()
             if not _win.start():
                 _win = False
@@ -135,6 +326,8 @@ def bar(done, total):
                             % (_state["caption"], done, total, _ema_rate))
     else:
         _state["status"] = "%s   %d/%d" % (_state["caption"], done, total)
+    if _state.get("eta_txt"):                  # session time-left estimate (batch)
+        _state["status"] += "   " + _state["eta_txt"]
     _write_live()
     w = _get()
     if w:
@@ -169,6 +362,13 @@ def next_module(name):
     w = _get()
     if w:
         w.set_next(name)
+
+
+def session_eta(seconds):
+    """Estimated time remaining for the whole batch/tier (shown in the status,
+    alongside the count-up stopwatch). 0/None clears it."""
+    _state["eta_txt"] = ("~%s left" % _fmt_eta(seconds)) if seconds and seconds > 0 else ""
+    _write_live()
 
 
 def modules_left(n):
@@ -243,7 +443,7 @@ def finish(summary, beep=True, **_ignored):
     global _session_t0
     _session_t0 = None                         # next session restarts the stopwatch
     _state.update(active=False, status=summary, summary=summary,
-                  done_event=time.time(), next="", bytes="", left="")
+                  done_event=time.time(), next="", bytes="", left="", eta_txt="")
     _write_live()
     w = _get()
     if w:
@@ -279,8 +479,13 @@ def monitor(sound=True):
     CodeBreaker run's progress live; dings + shows the summary on completion."""
     if sys.platform != "win32":
         print("progress UI requires Windows"); return False
-    progressui = cores.get('progressui')   # an era may override the meter
-    p = progressui.ProgressWindow(caption="CodeBreaker")
+    from src.core import cores
+    progressui = cores.get('progressui')   # a target may supply its own meter
+    try:
+        p = progressui.ProgressWindow(caption="CodeBreaker", monitor_only=True)
+    except TypeError:                               # a target's older meter: no monitor mode
+        from src.core import progressui
+        p = progressui.ProgressWindow(caption="CodeBreaker", monitor_only=True)
     if not p.start():
         return False
     p.set_status("Ready"); p.set_total(1); p.step(0)
@@ -304,6 +509,11 @@ def monitor(sound=True):
             p.set_bytes(st.get("bytes", ""))
             p.set_left(st.get("left", ""))
             p.set_clock(st.get("clock"))
+            if st.get("coverage"):
+                try:
+                    p.set_coverage(st["coverage"])
+                except Exception:
+                    pass
             p.set_working(True)
         elif st and st.get("done_event", 0) > last_done_event:
             last_done_event = st["done_event"]
@@ -323,3 +533,10 @@ def monitor(sound=True):
             p.set_total(1); p.step(0); p.set_error(False); p.set_state("work")
         time.sleep(0.25)
     return True
+
+
+if __name__ == "__main__":         # `python progress.py --monitor` -> the separate window
+    if "--monitor" in sys.argv:
+        monitor(sound="--silent" not in sys.argv)
+    else:
+        print("progress.py: run with --monitor to open the mirroring UI window")
