@@ -34,9 +34,30 @@ import re
 
 from codebreaker.verify import match
 
-MAX_ORDER = 4            # permutations of this many leading locals are tried (n! grows fast)
-MAX_SWAPS = 6            # commutative operators whose operands are tried both ways
-MAX_WORK = 200           # compiles per function, a ceiling on the search
+MAX_LOCALS = 6           # the leading locals whose order and storage are tried
+MAX_SITES = 6            # places in the body each kind of rewrite is tried at
+MAX_WORK = 300           # compiles per function, a ceiling on the search
+BEAM = 3                 # the sources the search goes on from, each round
+PATIENCE = 2             # rounds without a better source before the search stops
+
+_ID = r"(?:[A-Za-z_]\w*|0[xX][0-9a-fA-F]+|\d+)"
+_NAME = r"[A-Za-z_]\w*"
+# an expression that is `a op b` and nothing more: it begins after ( = , ; { or `return`, and
+# ends at ) ; or , -- so no neighbour's precedence can take an operand away
+_PAIR = re.compile(r"(?P<pre>(?:[(,;{]|(?<![=!<>])=)\s*|\breturn\s+)(?P<a>" + _ID + r")\s*(?P<op>==|!=|<=|>=|[-+*&|^<>])\s*(?P<b>"
+                   + _ID + r")(?P<post>\s*[);,])")
+_COMMUTATIVE = {"+": "+", "*": "*", "&": "&", "|": "|", "^": "^", "==": "==", "!=": "!=",
+                "<": ">", ">": "<", "<=": ">=", ">=": "<="}
+# a statement that only steps a variable: x++;  ++x;  x += 1;  x = x + 1;
+_STEP = re.compile(r"(?P<pre>[;{}]\s*|\belse\s+)(?:(?P<x1>" + _NAME + r")\s*(?P<o1>\+\+|--)|(?P<o2>\+\+|--)\s*(?P<x2>"
+                   + _NAME + r")|(?P<x3>" + _NAME + r")\s*(?P<o3>[-+])=\s*1)(?P<post>\s*[;)])")
+# x = x op y;   and   x op= y;
+_LONG = re.compile(r"(?P<pre>[;{}]\s*|\belse\s+)(?P<x>" + _NAME + r")\s*=\s*(?P=x)\s*(?P<op>[-+*&|^])\s*(?P<y>" + _ID
+                   + r")(?P<post>\s*[;)])")
+_SHORT = re.compile(r"(?P<pre>[;{}]\s*|\belse\s+)(?P<x>" + _NAME + r")\s*(?P<op>[-+*&|^])=\s*(?P<y>" + _ID
+                    + r")(?P<post>\s*[;)])")
+_LITERAL = re.compile(r'"(?:\\.|[^"\\\n])*"|\'(?:\\.|[^\'\\\n])*\'|/\*.*?\*/', re.S)
+_DECL = re.compile(r"^[A-Za-z_][\w ]*\**\s*[A-Za-z_]\w*(\s*\[[^\]]*\])?\s*;$")
 
 
 def _split(source):
@@ -48,7 +69,7 @@ def _split(source):
     decls, i = [], 0
     while i < len(lines):
         s = lines[i].strip()
-        if s == "" or re.match(r"^[A-Za-z_][\w ]*\**\s*[A-Za-z_]\w*(\s*\[[^\]]*\])?\s*;$", s):
+        if s == "" or _DECL.match(s):
             if s:
                 decls.append(lines[i])
             i += 1
@@ -57,101 +78,197 @@ def _split(source):
     return head + "{", decls, "\n".join(lines[i:])
 
 
-def _frame(code):
-    """The bytes a function reserves for locals: the N of `sub esp, N` just after the prologue,
-    0 when there is none. `code` is the function's bytes."""
+def _frame(code, bits=32):
+    """The bytes a function reserves for locals: the N of `sub esp, N` (`sub sp, N`) in its
+    prologue, 0 when there is none. `code` is the function's bytes."""
     import capstone
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
-    seen_push = False
-    for _a, _n, mnem, ops in md.disasm_lite(bytes(code[:24]), 0):
-        if mnem == "push" and ops == "ebp":
-            seen_push = True
-        elif mnem == "mov" and ops.replace(" ", "") == "ebp,esp":
-            continue
-        elif mnem == "sub" and ops.startswith("esp,"):
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32 if bits == 32 else capstone.CS_MODE_16)
+    sp = "esp," if bits == 32 else "sp,"
+    for k, (_a, _n, mnem, ops) in enumerate(md.disasm_lite(bytes(code[:32]), 0)):
+        if mnem == "sub" and ops.startswith(sp):
             try:
                 return int(ops.split(",")[1].strip(), 0)
             except ValueError:
                 return 0
-        elif seen_push:
-            return 0
+        if k >= 6 or mnem not in ("push", "mov"):
+            break
     return 0
 
 
-_SWAP = re.compile(r"([A-Za-z_]\w*|\b\d+\b)\s*([-+*&|^]|==|!=)\s*([A-Za-z_]\w*|\b\d+\b)")
-_COMMUTATIVE = {"+", "*", "&", "|", "^", "==", "!="}
+def instructions(built, bits):
+    """A function's code as its instructions, each the bytes of one with the linker's bytes
+    blanked -- what two versions of a function are lined up by."""
+    import capstone
+    code, mask = bytes(built[0]), built[1]
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32 if bits == 32 else capstone.CS_MODE_16)
+    out, at = [], 0
+    while at < len(code):
+        n = 0
+        for a, size, _m, _o in md.disasm_lite(code[at:], at):
+            out.append(bytes(0 if mask[i] else code[i] for i in range(a, a + size)))
+            n = a + size
+        if n <= at:                              # not an instruction: one byte, and on
+            out.append(code[at:at + 1])
+            n = at + 1
+        at = n
+    return out
+
+
+def score(built, original, bits=0, target=None):
+    """How far a compiled function is from the original, smaller the nearer: (the instructions
+    that have no counterpart, the bytes that differ). Bytes alone mislead: one instruction more
+    near the top moves every later byte, and the function looks wholly wrong when it is nearly
+    right. Lined up by instruction, it is one instruction away."""
+    v, d, t, _f = match.distance(built, original)
+    if not d or not bits:
+        return (0 if not d else d, d), (v, d, t)
+    import difflib
+    mine = instructions(built, bits)
+    theirs = target if target is not None else instructions(original, bits)
+    same = sum(b.size for b in difflib.SequenceMatcher(None, mine, theirs, autojunk=False).get_matching_blocks())
+    return (max(len(mine), len(theirs)) - same + 1, d), (v, d, t)
+
+
+def _blank(text):
+    """The text with its strings, characters and comments blanked, the same length: what the
+    rewrites look for their places in, so that none is found inside one."""
+    return _LITERAL.sub(lambda m: " " * len(m.group(0)), text)
+
+
+def _depth(shadow, at):
+    return shadow.count("(", 0, at) - shadow.count(")", 0, at)
+
+
+def _toggle_register(line):
+    s = line.strip()
+    if "[" in s or s.startswith(("static ", "extern ")) or not _DECL.match(s):
+        return None
+    indent = line[:len(line) - len(line.lstrip())]
+    other = s[len("register "):] if s.startswith("register ") else "register " + s
+    if other.split()[-1] in ("register", "int;") and len(other.split()) == 1:
+        return None
+    return indent + other
 
 
 def _knobs(source, target_frame, draft_frame):
     """Yield (name of the knob, rewritten source). Each rewrite preserves what the function does."""
     head, decls, body = _split(source)
+    top = head + ("\n" + "\n".join(decls) if decls else "") + "\n"
     # pad: the original reserves more stack than the draft -- an unused local of the difference
     if target_frame and draft_frame is not None and target_frame > draft_frame:
         gap = target_frame - draft_frame
         pad = "  char codebreaker_unused[%d];" % gap
         yield "pad%d" % gap, head + "\n" + pad + ("\n" + "\n".join(decls) if decls else "") + "\n" + body
-    # order: permutations of the leading locals (the frame is laid out in declaration order)
-    if 2 <= len(decls) <= MAX_ORDER + 4:
-        lead = decls[:MAX_ORDER]
-        for i, perm in enumerate(itertools.permutations(range(len(lead)))):
-            if perm == tuple(range(len(lead))):
-                continue
-            reordered = [lead[k] for k in perm] + decls[len(lead):]
-            yield "order%d" % i, head + "\n" + "\n".join(reordered) + "\n" + body
+    # order: two of the leading locals change places (the frame is laid out in declaration order;
+    # any order is some changes of two, and the search goes on from each)
+    lead = min(len(decls), MAX_LOCALS)
+    for n, (i, j) in enumerate(itertools.combinations(range(lead), 2)):
+        moved = list(decls)
+        moved[i], moved[j] = moved[j], moved[i]
+        if moved != decls:
+            yield "order%d" % n, head + "\n" + "\n".join(moved) + "\n" + body
     # register: a local kept in a register, or not (the compilers of the time did as they were told)
-    for i, d in enumerate(decls[:MAX_ORDER + 2]):
-        s = d.strip()
-        if "[" in s or s.startswith(("static ", "extern ")):
-            continue
-        indent = d[:len(d) - len(d.lstrip())]
-        other = indent + (s[len("register "):] if s.startswith("register ") else "register " + s)
-        if other.strip() in ("int;", "register;"):
-            continue
-        yield "register%d" % i, head + "\n" + "\n".join(decls[:i] + [other] + decls[i + 1:]) + "\n" + body
-    # swap: a commutative operator's operands the other way round
-    sites = [m for m in _SWAP.finditer(body) if m.group(2) in _COMMUTATIVE][:MAX_SWAPS]
-    for j, m in enumerate(sites):
-        swapped = body[:m.start()] + "%s %s %s" % (m.group(3), m.group(2), m.group(1)) + body[m.end():]
-        yield "swap%d" % j, head + ("\n" + "\n".join(decls) if decls else "") + "\n" + swapped
+    for i, d in enumerate(decls[:MAX_LOCALS]):
+        other = _toggle_register(d)
+        if other:
+            yield "register%d" % i, head + "\n" + "\n".join(decls[:i] + [other] + decls[i + 1:]) + "\n" + body
+    # regparam: the same for an argument, where each is declared on a line of its own (f(a) int a; {)
+    close = head.rfind(")")
+    if close >= 0:
+        lines = head[close + 1:].split("\n")
+        for i, d in enumerate(lines):
+            other = _toggle_register(d) if d.strip() else None
+            if other:
+                yield "regparam%d" % i, head[:close + 1] + "\n".join(lines[:i] + [other] + lines[i + 1:]) + (
+                    "\n" + "\n".join(decls) if decls else "") + "\n" + body
+    shadow = _blank(body)
+    # swap: the operands of a commutative operator the other way round; a < b as b > a
+    sites = [m for m in _PAIR.finditer(shadow) if m.group("op") in _COMMUTATIVE and m.group("a") != m.group("b")]
+    for j, m in enumerate(sites[:MAX_SITES]):
+        new = "%s%s %s %s%s" % (m.group("pre"), m.group("b"), _COMMUTATIVE[m.group("op")], m.group("a"), m.group("post"))
+        yield "swap%d" % j, top + body[:m.start()] + new + body[m.end():]
+    # step: the ways of writing a statement that adds or takes one
+    n = 0
+    for m in _STEP.finditer(shadow):
+        if n >= MAX_SITES:
+            break
+        d = _depth(shadow, m.start())
+        if (m.group("post").strip() == ";" and d != 0) or (m.group("post").strip() == ")" and d != 1):
+            continue                             # the condition of a for: its value is used
+        x = m.group("x1") or m.group("x2") or m.group("x3")
+        o = m.group("o1") or m.group("o2") or m.group("o3")
+        sign = o[0]
+        forms = ["%s%s%s" % (x, sign, sign), "%s%s%s" % (sign, sign, x), "%s %s= 1" % (x, sign)]
+        mine = 0 if m.group("x1") else 1 if m.group("x2") else 2
+        for k, f in enumerate(forms):
+            if k != mine:
+                yield "step%d.%d" % (n, k), top + body[:m.start()] + m.group("pre") + f + m.group("post") + body[m.end():]
+        n += 1
+    # assign: x = x + y  and  x += y
+    n = 0
+    for rx, form in ((_LONG, "%(x)s %(op)s= %(y)s"), (_SHORT, "%(x)s = %(x)s %(op)s %(y)s")):
+        for m in rx.finditer(shadow):
+            if n >= MAX_SITES:
+                break
+            d = _depth(shadow, m.start())
+            if (m.group("post").strip() == ";" and d != 0) or (m.group("post").strip() == ")" and d != 1):
+                continue
+            yield "assign%d" % n, top + body[:m.start()] + m.group("pre") + form % m.groupdict() + m.group("post") + body[m.end():]
+            n += 1
 
 
 def repair_function(cl, env, header, source, name, original, work, flags):
     """repair() with Microsoft's 32-bit compiler of 1994 (verify/match.py)."""
     return repair(lambda text: match.compile_function(cl, env, header, text, name, work, flags),
-                  source, original, frame=_frame)
+                  source, original, bits=32)
 
 
-def repair(compile, source, original, frame=None):
+def repair(compile, source, original, bits=0):
     """Search behaviour-preserving rewrites of one function's source for the bytes closest to the
     original's. `compile` is any period compiler: source text -> (bytes, mask) or None
-    (build/period.py). `frame` reads the size of the locals out of a function's bytes, for the
-    pad knob; without it that knob is not tried. -> {source, verdict, distance, total, knobs,
-    tried} for the best found, or None when the starting source does not compile."""
+    (build/period.py). `bits` (16 or 32) is the processor mode of the code: with it the search
+    lines the two up by instruction and reads the size of the locals; without it, it has the
+    bytes alone to go by. -> {source, verdict, distance, total, knobs, tried} for the best
+    found, or None when the starting source does not compile.
+
+    The search keeps the BEAM nearest sources and goes on from all of them: the first step
+    toward the original is not always one that brings the bytes nearer by itself."""
     built = compile(source)
     if built is None:
         return None
-    verdict, dist, total, _first = match.distance(built, original)
-    best = {"source": source, "verdict": verdict, "distance": dist, "total": total, "knobs": "", "tried": 1}
-    target_frame = frame(original[0]) if frame else 0
-    improved, tried = True, 1
-    while improved and dist and tried < MAX_WORK:
-        improved = False
-        draft_frame = frame(built[0]) if frame else None
-        for knob, variant in _knobs(best["source"], target_frame, draft_frame):
-            if tried >= MAX_WORK:
+    target = instructions(original, bits) if bits else None
+    target_frame = _frame(original[0], bits) if bits else 0
+    s, (v, d, t) = score(built, original, bits, target)
+    best = (s, {"source": source, "verdict": v, "distance": d, "total": t, "knobs": ""})
+    frontier = [(s, source, built, "")]
+    seen, tried, stale = {source}, 1, 0
+    while best[0][1] and tried < MAX_WORK and stale < PATIENCE and frontier:
+        found = []
+        for _s, text, was, path in frontier:
+            draft_frame = _frame(was[0], bits) if bits else None
+            for knob, variant in _knobs(text, target_frame, draft_frame):
+                if variant in seen or tried >= MAX_WORK:
+                    continue
+                seen.add(variant)
+                tried += 1
+                now = compile(variant)
+                if now is None:
+                    continue
+                s, (v, d, t) = score(now, original, bits, target)
+                path2 = (path + "," + knob).strip(",")
+                found.append((s, variant, now, path2))
+                if s < best[0]:
+                    best, stale = (s, {"source": variant, "verdict": v, "distance": d, "total": t, "knobs": path2}), -1
+                if not d:
+                    break
+            if not best[0][1]:
                 break
-            tried += 1
-            now = compile(variant)
-            if now is None:
-                continue
-            v, d, t, _f = match.distance(now, original)
-            if d < dist:
-                dist, built, best = d, now, {"source": variant, "verdict": v, "distance": d, "total": t,
-                                             "knobs": (best["knobs"] + "," + knob).strip(","), "tried": tried}
-                improved = True
-                break                # greedy: take the first improvement and search again from it
-    best["tried"] = tried
-    return best
+        stale += 1
+        found.sort(key=lambda x: (x[0], len(x[3])))
+        frontier = found[:BEAM]
+    out = best[1]
+    out["tried"] = tried
+    return out
 
 
 def truth(profile, limit=0, log=print):
@@ -178,7 +295,7 @@ def truth(profile, limit=0, log=print):
             if b is None or match.distance(b, u.original)[1] == 0:
                 continue                       # the compiler gives the same bytes either way
             knocked += 1
-            r = repair(compile, moved, u.original)
+            r = repair(compile, moved, u.original, bits=getattr(profile, 'bits', 0))
             ok = bool(r) and r["distance"] == 0
             back += ok
             if log and not ok:

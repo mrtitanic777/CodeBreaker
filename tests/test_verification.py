@@ -119,7 +119,7 @@ def test_repair_search_with_any_compiler():
     r = repair.repair(fake, moved, fake(authored))
     assert r["distance"] == 0 and r["knobs"].startswith("order"), r
     kinds = set(k.rstrip("0123456789") for k, _s in repair._knobs(authored, 0, None))
-    assert kinds == {"order", "register"}, kinds
+    assert kinds == {"order", "register", "regparam"}, kinds
 
 
 def test_period_compiler_gives_the_original_back():

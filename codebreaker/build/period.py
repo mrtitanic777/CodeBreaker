@@ -37,6 +37,7 @@ class Unit(object):
 class XenixC(object):
     """The XENIX C compiler, run by the project that reconstructed LINK and LIB with it."""
     name = "xenix-c"
+    bits = 16
 
     def __init__(self, tools, target="link240"):
         self.tools, self.target = tools, target
