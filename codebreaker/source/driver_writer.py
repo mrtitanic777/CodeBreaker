@@ -61,6 +61,8 @@ class _Object(object):
         self.fix = {}                    # offset of a patched field -> (kind, target object, target offset)
         self.ins = {}                    # offset -> decoded instruction (code only)
         self.services = {}               # offset of an `int 20h` -> (device, service, is a jump)
+        self.raw = bytes(self.data)
+        self.memo = {}                   # offset -> what decoding there gave (kept, so nothing is decoded twice)
 
 
 def _reads_as_text(found):
@@ -68,15 +70,6 @@ def _reads_as_text(found):
     object, and letters decode as instructions)"""
     data = b"".join(found[a][0] for a in sorted(found))
     return len(data) >= 6 and sum(1 for b in data if 0x20 <= b < 0x7F or b in (0, 10, 13)) >= 0.85 * len(data)
-
-
-def _signature(ins):
-    """What makes two instructions the same KIND to an assembler: prefixes, opcode, and the
-    form of the operand byte (register or memory, with or without an index byte)."""
-    modrm = ins.modrm
-    form = "%d%s" % (modrm >> 6, "s" if modrm & 7 == 4 and modrm >> 6 != 3 else "d" if modrm >> 6 == 0 and modrm & 7 == 5 else "")
-    return "%s|%s|%s|%d" % (bytes(x for x in ins.prefix if x).hex(), bytes(x for x in ins.opcode if x).hex() or "00",
-                            form if ins.modrm or len(ins.bytes) > 1 else "", len(ins.operands))
 
 
 class Writer(object):
@@ -185,46 +178,55 @@ class Writer(object):
                         again = True
             ob.labels -= {a + k for a in ob.fix for k in (1, 2, 3)}
 
-    def _follow(self, md, ob, start):
-        """Decode from `start` until control cannot continue. -> ({offset: (bytes, mnemonic,
-        operands, signature, branch target or None)}, [targets in this object], reached a clean end)"""
-        found, more, a = {}, [], start
-        data = bytes(ob.data)
-        while 0 <= a < ob.size and a not in ob.ins and a not in found:
-            if data[a:a + 2] == b"\xCD\x20" and a + 6 <= ob.size and not any(x in ob.fix for x in range(a, a + 6)):
-                svc, dev = struct.unpack_from("<HH", data, a + 2)
-                if 0 < dev < 0x8000 and (svc & 0x7FFF) < 0x800:
-                    ob.services[a] = (dev, svc & 0x7FFF, bool(svc & 0x8000))
-                    found[a] = (data[a:a + 6], "service", "", "service", None)
-                    if svc & 0x8000:                         # the jump form does not come back
-                        return found, more, True
-                    a += 6
-                    continue
+    def _one(self, md, ob, a):
+        """The instruction at `a`, decoded once: ((bytes, mnemonic, operands, "", branch target
+        or None), where control goes on: the next offset, or None when it does not) -- or None
+        when nothing can be decoded there."""
+        hit = ob.memo.get(a, 0)
+        if hit != 0:
+            return hit
+        data, out = ob.raw, None
+        if data[a:a + 2] == b"\xCD\x20" and a + 6 <= ob.size and not any(x in ob.fix for x in range(a, a + 6)):
+            svc, dev = struct.unpack_from("<HH", data, a + 2)
+            if 0 < dev < 0x8000 and (svc & 0x7FFF) < 0x800:
+                ob.services[a] = (dev, svc & 0x7FFF, bool(svc & 0x8000))
+                out = ((data[a:a + 6], "service", "", "service", None), None if svc & 0x8000 else a + 6)
+        if out is None:
             # patched fields read as a marker, so the operand they belong to can be recognised
             window = bytearray(data[a:a + 16])
-            for x in range(a, min(a + 16, ob.size)):
-                if x in ob.fix and x + 4 <= a + 16:
+            for x in range(a, min(a + 13, ob.size)):
+                if x in ob.fix:
                     struct.pack_into("<I", window, x - a, _MARK + (x & 0xFFFFF))
             ins = next(md.disasm(bytes(window), a), None)
-            if ins is None or a + ins.size > ob.size:
-                return found, more, False
-            inside = [x for x in range(a, a + ins.size) if x in ob.fix]
-            if any(x + 4 > a + ins.size for x in inside) or any((x - 3 <= y < x) for x in range(a, a + ins.size)
-                                                                for y in ob.fix if y < a):
-                return found, more, False                    # a patched field straddles the instruction
-            target = None
-            groups = set(ins.groups)
-            is_branch = capstone.x86.X86_GRP_JUMP in groups or capstone.x86.X86_GRP_CALL in groups
-            if is_branch and ins.operands and ins.operands[0].type == capstone.x86.X86_OP_IMM and not inside:
-                target = ins.operands[0].imm & 0xFFFFFFFF
-                if target < ob.size:
-                    more.append(target)
-                else:
+            if ins is not None and a + ins.size <= ob.size:
+                inside = [x for x in range(a, a + ins.size) if x in ob.fix]
+                if not (any(x + 4 > a + ins.size for x in inside) or any(a - k in ob.fix for k in (1, 2, 3))):
                     target = None
-            found[a] = (data[a:a + ins.size], ins.mnemonic, ins.op_str, _signature(ins), target)
-            if ins.mnemonic in ("ret", "retn", "retf", "iretd", "iret", "jmp", "hlt"):
+                    groups = ins.groups
+                    if (capstone.x86.X86_GRP_JUMP in groups or capstone.x86.X86_GRP_CALL in groups) and ins.operands \
+                            and ins.operands[0].type == capstone.x86.X86_OP_IMM and not inside:
+                        target = ins.operands[0].imm & 0xFFFFFFFF
+                        if target >= ob.size:
+                            target = None
+                    ends = ins.mnemonic in ("ret", "retn", "retf", "iretd", "iret", "jmp", "hlt")
+                    out = ((data[a:a + ins.size], ins.mnemonic, ins.op_str, "", target), None if ends else a + ins.size)
+        ob.memo[a] = out
+        return out
+
+    def _follow(self, md, ob, start):
+        """Decode from `start` until control cannot continue. -> ({offset: instruction},
+        [targets in this object], reached a clean end)"""
+        found, more, a = {}, [], start
+        while 0 <= a < ob.size and a not in ob.ins and a not in found:
+            one = self._one(md, ob, a)
+            if one is None:
+                return found, more, False
+            found[a] = one[0]
+            if one[0][4] is not None:
+                more.append(one[0][4])
+            if one[1] is None:
                 return found, more, True
-            a += ins.size
+            a = one[1]
         return found, more, True
 
     # -- writing -------------------------------------------------------------------------------
