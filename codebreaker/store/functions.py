@@ -57,6 +57,11 @@ CREATE TABLE IF NOT EXISTS body(
     PRIMARY KEY (module, addr));
 CREATE INDEX IF NOT EXISTS body_hash ON body(hash);
 CREATE TABLE IF NOT EXISTS body_name(hash TEXT PRIMARY KEY, name TEXT, source TEXT, ts REAL);
+CREATE TABLE IF NOT EXISTS variant(
+    id INTEGER PRIMARY KEY, function INTEGER NOT NULL, compiler TEXT NOT NULL, source TEXT,
+    parent INTEGER, knobs TEXT, distance INTEGER, total INTEGER, verdict TEXT, behaves TEXT, ts REAL,
+    UNIQUE(function, compiler, knobs));
+CREATE INDEX IF NOT EXISTS variant_function ON variant(function);
 """
 
 # How good a result is, best first. A candidate's class is what the module writer prints.
@@ -304,6 +309,66 @@ class FunctionStore(object):
             "SELECT COUNT(*), COALESCE(SUM(n), 0) FROM (SELECT COUNT(*) n FROM body GROUP BY hash "
             "HAVING COUNT(DISTINCT module) > 1)").fetchone()
         return total, distinct, shared, copies
+
+    # ---- byte-match variants (the repair search) -----------------------------------------
+    # The behavioural pipeline (candidate/verdict) judges whether a reconstruction MEANS the same.
+    # The repair search is a different question: compiled with a compiler of the original's time,
+    # how close are its BYTES to the original's? It explores many source variants of one function,
+    # each a small change (a "knob": a declaration order, a loop form, an unused local, ...) from a
+    # parent, and keeps those that shrink the byte distance while still behaving alike. Those live
+    # here, apart from the behavioural tables, because the question and the compiler are different.
+    #   distance  bytes that differ outside the places the linker fills in; 0 is byte-identical
+    #   verdict   "identical" | "same size" | "different"
+    #   behaves   the behavioural verdict of this exact source, so a variant is never kept if the
+    #             change broke the meaning ("equivalent"/"consistent" keep; others are recorded,
+    #             not used)
+    def record_variant(self, module, addr, compiler, source, distance, total, verdict,
+                       knobs="", parent=None, behaves=""):
+        """Record (or update) one variant of a function for a period compiler. -> its id."""
+        now = time.time()
+        with self.db:
+            f = self._function(module, addr)
+            self.db.execute(
+                "INSERT INTO variant(function, compiler, source, parent, knobs, distance, total, verdict, "
+                "behaves, ts) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(function, compiler, knobs) DO UPDATE SET "
+                "source=excluded.source, parent=excluded.parent, distance=excluded.distance, "
+                "total=excluded.total, verdict=excluded.verdict, behaves=excluded.behaves, ts=excluded.ts",
+                (f, compiler, source, parent, knobs, distance, total, verdict, behaves, now))
+            return self.db.execute("SELECT id FROM variant WHERE function=? AND compiler=? AND knobs=?",
+                                   (f, compiler, knobs)).fetchone()[0]
+
+    _VROW = ("addr", "compiler", "source", "parent", "knobs", "distance", "total", "verdict", "behaves")
+
+    def variants(self, module, compiler=None):
+        """[row] of every recorded variant of a module's functions (optionally one compiler)."""
+        q = ("SELECT f.addr, v.compiler, v.source, v.parent, v.knobs, v.distance, v.total, v.verdict, "
+             "v.behaves FROM variant v JOIN function f ON f.id=v.function WHERE f.module=?")
+        args = [module]
+        if compiler:
+            q += " AND v.compiler=?"
+            args.append(compiler)
+        return [dict(zip(self._VROW, r)) for r in self.db.execute(q, args)]
+
+    def best_variant(self, module, compiler):
+        """{addr: the closest variant row} -- the one with the smallest byte distance that still
+        behaves alike (or, if none behaves, the smallest distance), per function."""
+        out = {}
+        for r in self.variants(module, compiler):
+            ok = r["behaves"] in ("equivalent", "consistent", "")
+            key = (0 if ok else 1, r["distance"] if r["distance"] is not None else 1 << 30)
+            if r["addr"] not in out or key < out[r["addr"]]["_key"]:
+                r["_key"] = key
+                out[r["addr"]] = r
+        for r in out.values():
+            del r["_key"]
+        return out
+
+    def match_tally(self, module, compiler):
+        """(functions with a variant, identical, same size, different) for one compiler."""
+        best = self.best_variant(module, compiler)
+        ident = sum(1 for r in best.values() if r["verdict"] == "identical")
+        same = sum(1 for r in best.values() if r["verdict"] == "same size")
+        return len(best), ident, same, len(best) - ident - same
 
     def modules(self, profile=None):
         """[(sha, name)] of modules, limited to those judged under `profile` when given."""

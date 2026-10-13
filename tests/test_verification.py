@@ -74,8 +74,26 @@ def test_function_store():
     assert [n for _s, n in fs.modules("p1")] == ["a.dll"]
 
 
+def test_variant_store():
+    """The repair search's many variants per function, kept apart from the behavioural tables."""
+    from codebreaker.store import functions as F
+    fs = F.open(os.path.join(tempfile.mkdtemp(), "functions.sqlite"))
+    fs.add_module("m1", "A.DLL", "x", "pe")
+    fs.add_functions("m1", ["10", "20"])
+    fs.record_variant("m1", "10", "msvc", "int f(){return 0;}", 14, 46, "different", knobs="", behaves="equivalent")
+    fs.record_variant("m1", "10", "msvc", "int f(){int x;return 0;}", 2, 46, "same size", knobs="pad",
+                      parent=1, behaves="equivalent")
+    fs.record_variant("m1", "10", "msvc", "int f(){return 1;}", 0, 46, "identical", knobs="bad", behaves="divergent")
+    fs.record_variant("m1", "20", "msvc", "int g(){}", 0, 8, "identical", knobs="", behaves="equivalent")
+    best = fs.best_variant("m1", "msvc")
+    # a divergent variant is never chosen even when its bytes are closer
+    assert best["10"]["knobs"] == "pad" and best["10"]["distance"] == 2
+    assert best["20"]["verdict"] == "identical"
+    assert fs.match_tally("m1", "msvc") == (2, 1, 1, 0)   # 2 functions, 1 identical, 1 same size, 0 different
+
+
 def main():
-    for fn in (test_function_store, test_reconstruct_is_incremental):
+    for fn in (test_function_store, test_variant_store, test_reconstruct_is_incremental):
         try:
             fn()
             RESULTS.append((fn.__name__, "PASS", ""))
