@@ -180,6 +180,47 @@ def _compare_as_numbers(t):
     return _COMPARE.sub(fix, t)
 
 
+def _fit_calls(out, order):
+    """A call that passes another number of arguments than the function is declared with is made
+    through a pointer with the argument list left open. The decompiler recovers each call on the
+    evidence at that call, and sometimes sees fewer or more arguments than the definition has;
+    the compiler refuses such a call outright, and the whole calling function was lost. Written
+    this way the call compiles as it was recovered, and whether that is right is for the judge."""
+    takes = {}
+    for n in order:
+        head = out[n].split("{", 1)[0]
+        if "__cdecl" in head or "(" not in head:
+            continue
+        inside = head[head.index("(") + 1:head.rindex(")")].strip() if ")" in head else ""
+        takes[n] = 0 if inside in ("", "void") else inside.count(",") + 1
+    if not takes:
+        return out
+    call = re.compile(r"(?<![\w.>])(%s)\(" % "|".join(re.escape(n) for n in sorted(takes, key=len, reverse=True)))
+    fitted = {}
+    for n in order:
+        head, brace, body = out[n].partition("{")
+        pieces, at = [], 0
+        for m in call.finditer(body):
+            depth, i, commas, empty = 1, m.end(), 0, True
+            while i < len(body) and depth:
+                c = body[i]
+                if c in "([":
+                    depth += 1
+                elif c in ")]":
+                    depth -= 1
+                elif c == "," and depth == 1:
+                    commas += 1
+                if depth and not c.isspace():
+                    empty = False
+                i += 1
+            given = 0 if empty else commas + 1
+            if depth == 0 and given != takes[m.group(1)]:
+                pieces.append(body[at:m.start()] + "((int4 (*)())%s)(" % m.group(1))
+                at = m.end()
+        fitted[n] = head + brace + "".join(pieces) + body[at:] if pieces else out[n]
+    return fitted
+
+
 def compilable32(module_path, funcs, outdir):
     """-> (preamble, {name: text}, [names], {va: name}, [import names used]) for a whole-module build:
     the core's output with its base types defined, its globals bound to the original's addresses,
@@ -242,6 +283,9 @@ def compilable32(module_path, funcs, outdir):
         if pre[0] == "p" and len(pre) > 1 and ty != "code *":
             ty = _ram_type(pre, size, False)             # a pointer, by the decompiler's own naming (piRam: int *)
         macros.append("#define %sRam%s (*(%s *)0x%s)" % (pre, addr, ty, addr))
+        if re.search(r"(?<![A-Za-z0-9])_%sRam%s\b" % (pre, addr), text):
+            # (the core's name for the same place read at another width: `_uRam0040c000`)
+            macros.append("#define _%sRam%s (*(%s *)0x%s)" % (pre, addr, ty, addr))
     called = set(re.findall(r"\b([A-Za-z_]\w*)\s*\(", text))
     used = sorted(n for n in called if n in imports and n not in out)
     decls = []
@@ -260,7 +304,20 @@ def compilable32(module_path, funcs, outdir):
             # states their size in its return, and keeps its full declaration.)
             head = head[:head.index("(")] + "()"
         decls.append(head + ";")
-    preamble = _TYPES + _HELPERS + "\n".join(decls) + "\n" + "\n".join(macros) + "\n"
+    out = _fit_calls(out, order)
+    # the core's names for values of sizes C has no type for (5 bytes of a 64-bit product, 10 of a
+    # floating-point register): each is given the next type that holds it. One left undeclared
+    # in a function's heading broke the header, and with it every function of the module.
+    odd = []
+    for name in sorted(set(re.findall(r"\b(unk(?:byte|int|uint)\d+|u?int[3567]|xunknown[3567])\b",
+                                      text + "\n".join(decls)))):
+        if re.search(r"\b%s;" % name, _TYPES):
+            continue
+        size = int(re.search(r"\d+$", name).group(0))
+        signed = name.startswith(("unkint", "int"))
+        odd.append("typedef %s %s;" % ("long double" if size > 8 else ("long long" if size > 4 else "int") if signed
+                                       else "unsigned long long" if size > 4 else "unsigned int", name))
+    preamble = _TYPES + "\n".join(odd) + "\n" + _HELPERS + "\n".join(decls) + "\n" + "\n".join(macros) + "\n"
     from codebreaker.decompile import struct_text
     preamble, out = struct_text.apply(module_path, preamble, out, by_va)       # `p->field` for `*(T *)(p + N)`
     return preamble, out, order, by_va, used
