@@ -92,8 +92,25 @@ def test_variant_store():
     assert fs.match_tally("m1", "msvc") == (2, 1, 1, 0)   # 2 functions, 1 identical, 1 same size, 0 different
 
 
+def test_repair_knobs_preserve_meaning():
+    """The repair knobs are behaviour-preserving source rewrites, and the distance measure ranks
+    a right-length near-match ahead of a wrong-length one and ignores linker-filled bytes."""
+    from codebreaker.verify import repair, match
+    src = "int f(int a, int b){\n  int x;\n  int y;\n  return a + b;\n}"
+    knobs = dict(repair._knobs(src, 16, 4))
+    assert any(k.startswith("pad") for k in knobs)       # the original reserves 16, the draft 4
+    assert any(k.startswith("order") for k in knobs)     # two locals -> a reordering
+    assert "b + a" in next(v for k, v in knobs.items() if k.startswith("swap"))
+    assert "char codebreaker_unused[12]" in knobs[next(k for k in knobs if k.startswith("pad"))]
+    assert match.distance((b"\x55\x8b\xec\xc3", bytes(4)), (b"\x55\x8b\xec\xc3", bytes(4)))[:2] == ("identical", 0)
+    assert match.distance((b"\x55\x8b\xec\x90", bytes(4)), (b"\x55\x8b\xec\xc3", bytes(4)))[:2] == ("same size", 1)
+    masked = b"\x00\x01\x01\x01\x01"                      # a 4-byte call displacement, ignored
+    assert match.distance((b"\xe8\x11\x22\x33\x44", masked), (b"\xe8\x99\x88\x77\x66", masked))[1] == 0
+
+
 def main():
-    for fn in (test_function_store, test_variant_store, test_reconstruct_is_incremental):
+    for fn in (test_function_store, test_variant_store, test_repair_knobs_preserve_meaning,
+               test_reconstruct_is_incremental):
         try:
             fn()
             RESULTS.append((fn.__name__, "PASS", ""))

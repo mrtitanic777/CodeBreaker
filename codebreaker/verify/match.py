@@ -136,6 +136,55 @@ def compare(built, original):
     return ("identical" if same == len(free) else "same size"), (same / len(free) if free else 1.0)
 
 
+def distance(built, original):
+    """How far a compiled function's bytes are from the original's, outside the places the linker
+    fills in. -> (verdict, number of bytes that differ, total bytes compared, first differing
+    offset or -1). When the lengths differ the whole tail counts as differing, so a longer or
+    shorter function is always farther than one of the right length."""
+    (a, ma), (b, mb) = _trim(*built), original
+    n = min(len(a), len(b))
+    diff = first = 0
+    saw = False
+    for i in range(n):
+        if ma[i] or mb[i]:
+            continue
+        if a[i] != b[i]:
+            diff += 1
+            if not saw:
+                first, saw = i, True
+    diff += abs(len(a) - len(b))
+    verdict = "identical" if diff == 0 else "same size" if len(a) == len(b) else "different"
+    return verdict, diff, max(len(a), len(b)), (first if saw else (n if len(a) != len(b) else -1))
+
+
+def compile_function(cl, env, header, source, name, work, flags):
+    """Compile one function's C with the period compiler. -> (bytes, mask) of the function, or
+    None when it does not compile. `header` is the shared types/declarations."""
+    os.makedirs(work, exist_ok=True)
+    with open(os.path.join(work, "m.h"), "w", newline="\n", encoding="utf-8") as f:
+        f.write(header.replace("unsigned long long", "unsigned __int64").replace("long long", "__int64"))
+    stem = "one"
+    for ext in (".obj", ".c"):
+        try:
+            os.remove(os.path.join(work, stem + ext))
+        except OSError:
+            pass
+    with open(os.path.join(work, stem + ".c"), "w", newline="\n", encoding="utf-8") as f:
+        f.write('#include "m.h"\n\n' + source + "\n")
+    r = subprocess.run([cl, "/nologo", "/c", "/W0"] + flags.split() + [stem + ".c"], cwd=work, env=env,
+                       capture_output=True, text=True, errors="replace", timeout=300)
+    if r.returncode or not os.path.isfile(os.path.join(work, stem + ".obj")):
+        return None
+    funcs = object_functions(open(os.path.join(work, stem + ".obj"), "rb").read())
+    return next((v for k, v in funcs.items() if k.lstrip("_@").split("@")[0] == name), None) or \
+        (next(iter(funcs.values())) if len(funcs) == 1 else None)
+
+
+def compiler_env(cl):
+    return dict(os.environ, PATH=os.path.dirname(cl) + os.pathsep + os.environ.get("PATH", ""),
+                INCLUDE=os.path.join(os.path.dirname(os.path.dirname(cl)), "INCLUDE"))
+
+
 def run(module_path, flags, work, jobs=4):
     """Compile every reconstructed function of a module with the period compiler and compare.
     -> {function name: (verdict, share, compiled size, original size)}; a function the compiler

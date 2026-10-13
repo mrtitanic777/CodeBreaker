@@ -7,6 +7,7 @@
     decompile <name> [--out FILE]   decompile any module (32-bit, 16-bit, PowerPC) to C; nothing is built
     measure <name>                  reconstruct and judge one module; writes nothing to the tree
     match <module> [--try]          optional: does a period compiler give the original's bytes back?
+    repair <module>                 move each function toward the authored bytes (behaviour-preserving)
     names <module>                  every function and import with its best name and where it came from
     identify <module>               runtime-library functions of a module, and what built it
     demangle <name>                 a decorated C++ name as its declaration
@@ -45,6 +46,7 @@ COMMANDS = {
     "sweep": ("codebreaker.verify.sweep", []),
     "measure": ("codebreaker.verify.measure", []),
     "match": ("codebreaker.verify.match", []),
+    "repair": ("codebreaker.verify.repair", []),
     "decompile": ("codebreaker.decompile.decompiler", []),
     "names": ("codebreaker.symbols.names", []),
     "identify": ("codebreaker.symbols.runtime_library", []),
