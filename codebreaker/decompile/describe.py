@@ -156,8 +156,12 @@ def describe32(module_path, funcs, outdir):
                 lines.append("I\t%x\t%s\t%d" % (slot, real, -1 if pop is None else pop))
                 numbered[real] = (stem, number, pop)
             else:
-                lines.append("I\t%x\t%s\t-1" % (slot, _ident("%s_ord_%s" % (stem, (name or "#0")[1:]))))
-                numbered[_ident("%s_ord_%s" % (stem, (name or "#0")[1:]))] = (stem, number, None)
+                # no name for it -- but the module that exports it still says how many bytes of
+                # arguments it removes, and without that the call is recovered with none
+                pop = api_stack.stack_bytes(stem, name) if name else None
+                lines.append("I\t%x\t%s\t%d" % (slot, _ident("%s_ord_%s" % (stem, (name or "#0")[1:])),
+                                                -1 if pop is None else pop))
+                numbered[_ident("%s_ord_%s" % (stem, (name or "#0")[1:]))] = (stem, number, pop)
             continue
         pop = api_stack.stack_bytes(stem, name) if x86 else None
         lines.append("I\t%x\t%s\t%d" % (slot, _ident(name), -1 if pop is None else pop))
