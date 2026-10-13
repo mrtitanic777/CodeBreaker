@@ -79,6 +79,47 @@ _HELPERS = """
 _BY_SIZE = {1: "uint1", 2: "uint2", 4: "uint4", 8: "uint8"}
 
 
+def _more_helpers(have):
+    """The joins, pieces and widenings the core writes for every pair of sizes up to 8 bytes
+    (CONCAT35, SUB86, ZEXT38 ...), beyond the ones spelled out above; and the processor's
+    floating-point operations it writes by name. A helper that was missing was an undefined
+    function: the call went nowhere and the function calling it was counted as wrong."""
+    def kind(n, signed=False):
+        return ("int%d" if signed else "uint%d") % (1 if n == 1 else 2 if n == 2 else 4 if n <= 4 else 8)
+
+    def mask(n):
+        return "0x%sULL" % ("FF" * n)
+    out = []
+    for a in range(1, 8):
+        for b in range(1, 9 - a):
+            if "CONCAT%d%d(" % (a, b) not in have:
+                out.append("#define CONCAT%d%d(a,b) ((%s)((((uint8)(a) & %s) << %d) | ((uint8)(b) & %s)))" % (
+                    a, b, kind(a + b), mask(a), 8 * b, mask(b)))
+    for a in range(2, 9):
+        for b in range(1, a):
+            if "SUB%d%d(" % (a, b) not in have:
+                out.append("#define SUB%d%d(x,n) ((%s)((((uint8)(x) & %s) >> (8 * (n))) & %s))" % (
+                    a, b, kind(b), mask(a), mask(b)))
+            if "ZEXT%d%d(" % (b, a) not in have:
+                out.append("#define ZEXT%d%d(x) ((%s)((uint8)(x) & %s))" % (b, a, kind(a), mask(b)))
+            if "SEXT%d%d(" % (b, a) not in have and b in (1, 2, 4):
+                out.append("#define SEXT%d%d(x) ((%s)(%s)(x))" % (b, a, kind(a, True), kind(b, True)))
+    out += ["double sqrt(double); double sin(double); double cos(double); double tan(double);",
+            "double atan2(double, double); double pow(double, double); double ldexp(double, int);",
+            "double log(double); double floor(double); double fmod(double, double);",
+            "static double codebreaker_round(double x) { double f = floor(x), d = x - f;",
+            "  return (d > 0.5 || (d == 0.5 && fmod(f, 2.0) != 0)) ? f + 1 : f; }",
+            "#define SQRT(x) sqrt((double)(x))", "#define ABS(x) ((x) < 0 ? -(x) : (x))",
+            "#define NAN(x) ((x) != (x))", "#define ROUND(x) codebreaker_round((double)(x))",
+            "#define fsin(x) sin((double)(x))", "#define fcos(x) cos((double)(x))", "#define fptan(x) tan((double)(x))",
+            "#define fpatan(a,b) atan2((double)(a), (double)(b))", "#define f2xm1(x) (pow(2.0, (double)(x)) - 1.0)",
+            "#define fscale(a,b) ldexp((double)(a), (int)(b))", "#define log2(x) (log((double)(x)) / 0.6931471805599453)"]
+    return "\n".join(out) + "\n"
+
+
+_X86_HELPERS = _more_helpers(_HELPERS)
+
+
 _LOCAL = re.compile(r"(?m)^  ([A-Za-z_][\w ]*?(?:\s*\*+\s*|\s))([a-z]+Stack_([0-9a-f]+))(?: \[(\d+)\])?;[ \t]*$")
 
 
@@ -317,7 +358,7 @@ def compilable32(module_path, funcs, outdir):
         signed = name.startswith(("unkint", "int"))
         odd.append("typedef %s %s;" % ("long double" if size > 8 else ("long long" if size > 4 else "int") if signed
                                        else "unsigned long long" if size > 4 else "unsigned int", name))
-    preamble = _TYPES + "\n".join(odd) + "\n" + _HELPERS + "\n".join(decls) + "\n" + "\n".join(macros) + "\n"
+    preamble = _TYPES + "\n".join(odd) + "\n" + _HELPERS + _X86_HELPERS + "\n".join(decls) + "\n" + "\n".join(macros) + "\n"
     from codebreaker.decompile import struct_text
     preamble, out = struct_text.apply(module_path, preamble, out, by_va)       # `p->field` for `*(T *)(p + N)`
     return preamble, out, order, by_va, used

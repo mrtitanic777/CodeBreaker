@@ -111,6 +111,9 @@ def compile_all(cc, cflags, env, header, texts, order, outdir, jobs=None, more=N
     return stems, dropped
 
 
+_LINKED = {}                     # build folder -> what the linker said last
+
+
 def _link(wlink, env, outdir, lines):
     with open(os.path.join(outdir, "m.lnk"), "w", newline="\n") as f:
         f.write("\n".join(lines) + "\n")
@@ -122,6 +125,7 @@ def _link(wlink, env, outdir, lines):
     r = subprocess.run([wlink, "@m.lnk"], cwd=outdir, env=env, capture_output=True, text=True,
                        errors="replace", timeout=900)
     dll = os.path.join(outdir, "m.dll")
+    _LINKED[outdir] = (r.stdout or "") + (r.stderr or "")
     if os.path.isfile(dll):
         return dll, ""
     log = ((r.stdout or "") + (r.stderr or "")).strip()
@@ -203,7 +207,45 @@ def build16(header, texts, order, imports, outdir, segments=None, jobs=None, cod
     return dll, where, dropped
 
 
-def build32(module_path, header, texts, order, used_imports, outdir, cflags, jobs=None):
+def _in_the_original(outdir, env, undefined, originals):
+    """An object file in which each name in `undefined` that is a function of the original
+    (`originals` {name: address}, and `func_0x<address>`) is a jump to it. -> its name, or None.
+
+    A function that is called but is not in the build -- the compiler rejected its text, the
+    decompiler gave none, the decompiler did not know it was a function -- used to be nothing at
+    all, and every caller that reached it "called into nothing" and was counted as behaving
+    differently. The original's code is in memory beside the rebuilt image whenever that is run,
+    so the call can simply go there: the caller is then judged with its real callee."""
+    lines = [".386", ".model flat", "_TEXT segment dword public use32 'CODE'"]
+    n = 0
+    for symbol in sorted(set(undefined)):
+        plain = _plain(symbol)
+        at = originals.get(plain)
+        named = re.fullmatch(r"func_0x([0-9a-fA-F]{6,8})", plain)
+        if at is None and named:
+            at = int(named.group(1), 16)
+        if at is None or not re.fullmatch(r"[A-Za-z_@?$][\w@?$]*", symbol):
+            continue
+        lines += ["public %s" % symbol, "%s:" % symbol, "        push 0%08Xh" % at, "        ret"]
+        n += 1
+    if not n:
+        return None
+    lines += ["_TEXT ends", "end"]
+    with open(os.path.join(outdir, "original.asm"), "w", newline="\n") as f:
+        f.write("\n".join(lines) + "\n")
+    wasm = period_tools.ow_tool("wasm")
+    if not wasm:
+        return None
+    try:
+        os.remove(os.path.join(outdir, "original.obj"))
+    except OSError:
+        pass
+    subprocess.run([wasm, "-zq", "-fo=original.obj", "original.asm"], cwd=outdir, env=env, capture_output=True,
+                   text=True, errors="replace", timeout=300)
+    return "original.obj" if os.path.isfile(os.path.join(outdir, "original.obj")) else None
+
+
+def build32(module_path, header, texts, order, used_imports, outdir, cflags, jobs=None, originals=None):
     from codebreaker.build import watcom as B
     from codebreaker.formats.pe import open_pe
     from codebreaker.build import watcom as A
@@ -216,6 +258,9 @@ def build32(module_path, header, texts, order, used_imports, outdir, cflags, job
     numbered = describe.BY_NUMBER.get(module_path) or {}
     stems, dropped = compile_all(ow["wcc"], list(cflags) + ["-e=20"], env, header, texts, order, outdir, jobs)
     live = [n for n in order if n not in dropped]
+    for n in dropped:                                        # no stand-in where the original itself can be called
+        if originals and n in originals:
+            stems.pop(n, None)
     # undefsok: a call to a function that is not there is left unresolved (it then fails its test)
     lines = ["system nt_dll", "name m.dll", "option quiet", "option undefsok", B._BASE.strip()]
     lines += ["file %s.obj" % stems[n] for n in order if n in stems]
@@ -237,6 +282,11 @@ def build32(module_path, header, texts, order, used_imports, outdir, cflags, job
         if sym:
             exports.append("export %s='%s'" % (n, sym))
     dll, why = _link(ow["wlink"], env, outdir, lines + exports)
+    if dll and originals:
+        missing = re.findall(r"W1028: (\S+) is an undefined reference", _LINKED.get(outdir, ""))
+        there = _in_the_original(outdir, env, missing, originals) if missing else None
+        if there:
+            dll, why = _link(ow["wlink"], env, outdir, lines + ["file " + there] + exports)
     if not dll:
         return None, {}, dict(dropped, **{n: "link: " + why for n in live})
     pb = open_pe(dll)

@@ -45,8 +45,10 @@ def build(m, module_path, work):
     # Only functions with a known address are built. The rest are library routines recognised
     # by signature (__allshl, _memcpy): they belong to the C runtime, which is linked.
     placed = [n for n in m.order if n in m.va]
+    from codebreaker.decompile import describe
+    every = describe.function_names(module_path, LANES["pe"].functions(module_path))
     dll, where, dropped = functions.build32(module_path, m.header, m.texts, placed, m.imports, work,
-                                            c_text.CFLAGS)
+                                            c_text.CFLAGS, originals={name: va for va, name in every.items()})
     items, dropped = {}, dict(dropped)
     for fn in placed:
         if fn in dropped:
@@ -77,7 +79,7 @@ def judge(module_path, item):
     return verdict, reason, list(limits), info.get("detail", "")
 
 
-PIPE_REV = 20                   # what a verdict means (13: one build per batch; bodies the compiler rejects are dropped by name)
+PIPE_REV = 21                   # what a verdict means (13: one build per batch; bodies the compiler rejects are dropped by name)
 MAX_SUPPORT = 1500              # out-of-batch callee bodies pulled in per batch
 GOOD = ("equivalent", "consistent")
 
