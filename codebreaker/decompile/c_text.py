@@ -4,6 +4,8 @@ original meant.
     compilable32(module_path, addresses, workdir)   a 32-bit module: (header, texts, order, by_va, imports)
     compilable16(module_path, workdir)              a 16-bit module: an object with the same, plus what
                                                     16-bit code needs said (near functions, wide results)
+    compilable_powerpc(module_path, workdir)        a PowerPC image: the same, plus its imports and
+                                                    how many arguments each is called with
 
 The decompiler prints C for reading. To be compiled and to behave as the original it needs its
 base types defined, every function and import declared with its real convention, its globals
@@ -444,4 +446,147 @@ def compilable16(module_path, outdir=None):
     decls += [declaration(m.texts[n]) for n in m.order]
     m.header = HEADER + "\n" + "\n".join(macros + decls) + "\n"
     m.description = d
+    return m
+
+
+# PowerPC ---------------------------------------------------------------------------------------
+_POWERPC = """
+#define PIECE(x, off, T) (*(T *)((char *)&(x) + sizeof(x) - (off) - sizeof(T)))
+"""
+_WIDE_ADDRESS = re.compile(r"\b0xffffffff([89a-f][0-9a-f]{7})\b")
+_PIECE = re.compile(r"\b([A-Za-z_]\w*(?:\[[^\[\]]*\])?)\._(\d+)_(\d+)_")
+
+
+_HOME = re.compile(r"\b_?([a-z]+)Stack(000000[0-9a-f]{2})\b")
+
+
+class ModulePowerPC(object):
+    pass
+
+
+def _homed_arguments(t):
+    """A caller leaves room on the stack for each of the eight register arguments (eight bytes
+    each, from 0x10 above the stack pointer at entry), and a function that needs an argument's
+    address stores it there. The decompiler shows that slot as a stack variable of the CALLER's
+    frame; it is the argument, and is written as the argument."""
+    head = t.split("{", 1)[0]
+    m = re.search(r"\(([^()]*)\)", head)
+    names = [x.strip().split()[-1].lstrip("*") for x in m.group(1).split(",")]         if m and m.group(1).strip() not in ("", "void") else []
+
+    def slot(off):
+        k = (off - 0x10) // 8
+        return names[k] if 0 <= k < len(names) and off % 8 in (0, 4) else None
+    head, brace, body = t.partition("{")
+    # the slot's own declaration goes; every other mention becomes the argument
+    body = re.sub(r"(?m)^  [A-Za-z_][\w ]*?[ *]_?[a-z]+Stack(000000[0-9a-f]{2})(?: \[\d+\])?;[ \t]*\n",
+                  lambda mm: "" if slot(int(mm.group(1), 16)) else mm.group(0), body)
+    body = _HOME.sub(lambda mm: slot(int(mm.group(2), 16)) or mm.group(0), body)
+    body = re.sub(r"(?m)^\s*(\w+) = \1;[ \t]*\n", "", body)   # the store into its own slot
+    return head + brace + body
+
+
+def _ram_type(prefix, size, called):
+    """The C type of a global from the decompiler's name prefix (p = pointer to what follows)."""
+    stars = len(prefix) - len(prefix.lstrip("p"))
+    base = prefix[stars:] or "x"
+    if stars:
+        if base[0] == "c":
+            return "code " + "*" * stars if called else "char " + "*" * stars
+        ty = {"i": "int4", "u": "uint4", "b": "bool", "f": "float4"}.get(base[0], "xunknown4")
+        return ty + " " + "*" * stars
+    if called:
+        return "code *"
+    if base[0] == "i":
+        return "int%d" % size
+    if base[0] == "c":
+        return "char"
+    return _BY_SIZE.get(size, "uint4")
+
+
+def call_counts(texts, names):
+    """{name: number of arguments} for the functions in `names` that every call in `texts`
+    passes the same number of arguments to. Nothing in a PowerPC image states how many arguments
+    a function outside it takes; that all its callers set up the same number is the evidence
+    there is."""
+    seen = {}
+    pat = re.compile(r"\b(%s)\s*\(" % "|".join(re.escape(n) for n in sorted(names, key=len, reverse=True))) if names else None
+    for t in texts.values() if pat else ():
+        body = t.split("{", 1)[-1]
+        for m in pat.finditer(body):
+            depth, count, i, empty = 1, 1, m.end(), True
+            while i < len(body) and depth:
+                c = body[i]
+                if c in "([":
+                    depth += 1
+                elif c in ")]":
+                    depth -= 1
+                elif c == "," and depth == 1:
+                    count += 1
+                if depth and not c.isspace():
+                    empty = False
+                i += 1
+            seen.setdefault(m.group(1), set()).add(0 if empty else count)
+    return {n: next(iter(c)) for n, c in seen.items() if len(c) == 1}
+
+
+def compilable_powerpc(module_path, outdir):
+    """A PowerPC image decompiled and made compilable. -> an object with header, texts, order,
+    by_va, externs {name: address in the original}, argc {extern: argument count}, novalue
+    (names of functions that return nothing).
+
+    Every function is written in the older style and declared with its argument list left
+    open: all arguments travel in registers whatever their number, so callers and definitions
+    need not agree for the code to mean the same, and the decompiler recovers each on its own
+    evidence. A global is bound to the address the original keeps it at. A value split by bytes
+    is taken from the end of its storage (the processor is big-endian). An address the
+    decompiler shows widened to 64 bits (registers are 64 bits wide, addresses 32) is written as
+    the 32-bit address it is."""
+    from codebreaker.decompile import decompiler, describe
+    from codebreaker.formats import powerpc_image
+    img = powerpc_image.read(module_path)
+    out, order, by_va, _err = decompiler.raw(module_path, describe.function_starts(module_path), outdir)
+    sizes, novalue = {}, set()
+    for n in order:
+        body = []
+        for ln in out[n].split("\n"):
+            m = re.match(r"/\*@G ([0-9a-f]+) (\d+) \*/$", ln)
+            if m:
+                sizes.setdefault(int(m.group(1), 16), set()).add(int(m.group(2)))
+            elif not ln.startswith("/*@P "):
+                body.append(ln)
+        t = "\n".join(body).strip()
+        t = _WIDE_ADDRESS.sub(r"0x\1", t)
+        t = _PIECE.sub(lambda mm: "PIECE(%s, %s, %s)" % (mm.group(1), mm.group(2), _BY_SIZE.get(int(mm.group(3)), "uint4")), t)
+        t = _compare_as_numbers(t)
+        t = re.sub(r"(?m)(= )((?:%s);)$" % "|".join(re.escape(x) for x in order), r"\1(code *)\2", t)
+        t = _homed_arguments(t)
+        lead = _LEADING.match(t)
+        body = t[lead.end():] if lead else t
+        if body.startswith("void") and not body[4:5].isalnum():
+            # every function leaves something in r3 and callers are free to use it
+            novalue.add(n)
+            t = (lead.group(0) if lead else "") + "uint8" + body[4:]
+        out[n] = _open_arguments(t)
+    text = "\n".join(out.values())
+    macros = []
+    called_through = set(re.findall(r"\(\*([a-z]+Ram[0-9a-f]{8})\)\s*\(", text))
+    for pre, addr in sorted(set(_RAM.findall(text))):
+        szs = sizes.get(int(addr, 16)) or {4}
+        size = max((x for x in szs if x <= 8), default=4)
+        macros.append("#define %sRam%s (*(%s *)0x%s)" % (
+            pre, addr, _ram_type(pre, size, "%sRam%s" % (pre, addr) in called_through), addr))
+    used = sorted(set(re.findall(r"\b(import\d+_ord_\d+)\s*\(", text)))
+    decls = ["uint8 %s();" % n for n in used]
+    for n in order:
+        head = " ".join(_LEADING.sub("", out[n]).split("{", 1)[0].split())
+        if "(" not in head:
+            continue
+        decls.append(head[:head.index("(")] + "();")
+    m = ModulePowerPC()
+    m.header = _TYPES.replace("typedef int code();", "typedef uint8 code();") + _HELPERS + _POWERPC + "\n".join(decls) + "\n" + "\n".join(macros) + "\n"
+    m.texts, m.order, m.by_va, m.novalue = out, order, by_va, novalue
+    by_name = {name: va for va, name in img.imports.items()}
+    m.externs = {n: by_name[n] for n in used if n in by_name}
+    m.argc = call_counts(out, set(m.externs))
+    m.image = img
     return m

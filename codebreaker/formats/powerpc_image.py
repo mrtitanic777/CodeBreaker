@@ -192,3 +192,9 @@ def read(path):
     img.run_names = runs
     _CACHE[path] = img
     return img
+
+
+def regions(path):
+    """[(address, bytes)] -- the image as it sits in memory, for running it."""
+    img = read(path)
+    return [(va, img.data[off:off + size]) for va, off, size in img.spans]

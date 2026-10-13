@@ -6,5 +6,7 @@
     "win1.0": "../win1.0/files/WF",
     "win3.1": "../win3.1/files",
     "win98": "../win98/files"
-  }
+  },
+  "powerpc_tools": "<optional: folder of a PowerPC-targeting cl.exe and link.exe>",
+  "powerpc_lib": "<optional: that compiler's libcmt.lib>"
 }

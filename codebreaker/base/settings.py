@@ -7,6 +7,9 @@ and are named in one file, `settings.json` at the top of the checkout:
     corpora         {name: folder} -- the original binaries of every product there is; the one
                     named by `target` is `corpus` unless it is listed here too
     openwatcom      the OpenWatcom release tree used to compile reconstructions
+    powerpc_tools   folder holding a Microsoft C compiler and linker that target PowerPC
+                    (cl.exe, link.exe); only needed to rebuild and judge PowerPC code
+    powerpc_lib     that compiler's C runtime library file (its register save/restore helpers)
     decompiler_bin  folder of the native decompiler executables   (default: native/decompiler/build/bin)
     ghidra_core     folder holding cbdecomp.exe                    (default: native/ghidra_core/build/bin)
     state           where results and caches are kept             (default: state/)
@@ -35,7 +38,7 @@ DEFAULTS = {
     "state": "state",
     "target": "win95",
 }
-_PATHS = ("corpus", "openwatcom", "decompiler_bin", "ghidra_core", "state")
+_PATHS = ("corpus", "openwatcom", "decompiler_bin", "ghidra_core", "state", "powerpc_tools", "powerpc_lib")
 _loaded = None
 
 

@@ -4,6 +4,7 @@ One builder for every kind of module:
 
     dll, where, dropped = functions.build16(header, texts, order, imports, outdir, segments)
     dll, where, dropped = functions.build32(module_path, header, texts, order, imports, outdir, cflags)
+    dll, where, dropped = functions.build_powerpc(header, texts, order, externs, outdir, base)
         where    {function name: where it is in the DLL} -- (segment, offset) for 16-bit,
                  an address for 32-bit
         dropped  {function name: why the compiler rejected it}
@@ -175,3 +176,83 @@ def build32(module_path, header, texts, order, used_imports, outdir, cflags, job
     pb = open_pe(dll)
     at = pb.export_addrs()
     return dll, {n: pb.image_base + at[n] for n in live if n in at}, dropped
+
+
+# PowerPC ---------------------------------------------------------------------------------------
+CFLAGS_POWERPC = ["/nologo", "/c", "/TC", "/O2", "/GS-", "/Zl", "/Gy", "/W0", "/FIm.h"]
+_CL_ERR = re.compile(r"\((\d+)\)\s*:\s*(?:fatal )?error (C\d+: [^\r\n]*)")
+_MAP_SYM = re.compile(r"(?m)^ [0-9A-Fa-f]{4}:[0-9A-Fa-f]{8}\s+(\S+)\s+([0-9A-Fa-f]{8}) ")
+
+
+def powerpc_tools():
+    """(compiler, linker, runtime library), or None when settings.json does not name them."""
+    from codebreaker.base import settings
+    d, lib = settings.get("powerpc_tools"), settings.get("powerpc_lib")
+    cl, link = os.path.join(d or "", "cl.exe"), os.path.join(d or "", "link.exe")
+    return (cl, link, lib) if d and os.path.isfile(cl) and os.path.isfile(link) and os.path.isfile(lib or "") else None
+
+
+def _compile_powerpc(cl, outdir, stem, text):
+    with open(os.path.join(outdir, stem + ".c"), "w", newline="\n", encoding="utf-8") as f:
+        f.write(text + "\n")
+    try:
+        os.remove(os.path.join(outdir, stem + ".obj"))
+    except OSError:
+        pass
+    r = subprocess.run([cl] + CFLAGS_POWERPC + ["/Fo" + stem + ".obj", stem + ".c"], cwd=outdir,
+                       capture_output=True, text=True, errors="replace", timeout=600)
+    if r.returncode == 0 and os.path.isfile(os.path.join(outdir, stem + ".obj")):
+        return ""
+    log = (r.stdout or "") + (r.stderr or "")
+    m = _CL_ERR.search(log)
+    return (m.group(2) if m else log.strip()[-100:] or "the compiler failed")[:100]
+
+
+def build_powerpc(header, texts, order, externs, outdir, base, jobs=4):
+    """Compile each function with the PowerPC compiler and link one image at `base`.
+    `externs` are the names of functions outside the module (imports): each gets a place of its
+    own in the image, so a call to it can be seen when the image is run.
+    -> (image path, {name: address} for functions and externs, {name: why it was rejected})"""
+    tools = powerpc_tools()
+    if not tools:
+        raise RuntimeError("no PowerPC compiler is set up (settings.json: powerpc_tools, powerpc_lib)")
+    cl, link, lib = tools
+    os.makedirs(outdir, exist_ok=True)
+    with open(os.path.join(outdir, "m.h"), "w", newline="\n", encoding="utf-8") as f:
+        f.write(header)
+    stems = {n: "f%04d" % i for i, n in enumerate(order)}
+    with ThreadPoolExecutor(max_workers=jobs) as ex:
+        errors = list(ex.map(lambda n: _compile_powerpc(cl, outdir, stems[n], texts[n]), order))
+    dropped = {n: e for n, e in zip(order, errors) if e}
+    for n in list(dropped):
+        if _compile_powerpc(cl, outdir, stems[n], stand_in(texts[n])):
+            stems.pop(n)
+    # every extern is a function of its own that does nothing; running stops at its address
+    _compile_powerpc(cl, outdir, "externs", "\n".join(
+        "#pragma optimize(\"\", off)\nuint8 %s() { return %d; }" % (n, i) for i, n in enumerate(sorted(externs))))
+    objs = [stems[n] + ".obj" for n in order if n in stems] + ["externs.obj"]
+    with open(os.path.join(outdir, "m.rsp"), "w", newline="\n") as f:
+        f.write("\n".join(objs) + "\n")
+    for stale in ("m.dll", "m.map"):
+        try:
+            os.remove(os.path.join(outdir, stale))
+        except OSError:
+            pass
+    r = subprocess.run([link, "/nologo", "/DLL", "/NOENTRY", "/NODEFAULTLIB", "/FIXED", "/XEX:NO", "/OPT:NOREF",
+                        "/OPT:NOICF", "/FORCE", "/IGNORE:4006,4088", "/MAP:m.map", "/BASE:0x%X" % base, "/OUT:m.dll",
+                        "@m.rsp", lib], cwd=outdir, capture_output=True, text=True, errors="replace", timeout=900)
+    dll = os.path.join(outdir, "m.dll")
+    live = [n for n in order if n not in dropped]
+    if not os.path.isfile(dll):
+        why = ((r.stdout or "") + (r.stderr or "")).strip()[-160:] or "the linker produced nothing"
+        return None, {}, dict(dropped, **{n: "link: " + why for n in live})
+    try:
+        text = open(os.path.join(outdir, "m.map"), errors="replace").read()
+    except OSError:
+        text = ""
+    want = set(order) | set(externs)
+    where = {}
+    for mm in _MAP_SYM.finditer(text):
+        if mm.group(1) in want and mm.group(1) not in where:
+            where[mm.group(1)] = int(mm.group(2), 16)
+    return dll, where, dropped

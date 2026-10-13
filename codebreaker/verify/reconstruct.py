@@ -12,7 +12,7 @@ are recorded as such, with their name and library. That is said in addition: the
 decompiled, built and judged like every other function.
 
 The path is the same whatever the module is. What differs between kinds of module -- 32-bit or
-16-bit Windows today -- is in one small module per kind (win32.py, win16.py), each providing:
+16-bit Windows, PowerPC -- is in one small module per kind (win32.py, win16.py, powerpc.py), each providing:
 
     KIND                          the name results are filed under
     profile(path)                 (digest, settings): everything but the source a verdict depends on
@@ -39,6 +39,10 @@ def kind_of(module_path):
         from codebreaker.verify import win16
         return win16
     if lane == "pe":
+        from codebreaker.formats.pe import open_pe
+        if open_pe(module_path).machine == 0x01F2:
+            from codebreaker.verify import powerpc
+            return powerpc
         from codebreaker.verify import win32
         return win32
     raise ValueError("%s: no way to reconstruct a %s file yet" % (os.path.basename(module_path), lane or "non-executable"))
