@@ -178,8 +178,12 @@ def compilable32(module_path, funcs, outdir):
     from codebreaker.symbols import api_arguments as apiarity
     from codebreaker.build import watcom as B
     from codebreaker.decompile import decompiler
+    from codebreaker.decompile import describe
     out, order, by_va, _err = decompiler.raw(module_path, funcs, outdir)
-    imports = B.import_map(module_path)
+    imports = dict(B.import_map(module_path))
+    # imports by number, under the names the description gave them: declared and linked too
+    numbered = describe.BY_NUMBER.get(module_path) or {}
+    imports.update({n: stem for n, (stem, _number, _pop) in numbered.items() if n not in imports})
     sizes = {}
     for n in order:
         body = []
@@ -213,8 +217,8 @@ def compilable32(module_path, funcs, outdir):
     used = sorted(n for n in called if n in imports and n not in out)
     decls = []
     for n in used:
-        conv = "__cdecl" if apiarity.stack_bytes(imports[n], n) == 0 else "__stdcall"
-        decls.append("int %s %s();" % (conv, n))
+        pop = numbered[n][2] if n in numbered else apiarity.stack_bytes(imports[n], n)
+        decls.append("int %s %s();" % ("__cdecl" if pop == 0 else "__stdcall", n))
     for n in order:                                    # each function, declared before any use
         head = " ".join(out[n].split("{", 1)[0].split())
         if not head.endswith(")"):

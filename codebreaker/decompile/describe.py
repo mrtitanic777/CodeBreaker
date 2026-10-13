@@ -94,6 +94,11 @@ def function_starts(module_path):
     return pipeline.LANES["pe"].functions(module_path)
 
 
+# module file -> {the C name an import by number is called by: (MODULE, number, bytes of arguments
+# it removes or None)} -- what describe32 decided, for whoever declares and links those calls
+BY_NUMBER = {}
+
+
 def describe32(module_path, funcs, outdir):
     """Write the description of a PE module for the native program: its processor, where its
     bytes sit in memory, and the facts about `funcs` (addresses) and its imports.
@@ -139,6 +144,7 @@ def describe32(module_path, funcs, outdir):
     # module's definition file) gives it one that is a C name nothing else here already has;
     # how many bytes of arguments it takes is read from the export with that number.
     taken = dict.fromkeys(set(B.import_map(module_path)) | set(names.values())) if x86 else {}
+    numbered = BY_NUMBER[module_path] = {}
     for slot, (dll, name) in sorted((pe.imports() if x86 else {}).items()):
         stem = os.path.splitext(dll)[0].upper()
         if not name or name.startswith("#"):
@@ -148,8 +154,10 @@ def describe32(module_path, funcs, outdir):
                 pop = api_stack.header_bytes(real)
                 pop = api_stack.stack_bytes(stem, name) if pop is None else pop
                 lines.append("I\t%x\t%s\t%d" % (slot, real, -1 if pop is None else pop))
+                numbered[real] = (stem, number, pop)
             else:
                 lines.append("I\t%x\t%s\t-1" % (slot, _ident("%s_ord_%s" % (stem, (name or "#0")[1:]))))
+                numbered[_ident("%s_ord_%s" % (stem, (name or "#0")[1:]))] = (stem, number, None)
             continue
         pop = api_stack.stack_bytes(stem, name) if x86 else None
         lines.append("I\t%x\t%s\t%d" % (slot, _ident(name), -1 if pop is None else pop))

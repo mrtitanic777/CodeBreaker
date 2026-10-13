@@ -170,6 +170,8 @@ def build32(module_path, header, texts, order, used_imports, outdir, cflags, job
         raise RuntimeError("OpenWatcom's 32-bit compiler is not set up (settings.json: openwatcom)")
     env = B._ow_env(ow)
     imports = B.import_map(module_path)
+    from codebreaker.decompile import describe
+    numbered = describe.BY_NUMBER.get(module_path) or {}
     stems, dropped = compile_all(ow["wcc"], list(cflags) + ["-e=20"], env, header, texts, order, outdir, jobs)
     live = [n for n in order if n not in dropped]
     # undefsok: a call to a function that is not there is left unresolved (it then fails its test)
@@ -181,7 +183,7 @@ def build32(module_path, header, texts, order, used_imports, outdir, cflags, job
         if n not in stems:
             continue
         obj = open(os.path.join(outdir, stems[n] + ".obj"), "rb").read()
-        for line in B._import_lines(obj, set(used_imports), imports).strip().split("\n"):
+        for line in B._import_lines(obj, set(used_imports), imports, numbered).strip().split("\n"):
             if line and line not in seen:
                 seen.add(line)
                 lines.append(line)

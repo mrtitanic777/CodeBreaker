@@ -87,14 +87,18 @@ def _omf_externs(data):
     return out
 
 
-def _import_lines(obj, names, imports):
-    """wlink `import` directives binding each imported name's decorated symbol to DLL.name."""
+def _import_lines(obj, names, imports, numbered=None):
+    """wlink `import` directives binding each imported name's decorated symbol to DLL.name --
+    or to DLL.number for one the original imports by number (`numbered`: {name: (DLL, number, ...)})."""
     ext = _omf_externs(obj)
     out = []
     for n in sorted(names):
         for sym in ext:
             if sym.lstrip("_").split("@")[0] == n:
-                out.append("import '%s' '%s'.'%s'\n" % (sym, imports[n], n))
+                if numbered and n in numbered:
+                    out.append("import '%s' '%s'.%d\n" % (sym, numbered[n][0], numbered[n][1]))
+                elif n in imports:
+                    out.append("import '%s' '%s'.'%s'\n" % (sym, imports[n], n))
                 break
     return "".join(out)
 
