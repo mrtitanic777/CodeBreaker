@@ -6,6 +6,7 @@ Engine's bytes->quads->C. Validated by round-trip (recovered C recompiles identi
 
 Usage: python mc2inv.py <image.bin> <hexoff> <len>
 """
+import os
 import sys, re, os
 from capstone import Cs, CS_ARCH_X86, CS_MODE_16
 from src.engines.inverse import framemodel
@@ -527,6 +528,14 @@ class R:
             if s._hascall(a) and str(a) not in text:
                 s._tn=getattr(s,"_tn",0)+1; t="t%d"%s._tn
                 out.append("%s = %s;"%(t,a)); s.ranks.append(s.i); s.regconst.append(False); s.args[k]=t
+        # a word pushed and not yet used (`push [bx] / inc [bx] / pop bx`, the old value of *p++): if
+        # this statement writes memory, the word keeps the value memory had when it was pushed
+        if s.args and not re.match(r"t\d+ = ", text) and (re.match(r"[^=(]*[^=!<>]=[^=]", text) or re.search(r"\+\+|--", text)) \
+           and not re.match(r"(ax|bx|cx|dx|si|di|al|ah|bl|bh|cl|ch|dl|dh) = ", text):
+            for k,a in enumerate(s.args):
+                if re.search(r"g_|\*|->|\[", str(a)):
+                    s._tn=getattr(s,"_tn",0)+1; t="t%d"%s._tn
+                    out.append("%s = %s;"%(t,a)); s.ranks.append(s.i); s.regconst.append(False); s.args[k]=t
         for r in s._WR:
             v=getattr(s,r,None)
             if v is None or str(v)==r or not s._hascall(v) or str(v) not in text: continue
@@ -1008,6 +1017,9 @@ class R:
                 tx=s.ins[s.tgt[i+1]]
                 if tx.mnemonic=="add" and re.match(r"sp, (0x[0-9a-f]+|\d+)$", tx.op_str):
                     n=s.num(tx.op_str[4:])//2
+        if n is None and not pascal and os.environ.get("MASM_CRET"):
+            n=0                                                # C convention throughout: no clean-up, no arguments
+                                                               # (a word pushed before the call is one saved across it)
         if n is None or n>len(s.args): take=s.args; s.args=[]
         else: take=s.args[len(s.args)-n:]; s.args=s.args[:len(s.args)-n]
         return [str(a) for a in (take if pascal else reversed(take))]
@@ -1087,6 +1099,10 @@ class R:
         """A call's value lives in ax. Dead (never read before being overwritten) -> a statement;
         read once (or first stored to a variable) -> embedded at its use; read several times ->
         materialized `ax = f();` so the call is not textually duplicated."""
+        for k_,a_ in enumerate(s.args):                    # an argument already pushed for an OUTER call
+            if re.search(r"\b([abcd][xlh])\b", str(a_)):   # that reads a register this call destroys: its
+                s._tn=getattr(s,"_tn",0)+1; t_="t%d"%s._tn # value is the one it had when it was pushed
+                s.emit(out,"%s = %s;"%(t_,a_)); s.args[k_]=t_
         for r in ("si","di"):                              # callee-saved copies of a VARIABLE: the
             v=getattr(s,r,None)                            # callee may change it (a global, or a local
             if v is not None and str(v)!=r and not re.match(r"^&|^-?\d+$",str(v)) and s._live(r,i):   # whose
@@ -1102,6 +1118,8 @@ class R:
             s.emit(out,expr+";"); s.ax=None; s.retlive=False
         elif s._live("dx", i):                             # a long result: dx is read too, so the
             s.emit(out,"ax = %s;"%expr); s.ax="ax"; s.retlive=True   # call must run before that read
+        elif uses and ret and os.environ.get("MASM_CRET"):  # read (tested) AND still in ax at a return:
+            s.emit(out,"ax = %s;"%expr); s.ax="ax"; s.retlive=True   # one call, not one per mention
         elif uses and s._firstlin is None:                 # first read is past a branch: pin it
             s.emit(out,"ax = %s;"%expr); s.ax="ax"; s.retlive=True
         elif not uses and not s._retlin:                   # only reaches the ret, across a branch/
@@ -1995,6 +2013,15 @@ def _prologue(ins):
         while k < len(ins) and ins[k].mnemonic=="push" and ins[k].op_str in ("si","di")               and any(x.mnemonic=="pop" and x.op_str==ins[k].op_str for x in ins[k+1:]):
             k+=1                                          # after any callee-saved register pushes
         return 0, k, False
+    if os.environ.get("MASM_CRET") and len(ins) > 4 and ins[1].op_str=="bp, sp" \
+       and (ins[2].mnemonic, ins[2].op_str, ins[3].mnemonic, ins[3].op_str) == ("push", "di", "push", "si"):
+        # the compiler whose functions leave through one shared exit: DI and SI are saved in every
+        # function (the exit restores them), the locals are made room for after that
+        fs=4; k=4
+        if ins[k].mnemonic=="sub" and ins[k].op_str.startswith("sp,"):
+            try: fs+=int(ins[k].op_str.split(",")[1].strip(),16); k+=1
+            except ValueError: pass
+        return fs, k, True
     fs=0; k=1
     if ins[k].mnemonic=="sub" and ins[k].op_str.startswith("sp"):
         fs=int(ins[k].op_str.split(",")[1],16); k+=1
