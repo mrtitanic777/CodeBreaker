@@ -5,6 +5,11 @@
     sweep [options]                 reconstruct and judge every module (resumable)
     decompile <name> [--out FILE]   decompile any module (32-bit, 16-bit, PowerPC) to C; nothing is built
     measure <name>                  reconstruct and judge one module; writes nothing to the tree
+    info <file-or-module>           what an executable is and holds (headers, imports, exports, resources)
+    coverage [--module NAME]        how much of every corpus module is accounted for, and in what state
+    serve [--port N] [--open]       the local web console (127.0.0.1 only)
+    progress [--once] [--window]    watch a running sweep
+    app [file-or-module]            the desktop window
 
 Every command is listed here, by name. Nothing is discovered by scanning folders.
 """
@@ -17,6 +22,11 @@ COMMANDS = {
     "sweep": ("codebreaker.verify.sweep", []),
     "measure": ("codebreaker.verify.measure", []),
     "decompile": ("codebreaker.decompile.decompiler", []),
+    "info": ("codebreaker.formats.inspect", []),
+    "coverage": ("codebreaker.coverage.ledger", []),
+    "serve": ("codebreaker.ui.server", []),
+    "progress": ("codebreaker.ui.progress", []),
+    "app": ("codebreaker.ui.app", []),
 }
 
 

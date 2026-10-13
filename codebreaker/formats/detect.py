@@ -61,3 +61,25 @@ def lane(path):
     """The decompiler lane for a file: 'pe', 'ne', 'le' (VxD; LE and LX), 'dos', or None."""
     sig = signature(path)
     return None if sig is None else _LANE[sig]
+
+
+def dos_header(data):
+    """The DOS (MZ) header every one of these formats starts with, by field name, with the size of
+    the program it loads and its relocation entries; None when `data` is not an MZ executable.
+    For a plain DOS program this is the whole description of the file."""
+    if len(data) < 0x1C or data[:2] != b"MZ":
+        return None
+    (last, pages, nrel, hdr, minalloc, maxalloc, ss, sp, checksum, ip, cs, reltab,
+     overlay) = struct.unpack_from("<13H", data, 2)
+    image = max(0, (pages * 512 - ((512 - last) if last else 0)) - hdr * 16)
+    relocs = []
+    for i in range(nrel):
+        if reltab + i * 4 + 4 > len(data):
+            break
+        off, seg = struct.unpack_from("<HH", data, reltab + i * 4)
+        relocs.append((seg, off))
+    return {"bytes_in_last_page": last, "pages": pages, "relocations": nrel, "header_paragraphs": hdr,
+            "header_size": hdr * 16, "min_alloc": minalloc, "max_alloc": maxalloc, "ss": ss, "sp": sp,
+            "checksum": checksum, "ip": ip, "cs": cs, "relocation_table": reltab, "overlay": overlay,
+            "new_header": struct.unpack_from("<I", data, 0x3C)[0] if len(data) >= 0x40 else 0,
+            "load_size": min(image, max(0, len(data) - hdr * 16)), "relocation_entries": relocs}

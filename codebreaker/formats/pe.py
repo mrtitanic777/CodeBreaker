@@ -306,6 +306,233 @@ class PEFile:
                         "pdb": cv[16:].split(b"\0", 1)[0].decode("latin1", "replace")}
         return None
 
+    # -- the rest of what an inspector shows (used by formats/inspect.py) -------------------
+    # Every reader below checks its offsets: a damaged table gives a shorter answer, not an error.
+    def _u(self, fmt, off):
+        """One little-endian value at a file offset, or 0 when it lies outside the file."""
+        if off is None or off < 0 or off + struct.calcsize(fmt) > len(self.data):
+            return 0
+        return struct.unpack_from("<" + fmt, self.data, off)[0]
+
+    def _text(self, off, limit=512):
+        """The zero-terminated string at a file offset ('' when the offset is not in the file)."""
+        if off is None or not 0 <= off < len(self.data):
+            return ""
+        end = self.data.find(b"\0", off, off + limit)
+        return self.data[off:end if end >= 0 else off + limit].decode("latin1", "replace")
+
+    def file_offset(self, rva):
+        """File offset of an RVA. One that lies in the headers, before any section, is its own
+        offset; one that lies nowhere is None."""
+        off = self._rva_to_off(rva)
+        if off is None and 0 <= rva < self._u("I", self.e_lfanew + 24 + 60):
+            off = rva
+        return off if off is not None and off < len(self.data) else None
+
+    def optional_header(self):
+        """The optional header's fields by name (PE32 and PE32+)."""
+        opt = self.e_lfanew + 24
+        u16, u32 = (lambda o: self._u("H", opt + o)), (lambda o: self._u("I", opt + o))
+        return {
+            "magic": self.magic, "linker_version": "%d.%d" % (self._u("B", opt + 2), self._u("B", opt + 3)),
+            "code_size": u32(4), "initialized_data_size": u32(8), "uninitialized_data_size": u32(12),
+            "entry_point": self.entry, "code_base": u32(20), "image_base": self.image_base,
+            "section_alignment": u32(32), "file_alignment": u32(36),
+            "os_version": "%d.%d" % (u16(40), u16(42)), "image_version": "%d.%d" % (u16(44), u16(46)),
+            "subsystem_version": "%d.%d" % (u16(48), u16(50)), "image_size": u32(56),
+            "headers_size": u32(60), "checksum": u32(64), "subsystem": u16(68),
+            "subsystem_name": _SUBSYSTEM.get(u16(68), "%d" % u16(68)), "dll_characteristics": u16(70)}
+
+    def directory(self, index):
+        """(rva, size) of one data directory; (0, 0) when the image has none at that index."""
+        return self.datadirs[index] if index < len(self.datadirs) else (0, 0)
+
+    def export_table(self):
+        """{'module', 'ordinal_base', 'timestamp', 'symbols': [{name, ordinal, hint, rva, forward}]}.
+        `hint` is the name's index in the name table (-1 for an export by ordinal only);
+        `forward` is 'OTHER.Function' when the export is passed on to another module."""
+        va, size = self.directory(0)
+        off = self.file_offset(va) if va else None
+        if off is None or off + 40 > len(self.data):
+            return {"module": "", "ordinal_base": 0, "timestamp": 0, "symbols": []}
+        base, n_funcs, n_names = self._u("I", off + 16), self._u("I", off + 20), self._u("I", off + 24)
+        funcs, names, ords = (self.file_offset(self._u("I", off + o)) for o in (28, 32, 36))
+        named = {}
+        if names is not None and ords is not None:
+            for i in range(min(n_names, 0x10000)):
+                if names + i * 4 + 4 > len(self.data) or ords + i * 2 + 2 > len(self.data):
+                    break
+                named[self._u("H", ords + i * 2)] = (self._text(self.file_offset(self._u("I", names + i * 4))), i)
+        symbols = []
+        if funcs is not None:
+            for i in range(min(n_funcs, 0x10000)):
+                if funcs + i * 4 + 4 > len(self.data):
+                    break
+                rva = self._u("I", funcs + i * 4)
+                if not rva:
+                    continue
+                name, hint = named.get(i, ("", -1))
+                forward = self._text(self.file_offset(rva)) if va <= rva < va + size else ""
+                symbols.append({"name": name, "ordinal": base + i, "hint": hint, "rva": rva, "forward": forward})
+        return {"module": self._text(self.file_offset(self._u("I", off + 12))), "ordinal_base": base,
+                "timestamp": self._u("I", off + 4), "symbols": symbols}
+
+    def import_table(self, delay=False):
+        """[{'module', 'symbols': [{name, ordinal, hint, slot}]}] from the import directory, or from
+        the delay-load directory. An import by ordinal has name '' and hint -1; one by name has
+        ordinal -1. `slot` is the RVA of the address-table entry the loader fills in."""
+        va, _size = self.directory(13 if delay else 1)
+        off = self.file_offset(va) if va else None
+        if off is None:
+            return []
+        step, width = (32 if delay else 20), (8 if self.is_plus else 4)
+        top = 1 << (width * 8 - 1)
+        out = []
+        for k in range(4096):
+            rec = off + k * step
+            if rec + step > len(self.data):
+                break
+            if delay:
+                name_rva, iat, lookup = (self._u("I", rec + o) for o in (4, 12, 16))
+                if not self._u("I", rec) & 1:                     # old layout: addresses, not RVAs
+                    name_rva, iat, lookup = (max(0, v - self.image_base) if v else 0 for v in (name_rva, iat, lookup))
+            else:
+                lookup, name_rva, iat = (self._u("I", rec + o) for o in (0, 12, 16))
+            if not (name_rva or iat or lookup):
+                break
+            table = self.file_offset(lookup or iat)
+            symbols = []
+            for j in range(16384 if table is not None else 0):
+                if table + (j + 1) * width > len(self.data):
+                    break
+                val = self._u("Q" if self.is_plus else "I", table + j * width)
+                if not val:
+                    break
+                if val & top:
+                    symbols.append({"name": "", "ordinal": val & 0xFFFF, "hint": -1, "slot": iat + j * width})
+                    continue
+                at = self.file_offset(val & 0x7FFFFFFF)
+                if at is None:                                    # bound: the table already holds addresses
+                    break
+                symbols.append({"name": self._text(at + 2), "ordinal": -1, "hint": self._u("H", at),
+                                "slot": iat + j * width})
+            out.append({"module": self._text(self.file_offset(name_rva)) or "?", "symbols": symbols})
+        return out
+
+    def resource_tree(self):
+        """[{'type': name or number, 'id', 'items': [{name, id, language, rva, offset, size}]}] --
+        the resource directory's three levels (type, name, language) flattened to one list of
+        items per type. `id` is None for a type or item that goes by a name."""
+        va, _size = self.directory(2)
+        base = self.file_offset(va) if va else None
+        if base is None:
+            return []
+
+        def entries(at):
+            n = self._u("H", at + 12) + self._u("H", at + 14)
+            out = []
+            for i in range(min(n, 8192)):
+                p = at + 16 + i * 8
+                if p + 8 > len(self.data):
+                    break
+                ident, to = self._u("I", p), self._u("I", p + 4)
+                label = None
+                if ident & 0x80000000:
+                    s = base + (ident & 0x7FFFFFFF)
+                    label = self.data[s + 2:s + 2 + self._u("H", s) * 2].decode("utf-16-le", "replace")
+                out.append((label, None if label is not None else ident, to))
+            return out
+
+        types = []
+        for tname, tid, to in entries(base):
+            items = []
+            for nname, nid, no in (entries(base + (to & 0x7FFFFFFF)) if to & 0x80000000 else ()):
+                for _l, lang, lo in (entries(base + (no & 0x7FFFFFFF)) if no & 0x80000000 else ()):
+                    if lo & 0x80000000 or base + lo + 16 > len(self.data):
+                        continue
+                    rva = self._u("I", base + lo)
+                    items.append({"name": nname if nname is not None else "#%d" % nid, "id": nid,
+                                  "language": lang or 0, "rva": rva, "offset": self.file_offset(rva),
+                                  "size": self._u("I", base + lo + 4)})
+            types.append({"type": tname if tname is not None else tid, "id": tid, "items": items})
+        return types
+
+    def reloc_blocks(self):
+        """[(page_rva, entries)] -- the blocks of the base relocation directory."""
+        va, size = self.directory(5)
+        off = self.file_offset(va) if va else None
+        out = []
+        end = (off or 0) + size
+        while off is not None and off + 8 <= min(end, len(self.data)):
+            block = self._u("I", off + 4)
+            if block < 8:
+                break
+            out.append((self._u("I", off), (block - 8) // 2))
+            off += block
+        return out
+
+    def tls(self):
+        """The thread-local storage directory's addresses, or None."""
+        va, _size = self.directory(9)
+        off = self.file_offset(va) if va else None
+        if off is None:
+            return None
+        w, fmt = (8, "Q") if self.is_plus else (4, "I")
+        return {"start_va": self._u(fmt, off), "end_va": self._u(fmt, off + w),
+                "index_va": self._u(fmt, off + 2 * w), "callbacks_va": self._u(fmt, off + 3 * w)}
+
+    def debug_entries(self):
+        """[{type, timestamp, size, offset}] -- every record of the debug directory (`type` is the
+        IMAGE_DEBUG_TYPE number)."""
+        va, size = self.directory(6)
+        off = self.file_offset(va) if va else None
+        out = []
+        for i in range(min(size // 28, 64) if off is not None else 0):
+            e = off + i * 28
+            if e + 28 > len(self.data):
+                break
+            out.append({"type": self._u("I", e + 12), "timestamp": self._u("I", e + 4),
+                        "size": self._u("I", e + 16), "offset": self._u("I", e + 24)})
+        return out
+
+    def certificates(self):
+        """[{length, revision, type}] -- the attribute certificates (this directory holds a FILE
+        OFFSET, not an RVA)."""
+        off, size = self.directory(4)
+        out = []
+        end = min(off + size, len(self.data))
+        while off and off + 8 <= end:
+            length = self._u("I", off)
+            if length < 8:
+                break
+            out.append({"length": length, "revision": self._u("H", off + 4), "type": self._u("H", off + 6)})
+            off += (length + 7) & ~7
+        return out
+
+    def clr(self):
+        """The .NET runtime header, or None for a native image."""
+        va, _size = self.directory(14)
+        off = self.file_offset(va) if va else None
+        if off is None or off + 72 > len(self.data):
+            return None
+        return {"runtime_version": "%d.%d" % (self._u("H", off + 4), self._u("H", off + 6)),
+                "flags": self._u("I", off + 16), "entry_token": self._u("I", off + 20)}
+
+    def rich(self):
+        """The linker's 'Rich' record between the DOS stub and the PE header: {key, entries:
+        [(product, build, count)]}, or None when the image has none."""
+        stub = self.data[:self.e_lfanew]
+        end = stub.rfind(b"Rich")
+        if end < 0 or end + 8 > len(stub):
+            return None
+        key = struct.unpack_from("<I", stub, end + 4)[0]
+        start = stub.rfind(struct.pack("<I", 0x536E6144 ^ key), 0, end)          # "DanS", encoded
+        entries = []
+        for p in range(start + 16, end - 7, 8) if start >= 0 else ():
+            comp, count = (v ^ key for v in struct.unpack_from("<II", stub, p))
+            entries.append((comp >> 16, comp & 0xFFFF, count))
+        return {"key": key, "entries": entries}
+
 
 def open_pe(path):
     return PEFile(path)
