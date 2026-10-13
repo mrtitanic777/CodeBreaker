@@ -62,7 +62,7 @@ def _compile(wcc, env, outdir, stem, text):
     return (m.group(2) if m else log.strip()[-100:] or "the compiler failed")[:100]
 
 
-def build(header, texts, order, imports, outdir, jobs=6):
+def build(header, texts, order, imports, outdir, jobs=6, segments=None):
     from codebreaker.decompile.c16 import prototype
     wcc, wlink = period_tools.ow_tool("wcc"), period_tools.ow_tool("wlink")
     if not (wcc and wlink):
@@ -81,7 +81,11 @@ def build(header, texts, order, imports, outdir, jobs=6):
     live = [n for n in order if n not in dropped]
     # One initialised byte, so the DLL has a data segment at all: that segment is where the
     # original's data is put when the DLL is run for judging.
-    _compile(wcc, env, outdir, "data", "char codebreaker_data_segment = 1;")
+    data = ["char codebreaker_data_segment = 1;"]
+    for n, image in sorted((segments or {}).items()):        # other segments the code reads from
+        data.append("uint1 __far codebreaker_segment_%d[] = {\n%s\n};" % (n, ",\n".join(
+            ",".join(str(x) for x in image[i:i + 32]) for i in range(0, len(image), 32))))
+    _compile(wcc, env, outdir, "data", "\n".join(data))
     lines = ["system windows dll", "name m.dll", "option quiet, map, nodefaultlibs, caseexact, undefsok",
              "libpath %s" % period_tools.ow_lib("ne")]
     lines += ["file %s.obj" % stems[n] for n in order if n in stems]

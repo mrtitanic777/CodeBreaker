@@ -22,7 +22,7 @@ SOURCE = "decompiler"
 NOT_RUN = ("inconclusive", "judge: the emulator crashed on this function", [], "")
 ARG_WORDS = 8
 LEFTOVER = 0x7EF707E5                  # stands for "AX held no result" in a fingerprint
-REV = 9                                # bump when what is built or compared changes
+REV = 10                                # bump when what is built or compared changes
 
 
 def vectors():
@@ -166,7 +166,8 @@ def run(module_path, fs=None, log=print):
     fresh = [va for va in sorted(m.by_va) if (known.get(keys[va]) or {}).get("sig") != sig]
     rows = []
     if fresh:
-        dll, placed, dropped = module16.build(m.header, m.texts, m.order, m.imports, work)
+        dll, placed, dropped = module16.build(m.header, m.texts, m.order, m.imports, work,
+                                              segments=m.segments)
         nef = NEFile(module_path)
         auto = nef.h.get("autodata_seg")
         data_image = b""

@@ -146,17 +146,35 @@ def declaration(text):
     return head[:head.index("(")] + "();"
 
 
+_RAM = re.compile(r"\b([a-z]+)Ram([0-9a-f]{8})\b")
+_LEADING = re.compile(r"\A(?:\s*/\*.*?\*/)+\s*", re.S)
+
+
+def _global_type(prefix, size):
+    signed = prefix.startswith("i") or prefix.startswith("c")
+    return {1: "int1" if signed else "uint1", 2: "int2" if signed else "uint2", 4: "int4" if signed else "uint4"}.get(
+        size, "uint2")
+
+
 def compilable(module_path, outdir=None):
-    from codebreaker.decompile import decompiler
+    from codebreaker.decompile import decompiler, image16
     texts, order, by_va, d = decompiler.decompile16(module_path, outdir)
     m = Module16()
     m.texts, m.order, m.by_va, m.where = {}, [], {}, {}
     m.near, m.wide, m.novalue = set(), set(), set()
+    sizes = {}                                               # address of a global -> bytes of the access
     for va in sorted(by_va):
         name = by_va[va]
         raw = texts[name]
-        far = {mm.group(2) for mm in _FACT.finditer(raw) if mm.group(1) == "P" and mm.group(3) == "4"}
-        text = _joined_arguments(_pieces(_far(_FACT.sub("", raw).strip(), far)))
+        far = set()
+        for mm in _FACT.finditer(raw):
+            if mm.group(1) == "P" and mm.group(3) == "4":
+                far.add(mm.group(2))
+            elif mm.group(1) == "G":
+                a = int(mm.group(2), 16)
+                sizes[a] = max(sizes.get(a, 0), int(mm.group(3))) if int(mm.group(3)) <= 4 else sizes.get(a, 2)
+        text = _LEADING.sub("", _FACT.sub("", raw))          # notes the decompiler put before the function
+        text = _joined_arguments(_pieces(_far(text.strip(), far)))
         if "return" in far:                                  # the function returns a far pointer
             head, brace, body = text.partition("{")
             head = re.sub(r"\*(?=[\s\w]*\b%s\s*\()" % re.escape(name), "__far *", head, count=1)
@@ -164,7 +182,12 @@ def compilable(module_path, outdir=None):
             m.wide.add(name)
         head = text.split("{", 1)[0]
         if head.split()[0] == "void":
-            m.novalue.add(name)                              # returns nothing: AX is a leftover
+            # It sets no result -- but its callers may still read AX, and the decompiler shows
+            # them doing so. Declared as returning a word, with no `return`, it leaves AX as the
+            # original does: whatever was last there.
+            m.novalue.add(name)
+            text = "xunknown2" + text[4:]
+            head = text.split("{", 1)[0]
         if not ("__stdcall16far" in head or "__cdecl16far" in head):
             m.near.add(name)                                 # near is the default and is not printed
         if head.split()[0] in _WIDE or "*" in head.split(name)[0] and "__far" in head.split(name)[0]:
@@ -181,8 +204,22 @@ def compilable(module_path, outdir=None):
             mm = re.fullmatch(r"(.+)_(\d+)", nm)
             if mm:
                 m.imports[nm] = (mm.group(1), int(mm.group(2)))
-    decls = ["extern uint4 __far __stdcall %s();" % nm for nm in sorted(m.imports)]
+    # Globals the decompiler names by address. In the data segment: an offset through DS, as in
+    # the original. In another segment (constants kept beside the code, a second data segment):
+    # the module carries that segment's bytes, and the global is a place in them.
+    macros, m.segments = [], {}
+    for prefix, addr in sorted(set(_RAM.findall(body))):
+        va = int(addr, 16)
+        seg, off = image16.where(va)
+        ty = _global_type(prefix, sizes.get(va, 2))
+        if seg == d.data_segment:
+            macros.append("#define %sRam%s (*(%s *)0x%x)" % (prefix, addr, ty, off))
+        elif seg in d.images and off < len(d.images[seg]):
+            m.segments[seg] = d.images[seg]
+            macros.append("#define %sRam%s (*(%s __far *)(codebreaker_segment_%d + 0x%x))" % (prefix, addr, ty, seg, off))
+    decls = ["extern uint1 __far codebreaker_segment_%d[];" % n for n in sorted(m.segments)]
+    decls += ["extern uint4 __far __stdcall %s();" % nm for nm in sorted(m.imports)]
     decls += [declaration(m.texts[n]) for n in m.order]
-    m.header = HEADER + "\n" + "\n".join(decls) + "\n"
+    m.header = HEADER + "\n" + "\n".join(macros + decls) + "\n"
     m.description = d
     return m

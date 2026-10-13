@@ -204,6 +204,8 @@ def describe(module_path, outdir):
         funcs.append((va, nm, dist))
     d = Description("", names, where, order)
     d.code = {s["idx"]: s["length"] for s in segs if s["kind"] == "CODE"}     # segment -> bytes of code
+    d.images = {k: bytes(v) for k, v in images.items()}                       # segment -> its bytes, relocated
+    d.data_segment = data_seg or 0
     d.segment_bytes = {s["idx"]: bytes(nef.data[s["file_off"]:s["file_off"] + s["length"]])
                        for s in segs if s["kind"] == "CODE" and s["file_off"]}
     for va, nm, dist in funcs:
