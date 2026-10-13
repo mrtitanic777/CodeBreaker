@@ -150,6 +150,15 @@ _OPERAND = r"(?:\(u?int4\))?(?:_f\.)?[A-Za-z_]\w*"
 _COMPARE = re.compile(r"(?<![\w.>)\]*&])(%s) (<=|>=|<|>|==|!=) (%s)(?![\w.(\[]|->)" % (_OPERAND, _OPERAND))
 
 
+_NULL = re.compile(r"([=!]=) \((?:[A-Za-z_][\w ]*?) ?\*+\)0x0\b")
+
+
+def _null_is_zero(t):
+    """`x == (int4 *)0x0` is `x == 0` whatever x is; written with the cast, it does not compile
+    when x is a number."""
+    return _NULL.sub(lambda m: m.group(1) + " 0", t)
+
+
 def _compare_as_numbers(t):
     """The core compares a pointer with a plain number freely (`if (pcVar2 < (uint4)a1)`); C does
     not allow it. Where exactly one side is a pointer variable, compare its value as a number."""
@@ -198,7 +207,7 @@ def compilable32(module_path, funcs, outdir):
         t = re.sub(r"\b([A-Za-z_]\w*)\._(\d+)_(\d+)_",
                    lambda mm: "(*(%s *)((char *)&%s + %s))" % (_BY_SIZE.get(int(mm.group(3)), "uint4"),
                                                                mm.group(1), mm.group(2)), t)
-        t = _compare_as_numbers(_keep_frame(t))
+        t = _compare_as_numbers(_keep_frame(_null_is_zero(t)))
         # a function's address stored in a pointer the core typed loosely
         t = re.sub(r"(?m)(= )((?:%s);)$" % "|".join(re.escape(x) for x in order), r"\1(code *)\2", t)
         # every function returns a value in EAX whether or not the core saw it used
@@ -212,6 +221,8 @@ def compilable32(module_path, funcs, outdir):
         size = min(szs) if len(szs) > 1 and pre[0] in "cb" else max(s for s in szs if s <= 8) if any(s <= 8 for s in szs) else 4
         ty = "code *" if (pre == "pc" or "%sRam%s" % (pre, addr) in called_through) else (
             "int%d" % size if pre[0] == "i" else _BY_SIZE.get(size, "uint4"))
+        if pre[0] == "p" and len(pre) > 1 and ty != "code *":
+            ty = _ram_type(pre, size, False)             # a pointer, by the decompiler's own naming (piRam: int *)
         macros.append("#define %sRam%s (*(%s *)0x%s)" % (pre, addr, ty, addr))
     called = set(re.findall(r"\b([A-Za-z_]\w*)\s*\(", text))
     used = sorted(n for n in called if n in imports and n not in out)
@@ -246,7 +257,11 @@ class Module(object):
         self.functions = {va: (n, texts[n]) for va, n in by_va.items()}
 
 
-HEADER = """typedef signed char int1; typedef short int2; typedef long int4;
+HEADER = """typedef long long int8; typedef unsigned long long uint8; typedef unsigned long long xunknown8;
+typedef double float8; typedef long double float10;
+typedef unsigned long unkbyte3; typedef long unkint3; typedef unsigned long unkuint3; typedef long int3;
+typedef unsigned long uint3; typedef unsigned long long unkbyte6; typedef long double unkbyte10;
+typedef signed char int1; typedef short int2; typedef long int4;
 typedef unsigned char uint1; typedef unsigned short uint2; typedef unsigned long uint4;
 typedef unsigned char xunknown1; typedef unsigned short xunknown2; typedef unsigned long xunknown4;
 typedef unsigned char undefined; typedef unsigned char undefined1; typedef unsigned short undefined2;
@@ -381,6 +396,10 @@ _LEADING = re.compile(r"\A(?:\s*/\*.*?\*/)+\s*", re.S)
 
 
 def _global_type(prefix, size):
+    if prefix[0] == "p" and len(prefix) > 1:             # a pointer, by the decompiler's own naming (piRam: int *)
+        to = {"i": "int2", "u": "uint2", "c": "char", "b": "bool"}.get(prefix.lstrip("p")[:1], "xunknown2")
+        stars = "*" * (len(prefix) - len(prefix.lstrip("p")))
+        return "%s %s%s" % (to, "__far " if size == 4 else "", stars)
     signed = prefix.startswith("i") or prefix.startswith("c")
     return {1: "int1" if signed else "uint1", 2: "int2" if signed else "uint2", 4: "int4" if signed else "uint4"}.get(
         size, "uint2")
@@ -404,7 +423,7 @@ def compilable16(module_path, outdir=None):
                 a = int(mm.group(2), 16)
                 sizes[a] = max(sizes.get(a, 0), int(mm.group(3))) if int(mm.group(3)) <= 4 else sizes.get(a, 2)
         text = _LEADING.sub("", _FACT.sub("", raw))          # notes the decompiler put before the function
-        text = _segment_registers(_joined_arguments(_pieces(_far(text.strip(), far))))
+        text = _null_is_zero(_segment_registers(_joined_arguments(_pieces(_far(text.strip(), far)))))
         if "return" in far:                                  # the function returns a far pointer
             head, brace, body = text.partition("{")
             head = re.sub(r"\*(?=[\s\w]*\b%s\s*\()" % re.escape(name), "__far *", head, count=1)
