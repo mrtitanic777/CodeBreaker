@@ -516,8 +516,15 @@ static void codebreaker_zero_block(uint4 a, uint4 b) { uint1 *p = (uint1 *)((a +
 #define dataCacheBlockTouchForStore(...) ((void)0)
 #define dataCacheBlockStore(...) ((void)0)
 #define dataCacheBlockFlush(...) ((void)0)
-#define trapWord(...) ((void)0)
-#define trapDoubleWord(...) ((void)0)
+/* a trap: taken when the comparison its first operand selects holds (16 less, 8 greater, 4 equal,
+   2 and 1 the same unsigned) -- the check the compiler put before a division. Taken, the program
+   stops there; here by a call to nowhere. */
+static void codebreaker_trap(uint4 to, int8 a, int8 b, uint8 ua, uint8 ub) {
+  if (((to & 16) && a < b) || ((to & 8) && a > b) || ((to & 4) && a == b) || ((to & 2) && ua < ub) || ((to & 1) && ua > ub))
+    ((void (*)())0)();
+}
+#define trapWord(to, a, b) codebreaker_trap((uint4)(to), (int8)(int4)(a), (int8)(int4)(b), (uint8)(uint4)(a), (uint8)(uint4)(b))
+#define trapDoubleWord(to, a, b) codebreaker_trap((uint4)(to), (int8)(a), (int8)(b), (uint8)(a), (uint8)(b))
 """
 _WIDE_ADDRESS = re.compile(r"\b0xffffffff([89a-f][0-9a-f]{7})\b")
 _PIECE = re.compile(r"\b([A-Za-z_]\w*(?:\[[^\[\]]*\])?)\._(\d+)_(\d+)_")
