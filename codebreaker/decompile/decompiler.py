@@ -127,8 +127,19 @@ def decompile16(module_path, outdir=None, rounds=4):
         more, _o, more_va, _err = run(d.path, only=sorted(new))      # only the new ones
         out.update(more)
         by_va.update(more_va)
+    out = _by_their_names(out, d.names)
     order = [by_va[va] for va in sorted(by_va)]
     return out, order, by_va, d
+
+
+def _by_their_names(out, names):
+    """A function found only because another called it was decompiled after its callers, whose
+    text still calls it `func_0x<address>` -- a name nothing has. The callers are given its name."""
+    known = {"%08x" % va: name for va, name in names.items()}
+    if not known:
+        return out
+    placeholder = re.compile(r"\bfunc_0x([0-9a-f]{8})\b")
+    return {n: placeholder.sub(lambda m: known.get(m.group(1), m.group(0)), t) for n, t in out.items()}
 
 
 def _grow(d, line_for, rounds=4):
@@ -148,6 +159,7 @@ def _grow(d, line_for, rounds=4):
         more, _o, more_va, _err = run(d.path, only=sorted(new))
         out.update(more)
         by_va.update(more_va)
+    out = _by_their_names(out, d.names)
     return out, [by_va[va] for va in sorted(by_va)], by_va
 
 

@@ -421,6 +421,7 @@ uint2 codebreaker_cs(void);
 #define SCARRY1(a,b) ((int1)(((int1)(a) ^ (int1)((a) + (b))) & ((int1)(b) ^ (int1)((a) + (b)))) < 0)
 #define SCARRY2(a,b) ((int2)(((int2)(a) ^ (int2)((a) + (b))) & ((int2)(b) ^ (int2)((a) + (b)))) < 0)
 #define SCARRY4(a,b) ((int4)(((int4)(a) ^ (int4)((a) + (b))) & ((int4)(b) ^ (int4)((a) + (b)))) < 0)
+#define CODEBREAKER_FAR(seg, off) ((void __far *)(((uint4)(uint2)(seg) << 16) | (uint2)(off)))
 """
 
 _FACT = re.compile(r"(?m)^/\*@([GP]) (\S+) (\d+) \*/\n?")
@@ -474,6 +475,58 @@ def _segment_registers(text):
     they would be garbage; they are given the register's value."""
     return re.sub(r"(?m)^(\s+\w+ )unaff_(SS|DS|CS);\s*$",
                   lambda m: "%sunaff_%s = codebreaker_%s();" % (m.group(1), m.group(2), m.group(2).lower()), text)
+
+
+_FAR_LOAD = re.compile(r"\[bp \+ (0x[0-9a-f]+|\d+)\]")
+
+
+def _far_loads(code, start, end):
+    """The offsets from BP of the argument words a function loads as far pointers: `les bx,
+    [bp+6]` takes the word at +6 as an offset and the one above it as its segment."""
+    import capstone
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    found = set()
+    for _a, _n, mnemonic, ops in md.disasm_lite(bytes(code[start:end]), start):
+        if mnemonic in ("les", "lds"):
+            m = _FAR_LOAD.search(ops)
+            if m:
+                found.add(int(m.group(1), 0))
+    return found
+
+
+def _far_arguments(text, loads, near):
+    """Read and written THROUGH, an argument the original loads as a far pointer is one -- the
+    word after it is its segment. The decompiler shows the two words as two numbers and the
+    access as through the first alone, which in C is a pointer into the data segment: the
+    rebuilt function then reads its own data where the original reads wherever its caller
+    pointed. Arguments lie on the stack lowest first, the first 6 bytes above BP in a far
+    function and 4 in a near one."""
+    if not loads:
+        return text
+    head, brace, body = text.partition("{")
+    m = re.search(r"\(([^()]*)\)\s*$", head)
+    if not m or m.group(1).strip() in ("", "void"):
+        return text
+    at, where = (4 if near else 6), {}
+    params = [x.strip() for x in m.group(1).split(",")]
+    for prm in params:
+        words = prm.split()
+        name = words[-1].lstrip("*")
+        wide = "*" in prm and "__far" in prm or words[0] in _WIDE
+        where[at] = (name, words[0], wide)
+        at += 4 if wide else 2
+    for off in sorted(loads):
+        if off not in where or off + 2 not in where:
+            continue
+        (name, kind, wide), (segment, kind2, wide2) = where[off], where[off + 2]
+        if wide or wide2 or kind not in ("int2", "uint2", "xunknown2") or kind2 not in ("int2", "uint2", "xunknown2"):
+            continue
+        n = re.escape(name)
+        body = re.sub(r"\*\(([A-Za-z_]\w*) \*\)\(%s \+ ([^()]*)\)" % n,
+                      lambda mm: "*(%s __far *)CODEBREAKER_FAR(%s, %s + %s)" % (mm.group(1), segment, name, mm.group(2)), body)
+        body = re.sub(r"\*\(([A-Za-z_]\w*) \*\)%s(?![\w(])" % n,
+                      lambda mm: "*(%s __far *)CODEBREAKER_FAR(%s, %s)" % (mm.group(1), segment, name), body)
+    return head + brace + body
 
 
 def _open_arguments(text):
@@ -530,6 +583,13 @@ def compilable16(module_path, outdir=None):
     m.texts, m.order, m.by_va, m.where = {}, [], {}, {}
     m.near, m.wide, m.novalue = set(), set(), set()
     sizes = {}                                               # address of a global -> bytes of the access
+    ends, starts = {}, {}                                    # where each function's code stops: at the next one
+    for va in sorted(d.where):
+        starts.setdefault(d.where[va][0], []).append((d.where[va][1], va))
+    for seg, lst in starts.items():
+        lst.sort()
+        for k, (off, va) in enumerate(lst):
+            ends[va] = lst[k + 1][0] if k + 1 < len(lst) else len(d.images.get(seg, b""))
     for va in sorted(by_va):
         name = by_va[va]
         raw = texts[name]
@@ -542,6 +602,9 @@ def compilable16(module_path, outdir=None):
                 sizes[a] = max(sizes.get(a, 0), int(mm.group(3))) if int(mm.group(3)) <= 4 else sizes.get(a, 2)
         text = _LEADING.sub("", _FACT.sub("", raw))          # notes the decompiler put before the function
         text = _null_is_zero(_segment_registers(_joined_arguments(_pieces(_far(text.strip(), far)))))
+        seg, off = d.where[va]
+        if seg in d.images:
+            text = _far_arguments(text, _far_loads(d.images[seg], off, ends.get(va, off)), "far" not in text.split("{", 1)[0])
         if "return" in far:                                  # the function returns a far pointer
             head, brace, body = text.partition("{")
             head = re.sub(r"\*(?=[\s\w]*\b%s\s*\()" % re.escape(name), "__far *", head, count=1)
