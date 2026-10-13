@@ -14,8 +14,6 @@ from codebreaker.formats.pe import open_pe
 from codebreaker.emulate import emulator as tracer
 import struct as _struct
 import hashlib as _hashlib
-import pickle as _pickle
-import sqlite3 as _sqlite3
 
 
 KIND = "pe"
@@ -232,31 +230,6 @@ def _prov_meminit():
 # traces entirely. Keying on content hash (not path) makes it correct for both sides and for shared
 # bodies: a rebuilt DLL gets a fresh hash each build, so it never stales. Disabled by CB_NO_FP_CACHE.
 
-_FP_DB = None
-
-
-def _fp_cache_path():
-    from codebreaker.base import settings
-    return settings.state("fingerprints.sqlite")
-
-
-def _fp_db():
-    """Open (once per process) the WAL-mode sqlite fp cache, or False if it cannot be used. WAL lets
-    the 10 sweep workers read concurrently; a write that loses the lock is swallowed (re-traced next
-    time), so the cache never affects correctness."""
-    global _FP_DB
-    if _FP_DB is None:
-        try:
-            db = _sqlite3.connect(_fp_cache_path(), timeout=5.0)
-            db.execute("PRAGMA journal_mode=WAL")
-            db.execute("PRAGMA synchronous=NORMAL")
-            db.execute("CREATE TABLE IF NOT EXISTS fp(k TEXT PRIMARY KEY, v BLOB)")
-            db.commit()
-            _FP_DB = db
-        except Exception:
-            _FP_DB = False
-    return _FP_DB or None
-
 
 def _fp_key(sha, func, spec):
     args = tuple(int(a) for a in spec.get("args", []))
@@ -264,28 +237,6 @@ def _fp_key(sha, func, spec):
     return "r%d:%s:%s" % (compare.REV, sha, _hashlib.sha1(
         repr((func, args, mi, int(spec.get("stub_ret", 0))) + (
             (tuple(spec["sentinels"]),) if spec.get("sentinels") else ())).encode()).hexdigest())
-
-
-def _fp_cache_get(key):
-    db = _fp_db()
-    if not db:
-        return None
-    try:
-        row = db.execute("SELECT v FROM fp WHERE k=?", (key,)).fetchone()
-        return _pickle.loads(row[0]) if row else None
-    except Exception:
-        return None
-
-
-def _fp_cache_put(key, fp):
-    db = _fp_db()
-    if not db:
-        return
-    try:
-        db.execute("INSERT OR REPLACE INTO fp(k,v) VALUES(?,?)", (key, _pickle.dumps(fp)))
-        db.commit()
-    except Exception:
-        pass
 
 
 # The oracle's stack (and the RET landing pad just under it) sits at the top of the scratch region.
@@ -386,7 +337,7 @@ def _fp_pe(path, func, spec, rebuilt=False):
         sha = corpus.sha(path)
         if sha:
             key = _fp_key(sha, func, spec)
-            hit = _fp_cache_get(key)
+            hit = compare.cache_get(key)
             if hit is not None:
                 return hit
     try:
@@ -422,7 +373,7 @@ def _fp_pe(path, func, spec, rebuilt=False):
     # Cache only settled results. A truncated trace can differ by wall-clock (the tracer's 2s cap),
     # so caching it could record a machine-dependent fingerprint -- re-trace those instead.
     if key and not fp["truncated"]:
-        _fp_cache_put(key, fp)
+        compare.cache_put(key, fp)
     return fp
 
 

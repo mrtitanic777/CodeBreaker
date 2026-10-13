@@ -18,10 +18,13 @@ match involving one is marked weak.
 """
 import hashlib
 
+from codebreaker.base import corpus
+from codebreaker.verify import compare
+
 NOT_RUN = ("inconclusive", "judge: the emulator crashed on this function", [], "")
 ARG_WORDS = 8
 LEFTOVER = 0x7EF707E5                  # stands for "AX held no result" in a fingerprint
-REV = 12                                # bump when what is built or compared changes
+REV = 13                                # bump when what is built or compared changes
 
 
 def vectors():
@@ -70,10 +73,44 @@ def _call(hit, inputs, entry):
     return "%s(%s)" % (name, ",".join(out))
 
 
+_DIRECTED = {}
+
+
+def directed(module_path, seg, span, most=8):
+    """Inputs aimed at what the function's own code tests: the constants it compares its values
+    with. A branch on `cmp ax, 0x102` is never taken by inputs chosen without looking, and
+    everything behind it stays unexercised; giving the constant in each argument position (alone,
+    and as the offset of a valid far pointer) reaches it."""
+    key = (module_path, seg, span)
+    if key not in _DIRECTED:
+        import capstone
+        from codebreaker.emulate import emulator
+        from codebreaker.formats.ne import NEFile
+        nef = NEFile(module_path)
+        s = nef.segments()[seg - 1]
+        code = nef.data[s["file_off"]:s["file_off"] + s["length"]]
+        md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+        md.detail = True
+        seen = []
+        for ins in md.disasm(bytes(code[span[0]:span[1]]), span[0]):
+            if ins.mnemonic not in ("cmp", "test", "sub", "and"):
+                continue
+            for op in ins.operands:
+                if op.type == capstone.x86.X86_OP_IMM:
+                    c = op.imm & 0xFFFF
+                    if c not in seen and c not in (0, 0xFFFF):
+                        seen.append(c)
+        n, sel, out = ARG_WORDS, emulator.SAFE_ARG, []
+        for c in seen[:most // 2]:
+            out.append({"args": [c] * n})
+            out.append({"args": [c if i % 2 == 0 else sel for i in range(n)]})
+        _DIRECTED[key] = out
+    return _DIRECTED[key]
+
+
 def fingerprint(path, seg, off, near, wide, v, data_image=None, span=None):
     """What one run of one function did, in a form two builds can be compared on."""
     from codebreaker.emulate import emulator as ne_probe
-    from codebreaker.verify import compare
     try:
         r = ne_probe.probe(path, seg=seg, offset=off, args=v["args"], near=near, data_image=data_image)
     except ImportError:
@@ -123,23 +160,33 @@ def fingerprint(path, seg, off, near, wide, v, data_image=None, span=None):
 
 def _judge(context, item):
     """Worker. item = (key, seg, off, near, wide, span, insns, rebuilt seg, rebuilt off)."""
-    from codebreaker.verify import compare
     module_path, dll, data_image = context
     key, seg, off, near, wide, span, insns, bseg, boff = item
     info = {}
     try:
         last = {}
 
+        sha = corpus.sha(module_path)
+
         def original(v):
-            last["fp"] = fingerprint(module_path, seg, off, near, wide, v, span=span)
-            return last["fp"]
+            # the original's run depends only on the original: remembered across rebuilds
+            k = compare.cache_key("ne", REV, sha, seg, off, near, wide, tuple(v["args"]), span)
+            fp = compare.cache_get(k)
+            if fp is None:
+                fp = fingerprint(module_path, seg, off, near, wide, v, span=span)
+                if "err" not in fp and not fp.get("truncated"):
+                    compare.cache_put(k, fp)
+            last["fp"] = fp
+            return fp
 
         def rebuilt(v):
             fp = fingerprint(dll, bseg, boff, near, wide, v, data_image=data_image)
             if (last.get("fp") or {}).get("ret") == LEFTOVER and "err" not in fp and fp.get("ret") is not None:
                 fp["ret"] = LEFTOVER                         # the original returned no value here
             return fp
-        verdict, reason, limits = compare.compare(original, rebuilt, vectors(), (), insns=insns, info=info)
+        verdict, reason, limits = compare.compare(
+            original, rebuilt, vectors(), (), insns=insns, info=info,
+            directed=lambda covered, reached: directed(module_path, seg, span))
     except ImportError:
         raise
     except Exception as e:
@@ -175,7 +222,6 @@ def profile(module_path):
     """(digest, settings) of everything other than the source that a verdict depends on."""
     from codebreaker.build import functions
     from codebreaker.decompile import decompiler
-    from codebreaker.verify import compare
     settings = repr(("ne", REV, decompiler.REV, compare.REV, functions.CFLAGS16, vectors()))
     return hashlib.sha1(settings.encode()).hexdigest()[:12], settings
 
