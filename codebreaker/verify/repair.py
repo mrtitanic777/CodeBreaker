@@ -249,6 +249,11 @@ def _knobs(source, target_frame, draft_frame):
         if j >= MAX_SITES:
             break
         yield "switch%d" % j, top + body[:i0] + new + body[i1:]
+    # fold: `t = f(..);` and at once `if (t == N)`, as `if (f(..) == N)`
+    for j, (i0, i1, new) in enumerate(shape.folds(decls, body, shadow)):
+        if j >= MAX_SITES:
+            break
+        yield "fold%d" % j, top + body[:i0] + new + body[i1:]
     # return: `r = x;` that only the final `return r;` follows, as `return x;`
     early = shape.returns(head, decls, body, shadow)
     if early:

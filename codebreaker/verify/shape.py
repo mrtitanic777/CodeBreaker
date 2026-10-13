@@ -186,3 +186,22 @@ def _returned(head):
     words = lines[-1].split("(")[0].split()
     words = [w for w in words if not w.startswith("__")]
     return words[-2] if len(words) >= 2 else None
+
+
+def folds(decls, body, shadow):
+    """(start, end, text) for each `t = f(...);` followed at once by `if (t <compare> N) {`, where
+    that is all `t` is for: written `if (f(...) <compare> N) {`. A decompiler names every value it
+    sees; a person tests the call. Only for a variable of the type a function returns (int4), so
+    that nothing is cut down or widened on the way, and only when the two lines are its only
+    mentions."""
+    plain = {m.group(1) for d in decls for m in [re.match(r"\s*int4 (%s);\s*$" % _NAME, d)] if m}
+    line = re.compile(r"(?m)^(?P<in>[ \t]*)(?P<t>%s) = (?P<call>%s\([^;\n]*\));\n[ \t]*if \((?P=t) (?P<op>==|!=|<=|>=|<|>) "
+                      r"(?P<n>%s)\) \{" % (_NAME, _NAME, _NUM))
+    for m in line.finditer(shadow):
+        t = m.group("t")
+        if t not in plain or len(re.findall(r"\b%s\b" % re.escape(t), shadow)) != 2:
+            continue
+        call = body[m.start("call"):m.end("call")]
+        if _close(shadow, m.start("call") + shadow[m.start("call"):].index("("), "()") != m.end("call") - 1:
+            continue                                   # more than the one call on that line
+        yield m.start(), m.end(), "%sif (%s %s %s) {" % (m.group("in"), call, m.group("op"), m.group("n"))
