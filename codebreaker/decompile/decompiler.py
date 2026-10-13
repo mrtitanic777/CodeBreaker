@@ -25,7 +25,7 @@ import os
 import re
 import subprocess
 
-REV = 14                                    # bump when what is fed to / taken from the native program changes
+REV = 15                                    # bump when what is fed to / taken from the native program changes
 
 # language id by PE machine type
 _ARCH = {0x014C: "x86:LE:32:default:windows", 0x01F2: "PowerPC:BE:64:A2ALT-32addr:default"}
@@ -347,9 +347,17 @@ def compilable(module_path, funcs, outdir):
         conv = "__cdecl" if apiarity.stack_bytes(imports[n], n) == 0 else "__stdcall"
         decls.append("int %s %s();" % (conv, n))
     for n in order:                                    # each function, declared before any use
-        head = out[n].split("{", 1)[0].strip()
-        if head.endswith(")"):
-            decls.append(" ".join(head.split()) + ";")
+        head = " ".join(out[n].split("{", 1)[0].split())
+        if not head.endswith(")"):
+            continue
+        if "__cdecl" in head:
+            # The caller removes the arguments, so nothing in the binary fixes how many there
+            # are: the decompiler recovers each call on its own evidence and callers need not
+            # agree with the definition. Declared with the list left open, each call compiles as
+            # it was recovered. (A function that removes its own arguments -- the default here --
+            # states their size in its return, and keeps its full declaration.)
+            head = head[:head.index("(")] + "()"
+        decls.append(head + ";")
     preamble = _TYPES + _HELPERS + "\n".join(decls) + "\n" + "\n".join(macros) + "\n"
     return preamble, out, order, by_va, used
 

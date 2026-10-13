@@ -20,7 +20,7 @@ What 16-bit code needs said that 32-bit code does not:
     stack are what must match, and they do.)
   * Globals are offsets in the module's data segment, used through DS as in the original.
   * A function printed without a convention has the module's default one (near, the callee
-    removes its arguments); the compiler is told that default (CFLAGS in build/module16.py).
+    removes its arguments); the compiler is told that default (CFLAGS16 in build/functions.py).
 """
 import re
 

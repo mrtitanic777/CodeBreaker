@@ -21,7 +21,7 @@ def main(argv):
         print(__doc__)
         return 2
     from codebreaker.base import corpus, period_tools, settings
-    from codebreaker.build import module16
+    from codebreaker.build import functions as module16
     from codebreaker.decompile import c16
     path = corpus.retail(argv[0]) or argv[0]
     each = int(argv[argv.index("--each") + 1]) if "--each" in argv else 2
@@ -40,7 +40,7 @@ def main(argv):
         os.remove(os.path.join(work, "all.err"))
     except OSError:
         pass
-    subprocess.run([period_tools.ow_tool("wcc")] + module16.CFLAGS + ["all.c"], cwd=work,
+    subprocess.run([period_tools.ow_tool("wcc")] + module16.CFLAGS16 + ["all.c"], cwd=work,
                    env=period_tools.ow_env("ne"), capture_output=True, text=True, errors="replace")
     try:
         log = open(os.path.join(work, "all.err"), errors="replace").read()

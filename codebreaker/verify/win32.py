@@ -1,7 +1,7 @@
 """win32.py -- what is particular to reconstructing a 32-bit Windows module.
 
 One of the kinds reconstruct.py works with (see there for what a kind provides). Here: the
-module is decompiled by decompile/decompiler.py, built as one unit by build/whole_module.py, and
+module is decompiled by decompile/decompiler.py, built by build/functions.py, and
 each function is run beside the original in the 32-bit emulator and compared by verify/oracle.py
 (calls and their arguments, result, memory changed, stack, saved registers, coverage).
 """
@@ -33,26 +33,21 @@ def prepare(module_path, work):
 
 def build(m, module_path, work):
     """-> (context for judge, {name: item}, {name: why it is not in the build})"""
-    from codebreaker.build import whole_module
+    from codebreaker.build import functions
     from codebreaker.decompile import decompiler
-    from codebreaker.formats.pe import open_pe
     # Only functions with a known address are built. The rest are library routines recognised
     # by signature (__allshl, _memcpy): they belong to the C runtime, which is linked.
-    placed = set(m.by_va.values())
-    dll, _built, dropped = whole_module.build(module_path, m.header, m.texts, [n for n in m.order if n in placed],
-                                              m.imports, work, cflags=decompiler.CFLAGS)
-    at, base = {}, 0
-    if dll:
-        pb = open_pe(dll)
-        at, base = pb.export_addrs(), pb.image_base
+    placed = [n for n in m.order if n in m.va]
+    dll, where, dropped = functions.build32(module_path, m.header, m.texts, placed, m.imports, work,
+                                            decompiler.CFLAGS)
     items, dropped = {}, dict(dropped)
     for fn in placed:
         if fn in dropped:
             continue
-        if fn not in at:
+        if fn not in where:
             dropped[fn] = "not in the build"
         else:
-            items[fn] = (m.key[fn], m.va[fn], dll, base + at[fn])
+            items[fn] = (m.key[fn], m.va[fn], dll, where[fn])
     return module_path, items, dropped
 
 

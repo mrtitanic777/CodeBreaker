@@ -2,7 +2,7 @@
 
 One of the kinds reconstruct.py works with (see there for what a kind provides). Here: the
 module is decompiled and made compilable by decompile/c16.py, every function is compiled and a
-16-bit DLL linked by build/module16.py, and each function is run beside the original in the
+16-bit DLL linked by build/functions.py, and each function is run beside the original in the
 16-bit emulator.
 
 Both sides are entered the way the function is really called (far or near) with the same words
@@ -175,10 +175,10 @@ KIND = "ne"
 
 def profile(module_path):
     """(digest, settings) of everything other than the source that a verdict depends on."""
-    from codebreaker.build import module16
+    from codebreaker.build import functions
     from codebreaker.decompile import decompiler
     from codebreaker.verify import oracle as V
-    settings = repr(("ne", REV, decompiler.REV, V._ORACLE_REV, module16.CFLAGS, vectors()))
+    settings = repr(("ne", REV, decompiler.REV, V._ORACLE_REV, functions.CFLAGS16, vectors()))
     return hashlib.sha1(settings.encode()).hexdigest()[:12], settings
 
 
@@ -197,9 +197,9 @@ def prepare(module_path, work):
 
 def build(m, module_path, work):
     """-> (context for judge, {name: item}, {name: why it is not in the build})"""
-    from codebreaker.build import module16
+    from codebreaker.build import functions
     from codebreaker.formats.ne import NEFile
-    dll, placed, dropped = module16.build(m.header, m.texts, m.order, m.imports, work, segments=m.segments)
+    dll, placed, dropped = functions.build16(m.header, m.texts, m.order, m.imports, work, segments=m.segments)
     nef = NEFile(module_path)
     auto = nef.h.get("autodata_seg")
     data_image = b""
