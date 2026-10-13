@@ -34,14 +34,11 @@ def _code(path):
 
 def scan():
     shared, copies = {}, []
-    for base, _dirs, files in os.walk(os.path.join(ROOT, "src")):
-        b = "/" + os.path.relpath(base, ROOT).replace("\\", "/")
-        if any(s in b + "/" for s in _SKIP):
-            continue
-        for f in files:
-            if not f.endswith(".py") or f == "__init__.py":
+    for rel in alias_fork.tracked("src"):
+        if True:
+            b, f = "/" + os.path.dirname(rel), os.path.basename(rel)
+            if any(s in b + "/" for s in _SKIP) or not f.endswith(".py") or f == "__init__.py":
                 continue
-            rel = b[1:] + "/" + f
             if any(s in b for s in _PER_VERSION):
                 copies.append(rel)
             elif not any(s in b for s in _NOT_SHARED):

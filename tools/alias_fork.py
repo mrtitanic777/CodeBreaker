@@ -35,6 +35,15 @@ else:
 '''
 
 
+def tracked(prefix=""):
+    """Repository files under `prefix` that git tracks (relative, forward slashes). Local
+    folders git ignores -- samples, scratch material -- are not part of the package and are
+    left out of every scan."""
+    import subprocess
+    r = subprocess.run(["git", "ls-files", "--", prefix or "."], cwd=ROOT, capture_output=True, text=True)
+    return [x for x in r.stdout.split("\n") if x]
+
+
 def is_alias(path):
     try:
         text = open(path, encoding="utf-8", errors="replace").read()
