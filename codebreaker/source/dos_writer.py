@@ -251,7 +251,9 @@ class Writer(object):
                     out += ["GAP segment para public use16 'GAP'", "        db   %d dup (?)" % ((stack - self.top) * 16),
                             "GAP ends"]
                 out += ["STK segment para stack use16 'STACK'", "        db   %d dup (?)" % p.sp, "STK ends", ""]
-            out.append("end %s" % self.label(self.entry))
+            # (an entry point outside the load module -- COMMAND.COM's is in its program prefix --
+            # has no label to name; it is set in the file's header after linking)
+            out.append("end %s" % self.label(self.entry) if 0 <= self.entry < len(img) else "end")
         elif p.kind == "com" and self.origin in self.labels:
             out.append("end %s" % self.label(self.origin))       # where it starts: the linker leaves out what is before
         else:
@@ -376,6 +378,19 @@ def reconstruct(module_path, outdir, log=None):
             if not w.flat:
                 if relocs != w.rel:
                     notes.append("the relocation table differs (%d entries, original %d)" % (len(relocs), len(w.rel)))
+                if regs != (p.cs, p.ip, p.ss, p.sp) and relocs == w.rel:
+                    # Where a program starts and where its stack is are four words of the file's
+                    # header. A linker fills them in from the source's entry label and stack
+                    # segment, and cannot be told a stack that lies inside the program or has
+                    # no size, or an entry before the program's first byte; the code and data
+                    # being the original's, the four words are written as the original has them.
+                    with open(image, "r+b") as f:
+                        f.seek(0x0E)
+                        f.write(struct.pack("<HH", (p.ss - dos.LOAD) & 0xFFFF, p.sp))
+                        f.seek(0x14)
+                        f.write(struct.pack("<HH", p.ip, (p.cs - dos.LOAD) & 0xFFFF))
+                    _b, _r, regs = _load_module(image, True)
+                    result.setdefault("remarks", []).append("entry and stack set in the file's header after linking")
                 if regs != (p.cs, p.ip, p.ss, p.sp):
                     notes.append("entry or stack differ: %04x:%04x %04x:%04x, original %04x:%04x %04x:%04x" % (
                         regs + (p.cs, p.ip, p.ss, p.sp)))

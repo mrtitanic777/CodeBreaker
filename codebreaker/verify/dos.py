@@ -14,7 +14,7 @@ import hashlib
 import os
 
 KIND = "dos"
-REV = 91
+REV = 92
 SAME = "the program built from this source is the original, byte for byte"
 
 
