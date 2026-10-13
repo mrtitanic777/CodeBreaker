@@ -237,17 +237,14 @@ class PELane(object):
                     pb = open_pe(dll); bbase = pb.image_base; addrs = pb.export_addrs()
                 except (OSError, ValueError):
                     continue                     # built, then gone or unreadable: not a result
-                for fn in exports:
-                    if fn not in todo or not addrs.get(fn):
-                        continue
+                from src.targets.win95.verification import ghidra_engine
+                mine = [fn for fn in exports if fn in todo and addrs.get(fn)]
+                fn_of = {va_of[fn]: fn for fn in mine}
+                judged = ghidra_engine.judge_all(path, dll, [(va_of[fn], bbase + addrs[fn]) for fn in mine])
+                for va, (verdict, reason, limits, detail) in judged.items():
+                    fn = fn_of[va]
                     done.add(fn)
-                    info = {}
-                    verdict, reason, limits = verify95.compare(
-                        lambda v, a=va_of[fn]: verify95._fp_pe(path, a, v),
-                        lambda v, a=bbase + addrs[fn]: verify95._fp_pe(dll, a, v, rebuilt=path),
-                        vecs, more, insns=verify95.insn_count(path, va_of[fn]),
-                        directed=lambda cov, rch, a=va_of[fn]: verify95.directed_vectors(path, a, cov, reached=rch),
-                        info=info)
+                    info = {"detail": detail}
                     if stubbed[fn] and verdict in GOOD:
                         limits = sorted(set(limits) | {"stub-callee"})
                     results[self.key(va_of[fn])] = {"verdict": verdict, "fname": fn, "reason": reason,

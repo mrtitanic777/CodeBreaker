@@ -99,11 +99,6 @@ def write_module(module, verify=True, log=print):
     db = store.open()
     digest = pipeline.profile("pe")[0]
     funcs = pipeline.functions("pe", path)
-    if verify:
-        t0 = time.time()
-        pipeline.verify("pe", path, funcs, store=db, bank=False)
-        log("verified %d functions in %.0fs" % (len(funcs), time.time() - t0))
-    rows = db.get_many("pe", verify95._mod_sha(path) or "")
     pe = open_pe(path)
     # Other decompilers, judged by the same verifier; each function is taken from whichever
     # reconstruction holds up best. In order of preference when two are equally good:
@@ -125,6 +120,18 @@ def write_module(module, verify=True, log=print):
             others.append((label, res, pre))
             if verify:
                 log("%s: %d functions judged in %.0fs" % (label, len(res), time.time() - t0))
+    # Our own decompiler is asked only about the functions no other engine fully verified: one
+    # verified reconstruction of a function is enough, and judging is the slow part.
+    if verify:
+        settled = set()
+        for _label, res, _pre in others:
+            settled |= {k for k, g in res.items() if g.get("source") and ORDER.index(classify(g)[0]) == 0}
+        rest = [va for va in funcs if pipeline.LANES["pe"].key(va) not in settled]
+        t0 = time.time()
+        pipeline.verify("pe", path, rest, store=db, bank=False)
+        log("codebreaker: %d of %d functions judged in %.0fs (%d already verified by another engine)" % (
+            len(rest), len(funcs), time.time() - t0, len(funcs) - len(rest)))
+    rows = db.get_many("pe", verify95._mod_sha(path) or "")
     parts, counts, engines = [], Counter(), Counter()
     for va in funcs:
         key = pipeline.LANES["pe"].key(va)
