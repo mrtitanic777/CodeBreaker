@@ -27,6 +27,8 @@
 //
 //   decompiler <description> [--at <hexVA>...]      every function listed, or only those
 //
+// For processors other than 32-bit x86, each pointer-typed local or parameter is reported as
+// `/*@P <name> <bytes> */` (16-bit code has near and far pointers; the C text does not say which).
 // Each function is preceded by `/*@@ <name> <hexVA> */`; each global it touches is reported as
 // `/*@G <hexVA> <bytes> */` (the printed name of an unnamed global does not carry its size).
 // CB_LANGUAGES names the folder of language files (*.sla, *.ldefs, *.pspec, *.cspec).
@@ -280,6 +282,23 @@ int main(int argc, char** argv) {
           if (!image->holds(va)) continue;
           if (seen.insert({va, (int)vn->getSize()}).second)
             std::cout << "/*@G " << std::hex << va << std::dec << " " << vn->getSize() << " */" << std::endl;
+        }
+        // 16-bit code has two sizes of pointer and C text does not show which a variable is:
+        // report every pointer-typed local and parameter with its size, `/*@P <name> <bytes> */`.
+        if (!x86_32) {
+          ScopeLocal* loc = t.first->getScopeLocal();
+          std::set<std::string> said;
+          for (MapIterator it = loc->begin(); it != loc->end(); ++it) {
+            const Symbol* sym = (*it)->getSymbol();
+            if (sym == nullptr || sym->getType() == nullptr) continue;
+            if (sym->getType()->getMetatype() != TYPE_PTR) continue;
+            if (said.insert(sym->getName()).second)
+              std::cout << "/*@P " << sym->getName() << " " << sym->getType()->getSize() << " */" << std::endl;
+          }
+          // ...and the function's own result, under the name `return`
+          Datatype* rt = t.first->getFuncProto().getOutputType();
+          if (rt != nullptr && rt->getMetatype() == TYPE_PTR)
+            std::cout << "/*@P return " << rt->getSize() << " */" << std::endl;
         }
         m.print->docFunction(t.first);
       } catch (LowlevelError& e) {

@@ -64,7 +64,7 @@ def tree_dir(module):
 
 
 def write_module(module, verify=True, out_dir=None, log=print):
-    from codebreaker.verify import pipeline, reconstruct
+    from codebreaker.verify import reconstruct
     path = corpus.retail(module)
     if not path:
         raise SystemExit("no module %r in the corpus" % module)
@@ -79,22 +79,21 @@ def write_module(module, verify=True, out_dir=None, log=print):
         sha, digest = reconstruct.run(path, fs=fs, log=log)
     else:
         sha, digest = reconstruct.identity(path)
-    lane = pipeline.LANES["pe"]
     best = fs.best(sha, digest)
-    addrs = lane.functions(path)
+    addrs = fs.addresses(sha)             # every function the module is known to have
     counts = dict.fromkeys(ORDER, 0)
     parts = []
     for va in addrs:
-        row = best.get(lane.key(va))
+        row = best.get(va)
         if not row:
             counts["no-source"] += 1
-            parts.append("/* [%s] @ 0x%08X -- not measured on the current verifier */\n" % (TITLE["no-source"], va))
+            parts.append("/* [%s] @ %s -- not measured on the current verifier */\n" % (TITLE["no-source"], va))
             continue
         cls = row["class"]
         counts[cls] += 1
         detail = describe(row)
-        parts.append("/* [%s] %s  @ 0x%08X%s */\n%s\n" % (
-            TITLE[cls], row["name"] or "sub_%x" % va, va, (" -- " + detail) if detail else "",
+        parts.append("/* [%s] %s  @ %s%s */\n%s\n" % (
+            TITLE[cls], row["name"] or "sub_" + va, va, (" -- " + detail) if detail else "",
             (row["source"] or "/* (no reconstruction) */").strip()))
     total = len(addrs)
     banner = ["/* %s -- reconstructed source." % name, " *",

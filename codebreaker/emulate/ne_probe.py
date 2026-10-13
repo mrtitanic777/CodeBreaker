@@ -104,7 +104,7 @@ def default_stub(hit, uc, U, ctx):
 
 
 def probe(dll, ordinal=None, seg=None, offset=None, args=None, stub=default_stub, insn_cap=None,
-          prelude=None, cdecl=False):
+          prelude=None, cdecl=False, near=False, data_image=None):
     """Run one NE function under the controlled Win16 environment. Returns the tracer16 TraceRecord
     (with rec['layout'] + rec['imports_hit'] + rec['mem_*'] + rec['ret']).
 
@@ -126,7 +126,7 @@ def probe(dll, ordinal=None, seg=None, offset=None, args=None, stub=default_stub
         kw["insn_cap"] = insn_cap
     rec = T.trace_function16(dll, ordinal=ordinal, seg=seg, offset=offset,
                              args=args, arity=len(args or []), import_stub=_stub,
-                             prelude=prelude, **kw)
+                             prelude=prelude, near=near, data_image=data_image, **kw)
     rec["heaps"] = {"base": HEAP_BASE, "stride": HEAP_STRIDE}
     ctx = ctx_box.get("ctx")
     rec["heap_sels"] = {s: b for s, (b, _sz) in ctx.heaps.items()} if ctx else {}

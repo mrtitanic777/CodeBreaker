@@ -38,8 +38,16 @@ def _judge(module_path, item):
     return verdict, reason, list(limits), info.get("detail", "")
 
 
+def _is16(module_path):
+    from codebreaker.base import corpus
+    return corpus.lane(module_path) == "ne"
+
+
 def identity(module_path):
     """(content hash, profile digest) -- what results for this module are filed under."""
+    if _is16(module_path):
+        from codebreaker.verify import reconstruct16
+        return reconstruct16.identity(module_path)
     from codebreaker.verify import oracle as V
     from codebreaker.verify import pipeline
     return V._mod_sha(module_path) or "", pipeline.profile("pe")[0]
@@ -63,7 +71,10 @@ def _reaches(texts, built, dropped):
 
 
 def run(module_path, fs=None, log=print):
-    """Reconstruct and judge a module. -> (module hash, profile digest)."""
+    """Reconstruct and judge a module, 32-bit or 16-bit. -> (module hash, profile digest)."""
+    if _is16(module_path):
+        from codebreaker.verify import reconstruct16
+        return reconstruct16.run(module_path, fs=fs, log=log)
     from codebreaker.build import whole_module
     from codebreaker.decompile import decompiler
     from codebreaker.formats.pe import open_pe

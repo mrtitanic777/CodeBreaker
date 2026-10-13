@@ -3,6 +3,7 @@
     python -m codebreaker sweep                    every 32-bit module not yet measured
     python -m codebreaker sweep --only a.dll,b.dll these
     python -m codebreaker sweep --only @list.txt   one module name per line
+    python -m codebreaker sweep --16               the 16-bit modules; --all for both
     python -m codebreaker sweep --status           what has been measured; no work
     python -m codebreaker sweep --again            measure modules again even if already done
 
@@ -49,21 +50,21 @@ def main(argv):
     pipeline._arm()
     fs = F.open()
     digest = pipeline.profile("pe")[0]
-    paths = corpus.modules("pe")
+    kinds = ("pe", "ne") if "--all" in argv else ("ne",) if "--16" in argv else ("pe",)
+    paths = [p for k in kinds for p in corpus.modules(k)]
     only = _wanted(argv)
     if only is not None:
         paths = [p for p in paths if os.path.basename(p).lower() in only]
     done = status(fs, digest, paths)
     if "--status" in argv:
         return 0
-    lane = pipeline.LANES["pe"]
     failed = 0
     for i, path in enumerate(paths):
         name = os.path.basename(path).lower()
         sha, _d = reconstruct.identity(path)
         if "--again" not in argv and name in done:
             judged = fs.best(sha, digest)
-            if all(lane.key(va) in judged for va in lane.functions(path)):
+            if all(a in judged for a in fs.addresses(sha)):
                 continue
         t0 = time.time()
         try:

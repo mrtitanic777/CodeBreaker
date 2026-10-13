@@ -86,20 +86,34 @@ def functions(nef):
     return out
 
 
-def _ret_pop(code, off, limit=4096):
-    """Bytes of arguments a function removes, from the first return found after `off` by a
-    plain scan: `ret N`/`retf N` -> N, `ret`/`retf` -> 0, none found -> -1. A scan, not a
-    disassembly: it is only trusted when it finds a return right at a function's end."""
-    end = min(len(code), off + limit)
-    i = off
-    while i < end:
-        b = code[i]
-        if b in (0xC2, 0xCA) and i + 2 < len(code):
-            return struct.unpack_from("<H", code, i + 1)[0]
-        if b in (0xC3, 0xCB):
-            return 0
-        i += 1
-    return -1
+def returns(code, off, limit=600):
+    """How the function at `off` returns: ("far" | "near" | None, bytes of arguments removed).
+
+    Read from the function's own first return instruction: `retf` is a far function, `ret` a
+    near one, and the operand is what it removes. That is the function's own statement of how
+    it must be called; where it was found (entry table, a relocation, a near call) only says
+    how SOMEONE calls it. None when no return is met within `limit` instructions."""
+    import capstone
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    n = 0
+    for ins in md.disasm(bytes(code[off:off + 4 * limit]), off):
+        n += 1
+        if ins.mnemonic in ("ret", "retf", "lret"):
+            pop = int(ins.op_str, 0) if ins.op_str else 0
+            return ("near" if ins.mnemonic == "ret" else "far"), pop
+        if n >= limit:
+            break
+    return None, -1
+
+
+def model_line(d, va, name, default="near"):
+    """The description line for a function at `va`."""
+    seg, off = where(va)
+    kind, pop = returns(d.segment_bytes.get(seg, b""), off)
+    # A function that removes its own arguments says so in its return (`retf 6`); one that ends
+    # in a plain return leaves them to the caller.
+    conv = "__stdcall16" if pop > 0 else "__cdecl16" if pop == 0 else "__stdcall16"
+    return "F\t%x\t%s\t%d\t%s%s" % (va, name, pop, conv, kind or default)
 
 
 def describe(module_path, outdir):
@@ -180,22 +194,24 @@ def describe(module_path, outdir):
         e = entries.get(ordv)
         if e and re.fullmatch(r"[A-Za-z_]\w*", nm):
             exported.setdefault((e["seg"], e["offset"]), nm)
-    names, where = {}, {}
-    by_seg = {s["idx"]: s for s in segs}
+    names, where, funcs = {}, {}, []
     for (seg, off), dist in sorted(functions(nef).items()):
         va = address(seg, off)
         nm = exported.get((seg, off)) or "sub_%d_%04X" % (seg, off)
         if nm in imports:
             nm = "sub_%d_%04X" % (seg, off)
         names[va], where[va] = nm, (seg, off)
-        s = by_seg[seg]
-        pop = _ret_pop(nef.data[s["file_off"]:s["file_off"] + s["length"]], off)
-        lines.append("F\t%x\t%s\t%d\t%s" % (va, nm, pop, "__stdcall16far" if dist == "far" else "__stdcall16near"))
+        funcs.append((va, nm, dist))
+    d = Description("", names, where, order)
+    d.code = {s["idx"]: s["length"] for s in segs if s["kind"] == "CODE"}     # segment -> bytes of code
+    d.segment_bytes = {s["idx"]: bytes(nef.data[s["file_off"]:s["file_off"] + s["length"]])
+                       for s in segs if s["kind"] == "CODE" and s["file_off"]}
+    for va, nm, dist in funcs:
+        lines.append(model_line(d, va, nm, default=dist))
     for nm in order:                                         # Windows API: far, callee removes arguments
         lines.append("X\t%x\t%s\t-1\t__stdcall16far" % (imports[nm], nm))
     path = os.path.join(outdir, "description.txt")
     with open(path, "w", newline="\n", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
-    d = Description(path, names, where, order)
-    d.code = {s["idx"]: s["length"] for s in segs if s["kind"] == "CODE"}     # segment -> bytes of code
+    d.path = path
     return d

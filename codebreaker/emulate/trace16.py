@@ -243,8 +243,12 @@ def _patch_chain(uc, base, r, tsel, toff):
         seen += 1
 
 
+NEAR_RET = 0xFFEE                 # where a near function entered by the tracer returns to
+FAR_RET = 0xFFF0                  # offset in the sentinel segment a far function returns to
+
+
 def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity=0,
-                     insn_cap=_MAX_INSNS, import_stub=None, prelude=None):
+                     insn_cap=_MAX_INSNS, import_stub=None, prelude=None, near=False, data_image=None):
     """Trace one exported 16-bit function. Identify it by `ordinal` (entry-table) or explicit
     (seg, offset). `args` are 16-bit Pascal args (pushed left-to-right); a far-RET sentinel sits
     under them. Returns a TraceRecord dict like tracer.trace_function.
@@ -252,7 +256,11 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
     import_stub(hit, uc, U) -> dict|None lets a caller model Win16 API calls (the dynamic NE
     oracle): return {"ax":.., "dx":.., "pop":arg_bytes} to set the DX:AX result and pop the callee's
     Pascal args (keeping the caller's stack balanced). Default (None) keeps the old AX=0, pop-none
-    behavior. `hit` carries the resolved "MODULE.FUNC" in hit["api"] plus args_stack."""
+    behavior. `hit` carries the resolved "MODULE.FUNC" in hit["api"] plus args_stack.
+
+    near=True enters a NEAR function: only a return offset is pushed, and returning to it ends the
+    run. data_image (bytes) is written over the start of the data segment before the run -- used
+    to give a rebuilt module the ORIGINAL's data, so both sides start from the same globals."""
     import unicorn as U
     from unicorn.x86_const import (UC_X86_REG_CS, UC_X86_REG_DS, UC_X86_REG_SS, UC_X86_REG_ES,
                                    UC_X86_REG_ESP, UC_X86_REG_EIP, UC_X86_REG_EAX, UC_X86_REG_EDX)
@@ -280,13 +288,22 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
         for a in sargs:
             sp = (sp - 2) & 0xFFFF
             uc.mem_write(STACK_BASE + sp, (int(a) & 0xFFFF).to_bytes(2, "little"))
-        sp = (sp - 2) & 0xFFFF; uc.mem_write(STACK_BASE + sp, sels[sseg].to_bytes(2, "little"))
-        sp = (sp - 2) & 0xFFFF; uc.mem_write(STACK_BASE + sp, (0).to_bytes(2, "little"))
+        if near:                                             # near call: just the return offset
+            sp = (sp - 2) & 0xFFFF; uc.mem_write(STACK_BASE + sp, NEAR_RET.to_bytes(2, "little"))
+        else:
+            # a far return goes to a place of its own in the sentinel segment. (It used to go to
+            # offset 0 of the function's own segment, which ran whatever was there.)
+            sp = (sp - 2) & 0xFFFF; uc.mem_write(STACK_BASE + sp, sent_sel.to_bytes(2, "little"))
+            sp = (sp - 2) & 0xFFFF; uc.mem_write(STACK_BASE + sp, FAR_RET.to_bytes(2, "little"))
+        entry_sp[0] = sp
         uc.reg_write(UC_X86_REG_SS, stack_sel); uc.reg_write(UC_X86_REG_ESP, sp)
         uc.reg_write(UC_X86_REG_DS, ds_sel); uc.reg_write(UC_X86_REG_ES, ds_sel)
         uc.reg_write(UC_X86_REG_CS, sels[sseg]); uc.reg_write(UC_X86_REG_EIP, soff)
         return soff
 
+    entry_sp = [0]
+    if data_image and seg_bases.get(auto) is not None:
+        uc.mem_write(seg_bases[auto], bytes(data_image[:0x10000]))
     _enter(seg, offset, args)
 
     rec = {"schema": "cb.behavior.trace16/1", "module": os.path.basename(path),
@@ -302,6 +319,10 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
     def hook_code(uc, address, size, _ud):
         if rec["insn_count"] >= insn_cap:
             rec["truncated"] = True; uc.emu_stop(); return
+        if near and address == cs_base + NEAR_RET:           # the near function returned
+            rec["returned"] = True; uc.emu_stop(); return
+        if address == SENT_BASE + FAR_RET:                   # the far function returned
+            rec["returned"] = True; uc.emu_stop(); return
         rec["insn_count"] += 1
         if len(rec["path"]) < 20000:
             rec["path"].append(address)
@@ -375,7 +396,7 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
 
     try:
         uc.emu_start(offset, SENT_BASE, count=insn_cap + 1)
-        rec["exit"] = "truncated" if rec["truncated"] else "ret"
+        rec["exit"] = "truncated" if rec["truncated"] else "ret" if rec.get("returned") else "stopped"
     except U.UcError as e:
         rec["exit"] = "exception: %s" % e
         # fault detail: disassemble the instruction at the faulting CS:EIP (helps triage which
@@ -394,6 +415,12 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
         except Exception:
             pass
     rec["ret"] = uc.reg_read(UC_X86_REG_EAX) & 0xFFFF
+    # how far the stack pointer moved: 2 or 4 for the return address, plus any arguments removed
+    rec["sp_delta"] = ((uc.reg_read(UC_X86_REG_ESP) & 0xFFFF) - entry_sp[0]) & 0xFFFF
+    rec["code_base"] = cs_base
+    from unicorn.x86_const import UC_X86_REG_ESI as _SI, UC_X86_REG_EDI as _DI
+    rec["exit_regs"] = {"SI": uc.reg_read(_SI) & 0xFFFF, "DI": uc.reg_read(_DI) & 0xFFFF,
+                        "DS": uc.reg_read(UC_X86_REG_DS)}
     rec["ret32"] = ((uc.reg_read(UC_X86_REG_EDX) & 0xFFFF) << 16) | rec["ret"]
     rec["n_imports"] = len(imports)
     return rec

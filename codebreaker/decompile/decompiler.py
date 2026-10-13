@@ -398,7 +398,7 @@ def decompile16(module_path, outdir=None, rounds=4):
             for va in sorted(new):
                 seg, off = image16.where(va)
                 d.names[va], d.where[va] = "sub_%d_%04X" % (seg, off), (seg, off)
-                f.write("F\t%x\t%s\t-1\t__stdcall16near\n" % (va, d.names[va]))
+                f.write(image16.model_line(d, va, d.names[va]) + "\n")
         more, _o, more_va, _err = run(d.path, only=sorted(new))      # only the new ones
         out.update(more)
         by_va.update(more_va)
