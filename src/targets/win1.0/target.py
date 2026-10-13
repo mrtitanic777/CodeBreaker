@@ -63,6 +63,17 @@ def resolve(name):
     raise ValueError("no module matching %r under %s/" % (name, FILES))
 
 
+def open_module(mod):
+    """Open a module by name. The system modules live inside the WIN100.BIN/OVL bundle; the
+    apps are ordinary .EXE files. Everything else works the same on both, so the only
+    difference worth having is which loader opens the file."""
+    if mod in SYSMODS:
+        from src.core import cores
+        return cores.get('idord').open_module(mod)
+    from src.disasm.disasm import open_ne
+    return open_ne("files/WF/%s.EXE" % mod)
+
+
 def all_apps():
     """Every standalone NE app under files/WF/, as paths."""
     out = []
