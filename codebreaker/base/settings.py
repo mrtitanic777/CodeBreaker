@@ -4,6 +4,8 @@ CodeBreaker holds no binaries to reconstruct, no compiler and no results. Those 
 and are named in one file, `settings.json` at the top of the checkout:
 
     corpus          the folder of original binaries
+    corpora         {name: folder} -- the original binaries of every product there is; the one
+                    named by `target` is `corpus` unless it is listed here too
     openwatcom      the OpenWatcom release tree used to compile reconstructions
     decompiler_bin  folder of the native decompiler executables   (default: native/decompiler/build/bin)
     ghidra_core     folder holding cbdecomp.exe                    (default: native/ghidra_core/build/bin)
@@ -16,6 +18,7 @@ CB_OPENWATCOM, ...) overrides the file, for one-off runs.
     from codebreaker.base import settings
     settings.get("openwatcom")
     settings.state("results.sqlite")       # a path inside the state folder (created on demand)
+    settings.corpora()                     # {name: folder} of every product's original binaries
 """
 import json
 import os
@@ -55,6 +58,16 @@ def get(key):
     if value and key in _PATHS and not os.path.isabs(value):
         value = os.path.normpath(os.path.join(ROOT, value))
     return value
+
+
+def corpora():
+    """{name: folder} of every product's original binaries: the "corpora" setting, and the
+    single "corpus" under the name in "target" when that name is not listed there."""
+    out = {}
+    for name, value in (_load().get("corpora") or {}).items():
+        out[name] = value if os.path.isabs(value) else os.path.normpath(os.path.join(ROOT, value))
+    out.setdefault(get("target"), get("corpus"))
+    return out
 
 
 def state(*parts):

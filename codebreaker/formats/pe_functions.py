@@ -396,3 +396,52 @@ class PeSeg:
         # fixups: resolved call sites for annotate (site_off -> "DLL!name").
         # objdump/asmrecon don't need it for byte-exactness; annotate uses it.
         self.fixups = {}
+
+
+def function_spans(path):
+    """{start: (end, exported name or None)} -- the functions PeCarve finds, by the same rule
+    and with the same answer, without keeping an object for every instruction of the module.
+    PeCarve holds each decoded instruction with its operands, about two kilobytes apiece: a
+    module with a megabyte of code takes over a gigabyte. This keeps only where instructions
+    start and what is called, which is all the rule needs."""
+    pe = open_pe(corpus.resolve(path))
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
+    sections = pe.code_sections()
+    decoded, called = set(), set()
+    for base, data, _name in sections:
+        n, off = len(data), 0
+        while off < n:
+            made = 0
+            for addr, size, mnemonic, operands in md.disasm_lite(data[off:], base + off):
+                decoded.add(addr)
+                if mnemonic == "call" and operands.startswith("0x"):
+                    try:
+                        called.add(int(operands, 16))
+                    except ValueError:
+                        pass
+                off = addr - base + size
+                made += 1
+            if made == 0:                                    # a byte that is not code: step over it
+                off += 1
+    exports = {}
+    for ordinal, name, rva in pe.exports():
+        exports[pe.image_base + rva] = name or ("Ord%d" % ordinal)
+    starts = set(exports)
+    if pe.entry:
+        starts.add(pe.image_base + pe.entry)
+    spans = [(base, base + len(data)) for base, data, _name in sections]
+    starts.update(t for t in called if any(lo <= t < hi for lo, hi in spans))
+    for base, data, _name in sections:
+        for prologue in (b"\x55\x8b\xec", b"\x8b\xff\x55\x8b\xec"):
+            i = data.find(prologue)
+            while i != -1 and i < len(data) - 4:
+                starts.add(base + i)
+                i = data.find(prologue, i + 1)
+    order = sorted(s for s in starts if s in decoded)
+    out = {}
+    for i, s in enumerate(order):
+        end = next(hi for lo, hi in spans if lo <= s < hi)
+        if i + 1 < len(order) and order[i + 1] < end:
+            end = order[i + 1]
+        out[s] = (end, exports.get(s))
+    return out

@@ -19,11 +19,15 @@
     resources <module> [--out DIR]  a module's resources as .rc and files, compiled and compared
     cab list|extract|create ...     Microsoft cabinet files
     disc <folder> <out.iso>         write a CD image (also --list, --extract)
+    versions <module> --from A --to B   match the functions of two builds: identical, changed, added, removed
+    fonts FILE [--show TEXT]        list and draw the raster fonts in a .FON/.FNT
     info <file-or-module>           what an executable is and holds (headers, imports, exports, resources)
     coverage [--module NAME]        how much of every corpus module is accounted for, and in what state
     serve [--port N] [--open]       the local web console (127.0.0.1 only)
     progress [--once] [--window]    watch a running sweep
     app [file-or-module]            the desktop window
+
+`--corpus NAME` before or after any command selects another product's files (settings.json: corpora).
 
 Every command is listed here, by name. Nothing is discovered by scanning folders.
 """
@@ -50,6 +54,8 @@ COMMANDS = {
     "resources": ("codebreaker.build.resources", []),
     "cab": ("codebreaker.formats.cab", []),
     "disc": ("codebreaker.build.disc_image", []),
+    "versions": ("codebreaker.compare.versions", []),
+    "fonts": ("codebreaker.formats.fonts", []),
     "info": ("codebreaker.formats.inspect", []),
     "coverage": ("codebreaker.coverage.ledger", []),
     "serve": ("codebreaker.ui.server", []),
@@ -59,6 +65,8 @@ COMMANDS = {
 
 
 def main(argv):
+    from codebreaker.base import corpus
+    argv = corpus.take_option(argv)                          # --corpus NAME, for any command
     if not argv or argv[0] in ("-h", "--help", "help") or argv[0] not in COMMANDS:
         print(__doc__)
         return 0 if argv and argv[0] in ("-h", "--help", "help") else 2

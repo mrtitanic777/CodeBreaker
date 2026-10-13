@@ -14,8 +14,21 @@ and verify against another. Everything resolves here now:
     corpus.lane(path)              # 'pe' | 'ne' | 'le' | 'dos' | None, from the file header
     corpus.modules("ne")           # one path per module name in a lane, smallest first
 
-The directory walk happens once per process and is cached.
+There is more than one product. settings.json lists them under "corpora" ({name: folder}); one
+is selected at a time and everything above answers for that one. Nothing selected means the
+product settings.json names as "target", found exactly as it always was.
+
+    corpus.names()                 # every product there is a folder for
+    corpus.current()               # the selected one's name
+    corpus.use("win98")            # select one (for this process and the workers it starts)
+    with corpus.selected("win3.1"): corpus.retail("user.exe")       # for a moment
+    corpus.root("win98")           # a product's folder without selecting it
+
+The environment variable CB_CORPUS_NAME selects one for a whole run, and so does the global
+option `--corpus NAME` (take_option). Each product's directory walk happens once per process
+and is cached.
 """
+import contextlib
 import hashlib as _hashlib
 import os
 
@@ -26,9 +39,71 @@ _index_cache = {}        # root -> {basename_lower: [paths, best first]}
 _lane_cache = {}         # path -> lane
 
 
-def root():
-    """The retail corpus directory. CB_CORPUS_ROOT overrides; otherwise the sibling Windows95
+ENV = "CB_CORPUS_NAME"       # selects a product for a whole run; use() sets it for workers
+_selected = None
+
+
+def names():
+    """Every product that has a folder of original binaries, by name."""
+    return sorted(paths.corpora())
+
+
+def current():
+    """The selected product's name."""
+    return _selected or os.environ.get(ENV) or paths.get("target")
+
+
+def use(name):
+    """Select a product: every function here then answers for it, in this process and in the
+    worker processes it starts. None goes back to the default. -> the name selected before"""
+    global _selected
+    before = current()
+    if name is not None and name not in paths.corpora():
+        raise ValueError("no corpus %r (settings.json lists: %s)" % (name, ", ".join(names())))
+    _selected = name
+    if name is None:
+        os.environ.pop(ENV, None)
+    else:
+        os.environ[ENV] = name
+    return before
+
+
+@contextlib.contextmanager
+def selected(name):
+    """`with corpus.selected("win98"): ...` -- another product for the length of a block."""
+    was_var, was_env = _selected, os.environ.get(ENV)
+    use(name)
+    try:
+        yield
+    finally:
+        use(was_var)
+        if was_env is not None:
+            os.environ[ENV] = was_env
+
+
+def take_option(argv):
+    """Act on a `--corpus NAME` in a command line and return the line without it."""
+    argv = list(argv)
+    if "--corpus" in argv:
+        i = argv.index("--corpus")
+        if i + 1 >= len(argv):
+            raise SystemExit("--corpus needs a name: %s" % ", ".join(names()))
+        use(argv[i + 1])
+        del argv[i:i + 2]
+    return argv
+
+
+def root(name=None):
+    """The folder of original binaries: of the product `name`, else of the selected one. For
+    the default product that is CB_CORPUS_ROOT when set; otherwise the sibling Windows95
     repo's design/corpus/files, then WT_DATA_ROOT when it is a directory."""
+    name = name or _selected or os.environ.get(ENV)
+    listed = paths._load().get("corpora") or {}
+    if name and (name in listed or name != paths.get("target")):
+        try:
+            return paths.corpora()[name]
+        except KeyError:
+            raise ValueError("no corpus %r (settings.json lists: %s)" % (name, ", ".join(names())))
     env = os.environ.get("CB_CORPUS_ROOT")
     if env and os.path.isdir(env):
         return env
@@ -42,8 +117,24 @@ def root():
 
 
 def design_dir():
-    """The Win95 'design' arena that owns the corpus (…/Windows95/design)."""
+    """The Win95 'design' arena that owns the corpus (…/Windows95/design). A product other than
+    the default has no such arena beside its binaries: what is derived for it is kept in the
+    state folder, under products/<name>/design."""
+    name = _selected or os.environ.get(ENV)
+    if name and name != paths.get("target"):
+        return os.path.join(paths.get("state"), "products", name, "design")
     return os.path.dirname(os.path.dirname(root()))
+
+
+def owner(path):
+    """The name of the product whose folder holds `path` (the deepest one), or None."""
+    path = os.path.normcase(os.path.abspath(path))
+    best = None
+    for name in names():
+        r = os.path.normcase(os.path.abspath(root(name)))
+        if path.startswith(r + os.sep) and (best is None or len(r) > len(best[1])):
+            best = (name, r)
+    return best[0] if best else None
 
 
 def lane(path):
@@ -75,8 +166,35 @@ def index(refresh=False):
                 idx.setdefault(fn.lower(), []).append(os.path.join(dp, fn))
         for name in idx:
             idx[name].sort(key=_rank)
+        _unpack_boot_images(idx)
         _index_cache[r] = idx
     return _index_cache[r]
+
+
+def _unpack_boot_images(idx):
+    """Windows 1.x keeps its system modules (KERNEL, GDI, USER, the drivers) inside one boot
+    image, a .BIN with an .OVL beside it, not in files of their own. Each is written out once
+    as an ordinary executable under the state folder and listed as <module>.exe, so a module
+    of such a product is found, read and reconstructed like any other."""
+    for name in [n for n in idx if n.endswith(".bin") and n[:-4] + ".ovl" in idx]:
+        image, overlay = idx[name][0], idx[name[:-4] + ".ovl"][0]
+        if lane(image) != "ne":
+            continue
+        from codebreaker.formats import ne
+        out = os.path.join(paths.get("state"), "unpacked", "%s-%d" % (name[:-4], os.path.getsize(image)))
+        try:
+            modules = ne.open_boot_image(image, overlay)
+        except (OSError, ValueError):
+            continue
+        os.makedirs(out, exist_ok=True)
+        for module, nef in modules.items():
+            path = os.path.join(out, module.lower() + ".exe")
+            if not os.path.isfile(path):
+                with open(path, "wb") as f:
+                    f.write(ne.standalone(nef))
+            have = idx.setdefault(module.lower() + ".exe", [])
+            if not any(lane(p) for p in have):               # (MSDOS.EXE on the disk is a 1-byte stub)
+                have.insert(0, path)
 
 
 def candidates(name):
@@ -124,6 +242,18 @@ def modules(want_lane=None, exts=(".dll", ".exe", ".drv", ".ocx", ".cpl")):
         if want_lane is None or lane(p) == want_lane:
             out.append(p)
     return sorted(out, key=lambda p: (os.path.getsize(p), p.lower()))
+
+
+def executables():
+    """[(path, kind)] -- every file of the selected product that is an executable, whatever it
+    is called (fonts, drivers, overlays): kind is 'pe' | 'ne' | 'le' | 'dos'. Every copy."""
+    out = []
+    for cands in index().values():
+        for p in cands:
+            kind = lane(p)
+            if kind:
+                out.append((p, kind))
+    return sorted(out)
 
 
 _SHA_MEMO = {}

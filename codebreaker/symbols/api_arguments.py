@@ -307,13 +307,23 @@ _cache = None
 _modules = {}
 
 
+_product = None
+
+
 def _cache16_path():
-    from codebreaker.base import settings
-    return settings.state("api16.json")
+    """One table per product: USER.171 is not the same function in every Windows."""
+    from codebreaker.base import corpus, settings
+    name = corpus.current()
+    return settings.state("api16.json" if name == settings.get("target") else "api16_%s.json" % name)
 
 
 def _load16():
-    global _cache
+    global _cache, _product
+    from codebreaker.base import corpus
+    if _product != corpus.current():                         # another product was selected
+        _product = corpus.current()
+        _cache = None
+        _modules.clear()
     if _cache is None:
         try:
             with open(_cache16_path(), encoding="utf-8") as f:

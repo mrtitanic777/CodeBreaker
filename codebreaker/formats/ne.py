@@ -248,3 +248,160 @@ class NEFile:
         p = base + off
         ln = self.data[p]
         return self.data[p+1:p+1+ln].decode("latin1")
+
+
+
+# ---- Windows 1.x: the boot image, and absolute entries --------------------------------------
+PRELOAD = 0x0040                    # segment / resource flag: loaded at start (else on demand)
+ABSOLUTE = 0xFE                     # entry-table "segment" of a constant (__AHSHIFT, __0000H, ...)
+
+
+class BootImageModule(NEFile):
+    """One system module inside a Windows 1.x boot image (see open_boot_image).
+
+    The image is two files and a module is spread over both: what is loaded at start is in the
+    resident file (WIN100.BIN), what is loaded on demand in the overlay (WIN100.OVL). A segment
+    or resource says which by its PRELOAD flag, and its offset counts from the start of THAT
+    file; the two ranges overlap, so reading from the wrong file gives plausible nonsense. The
+    names of the exports -- the non-resident name table -- are in the overlay too, at the
+    header's offset counted in alignment units, not bytes. `data` here is the resident file
+    followed by the overlay, with every offset this class returns pointing into that."""
+    overlay_at = 0
+
+    def segments(self):
+        out = NEFile.segments(self)
+        for s in out:
+            if s["file_off"] and not s["flags"] & PRELOAD:
+                s["file_off"] += self.overlay_at
+        return out
+
+    def resources(self):
+        out = NEFile.resources(self)
+        for r in out:
+            if not r["flags"] & PRELOAD:
+                r["off"] += self.overlay_at
+        return out
+
+    def nonresident_names(self):
+        if not self.h["nonres_off"] or self.overlay_at >= len(self.data):
+            return []
+        return self._read_name_table(self.overlay_at + (self.h["nonres_off"] << self.h["align_shift"]))
+
+
+def embedded(data, start=0x40):
+    """[(offset, module name)] of every NE header inside a file that holds several modules."""
+    out = []
+    i = data.find(b"NE", start)
+    while i != -1 and i + 0x40 <= len(data):
+        nseg, = struct.unpack_from("<H", data, i + 0x1C)
+        segtab, = struct.unpack_from("<H", data, i + 0x22)
+        resnm, = struct.unpack_from("<H", data, i + 0x26)
+        if 0 < nseg < 255 and 0x40 <= segtab < 0x100 and segtab <= resnm < 0x1000 and i + resnm < len(data):
+            ln = data[i + resnm]
+            name = data[i + resnm + 1:i + resnm + 1 + ln]
+            if 0 < ln <= 8 and name.isalnum() and name[:1].isalpha() and name == name.upper():
+                out.append((i, name.decode("ascii")))
+        i = data.find(b"NE", i + 2)
+    return out
+
+
+def open_boot_image(path, overlay=None):
+    """{module name: BootImageModule} for a Windows 1.x boot image, in file order. `overlay` is
+    the demand-loaded half (default: the file of the same name ending .OVL beside `path`);
+    without it only what is loaded at start can be read."""
+    import os
+    if overlay is None:
+        stem = os.path.splitext(os.path.basename(path))[0].lower()
+        folder = os.path.dirname(os.path.abspath(path))
+        overlay = next((os.path.join(folder, f) for f in os.listdir(folder)
+                        if f.lower() == stem + ".ovl"), None)
+    with open(path, "rb") as f:
+        resident = f.read()
+    extra = b""
+    if overlay:
+        with open(overlay, "rb") as f:
+            extra = f.read()
+    out = {}
+    for off, name in embedded(resident):
+        m = BootImageModule.from_buffer(resident + extra, off, path)
+        m.base, m.overlay_at = 0, len(resident)
+        out.setdefault(name, m)
+    return out
+
+
+def absolute_entries(nef):
+    """{ordinal: value} -- the entries that export a constant instead of a place in a segment."""
+    return {e["ordinal"]: e["offset"] for e in nef.entries() if e.get("seg") == ABSOLUTE}
+
+
+def _tables_end(nef):
+    """Offset just past the header and every table that belongs with it."""
+    h, d, o = nef.h, nef.data, nef.ne_off
+    end = max(o + 0x40, o + h["seg_tab"] + 8 * h["n_segs"], o + h["entry_off"] + h["entry_len"],
+              o + h["mod_tab"] + 2 * h["n_modrefs"])
+    p = o + h["resname_tab"]                                 # resident names
+    while p < len(d) and d[p]:
+        p += d[p] + 3
+    end = max(end, p + 1)
+    if h["rsrc_tab"] != h["resname_tab"]:                    # resource table, then its names
+        p = o + h["rsrc_tab"] + 2
+        while nef.u16(p):
+            p += 8 + 12 * nef.u16(p + 2)
+        p += 2
+        while p < len(d) and d[p]:
+            p += d[p] + 1
+        end = max(end, p + 1)
+    imp = o + h["imp_tab"]                                   # imported names that are referred to
+    refs = [nef.u16(o + h["mod_tab"] + 2 * i) for i in range(h["n_modrefs"])]
+    refs += [r["name_off"] for s in nef.segments() for r in nef.relocations(s) if r["kind"] == "IMPORTNAME"]
+    for off in refs:
+        if imp + off < len(d):
+            end = max(end, imp + off + 1 + d[imp + off])
+    return end
+
+
+def standalone(nef):
+    """The bytes of an ordinary one-file executable holding the module `nef` -- for a module
+    read out of a boot image, so that everything that takes a path can take it. Header and
+    tables are kept as they are; segments (with their relocations), resources and the
+    non-resident names are laid out after them and the tables pointed at the new places."""
+    h, d, o = nef.h, nef.data, nef.ne_off
+    shift = h["align_shift"]
+    out = bytearray(0x40)
+    out[:2] = b"MZ"
+    struct.pack_into("<H", out, 0x18, 0x40)
+    struct.pack_into("<I", out, 0x3C, 0x40)
+    out += d[o:_tables_end(nef)]
+
+    def place(blob, sh):
+        out.extend(bytes(-len(out) % (1 << sh)))
+        at = len(out)
+        out.extend(blob)
+        return at >> sh
+
+    for i, s in enumerate(nef.segments()):
+        if not s["file_off"]:
+            continue
+        end = s["file_off"] + s["length"]
+        if s["flags"] & 0x0100 and end + 2 <= len(d):
+            end += 2 + 8 * nef.u16(end)
+        struct.pack_into("<H", out, 0x40 + h["seg_tab"] + 8 * i, place(d[s["file_off"]:end], shift))
+    if h["rsrc_tab"] != h["resname_tab"]:
+        res = iter(nef.resources())
+        p = o + h["rsrc_tab"]
+        rshift = nef.u16(p)
+        p += 2
+        while nef.u16(p):
+            count = nef.u16(p + 2)
+            p += 8
+            for _ in range(count):
+                r = next(res)
+                struct.pack_into("<H", out, 0x40 + p - o, place(d[r["off"]:r["off"] + r["length"]], rshift))
+                p += 12
+    names = nef.nonresident_names()
+    table = b"".join(bytes([len(n)]) + n.encode("latin1") + struct.pack("<H", v) for n, v in names) + bytes(1)
+    struct.pack_into("<I", out, 0x40 + 0x2C, len(out) if names else 0)
+    struct.pack_into("<H", out, 0x40 + 0x20, len(table) if names else 0)
+    if names:
+        out += table
+    return bytes(out)
