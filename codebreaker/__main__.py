@@ -2,6 +2,7 @@
 
     module <name> [--no-verify]     reconstruct one module: decompile, build, judge, write its source
     scoreboard                      rewrite the scoreboard from stored results
+    place <module> ... | --all      where each module's source goes in the source tree
     sweep [options]                 reconstruct and judge every module (resumable)
     decompile <name> [--out FILE]   decompile any module (32-bit, 16-bit, PowerPC) to C; nothing is built
     measure <name>                  reconstruct and judge one module; writes nothing to the tree
@@ -39,6 +40,7 @@ import sys
 COMMANDS = {
     "module": ("codebreaker.source.module_writer", []),
     "scoreboard": ("codebreaker.source.module_writer", ["--scoreboard"]),
+    "place": ("codebreaker.source.placement", []),
     "sweep": ("codebreaker.verify.sweep", []),
     "measure": ("codebreaker.verify.measure", []),
     "decompile": ("codebreaker.decompile.decompiler", []),

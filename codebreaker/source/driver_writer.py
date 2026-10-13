@@ -27,7 +27,6 @@ bytes, with the mnemonic beside it. Then the whole file is assembled and linked 
 compared with the original outside the patched places; an instruction at a place that still
 differs is written as bytes too, until nothing differs.
 """
-import json
 import os
 import re
 import struct
@@ -37,14 +36,10 @@ import capstone
 from codebreaker.base import settings
 from codebreaker.build import driver as builder
 from codebreaker.formats import le
+from codebreaker.source import assembly
 from codebreaker.symbols import driver_services
 
 _MARK = 0x7A000000                       # stands in for a patched address while decoding
-_CC = ("o", "no", "b", "ae", "e", "ne", "be", "a", "s", "ns", "p", "np", "l", "ge", "le", "g")
-_SPELL = {"pushal": "pushad", "popal": "popad", "int3": "int 3", "retn": "ret", "pushfd": "pushfd",
-          "fwait": "wait", "iretd": "iretd", "xlatb": "xlatb"}
-_STRING = re.compile(r"^(rep |repe |repne )?(movs|cmps|stos|lods|scas|ins|outs)([bwd])\b")
-_HEX = re.compile(r"\b0x([0-9a-f]+)\b")
 _MAX_ROUNDS = 40
 
 
@@ -222,7 +217,7 @@ class Writer(object):
         fixes = [x for x in range(off, off + n) if x in ob.fix]
         if len(fixes) > 1:
             return None
-        m = _STRING.match(mnem + " ")
+        m = assembly.STRING_OPS.match(mnem + " ")
         if m and not fixes:
             return ((m.group(1) or "") + m.group(2) + m.group(3)).strip()
         if target is not None:
@@ -243,8 +238,8 @@ class Writer(object):
             else:
                 in_memory = re.search(r"\[[^\]]*%s[^\]]*\]" % re.escape(marker), o)
                 o = o.replace(marker, name if in_memory else "offset " + name)
-        o = _HEX.sub(lambda mm: "0%sh" % mm.group(1).upper(), o)
-        return ("%-6s %s" % (_SPELL.get(mnem, mnem), o)).rstrip()
+        o = assembly.operands(o)
+        return ("%-6s %s" % (assembly.mnemonic(mnem), o)).rstrip()
 
     def _raw(self, ob, off):
         """An instruction as its bytes, each patched field as the label it holds."""
@@ -269,7 +264,7 @@ class Writer(object):
                     flush()
                     lines.append("        %s %s" % ("call" if op == 0xE8 else "jmp ", name))
                 elif kind == 8 and len(run) > 1 and run[-2] == 0x0F and 0x80 <= run[-1] <= 0x8F:
-                    cc = _CC[run.pop() - 0x80]
+                    cc = assembly.CONDITIONS[run.pop() - 0x80]
                     run.pop()
                     flush()
                     lines.append("        j%-3s near ptr %s" % (cc, name))
@@ -307,8 +302,7 @@ class Writer(object):
             a, run = 0, []
 
             def flush():
-                for k in range(0, len(run), 16):
-                    out.append("        db   " + ", ".join("0%02Xh" % b for b in run[k:k + 16]))
+                out.extend(assembly.data_lines(run))
                 del run[:]
             while a < ob.size:
                 if a in ob.labels:
@@ -349,123 +343,26 @@ class Writer(object):
     # -- which instructions the assembler gives back as they were --------------------------------
     def probe(self, outdir):
         """-> the set of (object, offset) of instructions whose text assembles to the original's
-        bytes. Each distinct text is assembled once, at a place of its own in a probe file, and
-        read back from the object file. Jumps and calls inside an object are not probed (their
-        bytes depend on where things are); the build as a whole is what checks those."""
-        slots, where = {}, {}
+        bytes (source/assembly.py). Jumps and calls inside an object are not probed (their bytes
+        depend on where things are); the build as a whole is what checks those."""
+        cand, good = {}, set()
         for i, ob in self.objects.items():
             for off, (data, _m, _o, _sig, target) in ob.ins.items():
                 text = self.mnemonic(ob, off)
                 if text is None:
                     continue
                 if target is not None:
-                    where[(i, off)] = None
+                    good.add((i, off))
                     continue
                 mask = bytearray(len(data))
                 for x in range(off, off + len(data)):
                     if x in ob.fix:
                         mask[x - off:x - off + 4] = b"\1\1\1\1"
-                key = (text, bytes(b for b, k in zip(data, mask) if not k), bytes(mask))
-                slots.setdefault(key, len(slots))
-                where[(i, off)] = key
-        known = _load_probes()
-        todo = [k for k in slots if _probe_key(k) not in known]
-        bad_lines = set()
-        for _attempt in range(12):
-            if not todo:
-                break
-            calls = set()
-            for i, ob in self.objects.items():
-                for a, (kind, to, ta) in ob.fix.items():
-                    if kind == 8:
-                        calls.add(self.label(to, ta))
-            names = sorted({self.label(i, a) for i, ob in self.objects.items() for a in ob.labels})
-            # flat model: a label in a code segment is addressed like any other, without the
-            # code-segment prefix the assembler would otherwise put before it
-            lines = [".386p", ".model flat", "PD segment dword public use32 'PXCODE'"]
-            lines += ["%s label %s" % (n, "near" if n in calls else "byte") for n in names]
-            lines += ["PD ends", "PC segment dword public use32 'PCODE'"]
-            line_of = {}
-            for n, key in enumerate(todo):
-                lines.append("        org  %d" % (32 * n))
-                line_of[len(lines) + 1] = key
-                lines.append("        " + (key[0] if key not in bad_lines else "nop"))
-            lines += ["PC ends", "end"]
-            src = os.path.join(outdir, "probe.asm")
-            with open(src, "w", newline="\r\n", encoding="latin1") as f:
-                f.write("\n".join(lines) + "\n")
-            obj, messages = builder.assemble(src, outdir)
-            if obj:
-                got = _ledata(open(obj, "rb").read())
-                for n, key in enumerate(todo):
-                    text, plain, mask = key
-                    out = got.get(32 * n, b"")
-                    same = key not in bad_lines and len(out) == len(mask) and \
-                        bytes(b for b, k in zip(out, mask) if not k) == plain
-                    known[_probe_key(key)] = same
-                todo = []
-                break
-            failed = {line_of[int(m.group(1))] for m in re.finditer(r"\((\d+)\)\s*:\s*Error", messages)
-                      if int(m.group(1)) in line_of}
-            if not failed:
-                for key in todo:
-                    known[_probe_key(key)] = False
-                todo = []
-                break
-            bad_lines |= failed
-        _save_probes(known)
-        return {at for at, key in where.items() if key is None or known.get(_probe_key(key))}
-
-
-def _probe_key(key):
-    return "%s|%s|%s" % (key[0], key[1].hex(), key[2].hex())
-
-
-def _load_probes():
-    try:
-        with open(settings.state("driver_probes.json"), encoding="utf-8") as f:
-            return json.load(f)
-    except (OSError, ValueError):
-        return {}
-
-
-def _save_probes(known):
-    with open(settings.state("driver_probes.json"), "w", encoding="utf-8") as f:
-        json.dump(known, f, indent=0, sort_keys=True)
-
-
-def _ledata(obj):
-    """{offset: bytes} of the data records of the LAST segment an object file defines (the probe
-    file's code), joined where one record continues the one before."""
-    chunks, i, n, segs = {}, 0, len(obj), 0
-    while i + 3 <= n:
-        kind = obj[i]
-        end = i + 3 + (obj[i + 1] | (obj[i + 2] << 8))
-        if end > n:
-            break
-        if kind in (0x98, 0x99):
-            segs += 1
-        elif kind in (0xA0, 0xA1):
-            q = i + 3
-            seg = obj[q]
-            q += 1
-            if kind == 0xA1:
-                off = struct.unpack_from("<I", obj, q)[0]
-                q += 4
-            else:
-                off = struct.unpack_from("<H", obj, q)[0]
-                q += 2
-            chunks.setdefault(seg, {})[off] = obj[q:end - 1]
-        i = end
-    out = {}
-    last = None
-    for off, data in sorted(chunks.get(segs, {}).items()):
-        if last is not None and last + len(out[last]) == off:
-            out[last] += data
-        else:
-            out[off] = bytes(data)
-            last = off
-    return out
+                cand[(i, off)] = (text, bytes(b for b, k in zip(data, mask) if not k), bytes(mask))
+        near = {self.label(to, ta) for ob in self.objects.values() for kind, to, ta in ob.fix.values() if kind == 8}
+        names = {self.label(i, a) for i, ob in self.objects.items() for a in list(ob.labels)}
+        ok = assembly.probe(list(cand.values()), {n for n in names if "+" not in n}, outdir, mode="flat32", near=near)
+        return good | {at for at, c in cand.items() if c in ok}
 
 
 def _differences(w, built, good):
@@ -518,7 +415,7 @@ def reconstruct(module_path, outdir, member=0, log=None):
         with open(src, "w", newline="\r\n", encoding="latin1") as f:
             f.write(text)
         result.update(rounds=rounds, instructions=counts["instructions"], raw=counts["raw"], data=counts["data"])
-        obj, messages = builder.assemble(src, outdir)
+        obj, messages = assembly.assemble(src, outdir)
         if not obj:
             lines = text.split("\n")
             failed = set()

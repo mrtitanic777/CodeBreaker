@@ -3,6 +3,7 @@ r"""module_writer.py -- one source file per module, every function labelled with
     python -m codebreaker module comctl32.dll               reconstruct, judge, then write the file
     python -m codebreaker module comctl32.dll --no-verify   write from what the store already holds
     python -m codebreaker module comctl32.dll --out DIR     write there instead of the source tree
+    python -m codebreaker module comctl32.dll --split 200   at most 200 functions to a file
     python -m codebreaker scoreboard                        rewrite the scoreboard only
 
 Each function carries one status line:
@@ -22,6 +23,10 @@ Each function carries one status line:
 Imports by number are written with their real names where the exporting module gives one
 (`GetDlgItem`, not `USER_91`); a C++ export is shown with the declaration its decorated name
 stands for.
+
+A driver or a real-mode program is written as its assembly file (source/driver_writer.py,
+source/dos_writer.py) with the same status counts at its head. Where a module's files go in the
+source tree is source/placement.py's business.
 
 Nothing is counted as progress except what these labels say. Everything written here is read
 from the function store, so the file and the scoreboard cannot disagree with the results.
@@ -63,17 +68,6 @@ def describe(row):
     return (row.get("reason") or "")[:80]
 
 
-def tree_dir(module):
-    """Where a module's source lives in the target's source tree (the folder already holding it)."""
-    root = os.path.dirname(corpus.design_dir())
-    stem = os.path.splitext(os.path.basename(module))[0].lower()
-    for top in sorted(os.listdir(root)):
-        d = os.path.join(root, top, stem)
-        if top not in ("design", "build", ".git") and os.path.isdir(d):
-            return d
-    return None
-
-
 def real_import_names(path, used=()):
     """{symbol: name} for a 16-bit module's imports by number that can be written by their real
     name: the name is a C name, no function of the module has it (`used`), and no two imports
@@ -88,22 +82,50 @@ def real_import_names(path, used=()):
     return {s: n for s, n in found.items() if times[n] == 1 and n not in used and n not in found}
 
 
-def write_module(module, verify=True, out_dir=None, log=print):
+def write_assembly(path, fs, sha, digest, out_dir, log=print):
+    """A driver's or a real-mode program's source: its one assembly file, the status at its head."""
     from codebreaker.verify import reconstruct
-    path = corpus.retail(module)
+    name = os.path.basename(path).lower()
+    stem = os.path.splitext(name)[0]
+    counts = fs.scores(digest, sha)
+    total = sum(counts.values())
+    text = fs.get_text(sha, reconstruct.SOURCE, "header") or ""
+    best = fs.best(sha, digest)
+    how = next((r.get("detail") for r in best.values() if r.get("detail")), "")
+    banner = ["; %s -- reconstructed source." % name, ";",
+              "; STATUS, generated %s by CodeBreaker (verifier settings %s)." % (time.strftime("%Y-%m-%d"), digest),
+              "; %d entry points or functions:" % total]
+    banner += [";   %-28s %5d  %5.1f%%" % (TITLE[c], counts[c], 100.0 * counts[c] / max(1, total)) for c in ORDER]
+    if how:
+        banner += [";", "; " + how[:160]]
+    for va in fs.addresses(sha):
+        row = best.get(va)
+        if row and row["class"] not in ("verified",):
+            banner.append(";   %-10s %-28s %s %s" % (va, row["name"] or "", TITLE[row["class"]], describe(row)))
+    out = os.path.join(out_dir, stem + ".asm")
+    with open(out, "w", encoding="latin1", errors="replace", newline="\r\n") as f:
+        f.write("\n".join(banner) + "\n;\n" + (text or "; (no source could be written)\n"))
+    log("%s: %s" % (out, ", ".join("%s %d" % (TITLE[c], counts[c]) for c in ORDER if counts[c])))
+    return out, counts, total
+
+
+def write_module(module, verify=True, out_dir=None, log=print, split=0):
+    from codebreaker.source import placement
+    from codebreaker.verify import reconstruct
+    path = module if os.path.isfile(module) else corpus.retail(module)
     if not path:
         raise SystemExit("no module %r in the corpus" % module)
     name = os.path.basename(path).lower()
     stem = os.path.splitext(name)[0]
-    out_dir = out_dir or tree_dir(name)
-    if not out_dir:
-        raise SystemExit("%s has no folder in the source tree yet (use --out DIR)" % name)
+    out_dir = out_dir or placement.folder(name, path)
     os.makedirs(out_dir, exist_ok=True)
     fs = F.open()
     if verify:
         sha, digest = reconstruct.run(path, fs=fs, log=log)
     else:
         sha, digest = reconstruct.identity(path)
+    if reconstruct.kind_name(path) in ("le", "dos"):
+        return write_assembly(path, fs, sha, digest, out_dir, log)
     best = fs.best(sha, digest)
     addrs = fs.addresses(sha)             # every function the module is known to have
     known = fs.identified(sha)            # the runtime library's among them: {address: (name, library)}
@@ -171,8 +193,15 @@ def write_module(module, verify=True, out_dir=None, log=print):
         banner.append('#include "%s.h"' % stem)
     banner.append("")
     out = os.path.join(out_dir, stem + ".c")
-    with open(out, "w", encoding="utf-8", newline="\n") as f:
-        f.write("\n".join(banner) + "\n" + "\n".join(parts))
+    pieces = [parts] if not split or len(parts) <= split else [parts[k:k + split] for k in range(0, len(parts), split)]
+    for n, piece in enumerate(pieces):
+        target = out if len(pieces) == 1 else os.path.join(out_dir, "%s_%d.c" % (stem, n + 1))
+        head = banner if n == 0 else ["/* %s -- reconstructed source, part %d of %d (the status is in %s_1.c). */" % (
+            name, n + 1, len(pieces), stem), ""] + [ln for ln in banner if ln.startswith("#include")] + [""]
+        with open(target, "w", encoding="utf-8", newline="\n") as f:
+            f.write("\n".join(head) + "\n" + "\n".join(piece))
+    if len(pieces) > 1:
+        out = os.path.join(out_dir, "%s_1.c" % stem)
     log("%s: %s" % (out, ", ".join("%s %d" % (TITLE[c], counts[c]) for c in ORDER if counts[c])))
     return out, counts, total
 
@@ -222,12 +251,13 @@ def scoreboard(out_dir=None, log=print):
 
 def main(argv):
     out_dir = argv[argv.index("--out") + 1] if "--out" in argv else None
-    skip = {out_dir}
+    split = int(argv[argv.index("--split") + 1]) if "--split" in argv else 0
+    skip = {out_dir, str(split) if split else None}
     mods = [a for a in argv if not a.startswith("--") and a not in skip]
     if not mods and "--scoreboard" not in argv:
         print(__doc__)
         return 2
     for m in mods:
-        write_module(m, verify="--no-verify" not in argv, out_dir=out_dir)
+        write_module(m, verify="--no-verify" not in argv, out_dir=out_dir, split=split)
     scoreboard(out_dir)
     return 0
