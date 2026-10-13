@@ -131,7 +131,25 @@ def write_module(module, verify=True, out_dir=None, log=print, split=0):
     known = fs.identified(sha)            # the runtime library's among them: {address: (name, library)}
     exported = {names.key(path, a): n for a, n in description.decorated_names(path).items()}
     real = real_import_names(path, {r["name"] for r in best.values()})
-    spell = re.compile(r"\b(%s)\b" % "|".join(sorted(real, key=len, reverse=True))) if real else None
+    # a recovered name for an internal function (a name it shares with a named function in
+    # another module, a runtime-library name, or one from a debug symbol file) replaces the
+    # decompiler's sub_... placeholder everywhere the module uses it
+    recovered = {}
+    try:
+        for _address, k, nm, src in names.of_module(path, fs)["functions"]:
+            if src != "(none)" and not nm.startswith("sub_"):
+                recovered[k] = nm
+    except Exception:
+        pass
+    rename, taken = {}, set(real.values()) | set(exported.values())
+    for va in addrs:
+        cur = (best.get(va) or {}).get("name") or ("sub_" + va)
+        nm = recovered.get(va)
+        if nm and cur.startswith("sub_") and nm not in taken and nm not in rename.values():
+            rename[cur] = nm
+            taken.add(nm)
+    sub = dict(real, **rename)
+    spell = re.compile(r"\b(%s)\b" % "|".join(sorted(sub, key=len, reverse=True))) if sub else None
     counts = dict.fromkeys(ORDER, 0)
     parts = []
     for va in addrs:
@@ -157,9 +175,10 @@ def write_module(module, verify=True, out_dir=None, log=print, split=0):
             if va in known:
                 said.append("this is %s of %s" % known[va])
         source = (row["source"] or "/* (no reconstruction) */").strip()
+        shown_name = rename.get(row["name"] or "sub_" + va, row["name"] or "sub_" + va)
         parts.append("/* [%s] %s  @ %s%s */\n%s\n" % (
-            TITLE[shown], row["name"] or "sub_" + va, va, (" -- " + "; ".join(said)) if said else "",
-            spell.sub(lambda m: real[m.group(1)], source) if spell else source))
+            TITLE[shown], shown_name, va, (" -- " + "; ".join(said)) if said else "",
+            spell.sub(lambda m: sub[m.group(1)], source) if spell else source))
     total = len(addrs)
     banner = ["/* %s -- reconstructed source." % name, " *",
               " * STATUS, generated %s by CodeBreaker (verifier settings %s)." % (time.strftime("%Y-%m-%d"), digest),
@@ -183,8 +202,10 @@ def write_module(module, verify=True, out_dir=None, log=print, split=0):
     banner += [" */", ""]
     header = fs.get_text(sha, reconstruct.SOURCE, "header")
     if header:
-        if spell:                                            # which module and number each import is
-            header = spell.sub(lambda m: real[m.group(1)], header) + "\n/* imports by number:\n%s */\n" % "".join(
+        if spell:
+            header = spell.sub(lambda m: sub[m.group(1)], header)
+        if real:                                             # which module and number each import is
+            header += "\n/* imports by number:\n%s */\n" % "".join(
                 " *   %-28s %s.%s\n" % ((n,) + tuple(s.rsplit("_", 1))) for s, n in sorted(real.items(), key=lambda kv: kv[1]))
         with open(os.path.join(out_dir, stem + ".h"), "w", encoding="utf-8", newline="\n") as f:
             f.write("/* %s -- types, declarations and globals used by the functions in %s.c.\n"
