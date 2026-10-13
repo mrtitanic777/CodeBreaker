@@ -12,7 +12,7 @@ are recorded as such, with their name and library. That is said in addition: the
 decompiled, built and judged like every other function.
 
 The path is the same whatever the module is. What differs between kinds of module -- 32-bit or
-16-bit Windows, PowerPC -- is in one small module per kind (win32.py, win16.py, powerpc.py), each providing:
+16-bit Windows, PowerPC, drivers, real-mode programs -- is in one small module per kind, each providing:
 
     KIND                          the name results are filed under
     profile(path)                 (digest, settings): everything but the source a verdict depends on
@@ -34,7 +34,8 @@ GOOD = ("equivalent", "consistent")
 
 # the name results are filed under -> the module that knows that kind
 KINDS = {"pe": "codebreaker.verify.win32", "ne": "codebreaker.verify.win16",
-         "powerpc": "codebreaker.verify.powerpc", "le": "codebreaker.verify.driver"}
+         "powerpc": "codebreaker.verify.powerpc", "le": "codebreaker.verify.driver",
+         "dos": "codebreaker.verify.dos"}
 
 
 def kind_named(name):
@@ -49,6 +50,9 @@ def kind_name(module_path):
     if lane == "pe":
         from codebreaker.formats.pe import open_pe
         return "powerpc" if open_pe(module_path).machine == 0x01F2 else "pe"
+    if lane is None:                                         # .COM files and plain driver images have no header
+        from codebreaker.formats import dos
+        return "dos" if dos.kind(module_path) else None
     return lane if lane in KINDS else None
 
 

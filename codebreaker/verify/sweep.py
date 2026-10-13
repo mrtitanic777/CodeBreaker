@@ -4,7 +4,7 @@
     python -m codebreaker sweep --only a.dll,b.dll these
     python -m codebreaker sweep --only @list.txt   one module name per line
     python -m codebreaker sweep --16               the 16-bit modules; --drivers the drivers;
-                                                   --all for every kind
+                                                   --dos real-mode programs; --all every kind
     python -m codebreaker sweep --status           what has been measured; no work
     python -m codebreaker sweep --again            measure modules again even if already done
 
@@ -58,10 +58,17 @@ def main(argv):
     if not period_tools.ow_tool("wcc386"):
         raise SystemExit("OpenWatcom is not set up (settings.json: openwatcom): nothing could be built")
     fs = F.open()
-    kinds = ("pe", "ne", "le") if "--all" in argv else ("ne",) if "--16" in argv else \
-        ("le",) if "--drivers" in argv else ("pe",)
-    paths = [p for k in kinds for p in (corpus.modules(k) if k != "le" else
-                                        corpus.modules("le", exts=(".vxd", ".386")))]
+    kinds = ("pe", "ne", "le", "dos") if "--all" in argv else ("ne",) if "--16" in argv else \
+        ("le",) if "--drivers" in argv else ("dos",) if "--dos" in argv else ("pe",)
+    paths = []
+    for k in kinds:
+        if k == "le":
+            paths += corpus.modules("le", exts=(".vxd", ".386"))
+        elif k == "dos":
+            from codebreaker.formats import dos
+            paths += sorted(dos.programs(), key=os.path.getsize)
+        else:
+            paths += corpus.modules(k)
     only = _wanted(argv)
     if only is not None:
         paths = [p for p in paths if os.path.basename(p).lower() in only]
