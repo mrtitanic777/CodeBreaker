@@ -124,7 +124,9 @@ def _link(wlink, env, outdir, lines):
     dll = os.path.join(outdir, "m.dll")
     if os.path.isfile(dll):
         return dll, ""
-    return None, ((r.stdout or "") + (r.stderr or "")).strip()[-160:] or "the linker produced nothing"
+    log = ((r.stdout or "") + (r.stderr or "")).strip()
+    errors = [ln.strip() for ln in log.splitlines() if "Error!" in ln]      # not the warnings around them
+    return None, (errors[0][:200] if errors else log[-160:]) or "the linker produced nothing"
 
 
 def build16(header, texts, order, imports, outdir, segments=None, jobs=None, code_segment=None):
@@ -152,6 +154,40 @@ def build16(header, texts, order, imports, outdir, segments=None, jobs=None, cod
     # a C name compiled as __stdcall with an open argument list is the symbol `_name`
     lines += ["import _%s %s.%d" % (nm, mod, ordn) for nm, (mod, ordn) in sorted(imports.items())]
     dll, why = _link(wlink, env, outdir, lines)
+    # A segment holds 64K. Where the rebuilt functions of one of the original's segments come to
+    # more (other compiler; or the decompiler took a table for code and wrote pages of it), the
+    # largest are replaced by stand-ins until the rest fit: those few are not built, the
+    # others are judged.
+    by_stem = {stem: n for n, stem in stems.items()}
+    for _attempt in range(80):
+        # ... and a function that reaches near for something that is in another segment (the
+        # original called it far; the decompiler's text has lost that) cannot be linked at all
+        apart = re.search(r"file (f[0-9]+)[.]obj.*not in the same segment", why or "")
+        if not dll and apart and by_stem.get(apart.group(1)) in live:
+            n = by_stem[apart.group(1)]
+            if _compile(wcc, CFLAGS16 + more.get(n, []), env, outdir, stems[n], stand_in(texts[n])):
+                break
+            dropped[n] = "reaches near for something in another segment"
+            live = [x for x in live if x != n]
+            dll, why = _link(wlink, env, outdir, lines)
+            continue
+        over = re.search(r"size of segment CODE(\d+) exceeds 64k by (\d+) bytes", why or "")
+        if dll or not over or not code_segment:
+            break
+        seg, need = int(over.group(1)), int(over.group(2)) + 512
+        sized = sorted(((os.path.getsize(os.path.join(outdir, stems[n] + ".obj")), n) for n in live
+                        if code_segment.get(n) == seg and n in stems and n not in dropped), reverse=True)
+        freed = 0
+        for size, n in sized:
+            if freed >= need:
+                break
+            if not _compile(wcc, CFLAGS16 + more.get(n, []), env, outdir, stems[n], stand_in(texts[n])):
+                freed += size
+                dropped[n] = "too large: the functions of its segment do not fit in 64K when rebuilt"
+        if not freed:
+            break
+        live = [n for n in live if n not in dropped]
+        dll, why = _link(wlink, env, outdir, lines)
     if not dll:
         return None, {}, dict(dropped, **{n: "link: " + why for n in live})
     where = {}
