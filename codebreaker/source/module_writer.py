@@ -3,6 +3,7 @@ r"""module_writer.py -- one source file per module, every function labelled with
     python -m codebreaker module comctl32.dll               reconstruct, judge, then write the file
     python -m codebreaker module comctl32.dll --no-verify   write from what the store already holds
     python -m codebreaker module comctl32.dll --out DIR     write there instead of the source tree
+    python -m codebreaker module comctl32.dll --build      also build the whole module and report it
     python -m codebreaker module comctl32.dll --split 200   at most 200 functions to a file
     python -m codebreaker scoreboard                        rewrite the scoreboard only
 
@@ -138,7 +139,7 @@ def write_assembly(path, fs, sha, digest, out_dir, log=print):
     return out, counts, total
 
 
-def write_module(module, verify=True, out_dir=None, log=print, split=0):
+def write_module(module, verify=True, out_dir=None, log=print, split=0, build_whole=False):
     from codebreaker.source import placement
     from codebreaker.verify import reconstruct
     path = module if os.path.isfile(module) else corpus.retail(module)
@@ -214,11 +215,25 @@ def write_module(module, verify=True, out_dir=None, log=print, split=0):
               " * %d functions:" % total]
     for cls in ORDER:
         banner.append(" *   %-28s %5d  %5.1f%%" % (TITLE[cls], counts[cls], 100.0 * counts[cls] / max(1, total)))
-    banner += [
-        " *", " * Builds as a whole module: NO. Functions are compiled and checked one at a time; the",
-        " * module's data (globals, tables, resources) is still referred to by its address in the",
-        " * original and has not been reconstructed.",
-        " * Runs in place of the original: NOT TESTED.", " *",
+    whole = None
+    if build_whole:
+        from codebreaker.build import module as whole_module
+        whole = whole_module.build(path, outdir=os.path.join(out_dir, "build"), call=False, log=lambda s: None)
+    if whole and whole.linked:
+        banner += [" *", " * Builds as a whole module: YES (%s). Every original export is present; a function the" % (
+            "all the original's exports match" if whole.exports_same == whole.exports_total else
+            "%d of %d exports match" % (whole.exports_same, whole.exports_total)),
+            " * compiler rejected, or a call to code with no reconstruction, is a stand-in that returns 0",
+            " * (%d rejected, %d absent). The built image is %s." % (
+                len(whole.rejected), len(whole.absent), os.path.join(out_dir, "build", stem + os.path.splitext(name)[1])),
+            " * Runs in place of the original: NOT TESTED as a whole.", " *"]
+    else:
+        banner += [
+            " *", " * Builds as a whole module: " + ("NOT YET (%s)." % whole.error if whole else
+                  "not built here (run `codebreaker build %s`)." % name),
+            " * Functions are compiled and checked one at a time; the module's data (globals, tables,",
+            " * resources) is referred to by its address in the original unless the whole module is built.",
+            " * Runs in place of the original: NOT TESTED.", " *",
         " * VERIFIED = rebuilt from this text with OpenWatcom and run beside the original on an x86",
         " * emulator: same return value, same API calls with the same arguments, same memory changed,",
         " * same stack and saved registers, on every input tried. It is evidence, not proof. Names of",
@@ -309,6 +324,7 @@ def main(argv):
         print(__doc__)
         return 2
     for m in mods:
-        write_module(m, verify="--no-verify" not in argv, out_dir=out_dir, split=split)
+        write_module(m, verify="--no-verify" not in argv, out_dir=out_dir, split=split,
+                     build_whole="--build" in argv)
     scoreboard(out_dir)
     return 0
