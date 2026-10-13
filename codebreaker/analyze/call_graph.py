@@ -27,7 +27,6 @@ Reached means: called, jumped to, or having its address taken by something reach
 nothing refers to at all is reported as unreferenced -- dead, or entered in a way the code does
 not show (a table index, an ordinal computed at run time).
 """
-import bisect
 
 from codebreaker.analyze import image
 
@@ -202,15 +201,6 @@ def _build(img):
 
 def build(img):
     return img.memo("call_graph", _build)
-
-
-def references_to(img, lo, hi=None):
-    """[(function, instruction, address, how)] for references into [lo, hi)."""
-    g = build(img)
-    idx = img.memo("call_graph.by_address", lambda _i: sorted(range(len(g.refs)), key=lambda k: g.refs[k][2]))
-    keys = img.memo("call_graph.addresses", lambda _i: [g.refs[k][2] for k in idx])
-    a, b = bisect.bisect_left(keys, lo), bisect.bisect_left(keys, hi if hi is not None else lo + 1)
-    return [g.refs[idx[k]] for k in range(a, b)]
 
 
 def analyse(img):

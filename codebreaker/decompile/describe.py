@@ -463,7 +463,6 @@ def describe_le(lf, name, outdir):
 
 # DOS programs (MZ) -------------------------------------------------------------------------------
 DOS_ARCH = "x86:LE:16:Real Mode:default"
-DOS_LOAD = 0x1000                                # the segment the program is loaded at
 
 
 def describe_dos(module_path, outdir):

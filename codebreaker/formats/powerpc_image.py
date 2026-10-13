@@ -129,14 +129,6 @@ def _runs(words, base):
     return names, by_call
 
 
-def is_image(path):
-    from codebreaker.formats.pe import open_pe
-    try:
-        return open_pe(path).machine == MACHINE
-    except Exception:
-        return False
-
-
 _CACHE = {}
 
 

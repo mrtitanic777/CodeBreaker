@@ -250,10 +250,8 @@ class NEFile:
         return self.data[p+1:p+1+ln].decode("latin1")
 
 
-
 # ---- Windows 1.x: the boot image, and absolute entries --------------------------------------
 PRELOAD = 0x0040                    # segment / resource flag: loaded at start (else on demand)
-ABSOLUTE = 0xFE                     # entry-table "segment" of a constant (__AHSHIFT, __0000H, ...)
 
 
 class BootImageModule(NEFile):
@@ -327,11 +325,6 @@ def open_boot_image(path, overlay=None):
         m.base, m.overlay_at = 0, len(resident)
         out.setdefault(name, m)
     return out
-
-
-def absolute_entries(nef):
-    """{ordinal: value} -- the entries that export a constant instead of a place in a segment."""
-    return {e["ordinal"]: e["offset"] for e in nef.entries() if e.get("seg") == ABSOLUTE}
 
 
 def _tables_end(nef):
