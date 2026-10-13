@@ -27,7 +27,7 @@ import subprocess
 
 from codebreaker.decompile import c_text, describe
 
-REV = 15                                    # bump when what is fed to / taken from the native program changes
+REV = 16                                    # bump when what is fed to / taken from the native program changes
 
 
 def _exe():
@@ -158,6 +158,8 @@ def decompile_dos(module_path, outdir=None):
         n = "sub_%05X" % (va - d.base)
         return n, "F\t%x\t%s\t-1\t__cdecl16%s" % (va, n, kind or "near")
     out, order, _by_va = _grow(d, line, rounds=8)
+    from codebreaker.symbols import dos_interrupts
+    out = {n: dos_interrupts.annotate(t, d.interrupts.get(n, [])) for n, t in out.items()}
     return out, order, d
 
 
@@ -180,6 +182,9 @@ def main(argv):
     if not path:
         raise SystemExit("no module %r" % argv[0])
     kind = detect.lane(path)
+    if kind is None:                                         # .COM files and flat drivers have no header
+        from codebreaker.formats import dos
+        kind = "dos" if dos.kind(path) else None
     if kind == "ne":
         texts, order, _by_va, d = decompile16(path)
         header, total = "", len(d.names)

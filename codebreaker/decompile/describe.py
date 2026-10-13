@@ -3,7 +3,7 @@
     describe32(module_path, addresses, workdir)   a PE module (x86 or PowerPC)
     describe16(module_path, workdir)              a 16-bit Windows module (NE)
     describe_le(image, name, workdir)             a virtual device driver (LE), one member at a time
-    describe_dos(module_path, workdir)            a DOS program (MZ)
+    describe_dos(module_path, workdir)            a real-mode program (MZ, .COM, driver, IO.SYS)
 
 The native decompiler knows processors, not file formats. A description says which processor,
 where the file's bytes sit in memory, and the facts read from the binary rather than guessed:
@@ -467,36 +467,39 @@ DOS_LOAD = 0x1000                                # the segment the program is lo
 
 
 def describe_dos(module_path, outdir):
-    """Describe a DOS program to the decompiler. -> Description
+    """Describe a real-mode program to the decompiler. -> Description
 
-    The load module is placed at segment 0x1000 (address = segment * 16 + offset, the real-mode
-    rule) and the header's relocations are applied: each names a word that holds a segment and
-    needs the load segment added. The one function the file itself names is its entry point;
-    the rest are found from the calls the decompiler shows."""
-    import struct
-    data = open(module_path, "rb").read()
-    if data[:2] not in (b"MZ", b"ZM"):
-        raise ValueError("%s: not a DOS program" % os.path.basename(module_path))
-    (last, pages, nreloc, hdr_paras, _mn, _mx, _ss, _sp, _ck, ip, cs, reloc_off) = struct.unpack_from("<12H", data, 2)
-    size = pages * 512 - ((512 - last) if last else 0)
-    img = bytearray(data[hdr_paras * 16:size])
-    for i in range(nreloc):
-        off, seg = struct.unpack_from("<HH", data, reloc_off + 4 * i)
-        at = seg * 16 + off
-        if at + 2 <= len(img):
-            struct.pack_into("<H", img, at, (struct.unpack_from("<H", img, at)[0] + DOS_LOAD) & 0xFFFF)
+    The reader (formats/dos.py) gives the bytes as they sit in memory -- unpacked when the file
+    stores them packed, a .COM behind its program prefix, a device driver, the parts of IO.SYS
+    each where it runs -- and the analysis (analyze/dos_functions.py) every function start that
+    can be established, with whether it returns far or near and how many bytes its return
+    removes. The Description also carries `program`, `analysis` and `interrupts`
+    ({function name: [interrupt calls]}) so the interrupt calls in the output can be named."""
+    from codebreaker.analyze import dos_functions
+    from codebreaker.formats import dos
+    prog = dos.read(module_path)
+    found = dos_functions.discover(prog)
     os.makedirs(outdir, exist_ok=True)
     blob = os.path.abspath(os.path.join(outdir, "image_dos.bin"))
     with open(blob, "wb") as f:
-        f.write(img)
-    base = DOS_LOAD * 16
-    entry = ((DOS_LOAD + cs) & 0xFFFF) * 16 + ip
-    lines = ["arch\t%s" % DOS_ARCH, "bytes\t%x\t%s\t0\t%x" % (base, blob, len(img)),
-             "reg\tDS\t%x" % DOS_LOAD, "F\t%x\tentry\t-1\t__cdecl16far" % entry]
-    d = Description(os.path.join(outdir, "description.txt"), {entry: "entry"}, {}, [])
-    d.spans = {1: (base, len(img))}
-    d.image = bytes(img)
-    d.base = base
+        f.write(prog.image)
+    lines = ["arch\t%s" % DOS_ARCH]
+    for lo, n, _label in prog.spans:
+        lines.append("bytes\t%x\t%s\t%x\t%x" % (lo, blob, lo - prog.base, n))
+    lines.append("reg\tDS\t%x" % prog.ds)
+    names = {}
+    for va in sorted(found.functions):
+        fn = found.functions[va]
+        names[va] = fn.name
+        lines.append("F\t%x\t%s\t%d\t%s%s" % (fn.address, fn.name, fn.removes,
+                                               "__stdcall16" if fn.removes > 0 else "__cdecl16", fn.distance))
+    d = Description(os.path.join(outdir, "description.txt"), names, {}, [])
+    d.spans = {k + 1: (lo, n) for k, (lo, n, _label) in enumerate(prog.spans)}
+    d.image, d.base, d.program, d.analysis = prog.image, prog.base, prog, found
+    d.interrupts = {}
+    for call in found.interrupts:
+        if call.function is not None:
+            d.interrupts.setdefault(call.function.name, []).append(call)
     with open(d.path, "w", newline="\n", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
     return d
