@@ -23,14 +23,26 @@ SOURCE = "decompiler"
 NOT_RUN = ("inconclusive", "judge: the emulator crashed on this function", [], "")
 ARG_WORDS = 8
 LEFTOVER = 0x7EF707E5                  # stands for "AX held no result" in a fingerprint
-REV = 11                                # bump when what is built or compared changes
+REV = 12                                # bump when what is built or compared changes
 
 
 def vectors():
-    n = ARG_WORDS
+    """The inputs every function is run on: eight words of arguments each.
+
+    Plain numbers alone go nowhere in 16-bit code -- most functions take far pointers, and the
+    first use of a pointer whose selector word is 3 or 0x400 is a protection fault, on both
+    sides, before anything has been compared. So half the inputs are (offset, selector) pairs
+    naming a real, writable segment, in both orders (which word is the selector depends on where
+    in the argument list a pointer sits)."""
+    from codebreaker.emulate import ne_probe
+    n, sel = ARG_WORDS, ne_probe.SAFE_ARG
     return [{"args": [0] * n}, {"args": [0x0400] * n}, {"args": [0x0080] * n},
             {"args": [i + 1 for i in range(n)]}, {"args": [0x100 * (i + 1) for i in range(n)]},
-            {"args": [0xFFFF - i for i in range(n)]}]
+            {"args": [0xFFFF - i for i in range(n)]},
+            {"args": [sel if i % 2 else 0x20 * (i + 1) for i in range(n)]},     # offset, selector, ...
+            {"args": [0x20 * (i + 1) if i % 2 else sel for i in range(n)]},     # selector, offset, ...
+            {"args": [sel] * n},
+            {"args": [1, 0x40, sel, 2, 0x80, sel, 3, 0x100]}]
 
 
 def _call(hit, inputs, entry):

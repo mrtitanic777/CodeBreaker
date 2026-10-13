@@ -31,6 +31,12 @@ typedef unsigned char undefined; typedef unsigned char undefined1; typedef unsig
 typedef unsigned long undefined4; typedef unsigned char bool; typedef unsigned long float4;
 typedef int2 code();
 #define true 1
+uint2 codebreaker_ss(void);
+#pragma aux codebreaker_ss = "mov ax,ss" value [ax] modify exact [ax];
+uint2 codebreaker_ds(void);
+#pragma aux codebreaker_ds = "mov ax,ds" value [ax] modify exact [ax];
+uint2 codebreaker_cs(void);
+#pragma aux codebreaker_cs = "mov ax,cs" value [ax] modify exact [ax];
 #define false 0
 #define __stdcall16far __far __stdcall
 #define __stdcall16near __near __stdcall
@@ -106,6 +112,15 @@ def _joined_arguments(text):
     return re.sub(r"(?<![\w.])_(a\d+|param_\d+)\b", r"(*(uint4 *)&\1)", text)
 
 
+def _segment_registers(text):
+    """`unaff_SS`, `unaff_DS`, `unaff_CS` are the decompiler's names for "whatever that segment
+    register held when the function was entered" -- used when it passes the address of a local
+    as a far pointer (offset, SS) or a string constant as (offset, CS). Left as plain locals
+    they would be garbage; they are given the register's value."""
+    return re.sub(r"(?m)^(\s+\w+ )unaff_(SS|DS|CS);\s*$",
+                  lambda m: "%sunaff_%s = codebreaker_%s();" % (m.group(1), m.group(2), m.group(2).lower()), text)
+
+
 def _open_arguments(text):
     """Write the definition in the older style, `f(a, b) int a; int b; { ... }`.
 
@@ -174,7 +189,7 @@ def compilable(module_path, outdir=None):
                 a = int(mm.group(2), 16)
                 sizes[a] = max(sizes.get(a, 0), int(mm.group(3))) if int(mm.group(3)) <= 4 else sizes.get(a, 2)
         text = _LEADING.sub("", _FACT.sub("", raw))          # notes the decompiler put before the function
-        text = _joined_arguments(_pieces(_far(text.strip(), far)))
+        text = _segment_registers(_joined_arguments(_pieces(_far(text.strip(), far))))
         if "return" in far:                                  # the function returns a far pointer
             head, brace, body = text.partition("{")
             head = re.sub(r"\*(?=[\s\w]*\b%s\s*\()" % re.escape(name), "__far *", head, count=1)

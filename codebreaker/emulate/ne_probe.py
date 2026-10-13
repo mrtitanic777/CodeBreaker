@@ -25,6 +25,7 @@ from codebreaker.emulate import trace16 as T   # the validated 16-bit substrate
 
 HEAP_BASE = 0xB00000        # first far-heap block (distinct from seg/stack/scratch/sentinel windows)
 HEAP_STRIDE = 0x10000
+SAFE_ARG = T._sel(200)      # a selector that names a real, writable scratch segment
 
                             # returns to the sentinel regardless, so surplus args are harmless
 
