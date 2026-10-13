@@ -120,6 +120,34 @@ def function_names(module_path, funcs):
     return {va: by_rva.get(va - pe.image_base, "sub_%06X" % (va - pe.image_base)) for va in funcs}
 
 
+def function_starts(module_path):
+    """Addresses of a PE module's functions. PowerPC images carry a table of them (.pdata: one
+    record per function, its start and length); for x86 they are found by following the code."""
+    import struct
+    from codebreaker.formats.pe import open_pe
+    pe = open_pe(module_path)
+    if pe.machine != 0x01F2:
+        from codebreaker.verify import pipeline
+        pipeline._arm()
+        return pipeline.LANES["pe"].functions(module_path)
+    rva, size = pe.datadirs[3] if len(pe.datadirs) > 3 else (0, 0)
+    data = open(module_path, "rb").read()
+    off = rva if _memory_layout(pe, module_path) else pe._rva_to_off(rva)
+    out = []
+    for i in range(size // 8 if off is not None else 0):
+        begin, packed = struct.unpack_from(">II", data, off + 8 * i)
+        if begin and (packed >> 8) & 0x3FFFFF:               # a start and a non-zero length
+            out.append(begin)
+    return sorted(set(out))
+
+
+def _memory_layout(pe, module_path):
+    """Is the file laid out as the module sits in memory (each section at its own address)
+    rather than packed as on disk? Images dumped from a container are."""
+    end = max((s["vaddr"] + max(s["vsize"], 1) for s in pe.sections), default=0)
+    return pe.machine == 0x01F2 and os.path.getsize(module_path) >= end
+
+
 def describe(module_path, funcs, outdir):
     """Write the description of a PE module for the native program: its processor, where its
     bytes sit in memory, and the facts about `funcs` (addresses) and its imports.
@@ -131,13 +159,17 @@ def describe(module_path, funcs, outdir):
     if not arch:
         raise ValueError("%s: no language for machine type %#x" % (os.path.basename(module_path), pe.machine))
     x86 = arch.startswith("x86:")
-    names = function_names(module_path, funcs)
+    names = function_names(module_path, funcs) if x86 else {va: "sub_%08X" % va for va in funcs}
     lines = ["arch\t%s" % arch]
-    for sec in pe.sections:
-        size = min(sec["rawsize"], sec["vsize"] or sec["rawsize"])
-        if size and sec["rawptr"]:
-            lines.append("bytes\t%x\t%s\t%x\t%x" % (pe.image_base + sec["vaddr"], os.path.abspath(module_path),
-                                                    sec["rawptr"], size))
+    if _memory_layout(pe, module_path):
+        lines.append("bytes\t%x\t%s\t0\t%x" % (pe.image_base, os.path.abspath(module_path),
+                                                os.path.getsize(module_path)))
+    else:
+        for sec in pe.sections:
+            size = min(sec["rawsize"], sec["vsize"] or sec["rawsize"])
+            if size and sec["rawptr"]:
+                lines.append("bytes\t%x\t%s\t%x\t%x" % (pe.image_base + sec["vaddr"],
+                                                        os.path.abspath(module_path), sec["rawptr"], size))
     mod = api_stack._Mod(module_path) if x86 else None
     for va in funcs:
         pop = None
@@ -147,7 +179,7 @@ def describe(module_path, funcs, outdir):
             except Exception:
                 pop = None
         lines.append("F\t%x\t%s\t%d" % (va, names[va], -1 if pop is None else pop))
-    for slot, (dll, name) in sorted(pe.imports().items()):
+    for slot, (dll, name) in sorted((pe.imports() if x86 else {}).items()):
         stem = os.path.splitext(dll)[0].upper()
         if not name or name.startswith("#"):
             lines.append("I\t%x\t%s\t-1" % (slot, _ident("%s_ord_%s" % (stem, (name or "#0")[1:]))))
@@ -374,6 +406,11 @@ def decompile16(module_path, outdir=None, rounds=4):
     return out, order, by_va, d
 
 
+def _is_x86(module_path):
+    from codebreaker.formats.pe import open_pe
+    return open_pe(module_path).machine == 0x014C
+
+
 def main(argv):
     """python -m codebreaker decompile <module> [--out FILE]
 
@@ -391,9 +428,14 @@ def main(argv):
     if kind == "ne":
         texts, order, _by_va, d = decompile16(path)
         header, total = "", len(d.names)
-    elif kind == "pe":
+    elif kind == "pe" and _is_x86(path):
         m = decompile(path)
         texts, order, header, total = m.texts, m.order, m.header, len(m.by_va)
+    elif kind == "pe":                                       # PowerPC: as the decompiler gives it
+        from codebreaker.build import watcom as B
+        starts = function_starts(path)
+        texts, order, _by_va, _err = raw(path, starts, B._scratch("decompiler", os.path.basename(path).lower()))
+        header, total = "", len(starts)
     else:
         raise SystemExit("%s: a %s file; only 32-bit (PE) and 16-bit (NE) modules so far" % (
             path, kind or "non-executable"))
