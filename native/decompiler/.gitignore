@@ -1,0 +1,12 @@
+# CMake / Visual Studio build output
+build/
+out/
+.vs/
+*.user
+
+# Tool state: per-image analysis databases, written next to the image
+*.xdb
+
+# Scratch
+scratchpad/
+*.log
