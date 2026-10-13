@@ -11,7 +11,7 @@ from codebreaker.build import watcom as toolchain
 from codebreaker.base import corpus
 from codebreaker.verify import compare
 from codebreaker.formats.pe import open_pe
-from codebreaker.emulate import trace32 as tracer
+from codebreaker.emulate import emulator as tracer
 import struct as _struct
 import hashlib as _hashlib
 import pickle as _pickle
@@ -42,12 +42,12 @@ def prepare(module_path, work):
 def build(m, module_path, work):
     """-> (context for judge, {name: item}, {name: why it is not in the build})"""
     from codebreaker.build import functions
-    from codebreaker.decompile import decompiler
+    from codebreaker.decompile import c_text
     # Only functions with a known address are built. The rest are library routines recognised
     # by signature (__allshl, _memcpy): they belong to the C runtime, which is linked.
     placed = [n for n in m.order if n in m.va]
     dll, where, dropped = functions.build32(module_path, m.header, m.texts, placed, m.imports, work,
-                                            decompiler.CFLAGS)
+                                            c_text.CFLAGS)
     items, dropped = {}, dict(dropped)
     for fn in placed:
         if fn in dropped:
@@ -171,7 +171,7 @@ def _argc(dll, name):
     module that exports it (apiarity), else the small hand table. None = unknown (the stub then
     removes nothing and the call's arguments are not compared)."""
     from codebreaker.symbols import api_arguments as apiarity
-    from codebreaker.emulate import trace32 as env
+    from codebreaker.emulate import emulator as env
     n = apiarity.argc(dll, name)
     return n if n is not None else env._builtin_argc(name)
 

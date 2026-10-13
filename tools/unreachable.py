@@ -4,8 +4,7 @@
     python tools/unreachable.py [--delete]
 
 Starts from what a person can actually run -- the commands listed in codebreaker/__main__.py,
-the tests and the tools -- and follows imports (including those made inside functions and the
-names handed to the registry). Anything in the package not reached that way is not part of the
+the tests and the tools -- and follows imports (including those made inside functions). Anything in the package not reached that way is not part of the
 program: nothing runs it and nothing checks it. `--delete` removes those files (git keeps them).
 """
 import ast
@@ -38,10 +37,6 @@ def _imports(path, mod):
         if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("codebreaker"):
             out.add(node.module)
             out |= {node.module + "." + a.name for a in node.names}
-    # registry.get("name") -> the shared module behind that name, and the target's profile
-    from codebreaker.base import registry
-    for name in re.findall(r"""(?:registry|cores|_registry)\.get\(\s*['"](\w+)['"]""", text):
-        out.add(registry._SHARED.get(name, "codebreaker.targets.%s.profile" % registry.DEFAULT_TARGET))
     return out
 
 

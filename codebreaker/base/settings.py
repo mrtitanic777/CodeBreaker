@@ -73,7 +73,6 @@ def export_for_carried_over_code():
         if not os.environ.get(env) and get(key):
             os.environ[env] = get(key)
     os.environ.setdefault("CB_RESULTS_DB", state("results.sqlite"))
-    os.environ.setdefault("CB_TARGET", get("target"))
 
 
 _FROZEN = getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS")
@@ -94,11 +93,6 @@ def repo_root():
 def engine_dir(*parts):
     """A path under the engine package, e.g. engine_dir('targets', 'win95')."""
     return os.path.join(package_root(), *parts)
-
-
-def target_dir(era):
-    """A per-era tool directory: engine/targets/<era>."""
-    return engine_dir("targets", era)
 
 
 _ERAS = ("win95", "win98", "win3.1", "win1.0")

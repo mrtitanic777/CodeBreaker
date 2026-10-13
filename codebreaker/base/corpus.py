@@ -93,6 +93,17 @@ def candidates(name):
     return []
 
 
+def resolve(name):
+    """The file a module is named by: a path as it stands, otherwise the corpus's copy of that
+    module name."""
+    if os.path.isfile(name):
+        return name
+    found = retail(name)
+    if not found:
+        raise ValueError("no module %r in the corpus" % name)
+    return found
+
+
 def retail(name):
     """THE retail binary for a module name, or None. An existing path is returned unchanged, so
     callers can pass either a name or a path."""

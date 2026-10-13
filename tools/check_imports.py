@@ -26,6 +26,39 @@ def modules():
                 yield rel[:-9] if rel.endswith(".__init__") else rel, os.path.join(base, f)
 
 
+def dangling():
+    """Imports of the package's own modules, anywhere (also inside functions, also in the tests
+    and tools), that name a module or a name that is not there."""
+    out = []
+    for d in ("codebreaker", "tests", "tools"):
+        for base, dirs, files in os.walk(os.path.join(ROOT, d)):
+            dirs[:] = [x for x in dirs if x != "__pycache__"]
+            for f in files:
+                if not f.endswith(".py"):
+                    continue
+                p = os.path.join(base, f)
+                try:
+                    tree = ast.parse(open(p, encoding="utf-8", errors="replace").read())
+                except SyntaxError:
+                    continue
+                for node in ast.walk(tree):
+                    if not (isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("codebreaker")):
+                        continue
+                    try:
+                        mod = importlib.import_module(node.module)
+                    except Exception as e:
+                        out.append("%s:%d  %s: %s" % (os.path.relpath(p, ROOT), node.lineno, node.module, type(e).__name__))
+                        continue
+                    for a in node.names:
+                        if hasattr(mod, a.name):
+                            continue
+                        try:
+                            importlib.import_module(node.module + "." + a.name)
+                        except Exception:
+                            out.append("%s:%d  %s has no %s" % (os.path.relpath(p, ROOT), node.lineno, node.module, a.name))
+    return out
+
+
 def main():
     local = {os.path.basename(p)[:-3] for _m, p in modules()} - {"__init__"}
     bad = bare = old = 0
@@ -54,9 +87,12 @@ def main():
         except Exception as e:
             bad += 1
             print("FAILS      %s: %s: %s" % (mod, type(e).__name__, str(e)[:110]))
-    print("%d passed, %d failed  (%d fail to import, %d bare-name imports, %d old names)" % (
-        sum(1 for _ in modules()) - bad, bad + bare + old, bad, bare, old))
-    return 1 if bad or bare or old else 0
+    lost = dangling()
+    for line in lost:
+        print("dangling   " + line.replace("\\", "/"))
+    print("%d passed, %d failed  (%d fail to import, %d bare-name imports, %d old names, %d dangling imports)" % (
+        sum(1 for _ in modules()) - bad, bad + bare + old + len(lost), bad, bare, old, len(lost)))
+    return 1 if bad or bare or old or lost else 0
 
 
 if __name__ == "__main__":

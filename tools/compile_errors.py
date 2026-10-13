@@ -20,14 +20,15 @@ def main(argv):
     if not argv:
         print(__doc__)
         return 2
-    from codebreaker.base import corpus, period_tools, settings
+    from codebreaker.base import corpus, settings
+    from codebreaker.build import watcom as period_tools
     from codebreaker.build import functions as module16
-    from codebreaker.decompile import c16
+    from codebreaker.decompile import c_text
     path = corpus.retail(argv[0]) or argv[0]
     each = int(argv[argv.index("--each") + 1]) if "--each" in argv else 2
     work = settings.state("compile_errors", os.path.basename(path).lower())
     os.makedirs(work, exist_ok=True)
-    m = c16.compilable(path, work)
+    m = c_text.compilable16(path, work)
     starts, parts, line = [], [m.header], m.header.count("\n") + 2
     for n in m.order:
         starts.append((line, n))

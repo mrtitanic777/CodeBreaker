@@ -1,28 +1,117 @@
-"""image16.py -- describe a 16-bit Windows module (NE) to the decompiler.
+"""describe.py -- take an executable apart and describe it to the decompiler.
 
-A 16-bit module is not one block of memory. It is a set of segments, each up to 64 KB, that the
-loader places wherever it likes and names by selector; code refers to another segment or to an
-imported function through places in the file the loader patches. So before the decompiler can
-read it, this does what the loader does:
+    describe32(module_path, addresses, workdir)   a PE module (x86 or PowerPC)
+    describe16(module_path, workdir)              a 16-bit Windows module (NE)
 
-  * gives each segment a selector (segment 1 -> 0x1000, then every 8) and so an address
-    (selector * 0x10000 -- the 16-bit protected-mode rule the decompiler applies);
-  * patches every relocation: a reference to another segment gets that segment's selector, a
-    reference to an entry point gets its selector and offset, and a reference to an imported
-    function gets a far pointer to an address standing for that function;
-  * says where the functions are (the entry table, relocation targets, and near-call targets
-    two call sites agree on), which are far and which near, and what the data segment register
-    holds.
+The native decompiler knows processors, not file formats. A description says which processor,
+where the file's bytes sit in memory, and the facts read from the binary rather than guessed:
+every function's start and name, how it returns (far or near, how many bytes of arguments it
+removes), and every import with the same for it.
 
-    from codebreaker.decompile import image16
-    d = image16.describe(module_path, outdir)
-    d.path           the description file for decompiler.run()
-    d.names          {address: name}
-    d.where          {address: (segment, offset)}
+A PE module is nearly its own description: sections at their addresses, an import table.
+A 16-bit module is a set of segments the loader places and patches, so describing one means
+doing what the loader does: each segment gets a selector (segment 1 -> 0x1000, then every 8)
+and so an address (selector * 0x10000), every relocation is applied, and a reference to an
+imported function becomes a far pointer to an address standing for that function.
 """
 import os
 import re
 import struct
+
+
+# language id by PE machine type
+_ARCH = {0x014C: "x86:LE:32:default:windows", 0x01F2: "PowerPC:BE:64:A2ALT-32addr:default"}
+
+
+def _ident(name):
+    return re.sub(r"\W", "_", name)
+
+
+def function_names(module_path, funcs):
+    """{va: name} -- an export's own name, else sub_<rva>. A name also used by an import of this
+    module stays with the import (the call has to bind to it)."""
+    from codebreaker.formats.pe import open_pe
+    from codebreaker.build import watcom as B
+    pe = open_pe(module_path)
+    imported = set(B.import_map(module_path))
+    by_rva = {}
+    for nm, rva in sorted(pe.export_addrs().items()):
+        if re.fullmatch(r"[A-Za-z_]\w*", nm) and nm not in imported:
+            by_rva.setdefault(rva, nm)
+    return {va: by_rva.get(va - pe.image_base, "sub_%06X" % (va - pe.image_base)) for va in funcs}
+
+
+def function_starts(module_path):
+    """Addresses of a PE module's functions. PowerPC images carry a table of them (.pdata: one
+    record per function, its start and length); for x86 they are found by following the code."""
+    import struct
+    from codebreaker.formats.pe import open_pe
+    pe = open_pe(module_path)
+    if pe.machine != 0x01F2:
+        from codebreaker.verify import win32 as pipeline
+        return pipeline.LANES["pe"].functions(module_path)
+    rva, size = pe.datadirs[3] if len(pe.datadirs) > 3 else (0, 0)
+    data = open(module_path, "rb").read()
+    off = rva if _memory_layout(pe, module_path) else pe._rva_to_off(rva)
+    out = []
+    for i in range(size // 8 if off is not None else 0):
+        begin, packed = struct.unpack_from(">II", data, off + 8 * i)
+        if begin and (packed >> 8) & 0x3FFFFF:               # a start and a non-zero length
+            out.append(begin)
+    return sorted(set(out))
+
+
+def _memory_layout(pe, module_path):
+    """Is the file laid out as the module sits in memory (each section at its own address)
+    rather than packed as on disk? Images dumped from a container are."""
+    end = max((s["vaddr"] + max(s["vsize"], 1) for s in pe.sections), default=0)
+    return pe.machine == 0x01F2 and os.path.getsize(module_path) >= end
+
+
+def describe32(module_path, funcs, outdir):
+    """Write the description of a PE module for the native program: its processor, where its
+    bytes sit in memory, and the facts about `funcs` (addresses) and its imports.
+    -> (path of the description, {va: name})"""
+    from codebreaker.symbols import api_arguments as api_stack
+    from codebreaker.formats.pe import open_pe
+    pe = open_pe(module_path)
+    arch = _ARCH.get(pe.machine)
+    if not arch:
+        raise ValueError("%s: no language for machine type %#x" % (os.path.basename(module_path), pe.machine))
+    x86 = arch.startswith("x86:")
+    names = function_names(module_path, funcs) if x86 else {va: "sub_%08X" % va for va in funcs}
+    lines = ["arch\t%s" % arch]
+    if _memory_layout(pe, module_path):
+        lines.append("bytes\t%x\t%s\t0\t%x" % (pe.image_base, os.path.abspath(module_path),
+                                                os.path.getsize(module_path)))
+    else:
+        for sec in pe.sections:
+            size = min(sec["rawsize"], sec["vsize"] or sec["rawsize"])
+            if size and sec["rawptr"]:
+                lines.append("bytes\t%x\t%s\t%x\t%x" % (pe.image_base + sec["vaddr"],
+                                                        os.path.abspath(module_path), sec["rawptr"], size))
+    mod = api_stack._Mod(module_path) if x86 else None
+    for va in funcs:
+        pop = None
+        if x86:
+            try:
+                pop = api_stack._scan(mod, va - pe.image_base, 4)
+            except Exception:
+                pop = None
+        lines.append("F\t%x\t%s\t%d" % (va, names[va], -1 if pop is None else pop))
+    for slot, (dll, name) in sorted((pe.imports() if x86 else {}).items()):
+        stem = os.path.splitext(dll)[0].upper()
+        if not name or name.startswith("#"):
+            lines.append("I\t%x\t%s\t-1" % (slot, _ident("%s_ord_%s" % (stem, (name or "#0")[1:]))))
+            continue
+        pop = api_stack.stack_bytes(stem, name) if x86 else None
+        lines.append("I\t%x\t%s\t%d" % (slot, _ident(name), -1 if pop is None else pop))
+    os.makedirs(outdir, exist_ok=True)
+    path = os.path.join(outdir, "description.txt")
+    with open(path, "w", newline="\n", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+    return path, names
+
 
 ARCH = "x86:LE:16:Protected Mode:default"
 FIRST_SELECTOR = 0x1000
@@ -116,7 +205,7 @@ def model_line(d, va, name, default="near"):
     return "F\t%x\t%s\t%d\t%s%s" % (va, name, pop, conv, kind or default)
 
 
-def describe(module_path, outdir):
+def describe16(module_path, outdir):
     """Write the description (and the relocated image it points at). -> Description"""
     from codebreaker.formats.ne import NEFile
     nef = NEFile(module_path)
@@ -176,7 +265,7 @@ def describe(module_path, outdir):
                 off, hops = nxt, hops + 1
 
     os.makedirs(outdir, exist_ok=True)
-    blob = os.path.abspath(os.path.join(outdir, "image16.bin"))
+    blob = os.path.abspath(os.path.join(outdir, "describe.bin"))
     lines, pos = ["arch\t%s" % ARCH], 0
     with open(blob, "wb") as f:
         for s in segs:

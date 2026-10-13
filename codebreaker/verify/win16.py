@@ -1,7 +1,7 @@
 """win16.py -- what is particular to reconstructing a 16-bit Windows module.
 
 One of the kinds reconstruct.py works with (see there for what a kind provides). Here: the
-module is decompiled and made compilable by decompile/c16.py, every function is compiled and a
+module is decompiled and made compilable by decompile/c_text.py, every function is compiled and a
 16-bit DLL linked by build/functions.py, and each function is run beside the original in the
 16-bit emulator.
 
@@ -32,7 +32,7 @@ def vectors():
     sides, before anything has been compared. So half the inputs are (offset, selector) pairs
     naming a real, writable segment, in both orders (which word is the selector depends on where
     in the argument list a pointer sits)."""
-    from codebreaker.emulate import trace16 as ne_probe
+    from codebreaker.emulate import emulator as ne_probe
     n, sel = ARG_WORDS, ne_probe.SAFE_ARG
     return [{"args": [0] * n}, {"args": [0x0400] * n}, {"args": [0x0080] * n},
             {"args": [i + 1 for i in range(n)]}, {"args": [0x100 * (i + 1) for i in range(n)]},
@@ -72,7 +72,7 @@ def _call(hit, inputs, entry):
 
 def fingerprint(path, seg, off, near, wide, v, data_image=None, span=None):
     """What one run of one function did, in a form two builds can be compared on."""
-    from codebreaker.emulate import trace16 as ne_probe
+    from codebreaker.emulate import emulator as ne_probe
     from codebreaker.verify import compare
     try:
         r = ne_probe.probe(path, seg=seg, offset=off, args=v["args"], near=near, data_image=data_image)
@@ -185,8 +185,8 @@ def key(seg, off):
 
 
 def prepare(module_path, work):
-    from codebreaker.decompile import c16
-    m = c16.compilable(module_path, work)
+    from codebreaker.decompile import c_text
+    m = c_text.compilable16(module_path, work)
     m.key = {m.by_va[va]: key(*m.where[va]) for va in m.by_va}
     m.all_keys = sorted(m.key.values())
     m.sig = hashlib.sha1((m.header + "".join(m.texts[n] for n in m.order)).encode("utf-8", "replace")).hexdigest()

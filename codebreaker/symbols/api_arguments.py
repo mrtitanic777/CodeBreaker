@@ -373,13 +373,13 @@ def arg_bytes(module, ordinal):
         value = None
         mod = _module(module)
         if mod:
-            from codebreaker.decompile import image16
+            from codebreaker.decompile import describe
             nef, entries, segs = mod
             e = entries.get(int(ordinal))
             s = segs.get(e["seg"]) if e else None
             if s and s["kind"] == "CODE" and s["file_off"]:
                 code = nef.data[s["file_off"]:s["file_off"] + s["length"]]
-                kind, pop = image16.returns(code, e["offset"])
+                kind, pop = describe.returns(code, e["offset"])
                 if kind == "far" and pop >= 0:
                     value = pop
         cache[key] = value

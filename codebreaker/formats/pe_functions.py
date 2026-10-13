@@ -27,7 +27,7 @@ modern decoder — cross-check anything surprising against objdump/Ghidra.
     python pe_trace.py KERNEL32.DLL --stats
 """
 import bisect
-from codebreaker.base import registry as cores
+from codebreaker.base import corpus
 import capstone
 from codebreaker.formats.pe import open_pe
 import os
@@ -35,7 +35,6 @@ from codebreaker.base import settings as paths
 
 
 
-target = cores.get('target')
 
 
 class PeCarve:
@@ -43,7 +42,7 @@ class PeCarve:
         # progress_cb(bytes_swept) is called periodically during the (dominant)
         # linear capstone sweep, so a caller can drive a disassembly progress bar.
         self._progress_cb = progress_cb
-        self.pe = open_pe(target.resolve(path))
+        self.pe = open_pe(corpus.resolve(path))
         self.md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
         self.md.detail = True
         self.sections = self.pe.code_sections()          # [(va, bytes, name)]
@@ -300,10 +299,7 @@ def ensure_target():
 def carve(module):
     ensure_target()
     if module not in _CARVE:
-        from codebreaker.base import registry as _registry
-        target = _registry.get("target")
-        from codebreaker.formats import pe_functions as pe_trace
-        _CARVE[module] = pe_trace.PeCarve(target.resolve(module))
+        _CARVE[module] = PeCarve(corpus.resolve(module))
     return _CARVE[module]
 
 
@@ -351,7 +347,7 @@ class PeSeg:
         # the whole capstone sweep once per section). progress_cb drives the
         # per-section disassembly bar.
         self.module = module
-        self.path = target.resolve(module)
+        self.path = corpus.resolve(module)
         self.pe = open_pe(self.path)
         self.base = self.pe.image_base
         secs = self.pe.code_sections()            # [(va, bytes, name)]

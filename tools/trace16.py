@@ -21,8 +21,8 @@ def main(argv):
     import capstone
     from codebreaker.base import corpus
     from codebreaker.build import watcom
-    from codebreaker.decompile import image16
-    from codebreaker.emulate import trace16 as ne_probe
+    from codebreaker.decompile import describe
+    from codebreaker.emulate import emulator as ne_probe
     from codebreaker.formats.ne import NEFile
     from codebreaker.verify import win16 as reconstruct16
 
@@ -35,7 +35,7 @@ def main(argv):
     m = re.search(r"(?m)^F\t([0-9a-f]+)\t%s\t(-?\d+)\t(\S+)" % re.escape(fn), desc)
     if not m:
         raise SystemExit("%s: not a function of %s (see %s)" % (fn, os.path.basename(path), work))
-    seg, off = image16.where(int(m.group(1), 16))
+    seg, off = describe.where(int(m.group(1), 16))
     near = "near" in m.group(3)
     mp = open(os.path.join(work, "m.map"), errors="replace").read()
     mm = re.search(r"(?m)^([0-9a-f]{4}):([0-9a-f]{4,8})[+*]?\s+_?%s_?(?:@\d+)?\s*$" % re.escape(fn), mp)

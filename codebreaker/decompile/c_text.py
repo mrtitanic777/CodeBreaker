@@ -1,0 +1,447 @@
+"""c_text.py -- make the decompiler's output into C a compiler accepts and that means what the
+original meant.
+
+    compilable32(module_path, addresses, workdir)   a 32-bit module: (header, texts, order, by_va, imports)
+    compilable16(module_path, workdir)              a 16-bit module: an object with the same, plus what
+                                                    16-bit code needs said (near functions, wide results)
+
+The decompiler prints C for reading. To be compiled and to behave as the original it needs its
+base types defined, every function and import declared with its real convention, its globals
+bound to where the original keeps them, and its stack locals kept where the original had them
+whenever an address to one can escape. 16-bit code needs more said: which pointers are far, how
+arguments lie on the stack, what the segment registers hold. Those rules are here, per kind;
+what the two kinds share (the byte-piece notation, how a function is declared) is shared.
+"""
+import re
+
+
+# The printed text gives a function in the module's default convention (stdcall) without saying
+# so, and spells the others out. Compile with stdcall as the default (-ecd; -ecs is __syscall) so
+# the text means what it says.
+CFLAGS = ["-bt=nt", "-zq", "-w0", "-s", "-zastd=c99", "-ecd"]
+
+
+_TYPES = """#pragma pack(1)
+typedef signed char int1; typedef short int2; typedef int int4; typedef long long int8;
+typedef unsigned char uint1; typedef unsigned short uint2; typedef unsigned int uint4;
+typedef unsigned long long uint8;
+typedef unsigned char xunknown1; typedef unsigned short xunknown2; typedef unsigned int xunknown4;
+typedef unsigned long long xunknown8;
+typedef unsigned char undefined; typedef unsigned char undefined1; typedef unsigned short undefined2;
+typedef unsigned int undefined4; typedef unsigned long long undefined8;
+typedef unsigned char bool; typedef float float4; typedef double float8; typedef long double float10;
+typedef int code();
+typedef unsigned int unkbyte3; typedef unsigned int unkint3; typedef unsigned int unkuint3;
+#define true 1
+#define false 0
+"""
+
+
+# The core's own operators for things C has no syntax for: joining and splitting values by
+# bytes, widening, and the carry/overflow conditions of an addition or subtraction.
+_HELPERS = """
+#define CONCAT11(a,b) ((uint2)(((uint2)(uint1)(a) << 8) | (uint1)(b)))
+#define CONCAT12(a,b) ((uint4)(((uint4)(uint1)(a) << 16) | (uint2)(b)))
+#define CONCAT13(a,b) ((uint4)(((uint4)(uint1)(a) << 24) | ((uint4)(b) & 0xFFFFFF)))
+#define CONCAT21(a,b) ((uint4)(((uint4)(uint2)(a) << 8) | (uint1)(b)))
+#define CONCAT22(a,b) ((uint4)(((uint4)(uint2)(a) << 16) | (uint2)(b)))
+#define CONCAT31(a,b) ((uint4)(((uint4)(a) << 8) | (uint1)(b)))
+#define CONCAT44(a,b) ((uint8)(((uint8)(uint4)(a) << 32) | (uint4)(b)))
+#define SUB21(x,n) ((uint1)((uint2)(x) >> (8 * (n))))
+#define SUB41(x,n) ((uint1)((uint4)(x) >> (8 * (n))))
+#define SUB42(x,n) ((uint2)((uint4)(x) >> (8 * (n))))
+#define SUB43(x,n) ((uint4)((uint4)(x) >> (8 * (n))) & 0xFFFFFF)
+#define SUB81(x,n) ((uint1)((uint8)(x) >> (8 * (n))))
+#define SUB82(x,n) ((uint2)((uint8)(x) >> (8 * (n))))
+#define SUB84(x,n) ((uint4)((uint8)(x) >> (8 * (n))))
+#define ZEXT12(x) ((uint2)(uint1)(x))
+#define ZEXT14(x) ((uint4)(uint1)(x))
+#define ZEXT24(x) ((uint4)(uint2)(x))
+#define ZEXT48(x) ((uint8)(uint4)(x))
+#define SEXT12(x) ((int2)(int1)(x))
+#define SEXT14(x) ((int4)(int1)(x))
+#define SEXT24(x) ((int4)(int2)(x))
+#define SEXT48(x) ((int8)(int4)(x))
+#define CARRY1(a,b) ((uint1)(a) > (uint1)(0xFF - (uint1)(b)))
+#define CARRY2(a,b) ((uint2)(a) > (uint2)(0xFFFF - (uint2)(b)))
+#define CARRY4(a,b) ((uint4)(a) > 0xFFFFFFFFu - (uint4)(b))
+#define SCARRY4(a,b) ((((int4)(a) ^ (int4)((uint4)(a) + (uint4)(b))) & ((int4)(b) ^ (int4)((uint4)(a) + (uint4)(b)))) < 0)
+#define SBORROW4(a,b) ((((int4)(a) ^ (int4)(b)) & ((int4)(a) ^ (int4)((uint4)(a) - (uint4)(b)))) < 0)
+#define SCARRY2(a,b) ((int2)(((int2)(a) ^ (int2)((a) + (b))) & ((int2)(b) ^ (int2)((a) + (b)))) < 0)
+#define SBORROW2(a,b) ((int2)(((int2)(a) ^ (int2)(b)) & ((int2)(a) ^ (int2)((a) - (b)))) < 0)
+#define SCARRY1(a,b) ((int1)(((int1)(a) ^ (int1)((a) + (b))) & ((int1)(b) ^ (int1)((a) + (b)))) < 0)
+#define SBORROW1(a,b) ((int1)(((int1)(a) ^ (int1)(b)) & ((int1)(a) ^ (int1)((a) - (b)))) < 0)
+"""
+
+
+_BY_SIZE = {1: "uint1", 2: "uint2", 4: "uint4", 8: "uint8"}
+
+
+_LOCAL = re.compile(r"(?m)^  ([A-Za-z_][\w ]*?(?:\s*\*+\s*|\s))([a-z]+Stack_([0-9a-f]+))(?: \[(\d+)\])?;[ \t]*$")
+
+
+_SIZEOF = {"int1": 1, "uint1": 1, "xunknown1": 1, "char": 1, "bool": 1, "undefined": 1, "undefined1": 1,
+           "int2": 2, "uint2": 2, "xunknown2": 2, "undefined2": 2,
+           "int4": 4, "uint4": 4, "xunknown4": 4, "undefined4": 4, "float4": 4,
+           "int8": 8, "uint8": 8, "xunknown8": 8, "undefined8": 8, "float8": 8, "float10": 10}
+
+
+def _keep_frame(t):
+    """Keep a function's stack locals where the original had them, relative to one another.
+
+    The original often builds a small structure in its frame and passes its address
+    (`mov [ebp-18h], hwnd / mov [ebp-14h], id / lea edx, [ebp-18h] / push edx`). The core
+    recovers the fields as separate locals; a C compiler then places them wherever it likes, and
+    the callee, reading through the pointer, finds something else. When any stack local's address
+    can escape, the locals are declared as the fields of one frame structure at their original
+    offsets, so every address taken still points at what the original put there."""
+    locs = [m for m in _LOCAL.finditer(t) if m.group(1).strip() not in ("return", "goto")]
+    if not locs:
+        return t
+    names = [m.group(2) for m in locs]
+    if not (any(m.group(4) for m in locs) or re.search(r"&\s*(?:%s)\b" % "|".join(names), t)):
+        return t
+    items = []
+    for m in locs:
+        ty = " ".join(m.group(1).split())
+        size = 4 if ty.endswith("*") else _SIZEOF.get(ty)
+        if size is None:
+            return t                                       # a type whose size we do not know
+        count = int(m.group(4)) if m.group(4) else 1
+        items.append((int(m.group(3), 16), size * count, ty, m.group(2), m.group(4)))
+    items.sort(reverse=True)                               # largest offset = lowest address, first
+    fields, pos = [], None
+    for off, size, ty, name, arr in items:
+        addr = -off
+        if pos is not None:
+            gap = addr - pos
+            if gap < 0:
+                return t                                   # overlapping locals: leave as they are
+            if gap:
+                fields.append("uint1 _gap_%x[%d];" % (off, gap))
+        fields.append("%s %s%s;" % (ty, name, "[%s]" % arr if arr else ""))
+        pos = addr + size
+    if pos is not None and pos < 0:
+        # the original's frame runs on to its return address: a callee handed the address of the
+        # last local may fill a whole structure there (a RECT the core saw only two fields of)
+        fields.append("uint1 _rest[%d];" % -pos)
+    decl = "  struct { %s } _f;   /* locals at their offsets in the original's frame */" % " ".join(fields)
+    first = [True]
+
+    def strip(_m):
+        if first[0]:
+            first[0] = False
+            return "\x00FRAME\x00"
+        return ""
+    t = _LOCAL.sub(lambda m: m.group(0) if m.group(1).strip() in ("return", "goto") else strip(m), t)
+    for name in sorted(names, key=len, reverse=True):
+        t = re.sub(r"(?<![\w.])%s\b" % re.escape(name), "_f." + name, t)
+    return t.replace("\x00FRAME\x00", decl)
+
+
+_PTR_DECL = re.compile(r"(?m)^  [A-Za-z_][\w ]*?\*+\s*(\w+)(?: \[\d+\])?;[ \t]*$")
+
+
+_OPERAND = r"(?:\(u?int4\))?(?:_f\.)?[A-Za-z_]\w*"
+
+
+_COMPARE = re.compile(r"(?<![\w.>)\]*&])(%s) (<=|>=|<|>|==|!=) (%s)(?![\w.(\[]|->)" % (_OPERAND, _OPERAND))
+
+
+def _compare_as_numbers(t):
+    """The core compares a pointer with a plain number freely (`if (pcVar2 < (uint4)a1)`); C does
+    not allow it. Where exactly one side is a pointer variable, compare its value as a number."""
+    ptrs = set(_PTR_DECL.findall(t))
+    for ln in t.split("\n"):
+        if "struct {" in ln and "} _f;" in ln:
+            ptrs.update(re.findall(r"\*+\s*(\w+)(?:\[\d+\])?;", ln))
+    if not ptrs:
+        return t
+
+    def is_ptr(x):
+        return "(" not in x and x.split(".")[-1] in ptrs
+
+    def fix(m):
+        l, op, r = m.groups()
+        if is_ptr(l) == is_ptr(r) or "0" in (l, r):
+            return m.group(0)
+        return "%s %s %s" % ("(uint4)" + l if is_ptr(l) else l, op, "(uint4)" + r if is_ptr(r) else r)
+    return _COMPARE.sub(fix, t)
+
+
+def compilable32(module_path, funcs, outdir):
+    """-> (preamble, {name: text}, [names], {va: name}, [import names used]) for a whole-module build:
+    the core's output with its base types defined, its globals bound to the original's addresses,
+    and every function and import declared before use with its real convention."""
+    from codebreaker.symbols import api_arguments as apiarity
+    from codebreaker.build import watcom as B
+    from codebreaker.decompile import decompiler
+    out, order, by_va, _err = decompiler.raw(module_path, funcs, outdir)
+    imports = B.import_map(module_path)
+    sizes = {}
+    for n in order:
+        body = []
+        for ln in out[n].split("\n"):
+            m = re.match(r"/\*@G ([0-9a-f]+) (\d+) \*/$", ln)
+            if m:
+                sizes.setdefault(int(m.group(1), 16), set()).add(int(m.group(2)))
+            else:
+                body.append(ln)
+        t = "\n".join(body).strip()
+        # `x._1_2_` is the core's spelling of "2 bytes of x starting at byte 1"
+        t = re.sub(r"\b([A-Za-z_]\w*)\._(\d+)_(\d+)_",
+                   lambda mm: "(*(%s *)((char *)&%s + %s))" % (_BY_SIZE.get(int(mm.group(3)), "uint4"),
+                                                               mm.group(1), mm.group(2)), t)
+        t = _compare_as_numbers(_keep_frame(t))
+        # a function's address stored in a pointer the core typed loosely
+        t = re.sub(r"(?m)(= )((?:%s);)$" % "|".join(re.escape(x) for x in order), r"\1(code *)\2", t)
+        # every function returns a value in EAX whether or not the core saw it used
+        out[n] = re.sub(r"\Avoid(\s)", r"int\1", t)
+    text = "\n".join(out.values())
+    macros = []
+    # a global the code calls through holds a function pointer, whatever else it is compared with
+    called_through = set(re.findall(r"\(\*([a-z]+Ram[0-9a-f]{8})\)\s*\(", text))
+    for pre, addr in sorted(set(re.findall(r"\b([a-z]+)Ram([0-9a-f]{8})\b", text))):
+        szs = sizes.get(int(addr, 16)) or {4}
+        size = min(szs) if len(szs) > 1 and pre[0] in "cb" else max(s for s in szs if s <= 8) if any(s <= 8 for s in szs) else 4
+        ty = "code *" if (pre == "pc" or "%sRam%s" % (pre, addr) in called_through) else (
+            "int%d" % size if pre[0] == "i" else _BY_SIZE.get(size, "uint4"))
+        macros.append("#define %sRam%s (*(%s *)0x%s)" % (pre, addr, ty, addr))
+    called = set(re.findall(r"\b([A-Za-z_]\w*)\s*\(", text))
+    used = sorted(n for n in called if n in imports and n not in out)
+    decls = []
+    for n in used:
+        conv = "__cdecl" if apiarity.stack_bytes(imports[n], n) == 0 else "__stdcall"
+        decls.append("int %s %s();" % (conv, n))
+    for n in order:                                    # each function, declared before any use
+        head = " ".join(out[n].split("{", 1)[0].split())
+        if not head.endswith(")"):
+            continue
+        if "__cdecl" in head:
+            # The caller removes the arguments, so nothing in the binary fixes how many there
+            # are: the decompiler recovers each call on its own evidence and callers need not
+            # agree with the definition. Declared with the list left open, each call compiles as
+            # it was recovered. (A function that removes its own arguments -- the default here --
+            # states their size in its return, and keeps its full declaration.)
+            head = head[:head.index("(")] + "()"
+        decls.append(head + ";")
+    preamble = _TYPES + _HELPERS + "\n".join(decls) + "\n" + "\n".join(macros) + "\n"
+    return preamble, out, order, by_va, used
+
+
+class Module(object):
+    """A decompiled module: `header` (shared text), `functions` {address: (name, text)},
+    `order` (names by address), `imports` (the import names its functions call)."""
+
+    def __init__(self, header, texts, order, by_va, imports):
+        self.header, self.texts, self.order, self.by_va, self.imports = header, texts, order, by_va, imports
+        self.functions = {va: (n, texts[n]) for va, n in by_va.items()}
+
+
+HEADER = """typedef signed char int1; typedef short int2; typedef long int4;
+typedef unsigned char uint1; typedef unsigned short uint2; typedef unsigned long uint4;
+typedef unsigned char xunknown1; typedef unsigned short xunknown2; typedef unsigned long xunknown4;
+typedef unsigned char undefined; typedef unsigned char undefined1; typedef unsigned short undefined2;
+typedef unsigned long undefined4; typedef unsigned char bool; typedef unsigned long float4;
+typedef int2 code();
+#define true 1
+uint2 codebreaker_ss(void);
+#pragma aux codebreaker_ss = "mov ax,ss" value [ax] modify exact [ax];
+uint2 codebreaker_ds(void);
+#pragma aux codebreaker_ds = "mov ax,ds" value [ax] modify exact [ax];
+uint2 codebreaker_cs(void);
+#pragma aux codebreaker_cs = "mov ax,cs" value [ax] modify exact [ax];
+#define false 0
+#define __stdcall16far __far __stdcall
+#define __stdcall16near __near __stdcall
+#define __cdecl16far __far __cdecl
+#define __cdecl16near __near __cdecl
+#define CONCAT11(a,b) ((uint2)(((uint2)(uint1)(a) << 8) | (uint1)(b)))
+#define CONCAT22(a,b) ((uint4)(((uint4)(uint2)(a) << 16) | (uint2)(b)))
+#define CONCAT13(a,b) ((uint4)(((uint4)(uint1)(a) << 24) | ((uint4)(b) & 0xFFFFFFUL)))
+#define CONCAT31(a,b) ((uint4)(((uint4)(a) << 8) | (uint1)(b)))
+#define CONCAT12(a,b) ((uint4)(((uint4)(uint1)(a) << 16) | (uint2)(b)))
+#define CONCAT21(a,b) ((uint4)(((uint4)(uint2)(a) << 8) | (uint1)(b)))
+#define SUB21(x,n) ((uint1)((uint2)(x) >> ((n) * 8)))
+#define SUB41(x,n) ((uint1)((uint4)(x) >> ((n) * 8)))
+#define SUB42(x,n) ((uint2)((uint4)(x) >> ((n) * 8)))
+#define ZEXT12(x) ((uint2)(uint1)(x))
+#define ZEXT14(x) ((uint4)(uint1)(x))
+#define ZEXT24(x) ((uint4)(uint2)(x))
+#define SEXT12(x) ((int2)(int1)(x))
+#define SEXT14(x) ((int4)(int1)(x))
+#define SEXT24(x) ((int4)(int2)(x))
+#define CARRY1(a,b) ((uint1)((uint1)(a) + (uint1)(b)) < (uint1)(a))
+#define CARRY2(a,b) ((uint2)((uint2)(a) + (uint2)(b)) < (uint2)(a))
+#define CARRY4(a,b) ((uint4)((uint4)(a) + (uint4)(b)) < (uint4)(a))
+#define SBORROW1(a,b) ((int1)(((int1)(a) ^ (int1)(b)) & ((int1)(a) ^ (int1)((a) - (b)))) < 0)
+#define SBORROW2(a,b) ((int2)(((int2)(a) ^ (int2)(b)) & ((int2)(a) ^ (int2)((a) - (b)))) < 0)
+#define SBORROW4(a,b) ((int4)(((int4)(a) ^ (int4)(b)) & ((int4)(a) ^ (int4)((a) - (b)))) < 0)
+#define SCARRY1(a,b) ((int1)(((int1)(a) ^ (int1)((a) + (b))) & ((int1)(b) ^ (int1)((a) + (b)))) < 0)
+#define SCARRY2(a,b) ((int2)(((int2)(a) ^ (int2)((a) + (b))) & ((int2)(b) ^ (int2)((a) + (b)))) < 0)
+#define SCARRY4(a,b) ((int4)(((int4)(a) ^ (int4)((a) + (b))) & ((int4)(b) ^ (int4)((a) + (b)))) < 0)
+"""
+
+_FACT = re.compile(r"(?m)^/\*@([GP]) (\S+) (\d+) \*/\n?")
+_WIDE = ("xunknown4", "int4", "uint4", "undefined4", "float4")
+
+
+class Module16(object):
+    pass
+
+
+def _far(text, far):
+    """Declare the four-byte pointers `far` and make what is assigned to them far too."""
+    if not far:
+        return text
+    names = "|".join(re.escape(n) for n in sorted(far, key=len, reverse=True))
+    star = re.compile(r"(?<![\w*])(\*+)\s*(%s)\b" % names)
+    head, brace, body = text.partition("{")
+    head = star.sub(r"__far \1\2", head)                      # parameters
+    decl = re.compile(r"^\s+[A-Za-z_][\w ]*?\*+\s*(?:%s)(?: \[\d+\])?;\s*$" % names)
+    lines = [star.sub(r"__far \1\2", ln) if decl.match(ln) else ln for ln in body.split("\n")]   # locals
+    body = "\n".join(lines)
+    # `name = (type *)expr` -> `name = (type __far *)expr`
+    body = re.sub(r"\b(%s) = \(([A-Za-z_][\w ]*?) ?(\*+)\)" % names, r"\1 = (\2 __far \3)", body)
+    return head + brace + body
+
+
+_SIZED = {1: "uint1", 2: "uint2", 4: "uint4"}
+
+
+def _pieces(text):
+    """`x._2_2_` is the decompiler's spelling of "2 bytes of x starting at byte 2"."""
+    return re.sub(r"\b([A-Za-z_]\w*)\._(\d+)_(\d+)_",
+                  lambda m: "(*(%s *)((char *)&%s + %s))" % (_SIZED.get(int(m.group(3)), "uint2"),
+                                                             m.group(1), m.group(2)), text)
+
+
+def _joined_arguments(text):
+    """`_a1` is the decompiler's spelling of "a1 and the argument after it, as one four-byte
+    value" (a far pointer or a long passed as two words). Arguments lie next to each other on
+    the stack, lowest first, so that value is the four bytes starting at a1."""
+    # read through directly (`*_a1`): it is a far pointer; the decompiler gives no type for what it
+    # points at, and a word is what such a read or write is in nearly every case
+    text = re.sub(r"\*_(a\d+|param_\d+)\b", r"*(*(int2 __far * *)&\1)", text)
+    return re.sub(r"(?<![\w.])_(a\d+|param_\d+)\b", r"(*(uint4 *)&\1)", text)
+
+
+def _segment_registers(text):
+    """`unaff_SS`, `unaff_DS`, `unaff_CS` are the decompiler's names for "whatever that segment
+    register held when the function was entered" -- used when it passes the address of a local
+    as a far pointer (offset, SS) or a string constant as (offset, CS). Left as plain locals
+    they would be garbage; they are given the register's value."""
+    return re.sub(r"(?m)^(\s+\w+ )unaff_(SS|DS|CS);\s*$",
+                  lambda m: "%sunaff_%s = codebreaker_%s();" % (m.group(1), m.group(2), m.group(2).lower()), text)
+
+
+def _open_arguments(text):
+    """Write the definition in the older style, `f(a, b) int a; int b; { ... }`.
+
+    A definition written with its argument types in the parentheses also fixes how every later
+    call must look, and the decompiler recovers each call on its own evidence: a caller that
+    passes three words where the definition takes one far pointer and a word is the same bytes on
+    the stack, but not the same C. In the older style the definition says what the function
+    takes and each call is compiled as written."""
+    head, brace, body = text.partition("{")
+    m = re.match(r"(?s)(.*?)\(([^()]*)\)\s*$", head)
+    if not m or not brace:
+        return text
+    params = [x.strip() for x in m.group(2).split(",")] if m.group(2).strip() not in ("", "void") else []
+    names = []
+    for prm in params:
+        nm = re.search(r"([A-Za-z_]\w*)\s*(?:\[\d*\])?$", prm)
+        if not nm:
+            return text
+        names.append(nm.group(1))
+    decls = "".join("%s;\n" % prm for prm in params)
+    return "%s(%s)\n%s%s%s" % (m.group(1).rstrip(), ",".join(names), decls, brace, body)
+
+
+def declaration(text):
+    """A declaration that fixes the function's convention and result but not its arguments.
+    The decompiler works out arguments one call at a time and callers do not always agree with
+    the definition; with the argument list left open each call compiles as it was recovered,
+    and a call that passes the wrong amount shows up when it is run, not as a compile error
+    that hides the whole function."""
+    head = " ".join(text.split("{", 1)[0].split())
+    return head[:head.index("(")] + "();"
+
+
+_RAM = re.compile(r"\b([a-z]+)Ram([0-9a-f]{8})\b")
+_LEADING = re.compile(r"\A(?:\s*/\*.*?\*/)+\s*", re.S)
+
+
+def _global_type(prefix, size):
+    signed = prefix.startswith("i") or prefix.startswith("c")
+    return {1: "int1" if signed else "uint1", 2: "int2" if signed else "uint2", 4: "int4" if signed else "uint4"}.get(
+        size, "uint2")
+
+
+def compilable16(module_path, outdir=None):
+    from codebreaker.decompile import decompiler, describe
+    texts, order, by_va, d = decompiler.decompile16(module_path, outdir)
+    m = Module16()
+    m.texts, m.order, m.by_va, m.where = {}, [], {}, {}
+    m.near, m.wide, m.novalue = set(), set(), set()
+    sizes = {}                                               # address of a global -> bytes of the access
+    for va in sorted(by_va):
+        name = by_va[va]
+        raw = texts[name]
+        far = set()
+        for mm in _FACT.finditer(raw):
+            if mm.group(1) == "P" and mm.group(3) == "4":
+                far.add(mm.group(2))
+            elif mm.group(1) == "G":
+                a = int(mm.group(2), 16)
+                sizes[a] = max(sizes.get(a, 0), int(mm.group(3))) if int(mm.group(3)) <= 4 else sizes.get(a, 2)
+        text = _LEADING.sub("", _FACT.sub("", raw))          # notes the decompiler put before the function
+        text = _segment_registers(_joined_arguments(_pieces(_far(text.strip(), far))))
+        if "return" in far:                                  # the function returns a far pointer
+            head, brace, body = text.partition("{")
+            head = re.sub(r"\*(?=[\s\w]*\b%s\s*\()" % re.escape(name), "__far *", head, count=1)
+            text = head + brace + body
+            m.wide.add(name)
+        head = text.split("{", 1)[0]
+        if head.split()[0] == "void":
+            # It sets no result -- but its callers may still read AX, and the decompiler shows
+            # them doing so. Declared as returning a word, with no `return`, it leaves AX as the
+            # original does: whatever was last there.
+            m.novalue.add(name)
+            text = "xunknown2" + text[4:]
+            head = text.split("{", 1)[0]
+        if not ("__stdcall16far" in head or "__cdecl16far" in head):
+            m.near.add(name)                                 # near is the default and is not printed
+        if head.split()[0] in _WIDE or "*" in head.split(name)[0] and "__far" in head.split(name)[0]:
+            m.wide.add(name)
+        m.texts[name] = _open_arguments(text)
+        m.order.append(name)
+        m.by_va[va] = name
+        m.where[va] = d.where.get(va)
+    body = "\n".join(m.texts.values())
+    called = set(re.findall(r"\b([A-Za-z_]\w*)\s*\(", body))
+    m.imports = {}
+    for nm in d.imports:
+        if nm in called and nm not in m.texts:
+            mm = re.fullmatch(r"(.+)_(\d+)", nm)
+            if mm:
+                m.imports[nm] = (mm.group(1), int(mm.group(2)))
+    # Globals the decompiler names by address. In the data segment: an offset through DS, as in
+    # the original. In another segment (constants kept beside the code, a second data segment):
+    # the module carries that segment's bytes, and the global is a place in them.
+    macros, m.segments = [], {}
+    for prefix, addr in sorted(set(_RAM.findall(body))):
+        va = int(addr, 16)
+        seg, off = describe.where(va)
+        ty = _global_type(prefix, sizes.get(va, 2))
+        if seg == d.data_segment:
+            macros.append("#define %sRam%s (*(%s *)0x%x)" % (prefix, addr, ty, off))
+        elif seg in d.images and off < len(d.images[seg]):
+            m.segments[seg] = d.images[seg]
+            macros.append("#define %sRam%s (*(%s __far *)(codebreaker_segment_%d + 0x%x))" % (prefix, addr, ty, seg, off))
+    decls = ["extern uint1 __far codebreaker_segment_%d[];" % n for n in sorted(m.segments)]
+    decls += ["extern uint4 __far __stdcall %s();" % nm for nm in sorted(m.imports)]
+    decls += [declaration(m.texts[n]) for n in m.order]
+    m.header = HEADER + "\n" + "\n".join(macros + decls) + "\n"
+    m.description = d
+    return m
