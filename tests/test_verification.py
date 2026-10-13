@@ -108,8 +108,39 @@ def test_repair_knobs_preserve_meaning():
     assert match.distance((b"\xe8\x11\x22\x33\x44", masked), (b"\xe8\x99\x88\x77\x66", masked))[1] == 0
 
 
+def test_repair_search_with_any_compiler():
+    """The search works with whatever compiles: here a stand-in whose `bytes` are the order of
+    the declarations, so only the authored order is at distance 0."""
+    from codebreaker.verify import repair
+    authored = "f(a)\nint a;\n{\n\tint x;\n\tregister int y;\n\treturn a;\n}"
+    fake = lambda text: (" ".join(text.split()).encode(), bytes(len(" ".join(text.split()))))
+    moved = authored.replace("\tint x;\n\tregister int y;", "\tregister int y;\n\tint x;")
+    assert moved != authored
+    r = repair.repair(fake, moved, fake(authored))
+    assert r["distance"] == 0 and r["knobs"].startswith("order"), r
+    kinds = set(k.rstrip("0123456789") for k, _s in repair._knobs(authored, 0, None))
+    assert kinds == {"order", "register"}, kinds
+
+
+def test_period_compiler_gives_the_original_back():
+    """A source file of the reconstructed 1984 linker, compiled by the XENIX C compiler through
+    build/period.py, is the linker's own bytes."""
+    from codebreaker.build import period
+    from codebreaker.verify import match
+    if "xenix-c" not in period.names():
+        raise Skip("needs the XENIX C compiler (settings: xenix_c)")
+    p = period.get("xenix-c")
+    units = p.units()
+    assert len(units) >= 20, len(units)
+    u = next(x for x in units if x.name == "main.c")
+    assert match.distance(p.compile(u.source, tempfile.mkdtemp()), u.original)[:2] == ("identical", 0)
+    other = next(x for x in units if x.name != "main.c")          # another file's code is not main's
+    assert match.distance(p.compile(other.source, tempfile.mkdtemp()), u.original)[0] != "identical"
+
+
 def main():
     for fn in (test_function_store, test_variant_store, test_repair_knobs_preserve_meaning,
+               test_repair_search_with_any_compiler, test_period_compiler_gives_the_original_back,
                test_reconstruct_is_incremental):
         try:
             fn()

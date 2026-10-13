@@ -98,6 +98,16 @@ def _knobs(source, target_frame, draft_frame):
                 continue
             reordered = [lead[k] for k in perm] + decls[len(lead):]
             yield "order%d" % i, head + "\n" + "\n".join(reordered) + "\n" + body
+    # register: a local kept in a register, or not (the compilers of the time did as they were told)
+    for i, d in enumerate(decls[:MAX_ORDER + 2]):
+        s = d.strip()
+        if "[" in s or s.startswith(("static ", "extern ")):
+            continue
+        indent = d[:len(d) - len(d.lstrip())]
+        other = indent + (s[len("register "):] if s.startswith("register ") else "register " + s)
+        if other.strip() in ("int;", "register;"):
+            continue
+        yield "register%d" % i, head + "\n" + "\n".join(decls[:i] + [other] + decls[i + 1:]) + "\n" + body
     # swap: a commutative operator's operands the other way round
     sites = [m for m in _SWAP.finditer(body) if m.group(2) in _COMMUTATIVE][:MAX_SWAPS]
     for j, m in enumerate(sites):
@@ -106,35 +116,80 @@ def _knobs(source, target_frame, draft_frame):
 
 
 def repair_function(cl, env, header, source, name, original, work, flags):
+    """repair() with Microsoft's 32-bit compiler of 1994 (verify/match.py)."""
+    return repair(lambda text: match.compile_function(cl, env, header, text, name, work, flags),
+                  source, original, frame=_frame)
+
+
+def repair(compile, source, original, frame=None):
     """Search behaviour-preserving rewrites of one function's source for the bytes closest to the
-    original's. -> {source, verdict, distance, total, knobs, tried} for the best found, or None
-    when the starting source does not compile."""
-    base = match.compile_function(cl, env, header, source, name, work, flags)
-    if base is None:
+    original's. `compile` is any period compiler: source text -> (bytes, mask) or None
+    (build/period.py). `frame` reads the size of the locals out of a function's bytes, for the
+    pad knob; without it that knob is not tried. -> {source, verdict, distance, total, knobs,
+    tried} for the best found, or None when the starting source does not compile."""
+    built = compile(source)
+    if built is None:
         return None
-    verdict, dist, total, _first = match.distance(base, original)
+    verdict, dist, total, _first = match.distance(built, original)
     best = {"source": source, "verdict": verdict, "distance": dist, "total": total, "knobs": "", "tried": 1}
-    target_frame = _frame(original[0])
+    target_frame = frame(original[0]) if frame else 0
     improved, tried = True, 1
     while improved and dist and tried < MAX_WORK:
         improved = False
-        cur = match.compile_function(cl, env, header, best["source"], name, work, flags)
-        draft_frame = _frame(cur[0]) if cur else None
+        draft_frame = frame(built[0]) if frame else None
         for knob, variant in _knobs(best["source"], target_frame, draft_frame):
             if tried >= MAX_WORK:
                 break
             tried += 1
-            built = match.compile_function(cl, env, header, variant, name, work, flags)
-            if built is None:
+            now = compile(variant)
+            if now is None:
                 continue
-            v, d, t, _f = match.distance(built, original)
+            v, d, t, _f = match.distance(now, original)
             if d < dist:
-                dist, best = d, {"source": variant, "verdict": v, "distance": d, "total": t,
-                                 "knobs": (best["knobs"] + "," + knob).strip(","), "tried": tried}
+                dist, built, best = d, now, {"source": variant, "verdict": v, "distance": d, "total": t,
+                                             "knobs": (best["knobs"] + "," + knob).strip(","), "tried": tried}
                 improved = True
                 break                # greedy: take the first improvement and search again from it
     best["tried"] = tried
     return best
+
+
+def truth(profile, limit=0, log=print):
+    """Test the search on sources KNOWN to be the authored ones: a period compiler's own units,
+    each of which compiles to the original's bytes. Each is knocked away from the original by
+    one knob and by two (a rewrite that keeps its meaning but not its bytes) and the search must
+    bring it back. -> (units, identical as they stand, knocked away, brought back)."""
+    units = profile.units()
+    work = os.path.join(_scratch(), "truth")
+    compile = lambda text: profile.compile(text, work)
+    n = same = knocked = back = 0
+    for u in units[:limit or None]:
+        n += 1
+        if match.distance(compile(u.source), u.original)[0] != "identical":
+            continue
+        same += 1
+        one = list(_knobs(u.source, 0, None))
+        two = [(k + "," + k2, s2) for k, s in one[:2] for k2, s2 in list(_knobs(s, 0, None))[-2:]]
+        kinds = {}
+        for k, s in one:
+            kinds.setdefault(k.rstrip("0123456789"), []).append((k, s))
+        for knob, moved in [x for group in kinds.values() for x in group[:2]] + two[:2]:
+            b = compile(moved)
+            if b is None or match.distance(b, u.original)[1] == 0:
+                continue                       # the compiler gives the same bytes either way
+            knocked += 1
+            r = repair(compile, moved, u.original)
+            ok = bool(r) and r["distance"] == 0
+            back += ok
+            if log and not ok:
+                log("  %-12s %-16s not brought back: distance %s after %s" % (
+                    u.name, knob, r and r["distance"], r and r["knobs"]))
+    return n, same, knocked, back
+
+
+def _scratch():
+    from codebreaker.base import settings
+    return settings.state("repair")
 
 
 def run(module_path, flags, work, fs=None, log=print):
@@ -180,6 +235,15 @@ def main(argv):
     Move each function's reconstruction toward the authored bytes with behaviour-preserving
     rewrites, compiled with a period compiler. Records the variants in the store."""
     from codebreaker.base import corpus, settings
+    if "--truth" in argv:
+        from codebreaker.build import period
+        rest = argv[argv.index("--truth") + 1:]
+        if not rest:
+            raise SystemExit("repair --truth <compiler> [target]   (have: %s)" % ", ".join(period.names()))
+        n, same, knocked, back = truth(period.get(*rest[:2]))
+        print("%s: %d sources, %d identical as they stand; %d knocked away from the original, %d brought back" % (
+            " ".join(rest[:2]), n, same, knocked, back))
+        return 0
     args = [a for a in argv if not a.startswith("--")]
     flags = argv[argv.index("--flags") + 1] if "--flags" in argv else match.FLAG_SETS[0]
     args = [a for a in args if a != flags]
