@@ -5,6 +5,9 @@
     sweep [options]                 reconstruct and judge every module (resumable)
     decompile <name> [--out FILE]   decompile any module (32-bit, 16-bit, PowerPC) to C; nothing is built
     measure <name>                  reconstruct and judge one module; writes nothing to the tree
+    names <module>                  every function and import with its best name and where it came from
+    identify <module>               runtime-library functions of a module, and what built it
+    demangle <name>                 a decorated C++ name as its declaration
     info <file-or-module>           what an executable is and holds (headers, imports, exports, resources)
     coverage [--module NAME]        how much of every corpus module is accounted for, and in what state
     serve [--port N] [--open]       the local web console (127.0.0.1 only)
@@ -22,6 +25,9 @@ COMMANDS = {
     "sweep": ("codebreaker.verify.sweep", []),
     "measure": ("codebreaker.verify.measure", []),
     "decompile": ("codebreaker.decompile.decompiler", []),
+    "names": ("codebreaker.symbols.names", []),
+    "identify": ("codebreaker.symbols.runtime_library", []),
+    "demangle": ("codebreaker.symbols.demangle", []),
     "info": ("codebreaker.formats.inspect", []),
     "coverage": ("codebreaker.coverage.ledger", []),
     "serve": ("codebreaker.ui.server", []),

@@ -301,6 +301,7 @@
     <description>Power ISA 3.0 Big Endian w/Altivec and 32-bit Addressing</description>
     <truncate_space space="ram" size="4"/>
     <compiler name="default" spec="ppc_64_32.cspec" id="default"/>
+    <compiler name="homed arguments" spec="ppc_64_32_homed.cspec" id="homed"/>
     <external_name tool="gnu" name="powerpc:e500mc64"/>
     <external_name tool="IDA-PRO" name="ppc"/>
     <external_name tool="DWARF.register.mapping.file" name="ppc.dwarf"/>

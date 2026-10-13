@@ -22,7 +22,7 @@ import struct
 
 
 # language id by PE machine type
-_ARCH = {0x014C: "x86:LE:32:default:windows", 0x01F2: "PowerPC:BE:64:A2ALT-32addr:default"}
+_ARCH = {0x014C: "x86:LE:32:default:windows", 0x01F2: "PowerPC:BE:64:A2ALT-32addr:homed"}
 
 
 def _ident(name):
@@ -43,31 +43,55 @@ def function_names(module_path, funcs):
     return {va: by_rva.get(va - pe.image_base, "sub_%06X" % (va - pe.image_base)) for va in funcs}
 
 
+def decorated_names(module_path):
+    """{address: linker name} for the functions a module exports under a name that is not a C
+    name -- a C++ function's decorated name. In the C text such a function is sub_<address>;
+    this is the symbol it must be linked as, and symbols/demangle.py makes it a declaration.
+    Addresses are as in the description (16-bit: address(segment, offset))."""
+    from codebreaker.base import corpus
+    plain = re.compile(r"[A-Za-z_]\w*\Z")
+    out = {}
+    if corpus.lane(module_path) == "ne":
+        from codebreaker.formats.ne import NEFile
+        nef = NEFile(module_path)
+        entries = {e["ordinal"]: e for e in nef.entries() if e.get("kind") in ("FIXED", "MOVEABLE")}
+        for nm, ordv in nef.resident_names()[1:] + nef.nonresident_names()[1:]:
+            if ordv in entries and not plain.match(nm):
+                out.setdefault(address(entries[ordv]["seg"], entries[ordv]["offset"]), nm)
+    else:
+        from codebreaker.formats.pe import open_pe
+        pe = open_pe(module_path)
+        for nm, rva in sorted(pe.export_addrs().items()):
+            if not plain.match(nm):
+                out.setdefault(pe.image_base + rva, nm)
+    return out
+
+
+def import_names16(nef):
+    """{symbol: name} for a 16-bit module's imports by number: the symbol the C text and the
+    link use (`USER_91`) and the function's real name (`GetDlgItem`), where the exporting
+    module or its definition file gives one that is a C name."""
+    from codebreaker.symbols import ordinals
+    refs = nef.module_refs()
+    out = {}
+    for s in nef.segments():
+        for r in nef.relocations(s):
+            if r["kind"] == "IMPORTORD" and 0 < r["module"] <= len(refs):
+                symbol = re.sub(r"\W", "_", "%s_%d" % (refs[r["module"] - 1], r["ordinal"]))
+                if symbol not in out:
+                    out[symbol] = ordinals.identifier(refs[r["module"] - 1], r["ordinal"])
+    return {symbol: name for symbol, name in out.items() if name}
+
+
 def function_starts(module_path):
     """Addresses of a PE module's functions. PowerPC images carry a table of them (.pdata: one
     record per function, its start and length); for x86 they are found by following the code."""
-    import struct
+    from codebreaker.formats import powerpc_image
     from codebreaker.formats.pe import open_pe
-    pe = open_pe(module_path)
-    if pe.machine != 0x01F2:
-        from codebreaker.verify import win32 as pipeline
-        return pipeline.LANES["pe"].functions(module_path)
-    rva, size = pe.datadirs[3] if len(pe.datadirs) > 3 else (0, 0)
-    data = open(module_path, "rb").read()
-    off = rva if _memory_layout(pe, module_path) else pe._rva_to_off(rva)
-    out = []
-    for i in range(size // 8 if off is not None else 0):
-        begin, packed = struct.unpack_from(">II", data, off + 8 * i)
-        if begin and (packed >> 8) & 0x3FFFFF:               # a start and a non-zero length
-            out.append(begin)
-    return sorted(set(out))
-
-
-def _memory_layout(pe, module_path):
-    """Is the file laid out as the module sits in memory (each section at its own address)
-    rather than packed as on disk? Images dumped from a container are."""
-    end = max((s["vaddr"] + max(s["vsize"], 1) for s in pe.sections), default=0)
-    return pe.machine == 0x01F2 and os.path.getsize(module_path) >= end
+    if open_pe(module_path).machine == powerpc_image.MACHINE:
+        return powerpc_image.read(module_path).functions
+    from codebreaker.verify import win32 as pipeline
+    return pipeline.LANES["pe"].functions(module_path)
 
 
 def describe32(module_path, funcs, outdir):
@@ -75,6 +99,8 @@ def describe32(module_path, funcs, outdir):
     bytes sit in memory, and the facts about `funcs` (addresses) and its imports.
     -> (path of the description, {va: name})"""
     from codebreaker.symbols import api_arguments as api_stack
+    from codebreaker.symbols import ordinals
+    from codebreaker.build import watcom as B
     from codebreaker.formats.pe import open_pe
     pe = open_pe(module_path)
     arch = _ARCH.get(pe.machine)
@@ -83,9 +109,17 @@ def describe32(module_path, funcs, outdir):
     x86 = arch.startswith("x86:")
     names = function_names(module_path, funcs) if x86 else {va: "sub_%08X" % va for va in funcs}
     lines = ["arch\t%s" % arch]
-    if _memory_layout(pe, module_path):
-        lines.append("bytes\t%x\t%s\t0\t%x" % (pe.image_base, os.path.abspath(module_path),
-                                                os.path.getsize(module_path)))
+    if not x86:
+        # PowerPC: the image says where its bytes sit, which stubs are imports, and which
+        # register save/restore runs are part of their callers (formats/powerpc_image.py)
+        from codebreaker.formats import powerpc_image
+        img = powerpc_image.read(module_path)
+        for va, off, size in img.spans:
+            lines.append("bytes\t%x\t%s\t%x\t%x" % (va, os.path.abspath(module_path), off, size))
+        for va, name in sorted(img.imports.items()):
+            lines.append("X\t%x\t%s\t-1" % (va, name))
+        for va, name in sorted(img.inline.items()):
+            lines.append("F\t%x\t%s\t-1\tinline" % (va, name))
     else:
         for sec in pe.sections:
             size = min(sec["rawsize"], sec["vsize"] or sec["rawsize"])
@@ -101,10 +135,21 @@ def describe32(module_path, funcs, outdir):
             except Exception:
                 pop = None
         lines.append("F\t%x\t%s\t%d" % (va, names[va], -1 if pop is None else pop))
+    # An import by number is called by its real name when the module that exports it (or that
+    # module's definition file) gives it one that is a C name nothing else here already has;
+    # how many bytes of arguments it takes is read from the export with that number.
+    taken = dict.fromkeys(set(B.import_map(module_path)) | set(names.values())) if x86 else {}
     for slot, (dll, name) in sorted((pe.imports() if x86 else {}).items()):
         stem = os.path.splitext(dll)[0].upper()
         if not name or name.startswith("#"):
-            lines.append("I\t%x\t%s\t-1" % (slot, _ident("%s_ord_%s" % (stem, (name or "#0")[1:]))))
+            number = int(name[1:]) if name and name[1:].isdigit() else 0
+            real = ordinals.identifier(stem, number)
+            if real and taken.setdefault(real, (stem, number)) == (stem, number):
+                pop = api_stack.header_bytes(real)
+                pop = api_stack.stack_bytes(stem, name) if pop is None else pop
+                lines.append("I\t%x\t%s\t%d" % (slot, real, -1 if pop is None else pop))
+            else:
+                lines.append("I\t%x\t%s\t-1" % (slot, _ident("%s_ord_%s" % (stem, (name or "#0")[1:]))))
             continue
         pop = api_stack.stack_bytes(stem, name) if x86 else None
         lines.append("I\t%x\t%s\t%d" % (slot, _ident(name), -1 if pop is None else pop))
@@ -294,6 +339,7 @@ def describe16(module_path, outdir):
         names[va], where[va] = nm, (seg, off)
         funcs.append((va, nm, dist))
     d = Description("", names, where, order)
+    d.import_names = import_names16(nef)                                       # symbol -> the import's real name
     d.code = {s["idx"]: s["length"] for s in segs if s["kind"] == "CODE"}     # segment -> bytes of code
     d.images = {k: bytes(v) for k, v in images.items()}                       # segment -> its bytes, relocated
     d.data_segment = data_seg or 0

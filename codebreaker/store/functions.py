@@ -8,6 +8,10 @@ here: the module writer, the scoreboard, the tools that explain a failure.
     candidate    one decompiler's reconstruction of a function: its source, or why it has none
     verdict      what the verifier found for a candidate, under one set of verifier settings
     text         something a decompiler's functions share, such as its header of types
+    identified   a function recognised as a runtime library's (its name there, and the library)
+    body         a function's body as a digest that is the same wherever the same code is linked,
+                 with the name its own module gives it (an export, a debug symbol)
+    body_name    a name given to a body: it holds in every module that contains the body
 
 A verdict is kept per verifier profile (a digest of every setting a verdict depends on), so
 changing the verifier adds new verdicts beside the old ones instead of erasing them: nothing
@@ -45,6 +49,14 @@ CREATE TABLE IF NOT EXISTS text(
     PRIMARY KEY (module, engine, kind));
 CREATE INDEX IF NOT EXISTS function_module ON function(module);
 CREATE INDEX IF NOT EXISTS candidate_function ON candidate(function);
+CREATE TABLE IF NOT EXISTS identified(
+    module TEXT NOT NULL, addr TEXT NOT NULL, name TEXT, library TEXT, ts REAL,
+    PRIMARY KEY (module, addr));
+CREATE TABLE IF NOT EXISTS body(
+    module TEXT NOT NULL, addr TEXT NOT NULL, hash TEXT NOT NULL, name TEXT, source TEXT,
+    PRIMARY KEY (module, addr));
+CREATE INDEX IF NOT EXISTS body_hash ON body(hash);
+CREATE TABLE IF NOT EXISTS body_name(hash TEXT PRIMARY KEY, name TEXT, source TEXT, ts REAL);
 """
 
 # How good a result is, best first. A candidate's class is what the module writer prints.
@@ -60,6 +72,13 @@ WEAK = {"fault-only": "the two sides only ever fail alike; neither returned norm
         "stub-callee": "a function it calls was a stand-in, not that function's reconstruction",
         "argc-unknown": "an API call was compared by name only",
         "calls-capped": "it makes more calls than are compared"}
+
+
+# A function recognised as a runtime library's is counted on its own, not as a failure of
+# reconstruction -- unless it was also verified, which is the stronger statement and stays.
+IDENTIFIED = "identified"
+SCORED = ORDER[:2] + (IDENTIFIED,) + ORDER[2:]
+TITLE[IDENTIFIED] = "IDENTIFIED (runtime library)"
 
 
 def classify(verdict, limits=""):
@@ -211,6 +230,80 @@ class FunctionStore(object):
         for addr in self.addresses(module):
             out[best[addr]["class"] if addr in best else "no-source"] += 1
         return out
+
+    # ---- runtime-library functions -------------------------------------------------------
+    def set_identified(self, module, found):
+        """Replace what is known of a module's runtime-library functions: {addr: (name, library)}."""
+        now = time.time()
+        with self.db:
+            self.db.execute("DELETE FROM identified WHERE module=?", (module,))
+            self.db.executemany("INSERT INTO identified(module, addr, name, library, ts) VALUES(?,?,?,?,?)",
+                                [(module, a, n, lib, now) for a, (n, lib) in found.items()])
+
+    def identified(self, module):
+        """{addr: (name, library)}"""
+        return {a: (n, lib) for a, n, lib in
+                self.db.execute("SELECT addr, name, library FROM identified WHERE module=?", (module,))}
+
+    def scores(self, profile, module, prefer=()):
+        """tally() with the identified functions in a class of their own: {class: count} over
+        SCORED. A function both identified and verified (or weakly verified) counts as verified."""
+        best, known = self.best(module, profile, prefer), self.identified(module)
+        out = dict.fromkeys(SCORED, 0)
+        for addr in self.addresses(module):
+            cls = best[addr]["class"] if addr in best else "no-source"
+            out[IDENTIFIED if addr in known and cls not in ("verified", "weak") else cls] += 1
+        return out
+
+    # ---- bodies and their names ----------------------------------------------------------
+    def set_bodies(self, module, rows):
+        """Replace a module's bodies: {addr: (hash, name the module itself gives it or None, where
+        that name is from)}."""
+        with self.db:
+            self.db.execute("DELETE FROM body WHERE module=?", (module,))
+            self.db.executemany("INSERT INTO body(module, addr, hash, name, source) VALUES(?,?,?,?,?)",
+                                [(module, a, h, n, s) for a, (h, n, s) in rows.items()])
+
+    def bodies(self, module):
+        """{addr: (hash, own name, its source)}"""
+        return {a: (h, n, s) for a, h, n, s in
+                self.db.execute("SELECT addr, hash, name, source FROM body WHERE module=?", (module,))}
+
+    def name_body(self, digest, name, source="named by hand"):
+        """Give a body a name. It then holds for every module containing that body."""
+        with self.db:
+            self.db.execute("INSERT OR REPLACE INTO body_name(hash, name, source, ts) VALUES(?,?,?,?)",
+                            (digest, name, source, time.time()))
+
+    def names_from_bodies(self, module):
+        """{addr: (name, where it is from)} for the functions of a module whose body has a name
+        somewhere: one given to the body, else the name another module gives the same body
+        (when the modules that name it agree)."""
+        out = {}
+        for addr, digest, name, source in self.db.execute(
+                "SELECT b.addr, b.hash, n.name, n.source FROM body b JOIN body_name n ON n.hash=b.hash "
+                "WHERE b.module=?", (module,)):
+            out[addr] = (name, source)
+        seen = {}
+        for addr, name, other in self.db.execute(
+                "SELECT b.addr, o.name, m.name FROM body b JOIN body o ON o.hash=b.hash AND o.module<>b.module "
+                "AND o.name IS NOT NULL LEFT JOIN module m ON m.sha=o.module WHERE b.module=? AND b.name IS NULL",
+                (module,)):
+            seen.setdefault(addr, {}).setdefault(name, other or "another module")
+        for addr, names in seen.items():
+            if addr not in out and len(names) == 1:
+                name, other = next(iter(names.items()))
+                out[addr] = (name, "the same body in %s" % other)
+        return out
+
+    def shared_bodies(self):
+        """(bodies recorded, distinct bodies, bodies found in two or more modules, functions that
+        are a copy of a body in another module)"""
+        total, distinct = self.db.execute("SELECT COUNT(*), COUNT(DISTINCT hash) FROM body").fetchone()
+        shared, copies = self.db.execute(
+            "SELECT COUNT(*), COALESCE(SUM(n), 0) FROM (SELECT COUNT(*) n FROM body GROUP BY hash "
+            "HAVING COUNT(DISTINCT module) > 1)").fetchone()
+        return total, distinct, shared, copies
 
     def modules(self, profile=None):
         """[(sha, name)] of modules, limited to those judged under `profile` when given."""

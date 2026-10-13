@@ -7,6 +7,10 @@ Decompile the module, build the functions that have no verdict yet for the text 
 run each beside the original on the same inputs, and record what was found. Functions already
 judged for their current text are not built or run again.
 
+Functions that are a runtime library's (the C runtime, compiler helpers: symbols/runtime_library.py)
+are recorded as such, with their name and library. That is said in addition: they are
+decompiled, built and judged like every other function.
+
 The path is the same whatever the module is. What differs between kinds of module -- 32-bit or
 16-bit Windows today -- is in one small module per kind (win32.py, win16.py), each providing:
 
@@ -70,6 +74,7 @@ def run(module_path, fs=None, log=print):
     from codebreaker.jobs import pool
     from codebreaker.store import functions
     from codebreaker.base import corpus
+    from codebreaker.symbols import names, runtime_library
     kind = kind_of(module_path)
     fs = fs or functions.open()
     sha = corpus.sha(module_path) or ""
@@ -82,6 +87,8 @@ def run(module_path, fs=None, log=print):
     fs.add_profile(digest, settings)
     fs.add_functions(sha, m.all_keys)
     fs.put_text(sha, SOURCE, "header", m.header)
+    fs.set_identified(sha, {names.key(module_path, address): found
+                            for address, found in runtime_library.identify(module_path).items()})
     known = fs.judged(sha, digest, SOURCE)
     fresh = [n for n in m.order if n in m.key and (known.get(m.key[n]) or {}).get("sig") != m.sig]
     have = set(m.key.values())
@@ -105,8 +112,8 @@ def run(module_path, fs=None, log=print):
             rows.append(dict(addr=k, sig=m.sig, name=n, source=m.texts[n], verdict=verdict, reason=reason,
                              limits=",".join(limits), detail=detail))
     fs.record_many(sha, SOURCE, str(decompiler.REV), digest, rows)
-    c = fs.tally(digest, sha)
+    c = fs.scores(digest, sha)
     log("%s: %d functions, %d judged now: %s  (%.0fs)" % (
         name, len(m.all_keys), len(fresh),
-        ", ".join("%s %d" % (functions.TITLE[k], c[k]) for k in functions.ORDER if c[k]), time.time() - t0))
+        ", ".join("%s %d" % (functions.TITLE[k], c[k]) for k in functions.SCORED if c[k]), time.time() - t0))
     return sha, digest

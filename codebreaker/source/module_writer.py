@@ -13,15 +13,27 @@ Each function carries one status line:
     NOT JUDGED          the original could not be observed in the test environment
     DOES NOT COMPILE    the reconstructed text is not valid C yet
     NO SOURCE           nothing usable was produced
+    IDENTIFIED (runtime library)
+                        its bytes are a function of a library that came with the compiler (the C
+                        runtime, a compiler helper): named, with the library. Not this module's
+                        own code, so not counted as a reconstruction that failed -- unless it was
+                        verified too, and then it is counted as VERIFIED
+
+Imports by number are written with their real names where the exporting module gives one
+(`GetDlgItem`, not `USER_91`); a C++ export is shown with the declaration its decorated name
+stands for.
 
 Nothing is counted as progress except what these labels say. Everything written here is read
 from the function store, so the file and the scoreboard cannot disagree with the results.
 """
 import os
+import re
 import time
 
 from codebreaker.base import corpus
+from codebreaker.decompile import describe as description
 from codebreaker.store import functions as F
+from codebreaker.symbols import demangle, names
 
 WHY = {
     "ret-differs": "returns a different value",
@@ -32,7 +44,7 @@ WHY = {
     "registers-differ": "changes a register it must preserve",
     "retail: call-into-nothing": "the original calls through a pointer the loader fills in (a thunk entry)",
 }
-ORDER, TITLE = F.ORDER, F.TITLE
+ORDER, TITLE = F.SCORED, F.TITLE
 
 
 def describe(row):
@@ -62,6 +74,20 @@ def tree_dir(module):
     return None
 
 
+def real_import_names(path, used=()):
+    """{symbol: name} for a 16-bit module's imports by number that can be written by their real
+    name: the name is a C name, no function of the module has it (`used`), and no two imports
+    share it. (A 32-bit module's are already named in the decompiled text.)"""
+    if corpus.lane(path) != "ne":
+        return {}
+    from codebreaker.formats.ne import NEFile
+    found = description.import_names16(NEFile(path))
+    times = {}
+    for name in found.values():
+        times[name] = times.get(name, 0) + 1
+    return {s: n for s, n in found.items() if times[n] == 1 and n not in used and n not in found}
+
+
 def write_module(module, verify=True, out_dir=None, log=print):
     from codebreaker.verify import reconstruct
     path = corpus.retail(module)
@@ -80,26 +106,44 @@ def write_module(module, verify=True, out_dir=None, log=print):
         sha, digest = reconstruct.identity(path)
     best = fs.best(sha, digest)
     addrs = fs.addresses(sha)             # every function the module is known to have
+    known = fs.identified(sha)            # the runtime library's among them: {address: (name, library)}
+    exported = {names.key(path, a): n for a, n in description.decorated_names(path).items()}
+    real = real_import_names(path, {r["name"] for r in best.values()})
+    spell = re.compile(r"\b(%s)\b" % "|".join(sorted(real, key=len, reverse=True))) if real else None
     counts = dict.fromkeys(ORDER, 0)
     parts = []
     for va in addrs:
         row = best.get(va)
+        said = []
+        if va in exported:
+            said.append("exported as %s: %s" % (exported[va], demangle.readable(exported[va])))
         if not row:
-            counts["no-source"] += 1
-            parts.append("/* [%s] @ %s -- not measured on the current verifier */\n" % (TITLE["no-source"], va))
+            counts[F.IDENTIFIED if va in known else "no-source"] += 1
+            parts.append("/* [%s] %s@ %s -- %s */\n" % (
+                TITLE[F.IDENTIFIED if va in known else "no-source"], known[va][0] + "  " if va in known else "", va,
+                "; ".join(([known[va][1]] if va in known else []) + said + ["not measured on the current verifier"])))
             continue
         cls = row["class"]
-        counts[cls] += 1
         detail = describe(row)
+        shown = F.IDENTIFIED if va in known and cls not in ("verified", "weak") else cls
+        counts[shown] += 1
+        if shown == F.IDENTIFIED:
+            said.insert(0, "%s of %s; reconstructed below: %s%s" % (
+                known[va] + (TITLE[cls], (", " + detail) if detail else "")))
+        else:
+            said = ([detail] if detail else []) + said
+            if va in known:
+                said.append("this is %s of %s" % known[va])
+        source = (row["source"] or "/* (no reconstruction) */").strip()
         parts.append("/* [%s] %s  @ %s%s */\n%s\n" % (
-            TITLE[cls], row["name"] or "sub_" + va, va, (" -- " + detail) if detail else "",
-            (row["source"] or "/* (no reconstruction) */").strip()))
+            TITLE[shown], row["name"] or "sub_" + va, va, (" -- " + "; ".join(said)) if said else "",
+            spell.sub(lambda m: real[m.group(1)], source) if spell else source))
     total = len(addrs)
     banner = ["/* %s -- reconstructed source." % name, " *",
               " * STATUS, generated %s by CodeBreaker (verifier settings %s)." % (time.strftime("%Y-%m-%d"), digest),
               " * %d functions:" % total]
     for cls in ORDER:
-        banner.append(" *   %-18s %5d  %5.1f%%" % (TITLE[cls], counts[cls], 100.0 * counts[cls] / max(1, total)))
+        banner.append(" *   %-28s %5d  %5.1f%%" % (TITLE[cls], counts[cls], 100.0 * counts[cls] / max(1, total)))
     banner += [
         " *", " * Builds as a whole module: NO. Functions are compiled and checked one at a time; the",
         " * module's data (globals, tables, resources) is still referred to by its address in the",
@@ -108,9 +152,18 @@ def write_module(module, verify=True, out_dir=None, log=print):
         " * VERIFIED = rebuilt from this text with OpenWatcom and run beside the original on an x86",
         " * emulator: same return value, same API calls with the same arguments, same memory changed,",
         " * same stack and saved registers, on every input tried. It is evidence, not proof. Names of",
-        " * internal functions (sub_...) and locals are placeholders; no original names are claimed.", " */", ""]
+        " * internal functions (sub_...) and locals are placeholders; no original names are claimed.",
+        " * IDENTIFIED = the function's bytes are those of a function in a library that came with the",
+        " * compiler; it is named after that function. It is reconstructed and judged all the same."]
+    if real:
+        banner += [" * Imports by number are written with their real names (%d of them; %s.h lists the" % (len(real), stem),
+                   " * module and number of each). The text that was built and judged calls them MODULE_number."]
+    banner += [" */", ""]
     header = fs.get_text(sha, reconstruct.SOURCE, "header")
     if header:
+        if spell:                                            # which module and number each import is
+            header = spell.sub(lambda m: real[m.group(1)], header) + "\n/* imports by number:\n%s */\n" % "".join(
+                " *   %-28s %s.%s\n" % ((n,) + tuple(s.rsplit("_", 1))) for s, n in sorted(real.items(), key=lambda kv: kv[1]))
         with open(os.path.join(out_dir, stem + ".h"), "w", encoding="utf-8", newline="\n") as f:
             f.write("/* %s -- types, declarations and globals used by the functions in %s.c.\n"
                     " * Globals are bound to their addresses in the original until the module's data is\n"
@@ -136,23 +189,25 @@ def scoreboard(out_dir=None, log=print):
              "its reconstructed C, rebuilt and run beside the original, returns the same value, makes "
              "the same API calls with the same arguments, changes the same memory and leaves the stack "
              "and saved registers alike on every input tried, with at least half of it exercised. "
-             "Everything else is not progress.", "",
-             "| Module | Functions | Verified | Verified (weak) | Unverified | Not judged | Does not compile | No source | Builds whole | Runs in place |",
-             "|---|---:|---:|---:|---:|---:|---:|---:|---|---|"]
+             "Everything else is not progress. A function IDENTIFIED as a runtime library's (the C "
+             "runtime, a compiler helper) is not the module's own code and is counted apart, unless it "
+             "was verified as well.", "",
+             "| Module | Functions | Verified | Verified (weak) | Identified (runtime library) | Unverified | Not judged | Does not compile | No source | Builds whole | Runs in place |",
+             "|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|"]
     tot = dict.fromkeys(ORDER, 0)
     mods = fs.modules(digest)
     for sha, name in mods:
-        c = fs.tally(digest, sha)
+        c = fs.scores(digest, sha)
         n = sum(c.values())
         for k in ORDER:
             tot[k] += c[k]
-        lines.append("| %s | %d | %d (%.0f%%) | %d | %d | %d | %d | %d | no | not tested |" % (
-            name, n, c["verified"], 100.0 * c["verified"] / max(1, n), c["weak"], c["unverified"],
+        lines.append("| %s | %d | %d (%.0f%%) | %d | %d | %d | %d | %d | %d | no | not tested |" % (
+            name, n, c["verified"], 100.0 * c["verified"] / max(1, n), c["weak"], c["identified"], c["unverified"],
             c["not-judged"], c["no-compile"], c["no-source"]))
     n = sum(tot.values())
     if n:
-        lines.append("| **all measured** | %d | %d (%.0f%%) | %d | %d | %d | %d | %d | | |" % (
-            n, tot["verified"], 100.0 * tot["verified"] / n, tot["weak"], tot["unverified"],
+        lines.append("| **all measured** | %d | %d (%.0f%%) | %d | %d | %d | %d | %d | %d | | |" % (
+            n, tot["verified"], 100.0 * tot["verified"] / n, tot["weak"], tot["identified"], tot["unverified"],
             tot["not-judged"], tot["no-compile"], tot["no-source"]))
     lines += ["", "%d of %d 32-bit modules measured so far." % (len(mods), len(corpus.modules("pe"))), ""]
     out = os.path.join(out_dir or os.path.dirname(corpus.design_dir()), "SCOREBOARD.md")

@@ -17,7 +17,9 @@
 //   reg    <register> <hexValue>              a register's value everywhere, e.g. DS = the data
 //                                             segment of a 16-bit module
 //
-// F may carry a fifth field, the calling-convention model by name (e.g. __stdcall16far).
+// F may carry a fifth field, the calling-convention model by name (e.g. __stdcall16far), or
+// the word `inline`: a compiler helper that is part of every caller's prologue or epilogue
+// (PowerPC register save/restore runs), whose instructions are read as the caller's own.
 //
 // (tab separated). The analysis itself -- exact instruction semantics, data flow, stack and type
 // recovery, control-flow structuring, C printing -- is the Ghidra decompiler core in core/,
@@ -245,6 +247,7 @@ int main(int argc, char** argv) {
       ts.back().val = (uintb)r.second;
     }
     auto applyModel = [&](Funcdata* fd, const Fact& f) {
+      if (f.model == "inline") { fd->getFuncProto().setInline(true); return; }
       if (x86_32) { applyX86Proto(m, fd, f.name, f.pop); return; }
       if (!f.model.empty() && m.hasModel(f.model)) {
         FuncProto& fp = fd->getFuncProto();
@@ -284,7 +287,7 @@ int main(int argc, char** argv) {
       Address addr(code, (uintb)f.va);
       Funcdata* fd = glb->addFunction(addr, f.name)->getFunction();
       applyModel(fd, f);
-      if (only.empty() || only.count(f.va)) todo.push_back({fd, f});
+      if (f.model != "inline" && (only.empty() || only.count(f.va))) todo.push_back({fd, f});
     }
 
     m.print->setOutputStream(&std::cout);
