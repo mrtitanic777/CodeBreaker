@@ -112,8 +112,10 @@ def assemble(source, work):
     return (obj if code == 0 and os.path.isfile(obj) else None), log
 
 
-def link(obj, device, out, dynamic=False):
-    """Link one object file into a driver exporting <device>_DDB. -> (file or None, messages)"""
+def link(obj, device, out, dynamic=False, classes=None):
+    """Link one object file into a driver exporting <device>_DDB. -> (file or None, messages)
+    `classes` [(segment class, attributes)] replaces the kit's classes, for source that names
+    its own (one per object of the original)."""
     wlink = tool("wlink")
     if not wlink:
         return None, "no linker"
@@ -121,7 +123,7 @@ def link(obj, device, out, dynamic=False):
     lines = ["format windows vxd" + (" virtdevice" if dynamic else ""), "option quiet",
              "option map=%s" % (os.path.splitext(out)[0] + ".map"), "name %s" % out,
              "export %s_DDB" % device, "file %s" % obj]
-    lines += ["segment class '%s' %s" % (cls, attrs) for cls, attrs in SEGMENT_CLASSES]
+    lines += ["segment class '%s' %s" % (cls, attrs) for cls, attrs in (classes or SEGMENT_CLASSES)]
     with open(script, "w", newline="\r\n") as f:
         f.write("\n".join(lines) + "\n")
     if os.path.exists(out):
@@ -140,8 +142,11 @@ def _patched(lf):
 
 
 def _code_at(lf, where, n=12):
+    """The first bytes of code at a place, with the bytes the loader patches left out."""
     obj, off = where
-    return le.object_data(lf, lf.objects[obj - 1])[off:off + n]
+    patched = _patched(lf).get(obj, ())
+    data = le.object_data(lf, lf.objects[obj - 1])[off:off + n]
+    return bytes(b for i, b in enumerate(data) if off + i not in patched)
 
 
 def structure(lf):

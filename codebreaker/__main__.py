@@ -13,6 +13,7 @@
     dos-interrupts [int [AH]]       name a DOS or BIOS service
     analyze <module> [--what a,b]   call graph, conventions, globals, strings, structures, classes, dispatch
     driver-services [FILE ...]      names of ring-0 services; how many of a driver's calls they name
+    driver-source <driver>          a driver's assembly source from its image, built and checked
     driver-build <folder or .asm>   assemble and link a driver, check it against the original
     driver-judge <rebuilt> <orig>   run every entry point of both drivers and compare
     build <module> [--out DIR]      build a whole module (functions, data, resources, exports) and check it
@@ -48,6 +49,7 @@ COMMANDS = {
     "dos-interrupts": ("codebreaker.symbols.dos_interrupts", []),
     "analyze": ("codebreaker.analyze.report", []),
     "driver-services": ("codebreaker.symbols.driver_services", []),
+    "driver-source": ("codebreaker.source.driver_writer", []),
     "driver-build": ("codebreaker.build.driver", []),
     "driver-judge": ("codebreaker.verify.driver", []),
     "build": ("codebreaker.build.module", []),

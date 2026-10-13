@@ -46,7 +46,7 @@ from codebreaker.symbols import driver_services
 from codebreaker.verify import compare
 
 KIND = "le"
-REV = 2                           # what a verdict means; raise when run() or the inputs change
+REV = 3                           # what a verdict means; raise when run() or the inputs change
 INSN_CAP = 10000
 MAX_CALLS = 64                   # service calls compared per run
 MAX_CALLS_RUN = 400              # service calls and port accesses after which a run is cut off (a wait loop)
@@ -466,13 +466,22 @@ class Prepared(object):
 
 
 def prepare(module_path, work):
+    """The driver's source: the assembly file in the source tree when CB_DRIVER_SOURCES names
+    one to judge, otherwise written from the image (source/driver_writer.py) and built."""
+    from codebreaker.source import driver_writer
     lf = le.members(module_path)[0][1]
     m = Prepared()
-    m.source = source_folder(module_path)
+    m.source = source_folder(module_path) if os.environ.get("CB_DRIVER_SOURCES") else ""
+    m.written = None
     text = ""
     if m.source:
         with open(os.path.join(m.source, os.path.basename(m.source) + ".asm"), encoding="latin1") as f:
             text = f.read()
+    else:
+        m.written = driver_writer.reconstruct(module_path, os.path.join(work, "source"))
+        if m.written.get("linked"):
+            with open(m.written["source"], encoding="latin1") as f:
+                text = f.read()
     points, taken = le.entry_points(lf), set()
     m.header = text
     m.order = []
@@ -481,7 +490,8 @@ def prepare(module_path, work):
             taken.add(points[n])
             m.order.append(n)
     # the unit judged is an entry point; its text is the whole assembly file (in the header)
-    m.texts = {n: "; entry point %s of %s.asm" % (n, os.path.basename(m.source)) if text else "" for n in m.order}
+    m.texts = {n: "; entry point %s of %s" % (n, os.path.basename(m.source or m.written["source"]))
+               if text else "" for n in m.order}
     m.key = {n: key_of(points[n]) for n in m.order} if text else {}
     m.all_keys = [key_of(points[n]) for n in m.order]
     m.sig = hashlib.sha1(("%d\0%s" % (REV, text)).encode("latin1", "replace")).hexdigest()
@@ -491,6 +501,11 @@ def prepare(module_path, work):
 def build(m, module_path, work):
     """-> (context for judge, {label: item}, {label: why it is not in the build})"""
     from codebreaker.build import driver as builder
+    if m.written is not None:
+        if not m.written.get("linked"):
+            why = (m.written.get("notes") or ["did not build"])[-1][:200]
+            return (module_path, None), {}, {n: why for n in m.order}
+        return (module_path, m.written["image"]), {n: (m.key[n], n) for n in m.order}, {}
     r = builder.build(m.source, original=module_path, out=os.path.join(work, "build"))
     if not r["linked"]:
         why = (r["log"].splitlines() or ["did not build"])[-1][:200]
