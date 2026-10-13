@@ -245,7 +245,7 @@ def _compare_as_numbers(t):
 
 
 def adapt(module_path, funcs, outdir):
-    """-> (preamble, {name: text}, [names], {va: name}, [import names used]) for ghidra_engine:
+    """-> (preamble, {name: text}, [names], {va: name}, [import names used]) for a whole-module build:
     the core's output with its base types defined, its globals bound to the original's addresses,
     and every function and import declared before use with its real convention."""
     from codebreaker.emulate import api_stack as apiarity

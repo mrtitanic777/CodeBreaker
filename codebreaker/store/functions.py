@@ -1,0 +1,226 @@
+"""functions.py -- the function store: one place that knows every function and what was made of it.
+
+Everything CodeBreaker does to a function ends up here, and everything that reports reads from
+here: the module writer, the scoreboard, the tools that explain a failure.
+
+    module       one original binary (by content hash)
+    function     one function of a module (by address)
+    candidate    one decompiler's reconstruction of a function: its source, or why it has none
+    verdict      what the verifier found for a candidate, under one set of verifier settings
+    text         something a decompiler's functions share, such as its header of types
+
+A verdict is kept per verifier profile (a digest of every setting a verdict depends on), so
+changing the verifier adds new verdicts beside the old ones instead of erasing them: nothing
+has to be re-judged to see what a change did, and old results stay comparable.
+
+    from codebreaker.store import functions
+    fs = functions.open()                          # state/functions.sqlite
+    fs.add_module(sha, "comctl32.dll", path, "pe")
+    fs.record(sha, "bfee83ad", "core", rev, sig, "sub_0183AD", source, profile,
+              "equivalent", limits="coverage=100")
+    fs.best(sha, profile)                          # {address: the best candidate's row}
+    fs.tally(profile, sha)                         # {class: count}
+"""
+import os
+import sqlite3
+import time
+
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS module(
+    sha TEXT PRIMARY KEY, name TEXT, path TEXT, kind TEXT, ts REAL);
+CREATE TABLE IF NOT EXISTS function(
+    id INTEGER PRIMARY KEY, module TEXT NOT NULL, addr TEXT NOT NULL, name TEXT, size INTEGER,
+    UNIQUE(module, addr));
+CREATE TABLE IF NOT EXISTS candidate(
+    id INTEGER PRIMARY KEY, function INTEGER NOT NULL, engine TEXT NOT NULL, rev TEXT, sig TEXT,
+    name TEXT, source TEXT, problem TEXT, ts REAL,
+    UNIQUE(function, engine));
+CREATE TABLE IF NOT EXISTS verdict(
+    candidate INTEGER NOT NULL, profile TEXT NOT NULL, sig TEXT, verdict TEXT, reason TEXT,
+    limits TEXT, detail TEXT, ts REAL,
+    PRIMARY KEY (candidate, profile));
+CREATE TABLE IF NOT EXISTS profile(digest TEXT PRIMARY KEY, settings TEXT, ts REAL);
+CREATE TABLE IF NOT EXISTS text(
+    module TEXT NOT NULL, engine TEXT NOT NULL, kind TEXT NOT NULL, body TEXT, ts REAL,
+    PRIMARY KEY (module, engine, kind));
+CREATE INDEX IF NOT EXISTS function_module ON function(module);
+CREATE INDEX IF NOT EXISTS candidate_function ON candidate(function);
+"""
+
+# How good a result is, best first. A candidate's class is what the module writer prints.
+ORDER = ("verified", "weak", "unverified", "not-judged", "no-compile", "no-source")
+TITLE = {"verified": "VERIFIED", "weak": "VERIFIED (weak)", "unverified": "UNVERIFIED",
+         "not-judged": "NOT JUDGED", "no-compile": "DOES NOT COMPILE", "no-source": "NO SOURCE"}
+# limits that make a match weaker than it looks
+WEAK = {"fault-only": "the two sides only ever fail alike; neither returned normally",
+        "low-coverage": "under half of the original's instructions ran",
+        "truncated": "a run was cut off at the step limit",
+        "unobserved": "some inputs could not be run on one side",
+        "writes-capped": "too many memory writes to compare them all",
+        "stub-callee": "a function it calls was a stand-in, not that function's reconstruction",
+        "argc-unknown": "an API call was compared by name only",
+        "calls-capped": "it makes more calls than are compared"}
+
+
+def classify(verdict, limits=""):
+    """(class, weak reasons) for one verdict row."""
+    codes = [c for c in (limits or "").split(",") if c]
+    weak = [c for c in codes if c in WEAK]
+    if verdict == "equivalent":
+        return ("weak" if weak else "verified"), weak
+    if verdict == "consistent":
+        return "weak", weak or ["fault-only"]
+    return {"divergent": "unverified", "inconclusive": "not-judged", "no-compile": "no-compile"}.get(
+        verdict, "no-source"), []
+
+
+def default_path():
+    from codebreaker.base import settings
+    return os.environ.get("CB_FUNCTIONS_DB") or settings.state("functions.sqlite")
+
+
+class FunctionStore(object):
+    def __init__(self, path=None):
+        self.path = path or default_path()
+        self.db = sqlite3.connect(self.path, timeout=60.0)     # several workers may write
+        self.db.execute("PRAGMA journal_mode=WAL")
+        self.db.execute("PRAGMA synchronous=NORMAL")
+        self.db.executescript(_SCHEMA)
+        self.db.commit()
+
+    def close(self):
+        self.db.close()
+
+    # ---- writing -------------------------------------------------------------------------
+    def add_module(self, sha, name, path="", kind=""):
+        with self.db:
+            self.db.execute("INSERT INTO module(sha, name, path, kind, ts) VALUES(?,?,?,?,?) "
+                            "ON CONFLICT(sha) DO UPDATE SET name=excluded.name, path=excluded.path, "
+                            "kind=excluded.kind", (sha, name.lower(), path, kind, time.time()))
+
+    def add_profile(self, digest, settings):
+        with self.db:
+            self.db.execute("INSERT OR IGNORE INTO profile(digest, settings, ts) VALUES(?,?,?)",
+                            (digest, settings, time.time()))
+
+    def _function(self, module, addr, name=None, size=None):
+        row = self.db.execute("SELECT id FROM function WHERE module=? AND addr=?", (module, addr)).fetchone()
+        if row:
+            return row[0]
+        return self.db.execute("INSERT INTO function(module, addr, name, size) VALUES(?,?,?,?)",
+                               (module, addr, name, size)).lastrowid
+
+    def add_functions(self, module, addrs):
+        """Make sure every address of a module is known, reconstructed or not."""
+        with self.db:
+            for addr in addrs:
+                self._function(module, addr)
+
+    def record_many(self, module, engine, rev, profile, rows):
+        """rows: dicts with addr, name, source, sig, verdict and optionally reason, limits, detail,
+        problem. One transaction. A candidate is replaced by a newer one from the same engine;
+        its verdicts under other profiles stay as long as the source did not change."""
+        now = time.time()
+        with self.db:
+            for r in rows:
+                f = self._function(module, r["addr"], r.get("name"))
+                old = self.db.execute("SELECT id, sig FROM candidate WHERE function=? AND engine=?",
+                                      (f, engine)).fetchone()
+                if old:
+                    cid = old[0]
+                    if old[1] != r.get("sig"):
+                        self.db.execute("DELETE FROM verdict WHERE candidate=? AND profile<>?", (cid, profile))
+                    self.db.execute("UPDATE candidate SET rev=?, sig=?, name=?, source=?, problem=?, ts=? "
+                                    "WHERE id=?", (rev, r.get("sig"), r.get("name"), r.get("source"),
+                                                   r.get("problem"), now, cid))
+                else:
+                    cid = self.db.execute(
+                        "INSERT INTO candidate(function, engine, rev, sig, name, source, problem, ts) "
+                        "VALUES(?,?,?,?,?,?,?,?)", (f, engine, rev, r.get("sig"), r.get("name"),
+                                                    r.get("source"), r.get("problem"), now)).lastrowid
+                self.db.execute(
+                    "INSERT OR REPLACE INTO verdict(candidate, profile, sig, verdict, reason, limits, detail, ts) "
+                    "VALUES(?,?,?,?,?,?,?,?)", (cid, profile, r.get("sig"), r["verdict"], r.get("reason") or "",
+                                                r.get("limits") or "", r.get("detail") or "", now))
+
+    def put_text(self, module, engine, kind, body):
+        """A module-level text an engine's functions need, e.g. kind "header": its types and
+        declarations."""
+        with self.db:
+            self.db.execute("INSERT OR REPLACE INTO text(module, engine, kind, body, ts) VALUES(?,?,?,?,?)",
+                            (module, engine, kind, body, time.time()))
+
+    def get_text(self, module, engine, kind):
+        row = self.db.execute("SELECT body FROM text WHERE module=? AND engine=? AND kind=?",
+                              (module, engine, kind)).fetchone()
+        return row[0] if row else ""
+
+    def record(self, module, addr, engine, rev, sig, name, source, profile, verdict, **more):
+        self.record_many(module, engine, rev, profile,
+                         [dict(addr=addr, sig=sig, name=name, source=source, verdict=verdict, **more)])
+
+    # ---- reading -------------------------------------------------------------------------
+    _ROW = ("addr", "engine", "rev", "sig", "name", "source", "problem", "verdict", "reason", "limits",
+            "detail", "judged_sig")
+
+    def candidates(self, module, profile, engine=None):
+        """[row] for every candidate of a module, with its verdict under `profile` (verdict None
+        when it has not been judged under that profile)."""
+        q = ("SELECT f.addr, c.engine, c.rev, c.sig, c.name, c.source, c.problem, v.verdict, v.reason, "
+             "v.limits, v.detail, v.sig FROM function f JOIN candidate c ON c.function=f.id "
+             "LEFT JOIN verdict v ON v.candidate=c.id AND v.profile=? WHERE f.module=?")
+        args = [profile, module]
+        if engine:
+            q += " AND c.engine=?"
+            args.append(engine)
+        return [dict(zip(self._ROW, r)) for r in self.db.execute(q, args)]
+
+    def judged(self, module, profile, engine):
+        """{addr: row} of an engine's candidates that have a verdict under `profile` for the source
+        they have now -- what does not need judging again."""
+        return {r["addr"]: r for r in self.candidates(module, profile, engine)
+                if r["verdict"] is not None and r["judged_sig"] == r["sig"]}
+
+    def best(self, module, profile, prefer=()):
+        """{addr: row} -- for each function the candidate with the best class under `profile`.
+        Between equally good ones the engine earlier in `prefer` wins. Each row gains `class`
+        and `weak`."""
+        rank = {e: i for i, e in enumerate(prefer)}
+        out = {}
+        for r in self.candidates(module, profile):
+            if r["verdict"] is None:
+                continue
+            r["class"], r["weak"] = classify(r["verdict"], r["limits"])
+            if r["class"] != "no-source" and not r["source"]:
+                r["class"] = "no-source"
+            key = (ORDER.index(r["class"]), rank.get(r["engine"], len(rank)))
+            if r["addr"] not in out or key < out[r["addr"]]["_key"]:
+                r["_key"] = key
+                out[r["addr"]] = r
+        for r in out.values():
+            del r["_key"]
+        return out
+
+    def addresses(self, module):
+        return [r[0] for r in self.db.execute("SELECT addr FROM function WHERE module=? ORDER BY addr", (module,))]
+
+    def tally(self, profile, module, prefer=()):
+        """{class: count} over every known function of a module (unjudged ones are no-source)."""
+        best = self.best(module, profile, prefer)
+        out = dict.fromkeys(ORDER, 0)
+        for addr in self.addresses(module):
+            out[best[addr]["class"] if addr in best else "no-source"] += 1
+        return out
+
+    def modules(self, profile=None):
+        """[(sha, name)] of modules, limited to those judged under `profile` when given."""
+        if profile is None:
+            return self.db.execute("SELECT sha, name FROM module ORDER BY name").fetchall()
+        return self.db.execute(
+            "SELECT DISTINCT m.sha, m.name FROM module m JOIN function f ON f.module=m.sha "
+            "JOIN candidate c ON c.function=f.id JOIN verdict v ON v.candidate=c.id "
+            "WHERE v.profile=? ORDER BY m.name", (profile,)).fetchall()
+
+
+def open(path=None):                                    # noqa: A001 (as sqlite3.connect / shelve.open)
+    return FunctionStore(path)

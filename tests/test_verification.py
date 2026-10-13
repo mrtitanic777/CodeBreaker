@@ -71,26 +71,53 @@ def _need(lane):
         raise Skip("needs the retail corpus, OpenWatcom and the decompilers")
 
 
-def test_pe_pipeline_is_incremental():
+def test_reconstruct_is_incremental():
+    """One path for every decompiler: results land in the function store, a second run judges
+    nothing again, and a later decompiler is asked only about what an earlier one left."""
     _need("pe")
-    db = _db()
+    from codebreaker.store import functions as F
+    from codebreaker.verify import reconstruct
+    fs = F.open(os.path.join(tempfile.mkdtemp(), "functions.sqlite"))
     p = corpus.retail("lz32.dll")
-    first = pipeline.verify("pe", p, store=db, bank=False)
-    t = pipeline.tally(first)
-    # lz32 is nearly all 32->16 thunk stubs. 21 of 36 "verified" until call arguments, memory
-    # writes and the stack were compared; the stubs pass their argument in CL, which the
-    # reconstruction turns into a pushed argument, so 6 hold up today.
-    assert t["equivalent"] >= 5, dict(t)
-    assert not any(r["cached"] for r in first.values())
-    assert all(r["reason"] for r in first.values() if r["verdict"] == "divergent")
-    second = pipeline.verify("pe", p, store=db, bank=False)
-    assert {k: r["verdict"] for k, r in second.items()} == {k: r["verdict"] for k, r in first.items()}
-    assert all(r["cached"] for r in second.values() if r["verdict"] != "no-synth")
-    assert db.summary("pe") == dict(t) and db.flips("pe") == []
-    # a subset of functions gives the same verdicts for those functions
-    fns = pipeline.functions("pe", p)[:6]
-    part = pipeline.verify("pe", p, fns, bank=False)
-    assert set(part) <= set(first)
+    log = []
+    sha, digest = reconstruct.run(p, engines=("native",), fs=fs, log=log.append)
+    first = fs.candidates(sha, digest, "native")
+    t = fs.tally(digest, sha)
+    # lz32 is nearly all 32->16 thunk stubs, which pass their argument in CL; few hold up.
+    assert t["verified"] + t["weak"] >= 5, t
+    assert sum(t.values()) == len(pipeline.functions("pe", p)), t
+    assert all(r["reason"] for r in first if r["verdict"] == "divergent")
+    assert all(r["source"] for r in first if r["verdict"] not in ("no-synth",))
+    log[:] = []
+    reconstruct.run(p, engines=("native",), fs=fs, log=log.append)
+    assert "judged 0 now" in log[0], log
+    assert fs.tally(digest, sha) == t
+    # every function gets the best of its candidates, and a class
+    best = fs.best(sha, digest)
+    assert all(r["class"] in F.ORDER for r in best.values())
+
+
+def test_function_store():
+    from codebreaker.store import functions as F
+    fs = F.open(os.path.join(tempfile.mkdtemp(), "functions.sqlite"))
+    fs.add_module("m1", "A.DLL", "x", "pe")
+    fs.add_functions("m1", ["10", "20", "30"])
+    fs.record("m1", "10", "core", "1", "s1", "f10", "int f10(){}", "p1", "equivalent", limits="coverage=90")
+    fs.record("m1", "10", "native", "1", "s2", "f10", "int f10(void){}", "p1", "divergent", reason="ret-differs")
+    fs.record("m1", "20", "native", "1", "s3", "f20", "int f20(void){}", "p1", "equivalent", limits="low-coverage,coverage=10")
+    best = fs.best("m1", "p1", prefer=("core", "native"))
+    assert best["10"]["engine"] == "core" and best["10"]["class"] == "verified"
+    assert best["20"]["class"] == "weak" and best["20"]["weak"] == ["low-coverage"]
+    assert fs.tally("p1", "m1") == {"verified": 1, "weak": 1, "unverified": 0, "not-judged": 0,
+                                    "no-compile": 0, "no-source": 1}
+    # another verifier profile sees nothing judged yet, and the old verdicts are still there
+    assert fs.tally("p2", "m1")["no-source"] == 3
+    fs.record("m1", "10", "core", "1", "s1", "f10", "int f10(){}", "p2", "divergent", reason="writes-differ")
+    assert fs.best("m1", "p1")["10"]["class"] == "verified" and fs.best("m1", "p2")["10"]["class"] == "unverified"
+    # a changed source invalidates what was judged for the old one
+    fs.record("m1", "10", "core", "2", "s9", "f10", "int f10(){return 1;}", "p2", "equivalent")
+    assert "10" not in fs.judged("m1", "p1", "core")
+    assert [n for _s, n in fs.modules("p1")] == ["a.dll"]
 
 
 def test_ne_pipeline():
@@ -107,7 +134,8 @@ def test_ne_pipeline():
 
 def main():
     for fn in (test_store_roundtrip_and_reports, test_store_records_verdict_changes,
-               test_reason_for_divergence, test_pe_pipeline_is_incremental, test_ne_pipeline):
+               test_reason_for_divergence, test_function_store, test_reconstruct_is_incremental,
+               test_ne_pipeline):
         try:
             fn()
             RESULTS.append((fn.__name__, "PASS", ""))

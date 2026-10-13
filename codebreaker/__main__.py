@@ -2,7 +2,7 @@
 
     module <name> [--no-verify]     reconstruct one module: decompile, build, judge, write its source
     scoreboard                      rewrite the scoreboard from stored results
-    sweep <pe|ne> [options]         judge every function of every module (resumable)
+    sweep [options]                 reconstruct and judge every module (resumable)
     measure <name> [core|export]    judge one decompiler on one module; writes nothing to the tree
 
 Every command is listed here, by name. Nothing is discovered by scanning folders.
@@ -13,7 +13,7 @@ import sys
 COMMANDS = {
     "module": ("codebreaker.source.module_writer", []),
     "scoreboard": ("codebreaker.source.module_writer", ["--scoreboard"]),
-    "sweep": ("codebreaker.verify.bank", []),
+    "sweep": ("codebreaker.verify.sweep", []),
     "measure": ("codebreaker.verify.measure", []),
 }
 
