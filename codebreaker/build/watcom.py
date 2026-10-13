@@ -27,7 +27,7 @@ def _scratch(*parts):
 # __Except for __try/__except, and 64-bit arithmetic and floating-point helpers. They live in the
 # C runtime library; without it every body using such a construct failed to link. Local stubs
 # for a body's callees are defined in the object and still take precedence.
-_RTL = "library clib3r.lib\nlibrary math387r.lib\n"
+_RTL = "library clib3r.lib\n"
 
 
 # Where a rebuilt DLL is based. The linker's default (0x400000) is exactly where ordinary computed

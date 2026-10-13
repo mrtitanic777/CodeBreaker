@@ -265,6 +265,7 @@ def build32(module_path, header, texts, order, used_imports, outdir, cflags, job
     lines = ["system nt_dll", "name m.dll", "option quiet", "option undefsok", B._BASE.strip()]
     lines += ["file %s.obj" % stems[n] for n in order if n in stems]
     lines += [x for x in B._RTL.strip().split("\n") if x]
+    lines.append("library math387r.lib")                     # sin, sqrt ... for a function that uses them
     seen, exports = set(), []
     for n in order:
         if n not in stems:

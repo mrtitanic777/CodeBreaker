@@ -107,10 +107,12 @@ def _more_helpers(have):
     out += ["double sqrt(double); double sin(double); double cos(double); double tan(double);",
             "double atan2(double, double); double pow(double, double); double ldexp(double, int);",
             "double log(double); double floor(double); double fmod(double, double);",
-            "static double codebreaker_round(double x) { double f = floor(x), d = x - f;",
-            "  return (d > 0.5 || (d == 0.5 && fmod(f, 2.0) != 0)) ? f + 1 : f; }",
+            # (to the nearest whole number, halves to the even one -- written out, so that a
+            # module that never rounds does not have the mathematics library linked into it)
+            "#define ROUND(x) (((double)(x) - floor((double)(x)) > 0.5 || ((double)(x) - floor((double)(x)) == 0.5 && "
+            "fmod(floor((double)(x)), 2.0) != 0)) ? floor((double)(x)) + 1 : floor((double)(x)))",
             "#define SQRT(x) sqrt((double)(x))", "#define ABS(x) ((x) < 0 ? -(x) : (x))",
-            "#define NAN(x) ((x) != (x))", "#define ROUND(x) codebreaker_round((double)(x))",
+            "#define NAN(x) ((x) != (x))",
             "#define fsin(x) sin((double)(x))", "#define fcos(x) cos((double)(x))", "#define fptan(x) tan((double)(x))",
             "#define fpatan(a,b) atan2((double)(a), (double)(b))", "#define f2xm1(x) (pow(2.0, (double)(x)) - 1.0)",
             "#define fscale(a,b) ldexp((double)(a), (int)(b))", "#define log2(x) (log((double)(x)) / 0.6931471805599453)"]
