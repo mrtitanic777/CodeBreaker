@@ -4,7 +4,15 @@
     python tools/dead_code.py [--modules] [--functions] [--top N]
 
 A module is reported when its name appears nowhere else in the repository: not in an import,
-not in a `cores.get('name')`, not in a command table, a test, a tool or a script string. A
+not in a `cores.get('name')`, not in a command table, a test, a tool or a script string. Each
+is then sorted into one of three kinds:
+
+    broken      it cannot run: a syntax error, or it imports a module that no longer exists
+    no entry    nothing refers to it and it has no `__main__` block, so nothing can reach it
+    command     it is a script someone runs by name (`wt --target win95 <name>` runs any .py in
+                a tool directory): unreferenced, but alive
+
+Only the first two are dead. A
 top-level function is reported when its name appears nowhere but at its own definition (and it
 is not a `main`, a test or a private hook the module itself runs). Names are matched as whole
 words in every .py/.json/.md/.toml/.cfg/.bat/.ps1/.sh file, so anything reached by a string --
@@ -89,6 +97,67 @@ def dead(uses, defs):
     return sorted(mods, reverse=True), sorted(funcs, reverse=True)
 
 
+def _missing_imports(rel, text):
+    """Modules `rel` imports that cannot be found: neither in the package, beside the file, in a
+    tool directory of the same family, nor installed."""
+    import importlib.util
+    try:
+        tree = ast.parse(text)
+    except SyntaxError as e:
+        return ["syntax error line %s" % e.lineno]
+    here = os.path.dirname(os.path.join(ROOT, rel))
+    family = [here] + [os.path.join(os.path.dirname(here), d) for d in ("core", "win", "match", "ppc", "xbox",
+                                                                           "crypto", "cli", "gui")]
+    guarded = set()                                          # imports inside try: are optional
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Try):
+            for sub in ast.walk(node):
+                if isinstance(sub, (ast.Import, ast.ImportFrom)):
+                    guarded.add(id(sub))
+    out = []
+    for node in ast.walk(tree):
+        if id(node) in guarded:
+            continue
+        names = []
+        if isinstance(node, ast.Import):
+            names = [a.name for a in node.names]
+        elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+            names = [node.module]
+        for name in names:
+            top = name.split(".")[0]
+            if top == "src":
+                path = os.path.join(ROOT, *name.split("."))
+                if not (os.path.isfile(path + ".py") or os.path.isdir(path)):
+                    out.append(name)
+                continue
+            if any(os.path.isfile(os.path.join(d, top + ".py")) or os.path.isdir(os.path.join(d, top))
+                   for d in family):
+                continue
+            if top in sys.builtin_module_names or top in getattr(sys, "stdlib_module_names", ()):
+                continue
+            try:
+                if importlib.util.find_spec(top) is None:
+                    out.append(name)
+            except (ImportError, ValueError):
+                out.append(name)
+    return sorted(set(out))
+
+
+def classify(mods):
+    """[(lines, rel)] -> [(kind, lines, rel, why)], kind in broken / no entry / command."""
+    out = []
+    for size, rel in mods:
+        text = open(os.path.join(ROOT, rel), encoding="utf-8", errors="replace").read()
+        missing = _missing_imports(rel, text)
+        if missing:
+            out.append(("broken", size, rel, "imports " + ", ".join(missing[:4])))
+        elif "__main__" not in text:
+            out.append(("no entry", size, rel, "no caller and no __main__"))
+        else:
+            out.append(("command", size, rel, ""))
+    return out
+
+
 def main(argv):
     top = int(argv[argv.index("--top") + 1]) if "--top" in argv else 40
     uses, defs = scan()
@@ -103,8 +172,12 @@ def main(argv):
             by_dir[d][1] += s
         for d, (n, s) in sorted(by_dir.items(), key=lambda x: -x[1][1])[:20]:
             print("  %5d lines in %3d files  %s" % (s, n, d))
-        for s, r in mods[:top]:
-            print("    %5d  %s" % (s, r))
+        kinds = classify(mods)
+        for kind in ("broken", "no entry", "command"):
+            rows = [k for k in kinds if k[0] == kind]
+            print("  %s: %d modules, %d lines" % (kind, len(rows), sum(k[1] for k in rows)))
+            for _k, s, r, why in rows[:top]:
+                print("    %5d  %s%s" % (s, r, ("   -- " + why) if why and kind == "broken" else ""))
     if both or "--functions" in argv:
         print("%d top-level functions nothing calls (%d lines):" % (len(funcs), sum(f[0] for f in funcs)))
         for s, r, n, ln in funcs[:top]:
