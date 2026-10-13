@@ -36,7 +36,7 @@ import os
 import re
 import time
 
-from codebreaker.base import corpus
+from codebreaker.base import corpus, settings
 from codebreaker.decompile import describe as description
 from codebreaker.store import functions as F
 from codebreaker.symbols import demangle, names
@@ -73,6 +73,9 @@ def real_import_names(path, used=()):
     """{symbol: name} for a 16-bit module's imports by number that can be written by their real
     name: the name is a C name, no function of the module has it (`used`), and no two imports
     share it. (A 32-bit module's are already named in the decompiled text.)"""
+    from codebreaker.verify import reconstruct
+    if reconstruct.kind_name(path) == "powerpc":
+        return console_import_names(path, used)
     if corpus.lane(path) != "ne":
         return {}
     from codebreaker.formats.ne import NEFile
@@ -81,6 +84,31 @@ def real_import_names(path, used=()):
     for name in found.values():
         times[name] = times.get(name, 0) + 1
     return {s: n for s, n in found.items() if times[n] == 1 and n not in used and n not in found}
+
+
+def console_import_names(path, used=()):
+    """{symbol: name} for a PowerPC image's imports. An image names what it imports by library
+    and number only (`import0_ord_16`); the numbers of the console's system libraries are public
+    knowledge (symbols/console_ordinals.json). The image as extracted does not carry the
+    libraries' names: its first is taken to be the kernel and its second the system library,
+    which is the order every image seen has them in -- a call's arguments bear it out
+    (number 16 of the kernel takes a category, a setting, a buffer, its size and a length)."""
+    import json
+    from codebreaker.formats import powerpc_image
+    with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "symbols",
+                           "console_ordinals.json"), encoding="utf-8") as f:
+        table = json.load(f)
+    libraries = {0: table["xboxkrnl.exe"], 1: table["xam.xex"]}
+    found = {}
+    for symbol in set(powerpc_image.read(path).imports.values()):
+        m = re.fullmatch(r"import(\d+)_ord_(\d+)", symbol)
+        name = libraries.get(int(m.group(1)), {}).get(m.group(2)) if m else None
+        if name and re.fullmatch(r"[A-Za-z_]\w*", name):
+            found[symbol] = name
+    times = {}
+    for name in found.values():
+        times[name] = times.get(name, 0) + 1
+    return {s: n for s, n in found.items() if times[n] == 1 and n not in used}
 
 
 def _globals_note(path, header):
@@ -139,6 +167,12 @@ def write_assembly(path, fs, sha, digest, out_dir, log=print):
     return out, counts, total
 
 
+def in_corpus(path):
+    """Is the file one of the selected product's originals?"""
+    root = os.path.normcase(os.path.abspath(settings.get("corpus") or ""))
+    return bool(root) and os.path.normcase(os.path.abspath(path)).startswith(root + os.sep)
+
+
 def write_module(module, verify=True, out_dir=None, log=print, split=0, build_whole=False):
     from codebreaker.source import placement
     from codebreaker.verify import reconstruct
@@ -147,14 +181,17 @@ def write_module(module, verify=True, out_dir=None, log=print, split=0, build_wh
         raise SystemExit("no module %r in the corpus" % module)
     name = os.path.basename(path).lower()
     stem = os.path.splitext(name)[0]
-    out_dir = out_dir or placement.folder(name, path)
+    # A product's source tree is for that product's modules. A file from anywhere else (given
+    # by path: another product's, a PowerPC image) is written under state/source/ here.
+    out_dir = out_dir or (placement.folder(name, path) if in_corpus(path) else settings.state("source", stem))
     os.makedirs(out_dir, exist_ok=True)
     fs = F.open()
     if verify:
         sha, digest = reconstruct.run(path, fs=fs, log=log)
     else:
         sha, digest = reconstruct.identity(path)
-    if reconstruct.kind_name(path) in ("le", "dos"):
+    kind = reconstruct.kind_name(path)
+    if kind in ("le", "dos"):
         return write_assembly(path, fs, sha, digest, out_dir, log)
     best = fs.best(sha, digest)
     addrs = fs.addresses(sha)             # every function the module is known to have
@@ -234,8 +271,9 @@ def write_module(module, verify=True, out_dir=None, log=print, split=0, build_wh
             " * Functions are compiled and checked one at a time; the module's data (globals, tables,",
             " * resources) is referred to by its address in the original unless the whole module is built.",
             " * Runs in place of the original: NOT TESTED.", " *",
-        " * VERIFIED = rebuilt from this text with OpenWatcom and run beside the original on an x86",
-        " * emulator: same return value, same API calls with the same arguments, same memory changed,",
+        " * VERIFIED = rebuilt from this text with %s and run beside the original in %s:" % (
+            ("a PowerPC compiler", "a PowerPC interpreter") if kind == "powerpc" else ("OpenWatcom", "an x86 emulator")),
+        " * same return value, same calls out of the module with the same arguments, same memory changed,",
         " * same stack and saved registers, on every input tried. It is evidence, not proof. Names of",
         " * internal functions (sub_...) and locals are placeholders; no original names are claimed.",
         " * IDENTIFIED = the function's bytes are those of a function in a library that came with the",
@@ -292,7 +330,9 @@ def scoreboard(out_dir=None, log=print):
              "| Module | Kind | Functions | Verified | Verified (weak) | Identified (runtime library) | Unverified | Not judged | Does not compile | No source | Builds whole | Runs in place |",
              "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|"]
     tot = dict.fromkeys(ORDER, 0)
-    mods = sorted((name, kind, sha, d) for d, kind in current.items() for sha, name in fs.modules(d))
+    where = dict(fs.db.execute("SELECT sha, path FROM module").fetchall())
+    mods = sorted((name, kind, sha, d) for d, kind in current.items() for sha, name in fs.modules(d)
+                  if in_corpus(where.get(sha) or ""))          # this product's modules, no other's
     for name, kind, sha, d in mods:
         c = fs.scores(d, sha)
         n = sum(c.values())
@@ -326,5 +366,6 @@ def main(argv):
     for m in mods:
         write_module(m, verify="--no-verify" not in argv, out_dir=out_dir, split=split,
                      build_whole="--build" in argv)
-    scoreboard(out_dir)
+    if "--scoreboard" in argv or any(not os.path.isfile(m) or in_corpus(m) for m in mods):
+        scoreboard(out_dir)                      # (not for a file that is not the product's)
     return 0
