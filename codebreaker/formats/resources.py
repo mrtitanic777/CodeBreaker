@@ -78,45 +78,16 @@ def read(path):
 
 
 def read_pe(pe):
-    """The resource directory of a 32-bit module: three levels (type, name, language)."""
-    if len(pe.datadirs) < 3 or not pe.datadirs[2][0]:
-        return []
-    base = pe._rva_to_off(pe.datadirs[2][0])
-    if base is None:
-        return []
-    d, out = pe.data, []
-
-    def entries(off, seen):
-        p = base + off
-        if off in seen or p + 16 > len(d):
-            return
-        seen.add(off)
-        named, ids = struct.unpack_from("<HH", d, p + 12)
-        for i in range(named + ids):
-            if p + 24 + i * 8 > len(d):
-                return
-            name, where = struct.unpack_from("<II", d, p + 16 + i * 8)
-            if name & 0x80000000:
-                q = base + (name & 0x7FFFFFFF)
-                n = struct.unpack_from("<H", d, q)[0]
-                name = d[q + 2:q + 2 + 2 * n].decode("utf-16-le", "replace")
-            yield name, where & 0x7FFFFFFF, bool(where & 0x80000000)
-
-    seen = set()
-    for rtype, toff, tdir in entries(0, seen):
-        if not tdir:
-            continue
-        for name, noff, ndir in entries(toff, seen):
-            if not ndir:
+    """The resources of a 32-bit module (the directory itself is walked by PEFile.resource_tree)."""
+    out = []
+    for t in pe.resource_tree():
+        rtype = t["id"] if t["id"] is not None else t["type"]
+        for item in t["items"]:
+            off, size = item.get("offset"), item.get("size") or 0
+            if off is None or off + size > len(pe.data):
                 continue
-            for lang, loff, ldir in entries(noff, seen):
-                if ldir or base + loff + 16 > len(d):
-                    continue
-                rva, size = struct.unpack_from("<II", d, base + loff)
-                off = pe._rva_to_off(rva)
-                if off is None or off + size > len(d):
-                    continue
-                out.append(Resource(rtype, name, lang if isinstance(lang, int) else 0, 0, d[off:off + size]))
+            name = item["id"] if item.get("id") is not None else item["name"]
+            out.append(Resource(rtype, name, item.get("language") or 0, 0, pe.data[off:off + size]))
     return out
 
 

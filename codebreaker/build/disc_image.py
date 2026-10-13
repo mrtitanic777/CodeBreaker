@@ -1,4 +1,4 @@
-"""disc_image.py -- write an ISO-9660 CD image from a folder, and read one back.
+"""disc_image.py -- write an ISO-9660 CD image from a folder.
 
 The writer produces a plain level-1 image (8.3 upper-case names, no Joliet or Rock Ridge
 extensions), optionally bootable through an El Torito boot record with floppy emulation. File
@@ -9,12 +9,9 @@ are listed (DiscError), instead of producing an image with two files of one name
 
     from codebreaker.build import disc_image
     disc_image.write(folder, out_path, volume_id="CODEBREAKER", boot_image=None)  # -> bytes
-    disc_image.read_directory(iso_path)     # {"DIR/NAME.EXT": (sector, size, is_dir)}
-    disc_image.read_file(iso_path, "dir/name.ext")                                # -> bytes
-    disc_image.extract(iso_path, outdir)    # -> number of files
-    disc_image.describe(iso_path)           # volume id, size, boot entry
 
-The reader also understands Joliet (long-name) discs, and prefers those names when present.
+Reading an image back (and floppy and hard-disk images) is codebreaker/formats/media.py; the
+--list and --extract forms of the command below go there.
 
     python -m codebreaker disc <folder> <out.iso> [--volume NAME] [--boot IMG]
     python -m codebreaker disc --list <image.iso>
@@ -24,6 +21,8 @@ import os
 import struct
 import sys
 import time
+
+from codebreaker.formats import media
 
 SECTOR = 2048
 _ALLOWED = set("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
@@ -257,117 +256,6 @@ class _BootFile:
         self.source, self.lba, self.size = source, lba, size
 
 
-# --- reading -------------------------------------------------------------------------------
-def _volume(f):
-    """(root sector, root size, joliet, boot catalog sector or None, volume id)."""
-    primary = joliet = catalog = None
-    for sector in range(16, 16 + 64):
-        f.seek(sector * SECTOR)
-        d = f.read(SECTOR)
-        if len(d) < SECTOR or d[1:6] != b"CD001" or d[0] == 255:
-            break
-        if d[0] == 1:
-            primary = d
-        elif d[0] == 2 and d[88:91] in (b"%/@", b"%/C", b"%/E"):
-            joliet = d
-        elif d[0] == 0 and d[7:30] == b"EL TORITO SPECIFICATION":
-            catalog = struct.unpack_from("<I", d, 71)[0]
-    if primary is None:
-        raise DiscError("no ISO-9660 primary volume descriptor")
-    d = joliet or primary
-    label = d[40:72].decode("utf-16-be" if joliet else "latin-1", "replace").strip(" \0")
-    return (struct.unpack_from("<I", d, 158)[0], struct.unpack_from("<I", d, 166)[0],
-            joliet is not None, catalog, label)
-
-
-def read_directory(iso_path):
-    """Every file and folder of an image: {path: (sector, size, is_dir)}, paths with "/" and
-    without the ";1" version suffix."""
-    found = {}
-    with open(iso_path, "rb") as f:
-        root_lba, root_size, joliet, _catalog, _label = _volume(f)
-        todo, visited = [("", root_lba, root_size)], set()
-        while todo:
-            prefix, lba, size = todo.pop()
-            if lba in visited:
-                continue
-            visited.add(lba)
-            f.seek(lba * SECTOR)
-            data = f.read(size)
-            at = 0
-            while at < len(data):
-                length = data[at]
-                if length == 0:                              # rest of this sector is padding
-                    at = (at // SECTOR + 1) * SECTOR
-                    continue
-                record, at = data[at:at + length], at + length
-                if len(record) < 34:
-                    continue
-                raw = record[33:33 + record[32]]
-                if raw in (b"\0", b"\1"):                    # "." and ".."
-                    continue
-                name = raw.decode("utf-16-be" if joliet else "latin-1", "replace")
-                name = name.split(";")[0].rstrip(".")
-                where = struct.unpack_from("<I", record, 2)[0]
-                extent = struct.unpack_from("<I", record, 10)[0]
-                is_dir = bool(record[25] & 2)
-                found[prefix + name] = (where, extent, is_dir)
-                if is_dir:
-                    todo.append((prefix + name + "/", where, extent))
-    return found
-
-
-def read_file(iso_path, path, directory=None):
-    """The bytes of one file; `path` is matched without regard to case or slash direction."""
-    directory = directory or read_directory(iso_path)
-    want = path.replace("\\", "/").strip("/").lower()
-    for name, (lba, size, is_dir) in directory.items():
-        if name.lower() == want and not is_dir:
-            with open(iso_path, "rb") as f:
-                f.seek(lba * SECTOR)
-                return f.read(size)
-    raise DiscError("%s: no file %s" % (iso_path, path))
-
-
-def extract(iso_path, outdir):
-    """Copy every file of an image into `outdir`; returns how many."""
-    count = 0
-    with open(iso_path, "rb") as f:
-        for name, (lba, size, is_dir) in sorted(read_directory(iso_path).items()):
-            parts = [p for p in name.split("/") if p not in ("", ".", "..")]
-            target = os.path.join(outdir, *parts)
-            if is_dir:
-                os.makedirs(target, exist_ok=True)
-                continue
-            os.makedirs(os.path.dirname(target), exist_ok=True)
-            f.seek(lba * SECTOR)
-            with open(target, "wb") as out:
-                for left in range(size, 0, -(1 << 20)):
-                    out.write(f.read(min(left, 1 << 20)))
-            count += 1
-    return count
-
-
-def describe(iso_path):
-    """Volume id, size and boot entry of an image: {"volume_id", "sectors", "joliet",
-    "boot"}; "boot" is None or {"media", "sectors", "lba", "valid"}."""
-    with open(iso_path, "rb") as f:
-        _lba, _size, joliet, catalog, label = _volume(f)
-        f.seek(16 * SECTOR + 80)
-        sectors = struct.unpack("<I", f.read(4))[0]
-        boot = None
-        if catalog is not None:
-            f.seek(catalog * SECTOR)
-            c = f.read(64)
-            valid = (c[0] == 1 and c[30:32] == b"\x55\xAA"
-                     and sum(struct.unpack("<16H", c[:32])) & 0xFFFF == 0 and c[32] == 0x88)
-            media = {0: "none", 1: "1.2M floppy", 2: "1.44M floppy", 3: "2.88M floppy",
-                     4: "hard disk"}.get(c[33] & 15, "?")
-            count, lba = struct.unpack_from("<HI", c, 38)
-            boot = {"media": media, "sectors": count, "lba": lba, "valid": valid}
-    return {"volume_id": label, "sectors": sectors, "joliet": joliet, "boot": boot}
-
-
 def main(argv):
     """python -m codebreaker disc <folder> <out.iso> [--volume NAME] [--boot IMG]
     python -m codebreaker disc --list <image.iso>
@@ -384,21 +272,9 @@ def main(argv):
             args.append(a)
     try:
         if "--list" in options and len(args) == 1:
-            about = describe(args[0])
-            print("volume %s, %d sectors%s" % (about["volume_id"], about["sectors"],
-                                               ", Joliet names" if about["joliet"] else ""))
-            if about["boot"]:
-                print("bootable: %(media)s emulation, image at sector %(lba)d" % about["boot"]
-                      + ("" if about["boot"]["valid"] else "  (boot catalog NOT valid)"))
-            entries = read_directory(args[0])
-            for name in sorted(entries):
-                lba, size, is_dir = entries[name]
-                print("%10s  %7d  %s" % ("<dir>" if is_dir else size, lba, name))
-            print("%d files, %d folders" % (sum(1 for e in entries.values() if not e[2]),
-                                            sum(1 for e in entries.values() if e[2])))
-            return 0
+            return media.main(["list", args[0], "--boot"])
         if "--extract" in options and len(args) == 2:
-            print("extracted %d files to %s" % (extract(args[0], args[1]), args[1]))
+            print("extracted %d files to %s" % (media.extract(args[0], args[1]), args[1]))
             return 0
         if len(args) == 2 and "--list" not in options and "--extract" not in options:
             size = write(args[0], args[1], volume_id=options.get("--volume", "CODEBREAKER"),

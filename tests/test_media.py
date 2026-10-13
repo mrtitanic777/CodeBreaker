@@ -18,6 +18,7 @@ if ROOT not in sys.path:
 
 from codebreaker.base import corpus                 # noqa: E402
 from codebreaker.build import disc_image            # noqa: E402
+from codebreaker.formats import media                # noqa: E402
 from codebreaker.formats import cab                 # noqa: E402
 
 RESULTS = []
@@ -231,18 +232,17 @@ def test_disc_image_round_trip():
     iso = os.path.join(d, "t.iso")
     size = disc_image.write(src, iso, volume_id="my disc")
     assert size == os.path.getsize(iso) and size % disc_image.SECTOR == 0
-    listing = disc_image.read_directory(iso)
-    files = {n for n, e in listing.items() if not e[2]}
+    v, = media.volumes(iso)
+    listing = {e.path.upper(): e for e in v.files()}
+    files = {n for n, e in listing.items() if not e.is_dir}
     assert files == set(made), files ^ set(made)
-    assert {n for n, e in listing.items() if e[2]} == {"SYSTEM", "SYSTEM/DEEP", "MANY"}
+    assert {n for n, e in listing.items() if e.is_dir} == {"SYSTEM", "SYSTEM/DEEP", "MANY"}
     for name, data in made.items():
-        assert listing[name][1] == len(data)
-        assert disc_image.read_file(iso, name.lower(), listing) == data, name
-    about = disc_image.describe(iso)
-    assert about["volume_id"] == "MY_DISC" and about["boot"] is None
-    assert about["sectors"] * disc_image.SECTOR == size
+        assert listing[name].size == len(data)
+        assert v.read(listing[name]) == data, name
+    assert v.label == "MY_DISC" and v.boot_image() is None
     out = os.path.join(d, "out")
-    assert disc_image.extract(iso, out) == len(made)
+    assert media.extract(iso, out) == len(made)
     with open(os.path.join(out, "SYSTEM", "DEEP", "Z.Z"), "rb") as f:
         assert f.read() == made["SYSTEM/DEEP/Z.Z"]
 
@@ -255,14 +255,16 @@ def test_disc_image_bootable():
         f.write(image)
     iso = os.path.join(d, "b.iso")
     disc_image.write(src, iso, boot_image=boot)
-    entry = disc_image.describe(iso)["boot"]
-    assert entry and entry["valid"] and entry["media"] == "1.44M floppy", entry
+    vols = media.volumes(iso)
+    offset, size, kind = vols[0].boot_image()
+    assert kind == 2 and size == len(image), (kind, size)                 # a 1.44 MB floppy
     with open(iso, "rb") as f:
         f.seek(17 * disc_image.SECTOR)
         assert f.read(30)[7:] == b"EL TORITO SPECIFICATION"
-        f.seek(entry["lba"] * disc_image.SECTOR)
+        f.seek(offset)
         assert f.read(len(image)) == image
-    assert disc_image.read_file(iso, "system/kernel.bin") == made["SYSTEM/KERNEL.BIN"]
+    listing = {e.path.upper(): e for e in vols[0].files()}
+    assert vols[0].read(listing["SYSTEM/KERNEL.BIN"]) == made["SYSTEM/KERNEL.BIN"]
 
 
 def test_disc_image_reports_name_clashes():

@@ -37,7 +37,7 @@ import struct
 import time
 
 from codebreaker.base import corpus
-from codebreaker.formats import detect, le, ne, pe
+from codebreaker.formats import detect, le, ne, pe, resources
 
 SECTIONS = ("summary", "dos", "headers", "directories", "sections", "exports", "imports", "resources",
             "relocations", "tls", "debug", "certificates", "clr", "rich", "driver", "members",
@@ -447,49 +447,22 @@ def hexdump(path, offset=0, length=256):
 
 
 def _version_text(data, wide):
+    fixed, table, _translations = resources.version(data, wide)
     out = []
-    at = data.find(b"\xbd\x04\xef\xfe")                       # the fixed part's signature
-    if at >= 0 and at + 24 <= len(data):
-        a, b, c, d = struct.unpack_from("<4I", data, at + 8)
+    if fixed:
+        a, b, c, d = fixed[2:6]
         out += ["FileVersion      %d.%d.%d.%d" % (a >> 16, a & 0xFFFF, b >> 16, b & 0xFFFF),
                 "ProductVersion   %d.%d.%d.%d" % (c >> 16, c & 0xFFFF, d >> 16, d & 0xFFFF), ""]
-    text = data.decode("utf-16-le" if wide else "latin1", "replace")
-    for key in ("CompanyName", "FileDescription", "FileVersion", "InternalName", "LegalCopyright",
-                "OriginalFilename", "ProductName", "ProductVersion", "Comments", "LegalTrademarks"):
-        i = text.find(key + "\0")
-        if i < 0:
-            continue
-        value = text[i + len(key):].lstrip("\0").split("\0", 1)[0].strip()
-        if value:
-            out.append("%-17s%s" % (key, value))
+    for _language, entries in sorted(table.items()):
+        out += ["%-17s%s" % (key, text.strip()) for key, text in entries if text.strip()]
     return "\n".join(out) or "(no version fields could be read)"
 
 
 def _string_table(data, wide):
     """A string resource holds sixteen strings, each led by its length."""
-    out, at = [], 0
-    for i in range(16):
-        if at + (2 if wide else 1) > len(data):
-            break
-        n = struct.unpack_from("<H", data, at)[0] if wide else data[at]
-        at += 2 if wide else 1
-        if n:
-            raw = data[at:at + n * (2 if wide else 1)]
-            out.append("[%2d] %s" % (i, raw.decode("utf-16-le" if wide else "latin1", "replace")
-                                     .replace("\r", " ").replace("\n", " ")))
-            at += len(raw)
+    out = ["[%2d] %s" % (i, text.replace("\r", " ").replace("\n", " "))
+           for i, text in enumerate(resources.strings(data, wide)) if text]
     return "\n".join(out) or "(no strings in this block)"
-
-
-def _as_bitmap(dib):
-    """A bitmap resource is a picture without its file header; put one in front."""
-    size, bits = struct.unpack_from("<I", dib, 0)[0], struct.unpack_from("<H", dib, 14)[0]
-    if size == 12:                                           # the OS/2 form: 3-byte palette entries
-        palette = (1 << struct.unpack_from("<H", dib, 10)[0]) * 3 if struct.unpack_from("<H", dib, 10)[0] <= 8 else 0
-    else:
-        used = struct.unpack_from("<I", dib, 32)[0] if len(dib) >= 36 else 0
-        palette = (used or (1 << bits)) * 4 if bits <= 8 else 0
-    return b"BM" + struct.pack("<IHHI", 14 + len(dib), 0, 0, 14 + size + palette) + dib
 
 
 def _as_icon(image, cursor):
@@ -523,8 +496,10 @@ def resource_body(path, offset, size, type_id=-1, wide=True, limit=1 << 20):
     if not data:
         return {"kind": "hex", "text": "(empty)"}
     try:
+        if type_id == 2 and len(data) < 12:
+            raise ValueError("too short to be a picture")
         if type_id == 2:
-            return {"kind": "image", "content_type": "image/bmp", "bytes": _as_bitmap(data)}
+            return {"kind": "image", "content_type": "image/bmp", "bytes": resources.bitmap_file(data)}
         if type_id in (1, 3):
             return {"kind": "image", "content_type": "image/x-icon", "bytes": _as_icon(data, type_id == 1)}
         if type_id == 16:
