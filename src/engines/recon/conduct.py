@@ -37,7 +37,7 @@ segdiff = cores.get('segdiff')
 target = cores.get('target')
 trace = cores.get('trace')
 
-LEDGER_DIR = os.path.join("reports", "conduct")
+LEDGER_DIR = os.path.join(layout.runtime_dir(), "conduct")
 CHUNK = 40                 # functions assembled per DOSBox boot (batched reconcile)
 
 
@@ -106,9 +106,10 @@ def _module_done(module):
 
 
 def _tier_modules(tier):
-    """Conductable (NE/PE) module basenames in a tier, smallest code first so the
-    quick wins bank before the long-pole modules. LE/LX (VxD) modules are skipped
-    — there is no LE loader yet, so they are not reconstructable."""
+    """Conductable module basenames in a tier, smallest code first so the quick wins bank
+    before the long-pole modules. Covers NE, PE AND LE/LX (VxD): LE code is 32-bit flat, so
+    an object's bytes feed the same reconcile path (le.py carves them, and linkfile verifies
+    the whole VxD byte-exact — 223 LE modules are banked this way alongside 338 NE / 634 PE)."""
     try:
         paths = target.tiers().get(tier, [])
     except Exception:
@@ -195,6 +196,37 @@ def _reconcile_one_pe(sg, sec_i, start, end, seg_mask, emitdir=None):
     except Exception as e:
         return {"seg": sec_i, "off": start, "size": end - start, "status": "error",
                 "err": repr(e)[:120], "live": 0, "total": 0, "db": 0}
+
+
+def recover_c_pe(module, emitdir=None, limit=None):
+    """C-inversion companion to the ASM reconcile (Track B): recover byte-exact C for the PE
+    module's leaf functions via the MSVC-2.0 model inverse (oracle_router.recover32), writing a
+    sec<i>_<off>.c beside each sec<i>_<off>.asm.  Returns (recovered, sampled).  Every emitted C
+    is byte-exact by construction (self-verified through msvc2model.emit); the rest are declined."""
+    import capstone
+    from src.formats.pe_trace import PeCarve
+    from src.engines.inverse import oracle_router, msvc2cov
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
+    carve = PeCarve(module)
+    secbase = {va: i for i, (va, _d, _n) in enumerate(carve.sections, 1)}
+    rec = tot = 0
+    for s, f in sorted(carve.funcs.items()):
+        b = msvc2cov._leaf_bytes(md, carve, s, f["end"])
+        if not b or len(b) < 3:
+            continue
+        tot += 1
+        r = oracle_router.recover32(b)
+        if r.get("exact"):
+            rec += 1
+            if emitdir:
+                base, _ = carve._sec_of(s)
+                os.makedirs(emitdir, exist_ok=True)
+                open(os.path.join(emitdir, "sec%d_%05x.c" % (secbase.get(base, 0), s - base)),
+                     "w", newline="\r\n").write(
+                         "/* %s  (msvc2 byte-exact) */\n%s\n" % (f.get("name") or "sub_%x" % s, r["c"]))
+        if limit and tot >= limit:
+            break
+    return rec, tot
 
 
 def _record(sg, seg_i, start, end, asm, res, fdb, n, fmt, emitdir):
@@ -417,7 +449,7 @@ def _reconstruct_core(module, fmt, raw, ledger, ledger_path, emitdir, jobs,
 
 
 # -- two-phase (disassemble the whole queue, then reconstruct it) disk cache ----
-DISASM_CACHE = os.path.join("reports", "disasm_cache")
+DISASM_CACHE = os.path.join(layout.runtime_dir(), "disasm_cache")
 
 
 class _LiteSeg:
@@ -479,8 +511,7 @@ def run(module, jobs=6, limit=None, only_seg=None, ledger_path=None, quiet=False
     ledger = json.load(open(ledger_path)) if os.path.exists(ledger_path) else {}
     emitdir = None
     if emit:
-        emitdir = os.path.join(layout.asm_dir(), module.lower())
-        os.makedirs(emitdir, exist_ok=True)
+        emitdir = layout.asm_module_out_dir(module)      # component dir when tree active
     progress.caption("Reconstructing %s" % module.upper())
     fmt, raw = _disasm_segjobs(module, only_seg)
     return _reconstruct_core(module, fmt, raw, ledger, ledger_path, emitdir,
@@ -605,7 +636,7 @@ def _verify_link(module, totals):
     module) is surfaced loudly rather than silently passed."""
     from src.core import progress
     try:
-        from src.engines.recon import linkfile
+        linkfile = cores.get('linkfile')            # a target may carry its own
         r = linkfile.link_module(module)
     except Exception as e:
         progress.detail("LINK ERR  %-16s %s" % (os.path.basename(module).upper(), repr(e)[:40]))
@@ -676,7 +707,7 @@ def main():
                          "binary (records to reports/link_verify.jsonl, shows a "
                          "running linked-count in the UI)")
     ap.add_argument("--ui", action="store_true",
-                    help="(default) show the native Win98 progress meter")
+                    help="(default) show the native progress meter")
     ap.add_argument("--no-ui", action="store_true",
                     help="suppress the progress meter (CI/headless only)")
     ap.add_argument("--report", action="store_true",
@@ -812,8 +843,7 @@ def main():
                 ledger = json.load(open(ledger_path)) if os.path.exists(ledger_path) else {}
                 emitdir = None
                 if args.emit:
-                    emitdir = os.path.join(layout.asm_dir(), os.path.basename(m).lower())
-                    os.makedirs(emitdir, exist_ok=True)
+                    emitdir = layout.asm_module_out_dir(os.path.basename(m))
                 try:
                     fmt, raw = _load_disasm(m)         # from phase 1
                 except Exception:
