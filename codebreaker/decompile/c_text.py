@@ -277,7 +277,7 @@ def compilable32(module_path, funcs, outdir):
     # imports by number, under the names the description gave them: declared and linked too
     numbered = describe.BY_NUMBER.get(module_path) or {}
     imports.update({n: stem for n, (stem, _number, _pop) in numbered.items() if n not in imports})
-    sizes, in_ecx = {}, set()
+    sizes, in_ecx, in_edx = {}, set(), set()
     for n in order:
         body = []
         for ln in out[n].split("\n"):
@@ -304,6 +304,10 @@ def compilable32(module_path, funcs, outdir):
             head, brace, body = t.partition("{")
             t = head.replace("__thiscall ", "").replace("__thiscall", "") + brace + body
             in_ecx.add(n)
+        elif "__fastcall" in t.split("{", 1)[0]:             # ... or its first two in ECX and EDX
+            head, brace, body = t.partition("{")
+            t = head.replace("__fastcall ", "").replace("__fastcall", "") + brace + body
+            in_edx.add(n)
         out[n] = t
     text = "\n".join(out.values())
     macros = []
@@ -356,6 +360,8 @@ def compilable32(module_path, funcs, outdir):
         decls.append(head + ";")
         if n in in_ecx:
             decls.append('#pragma aux %s "_*" parm routine [ecx] value [eax] modify [eax ecx edx];' % n)
+        elif n in in_edx:
+            decls.append('#pragma aux %s "_*" parm routine [ecx] [edx] value [eax] modify [eax ecx edx];' % n)
     out = _fit_calls(out, order)
     # the core's names for values of sizes C has no type for (5 bytes of a 64-bit product, 10 of a
     # floating-point register): each is given the next type that holds it. One left undeclared
@@ -372,16 +378,17 @@ def compilable32(module_path, funcs, outdir):
     preamble = _TYPES + "\n".join(odd) + "\n" + _HELPERS + _X86_HELPERS + "\n".join(decls) + "\n" + "\n".join(macros) + "\n"
     from codebreaker.decompile import struct_text
     preamble, out = struct_text.apply(module_path, preamble, out, by_va)       # `p->field` for `*(T *)(p + N)`
-    return preamble, out, order, by_va, used, in_ecx
+    return preamble, out, order, by_va, used, in_ecx, in_edx
 
 
 class Module(object):
     """A decompiled module: `header` (shared text), `functions` {address: (name, text)},
     `order` (names by address), `imports` (the import names its functions call)."""
 
-    def __init__(self, header, texts, order, by_va, imports, in_ecx=()):
+    def __init__(self, header, texts, order, by_va, imports, in_ecx=(), in_edx=()):
         self.header, self.texts, self.order, self.by_va, self.imports = header, texts, order, by_va, imports
         self.in_ecx = set(in_ecx)                # names of functions that take their first argument in ECX
+        self.in_edx = set(in_edx)                # ... and their second in EDX
         self.functions = {va: (n, texts[n]) for va, n in by_va.items()}
 
 

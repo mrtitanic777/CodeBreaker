@@ -56,14 +56,14 @@ def build(m, module_path, work):
         if fn not in where:
             dropped[fn] = "not in the build"
         else:
-            items[fn] = (m.key[fn], m.va[fn], dll, where[fn], fn in m.in_ecx)
+            items[fn] = (m.key[fn], m.va[fn], dll, where[fn], 2 if fn in m.in_edx else 1 if fn in m.in_ecx else 0)
     return module_path, items, dropped
 
 
 def judge(module_path, item):
     """Worker: judge one function. item = (key, address, dll, entry)."""
     _key, va, dll, entry = item[:4]
-    shape = in_ecx if len(item) > 4 and item[4] else (lambda v: v)
+    shape = (in_ecx_edx if item[4] == 2 else in_ecx) if len(item) > 4 and item[4] else (lambda v: v)
     info = {}
     try:
         verdict, reason, limits = compare.compare(
@@ -81,7 +81,7 @@ def judge(module_path, item):
     return verdict, reason, list(limits), info.get("detail", "")
 
 
-PIPE_REV = 22                   # what a verdict means (13: one build per batch; bodies the compiler rejects are dropped by name)
+PIPE_REV = 23                   # what a verdict means (13: one build per batch; bodies the compiler rejects are dropped by name)
 MAX_SUPPORT = 1500              # out-of-batch callee bodies pulled in per batch
 GOOD = ("equivalent", "consistent")
 
@@ -249,7 +249,8 @@ def _fp_key(sha, func, spec):
     return "r%d:%s:%s" % (compare.REV, sha, _hashlib.sha1(
         repr((func, args, mi, int(spec.get("stub_ret", 0))) + (
             (tuple(spec["sentinels"]),) if spec.get("sentinels") else ()) + (
-            ("ecx", int(spec["ecx"])) if spec.get("ecx") is not None else ())).encode()).hexdigest())
+            ("ecx", int(spec["ecx"])) if spec.get("ecx") is not None else ()) + (
+            ("edx", int(spec["edx"])) if spec.get("edx") is not None else ())).encode()).hexdigest())
 
 
 def in_ecx(v):
@@ -258,6 +259,13 @@ def in_ecx(v):
     if "ecx" in v:
         return v
     return dict(v, ecx=v["args"][0], args=list(v["args"][1:]) + [0], given=list(v["args"]))
+
+
+def in_ecx_edx(v):
+    """... and for one that takes its first two in ECX and EDX."""
+    if "ecx" in v:
+        return v
+    return dict(v, ecx=v["args"][0], edx=v["args"][1], args=list(v["args"][2:]) + [0, 0], given=list(v["args"]))
 
 
 # The oracle's stack (and the RET landing pad just under it) sits at the top of the scratch region.
@@ -394,7 +402,7 @@ def _fp_pe(path, func, spec, rebuilt=False):
                                   stub_externals=True, sig_resolver=_argc,
                                   stub_ret=int(spec.get("stub_ret", 0)),
                                   overlay=rebuilt if isinstance(rebuilt, str) else None,
-                                  sentinels=spec.get("sentinels"), reads=False, stop_wild=True, ecx=spec.get("ecx"),
+                                  sentinels=spec.get("sentinels"), reads=False, stop_wild=True, ecx=spec.get("ecx"), edx=spec.get("edx"),
                                   # CB_PLAIN=1: one instruction at a time on a fresh machine
                                   # each run -- the slow way the fast one must agree with
                                   quiet_stack=True, reuse=not _PLAIN, fast=not _PLAIN, lean=not _PLAIN, pads=_PADS)

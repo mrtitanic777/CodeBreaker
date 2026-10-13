@@ -123,11 +123,13 @@ class Machine : public SleighArchitecture {
 //
 // `self`: the function takes its first argument in ECX (a C++ member function's object) and
 // removes the rest itself -- said by the describer, which saw ECX read before it is written.
-void applyX86Proto(Machine& m, Funcdata* fd, const std::string& name, int pop, bool self = false) {
+void applyX86Proto(Machine& m, Funcdata* fd, const std::string& name, int pop, bool self = false,
+                   bool second = false) {
   if (pop < 0) return;
   FuncProto& fp = fd->getFuncProto();
   PrototypePieces pieces;
-  pieces.model = m.getModel(self ? "__thiscall" : pop == 0 ? "__cdecl" : "__stdcall");
+  // (`second`: and its second in EDX -- the two-register convention)
+  pieces.model = m.getModel(second ? "__fastcall" : self ? "__thiscall" : pop == 0 ? "__cdecl" : "__stdcall");
   pieces.name = name;
   // Every x86 function leaves a value in EAX and callers are free to use it; declaring the
   // result keeps it. Left to itself the analysis calls a function `void` whenever it does not
@@ -137,6 +139,10 @@ void applyX86Proto(Machine& m, Funcdata* fd, const std::string& name, int pop, b
   if (self) {
     pieces.intypes.push_back(m.types->getBase(4, TYPE_INT));
     pieces.innames.push_back("self");
+  }
+  if (second) {
+    pieces.intypes.push_back(m.types->getBase(4, TYPE_INT));
+    pieces.innames.push_back("second");
   }
   for (int i = 0; i < pop / 4; ++i) {
     pieces.intypes.push_back(m.types->getBase(4, TYPE_INT));
@@ -255,7 +261,8 @@ int main(int argc, char** argv) {
     }
     auto applyModel = [&](Funcdata* fd, const Fact& f) {
       if (f.model == "inline") { fd->getFuncProto().setInline(true); return; }
-      if (x86_32) { applyX86Proto(m, fd, f.name, f.pop, f.model == "__thiscall"); return; }
+      if (x86_32) { applyX86Proto(m, fd, f.name, f.pop, f.model == "__thiscall" || f.model == "__fastcall",
+                                  f.model == "__fastcall"); return; }
       if (!f.model.empty() && m.hasModel(f.model)) {
         FuncProto& fp = fd->getFuncProto();
         const int ret_addr = f.model.find("far") != std::string::npos ? 4 : 2;

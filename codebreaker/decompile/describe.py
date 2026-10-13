@@ -137,12 +137,13 @@ def describe32(module_path, funcs, outdir):
     # function's object. Read from the code (ECX is used before anything is put in it), and said
     # to the decompiler, which otherwise shows the object as a variable nobody set -- in the
     # function and, worse, not passed at all by its callers.
-    in_ecx = set()
+    in_ecx, in_edx = set(), set()
     if x86:
         try:
             from codebreaker.analyze import conventions, image
-            in_ecx = {va for va, fact in conventions.functions(image.load(module_path)).items()
-                      if fact.get("convention") == "thiscall"}
+            found = conventions.functions(image.load(module_path))
+            in_ecx = {va for va, fact in found.items() if fact.get("convention") == "thiscall"}
+            in_edx = {va for va, fact in found.items() if fact.get("convention") == "fastcall"}   # ECX and EDX
         except Exception:
             in_ecx = set()
     IN_ECX[module_path] = {names[va] for va in funcs if va in in_ecx}
@@ -154,7 +155,8 @@ def describe32(module_path, funcs, outdir):
             except Exception:
                 pop = None
         lines.append("F\t%x\t%s\t%d%s" % (va, names[va], -1 if pop is None else pop,
-                                             "\t__thiscall" if va in in_ecx and pop is not None else ""))
+                                             "\t__thiscall" if va in in_ecx and pop is not None else
+                                             "\t__fastcall" if va in in_edx and pop is not None else ""))
     # An import by number is called by its real name when the module that exports it (or that
     # module's definition file) gives it one that is a C name nothing else here already has;
     # how many bytes of arguments it takes is read from the export with that number.
