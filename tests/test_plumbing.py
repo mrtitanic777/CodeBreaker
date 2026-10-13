@@ -35,30 +35,11 @@ def check(fn):
 
 
 # --- toolchain -------------------------------------------------------------------------------
-def test_decompiler_resolution():
-    assert toolchain.decompiler("pe") == toolchain.decompiler("win95pedec.exe")
-    assert toolchain.decompiler("win95pedec") == toolchain.decompiler("pe")
-    assert toolchain.decompiler("no-such-lane") == ""
-    if not toolchain.decompiler("pe"):
-        raise Skip("decompilers not built")
-    assert os.path.isfile(toolchain.decompiler("pe"))
-    assert len(toolchain.decompiler_build_id()) == 12
-
-
-def test_decompiler_dir_override():
-    old = os.environ.get("CB_DECOMPILER_BIN")
-    d = tempfile.mkdtemp()
-    try:
-        os.environ["CB_DECOMPILER_BIN"] = d
-        assert toolchain.decompiler_dir() == d
-        assert toolchain.decompiler("pe") == ""            # nothing built there
-        open(os.path.join(d, "win95pedec.exe"), "wb").close()
-        assert toolchain.decompiler("pe") == os.path.join(d, "win95pedec.exe")
-    finally:
-        if old is None:
-            os.environ.pop("CB_DECOMPILER_BIN", None)
-        else:
-            os.environ["CB_DECOMPILER_BIN"] = old
+def test_decompiler_is_built():
+    from codebreaker.decompile import decompiler
+    if not decompiler.available():
+        raise Skip("native/decompiler is not built")
+    assert os.path.isfile(decompiler._exe()) and os.path.isdir(decompiler._languages())
 
 
 def test_openwatcom():
@@ -180,7 +161,7 @@ def test_throttle_is_safe():
 
 
 def main():
-    for fn in (test_decompiler_resolution, test_decompiler_dir_override, test_openwatcom,
+    for fn in (test_decompiler_is_built, test_openwatcom,
                test_corpus_rank_prefers_installed_copy, test_corpus_retail, test_corpus_modules,
                test_format_detection,
                test_isolated_map_separates_failures_and_resumes, test_throttle_is_safe):

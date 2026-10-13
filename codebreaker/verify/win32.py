@@ -94,6 +94,7 @@ def settings_profile(lane):
     if lane not in _PROFILES:
         import json
         from codebreaker.build import watcom as B
+        from codebreaker.decompile import c_text, decompiler
         cc = toolchain.ow_tool("wcc386" if lane == "pe" else "wcc")
         try:
             st = os.stat(cc)
@@ -106,7 +107,7 @@ def settings_profile(lane):
             "confirm_inputs": [v["args"] for v in _confirm_vectors(4, lane)],
             "max_calls": _MAX_CALLS, "max_support": MAX_SUPPORT,
             "directed": [MAX_DIRECTED, _HARVEST_DEPTH] if lane == "pe" else [],
-            "cflags": list(B._CFLAGS) if lane == "pe" else [], "runtime": B._RTL if lane == "pe" else "",
+            "cflags": list(c_text.CFLAGS), "decompiler": decompiler.REV, "runtime": B._RTL,
             "compiler": compiler,
         }
         text = json.dumps(settings, sort_keys=True)

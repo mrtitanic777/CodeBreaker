@@ -259,43 +259,22 @@ def _save(stem):
         pass
 
 
-_HEADERS = None
-_BY_VALUE = re.compile(r"\b(POINT|POINTS|SIZE|POINTL|SIZEL|COORD|LARGE_INTEGER|ULARGE_INTEGER|"
-                       r"double|DOUBLE|LONGLONG|ULONGLONG|DWORDLONG|FILETIME|CY|DATE|VARIANT)\b(?!\s*\*)")
+_TABLE = None
 
 
 def header_bytes(name):
-    """Argument bytes for `name` from the Win32 headers (OpenWatcom's, the ones we compile
-    against): 4 per parameter of a WINAPI prototype. None when there is no prototype, it is
-    variadic or not stdcall, or a parameter is passed by value and is wider than 4 bytes (a
-    POINT is 8): the header's parameter COUNT is then not the stack size."""
-    global _HEADERS
-    if _HEADERS is None:
-        path = os.path.join(corpus.design_dir(), "apiarity", "_headers.json")
+    """Argument bytes for `name` as the Win32 headers declare it, or None when the headers do
+    not settle it (no prototype; variadic; caller-cleans; a wide by-value parameter). Read from
+    win32_arguments.json beside this file (tools/make_api_table.py regenerates it)."""
+    global _TABLE
+    if _TABLE is None:
         try:
-            with open(path, encoding="utf-8") as f:
-                _HEADERS = json.load(f)
-        except Exception:
-            _HEADERS = {}
-            try:
-                from codebreaker.symbols import api_arguments as sdkprotos
-                for d in sdkprotos._ow_header_dirs()[:1]:
-                    for fn in sorted(os.listdir(d)):
-                        if fn.lower().endswith(".h"):
-                            for k, v in sdkprotos.extract_header(os.path.join(d, fn)).items():
-                                _HEADERS.setdefault(k, [v.get("conv") or "", v.get("params") or ""])
-                os.makedirs(os.path.dirname(path), exist_ok=True)
-                with open(path, "w", encoding="utf-8") as f:
-                    json.dump(_HEADERS, f, sort_keys=True)
-            except Exception:
-                pass
-    v = _HEADERS.get(name)
-    if not v:
-        return None
-    conv, params = v[0], str(v[1]).strip()
-    if "..." in params or conv.upper() in ("WINAPIV", "CDECL", "__CDECL", "_CDECL") or _BY_VALUE.search(params):
-        return None
-    return 0 if params in ("", "void", "VOID") else 4 * (params.count(",") + 1)
+            with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "win32_arguments.json"),
+                      encoding="utf-8") as f:
+                _TABLE = json.load(f)
+        except (OSError, ValueError):
+            _TABLE = {}
+    return _TABLE.get(name)
 
 
 def stack_bytes(dll, name):
@@ -396,113 +375,5 @@ def of(api):
     import re
     m = re.fullmatch(r"([A-Za-z0-9_]+?)[._]@?(\d+)", api or "")
     return arg_bytes(m.group(1), int(m.group(2))) if m else None
-
-
-# calling-convention markers that sit between the return type and the function name in a Win32
-# header declaration. Any token of the shape <UPPER>API (WINMMAPI is import-decoration, handled
-# separately) is also treated as a convention marker.
-_CONV = {"WINAPI", "APIENTRY", "PASCAL", "CALLBACK", "STDAPICALLTYPE", "ACMAPI", "STDCALL",
-         "WINGDIAPI", "STDAPI", "cdecl", "__cdecl", "__stdcall", "FAR"}
-# import/export decoration + storage-class tokens to strip from a captured return type.
-_DECORATION = {"WINMMAPI", "WINCOMMCTRLAPI", "WINVERAPI", "WINCOMMDLGAPI", "DECLSPEC_IMPORT",
-               "extern", "EXTERN_C", "__declspec(dllimport)", "WINOLEAPI", "WINOLEAUTAPI",
-               "WINADVAPI", "WINBASEAPI", "WINUSERAPI", "WINGDIAPI", "NTAPI", "LWSTDAPI"}
-
-_COMMENT = re.compile(r"//[^\n]*|/\*.*?\*/", re.S)
-_PREPROC = re.compile(r"^[ \t]*#.*$", re.M)                  # #define/#ifdef/#include/... lines
-_NAME_PAREN = re.compile(r"\b([A-Za-z_]\w*)\s*\(")
-
-
-def _strip_comments(text):
-    """Drop comments AND preprocessor directive lines -- so a captured return type is the real type
-    and not text bleeding out of a preceding #define/#ifdef (a \\ continued macro is dropped whole)."""
-    text = _COMMENT.sub(" ", text)
-    # remove line-continued preprocessor blocks first (a '#...\' run), then single directive lines
-    text = re.sub(r"^[ \t]*#(?:[^\n]*\\\n)+[^\n]*$", " ", text, flags=re.M)
-    text = _PREPROC.sub(" ", text)
-    return text
-
-
-def _clean_ret(tokens):
-    """Return type from the tokens before the convention marker: drop decoration/storage, keep the
-    real type words + any '*'."""
-    keep = [t for t in tokens if t not in _DECORATION and not t.startswith("__declspec")
-            and not re.match(r"^[A-Z][A-Z0-9_]*API$", t)]   # *API import/export decoration macros
-    ret = " ".join(keep).strip()
-    ret = re.sub(r"\s+\*", " *", re.sub(r"\s{2,}", " ", ret)).strip()
-    return ret or "void"
-
-
-def _norm_params(s):
-    """Collapse a parameter list to one clean line (comments already stripped)."""
-    s = re.sub(r"\s+", " ", s).strip()
-    return s or "void"
-
-
-def extract_header(path):
-    """-> dict name -> {ret, params, conv, header}. Parses the WINAPI-style declarations in one
-    header. Tolerant: a declaration is <ret tokens> <CONV> <name> ( <balanced params> ) ;"""
-    try:
-        text = _strip_comments(open(path, encoding="latin1", errors="replace").read())
-    except OSError:
-        return {}
-    out = {}
-    hdr = os.path.basename(path)
-    for m in _NAME_PAREN.finditer(text):
-        name = m.group(1)
-        if name in _CONV or name.endswith("API") or name in ("if", "for", "while", "sizeof",
-                                                              "return", "switch", "defined"):
-            continue
-        # the token immediately before the name must be a convention marker for this to be a decl
-        pre = text[:m.start()].rstrip()
-        pretok = re.findall(r"[A-Za-z_]\w*|\*", pre[-160:])
-        if not pretok:
-            continue
-        conv = pretok[-1]
-        # convention markers: WINAPI/APIENTRY/ACMAPI + any <UPPER>API, and the varargs forms
-        # <UPPER>APIV (VFWAPIV = cdecl varargs, used by ICCompress etc.).
-        is_conv = conv in _CONV or (conv.isupper() and (conv.endswith("API") or conv.endswith("APIV")))
-        if not is_conv:
-            continue
-        # return type = tokens before the convention marker, back to the start of this declaration
-        # (the previous ';' or '}' or '#').
-        seg = re.split(r"[;{}#]", pre)[-1]
-        rt = seg[:seg.rfind(conv)] if conv in seg else seg
-        ret = _clean_ret(re.findall(r"[A-Za-z_]\w*|\*", rt))
-        # balanced parameter list from the '(' the regex matched
-        i = m.end() - 1
-        depth, j = 0, i
-        while j < len(text):
-            if text[j] == "(":
-                depth += 1
-            elif text[j] == ")":
-                depth -= 1
-                if depth == 0:
-                    break
-            j += 1
-        if depth != 0:
-            continue
-        params = _norm_params(text[i + 1:j])
-        # STDAPI / STDAPI_(type): the COM export macro expands to `EXTERN_C <type> STDAPICALLTYPE`,
-        # so the real return is HRESULT (or the STDAPI_ argument), not the empty text before it.
-        if conv in ("STDAPI", "STDMETHODIMP"):
-            ret, conv = "HRESULT", "WINAPI"
-        elif ret in ("", "void") and conv.endswith("API") and not ret:
-            ret = "void"
-        if name not in out:
-            out[name] = {"ret": ret or "void", "params": params, "conv": conv, "header": hdr,
-                         "doc": "documented"}
-    return out
-
-
-# header -> which reference dirs to look in.  win32: the 32-bit SDK + DDK 32-bit includes.
-# win16: the DDK's 16-bit INC16 (the headers for the actual 16-bit NE DLLs -- VER, COMMDLG,
-# SHELL, MMSYSTEM, the very partners the 32-bit flat thunks target).
-def _ow_header_dirs():
-    """OpenWatcom's own Win32 headers -- the toolchain we actually BUILD with, so prototypes
-    extracted here match exactly what wcc386 compiles against (no E1071/E1062/E1051 header-skew)."""
-    from codebreaker.build import watcom as toolchain
-    ow = toolchain.openwatcom_root()
-    return [d for d in (os.path.join(ow, "h", "nt"), os.path.join(ow, "h")) if os.path.isdir(d)]
 
 
