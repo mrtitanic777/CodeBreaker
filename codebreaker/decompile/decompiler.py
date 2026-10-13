@@ -340,3 +340,68 @@ def decompile(module_path, funcs=None, outdir=None):
         funcs = pipeline.LANES["pe"].functions(module_path)
     outdir = outdir or B._scratch("decompiler", os.path.basename(module_path).lower())
     return Module(*compilable(module_path, funcs, outdir))
+
+
+# 16-bit modules ---------------------------------------------------------------------------------
+_CALLED = re.compile(r"\bfunc_0x([0-9a-f]{8})\s*\(")
+
+
+def decompile16(module_path, outdir=None, rounds=4):
+    """Decompile a 16-bit Windows module. -> ({name: text}, [names], {address: name}, Description)
+
+    Function starts come first from what the file states (entry table, relocations, agreed
+    near-call targets). Decompiling then shows calls to places not yet known as functions
+    (`func_0x...`); those are added and the module is done again, until no new ones appear."""
+    from codebreaker.build import watcom as B
+    from codebreaker.decompile import image16
+    outdir = outdir or B._scratch("decompiler16", os.path.basename(module_path).lower())
+    d = image16.describe(module_path, outdir)
+    out, order, by_va, _err = run(d.path)
+    for _ in range(rounds):
+        new = {int(x, 16) for t in out.values() for x in _CALLED.findall(t)} - set(d.names)
+        new = {va for va in new if image16.inside(d, va)}
+        if not new:
+            break
+        with open(d.path, "a", newline="\n", encoding="utf-8") as f:
+            for va in sorted(new):
+                seg, off = image16.where(va)
+                d.names[va], d.where[va] = "sub_%d_%04X" % (seg, off), (seg, off)
+                f.write("F\t%x\t%s\t-1\t__stdcall16near\n" % (va, d.names[va]))
+        more, _o, more_va, _err = run(d.path, only=sorted(new))      # only the new ones
+        out.update(more)
+        by_va.update(more_va)
+    order = [by_va[va] for va in sorted(by_va)]
+    return out, order, by_va, d
+
+
+def main(argv):
+    """python -m codebreaker decompile <module> [--out FILE]
+
+    Decompile any module the corpus or a path names -- 32-bit or 16-bit x86, or PowerPC -- and
+    write its functions as C. Nothing is built or judged; `module` does that."""
+    if not argv:
+        print(main.__doc__)
+        return 2
+    from codebreaker.base import corpus
+    from codebreaker.formats import detect
+    path = argv[0] if os.path.isfile(argv[0]) else corpus.retail(argv[0])
+    if not path:
+        raise SystemExit("no module %r" % argv[0])
+    kind = detect.lane(path)
+    if kind == "ne":
+        texts, order, _by_va, d = decompile16(path)
+        header, total = "", len(d.names)
+    elif kind == "pe":
+        m = decompile(path)
+        texts, order, header, total = m.texts, m.order, m.header, len(m.by_va)
+    else:
+        raise SystemExit("%s: a %s file; only 32-bit (PE) and 16-bit (NE) modules so far" % (
+            path, kind or "non-executable"))
+    out = argv[argv.index("--out") + 1] if "--out" in argv else \
+        os.path.splitext(os.path.basename(path))[0].lower() + ".c"
+    with open(out, "w", encoding="utf-8", newline="\n") as f:
+        f.write("/* %s -- decompiled by CodeBreaker; not built, not judged. */\n\n" % os.path.basename(path))
+        f.write(header + "\n\n" if header else "")
+        f.write("\n\n".join(texts[n] for n in order) + "\n")
+    print("%s: %d of %d functions -> %s" % (os.path.basename(path), len(order), total, out))
+    return 0

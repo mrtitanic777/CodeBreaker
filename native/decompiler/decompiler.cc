@@ -11,6 +11,13 @@
 //                                             return (x86 `ret N`), -1 when unknown/not applicable
 //   I      <hexVA> <name> <pop>               an import slot (a pointer the loader fills in) and
 //                                             the function it will hold
+//   X      <hexVA> <name> <pop> [<model>]     a function outside the image, at an address the
+//                                             describer chose (16-bit imports are patched in as
+//                                             far pointers to such addresses)
+//   reg    <register> <hexValue>              a register's value everywhere, e.g. DS = the data
+//                                             segment of a 16-bit module
+//
+// F may carry a fifth field, the calling-convention model by name (e.g. __stdcall16far).
 //
 // (tab separated). The analysis itself -- exact instruction semantics, data flow, stack and type
 // recovery, control-flow structuring, C printing -- is the Ghidra decompiler core in core/,
@@ -42,7 +49,7 @@ using namespace ghidra;
 
 namespace {
 
-struct Fact { uint64_t va; std::string name; int pop; };
+struct Fact { uint64_t va; std::string name; int pop; std::string model; };
 struct Span { uint64_t va; std::vector<uint8_t> data; };
 
 // Imports live at made-up addresses outside the image: an import slot reads as the address of
@@ -168,7 +175,8 @@ int main(int argc, char** argv) {
   if (!specs) { std::fprintf(stderr, "FAIL: CB_LANGUAGES is not set\n"); return 1; }
 
   std::string arch;
-  std::vector<Fact> funcs, imports;
+  std::vector<Fact> funcs, imports, externs;
+  std::vector<std::pair<std::string, uint64_t>> regs;
   std::vector<Span> spans;
   {
     std::ifstream in(argv[1]);
@@ -185,9 +193,12 @@ int main(int argc, char** argv) {
           return 1;
         }
         spans.push_back(std::move(s));
-      } else if (f.size() >= 3 && (f[0] == "F" || f[0] == "I")) {
-        Fact x{strtoull(f[1].c_str(), nullptr, 16), f[2], f.size() > 3 ? atoi(f[3].c_str()) : -1};
-        (f[0] == "I" ? imports : funcs).push_back(x);
+      } else if (f.size() >= 3 && (f[0] == "F" || f[0] == "I" || f[0] == "X")) {
+        Fact x{strtoull(f[1].c_str(), nullptr, 16), f[2], f.size() > 3 ? atoi(f[3].c_str()) : -1,
+               f.size() > 4 ? f[4] : std::string()};
+        (f[0] == "I" ? imports : f[0] == "X" ? externs : funcs).push_back(x);
+      } else if (f.size() >= 3 && f[0] == "reg") {
+        regs.push_back({f[1], strtoull(f[2].c_str(), nullptr, 16)});
       }
     }
   }
@@ -210,6 +221,7 @@ int main(int argc, char** argv) {
     DocumentStorage store;
     m.init(store);
     m.readonlypropagate = true;
+    m.max_instructions = 20000;                    // a wrong function start must fail quickly, not walk memory
     AddrSpace* code = m.getDefaultCodeSpace();
     Scope* glb = m.symboltab->getGlobalScope();
     // An import slot never changes while the module runs: reading one gives a constant, so a
@@ -223,11 +235,32 @@ int main(int argc, char** argv) {
       Funcdata* fd = glb->addFunction(ea, imports[i].name)->getFunction();
       if (x86_32) applyX86Proto(m, fd, imports[i].name, imports[i].pop);
     }
+    for (const auto& r : regs) {                     // a register known to hold one value throughout
+      const VarnodeData& vd = m.translate->getRegister(r.first);
+      TrackedSet& ts = m.context->getTrackedDefault();
+      ts.emplace_back();
+      ts.back().loc = vd;
+      ts.back().val = (uintb)r.second;
+    }
+    auto applyModel = [&](Funcdata* fd, const Fact& f) {
+      if (x86_32) { applyX86Proto(m, fd, f.name, f.pop); return; }
+      if (!f.model.empty() && m.hasModel(f.model)) {
+        fd->getFuncProto().setModel(m.getModel(f.model));
+        fd->getFuncProto().setModelLock(true);
+        // 16-bit: the bytes of arguments a function removes are its own `ret N` / `retf N`
+        // plus the return address the model already counts.
+        if (f.pop >= 0) fd->getFuncProto().setExtraPop(f.pop + (f.model.find("far") != std::string::npos ? 4 : 2));
+      }
+    };
+    for (const auto& x : externs) {
+      Address ea(code, (uintb)x.va);
+      applyModel(glb->addFunction(ea, x.name)->getFunction(), x);
+    }
     std::vector<std::pair<Funcdata*, Fact>> todo;
     for (const auto& f : funcs) {
       Address addr(code, (uintb)f.va);
       Funcdata* fd = glb->addFunction(addr, f.name)->getFunction();
-      if (x86_32) applyX86Proto(m, fd, f.name, f.pop);
+      applyModel(fd, f);
       if (only.empty() || only.count(f.va)) todo.push_back({fd, f});
     }
 

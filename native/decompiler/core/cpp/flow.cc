@@ -476,6 +476,25 @@ bool FlowInfo::processInstruction(const Address &curaddr,bool &startbasic)
     data.opMarkStartInstruction(*oiter); // Mark the first op in the instruction
     if (pCodeOverride != (const Override::Record *)0)
       pCodeOverride->performOverride(curaddr,data);
+    else {
+      // Changed for CodeBreaker (not in upstream Ghidra): a jump to the start of ANOTHER known
+      // function is a call to it followed by a return (a tail call, or a thunk to an import).
+      // The Ghidra application supplies this as a flow override per instruction; here the
+      // function table is complete before analysis starts, so it can be decided on the spot.
+      // Without it, flow walks into the other function -- or, for an import, into nothing.
+      PcodeOp *bop = data.findPrimaryBranch(curaddr,true,false,false,true);
+      if (bop != (PcodeOp *)0 && bop->isDead() && bop->code() == CPUI_BRANCH) {
+	const Address &dest( bop->getIn(0)->getAddr() );
+	if (!dest.isConstant() && dest != data.getAddress() &&
+	    data.getScopeLocal()->getParent()->queryFunction(dest) != (Funcdata *)0) {
+	  data.opSetOpcode(bop,CPUI_CALL);
+	  PcodeOp *newReturn = data.newOp(1,curaddr);
+	  data.opSetOpcode(newReturn,CPUI_RETURN);
+	  data.opSetInput(newReturn,data.newConstant(1,0),0);
+	  data.opDeadInsertAfter(newReturn,bop);
+	}
+      }
+    }
     xrefControlFlow(oiter,startbasic,isfallthru,(FuncCallSpecs *)0);
   }
 
