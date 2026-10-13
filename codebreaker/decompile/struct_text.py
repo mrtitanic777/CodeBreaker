@@ -64,8 +64,19 @@ def apply(module_path, header, texts, by_va):
             if root[0] == "arg" and root[1] in name_at:
                 fn = name_at[root[1]]
                 params = _parameters(texts.get(fn, ""))
-                if 0 <= root[2] < len(params):
-                    owner.setdefault((fn, params[root[2]]), s["name"])
+                head = texts.get(fn, "").split("{", 1)[0]
+                # (a function that takes `this` in a register has it first in its list, before
+                # the arguments on the stack that the analysis counts from 0)
+                shift = 1 if "__thiscall" in head or "__fastcall" in head else 0
+                if 0 <= root[2] + shift < len(params):
+                    owner.setdefault((fn, params[root[2] + shift]), s["name"])
+            elif root[0] == "this" and root[1] in name_at:
+                # the object a member function is called on: its first parameter, in ECX
+                fn = name_at[root[1]]
+                head = texts.get(fn, "").split("{", 1)[0]
+                params = _parameters(texts.get(fn, ""))
+                if params and ("__thiscall" in head or "__fastcall" in head):
+                    owner.setdefault((fn, params[0]), s["name"])
     if not owner:
         return header, texts
     # what type each field is read as, over the whole module

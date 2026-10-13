@@ -120,17 +120,24 @@ class Machine : public SleighArchitecture {
 // x86, 32-bit: a function that returns with `ret N` (N > 0) removes its own N/4 arguments
 // (stdcall); with a plain `ret` the caller cleans up (cdecl) and the argument count is left to
 // the analysis.
-void applyX86Proto(Machine& m, Funcdata* fd, const std::string& name, int pop) {
+//
+// `self`: the function takes its first argument in ECX (a C++ member function's object) and
+// removes the rest itself -- said by the describer, which saw ECX read before it is written.
+void applyX86Proto(Machine& m, Funcdata* fd, const std::string& name, int pop, bool self = false) {
   if (pop < 0) return;
   FuncProto& fp = fd->getFuncProto();
   PrototypePieces pieces;
-  pieces.model = m.getModel(pop == 0 ? "__cdecl" : "__stdcall");
+  pieces.model = m.getModel(self ? "__thiscall" : pop == 0 ? "__cdecl" : "__stdcall");
   pieces.name = name;
   // Every x86 function leaves a value in EAX and callers are free to use it; declaring the
   // result keeps it. Left to itself the analysis calls a function `void` whenever it does not
   // see the value used, and the function then returns nothing.
   pieces.outtype = m.types->getBase(4, TYPE_INT);
   pieces.firstVarArgSlot = -1;
+  if (self) {
+    pieces.intypes.push_back(m.types->getBase(4, TYPE_INT));
+    pieces.innames.push_back("self");
+  }
   for (int i = 0; i < pop / 4; ++i) {
     pieces.intypes.push_back(m.types->getBase(4, TYPE_INT));
     pieces.innames.push_back("a" + std::to_string(i + 1));
@@ -142,7 +149,7 @@ void applyX86Proto(Machine& m, Funcdata* fd, const std::string& name, int pop) {
   fp.setExtraPop(4 + pop);
   // With `ret N` the argument count is known; with a plain `ret` it is left to the analysis.
   // The argument TYPES are placeholders either way (four bytes each).
-  fp.setInputLock(pop > 0);
+  fp.setInputLock(pop > 0 || self);
   fp.setModelLock(true);
   fp.setOutputLock(true);
 }
@@ -248,7 +255,7 @@ int main(int argc, char** argv) {
     }
     auto applyModel = [&](Funcdata* fd, const Fact& f) {
       if (f.model == "inline") { fd->getFuncProto().setInline(true); return; }
-      if (x86_32) { applyX86Proto(m, fd, f.name, f.pop); return; }
+      if (x86_32) { applyX86Proto(m, fd, f.name, f.pop, f.model == "__thiscall"); return; }
       if (!f.model.empty() && m.hasModel(f.model)) {
         FuncProto& fp = fd->getFuncProto();
         const int ret_addr = f.model.find("far") != std::string::npos ? 4 : 2;

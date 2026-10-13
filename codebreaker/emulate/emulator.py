@@ -426,7 +426,7 @@ def _machine(U, path, sha, va0, code, secbase, size, imports, overlay, stub_exte
 def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS, mem_init=None,
                    stub_externals=None, stub_ret=0, stub_cleanup=0, sig_resolver=None,
                    stub_ret_unique=False, overlay=None, sentinels=None, reads=True, stop_wild=False,
-                   quiet_stack=False, reuse=False, fast=False, lean=False,
+                   quiet_stack=False, reuse=False, fast=False, lean=False, ecx=None,
                    pads=None):
     """Run one function under Unicorn with full hooks; return a TraceRecord (a plain dict).
 
@@ -517,6 +517,8 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
     from unicorn.x86_const import UC_X86_REG_EBX, UC_X86_REG_ESI, UC_X86_REG_EDI, UC_X86_REG_EBP
     for _r, _v in zip((UC_X86_REG_EBX, UC_X86_REG_ESI, UC_X86_REG_EDI, UC_X86_REG_EBP), sentinels or SAVED_SENTINELS):
         uc.reg_write(_r, _v)
+    if ecx is not None:                                      # an argument in ECX: a member function's object
+        uc.reg_write(UC_X86_REG_ECX, int(ecx) & 0xFFFFFFFF)
     entry_esp = esp
 
     rec = {

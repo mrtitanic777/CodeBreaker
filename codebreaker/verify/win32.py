@@ -56,21 +56,23 @@ def build(m, module_path, work):
         if fn not in where:
             dropped[fn] = "not in the build"
         else:
-            items[fn] = (m.key[fn], m.va[fn], dll, where[fn])
+            items[fn] = (m.key[fn], m.va[fn], dll, where[fn], fn in m.in_ecx)
     return module_path, items, dropped
 
 
 def judge(module_path, item):
     """Worker: judge one function. item = (key, address, dll, entry)."""
-    _key, va, dll, entry = item
+    _key, va, dll, entry = item[:4]
+    shape = in_ecx if len(item) > 4 and item[4] else (lambda v: v)
     info = {}
     try:
         verdict, reason, limits = compare.compare(
-            lambda v: _fp_pe(module_path, va, v),
-            lambda v: _fp_pe(dll, entry, v, rebuilt=module_path),
+            lambda v: _fp_pe(module_path, va, shape(v)),
+            lambda v: _fp_pe(dll, entry, shape(v), rebuilt=module_path),
             _vectors(4, "pe"), _confirm_vectors(4, "pe"),
             insns=insn_count(module_path, va),
-            directed=lambda cov, rch: directed_vectors(module_path, va, cov, reached=rch),
+            directed=lambda cov, rch: directed_vectors(module_path, va, cov, reached=rch,
+                                                       shape=shape if len(item) > 4 and item[4] else None),
             info=info, leftover=undefined_ret_bits)
     except ImportError:
         raise
@@ -79,7 +81,7 @@ def judge(module_path, item):
     return verdict, reason, list(limits), info.get("detail", "")
 
 
-PIPE_REV = 21                   # what a verdict means (13: one build per batch; bodies the compiler rejects are dropped by name)
+PIPE_REV = 22                   # what a verdict means (13: one build per batch; bodies the compiler rejects are dropped by name)
 MAX_SUPPORT = 1500              # out-of-batch callee bodies pulled in per batch
 GOOD = ("equivalent", "consistent")
 
@@ -246,7 +248,16 @@ def _fp_key(sha, func, spec):
     mi = tuple((int(a), bytes(b)) for a, b in (spec.get("mem_init") or []))
     return "r%d:%s:%s" % (compare.REV, sha, _hashlib.sha1(
         repr((func, args, mi, int(spec.get("stub_ret", 0))) + (
-            (tuple(spec["sentinels"]),) if spec.get("sentinels") else ())).encode()).hexdigest())
+            (tuple(spec["sentinels"]),) if spec.get("sentinels") else ()) + (
+            ("ecx", int(spec["ecx"])) if spec.get("ecx") is not None else ())).encode()).hexdigest())
+
+
+def in_ecx(v):
+    """The same input for a function that takes its first argument in ECX (a member function's
+    object): the first value there, the rest on the stack."""
+    if "ecx" in v:
+        return v
+    return dict(v, ecx=v["args"][0], args=list(v["args"][1:]) + [0], given=list(v["args"]))
 
 
 # The oracle's stack (and the RET landing pad just under it) sits at the top of the scratch region.
@@ -383,7 +394,7 @@ def _fp_pe(path, func, spec, rebuilt=False):
                                   stub_externals=True, sig_resolver=_argc,
                                   stub_ret=int(spec.get("stub_ret", 0)),
                                   overlay=rebuilt if isinstance(rebuilt, str) else None,
-                                  sentinels=spec.get("sentinels"), reads=False, stop_wild=True,
+                                  sentinels=spec.get("sentinels"), reads=False, stop_wild=True, ecx=spec.get("ecx"),
                                   # CB_PLAIN=1: one instruction at a time on a fresh machine
                                   # each run -- the slow way the fast one must agree with
                                   quiet_stack=True, reuse=not _PLAIN, fast=not _PLAIN, lean=not _PLAIN, pads=_PADS)
@@ -398,7 +409,7 @@ def _fp_pe(path, func, spec, rebuilt=False):
     wild = bool(r.get("bogus_stubs") or r.get("ran_into_zeros"))
     if wild and not rebuilt:
         return {"err": "call-into-nothing"}
-    deps = _call_seq(r.get("api_calls", []), [int(a) for a in spec["args"]],
+    deps = _call_seq(r.get("api_calls", []), [int(a) for a in spec.get("given") or spec["args"]],
                      _image_span(path) if rebuilt else None)
     fp = {"ret": r.get("ret"), "exit": "wild-call" if wild else compare._exit_norm(r.get("exit")), "deps": deps,
           "truncated": bool(r.get("truncated")),
@@ -528,7 +539,7 @@ def _harvest(path, func):
     return _HARVEST[key]
 
 
-def directed_vectors(path, func, covered, arity=4, reached=()):
+def directed_vectors(path, func, covered, arity=4, reached=(), shape=None):
     """Inputs chosen for THIS function. Generic inputs stop at the first guard (`if (msg != 0x4E)
     return`, `if (!g_initialised) return`), so most of a body never ran and was 'verified' on its
     first few instructions. Candidates put each constant the function compares against into each
@@ -562,6 +573,8 @@ def directed_vectors(path, func, covered, arity=4, reached=()):
         cands.append({"args": obj, "mem_init": fill})
     # "New code" is counted over everything that ran, callees included: an input that drives a
     # helper down a different path exercises the caller's use of it even at 100% own coverage.
+    if shape:                                    # (a member function: the first value goes in ECX)
+        cands = [shape(v) for v in cands]
     keep, seen = [], set(reached)
     for v in cands:
         f = _fp_pe(path, func, v)
@@ -581,7 +594,7 @@ def directed_vectors(path, func, covered, arity=4, reached=()):
     def did(f):
         return (f.get("exit"), f.get("ret"), f.get("deps"), f.get("writes"))
     done = set()
-    for v in list(_vectors(arity, "pe")) + list(_confirm_vectors(arity, "pe")) + keep:
+    for v in [shape(v) if shape else v for v in list(_vectors(arity, "pe")) + list(_confirm_vectors(arity, "pe"))] + keep:
         f = _fp_pe(path, func, v)
         if "err" not in f:
             done.add(did(f))
@@ -595,7 +608,7 @@ def directed_vectors(path, func, covered, arity=4, reached=()):
                 a = list(obj)
                 a[i] = near
                 edges.append({"args": a, "mem_init": mi, "stub_ret": 1})
-    for v in cands + edges:
+    for v in cands + [shape(v) if shape else v for v in edges]:
         f = _fp_pe(path, func, v)
         if "err" in f or did(f) in done:
             continue
