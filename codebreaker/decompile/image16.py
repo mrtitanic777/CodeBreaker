@@ -210,8 +210,10 @@ def describe(module_path, outdir):
                        for s in segs if s["kind"] == "CODE" and s["file_off"]}
     for va, nm, dist in funcs:
         lines.append(model_line(d, va, nm, default=dist))
-    for nm in order:                                         # Windows API: far, callee removes arguments
-        lines.append("X\t%x\t%s\t-1\t__stdcall16far" % (imports[nm], nm))
+    from codebreaker.emulate import api16
+    for nm in order:                 # Windows API: far, and the callee removes its arguments --
+        size = api16.of(nm)          # how many bytes is read from the module that exports it
+        lines.append("X\t%x\t%s\t%d\t__stdcall16far" % (imports[nm], nm, -1 if size is None else size))
     path = os.path.join(outdir, "description.txt")
     with open(path, "w", newline="\n", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")

@@ -119,7 +119,16 @@ def probe(dll, ordinal=None, seg=None, offset=None, args=None, stub=default_stub
     def _stub(hit, uc, u):
         if "ctx" not in ctx_box:
             ctx_box["ctx"] = _Ctx(uc, u)
-        return stub(hit, uc, u, ctx_box["ctx"])
+        res = stub(hit, uc, u, ctx_box["ctx"]) or {}
+        if "pop" not in res:                                 # remove the arguments, as the real one would
+            from codebreaker.emulate import api16
+            size = api16.of(hit.get("api"))
+            hit["arg_bytes"] = size
+            if size:
+                res = dict(res, pop=size)
+        else:
+            hit["arg_bytes"] = res["pop"]
+        return res
 
     kw = {}
     if insn_cap:

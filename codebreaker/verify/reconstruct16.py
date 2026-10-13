@@ -11,8 +11,9 @@ the Windows functions called, in order, the result in AX (DX:AX when the functio
 bytes), what is left in the data segment and on the far heap, how many bytes of arguments were
 removed, and whether SI, DI and DS were preserved.
 
-Not compared yet, and so every match involving them is marked weak: the arguments passed to
-Windows functions (how many words each takes is not known here).
+The arguments passed to Windows functions are compared too: how many bytes each takes is read
+from the module that exports it (emulate/api16.py). A call whose size could not be established
+is compared by name only, and a match involving one is marked weak.
 """
 import hashlib
 import os
@@ -22,7 +23,7 @@ SOURCE = "decompiler"
 NOT_RUN = ("inconclusive", "judge: the emulator crashed on this function", [], "")
 ARG_WORDS = 8
 LEFTOVER = 0x7EF707E5                  # stands for "AX held no result" in a fingerprint
-REV = 10                                # bump when what is built or compared changes
+REV = 11                                # bump when what is built or compared changes
 
 
 def vectors():
@@ -30,6 +31,33 @@ def vectors():
     return [{"args": [0] * n}, {"args": [0x0400] * n}, {"args": [0x0080] * n},
             {"args": [i + 1 for i in range(n)]}, {"args": [0x100 * (i + 1) for i in range(n)]},
             {"args": [0xFFFF - i for i in range(n)]}]
+
+
+def _call(hit, inputs, entry):
+    """One Windows call as text: its name, and its arguments when their size is known. An
+    argument is written as what it IS rather than its bit pattern wherever the two builds would
+    legitimately differ: one of the function's own inputs, the data or stack selector, an
+    address in the stack."""
+    name = hit.get("api") or "?"
+    size = hit.get("arg_bytes")
+    if size is None:
+        return name
+    words = (hit.get("args_stack") or [])[:size // 2]
+    ss, ds = entry.get("SS"), entry.get("DS")
+    out = []
+    for i, w in enumerate(words):
+        nxt = words[i + 1] if i + 1 < len(words) else None
+        if w == ds:
+            out.append("DS")
+        elif w == ss:
+            out.append("SS")
+        elif nxt == ss:
+            out.append("stack")                              # offset part of a far pointer into the stack
+        elif w in inputs and w > 0xFF:
+            out.append("a%d" % inputs.index(w))
+        else:
+            out.append("%x" % w)
+    return "%s(%s)" % (name, ",".join(out))
 
 
 def fingerprint(path, seg, off, near, wide, v, data_image=None, span=None):
@@ -76,7 +104,7 @@ def fingerprint(path, seg, off, near, wide, v, data_image=None, span=None):
         if ret & 0xFFFF == (entry.get("DS") or -1) and not wide:
             ret = LEFTOVER
     return {"ret": ret, "exit": ex, "truncated": bool(r.get("truncated")),
-            "deps": tuple((h.get("api") or "?") for h in r.get("imports_hit") or ()),
+            "deps": tuple(_call(h, v["args"], entry) for h in r.get("imports_hit") or ()),
             "writes": writes, "pop": r.get("sp_delta") if ex == "ret" else None,
             "saved": (regs.get("SI") == entry.get("SI") and regs.get("DI") == entry.get("DI")
                       and regs.get("DS") == entry.get("DS")) if ex == "ret" else None,
@@ -193,7 +221,7 @@ def run(module_path, fs=None, log=print):
             if verdict in ("equivalent", "consistent"):
                 # arguments to Windows functions are not compared yet, and a function that calls
                 # a rejected one ran against a stand-in
-                extra = {"argc-unknown"} if "(" in m.texts[fn] and any(i + "(" in m.texts[fn] for i in m.imports) else set()
+                extra = set()                                # (calls of unknown size add argc-unknown themselves)
                 if any(d + "(" in m.texts[fn] for d in dropped):
                     extra.add("stub-callee")
                 limits = sorted(set(limits) | extra)
