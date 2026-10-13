@@ -513,8 +513,13 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
         bucket = rec["mem_writes"] if is_write else rec["mem_reads"]
         if len(bucket) < _MAX_MEM:
             pc = uc.reg_read(UC_X86_REG_EIP)
+            old = None
             if is_write:
                 v = int(value) & 0xFFFFFFFF
+                try:                                        # what was there before (hook runs first)
+                    old = int.from_bytes(uc.mem_read(address, min(msize, 8)), "little")
+                except Exception:
+                    old = 0                                 # a page not mapped yet reads as zeros
             else:
                 # Unicorn passes value=0 on a READ, but the bytes being read are already in
                 # memory at hook time -- read them back to capture the ACTUAL value observed.
@@ -523,6 +528,8 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
                 except Exception:
                     v = None
             bucket.append({"pc": pc, "addr": address, "size": msize, "value": v})
+            if old is not None:
+                bucket[-1]["old"] = old
 
     def hook_unmapped(uc, access, address, msize, value, _ud):
         # Lazily map the faulting page(s) (zeroed) and continue -- this is the difference that lets
