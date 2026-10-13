@@ -503,11 +503,11 @@ def _sections(path):
 def _call(path, kind, export):
     """Load a module in the emulator and call one exported function with zero arguments.
     -> (how it ended, its result)"""
-    from codebreaker.emulate import emulator
+    from codebreaker.emulate import emulator, windows16
     from codebreaker.verify import compare
     try:
         if kind == "ne":
-            r = emulator.probe(path, ordinal=export.ordinal, args=[0] * 8)
+            r = windows16.probe(path, ordinal=export.ordinal, args=[0] * 8)
         else:
             from codebreaker.verify import win32
             r = emulator.trace_function(path, func=export.address, args=[0] * 4, mem_init=_sections(path),

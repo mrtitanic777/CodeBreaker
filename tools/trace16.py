@@ -22,7 +22,7 @@ def main(argv):
     from codebreaker.base import corpus
     from codebreaker.build import watcom
     from codebreaker.decompile import describe
-    from codebreaker.emulate import emulator as ne_probe
+    from codebreaker.emulate import windows16 as ne_probe
     from codebreaker.formats.ne import NEFile
     from codebreaker.verify import win16 as reconstruct16
 
