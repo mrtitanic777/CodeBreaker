@@ -202,7 +202,9 @@ def compilable32(module_path, funcs, outdir):
                 sizes.setdefault(int(m.group(1), 16), set()).add(int(m.group(2)))
             else:
                 body.append(ln)
-        t = "\n".join(body).strip()
+        # (a note the core put before the function -- "WARNING: Removing unreachable block" --
+        # is not part of it: left in, it became the function's declaration and broke the header)
+        t = _LEADING.sub("", "\n".join(body).strip())
         # `x._1_2_` is the core's spelling of "2 bytes of x starting at byte 1"
         t = re.sub(r"\b([A-Za-z_]\w*)\._(\d+)_(\d+)_",
                    lambda mm: "(*(%s *)((char *)&%s + %s))" % (_BY_SIZE.get(int(mm.group(3)), "uint4"),
@@ -216,6 +218,22 @@ def compilable32(module_path, funcs, outdir):
     macros = []
     # a global the code calls through holds a function pointer, whatever else it is compared with
     called_through = set(re.findall(r"\(\*([a-z]+Ram[0-9a-f]{8})\)\s*\(", text))
+    # A global the decompiler named as a number but reads through (`*iRam..`, `iRam..[n]`) is
+    # read through as a pointer THERE; it stays a number everywhere else, where it is added to
+    # and compared as one. (Declaring it a pointer would change what `iRam.. + 4` means.)
+    kind = {"i": "int4", "u": "uint4", "x": "xunknown4"}
+
+    def through(m):
+        name = m.group(2) if m.lastindex == 2 else m.group(1)
+        if name in called_through or name[0] not in kind:
+            return m.group(0)
+        if m.lastindex == 2:
+            return "%s*(%s *)%s" % (m.group(1), kind[name[0]], name)
+        return "((%s *)%s)[" % (kind[name[0]], name)
+    for n in order:
+        t = re.sub(r"((?<![\w)\]]))\*([a-z]+Ram[0-9a-f]{8})\b", through, out[n])
+        out[n] = re.sub(r"\b([a-z]+Ram[0-9a-f]{8})\[", through, t)
+    text = "\n".join(out.values())
     for pre, addr in sorted(set(re.findall(r"\b([a-z]+)Ram([0-9a-f]{8})\b", text))):
         szs = sizes.get(int(addr, 16)) or {4}
         size = min(szs) if len(szs) > 1 and pre[0] in "cb" else max(s for s in szs if s <= 8) if any(s <= 8 for s in szs) else 4
