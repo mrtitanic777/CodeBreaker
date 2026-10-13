@@ -8,8 +8,6 @@ the module through the active win95 target; `ensure_target()` makes the tools
 runnable standalone as well as under `wt --target win95`.
 """
 import os
-import re
-import sys
 
 import capstone
 
@@ -29,7 +27,6 @@ _IMPORTS = {}
 def ensure_target():
     """Point cores at win95 + cd into a data root, idempotently (mirrors
     msvc2cov._setup so a tool works with no `wt` wrapper)."""
-    from codebreaker.base import registry as cores
     roots = ([os.path.join(os.environ["WT_DATA_ROOT"], "win95")]
              if os.environ.get("WT_DATA_ROOT") else [])
     roots += [paths.data_root(), os.getcwd()]

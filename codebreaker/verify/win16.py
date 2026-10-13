@@ -17,8 +17,6 @@ How many bytes of arguments a Windows function takes is read from the module tha
 match involving one is marked weak.
 """
 import hashlib
-import os
-import time
 
 NOT_RUN = ("inconclusive", "judge: the emulator crashed on this function", [], "")
 ARG_WORDS = 8

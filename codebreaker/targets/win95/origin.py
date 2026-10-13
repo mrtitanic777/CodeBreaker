@@ -23,11 +23,9 @@ import os
 import sys
 import re
 import csv
-import glob
 import hashlib
 import subprocess
 
-from codebreaker.base import paths
 from codebreaker.targets.win95 import flat_thunk_build as A
 
 # CRT / C++ runtime / compiler-helper names (identify-and-source, never reconstruct). Matched
@@ -59,7 +57,6 @@ def _canon(name):
     return n
 
 
-import struct as _struct
 
 # format -> native decompiler (one engine family, four loaders). Same --names/--disasm interface.
 _DECOMP = {"pe": "win95pedec.exe", "ne": "win95dec.exe", "le": "win95ledec.exe", "dos": "win95mzdec.exe"}

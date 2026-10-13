@@ -15,7 +15,6 @@ names are an indirection kept so a target can supply its own version of one; non
 """
 import importlib
 import os
-import sys
 
 _SHARED = {
     "trace": "codebreaker.disasm.trace",

@@ -213,5 +213,4 @@ def _selftest():
 
 
 if __name__ == "__main__":
-    import sys
     _selftest()

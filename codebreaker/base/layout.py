@@ -21,7 +21,6 @@ data-dir paths through these accessors — never hardcode "reconstructed/..." ag
 Paths are relative to the current working directory, which `wt` sets to the target's
 data root before invoking any tool; call the accessors at USE time, not import time.
 """
-import glob as _glob
 import os
 
 # `base` is the data-root prefix. Default "" means paths are relative to the current
@@ -113,11 +112,3 @@ def reference_sub(name, base=""):
     return os.path.join(reference_dir(base), name)
 
 
-def runtime_dir(base=""):
-    """The tools' machine RUNTIME output dir (conduct ledgers, caches, live progress).
-    Merged under docs/ where a target has done so (win95: `docs/runtime/`); still top-level
-    `reports/` elsewhere. Existence-based, so each target resolves independently and the
-    un-migrated targets are unaffected. Distinct from `docs/reports/` (human-written
-    dossiers) -- this is regenerable tool output, not documentation."""
-    d = os.path.join(base, "docs", "runtime")
-    return d if os.path.isdir(d) else os.path.join(base, "reports")

@@ -483,7 +483,7 @@ def build_flat_thunk_ow(srcdir, outdir=None):
     body curation), resolves KERNEL32/USER32/GDI32 against OpenWatcom's own import libs, and links
     `system nt_dll`. Produces a loadable DLL whose export table matches the retail module's function
     exports. Returns {ok, dll, module, n_exports, log}."""
-    import subprocess, shutil, glob as _g
+    import subprocess, glob as _g
     ow = _ow_paths()
     if not ow:
         return {"ok": False, "error": "OpenWatcom not built"}

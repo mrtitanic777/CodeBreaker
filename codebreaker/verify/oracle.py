@@ -748,7 +748,6 @@ def _fmt(path):
 def verify_pair(retail, rebuilt, arity=0, maxn=64):
     """Per-export behavioral verdicts for retail vs rebuilt. Returns [(name, verdict, fp_r, fp_b)]."""
     lane = _fmt(retail)
-    from codebreaker.targets.win95 import flat_thunk_build as A
     vecs = _vectors(arity, lane)
     out = []
     if lane == "ne":
@@ -808,7 +807,6 @@ def _print_pair(retail, rebuilt, verdicts):
 
 # --------------------------------------------------------------- ledger batch
 def _design():
-    from codebreaker.base import paths
     from codebreaker.base import corpus
     d = corpus.design_dir()
     return d if os.path.isdir(d) else None
@@ -846,7 +844,6 @@ def verify_ledger(maxmods=None):
         if not rb:
             continue
         retail = OT._corpus_root()
-        from codebreaker.targets.win95 import flat_thunk_build as A  # locate retail path
         rp = None
         for dp, _d, fs in os.walk(retail):
             if mod in fs:

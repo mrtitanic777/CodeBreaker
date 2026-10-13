@@ -7,16 +7,8 @@ whose argument count disagrees with the callee's definition before the compiler 
 """
 import os
 import re
-import sys
-import subprocess
-from codebreaker.base import corpus
 from codebreaker.base import period_tools as toolchain
 from codebreaker.formats.pe import open_pe
-from codebreaker.emulate import trace32 as tracer
-from codebreaker.recover import interproc
-from codebreaker.emulate import provision as envprov
-from codebreaker.verify import oracle as verify95
-from codebreaker.targets.win95 import origin as OT
 
 
 def _ow():
@@ -115,53 +107,3 @@ def _import_lines(obj, names, imports):
     return "".join(out)
 
 
-def _param_count(c_text, fname):
-    """Number of parameters `fname` is DEFINED with in c_text, or None (not found / `()`)."""
-    m = re.search(r"(?m)^[^\n;{}#/]*\b%s\s*\(([^;{}]*)\)\s*\{" % re.escape(fname), c_text)
-    if not m:
-        return None
-    inner = m.group(1).strip()
-    if inner == "":
-        return None                                   # K&R `()`: takes anything
-    return 0 if inner == "void" else inner.count(",") + 1
-
-
-def _call_arg_counts(c_text, names):
-    """[(callee, argument count)] for every call in c_text to one of `names`."""
-    out = []
-    for m in re.finditer(r"\b([A-Za-z_]\w*)\s*\(", c_text):
-        if m.group(1) not in names:
-            continue
-        i, depth, n, any_tok = m.end(), 1, 0, False
-        while i < len(c_text) and depth:
-            ch = c_text[i]
-            if ch == "(":
-                depth += 1
-            elif ch == ")":
-                depth -= 1
-            elif ch == "," and depth == 1:
-                n += 1
-            elif not ch.isspace():
-                any_tok = True
-            i += 1
-        out.append((m.group(1), n + 1 if any_tok else 0))
-    return out
-
-
-def arity_mismatches(items):
-    """{caller: reason} for bodies that call another body of the batch with a different number of
-    arguments than it is defined with. The compiler rejects these, but reports only the first bad
-    call of each callee per run -- found here, they are all known at once."""
-    defined = {}
-    for fn, c in items:
-        n = _param_count(c, fn)
-        if n is not None:
-            defined[fn] = n
-    bad = {}
-    for fn, c in items:
-        body = c[c.find("{"):] if "{" in c else c
-        for callee, n in _call_arg_counts(body, defined):
-            if callee != fn and n != defined[callee]:
-                bad[fn] = "calls %s with %d argument(s); it is defined with %d" % (callee, n, defined[callee])
-                break
-    return bad

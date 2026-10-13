@@ -112,7 +112,6 @@ def probe(dll, ordinal=None, seg=None, offset=None, args=None, stub=default_stub
     cdecl=True reverses `args` before pushing: the tracer pushes Pascal order (left-to-right), but
     INTERNAL functions are often __cdecl16far (args pushed right-to-left), so their args must be
     reversed to land in the right slots (this is how the LZDecompress reset path was reached)."""
-    import unicorn as U
     if cdecl and args:
         args = list(reversed(args))
     ctx_box = {}

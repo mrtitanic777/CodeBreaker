@@ -14,7 +14,6 @@ This module's GDT/segmentation harness is validated standalone (see `_selftest`)
 NE is loaded, because Unicorn's segmented-fetch convention is the fragile part.
 """
 import os
-import sys
 
 # ---- GDT / memory layout (linear, 32-bit protected mode) -------------------
 GDT_ADDR = 0x1000

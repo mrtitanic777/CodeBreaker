@@ -33,10 +33,8 @@ Release: OSR2.5 (volume label WIN_95C, 4.00.950 C), the CD this corpus was
 carved from. Build dates Aug 1996. Recorded here because module sets differ
 between 95 RTM / OSR1 / OSR2 / OSR2.5.
 """
-import glob
 import os
 import shutil
-import struct
 import subprocess
 
 FILES = "files"                                          # the resolve dir (a lazily-filled cache)

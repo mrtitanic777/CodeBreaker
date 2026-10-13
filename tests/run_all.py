@@ -12,7 +12,7 @@ import sys
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SUITES = [("../tools/check_imports.py", False), ("test_plumbing.py", False),
+SUITES = [("../tools/check_imports.py", False), ("../tools/tidy.py", False), ("test_plumbing.py", False),
           ("test_verification.py", True)]
 
 

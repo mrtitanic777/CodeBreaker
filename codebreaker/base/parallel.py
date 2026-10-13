@@ -26,7 +26,6 @@ workers can't be pickled (common in the frozen EXE), so callers never break.
     results = tmap(work_one, items, jobs=jobs, label="carve")
 """
 import os
-from codebreaker.base import registry as cores
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed

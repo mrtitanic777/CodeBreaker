@@ -21,8 +21,6 @@ def main():
     os.environ["CB_JOBS"] = "1"                              # in this process, so imports are seen
     from codebreaker.base import corpus
     from codebreaker.source import module_writer
-    from codebreaker.verify import measure, sweep            # noqa: F401  (the commands)
-    from codebreaker.decompile import decompiler             # noqa: F401
     out = tempfile.mkdtemp()
     for name in ("version.dll", "lzexpand.dll"):
         if corpus.retail(name):

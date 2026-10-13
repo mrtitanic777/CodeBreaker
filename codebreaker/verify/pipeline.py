@@ -20,11 +20,9 @@ fault or truncation), divergent, inconclusive (nothing could be observed), no-sy
 A divergent body carries the first thing that differed as its reason: exit-differs, deps-differ
 (the sequence of external calls) or ret-differs.
 """
-import re
 import hashlib
 import os
 import sys
-from collections import Counter
 
 from codebreaker.base import paths
 from codebreaker.base import period_tools as toolchain

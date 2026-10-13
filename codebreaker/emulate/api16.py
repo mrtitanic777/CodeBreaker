@@ -12,7 +12,6 @@ right arguments; the emulator's stand-in for the function removes that many byte
 one would; and the verifier can then compare the arguments two builds pass.
 """
 import json
-import os
 
 _FILES = {"KERNEL": ("krnl386.exe", "kernel.exe"), "USER": ("user.exe",), "GDI": ("gdi.exe",)}
 _cache = None

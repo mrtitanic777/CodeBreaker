@@ -28,7 +28,6 @@ modern decoder — cross-check anything surprising against objdump/Ghidra.
     python pe_trace.py KERNEL32.DLL --stats
 """
 import bisect
-import re
 from codebreaker.base import registry as cores
 import sys
 

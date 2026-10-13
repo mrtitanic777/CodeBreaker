@@ -166,7 +166,6 @@ if __name__ == "__main__":
 # files, the OpenWatcom root in thirteen -- so pinning a different build meant editing
 # each one. They resolve here now; nothing else should spell these paths.
 # ===============================================================================
-from codebreaker.base import paths as _paths
 
 # lane -> decompiler executable (one engine, four loaders)
 DECOMPILERS = {"pe": "win95pedec.exe", "ne": "win95dec.exe",
