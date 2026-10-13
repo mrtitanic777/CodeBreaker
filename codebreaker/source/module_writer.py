@@ -306,6 +306,24 @@ def write_module(module, verify=True, out_dir=None, log=print, split=0, build_wh
             f.write("\n".join(head) + "\n" + "\n".join(piece))
     if len(pieces) > 1:
         out = os.path.join(out_dir, "%s_1.c" % stem)
+    # the module's C++ classes, each virtual function tied to the function above that implements it
+    from codebreaker.source import classes_writer
+
+    def name_at(address):
+        k = names.key(path, address)
+        if k not in best and k not in known and kind == "pe":
+            behind = classes_writer.import_behind(path, address)
+            if behind:
+                return behind
+        cur = (best.get(k) or {}).get("name") or (known[k][0] if k in known else "sub_" + k)
+        return sub.get(cur, cur)
+
+    def status_at(address):
+        row = best.get(names.key(path, address))
+        return TITLE[row["class"]] if row else ""
+    written = classes_writer.write(path, kind, out_dir, stem, name_at, status_at)
+    if written:
+        log("%s: the module's C++ classes" % written)
     log("%s: %s" % (out, ", ".join("%s %d" % (TITLE[c], counts[c]) for c in ORDER if counts[c])))
     return out, counts, total
 
