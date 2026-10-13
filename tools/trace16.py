@@ -24,13 +24,13 @@ def main(argv):
     from codebreaker.decompile import image16
     from codebreaker.emulate import ne_probe
     from codebreaker.formats.ne import NEFile
-    from codebreaker.verify import reconstruct16
+    from codebreaker.verify import win16 as reconstruct16
 
     def opt(flag, default):
         return argv[argv.index(flag) + 1] if flag in argv else default
     path = corpus.retail(argv[0]) or argv[0]
     fn = argv[1]
-    work = watcom._scratch("reconstruct16", os.path.basename(path).lower())
+    work = watcom._scratch("reconstruct", "ne", os.path.basename(path).lower())
     desc = open(os.path.join(work, "description.txt"), encoding="utf-8").read()
     m = re.search(r"(?m)^F\t([0-9a-f]+)\t%s\t(-?\d+)\t(\S+)" % re.escape(fn), desc)
     if not m:

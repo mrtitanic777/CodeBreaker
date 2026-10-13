@@ -1,25 +1,25 @@
-"""reconstruct16.py -- judged reconstructions of a 16-bit Windows module's functions.
+"""win16.py -- what is particular to reconstructing a 16-bit Windows module.
 
-The same path as for 32-bit modules (reconstruct.py), with the 16-bit pieces in place of the
-32-bit ones: decompile the module, compile every function and link a 16-bit DLL, run each
-function beside the original in the 16-bit emulator on the same inputs, record what was found.
+One of the kinds reconstruct.py works with (see there for what a kind provides). Here: the
+module is decompiled and made compilable by decompile/c16.py, every function is compiled and a
+16-bit DLL linked by build/module16.py, and each function is run beside the original in the
+16-bit emulator.
 
 Both sides are entered the way the function is really called (far or near) with the same words
 on the stack, and the rebuilt module's data segment is given the original's data, so a global is
 at the same offset and starts with the same value on both sides. Compared: how the run ends,
-the Windows functions called, in order, the result in AX (DX:AX when the function returns four
-bytes), what is left in the data segment and on the far heap, how many bytes of arguments were
-removed, and whether SI, DI and DS were preserved.
+the Windows functions called, in order and with their arguments, the result in AX (DX:AX when
+the function returns four bytes), what is left in the data segment and on the far heap, how many
+bytes of arguments were removed, and whether SI, DI and DS were preserved.
 
-The arguments passed to Windows functions are compared too: how many bytes each takes is read
-from the module that exports it (emulate/api16.py). A call whose size could not be established
-is compared by name only, and a match involving one is marked weak.
+How many bytes of arguments a Windows function takes is read from the module that exports it
+(emulate/api16.py). A call whose size could not be established is compared by name only, and a
+match involving one is marked weak.
 """
 import hashlib
 import os
 import time
 
-SOURCE = "decompiler"
 NOT_RUN = ("inconclusive", "judge: the emulator crashed on this function", [], "")
 ARG_WORDS = 8
 LEFTOVER = 0x7EF707E5                  # stands for "AX held no result" in a fingerprint
@@ -170,78 +170,55 @@ def _spans(nef, where):
     return out
 
 
-def identity(module_path):
-    from codebreaker.verify import oracle as V
+KIND = "ne"
+
+
+def profile(module_path):
+    """(digest, settings) of everything other than the source that a verdict depends on."""
     from codebreaker.build import module16
     from codebreaker.decompile import decompiler
-    digest = hashlib.sha1(repr(("ne", REV, decompiler.REV, V._ORACLE_REV, module16.CFLAGS, vectors()))
-                          .encode()).hexdigest()[:12]
-    return V._mod_sha(module_path) or "", digest
+    from codebreaker.verify import oracle as V
+    settings = repr(("ne", REV, decompiler.REV, V._ORACLE_REV, module16.CFLAGS, vectors()))
+    return hashlib.sha1(settings.encode()).hexdigest()[:12], settings
 
 
 def key(seg, off):
     return "%d:%04x" % (seg, off)
 
 
-def run(module_path, fs=None, log=print):
-    """Reconstruct and judge a 16-bit module. -> (module hash, profile digest)."""
-    from codebreaker.build import module16, watcom
-    from codebreaker.decompile import c16, decompiler
-    from codebreaker.formats.ne import NEFile
-    from codebreaker.jobs import pool
-    from codebreaker.store import functions
-    fs = fs or functions.open()
-    sha, digest = identity(module_path)
-    name = os.path.basename(module_path).lower()
-    t0 = time.time()
-    work = watcom._scratch("reconstruct16", name)
+def prepare(module_path, work):
+    from codebreaker.decompile import c16
     m = c16.compilable(module_path, work)
-    fs.add_module(sha, name, module_path, "ne")
-    fs.add_profile(digest, "16-bit: decompiler %s, flags %s" % (decompiler.REV, " ".join(module16.CFLAGS)))
-    keys = {va: key(*m.where[va]) for va in m.by_va}
-    fs.add_functions(sha, sorted(keys.values()))
-    fs.put_text(sha, SOURCE, "header", m.header)
-    sig = hashlib.sha1((m.header + "".join(m.texts[n] for n in m.order)).encode("utf-8", "replace")).hexdigest()
-    known = fs.judged(sha, digest, SOURCE)
-    fresh = [va for va in sorted(m.by_va) if (known.get(keys[va]) or {}).get("sig") != sig]
-    rows = []
-    if fresh:
-        dll, placed, dropped = module16.build(m.header, m.texts, m.order, m.imports, work,
-                                              segments=m.segments)
-        nef = NEFile(module_path)
-        auto = nef.h.get("autodata_seg")
-        data_image = b""
-        if auto:
-            s = nef.segments()[auto - 1]
-            data_image = bytes(nef.data[s["file_off"]:s["file_off"] + s["length"]]) if s["file_off"] else b""
-        spans = _spans(nef, {va: m.where[va] for va in m.by_va})
-        items = []
-        for va in fresh:
-            fn = m.by_va[va]
-            if fn in dropped or fn not in placed:
-                rows.append(dict(addr=keys[va], sig=sig, name=fn, source=m.texts[fn], verdict="no-compile",
-                                 reason=dropped.get(fn, "") or "not in the build", problem="compile"))
-                continue
-            seg, off = m.where[va]
-            span, insns = spans[va]
-            wide = None if fn in m.novalue else fn in m.wide
-            items.append((keys[va], seg, off, fn in m.near, wide, span, insns) + tuple(placed[fn]))
-        by_key = {keys[va]: m.by_va[va] for va in fresh}
-        judged = pool.run(_judge, items, context=(module_path, dll, data_image), crashed=lambda item: NOT_RUN)
-        for k, (verdict, reason, limits, detail) in judged.items():
-            fn = by_key[k]
-            if verdict in ("equivalent", "consistent"):
-                # arguments to Windows functions are not compared yet, and a function that calls
-                # a rejected one ran against a stand-in
-                extra = set()                                # (calls of unknown size add argc-unknown themselves)
-                if any(d + "(" in m.texts[fn] for d in dropped):
-                    extra.add("stub-callee")
-                limits = sorted(set(limits) | extra)
-            rows.append(dict(addr=k, sig=sig, name=fn, source=m.texts[fn], verdict=verdict, reason=reason,
-                             limits=",".join(limits), detail=detail))
-    fs.record_many(sha, SOURCE, str(decompiler.REV), digest, rows)
-    c = fs.tally(digest, sha)
-    log("%s: %d functions, %d judged now: %s  (%.0fs)" % (
-        name, len(keys), len(fresh), ", ".join("%s %d" % (functions.TITLE[k], c[k]) for k in functions.ORDER if c[k]),
-        time.time() - t0))
-    return sha, digest
+    m.key = {m.by_va[va]: key(*m.where[va]) for va in m.by_va}
+    m.all_keys = sorted(m.key.values())
+    m.sig = hashlib.sha1((m.header + "".join(m.texts[n] for n in m.order)).encode("utf-8", "replace")).hexdigest()
+    return m
+
+
+def build(m, module_path, work):
+    """-> (context for judge, {name: item}, {name: why it is not in the build})"""
+    from codebreaker.build import module16
+    from codebreaker.formats.ne import NEFile
+    dll, placed, dropped = module16.build(m.header, m.texts, m.order, m.imports, work, segments=m.segments)
+    nef = NEFile(module_path)
+    auto = nef.h.get("autodata_seg")
+    data_image = b""
+    if auto:
+        s = nef.segments()[auto - 1]
+        data_image = bytes(nef.data[s["file_off"]:s["file_off"] + s["length"]]) if s["file_off"] else b""
+    spans = _spans(nef, {va: m.where[va] for va in m.by_va})
+    items, dropped = {}, dict(dropped)
+    for va, fn in m.by_va.items():
+        if fn in dropped:
+            continue
+        if fn not in placed:
+            dropped[fn] = "not in the build"
+            continue
+        seg, off = m.where[va]
+        span, insns = spans[va]
+        wide = None if fn in m.novalue else fn in m.wide
+        items[fn] = (m.key[fn], seg, off, fn in m.near, wide, span, insns) + tuple(placed[fn])
+    return (module_path, dll, data_image), items, dropped
+
+
+judge = _judge
