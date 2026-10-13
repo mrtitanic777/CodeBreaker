@@ -103,14 +103,35 @@ class Writer(object):
             self.objects[o].labels.add(a)
         if self.d:
             self.names[(self.d["obj"], self.d["offset"])] = "%s_DDB" % self.d["name"].strip()
+        self._within = None
         self._decode()
+        # places inside an instruction, and every name that will be needed, before writing starts
+        self._within = {(i, x): off for i, ob in self.objects.items() for off, t in ob.ins.items()
+                        for x in range(off + 1, off + len(t[0]))}
+        for ob in list(self.objects.values()):
+            ob.labels = {a for a in ob.labels if 0 <= a <= ob.size}
+            for kind, to, ta in list(ob.fix.values()):
+                self.label(to, ta)
 
     def label(self, o, a):
+        """The name of a place. A place nothing can be written AT -- inside a patched field or
+        an instruction, or outside its object altogether -- is the nearest place before it that
+        can, plus the distance."""
         ob = self.objects[o]
-        for back in (1, 2, 3):                               # a place inside a patched field
-            if a - back in ob.fix:
-                ob.labels.add(a - back)
-                return "%s + %d" % (self.label(o, a - back), back)
+        base = a
+        if not 0 <= a <= ob.size:
+            base = 0 if a < 0 or a > 0x7FFFFFFF else ob.size
+            a = a - (1 << 32) if a > 0x7FFFFFFF else a
+        elif self._within is not None and (o, a) in self._within:
+            base = self._within[(o, a)]
+        else:
+            for back in (1, 2, 3):
+                if a - back in ob.fix:
+                    base = a - back
+                    break
+        if base != a:
+            ob.labels.add(base)
+            return "%s %s %d" % (self.label(o, base), "+" if a > base else "-", abs(a - base))
         return self.names.get((o, a)) or "L%d_%05X" % (o, a)
 
     # -- finding the code ------------------------------------------------------------------------
@@ -366,9 +387,8 @@ class Writer(object):
 
 
 def _differences(w, built, good):
-    """Instructions written as mnemonics that sit where the built image's bytes differ from the
-    original's (outside the patched places), per object from its first difference on while the
-    sizes still agree. -> (set of (object, offset), [objects that differ])"""
+    """Instructions written as mnemonics that did not come back as the original's bytes.
+    -> (set of (object, offset), [objects that differ])"""
     bad, differing = set(), []
     objs = {o["idx"]: o for o in built.objects}
     for i, ob in w.objects.items():
@@ -380,21 +400,30 @@ def _differences(w, built, good):
         for a in ob.fix:
             patched.update(range(a, a + 4))
         n = min(len(data), ob.size)
-        diff = [a for a in range(n) if a not in patched and data[a] != ob.data[a]]
-        if not diff and objs[i]["vsize"] == ob.size:
+        if objs[i]["vsize"] == ob.size and all(data[a] == ob.data[a] for a in range(n) if a not in patched):
             continue
         differing.append(i)
-        aligned = objs[i]["vsize"] == ob.size                # same size: every difference is in place
-        for at in (diff if aligned else diff[:1] or [n]):
-            for a in ob.ins:
-                if a <= at < a + len(ob.ins[a][0]) and (i, a) in good:
-                    bad.add((i, a))
-        if not aligned and not [x for x in bad if x[0] == i]:
-            # the first difference is not in an instruction written as text: the size went wrong
-            # earlier; give up the nearest one before it
-            before = [a for a in ob.ins if a <= (diff[0] if diff else n) and (i, a) in good]
-            if before:
-                bad.add((i, max(before)))
+        pieces, a, start = [], 0, 0
+
+        def data_piece(lo, hi):
+            if hi > lo:
+                pieces.append((lo, hi - lo, bytes(1 if x in patched else 0 for x in range(lo, hi)), None, False))
+        while a < ob.size:
+            if a in ob.ins and (i, a) in good:
+                data_piece(start, a)
+                length = len(ob.ins[a][0])
+                mask = bytearray(1 if x in patched else 0 for x in range(a, a + length))
+                jump = ob.ins[a][4] is not None
+                if jump:                                     # the distance: right once the rest is
+                    width = 1 if length == 2 else 4
+                    mask[length - width:] = b"\1" * width
+                pieces.append((a, length, bytes(mask), (i, a), jump))
+                a += length
+                start = a
+            else:
+                a += len(ob.ins[a][0]) if a in ob.ins else 1
+        data_piece(start, ob.size)
+        bad |= assembly.culprits(bytes(ob.data), bytes(data), pieces)
     return bad, differing
 
 

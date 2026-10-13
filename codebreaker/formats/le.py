@@ -28,6 +28,7 @@ class LEFile:
         s.resnames = lfa + u(0x58); s.entrytab = lfa + u(0x5c)
         s.fixup_page = lfa + u(0x68); s.fixup_rec = lfa + u(0x6c)
         s.datapages = u(0x80)                          # offset from top of file (NOT 0x7c)
+        s._page_order = None
         s.objects = []
         for i in range(s.nobj):
             vsize, base, flags, pmidx, pcnt = struct.unpack_from("<IIIII", data, s.objtab + i * 24)
@@ -48,16 +49,27 @@ class LEFile:
         return cls.from_buffer(open(path, "rb").read())
 
     def object_bytes(s, obj):
-        """Raw bytes of one object, assembled from its data pages (contiguous in practice for
-        VxDs), truncated to the object's virtual size."""
-        off = s.datapages + (obj["pmidx"] - 1) * s.pagesize
-        return s.d[off:off + obj["vsize"]]
+        """Raw bytes of one object: its pages found through the page map, up to its virtual size."""
+        return object_data(s, obj)
 
     def page_to_obj(s, pg):
-        """Logical page number (1-based) -> (object, byte offset of the page within the object)."""
+        """A page as the fix-up tables number it (1-based) -> (object, byte offset of the page
+        within the object).
+
+        The page map gives, for each page of the image in order, a number; the page's bytes in
+        the file AND its row of the fix-up page table are found by that number. In most drivers
+        the numbers simply count up and the distinction does not show; in the ones linked with
+        their pages out of order (DOSMGR, SHELL, ...) reading the fix-up tables by image order
+        gives every patched place to the wrong object."""
+        if s._page_order is None:
+            s._page_order = {}
+            for i in range(s.mpages):
+                number = int.from_bytes(s.d[s.pagemap + 4 * i:s.pagemap + 4 * i + 3], "big")
+                s._page_order.setdefault(number, i + 1)
+        logical = s._page_order.get(pg, pg)
         for obj in s.objects:
-            if obj["pmidx"] <= pg < obj["pmidx"] + obj["pcnt"]:
-                return obj, (pg - obj["pmidx"]) * s.pagesize
+            if obj["pmidx"] <= logical < obj["pmidx"] + obj["pcnt"]:
+                return obj, (logical - obj["pmidx"]) * s.pagesize
         return None, 0
 
     def fixups(s):
