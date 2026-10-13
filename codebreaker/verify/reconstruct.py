@@ -33,12 +33,13 @@ GOOD = ("equivalent", "consistent")
 
 
 # the name results are filed under -> the module that knows that kind
-KINDS = {"pe": "win32", "ne": "win16", "powerpc": "powerpc", "le": "driver"}
+KINDS = {"pe": "codebreaker.verify.win32", "ne": "codebreaker.verify.win16",
+         "powerpc": "codebreaker.verify.powerpc", "le": "codebreaker.verify.driver"}
 
 
 def kind_named(name):
     import importlib
-    return importlib.import_module("codebreaker.verify." + KINDS[name])
+    return importlib.import_module(KINDS[name])
 
 
 def kind_name(module_path):

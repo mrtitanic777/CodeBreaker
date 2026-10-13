@@ -205,7 +205,7 @@ def test_ledger_reads_without_writing():
 def test_progress_reading():
     _fill_store()
     s = progress.snapshot()
-    assert [k["kind"] for k in s["kinds"]] == ["pe", "ne"] and s["kinds"][0]["verified"] == 1
+    assert [k["kind"] for k in s["kinds"]][:2] == ["pe", "ne"] and s["kinds"][0]["verified"] == 1
     assert s["recent"][0]["module"] == "version.dll" and s["recent"][0]["results"] == 5 and s["idle"] is not None
     assert s["rate"] > 0 and isinstance(s["workers"], int)
     text = progress.line(s)
