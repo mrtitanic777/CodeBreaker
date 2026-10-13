@@ -351,6 +351,11 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
         d = rec["mem_writes"] if access in (U.UC_MEM_WRITE,) else rec["mem_reads"]
         if len(d) < 40000:
             d.append({"addr": address, "size": size, "value": value if access == U.UC_MEM_WRITE else None})
+            if access == U.UC_MEM_WRITE:                     # what was there before (the hook runs first)
+                try:
+                    d[-1]["old"] = int.from_bytes(uc.mem_read(address, min(size, 4)), "little")
+                except U.UcError:
+                    d[-1]["old"] = 0
 
     def hook_unmapped(uc, access, address, size, value, _ud):
         page = address & ~(_PAGE - 1)

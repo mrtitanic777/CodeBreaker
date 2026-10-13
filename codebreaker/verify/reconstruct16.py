@@ -21,7 +21,8 @@ import time
 SOURCE = "decompiler"
 NOT_RUN = ("inconclusive", "judge: the emulator crashed on this function", [], "")
 ARG_WORDS = 8
-REV = 5                                # bump when what is built or compared changes
+LEFTOVER = 0x7EF707E5                  # stands for "AX held no result" in a fingerprint
+REV = 9                                # bump when what is built or compared changes
 
 
 def vectors():
@@ -44,7 +45,7 @@ def fingerprint(path, seg, off, near, wide, v, data_image=None, span=None):
     ex = V._exit_norm(r.get("exit"))
     lay = r.get("layout") or {}
     ds = lay.get("ds_base")
-    state = {}
+    state, before = {}, {}
     for w in r.get("mem_writes") or []:
         a, n, val = w["addr"], w["size"], w["value"] or 0
         if ds is not None and ds <= a < ds + 0x10000:
@@ -54,7 +55,12 @@ def fingerprint(path, seg, off, near, wide, v, data_image=None, span=None):
         else:
             continue                                         # the stack, or somewhere wild
         for i in range(min(n, 4)):
-            state[(where[0], where[1] + i)] = (val >> (8 * i)) & 0xFF
+            k = (where[0], where[1] + i)
+            before.setdefault(k, ((w.get("old") or 0) >> (8 * i)) & 0xFF)
+            state[k] = (val >> (8 * i)) & 0xFF
+    # a byte left holding what it held on entry is not an effect (one compiler clears a flag
+    # with a word write, another with a byte write)
+    state = {k: x for k, x in state.items() if x != before.get(k)}
     writes = "%d:%s" % (len(state), hashlib.sha1(repr(sorted(state.items())).encode()).hexdigest()[:16]) \
         if state else ""
     regs = r.get("exit_regs") or {}
@@ -63,8 +69,12 @@ def fingerprint(path, seg, off, near, wide, v, data_image=None, span=None):
     lo, hi = span or (off, off)
     cov = tuple(sorted({a - base - lo for a in r.get("path") or () if lo <= a - base < hi}))
     ret = None
-    if ex == "ret":
+    if ex == "ret" and wide is not None:                     # None: the function returns nothing
         ret = (r.get("ret32") if wide else r.get("ret")) or 0
+        # An exported function starts `push ds / pop ax`; one that sets no result returns with
+        # that still in AX. Its own data selector is a leftover, not a result.
+        if ret & 0xFFFF == (entry.get("DS") or -1) and not wide:
+            ret = LEFTOVER
     return {"ret": ret, "exit": ex, "truncated": bool(r.get("truncated")),
             "deps": tuple((h.get("api") or "?") for h in r.get("imports_hit") or ()),
             "writes": writes, "pop": r.get("sp_delta") if ex == "ret" else None,
@@ -80,10 +90,18 @@ def _judge(context, item):
     key, seg, off, near, wide, span, insns, bseg, boff = item
     info = {}
     try:
-        verdict, reason, limits = V.compare(
-            lambda v: fingerprint(module_path, seg, off, near, wide, v, span=span),
-            lambda v: fingerprint(dll, bseg, boff, near, wide, v, data_image=data_image),
-            vectors(), (), insns=insns, info=info)
+        last = {}
+
+        def original(v):
+            last["fp"] = fingerprint(module_path, seg, off, near, wide, v, span=span)
+            return last["fp"]
+
+        def rebuilt(v):
+            fp = fingerprint(dll, bseg, boff, near, wide, v, data_image=data_image)
+            if (last.get("fp") or {}).get("ret") == LEFTOVER and "err" not in fp and fp.get("ret") is not None:
+                fp["ret"] = LEFTOVER                         # the original returned no value here
+            return fp
+        verdict, reason, limits = V.compare(original, rebuilt, vectors(), (), insns=insns, info=info)
     except ImportError:
         raise
     except Exception as e:
@@ -165,7 +183,8 @@ def run(module_path, fs=None, log=print):
                 continue
             seg, off = m.where[va]
             span, insns = spans[va]
-            items.append((keys[va], seg, off, fn in m.near, fn in m.wide, span, insns) + tuple(placed[fn]))
+            wide = None if fn in m.novalue else fn in m.wide
+            items.append((keys[va], seg, off, fn in m.near, wide, span, insns) + tuple(placed[fn]))
         by_key = {keys[va]: m.by_va[va] for va in fresh}
         judged = pool.run(_judge, items, context=(module_path, dll, data_image), crashed=lambda item: NOT_RUN)
         for k, (verdict, reason, limits, detail) in judged.items():

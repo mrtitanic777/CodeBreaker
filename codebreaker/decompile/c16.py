@@ -7,6 +7,7 @@ what the original meant.
     m.near            names of the near functions
     m.imports         {C name: (module, ordinal)} for the import functions its code calls
     m.wide            names of functions that return four bytes (DX:AX)
+    m.novalue         names of functions that return nothing
 
 What 16-bit code needs said that 32-bit code does not:
 
@@ -95,6 +96,16 @@ def _pieces(text):
                                                              m.group(1), m.group(2)), text)
 
 
+def _joined_arguments(text):
+    """`_a1` is the decompiler's spelling of "a1 and the argument after it, as one four-byte
+    value" (a far pointer or a long passed as two words). Arguments lie next to each other on
+    the stack, lowest first, so that value is the four bytes starting at a1."""
+    # read through directly (`*_a1`): it is a far pointer; the decompiler gives no type for what it
+    # points at, and a word is what such a read or write is in nearly every case
+    text = re.sub(r"\*_(a\d+|param_\d+)\b", r"*(*(int2 __far * *)&\1)", text)
+    return re.sub(r"(?<![\w.])_(a\d+|param_\d+)\b", r"(*(uint4 *)&\1)", text)
+
+
 def _open_arguments(text):
     """Write the definition in the older style, `f(a, b) int a; int b; { ... }`.
 
@@ -140,18 +151,20 @@ def compilable(module_path, outdir=None):
     texts, order, by_va, d = decompiler.decompile16(module_path, outdir)
     m = Module16()
     m.texts, m.order, m.by_va, m.where = {}, [], {}, {}
-    m.near, m.wide = set(), set()
+    m.near, m.wide, m.novalue = set(), set(), set()
     for va in sorted(by_va):
         name = by_va[va]
         raw = texts[name]
         far = {mm.group(2) for mm in _FACT.finditer(raw) if mm.group(1) == "P" and mm.group(3) == "4"}
-        text = _pieces(_far(_FACT.sub("", raw).strip(), far))
+        text = _joined_arguments(_pieces(_far(_FACT.sub("", raw).strip(), far)))
         if "return" in far:                                  # the function returns a far pointer
             head, brace, body = text.partition("{")
             head = re.sub(r"\*(?=[\s\w]*\b%s\s*\()" % re.escape(name), "__far *", head, count=1)
             text = head + brace + body
             m.wide.add(name)
         head = text.split("{", 1)[0]
+        if head.split()[0] == "void":
+            m.novalue.add(name)                              # returns nothing: AX is a leftover
         if not ("__stdcall16far" in head or "__cdecl16far" in head):
             m.near.add(name)                                 # near is the default and is not printed
         if head.split()[0] in _WIDE or "*" in head.split(name)[0] and "__far" in head.split(name)[0]:

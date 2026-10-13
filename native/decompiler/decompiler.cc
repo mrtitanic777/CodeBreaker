@@ -247,11 +247,32 @@ int main(int argc, char** argv) {
     auto applyModel = [&](Funcdata* fd, const Fact& f) {
       if (x86_32) { applyX86Proto(m, fd, f.name, f.pop); return; }
       if (!f.model.empty() && m.hasModel(f.model)) {
-        fd->getFuncProto().setModel(m.getModel(f.model));
-        fd->getFuncProto().setModelLock(true);
-        // 16-bit: the bytes of arguments a function removes are its own `ret N` / `retf N`
-        // plus the return address the model already counts.
-        if (f.pop >= 0) fd->getFuncProto().setExtraPop(f.pop + (f.model.find("far") != std::string::npos ? 4 : 2));
+        FuncProto& fp = fd->getFuncProto();
+        const int ret_addr = f.model.find("far") != std::string::npos ? 4 : 2;
+        if (f.pop > 0 && f.model.find("stdcall") != std::string::npos) {
+          // 16-bit, the function removes its own arguments: `ret N` / `retf N` states how many
+          // bytes there are, so the arguments are N/2 words. (Their types are placeholders; a
+          // far pointer is two of them.) Without this the analysis decides per function how
+          // many it sees used, and a function that ignores an argument is rebuilt removing
+          // fewer bytes than its callers pushed.
+          PrototypePieces pieces;
+          pieces.model = m.getModel(f.model);
+          pieces.name = f.name;
+          pieces.outtype = m.types->getBase(2, TYPE_INT);
+          pieces.firstVarArgSlot = -1;
+          for (int i = 0; i < f.pop / 2; ++i) {
+            pieces.intypes.push_back(m.types->getBase(2, TYPE_INT));
+            pieces.innames.push_back("a" + std::to_string(i + 1));
+          }
+          fp.setPieces(pieces);
+          fp.setInputLock(true);
+          fp.setOutputLock(false);                 // two bytes or four: left to the analysis
+        } else {
+          fp.setModel(m.getModel(f.model));
+        }
+        fp.setModelLock(true);
+        // the bytes a function removes: its own `ret N` plus the return address
+        if (f.pop >= 0) fp.setExtraPop(f.pop + ret_addr);
       }
     };
     for (const auto& x : externs) {
