@@ -33,6 +33,7 @@ def assemble(source, work):
     wasm = builder.tool("wasm")
     if not wasm:
         return None, "no assembler (settings.json: openwatcom)"
+    work = os.path.abspath(work)                             # the assembler runs with this as its cwd
     obj = os.path.join(work, os.path.splitext(os.path.basename(source))[0] + ".obj")
     if os.path.exists(obj):
         os.remove(obj)
@@ -45,6 +46,7 @@ def link(lines, out, work):
     wlink = builder.tool("wlink")
     if not wlink:
         return None, "no linker (settings.json: openwatcom)"
+    work, out = os.path.abspath(work), os.path.abspath(out)
     script = os.path.splitext(out)[0] + ".lnk"
     with open(script, "w", newline="\r\n") as f:
         f.write("\n".join(list(lines) + ["name %s" % out]) + "\n")

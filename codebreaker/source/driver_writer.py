@@ -41,6 +41,11 @@ from codebreaker.symbols import driver_services
 
 _MARK = 0x7A000000                       # stands in for a patched address while decoding
 _MAX_ROUNDS = 40
+# opcodes common enough that one bad encoding does not mean every instance is bad; a rarer one
+# the assembler rejects (a privileged or system instruction) is rejected wherever it appears, so
+# all instances of it are written as bytes together
+_COMMON = {"mov", "add", "sub", "cmp", "lea", "push", "pop", "call", "jmp", "test", "and", "or",
+           "xor", "inc", "dec", "ret", "nop", "mov zx", "movzx", "movsx", "shl", "shr", "adc", "sbb"}
 
 
 def _attributes(flags):
@@ -305,8 +310,11 @@ class Writer(object):
         return lines
 
     def source(self, good=None):
-        """-> (the assembly text, counts). `good` is the set of (object, offset) of the
-        instructions to write as mnemonics; None writes every one that has a text."""
+        """-> (the assembly text, counts, {source line number: (object, offset)}). `good` is the
+        set of (object, offset) of the instructions to write as mnemonics; None writes every one
+        that has a text. The line map says which instruction each mnemonic line came from, so an
+        assembler error on a line names the instruction to write as bytes instead."""
+        line_of = {}
         name = self.d.get("name", "DRIVER").strip()
         out = ["; %s -- a virtual device driver, reconstructed from the image by CodeBreaker." % name,
                ";",
@@ -342,6 +350,7 @@ class Writer(object):
                         out += self._raw(ob, a)
                     else:
                         out.append("        " + text)
+                        line_of[len(out)] = (i, a)
                     a += len(ob.ins[a][0])
                 elif a in ob.fix:
                     flush()
@@ -357,7 +366,7 @@ class Writer(object):
                 out.append("%s:" % self.label(i, ob.size))
             out += ["S%d ends" % i, ""]
         out.append("end")
-        return "\n".join(out) + "\n", counts
+        return "\n".join(out) + "\n", counts, line_of
 
     def classes(self):
         return [("O%d%s" % (i, "CODE" if ob.code else "DATA"), _attributes(ob.flags))
@@ -429,6 +438,21 @@ def _differences(w, built, good):
     return bad, differing
 
 
+def _match_module_flags(image, lf):
+    """Set the built file's LE module-flags field to the original's. The field (header offset
+    0x10) tells the loader the kind of module; the Win3.x VxDs in WIN386.EXE carry a value
+    (0x8020) OpenWatcom's linker does not emit, and it is metadata, not anything the code
+    produces, so a faithful rebuild carries the original's."""
+    want = le.header_fields(lf)["module_flags"]
+    with open(image, "rb") as f:
+        data = bytearray(f.read())
+    lfa = struct.unpack_from("<I", data, 0x3C)[0]
+    if data[lfa:lfa + 2] in (b"LE", b"LX") and struct.unpack_from("<I", data, lfa + 0x10)[0] != want:
+        struct.pack_into("<I", data, lfa + 0x10, want)
+        with open(image, "wb") as f:
+            f.write(data)
+
+
 def reconstruct(module_path, outdir, member=0, log=None):
     """Write a driver's source, build it, and make it come back as the original (see the top).
     -> a dict: source, image, linked, checks, notes, same, instructions, raw, data, rounds."""
@@ -442,27 +466,33 @@ def reconstruct(module_path, outdir, member=0, log=None):
     good = w.probe(outdir)
     result = {"source": src, "image": None, "linked": False, "rounds": 0, "notes": []}
     for rounds in range(1, _MAX_ROUNDS + 1):
-        text, counts = w.source(good)
+        text, counts, line_of = w.source(good)
         with open(src, "w", newline="\r\n", encoding="latin1") as f:
             f.write(text)
         result.update(rounds=rounds, instructions=counts["instructions"], raw=counts["raw"], data=counts["data"])
         obj, messages = assembly.assemble(src, outdir)
         if not obj:
-            lines = text.split("\n")
-            failed = set()
-            for m in re.finditer(r"\((\d+)\)\s*:\s*Error", messages):
-                failed.add(lines[int(m.group(1)) - 1].strip() if int(m.group(1)) <= len(lines) else "")
-            drop = {(i, a) for (i, a) in good if w.mnemonic(w.objects[i], a) in failed}
+            failed = {line_of[int(m.group(1))] for m in re.finditer(r"\((\d+)\)\s*:\s*Error", messages)
+                      if int(m.group(1)) in line_of}
+            # an uncommon opcode the assembler rejects (sidt, lgdt, ...) is rejected everywhere it
+            # appears, so drop every instance of it at once rather than one per round
+            drop = set(failed)
+            ops = {w.objects[i].ins[a][1] for (i, a) in failed} - _COMMON
+            if ops:
+                drop |= {(i, a) for i in w.objects for a in w.objects[i].ins
+                         if (i, a) in good and w.objects[i].ins[a][1] in ops}
             if not drop:
                 result["notes"] = ["assembler: " + (messages.strip().splitlines() or ["failed"])[-1][:200]]
                 break
             good -= drop
             continue
-        image, messages = builder.link(obj, device, out, classes=w.classes(),
+        named = bool(le.exports(lf) and le.exports(lf)[0][0])
+        image, messages = builder.link(obj, device, out, classes=w.classes(), named=named,
                                        dynamic=le.header_fields(lf)["module_flags"] == le.MODULE_DYNAMIC)
         if not image:
             result["notes"] = ["linker: " + (messages.strip().splitlines() or ["failed"])[-1][:200]]
             break
+        _match_module_flags(image, lf)                       # a flag the linker will not emit (Win3.x LE)
         built = le.members(image)[0][1]
         result.update(image=image, linked=True)
         bad, differing = _differences(w, built, good)
@@ -476,11 +506,24 @@ def reconstruct(module_path, outdir, member=0, log=None):
     return result
 
 
+def _report(name, r):
+    n = max(1, r.get("instructions", 0))
+    print("%s: %d instructions, %d (%d%%) written as bytes; %d bytes of data; %d round%s" % (
+        name, r.get("instructions", 0), r.get("raw", 0), 100 * r.get("raw", 0) // n,
+        r.get("data", 0), r["rounds"], "" if r["rounds"] == 1 else "s"))
+    if r.get("checks"):
+        print("  built: %s" % ", ".join("%s %s" % (k, "same" if v else "DIFFERENT") for k, v in r["checks"].items()))
+    for note in r.get("notes") or ():
+        print("  " + note)
+    print("  source: %s" % r["source"])
+    return bool(r.get("checks")) and all(r["checks"].values())
+
+
 def main(argv):
     """python -m codebreaker driver-source <driver> [--out DIR]
 
     Write a driver's assembly source from its image, build it and check the build against the
-    original."""
+    original. A container of drivers (VMM32.VXD, WIN386.EXE) has every member written."""
     from codebreaker.base import corpus
     args = [a for a in argv if not a.startswith("--")]
     if not args:
@@ -489,16 +532,12 @@ def main(argv):
     path = args[0] if os.path.isfile(args[0]) else corpus.retail(args[0])
     if not path:
         raise SystemExit("no driver %r" % args[0])
-    outdir = argv[argv.index("--out") + 1] if "--out" in argv else \
+    base = argv[argv.index("--out") + 1] if "--out" in argv else \
         settings.state("driver_source", os.path.splitext(os.path.basename(path))[0].lower())
-    r = reconstruct(path, outdir, log=print)
-    n = max(1, r.get("instructions", 0))
-    print("%s: %d instructions, %d (%d%%) written as bytes; %d bytes of data; %d round%s" % (
-        os.path.basename(path), r.get("instructions", 0), r.get("raw", 0), 100 * r.get("raw", 0) // n,
-        r.get("data", 0), r["rounds"], "" if r["rounds"] == 1 else "s"))
-    if r.get("checks"):
-        print("  built: %s" % ", ".join("%s %s" % (k, "same" if v else "DIFFERENT") for k, v in r["checks"].items()))
-    for note in r.get("notes") or ():
-        print("  " + note)
-    print("  source: %s" % r["source"])
-    return 0 if r.get("checks") and all(r["checks"].values()) else 1
+    members = le.members(path)
+    ok = True
+    for i, (member, _lf) in enumerate(members):
+        outdir = base if len(members) == 1 else os.path.join(base, re.sub(r"\W", "_", member.lower()))
+        r = reconstruct(path, outdir, member=i, log=print)
+        ok = _report(member if len(members) > 1 else os.path.basename(path), r) and ok
+    return 0 if ok else 1
