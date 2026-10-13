@@ -275,6 +275,8 @@ def _effects(r, own):
     ws = r.get("mem_writes") or []
     if r.get("writes_seen", len(ws)) >= tracer._MAX_MEM:
         return None
+    if r.get("pages0") is not None:
+        return _effects_lean(r, ws, own)
     # A call through a pointer that resolves to nothing lands in zero bytes; the oracle returns
     # from it after one `add [eax], al`. That write is the harness's, not the function's.
     mn = r.get("mnemonics") or {}
@@ -294,6 +296,32 @@ def _effects(r, own):
             for i in range(min(n, 8)):
                 state[a + i] = (v >> (8 * i)) & 0xFF
     state = {k: x for k, x in state.items() if x != before.get(k)}
+    if not state:
+        return ""
+    return "%d:%s" % (len(state), _hashlib.sha1(repr(sorted(state.items())).encode()).hexdigest()[:16])
+
+
+def _effects_lean(r, ws, own):
+    """_effects for a run recorded lean (emulator.trace_function): writes as (address, size,
+    value, pc), no stack writes among them, and what memory held before in r["pages0"]."""
+    mn = r.get("mnemonics") or {}
+    latest = {}                                      # (address, size) -> the last write of that shape
+    for i, (a, n, v, pc) in enumerate(ws):
+        if pc and mn.get("0x%x" % pc) == "add byte ptr [eax], al":
+            continue
+        if own and own[0] <= a < own[1]:
+            continue
+        latest[(a, n)] = (i, v)
+    state = {}
+    for (a, n), (_i, v) in sorted(latest.items(), key=lambda kv: kv[1][0]):
+        if n == 4 and (_STACK_LO <= v < _STACK_HI or (own and own[0] <= v < own[1])):
+            for i in range(4):
+                state[a + i] = "S"
+        else:
+            for i in range(min(n, 8)):
+                state[a + i] = (v >> (8 * i)) & 0xFF
+    pages = r["pages0"]
+    state = {k: x for k, x in state.items() if x != pages[k & ~0xFFF][k & 0xFFF]}
     if not state:
         return ""
     return "%d:%s" % (len(state), _hashlib.sha1(repr(sorted(state.items())).encode()).hexdigest()[:16])
@@ -348,7 +376,7 @@ def _fp_pe(path, func, spec, rebuilt=False):
                                   stub_ret=int(spec.get("stub_ret", 0)),
                                   overlay=rebuilt if isinstance(rebuilt, str) else None,
                                   sentinels=spec.get("sentinels"), reads=False, stop_wild=True,
-                                  quiet_stack=True)
+                                  quiet_stack=True, reuse=True, fast=True, lean=True)
     except ImportError:
         raise                                     # a broken setup is not an observation
     except Exception as e:
@@ -508,6 +536,8 @@ def directed_vectors(path, func, covered, arity=4, reached=()):
     for g in gsets:
         cands.append({"args": obj, "mem_init": mi + g, "stub_ret": 1})
         cands.append({"args": ints, "mem_init": mi + g})
+    # (Every position is tried, also past the arguments the function removes on return: a
+    # function does sometimes read further up the stack, and one difference was only found so.)
     for k in consts:
         for i in range(n):
             a = list(obj)

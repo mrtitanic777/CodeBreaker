@@ -107,8 +107,11 @@ def _sha256(path):
 # The behavioral commands call trace_function HUNDREDS of times per function (sweeps, probes,
 # binary searches), so memoize the expensive load per resolved path.
 _PE_CACHE = {}
+_LOADED = {}              # the name a module was asked for by -> the same, without asking the disk again
+_RESOLVED = {}
 
 
+_CODE_RANGES = {}         # module file -> [(lo, hi)] of its code sections, as loaded
 _MAX_CODE_SPAN = 64 << 20     # give up joining code sections spread wider than this
 
 
@@ -129,6 +132,7 @@ def _pe_code_image(module, path, pe):
     if len(secs) > 1 and hi - lo > _MAX_CODE_SPAN:
         secs = secs[:1]                                        # pathological layout: first only
         lo, hi = secs[0][0], secs[0][0] + len(secs[0][1])
+    _CODE_RANGES[path] = [(va, va + len(raw)) for va, raw, _nm in secs]
     code = bytearray(hi - lo)
     funcs = {}
     for va, raw, name in secs:
@@ -146,6 +150,8 @@ def _load(module):
     # A "name#member" selector addresses one module inside a W3 bundle (the core VxDs live in
     # vmm32.vxd, not as loose files). Resolve the bundle file by its base name; keep the full
     # selector as the cache key and pass it to the LE loader to pick the member.
+    if module in _LOADED:
+        return _LOADED[module]
     base_module = module.split("#", 1)[0]
     is_member = "#" in module
     path = corpus.resolve(base_module)
@@ -160,6 +166,7 @@ def _load(module):
             imports = {}
         ce = (path, va0, bytes(code), secname, funcs, _sha256(path), imports)
         _PE_CACHE[path] = ce
+    _LOADED[module] = ce
     return ce
 
 
@@ -182,6 +189,14 @@ def _resolve_func(module, func):
     func may be: None (first function), a section offset or VA as hex ('0x...') or int,
     or a decimal offset. A VA (>= va0) is converted to an offset; an offset is taken as-is.
     """
+    memo = (module, func)
+    if memo in _RESOLVED:
+        return _RESOLVED[memo]
+    _RESOLVED[memo] = out = _resolve_func_(module, func)
+    return out
+
+
+def _resolve_func_(module, func):
     _, va0, code, secname, allfuncs, _, _imp = _load(module)
     funcs = {off: f for off, f in allfuncs.items() if (f["end"] - off) >= 8}
     if not funcs:
@@ -214,7 +229,7 @@ _RETSENT_BASE = 0xB1B10000                                # unique per-call exte
 _INSN = {}                # (module file, its hash) -> {address: (text, is a call, direct target)}
 
 
-def _memory_hooks(U, rec, mapped, reads=True, static=(), quiet=None):
+def _memory_hooks(U, rec, mapped, reads=True, static=(), quiet=None, saved=None):
     """The memory side of a run, the same for every processor mode: record reads and writes
     (a write with what was there before, so an unchanged byte can be told from an effect), map
     untouched pages on demand so code that reaches into memory keeps running, and stop a run
@@ -227,6 +242,13 @@ def _memory_hooks(U, rec, mapped, reads=True, static=(), quiet=None):
         # already-mapped pages: ONE retired instruction, so hook_code's instruction cap + governor
         # never fire, but hook_mem fires per element. Bound total mem ops per trace and bail -- a
         # deterministic ceiling (op count, not a clock) so the runaway function is skipped.
+        if saved is not None and access == U.UC_MEM_WRITE:  # what the page held, to put back after
+            for base in {address & ~(_PAGE - 1), (address + max(msize, 1) - 1) & ~(_PAGE - 1)}:
+                if base not in saved:
+                    try:
+                        saved[base] = bytes(uc.mem_read(base, _PAGE))
+                    except Exception:
+                        pass                            # not there yet: mapping it notes that
         rec["memops"] = rec.get("memops", 0) + 1
         if rec["memops"] > _MAX_MEMOPS:
             rec["truncated"] = True; rec["governed"] = True; uc.emu_stop(); return
@@ -286,6 +308,8 @@ def _memory_hooks(U, rec, mapped, reads=True, static=(), quiet=None):
                 rec["truncated"] = True; rec["governed"] = True; uc.emu_stop(); return False
             try:
                 uc.mem_map(base, _PAGE); mapped.add(base); newly += 1
+                if saved is not None and base not in saved:
+                    saved[base] = None
             except U.UcError:
                 return False                                 # truly can't map -> let it fault
         kind = {U.UC_MEM_READ_UNMAPPED: "read", U.UC_MEM_WRITE_UNMAPPED: "write",
@@ -304,10 +328,107 @@ def _memory_hooks(U, rec, mapped, reads=True, static=(), quiet=None):
     return hook_mem, hook_unmapped
 
 
+def _straight_run(md, image, lo, address, size):
+    """(how many instructions, {address: text}, their addresses, is any of them 00 00) for the
+    `size` bytes of code at `address`, or False when they do not decode into exactly that."""
+    addrs, texts, total, zero = [], {}, 0, False
+    for ins in md.disasm(image[address - lo:address - lo + size], address):
+        addrs.append(ins.address)
+        texts[ins.address] = ("%s %s" % (ins.mnemonic, ins.op_str)).strip()
+        total += ins.size
+        zero = zero or bytes(ins.bytes) == bytes(2)
+    if total != size or not addrs:
+        return False
+    return len(addrs), texts, tuple(addrs), zero
+
+
+_MACHINES = {}            # (module, hash, overlay, stubbing) -> a machine with it laid out, between runs
+_MAX_MACHINES = 4
+
+
+def _machine(U, path, sha, va0, code, secbase, size, imports, overlay, stub_externals, first):
+    """A fresh emulator with the module laid out: its image, the original beside it (`overlay`),
+    the caller's memory (`first`), and a landing place in every import slot.
+
+    When stubbing externals, a unique SENTINEL address is planted in each IAT slot so a
+    `call [iat_slot]` resolves to a NAMED import (not a null pointer), and its stdcall argument
+    count can be looked up for correct stack cleanup."""
+    uc = U.Uc(U.UC_ARCH_X86, U.UC_MODE_32)
+    uc.mem_map(secbase, max(size, _PAGE))
+    uc.mem_write(va0, bytes(code))
+    uc.mem_map(_SCRATCH_BASE, _SCRATCH_SIZE)
+    uc.mem_map(_STACK_BASE, _STACK_SIZE)
+    mapped = {secbase, _SCRATCH_BASE}                        # page-group bases we've mapped
+    mapped.update(range(_STACK_BASE, _STACK_BASE + _STACK_SIZE, _PAGE))
+    sentinel_map = {}                                        # sentinel addr -> (dll, name)
+    mem_init = list(first)
+    # The module's code as it is in the file: an instruction there is decoded once per process,
+    # not once per run -- unless something was written over it (then memory is what is read).
+    statics = [(lo, hi, code[lo - va0:hi - va0], _INSN.setdefault((path, sha, lo), {}))
+               for lo, hi in _CODE_RANGES.get(path) or [(va0, va0 + len(code))]]
+    laid = None
+    # `overlay` is another module whose code is mapped alongside at its own addresses. A rebuilt
+    # body refers to the ORIGINAL's code and data by literal address (a function pointer, a thunk
+    # target); without the original there, those addresses read as zeros in the rebuilt run only,
+    # and the two runs differ for a reason that has nothing to do with the body.
+    if overlay:
+        try:
+            _op, ova0, ocode, _on, _of, _os, oimports = _load(overlay)
+            own_hi = secbase + max(size, _PAGE)
+            if ova0 + len(ocode) <= secbase or ova0 >= own_hi:      # never over the traced image
+                laid = (ova0, ocode)
+                mem_init.insert(0, laid)
+                statics += [(lo, hi, ocode[lo - ova0:hi - ova0], _INSN.setdefault((_op, _os, lo), {}))
+                            for lo, hi in _CODE_RANGES.get(_op) or [(ova0, ova0 + len(ocode))]]
+                imports = dict(oimports, **imports)
+        except Exception:
+            pass
+    slots = {}                                               # page -> [(address, bytes)] of import slots
+    if stub_externals and imports:
+        for i, (iat_va, (dll, name)) in enumerate(sorted(imports.items())):
+            sent = _SENT_BASE + i * _SENT_STRIDE
+            mem_init.append((iat_va, sent.to_bytes(4, "little")))
+            slots.setdefault(iat_va & ~(_PAGE - 1), []).append(mem_init[-1])
+            if (iat_va + 3) & ~(_PAGE - 1) != iat_va & ~(_PAGE - 1):
+                slots.setdefault((iat_va + 3) & ~(_PAGE - 1), []).append(mem_init[-1])
+            sentinel_map[sent] = (dll, name)
+        span = (len(imports) * _SENT_STRIDE + (_PAGE - 1)) & ~(_PAGE - 1)
+        mem_init.append((_SENT_BASE, bytes(span)))           # map+zero the sentinel landing region
+    # pages given other contents before the run are not "as in the file"
+    init_pages = set()
+    for entry in mem_init:
+        if entry is not laid:
+            init_pages.update(range(entry[0] >> 12, ((entry[0] + max(len(entry[1]), 1) - 1) >> 12) + 1))
+    # pre-load memory (e.g. a controlled struct buffer a pointer arg points at); pages that lie
+    # side by side are mapped together -- every mapping makes every later one slower
+    need = set()
+    for addr, data in mem_init:
+        a = addr
+        while a < addr + len(data):
+            base = a & ~(_PAGE - 1)
+            if base not in mapped and not (secbase <= base < secbase + max(size, _PAGE)) \
+                    and not (_SCRATCH_BASE <= base < _SCRATCH_BASE + _SCRATCH_SIZE):
+                need.add(base)
+            a = base + _PAGE
+    run = None
+    for base in sorted(need) + [None]:
+        if run and base == run[0] + run[1]:
+            run[1] += _PAGE
+            continue
+        if run:
+            uc.mem_map(run[0], run[1])
+        run = [base, _PAGE] if base is not None else None
+    mapped |= need
+    for addr, data in mem_init:
+        uc.mem_write(addr, bytes(data))
+    return {"uc": uc, "sentinels": sentinel_map, "statics": statics, "mapped": mapped, "slots": slots,
+            "init_pages": init_pages, "context": uc.context_save()}
+
+
 def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS, mem_init=None,
                    stub_externals=None, stub_ret=0, stub_cleanup=0, sig_resolver=None,
                    stub_ret_unique=False, overlay=None, sentinels=None, reads=True, stop_wild=False,
-                   quiet_stack=False):
+                   quiet_stack=False, reuse=False, fast=False, lean=False):
     """Run one function under Unicorn with full hooks; return a TraceRecord (a plain dict).
 
     module  -- e.g. "gdi32.dll"; resolved through the active target like difftest.
@@ -341,63 +462,47 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
         n = arity if arity is not None else (_arities(module).get(off) or 4)
         args = [0] * int(n)
 
-    uc = U.Uc(U.UC_ARCH_X86, U.UC_MODE_32)
     secbase = va0 & ~(_PAGE - 1)
     size = (len(code) + (va0 - secbase) + (_PAGE - 1)) & ~(_PAGE - 1)
-    uc.mem_map(secbase, max(size, _PAGE))
-    uc.mem_write(va0, bytes(code))
-    uc.mem_map(_SCRATCH_BASE, _SCRATCH_SIZE)
-    uc.mem_map(_STACK_BASE, _STACK_SIZE)
-    mapped = {secbase, _SCRATCH_BASE}                        # page-group bases we've mapped
-    mapped.update(range(_STACK_BASE, _STACK_BASE + _STACK_SIZE, _PAGE))
-
-    # When stubbing externals, plant a unique SENTINEL address in each IAT slot so a
-    # `call [iat_slot]` resolves to a NAMED import (not a null pointer), and we can look up its
-    # stdcall arg count for correct stack cleanup. Naming works with no SDK; cleanup needs one.
-    sentinel_map = {}                                        # sentinel addr -> (dll, name)
     mem_init = list(mem_init or [])
-    # The module's code as it is in the file: an instruction there is decoded once per process,
-    # not once per run -- unless something was written over it (then memory is what is read).
-    statics = [(va0, va0 + len(code), code, _INSN.setdefault((path, sha), {}))]
-    laid = None
-    # `overlay` is another module whose code is mapped alongside at its own addresses. A rebuilt
-    # body refers to the ORIGINAL's code and data by literal address (a function pointer, a thunk
-    # target); without the original there, those addresses read as zeros in the rebuilt run only,
-    # and the two runs differ for a reason that has nothing to do with the body.
-    if overlay:
-        try:
-            _op, ova0, ocode, _on, _of, _os, oimports = _load(overlay)
-            own_hi = secbase + max(size, _PAGE)
-            if ova0 + len(ocode) <= secbase or ova0 >= own_hi:      # never over the traced image
-                laid = (ova0, ocode)
-                mem_init.insert(0, laid)
-                statics.append((ova0, ova0 + len(ocode), ocode, _INSN.setdefault((_op, _os), {})))
-                imports = dict(oimports, **imports)
-        except Exception:
-            pass
-    if stub_externals and imports:
-        for i, (iat_va, (dll, name)) in enumerate(sorted(imports.items())):
-            sent = _SENT_BASE + i * _SENT_STRIDE
-            mem_init.append((iat_va, sent.to_bytes(4, "little")))
-            sentinel_map[sent] = (dll, name)
-        span = (len(imports) * _SENT_STRIDE + (_PAGE - 1)) & ~(_PAGE - 1)
-        mem_init.append((_SENT_BASE, bytes(span)))           # map+zero the sentinel landing region
-
-    # pages given other contents before the run are not "as in the file"
-    init_pages = set()
-    for entry in mem_init:
-        if entry is not laid:
-            init_pages.update(range(entry[0] >> 12, ((entry[0] + max(len(entry[1]), 1) - 1) >> 12) + 1))
-    # pre-load caller-supplied memory (e.g. a controlled struct buffer a pointer arg points at)
-    for addr, data in (mem_init or []):
-        a = addr
-        while a < addr + len(data):
-            base = a & ~(_PAGE - 1)
-            if base not in mapped and not (secbase <= base < secbase + max(size, _PAGE)) \
-                    and not (_SCRATCH_BASE <= base < _SCRATCH_BASE + _SCRATCH_SIZE):
-                uc.mem_map(base, _PAGE); mapped.add(base)
-            a = base + _PAGE
-        uc.mem_write(addr, bytes(data))
+    # A machine with the module laid out is kept between runs (reuse=True) and put back exactly
+    # as it was after each: laying a module out costs more than most runs of a function do.
+    mkey = (path, sha, overlay, bool(stub_externals), bool(fast))
+    mach = _MACHINES.pop(mkey, None) if reuse else None
+    saved = {} if reuse else None                            # page -> what it held (None: not there before)
+    if mach is None:
+        mach = _machine(U, path, sha, va0, code, secbase, size, imports, overlay, stub_externals,
+                        () if reuse else mem_init)
+    uc, sentinel_map, statics = mach["uc"], mach["sentinels"], mach["statics"]
+    mapped = set(mach["mapped"]) if reuse else mach["mapped"]
+    init_pages = set(mach["init_pages"])
+    for addr, data in mem_init:
+        init_pages.update(range(addr >> 12, ((addr + max(len(data), 1) - 1) >> 12) + 1))
+    if reuse:
+        uc.context_restore(mach["context"])
+        again = set()
+        for addr, data in mem_init:                          # this run's memory, over the kept machine
+            a = addr
+            while a < addr + len(data):
+                base = a & ~(_PAGE - 1)
+                if base not in saved:
+                    if base not in mapped and not (secbase <= base < secbase + max(size, _PAGE)) \
+                            and not (_SCRATCH_BASE <= base < _SCRATCH_BASE + _SCRATCH_SIZE):
+                        uc.mem_map(base, _PAGE); mapped.add(base)
+                        saved[base] = None
+                    else:
+                        saved[base] = bytes(uc.mem_read(base, _PAGE))
+                if base in mach["slots"]:
+                    again.add(base)
+                a = base + _PAGE
+            uc.mem_write(addr, bytes(data))
+        for base in again:                                   # import slots are written last, as ever
+            for a, data in mach["slots"][base]:
+                uc.mem_write(a, data)
+        top = (_STACK_TOP - 4 * (len(args) + 1)) & ~(_PAGE - 1)
+        for base in range(top, _STACK_TOP + 1, _PAGE):
+            if base not in saved and base in mapped:
+                saved[base] = bytes(uc.mem_read(base, _PAGE))
 
     # Build the stdcall frame: args in order above a RET sentinel the emulation halts on.
     esp = _STACK_TOP
@@ -443,8 +548,14 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
     sec_lo, sec_hi = secbase, secbase + max(size, _PAGE)
     pending = [None]        # index of a call whose actual destination is the next instruction
     zeros = [0]             # consecutive 00-00 ("add [eax],al") instructions -> crawling zeros
+    skip = [None]
+    fast = bool(fast) and not _GOV["ceil"]
 
     def hook_code(uc, address, csize, _ud):
+        if skip[0] is not None:
+            done, skip[0] = skip[0], None
+            if done == address:
+                return
         # per-function instruction governor: once this function's cumulative emulation across the
         # whole cascade exceeds the ceiling, stop immediately so the function is abandoned (skipped),
         # never spinning for hours on a pathological body.
@@ -602,8 +713,98 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
                                                        and func_lo <= tgt < func_hi)})
                 pending[0] = len(rec["calls"]) - 1
 
+    # FAST: told of a whole straight run of instructions at once, not of each. Calling back per
+    # instruction is most of what a run costs, and a straight run of the file's own code holds
+    # no surprise: its instructions are known before it starts. Anything that is not that -- code
+    # not as in the file, a run of zeros, the last steps before the limit -- is handed to
+    # hook_code, one instruction at a time, from there to the end of the run (`switch`).
+    # What a fast run does not keep: `path` and `calls`.
+    seen_blocks = set()
+    last = [None, ()]       # the straight run being executed, and the instructions first seen in it
+    switch = [False]
+
+    def hook_block(uc, address, size, _ud):
+        if switch[0]:
+            return
+        if stub_externals and address in sentinel_map:
+            last[0] = None
+            hook_code(uc, address, 2, None)
+            if not rec["truncated"] and uc.reg_read(UC_X86_REG_EIP) == address:
+                skip[0] = address                           # not returned from: go on with care
+                switch[0] = True
+                uc.emu_stop()
+            return
+        info = None
+        if "_dirty" not in rec:
+            for lo, hi, image, table in statics:
+                if lo <= address and address + size <= hi:
+                    if (address >> 12) not in init_pages and ((address + size - 1) >> 12) not in init_pages:
+                        info = table.get((address, size))
+                        if info is None:
+                            info = table[(address, size)] = _straight_run(md, image, lo, address, size)
+                    break
+        c = rec["insn_count"]
+        if not info or info[3] or c + info[0] > insn_cap:
+            last[0] = None
+            switch[0] = True
+            uc.emu_stop()
+            return
+        zeros[0] = 0
+        rec["insn_count"] = c + info[0]
+        key = (address, size)
+        if key in seen_blocks:
+            last[0], last[1] = info, ()
+        else:
+            seen_blocks.add(key)
+            mn, texts = rec["mnemonics"], info[1]
+            new = [a for a in info[2] if a not in mn]
+            for a in new:
+                mn[a] = texts[a]
+            last[0], last[1] = info, new
+
+    def settle():
+        """A fast run that stopped inside a straight run: the instructions after the one it
+        stopped at were counted on entry and did not happen."""
+        if fast and not switch[0] and last[0] is not None:
+            eip = uc.reg_read(UC_X86_REG_EIP)
+            info = last[0]
+            if eip in info[1]:
+                rec["insn_count"] -= sum(1 for a in info[2] if a > eip)
+                for a in last[1]:
+                    if a > eip:
+                        del rec["mnemonics"][a]
+            last[0] = None
+
     hook_mem, hook_unmapped = _memory_hooks(U, rec, mapped, reads, [(s[0], s[1]) for s in statics],
-                                            (_STACK_BASE, _STACK_BASE + _STACK_SIZE) if quiet_stack else None)
+                                            (_STACK_BASE, _STACK_BASE + _STACK_SIZE) if quiet_stack else None, saved)
+
+    # LEAN: writes kept as (address, size, value, pc) with nothing asked of the emulator for each.
+    # What a byte held before the run is read once per page (`pages0`), not once per write; the
+    # pc is only asked for where it is used (to tell the harness's own write in a run of zeros,
+    # which a fast run never executes); and writes to the stack are not reported at all.
+    pages0 = rec["pages0"] = {} if lean else None
+    lean_ranges = [(s[0], s[1]) for s in statics]
+    lean_seen = [0]
+
+    def hook_write(uc, access, address, msize, value, _ud):
+        base = address & ~(_PAGE - 1)
+        if base not in pages0 or ((address + msize - 1) & ~(_PAGE - 1)) not in pages0:
+            for b in (base, (address + max(msize, 1) - 1) & ~(_PAGE - 1)):
+                if b not in pages0:
+                    try:
+                        held = bytes(uc.mem_read(b, _PAGE))
+                        if saved is not None and b not in saved:
+                            saved[b] = held
+                    except Exception:
+                        held = bytes(_PAGE)                  # not there yet: it reads as zeros
+                    pages0[b] = held
+        for lo, hi in lean_ranges:
+            if lo <= address < hi:
+                rec["_dirty"] = True
+        lean_seen[0] += 1
+        if lean_seen[0] <= _MAX_MEM:
+            rec["mem_writes"].append((address, msize, int(value) & 0xFFFFFFFF,
+                                      uc.reg_read(UC_X86_REG_EIP) if switch[0] or not fast else 0))
 
     def hook_intr(uc, intno, user):
         # VxD/VMM service call: `INT 20h ; dd <VxD_ID<<16|service>`. There is no IDT here, so a
@@ -617,14 +818,27 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
             return
         uc.emu_stop()
 
-    uc.hook_add(U.UC_HOOK_CODE, hook_code)
-    uc.hook_add(U.UC_HOOK_MEM_READ | U.UC_HOOK_MEM_WRITE, hook_mem)
-    uc.hook_add(U.UC_HOOK_MEM_READ_UNMAPPED | U.UC_HOOK_MEM_WRITE_UNMAPPED
-                | U.UC_HOOK_MEM_FETCH_UNMAPPED, hook_unmapped)
-    uc.hook_add(U.UC_HOOK_INTR, hook_intr)
+    hooks = [uc.hook_add(U.UC_HOOK_BLOCK, hook_block) if fast else uc.hook_add(U.UC_HOOK_CODE, hook_code),
+             # (reads nobody asked for are not even reported: every repeat of a `rep` instruction
+             # comes through hook_code, so the step limit bounds them without a count of accesses)
+             uc.hook_add(U.UC_HOOK_MEM_READ | U.UC_HOOK_MEM_WRITE if reads else U.UC_HOOK_MEM_WRITE, hook_mem)
+             if not lean else uc.hook_add(U.UC_HOOK_MEM_WRITE, hook_write, None, 0, _STACK_BASE - 1),
+             uc.hook_add(U.UC_HOOK_MEM_READ_UNMAPPED | U.UC_HOOK_MEM_WRITE_UNMAPPED
+                         | U.UC_HOOK_MEM_FETCH_UNMAPPED, hook_unmapped),
+             uc.hook_add(U.UC_HOOK_INTR, hook_intr)]
+    if lean:
+        hooks.append(uc.hook_add(U.UC_HOOK_MEM_WRITE, hook_write, None, _STACK_BASE + _STACK_SIZE, 0xFFFFFFFF))
 
     try:
-        uc.emu_start(fva, _RET, count=insn_cap + 1)
+        if fast:
+            uc.emu_start(fva, _RET)
+            if switch[0]:                                    # from here on, one instruction at a time
+                hooks.append(uc.hook_add(U.UC_HOOK_CODE, hook_code))
+                uc.ctl_flush_tb()
+                uc.emu_start(uc.reg_read(UC_X86_REG_EIP), _RET, count=insn_cap + 1)
+        else:
+            uc.emu_start(fva, _RET, count=insn_cap + 1)
+        settle()
         rec["exit"] = "truncated" if rec["truncated"] else "ret"
         # The emulator can stop without raising (a divide by zero does): it only RETURNED if it
         # stopped at the return sentinel. Anything else is a fault, wherever it stopped.
@@ -647,6 +861,7 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
         except Exception:
             pass
     except U.UcError as e:
+        settle()
         rec["exit"] = "exception: %s" % e
         try:
             rec["ret"] = uc.reg_read(UC_X86_REG_EAX)
@@ -655,6 +870,24 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
 
     # mnemonics keyed by int va -> stringify for JSON friendliness
     rec["mnemonics"] = {("0x%x" % k): v for k, v in rec["mnemonics"].items()}
+    if lean:
+        rec["writes_seen"] = lean_seen[0]
+    if reuse:                                                # the machine, as it was, for the next run
+        try:
+            if lean:                                         # (its writes were not followed)
+                uc.mem_write(_STACK_BASE, bytes(_STACK_SIZE))
+            for h in hooks:
+                uc.hook_del(h)
+            for base, data in saved.items():
+                if data is None:
+                    uc.mem_unmap(base, _PAGE)
+                else:
+                    uc.mem_write(base, data)
+            while len(_MACHINES) >= _MAX_MACHINES:
+                _MACHINES.pop(next(iter(_MACHINES)))
+            _MACHINES[mkey] = mach
+        except Exception:
+            pass                                             # not put back: the next run makes its own
     return rec
 
 
