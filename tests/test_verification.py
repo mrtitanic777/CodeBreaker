@@ -245,6 +245,25 @@ def test_other_shapes_of_the_same_function():
     assert not any(k.startswith("switch") for k, _v in repair._knobs(looped, 0, None))
 
 
+def test_object_file_of_the_16_bit_compiler_is_read():
+    """A function's bytes come out of an OMF object file with the linker's places marked, and
+    the reconstruction's dialect is said the way Microsoft C 6 takes it."""
+    from codebreaker.build import msc6
+
+    def record(kind, body):
+        return bytes([kind]) + (len(body) + 1).to_bytes(2, "little") + body + b"\0"
+    obj = (record(0x80, b"\x03f.c") + record(0xA0, b"\x01\x00\x00" + bytes([0x55, 0x9A, 0, 0, 0, 0, 0x5D, 0xCB]))
+           + record(0x9C, bytes([0xCC, 0x01, 0x26, 0x01, 0x01]))            # a far pointer at +1, to an external
+           + record(0xA0, b"\x02\x00\x00" + b"data") + record(0x8A, b"\x00"))
+    code, mask = msc6.object_code(obj)
+    assert code == bytes([0x55, 0x9A, 0, 0, 0, 0, 0x5D, 0xCB]) and mask == bytes([0, 1, 1, 1, 1, 0, 0, 0]), (code, mask)
+    header, _text = msc6.dialect("typedef unsigned long long uint8;\nuint2 codebreaker_ss(void);\n"
+                                 '#pragma aux codebreaker_ss = "mov ax,ss" value [ax] modify exact [ax];\n'
+                                 "#define __stdcall16far __far __stdcall\n", "")
+    assert "#define __far _far" in header and "pragma aux" not in header and "long long" not in header
+    assert "#define __stdcall16far __far __stdcall" in header
+
+
 def test_cache_files_results_under_what_made_them():
     from codebreaker.base import cache
     k = cache.key("tool:1:2", ["-a", "-b"], "text")
@@ -267,6 +286,7 @@ def main():
                test_a_verdict_holds_until_what_it_was_for_changes, test_cache_files_results_under_what_made_them,
                test_period_source_gives_the_declarations_an_author_had, test_breaks_change_what_a_function_does,
                test_field_accesses_are_written_as_fields, test_other_shapes_of_the_same_function,
+               test_object_file_of_the_16_bit_compiler_is_read,
                test_repair_search_with_any_compiler, test_period_compiler_gives_the_original_back,
                test_reconstruct_is_incremental):
         try:

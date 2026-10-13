@@ -381,8 +381,11 @@ def main(argv):
         print(__doc__)
         return 2
     path = args[0] if os.path.isfile(args[0]) else corpus.retail(args[0])
+    if path and corpus.lane(path) == "ne":                   # a 16-bit module: Microsoft C 6
+        from codebreaker.verify import match16
+        return match16.main(argv)
     if not path or corpus.lane(path) != "pe":
-        raise SystemExit("%s: a 32-bit Windows module is needed" % args[0])
+        raise SystemExit("%s: a 32-bit or 16-bit Windows module is needed" % args[0])
     work = settings.state("match", os.path.basename(path).lower())
     sets = FLAG_SETS if "--try" in argv else (flags,)
     best, per_set = {}, {}

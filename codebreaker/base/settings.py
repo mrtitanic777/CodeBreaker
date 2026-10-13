@@ -40,7 +40,7 @@ DEFAULTS = {
     "state": "state",
     "target": "win95",
 }
-_PATHS = ("corpus", "openwatcom", "decompiler_bin", "ghidra_core", "state", "powerpc_tools", "powerpc_lib", "period_compiler")
+_PATHS = ("corpus", "openwatcom", "decompiler_bin", "ghidra_core", "state", "powerpc_tools", "powerpc_lib", "period_compiler", "dosbox_x", "msc6", "xenix_c")
 _loaded = None
 
 
