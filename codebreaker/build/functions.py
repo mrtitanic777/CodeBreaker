@@ -91,8 +91,10 @@ def _compile(cc, cflags, env, outdir, stem, text):
 _HEADER = {}                     # build folder -> the hash of the header in it
 
 
-def compile_all(cc, cflags, env, header, texts, order, outdir, jobs=None):
-    """Compile every function. -> ({name: object file stem}, {name: why it was rejected})"""
+def compile_all(cc, cflags, env, header, texts, order, outdir, jobs=None, more=None):
+    """Compile every function. -> ({name: object file stem}, {name: why it was rejected}).
+    `more` gives switches of a function's own: {name: [switch, ...]}."""
+    more = more or {}
     from codebreaker.base import cache, parallel
     jobs = jobs or parallel.workers()
     os.makedirs(outdir, exist_ok=True)
@@ -101,10 +103,10 @@ def compile_all(cc, cflags, env, header, texts, order, outdir, jobs=None):
         f.write(header)
     stems = {n: "f%04d" % i for i, n in enumerate(order)}
     with ThreadPoolExecutor(max_workers=jobs) as ex:
-        errors = list(ex.map(lambda n: _compile(cc, cflags, env, outdir, stems[n], texts[n]), order))
+        errors = list(ex.map(lambda n: _compile(cc, cflags + more.get(n, []), env, outdir, stems[n], texts[n]), order))
     dropped = {n: e for n, e in zip(order, errors) if e}
     for n in list(dropped):                                  # callers of a rejected function still link
-        if _compile(cc, cflags, env, outdir, stems[n], stand_in(texts[n])):
+        if _compile(cc, cflags + more.get(n, []), env, outdir, stems[n], stand_in(texts[n])):
             stems.pop(n)                                     # not even a stand-in: left unresolved
     return stems, dropped
 
@@ -125,12 +127,16 @@ def _link(wlink, env, outdir, lines):
     return None, ((r.stdout or "") + (r.stderr or "")).strip()[-160:] or "the linker produced nothing"
 
 
-def build16(header, texts, order, imports, outdir, segments=None, jobs=None):
+def build16(header, texts, order, imports, outdir, segments=None, jobs=None, code_segment=None):
+    """`code_segment` {name: the number of the original's segment the function is in}: the
+    functions of one segment are put in one segment again. A segment holds 64K at most, and
+    functions of one segment call each other near, of different ones far -- as in the original."""
     wcc, wlink = period_tools.ow_tool("wcc"), period_tools.ow_tool("wlink")
     if not (wcc and wlink):
         raise RuntimeError("OpenWatcom's 16-bit compiler is not set up (settings.json: openwatcom)")
     env = period_tools.ow_env("ne")
-    stems, dropped = compile_all(wcc, CFLAGS16, env, header, texts, order, outdir, jobs)
+    more = {n: ["-nt=CODE%d" % s] for n, s in (code_segment or {}).items()}
+    stems, dropped = compile_all(wcc, CFLAGS16, env, header, texts, order, outdir, jobs, more)
     live = [n for n in order if n not in dropped]
     # One initialised byte, so the DLL has a data segment at all: that segment is where the
     # original's data is put when the DLL is run for judging.

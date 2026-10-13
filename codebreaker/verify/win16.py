@@ -24,7 +24,7 @@ from codebreaker.verify import compare
 NOT_RUN = ("inconclusive", "judge: the emulator crashed on this function", [], "")
 ARG_WORDS = 8
 LEFTOVER = 0x7EF707E5                  # stands for "AX held no result" in a fingerprint
-REV = 14                                # bump when what is built or compared changes
+REV = 15                                # bump when what is built or compared changes
 
 
 def vectors():
@@ -243,7 +243,8 @@ def build(m, module_path, work):
     """-> (context for judge, {name: item}, {name: why it is not in the build})"""
     from codebreaker.build import functions
     from codebreaker.formats.ne import NEFile
-    dll, placed, dropped = functions.build16(m.header, m.texts, m.order, m.imports, work, segments=m.segments)
+    dll, placed, dropped = functions.build16(m.header, m.texts, m.order, m.imports, work, segments=m.segments,
+                                             code_segment={fn: m.where[va][0] for va, fn in m.by_va.items()})
     nef = NEFile(module_path)
     auto = nef.h.get("autodata_seg")
     data_image = b""

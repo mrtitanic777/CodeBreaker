@@ -48,9 +48,14 @@ class Writer(object):
         self.rel = {a - p.base for a in p.relocations}
         load = dos.LOAD
         segs = {(struct.unpack_from("<H", self.img, a)[0] - load) & 0xFFFF for a in self.rel if a + 2 <= len(self.img)}
-        self.flat = p.kind != "mz"
+        # a program with a header of its own (a driver may be linked as one too), or bytes as they load
+        self.flat = not (p.kind != "com" and p.spans and p.spans[0][2] == "program")
+        self.stack_in = None                                 # the stack's segment, when it is in the load module
         if not self.flat:
             segs |= {(p.cs - load) & 0xFFFF}
+            if ((p.ss - load) & 0xFFFF) < (len(self.img) + 15) // 16:
+                self.stack_in = (p.ss - load) & 0xFFFF
+                segs |= {self.stack_in}
         self.top = (len(self.img) + 15) // 16
         self.segments = sorted({s for s in segs if s < self.top} | {0})
         self.analysis = a = dos_functions.discover(p)
@@ -187,14 +192,24 @@ class Writer(object):
                "", ".386p", ""]
         counts = {"instructions": 0, "raw": 0, "data": 0}
         img = self.img
+        done = 0                                             # how far the segments before have got
         for k, s in enumerate(self.segments):
             lo = s * 16
             hi = self.segments[k + 1] * 16 if k + 1 < len(self.segments) else len(img)
-            out.append("S%04X segment para public use16 'C%04X'" % (s, s))
+            # The original's linker packed segments end to end, so the last instruction of one
+            # may run a few bytes into the paragraph the next is named by. That next segment then
+            # starts where the one before stopped (byte-aligned), and its offsets count from its
+            # paragraph all the same.
+            over = max(done, lo) - lo
+            align = "byte" if over else "para"
+            if s == self.stack_in and hi == len(img):        # the stack, in the program's last segment
+                out.append("S%04X segment %s stack use16 'STACK'" % (s, align))
+            else:
+                out.append("S%04X segment %s public use16 'C%04X'" % (s, align, s))
             out.append("        assume cs:S%04X, ds:nothing, es:nothing, ss:nothing" % s)
             if self.origin and s == 0:
                 out.append("        org  %d" % self.origin)
-            at, run = lo, []
+            at, run = lo + over, []
 
             def flush():
                 out.extend(assembly.data_lines(run))
@@ -223,8 +238,11 @@ class Writer(object):
                     counts["data"] += 1
                     at += 1
             flush()
+            done = at
             if hi in self.labels and hi == len(img):
                 out.append("%s:" % self.label(hi))
+            if s == self.stack_in and hi == len(img) and p.sp > hi - lo:
+                out.append("        db   %d dup (?)" % (p.sp - (hi - lo)))      # the stack's room behind the file's bytes
             out += ["S%04X ends" % s, ""]
         if not self.flat:
             stack = (p.ss - dos.LOAD) & 0xFFFF
@@ -237,6 +255,38 @@ class Writer(object):
         else:
             out.append("end")
         return "\n".join(out) + "\n", counts
+
+    def pieces(self, good):
+        """The image as the pieces the source is made of, for assembly.culprits: each
+        instruction written as its mnemonic, each word that holds a segment (whatever it holds
+        once built), and the runs of bytes between."""
+        out, at, start, n = [], self.origin, self.origin, len(self.img)
+
+        def data(end):
+            if end > start:
+                out.append((start - self.origin, end - start, None, None, False))
+        while at < n:
+            if at in self.ins:
+                size = len(self.ins[at][0])
+                data(at)
+                where = self.ins[at][4]
+                mask = None
+                if where is not None:
+                    mask = bytearray(size)
+                    mask[where - at:where - at + 2] = b"\1\1"
+                    mask = bytes(mask)
+                out.append((at - self.origin, size, mask, at if at in good else None, self.ins[at][3] is not None))
+                at += size
+                start = at
+            elif at in self.rel:
+                data(at)
+                out.append((at - self.origin, 2, b"\1\1", None, False))
+                at += 2
+                start = at
+            else:
+                at += 1
+        data(n)
+        return out
 
     def candidates(self):
         """{offset: (text, bytes outside the relocated word, mask)} of what can be probed."""
@@ -257,13 +307,13 @@ class Writer(object):
         if self.p.kind == "com":
             return ["format dos com", "option quiet, nodefaultlibs", "file %s" % obj]
         if self.flat:
-            return ["format raw bin", "option quiet, nodefaultlibs, nostack", "file %s" % obj]
-        return ["format dos", "option quiet, nodefaultlibs, packcode=0, packdata=0", "file %s" % obj]
+            return ["format raw bin", "option quiet, nodefaultlibs", "file %s" % obj]
+        return ["format dos", "option quiet, nodefaultlibs, packcode=0, packdata=0, stack=%d" % max(self.p.sp, 2), "file %s" % obj]
 
 
 def _load_module(path, kind):
     """(bytes as loaded, relocation offsets, (cs, ip, ss, sp)) of a built file."""
-    if kind == "mz":
+    if kind:
         q = dos.read(path)
         return bytes(q.image), {a - q.base for a in q.relocations}, (q.cs, q.ip, q.ss, q.sp)
     with open(path, "rb") as f:
@@ -283,7 +333,7 @@ def reconstruct(module_path, outdir, log=None):
     os.makedirs(outdir, exist_ok=True)
     stem = re.sub(r"\W", "_", os.path.splitext(p.name)[0])
     src = os.path.join(outdir, stem + ".asm")
-    out = os.path.join(outdir, stem + (".com" if p.kind == "com" else ".exe" if p.kind == "mz" else ".bin"))
+    out = os.path.join(outdir, stem + (".com" if p.kind == "com" else ".exe" if not w.flat else ".bin"))
     cand = w.candidates()
     ok = assembly.probe(list(cand.values()), {"S%04X" % s for s in w.segments}, outdir, mode="real16")
     good = {at for at, c in cand.items() if c in ok} | {at for at, t in w.ins.items() if t[3] is not None}
@@ -300,6 +350,10 @@ def reconstruct(module_path, outdir, log=None):
             failed = {lines[int(m.group(1)) - 1].split("    ;")[0].strip()
                       for m in re.finditer(r"\((\d+)\)\s*:\s*Error", messages) if int(m.group(1)) <= len(lines)}
             drop = {at for at in good if w.mnemonic(at) in failed}
+            # a jump to a place that is not the start of anything written (the middle of a word
+            # that holds a segment, say) has no label to go to: it stays bytes
+            lost = set(re.findall(r"Symbol (\w+) is not defined", messages))
+            drop |= {at for at in good if w.ins[at][3] is not None and w.label(w.ins[at][3]) in lost}
             if not drop:
                 result["notes"] = ["assembler: " + (messages.strip().splitlines() or ["failed"])[-1][:200]]
                 break
@@ -310,12 +364,12 @@ def reconstruct(module_path, outdir, log=None):
             result["notes"] = ["linker: " + (messages.strip().splitlines() or ["failed"])[-1][:200]]
             break
         result.update(image=image, linked=True)
-        built, relocs, regs = _load_module(image, p.kind)
+        built, relocs, regs = _load_module(image, not w.flat)
         n = min(len(built), len(original))
         first = next((a for a in range(n) if built[a] != original[a]), None)
         if first is None and len(built) == len(original):
             notes = []
-            if p.kind == "mz":
+            if not w.flat:
                 if relocs != w.rel:
                     notes.append("the relocation table differs (%d entries, original %d)" % (len(relocs), len(w.rel)))
                 if regs != (p.cs, p.ip, p.ss, p.sp):
@@ -323,6 +377,15 @@ def reconstruct(module_path, outdir, log=None):
                         regs + (p.cs, p.ip, p.ss, p.sp)))
             result.update(same=not notes, notes=notes)
             break
+        # which instructions did not come back as they were -- found instruction by instruction,
+        # so one that came back a byte longer is blamed itself and not everything behind it
+        blamed = assembly.culprits(bytes(original), bytes(built), w.pieces(good)) & good
+        if blamed:
+            good -= blamed
+            if log:
+                log("  round %d: %d instructions did not come back as they were; they go back to bytes" % (
+                    rounds, len(blamed)))
+            continue
         at = (first if first is not None else n) + w.origin
         before = [a for a in good if a <= at]
         hit = [a for a in before if a <= at < a + len(w.ins[a][0])] or ([max(before)] if before else [])
