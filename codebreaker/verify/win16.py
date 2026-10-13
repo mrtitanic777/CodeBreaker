@@ -24,7 +24,7 @@ from codebreaker.verify import compare
 NOT_RUN = ("inconclusive", "judge: the emulator crashed on this function", [], "")
 ARG_WORDS = 8
 LEFTOVER = 0x7EF707E5                  # stands for "AX held no result" in a fingerprint
-REV = 18                                # bump when what is built or compared changes
+REV = 20                                # bump when what is built or compared changes
 
 
 def vectors():
