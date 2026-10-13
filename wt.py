@@ -165,9 +165,9 @@ def cmd_doctor():
 # Script-directory subsystems: a subsystem's commands are the non-underscore .py files in a
 # directory, executed as __main__. This table is the per-subsystem config; `_run_scripts` is the
 # ONE dispatcher that replaced four near-identical cmd_* functions.
-# Subsystems moved out of the active package (see archive/README.md). Nothing imports them.
+# Subsystems moved out of the active package (see trash/README.md). Nothing imports them.
 _ARCHIVED = {
-    "recompile": "the GCC compile/link lane is in archive/engines/recompile, superseded by the "
+    "recompile": "the GCC compile/link lane is in trash/engines/recompile, superseded by the "
                  "OpenWatcom lane (wt --target win95 owbuild / owlink)",
 }
 
