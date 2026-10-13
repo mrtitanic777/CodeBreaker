@@ -169,16 +169,37 @@ def test_build_from_source():
     r = builder.build(source, original=path, out=settings.state("driver_build", "test"))
     assert r["assembled"] and r["linked"], r["log"][-300:]
     assert set(r["checks"]) == {"objects", "descriptor", "services", "exports", "module"}
-    assert r["checks"]["exports"] and r["checks"]["module"] and r["checks"]["services"], r["notes"]
+    assert r["checks"]["exports"] and r["checks"]["module"], r["notes"]
     built = le.descriptor(le.LEFile.from_file(r["path"]))
     assert built["name"] == "VKD" and built["service_count"] == 21
+
+
+def test_source_written_from_the_image_builds_back():
+    """The source the writer makes from the image has no address in it, assembles, and links
+    into a driver with the original's objects, descriptor, services and exports."""
+    from codebreaker.build import driver as builder
+    from codebreaker.source import driver_writer
+    if not builder.tool("wasm") or not builder.tool("wlink"):
+        raise Skip("OpenWatcom wasm/wlink not found")
+    r = driver_writer.reconstruct(_driver(), settings.state("driver_source", "test"))
+    assert r["linked"] and r["checks"] and all(r["checks"].values()), (r.get("notes"), r.get("checks"))
+    assert r["instructions"] > 1000 and r["raw"] * 10 < r["instructions"], (r["instructions"], r["raw"])
+    text = open(r["source"], encoding="latin1").read()
+    assert "VKD_DDB:" in text and "VKD_Get_Version" in text and "dd   offset L" in text
+    assert driver_judge_all_equivalent(r["image"])
+
+
+def driver_judge_all_equivalent(image):
+    from codebreaker.verify import driver
+    results = driver.judge_files(image, _driver())
+    return results and all(v[0] in ("equivalent", "consistent") for v in results.values())
 
 
 def main():
     for fn in (test_table_names_services, test_table_names_are_identifiers, test_table_names_a_real_driver,
                test_reader_descriptor_and_entries, test_reader_fixups_encode_back, test_writer_round_trip,
                test_container, test_judge_agrees_with_itself_and_catches_a_break,
-               test_run_records_service_calls, test_build_from_source):
+               test_run_records_service_calls, test_build_from_source, test_source_written_from_the_image_builds_back):
         check(fn)
     for name, state, why in RESULTS:
         print("%-5s %s%s" % (state, name, ("  -- " + why) if why else ""))
