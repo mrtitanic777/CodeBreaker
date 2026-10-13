@@ -53,7 +53,7 @@ class Writer(object):
         self.stack_in = None                                 # the stack's segment, when it is in the load module
         if not self.flat:
             segs |= {(p.cs - load) & 0xFFFF}
-            if ((p.ss - load) & 0xFFFF) < (len(self.img) + 15) // 16:
+            if p.sp and ((p.ss - load) & 0xFFFF) < (len(self.img) + 15) // 16:
                 self.stack_in = (p.ss - load) & 0xFFFF
                 segs |= {self.stack_in}
         self.top = (len(self.img) + 15) // 16
@@ -209,7 +209,7 @@ class Writer(object):
             out.append("        assume cs:S%04X, ds:nothing, es:nothing, ss:nothing" % s)
             if self.origin and s == 0:
                 out.append("        org  %d" % self.origin)
-            at, run = lo + over, []
+            at, run = max(lo + over, self.origin if s == 0 else 0), []      # (DOS supplies what is before a .COM file's origin)
 
             def flush():
                 out.extend(assembly.data_lines(run))
@@ -252,6 +252,8 @@ class Writer(object):
                             "GAP ends"]
                 out += ["STK segment para stack use16 'STACK'", "        db   %d dup (?)" % p.sp, "STK ends", ""]
             out.append("end %s" % self.label(self.entry))
+        elif p.kind == "com" and self.origin in self.labels:
+            out.append("end %s" % self.label(self.origin))       # where it starts: the linker leaves out what is before
         else:
             out.append("end")
         return "\n".join(out) + "\n", counts
@@ -308,7 +310,9 @@ class Writer(object):
             return ["format dos com", "option quiet, nodefaultlibs", "file %s" % obj]
         if self.flat:
             return ["format raw bin", "option quiet, nodefaultlibs", "file %s" % obj]
-        return ["format dos", "option quiet, nodefaultlibs, packcode=0, packdata=0, stack=%d" % max(self.p.sp, 2), "file %s" % obj]
+        # the stack's size is said outright: the linker would give a small one 4096 bytes
+        stack = ", stack=%d" % self.p.sp if self.p.sp else ""
+        return ["format dos", "option quiet, nodefaultlibs, packcode=0, packdata=0" + stack, "file %s" % obj]
 
 
 def _load_module(path, kind):
