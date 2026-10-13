@@ -12,6 +12,9 @@
     dos-functions <program>         functions found in a real-mode program, by evidence
     dos-interrupts [int [AH]]       name a DOS or BIOS service
     analyze <module> [--what a,b]   call graph, conventions, globals, strings, structures, classes, dispatch
+    driver-services [FILE ...]      names of ring-0 services; how many of a driver's calls they name
+    driver-build <folder or .asm>   assemble and link a driver, check it against the original
+    driver-judge <rebuilt> <orig>   run every entry point of both drivers and compare
     info <file-or-module>           what an executable is and holds (headers, imports, exports, resources)
     coverage [--module NAME]        how much of every corpus module is accounted for, and in what state
     serve [--port N] [--open]       the local web console (127.0.0.1 only)
@@ -36,6 +39,9 @@ COMMANDS = {
     "dos-functions": ("codebreaker.analyze.dos_functions", []),
     "dos-interrupts": ("codebreaker.symbols.dos_interrupts", []),
     "analyze": ("codebreaker.analyze.report", []),
+    "driver-services": ("codebreaker.symbols.driver_services", []),
+    "driver-build": ("codebreaker.build.driver", []),
+    "driver-judge": ("codebreaker.verify.driver", []),
     "info": ("codebreaker.formats.inspect", []),
     "coverage": ("codebreaker.coverage.ledger", []),
     "serve": ("codebreaker.ui.server", []),

@@ -450,9 +450,9 @@ def describe_le(lf, name, outdir):
     names = {va: "sub_%d_%05X" % ((va - LE_BASE) // LE_STRIDE + 1, (va - LE_BASE) % LE_STRIDE) for va in sorted(starts)}
     for va in sorted(names):
         lines.append("F\t%x\t%s\t-1" % (va, names[va]))
+    from codebreaker.symbols import driver_services
     for dev, svc in order:
-        lines.append("I\t%x\t%s\t-1" % (services[(dev, svc)],
-                                        ("VMM_%04X" % svc) if dev == 1 else "VxD_%04X_%04X" % (dev, svc)))
+        lines.append("I\t%x\t%s\t-1" % (services[(dev, svc)], driver_services.label(dev, svc)))
     d = Description(os.path.join(outdir, "description.txt"), names, {}, [])
     d.spans = {obj: (le_address(obj, 0), len(images[obj])) for obj in execs}
     d.device = (ddb or {}).get("name") or name
