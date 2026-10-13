@@ -211,6 +211,85 @@ def _resolve_func(module, func):
 _RETSENT_BASE = 0xB1B10000                                # unique per-call external-return marker
 
 
+def _memory_hooks(U, rec, mapped):
+    """The memory side of a run, the same for every processor mode: record reads and writes
+    (a write with what was there before, so an unchanged byte can be told from an effect), map
+    untouched pages on demand so code that reaches into memory keeps running, and stop a run
+    that floods memory or maps without end. -> (hook for accesses, hook for unmapped accesses)"""
+    from unicorn.x86_const import UC_X86_REG_EIP
+    rec.setdefault("lazy_maps", [])
+
+    def hook_mem(uc, access, address, msize, value, _ud):
+        # A single `rep movs/stos/scas` with a huge (often uninitialised) count floods memory within
+        # already-mapped pages: ONE retired instruction, so hook_code's instruction cap + governor
+        # never fire, but hook_mem fires per element. Bound total mem ops per trace and bail -- a
+        # deterministic ceiling (op count, not a clock) so the runaway function is skipped.
+        rec["memops"] = rec.get("memops", 0) + 1
+        if rec["memops"] > _MAX_MEMOPS:
+            rec["truncated"] = True; rec["governed"] = True; uc.emu_stop(); return
+        is_write = access == U.UC_MEM_WRITE
+        bucket = rec["mem_writes"] if is_write else rec["mem_reads"]
+        if len(bucket) < _MAX_MEM:
+            pc = uc.reg_read(UC_X86_REG_EIP)
+            old = None
+            if is_write:
+                v = int(value) & 0xFFFFFFFF
+                try:                                        # what was there before (hook runs first)
+                    old = int.from_bytes(uc.mem_read(address, min(msize, 8)), "little")
+                except Exception:
+                    old = 0                                 # a page not mapped yet reads as zeros
+            else:
+                # Unicorn passes value=0 on a READ, but the bytes being read are already in
+                # memory at hook time -- read them back to capture the ACTUAL value observed.
+                try:
+                    v = int.from_bytes(uc.mem_read(address, min(msize, 8)), "little")
+                except Exception:
+                    v = None
+            bucket.append({"pc": pc, "addr": address, "size": msize, "value": v})
+            if old is not None:
+                bucket[-1]["old"] = old
+
+    def hook_unmapped(uc, access, address, msize, value, _ud):
+        # Lazily map the faulting page(s) (zeroed) and continue -- this is the difference that lets
+        # us trace memory-touching functions. Record the fault as first-class evidence.
+        # Map EVERY page the access spans (a read/write crossing into the next unmapped page would
+        # otherwise re-fault at the same address forever). Two deterministic bails (no wall clock):
+        #   * total pages mapped exceeds _MAX_MAPS  -> a runaway scan/copy over an ever-growing range
+        #   * faults that map no NEW page keep recurring -> a fault we can't satisfy (loop)
+        if os.environ.get("WT_DBG"):
+            rec["_hu"] = rec.get("_hu", 0) + 1
+            if rec["_hu"] % 2000 == 1:
+                print("  [hu #%d] addr=0x%x size=%s mapped=%d stuck=%s" %
+                      (rec["_hu"], address, msize, len(mapped), rec.get("_stuck", 0)), flush=True)
+        lo = address & ~(_PAGE - 1)
+        hi = (address + max(msize, 1) - 1) & ~(_PAGE - 1)
+        newly = 0
+        for base in range(lo, hi + _PAGE, _PAGE):
+            if base in mapped:
+                continue
+            _GOV["n"] += 1                                   # maps count toward the per-function budget
+            if len(mapped) >= _MAX_MAPS or (_GOV["ceil"] and _GOV["n"] > _GOV["ceil"]):
+                rec["truncated"] = True; rec["governed"] = True; uc.emu_stop(); return False
+            try:
+                uc.mem_map(base, _PAGE); mapped.add(base); newly += 1
+            except U.UcError:
+                return False                                 # truly can't map -> let it fault
+        kind = {U.UC_MEM_READ_UNMAPPED: "read", U.UC_MEM_WRITE_UNMAPPED: "write",
+                U.UC_MEM_FETCH_UNMAPPED: "fetch"}.get(access, "?")
+        if len(rec["lazy_maps"]) < _MAX_MEM:
+            rec["lazy_maps"].append({"pc": uc.reg_read(UC_X86_REG_EIP), "addr": address,
+                                     "page": lo, "access": kind, "size": msize})
+        if newly == 0:                                       # couldn't make progress -> guard a loop
+            rec["_stuck"] = rec.get("_stuck", 0) + 1
+            if rec["_stuck"] > 64:
+                rec["truncated"] = True; rec["governed"] = True; uc.emu_stop(); return False
+        else:
+            rec["_stuck"] = 0
+        return True                                          # retry the access now that it's mapped
+
+    return hook_mem, hook_unmapped
+
+
 def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS, mem_init=None,
                    stub_externals=None, stub_ret=0, stub_cleanup=0, sig_resolver=None,
                    stub_ret_unique=False, overlay=None, sentinels=None):
@@ -464,73 +543,7 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
             except StopIteration:
                 rec["mnemonics"][address] = "?"
 
-    def hook_mem(uc, access, address, msize, value, _ud):
-        # A single `rep movs/stos/scas` with a huge (often uninitialised) count floods memory within
-        # already-mapped pages: ONE retired instruction, so hook_code's instruction cap + governor
-        # never fire, but hook_mem fires per element. Bound total mem ops per trace and bail -- a
-        # deterministic ceiling (op count, not a clock) so the runaway function is skipped.
-        rec["memops"] = rec.get("memops", 0) + 1
-        if rec["memops"] > _MAX_MEMOPS:
-            rec["truncated"] = True; rec["governed"] = True; uc.emu_stop(); return
-        is_write = access == U.UC_MEM_WRITE
-        bucket = rec["mem_writes"] if is_write else rec["mem_reads"]
-        if len(bucket) < _MAX_MEM:
-            pc = uc.reg_read(UC_X86_REG_EIP)
-            old = None
-            if is_write:
-                v = int(value) & 0xFFFFFFFF
-                try:                                        # what was there before (hook runs first)
-                    old = int.from_bytes(uc.mem_read(address, min(msize, 8)), "little")
-                except Exception:
-                    old = 0                                 # a page not mapped yet reads as zeros
-            else:
-                # Unicorn passes value=0 on a READ, but the bytes being read are already in
-                # memory at hook time -- read them back to capture the ACTUAL value observed.
-                try:
-                    v = int.from_bytes(uc.mem_read(address, min(msize, 8)), "little")
-                except Exception:
-                    v = None
-            bucket.append({"pc": pc, "addr": address, "size": msize, "value": v})
-            if old is not None:
-                bucket[-1]["old"] = old
-
-    def hook_unmapped(uc, access, address, msize, value, _ud):
-        # Lazily map the faulting page(s) (zeroed) and continue -- this is the difference that lets
-        # us trace memory-touching functions. Record the fault as first-class evidence.
-        # Map EVERY page the access spans (a read/write crossing into the next unmapped page would
-        # otherwise re-fault at the same address forever). Two deterministic bails (no wall clock):
-        #   * total pages mapped exceeds _MAX_MAPS  -> a runaway scan/copy over an ever-growing range
-        #   * faults that map no NEW page keep recurring -> a fault we can't satisfy (loop)
-        if os.environ.get("WT_DBG"):
-            rec["_hu"] = rec.get("_hu", 0) + 1
-            if rec["_hu"] % 2000 == 1:
-                print("  [hu #%d] addr=0x%x size=%s mapped=%d stuck=%s" %
-                      (rec["_hu"], address, msize, len(mapped), rec.get("_stuck", 0)), flush=True)
-        lo = address & ~(_PAGE - 1)
-        hi = (address + max(msize, 1) - 1) & ~(_PAGE - 1)
-        newly = 0
-        for base in range(lo, hi + _PAGE, _PAGE):
-            if base in mapped:
-                continue
-            _GOV["n"] += 1                                   # maps count toward the per-function budget
-            if len(mapped) >= _MAX_MAPS or (_GOV["ceil"] and _GOV["n"] > _GOV["ceil"]):
-                rec["truncated"] = True; rec["governed"] = True; uc.emu_stop(); return False
-            try:
-                uc.mem_map(base, _PAGE); mapped.add(base); newly += 1
-            except U.UcError:
-                return False                                 # truly can't map -> let it fault
-        kind = {U.UC_MEM_READ_UNMAPPED: "read", U.UC_MEM_WRITE_UNMAPPED: "write",
-                U.UC_MEM_FETCH_UNMAPPED: "fetch"}.get(access, "?")
-        if len(rec["lazy_maps"]) < _MAX_MEM:
-            rec["lazy_maps"].append({"pc": uc.reg_read(UC_X86_REG_EIP), "addr": address,
-                                     "page": lo, "access": kind, "size": msize})
-        if newly == 0:                                       # couldn't make progress -> guard a loop
-            rec["_stuck"] = rec.get("_stuck", 0) + 1
-            if rec["_stuck"] > 64:
-                rec["truncated"] = True; rec["governed"] = True; uc.emu_stop(); return False
-        else:
-            rec["_stuck"] = 0
-        return True                                          # retry the access now that it's mapped
+    hook_mem, hook_unmapped = _memory_hooks(U, rec, mapped)
 
     def hook_intr(uc, intno, user):
         # VxD/VMM service call: `INT 20h ; dd <VxD_ID<<16|service>`. There is no IDT here, so a
@@ -918,23 +931,7 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
             uc.reg_write(UC_X86_REG_EDX, dx)
             uc.reg_write(UC_X86_REG_CS, cs); uc.reg_write(UC_X86_REG_EIP, ip)
 
-    def hook_mem(uc, access, address, size, value, _ud):
-        d = rec["mem_writes"] if access in (U.UC_MEM_WRITE,) else rec["mem_reads"]
-        if len(d) < 40000:
-            d.append({"addr": address, "size": size, "value": value if access == U.UC_MEM_WRITE else None})
-            if access == U.UC_MEM_WRITE:                     # what was there before (the hook runs first)
-                try:
-                    d[-1]["old"] = int.from_bytes(uc.mem_read(address, min(size, 4)), "little")
-                except U.UcError:
-                    d[-1]["old"] = 0
-
-    def hook_unmapped(uc, access, address, size, value, _ud):
-        page = address & ~(_PAGE - 1)
-        try:
-            uc.mem_map(page, _PAGE)
-            return True                                       # lazily map zero page, continue
-        except U.UcError:
-            return False
+    hook_mem, hook_unmapped = _memory_hooks(U, rec, set())
 
     uc.hook_add(U.UC_HOOK_CODE, hook_code)
     uc.hook_add(U.UC_HOOK_MEM_READ | U.UC_HOOK_MEM_WRITE, hook_mem)
