@@ -9,5 +9,7 @@
   },
   "powerpc_tools": "<optional: folder of a PowerPC-targeting cl.exe and link.exe>",
   "powerpc_lib": "<optional: that compiler's libcmt.lib>",
-  "period_compiler": "<optional: folder of a period 32-bit CL.EXE, for `match`>"
+  "period_compiler": "<optional: folder of a period 32-bit CL.EXE, for `match` and `repair`>",
+  "xenix_c": "<optional: folder holding xcc.py (the XENIX C compiler of Microsoft's 1984 tools), for `repair --truth`>",
+  "workers": 0
 }
