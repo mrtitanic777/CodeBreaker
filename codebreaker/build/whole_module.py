@@ -15,7 +15,7 @@ from codebreaker.base import corpus
 def build(module_path, preamble, funcs, order, used, outdir, rounds=30, cflags=None):
     """Compile the whole module, dropping the functions the compiler rejects.
     -> (dll | None, [names built], {dropped name: compiler message})."""
-    from codebreaker.verify import body32 as B
+    from codebreaker.build import watcom as B
     ow = B._ow()
     env = B._ow_env(ow)
     imports = B.import_map(module_path)

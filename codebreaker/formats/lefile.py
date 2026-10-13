@@ -342,10 +342,6 @@ class W3File:
         return out
 
 
-def open_le(path):
-    return LEFile(path)
-
-
 def _w3_sig(path):
     with open(path, "rb") as f:
         h = f.read(0x40)

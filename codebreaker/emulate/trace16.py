@@ -21,7 +21,6 @@ GDT_ADDR = 0x1000
 SEG_ORIGIN = 0x100000          # first NE segment base; each segment gets a 0x10000 (64K) window
 SEG_STRIDE = 0x10000
 STACK_BASE = 0x900000          # stack segment base
-STACK_LIMIT = 0xFFFF
 SENT_BASE = 0xA00000           # import-sentinel segment base (far calls here are stubbed)
 _PAGE = 0x1000
 _MAX_INSNS = 20000

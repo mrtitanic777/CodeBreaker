@@ -62,11 +62,6 @@ def state(*parts):
     return os.path.join(d, *parts)
 
 
-def reload():
-    global _loaded
-    _loaded = None
-
-
 def export_for_carried_over_code():
     """The modules carried over from the previous layout read their locations from environment
     variables. Fill in the ones not already set, from the settings. Goes away as each is changed

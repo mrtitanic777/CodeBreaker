@@ -69,7 +69,7 @@ def run(module_path, fs=None, log=print):
     from codebreaker.formats.pe import open_pe
     from codebreaker.jobs import pool
     from codebreaker.store import functions
-    from codebreaker.verify import body32 as B
+    from codebreaker.build import watcom as B
     from codebreaker.verify import pipeline
     pipeline._arm()
     fs = fs or functions.open()

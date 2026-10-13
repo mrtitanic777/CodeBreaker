@@ -24,7 +24,6 @@ _MAX_INSNS = 4000              # per function
 _MAX_HOPS = 6                  # call / forwarder depth
 _MODS = {}                      # DLL stem (upper) -> _Mod | None
 _CACHE = {}                     # DLL stem (upper) -> {name: bytes|None}
-_DIRTY = set()
 _EXTS = (".dll", ".exe", ".drv", ".cpl", ".ocx")
 _IAT = re.compile(r"dword ptr \[(0x[0-9a-f]+)\]")
 

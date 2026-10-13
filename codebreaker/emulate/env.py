@@ -107,22 +107,3 @@ def resolver():
     return argc
 
 
-def stubbing_enabled():
-    """Whether to stub external calls across the analysis pipeline. On by default: the built-in
-    Win32 table + SDK + `@N` decoration clean the stack correctly for known APIs, and stubbing is
-    strictly better than running into zero-filled memory even when an arg count is unknown
-    (cleanup then defaults to 0/cdecl, and the call is flagged). Set config `behavior_stub` to
-    false to force it off."""
-    try:
-        from codebreaker.base import config
-        v = config.load_config().get("behavior_stub", True)
-        return v is not False and str(v).lower() not in ("false", "0", "off", "no")
-    except Exception:
-        return True
-
-
-def apply_defaults():
-    """Set the tracer's process-wide stub default from config, so every trace in the pipeline
-    inherits it. Called once by the behavior command dispatcher."""
-    from codebreaker.emulate import trace32 as tracer
-    tracer.set_default_stub(stubbing_enabled(), resolver())

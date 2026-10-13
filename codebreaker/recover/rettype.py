@@ -80,35 +80,3 @@ def infer(module, va):
     return infer_from_rows(rows, last_call_name=last_call)
 
 
-def callers_ignore_result(module, va):
-    """True if NO caller reads eax after calling `va` before overwriting it -> the callee is void.
-
-    Best-effort over the static call graph; returns False (unknown) if it can't tell."""
-    try:
-        import capstone
-        from codebreaker.recover import callgraph
-        _, va0, code, _s, funcs, _sha, _imp = tracer._load(module)
-        g = callgraph.build(module)
-        off = va - va0
-        callers = [o for o in g if off in g[o]["calls"]]
-        if not callers:
-            return False
-        md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
-        any_use = False
-        seen = False
-        for co in callers:
-            rows = list(md.disasm(code[co:funcs[co]["end"]], va0 + co))
-            for i, ins in enumerate(rows):
-                if ins.mnemonic == "call" and ins.op_str.endswith("%x" % (va0 + off)):
-                    seen = True
-                    for j in range(i + 1, min(i + 4, len(rows))):   # a few insns after the call
-                        o = rows[j].op_str
-                        if rows[j].mnemonic in ("mov", "test", "cmp", "push", "add", "or", "and") \
-                                and ("eax" in o.split(",")[-1] or o.startswith(("test eax", "cmp eax"))
-                                     or ", eax" in o):
-                            any_use = True
-                        if _writes_eax(rows[j].mnemonic, rows[j].op_str) and rows[j].mnemonic != "call":
-                            break                            # eax redefined without being read
-        return seen and not any_use
-    except Exception:
-        return False

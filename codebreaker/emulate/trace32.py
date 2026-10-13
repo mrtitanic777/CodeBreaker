@@ -69,15 +69,6 @@ _MAX_MEMOPS = 3_000_000
 _GOV = {"n": 0, "ceil": 0}
 
 
-def budget_reset(ceiling=0):
-    """Start a fresh per-function instruction budget (0 = unlimited)."""
-    _GOV["n"] = 0
-    _GOV["ceil"] = ceiling
-
-
-def budget_exceeded():
-    return bool(_GOV["ceil"]) and _GOV["n"] > _GOV["ceil"]
-
 # IAT sentinels: a unique, recognizable landing address per import slot (see trace_function).
 _SENT_BASE = 0xE1000000
 _SENT_STRIDE = 0x10
@@ -87,10 +78,6 @@ _SENT_STRIDE = 0x10
 # flag through every call site. An explicit argument to trace_function always overrides this.
 _DEFAULT_STUB = {"enabled": False, "resolver": None}
 
-
-def set_default_stub(enabled, resolver=None):
-    _DEFAULT_STUB["enabled"] = bool(enabled)
-    _DEFAULT_STUB["resolver"] = resolver
 
 _MD = None
 
@@ -199,18 +186,6 @@ def _arities(module):
         return sigrecover.arities(module) or {}
     except Exception:
         return {}
-
-
-def list_functions(module):
-    """(off, va, size) for each recovered function across the module's code sections, smallest
-    offset first (offsets are relative to the lowest code section). The caller picks one to trace."""
-    _, va0, code, secname, funcs, _, _imp = _load(module)
-    out = []
-    for off, f in sorted(funcs.items()):
-        size = f["end"] - off
-        if size >= 8:
-            out.append((off, va0 + off, size))
-    return out
 
 
 def _resolve_func(module, func):

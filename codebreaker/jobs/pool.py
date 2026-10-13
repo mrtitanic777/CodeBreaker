@@ -18,8 +18,6 @@ Workers run below normal priority on a bounded number of cores, so the machine s
 import os
 import tempfile
 
-_work = None
-
 
 def _chunk(work, context, items, key, mark):
     """One worker's share. -> {key: result}."""

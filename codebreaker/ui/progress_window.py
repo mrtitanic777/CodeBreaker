@@ -111,10 +111,8 @@ DFC_BUTTON, DFCS_BUTTONPUSH = 4, 0x10
 DT_CENTER, DT_VCENTER, DT_SINGLELINE, DT_LEFT, DT_RIGHT = 0x1, 0x4, 0x20, 0x0, 0x2
 FW_NORMAL, FW_BOLD, DEFAULT_CHARSET = 400, 700, 1
 IDC_ARROW, SWP_NOMOVE, SWP_NOZORDER = 32512, 0x2, 0x4
-CANCEL_ID = 100
 NIM_ADD, NIM_MODIFY, NIM_DELETE = 0, 1, 2
 NIF_MESSAGE, NIF_ICON, NIF_TIP, NIF_INFO = 0x1, 0x2, 0x4, 0x10
-IDI_APPLICATION = 32512
 
 
 class WNDCLASS(C.Structure):
@@ -1031,12 +1029,6 @@ class ProgressWindow:
                        DT_LEFT | DT_VCENTER | DT_SINGLELINE, BLACK)
         finally:
             gdi32.DeleteObject(face); gdi32.DeleteObject(white); gdi32.DeleteObject(block)
-
-
-def open_app(module=None):
-    """Open the ONE unified CodeBreaker window (Explorer + Tools + Progress/Log/
-    Coverage tabs) standalone, blocking until closed. `module` opens on Code."""
-    ProgressWindow().run_blocking(module)
 
 
 def demo():

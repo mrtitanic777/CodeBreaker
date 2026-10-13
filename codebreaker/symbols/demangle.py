@@ -182,67 +182,6 @@ def short(sym):
         return None
 
 
-def _clean_type(t):
-    """MSVC type spelling -> a clean C type: drop the class/struct/union/enum tag
-    keyword (`class CWnd *` -> `CWnd *`) so it reads as an authored C declaration."""
-    if not t:
-        return t
-    for kw in ("class ", "struct ", "union ", "enum "):
-        t = t.replace(kw, "")
-    return t.strip()
-
-
-def demangle_sig(sym):
-    """Structured signature for an MSVC-mangled name, ready to feed a decompiler's
-    per-function prototype. Returns None if not mangled / undecodable, else a dict:
-
-        name     qualified name (CWnd::SetText)
-        base     final component (SetText, ~CWnd, operator=)
-        cls      enclosing class/namespace ("" if free function)
-        kind     "func" | "data"
-        access   "public"/"protected"/"private"/"" ; static/virtual: bool
-        cc       calling convention (__thiscall / __stdcall / ...) or ""
-        ret      return C type ("" when none: ctors/dtors/operator new-delete)
-        args     list of explicit arg C types ([] for (void))
-        this_type  "<cls> *" for a non-static member (the implicit `this`), else None
-        type     for kind=="data": the variable's C type
-
-    Types are cleaned C spellings (no `class`/`struct` tag keyword)."""
-    if not sym or not sym.startswith("?"):
-        return None
-    try:
-        p = _P(sym[1:])
-        qname, base, cls = p.qualified()
-        deco = p.peek()
-        if deco.isdigit():                                  # data symbol: ?name@@3<type><cv>
-            p.i += 1
-            ty = _clean_type(p.type())
-            return {"name": qname, "base": base, "cls": cls, "kind": "data",
-                    "type": ty, "access": "", "static": False, "virtual": False,
-                    "cc": "", "ret": None, "args": [], "this_type": None}
-        if deco not in _ACCESS:
-            return {"name": qname, "base": base, "cls": cls, "kind": "func",
-                    "access": "", "static": False, "virtual": False, "cc": "",
-                    "ret": None, "args": [], "this_type": None}   # name only, no type info
-        p.i += 1
-        access, is_static, is_virtual, is_global = _ACCESS[deco]
-        is_member = not is_static and not is_global
-        if is_member:
-            p.take()                                        # `this` cv-qualifier (kept in string form only)
-        cc = _CC.get(p.take(), "")
-        no_ret = base.startswith(("~", "operator new", "operator delete")) or cls == base
-        ret = "" if no_ret else _clean_type(p.type())
-        args = [_clean_type(t) for t in p.args()]
-        if args == ["void"]:
-            args = []
-        return {"name": qname, "base": base, "cls": cls, "kind": "func",
-                "access": access, "static": bool(is_static), "virtual": bool(is_virtual),
-                "cc": cc, "ret": ret, "args": args,
-                "this_type": (cls + " *") if (is_member and cls) else None}
-    except Exception:
-        return None
-
-
 def demangle(sym):
     """Readable C++ signature for an MSVC-mangled name, or None if not mangled / unsupported."""
     if not sym or not sym.startswith("?"):

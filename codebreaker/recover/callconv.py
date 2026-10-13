@@ -13,9 +13,6 @@ member function that takes no stack args, so the register evidence is reported a
 """
 from codebreaker.emulate import trace32 as tracer
 
-# registers that carry arguments under thiscall/fastcall, in order
-_REGS8 = {"al", "cl", "dl", "bl", "ah", "ch", "dh", "bh"}
-
 
 def _fend(funcs, off):
     if off in funcs:

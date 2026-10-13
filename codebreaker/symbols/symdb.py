@@ -109,22 +109,6 @@ def arity(name):
     return db["arity_lib"].get(ca) if ca else None
 
 
-_MOD_ALIAS = {"KRNL386": "KERNEL", "KRNL286": "KERNEL"}   # file name -> SDK import-lib module
-
-
-def ordinal_names(module):
-    """{ordinal: name} for a module's exports, from the SDK's 16-bit OMF ordinal map. Keyed by
-    the import-library module name (KERNEL/USER/GDI/...); accepts a file name (GDI.EXE, KRNL386)
-    and normalizes it. Empty for 32-bit modules (the COFF libs are by-name -> no ordinal map)."""
-    base = os.path.basename(module).upper()
-    for ext in (".EXE", ".DLL", ".DRV", ".386", ".VXD"):
-        if base.endswith(ext):
-            base = base[:-len(ext)]
-            break
-    base = _MOD_ALIAS.get(base, base)
-    return _load()["ord16"].get(base, {})
-
-
 def struct(name):
     return _load()["struct"].get(name)
 

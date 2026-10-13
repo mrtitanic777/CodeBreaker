@@ -17,9 +17,7 @@ from codebreaker.base import paths
 
 _MD = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
 _CARVE = {}
-_NAMED = {}
 _IMPORTS = {}
-APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Bootstrap: put the target dir on sys.path so bare sibling imports (cc32,
 # segdiff, target, classify32, ...) resolve, and activate the win95 target so
@@ -55,22 +53,6 @@ def image_base(module):
     return carve(module).pe.image_base
 
 
-def func_bytes(c, start, end):
-    for sva, data, _nm in c.sections:
-        if sva <= start < sva + len(data):
-            return bytes(data[start - sva:end - sva])
-    return b""
-
-
-def named_funcs(module):
-    if module not in _NAMED:                              # memoized: rebuilt-per-function was O(n^2)
-        c = carve(module); base = c.pe.image_base
-        out = [(s - base, f["name"], s, f["end"]) for s, f in c.funcs.items() if f.get("name")]
-        out.sort()
-        _NAMED[module] = out
-    return _NAMED[module]
-
-
 def imports(module):
     if module not in _IMPORTS:                            # memoized: re-parsed-per-function was O(n^2)
         _IMPORTS[module] = dict(carve(module).pe.imports())
@@ -81,5 +63,3 @@ def disasm(b, va=0):
     return list(_MD.disasm(b, va))
 
 
-def hexs(b):
-    return " ".join("%02x" % x for x in b)

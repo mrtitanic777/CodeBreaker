@@ -31,7 +31,6 @@ from codebreaker.base import period_tools as toolchain
 
 PIPE_REV = 19                   # what a verdict means (13: one build per batch; bodies the compiler rejects are dropped by name)
 MAX_SUPPORT = 1500              # out-of-batch callee bodies pulled in per batch
-_STATIC_NAME = re.compile(r"sub_([0-9A-Fa-f]{6})")     # the static decompiler's name for an rva
 GOOD = ("equivalent", "consistent")
 
 
@@ -40,18 +39,6 @@ def _sha(*parts):
     for p in parts:
         h.update(str(p).encode("utf-8", "replace")); h.update(b"\0")
     return h.hexdigest()
-
-
-def why_divergent(rs, bs):
-    """The first observable difference between the retail and rebuilt fingerprints."""
-    from codebreaker.verify import oracle as verify95
-    for a, b in zip(rs, bs):
-        if "err" in a or "err" in b:
-            continue
-        d = verify95.first_difference(a, b)
-        if d:
-            return d
-    return ""
 
 
 _PROFILES = {}
@@ -64,7 +51,7 @@ def profile(lane):
     without anyone having to remember to bump a number; the settings are stored beside it."""
     if lane not in _PROFILES:
         import json
-        from codebreaker.verify import body32 as B
+        from codebreaker.build import watcom as B
         from codebreaker.verify import oracle as verify95
         cc = toolchain.ow_tool("wcc386" if lane == "pe" else "wcc")
         try:
@@ -86,56 +73,12 @@ def profile(lane):
     return _PROFILES[lane]
 
 
-def why_inconclusive(rs, bs):
-    return "; ".join(sorted({"retail: " + a["err"] for a in rs if "err" in a} |
-                            {"rebuilt: " + b["err"] for b in bs if "err" in b}))
-
-
-def _judge(rs, bs):
-    from codebreaker.verify import oracle as verify95
-    verdict = verify95._body_verdict(rs, bs)
-    reason = (why_divergent(rs, bs) if verdict == "divergent"
-              else why_inconclusive(rs, bs) if verdict == "inconclusive" else "")
-    return verdict, reason
-
-
 def _arm():
     from codebreaker.verify import oracle as verify95
     verify95._arm()
     tdir = paths.target_dir("win95")
     if tdir not in sys.path:
         sys.path.insert(0, tdir)                 # several win95 tools still import siblings bare
-
-
-def support_bodies(path, src, imports, roots):
-    """Add to `src` the real bodies of callees that `roots` reach but `src` lacks, transitively,
-    and return their names. A callee without its real body links to a `return 0` stand-in, and its
-    caller is then judged on behaviour that is not the reconstruction's."""
-    from codebreaker.formats.pe import open_pe
-    from codebreaker.verify import body32 as B
-    pe = open_pe(path)
-    by_name = pe.export_addrs()
-    support, tried, work = [], set(), list(roots)
-    while work and len(support) < MAX_SUPPORT:
-        fn = work.pop()
-        for ref in sorted(B._stub_refs(src[fn], fn)):
-            if ref in src or ref in imports or ref in tried:
-                continue
-            tried.add(ref)
-            m = _STATIC_NAME.fullmatch(ref)
-            rva = int(m.group(1), 16) if m else by_name.get(ref)
-            if rva is None:
-                continue
-            try:
-                blk = B._static_body(path, pe.image_base + rva)
-                c = B._cure_body(B._beautify(blk)) if blk else None
-            except Exception:
-                c = None
-            if c and B._defined_name(c) == ref:
-                src[ref] = c
-                support.append(ref)
-                work.append(ref)
-    return support
 
 
 # =============================================================================================
@@ -155,72 +98,7 @@ class PELane(object):
         return "%x" % va
 
 
-class NELane(object):
-    """16-bit NE. One body per rebuilt DLL (exported at ordinal 1); Win16 API calls are linked as
-    real imports so the oracle sees them, internal callees are stubbed. A Win16 body normally
-    faults on synthetic arguments, so a match is usually 'consistent', and that is banked."""
-    name = "ne"
-
-    def functions(self, path):
-        _arm()
-        from codebreaker.recover import interproc16
-        from codebreaker.formats.ne import NEFile
-        return list(interproc16.all_functions(NEFile(path)))
-
-    def key(self, f):
-        return "%d:%04x" % (f[0], f[1])
-
-    def verify(self, path, funcs, outdir, known):
-        from codebreaker.verify import body16 as B16
-        from codebreaker.emulate import ne_probe as NO
-        from codebreaker.verify import oracle as verify95
-        results, bank = {}, []
-        vecs = verify95._vectors(4, "ne")
-        for seg, off in funcs:
-            k = self.key((seg, off))
-            try:
-                fn, c = B16.synth16(path, seg, off)
-            except Exception as e:
-                fn, c = None, type(e).__name__
-            if not fn or fn in ("LibMain", "WEP"):       # the DLL's own entry/exit are not targets
-                results[k] = {"verdict": "no-synth", "fname": fn or "",
-                              "reason": "entry" if fn else str(c or "")[:120]}
-                continue
-            sig = _sha(profile("ne")[0], "ne", fn, c)
-            row = known.get(k)
-            if row and row.get("sig") == sig:
-                results[k] = {"verdict": row["verdict"], "fname": fn, "reason": row.get("reason") or "",
-                              "cached": True, "sig": sig, "limits": row.get("limits") or ""}
-                continue
-            dll, clog = B16.compile_body16(c, fn, os.path.join(outdir, "%d_%x" % (seg, off)))
-            if not dll:
-                results[k] = {"verdict": "no-compile", "fname": fn, "reason": str(clog)[:120], "sig": sig}
-                continue
-            def probe(v, **where):
-                try:
-                    return B16._fp(NO.probe(args=v["args"], **where))
-                except ImportError:
-                    raise
-                except Exception as e:
-                    return {"err": type(e).__name__}
-            verdict, reason, limits = verify95.compare(
-                lambda v: probe(v, dll=path, seg=seg, offset=off),
-                lambda v: probe(v, dll=dll, ordinal=1), vecs)
-            # Internal callees are stand-ins in this lane; a body that calls one says so.
-            if verdict in GOOD and re.search(r"\bsub_\w+\s*\(", c.replace(fn + "(", "(")):
-                limits = sorted(set(limits) | {"stub-callee"})
-            results[k] = {"verdict": verdict, "fname": fn, "reason": reason, "sig": sig,
-                          "limits": ",".join(limits)}
-            if verdict in GOOD:
-                bank.append((fn, c, verdict))
-        return results, bank
-
-    def save(self, path, fname, source, verdict):
-        from codebreaker.verify import body16 as B16
-        B16._save_verified16(path, fname, source, verdict)
-
-
-LANES = {"pe": PELane(), "ne": NELane()}
+LANES = {"pe": PELane()}
 
 
 # =============================================================================================
@@ -230,38 +108,3 @@ def functions(lane, path):
     return LANES[lane].functions(path)
 
 
-def verify(lane, path, funcs=None, outdir=None, store=None, bank=True):
-    """Verify `funcs` (default: every function) of the retail module at `path`.
-    Returns {key: {"verdict", "fname", "reason", "cached"}}. With a `store`, verdicts whose inputs
-    are unchanged are reused, and every result is recorded."""
-    from codebreaker.verify import body32 as B
-    from codebreaker.verify import oracle as verify95
-    _arm()
-    L = LANES[lane]
-    if funcs is None:
-        funcs = L.functions(path)
-    outdir = outdir or B._scratch(lane, os.path.basename(path).lower())
-    mod_sha = verify95._mod_sha(path) or ""
-    known = store.get_many(lane, mod_sha) if (store and mod_sha) else {}
-    results, to_bank = L.verify(path, funcs, outdir, known)
-    if bank:
-        for fname, source, verdict in to_bank:
-            L.save(path, fname, source, verdict)
-    if store and mod_sha:
-        build = toolchain.decompiler_build_id()
-        module = os.path.basename(path).lower()
-        digest, settings = profile(lane)
-        store.put_profile(digest, lane, settings)
-        store.put_many((lane, module, mod_sha, k, r.get("fname", ""), r.get("sig", ""),
-                        r["verdict"], r.get("reason", ""), build, r.get("limits", ""), digest,
-                        r.get("detail", ""))
-                       for k, r in results.items() if not r.get("cached"))
-    for r in results.values():
-        r.setdefault("cached", False)
-        r.pop("sig", None)
-    return results
-
-
-def tally(results):
-    """Counter of verdicts for a verify() result."""
-    return Counter(r["verdict"] for r in results.values())

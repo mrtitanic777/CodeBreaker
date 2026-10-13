@@ -15,55 +15,12 @@ if ROOT not in sys.path:
 from codebreaker.base import corpus
 from codebreaker.base import period_tools as toolchain                      # noqa: E402
 from codebreaker.verify import pipeline
-from codebreaker.verify import store  # noqa: E402
 
 RESULTS = []
 
 
 class Skip(Exception):
     pass
-
-
-def _db():
-    return store.open(os.path.join(tempfile.mkdtemp(), "results.sqlite"))
-
-
-def test_store_roundtrip_and_reports():
-    db = _db()
-    assert db.get("pe", "sha", "1000") is None
-    db.put_many([("pe", "a.dll", "sha", "1000", "f", "sig1", "divergent", "deps-differ", "b1"),
-                 ("pe", "a.dll", "sha", "2000", "g", "sig2", "equivalent", "", "b1"),
-                 ("ne", "n.dll", "nsha", "1:0010", "h", "sig3", "consistent", "", "b1")])
-    row = db.get("pe", "sha", "1000")
-    assert row["verdict"] == "divergent" and row["sig"] == "sig1" and row["prev_verdict"] is None
-    assert set(db.get_many("pe", "sha")) == {"1000", "2000"}
-    assert db.summary("pe") == {"divergent": 1, "equivalent": 1}
-    assert db.summary("ne") == {"consistent": 1}
-    assert db.reasons("pe") == {"deps-differ": 1}
-    assert db.by_module("pe") == [("a.dll", 2, 1)]
-
-
-def test_store_records_verdict_changes():
-    db = _db()
-    db.put("pe", "a.dll", "sha", "1000", "f", "sig1", "divergent", "ret-differs", "build1")
-    assert db.flips("pe") == []
-    db.put("pe", "a.dll", "sha", "1000", "f", "sig1", "divergent", "ret-differs", "build2")   # same verdict
-    assert db.flips("pe") == []
-    db.put("pe", "a.dll", "sha", "1000", "f", "sig2", "equivalent", "", "build3")
-    assert db.flips("pe") == [("a.dll", "1000", "f", "divergent", "equivalent")]
-    assert db.flips("pe", "build3") and db.flips("pe", "build2") == []
-    # the change stays on record when a later build confirms the new verdict
-    db.put("pe", "a.dll", "sha", "1000", "f", "sig2", "equivalent", "", "build4")
-    assert db.flips("pe", "build3") == [("a.dll", "1000", "f", "divergent", "equivalent")]
-
-
-def test_reason_for_divergence():
-    a = {"ret": 1, "exit": "ret", "deps": ("K.x",)}
-    assert pipeline.why_divergent([a], [dict(a, exit="fault")]) == "exit-differs"
-    assert pipeline.why_divergent([a], [dict(a, deps=())]) == "deps-differ"
-    assert pipeline.why_divergent([a], [dict(a, ret=2)]) == "ret-differs"
-    assert pipeline.why_divergent([{"err": "X"}, a], [a, dict(a, ret=2)]) == "ret-differs"
-    assert pipeline.why_inconclusive([{"err": "ValueError"}], [a]) == "retail: ValueError"
 
 
 def _need(lane):
@@ -118,8 +75,7 @@ def test_function_store():
 
 
 def main():
-    for fn in (test_store_roundtrip_and_reports, test_store_records_verdict_changes,
-               test_reason_for_divergence, test_function_store, test_reconstruct_is_incremental):
+    for fn in (test_function_store, test_reconstruct_is_incremental):
         try:
             fn()
             RESULTS.append((fn.__name__, "PASS", ""))

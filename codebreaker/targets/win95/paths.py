@@ -19,29 +19,8 @@ def win95_root():
     return os.path.join(os.path.dirname(paths.repo_root()), "Windows95")               # ../Windows95
 
 
-def _cfg(key, default=""):
-    try:
-        from codebreaker.base import config
-        return config.load_config().get(key, default) or default
-    except Exception:
-        return default
-
-
-def corpus_root():
-    """The retail INPUT corpus (config: msc6_data); shipped DLLs live under <corpus>/files/."""
-    return _cfg("msc6_data")
-
-
-def toolchain_root():
-    """The period MSC-6.0a toolchain (config: msc6_toolchain)."""
-    return _cfg("msc6_toolchain")
-
-
 def src(*parts):
     """A path inside the reconstructed source tree, e.g. src('base', 'lzexpand')."""
     return os.path.join(win95_root(), *parts)
 
 
-def input_dll(*parts):
-    """A retail input file under the corpus, e.g. input_dll('setup', 'inf', 'lzexpand.dll')."""
-    return os.path.join(corpus_root(), "files", *parts)

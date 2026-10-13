@@ -97,5 +97,3 @@ def ensure_target(tool_dir):
         set_target(tool_dir)
 
 
-def active_target():
-    return target_dir() if (_active or os.environ.get("CB_TARGET")) else None

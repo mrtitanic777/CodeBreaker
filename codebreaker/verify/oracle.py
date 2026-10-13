@@ -438,7 +438,6 @@ _HARVEST = {}
 MAX_DIRECTED = 12                # directed inputs kept per body
 _HARVEST_DEPTH = 2               # how far into callees to look for what branches test
 _HARVEST_FUNCS = 12
-_DIRECT_BELOW = 85               # look for directed inputs when less than this % of the body ran
 
 
 def _harvest(path, func):

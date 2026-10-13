@@ -66,14 +66,6 @@ def le_modules(path):
     return le.open_vxds(path)
 
 
-def primary_exec(lf):
-    """The largest executable object of an LE module (its main code section)."""
-    execs = [o for o in lf.objects if o["exec"]]
-    if not execs:
-        raise ValueError("no executable object")
-    return max(execs, key=lambda o: o["vsize"])
-
-
 _SPAN_CAP = 4 * 1024 * 1024    # combine all exec objects into one image if they fit in 4 MB
 
 

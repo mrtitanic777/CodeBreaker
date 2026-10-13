@@ -23,7 +23,6 @@ _enabled = False
 _managed = False
 _win = None            # own ProgressWindow | False | None
 _separate = False      # UI runs in a SEPARATE process (mirrors the live file)?
-_monitor_proc = None   # the spawned monitor process, if any
 _t0 = None
 _session_t0 = None     # session stopwatch start — set once, spans all modules
 
@@ -32,47 +31,6 @@ _state = {"active": False, "caption": "CodeBreaker", "status": "Ready",
           "done": 0, "total": 1, "error": False, "details": [],
           "done_event": 0.0, "summary": "", "ui_state": "work", "next": "",
           "bytes": "", "left": "", "eta_txt": ""}
-
-
-def enable(separate=None):
-    """Turn on the progress UI. By DEFAULT the window runs in a SEPARATE process
-    that mirrors reports/live_progress.json, so its tkinter event loop and repaints
-    run on their own core and never share the worker's GIL -- the run goes at
-    headless speed. Pass separate=False (or set WT_UI_INPROC=1) for the legacy
-    in-process window (a daemon thread that time-slices against the work)."""
-    global _enabled, _separate
-    _enabled = True
-    if separate is None:
-        separate = os.environ.get("WT_UI_INPROC") != "1"
-    if separate and sys.platform == "win32" and _spawn_monitor():
-        _separate = True           # worker stays window-free; the monitor renders LIVE
-    else:
-        capture_output()           # legacy: in-process window text captured from stdout
-
-
-def _spawn_monitor():
-    """Launch the UI as its OWN process, mirroring the live file. Returns True if it
-    started. Decoupling the window this way is the whole point: the child owns the
-    tkinter loop on a separate core, so painting a live view no longer steals cycles
-    (the GIL) from the lifting loop."""
-    global _monitor_proc
-    import subprocess
-    try:
-        _state["active"] = True
-        _write_live()              # seed the file so the window opens 'working', not 'Ready'
-        _monitor_proc = subprocess.Popen(
-            [sys.executable, "-m", "codebreaker.base.progress", "--monitor"], cwd=os.getcwd(),
-            env=dict(os.environ, PYTHONPATH=os.pathsep.join(
-                [os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))]
-                + [p for p in os.environ.get("PYTHONPATH", "").split(os.pathsep) if p])))
-        return True
-    except Exception:
-        _monitor_proc = None
-        return False
-
-
-def want_two_tier():          # kept for API compatibility (single bar now)
-    pass
 
 
 def active():
@@ -85,18 +43,6 @@ def active():
 # console appears ONLY for debugging (WT_CONSOLE=1) or when launched from an
 # existing terminal for a CLI command (doctor/config) — never spawned for a run.
 # --------------------------------------------------------------------------
-
-class _Null:
-    """A never-None stdout so print() can't crash the windowed EXE when there is
-    no console and the UI capture isn't installed (e.g. `doctor` on double-click)."""
-    def write(self, s):
-        return len(s) if s else 0
-
-    def flush(self):
-        pass
-
-    def isatty(self):
-        return False
 
 
 class _Tee:
@@ -145,24 +91,6 @@ def _ensure_console():
         except Exception:
             out = err = None
     return out, err
-
-
-def init_std():
-    """Called once at EXE startup. In a windowed build sys.stdout/err are None;
-    attach to the parent console if we were launched from a terminal (so CLI
-    commands like `doctor` still print), and never leave them None."""
-    if sys.platform == "win32" and sys.stdout is None:
-        try:
-            import ctypes
-            if ctypes.windll.kernel32.AttachConsole(-1):      # ATTACH_PARENT_PROCESS
-                sys.stdout = open("CONOUT$", "w", buffering=1)
-                sys.stderr = open("CONOUT$", "w", buffering=1)
-        except Exception:
-            pass
-    if sys.stdout is None:
-        sys.stdout = _Null()
-    if sys.stderr is None:
-        sys.stderr = _Null()
 
 
 _captured = False
@@ -222,22 +150,6 @@ def coverage(text):
             pass
 
 
-def status_bar(text):
-    """Set the window's bottom status-bar line (e.g. tier progress)."""
-    _state["sbar"] = str(text)
-    w = _get()
-    if w:
-        try:
-            w.set_status_bar(text)
-        except Exception:
-            pass
-
-
-def manage():
-    global _managed
-    _managed = True
-
-
 def _write_live():
     try:
         os.makedirs(layout.runtime_dir(), exist_ok=True)
@@ -278,13 +190,6 @@ _samples = []          # [(time, done)] over a trailing window
 _ema_rate = None       # smoothed items/sec
 RATE_WINDOW = 20.0     # seconds of history the rate is measured over
 RATE_ALPHA = 0.25      # EMA smoothing (lower = steadier)
-
-
-def _fmt_eta(sec):
-    sec = int(max(0, sec))
-    if sec >= 3600:
-        return "%d:%02d:%02d" % (sec // 3600, (sec % 3600) // 60, sec % 60)
-    return "%d:%02d" % (sec // 60, sec % 60)
 
 
 def op(title, total):
@@ -354,31 +259,6 @@ def caption(msg):
     w = _get()
     if w:
         w.set_caption(msg)
-
-
-def next_module(name):
-    """Show the module that runs after the current one (batch/tier mode)."""
-    _state["next"] = str(name or ""); _write_live()
-    w = _get()
-    if w:
-        w.set_next(name)
-
-
-def session_eta(seconds):
-    """Estimated time remaining for the whole batch/tier (shown in the status,
-    alongside the count-up stopwatch). 0/None clears it."""
-    _state["eta_txt"] = ("~%s left" % _fmt_eta(seconds)) if seconds and seconds > 0 else ""
-    _write_live()
-
-
-def modules_left(n):
-    """Tally of modules still to do in a batch/tier (shown beside Next)."""
-    s = ("%d modules left" % n) if n and n > 0 else ""
-    _state["left"] = s
-    _write_live()
-    w = _get()
-    if w:
-        w.set_left(s)
 
 
 def bytes_done(done, total=0):

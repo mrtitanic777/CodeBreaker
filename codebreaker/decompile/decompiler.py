@@ -110,7 +110,7 @@ def function_names(module_path, funcs):
     """{va: name} -- an export's own name, else sub_<rva>. A name also used by an import of this
     module stays with the import (the call has to bind to it)."""
     from codebreaker.formats.pe import open_pe
-    from codebreaker.verify import body32 as B
+    from codebreaker.build import watcom as B
     pe = open_pe(module_path)
     imported = set(B.import_map(module_path))
     by_rva = {}
@@ -276,7 +276,7 @@ def compilable(module_path, funcs, outdir):
     the core's output with its base types defined, its globals bound to the original's addresses,
     and every function and import declared before use with its real convention."""
     from codebreaker.emulate import api_stack as apiarity
-    from codebreaker.verify import body32 as B
+    from codebreaker.build import watcom as B
     out, order, by_va, _err = raw(module_path, funcs, outdir)
     imports = B.import_map(module_path)
     sizes = {}
@@ -333,7 +333,7 @@ class Module(object):
 
 def decompile(module_path, funcs=None, outdir=None):
     """Decompile a module (every function, or the addresses in `funcs`). -> Module"""
-    from codebreaker.verify import body32 as B
+    from codebreaker.build import watcom as B
     from codebreaker.verify import pipeline
     if funcs is None:
         pipeline._arm()

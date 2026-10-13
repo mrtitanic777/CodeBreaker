@@ -152,10 +152,6 @@ TIER_ORDER = ["core", "system", "drivers", "apps", "thirdparty"]
 _DRIVER_EXT = (".DRV", ".VXD", ".386", ".PDR", ".MPD", ".CPL", ".SCR",
                ".3GR", ".ACM", ".ACV", ".TSP", ".DRW")
 
-# Resource-only stubs with no code — excluded from coverage, as in 3.1.
-_NOCODE_EXT = (".FON", ".FOT", ".TTF", ".BMP", ".CUR", ".ICO", ".WAV",
-               ".HLP", ".CNT", ".INF", ".INI", ".TXT", ".DAT", ".REG")
-
 
 # --------------------------------------------------------------------------
 # Format detection — the central new capability vs. 3.1.
