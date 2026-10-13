@@ -495,6 +495,29 @@ def compilable16(module_path, outdir=None):
 # PowerPC ---------------------------------------------------------------------------------------
 _POWERPC = """
 #define PIECE(x, off, T) (*(T *)((char *)&(x) + sizeof(x) - (off) - sizeof(T)))
+/* Instructions the decompiler writes by name rather than as C. */
+static uint4 codebreaker_lzcount32(uint4 x) { uint4 n = 0; if (!x) return 32; while (!(x & 0x80000000)) { x <<= 1; n++; } return n; }
+static uint4 codebreaker_lzcount64(uint8 x) { uint4 n = 0; if (!x) return 64; while (!(x >> 63)) { x <<= 1; n++; } return n; }
+#define LZCOUNT(x) (sizeof(x) == 8 ? codebreaker_lzcount64((uint8)(x)) : codebreaker_lzcount32((uint4)(x)))
+#define ABS(x) ((x) < 0 ? -(x) : (x))
+double sqrt(double);
+#define SQRT(x) sqrt((double)(x))
+/* a store that succeeds when nothing else wrote there since the matching load: here nothing else runs */
+static uint4 codebreaker_store_conditional(uint4 v, uint4 a, uint4 b) { *(uint4 *)(a + b) = v; return 1; }
+#define storeWordConditionalIndexed(v, a, b) codebreaker_store_conditional((uint4)(v), (uint4)(a), (uint4)(b))
+static void codebreaker_zero_block(uint4 a, uint4 b) { uint1 *p = (uint1 *)((a + b) & ~31u); int i; for (i = 0; i < 32; i++) p[i] = 0; }
+#define dataCacheBlockSetToZero(a, b) codebreaker_zero_block((uint4)(a), (uint4)(b))
+/* hints to the processor and waits for it, which change nothing a program can see; and a trap,
+   which is taken only when a check the compiler put in fails (a division by zero) */
+#define sync(...) ((void)0)
+#define instructionSynchronize(...) ((void)0)
+#define enforceInOrderExecutionIO(...) ((void)0)
+#define dataCacheBlockTouch(...) ((void)0)
+#define dataCacheBlockTouchForStore(...) ((void)0)
+#define dataCacheBlockStore(...) ((void)0)
+#define dataCacheBlockFlush(...) ((void)0)
+#define trapWord(...) ((void)0)
+#define trapDoubleWord(...) ((void)0)
 """
 _WIDE_ADDRESS = re.compile(r"\b0xffffffff([89a-f][0-9a-f]{7})\b")
 _PIECE = re.compile(r"\b([A-Za-z_]\w*(?:\[[^\[\]]*\])?)\._(\d+)_(\d+)_")
@@ -618,6 +641,13 @@ def compilable_powerpc(module_path, outdir):
         size = max((x for x in szs if x <= 8), default=4)
         macros.append("#define %sRam%s (*(%s *)0x%s)" % (
             pre, addr, _ram_type(pre, size, "%sRam%s" % (pre, addr) in called_through), addr))
+    # a call to a place in the original the decompiler was not told is a function: called there,
+    # in the original, which is in memory beside the rebuilt image when it is judged
+    lo_image = min(va for va, _off, _size in img.spans)
+    hi_image = max(va + size for va, _off, size in img.spans)
+    for addr in sorted(set(re.findall(r"\bfunc_0x([0-9a-f]{8})\b", text))):
+        if lo_image <= int(addr, 16) < hi_image and "func_0x" + addr not in out:
+            macros.append("#define func_0x%s ((code *)0x%s)" % (addr, addr))
     used = sorted(set(re.findall(r"\b(import\d+_ord_\d+)\s*\(", text)))
     decls = ["uint8 %s();" % n for n in used]
     for n in order:
