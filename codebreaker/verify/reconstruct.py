@@ -103,14 +103,19 @@ def _reaches(texts, built, dropped):
     return tainted
 
 
-def signatures(m, whole):
+def signatures(m, whole, own=None):
     """{name: what that function's verdict was reached for}: its own text, the header, and the
     text of every function it can reach -- it is built and run together with those, so a change
     in one of them is a change in what was judged. A function none of that changed for keeps its
     verdict, however much of the rest of the module changed.
 
     Functions that call each other in a ring are one group with one signature. `whole` is the
-    signature for a module that is not made of separate texts."""
+    signature for a module that is not made of separate texts.
+
+    With `own` {name: digest of the function's compiled code}, that stands in the signature in
+    place of the function's text and the header: the signature is then of what was BUILT, and
+    does not change when the source changes to no effect on the code (a declaration added to
+    the header, a comment, a rename)."""
     import hashlib
     texts = getattr(m, "texts", None)
     if not texts or not getattr(m, "header", None):
@@ -154,12 +159,13 @@ def signatures(m, whole):
                 if work:
                     parent = work[-1][0]
                     low[parent] = min(low[parent], low[n])
-    base = hashlib.sha1(m.header.encode("utf-8", "replace")).hexdigest()
+    base = "built" if own is not None else hashlib.sha1(m.header.encode("utf-8", "replace")).hexdigest()
     sig_of, out = {}, {}
     for g, members in enumerate(order):                      # callees come before their callers
         h = hashlib.sha1(base.encode())
         for x in sorted(members):
-            h.update(x.encode() + b"\0" + texts[x].encode("utf-8", "replace") + b"\0")
+            body = own.get(x, "absent") if own is not None else texts[x]
+            h.update(x.encode() + b"\0" + body.encode("utf-8", "replace") + b"\0")
         for other in sorted({group[c] for x in members for c in calls[x]} - {g}):
             h.update(sig_of[other].encode())
         sig_of[g] = h.hexdigest()
@@ -199,9 +205,31 @@ def run(module_path, fs=None, log=print):
                  reason="the decompiler produced nothing for this function", problem="none")
             for k in m.all_keys if k not in have]
     t2 = t3 = time.time()
+    carried = 0
     if fresh:
         context, items, dropped = kind.build(m, module_path, work)
         t2 = time.time()
+        # What was built, per function: its own object code and that of everything it reaches.
+        # A function whose text changed but whose compiled code did not -- nor that of anything
+        # it calls -- is the same function to a judge that runs code: its verdict is kept.
+        from codebreaker.build import functions as builder
+        objects = builder.OBJECTS.get(work) if getattr(kind, "PER_FUNCTION", False) else None
+        built_now = signatures(m, None, own=objects) if objects else {}
+        if built_now:
+            before = fs.built(sha, digest)
+            had = {r["addr"]: r for r in fs.candidates(sha, digest, SOURCE) if r["verdict"] is not None}
+            keep = set()
+            for n in fresh:
+                k = m.key[n]
+                if n in items and before.get(k) and before[k] == built_now.get(n) and k in had and \
+                        had[k]["verdict"] not in ("no-compile", "no-synth"):
+                    r = had[k]
+                    rows.append(dict(addr=k, sig=sig[n], name=n, source=m.texts[n], verdict=r["verdict"],
+                                     reason=r.get("reason"), limits=r.get("limits"), detail=r.get("detail")))
+                    keep.add(n)
+            carried = len(keep)
+            fresh = [n for n in fresh if n not in keep]
+            fs.set_built(sha, digest, {m.key[n]: s for n, s in built_now.items() if n in m.key})
         tainted = _reaches(m.texts, list(items), dropped)
         for n in fresh:
             if n not in items:
@@ -219,8 +247,8 @@ def run(module_path, fs=None, log=print):
         t3 = time.time()
     fs.record_many(sha, SOURCE, str(decompiler.REV), digest, rows)
     c = fs.scores(digest, sha)
-    log("%s: %d functions, %d judged now: %s  (%.0fs: decompile %.0f, build %.0f, judge %.0f)" % (
-        name, len(m.all_keys), len(fresh),
+    log("%s: %d functions, %d judged now%s: %s  (%.0fs: decompile %.0f, build %.0f, judge %.0f)" % (
+        name, len(m.all_keys), len(fresh), (", %d kept (same code)" % carried) if carried else "",
         ", ".join("%s %d" % (functions.TITLE[k], c[k]) for k in functions.SCORED if c[k]), time.time() - t0,
         t1 - t0, t2 - t1, t3 - t2))
     return sha, digest

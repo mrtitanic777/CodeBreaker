@@ -264,6 +264,40 @@ def test_object_file_of_the_16_bit_compiler_is_read():
     assert "#define __stdcall16far __far __stdcall" in header
 
 
+def test_a_verdict_is_for_the_compiled_code():
+    """The signature of what was built does not change with the source's name, date or notes,
+    nor with the header; it does when the function's code, or the code of one it calls, does."""
+    from codebreaker.build import functions
+    from codebreaker.verify import reconstruct
+
+    def record(kind, body):
+        return bytes([kind]) + (len(body) + 1).to_bytes(2, "little") + body + b"\0"
+
+    def obj(name, note, code):
+        return record(0x80, bytes([len(name)]) + name) + record(0x88, note) + record(0xA0, b"\x01\x00\x00" + code) + record(0x8A, b"\x00")
+    d = tempfile.mkdtemp()
+
+    def digest(*parts):
+        with open(os.path.join(d, "x.obj"), "wb") as f:
+            f.write(obj(*parts))
+        return functions.object_digest(os.path.join(d, "x.obj"))
+    assert digest(b"f1.c", b"made monday", b"\x55\xc3") == digest(b"f9.c", b"made friday", b"\x55\xc3")
+    assert digest(b"f1.c", b"made monday", b"\x55\xc3") != digest(b"f1.c", b"made monday", b"\x56\xc3")
+    assert functions.object_digest(os.path.join(d, "none.obj")) is None
+
+    class M(object):
+        order = ["a", "b", "c"]
+        texts = {"a": "int a(){ return b(); }", "b": "int b(){ return 1; }", "c": "int c(){ return 2; }"}
+    m = M()
+    m.header = "one header"
+    was = reconstruct.signatures(m, None, own={"a": "A", "b": "B", "c": "C"})
+    m.header = "another header"
+    m.texts = dict(M.texts, c="int c(){ /* said differently */ return 2; }")
+    assert reconstruct.signatures(m, None, own={"a": "A", "b": "B", "c": "C"}) == was
+    now = reconstruct.signatures(m, None, own={"a": "A", "b": "B2", "c": "C"})
+    assert now["b"] != was["b"] and now["a"] != was["a"] and now["c"] == was["c"]
+
+
 def test_cache_files_results_under_what_made_them():
     from codebreaker.base import cache
     k = cache.key("tool:1:2", ["-a", "-b"], "text")
@@ -286,7 +320,7 @@ def main():
                test_a_verdict_holds_until_what_it_was_for_changes, test_cache_files_results_under_what_made_them,
                test_period_source_gives_the_declarations_an_author_had, test_breaks_change_what_a_function_does,
                test_field_accesses_are_written_as_fields, test_other_shapes_of_the_same_function,
-               test_object_file_of_the_16_bit_compiler_is_read,
+               test_object_file_of_the_16_bit_compiler_is_read, test_a_verdict_is_for_the_compiled_code,
                test_repair_search_with_any_compiler, test_period_compiler_gives_the_original_back,
                test_reconstruct_is_incremental):
         try:

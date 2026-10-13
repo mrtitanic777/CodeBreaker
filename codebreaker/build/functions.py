@@ -89,6 +89,41 @@ def _compile(cc, cflags, env, outdir, stem, text):
 
 
 _HEADER = {}                     # build folder -> the hash of the header in it
+OBJECTS = {}                     # build folder -> {function: digest of its object code}, of the last build there
+
+
+def object_digest(path):
+    """A digest of what a compiled object file IS -- its code, data, the places to patch and the
+    names it defines and refers to -- and of nothing else: not the source file's name or date,
+    nor the compiler's notes. Two compilations that give the same machine code give the same
+    digest, whatever was changed in the source to no effect. None when there is no file."""
+    import hashlib
+    try:
+        with open(path, "rb") as f:
+            data = f.read()
+    except OSError:
+        return None
+    h = hashlib.sha1()
+    if data[:1] == bytes([0x80]):                            # OMF: records; skip the header and comments
+        p = 0
+        while p + 3 <= len(data):
+            kind = data[p]
+            size = int.from_bytes(data[p + 1:p + 3], "little")
+            if kind not in (0x80, 0x88, 0x8A, 0x8B):
+                h.update(data[p:p + 3 + size - 1])           # (without the record's checksum)
+            p += 3 + size
+    else:                                                    # COFF: all but the time it was made
+        h.update(data[:4])
+        h.update(data[8:])
+    return h.hexdigest()
+
+
+def _note_objects(outdir, stems, dropped, gone=()):
+    OBJECTS[outdir] = out = {}
+    for n, stem in stems.items():
+        out[n] = ("stand-in:" if n in dropped else "") + (object_digest(os.path.join(outdir, stem + ".obj")) or "none")
+    for n in gone:
+        out[n] = "the original's"
 
 
 def compile_all(cc, cflags, env, header, texts, order, outdir, jobs=None, more=None):
@@ -192,6 +227,7 @@ def build16(header, texts, order, imports, outdir, segments=None, jobs=None, cod
             break
         live = [n for n in live if n not in dropped]
         dll, why = _link(wlink, env, outdir, lines)
+    _note_objects(outdir, stems, dropped)
     if not dll:
         return None, {}, dict(dropped, **{n: "link: " + why for n in live})
     where = {}
@@ -258,9 +294,10 @@ def build32(module_path, header, texts, order, used_imports, outdir, cflags, job
     numbered = describe.BY_NUMBER.get(module_path) or {}
     stems, dropped = compile_all(ow["wcc"], list(cflags) + ["-e=20"], env, header, texts, order, outdir, jobs)
     live = [n for n in order if n not in dropped]
-    for n in dropped:                                        # no stand-in where the original itself can be called
-        if originals and n in originals:
-            stems.pop(n, None)
+    gone = [n for n in dropped if originals and n in originals and n in stems]
+    for n in gone:                                           # no stand-in where the original itself can be called
+        stems.pop(n, None)
+    _note_objects(outdir, stems, dropped, gone)
     # undefsok: a call to a function that is not there is left unresolved (it then fails its test)
     lines = ["system nt_dll", "name m.dll", "option quiet", "option undefsok", B._BASE.strip()]
     lines += ["file %s.obj" % stems[n] for n in order if n in stems]
@@ -365,6 +402,7 @@ def build_powerpc(header, texts, order, externs, outdir, base, jobs=None):
     # every extern is a function of its own that does nothing; running stops at its address
     _compile_powerpc(cl, outdir, "externs", "\n".join(
         "#pragma optimize(\"\", off)\nuint8 %s() { return %d; }" % (n, i) for i, n in enumerate(sorted(externs))))
+    _note_objects(outdir, stems, dropped)
     objs = [stems[n] + ".obj" for n in order if n in stems] + ["externs.obj"]
     with open(os.path.join(outdir, "m.rsp"), "w", newline="\n") as f:
         f.write("\n".join(objs) + "\n")

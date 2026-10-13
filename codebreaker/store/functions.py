@@ -57,6 +57,9 @@ CREATE TABLE IF NOT EXISTS body(
     PRIMARY KEY (module, addr));
 CREATE INDEX IF NOT EXISTS body_hash ON body(hash);
 CREATE TABLE IF NOT EXISTS body_name(hash TEXT PRIMARY KEY, name TEXT, source TEXT, ts REAL);
+CREATE TABLE IF NOT EXISTS built(
+    module TEXT NOT NULL, addr TEXT NOT NULL, profile TEXT NOT NULL, sig TEXT,
+    PRIMARY KEY (module, addr, profile));
 CREATE TABLE IF NOT EXISTS variant(
     id INTEGER PRIMARY KEY, function INTEGER NOT NULL, compiler TEXT NOT NULL, source TEXT,
     parent INTEGER, knobs TEXT, distance INTEGER, total INTEGER, verdict TEXT, behaves TEXT, ts REAL,
@@ -198,6 +201,16 @@ class FunctionStore(object):
             q += " AND c.engine=?"
             args.append(engine)
         return [dict(zip(self._ROW, r)) for r in self.db.execute(q, args)]
+
+    def built(self, module, profile):
+        """{addr: signature of the compiled code a function's verdict under `profile` was reached
+        for} -- its own object code and that of everything it reaches (verify/reconstruct.py)."""
+        return dict(self.db.execute("SELECT addr, sig FROM built WHERE module=? AND profile=?", (module, profile)))
+
+    def set_built(self, module, profile, sigs):
+        with self.db:
+            self.db.executemany("INSERT OR REPLACE INTO built(module, addr, profile, sig) VALUES(?,?,?,?)",
+                                [(module, addr, profile, sig) for addr, sig in sigs.items()])
 
     def judged(self, module, profile, engine):
         """{addr: row} of an engine's candidates that have a verdict under `profile` for the source
