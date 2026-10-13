@@ -32,7 +32,7 @@ def _exit_norm(e):
 # stdcall import takes, and the fingerprint is the full call sequence WITH arguments, not the set of
 # import names reached. 4: the fingerprint also carries the memory the function wrote and which of
 # its instructions ran; inputs can set what imported calls return.
-REV = 16
+REV = 17
 
 
 def first_difference(a, b, ret_mask=0):

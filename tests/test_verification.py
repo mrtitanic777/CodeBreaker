@@ -188,6 +188,19 @@ def test_period_source_gives_the_declarations_an_author_had():
     assert "uint1 _rest[4]; } _f;" in dict(repair._knobs(framed, 8, 12))["frame4"]
 
 
+def test_breaks_change_what_a_function_does():
+    """The judge's self-test breaks a function one small way at a time, in its statements only."""
+    from codebreaker.verify import teeth
+    src = ("int4 f(int4 a1,int4 a2)\n{\n  int4 x[4];\n  int4 y;\n\n  y = a1 + a2;\n  if (y == 3) {\n"
+           "    *(int4 *)a1 = g(a1,a2);\n  }\n  return y;\n}")
+    made = dict(teeth.breaks(src))
+    assert set(made) == {"constant", "comparison", "operator", "store", "arguments"}, set(made)
+    assert "int4 x[4];" in made["constant"] and "y == 4" in made["constant"]      # not the declaration
+    assert "y != 3" in made["comparison"] and "a1 - a2" in made["operator"]
+    assert "g(a2,a1)" in made["arguments"] and "*(int4 *)a1 =" not in made["store"]
+    assert all(t.startswith("int4 f(int4 a1,int4 a2)") for t in made.values())
+
+
 def test_cache_files_results_under_what_made_them():
     from codebreaker.base import cache
     k = cache.key("tool:1:2", ["-a", "-b"], "text")
@@ -208,7 +221,7 @@ def test_cache_files_results_under_what_made_them():
 def main():
     for fn in (test_function_store, test_variant_store, test_repair_knobs_preserve_meaning,
                test_a_verdict_holds_until_what_it_was_for_changes, test_cache_files_results_under_what_made_them,
-               test_period_source_gives_the_declarations_an_author_had,
+               test_period_source_gives_the_declarations_an_author_had, test_breaks_change_what_a_function_does,
                test_repair_search_with_any_compiler, test_period_compiler_gives_the_original_back,
                test_reconstruct_is_incremental):
         try:

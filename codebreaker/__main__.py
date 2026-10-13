@@ -47,6 +47,7 @@ COMMANDS = {
     "measure": ("codebreaker.verify.measure", []),
     "match": ("codebreaker.verify.match", []),
     "repair": ("codebreaker.verify.repair", []),
+    "teeth": ("codebreaker.verify.teeth", []),
     "decompile": ("codebreaker.decompile.decompiler", []),
     "names": ("codebreaker.symbols.names", []),
     "identify": ("codebreaker.symbols.runtime_library", []),

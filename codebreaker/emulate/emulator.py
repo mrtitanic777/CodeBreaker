@@ -428,7 +428,8 @@ def _machine(U, path, sha, va0, code, secbase, size, imports, overlay, stub_exte
 def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS, mem_init=None,
                    stub_externals=None, stub_ret=0, stub_cleanup=0, sig_resolver=None,
                    stub_ret_unique=False, overlay=None, sentinels=None, reads=True, stop_wild=False,
-                   quiet_stack=False, reuse=False, fast=False, lean=False):
+                   quiet_stack=False, reuse=False, fast=False, lean=False,
+                   pads=None):
     """Run one function under Unicorn with full hooks; return a TraceRecord (a plain dict).
 
     module  -- e.g. "gdi32.dll"; resolved through the active target like difftest.
@@ -620,13 +621,19 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
         # return address to resume at, so emulate the API's return instead of crawling into the
         # zero-filled sentinel page (the cause of most "runaway loop" truncations). Catching JMP
         # here, not just CALL, is the fix.
-        if stub_externals and address in sentinel_map:
-            dll, name = sentinel_map[address]
+        # ... and so does reaching a landing pad (`pads`, a range the caller filled its pretend
+        # objects' pointers with): a call through a pointer, recorded with WHICH pad it reached,
+        # so that a call through the wrong field of an object is a different call.
+        hit = sentinel_map.get(address) if stub_externals else None
+        if hit is None and pads and pads[0] <= address < pads[1]:
+            hit = ("CALLBACK", "%d" % ((address - pads[0]) // 4))
+        if hit is not None:
+            dll, name = hit
             api = "%s!%s" % (dll, name)
             rec.setdefault("api_deps", [])
             if api not in rec["api_deps"]:
                 rec["api_deps"].append(api)
-            argc = sig_resolver(dll, name) if sig_resolver else None
+            argc = 0 if dll == "CALLBACK" else sig_resolver(dll, name) if sig_resolver else None
             cleanup = 4 * argc if argc is not None else stub_cleanup
             try:
                 esp_now = uc.reg_read(UC_X86_REG_ESP)
@@ -726,9 +733,9 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
     def hook_block(uc, address, size, _ud):
         if switch[0]:
             return
-        if stub_externals and address in sentinel_map:
+        if (stub_externals and address in sentinel_map) or (pads and pads[0] <= address < pads[1]):
             last[0] = None
-            hook_code(uc, address, 2, None)
+            hook_code(uc, address, 2 if address in sentinel_map else 1, None)
             if not rec["truncated"] and uc.reg_read(UC_X86_REG_EIP) == address:
                 skip[0] = address                           # not returned from: go on with care
                 switch[0] = True

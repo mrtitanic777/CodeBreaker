@@ -77,7 +77,7 @@ def judge(module_path, item):
     return verdict, reason, list(limits), info.get("detail", "")
 
 
-PIPE_REV = 19                   # what a verdict means (13: one build per batch; bodies the compiler rejects are dropped by name)
+PIPE_REV = 20                   # what a verdict means (13: one build per batch; bodies the compiler rejects are dropped by name)
 MAX_SUPPORT = 1500              # out-of-batch callee bodies pulled in per batch
 GOOD = ("equivalent", "consistent")
 
@@ -218,9 +218,15 @@ def _call_seq(calls, ins, own=None):
 _OBJ, _SAFE = 0x206000, 0x207800
 
 
+_PADS = (_SAFE, _SAFE + 0x1000)
+_PLAIN = bool(os.environ.get("CB_PLAIN"))
+
+
 def _prov_meminit():
-    return [(_OBJ, _struct.pack("<I", _SAFE) * 0x400),   # 4 KB of "-> _SAFE" pointers
-            (_SAFE, b"\xc3" * 16)]                        # RET landing pad
+    """A pretend object whose every field is a pointer to a landing pad of its own: a call
+    through a field returns, and WHICH field was called through is seen (emulator `pads`)."""
+    return [(_OBJ, b"".join(_struct.pack("<I", _SAFE + 4 * i) for i in range(0x400))),
+            (_SAFE, b"\xc3" * 0x1000)]
 
 
 # --- behavioral-fingerprint cache -------------------------------------------------------------
@@ -376,7 +382,9 @@ def _fp_pe(path, func, spec, rebuilt=False):
                                   stub_ret=int(spec.get("stub_ret", 0)),
                                   overlay=rebuilt if isinstance(rebuilt, str) else None,
                                   sentinels=spec.get("sentinels"), reads=False, stop_wild=True,
-                                  quiet_stack=True, reuse=True, fast=True, lean=True)
+                                  # CB_PLAIN=1: one instruction at a time on a fresh machine
+                                  # each run -- the slow way the fast one must agree with
+                                  quiet_stack=True, reuse=not _PLAIN, fast=not _PLAIN, lean=not _PLAIN, pads=_PADS)
     except ImportError:
         raise                                     # a broken setup is not an observation
     except Exception as e:
@@ -467,7 +475,7 @@ def _confirm_vectors(arity, lane):
 
 
 _HARVEST = {}
-MAX_DIRECTED = 12                # directed inputs kept per body
+MAX_DIRECTED = 16                # directed inputs kept per body
 _HARVEST_DEPTH = 2               # how far into callees to look for what branches test
 _HARVEST_FUNCS = 12
 
@@ -562,7 +570,37 @@ def directed_vectors(path, func, covered, arity=4, reached=()):
             keep.append(v)
             seen |= new
             if len(keep) >= MAX_DIRECTED:
-                break
+                return keep
+    # Then inputs that make the original DO something no earlier input made it do, though no
+    # new code runs: the values either side of each constant it compares with. `x < 100` and
+    # `x < 101` run the same instructions on every input but 100; only that input tells them
+    # apart, and no count of instructions reached would ever ask for it.
+
+    def did(f):
+        return (f.get("exit"), f.get("ret"), f.get("deps"), f.get("writes"))
+    done = set()
+    for v in list(_vectors(arity, "pe")) + list(_confirm_vectors(arity, "pe")) + keep:
+        f = _fp_pe(path, func, v)
+        if "err" not in f:
+            done.add(did(f))
+    edges = []
+    for k in consts:
+        for near in ((k - 1) & 0xFFFFFFFF, (k + 1) & 0xFFFFFFFF, k):
+            for i in range(n):
+                a = list(ints)
+                a[i] = near
+                edges.append({"args": a})
+                a = list(obj)
+                a[i] = near
+                edges.append({"args": a, "mem_init": mi, "stub_ret": 1})
+    for v in cands + edges:
+        f = _fp_pe(path, func, v)
+        if "err" in f or did(f) in done:
+            continue
+        done.add(did(f))
+        keep.append(v)
+        if len(keep) >= MAX_DIRECTED:
+            break
     return keep
 
 
