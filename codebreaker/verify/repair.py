@@ -243,6 +243,16 @@ def _knobs(source, target_frame, draft_frame):
     for j, m in enumerate(sites[:MAX_SITES]):
         new = "%s%s %s %s%s" % (m.group("pre"), m.group("b"), _COMMUTATIVE[m.group("op")], m.group("a"), m.group("post"))
         yield "swap%d" % j, top + body[:m.start()] + new + body[m.end():]
+    # switch: a chain of `if (v == A) .. else if (v == B) ..` as a switch on v
+    from codebreaker.verify import shape
+    for j, (i0, i1, new) in enumerate(shape.switches(body, shadow)):
+        if j >= MAX_SITES:
+            break
+        yield "switch%d" % j, top + body[:i0] + new + body[i1:]
+    # return: `r = x;` that only the final `return r;` follows, as `return x;`
+    early = shape.returns(head, decls, body, shadow)
+    if early:
+        yield "return", top + early
     # test: the two sides of the one comparison an `if` or `while` makes, the other way round
     for j, (i0, i1, new) in enumerate(_tests(shadow, body)):
         if j >= MAX_SITES:

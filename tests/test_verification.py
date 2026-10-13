@@ -225,6 +225,26 @@ def test_field_accesses_are_written_as_fields():
     assert "int4 f_8;" in near and "struct_1" not in match.needed_header(header, out["g"])
 
 
+def test_other_shapes_of_the_same_function():
+    """An if-chain on one value is offered as a switch, and `r = x;` before the final `return r;`
+    as `return x;` -- but not through a variable narrower than what the function returns, nor
+    where a branch holds a `break`."""
+    from codebreaker.verify import repair
+    src = "\n".join([
+        "int4 f(int4 a1,int4 a2)", "", "{", "  int4 iVar1;", "  ", "  iVar1 = g(a1);", "  if (iVar1 == 0) {",
+        "    iVar1 = 0;", "  }", "  else {", "    if (a2 == 0) {", "      h(a1);", "    }", "    else if (a2 == 1) {",
+        "      k(a1);", "    }", "    else {", "      a1 = 3;", "    }", "    iVar1 = a1;", "  }", "  return iVar1;", "}"])
+    knobs = dict(repair._knobs(src, 0, None))
+    assert "switch (a2) {\ncase 0:\n{\n      h(a1);\n    }\nbreak;\ncase 1:" in knobs["switch0"], knobs["switch0"]
+    assert "default:\n{\n      a1 = 3;\n    }\n}" in knobs["switch0"]
+    assert "    return 0;\n" in knobs["return"] and "    return a1;\n" in knobs["return"], knobs["return"]
+    assert "iVar1 = g(a1);" in knobs["return"]                       # not the last thing done: kept
+    narrow = src.replace("  int4 iVar1;", "  uint1 iVar1;")
+    assert "return" not in dict(repair._knobs(narrow, 0, None))
+    looped = src.replace("      k(a1);", "      break;")
+    assert not any(k.startswith("switch") for k, _v in repair._knobs(looped, 0, None))
+
+
 def test_cache_files_results_under_what_made_them():
     from codebreaker.base import cache
     k = cache.key("tool:1:2", ["-a", "-b"], "text")
@@ -246,7 +266,7 @@ def main():
     for fn in (test_function_store, test_variant_store, test_repair_knobs_preserve_meaning,
                test_a_verdict_holds_until_what_it_was_for_changes, test_cache_files_results_under_what_made_them,
                test_period_source_gives_the_declarations_an_author_had, test_breaks_change_what_a_function_does,
-               test_field_accesses_are_written_as_fields,
+               test_field_accesses_are_written_as_fields, test_other_shapes_of_the_same_function,
                test_repair_search_with_any_compiler, test_period_compiler_gives_the_original_back,
                test_reconstruct_is_incremental):
         try:
