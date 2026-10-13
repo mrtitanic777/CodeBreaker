@@ -16,6 +16,7 @@ and verify against another. Everything resolves here now:
 
 The directory walk happens once per process and is cached.
 """
+import hashlib as _hashlib
 import os
 
 from codebreaker.base import settings as paths
@@ -112,3 +113,28 @@ def modules(want_lane=None, exts=(".dll", ".exe", ".drv", ".ocx", ".cpl")):
         if want_lane is None or lane(p) == want_lane:
             out.append(p)
     return sorted(out, key=lambda p: (os.path.getsize(p), p.lower()))
+
+
+_SHA_MEMO = {}
+
+
+def sha(path):
+    """sha256 of a module file, memoized by (path, mtime, size) so a stable corpus binary is hashed
+    once per process."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    key = (path, int(st.st_mtime), st.st_size)
+    s = _SHA_MEMO.get(key)
+    if s is None:
+        h = _hashlib.sha256()
+        try:
+            with open(path, "rb") as f:
+                for chunk in iter(lambda: f.read(1 << 20), b""):
+                    h.update(chunk)
+        except OSError:
+            return None
+        s = h.hexdigest()
+        _SHA_MEMO[key] = s
+    return s

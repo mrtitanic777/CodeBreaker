@@ -128,7 +128,6 @@ def function_starts(module_path):
     pe = open_pe(module_path)
     if pe.machine != 0x01F2:
         from codebreaker.verify import win32 as pipeline
-        pipeline._arm()
         return pipeline.LANES["pe"].functions(module_path)
     rva, size = pe.datadirs[3] if len(pe.datadirs) > 3 else (0, 0)
     data = open(module_path, "rb").read()
@@ -376,7 +375,6 @@ def decompile(module_path, funcs=None, outdir=None):
     from codebreaker.build import watcom as B
     from codebreaker.verify import win32 as pipeline
     if funcs is None:
-        pipeline._arm()
         funcs = pipeline.LANES["pe"].functions(module_path)
     outdir = outdir or B._scratch("decompiler", os.path.basename(module_path).lower())
     return Module(*compilable(module_path, funcs, outdir))

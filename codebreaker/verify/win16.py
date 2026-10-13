@@ -73,14 +73,14 @@ def _call(hit, inputs, entry):
 def fingerprint(path, seg, off, near, wide, v, data_image=None, span=None):
     """What one run of one function did, in a form two builds can be compared on."""
     from codebreaker.emulate import trace16 as ne_probe
-    from codebreaker.verify import oracle as V
+    from codebreaker.verify import compare
     try:
         r = ne_probe.probe(path, seg=seg, offset=off, args=v["args"], near=near, data_image=data_image)
     except ImportError:
         raise
     except Exception as e:
         return {"err": type(e).__name__}
-    ex = V._exit_norm(r.get("exit"))
+    ex = compare._exit_norm(r.get("exit"))
     lay = r.get("layout") or {}
     ds = lay.get("ds_base")
     state, before = {}, {}
@@ -123,7 +123,7 @@ def fingerprint(path, seg, off, near, wide, v, data_image=None, span=None):
 
 def _judge(context, item):
     """Worker. item = (key, seg, off, near, wide, span, insns, rebuilt seg, rebuilt off)."""
-    from codebreaker.verify import oracle as V
+    from codebreaker.verify import compare
     module_path, dll, data_image = context
     key, seg, off, near, wide, span, insns, bseg, boff = item
     info = {}
@@ -139,7 +139,7 @@ def _judge(context, item):
             if (last.get("fp") or {}).get("ret") == LEFTOVER and "err" not in fp and fp.get("ret") is not None:
                 fp["ret"] = LEFTOVER                         # the original returned no value here
             return fp
-        verdict, reason, limits = V.compare(original, rebuilt, vectors(), (), insns=insns, info=info)
+        verdict, reason, limits = compare.compare(original, rebuilt, vectors(), (), insns=insns, info=info)
     except ImportError:
         raise
     except Exception as e:
@@ -175,8 +175,8 @@ def profile(module_path):
     """(digest, settings) of everything other than the source that a verdict depends on."""
     from codebreaker.build import functions
     from codebreaker.decompile import decompiler
-    from codebreaker.verify import oracle as V
-    settings = repr(("ne", REV, decompiler.REV, V._ORACLE_REV, functions.CFLAGS16, vectors()))
+    from codebreaker.verify import compare
+    settings = repr(("ne", REV, decompiler.REV, compare.REV, functions.CFLAGS16, vectors()))
     return hashlib.sha1(settings.encode()).hexdigest()[:12], settings
 
 

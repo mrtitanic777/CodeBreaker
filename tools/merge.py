@@ -83,6 +83,14 @@ def main(argv):
         rest_s = re.sub(r"(?<![\w.])%s\.(?=[A-Za-z_])" % re.escape(alias), "", rest_s)
     if have:
         doc_d, imp_d, rest_d = _split(text_d)
+        # ...and what the second called the first (`from pkg import first as V` ... `V.name`)
+        s_pkg, s_name = re.escape(src.rsplit(".", 1)[0]), re.escape(src.rsplit(".", 1)[1])
+        back = re.findall(r"from %s import %s as (\w+)" % (s_pkg, s_name), text_d)
+        if re.search(r"from %s import %s\b(?! as)" % (s_pkg, s_name), text_d):
+            back.append(src.rsplit(".", 1)[1])
+        for alias in set(back):
+            rest_d = re.sub(r"(?<![\w.])%s\.(?=[A-Za-z_])" % re.escape(alias), "", rest_d)
+        rest_d = re.sub(r"(?m)^\s*from %s import %s(?: as \w+)?\s*(?:#.*)?\n" % (s_pkg, s_name), "", rest_d)
     else:
         doc_d, imp_d, rest_d = doc_s, [], ""
     self_import = re.compile(r"from %s import %s\b|import %s\b" % (

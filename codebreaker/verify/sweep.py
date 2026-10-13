@@ -46,7 +46,6 @@ def main(argv):
     from codebreaker.build import watcom as period_tools
     if not period_tools.ow_tool("wcc386"):
         raise SystemExit("OpenWatcom is not set up (settings.json: openwatcom): nothing could be built")
-    pipeline._arm()
     fs = F.open()
     digest = pipeline.settings_profile("pe")[0]
     kinds = ("pe", "ne") if "--all" in argv else ("ne",) if "--16" in argv else ("pe",)

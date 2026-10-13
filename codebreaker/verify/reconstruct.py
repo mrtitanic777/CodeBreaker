@@ -42,8 +42,8 @@ def kind_of(module_path):
 
 def identity(module_path):
     """(content hash, profile digest) -- what results for this module are filed under."""
-    from codebreaker.verify import oracle as V
-    return V._mod_sha(module_path) or "", kind_of(module_path).profile(module_path)[0]
+    from codebreaker.base import corpus
+    return corpus.sha(module_path) or "", kind_of(module_path).profile(module_path)[0]
 
 
 def _reaches(texts, built, dropped):
@@ -69,10 +69,10 @@ def run(module_path, fs=None, log=print):
     from codebreaker.decompile import decompiler
     from codebreaker.jobs import pool
     from codebreaker.store import functions
-    from codebreaker.verify import oracle as V
+    from codebreaker.base import corpus
     kind = kind_of(module_path)
     fs = fs or functions.open()
-    sha = V._mod_sha(module_path) or ""
+    sha = corpus.sha(module_path) or ""
     digest, settings = kind.profile(module_path)
     name = os.path.basename(module_path).lower()
     t0 = time.time()
