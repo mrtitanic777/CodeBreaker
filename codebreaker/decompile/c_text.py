@@ -232,6 +232,8 @@ def compilable32(module_path, funcs, outdir):
             head = head[:head.index("(")] + "()"
         decls.append(head + ";")
     preamble = _TYPES + _HELPERS + "\n".join(decls) + "\n" + "\n".join(macros) + "\n"
+    from codebreaker.decompile import struct_text
+    preamble, out = struct_text.apply(module_path, preamble, out, by_va)       # `p->field` for `*(T *)(p + N)`
     return preamble, out, order, by_va, used
 
 

@@ -266,8 +266,16 @@ def needed_header(header, text):
     `cmp ecx, eax`. The author's file had its own declarations, not the whole module's; a function
     given just what it uses is one more context to try, and often the nearer one."""
     words = set(re.findall(r"[A-Za-z_]\w*", text))
-    keep = []
+    keep, inside = [], False
     for line in header.split("\n"):
+        if inside or line.startswith("typedef struct"):          # a structure, whole or not at all
+            if line.startswith("typedef struct"):
+                inside = True
+                wanted = line.split()[2] in words
+            if wanted:
+                keep.append(line)
+            inside = not line.startswith("}")
+            continue
         m = _DECLARES.match(line)
         if m and (m.group(1) or m.group(2)) not in words and not line.startswith("typedef"):
             continue
