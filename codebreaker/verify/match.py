@@ -157,6 +157,124 @@ def distance(built, original):
     return verdict, diff, max(len(a), len(b)), (first if saw else (n if len(a) != len(b) else -1))
 
 
+def relocation_targets(path):
+    """The addresses the module's own relocations point at: every place in it that a word of
+    code or data names by address."""
+    from codebreaker.formats.pe import open_pe
+    pe = open_pe(path)
+    out = set()
+    va, size = pe.directory(5)
+    off = pe.file_offset(va) if va else None
+    end = (off or 0) + size
+    while off is not None and off + 8 <= min(end, len(pe.data)):
+        page, block = struct.unpack_from("<II", pe.data, off)
+        if block < 8:
+            break
+        for k in range((block - 8) // 2):
+            e = struct.unpack_from("<H", pe.data, off + 8 + 2 * k)[0]
+            if e >> 12 == 3:
+                o = pe.file_offset(page + (e & 0xFFF))
+                if o is not None and o + 4 <= len(pe.data):
+                    out.add(struct.unpack_from("<I", pe.data, o)[0])
+        off += block
+    return out
+
+
+_BOUND = re.compile(r"(?m)^#define (\w+) \(\*\(([^()]*?) ?\*\)0x([0-9a-fA-F]+)\)[ \t]*$")
+_CONSTANT = re.compile(r"(-\s*)?\b0x([0-9a-fA-F]{5,8})\b")
+_RESULT_OF_NOTHING = re.compile(r"(?m)^[ \t]*return in_EAX;[ \t]*\n")
+
+
+def period_source(header, texts, imports, targets):
+    """(header, {name: text}) as they are given to a period compiler.
+
+    For judging behaviour the reconstruction names the original's storage by its address and
+    calls imports as plain functions: that is what lets it run beside the original. The original
+    was not written that way, and a compiler shows the difference in every instruction that
+    touches a global or calls Windows. Here the same source is given the declarations its author
+    had, which change no meaning:
+
+      * an imported function is `__declspec(dllimport)` -- called through its slot;
+      * a global is a variable, not a number cast to a pointer, and an address taken as a number
+        (`0xbff10070`, where the module's relocations show that number IS an address) is the
+        address of a variable -- so the compiler leaves it to the linker, as the original's did;
+      * a function whose every `return` hands back "whatever was in EAX" returns nothing (when
+        no caller uses a result).
+    """
+    lines, bound = [], {}
+    for m in _BOUND.finditer(header):
+        if int(m.group(3), 16) in targets:
+            bound[m.group(1)] = m.group(2)
+    names = {}
+
+    def at(address):
+        names[address] = "codebreaker_at_%08x" % address
+        return names[address]
+
+    def constant(m, text):
+        value = int(m.group(2), 16)
+        if m.group(1):
+            value = (-value) & 0xFFFFFFFF
+        if value not in targets:
+            return m.group(0)
+        before = text[:m.start()].rstrip()[-1:]
+        joined = m.group(1) and (before.isalnum() or before in "_)]")
+        return ("+ " if joined else "") + "(int4)&" + at(value)
+    out, nothing = {}, set()
+    bodies = "\n".join(t.partition("{")[2] for t in texts.values())
+
+    def used(name):
+        """Is the function's result used anywhere (a call that is not a statement of its own)?"""
+        for m in re.finditer(r"\b%s\s*\(" % re.escape(name), bodies):
+            before = bodies[:m.start()].rstrip()
+            if before[-1:] not in ";{})" and not before.endswith("else"):
+                return True
+        return False
+    for name, text in texts.items():
+        text = _CONSTANT.sub(lambda m, t=text: constant(m, t), text)
+        returns = re.findall(r"\breturn\b[^;]*;", text)
+        if returns and all(r.replace(" ", "") == "returnin_EAX;" for r in returns) and not used(name):
+            head, brace, body = text.partition("{")
+            body = _RESULT_OF_NOTHING.sub("", re.sub(r"(?m)^[ \t]*\w+ in_EAX;[ \t]*\n", "", body))
+            if "in_EAX" not in body:                     # (given a value somewhere: it is a result)
+                text = re.sub(r"^\s*\w+\b", "void", head, count=1) + brace + body
+                nothing.add(name)
+        out[name] = text
+    for line in header.split("\n"):
+        m = _BOUND.match(line)
+        if m and m.group(1) in bound:
+            line = "extern %s %s;" % (bound[m.group(1)], m.group(1))
+        else:
+            f = re.match(r"^(\w+)((?: __\w+)?) (\w+)\((.*)\);[ \t]*$", line)
+            if f and f.group(3) in imports and f.group(4) == "":
+                line = "__declspec(dllimport) " + line
+            elif f and f.group(3) in nothing:
+                line = "void%s %s(%s);" % (f.group(2), f.group(3), f.group(4))
+        lines.append(line)
+    lines += ["extern char %s;" % n for _a, n in sorted(names.items())]
+    return "\n".join(lines), out
+
+
+_DECLARES = re.compile(r"^(?:__declspec\(dllimport\) )?(?:extern )?[\w ]*?[ *](\w+)(?:\(.*\)|\[\d*\])?;[ \t]*$|^#define (\w+) \(\*")
+
+
+def needed_header(header, text):
+    """The header with only the declarations `text` uses (types and macros are all kept).
+
+    What this compiler makes of a function depends on what was declared before it -- a variable
+    the function never mentions, declared a thousand lines earlier, can turn `cmp eax, ecx` into
+    `cmp ecx, eax`. The author's file had its own declarations, not the whole module's; a function
+    given just what it uses is one more context to try, and often the nearer one."""
+    words = set(re.findall(r"[A-Za-z_]\w*", text))
+    keep = []
+    for line in header.split("\n"):
+        m = _DECLARES.match(line)
+        if m and (m.group(1) or m.group(2)) not in words and not line.startswith("typedef"):
+            continue
+        keep.append(line)
+    return "\n".join(keep)
+
+
 def compile_function(cl, env, header, source, name, work, flags):
     """Compile one function's C with the period compiler. -> (bytes, mask) of the function, or
     None when it does not compile. `header` is the shared types/declarations. What the compiler

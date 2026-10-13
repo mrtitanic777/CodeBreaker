@@ -164,6 +164,30 @@ def test_a_verdict_holds_until_what_it_was_for_changes():
     assert reconstruct.signatures(m, "whole") == dict.fromkeys(M.order, "whole")
 
 
+def test_period_source_gives_the_declarations_an_author_had():
+    """For a period compiler an import is called through its slot, a global is a variable, an
+    address the module's relocations name is the address of a variable, and a function that
+    only hands back what happened to be in EAX returns nothing."""
+    from codebreaker.verify import match, repair
+    header = "\n".join(["typedef int int4;", "int __stdcall HeapFree();", "#define iRam00401000 (*(int4 *)0x401000)",
+                        "#define iRam00900000 (*(int4 *)0x900000)", "int4 f(int4 a1);", "int4 __cdecl g(void);"])
+    texts = {"f": "int4 f(int4 a1)\n{\n  g();\n  return HeapFree(iRam00401000,0,a1 -0x400eff90) + 0x402000 + 0x12345;\n}",
+             "g": "int4 __cdecl g(void)\n{\n  int4 in_EAX;\n  \n  return in_EAX;\n}"}
+    h, t = match.period_source(header, texts, {"HeapFree"}, {0x401000, 0x402000, 0xbff10070})
+    assert "__declspec(dllimport) int __stdcall HeapFree();" in h
+    assert "extern int4 iRam00401000;" in h and "#define iRam00900000" in h      # only what is relocated
+    assert "a1 + (int4)&codebreaker_at_bff10070) + (int4)&codebreaker_at_00402000 + 0x12345" in t["f"], t["f"]
+    assert "extern char codebreaker_at_00402000;" in h
+    assert t["g"].startswith("void __cdecl g(void)") and "in_EAX" not in t["g"] and "void __cdecl g(void);" in h
+    near = match.needed_header(h, t["g"])
+    assert "HeapFree" not in near and "typedef int int4;" in near and "g(void);" in near
+    src = "int f(int a,int b){\n  if (a < *(int *)(b + 4)) {\n    a = 1;\n  }\n  while (g(a) != 0) a++;\n  if (a & 1 == b) a = 2;\n  return a;\n}"
+    tests = [v for k, v in repair._knobs(src, 0, None) if k.startswith("test")]
+    assert len(tests) == 1 and "if (*(int *)(b + 4) > a)" in tests[0]            # not a call, not `&`
+    framed = "int f(void)\n{\n  struct { int a; uint1 _rest[8]; } _f;\n  return 0;\n}"
+    assert "uint1 _rest[4]; } _f;" in dict(repair._knobs(framed, 8, 12))["frame4"]
+
+
 def test_cache_files_results_under_what_made_them():
     from codebreaker.base import cache
     k = cache.key("tool:1:2", ["-a", "-b"], "text")
@@ -184,6 +208,7 @@ def test_cache_files_results_under_what_made_them():
 def main():
     for fn in (test_function_store, test_variant_store, test_repair_knobs_preserve_meaning,
                test_a_verdict_holds_until_what_it_was_for_changes, test_cache_files_results_under_what_made_them,
+               test_period_source_gives_the_declarations_an_author_had,
                test_repair_search_with_any_compiler, test_period_compiler_gives_the_original_back,
                test_reconstruct_is_incremental):
         try:

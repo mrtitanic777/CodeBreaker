@@ -139,6 +139,54 @@ def _depth(shadow, at):
     return shadow.count("(", 0, at) - shadow.count(")", 0, at)
 
 
+_FLIP = {"<": ">", ">": "<", "<=": ">=", ">=": "<=", "==": "==", "!=": "!="}
+
+
+def _tests(shadow, body):
+    """(start, end, rewritten) for each `if (A op B)` / `while (A op B)` whose whole condition is
+    one comparison of two things that do nothing but have a value: (B flipped-op A)."""
+    for m in re.finditer(r"\b(?:if|while)\s*\(", shadow):
+        i, depth = m.end(), 1
+        j = i
+        while j < len(shadow) and depth:
+            depth += (shadow[j] == "(") - (shadow[j] == ")")
+            j += 1
+        if depth:
+            continue
+        inner, ops, d, k = shadow[i:j - 1], [], 0, 0
+        plain = True
+        while k < len(inner):
+            c, two = inner[k], inner[k:k + 2]
+            if c in "([":
+                d += 1
+            elif c in ")]":
+                d -= 1
+            elif two in ("++", "--", "+=", "-=", "*=", "/=", "|=", "&=", "^=", "%="):
+                plain = False
+            elif d == 0 and (two in ("&&", "||") or c in "?,"):
+                plain = False
+            elif two in ("<<", ">>", "->"):
+                k += 1
+            elif two in ("==", "!=", "<=", ">="):
+                if d == 0:
+                    ops.append((k, two))
+                k += 1
+            elif c in "<>":
+                if d == 0:
+                    ops.append((k, c))
+            elif c == "=":
+                plain = False
+            elif d == 0 and c in "&|^":
+                plain = False                    # binds looser than a comparison
+            k += 1
+        if not plain or len(ops) != 1 or re.search(r"[A-Za-z_]\w*\s*\(", inner):
+            continue
+        at, op = ops[0]
+        left, right = body[i:i + at].strip(), body[i + at + len(op):j - 1].strip()
+        if left and right and left != right:
+            yield i, j - 1, "%s %s %s" % (right, _FLIP[op], left)
+
+
 def _toggle_register(line):
     s = line.strip()
     if "[" in s or s.startswith(("static ", "extern ")) or not _DECL.match(s):
@@ -154,6 +202,14 @@ def _knobs(source, target_frame, draft_frame):
     """Yield (name of the knob, rewritten source). Each rewrite preserves what the function does."""
     head, decls, body = _split(source)
     top = head + ("\n" + "\n".join(decls) if decls else "") + "\n"
+    # frame: the draft keeps the original's locals in one block with spare room at its end; the
+    # room is made what the original's frame says it was
+    spare = re.search(r"uint1 _rest\[(\d+)\]; \} _f;", source)
+    if spare and target_frame and draft_frame is not None and draft_frame != target_frame:
+        room = int(spare.group(1)) - (draft_frame - target_frame)
+        if room >= 0:
+            new = ("uint1 _rest[%d]; } _f;" % room) if room else "} _f;"
+            yield "frame%d" % room, source[:spare.start()] + new + source[spare.end():]
     # pad: the original reserves more stack than the draft -- an unused local of the difference
     if target_frame and draft_frame is not None and target_frame > draft_frame:
         gap = target_frame - draft_frame
@@ -187,6 +243,11 @@ def _knobs(source, target_frame, draft_frame):
     for j, m in enumerate(sites[:MAX_SITES]):
         new = "%s%s %s %s%s" % (m.group("pre"), m.group("b"), _COMMUTATIVE[m.group("op")], m.group("a"), m.group("post"))
         yield "swap%d" % j, top + body[:m.start()] + new + body[m.end():]
+    # test: the two sides of the one comparison an `if` or `while` makes, the other way round
+    for j, (i0, i1, new) in enumerate(_tests(shadow, body)):
+        if j >= MAX_SITES:
+            break
+        yield "test%d" % j, top + body[:i0] + new + body[i1:]
     # step: the ways of writing a statement that adds or takes one
     n = 0
     for m in _STEP.finditer(shadow):
@@ -218,9 +279,35 @@ def _knobs(source, target_frame, draft_frame):
 
 
 def repair_function(cl, env, header, source, name, original, work, flags):
-    """repair() with Microsoft's 32-bit compiler of 1994 (verify/match.py)."""
-    return repair(lambda text: match.compile_function(cl, env, header, text, name, work, flags),
-                  source, original, bits=32)
+    """repair() with Microsoft's 32-bit compiler of 1994 (verify/match.py).
+
+    Before the search, the setting the function is compiled in is chosen, since the files of
+    one module were not all compiled alike: with and without a frame pointer kept (/Oy-), and
+    with the whole module's declarations before it or only those it uses (match.needed_header).
+    The search then runs in the setting whose plain compile is nearest; what was chosen is the
+    first thing in `knobs` when it is not the default."""
+    settings = [(flags, header, "")]
+    if "/Oy-" not in flags:
+        settings.append((flags + " /Oy-", header, "/Oy-"))
+    near = match.needed_header(header, source)
+    settings += [(f, near, (label + " own-declarations").strip()) for f, _h, label in list(settings)]
+    best = None
+    for f, h, label in settings:
+        built = match.compile_function(cl, env, h, source, name, work, f)
+        if built is None:
+            continue
+        s = score(built, original, 32)[0]
+        if best is None or s < best[0]:
+            best = (s, f, h, label)
+        if not s[1]:
+            break
+    if best is None:
+        return None
+    _s, f, h, label = best
+    r = repair(lambda text: match.compile_function(cl, env, h, text, name, work, f), source, original, bits=32)
+    if r and label:
+        r["knobs"] = ("[%s]," % label + r["knobs"]).strip(",")
+    return r
 
 
 def repair(compile, source, original, bits=0):
@@ -309,9 +396,27 @@ def _scratch():
     return settings.state("repair")
 
 
-def run(module_path, flags, work, fs=None, log=print):
+def best_flags(cl, env, header, texts, order, originals, address, work, sample=60):
+    """The compiler switches the module was most likely built with: the set under which most of
+    a sample of its functions come out as the original's bytes, or at least the same length."""
+    names = [n for n in order if originals.get(address[n])]
+    names = names[::max(1, len(names) // sample)][:sample]
+    best = (-1, match.FLAG_SETS[0])
+    for flags in match.FLAG_SETS:
+        score = 0
+        for n in names:
+            built = match.compile_function(cl, env, header, texts[n], n, work, flags)
+            if built:
+                v = match.distance(built, originals[address[n]])[0]
+                score += 3 if v == "identical" else 1 if v == "same size" else 0
+        if score > best[0]:
+            best = (score, flags)
+    return best[1]
+
+
+def run(module_path, flags, work, fs=None, log=print, limit=0):
     """Repair every function of a module and record the variants. -> (functions, identical, same
-    size, different)."""
+    size, different). `flags` None: the switches are found first (best_flags)."""
     from codebreaker.store import functions as F
     from codebreaker.verify import win32
     cl = match.compiler()
@@ -327,13 +432,25 @@ def run(module_path, flags, work, fs=None, log=print):
     behaves = {r["addr"]: r.get("verdict") for r in fs.candidates(sha, win32.settings_profile("pe")[0])}
     fs.add_module(sha, os.path.basename(module_path).lower(), module_path, "pe")
     fs.add_functions(sha, [win32.LANES["pe"].key(a) for a in address.values()])
+    # the declarations a period compiler is given: imports as imports, globals as variables
+    header, texts = match.period_source(m.header, m.texts, set(m.imports), match.relocation_targets(module_path))
+    if not flags:
+        flags = best_flags(cl, env, header, texts, m.order, originals, address, os.path.join(work, "flags"))
+        if log:
+            log("  compiler switches that fit best: %s" % flags)
     counts = [0, 0, 0, 0]
-    for name in m.order:
+    todo = [n for n in m.order if originals.get(address[n]) is not None][:limit or None]
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from codebreaker.base import parallel
+
+    def one(name):
+        own = os.path.join(work, "t%d" % threading.get_ident())      # a folder per worker
+        return repair_function(cl, env, header, texts[name], name, originals[address[name]], own, flags)
+    with ThreadPoolExecutor(max_workers=parallel.workers()) as ex:
+        results = list(ex.map(one, todo))
+    for name, r in zip(todo, results):
         va = address[name]
-        orig = originals.get(va)
-        if orig is None:
-            continue
-        r = repair_function(cl, env, m.header, m.texts[name], name, orig, os.path.join(work, "one"), flags)
         if r is None:
             continue
         key = win32.LANES["pe"].key(va)
@@ -362,8 +479,9 @@ def main(argv):
             " ".join(rest[:2]), n, same, knocked, back))
         return 0
     args = [a for a in argv if not a.startswith("--")]
-    flags = argv[argv.index("--flags") + 1] if "--flags" in argv else match.FLAG_SETS[0]
-    args = [a for a in args if a != flags]
+    flags = argv[argv.index("--flags") + 1] if "--flags" in argv else None
+    limit = int(argv[argv.index("--first") + 1]) if "--first" in argv else 0
+    args = [a for a in args if a != flags and not ("--first" in argv and a == str(limit))]
     if not args:
         print(main.__doc__)
         return 2
@@ -371,7 +489,7 @@ def main(argv):
     if not path or corpus.lane(path) != "pe":
         raise SystemExit("%s: a 32-bit Windows module is needed" % args[0])
     work = settings.state("repair", os.path.basename(path).lower())
-    n, ident, same, diff = run(path, flags, work, log=print)
+    n, ident, same, diff = run(path, flags, work, log=print, limit=limit)
     print("%s: %d functions repaired toward the original's bytes: %d identical, %d same size, %d different" % (
         os.path.basename(path), n, ident, same, diff))
     return 0
