@@ -39,7 +39,7 @@ import time
 from codebreaker.base import corpus, settings
 from codebreaker.formats import inspect, ne, pe
 from codebreaker.store import functions as F
-from codebreaker.verify import win16, win32
+from codebreaker.verify import reconstruct
 
 KINDS = (("pe", "32-bit"), ("ne", "16-bit"), ("le", "driver"), ("dos", "DOS"))
 TITLE = dict(KINDS)
@@ -69,10 +69,9 @@ def profiles(fs=None):
     """{kind: digest} -- the verifier settings in force now, per kind of module. When they cannot
     be worked out on this machine, the settings most recently used in the store stand in."""
     out = {}
-    for kind, how in (("pe", win32), ("ne", win16)):
-        try:
-            out[kind] = how.profile("")[0]
-        except Exception:
+    for kind, digest in reconstruct.digests().items():
+        out[kind] = digest
+        if digest is None:
             row = fs and fs.db.execute(
                 "SELECT v.profile FROM verdict v JOIN candidate c ON c.id=v.candidate JOIN function f "
                 "ON f.id=c.function JOIN module m ON m.sha=f.module WHERE m.kind=? ORDER BY v.ts DESC LIMIT 1",

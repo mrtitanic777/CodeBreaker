@@ -32,20 +32,47 @@ NOT_RUN = ("inconclusive", "judge: the emulator crashed on this function", [], "
 GOOD = ("equivalent", "consistent")
 
 
-def kind_of(module_path):
+# the name results are filed under -> the module that knows that kind
+KINDS = {"pe": "win32", "ne": "win16", "powerpc": "powerpc", "le": "driver"}
+
+
+def kind_named(name):
+    import importlib
+    return importlib.import_module("codebreaker.verify." + KINDS[name])
+
+
+def kind_name(module_path):
+    """Which kind a file is: 'pe', 'ne', 'powerpc', 'le' -- or None when nothing reconstructs it."""
     from codebreaker.base import corpus
     lane = corpus.lane(module_path)
-    if lane == "ne":
-        from codebreaker.verify import win16
-        return win16
     if lane == "pe":
         from codebreaker.formats.pe import open_pe
-        if open_pe(module_path).machine == 0x01F2:
-            from codebreaker.verify import powerpc
-            return powerpc
-        from codebreaker.verify import win32
-        return win32
-    raise ValueError("%s: no way to reconstruct a %s file yet" % (os.path.basename(module_path), lane or "non-executable"))
+        return "powerpc" if open_pe(module_path).machine == 0x01F2 else "pe"
+    return lane if lane in KINDS else None
+
+
+def kind_of(module_path):
+    name = kind_name(module_path)
+    if name is None:
+        from codebreaker.base import corpus
+        raise ValueError("%s: no way to reconstruct a %s file yet" % (
+            os.path.basename(module_path), corpus.lane(module_path) or "non-executable"))
+    return kind_named(name)
+
+
+_DIGESTS = {}
+
+
+def digests():
+    """{kind: digest of the verifier settings in force now} (None for a kind whose tools are not
+    set up on this machine). Results are filed per kind under these."""
+    if not _DIGESTS:
+        for name in KINDS:
+            try:
+                _DIGESTS[name] = kind_named(name).profile("")[0]
+            except Exception:
+                _DIGESTS[name] = None
+    return _DIGESTS
 
 
 def identity(module_path):

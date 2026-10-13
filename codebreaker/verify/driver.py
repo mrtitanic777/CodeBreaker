@@ -46,7 +46,7 @@ from codebreaker.symbols import driver_services
 from codebreaker.verify import compare
 
 KIND = "le"
-REV = 1                          # what a verdict means; raise when run() or the inputs change
+REV = 2                           # what a verdict means; raise when run() or the inputs change
 INSN_CAP = 10000
 MAX_CALLS = 64                   # service calls compared per run
 MAX_CALLS_RUN = 400              # service calls and port accesses after which a run is cut off (a wait loop)
@@ -480,7 +480,8 @@ def prepare(module_path, work):
         if points[n] not in taken:
             taken.add(points[n])
             m.order.append(n)
-    m.texts = {n: "" for n in m.order}
+    # the unit judged is an entry point; its text is the whole assembly file (in the header)
+    m.texts = {n: "; entry point %s of %s.asm" % (n, os.path.basename(m.source)) if text else "" for n in m.order}
     m.key = {n: key_of(points[n]) for n in m.order} if text else {}
     m.all_keys = [key_of(points[n]) for n in m.order]
     m.sig = hashlib.sha1(("%d\0%s" % (REV, text)).encode("latin1", "replace")).hexdigest()

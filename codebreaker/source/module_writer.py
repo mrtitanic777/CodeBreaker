@@ -178,10 +178,12 @@ def write_module(module, verify=True, out_dir=None, log=print):
 
 
 def scoreboard(out_dir=None, log=print):
-    """Rewrite SCOREBOARD.md from the store: modules judged under the CURRENT verifier settings."""
-    from codebreaker.verify import win32 as pipeline
+    """Rewrite SCOREBOARD.md from the store: modules judged under the CURRENT verifier settings
+    of their kind (32-bit, 16-bit, PowerPC, driver)."""
+    from codebreaker.verify import reconstruct
     fs = F.open()
-    digest = pipeline.settings_profile("pe")[0]
+    current = {d: k for k, d in reconstruct.digests().items() if d}
+    digest = ", ".join("%s %s" % (k, d) for d, k in sorted(current.items(), key=lambda x: x[1]))
     lines = ["# Reconstruction scoreboard", "",
              "Generated %s by `python -m codebreaker scoreboard` (verifier settings `%s`)." % (
                  time.strftime("%Y-%m-%d %H:%M"), digest), "",
@@ -192,24 +194,25 @@ def scoreboard(out_dir=None, log=print):
              "Everything else is not progress. A function IDENTIFIED as a runtime library's (the C "
              "runtime, a compiler helper) is not the module's own code and is counted apart, unless it "
              "was verified as well.", "",
-             "| Module | Functions | Verified | Verified (weak) | Identified (runtime library) | Unverified | Not judged | Does not compile | No source | Builds whole | Runs in place |",
-             "|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|"]
+             "| Module | Kind | Functions | Verified | Verified (weak) | Identified (runtime library) | Unverified | Not judged | Does not compile | No source | Builds whole | Runs in place |",
+             "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|"]
     tot = dict.fromkeys(ORDER, 0)
-    mods = fs.modules(digest)
-    for sha, name in mods:
-        c = fs.scores(digest, sha)
+    mods = sorted((name, kind, sha, d) for d, kind in current.items() for sha, name in fs.modules(d))
+    for name, kind, sha, d in mods:
+        c = fs.scores(d, sha)
         n = sum(c.values())
         for k in ORDER:
             tot[k] += c[k]
-        lines.append("| %s | %d | %d (%.0f%%) | %d | %d | %d | %d | %d | %d | no | not tested |" % (
-            name, n, c["verified"], 100.0 * c["verified"] / max(1, n), c["weak"], c["identified"], c["unverified"],
-            c["not-judged"], c["no-compile"], c["no-source"]))
+        lines.append("| %s | %s | %d | %d (%.0f%%) | %d | %d | %d | %d | %d | %d | not tested | not tested |" % (
+            name, kind, n, c["verified"], 100.0 * c["verified"] / max(1, n), c["weak"], c["identified"],
+            c["unverified"], c["not-judged"], c["no-compile"], c["no-source"]))
     n = sum(tot.values())
     if n:
-        lines.append("| **all measured** | %d | %d (%.0f%%) | %d | %d | %d | %d | %d | %d | | |" % (
+        lines.append("| **all measured** | | %d | %d (%.0f%%) | %d | %d | %d | %d | %d | %d | | |" % (
             n, tot["verified"], 100.0 * tot["verified"] / n, tot["weak"], tot["identified"], tot["unverified"],
             tot["not-judged"], tot["no-compile"], tot["no-source"]))
-    lines += ["", "%d of %d 32-bit modules measured so far." % (len(mods), len(corpus.modules("pe"))), ""]
+    lines += ["", "%d modules measured so far (the corpus has %d 32-bit, %d 16-bit)." % (
+        len(mods), len(corpus.modules("pe")), len(corpus.modules("ne"))), ""]
     out = os.path.join(out_dir or os.path.dirname(corpus.design_dir()), "SCOREBOARD.md")
     with open(out, "w", encoding="utf-8", newline="\n") as f:
         f.write("\n".join(lines))
