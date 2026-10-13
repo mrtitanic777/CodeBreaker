@@ -82,6 +82,35 @@ def real_import_names(path, used=()):
     return {s: n for s, n in found.items() if times[n] == 1 and n not in used and n not in found}
 
 
+def _globals_note(path, header):
+    """A comment block describing the module's global variables, from the globals analysis
+    (codebreaker.analyze.globals): for each global the functions refer to by its address, the
+    type recovered from how it is used, its initial value, and how many functions read and write
+    it. Nothing is renamed -- the globals keep the macros the decompiler bound to their original
+    addresses -- so this only adds information. '' when there is nothing to say."""
+    import re as _re
+    addrs = {int(a, 16) for a in _re.findall(r"\b[a-z]+Ram([0-9a-f]{8})\b", header)}
+    if not addrs:
+        return ""
+    try:
+        from codebreaker.analyze import globals as _globals, image as _image
+        var = _globals.variables(_image.load(path))
+    except Exception:
+        return ""
+    lines = []
+    for a in sorted(addrs):
+        g = var.get(a)
+        if not g:
+            continue
+        init = g["initial"] if isinstance(g["initial"], str) else ("%#x" % g["initial"] if g["initial"] is not None else "?")
+        lines.append(" *   %08x  %-34s read by %d, written by %d%s" % (
+            a, g["type"], len(g["readers"]), len(g["writers"]),
+            ("  initially " + str(init)[:24]) if init not in ("", "uninitialised", "?") else
+            "  uninitialised" if init == "uninitialised" else ""))
+    return "\n/* globals (type recovered from use; still at the original's address):\n%s */\n" % "\n".join(lines) \
+        if lines else ""
+
+
 def write_assembly(path, fs, sha, digest, out_dir, log=print):
     """A driver's or a real-mode program's source: its one assembly file, the status at its head."""
     from codebreaker.verify import reconstruct
@@ -207,6 +236,7 @@ def write_module(module, verify=True, out_dir=None, log=print, split=0):
         if real:                                             # which module and number each import is
             header += "\n/* imports by number:\n%s */\n" % "".join(
                 " *   %-28s %s.%s\n" % ((n,) + tuple(s.rsplit("_", 1))) for s, n in sorted(real.items(), key=lambda kv: kv[1]))
+        header += _globals_note(path, header)
         with open(os.path.join(out_dir, stem + ".h"), "w", encoding="utf-8", newline="\n") as f:
             f.write("/* %s -- types, declarations and globals used by the functions in %s.c.\n"
                     " * Globals are bound to their addresses in the original until the module's data is\n"
