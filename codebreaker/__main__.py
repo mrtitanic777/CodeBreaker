@@ -15,6 +15,10 @@
     driver-services [FILE ...]      names of ring-0 services; how many of a driver's calls they name
     driver-build <folder or .asm>   assemble and link a driver, check it against the original
     driver-judge <rebuilt> <orig>   run every entry point of both drivers and compare
+    build <module> [--out DIR]      build a whole module (functions, data, resources, exports) and check it
+    resources <module> [--out DIR]  a module's resources as .rc and files, compiled and compared
+    cab list|extract|create ...     Microsoft cabinet files
+    disc <folder> <out.iso>         write a CD image (also --list, --extract)
     info <file-or-module>           what an executable is and holds (headers, imports, exports, resources)
     coverage [--module NAME]        how much of every corpus module is accounted for, and in what state
     serve [--port N] [--open]       the local web console (127.0.0.1 only)
@@ -42,6 +46,10 @@ COMMANDS = {
     "driver-services": ("codebreaker.symbols.driver_services", []),
     "driver-build": ("codebreaker.build.driver", []),
     "driver-judge": ("codebreaker.verify.driver", []),
+    "build": ("codebreaker.build.module", []),
+    "resources": ("codebreaker.build.resources", []),
+    "cab": ("codebreaker.formats.cab", []),
+    "disc": ("codebreaker.build.disc_image", []),
     "info": ("codebreaker.formats.inspect", []),
     "coverage": ("codebreaker.coverage.ledger", []),
     "serve": ("codebreaker.ui.server", []),
