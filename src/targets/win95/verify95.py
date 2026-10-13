@@ -187,7 +187,7 @@ def _mod_sha(path):
 # stdcall import takes, and the fingerprint is the full call sequence WITH arguments, not the set of
 # import names reached. 4: the fingerprint also carries the memory the function wrote and which of
 # its instructions ran; inputs can set what imported calls return.
-_ORACLE_REV = 15
+_ORACLE_REV = 16
 
 
 def _fp_key(sha, func, spec):
@@ -249,7 +249,9 @@ def _image_span(path):
 def _effects(r, own):
     """What the function left in memory outside its own frame: a digest of the final value of every
     byte it wrote. A function that stores to a global or through a pointer argument is judged on
-    what it stored and where -- the return value alone says nothing about either.
+    what it stored and where -- the return value alone says nothing about either. A byte left
+    holding what it held on entry is not an effect: one compiler clears a flag with a 16-bit
+    `and`, another with an 8-bit one, and memory ends up the same.
 
     `own` is the address range of a REBUILT image: writes into it are that build's own statics
     (compiler temporaries, register stand-ins), which the original has no counterpart for. The
@@ -262,9 +264,11 @@ def _effects(r, own):
     # A call through a pointer that resolves to nothing lands in zero bytes; the oracle returns
     # from it after one `add [eax], al`. That write is the harness's, not the function's.
     mn = r.get("mnemonics") or {}
-    state = {}
+    state, before = {}, {}
     for w in ws:
         a, n, v = w["addr"], w["size"], w["value"] or 0
+        for i in range(min(n, 8)):
+            before.setdefault(a + i, ((w.get("old") or 0) >> (8 * i)) & 0xFF if "old" in w else None)
         if mn.get("0x%x" % w["pc"]) == "add byte ptr [eax], al":
             continue
         if _STACK_LO <= a < _STACK_HI or (own and own[0] <= a < own[1]):
@@ -275,6 +279,7 @@ def _effects(r, own):
         else:
             for i in range(min(n, 8)):
                 state[a + i] = (v >> (8 * i)) & 0xFF
+    state = {k: x for k, x in state.items() if x != before.get(k)}
     if not state:
         return ""
     return "%d:%s" % (len(state), _hashlib.sha1(repr(sorted(state.items())).encode()).hexdigest()[:16])
@@ -566,6 +571,10 @@ def first_difference(a, b, ret_mask=0):
     # compiler happened to keep there, which says nothing about the function.
     if a["exit"] == "ret" and ((a["ret"] or 0) ^ (b["ret"] or 0)) & ~ret_mask & 0xFFFFFFFF:
         return "ret-differs"
+    # A run cut off at the step limit stopped in the middle of something: the two builds spend
+    # different numbers of instructions per loop pass, so memory at that instant is not comparable.
+    if a.get("truncated") or b.get("truncated"):
+        return ""
     wa, wb = a.get("writes"), b.get("writes")
     if wa is not None and wb is not None and wa != wb:
         return "writes-differ"
