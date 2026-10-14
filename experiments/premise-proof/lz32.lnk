@@ -1,0 +1,15 @@
+system nt_dll
+name lz32.dll
+option quiet
+option map=lz32.map
+option resource=lz32.res
+file lz32.obj
+file lz32t.obj
+# exports + imports come from lz32.def via wdef (@lz32.defexp.lnk), which reads the
+# .obj symbols to resolve STDCALL decoration -- appended by build_lz32.bat.
+# The KERNEL32 flat-thunk helpers are added below (not in the .def):
+import 'ThunkConnect32@24' KERNEL32.'ThunkConnect32'
+import SMapLS_IP_EBP_8 KERNEL32.SMapLS_IP_EBP_8
+import SUnMapLS_IP_EBP_8 KERNEL32.SUnMapLS_IP_EBP_8
+import SMapLS_IP_EBP_12 KERNEL32.SMapLS_IP_EBP_12
+import SUnMapLS_IP_EBP_12 KERNEL32.SUnMapLS_IP_EBP_12

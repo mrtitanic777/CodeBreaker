@@ -1,0 +1,557 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CodeBreaker console</title>
+<style>
+:root {
+  --bg: #f6f6f3; --panel: #ffffff; --line: #dcdbd4; --text: #1f2328; --dim: #6a6f76; --accent: #2f5d8a;
+  --hover: #eeeee9; --sel: #dfe8f1; --code: #fbfbf9;
+  --verified: #2e7d4f; --weak: #a98a1f; --unverified: #b5473c; --not-judged: #5f7f9c;
+  --no-compile: #8a5a9c; --no-source: #9a9a95;
+}
+:root[data-theme="dark"] {
+  --bg: #17191c; --panel: #1f2226; --line: #33373d; --text: #dcdfe3; --dim: #8d939b; --accent: #7fb0dd;
+  --hover: #272b30; --sel: #2a3644; --code: #1a1c1f;
+  --verified: #5fb984; --weak: #cfb04a; --unverified: #de7468; --not-judged: #86a7c4;
+  --no-compile: #b78bc8; --no-source: #777b80;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #17191c; --panel: #1f2226; --line: #33373d; --text: #dcdfe3; --dim: #8d939b; --accent: #7fb0dd;
+    --hover: #272b30; --sel: #2a3644; --code: #1a1c1f;
+    --verified: #5fb984; --weak: #cfb04a; --unverified: #de7468; --not-judged: #86a7c4;
+    --no-compile: #b78bc8; --no-source: #777b80;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--text); font: 13px/1.45 "Segoe UI", system-ui, sans-serif;
+  display: flex; flex-direction: column; }
+header { display: flex; align-items: center; gap: 12px; padding: 8px 14px; background: var(--panel);
+  border-bottom: 1px solid var(--line); }
+header h1 { font-size: 15px; font-weight: 600; margin: 0; letter-spacing: .2px; }
+header .where { color: var(--dim); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--no-source); display: inline-block; margin-right: 5px; }
+.dot.on { background: var(--verified); }
+button, input, select { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line);
+  border-radius: 4px; padding: 4px 9px; }
+button { cursor: pointer; }
+button:hover { background: var(--hover); }
+button.primary { border-color: var(--accent); color: var(--accent); }
+button:disabled { opacity: .5; cursor: default; }
+input:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+.app { flex: 1; display: flex; min-height: 0; }
+aside { width: 290px; min-width: 220px; display: flex; flex-direction: column; border-right: 1px solid var(--line);
+  background: var(--panel); }
+aside .tools { padding: 8px; display: flex; flex-direction: column; gap: 6px; border-bottom: 1px solid var(--line); }
+aside .tools input[type=text] { width: 100%; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.chip { border: 1px solid var(--line); border-radius: 10px; padding: 1px 8px; font-size: 12px; cursor: pointer;
+  background: transparent; color: var(--dim); }
+.chip.on { background: var(--sel); color: var(--text); border-color: var(--accent); }
+#modules { flex: 1; overflow-y: auto; }
+.mod { padding: 4px 10px; cursor: pointer; display: grid; grid-template-columns: 1fr auto; gap: 2px 8px;
+  border-bottom: 1px solid transparent; }
+.mod:hover { background: var(--hover); }
+.mod.sel { background: var(--sel); }
+.mod .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mod .k { color: var(--dim); font-size: 11px; }
+.bar { grid-column: 1 / 3; height: 4px; display: flex; background: var(--line); border-radius: 2px; overflow: hidden; }
+.bar span { display: block; height: 100%; }
+.count { color: var(--dim); font-size: 12px; padding: 4px 10px; border-top: 1px solid var(--line); }
+main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+nav { display: flex; gap: 2px; padding: 6px 12px 0; border-bottom: 1px solid var(--line); background: var(--panel);
+  flex-wrap: wrap; }
+nav button { border: 1px solid transparent; border-bottom: none; border-radius: 4px 4px 0 0; background: transparent;
+  color: var(--dim); padding: 5px 12px; }
+nav button.on { color: var(--text); border-color: var(--line); background: var(--bg); position: relative; top: 1px; }
+nav.sub { padding-top: 4px; background: var(--bg); }
+nav.sub button.on { background: var(--panel); }
+.view { flex: 1; overflow: auto; padding: 14px 16px; min-height: 0; }
+.view.split { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+h2 { font-size: 14px; margin: 16px 0 6px; font-weight: 600; }
+h2:first-child { margin-top: 0; }
+.note { color: var(--dim); margin: 4px 0 10px; max-width: 900px; }
+.warn { color: var(--unverified); }
+table { border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); }
+th, td { padding: 3px 10px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top;
+  white-space: nowrap; }
+td.wrap { white-space: pre-wrap; word-break: break-word; max-width: 720px; }
+th { font-weight: 600; color: var(--dim); font-size: 12px; position: sticky; top: 0; background: var(--panel); }
+td.r, th.r { text-align: right; font-variant-numeric: tabular-nums; }
+tr.click { cursor: pointer; }
+tr.click:hover td { background: var(--hover); }
+tr.sel td { background: var(--sel); }
+tr.total td { font-weight: 600; }
+.kv td:first-child { color: var(--dim); }
+.mono, pre, td.m { font-family: Consolas, "Cascadia Mono", Menlo, monospace; font-size: 12px; }
+pre { background: var(--code); border: 1px solid var(--line); border-radius: 4px; padding: 10px; margin: 6px 0;
+  overflow: auto; white-space: pre; tab-size: 4; }
+.cls { display: inline-block; border-radius: 3px; padding: 0 6px; font-size: 11px; font-weight: 600; color: #fff; }
+.c-verified { background: var(--verified); } .c-weak { background: var(--weak); }
+.c-unverified { background: var(--unverified); } .c-not-judged { background: var(--not-judged); }
+.c-no-compile { background: var(--no-compile); } .c-no-source { background: var(--no-source); }
+:root[data-theme="dark"] .cls { color: #111; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.title { display: flex; align-items: baseline; gap: 10px; padding: 10px 16px 6px; background: var(--panel); flex-wrap: wrap; }
+.title .name { font-size: 16px; font-weight: 600; }
+.title .meta { color: var(--dim); flex: 1; }
+.pane { flex: 1; min-height: 0; overflow: auto; padding: 12px 16px; }
+.half { flex: 1 1 50%; min-height: 0; overflow: auto; padding: 10px 16px; }
+.half + .half { border-top: 1px solid var(--line); background: var(--panel); }
+.meter { height: 10px; background: var(--line); border-radius: 5px; overflow: hidden; display: flex; max-width: 640px; }
+.meter span { display: block; height: 100%; }
+img.res { max-width: 100%; image-rendering: pixelated; border: 1px solid var(--line); background:
+  repeating-conic-gradient(var(--line) 0% 25%, transparent 0% 50%) 50% / 12px 12px; }
+.empty { color: var(--dim); padding: 30px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>CodeBreaker</h1>
+  <span class="where" id="where"></span>
+  <span id="activity" title="results arriving in the store"><span class="dot"></span><span id="activityText">idle</span></span>
+  <input type="text" id="open" placeholder="module name or file path" size="26" aria-label="Open a module or file">
+  <button id="openGo">Open</button>
+  <button id="theme" title="Switch between light and dark">Theme</button>
+</header>
+<div class="app">
+  <aside>
+    <div class="tools">
+      <input type="text" id="filter" placeholder="filter modules" aria-label="Filter modules">
+      <div class="chips" id="kinds"></div>
+      <label><input type="checkbox" id="stored"> only modules with results</label>
+    </div>
+    <div id="modules"></div>
+    <div class="count" id="count"></div>
+  </aside>
+  <main>
+    <nav id="tabs"></nav>
+    <div id="body" class="view"></div>
+  </main>
+</div>
+<script>
+"use strict";
+const CLASSES = ["verified", "weak", "unverified", "not-judged", "no-compile", "no-source"];
+const S = { titles: {}, kinds: [], modules: [], kind: "", tab: "score", sub: "summary", module: null, info: null,
+            fns: null, fnClass: "", fnFind: "", fnAddr: null, job: null, jobOffset: 0, timer: null, strings: {min: 4, find: "", offset: 0},
+            hex: 0, actions: {} };
+const $ = id => document.getElementById(id);
+
+function h(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const k in (attrs || {})) {
+    const v = attrs[k];
+    if (k === "class") e.className = v;
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else if (v === true) e.setAttribute(k, "");
+    else if (v !== false && v != null) e.setAttribute(k, v);
+  }
+  for (const kid of kids.flat()) if (kid != null) e.append(kid.nodeType ? kid : document.createTextNode(String(kid)));
+  return e;
+}
+async function api(path, body) {
+  const r = await fetch(path, body ? {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)} : undefined);
+  const j = await r.json();
+  if (!r.ok) throw new Error(j && j.error || ("HTTP " + r.status));
+  return j;
+}
+const num = n => (n == null ? "" : Number(n).toLocaleString("en-US"));
+const pct = (a, b) => b ? (100 * a / b).toFixed(1) + "%" : "-";
+const HEXKEY = /address|offset|image_base|code_base|^entry$|entry_point|rva|_va$|slot|checksum|^key$|flags_value|module_flags|magic|machine_id|device_id|ddk_version/;
+function cell(key, v) {
+  if (v === true) return "yes";
+  if (v === false) return "no";
+  if (v == null) return "";
+  if (typeof v === "number") return HEXKEY.test(key) && v >= 0 ? "0x" + v.toString(16) : String(v);
+  if (Array.isArray(v)) return v.map(x => cell(key, x)).join(" ");
+  return String(v);
+}
+function cls(c) { return h("span", {class: "cls c-" + c}, S.titles[c] || c); }
+function bar(row, klass) {
+  const b = h("div", {class: klass || "bar"});
+  if (row.functions) for (const c of CLASSES) if (row[c]) {
+    const s = h("span", {title: (S.titles[c] || c) + " " + row[c]});
+    s.style.width = (100 * row[c] / row.functions) + "%";
+    s.style.background = "var(--" + c + ")";
+    b.append(s);
+  }
+  return b;
+}
+function fail(e) { return h("p", {class: "warn"}, String(e.message || e)); }
+
+// ---- a description part as tables -----------------------------------------------------------
+function isRecords(v) { return Array.isArray(v) && v.length && typeof v[0] === "object" && v[0] !== null && !Array.isArray(v[0]); }
+function part(v, key) {
+  if (isRecords(v)) {
+    const cols = Object.keys(v[0]).filter(k => !isRecords(v[0][k]) && !(v[0][k] && typeof v[0][k] === "object" && !Array.isArray(v[0][k])));
+    const nested = Object.keys(v[0]).filter(k => isRecords(v[0][k]));
+    const box = h("div");
+    if (!nested.length) {
+      box.append(h("table", null, h("thead", null, h("tr", null, cols.map(c => h("th", null, c.replace(/_/g, " "))))),
+        h("tbody", null, v.slice(0, 5000).map(r => h("tr", null, cols.map(c => h("td", {class: "m"}, cell(c, r[c]))))))));
+      if (v.length > 5000) box.append(h("p", {class: "note"}, "first 5,000 of " + num(v.length) + " shown"));
+      return box;
+    }
+    for (const r of v) {
+      box.append(h("h2", null, cols.slice(0, 1).map(c => cell(c, r[c])).join(""),
+        h("span", {class: "note"}, "  " + cols.slice(1).map(c => c.replace(/_/g, " ") + " " + cell(c, r[c])).join(", "))));
+      for (const k of nested) box.append(part(r[k], k));
+    }
+    return box;
+  }
+  if (v && typeof v === "object" && !Array.isArray(v)) {
+    const box = h("div"), plain = [], deep = [];
+    for (const k in v) ((v[k] && typeof v[k] === "object" && (!Array.isArray(v[k]) || isRecords(v[k]))) ? deep : plain).push(k);
+    if (plain.length) box.append(h("table", {class: "kv"}, h("tbody", null,
+      plain.map(k => h("tr", null, h("td", null, k.replace(/_/g, " ")), h("td", {class: "m wrap"}, cell(k, v[k])))))));
+    for (const k of deep) { box.append(h("h2", null, k.replace(/_/g, " "))); box.append(part(v[k], k)); }
+    return box;
+  }
+  if (Array.isArray(v)) return v.length ? h("pre", null, v.map(x => cell(key, x)).join("\n")) : h("p", {class: "empty"}, "none");
+  return v == null || v === "" ? h("p", {class: "empty"}, "none") : h("p", {class: "mono"}, cell(key, v));
+}
+
+// ---- the module list ------------------------------------------------------------------------
+function drawModules() {
+  const box = $("modules");
+  box.replaceChildren(...S.modules.map(m => {
+    const row = h("div", {class: "mod", "data-name": m.name, onclick: () => openModule(m.name)},
+      h("span", {class: "n"}, m.name), h("span", {class: "k"}, S.kindTitle[m.kind] || m.kind));
+    if (m.in_store) row.append(bar(m));
+    m.el = row;
+    return row;
+  }));
+  filterModules();
+}
+function filterModules() {
+  const text = $("filter").value.trim().toLowerCase(), stored = $("stored").checked;
+  let shown = 0;
+  for (const m of S.modules) {
+    const ok = (!text || m.name.includes(text)) && (!S.kind || m.kind === S.kind) && (!stored || m.in_store);
+    m.el.hidden = !ok;
+    m.el.classList.toggle("sel", m.name === S.module);
+    shown += ok;
+  }
+  $("count").textContent = num(shown) + " of " + num(S.modules.length) + " modules";
+}
+async function loadModules() {
+  const j = await api("/api/modules");
+  const old = S.modules;
+  S.modules = j.modules;
+  if (old.length === j.modules.length) {                     // keep the list where it is; refresh the bars
+    j.modules.forEach((m, i) => {
+      m.el = old[i].el;
+      const b = m.el.querySelector(".bar");
+      if (m.in_store) { const nb = bar(m); if (b) b.replaceWith(nb); else m.el.append(nb); }
+    });
+    filterModules();
+  } else drawModules();
+}
+
+// ---- tabs -----------------------------------------------------------------------------------
+const TABS = [["score", "Scoreboard"], ["module", "Module"], ["jobs", "Jobs"], ["progress", "Progress"]];
+const SUBS = [["summary", "Summary"], ["functions", "Functions"], ["headers", "Headers"], ["sections", "Sections"],
+              ["exports", "Exports"], ["imports", "Imports"], ["resources", "Resources"], ["strings", "Strings"], ["hex", "Bytes"]];
+function drawTabs() {
+  $("tabs").replaceChildren(...TABS.map(([k, t]) => h("button", {class: S.tab === k ? "on" : "", onclick: () => show(k)},
+    k === "module" && S.module ? S.module : t)));
+}
+function show(tab) {
+  S.tab = tab;
+  clearInterval(S.timer); S.timer = null;
+  drawTabs();
+  const body = h("div", {id: "body", class: "view"}, h("p", {class: "empty"}, "loading..."));
+  $("body").replaceWith(body);                               // a slower, older view then draws into nothing
+  ({score: viewScore, module: viewModule, jobs: viewJobs, progress: viewProgress})[tab](body).catch(e => body.replaceChildren(fail(e)));
+}
+
+// ---- scoreboard -----------------------------------------------------------------------------
+function countCells(r) {
+  return [h("td", {class: "r"}, num(r.functions)), h("td", {class: "r"}, num(r.decompiled)), h("td", {class: "r"}, num(r.compiled)),
+    ...CLASSES.map(c => h("td", {class: "r"}, num(r[c]))), h("td", {class: "r"}, pct(r.verified, r.functions))];
+}
+const COUNTHEAD = () => ["functions", "decompiled", "compiled", ...CLASSES.map(c => S.titles[c]), "verified"].map(t => h("th", {class: "r"}, t));
+async function viewScore(body) {
+  const led = await api("/api/coverage");
+  const kinds = led.kinds.concat([led.total]);
+  const stored = led.modules.filter(m => m.in_store);
+  body.replaceChildren(
+    h("h2", null, "Functions, by kind of module"),
+    h("p", {class: "note"}, "A function is VERIFIED when its reconstructed C, rebuilt and run beside the original, does the same " +
+      "things on every input tried with most of it exercised. Verifier settings in force: 32-bit " + (led.profiles.pe || "none") +
+      ", 16-bit " + (led.profiles.ne || "none") + ". Read " + led.generated + "."),
+    h("table", null, h("thead", null, h("tr", null, h("th", null, "kind"), h("th", {class: "r"}, "modules"),
+        h("th", {class: "r"}, "with results"), h("th", {class: "r"}, "measured"), COUNTHEAD(), h("th", null, ""))),
+      h("tbody", null, kinds.map(r => h("tr", {class: r.kind ? "" : "total"}, h("td", null, r.name), h("td", {class: "r"}, num(r.modules)),
+        h("td", {class: "r"}, num(r.in_store)), h("td", {class: "r"}, num(r.measured)), countCells(r),
+        h("td", null, (() => { const b = bar(r, "meter"); b.style.width = "160px"; return b; })()))))),
+    h("h2", null, "Bytes of code, by kind of module"),
+    h("p", {class: "note"}, "Code bytes are the file's code sections or segments. A known function reaches from its start to the next known start."),
+    h("table", null, h("thead", null, h("tr", null, h("th", null, "kind"), ...["code bytes", "in known functions", "", "in " + S.titles.verified, "",
+        "in " + S.titles.weak, ""].map(t => h("th", {class: "r"}, t)))),
+      h("tbody", null, kinds.map(r => h("tr", {class: r.kind ? "" : "total"}, h("td", null, r.name), h("td", {class: "r"}, num(r.code_bytes)),
+        h("td", {class: "r"}, num(r.bytes_known)), h("td", {class: "r"}, pct(r.bytes_known, r.code_bytes)),
+        h("td", {class: "r"}, num(r.bytes_verified)), h("td", {class: "r"}, pct(r.bytes_verified, r.code_bytes)),
+        h("td", {class: "r"}, num(r.bytes_weak)), h("td", {class: "r"}, pct(r.bytes_weak, r.code_bytes)))))),
+    h("h2", null, "Modules with results (" + stored.length + ")"),
+    stored.length ? h("table", null, h("thead", null, h("tr", null, h("th", null, "module"), h("th", null, "kind"), h("th", null, "state"),
+        COUNTHEAD(), h("th", {class: "r"}, "code bytes"), h("th", {class: "r"}, "known"), h("th", {class: "r"}, "verified bytes"))),
+      h("tbody", null, stored.map(r => h("tr", {class: "click", onclick: () => openModule(r.name, "functions")},
+        h("td", null, r.name), h("td", null, S.kindTitle[r.kind]), h("td", null, r.measured ? "measured" : r.judged ? "part measured" : "not measured now"),
+        countCells(r), h("td", {class: "r"}, num(r.code_bytes)), h("td", {class: "r"}, pct(r.bytes_known, r.code_bytes)),
+        h("td", {class: "r"}, pct(r.bytes_verified, r.code_bytes))))))
+      : h("p", {class: "empty"}, "Nothing has been reconstructed yet. Pick a module on the left and measure it."));
+}
+
+// ---- one module -----------------------------------------------------------------------------
+function openModule(name, sub) {
+  S.module = name; S.info = null; S.fns = null; S.fnAddr = null; S.hex = 0; S.strings.offset = 0;
+  if (sub) S.sub = sub;
+  filterModules();
+  show("module");
+}
+async function viewModule(body) {
+  if (!S.module) { body.replaceChildren(h("p", {class: "empty"}, "Pick a module on the left, or open a file by path above.")); return; }
+  if (!S.info) S.info = await api("/api/info?module=" + encodeURIComponent(S.module));
+  const info = S.info, s = info.summary || {};
+  body.className = "view split";
+  const pane = h("div", {class: "pane"});
+  const meta = info.ok ? [s.format, s.type, s.machine, num(info.size) + " bytes", s.description].filter(Boolean).join(" · ") : "not an executable this can read";
+  body.replaceChildren(
+    h("div", {class: "title"}, h("span", {class: "name"}, info.name), h("span", {class: "meta"}, meta),
+      h("button", {onclick: () => startJob("decompile"), title: S.actions.decompile}, "Decompile this module"),
+      h("button", {class: "primary", onclick: () => startJob("measure"), title: S.actions.measure}, "Measure this module")),
+    h("nav", {class: "sub"}, SUBS.map(([k, t]) => h("button", {class: S.sub === k ? "on" : "", onclick: () => { S.sub = k; show("module"); }}, t))),
+    pane);
+  const draw = {summary: subSummary, functions: subFunctions, resources: subResources, strings: subStrings, hex: subHex}[S.sub];
+  if (draw) return draw(pane, info, body);
+  const v = S.sub === "headers" ? {dos: info.dos, headers: info.headers, directories: info.directories || [], tls: info.tls, debug: info.debug || [],
+    relocations: info.relocations, certificates: info.certificates || [], clr: info.clr, rich: info.rich, driver: info.driver, symbols_file: info.symbols_file} : info[S.sub];
+  if (S.sub === "headers") for (const k in v) if (v[k] == null || (Array.isArray(v[k]) && !v[k].length)) delete v[k];
+  if (S.sub === "exports") pane.append(h("p", {class: "note"}, (v.module ? "module " + v.module + ", " : "") + num(v.count) + " exports"), part(v.symbols, "symbols"));
+  else if (S.sub === "imports") {
+    pane.append(h("p", {class: "note"}, num(v.length) + " modules, " + num(v.reduce((a, m) => a + m.count, 0)) + " imported functions"));
+    for (const m of v) pane.append(h("h2", null, m.module, h("span", {class: "note"}, "  " + m.count + (m.delay ? " (loaded on first use)" : ""))),
+      m.symbols.length ? part(m.symbols, "symbols") : h("p", {class: "empty"}, "no functions listed"));
+  } else pane.append(part(v, S.sub));
+  if (info.members && S.sub === "sections") for (const m of info.members) pane.append(h("h2", null, "driver " + m.name), part(m.sections || [], "sections"));
+}
+function subSummary(pane, info) {
+  pane.append(h("h2", null, "What it is"), part(info.summary, "summary"), h("p", {class: "note mono"}, info.path));
+  for (const n of info.notes || []) pane.append(h("p", {class: "warn"}, n));
+  const m = S.modules.find(x => x.name === info.name);
+  pane.append(h("h2", null, "Reconstruction"));
+  if (m && m.in_store) {
+    pane.append(bar(m, "meter"), h("p", {class: "note"}, num(m.functions) + " functions known, " + num(m.decompiled) + " decompiled, " + num(m.compiled) +
+      " compiled; " + CLASSES.filter(c => m[c]).map(c => S.titles[c] + " " + num(m[c])).join(", ") + ". " +
+      num(m.bytes_known) + " of " + num(m.code_bytes) + " code bytes lie in known functions, " + num(m.bytes_verified) + " in verified ones."),
+      h("button", {onclick: () => { S.sub = "functions"; show("module"); }}, "Show the functions"));
+  } else pane.append(h("p", {class: "note"}, m ? "Nothing in the store for this module yet." : "Not a module of the corpus; it can be inspected and decompiled."));
+}
+
+async function subFunctions(pane, info, body) {
+  if (!S.fns) S.fns = await api("/api/functions?module=" + encodeURIComponent(S.module));
+  const f = S.fns;
+  if (!f.in_store) { pane.append(h("p", {class: "empty"}, "The store holds nothing for this module. Measure it to reconstruct and judge its functions.")); return; }
+  const detail = h("div", {class: "half"}, h("p", {class: "empty"}, "Pick a function to see its source and what the verifier found."));
+  pane.className = "half";
+  body.append(detail);
+  const chips = h("div", {class: "chips"});
+  const find = h("input", {type: "text", placeholder: "filter by name, address or reason", size: 34, value: S.fnFind});
+  const tbody = h("tbody"), shown = h("span", {class: "note"});
+  function rows() {
+    const t = S.fnFind.toLowerCase();
+    const list = f.functions.filter(r => (!S.fnClass || r.class === S.fnClass) && (!t || (r.addr + " " + r.name + " " + r.why).toLowerCase().includes(t)));
+    tbody.replaceChildren(...list.slice(0, 3000).map(r => h("tr", {class: "click" + (r.addr === S.fnAddr ? " sel" : ""), onclick: e => pick(r, e.currentTarget)},
+      h("td", {class: "m"}, r.addr), h("td", {class: "m"}, r.name || "-"), h("td", null, cls(r.class)), h("td", {class: "wrap"}, r.why))));
+    shown.textContent = num(list.length) + " functions" + (list.length > 3000 ? " (first 3,000 shown)" : "");
+    chips.replaceChildren(h("button", {class: "chip" + (S.fnClass ? "" : " on"), onclick: () => { S.fnClass = ""; rows(); }}, "all " + num(f.functions.length)),
+      ...CLASSES.filter(c => f.counts[c]).map(c => h("button", {class: "chip" + (S.fnClass === c ? " on" : ""), onclick: () => { S.fnClass = c; rows(); }},
+        S.titles[c] + " " + num(f.counts[c]))));
+  }
+  async function pick(r, tr) {
+    S.fnAddr = r.addr;
+    for (const x of tbody.querySelectorAll("tr.sel")) x.classList.remove("sel");
+    if (tr) tr.classList.add("sel");
+    detail.replaceChildren(h("p", {class: "empty"}, "loading..."));
+    try {
+      const j = await api("/api/function?module=" + encodeURIComponent(S.module) + "&addr=" + encodeURIComponent(r.addr));
+      const d = j.function;
+      detail.replaceChildren(
+        h("div", {class: "row"}, h("strong", {class: "mono"}, d.name || ("sub_" + d.addr)), h("span", {class: "mono note"}, "@ " + d.addr), cls(d.class),
+          h("span", null, d.why)),
+        part({verdict: d.verdict, reason: d.reason, limits: d.limits, detail: d.detail, "weak because": (d.weak || []).map(w => w.text).join("; "),
+          "made by": d.engine ? d.engine + " (revision " + d.rev + ")" : "", "verifier settings": j.profile}, "verdict"),
+        d.source ? h("pre", null, d.source) : h("p", {class: "empty"}, "no reconstructed source"));
+    } catch (e) { detail.replaceChildren(fail(e)); }
+  }
+  find.addEventListener("input", () => { S.fnFind = find.value; rows(); });
+  const why = Object.keys(f.reasons || {}).length ? h("details", null, h("summary", null, "Why functions are not verified"),
+    ...CLASSES.filter(c => f.reasons[c]).map(c => h("div", null, h("h2", null, S.titles[c]),
+      h("table", null, h("tbody", null, f.reasons[c].map(([t, n]) => h("tr", null, h("td", {class: "r"}, num(n)), h("td", {class: "wrap"}, t)))))))) : null;
+  pane.append(h("div", {class: "row"}, chips), h("div", {class: "row"}, find, shown,
+      h("span", {class: "note"}, f.measured ? "" : "not every function has a result under the settings in force (" + (f.profile || "none") + ")")),
+    why || "", h("table", null, h("thead", null, h("tr", null, ["address", "name", "class", "what was found"].map(t => h("th", null, t)))), tbody));
+  rows();
+  if (S.fnAddr) { const r = f.functions.find(x => x.addr === S.fnAddr); if (r) pick(r, null); }
+}
+
+function subResources(pane, info) {
+  const res = info.resources || {types: []};
+  if (!res.count) { pane.append(h("p", {class: "empty"}, "no resources")); return; }
+  const view = h("div");
+  const table = h("table", null, h("thead", null, h("tr", null, ["type", "name", "language", "offset", "size", ""].map(t => h("th", null, t)))),
+    h("tbody", null, res.types.flatMap(t => t.items.map(it => h("tr", null, h("td", null, String(t.type)), h("td", {class: "m"}, it.name),
+      h("td", {class: "m"}, it.language ? "0x" + it.language.toString(16) : ""), h("td", {class: "m"}, it.offset == null ? "" : "0x" + it.offset.toString(16)),
+      h("td", {class: "r"}, num(it.size)), h("td", null, it.offset == null ? "" : h("button", {onclick: () => look(t, it)}, "view")))))));
+  async function look(t, it) {
+    const url = "/api/resource?module=" + encodeURIComponent(S.module) + "&offset=" + it.offset + "&size=" + it.size + "&type=" + Math.max(0, it.type_id) + "&wide=" + (it.wide ? 1 : 0);
+    view.replaceChildren(h("h2", null, t.type + " " + it.name));
+    if (it.preview === "image") { view.append(h("img", {class: "res", src: url, alt: t.type + " " + it.name})); return; }
+    try { const j = await api(url); view.append(h("pre", null, j.text || "(empty)")); } catch (e) { view.append(fail(e)); }
+    view.scrollIntoView({block: "nearest"});
+  }
+  pane.append(h("p", {class: "note"}, num(res.count) + " resources of " + res.types.length + " types"), view, table);
+}
+
+async function subStrings(pane) {
+  const st = S.strings;
+  const min = h("input", {type: "number", min: 2, max: 64, value: st.min, style: "width:60px"}), find = h("input", {type: "text", placeholder: "containing", value: st.find});
+  const out = h("div");
+  async function load() {
+    out.replaceChildren(h("p", {class: "empty"}, "reading..."));
+    try {
+      const j = await api("/api/strings?module=" + encodeURIComponent(S.module) + "&min=" + st.min + "&find=" + encodeURIComponent(st.find) + "&offset=" + st.offset + "&limit=500");
+      out.replaceChildren(h("div", {class: "row"}, h("span", {class: "note"}, num(j.total) + " strings; showing " + num(j.offset + 1) + " to " + num(j.offset + j.rows.length)),
+          h("button", {disabled: st.offset === 0, onclick: () => { st.offset = Math.max(0, st.offset - 500); load(); }}, "Previous"),
+          h("button", {disabled: st.offset + 500 >= j.total, onclick: () => { st.offset += 500; load(); }}, "Next")),
+        h("table", null, h("thead", null, h("tr", null, ["offset", "address", "kind", "looks like", "text"].map(t => h("th", null, t)))),
+          h("tbody", null, j.rows.map(r => h("tr", null, h("td", {class: "m"}, "0x" + r.offset.toString(16)), h("td", {class: "m"}, cell("address", r.address)),
+            h("td", null, r.kind), h("td", null, r.category), h("td", {class: "m wrap"}, r.text))))));
+    } catch (e) { out.replaceChildren(fail(e)); }
+  }
+  const go = () => { st.min = Math.max(2, parseInt(min.value, 10) || 4); st.find = find.value; st.offset = 0; load(); };
+  find.addEventListener("keydown", e => { if (e.key === "Enter") go(); });
+  pane.append(h("div", {class: "row"}, "at least", min, "characters", find, h("button", {onclick: go}, "Search")), out);
+  await load();
+}
+
+async function subHex(pane, info) {
+  const at = h("input", {type: "text", value: "0x" + S.hex.toString(16), size: 12}), out = h("pre", null, "");
+  async function load() {
+    try {
+      const j = await api("/api/hex?module=" + encodeURIComponent(S.module) + "&offset=" + S.hex + "&length=1024");
+      out.textContent = j.text || "(past the end of the file)";
+      at.value = "0x" + S.hex.toString(16);
+    } catch (e) { out.textContent = String(e.message || e); }
+  }
+  const move = d => { S.hex = Math.max(0, Math.min(S.hex + d, Math.max(0, info.size - 16))); load(); };
+  const go = () => { S.hex = Math.max(0, parseInt(at.value, at.value.trim().toLowerCase().startsWith("0x") ? 16 : 10) || 0); load(); };
+  at.addEventListener("keydown", e => { if (e.key === "Enter") go(); });
+  pane.append(h("div", {class: "row"}, "offset", at, h("button", {onclick: go}, "Go"), h("button", {onclick: () => move(-1024)}, "Previous"),
+    h("button", {onclick: () => move(1024)}, "Next"), h("span", {class: "note"}, "of " + num(info.size) + " bytes")), out);
+  await load();
+}
+
+// ---- jobs -----------------------------------------------------------------------------------
+async function startJob(action) {
+  try {
+    const j = await api("/api/jobs", {action: action, module: S.info ? S.info.path : S.module});
+    S.job = j.id; S.jobOffset = 0;
+    show("jobs");
+  } catch (e) { alert(String(e.message || e)); }
+}
+async function viewJobs(body) {
+  const list = h("div"), log = h("pre", null, ""), head = h("div", {class: "row"}), outBox = h("div");
+  body.replaceChildren(h("h2", null, "Background jobs"),
+    h("p", {class: "note"}, "Started from a module's page. Each runs the same command you would type; a measure writes its results to the store."),
+    list, head, log, outBox);
+  let logText = "";
+  async function tick() {
+    const jobs = (await api("/api/jobs")).jobs;
+    if (!S.job && jobs.length) S.job = jobs[0].id;
+    list.replaceChildren(jobs.length ? h("table", null, h("thead", null, h("tr", null, ["started", "action", "module", "state", "time", ""].map(t => h("th", null, t)))),
+      h("tbody", null, jobs.map(j => h("tr", {class: "click" + (j.id === S.job ? " sel" : ""), onclick: () => { S.job = j.id; S.jobOffset = 0; logText = ""; outBox.replaceChildren(); tick(); }},
+        h("td", null, j.started), h("td", null, j.action), h("td", null, j.module), h("td", null, j.status + (j.status === "failed" ? " (exit " + j.exit + ")" : "")),
+        h("td", {class: "r"}, j.seconds + " s"), h("td", null, j.status === "running" ? h("button", {onclick: e => { e.stopPropagation(); api("/api/jobs/stop", {id: j.id}).then(tick); }}, "Stop") : "")))))
+      : h("p", {class: "empty"}, "No jobs yet."));
+    if (!S.job) return;
+    const j = await api("/api/job?id=" + encodeURIComponent(S.job) + "&offset=" + S.jobOffset);
+    logText += j.log; S.jobOffset = j.next;
+    const stick = log.scrollTop + log.clientHeight >= log.scrollHeight - 30;
+    log.textContent = logText || (j.status === "running" ? "(no output yet)" : "(no output)");
+    if (stick) log.scrollTop = log.scrollHeight;
+    head.replaceChildren(...[h("strong", null, j.action + " " + j.module), h("span", {class: "note"}, j.status + ", " + j.seconds + " s"),
+      j.has_output ? h("button", {onclick: async () => {
+        try { const o = await api("/api/job/output?id=" + encodeURIComponent(j.id));
+          outBox.replaceChildren(h("h2", null, o.path + " (" + num(o.size) + " bytes)"), h("pre", null, o.text)); } catch (e) { outBox.replaceChildren(fail(e)); } }}, "Show the C it wrote") : null,
+      j.action === "measure" && j.status === "done" ? h("button", {onclick: () => { loadModules(); openModule(j.module, "functions"); }}, "Show the functions") : null].filter(Boolean));
+  }
+  log.style.maxHeight = "50vh";
+  await tick();
+  if (body.isConnected) S.timer = setInterval(() => tick().catch(() => {}), 1500);
+}
+
+// ---- progress -------------------------------------------------------------------------------
+function clock(s) { if (s == null) return "-"; const hh = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return hh ? hh + "h " + m + "m" : m + "m " + (s % 60) + "s"; }
+function setActivity(p) {
+  $("activity").firstChild.className = "dot" + (p.active ? " on" : "");
+  $("activityText").textContent = p.active ? (p.rate ? p.rate + " results/min" : "working") : "idle";
+}
+async function viewProgress(body) {
+  async function tick() {
+    const p = await api("/api/progress");
+    setActivity(p);
+    body.replaceChildren(h("h2", null, (p.active ? "Working" : "Idle") + " — read " + p.time),
+      h("p", {class: "note"}, "Read from the function store; a sweep or a measure does not need to report anything. " + p.rate + " results a minute over the last ten minutes, " +
+        p.workers + " workers busy, about " + clock(p.eta) + " left at this rate."),
+      ...p.kinds.flatMap(k => [h("h2", null, k.name + ": " + num(k.measured) + " of " + num(k.modules) + " modules measured"),
+        (() => { const m = h("div", {class: "meter"}), s = h("span"); s.style.width = (k.modules ? 100 * k.measured / k.modules : 0) + "%"; s.style.background = "var(--accent)"; m.append(s); return m; })(),
+        h("p", {class: "note"}, num(k.functions) + " functions: " + (CLASSES.filter(c => k[c]).map(c => S.titles[c] + " " + num(k[c])).join(", ") || "nothing yet")), bar(k, "meter")]),
+      h("h2", null, "Last results written"),
+      p.recent.length ? h("table", null, h("thead", null, h("tr", null, h("th", null, "module"), h("th", null, "kind"), h("th", {class: "r"}, "results"), h("th", {class: "r"}, "ago"))),
+        h("tbody", null, p.recent.map(r => h("tr", {class: "click", onclick: () => openModule(r.module, "functions")}, h("td", null, r.module), h("td", null, r.kind),
+          h("td", {class: "r"}, num(r.results)), h("td", {class: "r"}, clock(r.age)))))) : h("p", {class: "empty"}, "no results in the store"));
+  }
+  await tick();
+  if (body.isConnected) S.timer = setInterval(() => tick().catch(() => {}), 4000);
+}
+
+// ---- start ----------------------------------------------------------------------------------
+function theme(next) {
+  const root = document.documentElement;
+  let now = root.getAttribute("data-theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  if (next) { now = now === "dark" ? "light" : "dark"; try { localStorage.setItem("theme", now); } catch (e) {} }
+  else { try { now = localStorage.getItem("theme") || now; } catch (e) {} }
+  root.setAttribute("data-theme", now);
+}
+async function start() {
+  theme(false);
+  $("theme").addEventListener("click", () => theme(true));
+  $("filter").addEventListener("input", filterModules);
+  $("stored").addEventListener("change", filterModules);
+  const open = () => { const v = $("open").value.trim(); if (v) openModule(v.includes("\\") || v.includes("/") ? v : v.toLowerCase(), "summary"); };
+  $("openGo").addEventListener("click", open);
+  $("open").addEventListener("keydown", e => { if (e.key === "Enter") open(); });
+  const hl = await api("/api/health");
+  for (const c of hl.classes) S.titles[c.key] = c.title;
+  S.kindTitle = {}; for (const k of hl.kinds) S.kindTitle[k.key] = k.title;
+  S.actions = hl.actions;
+  $("where").textContent = hl.corpus + (hl.store_exists ? "" : "   (no results yet)");
+  const chips = [["", "all"]].concat(hl.kinds.map(k => [k.key, k.title]));
+  const drawKinds = () => $("kinds").replaceChildren(...chips.map(([k, t]) => h("button", {class: "chip" + (S.kind === k ? " on" : ""),
+    onclick: () => { S.kind = k; drawKinds(); filterModules(); }}, t)));
+  drawKinds();
+  drawTabs();
+  await loadModules();
+  show("score");
+  setInterval(() => { if (!document.hidden) { loadModules().catch(() => {}); api("/api/progress").then(setActivity).catch(() => {}); } }, 20000);
+  api("/api/progress").then(setActivity).catch(() => {});
+}
+start().catch(e => $("body").replaceChildren(fail(e)));
+</script>
+</body>
+</html>

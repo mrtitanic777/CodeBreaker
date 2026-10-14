@@ -1,0 +1,6 @@
+system windows_dll
+name lzexpand.dll
+option quiet
+option map=lzexpand.map
+file lzalloc,lzread,lzwep,lzcopy,lzstate,lzio,lzcopyf,lzhdr,lzdecomp,lzname,lzdata
+# exports come from lzexpand.def via wdef (@lzexpand.exports.lnk), appended by build_lzexpand.bat
