@@ -50,6 +50,7 @@ class Function(object):
         filler, and a call to one is a call by its name."""
         self.text, self.imports, self.why, self.externs = None, {}, "", {}
         self.missing, self.tables = set(), set()              # (set again once the code is followed)
+        self.far_missing = set()                            # (segment, offset) a far call or jump reaches mid-run
         self.reaches = None                                 # refused for jumping into the middle of this offset's function
         self.holes = sorted(holes)
 
@@ -161,6 +162,7 @@ class Function(object):
                         toff = struct.unpack_from("<H", blob, at + 1)[0]
                         name = symbol_for("function", tseg, toff)
                         if not name:
+                            self.far_missing.add((tseg, toff))
                             self.why = "a far %s to %d:%04x, where no function has a symbol" % (mn, tseg, toff)
                             if tseg == seg:
                                 self.missing.add(toff)

@@ -354,11 +354,12 @@ def _assembled16(b, nef, at, segs, stems, public, folder, env, carried=(), force
             f = asm16.Function(nef, seg, off, end, publics, symbol_for, cs_ok=lead.get(seg, 0),
                                extra_entries=[o for (sg, o) in entries if sg == seg and off <= o < end],
                                whole=seg in whole, holes=holes)
-            if f.text is None and f.missing:
-                # it calls into the middle of a run of assembly: that place is an entry of its own
-                for t in f.missing:
-                    if (seg, t) not in entries:
-                        wanted.add((seg, t))
+            if f.text is None and (f.missing or f.far_missing):
+                # it calls into the middle of a run of assembly (in its segment, or far in
+                # another): that place is an entry of its own
+                for place in {(seg, t) for t in f.missing} | f.far_missing:
+                    if place not in entries:
+                        wanted.add(place)
                 continue
             if f.text is None and f.reaches is not None:
                 # it jumps into the middle of a function beside it: that one was written in
@@ -722,7 +723,7 @@ def _build16(b, path, m, folder):
     # what its code does), not as a C translation of it -- where its instructions can be written
     # so that they assemble back to the original's; the C stays only where that cannot be done.
     from codebreaker.analyze import origin
-    b.origins = {o.name: o for o in origin.module16(path).functions.values()}
+    b.origins = {o.name: o for o in origin.module16(path, more=m.by_va).functions.values()}
     forced = {n for n in m.order if n in stems and n in b.origins and b.origins[n].language == "assembly"}
     def elsewhere(name):
         """A far function rebuilt from C, compiled into a code segment of its own beside its

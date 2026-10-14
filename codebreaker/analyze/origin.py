@@ -67,12 +67,16 @@ class Result(object):
         return n, why
 
 
-def module16(path):
-    """Every function of a 16-bit module, judged. -> Result"""
+def module16(path, more=None):
+    """Every function of a 16-bit module, judged. `more`: {va: name} of functions found besides
+    the ones the module's own tables give (the decompiler finds the ones only called). -> Result"""
     import os
     from codebreaker.build import watcom
     d = describe.describe16(path, watcom._scratch("origin", os.path.basename(path).lower()))
     names = {va: n for va, n in d.names.items() if va in d.where}
+    for va, n in (more or {}).items():
+        if va not in names:
+            names[va], d.where[va] = n, describe.where(va)
     starts = collections.defaultdict(list)
     for va in names:
         seg, off = d.where[va]
