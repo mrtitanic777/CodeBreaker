@@ -20,6 +20,16 @@ What is changed, and only where the evidence says so:
                 hMem); one counted up in a loop and compared is i, j, k.
     globals     a placeholder global assigned only GetProcAddress(h, "Name") is g_pfnName; one
                 assigned only a handle a Windows function returns is g_<handle name>.
+    comparisons a variable passed to Windows always as the same parameter (a window procedure's
+                message, passed on to DefWindowProc as Msg) has the numbers it is compared with
+                and switched on written as that parameter's constants: case 0x10 -> case WM_CLOSE.
+    strings     the address of a string passed to Windows as a string has the string beside it
+                in a comment, and a printf-style format's arguments the type each conversion
+                takes: wsprintfA(buf, 0x40a1b0 /* "%s = %ld" */, name /* %s */, n /* %ld */).
+    fields      a pointer passed to Windows functions as one SDK structure (LPRECT, LPMSG ...),
+                every one of whose dereferences lands on a field of that structure, has them
+                written as fields: *(int4 *)(lprc + 8) -> ((RECT *)lprc)->right. One that is also
+                read past the structure, or moved, or passed as two kinds, keeps its numbers.
 
 Renaming changes no code and an SDK constant is its value, so what was compiled and judged is
 what these texts compile to. Nothing is named from a guess about intent: a function's own name
@@ -309,10 +319,40 @@ def _rename(text, names):
     return "".join(out)
 
 
+_ACCESS_SIZE = {"int1": 1, "uint1": 1, "xunknown1": 1, "undefined1": 1, "char": 1, "byte": 1, "undefined": 1,
+                "int2": 2, "uint2": 2, "xunknown2": 2, "undefined2": 2, "short": 2,
+                "int4": 4, "uint4": 4, "xunknown4": 4, "undefined4": 4, "float4": 4, "int": 4, "uint": 4,
+                "int8": 8, "uint8": 8, "xunknown8": 8, "undefined8": 8, "float8": 8}
+
+
+def _deref(var):
+    """*(T *)(var + K) and *(T *)var, with T and K."""
+    return re.compile(r"\*\((\w+) \*\)(?:\(%s(?: \+ (0x[0-9a-fA-F]+|\d+))?\)|%s\b)" % (re.escape(var), re.escape(var)))
+
+
+def _struct_vars(text):
+    """{variable: structure} for the pointers passed to Windows functions as one SDK structure."""
+    from codebreaker.symbols import sdk_structs
+    seen = {}
+    for fn, _a, _b, args in calls(text):
+        p = _prototype(fn)
+        if not p:
+            continue
+        for k, arg in enumerate(args):
+            m = re.match(r"^\s*(?:\([^()]*\)\s*)?([A-Za-z_]\w*)\s*$", arg)
+            if not m or k >= len(p["parameters"]):
+                continue
+            target = sdk_structs.pointed_to(p["parameters"][k][0])
+            seen.setdefault(m.group(1), set()).add(target)
+    return {v: next(iter(t)) for v, t in seen.items() if len(t) == 1 and None not in t}
+
+
 class Module(object):
-    def __init__(self, texts, string_at=None):
+    def __init__(self, texts, string_at=None, header=""):
         self.texts = texts
         self.string_at = string_at or (lambda address: None)
+        self.structs_used = set()
+        self._header_text = header
         self.constants_used = {}
         self.globals = self._global_names()
 
@@ -363,7 +403,157 @@ class Module(object):
         text = self.texts[name]
         text = self._constants(text)
         text = _rename(text, dict(_local_names(text), **self.globals))
+        text = self._compared(text)
+        text = self._fields(text)
+        return self._strings(text)
+
+    def results_unused(self):
+        """Names of the module's functions that are called and whose value no caller uses: what
+        they return is left over in a register, not a result (their declared type stays, as the
+        compiled code depends on it)."""
+        if getattr(self, "_unused", None) is None:
+            names = set()
+            for text in self.texts.values():
+                m = re.search(r"(?m)^[\w ]+?[\s*](\w+)\(", text)
+                if m:
+                    names.add(m.group(1))
+            called, used = set(), set()
+            for text in self.texts.values():
+                body = text.split("{", 1)[-1]
+                for m in re.finditer(r"(\S?)\s*\b(%s)\s*\(" % "|".join(map(re.escape, sorted(names))) if names else r"(?!)", body):
+                    called.add(m.group(2))
+                    line_start = body.rfind("\n", 0, m.start(2)) + 1
+                    before = body[line_start:m.start(2)].strip()
+                    if before and not re.match(r"^(?:\}|\{|else|do)?$", before):
+                        used.add(m.group(2))
+            self._unused = called - used
+        return self._unused
+
+    def _compared(self, text):
+        """Numbers a variable is compared with or switched on, as the SDK constants of the one
+        parameter it is passed to Windows as."""
+        families = {}
+        for fn, _a, _b, args in calls(text):
+            p = _prototype(fn)
+            if not p:
+                continue
+            for k, arg in enumerate(args):
+                m = re.match(r"^\s*(?:\([^()]*\)\s*)?([A-Za-z_]\w*)\s*$", arg)
+                if m and k < len(p["parameters"]):
+                    base = re.sub(r"(?<=[a-z])[AW]$", "", fn).lower()
+                    if (base, p["parameters"][k][1]) in FAMILIES:
+                        families.setdefault(m.group(1), set()).add((fn, p["parameters"][k][1]))
+        values, _o = _constants()
+        for var, uses in families.items():
+            if len({FAMILIES[(re.sub(r"(?<=[a-z])[AW]$", "", f).lower(), q)][0] for f, q in uses}) != 1:
+                continue
+            fn, param = next(iter(uses))
+
+            def named(number):
+                v = int(number, 0)
+                n = constant(fn, param, v)
+                if n and " | " not in n:
+                    self.constants_used[n] = values[n]
+                    return n
+                return None
+
+            def compare(m):
+                n = named(m.group(3))
+                return m.group(1) + m.group(2) + n if n else m.group(0)
+            v = re.escape(var)
+            text = re.sub(r"((?<![\w.>])%s\s*)(==|!=)(\s*)(?=0x[0-9a-fA-F]+\b|\d+\b)" % v, lambda m: m.group(0), text)
+            text = re.sub(r"((?<![\w.>])%s\s*)(==|!=)\s*(0x[0-9a-fA-F]+|\d+)\b" % v,
+                          lambda m: (m.group(1) + m.group(2) + " " + named(m.group(3))) if named(m.group(3)) else m.group(0), text)
+            for sw in list(re.finditer(r"switch\s*\(\s*(?:\([^()]*\)\s*)?%s\s*\)\s*\{" % v, text))[::-1]:
+                depth, i = 1, sw.end()
+                while i < len(text) and depth:
+                    depth += {"{": 1, "}": -1}.get(text[i], 0)
+                    i += 1
+                body = text[sw.end():i]
+                level, out, j = 0, [], 0
+                for m in re.finditer(r"[{}]|\bcase\s+(0x[0-9a-fA-F]+|\d+)\s*:", body):
+                    if m.group(0) == "{":
+                        level += 1
+                    elif m.group(0) == "}":
+                        level -= 1
+                    elif level == 0:
+                        n = named(m.group(1))
+                        if n:
+                            out.append(body[j:m.start()] + "case " + n + ":")
+                            j = m.end()
+                out.append(body[j:])
+                text = text[:sw.end()] + "".join(out) + text[i:]
         return text
+
+    def _strings(self, text):
+        """The string at an address passed to Windows as a string, beside it; the type each
+        conversion of a printf-style format takes, beside its argument."""
+        edits = []
+        for fn, start, _end, args in calls(text):
+            p = _prototype(fn)
+            if not p:
+                continue
+            pos, fmt_at, fmt = start, None, None
+            for k, arg in enumerate(args):
+                a = pos
+                pos += len(arg) + 1
+                kind = p["parameters"][k][0] if k < len(p["parameters"]) else ""
+                m = _NUMBER.match(arg.strip())
+                if m and "STR" in kind.upper() and "/*" not in arg:
+                    found = self.string_at(int(m.group(1), 0) & 0xFFFFFFFF)
+                    if found is not None:
+                        shown = found if len(found) <= 60 else found[:57] + "..."
+                        shown = shown.replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r") \
+                            .replace("\t", "\\t").replace('"', '\\"').replace("*/", "*\\/")
+                        edits.append((a + len(arg.rstrip()), ' /* "%s" */' % shown))
+                        if k + 1 < len(p["parameters"]) and p["parameters"][k + 1][0] == "...":   # the format
+                            fmt_at, fmt = k, found
+            if fmt is not None and fn.lower().startswith(("wsprintf", "sprintf", "printf", "fprintf", "_snprintf")):
+                specs = [m.group(0) for m in re.finditer(r"%[-+ 0#]*(?:\*|\d+)?(?:\.(?:\*|\d+))?(?:hh|h|ll|l|L|w|I64)?[diouxXeEfgGcCsSp]", fmt)]
+                pos = start
+                for k, arg in enumerate(args):
+                    a = pos
+                    pos += len(arg) + 1
+                    n = k - fmt_at - 1
+                    if 0 <= n < len(specs) and "/*" not in arg:
+                        m = _NUMBER.match(arg.strip())
+                        found = self.string_at(int(m.group(1), 0) & 0xFFFFFFFF) if m and specs[n][-1] in "sS" else None
+                        if found is not None and len(found) <= 60 and re.match(r'^[^"\\*\r\n\t]*$', found):
+                            edits.append((a + len(arg.rstrip()), ' /* %s: "%s" */' % (specs[n], found)))
+                        else:
+                            edits.append((a + len(arg.rstrip()), " /* %s */" % specs[n]))
+        for at, note in sorted(edits, reverse=True):
+            text = text[:at] + note + text[at:]
+        return text
+
+    def _fields(self, text):
+        from codebreaker.symbols import sdk_structs
+        for var, sname in sorted(_struct_vars(text).items()):
+            st = sdk_structs.layout(sname)
+            if not st or re.search(r"\btypedef\b[^;]*\b%s\s*;" % re.escape(sname), self._header_text):
+                continue
+            pattern = _deref(var)
+            edits, ok = [], True
+            for m in pattern.finditer(text):
+                size = _ACCESS_SIZE.get(m.group(1))
+                offset = int(m.group(2), 0) if m.group(2) else 0
+                found = st.typed(offset, size) if size else None
+                if not found:
+                    ok = False
+                    break
+                path, ctype = found
+                field = "((%s *)%s)->%s" % (sname, var, path)
+                edits.append((m.start(), m.end(), field if ctype == m.group(1) else "*(%s *)&%s" % (m.group(1), field)))
+            rest = pattern.sub("", text)
+            if not ok or not edits or re.search(r"(?<![\w.>])%s\s*(?:[-+]|\[)" % re.escape(var), rest) or \
+                    re.search(r"(?<![\w.>])%s\s*(?:\+\+|--|[-+]=)" % re.escape(var), rest):
+                continue                                      # read past it, moved, or indexed: keep the numbers
+            for a, b, new in sorted(edits, reverse=True):
+                text = text[:a] + new + text[b:]
+            self.structs_used.add(sname)
+        return text
+
+    _header_text = ""
 
     def _constants(self, text):
         edits = []
@@ -393,8 +583,19 @@ class Module(object):
 
     def header(self, text):
         """The module's header with the globals renamed as in the functions, and the SDK constants
-        written into them defined."""
-        return _rename(text, self.globals) + ("\n" + self.definitions() if self.constants_used else "")
+        and structures written into them defined."""
+        return _rename(text, self.globals) + ("\n" + self.definitions() if self.constants_used else "") + \
+            self.struct_definitions()
+
+    def struct_definitions(self):
+        """The SDK structures the functions now use, laid out at the SDK's offsets."""
+        from codebreaker.symbols import sdk_structs
+        out, done = [], set()
+        for name in sorted(self.structs_used):
+            text = sdk_structs.definition(sdk_structs.layout(name), done)
+            done |= set(re.findall(r"\} (\w+);", text))
+            out.append(text)
+        return ("\n/* SDK structures, at the SDK's offsets */\n" + "".join(out)) if out else ""
 
     def definitions(self):
         """#define lines for the SDK constants written in, with the values the SDK gives them."""

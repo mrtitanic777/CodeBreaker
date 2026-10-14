@@ -241,7 +241,7 @@ def write_module(module, verify=True, out_dir=None, log=print, split=0, build_wh
     from codebreaker.source import readable
     texts = {va: spell.sub(lambda m: sub[m.group(1)], r["source"]) if spell else r["source"]
              for va, r in best.items() if r.get("source")}
-    words = readable.Module(texts, _string_reader(path, kind))
+    words = readable.Module(texts, _string_reader(path, kind), fs.get_text(sha, reconstruct.SOURCE, "header") or "")
     counts = dict.fromkeys(ORDER, 0)
     parts = []
     for va in addrs:
@@ -272,6 +272,8 @@ def write_module(module, verify=True, out_dir=None, log=print, split=0, build_wh
             hint = readable.calls_hint(texts[va])
             if hint:
                 said.append(hint)
+        if va not in exported and (row["name"] or "") in words.results_unused():
+            said.append("no caller here uses what it returns")
         parts.append("/* [%s] %s  @ %s%s */\n%s\n" % (
             TITLE[shown], shown_name, va, (" -- " + "; ".join(said)) if said else "", source))
     total = len(addrs)
@@ -325,6 +327,7 @@ def write_module(module, verify=True, out_dir=None, log=print, split=0, build_wh
         if words.constants_used:
             header += "\n/* SDK constants written into %s.c, with the values the SDK headers give them */\n%s" % (
                 stem, words.definitions())
+        header += words.struct_definitions()
         with open(os.path.join(out_dir, stem + ".h"), "w", encoding="utf-8", newline="\n") as f:
             f.write("/* %s -- types, declarations and globals used by the functions in %s.c.\n"
                     " * Globals are bound to their addresses in the original until the module's data is\n"
