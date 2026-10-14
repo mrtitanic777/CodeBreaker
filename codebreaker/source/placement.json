@@ -1,0 +1,309 @@
+{
+ "win1.0": {
+  "installed": {},
+  "kind": {
+   "dos": "msdos",
+   "le": "drivers"
+  },
+  "known": {},
+  "prefix": [],
+  "suffix": {
+   ".386": "drivers",
+   ".com": "msdos",
+   ".drv": "drivers",
+   ".fon": "fonts",
+   ".sys": "msdos"
+  }
+ },
+ "win3.1": {
+  "installed": {},
+  "kind": {
+   "dos": "msdos",
+   "le": "drivers"
+  },
+  "known": {},
+  "prefix": [],
+  "suffix": {
+   ".386": "drivers",
+   ".com": "msdos",
+   ".drv": "drivers",
+   ".fon": "fonts",
+   ".sys": "msdos"
+  }
+ },
+ "win95": {
+  "installed": {
+   "/command/": "msdos",
+   "/iosubsys/": "vmm32"
+  },
+  "kind": {
+   "dos": "msdos",
+   "le": "vmm32"
+  },
+  "known": {
+   "advapi32": "base/advapi32",
+   "avicap": "mmedia/avicap",
+   "avifile": "mmedia/avifile",
+   "browseui": "shell/browseui",
+   "cfgmgr32": "setup/cfgmgr32",
+   "cmc": "mapi/cmc",
+   "comctl31": "shell/comctl31",
+   "comctl32": "shell/comctl32",
+   "comdlg32": "base/comdlg32",
+   "commdlg": "base/commdlg",
+   "compobj": "ole/compobj",
+   "control": "shell/control",
+   "crtdll": "base/crtdll",
+   "dispdib": "core/gdi",
+   "dsound": "mmedia/dsound",
+   "explorer": "shell/explorer",
+   "finstall": "setup/finstall",
+   "freecell": "games/freecell",
+   "gdi": "core/gdi",
+   "gdi32": "core/gdi32",
+   "imagehlp": "base/imagehlp",
+   "inst16": "setup/inst16",
+   "kernel32": "core/kernel32",
+   "krnl286": "core/kernel",
+   "krnl386": "core/kernel",
+   "lz32": "base/lz32",
+   "lzexpand": "base/lzexpand",
+   "mapi": "mapi/mapi",
+   "mapi32": "mapi/mapi32",
+   "mmsystem": "mmedia/mmsystem",
+   "mmtask": "mmedia/mmtask",
+   "mplayer": "mmedia/mplayer",
+   "mpr": "comm/mpr",
+   "mshearts": "games/mshearts",
+   "msvcrt": "base/msvcrt",
+   "msvfw32": "mmedia/msvfw32",
+   "msvideo": "mmedia/msvideo",
+   "netdi": "setup/netdi",
+   "ole2": "ole/ole2",
+   "ole2disp": "ole/ole2disp",
+   "ole2nls": "ole/ole2nls",
+   "ole32": "ole/ole32",
+   "oleaut32": "ole/oleaut32",
+   "olecli": "ole/olecli",
+   "olepro32": "ole/olepro32",
+   "olesvr": "ole/olesvr",
+   "rpcrt4": "base/rpcrt4",
+   "rundll32": "shell/rundll32",
+   "setupx": "setup/setupx",
+   "shdocvw": "shell/shdocvw",
+   "shell": "shell/shell",
+   "shell32": "shell/shell32",
+   "shlwapi": "base/shlwapi",
+   "sol": "games/sol",
+   "stdole": "ole/stdole",
+   "stdole2": "ole/stdole",
+   "storage": "ole/storage",
+   "toolhelp": "core/toolhelp",
+   "typelib": "ole/typelib",
+   "user": "core/user",
+   "user32": "core/user32",
+   "ver": "base/version",
+   "version": "base/version",
+   "w32sys": "core/thunk",
+   "win87em": "base/math",
+   "winmine": "games/winmine",
+   "winmm": "mmedia/winmm",
+   "winver": "base/version",
+   "wow32": "core/thunk"
+  },
+  "prefix": [
+   [
+    "mci",
+    "mmedia"
+   ],
+   [
+    "msacm",
+    "mmedia"
+   ],
+   [
+    "acm",
+    "mmedia"
+   ],
+   [
+    "vidc",
+    "mmedia"
+   ],
+   [
+    "ras",
+    "comm"
+   ],
+   [
+    "nw",
+    "comm"
+   ],
+   [
+    "ndis",
+    "comm"
+   ],
+   [
+    "ipx",
+    "comm"
+   ],
+   [
+    "spx",
+    "comm"
+   ],
+   [
+    "wsock",
+    "comm"
+   ],
+   [
+    "winsock",
+    "comm"
+   ],
+   [
+    "ws2",
+    "comm"
+   ],
+   [
+    "inet",
+    "comm"
+   ],
+   [
+    "wininet",
+    "comm"
+   ],
+   [
+    "ndde",
+    "comm"
+   ],
+   [
+    "netdde",
+    "comm"
+   ],
+   [
+    "snmp",
+    "comm"
+   ],
+   [
+    "mstcp",
+    "comm"
+   ],
+   [
+    "tapi",
+    "comm"
+   ],
+   [
+    "unimodem",
+    "comm"
+   ],
+   [
+    "modem",
+    "comm"
+   ],
+   [
+    "vredir",
+    "comm"
+   ],
+   [
+    "vnet",
+    "comm"
+   ],
+   [
+    "mapi",
+    "mapi"
+   ],
+   [
+    "ole",
+    "ole"
+   ],
+   [
+    "mfc",
+    "ole"
+   ],
+   [
+    "setup",
+    "setup"
+   ],
+   [
+    "cfgmgr",
+    "setup"
+   ],
+   [
+    "unidrv",
+    "print"
+   ],
+   [
+    "pscript",
+    "print"
+   ],
+   [
+    "rasdd",
+    "print"
+   ],
+   [
+    "dmcolor",
+    "print"
+   ],
+   [
+    "hp",
+    "print"
+   ],
+   [
+    "epson",
+    "print"
+   ],
+   [
+    "canon",
+    "print"
+   ],
+   [
+    "oki",
+    "print"
+   ],
+   [
+    "lexmark",
+    "print"
+   ],
+   [
+    "ibmppds",
+    "print"
+   ],
+   [
+    "paintjt",
+    "print"
+   ],
+   [
+    "proprint",
+    "print"
+   ],
+   [
+    "fujixl",
+    "print"
+   ]
+  ],
+  "suffix": {
+   ".386": "vmm32",
+   ".acm": "mmedia",
+   ".com": "msdos",
+   ".cpl": "setup",
+   ".drv": "drivers",
+   ".mpd": "vmm32",
+   ".pdr": "vmm32",
+   ".scr": "shell",
+   ".sys": "msdos",
+   ".vxd": "vmm32"
+  }
+ },
+ "win98": {
+  "installed": {},
+  "kind": {
+   "dos": "msdos",
+   "le": "drivers"
+  },
+  "known": {},
+  "prefix": [],
+  "suffix": {
+   ".386": "drivers",
+   ".com": "msdos",
+   ".drv": "drivers",
+   ".fon": "fonts",
+   ".sys": "msdos"
+  }
+ }
+}
