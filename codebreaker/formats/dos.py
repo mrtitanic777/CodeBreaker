@@ -5,6 +5,8 @@
                           COUNTRY.SYS and the LOGO*.SYS pictures carry a program's extension only)
     dos.packer(path)      "EXEPACK" | "PKLITE" | "LZEXE" | "DIET" | "UPX" | "moves itself" | None
     p = dos.read(path)    a Program: the bytes as they sit in memory once loaded (and unpacked)
+    dos.read(path, run_movers=False)   a program that moves itself read as it is stored: the
+                          moving is its own code, which its source has to have
     dos.programs()        every real-mode program of the corpus, one path per name
 
 Four kinds of file, one result:
@@ -255,7 +257,7 @@ def unpack_exepack(module, cs, ip):
 
 
 # reading --------------------------------------------------------------------------------------
-def _load_module(data, h, p, segment, notes):
+def _load_module(data, h, p, segment, notes, run_movers=True):
     """The load module of an MZ file, unpacked when it was stored packed and relocated for
     `segment`. -> (bytes, [relocation offsets], cs, ip, ss, sp); p.packer / p.unpacked are set."""
     module = bytes(data[h["header"]:h["size"]])
@@ -274,7 +276,7 @@ def _load_module(data, h, p, segment, notes):
             p.unpacked = "static"
         except (ValueError, struct.error) as e:
             notes.append("EXEPACK not undone statically (%s)" % e)
-    if p.packer and not p.unpacked:
+    if p.packer and not p.unpacked and (run_movers or p.packer != "moves itself"):
         from codebreaker.emulate import unpack
         try:
             module, relocs, cs, ip, ss, sp = unpack.unpacked(module, relocs, cs, ip, ss, sp, h["min_alloc"],
@@ -316,8 +318,9 @@ def _data_segment(p, entry):
     return None
 
 
-def read(path):
-    """Read a real-mode program. -> Program. ValueError when the file is not one."""
+def read(path, run_movers=True):
+    """Read a real-mode program. -> Program. ValueError when the file is not one. With
+    run_movers False a program that moves itself is read as stored (see the top)."""
     with open(path, "rb") as f:
         data = f.read()
     what = _kind(data, os.path.basename(path))
@@ -335,19 +338,7 @@ def read(path):
     elif what == "kernel":
         _read_kernel(data, p)
     elif h:                                                   # a program, or a driver linked as one
-        p.image, relocs, cs, p.ip, ss, p.sp = _load_module(data, h, p, LOAD, p.notes)
-        p.cs, p.ss = (LOAD + cs) & 0xFFFF, (LOAD + ss) & 0xFFFF
-        p.relocations = [LOAD * 16 + r for r in relocs]
-        p.spans = [(LOAD * 16, len(p.image), "program")]
-        p.overlay = bytes(data[h["size"]:])
-        entry = (p.cs * 16 + p.ip) & 0xFFFFF
-        if what == "mz" and p.inside(entry):
-            p.entries = [(entry, "entry", "far")]
-            p.segments = {entry: p.cs}
-        p.devices = [] if p.packer else devices(p.image[:0x10000])
-        p.ds = _data_segment(p, entry) if p.entries else None
-        if p.ds is None:                                      # one segment for all, or the first of several
-            p.ds = p.cs if not p.relocations or p.cs < LOAD else LOAD
+        _read_mz(data, h, p, what, run_movers)
     else:
         p.image = data
         p.spans = [(LOAD * 16, len(data), "driver")]
@@ -356,12 +347,30 @@ def read(path):
     for d in p.devices:
         seg = p.device_segment * 16
         label = "".join(c if c.isalnum() else "_" for c in d.name.split(" (")[0]).strip("_") or "device"
+        label = "dev_" + label if label[0].isdigit() else label    # an assembler name cannot start with a digit
         label = "%s_%X" % (label, d.offset) if not d.character else label
         for va, role in ((seg + d.strategy, "strategy"), (seg + d.interrupt, "interrupt")):
             if va not in p.segments:                          # the devices of one driver share routines
                 p.entries.append((va, "%s_%s" % (label, role), "far"))
                 p.segments[va] = p.device_segment
     return p
+
+
+def _read_mz(data, h, p, what, run_movers=True):
+    """An MZ program (or a driver linked as one) loaded at LOAD, unpacked when stored packed."""
+    p.image, relocs, cs, p.ip, ss, p.sp = _load_module(data, h, p, LOAD, p.notes, run_movers)
+    p.cs, p.ss = (LOAD + cs) & 0xFFFF, (LOAD + ss) & 0xFFFF
+    p.relocations = [LOAD * 16 + r for r in relocs]
+    p.spans = [(LOAD * 16, len(p.image), "program")]
+    p.overlay = bytes(data[h["size"]:])
+    entry = (p.cs * 16 + p.ip) & 0xFFFFF
+    if what == "mz" and p.inside(entry):
+        p.entries = [(entry, "entry", "far")]
+        p.segments = {entry: p.cs}
+    p.devices = [] if p.packer else devices(p.image[:0x10000])
+    p.ds = _data_segment(p, entry) if p.entries else None
+    if p.ds is None:                                          # one segment for all, or the first of several
+        p.ds = p.cs if not p.relocations or p.cs < LOAD else LOAD
 
 
 def _read_kernel(data, p):
@@ -393,3 +402,62 @@ def _read_kernel(data, p):
                  (p.cs * 16 + p.ip, "sysinit_entry", "far")]
     p.notes.append("only the first 64 KB of the bios and dos part is addressed from segment %04X; the DOS kernel "
                    "behind it is moved at run time, so absolute references into it are not resolved" % KERNEL_SEGMENT)
+
+
+EXEPACK_SEGMENT = 0x5000             # where the EXEPACK unpacker's code is read (it runs behind SYSINIT)
+
+
+def kernel_parts(path):
+    """IO.SYS as the programs it is made of, each where it runs. -> (parts, layout):
+    parts [(stem, Program)] -- the loader and the BIOS + DOS kernel, stored in the file as they
+    run; SYSINIT as the MZ program it is (unpacked: the file stores it as LINK /EXEPACK did);
+    and the EXEPACK unpacker's code -- and layout, how SYSINIT was packed (build/exepack.Layout).
+    The file is: loader, kernel, SYSINIT packed. The loader's first bytes are the MZ header that
+    describes the packed SYSINIT; to the loader they are data."""
+    from codebreaker.build import exepack
+    with open(path, "rb") as f:
+        data = f.read()
+    whole = read(path)
+    if whole.kind != "kernel":
+        raise ValueError("%s: not a kernel image" % whole.name)
+    h = _mz(data)
+    start, _first = _kernel_body(data, h)
+    out = []
+    for stem, segment, lo, hi, label in (("msload", LOADER_SEGMENT, 0, start, "loader"),
+                                         ("msdos", KERNEL_SEGMENT, start, h["header"], "bios and dos")):
+        p = Program(path, "kernel part")
+        p.name = "%s (the %s of %s)" % (stem, label, whole.name)
+        p.base = segment * 16
+        p.image = bytes(data[lo:hi])
+        p.spans = [(p.base, len(p.image), label)]
+        p.entries = [e for e in whole.entries if p.base <= e[0] < p.base + len(p.image)]
+        p.segments = {va: s for va, s in whole.segments.items() if p.base <= va < p.base + len(p.image)}
+        p.ds = whole.ds if segment == KERNEL_SEGMENT else segment
+        if segment == KERNEL_SEGMENT:
+            p.devices, p.device_segment = whole.devices, whole.device_segment
+        out.append((stem, p))
+    stored = bytes(data[h["header"]:h["size"]])
+    layout = exepack.layout(stored, h["cs"], h["ip"])
+    p = Program(path, "mz")
+    p.name = "sysinit (of %s)" % whole.name
+    _read_mz(data, h, p, "mz")
+    p.in_kernel = True                                        # its file is IO.SYS: built into it, not a file of its own
+    if p.unpacked != "static":
+        raise ValueError("%s: SYSINIT is not stored as EXEPACK" % whole.name)
+    out.append(("sysinit", p))
+    out.append(("exepack", exepack_stub(path, layout)))
+    return out, layout
+
+
+def exepack_stub(path, layout):
+    """The EXEPACK unpacker's code (build/exepack.Layout.stub_code) as a program of its own:
+    LINK put the same one behind every program it packed."""
+    stub = Program(path, "kernel part")
+    stub.name = "exepack (the unpacker LINK /EXEPACK put behind %s)" % os.path.basename(path).lower()
+    stub.base = EXEPACK_SEGMENT * 16 + 2 * layout.words       # its code follows the header words
+    stub.image = layout.stub_code
+    stub.spans = [(stub.base, len(stub.image), "exepack")]
+    stub.cs = stub.ds = EXEPACK_SEGMENT
+    stub.entries = [(stub.base, "unpack", "far")]
+    stub.segments = {stub.base: EXEPACK_SEGMENT}
+    return stub

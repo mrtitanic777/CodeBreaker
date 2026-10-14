@@ -37,7 +37,7 @@ from codebreaker.source import assembly
 from codebreaker.symbols import dos_interrupts
 
 _MARK = 0x7AB3                           # stands in for a relocated segment word while decoding
-_MAX_ROUNDS = 30
+_MAX_ROUNDS = 200
 
 
 class Writer(object):
@@ -69,6 +69,7 @@ class Writer(object):
         for i in a.interrupts:
             s = dos_interrupts.name(i.number, i.ah, i.al)
             self.calls[i.address - p.base] = s.name + ("(%s)" % s.arguments if s.arguments and s.exact else "")
+        self.crossing = set()            # jumps across a place the program was divided at: written as bytes
         self._decode()
         self._divide()
 
@@ -89,16 +90,25 @@ class Writer(object):
                 hi = self.segments[k + 1] * 16 if k + 1 < len(self.segments) else img_end
                 if hi - lo <= 0xFFF0:
                     continue
-                cut = None
+                cut, fewest = None, None
                 for b in range((lo + 0xFFF0) & ~15, lo + 0x1000, -16):
                     if b in inside or b in self.rel or b - 1 in self.rel:
                         continue
-                    if any(a < b <= z for a, z in reach if lo <= a and z < hi):
-                        continue
-                    cut = b
-                    break
+                    n = sum(1 for a, z in reach if a < b <= z and lo <= a and z < hi)
+                    if fewest is None or n < fewest:
+                        cut, fewest = b, n
+                    if not n:
+                        break
                 if cut is None:
                     return                                   # it cannot be divided: left as it is
+                if fewest:
+                    # every place is jumped across (the DOS kernel's code runs in a segment of its
+                    # own at run time): the few jumps across the place chosen are written as bytes
+                    for at, t in list(self.ins.items()):
+                        if t[3] is not None and min(at, t[3]) < cut <= max(at, t[3]):
+                            self.ins[at] = t[:3] + (None,) + t[4:]
+                            self.crossing.add(at)
+                    reach = [(min(at, t[3]), max(at, t[3])) for at, t in self.ins.items() if t[3] is not None]
                 self.segments = sorted(set(self.segments) | {cut // 16})
                 again = True
                 break
@@ -173,6 +183,8 @@ class Writer(object):
 
     def mnemonic(self, at):
         data, mnem, ops, target, where = self.ins[at]
+        if at in self.crossing:
+            return None
         m = assembly.STRING_OPS.match(mnem + " ")
         if m and where is None and ":" not in ops.replace("es:[di]", ""):
             return ((m.group(1) or "") + m.group(2) + m.group(3)).strip()
@@ -373,15 +385,184 @@ def _load_module(path, kind):
 def reconstruct(module_path, outdir, log=None):
     """Write a program's source, build it, and make it come back as the original (see the top).
     -> a dict: source, image, linked, same, notes, instructions, raw, data, rounds, functions."""
-    p = dos.read(module_path)
-    result = {"source": None, "image": None, "linked": False, "same": False, "rounds": 0, "notes": [], "kind": p.kind}
-    if p.kind == "kernel":
-        result["notes"] = ["a three-part kernel image: no source is written for it yet"]
+    if dos.kind(module_path) == "kernel":
+        return _kernel(module_path, outdir, log)
+    p = dos.read(module_path, run_movers=False)         # moving itself is the program's own code
+    return _program(p, outdir, re.sub(r"\W", "_", os.path.splitext(p.name)[0]), log)
+
+
+def _fills_text(layout):
+    return "".join(["; the stretches of SYSINIT that LINK /EXEPACK stored as fills: its iterated data\n",
+                    "; (`dup`s), as offset length byte, in hex\n"] +
+                   ["%05X %04X %02X\n" % f for f in layout.fills])
+
+
+def _read_fills(path):
+    with open(path) as f:
+        return [tuple(int(x, 16) for x in line.split()) for line in f if line.strip() and not line.startswith(";")]
+
+
+def _kernel(module_path, outdir, log=None):
+    """IO.SYS: each of its programs written, built and compared as any other (one source file
+    each); SYSINIT then packed as LINK /EXEPACK stored it (build/exepack.py, the fills listed
+    in sysinit.pack), and loader + kernel + packed SYSINIT joined into the file."""
+    from codebreaker.build import exepack
+    with open(module_path, "rb") as f:
+        original = f.read()
+    result = {"source": [], "image": None, "linked": True, "same": False, "rounds": 0, "notes": [], "kind": "kernel",
+              "instructions": 0, "raw": 0, "data": 0, "functions": {}, "parts": {}}
+    os.makedirs(outdir, exist_ok=True)
+    parts, layout = dos.kernel_parts(module_path)
+    fills = os.path.join(outdir, "sysinit.pack")
+    if not os.path.isfile(fills):
+        with open(fills, "w") as f:
+            f.write(_fills_text(layout))
+    built = {}
+    for stem, p in parts:
+        r = _program(p, outdir, stem, log)
+        result["parts"][stem] = r
+        result["source"].append(r["source"])
+        for k in ("instructions", "raw", "data"):
+            result[k] += r.get(k, 0)
+        result["rounds"] = max(result["rounds"], r["rounds"])
+        if log:
+            log("  %s: %d instructions, %d as bytes; %s" % (stem, r.get("instructions", 0), r.get("raw", 0),
+                "builds back the same" if r["same"] else "; ".join(r["notes"]) or "differs"))
+        if not r["linked"]:
+            result["linked"] = False
+            result["notes"].append("%s: %s" % (stem, "; ".join(r["notes"]) or "not built"))
+            continue
+        built[stem] = r["image"]
+    if not result["linked"]:
         return result
+    with open(built["exepack"], "rb") as f:
+        stub_code = f.read()
+    with open(built["sysinit"], "rb") as f:
+        exe = f.read()
+    h = dos._mz(exe)
+    image = exe[h["header"]:h["size"]]
+    relocs = [struct.unpack_from("<HH", exe, h["reloc_off"] + 4 * i) for i in range(h["nreloc"])]
+    packed, (cs, ip, _ss, _sp) = exepack.pack(image, [seg * 16 + off for off, seg in relocs], (h["cs"], h["ip"]),
+                                              (h["ss"], h["sp"]), _read_fills(fills), stub_code, layout.words)
+    with open(built["msload"], "rb") as f:
+        loader = bytearray(f.read())
+    with open(built["msdos"], "rb") as f:
+        kernel = f.read()
+    # the header the loader's first bytes hold: what it says must be what was built
+    head = dos._mz(bytes(loader) + kernel + packed)
+    want = {"header": len(loader) + len(kernel), "size": len(loader) + len(kernel) + len(packed), "cs": cs, "ip": ip,
+            "nreloc": 0}
+    wrong = {k: (head[k], v) for k, v in want.items() if head[k] != v}
+    if wrong:
+        result["notes"].append("the MZ header in msload does not describe what was built: %s" % ", ".join(
+            "%s %#x, built %#x" % (k, a, b) for k, (a, b) in sorted(wrong.items())))
+    joined = bytes(loader) + kernel + packed
+    out = os.path.join(outdir, os.path.basename(module_path).lower())
+    with open(out, "wb") as f:
+        f.write(joined)
+    result["image"] = out
+    result["same"] = joined == original and not wrong
+    if not result["same"]:
+        n = min(len(joined), len(original))
+        first = next((a for a in range(n) if joined[a] != original[a]), n)
+        result["notes"].append("the joined file differs from the original at %#x (%d bytes, original %d)" % (
+            first, len(joined), len(original)))
+        # what the difference is: the same programs, relocation table in another order?
+        oh = dos._mz(original)
+        if joined[:oh["header"]] == original[:oh["header"]] and len(joined) == len(original):
+            mine = dos.unpack_exepack(packed, cs, ip)
+            theirs = dos.unpack_exepack(original[oh["header"]:oh["size"]], oh["cs"], oh["ip"])
+            if mine[0] == theirs[0] and mine[2:] == theirs[2:] and sorted(mine[1]) == sorted(theirs[1]):
+                result["notes"].append("loader, kernel and SYSINIT are the original's, byte for byte, unpacked; "
+                                       "only the order of SYSINIT's relocation table differs (LINK listed them "
+                                       "in its fixups' order)")
+                result["equivalent"] = True
+    return result
+
+
+def _beside(path, make):
+    """A file kept beside the source: written from `make()` the first time, read after that
+    (so an edited one is what is built). -> its bytes"""
+    if not os.path.isfile(path):
+        with open(path, "wb") as f:
+            f.write(make())
+    with open(path, "rb") as f:
+        return f.read()
+
+
+def _as_file(p, outdir, stem, linked, result, log=None):
+    """The built program as a file laid out as the original is (build/mzfile.py): its header's
+    own data (<stem>.hdr), the load module -- packed as LINK /EXEPACK stored it when the
+    original is (build/exepack.py: the fills in <stem>.pack, the unpacker from exepack.asm) --
+    and the bytes behind the load module (<stem>.ovl). result["file"], result["file_same"]."""
+    from codebreaker.build import exepack, mzfile
+    with open(p.path, "rb") as f:
+        data = f.read()
+    oh = dos._mz(data)
+    with open(linked, "rb") as f:
+        exe = f.read()
+    h = dos._mz(exe)
+    module = exe[h["header"]:h["size"]]
+    relocs = [struct.unpack_from("<HH", exe, h["reloc_off"] + 4 * i) for i in range(h["nreloc"])]
+    # the memory the program needs beyond its load module: as far as its stack reaches (the
+    # linker's own figure goes wrong -- FFFF -- for a stack that lies inside the file)
+    beyond = max(0, (h["ss"] * 16 + h["sp"] - len(module) + 15) // 16)
+    os.makedirs(os.path.join(outdir, "file"), exist_ok=True)
+    out = os.path.join(outdir, "file", os.path.basename(p.path).upper())
+    if p.packer not in (None, "EXEPACK", "moves itself"):
+        # stored by a packer this does not write (PKLITE ...): the program as linked
+        with open(out, "wb") as f:
+            f.write(exe + p.overlay)
+        result.update(file=out, file_same=False)
+        result.setdefault("remarks", []).append("the original is stored packed by %s; the file is the program "
+                                                "unpacked" % p.packer)
+        return
+    tpl = _beside(os.path.join(outdir, stem + ".hdr"), lambda: mzfile.template(data[:oh["header"]]))
+    overlay = _beside(os.path.join(outdir, stem + ".ovl"), lambda: p.overlay) if p.overlay else b""
+    try:
+        if p.packer == "EXEPACK":
+            layout = exepack.layout(data[oh["header"]:oh["size"]], oh["cs"], oh["ip"])
+            fills = os.path.join(outdir, stem + ".pack")
+            _beside(fills, lambda: _fills_text(layout).replace("SYSINIT", p.name).encode())
+            stub_dir = os.path.join(outdir, "exepack")
+            stub_bin = os.path.join(stub_dir, "exepack.bin")
+            if not os.path.isfile(stub_bin):
+                r = _program(dos.exepack_stub(p.path, layout), stub_dir, "exepack", log)
+                if not r["same"]:
+                    raise ValueError("the EXEPACK unpacker does not build back")
+            with open(stub_bin, "rb") as f:
+                stub_code = f.read()
+            packed, (cs, ip, ss, sp) = exepack.pack(module, [seg * 16 + off for off, seg in relocs],
+                                                    (h["cs"], h["ip"]), (h["ss"], h["sp"]), _read_fills(fills),
+                                                    stub_code, layout.words)
+            # the memory it asks for beyond the stored module: the unpacked program and its stack
+            # (EXEPACK counted both down to whole paragraphs), or the unpacker's copy and stack
+            # behind it (counted from the stored module rounded up) -- whichever is more
+            program = (len(module) + 15) // 16 + max(0, h["ss"] * 16 + h["sp"] - len(module)) // 16 - len(packed) // 16
+            unpacker = ss + sp // 16 - (len(packed) + 15) // 16
+            body = mzfile.compose(tpl, packed, [], cs, ip, ss, sp, max(program, unpacker))
+        else:
+            body = mzfile.compose(tpl, module, relocs, h["cs"], h["ip"], h["ss"], h["sp"], beyond)
+    except ValueError as e:
+        result.setdefault("notes", []).append("not laid out as the original file: %s" % e)
+        body = exe
+    with open(out, "wb") as f:
+        f.write(body + overlay)
+    result.update(file=out, file_same=body + overlay == data)
+    if not result["file_same"]:
+        n = min(len(body + overlay), len(data))
+        first = next((a for a in range(n) if (body + overlay)[a] != data[a]), n)
+        result.setdefault("remarks", []).append("the file differs from the original's at %#x (%d bytes, original %d)" % (
+            first, len(body + overlay), len(data)))
+
+
+def _program(p, outdir, stem, log=None):
+    """One real-mode program: its source written, assembled, linked and compared, round after
+    round, until it builds back as the original (see the top)."""
+    result = {"source": None, "image": None, "linked": False, "same": False, "rounds": 0, "notes": [], "kind": p.kind}
     w = Writer(p)
     result["functions"] = {f.address - p.base: f for f in w.analysis.functions.values()}
     os.makedirs(outdir, exist_ok=True)
-    stem = re.sub(r"\W", "_", os.path.splitext(p.name)[0])
     src = os.path.join(outdir, stem + ".asm")
     out = os.path.join(outdir, stem + (".com" if p.kind == "com" else ".exe" if not w.flat else ".bin"))
     cand = w.candidates()
@@ -439,6 +620,8 @@ def reconstruct(module_path, outdir, log=None):
                     notes.append("entry or stack differ: %04x:%04x %04x:%04x, original %04x:%04x %04x:%04x" % (
                         regs + (p.cs, p.ip, p.ss, p.sp)))
             result.update(same=not notes, notes=notes)
+            if not w.flat and result["same"] and not getattr(p, "in_kernel", False):
+                _as_file(p, outdir, stem, image, result, log)
             break
         # which instructions did not come back as they were -- found instruction by instruction,
         # so one that came back a byte longer is blamed itself and not everything behind it
@@ -481,8 +664,10 @@ def main(argv):
     print("%s: %d instructions, %d (%d%%) written as bytes; %d bytes of data; %d round%s; %s" % (
         os.path.basename(path), r.get("instructions", 0), r.get("raw", 0), 100 * r.get("raw", 0) // n,
         r.get("data", 0), r["rounds"], "" if r["rounds"] == 1 else "s",
-        "builds back THE SAME" if r["same"] else "built, differs" if r["linked"] else "not built"))
+        "builds back THE SAME" if r["same"] else "builds back the same program (see below)" if r.get("equivalent")
+        else "built, differs" if r["linked"] else "not built"))
     for note in r.get("notes") or ():
         print("  " + note)
-    print("  source: %s" % r["source"])
-    return 0 if r["same"] else 1
+    for s in r["source"] if isinstance(r["source"], list) else [r["source"]]:
+        print("  source: %s" % s)
+    return 0 if r["same"] or r.get("equivalent") else 1
