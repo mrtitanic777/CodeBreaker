@@ -13,6 +13,9 @@
     vxd <tool> ...                  a driver as the driver kit's macro source; build and compare it
     ne-asm <tool> ...               16-bit hand-written assembly as cMacros source; build and compare it
     build16 <source folder>         a 16-bit DLL built with Microsoft C 6 and LINK 5.60, compared by segment
+    flat-thunk <module> [--recover DIR] [--build DIR] [--ow-build DIR]
+                                    a 32-to-16-bit thunk DLL (lz32 and its kind): its source recovered,
+                                    built with the thunk compiler, ML, CL and LINK, and compared
     names <module>                  every function and import with its best name and where it came from
     identify <module>               runtime-library functions of a module, and what built it
     demangle <name>                 a decorated C++ name as its declaration
@@ -57,6 +60,7 @@ COMMANDS = {
     "vxd": ("codebreaker.source.vxd.run", []),
     "ne-asm": ("codebreaker.source.ne_asm.run", []),
     "build16": ("codebreaker.build.period16", []),
+    "flat-thunk": ("codebreaker.build.flat_thunk", []),
     "decompile": ("codebreaker.decompile.decompiler", []),
     "names": ("codebreaker.symbols.names", []),
     "identify": ("codebreaker.symbols.runtime_library", []),
