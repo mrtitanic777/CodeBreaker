@@ -98,5 +98,10 @@ def main(argv):
     return importlib.import_module(module).main(fixed + argv[1:])
 
 
-if __name__ == "__main__":
+def _entry():
+    """The `codebreaker` command an install provides."""
     sys.exit(main(sys.argv[1:]))
+
+
+if __name__ == "__main__":
+    _entry()
