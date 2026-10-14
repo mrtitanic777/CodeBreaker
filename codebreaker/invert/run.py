@@ -47,7 +47,10 @@ def compiler_of(code):
 TOOLS = {
     "early-c": "codebreaker.invert.early_c",                  # FILE OFFSET LENGTH -> C
     "early-c-check": "codebreaker.invert.early_c_check",      # ... and put the text to Microsoft C 2.03
-    "early-c-frame": "codebreaker.invert.early_c_frame",      # the stack-frame model against its table
+    "early-c-frame": "codebreaker.invert.early_c_frame",
+    "early-c-round-trip": "codebreaker.invert.early_c_round_trip",   # compile -> read -> compile, for locals
+    "early-c-frame-probe": "codebreaker.invert.early_c_frame_probe", # how the compiler places locals
+    "early-c-order-probe": "codebreaker.invert.early_c_order_probe", # how it orders loads and stores      # the stack-frame model against its table
     "early-c-forward": "codebreaker.invert.early_c_forward",  # the forward model against a quad file and its object
     "quads": "codebreaker.invert.quad_dump",                  # list a quad file
     "quad-align": "codebreaker.invert.quad_align",            # a quad file beside its object, per function
@@ -63,7 +66,7 @@ TOOLS = {
     "msvc2": "codebreaker.invert.msvc2",
     "msvc2-forward": "codebreaker.invert.msvc2_forward",
 }
-CHECKS = ("early-c-frame", "msc6-function", "msc6-registers", "msc6-walk", "msc6", "msvc2-forward", "msvc2")
+CHECKS = ("early-c-frame", "early-c-round-trip", "msc6-function", "msc6-registers", "msc6-walk", "msc6", "msvc2-forward", "msvc2")
 
 
 def tool(name, arguments):

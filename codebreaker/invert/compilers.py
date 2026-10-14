@@ -109,3 +109,8 @@ def mc_compile(csrc, stem="cand", timeout=120):
         return None
     with open(path, "rb") as f:
         return f.read()
+
+
+def mc_compile_multi(csrc):
+    """Compile a battery of probe functions in one run. -> the .OBJ's bytes, or None"""
+    return mc_compile(csrc, "probe", 180)
