@@ -211,12 +211,36 @@ def test_16bit_dll_with_the_period_tools():
         assert sum(1 for length, _d in built if length in lengths) >= 4      # most come out the original's size
 
 
+def test_flat_thunk_dll():
+    """lz32.dll: a 32-to-16-bit thunk DLL, recovered from its stubs and built with the thunk compiler,
+    ML, CL and LINK from the curated source in the Windows 95 tree."""
+    import shutil
+    from codebreaker.build import flat_thunk
+    lz32 = corpus.retail("lz32.dll")
+    source = os.path.join(corpus.design_dir(), "..", "base", "lz32")
+    tools = flat_thunk.toolchain()
+    if not lz32 or not os.path.isdir(source) or not all(os.path.isfile(tools[k] or "") for k in ("thunk", "ml", "cl", "link")):
+        raise Skip("lz32, its source or the period tools are not here")
+    assert flat_thunk.classify(lz32)["subtype"] == "flat-thunk"
+    recovered = flat_thunk.recover_flat_thunk(lz32, tempfile.mkdtemp(prefix="lz32rec_"))
+    assert recovered["n_exports"] == 12 and recovered["n_signatures_recovered"] == 12
+    work = tempfile.mkdtemp(prefix="lz32src_")
+    for fn in os.listdir(source):
+        if os.path.isfile(os.path.join(source, fn)):
+            shutil.copy2(os.path.join(source, fn), work)
+    built = flat_thunk.build_flat_thunk(work)
+    assert built["ok"], built.get("log", "")[-300:]
+    d = flat_thunk.bindiff(built["dll"], lz32)
+    assert d["verdict"] in ("byte-surface-identical", "structural-parity"), d
+
+
 def main():
     for fn in (test_resources_of_a_32_bit_module, test_resources_of_a_16_bit_module, test_type_library,
                test_padding_is_not_a_difference,
                test_string_literals, test_resource_round_trip_32_bit, test_resource_round_trip_16_bit,
                test_definitions_32_bit, test_definitions_16_bit, test_data_objects,
-               test_build_32_bit_module, test_build_16_bit_module, test_16bit_dll_with_the_period_tools):
+               test_build_32_bit_module, test_build_16_bit_module, test_16bit_dll_with_the_period_tools,
+               test_flat_thunk_dll):
         check(fn)
     for name, status, detail in RESULTS:
         print("  %-4s %s%s" % (status, name, ("  -- " + detail) if detail else ""))
