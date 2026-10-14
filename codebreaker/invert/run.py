@@ -66,6 +66,50 @@ def tool(name, arguments):
     return 0
 
 
+_LONG = {"DWORD", "LONG", "ULONG", "long", "unsigned long", "LPARAM", "LRESULT", "COLORREF", "FARPROC"}
+
+
+def _kind(c_type):
+    """The model's word for an SDK type: a far pointer, a long, or an int."""
+    t = c_type.replace("const ", "").strip()
+    if t in _LONG:
+        return "long"
+    if t.startswith("LP") or "FAR" in t or "far" in t or t.endswith("*") or t in ("HPSTR", "PSTR"):
+        return "far"
+    return "int"
+
+
+def signature(name):
+    """(returns, [(name, kind)]) from the SDK headers for an exported function, or None."""
+    from codebreaker.symbols import prototypes
+    p = prototypes.of(name, bits=16)
+    if not p:
+        return None
+    returns = p["returns"].strip()
+    returns = "void" if returns == "void" else "long" if _kind(returns) in ("long", "far") else "int"
+    return returns, [(n or "p%d" % i, _kind(t)) for i, (t, n) in enumerate(p["parameters"])
+                     if t.strip() not in ("void", "")]
+
+
+def _segment_signatures(module_path):
+    """{(segment, offset): [(name, kind)]} for the framed functions of each code segment, from
+    how they are called (msc6_calls.py)."""
+    from codebreaker.formats.ne import NEFile
+    from codebreaker.invert import msc6_calls
+    nef = NEFile(module_path)
+    out = {}
+    for s in nef.segments():
+        if not s.get("length"):
+            continue
+        try:
+            sigs = msc6_calls.infer_segment_sigs(nef, s, nef.data[s["file_off"]:s["file_off"] + s["length"]])
+        except Exception:
+            continue
+        for off, params in sigs.items():
+            out[(s["idx"], off)] = params
+    return out
+
+
 def _globals(code):
     """{offset: (name, "long" | "word")} for the variables a function names by address: a long
     shows as two words two apart used as one, anything else it stores to or pushes is a word.
@@ -98,6 +142,7 @@ def module(module_path, limit=0, flags=None, log=None):
     where = {va: m.where[va] for va in m.by_va}
     originals = match16.original_functions(module_path, where, win16._spans(NEFile(module_path), where))
     out, texts = {}, {}
+    called = _segment_signatures(module_path)
     for va, fn in sorted(m.by_va.items()):
         if va not in originals or (limit and len(out) >= limit):
             continue
@@ -107,12 +152,15 @@ def module(module_path, limit=0, flags=None, log=None):
             tries += [c for _name, c in whole_function.candidates(code)]   # a function that is one known shape
         except Exception:
             pass
-        try:
-            text, why = model.invert(code, syms=_globals(code), func_base=m.where[va][1])
-        except Exception as e:                               # a model that trips is a model that declines
-            text, why = None, "the model failed: %s" % type(e).__name__
-        if text is not None:
-            tries.append(text)
+        sdk = signature(fn)
+        returns, params = sdk if sdk else ("int", called.get(m.where[va]))
+        for p in ([params, None] if params else [None]):     # the parameters known, then the model's own reading
+            try:
+                text, why = model.invert(code, syms=_globals(code), rtype=returns, params=p, func_base=m.where[va][1])
+            except Exception as e:                           # a model that trips is a model that declines
+                text, why = None, "the model failed: %s" % type(e).__name__
+            if text is not None and text not in tries:
+                tries.append(text)
         if not tries:
             out[fn] = ("declined", str(why), None)
         else:
