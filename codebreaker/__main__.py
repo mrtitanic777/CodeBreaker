@@ -26,6 +26,7 @@
     driver-services [FILE ...]      names of ring-0 services; how many of a driver's calls they name
     driver-source <driver>          a driver's assembly source from its image, built and checked
     dos-source <program>            a real-mode program's assembly source, built and compared
+    origin <module> [--list]        which of a 16-bit module's functions were written in assembly
     boot-floppy                     the Win95 Setup boot floppy, made from the rebuilt files
     driver-build <folder or .asm>   assemble and link a driver, check it against the original
     driver-judge <rebuilt> <orig>   run every entry point of both drivers and compare
@@ -77,6 +78,7 @@ COMMANDS = {
     "driver-services": ("codebreaker.symbols.driver_services", []),
     "driver-source": ("codebreaker.source.driver_writer", []),
     "dos-source": ("codebreaker.source.dos_writer", []),
+    "origin": ("codebreaker.analyze.origin", []),
     "boot-floppy": ("codebreaker.build.floppy", []),
     "driver-build": ("codebreaker.build.driver", []),
     "driver-judge": ("codebreaker.verify.driver", []),
