@@ -183,7 +183,7 @@ def build16(header, texts, order, imports, outdir, segments=None, jobs=None, cod
     # original's data is put when the DLL is run for judging.
     data = ["char codebreaker_data_segment = 1;"]
     for n, image in sorted((segments or {}).items()):        # other segments the code reads from
-        data.append("uint1 __far codebreaker_segment_%d[] = {\n%s\n};" % (n, ",\n".join(
+        data.append('uint1 __based(__segname("CODEBREAKER_SEGMENT_%d")) codebreaker_segment_%d[] = {\n%s\n};' % (n, n, ",\n".join(
             ",".join(str(x) for x in image[i:i + 32]) for i in range(0, len(image), 32))))
     _compile(wcc, CFLAGS16, env, outdir, "data", "\n".join(data))
     lines = ["system windows dll", "name m.dll", "option quiet, map, nodefaultlibs, caseexact, undefsok",

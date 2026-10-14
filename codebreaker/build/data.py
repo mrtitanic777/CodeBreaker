@@ -418,8 +418,11 @@ def _cut(pieces, offsets):
 
 
 def far_segments(segments):
-    """C for the other segments a 16-bit module's code reads from: {number: bytes}."""
+    """C for the other segments a 16-bit module's code reads from: {number: bytes}. Each is a
+    segment of its own, starting with it: code (and assembly above all) reaches into it by the
+    original's offsets."""
     out = []
     for n, image in sorted(segments.items()):
-        out.append("uint1 __far codebreaker_segment_%d[] = {\n%s\n};" % (n, "\n".join(_rows(bytes(image)))))
+        out.append('uint1 __based(__segname("CODEBREAKER_SEGMENT_%d")) codebreaker_segment_%d[] = {\n%s\n};'
+                   % (n, n, "\n".join(_rows(bytes(image)))))
     return "\n".join(out) + ("\n" if out else "")

@@ -22,6 +22,7 @@ small, regular repertoire, and a person writing assembly reaches for things they
   32-bit registers in 16-bit code    (the C compilers of the period did not make them)
   BP as a plain register             written other than the frame's own `mov bp, sp`
   PUSHF/POPF, CLI/STI, IN/OUT        the machine itself
+  a jump stub                        a "function" that is one JMP to code elsewhere: glue
 
 and a C compiler leaves fingerprints of its own -- a call to __chkstk (__aNchkstk/__aFchkstk),
 its arithmetic helpers (__aFlmul, __aFuldiv ...), the frame it builds and takes down. One piece
@@ -93,7 +94,12 @@ def module16(path):
 
 
 def _judge(o, md, image, start, end, imported):
-    written, at, prologue_ax, frame = set(), start, False, False
+    written, prologue_ax, frame = set(), False, False
+    first_ins = next(md.disasm(image[start:end], start), None)
+    if first_ins is not None and first_ins.mnemonic in ("jmp", "ljmp") and end - start <= first_ins.size + 2:
+        o.evidence.append("a jump stub (%04x %s %s)" % (start, first_ins.mnemonic, first_ins.op_str))
+        o.language = "assembly"
+        return
     first = True
     for ins in md.disasm(image[start:end], start):
         mn = ins.mnemonic
@@ -153,7 +159,7 @@ def _judge(o, md, image, start, end, imported):
                 o.evidence.append("IRET (%04x)" % ins.address)
             if mn in ("ret", "retf"):
                 pass
-        at = ins.address + ins.size
+
     # de-duplicate, keep the first few kinds
     seen, ev = set(), []
     for e in o.evidence:

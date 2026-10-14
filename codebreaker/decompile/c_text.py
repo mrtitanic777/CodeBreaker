@@ -688,7 +688,8 @@ def compilable16(module_path, outdir=None):
         elif seg in d.images and off < len(d.images[seg]):
             m.segments[seg] = d.images[seg]
             macros.append("#define %sRam%s (*(%s __far *)(codebreaker_segment_%d + 0x%x))" % (prefix, addr, ty, seg, off))
-    decls = ["extern uint1 __far codebreaker_segment_%d[];" % n for n in sorted(m.segments)]
+    decls = ['extern uint1 __based(__segname("CODEBREAKER_SEGMENT_%d")) codebreaker_segment_%d[];' % (n, n)
+             for n in sorted(m.segments)]
     decls += ["extern uint4 __far __stdcall %s();" % nm for nm in sorted(m.imports)]
     decls += [declaration(m.texts[n]) for n in m.order]
     intrinsics = [INTRINSICS16[n] for n in sorted(INTRINSICS16) if re.search(r"\b%s\s*\(" % n, body)]

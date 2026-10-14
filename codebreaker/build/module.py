@@ -190,7 +190,7 @@ def _link_resolving(b, tool, env, folder, lines, stand_in, compile_extra):
     return image
 
 
-def _assembled16(b, nef, at, segs, stems, public, folder, env, carried=(), forced=()):
+def _assembled16(b, nef, at, segs, stems, public, folder, env, carried=(), forced=(), elsewhere=None):
     """Assembly of the module's own instructions where C does not do (build/asm16.py): each code
     segment's lead-in -- what is before its first function, often a variable the code reads
     through CS -- linked first into the segment so that it stays where it was; and each rejected
@@ -198,7 +198,7 @@ def _assembled16(b, nef, at, segs, stems, public, folder, env, carried=(), force
     original's bytes. -> {import symbol without its underscore: (module, what)} they need."""
     from codebreaker.build import asm16
     wasm = watcom.ow_tool("wasm")
-    b.lead_ins = []
+    b.lead_ins, b.placed_c, b.moved_c, b._publics = [], set(), set(), dict(public)
     if not wasm:
         return {}
     where = {name: place for place, name in at.items()}
@@ -212,10 +212,12 @@ def _assembled16(b, nef, at, segs, stems, public, folder, env, carried=(), force
         if name in public and name not in b.rejected:
             in_segment.setdefault(seg, public[name][0])
 
+    entries = {}                                           # (segment, offset) -> symbol: a place called into mid-run
+
     def symbol_for(kind, *what):
         if kind == "function":
             name = at.get(what)
-            return public[name][0] if name in public else None
+            return public[name][0] if name in public else entries.get(what)
         if kind == "segment":
             return in_segment.get(what[0])
         if kind == "data":                                   # a data segment: the auto one, or one carried
@@ -227,44 +229,286 @@ def _assembled16(b, nef, at, segs, stems, public, folder, env, carried=(), force
     out = {}
     os.makedirs(os.path.join(folder, "asm"), exist_ok=True)
 
-    def assemble(stem, f):
+    def assemble_piece(stem, f, lo, hi):
         with open(os.path.join(folder, stem + ".asm"), "w", newline="\n") as fh:
-            fh.write(f.text)
+            fh.write(f.write(f.good, lo, hi))
         r = subprocess.run([wasm, "-q", "-zcm", "-fo=" + stem + ".obj", stem + ".asm"], cwd=folder, env=env,
                            capture_output=True, text=True)
         obj = os.path.join(folder, stem + ".obj")
         if r.returncode or not os.path.isfile(obj):
             return "the assembler: " + ((r.stdout or "") + (r.stderr or "")).strip()[-160:]
         with open(obj, "rb") as fh:
-            return asm16.check(fh.read(), f)
+            return asm16.check_piece(fh.read(), f, lo, hi)
+
+    def assemble(stem, f):
+        """Written as readable as the assembler allows: each instruction as its mnemonic where the
+        probe says the assembler gives back the original's bytes, and round after round any
+        that did not come back as they were go back to bytes. -> "" or why it could not be."""
+        from codebreaker.build import msc6
+        from codebreaker.source import assembly
+        cand = f.candidates()
+        ok = assembly.probe(list(cand.values()), set(), folder, mode="real16") if cand else set()
+        good = {at for at, c in cand.items() if c in ok} | {at for at, t in f.ins.items() if t[3] is not None}
+        why = "no rounds"
+        f.good = good
+        for _round in range(40):
+            with open(os.path.join(folder, stem + ".asm"), "w", newline="\n") as fh:
+                fh.write(f.write(good))
+            r = subprocess.run([wasm, "-q", "-zcm", "-fo=" + stem + ".obj", stem + ".asm"], cwd=folder, env=env,
+                               capture_output=True, text=True)
+            obj = os.path.join(folder, stem + ".obj")
+            if r.returncode or not os.path.isfile(obj):
+                msg = (r.stdout or "") + (r.stderr or "")
+                lines = f.write(good).split("\n")
+                bad = {ln.strip() for m in re.finditer(r"\((\d+)\): Error", msg) for ln in lines[int(m.group(1)) - 1:int(m.group(1))]}
+                drop = {at for at in good if at in f.ins and f.mnemonic(at) in bad}
+                if not drop:
+                    return "the assembler: " + msg.strip()[-160:]
+                good -= drop
+                continue
+            with open(obj, "rb") as fh:
+                code, mask = msc6.object_code(fh.read())
+            if len(code) == f.end - f.start:
+                diff = asm16.differences(code, mask, f)
+                if not diff:
+                    return ""
+                at = diff[0]
+                hit = [a for a in good if a <= at < a + len(f.ins[a][0])] or \
+                      [max([a for a in good if a <= at] or [None])]
+                why = "differs at %04x" % at
+            else:
+                # longer or shorter: the first instruction whose bytes do not line up is blamed
+                hit, why = [], "%d bytes, the original %d" % (len(code), f.end - f.start)
+                for a in sorted(good):
+                    n = len(f.ins[a][0])
+                    if code[a - f.start:a - f.start + n] != f.blob[a:a + n]:
+                        hit = [a]
+                        break
+            hit = [a for a in hit if a is not None]
+            if not hit:
+                return why
+            good -= set(hit)
+        return why
     lead = {}
+    # A code segment with assembly in it is rebuilt as one frame from its first byte: the
+    # assembly, and the lead-in, stay where they were -- hand-written code reaches into its own
+    # segment by number (tables, variables, LODS through CS) -- and where each function rebuilt
+    # from C was is filler: those are placed after the frame and called by their names.
+    whole = {seg for seg in starts if seg in segs and segs[seg]["kind"] == "CODE" and
+             any(at[(seg, o)] in forced for o in starts[seg])}
     for seg in sorted(starts):
         first = starts[seg][0]
-        if first and seg in segs and segs[seg]["kind"] == "CODE":
+        if first and seg in segs and segs[seg]["kind"] == "CODE" and seg not in whole:
             f = asm16.Function(nef, seg, 0, first, "codebreaker_lead_%d" % seg, symbol_for)
             if f.text is not None and not assemble("asm/lead%02d" % seg, f):
                 lead[seg] = first
                 b.lead_ins.append("asm/lead%02d" % seg)
                 out.update({sym[1:]: w for sym, w in f.imports.items()})
-    for name in sorted(set(b.rejected) | set(forced)):
-        if name not in where or name not in public:
+    # the functions written in assembly, each run of them in a segment together -- as the file
+    # they were written in had them: a jump from one into the next is a jump to a label -- and
+    # each rejected C function on its own
+    forced = set(forced)
+    done = {}                                              # run (tuple of names) -> stem, or why it was refused
+    for _pass in range(8):
+        runs = []
+        for seg in sorted(whole):                          # one frame per such segment
+            mine = tuple(at[(seg, o)] for o in starts[seg]
+                         if at[(seg, o)] in public and (at[(seg, o)] in forced or at[(seg, o)] in b.rejected))
+            if mine:
+                runs.append(mine)
+        for seg in sorted(starts):
+            if seg in whole:
+                continue
+            run = []
+            for off in starts[seg]:
+                name = at[(seg, off)]
+                if name in forced and name in public:
+                    run.append(name)
+                    continue
+                if run:
+                    runs.append(tuple(run))
+                run = []
+                if name in b.rejected and name in public:
+                    runs.append((name,))
+            if run:
+                runs.append(tuple(run))
+        joined, wanted = set(), set()
+        for run in runs:
+            if run in done:
+                continue
+            seg, off = where[run[0]]
+            last = where[run[-1]][1]
+            later = [o for o in starts[seg] if o > last]
+            end = later[0] if later else segs[seg]["length"] if seg in segs else last
+            holes = []
+            if seg in whole:
+                off, end = 0, segs[seg]["length"]
+                names = set(run)
+                for k, o in enumerate(starts[seg]):
+                    n = at[(seg, o)]
+                    if n not in names:
+                        hi = starts[seg][k + 1] if k + 1 < len(starts[seg]) else end
+                        holes.append((o, hi, public[n][0] if n in public else "_" + n))
+            publics = [(where[n][1], public[n][0]) for n in run]
+            publics += [(o, sym) for (sg, o), sym in entries.items() if sg == seg and off <= o < end]
+            f = asm16.Function(nef, seg, off, end, publics, symbol_for, cs_ok=lead.get(seg, 0),
+                               extra_entries=[o for (sg, o) in entries if sg == seg and off <= o < end],
+                               whole=seg in whole, holes=holes)
+            if f.text is None and f.missing:
+                # it calls into the middle of a run of assembly: that place is an entry of its own
+                for t in f.missing:
+                    if (seg, t) not in entries:
+                        wanted.add((seg, t))
+                continue
+            if f.text is None and f.reaches is not None:
+                # it jumps into the middle of a function beside it: that one was written in
+                # assembly too (nothing in its own code said so); the run takes it in
+                inside = max([o for o in starts[seg] if o <= f.reaches] or [None])
+                if inside is not None and at[(seg, inside)] not in forced and at[(seg, inside)] in public:
+                    joined.add(at[(seg, inside)])
+                    continue
+            why = f.why if f.text is None else assemble("asm/" + stems[run[0]].replace("/", "_"), f)
+            done[run] = ("why", why) if why else ("stem", "asm/" + stems[run[0]].replace("/", "_"), f)
+        for seg, t in wanted:
+            inside = max([o for o in starts[seg] if o <= t] or [None])
+            name = at.get((seg, inside)) if inside is not None else None
+            if name is None:
+                continue
+            if name in forced:
+                entries[(seg, t)] = "_sub_%d_%04X" % (seg, t)
+                for run in [r for r in done if name in r]:
+                    del done[run]                          # its run is written again, with the entry
+            elif name in public:
+                joined.add(name)                           # called into mid-body: written in assembly
+        if not joined and not wanted:
+            break
+        for name in joined:
+            if name in b.origins:
+                b.origins[name].language = "assembly"
+                b.origins[name].evidence.append("entered in its middle from assembly beside it")
+        forced |= joined
+    claimed = set()
+    for run, result in done.items():
+        if result[0] != "stem" or claimed & set(run):
             continue
-        seg, off = where[name]
-        later = [o for o in starts[seg] if o > off]
-        end = later[0] if later else segs[seg]["length"] if seg in segs else off
-        f = asm16.Function(nef, seg, off, end, public[name][0], symbol_for, cs_ok=lead.get(seg, 0))
-        if f.text is None:
-            b.assembly_refused[name] = f.why
+        if any(n not in forced and n not in b.rejected for n in run):
             continue
-        stem = "asm/" + stems[name].replace("/", "_")
-        why = assemble(stem, f)
-        if why:
-            b.assembly_refused[name] = why
-            continue
-        stems[name] = stem
-        b.assembled[name] = b.rejected.pop(name) if name in b.rejected else "its C takes a software interrupt"
-        out.update({sym[1:]: w for sym, w in f.imports.items()})
+        claimed |= set(run)
+        seg = where[run[0]][0]
+        if seg in whole:
+            placed = _frame_pieces(b, result[2], seg, stems, folder, wasm, env, assemble_piece, elsewhere)
+            if placed is None:
+                for name in run:
+                    b.assembly_refused[name] = "its frame's pieces do not assemble back: " + getattr(b, "frame_why", "")
+                b.placed_c = set()
+                continue
+            b.lead_ins += placed                           # first into its segment, in order
+        for name in run:
+            _assembled_one(b, name, stems, placed[0] if seg in whole else result[1])
+        out.update({sym[1:]: w for sym, w in result[2].imports.items()})
+    for run, result in done.items():
+        if result[0] == "why":
+            for name in run:
+                if name not in claimed:
+                    b.assembly_refused[name] = result[1]
     return out
+
+
+def _frame_pieces(b, f, seg, stems, folder, wasm, env, assemble_piece, elsewhere=None):
+    """The frame of a segment with assembly in it, in the order the linker is to lay it out:
+    its pieces at the original's places, and in the places of the functions rebuilt from C
+    (the frame's holes) those functions -- each in its own place when it fits there, and the
+    ones that do not, packed into what room the holes have left (biggest first; a near call
+    reaches anywhere in the segment), filler for the rest. A far one with no room goes to the
+    segment beside (CODE<n>X), a near one after the frame. -> [object stem] or None."""
+    from codebreaker.build import msc6
+    name_of = {sym: n for n, (sym, _o) in getattr(b, "_publics", {}).items()}
+    size, cstem = {}, {}
+    for lo, hi, sym in f.holes:
+        name = name_of.get(sym)
+        st = stems.get(name) if name else None
+        if st and not st.startswith("asm/"):
+            try:
+                with open(os.path.join(folder, st + ".obj"), "rb") as fh:
+                    size[name] = len(msc6.object_code(fh.read())[0])
+                cstem[name] = st
+            except OSError:
+                pass
+    # each hole: [start, end, [(pad, stem)], used] -- its own function first, when it fits
+    bins = []
+    rest = []
+    for lo, hi, sym in f.holes:
+        name = name_of.get(sym)
+        bins.append([lo, hi, [], lo])
+        if name in size:
+            pad = bins[-1][3] & 1                          # (OpenWatcom aligns its code to a word)
+            if pad + size[name] <= hi - lo:
+                bins[-1][2].append((pad, cstem[name]))
+                bins[-1][3] += pad + size[name]
+            else:
+                rest.append(name)
+        b.frame_fit = getattr(b, "frame_fit", []) + [(name, hi - lo, size.get(name, 0))]
+    after = []
+    for name in sorted(rest, key=lambda n: -size[n]):
+        for bn in bins:
+            pad = bn[3] & 1
+            if bn[3] + pad + size[name] <= bn[1]:
+                bn[2].append((pad, cstem[name]))
+                bn[3] += pad + size[name]
+                break
+        else:
+            moved = elsewhere(name) if elsewhere else None
+            if moved:                                      # far: into the segment beside this one
+                stems[name] = moved
+                b.moved_c.add(name)
+            else:
+                after.append(cstem[name])                  # near: after the frame, in this segment
+    for name in size:
+        if name not in b.moved_c:
+            b.placed_c.add(name)
+    out, at = [], f.start
+    for k, (lo, hi, objs, used) in enumerate(bins + [[f.end, f.end, [], f.end]]):
+        if at < lo:
+            stem = "asm/frame%02d_%02d" % (seg, k)
+            why = assemble_piece(stem, f, at, lo)
+            if why:
+                b.frame_why = "%s (%04x-%04x): %s" % (stem, at, lo, why)
+                return None
+            out.append(stem)
+        if lo == hi:
+            break
+        pos = lo
+        for pad, st in objs:
+            if pad:
+                out.append(_filler(folder, wasm, env, seg, "pad%02d_%04x" % (seg, pos), pad))
+            out.append(st)
+            pos = pos + pad + size[name_of_stem(st, cstem)]
+        if hi > used:
+            out.append(_filler(folder, wasm, env, seg, "fill%02d_%04x" % (seg, used), hi - used))
+        at = hi
+    return out + after
+
+
+def name_of_stem(stem, cstem):
+    return next(n for n, st in cstem.items() if st == stem)
+
+
+def _filler(folder, wasm, env, seg, stem, n):
+    """An object of `n` bytes of INT 3 in code segment `seg`: a place kept where it was."""
+    stem = "asm/" + stem
+    with open(os.path.join(folder, stem + ".asm"), "w", newline="\n") as fh:
+        fh.write("CODE%d segment byte public 'CODE'\n        db   %d dup (0CCh)\nCODE%d ends\nend\n" % (seg, n, seg))
+    subprocess.run([wasm, "-q", "-fo=" + stem + ".obj", stem + ".asm"], cwd=folder, env=env, capture_output=True)
+    return stem
+
+
+def _assembled_one(b, name, stems, stem):
+    """Record a function as built from assembly (`stem`)."""
+    stems[name] = stem
+    o = getattr(b, "origins", {}).get(name)
+    b.assembled[name] = ("written in assembly: %s" % "; ".join(o.evidence[:2])) if o is not None and \
+        o.language == "assembly" else "its C does not compile: %s" % b.rejected.get(name, "")
+    b.rejected.pop(name, None)
 
 
 def _publics(folder, stems):
@@ -434,7 +678,7 @@ def _build16(b, path, m, folder):
     stems, by_segment = {}, {}
     for (seg, _off), name in sorted(at.items()):
         by_segment.setdefault(seg, []).append(name)
-    cflags = [f for f in functions.CFLAGS16 if f != "-ms"] + ["-mm", "-fpi87"]
+    cflags = [f for f in functions.CFLAGS16 if f != "-ms"] + ["-mm", "-fpi87", "-os"]   # (size: a function rebuilt from C goes back into its place when it fits)
     segment_of = {name: seg for (seg, _off), name in at.items()}
 
     def named(text, seg):
@@ -474,13 +718,27 @@ def _build16(b, path, m, folder):
         b.data_error = "the data does not compile: %s" % why
         extra("data", "char codebreaker_data = 1;\n" + data.far_segments(m.segments))
     public = _publics(folder, stems)
-    # a function whose C takes a software interrupt (`swi`: what the registers held is not in
-    # the text) is written as its own instructions where that can be done
-    forced = {n for n in m.order if n in stems and re.search(r"swi\s*\(", m.texts[n])}
-    asm_imports = _assembled16(b, nef, at, segs, stems, public, folder, env, m.segments, forced)
+    # A function written in assembly is rebuilt as assembly (analyze/origin.py says which, from
+    # what its code does), not as a C translation of it -- where its instructions can be written
+    # so that they assemble back to the original's; the C stays only where that cannot be done.
+    from codebreaker.analyze import origin
+    b.origins = {o.name: o for o in origin.module16(path).functions.values()}
+    forced = {n for n in m.order if n in stems and n in b.origins and b.origins[n].language == "assembly"}
+    def elsewhere(name):
+        """A far function rebuilt from C, compiled into a code segment of its own beside its
+        segment (CODE<n>X) -- for one that does not fit back into its place. -> stem or None."""
+        seg = segment_of.get(name)
+        if seg is None or name in m.near:
+            return None
+        os.makedirs(os.path.join(folder, "s%02dx" % seg), exist_ok=True)
+        stem = "s%02dx/%s" % (seg, os.path.basename(stems[name]))
+        why = functions._compile(wcc, cflags + ["-nt=CODE%dX" % seg], env, folder, stem, texts[name])
+        return None if why else stem
+
+    asm_imports = _assembled16(b, nef, at, segs, stems, public, folder, env, m.segments, forced, elsewhere)
     library = definitions.is_library(path)
     lines = ["format windows%s" % (" dll" if library else ""), "name m.dll",
-             "option quiet, map, nodefaultlibs, caseexact, packcode=1",
+             "option quiet, map, nodefaultlibs, caseexact, packcode=1, packdata=0",
              "option modname='%s'" % definitions.module_name(path),
              ] + (["option heapsize=%d" % nef.h["heap"]] if nef.h["heap"] else []) \
         + (["option stack=%d" % nef.h["stack"]] if nef.h["stack"] else [])     # (the linker refuses a size of 0)
@@ -511,7 +769,9 @@ def _build16(b, path, m, folder):
         else:
             b.error = "the interrupt routines: %s" % (why or (r.stdout or r.stderr or "").strip()[-200:])
     lines += ["file %s.obj" % stem for stem in b.lead_ins]     # each code segment starts with its lead-in
-    lines += ["file %s.obj" % stems[n] for n in m.order if n in stems]
+    lines += ["file %s.obj" % s for s in dict.fromkeys(stems[n] for n in m.order if n in stems)
+              if s not in b.lead_ins]                                   # (a run of
+    # functions written in assembly is one object)
     if cs and entry not in public:
         lines.append("file entry.obj")
     for seg in sorted(by_segment):                             # each code segment loaded as the original's was
