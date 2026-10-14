@@ -71,12 +71,43 @@ def test_one_function():
     text = m.function("sub_1")
     for wanted in ("int4 sub_1(int4 hWnd)", "hMem = LocalAlloc(LMEM_ZEROINIT,100);", "ShowWindow(hWnd,SW_SHOW);",
                    "hdc = GetDC(hWnd);", "for (i = 0; i < 10; i = i + 1)", "MB_ICONQUESTION | MB_YESNO",
-                   '"keep 0x40 in a string"', "g_pfnDllGetVersion = GetProcAddress(hMem,0x1000);"):
+                   '"keep 0x40 in a string"', "g_pfnDllGetVersion = GetProcAddress(hMem,0x1000 /* \"DllGetVersion\" */);"):
         assert wanted in text, (wanted, text)
     assert m.constants_used == {"LMEM_ZEROINIT": 0x40, "SW_SHOW": 5, "MB_ICONQUESTION": 0x20, "MB_YESNO": 4}
     assert "#define MB_YESNO 0x4" in m.definitions()
     assert "g_pfnDllGetVersion" in m.header("extern int4 pcRam10094;")
     assert readable.calls_hint(SAMPLE).startswith("memory and windows: LocalAlloc, ShowWindow")
+
+
+WNDPROC = """int4 wndproc(int4 a1, uint4 a2, int4 a3, int4 a4)
+{
+  if (a2 == 0x10) {
+    return 0;
+  }
+  switch (a2) {
+  case 2:
+    PostQuitMessage(0);
+    break;
+  case 0xf:
+    GetClientRect(a1,iVar1);
+    *(int4 *)(iVar1 + 8) = *(int4 *)(iVar1 + 8) - 4;
+    wsprintfA(a4,0x1000,0x2000,*(int4 *)iVar1);
+    break;
+  }
+  return DefWindowProcA(a1,a2,a3,a4);
+}"""
+
+
+def test_comparisons_fields_and_strings():
+    _need_sdk()
+    strings = {0x1000: "%s = %ld", 0x2000: "count"}
+    m = readable.Module({"w": WNDPROC}, strings.get)
+    text = m.function("w")
+    for wanted in ("if (Msg == WM_CLOSE)", "case WM_DESTROY:", "case WM_PAINT:",
+                   "((RECT *)lpRect)->right = ((RECT *)lpRect)->right - 4;",
+                   '0x1000 /* "%s = %ld" */', '0x2000 /* %s: "count" */', "((RECT *)lpRect)->left /* %ld */"):
+        assert wanted in text, (wanted, text)
+    assert "typedef struct RECT" in m.struct_definitions() and "int4 right;" in m.struct_definitions()
 
 
 def test_same_object_code():
@@ -104,7 +135,7 @@ def test_same_object_code():
 
 
 def main():
-    for fn in (test_constants, test_one_function, test_same_object_code):
+    for fn in (test_constants, test_one_function, test_comparisons_fields_and_strings, test_same_object_code):
         check(fn)
     for name, status, detail in RESULTS:
         print("  %-4s %s%s" % (status, name, ("  -- " + detail) if detail else ""))
