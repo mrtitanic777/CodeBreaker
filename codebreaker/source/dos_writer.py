@@ -285,8 +285,8 @@ class Writer(object):
             done = at
             if hi in self.labels and hi == len(img):
                 out.append("%s:" % self.label(hi))
-            if s == self.stack_in and hi == len(img) and p.sp > hi - lo:
-                out.append("        db   %d dup (?)" % (p.sp - (hi - lo)))      # the stack's room behind the file's bytes
+            # (the stack's room behind the file's bytes is not written: a linker puts it in the
+            # file as zeros; it is memory the header asks for -- the stack is set there after linking)
             out += ["S%04X ends" % s, ""]
         if not self.flat:
             stack = (p.ss - dos.LOAD) & 0xFFFF
@@ -389,8 +389,51 @@ def reconstruct(module_path, outdir, log=None):
         return _kernel(module_path, outdir, log)
     if dos.kind(module_path) == "driver+vxd":
         return _driver_and_vxd(module_path, outdir, log)
+    if dos.kind(module_path) == "dos+windows":
+        return _dos_and_windows(module_path, outdir, log)
     p = dos.read(module_path, run_movers=False)         # moving itself is the program's own code
     return _program(p, outdir, re.sub(r"\W", "_", os.path.splitext(p.name)[0]), log)
+
+
+def _dos_and_windows(module_path, outdir, log=None):
+    """A DOS program and a Windows module in one file (REGEDIT.EXE, XCOPY32.EXE, UNINSTAL.EXE):
+    the DOS program written and built here (as a file laid out as the original's stub), the
+    Windows module built whole by build/module.py (its own reconstruction, folder windows/), and
+    the module put behind the program as the original has it (build/stubjoin.py)."""
+    from codebreaker.build import module as whole, stubjoin
+    with open(module_path, "rb") as f:
+        original = f.read()
+    h, lfa = dos.dos_and_windows(original)
+    p = dos.read(module_path, run_movers=False)
+    stem = re.sub(r"\W", "_", os.path.splitext(os.path.basename(module_path))[0].lower())
+    result = _program(p, outdir, stem, log)
+    result["kind"] = "dos+windows"
+    if not result["same"]:
+        return result
+    with open(result["file"], "rb") as f:
+        program = f.read()
+    b = whole.build(module_path, outdir=os.path.join(outdir, "windows"), log=lambda s: None)
+    stand_ins = sorted(set(b.rejected) | set(b.absent))
+    result["windows"] = dict(linked=bool(b.linked), functions=b.functions, stand_ins=stand_ins,
+                             undefined=list(b.undefined), imports_extra=list(b.imports_extra),
+                             ran=len(b.ran), ran_same=sum(1 for r in b.ran if r[3]))
+    built = os.path.join(outdir, "windows", os.path.basename(module_path).lower())
+    if not b.linked or not os.path.isfile(built):
+        result["notes"].append("the Windows module did not build: %s" % (b.error or "not linked"))
+        return result
+    with open(built, "rb") as f:
+        joined = stubjoin.join(program, f.read(), lfa)
+    with open(result["file"], "wb") as f:
+        f.write(joined)
+    result["file_same"] = joined == original
+    result["remarks"] = [r for r in result.get("remarks", []) if not r.startswith("the file differs")]
+    if not result["file_same"]:
+        result["remarks"].append("the file is %d bytes, the original %d: the module is OpenWatcom's build of "
+                                 "its reconstruction" % (len(joined), len(original)))
+    result["remarks"].append(
+        "the Windows module (%d functions%s) put behind the DOS program" % (
+            b.functions, ", %d of them stand-ins: %s" % (len(stand_ins), ", ".join(stand_ins[:6])) if stand_ins else ""))
+    return result
 
 
 def _driver_and_vxd(module_path, outdir, log=None):
@@ -564,7 +607,7 @@ def _as_file(p, outdir, stem, linked, result, log=None):
     from codebreaker.build import exepack, mzfile
     with open(p.path, "rb") as f:
         data = f.read()
-    oh = dos._mz(data)
+    oh = dos._mz(data, stub=True)                            # (a Windows module's program stub too)
     with open(linked, "rb") as f:
         exe = f.read()
     h = dos._mz(exe)

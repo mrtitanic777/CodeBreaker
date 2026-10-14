@@ -333,7 +333,9 @@ def compilable32(module_path, funcs, outdir):
     for pre, addr in sorted(set(re.findall(r"\b([a-z]+)Ram([0-9a-f]{8})\b", text))):
         szs = sizes.get(int(addr, 16)) or {4}
         size = min(szs) if len(szs) > 1 and pre[0] in "cb" else max(s for s in szs if s <= 8) if any(s <= 8 for s in szs) else 4
-        ty = "code *" if (pre == "pc" or "%sRam%s" % (pre, addr) in called_through) else (
+        # `pc` is the decompiler's prefix for a pointer to char; a global is a code pointer
+        # when something calls through it
+        ty = "code *" if "%sRam%s" % (pre, addr) in called_through else "char *" if pre == "pc" else (
             "int%d" % size if pre[0] == "i" else _BY_SIZE.get(size, "uint4"))
         if pre[0] == "p" and len(pre) > 1 and ty != "code *":
             ty = _ram_type(pre, size, False)             # a pointer, by the decompiler's own naming (piRam: int *)
@@ -341,6 +343,16 @@ def compilable32(module_path, funcs, outdir):
         if re.search(r"(?<![A-Za-z0-9])_%sRam%s\b" % (pre, addr), text):
             # (the core's name for the same place read at another width: `_uRam0040c000`)
             macros.append("#define _%sRam%s (*(%s *)0x%s)" % (pre, addr, ty, addr))
+    # a pointer-typed global compared with a number the decompiler cast to an integer
+    # (`(uint4)pcVar3 != pcRam004094b0`) is compared as the same integer
+    pointers = [m.group(1) for m in re.finditer(r"#define (\w+Ram[0-9a-f]{8}) \(\*\((?:char|code) \* \*\)", "\n".join(macros))]
+    if pointers:
+        cast = r"\((u?int\d)\)"
+        names = "|".join(pointers)
+        for n in order:
+            t = re.sub(r"(%s[\w.>\-]+\s*(?:[!=]=|[<>]=?)\s*)(%s)\b" % (cast, names), r"\1(\2)\3", out[n])
+            out[n] = re.sub(r"\b(%s)(\s*(?:[!=]=|[<>]=?)\s*%s)" % (names, cast), r"(\3)\1\2", t)
+        text = "\n".join(out.values())
     called = set(re.findall(r"\b([A-Za-z_]\w*)\s*\(", text))
     used = sorted(n for n in called if n in imports and n not in out)
     decls = []

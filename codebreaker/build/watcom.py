@@ -94,7 +94,8 @@ def _import_lines(obj, names, imports, numbered=None):
     out = []
     for n in sorted(names):
         for sym in ext:
-            if sym.lstrip("_").split("@")[0] == n:
+            # the decoration adds ONE underscore: `__lread@12` is `_lread`, not `lread`
+            if (sym[1:] if sym.startswith("_") else sym).split("@")[0] == n:
                 if numbered and n in numbered:
                     out.append("import '%s' '%s'.%d\n" % (sym, numbered[n][0], numbered[n][1]))
                 elif n in imports:

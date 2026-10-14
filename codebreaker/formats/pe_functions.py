@@ -116,8 +116,27 @@ class PeCarve:
                     starts.add(base + i)
                 elif b[:5] == b"\x8b\xff\x55\x8b\xec":           # mov edi,edi; push ebp; mov ebp,esp
                     starts.add(base + i)
+        # a start the linear sweep stepped over -- it ran through data just before it (a
+        # table) and decoded an instruction across it -- is decoded from where it is, until
+        # that falls into step with the sweep again
+        for s in sorted(starts - set(self.insn)):
+            if s in self.exports or s in self.call_targets or s == self.pe.image_base + (self.pe.entry or 0):
+                self._decode_from(s)
         # keep only addresses we actually decoded an instruction at
         return {s for s in starts if s in self.insn}
+
+    def _decode_from(self, va):
+        base, data = self._sec_of(va)
+        if base is None:
+            return
+        for ins in self.md.disasm(data[va - base:], va):
+            if ins.address in self.insn and ins.address != va:
+                break                                     # in step with the sweep again
+            tgt = None
+            if ins.mnemonic == "call" and ins.operands and ins.operands[0].type == capstone.x86.X86_OP_IMM:
+                tgt = ins.operands[0].imm
+                self.call_targets.add(tgt)
+            self.insn[ins.address] = (ins.mnemonic, ins.op_str, ins.size, ins, tgt)
 
     def _carve(self):
         order = sorted(self.starts)
@@ -437,6 +456,15 @@ def function_spans(path):
             while i != -1 and i < len(data) - 4:
                 starts.add(base + i)
                 i = data.find(prologue, i + 1)
+    # (as PeCarve: a declared or called start the sweep stepped over is decoded from where it is)
+    named = set(exports) | called | ({pe.image_base + pe.entry} if pe.entry else set())
+    for s in sorted((starts & named) - decoded):
+        for base, data, _name in sections:
+            if base <= s < base + len(data):
+                for addr, _size, _m, _o in md.disasm_lite(data[s - base:], s):
+                    if addr in decoded and addr != s:
+                        break
+                    decoded.add(addr)
     order = sorted(s for s in starts if s in decoded)
     out = {}
     for i, s in enumerate(order):

@@ -79,8 +79,9 @@ class Program(object):
 
 
 # what a file is -------------------------------------------------------------------------------
-def _mz(data):
-    """The fields of an MZ header, or None. `size` is the end of the load module in the file."""
+def _mz(data, stub=False):
+    """The fields of an MZ header, or None. `size` is the end of the load module in the file.
+    A Windows module's DOS stub is None unless `stub`."""
     if len(data) < 0x1C or data[:2] not in (b"MZ", b"ZM"):
         return None
     (last, pages, nreloc, hdr, mn, mx, ss, sp, _ck, ip, cs, reloc_off) = struct.unpack_from("<12H", data, 2)
@@ -89,7 +90,7 @@ def _mz(data):
              reloc_off=reloc_off, size=min(size, len(data)) if size > hdr * 16 else len(data))
     if len(data) >= 0x40:
         new = struct.unpack_from("<I", data, 0x3C)[0]
-        if 0x40 <= new < len(data) - 1 and data[new:new + 2] in _SIGNATURES:
+        if 0x40 <= new < len(data) - 1 and data[new:new + 2] in _SIGNATURES and not stub:
             return None                                       # a Windows module with a DOS stub
     return h
 
@@ -144,7 +145,9 @@ def _kind(data, name=""):
         wrapped = (h["cs"], h["ip"]) == (0, 0) and devices(data[h["header"]:h["size"]][:0x10000])
         return "driver" if wrapped else "mz"                  # a driver linked as an .EXE
     if data[:2] in (b"MZ", b"ZM"):
-        return "driver+vxd" if driver_and_vxd(data) else None
+        if driver_and_vxd(data):
+            return "driver+vxd"
+        return "dos+windows" if dos_and_windows(data) else None
     if devices(data[:0x10000]):
         return "driver"
     if name.lower().endswith(".com") and 0 < len(data) <= 0xFF00:
@@ -163,6 +166,22 @@ def driver_and_vxd(data):
     if not (hdr < lfa < len(data) - 2 and data[lfa:lfa + 2] == b"LE" and devices(data[hdr:lfa][:0x10000])):
         return None
     return hdr, lfa
+
+
+STUB_PROGRAM = 0x400        # a stub this big is a program of its own, not "cannot be run in DOS mode"
+
+
+def dos_and_windows(data):
+    """A DOS program and a Windows module in one file (REGEDIT.EXE, XCOPY32.EXE, UNINSTAL.EXE):
+    the module's DOS stub is itself a real program -- run from DOS, it does the work there.
+    -> (MZ fields, offset of the module's new header), or None."""
+    h = _mz(data, stub=True)
+    if not h or len(data) < 0x40:
+        return None
+    lfa = struct.unpack_from("<I", data, 0x3C)[0]
+    if not (h["size"] <= lfa < len(data) - 1 and data[lfa:lfa + 2] in (b"NE", b"PE")):
+        return None
+    return (h, lfa) if h["size"] - h["header"] >= STUB_PROGRAM else None
 
 
 def driver_part(path):
@@ -374,6 +393,10 @@ def read(path, run_movers=True):
         _read_kernel(data, p)
     elif h:                                                   # a program, or a driver linked as one
         _read_mz(data, h, p, what, run_movers)
+    elif what == "dos+windows":                               # the DOS program; the module is not overlay
+        h, p.windows_at = dos_and_windows(data)
+        _read_mz(data, h, p, "mz", run_movers)
+        p.overlay = b""
     else:
         p.image = data
         p.spans = [(LOAD * 16, len(data), "driver")]

@@ -304,12 +304,16 @@ def _build32(b, path, m, folder):
     # from the file 17"). An import whose own name is not a C name -- `_Name@12`, a C++ name --
     # is in the C text with every other character turned into `_`; it is bound back here.
     named, seen = watcom.import_map(path), set()
+    # imports the original takes by number that the decompiler knows by name (COMCTL32's
+    # DPA_CreateEx is its number 4): bound to the number
+    from codebreaker.decompile import describe
+    numbered = describe.BY_NUMBER.get(path) or describe.BY_NUMBER.get(os.path.abspath(path)) or {}
     originals = definitions.imports(path)
     odd = {re.sub(r"\W", "_", what): (mod, what) for mod, what in originals
            if isinstance(what, str) and not re.fullmatch(r"[A-Za-z_]\w*", what)}
     for o in objects:
         obj = open(os.path.join(folder, o), "rb").read()
-        binds = watcom._import_lines(obj, set(m.imports), named).strip().split("\n")
+        binds = watcom._import_lines(obj, set(m.imports), named, numbered).strip().split("\n")
         for sym in watcom._omf_externs(obj):
             mm = _ORDINAL_IMPORT.fullmatch(sym)
             if mm and (mm.group(1).upper(), int(mm.group(2))) in originals:
