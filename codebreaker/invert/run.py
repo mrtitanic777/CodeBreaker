@@ -17,7 +17,12 @@ places a linker fills in.
     identical     ... and the real compiler turns that text back into the function's bytes
     declined      the function has something the model does not cover; it says nothing
 
-A model never guesses: a function it does not cover is declined, with the reason.
+    assembly      a segment-switch thunk: generated code, written as the assembly that makes it
+                  (invert/segment_thunk.py rebuilds its bytes exactly)
+
+A model never guesses: a function it does not cover is declined, with the reason. Each function
+is compiled by the compiler whose frame it has (compiler_of): Microsoft C 6, or Microsoft C/C++ 8
+(settings: msvc152) for the modules Visual C++ 1.52c built.
 
     from codebreaker.invert import run
     run.module(path)      {name: (verdict, text or reason)}
@@ -25,6 +30,18 @@ A model never guesses: a function it does not cover is declined, with the reason
 import os
 
 FLAGS = ("/AM /G2 /Gsw /Ox", "/AM /G2 /Gsw /Os", "/AM /G2 /Gsw", "/AM /G2 /Gsw /Ot")
+# Microsoft C/C++ 8 (Visual C++ 1.52c) built some of the 16-bit modules; it ships much unoptimised code
+FLAGS_MSVC152 = ("/AM /G2 /Gsw", "/AM /G2 /Gsw /Od", "/AM /G2 /Gsw /Os", "/AM /G2 /Gsw /Ox")
+
+
+def compiler_of(code):
+    """Which compiler made a function, by its frame: Microsoft C/C++ 8 enters with mov ax,ds
+    (8c d8) or the near-loadds frame and leaves through lea sp,[bp-2] (8d 66 fe 1f 5d); Microsoft
+    C 6 does neither."""
+    code = bytes(code)
+    if code[:2] == b"\x8c\xd8" or code.startswith(bytes.fromhex("558bec1e8ed8")) or bytes.fromhex("8d66fe1f5d") in code:
+        return "msvc152"
+    return "msc6"
 
 # the models, and what each one's own command line does
 TOOLS = {
@@ -126,7 +143,7 @@ def module(module_path, limit=0, flags=None, log=None):
     from codebreaker.base import settings
     from codebreaker.build import msc6 as compiler
     from codebreaker.formats.ne import NEFile
-    from codebreaker.invert import msc6 as model, whole_function
+    from codebreaker.invert import grammars, msc6 as model, segment_thunk, whole_function
     from codebreaker.verify import match, match16, win16
     name = os.path.basename(module_path).lower()
     m = win16.prepare(module_path, settings.state("invert", name, "source"))
@@ -138,6 +155,10 @@ def module(module_path, limit=0, flags=None, log=None):
         if va not in originals or (limit and len(out) >= limit):
             continue
         code = originals[va][0]
+        thunk = segment_thunk.verify(code)
+        if thunk is not None:
+            out[fn] = ("assembly", segment_thunk.emit_asm(thunk, fn), None)
+            continue
         tries = []
         try:
             tries += [c for _name, c in whole_function.candidates(code)]   # a function that is one known shape
@@ -153,16 +174,30 @@ def module(module_path, limit=0, flags=None, log=None):
             if text is not None and text not in tries:
                 tries.append(text)
         if not tries:
+            tries = [t for g in grammars.GRAMMARS for t in g({"nargs": max(0, len(params or []))})] if \
+                b"\x9a" in code else []                           # shapes the model does not read, by search
+            if tries:
+                texts[fn] = (va, tries)
+                out[fn] = ("declined", str(why), None)
+                continue
+        if not tries:
             out[fn] = ("declined", str(why), None)
         else:
             out[fn] = ("recognised", tries[-1], None)
             texts[fn] = (va, tries)
-    if texts and compiler.available():
+    by_compiler = {}
+    for fn, (va, tries) in texts.items():
+        by_compiler.setdefault(compiler_of(originals[va][0]), {})[fn] = (va, tries)
+    for which, group in sorted(by_compiler.items()):
+        if not compiler.available(which):
+            if log:
+                log("  %d functions are %s's; it is not set up (settings.json: %s)" % (len(group), which, which))
+            continue
         work = settings.state("invert", name, "work")
-        left = dict(texts)
-        for fl in ([flags] if flags else FLAGS):
+        left = dict(group)
+        for fl in ([flags] if flags else FLAGS_MSVC152 if which == "msvc152" else FLAGS):
             built = compiler.compile_many({(fn, k): t for fn, (_va, tries) in left.items() for k, t in enumerate(tries)},
-                                          "", fl, work)
+                                          "", fl, work, compiler=which)
             for fn, (va, tries) in list(left.items()):
                 for k, text in enumerate(tries):
                     if built.get((fn, k)) and match.distance(built[(fn, k)], originals[va])[0] == "identical":
@@ -170,7 +205,7 @@ def module(module_path, limit=0, flags=None, log=None):
                         del left[fn]
                         break
             if log:
-                log("  %-20s %d of %d recognised functions are now identical" % (fl, len(texts) - len(left), len(texts)))
+                log("  %-8s %-20s %d of %d now identical" % (which, fl, len(group) - len(left), len(group)))
             if not left:
                 break
     return out

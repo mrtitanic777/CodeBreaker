@@ -164,9 +164,39 @@ def cmd_lib(path, pubs_only=False):
 _WIDTH = {0: 1, 1: 2, 2: 2, 3: 4, 4: 1, 5: 2, 9: 4, 11: 6, 13: 4}
 
 
+class Obj(object):
+    """An object file read: .functions() and .code_segment()."""
+    def __init__(self, data):
+        self.data = data
+
+    def functions(self):
+        return functions(self.data)
+
+    def code_segment(self):
+        return code_segment(self.data)
+
+
+def code_segment(data):
+    """(name, bytes, {offsets the linker fills in}) of an object file's code segment."""
+    name, code, mask, _pubs = _read(data)
+    return name, code, mask
+
+
 def functions(data):
     """{public name: (bytes, {offsets the linker fills in})} of an object file's code segment,
     cut between consecutive public names. A name keeps the compiler's leading underscore."""
+    code_seg, code, mask, pubs = _read(data)
+    if code_seg is None:
+        return {}
+    here = sorted((off, nm) for nm, (sg, off) in pubs.items() if sg == code_seg)
+    out = {}
+    for i, (off, nm) in enumerate(here):
+        end = here[i + 1][0] if i + 1 < len(here) else len(code)
+        out[nm] = (code[off:end], {m - off for m in mask if off <= m < end})
+    return out
+
+
+def _read(data):
     lnames, segs, seg_bytes, seg_mask, pubs, last = [""], [], {}, {}, {}, None
     for _at, kind, body in records(data):
         wide = kind & 1
@@ -226,14 +256,8 @@ def functions(data):
                 pubs[name] = (segname, off)
     code_seg = next((n for n, c in segs if "CODE" in c.upper() or n.upper().endswith("TEXT")), segs[0][0] if segs else None)
     if code_seg is None:
-        return {}
-    code, mask = bytes(seg_bytes.get(code_seg, b"")), seg_mask.get(code_seg, set())
-    here = sorted((off, nm) for nm, (sg, off) in pubs.items() if sg == code_seg)
-    out = {}
-    for i, (off, nm) in enumerate(here):
-        end = here[i + 1][0] if i + 1 < len(here) else len(code)
-        out[nm] = (code[off:end], {m - off for m in mask if off <= m < end})
-    return out
+        return None, b"", set(), pubs
+    return code_seg, bytes(seg_bytes.get(code_seg, b"")), seg_mask.get(code_seg, set()), pubs
 
 
 if __name__ == "__main__":

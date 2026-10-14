@@ -11,7 +11,7 @@ is the current one), writes the commands to BLD.BAT, runs it and reads the named
 made. The emulator runs without a window.
 
 `masm` assembles one source with the Microsoft Macro Assembler of the folder settings "masm"
-names (it holds BIN\\MASM.EXE, INC, LIB), or the one given.
+names (it holds BIN/MASM.EXE, INC, LIB), or the one given -- build/masm.py runs it.
 """
 import os
 import subprocess
@@ -63,28 +63,6 @@ def run(mounts, bat_lines, artifacts, timeout=90, files=None):
     return len(made) == len(artifacts), made, work
 
 
-_MASM_CONF = """[sdl]
-autolock=false
-[cpu]
-cputype=386
-core=dynamic
-cycles=max
-[dos]
-ver=6.22
-[autoexec]
-mount c "{masm}"
-mount d "{work}"
-set PATH=C:\\BIN
-set INCLUDE=C:\\INC
-set LIB=C:\\LIB
-set TMP=D:\\
-d:
-{cmd}
-echo done > D:\\DONE.FLG
-exit
-"""
-
-
 def masm_root():
     from codebreaker.base import settings
     root = settings.get("masm") or ""
@@ -92,31 +70,7 @@ def masm_root():
 
 
 def masm(source, stem="t", timeout=180, root=None):
-    """Assemble `source`. -> {"obj": bytes, "lst": text, "log": text, "work": folder}; a part the
-    assembler did not make is missing."""
-    root = root or masm_root()
-    dbx = emulator()
-    if not dbx:
-        raise RuntimeError("DOSBox-X is not set up (settings.json: dosbox_x)")
-    if not root or not os.path.isfile(os.path.join(root, "BIN", "MASM.EXE")):
-        raise RuntimeError("no MASM.EXE (settings.json: masm -- the folder holding BIN\\MASM.EXE)")
-    work = tempfile.mkdtemp(prefix="cb_masm_")
-    with open(os.path.join(work, stem + ".ASM"), "w", newline="\r\n") as f:
-        f.write(source)
-    conf = os.path.join(work, "masm.conf")
-    with open(conf, "w", newline="\r\n") as f:
-        f.write(_MASM_CONF.format(masm=root, work=work,
-                                  cmd="MASM %s.ASM, %s.OBJ, %s.LST, NUL; > %s.LOG 2>&1" % (stem, stem, stem, stem)))
-    try:
-        subprocess.run([dbx, "-conf", conf, "-nolog"], env=dict(os.environ, SDL_VIDEODRIVER="dummy"),
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=timeout)
-    except subprocess.TimeoutExpired:
-        pass
-    out = {"work": work}
-    for ext, key in ((".OBJ", "obj"), (".LST", "lst"), (".LOG", "log")):
-        path = os.path.join(work, stem + ext)
-        if os.path.exists(path):
-            with open(path, "rb") as f:
-                data = f.read()
-            out[key] = data if key == "obj" else data.decode("latin1")
-    return out
+    """Assemble `source` (build/masm.py). -> {"obj": bytes, "lst": text, "log": text, "work": folder};
+    a part the assembler did not make is missing."""
+    from codebreaker.build import masm as assembler
+    return assembler.assemble(source, stem=stem, timeout=timeout, masmroot=root or None)

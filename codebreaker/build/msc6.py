@@ -25,16 +25,19 @@ FLAG_SETS = ("/AM /Gcsw /Os", "/AM /Gcsw /Ox", "/AS /Gcsw /Os", "/AL /Gcsw /Os",
              "/AM /Gcs /Os", "/AS /Gcs /Os")
 
 _CONF = ("[sdl]\noutput=surface\n[cpu]\ncore=dynamic\ncputype=386\ncycles=max\n[autoexec]\n"
-         "mount c \"%s\"\nmount d \"%s\"\nset PATH=C:\\BIN\nset INCLUDE=C:\\INCLUDE\nd:\ncall BLD.BAT\nexit\n")
+         "mount c \"%s\"\nmount d \"%s\"\nset PATH=C:\\BIN\nset INCLUDE=C:\\INCLUDE\nset LIB=C:\\LIB\nd:\ncall BLD.BAT\nexit\n")
 
 
-def _tools():
+def _tools(compiler="msc6"):
+    """(DOSBox-X, the compiler's folder). compiler: "msc6" (Microsoft C 6.0a) or "msvc152"
+    (Microsoft C/C++ 8.00c of Visual C++ 1.52c, which built a few of the 16-bit modules); both
+    are a BIN\\CL.EXE run the same way."""
     from codebreaker.base import settings
-    return settings.get("dosbox_x"), settings.get("msc6")
+    return settings.get("dosbox_x"), settings.get(compiler)
 
 
-def available():
-    emulator, home = _tools()
+def available(compiler="msc6"):
+    emulator, home = _tools(compiler)
     return bool(emulator and os.path.isfile(emulator) and home and os.path.isfile(os.path.join(home, "BIN", "CL.EXE")))
 
 
@@ -108,12 +111,12 @@ def dialect(header, text):
     return "\n".join(said + keep) + "\n", text
 
 
-def compile_many(sources, header, flags, work=None, timeout=900):
+def compile_many(sources, header, flags, work=None, timeout=900, compiler="msc6"):
     """Compile each of `sources` {key: C text} with `header` before it. -> {key: (bytes, mask) or None}"""
     from codebreaker.base import cache, settings
-    emulator, home = _tools()
-    if not available():
-        raise RuntimeError("Microsoft C 6 is not set up (settings.json: dosbox_x, msc6)")
+    emulator, home = _tools(compiler)
+    if not available(compiler):
+        raise RuntimeError("%s is not set up (settings.json: dosbox_x, %s)" % (compiler, compiler))
     out, todo = {}, {}
     stamp = cache.tool(os.path.join(home, "BIN", "CL.EXE"))
     for key, text in sources.items():
@@ -126,7 +129,7 @@ def compile_many(sources, header, flags, work=None, timeout=900):
             todo[key] = (k, text)
     if not todo:
         return out
-    work = os.path.abspath(work or settings.state("msc6", "work"))
+    work = os.path.abspath(work or settings.state(compiler, "work"))
     os.makedirs(work, exist_ok=True)
     for f in os.listdir(work):
         if f.lower().endswith((".obj", ".c", ".txt")):

@@ -11,6 +11,7 @@
     teeth <module>                  break functions the judge passed, on purpose: does it notice?
     invert <16-bit module>          read functions back into the source their compiler was given (compiler models)
     vxd <tool> ...                  a driver as the driver kit's macro source; build and compare it
+    ne-asm <tool> ...               16-bit hand-written assembly as cMacros source; build and compare it
     names <module>                  every function and import with its best name and where it came from
     identify <module>               runtime-library functions of a module, and what built it
     demangle <name>                 a decorated C++ name as its declaration
@@ -53,6 +54,7 @@ COMMANDS = {
     "teeth": ("codebreaker.verify.teeth", []),
     "invert": ("codebreaker.invert.run", []),
     "vxd": ("codebreaker.source.vxd.run", []),
+    "ne-asm": ("codebreaker.source.ne_asm.run", []),
     "decompile": ("codebreaker.decompile.decompiler", []),
     "names": ("codebreaker.symbols.names", []),
     "identify": ("codebreaker.symbols.runtime_library", []),
