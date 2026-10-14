@@ -160,6 +160,82 @@ def cmd_lib(path, pubs_only=False):
         i = ((nxt + pagelen - 1)//pagelen)*pagelen
     print(f"total: {nmod} modules, {npub} publics")
 
+# what the linker fills in, by the kind of place a fix-up names: bytes it covers
+_WIDTH = {0: 1, 1: 2, 2: 2, 3: 4, 4: 1, 5: 2, 9: 4, 11: 6, 13: 4}
+
+
+def functions(data):
+    """{public name: (bytes, {offsets the linker fills in})} of an object file's code segment,
+    cut between consecutive public names. A name keeps the compiler's leading underscore."""
+    lnames, segs, seg_bytes, seg_mask, pubs, last = [""], [], {}, {}, {}, None
+    for _at, kind, body in records(data):
+        wide = kind & 1
+        if kind == 0x96:                                     # LNAMES
+            p = 0
+            while p < len(body):
+                name, p = rd_str(body, p)
+                lnames.append(name)
+        elif kind in (0x98, 0x99):                           # SEGDEF
+            p = 1 + (3 if body[0] >> 5 == 0 else 0) + (4 if wide else 2)
+            name_i, p = rd_index(body, p)
+            class_i, p = rd_index(body, p)
+            name = lnames[name_i] if name_i < len(lnames) else "?%d" % name_i
+            segs.append((name, lnames[class_i] if class_i < len(lnames) else ""))
+            seg_bytes.setdefault(name, bytearray())
+            seg_mask.setdefault(name, set())
+        elif kind in (0xA0, 0xA1):                           # LEDATA
+            seg_i, p = rd_index(body, 0)
+            off = int.from_bytes(body[p:p + (4 if wide else 2)], "little")
+            p += 4 if wide else 2
+            chunk = bytes(body[p:])
+            name = segs[seg_i - 1][0] if 0 < seg_i <= len(segs) else "_TEXT"
+            buf = seg_bytes.setdefault(name, bytearray())
+            if len(buf) < off + len(chunk):
+                buf.extend(bytes(off + len(chunk) - len(buf)))
+            buf[off:off + len(chunk)] = chunk
+            last = (name, off)
+        elif kind in (0x9C, 0x9D) and last:                  # FIXUPP: the places of the last data record
+            name, base = last
+            mask, p = seg_mask.setdefault(name, set()), 0
+            while p < len(body):
+                first = body[p]
+                if not first & 0x80:                         # a THREAD: no place of its own
+                    _i, p = rd_index(body, p + 1)
+                    continue
+                locat = (first << 8) | body[p + 1]
+                for k in range(_WIDTH.get((locat >> 10) & 0x0F, 2)):
+                    mask.add(base + (locat & 0x3FF) + k)
+                fixdata, p = body[p + 2], p + 3
+                if not fixdata & 0x80 and (fixdata >> 4) & 7 in (0, 1, 2):
+                    _i, p = rd_index(body, p)
+                if not fixdata & 0x08:
+                    _i, p = rd_index(body, p)
+                if not fixdata & 0x04:
+                    p += 4 if wide else 2
+        elif kind in (0x90, 0x91):                           # PUBDEF
+            _grp, p = rd_index(body, 0)
+            seg_i, p = rd_index(body, p)
+            if seg_i == 0:
+                p += 2
+            segname = segs[seg_i - 1][0] if 0 < seg_i <= len(segs) else "?"
+            while p < len(body):
+                name, p = rd_str(body, p)
+                off = int.from_bytes(body[p:p + (4 if wide else 2)], "little")
+                p += 4 if wide else 2
+                _t, p = rd_index(body, p)
+                pubs[name] = (segname, off)
+    code_seg = next((n for n, c in segs if "CODE" in c.upper() or n.upper().endswith("TEXT")), segs[0][0] if segs else None)
+    if code_seg is None:
+        return {}
+    code, mask = bytes(seg_bytes.get(code_seg, b"")), seg_mask.get(code_seg, set())
+    here = sorted((off, nm) for nm, (sg, off) in pubs.items() if sg == code_seg)
+    out = {}
+    for i, (off, nm) in enumerate(here):
+        end = here[i + 1][0] if i + 1 < len(here) else len(code)
+        out[nm] = (code[off:end], {m - off for m in mask if off <= m < end})
+    return out
+
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print(__doc__); sys.exit(1)

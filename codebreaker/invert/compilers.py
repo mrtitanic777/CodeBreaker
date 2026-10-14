@@ -9,6 +9,8 @@ already run -- this module only gives them the shapes the models were written ag
     compilers.mc6_compile(text, flags)    the code bytes Microsoft C 6 gives for one source text
     compilers.mc6_compile_batch(jobs)     the same for [(text, flags)], one emulator session per flag set
     compilers.msvc2()                     the 32-bit compiler of 1994: .compile_c(text, flags) and .Obj
+    compilers.mc_compile(text)            Microsoft C 2.03, MC1 then MC2 (settings: msc203 -- the folder
+                                          holding them; dosbox_x): the object file's bytes, or None
 """
 import os
 import subprocess
@@ -82,3 +84,28 @@ def msvc2():
     if not cl:
         raise RuntimeError("the 1994 32-bit compiler is not set up (settings.json: period_compiler)")
     return _Msvc2(cl)
+
+
+def mc_compile(csrc, stem="cand", timeout=120):
+    """Compile one source text through MC1 and MC2, in their own folder. -> the .OBJ's bytes, or None"""
+    from codebreaker.base import settings
+    from codebreaker.build import dos_tools
+    home, emulator = settings.get("msc203") or "", dos_tools.emulator()
+    if not (home and emulator and all(os.path.isfile(os.path.join(home, f)) for f in ("MC1.EXE", "MC2.EXE"))):
+        raise RuntimeError("Microsoft C 2.03 is not set up (settings.json: msc203, dosbox_x)")
+    with open(os.path.join(home, stem + ".c"), "w", newline="\r\n") as f:
+        f.write(csrc)
+    for ext in ("OBJ", "Q", "q"):
+        path = os.path.join(home, stem + "." + ext)
+        if os.path.exists(path):
+            os.remove(path)
+    with open(os.path.join(home, "dbx.conf"), "w", newline="") as f:
+        f.write("\r\n".join(["[cpu]", "core=auto", "cputype=386", "[autoexec]", 'mount c "%s"' % home, "c:",
+                             "mc1 %s.c >NUL" % stem, "mc2 %s >NUL" % stem, "echo DONE >D.TXT", "exit", ""]))
+    subprocess.run([emulator, "-conf", os.path.join(home, "dbx.conf"), "-fastlaunch"], capture_output=True,
+                   timeout=max(timeout, 30), env=dict(os.environ, SDL_VIDEODRIVER="dummy"))
+    path = os.path.join(home, stem + ".OBJ")
+    if not os.path.exists(path):
+        return None
+    with open(path, "rb") as f:
+        return f.read()

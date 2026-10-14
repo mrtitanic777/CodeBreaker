@@ -29,6 +29,7 @@ FLAGS = ("/AM /G2 /Gsw /Ox", "/AM /G2 /Gsw /Os", "/AM /G2 /Gsw", "/AM /G2 /Gsw /
 # the models, and what each one's own command line does
 TOOLS = {
     "early-c": "codebreaker.invert.early_c",                  # FILE OFFSET LENGTH -> C
+    "early-c-check": "codebreaker.invert.early_c_check",      # ... and put the text to Microsoft C 2.03
     "early-c-frame": "codebreaker.invert.early_c_frame",      # the stack-frame model against its table
     "early-c-forward": "codebreaker.invert.early_c_forward",  # the forward model against a quad file and its object
     "quads": "codebreaker.invert.quad_dump",                  # list a quad file

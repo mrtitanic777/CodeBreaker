@@ -102,11 +102,38 @@ def test_a_module():
     assert all(v[1] for v in results.values())               # a text, or the reason there is none
 
 
+def test_object_file_functions_and_the_early_compiler():
+    from codebreaker.invert import early_c_check, omf
+    try:
+        obj = compilers.mc_compile("f(a, b)\nint a, b;\n{\n    return (a + b);\n}\n")
+    except RuntimeError as e:
+        raise Skip(str(e))
+    functions = omf.functions(obj)
+    assert len(functions) == 1
+    code, fixed = next(iter(functions.values()))
+    assert all(0 <= i < len(code) for i in fixed)
+    text, same, _note = early_c_check.reconstruct(code, 0, len(code))
+    assert same is True and "return (a + b);" in text
+    assert early_c_check.external_branches(bytes.fromhex("e81000c3"))[1:3] == b"\1\1"   # a call out of the function
+
+
+def test_dos_tools():
+    from codebreaker.build import dos_tools
+    if not dos_tools.emulator():
+        raise Skip("DOSBox-X is not set up")
+    ok, made, _work = dos_tools.run({}, ["echo hi > OUT.TXT"], ["OUT.TXT"])
+    assert ok and made["OUT.TXT"].strip() == b"hi"
+    if not dos_tools.masm_root():
+        raise Skip("no MASM set up")
+    r = dos_tools.masm("CODE SEGMENT\nASSUME CS:CODE\nstart: mov ax, 1\n ret\nCODE ENDS\nEND\n")
+    assert r.get("obj", b"")[:1] == b"\x80"                                   # an object file
+
+
 def main():
     for fn in (test_early_c_reads_a_function, test_early_c_frame_model, test_flow_of_a_straight_function,
                test_msc6_reads_calls_and_a_branch, test_msc6_declines_what_it_does_not_cover, test_msvc2_reads_constants,
                test_known_differences_table, test_every_model_has_a_command, test_against_the_real_compiler,
-               test_a_module):
+               test_a_module, test_object_file_functions_and_the_early_compiler, test_dos_tools):
         check(fn)
     for name, status, detail in RESULTS:
         print("  %-4s %s%s" % (status, name, ("  -- " + detail) if detail else ""))
