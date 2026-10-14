@@ -674,10 +674,14 @@ def compilable16(module_path, outdir=None):
     # the original. In another segment (constants kept beside the code, a second data segment):
     # the module carries that segment's bytes, and the global is a place in them.
     macros, m.segments = [], {}
+    # a global the code calls through holds a function pointer -- near or far by its size
+    called_through = set(re.findall(r"\(\*([a-z]+Ram[0-9a-f]{8})\)\s*\(", body))
     for prefix, addr in sorted(set(_RAM.findall(body))):
         va = int(addr, 16)
         seg, off = describe.where(va)
         ty = _global_type(prefix, sizes.get(va, 2))
+        if "%sRam%s" % (prefix, addr) in called_through:
+            ty = "code __far *" if sizes.get(va, 2) == 4 else "code __near *"
         if seg == d.data_segment:
             macros.append("#define %sRam%s (*(%s *)0x%x)" % (prefix, addr, ty, off))
         elif seg in d.images and off < len(d.images[seg]):
@@ -686,9 +690,24 @@ def compilable16(module_path, outdir=None):
     decls = ["extern uint1 __far codebreaker_segment_%d[];" % n for n in sorted(m.segments)]
     decls += ["extern uint4 __far __stdcall %s();" % nm for nm in sorted(m.imports)]
     decls += [declaration(m.texts[n]) for n in m.order]
-    m.header = HEADER + "\n" + "\n".join(macros + decls) + "\n"
+    intrinsics = [INTRINSICS16[n] for n in sorted(INTRINSICS16) if re.search(r"\b%s\s*\(" % n, body)]
+    m.header = HEADER + "\n" + "\n".join(intrinsics + macros + decls) + "\n"
     m.description = d
     return m
+
+
+# The decompiler's names for instructions C has no word for, in a 16-bit module: the port
+# instructions (as the instruction itself, inline), the LOCK prefix (one processor and no other
+# bus master here: a mark, not an operation) and the population count it writes for the parity
+# flag. (`swi`, a software interrupt, is not one of these: what the registers held when it was
+# taken is not in the decompiler's text, so no body here could do what the original does.)
+INTRINSICS16 = {
+    "in": "uint1 in(uint2 port);\n#pragma aux in = 0xEC parm [dx] value [al];",
+    "out": "void out(uint2 port, uint1 value);\n#pragma aux out = 0xEE parm [dx] [al];",
+    "LOCK": "#define LOCK()    /* the next instruction carries a LOCK prefix */",
+    "UNLOCK": "#define UNLOCK()  /* (the end of that instruction) */",
+    "POPCOUNT": "static uint2 POPCOUNT(uint4 x) { uint2 n = 0; while (x) { n += (uint2)(x & 1); x >>= 1; } return n; }",
+}
 
 
 # PowerPC ---------------------------------------------------------------------------------------
