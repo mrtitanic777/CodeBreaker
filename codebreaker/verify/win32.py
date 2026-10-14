@@ -14,7 +14,6 @@ from codebreaker.formats.pe import open_pe
 from codebreaker.emulate import emulator as tracer
 import struct as _struct
 import hashlib as _hashlib
-import random as _random
 
 
 KIND = "pe"
@@ -498,8 +497,6 @@ def _confirm_vectors(arity, lane):
 
 _HARVEST = {}
 MAX_DIRECTED = 16                # directed inputs kept per body
-MUTATIONS = int(os.environ.get("CB_MUTATIONS", "24"))      # mutated inputs tried per body
-_MUTANTS = (0, 1, 2, 0xFFFFFFFF, 0x7FFFFFFF, 0x80000000, 16, 0x100, 0x10000, 0xFFFF, 0x8000)
 _HARVEST_DEPTH = 2               # how far into callees to look for what branches test
 _HARVEST_FUNCS = 12
 
@@ -597,29 +594,6 @@ def directed_vectors(path, func, covered, arity=4, reached=(), shape=None):
             seen |= new
             if len(keep) >= MAX_DIRECTED:
                 return keep
-    # Then mutation: change one or two values of an input that got somewhere (an interesting
-    # value, a constant the function tests, a pointer to an object, any number) and keep what
-    # reaches code no input reached -- the combinations no single-value candidate trips. The
-    # choices are seeded by the function, so every run tries the same inputs.
-    rng = _random.Random(func)
-    parents = keep + [{"args": obj, "mem_init": mi, "stub_ret": 1}, {"args": ints}]
-    values = list(_MUTANTS) + list(consts) + obj
-    for _ in range(MUTATIONS):
-        if len(keep) >= MAX_DIRECTED:
-            return keep
-        parent = rng.choice(parents)
-        args = list(parent["args"])
-        for i in rng.sample(range(n), min(n, rng.choice((1, 1, 2)))):
-            args[i] = rng.choice(values) if rng.random() < 0.8 else rng.getrandbits(32)
-        v = dict(parent, args=args)
-        f = _fp_pe(path, func, shape(v) if shape else v)
-        if "err" in f:
-            continue
-        new = set(f.get("reach") or ()) - seen
-        if new:
-            keep.append(shape(v) if shape else v)
-            parents.append(v)
-            seen |= new
     # Then inputs that make the original DO something no earlier input made it do, though no
     # new code runs: the values either side of each constant it compares with. `x < 100` and
     # `x < 101` run the same instructions on every input but 100; only that input tells them

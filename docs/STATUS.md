@@ -33,15 +33,16 @@ Beside that path:
 | DOS programs | 127 of 128 | 17,058 | 16,295 (96%) | — | 0 | — | 763 (two programs) |
 | Device drivers | 214 of 214 | 1,292 | 1,113 (86%) | 159 (12%) | 4 | — | 0 |
 | 16-bit Windows | 317 of 326 | 36,758 | 6,139 (17%) | 7,224 (20%) | 19,468 (53%) | — | 3,611 (10%) |
-| 32-bit Windows, first pass | 558 of 559 | 151,556 | 28,642 (19%) | 28,678 (19%) | 34,968 (23%) | 16,105 (11%) | 42,794 (28%) |
+| 32-bit Windows | 558 of 559 | 151,556 | 40,069 (26%) | 45,854 (30%) | 27,546 (18%) | 12,318 (8%) | 19,208 (13%) |
 | PowerPC, 12 images | 12 | 3,597 | 1,077 (30%) | 1,724 (48%) | 728 (20%) | — | 67 |
 
 Notes on reading these:
 
-- **32-bit is stale.** That pass ran before today's fixes to five causes that accounted for most
-  of its "does not compile" and a large share of its "unverified". On the modules checked by
-  hand the change is large (calc.exe: nothing judged → 97 passing; wordpad: 632 unverified →
-  369). A second full pass is running; its numbers replace this row.
+- **32-bit** is the second full pass (finished 2026-10-13). Against the first: verified 19% →
+  26%, weak 19% → 30%, does not compile 28% → 13%, unverified 23% → 18%. 6,197 functions more
+  are runtime-library code, named and not counted as the module's own; 364 have no source. Two
+  modules account for much of what does not compile: mfc40.dll (6,682, all of it) and
+  quartz.dll (2,152).
 - **16-bit** is after the 64K fix (before it, 44% did not compile) but before the far-pointer
   fix; a third pass is queued.
 - **"Verified (weak)"** means it matched with a stated limit — most often that under half of
@@ -49,7 +50,36 @@ Notes on reading these:
 - **DOS and drivers** are judged by rebuilding the whole file from assembly source, so a module
   is all-or-nothing; that is why DOS has no "unverified".
 
+## Brought in from the earlier CodeBreaker (2026-10-13)
+
+Each checked against what the old code produced:
+
+- **Compiler models** (`invert`): functions read back into the source their compiler was given.
+  Microsoft C 6: olecli 38 of 378 byte-identical, lzexpand 4 of 35; functions are routed to
+  Microsoft C 6 or Visual C++ 1.52 by their frame. The 1983-84 C model: its local-variable
+  round trip is 19 of 19 through Microsoft C 2.03. The 1994 32-bit model agrees with the
+  installed compiler on 7 of 69 cases only -- it was made against another build; not usable yet.
+- **Drivers as the driver kit's macro source** (`vxd`): the same text as before for all 222
+  drivers, except where today's reading of driver pages is the more correct one; vkd.vxd builds
+  with ML and LINK to the original's size, its code object identical.
+- **16-bit hand-written assembly as cMacros source** (`ne-asm`); real internal names of KRNL386
+  from Microsoft's debug build (46, none contradicting its exports).
+- **Builds with the tools of the time**: a 16-bit DLL with Microsoft C 6 and LINK 5.60
+  (`build16`); a thunk DLL with the thunk compiler, ML, CL and LINK (`flat-thunk`; lz32 matches
+  the original in entry point, sections and exports).
+- **Readable names in the written source**, written in after judging: SDK constants, locals and
+  parameters named for the Windows parameters they are passed as, function-pointer globals for
+  what they point at, SDK structure fields, message numbers in switches, strings beside their
+  addresses, printf conversions. On comctl32, shell32, comdlg32 and advapi32, all 1,720 changed
+  functions compile to exactly the same code as the judged text.
+- **The Workbench** (`workbench`, `workbench --forms`, `live`): the earlier Windows 95-style
+  window, on today's commands.
+
 ## How far to trust "verified"
+
+calc.exe (2026-10-13): 37 of 61 deliberate breaks caught -- comparisons 13 of 15, wrong arguments
+3 of 7. A round of randomly mutated inputs on top of the directed ones was tried and changed
+nothing (same 37 of 61, same verdicts), so it was not kept.
 
 On advapi32 the judge catches 13 of 16 functions deliberately broken after it had called them
 verified (it was 11 of 16 before two holes were closed). The three that survive are breaks
