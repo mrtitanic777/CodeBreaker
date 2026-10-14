@@ -171,4 +171,55 @@
       <register name="DF"/>
     </unaffected>
   </prototype>
+  <!-- A software interrupt (DOS INT 21h, DPMI INT 31h, the BIOS ...) takes its arguments in
+       registers and returns results in them. The language says INT n is `loc = swi(n); call [loc]`
+       with nothing known of the handler; the fixup below makes `loc` a constant per vector,
+       F000:n*16, so the call goes to a known function (the driver names them int21, int31, ...)
+       whose prototype is this one: whatever registers are set before the interrupt are its
+       arguments, and what it leaves in AX (or DX:AX) is its result. -->
+  <prototype name="__int16" extrapop="0" stackshift="0">
+    <input>
+      <pentry minsize="1" maxsize="2"><register name="AX"/></pentry>
+      <pentry minsize="1" maxsize="2"><register name="BX"/></pentry>
+      <pentry minsize="1" maxsize="2"><register name="CX"/></pentry>
+      <pentry minsize="1" maxsize="2"><register name="DX"/></pentry>
+      <pentry minsize="1" maxsize="2"><register name="SI"/></pentry>
+      <pentry minsize="1" maxsize="2"><register name="DI"/></pentry>
+      <pentry minsize="2" maxsize="2"><register name="DS"/></pentry>
+      <pentry minsize="2" maxsize="2"><register name="ES"/></pentry>
+    </input>
+    <output>
+      <pentry minsize="1" maxsize="2"><register name="AX"/></pentry>
+      <pentry minsize="3" maxsize="4"><addr space="join" piece1="DX" piece2="AX"/></pentry>
+    </output>
+    <unaffected>
+      <register name="SP"/>
+      <register name="BP"/>
+      <register name="SS"/>
+      <register name="CS"/>
+      <register name="DF"/>
+    </unaffected>
+    <!-- what an interrupt hands back besides AX: the other registers and the flags its caller
+         tests (CF for an error, ZF for "nothing there"); the driver names them int_<register> -->
+    <killedbycall>
+      <register name="BX"/>
+      <register name="CX"/>
+      <register name="DX"/>
+      <register name="SI"/>
+      <register name="DI"/>
+      <register name="DS"/>
+      <register name="ES"/>
+      <register name="CF"/>
+      <register name="ZF"/>
+    </killedbycall>
+  </prototype>
+  <callotherfixup targetop="swi">
+    <pcode>
+      <input name="vector"/>
+      <output name="handler"/>
+      <body><![CDATA[
+        handler = 0xF0000000 + (zext(vector) << 4);
+      ]]></body>
+    </pcode>
+  </callotherfixup>
 </compiler_spec>

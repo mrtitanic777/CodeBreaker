@@ -59,6 +59,9 @@ struct Span { uint64_t va; std::vector<uint8_t> data; };
 // Imports live at made-up addresses outside the image: an import slot reads as the address of
 // "its" function, so a call through the slot resolves to a named function with a real prototype.
 const uint64_t kExternBase = 0xE0000000u;
+// The software interrupts' made-up functions: vector n at F000:n*16 (languages/x86-16.cspec).
+// What one hands back besides AX is named int_<register> (core/cpp/database.cc, buildDefaultName).
+const uint64_t kInterruptBase = 0xF0000000u;
 
 class Image : public LoadImage {
   std::vector<Span> spans_;
@@ -295,6 +298,18 @@ int main(int argc, char** argv) {
     for (const auto& x : externs) {
       Address ea(code, (uintb)x.va);
       applyModel(glb->addFunction(ea, x.name)->getFunction(), x);
+    }
+    // 16-bit: the software interrupts. The compiler spec turns `INT n` into a call to F000:n*16
+    // (its swi fixup); each of those is a function int<n> taking its arguments and giving its
+    // result in registers (__int16), so what the code puts in them before the interrupt is seen.
+    if (!x86_32 && m.hasModel("__int16")) {
+      for (int v = 0; v < 256; ++v) {
+        char nm[16];
+        std::snprintf(nm, sizeof(nm), "int%02x", v);
+        Fact x{kInterruptBase + (uint64_t)v * 16, nm, -1, "__int16"};
+        Address ea(code, (uintb)x.va);
+        applyModel(glb->addFunction(ea, x.name)->getFunction(), x);
+      }
     }
     std::vector<std::pair<Funcdata*, Fact>> todo;
     for (const auto& f : funcs) {

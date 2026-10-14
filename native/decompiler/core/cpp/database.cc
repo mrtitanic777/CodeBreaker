@@ -1867,6 +1867,18 @@ string Scope::buildDefaultName(Symbol *sym,int4 &base,Varnode *vn) const
 	index = sym->getCategoryIndex()+1;
       return buildVariableName(vn->getAddr(),usepoint,sym->getType(),index,vn->getFlags() | Varnode::input);
     }
+    // CodeBreaker: a register a software interrupt hands back (a call under the __int16 model,
+    // which declares the registers it changes) is named for that: int_<register>, not extraout_.
+    if (fd != (Funcdata *)0 && vn->isWritten() && vn->getDef()->code() == CPUI_INDIRECT &&
+	vn->getDef()->getIn(1)->getSpace()->getType() == IPTR_IOP) {
+      PcodeOp *call = PcodeOp::getOpFromConst(vn->getDef()->getIn(1)->getAddr());
+      FuncCallSpecs *fc = (call != (PcodeOp *)0 && call->isCall()) ? fd->getCallSpecs(call) : (FuncCallSpecs *)0;
+      if (fc != (FuncCallSpecs *)0 && fc->getModelName() == "__int16") {
+	string regname = glb->translate->getRegisterName(vn->getSpace(),vn->getOffset(),vn->getSize());
+	if (!regname.empty())
+	  return makeNameUnique("int_" + regname);
+      }
+    }
     return buildVariableName(vn->getAddr(),usepoint,sym->getType(),base,vn->getFlags());
   }
   if (sym->numEntries() != 0) {

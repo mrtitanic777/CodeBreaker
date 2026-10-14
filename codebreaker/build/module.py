@@ -80,6 +80,8 @@ class Built(object):
         self.functions = self.with_text = 0     # in the module / given C by the decompiler
         self.rejected = {}                      # {function: why the compiler rejected it} -- stand-ins
         self.absent = []                        # called, but nothing reconstructed: stand-ins too
+        self.assembled = {}                     # 16-bit: rejected C, written as its own instructions instead
+        self.assembly_refused = {}              # 16-bit: why a rejected function could not be
         self.undefined = []                     # left unresolved in the image
         self.data = None                        # build.data.Data
         self.data_error = ""
@@ -186,6 +188,83 @@ def _link_resolving(b, tool, env, folder, lines, stand_in, compile_extra):
     if not image:
         b.error = "link: " + (log.strip()[-400:] or "the linker produced nothing")
     return image
+
+
+def _assembled16(b, nef, at, segs, stems, public, folder, env, carried=(), forced=()):
+    """Assembly of the module's own instructions where C does not do (build/asm16.py): each code
+    segment's lead-in -- what is before its first function, often a variable the code reads
+    through CS -- linked first into the segment so that it stays where it was; and each rejected
+    function, instead of a stand-in, when it can be written so and assembles back to the
+    original's bytes. -> {import symbol without its underscore: (module, what)} they need."""
+    from codebreaker.build import asm16
+    wasm = watcom.ow_tool("wasm")
+    b.lead_ins = []
+    if not wasm:
+        return {}
+    where = {name: place for place, name in at.items()}
+    starts = {}
+    for (seg, off) in at:
+        starts.setdefault(seg, []).append(off)
+    for seg in starts:
+        starts[seg].sort()
+    in_segment = {}
+    for (seg, _off), name in sorted(at.items()):
+        if name in public and name not in b.rejected:
+            in_segment.setdefault(seg, public[name][0])
+
+    def symbol_for(kind, *what):
+        if kind == "function":
+            name = at.get(what)
+            return public[name][0] if name in public else None
+        if kind == "segment":
+            return in_segment.get(what[0])
+        if kind == "data":                                   # a data segment: the auto one, or one carried
+            if what[0] == nef.h.get("autodata_seg"):
+                return "_codebreaker_data"
+            return "_codebreaker_segment_%d" % what[0] if what[0] in carried else None
+        mod, which = what
+        return "_%s_%s" % (re.sub(r"\W", "_", mod), which) if isinstance(which, int) else "_" + re.sub(r"\W", "_", which)
+    out = {}
+    os.makedirs(os.path.join(folder, "asm"), exist_ok=True)
+
+    def assemble(stem, f):
+        with open(os.path.join(folder, stem + ".asm"), "w", newline="\n") as fh:
+            fh.write(f.text)
+        r = subprocess.run([wasm, "-q", "-zcm", "-fo=" + stem + ".obj", stem + ".asm"], cwd=folder, env=env,
+                           capture_output=True, text=True)
+        obj = os.path.join(folder, stem + ".obj")
+        if r.returncode or not os.path.isfile(obj):
+            return "the assembler: " + ((r.stdout or "") + (r.stderr or "")).strip()[-160:]
+        with open(obj, "rb") as fh:
+            return asm16.check(fh.read(), f)
+    lead = {}
+    for seg in sorted(starts):
+        first = starts[seg][0]
+        if first and seg in segs and segs[seg]["kind"] == "CODE":
+            f = asm16.Function(nef, seg, 0, first, "codebreaker_lead_%d" % seg, symbol_for)
+            if f.text is not None and not assemble("asm/lead%02d" % seg, f):
+                lead[seg] = first
+                b.lead_ins.append("asm/lead%02d" % seg)
+                out.update({sym[1:]: w for sym, w in f.imports.items()})
+    for name in sorted(set(b.rejected) | set(forced)):
+        if name not in where or name not in public:
+            continue
+        seg, off = where[name]
+        later = [o for o in starts[seg] if o > off]
+        end = later[0] if later else segs[seg]["length"] if seg in segs else off
+        f = asm16.Function(nef, seg, off, end, public[name][0], symbol_for, cs_ok=lead.get(seg, 0))
+        if f.text is None:
+            b.assembly_refused[name] = f.why
+            continue
+        stem = "asm/" + stems[name].replace("/", "_")
+        why = assemble(stem, f)
+        if why:
+            b.assembly_refused[name] = why
+            continue
+        stems[name] = stem
+        b.assembled[name] = b.rejected.pop(name) if name in b.rejected else "its C takes a software interrupt"
+        out.update({sym[1:]: w for sym, w in f.imports.items()})
+    return out
 
 
 def _publics(folder, stems):
@@ -382,12 +461,23 @@ def _build16(b, path, m, folder):
     def extra(stem, text):
         return functions._compile(wcc, cflags, env, folder, stem, text)
 
+    # every data segment besides the automatic one is carried, whether or not the C reads it:
+    # it is part of the module (and code written as its own instructions refers to it)
+    auto = nef.h.get("autodata_seg")
+    for n, sg in segs.items():
+        if sg["kind"] == "DATA" and n != auto and n not in m.segments:
+            m.segments[n] = bytes(nef.data[sg["file_off"]:sg["file_off"] + sg["length"]]) if sg["file_off"] else \
+                bytes(min(sg["minalloc"] or 0x10000, 0x10000))
     d = b.data = data.data16(path, at.get, m.segments)
     why = extra("data", d.source + data.far_segments(m.segments))
     if why:                                                   # the code still needs a data segment to exist
         b.data_error = "the data does not compile: %s" % why
         extra("data", "char codebreaker_data = 1;\n" + data.far_segments(m.segments))
     public = _publics(folder, stems)
+    # a function whose C takes a software interrupt (`swi`: what the registers held is not in
+    # the text) is written as its own instructions where that can be done
+    forced = {n for n in m.order if n in stems and re.search(r"swi\s*\(", m.texts[n])}
+    asm_imports = _assembled16(b, nef, at, segs, stems, public, folder, env, m.segments, forced)
     library = definitions.is_library(path)
     lines = ["format windows%s" % (" dll" if library else ""), "name m.dll",
              "option quiet, map, nodefaultlibs, caseexact, packcode=1",
@@ -409,6 +499,18 @@ def _build16(b, path, m, folder):
     else:
         b.entry = "none, as in the original"
     lines.append("file data.obj")                              # first: the data segment starts with it
+    if m.interrupts:                                           # the interrupts the module takes
+        asm, c = c_text.interrupt_routines({v for v, _k in m.interrupts})
+        with open(os.path.join(folder, "interrupts.asm"), "w", newline="\n") as f:
+            f.write(asm)
+        r = subprocess.run([watcom.ow_tool("wasm"), "-q", "interrupts.asm"], cwd=folder, env=env,
+                           capture_output=True, text=True)
+        why = extra("interrupt_registers", c.replace('#include "m.h"\n', ""))
+        if r.returncode == 0 and not why:
+            lines += ["file interrupts.obj", "file interrupt_registers.obj"]
+        else:
+            b.error = "the interrupt routines: %s" % (why or (r.stdout or r.stderr or "").strip()[-200:])
+    lines += ["file %s.obj" % stem for stem in b.lead_ins]     # each code segment starts with its lead-in
     lines += ["file %s.obj" % stems[n] for n in m.order if n in stems]
     if cs and entry not in public:
         lines.append("file entry.obj")
@@ -421,6 +523,7 @@ def _build16(b, path, m, folder):
         lines.append("option resource=%s" % os.path.basename(res))
     imports = dict(m.imports)
     imports.update({k: v for k, v in d.imports.items() if k not in imports})
+    imports.update({k: v for k, v in asm_imports.items() if k not in imports})
     # a C name compiled as __stdcall with an open argument list is the symbol `_name`
     for name, (mod, what) in sorted(imports.items()):
         lines.append("import _%s %s.%s" % (name, mod, what if isinstance(what, int) else _quote(what)))
