@@ -56,11 +56,8 @@ def run(description, only=(), timeout=3600):
     if had is not None:
         stdout, stderr = had.decode("utf-8", "replace").split("\x00", 1)
     else:
-        env = dict(os.environ, CB_LANGUAGES=_languages())
-        cmd = [_exe(), description] + (["--at"] + ["%x" % va for va in only] if only else [])
-        r = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=timeout, env=env)
-        stdout, stderr = r.stdout or "", (r.stderr or "")[-2000:]
-        if r.returncode == 0 and stdout:
+        stdout, stderr, whole = _run_resuming(description, only, timeout)
+        if whole and stdout:
             cache.put("decompiled", k, (stdout + "\x00" + stderr).encode("utf-8", "replace"))
     out, order, by_va = {}, [], {}
     for m in re.finditer(r"(?ms)^/\*@@ (\S+) ([0-9a-f]+) \*/\n(.*?)(?=^/\*@@ |\Z)", stdout):
@@ -72,6 +69,44 @@ def run(description, only=(), timeout=3600):
             order.append(name)
             by_va[va] = name
     return out, order, by_va, stderr
+
+
+_MARK = re.compile(r"(?m)^/\*@@ \S+ ([0-9a-f]+) \*/")
+
+
+def _run_resuming(description, only, timeout):
+    """Run the native program; when it dies part way (a crash that depends on what it did
+    before -- the function it died on decompiles on its own), start it again from the next
+    function it had not written, and so on. A function a fresh start dies on at once is left
+    out, with a note on stderr. -> (stdout, stderr, whether every function was attempted)"""
+    env = dict(os.environ, CB_LANGUAGES=_languages())
+    if only:
+        wanted = sorted(only)
+    else:
+        with open(description, encoding="utf-8", errors="replace") as f:
+            wanted = sorted({int(line.split("\t")[1], 16) for line in f if line.startswith("F\t")})
+    first = True
+    outs, errs, left = [], [], list(wanted)
+    while True:
+        cmd = [_exe(), description] + (["--at"] + ["%x" % va for va in left] if (only or not first) else [])
+        r = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=timeout, env=env)
+        out = r.stdout or ""
+        outs.append(out)
+        errs.append((r.stderr or "")[-1000:])
+        if r.returncode == 0:
+            return "".join(outs), "".join(errs)[-2000:], True
+        done = {int(m.group(1), 16) for m in _MARK.finditer(out)}
+        # (the last one written may be cut off by the crash: it is done again)
+        last = max(done) if done else None
+        left = [va for va in left if va not in done or va == last]
+        if done and last is not None:
+            outs[-1] = out[:list(_MARK.finditer(out))[-1].start()]
+        if not done or done == {last} and left and left[0] == last:
+            dead = left.pop(0)                               # dies at once on this one: left out
+            errs.append("\n[decompiler died on %x; left out]\n" % dead)
+        first = False
+        if not left:
+            return "".join(outs), "".join(errs)[-2000:], False
 
 
 _STAMP = []
