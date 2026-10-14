@@ -736,6 +736,9 @@ def _build16(b, path, m, folder):
         return None if why else stem
 
     asm_imports = _assembled16(b, nef, at, segs, stems, public, folder, env, m.segments, forced, elsewhere)
+    for n, why in getattr(m, "failed", {}).items():           # no C, and not rebuilt from its instructions
+        if n not in b.assembled:
+            b.rejected.setdefault(n, why)
     library = definitions.is_library(path)
     lines = ["format windows%s" % (" dll" if library else ""), "name m.dll",
              "option quiet, map, nodefaultlibs, caseexact, packcode=1, packdata=0",
@@ -832,7 +835,8 @@ def _build16(b, path, m, folder):
         over = re.search(r"size of segment CODE(\d+) exceeds 64k by (\d+) bytes", b.error)
         swap = []
         if apart and by_stem.get(apart.group(1)) and by_stem[apart.group(1)] not in b.rejected:
-            swap = [(by_stem[apart.group(1)], "reaches near for something in another segment")]
+            line = next((ln for ln in b.error.splitlines() if apart.group(1) in ln), "")
+            swap = [(by_stem[apart.group(1)], "reaches near for something in another segment: " + line.strip()[-160:])]
         elif over:
             seg, need, freed = int(over.group(1)), int(over.group(2)) + 512, 0
             for size, n in sorted(((os.path.getsize(os.path.join(folder, stems[n] + ".obj")), n)

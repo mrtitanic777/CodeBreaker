@@ -252,7 +252,7 @@ def functions(nef):
     return out
 
 
-def returns(code, off, limit=600):
+def returns(code, off, limit=600, want=None):
     """How the function at `off` returns: ("far" | "near" | None, bytes of arguments removed).
 
     Read from the function's own first return instruction: `retf` is a far function, `ret` a
@@ -261,21 +261,62 @@ def returns(code, off, limit=600):
     how SOMEONE calls it. None when no return is met within `limit` instructions."""
     import capstone
     md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
-    n = 0
-    for ins in md.disasm(bytes(code[off:off + 4 * limit]), off):
+    # The code is followed, not read straight down: functions share epilogues (Windows exports
+    # beside each other jump into one `retf 8` that may lie BEFORE them), and straight down from
+    # a jump is often someone else's code and someone else's return. The nearest return by the
+    # paths the function takes is its own.
+    from collections import deque
+    # (one instruction at a time, every path abreast: the return fewest instructions away)
+    work, seen, n = deque([off]), set(), 0
+    while work and n < limit:
+        at = work.popleft()
+        if not 0 <= at < len(code) or at in seen:
+            continue
+        seen.add(at)
+        ins = next(md.disasm(bytes(code[at:at + 16]), at), None)
+        if ins is None:
+            continue
         n += 1
         if ins.mnemonic in ("ret", "retf", "lret"):
-            pop = int(ins.op_str, 0) if ins.op_str else 0
-            return ("near" if ins.mnemonic == "ret" else "far"), pop
-        if n >= limit:
-            break
+            kind = "near" if ins.mnemonic == "ret" else "far"
+            if want is None or kind == want:
+                pop = int(ins.op_str, 0) if ins.op_str else 0
+                return kind, pop
+            continue
+        target = int(ins.op_str, 0) if ins.op_str[:2] == "0x" and ins.op_str[2:].isalnum() else None
+        if ins.mnemonic == "push" and target is not None and off < target < len(code):
+            work.append(target)                          # a return address it pushes (push 198b; jmp worker)
+        if ins.mnemonic == "jmp":
+            if target is not None:                       # (through a table or register: not followed)
+                work.append(target)
+            continue
+        if (ins.mnemonic.startswith("j") or ins.mnemonic in ("loop", "loope", "loopne", "jcxz")) and target is not None:
+            work.append(target)
+        work.append(ins.address + ins.size)
     return None, -1
+
+
+def windows_far_prologue(code, off):
+    """The prologue of a far function that Windows calls (exports, callbacks): `mov ax,ds` or
+    `push ds; pop ax`, `nop`, `inc bp; push bp` -- the odd BP marking a far frame."""
+    head = bytes(code[off:off + 6])
+    return head[:4] in (b"\x8c\xd8\x90\x45", b"\x1e\x58\x90\x45") or head[:2] == b"\x45\x55"
 
 
 def model_line(d, va, name, default="near"):
     """The description line for a function at `va`."""
     seg, off = where(va)
-    kind, pop = returns(d.segment_bytes.get(seg, b""), off)
+    code = d.segment_bytes.get(seg, b"")
+    if (seg, off) in getattr(d, "far_called", ()):           # (found later, called far: see describe16)
+        default = "far"
+    # How the original calls it is the evidence (an export, a far fix-up: far); the nearest
+    # return of that kind then says what it removes. With no such evidence, its own nearest
+    # return says both.
+    if default == "far" or windows_far_prologue(code, off):
+        kind, pop = returns(code, off, want="far")
+        kind = "far"
+    else:
+        kind, pop = returns(code, off)
     # A function that removes its own arguments says so in its return (`retf 6`); one that ends
     # in a plain return leaves them to the caller.
     conv = "__stdcall16" if pop > 0 else "__cdecl16" if pop == 0 else "__stdcall16"
@@ -381,7 +422,23 @@ def describe16(module_path, outdir):
         if e and re.fullmatch(r"[A-Za-z_]\w*", nm):
             exported.setdefault((e["seg"], e["offset"]), nm)
     names, where, funcs = {}, {}, []
+    # A far call whose offset the linker wrote and whose selector the loader fills in (a fix-up
+    # of the selector word alone) calls a far function: `call far seg:off` in the relocated code.
+    code_sel = {selector(s["idx"]): s["idx"] for s in segs if s["kind"] == "CODE"}
+    far_called = set()
+    for s in segs:
+        if s["kind"] != "CODE":
+            continue
+        img = images[s["idx"]]
+        i = img.find(b"\x9a")
+        while 0 <= i < len(img) - 4:
+            o, sl = struct.unpack_from("<HH", img, i + 1)
+            if sl in code_sel:
+                far_called.add((code_sel[sl], o))
+            i = img.find(b"\x9a", i + 1)
     for (seg, off), dist in sorted(functions(nef).items()):
+        if (seg, off) in far_called:
+            dist = "far"
         va = address(seg, off)
         nm = exported.get((seg, off)) or "sub_%d_%04X" % (seg, off)
         if nm in imports:
@@ -389,6 +446,7 @@ def describe16(module_path, outdir):
         names[va], where[va] = nm, (seg, off)
         funcs.append((va, nm, dist))
     d = Description("", names, where, order)
+    d.far_called = far_called                                                 # (seg, off) a far call reaches
     d.import_names = import_names16(nef)                                       # symbol -> the import's real name
     d.selector_imports = {sel: (name, used_as.get(name, "segment"))       # made-up value -> (import symbol,
                           for name, sel in selectors.items()}               #   its selector or its offset)

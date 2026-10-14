@@ -54,6 +54,8 @@ def _compile(cc, cflags, env, outdir, stem, text):
     """Compile one function. -> "" or the first error. What the compiler made of this text
     with this header and these options is kept (base/cache.py) and not made again."""
     from codebreaker.base import cache
+    if "codebreaker_entry_sp(" in text and "-of+" not in cflags:
+        cflags = list(cflags) + ["-of+"]       # (it reads the frame: BP+2 is where SP stood on entry)
     k = cache.key(cache.tool(cc), cflags, _HEADER.get(outdir, ""), text) if outdir in _HEADER else None
     had = cache.get("objects", k) if k else None
     if had is not None:
@@ -83,6 +85,11 @@ def _compile(cc, cflags, env, outdir, stem, text):
         pass
     m = _ERR.search(log)
     why = (m.group(2) if m else log.strip()[-100:] or "the compiler failed")[:100]
+    if m:                                        # with the line it is about
+        src = ['#include "m.h"', ""] + text.splitlines()
+        n = int(m.group(1))
+        if 0 < n <= len(src):
+            why += " -- " + src[n - 1].strip()[:200]
     if k and m:                                  # a rejection is kept; a compiler that fell over is not
         cache.put("objects", k, b"ER" + why.encode("utf-8", "replace"))
     return why

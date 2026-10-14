@@ -428,6 +428,10 @@ uint2 codebreaker_ds(void);
 #pragma aux codebreaker_ds = "mov ax,ds" value [ax] modify exact [ax];
 uint2 codebreaker_cs(void);
 #pragma aux codebreaker_cs = "mov ax,cs" value [ax] modify exact [ax];
+/* the stack pointer as the function was entered (where its return address is): with the
+   function's frame (BP pushed, then BP = SP) that is BP+2 */
+uint2 codebreaker_entry_sp(void);
+#pragma aux codebreaker_entry_sp = "lea ax,[bp+2]" value [ax] modify exact [ax];
 #define false 0
 #define __stdcall16far __far __stdcall
 #define __stdcall16near __near __stdcall
@@ -628,6 +632,21 @@ def compilable16(module_path, outdir=None):
         lst.sort()
         for k, (off, va) in enumerate(lst):
             ends[va] = lst[k + 1][0] if k + 1 < len(lst) else len(d.images.get(seg, b""))
+    # A function the decompiler could not make stays a function of the module: a body that says
+    # so, which the build replaces by the function's own instructions where it was written in
+    # assembly, and otherwise reports as not rebuilt (m.failed).
+    m.failed = {}
+    with open(d.path, encoding="utf-8") as f:
+        for line in f:
+            if line.startswith("F\t"):
+                parts = line.rstrip("\n").split("\t")
+                va, nm = int(parts[1], 16), parts[2]
+                if va not in by_va and nm not in texts and d.where.get(va):
+                    model = parts[4] if len(parts) > 4 and parts[4] != "inline" else "__cdecl16near"
+                    texts[nm] = ("xunknown2 %s %s()\n{\n  /* the decompiler could not make this function */\n"
+                                 "  return 0;\n}" % (model, nm))
+                    by_va[va] = nm
+                    m.failed[nm] = "the decompiler could not make it"
     for va in sorted(by_va):
         name = by_va[va]
         raw = texts[name]
@@ -660,7 +679,8 @@ def compilable16(module_path, outdir=None):
             m.near.add(name)                                 # near is the default and is not printed
         if head.split()[0] in _WIDE or "*" in head.split(name)[0] and "__far" in head.split(name)[0]:
             m.wide.add(name)
-        m.texts[name] = _far_addresses(_interrupts(_open_arguments(text), m.interrupts))
+        text = re.sub(r"\b_([a-z]+Ram[0-9a-f]{8})\b", r"\1", text)     # (a global the decompiler named twice)
+        m.texts[name] = _far_locals(_entry_sp(_far_addresses(_interrupts(_open_arguments(text), m.interrupts))))
         m.order.append(name)
         m.by_va[va] = name
         m.where[va] = d.where.get(va)
@@ -786,6 +806,54 @@ def _interrupts(text, used):
     return _INT_RESULT.sub(lambda r: "int_" + r.group(1), text)
 
 
+def _entry_sp(text):
+    """The decompiler's name for SP as the function was entered, used as a value (code that keeps
+    the stack pointer, or makes an address on the stack from it): codebreaker_entry_sp(). A place
+    on the stack it names by that (stack0xffec: entry SP - 0x14, above the function's own frame,
+    the caller's) is that address."""
+    text = text.replace("register0x00000010", "codebreaker_entry_sp()")
+    return re.sub(r"&stack0x([0-9a-f]{4})\b",
+                  lambda m: "((uint1 *)codebreaker_entry_sp() + (int2)0x%s)" % m.group(1), text)
+
+
+def _far_locals(text):
+    """A four-byte local the code reads THROUGH holds a far pointer: it is set from a segment and
+    an offset (CONCAT22(seg, off)) and the decompiler casts that to a near pointer, which in C
+    would keep the offset alone. Declared as the far pointer it is, to what that cast names."""
+    for mm in list(re.finditer(r"(?m)^([ \t]+)(?:xunknown4|uint4|int4|undefined4) (\w+);[ \t]*$", text)):
+        name = mm.group(2)
+        if not re.search(r"(?<![\w)\]])\*%s\b" % name, text):
+            continue
+        sets = re.findall(r"\b%s = \(([\w ]+?) \*\)CONCAT22\(" % name, text)
+        to = sets[0] if sets else "xunknown1"
+        text = text.replace(mm.group(0), "%s%s __far *%s;" % (mm.group(1), to, name), 1)
+        text = re.sub(r"\b(%s = )\(([\w ]+?) \*\)CONCAT22\(" % name, r"\1(\2 __far *)CONCAT22(", text)
+    # `_p` beside `p`: the decompiler's name for the whole four bytes whose low half is the near
+    # pointer p -- a far pointer, and p its offset
+    for mm in list(re.finditer(r"(?m)^([ \t]+)([\w ]+?) \*(\w+);[ \t]*$", text)):
+        lead, to, name = mm.groups()
+        whole = "_" + name
+        if not re.search(r"\b%s\b" % whole, text) or re.search(r"(?m)^[ \t]+[\w ]+\*?\s*%s;" % whole, text):
+            continue
+        assigned = re.search(r"(?<![=!<>])\b%s\s*=[^=]" % name, text)
+        decl = "%s%s __far *%s;" % (lead, to, whole)
+        text = text.replace(mm.group(0), (mm.group(0) + "\n" if assigned else "") + decl, 1)
+        text = re.sub(r"\b(%s = )\(([\w ]+?) \*\)CONCAT22\(" % whole, r"\1(\2 __far *)CONCAT22(", text)
+        if not assigned:
+            text = re.sub(r"(?<!_)\b%s\b" % name, "((%s *)(uint2)(uint4)%s)" % (to, whole), text)
+    # one pointer local set from another the decompiler typed differently (int2 __far ** from
+    # int2 **): what is kept is the value, in the type of the one it goes into
+    types = {m2.group(2): m2.group(1).strip() for m2 in
+             re.finditer(r"(?m)^[ \t]+([\w ]+?[\w ]*\*+)\s*(\w+);[ \t]*$", text)}
+
+    def cast(m2):
+        a, b = m2.group(2), m2.group(3)
+        if a in types and b in types and types[a] != types[b]:
+            return "%s%s = (%s)%s;" % (m2.group(1), a, types[a], b)
+        return m2.group(0)
+    return re.sub(r"(?m)^([ \t]+)(\w+) = (\w+);[ \t]*$", cast, text)
+
+
 def _passed_on(arg, reg):
     """Is `arg` the register `reg` itself as the function had it -- not set for the interrupt?"""
     return re.fullmatch(r"\s*(?:in|unaff)_E?%s\s*" % reg.upper(), arg) is not None
@@ -811,6 +879,8 @@ def _far_addresses(text):
         cast = re.match(r"^\(([\w ]+?)\s*\*\)\s*(.*)$", off, re.S)
         target = cast.group(1) if cast else "uint1"
         offset = cast.group(2) if cast else off
+        if text[:mm.start()].rstrip().endswith("(*") and text[after:].lstrip().startswith(")("):
+            target = "code"                                # (*MK_FP(seg, off))(...): a call to code there
         out.append(text[at:mm.start()] + "((%s __far *)MK_FP(%s, %s))" % (target, _far_addresses(seg),
                                                                           _far_addresses(offset)))
         at = after
@@ -847,6 +917,9 @@ INTRINSICS16 = {
     "out": "void out(uint2 port, uint1 value);\n#pragma aux out = 0xEE parm [dx] [al];",
     "LOCK": "#define LOCK()    /* the next instruction carries a LOCK prefix */",
     "UNLOCK": "#define UNLOCK()  /* (the end of that instruction) */",
+    # LSL: the limit of a selector's segment, 32 bits (lsl eax,eax; edx = its high half)
+    "SegmentLimit": "uint4 SegmentLimit(uint2 selector);\n#pragma aux SegmentLimit = 0x66 0x0f 0x03 0xc0 "
+                    "0x66 0x8b 0xd0 0x66 0xc1 0xea 0x10 parm [ax] value [dx ax] modify exact [ax dx];",
     "POPCOUNT": "static uint2 POPCOUNT(uint4 x) { uint2 n = 0; while (x) { n += (uint2)(x & 1); x >>= 1; } return n; }",
 }
 
