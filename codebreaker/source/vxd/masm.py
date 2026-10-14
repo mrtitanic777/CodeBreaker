@@ -272,7 +272,7 @@ def assemble(masm_text, root):
 # natively -- no DOSBox/ML round-trip -- typically 10-20x faster, and it matches
 # the shipped Win95 bytes even on the SIB base/index orderings where ML 6.11c
 # differs (so it byte-preserves FEWER instructions than ML). It is resolved from
-# config.json's `nasm` (the bundled tools/nasm-masm build; the repo convention),
+# settings.json's `nasm` (nasm.exe of the nasm-masm project),
 # then the NASM_MASM env override, then a `nasm-masm`/`nasm` on PATH. When none
 # qualifies the code transparently falls back to ML.EXE under DOSBox.
 # Build/install instructions: docs/NATIVE_ASSEMBLER.md.
@@ -287,7 +287,7 @@ _nasm_cache = None
 
 def find_nasm():
     """Path to a `--masm`-capable, public-case-preserving nasm, or None. Resolution order:
-    config.json `nasm`, then the NASM_MASM env var, then `nasm-masm`/`nasm` on PATH. Probed once
+    settings.json `nasm`, then the NASM_MASM env var, then `nasm-masm`/`nasm` on PATH. Probed once
     (accepts --masm, emits COFF, keeps public case) and cached. See docs/NATIVE_ASSEMBLER.md."""
     global _nasm_cache
     if os.environ.get("CB_FORCE_ML"):        # force the authentic DDK ML.EXE (DOSBox), not native nasm
@@ -297,7 +297,7 @@ def find_nasm():
         return _nasm_cache or None
     cands = []
     try:
-                cands.append(settings.get("nasm"))          # config.json (repo convention; absolute)
+                cands.append(settings.get("nasm"))          # settings.json
     except Exception:
         pass
     cands += [os.environ.get("NASM_MASM"), shutil.which("nasm-masm"), shutil.which("nasm")]

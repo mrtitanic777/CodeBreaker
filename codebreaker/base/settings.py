@@ -111,7 +111,7 @@ def package_root():
 
 
 def repo_root():
-    """The CodeBreaker checkout root (where config.json / wt.py live). When frozen, the bundle."""
+    """The CodeBreaker checkout root (where settings.json lives). When frozen, the bundle."""
     return sys._MEIPASS if _FROZEN else os.path.dirname(_ENGINE)
 
 
@@ -124,7 +124,7 @@ _ERAS = ("win95", "win98", "win3.1", "win1.0")
 
 
 def data_root():
-    """The active data corpus root. Mirrors wt.py: honor WT_DATA_ROOT when it actually holds era
+    """The active data corpus root: honor WT_DATA_ROOT when it actually holds era
     dirs (or when frozen), else the checkout's parent (the dev monorepo layout)."""
     env = os.environ.get("WT_DATA_ROOT")
     if _FROZEN:
