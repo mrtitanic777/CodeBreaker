@@ -449,6 +449,24 @@ def kernel_parts(path):
     return out, layout
 
 
+def pklite_head(path, start):
+    """PKLITE's entry code and decompressor (the first `start` bytes of the load module it
+    stored) as a program of its own: it runs at the start of the program, in the program prefix's
+    segment, then copies its decompressor to the top of memory."""
+    with open(path, "rb") as f:
+        data = f.read()
+    h = _mz(data)
+    head = Program(path, "kernel part")
+    head.name = "pklite (the entry code and decompressor PKLITE put in front of %s)" % os.path.basename(path).lower()
+    head.base = LOAD * 16
+    head.image = bytes(data[h["header"]:h["header"] + start])
+    head.spans = [(head.base, len(head.image), "pklite")]
+    head.cs = head.ds = LOAD - 0x10                           # CS = the program prefix, IP = 100h
+    head.entries = [(head.base, "start", "far")]
+    head.segments = {head.base: head.cs}
+    return head
+
+
 def exepack_stub(path, layout):
     """The EXEPACK unpacker's code (build/exepack.Layout.stub_code) as a program of its own:
     LINK put the same one behind every program it packed."""

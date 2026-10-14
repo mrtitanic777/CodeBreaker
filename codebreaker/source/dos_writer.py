@@ -509,6 +509,9 @@ def _as_file(p, outdir, stem, linked, result, log=None):
     beyond = max(0, (h["ss"] * 16 + h["sp"] - len(module) + 15) // 16)
     os.makedirs(os.path.join(outdir, "file"), exist_ok=True)
     out = os.path.join(outdir, "file", os.path.basename(p.path).upper())
+    if p.packer == "PKLITE":
+        _as_pklite_file(p, data, oh, exe, h, module, outdir, stem, out, result, log)
+        return
     if p.packer not in (None, "EXEPACK", "moves itself"):
         # stored by a packer this does not write (PKLITE ...): the program as linked
         with open(out, "wb") as f:
@@ -546,6 +549,41 @@ def _as_file(p, outdir, stem, linked, result, log=None):
     except ValueError as e:
         result.setdefault("notes", []).append("not laid out as the original file: %s" % e)
         body = exe
+    with open(out, "wb") as f:
+        f.write(body + overlay)
+    result.update(file=out, file_same=body + overlay == data)
+    if not result["file_same"]:
+        n = min(len(body + overlay), len(data))
+        first = next((a for a in range(n) if (body + overlay)[a] != data[a]), n)
+        result.setdefault("remarks", []).append("the file differs from the original's at %#x (%d bytes, original %d)" % (
+            first, len(body + overlay), len(data)))
+
+
+def _as_pklite_file(p, data, oh, exe, h, module, outdir, stem, out, result, log=None):
+    """A program the original stores packed by PKLITE: packed the same way (build/pklite.py),
+    behind PKLITE's entry code and decompressor (written as source, pklite/pklite.asm), in a
+    header laid out as the original's -- which keeps, after PKLITE's notice, a copy of the
+    program's own header: its min-alloc is the memory the program asks for beyond itself."""
+    from codebreaker.build import mzfile, pklite
+    tpl = _beside(os.path.join(outdir, stem + ".hdr"), lambda: mzfile.template(data[:oh["header"]]))
+    head_dir = os.path.join(outdir, "pklite")
+    head_bin = os.path.join(head_dir, "pklite.bin")
+    if not os.path.isfile(head_bin):
+        start = pklite.stream_start(data[oh["header"]:oh["size"]])
+        r = _program(dos.pklite_head(p.path, start), head_dir, "pklite", log)
+        if not r["same"]:
+            raise ValueError("PKLITE's decompressor does not build back")
+    with open(head_bin, "rb") as f:
+        head = f.read()
+    at = tpl.find(b"Reserved")
+    if at < 0:
+        raise ValueError("no copy of the program's header behind PKLITE's notice in %s.hdr" % stem)
+    memory = struct.unpack_from("<H", tpl, at + 8 + 4 + 8)[0]
+    relocs = [struct.unpack_from("<HH", exe, h["reloc_off"] + 4 * i)[::-1] for i in range(h["nreloc"])]
+    packed, hd = pklite.pack(module, relocs, (h["cs"], h["ip"], h["ss"], h["sp"]), head, memory)
+    body = mzfile.compose(tpl, packed, [(off, seg) for off, seg in hd["relocs"]], hd["cs"], hd["ip"], hd["ss"],
+                          hd["sp"], hd["min_alloc"])
+    overlay = _beside(os.path.join(outdir, stem + ".ovl"), lambda: p.overlay) if p.overlay else b""
     with open(out, "wb") as f:
         f.write(body + overlay)
     result.update(file=out, file_same=body + overlay == data)

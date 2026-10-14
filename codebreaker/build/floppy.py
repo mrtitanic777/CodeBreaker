@@ -199,7 +199,7 @@ def main(argv):
     # a program the original stores packed by a packer CodeBreaker does not write (PKLITE ...)
     # is rebuilt unpacked, and bigger: when the disk is too small for them all, the biggest of
     # them go on as the original stores them, until everything fits
-    unpacked = sorted((n for n in contents if dos.packer(os.path.join(original, n)) not in (None, "EXEPACK", "moves itself")),
+    unpacked = sorted((n for n in contents if dos.packer(os.path.join(original, n)) not in (None, "EXEPACK", "moves itself", "PKLITE")),
                       key=lambda n: -len(contents[n]))
     while True:
         try:
