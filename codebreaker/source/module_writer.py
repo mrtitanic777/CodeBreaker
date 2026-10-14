@@ -140,6 +140,25 @@ def _globals_note(path, header):
         if lines else ""
 
 
+def _string_reader(path, kind):
+    """address -> the module's string there, or None (for naming what GetProcAddress asks for)."""
+    if kind not in ("pe", "ne"):
+        return None
+    try:
+        from codebreaker.analyze import image, strings
+        img = image.load(path)
+    except Exception:
+        return None
+
+    def at(address):
+        try:
+            found = strings.at(img, address)
+        except Exception:
+            return None
+        return found[0] if found else None
+    return at
+
+
 def write_assembly(path, fs, sha, digest, out_dir, log=print):
     """A driver's or a real-mode program's source: its one assembly file, the status at its head."""
     from codebreaker.verify import reconstruct
@@ -217,6 +236,12 @@ def write_module(module, verify=True, out_dir=None, log=print, split=0, build_wh
             taken.add(nm)
     sub = dict(real, **rename)
     spell = re.compile(r"\b(%s)\b" % "|".join(sorted(sub, key=len, reverse=True))) if sub else None
+    # names in place of numbers and placeholders (source/readable.py): SDK constants, handles and
+    # parameters named for what Windows takes them as, function pointers for what they point at
+    from codebreaker.source import readable
+    texts = {va: spell.sub(lambda m: sub[m.group(1)], r["source"]) if spell else r["source"]
+             for va, r in best.items() if r.get("source")}
+    words = readable.Module(texts, _string_reader(path, kind))
     counts = dict.fromkeys(ORDER, 0)
     parts = []
     for va in addrs:
@@ -241,11 +266,14 @@ def write_module(module, verify=True, out_dir=None, log=print, split=0, build_wh
             said = ([detail] if detail else []) + said
             if va in known:
                 said.append("this is %s of %s" % known[va])
-        source = (row["source"] or "/* (no reconstruction) */").strip()
+        source = (words.function(va) if va in texts else "/* (no reconstruction) */").strip()
         shown_name = rename.get(row["name"] or "sub_" + va, row["name"] or "sub_" + va)
+        if shown_name.startswith("sub_") and va in texts:
+            hint = readable.calls_hint(texts[va])
+            if hint:
+                said.append(hint)
         parts.append("/* [%s] %s  @ %s%s */\n%s\n" % (
-            TITLE[shown], shown_name, va, (" -- " + "; ".join(said)) if said else "",
-            spell.sub(lambda m: sub[m.group(1)], source) if spell else source))
+            TITLE[shown], shown_name, va, (" -- " + "; ".join(said)) if said else "", source))
     total = len(addrs)
     banner = ["/* %s -- reconstructed source." % name, " *",
               " * STATUS, generated %s by CodeBreaker (verifier settings %s)." % (time.strftime("%Y-%m-%d"), digest),
@@ -276,6 +304,9 @@ def write_module(module, verify=True, out_dir=None, log=print, split=0, build_wh
         " * same return value, same calls out of the module with the same arguments, same memory changed,",
         " * same stack and saved registers, on every input tried. It is evidence, not proof. Names of",
         " * internal functions (sub_...) and locals are placeholders; no original names are claimed.",
+        " * Written in after judging, changing no code: the SDK's names for constants passed to",
+        " * Windows (with their values in %s.h), and names for locals, parameters and globals" % stem,
+        " * taken from the Windows functions they are passed to or hold the result of.",
         " * IDENTIFIED = the function's bytes are those of a function in a library that came with the",
         " * compiler; it is named after that function. It is reconstructed and judged all the same."]
     if real:
@@ -290,6 +321,10 @@ def write_module(module, verify=True, out_dir=None, log=print, split=0, build_wh
             header += "\n/* imports by number:\n%s */\n" % "".join(
                 " *   %-28s %s.%s\n" % ((n,) + tuple(s.rsplit("_", 1))) for s, n in sorted(real.items(), key=lambda kv: kv[1]))
         header += _globals_note(path, header)
+        header = readable._rename(header, words.globals)      # the globals as the functions now call them
+        if words.constants_used:
+            header += "\n/* SDK constants written into %s.c, with the values the SDK headers give them */\n%s" % (
+                stem, words.definitions())
         with open(os.path.join(out_dir, stem + ".h"), "w", encoding="utf-8", newline="\n") as f:
             f.write("/* %s -- types, declarations and globals used by the functions in %s.c.\n"
                     " * Globals are bound to their addresses in the original until the module's data is\n"
