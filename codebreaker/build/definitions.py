@@ -58,8 +58,8 @@ def module_name(path):
     """The name the module calls itself (falls back to the file's name)."""
     stem = os.path.splitext(os.path.basename(path))[0].upper()
     try:
-        if corpus.lane(path) == "ne":
-            return NEFile(path).module_name() or stem
+        if corpus.lane(path) == "ne":                         # (a name field padded with NULs or spaces)
+            return NEFile(path).module_name().replace(chr(0), " ").strip() or stem
         return os.path.splitext(open_pe(path).module_name())[0].upper() or stem
     except (ValueError, IndexError, struct.error):
         return stem
@@ -70,7 +70,7 @@ def description(path):
     if corpus.lane(path) != "ne":
         return ""
     names = NEFile(path).nonresident_names()
-    return names[0][0] if names else ""
+    return names[0][0].replace(chr(0), " ").strip() if names else ""
 
 
 def exports(path):

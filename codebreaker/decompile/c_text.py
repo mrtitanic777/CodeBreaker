@@ -120,6 +120,7 @@ def _more_helpers(have):
 
 
 _X86_HELPERS = _more_helpers(_HELPERS)
+_LIBM = ("sqrt", "sin", "cos", "tan", "atan2", "pow", "ldexp", "log", "floor", "fmod")    # declared in it
 
 
 _LOCAL = re.compile(r"(?m)^  ([A-Za-z_][\w ]*?(?:\s*\*+\s*|\s))([a-z]+Stack_([0-9a-f]+))(?: \[(\d+)\])?;[ \t]*$")
@@ -375,7 +376,13 @@ def compilable32(module_path, funcs, outdir):
         signed = name.startswith(("unkint", "int"))
         odd.append("typedef %s %s;" % ("long double" if size > 8 else ("long long" if size > 4 else "int") if signed
                                        else "unsigned long long" if size > 4 else "unsigned int", name))
-    preamble = _TYPES + "\n".join(odd) + "\n" + _HELPERS + _X86_HELPERS + "\n".join(decls) + "\n" + "\n".join(macros) + "\n"
+    # A module that is itself a C runtime (crtdll, msvcrt, mfc40, opengl32 ...) has functions of
+    # its own called sqrt, ldexp, floor: its declarations are the ones that hold, and the
+    # helpers' library prototypes of the same names step aside (a clash broke the whole header).
+    own = {d.split("(")[0].split()[-1].lstrip("*") for d in decls if "(" in d}
+    helpers = re.sub(r"double (%s)\([^)]*\); ?" % "|".join(_LIBM), lambda m: "" if m.group(1) in own else m.group(0),
+                     _X86_HELPERS) if own & set(_LIBM) else _X86_HELPERS
+    preamble = _TYPES + "\n".join(odd) + "\n" + _HELPERS + helpers + "\n".join(decls) + "\n" + "\n".join(macros) + "\n"
     from codebreaker.decompile import struct_text
     preamble, out = struct_text.apply(module_path, preamble, out, by_va)       # `p->field` for `*(T *)(p + N)`
     return preamble, out, order, by_va, used, in_ecx, in_edx
