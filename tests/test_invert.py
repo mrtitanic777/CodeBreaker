@@ -129,11 +129,49 @@ def test_dos_tools():
     assert r.get("obj", b"")[:1] == b"\x80"                                   # an object file
 
 
+def test_routing_thunks_and_grammars():
+    from codebreaker.invert import grammars, segment_thunk
+    assert run.compiler_of(CALLS) == "msc6"
+    assert run.compiler_of(bytes.fromhex("8cd89045558bec1e8ed8") + CALLS[10:]) == "msvc152"
+    assert segment_thunk.verify(CALLS) is None                          # a real function is not a thunk
+    texts = [t for g in grammars.GRAMMARS for t in g({"nargs": 2})]
+    assert texts and all("F(" in t for t in texts)
+
+
+def test_16bit_assembly_source():
+    """KRNL386's code at 0x4a4..0x4fa as cMacros source that MASM assembles back to the same bytes."""
+    import os
+    from codebreaker.build import dos_tools
+    from codebreaker.formats import ne
+    from codebreaker.source.ne_asm import idiom, segment
+    krnl = corpus.retail("krnl386.exe")
+    if not krnl or not dos_tools.emulator():
+        raise Skip("no krnl386.exe or no DOSBox-X")
+    nef = ne.NEFile(krnl)
+    seg = next(segment.Seg(nef, i, {}) for i, s in enumerate(nef.segments(), 1) if i == 1 and s.get("kind") == "CODE")
+    r = idiom.verify_range(seg, 0x4a4, 0x4fa)
+    assert r["ok"] and r["live"] == r["n_code"] and ("cBegin" in r["asm"] or "cProc" in r["asm"]), {k: v for k, v in r.items() if k != "asm"}
+    assert os.path.basename(krnl).lower() == "krnl386.exe"
+
+
+def test_debug_build_names():
+    import os
+    from codebreaker.source.ne_asm import segment
+    from codebreaker.symbols import debug_build
+    krnl, dbg = corpus.retail("krnl386.exe"), corpus.reference("WIN32SDK", "SCT", "DEBUG16", "I386")
+    if not krnl or not os.path.isfile(os.path.join(dbg, "KRNL386.MAP")):
+        raise Skip("no debug build of KRNL386 here")
+    names, (agree, disagree) = debug_build.recover(krnl, os.path.join(dbg, "KRNL386.EXE"),
+                                                   os.path.join(dbg, "KRNL386.MAP"), segment.load_ordinals("-"), None)
+    assert disagree == 0 and agree >= 5 and len(names) >= 40
+
+
 def main():
     for fn in (test_early_c_reads_a_function, test_early_c_frame_model, test_flow_of_a_straight_function,
                test_msc6_reads_calls_and_a_branch, test_msc6_declines_what_it_does_not_cover, test_msvc2_reads_constants,
                test_known_differences_table, test_every_model_has_a_command, test_against_the_real_compiler,
-               test_a_module, test_object_file_functions_and_the_early_compiler, test_dos_tools):
+               test_a_module, test_object_file_functions_and_the_early_compiler, test_dos_tools,
+               test_routing_thunks_and_grammars, test_16bit_assembly_source, test_debug_build_names):
         check(fn)
     for name, status, detail in RESULTS:
         print("  %-4s %s%s" % (status, name, ("  -- " + detail) if detail else ""))
