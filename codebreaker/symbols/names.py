@@ -213,6 +213,41 @@ def read_sym(path):
     return out
 
 
+def sym_objects(path):
+    """{segment number: name} from a .SYM file. The linker names a segment after the object
+    file its code came from (_MSGBOX, _WINUTIL, ...), so where a module was linked one segment
+    per object these are the names of its maker's source files. {} when it cannot be read."""
+    try:
+        with open(path, "rb") as f:
+            d = f.read()
+        out, seg, count = {}, struct.unpack_from("<H", d, 12)[0] * 16, struct.unpack_from("<H", d, 10)[0]
+        for _ in range(count):
+            if not seg or seg + 21 > len(d):
+                break
+            nxt, _nsym, _table, number = struct.unpack_from("<HHHH", d, seg)
+            name = d[seg + 21:seg + 21 + d[seg + 20]].decode("latin1", "replace")
+            if name:
+                out[number] = name
+            if nxt * 16 <= seg:
+                break
+            seg = nxt * 16
+        return out
+    except (OSError, struct.error, IndexError):
+        return {}
+
+
+_PLAIN_SEGMENTS = {"_TEXT", "TEXT", "DGROUP", "BSS", "_BSS", "RDATA", "_DATA", "DATA", "CONST", "IGROUP", "LGROUP",
+                   "_LGROUP", "_IGROUP", "EDATA", "IDATA", "RELOC", "RSRC", "CODE", "_CODE", "AUTO", "STACK", "HEAP",
+                   "_INIT", "INIT"}
+
+
+def source_files(module_path):
+    """{address: name of the object file the function was linked from}, for the functions the
+    module's .SYM file places in a segment named after an object -- and only where that file is
+    shown to be for this build (see debug_names). {} when there is no such file."""
+    return _debug(module_path)[1]
+
+
 _sym_files = None
 
 
@@ -240,6 +275,21 @@ def debug_names(module_path):
     build: a symbol file is from some build of the module, and offsets move between builds, so
     a segment's names are used only where the file's own exports sit at the offsets the symbols
     give them (at least two, and two in three of those the symbol file names)."""
+    return _debug(module_path)[0]
+
+
+_debugged = {}
+
+
+def _debug(module_path):
+    key_ = os.path.abspath(module_path)
+    if key_ not in _debugged:
+        files = {}
+        _debugged[key_] = (_debug_names(module_path, files), files)
+    return _debugged[key_]
+
+
+def _debug_names(module_path, files):
     lane = corpus.lane(module_path)
     out = {}
     with open(module_path, "rb") as f:
@@ -264,9 +314,9 @@ def debug_names(module_path):
             return pe.image_base + sections[seg - 1] + off if 0 < seg <= len(sections) else None
     else:
         return out
-    tables = [("CodeView symbols in the file", _by_segment(codeview(data)))]
-    tables += [(os.path.basename(p), _read_sym(p)) for p in _sym_file(stem)]
-    for where, segments in tables:
+    tables = [("CodeView symbols in the file", _by_segment(codeview(data)), {})]
+    tables += [(os.path.basename(p), _read_sym(p), sym_objects(p)) for p in _sym_file(stem)]
+    for where, segments, objects in tables:
         for number, symbols in segments:
             agree = named = 0
             for off, name in symbols.items():
@@ -282,6 +332,8 @@ def debug_names(module_path):
                     address = place(number, off & 0xFFFF if lane == "ne" else off)
                     if address is not None:
                         out.setdefault(address, (demangle.plain(name)[0], where))
+                        if objects.get(number, "").upper() not in _PLAIN_SEGMENTS and objects.get(number):
+                            files.setdefault(address, objects[number].lstrip("_").lower())
         if out:
             break
     return out

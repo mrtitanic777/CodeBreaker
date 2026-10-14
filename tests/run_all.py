@@ -12,7 +12,7 @@ import sys
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SUITES = [("../tools/check_imports.py", False), ("../tools/tidy.py", False), ("test_plumbing.py", False), ("test_ui.py", False), ("test_symbols.py", False), ("test_dos.py", False), ("test_analysis.py", False), ("test_drivers.py", False), ("test_versions.py", False), ("test_powerpc.py", False), ("test_media.py", False), ("test_whole_module.py", False),
+SUITES = [("../tools/check_imports.py", False), ("../tools/tidy.py", False), ("test_plumbing.py", False), ("test_ui.py", False), ("test_symbols.py", False), ("test_dos.py", False), ("test_analysis.py", False), ("test_drivers.py", False), ("test_versions.py", False), ("test_powerpc.py", False), ("test_media.py", False), ("test_whole_module.py", False), ("test_invert.py", False),
           ("test_verification.py", True)]
 
 

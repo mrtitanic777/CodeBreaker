@@ -9,6 +9,7 @@
     match <module> [--try]          optional: does a period compiler give the original's bytes back?
     repair <module>                 move each function toward the authored bytes (behaviour-preserving)
     teeth <module>                  break functions the judge passed, on purpose: does it notice?
+    invert <16-bit module>          read functions back into the source their compiler was given (compiler models)
     names <module>                  every function and import with its best name and where it came from
     identify <module>               runtime-library functions of a module, and what built it
     demangle <name>                 a decorated C++ name as its declaration
@@ -49,6 +50,7 @@ COMMANDS = {
     "match": ("codebreaker.verify.match", []),
     "repair": ("codebreaker.verify.repair", []),
     "teeth": ("codebreaker.verify.teeth", []),
+    "invert": ("codebreaker.invert.run", []),
     "decompile": ("codebreaker.decompile.decompiler", []),
     "names": ("codebreaker.symbols.names", []),
     "identify": ("codebreaker.symbols.runtime_library", []),

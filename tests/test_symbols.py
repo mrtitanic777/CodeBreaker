@@ -204,9 +204,19 @@ def test_names_of_a_module():
     assert names.key(lz, address).count(":") == 1
 
 
+def test_source_files_from_symbol_files():
+    (gdi,) = _corpus("gdi.exe")
+    named, files = names.debug_names(gdi), names.source_files(gdi)
+    if not named:
+        raise Skip("no symbol file for this build of gdi.exe")
+    assert files and set(files) <= set(named)                           # only where the symbols are for this build
+    assert all(f == f.lower() and not f.startswith("_") for f in files.values())
+
+
 def main():
     for fn in (test_demangle, test_definition_file_and_library, test_ordinals, test_prototypes, test_signatures,
-               test_identify, test_store_identified_and_bodies, test_names_of_a_module):
+               test_identify, test_store_identified_and_bodies, test_names_of_a_module,
+               test_source_files_from_symbol_files):
         try:
             fn()
             RESULTS.append((fn.__name__, "PASS", ""))
