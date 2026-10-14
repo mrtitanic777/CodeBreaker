@@ -51,19 +51,10 @@ CHECKS = ("early-c-frame", "msc6-function", "msc6-registers", "msc6-walk", "msc6
 
 def tool(name, arguments):
     """Run one model's own command line."""
-    import runpy
-    import sys
+    from codebreaker.base import commands
     if name not in TOOLS:
         raise SystemExit("no model %r (have: %s)" % (name, ", ".join(sorted(TOOLS))))
-    saved = sys.argv
-    sys.argv = [TOOLS[name]] + list(arguments)
-    try:
-        runpy.run_module(TOOLS[name], run_name="__main__")
-    except SystemExit as e:
-        return int(e.code or 0) if not isinstance(e.code, str) else 1
-    finally:
-        sys.argv = saved
-    return 0
+    return commands.run_module(TOOLS[name], arguments)
 
 
 _LONG = {"DWORD", "LONG", "ULONG", "long", "unsigned long", "LPARAM", "LRESULT", "COLORREF", "FARPROC"}

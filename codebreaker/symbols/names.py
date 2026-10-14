@@ -35,7 +35,7 @@ import os
 import re
 import struct
 
-from codebreaker.base import corpus, settings
+from codebreaker.base import corpus
 from codebreaker.decompile import describe
 from codebreaker.formats.ne import NEFile
 from codebreaker.formats.pe import open_pe
@@ -257,7 +257,7 @@ def _sym_file(stem):
     global _sym_files
     if _sym_files is None:
         _sym_files = {}
-        ref = settings.get("reference") or os.path.join(corpus.design_dir(), "reference")
+        ref = corpus.reference()
         for dp, dirs, fns in os.walk(ref):
             dirs[:] = [d for d in dirs if d.upper() not in ("ALPHA", "MIPS", "PPC")]
             for fn in fns:
