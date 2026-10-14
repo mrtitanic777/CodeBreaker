@@ -40,11 +40,15 @@ codebreaker/
   build/       functions.py  THE builder: compile each function, link a DLL / an image
                module.py     a whole module: functions, data, resources, exports
                driver.py, resources.py, definitions.py, disc_image.py
-               period.py     compilers of the original's time (for `match` and `repair`)
+               period.py, msc6.py, msvc152.py   compilers of the original's time
+               period16.py   a 16-bit DLL built with Microsoft C 6 and LINK 5.60
+               flat_thunk.py a 32-to-16-bit thunk DLL built with the thunk compiler, ML, CL and LINK
+               masm.py, dos_tools.py, dos_sessions.py   DOS tools run in DOSBox-X
   emulate/     one runner per kind, one door: emulate.runner(kind)
                emulator.py (32-bit), windows16.py, driver.py, powerpc.py
   analyze/     call graph, conventions, globals, strings, structures, classes, dispatch
-  symbols/     names: imports by number, runtime-library functions, C++ names, DOS and driver services
+  symbols/     names: imports by number, runtime-library functions, C++ names, DOS and driver
+               services, debug symbols and the source file each function came from, debug builds
   verify/      reconstruct.py  THE path: decompile, build, run, compare, record
                compare.py      THE comparer: do two builds of a function behave alike?
                win32.py, win16.py, powerpc.py, driver.py, dos.py    what differs per kind
@@ -54,7 +58,12 @@ codebreaker/
   store/       functions.py  THE store: every function, every reconstruction, every verdict
   jobs/        pool.py       THE runner: work spread over processes, surviving a crash
   source/      module_writer.py, placement.py   the reconstructed module as source files, in the tree
+               readable.py   SDK constants and names written in after judging (same object code)
                driver_writer.py, dos_writer.py, assembly.py   assembly source that builds back
+               vxd/          a driver as the driver kit's macro source (Declare_Virtual_Device ...)
+               ne_asm/       16-bit hand-written assembly as SDK cMacros source (cProc, cBegin ...)
+  invert/      compiler models: the code a compiler emits for each statement, read backwards --
+               Microsoft C 2.03 / the C of 1983-84, Microsoft C 6, Visual C++ 1.52 and 2.0
   compare/     versions.py   the functions of two builds of a module: same, changed, added, removed
   coverage/    ledger.py     how much of every module is accounted for
   ui/          the local web console and the desktop window
@@ -62,16 +71,16 @@ native/decompiler/   the native decompiler (C++): decompiler.cc around the Ghidr
                      in core/ (Apache-2.0, see core/LICENSE, core/NOTICE)
 tests/               python tests/run_all.py -- run before every commit
 tools/               measuring and keeping the code base itself in order
-migrate/             carries modules over from the previous layout
+docs/                STATUS.md (where things stand), NOT_IN_REPO.md (what to attach, and its setting)
 ```
 
 ## Setup
 
 Copy `settings.example.json` to `settings.json` and fill in where the original binaries and the
-OpenWatcom compiler are. The rest is optional: a PowerPC compiler (to judge PowerPC images), a
-period 32-bit compiler and the XENIX C compiler (for `match` and `repair`), `workers` (how many
-things run at once; default half the processors, at most 6). Results and caches go to `state/`.
-Neither is committed.
+OpenWatcom compiler are; `pip install -r requirements.txt`. The rest is optional -- the period
+compilers, DOSBox-X, MASM, the PowerPC compiler -- and docs/NOT_IN_REPO.md lists each with its
+setting. `workers` is how many things run at once (default half the processors, at most 6).
+Results and caches go to `state/`. Neither is committed.
 
 ## Use
 
@@ -86,6 +95,11 @@ python -m codebreaker decompile user.exe       just the C, for any module
 python -m codebreaker driver-source vkd.vxd    a driver's assembly source, built back and checked
 python -m codebreaker dos-source find.exe      the same for a real-mode program
 python -m codebreaker analyze shell32.dll      structures, classes, call graph, conventions
+python -m codebreaker invert olecli.dll        functions read back into the source their compiler was given
+python -m codebreaker vxd idiom vkd.vxd        a driver as the driver kit's macro source
+python -m codebreaker ne-asm idiom KRNL386.EXE 1 0x4a4 0x4fa   16-bit assembly as cMacros source
+python -m codebreaker build16 tests/fixtures/lzexpand          a 16-bit DLL with the period tools
+python -m codebreaker flat-thunk lz32.dll --build DIR          a thunk DLL with the period tools
 python -m codebreaker                          every command
 ```
 
@@ -138,6 +152,6 @@ tools/chart.py             redraw docs/architecture.png
 
 ## Where this came from
 
-A restructuring of an earlier checkout that had grown by accretion. `migrate/port.py` carries a
-module over under a name that says what it does; `migrate/ported.json` records what came from
-where. Once a module is here, it is edited here.
+A restructuring of an earlier checkout that had grown by accretion (its last state is the tag
+`v1-before-consolidation`). What it had that is still of use was brought into this package and
+checked against what the old code produced; the rest was retired. The tool is this package.
