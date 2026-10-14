@@ -257,10 +257,34 @@ def test_console_serves_everything():
         srv.server_close()
 
 
+def test_workbench_and_live_window():
+    """The Workbench (Win32/GDI and Windows Forms) and the Live reconstruction window: built and
+    destroyed, a program taken apart, the live window fed the program's own C."""
+    import tempfile
+    from codebreaker.ui import live, take_apart, workbench
+    path = corpus.retail("lzexpand.dll")
+    if not path:
+        raise Skip("no lzexpand.dll")
+    rep = take_apart.reverse(path, None, tempfile.mkdtemp(prefix="takeapart_"))
+    assert rep["format"].startswith("NE") and rep["functions"] > 20 and rep["insn_count"] > 1000
+    assert [a for a, _p in rep["artifacts"]][-2:] == ["Reconstructed C", "Hex dump"]
+    lines = live._real_reveal_lines(path)
+    assert lines and "(" in lines[0] and lines[1].strip() == "{"            # a function's C, from the file
+    commands = {e[3][1] for e in workbench.NAV if e[0] == "act" and e[3][0] == "cmd"}
+    from codebreaker import __main__ as cli
+    assert commands <= set(cli.COMMANDS), commands - set(cli.COMMANDS)    # every menu entry is a real command
+    if sys.platform == "win32":
+        workbench.main(["--selftest"])
+        import importlib.util
+        if importlib.util.find_spec("clr"):                  # pythonnet, for the Windows Forms one
+            workbench.main(["--forms", "--selftest"])
+
+
 def main():
     for fn in (test_describe_32bit, test_describe_16bit_driver_and_dos, test_describe_never_raises,
                test_strings_bytes_and_resources, test_info_command, test_ledger_agrees_with_the_store,
-               test_ledger_reads_without_writing, test_progress_reading, test_console_serves_everything):
+               test_ledger_reads_without_writing, test_progress_reading, test_console_serves_everything,
+               test_workbench_and_live_window):
         check(fn)
     for name, status, detail in RESULTS:
         print("  %-4s %s%s" % (status, name, ("  -- " + detail) if detail else ""))

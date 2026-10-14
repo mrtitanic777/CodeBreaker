@@ -134,3 +134,20 @@ def data_root():
     if env and os.path.isdir(env):
         return env
     return os.path.dirname(repo_root())
+
+
+def main(argv):
+    """python -m codebreaker settings -- every setting, its value, and whether it is there."""
+    print("settings: %s%s" % (FILE, "" if os.path.isfile(FILE) else "  (missing: copy settings.example.json)"))
+    for key in sorted(set(_load()) | set(_PATHS)):
+        value = get(key)
+        if isinstance(value, dict):
+            shown, mark = ", ".join("%s=%s" % kv for kv in value.items()), "  "
+        elif key in _PATHS:
+            mark = "ok" if value and os.path.exists(value) else ("--" if not value else "!!")
+            shown = value or "(not set)"
+        else:
+            shown, mark = str(value), "  "
+        print("  %s %-16s %s" % (mark, key, shown))
+    print("ok = found, !! = set but not there, -- = not set (optional unless a command asks for it)")
+    return 0
