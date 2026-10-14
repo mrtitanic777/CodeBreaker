@@ -278,7 +278,10 @@ def _build32(b, path, m, folder):
     if entry in public:
         start, b.entry = public[entry][0], "%s, the function at the original's entry point" % entry
     elif pe.is_dll():
-        extra("entry", "int __stdcall codebreaker_entry(int4 module, int4 reason, int4 reserved)\n{\n  return 1;\n}\n")
+        why = extra("entry", "int __stdcall codebreaker_entry(int4 module, int4 reason, int4 reserved)\n{\n  return 1;\n}\n")
+        if why:                                               # the header itself does not compile
+            b.error = "the module's header does not compile: %s" % why
+            return None
         objects.append("entry.obj")
         start = "_codebreaker_entry@12"
         b.entry = ("a stand-in that reports success (the original's entry point has no reconstruction)"
@@ -385,7 +388,8 @@ def _build16(b, path, m, folder):
     lines = ["format windows%s" % (" dll" if library else ""), "name m.dll",
              "option quiet, map, nodefaultlibs, caseexact, packcode=1",
              "option modname='%s'" % definitions.module_name(path),
-             "option heapsize=%d" % nef.h["heap"]] + (["option stack=%d" % nef.h["stack"]] if nef.h["stack"] else [])
+             ] + (["option heapsize=%d" % nef.h["heap"]] if nef.h["heap"] else []) \
+        + (["option stack=%d" % nef.h["stack"]] if nef.h["stack"] else [])     # (the linker refuses a size of 0)
     if definitions.description(path):
         lines.append("option description '%s'" % definitions.description(path).replace("'", " "))
     lines.append("libpath %s" % watcom.ow_lib("ne"))          # lib286/win: the real library, not the stub above it
@@ -424,6 +428,39 @@ def _build16(b, path, m, folder):
     lines += exports + ["library clibm.lib"]
     image = _link_resolving(b, wlink, env, folder, lines, lambda s: _from_header(m.header, s),
                             lambda stem, text: extra(stem, text))
+    # As the function-by-function build does (build/functions.py): a function that reaches near
+    # for something in another segment (the original called it far; the text has lost that)
+    # cannot be linked, and a segment whose rebuilt functions come to more than 64K cannot be
+    # either. Those functions become stand-ins -- the largest first, for a segment too big --
+    # and the module is linked again.
+    by_stem = {s: n for n, s in stems.items()}
+    for _attempt in range(120):
+        if image:
+            break
+        apart = re.search(r"file (s\d+/f\d+)\.obj.*?not in the same segment", b.error)
+        over = re.search(r"size of segment CODE(\d+) exceeds 64k by (\d+) bytes", b.error)
+        swap = []
+        if apart and by_stem.get(apart.group(1)) and by_stem[apart.group(1)] not in b.rejected:
+            swap = [(by_stem[apart.group(1)], "reaches near for something in another segment")]
+        elif over:
+            seg, need, freed = int(over.group(1)), int(over.group(2)) + 512, 0
+            for size, n in sorted(((os.path.getsize(os.path.join(folder, stems[n] + ".obj")), n)
+                                   for n in by_segment.get(seg, []) if n in stems and n not in b.rejected), reverse=True):
+                if freed >= need:
+                    break
+                swap.append((n, "too large: the functions of its segment do not fit in 64K when rebuilt"))
+                freed += size
+        if not swap:
+            break
+        for n, why in swap:
+            sub, stem = stems[n].split("/")
+            if functions._compile(wcc, cflags + ["-nt=CODE%d" % segment_of[n]], env, os.path.join(folder, sub), stem,
+                                  functions.stand_in(texts[n])):
+                return image                                 # not even a stand-in compiles: give up
+            b.rejected[n] = why
+        b.error, b.absent = "", []
+        image = _link_resolving(b, wlink, env, folder, lines, lambda s: _from_header(m.header, s),
+                                lambda stem, text: extra(stem, text))
     b.stand_in_addresses = {m.where[va] for va, n in m.by_va.items() if n in b.rejected}
     if image and not b.data_error:                            # is the data where the code expects it?
         try:
