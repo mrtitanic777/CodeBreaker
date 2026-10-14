@@ -49,6 +49,7 @@ class Function(object):
         functions inside it rebuilt from C, which the build places after it: their bytes here are
         filler, and a call to one is a call by its name."""
         self.text, self.imports, self.why, self.externs = None, {}, "", {}
+        self.missing, self.tables = set(), set()              # (set again once the code is followed)
         self.reaches = None                                 # refused for jumping into the middle of this offset's function
         self.holes = sorted(holes)
 

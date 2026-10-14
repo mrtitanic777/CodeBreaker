@@ -602,6 +602,7 @@ ParamListStandard::ParamListStandard(const ParamListStandard &op2)
   maxdelay = op2.maxdelay;
   thisbeforeret = op2.thisbeforeret;
   autoKilledByCall = op2.autoKilledByCall;
+  keepHoles = op2.keepHoles;
   resourceStart = op2.resourceStart;
   glb = op2.glb;
   for(list<ModelRule>::const_iterator iter=op2.modelRules.begin();iter!=op2.modelRules.end();++iter) {
@@ -1295,21 +1296,50 @@ void ParamListStandard::fillinMap(ParamActive *active) const
   vector<int4> trialStart;
   separateSections(active,trialStart);
   int4 numSection = trialStart.size() - 1;
-  for(int4 i=0;i<numSection;++i) {
+  for(int4 i=0;i<numSection && !keepHoles;++i) {	// (by position, one unused register says nothing of the next)
     // Definitely not used -- overrides active
     forceNoUse(active,trialStart[i],trialStart[i+1]);
   }
-  for(int4 i=0;i<numSection;++i) {
-    // Chains of inactivity override later actives
-    forceInactiveChain(active,2,trialStart[i],trialStart[i+1],resourceStart[i]);
+  if (!keepHoles) {
+    for(int4 i=0;i<numSection;++i) {
+      // Chains of inactivity override later actives
+      forceInactiveChain(active,2,trialStart[i],trialStart[i+1],resourceStart[i]);
+    }
   }
 
   // Mark every active trial as used
+  int4 last = -1;
   for(int4 i=0;i<active->getNumTrials();++i) {
     ParamTrial &paramtrial(active->getTrial(i));
-    if (paramtrial.isActive())
+    if (paramtrial.isActive()) {
       paramtrial.markUsed();
+      last = i;
+    }
   }
+  // CodeBreaker: arguments by position -- the registers before the last one set are passed too,
+  // as they are, so each argument keeps its own register's place
+  if (keepHoles) {
+    for(int4 i=0;i<last;++i) {
+      ParamTrial &paramtrial(active->getTrial(i));
+      if (paramtrial.getEntry() != (const ParamEntry *)0 && !paramtrial.isUsed())
+	paramtrial.markUsed();
+    }
+  }
+}
+
+bool ProtoModel::argumentsByPosition(void) const
+
+{
+  const ParamListStandard *l = dynamic_cast<const ParamListStandard *>(input);
+  return (l != (const ParamListStandard *)0 && l->isKeepHoles());
+}
+
+void ProtoModel::keepArgumentHoles(void)
+
+{
+  ParamListStandard *l = dynamic_cast<ParamListStandard *>(input);
+  if (l != (ParamListStandard *)0)
+    l->setKeepHoles();
 }
 
 bool ParamListStandard::checkJoin(const Address &hiaddr,int4 hisize,const Address &loaddr,int4 losize) const
@@ -5539,12 +5569,23 @@ void FuncCallSpecs::checkInputTrialUse(Funcdata &data,AliasChecker &aliascheck)
     }
   }
 
+  // CodeBreaker: registers that are arguments by position (an interrupt's): a constant put in
+  // one (mov dx,3E8h; xor cx,cx) is an argument, however early it was folded into the call
+  bool byPosition = false;
+  if (hasModel()) {
+    byPosition = modelArgumentsByPosition();
+  }
+
   AncestorRealistic ancestorReal;
   for(int4 i=0;i<activeinput.getNumTrials();++i) {
     ParamTrial &trial(activeinput.getTrial(i));
     if (trial.isChecked()) continue;
     int4 slot = trial.getSlot();
     Varnode *vn = op->getIn(slot);
+    if (byPosition && vn->isConstant() && vn->getSpace()->getType() != IPTR_SPACEBASE) {
+      trial.markActive();
+      continue;
+    }
     if (vn->getSpace()->getType() == IPTR_SPACEBASE) {
       if (aliascheck.hasLocalAlias(vn))
 	trial.markNoUse();
@@ -5567,7 +5608,9 @@ void FuncCallSpecs::checkInputTrialUse(Funcdata &data,AliasChecker &aliascheck)
     }
     else {
       if (ancestorReal.execute(op,slot,&trial,true)) {
-	if (data.ancestorOpUse(maxancestor,vn,op,trial,0,0)) {
+	// (by position, a register set before the call is an argument even when that value is
+	// used elsewhere too -- the counter of a loop around an interrupt)
+	if (byPosition || data.ancestorOpUse(maxancestor,vn,op,trial,0,0)) {
 	  trial.markActive();
 	  if (trial.hasCondExeEffect())
 	    activeinput.markNeedsFinalCheck();
@@ -5580,7 +5623,7 @@ void FuncCallSpecs::checkInputTrialUse(Funcdata &data,AliasChecker &aliascheck)
       else
 	trial.markNoUse();	// An ancestor is unaffected, an unusual input, or killed by a call
     }
-    if (trial.isDefinitelyNotUsed())	// If definitely not used, free up the dataflow
+    if (trial.isDefinitelyNotUsed() && !byPosition)	// If definitely not used, free up the dataflow (by position: the slot stays)
       data.opSetInput(op,data.newConstant(vn->getSize(),0),slot);
   }
 }

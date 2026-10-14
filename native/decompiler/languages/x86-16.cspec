@@ -179,12 +179,12 @@
        arguments, and what it leaves in AX (or DX:AX) is its result. -->
   <prototype name="__int16" extrapop="0" stackshift="0">
     <input>
-      <pentry minsize="1" maxsize="2"><register name="AX"/></pentry>
-      <pentry minsize="1" maxsize="2"><register name="BX"/></pentry>
-      <pentry minsize="1" maxsize="2"><register name="CX"/></pentry>
-      <pentry minsize="1" maxsize="2"><register name="DX"/></pentry>
-      <pentry minsize="1" maxsize="2"><register name="SI"/></pentry>
-      <pentry minsize="1" maxsize="2"><register name="DI"/></pentry>
+      <pentry minsize="2" maxsize="2"><register name="AX"/></pentry>
+      <pentry minsize="2" maxsize="2"><register name="BX"/></pentry>
+      <pentry minsize="2" maxsize="2"><register name="CX"/></pentry>
+      <pentry minsize="2" maxsize="2"><register name="DX"/></pentry>
+      <pentry minsize="2" maxsize="2"><register name="SI"/></pentry>
+      <pentry minsize="2" maxsize="2"><register name="DI"/></pentry>
       <pentry minsize="2" maxsize="2"><register name="DS"/></pentry>
       <pentry minsize="2" maxsize="2"><register name="ES"/></pentry>
     </input>
@@ -213,12 +213,53 @@
       <register name="ZF"/>
     </killedbycall>
   </prototype>
+  <!-- the same, for an interrupt that leaves DS as it found it: all but the DOS services (21h)
+       and the multiplex (2Fh), some of which hand back a DS -->
+  <prototype name="__int16keepds" extrapop="0" stackshift="0">
+    <input>
+      <pentry minsize="2" maxsize="2"><register name="AX"/></pentry>
+      <pentry minsize="2" maxsize="2"><register name="BX"/></pentry>
+      <pentry minsize="2" maxsize="2"><register name="CX"/></pentry>
+      <pentry minsize="2" maxsize="2"><register name="DX"/></pentry>
+      <pentry minsize="2" maxsize="2"><register name="SI"/></pentry>
+      <pentry minsize="2" maxsize="2"><register name="DI"/></pentry>
+      <pentry minsize="2" maxsize="2"><register name="DS"/></pentry>
+      <pentry minsize="2" maxsize="2"><register name="ES"/></pentry>
+    </input>
+    <output>
+      <pentry minsize="1" maxsize="2"><register name="AX"/></pentry>
+      <pentry minsize="3" maxsize="4"><addr space="join" piece1="DX" piece2="AX"/></pentry>
+    </output>
+    <unaffected>
+      <register name="SP"/>
+      <register name="BP"/>
+      <register name="SS"/>
+      <register name="DS"/>
+      <register name="CS"/>
+      <register name="DF"/>
+    </unaffected>
+    <!-- what an interrupt hands back besides AX: the other registers and the flags its caller
+         tests (CF for an error, ZF for "nothing there"); the driver names them int_<register> -->
+    <killedbycall>
+      <register name="BX"/>
+      <register name="CX"/>
+      <register name="DX"/>
+      <register name="SI"/>
+      <register name="DI"/>
+      <register name="ES"/>
+      <register name="CF"/>
+      <register name="ZF"/>
+    </killedbycall>
+  </prototype>
   <callotherfixup targetop="swi">
     <pcode>
       <input name="vector"/>
       <output name="handler"/>
       <body><![CDATA[
         handler = 0xF0000000 + (zext(vector) << 4);
+        # the registers are the interrupt's arguments whole: a byte set alone (mov ah,86h)
+        # is part of AX as the interrupt reads it
+        AX = AX; BX = BX; CX = CX; DX = DX;
       ]]></body>
     </pcode>
   </callotherfixup>

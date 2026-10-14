@@ -303,10 +303,13 @@ int main(int argc, char** argv) {
     // (its swi fixup); each of those is a function int<n> taking its arguments and giving its
     // result in registers (__int16), so what the code puts in them before the interrupt is seen.
     if (!x86_32 && m.hasModel("__int16")) {
+      for (const char* nm : {"__int16", "__int16keepds"})  // its registers are its arguments, by position
+        if (m.hasModel(nm)) m.getModel(nm)->keepArgumentHoles();
       for (int v = 0; v < 256; ++v) {
         char nm[16];
         std::snprintf(nm, sizeof(nm), "int%02x", v);
-        Fact x{kInterruptBase + (uint64_t)v * 16, nm, -1, "__int16"};
+        Fact x{kInterruptBase + (uint64_t)v * 16, nm, -1,
+               (v == 0x21 || v == 0x2f || !m.hasModel("__int16keepds")) ? "__int16" : "__int16keepds"};
         Address ea(code, (uintb)x.va);
         applyModel(glb->addFunction(ea, x.name)->getFunction(), x);
       }

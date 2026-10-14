@@ -359,6 +359,9 @@ bool PrintC::checkArrayDeref(const Varnode *vn) const
   if (!vn->isWritten()) return false;
   op = vn->getDef();
   if (op->code()==CPUI_SEGMENTOP) {
+    // CodeBreaker: a segment printed whole (MK_FP) stands between the dereference and the
+    // array or member access, which then cannot take the dereference's place
+    if (!op->getIn(1)->isConstant() && !enteredSegment(op->getIn(1))) return false;
     vn = op->getIn(2);
     if (!vn->isImplied()) return false;
     if (!vn->isWritten()) return false;
@@ -1166,10 +1169,55 @@ void PrintC::opPtrsub(const PcodeOp *op)
 /// - slot 2 is the pointer we are really interested in printing
 ///
 /// \param op is the SEGMENTOP PcodeOp
+/// CodeBreaker: is \b vn the data or stack segment register as the function was entered --
+/// itself, or carried unchanged across calls (which keep it) and joins of paths?
+bool PrintC::enteredSegment(const Varnode *vn) const
+
+{
+  vector<const Varnode *> todo(1,vn);
+  set<const Varnode *> seen;
+  while(!todo.empty()) {
+    const Varnode *cur = todo.back();
+    todo.pop_back();
+    if (!seen.insert(cur).second) continue;
+    if (seen.size() > 64) return false;
+    if (cur->isInput()) {
+      const string &reg(glb->translate->getRegisterName(cur->getSpace(),cur->getOffset(),cur->getSize()));
+      if (reg != "DS" && reg != "SS") return false;
+      continue;
+    }
+    if (!cur->isWritten()) return false;
+    const PcodeOp *def = cur->getDef();
+    if (def->code() == CPUI_INDIRECT || def->code() == CPUI_COPY)
+      todo.push_back(def->getIn(0));
+    else if (def->code() == CPUI_MULTIEQUAL) {
+      for(int4 i=0;i<def->numInput();++i)
+	todo.push_back(def->getIn(i));
+    }
+    else
+      return false;
+  }
+  return true;
+}
+
 void PrintC::opSegmentOp(const PcodeOp *op)
 
 {
-  pushVn(op->getIn(2),op,mods);
+  // CodeBreaker: a segmented address whose segment is not a constant (a constant one is folded
+  // away before printing) is printed whole, MK_FP(segment, offset) -- printing only the offset,
+  // as this used to, made es:[6c] and ds:[6c] the same thing.
+  // The data and stack segments as the function was entered with them are the ones C's near
+  // pointers already mean: those stay printed as the offset alone.
+  const Varnode *seg = op->getIn(1);
+  if (seg->isConstant() || enteredSegment(seg)) {
+    pushVn(op->getIn(2),op,mods);
+    return;
+  }
+  pushOp(&function_call,op);
+  pushAtom(Atom("MK_FP",optoken,EmitMarkup::funcname_color,op));
+  pushOp(&comma,op);
+  pushVn(op->getIn(2),op,mods);		// (implied varnodes are pushed in reverse order)
+  pushVn(seg,op,mods);
 }
 
 void PrintC::opCpoolRefOp(const PcodeOp *op)

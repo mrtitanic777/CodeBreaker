@@ -1873,7 +1873,7 @@ string Scope::buildDefaultName(Symbol *sym,int4 &base,Varnode *vn) const
 	vn->getDef()->getIn(1)->getSpace()->getType() == IPTR_IOP) {
       PcodeOp *call = PcodeOp::getOpFromConst(vn->getDef()->getIn(1)->getAddr());
       FuncCallSpecs *fc = (call != (PcodeOp *)0 && call->isCall()) ? fd->getCallSpecs(call) : (FuncCallSpecs *)0;
-      if (fc != (FuncCallSpecs *)0 && fc->getModelName() == "__int16") {
+      if (fc != (FuncCallSpecs *)0 && fc->getModelName().compare(0, 7, "__int16") == 0) {
 	string regname = glb->translate->getRegisterName(vn->getSpace(),vn->getOffset(),vn->getSize());
 	if (!regname.empty())
 	  return makeNameUnique("int_" + regname);

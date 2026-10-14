@@ -758,7 +758,7 @@ def _build16(b, path, m, folder):
         b.entry = "none, as in the original"
     lines.append("file data.obj")                              # first: the data segment starts with it
     if m.interrupts:                                           # the interrupts the module takes
-        asm, c = c_text.interrupt_routines({v for v, _k in m.interrupts})
+        asm, c = c_text.interrupt_routines({v for v, _regs in m.interrupts})
         with open(os.path.join(folder, "interrupts.asm"), "w", newline="\n") as f:
             f.write(asm)
         r = subprocess.run([watcom.ow_tool("wasm"), "-q", "interrupts.asm"], cwd=folder, env=env,

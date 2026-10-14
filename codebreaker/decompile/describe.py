@@ -192,6 +192,7 @@ def describe32(module_path, funcs, outdir):
 ARCH = "x86:LE:16:Protected Mode:default"
 FIRST_SELECTOR = 0x1000
 EXTERN_SELECTOR = 0xE000           # imported functions stand at EXTERN_SELECTOR:16*n
+IMPORT_SELECTOR = 0xD000           # an import used as a selector (KERNEL's __0040H ...): IMPORT_SELECTOR + n
 
 
 def selector(seg):
@@ -301,6 +302,14 @@ def describe16(module_path, outdir):
             order.append(name)
         return imports[name]
 
+    selectors = {}                                           # import name -> its own made-up selector
+    used_as = {}                                             # import name -> "segment" | "offset"
+
+    def selector_of(name):
+        if name not in selectors:
+            selectors[name] = IMPORT_SELECTOR + len(selectors)
+        return selectors[name]
+
     for s in segs:
         img = images[s["idx"]]
         for r in nef.relocations(s):
@@ -331,7 +340,19 @@ def describe16(module_path, outdir):
                 if src == 3 and off + 3 < len(img):          # far pointer: offset, selector
                     struct.pack_into("<HH", img, off, (toff + add) & 0xFFFF, tsel)
                 elif src == 2:                               # selector only
-                    struct.pack_into("<H", img, off, tsel)
+                    # an imported selector is a segment of its own: what is read through it is
+                    # told apart, and named by its import (not one shared made-up selector)
+                    if kind in ("IMPORTORD", "IMPORTNAME"):
+                        sel = selector_of(re.sub(r"\W", "_", nm))
+                        used_as[re.sub(r"\W", "_", nm)] = "segment"
+                    else:
+                        sel = tsel
+                    struct.pack_into("<H", img, off, sel)
+                elif src == 5 and kind in ("IMPORTORD", "IMPORTNAME"):
+                    # an import's offset alone: a value KERNEL exports (__0040H, __WINFLAGS ...),
+                    # which the loader writes in. A value of its own, so it is told apart
+                    struct.pack_into("<H", img, off, (selector_of(re.sub(r"\W", "_", nm)) + add) & 0xFFFF)
+                    used_as.setdefault(re.sub(r"\W", "_", nm), "offset")
                 elif src == 5:                               # offset only
                     struct.pack_into("<H", img, off, (toff + add) & 0xFFFF)
                 elif src == 0:                               # low byte
@@ -369,6 +390,8 @@ def describe16(module_path, outdir):
         funcs.append((va, nm, dist))
     d = Description("", names, where, order)
     d.import_names = import_names16(nef)                                       # symbol -> the import's real name
+    d.selector_imports = {sel: (name, used_as.get(name, "segment"))       # made-up value -> (import symbol,
+                          for name, sel in selectors.items()}               #   its selector or its offset)
     d.code = {s["idx"]: s["length"] for s in segs if s["kind"] == "CODE"}     # segment -> bytes of code
     d.images = {k: bytes(v) for k, v in images.items()}                       # segment -> its bytes, relocated
     d.data_segment = data_seg or 0

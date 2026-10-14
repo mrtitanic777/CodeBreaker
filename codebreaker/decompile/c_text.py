@@ -619,6 +619,7 @@ def compilable16(module_path, outdir=None):
     m.texts, m.order, m.by_va, m.where = {}, [], {}, {}
     m.near, m.wide, m.novalue = set(), set(), set()
     m.interrupts = set()                                     # (vector, arguments) of the interrupts taken
+    m.selector_imports = {}                                  # imports used for their selector
     sizes = {}                                               # address of a global -> bytes of the access
     ends, starts = {}, {}                                    # where each function's code stops: at the next one
     for va in sorted(d.where):
@@ -659,10 +660,22 @@ def compilable16(module_path, outdir=None):
             m.near.add(name)                                 # near is the default and is not printed
         if head.split()[0] in _WIDE or "*" in head.split(name)[0] and "__far" in head.split(name)[0]:
             m.wide.add(name)
-        m.texts[name] = _interrupts(_open_arguments(text), m.interrupts)
+        m.texts[name] = _far_addresses(_interrupts(_open_arguments(text), m.interrupts))
         m.order.append(name)
         m.by_va[va] = name
         m.where[va] = d.where.get(va)
+    # an import's value used bare (mov es, __0040H; test ax, __WINFLAGS) is the import
+    values = getattr(d, "selector_imports", {})
+
+    def _value(mm):
+        if int(mm.group(0), 16) not in values:
+            return mm.group(0)
+        imp, how = values[int(mm.group(0), 16)]
+        m.selector_imports[imp] = how
+        return "%s(&%s)" % ("FP_SEG" if how == "segment" else "FP_OFF", imp)
+    if values:
+        for name in m.texts:
+            m.texts[name] = re.sub(r"\b0x[dD]0[0-9a-fA-F]{2}\b", _value, m.texts[name])
     body = "\n".join(m.texts.values())
     called = set(re.findall(r"\b([A-Za-z_]\w*)\s*\(", body))
     m.imports = {}
@@ -685,15 +698,34 @@ def compilable16(module_path, outdir=None):
             ty = "code __far *" if sizes.get(va, 2) == 4 else "code __near *"
         if seg == d.data_segment:
             macros.append("#define %sRam%s (*(%s *)0x%x)" % (prefix, addr, ty, off))
+        elif (va >> 16) in getattr(d, "selector_imports", {}):
+            # a place in a segment the module gets as an import (KERNEL's __0040H: the BIOS data):
+            # the import's selector, which the loader fills in, and the offset
+            imp, how = d.selector_imports[va >> 16]
+            m.selector_imports[imp] = how
+            macros.append("#define %sRam%s (*(%s __far *)MK_FP(%s(&%s), 0x%x))" % (
+                prefix, addr, ty, "FP_SEG" if how == "segment" else "FP_OFF", imp, va & 0xFFFF))
         elif seg in d.images and off < len(d.images[seg]):
             m.segments[seg] = d.images[seg]
             macros.append("#define %sRam%s (*(%s __far *)(codebreaker_segment_%d + 0x%x))" % (prefix, addr, ty, seg, off))
     decls = ['extern uint1 __based(__segname("CODEBREAKER_SEGMENT_%d")) codebreaker_segment_%d[];' % (n, n)
              for n in sorted(m.segments)]
-    decls += ["extern uint4 __far __stdcall %s();" % nm for nm in sorted(m.imports)]
+    if m.selector_imports:                                   # imports used for their value
+        decls.append("#define MK_FP(s, o) ((void __far *)(((uint4)(uint2)(s) << 16) | (uint2)(o)))")
+        decls.append("#define FP_SEG(p) ((uint2)((uint4)(void __far *)(p) >> 16))")
+        decls.append("#define FP_OFF(p) ((uint2)(uint4)(void __far *)(p))")
+        decls += ["extern uint1 __far %s;  /* an import: its %s is the value */" % (n, m.selector_imports[n])
+                  for n in sorted(m.selector_imports)]
+        for n in m.selector_imports:
+            mm = re.fullmatch(r"(.+)_(\d+)", n)
+            if mm:
+                m.imports[n] = (mm.group(1), int(mm.group(2)))
+    decls += ["extern uint4 __far __stdcall %s();" % nm for nm in sorted(m.imports) if nm not in m.selector_imports]
     decls += [declaration(m.texts[n]) for n in m.order]
     intrinsics = [INTRINSICS16[n] for n in sorted(INTRINSICS16) if re.search(r"\b%s\s*\(" % n, body)]
     intrinsics += interrupt_helpers(m.interrupts)
+    if "MK_FP(" in body and not m.selector_imports:
+        intrinsics.append("#define MK_FP(s, o) ((void __far *)(((uint4)(uint2)(s) << 16) | (uint2)(o)))")
     m.header = HEADER + "\n" + "\n".join(intrinsics + macros + decls) + "\n"
     m.description = d
     return m
@@ -702,9 +734,11 @@ def compilable16(module_path, outdir=None):
 # Software interrupts. The decompiler gives `INT n` as a call to int<n> (languages/x86-16.cspec):
 # its arguments are the registers set before it, in the order AX BX CX DX SI DI DS ES, and what it
 # hands back besides AX is read as int_<register> (int_CF, int_BX, ...). In the C, a call of int21
-# with k arguments is int21_k, a helper that puts them in the registers, takes the interrupt (an
-# assembly routine, codebreaker_int21, the build writes: build/module.py, interrupt_routines) and
-# returns DX:AX; int_<register> is the register as the interrupt left it.
+# setting AX, CX and DX is int21_ax_cx_dx(ax, cx, dx), a helper that puts them in those registers,
+# takes the interrupt (an assembly routine, codebreaker_int21, the build writes: build/module.py,
+# interrupt_routines) and returns DX:AX; int_<register> is the register as the interrupt left it.
+# A register the code did not set before the interrupt (the decompiler passes it on as in_BX,
+# unaff_DS ...) is not an argument: it keeps the value it has -- DS the caller's data segment.
 INTERRUPT_REGISTERS = ("ax", "bx", "cx", "dx", "si", "di", "ds", "es")
 _INT_CALL = re.compile(r"\bint([0-9a-f]{2})\(")
 _INT_RESULT = re.compile(r"\bint_E?([A-Z][A-Z])(?:_[0-9a-f]+)?\b")
@@ -740,8 +774,11 @@ def _interrupts(text, used):
             continue
         args, after = _arguments_at(text, mm.end() - 1)
         args = args[:len(INTERRUPT_REGISTERS)]
-        used.add((int(mm.group(1), 16), len(args)))
-        out.append(text[at:mm.start()] + "int%s_%d(%s)" % (mm.group(1), len(args), ",".join(args)))
+        regs = tuple(r for r, a in zip(INTERRUPT_REGISTERS, args) if not _passed_on(a, r))
+        values = [a for r, a in zip(INTERRUPT_REGISTERS, args) if r in regs]
+        used.add((int(mm.group(1), 16), regs))
+        out.append(text[at:mm.start()] + "%s(%s)" % (interrupt_helper_name(int(mm.group(1), 16), regs),
+                                                     ",".join(values)))
         at = after
     text = "".join(out) + text[at:]
     # the results: no variables of their own -- the registers as the interrupt left them
@@ -749,22 +786,54 @@ def _interrupts(text, used):
     return _INT_RESULT.sub(lambda r: "int_" + r.group(1), text)
 
 
+def _passed_on(arg, reg):
+    """Is `arg` the register `reg` itself as the function had it -- not set for the interrupt?"""
+    return re.fullmatch(r"\s*(?:in|unaff)_E?%s\s*" % reg.upper(), arg) is not None
+
+
+def interrupt_helper_name(vector, regs):
+    return "int%02x_%s" % (vector, "_".join(regs) if regs else "none")
+
+
+def _far_addresses(text):
+    """An address made of a segment the decompiler could not fold to a constant and an offset
+    (`MK_FP(seg, (T *)off)`, its printing) as a far pointer to T: `(T __far *)MK_FP(seg, off)`."""
+    if "MK_FP(" not in text:
+        return text
+    out, at = [], 0
+    for mm in re.finditer(r"\bMK_FP\(", text):
+        if mm.start() < at:
+            continue
+        args, after = _arguments_at(text, mm.end() - 1)
+        if len(args) != 2:
+            continue
+        seg, off = args[0].strip(), args[1].strip()
+        cast = re.match(r"^\(([\w ]+?)\s*\*\)\s*(.*)$", off, re.S)
+        target = cast.group(1) if cast else "uint1"
+        offset = cast.group(2) if cast else off
+        out.append(text[at:mm.start()] + "((%s __far *)MK_FP(%s, %s))" % (target, _far_addresses(seg),
+                                                                          _far_addresses(offset)))
+        at = after
+    return "".join(out) + text[at:]
+
+
 def interrupt_helpers(used):
     """The header's part for the interrupts a module takes: the register record, each vector's
     routine, and a helper per vector and argument count."""
     if not used:
         return []
-    out = ["struct codebreaker_registers { uint2 ax, bx, cx, dx, si, di, ds, es; uint1 cf, zf; };",
+    out = ["struct codebreaker_registers { uint2 ax, bx, cx, dx, si, di, ds, es; uint1 cf, zf; uint2 set; };",
            "extern struct codebreaker_registers codebreaker_int;   /* as the last interrupt left them */"]
     out += ["#define int_%s codebreaker_int.%s" % (r.upper(), r) for r in INTERRUPT_REGISTERS + ("cf", "zf")]
     for v in sorted({v for v, _k in used}):
         out.append("void __far codebreaker_int%02x(void);              /* INT %02Xh */" % (v, v))
-    for v, k in sorted(used):
-        regs = INTERRUPT_REGISTERS[:k]
+    for v, regs in sorted(used):
         params = ", ".join("uint2 %s" % r for r in regs) or "void"
         sets = " ".join("codebreaker_int.%s = %s;" % (r, r) for r in regs)
-        out.append("static uint4 int%02x_%d(%s) { %s codebreaker_int%02x(); "
-                   "return (uint4)codebreaker_int.dx << 16 | codebreaker_int.ax; }" % (v, k, params, sets, v))
+        mask = sum(1 << INTERRUPT_REGISTERS.index(r) for r in regs)
+        out.append("static uint4 %s(%s) { %s codebreaker_int.set = 0x%02x; codebreaker_int%02x(); "
+                   "return (uint4)codebreaker_int.dx << 16 | codebreaker_int.ax; }" % (
+                       interrupt_helper_name(v, regs), params, sets, mask, v))
     return out
 
 
@@ -963,10 +1032,12 @@ def compilable_powerpc(module_path, outdir):
 
 
 def interrupt_routines(vectors):
-    """Assembly for the routines the interrupt helpers call: codebreaker_int<n> loads every
-    register from codebreaker_int, takes INT n, and stores every register and CF and ZF back.
-    -> (assembly text, C text that defines codebreaker_int)"""
+    """Assembly for the routines the interrupt helpers call: codebreaker_int<n> loads the
+    registers the helper set (codebreaker_int.set, a bit each in INTERRUPT_REGISTERS' order) from
+    codebreaker_int -- the others keep what they hold, DS and ES the caller's -- takes INT n, and
+    stores every register and CF and ZF back. -> (assembly text, C text that defines codebreaker_int)"""
     off = {r: 2 * i for i, r in enumerate(INTERRUPT_REGISTERS)}
+    bit = {r: 1 << i for i, r in enumerate(INTERRUPT_REGISTERS)}
     out = ["; the software interrupts the module takes, each as the original takes it: the registers",
            "; from codebreaker_int, INT n, the registers and the carry and zero flags back into it",
            ".286", "DGROUP group _DATA", "_DATA segment word public 'DATA'", "        extrn _codebreaker_int:word",
@@ -975,10 +1046,19 @@ def interrupt_routines(vectors):
         name = "_codebreaker_int%02x" % v
         out += ["        public %s" % name, "%s proc far" % name,
                 "        push bp", "        push si", "        push di", "        push ds", "        push es",
-                "        mov  bp, ds                                   ; DGROUP, to come back to"]
-        for r in ("es", "ax", "bx", "cx", "dx", "si", "di"):
-            out.append("        mov  %s, word ptr _codebreaker_int+%d" % (r, off[r]))
-        out += ["        push word ptr _codebreaker_int+%d" % off["ds"], "        pop  ds",
+                "        mov  bp, ds                                   ; DGROUP, to come back to",
+                "        push ds                                       ; DS as the caller has it"]
+        for k, r in enumerate(("es", "ax", "bx", "cx", "dx", "si", "di", "ds")):
+            skip = "L_%02x_%d" % (v, k)
+            out += ["        test word ptr _codebreaker_int+18, %d" % bit[r], "        jz   short %s" % skip]
+            if r == "ds":                                      # (DS last: it is what the others are read through)
+                out += ["        pop  ax", "        push word ptr _codebreaker_int+%d" % off["ds"]]
+            else:
+                out.append("        mov  %s, word ptr _codebreaker_int+%d" % (r, off[r]))
+            out.append("%s:" % skip)
+        out += ["        test word ptr _codebreaker_int+18, %d" % bit["ax"], "        jz   short L_%02x_ax" % v,
+                "        mov  ax, word ptr _codebreaker_int+%d" % off["ax"], "L_%02x_ax:" % v,
+                "        pop  ds",
                 "        int  %03Xh" % v,
                 "        pushf", "        push ds", "        mov  ds, bp"]
         for r in ("ax", "bx", "cx", "dx", "si", "di", "es"):

@@ -592,6 +592,7 @@ protected:
   int4 maxdelay;			///< Maximum heritage delay across all parameters
   bool thisbeforeret;			///< Does a \b this parameter come before a hidden return parameter
   bool autoKilledByCall;		///< Are storage locations in \b this list automatically \e killed \e by \e call
+  bool keepHoles = false;		///< CodeBreaker: arguments by position (an interrupt's registers): unset ones before a set one are kept
   vector<int4> resourceStart;		///< The starting group for each resource section
   list<ParamEntry> entry;		///< The ordered list of parameter entries
   vector<ParamEntryResolver *> resolverMap;	///< Map from space id to resolver
@@ -616,6 +617,8 @@ protected:
 		  int4 groupid,bool normalstack,bool splitFloat);
 public:
   ParamListStandard(void) {}						///< Construct for use with decode()
+  void setKeepHoles(void) { keepHoles = true; }				///< CodeBreaker: see keepHoles
+  bool isKeepHoles(void) const { return keepHoles; }			///< CodeBreaker: see keepHoles
   ParamListStandard(const ParamListStandard &op2);			///< Copy constructor
   virtual ~ParamListStandard(void);
   const list<ParamEntry> &getEntry(void) const { return entry; }	///< Get the list of parameter entries
@@ -777,6 +780,8 @@ public:
   ProtoModel(const string &nm,const ProtoModel &op2);	///< Copy constructor changing the name
   virtual ~ProtoModel(void);				///< Destructor
   const string &getName(void) const { return name; }	///< Get the name of the prototype model
+  void keepArgumentHoles(void);				///< CodeBreaker: see ParamListStandard::keepHoles
+  bool argumentsByPosition(void) const;			///< CodeBreaker: see ParamListStandard::keepHoles
   Architecture *getArch(void) const { return glb; }	///< Get the owning Architecture
   const ProtoModel *getAliasParent(void) const { return compatModel; }	///< Return \e model \b this is an alias of (or null)
   uint4 hasEffect(const Address &addr,int4 size) const;	///< Determine side-effect of \b this on the given memory range
@@ -1393,6 +1398,7 @@ public:
   bool hasMatchingModel(const ProtoModel *op2) const { return (model == op2); }	///< Does \b this use the given model
   const string &getModelName(void) const { return model->getName(); }	///< Get the prototype model name
   int4 getModelExtraPop(void) const { return model->getExtraPop(); }	///< Get the \e extrapop of the prototype model
+  bool modelArgumentsByPosition(void) const { return model->argumentsByPosition(); }	///< CodeBreaker: an interrupt's registers
   bool isModelUnknown(void) const { return model->isUnknown(); }	///< Return \b true if the prototype model is \e unknown
   bool printModelInDecl(void) const { return model->printInDecl(); }	///< Return \b true if the name should be printed in declarations
 

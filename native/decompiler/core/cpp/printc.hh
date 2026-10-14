@@ -339,6 +339,7 @@ public:
   virtual void opPtradd(const PcodeOp *op);
   virtual void opPtrsub(const PcodeOp *op);
   virtual void opSegmentOp(const PcodeOp *op);
+  bool enteredSegment(const Varnode *vn) const;	///< CodeBreaker: the entry DS/SS, carried unchanged?
   virtual void opCpoolRefOp(const PcodeOp *op);
   virtual void opNewOp(const PcodeOp *op);
   virtual void opInsertOp(const PcodeOp *op);
