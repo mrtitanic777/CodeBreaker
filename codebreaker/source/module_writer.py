@@ -186,6 +186,22 @@ def write_assembly(path, fs, sha, digest, out_dir, log=print):
     return out, counts, total
 
 
+_OURS = ("reconstructed source", "behavioral reconstruction", "authored-source reconstruction",
+         "(functional group, reconstructed)", "decompiled by CodeBreaker", "by CodeBreaker")
+
+
+def made_by_us(path):
+    """Is the file at `path` one CodeBreaker wrote (this tool or the earlier one) -- and so may be
+    written again? A file anyone wrote by hand is never replaced. A file that is not there is ours
+    to write."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            head = f.read(600)
+    except OSError:
+        return True
+    return any(mark in head for mark in _OURS)
+
+
 def in_corpus(path):
     """Is the file one of the selected product's originals?"""
     root = os.path.normcase(os.path.abspath(settings.get("corpus") or ""))
@@ -203,6 +219,11 @@ def write_module(module, verify=True, out_dir=None, log=print, split=0, build_wh
     # A product's source tree is for that product's modules. A file from anywhere else (given
     # by path: another product's, a PowerPC image) is written under state/source/ here.
     out_dir = out_dir or (placement.folder(name, path) if in_corpus(path) else settings.state("source", stem))
+    held = [f for f in (stem + ".c", stem + ".h") if not made_by_us(os.path.join(out_dir, f))]
+    if held:                                                  # someone wrote these by hand: not replaced
+        log("%s: %s written by hand -- the reconstruction goes to the state folder instead" % (
+            out_dir, ", ".join(held)))
+        out_dir = settings.state("source", stem)
     os.makedirs(out_dir, exist_ok=True)
     fs = F.open()
     if verify:
