@@ -33,16 +33,32 @@ Beside that path:
 | DOS programs | 127 of 128 | 17,058 | 16,295 (96%) | — | 0 | — | 763 (two programs) |
 | Device drivers | 214 of 214 | 1,292 | 1,113 (86%) | 159 (12%) | 4 | — | 0 |
 | 16-bit Windows | 317 of 326 | 36,758 | 6,139 (17%) | 7,224 (20%) | 19,468 (53%) | — | 3,611 (10%) |
-| 32-bit Windows | 558 of 559 | 151,556 | 40,069 (26%) | 45,854 (30%) | 27,546 (18%) | 12,318 (8%) | 19,208 (13%) |
+| 32-bit Windows | 558 of 559 | 151,556 | 44,750 (30%) | 50,501 (33%) | 30,210 (20%) | 18,418 (12%) | 2,723 (2%) |
 | PowerPC, 12 images | 12 | 3,597 | 1,077 (30%) | 1,724 (48%) | 728 (20%) | — | 67 |
 
 Notes on reading these:
 
-- **32-bit** is the second full pass (finished 2026-10-13). Against the first: verified 19% →
-  26%, weak 19% → 30%, does not compile 28% → 13%, unverified 23% → 18%. 6,197 functions more
-  are runtime-library code, named and not counted as the module's own; 364 have no source. Two
-  modules account for much of what does not compile: mfc40.dll (6,682, all of it) and
-  quartz.dll (2,152).
+- **32-bit** is the second full pass (finished 2026-10-13), with 13 modules judged again after
+  a fix (2026-10-14). Against the first pass: verified 19% → 30%, weak 19% → 33%, does not
+  compile 28% → 2%. The fix: modules that are themselves a C runtime (mfc40, quartz, msvcrt,
+  crtdll, opengl32 ...) define their own sqrt/ldexp/floor, which clashed with the helpers'
+  declarations and broke the whole header -- 16,500 functions "did not compile" for that alone.
+  4,590 functions are runtime-library code, named and not counted as the module's own.
+
+## Whole modules
+
+Every module rebuilt as one file -- all functions, data, resources, exports and imports linked
+into the original's format (`tools/build_all.py`, 2026-10-14):
+
+| Kind | Modules built | With every export, no foreign import | Exported functions that ran as the original's |
+|---|---|---|---|
+| 32-bit | 559 of 559 | 402 | 5,520 of 6,516 (85%) |
+| 16-bit | 326 of 326 | 287 | 4,427 of 5,947 (74%) |
+
+A function the compiler rejects, or that reaches near into another segment, is a stand-in
+that returns 0 in these builds; 41 32-bit and 67 16-bit modules have none at all. "Ran as the
+original's" is each export called with no arguments in the emulator: ended the same way and
+gave the same answer. Not yet tested: a rebuilt module running in place of the original.
 - **16-bit** is after the 64K fix (before it, 44% did not compile) but before the far-pointer
   fix; a third pass is queued.
 - **"Verified (weak)"** means it matched with a stated limit — most often that under half of
