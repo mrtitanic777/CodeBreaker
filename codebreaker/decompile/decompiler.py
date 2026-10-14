@@ -202,19 +202,10 @@ def _is_x86(module_path):
     return open_pe(module_path).machine == 0x014C
 
 
-def main(argv):
-    """python -m codebreaker decompile <module> [--out FILE]
-
-    Decompile any module the corpus or a path names -- a 32-bit or 16-bit Windows module, a
-    virtual device driver, a DOS program, a PowerPC image -- and write its functions as C. Nothing is built or judged; `module` does that."""
-    if not argv:
-        print(main.__doc__)
-        return 2
-    from codebreaker.base import corpus
+def as_c(path):
+    """Any executable as C: (text, functions decompiled, functions found). Raises ValueError for
+    a file that is not an executable this can read."""
     from codebreaker.formats import detect
-    path = argv[0] if os.path.isfile(argv[0]) else corpus.retail(argv[0])
-    if not path:
-        raise SystemExit("no module %r" % argv[0])
     kind = detect.lane(path)
     if kind is None:                                         # .COM files and flat drivers have no header
         from codebreaker.formats import dos
@@ -242,13 +233,32 @@ def main(argv):
         texts, order, d = decompile_dos(path)
         header, total = "", len(d.names)
     else:
-        raise SystemExit("%s: not an executable this can read" % path)
+        raise ValueError("%s: not an executable this can read" % path)
+    texts = {n: c_text._FACT.sub("", t).strip() for n, t in texts.items()}    # the decompiler's side notes
+    text = "/* %s -- decompiled by CodeBreaker; not built, not judged. */\n\n" % os.path.basename(path) + \
+        (header + "\n\n" if header else "") + "\n\n".join(texts[n] for n in order) + "\n"
+    return text, len(order), total
+
+
+def main(argv):
+    """python -m codebreaker decompile <module> [--out FILE]
+
+    Decompile any module the corpus or a path names -- a 32-bit or 16-bit Windows module, a
+    virtual device driver, a DOS program, a PowerPC image -- and write its functions as C. Nothing is built or judged; `module` does that."""
+    if not argv:
+        print(main.__doc__)
+        return 2
+    from codebreaker.base import corpus
+    path = argv[0] if os.path.isfile(argv[0]) else corpus.retail(argv[0])
+    if not path:
+        raise SystemExit("no module %r" % argv[0])
+    try:
+        text, decompiled, total = as_c(path)
+    except ValueError as e:
+        raise SystemExit(str(e))
     out = argv[argv.index("--out") + 1] if "--out" in argv else \
         os.path.splitext(os.path.basename(path))[0].lower() + ".c"
-    texts = {n: c_text._FACT.sub("", t).strip() for n, t in texts.items()}    # the decompiler's side notes
     with open(out, "w", encoding="utf-8", newline="\n") as f:
-        f.write("/* %s -- decompiled by CodeBreaker; not built, not judged. */\n\n" % os.path.basename(path))
-        f.write(header + "\n\n" if header else "")
-        f.write("\n\n".join(texts[n] for n in order) + "\n")
-    print("%s: %d of %d functions -> %s" % (os.path.basename(path), len(order), total, out))
+        f.write(text)
+    print("%s: %d of %d functions -> %s" % (os.path.basename(path), decompiled, total, out))
     return 0

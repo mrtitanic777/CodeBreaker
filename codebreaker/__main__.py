@@ -39,6 +39,10 @@
     serve [--port N] [--open]       the local web console (127.0.0.1 only)
     progress [--once] [--window]    watch a running sweep
     app [file-or-module]            the desktop window
+    workbench [--forms]             the Workbench: the earlier CodeBreaker's Windows 95-style window
+    live <binary>                   the Live reconstruction window: the file's bytes and its C appearing
+    take-apart <binary>             what the Workbench does with a dropped program, to a folder
+    settings                        every setting, and whether what it names is there
 
 `--corpus NAME` before or after any command selects another product's files (settings.json: corpora).
 
@@ -85,6 +89,10 @@ COMMANDS = {
     "serve": ("codebreaker.ui.server", []),
     "progress": ("codebreaker.ui.progress", []),
     "app": ("codebreaker.ui.app", []),
+    "workbench": ("codebreaker.ui.workbench", []),
+    "live": ("codebreaker.ui.live", []),
+    "take-apart": ("codebreaker.ui.take_apart", []),
+    "settings": ("codebreaker.base.settings", []),
 }
 
 
