@@ -195,11 +195,38 @@ def driver_judge_all_equivalent(image):
     return results and all(v[0] in ("equivalent", "consistent") for v in results.values())
 
 
+def test_kit_macro_source():
+    """The driver kit's macro form: the descriptor block, the control dispatch, named services."""
+    from codebreaker.formats import le
+    from codebreaker.source.vxd import disassembly, idiom, run
+    image = le.LEFile.from_file(_driver("vkd.vxd"))
+    d = disassembly.VxDDisasm(image).run()
+    d.v = image
+    text = idiom.emit_idiomatic(d)
+    assert "include vmm.inc" in text and "Begin_Service_Table VKD" in text
+    assert "Begin_Control_Dispatch VKD" in text and "Declare_Virtual_Device" in text
+    assert set(run.TOOLS) >= {"idiom", "tree", "masm", "link", "from-source", "owbuild", "finalize"}
+
+
+def test_kit_macro_source_builds_back():
+    """ML and LINK under the emulator make a driver of the original's size, code object identical."""
+    from codebreaker.build import dos_tools
+    from codebreaker.formats import le
+    from codebreaker.source.vxd import from_source
+    if not dos_tools.emulator():
+        raise Skip("DOSBox-X is not set up")
+    image = le.open_vxds(_driver("vkd.vxd"))[0][1]
+    r = from_source.build_from_source(image)
+    assert r["ok"], r.get("stage")
+    assert r["vxd_len"] == r["oracle_len"] and r["obj1_diffs"] == 0 and r["page_map_identity"]
+
+
 def main():
     for fn in (test_table_names_services, test_table_names_are_identifiers, test_table_names_a_real_driver,
                test_reader_descriptor_and_entries, test_reader_fixups_encode_back, test_writer_round_trip,
                test_container, test_judge_agrees_with_itself_and_catches_a_break,
-               test_run_records_service_calls, test_build_from_source, test_source_written_from_the_image_builds_back):
+               test_run_records_service_calls, test_build_from_source, test_source_written_from_the_image_builds_back,
+               test_kit_macro_source, test_kit_macro_source_builds_back):
         check(fn)
     for name, state, why in RESULTS:
         print("%-5s %s%s" % (state, name, ("  -- " + why) if why else ""))

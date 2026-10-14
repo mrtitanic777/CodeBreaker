@@ -126,6 +126,12 @@ def design_dir():
     return os.path.dirname(os.path.dirname(root()))
 
 
+def reference(*parts):
+    """A path inside the period SDK and DDK folders (settings "reference", else the folder of
+    that name in the design arena): reference("Microsoft Windows 95 DDK", "INC32")."""
+    return os.path.join(paths.get("reference") or os.path.join(design_dir(), "reference"), *parts)
+
+
 def owner(path):
     """The name of the product whose folder holds `path` (the deepest one), or None."""
     path = os.path.normcase(os.path.abspath(path))
