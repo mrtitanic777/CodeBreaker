@@ -112,12 +112,15 @@ def assemble(source, work):
     return (obj if code == 0 and os.path.isfile(obj) else None), log
 
 
-def link(obj, device, out, dynamic=False, classes=None, named=True):
+def link(obj, device, out, dynamic=False, classes=None, named=True, definitions=None):
     """Link one object file into a driver exporting <device>_DDB. -> (file or None, messages)
     `classes` [(segment class, attributes)] replaces the kit's classes, for source that names
     its own (one per object of the original). `named` False exports the DDB by ordinal only,
     with no name -- which is how a member of a container (VMM in VMM32.VXD) exports it, the
-    name living in the container's own directory."""
+    name living in the container's own directory. `definitions` is the text of the driver's
+    .def: its DESCRIPTION and EXPORTS (name @ordinal) are linked as it says -- the
+    description and the exports go in the non-resident name table, as Microsoft's LINK put
+    them."""
     wlink = tool("wlink")
     if not wlink:
         return None, "no linker"
@@ -125,7 +128,13 @@ def link(obj, device, out, dynamic=False, classes=None, named=True):
     script = os.path.splitext(out)[0] + ".lnk"
     lines = ["format windows vxd" + (" virtdevice" if dynamic else ""), "option quiet",
              "option map=%s" % (os.path.splitext(out)[0] + ".map"), "name %s" % out,
-             "export %s_DDB%s" % (device, "" if named else ".1"), "file %s" % obj]
+             "file %s" % obj]
+    described = re.search(r"DESCRIPTION\s+'((?:[^']|'')*)'", definitions or "")
+    if described:
+        lines.insert(2, "option description '%s'" % described.group(1))
+    exports = re.findall(r"^\s+(\w+)\s+@(\d+)", definitions or "", re.M)
+    lines[-1:-1] = (["export %s.%s" % e for e in exports] if exports else
+                    ["export %s_DDB%s" % (device, "" if named else ".1")])
     lines += ["segment class '%s' %s" % (cls, attrs) for cls, attrs in (classes or SEGMENT_CLASSES)]
     with open(script, "w", newline="\r\n") as f:
         f.write("\n".join(lines) + "\n")

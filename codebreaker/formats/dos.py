@@ -144,12 +144,47 @@ def _kind(data, name=""):
         wrapped = (h["cs"], h["ip"]) == (0, 0) and devices(data[h["header"]:h["size"]][:0x10000])
         return "driver" if wrapped else "mz"                  # a driver linked as an .EXE
     if data[:2] in (b"MZ", b"ZM"):
-        return None
+        return "driver+vxd" if driver_and_vxd(data) else None
     if devices(data[:0x10000]):
         return "driver"
     if name.lower().endswith(".com") and 0 < len(data) <= 0xFF00:
         return "com"
     return None
+
+
+def driver_and_vxd(data):
+    """A real-mode device driver and a VxD in one file (DRVSPACE.BIN): an MZ header whose load
+    module is the driver -- device headers at its start -- and whose new-header field points at
+    an LE behind it, the VxD. -> (header size, LE offset), or None."""
+    if len(data) < 0x40 or data[:2] != b"MZ":
+        return None
+    hdr = struct.unpack_from("<H", data, 8)[0] * 16
+    lfa = struct.unpack_from("<I", data, 0x3C)[0]
+    if not (hdr < lfa < len(data) - 2 and data[lfa:lfa + 2] == b"LE" and devices(data[hdr:lfa][:0x10000])):
+        return None
+    return hdr, lfa
+
+
+def driver_part(path):
+    """The real-mode driver of a driver+vxd file, as a Program (a driver image)."""
+    with open(path, "rb") as f:
+        data = f.read()
+    hdr, lfa = driver_and_vxd(data)
+    p = Program(path, "driver")
+    p.name = "the real-mode driver of %s" % os.path.basename(path).lower()
+    p.image = bytes(data[hdr:lfa])
+    p.spans = [(LOAD * 16, len(p.image), "driver")]
+    p.devices = devices(p.image[:0x10000])
+    p.cs = LOAD
+    for d in p.devices:
+        label = "".join(c if c.isalnum() else "_" for c in d.name.split(" (")[0]).strip("_") or "device"
+        label = "dev_" + label if label[0].isdigit() else label
+        label = "%s_%X" % (label, d.offset) if not d.character else label
+        for va, role in ((LOAD * 16 + d.strategy, "strategy"), (LOAD * 16 + d.interrupt, "interrupt")):
+            if va not in p.segments:
+                p.entries.append((va, "%s_%s" % (label, role), "far"))
+                p.segments[va] = LOAD
+    return p
 
 
 def kind(path):

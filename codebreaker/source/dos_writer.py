@@ -387,8 +387,74 @@ def reconstruct(module_path, outdir, log=None):
     -> a dict: source, image, linked, same, notes, instructions, raw, data, rounds, functions."""
     if dos.kind(module_path) == "kernel":
         return _kernel(module_path, outdir, log)
+    if dos.kind(module_path) == "driver+vxd":
+        return _driver_and_vxd(module_path, outdir, log)
     p = dos.read(module_path, run_movers=False)         # moving itself is the program's own code
     return _program(p, outdir, re.sub(r"\W", "_", os.path.splitext(p.name)[0]), log)
+
+
+def _driver_and_vxd(module_path, outdir, log=None):
+    """A real-mode driver and a VxD in one file (DRVSPACE.BIN): the driver written and built
+    here, the VxD by the driver lane (source/driver_writer.py), and the file put together as the
+    original is -- its MZ header (<stem>.hdr), the driver, the VxD laid out as Microsoft's LINK
+    lays one out (build/vxdfile.py; its description and exports from <vxd>.def), its version
+    resource (<vxd>.ver)
+    and what the original carries behind that (<stem>.tail)."""
+    from codebreaker.build import vxdfile
+    from codebreaker.source import driver_writer
+    with open(module_path, "rb") as f:
+        original = f.read()
+    hdr, lfa = dos.driver_and_vxd(original)
+    stem = re.sub(r"\W", "_", os.path.splitext(os.path.basename(module_path))[0].lower())
+    result = {"source": [], "image": None, "linked": True, "same": False, "rounds": 0, "notes": [], "kind": "driver+vxd",
+              "instructions": 0, "raw": 0, "data": 0, "parts": {}}
+    os.makedirs(outdir, exist_ok=True)
+    r = _program(dos.driver_part(module_path), outdir, stem, log)
+    v = driver_writer.reconstruct(module_path, os.path.join(outdir, "vxd"), log=log)
+    for name, part in ((stem, r), ("vxd", v)):
+        result["parts"][name] = part
+        result["source"].append(part["source"])
+        for k in ("instructions", "raw", "data"):
+            result[k] += part.get(k, 0)
+        result["rounds"] = max(result["rounds"], part["rounds"])
+        ok = part.get("same")
+        if log:
+            log("  %s: %d instructions, %d as bytes; %s" % (name, part.get("instructions", 0), part.get("raw", 0),
+                "builds back the same" if ok else "; ".join(part.get("notes") or []) or "differs"))
+        if not part.get("linked"):
+            result["linked"] = False
+            result["notes"].append("%s: %s" % (name, "; ".join(part.get("notes") or []) or "not built"))
+    if not result["linked"]:
+        return result
+    vstem = os.path.splitext(os.path.basename(v["image"]))[0]
+    head = _beside(os.path.join(outdir, stem + ".hdr"), lambda: original[:hdr])
+    res_at, res_len = struct.unpack_from("<II", original, lfa + 0xB8)
+    resource = _beside(os.path.join(outdir, "vxd", vstem + ".ver"), lambda: original[res_at:res_at + res_len])
+    tail = _beside(os.path.join(outdir, stem + ".tail"), lambda: original[res_at + res_len:])
+    with open(r["image"], "rb") as f:
+        driver = f.read()
+    with open(v["image"], "rb") as f:
+        built_vxd = f.read()
+    at = len(head) + len(driver)
+    body = bytearray(head) + driver + vxdfile.relay(built_vxd, at, resource) + tail
+    struct.pack_into("<I", body, 0x3C, at)                   # where the VxD is
+    total = len(body)
+    struct.pack_into("<HH", body, 2, total % 512, (total + 511) // 512)
+    os.makedirs(os.path.join(outdir, "file"), exist_ok=True)
+    out = os.path.join(outdir, "file", os.path.basename(module_path).upper())
+    with open(out, "wb") as f:
+        f.write(body)
+    result.update(image=out, file=out, same=bytes(body) == original)
+    if not result["same"]:
+        n = min(len(body), len(original))
+        first = next((a for a in range(n) if body[a] != original[a]), n)
+        result["notes"].append("the file differs from the original at %#x (%d bytes, original %d)" % (
+            first, len(body), len(original)))
+        result["equivalent"] = bool(r["same"] and v.get("same"))
+        if result["equivalent"]:
+            result["notes"].append("the driver is the original's byte for byte and the VxD the same module (objects, "
+                                   "descriptor, services, exports); laid out by OpenWatcom's linker, its tables differ")
+    return result
 
 
 def _fills_text(layout):

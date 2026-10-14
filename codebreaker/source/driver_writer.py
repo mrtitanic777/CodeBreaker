@@ -35,6 +35,7 @@ import capstone
 
 from codebreaker.base import settings
 from codebreaker.build import driver as builder
+from codebreaker.build import vxdfile
 from codebreaker.formats import le
 from codebreaker.source import assembly
 from codebreaker.symbols import driver_services
@@ -477,6 +478,12 @@ def _match_module_flags(image, lf):
             f.write(data)
 
 
+def _nonresident_names(lf):
+    """Whether the LE has a non-resident name table inside its file."""
+    at, n = struct.unpack_from("<II", lf.d, lf.lfa + 0x88)
+    return bool(at and n and at + n <= len(lf.d))
+
+
 def reconstruct(module_path, outdir, member=0, log=None):
     """Write a driver's source, build it, and make it come back as the original (see the top).
     -> a dict: source, image, linked, checks, notes, same, instructions, raw, data, rounds."""
@@ -489,6 +496,20 @@ def reconstruct(module_path, outdir, member=0, log=None):
     out = os.path.join(outdir, stem + ".vxd")
     good = w.probe(outdir)
     result = {"source": src, "image": None, "linked": False, "rounds": 0, "notes": []}
+    # the driver's .def -- its description and exports, which the linker puts in the
+    # non-resident name table -- when the original has one; kept as written once it is there
+    definitions = None
+    def_path = os.path.join(outdir, stem + ".def")
+    if os.path.isfile(def_path):
+        with open(def_path, encoding="latin1") as f:
+            definitions = f.read()
+    elif _nonresident_names(lf):
+        definitions = vxdfile.definitions(lf.d, lf.lfa)
+        with open(def_path, "w", newline="\r\n", encoding="latin1") as f:
+            f.write("; %s -- the definitions it was linked with, from its non-resident name table\n" % device
+                    + "VXD %s\n" % device + definitions)
+    if definitions:
+        result["definitions"] = def_path
     for rounds in range(1, _MAX_ROUNDS + 1):
         text, counts, line_of = w.source(good)
         with open(src, "w", newline="\r\n", encoding="latin1") as f:
@@ -512,7 +533,8 @@ def reconstruct(module_path, outdir, member=0, log=None):
             continue
         named = bool(le.exports(lf) and le.exports(lf)[0][0])
         image, messages = builder.link(obj, device, out, classes=w.classes(), named=named,
-                                       dynamic=le.header_fields(lf)["module_flags"] == le.MODULE_DYNAMIC)
+                                       dynamic=le.header_fields(lf)["module_flags"] == le.MODULE_DYNAMIC,
+                                       definitions=definitions)
         if not image:
             result["notes"] = ["linker: " + (messages.strip().splitlines() or ["failed"])[-1][:200]]
             break
