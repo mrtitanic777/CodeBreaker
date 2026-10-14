@@ -425,7 +425,31 @@ def _build16(b, path, m, folder):
     for name, (mod, what) in sorted(imports.items()):
         lines.append("import _%s %s.%s" % (name, mod, what if isinstance(what, int) else _quote(what)))
 
+    # The module's constants -- entries of segment 0xFE, KERNEL's __AHINCR, __0040H and the
+    # like: values, not places. Each is a public EQU in constants.asm, which the linker exports
+    # as a constant entry.
+    constants = {e.ordinal: e for e in definitions.exports(path)
+                 if isinstance(e.address, tuple) and e.address[0] == 0xFE}
+    if constants:
+        def symbol(e):
+            return e.name if e.name and re.fullmatch(r"[A-Za-z_]\w*", e.name) else "constant_%d" % e.ordinal
+        src = ["; %s -- the values it exports as constants (entry segment 0FEh)" % definitions.module_name(path), ""]
+        for o, e in sorted(constants.items()):
+            src += ["public %s" % symbol(e), "%s equ 0%Xh" % (symbol(e), e.address[1])]
+        with open(os.path.join(folder, "constants.asm"), "w", newline="\n") as f:
+            f.write("\n".join(src + ["end", ""]))
+        r = subprocess.run([watcom.ow_tool("wasm"), "-q", "constants.asm"], cwd=folder, env=env,
+                           capture_output=True, text=True)
+        if r.returncode == 0:
+            lines.append("file constants.obj")
+        else:
+            constants = {}
+
     def symbol_at(e):
+        if e.ordinal in constants:
+            return symbol(e)
+        if e.address in d.exported:                         # exported data: its part of the segment
+            return "_" + d.exported[e.address]
         fn = at.get(e.address)
         return public[fn][0] if fn in public else None
     exports, b.exports_missing = definitions.export_directives(path, symbol_at)

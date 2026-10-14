@@ -51,6 +51,7 @@ class Data(object):
         self.imports = {}                 # 16-bit: {symbol: (module, ordinal)} named only by data
         self.movable = True
         self.size = 0
+        self.exported = {}                # 16-bit: {(segment, offset): C name} of exported data
 
     def place(self, va):
         """The C expression for an address inside a carried section, or None."""
@@ -375,9 +376,45 @@ def data16(path, function_at, far_segments=()):
         nef.module_name(), size, len(blob)),
         " * It must be the first thing linked into the data segment: the code addresses it by offset. */"]
     head += ["extern uint4 __far __stdcall %s();" % x for x in sorted(set(externs))]
-    d.source = "\n".join(head) + "\n" + _object("codebreaker_data_segment", "codebreaker_data",
-                                                 _pieces(bytes(blob), size, pointers))
+    # data the module exports (KERNEL's THHOOK): the segment is cut there, and from there on it
+    # is a variable of the export's own name -- the parts follow one another in the segment
+    names = {}
+    for kind in ("resident_names", "nonresident_names"):
+        got = getattr(nef, kind)
+        for name, ordinal in (got() if callable(got) else got) or ():
+            if ordinal:
+                names[ordinal] = name
+    cuts = {e["offset"]: names.get(o, "export_%d" % o) for o, e in entries.items()
+            if e.get("seg") == auto and 0 < e["offset"] < size}
+    pieces = _cut(_pieces(bytes(blob), size, pointers), sorted(cuts))
+    d.exported = {}
+    parts, start = [], 0
+    for at in sorted(cuts) + [size]:
+        part = [piece for piece in pieces if start <= piece[1] < at]
+        name = "codebreaker_data" if start == 0 else re.sub(r"\W", "_", cuts[start])
+        if part:
+            parts.append(_object("codebreaker_data_%s" % (name if start else "segment"), name, part))
+            if start:
+                d.exported[(auto, start)] = name
+        start = at
+    d.source = "\n".join(head) + "\n" + "\n".join(parts)
     return d
+
+
+def _cut(pieces, offsets):
+    """Pieces (see _pieces) cut so that each offset starts one."""
+    out = []
+    for p in pieces:
+        kind, off = p[0], p[1]
+        length = len(p[2]) if kind == "bytes" else p[2] if kind == "zero" else None
+        inner = [c for c in offsets if length and off < c < off + length]
+        if not inner:
+            out.append(p)
+            continue
+        bounds = [off] + inner + [off + length]
+        for lo, hi in zip(bounds, bounds[1:]):
+            out.append(("bytes", lo, p[2][lo - off:hi - off]) if kind == "bytes" else ("zero", lo, hi - lo))
+    return out
 
 
 def far_segments(segments):
