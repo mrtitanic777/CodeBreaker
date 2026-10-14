@@ -13,7 +13,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from codebreaker.base import corpus                          # noqa: E402
+from codebreaker.base import corpus, settings                # noqa: E402
 from codebreaker.build import data, definitions, module, watcom    # noqa: E402
 from codebreaker.build import resources as rebuild           # noqa: E402
 from codebreaker.formats import resources                    # noqa: E402
@@ -193,12 +193,30 @@ def test_build_16_bit_module():
     assert nef.segments()[nef.h["autodata_seg"] - 1]["kind"] == "DATA"
 
 
+def test_16bit_dll_with_the_period_tools():
+    """LZEXPAND's reconstruction compiled with Microsoft C 6 and linked with LINK 5.60."""
+    from codebreaker.build import msc6, period16
+    if not (msc6.available() and msc6.available("msvc152")):
+        raise Skip("Microsoft C 6 or Visual C++ 1.52c is not set up")
+    folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "lzexpand")
+    dll = period16.build(folder, settings.state("tests", "build16"))
+    assert dll and open(dll, "rb").read(2) == b"MZ"
+    built = period16.segments(dll)
+    assert len(built) == 11 and all(length == len(data) for length, data in built)
+    original = corpus.retail("lzexpand.dll")
+    if original:
+        same, total = period16.compare(dll, original, log=None)
+        assert total == 12 and 0 <= same <= total
+        lengths = {length for length, _d in period16.segments(original)}
+        assert sum(1 for length, _d in built if length in lengths) >= 4      # most come out the original's size
+
+
 def main():
     for fn in (test_resources_of_a_32_bit_module, test_resources_of_a_16_bit_module, test_type_library,
                test_padding_is_not_a_difference,
                test_string_literals, test_resource_round_trip_32_bit, test_resource_round_trip_16_bit,
                test_definitions_32_bit, test_definitions_16_bit, test_data_objects,
-               test_build_32_bit_module, test_build_16_bit_module):
+               test_build_32_bit_module, test_build_16_bit_module, test_16bit_dll_with_the_period_tools):
         check(fn)
     for name, status, detail in RESULTS:
         print("  %-4s %s%s" % (status, name, ("  -- " + detail) if detail else ""))
