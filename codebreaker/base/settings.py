@@ -12,6 +12,11 @@ and are named in one file, `settings.json` at the top of the checkout:
     powerpc_lib     that compiler's C runtime library file (its register save/restore helpers)
     period_compiler folder holding a 32-bit Microsoft C compiler of the original's time (CL.EXE),
                     for the optional byte-match check (`match`)
+    dosbox_x        DOSBox-X, which runs the DOS compilers, assemblers and linkers
+    msc6            folder of Microsoft C 6.0a (BIN/CL.EXE)
+    msc203          folder holding Microsoft C 2.03's MC1.EXE and MC2.EXE (the 1983-84 compiler model)
+    masm            folder of a Microsoft Macro Assembler (BIN/MASM.EXE, INC, LIB)
+    xenix_c         folder holding xcc.py (the XENIX C compiler of Microsoft's 1984 tools)
     decompiler_bin  folder of the native decompiler executables   (default: native/decompiler/build/bin)
     ghidra_core     folder holding cbdecomp.exe                    (default: native/ghidra_core/build/bin)
     state           where results and caches are kept             (default: state/)
@@ -40,7 +45,7 @@ DEFAULTS = {
     "state": "state",
     "target": "win95",
 }
-_PATHS = ("corpus", "openwatcom", "decompiler_bin", "ghidra_core", "state", "powerpc_tools", "powerpc_lib", "period_compiler", "dosbox_x", "msc6", "xenix_c")
+_PATHS = ("corpus", "openwatcom", "decompiler_bin", "ghidra_core", "state", "powerpc_tools", "powerpc_lib", "period_compiler", "dosbox_x", "msc6", "xenix_c", "msc203", "masm")
 _loaded = None
 
 
