@@ -198,11 +198,15 @@ class Function(object):
                             self.cs_labels[at] = disp       # a table or a variable of the run: a label
                             if mn in ("jmp", "call") and op.mem.index == 0 and op.mem.base != 0:
                                 # a jump or call table: its words are places in the run to go on from
-                                t = disp
-                                while start <= t < end - 1 and t not in seen:
+                                # (it ends, at the latest, where the first place it sends to
+                                # after it begins: past that is the code it goes on to)
+                                t, first = disp, end
+                                while start <= t < min(end - 1, first) and t not in seen:
                                     target = struct.unpack_from("<H", blob, t)[0]
                                     if not start <= target < end:
                                         break
+                                    if target > disp:
+                                        first = min(first, target)
                                     self.tables.add(t)
                                     work.append(target)
                                     t += 2
