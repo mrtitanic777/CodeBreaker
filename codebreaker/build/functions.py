@@ -97,6 +97,36 @@ def _compile(cc, cflags, env, outdir, stem, text):
     return why
 
 
+_NEVER_SET = re.compile(r"W200: '(\w+)' has been referenced but never assigned a value")
+
+
+def never_set(cc, cflags, env, outdir, stem, text):
+    """The variables a function reads that nothing in it ever sets, as the compiler sees them
+    (W200, its flow check, which the build's -w0 keeps quiet). -> [name, ...]
+    One the decompiler made up -- a register on entry (`in_AX`, `unaff_ES`), or a stack slot it
+    split off from a buffer whose address it passes on (`iStack_1b` beside `axStack_34`) -- is a
+    value the original got from somewhere this C does not: what it reads is whatever is there."""
+    from codebreaker.base import cache
+    flags = [f for f in cflags if not f.startswith("-w")] + ["-w2", "-zs"]
+    k = cache.key(cache.tool(cc), flags, _HEADER.get(outdir, ""), text) if outdir in _HEADER else None
+    had = cache.get("never_set", k) if k else None
+    if had is not None:
+        return [s for s in had.decode().split(",") if s]
+    name = stem + "_w.c"
+    with open(os.path.join(outdir, name), "w", newline="\n", encoding="utf-8") as f:
+        f.write('#include "m.h"\n\n' + text + "\n")
+    r = subprocess.run([cc] + flags + [name], cwd=outdir, env=env, capture_output=True, text=True,
+                       errors="replace", timeout=600)
+    try:
+        os.remove(os.path.join(outdir, name))
+    except OSError:
+        pass
+    found = sorted(set(_NEVER_SET.findall((r.stdout or "") + (r.stderr or ""))))
+    if k:
+        cache.put("never_set", k, ",".join(found).encode())
+    return found
+
+
 _HEADER = {}                     # build folder -> the hash of the header in it
 OBJECTS = {}                     # build folder -> {function: digest of its object code}, of the last build there
 

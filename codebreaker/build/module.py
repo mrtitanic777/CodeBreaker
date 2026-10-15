@@ -784,6 +784,21 @@ def _build16(b, path, m, folder):
                                                  % (mm.group(1), len(args), words))
                 forced.add(n)
                 break
+    # ... and C that reads a variable nothing in it sets (the compiler's flow check): a value
+    # the original took from a register on entry or from a buffer it had filled through a
+    # pointer, which the C reads as whatever happens to be there -- right or wrong by where the
+    # build happens to put things
+    from concurrent.futures import ThreadPoolExecutor
+    left = [n for n in m.order if n not in forced and n in stems and n in texts]
+    with ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as pool:
+        unset = dict(zip(left, pool.map(lambda n: functions.never_set(
+            wcc, cflags, env, os.path.join(folder, "s%02d" % segment_of[n]), n, texts[n]), left)))
+    for n, names in unset.items():
+        if names:
+            if n in b.origins:
+                b.origins[n].evidence.append("its C reads %s, which it never sets (not trusted as C)"
+                                             % ", ".join(names))
+            forced.add(n)
     # (for finding which rebuilt functions make a module misbehave: CB_ASM_ONLY=all rebuilds
     # every function from its own instructions; a comma list, those named; CB_ASM_SEGMENTS=1,3
     # those in the segments named)
