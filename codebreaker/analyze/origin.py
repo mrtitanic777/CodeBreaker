@@ -128,7 +128,7 @@ def module16(path, more=None):
 
 
 def _judge(o, md, image, start, end, imported, starts=()):
-    written, prologue_ax, frame = set(), False, False
+    written, prologue_ax, frame, last_push_seg = set(), False, False, False
     first_ins = next(md.disasm(image[start:end], start), None)
     if first_ins is not None and first_ins.mnemonic == "pop":
         # it takes its own return address off the stack (to take its arguments off by hand,
@@ -214,6 +214,12 @@ def _judge(o, md, image, start, end, imported, starts=()):
         if mn == "push" and ins.op_str in ("bx", "cx", "dx") and not written & {
                 ins.op_str, "e" + ins.op_str, ins.op_str[0] + "l", ins.op_str[0] + "h"}:
             o.evidence.append("argument in %s (%04x push)" % (ins.op_str.upper(), ins.address))
+        # SI or DI pushed, as it came, right after a segment register: a far pointer made of it
+        # to pass on (a save would come at the prologue, not after `push ss`)
+        if mn == "push" and ins.op_str in ("si", "di") and ins.op_str not in written and \
+                last_push_seg:
+            o.evidence.append("argument in %s (%04x push after a segment)" % (ins.op_str.upper(), ins.address))
+        last_push_seg = mn == "push" and ins.op_str in ("ss", "ds", "es", "cs")
         for r in regs_written:
             nm = ins.reg_name(r)
             written.add(nm)
