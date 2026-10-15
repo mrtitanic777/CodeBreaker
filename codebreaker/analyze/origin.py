@@ -94,6 +94,36 @@ def module16(path, more=None):
         end = later[0] if later else len(image)
         o = res.functions[va] = Origin(va, name)
         _judge(o, md, image, off, end, imported, set(starts[seg]))
+    # A function that calls one taking its arguments in registers, having put them there itself,
+    # was written in assembly as well (C passes arguments on the stack)
+    by_place = {d.where[va]: o for va, o in res.functions.items()}
+    takes_registers = {place for place, o in by_place.items()
+                       if any(e.startswith("argument in ") for e in o.evidence)}
+    for va, o in res.functions.items():
+        if o.language == "assembly":
+            continue
+        seg, off = d.where[va]
+        image = d.images.get(seg, b"")
+        later = [x for x in starts[seg] if x > off]
+        end = later[0] if later else len(image)
+        set_regs = set()
+        for ins in md.disasm(image[off:end], off):
+            try:
+                _r, written = ins.regs_access()
+            except capstone.CsError:
+                written = []
+            if ins.mnemonic == "call" and ins.operands and ins.operands[0].type == X.X86_OP_IMM:
+                callee = by_place.get((seg, ins.operands[0].imm))
+                if (seg, ins.operands[0].imm) in takes_registers and callee is not None:
+                    wanted = {e.split()[2].lower() for e in callee.evidence if e.startswith("argument in ")}
+                    if wanted & set_regs:
+                        o.evidence.append("calls %s with arguments in registers (%04x)" % (callee.name, ins.address))
+                        o.language = "assembly"
+                        break
+                set_regs = set()
+                continue
+            for r in written:
+                set_regs.add(ins.reg_name(r))
     return res
 
 
@@ -105,7 +135,18 @@ def _judge(o, md, image, start, end, imported, starts=()):
         o.language = "assembly"
         return
     first = True
-    for ins in md.disasm(image[start:end], start):
+    # the function's own bytes -- and, when they end without a return or a jump (the next entry
+    # lies inside its code: overlapping entry points), on until the code does leave
+    body = list(md.disasm(image[start:end], start))
+    at = body[-1].address + body[-1].size if body else start
+    straddles = next(md.disasm(image[at:at + 16], at), None)
+    if at < end and straddles is not None and at + straddles.size > end and             (not body or body[-1].mnemonic not in ("ret", "retf", "iret", "jmp", "ljmp")):
+        for ins in md.disasm(image[at:at + 0x400], at):
+            body.append(ins)
+            if ins.mnemonic in ("ret", "retf", "iret", "jmp", "ljmp") or len(body) > 400:
+                break
+        end = max(end, body[-1].address + body[-1].size)
+    for ins in body:
         mn = ins.mnemonic
         ops = ins.operands
         try:
@@ -134,6 +175,13 @@ def _judge(o, md, image, start, end, imported, starts=()):
             o.evidence.append("loads SS (%04x)" % ins.address)
         if X.X86_REG_SP in regs_written and mn == "mov" and ins.op_str != "sp, bp":
             o.evidence.append("moves SP (%04x)" % ins.address)
+        if mn == "enter":
+            frame = True
+        # a place through BP before the function makes its own frame: its caller's frame
+        # (a helper that works in the frame of the function that called it)
+        if not frame and mn not in ("push", "pop", "inc", "dec", "leave") and any(
+                op.type == X.X86_OP_MEM and op.mem.base == X.X86_REG_BP for op in ops):
+            o.evidence.append("works in its caller's frame (%04x %s %s)" % (ins.address, mn, ins.op_str))
         if mn == "mov" and ins.op_str == "bp, sp":
             frame = True
         elif X.X86_REG_BP in regs_written and mn not in ("push", "pop", "inc", "dec", "leave", "enter") and not frame:
@@ -145,6 +193,11 @@ def _judge(o, md, image, start, end, imported, starts=()):
                     and nm[:1] + "x" not in written and nm not in written and mn not in ("push", "xor", "sub") \
                     and not (prologue_ax and nm == "ax") and nm != "es":
                 o.evidence.append("argument in %s (%04x)" % (nm.upper(), ins.address))
+        # BX, CX or DX pushed before the function set it: what its caller put there, kept (a C
+        # prologue saves SI, DI, DS -- not these)
+        if mn == "push" and ins.op_str in ("bx", "cx", "dx") and not written & {
+                ins.op_str, "e" + ins.op_str, ins.op_str[0] + "l", ins.op_str[0] + "h"}:
+            o.evidence.append("argument in %s (%04x push)" % (ins.op_str.upper(), ins.address))
         for r in regs_written:
             nm = ins.reg_name(r)
             written.add(nm)
