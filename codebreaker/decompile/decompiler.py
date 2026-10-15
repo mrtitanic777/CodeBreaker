@@ -54,8 +54,20 @@ def run(description, only=(), timeout=3600, max_instructions=None):
     # program says of it is kept under its hash (base/cache.py): a module is decompiled once.
     from codebreaker.base import cache
     with open(description, "rb") as f:
-        k = cache.key(cache.tool(_exe()), _language_stamp(), f.read(), ["%x" % va for va in only],
-                      max_instructions or "")
+        text = f.read()
+    # (by what the files it names hold, not where they are: the same module described in
+    # another build folder is the same description)
+    files = {}
+
+    def _content(mm):
+        p = mm.group(2).decode("utf-8", "replace")
+        if p not in files:
+            with open(p, "rb") as fh:
+                files[p] = cache.key(fh.read())
+        return mm.group(1) + files[p].encode() + mm.group(3)
+    text = re.sub(rb"(?m)^(bytes\t[0-9a-fA-F]+\t)([^\t\r\n]+)(\t)", _content, text)
+    k = cache.key(cache.tool(_exe()), _language_stamp(), text, ["%x" % va for va in only],
+                  max_instructions or "")
     had = cache.get("decompiled", k)
     if had is not None:
         stdout, stderr = had.decode("utf-8", "replace").split("\x00", 1)

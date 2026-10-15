@@ -256,13 +256,15 @@ class Function(object):
         self.calls = calls
         self.module, self.seg, self.public = nef.module_name(), seg, public
         # a jump into the middle of an instruction: that instruction is not written as one
+        # (each instruction's own few bytes looked up in the set: not every target for each)
         targets = {t[3] for t in self.ins.values() if t[3] is not None}
         for a in list(self.ins):
-            if any(a < x < a + len(self.ins[a][0]) for x in targets):
+            if any(x in targets for x in range(a + 1, a + len(self.ins[a][0]))):
                 del self.ins[a]
         # a place read through CS is a label too: no instruction may run over it
+        read = set(self.cs_labels.values())
         for a in list(self.ins):
-            if any(a < x < a + len(self.ins[a][0]) for x in self.cs_labels.values()):
+            if any(x in read for x in range(a + 1, a + len(self.ins[a][0]))):
                 del self.ins[a]
         for a in [a for a in self.cs_labels if a not in self.ins]:
             del self.cs_labels[a]
@@ -270,11 +272,13 @@ class Function(object):
         for a in [a for a, t in self.ins.items() if t[3] is not None and t[3] not in self.labels]:
             del self.ins[a]                                 # (its target is not an instruction start)
         self.labels |= set(self.cs_labels.values())
+        held = set()
         for t in self.tables:                               # what a jump table holds: labels, as words
             self.labels.add(struct.unpack_from("<H", blob, t)[0])
-            for a in list(self.ins):
-                if a < t + 2 and t < a + len(self.ins[a][0]):
-                    del self.ins[a]
+            held |= {t, t + 1}
+        for a in list(self.ins):
+            if any(x in held for x in range(a, a + len(self.ins[a][0]))):
+                del self.ins[a]
         self.text = self.write(set())
 
     def mnemonic(self, at):
@@ -308,11 +312,17 @@ class Function(object):
         """Whether a label is referred to from inside [lo, hi) (so a piece writes it)."""
         if not lo <= label < hi:
             return False
-        if any(lo <= a < hi and t[3] == label for a, t in self.ins.items()):
-            return True
-        if any(lo <= a < hi and d == label for a, d in self.cs_labels.items()):
-            return True
-        return any(lo <= t < hi and struct.unpack_from("<H", self.blob, t)[0] == label for t in self.tables)
+        refs = getattr(self, "_refs", None)
+        if refs is None:                                    # (who refers to each label, once)
+            refs = self._refs = {}
+            for a, t in self.ins.items():
+                if t[3] is not None:
+                    refs.setdefault(t[3], []).append(a)
+            for a, d in self.cs_labels.items():
+                refs.setdefault(d, []).append(a)
+            for t in self.tables:
+                refs.setdefault(struct.unpack_from("<H", self.blob, t)[0], []).append(t)
+        return any(lo <= a < hi for a in refs.get(label, ()))
 
     def candidates(self):
         """{offset: (text, bytes, mask)} of the instructions the assembler's spelling is probed for."""

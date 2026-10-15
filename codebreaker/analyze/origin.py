@@ -113,8 +113,9 @@ def module16(path, more=None):
             except capstone.CsError:
                 written = []
             if ins.mnemonic == "call" and ins.operands and ins.operands[0].type == X.X86_OP_IMM:
-                callee = by_place.get((seg, ins.operands[0].imm))
-                if (seg, ins.operands[0].imm) in takes_registers and callee is not None:
+                to = ins.operands[0].imm & 0xFFFF               # (a call back down wraps round)
+                callee = by_place.get((seg, to))
+                if (seg, to) in takes_registers and callee is not None:
                     # (whether it put them there or passes its own caller's on: C can do neither)
                     if True:
                         o.evidence.append("calls %s with arguments in registers (%04x)" % (callee.name, ins.address))
@@ -128,7 +129,7 @@ def module16(path, more=None):
 
 
 def _judge(o, md, image, start, end, imported, starts=()):
-    written, prologue_ax, frame, last_push_seg = set(), False, False, False
+    written, prologue_ax, frame, last_push_seg, flags_set = set(), False, False, False, False
     prev_call, pending, code_in = False, None, {}
     first_ins = next(md.disasm(image[start:end], start), None)
     if first_ins is not None and first_ins.mnemonic == "pop":
@@ -192,9 +193,9 @@ def _judge(o, md, image, start, end, imported, starts=()):
         elif mn == "pop" and prev_call and ins.op_str in ("ax", "bx", "cx", "dx"):
             # a word pushed before a call taken back after it as a value (pop, then used)
             pending = (ins.op_str, ins.address, 3)
-        elif mn == "call" and ops and ops[0].type == X.X86_OP_IMM and start < ops[0].imm < end:
+        elif mn == "call" and ops and ops[0].type == X.X86_OP_IMM and start < ops[0].imm & 0xFFFF < end:
             # a call into its own body (a far entry that calls the near routine after it)
-            o.evidence.append("calls into its own body (%04x -> %04x)" % (ins.address, ops[0].imm))
+            o.evidence.append("calls into its own body (%04x -> %04x)" % (ins.address, ops[0].imm & 0xFFFF))
         elif mn in ("stc", "clc", "cmc"):
             # the carry flag set as a result (callers test it): C has no word for it
             o.evidence.append("%s: a result in the carry flag (%04x)" % (mn.upper(), ins.address))
@@ -222,6 +223,15 @@ def _judge(o, md, image, start, end, imported, starts=()):
             frame = True
         elif X.X86_REG_BP in regs_written and mn not in ("push", "pop", "inc", "dec", "leave", "enter") and not frame:
             o.evidence.append("BP as a plain register (%04x)" % ins.address)
+        # a flag read before anything sets one (a jump on the carry its caller left): an
+        # argument in the flags -- C has no word for it
+        if X.X86_REG_EFLAGS in regs_read and not flags_set and mn not in ("pushf", "pushfd"):
+            o.evidence.append("argument in the flags (%04x %s)" % (ins.address, mn))
+        if X.X86_REG_EFLAGS in regs_written:
+            flags_set = True
+        # AX and DX swapped: a 32-bit result's halves put the other way round
+        if mn == "xchg" and sorted(ins.op_str.replace(" ", "").split(",")) == ["ax", "dx"]:
+            o.evidence.append("swaps AX and DX (%04x)" % ins.address)
         # registers read before written (arguments in registers)
         for r in regs_read:
             nm = ins.reg_name(r)
@@ -273,10 +283,10 @@ def _judge(o, md, image, start, end, imported, starts=()):
         # a jump out of the function: into the middle of other code (entry points sharing a
         # body -- set a register, jump to the common part) or to another function (a tail jump):
         # the C compilers of the time do neither
-        if (mn == "jmp" or mn.startswith("j")) and ops and ops[0].type == X.X86_OP_IMM                 and not start <= ops[0].imm < end and starts:
+        if (mn == "jmp" or mn.startswith("j")) and ops and ops[0].type == X.X86_OP_IMM                 and not start <= (ops[0].imm & 0xFFFF) < end and starts:
             o.evidence.append("jumps %s (%04x -> %04x)" % (
-                "to another function" if ops[0].imm in starts else "into the middle of other code",
-                ins.address, ops[0].imm))
+                "to another function" if (ops[0].imm & 0xFFFF) in starts else "into the middle of other code",
+                ins.address, (ops[0].imm & 0xFFFF)))
         # a return address of its own pushed (push the place to come back to, then jump):
         # hand-made calling
         if mn == "push" and ops and ops[0].type == X.X86_OP_IMM and ins.address < ops[0].imm < end:
