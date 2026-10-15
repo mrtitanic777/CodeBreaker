@@ -177,9 +177,9 @@ def _judge(o, md, image, start, end, imported, starts=()):
                 and not (ops[0].type == X.X86_OP_REG and ops[0].reg == X.X86_REG_BP):
             # SP copied to reach the stack through another register (no frame): hand-written
             o.evidence.append("reaches the stack through SP (%04x %s %s)" % (ins.address, mn, ins.op_str))
-        elif mn == "mov" and ins.op_str.startswith("ds,") and ins.op_str != "ds, ax":
-            # DS loaded from memory or another register (a segment it keeps, switched to): the
-            # C compilers touch DS only in the prologue, from AX
+        elif mn == "mov" and ins.op_str.startswith("ds, word ptr ["):
+            # DS loaded from a variable (a segment it keeps, switched to): compiled code loads DS
+            # from a register (the prologue's AX, far data), not from one of its own globals
             o.evidence.append("loads DS from %s (%04x)" % (ins.op_str[4:], ins.address))
         elif mn == "ljmp":
             o.evidence.append("a far jump (%04x %s)" % (ins.address, ins.op_str))

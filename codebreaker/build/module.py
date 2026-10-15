@@ -792,6 +792,7 @@ def _build16(b, path, m, folder):
     if only or segs_only:
         named = set(m.order) if only == "all" else set(only.split(","))
         forced |= {n for n in m.order if n in stems and (n in named or segment_of.get(n) in segs_only)}
+    forced -= set(os.environ.get("CB_FORCE_C", "").split(","))   # (and these as C whatever origin says)
     keep_c = os.environ.get("CB_ASM_KEEP_C")                 # (and the other way: C for these alone)
     if keep_c is not None:
         kept = set(keep_c.split(","))
