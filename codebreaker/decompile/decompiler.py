@@ -44,42 +44,55 @@ def available():
     return os.path.isfile(_exe()) and os.path.isdir(_languages())
 
 
-def run(description, only=(), timeout=3600):
+LARGE = 200000          # instructions a function may have, tried again when the first limit stops it
+
+
+def run(description, only=(), timeout=3600, max_instructions=None):
     """Run the native program on a description. -> ({name: text}, [names], {va: name}, stderr)
     Works for any processor it has a language for; `only` limits it to those addresses."""
     # The description holds the module's bytes and every fact given with them, so what the
     # program says of it is kept under its hash (base/cache.py): a module is decompiled once.
     from codebreaker.base import cache
     with open(description, "rb") as f:
-        k = cache.key(cache.tool(_exe()), _language_stamp(), f.read(), ["%x" % va for va in only])
+        k = cache.key(cache.tool(_exe()), _language_stamp(), f.read(), ["%x" % va for va in only],
+                      max_instructions or "")
     had = cache.get("decompiled", k)
     if had is not None:
         stdout, stderr = had.decode("utf-8", "replace").split("\x00", 1)
     else:
-        stdout, stderr, whole = _run_resuming(description, only, timeout)
+        stdout, stderr, whole = _run_resuming(description, only, timeout, max_instructions)
         if whole and stdout:
             cache.put("decompiled", k, (stdout + "\x00" + stderr).encode("utf-8", "replace"))
-    out, order, by_va = {}, [], {}
+    out, order, by_va, large = {}, [], {}, []
     for m in re.finditer(r"(?ms)^/\*@@ (\S+) ([0-9a-f]+) \*/\n(.*?)(?=^/\*@@ |\Z)", stdout):
         name, va, text = m.group(1), int(m.group(2), 16), m.group(3).strip()
+        if text.startswith("/* decompile failed: Flow exceeded maximum allowable instructions"):
+            large.append(va)
         if not text or text.startswith("/* decompile failed"):
             continue
         if name not in out:
             out[name] = text
             order.append(name)
             by_va[va] = name
+    if large and not max_instructions:                   # longer than a wrong start would run: again, with room
+        more, more_order, more_va, _e = run(description, only=large, timeout=timeout, max_instructions=LARGE)
+        out.update(more)
+        order += [n for n in more_order if n not in order]
+        by_va.update(more_va)
     return out, order, by_va, stderr
 
 
 _MARK = re.compile(r"(?m)^/\*@@ \S+ ([0-9a-f]+) \*/")
 
 
-def _run_resuming(description, only, timeout):
+def _run_resuming(description, only, timeout, max_instructions=None):
     """Run the native program; when it dies part way (a crash that depends on what it did
     before -- the function it died on decompiles on its own), start it again from the next
     function it had not written, and so on. A function a fresh start dies on at once is left
     out, with a note on stderr. -> (stdout, stderr, whether every function was attempted)"""
     env = dict(os.environ, CB_LANGUAGES=_languages())
+    if max_instructions:
+        env["CB_MAX_INSTRUCTIONS"] = str(max_instructions)
     if only:
         wanted = sorted(only)
     else:

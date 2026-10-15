@@ -242,6 +242,8 @@ int main(int argc, char** argv) {
     m.init(store);
     m.readonlypropagate = true;
     m.max_instructions = 20000;                    // a wrong function start must fail quickly, not walk memory
+    if (const char* mx = std::getenv("CB_MAX_INSTRUCTIONS"))  // (a large function is tried again with more)
+      m.max_instructions = (uint4)std::atoi(mx);
     AddrSpace* code = m.getDefaultCodeSpace();
     Scope* glb = m.symboltab->getGlobalScope();
     // An import slot never changes while the module runs: reading one gives a constant, so a

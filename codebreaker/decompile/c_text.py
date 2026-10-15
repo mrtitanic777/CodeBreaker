@@ -432,6 +432,8 @@ uint2 codebreaker_cs(void);
    function's frame (BP pushed, then BP = SP) that is BP+2 */
 uint2 codebreaker_entry_sp(void);
 #pragma aux codebreaker_entry_sp = "lea ax,[bp+2]" value [ax] modify exact [ax];
+/* a word of the caller's stack: the stack segment, at the entry SP plus `off` */
+#define codebreaker_stack(T, off) (*(T __based(__segname("_STACK")) *)(codebreaker_entry_sp() + (off)))
 #define false 0
 #define __stdcall16far __far __stdcall
 #define __stdcall16near __near __stdcall
@@ -480,7 +482,7 @@ def _far(text, far):
     star = re.compile(r"(?<![\w*])(\*+)\s*(%s)\b" % names)
     head, brace, body = text.partition("{")
     head = star.sub(r"__far \1\2", head)                      # parameters
-    decl = re.compile(r"^\s+[A-Za-z_][\w ]*?\*+\s*(?:%s)(?: \[\d+\])?;\s*$" % names)
+    decl = re.compile(r"^\s+(?!return\b)[A-Za-z_][\w ]*?\*+\s*(?:%s)(?: \[\d+\])?;\s*$" % names)
     lines = [star.sub(r"__far \1\2", ln) if decl.match(ln) else ln for ln in body.split("\n")]   # locals
     body = "\n".join(lines)
     # `name = (type *)expr` -> `name = (type __far *)expr`
@@ -680,7 +682,7 @@ def compilable16(module_path, outdir=None):
         if head.split()[0] in _WIDE or "*" in head.split(name)[0] and "__far" in head.split(name)[0]:
             m.wide.add(name)
         text = re.sub(r"\b_([a-z]+Ram[0-9a-f]{8})\b", r"\1", text)     # (a global the decompiler named twice)
-        m.texts[name] = _far_locals(_entry_sp(_far_addresses(_interrupts(_open_arguments(text), m.interrupts))))
+        m.texts[name] = _far_locals(_stack_arguments(_entry_sp(_far_addresses(_interrupts(_open_arguments(text), m.interrupts)))))
         m.order.append(name)
         m.by_va[va] = name
         m.where[va] = d.where.get(va)
@@ -718,6 +720,10 @@ def compilable16(module_path, outdir=None):
             ty = "code __far *" if sizes.get(va, 2) == 4 else "code __near *"
         if seg == d.data_segment:
             macros.append("#define %sRam%s (*(%s *)0x%x)" % (prefix, addr, ty, off))
+        elif (va >> 16) == 0x40:
+            # through the selector 0040h itself: the BIOS's data, which Windows keeps at that selector
+            macros.append("#define %sRam%s (*(%s __far *)MK_FP(0x40, 0x%x))" % (prefix, addr, ty, va & 0xFFFF))
+            m.bios_data = True
         elif (va >> 16) in getattr(d, "selector_imports", {}):
             # a place in a segment the module gets as an import (KERNEL's __0040H: the BIOS data):
             # the import's selector, which the loader fills in, and the offset
@@ -744,7 +750,7 @@ def compilable16(module_path, outdir=None):
     decls += [declaration(m.texts[n]) for n in m.order]
     intrinsics = [INTRINSICS16[n] for n in sorted(INTRINSICS16) if re.search(r"\b%s\s*\(" % n, body)]
     intrinsics += interrupt_helpers(m.interrupts)
-    if "MK_FP(" in body and not m.selector_imports:
+    if ("MK_FP(" in body or getattr(m, "bios_data", False)) and not m.selector_imports:
         intrinsics.append("#define MK_FP(s, o) ((void __far *)(((uint4)(uint2)(s) << 16) | (uint2)(o)))")
     m.header = HEADER + "\n" + "\n".join(intrinsics + macros + decls) + "\n"
     m.description = d
@@ -802,7 +808,7 @@ def _interrupts(text, used):
         at = after
     text = "".join(out) + text[at:]
     # the results: no variables of their own -- the registers as the interrupt left them
-    text = re.sub(r"(?m)^[ \t]+[\w ]+?\bint_E?[A-Z][A-Z](?:_[0-9a-f]+)?;[ \t]*\n", "", text)
+    text = re.sub(r"(?m)^[ \t]+[\w ]+?[ *]\**int_E?[A-Z][A-Z](?:_[0-9a-f]+)?;[ \t]*\n", "", text)
     return _INT_RESULT.sub(lambda r: "int_" + r.group(1), text)
 
 
@@ -814,6 +820,29 @@ def _entry_sp(text):
     text = text.replace("register0x00000010", "codebreaker_entry_sp()")
     return re.sub(r"&stack0x([0-9a-f]{4})\b",
                   lambda m: "((uint1 *)codebreaker_entry_sp() + (int2)0x%s)" % m.group(1), text)
+
+
+def _stack_arguments(text):
+    """Words of the caller's stack the function reads beyond its declared parameters: the
+    decompiler declares them as locals (in_stack_0000000c -- which in C would hold nothing) or
+    names a piece of them (_uStack000e). Each is that place: the stack segment, at the entry SP
+    plus its offset."""
+    def place(ty, off):
+        return "codebreaker_stack(%s, 0x%x)" % (ty, off)
+    for mm in list(re.finditer(r"(?m)^[ \t]+([\w ]+?) (in_stack_([0-9a-f]{8}));[ \t]*\n", text)):
+        ty, name, off = mm.group(1).strip(), mm.group(2), int(mm.group(3), 16)
+        if "*" in ty or off >= 0x10000:
+            continue
+        text = text.replace(mm.group(0), "", 1)
+        text = re.sub(r"\b%s\b" % name, place(ty, off), text)
+    declared = set(re.findall(r"(?m)^[ \t]+[\w ]+?\**(\w+)(?: \[\d+\])?;[ \t]*$", text))
+
+    def piece(mm):
+        if mm.group(0) in declared:
+            return mm.group(0)
+        ty = {"u": "uint2", "i": "int2", "c": "char", "b": "uint1", "x": "xunknown2"}.get(mm.group(1)[:1], "uint2")
+        return place(ty, int(mm.group(2), 16))
+    return re.sub(r"\b_?([a-z]+)Stack([0-9a-f]{4})\b", piece, text)
 
 
 def _far_locals(text):
@@ -895,6 +924,9 @@ def interrupt_helpers(used):
     out = ["struct codebreaker_registers { uint2 ax, bx, cx, dx, si, di, ds, es; uint1 cf, zf; uint2 set; };",
            "extern struct codebreaker_registers codebreaker_int;   /* as the last interrupt left them */"]
     out += ["#define int_%s codebreaker_int.%s" % (r.upper(), r) for r in INTERRUPT_REGISTERS + ("cf", "zf")]
+    for r in ("ax", "bx", "cx", "dx"):                     # and their bytes: AL AH, BL BH ...
+        out += ["#define int_%sL (*(uint1 *)&codebreaker_int.%s)" % (r[0].upper(), r),
+                "#define int_%sH (*((uint1 *)&codebreaker_int.%s + 1))" % (r[0].upper(), r)]
     for v in sorted({v for v, _k in used}):
         out.append("void __far codebreaker_int%02x(void);              /* INT %02Xh */" % (v, v))
     for v, regs in sorted(used):
