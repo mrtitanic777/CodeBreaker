@@ -129,7 +129,7 @@ def module16(path, more=None):
 
 def _judge(o, md, image, start, end, imported, starts=()):
     written, prologue_ax, frame, last_push_seg = set(), False, False, False
-    prev_call, pending = False, None
+    prev_call, pending, code_in = False, None, {}
     first_ins = next(md.disasm(image[start:end], start), None)
     if first_ins is not None and first_ins.mnemonic == "pop":
         # it takes its own return address off the stack (to take its arguments off by hand,
@@ -230,6 +230,12 @@ def _judge(o, md, image, start, end, imported, starts=()):
                 last_push_seg:
             o.evidence.append("argument in %s (%04x push after a segment)" % (ins.op_str.upper(), ins.address))
         last_push_seg = mn == "push" and ins.op_str in ("ss", "ds", "es", "cs")
+        # a code address put in a register and called through it (with arguments in others)
+        if mn == "mov" and len(ops) == 2 and ops[0].type == X.X86_OP_REG and ops[1].type == X.X86_OP_IMM                 and ops[1].imm in starts:
+            code_in[ins.reg_name(ops[0].reg)] = ops[1].imm
+        elif mn == "call" and ops and ops[0].type == X.X86_OP_REG and ins.reg_name(ops[0].reg) in code_in:
+            o.evidence.append("calls a code address it put in %s (%04x call %s)" % (
+                ins.op_str, ins.address, ins.op_str))
         if pending and ins.address != pending[1]:
             reg = pending[0]
             names = {ins.reg_name(r) for r in regs_read}
