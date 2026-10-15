@@ -864,7 +864,7 @@ def _far_locals(text):
         whole = "_" + name
         if not re.search(r"\b%s\b" % whole, text) or re.search(r"(?m)^[ \t]+[\w ]+\*?\s*%s;" % whole, text):
             continue
-        assigned = re.search(r"(?<![=!<>])\b%s\s*=[^=]" % name, text)
+        assigned = re.search(r"(?<![=!<>])\b%s\s*=[^=]" % name, text) or re.search(r"&\s*%s\b" % name, text)
         decl = "%s%s __far *%s;" % (lead, to, whole)
         text = text.replace(mm.group(0), (mm.group(0) + "\n" if assigned else "") + decl, 1)
         text = re.sub(r"\b(%s = )\(([\w ]+?) \*\)CONCAT22\(" % whole, r"\1(\2 __far *)CONCAT22(", text)

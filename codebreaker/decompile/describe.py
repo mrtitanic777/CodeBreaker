@@ -239,6 +239,11 @@ def functions(nef):
     for e in nef.entries():
         if e.get("kind") in ("FIXED", "MOVEABLE") and segs.get(e.get("seg"), {}).get("kind") == "CODE":
             out[(e["seg"], e["offset"])] = "far"
+    # the module's entry point (a library's LibEntry: what Windows runs when it loads it -- it
+    # makes the local heap and sets the module up) is a function, called far by the loader
+    cs, ip = nef.h.get("csip", 0) >> 16, nef.h.get("csip", 0) & 0xFFFF
+    if cs and segs.get(cs, {}).get("kind") == "CODE":
+        out[(cs, ip)] = "far"
     for s in nef.segments():
         if s["kind"] != "CODE":
             continue

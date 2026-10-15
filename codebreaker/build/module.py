@@ -309,7 +309,7 @@ def _assembled16(b, nef, at, segs, stems, public, folder, env, carried=(), force
     # each rejected C function on its own
     forced = set(forced)
     done = {}                                              # run (tuple of names) -> stem, or why it was refused
-    for _pass in range(8):
+    for _pass in range(40):                                # (each pass may find a place entered mid-run: its run is written again)
         runs = []
         for seg in sorted(whole):                          # one frame per such segment
             mine = tuple(at[(seg, o)] for o in starts[seg]
