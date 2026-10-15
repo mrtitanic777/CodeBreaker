@@ -191,6 +191,24 @@ def _result_in_ax(code, start, end):
     return None
 
 
+def _segment_number_fixups(nef):
+    """Whether every fix-up the original makes to a place of its own is by the segment's
+    number -- none through the entry table (a movable segment's), none a far pointer."""
+    blob = nef.data
+    seen = False
+    for s in nef.segments():
+        if not (s["flags"] & 0x100) or not s["file_off"]:
+            continue
+        at = s["file_off"] + (s["length"] or 0x10000)
+        for k in range(struct.unpack_from("<H", blob, at)[0]):
+            src, flags, _off, target = struct.unpack_from("<BBHH", blob, at + 2 + k * 8)
+            if flags & 3 == 0:                                  # a place of the module's own
+                seen = True
+                if target & 0xFF == 0xFF or src != 2:
+                    return False
+    return seen
+
+
 def _dos_stub(path, folder):
     """The original's DOS part (the bytes before its NE header), as a stub for the linker: its
     MZ header made to say just that much. -> the file's name, or None."""
@@ -971,7 +989,10 @@ def _build16(b, path, m, folder):
     else:
         b.entry = "none, as in the original"
     lines.append("file data.obj")                              # first: the data segment starts with it
-    if m.interrupts:                                           # the interrupts the module takes
+    used_c = b.placed_c | getattr(b, "moved_c", set())
+    if m.interrupts and any("codebreaker_int" in m.texts.get(n, "") for n in used_c):
+        # the interrupts the module's C takes (none, with every function rebuilt from its
+        # instructions: then nothing is added to the original's segments)
         asm, c = c_text.interrupt_routines({v for v, _regs in m.interrupts})
         with open(os.path.join(folder, "interrupts.asm"), "w", newline="\n") as f:
             f.write(asm)
@@ -1000,7 +1021,13 @@ def _build16(b, path, m, folder):
     # NE header by its own length and runs from the whole file DOS loads)
     stub = _dos_stub(path, folder)
     if stub:
-        lines.append("option stub=%s" % stub)
+        lines += ["option stub=%s" % stub, "option stubverbatim"]
+    # its file alignment, and -- where its loader fixes are all by segment number, chained, as
+    # the original linker wrote KRNL386's (which relocates itself, before there is an entry
+    # table to go through) -- ours the same
+    lines.append("option alignment=%d" % (1 << (nef.h.get("align_shift") or 9)))
+    if _segment_number_fixups(nef):
+        lines.append("option selectorfixups")
     # ... and where the original's was: its code segments first, by their numbers (segment n is
     # the original's segment n -- what reaches one by its number finds it), what the build adds
     # (CODE<n>X, the runtime's _TEXT) after them
