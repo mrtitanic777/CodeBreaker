@@ -94,7 +94,9 @@ def _object(struct_name, name, pieces, far=False):
         else:
             members.append("    %s p_%05x;" % (p[2], off))
             values.append("    %s,%s" % (p[3], ("    /* %s */" % p[4]) if p[4] else ""))
-    return "struct %s {\n%s\n};\nstruct %s %s%s = {\n%s\n};\n" % (
+    # packed: each member exactly at its place -- the compiler would otherwise put a word on an
+    # even offset and move everything after it (the code reads the data at the original's places)
+    return "#pragma pack(push, 1)\nstruct %s {\n%s\n};\n#pragma pack(pop)\nstruct %s %s%s = {\n%s\n};\n" % (
         struct_name, "\n".join(members), struct_name, "__far " if far else "", name, "\n".join(values))
 
 

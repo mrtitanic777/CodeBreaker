@@ -61,6 +61,12 @@ class Function(object):
         self.cs_labels = {}                                 # offset of an instruction -> the place in the run it reads through CS
         s = nef.segments()[seg - 1]
         blob = bytes(nef.data[s["file_off"]:s["file_off"] + s["length"]]) if s["file_off"] else b""
+        # what the loader allocates past the stored bytes is zeros it then fixes up: a far jump at
+        # the very end of a segment has its selector there (GDI's segment 15)
+        if blob and s["minalloc"] > len(blob) and s["minalloc"] - len(blob) <= 16:
+            if end == len(blob):
+                end = s["minalloc"]
+            blob = blob + bytes(s["minalloc"] - len(blob))
         if not (0 <= start < end <= len(blob)):
             self.why = "its bytes are not in the file"
             return
