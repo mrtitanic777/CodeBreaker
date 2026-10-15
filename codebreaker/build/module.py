@@ -159,6 +159,38 @@ def _link(tool, env, folder, lines):
     return (out if os.path.isfile(out) else None), (r.stdout or "") + (r.stderr or "")
 
 
+def _result_in_ax(code, start, end):
+    """Where a function's instructions put a value in AX that it returns with: walking back
+    from each return through its straight run of instructions, the first one writing AX --
+    one past the prologue's (`mov ax, ds` / `push ds; pop ax` / `mov ax, DGROUP` ahead of
+    `mov ds, ax`), and not a `pop ax` (its own AX given back). -> offset, or None."""
+    import capstone
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    md.detail = True
+    ins = list(md.disasm(code[start:end], start))
+    prologue = next((i.address + i.size for i in ins[:6] if i.mnemonic == "mov" and i.op_str == "ds, ax"), start)
+    targets = set()
+    for i in ins:
+        if i.group(capstone.CS_GRP_JUMP) and i.operands and i.operands[0].type == capstone.CS_OP_IMM:
+            targets.add(i.operands[0].imm)
+    ax = {capstone.x86.X86_REG_AX, capstone.x86.X86_REG_AL, capstone.x86.X86_REG_AH, capstone.x86.X86_REG_EAX}
+    for k, i in enumerate(ins):
+        if i.mnemonic not in ("ret", "retf"):
+            continue
+        for j in range(k - 1, -1, -1):
+            p = ins[j]
+            if p.address < prologue or p.mnemonic in ("jmp", "ret", "retf") or p.group(capstone.CS_GRP_CALL):
+                break
+            _r, written = p.regs_access()
+            if ax & set(written):
+                if p.mnemonic != "pop":
+                    return p.address
+                break
+            if p.address in targets:
+                break
+    return None
+
+
 def _dos_stub(path, folder):
     """The original's DOS part (the bytes before its NE header), as a stub for the linker: its
     MZ header made to say just that much. -> the file's name, or None."""
@@ -794,6 +826,25 @@ def _build16(b, path, m, folder):
     # an argument (a far call whose arguments it read a word off -- see the decompiler's
     # far-call argument recovery). Until that is put right, such a function is rebuilt from
     # its own instructions rather than from C that would pass the wrong arguments.
+    # ... and C with no result for a function whose instructions leave one in AX: the
+    # decompiler saw nothing in the module read it (an export: Windows reads it -- KEYBOARD's
+    # Inquire returns the size it copied), and compiled C leaves its own AX, not the original's
+    starts = {}
+    for (sg, off), n in at.items():
+        starts.setdefault(sg, []).append(off)
+    for n in [n for n in m.novalue if n in stems and n not in forced]:
+        va = next((v for v, x in m.by_va.items() if x == n), None)
+        sg, off = m.where.get(va) or (None, None)
+        if sg not in segs or not segs[sg]["file_off"]:
+            continue
+        code = bytes(nef.data[segs[sg]["file_off"]:segs[sg]["file_off"] + segs[sg]["length"]])
+        end = min([o for o in starts.get(sg, []) if o > off] + [len(code)])
+        where = _result_in_ax(code, off, end)
+        if where is not None:
+            if n in b.origins:
+                b.origins[n].evidence.append("leaves a result in AX (%04x) its C does not return (not trusted as C)"
+                                             % where)
+            forced.add(n)
     untrusted = {n for n in m.order if n in stems and n in m.texts
                  and re.search(r"\w+\([^;{}]*\bunaff_CS\b[^;{}]*\)", m.texts[n])}
     for n in untrusted - forced:
