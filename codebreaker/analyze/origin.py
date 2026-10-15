@@ -93,11 +93,11 @@ def module16(path, more=None):
         later = [o for o in starts[seg] if o > off]
         end = later[0] if later else len(image)
         o = res.functions[va] = Origin(va, name)
-        _judge(o, md, image, off, end, imported)
+        _judge(o, md, image, off, end, imported, set(starts[seg]))
     return res
 
 
-def _judge(o, md, image, start, end, imported):
+def _judge(o, md, image, start, end, imported, starts=()):
     written, prologue_ax, frame = set(), False, False
     first_ins = next(md.disasm(image[start:end], start), None)
     if first_ins is not None and first_ins.mnemonic in ("jmp", "ljmp") and end - start <= first_ins.size + 2:
@@ -158,6 +158,10 @@ def _judge(o, md, image, start, end, imported):
             target = imported.get(ops[0].imm)
             if target and any(h.lower() in target.lower() for h in _COMPILER_HELPERS):
                 o.compiler.append("calls %s" % target)
+        # a jump out of the function into the middle of another: code shared between entry
+        # points (set a register, jump to the common part) -- no C compiler does that
+        if (mn == "jmp" or mn.startswith("j")) and ops and ops[0].type == X.X86_OP_IMM                 and not start <= ops[0].imm < end and ops[0].imm not in starts and starts:
+            o.evidence.append("jumps into the middle of other code (%04x -> %04x)" % (ins.address, ops[0].imm))
         if mn in ("ret", "retf", "iret") or mn == "jmp":
             if mn == "iret":
                 o.evidence.append("IRET (%04x)" % ins.address)
