@@ -20,6 +20,8 @@ import os
 import re
 import struct
 
+import capstone  # (here, once: imported inside functions, threads of a build raced to a half-made module)
+
 
 # language id by PE machine type
 _ARCH = {0x014C: "x86:LE:32:default:windows", 0x01F2: "PowerPC:BE:64:A2ALT-32addr:homed"}
@@ -270,7 +272,6 @@ def returns(code, off, limit=600, want=None):
     near one, and the operand is what it removes. That is the function's own statement of how
     it must be called; where it was found (entry table, a relocation, a near call) only says
     how SOMEONE calls it. None when no return is met within `limit` instructions."""
-    import capstone
     md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
     # The code is followed, not read straight down: functions share epilogues (Windows exports
     # beside each other jump into one `retf 8` that may lie BEFORE them), and straight down from

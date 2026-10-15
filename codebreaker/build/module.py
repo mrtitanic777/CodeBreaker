@@ -760,6 +760,10 @@ def _build16(b, path, m, folder):
     if only or segs_only:
         named = set(m.order) if only == "all" else set(only.split(","))
         forced |= {n for n in m.order if n in stems and (n in named or segment_of.get(n) in segs_only)}
+    keep_c = os.environ.get("CB_ASM_KEEP_C")                 # (and the other way: C for these alone)
+    if keep_c is not None:
+        kept = set(keep_c.split(","))
+        forced |= {n for n in m.order if n in stems and n not in kept}
     def elsewhere(name):
         """A far function rebuilt from C, compiled into a code segment of its own beside its
         segment (CODE<n>X) -- for one that does not fit back into its place. -> stem or None."""
