@@ -37,11 +37,12 @@ class Export(object):
     """One export. `address` is a virtual address (32-bit) or (segment, offset) (16-bit);
     `kind` is "code", "data" or "forward" (`target` then names the function elsewhere);
     `resident` says a 16-bit name is in the resident table."""
-    __slots__ = ("ordinal", "name", "address", "kind", "resident", "target")
+    __slots__ = ("ordinal", "name", "address", "kind", "resident", "target", "shared_data")
 
-    def __init__(self, ordinal, name, address, kind, resident=False, target=""):
+    def __init__(self, ordinal, name, address, kind, resident=False, target="", shared_data=True):
         self.ordinal, self.name, self.address = ordinal, name, address
         self.kind, self.resident, self.target = kind, resident, target
+        self.shared_data = shared_data       # 16-bit: the loader gives it the module's data segment
 
     def __repr__(self):
         return "<export %s @%d %s>" % (self.name or "(no name)", self.ordinal, self.kind)
@@ -94,7 +95,8 @@ def exports(path):
                 kind = "data"
             else:
                 kind = "data" if seg is None or seg["kind"] == "DATA" else "code"
-            out.append(Export(e["ordinal"], name, (e["seg"], e["offset"]), kind, resident))
+            out.append(Export(e["ordinal"], name, (e["seg"], e["offset"]), kind, resident,
+                              shared_data=bool(e["flags"] & 2)))
         return out
     pe = open_pe(path)
     lo, size = pe.datadirs[0] if pe.datadirs else (0, 0)
@@ -180,7 +182,10 @@ def export_directives(path, symbol_at):
         name = e.name or "ordinal_%d" % e.ordinal
         if not re.fullmatch(r"[A-Za-z_][\w]*", name):
             name = "'%s'" % name
-        lines.append("export %s.%d='%s'%s" % (name, e.ordinal, symbol, " resident" if ne and e.resident else ""))
+        # (NODATA: the entry is not marked as using the module's data segment -- the loader then
+        # leaves its prologue alone, and the function runs on its caller's DS, as the original's)
+        lines.append("export %s.%d='%s'%s%s" % (name, e.ordinal, symbol, " resident" if ne and e.resident else "",
+                                               " nodata" if ne and e.kind == "code" and not e.shared_data else ""))
     return lines, missing
 
 

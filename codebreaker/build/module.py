@@ -52,6 +52,7 @@ Toolchain facts this relies on (each cost a failed build once):
 import os
 import re
 import shutil
+import struct
 import subprocess
 
 from codebreaker.base import corpus, settings
@@ -751,6 +752,14 @@ def _build16(b, path, m, folder):
     from codebreaker.analyze import origin
     b.origins = {o.name: o for o in origin.module16(path, more=m.by_va).functions.values()}
     forced = {n for n in m.order if n in stems and n in b.origins and b.origins[n].language == "assembly"}
+    # (for finding which rebuilt functions make a module misbehave: CB_ASM_ONLY=all rebuilds
+    # every function from its own instructions; a comma list, those named; CB_ASM_SEGMENTS=1,3
+    # those in the segments named)
+    only = os.environ.get("CB_ASM_ONLY", "")
+    segs_only = {int(x) for x in os.environ.get("CB_ASM_SEGMENTS", "").split(",") if x.strip()}
+    if only or segs_only:
+        named = set(m.order) if only == "all" else set(only.split(","))
+        forced |= {n for n in m.order if n in stems and (n in named or segment_of.get(n) in segs_only)}
     def elsewhere(name):
         """A far function rebuilt from C, compiled into a code segment of its own beside its
         segment (CODE<n>X) -- for one that does not fit back into its place. -> stem or None."""
@@ -791,6 +800,19 @@ def _build16(b, path, m, folder):
         + (["option stack=%d" % nef.h["stack"]] if nef.h["stack"] else [])     # (the linker refuses a size of 0)
     if definitions.description(path):
         lines.append("option description '%s'" % definitions.description(path).replace("'", " "))
+    # what the original's header says of it, as its linker was told: the Windows version it
+    # expects (3.10: Windows treats a 3.0 module the old way), protected mode only, and no
+    # application type (KERNEL's)
+    with open(path, "rb") as fh:
+        raw = fh.read(0x10000)
+    ne_at = struct.unpack_from("<I", raw, 0x3C)[0]
+    expver, info = struct.unpack_from("<H", raw, ne_at + 0x3E)[0], struct.unpack_from("<H", raw, ne_at + 0x0C)[0]
+    if expver:
+        lines.append("option version=%d.%d" % (expver >> 8, expver & 0xFF))
+    if info & 0x0008:
+        lines.append("option protmode")
+    if not info & 0x0300:
+        lines.append("option noapptype")
     lines.append("libpath %s" % watcom.ow_lib("ne"))          # lib286/win: the real library, not the stub above it
     cs, ip = nef.h["csip"] >> 16, nef.h["csip"] & 0xFFFF
     entry = at.get((cs, ip)) if cs else None
