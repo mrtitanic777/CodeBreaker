@@ -63,6 +63,7 @@ COMMANDS = {
     "repair": ("codebreaker.verify.repair", []),
     "teeth": ("codebreaker.verify.teeth", []),
     "invert": ("codebreaker.invert.run", []),
+    "exact": ("codebreaker.exact.run", []),
     "vxd": ("codebreaker.source.vxd.run", []),
     "ne-asm": ("codebreaker.source.ne_asm.run", []),
     "build16": ("codebreaker.build.period16", []),

@@ -1,0 +1,263 @@
+{
+ "name": "msc300",
+ "title": "Microsoft C 3.00 (MSC.EXE and its passes P0-P3), 1985",
+ "kit": "msc300",
+ "emulator": "dos",
+ "stage": {
+  "files": {
+   "MSC.EXE": "disk1/MSC.EXE",
+   "P0.EXE": "disk1/P0.EXE",
+   "P1.EXE": "disk1/P1.EXE",
+   "P2.EXE": "disk1/P2.EXE",
+   "P3.EXE": "disk1/P3.EXE"
+  },
+  "include": "disk2/INCLUDE"
+ },
+ "psp": "0x100",
+ "env": [
+  "PATH=C:\\",
+  "INCLUDE=C:\\INCLUDE",
+  "TMP=C:\\"
+ ],
+ "env_unless": {
+  "NO87= ": "-FPi"
+ },
+ "_env_unless": "the passes' own floating point emulator stops under emulation (\"Floating point error: Stack overflow\"); with -FPi the 8087 path runs instead",
+ "switches": "-Oat",
+ "file_switches": "MFLAGS",
+ "derive": {
+  "ot": {
+   "regex": "-O[a-z]*t",
+   "then": "-Ot",
+   "else": "-Os"
+  },
+  "gs": {
+   "regex": "(^|\\s)-Gs(\\s|$)",
+   "then": " -Gs",
+   "else": ""
+  },
+  "oa": {
+   "regex": "-O[a-z]*a",
+   "then": " -Oa",
+   "else": ""
+  },
+  "ze": {
+   "regex": "(^|\\s)-Ze(\\s|$)",
+   "then": " -Ze",
+   "else": ""
+  },
+  "fp": {
+   "regex": "-FP(\\w+)",
+   "then": "-FP{1}",
+   "else": "-FPc"
+  },
+  "gf": {
+   "regex": "-FP[ac]\\b|^(?!.*-FP)",
+   "then": " -Gf",
+   "else": ""
+  }
+ },
+ "passes": [
+  {
+   "run": "P0.EXE",
+   "args": "-f {tag}.C -il C:\\{tag6}{ze} -I C:/INCX -I C:/INCLUDE -D M_I86 -D MSDOS -D M_I86SM -W 1"
+  },
+  {
+   "run": "P1.EXE",
+   "args": "-il C:\\{tag6} -psize 2 -isize 2 -fsize 2 -W 1"
+  },
+  {
+   "run": "P2.EXE",
+   "args": "-il C:\\{tag6} -psize 2 -isize 2 -fsize 2 {ot} -G0{gs}{gf} -A snd -W 1"
+  },
+  {
+   "run": "P3.EXE",
+   "args": "-il C:\\{tag6} {fp} {ot}{oa} -c {tag}.OBJ -A snd -CC 0sO"
+  }
+ ],
+ "_passes": "the switches MSC.EXE gives each pass (small model)",
+ "output": "{tag}.OBJ",
+ "default_variant": "release",
+ "variants": {
+  "release": [],
+  "own": [
+   8,
+   11
+  ],
+  "masm400": [
+   1,
+   2,
+   3,
+   4
+  ]
+ },
+ "_variants": "release: the diskettes' passes as they are; own: the state of the compiler that compiled Microsoft C 3.00's own programs; masm400: the state that compiled MASM 4.00",
+ "patches": [
+  {
+   "change": 11,
+   "file": "P3.EXE",
+   "at": -496,
+   "was": "0020",
+   "now": "0010",
+   "note": "the third pass's stack 4K, not 8K: its near heap 4K larger (the EXE header's SP)"
+  },
+  {
+   "change": 9,
+   "file": "P3.EXE",
+   "at": 29751,
+   "was": "8bd8837f063d7403e9ca00",
+   "now": "e9ea769090909090909090",
+   "note": "of two equal tails before jumps to one label the LATER copy stays"
+  },
+  {
+   "change": 9,
+   "file": "P3.EXE",
+   "at": 60196,
+   "was": "2573206f6666736574206d69736d61746368202d2025316c6420",
+   "now": "8bd8837f063d750c8bde8b1f0bdb74073bd875f6e9d189e90489",
+   "note": "of two equal tails before jumps to one label the LATER copy stays"
+  },
+  {
+   "change": 10,
+   "file": "P3.EXE",
+   "at": 29884,
+   "was": "ff76fc8b5ef6",
+   "now": "e96576909090",
+   "note": "(an alternative to 9) the merging looks on from the jump for the other"
+  },
+  {
+   "change": 10,
+   "file": "P3.EXE",
+   "at": 60196,
+   "was": "2573206f6666736574206d69736d61746368202d2025316c642076732e2025316c",
+   "now": "8bde8b1f0bdb74103b5efc75f556ff35e8ba865959e92800ff76fc8b5ef6e97d89",
+   "note": "(an alternative to 9) the merging looks on from the jump for the other"
+  },
+  {
+   "change": 10,
+   "file": "P3.EXE",
+   "at": 60260,
+   "was": "2573206f6666736574206d69736d61746368202d2025316c642076732e20",
+   "now": "ff76f6e888825950e80a84598bd8ff770656e8cd865959ff06ec1fe99889",
+   "note": "(an alternative to 9) the merging looks on from the jump for the other"
+  },
+  {
+   "change": 5,
+   "file": "P3.EXE",
+   "at": 32034,
+   "was": "56e813fc83c4020bc075d356e836f983c4020bc075c856e879fa83c4020bc075bd33c05056e894f983c404",
+   "now": "56e813fc590bc075d556e838f9590bc075cc56e87dfa590bc075c333c05056e89af9595956e8effb590bc075b156e8d0f75956e8b8f6e92904",
+   "note": "a jump to a jump is sent on before the pass asks whether the block it goes to can move behind it"
+  },
+  {
+   "change": 7,
+   "file": "P3.EXE",
+   "at": 32034,
+   "was": "56e813fc83c4020bc075d356e836f983c4020bc075c856e879fa83c4020bc075bd33c05056e894f983c404",
+   "now": "8b5c0aff770833c05056e8aff95959e9846b56e801fc590bc075c356e826f9590bc075ba56e86bfa590bc075b156e8d0f75956e8b8f6e92904",
+   "note": "at a jump a jump to a jump is sent on first; the move of a block that stands earlier is not asked"
+  },
+  {
+   "change": 7,
+   "file": "P3.EXE",
+   "at": 59576,
+   "was": "6d70696c6572206572726f722028617373657274696f6e203a202573293a2066696c65",
+   "now": "8b5c0a8b5f08583bc37503e96e948b4f128bde8b1f0bdb74073bd975f6e95c94e96294",
+   "note": "at a jump a jump to a jump is sent on first; the move of a block that stands earlier is not asked"
+  },
+  {
+   "change": 6,
+   "file": "P3.EXE",
+   "at": 32034,
+   "was": "56e813fc83c4020bc075d356e836f983c4020bc075c856e879fa83c4020bc075bd33c05056e894f983c404",
+   "now": "56e813fc590bc075d556e838f9590bc075cc56e87dfa590bc075c3e9786b56e8dff75956e8c7f6e93804909090909090909090909090909090",
+   "note": "as 5, and if the block now stands further on, the pass asks once more"
+  },
+  {
+   "change": 6,
+   "file": "P3.EXE",
+   "at": 59576,
+   "was": "6d70696c6572206572726f722028617373657274696f6e203a202573293a2066696c652025732c206c696e6520",
+   "now": "33c05056e81f8e59598b5c0a8b5f088b4f128bde8b1f0bdb74103bd975f656e85f90590bc07403e91e94e95b94",
+   "note": "as 5, and if the block now stands further on, the pass asks once more"
+  },
+  {
+   "change": 1,
+   "file": "P3.EXE",
+   "at": 37533,
+   "was": "30",
+   "now": "14",
+   "note": "a register is cleared by SUB r,r, not XOR r,r (P3, where MOV r,0 is rewritten)"
+  },
+  {
+   "change": 2,
+   "file": "P3.EXE",
+   "at": 33323,
+   "was": "e9d2fa",
+   "now": "e96266",
+   "note": "TEST of a word with a constant of low-byte bits only is made on the byte (as the pass does for OR and XOR)"
+  },
+  {
+   "change": 2,
+   "file": "P3.EXE",
+   "at": 59536,
+   "was": "6e74206578636565647320353b2073746f7070696e6720",
+   "now": "33c05056e8049f83c4048946f60bc07503e9c297e95994",
+   "note": "TEST of a word with a constant of low-byte bits only is made on the byte (as the pass does for OR and XOR)"
+  },
+  {
+   "change": 3,
+   "file": "P3.EXE",
+   "at": 32665,
+   "was": "740b",
+   "now": "eb0b",
+   "note": "AND of memory with 0 stays an AND (the pass makes it MOV m,0)"
+  },
+  {
+   "change": 8,
+   "file": "P3.EXE",
+   "at": 34816,
+   "was": "2bf6",
+   "now": "8bf2",
+   "note": "AND with a constant whose high byte is FFh is made on the low byte (a bug of the diskettes' pass the compiler of 3.00 itself did not have)"
+  },
+  {
+   "change": 8,
+   "file": "P3.EXE",
+   "at": 34826,
+   "was": "8bc6",
+   "now": "33c0",
+   "note": "AND with a constant whose high byte is FFh is made on the low byte (a bug of the diskettes' pass the compiler of 3.00 itself did not have)"
+  },
+  {
+   "change": 4,
+   "file": "P3.EXE",
+   "at": 28224,
+   "was": "837c040874ed",
+   "now": "e90a7a909090",
+   "note": "the walk back over the code before a jump steps over a label nothing jumps to (so the FIRST of two equal tails is kept)"
+  },
+  {
+   "change": 4,
+   "file": "P3.EXE",
+   "at": 59469,
+   "was": "6d70696c6572206572726f722028617373657274696f6e293a2066696c65",
+   "now": "837c04087503e9dd85837c0401750c8b5c06837f10007503e9cb85e9db85",
+   "note": "the walk back over the code before a jump steps over a label nothing jumps to (so the FIRST of two equal tails is kept)"
+  }
+ ],
+ "hooks": {
+  "noroom": {
+   "pass": "P3.EXE",
+   "at": [
+    "0x749D",
+    "0x7595"
+   ],
+   "set": {
+    "AX": 0
+   },
+   "header": "NOROOM",
+   "note": "the third pass asks whether its heap has room for one more merging of equal code (6EA9); where the original ran short (it compiled whole files) the answer was no and the merging came out the other way. A source says at which askings: /* NOROOM: 1,3 */"
+  }
+ }
+}
