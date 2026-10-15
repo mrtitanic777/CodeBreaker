@@ -115,8 +115,8 @@ def module16(path, more=None):
             if ins.mnemonic == "call" and ins.operands and ins.operands[0].type == X.X86_OP_IMM:
                 callee = by_place.get((seg, ins.operands[0].imm))
                 if (seg, ins.operands[0].imm) in takes_registers and callee is not None:
-                    wanted = {e.split()[2].lower() for e in callee.evidence if e.startswith("argument in ")}
-                    if wanted & set_regs:
+                    # (whether it put them there or passes its own caller's on: C can do neither)
+                    if True:
                         o.evidence.append("calls %s with arguments in registers (%04x)" % (callee.name, ins.address))
                         o.language = "assembly"
                         break
@@ -130,6 +130,10 @@ def module16(path, more=None):
 def _judge(o, md, image, start, end, imported, starts=()):
     written, prologue_ax, frame = set(), False, False
     first_ins = next(md.disasm(image[start:end], start), None)
+    if first_ins is not None and first_ins.mnemonic == "pop":
+        # it takes its own return address off the stack (to take its arguments off by hand,
+        # or to return elsewhere) -- C never does
+        o.evidence.append("pops its own return address (%04x pop %s)" % (start, first_ins.op_str))
     if first_ins is not None and first_ins.mnemonic in ("jmp", "ljmp") and end - start <= first_ins.size + 2:
         o.evidence.append("a jump stub (%04x %s %s)" % (start, first_ins.mnemonic, first_ins.op_str))
         o.language = "assembly"
