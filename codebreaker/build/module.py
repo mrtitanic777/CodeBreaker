@@ -55,7 +55,7 @@ import shutil
 import struct
 import subprocess
 
-from codebreaker.base import corpus, settings
+from codebreaker.base import cache, corpus, settings
 from codebreaker.build import data, definitions, functions, resources, watcom
 from codebreaker.decompile import c_text
 from codebreaker.formats import detect
@@ -228,6 +228,9 @@ def _assembled16(b, nef, at, segs, stems, public, folder, env, carried=(), force
         mod, which = what
         return "_%s_%s" % (re.sub(r"\W", "_", mod), which) if isinstance(which, int) else "_" + re.sub(r"\W", "_", which)
     out = {}
+    # (from nothing: what an earlier build left there is read below -- which far function may
+    # move to the segment beside depends on what the pieces refer to -- and would decide it)
+    shutil.rmtree(os.path.join(folder, "asm"), ignore_errors=True)
     os.makedirs(os.path.join(folder, "asm"), exist_ok=True)
 
     def assemble_piece(stem, f, lo, hi):
@@ -812,6 +815,8 @@ def _build16(b, path, m, folder):
     if keep_c is not None:
         kept = set(keep_c.split(","))
         forced |= {n for n in m.order if n in stems and n not in kept}
+    fresh = set()                                            # (the folders beside whose header is written)
+
     def elsewhere(name):
         """A far function rebuilt from C, compiled into a code segment of its own beside its
         segment (CODE<n>X) -- for one that does not fit back into its place. -> stem or None."""
@@ -829,9 +834,11 @@ def _build16(b, path, m, folder):
                         return None                         # hand-written code beside it reaches it near
         sub = os.path.join(folder, "s%02dx" % seg)
         os.makedirs(sub, exist_ok=True)
-        if not os.path.exists(os.path.join(sub, "m.h")):        # (the header beside the function, as in its own folder)
+        if sub not in fresh:                                    # (the header beside the function, as in its own
+            fresh.add(sub)                                      # folder -- this build's, not one left from before)
             with open(os.path.join(sub, "m.h"), "w", newline="\n", encoding="utf-8") as fh:
                 fh.write(m.header)
+            functions._HEADER[sub] = cache.key(m.header)
         stem = os.path.basename(stems[name])
         why = functions._compile(wcc, cflags + ["-nt=CODE%dX" % seg], env, sub, stem, texts[name])
         b.elsewhere_why = getattr(b, "elsewhere_why", {})
