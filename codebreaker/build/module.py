@@ -420,9 +420,9 @@ def _assembled16(b, nef, at, segs, stems, public, folder, env, carried=(), force
             if run:
                 runs.append(tuple(run))
         joined, wanted = set(), set()
-        for run in runs:
-            if run in done:
-                continue
+
+        def one(run):
+            """A run written and assembled. -> (run, Function) -- many at once: each its own files"""
             seg, off = where[run[0]]
             last = where[run[-1]][1]
             later = [o for o in starts[seg] if o > last]
@@ -441,6 +441,16 @@ def _assembled16(b, nef, at, segs, stems, public, folder, env, carried=(), force
             f = asm16.Function(nef, seg, off, end, publics, symbol_for, cs_ok=lead.get(seg, 0),
                                extra_entries=[o for (sg, o) in entries if sg == seg and off <= o < end],
                                whole=seg in whole, holes=holes)
+            f.assembled = None
+            if f.text is not None:
+                f.assembled = assemble("asm/" + stems[run[0]].replace("/", "_"), f)
+            return run, f
+
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as pool:
+            made = list(pool.map(one, [r for r in runs if r not in done]))
+        for run, f in made:
+            seg = where[run[0]][0]
             if f.text is None and (f.missing or f.far_missing):
                 # it calls into the middle of a run of assembly (in its segment, or far in
                 # another): that place is an entry of its own
@@ -455,7 +465,7 @@ def _assembled16(b, nef, at, segs, stems, public, folder, env, carried=(), force
                 if inside is not None and at[(seg, inside)] not in forced and at[(seg, inside)] in public:
                     joined.add(at[(seg, inside)])
                     continue
-            why = f.why if f.text is None else assemble("asm/" + stems[run[0]].replace("/", "_"), f)
+            why = f.why if f.text is None else f.assembled
             done[run] = ("why", why) if why else ("stem", "asm/" + stems[run[0]].replace("/", "_"), f)
         for seg, t in wanted:
             inside = max([o for o in starts[seg] if o <= t] or [None])

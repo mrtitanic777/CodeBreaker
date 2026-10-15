@@ -13,6 +13,7 @@ object file. What the probe has established is remembered (state/assembly_probes
 text is assembled once however many programs use it.
 """
 import json
+import threading
 import os
 import re
 import struct
@@ -94,7 +95,15 @@ def _known():
         return {}
 
 
+_PROBE_LOCK = threading.Lock()         # (one probe at a time: they share the file of what is known)
+
+
 def probe(candidates, labels, outdir, mode="flat32", near=()):
+    with _PROBE_LOCK:
+        return _probe(candidates, labels, outdir, mode, near)
+
+
+def _probe(candidates, labels, outdir, mode="flat32", near=()):
     """Which candidates assemble to their original bytes. A candidate is (text, the original
     bytes outside patched fields, a mask with 1 for each byte of a patched field); `labels` are
     the names the texts may mention (`near` those used as call or jump targets). `mode` is

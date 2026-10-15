@@ -34,6 +34,19 @@ import capstone.x86 as X
 from codebreaker.build import data as data16
 
 
+_DECODED = {}                           # (bytes, place) -> the instruction: a segment's code is decoded
+                                        # once, not again for every run and pass that goes over it
+
+
+def _decoded(md, data, at):
+    k = (data, at)
+    if k not in _DECODED:
+        if len(_DECODED) > 400000:
+            _DECODED.clear()
+        _DECODED[k] = next(md.disasm(data, at), None)
+    return _DECODED[k]
+
+
 class Function(object):
     def __init__(self, nef, seg, start, end, public, symbol_for, cs_ok=0, extra_entries=(), whole=False, holes=()):
         """`seg` the segment number (1-based), [start, end) the function in it -- or the run of
@@ -147,11 +160,11 @@ class Function(object):
         while work:
             at = work.pop()
             while start <= at < end and at not in seen and not hole_at(at):
-                ins = next(md.disasm(blob[at:min(end, at + 16)], at), None)
+                ins = _decoded(md, blob[at:min(end, at + 16)], at)
                 if ins is None or at + ins.size > end or hole_at(at + ins.size - 1):
                     break                                   # (nothing runs on into a function rebuilt from C)
                 seen.add(at)
-                covered = any(at <= o < at + ins.size for o in sites)
+                covered = any(o in sites for o in range(at, at + ins.size))   # (its few bytes, looked up)
                 b0 = ins.bytes[0]
                 mn = ins.mnemonic
                 if covered:
