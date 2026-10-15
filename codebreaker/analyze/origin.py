@@ -172,6 +172,12 @@ def _judge(o, md, image, start, end, imported, starts=()):
             o.evidence.append("%s without REP (%04x)" % (mn.upper(), ins.address))
         elif mn == "int":
             o.evidence.append("INT %s (%04x)" % (ins.op_str, ins.address))
+        elif mn == "call" and ops and ops[0].type == X.X86_OP_IMM and start < ops[0].imm < end:
+            # a call into its own body (a far entry that calls the near routine after it)
+            o.evidence.append("calls into its own body (%04x -> %04x)" % (ins.address, ops[0].imm))
+        elif mn in ("stc", "clc", "cmc"):
+            # the carry flag set as a result (callers test it): C has no word for it
+            o.evidence.append("%s: a result in the carry flag (%04x)" % (mn.upper(), ins.address))
         elif mn in _MACHINE:
             o.evidence.append("%s (%04x)" % (_MACHINE[mn], ins.address))
         explicit = [op.reg for op in ops if op.type == X.X86_OP_REG] +                    [r for op in ops if op.type == X.X86_OP_MEM for r in (op.mem.base, op.mem.index)]
