@@ -435,35 +435,58 @@ def _frame_pieces(b, f, seg, stems, folder, wasm, env, assemble_piece, elsewhere
                 cstem[name] = st
             except OSError:
                 pass
-    # each hole: [start, end, [(pad, stem)], used] -- its own function first, when it fits
-    bins = []
-    rest = []
+    near = getattr(b, "near_names", set())
+
+    def place(aside):
+        """Each hole: [start, end, [(pad, stem)], used] -- its own function first, when it fits;
+        the rest packed in. `aside`: far ones sent to the segment beside before anything is
+        placed. -> (holes, far names that found no room, near names that found none)"""
+        bins, rest = [], []
+        for lo, hi, sym in f.holes:
+            name = name_of.get(sym)
+            bins.append([lo, hi, [], lo])
+            if name in size and name not in aside:
+                pad = bins[-1][3] & 1                      # (OpenWatcom aligns its code to a word)
+                if pad + size[name] <= hi - lo:
+                    bins[-1][2].append((pad, cstem[name]))
+                    bins[-1][3] += pad + size[name]
+                else:
+                    rest.append(name)
+        no_room_far, no_room_near = [], []
+        for name in sorted(rest, key=lambda n: (n not in near, -size[n])):     # (near ones first)
+            for bn in bins:
+                pad = bn[3] & 1
+                if bn[3] + pad + size[name] <= bn[1]:
+                    bn[2].append((pad, cstem[name]))
+                    bn[3] += pad + size[name]
+                    break
+            else:
+                (no_room_near if name in near else no_room_far).append(name)
+        return bins, no_room_far, no_room_near
+
+    # A near function with no room goes after the frame and makes the segment bigger than the
+    # original's -- past 64K, in the end. A far one can go to the segment beside instead: the
+    # far ones give up their places, largest first, while near ones are still left over.
+    aside = set()
+    bins, no_room_far, no_room_near = place(aside)
+    while no_room_near and elsewhere:
+        placed_far = sorted((n for n in size if n not in near and n not in aside and n not in no_room_far),
+                            key=lambda n: -size[n])
+        if not placed_far:
+            break
+        aside.add(placed_far[0])
+        bins, no_room_far, no_room_near = place(aside)
     for lo, hi, sym in f.holes:
         name = name_of.get(sym)
-        bins.append([lo, hi, [], lo])
-        if name in size:
-            pad = bins[-1][3] & 1                          # (OpenWatcom aligns its code to a word)
-            if pad + size[name] <= hi - lo:
-                bins[-1][2].append((pad, cstem[name]))
-                bins[-1][3] += pad + size[name]
-            else:
-                rest.append(name)
         b.frame_fit = getattr(b, "frame_fit", []) + [(name, hi - lo, size.get(name, 0))]
     after = []
-    for name in sorted(rest, key=lambda n: -size[n]):
-        for bn in bins:
-            pad = bn[3] & 1
-            if bn[3] + pad + size[name] <= bn[1]:
-                bn[2].append((pad, cstem[name]))
-                bn[3] += pad + size[name]
-                break
+    for name in sorted(aside) + no_room_far + no_room_near:
+        moved = elsewhere(name) if elsewhere and name not in near else None
+        if moved:                                          # far: into the segment beside this one
+            stems[name] = moved
+            b.moved_c.add(name)
         else:
-            moved = elsewhere(name) if elsewhere else None
-            if moved:                                      # far: into the segment beside this one
-                stems[name] = moved
-                b.moved_c.add(name)
-            else:
-                after.append(cstem[name])                  # near: after the frame, in this segment
+            after.append(cstem[name])                      # near: after the frame, in this segment
     for name in size:
         if name not in b.moved_c:
             b.placed_c.add(name)
@@ -731,11 +754,28 @@ def _build16(b, path, m, folder):
         seg = segment_of.get(name)
         if seg is None or name in m.near:
             return None
-        os.makedirs(os.path.join(folder, "s%02dx" % seg), exist_ok=True)
-        stem = "s%02dx/%s" % (seg, os.path.basename(stems[name]))
-        why = functions._compile(wcc, cflags + ["-nt=CODE%dX" % seg], env, folder, stem, texts[name])
-        return None if why else stem
+        if any(c in m.near for c in re.findall(r"\b(\w+)\s*\(", texts[name].split("{", 1)[-1])):
+            return None                                     # it calls near ones, which only its own segment reaches
+        sym = public[name][0] if name in public else "_" + name
+        asm_dir = os.path.join(folder, "asm")
+        for fn in (os.listdir(asm_dir) if os.path.isdir(asm_dir) else []):
+            if fn.endswith(".asm"):
+                with open(os.path.join(asm_dir, fn), encoding="utf-8", errors="replace") as fh:
+                    if re.search(r"near ptr %s\b" % re.escape(sym), fh.read()):
+                        return None                         # hand-written code beside it reaches it near
+        sub = os.path.join(folder, "s%02dx" % seg)
+        os.makedirs(sub, exist_ok=True)
+        if not os.path.exists(os.path.join(sub, "m.h")):        # (the header beside the function, as in its own folder)
+            with open(os.path.join(sub, "m.h"), "w", newline="\n", encoding="utf-8") as fh:
+                fh.write(m.header)
+        stem = os.path.basename(stems[name])
+        why = functions._compile(wcc, cflags + ["-nt=CODE%dX" % seg], env, sub, stem, texts[name])
+        b.elsewhere_why = getattr(b, "elsewhere_why", {})
+        if why:
+            b.elsewhere_why[name] = why
+        return None if why else "s%02dx/%s" % (seg, stem)
 
+    b.near_names = set(m.near)                                 # (for placing them: a near one stays in its segment)
     asm_imports = _assembled16(b, nef, at, segs, stems, public, folder, env, m.segments, forced, elsewhere)
     for n, why in getattr(m, "failed", {}).items():           # no C, and not rebuilt from its instructions
         if n not in b.assembled:
@@ -840,6 +880,30 @@ def _build16(b, path, m, folder):
             swap = [(by_stem[apart.group(1)], "reaches near for something in another segment: " + line.strip()[-160:])]
         elif over:
             seg, need, freed = int(over.group(1)), int(over.group(2)) + 512, 0
+            # First the far ones, largest first, go to the segment beside (CODE<n>X): they are
+            # called far, from anywhere. Only what that cannot free becomes stand-ins.
+            moved_now = False
+            for size, n in sorted(((os.path.getsize(os.path.join(folder, stems[n] + ".obj")), n)
+                                   for n in by_segment.get(seg, []) if n in stems and n not in b.rejected
+                                   and n not in m.near and n not in b.moved_c and n not in b.assembled
+                                   and not stems[n].startswith("asm/")), reverse=True):
+                if freed >= need:
+                    break
+                old = "file %s.obj" % stems[n]
+                if old not in lines:
+                    continue
+                moved = elsewhere(n)
+                if moved:
+                    lines[lines.index(old)] = "file %s.obj" % moved
+                    stems[n] = moved
+                    b.moved_c.add(n)
+                    freed += size
+                    moved_now = True
+            if moved_now:
+                b.error, b.absent = "", []
+                image = _link_resolving(b, wlink, env, folder, lines, lambda s: _from_header(m.header, s),
+                                        lambda stem, text: extra(stem, text))
+                continue
             for size, n in sorted(((os.path.getsize(os.path.join(folder, stems[n] + ".obj")), n)
                                    for n in by_segment.get(seg, []) if n in stems and n not in b.rejected), reverse=True):
                 if freed >= need:

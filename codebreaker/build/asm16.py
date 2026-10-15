@@ -322,6 +322,8 @@ class Function(object):
 
         def inside(x):
             return lo <= x < hi
+        written = self.ins if good is None else [a for a in good if a in self.ins]
+        covered = {x for a in written for x in range(a + 1, a + len(self.ins[a][0]))}   # (inside an instruction)
         out = ["; %s, %s: %d:%04x-%04x -- written in assembly, as its author wrote it: what the"
                % (self.module, self.public, self.seg, lo, hi),
                "; loader fixes and the calls out of the function are written as what they refer to;",
@@ -366,7 +368,12 @@ class Function(object):
                 at += width
             elif at in self.tables and inside(struct.unpack_from("<H", self.blob, at)[0]):
                 flush()
-                out.append("        dw   L_%04X" % struct.unpack_from("<H", self.blob, at)[0])
+                t = struct.unpack_from("<H", self.blob, at)[0]
+                # an entry is a label where an instruction of this piece is written; anywhere
+                # else (a function rebuilt from C, the middle of an instruction: a table guessed
+                # too long reads on into data) it is the number it is -- the same bytes
+                held = t in self.ins and (good is None or t in good) and t not in covered                     and not any(h[0] <= t < h[1] for h in self.holes)
+                out.append("        dw   L_%04X" % t if held else "        dw   0%04Xh" % t)
                 at += 2
             elif at in self.calls:
                 flush()
@@ -388,7 +395,12 @@ class Function(object):
                 at += 1
         flush()
         out += ["CODE%d ends" % self.seg, "end", ""]
-        return "\n".join(out)
+        text = "\n".join(out)
+        # (a table read on into what is code or data: an entry whose place got no label is the
+        # number it is -- the same two bytes)
+        defined = set(re.findall(r"(?m)^(L_[0-9A-F]{4}):", text))
+        return re.sub(r"(?m)^(        dw   )(L_([0-9A-F]{4}))$",
+                      lambda mm: mm.group(0) if mm.group(2) in defined else "%s0%sh" % (mm.group(1), mm.group(3)), text)
 
 
 def check_piece(obj, f, lo, hi):
