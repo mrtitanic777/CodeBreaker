@@ -335,6 +335,11 @@ class Function(object):
         out += ["        extrn %s:%s" % (sym, k) for sym, k in sorted({**others, **self.externs}.items()) if sym not in mine]
         out += ["        public %s" % name for o, name in self.publics if inside(o)]
         entry = {o: name for o, name in self.publics if inside(o)}
+        # an instruction something enters in its middle (hand-written overlapping entries:
+        # `cmp ax, 0B1xxh` chains entered one byte in, where they read `mov cl, xx`) is written
+        # as its bytes -- the same bytes, and the place inside it gets its label
+        targets = set(entry) | {x for x in self.labels if inside(x)}
+        split = {a for a in self.ins if inside(a) and any(t in targets for t in range(a + 1, a + len(self.ins[a][0])))}
         run = []
 
         def flush():
@@ -380,11 +385,11 @@ class Function(object):
                 size, text = self.calls[at]
                 out.append("        " + text)
                 at += size
-            elif at in self.ins and at in good and self._stays_inside(at, lo, hi):
+            elif at in self.ins and at in good and at not in split and self._stays_inside(at, lo, hi):
                 flush()
                 out.append("        " + self.mnemonic(at))
                 at += len(self.ins[at][0])
-            elif at in self.ins:
+            elif at in self.ins and at not in split:
                 flush()
                 data = self.ins[at][0]
                 out.append("        db   %-40s ; %s %s" % (", ".join("0%02Xh" % b for b in data), self.ins[at][1],

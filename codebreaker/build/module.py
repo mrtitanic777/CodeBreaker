@@ -847,6 +847,15 @@ def _build16(b, path, m, folder):
         flags = segs[seg]["flags"] if seg in segs else 0x1D10
         lines.append("segment 'CODE%d' %s" % (seg, " ".join(on if flags & bit else off for bit, on, off in
                                                               _SEGMENT_OPTIONS if (on if flags & bit else off))))
+    # ... and where the original's was: its code segments first, by their numbers (segment n is
+    # the original's segment n -- what reaches one by its number finds it), what the build adds
+    # (CODE<n>X, the runtime's _TEXT) after them
+    code_numbers = [s["idx"] for s in nef.segments() if s["kind"] == "CODE"]
+    if code_numbers and all(n in by_segment for n in code_numbers):
+        lines.append("order clname CODE " + " ".join("segment CODE%d" % n for n in code_numbers))
+    else:
+        b.layout = "segments renumbered: the original's code segments %s are not all rebuilt" % (
+            [n for n in code_numbers if n not in by_segment],)
     res = _resources(b, path, folder)
     if res:
         lines.append("option resource=%s" % os.path.basename(res))

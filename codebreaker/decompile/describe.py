@@ -244,6 +244,12 @@ def functions(nef):
     cs, ip = nef.h.get("csip", 0) >> 16, nef.h.get("csip", 0) & 0xFFFF
     if cs and segs.get(cs, {}).get("kind") == "CODE":
         out[(cs, ip)] = "far"
+    # a code segment nothing above names a function in (reached by its number from outside, or
+    # dead) still is one of the module's segments: what it holds starts at 0
+    used = {sg for sg, _o in out}
+    for s in nef.segments():
+        if s["kind"] == "CODE" and s["length"] and s["idx"] not in used:
+            out[(s["idx"], 0)] = "far"
     for s in nef.segments():
         if s["kind"] != "CODE":
             continue
