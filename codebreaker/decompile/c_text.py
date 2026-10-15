@@ -763,6 +763,14 @@ def compilable16(module_path, outdir=None):
             m.selector_imports[imp] = how
             macros.append("#define %sRam%s (*(%s __far *)MK_FP(%s(&%s), 0x%x))" % (
                 prefix, addr, ty, "FP_SEG" if how == "segment" else "FP_OFF", imp, va & 0xFFFF))
+        elif seg in getattr(d, "code", {}) and any(
+                m.where.get(v, (None,))[0] == seg and n not in m.near for v, n in m.by_va.items()):
+            # in one of the module's code segments (a variable kept beside the code): that
+            # segment itself, by the selector of a far function in it -- not a copy of its bytes,
+            # which the code there would never see written
+            far = min(n for v, n in m.by_va.items() if m.where.get(v, (None,))[0] == seg and n not in m.near)
+            macros.append("#define %sRam%s (*(%s __far *)(((uint4)(uint2)((uint4)(void __far *)&%s >> 16) << 16)"
+                          " | 0x%x))" % (prefix, addr, ty, far, off))
         elif seg in d.images and off < len(d.images[seg]):
             m.segments[seg] = d.images[seg]
             macros.append("#define %sRam%s (*(%s __far *)(codebreaker_segment_%d + 0x%x))" % (prefix, addr, ty, seg, off))
@@ -1178,7 +1186,7 @@ def interrupt_routines(vectors):
     out = ["; the software interrupts the module takes, each as the original takes it: the registers",
            "; from codebreaker_int, INT n, the registers and the carry and zero flags back into it",
            ".286", "DGROUP group _DATA", "_DATA segment word public 'DATA'", "        extrn _codebreaker_int:word",
-           "_DATA ends", "_TEXT segment word public 'CODE'", "        assume cs:_TEXT, ds:DGROUP"]
+           "_DATA ends", "_TEXT segment word public 'XCODE'", "        assume cs:_TEXT, ds:DGROUP"]
     for v in sorted(vectors):
         name = "_codebreaker_int%02x" % v
         out += ["        public %s" % name, "%s proc far" % name,

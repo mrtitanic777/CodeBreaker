@@ -66,7 +66,8 @@ from codebreaker.formats.pe import open_pe
 _UNDEFINED = re.compile(r"(\S+) is an undefined reference")
 _BY_ADDRESS = re.compile(r"\bfunc_0x([0-9a-f]{8})\b")
 _ORDINAL_IMPORT = re.compile(r"_?([A-Za-z0-9]+)_ord_(\d+)(?:@\d+)?")
-_SEGMENT_OPTIONS = ((0x40, "preload", "loadoncall"), (0x10, "moveable", "fixed"), (0x1000, "discardable", ""))
+_SEGMENT_OPTIONS = ((0x40, "preload", "loadoncall"), (0x10, "moveable", "fixed"), (0x1000, "discardable", ""),
+                    (0x20, "shared", "nonshared"))
 RUN_LIMIT = 40                          # exported functions called when a built module is run
 
 
@@ -156,6 +157,38 @@ def _link(tool, env, folder, lines):
                        timeout=1800)
     out = os.path.join(folder, "m.dll")
     return (out if os.path.isfile(out) else None), (r.stdout or "") + (r.stderr or "")
+
+
+def _dos_stub(path, folder):
+    """The original's DOS part (the bytes before its NE header), as a stub for the linker: its
+    MZ header made to say just that much. -> the file's name, or None."""
+    with open(path, "rb") as f:
+        head = f.read(0x40)
+        if head[:2] != b"MZ":
+            return None
+        at = struct.unpack_from("<I", head, 0x3C)[0]
+        f.seek(0)
+        stub = bytearray(f.read(at))
+    if len(stub) < 0x40:
+        return None
+    struct.pack_into("<HH", stub, 2, len(stub) % 512, (len(stub) + 511) // 512)
+    with open(os.path.join(folder, "stub.exe"), "wb") as f:
+        f.write(stub)
+    return "stub.exe"
+
+
+def _whole_file_image(original, image):
+    """An original whose MZ header has DOS load the whole file (KRNL386: its real-mode start
+    reads the NE header and the segments out of memory) -- ours says the same of ours."""
+    size = os.path.getsize(original)
+    with open(original, "rb") as f:
+        last, pages = struct.unpack_from("<HH", f.read(6), 2)
+    if pages * 512 < size - 511:                               # (a stub alone: nothing to do)
+        return
+    with open(image, "r+b") as f:
+        n = os.fstat(f.fileno()).st_size
+        f.seek(2)
+        f.write(struct.pack("<HH", n % 512, (n + 511) // 512))
 
 
 def _link_resolving(b, tool, env, folder, lines, stand_in, compile_extra):
@@ -731,7 +764,9 @@ def _build16(b, path, m, folder):
         f.write(m.header)                                     # for what is compiled beside the functions
 
     def extra(stem, text):
-        return functions._compile(wcc, cflags, env, folder, stem, text)
+        # (code the build adds -- an entry stand-in, the interrupt routines' registers, stand-ins
+        # -- in a class of its own, XCODE (code to the linker: the name ends in CODE), laid out after the original's segments)
+        return functions._compile(wcc, cflags + ["-nc=XCODE"], env, folder, stem, text)
 
     # every data segment besides the automatic one is carried, whether or not the C reads it:
     # it is part of the module (and code written as its own instructions refers to it)
@@ -840,7 +875,7 @@ def _build16(b, path, m, folder):
                 fh.write(m.header)
             functions._HEADER[sub] = cache.key(m.header)
         stem = os.path.basename(stems[name])
-        why = functions._compile(wcc, cflags + ["-nt=CODE%dX" % seg], env, sub, stem, texts[name])
+        why = functions._compile(wcc, cflags + ["-nt=CODE%dX" % seg, "-nc=XCODE"], env, sub, stem, texts[name])
         b.elsewhere_why = getattr(b, "elsewhere_why", {})
         if why:
             b.elsewhere_why[name] = why
@@ -906,12 +941,25 @@ def _build16(b, path, m, folder):
         flags = segs[seg]["flags"] if seg in segs else 0x1D10
         lines.append("segment 'CODE%d' %s" % (seg, " ".join(on if flags & bit else off for bit, on, off in
                                                               _SEGMENT_OPTIONS if (on if flags & bit else off))))
+    if auto in segs:                                           # the data segment, loaded as the original's
+        flags = segs[auto]["flags"]
+        how = " ".join(on if flags & bit else off for bit, on, off in _SEGMENT_OPTIONS[:2])
+        lines += ["segment class 'DATA' %s" % how, "segment class 'BSS' %s" % how]
+    # the original's DOS part (its stub -- KRNL386's is its real-mode start, which finds the
+    # NE header by its own length and runs from the whole file DOS loads)
+    stub = _dos_stub(path, folder)
+    if stub:
+        lines.append("option stub=%s" % stub)
     # ... and where the original's was: its code segments first, by their numbers (segment n is
     # the original's segment n -- what reaches one by its number finds it), what the build adds
     # (CODE<n>X, the runtime's _TEXT) after them
     code_numbers = [s["idx"] for s in nef.segments() if s["kind"] == "CODE"]
     if code_numbers and all(n in by_segment for n in code_numbers):
-        lines.append("order clname CODE " + " ".join("segment CODE%d" % n for n in code_numbers))
+        order = "order clname CODE " + " ".join("segment CODE%d" % n for n in code_numbers)
+        auto = nef.h.get("autodata_seg")
+        if auto == max(code_numbers) + 1:                   # (and the data segment next, as there)
+            order += " clname BEGDATA clname DATA clname BSS clname STACK"
+        lines.append(order + " clname XCODE")
     else:
         b.layout = "segments renumbered: the original's code segments %s are not all rebuilt" % (
             [n for n in code_numbers if n not in by_segment],)
@@ -1137,6 +1185,8 @@ def build(module, outdir=None, call=True, log=print):
         return b
     b.image = os.path.join(folder, os.path.basename(path).lower())
     shutil.copyfile(image, b.image)
+    if b.kind == "ne":
+        _whole_file_image(path, b.image)
     check(b)
     if call:
         run(b)
