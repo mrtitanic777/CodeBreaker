@@ -691,6 +691,12 @@ def compilable16(module_path, outdir=None):
             m.novalue.add(name)
             text = "xunknown2" + text[4:]
             head = text.split("{", 1)[0]
+        byte_result = re.match(r"\s*(bool|char|int1|uint1|xunknown1|undefined1|undefined)\s+(?!\*)", head)
+        if byte_result:
+            # A result the decompiler sized as a byte is returned in AX all the same: Windows'
+            # BOOL is an int, and callers test the whole of AX (a byte would leave AH as it was)
+            text = text.replace(byte_result.group(0), ("int2 " if byte_result.group(1) in ("char", "int1") else "uint2 "), 1)
+            head = text.split("{", 1)[0]
         if not ("__stdcall16far" in head or "__cdecl16far" in head or re.search(r"\b__far\s+%s\s*\(" % re.escape(name), head)):
             m.near.add(name)                                 # near is the default and is not printed
         elif seg in d.images and bytes(d.images[seg][off:off + 3]) in (b"\x8c\xd8\x90", b"\x1e\x58\x90"):
