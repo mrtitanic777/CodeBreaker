@@ -15,6 +15,7 @@ arguments lie on the stack, what the segment registers hold. Those rules are her
 what the two kinds share (the byte-piece notation, how a function is declared) is shared.
 """
 import re
+import struct
 
 
 # The printed text gives a function in the module's default convention (stdcall) without saying
@@ -626,6 +627,7 @@ def compilable16(module_path, outdir=None):
     m.near, m.wide, m.novalue = set(), set(), set()
     m.interrupts = set()                                     # (vector, arguments) of the interrupts taken
     m.selector_imports = {}                                  # imports used for their selector
+    m.exported_prologue = set()                              # far functions the original starts with Windows' prologue
     sizes = {}                                               # address of a global -> bytes of the access
     ends, starts = {}, {}                                    # where each function's code stops: at the next one
     for va in sorted(d.where):
@@ -649,9 +651,21 @@ def compilable16(module_path, outdir=None):
                                  "  return 0;\n}" % (model, nm))
                     by_va[va] = nm
                     m.failed[nm] = "the decompiler could not make it"
+    # each function's model as the description gives it: near or far is how it returns, and
+    # the C must say it (the decompiler leaves the convention out of a head whose result is a
+    # pointer -- and in the medium model an unmarked function is far)
+    distance = {}
+    with open(d.path, encoding="utf-8") as f:
+        for line in f:
+            parts = line.rstrip("\n").split("\t")
+            if parts[0] == "F" and len(parts) > 4:
+                distance[parts[2]] = "far" if parts[4].endswith("far") else "near" if parts[4].endswith("near") else None
     for va in sorted(by_va):
         name = by_va[va]
         raw = texts[name]
+        head0 = raw.split("{", 1)[0]
+        if distance.get(name) and "16near" not in head0 and "16far" not in head0 and re.search(r"\b%s\s*\(" % re.escape(name), head0):
+            raw = raw.replace(head0, re.sub(r"\b(%s\s*\()" % re.escape(name), "__%s \\1" % distance[name], head0, count=1), 1)
         far = set()
         for mm in _FACT.finditer(raw):
             if mm.group(1) == "P" and mm.group(3) == "4":
@@ -677,8 +691,20 @@ def compilable16(module_path, outdir=None):
             m.novalue.add(name)
             text = "xunknown2" + text[4:]
             head = text.split("{", 1)[0]
-        if not ("__stdcall16far" in head or "__cdecl16far" in head):
+        if not ("__stdcall16far" in head or "__cdecl16far" in head or re.search(r"\b__far\s+%s\s*\(" % re.escape(name), head)):
             m.near.add(name)                                 # near is the default and is not printed
+        elif seg in d.images and bytes(d.images[seg][off:off + 3]) in (b"\x8c\xd8\x90", b"\x1e\x58\x90"):
+            # The original starts `mov ax,ds; nop` -- the prologue Windows rewrites, for an export,
+            # to load the module's own data segment: the source marked it _export, and so does
+            # this (the compiler then writes that prologue: build/functions.py)
+            text = re.sub(r"\b%s\s*\(" % re.escape(name), "__export " + name + "(", text, count=1)
+            m.exported_prologue.add(name)
+        if seg in d.images and d.data_segment and len(d.images[seg]) > off + 4 \
+                and d.images[seg][off] == 0xB8 and d.images[seg][off + 3] in (0x55, 0x45) \
+                and struct.unpack_from("<H", d.images[seg], off + 1)[0] == describe.selector(d.data_segment):
+            # it starts `mov ax, DGROUP`: it loads its own data segment, whoever calls it (the
+            # source's _loadds) -- so does this
+            text = re.sub(r"\b%s\s*\(" % re.escape(name), "__loadds " + name + "(", text, count=1)
         if head.split()[0] in _WIDE or "*" in head.split(name)[0] and "__far" in head.split(name)[0]:
             m.wide.add(name)
         text = re.sub(r"\b_([a-z]+Ram[0-9a-f]{8})\b", r"\1", text)     # (a global the decompiler named twice)

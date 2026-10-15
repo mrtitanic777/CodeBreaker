@@ -54,6 +54,8 @@ def _compile(cc, cflags, env, outdir, stem, text):
     """Compile one function. -> "" or the first error. What the compiler made of this text
     with this header and these options is kept (base/cache.py) and not made again."""
     from codebreaker.base import cache
+    if "__export " in text and "-zW" not in cflags:
+        cflags = list(cflags) + ["-zW"]        # (the Windows prologue, which the loader rewrites for an export)
     if ("codebreaker_entry_sp(" in text or "codebreaker_stack(" in text) and "-of+" not in cflags:
         cflags = list(cflags) + ["-of+"]       # (it reads the frame: BP+2 is where SP stood on entry)
     k = cache.key(cache.tool(cc), cflags, _HEADER.get(outdir, ""), text) if outdir in _HEADER else None

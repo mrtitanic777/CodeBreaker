@@ -158,10 +158,17 @@ def _judge(o, md, image, start, end, imported, starts=()):
             target = imported.get(ops[0].imm)
             if target and any(h.lower() in target.lower() for h in _COMPILER_HELPERS):
                 o.compiler.append("calls %s" % target)
-        # a jump out of the function into the middle of another: code shared between entry
-        # points (set a register, jump to the common part) -- no C compiler does that
-        if (mn == "jmp" or mn.startswith("j")) and ops and ops[0].type == X.X86_OP_IMM                 and not start <= ops[0].imm < end and ops[0].imm not in starts and starts:
-            o.evidence.append("jumps into the middle of other code (%04x -> %04x)" % (ins.address, ops[0].imm))
+        # a jump out of the function: into the middle of other code (entry points sharing a
+        # body -- set a register, jump to the common part) or to another function (a tail jump):
+        # the C compilers of the time do neither
+        if (mn == "jmp" or mn.startswith("j")) and ops and ops[0].type == X.X86_OP_IMM                 and not start <= ops[0].imm < end and starts:
+            o.evidence.append("jumps %s (%04x -> %04x)" % (
+                "to another function" if ops[0].imm in starts else "into the middle of other code",
+                ins.address, ops[0].imm))
+        # a return address of its own pushed (push the place to come back to, then jump):
+        # hand-made calling
+        if mn == "push" and ops and ops[0].type == X.X86_OP_IMM and ins.address < ops[0].imm < end:
+            o.evidence.append("pushes a return address of its own (%04x push %04x)" % (ins.address, ops[0].imm))
         if mn in ("ret", "retf", "iret") or mn == "jmp":
             if mn == "iret":
                 o.evidence.append("IRET (%04x)" % ins.address)
