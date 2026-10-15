@@ -52,6 +52,8 @@ class Data(object):
         self.movable = True
         self.size = 0
         self.exported = {}                # 16-bit: {(segment, offset): C name} of exported data
+        self.pieces = []                  # 16-bit: the segment's pieces, as data16 cut it (see _pieces)
+        self.cuts = {}                    # 16-bit: {offset: name} where an exported variable starts
 
     def place(self, va):
         """The C expression for an address inside a carried section, or None."""
@@ -310,7 +312,7 @@ def _places(nef, seg, blob):
     return out
 
 
-def data16(path, function_at, far_segments=()):
+def data16(path, function_at, far_segments=(), segment_symbol=None):
     """The automatic data segment of a 16-bit module as C. `function_at((segment, offset))` ->
     the reconstructed function there, or None; `far_segments` are the other segments the build
     carries as `codebreaker_segment_N`."""
@@ -342,6 +344,12 @@ def data16(path, function_at, far_segments=()):
             if src == 3 and not add:
                 pointers[off] = (4, "code __far *", "(code __far *)%s" % symbol, "")
                 externs.append(symbol)
+            elif src == 5 and not add:                   # its offset: KERNEL's __WINFLAGS, a value
+                pointers[off] = (2, "uint2", "(uint2)%s" % symbol, "")
+                externs.append(symbol)
+            elif src == 2:                               # its selector (KERNEL's __0040H)
+                pointers[off] = (2, "__segment", "(__segment)%s" % symbol, "")
+                externs.append(symbol)
             else:
                 d.unresolved.append((where, "part of the address of %s" % symbol))
             continue
@@ -366,8 +374,15 @@ def data16(path, function_at, far_segments=()):
             pointers[off] = (4, "void __far *", "(void __far *)((char *)&codebreaker_data + 0x%x)" % toff, "")
         elif src == 3 and tseg in far_segments:
             pointers[off] = (4, "void __far *", "(void __far *)(codebreaker_segment_%d + 0x%x)" % (tseg, toff), "")
+        elif src == 2 and tseg == auto:                      # a segment's selector, which the loader
+            pointers[off] = (2, "__segment", "(__segment)&codebreaker_data", "")   # writes: its own,
+        elif src == 2 and tseg in far_segments:                                    # a segment carried,
+            pointers[off] = (2, "__segment", "(__segment)codebreaker_segment_%d" % tseg, "")
+        elif src == 2 and segment_symbol and segment_symbol(tseg):                 # a code segment's
+            pointers[off] = (2, "__segment", "(__segment)&%s" % segment_symbol(tseg),
+                             "the selector of segment %d" % tseg)
         else:
-            what = {2: "the selector of segment %d" % tseg, 5: "an offset in segment %d" % tseg,
+            what = {5: "an offset in segment %d" % tseg,
                     3: "a far pointer to %d:%04x" % (tseg, toff)}.get(src, "a fixup of kind %d" % src)
             d.unresolved.append((where, what + ", which has no C form here"))
     d.pointers = len(pointers)
@@ -387,6 +402,7 @@ def data16(path, function_at, far_segments=()):
     cuts = {e["offset"]: names.get(o, "export_%d" % o) for o, e in entries.items()
             if e.get("seg") == auto and 0 < e["offset"] < size}
     pieces = _cut(_pieces(bytes(blob), size, pointers), sorted(cuts))
+    d.pieces, d.cuts = pieces, {o: re.sub(r"\W", "_", n) for o, n in cuts.items()}
     d.exported = {}
     parts, start = [], 0
     for at in sorted(cuts) + [size]:

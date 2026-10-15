@@ -736,7 +736,10 @@ def _build16(b, path, m, folder):
         if sg["kind"] == "DATA" and n != auto and n not in m.segments:
             m.segments[n] = bytes(nef.data[sg["file_off"]:sg["file_off"] + sg["length"]]) if sg["file_off"] else \
                 bytes(min(sg["minalloc"] or 0x10000, 0x10000))
-    d = b.data = data.data16(path, at.get, m.segments)
+    in_segment = {}                                          # a code segment -> a function in it (its selector)
+    for (sg, _o), n in sorted(at.items()):
+        in_segment.setdefault(sg, n)
+    d = b.data = data.data16(path, at.get, m.segments, in_segment.get)
     why = extra("data", d.source + data.far_segments(m.segments))
     if why:                                                   # the code still needs a data segment to exist
         b.data_error = "the data does not compile: %s" % why
