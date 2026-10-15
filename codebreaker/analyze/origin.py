@@ -140,7 +140,13 @@ def _judge(o, md, image, start, end, imported, starts=()):
     body = list(md.disasm(image[start:end], start))
     at = body[-1].address + body[-1].size if body else start
     straddles = next(md.disasm(image[at:at + 16], at), None)
-    if at < end and straddles is not None and at + straddles.size > end and             (not body or body[-1].mnemonic not in ("ret", "retf", "iret", "jmp", "ljmp")):
+    code = [i for i in body if i.mnemonic not in ("nop", "int3")] or body   # (alignment after the last)
+    runs_on = bool(body) and at == end and end in starts and         code[-1].mnemonic not in ("ret", "retf", "iret", "jmp", "ljmp", "int", "hlt")
+    if runs_on:
+        # it ends where the next function starts, without returning: it runs on into it (a
+        # second entry point that first sets a register) -- C functions do not
+        o.evidence.append("runs on into the next function (%04x)" % end)
+    if (at < end and straddles is not None and at + straddles.size > end or runs_on) and             (not body or body[-1].mnemonic not in ("ret", "retf", "iret", "jmp", "ljmp")):
         for ins in md.disasm(image[at:at + 0x400], at):
             body.append(ins)
             if ins.mnemonic in ("ret", "retf", "iret", "jmp", "ljmp") or len(body) > 400:

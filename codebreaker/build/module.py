@@ -752,6 +752,16 @@ def _build16(b, path, m, folder):
     from codebreaker.analyze import origin
     b.origins = {o.name: o for o in origin.module16(path, more=m.by_va).functions.values()}
     forced = {n for n in m.order if n in stems and n in b.origins and b.origins[n].language == "assembly"}
+    # C the decompiler got wrong in a way that can be seen: a call it gives the caller's CS as
+    # an argument (a far call whose arguments it read a word off -- see the decompiler's
+    # far-call argument recovery). Until that is put right, such a function is rebuilt from
+    # its own instructions rather than from C that would pass the wrong arguments.
+    untrusted = {n for n in m.order if n in stems and n in m.texts
+                 and re.search(r"\w+\([^;{}]*\bunaff_CS\b[^;{}]*\)", m.texts[n])}
+    for n in untrusted - forced:
+        if n in b.origins:
+            b.origins[n].evidence.append("its decompiled calls pass the caller's CS (not trusted as C)")
+    forced |= untrusted
     # (for finding which rebuilt functions make a module misbehave: CB_ASM_ONLY=all rebuilds
     # every function from its own instructions; a comma list, those named; CB_ASM_SEGMENTS=1,3
     # those in the segments named)
