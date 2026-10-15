@@ -762,6 +762,28 @@ def _build16(b, path, m, folder):
         if n in b.origins:
             b.origins[n].evidence.append("its decompiled calls pass the caller's CS (not trusted as C)")
     forced |= untrusted
+    # ... and C one of whose calls passes clearly fewer (or more) words than the callee takes
+    # off (its `ret N`): the decompiler kept to the pushes it could see, and the stack would
+    # come back wrong
+    arity = {}
+    with open(m.description.path, encoding="utf-8") as fh:
+        for line in fh:
+            parts = line.rstrip("\n").split("\t")
+            if parts[0] == "F" and len(parts) > 4 and parts[4].startswith("__stdcall16") and int(parts[3]) > 0:
+                arity[parts[2]] = int(parts[3]) // 2
+    for n in m.order:
+        if n in forced or n not in stems or n not in m.texts:
+            continue
+        body = m.texts[n].split("{", 1)[-1]
+        for mm in re.finditer(r"\b(%s)\s*\(" % "|".join(re.escape(x) for x in arity) if arity else r"(?!x)x", body):
+            args, _after = c_text._arguments_at(body, mm.end() - 1)
+            words = arity[mm.group(1)]
+            if len(args) * 2 < words or len(args) > words:
+                if n in b.origins:
+                    b.origins[n].evidence.append("its call of %s passes %d arguments for %d words (not trusted as C)"
+                                                 % (mm.group(1), len(args), words))
+                forced.add(n)
+                break
     # (for finding which rebuilt functions make a module misbehave: CB_ASM_ONLY=all rebuilds
     # every function from its own instructions; a comma list, those named; CB_ASM_SEGMENTS=1,3
     # those in the segments named)

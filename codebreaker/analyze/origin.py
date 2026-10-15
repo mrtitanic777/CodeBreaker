@@ -129,6 +129,7 @@ def module16(path, more=None):
 
 def _judge(o, md, image, start, end, imported, starts=()):
     written, prologue_ax, frame, last_push_seg = set(), False, False, False
+    prev_call, pending = False, None
     first_ins = next(md.disasm(image[start:end], start), None)
     if first_ins is not None and first_ins.mnemonic == "pop":
         # it takes its own return address off the stack (to take its arguments off by hand,
@@ -172,6 +173,15 @@ def _judge(o, md, image, start, end, imported, starts=()):
             o.evidence.append("%s without REP (%04x)" % (mn.upper(), ins.address))
         elif mn == "int":
             o.evidence.append("INT %s (%04x)" % (ins.op_str, ins.address))
+        elif mn == "mov" and len(ops) == 2 and ops[1].type == X.X86_OP_REG and ops[1].reg == X.X86_REG_SP \
+                and not (ops[0].type == X.X86_OP_REG and ops[0].reg == X.X86_REG_BP):
+            # SP copied to reach the stack through another register (no frame): hand-written
+            o.evidence.append("reaches the stack through SP (%04x %s %s)" % (ins.address, mn, ins.op_str))
+        elif mn == "ljmp":
+            o.evidence.append("a far jump (%04x %s)" % (ins.address, ins.op_str))
+        elif mn == "pop" and prev_call and ins.op_str in ("ax", "bx", "cx", "dx"):
+            # a word pushed before a call taken back after it as a value (pop, then used)
+            pending = (ins.op_str, ins.address, 3)
         elif mn == "call" and ops and ops[0].type == X.X86_OP_IMM and start < ops[0].imm < end:
             # a call into its own body (a far entry that calls the near routine after it)
             o.evidence.append("calls into its own body (%04x -> %04x)" % (ins.address, ops[0].imm))
@@ -220,6 +230,17 @@ def _judge(o, md, image, start, end, imported, starts=()):
                 last_push_seg:
             o.evidence.append("argument in %s (%04x push after a segment)" % (ins.op_str.upper(), ins.address))
         last_push_seg = mn == "push" and ins.op_str in ("ss", "ds", "es", "cs")
+        if pending and ins.address != pending[1]:
+            reg = pending[0]
+            names = {ins.reg_name(r) for r in regs_read}
+            if names & {reg, reg[0] + "l", reg[0] + "h"}:
+                o.evidence.append("takes back a pushed word as a value (%04x pop %s)" % (pending[1], reg))
+                pending = None
+            elif {ins.reg_name(r) for r in regs_written} & {reg, reg[0] + "l", reg[0] + "h"} or pending[2] <= 1:
+                pending = None
+            else:
+                pending = (pending[0], pending[1], pending[2] - 1)
+        prev_call = mn in ("call", "lcall") or (prev_call and mn == "pop")
         for r in regs_written:
             nm = ins.reg_name(r)
             written.add(nm)
