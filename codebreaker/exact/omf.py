@@ -244,7 +244,8 @@ def holes(o, seg):
 
 def code_segments(o):
     """the object's code segments, the first named first (a compiler's NAME_TEXT, or more by #pragma alloc_text)"""
-    return [s for s, cls, ln, al in o.segs if s.endswith("_TEXT") or cls.upper() == "CODE"]
+    return [s for s, cls, ln, al in o.segs if s.endswith("_TEXT") or cls.upper() in ("CODE", "PROG") or
+            s.upper() in ("PROG", "_PROG", "_CODE")]       # (Lattice-lineage C: PROG)
 
 
 def functions(o, seg="_TEXT"):

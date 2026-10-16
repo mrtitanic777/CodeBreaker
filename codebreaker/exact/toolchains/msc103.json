@@ -1,0 +1,20 @@
+{
+ "name": "msc103",
+ "title": "Microsoft C 1.03 beta (Lattice C 1.02; LC1.EXE and LC2.EXE), 1983",
+ "kit": "msc103",
+ "emulator": "dos",
+ "stage": {"all": true},
+ "env": ["PATH="],
+ "passes": [
+  {"run": "LC1.EXE", "args": "{tag}"},
+  {"run": "LC2.EXE", "args": "{tag}"}
+ ],
+ "output": "{tag}.OBJ",
+ "default_variant": "release",
+ "variants": {"release": [], "older": ["older"]},
+ "_variants": "older: the code generator LC1.EXE and LC2.EXE 1.03 were compiled by, one byte different from the one beside them",
+ "patches": [
+  {"change": "older", "file": "LC2.EXE", "at": "0x3980", "was": "3d", "now": "3c",
+   "note": "the switch emitter's compare of each case of a compare chain: cmp al,imm8 (3Ch), not cmp ax,imm16"}
+ ]
+}

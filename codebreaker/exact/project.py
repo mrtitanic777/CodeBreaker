@@ -130,6 +130,25 @@ class Project(object):
             m = re.fullmatch(rx, f, re.I)
             if m:
                 out.append((int(m.group(1), 16), os.path.join(self.src, f)))
+        if self.cfg.get("place_by"):                        # (whole files placed by a list of names and places:
+            places = {}                                     #  each at its first function's)
+            for l in open(self.path(self.cfg["place_by"]), encoding="utf-8"):
+                c = l.split("#")[0].split()
+                if len(c) >= 2:
+                    m = re.fullmatch(r"[fF]?([0-9a-fA-F]{4,5})", c[1])
+                    if m:
+                        places[c[0].upper()[:8]] = int(m.group(1), 16)
+            for f in sorted(os.listdir(self.src)):
+                if not f.lower().endswith(".c"):
+                    continue
+                t = open(os.path.join(self.src, f), encoding="latin1").read()
+                t = re.sub(r"/\*.*?\*/", "", t, flags=re.S)
+                for m in re.finditer(r"(?m)^(?:[A-Za-z_][\w \*]*?\s)?\**\s*([A-Za-z_]\w*)\s*\([^;{]*$", t):
+                    if m.group(1) in ("if", "while", "for", "switch", "return"):
+                        continue
+                    if m.group(1).upper()[:8] in places:
+                        out.append((places[m.group(1).upper()[:8]], os.path.join(self.src, f)))
+                        break
         p = self.path("ORDER")
         if os.path.exists(p):
             for l in open(p):

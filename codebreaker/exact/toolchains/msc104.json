@@ -1,0 +1,31 @@
+{
+ "name": "msc104",
+ "title": "Microsoft C 1.04 (Lattice C; MC1.EXE and MC2.EXE), 1983",
+ "kit": "msc104",
+ "emulator": "dos",
+ "stage": {"all": true},
+ "_stage": "every file of the release's disks, beside the passes (they find the headers there)",
+ "env": ["PATH="],
+ "passes": [
+  {"run": "MC1.EXE", "args": "{tag}"},
+  {"run": "MC2.EXE", "args": "{tag}"}
+ ],
+ "output": "{tag}.OBJ",
+ "default_variant": "release",
+ "variants": {
+  "release": [],
+  "own": {"patches": ["b"], "hooks": ["cmp_test"]},
+  "older": ["older"]
+ },
+ "_variants": "own: the code generator MC1.EXE and MC2.EXE 1.04 were compiled by (between the two shipped); older: the one the library modules linked into them were compiled by",
+ "patches": [
+  {"change": "b", "file": "MC2.EXE", "at": "0x58CF", "was": "ff7604e8cb2f8be5ff7604e82f4d8be5", "now": "eb0e9090909090909090909090909090",
+   "note": "it does not yet drop the register contents when it widens a byte (xor ah,ah): a jump over the two calls that do"},
+  {"change": "older", "file": "MC2.EXE", "at": "0x3B69", "was": "3d", "now": "3c",
+   "note": "the switch emitter's compare of each case of a compare chain: cmp al,imm8 (3Ch), not cmp ax,imm16"}
+ ],
+ "hooks": {
+  "cmp_test": {"pass": "MC2.EXE", "at": ["0x4D7F"], "call": "codebreaker.exact.hooks_lattice:cmp_test",
+               "note": "comparing two longs, both words of the left one first only if neither is reached through a pointer"}
+ }
+}

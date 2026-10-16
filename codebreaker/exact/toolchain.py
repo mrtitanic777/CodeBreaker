@@ -76,7 +76,11 @@ class Toolchain(object):
         self.p = profile
         self.name = profile["name"]
         self.variant = variant or profile.get("default_variant") or ""
-        on = set(profile.get("variants", {}).get(self.variant, []))
+        v = profile.get("variants", {}).get(self.variant, [])
+        if isinstance(v, dict):                             # ({"patches": [changes], "hooks": [hook names]})
+            on, self.variant_hooks = set(v.get("patches", [])), list(v.get("hooks", []))
+        else:
+            on, self.variant_hooks = set(v), []
         if self.variant and self.variant not in profile.get("variants", {}):
             raise ValueError("%s has no variant %r (it has %s)" % (self.name, self.variant, sorted(profile.get("variants", {}))))
         self.patches = [x for x in profile.get("patches", []) if x["change"] in on]
@@ -94,7 +98,12 @@ class Toolchain(object):
         def where(src):                                     # "otherkit:path" names a file of another kit
             k, sep, rest = src.partition(":")
             return os.path.join(kit_dir(k), rest) if sep and len(k) > 1 else os.path.join(kit, src)
-        for dst, src in st.get("files", {}).items():
+        files = dict(st.get("files", {}))
+        if st.get("all"):                                   # (every file of the kit, its folders flattened: a
+            for root, _, fs in os.walk(kit):                #  compiler that finds its headers beside itself)
+                for f in fs:
+                    files.setdefault(f.upper(), os.path.relpath(os.path.join(root, f), kit))
+        for dst, src in files.items():
             b = bytearray(open(where(src), "rb").read())
             hdr = struct.unpack_from("<H", b, 8)[0] * 16 if b[:2] == b"MZ" else 0
             for x in self.patches:
@@ -129,6 +138,8 @@ class Toolchain(object):
     def answers_of(self, src):
         out = {}
         for hname, h in self.p.get("hooks", {}).items():
+            if "header" not in h:                           # (a hook the variant sets, no source's answer)
+                continue
             m = re.search(rb"/\* " + h["header"].encode() + rb": ([0-9, ]+) \*/", src[:400])
             if m:
                 out[hname] = sorted(int(x) for x in m.group(1).decode().replace(",", " ").split())
@@ -174,14 +185,15 @@ class Toolchain(object):
             with open(cf, "rb") as f:
                 return pickle.load(f)
         w = self.stage()
-        tag = "T%05d" % (os.getpid() % 100000)
+        _SEQ[0] += 1                                        # (a name of its own each time: the emulator may hold
+        tag = "T%05d" % ((os.getpid() * 7 + _SEQ[0]) % 100000)   #  the last one's files open a while)
         crlf = lambda b: b.replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
         for f, b in headers.items():
             open(os.path.join(w, f.upper()), "wb").write(crlf(b))
         ix = os.path.join(w, "INCX")
         os.makedirs(ix, exist_ok=True)
         for f in os.listdir(ix):
-            os.remove(os.path.join(ix, f))
+            _remove(os.path.join(ix, f))
         for f, b in incs:
             open(os.path.join(ix, f.upper()), "wb").write(crlf(b))
         open(os.path.join(w, tag + ".C"), "wb").write(crlf(src))
@@ -193,12 +205,8 @@ class Toolchain(object):
         if obj is not None and self.p.get("rename_externs"):
             from codebreaker.exact import omf
             obj = omf.rename_externs(obj, self.p["rename_externs"])
-        for f in (tag + ".C", os.path.basename(out)):
-            if os.path.exists(os.path.join(w, f)):
-                os.remove(os.path.join(w, f))
-        for f in headers:
-            if os.path.exists(os.path.join(w, f.upper())):
-                os.remove(os.path.join(w, f.upper()))
+        for f in [tag + ".C", os.path.basename(out)] + [h.upper() for h in headers]:
+            _remove(os.path.join(w, f))
         res = (obj, con.decode("latin1").replace("\r", ""))
         os.makedirs(os.path.dirname(cf), exist_ok=True)
         with open(cf, "wb") as f:
@@ -218,6 +226,9 @@ class Toolchain(object):
             for hname, h in self.p.get("hooks", {}).items():
                 if h["pass"] == ps["run"] and ans.get(hname):
                     inst = _hook(h, set(ans[hname]))
+            calls = [h for x in self.variant_hooks for h in [self.p.get("hooks", {}).get(x)] if h and h["pass"] == ps["run"] and h.get("call")]
+            if calls:                                       # (a hook whose answer is code: where the pass goes on)
+                inst = _call_hooks(calls, inst)
             mem = [x for x in self.patches if x["file"] == ps["run"] and x.get("in_memory")]
             if mem:                                         # a packed pass: changed once it has unpacked itself
                 inst, when = _in_memory(mem, inst)
@@ -228,6 +239,40 @@ class Toolchain(object):
             if r.exit:
                 return r.exit, con + b"(the pass that stopped: " + ps["run"].encode() + b")\n"
         return 0, con
+
+
+_SEQ = [0]
+
+
+def _remove(p):
+    try:
+        if os.path.exists(p):
+            os.remove(p)
+    except OSError:                                         # (still open: left for the next stage's clean-up)
+        pass
+
+
+def _call_hooks(hooks, then=None):
+    """hooks {"at": [addresses], "call": "module:function"}: at each address the function is given (read
+    word(seg, off), bp, ss, ds) and says where execution goes on (an IP), or None to go on as it was"""
+    import importlib
+    from unicorn import UC_HOOK_CODE
+    from unicorn.x86_const import UC_X86_REG_BP, UC_X86_REG_SS, UC_X86_REG_DS, UC_X86_REG_IP
+
+    def inst(mu, load):
+        for h in hooks:
+            mod, _, fn = h["call"].partition(":")
+            f = getattr(importlib.import_module(mod), fn)
+            for a in h["at"]:
+                def hit(uc, addr, size, u, f=f):
+                    rd = lambda seg, o: struct.unpack("<H", bytes(uc.mem_read(seg * 16 + (o & 0xFFFF), 2)))[0]
+                    to = f(rd, uc.reg_read(UC_X86_REG_BP), uc.reg_read(UC_X86_REG_SS), uc.reg_read(UC_X86_REG_DS))
+                    if to is not None:
+                        uc.reg_write(UC_X86_REG_IP, to)
+                mu.hook_add(UC_HOOK_CODE, hit, begin=load * 16 + _int(a), end=load * 16 + _int(a))
+        if then:
+            then(mu, load)
+    return inst
 
 
 def _hook(h, counts):
