@@ -173,6 +173,11 @@ _REG16 = {"ax", "bx", "cx", "dx", "si", "di"}
 
 
 def _cmp_of(ins, reg=None):
+    if ins.mnemonic in ("or", "test", "and") and re.fullmatch(r"(\w+), \1", ins.op_str):   # (a register tested: with 0)
+        r = ins.op_str.split(",")[0]
+        if r in _REG16 | {"al"} and (not reg or r == reg):
+            return r, 0
+        return None
     if ins.mnemonic != "cmp":
         return None
     m = re.fullmatch(r"(\w+), (0x[0-9a-f]+|\d+)", ins.op_str)
@@ -248,7 +253,7 @@ def _compare_switches(blocks):
         vals = [v for v, t in cases]
         # (two values are a switch too when the selector was loaded into the register for the tests alone -
         #  `mov ax,[m]; cmp ax,K1; je; cmp ax,K2; je`: an if would compare the memory itself)
-        loaded = len(ins) >= 3 and ins[-3].mnemonic == "mov" and ins[-3].op_str.startswith(reg + ", ") and "[" in ins[-3].op_str
+        loaded = reg in ("ax", "al") and len(ins) >= 3 and ins[-3].mnemonic == "mov" and ins[-3].op_str.startswith(reg + ", ") and "[" in ins[-3].op_str
         if not ok[0] or len(leaves) != 1 or len(set(vals)) < (2 if loaded else 3) or len(set(vals)) != len(vals):
             continue
         default = leaves.pop()
