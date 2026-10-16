@@ -1749,6 +1749,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = structs(pointer_flow(local_pointers(register_variables(shapes(t), regs, regparam))), set(widths))
         t = re.sub(r"(?m)^[ \t]*(\w+) = \1;\n", "", t)         # (a register variable given itself: nothing)
         t = long_ladders(long_pairs(t))                     # (the longs again, as the passes left them)
+        t = frame_chars(t, widths)
         t = fill_frame(t, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
         variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t)] if v]
         both = pre_steps(t)
@@ -1798,6 +1799,7 @@ def byte_fields(inv, code):
     out = {(p, int(o)) for p, o in re.findall(r"BYTE\(\s*\(?(\w+)->f(\d+)\)?\s*\)", t)}
     out |= {(p, 0) for p in re.findall(r"BYTE\(\*\(?(?:\+\+|--)?(\w+)(?:\+\+|--)?\)?\)", t)}   # (*p a byte: a char *)
     from codebreaker.exact import x86                       # (and from the code itself: a byte read or written
+    FRAMEW.clear()
     for i in x86.disasm(code, 0, len(code), False):         #  through a register at an offset - whatever the
         m = re.search(r"byte ptr \[(?:bx|si|di) \+ (0x[0-9a-f]+|\d+)\]", i.op_str)    # draft names the pointer)
         if m and int(m.group(1), 0) < 0x100:
@@ -1805,7 +1807,32 @@ def byte_fields(inv, code):
         g = re.search(r"byte ptr \[(0x[0-9a-f]+|\d+)\]", i.op_str)     # (a global read or written a byte at a time)
         if g:
             out.add(("g", "g_%04x" % int(g.group(1), 0)))
+        f = re.search(r"(byte|word) ptr \[bp ([+-]) (0x[0-9a-f]+|\d+)\]", i.op_str)   # (a frame slot by its width:
+        if f:                                                                        #  FRAMEW: (+-N, width))
+            FRAMEW.add(((1 if f.group(2) == "+" else -1) * int(f.group(3), 0), f.group(1)))
     return out
+
+
+FRAMEW = set()                                              # (the frame slots the code reads or writes, by width)
+
+
+def frame_chars(text, widths):
+    """the locals and parameters the code only ever reads or writes a byte of (its frame slots, by width): chars"""
+    slots = {}
+    for off, w in FRAMEW:
+        slots.setdefault(off, set()).add(w)
+    chars = []
+    for off, ws in slots.items():
+        if ws != {"byte"}:
+            continue
+        name = "v%d" % -off if off < 0 else chr(ord("a") + (off - 4) // 2) if off >= 4 and off % 2 == 0 else None
+        if name:
+            chars.append(name)
+    for x in chars:
+        text = re.sub(r"(?m)^([ \t]*)int %s;$" % x, r"\1char %s;" % x, text)
+        text = re.sub(r"(?m)^([ \t]*)int ((?:\w+, )*)%s((?:, \w+)*);$" % x, lambda m: "%sint %s;\n%schar %s;" % (
+            m.group(1), (m.group(2) + m.group(3).lstrip(", ")).strip(", "), m.group(1), x), text)
+    return text
 
 
 def buffers(text):
