@@ -1430,6 +1430,9 @@ def prove_texts(prj, tc, inv, texts, a, ln, names):
     return best[1], best[2]
 
 
+MAXCANDS = 48
+
+
 def prove_best(prj, tc, inv, text, a, ln, names, regparam=None):
     """-> (source, verdict): of the model's text and its variants, the first the compiler proves identical; else
     the first that compiles (or the first)"""
@@ -1438,6 +1441,13 @@ def prove_best(prj, tc, inv, text, a, ln, names, regparam=None):
         regparam = dict(getattr(inv, "LAST", {}).get("regparam") or {})
     widths = byte_fields(inv, bytes(prj.image[a:a + ln]))
     cands = candidates(prj, text, a, names, regs, regparam, widths)
+    seen = set()
+    uniq = []
+    for src, left in cands:                                 # (each text once; the first readings first, and at
+        if src not in seen:                                 #  most MAXCANDS of them: a bench must end)
+            seen.add(src)
+            uniq.append((src, left))
+    cands = uniq[:MAXCANDS]
     best = None
     for src, left in cands:
         if left:
