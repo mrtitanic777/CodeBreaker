@@ -1782,6 +1782,42 @@ def long_pairs(text):
             return "%s%s->f%s = %s;" % (ind, p, n, x)
         return m.group(0)
     body = re.sub(r"(?m)^(\s*)(\w+)->f(\d+) = (\w+);\n\s*(\w+)->f(\d+) = (\w+);$", pair_store, body)
+
+    def call_store(m):                                      # (a routine's long value, dx:ax, kept in a pair:
+        ind, lo, call, hi = m.groups()[:4]                      #  the routine returns a long)
+        if hi_of(lo) != hi:
+            return m.group(0)
+        pairs.add(lo)
+        LONGINFO.setdefault("funcs", set()).add(re.match(r"\w+", call).group(0))
+        nxt = m.group(5) or ""
+        return "%s%s = %s;%s" % (ind, lo, call, nxt.replace("(ax | dx)", lo))   # (the pair tested at once: the long)
+    def zero_pair(m):                                       # (both halves given 0, or -1: the long 0, -1)
+        ind, a, v, b = m.groups()
+        lo, hi = (b, a) if hi_of(b) == a else (a, b) if hi_of(a) == b else (None, None)
+        if not lo:
+            return m.group(0)
+        pairs.add(lo)
+        return "%s%s = %s;" % (ind, lo, v)
+    body = re.sub(r"(?m)^(\s*)(\w+) = (0|-1);\n\s*(\w+) = \2;$", zero_pair, body)
+
+    def call_long(m):                                       # (a routine's dx:ax read as one long by the next
+        LONGINFO.setdefault("funcs", set()).add(re.match(r"\w+", m.group(2)).group(0))   # statement)
+        return m.group(3).replace("LONG(dx, ax)", m.group(2))
+    body = re.sub(r"(?m)^(\s*)ax = ((?:sub_\w+|[A-Za-z_]\w*)\((?:[^()]|\([^()]*\))*\));\n(.*\bLONG\(dx, ax\).*)$", call_long, body)
+
+    def halves(m):                                          # (a long given to a pair a half at a time: one store)
+        ind, t, e, lo, hi = m.groups()
+        if hi_of(lo) != hi:
+            return m.group(0)
+        pairs.add(lo)
+        return "%s%s = %s;" % (ind, lo, e)
+    body = re.sub(r"(?m)^(\s*)(t\d+) = (.+);\n\s*(\w+) = LO\(\2\);\n\s*(\w+) = HI\(\2\);$", halves, body)
+    body = re.sub(r"(?m)^(\s*)()(\w+) = LO\((.+)\);\n\s*(\w+) = HI\(\4\);$",
+                  lambda m: halves(type("M", (), {"groups": lambda s: (m.group(1), "", m.group(4), m.group(3), m.group(5)),
+                                                  "group": lambda s, i=0: m.group(0)})()), body)
+    body = re.sub(r"(?m)^(\s*)ax = ((?:sub_\w+|[A-Za-z_]\w*)\((?:[^()]|\([^()]*\))*\));\n\s*(\w+) = ax;\n",
+                  lambda m: "%s%s = %s;\n" % (m.group(1), m.group(3), m.group(2)), body)   # (through ax: the same)
+    body = re.sub(r"(?m)^(\s*)(\w+) = ((?:sub_\w+|[A-Za-z_]\w*)\((?:[^()]|\([^()]*\))*\));\n\s*(\w+) = dx;(\n.*)?$", call_store, body)
     params = re.findall(r"(?m)^\w+\(([\w, ]*)\)", head)
     plist = [p.strip() for p in (params[-1].split(",") if params else []) if p.strip()]
     done = []
@@ -1790,7 +1826,8 @@ def long_pairs(text):
         if not hi:
             continue
         isparam = lo in plist and hi in plist
-        islocal = re.search(r"(?m)^\s*int (?:\w+, )*%s\b" % lo, body) and re.search(r"(?m)^\s*int (?:\w+, )*%s\b" % hi, body)
+        islocal = re.search(r"(?m)^\s*(?:int|long) (?:\w+, )*%s\b" % lo, body) and (
+            re.search(r"(?m)^\s*int (?:\w+, )*%s\b" % hi, body) or re.search(r"(?m)^\s*long %s;" % lo, body))
         if not isparam and not islocal:
             continue
         uns = "unsigned long" if lo in LONGINFO.get("unsigned", ()) else "long"
@@ -1931,6 +1968,7 @@ def localize(prj, text, at, names):
             rel -= 1 << 32
         t = (at + rel) & 0xFFFFF if at + rel >= 0 else at + rel + 0x10000   # (a near call wraps in its 64K: the segment's)
         return (names.get(t) or "f%05x" % t) + "("
+    longf = {re.sub(r"\bsub_(-?[0-9a-f]+)\(", call, f + "(")[:-1] for f in LONGINFO.get("funcs", ())}   # (routines of a long value)
     text = re.sub(r"\bsub_(-?[0-9a-f]+)\(", call, text)
     text = re.sub(r"\bg_([0-9a-f]{1,4})\b", lambda m: "g_%04x" % int(m.group(1), 16), text)
     macros = prj.toolchain().p.get("macros")
@@ -2007,6 +2045,9 @@ def localize(prj, text, at, names):
         decl.append("extern int %s;" % ", ".join(ints))
     for h in incs:                                          # (what an included header declares: its)
         funcs = [f for f in funcs if f not in header_names(prj, h)]
+    if [f for f in funcs if f in longf]:
+        decl.append("extern long %s;" % ", ".join("%s()" % f for f in funcs if f in longf))
+    funcs = [f for f in funcs if f not in longf]
     if funcs:
         decl.append("extern %s;" % ", ".join("%s()" % f for f in funcs))
     text = fp_types(text)
