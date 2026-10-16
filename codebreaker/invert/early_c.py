@@ -347,7 +347,7 @@ class R:
         elif re.match(r"(0x[0-9a-f]+|\d+)$",src):            # constant (often a data address)
             setattr(s,d,str(s.num(src)))
         elif s.msc3 and (re.search(r"\[(?:si|di)(?: [+-] (?:0x[0-9a-f]+|\d+))?\]", src) and src.split("[")[1][:2] != d or
-                         re.fullmatch(r"word ptr \[bp [+-] (?:0x[0-9a-f]+|\d+)\]", src) and s._var_later(d)) \
+                         re.fullmatch(r"word ptr \[(?:bp [+-] (?:0x[0-9a-f]+|\d+)|bx(?: \+ (?:0x[0-9a-f]+|\d+))?)\]", src) and s._var_later(d)) \
                 and s.memname(src) is not None and s.out is not None:   # (a frame word too: a copy of it, the
                                                                         #  register a variable - changed, or a value)
             s.emit(s.out,"%s = %s;"%(d,s.memname(src))); setattr(s,d,d)   # (3.00: a register variable given a
@@ -1373,12 +1373,31 @@ class R:
             k+=1                                           # (an index built at once - scaled - is no variable's change)
         for x in s.ins[k:]:
             o=x.op_str.split(", ")
+            if x.mnemonic in ("mov","lea","lds","les") and o[0]==d and not re.search(r"\b%s\b"%d, x.op_str.split(", ",1)[-1]):
+                return False                               # (given again: this value's life over)
             if x.mnemonic in ("inc","dec","neg","not") and x.op_str==d: return True
             if x.mnemonic in ("add","sub","shl","shr","sar","and","or","xor","adc","sbb") and o[0]==d: return True
             if x.mnemonic in ("cmp","test") and d in o: return True
             if x.mnemonic=="mov" and len(o)==2 and o[1]==d and o[0]!="bx": return True   # (into bx: an address again)
             if x.mnemonic=="push" and x.op_str==d and x is not s.ins[-1]: return True
         return False
+
+    def _fp_arg(s,i):
+        """3.00's floating argument: sub sp,8 (or ax holding 8); mov bx,sp; fstp qword ptr [bx] - the 8087's top
+        passed as a double (a float widened). 0: not one"""
+        ins=s.ins; st=s.__dict__.get("fst") or []
+        if i+2>=len(ins) or ins[i].mnemonic!="sub" or not st: return 0
+        m=re.fullmatch(r"sp, (ax|0x8|8|4)", ins[i].op_str)
+        if not m or m.group(1)=="ax" and str(s.ax) not in ("8","4"): return 0
+        if (ins[i+1].mnemonic,ins[i+1].op_str)!=("mov","bx, sp"): return 0
+        j=i+2
+        while j<len(ins) and ins[j].mnemonic in ("wait","fwait","nop"): j+=1
+        f=re.fullmatch(r"(qword|dword) ptr \[bx\]", ins[j].op_str) if j<len(ins) else None
+        if not f or ins[j].mnemonic!="fstp": return 0
+        v=st.pop()
+        s.args.append("(double)%s"%v if f.group(1)=="qword" else "(float)%s"%v)
+        if m.group(1)=="ax": s.ax=None
+        return j+1-i
 
     def _scratch_index(s,i):
         """3.00's index of words in a free index register: mov di,R; shl di,1; .. [bx + di] - and di read no
@@ -1406,6 +1425,8 @@ class R:
             n=s._arg_copy(i)
             if n: return i+n
             n=s._scratch_index(i)
+            if n: return i+n
+            n=s._fp_arg(i)
             if n: return i+n
         """Straight-line: process ins[i], maybe append a statement. Return next i."""
         s.i=i; s.out=out

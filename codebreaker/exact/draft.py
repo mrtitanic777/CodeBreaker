@@ -1831,15 +1831,18 @@ def scaled_index(text):
     as an address; a copy of the doubled index the code made on the way, `ax = (i << 1);`, nothing)"""
     lines = text.split("\n")
     for k in range(len(lines)):
-        m = re.match(r"([ \t]*)bx = ([A-Za-z_]\w*) \+ \((\w+) << 1\);$", lines[k] or "")
+        m = re.match(r"([ \t]*)bx = ([A-Za-z_]\w*) \+ \((\w+|\((?:[^()]|\([^()]*\))+\)) << 1\);$", lines[k] or "")
         if not m:
             continue
         p, i = m.group(2), m.group(3)
+        if i.startswith("(") and _balanced(i[1:-1]):
+            i = i[1:-1]                                     # (an expression the index: as it is)
         j = k + 1
-        while j < len(lines) and re.fullmatch(r"[ \t]*ax = \(%s << 1\);" % i, lines[j] or "") and not _live_after(lines, j, "ax"):
+        while j < len(lines) and re.fullmatch(r"[ \t]*ax = \(%s << 1\);" % re.escape(i), lines[j] or "") and not _live_after(lines, j, "ax"):
             j += 1
         if j >= len(lines) or len(re.findall(r"(?<![\w)])\*bx\b(?!\+\+|--)", lines[j])) != 1 or \
-                len(re.findall(r"\bbx\b", lines[j])) != 1 or _live_after(lines, j, "bx") or re.search(r"\b%s\s*=[^=]" % i, lines[j]):
+                len(re.findall(r"\bbx\b", lines[j])) != 1 or _live_after(lines, j, "bx") or \
+                any(re.search(r"\b%s\s*=[^=]" % v, lines[j]) for v in re.findall(r"[A-Za-z_]\w*", i)):
             continue
         lines[j] = re.sub(r"(?<![\w)])\*bx\b", "%s[%s]" % (p, i), lines[j])
         lines[k + 1:j] = [None] * (j - k - 1)
