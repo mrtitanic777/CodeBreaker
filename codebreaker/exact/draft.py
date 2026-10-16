@@ -394,6 +394,23 @@ def push_returns(text):
                             drop.add(b_)
                     lines = [l for j, l in enumerate(lines) if j not in drop and j != end]
                     return "\n".join(lines)
+                # (each `r = V; break;` anywhere in the arms, outside loops of their own, a return of V; when no
+                #  break is left and every arm ends in a return or falls on, the last return is gone)
+                inner = [j for j in range(st + 1, k) if re.match(r"\s*(?:while|for|do|switch)\b.*\{$", lines[j])]
+                spans = [(j, _block_end(lines, j)) for j in inner]
+                pairs = [j for j in range(st + 1, k - 1) if re.fullmatch(r"\s*%s = [^;]+;" % reg, lines[j]) and
+                         lines[j + 1].strip() == "break;" and not any(a < j < (b or k) for a, b in spans)]
+                if pairs:
+                    new = list(lines)
+                    for j in pairs:
+                        new[j] = re.sub(r"^(\s*)%s = (.*);$" % reg, r"\1return \2;", new[j])
+                        new[j + 1] = None
+                    rest = [x for x in new[st + 1:k] if x is not None]
+                    left = any(x.strip() == "break;" for x in rest) or re.search(r"\b%s\b" % reg, "\n".join(rest))
+                    last = next((x for x in reversed(rest) if x.strip()), "")
+                    if not left and re.match(r"\s*return\b", last):
+                        new[end] = None
+                        return "\n".join(x for x in new if x is not None)
         return text
     if len(ks) < 2:
         return text
@@ -608,6 +625,19 @@ def fall_gotos(text):
                 lines[k] = None
                 changed = True
                 break
+            # (if (C) { goto L; } else { S } with L just after: if (!C) { S }, falling into L)
+            c = re.fullmatch(r"([ \t]*)if (\(.*\)) \{", lines[k - 1] or "") if k else None
+            if c and lines[k + 1:k + 2] == [c.group(1) + "} else {"]:
+                e = _block_end([x if x is not None else "" for x in lines], k + 1)
+                if e is not None and lines[e].strip() == "}":
+                    j = e + 1
+                    while j < len(lines) and re.fullmatch(r"[ \t]*(?:case [^:]+|default):", lines[j] or ""):
+                        j += 1
+                    if j < len(lines) and (lines[j] or "").strip() == m.group(1) + ":":
+                        lines[k - 1] = "%sif (%s) {" % (c.group(1), _strip(_not(c.group(2))) if _strip(_not(c.group(2))).startswith("(") else "(%s)" % _not(c.group(2)))
+                        lines[k] = lines[k + 1] = None
+                        changed = True
+                        break
     used = set(re.findall(r"goto (L_\w+);", "\n".join(x for x in lines if x is not None)))
     return "\n".join(x for x in lines if x is not None and not (re.fullmatch(r"[ \t]*(L_\w+):", x) and x.strip()[:-1] not in used))
 
@@ -2151,7 +2181,8 @@ def case_falls(text):
             end = next((i for i in range(at + 1, len(lines)) if re.match(r"\s*(?:break;|return\b)", lines[i])), None)
             if end is None or any(re.match(r"\s*(?:case [^:]+|default):$|\s*L_\w+:", x) for x in lines[at + 1:end]):
                 continue
-            lines[j:j + 1] = lines[at + 1:end + 1]
+            src_ind = len(lines[at + 1]) - len(lines[at + 1].lstrip()) if at + 1 <= end else 0
+            lines[j:j + 1] = [g.group(1) + x[src_ind:] if len(x) - len(x.lstrip()) >= src_ind else x for x in lines[at + 1:end + 1]]
             if not re.search(r"\bgoto %s;" % g.group(2), "\n".join(lines)):
                 lines = [x for x in lines if x.strip() != g.group(2) + ":"]
             hit = True
@@ -2830,8 +2861,14 @@ def long_pairs(text):
         if hi_of(x) != hx or e2.strip() not in (e, "(%s)" % e):
             return m.group(0)
         pairs.add(x)
+        if re.fullmatch(r"[A-Za-z_]\w*", e):
+            widened[x] = e
         return "%s%s = %s;" % (ind, x, e)
+    widened = {}                                            # (a long given an int: its low word that int)
     body = re.sub(r"(?m)^([ \t]*)(\w+) = ([^;\n]+);\n[ \t]*(\w+) = \(0 - \((.+) >> 15\)\);$", sign_pair, body)
+    for x, e in widened.items():                            # (its one word tested - the int's, still in a register)
+        if not re.search(r"(?m)^[ \t]*(?:%s|%s) = " % (x, e), body.split("%s = %s;" % (x, e), 1)[-1]):
+            body = re.sub(r"\(%s (==|!=) 0\)" % x, r"(%s \1 0)" % e, body)
 
     def zero_pair(m):                                       # (both halves given 0, or -1: the long 0, -1)
         ind, a, v, b = m.groups()
