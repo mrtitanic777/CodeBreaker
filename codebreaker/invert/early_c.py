@@ -1368,7 +1368,10 @@ class R:
     def _var_later(s,d):
         """is register d, after instruction s.i, changed (inc/dec/add/sub/shift) or read as a value of its own
         (compared, copied, pushed) - a variable, not only a pointer the code goes through"""
-        for x in s.ins[s.i+1:]:
+        k=s.i+1
+        while k<len(s.ins) and s.ins[k].mnemonic in ("shl","sal","add") and s.ins[k].op_str.split(", ")[0]==d:
+            k+=1                                           # (an index built at once - scaled - is no variable's change)
+        for x in s.ins[k:]:
             o=x.op_str.split(", ")
             if x.mnemonic in ("inc","dec","neg","not") and x.op_str==d: return True
             if x.mnemonic in ("add","sub","shl","shr","sar","and","or","xor","adc","sbb") and o[0]==d: return True

@@ -2559,7 +2559,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = long_ladders(long_pairs(t))                     # (the longs again, as the passes left them)
         t = frame_chars(fn_pointers(t), widths)
         t = fill_frame(t, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
-        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t)] if v]
+        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t)] if v]
         both = pre_steps(t)
         both = pre_increments(both) if both else None
         if both:
@@ -3037,14 +3037,22 @@ def register_variables(text, regs=("si", "di"), regparam=None):
         pp = re.search(r"\*\(\*%s\)|\*\*%s\b" % (r, r), body) and not re.search(r"\b%s->" % r, body)
         decls.append("    register %s%s;" % ("char **" if pp else "char *" if ptr else "int ", "r_" + r))
         body = re.sub(r"\b%s\b" % r, "r_" + r, body)
-    if REGSLOTS[0]:                                         # (each register local has its slot in the frame: the
-        fl = list(re.finditer(r"(?m)^([ \t]*)char (_p\d+)\[(\d+)\];\n", body))   # model's last filler that much less)
-        nxt = re.match(r"[ \t]*(\S+)", body[fl[-1].end():]) if fl else None
-        if fl and nxt and not re.match(r"(?:register|int|char|long|unsigned|struct|short)\b", nxt.group(1)):
-            m = fl[-1]                                      # (the trailing one, after the last local)
-            n = int(m.group(3)) - 2 * len(decls)
-            body = body[:m.start()] + ("%schar %s[%d];\n" % (m.group(1), m.group(2), n) if n > 0 else "") + body[m.end():]
     return head + "{\n" + "\n".join(decls) + body
+
+
+def register_slots(text):
+    """the model's trailing frame filler less two bytes for each register local (a variant: MS C 3.00 gives some
+    register locals a slot in the frame - which ones the compiler alone says)"""
+    if not REGSLOTS[0]:
+        return None
+    n_regs = len(re.findall(r"(?m)^[ \t]*register [^;(]*\br_\w+;$", text))
+    fl = list(re.finditer(r"(?m)^([ \t]*)char (_p\w*)\[(\d+)\];\n", text))
+    nxt = re.match(r"[ \t]*(\S+)", text[fl[-1].end():]) if fl else None
+    if not n_regs or not fl or not nxt or re.match(r"(?:register|int|char|long|unsigned|struct|short)\b", nxt.group(1)):
+        return None
+    m = fl[-1]                                              # (the trailing one, after the last local)
+    n = int(m.group(3)) - 2 * n_regs
+    return text[:m.start()] + ("%schar %s[%d];\n" % (m.group(1), m.group(2), n) if n > 0 else "") + text[m.end():]
 
 
 REGSLOTS = [False]                                          # (the toolchain gives a register local a frame slot)
@@ -3647,7 +3655,7 @@ REFINERS = [lambda prj, s: [assign_in_args(s)], lambda prj, s: [return_sources(s
             lambda prj, s: pointer_widths(s), _place_variants, lambda prj, s: string_variants(prj, s),
             lambda prj, s: [split_ternaries(s)], lambda prj, s: [default_last(s)], lambda prj, s: [push_tails(s)],
             lambda prj, s: [unsigned_registers(s)], lambda prj, s: [unmasked(s)], lambda prj, s: [no_default(s)],
-            lambda prj, s: [empty_cases_first(s)],
+            lambda prj, s: [empty_cases_first(s)], lambda prj, s: [register_slots(s)],
             lambda prj, s: [re.sub(r"\b0, 0\)", "0L)", s)]]     # (two zero words pushed: a long 0)
 
 
