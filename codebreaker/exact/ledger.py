@@ -38,9 +38,19 @@ def check_file(prj, tc, path, at, syms, learnt):
             first = syms[fs[1][0]][1] - fs[1][1]           # (an assembly module placed by its first name)
         together = prj.whole(path) and first is not None    # (a whole source file: its text lies in one piece)
         if together and ti == 0 and prj.cfg.get("named_by", "") == "first procedure":
-            k0 = o.seg[text].find(b"\x55\x8b\xec")          # (the file is named after its first procedure - a frame -
-            if k0 > 0:                                      #  and the main module has code before it)
-                first = at - k0
+            # (the file is named after a procedure of it - its first frame, as a rule; the main module has code
+            # before it): of the module's start and its frames, the one its bytes agree with the program at
+            code = o.seg[text][:o.filled.get(text, 0)]
+            hole = omf.holes(o, text)
+            cands = [0] + [m.start() for m in re.finditer(b"\x55\x8b\xec", code)]
+
+            def agree(k0):
+                b = at - k0
+                if b < 0:
+                    return -1
+                return sum(1 for x in range(min(len(code), 256)) if x not in hole and b + x < len(prj.image) and prj.image[b + x] == code[x])
+            k0 = max(cands, key=lambda k: (agree(k), -k))
+            first = at - k0
         places = [(of, ln, first if k == 0 and first is not None else
                    (first - fs[0][1] + of) if together else
                    (syms[nm][1] if nm in syms and syms[nm][0] in ("C", "?") else None)) for k, (nm, of, ln) in enumerate(fs)]
