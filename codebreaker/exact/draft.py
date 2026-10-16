@@ -680,9 +680,10 @@ def fold_registers(text):
             used = re.search(r"\b%s\b" % reg, re.split(r"\n\s*%s = " % reg, rest)[0]) or \
                 reg in ("si", "di")                         # (a register variable: a loop may read it on its next pass)
             if not used:
-                if "(" in expr and out and out[-1].strip() == expr + ";":
+                call = re.search(r"\b(?!if\b|while\b|sizeof\b)[A-Za-z_]\w*\s*\(", expr)    # (a call: a name, then
+                if call and out and out[-1].strip() == expr + ";":                       #  its arguments)
                     continue                                # (the call written twice)
-                if "(" in expr:
+                if call:
                     out.append("%s%s;" % (ind, expr))
                 continue                                    # (a load nothing reads)
         if l != "\x00":
@@ -808,6 +809,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = word_arrays(test_first_loops(post_steps(t)))
         t = self_updates(t)
         t = structs(register_variables(shapes(t), regs, regparam), set(widths))
+        t = fill_frame(t, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
         variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t)] if v]
         both = pre_steps(t)
         both = pre_increments(both) if both else None
@@ -1131,11 +1133,46 @@ def table_hook(code):
     return hook
 
 
+FRAME = [0]
+
+
+def fill_frame(text, fs, regs_count=True):
+    """locals declared for the part of the frame no declared local takes (a local the source declared and never
+    used still has its place; MS C 3.00 gives a register local one too): a filler `char _pf[n]` at the end"""
+    if not fs or "{" not in text:
+        return text
+    head, sep, body = text.partition("{")
+    size = 0
+    lines = body.split("\n")
+    last = 0
+    for k, l in enumerate(lines[1:], 1):
+        m = re.match(r"\s+(register\s+)?((?:unsigned\s+)?(?:int|char|long|short|struct\s+\w+))\s*(\**)\s*(\w+)\s*(?:\[(\d+)\])?;\s*$", l)
+        if not m:
+            if l.strip():
+                break
+            continue
+        reg, ty, star, name, cnt = m.groups()
+        last = k
+        if reg:
+            size += 2 if regs_count else 0
+            continue
+        if ty.startswith("struct") and not star:
+            return text                                     # (a struct's size the text does not say)
+        one = 2 if star else SIZES.get(ty.split()[-1], 2)
+        n = one * int(cnt or 1)
+        size += n + (n & 1)
+    if fs <= size:
+        return text
+    lines.insert(last + 1, "    char _pf[%d];" % (fs - size))
+    return head + sep + "\n".join(lines)
+
+
 def model_texts(inv, code, name, base=None):
     """[(text, register parameters)] - the model's text of a function, from each of its structurers (a linear walk;
     a structured control-flow graph, where the model has one): the compiler decides between them"""
     out = []
     fs, params, stmts, pt, loc = inv.recover(code)
+    FRAME[0] = fs                                           # (the frame's size: fill_frame)
     regparam = dict(getattr(inv, "LAST", {}).get("regparam") or {})
     out.append((inv.to_c(name, fs, params, stmts, pt, loc), regparam))
     if hasattr(inv, "recover_cfg"):
