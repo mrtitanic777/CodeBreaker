@@ -445,6 +445,34 @@ def zero_extends(text):
     return re.sub(r"(?m)^([ \t]*)([^=;\n]+?) = ([^;\n]+);\n[ \t]*([abcd])h = 0;\n[ \t]*([^=;\n]+?) = \4x;$", chained, text)
 
 
+def high_zero(text):
+    """al given a byte while ah is still the 0 an earlier widening left (no call, no ah between): ax read then
+    is that byte widened - al = X; R = ax  ->  R = X (X then an unsigned char)"""
+    lines = text.split("\n")
+    zero = False
+    for k, l in enumerate(lines):
+        if l is None:
+            continue
+        if re.fullmatch(r"\s*ah = 0;", l):
+            zero = True
+            continue
+        if re.search(r"\w\(|\bah\b|^\s*ax = |\b(?:if|while|for|switch)\b|[{}]|L_\w+:", l):
+            zero = False if not re.fullmatch(r"\s*\w+ = ax;", l) else zero
+            if re.search(r"\w\(|\bah\b|^\s*ax = |[{}]|L_\w+:", l):
+                zero = False
+            continue
+        m = re.fullmatch(r"(\s*)al = (.+);", l)
+        if zero and m and k + 1 < len(lines):
+            n = re.fullmatch(r"(\s*)(\w+) = ax;", lines[k + 1])
+            if n:
+                lines[k] = "%s%s = %s;" % (n.group(1), n.group(2), m.group(2))
+                lines[k + 1] = None
+                f = re.fullmatch(r"(\w+(?:->f\d+)*)->f(\d+)", m.group(2))
+                if f:
+                    UCHAR.add((f.group(1), int(f.group(2))))
+    return "\n".join(l for l in lines if l is not None)
+
+
 def widen_bytes(text):
     """al = E; ... ax read before ax or al is given again, al never read: the byte widened for its use (cbw) -
     in C a char is an int where it is used: ax = E"""
@@ -978,7 +1006,7 @@ def word_arrays(text, lo=0x40):
         i, e = m.group(1), m.group(2)
         o = re.fullmatch(r"([A-Za-z_]\w*) \+ (\d+)", e)
         return "((int *)((char *)%s + %s))[%s]" % (o.group(1), o.group(2), i) if o else "((int *)(%s))[%s]" % (e, i)
-    t = re.sub(r"\(((?:[A-Za-z_]\w*|\d+)(?:\s*[-+]\s*\d+)?) << 1\)\[([^\[\]]+)\]", word_index, t)
+    t = re.sub(r"\(((?:[A-Za-z_][\w\->]*|\d+|\((?:[^()]|\([^()]*\))*\))(?:\s*[-+]\s*\d+)?) << 1\)\[([^\[\]]+)\]", word_index, t)
     return t
 
 
@@ -1964,6 +1992,8 @@ def structs(text, widths):
                       lambda m: "%sint %s;\n%sstruct %s *%s;" % (m.group(1), (m.group(2) + m.group(3).lstrip(", ")).strip(", "), m.group(1), tag, p)
                       if (m.group(2) + m.group(3)).strip(", ") else "%sstruct %s *%s;" % (m.group(1), tag, p), text)
         STRUCTPTR[p] = tag
+        for f_ in re.findall(r"\bchar f(\d+);", defs[-1]):  # (a byte field masked to a byte: itself)
+            text = re.sub(r"\(%s->f%s & 0xff\)" % (p, f_), "%s->f%s" % (p, f_), text)
         if ("*", 0) in widths or any(w[0].endswith("*") for w in widths if isinstance(w, tuple) and len(w) == 2 and isinstance(w[0], str)):
             text = re.sub(r"(?<![\w>.])%s\[" % p, "((char *)%s)[" % p, text)   # (indexed by bytes: through a char *)
     return "\n".join(defs) + "\n" + text
@@ -1987,7 +2017,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         BYTEG.clear()
         BYTEG.update(n for k, n in widths if k == "g")
         FILEPTR.clear()
-        t = zero_extends(copy_props(table_macros(prj, case_falls(char_stores(char_params(long_pairs(long_returns(t))))), prj.toolchain().p.get("table_macros"))))
+        t = zero_extends(high_zero(copy_props(table_macros(prj, case_falls(char_stores(char_params(long_pairs(long_returns(t))))), prj.toolchain().p.get("table_macros")))))
         t = re.sub(r"&(\w+)\[(-?)(\d+)\]", lambda m: "(%s %s %s)" % (m.group(1), "-" if m.group(2) else "+", m.group(3)), t)
         t = re.sub(r"&(\w+)->f(\d+)\b", r"(\1 + \2)", t)  # (lea: &p[N], &p->fN - the place, p + N)
         t = fold_registers(stored_calls(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(push_returns(conditional_values(logical_values(step_tests(range_switches(t))))))))))))

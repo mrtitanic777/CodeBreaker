@@ -813,7 +813,11 @@ class R:
                 return s._val(ops.split(", ")[1])
             if mn in ALU and ops.startswith("ax, "): s.ax="(%s %s %s)"%(axv,ALU[mn],s._val(ops[4:]))
             elif mn in ("imul","mul"): s.ax="(%s * %s)"%(axv,s._val(ops))
-            elif mn in ("idiv","div"): rn=s._val(ops); s.div=(axv,rn); s.ax="(%s / %s)"%(axv,rn); s.dx="(%s %% %s)"%(axv,rn)
+            elif mn in ("idiv","div"):
+                rn=s._val(ops)
+                if mn=="div" and s.msc3 and not MARK and not str(axv).startswith("(unsigned)"):   # (3.00: a division
+                    axv="(unsigned)%s"%(axv if re.fullmatch(r"[\w\->.]+",str(axv)) else "(%s)"%axv)   # without sign)
+                s.div=(axv,rn); s.ax="(%s / %s)"%(axv,rn); s.dx="(%s %% %s)"%(axv,rn)
             elif mn in ("shl","sal") and d0 in R: setattr(s,d0,"(%s << %s)"%(rv(d0),shcnt()))
             elif mn in ("shr","sar") and d0 in R: setattr(s,d0,"(%s)"%_shr(mn,rv(d0),shcnt()))
             elif mn=="neg" and d0 in R: setattr(s,d0,"(-%s)"%rv(d0))
