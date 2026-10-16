@@ -226,6 +226,46 @@ def branch_returns(text):
     return text
 
 
+def push_returns(text):
+    """`return r;` at the end, every way to it giving r a value last (an if's arms, nested): each of those
+    a return of its value, the last return gone - the compiler's jumps to the one exit read back"""
+    lines = _else_ifs(text.split("\n"))
+    end = max((k for k, l in enumerate(lines) if re.fullmatch(r"    return (ax|bx|cx|dx|si|di);", l)), default=None)
+    if end is None or end + 1 >= len(lines) or lines[end + 1] != "}":
+        return text
+    reg = re.fullmatch(r"\s*return (\w+);", lines[end]).group(1)
+
+    def tail(lo, hi):                                       # (the statements lines[lo:hi] end giving reg a value:
+        k = hi - 1                                          #  [indexes of those assignments], or None)
+        while k >= lo and not lines[k].strip():
+            k -= 1
+        if k < lo:
+            return None
+        if re.fullmatch(r"\s*%s = [^;]+;" % reg, lines[k]):
+            return [k]
+        if lines[k].strip() != "}":
+            return None
+        start = next((j for j in range(k - 1, lo - 1, -1) if re.match(r"\s*if \(.*\) \{$", lines[j]) and
+                      len(lines[j]) - len(lines[j].lstrip()) == len(lines[k]) - len(lines[k].lstrip())), None)
+        if start is None:
+            return None
+        p = _if_parts(lines, start)
+        if not p or p[3] != k + 1 or p[2] is None:
+            return None
+        then_lo = start + 1
+        then_hi = then_lo + len(p[1])
+        a = tail(then_lo, then_hi)
+        b = tail(then_hi + 1, k)
+        return a + b if a is not None and b is not None else None
+    ks = tail(0, end)
+    if not ks or len(ks) < 2:
+        return text
+    for k in ks:
+        lines[k] = re.sub(r"^(\s*)%s = (.*);$" % reg, r"\1return \2;", lines[k])
+    del lines[end]
+    return "\n".join(lines)
+
+
 def chain_returns(text):
     """if (A) { ..; r = E1; } else if (B) { ..; r = E2; } .. return r;  -> each arm returns its value (with no
     last else the function falls off its end there, as its source did)"""
@@ -278,7 +318,7 @@ def zero_extends(text):
             lines[k] = "%sax = %s;" % (m.group(1), e)
             lines[k + 1] = None
             g = re.fullmatch(r"(g_[0-9a-f]{1,4})", e)
-            f = re.fullmatch(r"(\w+)->f(\d+)", e)
+            f = re.fullmatch(r"(\w+(?:->f\d+)*)->f(\d+)", e)       # (through a field too: its own struct's)
             if g:
                 UCHAR.add("g_%04x" % int(g.group(1)[2:], 16))
             elif f:
@@ -1505,7 +1545,7 @@ def fold_registers(text):
             rest = "\n".join(lines[k + 1:])
             nxt = next((x for x in lines[k + 1:] if x.strip()), "")
             later = "\n".join(lines[lines.index(nxt, k + 1) + 1:]) if nxt in lines[k + 1:] else ""
-            pure = re.fullmatch(r"[A-Za-z_]\w*|-?\d+|[A-Za-z_]\w*->f\d+|\*[A-Za-z_]\w*|[A-Za-z_]\w*\[[A-Za-z_0-9]+\]", expr) or (
+            pure = re.fullmatch(r"[A-Za-z_]\w*|-?\d+|[A-Za-z_]\w*(?:->f\d+)+|\*[A-Za-z_]\w*|[A-Za-z_]\w*\[[A-Za-z_0-9]+\]", expr) or (
                 not re.search(r"\w\s*\(|\+\+|--|[^=!<>]=[^=]", expr) and expr.startswith("(") and expr.endswith(")"))
             # (a value with no effect: a name, a field, an element, or no call and no store in it)
             names = re.findall(r"[A-Za-z_]\w*", expr)
@@ -1634,15 +1674,18 @@ def structs(text, widths):
     ptrfield = {}
     defs = []
     for (p, n), subs in sorted(inner.items()):
-        if subs <= uses[p] or (p, n) == (p, 0) and subs <= uses[p] | {0}:
+        bytes_ = {o for o in subs if ("*", o) in widths}    # (a byte the code reads where p has a word: another struct)
+        if (subs <= uses[p] or (p, n) == (p, 0) and subs <= uses[p] | {0}) and not (bytes_ & ({n} | set(k for (q, k) in inner if q == p))):
             ptrfield[(p, n)] = "struct s_%s *" % p
             continue
         fl, pos = [], 0
         for o in sorted(subs):
             if o > pos:
                 fl.append("char _%d[%d];" % (pos, o - pos))
-            fl.append("int f%d;" % o)
-            pos = o + 2
+            b_ = ("*", o) in widths and (o != n or True) and o in bytes_   # (a byte read: a char - an
+            fl.append("%s f%d;" % ("unsigned char" if any(isinstance(u, tuple) and u[1] == o for u in UCHAR) and b_
+                                   else "char" if b_ else "int", o))                   #  unsigned one widened with zeros)
+            pos = o + (1 if b_ else 2)
         defs.append("struct s_%s_%d { %s };" % (p, n, " ".join(fl)))
         ptrfield[(p, n)] = "struct s_%s_%d *" % (p, n)
     for p, offs in sorted(uses.items()):
@@ -1661,7 +1704,7 @@ def structs(text, widths):
             fields.append("%s f%d;" % ("struct s_%s *" % p if off == 0 and selfref else ptrfield[(p, off)] if (p, off) in ptrfield
                                        else "unsigned char" if uch else
                                        "char" if byte else "int *" if deref else "long" if lng else "int", off))
-            pos = off + (1 if byte else 4 if lng else 2)
+            pos = off + (2 if (p, off) in ptrfield else 1 if byte else 4 if lng else 2)
         tag = "s_" + p
         steps = {int(n) for n in re.findall(r"\b%s = %s [+-] (\d+);" % (p, p), text)}
         if len(steps) == 1:                                 # (stepped through an array of them: the step is the
@@ -1700,7 +1743,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = zero_extends(copy_props(table_macros(prj, case_falls(char_stores(char_params(long_pairs(long_returns(t))))), prj.toolchain().p.get("table_macros"))))
         t = re.sub(r"&(\w+)\[(-?)(\d+)\]", lambda m: "(%s %s %s)" % (m.group(1), "-" if m.group(2) else "+", m.group(3)), t)
         t = re.sub(r"&(\w+)->f(\d+)\b", r"(\1 + \2)", t)  # (lea: &p[N], &p->fN - the place, p + N)
-        t = fold_registers(stored_calls(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(conditional_values(logical_values(t)))))))))
+        t = fold_registers(stored_calls(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(push_returns(conditional_values(logical_values(t))))))))))
         t = word_arrays(test_first_loops(copy_tests(post_steps(t))))
         t = temporaries(merge_conditions(guard_gotos(self_updates(t))))
         t = structs(pointer_flow(local_pointers(register_variables(shapes(t), regs, regparam))), set(widths))
@@ -1946,6 +1989,8 @@ def long_pairs(text):
         m = re.search(r"(?m)^\w+\(", head)
         if m and not re.search(r"(?m)^(?:unsigned )?long\s*$", head):
             head = head[:m.start()] + "long\n" + head[m.start():]
+        for n in re.findall(r"(?m)^[ \t]*return \w+(?:->f\d+)*->f(\d+);$", body):   # (a field returned whole: a long one)
+            LONGINFO.setdefault("fields", set()).add(int(n))
     return head + sep + body
 
 
@@ -2146,7 +2191,7 @@ def localize(prj, text, at, names):
     # registers the model left: a draft for a person, not for the compiler
     left = sorted(set(re.findall(REGS, re.sub(r'"(?:[^"\\]|\\.)*"', "", body))))
     data = sorted(set(re.findall(r"\bg_[0-9a-f]{4}\b", text)))
-    head = text.split("(", 1)[0].strip()
+    head = text.split("(", 1)[0].split()[-1] if text.split("(", 1)[0].split() else ""   # (its own name: after a type)
     funcs = sorted(set(re.findall(r"\b([A-Za-z_]\w*)\(", body)) - {head, "if", "while", "for", "switch", "return", "sizeof"} - macnames)
     decl = []
     fptr = [d for d in data if re.search(r"\(\s*\*\s*%s\s*\)\s*\(" % d, body)]     # (data called through)
@@ -2740,10 +2785,13 @@ def model_texts(inv, code, name, base=None):
                 inv.UNSIGNED_CAST = olds[0]
                 flow16.CMPSWITCH = False
     _fpinfo(inv, raw, code)
+    for reg, ix in regparam.items():                        # (a register parameter's register given the parameter:
+        p = chr(ord("a") + ix)                              #  itself - the model's reload at a join, no statement)
+        out = [(re.sub(r"(?m)^[ \t]*%s = %s;\n" % (reg, p), "", t), rp) for t, rp in out]
     return out
 
 
-FPINFO = {}                                                 # (the function's floating point: types, its value, any)
+FPINFO = {}                                               # (the function's floating point: types, its value, any)
 
 
 def _fpinfo(inv, raw, code):
@@ -2760,7 +2808,10 @@ def _fpinfo(inv, raw, code):
         j -= 1
         while j >= 0 and (ins[j].mnemonic == "pop" or ins[j].op_str == "sp, bp"):
             j -= 1
-        LONGINFO["ret"] = j >= 0 and ins[j].mnemonic in ("cwd", "cdq")
+        epi = ins[j + 1].address if j + 1 < len(ins) else None
+        gives_dx = lambda x: x.mnemonic in ("cwd", "cdq") or (x.mnemonic in ("mov", "xor", "sub") and x.op_str.startswith("dx, "))
+        ends = [j] + [k - 1 for k, x in enumerate(ins) if x.mnemonic == "jmp" and x.op_str in ("0x%x" % epi, str(epi)) and k > 0] if epi is not None else [j]
+        LONGINFO["ret"] = j >= 0 and all(e >= 0 and gives_dx(ins[e]) for e in ends)   # (dx given before every way out)
 
 
 def run(prj, every=False, limit=None, verbose=False):
