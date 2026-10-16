@@ -231,6 +231,42 @@ def post_increments(text):
     return "\n".join(out)
 
 
+def copy_props(text):
+    """R = X; (R a scratch register, X a variable): the reads of R that follow are X - until R or X is given
+    again, a call (which leaves its value in ax), a label or a block's end; the copy then goes"""
+    lines = text.split("\n")
+    out = list(lines)
+    for k, l in enumerate(lines):
+        m = re.match(r"(\s*)(ax|bx|cx|dx) = ([A-Za-z_]\w*);\s*$", l)
+        if not m:
+            continue
+        ind, r, x = m.groups()
+        if x in ("ax", "bx", "cx", "dx", "si", "di"):
+            continue
+        depth = 0
+        used = False
+        for j in range(k + 1, len(lines)):
+            y = out[j]
+            depth += y.count("{") - y.count("}")
+            if depth < 0 or re.match(r"\s*L_\w+:", y):
+                break
+            if re.fullmatch(r"\s*%s = %s;\s*" % (r, x), y):    # (the same copy again: no change)
+                out[j] = None
+                continue
+            reads = len(re.findall(r"\b%s\b" % r, y))
+            sets_r = re.match(r"\s*%s\s*=[^=]" % r, y)
+            if reads and not sets_r:
+                out[j] = re.sub(r"\b%s\b" % r, x, y)
+                used = True
+            if sets_r or re.search(r"\b%s\s*(?:=[^=]|\+\+|--)|(?:\+\+|--)\s*%s\b" % (x, x), y) or \
+                    (r == "ax" and re.search(r"\b(?!if\b|while\b|for\b|switch\b|return\b)[A-Za-z_]\w*\s*\(", y)):
+                break
+        rest = "\n".join(y for y in out[k + 1:] if y is not None)
+        if not re.search(r"\b%s\b" % r, re.split(r"\n\s*%s = " % r, "\n" + rest)[0]):
+            out[k] = None                                   # (read no more before it is given again: gone)
+    return "\n".join(x for x in out if x is not None)
+
+
 def self_updates(text):
     """X = E; X = X op F; (F not reading X): one expression - X = E op F (the compiler kept the value in X's
     register between the two)"""
@@ -969,7 +1005,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         PTRSIZE.clear()
         ARRAYS.clear()
         FILEPTR.clear()
-        t = table_macros(prj, char_params(t), prj.toolchain().p.get("table_macros"))
+        t = copy_props(table_macros(prj, char_params(t), prj.toolchain().p.get("table_macros")))
         t = re.sub(r"&(\w+)\[(-?)(\d+)\]", lambda m: "(%s %s %s)" % (m.group(1), "-" if m.group(2) else "+", m.group(3)), t)
         t = re.sub(r"&(\w+)->f(\d+)\b", r"(\1 + \2)", t)  # (lea: &p[N], &p->fN - the place, p + N)
         t = fold_registers(stored_calls(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(logical_values(t))))))))
@@ -1425,8 +1461,8 @@ def fill_frame(text, fs, regs_count=True):
         one = 2 if star else SIZES.get(ty.split()[-1], 2)
         n = one * int(cnt or 1)
         size += n + (n & 1)
-    if fs <= size:
-        return text
+    if fs <= size or re.search(r"(?m)^\s+(?:int|char|long|short)\s+v\d+", body):
+        return text                                         # (the model's autos: the frame model lays those out)
     lines.insert(last + 1, "    char _pf[%d];" % (fs - size))
     return head + sep + "\n".join(lines)
 
