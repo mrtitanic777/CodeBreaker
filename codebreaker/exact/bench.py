@@ -31,7 +31,11 @@ def run(prj, want=None, show=False):
         except Exception as e:
             rows.append((a, "declined: %s" % str(e)[:80], ""))
             continue
-        src, v = draft.prove_texts(prj, tc, inv, texts, a, ln, names)
+        try:
+            src, v = draft.prove_texts(prj, tc, inv, texts, a, ln, names)
+        except Exception as e:                              # (a pass that fails on one function: noted, not fatal)
+            import traceback
+            src, v = traceback.format_exc(), "failed: %s: %s" % (type(e).__name__, str(e)[:80])
         rows.append((a, v, src))
         if show:
             print("== %05x %d bytes: %s\n%s" % (a, ln, v, src))

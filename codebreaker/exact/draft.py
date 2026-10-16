@@ -523,11 +523,12 @@ def unused_locals(text):
     if not sep:
         return text
     lines = body.split("\n")
+    drop = set()
     for k, l in enumerate(lines):
         m = re.match(r"\s*(?:register\s+)?(?:unsigned\s+)?(?:int|char|long|short|struct \w+)\s*\**\s*(\w+)\s*(?:\[\d+\])?;\s*$", l)
         if m and not re.search(r"\b%s\b" % m.group(1), "\n".join(lines[:k] + lines[k + 1:])):
-            lines[k] = None
-    return head + sep + "\n".join(l for l in lines if l is not None)
+            drop.add(k)
+    return head + sep + "\n".join(l for k, l in enumerate(lines) if k not in drop)
 
 
 def library_macros(text, macros):
@@ -1185,7 +1186,11 @@ def run(prj, every=False, limit=None, verbose=False):
         except Exception as e:                              # (the model declines: it says why)
             out[a] = "declined: %s" % str(e).splitlines()[0][:100] if str(e) else "declined"
             continue
-        src, verdict = prove_texts(prj, tc, inv, texts, a, ln, names)
+        try:
+            src, verdict = prove_texts(prj, tc, inv, texts, a, ln, names)
+        except Exception as e:                              # (a pass that fails on one function: noted, not fatal)
+            out[a] = "failed: %s: %s" % (type(e).__name__, str(e)[:100])
+            continue
         out[a] = verdict
         if verdict == "identical":
             with open(prj.path("f%05x.c" % a), "w", newline="\n") as f:
