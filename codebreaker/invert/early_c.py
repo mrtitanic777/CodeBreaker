@@ -2154,12 +2154,12 @@ def recover(code, base=0, cxmap=None):
         while k<len(ins) and ins[k].mnemonic=="push" and ins[k].op_str in ("si","di"):
             LAST["saved"].append(ins[k].op_str); k+=1
         while k<len(ins) and ins[k].mnemonic=="mov":
-            m_=re.match(r"(si|di), word ptr \[bp \+ (\d+)\]$", ins[k].op_str)
+            m_=re.match(r"(si|di), word ptr \[bp \+ (0x[0-9a-f]+|\d+)\]$", ins[k].op_str)   # (10 and up print in hex)
             if not m_ or m_.group(1) not in LAST["saved"] or m_.group(1) in LAST["regparam"]: break
             if REGPARAM_REREAD and any("[bp + %s]" % m_.group(2) in x.op_str for x in ins[k+1:]):
                 break                                          # (the parameter read again later: the register is a
                                                                #  local copied from it, not the parameter itself)
-            LAST["regparam"][m_.group(1)]=(int(m_.group(2))-4)//2; k+=1
+            LAST["regparam"][m_.group(1)]=(int(m_.group(2),0)-4)//2; k+=1
     r=R(ins,fs,base,cxmap,msc3=msc3)
     for reg_,ix_ in LAST["regparam"].items():
         r.maxidx=max(r.maxidx, ix_)
