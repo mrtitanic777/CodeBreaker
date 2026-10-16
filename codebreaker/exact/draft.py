@@ -2440,6 +2440,9 @@ def structs(text, widths):
                 fields.append("char _%d[%d];" % (pos, off - pos))
             uch = any(isinstance(u, tuple) and u[1] == off for u in UCHAR)   # (widened with zeros: unsigned)
             byte = (p, off) in widths or ("*", off) in widths or uch
+            if byte and not uch and (p, off) not in widths and p.startswith("g_") and ("bxw", off) in widths and \
+                    ("bx*", off) not in widths:
+                byte = False                                # (data's pointer, gone through in bx: bx's width there)
             uch = uch or byte and re.search(r"\b%s->f%d \S{1,2} (?:12[89]|1[3-9]\d|2[0-4]\d|25[0-5])\b" % (p, off), text)   # (a byte
                                                                                     #  compared with 128..255: unsigned)
             deref = re.search(r"(?<![\w>)\]])\*%s->f%d\b(?!\s*(?:->|\[|\.))" % (p, off), text)   # (*p->fN: a pointer)
