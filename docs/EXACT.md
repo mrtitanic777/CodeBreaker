@@ -107,6 +107,8 @@ Toolchains (profiles in `codebreaker/exact/toolchains/`; plug-ins where running 
 | plm86, asm86 (plug-in `plm86.py`, ISIS-II) | Intel PL/M-86, ASM86 | LINK 1.02 1.08 1.10 2.00 2.01, LIB 1.02: every procedure and assembler module |
 | msc103, msc104, msc203 | Lattice-lineage MS C 1.03/1.04/2.03 | MC1 MC2 LC1 LC2 (1.0x), MC1 MC2 (2.03): 970/970 |
 | masm100 | Macro Assembler 1.00 | the XENIX-C programs' assembler modules: all |
+| masm510 | Macro Assembler 5.10 | MASM 5.10's own assembler modules: 24/24 |
+| mspascal (plug-in `mspascal.py`, compilands joined by `pascal_join.py`, habits in `habits/`) | MS-Pascal 1.10 pre-release (1981) to 3.11 | M.EXE 344/344; M86 324 + 18 by another compiler state's habits; MASM 1.10 251 + 73; MASM 3.00 298 + 6; C86 75/75; CREF 1.00 64 + 14 - all = the hand ledgers, and stricter (it found six procedures the hand check passed with a wrong constant) |
 
 Stages and what they reproduce of the hand work, run with no project-specific code:
 
@@ -120,6 +122,5 @@ Stages and what they reproduce of the hand work, run with no project-specific co
 - **draft** - functions from no source by the inverse model (`invert/early_c`, 3.00 idioms under msc3)
   and variant search, kept only when the compiler proves them: P0 29/127, MSC 21/74
 
-Open: MS-Pascal (MASM 1.00/1.10/3.00, C86, CREF: a plug-in that names procedures from the .COD
-listing, and the build-piece maps as SYMBOLS); the inverse model's structuring (rotated loops with
+Open: the inverse model's structuring (rotated loops with
 `&&` tests, struct arrays, long and floating arithmetic); the names and readable stages.
