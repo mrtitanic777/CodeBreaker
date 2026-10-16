@@ -462,6 +462,22 @@ def post_steps(text):
     return "\n".join(out)
 
 
+def copy_tests(text):
+    """a byte copied and the copy tested (the compiler tests the register it moved it through):
+        [s = s - 1;] *d = *s; [d = d + 1;] if (((*s & 0xff) == 0)) break;  ->  if ((*d++ = *--s) == 0) break;
+    (the steps written where they go: --s before, d++ after)"""
+    rx = re.compile(r"(?m)^(\s*)(?:(\w+) = \2 - 1;\n\s*)?\*(\w+) = \*(\w+);\n(?:\s*(\3) = \3 \+ 1;\n)?\s*if \(\(\(\*(\w+) & 0xff\) == 0\)\) break;$")
+
+    def one(m):
+        ind, pre, d, s, post, t = m.groups()
+        if t != s or (pre and pre != s):
+            return m.group(0)
+        src = "*--%s" % s if pre else "*%s" % s
+        dst = "*%s++" % d if post else "*%s" % d
+        return "%sif (((%s = %s) == 0)) break;" % (ind, dst, src)
+    return rx.sub(one, text)
+
+
 def test_first_loops(text):
     """for (;;) { if (C) break; ..} - the loop's test first: while (!C) { ..}"""
     lines = text.split("\n")
@@ -725,6 +741,15 @@ def word_arrays(text, lo=0x40):
         ARRAYS[name] = "int"
         return "%s[%s]" % (name, m.group(1))
     t = rx.sub(one, text)
+
+    def byte_index(m):                                      # (a scratch register's value plus a place in the data:
+        n = int(m.group(2))                                 #  an array of bytes there, the value its index)
+        if n < 0x100:
+            return m.group(0)
+        name = "g_%04x" % n
+        ARRAYS[name] = "char"
+        return "%s[%s]" % (name, m.group(1))
+    t = re.sub(r"\b(ax|bx|cx|dx)->f(\d+)\b", byte_index, t)
     # (I << 1)[E]: the model's word index into the words at E - ((int *)(E))[I]
     def word_index(m):                                      # (an offset in bytes: through a char *)
         i, e = m.group(1), m.group(2)
@@ -1662,7 +1687,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = re.sub(r"&(\w+)\[(-?)(\d+)\]", lambda m: "(%s %s %s)" % (m.group(1), "-" if m.group(2) else "+", m.group(3)), t)
         t = re.sub(r"&(\w+)->f(\d+)\b", r"(\1 + \2)", t)  # (lea: &p[N], &p->fN - the place, p + N)
         t = fold_registers(stored_calls(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(conditional_values(logical_values(t)))))))))
-        t = word_arrays(test_first_loops(post_steps(t)))
+        t = word_arrays(test_first_loops(copy_tests(post_steps(t))))
         t = temporaries(merge_conditions(guard_gotos(self_updates(t))))
         t = structs(pointer_flow(local_pointers(register_variables(shapes(t), regs, regparam))), set(widths))
         t = re.sub(r"(?m)^\s*(\w+) = \1;\n", "", t)         # (a register variable given itself: nothing)
@@ -1822,6 +1847,29 @@ def long_pairs(text):
             i += 1
         return "%s(%s)" % (m.group(1), ", ".join(out))
 
+    body = re.sub(r"\bLONG\(\(0 - \((\w+) >> 15\)\), \1\)", r"(long)\1", body)   # (an int's sign spread: widened)
+    body = re.sub(r"\bLONG\(0, (\w+)\)", r"(long)(unsigned)\1", body)
+
+    def pair_copy(m):                                       # (a pair given a pair: x = y, the high words too)
+        ind, x, y, hx, hy = m.groups()
+        if hi_of(x) == hx and hi_of(y) == hy:
+            pairs.add(x)
+            pairs.add(y)
+            return "%s%s = %s;" % (ind, x, y)
+        return m.group(0)
+    for _ in range(2):
+        body = re.sub(r"(?m)^(\s*)(\w+) = (\w+);\n\s*(\w+) = (\w+);$", pair_copy, body)
+
+    def const_pair(m):                                      # (a pair given two numbers: one long number)
+        ind, x, k1, hx, k2 = m.groups()
+        if hi_of(x) != hx:
+            return m.group(0)
+        pairs.add(x)
+        v = (int(k2) & 0xFFFF) << 16 | (int(k1) & 0xFFFF)
+        v = v - (1 << 32) if v & 0x80000000 else v
+        return "%s%s = %s;" % (ind, x, "%dL" % v if abs(v) > 0x7FFF else str(v))
+    body = re.sub(r"(?m)^(\s*)(\w+) = (-?\d+);\n\s*(\w+) = (-?\d+);$", const_pair, body)
+
     def zero_pair(m):                                       # (both halves given 0, or -1: the long 0, -1)
         ind, a, v, b = m.groups()
         lo, hi = (b, a) if hi_of(b) == a else (a, b) if hi_of(a) == b else (None, None)
@@ -1866,6 +1914,8 @@ def long_pairs(text):
         body = re.sub(r"\*\(long \*\)&%s\b" % lo, lo, body)
         body = re.sub(r"\bLONG\(%s, %s\)" % (hi, lo), lo, body)
         body = re.sub(r"\(%s \| %s\)|\(%s \| %s\)" % (lo, hi, hi, lo), lo, body)
+        body = re.sub(r"\(%s (<|>=) 0\)" % hi, r"(%s \1 0)" % lo, body)   # (the high word's sign: the long's)
+        body = re.sub(r"\(%s & (-?\d+)\)" % hi, lambda m: "(%s & 0x%xL)" % (lo, (int(m.group(1)) & 0xFFFF) << 16), body)
         if re.search(r"\b%s\b" % hi, body.split("\n", 1)[-1] if islocal else body):
             pass                                            # (the high word read alone: kept as it is)
         if isparam:
@@ -1901,6 +1951,12 @@ def local_pointers(text):
     `r = (char *)&vN;`, its fields the bytes it reaches (`r->fK` is r[K])"""
     text = re.sub(r"(?m)^(\s*)(\w+) = bp;\n\s*\2 = \2 - (\d+);$", r"\1\2 = bp - \3;", text)   # (mov r,bp; sub r,N)
     for reg, n in re.findall(r"(?m)^\s*(\w+) = bp - (\d+);", text):
+        buf = next(((k_, c_) for k_, c_ in re.findall(r"(?m)^\s*char _p(\d+)\[(\d+)\];", text) if int(k_) + int(c_) == int(n)), None)
+        if buf:                                             # (the start of a filler the frame keeps: a buffer there)
+            text = re.sub(r"(?m)^(\s*)char _p%s\[%s\];" % buf, r"\1char v%s[%s];" % (n, buf[1]), text)
+            text = re.sub(r"(?m)^(\s*)%s = bp - %s;" % (reg, n), r"\1%s = v%s;" % (reg, n), text)
+            text = re.sub(r"(?m)^(\s*)(register )?int %s;" % reg, r"\1\2char *%s;" % reg, text)
+            continue
         if not re.search(r"(?m)^\s*(?:int|long) v%s;" % n, text):
             continue
         text = re.sub(r"(?m)^(\s*)%s = bp - %s;" % (reg, n), r"\1%s = (char *)&v%s;" % (reg, n), text)
@@ -2094,11 +2150,15 @@ def long_helpers(text, helpers):
         return text
     rx = re.compile(r"\b(%s)\(((?:[^()]|\((?:[^()]|\([^()]*\))*\))*)\)" % "|".join(re.escape(h) for h in helpers))
 
+    uns = set()
+
     def one(m):
         op = helpers[m.group(1)]
         args = [x.strip() for x in _top_commas(m.group(2))]
         if len(args) != 2:
             return m.group(0)
+        if re.match(r"a?ul", m.group(1)) and re.fullmatch(r"&?\w+", args[0]):   # (an unsigned one's operand:
+            uns.add(args[0].lstrip("&"))                                         #  an unsigned long)
         if op.endswith("=") and op not in ("==", "<=", ">=", "!="):
             if not args[0].startswith("&"):
                 return m.group(0)
@@ -2109,7 +2169,14 @@ def long_helpers(text, helpers):
             return "(int)%s" % v                                            #  long's low word - an int)
         return v
     t = rx.sub(one, text)
-    return re.sub(r"(?m)^(\s*)\((.+ [*/%<>+-]{1,2}= .+)\);$", r"\1\2;", t)   # (a statement of its own: no parens)
+    for x in uns:
+        t = re.sub(r"(?m)^(\s*)(register )?long %s;$" % x, r"\1\2unsigned long %s;" % x, t)
+    t = re.sub(r"(?m)^(\s*)\((.+ [*/%<>+-]{1,2}= .+)\);$", r"\1\2;", t)   # (a statement of its own: no parens)
+    # (the long it leaves in dx:ax tested at once - `ax = (ax | dx)`: the assignment's value)
+    t2 = re.sub(r"(?m)^(\s*)(\w+ (?:[*/%+-]|<<|>>)= [^;\n]+);\n\s*ax = \(ax \| dx\);$", r"\1ax = (\2);", t)
+    t2 = re.sub(r"(?m)^\s*(\w+ (?:[*/%+-]|<<|>>)= [^;\n]+);\n(\s*)\} while \(\(\(ax \| dx\) != 0\)\);$",
+                r"\2} while (((\1) != 0));", t2)              # (a do's test of it)
+    return fold_registers(t2) if t2 != t else t
 
 
 def fp_conversions(text, routines):
