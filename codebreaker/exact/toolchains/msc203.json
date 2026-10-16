@@ -1,0 +1,22 @@
+{
+ "name": "msc203",
+ "title": "Microsoft C 2.03 (Lattice C lineage; MC1.EXE and MC2.EXE, four memory models), 1984",
+ "kit": "msc203",
+ "emulator": "dos",
+ "stage": {"all": true},
+ "env": ["PATH="],
+ "switches": "",
+ "derive": {
+  "model": {"regex": "-m([pdlPDL])", "then": " -m{1}", "else": ""},
+  "seg": {"regex": "-m[dlDL](?!.*-nos)", "then": " -s", "else": ""}
+ },
+ "_derive": "the memory model (-mp -md -ml; S is plain); the D and L libraries were compiled with -s too",
+ "passes": [
+  {"run": "MC1.EXE", "args": "{tag}{model}{seg}"},
+  {"run": "MC2.EXE", "args": "{tag}"}
+ ],
+ "output": "{tag}.OBJ",
+ "default_variant": "release",
+ "variants": {"release": []},
+ "_variants": "release: the compiler on the disks, which built the executables beside it"
+}
