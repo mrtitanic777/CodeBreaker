@@ -390,6 +390,11 @@ def char_param_variants(text, most=2):
             rest = [x for x in names if x != p]
             new = (m.group(1) + "int " + ", ".join(rest) + ";\n" if rest else "") + m.group(1) + "char %s;" % p
             out.append(head[:m.start()] + new + head[m.end():] + sep + body)
+        used = [p for p in names if re.search(r"\b%s\b" % p, body)]
+        if len(used) > 1:                                   # (and all of them chars)
+            rest = [x for x in names if x not in used[:most]]
+            new = (m.group(1) + "int " + ", ".join(rest) + ";\n" if rest else "") + m.group(1) + "char %s;" % ", ".join(used[:most])
+            out.append(head[:m.start()] + new + head[m.end():] + sep + body)
     return out
 
 
@@ -863,8 +868,8 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         for v in list(variants):                            # (a pointer register variable through which words
             for w in pointer_widths(v):                     #  are read: int *, the compiler decides)
                 variants.append(w)
-        if re.search(r"& 0xff\)", t):                       # (a byte compared: a parameter may be a char)
-            variants += char_param_variants(t)
+        if re.search(r"& 0xff\)|\b[a-z] [<>=!]=? (?:3[2-9]|[4-9]\d|1[01]\d|12[0-6])\b", t):   # (a byte compared, or
+            variants += char_param_variants(t)                                              #  a char: a char param)
         rule = prj.toolchain().p.get("frame_order")
         for v in list(variants):                            # (the names the frame's order asks for)
             fn = frame_names(v, rule) if rule else None
