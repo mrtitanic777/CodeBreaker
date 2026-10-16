@@ -2348,6 +2348,13 @@ def localize(prj, text, at, names):
     ptrs = [d for d in data if d not in fptr and d not in arrs and (re.search(r"\*\s*\(?\s*(?:\+\+|--)?\s*%s\b|\b%s\s*(?:\+\+|--)?\s*(?:->|\[)" % (d, d), body)
                                                                   or flows(d))]   # (or given a pointer's value, or giving one)
     ints = [d for d in data if d not in ptrs and d not in fptr and d not in arrs]
+    for nb, x_, y_ in re.findall(r"\*\(struct _b(\d+) \*\)(\w+) = \*\(struct _b\1 \*\)(\w+);", text):
+        for v_ in (x_, y_):                                 # (the pointers copied through: pointers to the block)
+            t_ = _redeclare(text, v_, "struct _b%s *%s" % (nb, v_))
+            if t_ and not re.search(r"\b%s\s*(?:->|\[)" % v_, text):
+                text = t_.replace("*(struct _b%s *)%s" % (nb, v_), "*%s" % v_)
+    for nb in sorted(set(re.findall(r"\bstruct _b(\d+) \*", text)), key=int):   # (a block of bytes copied whole)
+        decl.insert(0, "struct _b%s { char _c[%s]; };" % (nb, nb))
     if arrs:
         for d in arrs:                                      # (an array of structs: its element laid out - the field
             if d in STRUCTARR:                              #  the code reads first, the rest of its size after)

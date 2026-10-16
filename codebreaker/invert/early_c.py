@@ -1286,7 +1286,28 @@ class R:
                     s._materialize(out, r)
         return n
 
+    def _struct_copy(s,i,out):
+        """3.00's struct assignment: push si; push di; push ds; pop es; movsw x N (or mov cx,N; rep movsw);
+        pop di; pop si - *(struct _bS *)di = *(struct _bS *)si, S the bytes moved. 0: not one"""
+        ins=s.ins; seq=[(x.mnemonic,x.op_str) for x in ins[i:i+4]]
+        if seq!=[("push","si"),("push","di"),("push","ds"),("pop","es")]: return 0
+        j=i+4; n=0
+        if j+1<len(ins) and ins[j].mnemonic=="mov" and re.match(r"cx, (0x[0-9a-f]+|\d+)$",ins[j].op_str) and \
+                ins[j+1].mnemonic.startswith("rep") and "movs" in ins[j+1].mnemonic+ins[j+1].op_str:
+            n=s.num(ins[j].op_str.split(", ")[1])*(2 if "w" in (ins[j+1].mnemonic+ins[j+1].op_str).split("movs")[1][:1] else 1); j+=2
+        else:
+            while j<len(ins) and ins[j].mnemonic in ("movsw","movsb"):
+                n+=2 if ins[j].mnemonic=="movsw" else 1; j+=1
+        if not n or j+1>=len(ins) or (ins[j].mnemonic,ins[j].op_str)!=("pop","di") or (ins[j+1].mnemonic,ins[j+1].op_str)!=("pop","si"):
+            return 0
+        d_=s.di if s.di is not None else "di"; s_=s.si if s.si is not None else "si"
+        s.emit(out,"*(struct _b%d *)%s = *(struct _b%d *)%s;"%(n,d_,n,s_))
+        return j+2-i
+
     def _step0(s,i,out):
+        if s.msc3:
+            n=s._struct_copy(i,out)
+            if n: return i+n
         """Straight-line: process ins[i], maybe append a statement. Return next i."""
         s.i=i; s.out=out
         if i in s.hoisted: return i+1                          # store already emitted (hoisted)
