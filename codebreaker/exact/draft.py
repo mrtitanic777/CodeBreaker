@@ -3053,7 +3053,7 @@ def long_pairs(text):
     head, sep, body = split_body(text)
     if not sep:
         return text
-    pairs = set(re.findall(r"\*\(long \*\)&(\w+)", body))
+    pairs = set(re.findall(r"\*\(long \*\)&(\w+)\b(?!->|\[)", body))   # (a variable's own two words - not a field's)
     for hi, lo in re.findall(r"\bLONG\((\w+), (\w+)\)", body):
         pairs.add(lo)
     for x, y in re.findall(r"\((\w+) \| (\w+)\)", body):
@@ -3208,8 +3208,28 @@ def long_pairs(text):
     body = re.sub(r"(?m)^([ \t]*)(\w+)->f(\d+) = (\w+);\n[ \t]*\2->f(\d+) = \(0 - \(\4 >> 15\)\);$",
                   lambda m: "%s%s = %s;" % (m.group(1), lfield(m.group(2), m.group(3)), m.group(4))
                   if int(m.group(5)) == int(m.group(3)) + 2 else m.group(0), body)        # (an int widened into it)
-    body = re.sub(r"\((\w+)->f(\d+) \| \1->f(\d+)\)", lambda m: lfield(m.group(1), m.group(2))
+    body = re.sub(r"\((\w+(?:->f\d+)*)->f(\d+) \| \1->f(\d+)\)", lambda m: lfield(m.group(1), m.group(2))
                   if int(m.group(3)) == int(m.group(2)) + 2 else m.group(0), body)        # (its words tested together)
+    body = re.sub(r"\*\(long \*\)&(\w+(?:->f\d+)*)->f(\d+)\b", lambda m: lfield(m.group(1), m.group(2)), body)   # (read
+                                                                                                             #  whole)
+
+    def field_args(m):                                      # (a long field's two words pushed together: the field)
+        args = [x.strip() for x in _top_commas(m.group(2))] if m.group(2).strip() else []
+        out, i = [], 0
+        while i < len(args):
+            a1 = re.fullmatch(r"(\w+(?:->f\d+)*)->f(\d+)", args[i])
+            a2 = re.fullmatch(r"(\w+(?:->f\d+)*)->f(\d+)", args[i + 1]) if i + 1 < len(args) else None
+            together = a1 and len(re.findall(r"%s\b(?!->)" % re.escape(args[i]), body)) == \
+                len(re.findall(r"%s, %s\b" % (re.escape(args[i]), re.escape(args[i + 1] if i + 1 < len(args) else "")), body))
+            if a1 and a2 and a1.group(1) == a2.group(1) and int(a2.group(2)) == int(a1.group(2)) + 2 and together and \
+                    (a1.group(1), int(a1.group(2))) not in BYTEPTR and int(a1.group(2)) in LONGINFO.get("fields", ()):
+                out.append(lfield(a1.group(1), a1.group(2)))
+                i += 2
+                continue
+            out.append(args[i])
+            i += 1
+        return "%s(%s)" % (m.group(1), ", ".join(out))
+    body = re.sub(r"\b((?!if\b|while\b|for\b|switch\b|return\b)[A-Za-z_]\w*)\(((?:[^()]|\((?:[^()]|\([^()]*\))*\))*)\)", field_args, body)
 
     def masked_test(m):                                     # (a long and-ed with a long field and tested: the high
         ind, hi, p, n2, rest, lo, n1 = m.groups()           #  words in dx first, then the low words or-ed in)
