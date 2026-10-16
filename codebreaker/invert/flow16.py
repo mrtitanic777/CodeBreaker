@@ -251,10 +251,10 @@ def _compare_switches(blocks):
 
         walk(h.id, None, first=True)
         vals = [v for v, t in cases]
-        # (two values are a switch too when the selector was loaded into the register for the tests alone -
+        # (one or two values are a switch too when the selector was loaded into the register for the tests alone -
         #  `mov ax,[m]; cmp ax,K1; je; cmp ax,K2; je`: an if would compare the memory itself)
         loaded = reg in ("ax", "al") and len(ins) >= 3 and ins[-3].mnemonic == "mov" and ins[-3].op_str.startswith(reg + ", ") and "[" in ins[-3].op_str
-        if not ok[0] or len(leaves) != 1 or len(set(vals)) < (2 if loaded else 3) or len(set(vals)) != len(vals):
+        if not ok[0] or len(leaves) != 1 or len(set(vals)) < (1 if loaded else 3) or len(set(vals)) != len(vals):
             continue
         default = leaves.pop()
 

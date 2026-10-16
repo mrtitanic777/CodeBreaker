@@ -766,6 +766,9 @@ class R:
             return
         if mn in ("cbw","cwde") and MARK:                      # ax = (int)(char)ax
             s.ax="SX(%s)"%(s.ax if s.ax is not None else "ax"); s.axsrc=None; s.retlive=True; return
+        if mn in ("cbw","cwde") and s.msc3 and s.ax is not None and str(s.ax) not in ("ax","al"):   # (3.00: the low
+            v_=str(s.ax); s.ax="(char)%s"%(v_ if re.fullmatch(r"[\w\->.]+", v_) else "(%s)"%v_)   # byte of a word
+            s.axsrc=None; s.retlive=True; return                                                 # value: a cast)
         if mn in ("cbw","cwde") and s.msc3:                    # (3.00: al of a join - a char - widened: its value)
             s.ax="al"; s.axsrc=None; s.retlive=True; return
         if mn=="mov" and ops.startswith("ax, "):
@@ -1763,6 +1766,12 @@ class R:
                         return s.memname(t) or (str(s.num(t)) if re.match(r"(0x[0-9a-f]+|\d+)$",t) else t)
                     l,r=rv(p[0]),rv(p[1])
                     cond=(l if str(r)=="0" else "(%s %s %s)"%(l, JCC.get(jcc, "!=" if jcc=="jne" else "=="), r))
+                elif cm.mnemonic=="test" and "[" in cm.op_str and jcc in ("jne","je"):
+                    p=cm.op_str.split(", ")             # test MEM,K at the bottom: (MEM & K) tested
+                    v=s.memname(p[0]); k=p[1]
+                    v=v if v is not None else p[0]
+                    if k!=p[0]: v="(%s & %s)"%(v, str(s.num(k)) if re.match(r"(0x[0-9a-f]+|\d+)$",k) else (s.memname(k) or k))
+                    cond=v if jcc=="jne" else "(%s == 0)"%v
                 else: cond=s.ax if s.ax is not None else "ax"   # bare value test -> the register
                 body=s._body(i, ci)
                 out.append("do {"); out+=["    "+b for b in body]; out.append("} while (%s);"%cond)

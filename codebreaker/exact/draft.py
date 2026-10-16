@@ -553,6 +553,94 @@ def post_increments(text):
     return "\n".join(out)
 
 
+def empty_loops(text):
+    """for (;;) { [x = E;] if (C1) break; .. if (Cn) { break; } [else { continue; }] } - a loop of tests alone
+    (its value given first): while ((x = E) && !C1 .. && !Cn) ; - the first test x's zero"""
+    lines = text.split("\n")
+    k = 0
+    while k < len(lines):
+        m = re.match(r"([ \t]*)for \(;;\) \{$", lines[k])
+        e = _block_end(lines, k) if m else None
+        if not m or e is None or lines[e].strip() != "}":
+            k += 1
+            continue
+        body = [x.strip() for x in lines[k + 1:e]]
+        conds, first, q = [], None, 0
+        a = re.fullmatch(r"(\w+) = ([^;=]+);", body[0]) if body else None
+        if a:
+            first, q = a.groups(), 1
+        ok = True
+        while q < len(body):
+            t = re.fullmatch(r"if (\(.*\)) break;", body[q])
+            if t:
+                conds.append(t.group(1)); q += 1
+                continue
+            t = re.fullmatch(r"if (\(.*\)) \{", body[q])
+            if t and body[q + 1:q + 3] == ["break;", "}"]:
+                conds.append(t.group(1)); q += 3
+                continue
+            if t and body[q + 1:q + 5] == ["break;", "} else {", "continue;", "}"]:
+                conds.append(t.group(1)); q += 5
+                continue
+            if body[q] == "continue;" and q == len(body) - 1:
+                q += 1
+                continue
+            ok = False
+            break
+        if not ok or not conds or any(not _balanced(c) for c in conds):
+            k += 1
+            continue
+        gs = [_truth(_not(c)) for c in conds]
+        if first:
+            x, v = first
+            if _strip(conds[0]) in ("(%s == 0)" % x, "!%s" % x):
+                gs[0] = "(%s = %s)" % (x, v)
+            else:
+                k += 1
+                continue
+        g = " && ".join(c if re.fullmatch(r"[\w\->.\[\]]+|\(.*\)", c) and _balanced(c[1:-1] if c.startswith("(") else c) else "(%s)" % c for c in gs)
+        lines[k:e + 1] = ["%swhile (%s)" % (m.group(1), g), "%s    ;" % m.group(1)]
+        k += 2
+    return "\n".join(lines)
+
+
+def register_chains(text):
+    """r = E; A = r; B = r; - r given once and stored twice at once, read no more: the value given twice,
+    B = A = E (A stored first, as the compiler stores a chain from the right)"""
+    lines = text.split("\n")
+    for k in range(len(lines) - 2):
+        m = re.match(r"([ \t]*)(ax|bx|cx|dx) = ([^;]+);$", lines[k] or "")
+        if not m:
+            continue
+        ind, r, e = m.groups()
+        a = re.match(r"%s([^;=]+?) = %s;$" % (ind, r), lines[k + 1] or "")
+        b = re.match(r"%s([^;=]+?) = %s;$" % (ind, r), lines[k + 2] or "")
+        if not a or not b or re.search(r"\b%s\b" % r, a.group(1) + b.group(1) + e) or _live_after(lines, k + 2, r):
+            continue
+        lines[k] = "%s%s = %s = %s;" % (ind, b.group(1), a.group(1), e)
+        lines[k + 1] = lines[k + 2] = None
+    return "\n".join(x for x in lines if x is not None)
+
+
+def store_loops(text):
+    """do { r = E; [p = p + 1;] M = r; } while (r != 0) - the value stored is what the loop tests: an empty loop
+    on the assignment, while (M = E) ; (a string copied, while (*d++ = *s++) ;) - E's pointer stepped as *p++"""
+    rx = re.compile(r"(?m)^([ \t]*)do \{\n[ \t]*(ax|al|bx|bl|cx|cl|dx|dl|t\d+) = ([^;\n]+);\n(?:[ \t]*(\w+) = \4 \+ 1;\n)?"
+                    r"[ \t]*([^;\n=]+?) = \2;\n[ \t]*\} while \(\(?\2(?: != 0)?\)?\);")
+
+    def one(m):
+        ind, reg, e, p, dst = m.groups()
+        if p:
+            d = re.fullmatch(r"\*\((?:unsigned )?char \*\)%s|\*%s" % (p, p), e)
+            if not d or re.search(r"\b%s\b" % p, dst):
+                return m.group(0)
+            e = "*%s++" % p
+        if re.search(r"\b%s\b" % reg, dst + e):
+            return m.group(0)
+        return "%swhile (%s = %s)\n%s    ;" % (ind, dst, e, ind)
+    return rx.sub(one, text)
+
+
 def _live_after(lines, k, reg, read=None):
     """is reg (or what `read` matches: its byte too) read after line k before it is given a new value - on any
     path: a value given it inside a nested block (an arm, a loop) is not on every path, so it ends nothing; one
@@ -979,6 +1067,15 @@ def word_arrays(text, lo=0x40):
         return "%s[%s]" % (name, m.group(1))
     t = rx.sub(one, text)
 
+    def paren(m):                                           # (an expression in parentheses the index: itself)
+        n = int(m.group(2))
+        if n < lo:
+            return m.group(0)
+        name = "g_%04x" % n
+        ARRAYS[name] = "int"
+        return "%s[%s]" % (name, m.group(1)[1:-1])
+    t = re.sub(r"\((\((?:[^()]|\((?:[^()]|\([^()]*\))*\))*\)) << 1\)->f(\d+)\b", paren, t)
+
     def byte_index(m):                                      # (a scratch register's value plus a place in the data:
         n = int(m.group(2))                                 #  an array of bytes there, the value its index)
         if n < 0x100:
@@ -987,6 +1084,8 @@ def word_arrays(text, lo=0x40):
         ARRAYS[name] = "char" if ("data", n) in BYTEPTR else "int"
         return "%s[%s]" % (name, m.group(1))
     t = re.sub(r"\b(ax|bx|cx|dx)->f(\d+)\b", byte_index, t)
+    t = re.sub(r"\(((?:\+\+|--)?[A-Za-z_]\w*(?:\+\+|--)?)\)->f(\d+)\b", byte_index, t)   # (a variable's value -
+                                                                                       #  stepped too - the index)
     # (a register given K * E, then an element at a place in the data through it: an array of structs of K
     #  bytes - g_N[E].f0, the struct laid out in localize)
     def struct_index(m):
@@ -1349,6 +1448,72 @@ def _block_end(lines, k):
     return None
 
 
+def loop_gotos(text):
+    """the gotos back to a loop's top: a move shared at the label (`ax = E; L: for (;;) { r = ax;` - every
+    `ax = V; goto L;` too) given in each place (r = E; r = V), a for (;;) left holding one while and a break that
+    while, and a goto to the top of the loop it is in a continue"""
+    for _ in range(4):
+        lines = text.split("\n")
+        done = False
+        for k, l in enumerate(lines):
+            m = re.match(r"([ \t]*)(L_\w+):$", l)
+            if not m:
+                continue
+            lab = m.group(2)
+            gos = [j for j, x in enumerate(lines) if x.strip() == "goto %s;" % lab]
+            # (the move shared at the label: into each place that comes to it)
+            j = k + 1
+            if j < len(lines) and lines[j].strip() == "for (;;) {":
+                j += 1
+            mv = re.match(r"[ \t]*(\w+) = ax;$", lines[j]) if j < len(lines) else None
+            if mv and k and re.match(r"[ \t]*ax = [^;]+;$", lines[k - 1]) and gos and \
+                    all(g and re.match(r"[ \t]*ax = [^;]+;$", lines[g - 1]) for g in gos) and \
+                    not _live_after(lines, j, "ax"):
+                r = mv.group(1)
+                for g in [k] + gos:
+                    lines[g - 1] = re.sub(r"^([ \t]*)ax = ", r"\1%s = " % r, lines[g - 1])
+                lines[j] = None
+                text = "\n".join(x for x in lines if x is not None)
+                done = True
+                break
+            # (a for (;;) holding one while and a break: the while)
+            if j < len(lines) and lines[k + 1].strip() == "for (;;) {":
+                e = _block_end(lines, k + 1)
+                w = k + 2
+                if e and re.match(r"[ \t]*while \(.*\) \{$", lines[w]):
+                    we = _block_end(lines, w)
+                    if we and we + 2 == e and lines[we + 1].strip() == "break;":
+                        lines[w:we + 1] = [x[4:] if x.startswith("    ") else x for x in lines[w:we + 1]]
+                        lines[k + 1] = None
+                        lines[we + 1] = None
+                        lines[e] = None
+                        text = "\n".join(x for x in lines if x is not None)
+                        done = True
+                        break
+            # (a goto to the top of the loop it is in: a continue)
+            if k + 1 < len(lines) and re.match(r"[ \t]*(?:while \(.*\)|for \(.*\)) \{$", lines[k + 1]) and gos:
+                e = _block_end(lines, k + 1)
+                if e and all(k + 1 < g < e for g in gos):
+                    ok = True
+                    for g in gos:                           # (not inside a loop of its own)
+                        for q in range(k + 2, g):
+                            x = lines[q]
+                            if re.match(r"[ \t]*(?:while \(.*\)|for \(.*\)|do) \{$", x):
+                                qe = _block_end(lines, q)
+                                if qe and q < g < qe:
+                                    ok = False
+                    if ok:
+                        for g in gos:
+                            lines[g] = lines[g].replace("goto %s;" % lab, "continue;")
+                        lines[k] = None
+                        text = "\n".join(x for x in lines if x is not None)
+                        done = True
+                        break
+        if not done:
+            break
+    return text
+
+
 def for_loops(text):
     """a while loop whose body ends by stepping a variable - `X = X + K;`, or `else { X = X + K; continue; }`
     after a test whose other arm leaves - a for loop: for (INIT; C; X = X + K), its first statement the init when
@@ -1466,8 +1631,8 @@ def push_tails(text):
             continue
         a_ = [l for l in p[1] if l.strip()]
         b_ = [l for l in p[2] if l.strip()]
-        ma = re.fullmatch(r"(\s*)(ax|bx|cx|dx) = (.+);", a_[-1]) if a_ else None
-        mb = re.fullmatch(r"(\s*)(ax|bx|cx|dx) = (.+);", b_[-1]) if b_ else None
+        ma = re.fullmatch(r"(\s*)(ax|bx|cx|dx|t\d+) = (.+);", a_[-1]) if a_ else None   # (or the model's
+        mb = re.fullmatch(r"(\s*)(ax|bx|cx|dx|t\d+) = (.+);", b_[-1]) if b_ else None   #  temporary)
         nxt = lines[p[3]]
         if not ma or not mb or ma.group(2) != mb.group(2):
             continue
@@ -1476,15 +1641,17 @@ def push_tails(text):
                 _live_after(lines, p[3], r):
             continue
         ind = ma.group(1)
-        s_a = ind + re.sub(r"\b%s\b" % r, lambda _: "(%s)" % ma.group(3), nxt.strip(), count=1)
-        s_b = mb.group(1) + re.sub(r"\b%s\b" % r, lambda _: "(%s)" % mb.group(3), nxt.strip(), count=1)
+        pv = lambda v: v if re.fullmatch(r"[\w\->.]+", v) else "(%s)" % v
+        s_a = ind + re.sub(r"\b%s\b" % r, lambda _: pv(ma.group(3)), nxt.strip(), count=1)
+        s_b = mb.group(1) + re.sub(r"\b%s\b" % r, lambda _: pv(mb.group(3)), nxt.strip(), count=1)
         ia = max(j for j, l in enumerate(p[1]) if l.strip())
         ib = max(j for j, l in enumerate(p[2]) if l.strip())
         then = p[1][:ia] + [s_a] + p[1][ia + 1:]
         els = p[2][:ib] + [s_b] + p[2][ib + 1:]
         i0 = re.match(r"\s*", lines[k]).group(0)
         new = [lines[k]] + then + [i0 + "} else {"] + els + [i0 + "}"]
-        return "\n".join(lines[:k] + new + lines[p[3] + 1:])
+        t = "\n".join(lines[:k] + new + lines[p[3] + 1:])
+        return _drop_decl(t, r) if r.startswith("t") else t
     return None
 
 
@@ -1506,11 +1673,39 @@ def split_ternaries(text):
     return t if t != text else None
 
 
+def high_words(text):
+    """f(a, b): a never read, b only masked (b & K) - a long's high word tested alone: long a; (a & 0xK0000L)
+    (a variant: the compiler tests just the high word of a long masked so)"""
+    h = re.search(r"(?m)^(\w+)\(([\w, ]+)\)\n", text)
+    if not h:
+        return None
+    ps = [p.strip() for p in h.group(2).split(",")]
+    body = text[h.end():]
+    for p, q in zip(ps, ps[1:]):
+        uses = re.findall(r"(?<![\w>.])%s(?![\w(])" % q, body)
+        masks = re.findall(r"\(%s & (-?\d+|0x[0-9a-f]+)\)" % q, body)
+        decl = len(re.findall(r"(?m)^[ \t]*(?:register )?\w+ [^;\n]*\b%s\b[^;\n]*;$" % q, body))
+        if re.search(r"(?<![\w>.])%s(?![\w(])" % p, re.sub(r"(?m)^[ \t]*(?:register )?\w+ [\w, *]+;$", "", body)) or \
+                not masks or len(uses) != len(masks) + decl:
+            continue
+        def mask(m):
+            k = int(m.group(1), 0) & 0xffff
+            return "(%s & 0x%x0000L)" % (p, k)
+        t = re.sub(r"\(%s & (-?\d+|0x[0-9a-f]+)\)" % q, mask, body)
+        t = _drop_decl(t, q)
+        t = _redeclare(t, p, "long %s" % p)
+        if t is None:
+            return None
+        return text[:h.start()] + "%s(%s)\n" % (h.group(1), ", ".join(x for x in ps if x != q)) + t
+    return None
+
+
 def assign_in_args(text):
     """X = E; f(..X..); - the value passed from the register it was stored from: f(..(X = E)..) (a variant)"""
     def one(m):
         ind, x, e, call = m.groups()
-        if len(re.findall(r"(?<![\w>.])%s(?![\w(])" % re.escape(x), call)) != 1:
+        if len(re.findall(r"(?<![\w>.])%s(?![\w(])" % re.escape(x), call)) != 1 or \
+                re.search(r"&\s*%s(?![\w(])" % re.escape(x), call):   # (its address passed: no value there)
             return m.group(0)
         return ind + re.sub(r"(?<![\w>.])%s(?![\w(])" % re.escape(x), lambda _: "(%s = %s)" % (x, e), call, count=1)
     t = re.sub(r"(?m)^([ \t]*)([A-Za-z_][\w\->\[\]]*) = ([^;\n=]+);\n[ \t]*((?:return )?[A-Za-z_]\w*\(.*\);)$", one, text)
@@ -1878,6 +2073,13 @@ def store_increments(text):
     return t if t != text else None
 
 
+def _plain_store(l, reg):
+    """`X = E;` with reg read in E alone and E giving nothing a value: reg's value read before the store"""
+    m = re.fullmatch(r"\s*([^=;]+?) = ([^;]+);\s*", l)
+    return bool(m) and not re.search(r"\b%s\b" % reg, m.group(1)) and not re.search(r"\+\+|--|[^=!<>]=[^=]", m.group(2)) \
+        and not re.search(r"\w\s*\(", m.group(2) + m.group(1))
+
+
 def fold_registers(text):
     """what a model leaves of the machine's registers, folded where the text alone shows how: a register given a
     value no later statement reads (a call's: the call; a load: nothing), a register returned right after it was
@@ -1896,10 +2098,13 @@ def fold_registers(text):
             # (a value with no effect: a name, a field, an element, or no call and no store in it)
             names = re.findall(r"[A-Za-z_]\w*", expr)
             if pure and reg not in ("si", "di") and len(re.findall(r"\b%s\b" % reg, nxt)) == 1 and \
-               not any(re.search(r"\b%s\s*(=[^=]|\+\+|--)|(\+\+|--)\s*%s\b" % (n, n), nxt) for n in names) and \
+               (re.fullmatch(r"\s*[A-Za-z_]\w* = %s;\s*" % reg, nxt) or _plain_store(nxt, reg) or not any(re.search(r"\b%s\s*(=[^=]|\+\+|--)|(\+\+|--)\s*%s\b" % (n, n), nxt) for n in names)) and \
                not re.search(r"\b%s\b" % reg, re.split(r"\n\s*%s = " % reg, later)[0]) and not re.search(
                    r"\b%s\s*(=[^=]|\+\+|--)|(\+\+|--)\s*%s\b" % (re.escape(expr), re.escape(expr)), nxt):
                 j = lines.index(nxt, k + 1)                 # (a plain value read once, at once: in its place)
+                bk = re.fullmatch(r"(\s*)%s = (\(%s [-+&|^] [^;]+\));\s*" % (re.escape(expr), reg), nxt)
+                if bk and reg in ("al", "bl", "cl", "dl"):  # (a byte read, changed in a register, put back: the
+                    nxt = "%s%s = (char)%s;" % (bk.group(1), expr, bk.group(2))   # value cast - else done in place)
                 lines[j] = re.sub(r"\b%s\b" % reg, lambda m: expr, nxt)
                 continue
             if re.fullmatch(r"\s*return %s;\s*" % reg, nxt):
@@ -2088,6 +2293,8 @@ def structs(text, widths):
                 fields.append("char _%d[%d];" % (pos, off - pos))
             uch = any(isinstance(u, tuple) and u[1] == off for u in UCHAR)   # (widened with zeros: unsigned)
             byte = (p, off) in widths or ("*", off) in widths or uch
+            uch = uch or byte and re.search(r"\b%s->f%d \S{1,2} (?:12[89]|1[3-9]\d|2[0-4]\d|25[0-5])\b" % (p, off), text)   # (a byte
+                                                                                    #  compared with 128..255: unsigned)
             deref = re.search(r"(?<![\w>)\]])\*%s->f%d\b(?!\s*(?:->|\[|\.))" % (p, off), text)   # (*p->fN: a pointer)
             lng = off in LONGINFO.get("fields", ()) and off + 2 not in offs   # (a long field: two words given as one)
             fields.append("%s f%d;" % ("struct s_%s *" % p if off == 0 and selfref else ptrfield[(p, off)] if (p, off) in ptrfield
@@ -2140,17 +2347,21 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = zero_extends(high_zero(copy_props(table_macros(prj, case_falls(char_stores(char_params(long_pairs(long_returns(t))))), prj.toolchain().p.get("table_macros")))))
         t = re.sub(r"&(\w+)\[(-?)(\d+)\]", lambda m: "(%s %s %s)" % (m.group(1), "-" if m.group(2) else "+", m.group(3)), t)
         t = re.sub(r"&(\w+)->f(\d+)\b", r"(\1 + \2)", t)  # (lea: &p[N], &p->fN - the place, p + N)
-        t = fold_registers(stored_calls(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(push_returns(conditional_values(logical_values(step_tests(range_switches(t))))))))))))
-        t = fold_registers(push_returns(t))                 # (returns again, as the passes left the arms)
-        t = word_arrays(test_first_loops(copy_tests(post_steps(t))))
+        t = fold_registers(stored_calls(store_loops(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(push_returns(conditional_values(logical_values(step_tests(range_switches(loop_gotos(empty_loops(t)))))))))))))))
+        t = stored_calls(fold_registers(push_returns(t)))   # (returns again, as the passes left the arms)
+        t = register_chains(word_arrays(test_first_loops(copy_tests(post_steps(t)))))
         t = fold_registers(conditional_values(t))           # (the ?: values again, the elements folded)
-        t = fold_registers(push_returns(temporaries(merge_conditions(guard_gotos(self_updates(t))))))
-        t = structs(pointer_flow(local_pointers(register_variables(shapes(t), regs, regparam))), set(widths))
+        t = fold_registers(push_returns(temporaries(empty_loops(merge_conditions(guard_gotos(self_updates(t)))))))
+        wd = set(widths)                                    # (a parameter kept in a register: the bytes read through
+        for r_, i_ in (regparam or {}).items():             #  that register its own)
+            if isinstance(i_, int) and 0 <= i_ < 26:
+                wd |= {(chr(97 + i_), o) for (q, o) in widths if q in (r_, r_ + "*") and (r_ + "w", o) not in widths}
+        t = structs(pointer_flow(local_pointers(register_variables(shapes(t), regs, regparam))), wd)
         t = re.sub(r"(?m)^[ \t]*(\w+) = \1;\n", "", t)         # (a register variable given itself: nothing)
         t = long_ladders(long_pairs(t))                     # (the longs again, as the passes left them)
         t = frame_chars(t, widths)
         t = fill_frame(t, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
-        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t)] if v]
+        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t)] if v]
         both = pre_steps(t)
         both = pre_increments(both) if both else None
         if both:
@@ -2377,6 +2588,14 @@ def long_pairs(text):
         v = v - (1 << 32) if v & 0x80000000 else v
         return "%s%s = %s;" % (ind, x, "%dL" % v if abs(v) > 0x7FFF else str(v))
     body = _line_pairs(body, r"([ \t]*)(\w+) = (-?\d+);\n\s*(\w+) = (-?\d+);", const_pair)
+
+    def sign_pair(m):                                       # (a pair given an int and its sign spread: the int
+        ind, x, e, hx, e2 = m.groups()                      #  widened to the long)
+        if hi_of(x) != hx or e2.strip() not in (e, "(%s)" % e):
+            return m.group(0)
+        pairs.add(x)
+        return "%s%s = %s;" % (ind, x, e)
+    body = re.sub(r"(?m)^([ \t]*)(\w+) = ([^;\n]+);\n[ \t]*(\w+) = \(0 - \((.+) >> 15\)\);$", sign_pair, body)
 
     def zero_pair(m):                                       # (both halves given 0, or -1: the long 0, -1)
         ind, a, v, b = m.groups()
@@ -3250,7 +3469,8 @@ def fill_frame(text, fs, regs_count=True):
     size = 0
     lines = body.split("\n")
     last = 0
-    for k, l in enumerate(lines[1:], 1):
+    gaps = []                                               # ((line, bytes): a filler before a local vN the
+    for k, l in enumerate(lines[1:], 1):                    #  declarations above would put nearer bp than N)
         m = re.match(r"\s+(register\s+)?((?:unsigned\s+)?(?:int|char|long|short|struct\s+\w+))\s*(\**)\s*(\w+)\s*(?:\[(\d+)\])?;\s*$", l)
         if not m:
             if l.strip():
@@ -3265,9 +3485,19 @@ def fill_frame(text, fs, regs_count=True):
             return text                                     # (a struct's size the text does not say)
         one = 2 if star else SIZES.get(ty.split()[-1], 2)
         n = one * int(cnt or 1)
+        v = re.fullmatch(r"v(\d+)", name)
+        if v and not star and not cnt and ty.split()[-1] == "long" and size + n < int(v.group(1)):
+            gaps.append((k, int(v.group(1)) - size - n))    # (a long the pair made of vN and the word above it:
+            size = int(v.group(1)) - n                      #  where vN was)
         size += n + (n & 1)
+    for k, g in reversed(gaps):
+        lines.insert(k, "    char _pg%d[%d];" % (k, g))
+        last += 1
+    if gaps and fs > size:
+        lines.insert(last + 1, "    char _pf[%d];" % (fs - size))
+        return head + sep + "\n".join(lines)
     if fs <= size or re.search(r"(?m)^\s+(?:int|char|long|short)\s+v\d+", body):
-        return text                                         # (the model's autos: the frame model lays those out)
+        return text if not gaps else head + sep + "\n".join(lines)   # (the model's autos: the frame model lays those out)
     lines.insert(last + 1, "    char _pf[%d];" % (fs - size))
     return head + sep + "\n".join(lines)
 
