@@ -341,6 +341,23 @@ def pre_steps(text):
 
 
 PTRSIZE = {}                                                # (data a draft steps through by 2: a pointer to words)
+ARRAYS = {}                                                 # (data a draft indexes: an array - name: element type)
+
+
+def word_arrays(text, lo=0x40):
+    """(E << 1)->fN, N a place in the data (not a field's small offset): an array of words there indexed by E -
+    g_XXXX[E] (the model reads `mov bx,E / shl bx,1 / [bx+N]` as a field of a pointer)"""
+    rx = re.compile(r"\(((?:[A-Za-z_]\w*|\d+)(?:\s*[-+]\s*\d+)?) << 1\)->f(\d+)\b")
+
+    def one(m):
+        n = int(m.group(2))
+        if n < lo:
+            return m.group(0)
+        name = "g_%04x" % n
+        ARRAYS[name] = "int"
+        return "%s[%s]" % (name, m.group(1))
+    t = rx.sub(one, text)
+    return t
 
 
 def pre_increments(text):
@@ -558,8 +575,9 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
     for t in base + [v for v in (buffers(t) for t in base) if v]:
         STRUCTPTR.clear()
         PTRSIZE.clear()
+        ARRAYS.clear()
         t = fold_registers(stored_calls(post_increments(widen_bytes(compare_values(branch_returns(logical_values(char_params(t))))))))
-        t = test_first_loops(post_steps(t))
+        t = word_arrays(test_first_loops(post_steps(t)))
         t = structs(register_variables(shapes(t), regs, regparam), set(widths))
         variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t)] if v]
         both = pre_steps(t)
@@ -699,8 +717,11 @@ def localize(prj, text, at, names):
                                                                              "f%05x" % int(m.group(2))) + ";", text)
         body = text.split("{", 1)[1] if "{" in text else text
     funcs = sorted(set(funcs) | {w for d in fptr for w in re.findall(r"(?m)^\s*%s = ([A-Za-z_]\w*);" % d, body)})
-    ptrs = [d for d in data if d not in fptr and re.search(r"\*\s*\(?\s*(?:\+\+|--)?\s*%s\b|\b%s\s*(?:\+\+|--)?\s*(?:->|\[)" % (d, d), body)]
-    ints = [d for d in data if d not in ptrs and d not in fptr]
+    arrs = [d for d in data if d in ARRAYS and d not in fptr]   # (indexed in place: an array, not a pointer)
+    ptrs = [d for d in data if d not in fptr and d not in arrs and re.search(r"\*\s*\(?\s*(?:\+\+|--)?\s*%s\b|\b%s\s*(?:\+\+|--)?\s*(?:->|\[)" % (d, d), body)]
+    ints = [d for d in data if d not in ptrs and d not in fptr and d not in arrs]
+    if arrs:
+        decl += ["extern %s %s[];" % (ARRAYS[d], d) for d in arrs]
     if fptr:
         decl.append("extern int %s;" % ", ".join("(*%s)()" % d for d in fptr))
     if ptrs:                                                # (data the draft goes through: pointers)
