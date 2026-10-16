@@ -274,6 +274,49 @@ def post_increments(text):
     return "\n".join(out)
 
 
+def _live_after(lines, k, reg, read=None):
+    """is reg (or what `read` matches: its byte too) read after line k before it is given a new value - on any
+    path: a value given it inside a nested block (an arm, a loop) is not on every path, so it ends nothing; one
+    given at k's own depth, in a bare block, or out of k's block does (lines None: dropped)"""
+    rx = re.compile(read or r"\b%s\b" % reg)
+    kill = re.compile(r"\s*%s = (?![^;]*\b%s\b)" % (reg, reg))
+    stack = []                                              # (the blocks open since k: True a conditional one)
+    skip = None                                             # (the depth of an arm beside k's, not on its path)
+    killed = None                                           # (the depth of a block that gave it a new value)
+    for l in lines[k + 1:]:
+        if l is None:
+            continue
+        opens, closes = l.count("{"), l.count("}")
+        if skip is not None:
+            skip += opens - closes
+            if skip < 0:
+                skip = None                                 # (the other arm closed: past the whole if)
+            continue
+        if re.match(r"\s*\} else\b.*\{\s*$", l) and not stack:   # (leaving k's arm into the other: skipped)
+            skip = 0
+            continue
+        if not stack and re.match(r"\s*return\b", l) and not rx.search(l):
+            return False                                    # (the path ends)
+        if not stack and re.match(r"\s*(?:break|continue);", l):
+            skip = 0                                        # (to the end of the block it leaves: the rest of
+            continue                                        #  it - a switch's other cases - not on its path)
+        if killed is not None and len(stack) < killed:
+            killed = None                                   # (out of the block that gave it a new value)
+        if kill.match(l):
+            if not any(stack):
+                return bool(rx.search(l.split("=", 1)[1]))
+            if killed is None and rx.search(l.split("=", 1)[1]):   # (given a value on some paths: read only in it)
+                return True
+            killed = len(stack) if killed is None else min(killed, len(stack))
+        elif rx.search(l) and killed is None:
+            return True
+        for _ in range(closes):
+            if stack:
+                stack.pop()                                 # (out of k's block: what follows is on its path)
+        stack += [l.strip() != "{"] * opens
+    return False
+
+
 def copy_props(text):
     """R = X; (R a scratch register, X a variable): the reads of R that follow are X - until R or X is given
     again, a call (which leaves its value in ax), a label or a block's end; the copy then goes"""
@@ -306,8 +349,7 @@ def copy_props(text):
             if sets_r or re.search(r"\b%s\s*(?:=[^=]|\+\+|--)|(?:\+\+|--)\s*%s\b" % (x, x), y) or \
                     (r == "ax" and re.search(r"\b(?!if\b|while\b|for\b|switch\b|return\b)[A-Za-z_]\w*\s*\(", y)):
                 break
-        rest = "\n".join(y for y in out[k + 1:] if y is not None)
-        if not re.search(r"\b%s\b" % r, re.split(r"\n\s*%s = " % r, "\n" + rest)[0]):
+        if not _live_after(out, k, r):
             out[k] = None                                   # (read no more before it is given again: gone)
     return "\n".join(x for x in out if x is not None)
 
@@ -387,8 +429,8 @@ def stored_calls(text):
             rd = "(?:%s|%sl)" % (reg, reg[0]) if reg in ("ax", "bx", "cx", "dx") else reg   # (or its low byte: a char)
             st = re.match(r"(\s*)(.+?) = %s;\s*$" % rd, lines[k + 1])
             rest = "\n" + "\n".join(lines[k + 2:])          # (from a line's start: the next value given it)
-            later = not re.search(r"\b%s\b" % rd, re.split(r"\n\s*%s = (?![^;\n]*\b%s\b)" % (reg, rd), rest)[0])
-            # (read before it is given a value that does not read it: still wanted)
+            later = not _live_after(lines[:k + 1] + [re.sub(r"\b%s\b" % rd, "", lines[k + 1])] + lines[k + 2:], k, reg, r"\b%s\b" % rd)
+            # (read before it is given a value that does not read it, on any path: still wanted)
             if st and not re.search(r"\b%s\b" % rd, st.group(2)) and later:
                 out.append("%s%s = %s;" % (st.group(1), st.group(2), call))
                 k += 2
@@ -1209,7 +1251,7 @@ def fold_registers(text):
                 out.append("%sreturn %s;" % (ind, expr))
                 lines[lines.index(nxt, k + 1)] = "\x00"
                 continue
-            used = re.search(r"\b%s\b" % reg, re.split(r"\n\s*%s = " % reg, rest)[0]) or \
+            used = _live_after(lines, k, reg, r"\b%s\b" % ("(?:ax|al)" if reg == "ax" else reg)) or \
                 reg in ("si", "di")                         # (a register variable: a loop may read it on its next pass)
             if not used:
                 call = re.search(r"\b(?!if\b|while\b|sizeof\b)[A-Za-z_]\w*\s*\(", expr)    # (a call: a name, then
