@@ -429,6 +429,14 @@ def pre_steps(text):
                 changed = True
                 k += 2
                 continue
+            nxt = lines[k + 1]                              # (or read once by the next statement: --x in place)
+            if len(re.findall(r"\b%s\b" % re.escape(x), nxt)) == 1 and not re.match(r"\s*%s\s*=" % re.escape(x), nxt) \
+                    and not re.match(r"\s*(?:\}|else\b|L_\w+:)", nxt):
+                lines[k + 1] = re.sub(r"\b%s\b" % re.escape(x), op + x, nxt, count=1)
+                lines[k] = None
+                changed = True
+                k += 2
+                continue
         k += 1
     return "\n".join(l for l in lines if l is not None) if changed else None
 
@@ -468,6 +476,12 @@ def word_arrays(text, lo=0x40):
         ARRAYS[name] = "int"
         return "%s[%s]" % (name, m.group(1))
     t = rx.sub(one, text)
+    # (I << 1)[E]: the model's word index into the words at E - ((int *)(E))[I]
+    def word_index(m):                                      # (an offset in bytes: through a char *)
+        i, e = m.group(1), m.group(2)
+        o = re.fullmatch(r"([A-Za-z_]\w*) \+ (\d+)", e)
+        return "((int *)((char *)%s + %s))[%s]" % (o.group(1), o.group(2), i) if o else "((int *)(%s))[%s]" % (e, i)
+    t = re.sub(r"\(((?:[A-Za-z_]\w*|\d+)(?:\s*[-+]\s*\d+)?) << 1\)\[([^\[\]]+)\]", word_index, t)
     return t
 
 
@@ -715,7 +729,7 @@ def fold_registers(text):
             pure = re.fullmatch(r"[A-Za-z_]\w*|-?\d+", expr) or (     # (or a value with no effect: no call, no
                 not re.search(r"\w\s*\(|\+\+|--|[^=!<>]=[^=]", expr) and expr.startswith("(") and expr.endswith(")"))   # store)
             names = re.findall(r"[A-Za-z_]\w*", expr)
-            if pure and len(re.findall(r"\b%s\b" % reg, nxt)) == 1 and \
+            if pure and reg not in ("si", "di") and len(re.findall(r"\b%s\b" % reg, nxt)) == 1 and \
                not any(re.search(r"\b%s\s*(=[^=]|\+\+|--)|(\+\+|--)\s*%s\b" % (n, n), nxt) for n in names) and \
                not re.search(r"\b%s\b" % reg, re.split(r"\n\s*%s = " % reg, later)[0]) and not re.search(
                    r"\b%s\s*(=[^=]|\+\+|--)|(\+\+|--)\s*%s\b" % (re.escape(expr), re.escape(expr)), nxt):
@@ -1066,6 +1080,52 @@ def localize(prj, text, at, names):
 ERRLINE = re.compile(r"\((\d+)\) : (?:error \w+: )?(.*)$", re.M)
 
 
+def _declare_pointer(src, x, ty):
+    """the source with x (an int parameter or local) declared a pointer to ty, or None"""
+    head, sep, body = split_body(src)
+    for part in ("head", "body"):
+        t = head if part == "head" else body
+        m = re.search(r"(?m)^(\s*)(register\s+)?int ((?:\w+, )*)%s((?:, \w+)*);$" % re.escape(x), t)
+        if m:
+            rest = (m.group(3) + m.group(4).lstrip(", ")).strip(", ")
+            new = ("%s%sint %s;\n" % (m.group(1), m.group(2) or "", rest) if rest else "") + "%s%s%s *%s;" % (m.group(1), m.group(2) or "", ty, x)
+            t = t[:m.start()] + new + t[m.end():]
+            out = (t + sep + body) if part == "head" else (head + sep + t)
+            if ty == "int":                                 # (its byte offsets, now in words: x + N/2)
+                out = re.sub(r"\(\(int \*\)\(\(char \*\)%s \+ (\d+)\)\)" % re.escape(x),
+                             lambda m2: "(%s + %d)" % (x, int(m2.group(1)) // 2) if int(m2.group(1)) % 2 == 0 else m2.group(0), out)
+            return out
+    return None
+
+
+def compile_fixes(src, con):
+    """mendings of the line the compiler stopped at, as the error says ([] when none):
+        left of `->fN' must have a struct/union type   E->fN  -> *(int *)((char *)(E) + N)
+        illegal indirection                             *X     -> X an int * (or a char *); else *(char *)X
+        subscript on non-array                          X[I]   -> X an int *; else ((int *)X)[I]
+    (the model's expressions carry no types: what the code shows is given them - each way, the bytes decide)"""
+    errs = [(int(m.group(1)), m.group(2)) for m in ERRLINE.finditer(con) if "warning" not in m.group(2)]
+    if not errs:
+        return []
+    n, msg = errs[0]
+    lines = src.split("\n")
+    if not 0 < n <= len(lines):
+        return []
+    l = lines[n - 1]
+    out = []
+    m = re.search(r"(?<![\w)\]])\*(?!\()\s*([A-Za-z_]\w*)", l) if "illegal indirection" in msg else \
+        re.search(r"\b([A-Za-z_]\w*)\[", l) if "subscript on non-array" in msg else None
+    if m:
+        for ty in ("int", "char"):
+            d = _declare_pointer(src, m.group(1), ty)
+            if d:
+                out.append(d)
+    one = compile_fix(src, con)
+    if one:
+        out.append(one)
+    return out
+
+
 def compile_fix(src, con):
     """the source with the line the compiler stopped at mended, as the error says, or None:
         left of `->fN' must have a struct/union type   E->fN  -> *(int *)((char *)(E) + N)
@@ -1097,19 +1157,43 @@ def compile_fix(src, con):
     return "\n".join(lines)
 
 
-def _prove(prj, tc, src, a, ln, tries=4):
-    raw, con = tc.compile(src.encode("latin1"), headers=prj.headers(), include=prj.include, switches=prj.switches)
-    while raw is None and tries > 0:                        # (mended where the compiler says, and again)
-        fixed = compile_fix(src, con)
-        if fixed is None:
+def _prove(prj, tc, src, a, ln, tries=4, budget=10):
+    """the verdict on src - mended where the compiler says it cannot be compiled, each way the error offers, and
+    again (a few rounds, a few compiles): the best of what compiles. _prove.src is the source the verdict is of"""
+    comp = lambda s: tc.compile(s.encode("latin1"), headers=prj.headers(), include=prj.include, switches=prj.switches)
+    frontier = [src]
+    best = None
+    first_con = None
+    for depth in range(tries + 1):
+        nxt = []
+        for s in frontier:
+            if budget <= 0:
+                break
+            budget -= 1
+            raw, con = comp(s)
+            if raw is None:
+                first_con = first_con or (s, con)
+                nxt += compile_fixes(s, con)[:3] if depth < tries else []
+                continue
+            v = _verdict(prj, raw, a, ln)
+            if v == "identical":
+                _prove.src = s
+                return v
+            if best is None or _rank(v) < _rank(best[1]):
+                best = (s, v)
+        if not nxt or budget <= 0:
             break
-        src = fixed
-        tries -= 1
-        raw, con = tc.compile(src.encode("latin1"), headers=prj.headers(), include=prj.include, switches=prj.switches)
-    _prove.src = src
-    if raw is None:
-        last = [l for l in con.strip().splitlines() if "(the pass" not in l]
-        return "does not compile: %s" % (last[-1][:100] if last else "")
+        frontier = nxt
+    if best:
+        _prove.src = best[0]
+        return best[1]
+    s, con = first_con if first_con else (src, "")
+    _prove.src = s
+    last = [l for l in con.strip().splitlines() if "(the pass" not in l]
+    return "does not compile: %s" % (last[-1][:100] if last else "")
+
+
+def _verdict(prj, raw, a, ln):
     o = omf.read(raw)
     segs = omf.code_segments(o)
     fns = omf.functions(o, segs[0]) if segs else []
