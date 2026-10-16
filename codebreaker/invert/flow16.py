@@ -158,7 +158,7 @@ def _table_switches(blocks):
         h.selreg = reg
         h.selbase = cut                                     # (the selector's code ends there: the sub is the table's)
         h.table = None
-        h.succ = list(dict.fromkeys([t for v, t in sorted(h.cases)] + [default]))
+        h.succ = sorted(set([t for v, t in h.cases] + [default]))   # (the arms in the code's order: the source's)
         d.succ, d.term = [], "dead"
         if other != default:
             blocks[other].succ, blocks[other].term = [], "dead"

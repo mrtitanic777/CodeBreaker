@@ -1759,6 +1759,24 @@ def empty_cases_first(text):
     return None
 
 
+def default_after(text):
+    """switch (..) { .. default: S; case K: return V; } - the default falling into a case that only returns: the
+    case written first, S after the switch with its own return V (a variant: the source's layout of both)"""
+    for m in re.finditer(r"(?m)^([ \t]*)switch \(.*\) \{\n", text):
+        ind = m.group(1)
+        end = next((j for j in re.finditer(r"(?m)^%s\}$" % re.escape(ind), text) if j.start() > m.end()), None)
+        if end is None:
+            continue
+        body = text[m.end():end.start()]
+        d = re.search(r"(?m)^%sdefault:\n((?:%s    [^\n]*\n)+)%s(case [^:\n]+:)\n%s    (return [^;\n]*;)\n$" %
+                      (re.escape(ind), re.escape(ind), re.escape(ind), re.escape(ind)), body)
+        if d and not re.search(r"(?m)^%s    (?:break|return|goto)\b" % re.escape(ind), d.group(1)):
+            s_ = "".join(x[4:] + "\n" for x in d.group(1).rstrip("\n").split("\n"))
+            new_body = "%s%s\n%s    %s\n" % (ind, d.group(2), ind, d.group(3)) + body[:d.start()]
+            return text[:m.end()] + new_body + "%s}\n" % ind + s_ + "%s%s" % (ind, d.group(3)) + text[end.end():]
+    return None
+
+
 def push_tails(text):
     """if (C) { ..; r = A; } else { ..; r = B; } S(r); - the statement after, taking what each arm leaves in r, in
     each arm with its value: the compiler's one copy of a tail both arms ended with (a variant)"""
@@ -2872,7 +2890,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = register_values(long_ladders(long_pairs(t)))                     # (the longs again, as the passes left them)
         t = frame_chars(fn_pointers(t), widths)
         t = fill_frame(t, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
-        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t), register_copies(t), lead_filler(t), scaled_places(t), shared_tails(t), guard_returns(t)] if v]
+        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t), register_copies(t), lead_filler(t), scaled_places(t), shared_tails(t), guard_returns(t), default_after(t)] if v]
         both = pre_steps(t)
         both = pre_increments(both) if both else None
         if both:
@@ -4052,7 +4070,7 @@ REFINERS = [lambda prj, s: [assign_in_args(s)], lambda prj, s: [return_sources(s
             lambda prj, s: [unsigned_registers(s)], lambda prj, s: [unmasked(s)], lambda prj, s: [no_default(s)],
             lambda prj, s: [empty_cases_first(s)], lambda prj, s: [register_slots(s)], lambda prj, s: [register_copies(s)],
             lambda prj, s: [lead_filler(s)], lambda prj, s: [scaled_places(s)], lambda prj, s: [shared_tails(s)],
-            lambda prj, s: [guard_returns(s)],
+            lambda prj, s: [guard_returns(s)], lambda prj, s: [default_after(s)],
             lambda prj, s: [re.sub(r"\b0, 0\)", "0L)", s)]]     # (two zero words pushed: a long 0)
 
 
@@ -4095,12 +4113,13 @@ def table_hook(code):
         k = next((j for j, i in enumerate(ins) if i.address == addr), None)
         if k is None:
             return None
-        m = re.search(r"cs:\[bx \+ (0x[0-9a-f]+)\]", ins[k].op_str)
+        m = re.search(r"cs:\[bx ([+-]) (0x[0-9a-f]+)\]", ins[k].op_str)
         n = next((int(x.group(1), 0) for i in reversed(ins[max(0, k - 8):k])
                   for x in [re.fullmatch(r"\w+, (0x[0-9a-f]+|\d+)", i.op_str)] if i.mnemonic == "cmp" and x), None)
         if not m or n is None:
             return None
-        t = int(m.group(1), 16) - hook.base
+        t = ((int(m.group(2), 16) if m.group(1) == "+" else -int(m.group(2), 16)) & 0xFFFF) - hook.base   # (above 32K:
+                                                                                                         #  printed less)
         if not (0 <= t and t + 2 * (n + 1) <= len(code)):
             return None
         return [struct.unpack_from("<H", code, t + 2 * j)[0] - hook.base for j in range(n + 1)]
