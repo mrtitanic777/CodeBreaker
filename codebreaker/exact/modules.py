@@ -100,8 +100,9 @@ def combine(paths, default, header_tag):
                     if "*/" in lines[k]:
                         break
                     k += 1
-            elif l.startswith("#include"):
-                if l not in incs:
+            elif l.startswith("#include"):                  # (once each file, however the line is written)
+                key = re.sub(r"[\s\"<>]", "", l.split("/*")[0][8:]).lower()
+                if key not in [re.sub(r"[\s\"<>]", "", x.split("/*")[0][8:]).lower() for x in incs]:
                     incs.append(l)
             elif l.startswith("extern ") and re.sub(r"\s*/\*.*\*/\s*$", "", l).endswith(";") and "{" not in l:
                 key = re.sub(r"\s*/\*.*\*/\s*$", "", l).strip()

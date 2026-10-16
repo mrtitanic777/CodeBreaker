@@ -164,8 +164,8 @@ def externs(src, files=None):
                 continue
             l = re.sub(r"/\*.*?\*/", "", l).strip().rstrip(";")
             m = re.match(r"extern\s+(unsigned\s+\w+|unsigned|struct\s+\w+|union\s+\w+|\w+)\s+(.*)", l)
-            if not m or "(" in m.group(2):
-                continue
+            if not m or "(" in m.group(2) and "(*" not in m.group(2).replace(" ", ""):
+                continue                                    # (a function; a pointer to one is data)
             for it in m.group(2).split(","):
                 n = re.search(r"\b(\w+)\s*(?:\[|$)", it.strip().lstrip("*"))
                 if n:
@@ -183,7 +183,7 @@ def draft(prj, row):
     W = lambda o: struct.unpack_from("<H", ds, o)[0]
     syms = {}
     for n, (t, a) in prj.symbols().items():
-        if t == "D" and ":" not in n and n.startswith("_"):
+        if t == "D" and ":" not in n and n.startswith("_") and not os.path.exists(prj.path(n[1:] + ".c")):   # (not a function's
             syms.setdefault(a, n[1:])
     decl = externs(prj.src)
     mine = [q for q in modules.files_of(prj.src, row[1], row[2]) if os.path.basename(q).startswith("f")] if row[1] is not None else []
@@ -249,9 +249,18 @@ def draft(prj, row):
         for t in targets:
             if lo2 < t < hi and t not in syms and t % 2 == 0:
                 syms[t] = "g_%04x" % t
+    CODE.clear()
+    CODE.update(_code_names(prj))
+    FUNCS.clear()
     for key, lo2, hi in varruns:
         lines = files.setdefault(key, [])
         places = sorted(set([lo2] + [a for a in syms if lo2 <= a < hi]))
+        keep = []
+        for a in places:                                    # (a place inside a variable of a declared size is
+            if keep and a < keep[-1][1]:                    #  part of it)
+                continue
+            keep.append((a, a + (_declared_size(decl.get(syms.get(a, ""), set()), structs) or 0)))
+        places = [a for a, e in keep]
         for a, nx in zip(places, places[1:] + [hi]):
             lines.append(_definition(ds, a, nx, syms, decl, strs, structs, local=local))
     defined = set()
@@ -265,7 +274,44 @@ def draft(prj, row):
             used |= {w for w in re.findall(r"\b(\w+)\b", re.sub(r'"(?:[^"\\]|\\.)*"', "", body)) if w in known}
         refs = sorted(used - defined)
         lines[:0] = ["extern %s %s;" % sorted(decl.get(r, {("int", r)}))[0] for r in refs]
+        named = sorted({f for l in lines for f in re.findall(r"\b(\w+)\b", l) if f in FUNCS})
+        lines[:0] = ["extern %s %s();" % (FUNCS[f], f) for f in named]
+        hs = []                                             # (the headers that define the structs it uses)
+        for s in re.findall(r"\bstruct\s+(\w+)", "\n".join(lines)):
+            if s in HOME and HOME[s] not in hs and not mine:     # (a module with functions sees them already)
+                hs.append(HOME[s])
+        lines[:0] = ['#include "%s"' % h for h in hs]
     return {k: "\n".join(v) + "\n" for k, v in files.items()}
+
+
+CODE = {}                                                   # code address -> function name (tables of functions)
+FUNCS = {}                                                  # the functions a draft's tables name: their type
+
+
+def _code_names(prj):
+    out = {}
+    for n, (t, a) in prj.symbols().items():
+        if t == "C" and ":" not in n:
+            out.setdefault(a & 0xFFFF, n.lstrip("_"))
+    for f in glob.glob(os.path.join(prj.src, "f*.c")):
+        m = re.fullmatch(r"f([0-9a-f]{5})\.c", os.path.basename(f))
+        if m:
+            out.setdefault(int(m.group(1), 16) & 0xFFFF, "f" + m.group(1))
+    return out
+
+
+def _declared_size(ty, structs):
+    """the bytes a declaration takes, when it says (a scalar, a pointer, an array of a known count, a struct)"""
+    for t, i in ty:
+        if "(" in i and "(*" not in i:
+            continue
+        stars = 1 if "*" in i.split("[")[0] else 0
+        dims = [int(x) for x in re.findall(r"\[(\d+)\]", i)]
+        if "[]" in i.replace(" ", ""):
+            continue                                        # (an array of no count: its run says)
+        n, al = _sizeof(t, stars, dims, structs or {}, 2)
+        return n
+    return None
 
 
 SIZES = {"char": 1, "unsigned char": 1, "int": 2, "unsigned": 2, "unsigned int": 2, "short": 2, "unsigned short": 2,
@@ -274,12 +320,13 @@ SIZES = {"char": 1, "unsigned char": 1, "int": 2, "unsigned": 2, "unsigned int":
 
 def parse_structs(prj):
     """{struct name: [(base type, stars, [dimensions], field name)]} of the project's headers"""
-    texts = list(prj.headers().values())
+    texts = list(prj.headers().items())
     for d in prj.include:
         for f in glob.glob(os.path.join(d, "*.h")):
-            texts.append(open(f, "rb").read())
+            texts.append((os.path.basename(f), open(f, "rb").read()))
     out = {}
-    for t in texts:
+    HOME.clear()
+    for hname, t in texts:
         t = re.sub(r"/\*.*?\*/", " ", t.decode("latin1"), flags=re.S)
         for m in re.finditer(r"struct\s+(\w+)\s*\{([^{}]*)\}\s*;", t):
             fields = []
@@ -298,7 +345,11 @@ def parse_structs(prj):
                     if nm:
                         fields.append((dm.group(1), stars, dims, nm.group(1)))
             out[m.group(1)] = fields
+            HOME.setdefault(m.group(1), hname)
     return out
+
+
+HOME = {}                                                   # struct name -> the header that defines it
 
 
 def _sizeof(base, stars, dims, structs, align):
@@ -338,6 +389,13 @@ def _definition(ds, a, nx, syms, decl, strs, structs=None, align=2, local=None):
         if v in syms and v != a:
             return ("&" if not any(i.endswith("]") for t, i in decl.get(syms[v], ())) else "") + syms[v]
         return None
+    fp = [(t, i) for t, i in ty if "(*" in i and ")(" in i.replace(" ", "")]
+    if fp and n % 2 == 0:                                   # (a table of functions: their names)
+        t, i = sorted(fp)[0]
+        vals = [CODE.get(v) or ("0" if v == 0 else "(%s (*)())0x%04x /* ? */" % (t, v)) for v in words]
+        FUNCS.update({v: t for v in vals if not v.startswith(("0", "("))})
+        decl_ = re.sub(r"\[\s*\w*\s*\]", "[%d]" % (n // 2), i.replace(nm, nm, 1)) if "[" in i else i
+        return "%s %s = { %s };" % (t, decl_, ", ".join(vals)) if "[" in i else "%s %s = %s;" % (t, i, vals[0])
     isarr = any(i.endswith("]") for t, i in ty)
     isptr = any("*" in i for t, i in ty)
     kinds = sorted(t for t, i in ty)
@@ -350,6 +408,9 @@ def _definition(ds, a, nx, syms, decl, strs, structs=None, align=2, local=None):
     if ty and k and k < n and n - k >= 2:                   # (a variable, and after it one nothing names)
         return _definition(ds, a, a + k, syms, decl, strs, structs, align, local) + "\n" + \
             _definition(ds, a + k, nx, syms, decl, strs, structs, align, local)
+    if ty and k == 1 and base in ("char", "unsigned char") and n <= 2 and (n == 1 or ds[a + 1] == 0):
+        c = ds[a]                                           # (a char: the byte after it the next word's pad)
+        return "%s %s = %s;%s" % (base, nm, ("'%s'" % chr(c)) if 32 < c < 127 and chr(c) not in "'\\" else str(c), note if False else "")
     note = "                 /* (nothing names it) */" if not ty and a not in syms else ""
     if structs and base and base.startswith("struct ") and base[7:] in structs and not isptr:
         size, al = _struct_size(base[7:], structs, align)
