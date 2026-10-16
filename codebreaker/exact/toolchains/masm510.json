@@ -1,0 +1,21 @@
+{
+ "name": "masm510",
+ "title": "Microsoft Macro Assembler 5.10 (MASM.EXE, February 1988)",
+ "kit": "masm510",
+ "emulator": "dos",
+ "stage": {"files": {"MASM.EXE": "MASM.EXE"}},
+ "psp": "0x1000",
+ "_psp": "it is packed (EXEPACK): its unpacker wants room below it",
+ "env": ["PATH=C:\\", "INCLUDE=C:\\INCLUDE", "TMP=C:\\"],
+ "source_ext": ".ASM",
+ "headers": [".inc"],
+ "switches": "/ML",
+ "file_switches": "MASMFLAGS",
+ "file_switches_comment": ";",
+ "passes": [
+  {"run": "MASM.EXE", "args": "{switches} {tag}.ASM,{tag}.OBJ;"}
+ ],
+ "output": "{tag}.OBJ",
+ "default_variant": "release",
+ "variants": {"release": []}
+}

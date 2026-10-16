@@ -130,9 +130,12 @@ class Toolchain(object):
     def switches_of(self, src, switches=None):
         fs = self.p.get("file_switches")
         if fs:
-            m = re.match(rb"/\* " + fs.encode() + rb": ([^*]*?) \*/", src)
+            if self.p.get("file_switches_comment") == ";":  # (an assembler's: ; NAME: switches)
+                m = re.match(rb"; " + fs.encode() + rb": ([^\r\n]*)", src)
+            else:
+                m = re.match(rb"/\* " + fs.encode() + rb": ([^*]*?) \*/", src)
             if m:
-                return m.group(1).decode()
+                return m.group(1).decode().strip()
         return switches if switches is not None else self.p.get("switches", "")
 
     def answers_of(self, src):

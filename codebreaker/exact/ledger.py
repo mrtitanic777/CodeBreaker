@@ -33,9 +33,13 @@ def check_file(prj, tc, path, at, syms, learnt):
     got = {}
     for ti, text in enumerate(omf.code_segments(o)):        # (#pragma alloc_text: more code segments than one)
         fs = omf.functions(o, text)
-        first = at if ti == 0 else None
-        if first is None and len(fs) > 1 and fs[0][0] == "(module start)" and fs[1][0] in syms:
-            first = syms[fs[1][0]][1] - fs[1][1]           # (an assembly module placed by its first name)
+        first = at if ti == 0 and at is not None and at >= 0 else None
+        if first is None:                                   # (an assembly module placed by its first name SYMBOLS knows)
+            named = [(nm, of) for nm, of, ln in fs if nm in syms and syms[nm][0] in ("C", "?")]
+            if named:
+                first = syms[named[0][0]][1] - named[0][1]
+            elif ti == 0 and at is not None and at < 0:
+                continue                                    # (nothing to place it by)
         together = prj.whole(path) and first is not None    # (a whole source file: its text lies in one piece)
         if together and ti == 0 and prj.cfg.get("named_by", "") == "first procedure":
             # (the file is named after a procedure of it - its first frame, as a rule; the main module has code
@@ -115,6 +119,9 @@ def _merge(per):
 
 
 def run(prj, learn=False, verbose=False):
+    if prj.cfg.get("compilands"):                           # (a Pascal program in pieces: exact/pascal_join.py)
+        from codebreaker.exact import pascal_join
+        return [r + ([prj.cfg.get("toolchain")] if r[4] == "identical" else [],) for r in pascal_join.run(prj, verbose)]
     tcs = prj.toolchains()
     syms = prj.symbols()
     learnt = {}

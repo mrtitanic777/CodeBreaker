@@ -158,6 +158,10 @@ class Project(object):
                     if m.group(1).upper()[:8] in places:
                         out.append((places[m.group(1).upper()[:8]], os.path.join(self.src, f)))
                         break
+        if self.cfg.get("unplaced"):                        # (files with no place in their name: each is placed by
+            for f in sorted(os.listdir(self.src)):          #  the first of its names SYMBOLS knows - address -1)
+                if re.fullmatch(self.cfg["unplaced"], f, re.I):
+                    out.append((-1, os.path.join(self.src, f)))
         p = self.path("ORDER")
         if os.path.exists(p):
             for l in open(p):
