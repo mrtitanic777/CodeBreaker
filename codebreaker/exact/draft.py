@@ -2463,7 +2463,7 @@ def structs(text, widths):
                 fl.append("char _%d[%d];" % (pos, o - pos))
             b_ = o in bytes_                     # (a byte read: a char - an
             pg = re.search(r"\b%s->f%d->f%d = (\w+);" % (p, n, o), text)   # (given a pointer variable: a pointer)
-            pty = re.search(r"(?m)^[ \t]*(?:register\s+)?((?:unsigned\s+)?(?:char|int)) \*%s;$" % pg.group(1), text) if pg else None
+            pty = re.search(r"(?m)^[ \t]*(?:register\s+)?((?:unsigned\s+)?(?:char|int)|struct \w+) \*%s;$" % pg.group(1), text) if pg else None
             fl.append("%s f%d;" % ("unsigned char" if any(isinstance(u, tuple) and u[1] == o for u in UCHAR) and b_
                                    else "char" if b_ else "%s *" % pty.group(1) if pty else "int", o))   #  unsigned one widened with zeros)
             pos = o + (1 if b_ else 2)
@@ -2488,7 +2488,7 @@ def structs(text, widths):
             deref = re.search(r"(?<![\w>)\]])\*%s->f%d\b(?!\s*(?:->|\[|\.))" % (p, off), text)   # (*p->fN: a pointer)
             lng = off in LONGINFO.get("fields", ()) and off + 2 not in offs   # (a long field: two words given as one)
             pg = re.search(r"\b%s->f%d = (\w+);" % (p, off), text)          # (given a pointer variable: a pointer)
-            pty = re.search(r"(?m)^[ \t]*(?:register\s+)?((?:unsigned\s+)?(?:char|int)) \*%s;$" % pg.group(1), text) if pg else None
+            pty = re.search(r"(?m)^[ \t]*(?:register\s+)?((?:unsigned\s+)?(?:char|int)|struct \w+) \*%s;$" % pg.group(1), text) if pg else None
             deref = deref or (pty and pty.group(1) == "int" and not byte and not lng)
             if pty and pty.group(1) != "int" and not byte and not lng and (p, off) not in ptrfield and not (off == 0 and selfref):
                 ptrfield[(p, off)] = "%s *" % pty.group(1)
@@ -2787,6 +2787,22 @@ def long_pairs(text):
         v = v - (1 << 32) if v & 0x80000000 else v
         return "%s%s = %s;" % (ind, x, "%dL" % v if abs(v) > 0x7FFF else str(v))
     body = _line_pairs(body, r"([ \t]*)(\w+) = (-?\d+);\n\s*(\w+) = (-?\d+);", const_pair)
+
+    def gpair_op(m):                                        # (a long in the data and-ed, or-ed, xor-ed with a long:
+        ind, g, op, x, g2, op2, x2 = m.groups()             #  a word at a time, the high words after - one op)
+        if op != op2 or int(g2[2:], 16) != int(g[2:], 16) + 2:
+            return m.group(0)
+        f1 = re.fullmatch(r"(\w+)->f(\d+)", x)
+        f2 = re.fullmatch(r"(\w+)->f(\d+)", x2)
+        if f1 and f2 and f1.group(1) == f2.group(1) and int(f2.group(2)) == int(f1.group(2)) + 2:
+            LONGINFO.setdefault("fields", set()).add(int(f1.group(2)))
+        elif re.fullmatch(r"\w+", x) and hi_of(x) == x2:
+            pairs.add(x)
+        else:
+            return m.group(0)
+        LONGINFO.setdefault("globals", set()).add("g_%04x" % int(g[2:], 16))
+        return "%s%s = %s %s %s;" % (ind, g, g, op, x)
+    body = _line_pairs(body, r"([ \t]*)(g_[0-9a-f]+) = \2 ([|&^]) (\w+(?:->f\d+)?);\n\s*(g_[0-9a-f]+) = \5 ([|&^]) (\w+(?:->f\d+)?);", gpair_op)
 
     def sign_pair(m):                                       # (a pair given an int and its sign spread: the int
         ind, x, e, hx, e2 = m.groups()                      #  widened to the long)
@@ -3178,6 +3194,10 @@ def localize(prj, text, at, names):
         decl.append("extern unsigned char %s;" % ", ".join(uch))
     if chs:
         decl.append("extern char %s;" % ", ".join(chs))
+    lngs = [d for d in ints if d in LONGINFO.get("globals", ())]   # (a long in the data: its two words one)
+    ints = [d for d in ints if d not in lngs]
+    if lngs:
+        decl.append("extern long %s;" % ", ".join(lngs))
     if ints:
         decl.append("extern int %s;" % ", ".join(ints))
     for h in incs:                                          # (what an included header declares: its)
