@@ -305,6 +305,88 @@ def frame_names(text, rule):
     return head + "{" + body
 
 
+def pointer_widths(text, most=2):
+    """the text with its register pointers (`register char *p;`, at most `most` of them) made int * - each, then
+    all: what the model read through them may be words (the text alone does not say)"""
+    ps = re.findall(r"(?m)^\s*register char \*(\w+);", text)[:most]
+    out = []
+    for p in ps:
+        out.append(re.sub(r"(?m)^(\s*)register char \*%s;" % p, r"\1register int *%s;" % p, text))
+    if len(ps) > 1:
+        out.append(re.sub(r"(?m)^(\s*)register char \*(%s);" % "|".join(ps), r"\1register int *\2;", text))
+    return out
+
+
+def pre_steps(text):
+    """X--; (X++; X = X - 1;) then a test of X: the step in the test - if (--X ..) - a variant: the compiler
+    tests the flags of the step there, not a compare"""
+    lines = text.split("\n")
+    changed = False
+    k = 0
+    while k + 1 < len(lines):
+        m = re.match(r"\s*(\w+(?:->f\d+)?)(\+\+|--);\s*$", lines[k]) or re.match(r"\s*(\w+) = \1 ([+-]) 1;\s*$", lines[k])
+        if m:
+            x = m.group(1)
+            op = m.group(2)
+            op = "++" if op in ("++", "+") else "--"
+            t = re.match(r"(\s*(?:if|while) \(\(?)(%s)\b(.*)$" % re.escape(x), lines[k + 1])
+            if t:
+                lines[k + 1] = t.group(1) + op + x + t.group(3)
+                lines[k] = None
+                changed = True
+                k += 2
+                continue
+        k += 1
+    return "\n".join(l for l in lines if l is not None) if changed else None
+
+
+PTRSIZE = {}                                                # (data a draft steps through by 2: a pointer to words)
+
+
+def pre_increments(text):
+    """X = X + n; then *X read once: *++X in its place - X a pointer to things of n bytes (a variant)"""
+    lines = text.split("\n")
+    changed = False
+    for k in range(len(lines) - 1):
+        m = re.match(r"\s*(\w+) = \1 \+ ([12]);\s*$", lines[k] or "")
+        if not m:
+            continue
+        x, n = m.group(1), int(m.group(2))
+        nxt = lines[k + 1]
+        if nxt is None or len(re.findall(r"\b%s\b" % x, nxt)) != 1 or not re.search(r"\*%s\b(?!\s*(?:->|\[|\+\+|--))" % x, nxt):
+            continue
+        lines[k + 1] = re.sub(r"\*%s\b" % x, "*++%s" % x, nxt, count=1)
+        lines[k] = None
+        if n == 2:
+            PTRSIZE[x] = 2
+            lines = [re.sub(r"^(\s*register )char \*%s;" % x, r"\1int *%s;" % x, l) if l else l for l in lines]
+        changed = True
+    return "\n".join(l for l in lines if l is not None) if changed else None
+
+
+def char_params(text):
+    """a parameter the model only reads into a byte register (al = b) is a char: declared so (K&R widens it
+    in the call; the function reads its low byte)"""
+    head, sep, body = text.partition("{")
+    if not sep:
+        return text
+    params = re.findall(r"\b\w+\(([\w, ]*)\)", head)
+    params = [p.strip() for p in (params[-1].split(",") if params else []) if p.strip()]
+    chars = [p for p in params if re.search(r"\b(?:al|bl|cl|dl) = %s;" % p, body) and
+             not re.search(r"\b(?:ax|bx|cx|dx|si|di) = %s;" % p, body) and not re.search(r"\b%s\s*(?:->|\[)" % p, body)]
+    if not chars:
+        return text
+    lines = head.split("\n")
+    for j, l in enumerate(lines):
+        d = re.match(r"(\s*)int (.*);$", l)
+        if d:
+            names = [x.strip() for x in d.group(2).split(",")]
+            keep = [x for x in names if x not in chars]
+            lines[j] = (d.group(1) + "int " + ", ".join(keep) + ";\n" if keep else "") + \
+                d.group(1) + "char " + ", ".join(x for x in names if x in chars) + ";" if any(x in chars for x in names) else l
+    return "\n".join(lines) + sep + body
+
+
 def store_increments(text):
     """*p = X; p = p + 1; (X not reading p) - the store and the step as one: *p++ = X (a variant: the compiler
     makes other code of the two)"""
@@ -433,17 +515,25 @@ def structs(text, widths):
         uses.setdefault(p, set()).add(int(off))
     if not uses:
         return text
+    for p in uses:                                          # (*p of a struct pointer: its first field)
+        whole = re.compile(r"(?<![\w>)\]])\*%s\b(?!\s*(?:->|\[|\+\+|--|\.))" % p)
+        decl = re.compile(r"\s*(?:extern\s+|register\s+|static\s+)*(?:unsigned\s+)?(?:char|int|long|short|struct\s+\w+)\b")
+        lines = text.split("\n")
+        if any(whole.search(l) for l in lines if not decl.match(l)):
+            text = "\n".join(l if decl.match(l) else whole.sub("%s->f0" % p, l) for l in lines)
+            uses[p].add(0)
     defs = []
     for p, offs in sorted(uses.items()):
         fields = []
         pos = 0
+        selfref = re.search(r"\b%s = %s->f0;" % (p, p), text)  # (p = p->f0: a list - the field points on)
         for off in sorted(offs):
             if off < pos:
                 continue                                    # (overlaps the field before: not this way)
             if off > pos:
                 fields.append("char _%d[%d];" % (pos, off - pos))
             byte = (p, off) in widths
-            fields.append("%s f%d;" % ("char" if byte else "int", off))
+            fields.append("%s f%d;" % ("struct s_%s *" % p if off == 0 and selfref else "char" if byte else "int", off))
             pos = off + (1 if byte else 2)
         tag = "s_" + p
         defs.append("struct %s { %s };" % (tag, " ".join(fields)))
@@ -467,10 +557,18 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
     out = []
     for t in base + [v for v in (buffers(t) for t in base) if v]:
         STRUCTPTR.clear()
-        t = fold_registers(stored_calls(post_increments(widen_bytes(compare_values(branch_returns(logical_values(t)))))))
+        PTRSIZE.clear()
+        t = fold_registers(stored_calls(post_increments(widen_bytes(compare_values(branch_returns(logical_values(char_params(t))))))))
         t = test_first_loops(post_steps(t))
         t = structs(register_variables(shapes(t), regs, regparam), set(widths))
-        variants = [t] + [v for v in [store_increments(t)] if v]
+        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t)] if v]
+        both = pre_steps(t)
+        both = pre_increments(both) if both else None
+        if both:
+            variants.append(both)
+        for v in list(variants):                            # (a pointer register variable through which words
+            for w in pointer_widths(v):                     #  are read: int *, the compiler decides)
+                variants.append(w)
         rule = prj.toolchain().p.get("frame_order")
         for v in list(variants):                            # (the names the frame's order asks for)
             fn = frame_names(v, rule) if rule else None
@@ -607,7 +705,7 @@ def localize(prj, text, at, names):
         decl.append("extern int %s;" % ", ".join("(*%s)()" % d for d in fptr))
     if ptrs:                                                # (data the draft goes through: pointers)
         for d in ptrs:
-            decl.append("extern %s *%s;" % ("struct " + STRUCTPTR[d] if d in STRUCTPTR else "char", d))
+            decl.append("extern %s *%s;" % ("struct " + STRUCTPTR[d] if d in STRUCTPTR else "char *" if PTRSIZE.get(d) == 2 and re.search(r"\*\+\+%s\b" % d, body) else "char", d))
     if ints:
         decl.append("extern int %s;" % ", ".join(ints))
     if funcs:
