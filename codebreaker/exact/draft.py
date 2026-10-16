@@ -105,9 +105,15 @@ def logical_values(text):
     rx_or = re.compile(r"(?m)^(\s*)if (\(.*\)) \{\n\s*if (\(.*\)) \{\n\s*(L_\w+):\n\s*(\w+) = 1;\n\s*\} else \{\n\s*\5 = 0;\n\s*\}\n"
                        r"\s*\} else \{\n\s*goto \4;\n\s*\}$")
     text = rx_or.sub(lambda m: "%s%s = %s || %s;" % (m.group(1), m.group(5), _not(m.group(2)), _truth(m.group(3))), text)
-    rx_and = re.compile(r"(?m)^(\s*)if (\(.*\)) \{\n\s*if (\(.*\)) \{\n\s*(\w+) = 1;\n\s*\} else \{\n\s*\4 = 0;\n\s*\}\n"
-                        r"\s*\} else \{\n\s*\4 = 0;\n\s*\}$")
-    text = rx_and.sub(lambda m: "%s%s = %s && %s;" % (m.group(1), m.group(4), _truth(m.group(2)), _truth(m.group(3))), text)
+    rx_and = re.compile(r"(?m)^(\s*)if (\(.*\)) \{\n((?:\s*(?:ax|bx|cx|dx|si|di) = [^;\n]+;\n)*)\s*if (\(.*\)) \{\n\s*(\w+) = 1;\n"
+                        r"\s*\} else \{\n\s*\5 = 0;\n\s*\}\n\s*\} else \{\n\s*\5 = 0;\n\s*\}$")
+
+    def and_(m):
+        b = m.group(4)
+        for t in re.findall(r"(\w+) = ([^;\n]+);", m.group(3)):     # (the temporaries the second test reads)
+            b = re.sub(r"\b%s\b" % t[0], lambda x: "(%s)" % t[1] if not re.fullmatch(r"\w+", t[1]) else t[1], b)
+        return "%s%s = %s && %s;" % (m.group(1), m.group(5), _truth(m.group(2)), _truth(b))
+    text = rx_and.sub(and_, text)
     return text
 
 
@@ -278,7 +284,7 @@ def frame_names(text, rule):
     mod = rule.get("mod")
     if not mod or "{" not in text:
         return None
-    head, body = text.split("{", 1)
+    head, _sep, body = split_body(text)
     lines = body.split("\n")
     decls = []
     for k, l in enumerate(lines[1:], 1):
@@ -336,7 +342,7 @@ def frame_names(text, rule):
 def char_param_variants(text, most=2):
     """the text with one of its int parameters a char (each, at most `most`): one compared with a byte, or given
     one, may be a char the caller widened (a variant: the compiler decides)"""
-    head, sep, body = text.partition("{")
+    head, sep, body = split_body(text)
     out = []
     for m in list(re.finditer(r"(?m)^(\s*)int ([\w, ]+);$", head))[:1]:
         names = [x.strip() for x in m.group(2).split(",")]
@@ -519,7 +525,7 @@ def data_macros(prj, text, specs):
 
 def unused_locals(text):
     """the locals declared in the function's body that nothing in it names any more, left out"""
-    head, sep, body = text.partition("{")
+    head, sep, body = split_body(text)
     if not sep:
         return text
     lines = body.split("\n")
@@ -611,7 +617,7 @@ def assign_in_tests(text):
 def char_params(text):
     """a parameter the model only reads into a byte register (al = b) is a char: declared so (K&R widens it
     in the call; the function reads its low byte)"""
-    head, sep, body = text.partition("{")
+    head, sep, body = split_body(text)
     if not sep:
         return text
     params = re.findall(r"\b\w+\(([\w, ]*)\)", head)
@@ -883,7 +889,7 @@ def register_variables(text, regs=("si", "di"), regparam=None):
     """the registers a compiler keeps its register variables in (MS C 3.00: SI, then DI), made those variables:
     declared in that order, pointers where the text goes through them; a register a parameter is loaded into
     at the start (regparam {register: parameter index}) is that parameter, declared register"""
-    head, sep, body = text.partition("{")
+    head, sep, body = split_body(text)
     if not sep:
         return text
     rdecl = []                                              # (declared in the order of their registers: the
@@ -901,6 +907,12 @@ def register_variables(text, regs=("si", "di"), regparam=None):
         rdecl.append("register %s%s;" % ("char *" if ptr else "int ", p))
     if rdecl:
         head = head.rstrip("\n") + "\n" + "\n".join(rdecl) + "\n"
+        sig = re.search(r"(?m)^(\w+)\(([\w, ]*)\)\s*$", head)    # (the parameters in the signature, all of them)
+        if sig:
+            have = [x.strip() for x in sig.group(2).split(",") if x.strip()]
+            want = sorted(set(have) | {chr(ord("a") + ix) for ix in (regparam or {}).values()})
+            if want != have:
+                head = head[:sig.start()] + "%s(%s)" % (sig.group(1), ", ".join(want)) + head[sig.end():]
     used = [r for r in regs if re.search(r"\b%s\b" % r, body)]
     if not used:
         return head + sep + body
@@ -1136,12 +1148,21 @@ def table_hook(code):
 FRAME = [0]
 
 
+def split_body(text):
+    """(head, "{", body) at the function body's own brace - a line of "{" alone, after its signature - not a
+    struct's that a pass declared before it"""
+    m = re.search(r"(?m)^\{\s*$", text)
+    if not m:
+        return text.partition("{")
+    return text[:m.start()], "{", text[m.start() + 1:]
+
+
 def fill_frame(text, fs, regs_count=True):
     """locals declared for the part of the frame no declared local takes (a local the source declared and never
     used still has its place; MS C 3.00 gives a register local one too): a filler `char _pf[n]` at the end"""
     if not fs or "{" not in text:
         return text
-    head, sep, body = text.partition("{")
+    head, sep, body = split_body(text)
     size = 0
     lines = body.split("\n")
     last = 0
