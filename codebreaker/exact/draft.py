@@ -1867,6 +1867,113 @@ def scaled_index(text):
     return text
 
 
+def bool_trees(text):
+    """an if-tree whose every way ends giving r 1 or 0 (a goto to a labelled part of it the same part again):
+    if (E) { r = 1; } else { r = 0; } - E the && / || of its tests, a part both ways share factored out
+    (if (c) { X && T } else { T }: (!c || X) && T) - the compiler's one copy of the tests read back"""
+    lines = _else_ifs(text.split("\n"))
+    labels = {}
+
+    def stmts(block):                                       # (the statements of a block: [(kind, data)])
+        out, j = [], 0
+        while j < len(block):
+            l = block[j]
+            if not l.strip():
+                j += 1
+                continue
+            m = re.fullmatch(r"[ \t]*(L_\w+):", l)
+            if m:
+                out.append(("label", m.group(1)))
+                j += 1
+                continue
+            p = _if_parts(block, j)
+            if p:
+                out.append(("if", p))
+                j = p[3]
+                continue
+            out.append(("line", l.strip()))
+            j += 1
+        return out
+
+    def node(block, reg):                                   # (the expression a block gives reg, or None)
+        ss = stmts(block)
+        lab = None
+        if ss and ss[0][0] == "label":
+            lab = ss[0][1]
+            ss = ss[1:]
+        if len(ss) != 1:
+            return None
+        kind, d = ss[0]
+        if kind == "line":
+            m = re.fullmatch(r"%s = ([01]);" % reg, d)
+            if m:
+                e = m.group(1)
+            else:
+                g = re.fullmatch(r"goto (L_\w+);", d)
+                if not g:
+                    return None
+                e = ("goto", g.group(1))
+        else:
+            c, th, el = d[0], d[1], d[2]
+            if el is None:
+                return None
+            a, b = node(th, reg), node(el, reg)
+            if a is None or b is None:
+                return None
+            e = ("if", c, a, b)
+        if lab:
+            labels[lab] = e
+        return e
+
+    def text_of(e):
+        if isinstance(e, str):
+            return e
+        if e[0] == "goto":
+            return text_of(labels[e[1]]) if e[1] in labels and labels[e[1]] != e else None
+        c, a, b = "(%s)" % _strip("(%s)" % e[1]) if not e[1].startswith("(") else e[1], e[2], e[3]
+        a_, b_ = text_of(a), text_of(b)
+        if a_ is None or b_ is None:
+            return None
+        t, f = _truth(c), _truth(_not(c))
+        if b_ == "0":
+            return t if a_ == "1" else "0" if a_ == "0" else _conj("&&", t, a_)
+        if a_ == "1":
+            return _conj("||", t, b_)
+        if a_ == "0":
+            return f if b_ == "1" else _conj("&&", f, b_)
+        if b_ == "1":
+            return _conj("||", f, a_)
+        parts = [x.strip() for x in _top_split(a_, "&&")]
+        tail = [x.strip() for x in _top_split(b_, "&&")]
+        if len(parts) > len(tail) and parts[-len(tail):] == tail:   # (if (c) { X && T } else { T }: (!c || X) && T)
+            x = " && ".join(parts[:-len(tail)])
+            return _conj("&&", "(%s)" % _conj("||", f, x), b_)
+        return None
+
+    for k in range(len(lines)):
+        p = _if_parts(lines, k)
+        if not p or p[2] is None:
+            continue
+        nxt = next((x for x in lines[p[3]:] if x.strip()), "")
+        r = re.fullmatch(r"[ \t]*return (\w+);", nxt)
+        if not r:
+            continue
+        labels.clear()
+        e = node(lines[k:p[3]], r.group(1))
+        if e is None or isinstance(e, str) or e[0] != "if" or all(isinstance(x, str) for x in e[2:]):
+            continue                                        # (one test alone: as written - its sense is the code's)
+        x = text_of(e)
+        x = text_of(e) if x is None else x                  # (a goto to a label met later: again)
+        if x is None or x in ("0", "1") or "goto" in x:
+            continue
+        ind = re.match(r"\s*", lines[k]).group(0)
+        reg = r.group(1)
+        new = ["%sif %s {" % (ind, x if x.startswith("(") and x.endswith(")") and _balanced(x[1:-1]) else "(%s)" % x), "%s    %s = 1;" % (ind, reg),
+               "%s} else {" % ind, "%s    %s = 0;" % (ind, reg), "%s}" % ind]
+        return "\n".join(lines[:k] + new + lines[p[3]:])
+    return text
+
+
 def shared_tails(text):
     """if (A) { X; if (B) { T } } else { T } at the function's end - the compiler's one copy of T both ways
     reach: if (A) { X; if (!B) return; } T (a variant)"""
@@ -2682,7 +2789,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = zero_extends(high_zero(copy_props(table_macros(prj, case_falls(char_stores(char_params(long_pairs(long_returns(store_reloads(fall_gotos(t))))))), prj.toolchain().p.get("table_macros")))))
         t = re.sub(r"&(\w+)\[(-?)(\d+)\]", lambda m: "(%s %s %s)" % (m.group(1), "-" if m.group(2) else "+", m.group(3)), t)
         t = re.sub(r"&(\w+)->f(\d+)\b", r"(\1 + \2)", t)  # (lea: &p[N], &p->fN - the place, p + N)
-        t = fold_registers(stored_calls(store_loops(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(push_returns(conditional_values(logical_values(step_tests(range_switches(loop_gotos(empty_loops(fall_gotos(t))))))))))))))))
+        t = fold_registers(stored_calls(store_loops(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(push_returns(conditional_values(logical_values(step_tests(bool_trees(range_switches(loop_gotos(empty_loops(fall_gotos(t)))))))))))))))))
         t = stored_calls(fold_registers(push_returns(t)))   # (returns again, as the passes left the arms)
         t = scaled_index(register_chains(word_arrays(test_first_loops(copy_tests(post_steps(t))))))
         t = fold_registers(conditional_values(t))           # (the ?: values again, the elements folded)
