@@ -185,6 +185,7 @@ def chain_returns(text):
 
 
 UCHAR = set()                                               # (bytes the code widens with zeros: unsigned char)
+BYTEG = set()                                               # (globals the code reads or writes a byte of: char)
 
 
 def zero_extends(text):
@@ -789,6 +790,19 @@ def library_macros(text, macros):
     return text
 
 
+def and_returns(text):
+    """if (A) return E; return 0;  ->  return A && E;  (a variant: the compiler makes one test chain of the &&)"""
+    rx = re.compile(r"(?m)^(\s*)if (\(.*\))(?: \{)?\n\s*return (.+);\n(?:\s*\}\n)?\s*return 0;$")
+
+    def one(m):
+        e = m.group(3)
+        if re.search(r"\|\|", e) and not (e.startswith("(") and e.endswith(")")):
+            e = "(%s)" % e
+        return "%sreturn %s && %s;" % (m.group(1), _truth(m.group(2)), e)
+    t = rx.sub(one, text)
+    return t if t != text else None
+
+
 def word_constants(text):
     """a word the model reads as 32768..65535: a decimal constant over 32767 is a long to a 16-bit compiler (the
     compare or the sum goes to 32 bits) - the int it was, negative (65535 is -1)"""
@@ -1001,7 +1015,7 @@ def structs(text, widths):
             if off > pos:
                 fields.append("char _%d[%d];" % (pos, off - pos))
             uch = any(isinstance(u, tuple) and u[1] == off for u in UCHAR)   # (widened with zeros: unsigned)
-            byte = (p, off) in widths or uch
+            byte = (p, off) in widths or ("*", off) in widths or uch
             fields.append("%s f%d;" % ("struct s_%s *" % p if off == 0 and selfref else "unsigned char" if uch else
                                        "char" if byte else "int", off))
             pos = off + (1 if byte else 2)
@@ -1030,6 +1044,8 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         PTRSIZE.clear()
         ARRAYS.clear()
         UCHAR.clear()
+        BYTEG.clear()
+        BYTEG.update(n for k, n in widths if k == "g")
         FILEPTR.clear()
         t = zero_extends(copy_props(table_macros(prj, char_params(t), prj.toolchain().p.get("table_macros"))))
         t = re.sub(r"&(\w+)\[(-?)(\d+)\]", lambda m: "(%s %s %s)" % (m.group(1), "-" if m.group(2) else "+", m.group(3)), t)
@@ -1039,7 +1055,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = self_updates(t)
         t = structs(pointer_flow(register_variables(shapes(t), regs, regparam)), set(widths))
         t = fill_frame(t, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
-        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t)] if v]
+        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t)] if v]
         both = pre_steps(t)
         both = pre_increments(both) if both else None
         if both:
@@ -1080,7 +1096,16 @@ def byte_fields(inv, code):
         return set()
     finally:
         inv.MARK = old
-    return {(p, int(o)) for p, o in re.findall(r"BYTE\(\s*\(?(\w+)->f(\d+)\)?\s*\)", t)}
+    out = {(p, int(o)) for p, o in re.findall(r"BYTE\(\s*\(?(\w+)->f(\d+)\)?\s*\)", t)}
+    from codebreaker.exact import x86                       # (and from the code itself: a byte read or written
+    for i in x86.disasm(code, 0, len(code), False):         #  through a register at an offset - whatever the
+        m = re.search(r"byte ptr \[(?:bx|si|di) \+ (0x[0-9a-f]+|\d+)\]", i.op_str)    # draft names the pointer)
+        if m and int(m.group(1), 0) < 0x100:
+            out.add(("*", int(m.group(1), 0)))
+        g = re.search(r"byte ptr \[(0x[0-9a-f]+|\d+)\]", i.op_str)     # (a global read or written a byte at a time)
+        if g:
+            out.add(("g", "g_%04x" % int(g.group(1), 0)))
+    return out
 
 
 def buffers(text):
@@ -1235,9 +1260,12 @@ def localize(prj, text, at, names):
         for d in ptrs:
             decl.append("extern %s *%s;" % ("struct " + STRUCTPTR[d] if d in STRUCTPTR else "char *" if PTRSIZE.get(d) == 2 and re.search(r"\*\+\+%s\b" % d, body) else "char", d))
     uch = [d for d in ints if d in UCHAR]
-    ints = [d for d in ints if d not in UCHAR]
+    chs = [d for d in ints if d in BYTEG and d not in UCHAR]
+    ints = [d for d in ints if d not in UCHAR and d not in BYTEG]
     if uch:
         decl.append("extern unsigned char %s;" % ", ".join(uch))
+    if chs:
+        decl.append("extern char %s;" % ", ".join(chs))
     if ints:
         decl.append("extern int %s;" % ", ".join(ints))
     for h in incs:                                          # (what an included header declares: its)
