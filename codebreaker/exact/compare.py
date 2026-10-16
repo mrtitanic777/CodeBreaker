@@ -34,6 +34,7 @@ def function(o, img, name, off, ln, at, prj, syms, learn, text="_TEXT", where=No
     if where is None:
         where = lambda x: at - off + x
     base = base_of(at)
+    cache = {}
 
     def bind(nm, t, a):
         if nm not in syms:
@@ -118,7 +119,9 @@ def function(o, img, name, off, ln, at, prj, syms, learn, text="_TEXT", where=No
                     notes.append("+%x: %s+%x (%r) is not at DS:%04x (%r)" % (k, tgt[1], mine, s[:24], theirs, bytes(img[dg + theirs:dg + theirs + min(len(s), 24)])))
                 elif len(s) > 2 and (mine == 0 or d[mine - 1] == 0) and theirs and 0x20 <= img[dg + theirs - 1] < 0x7F:
                     notes.append("? +%x: %s+%x (%r) is the end of another string at DS:%04x - a number, not a string?" % (k, tgt[1], mine, s[:24], theirs))
-                bind("%s:%s+%x" % (name, tgt[1], mine), "D", theirs)
+                # (through a register the word may be an array's origin - its start less its first index - which
+                # can be another item's place: such a word is held only to the others of its kind)
+                bind("%s:%s+%x%s" % (name, tgt[1], mine, "[]" if _indexed(code, off, ln, fo, cache) else ""), "D", theirs)
         else:
             notes.append("+%x: fixup %s to %s" % (k, kind, tgt))
     if placed and where(off) == at:
@@ -128,6 +131,18 @@ def function(o, img, name, off, ln, at, prj, syms, learn, text="_TEXT", where=No
     if shift:
         notes.append(shift)
     return bad, notes
+
+
+def _indexed(code, off, ln, fo, cache):
+    """the instruction holding the word at fo addresses memory through a base or index register"""
+    if "ins" not in cache:
+        from capstone import Cs, CS_ARCH_X86, CS_MODE_16
+        cache["ins"] = [(i.address, i.size, i.op_str) for i in Cs(CS_ARCH_X86, CS_MODE_16).disasm(bytes(code[off:off + ln]), off)]
+    for a, sz, ops in cache["ins"]:
+        if a <= fo < a + sz:
+            m = ops.find("[")
+            return m >= 0 and any(r in ops[m:ops.find("]", m)] for r in ("bx", "bp", "si", "di"))
+    return False
 
 
 def _shift(code, img, off, at, bad):
