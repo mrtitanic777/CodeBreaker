@@ -57,6 +57,12 @@ class Project(object):
             self.header = None
             self.image = b
         self._relocs = None
+        if "dgroup" not in c and self.header and self.header[3]:   # (no place given: a small program's relocations all
+            ws = {struct.unpack_from("<H", self.image, o + s * 16)[0]   # hold one paragraph - DGROUP's, which the
+                  for o, s in struct.iter_unpack("<HH", b[self.header[12]:self.header[12] + 4 * self.header[3]])   # start
+                  if o + s * 16 + 2 <= len(self.image)}           # loads into DS)
+            if len(ws) == 1:
+                self.dgroup = ws.pop() * 16
         self.packed = None                                  # (the original as EXEPACK left it, when the image is the
         if c.get("packed"):                                 #  unpacked program: its entry, stack, relocations)
             from codebreaker.exact import exepack

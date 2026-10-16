@@ -8,7 +8,20 @@
  "default_variant": "microsoft",
  "variants": {
   "altos": {},
-  "microsoft": {"rules": "UDMB", "patch": true, "c2move": "RS"}
+  "microsoft": {
+   "rules": "UDMB",
+   "patch": true,
+   "c2move": "RS"
+  }
  },
- "_variants": "altos: the diskette's passes as they are; microsoft: the revision Microsoft built LINK 2.40/2.44 and LIB 2.20/2.40 with (exact/xenix_c.py says what differs)"
+ "_variants": "altos: the diskette's passes as they are; microsoft: the revision Microsoft built LINK 2.40/2.44 and LIB 2.20/2.40 with (exact/xenix_c.py says what differs)",
+ "carve": {
+  "prologues": [
+   "55 8b ec 57 56",
+   "55 8b ec"
+  ],
+  "frames": true,
+  "calls": true,
+  "_prologues": "push bp / mov bp,sp, then (most functions) push di / push si: XENIX C saves both register variables (135 of LIB 2.20's 233 places)"
+ }
 }

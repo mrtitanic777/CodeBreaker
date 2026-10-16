@@ -176,6 +176,7 @@ def carry(prj, other):
         if n and n not in dused:
             dnames[a] = (n, "named where the same code names it")
             dused.add(n)
+    carry.pairs, carry.dpairs = pairs, dpairs               # (this program's place -> the other's: exact/seed.py)
     return names, dnames
 
 

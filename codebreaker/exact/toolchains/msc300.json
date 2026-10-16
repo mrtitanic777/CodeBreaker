@@ -338,5 +338,9 @@
  "frame_order": {
   "mod": 11,
   "_": "the locals of a function (register ones too) get their frame slots in the order of their names' buckets in the compiler's table of names: (the sum of the name's characters) mod 11, ascending, the first next to BP (found by renaming one local of f0085b of P0: 30 names, all as predicted)"
- }
+ },
+ "try_switches": [
+  "-Gs"
+ ],
+ "_try_switches": "switches that change the code, for identify: -Gs (no stack probe: LIB 3.00)"
 }
