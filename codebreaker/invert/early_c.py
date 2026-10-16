@@ -856,6 +856,11 @@ class R:
             mn=s.ins[j].mnemonic; ops=s.ins[j].op_str
             if mn=="cmp":
                 p=ops.split(", "); s._cmp=(resolve(p[0]), resolve(p[1]))
+                bs=re.fullmatch(r"byte ptr (\[bp [+-] (?:0x[0-9a-f]+|\d+)\])", p[0])
+                if s.msc3 and not MARK and bs and any(("word ptr "+bs.group(1)) in x.op_str for x in s.ins) \
+                        and re.fullmatch(r"\w+", str(s._cmp[0])):     # (3.00: a word's low byte compared - both
+                    k_=s.num(p[1]) if re.fullmatch(r"0x[0-9a-f]+|\d+", p[1]) else None   #  sides cast to char)
+                    s._cmp=("(char)%s"%s._cmp[0], ("(char)0x%x"%k_) if k_ is not None and k_>=0x80 else s._cmp[1])
             elif mn=="test":                                   # test X,Y; jcc == cmp (X & Y), 0
                 p=ops.split(", "); a0=resolve(p[0])
                 s._cmp=((a0 if len(p)>1 and p[0]==p[1] else "(%s & %s)"%(a0, resolve(p[1]))), "0")

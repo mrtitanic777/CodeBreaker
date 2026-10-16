@@ -1678,6 +1678,27 @@ def split_ternaries(text):
     return t if t != text else None
 
 
+def store_reloads(text):
+    """M = A; .. r = M; - a register the model reloads from the place a plain value was just stored in (its
+    store-forwarding, written out before the pointer moves): the value itself, r = A"""
+    lines = text.split("\n")
+    for k in range(len(lines)):
+        m = re.fullmatch(r"([ \t]*)(ax|dx|bx|cx) = (\*\w+|\w+->f\d+);", lines[k])
+        if not m:
+            continue
+        place = m.group(3)
+        base = re.match(r"\*?(\w+)", place).group(1)
+        for j in range(k - 1, max(k - 6, -1), -1):          # (the store just before, nothing between it and
+            s = re.fullmatch(r"[ \t]*(.+?) = ([A-Za-z_]\w*|-?\d+);", lines[j])   #  here giving its value or
+            if not s:                                                         #  base another)
+                break
+            if s.group(1) == place:
+                if s.group(2) != base and not any(re.match(r"[ \t]*(?:%s|%s) = " % (re.escape(s.group(2)), base), lines[q]) for q in range(j + 1, k)):
+                    lines[k] = "%s%s = %s;" % (m.group(1), m.group(2), s.group(2))
+                break
+    return "\n".join(lines)
+
+
 def fn_pointers(text):
     """(*x)(..) - x called through: a pointer to a function, int (*x)(); (a parameter's or a local's int)"""
     for x in sorted(set(re.findall(r"\(\*([A-Za-z_]\w*)\)\s*\(", text))):
@@ -2398,7 +2419,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         BYTEG.clear()
         BYTEG.update(n for k, n in widths if k == "g")
         FILEPTR.clear()
-        t = zero_extends(high_zero(copy_props(table_macros(prj, case_falls(char_stores(char_params(long_pairs(long_returns(t))))), prj.toolchain().p.get("table_macros")))))
+        t = zero_extends(high_zero(copy_props(table_macros(prj, case_falls(char_stores(char_params(long_pairs(long_returns(store_reloads(t)))))), prj.toolchain().p.get("table_macros")))))
         t = re.sub(r"&(\w+)\[(-?)(\d+)\]", lambda m: "(%s %s %s)" % (m.group(1), "-" if m.group(2) else "+", m.group(3)), t)
         t = re.sub(r"&(\w+)->f(\d+)\b", r"(\1 + \2)", t)  # (lea: &p[N], &p->fN - the place, p + N)
         t = fold_registers(stored_calls(store_loops(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(push_returns(conditional_values(logical_values(step_tests(range_switches(loop_gotos(empty_loops(t)))))))))))))))
@@ -2410,7 +2431,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         for r_, i_ in (regparam or {}).items():             #  that register its own)
             if isinstance(i_, int) and 0 <= i_ < 26:
                 wd |= {(chr(97 + i_), o) for (q, o) in widths if q in (r_, r_ + "*") and (r_ + "w", o) not in widths}
-        t = structs(pointer_flow(local_pointers(register_variables(shapes(t), regs, regparam))), wd)
+        t = structs(pointer_flow(local_pointers(register_variables(shapes(long_pairs(t)), regs, regparam))), wd)
         t = re.sub(r"(?m)^[ \t]*(\w+) = \1;\n", "", t)         # (a register variable given itself: nothing)
         t = long_ladders(long_pairs(t))                     # (the longs again, as the passes left them)
         t = frame_chars(fn_pointers(t), widths)
@@ -2593,6 +2614,9 @@ def long_pairs(text):
             LONGINFO.setdefault("fields", set()).add(int(n))
             return "%s%s->f%s = %s;" % (ind, p, n, x)
         return m.group(0)
+    body = re.sub(r"(?m)^([ \t]*)\*(\w+) = (\w+);\n(\s*)\2->f2 = (\w+);$",           # (*p the first word: p->f0)
+                  lambda m: "%s%s->f0 = %s;\n%s%s->f2 = %s;" % (m.group(1), m.group(2), m.group(3), m.group(4), m.group(2), m.group(5))
+                  if hi_of(m.group(3)) == m.group(5) else m.group(0), body)
     body = re.sub(r"(?m)^([ \t]*)(\w+)->f(\d+) = (\w+);\n\s*(\w+)->f(\d+) = (\w+);$", pair_store, body)
 
     def call_store(m):                                      # (a routine's long value, dx:ax, kept in a pair:
