@@ -173,6 +173,18 @@ def _ternary(c, a, b):
     return "%s ? %s : %s" % (_truth(c), a, b)
 
 
+def step_tests(text):
+    """a register stepped to test it - inc al; jne - read back as the compare it is: R = (X + K); if ((R..) == 0)
+    -> if ((X == -K)) (a byte's: & 0xff)"""
+    rx = re.compile(r"(?m)^([ \t]*)([abcd][lx]) = \((.+) ([+-]) (\d+)\);\n([ \t]*(?:if|while) \(\()\(?\2(?: & 0xff)?\)? (==|!=) 0\)\)(.*)$")
+
+    def one(m):
+        ind, r, x, op, k, head, rel, tail = m.groups()
+        v = -int(k) if op == "+" else int(k)
+        return "%s%s%s %s %d))%s" % (head, "" if True else "", x, rel, v, tail)
+    return rx.sub(one, text)
+
+
 def conditional_values(text):
     """a register given one value or another by a test, then read once by the next statement - C's ?: read back:
         if (C) { r = A; } else { r = B; } X = ..r..;   ->   X = ..(C ? A : B)..;
@@ -668,6 +680,19 @@ def stored_calls(text):
                 out.append("%s%s = %s;" % (st.group(1), st.group(2), call))
                 k += 2
                 continue
+            if st and not re.search(r"\b%s\b" % rd, st.group(2)) and re.fullmatch(r"\w+", st.group(2)):
+                lv = st.group(2)                            # (read again after: the variable it was stored in -
+                j = k + 2                                   #  until it is given another value, a call, a label)
+                fixed = list(lines)
+                while j < len(fixed) and not re.match(r"\s*(?:%s|%s) = |\s*L_\w+:" % (reg, rd), fixed[j]) and \
+                        not re.search(r"\w\(", fixed[j]) and not re.search(r"\b%s\s*=[^=]" % lv, fixed[j]):
+                    fixed[j] = re.sub(r"\b%s\b" % rd, lv, fixed[j])
+                    j += 1
+                if not _live_after(fixed, k + 1, reg, r"\b%s\b" % rd):
+                    lines = fixed
+                    out.append("%s%s = %s;" % (st.group(1), lv, call))
+                    k += 2
+                    continue
             nxt = lines[k + 1]                              # (read once, anywhere in the next statement - which
             if later and len(re.findall(r"\b%s\b" % rd, nxt)) == 1 and not re.search(r"\w\(", nxt) and \
                     not re.match(r"\s*(?:\}|L_\w+:|else\b)", nxt) and not re.search(r"\b%s\s*=[^=]" % rd, nxt):
@@ -919,6 +944,16 @@ def word_arrays(text, lo=0x40):
         ARRAYS[g.group(1)] = "struct s_%s" % g.group(1)
         return "%s%s" % (ind, rest.replace("%s[bx]" % g.group(1), "%s[%s].f0" % (g.group(1), e), 1))
     t = re.sub(r"(?m)^([ \t]*)bx = \((\d+) \* (.+?)\);\n[ \t]*(.*\bg_[0-9a-f]{4}\[bx\].*)$", struct_index, t)
+
+    def struct_product(m):                                  # (the product folded in place: (K * E)->fN)
+        k, e, n = int(m.group(1)), m.group(2), int(m.group(3))
+        if n < 0x100 or k < 2 or k > 0x400:
+            return m.group(0)
+        name = "g_%04x" % n
+        STRUCTARR.setdefault(name, (k, "char" if ("data", n) in BYTEPTR else "int"))
+        ARRAYS[name] = "struct s_%s" % name
+        return "%s[%s].f0" % (name, e)
+    t = re.sub(r"\((\d+) \* ([A-Za-z_][\w\->]*)\)->f(\d+)\b", struct_product, t)
     # (the compiler keeps bx on: later elements through it, until it is given again - and the product itself
     #  read as a pointer to a field, (K * E)->fN, an element at N)
     lines = t.split("\n")
@@ -1955,7 +1990,8 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = zero_extends(copy_props(table_macros(prj, case_falls(char_stores(char_params(long_pairs(long_returns(t))))), prj.toolchain().p.get("table_macros"))))
         t = re.sub(r"&(\w+)\[(-?)(\d+)\]", lambda m: "(%s %s %s)" % (m.group(1), "-" if m.group(2) else "+", m.group(3)), t)
         t = re.sub(r"&(\w+)->f(\d+)\b", r"(\1 + \2)", t)  # (lea: &p[N], &p->fN - the place, p + N)
-        t = fold_registers(stored_calls(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(push_returns(conditional_values(logical_values(range_switches(t)))))))))))
+        t = fold_registers(stored_calls(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(push_returns(conditional_values(logical_values(step_tests(range_switches(t))))))))))))
+        t = fold_registers(push_returns(t))                 # (returns again, as the passes left the arms)
         t = word_arrays(test_first_loops(copy_tests(post_steps(t))))
         t = temporaries(merge_conditions(guard_gotos(self_updates(t))))
         t = structs(pointer_flow(local_pointers(register_variables(shapes(t), regs, regparam))), set(widths))
@@ -2215,8 +2251,9 @@ def long_pairs(text):
     body = re.sub(r"(?m)^([ \t]*)()(\w+) = LO\((.+)\);\n\s*(\w+) = HI\(\4\);$",
                   lambda m: halves(type("M", (), {"groups": lambda s: (m.group(1), "", m.group(4), m.group(3), m.group(5)),
                                                   "group": lambda s, i=0: m.group(0)})()), body)
-    body = re.sub(r"(?m)^([ \t]*)ax = ((?:sub_\w+|[A-Za-z_]\w*)\((?:[^()]|\([^()]*\))*\));\n\s*(\w+) = ax;\n",
-                  lambda m: "%s%s = %s;\n" % (m.group(1), m.group(3), m.group(2)), body)   # (through ax: the same)
+    body = re.sub(r"(?m)^([ \t]*)ax = ((?:sub_\w+|[A-Za-z_]\w*)\((?:[^()]|\([^()]*\))*\));\n\s*(\w+) = ax;\n(?=\s*\w+ = dx;)",
+                  lambda m: "%s%s = %s;\n" % (m.group(1), m.group(3), m.group(2)), body)   # (through ax: the same -
+                                                                                           #  when dx goes with it)
     body = re.sub(r"(?m)^([ \t]*)(\w+) = ((?:sub_\w+|[A-Za-z_]\w*)\((?:[^()]|\([^()]*\))*\));\n\s*(\w+) = dx;(\n.*)?$", call_store, body)
     body = re.sub(r"\b((?!if\b|while\b|for\b|switch\b|return\b)[A-Za-z_]\w*)\(((?:[^()]|\((?:[^()]|\([^()]*\))*\))*)\)", call_args, body)
     params = re.findall(r"(?m)^\w+\(([\w, ]*)\)", head)
@@ -2434,6 +2471,8 @@ def localize(prj, text, at, names):
         if rel >= 0x80000000:
             rel -= 1 << 32
         t = (at + rel) & 0xFFFFF if at + rel >= 0 else at + rel + 0x10000   # (a near call wraps in its 64K: the segment's)
+        if t not in names:                                  # (the 64K it wraps in: where a routine is)
+            t = next((x for x in (t - 0x10000, t + 0x10000) if x in names), t)
         return (names.get(t) or "f%05x" % t) + "("
     longf = {re.sub(r"\bsub_(-?[0-9a-f]+)\(", call, f + "(")[:-1] for f in LONGINFO.get("funcs", ())}   # (routines of a long value)
     text = re.sub(r"\bsub_(-?[0-9a-f]+)\(", call, text)
