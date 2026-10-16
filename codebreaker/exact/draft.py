@@ -737,6 +737,8 @@ def self_updates(text):
             u = re.match(r"\s*%s = %s ([-+*&|^]|<<|>>) (.+);\s*$" % (x, x), lines[k + 1])
             if u and not re.search(r"\b%s\b" % x, e + u.group(2)) and not re.match(r"\s*(?:if|while|return)\b", lines[k]):
                 f = u.group(2)
+                if re.search(r" [-+*/%&|^<>]{1,2} ", e) and not (e.startswith("(") and e.endswith(")") and _balanced(e[1:-1])):
+                    e = "(%s)" % e                          # (E an expression of its own: kept one, whatever op)
                 out.append("%s%s = %s %s %s;" % (ind, x, e, u.group(1), f))
                 k += 2
                 continue
@@ -1734,6 +1736,12 @@ def scaled_index(text):
     return text
 
 
+def unsigned_registers(text):
+    """the text with its int register locals unsigned (a variant: compared, the compiler's jumps say which)"""
+    t = re.sub(r"(?m)^([ \t]*)register int (r_\w+);$", r"\1register unsigned \2;", text)
+    return t if t != text else None
+
+
 def no_default(text):
     """switch (..) { .. default: return X; } - a switch with no default, the return after it (a variant: the
     compiler's default jump goes to the code after the switch either way, laid out after the cases)"""
@@ -2417,6 +2425,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
     address it takes as the buffers they are - and both"""
     base = [text] + [v for v in [void_variant(text)] if v]
     out = []
+    REGSLOTS[0] = bool(prj.toolchain().p.get("frame_order"))
     for t in base + [v for v in (buffers(t) for t in base) if v]:
         STRUCTPTR.clear()
         PTRSIZE.clear()
@@ -2443,7 +2452,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = long_ladders(long_pairs(t))                     # (the longs again, as the passes left them)
         t = frame_chars(fn_pointers(t), widths)
         t = fill_frame(t, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
-        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t)] if v]
+        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t)] if v]
         both = pre_steps(t)
         both = pre_increments(both) if both else None
         if both:
@@ -2886,7 +2895,17 @@ def register_variables(text, regs=("si", "di"), regparam=None):
         pp = re.search(r"\*\(\*%s\)|\*\*%s\b" % (r, r), body) and not re.search(r"\b%s->" % r, body)
         decls.append("    register %s%s;" % ("char **" if pp else "char *" if ptr else "int ", "r_" + r))
         body = re.sub(r"\b%s\b" % r, "r_" + r, body)
+    if REGSLOTS[0]:                                         # (each register local has its slot in the frame: the
+        fl = list(re.finditer(r"(?m)^([ \t]*)char (_p\d+)\[(\d+)\];\n", body))   # model's last filler that much less)
+        nxt = re.match(r"[ \t]*(\S+)", body[fl[-1].end():]) if fl else None
+        if fl and nxt and not re.match(r"(?:register|int|char|long|unsigned|struct|short)\b", nxt.group(1)):
+            m = fl[-1]                                      # (the trailing one, after the last local)
+            n = int(m.group(3)) - 2 * len(decls)
+            body = body[:m.start()] + ("%schar %s[%d];\n" % (m.group(1), m.group(2), n) if n > 0 else "") + body[m.end():]
     return head + "{\n" + "\n".join(decls) + body
+
+
+REGSLOTS = [False]                                          # (the toolchain gives a register local a frame slot)
 
 
 def string_variants(prj, text):
@@ -3481,6 +3500,7 @@ REFINERS = [lambda prj, s: [assign_in_args(s)], lambda prj, s: [return_sources(s
             lambda prj, s: [and_returns(s)], lambda prj, s: [register_temps(s)], lambda prj, s: [void_variant(s)],
             lambda prj, s: pointer_widths(s), _place_variants, lambda prj, s: string_variants(prj, s),
             lambda prj, s: [split_ternaries(s)], lambda prj, s: [default_last(s)], lambda prj, s: [push_tails(s)],
+            lambda prj, s: [unsigned_registers(s)], lambda prj, s: [unmasked(s)], lambda prj, s: [no_default(s)],
             lambda prj, s: [re.sub(r"\b0, 0\)", "0L)", s)]]     # (two zero words pushed: a long 0)
 
 
