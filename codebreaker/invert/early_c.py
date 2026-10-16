@@ -1356,15 +1356,19 @@ class R:
         ins=s.ins
         if i+5>=len(ins) or ins[i].mnemonic!="sub" or not re.fullmatch(r"sp, (0x[0-9a-f]+|\d+)", ins[i].op_str): return 0
         m=ins[i+1]
-        if m.mnemonic!="mov" or not m.op_str.startswith("si, "): return 0
+        if m.mnemonic not in ("mov","lea") or not m.op_str.startswith("si, "): return 0
         if [(x.mnemonic,x.op_str) for x in ins[i+2:i+5]]!=[("mov","di, sp"),("push","ss"),("pop","es")]: return 0
         n=s.num(ins[i].op_str.split(", ")[1]); j=i+5; k=0
         while j<len(ins) and ins[j].mnemonic in ("movsw","movsb"):
             k+=2 if ins[j].mnemonic=="movsw" else 1; j+=1
         if k!=n: return 0
         src=m.op_str[4:]
-        v=s._val(src) if src in ("ax","bx","cx","dx","si","di") else (s.memname(src) or src)
-        v=str(v) if re.fullmatch(r"[\w\->.]+", str(v)) else "(%s)"%v
+        if m.mnemonic=="lea":                              # (a local's own bytes: the address of it)
+            v=s.memname(src); v="&%s"%v if v and re.fullmatch(r"\w+", v) else None
+            if v is None: return 0
+        else:
+            v=s._val(src) if src in ("ax","bx","cx","dx","si","di") else (s.memname(src) or src)
+            v=str(v) if re.fullmatch(r"[\w\->.]+", str(v)) else "(%s)"%v
         s.args.append("*(double *)%s"%v if n==8 else "*(struct _b%d *)%s"%(n,v))
         return j-i
 

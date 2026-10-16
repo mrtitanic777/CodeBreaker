@@ -676,6 +676,11 @@ def empty_loops(text):
                 continue
             ok = False
             break
+        if not ok and first and len(body) > 2 and re.fullmatch(r"if \(\((%s == 0)\)\) break;|if \(!%s\) break;" % (first[0], first[0]), body[1]):
+            # (for (;;) { x = E; if (!x) break; S } - the value tested first, a body after: while ((x = E)) { S })
+            lines[k:k + 3] = ["%swhile ((%s = %s)) {" % (m.group(1), first[0], first[1])]
+            k += 1
+            continue
         if not ok or not conds or any(not _balanced(c) for c in conds):
             k += 1
             continue
@@ -1852,6 +1857,39 @@ def scaled_index(text):
     return text
 
 
+def shared_tails(text):
+    """if (A) { X; if (B) { T } } else { T } at the function's end - the compiler's one copy of T both ways
+    reach: if (A) { X; if (!B) return; } T (a variant)"""
+    lines = text.split("\n")
+    for k in range(len(lines)):
+        p = _if_parts(lines, k)
+        if not p or p[2] is None or not p[1]:
+            continue
+        ind = re.match(r"\s*", lines[k]).group(0)
+        rest = [x for x in lines[p[3]:] if x.strip()]
+        if not rest or not (rest[0] == "}" or re.fullmatch(r"[ \t]*return( \w+)?;", rest[0]) and len(rest) > 1 and rest[1] == "}"):
+            continue
+        then = p[1]
+        q = next((j for j in range(len(then)) if then[j].startswith(ind + "    if (") and then[j].endswith("{") and
+                  len(then[j]) - len(then[j].lstrip()) == len(ind) + 4), None)
+        while q is not None:                                # (the last if of the then-arm, nothing after it)
+            pi = _if_parts(then, q)
+            if pi and pi[2] is None and pi[3] == len(then):
+                break
+            q = next((j for j in range(q + 1, len(then)) if then[j].startswith(ind + "    if (") and then[j].endswith("{") and
+                      len(then[j]) - len(then[j].lstrip()) == len(ind) + 4), None)
+        if q is None:
+            continue
+        inner = [x[4:] for x in pi[1]]
+        if [x.rstrip() for x in inner if x.strip()] != [x.rstrip() for x in p[2] if x.strip()]:
+            continue
+        neg = _not("(%s)" % pi[0])
+        new = [lines[k]] + then[:q] + [ind + "    if (%s) return;" % (neg if neg.startswith("(") else "(%s)" % neg), ind + "}"] + \
+            [x[4:] for x in p[2]]
+        return "\n".join(lines[:k] + new + lines[p[3]:])
+    return None
+
+
 def scaled_places(text):
     """(i << 1) + K, K a place in the data: the address of a word there, &g_K[i] (a variant)"""
     def one(m):
@@ -2361,8 +2399,8 @@ def fold_registers(text):
             names = re.findall(r"[A-Za-z_]\w*", expr)
             if pure and reg not in ("si", "di") and len(re.findall(r"\b%s\b" % reg, nxt)) == 1 and \
                (re.fullmatch(r"\s*[A-Za-z_]\w* = %s;\s*" % reg, nxt) or _plain_store(nxt, reg) or not any(re.search(r"\b%s\s*(=[^=]|\+\+|--)|(\+\+|--)\s*%s\b" % (n, n), nxt) for n in names)) and \
-               not re.search(r"\b%s\b" % reg, re.split(r"\n\s*%s = " % reg, later)[0]) and not re.search(
-                   r"\b%s\s*(=[^=]|\+\+|--)|(\+\+|--)\s*%s\b" % (re.escape(expr), re.escape(expr)), nxt):
+               not re.search(r"\b%s\b" % reg, re.split(r"\n\s*%s = " % reg, later)[0]) and (_plain_store(nxt, reg) or not re.search(
+                   r"\b%s\s*(=[^=]|\+\+|--)|(\+\+|--)\s*%s\b" % (re.escape(expr), re.escape(expr)), nxt)):
                 j = lines.index(nxt, k + 1)                 # (a plain value read once, at once: in its place)
                 bk = re.fullmatch(r"(\s*)%s = (\(%s [-+&|^] [^;]+\));\s*" % (re.escape(expr), reg), nxt)
                 if bk and reg in ("al", "bl", "cl", "dl"):  # (a byte read, changed in a register, put back: the
@@ -2648,7 +2686,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = long_ladders(long_pairs(t))                     # (the longs again, as the passes left them)
         t = frame_chars(fn_pointers(t), widths)
         t = fill_frame(t, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
-        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t), register_copies(t), lead_filler(t), scaled_places(t)] if v]
+        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t), register_copies(t), lead_filler(t), scaled_places(t), shared_tails(t)] if v]
         both = pre_steps(t)
         both = pre_increments(both) if both else None
         if both:
@@ -3782,7 +3820,7 @@ REFINERS = [lambda prj, s: [assign_in_args(s)], lambda prj, s: [return_sources(s
             lambda prj, s: [split_ternaries(s)], lambda prj, s: [default_last(s)], lambda prj, s: [push_tails(s)],
             lambda prj, s: [unsigned_registers(s)], lambda prj, s: [unmasked(s)], lambda prj, s: [no_default(s)],
             lambda prj, s: [empty_cases_first(s)], lambda prj, s: [register_slots(s)], lambda prj, s: [register_copies(s)],
-            lambda prj, s: [lead_filler(s)], lambda prj, s: [scaled_places(s)],
+            lambda prj, s: [lead_filler(s)], lambda prj, s: [scaled_places(s)], lambda prj, s: [shared_tails(s)],
             lambda prj, s: [re.sub(r"\b0, 0\)", "0L)", s)]]     # (two zero words pushed: a long 0)
 
 
