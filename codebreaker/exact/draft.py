@@ -362,17 +362,19 @@ def stored_calls(text):
         m = re.match(r"(\s*)%s = (.*\w\(.*\).*);\s*$" % WREG, lines[k])      # (a value with a call in it)
         if m and k + 1 < len(lines):
             ind, reg, call = m.groups()
-            st = re.match(r"(\s*)(.+?) = %s;\s*$" % reg, lines[k + 1])
-            rest = "\n".join(lines[k + 2:])
-            later = not re.search(r"\b%s\b" % reg, re.split(r"\n\s*%s = " % reg, rest)[0])
-            if st and not re.search(r"\b%s\b" % reg, st.group(2)) and later:
+            rd = "(?:%s|%sl)" % (reg, reg[0]) if reg in ("ax", "bx", "cx", "dx") else reg   # (or its low byte: a char)
+            st = re.match(r"(\s*)(.+?) = %s;\s*$" % rd, lines[k + 1])
+            rest = "\n" + "\n".join(lines[k + 2:])          # (from a line's start: the next value given it)
+            later = not re.search(r"\b%s\b" % rd, re.split(r"\n\s*%s = (?![^;\n]*\b%s\b)" % (reg, rd), rest)[0])
+            # (read before it is given a value that does not read it: still wanted)
+            if st and not re.search(r"\b%s\b" % rd, st.group(2)) and later:
                 out.append("%s%s = %s;" % (st.group(1), st.group(2), call))
                 k += 2
                 continue
             nxt = lines[k + 1]                              # (read once, anywhere in the next statement - which
-            if later and len(re.findall(r"\b%s\b" % reg, nxt)) == 1 and not re.search(r"\w\(", nxt) and \
-                    not re.match(r"\s*(?:\}|L_\w+:|else\b)", nxt) and not re.search(r"\b%s\s*=[^=]" % reg, nxt):
-                out.append(re.sub(r"\b%s\b" % reg, lambda x: call, nxt, count=1))   # makes no call of its own:
+            if later and len(re.findall(r"\b%s\b" % rd, nxt)) == 1 and not re.search(r"\w\(", nxt) and \
+                    not re.match(r"\s*(?:\}|L_\w+:|else\b)", nxt) and not re.search(r"\b%s\s*=[^=]" % rd, nxt):
+                out.append(re.sub(r"\b%s\b" % rd, lambda x: call, nxt, count=1))   # makes no call of its own:
                 k += 2                                                               #  the order stays)
                 continue
         out.append(lines[k])
@@ -865,6 +867,71 @@ def char_params(text):
     return "\n".join(lines) + sep + body
 
 
+def inner_registers(text):
+    """a register variable first given a value after other statements: declared in a block from there (to
+    before the function's last return) - a variant: before the block the compiler has the register free for
+    its own use"""
+    head, sep, body = split_body(text)
+    if not sep:
+        return None
+    lines = body.split("\n")
+    decls = [(j, m) for j, l in enumerate(lines) for m in [re.match(r"    register ([\w ]+?\**) ?(\w+);$", l)] if m]
+    for j, m in decls:
+        x = m.group(2)
+        first = next((k for k, l in enumerate(lines) if k > j and re.search(r"\b%s\b" % x, l)), None)
+        if first is None or not re.match(r"    %s = " % x, lines[first]):
+            continue
+        stmts = [k for k in range(j + 1, first) if lines[k].strip() and not re.match(r"\s*(?:register |int |char |unsigned |long |struct )", lines[k])]
+        if not stmts:
+            continue
+        end = max((k for k, l in enumerate(lines) if re.match(r"    return\b", l)), default=None)
+        if end is None or end <= first:
+            continue
+        new = lines[:j] + lines[j + 1:first] + ["    {", "        register %s%s;" % (m.group(1) + " " if not m.group(1).endswith("*") else m.group(1), x)] + \
+            ["    " + l if l.strip() else l for l in lines[first:end]] + ["    }"] + lines[end:]
+        return head + sep + "\n".join(new)
+    return None
+
+
+def char_stores(text):
+    """a byte register stored into a local (vN = al) is a char local; a test of the register at once is a test of
+    the store - if ((vN = al) != K): the compiler compares what it has - and the register read later, before it is
+    given another value, is the local's value. A constant 128..255 it is compared with: (char)0xNN, a byte's"""
+    lines = text.split("\n")
+    chars = set()
+    k = 0
+    while k < len(lines):
+        m = re.match(r"(\s*)(v\d+) = ([abcd]l);\s*$", lines[k])
+        if not m:
+            k += 1
+            continue
+        v, r = m.group(2), m.group(3)
+        w = r[0] + "x"
+        nx = next((j for j in range(k + 1, len(lines)) if lines[j].strip()), None)
+        if nx is None:
+            break
+        if re.match(r"\s*(?:if|while) \(.*\b%s\b" % r, lines[nx]):
+            lines[nx] = re.sub(r"\b%s\b" % r, "(%s = %s)" % (v, r), lines[nx], count=1)
+            del lines[k]
+            nx -= 1
+        else:
+            k += 1
+            nx = k
+        chars.add(v)
+        for j in range(nx + 1, len(lines)):                 # (read again before it changes: the local)
+            if re.match(r"\s*L_\w+:", lines[j]) or re.search(r"\b(?:%s|%s) = |\w\(" % (r, w), lines[j]):
+                break
+            lines[j] = re.sub(r"\b%s\b" % r, v, lines[j])
+    if not chars:
+        return text
+    text = "\n".join(lines)
+    for v in chars:
+        text = re.sub(r"(?m)^(\s*)int %s;" % v, r"\1char %s;" % v, text)
+        text = re.sub(r"(\(%s = [abcd]l\)|\b%s) ([!=]=|[<>]=?) (1(?:2[89]|[3-9]\d)|2[0-4]\d|25[0-5])\b" % (v, v),
+                      lambda m: "%s %s (char)0x%02x" % (m.group(1), m.group(2), int(m.group(3))), text)
+    return text
+
+
 def store_increments(text):
     """*p = X; p = p + 1; (X not reading p) - the store and the step as one: *p++ = X (a variant: the compiler
     makes other code of the two)"""
@@ -1047,15 +1114,15 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         BYTEG.clear()
         BYTEG.update(n for k, n in widths if k == "g")
         FILEPTR.clear()
-        t = zero_extends(copy_props(table_macros(prj, char_params(t), prj.toolchain().p.get("table_macros"))))
+        t = zero_extends(copy_props(table_macros(prj, char_stores(char_params(t)), prj.toolchain().p.get("table_macros"))))
         t = re.sub(r"&(\w+)\[(-?)(\d+)\]", lambda m: "(%s %s %s)" % (m.group(1), "-" if m.group(2) else "+", m.group(3)), t)
         t = re.sub(r"&(\w+)->f(\d+)\b", r"(\1 + \2)", t)  # (lea: &p[N], &p->fN - the place, p + N)
         t = fold_registers(stored_calls(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(logical_values(t))))))))
         t = word_arrays(test_first_loops(post_steps(t)))
         t = self_updates(t)
-        t = structs(pointer_flow(register_variables(shapes(t), regs, regparam)), set(widths))
+        t = structs(pointer_flow(local_pointers(register_variables(shapes(t), regs, regparam))), set(widths))
         t = fill_frame(t, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
-        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t)] if v]
+        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t)] if v]
         both = pre_steps(t)
         both = pre_increments(both) if both else None
         if both:
@@ -1121,6 +1188,18 @@ def buffers(text):
         text = re.sub(r"(?m)^(\s*)int v%d;" % n, r"\1char v%d[%d];" % (n, size), text)
         text = re.sub(r"&v%d\b" % n, "v%d" % n, text)
         text = re.sub(r"(?m)^(\s*)v%d = " % n, r"\1*(int *)v%d = " % n, text)
+    return text
+
+
+def local_pointers(text):
+    """a register given the place of a local (`r = bp - N`, the model's lea of [bp-N]): a char pointer into it,
+    `r = (char *)&vN;`, its fields the bytes it reaches (`r->fK` is r[K])"""
+    for reg, n in re.findall(r"(?m)^\s*(\w+) = bp - (\d+);", text):
+        if not re.search(r"(?m)^\s*int v%s;" % n, text):
+            continue
+        text = re.sub(r"(?m)^(\s*)%s = bp - %s;" % (reg, n), r"\1%s = (char *)&v%s;" % (reg, n), text)
+        text = re.sub(r"\b%s->f(\d+)\b" % reg, r"%s[\1]" % reg, text)
+        text = re.sub(r"(?m)^(\s*)(register )?int %s;" % reg, r"\1\2char *%s;" % reg, text)
     return text
 
 

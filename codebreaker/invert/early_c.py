@@ -666,6 +666,8 @@ class R:
             return
         if mn in ("cbw","cwde") and MARK:                      # ax = (int)(char)ax
             s.ax="SX(%s)"%(s.ax if s.ax is not None else "ax"); s.axsrc=None; s.retlive=True; return
+        if mn in ("cbw","cwde") and s.msc3:                    # (3.00: al of a join - a char - widened: its value)
+            s.ax="al"; s.axsrc=None; s.retlive=True; return
         if mn=="mov" and ops.startswith("ax, "):
             src=ops[4:]
             if src=="dx" and s.div: s.ax="(%s %% %s)"%s.div; s.axsrc=None
