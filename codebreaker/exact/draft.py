@@ -2361,13 +2361,25 @@ def structs(text, widths):
             text = "\n".join(l if decl.match(l) else whole.sub("%s->f0" % p, l) for l in lines)
             uses[p].add(0)
     for p, offs in list(uses.items()):                      # (a byte read inside a word read: no struct - the
-        byte = lambda o: (p, o) in widths or ("*", o) in widths     # words through an int *, the bytes through
+        byte = lambda o: (p, o) in widths or ("*", o) in widths or \
+            p.startswith("r_") and (p[2:] + "*", o) in widths and (p[2:] + "w", o) not in widths   # (a register variable's
+                                                                    #  bytes: its register's) words through an int *, the bytes through
         words = {o for o in offs if not byte(o)}                     # a char * of it)
         if any(o % 2 and o - 1 in words for o in offs if byte(o)) and all(o % 2 == 0 for o in words):
             t2 = re.sub(r"\b%s->f(\d+)\b" % p, lambda m: "((char *)%s)[%s]" % (p, m.group(1)) if byte(int(m.group(1))) and
                         int(m.group(1)) % 2 else ("*%s" % p if m.group(1) == "0" else "%s[%d]" % (p, int(m.group(1)) // 2)), text)
             t3 = re.sub(r"(?m)^([ \t]*)(register )?char \*%s;$" % p, r"\1\2int *%s;" % p, t2)
             t2 = t3 if t3 != t2 else _declare_pointer(t2, p, "int")
+            if t2:
+                text = t2
+                del uses[p]
+                continue
+        steps = set(re.findall(r"\b%s = %s [+-] (\d+);" % (p, p), text))   # (stepped by one, bytes alone read through
+        if steps == {"1"} and all(byte(o) for o in offs) and max(offs) < 0x10 and \
+                not re.search(r"\b%s->f\d+->" % p, text):                 #  it: a char *, its bytes p[N])
+            t2 = re.sub(r"\b%s->f(\d+)\b" % p, lambda m: "*%s" % p if m.group(1) == "0" else "%s[%s]" % (p, m.group(1)), text)
+            if not re.search(r"(?m)^[ \t]*(?:register\s+)?char \*%s;$" % p, t2):
+                t2 = _declare_pointer(t2, p, "char")
             if t2:
                 text = t2
                 del uses[p]

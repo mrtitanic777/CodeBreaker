@@ -346,8 +346,10 @@ class R:
                 setattr(s,d,val)
         elif re.match(r"(0x[0-9a-f]+|\d+)$",src):            # constant (often a data address)
             setattr(s,d,str(s.num(src)))
-        elif s.msc3 and re.search(r"\[(?:si|di)(?: [+-] (?:0x[0-9a-f]+|\d+))?\]", src) and src.split("[")[1][:2] != d \
-                and s.memname(src) is not None and s.out is not None:
+        elif s.msc3 and (re.search(r"\[(?:si|di)(?: [+-] (?:0x[0-9a-f]+|\d+))?\]", src) and src.split("[")[1][:2] != d or
+                         re.fullmatch(r"word ptr \[bp [+-] (?:0x[0-9a-f]+|\d+)\]", src) and s._var_later(d)) \
+                and s.memname(src) is not None and s.out is not None:   # (a frame word too: a copy of it, the
+                                                                        #  register a variable - changed, or a value)
             s.emit(s.out,"%s = %s;"%(d,s.memname(src))); setattr(s,d,d)   # (3.00: a register variable given a
         else:                                                              #  value from memory - a statement)
             setattr(s,d,s.memname(src))
@@ -1346,6 +1348,18 @@ class R:
         v=str(v) if re.fullmatch(r"[\w\->.]+", str(v)) else "(%s)"%v
         s.args.append("*(double *)%s"%v if n==8 else "*(struct _b%d *)%s"%(n,v))
         return j-i
+
+    def _var_later(s,d):
+        """is register d, after instruction s.i, changed (inc/dec/add/sub/shift) or read as a value of its own
+        (compared, copied, pushed) - a variable, not only a pointer the code goes through"""
+        for x in s.ins[s.i+1:]:
+            o=x.op_str.split(", ")
+            if x.mnemonic in ("inc","dec","neg","not") and x.op_str==d: return True
+            if x.mnemonic in ("add","sub","shl","shr","sar","and","or","xor","adc","sbb") and o[0]==d: return True
+            if x.mnemonic in ("cmp","test") and d in o: return True
+            if x.mnemonic=="mov" and len(o)==2 and o[1]==d and o[0]!="bx": return True   # (into bx: an address again)
+            if x.mnemonic=="push" and x.op_str==d and x is not s.ins[-1]: return True
+        return False
 
     def _scratch_index(s,i):
         """3.00's index of words in a free index register: mov di,R; shl di,1; .. [bx + di] - and di read no
