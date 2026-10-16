@@ -161,7 +161,8 @@ def _link(tool, env, folder, lines):
 
 def _result_in_ax(code, start, end):
     """Where a function's instructions put a value in AX that it returns with: walking back
-    from each return through its straight run of instructions, the first one writing AX --
+    from each return through its straight run of instructions, the first one writing AX (or a
+    call: what the callee left there goes back to the caller as it came) --
     one past the prologue's (`mov ax, ds` / `push ds; pop ax` / `mov ax, DGROUP` ahead of
     `mov ds, ax`), and not a `pop ax` (its own AX given back). -> offset, or None."""
     import capstone
@@ -179,7 +180,9 @@ def _result_in_ax(code, start, end):
             continue
         for j in range(k - 1, -1, -1):
             p = ins[j]
-            if p.address < prologue or p.mnemonic in ("jmp", "ret", "retf") or p.group(capstone.CS_GRP_CALL):
+            if p.group(capstone.CS_GRP_CALL) and p.address >= prologue:
+                return p.address                            # the callee's result, passed on as it came
+            if p.address < prologue or p.mnemonic in ("jmp", "ret", "retf"):
                 break
             _r, written = p.regs_access()
             if ax & set(written):
