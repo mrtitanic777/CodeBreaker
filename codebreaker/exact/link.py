@@ -426,6 +426,9 @@ def fit(prj, rounds=8):
 
 
 def main(prj, argv):
+    from codebreaker.exact import linkwhole
+    if linkwhole.wanted(prj):                               # (a program of whole source files: exact/linkwhole.py)
+        return linkwhole.main(prj, argv)
     keep = argv[argv.index("--keep") + 1] if "--keep" in argv else None
     v = "-v" in argv
     if "--fit" in argv:
