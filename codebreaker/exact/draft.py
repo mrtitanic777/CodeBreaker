@@ -953,6 +953,119 @@ def for_loops(text):
     return "\n".join(lines) if changed else None
 
 
+def _else_ifs(lines):
+    """`} else if (C) {` chains written out as nested ifs, each inside the else before it"""
+    k = 0
+    while k < len(lines):
+        m = re.match(r"(\s*)\} else if \((.*)\) \{$", lines[k])
+        if not m:
+            k += 1
+            continue
+        ind = m.group(1)
+        e = k + 1                                           # (the chain's end: the `}` at the if's indent that
+        while e < len(lines) and not (lines[e] == ind + "}"):   #  closes the whole chain)
+            e += 1
+        if e >= len(lines):
+            return lines
+        inner = [ind + "    if (%s) {" % m.group(2)] + ["    " + l if l.strip() else l for l in lines[k + 1:e]] + [ind + "    }"]
+        lines[k:e + 1] = [ind + "} else {"] + inner + [ind + "}"]
+        k += 1
+    return lines
+
+
+def _if_parts(lines, k):
+    """(cond, then, else, end) of the if at line k - `if (C) {`, its arms' lines, the line after it - or None"""
+    m = re.match(r"(\s*)if \((.*)\) \{$", lines[k])
+    if not m:
+        return None
+    ind = m.group(1)
+    j = k + 1
+    while j < len(lines) and not lines[j].startswith(ind + "}"):
+        if lines[j].strip() and not lines[j].startswith(ind + " "):
+            return None
+        j += 1
+    if j >= len(lines):
+        return None
+    then = lines[k + 1:j]
+    if lines[j] == ind + "}":
+        return m.group(2), then, None, j + 1
+    if lines[j] != ind + "} else {":
+        return None
+    e = j + 1
+    while e < len(lines) and not lines[e].startswith(ind + "}"):
+        if lines[e].strip() and not lines[e].startswith(ind + " "):
+            return None
+        e += 1
+    if e >= len(lines) or lines[e] != ind + "}":
+        return None
+    return m.group(2), then, lines[j + 1:e], e + 1
+
+
+def merge_conditions(text):
+    """ifs nested as the compiler's || and && leave them, joined again:
+        if (A) { if (B) { P } else { Q } } else { Q }   ->  if (A && B) { P } else { Q }
+        if (A) { if (B) { P } else { Q } } else { P }   ->  if (!A || B) { P } else { Q }
+        if (A) { if (B) { P } }                         ->  if (A && B) { P }
+    (the arms the model wrote twice, where both ways go)"""
+    lines = _else_ifs(text.split("\n"))
+    changed = True
+    while changed:
+        changed = False
+        for k in range(len(lines)):
+            p = _if_parts(lines, k)
+            if not p:
+                continue
+            c1, then, els, end = p
+            ind = re.match(r"\s*", lines[k]).group(0)
+            body = [l for l in then if l.strip()]
+            if not body:
+                continue
+            q = _if_parts(then, next(j for j, l in enumerate(then) if l.strip()))
+            if not q or q[3] != len(then) and any(l.strip() for l in then[q[3]:]):
+                continue
+            c2, p2, q2, _ = q
+            dd = lambda ls: [l[4:] if l.startswith("    ") else l for l in ls]
+            new = None
+            if els is None and q2 is None:
+                new = ["%sif (%s && %s) {" % (ind, _truth("(" + c1 + ")"), _truth("(" + c2 + ")"))] + dd(p2) + [ind + "}"]
+            elif els is not None and q2 is not None and dd(q2) == els:
+                new = ["%sif (%s && %s) {" % (ind, _truth("(" + c1 + ")"), _truth("(" + c2 + ")"))] + dd(p2) + [ind + "} else {"] + els + [ind + "}"]
+            elif els is not None and q2 is not None and dd(p2) == els:
+                new = ["%sif (%s || %s) {" % (ind, _truth(_not("(" + c1 + ")")), _truth("(" + c2 + ")"))] + els + [ind + "} else {"] + dd(q2) + [ind + "}"]
+            if new:
+                lines[k:end] = new
+                changed = True
+                break
+    return "\n".join(lines)
+
+
+def register_temps(text):
+    """a register variable given a call's value and read once, by the next statement, and never again: the
+    compiler's own keeping of a value it computed first (strlen(b) of strlen(a) + strlen(b)) - the call in its
+    place, the variable gone (a variant)"""
+    head, sep, body = split_body(text)
+    if not sep:
+        return None
+    lines = body.split("\n")
+    changed = False
+    for k, l in enumerate(lines):
+        m = re.match(r"(\s*)(\w+) = (\w+\((?:[^()]|\([^()]*\))*\));$", l)
+        if not m or not re.search(r"(?m)^\s*register [\w ]+\**\s*%s;$" % m.group(2), body):
+            continue
+        x = m.group(2)
+        rest = [j for j in range(len(lines)) if j != k and re.search(r"\b%s\b" % x, lines[j]) and not re.match(r"\s*register\b", lines[j])]
+        if len(rest) != 1 or rest[0] != k + 1 or len(re.findall(r"\b%s\b" % x, lines[k + 1])) != 1:
+            continue
+        lines[k + 1] = re.sub(r"\b%s\b" % x, lambda _: m.group(3), lines[k + 1])
+        lines[k] = None
+        lines = [y for y in lines if y is None or not re.match(r"\s*register [\w ]+\**\s*%s;$" % x, y)]
+        changed = True
+        break
+    if not changed:
+        return None
+    return head + sep + "\n".join(l for l in lines if l is not None)
+
+
 def case_falls(text):
     """a case that goes on into the next (`goto L;` to the label the next case starts with): it falls into it -
     an arm's last `goto L;` is dropped, and `if (C) { X } else { goto L; } break;` is `if (C) { X break; }`"""
@@ -1244,10 +1357,10 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = re.sub(r"&(\w+)->f(\d+)\b", r"(\1 + \2)", t)  # (lea: &p[N], &p->fN - the place, p + N)
         t = fold_registers(stored_calls(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(conditional_values(logical_values(t)))))))))
         t = word_arrays(test_first_loops(post_steps(t)))
-        t = self_updates(t)
+        t = merge_conditions(self_updates(t))
         t = structs(pointer_flow(local_pointers(register_variables(shapes(t), regs, regparam))), set(widths))
         t = fill_frame(t, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
-        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t)] if v]
+        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t)] if v]
         both = pre_steps(t)
         both = pre_increments(both) if both else None
         if both:
