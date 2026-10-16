@@ -962,11 +962,18 @@ def _build16(b, path, m, folder):
         forced |= {n for n in m.order if n in stems and n not in kept}
     fresh = set()                                            # (the folders beside whose header is written)
 
+    with open(path, "rb") as fh:
+        _last, _pages = struct.unpack_from("<HH", fh.read(6), 2)
+    loads_itself = _pages * 512 >= os.path.getsize(path) - 511
+
     def elsewhere(name):
         """A far function rebuilt from C, compiled into a code segment of its own beside its
-        segment (CODE<n>X) -- for one that does not fit back into its place. -> stem or None."""
+        segment (CODE<n>X) -- for one that does not fit back into its place. -> stem or None.
+        Not in a module that loads itself (KRNL386: DOS loads the whole file and its own start
+        sets up its segments and entries -- only the ones the original has; an export moved to
+        a segment of ours is a "Call to Undefined Dynalink")."""
         seg = segment_of.get(name)
-        if seg is None or name in m.near:
+        if seg is None or name in m.near or loads_itself:
             return None
         if any(c in m.near for c in re.findall(r"\b(\w+)\s*\(", texts[name].split("{", 1)[-1])):
             return None                                     # it calls near ones, which only its own segment reaches

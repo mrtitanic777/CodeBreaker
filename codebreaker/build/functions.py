@@ -27,7 +27,7 @@ from concurrent.futures import ThreadPoolExecutor
 from codebreaker.build import watcom as period_tools
 
 # -ecd: a function declared without a convention is __stdcall, the decompiler's default
-CFLAGS16 = ["-bt=windows", "-ms", "-ecd", "-zu", "-zc", "-zl", "-zq", "-w0", "-s", "-3", "-zastd=c99", "-e=20"]
+CFLAGS16 = ["-bt=windows", "-ms", "-ecd", "-zu", "-zc", "-zl", "-zq", "-w0", "-s", "-3", "-zfp", "-zgp", "-zastd=c99", "-e=20"]
 _ERR = re.compile(r"\((\d+)\): Error! (E\d+: [^\r\n]*)")
 _SYM = re.compile(r"(?m)^([0-9A-Fa-f]{4}):([0-9A-Fa-f]{4,8})[+*]?\s+(\S+)\s*$")
 
