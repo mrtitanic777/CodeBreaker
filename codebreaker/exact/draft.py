@@ -88,6 +88,11 @@ def _truth(c):
 
 def _not(c):
     c = _strip(c)
+    m = re.fullmatch(r"\((.*?) (==|!=|<=|>=|<|>) (.*)\)", c)
+    if m and m.group(2) and "(" not in m.group(3).replace("(", "", 0) and m.group(1).count("(") == m.group(1).count(")"):
+        flip = {"==": "!=", "!=": "==", "<": ">=", ">=": "<", ">": "<=", "<=": ">"}[m.group(2)]
+        if m.group(3) != "0":
+            return "(%s %s %s)" % (m.group(1), flip, m.group(3))
     m = re.fullmatch(r"\((.*) == 0\)", c)
     if m:
         return m.group(1)
@@ -242,6 +247,13 @@ def test_first_loops(text):
             if b:
                 lines[k] = "%swhile (%s) {" % (m.group(1), _not(b.group(1)))
                 lines[k + 1] = None
+                continue
+            s = re.match(r"\s*(\w+) = \1 ([+-]) 1;\s*$", lines[k + 1])     # (a step, then the test: --p in it)
+            b = re.match(r"\s*if \(\((%s)\b(.*)\)\) break;\s*$" % s.group(1), lines[k + 2]) if s and k + 2 < len(lines) and lines[k + 2] else None
+            if b:
+                op = "++" if s.group(2) == "+" else "--"
+                lines[k] = "%swhile (%s) {" % (m.group(1), _not("((%s%s%s))" % (op, b.group(1), b.group(2))))
+                lines[k + 1] = lines[k + 2] = None
     return "\n".join(l for l in lines if l is not None)
 
 
@@ -337,6 +349,32 @@ def frame_names(text, rule):
     for a, b in new.items():
         body = re.sub(r"\b%s\b" % a, b, body)
     return head + "{" + body
+
+
+def pointer_flow(text):
+    """the pointers a function's names are, from those it declares: a name compared with a pointer, given one's
+    value, or giving its value to one is one too (a pointer compares without its sign: the code shows which)"""
+    head, sep, body = split_body(text)
+    if not sep:
+        return text
+    decl = re.compile(r"(?m)^(\s*)(register\s+)?int\s+(\w+);$")
+    ptr = set(re.findall(r"(?m)^\s*(?:register\s+)?char\s*\*\s*(\w+);", text))
+    if not ptr:
+        return text
+    ints = set(m.group(3) for m in decl.finditer(text))
+    changed = True
+    while changed:
+        changed = False
+        for x in list(ints - ptr):
+            for p in ptr:
+                st = r"(?:\+\+|--)?"
+                if re.search(r"\(\(?%s%s (?:==|!=|<|>|<=|>=) %s%s\)|\(\(?%s%s (?:==|!=|<|>|<=|>=) %s%s\)" % (st, x, st, p, st, p, st, x), body) or \
+                        re.search(r"(?m)^\s*%s = %s\b|^\s*%s = %s\b" % (x, p, p, x), body):
+                    ptr.add(x)
+                    changed = True
+                    break
+    new = lambda m: "%s%schar *%s;" % (m.group(1), m.group(2) or "", m.group(3)) if m.group(3) in ptr else m.group(0)
+    return decl.sub(new, head) + sep + decl.sub(new, body)
 
 
 def char_param_variants(text, most=2):
@@ -761,6 +799,7 @@ def structs(text, widths):
     """the pointers the text goes through to fields (`p->fN`, N its offset) declared pointers to a struct of
     those fields: a char where the code reads a byte (widths: {(pointer, offset)} of the byte ones), else an
     int, and a pad between"""
+    text = re.sub(r"&(\w+)->f(\d+)\b", r"(\1 + \2)", text)  # (lea ax,[p+N] - the model's &p->fN - is p + N)
     uses = {}
     for p, off in re.findall(r"\b(\w+)->f(\d+)\b", text):
         uses.setdefault(p, set()).add(int(off))
@@ -814,7 +853,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = fold_registers(stored_calls(post_increments(widen_bytes(compare_values(branch_returns(logical_values(char_params(t))))))))
         t = word_arrays(test_first_loops(post_steps(t)))
         t = self_updates(t)
-        t = structs(register_variables(shapes(t), regs, regparam), set(widths))
+        t = structs(pointer_flow(register_variables(shapes(t), regs, regparam)), set(widths))
         t = fill_frame(t, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
         variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t)] if v]
         both = pre_steps(t)
@@ -1078,6 +1117,16 @@ def _prove(prj, tc, src, a, ln, tries=4):
     return "differs: %d bytes%s" % (len(bad), ", length %d not %d" % (l2, ln) if l2 != ln else "")
 
 
+def _rank(v):
+    """how near a verdict is: one that differs (the right length first, then by fewer bytes), before one that
+    does not compile, before one with registers left"""
+    import re as _re
+    m = _re.match(r"differs: (\d+) bytes(, length)?", v)
+    if m:
+        return (0, 1 if m.group(2) else 0, int(m.group(1)))
+    return (1, 0, 0) if v.startswith("does not") else (2, 0, 0)
+
+
 def prove_texts(prj, tc, inv, texts, a, ln, names):
     """-> (source, verdict): of each of the model's texts [(text, register parameters)] and their variants, the
     first the compiler proves identical; else the best of them (one that differs before one that does not
@@ -1087,7 +1136,7 @@ def prove_texts(prj, tc, inv, texts, a, ln, names):
         src, v = prove_best(prj, tc, inv, text, a, ln, names, regparam)
         if v == "identical":
             return src, v
-        rank = 0 if v.startswith("differs") else 1 if v.startswith("does not") else 2
+        rank = _rank(v)
         if best is None or rank < best[0]:
             best = (rank, src, v)
     return best[1], best[2]
@@ -1115,7 +1164,7 @@ def prove_best(prj, tc, inv, text, a, ln, names, regparam=None):
                         break
         if v == "identical":
             return src, v
-        rank = 0 if v.startswith("differs") else 1 if v.startswith("does not") else 2
+        rank = _rank(v)
         if best is None or rank < best[0]:
             best = (rank, src, v)
     return best[1], best[2]
