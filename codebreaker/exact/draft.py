@@ -734,8 +734,50 @@ def localize(prj, text, at, names):
     return ("\n".join(decl) + "\n\n" if decl else "") + text, left
 
 
-def _prove(prj, tc, src, a, ln):
+ERRLINE = re.compile(r"\((\d+)\) : (?:error \w+: )?(.*)$", re.M)
+
+
+def compile_fix(src, con):
+    """the source with the line the compiler stopped at mended, as the error says, or None:
+        left of `->fN' must have a struct/union type   E->fN  -> *(int *)((char *)(E) + N)
+        illegal indirection                             *X     -> *(char *)X
+        subscript on non-array                          X[I]   -> ((int *)X)[I]
+    (the model's expressions carry no types; a cast gives the compiler the one the code shows)"""
+    errs = [(int(m.group(1)), m.group(2)) for m in ERRLINE.finditer(con) if "warning" not in m.group(2)]
+    if not errs:
+        return None
+    n, msg = errs[0]
+    lines = src.split("\n")
+    if not 0 < n <= len(lines):
+        return None
+    l = lines[n - 1]
+    m = re.search(r"left of .->f(\d+). must have a struct", msg)
+    if m:
+        f = m.group(1)
+        new = re.sub(r"(\((?:[^()]|\([^()]*\))*\)|[A-Za-z_]\w*(?:\[[^\]]*\])?)->f%s\b" % f,
+                     lambda x: "*(int *)((char *)%s + %s)" % (x.group(1), f), l, count=1)
+    elif "illegal indirection" in msg:
+        new = re.sub(r"(?<![\w)\]])\*(?!\()(\s*[A-Za-z_]\w*)", r"*(char *)\1", l, count=1)
+    elif "subscript on non-array" in msg:
+        new = re.sub(r"\b([A-Za-z_]\w*)\[", r"((int *)\1)[", l, count=1)
+    else:
+        return None
+    if new == l:
+        return None
+    lines[n - 1] = new
+    return "\n".join(lines)
+
+
+def _prove(prj, tc, src, a, ln, tries=4):
     raw, con = tc.compile(src.encode("latin1"), headers=prj.headers(), include=prj.include, switches=prj.switches)
+    while raw is None and tries > 0:                        # (mended where the compiler says, and again)
+        fixed = compile_fix(src, con)
+        if fixed is None:
+            break
+        src = fixed
+        tries -= 1
+        raw, con = tc.compile(src.encode("latin1"), headers=prj.headers(), include=prj.include, switches=prj.switches)
+    _prove.src = src
     if raw is None:
         last = [l for l in con.strip().splitlines() if "(the pass" not in l]
         return "does not compile: %s" % (last[-1][:100] if last else "")
@@ -780,10 +822,11 @@ def prove_best(prj, tc, inv, text, a, ln, names, regparam=None):
             v = "registers left: %s" % " ".join(left)
         else:
             v = _prove(prj, tc, src, a, ln)
+            src = _prove.src                                # (as the compiler's errors mended it)
             if v != "identical":
                 for alt in string_variants(prj, src):       # (a number that is a string's place: the string)
                     if _prove(prj, tc, alt, a, ln) == "identical":
-                        src, v = alt, "identical"
+                        src, v = _prove.src, "identical"
                         break
         if v == "identical":
             return src, v
