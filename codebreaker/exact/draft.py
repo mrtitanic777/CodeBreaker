@@ -446,6 +446,77 @@ def pre_increments(text):
 FILEPTR = {}                                                # (a stream a library macro reads: name -> its type)
 
 
+_LIBDATA = {}
+_HEADERS = {}
+
+
+def header_names(prj, header):
+    """the functions and macros a header of the kit declares (stdio.h's fopen, freopen, getc ..): those come from
+    the header, the draft does not declare them again"""
+    key = (prj.toolchain().name, header.lower())
+    if key not in _HEADERS:
+        from codebreaker.exact import toolchain as tcm
+        names = set()
+        try:
+            root = tcm.kit_dir(prj.toolchain().p["kit"])
+            for d, _, fs in os.walk(root):
+                for f in fs:
+                    if f.lower() == header.lower():
+                        t = open(os.path.join(d, f), encoding="latin1").read()
+                        names |= set(re.findall(r"\b([A-Za-z_]\w*)\s*\(\s*\)\s*[;,]", t))
+                        names |= set(re.findall(r"#define\s+([A-Za-z_]\w*)\s*\(", t))
+                        break
+                if names:
+                    break
+        except Exception:
+            pass
+        _HEADERS[key] = names
+    return _HEADERS[key]
+
+
+def data_macros(prj, text, specs):
+    """a library's data a macro names - stdio's streams: stdin, stdout, stderr .. the elements of _iob, fileno(f)
+    a byte of one - read back where the model has their places (g_XXXX, or a number passed: a stream's place)
+    (the profile's "data_macros": [{"base": "__iob", "size": 8, "names": [..], "fields": {"7": "fileno(%s)"},
+    "include": "stdio.h"}]; the base's place from the library stage)"""
+    if not specs:
+        return text
+    if prj.dir not in _LIBDATA:
+        try:
+            from codebreaker.exact import library
+            _LIBDATA[prj.dir] = {n: a for n, (t, a) in library.locate(prj).allrefs.items() if t == "D"}
+        except Exception:
+            _LIBDATA[prj.dir] = {}
+    places = _LIBDATA[prj.dir]
+    for sp in specs:
+        base = places.get(sp["base"])
+        if base is None:
+            continue
+        n, size = len(sp["names"]), sp["size"]
+        hit = [False]
+
+        def field(m):
+            a = int(m.group(1), 16)
+            k, off = divmod(a - base, size)
+            if 0 <= k < n and str(off) in sp.get("fields", {}):
+                hit[0] = True
+                return sp["fields"][str(off)] % sp["names"][k]
+            return m.group(0)
+        text = re.sub(r"\bg_([0-9a-f]{4})\b", field, text)
+
+        def stream(m):                                      # (a number passed that is a stream's place)
+            a = int(m.group(2))
+            k, off = divmod(a - base, size)
+            if 0 <= k < n and off == 0:
+                hit[0] = True
+                return m.group(1) + sp["names"][k]
+            return m.group(0)
+        text = re.sub(r"([(,]\s*)(\d{3,5})(?=\s*[,)])", stream, text)
+        if hit[0] and sp.get("include"):
+            FILEPTR["#include"] = sp["include"]
+    return text
+
+
 def unused_locals(text):
     """the locals declared in the function's body that nothing in it names any more, left out"""
     head, sep, body = text.partition("{")
@@ -495,6 +566,45 @@ def library_macros(text, macros):
             FILEPTR[f] = mac.get("type", "FILE")
             FILEPTR["#include"] = mac.get("include")
     return text
+
+
+def word_constants(text):
+    """a word the model reads as 32768..65535: a decimal constant over 32767 is a long to a 16-bit compiler (the
+    compare or the sum goes to 32 bits) - the int it was, negative (65535 is -1)"""
+    return re.sub(r"(?<![\w.])(3276[89]|327[7-9]\d|32[89]\d\d|3[3-9]\d{3}|[4-5]\d{4}|6[0-4]\d{3}|65[0-4]\d\d|655[0-2]\d|6553[0-5])(?![\w.])",
+                  lambda m: str(int(m.group(1)) - 65536), text)
+
+
+def unsigned_globals(text, most=2):
+    """the text with one of its int globals unsigned (each): a variable compared, the compiler's code says how"""
+    out = []
+    m = re.search(r"(?m)^extern int ([\w, ]+);$", text)
+    if not m:
+        return out
+    names = [x.strip() for x in m.group(1).split(",")]
+    for g in names[:most]:
+        rest = [x for x in names if x != g]
+        new = ("extern int %s;\n" % ", ".join(rest) if rest else "") + "extern unsigned %s;" % g
+        out.append(text[:m.start()] + new + text[m.end():])
+    return out
+
+
+def assign_in_tests(text):
+    """X = E; then a test of X: the assignment in the test - if ((X = E) == K) - a variant: the compiler
+    compares the value it has, not X again"""
+    lines = text.split("\n")
+    changed = False
+    for k in range(len(lines) - 1):
+        m = re.match(r"(\s*)([A-Za-z_]\w*(?:\[[^\]]*\])?) = ([^;]+);\s*$", lines[k] or "")
+        if not m or re.match(r"\s*(?:if|while|return)\b", lines[k]):
+            continue
+        x, e = m.group(2), m.group(3)
+        t = re.match(r"(\s*(?:if|while) \(\(?)(%s)\b(.*)$" % re.escape(x), lines[k + 1] or "")
+        if t and not re.search(r"\b%s\b" % re.escape(x), e):
+            lines[k + 1] = "%s(%s = %s)%s" % (t.group(1), x, e, t.group(3))
+            lines[k] = None
+            changed = True
+    return "\n".join(l for l in lines if l is not None) if changed else None
 
 
 def char_params(text):
@@ -697,7 +807,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = word_arrays(test_first_loops(post_steps(t)))
         t = self_updates(t)
         t = structs(register_variables(shapes(t), regs, regparam), set(widths))
-        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t)] if v]
+        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t)] if v]
         both = pre_steps(t)
         both = pre_increments(both) if both else None
         if both:
@@ -716,7 +826,11 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
             for name, av in address_variants(v, dsize):
                 ARRAYS.setdefault(name, "char")
                 variants.append(av)
-        out += [localize(prj, v, at, names) for v in variants]
+        loc = [localize(prj, word_constants(v), at, names) for v in variants]
+        for src, left in loc[:3]:                           # (a global compared: unsigned, a variant)
+            if not left and re.search(r"[<>=]=?\s*-?\d", src):
+                loc += [(u, left) for u in unsigned_globals(src)]
+        out += loc
     return out
 
 
@@ -833,13 +947,15 @@ def localize(prj, text, at, names):
     text = re.sub(r"\bg_([0-9a-f]{1,4})\b", lambda m: "g_%04x" % int(m.group(1), 16), text)
     macros = prj.toolchain().p.get("macros")
     text = library_macros(text, macros)                     # (the routines named: the macros they show)
+    text = data_macros(prj, text, prj.toolchain().p.get("data_macros"))
     if FILEPTR:                                             # (the stream's fields the struct pass read: the macro's now)
         norm = lambda n: "g_%04x" % int(n[2:], 16) if re.fullmatch(r"g_[0-9a-f]{1,4}", n) else n
         streams = {norm(k) for k in FILEPTR if not k.startswith("#")}
         text = re.sub(r"(?m)^struct s_(\w+) \{[^}]*\};\n", lambda m: "" if norm(m.group(1)) in streams else m.group(0), text)
         text = fold_registers(stored_calls(text))
         text = unused_locals(text)
-    macnames = {re.match(r"\w+", m["as"]).group(0) for m in (macros or [])}
+    macnames = {re.match(r"\w+", m["as"]).group(0) for m in (macros or [])} | \
+        {re.match(r"\w+", f).group(0) for sp in (prj.toolchain().p.get("data_macros") or []) for f in sp.get("fields", {}).values()}
     body = text.split("{", 1)[1] if "{" in text else text
     # registers the model left: a draft for a person, not for the compiler
     left = sorted(set(re.findall(REGS, re.sub(r'"(?:[^"\\]|\\.)*"', "", body))))
@@ -881,6 +997,8 @@ def localize(prj, text, at, names):
             decl.append("extern %s *%s;" % ("struct " + STRUCTPTR[d] if d in STRUCTPTR else "char *" if PTRSIZE.get(d) == 2 and re.search(r"\*\+\+%s\b" % d, body) else "char", d))
     if ints:
         decl.append("extern int %s;" % ", ".join(ints))
+    if FILEPTR.get("#include"):                             # (what the included header declares: its)
+        funcs = [f for f in funcs if f not in header_names(prj, FILEPTR["#include"])]
     if funcs:
         decl.append("extern %s;" % ", ".join("%s()" % f for f in funcs))
     return ("\n".join(decl) + "\n\n" if decl else "") + text, left

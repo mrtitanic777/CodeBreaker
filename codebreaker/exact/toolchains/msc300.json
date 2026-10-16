@@ -357,5 +357,23 @@
    "include": "stdio.h"
   }
  ],
- "_macros": "library macros the compiler expands in line, found by the routine the expansion calls (exact/draft.py library_macros)"
+ "_macros": "library macros the compiler expands in line, found by the routine the expansion calls (exact/draft.py library_macros)",
+ "data_macros": [
+  {
+   "base": "__iob",
+   "size": 8,
+   "names": [
+    "stdin",
+    "stdout",
+    "stderr",
+    "stdaux",
+    "stdprn"
+   ],
+   "fields": {
+    "7": "fileno(%s)"
+   },
+   "include": "stdio.h"
+  }
+ ],
+ "_data_macros": "a library's data named by macros: stdio's streams, the elements of _iob (8 bytes: ptr, cnt, base, flag, file), fileno(f) its byte at +7"
 }
