@@ -233,23 +233,48 @@ def range_switches(text):
     lines = text.split("\n")
     for k in range(len(lines) - 1):
         a = re.fullmatch(r"([ \t]*)(ax|bx|cx|dx) = (.+);", lines[k])
-        p = _if_parts(lines, k + 1) if a else None
+        v = None
+        if not a:                                           # (or a variable the code loads for the tests: RANGES)
+            v = re.fullmatch(r"([ \t]*)if \(\((\w+) >= (\d+)\)\) \{", lines[k])
+            if not v or not any(lo == int(v.group(3)) for lo, hi, _cf in RANGES):
+                continue
+            a = type("M", (), {"group": lambda s, i, v=v: {1: v.group(1), 2: v.group(2), 3: v.group(2)}[i]})()
+        p = _if_parts(lines, k + 1 if not v else k) if a else None
         if not p or p[2] is None:
             continue
         c1 = re.fullmatch(r"\(\(%s >= (\d+)\)\)" % a.group(2), "(" + p[0] + ")")
         q = _if_parts(p[1], 0) if c1 and p[1] else None
         if not q or q[3] != len(p[1]) or q[2] is None:
             continue
-        c2 = re.fullmatch(r"\(\(%s > (\d+)\)\)" % a.group(2), "(" + q[0] + ")")
+        c2 = re.fullmatch(r"\(\(%s (>|<=) (\d+)\)\)" % a.group(2), "(" + q[0] + ")")
         dd = lambda ls: [l[4:] if l.startswith("    ") else l for l in ls]
+        if c2 and c2.group(1) == "<=":                      # (the range's own arm first: the same, turned about)
+            q = (q[0], q[2], q[1], q[3])
         if not c2 or dd(q[1]) != p[2]:
             continue
+        c2 = type("M", (), {"group": lambda s, i, c=c2: c.group(2)})()
         lo, hi = int(c1.group(1)), int(c2.group(1))
         if not 0 <= lo <= hi or hi - lo > 16:
             continue
         ind = a.group(1)
-        new = ["%sswitch (%s) {" % (ind, a.group(3)), ind + "default:"] + p[2] + [ind + "    break;"] + \
-            ["%scase %d:" % (ind, v) for v in range(lo, hi + 1)] + dd(q[2]) + [ind + "    break;", ind + "}"]
+        dflt = [ind + "default:"] + p[2] + [ind + "    break;"]
+        cases = ["%scase %d:" % (ind, v) for v in range(lo, hi + 1)] + dd(q[2]) + [ind + "    break;"]
+        first = any(r[:2] == (lo, hi) and r[2] for r in RANGES)   # (the code shows the cases' arm first: no
+        ends = [l for l in dd(q[2]) if l.strip()]                 #  default - what the rest do follows the switch,
+        after = next((l for l in lines[p[3]:] if l.strip()), "")  #  the cases leaving)
+        r_ = re.fullmatch(r"\s*return (\w+);", after)
+        if first and r_ and ends and re.fullmatch(r"\s*%s = [^;]+;" % r_.group(1), ends[-1]) and \
+                all(re.fullmatch(r"\s*(?:%s = [^;]+;|)" % r_.group(1), l) or not l.strip() for l in p[2][-1:]):
+            sub_ = lambda ls: [re.sub(r"^(\s*)%s = (.*);$" % r_.group(1), r"\1return \2;", l) for l in ls]
+            new = ["%sswitch (%s) {" % (ind, a.group(3))] + sub_(cases[:-1]) + [ind + "}"] + sub_([l[4:] if l.startswith("    ") else l for l in p[2]])
+            lines[k:p[3]] = new
+            k2 = next(j for j in range(k + len(new), len(lines)) if lines[j].strip())
+            del lines[k2]                                   # (the return after: each way returns its own)
+            return range_switches("\n".join(lines))
+        if first and ends and re.match(r"\s*return\b", ends[-1]):
+            new = ["%sswitch (%s) {" % (ind, a.group(3))] + cases[:-1] + [ind + "}"] + [l[4:] if l.startswith("    ") else l for l in p[2]]
+        else:
+            new = ["%sswitch (%s) {" % (ind, a.group(3))] + (cases + dflt if first else dflt + cases) + [ind + "}"]
         lines[k:p[3]] = new
         return range_switches("\n".join(lines))
     return text
@@ -1797,7 +1822,7 @@ def structs(text, widths):
     for p, offs in list(uses.items()):                      # (a byte read inside a word read: no struct - the
         byte = lambda o: (p, o) in widths or ("*", o) in widths     # words through an int *, the bytes through
         words = {o for o in offs if not byte(o)}                     # a char * of it)
-        if any(o % 2 and o - 1 in offs for o in offs if byte(o)) and all(o % 2 == 0 for o in words):
+        if any(o % 2 and o - 1 in words for o in offs if byte(o)) and all(o % 2 == 0 for o in words):
             t2 = re.sub(r"\b%s->f(\d+)\b" % p, lambda m: "((char *)%s)[%s]" % (p, m.group(1)) if byte(int(m.group(1))) and
                         int(m.group(1)) % 2 else ("*%s" % p if m.group(1) == "0" else "%s[%d]" % (p, int(m.group(1)) // 2)), text)
             t3 = re.sub(r"(?m)^([ \t]*)(register )?char \*%s;$" % p, r"\1\2int *%s;" % p, t2)
@@ -1950,7 +1975,17 @@ def byte_fields(inv, code):
     out |= {(p, 0) for p in re.findall(r"BYTE\(\*\(?(?:\+\+|--)?(\w+)(?:\+\+|--)?\)?\)", t)}   # (*p a byte: a char *)
     from codebreaker.exact import x86                       # (and from the code itself: a byte read or written
     FRAMEW.clear()
+    RANGES.clear()
     insns = list(x86.disasm(code, 0, len(code), False))
+    for k in range(len(insns) - 4):                         # (a register loaded and tested against a range: a switch's)
+        a_, b_, c_, d_ = insns[k + 1:k + 5]
+        if insns[k].mnemonic == "mov" and insns[k].op_str.startswith("ax, ") and a_.mnemonic == "cmp" and \
+                c_.mnemonic == "cmp" and a_.op_str.startswith("ax, ") and c_.op_str.startswith("ax, ") and \
+                b_.mnemonic in ("jl", "jb") and d_.mnemonic in ("jg", "ja", "jle", "jbe"):
+            try:                                            # (jg/ja to the default: the cases' code first)
+                RANGES.add((int(a_.op_str[4:], 0), int(c_.op_str[4:], 0), d_.mnemonic in ("jg", "ja")))
+            except ValueError:
+                pass
     for k, i in enumerate(insns):                           # (a slot's byte loaded and widened with zeros: unsigned)
         z = re.fullmatch(r"al, byte ptr \[bp ([+-]) (0x[0-9a-f]+|\d+)\]", i.op_str) if i.mnemonic == "mov" else None
         if z and any(x.op_str in ("ah, ah", "ah, 0") and x.mnemonic in ("sub", "xor", "mov") for x in insns[k + 1:k + 4]):
@@ -1975,6 +2010,7 @@ def byte_fields(inv, code):
 
 
 FRAMEW = set()                                              # (the frame slots the code reads or writes, by width)
+RANGES = set()                                              # (the ranges a loaded register is tested against: (lo, hi))
 
 
 def frame_chars(text, widths):
@@ -2485,6 +2521,9 @@ def localize(prj, text, at, names):
     if funcs:
         decl.append("extern %s;" % ", ".join("%s()" % f for f in funcs))
     text = fp_types(text)
+    # (a byte through a char pointer compared with 128..255: the compiler compares bytes only of an unsigned char)
+    for p in set(re.findall(r"\*\(?(?:\+\+|--)?(\w+)(?:\+\+|--)?\)? [!=]= (?:1(?:2[89]|[3-9]\d)|2[0-4]\d|25[0-5])\b", text)):
+        text = re.sub(r"(?m)^([ \t]*)(register )?char \*%s;$" % p, r"\1\2unsigned char *%s;" % p, text)
     return ("\n".join(decl) + "\n\n" if decl else "") + text, left
 
 
