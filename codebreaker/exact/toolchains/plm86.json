@@ -22,5 +22,11 @@
    "controls": "MEDIUM OPTIMIZE(2) CODE"
   }
  },
- "_variants": "the version and the controls a program was compiled with (LINK 1.0x and LIB 1.02: OPTIMIZE(2); LINK 2.00/2.01: OPTIMIZE(3))"
+ "_variants": "the version and the controls a program was compiled with (LINK 1.0x and LIB 1.02: OPTIMIZE(2); LINK 2.00/2.01: OPTIMIZE(3))",
+ "tool": "plm86",
+ "program": "PLM86",
+ "source": "T.PLM",
+ "tail": " T.PLM {controls}",
+ "ok": "(\\d+) PROGRAM ERROR",
+ "limit": 200000000
 }

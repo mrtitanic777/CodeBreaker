@@ -91,3 +91,35 @@ Phase order and ground truth:
 | 6 | readable | — |
 
 Then the engine is pointed at programs nobody has rebuilt.
+
+## State (2026-10-15)
+
+    python -m codebreaker exact --toolchains
+    python -m codebreaker exact PROJECT ledger|library|carve|bss|data|draft|modules|link [options]
+
+Toolchains (profiles in `codebreaker/exact/toolchains/`; plug-ins where running the tool is code):
+
+| profile | what | the programs that prove it (functions identical through the engine) |
+|---|---|---|
+| msc300 (+ msc30016, msc400) | Microsoft C 3.00 (3.00.16, 4.00) | MSC CL P0 P1 P2 P3 = the hand ledgers; MASM 4.00 319/331 = the hand ledger, per compiler |
+| msc500 | Microsoft C 5.0 | MASM 5.10: its 374 C files = the hand ledger |
+| xenixc (plug-in `xenix_c.py`, a.out `aout.py`) | XENIX C for the 8086, Microsoft's revision | LINK 2.40/2.44, LIB 2.20/2.40: 543/543 |
+| plm86, asm86 (plug-in `plm86.py`, ISIS-II) | Intel PL/M-86, ASM86 | LINK 1.02 1.08 1.10 2.00 2.01, LIB 1.02: every procedure and assembler module |
+| msc103, msc104, msc203 | Lattice-lineage MS C 1.03/1.04/2.03 | MC1 MC2 LC1 LC2 (1.0x), MC1 MC2 (2.03): 970/970 |
+| masm100 | Macro Assembler 1.00 | the XENIX-C programs' assembler modules: all |
+
+Stages and what they reproduce of the hand work, run with no project-specific code:
+
+- **library** - the hand CRTLIBs of MS C 3.00's six programs and of MASM 5.10; data stand-ins for
+  library modules of another version (crt0dat, lseek, the output conversion)
+- **carve** - all 1,078 hand function starts of the six C 3.00 programs
+- **bss** - the six hand BSS files (and what P3's lacked)
+- **link** - MSC, CL, P0, P1, P2, P3 relinked file-identical (P3 finished by the engine: its CRTLIB and
+  BSS are the engine's); `--fit` fits stand-in lengths from the data segment's drift map
+- **data** - blind drafts of the modules' initialized data: 48 of 58 modules data-identical (MSC CL P0 P1)
+- **draft** - functions from no source by the inverse model (`invert/early_c`, 3.00 idioms under msc3)
+  and variant search, kept only when the compiler proves them: P0 29/127, MSC 21/74
+
+Open: MS-Pascal (MASM 1.00/1.10/3.00, C86, CREF: a plug-in that names procedures from the .COD
+listing, and the build-piece maps as SYMBOLS); the inverse model's structuring (rotated loops with
+`&&` tests, struct arrays, long and floating arithmetic); the names and readable stages.
