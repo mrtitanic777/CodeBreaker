@@ -334,5 +334,9 @@
   "_": "LINK 3.01 of the diskettes, run as MSC.EXE runs it (a response file); EXEMOD after, when the project says"
  },
  "inverse": "early_c",
- "_inverse": "the inverse model of the Lattice-lineage compilers (MS C 1.x-2.03); 3.00's codegen is the next of that line"
+ "_inverse": "the inverse model of the Lattice-lineage compilers (MS C 1.x-2.03); 3.00's codegen is the next of that line",
+ "frame_order": {
+  "mod": 11,
+  "_": "the locals of a function (register ones too) get their frame slots in the order of their names' buckets in the compiler's table of names: (the sum of the name's characters) mod 11, ascending, the first next to BP (found by renaming one local of f0085b of P0: 30 names, all as predicted)"
+ }
 }
