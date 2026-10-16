@@ -779,10 +779,18 @@ def pointer_widths(text, most=2):
     all: what the model read through them may be words (the text alone does not say)"""
     ps = re.findall(r"(?m)^[ \t]*register char \*(\w+);", text)[:most]
     out = []
+
+    def words(t, p):                                        # (its steps in bytes now in words)
+        t = re.sub(r"(?m)^([ \t]*)register char \*%s;" % p, r"\1register int *%s;" % p, t)
+        return re.sub(r"\b%s = %s ([+-]) (\d+);" % (p, p), lambda m: "%s = %s %s %d;" % (p, p, m.group(1), int(m.group(2)) // 2)
+                      if int(m.group(2)) % 2 == 0 else m.group(0), t)
     for p in ps:
-        out.append(re.sub(r"(?m)^([ \t]*)register char \*%s;" % p, r"\1register int *%s;" % p, text))
+        out.append(words(text, p))
     if len(ps) > 1:
-        out.append(re.sub(r"(?m)^([ \t]*)register char \*(%s);" % "|".join(ps), r"\1register int *\2;", text))
+        t = text
+        for p in ps:
+            t = words(t, p)
+        out.append(t)
     return out
 
 
@@ -830,14 +838,14 @@ def address_variants(text, dsize, most=2, lo=0x100):
     if not ptrs:
         return []
     nums = []
-    for m in re.finditer(r"\b(%s)\s*(?:[<>]=?|==|!=|=)\s*(\d{3,5})\b" % "|".join(map(re.escape, ptrs)), text):
-        n = int(m.group(2))
-        if lo <= n < dsize and n not in nums:
-            nums.append(n)
+    for m in re.finditer(r"\b(%s)\s*(?:[<>]=?|==|!=|=)\s*(-?\d{3,5})\b" % "|".join(map(re.escape, ptrs)), text):
+        n = int(m.group(2)) & 0xFFFF                        # (a place above 32K the model writes negative)
+        if lo <= n < dsize and (n, m.group(2)) not in nums:
+            nums.append((n, m.group(2)))
     out = []
-    for n in nums[:most]:
+    for n, lit in nums[:most]:
         name = "g_%04x" % n
-        out.append((name, re.sub(r"(?<![\w.])%d(?![\w.])" % n, name, text)))
+        out.append((name, re.sub(r"(?<![\w.])%s(?![\w.])" % re.escape(lit), name, text)))
     return out
 
 
@@ -1750,8 +1758,27 @@ def structs(text, widths):
     int, and a pad between"""
     text = re.sub(r"&(\w+)->f(\d+)\b", r"(\1 + \2)", text)  # (lea ax,[p+N] - the model's &p->fN - is p + N)
     text = re.sub(r"&(\w+)\[(-?)(\d+)\]", lambda m: "(%s %s %s)" % (m.group(1), "-" if m.group(2) else "+", m.group(3)), text)
+    rets = {}                                               # (a routine's value gone through to a field: a pointer to a
+    callrx = r"\b((?!if\b|while\b|return\b)[A-Za-z_]\w*)\(((?:[^()]|\([^()]*\))*)\)->f(\d+)\b"   # struct it returns - cast)
+    for f_, a_, off in re.findall(callrx, text):
+        rets.setdefault(f_, set()).add(int(off))
+    pre = []
+    for f_, offs in sorted(rets.items()):
+        fl, pos = [], 0
+        for o in sorted(offs):
+            if o > pos:
+                fl.append("char _%d[%d];" % (pos, o - pos))
+            b_ = ("bx*", o) in widths and ("bxw", o) not in widths
+            fl.append("%s f%d;" % ("char" if b_ else "int", o))
+            pos = o + (1 if b_ else 2)
+        pre.append("struct s_r_%s { %s };" % (f_, " ".join(fl)))
+    if rets:
+        text = re.sub(callrx, lambda m: "((struct s_r_%s *)%s(%s))->f%s" % (m.group(1), m.group(1), m.group(2), m.group(3)), text)
+        text = "\n".join(pre) + "\n" + text
     uses = {}
     for p, off in re.findall(r"\b(\w+)->f(\d+)\b", text):
+        if p.startswith("s_r_"):
+            continue
         uses.setdefault(p, set()).add(int(off))
     for p in re.findall(r"\*\(\*(\w+)\)|\*\*(\w+)", text):  # (a pointer read through twice: a struct whose first
         p = p[0] or p[1]                                    #  field points on - a list)
@@ -1891,11 +1918,12 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         for v in list(variants):                            # (the names the frame's order asks for)
             fn = frame_names(v, rule) if rule else None
             variants.insert(variants.index(v) + 1, fn) if fn else None
-        dsize = len(prj.image) - prj.dgroup
+        dsize = 0x10000                                     # (the data and the BSS after it: any place a pointer is compared with)
         for v in list(variants)[:2]:                        # (a number that is a place in the data)
             for name, av in address_variants(v, dsize):
                 ARRAYS.setdefault(name, "char")
                 variants.append(av)
+                variants += pointer_widths(av)[:1]          # (and its pointer stepping words through it)
         loc = [localize(prj, word_constants(v), at, names) for v in variants]
         for src, left in loc[:3]:                           # (a global compared: unsigned, a variant)
             if not left and re.search(r"[<>=]=?\s*-?\d", src):
@@ -2435,8 +2463,11 @@ def localize(prj, text, at, names):
     for h in reversed(incs):
         decl.insert(0, "#include <%s>" % h)
     if ptrs:                                                # (data the draft goes through: pointers)
-        for d in ptrs:
-            decl.append("extern %s *%s;" % ("struct " + STRUCTPTR[d] if d in STRUCTPTR else "char *" if PTRSIZE.get(d) == 2 and re.search(r"\*\+\+%s\b" % d, body) else "char", d))
+        sp_ = {("g_%04x" % int(k[2:], 16) if re.fullmatch(r"g_[0-9a-f]{1,4}", k) else k): v for k, v in STRUCTPTR.items()}
+        for d in ptrs:                                      # (a word read through it, never a byte: an int *)
+            word = ("bxw", 0) in BYTEPTR and ("bx*", 0) not in BYTEPTR and re.search(r"\*%s\b" % d, body)
+            decl.append("extern %s *%s;" % ("struct " + sp_[d] if d in sp_ else "char *" if PTRSIZE.get(d) == 2 and re.search(r"\*\+\+%s\b" % d, body)
+                                            else "int" if word else "char", d))
     uch = [d for d in ints if d in UCHAR]
     chs = [d for d in ints if d in BYTEG and d not in UCHAR]
     ints = [d for d in ints if d not in UCHAR and d not in BYTEG]
