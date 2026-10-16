@@ -140,22 +140,25 @@ def _align(ds, lits, lo, hi):
         return memo[key]
     out = []
     pos = lo
-    for i, s in enumerate(lits):
-        at = ds.find(s, pos, hi)
-        while at >= 0 and not fits(i + 1, at + len(s)):
+    for i, s in enumerate(lits):                            # (the latest that lets the rest fit: a declaration's
+        best = None                                         #  initializer strings stand before the next function's
+        at = ds.find(s, pos, hi)                            #  literals, and may equal them)
+        while at >= 0:
+            if fits(i + 1, at + len(s)):
+                best = at
             at = ds.find(s, at + 1, hi)
-        if at < 0:
+        if best is None:
             out.append(None)
             continue
-        out.append(at)
-        pos = at + len(s)
+        out.append(best)
+        pos = best + len(s)
     return out
 
 
-def externs(src):
-    """{name: {(type, declarator)}} - how the functions declare the data they name"""
+def externs(src, files=None):
+    """{name: {(type, declarator)}} - how the functions declare the data they name (files: only those)"""
     decl = collections.defaultdict(set)
-    for p in glob.glob(os.path.join(src, "f*.c")):
+    for p in files if files is not None else glob.glob(os.path.join(src, "f*.c")):
         for l in open(p, encoding="latin1"):
             if not l.startswith("extern"):
                 continue
@@ -183,6 +186,8 @@ def draft(prj, row):
         if t == "D" and ":" not in n and n.startswith("_"):
             syms.setdefault(a, n[1:])
     decl = externs(prj.src)
+    mine = [q for q in modules.files_of(prj.src, row[1], row[2]) if os.path.basename(q).startswith("f")] if row[1] is not None else []
+    local = set(externs(prj.src, mine)) if mine else set()
     for nm in decl:                                         # (the engine's names of places: g_ADDR)
         m = re.fullmatch(r"g_([0-9a-f]{4})", nm)
         if m and dstart <= int(m.group(1), 16) < dend and int(m.group(1), 16) not in syms:
@@ -198,10 +203,15 @@ def draft(prj, row):
                 continue
         k += 1
     targets = {W(q) for q in range(dstart, dend - 1)}
+    for v in targets:                                       # (a 0 pointed at, no variable's place: an empty string)
+        if dstart <= v < dend and ds[v] == 0 and v not in syms and v not in strs and (v == dstart or ds[v - 1] == 0 or v - 1 in
+                                                                                       {s + len(t) for s, t in strs.items()}):
+            strs[v] = b""
     structs = parse_structs(prj)
     order = [n.lstrip("_") for n, a in fnaddr]
     file_of = {n.lstrip("_"): "f%05x" % a for n, a in fnaddr}
     files = collections.OrderedDict()
+    varruns = []
     for lo, hi, after, kind in rs:
         if kind == "strings":
             continue
@@ -228,16 +238,32 @@ def draft(prj, row):
         if lo >= hi:
             continue
         key = ("d" + file_of[fn][1:] + ".c") if fn in file_of else (os.path.splitext(row[0])[0] + "-data.c" if row[1] is None else "e%05x.c" % fnaddr[-1][1])
-        lines = files.setdefault(key, [])
         lo2 = lo + 1 if lo & 1 and ds[lo] == 0 else lo
+        varruns.append((key, lo2, hi))
+    # inside the variables' runs nothing is a literal: what looks like a string there is a variable's bytes, and a
+    # word that points into a run points at a variable (one of its own, named after its place)
+    for key, lo2, hi in varruns:
+        for s in [s for s in strs if lo2 <= s < hi]:
+            del strs[s]
+    for key, lo2, hi in varruns:
+        for t in targets:
+            if lo2 < t < hi and t not in syms and t % 2 == 0:
+                syms[t] = "g_%04x" % t
+    for key, lo2, hi in varruns:
+        lines = files.setdefault(key, [])
         places = sorted(set([lo2] + [a for a in syms if lo2 <= a < hi]))
         for a, nx in zip(places, places[1:] + [hi]):
-            lines.append(_definition(ds, a, nx, syms, decl, strs, structs))
+            lines.append(_definition(ds, a, nx, syms, decl, strs, structs, local=local))
     defined = set()
     for t in files.values():
         defined |= set(re.findall(r"\b(\w+)(?=(?:\[\d*\])?\s*=)", "\n".join(t)))
-    for key, lines in files.items():
-        refs = sorted(set(re.findall(r"&(\w+)\b", "\n".join(lines))) - defined)
+    known = set(syms.values())
+    for key, lines in files.items():                        # (the places named that are not the file's: externs)
+        used = set()
+        for l in lines:
+            body = l.partition("=")[2]
+            used |= {w for w in re.findall(r"\b(\w+)\b", re.sub(r'"(?:[^"\\]|\\.)*"', "", body)) if w in known}
+        refs = sorted(used - defined)
         lines[:0] = ["extern %s %s;" % sorted(decl.get(r, {("int", r)}))[0] for r in refs]
     return {k: "\n".join(v) + "\n" for k, v in files.items()}
 
@@ -299,17 +325,12 @@ def _struct_size(name, structs, align):
     return pos + (-pos % top), top
 
 
-def _definition(ds, a, nx, syms, decl, strs, structs=None, align=2):
+def _definition(ds, a, nx, syms, decl, strs, structs=None, align=2, local=None):
     W = lambda o: struct.unpack_from("<H", ds, o)[0]
     n = nx - a
     nm = syms.get(a, "g_%04x" % a)
     ty = decl.get(nm, set())
     words = [W(a + 2 * q) for q in range(n // 2)]
-    isarr = any(i.endswith("]") for t, i in ty)
-    isptr = any("*" in i for t, i in ty)
-    kinds = sorted(t for t, i in ty)
-    base = next((k for k in kinds if k.startswith("struct ")), kinds[0] if kinds else None)
-    note = "                 /* (nothing names it) */" if not ty and a not in syms else ""
 
     def val(v):
         if v in strs:
@@ -317,6 +338,19 @@ def _definition(ds, a, nx, syms, decl, strs, structs=None, align=2):
         if v in syms and v != a:
             return ("&" if not any(i.endswith("]") for t, i in decl.get(syms[v], ())) else "") + syms[v]
         return None
+    isarr = any(i.endswith("]") for t, i in ty)
+    isptr = any("*" in i for t, i in ty)
+    kinds = sorted(t for t, i in ty)
+    base = next((k for k in kinds if k.startswith("struct ")), kinds[0] if kinds else None)
+    ptrs = sum(1 for v in words if val(v) is not None)
+    if ty and local is not None and nm not in local and ptrs >= 2 and (base in ("char", "int", "unsigned") or not isarr and not isptr):
+        ty, isarr, isptr, base = set(), False, False, None     # (another module's type, and the bytes are a table of
+                                                            #  places: the bytes say what it is)
+    k = 2 if isptr and not isarr and not any("(" in i for t, i in ty) else SIZES.get(base) if not isarr and not isptr else None
+    if ty and k and k < n and n - k >= 2:                   # (a variable, and after it one nothing names)
+        return _definition(ds, a, a + k, syms, decl, strs, structs, align, local) + "\n" + \
+            _definition(ds, a + k, nx, syms, decl, strs, structs, align, local)
+    note = "                 /* (nothing names it) */" if not ty and a not in syms else ""
     if structs and base and base.startswith("struct ") and base[7:] in structs and not isptr:
         size, al = _struct_size(base[7:], structs, align)
         if size and n % size == 0:

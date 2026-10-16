@@ -186,6 +186,10 @@ def check(prj, row, raw=None):
     while k < len(d):
         if k in holes:
             tgt, disp = holes[k]
+            if dstart + k + 2 > len(ds):
+                dbad.append("%04x: past the program's data" % (dstart + k))
+                k += 2
+                continue
             theirs = W(ds, dstart + k)
             mine = (W(d, k) + disp) & 0xFFFF
             if tgt[0] != "ext" and tgt[1] == "_DATA" and theirs != (dstart + mine) & 0xFFFF:
