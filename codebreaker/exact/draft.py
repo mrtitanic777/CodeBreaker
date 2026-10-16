@@ -572,6 +572,46 @@ def post_increments(text):
     return "\n".join(out)
 
 
+def fall_gotos(text):
+    """goto L; where what comes after it, past the ends of ifs and a switch's case labels, is L: itself - the
+    goto only falls there (a case falling into the next): gone, and L with it when nothing else goes there"""
+    lines = text.split("\n")
+
+    def opener(j):                                          # (the line opening the block line j closes)
+        ind = len(lines[j]) - len(lines[j].lstrip())
+        return next((q for q in range(j - 1, -1, -1) if lines[q] is not None and lines[q].strip() and
+                     len(lines[q]) - len(lines[q].lstrip()) == ind and lines[q].rstrip().endswith("{")), None)
+    changed = True
+    while changed:
+        changed = False
+        for k, l in enumerate(lines):
+            m = re.fullmatch(r"[ \t]*goto (L_\w+);", l or "")
+            if not m:
+                continue
+            j = k + 1
+            while j < len(lines):
+                x = (lines[j] or "").strip()
+                if lines[j] is None or not x:
+                    j += 1
+                    continue
+                if x == "}":
+                    q = opener(j)
+                    if q is None or not re.match(r"[ \t]*(?:if \(.*\)|\} else|else(?: if \(.*\))?) \{$", lines[q]):
+                        break
+                    j += 1
+                    continue
+                if re.fullmatch(r"case [^:]+:|default:", x):
+                    j += 1
+                    continue
+                break
+            if j < len(lines) and (lines[j] or "").strip() == m.group(1) + ":":
+                lines[k] = None
+                changed = True
+                break
+    used = set(re.findall(r"goto (L_\w+);", "\n".join(x for x in lines if x is not None)))
+    return "\n".join(x for x in lines if x is not None and not (re.fullmatch(r"[ \t]*(L_\w+):", x) and x.strip()[:-1] not in used))
+
+
 def empty_loops(text):
     """for (;;) { [x = E;] if (C1) break; .. if (Cn) { break; } [else { continue; }] } - a loop of tests alone
     (its value given first): while ((x = E) && !C1 .. && !Cn) ; - the first test x's zero"""
@@ -2500,10 +2540,10 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         BYTEG.clear()
         BYTEG.update(n for k, n in widths if k == "g")
         FILEPTR.clear()
-        t = zero_extends(high_zero(copy_props(table_macros(prj, case_falls(char_stores(char_params(long_pairs(long_returns(store_reloads(t)))))), prj.toolchain().p.get("table_macros")))))
+        t = zero_extends(high_zero(copy_props(table_macros(prj, case_falls(char_stores(char_params(long_pairs(long_returns(store_reloads(fall_gotos(t))))))), prj.toolchain().p.get("table_macros")))))
         t = re.sub(r"&(\w+)\[(-?)(\d+)\]", lambda m: "(%s %s %s)" % (m.group(1), "-" if m.group(2) else "+", m.group(3)), t)
         t = re.sub(r"&(\w+)->f(\d+)\b", r"(\1 + \2)", t)  # (lea: &p[N], &p->fN - the place, p + N)
-        t = fold_registers(stored_calls(store_loops(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(push_returns(conditional_values(logical_values(step_tests(range_switches(loop_gotos(empty_loops(t)))))))))))))))
+        t = fold_registers(stored_calls(store_loops(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(push_returns(conditional_values(logical_values(step_tests(range_switches(loop_gotos(empty_loops(fall_gotos(t))))))))))))))))
         t = stored_calls(fold_registers(push_returns(t)))   # (returns again, as the passes left the arms)
         t = scaled_index(register_chains(word_arrays(test_first_loops(copy_tests(post_steps(t))))))
         t = fold_registers(conditional_values(t))           # (the ?: values again, the elements folded)
@@ -2698,7 +2738,7 @@ def long_pairs(text):
     body = re.sub(r"(?m)^([ \t]*)\*(\w+) = (\w+);\n(\s*)\2->f2 = (\w+);$",           # (*p the first word: p->f0)
                   lambda m: "%s%s->f0 = %s;\n%s%s->f2 = %s;" % (m.group(1), m.group(2), m.group(3), m.group(4), m.group(2), m.group(5))
                   if hi_of(m.group(3)) == m.group(5) else m.group(0), body)
-    body = re.sub(r"(?m)^([ \t]*)(\w+)->f(\d+) = (\w+);\n\s*(\w+)->f(\d+) = (\w+);$", pair_store, body)
+    body = _line_pairs(body, r"([ \t]*)(\w+)->f(\d+) = (\w+);\n\s*(\w+)->f(\d+) = (\w+);", pair_store)
 
     def call_store(m):                                      # (a routine's long value, dx:ax, kept in a pair:
         ind, lo, call, hi = m.groups()[:4]                      #  the routine returns a long)

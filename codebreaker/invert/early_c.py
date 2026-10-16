@@ -830,7 +830,10 @@ class R:
                 if ops.endswith("cl"): return s.breg["cl"] if "cl" in s.breg else cxv
                 return s._val(ops.split(", ")[1])
             if mn in ALU and ops.startswith("ax, "): s.ax="(%s %s %s)"%(axv,ALU[mn],s._val(ops[4:]))
-            elif mn in ("imul","mul"): s.ax="(%s * %s)"%(axv,s._val(ops))
+            elif mn in ("imul","mul"):
+                if mn=="mul" and s.msc3 and not MARK and not str(axv).startswith("(unsigned)"):   # (3.00: a product
+                    axv="(unsigned)%s"%(axv if re.fullmatch(r"[\w\->.]+",str(axv)) else "(%s)"%axv)  #  without sign)
+                s.ax="(%s * %s)"%(axv,s._val(ops))
             elif mn in ("idiv","div"):
                 rn=s._val(ops)
                 if mn=="div" and s.msc3 and not MARK and not str(axv).startswith("(unsigned)"):   # (3.00: a division
