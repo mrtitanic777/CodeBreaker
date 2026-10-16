@@ -1199,6 +1199,16 @@ def word_arrays(text, lo=0x40):
         return "%s%s" % (ind, rest.replace("%s[bx]" % g.group(1), "%s[%s].f0" % (g.group(1), e), 1))
     t = re.sub(r"(?m)^([ \t]*)bx = \((\d+) \* (.+?)\);\n[ \t]*(.*\bg_[0-9a-f]{4}\[bx\].*)$", struct_index, t)
 
+    def struct_place(m):                                    # (K * E + N, N a place in the data: the address of
+        k, e, n = int(m.group(1)), m.group(2), int(m.group(3))   #  the element E of an array of K-byte structs)
+        if n < 0x100 or k < 3 or k > 0x400:
+            return m.group(0)
+        name = "g_%04x" % n
+        STRUCTARR.setdefault(name, (k, "int"))
+        ARRAYS[name] = "struct s_%s" % name
+        return "&%s[%s]" % (name, e)
+    t = re.sub(r"\(\((\d+) \* ([\w\->.]+)\) \+ (\d+)\)(?!->)", struct_place, t)
+
     def struct_product(m):                                  # (the product folded in place: (K * E)->fN)
         k, e, n = int(m.group(1)), m.group(2), int(m.group(3))
         if n < 0x100 or k < 2 or k > 0x400:
@@ -2944,6 +2954,51 @@ def long_pairs(text):
         return "%s%s = %s;" % (ind, x, "%dL" % v if abs(v) > 0x7FFF else str(v))
     body = _line_pairs(body, r"([ \t]*)(\w+) = (-?\d+);\n\s*(\w+) = (-?\d+);", const_pair)
 
+    def long_of(lo, hi):                                    # (two words' expressions, the low and the high, as the
+        lo, hi = _strip(lo.strip()), _strip(hi.strip())     #  one long expression they are, or None: names, fields
+        def bare(x):                                        #  and data in pairs, ~, & | ^, a number masking a half)
+            return x[1:-1] if x.startswith("(") and x.endswith(")") and _balanced(x[1:-1]) else x
+        lo, hi = bare(lo), bare(hi)
+        fl, fh = re.fullmatch(r"(\w+)->f(\d+)", lo), re.fullmatch(r"(\w+)->f(\d+)", hi)
+        if fl and fh and fl.group(1) == fh.group(1) and int(fh.group(2)) == int(fl.group(2)) + 2:
+            LONGINFO.setdefault("fields", set()).add(int(fl.group(2)))
+            return lo
+        if re.fullmatch(r"g_[0-9a-f]+", lo) and re.fullmatch(r"g_[0-9a-f]+", hi) and int(hi[2:], 16) == int(lo[2:], 16) + 2:
+            LONGINFO.setdefault("globals", set()).add("g_%04x" % int(lo[2:], 16))
+            return lo
+        if re.fullmatch(r"\w+", lo) and hi_of(lo) == hi:
+            pairs.add(lo)
+            return lo
+        if lo.startswith("~") and hi.startswith("~"):
+            x = long_of(lo[1:], hi[1:])
+            return "(~%s)" % x if x else None
+        def flat(x, op):                                    # (a & (b & c): a, b, c)
+            out = []
+            for p_ in _top_split(x, op):
+                p_ = p_.strip()
+                b_ = bare(p_)
+                out += flat(b_, op) if b_ != p_ and len(_top_split(b_, op)) > 1 else [p_]
+            return out
+        for op in ("&", "|", "^"):
+            pl, ph = flat(lo, op), flat(hi, op)
+            if len(ph) > 1 and len(ph) == len(pl) + 1 and re.fullmatch(r"\d+|0x[0-9a-f]+", ph[-1].strip()) and op == "&":
+                x = long_of(" & ".join(pl) if len(pl) > 1 else pl[0], " & ".join(ph[:-1]) if len(ph) > 2 else ph[0])
+                k = int(ph[-1].strip(), 0) & 0xFFFF             # (the high word masked alone: the low word whole)
+                return "(%s & 0x%04xffffL)" % (x, k) if x else None
+            if len(pl) > 1 and len(pl) == len(ph):
+                xs = [long_of(a, b) for a, b in zip(pl, ph)]
+                return "(%s)" % (" %s " % op).join(xs) if all(xs) else None
+        return None
+
+    def long_test(m):                                       # ((lo) | (hi)) != 0: a long tested
+        inner = m.group(1)[1:-1]
+        parts = _top_split(inner, "|") if _balanced(inner) else []
+        if len(parts) != 2 or not all(_balanced(p) for p in parts):
+            return m.group(0)
+        x = long_of(parts[0], parts[1])
+        return "(%s %s 0)" % (x, m.group(2)) if x else m.group(0)
+    body = re.sub(r"\((\((?:[^()]|\((?:[^()]|\((?:[^()]|\([^()]*\))*\))*\))*\)) (!=|==) 0\)", long_test, body)
+
     def lfield(p, n):                                       # (a long field: offset n of what p points to)
         LONGINFO.setdefault("fields", set()).add(int(n))
         return "%s->f%s" % (p, n)
@@ -2969,17 +3024,12 @@ def long_pairs(text):
         ind, g, op, x, g2, op2, x2 = m.groups()             #  a word at a time, the high words after - one op)
         if op != op2 or int(g2[2:], 16) != int(g[2:], 16) + 2:
             return m.group(0)
-        f1 = re.fullmatch(r"(\w+)->f(\d+)", x)
-        f2 = re.fullmatch(r"(\w+)->f(\d+)", x2)
-        if f1 and f2 and f1.group(1) == f2.group(1) and int(f2.group(2)) == int(f1.group(2)) + 2:
-            LONGINFO.setdefault("fields", set()).add(int(f1.group(2)))
-        elif re.fullmatch(r"\w+", x) and hi_of(x) == x2:
-            pairs.add(x)
-        else:
+        lx = long_of(x, x2)
+        if not lx:
             return m.group(0)
         LONGINFO.setdefault("globals", set()).add("g_%04x" % int(g[2:], 16))
-        return "%s%s = %s %s %s;" % (ind, g, g, op, x)
-    body = _line_pairs(body, r"([ \t]*)(g_[0-9a-f]+) = \2 ([|&^]) (\w+(?:->f\d+)?);\n\s*(g_[0-9a-f]+) = \5 ([|&^]) (\w+(?:->f\d+)?);", gpair_op)
+        return "%s%s = %s %s %s;" % (ind, g, g, op, lx)
+    body = _line_pairs(body, r"([ \t]*)(g_[0-9a-f]+) = \2 ([|&^]) ([^;\n]+);\n\s*(g_[0-9a-f]+) = \5 ([|&^]) ([^;\n]+);", gpair_op)
 
     def sign_pair(m):                                       # (a pair given an int and its sign spread: the int
         ind, x, e, hx, e2 = m.groups()                      #  widened to the long)
