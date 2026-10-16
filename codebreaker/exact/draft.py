@@ -836,6 +836,8 @@ def stored_calls(text):
                     k += 2
                     continue
             nxt = lines[k + 1]                              # (read once, anywhere in the next statement - which
+            if reg in ("si", "di"):                         #  (a register variable's value: kept in it)
+                later = False
             if later and len(re.findall(r"\b%s\b" % rd, nxt)) == 1 and not re.search(r"\w\(", nxt) and \
                     not re.match(r"\s*(?:\}|L_\w+:|else\b)", nxt) and not re.search(r"\b%s\s*=[^=]" % rd, nxt):
                 out.append(re.sub(r"\b%s\b" % rd, lambda x: call, nxt, count=1))   # makes no call of its own:
@@ -1084,6 +1086,9 @@ def word_arrays(text, lo=0x40):
         ARRAYS[name] = "char" if ("data", n) in BYTEPTR else "int"
         return "%s[%s]" % (name, m.group(1))
     t = re.sub(r"\b(ax|bx|cx|dx)->f(\d+)\b", byte_index, t)
+    for g in set(re.findall(r"\bg_([0-9a-f]+)\[", t)):     # (an element of the data the model named: an array)
+        if int(g, 16) >= 0x40:
+            ARRAYS.setdefault("g_%04x" % int(g, 16), "char" if ("data", int(g, 16)) in BYTEPTR or ("*", int(g, 16)) in BYTEPTR else "int")
     t = re.sub(r"\(((?:\+\+|--)?[A-Za-z_]\w*(?:\+\+|--)?)\)->f(\d+)\b", byte_index, t)   # (a variable's value -
                                                                                        #  stepped too - the index)
     # (a register given K * E, then an element at a place in the data through it: an array of structs of K
@@ -1673,6 +1678,54 @@ def split_ternaries(text):
     return t if t != text else None
 
 
+def fn_pointers(text):
+    """(*x)(..) - x called through: a pointer to a function, int (*x)(); (a parameter's or a local's int)"""
+    for x in sorted(set(re.findall(r"\(\*([A-Za-z_]\w*)\)\s*\(", text))):
+        if re.search(r"(?m)^[ \t]*(?:register\s+)?int (?:\w+, )*%s\b" % x, text):
+            t = _redeclare(text, x, "int (*%s)()" % x)
+            text = t or text
+    return text
+
+
+def scaled_index(text):
+    """bx = p + (i << 1); .. *bx - a word of p's at i: p[i], p an int's pointer (the scaled index the model left
+    as an address; a copy of the doubled index the code made on the way, `ax = (i << 1);`, nothing)"""
+    lines = text.split("\n")
+    for k in range(len(lines)):
+        m = re.match(r"([ \t]*)bx = ([A-Za-z_]\w*) \+ \((\w+) << 1\);$", lines[k] or "")
+        if not m:
+            continue
+        p, i = m.group(2), m.group(3)
+        j = k + 1
+        while j < len(lines) and re.fullmatch(r"[ \t]*ax = \(%s << 1\);" % i, lines[j] or "") and not _live_after(lines, j, "ax"):
+            j += 1
+        if j >= len(lines) or len(re.findall(r"(?<![\w)])\*bx\b(?!\+\+|--)", lines[j])) != 1 or \
+                len(re.findall(r"\bbx\b", lines[j])) != 1 or _live_after(lines, j, "bx") or re.search(r"\b%s\s*=[^=]" % i, lines[j]):
+            continue
+        lines[j] = re.sub(r"(?<![\w)])\*bx\b", "%s[%s]" % (p, i), lines[j])
+        lines[k + 1:j] = [None] * (j - k - 1)
+        lines[k] = None
+        t = "\n".join(x for x in lines if x is not None)
+        return _declare_pointer(t, p, "int") or t
+    return text
+
+
+def no_default(text):
+    """switch (..) { .. default: return X; } - a switch with no default, the return after it (a variant: the
+    compiler's default jump goes to the code after the switch either way, laid out after the cases)"""
+    t = re.sub(r"(?m)^([ \t]*)default:\n[ \t]*(return [^;\n]*;)\n([ \t]*)\}$",
+               lambda m: "%s}\n%s%s" % (m.group(3), m.group(3), m.group(2)) if len(m.group(1)) == len(m.group(3)) else m.group(0), text)
+    return t if t != text else None
+
+
+def unmasked(text):
+    """(A == (B & 0xff)) - a byte the model masked compared with another: the bytes compared (a variant: the
+    compiler compares bytes of two chars as they are)"""
+    t = re.sub(r"(==|!=) \(((?:\*|\b)[A-Za-z_]\w*(?:->f\d+|\[[^\]]+\])?) & 0xff\)", r"\1 \2", text)
+    t = re.sub(r"\(((?:\*|\b)[A-Za-z_]\w*(?:->f\d+|\[[^\]]+\])?) & 0xff\) (==|!=)", r"\1 \2", t)
+    return t if t != text else None
+
+
 def high_words(text):
     """f(a, b): a never read, b only masked (b & K) - a long's high word tested alone: long a; (a & 0xK0000L)
     (a variant: the compiler tests just the high word of a long masked so)"""
@@ -2114,7 +2167,8 @@ def fold_registers(text):
             used = _live_after(lines, k, reg, r"\b%s\b" % ("(?:ax|al)" if reg == "ax" else reg)) or \
                 reg in ("si", "di")                         # (a register variable: a loop may read it on its next pass)
             if not used:
-                call = re.search(r"\b(?!if\b|while\b|sizeof\b)[A-Za-z_]\w*\s*\(", expr)    # (a call: a name, then
+                call = re.search(r"\b(?!if\b|while\b|sizeof\b)[A-Za-z_]\w*\s*\(|\(\*[^()]+\)\s*\(", expr)   # (a call: a name, or
+                                                                                                            #  a pointer's, then
                 if call and out and out[-1].strip() == expr + ";":                       #  its arguments)
                     continue                                # (the call written twice)
                 if call:
@@ -2349,7 +2403,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = re.sub(r"&(\w+)->f(\d+)\b", r"(\1 + \2)", t)  # (lea: &p[N], &p->fN - the place, p + N)
         t = fold_registers(stored_calls(store_loops(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(push_returns(conditional_values(logical_values(step_tests(range_switches(loop_gotos(empty_loops(t)))))))))))))))
         t = stored_calls(fold_registers(push_returns(t)))   # (returns again, as the passes left the arms)
-        t = register_chains(word_arrays(test_first_loops(copy_tests(post_steps(t)))))
+        t = scaled_index(register_chains(word_arrays(test_first_loops(copy_tests(post_steps(t))))))
         t = fold_registers(conditional_values(t))           # (the ?: values again, the elements folded)
         t = fold_registers(push_returns(temporaries(empty_loops(merge_conditions(guard_gotos(self_updates(t)))))))
         wd = set(widths)                                    # (a parameter kept in a register: the bytes read through
@@ -2359,9 +2413,9 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = structs(pointer_flow(local_pointers(register_variables(shapes(t), regs, regparam))), wd)
         t = re.sub(r"(?m)^[ \t]*(\w+) = \1;\n", "", t)         # (a register variable given itself: nothing)
         t = long_ladders(long_pairs(t))                     # (the longs again, as the passes left them)
-        t = frame_chars(t, widths)
+        t = frame_chars(fn_pointers(t), widths)
         t = fill_frame(t, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
-        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t)] if v]
+        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t)] if v]
         both = pre_steps(t)
         both = pre_increments(both) if both else None
         if both:

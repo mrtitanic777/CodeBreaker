@@ -311,7 +311,9 @@ class R:
                     d=s.num(m.group(2)) if m.group(2) else 0
                     return "g_%x"%((int(cv)+(d if m.group(1)!="-" else -d))&0xffff)
             m=re.search(r"\[%s \+ (0x[0-9a-f]+|\d+)\]"%reg,op)
-            if m: return "%s->f%d"%(s._ptrbase(reg),s.num(m.group(1)))
+            if m and s.msc3 and cv is not None and str(cv)==getattr(s,"_cbw",None) and s.num(m.group(1))>=0x40:
+                return "g_%x[%s]"%(s.num(m.group(1)),cv)      # (3.00: a char widened, then a place in the
+            if m: return "%s->f%d"%(s._ptrbase(reg),s.num(m.group(1)))   #  data through it: an element there)
             m=re.search(r"\[%s - (0x[0-9a-f]+|\d+)\]"%reg,op)  # negative offset -> index back
             if m: return "%s[-%d]"%(s._ptrbase(reg),s.num(m.group(1)))
             if "[%s]"%reg in op: return "*%s"%s._ptrbase(reg)
@@ -344,7 +346,10 @@ class R:
                 setattr(s,d,val)
         elif re.match(r"(0x[0-9a-f]+|\d+)$",src):            # constant (often a data address)
             setattr(s,d,str(s.num(src)))
-        else:
+        elif s.msc3 and re.search(r"\[(?:si|di)(?: [+-] (?:0x[0-9a-f]+|\d+))?\]", src) and src.split("[")[1][:2] != d \
+                and s.memname(src) is not None and s.out is not None:
+            s.emit(s.out,"%s = %s;"%(d,s.memname(src))); setattr(s,d,d)   # (3.00: a register variable given a
+        else:                                                              #  value from memory - a statement)
             setattr(s,d,s.memname(src))
 
     def _writes(s,mn,dst,reg):
@@ -756,7 +761,7 @@ class R:
         if mn in ("inc","dec") and ops in BYTEREG:             # byte-reg inc/dec
             s.breg[ops]="(%s %s 1)"%(s.breg.get(ops,pre8 if pre8 is not None else ops), "+" if mn=="inc" else "-"); return
         if mn in ("cbw","cwde") and "al" in s.breg:            # sign-extend al -> ax (int)al
-            s.ax=("SX(%s)"%s.breg["al"]) if MARK else s.breg["al"]; s.axsrc=None
+            s.ax=("SX(%s)"%s.breg["al"]) if MARK else s.breg["al"]; s.axsrc=None; s._cbw=str(s.ax)
             if s.msc3 and not MARK and i>0 and s.ins[i-1].mnemonic=="mov":   # (3.00: the low byte of a word the
                 mb=re.match(r"al, byte ptr (\[bp [+-] (?:0x[0-9a-f]+|\d+)\])$", s.ins[i-1].op_str)   # function reads
                 if mb and any(("word ptr "+mb.group(1)) in x.op_str for x in s.ins):          # whole elsewhere: a cast)
