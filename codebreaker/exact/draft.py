@@ -333,6 +333,22 @@ def frame_names(text, rule):
     return head + "{" + body
 
 
+def char_param_variants(text, most=2):
+    """the text with one of its int parameters a char (each, at most `most`): one compared with a byte, or given
+    one, may be a char the caller widened (a variant: the compiler decides)"""
+    head, sep, body = text.partition("{")
+    out = []
+    for m in list(re.finditer(r"(?m)^(\s*)int ([\w, ]+);$", head))[:1]:
+        names = [x.strip() for x in m.group(2).split(",")]
+        for p in names[:most]:
+            if not re.search(r"\b%s\b" % p, body):
+                continue
+            rest = [x for x in names if x != p]
+            new = (m.group(1) + "int " + ", ".join(rest) + ";\n" if rest else "") + m.group(1) + "char %s;" % p
+            out.append(head[:m.start()] + new + head[m.end():] + sep + body)
+    return out
+
+
 def pointer_widths(text, most=2):
     """the text with its register pointers (`register char *p;`, at most `most` of them) made int * - each, then
     all: what the model read through them may be words (the text alone does not say)"""
@@ -689,6 +705,8 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         for v in list(variants):                            # (a pointer register variable through which words
             for w in pointer_widths(v):                     #  are read: int *, the compiler decides)
                 variants.append(w)
+        if re.search(r"& 0xff\)", t):                       # (a byte compared: a parameter may be a char)
+            variants += char_param_variants(t)
         rule = prj.toolchain().p.get("frame_order")
         for v in list(variants):                            # (the names the frame's order asks for)
             fn = frame_names(v, rule) if rule else None
@@ -770,8 +788,10 @@ def register_variables(text, regs=("si", "di"), regparam=None):
     if not used:
         return head + sep + body
     decls = []
+    pnames = set(re.findall(r"(?m)^\s*(?:register\s+)?char\s*\*\s*(\w+);", head))     # (pointer parameters)
     for r in used:
-        ptr = re.search(r"\*\s*%s\b|\b%s\s*\[" % (r, r), body)
+        ptr = re.search(r"\*\s*%s\b|\b%s\s*\[" % (r, r), body) or \
+            any(re.search(r"(?m)^\s*%s = %s;" % (r, p), body) for p in pnames)       # (given a pointer's value)
         decls.append("    register %s%s;" % ("char *" if ptr else "int ", "r_" + r))
         body = re.sub(r"\b%s\b" % r, "r_" + r, body)
     return head + "{\n" + "\n".join(decls) + body

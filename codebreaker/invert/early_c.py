@@ -44,6 +44,7 @@ RETVAL=None
 # What recover() last found of MS-C 3.00's register variables: {"saved": [si, di] the function keeps its
 # register variables in, "regparam": {register: parameter index} the parameters declared register}.
 LAST={}
+REGPARAM_REREAD=True    # (MS C 3.00: a register a parameter is loaded into is the parameter only if its slot is not read again)
 # Optional driver hook: SWITCH(addr_0based) -> case-target addresses (0-based, table order) of the
 # jump-table dispatch `jmp cs:[bx+table]` at that address, or None.
 SWITCH=None
@@ -2045,6 +2046,9 @@ def recover(code, base=0, cxmap=None):
         while k<len(ins) and ins[k].mnemonic=="mov":
             m_=re.match(r"(si|di), word ptr \[bp \+ (\d+)\]$", ins[k].op_str)
             if not m_ or m_.group(1) not in LAST["saved"] or m_.group(1) in LAST["regparam"]: break
+            if REGPARAM_REREAD and any("[bp + %s]" % m_.group(2) in x.op_str for x in ins[k+1:]):
+                break                                          # (the parameter read again later: the register is a
+                                                               #  local copied from it, not the parameter itself)
             LAST["regparam"][m_.group(1)]=(int(m_.group(2))-4)//2; k+=1
     r=R(ins,fs,base,cxmap,msc3=msc3)
     for reg_,ix_ in LAST["regparam"].items():
