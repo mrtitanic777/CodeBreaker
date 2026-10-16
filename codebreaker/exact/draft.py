@@ -54,6 +54,13 @@ def fold_registers(text):
             ind, reg, expr = m.groups()
             rest = "\n".join(lines[k + 1:])
             nxt = next((x for x in lines[k + 1:] if x.strip()), "")
+            later = "\n".join(lines[lines.index(nxt, k + 1) + 1:]) if nxt in lines[k + 1:] else ""
+            if re.fullmatch(r"[A-Za-z_]\w*|-?\d+", expr) and len(re.findall(r"\b%s\b" % reg, nxt)) == 1 and \
+               not re.search(r"\b%s\b" % reg, re.split(r"\n\s*%s = " % reg, later)[0]) and not re.search(
+                   r"\b%s\s*(=[^=]|\+\+|--)|(\+\+|--)\s*%s\b" % (expr, expr), nxt):
+                j = lines.index(nxt, k + 1)                 # (a plain value read once, at once: in its place)
+                lines[j] = re.sub(r"\b%s\b" % reg, expr, nxt)
+                continue
             if re.fullmatch(r"\s*return %s;\s*" % reg, nxt):
                 out.append("%sreturn %s;" % (ind, expr))
                 lines[lines.index(nxt, k + 1)] = "\x00"
@@ -70,15 +77,90 @@ def fold_registers(text):
     return "\n".join(out)
 
 
-def register_variables(text, regs=("si", "di")):
+def shapes(text):
+    """the shapes a compiler gives a statement, read back: a loop whose test it moved to the bottom (`goto L;
+    do {..} while (c);` with no L - the jump goes to the test) is `while (c) {..}`; a step then a read one back
+    (`p = p + 1; .. p[-1]`) is `*p++`"""
+    lines = text.split("\n")
+    out = []
+    k = 0
+    while k < len(lines):
+        l = lines[k]
+        m = re.match(r"(\s*)goto (L_\w+);\s*$", l)
+        if m and k + 1 < len(lines) and lines[k + 1].strip() == "do {" and not re.search(r"^\s*%s:" % m.group(2), text, re.M):
+            depth, close = 0, None
+            for j in range(k + 1, len(lines)):              # (the do's own closing line)
+                depth += lines[j].count("{") - lines[j].count("}")
+                if depth == 0:
+                    close = j
+                    break
+            mm = re.match(r"(\s*)\} while \((.*)\);\s*$", lines[close]) if close is not None else None
+            if mm:
+                out.append("%swhile (%s) {" % (m.group(1), mm.group(2)))
+                out += lines[k + 2:close]
+                out.append("%s}" % m.group(1))
+                k = close + 1
+                continue
+        out.append(l)
+        k += 1
+    text = "\n".join(out)
+    # a step, then the value one back read: the post-increment (in a do's test, or the next statement)
+    lines = text.split("\n")
+    for k, l in enumerate(lines):
+        m = re.match(r"\s*(\w+) = \1 \+ 1;\s*$", l)
+        if not m:
+            continue
+        v = m.group(1)
+        for j in range(k + 1, min(k + 4, len(lines))):
+            if re.search(r"\b%s\[-1\]" % v, lines[j]):
+                lines[j] = re.sub(r"\b%s\[-1\]" % v, "*%s++" % v, lines[j], count=1)
+                lines[k] = None
+                break
+            if lines[j].strip() not in ("}", "") and not lines[j].strip().startswith("} while"):
+                break
+    return "\n".join(l for l in lines if l is not None)
+
+
+def candidates(prj, text, at, names, regs, regparam):
+    """[(source, registers left)] - the model's text as the project's source, then the variants the compiler
+    is to decide between: as read, and without its last return (a function of no value)"""
+    out = []
+    for t in [text] + [v for v in [void_variant(text)] if v]:
+        out.append(localize(prj, register_variables(shapes(fold_registers(t)), regs, regparam), at, names))
+    return out
+
+
+def void_variant(text):
+    """the draft without its last `return X;` (a function of no value whose last call's result the model kept)"""
+    m = list(re.finditer(r"(?m)^(\s*)return (.+);\s*$", text))
+    if not m:
+        return None
+    x = m[-1]
+    return text[:x.start()] + ("%s%s;" % (x.group(1), x.group(2)) if "(" in x.group(2) else "") + text[x.end():]
+
+
+def register_variables(text, regs=("si", "di"), regparam=None):
     """the registers a compiler keeps its register variables in (MS C 3.00: SI, then DI), made those variables:
-    declared in that order, pointers where the text goes through them"""
+    declared in that order, pointers where the text goes through them; a register a parameter is loaded into
+    at the start (regparam {register: parameter index}) is that parameter, declared register"""
     head, sep, body = text.partition("{")
     if not sep:
         return text
+    for r, ix in sorted((regparam or {}).items(), key=lambda kv: kv[1]):
+        p = chr(ord("a") + ix)
+        body = re.sub(r"\b%s\b" % r, p, body)
+        ptr = re.search(r"\*\s*\(?\s*(?:\+\+|--)?\s*%s\b|\b%s\s*(?:\+\+|--)?\s*\[" % (p, p), body)
+        lines = head.split("\n")
+        for j, l in enumerate(lines):                       # (out of the plain declaration of the parameters)
+            m = re.match(r"(\s*)int (.*);$", l)
+            if m and re.search(r"\b%s\b" % p, m.group(2)):
+                rest = [x.strip() for x in m.group(2).split(",") if x.strip() != p]
+                lines[j] = (m.group(1) + "int " + ", ".join(rest) + ";\n" if rest else "") + \
+                    "register %s%s;" % ("char *" if ptr else "int ", p)
+        head = "\n".join(lines)
     used = [r for r in regs if re.search(r"\b%s\b" % r, body)]
     if not used:
-        return text
+        return head + sep + body
     decls = []
     for r in used:
         ptr = re.search(r"\*\s*%s\b|\b%s\s*\[" % (r, r), body)
@@ -128,8 +210,12 @@ def localize(prj, text, at, names):
     head = text.split("(", 1)[0].strip()
     funcs = sorted(set(re.findall(r"\b([A-Za-z_]\w*)\(", body)) - {head, "if", "while", "for", "switch", "return", "sizeof"})
     decl = []
-    if data:
-        decl.append("extern int %s;" % ", ".join(data))
+    ptrs = [d for d in data if re.search(r"\*\s*\(?\s*(?:\+\+|--)?\s*%s\b|\b%s\s*(?:\+\+|--)?\s*(?:->|\[)" % (d, d), body)]
+    ints = [d for d in data if d not in ptrs]
+    if ptrs:                                                # (data the draft goes through: pointers)
+        decl.append("extern char *%s;" % ", *".join(ptrs))
+    if ints:
+        decl.append("extern int %s;" % ", ".join(ints))
     if funcs:
         decl.append("extern %s;" % ", ".join("%s()" % f for f in funcs))
     return ("\n".join(decl) + "\n\n" if decl else "") + text, left
@@ -150,6 +236,30 @@ def _prove(prj, tc, src, a, ln):
     if compare.identical(bad, notes) and l2 == ln:
         return "identical"
     return "differs: %d bytes%s" % (len(bad), ", length %d not %d" % (l2, ln) if l2 != ln else "")
+
+
+def prove_best(prj, tc, inv, text, a, ln, names):
+    """-> (source, verdict): of the model's text and its variants, the first the compiler proves identical; else
+    the first that compiles (or the first)"""
+    regs = tc.p.get("carve", {}).get("register_variables", ["si", "di"])
+    cands = candidates(prj, text, a, names, regs, getattr(inv, "LAST", {}).get("regparam"))
+    best = None
+    for src, left in cands:
+        if left:
+            v = "registers left: %s" % " ".join(left)
+        else:
+            v = _prove(prj, tc, src, a, ln)
+            if v != "identical":
+                for alt in string_variants(prj, src):       # (a number that is a string's place: the string)
+                    if _prove(prj, tc, alt, a, ln) == "identical":
+                        src, v = alt, "identical"
+                        break
+        if v == "identical":
+            return src, v
+        rank = 0 if v.startswith("differs") else 1 if v.startswith("does not") else 2
+        if best is None or rank < best[0]:
+            best = (rank, src, v)
+    return best[1], best[2]
 
 
 def run(prj, every=False, limit=None, verbose=False):
@@ -173,19 +283,7 @@ def run(prj, every=False, limit=None, verbose=False):
         except Exception as e:                              # (the model declines: it says why)
             out[a] = "declined: %s" % str(e).splitlines()[0][:100] if str(e) else "declined"
             continue
-        regs = tc.p.get("carve", {}).get("register_variables", ["si", "di"])
-        src, left = localize(prj, register_variables(fold_registers(text), regs), a, names)
-        verdict = None
-        if left:
-            verdict = "registers left: %s" % " ".join(left)
-        else:
-            verdict = _prove(prj, tc, src, a, ln)
-            if verdict != "identical":
-                for alt in string_variants(prj, src):       # (a number that is a string's place: the string)
-                    v2 = _prove(prj, tc, alt, a, ln)
-                    if v2 == "identical":
-                        src, verdict = alt, v2
-                        break
+        src, verdict = prove_best(prj, tc, inv, text, a, ln, names)
         out[a] = verdict
         if verdict == "identical":
             with open(prj.path("f%05x.c" % a), "w", newline="\n") as f:

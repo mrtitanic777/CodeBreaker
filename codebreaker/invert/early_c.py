@@ -41,6 +41,9 @@ UNSIGNED_CAST=os.environ.get("MC2INV_UNSIGNED","0")=="1"   # readable listings: 
 # Optional driver fact: does the function being lifted return a value? (True/False from a
 # whole-program "is the result ever read by a caller" analysis; None -> local heuristic.)
 RETVAL=None
+# What recover() last found of MS-C 3.00's register variables: {"saved": [si, di] the function keeps its
+# register variables in, "regparam": {register: parameter index} the parameters declared register}.
+LAST={}
 # Optional driver hook: SWITCH(addr_0based) -> case-target addresses (0-based, table order) of the
 # jump-table dispatch `jmp cs:[bx+table]` at that address, or None.
 SWITCH=None
@@ -658,6 +661,7 @@ class R:
         if mn in ("cbw","cwde") and "al" in s.breg:            # sign-extend al -> ax (int)al
             s.ax=("SX(%s)"%s.breg["al"]) if MARK else s.breg["al"]; s.axsrc=None
             if DEADREGS: s.breg.pop("al",None); s.breg.pop("ah",None); s.retlive=True   # al is now the low byte of that ax
+            if s.msc3: s.retlive=True                          # (3.00: a char widened for its use - or returned)
             return
         if mn in ("cbw","cwde") and MARK:                      # ax = (int)(char)ax
             s.ax="SX(%s)"%(s.ax if s.ax is not None else "ax"); s.axsrc=None; s.retlive=True; return
@@ -1132,6 +1136,25 @@ class R:
             s.emit(out,"ax = %s;"%expr); s.ax="ax"; s.retlive=True
         s.axsrc=None
 
+    def _read_before_write(s, reg, i):
+        """is `reg` (or its byte halves) read by an instruction from i on before anything writes it (or the
+        block ends)?"""
+        names={reg}|set(WORDHALVES.get(reg,()))
+        for ii in s.ins[i:i+12]:
+            mn=ii.mnemonic; ops=ii.op_str
+            if mn.startswith("j") or mn in ("ret","retf","call"):
+                return mn=="call" and any(re.search(r"\b%s\b"%n,ops) for n in names)
+            parts=[p.strip() for p in ops.split(",")]
+            src=parts[1:] if len(parts)>1 else []
+            dst=parts[0] if parts else ""
+            if any(re.search(r"\b%s\b"%n,p) for n in names for p in src) or ("[" in dst and any(re.search(r"\b%s\b"%n,dst) for n in names)):
+                return True
+            if mn in ("mov","lea","pop","xchg") and dst in names:
+                return False
+            if mn not in ("mov","lea","pop") and dst in names:
+                return True                                # (read-modify-write)
+        return False
+
     def step(s,i,out):
         """Straight-line: process ins[i], maybe append a statement. Return next i."""
         s.i=i; s.out=out
@@ -1283,6 +1306,24 @@ class R:
             setattr(s,ops,None)
             if ops=="bx": s.bxsrc=None
             return i+1
+        if s.msc3 and mn in ("inc","dec") and ops.startswith("word ptr [") and ops not in BYTEREG:
+            # MS-C 3.00's pointer steps. `mov R,[m]; inc [m]` with R read before it changes: R is the
+            # old value, `m++` (the store is the increment). `dec [m]; mov R,[m]`: R is `--m`.
+            nm=s.memname(ops) or ops; o="++" if mn=="inc" else "--"
+            nx=s.ins[i+1] if i+1<len(s.ins) else None
+            if nx is not None and nx.mnemonic=="mov" and nx.op_str.endswith(", "+ops) and \
+               nx.op_str.split(",")[0] in ("bx","si","di","ax","cx","dx"):
+                r=nx.op_str.split(",")[0]
+                setattr(s,r,"%s%s"%(o,nm))
+                if r=="bx": s.bxsrc=None
+                if r=="ax": s.axsrc=None
+                return i+2
+            for r in ("bx","si","di","ax","cx","dx"):
+                if getattr(s,r,None)==nm and s._read_before_write(r,i+1):
+                    setattr(s,r,"%s%s"%(nm,o))
+                    if r=="bx": s.bxsrc=None
+                    if r=="ax": s.axsrc=None
+                    return i+1
         if mn in ("inc","dec") and ops not in BYTEREG:
             nm=s.memname(ops) or ops; o="+" if mn=="inc" else "-"
             # fs>0 means MC1 allocated a temp -> source used the temp form x = x OP 1 (not x++/x--)
@@ -1984,7 +2025,21 @@ def recover(code, base=0, cxmap=None):
                 pass
         elif ins[k].mnemonic=="xor" and ins[k].op_str.replace(" ","")=="ax,ax":
             fs=0; msc3=True; k+=2
-    r=R(ins,fs,base,cxmap,msc3=msc3); stmts=r.walk(k,len(ins))
+    # MS-C 3.00's register variables: SI/DI saved right after the frame (`push si`), restored before the
+    # epilogue; a register PARAMETER is loaded into its register at once (`mov si,[bp+N]`). The saves are
+    # not arguments, the loads not statements: the registers are the variables (LAST tells the driver).
+    LAST.clear(); LAST.update(saved=[], regparam={})
+    if msc3:
+        while k<len(ins) and ins[k].mnemonic=="push" and ins[k].op_str in ("si","di"):
+            LAST["saved"].append(ins[k].op_str); k+=1
+        while k<len(ins) and ins[k].mnemonic=="mov":
+            m_=re.match(r"(si|di), word ptr \[bp \+ (\d+)\]$", ins[k].op_str)
+            if not m_ or m_.group(1) not in LAST["saved"] or m_.group(1) in LAST["regparam"]: break
+            LAST["regparam"][m_.group(1)]=(int(m_.group(2))-4)//2; k+=1
+    r=R(ins,fs,base,cxmap,msc3=msc3)
+    for reg_,ix_ in LAST["regparam"].items():
+        r.maxidx=max(r.maxidx, ix_)
+    stmts=r.walk(k,len(ins))
     # Goto fallback: unstructured jumps/branches emitted `goto L_x` + registered target x. If any
     # fired, re-walk with emitgoto so the (possibly earlier) target labels get placed (2-pass).
     if r.gototargets:
