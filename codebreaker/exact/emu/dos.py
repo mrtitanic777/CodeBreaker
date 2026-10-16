@@ -35,8 +35,9 @@ def ropen(path, mode="rb", **kw):
             if k == 39: raise
             time.sleep(0.05 * (k + 1))
 
-def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSRUN_MAX_BLOCKS", "60000000")), trace_calls=False, env=b"PATH=\0", instrument=None, instrument_when=None, driver=None, psp=None):
+def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSRUN_MAX_BLOCKS", "60000000")), trace_calls=False, env=b"PATH=\0", instrument=None, instrument_when=None, driver=None, psp=None, top=None):
     PSP = psp or globals()["PSP"]                # (the PSP's segment: some passes need to be loaded low, some high)
+    TOP = top or globals()["TOP"]                # (the top of memory: some programs fail above 512K)
     from unicorn import Uc, UC_ARCH_X86, UC_MODE_16, UC_HOOK_INTR, UC_HOOK_BLOCK, UC_HOOK_CODE, UcError
     from unicorn.x86_const import (UC_X86_REG_AX, UC_X86_REG_BX, UC_X86_REG_CX, UC_X86_REG_DX, UC_X86_REG_SI,
         UC_X86_REG_DI, UC_X86_REG_BP, UC_X86_REG_SP, UC_X86_REG_IP, UC_X86_REG_CS, UC_X86_REG_DS,

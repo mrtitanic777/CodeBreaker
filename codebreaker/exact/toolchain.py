@@ -196,7 +196,11 @@ class Toolchain(object):
             _remove(os.path.join(ix, f))
         for f, b in incs:
             open(os.path.join(ix, f.upper()), "wb").write(crlf(b))
-        open(os.path.join(w, tag + ".C"), "wb").write(crlf(src))
+        ext = self.p.get("source_ext", ".C")
+        body = crlf(src.replace(b"\x1a", b""))
+        if self.p.get("source_eof"):                        # (a ^Z after the text: MASM 1.00 wants it)
+            body += b"\x1a"
+        open(os.path.join(w, tag + ext), "wb").write(body)
         out = os.path.join(w, self.p["output"].format(**self._values(sw, tag)))
         if os.path.exists(out):
             os.remove(out)
@@ -205,7 +209,7 @@ class Toolchain(object):
         if obj is not None and self.p.get("rename_externs"):
             from codebreaker.exact import omf
             obj = omf.rename_externs(obj, self.p["rename_externs"])
-        for f in [tag + ".C", os.path.basename(out)] + [h.upper() for h in headers]:
+        for f in [tag + self.p.get("source_ext", ".C"), os.path.basename(out)] + [h.upper() for h in headers]:
             _remove(os.path.join(w, f))
         res = (obj, con.decode("latin1").replace("\r", ""))
         os.makedirs(os.path.dirname(cf), exist_ok=True)
@@ -234,7 +238,7 @@ class Toolchain(object):
                 inst, when = _in_memory(mem, inst)
             penv = env + b"".join(e.format(**v).encode("latin1") + b"\0" for e in ps.get("env", []))
             r = dos.run(os.path.join(w, ps["run"]), w, ps.get("args", "").format(**v), env=penv, instrument=inst,
-                        instrument_when=when, psp=_int(self.p.get("psp", 0x100)))
+                        instrument_when=when, psp=_int(self.p.get("psp", 0x100)), top=_int(self.p.get("top", 0)) or None)
             con += r.console
             if r.exit:
                 return r.exit, con + b"(the pass that stopped: " + ps["run"].encode() + b")\n"

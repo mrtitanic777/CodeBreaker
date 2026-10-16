@@ -29,10 +29,14 @@ import struct
 
 
 class Project(object):
-    def __init__(self, folder):
+    def __init__(self, folder, override=None):
         self.dir = os.path.abspath(folder)
         with open(os.path.join(self.dir, "project.json")) as f:
             self.cfg = json.load(f)
+        if override:                                        # (a set of the project's sources: its own folder,
+            self.cfg = dict(self.cfg)                       #  pattern, toolchain)
+            self.cfg.pop("also", None)
+            self.cfg.update(override)
         c = self.cfg
         self.exe = os.path.normpath(os.path.join(self.dir, c["image"]))
         self.src = os.path.join(self.dir, c.get("src", "src"))
@@ -67,6 +71,11 @@ class Project(object):
             h = self.header
             self._relocs = {o + s * 16 for o, s in struct.iter_unpack("<HH", self.file[h[12]:h[12] + 4 * h[3]])} if h else set()
         return self._relocs
+
+    def sets(self):
+        """[Project] - this one, and the other sets of sources project.json lists ("also": [{"src", "sources",
+        "toolchain", ...}]: an assembler's modules beside a compiler's files)"""
+        return [self] + [Project(self.dir, x) for x in self.cfg.get("also", [])]
 
     def code_base(self, a):
         """the image offset of the code segment `a` is in"""

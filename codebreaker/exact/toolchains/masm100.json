@@ -1,0 +1,20 @@
+{
+ "name": "masm100",
+ "title": "Microsoft Macro Assembler 1.00 (M.EXE, February 1982)",
+ "kit": "masm100",
+ "emulator": "dos",
+ "stage": {"files": {"M.EXE": "M.EXE"}},
+ "top": "0x7000",
+ "_top": "its start-up fails above 512K: 448K",
+ "env": ["PATH="],
+ "source_ext": ".ASM",
+ "source_eof": true,
+ "_source_eof": "the text ends with ^Z",
+ "headers": [".inc", ".mac", ".asm"],
+ "passes": [
+  {"run": "M.EXE", "args": "{tag},{tag},NUL,NUL;"}
+ ],
+ "output": "{tag}.OBJ",
+ "default_variant": "release",
+ "variants": {"release": []}
+}

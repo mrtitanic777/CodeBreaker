@@ -142,7 +142,14 @@ def write(prj, rows):
 
 
 def main(prj, argv):
-    rows = run(prj, learn="--learn" in argv, verbose="-v" in argv)
+    sets = prj.sets()
+    rows = []
+    for k, part in enumerate(sets):                         # (each set of sources with its own toolchain)
+        r = run(part, learn="--learn" in argv, verbose="-v" in argv)
+        if len(sets) > 1:
+            same_ = sum(1 for x in r if x[4] == "identical")
+            print("   %s (%s): %d functions, %d identical" % (os.path.relpath(part.src, prj.dir), part.cfg.get("toolchain"), len(r), same_))
+        rows += r
     if "--write" in argv:
         write(prj, rows)
     n = len(rows)
