@@ -382,7 +382,18 @@ def zero_extends(text):
                 UCHAR.add("g_%04x" % int(g.group(1)[2:], 16))
             elif f:
                 UCHAR.add((f.group(1), int(f.group(2))))
-    return "\n".join(l for l in lines if l is not None)
+    text = "\n".join(l for l in lines if l is not None)
+
+    def chained(m):                                         # (a byte stored, then widened with zeros and stored
+        ind, x, e, r, y = m.groups()                        #  again: y = x = e, x an unsigned char)
+        g = re.fullmatch(r"g_([0-9a-f]{1,4})", x)
+        f = re.fullmatch(r"(\w+(?:->f\d+)*)->f(\d+)", x)
+        if g:
+            UCHAR.add("g_%04x" % int(g.group(1), 16))
+        elif f:
+            UCHAR.add((f.group(1), int(f.group(2))))
+        return "%s%s = %s = %s;" % (ind, y, x, e)
+    return re.sub(r"(?m)^([ \t]*)([^=;\n]+?) = ([^;\n]+);\n[ \t]*([abcd])h = 0;\n[ \t]*([^=;\n]+?) = \4x;$", chained, text)
 
 
 def widen_bytes(text):
