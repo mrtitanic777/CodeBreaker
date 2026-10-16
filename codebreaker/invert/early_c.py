@@ -2162,6 +2162,8 @@ def recover(code, base=0, cxmap=None):
             ins[k].mnemonic=="sub" and ins[k].op_str.startswith("sp,"):
         try: fs=int(ins[k].op_str.split(",")[1].strip(),16); msc3=True; k+=1   # (3.00 -Gs, 5.0: sub sp after mov bp,sp)
         except ValueError: pass
+    if not msc3 and FRAME_AFTER_BP and ins[1].op_str=="bp, sp":
+        msc3=True                                          # (-Gs and no locals: no frame to allocate at all)
     # MS-C 3.00's register variables: SI/DI saved right after the frame (`push si`), restored before the
     # epilogue; a register PARAMETER is loaded into its register at once (`mov si,[bp+N]`). The saves are
     # not arguments, the loads not statements: the registers are the variables (LAST tells the driver).

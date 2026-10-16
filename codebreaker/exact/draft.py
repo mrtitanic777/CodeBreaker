@@ -167,6 +167,9 @@ def _ternary(c, a, b):
         if m and _balanced(m.group(1)) and _balanced(m.group(2)) and m.group(2) == other:
             first = _truth(_not("(" + c + ")")) if join == "or-not" else _truth("(" + c + ")")
             return "%s || %s ? %s : %s" % (first, _truth("(" + m.group(1) + ")"), m.group(2), m.group(3))
+        if m and _balanced(m.group(1)) and _balanced(m.group(2)) and m.group(3) == other:   # (C ? (C2 ? X : Y) : Y:
+            first = _truth("(" + c + ")") if join == "or-not" else _truth(_not("(" + c + ")"))   #  C && C2 ? X : Y)
+            return "%s && %s ? %s : %s" % (first, _truth("(" + m.group(1) + ")"), m.group(2), m.group(3))
     return "%s ? %s : %s" % (_truth(c), a, b)
 
 
@@ -1568,7 +1571,28 @@ def structs(text, widths):
             if t2:
                 text = t2
                 del uses[p]
+    # (a field through which the code goes on - p->fN->fM, (p->fN)->fM, *(p->fN): a pointer to a struct of its
+    #  own; the same struct when what it reaches are fields p has too - a list, a tree)
+    inner = {}
+    text = re.sub(r"\*\((\w+)->f(\d+)\)(?!\s*(?:->|\[))", r"(\1->f\2)->f0", text)
+    for p, n, m_ in re.findall(r"\b(\w+)->f(\d+)\)?->f(\d+)\b", text):
+        if p in uses:
+            inner.setdefault((p, int(n)), set()).add(int(m_))
+    text = re.sub(r"\((\w+->f\d+)\)->", r"\1->", text)
+    ptrfield = {}
     defs = []
+    for (p, n), subs in sorted(inner.items()):
+        if subs <= uses[p] or (p, n) == (p, 0) and subs <= uses[p] | {0}:
+            ptrfield[(p, n)] = "struct s_%s *" % p
+            continue
+        fl, pos = [], 0
+        for o in sorted(subs):
+            if o > pos:
+                fl.append("char _%d[%d];" % (pos, o - pos))
+            fl.append("int f%d;" % o)
+            pos = o + 2
+        defs.append("struct s_%s_%d { %s };" % (p, n, " ".join(fl)))
+        ptrfield[(p, n)] = "struct s_%s_%d *" % (p, n)
     for p, offs in sorted(uses.items()):
         fields = []
         pos = 0
@@ -1582,7 +1606,8 @@ def structs(text, widths):
             byte = (p, off) in widths or ("*", off) in widths or uch
             deref = re.search(r"(?<![\w>)\]])\*%s->f%d\b(?!\s*(?:->|\[|\.))" % (p, off), text)   # (*p->fN: a pointer)
             lng = off in LONGINFO.get("fields", ()) and off + 2 not in offs   # (a long field: two words given as one)
-            fields.append("%s f%d;" % ("struct s_%s *" % p if off == 0 and selfref else "unsigned char" if uch else
+            fields.append("%s f%d;" % ("struct s_%s *" % p if off == 0 and selfref else ptrfield[(p, off)] if (p, off) in ptrfield
+                                       else "unsigned char" if uch else
                                        "char" if byte else "int *" if deref else "long" if lng else "int", off))
             pos = off + (1 if byte else 4 if lng else 2)
         tag = "s_" + p
