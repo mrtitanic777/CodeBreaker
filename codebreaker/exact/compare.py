@@ -39,7 +39,7 @@ def function(o, img, name, off, ln, at, prj, syms, learn, text="_TEXT", where=No
         if nm not in syms:
             syms[nm] = (t, a)
             learn[nm] = (t, a)
-        elif syms[nm] != (t, a):
+        elif syms[nm] != (t, a) and not (syms[nm][0] == "?" and syms[nm][1] == a):     # ("?": a place, kind unsaid)
             notes.append("%s is %s %04x in SYMBOLS, here %s %04x" % (nm, syms[nm][0], syms[nm][1], t, a))
 
     def far(k):                                             # the image's segment:offset at +k, as an image address

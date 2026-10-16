@@ -100,8 +100,12 @@ class Project(object):
         if os.path.exists(p):
             for l in open(p):
                 c = l.split()
-                if len(c) >= 3 and not l.startswith("#"):
+                if l.startswith("#") or len(c) < 2:
+                    continue
+                if len(c) >= 3 and c[1] in ("C", "D", "S"):
                     s[c[0]] = (c[1], int(c[2], 16))
+                elif re.fullmatch(r"[0-9a-fA-F]+", c[1]):     # (name address: of the code or the data, unsaid)
+                    s[c[0]] = ("?", int(c[1], 16))
         return s
 
     def save_symbols(self, s):
@@ -111,13 +115,24 @@ class Project(object):
                 f.write("%s %s %04x\n" % (k, t, a))
 
     def sources(self):
-        """[(address, path)] of the one-function files"""
+        """[(address, path)] of the one-function files, and of the whole files src/ORDER lists (name, the address
+        of its text: its functions lie one after the other from there)"""
         out = []
         for f in os.listdir(self.src):
             m = re.fullmatch(r"f([0-9a-f]{5})\.c", f)
             if m:
                 out.append((int(m.group(1), 16), os.path.join(self.src, f)))
+        p = self.path("ORDER")
+        if os.path.exists(p):
+            for l in open(p):
+                c = l.split("#")[0].split()
+                if len(c) >= 2 and re.fullmatch(r"[0-9a-fA-F]+", c[1]) and os.path.exists(self.path(c[0])):
+                    out.append((int(c[1], 16), self.path(c[0])))
         return sorted(out)
+
+    def whole(self, path):
+        """is the file one src/ORDER lists (its functions lie together)?"""
+        return not re.fullmatch(r"f[0-9a-f]{5}\.c", os.path.basename(path))
 
     def headers(self):
         """{name: bytes} the headers of the sources' folder (the compiler finds them beside the file)"""

@@ -54,6 +54,9 @@ class Obj(object):
 
 
 def read(data):
+    from codebreaker.exact import aout
+    if aout.is_aout(data):                                  # (a Version 7 a.out: XENIX's compiler)
+        return aout.read(data)
     o = Obj()
     names = []
     segs = []

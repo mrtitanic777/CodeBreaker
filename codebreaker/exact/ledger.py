@@ -36,8 +36,10 @@ def check_file(prj, tc, path, at, syms, learnt):
         first = at if ti == 0 else None
         if first is None and len(fs) > 1 and fs[0][0] == "(module start)" and fs[1][0] in syms:
             first = syms[fs[1][0]][1] - fs[1][1]           # (an assembly module placed by its first name)
+        together = prj.whole(path) and first is not None    # (a whole source file: its text lies in one piece)
         places = [(of, ln, first if k == 0 and first is not None else
-                   (syms[nm][1] if nm in syms and syms[nm][0] == "C" else None)) for k, (nm, of, ln) in enumerate(fs)]
+                   (first - fs[0][1] + of) if together else
+                   (syms[nm][1] if nm in syms and syms[nm][0] in ("C", "?") else None)) for k, (nm, of, ln) in enumerate(fs)]
 
         def where(x, places=places, first=first, fs=fs):
             for of, ln, a in places:
@@ -52,6 +54,11 @@ def check_file(prj, tc, path, at, syms, learnt):
                 out.append((os.path.basename(path), name, None, ln, "no place", []))
                 continue
             bad, notes = compare.function(o, prj.image, name, off, ln, a, prj, syms, got, text, where)
+            code = o.seg[text]
+            if bad == [ln - 1] and k == len(fs) - 1 and off + ln == len(code) and len(code) % 2 == 0 and code[-1] == 0 \
+                    and ln >= 4 and code[-4] == 0xE9:
+                bad = []                                    # (the assembler's pad to an even length: the next
+                notes.append("? the last byte is the pad to an even length; the next module begins there")   # module's first byte)
             if starts and not _reaches(prj, starts, a, ln):
                 notes.append("ends at %05x, before the next function's start" % (a + ln))
             ok = compare.identical(bad, notes)

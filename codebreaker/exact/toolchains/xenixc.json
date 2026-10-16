@@ -1,0 +1,14 @@
+{
+ "name": "xenixc",
+ "title": "the C compiler of XENIX for the 8086 (cpp, c0, c1, c2, as), Altos ACS 8600 XENIX 2.3, 1983",
+ "plugin": "codebreaker.exact.xenix_c:XenixC",
+ "kit": "xenix86",
+ "_kit": "the XENIX files (lib/cpp, lib/c0, lib/c1, lib/c2, bin/as): binaries/altos-8600-xenix/files/c23",
+ "emulator": "xenix",
+ "default_variant": "microsoft",
+ "variants": {
+  "altos": {},
+  "microsoft": {"rules": "UDMB", "patch": true, "c2move": "RS"}
+ },
+ "_variants": "altos: the diskette's passes as they are; microsoft: the revision Microsoft built LINK 2.40/2.44 and LIB 2.20/2.40 with (exact/xenix_c.py says what differs)"
+}

@@ -268,5 +268,11 @@ def load(name, variant=None):
     k = (name, variant)
     if k not in _LOADED:
         with open(os.path.join(HERE, "toolchains", name + ".json")) as f:
-            _LOADED[k] = Toolchain(json.load(f), variant)
+            p = json.load(f)
+        if p.get("plugin"):                                 # (a toolchain whose running is code: module:Class)
+            import importlib
+            mod, _, cls = p["plugin"].partition(":")
+            _LOADED[k] = getattr(importlib.import_module(mod), cls)(p, variant)
+        else:
+            _LOADED[k] = Toolchain(p, variant)
     return _LOADED[k]
