@@ -139,6 +139,17 @@ def _calls_within(code, img, off, ln, at, base, where, skip):
                 continue
             if at + k + 2 <= len(img) and base + ((at + k + 2 + S(img, at + k) - base) & 0xFFFF) == where(mine):
                 skip |= {k, k + 1}
+    # (and a call the disassembly does not see - data after a call, as MS-Pascal's entry helper has it, puts it
+    # out of step: an E8 on both sides whose targets are the same place)
+    for k in range(1, ln - 1):
+        if k in skip or code[off + k - 1] != 0xE8 or at + k + 1 >= len(img) or img[at + k - 1] != 0xE8:
+            continue
+        mine = (off + k + 2 + S(code, off + k)) & 0xFFFF
+        if off <= mine < off + ln:
+            continue
+        w = where(mine)
+        if w >= 0 and base + ((at + k + 2 + S(img, at + k) - base) & 0xFFFF) == w:
+            skip |= {k, k + 1}
 
 
 def identical(bad, notes):

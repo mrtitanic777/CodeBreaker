@@ -1,0 +1,17 @@
+{
+ "name": "mspascal",
+ "title": "Microsoft Pascal (PAS1/PAS2): the 1.10 pre-release kit of November 1981, and 2.00 to 3.11",
+ "plugin": "codebreaker.exact.mspascal:MSPascal",
+ "kit": "mspascal",
+ "kit110": "mspascal110",
+ "_kit": "mspascal: binaries/mspascal-scp (a folder a version); mspascal110: the 1.10 kit's zips",
+ "emulator": "dos",
+ "default_variant": "1.10",
+ "variants": {
+  "1.10": {"version": "1.10"},
+  "2.00": {"version": "2.00"},
+  "2.05": {"version": "2.05"},
+  "3.04": {"version": "3.04"},
+  "3.11": {"version": "3.11"}
+ }
+}
