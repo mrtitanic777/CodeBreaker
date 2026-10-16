@@ -1317,19 +1317,32 @@ class R:
         """3.00's struct assignment: push si; push di; push ds; pop es; movsw x N (or mov cx,N; rep movsw);
         pop di; pop si - *(struct _bS *)di = *(struct _bS *)si, S the bytes moved. 0: not one"""
         ins=s.ins; seq=[(x.mnemonic,x.op_str) for x in ins[i:i+4]]
-        if seq!=[("push","si"),("push","di"),("push","ds"),("pop","es")]: return 0
-        j=i+4; n=0
+        bare=seq[:2]==[("push","ds"),("pop","es")] and "si" in LAST.get("saved",()) and "di" in LAST.get("saved",())
+        if seq!=[("push","si"),("push","di"),("push","ds"),("pop","es")] and not bare: return 0
+        j=i+(2 if bare else 4); n=0                         # (bare: si and di saved by the function itself)
         if j+1<len(ins) and ins[j].mnemonic=="mov" and re.match(r"cx, (0x[0-9a-f]+|\d+)$",ins[j].op_str) and \
                 ins[j+1].mnemonic.startswith("rep") and "movs" in ins[j+1].mnemonic+ins[j+1].op_str:
             n=s.num(ins[j].op_str.split(", ")[1])*(2 if "w" in (ins[j+1].mnemonic+ins[j+1].op_str).split("movs")[1][:1] else 1); j+=2
         else:
             while j<len(ins) and ins[j].mnemonic in ("movsw","movsb"):
                 n+=2 if ins[j].mnemonic=="movsw" else 1; j+=1
-        if not n or j+1>=len(ins) or (ins[j].mnemonic,ins[j].op_str)!=("pop","di") or (ins[j+1].mnemonic,ins[j+1].op_str)!=("pop","si"):
+        if not n or not bare and (j+1>=len(ins) or (ins[j].mnemonic,ins[j].op_str)!=("pop","di") or (ins[j+1].mnemonic,ins[j+1].op_str)!=("pop","si")):
             return 0
         d_=s.di if s.di is not None else "di"; s_=s.si if s.si is not None else "si"
+        if bare:                                           # (the copy's own pointers given just before: their values)
+            for _ in range(2):
+                mk=re.fullmatch(r"(si|di) = (-?\d+|[\w\->.]+);", out[-1].strip()) if out else None
+                if not mk or mk.group(1) not in ("si","di") or (mk.group(1)=="si" and s_!="si") or (mk.group(1)=="di" and d_!="di"):
+                    break
+                v_=mk.group(2)
+                if re.fullmatch(r"-?\d+", v_) and (int(v_)&0xffff)>=0x100: v_="&g_%x"%(int(v_)&0xffff)   # (a place in the data)
+                if mk.group(1)=="si": s_=v_
+                else: d_=v_
+                out.pop()
+                if len(s.ranks)>len(out): s.ranks.pop(); s.regconst.pop()
         s.emit(out,"*(struct _b%d *)%s = *(struct _b%d *)%s;"%(n,d_,n,s_))
-        return j+2-i
+        if bare: s.si=s.di=None
+        return j+(0 if bare else 2)-i
 
     def _arg_copy(s,i):
         """3.00's argument passed by value from memory: sub sp,N; mov si,X; mov di,sp; push ss; pop es; movsw x
