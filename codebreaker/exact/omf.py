@@ -253,8 +253,8 @@ def functions(o, seg="_TEXT"):
     "(module start)" (an assembly module's)"""
     ps = sorted((off, nm) for nm, s, off in o.pubs if s == seg)
     n = min(len(o.seg.get(seg, b"")), o.filled.get(seg, 0))
-    if ps and ps[0][0] > 0:
-        ps.insert(0, (0, "(module start)"))
+    if ps and ps[0][0] > 0 or not ps and n:
+        ps.insert(0, (0, "(module start)"))             # (a module none of whose code is public: all of it)
     return [(nm, off, (ps[k + 1][0] if k + 1 < len(ps) else n) - off) for k, (off, nm) in enumerate(ps)]
 
 

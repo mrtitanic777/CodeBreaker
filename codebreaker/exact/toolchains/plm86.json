@@ -1,0 +1,26 @@
+{
+ "name": "plm86",
+ "title": "Intel PL/M-86 for ISIS-II (V1.1, V1.2, V2.1), 1979-82",
+ "plugin": "codebreaker.exact.plm86:PLM86",
+ "kit": "intelplm86",
+ "emulator": "isis",
+ "headers": [
+  ".lit"
+ ],
+ "default_variant": "link108",
+ "variants": {
+  "link108": {
+   "version": "2.1",
+   "controls": "MEDIUM OPTIMIZE(2) CODE"
+  },
+  "link200": {
+   "version": "2.1",
+   "controls": "MEDIUM OPTIMIZE(3) CODE"
+  },
+  "v1.2": {
+   "version": "1.2",
+   "controls": "MEDIUM OPTIMIZE(2) CODE"
+  }
+ },
+ "_variants": "the version and the controls a program was compiled with (LINK 1.0x and LIB 1.02: OPTIMIZE(2); LINK 2.00/2.01: OPTIMIZE(3))"
+}

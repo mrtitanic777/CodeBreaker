@@ -53,6 +53,13 @@ class Project(object):
             self.header = None
             self.image = b
         self._relocs = None
+        if c.get("code_segments") == "relocs" or c.get("code", "near") == "far" and "code_segments" not in c:
+            # (far code: the segments the loader sets, from the words the relocation table points at - those
+            # outside the data segment)
+            dend = num(c.get("data_end", 0)) or None
+            segs = {struct.unpack_from("<H", self.image, a)[0] * 16 for a in self.relocs() if a + 2 <= len(self.image)}
+            self.code_segments = sorted({0} | {s for s in segs if s < len(self.image) and
+                                               not (self.dgroup <= s < (dend or self.dgroup + 1))})
 
     def relocs(self):
         """the places in the load image where the loader adds the load segment"""
@@ -118,8 +125,9 @@ class Project(object):
         """[(address, path)] of the one-function files, and of the whole files src/ORDER lists (name, the address
         of its text: its functions lie one after the other from there)"""
         out = []
-        for f in os.listdir(self.src):
-            m = re.fullmatch(r"f([0-9a-f]{5})\.c", f)
+        rx = self.cfg.get("sources", r"f([0-9a-f]{5})\.c")     # (project "sources": the pattern of the file names,
+        for f in os.listdir(self.src):                          #  group 1 the address)
+            m = re.fullmatch(rx, f, re.I)
             if m:
                 out.append((int(m.group(1), 16), os.path.join(self.src, f)))
         p = self.path("ORDER")
@@ -131,12 +139,15 @@ class Project(object):
         return sorted(out)
 
     def whole(self, path):
-        """is the file one src/ORDER lists (its functions lie together)?"""
-        return not re.fullmatch(r"f[0-9a-f]{5}\.c", os.path.basename(path))
+        """does the file's code lie in one piece (a file src/ORDER lists; every file of a project that says
+        "whole": true - a PL/M module of several procedures)?"""
+        return self.cfg.get("whole", False) or not re.fullmatch(r"f[0-9a-f]{5}\.c", os.path.basename(path))
 
     def headers(self):
-        """{name: bytes} the headers of the sources' folder (the compiler finds them beside the file)"""
-        return {f: open(os.path.join(self.src, f), "rb").read() for f in sorted(os.listdir(self.src)) if f.lower().endswith(".h")}
+        """{name: bytes} the headers of the sources' folder (the compiler finds them beside the file; the toolchain
+        profile's "headers": their extensions, default .h)"""
+        ext = tuple(self.toolchain().p.get("headers", [".h"]))
+        return {f: open(os.path.join(self.src, f), "rb").read() for f in sorted(os.listdir(self.src)) if f.lower().endswith(ext)}
 
 
 def load(folder):

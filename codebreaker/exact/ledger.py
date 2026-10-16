@@ -37,6 +37,10 @@ def check_file(prj, tc, path, at, syms, learnt):
         if first is None and len(fs) > 1 and fs[0][0] == "(module start)" and fs[1][0] in syms:
             first = syms[fs[1][0]][1] - fs[1][1]           # (an assembly module placed by its first name)
         together = prj.whole(path) and first is not None    # (a whole source file: its text lies in one piece)
+        if together and ti == 0 and prj.cfg.get("named_by", "") == "first procedure":
+            k0 = o.seg[text].find(b"\x55\x8b\xec")          # (the file is named after its first procedure - a frame -
+            if k0 > 0:                                      #  and the main module has code before it)
+                first = at - k0
         places = [(of, ln, first if k == 0 and first is not None else
                    (first - fs[0][1] + of) if together else
                    (syms[nm][1] if nm in syms and syms[nm][0] in ("C", "?") else None)) for k, (nm, of, ln) in enumerate(fs)]

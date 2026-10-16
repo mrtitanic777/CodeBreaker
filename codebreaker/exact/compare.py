@@ -79,7 +79,10 @@ def function(o, img, name, off, ln, at, prj, syms, learn, text="_TEXT", where=No
                 if not (sb <= at < sb + 0x10000):
                     notes.append("+%x: segment %04x is not this code's" % (k, theirs))
             elif tgt[0] != "ext":                           # (an external's: checked with the offset beside it)
-                notes.append("+%x: segment of %s" % (k, tgt))
+                if prj.relocs() and at + k not in prj.relocs():     # (another segment of the file's: a word the
+                    notes.append("+%x: segment of %s, not a word the loader sets" % (k, tgt))   # loader sets)
+                else:
+                    bind("%s@seg" % tgt[1], "S", theirs)
         elif kind == "off":
             if tgt[0] == "ext":
                 segw = [W(img, at + f[1] - off) for f in o.fix
