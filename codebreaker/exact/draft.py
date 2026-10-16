@@ -423,6 +423,15 @@ def zero_extends(text):
         m = re.match(r"(\s*)([abcd])[lx] = (.+);\s*$", lines[k] or "")   # (al, bl.. - or the word the model wrote)
         if m and re.fullmatch(r"\s*%sh = 0;\s*" % m.group(2), lines[k + 1] or ""):
             e = m.group(3)
+            mk = re.fullmatch(r"\(%sl & (\d+)\)" % m.group(2), e)    # (a byte masked first: al = X; al = (al & K))
+            if mk and k > 0 and lines[k - 1] is not None:
+                p_ = re.fullmatch(r"\s*%sl = (.+);" % m.group(2), lines[k - 1])
+                if p_:
+                    e = "(%s & %s)" % (p_.group(1), mk.group(1))
+                    lines[k - 1] = None
+                    f0 = re.fullmatch(r"(\w+(?:->f\d+)*)->f(\d+)", p_.group(1))
+                    if f0:
+                        UCHAR.add((f0.group(1), int(f0.group(2))))
             lines[k] = "%s%sx = %s;" % (m.group(1), m.group(2), e)
             lines[k + 1] = None
             g = re.fullmatch(r"(g_[0-9a-f]{1,4})", e)
@@ -1410,6 +1419,26 @@ def temporaries(text):
     return text
 
 
+def default_last(text):
+    """a switch's default arm, written first, moved to the end (a variant: the compiler puts the default's code
+    after the tests wherever it is written, so the code alone does not say where)"""
+    lines = text.split("\n")
+    for k, l in enumerate(lines):
+        m = re.fullmatch(r"(\s*)switch \(.*\) \{", l)
+        if not m or k + 1 >= len(lines) or lines[k + 1] != m.group(1) + "default:":
+            continue
+        ind = m.group(1)
+        nxt = next((j for j in range(k + 2, len(lines)) if re.fullmatch(r"%s(?:case [^:]+|default):" % re.escape(ind), lines[j])), None)
+        end = next((j for j in range(k + 1, len(lines)) if lines[j] == ind + "}"), None)
+        if nxt is None or end is None or nxt > end:
+            continue
+        arm = lines[k + 1:nxt]
+        if not re.match(r"\s*(?:break;|return\b|goto\b)", [x for x in arm if x.strip()][-1]):
+            continue                                        # (it falls into the next: not movable)
+        return "\n".join(lines[:k + 1] + lines[nxt:end] + arm + lines[end:])
+    return None
+
+
 def split_ternaries(text):
     """return (C ? A : B); - as the two returns it may have been: if (C) return A; return B; (a variant: the
     compiler keeps one copy of a tail both share either way)"""
@@ -1692,6 +1721,27 @@ def case_falls(text):
         if not re.search(r"\bgoto %s;" % lab, "\n".join(lines)):
             del lines[k]
         k += 1
+    # (an arm's last goto to another case's start, not the next: the statements there to their break, copied -
+    #  the compiler's one copy of a tail both cases end with)
+    for _ in range(4):
+        hit = False
+        for j, l in enumerate(lines):
+            g = re.fullmatch(r"(\s*)goto (L_\w+);", l)
+            if not g or j + 1 >= len(lines) or not re.match(r"\s*(?:case [^:]+|default):$|\s*\}$", lines[j + 1]):
+                continue
+            at = next((i for i, x in enumerate(lines) if x.strip() == g.group(2) + ":"), None)
+            if at is None or at <= j:
+                continue
+            end = next((i for i in range(at + 1, len(lines)) if re.match(r"\s*(?:break;|return\b)", lines[i])), None)
+            if end is None or any(re.match(r"\s*(?:case [^:]+|default):$|\s*L_\w+:", x) for x in lines[at + 1:end]):
+                continue
+            lines[j:j + 1] = lines[at + 1:end + 1]
+            if not re.search(r"\bgoto %s;" % g.group(2), "\n".join(lines)):
+                lines = [x for x in lines if x.strip() != g.group(2) + ":"]
+            hit = True
+            break
+        if not hit:
+            break
     return "\n".join(lines)
 
 
@@ -2047,7 +2097,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = long_ladders(long_pairs(t))                     # (the longs again, as the passes left them)
         t = frame_chars(t, widths)
         t = fill_frame(t, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
-        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t)] if v]
+        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t)] if v]
         both = pre_steps(t)
         both = pre_increments(both) if both else None
         if both:
@@ -3044,7 +3094,7 @@ REFINERS = [lambda prj, s: [assign_in_args(s)], lambda prj, s: [return_sources(s
             lambda prj, s: [pre_steps(s)], lambda prj, s: [pre_increments(s)], lambda prj, s: [assign_in_tests(s)],
             lambda prj, s: [and_returns(s)], lambda prj, s: [register_temps(s)], lambda prj, s: [void_variant(s)],
             lambda prj, s: pointer_widths(s), _place_variants, lambda prj, s: string_variants(prj, s),
-            lambda prj, s: [split_ternaries(s)]]
+            lambda prj, s: [split_ternaries(s)], lambda prj, s: [default_last(s)]]
 
 
 def refine(prj, tc, a, ln, best, rounds=2, budget=40):
