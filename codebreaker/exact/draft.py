@@ -3086,7 +3086,11 @@ def model_texts(inv, code, name, base=None):
             out.append((t, regparam))
         # (a long compared the compiler's way - the high words, then the low words without sign - three nested
         #  ifs: read again with the unsigned compares marked, and the ladders folded into one long comparison)
-        if hasattr(inv, "_fold_ladders") and re.search(r"if \(\((\w+) [<>]= [^)]*\)\) \{\n\s*if \(\(\1 [<>]= ", t):
+        from codebreaker.exact import x86 as _x86          # (or a compare without sign: the text with it marked)
+        _ins = list(_x86.disasm(bytes(code), 0, len(code), False))
+        unsigned = any(a_.mnemonic == "cmp" and b_.mnemonic in ("jb", "jbe", "ja", "jae") and "bp" not in a_.op_str.split(",")[1]
+                       for a_, b_ in zip(_ins, _ins[1:]))
+        if hasattr(inv, "_fold_ladders") and (unsigned or re.search(r"if \(\((\w+) [<>]= [^)]*\)\) \{\n\s*if \(\(\1 [<>]= ", t)):
             olds = (inv.UNSIGNED_CAST, getattr(inv, "SWITCH", None))
             try:
                 inv.UNSIGNED_CAST = True
