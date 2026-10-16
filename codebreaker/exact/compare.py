@@ -124,7 +124,22 @@ def function(o, img, name, off, ln, at, prj, syms, learn, text="_TEXT", where=No
     if placed and where(off) == at:
         _calls_within(code, img, off, ln, at, base, where, skip)
     bad = [k for k in range(ln) if k not in skip and (at + k >= len(img) or img[at + k] != code[off + k])]
+    shift = _shift(code, img, off, at, bad)
+    if shift:
+        notes.append(shift)
     return bad, notes
+
+
+def _shift(code, img, off, at, bad):
+    """bytes that differ alone (an immediate) and each by the same amount: a constant or an enumeration with
+    members more or fewer in the program's source than in this one"""
+    lone = [k for k in bad if k - 1 not in bad and k + 1 not in bad and at + k < len(img)]
+    ds = {(img[at + k] - code[off + k]) & 0xFF for k in lone}
+    if lone and len(ds) == 1 and (len(lone) >= 2 or lone == bad):
+        d = ds.pop()
+        return "? %d value%s %s%d in the program (%s) - a constant, or an enumeration with members more or fewer before them" % (
+            len(lone), "s each" if len(lone) > 1 else "", "+" if d < 0x80 else "-", d if d < 0x80 else 0x100 - d, ", ".join("+%x" % k for k in lone[:6]))
+    return None
 
 
 def _calls_within(code, img, off, ln, at, base, where, skip):
