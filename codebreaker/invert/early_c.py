@@ -748,6 +748,10 @@ class R:
             s.breg[ops]="(%s %s 1)"%(s.breg.get(ops,pre8 if pre8 is not None else ops), "+" if mn=="inc" else "-"); return
         if mn in ("cbw","cwde") and "al" in s.breg:            # sign-extend al -> ax (int)al
             s.ax=("SX(%s)"%s.breg["al"]) if MARK else s.breg["al"]; s.axsrc=None
+            if s.msc3 and not MARK and i>0 and s.ins[i-1].mnemonic=="mov":   # (3.00: the low byte of a word the
+                mb=re.match(r"al, byte ptr (\[bp [+-] (?:0x[0-9a-f]+|\d+)\])$", s.ins[i-1].op_str)   # function reads
+                if mb and any(("word ptr "+mb.group(1)) in x.op_str for x in s.ins):          # whole elsewhere: a cast)
+                    v_=str(s.ax); s.ax="(char)%s"%(v_ if re.fullmatch(r"[\w\->.]+", v_) else "(%s)"%v_)
             if DEADREGS: s.breg.pop("al",None); s.breg.pop("ah",None); s.retlive=True   # al is now the low byte of that ax
             if s.msc3: s.retlive=True                          # (3.00: a char widened for its use - or returned)
             return
@@ -1366,6 +1370,13 @@ class R:
             args=", ".join(s._take_args(i, "near", s.num(m.group(1)) if m else None))
             if not args and getattr(s,"fst",None):            # (the 8087's top taken by a routine of no
                 args=s.fst.pop()                               #  arguments: a conversion - __ftol)
+            if not args and s.msc3 and i>=3:                   # (3.00's long shifts: the value in dx:ax, the
+                pre=[(x.mnemonic,x.op_str) for x in s.ins[i-3:i]]   #  count in cl, loaded right before the call)
+                if pre[-1][0]=="mov" and pre[-1][1].startswith(("cl, ","cx, ")) and \
+                        {p_[1].split(",")[0] for p_ in pre[:2] if p_[0]=="mov"}=={"ax","dx"}:
+                    lo_=s.ax if s.ax is not None else "ax"; hi_=s.dx if s.dx is not None else "dx"
+                    args="LONG(%s, %s), %s"%(hi_, lo_, s.num(pre[-1][1].split(", ")[1]) if re.match(r"(0x[0-9a-f]+|\d+)$", pre[-1][1].split(", ")[1]) else "cl")
+                    s.ax=None; s.dx=None
             if m:
                 expr="sub_%x(%s)"%(s.num(m.group(1)), args)
             else:                                              # indirect call: through a ptr/reg
@@ -2232,6 +2243,8 @@ def _prologue(ins):
     if fs==0 and not msc3 and k < len(ins) and ins[1].op_str=="bp, sp"        and ins[k].mnemonic=="sub" and ins[k].op_str.startswith("sp,"):
         try: fs=int(ins[k].op_str.split(",")[1].strip(),16); msc3=True; k+=1   # MS-C 5: sub sp AFTER mov bp,sp
         except ValueError: pass
+    if not msc3 and FRAME_AFTER_BP and len(ins) > 1 and ins[1].op_str=="bp, sp":
+        msc3=True                                          # (-Gs and no locals: no frame to allocate at all)
     # callee-saved register variables: `push di` / `push si` right after the frame setup, restored
     # by a matching pop in the epilogue -- register saves, NOT call arguments.
     if ins[1].op_str=="bp, sp":

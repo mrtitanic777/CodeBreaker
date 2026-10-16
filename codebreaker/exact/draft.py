@@ -495,7 +495,9 @@ def stored_calls(text):
             rd = "(?:%s|%sl)" % (reg, reg[0]) if reg in ("ax", "bx", "cx", "dx") else reg   # (or its low byte: a char)
             st = re.match(r"(\s*)(.+?) = %s;\s*$" % rd, lines[k + 1])
             rest = "\n" + "\n".join(lines[k + 2:])          # (from a line's start: the next value given it)
-            later = not _live_after(lines[:k + 1] + [re.sub(r"\b%s\b" % rd, "", lines[k + 1])] + lines[k + 2:], k, reg, r"\b%s\b" % rd)
+            a_ = re.match(r"(\s*%s = )(.*)$" % reg, lines[k + 1])   # (its reads there gone - not a value it is given)
+            stripped = a_.group(1) + re.sub(r"\b%s\b" % rd, "", a_.group(2)) if a_ else re.sub(r"\b%s\b" % rd, "", lines[k + 1])
+            later = not _live_after(lines[:k + 1] + [stripped] + lines[k + 2:], k, reg, r"\b%s\b" % rd)
             # (read before it is given a value that does not read it, on any path: still wanted)
             if st and not re.search(r"\b%s\b" % rd, st.group(2)) and later:
                 out.append("%s%s = %s;" % (st.group(1), st.group(2), call))
@@ -506,6 +508,17 @@ def stored_calls(text):
                     not re.match(r"\s*(?:\}|L_\w+:|else\b)", nxt) and not re.search(r"\b%s\s*=[^=]" % rd, nxt):
                 out.append(re.sub(r"\b%s\b" % rd, lambda x: call, nxt, count=1))   # makes no call of its own:
                 k += 2                                                               #  the order stays)
+                continue
+            calls = re.findall(r"\b(?!if\b|while\b|for\b|switch\b|return\b)[A-Za-z_]\w*\(", nxt)
+            ca = re.search(r"\b(?!if\b|while\b|for\b|switch\b|return\b)[A-Za-z_]\w*\(((?:[^()]|\((?:[^()]|\([^()]*\))*\))*)\)", nxt)
+            outside = re.sub(r"^\s*%s = " % reg, "", nxt[:ca.start()] + nxt[ca.end():]) if ca else ""
+            if later and len(calls) == 1 and ca and len(re.findall(r"\b%s\b" % rd, ca.group(1))) == 1 and \
+                    not re.search(r"\b%s\b" % rd, outside) and not re.match(r"\s*(?:\}|L_\w+:|else\b)", nxt):
+                byte = re.search(r"\b%sl\b" % reg[0], ca.group(1)) and reg != "%sl" % reg[0]   # (an argument of the one
+                v = "(char)(%s)" % call if byte else call                                    #  call there: its value
+                arg = re.sub(r"\b%s\b" % rd, lambda x: v, ca.group(1), count=1)              #  goes first anyway; its
+                out.append(nxt[:ca.start(1)] + arg + nxt[ca.end(1):])                        #  low byte, a char)
+                k += 2
                 continue
         out.append(lines[k])
         k += 1
@@ -1791,6 +1804,24 @@ def long_pairs(text):
         LONGINFO.setdefault("funcs", set()).add(re.match(r"\w+", call).group(0))
         nxt = m.group(5) or ""
         return "%s%s = %s;%s" % (ind, lo, call, nxt.replace("(ax | dx)", lo))   # (the pair tested at once: the long)
+    def call_args(m):                                       # (a long passed: its two words pushed - the pair, or
+        args = [x.strip() for x in _top_commas(m.group(2))] if m.group(2).strip() else []   # an int widened)
+        out, i = [], 0
+        while i < len(args):
+            x = args[i]
+            y = args[i + 1] if i + 1 < len(args) else None
+            if y is not None and re.fullmatch(r"\w+", x) and y == hi_of(x) and x in pairs:   # (a long the code
+                out.append(x)                                                            #  shows elsewhere)
+                i += 2
+                continue
+            if y is not None and y in ("(0 - (%s >> 15))" % x, "(0 - ((%s) >> 15))" % x):
+                out.append("(long)%s" % x if re.fullmatch(r"\w+", x) else "(long)(%s)" % x)
+                i += 2
+                continue
+            out.append(x)
+            i += 1
+        return "%s(%s)" % (m.group(1), ", ".join(out))
+
     def zero_pair(m):                                       # (both halves given 0, or -1: the long 0, -1)
         ind, a, v, b = m.groups()
         lo, hi = (b, a) if hi_of(b) == a else (a, b) if hi_of(a) == b else (None, None)
@@ -1818,6 +1849,7 @@ def long_pairs(text):
     body = re.sub(r"(?m)^(\s*)ax = ((?:sub_\w+|[A-Za-z_]\w*)\((?:[^()]|\([^()]*\))*\));\n\s*(\w+) = ax;\n",
                   lambda m: "%s%s = %s;\n" % (m.group(1), m.group(3), m.group(2)), body)   # (through ax: the same)
     body = re.sub(r"(?m)^(\s*)(\w+) = ((?:sub_\w+|[A-Za-z_]\w*)\((?:[^()]|\([^()]*\))*\));\n\s*(\w+) = dx;(\n.*)?$", call_store, body)
+    body = re.sub(r"\b((?!if\b|while\b|for\b|switch\b|return\b)[A-Za-z_]\w*)\(((?:[^()]|\((?:[^()]|\([^()]*\))*\))*)\)", call_args, body)
     params = re.findall(r"(?m)^\w+\(([\w, ]*)\)", head)
     plist = [p.strip() for p in (params[-1].split(",") if params else []) if p.strip()]
     done = []
@@ -1973,6 +2005,7 @@ def localize(prj, text, at, names):
     text = re.sub(r"\bg_([0-9a-f]{1,4})\b", lambda m: "g_%04x" % int(m.group(1), 16), text)
     macros = prj.toolchain().p.get("macros")
     text = fp_conversions(text, prj.toolchain().p.get("fp_conversions"))
+    text = long_helpers(text, prj.toolchain().p.get("long_helpers"))
     text = library_macros(text, macros)                     # (the routines named: the macros they show)
     text = data_macros(prj, text, prj.toolchain().p.get("data_macros"))
     if FILEPTR:                                             # (the stream's fields the struct pass read: the macro's now)
@@ -2052,6 +2085,31 @@ def localize(prj, text, at, names):
         decl.append("extern %s;" % ", ".join("%s()" % f for f in funcs))
     text = fp_types(text)
     return ("\n".join(decl) + "\n\n" if decl else "") + text, left
+
+
+def long_helpers(text, helpers):
+    """the library's long arithmetic (the profile's "long_helpers": routine -> C operator) as the operator:
+    lmul(X, Y) is (X * Y); an assigning one, almul(&X, Y), is X *= Y"""
+    if not helpers:
+        return text
+    rx = re.compile(r"\b(%s)\(((?:[^()]|\((?:[^()]|\([^()]*\))*\))*)\)" % "|".join(re.escape(h) for h in helpers))
+
+    def one(m):
+        op = helpers[m.group(1)]
+        args = [x.strip() for x in _top_commas(m.group(2))]
+        if len(args) != 2:
+            return m.group(0)
+        if op.endswith("=") and op not in ("==", "<=", ">=", "!="):
+            if not args[0].startswith("&"):
+                return m.group(0)
+            return "(%s %s %s)" % (args[0][1:], op, args[1])
+        v = "(%s %s %s)" % (args[0], op, args[1])
+        before, after = m.string[:m.start()].rstrip(), m.string[m.end():].lstrip()
+        if re.search(r"\w\($|,$", before) and after[:1] in (")", ","):   # (an argument pushed as one word: the
+            return "(int)%s" % v                                            #  long's low word - an int)
+        return v
+    t = rx.sub(one, text)
+    return re.sub(r"(?m)^(\s*)\((.+ [*/%<>+-]{1,2}= .+)\);$", r"\1\2;", t)   # (a statement of its own: no parens)
 
 
 def fp_conversions(text, routines):
@@ -2446,6 +2504,40 @@ def fp_native(code):
     return bytes(b)
 
 
+def inline_goto_arms(lines):
+    """an arm that is only `goto L;`, L the start of statements to the end of their block: those statements in
+    its place (the compiler's one copy of a tail two arms share); L dropped when nothing goes to it then"""
+    lines = list(lines)
+    for _ in range(8):
+        hit = None
+        for k, l in enumerate(lines):
+            g = re.fullmatch(r"(\s*)goto (L_\w+);", l)
+            if not g or k == 0 or not re.search(r"\{\s*$", lines[k - 1]) or k + 1 >= len(lines) or not lines[k + 1].strip().startswith("}"):
+                continue
+            at = next((j for j, x in enumerate(lines) if x.strip() == g.group(2) + ":"), None)
+            if at is None:
+                continue
+            ind = len(lines[at]) - len(lines[at].lstrip())
+            j, depth = at + 1, 0
+            while j < len(lines):                           # (to the end of the label's block)
+                if depth == 0 and lines[j].strip().startswith("}"):
+                    break
+                depth += lines[j].count("{") - lines[j].count("}")
+                j += 1
+            tail = lines[at + 1:j]
+            if not tail or len(tail) > 40 or any(re.fullmatch(r"\s*L_\w+:", x) for x in tail) or at < k < j:
+                continue
+            hit = (k, g.group(1), [g.group(1) + x[ind:] if x.strip() else x for x in tail], g.group(2), at)
+            break
+        if not hit:
+            break
+        k, gi, body, lab, at = hit
+        lines[k:k + 1] = body
+        if not any(re.search(r"\bgoto %s;" % lab, x) for x in lines):
+            lines = [x for x in lines if x.strip() != lab + ":"]
+    return lines
+
+
 def model_texts(inv, code, name, base=None):
     """[(text, register parameters)] - the model's text of a function, from each of its structurers (a linear walk;
     a structured control-flow graph, where the model has one): the compiler decides between them"""
@@ -2488,6 +2580,26 @@ def model_texts(inv, code, name, base=None):
         t = inv.to_c(name, fs, params, stmts, pt, loc)
         if t != out[0][0]:
             out.append((t, regparam))
+        # (a long compared the compiler's way - the high words, then the low words without sign - three nested
+        #  ifs: read again with the unsigned compares marked, and the ladders folded into one long comparison)
+        if hasattr(inv, "_fold_ladders") and re.search(r"if \(\((\w+) [<>]= [^)]*\)\) \{\n\s*if \(\(\1 [<>]= ", t):
+            olds = (inv.UNSIGNED_CAST, getattr(inv, "SWITCH", None))
+            try:
+                inv.UNSIGNED_CAST = True
+                flow16.CMPSWITCH = True
+                fs2, params2, stmts2, pt2, loc2 = inv.recover_cfg(code)
+                stmts2 = [s for s in inv._fold_ladders(inline_goto_arms(stmts2)) if not s.startswith("/* register variables")]
+                for reg, ix in regparam.items():
+                    p = chr(ord("a") + ix)
+                    stmts2 = [s for k, s in enumerate(stmts2) if not (k < 3 and re.fullmatch(r"%s = %s;" % (reg, p), s.strip()))]
+                t2 = inv.to_c(name, fs2, params, stmts2, pt2, loc2)
+                if t2 != t:
+                    out.append((t2, regparam))
+            except Exception:
+                pass
+            finally:
+                inv.UNSIGNED_CAST = olds[0]
+                flow16.CMPSWITCH = False
     _fpinfo(inv, raw, code)
     return out
 

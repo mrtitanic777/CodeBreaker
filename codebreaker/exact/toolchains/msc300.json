@@ -29,6 +29,8 @@
  "probe_switch": "-Gs",
  "_probe_switch": "the switch that leaves the stack probe out of a prologue: the draft stage gives a function the switches its prologue shows",
  "fp_conversions": ["ftol", "_ftol", "__ftol"],
+ "long_helpers": {"lmul": "*", "ldiv": "/", "lrem": "%", "lmod": "%", "ulmul": "*", "uldiv": "/", "ulrem": "%", "ulmod": "%", "lshl": "<<", "lshr": ">>", "ulshr": ">>", "almul": "*=", "aldiv": "/=", "alrem": "%=", "aulmul": "*=", "auldiv": "/=", "aulrem": "%=", "alshl": "<<=", "alshr": ">>=", "aulshr": ">>="},
+ "_long_helpers": "the library routines of long arithmetic (their names in the program: the library stage's) and the C operator each is - an a- one assigns through its first argument",
  "_fp_switch": "the switch a function using the 8087 (or its emulator) was compiled with: the draft stage gives it to such a function's source",
  "derive": {
   "ot": {
