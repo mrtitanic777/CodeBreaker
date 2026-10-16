@@ -275,14 +275,14 @@ def rename_externs(data, mapping):
     return out
 
 
-def raw_object(title, code, pubs, data=b"", dpubs=None, text="_TEXT"):
+def raw_object(title, code, pubs, data=b"", dpubs=None, text="_TEXT", dalign=1):
     """an object module of the program's own bytes: a run of its code (and of its data), with the public names
     others call it by - a stand-in for a part no source and no library module gives. Its words for the linker
     are the program's already, so it stands only where it stood."""
     out = record(0x80, name(title))
     out += record(0x96, name("") + name("DGROUP") + name(text) + name("CODE") + name("_DATA") + name("DATA"))
     out += record(0x98, bytes([0x28]) + struct.pack("<H", len(code)) + bytes([3, 4, 1]))      # byte aligned, public
-    out += record(0x98, bytes([0x28]) + struct.pack("<H", len(data)) + bytes([5, 6, 1]))
+    out += record(0x98, bytes([0x48 if dalign == 2 else 0x28]) + struct.pack("<H", len(data)) + bytes([5, 6, 1]))
     out += record(0x9A, bytes([2, 0xFF, 2]))                                                  # DGROUP: _DATA
     for seg, b in ((1, code), (2, data)):
         for k in range(0, len(b), 1000):

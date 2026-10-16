@@ -132,10 +132,23 @@ def crt(prj, objs):
     img = prj.image
     dg = prj.dgroup
     order, always = [], []
+    group = {}                                              # (modules of the same bytes at one place: one is taken)
+    proven = set()
     for l in open(p):
         f = l.split("#")[0].split()
         if not f:
             continue
+        note = l.partition("#")[2]
+        mc = re.search(r"\bcode ([0-9a-f]{5})\b", note)
+        md = re.match(r"\s*data [0-9a-f]{4}\b", note)
+        if f[0] != "RAW" and (mc or md):                    # (found in the program by its bytes: it is there)
+            ms = group.setdefault(mc.group(1) if mc else "data:" + f[0], [])
+            if "the same bytes as" in note:                 # (the one the library stage took goes first)
+                ms.append(f[0])
+            else:
+                ms.insert(0, f[0])
+            if "the one whose calls go where" in note:      # (told apart by their calls: that one is the program's,
+                proven.add(f[0])                            #  whatever the objects name)
         if f[0] == "RAW":                                   # RAW NAME code=LO-HI [data=LO-HI] [pub=N@OFF ..] [dpub=..]
             kv = {}
             for x in f[2:]:
@@ -146,7 +159,7 @@ def crt(prj, objs):
             d0, d1 = rng(kv["data"][0]) if "data" in kv else (0, 0)
             ps = lambda vs: {y.split("@")[0]: int(y.split("@")[1], 16) for v in vs for y in v.split(",") if y}
             mods[f[1]] = omf.raw_object(f[1], img[c0:c1], ps(kv.get("pub", [])), img[dg + d0:dg + d1] if d1 else b"",
-                                        ps(kv.get("dpub", [])))
+                                        ps(kv.get("dpub", [])), dalign=2 if d1 and d0 % 2 == 0 else 1)
             order.append(f[1])
             if "pub" not in kv and "dpub" not in kv:
                 always.append(f[1])                         # (a piece no name calls for: always taken)
@@ -160,24 +173,40 @@ def crt(prj, objs):
         pb, e = omf.names_of(raw)
         have |= pb
         need |= e
-    take = list(always)
-    for m in take:
+    take = []
+
+    def add(m):
+        nonlocal have, need
+        take.append(m)
         pb, e = omf.names_of(mods[m])
         have |= pb
         need |= e
-    while True:
-        miss = need - have
-        add = None
-        for m in order:
-            if m not in take and omf.names_of(mods[m])[0] & miss:
-                add = m
-                break
-        if not add:
-            break
-        take.append(add)
-        pb, e = omf.names_of(mods[add])
-        have |= pb
-        need |= e
+
+    others = {m for ms in group.values() if any(x in proven for x in ms) for m in ms if m not in proven}
+
+    def close():
+        while True:
+            miss = need - have
+            nxt = next((m for m in order if m not in take and m not in others and omf.names_of(mods[m])[0] & miss), None)
+            if not nxt:
+                return
+            add(nxt)
+    for m in always:
+        add(m)
+    close()
+    # what the library stage found by its bytes is in the program: a group of the same bytes none of whose
+    # members anything names is taken all the same (its first: a module only a stand-in calls)
+    for ms in group.values():
+        if not any(m in take for m in ms):
+            add(ms[0])
+            close()
+    crt.conflicts = []
+    for at, ms in group.items():                            # (the program has one routine where ours names two)
+        both = [m for m in ms if m in take]
+        if len(both) > 1:
+            crt.conflicts.append("the program has one routine at %s for %s; ours names %s - the sources call it by "
+                                 "another name than the program's (a name the library's modules use is the program's)" % (
+                                     at, " and ".join(both), " and ".join(sorted(omf.names_of(mods[m])[0].pop() for m in both))))
     return [(m, mods[m]) for m in order if m in take], sorted(need - have)
 
 
@@ -193,6 +222,8 @@ def run_link(prj, objs, keep=None, opts=""):
     try:
         shutil.copy(_kitfile(tc, lk, lk["run"]), os.path.join(w, "LINK.EXE"))
         libs = lk.get("libs", {}).get(prj.cfg.get("model", "S"), [])
+        if os.path.exists(prj.path("CRTLIB")):              # (the library's part goes in as objects: a name left open
+            libs = []                                       #  - one only a stand-in used - must not pull a module in)
         for l in set(libs) | set(lk.get("copy", [])):
             shutil.copy(_kitfile(tc, lk, os.path.join(lk["dir"], l)), w)
         names = []
@@ -321,19 +352,86 @@ def drift(a, b, step=2, span=12, reach=160):
     return out[:16]
 
 
-def main(prj, argv):
-    keep = argv[argv.index("--keep") + 1] if "--keep" in argv else None
-    v = "-v" in argv
-    objs, stand = objects(prj, v)
+def build(prj, keep=None, verbose=False, quiet=False):
+    """-> (the linked file or None, LINK's words, its map, [stand-ins])"""
+    objs, stand = objects(prj, verbose)
     objs = first_objects(prj) + objs
     bss = bss_objects(prj)
     lib, miss = crt(prj, objs + bss)
-    if miss:
+    if miss and not quiet:
         print("   not resolved: " + " ".join(miss))
+    for c in getattr(crt, "conflicts", []) if not quiet else []:
+        print("   " + c)
     objs = objs + bss[:1] + lib + bss[1:]
     lf = prj.path("LINKOPT")
     opts = "".join(l.split("#")[0].strip() for l in open(lf) if l.split("#")[0].strip()) if os.path.exists(lf) else ""
     exe, con, mp = run_link(prj, objs, keep, opts)
+    return exe, con, mp, stand
+
+
+def fit(prj, rounds=8):
+    """the data stand-ins' lengths fitted by the link: each round the first place where ours runs behind or ahead
+    of the program in the data segment is put to the stand-in of a guessed length just before it, which is made
+    that much longer or shorter (project.json "data_sizes", kept). -> the lines of what was done"""
+    import json
+    out = []
+    for r in range(rounds):
+        prj._library = None
+        with open(prj.path("CRTLIB"), "w", newline="\n") as f:      # (the library stage's, with the sizes so far)
+            f.write("\n".join(library.lines(library.locate(prj))) + "\n")
+        exe, con, mp, stand = build(prj, quiet=True)
+        if exe is None:
+            out.append("round %d: no program was written" % r)
+            break
+        dg = prj.dgroup
+        moves = [(int(m.group(1), 16), int(m.group(2))) for l in drift(prj.image[dg:], parts(exe)[1][dg:])
+                 for m in [re.match(r"DS:([0-9a-f]+) on, ours is ([+-]\d+)", l)] if m]
+        first = next(((p, d) for p, d in moves if d), None)
+        if first is None:
+            out.append("round %d: the data segment agrees" % r)
+            break
+        p, d = first
+        lib = library.locate(prj)
+        sizes = prj.cfg.get("data_sizes", {})
+        cands = [x for x in lib.dataraws if x.end <= p <= x.end + 32 and ("a guess" in x.why or any(n in sizes for n in x.pubs))]
+        if not cands:
+            ds = prj.image[dg:]
+            q = p
+            while q > 0 and ds[q - 1] == 0:
+                q -= 1
+            if d < 0 and p - q >= -d:                       # (zeros no module accounts for: a pad, where they begin)
+                at = q + (q & 1)
+                cfg = json.load(open(os.path.join(prj.dir, "project.json")))
+                cfg.setdefault("data_pads", {})["%04x" % at] = -d
+                with open(os.path.join(prj.dir, "project.json"), "w") as f:
+                    json.dump(cfg, f, indent=1)
+                prj.cfg = cfg
+                out.append("round %d: at DS:%04x ours is %+d, after %d zeros: a pad of %d bytes at DS:%04x" % (r, p, d, p - q, -d, at))
+                continue
+            out.append("round %d: at DS:%04x ours is %+d, and no stand-in of a guessed length is before it" % (r, p, d))
+            break
+        x = max(cands, key=lambda x: x.end)
+        name = list(x.pubs)[0]
+        size = x.end - x.data - d
+        cfg = json.load(open(os.path.join(prj.dir, "project.json")))
+        cfg.setdefault("data_sizes", {})[name] = size
+        with open(os.path.join(prj.dir, "project.json"), "w") as f:
+            json.dump(cfg, f, indent=1)
+        prj.cfg = cfg
+        out.append("round %d: at DS:%04x ours is %+d: %s's stand-in made %d bytes" % (r, p, d, name, size))
+        with open(prj.path("CRTLIB"), "w", newline="\n") as f:
+            prj._library = None
+            f.write("\n".join(library.lines(library.locate(prj))) + "\n")
+    return out
+
+
+def main(prj, argv):
+    keep = argv[argv.index("--keep") + 1] if "--keep" in argv else None
+    v = "-v" in argv
+    if "--fit" in argv:
+        for l in fit(prj):
+            print("   " + l)
+    exe, con, mp, stand = build(prj, keep, v)
     msgs = [l for l in con.split("\n") if l.strip() and "Microsoft" not in l and "Copyright" not in l]
     for l in msgs[:20]:
         print("   LINK: " + l)

@@ -210,6 +210,34 @@ def _locate(prj):
         return True
     lone = [p for p in lone if calls_library(p)]
     coded = [p for p in coded if start is None or p.code >= start]
+    # every module of the same bytes at a place is one of its group (atoi and atol: one jump to __catox) ...
+    inplace = {id(m) for p in coded for m in [p.m] + p.also}
+    for p in coded:
+        s0, b, h = p.m.code[0]
+        for m in mods:
+            if id(m) in inplace or not m.code or len(m.code[0][1]) != len(b):
+                continue
+            mb, mh = m.code[0][1], m.code[0][2]
+            if mh == h and all(mb[k] == b[k] for k in range(len(b)) if k not in h):
+                p.also.append(m)
+                inplace.add(id(m))
+    # ... and of a group the one taken is the one whose calls go where the modules they name are
+    for p in coded:
+        if not p.also:
+            continue
+
+        def agrees(m, p=p):
+            n = 0
+            for nm, (t, a) in _refs(prj, [Placed(m, p.code)]).items():
+                if t == "C" and nm in lib_pubs:
+                    n += 1 if lib_pubs[nm] == a else -1
+            return n
+        group = [p.m] + p.also
+        best = max(group, key=lambda m: (agrees(m), m is p.m))
+        if best is not p.m:
+            p.also = [m for m in group if m is not best]
+            p.m = best
+            p.why = (p.why + " " if p.why else "") + "(of the same bytes, the one whose calls go where their names are)"
     refs = _refs(prj, coded)
     taken = {id(p.m) for p in coded} | {id(m) for p in coded for m in p.also}
     # modules of data only (by their _DATA, or another data segment's bytes: the 8087 fixups' CDATA)
@@ -338,7 +366,11 @@ def _locate(prj):
     for d in mp.dataraws:
         for n in d.pubs:
             missing.pop(n, None)
-    mp.order = [(None, "first", p) for p in first] + _order(coded, donly + mp.dataraws, raws)
+    mp.rawdata = _raw_data(prj, mods, raws, img[dg:])
+    for lo, hi, pubs in raws:
+        for o, n in pubs:
+            missing.pop(n, None)
+    mp.order = [(None, "first", p) for p in first] + _order(coded, donly + mp.dataraws, raws, mp.rawdata)
     for d in [d for d in mp.dataraws if d.by_next]:          # (the modules after the stand-in, before the next known
         k = [x[2] for x in mp.order].index(d)               #  data, have their _DATA there too: it ends before them)
         room = 0
@@ -398,7 +430,46 @@ def _data_standins(prj, mods, taken, missing, refs, coded, donly):
         out.append(DataRaw(m, lo, hi, pubs, why))
         out[-1].by_next = by_next
         taken.add(id(m))
+    # a needed name the words place where no module's data is (another version keeps it in a module of its own):
+    # a stand-in of its own, as long as the kit's module gives it (the link's drift map tells if it is more)
+    covered = [(d.data, d.end) for d in out]
+    have = {n for d in out for n in d.pubs}
+    sizes = prj.cfg.get("data_sizes", {})
+    for n in sorted(missing):
+        if n in have or n not in refs or refs[n][0] != "D":
+            continue
+        a = refs[n][1]
+        if any(lo <= a < hi for lo, hi in covered):
+            continue
+        by = [m for m in mods if n in m.pubs and m.pubs[n][0] == "_DATA"]
+        if not by:
+            continue
+        m = by[0]
+        offs = sorted(off for nm, (s, off) in m.pubs.items() if s == "_DATA")
+        off = m.pubs[n][1]
+        size = int(sizes.get(n, min([o for o in offs if o > off] + [m.seglen("_DATA")[0]]) - off))
+        d = DataRaw(m, a, a + size, {n: 0}, "(%s, which %s defines in the kit: here in a module of its own; %d bytes%s)" % (
+            n, m.label, size, "" if n in sizes else ", a guess"))
+        d.by_next = False
+        d.m = _Named(n.lstrip("_"), m)
+        out.append(d)
+    # zeros of the data no module accounts for, which the link's fit found (project "data_pads": {DS: length})
+    for at, ln in sorted(prj.cfg.get("data_pads", {}).items()):
+        a = int(at, 16)
+        d = DataRaw(None, a, a + int(ln), {}, "(zeros no module of the kit accounts for: a pad the link's fit found)")
+        d.by_next = False
+        d.m = _Named("pad%04x" % a, None)
+        out.append(d)
     return out
+
+
+class _Named(object):
+    """a kit module's stand-in under another name (the name of the one public it keeps)"""
+    def __init__(self, name, m):
+        self.name, self.label, self.pubs, self.raw = name, name, {}, m.raw if m else b""
+
+    def seglen(self, seg):
+        return (0, 1)
 
 
 def _objects(prj, img, dg):
@@ -466,11 +537,77 @@ def _code_end(img, dg):
     return e
 
 
-def _order(coded, donly, raws):
+def _raw_data(prj, mods, raws, ds):
+    """{code stand-in's start: (data from, to, {public: offset}, note)} - a code stand-in is another version of the
+    kit's module that defines its publics; that module's data, as far as the program has it (placed by its first
+    run of bytes that are not zeros, as long as the bytes agree, its zeros at the end left out), is the stand-in's"""
+    out = {}
+    for lo, hi, pubs in raws:
+        for o, n in pubs:
+            for m in mods:
+                if n not in m.pubs or not m.data:
+                    continue
+                kd, kh = m.data
+                r0 = next((k for k in range(len(kd)) if kd[k] and k not in kh), None)
+                if r0 is None:
+                    continue
+                r1 = r0
+                while r1 < len(kd) and kd[r1] and r1 not in kh and r1 - r0 < 12:
+                    r1 += 1
+                if r1 - r0 < 4:
+                    continue
+                best = None
+                p = ds.find(kd[r0:r1])
+                while p >= 0:
+                    base = p - r0
+                    k = 0
+                    while base >= 0 and k < len(kd) and base + k < len(ds) and (k in kh or ds[base + k] == kd[k]):
+                        k += 1
+                    if base >= 0 and (best is None or k > best[1]):
+                        best = (base, k)
+                    p = ds.find(kd[r0:r1], p + 1)
+                if not best or best[1] < r1:
+                    continue
+                base, k = best
+                while k > r1 and kd[k - 1] == 0:
+                    k -= 1
+                k += k & 1
+                dp = {nm: off for nm, (s, off) in m.pubs.items() if s == "_DATA" and off < k}
+                out[lo] = (base, base + k, dp, "the data of %s as far as the program has it" % m.label)
+                break
+            if lo in out:
+                break
+    # a stand-in no kit module's data fits: the data its own instructions address, where no placed module's is
+    from codebreaker.exact import x86
+    import re as _re
+    img = prj.image
+    for lo, hi, pubs in raws:
+        if lo in out:
+            continue
+        hits = set()
+        for i in x86.disasm(img, lo, hi):
+            for v in _re.findall(r"\[0x([0-9a-f]{3,4})\]", i.op_str):
+                hits.add(int(v, 16))
+        known = prj.symbols()
+        hits = sorted(h for h in hits if not any(t == "D" and a == h for n, (t, a) in known.items() if ":" not in n))
+        runs = []
+        for h in hits:
+            if runs and h - runs[-1][1] <= 2:
+                runs[-1][1] = h + 2
+            else:
+                runs.append([h, h + 2])
+        runs = [r for r in runs if r[1] - r[0] <= 16]
+        if len(runs) == 1:
+            out[lo] = (runs[0][0], runs[0][1], {}, "its own data, which its instructions address")
+    return out
+
+
+def _order(coded, donly, raws, rawdata=None):
     """the modules in the linker's order. By code; a module of data only where its data stands among the coded
     modules' data: the library's data is laid out module after module (the lengths and alignments of their
     SEGDEFs), a data-only module going in where the layout reaches its place; of the starts for the library's
     data, the one that puts the most modules whose data's place is known at that place"""
+    rawdata = rawdata or {}
     rows = [(p.code, "mod", p) for p in coded] + [(lo, "raw", (lo, hi, pubs)) for lo, hi, pubs in raws]
     rows.sort(key=lambda r: r[0])
     blocks = sorted(donly, key=lambda d: d.data)
@@ -483,7 +620,11 @@ def _order(coded, donly, raws):
         pos = s
         bi = 0
         for r in rows:
-            ln, al = r[2].m.seglen("_DATA") if r[1] == "mod" else (0, 1)
+            if r[1] == "mod":
+                ln, al = r[2].m.seglen("_DATA")
+            else:
+                rd = rawdata.get(r[0])
+                ln, al = ((rd[1] - rd[0]), 2) if rd else (0, 1)
             while bi < len(blocks) and blocks[bi].data <= pos + (pos & 1 if al == 2 else 0):
                 out.append((None, "data", blocks[bi]))
                 b = blocks[bi]
@@ -513,8 +654,10 @@ def lines(mp, title=""):
         if kind == "raw":
             lo, hi, pubs = x
             nm = pubs[0][1].lstrip("_$") if pubs else "lib%05x" % lo
-            out.append("RAW %s code=%05x-%05x%s  # (no library module has these bytes)" % (
-                nm, lo, hi, "".join(" pub=%s@%x" % (n, o) for o, n in pubs)))
+            rd = getattr(mp, "rawdata", {}).get(lo)
+            dtxt = (" data=%04x-%04x" % (rd[0], rd[1]) + "".join(" dpub=%s@%x" % (n, o) for n, o in sorted(rd[2].items(), key=lambda kv: kv[1]))) if rd else ""
+            out.append("RAW %s code=%05x-%05x%s%s  # (no library module has these bytes%s)" % (
+                nm, lo, hi, "".join(" pub=%s@%x" % (n, o) for o, n in pubs), dtxt, "; " + rd[3] if rd else ""))
             continue
         if isinstance(x, DataRaw):
             out.append("RAW %s data=%04x-%04x%s  # %s" % (x.m.name, x.data, x.end, "".join(
