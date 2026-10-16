@@ -139,7 +139,15 @@ def conditional_values(text):
             return m.group(0)                               # (a register variable: given a value it keeps)
         val = "%s ? %s : %s" % (_truth(c), a, b)
         return ind + re.sub(r"\b%s\b" % r, lambda x: "(%s)" % val, nxt, count=1)
-    return rx.sub(one, text)
+    # (nested: an arm that is itself such a test - `else { if (C2) { r = B; } else { r = D; } }` - one value
+    #  first, `r = (C2 ? B : D);`, then the outer test)
+    inner = re.compile(r"(?m)^(\s*)if (\(.*\)) \{\n\s*(ax|bx|cx|dx) = ([^;\n]+);\n\s*\} else \{\n\s*\3 = ([^;\n]+);\n\1\}$")
+    while True:
+        t = inner.sub(lambda m: "%s%s = (%s ? %s : %s);" % (m.group(1), m.group(3), _truth(m.group(2)), m.group(4), m.group(5)), text)
+        t = rx.sub(one, t)
+        if t == text:
+            return t
+        text = t
 
 
 def branch_returns(text):
@@ -327,7 +335,7 @@ def copy_props(text):
         if not m:
             continue
         ind, r, x = m.groups()
-        if x in ("ax", "bx", "cx", "dx", "si", "di"):
+        if x in ("ax", "bx", "cx", "dx"):                  # (si, di: register variables - copied as variables)
             continue
         depth = 0
         used = False
@@ -1017,6 +1025,32 @@ def for_loops(text):
     return "\n".join(lines) if changed else None
 
 
+def temporaries(text):
+    """the model's temporaries (tN: a value it had to keep while it read another - an argument pushed first)
+    read once, by the next statement: the value in its place (C's own order of evaluation gives it back); one
+    read more often declared an int"""
+    lines = text.split("\n")
+    k = 0
+    while k < len(lines):
+        m = re.match(r"(\s*)(t\d+) = (.+);$", lines[k])
+        if m:
+            x = m.group(2)
+            uses = [j for j in range(len(lines)) if j != k and re.search(r"\b%s\b" % x, lines[j])]
+            if uses == [k + 1] and len(re.findall(r"\b%s\b" % x, lines[k + 1])) == 1:
+                e = m.group(3)
+                lines[k + 1] = re.sub(r"\b%s\b" % x, lambda _: e if re.fullmatch(r"[\w\[\]\->.]+", e) else "(%s)" % e, lines[k + 1])
+                del lines[k]
+                continue
+        k += 1
+    text = "\n".join(lines)
+    left = sorted(set(re.findall(r"\b(t\d+)\b", text.split("{", 1)[-1])))
+    if left:
+        head, sep, body = split_body(text)
+        if sep:
+            text = head + sep + "\n    int %s;" % ", ".join(left) + body
+    return text
+
+
 def compound_assigns(text):
     """X = X op E; - the compiler's `op [X], reg` - as C's compound assignment X op= E (a variant: MS C gives the
     two different code)"""
@@ -1476,7 +1510,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = re.sub(r"&(\w+)->f(\d+)\b", r"(\1 + \2)", t)  # (lea: &p[N], &p->fN - the place, p + N)
         t = fold_registers(stored_calls(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(conditional_values(logical_values(t)))))))))
         t = word_arrays(test_first_loops(post_steps(t)))
-        t = merge_conditions(self_updates(t))
+        t = temporaries(merge_conditions(self_updates(t)))
         t = structs(pointer_flow(local_pointers(register_variables(shapes(t), regs, regparam))), set(widths))
         t = re.sub(r"(?m)^\s*(\w+) = \1;\n", "", t)         # (a register variable given itself: nothing)
         t = fill_frame(t, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
