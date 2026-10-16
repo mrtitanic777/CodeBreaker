@@ -277,6 +277,12 @@ def post_increments(text):
                     out.append(re.sub(r"\b%s\b" % reg, "%s++" % e, nxt, count=1))
                     k += 3
                     continue
+                # (r = p; p = p + 1; X reads r once: p's old value - an index stepped, a[n++])
+                if e == p and n == 1 and reg in ("ax", "bx", "cx", "dx") and len(re.findall(r"\b%s\b" % reg, nxt)) == 1 and \
+                        not re.search(r"\b%s\b" % p, nxt) and not _live_after(lines, k + 2, reg):
+                    out.append(re.sub(r"\b%s\b" % reg, "%s++" % p, nxt, count=1))
+                    k += 3
+                    continue
         out.append(l)
         k += 1
     return "\n".join(out)
@@ -1005,19 +1011,32 @@ def for_loops(text):
                 re.match(r"\s*(?:break|return)\b", body[-5] if len(body) >= 5 else ""):
             step = body[-3].strip()
             body = body[:-4] + [i4 + "}"]
+        else:                                               # (the other way about: if (C) { X = X + K; continue; }
+            j0 = max((j for j, l in enumerate(body) if l.startswith(i4 + "if (")), default=None)   #  else { ..leaves.. })
+            q = _if_parts(body, j0) if j0 is not None else None
+            if q and q[3] == len(body) and q[2] and len(q[1]) == 2 and re.fullmatch(i4 + "    (?:%s)" % st, q[1][0]) and \
+                    q[1][1] == i4 + "    continue;" and re.match(r"\s*(?:break|return)\b", q[2][-1]) and \
+                    i4 + "continue;" not in own:
+                step = q[1][0].strip()
+                body = body[:j0] + ["%sif (%s) {" % (i4, _truth(_not("(" + q[0] + ")")))] + q[2] + [i4 + "}"]
         if not step:
             k += 1
             continue
         init = ""
-        p = k - 1
-        im = re.fullmatch(re.escape(ind) + r"([A-Za-z_]\w*) = ([^;]+);", lines[p]) if p >= 0 else None
-        if im and re.search(r"\b%s\b" % im.group(1), m.group(2)):
-            init = "%s = %s" % (im.group(1), im.group(2))
+        p = k - 1                                           # (the init: the line before, or one a few before
+        while p >= 0 and p > k - 4 and re.fullmatch(re.escape(ind) + r"[A-Za-z_]\w* = [^;]+;", lines[p]):   # with
+            im = re.fullmatch(re.escape(ind) + r"([A-Za-z_]\w*) = ([^;]+);", lines[p])          # nothing between
+            sv = re.match(r"[A-Za-z_]\w*", step).group(0)  # (the variable stepped)
+            if im.group(1) == sv and not any(re.search(r"\b%s\b" % sv, lines[j]) for j in range(p + 1, k)):   # reading it)
+                init = "%s = %s" % (im.group(1), im.group(2))
+                break
+            p -= 1
         head = "%sfor (%s; %s; %s) {" % (ind, init, _truth("(" + m.group(2) + ")"), step.rstrip(";"))
         new = [head] + body + [lines[e]]
         if init:
-            lines[p:e + 1] = new
-            k = p + 1
+            lines[k:e + 1] = new
+            del lines[p]
+            k += 0
         else:
             lines[k:e + 1] = new
             k += 1

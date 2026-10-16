@@ -758,7 +758,10 @@ class R:
             elif re.match(r"(0x[0-9a-f]+|\d+)$",src): s.ax=s.rhs(src); s.axsrc=i  # LOADED const
             else: s.ax=s.rhs(src); s.axsrc=None
         elif mn=="mov" and ops.startswith(("si, ","di, ")):
-            d=ops[:2]; src=ops[4:]; s.movptr(d,src)
+            d=ops[:2]; src=ops[4:]
+            if s.msc3 and re.match(r"(0x[0-9a-f]+|\d+)$",src) and d in LAST.get("saved",[]) and getattr(s,"out",None) is not None:
+                s.emit(s.out,"%s = %s;"%(d,s.num(src))); setattr(s,d,None)   # (3.00: a register variable given a
+            else: s.movptr(d,src)                                           #  number - a statement, not a value to carry)
         elif mn in ("les","lds"):                              # load far pointer -> reg (near model)
             dst, _, src = ops.partition(", ")
             if dst in ("ax","bx","cx","dx","si","di"): setattr(s, dst, s.memname(src))
