@@ -113,15 +113,55 @@ def _differ(a, b):
     return None
 
 
-def check(original, folder, names, image=None, inputs=None):
-    """Each named function (one the build has as C) beside the original's. Yields
-    (name, "same" | "differs" | "not run", why)."""
+def _part(job):
+    """One worker's share of check() (a process of its own)."""
+    original, folder, names, image, tables = job
+    return list(check(original, folder, names, image=image, workers=1, tables=tables))
+
+
+def _tables(original):
+    """What check() needs of the decompiled module: {funcs, place, wide} (made once)."""
     from codebreaker.decompile import c_text
+    m = c_text.compilable16(original)
+    return {"funcs": _functions(m), "wide": sorted(m.wide),
+            "place": {n: list(m.where[va]) for va, n in m.by_va.items() if m.where.get(va)}}
+
+
+def check(original, folder, names, image=None, inputs=None, workers=None, tables=None):
+    """Each named function (one the build has as C) beside the original's. Yields
+    (name, "same" | "differs" | "not run", why). Many at once: shared out over processes."""
+    names = list(names)
+    workers = workers or min(os.cpu_count() or 4, 12)
+    tables = tables or _tables(original)
+    if workers > 1 and len(names) > 2 * workers and inputs is None:
+        # (each share a Python of its own, started fresh: nothing of the caller's script runs again)
+        import json
+        import subprocess
+        import sys
+        root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        code = ("import sys, json; sys.path.insert(0, %r); import capstone; "
+                "from codebreaker.verify import isolated16 as v; a = json.load(sys.stdin); "
+                "print(json.dumps(v._part(a)))" % root)
+        procs = [subprocess.Popen([sys.executable, "-c", code], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                  stderr=subprocess.DEVNULL, text=True)
+                 for _ in range(workers)]
+        for k, p in enumerate(procs):
+            p.stdin.write(json.dumps([original, folder, names[k::workers], image, tables]))
+            p.stdin.close()
+        for p in procs:
+            out = p.stdout.read()
+            p.wait()
+            try:
+                for item in json.loads(out.strip().splitlines()[-1]):
+                    yield tuple(item)
+            except (ValueError, IndexError):
+                pass
+        return
     from codebreaker.emulate import windows16 as emu
     from codebreaker.formats.ne import NEFile
-    m = c_text.compilable16(original)
-    funcs = _functions(m)
-    place = {n: m.where[va] for va, n in m.by_va.items() if m.where.get(va)}
+    funcs = {n: tuple(v) for n, v in tables["funcs"].items()}
+    place = {n: tuple(v) for n, v in tables["place"].items()}
+    wide_set = set(tables["wide"])
     ours = _built_places(folder)
     image = image or next(os.path.join(folder, f) for f in os.listdir(folder)
                           if f.lower() == os.path.basename(original).lower())
@@ -136,7 +176,7 @@ def check(original, folder, names, image=None, inputs=None):
             yield name, "not run", "not found on both sides"
             continue
         pop, far = funcs[name]
-        wide = name in m.wide
+        wide = name in wide_set
         (oseg, ooff), (bseg, boff) = place[name], ours[name]
         why = None
         # (and inputs aimed at what its own code tests: the constants it compares with)
