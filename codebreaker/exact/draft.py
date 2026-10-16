@@ -204,6 +204,16 @@ def conditional_values(text):
         if r.endswith("l"):                                 # (a byte register's: the value a char)
             return ind + re.sub(r"\b%s\b" % r, lambda x: "(char)(%s)" % val, nxt, count=1)
         return ind + re.sub(r"\b%s\b" % r, lambda x: "(%s)" % val, nxt, count=1)
+    # (the value given first and given again when a test holds - r = A; if (C) { r = B; }: C ? B : A)
+    pre = re.compile(r"(?m)^([ \t]*)(ax|bx|cx|dx) = ([^;\n]+);\n\1if (\(.*\)) \{\n\s*\2 = ([^;\n]+);\n\1\}\n\1(.*)$")
+
+    def first(m):
+        ind, r, a, c, b, nxt = m.groups()
+        if len(re.findall(r"\b%s\b" % r, nxt)) != 1 or re.search(r"\b%s\b" % r, c) or \
+                re.match(r"(?:if|while|for|switch|\}|L_\w+:)", nxt) or _live_after(m.string[m.end():].split("\n"), -1, r):
+            return m.group(0)
+        return ind + re.sub(r"\b%s\b" % r, lambda x: "(%s)" % _ternary(c, b, a), nxt, count=1)
+    text = pre.sub(first, text)
     # (nested: an arm that is itself such a test - `else { if (C2) { r = B; } else { r = D; } }` - one value
     #  first, `r = (C2 ? B : D);`, then the outer test)
     inner = re.compile(r"(?m)^([ \t]*)if (\(.*\)) \{\n\s*(ax|bx|cx|dx) = ([^;\n]+);\n\s*\} else \{\n\s*\3 = ([^;\n]+);\n\1\}$")
@@ -2101,6 +2111,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = fold_registers(stored_calls(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(push_returns(conditional_values(logical_values(step_tests(range_switches(t))))))))))))
         t = fold_registers(push_returns(t))                 # (returns again, as the passes left the arms)
         t = word_arrays(test_first_loops(copy_tests(post_steps(t))))
+        t = fold_registers(conditional_values(t))           # (the ?: values again, the elements folded)
         t = fold_registers(push_returns(temporaries(merge_conditions(guard_gotos(self_updates(t))))))
         t = structs(pointer_flow(local_pointers(register_variables(shapes(t), regs, regparam))), set(widths))
         t = re.sub(r"(?m)^[ \t]*(\w+) = \1;\n", "", t)         # (a register variable given itself: nothing)
@@ -2661,7 +2672,7 @@ def localize(prj, text, at, names):
                 off = int(d[2:], 16) - base
                 text = re.sub(r"\b%s\[([^\[\]]+)\]\.f0\b" % d, lambda m, o=off: "%s[%s].f%d" % (bn, m.group(1), o), text)
                 arrs = [x for x in arrs if x != d]
-            STRUCTARR[bn] = (STRUCTARR[bn][0], [(int(d[2:], 16) - base, STRUCTARR[d][1]) for d in ds])
+            STRUCTARR[bn] = (STRUCTARR[bn][0], [(int(d[2:], 16) - base, STRUCTARR[d][1] if not str(STRUCTARR[d][1]).startswith("struct") else "int") for d in ds])
         for d in arrs:                                      # (an array of structs: its element laid out - the field
             if d in STRUCTARR:                              #  the code reads first, the rest of its size after)
                 k, ty = STRUCTARR[d]
@@ -2944,7 +2955,7 @@ def compile_fix(src, con):
     m = re.search(r"left of .->f(\d+). must have a struct", msg)
     if m:
         f = m.group(1)
-        new = re.sub(r"(\((?:[^()]|\([^()]*\))*\)|[A-Za-z_]\w*(?:\[[^\]]*\])?)->f%s\b" % f,
+        new = re.sub(r"((?:\((?:[^()]|\((?:[^()]|\([^()]*\))*\))*\)|[A-Za-z_]\w*(?:\[[^\]]*\])?)(?:(?:\.|->)f\d+)*)->f%s\b" % f,
                      lambda x: "*(int *)((char *)%s + %s)" % (x.group(1), f), l, count=1)
     elif "illegal indirection" in msg:
         new = re.sub(r"(?<![\w)\]])\*(?!\()(\s*[A-Za-z_]\w*)", r"*(char *)\1", l, count=1)
