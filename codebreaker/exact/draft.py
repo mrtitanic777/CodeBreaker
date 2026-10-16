@@ -531,6 +531,13 @@ def post_increments(text):
                     out.append(re.sub(r"\b%s\b" % reg, "%s++" % p, nxt, count=1))
                     k += 3
                     continue
+            sd = re.match(r"\s*(\w+) = \1 - 1\s*;\s*$", lines[k + 1]) or re.match(r"\s*(\w+)--\s*;\s*$", lines[k + 1])
+            if sd and e == sd.group(1) and (reg in ("ax", "bx", "cx", "dx") or reg.startswith("t")):   # (and p--: the
+                nxt = lines[k + 2]                                                                    #  old value)
+                if len(re.findall(r"\b%s\b" % reg, nxt)) == 1 and not re.search(r"\b%s\b" % e, nxt) and not _live_after(lines, k + 2, reg):
+                    out.append(re.sub(r"\b%s\b" % reg, "%s--" % e, nxt, count=1))
+                    k += 3
+                    continue
         out.append(l)
         k += 1
     return "\n".join(out)
@@ -2576,6 +2583,7 @@ def localize(prj, text, at, names):
     text = re.sub(r"\bsub_(-?[0-9a-f]+)\(", call, text)
     text = re.sub(r"\bg_([0-9a-f]{1,4})\b", lambda m: "g_%04x" % int(m.group(1), 16), text)
     macros = prj.toolchain().p.get("macros")
+    text = re.sub(r"\*\((\w+)(\+\+|--)\)", r"*\1\2", text)   # (*(p++): *p++ - the same, and mendable)
     text = fp_conversions(text, prj.toolchain().p.get("fp_conversions"))
     text = long_helpers(text, prj.toolchain().p.get("long_helpers"))
     text = library_macros(text, macros)                     # (the routines named: the macros they show)
@@ -2706,6 +2714,12 @@ def localize(prj, text, at, names):
     # (a byte through a char pointer compared with 128..255: the compiler compares bytes only of an unsigned char)
     for p in set(re.findall(r"\*\(?(?:\+\+|--)?(\w+)(?:\+\+|--)?\)? [!=]= (?:1(?:2[89]|[3-9]\d)|2[0-4]\d|25[0-5])\b", text)):
         text = re.sub(r"(?m)^([ \t]*)(register )?char \*%s;$" % p, r"\1\2unsigned char *%s;" % p, text)
+    for ty, x in set(re.findall(r"\*\((char|int|unsigned char) \*\)(\w+)\b", text)):   # (only ever read through one
+        others = re.findall(r"\*\((?:char|int|unsigned char) \*\)%s\b" % x, text)       #  cast: a pointer to it)
+        if all(o == "*(%s *)%s" % (ty, x) for o in others) and not re.search(r"(?<![)\w])\*\s*%s\b|\b%s\s*(?:->|\[)" % (x, x), text):
+            t2 = _redeclare(text, x, "%s *%s" % (ty, x)) if re.search(r"(?m)^[ \t]*(?:register )?int (?:\w+, )*%s\b" % x, text) else None
+            if t2:
+                text = t2.replace("*(%s *)%s" % (ty, x), "*%s" % x)
     out = ("\n".join(decl) + "\n\n" if decl else "") + text
     dn = _data_names(prj)                                   # (data the program has names for: those, by place - a
     if dn:                                                  #  name of the form g_XXXX may be another place's)
