@@ -147,6 +147,10 @@ def logical_values(text):
     rx_or = re.compile(r"(?m)^([ \t]*)if (\(.*\)) \{\n\s*if (\(.*\)) \{\n\s*(L_\w+):\n\s*(\w+) = 1;\n\s*\} else \{\n\s*\5 = 0;\n\s*\}\n"
                        r"\s*\} else \{\n\s*goto \4;\n\s*\}$")
     text = rx_or.sub(lambda m: "%s%s = %s || %s;" % (m.group(1), m.group(5), _not(m.group(2)), _truth(m.group(3))), text)
+    # (if (A) { if (B) { r = 1; } else { L: r = 0; } } else { goto L; }  ->  r = A && B)
+    rx_and2 = re.compile(r"(?m)^([ \t]*)if (\(.*\)) \{\n\s*if (\(.*\)) \{\n\s*(\w+) = 1;\n\s*\} else \{\n\s*(L_\w+):\n\s*\4 = 0;\n\s*\}\n"
+                         r"\s*\} else \{\n\s*goto \5;\n\s*\}$")
+    text = rx_and2.sub(lambda m: "%s%s = %s && %s;" % (m.group(1), m.group(4), _truth(m.group(2)), _truth(m.group(3))), text)
     rx_and = re.compile(r"(?m)^([ \t]*)if (\(.*\)) \{\n((?:\s*(?:ax|bx|cx|dx|si|di) = [^;\n]+;\n)*)\s*if (\(.*\)) \{\n\s*(\w+) = 1;\n"
                         r"\s*\} else \{\n\s*\5 = 0;\n\s*\}\n\s*\} else \{\n\s*\5 = 0;\n\s*\}$")
 
@@ -317,7 +321,19 @@ def range_switches(text):
 def push_returns(text):
     """`return r;` at the end, every way to it giving r a value last (an if's arms, nested): each of those
     a return of its value, the last return gone - the compiler's jumps to the one exit read back"""
-    lines = _else_ifs(text.split("\n"))
+    lines = text.split("\n")
+    for k in range(len(lines) - 2):                         # (an if's arm ending r = ax, r a register variable: r's)
+        m = re.fullmatch(r"([ \t]*)ax = ([^;\n]+);", lines[k])
+        if not m or lines[k + 1] != "%s%s = ax;" % (m.group(1), "si") and lines[k + 1] != "%s%s = ax;" % (m.group(1), "di") or \
+                not re.fullmatch(r"[ \t]*\}(?: else \{)?", lines[k + 2]):
+            continue
+        ind = len(m.group(1)) - 4
+        op = next((j for j in range(k - 1, -1, -1) if lines[j].strip() and len(lines[j]) - len(lines[j].lstrip()) == ind), None)
+        if op is None or not re.match(r"[ \t]*(?:if \(.*\) \{|\} else \{|else \{)$", lines[op]):
+            continue
+        r = lines[k + 1].strip()[:2]
+        lines[k], lines[k + 1] = "%s%s = %s;" % (m.group(1), r, m.group(2)), "%sax = %s;" % (m.group(1), r)
+    lines = _else_ifs(lines)
     end = max((k for k, l in enumerate(lines) if re.fullmatch(r"    return (ax|bx|cx|dx|si|di);", l)), default=None)
     if end is None or end + 1 >= len(lines) or lines[end + 1] != "}":
         return text
@@ -2196,7 +2212,7 @@ def fold_registers(text):
                     nxt = "%s%s = (char)%s;" % (bk.group(1), expr, bk.group(2))   # value cast - else done in place)
                 lines[j] = re.sub(r"\b%s\b" % reg, lambda m: expr, nxt)
                 continue
-            if re.fullmatch(r"\s*return %s;\s*" % reg, nxt):
+            if re.fullmatch(r"\s*return %s;\s*" % reg, nxt) and (reg not in ("si", "di") or not re.search(r"\w\s*\(", expr)):
                 out.append("%sreturn %s;" % (ind, expr))
                 lines[lines.index(nxt, k + 1)] = "\x00"
                 continue
@@ -2367,8 +2383,10 @@ def structs(text, widths):
             if o > pos:
                 fl.append("char _%d[%d];" % (pos, o - pos))
             b_ = o in bytes_                     # (a byte read: a char - an
+            pg = re.search(r"\b%s->f%d->f%d = (\w+);" % (p, n, o), text)   # (given a pointer variable: a pointer)
+            pty = re.search(r"(?m)^[ \t]*(?:register\s+)?((?:unsigned\s+)?(?:char|int)) \*%s;$" % pg.group(1), text) if pg else None
             fl.append("%s f%d;" % ("unsigned char" if any(isinstance(u, tuple) and u[1] == o for u in UCHAR) and b_
-                                   else "char" if b_ else "int", o))                   #  unsigned one widened with zeros)
+                                   else "char" if b_ else "%s *" % pty.group(1) if pty else "int", o))   #  unsigned one widened with zeros)
             pos = o + (1 if b_ else 2)
         defs.append("struct s_%s_%d { %s };" % (p, n, " ".join(fl)))
         ptrfield[(p, n)] = "struct s_%s_%d *" % (p, n)
@@ -2387,6 +2405,11 @@ def structs(text, widths):
                                                                                     #  compared with 128..255: unsigned)
             deref = re.search(r"(?<![\w>)\]])\*%s->f%d\b(?!\s*(?:->|\[|\.))" % (p, off), text)   # (*p->fN: a pointer)
             lng = off in LONGINFO.get("fields", ()) and off + 2 not in offs   # (a long field: two words given as one)
+            pg = re.search(r"\b%s->f%d = (\w+);" % (p, off), text)          # (given a pointer variable: a pointer)
+            pty = re.search(r"(?m)^[ \t]*(?:register\s+)?((?:unsigned\s+)?(?:char|int)) \*%s;$" % pg.group(1), text) if pg else None
+            deref = deref or (pty and pty.group(1) == "int" and not byte and not lng)
+            if pty and pty.group(1) != "int" and not byte and not lng and (p, off) not in ptrfield and not (off == 0 and selfref):
+                ptrfield[(p, off)] = "%s *" % pty.group(1)
             fields.append("%s f%d;" % ("struct s_%s *" % p if off == 0 and selfref else ptrfield[(p, off)] if (p, off) in ptrfield
                                        else "unsigned char" if uch else
                                        "char" if byte else "int *" if deref else "long" if lng else "int", off))
