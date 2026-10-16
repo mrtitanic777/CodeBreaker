@@ -1229,6 +1229,13 @@ def temporaries(text):
     return text
 
 
+def return_sources(text):
+    """X = Y; return X; - the value still in the register it was stored from: return Y (a variant: a reload of X
+    is other code)"""
+    t = re.sub(r"(?m)^([ \t]*)([^=;\n]+?) = ([A-Za-z_]\w*);\n([ \t]*)return \2;$", r"\1\2 = \3;\n\4return \3;", text)
+    return t if t != text else None
+
+
 def compound_assigns(text):
     """X = X op E; - the compiler's `op [X], reg` - as C's compound assignment X op= E (a variant: MS C gives the
     two different code)"""
@@ -1781,7 +1788,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = long_ladders(long_pairs(t))                     # (the longs again, as the passes left them)
         t = frame_chars(t, widths)
         t = fill_frame(t, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
-        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t)] if v]
+        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t)] if v]
         both = pre_steps(t)
         both = pre_increments(both) if both else None
         if both:
@@ -2470,6 +2477,12 @@ def compile_fixes(src, con):
             d = _declare_pointer(src, m.group(1), ty)
             if d:
                 out.append(d)
+    if m and "illegal indirection" in msg and (m.group(1), 0) not in BYTEPTR:   # (or a word through a cast in place:
+        new = re.sub(r"(?<![\w)\]])\*(?!\()(\s*%s)\b" % re.escape(m.group(1)), r"*(int *)\1", l, count=1)   # the
+        if new != l:                                                                                   # variable
+            lines2 = list(lines)                                                                       # stays an int)
+            lines2[n - 1] = new
+            out.append("\n".join(lines2))
     if "2 pointers" in msg:                                 # (two pointers added: one of them an int - each way)
         for x in dict.fromkeys(re.findall(r"\b([A-Za-z_]\w*)\b", l)):
             d = re.sub(r"(?m)^([ \t]*)(register )?char \*%s;$" % x, r"\1\2int %s;" % x, src)
