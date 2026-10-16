@@ -1767,29 +1767,40 @@ def push_tails(text):
         p = _if_parts(lines, k)
         if not p or p[2] is None or p[3] >= len(lines):
             continue
-        a_ = [l for l in p[1] if l.strip()]
-        b_ = [l for l in p[2] if l.strip()]
-        ma = re.fullmatch(r"(\s*)(ax|bx|cx|dx|t\d+) = (.+);", a_[-1]) if a_ else None   # (or the model's
-        mb = re.fullmatch(r"(\s*)(ax|bx|cx|dx|t\d+) = (.+);", b_[-1]) if b_ else None   #  temporary)
+        def tail(arm):                                      # (the arm's last run of r = V; - {r: V}, its start)
+            got, j = {}, len(arm) - 1
+            while j >= 0 and not arm[j].strip():
+                j -= 1
+            while j >= 0:
+                m_ = re.fullmatch(r"(\s*)(ax|bx|cx|dx|t\d+) = (.+);", arm[j])   # (or the model's temporary)
+                if not m_ or m_.group(2) in got:
+                    break
+                got[m_.group(2)] = (m_.group(3), m_.group(1))
+                j -= 1
+            return got, j + 1
+        ga, ja = tail(p[1])
+        gb, jb = tail(p[2])
         nxt = lines[p[3]]
-        if not ma or not mb or ma.group(2) != mb.group(2):
+        regs = [r for r in ga if r in gb]
+        if not regs or set(ga) != set(gb) or re.match(r"\s*(?:if|while|for|switch|\}|L_\w+:)", nxt) or \
+                any(len(re.findall(r"\b%s\b" % r, nxt)) != 1 or _live_after(lines, p[3], r) for r in regs):
             continue
-        r = ma.group(2)
-        if len(re.findall(r"\b%s\b" % r, nxt)) != 1 or re.match(r"\s*(?:if|while|for|switch|\}|L_\w+:)", nxt) or \
-                _live_after(lines, p[3], r):
-            continue
-        ind = ma.group(1)
         pv = lambda v: v if re.fullmatch(r"[\w\->.]+", v) else "(%s)" % v
-        s_a = ind + re.sub(r"\b%s\b" % r, lambda _: pv(ma.group(3)), nxt.strip(), count=1)
-        s_b = mb.group(1) + re.sub(r"\b%s\b" % r, lambda _: pv(mb.group(3)), nxt.strip(), count=1)
-        ia = max(j for j, l in enumerate(p[1]) if l.strip())
-        ib = max(j for j, l in enumerate(p[2]) if l.strip())
-        then = p[1][:ia] + [s_a] + p[1][ia + 1:]
-        els = p[2][:ib] + [s_b] + p[2][ib + 1:]
+
+        def put(got):
+            s_ = nxt.strip()
+            for r in regs:
+                s_ = re.sub(r"\b%s\b" % r, lambda _: pv(got[r][0]), s_, count=1)
+            return got[regs[0]][1] + s_
+        then = p[1][:ja] + [put(ga)]
+        els = p[2][:jb] + [put(gb)]
         i0 = re.match(r"\s*", lines[k]).group(0)
         new = [lines[k]] + then + [i0 + "} else {"] + els + [i0 + "}"]
         t = "\n".join(lines[:k] + new + lines[p[3] + 1:])
-        return _drop_decl(t, r) if r.startswith("t") else t
+        for r in regs:
+            if r.startswith("t"):
+                t = _drop_decl(t, r)
+        return t
     return None
 
 
