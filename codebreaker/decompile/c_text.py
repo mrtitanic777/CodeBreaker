@@ -14,6 +14,7 @@ whenever an address to one can escape. 16-bit code needs more said: which pointe
 arguments lie on the stack, what the segment registers hold. Those rules are here, per kind;
 what the two kinds share (the byte-piece notation, how a function is declared) is shared.
 """
+import os
 import re
 import struct
 
@@ -670,7 +671,41 @@ def _selector_sites(module_path):
     return out
 
 
+def _source_stamp(*modules):
+    """A digest of the source of the code that makes a result (a change to it makes it again)."""
+    from codebreaker.base import cache
+    return cache.key(*[open(mod.__file__, "rb").read() for mod in modules])
+
+
 def compilable16(module_path, outdir=None):
+    """The module made compilable (see _compilable16) -- kept (base/cache.py) by the module's
+    bytes, the decompiler and the source of what makes it: the same module built again (a
+    hunt builds one many times over) is not decompiled and made again. Its description is
+    written where it was asked for, as when it is made."""
+    import pickle
+    import sys
+    from codebreaker.base import cache
+    from codebreaker.decompile import decompiler, describe
+    with open(module_path, "rb") as f:
+        body = f.read()
+    k = cache.key(body, _source_stamp(sys.modules[__name__], decompiler, describe),
+                  cache.tool(decompiler._exe()), decompiler._language_stamp())
+    had = cache.get("compilable16", k)
+    if had is not None:
+        m, description = pickle.loads(had)
+        folder = outdir or os.path.dirname(m.description.path)
+        os.makedirs(folder, exist_ok=True)
+        m.description.path = os.path.join(folder, "description.txt")
+        with open(m.description.path, "w", encoding="utf-8", newline="\n") as f:
+            f.write(description)
+        return m
+    m = _compilable16(module_path, outdir)
+    with open(m.description.path, encoding="utf-8") as f:
+        cache.put("compilable16", k, pickle.dumps((m, f.read())))
+    return m
+
+
+def _compilable16(module_path, outdir=None):
     from codebreaker.decompile import decompiler, describe
     texts, order, by_va, d = decompiler.decompile16(module_path, outdir)
     m = Module16()

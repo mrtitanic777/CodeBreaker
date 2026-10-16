@@ -320,13 +320,10 @@ def _assembled16(b, nef, at, segs, stems, public, folder, env, carried=(), force
     os.makedirs(os.path.join(folder, "asm"), exist_ok=True)
 
     def assemble_piece(stem, f, lo, hi):
-        with open(os.path.join(folder, stem + ".asm"), "w", newline="\n") as fh:
-            fh.write(f.write(f.good, lo, hi))
-        r = subprocess.run([wasm, "-q", "-zcm", "-fo=" + stem + ".obj", stem + ".asm"], cwd=folder, env=env,
-                           capture_output=True, text=True)
+        code, msg = _wasm(wasm, env, folder, stem, f.write(f.good, lo, hi))
         obj = os.path.join(folder, stem + ".obj")
-        if r.returncode or not os.path.isfile(obj):
-            return "the assembler: " + ((r.stdout or "") + (r.stderr or "")).strip()[-160:]
+        if code or not os.path.isfile(obj):
+            return "the assembler: " + msg.strip()[-160:]
         with open(obj, "rb") as fh:
             return asm16.check_piece(fh.read(), f, lo, hi)
 
@@ -342,13 +339,9 @@ def _assembled16(b, nef, at, segs, stems, public, folder, env, carried=(), force
         why = "no rounds"
         f.good = good
         for _round in range(40):
-            with open(os.path.join(folder, stem + ".asm"), "w", newline="\n") as fh:
-                fh.write(f.write(good))
-            r = subprocess.run([wasm, "-q", "-zcm", "-fo=" + stem + ".obj", stem + ".asm"], cwd=folder, env=env,
-                               capture_output=True, text=True)
+            code, msg = _wasm(wasm, env, folder, stem, f.write(good))
             obj = os.path.join(folder, stem + ".obj")
-            if r.returncode or not os.path.isfile(obj):
-                msg = (r.stdout or "") + (r.stderr or "")
+            if code or not os.path.isfile(obj):
                 lines = f.write(good).split("\n")
                 bad = {ln.strip() for m in re.finditer(r"\((\d+)\): Error", msg) for ln in lines[int(m.group(1)) - 1:int(m.group(1))]}
                 drop = {at for at in good if at in f.ins and f.mnemonic(at) in bad}
@@ -617,12 +610,42 @@ def name_of_stem(stem, cstem):
     return next(n for n, st in cstem.items() if st == stem)
 
 
+def _wasm(wasm, env, folder, stem, text, flags=("-q", "-zcm")):
+    """Assemble `text` as `stem`.asm into `stem`.obj -- what the assembler made of this text with
+    these options is kept (base/cache.py): a piece the same as in an earlier build, or earlier in
+    this one, is not assembled again. -> (0 or the assembler's exit code, its messages)"""
+    from codebreaker.base import cache
+    with open(os.path.join(folder, stem + ".asm"), "w", newline="\n") as fh:
+        fh.write(text)
+    obj = os.path.join(folder, stem + ".obj")
+    k = cache.key(cache.tool(wasm), list(flags), text)
+    had = cache.get("wasm16", k)
+    if had is not None:
+        if had[:2] == b"OK":
+            with open(obj, "wb") as fh:
+                fh.write(had[2:])
+            return 0, ""
+        return 1, had[2:].decode("utf-8", "replace")
+    try:
+        os.remove(obj)
+    except OSError:
+        pass
+    r = subprocess.run([wasm] + list(flags) + ["-fo=" + stem + ".obj", stem + ".asm"], cwd=folder, env=env,
+                       capture_output=True, text=True)
+    msg = (r.stdout or "") + (r.stderr or "")
+    if r.returncode == 0 and os.path.isfile(obj):
+        with open(obj, "rb") as fh:
+            cache.put("wasm16", k, b"OK" + fh.read())
+        return 0, msg
+    cache.put("wasm16", k, b"ER" + msg.encode("utf-8", "replace"))
+    return r.returncode or 1, msg
+
+
 def _filler(folder, wasm, env, seg, stem, n):
     """An object of `n` bytes of INT 3 in code segment `seg`: a place kept where it was."""
     stem = "asm/" + stem
-    with open(os.path.join(folder, stem + ".asm"), "w", newline="\n") as fh:
-        fh.write("CODE%d segment byte public 'MCODE'\n        db   %d dup (0CCh)\nCODE%d ends\nend\n" % (seg, n, seg))
-    subprocess.run([wasm, "-q", "-fo=" + stem + ".obj", stem + ".asm"], cwd=folder, env=env, capture_output=True)
+    _wasm(wasm, env, folder, stem, "CODE%d segment byte public 'MCODE'\n        db   %d dup (0CCh)\nCODE%d ends\nend\n"
+          % (seg, n, seg), flags=("-q",))
     return stem
 
 

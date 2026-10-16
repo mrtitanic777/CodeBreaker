@@ -68,6 +68,24 @@ class Result(object):
 
 
 def module16(path, more=None):
+    """(see _module16) -- kept by the module's bytes, `more` and this file's source."""
+    import pickle
+    import sys
+    from codebreaker.base import cache
+    from codebreaker.decompile import describe as _d
+    with open(path, "rb") as f:
+        body = f.read()
+    k = cache.key(body, sorted((more or {}).items()), open(sys.modules[__name__].__file__, "rb").read(),
+                  open(_d.__file__, "rb").read())
+    had = cache.get("origin16", k)
+    if had is not None:
+        return pickle.loads(had)
+    res = _module16(path, more)
+    cache.put("origin16", k, pickle.dumps(res))
+    return res
+
+
+def _module16(path, more=None):
     """Every function of a 16-bit module, judged. `more`: {va: name} of functions found besides
     the ones the module's own tables give (the decompiler finds the ones only called). -> Result"""
     import os
