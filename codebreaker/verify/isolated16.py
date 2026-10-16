@@ -44,7 +44,7 @@ def _functions(m):
         for line in f:
             p = line.rstrip("\n").split("\t")
             if p[0] == "F" and len(p) > 4:
-                out[p[2]] = (int(p[3]) if p[3].lstrip("-").isdigit() else 0, "far" in p[4])
+                out[p[2]] = (int(p[3]) if p[3].lstrip("-").isdigit() else -1, "far" in p[4])
     return out
 
 
@@ -85,6 +85,8 @@ def _fingerprint(r, wide, data_len):
     out = {"exit": ex, "calls": tuple(calls), "data": tuple(sorted(state.items()))}
     if ex == "ret":
         out["result"] = (r.get("ret32") if wide else r.get("ret"))
+        if r.get("unsure"):                                  # a callee removing it is not known how many
+            return dict(out, result=out["result"])           # bytes: the stack after it says nothing
         if out["result"] is not None and (out["result"] & 0xFFFF) == entry.get("DS") and not wide:
             out["result"] = "DS"
         out["pop"] = r.get("sp_delta")
@@ -137,7 +139,10 @@ def check(original, folder, names, image=None, inputs=None):
         wide = name in m.wide
         (oseg, ooff), (bseg, boff) = place[name], ours[name]
         why = None
-        for v in (inputs or win16.vectors()):
+        # (and inputs aimed at what its own code tests: the constants it compares with)
+        later = [o for (sg, o) in place.values() if sg == oseg and o > ooff]
+        aimed = win16.directed(original, oseg, (ooff, min(later) if later else 0x10000), most=12)
+        for v in (inputs or win16.vectors() + aimed):
             try:
                 a = emu.probe(original, seg=oseg, offset=ooff, args=v["args"], near=not far,
                               callees=callees_orig, insn_cap=20000)

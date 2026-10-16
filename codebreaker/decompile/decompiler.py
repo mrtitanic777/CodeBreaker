@@ -184,7 +184,12 @@ def decompile16(module_path, outdir=None, rounds=4):
                 seg, off = describe.where(va)
                 d.names[va], d.where[va] = "sub_%d_%04X" % (seg, off), (seg, off)
                 f.write(describe.model_line(d, va, d.names[va]) + "\n")
-        more, _o, more_va, _err = run(d.path, only=sorted(new))      # only the new ones
+        # the new ones -- and again every function that calls one: it was made while the callee
+        # was unknown, a default near function (a far call's pushed CS read as its first
+        # argument, the last one lost); now its prototype is known
+        callers = {va for va, n in by_va.items()
+                   if any("func_0x%08x" % c in out.get(n, "") for c in new)}
+        more, _o, more_va, _err = run(d.path, only=sorted(new | callers))
         out.update(more)
         by_va.update(more_va)
     out = _by_their_names(out, d.names)
@@ -216,7 +221,9 @@ def _grow(d, line_for, rounds=4):
                 name, line = line_for(va)
                 d.names[va] = name
                 f.write(line + "\n")
-        more, _o, more_va, _err = run(d.path, only=sorted(new))
+        callers = {va for va, n in by_va.items()                 # (made while these were unknown)
+                   if any("func_0x%08x" % c in out.get(n, "") for c in new)}
+        more, _o, more_va, _err = run(d.path, only=sorted(new | callers))
         out.update(more)
         by_va.update(more_va)
     out = _by_their_names(out, d.names)

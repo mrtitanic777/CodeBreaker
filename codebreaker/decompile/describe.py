@@ -194,7 +194,16 @@ def describe32(module_path, funcs, outdir):
 ARCH = "x86:LE:16:Protected Mode:default"
 FIRST_SELECTOR = 0x1000
 EXTERN_SELECTOR = 0xE000           # imported functions stand at EXTERN_SELECTOR:16*n
-IMPORT_SELECTOR = 0xD000           # an import used as a selector (KERNEL's __0040H ...): IMPORT_SELECTOR + n
+# KERNEL's exports that are plain numbers, the same in every protected-mode Windows (by
+# ordinal, and by name): a huge pointer's selector step
+_KERNEL_CONSTANT = {"KERNEL_113": 3, "__AHSHIFT": 3, "KERNEL_114": 8, "__AHINCR": 8}
+
+
+def _bare(name):
+    return name.upper() if name.upper().startswith("KERNEL_") else name.upper().split(".")[-1]
+
+
+IMPORT_SELECTOR = 0xD000          # an import used as a selector (KERNEL's __0040H ...): IMPORT_SELECTOR + n
 
 
 def selector(seg):
@@ -385,6 +394,71 @@ def result_bytes(code, start, end, passes=None):
     return best
 
 
+def call_overrides(d):
+    """`O` lines: for each call through a pointer (a driver's dispatch table, a callback), the
+    words the code pushed for it just before -- the callee is unknown, so the analysis cannot
+    tell what it takes, and drops what was pushed. Removed by the callee (Pascal: Windows'
+    drivers and callbacks) unless the caller takes them off itself right after (`add sp, n`)."""
+    import capstone
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    md.detail = True
+    X = capstone.x86
+    by_seg = {}
+    for va in d.names:
+        sg, off = where(va)
+        by_seg.setdefault(sg, []).append((off, va))
+    lines = []
+    for sg, lst in by_seg.items():
+        code = d.segment_bytes.get(sg, b"")
+        lst.sort()
+        for k, (off, va) in enumerate(lst):
+            end = lst[k + 1][0] if k + 1 < len(lst) else len(code)
+            ins = list(md.disasm(code[off:end], off))
+            targets = {i.operands[0].imm & 0xFFFF for i in ins
+                       if i.group(capstone.CS_GRP_JUMP) and i.operands and i.operands[0].type == X.X86_OP_IMM}
+            # (what the prologue pushes is saved registers, not arguments: the count stops there)
+            prologue = off
+            for i in ins[:12]:
+                if (i.mnemonic in ("nop", "enter") or i.op_str in ("ax, ds", "bp, sp", "ds, ax")
+                        or (i.mnemonic in ("push", "inc") and i.op_str in ("bp", "ds", "si", "di"))
+                        or (i.mnemonic == "pop" and i.op_str == "ax")
+                        or (i.mnemonic == "mov" and i.op_str.startswith("ax, 0x"))
+                        or (i.mnemonic == "sub" and i.op_str.startswith("sp,"))):
+                    prologue = i.address + i.size
+                else:
+                    break
+            targets.add(prologue)
+            for j, i in enumerate(ins):
+                if not i.group(capstone.CS_GRP_CALL) or not i.operands or i.operands[0].type == X.X86_OP_IMM:
+                    continue                                 # (a direct call: its callee is described)
+                if i.mnemonic == "lcall" and i.operands[0].type == X.X86_OP_IMM:
+                    continue
+                pushed = 0
+                for p in reversed(ins[:j]):
+                    if p.mnemonic == "push":
+                        pushed += 2 if p.operands and p.operands[0].size == 2 else 4 if p.operands and p.operands[0].size == 4 else 2
+                        if p.address in targets:
+                            break
+                        continue
+                    if p.group(capstone.CS_GRP_CALL) or p.group(capstone.CS_GRP_JUMP) or p.mnemonic in ("ret", "retf", "pop", "leave", "enter") \
+                            or p.address in targets:
+                        break
+                    try:
+                        _r, w = p.regs_access()
+                    except capstone.CsError:
+                        break
+                    if X.X86_REG_SP in w:
+                        break
+                if not pushed:
+                    continue
+                far = i.mnemonic == "lcall" or (i.mnemonic == "call" and "dword" in i.op_str)
+                nxt = ins[j + 1] if j + 1 < len(ins) else None
+                caller_pops = nxt is not None and nxt.mnemonic == "add" and nxt.op_str.startswith("sp,")
+                model = ("__cdecl16" if caller_pops else "__stdcall16") + ("far" if far else "near")
+                lines.append("O\t%x\t%x\t%d\t%s" % (address(sg, i.address), va, pushed, model))
+    return lines
+
+
 def results(d):
     """{address: bytes it returns} for every function described: its own (result_bytes), or for
     one that passes on a callee's result, the callee's -- four bytes passed on are four bytes
@@ -519,6 +593,11 @@ def describe16(module_path, outdir):
                     else:
                         sel = tsel
                     struct.pack_into("<H", img, off, sel)
+                elif src == 5 and kind in ("IMPORTORD", "IMPORTNAME") and _KERNEL_CONSTANT.get(_bare(nm)) is not None:
+                    # a number that is the same in every protected-mode Windows (__AHSHIFT 3,
+                    # __AHINCR 8: a huge pointer's step): the number itself -- a made-up one
+                    # would be folded into the arithmetic as if it were the value
+                    struct.pack_into("<H", img, off, (_KERNEL_CONSTANT[_bare(nm)] + add) & 0xFFFF)
                 elif src == 5 and kind in ("IMPORTORD", "IMPORTNAME"):
                     # an import's offset alone: a value KERNEL exports (__0040H, __WINFLAGS ...),
                     # which the loader writes in. A value of its own, so it is told apart
@@ -583,11 +662,16 @@ def describe16(module_path, outdir):
     d.code = {s["idx"]: s["length"] for s in segs if s["kind"] == "CODE"}     # segment -> bytes of code
     d.images = {k: bytes(v) for k, v in images.items()}                       # segment -> its bytes, relocated
     d.data_segment = data_seg or 0
+    # (as the loader has them: the stored bytes, then zeros to the size it allocates -- a
+    # function's last instruction can end in them: `retf 4` stored as CA 04, its 00 not stored)
     d.segment_bytes = {s["idx"]: bytes(nef.data[s["file_off"]:s["file_off"] + s["length"]])
+                       + bytes(max(0, min(s["minalloc"] or 0x10000, 0x10000) - s["length"]))
                        for s in segs if s["kind"] == "CODE" and s["file_off"]}
     d.results = results(d)
     for va, nm, dist in funcs:
         lines.append(model_line(d, va, nm, default=dist))
+    if not os.environ.get("CB_NO_CALL_OVERRIDES"):
+        lines += call_overrides(d)
     from codebreaker.symbols import api_arguments as api16
     for nm in order:                 # Windows API: far, and the callee removes its arguments --
         size = api16.of(nm)          # how many bytes is read from the module that exports it

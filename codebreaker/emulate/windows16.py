@@ -144,6 +144,14 @@ def _import_namer(nef):
     return namer
 
 
+def _kernel_constant(api):
+    """The value of one of KERNEL's exports that is a plain number, or None."""
+    mod, _, fn = (api or "").upper().partition(".")
+    if mod != "KERNEL":
+        return None
+    return {"@113": 3, "__AHSHIFT": 3, "@114": 8, "__AHINCR": 8}.get(fn)
+
+
 def _apply_relocs(uc, nef, sels, seg_bases, sent_sel, imports):
     """Apply per-segment fixups. INTERNAL refs resolve to (selector:offset) in our GDT; external
     IMPORT refs get a unique sentinel far address (sent_sel:slot) recorded in `imports` for
@@ -166,6 +174,9 @@ def _apply_relocs(uc, nef, sels, seg_bases, sent_sel, imports):
                     tsel = sels.get(e["seg"], 0); toff = e["offset"]
                 else:
                     tsel = sels.get(tseg, 0); toff = r["entry"]
+            elif r["kind"] != "OSFIXUP" and r["src"] == 5 and _kernel_constant(namer(r)) is not None:
+                # KERNEL's plain numbers (__AHSHIFT 3, __AHINCR 8): written in as the loader does
+                tsel, toff = 0, _kernel_constant(namer(r))
             else:                                             # IMPORTORD / IMPORTNAME / OSFIXUP
                 slot = len(imports) + 1
                 toff = slot * _IMPORT_SENT_STRIDE
@@ -290,6 +301,9 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
     def answer(address):
         """A call into another of the module's functions, recorded and answered."""
         name, pop, far = intercept[address]
+        if pop < 0:                                          # (how many it removes is not known:
+            rec["unsure"] = True                             # the stack after it is not either)
+            pop = 0
         spn = uc.reg_read(UC_X86_REG_ESP) & 0xFFFF
         ip = int.from_bytes(uc.mem_read(STACK_BASE + spn, 2), "little")
         cs = int.from_bytes(uc.mem_read(STACK_BASE + spn + 2, 2), "little") if far else uc.reg_read(UC_X86_REG_CS)

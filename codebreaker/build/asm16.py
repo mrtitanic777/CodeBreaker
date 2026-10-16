@@ -361,7 +361,7 @@ class Function(object):
                % (self.module, self.public, self.seg, lo, hi),
                "; loader fixes and the calls out of the function are written as what they refer to;",
                "; an instruction the assembler would encode differently is given as bytes.",
-               ".386p", "CODE%d segment byte public use16 'CODE'" % self.seg,
+               ".386p", "CODE%d segment byte public use16 'MCODE'" % self.seg,
                "        assume cs:CODE%d, ds:nothing, es:nothing, ss:nothing" % self.seg]
         mine = {name for o, name in self.publics if inside(o)}
         others = {name: "near" for o, name in self.publics if not inside(o)}   # (other pieces of the frame)

@@ -55,6 +55,9 @@ namespace {
 
 struct Fact { uint64_t va; std::string name; int pop; std::string model; int result = -1; };   // result: bytes it returns in AX (DX:AX), when known
 struct Span { uint64_t va; std::vector<uint8_t> data; };
+// A call through a pointer (a driver's dispatch table, a callback): what it is passed, as the
+// code pushed it -- the callee is not known, so the analysis cannot tell what it takes.
+struct CallSite { uint64_t site; uint64_t func; int pop; std::string model; };
 
 // Imports live at made-up addresses outside the image: an import slot reads as the address of
 // "its" function, so a call through the slot resolves to a named function with a real prototype.
@@ -198,6 +201,7 @@ int main(int argc, char** argv) {
   std::vector<Fact> funcs, imports, externs;
   std::vector<std::pair<std::string, uint64_t>> regs;
   std::vector<Span> spans;
+  std::vector<CallSite> calls;
   {
     std::ifstream in(argv[1]);
     if (!in) { std::fprintf(stderr, "FAIL: cannot read %s\n", argv[1]); return 1; }
@@ -218,6 +222,9 @@ int main(int argc, char** argv) {
                f.size() > 4 ? f[4] : std::string()};
         if (f.size() > 5 && !f[5].empty()) x.result = atoi(f[5].c_str());
         (f[0] == "I" ? imports : f[0] == "X" ? externs : funcs).push_back(x);
+      } else if (f.size() >= 5 && f[0] == "O") {
+        calls.push_back({strtoull(f[1].c_str(), nullptr, 16), strtoull(f[2].c_str(), nullptr, 16),
+                         atoi(f[3].c_str()), f[4]});
       } else if (f.size() >= 3 && f[0] == "reg") {
         regs.push_back({f[1], strtoull(f[2].c_str(), nullptr, 16)});
       }
@@ -242,6 +249,10 @@ int main(int argc, char** argv) {
     DocumentStorage store;
     m.init(store);
     m.readonlypropagate = true;
+    // Nothing stops an escaped local's aliasing: a buffer whose address is passed on is as long as
+    // the callee writes, not as the array the analysis guessed (KRNL386 fills a struct and reads
+    // a field past what it sized as the array -- read as a variable never set)
+    m.alias_block_level = 0;
     m.max_instructions = 20000;                    // a wrong function start must fail quickly, not walk memory
     if (const char* mx = std::getenv("CB_MAX_INSTRUCTIONS"))  // (a large function is tried again with more)
       m.max_instructions = (uint4)std::atoi(mx);
@@ -345,6 +356,27 @@ int main(int argc, char** argv) {
     for (auto& t : todo) {
       std::cout << "/*@@ " << t.second.name << " " << std::hex << t.second.va << std::dec << " */" << std::endl;
       try {
+        // its calls through pointers: each passed the words the code pushed before it, removed
+        // by the callee (Windows' drivers and callbacks are Pascal)
+        for (const auto& c : calls) {
+          if (c.func != t.second.va || !m.hasModel(c.model)) continue;
+          FuncProto* p = new FuncProto();
+          p->setInternal(m.getModel(c.model), m.types->getTypeVoid());
+          PrototypePieces pieces;
+          pieces.model = m.getModel(c.model);
+          pieces.name = "";
+          pieces.outtype = m.types->getBase(2, TYPE_UNKNOWN);
+          pieces.firstVarArgSlot = -1;
+          for (int i = 0; i < c.pop / 2; ++i) {
+            pieces.intypes.push_back(m.types->getBase(2, TYPE_INT));
+            pieces.innames.push_back("p" + std::to_string(i + 1));
+          }
+          p->setPieces(pieces);
+          p->setInputLock(true);
+          p->setOutputLock(false);
+          p->setExtraPop(c.pop + (c.model.find("far") != std::string::npos ? 4 : 2));
+          t.first->getOverride().insertProtoOverride(Address(code, (uintb)c.site), p);
+        }
         Action* act = m.allacts.getCurrent();
         act->reset(*t.first);
         act->perform(*t.first);

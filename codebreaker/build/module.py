@@ -621,7 +621,7 @@ def _filler(folder, wasm, env, seg, stem, n):
     """An object of `n` bytes of INT 3 in code segment `seg`: a place kept where it was."""
     stem = "asm/" + stem
     with open(os.path.join(folder, stem + ".asm"), "w", newline="\n") as fh:
-        fh.write("CODE%d segment byte public 'CODE'\n        db   %d dup (0CCh)\nCODE%d ends\nend\n" % (seg, n, seg))
+        fh.write("CODE%d segment byte public 'MCODE'\n        db   %d dup (0CCh)\nCODE%d ends\nend\n" % (seg, n, seg))
     subprocess.run([wasm, "-q", "-fo=" + stem + ".obj", stem + ".asm"], cwd=folder, env=env, capture_output=True)
     return stem
 
@@ -802,7 +802,7 @@ def _build16(b, path, m, folder):
     stems, by_segment = {}, {}
     for (seg, _off), name in sorted(at.items()):
         by_segment.setdefault(seg, []).append(name)
-    cflags = [f for f in functions.CFLAGS16 if f != "-ms"] + ["-mm", "-fpi87", "-os"]   # (size: a function rebuilt from C goes back into its place when it fits)
+    cflags = [f for f in functions.CFLAGS16 if f != "-ms"] + ["-mm", "-fpi87", "-os", "-nc=MCODE"]   # (MCODE: see the link order; size: a function rebuilt from C goes back into its place when it fits)
     segment_of = {name: seg for (seg, _off), name in at.items()}
 
     def named(text, seg):
@@ -927,6 +927,11 @@ def _build16(b, path, m, folder):
     if only or segs_only:
         named = set(m.order) if only == "all" else set(only.split(","))
         forced |= {n for n in m.order if n in stems and (n in named or segment_of.get(n) in segs_only)}
+    for n, why in getattr(b, "gated", {}).items():           # (C that, run, did not do what the original does)
+        if n in stems:
+            forced.add(n)
+            if n in b.origins:
+                b.origins[n].evidence.append("its C, run beside the original, differs (not trusted as C): " + why[:160])
     forced -= set(os.environ.get("CB_FORCE_C", "").split(","))   # (and these as C whatever origin says)
     keep_c = os.environ.get("CB_ASM_KEEP_C")                 # (and the other way: C for these alone)
     if keep_c is not None:
@@ -1046,11 +1051,11 @@ def _build16(b, path, m, folder):
     # (CODE<n>X, the runtime's _TEXT) after them
     code_numbers = [s["idx"] for s in nef.segments() if s["kind"] == "CODE"]
     if code_numbers and all(n in by_segment for n in code_numbers):
-        order = "order clname CODE " + " ".join("segment CODE%d" % n for n in code_numbers)
+        order = "order clname MCODE " + " ".join("segment CODE%d" % n for n in code_numbers)
         auto = nef.h.get("autodata_seg")
         if auto == max(code_numbers) + 1:                   # (and the data segment next, as there)
             order += " clname BEGDATA clname DATA clname BSS clname STACK"
-        lines.append(order + " clname XCODE")
+        lines.append(order + " clname XCODE clname CODE")   # (the runtime's CODE last)
     else:
         b.layout = "segments renumbered: the original's code segments %s are not all rebuilt" % (
             [n for n in code_numbers if n not in by_segment],)
@@ -1257,13 +1262,19 @@ def run(b, limit=RUN_LIMIT):
     return b
 
 
-def build(module, outdir=None, call=True, log=print):
-    """Build a module whole. -> Built"""
+def build(module, outdir=None, call=True, log=print, gated=None):
+    """Build a module whole. -> Built
+
+    A 16-bit module's functions rebuilt from C are then each run beside the original's
+    (verify/isolated16.py: on their own, every call out answered alike on both sides); one
+    that does not do what the original does is rebuilt from its own instructions instead, and
+    the module built again (b.gated: name -> how it differed). CB_NO_GATE=1 leaves them."""
     from codebreaker.verify import reconstruct
     path = corpus.retail(module)
     if not path:
         raise SystemExit("no module %r in the corpus" % module)
     b = Built(path)
+    b.gated = dict(gated or {})
     kind = reconstruct.kind_of(path)
     b.folder = folder = outdir or settings.state("build", b.name)
     os.makedirs(folder, exist_ok=True)
@@ -1278,6 +1289,14 @@ def build(module, outdir=None, call=True, log=print):
     shutil.copyfile(image, b.image)
     if b.kind == "ne":
         _whole_file_image(path, b.image)
+        if gated is None and not os.environ.get("CB_NO_GATE"):
+            from codebreaker.verify import isolated16
+            c = sorted(b.placed_c | getattr(b, "moved_c", set()))
+            log("%s: running %d functions rebuilt from C beside the original's" % (b.name, len(c)))
+            differ = {n: why for n, verdict, why in isolated16.check(path, folder, c) if verdict == "differs"}
+            if differ:
+                log("%s: %d do not do what the original does: rebuilt from their instructions" % (b.name, len(differ)))
+                return build(module, outdir=outdir, call=call, log=log, gated=differ)
     check(b)
     if call:
         run(b)

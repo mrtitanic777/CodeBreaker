@@ -297,6 +297,22 @@ def _judge(o, md, image, start, end, imported, starts=()):
             if mn in ("ret", "retf"):
                 pass
 
+    # SI or DI changed and never saved: given back changed -- a result, or a pointer moved on
+    # for the caller. The C compilers keep both (a register variable is pushed first).
+    changed = set()
+    for ins in body:
+        if ins.mnemonic in ("int", "call", "lcall", "pop"):
+            continue
+        try:
+            _r, w = ins.regs_access()
+        except capstone.CsError:
+            continue
+        changed |= {ins.reg_name(r) for r in w} & {"si", "di", "esi", "edi"}
+    saved = {ins.op_str for ins in body if ins.mnemonic == "push"}
+    for reg in sorted(changed):
+        if reg[-2:] not in saved and "e" + reg[-2:] not in saved:
+            o.evidence.append("gives %s back changed (never saved)" % reg[-2:].upper())
+
     # de-duplicate, keep the first few kinds
     seen, ev = set(), []
     for e in o.evidence:

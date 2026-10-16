@@ -421,7 +421,8 @@ typedef unsigned char uint1; typedef unsigned short uint2; typedef unsigned long
 typedef unsigned char xunknown1; typedef unsigned short xunknown2; typedef unsigned long xunknown4;
 typedef unsigned char undefined; typedef unsigned char undefined1; typedef unsigned short undefined2;
 typedef unsigned long undefined4; typedef unsigned char bool; typedef unsigned long float4;
-typedef int2 code();
+typedef int2 __cdecl code();                    /* (a convention named: Watcom's own would pass the arguments in registers) */
+typedef int2 __stdcall code_callee_pops();      /* a call through a pointer whose callee removes its arguments */
 #define true 1
 uint2 codebreaker_ss(void);
 #pragma aux codebreaker_ss = "mov ax,ss" value [ax] modify exact [ax];
@@ -516,7 +517,7 @@ def _segment_registers(text):
     register held when the function was entered" -- used when it passes the address of a local
     as a far pointer (offset, SS) or a string constant as (offset, CS). Left as plain locals
     they would be garbage; they are given the register's value."""
-    return re.sub(r"(?m)^(\s+\w+ )unaff_(SS|DS|CS);\s*$",
+    return re.sub(r"(?m)^(\s+(?!return\b)\w+ )unaff_(SS|DS|CS);\s*$",     # (a declaration, not `return unaff_DS;`)
                   lambda m: "%sunaff_%s = codebreaker_%s();" % (m.group(1), m.group(2), m.group(2).lower()), text)
 
 
@@ -619,6 +620,39 @@ def _global_type(prefix, size):
         size, "uint2")
 
 
+def _selector_sites(module_path):
+    """{segment: [(offset, segment whose selector the loader puts there)]} -- the module's own
+    selector fix-ups (a selector, or the selector half of a far pointer), chains followed."""
+    from codebreaker.formats.ne import NEFile
+    nef = NEFile(module_path)
+    entries = nef.entries()
+    out = {}
+    for s in nef.segments():
+        if not s["file_off"]:
+            continue
+        raw = nef.data[s["file_off"]:s["file_off"] + s["length"]]
+        for r in nef.relocations(s):
+            if r["kind"] != "INTERNAL" or r["src"] not in (2, 3):
+                continue
+            target = r["seg"]
+            if target == 0xFF:                               # a movable segment, through its entry
+                e = entries[r["entry"] - 1] if 0 < r["entry"] <= len(entries) else None
+                target = e.get("seg") if e else None
+            if not target:
+                continue
+            at, seen = r["offset"], set()
+            while at < len(raw) - 1 and at not in seen:
+                seen.add(at)
+                out.setdefault(s["idx"], []).append((at + (2 if r["src"] == 3 else 0), target))
+                if r["additive"]:
+                    break
+                nxt = struct.unpack_from("<H", raw, at)[0]
+                if nxt == 0xFFFF:
+                    break
+                at = nxt
+    return out
+
+
 def compilable16(module_path, outdir=None):
     from codebreaker.decompile import decompiler, describe
     texts, order, by_va, d = decompiler.decompile16(module_path, outdir)
@@ -654,6 +688,13 @@ def compilable16(module_path, outdir=None):
     # each function's model as the description gives it: near or far is how it returns, and
     # the C must say it (the decompiler leaves the convention out of a head whose result is a
     # pointer -- and in the medium model an unmarked function is far)
+    callee_pops = {}                                         # function -> its pointer calls' callee removes the arguments
+    with open(d.path, encoding="utf-8") as f:
+        for line in f:
+            if line.startswith("O\t"):
+                parts = line.rstrip("\n").split("\t")
+                if parts[4].startswith("__stdcall"):
+                    callee_pops[int(parts[2], 16)] = True
     distance = {}
     with open(d.path, encoding="utf-8") as f:
         for line in f:
@@ -714,7 +755,12 @@ def compilable16(module_path, outdir=None):
         if head.split()[0] in _WIDE or "*" in head.split(name)[0] and "__far" in head.split(name)[0]:
             m.wide.add(name)
         text = re.sub(r"\b_([a-z]+Ram[0-9a-f]{8})\b", r"\1", text)     # (a global the decompiler named twice)
-        m.texts[name] = _far_locals(_stack_arguments(_entry_sp(_far_addresses(_interrupts(_open_arguments(text), m.interrupts)))))
+        m.texts[name] = _buffer_fields(_far_locals(_stack_arguments(_entry_sp(_far_addresses(_interrupts(_open_arguments(text), m.interrupts))))))
+        if callee_pops.get(va):
+            # its calls through pointers remove nothing themselves: the callee does (the arguments
+            # are listed in stack order, so __stdcall lays them out as the original pushed them)
+            m.texts[name] = re.sub(r"\(code (__far |__near )?\*\)", lambda mm: "(code_callee_pops %s*)" % (mm.group(1) or ""),
+                                   m.texts[name])
         m.order.append(name)
         m.by_va[va] = name
         m.where[va] = d.where.get(va)
@@ -730,6 +776,46 @@ def compilable16(module_path, outdir=None):
     if values:
         for name in m.texts:
             m.texts[name] = re.sub(r"\b0x[dD]0[0-9a-fA-F]{2}\b", _value, m.texts[name])
+    # A segment of the module's own as a value -- its selector passed on, pushed, left in AX: the
+    # decompiler shows the made-up selector the description gave it. The automatic data segment
+    # is DS; a code segment, the selector of a far function in it (the loader fixes that one up).
+    own = {}
+    for va, n in m.by_va.items():
+        sg = (m.where.get(va) or (None,))[0]
+        if sg is not None and n not in m.near:
+            own.setdefault(sg, n)
+    sel_expr = {}
+    for sg in set(getattr(d, "code", {})) | ({d.data_segment} if d.data_segment else set()):
+        made_up = describe.FIRST_SELECTOR + 8 * (sg - 1)
+        if sg == d.data_segment:
+            sel_expr[made_up] = "codebreaker_ds()"
+        elif sg in own:
+            sel_expr[made_up] = "((uint2)((uint4)(void __far *)&%s >> 16))" % own[sg]
+    # ... where the function's own code holds a loader fix-up for that segment's selector: a
+    # number like 1000h is as often a plain constant
+    sites = _selector_sites(module_path)
+    starts = {}
+    for va, n in m.by_va.items():
+        sg_off = m.where.get(va)
+        if sg_off:
+            starts.setdefault(sg_off[0], []).append(sg_off[1])
+    for sg in starts:
+        starts[sg].sort()
+    if sel_expr:
+        for va, name in m.by_va.items():
+            sg_off = m.where.get(va)
+            if not sg_off or name not in m.texts:
+                continue
+            sg, off = sg_off
+            later = [o for o in starts[sg] if o > off]
+            end = later[0] if later else 0x10000
+            wanted = {describe.FIRST_SELECTOR + 8 * (t - 1) for (o, t) in sites.get(sg, ()) if off <= o < end}
+            here = {v: e for v, e in sel_expr.items() if v in wanted}
+            if not here:
+                continue
+            selector = re.compile(r"(?<![\w.])0x(%s)\b" % "|".join("%x" % v for v in here))
+            head, brace, body = m.texts[name].partition("{")
+            m.texts[name] = head + brace + selector.sub(lambda mm: here[int(mm.group(1), 16)], body)
     body = "\n".join(m.texts.values())
     called = set(re.findall(r"\b([A-Za-z_]\w*)\s*\(", body))
     m.imports = {}
@@ -883,6 +969,77 @@ def _stack_arguments(text):
         ty = {"u": "uint2", "i": "int2", "c": "char", "b": "uint1", "x": "xunknown2"}.get(mm.group(1)[:1], "uint2")
         return place(ty, int(mm.group(2), 16))
     return re.sub(r"\b_?([a-z]+)Stack([0-9a-f]{4})\b", piece, text)
+
+
+_SIZE = {"1": 1, "2": 2, "4": 4}
+_LOCAL = re.compile(r"(?m)^  (\w+?)(\d)? +(\w*Stack_([0-9a-f]+))( \[(\d+)\])?;\s*$")
+
+
+def _buffer_fields(text):
+    """A local the function never sets, lying past the end of an array local whose address it
+    passes on, is a field of that buffer: the callee fills the buffer, the function reads the
+    field (the analysis sized the array to reach the next thing it saw used, and made that a
+    variable of its own -- which no one writes). It is read where it is, in the buffer, and
+    the buffer is made to reach it."""
+    head, brace, body = text.partition("{")
+    decl = {}
+    for mm in _LOCAL.finditer(body):
+        typ, width, name, off, _a, count = mm.groups()
+        elem = _SIZE.get(width or "", 2) if width else 2
+        size = int(count) * elem if count else elem                  # (bytes)
+        decl[name] = (int(off, 16), size, bool(count), mm.group(0), (typ or "") + (width or ""))
+    # A local whose address is passed on, with locals of its width right after it in the frame:
+    # one buffer of them (a RECT copied into four words, its address given to a function that
+    # converts it in place -- four variables of their own, only the first where the callee
+    # writes). Made one array, as the frame has them.
+    by_off = {v[0]: n for n, v in decl.items() if not v[2]}
+    for name, (off, size, is_array, line, typ) in sorted(decl.items(), key=lambda kv: -kv[1][0]):
+        if is_array or name not in decl or not re.search(r"&%s\b" % re.escape(name), body):
+            continue
+        run, at = [name], off - size
+        while at in by_off and decl.get(by_off[at], (0, 0))[1] == size and by_off[at] not in run \
+                and decl[by_off[at]][4] == typ \
+                and not re.search(r"&%s\b" % re.escape(by_off[at]), body):
+            run.append(by_off[at])
+            at -= size
+        if len(run) < 2:
+            continue
+        arr = "a" + name
+        body = body.replace(line, "  %s %s [%d];" % (typ or "int2", arr, len(run)), 1)
+        for k, n in enumerate(run):
+            if k:
+                body = body.replace(decl[n][3], "", 1)
+            body = re.sub(r"&%s\b" % re.escape(n), "&%s[%d]" % (arr, k), body)
+            body = re.sub(r"(?<![\w.&])%s\b" % re.escape(n), "%s[%d]" % (arr, k), body)
+            decl.pop(n, None)
+        decl[arr] = (off, size * len(run), True, "  %s %s [%d];" % (typ or "int2", arr, len(run)), typ)
+    arrays = {n: v for n, v in decl.items()
+              if v[2] and re.search(r"[(,]\s*(?:\(\w+\s*\*?\))?\s*&?%s\b" % n, body)}
+    if not arrays:
+        return text
+    for name, (off, size, is_array, line, typ) in sorted(decl.items()):
+        if is_array or name in arrays:
+            continue
+        n = re.escape(name)
+        uses = len(re.findall(r"(?<![\w.])%s\b" % n, body))
+        sets = re.search(r"(?<![\w.])%s\s*(?:[-+*/|&^]|<<|>>)?=(?!=)|&%s\b|%s\s*(?:\+\+|--)|(?:\+\+|--)\s*%s\b"
+                         % (n, n, n, n), body)
+        if uses < 2 or sets:                                 # (declared and read, never set)
+            continue
+        owner = next((a for a, (ao, asz, _i, _l, _t) in arrays.items() if ao > off >= ao - asz - 0x10), None)
+        if owner is None:
+            continue
+        ao, asz, _i, aline, _atyp = arrays[owner]
+        at = ao - off                                        # bytes into the buffer
+        body = body.replace(line, "", 1)
+        body = re.sub(r"(?<![\w.])%s\b" % n, "(*(%s *)((uint1 *)%s + 0x%x))" % (typ or "int2", owner, at), body)
+        need = at + _SIZE.get(typ[-1:], 2)
+        if need > asz:
+            elem = _SIZE.get(_atyp[-1:], 2)
+            newline = re.sub(r"\[\d+\]", "[%d]" % ((need + elem - 1) // elem), aline)
+            body = body.replace(aline, newline, 1)
+            arrays[owner] = (ao, need, True, newline, _atyp)
+    return head + brace + re.sub(r"\n\n\n+", "\n\n", body)
 
 
 def _far_locals(text):
