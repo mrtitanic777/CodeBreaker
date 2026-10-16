@@ -167,7 +167,7 @@ def equivalent(want, got, fx):
                 for j in range(i - 1, max(-1, i - 40), -1):
                     m = re.fullmatch(r"mov %s, word ptr \[([^\]]+)\]" % r, L[j][2])
                     if m: d[r] = m.group(1); break
-                    if re.match(r"(mov|xchg) %s" % r, L[j][2]) or L[j][3] in ("call", "lcall"): break
+                    if re.match(r"(mov|xchg) %s\b" % r, L[j][2]) or L[j][3] in ("call", "lcall"): break
             return d
         ok, res = boolx.same(lines(W, want, ws, ew), W[ws][0], W[ew][0], lines(G, got, gs, eg), G[gs][0], G[eg][0], bases(W, ws), bases(G, gs))
         if not ok:
@@ -387,7 +387,7 @@ def equivalent3(want, got, fx):
                 for j in range(i - 1, max(-1, i - 40), -1):
                     m = re.fullmatch(r"mov %s, word ptr \[([^\]]+)\]" % r, L[j][2])
                     if m: d[r] = m.group(1); break
-                    if re.match(r"(mov|xchg) %s" % r, L[j][2]) or L[j][3] in ("call", "lcall"): break
+                    if re.match(r"(mov|xchg) %s\b" % r, L[j][2]) or L[j][3] in ("call", "lcall"): break
             return d
         ok, res = boolx.same(lines(W, want, ws, ew), W[ws][0], W[ew][0], lines(G, got, gs, eg), G[gs][0], G[eg][0], bases(W, ws), bases(G, gs))
         if not ok:
