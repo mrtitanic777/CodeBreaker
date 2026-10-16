@@ -29,6 +29,7 @@ its arithmetic helpers (__aFlmul, __aFuldiv ...), the frame it builds and takes 
 of assembly evidence makes a function assembly; the evidence is kept with the verdict.
 """
 import collections
+import struct
 
 import capstone
 import capstone.x86 as X
@@ -112,6 +113,33 @@ def _module16(path, more=None):
         end = later[0] if later else len(image)
         o = res.functions[va] = Origin(va, name)
         _judge(o, md, image, off, end, imported, set(starts[seg]))
+    # A function whose inner addresses a table names (KRNL386's fault chain: a start and an end
+    # of the instructions that may fault, with where to go on if they do) was written in
+    # assembly: its instructions have to be where the table says, which C's cannot be. Three
+    # words side by side -- a start, an end and where to go on -- all instructions of the same
+    # function and none its start.
+    for seg, offs in starts.items():
+        image = d.images.get(seg, b"")
+        inner, covered = {}, bytearray(len(image))
+        for k, off in enumerate(offs):
+            end = offs[k + 1] if k + 1 < len(offs) else len(image)
+            for ins in md.disasm(image[off:end], off):
+                if ins.address != off:
+                    inner[ins.address] = off
+                covered[ins.address:ins.address + ins.size] = b"" * ins.size
+        named = collections.defaultdict(set)
+        for at in range(0, len(image) - 5, 2):              # (a table of its own segment, not code)
+            if any(covered[at:at + 6]):
+                continue
+            a, b, c = struct.unpack_from("<HHH", image, at)
+            if a < b and a in inner and inner.get(b) == inner[a] and inner.get(c) == inner[a]:
+                named[inner[a]].add((seg, at, a, b))
+        for va, o in res.functions.items():
+            s, off = d.where[va]
+            if s == seg and off in named and o.language != "assembly":
+                s2, at, a, b = sorted(named[off])[0]
+                o.evidence.append("its instructions %04x-%04x are named by a table (%d:%04x)" % (a, b, s2, at))
+                o.language = "assembly"
     # A function that calls one taking its arguments in registers, having put them there itself,
     # was written in assembly as well (C passes arguments on the stack)
     by_place = {d.where[va]: o for va, o in res.functions.items()}
