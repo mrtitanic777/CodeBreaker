@@ -204,7 +204,10 @@ def run(prj, verbose=False):
             o = omf.read(raw)
             seg = [s for s, cls, ln, al in o.segs if s not in ("HEAP", "STACK", "DATA", "CONST", "MEMORY") and o.filled.get(s)][0]
             fs = omf.functions(o, seg)
-            off_of = {n.upper(): (of, ln) for n, of, ln in fs}
+            at_of = {}                                      # (two names at one offset - a main program's block and
+            for n, of, ln in fs:                            # ENTGQQ, the entry: each has the code that starts there)
+                at_of[of] = max(at_of.get(of, 0), ln)
+            off_of = {n.upper(): (of, at_of[of]) for n, of, ln in fs}
             # where each compiled procedure stands in the program: P<ADDR> at ADDR, the block at main, the helper after
             places = []
             main_at = int(u["main"], 0) if isinstance(u["main"], str) else u["main"]
@@ -212,7 +215,7 @@ def run(prj, verbose=False):
                 m = re.fullmatch(r"P([0-9A-F]{5})", n.upper())
                 a = c.addr_of(m.group(1)) if m and (not c.map or m.group(1) in c.map) else None if m else \
                     main_at if n.upper() == name.upper() else helper_at if n == "(helper)" else None
-                places.append((of, ln, a))
+                places.append((of, at_of[of], a))
 
             def where(x, places=places):
                 for of, ln, a in places:
