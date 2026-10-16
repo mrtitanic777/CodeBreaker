@@ -1867,6 +1867,26 @@ def scaled_index(text):
     return text
 
 
+def guard_returns(text):
+    """if (C) { S } return X; last in the function: if (!C) return X; S return X; (a variant: a guard returning
+    at once is laid out its own way)"""
+    lines = text.split("\n")
+    for k in range(len(lines)):
+        if not lines[k].startswith("    if (") or not lines[k].endswith("{"):
+            continue
+        p = _if_parts(lines, k)
+        if not p or p[2] is not None:
+            continue
+        rest = [x for x in lines[p[3]:] if x.strip()]
+        if len(rest) != 2 or not re.fullmatch(r"    return [^;]+;", rest[0]) or rest[1] != "}":
+            continue
+        neg = _not("(%s)" % p[0])
+        new = ["    if %s %s" % (neg if neg.startswith("(") and _balanced(neg[1:-1]) else "(%s)" % neg, rest[0].strip())] + \
+            [x[4:] if x.startswith("        ") else x for x in p[1]]
+        return "\n".join(lines[:k] + new + lines[p[3]:])
+    return None
+
+
 def bool_trees(text):
     """an if-tree whose every way ends giving r 1 or 0 (a goto to a labelled part of it the same part again):
     if (E) { r = 1; } else { r = 0; } - E the && / || of its tests, a part both ways share factored out
@@ -2841,7 +2861,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = register_values(long_ladders(long_pairs(t)))                     # (the longs again, as the passes left them)
         t = frame_chars(fn_pointers(t), widths)
         t = fill_frame(t, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
-        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t), register_copies(t), lead_filler(t), scaled_places(t), shared_tails(t)] if v]
+        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t), register_copies(t), lead_filler(t), scaled_places(t), shared_tails(t), guard_returns(t)] if v]
         both = pre_steps(t)
         both = pre_increments(both) if both else None
         if both:
@@ -3014,6 +3034,11 @@ def long_pairs(text):
     def pair_store(m):
         ind, p, n, x, p2, n2, y = m.groups()
         byte = any(o in BYTEPTR for o in (("*", int(n)), ("*", int(n2)), (p, int(n)), (p, int(n2))))
+        alone = [l for l in body.split("\n") if re.search(r"\b%s->f%s\b" % (p, n), l) and
+                 not re.search(r"\b%s->f%s\b" % (p, n2), l) and not re.fullmatch(r"[ \t]*%s->f%s = %s;" % (p, n, x), l)]
+        if alone and not any(re.search(r"\b%s->f%s\b" % (p, n2), l) for l in body.split("\n")
+                             if not re.fullmatch(r"[ \t]*%s->f%s = %s;" % (p, n2, y), l)):
+            return m.group(0)                               # (the low word read alone, the high never: two ints)
         if p2 == p and int(n2) == int(n) + 2 and hi_of(x) == y and not byte:   # (words both: a byte is no long's)
             pairs.add(x)
             LONGINFO.setdefault("fields", set()).add(int(n))
@@ -4016,6 +4041,7 @@ REFINERS = [lambda prj, s: [assign_in_args(s)], lambda prj, s: [return_sources(s
             lambda prj, s: [unsigned_registers(s)], lambda prj, s: [unmasked(s)], lambda prj, s: [no_default(s)],
             lambda prj, s: [empty_cases_first(s)], lambda prj, s: [register_slots(s)], lambda prj, s: [register_copies(s)],
             lambda prj, s: [lead_filler(s)], lambda prj, s: [scaled_places(s)], lambda prj, s: [shared_tails(s)],
+            lambda prj, s: [guard_returns(s)],
             lambda prj, s: [re.sub(r"\b0, 0\)", "0L)", s)]]     # (two zero words pushed: a long 0)
 
 
