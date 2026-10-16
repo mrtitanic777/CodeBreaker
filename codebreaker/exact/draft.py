@@ -177,7 +177,7 @@ def conditional_values(text):
     """a register given one value or another by a test, then read once by the next statement - C's ?: read back:
         if (C) { r = A; } else { r = B; } X = ..r..;   ->   X = ..(C ? A : B)..;
     (the arms give it nothing else, and the statement after reads it no more)"""
-    rx = re.compile(r"(?m)^([ \t]*)if (\(.*\)) \{\n\s*%s = ([^;\n]+);\n\s*\} else \{\n\s*\3 = ([^;\n]+);\n\s*\}\n(\s*)(.*)$" % (r"(ax|bx|cx|dx|si|di)"))
+    rx = re.compile(r"(?m)^([ \t]*)if (\(.*\)) \{\n\s*%s = ([^;\n]+);\n\s*\} else \{\n\s*\3 = ([^;\n]+);\n\s*\}\n(\s*)(.*)$" % (r"(ax|bx|cx|dx|si|di|al|bl|cl|dl)"))
 
     def one(m):
         ind, c, r, a, b, ind2, nxt = m.groups()
@@ -189,6 +189,8 @@ def conditional_values(text):
         if r in ("si", "di"):
             return m.group(0)                               # (a register variable: given a value it keeps)
         val = _ternary(c, a, b)
+        if r.endswith("l"):                                 # (a byte register's: the value a char)
+            return ind + re.sub(r"\b%s\b" % r, lambda x: "(char)(%s)" % val, nxt, count=1)
         return ind + re.sub(r"\b%s\b" % r, lambda x: "(%s)" % val, nxt, count=1)
     # (nested: an arm that is itself such a test - `else { if (C2) { r = B; } else { r = D; } }` - one value
     #  first, `r = (C2 ? B : D);`, then the outer test)
