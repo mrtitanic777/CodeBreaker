@@ -2413,6 +2413,11 @@ def compile_fixes(src, con):
             d = _declare_pointer(src, m.group(1), ty)
             if d:
                 out.append(d)
+    if "2 pointers" in msg:                                 # (two pointers added: one of them an int - each way)
+        for x in dict.fromkeys(re.findall(r"\b([A-Za-z_]\w*)\b", l)):
+            d = re.sub(r"(?m)^([ \t]*)(register )?char \*%s;$" % x, r"\1\2int %s;" % x, src)
+            if d != src:
+                out.append(d)
     one = compile_fix(src, con)
     if one:
         out.append(one)
@@ -2516,6 +2521,13 @@ def prove_texts(prj, tc, inv, texts, a, ln, names):
     first the compiler proves identical; else the best of them (one that differs before one that does not
     compile, before one with registers left)"""
     best = None
+    texts = list(texts)
+    for text, regparam in list(texts):                      # (a register loaded from a parameter and then given
+        given = {r for r in (regparam or {}) if re.search(r"(?m)^[ \t]*%s = " % r, text)}   # a new value: maybe a
+        for g_ in sorted(given):                                                             # local the parameter
+            texts.append((text, {r: i for r, i in regparam.items() if r != g_}))             # started - the compiler says)
+        if len(given) > 1:
+            texts.append((text, {r: i for r, i in regparam.items() if r not in given}))
     for text, regparam in texts:
         src, v = prove_best(prj, tc, inv, text, a, ln, names, regparam)
         if v == "identical":
