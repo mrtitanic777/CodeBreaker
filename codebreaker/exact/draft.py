@@ -2638,6 +2638,11 @@ def structs(text, widths):
             uses.setdefault(p, set()).add(0)
     if not uses:
         return text
+    for p in list(uses):                                    # (p + N, the place of a field - lea - is &p->fN)
+        for n in set(re.findall(r"\(%s \+ (\d+)\)" % p, text)):
+            if int(n) < 0x100:
+                uses[p].add(int(n))
+                text = text.replace("(%s + %s)" % (p, n), "&%s->f%s" % (p, n))
     for p in uses:                                          # (*p of a struct pointer: its first field)
         whole = re.compile(r"(?<![\w>)\]])\*%s\b(?!\s*(?:->|\[|\+\+|--|\.))" % p)
         decl = re.compile(r"\s*(?:extern\s+|register\s+|static\s+)*(?:unsigned\s+)?(?:char|int|long|short|struct\s+\w+)\b")
@@ -2879,8 +2884,8 @@ def byte_fields(inv, code):
             o_ = int(o_ or "0", 0)                          # (each width at each offset through each register:
             if o_ < 0x100:                                  #  an offset read both ways is two structs')
                 out.add((r_ + ("*" if wd == "byte" else "w"), o_))
-        g = re.search(r"byte ptr \[(0x[0-9a-f]+|\d+)\]", i.op_str)     # (a global read or written a byte at a time)
-        if g:
+        g = re.search(r"byte ptr \[(0x[0-9a-f]+|\d+)\]", i.op_str)     # (a global read or written a byte at a time -
+        if g and not any("word ptr [%s]" % g.group(1) in x.op_str for x in insns):   #  never a word: a word's low byte)
             out.add(("g", "g_%04x" % int(g.group(1), 0)))
         f = re.search(r"(byte|word) ptr \[bp ([+-]) (0x[0-9a-f]+|\d+)\]", i.op_str)   # (a frame slot by its width:
         if f:                                                                        #  FRAMEW: (+-N, width))
