@@ -2852,6 +2852,15 @@ def long_pairs(text):
         return "%s%s = %s;" % (ind, x, "%dL" % v if abs(v) > 0x7FFF else str(v))
     body = _line_pairs(body, r"([ \t]*)(\w+) = (-?\d+);\n\s*(\w+) = (-?\d+);", const_pair)
 
+    def masked_test(m):                                     # (a long and-ed with a long field and tested: the high
+        ind, hi, p, n2, rest, lo, n1 = m.groups()           #  words in dx first, then the low words or-ed in)
+        if hi_of(lo) != hi or int(n2) != int(n1) + 2:
+            return m.group(0)
+        pairs.add(lo)
+        LONGINFO.setdefault("fields", set()).add(int(n1))
+        return rest.replace("((%s & %s->f%s) | dx)" % (lo, p, n1), "(%s & %s->f%s)" % (lo, p, n1))
+    body = re.sub(r"(?m)^([ \t]*)dx = (\w+) & (\w+)->f(\d+);\n(.*\(\((\w+) & \3->f(\d+)\) \| dx\).*)$", masked_test, body)
+
     def gpair_op(m):                                        # (a long in the data and-ed, or-ed, xor-ed with a long:
         ind, g, op, x, g2, op2, x2 = m.groups()             #  a word at a time, the high words after - one op)
         if op != op2 or int(g2[2:], 16) != int(g[2:], 16) + 2:
