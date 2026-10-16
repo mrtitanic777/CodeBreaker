@@ -740,6 +740,14 @@ class R:
                         if d8=="ah": s.axsrc=None; s.retlive=True
                     else: s._byte_settle(d8, i)
                 return
+            if s.msc3 and not MARK and d8 in ("ah","bh","ch","dh") and mn in ("or","xor","and") and \
+                    re.match(r"(0x[0-9a-f]+|\d+)$",src) and d8 not in s.breg:   # (3.00: a high byte or-ed with a
+                w_=BYTEPARENT[d8]; k_=s.num(src)                                 #  number: the word's own op)
+                cur_=getattr(s,w_,None); cur_=cur_ if cur_ is not None else w_
+                kw=(k_<<8) if mn!="and" else ((k_<<8)|0xff)
+                setattr(s,w_,"(%s %s 0x%x)"%(cur_,{"or":"|","xor":"^","and":"&"}[mn],kw))
+                if w_=="ax": s.axsrc=None; s.retlive=True
+                return
             cur=s.breg.get(d8,pre8 if pre8 is not None else d8); opc={"add":"+","sub":"-","or":"|","and":"&","xor":"^"}[mn]
             if re.match(r"(0x[0-9a-f]+|\d+)$",src): sv=str(s.num(src))
             elif src in BYTEREG: sv=s._bval(src) if DEADREGS else s.breg.get(src,src)

@@ -1456,6 +1456,38 @@ def default_last(text):
     return None
 
 
+def push_tails(text):
+    """if (C) { ..; r = A; } else { ..; r = B; } S(r); - the statement after, taking what each arm leaves in r, in
+    each arm with its value: the compiler's one copy of a tail both arms ended with (a variant)"""
+    lines = text.split("\n")
+    for k in range(len(lines)):
+        p = _if_parts(lines, k)
+        if not p or p[2] is None or p[3] >= len(lines):
+            continue
+        a_ = [l for l in p[1] if l.strip()]
+        b_ = [l for l in p[2] if l.strip()]
+        ma = re.fullmatch(r"(\s*)(ax|bx|cx|dx) = (.+);", a_[-1]) if a_ else None
+        mb = re.fullmatch(r"(\s*)(ax|bx|cx|dx) = (.+);", b_[-1]) if b_ else None
+        nxt = lines[p[3]]
+        if not ma or not mb or ma.group(2) != mb.group(2):
+            continue
+        r = ma.group(2)
+        if len(re.findall(r"\b%s\b" % r, nxt)) != 1 or re.match(r"\s*(?:if|while|for|switch|\}|L_\w+:)", nxt) or \
+                _live_after(lines, p[3], r):
+            continue
+        ind = ma.group(1)
+        s_a = ind + re.sub(r"\b%s\b" % r, lambda _: "(%s)" % ma.group(3), nxt.strip(), count=1)
+        s_b = mb.group(1) + re.sub(r"\b%s\b" % r, lambda _: "(%s)" % mb.group(3), nxt.strip(), count=1)
+        ia = max(j for j, l in enumerate(p[1]) if l.strip())
+        ib = max(j for j, l in enumerate(p[2]) if l.strip())
+        then = p[1][:ia] + [s_a] + p[1][ia + 1:]
+        els = p[2][:ib] + [s_b] + p[2][ib + 1:]
+        i0 = re.match(r"\s*", lines[k]).group(0)
+        new = [lines[k]] + then + [i0 + "} else {"] + els + [i0 + "}"]
+        return "\n".join(lines[:k] + new + lines[p[3] + 1:])
+    return None
+
+
 def split_ternaries(text):
     """return (C ? A : B); - as the two returns it may have been: if (C) return A; return B; (a variant: the
     compiler keeps one copy of a tail both share either way)"""
@@ -2118,7 +2150,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = long_ladders(long_pairs(t))                     # (the longs again, as the passes left them)
         t = frame_chars(t, widths)
         t = fill_frame(t, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
-        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t)] if v]
+        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t)] if v]
         both = pre_steps(t)
         both = pre_increments(both) if both else None
         if both:
@@ -3141,7 +3173,8 @@ REFINERS = [lambda prj, s: [assign_in_args(s)], lambda prj, s: [return_sources(s
             lambda prj, s: [pre_steps(s)], lambda prj, s: [pre_increments(s)], lambda prj, s: [assign_in_tests(s)],
             lambda prj, s: [and_returns(s)], lambda prj, s: [register_temps(s)], lambda prj, s: [void_variant(s)],
             lambda prj, s: pointer_widths(s), _place_variants, lambda prj, s: string_variants(prj, s),
-            lambda prj, s: [split_ternaries(s)], lambda prj, s: [default_last(s)]]
+            lambda prj, s: [split_ternaries(s)], lambda prj, s: [default_last(s)], lambda prj, s: [push_tails(s)],
+            lambda prj, s: [re.sub(r"\b0, 0\)", "0L)", s)]]     # (two zero words pushed: a long 0)
 
 
 def refine(prj, tc, a, ln, best, rounds=2, budget=40):
