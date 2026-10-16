@@ -10,17 +10,23 @@ file it writes is compared with the original byte for byte.
 project.json "link":
     "linker"     the LINK.EXE to run (a path from the project's folder, like "image")
     "switches"   its switches, e.g. "/STACK:3072"
-    "map"        true: a map is asked for (it changes nothing the linker writes, but some linkers keep the name)
-    "names"      "sequence" (default: MA, MB, .. - short, so the command line holds them) or "files"
+    "output"     the run file's name (default NEW);  "map": false - no map (NUL), else one of that name
+                 (the names change nothing the linker makes of the modules, but some linkers leave a trace of
+                 their names' places in the header)
+    "names"      the objects' names: "sequence:M" (default: MA, MB, .. - short, so the command line holds
+                 them), "pairs:D" (DA .. DZ, EA ..), or "files"
     "placed"     the pattern of files of no code that have a place in the order all the same (group 1 the
                  address), compiled by the first set's toolchain - e.g. a module of shared declarations
     "last"       files of no code and no place: after all the others, in this order
-    "first"      kit objects before all (files from the project's folder)
-    "libraries"  libraries after the objects (files from the project's folder)
+    "find"       [{"file", "toolchain", "variant"}]: modules with no place in their name, each placed where
+                 its own code is found in the program (the bytes the linker fills in passed over)
+    "first"      objects before all - [NAME, file]: NAME.OBJ on the command line
+    "libraries"  libraries after the objects
+                 (a file is from the project's folder, or "KIT:path" in a kit)
     "class"      {CLASS: {"segments": [names], "files": [files]}}: those files' segments of those names are given
                  the class CLASS before the link (a class the compiler cannot give: the linker orders by class)
     "accept"     what may differ, each with "why": {"tail_zeros": N} (the original has N zero bytes more at
-                 its end), {"header": [FROM, TO]} (header bytes FROM..TO-1, and the checksum counting them)
+                 its end; "record": as many as fill its last 128-byte record), {"header": [FROM, TO]} (header bytes FROM..TO-1, and the checksum counting them)
     "psp"        the segment DOS loads the linker at (some linkers leave their own addresses in the header)
 """
 import os
@@ -53,16 +59,82 @@ def modules(prj):
             m = re.fullmatch(lk["placed"], f, re.I)
             if m:
                 out.append((int(m.group(1), 16), os.path.join(main.src, f), main, main.toolchain()))
+    for x in lk.get("find", []):
+        from codebreaker.exact import toolchain as tcm
+        tc = tcm.load(x["toolchain"], x.get("variant"))
+        path = os.path.join(main.src, x["file"])
+        raw, con = tc.compile(open(path, "rb").read(), headers=main.headers(), include=main.include)
+        at = _found(prj, raw) if raw is not None else None
+        if at is None:
+            raise SystemExit("%s: %s" % (x["file"], "does not compile" if raw is None else "its code is not found in the program"))
+        out.append((at, path, None, raw))
     out.sort(key=lambda x: x[0])
     for k, f in enumerate(lk.get("last", [])):
         out.append((0x100000 + k, os.path.join(main.src, f), main, main.toolchain()))
     objs = []
     for at, path, part, tc in out:
+        if part is None:                                    # (compiled already: placed by its bytes)
+            objs.append((at, os.path.basename(path), tc))
+            continue
         raw, con = tc.compile(open(path, "rb").read(), headers=part.headers(), include=part.include, switches=part.switches)
         if raw is None:
             raise SystemExit("%s does not compile:\n%s" % (os.path.basename(path), (con or "")[-1500:]))
         objs.append((at, os.path.basename(path), raw))
     return objs
+
+
+def _found(prj, raw):
+    """the image address of the object's code: the one place its bytes (but those the linker fills in) are found"""
+    from codebreaker.exact import omf
+    o = omf.read(raw)
+    cs = omf.code_segments(o) or [s for s, cls, ln, al in o.segs if o.filled.get(s)]
+    code = bytes(o.seg[cs[0]][:o.filled.get(cs[0], 0)])
+    hole = omf.holes(o, cs[0])
+    best = (0, 0)
+    r = 0
+    while r < len(code):                                    # the longest run with no hole, to look for
+        e = r
+        while e < len(code) and e not in hole:
+            e += 1
+        best = max(best, (e - r, r))
+        r = e + 1
+    n, r = best
+    if n < 8:
+        return None
+    img = prj.image
+    hits = []
+    k = img.find(code[r:r + n])
+    while k >= 0:
+        a = k - r
+        if a >= 0 and a + len(code) <= len(img) and all(img[a + x] == code[x] for x in range(len(code)) if x not in hole):
+            hits.append(a)
+        k = img.find(code[r:r + n], k + 1)
+    return hits[0] if len(hits) == 1 else None
+
+
+def _own(b):
+    """the object module up to its end record (an assembler's file may be padded to its disk sector)"""
+    p = 0
+    while p + 3 <= len(b):
+        t = b[p]
+        p += 3 + (b[p + 1] | b[p + 2] << 8)
+        if t in (0x8A, 0x8B):
+            return b[:p]
+    return b
+
+
+def _file(prj, spec):
+    from codebreaker.exact import toolchain as tcm
+    return tcm.kit_path(None, spec, base=prj.dir)
+
+
+def _name(scheme, k, f):
+    kind, _, pre = (scheme or "sequence:M").partition(":")
+    if kind == "files":
+        return re.sub(r"[^A-Z0-9]", "", os.path.splitext(f)[0].upper())[:8]
+    if kind == "pairs":
+        return chr(ord(pre or "D") + k // 26) + chr(65 + k % 26)
+    return (pre or "M") + (chr(65 + k) if k < 26 else chr(48 + k - 26) if k < 36 else "%02d" % k)
 
 
 def _index(b, q):
@@ -110,26 +182,25 @@ def run(prj, objs, keep=None):
     w = keep or tempfile.mkdtemp(prefix="exlinkw_")
     os.makedirs(w, exist_ok=True)
     try:
-        shutil.copy(os.path.join(prj.dir, lk["linker"]), os.path.join(w, "LINK.EXE"))
+        shutil.copy(_file(prj, lk["linker"]), os.path.join(w, "LINK.EXE"))
         names = []
-        for f in lk.get("first", []):
-            shutil.copy(os.path.join(prj.dir, f), w)
-            names.append(os.path.splitext(os.path.basename(f))[0].upper())
+        for n, f in lk.get("first", []):
+            shutil.copy(_file(prj, f), os.path.join(w, n + ".OBJ"))
+            names.append(n)
         cls = {f: (c, v.get("segments", [])) for c, v in lk.get("class", {}).items() for f in v.get("files", [])}
         for k, (at, f, raw) in enumerate(objs):
+            raw = _own(raw)
             if f in cls:
                 raw = reclass(raw, cls[f][0], cls[f][1])
-            if lk.get("names") == "files":
-                n = re.sub(r"[^A-Z0-9]", "", os.path.splitext(f)[0].upper())[:8]
-            else:
-                n = "M" + (chr(65 + k) if k < 26 else chr(48 + k - 26) if k < 36 else "%02d" % k)
+            n = _name(lk.get("names"), k, f)
             names.append(n)
             open(os.path.join(w, n + ".OBJ"), "wb").write(raw)
         libs = []
         for f in lk.get("libraries", []):
-            shutil.copy(os.path.join(prj.dir, f), w)
-            libs.append(os.path.basename(f))
-        cmd = "+".join(names) + ",NEW," + ("NEW" if lk.get("map", True) else "") + ("," + "+".join(libs) if libs else "") + lk.get("switches", "") + ";"
+            shutil.copy(_file(prj, f), w)
+            libs.append(os.path.splitext(os.path.basename(f))[0].upper())
+        out = lk.get("output", "NEW")
+        cmd = "+".join(names) + "," + out + "," + (out if lk.get("map", True) else "NUL") + ("," + "+".join(libs) if libs else "") + lk.get("switches", "") + ";"
         psp = lk.get("psp")
         psp = int(psp, 0) if isinstance(psp, str) else psp
         if len(cmd) > 120:                                  # (a DOS command line holds 127 characters: the answers in
@@ -138,9 +209,9 @@ def run(prj, objs, keep=None):
         else:
             r = dos.run(os.path.join(w, "LINK.EXE"), w, cmd, psp=psp)
         con = r.console.decode("latin1").replace("\r", "")
-        p = os.path.join(w, "NEW.EXE")
+        p = os.path.join(w, out + ".EXE")
         exe = open(p, "rb").read() if os.path.exists(p) else None
-        mp = os.path.join(w, "NEW.MAP")
+        mp = os.path.join(w, out + ".MAP")
         return exe, con, open(mp, encoding="latin1").read() if os.path.exists(mp) else ""
     finally:
         if not keep:
@@ -157,9 +228,12 @@ def compare(prj, exe):
     said = []
     n = len(exe)
     for a in lk.get("accept", []):
-        if "tail_zeros" in a and len(ref) == len(exe) + a["tail_zeros"] and not any(ref[len(exe):]):
+        tz = a.get("tail_zeros")
+        if tz == "record":
+            tz = -len(exe) % 128
+        if tz and len(ref) == len(exe) + tz and not any(ref[len(exe):]):
             n = len(ref)
-            said.append("the original has %d zero bytes more at its end (%s)" % (a["tail_zeros"], a.get("why", "")))
+            said.append("the original has %d zero bytes more at its end (%s)" % (tz, a.get("why", "")))
         if "header" in a:
             lo, hi = (int(x, 0) if isinstance(x, str) else x for x in a["header"])
             d = [k for k in range(lo, hi) if k < min(len(ref), len(exe)) and ref[k] != exe[k]]
@@ -168,7 +242,7 @@ def compare(prj, exe):
                 said.append("header bytes %02x..%02x and the checksum (%s)" % (lo, hi - 1, a.get("why", "")))
     if n != len(ref):
         return False, ["the file is %d bytes, the original %d" % (len(exe), len(ref))]
-    bad = [k for k in range(len(exe)) if k not in skip and exe[k] != ref[k]]
+    bad = [k for k in range(min(len(exe), len(ref))) if k not in skip and exe[k] != ref[k]]
     if bad:
         h = struct.unpack_from("<H", ref, 8)[0] * 16
         return False, ["%d bytes differ, the first at file offset %05x (%s)" % (len(bad), bad[0], "the header" if bad[0] < h else "image %05x" % (bad[0] - h))]
