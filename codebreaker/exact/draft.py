@@ -126,7 +126,7 @@ def _not(c):
     m = re.fullmatch(r"\((.*?) (==|!=|<=|>=|<|>) (.*)\)", c)
     if m and m.group(2) and "(" not in m.group(3).replace("(", "", 0) and m.group(1).count("(") == m.group(1).count(")"):
         flip = {"==": "!=", "!=": "==", "<": ">=", ">=": "<", ">": "<=", "<=": ">"}[m.group(2)]
-        if m.group(3) != "0":
+        if m.group(3) != "0" or m.group(2) not in ("==", "!="):   # (x == 0: !x below; a relation to 0 flips)
             return "(%s %s %s)" % (m.group(1), flip, m.group(3))
     m = re.fullmatch(r"\((.*) == 0\)", c)
     if m:
@@ -412,7 +412,8 @@ def post_increments(text):
     k = 0
     while k < len(lines):
         l = lines[k]
-        m = re.match(r"(\s*)(ax|bx|cx|dx|si|di|al|bl|cl|dl) = (.*);\s*$", l)    # (a byte register too: a char)
+        m = re.match(r"(\s*)(ax|bx|cx|dx|si|di|al|bl|cl|dl|t\d+) = (.*);\s*$", l)    # (a byte register too: a char;
+                                                                                    #  the model's temporary)
         if m and k + 2 < len(lines):
             ind, reg, e = m.groups()
             st = re.match(r"\s*(\w+) = \1 \+ (\d)\s*;\s*$", lines[k + 1]) or re.match(r"\s*(\w+)\+\+()\s*;\s*$", lines[k + 1])
@@ -428,7 +429,7 @@ def post_increments(text):
                     k += 3
                     continue
                 # (r = p; p = p + 1; X reads r once: p's old value - an index stepped, a[n++])
-                if e == p and n == 1 and reg in ("ax", "bx", "cx", "dx") and len(re.findall(r"\b%s\b" % reg, nxt)) == 1 and \
+                if e == p and n == 1 and (reg in ("ax", "bx", "cx", "dx") or reg.startswith("t")) and len(re.findall(r"\b%s\b" % reg, nxt)) == 1 and \
                         not re.search(r"\b%s\b" % p, nxt) and not _live_after(lines, k + 2, reg):
                     out.append(re.sub(r"\b%s\b" % reg, "%s++" % p, nxt, count=1))
                     k += 3
@@ -588,7 +589,8 @@ def test_first_loops(text):
                 lines[k] = "%swhile (%s) {" % (m.group(1), _not(b.group(1)))
                 lines[k + 1] = None
                 continue
-            s = re.match(r"\s*(\w+) = \1 ([+-]) ([12]);\s*$", lines[k + 1])     # (a step, then the test: --p in it;
+            s = re.match(r"\s*(\w+) = \1 ([+-]) ([12]);\s*$", lines[k + 1]) or \
+                re.match(r"\s*(\w+)(\+|-)[+-]()\s*;\s*$", lines[k + 1])          # (a step, then the test: --p in it;
             b = re.match(r"\s*if (\(.*\)) break;\s*$", lines[k + 2]) if s and k + 2 < len(lines) and lines[k + 2] else None   # by 2: words)
             if b and len(re.findall(r"\b%s\b" % s.group(1), b.group(1))) == 1:
                 op = "++" if s.group(2) == "+" else "--"
@@ -1721,6 +1723,11 @@ def structs(text, widths):
     uses = {}
     for p, off in re.findall(r"\b(\w+)->f(\d+)\b", text):
         uses.setdefault(p, set()).add(int(off))
+    for p in re.findall(r"\*\(\*(\w+)\)|\*\*(\w+)", text):  # (a pointer read through twice: a struct whose first
+        p = p[0] or p[1]                                    #  field points on - a list)
+        if re.search(r"(?m)^[ \t]*(?:register )?int %s;|^[ \t]*int (?:\w+, )*%s\b" % (p, p), text):
+            text = re.sub(r"\*\(\*%s\)|\*\*%s\b" % (p, p), "(%s->f0)->f0" % p, text)
+            uses.setdefault(p, set()).add(0)
     if not uses:
         return text
     for p in uses:                                          # (*p of a struct pointer: its first field)
