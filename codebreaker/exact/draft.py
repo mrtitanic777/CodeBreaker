@@ -2067,6 +2067,9 @@ def structs(text, widths):
                       lambda m: "%sint %s;\n%sstruct %s *%s;" % (m.group(1), (m.group(2) + m.group(3).lstrip(", ")).strip(", "), m.group(1), tag, p)
                       if (m.group(2) + m.group(3)).strip(", ") else "%sstruct %s *%s;" % (m.group(1), tag, p), text)
         STRUCTPTR[p] = tag
+        for (q, n_), ty_ in ptrfield.items():               # (a struct pointer field plus bytes: through a char *)
+            if q == p:
+                text = re.sub(r"(?<![\w>)])%s->f%d \+ (\d+)\b" % (p, n_), r"(char *)%s->f%d + \1" % (p, n_), text)
         for f_ in re.findall(r"\bchar f(\d+);", defs[-1]):  # (a byte field masked to a byte: itself)
             text = re.sub(r"\(%s->f%s & 0xff\)" % (p, f_), "%s->f%s" % (p, f_), text)
         if ("*", 0) in widths or any(w[0].endswith("*") for w in widths if isinstance(w, tuple) and len(w) == 2 and isinstance(w[0], str)):
@@ -2714,6 +2717,18 @@ def localize(prj, text, at, names):
     # (a byte through a char pointer compared with 128..255: the compiler compares bytes only of an unsigned char)
     for p in set(re.findall(r"\*\(?(?:\+\+|--)?(\w+)(?:\+\+|--)?\)? [!=]= (?:1(?:2[89]|[3-9]\d)|2[0-4]\d|25[0-5])\b", text)):
         text = re.sub(r"(?m)^([ \t]*)(register )?char \*%s;$" % p, r"\1\2unsigned char *%s;" % p, text)
+    for p_, k_, e_, n_ in re.findall(r"(?m)^[ \t]*(\w+) = \((\d+) \* ([^()]+?)\) \+ (\d+);$", text):
+        tag = re.search(r"(?m)^[ \t]*(?:register )?struct (\w+) \*%s;$" % p_, text)   # (a struct pointer given
+        dm = re.search(r"(?m)^struct %s \{([^}]*)\};$" % tag.group(1), text) if tag else None   # K * E + N: the
+        if dm and int(n_) >= 0x100:                                                       # address of an element
+            k, n = int(k_), int(n_)                                                       # of an array there)
+            fl = re.findall(r"(char|int|long|\*) ?_?f?(\d+)(?:\[(\d+)\])?;", dm.group(1))
+            size = max((int(o) + (int(c) if c else 4 if t == "long" else 1 if t == "char" else 2) for t, o, c in fl), default=0)
+            if size <= k:
+                body_ = dm.group(1) + (" char _%d[%d];" % (size, k - size) if size < k else "")
+                name = "g_%04x" % n
+                text = text.replace(dm.group(0), "struct %s {%s };\nextern struct %s %s[];" % (tag.group(1), body_.rstrip(), tag.group(1), name))
+                text = re.sub(r"(?m)^([ \t]*)%s = \(%s \* %s\) \+ %s;$" % (p_, k_, re.escape(e_), n_), r"\1%s = &%s[%s];" % (p_, name, e_), text)
     for ty, x in set(re.findall(r"\*\((char|int|unsigned char) \*\)(\w+)\b", text)):   # (only ever read through one
         others = re.findall(r"\*\((?:char|int|unsigned char) \*\)%s\b" % x, text)       #  cast: a pointer to it)
         if all(o == "*(%s *)%s" % (ty, x) for o in others) and not re.search(r"(?<![)\w])\*\s*%s\b|\b%s\s*(?:->|\[)" % (x, x), text):
@@ -2896,6 +2911,11 @@ def compile_fixes(src, con):
             lines2 = list(lines)                                                                       # stays an int)
             lines2[n - 1] = new
             out.append("\n".join(lines2))
+    if "bad left operand" in msg or "bad right operand" in msg:   # (a pointer in arithmetic only ints take: an int)
+        for x in dict.fromkeys(re.findall(r"\b([A-Za-z_]\w*)\b", l)):
+            d = re.sub(r"(?m)^([ \t]*)(register )?(?:unsigned )?char \*%s;$" % x, r"\1\2int %s;" % x, src)
+            if d != src:
+                out.append(d)
     if "2 pointers" in msg:                                 # (two pointers added: one of them an int - each way)
         for x in dict.fromkeys(re.findall(r"\b([A-Za-z_]\w*)\b", l)):
             d = re.sub(r"(?m)^([ \t]*)(register )?char \*%s;$" % x, r"\1\2int %s;" % x, src)
@@ -2972,6 +2992,8 @@ def _prove(prj, tc, src, a, ln, tries=4, budget=10):
     s, con = first_con if first_con else (src, "")
     _prove.src = s
     last = [l for l in con.strip().splitlines() if "(the pass" not in l]
+    errs_ = [l for l in last if "warning" not in l]       # (the error, not a warning before it)
+    last = errs_[:1] or last
     return "does not compile: %s" % (last[-1][:100] if last else "")
 
 
