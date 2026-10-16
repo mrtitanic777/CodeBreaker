@@ -3058,7 +3058,8 @@ def long_pairs(text):
         pairs.add(lo)
     for x, y in re.findall(r"\((\w+) \| (\w+)\)", body):
         pairs.add(x)
-    hi_of = lambda x: chr(ord(x) + 1) if re.fullmatch(r"[a-y]", x) else "v%d" % (int(x[1:]) - 2) if re.fullmatch(r"v\d+", x) else None
+    hi_of = lambda x: chr(ord(x) + 1) if re.fullmatch(r"[a-y]", x) else "v%d" % (int(x[1:]) - 2) if re.fullmatch(r"v\d+", x) else \
+        "g_%x" % (int(x[2:], 16) + 2) if re.fullmatch(r"g_[0-9a-f]+", x) else None   # (a word of the data: the one after)
     # (a pair given a pair: `p->fN = x; p->fN+2 = y;` - a long field given a long - written as one store)
     def pair_store(m):
         ind, p, n, x, p2, n2, y = m.groups()
@@ -3272,7 +3273,23 @@ def long_pairs(text):
                   lambda m: "%s%s = %s;\n" % (m.group(1), m.group(3), m.group(2)), body)   # (through ax: the same -
                                                                                            #  when dx goes with it)
     body = re.sub(r"(?m)^([ \t]*)(\w+) = ((?:sub_\w+|[A-Za-z_]\w*)\((?:[^()]|\([^()]*\))*\));\n\s*(\w+) = dx;(\n.*)?$", call_store, body)
+    for g in [x for x in pairs if re.fullmatch(r"g_[0-9a-f]+", x)]:   # (data a pair is made of: a long there)
+        LONGINFO.setdefault("globals", set()).add("g_%04x" % int(g[2:], 16))
+
+    def data_args(m):                                       # (two words of the data pushed together, the high one
+        args = [x.strip() for x in _top_commas(m.group(2))] if m.group(2).strip() else []   #  first: a long there -
+        out, i = [], 0                                                                     #  the same pushes)
+        while i < len(args):
+            if i + 1 < len(args) and re.fullmatch(r"g_[0-9a-f]+", args[i]) and args[i + 1] == hi_of(args[i]):
+                LONGINFO.setdefault("globals", set()).add("g_%04x" % int(args[i][2:], 16))
+                out.append(args[i])
+                i += 2
+                continue
+            out.append(args[i])
+            i += 1
+        return "%s(%s)" % (m.group(1), ", ".join(out))
     body = re.sub(r"\b((?!if\b|while\b|for\b|switch\b|return\b)[A-Za-z_]\w*)\(((?:[^()]|\((?:[^()]|\([^()]*\))*\))*)\)", call_args, body)
+    body = re.sub(r"\b((?!if\b|while\b|for\b|switch\b|return\b)[A-Za-z_]\w*)\(((?:[^()]|\((?:[^()]|\([^()]*\))*\))*)\)", data_args, body)
     params = re.findall(r"(?m)^\w+\(([\w, ]*)\)", head)
     plist = [p.strip() for p in (params[-1].split(",") if params else []) if p.strip()]
     done = []
