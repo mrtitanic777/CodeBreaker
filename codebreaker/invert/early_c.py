@@ -45,6 +45,7 @@ RETVAL=None
 # What recover() last found of MS-C 3.00's register variables: {"saved": [si, di] the function keeps its
 # register variables in, "regparam": {register: parameter index} the parameters declared register}.
 LAST={}
+FRAME_AFTER_BP=False   # (a driver of 3.00 or later code: `sub sp,N` after `mov bp,sp` - no stack probe, -Gs - is its frame too)
 REGPARAM_REREAD=True    # (MS C 3.00: a register a parameter is loaded into is the parameter only if its slot is not read again)
 # Optional driver hook: SWITCH(addr_0based) -> case-target addresses (0-based, table order) of the
 # jump-table dispatch `jmp cs:[bx+table]` at that address, or None.
@@ -96,7 +97,12 @@ def carry_kind(ins, k):
     c=ins[k]; p=ins[k-1]
     if c.mnemonic in ("rcl","rcr"):                       # 32-bit shift by one through the carry
         cd,_,cs=c.op_str.partition(", "); pd,_,ps=(p.op_str or "").partition(", ")
-        if cs!="1" or ps!="1" or cd not in _WREG or pd not in _WREG or cd==pd: return None
+        mem=False
+        if cd not in _WREG or pd not in _WREG:             # (or two adjacent words of memory: a long in place)
+            a_,b_=_memparts(pd),_memparts(cd)
+            lo_,hi_=(a_,b_) if c.mnemonic=="rcl" else (b_,a_)
+            mem=bool(a_ and b_ and a_[0]==b_[0]=="word" and a_[1]==b_[1] and hi_[2]-lo_[2]==2)
+        if cs!="1" or ps!="1" or (not mem and (cd not in _WREG or pd not in _WREG)) or cd==pd: return None
         if c.mnemonic=="rcl" and p.mnemonic in ("shl","sal"): return "shl1"      # shl LO,1 ; rcl HI,1
         if c.mnemonic=="rcr" and p.mnemonic in ("shr","sar"): return "shr1" if p.mnemonic=="shr" else "sar1"
         return None
@@ -1040,6 +1046,12 @@ class R:
                 if s._hascall(getattr(s,r,None) or ""): s._materialize(out,r)
             a=ins[i].op_str.split(",")[0].strip(); b=ins[i+1].op_str.split(",")[0].strip()
             lo,hi=(a,b) if kind=="shl1" else (b,a)         # shr/sar HI,1 ; rcr LO,1
+            if s.msc3 and "[" in lo and "[" in hi:         # (a long in memory shifted in place: a statement)
+                ml=s.memname(lo)
+                if ml is not None:
+                    s.emit(out,"*(long *)&%s %s= 1;"%(ml, "<<" if kind=="shl1" else ">>"))
+                    if kind=="shr1": LAST.setdefault("unsigned_longs",set()).add(ml)
+                    return 2
             s._kill_aliases(i); s._kill_aliases(i+1)       # settle dependants FIRST, then read operands
             v="LONG(%s, %s)"%(s._opval(hi),s._opval(lo))
             E="%s + %s"%(v,v) if kind=="shl1" else "%s(%s)"%("LSHR" if kind=="shr1" else "LSAR",v)
@@ -2146,6 +2158,10 @@ def recover(code, base=0, cxmap=None):
                 pass
         elif ins[k].mnemonic=="xor" and ins[k].op_str.replace(" ","")=="ax,ax":
             fs=0; msc3=True; k+=2
+    if fs==0 and not msc3 and FRAME_AFTER_BP and k < len(ins) and ins[1].op_str=="bp, sp" and \
+            ins[k].mnemonic=="sub" and ins[k].op_str.startswith("sp,"):
+        try: fs=int(ins[k].op_str.split(",")[1].strip(),16); msc3=True; k+=1   # (3.00 -Gs, 5.0: sub sp after mov bp,sp)
+        except ValueError: pass
     # MS-C 3.00's register variables: SI/DI saved right after the frame (`push si`), restored before the
     # epilogue; a register PARAMETER is loaded into its register at once (`mov si,[bp+N]`). The saves are
     # not arguments, the loads not statements: the registers are the variables (LAST tells the driver).

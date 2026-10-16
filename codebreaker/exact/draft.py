@@ -159,6 +159,17 @@ def logical_values(text):
     return text
 
 
+def _ternary(c, a, b):
+    """C ? A : B - one test's two values; a value that is itself a test of the same two values joins the test
+    (C ? (C2 ? X : Y) : X is (!C || C2) ? X : Y; C ? X : (C2 ? X : Y) is (C || C2) ? X : Y)"""
+    for inner, other, join in ((a, b, "or-not"), (b, a, "or")):
+        m = re.fullmatch(r"\((.*) \? (.*) : (.*)\)", inner)
+        if m and _balanced(m.group(1)) and _balanced(m.group(2)) and m.group(2) == other:
+            first = _truth(_not("(" + c + ")")) if join == "or-not" else _truth("(" + c + ")")
+            return "%s || %s ? %s : %s" % (first, _truth("(" + m.group(1) + ")"), m.group(2), m.group(3))
+    return "%s ? %s : %s" % (_truth(c), a, b)
+
+
 def conditional_values(text):
     """a register given one value or another by a test, then read once by the next statement - C's ?: read back:
         if (C) { r = A; } else { r = B; } X = ..r..;   ->   X = ..(C ? A : B)..;
@@ -174,13 +185,13 @@ def conditional_values(text):
             return m.group(0)                               # (read again later: not this way)
         if r in ("si", "di"):
             return m.group(0)                               # (a register variable: given a value it keeps)
-        val = "%s ? %s : %s" % (_truth(c), a, b)
+        val = _ternary(c, a, b)
         return ind + re.sub(r"\b%s\b" % r, lambda x: "(%s)" % val, nxt, count=1)
     # (nested: an arm that is itself such a test - `else { if (C2) { r = B; } else { r = D; } }` - one value
     #  first, `r = (C2 ? B : D);`, then the outer test)
     inner = re.compile(r"(?m)^(\s*)if (\(.*\)) \{\n\s*(ax|bx|cx|dx) = ([^;\n]+);\n\s*\} else \{\n\s*\3 = ([^;\n]+);\n\1\}$")
     while True:
-        t = inner.sub(lambda m: "%s%s = (%s ? %s : %s);" % (m.group(1), m.group(3), _truth(m.group(2)), m.group(4), m.group(5)), text)
+        t = inner.sub(lambda m: "%s%s = (%s);" % (m.group(1), m.group(3), _ternary(m.group(2), m.group(4), m.group(5))), text)
         t = rx.sub(one, t)
         if t == text:
             return t
@@ -1570,9 +1581,10 @@ def structs(text, widths):
             uch = any(isinstance(u, tuple) and u[1] == off for u in UCHAR)   # (widened with zeros: unsigned)
             byte = (p, off) in widths or ("*", off) in widths or uch
             deref = re.search(r"(?<![\w>)\]])\*%s->f%d\b(?!\s*(?:->|\[|\.))" % (p, off), text)   # (*p->fN: a pointer)
+            lng = off in LONGINFO.get("fields", ()) and off + 2 not in offs   # (a long field: two words given as one)
             fields.append("%s f%d;" % ("struct s_%s *" % p if off == 0 and selfref else "unsigned char" if uch else
-                                       "char" if byte else "int *" if deref else "int", off))
-            pos = off + (1 if byte else 2)
+                                       "char" if byte else "int *" if deref else "long" if lng else "int", off))
+            pos = off + (1 if byte else 4 if lng else 2)
         tag = "s_" + p
         steps = {int(n) for n in re.findall(r"\b%s = %s [+-] (\d+);" % (p, p), text)}
         if len(steps) == 1:                                 # (stepped through an array of them: the step is the
@@ -1608,7 +1620,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         BYTEG.clear()
         BYTEG.update(n for k, n in widths if k == "g")
         FILEPTR.clear()
-        t = zero_extends(copy_props(table_macros(prj, case_falls(char_stores(char_params(long_returns(t)))), prj.toolchain().p.get("table_macros"))))
+        t = zero_extends(copy_props(table_macros(prj, case_falls(char_stores(char_params(long_pairs(long_returns(t))))), prj.toolchain().p.get("table_macros"))))
         t = re.sub(r"&(\w+)\[(-?)(\d+)\]", lambda m: "(%s %s %s)" % (m.group(1), "-" if m.group(2) else "+", m.group(3)), t)
         t = re.sub(r"&(\w+)->f(\d+)\b", r"(\1 + \2)", t)  # (lea: &p[N], &p->fN - the place, p + N)
         t = fold_registers(stored_calls(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(conditional_values(logical_values(t)))))))))
@@ -1720,6 +1732,74 @@ def long_returns(text):
     if m:
         head = head[:m.start()] + "long\n" + head[m.start():]
     return head + sep + body
+
+
+def long_pairs(text):
+    """two words the code takes as one long - `*(long *)&x`, `LONG(y, x)`, `(x | y)` tested - x the low word: a
+    parameter and the next (a, b) or a local and the one above it (vN, vN-2): x declared long, y gone, the
+    pair written x. A function whose code widens its value last (cwd: FPINFO longret) returns a long"""
+    head, sep, body = split_body(text)
+    if not sep:
+        return text
+    pairs = set(re.findall(r"\*\(long \*\)&(\w+)", body))
+    for hi, lo in re.findall(r"\bLONG\((\w+), (\w+)\)", body):
+        pairs.add(lo)
+    for x, y in re.findall(r"\((\w+) \| (\w+)\)", body):
+        pairs.add(x)
+    hi_of = lambda x: chr(ord(x) + 1) if re.fullmatch(r"[a-y]", x) else "v%d" % (int(x[1:]) - 2) if re.fullmatch(r"v\d+", x) else None
+    # (a pair given a pair: `p->fN = x; p->fN+2 = y;` - a long field given a long - written as one store)
+    def pair_store(m):
+        ind, p, n, x, p2, n2, y = m.groups()
+        byte = any(o in BYTEPTR for o in (("*", int(n)), ("*", int(n2)), (p, int(n)), (p, int(n2))))
+        if p2 == p and int(n2) == int(n) + 2 and hi_of(x) == y and not byte:   # (words both: a byte is no long's)
+            pairs.add(x)
+            LONGINFO.setdefault("fields", set()).add(int(n))
+            return "%s%s->f%s = %s;" % (ind, p, n, x)
+        return m.group(0)
+    body = re.sub(r"(?m)^(\s*)(\w+)->f(\d+) = (\w+);\n\s*(\w+)->f(\d+) = (\w+);$", pair_store, body)
+    params = re.findall(r"(?m)^\w+\(([\w, ]*)\)", head)
+    plist = [p.strip() for p in (params[-1].split(",") if params else []) if p.strip()]
+    done = []
+    for lo in sorted(pairs):
+        hi = hi_of(lo)
+        if not hi:
+            continue
+        isparam = lo in plist and hi in plist
+        islocal = re.search(r"(?m)^\s*int (?:\w+, )*%s\b" % lo, body) and re.search(r"(?m)^\s*int (?:\w+, )*%s\b" % hi, body)
+        if not isparam and not islocal:
+            continue
+        uns = "unsigned long" if lo in LONGINFO.get("unsigned", ()) else "long"
+        body = re.sub(r"\*\(long \*\)&%s\b" % lo, lo, body)
+        body = re.sub(r"\bLONG\(%s, %s\)" % (hi, lo), lo, body)
+        body = re.sub(r"\(%s \| %s\)|\(%s \| %s\)" % (lo, hi, hi, lo), lo, body)
+        if re.search(r"\b%s\b" % hi, body.split("\n", 1)[-1] if islocal else body):
+            pass                                            # (the high word read alone: kept as it is)
+        if isparam:
+            plist = [p for p in plist if p != hi]
+            head = re.sub(r"(?m)^(\w+)\([\w, ]*\)", lambda m: "%s(%s)" % (m.group(1), ", ".join(plist)), head, count=1)
+            head = _drop_decl(head, hi)
+            head = _redeclare(head, lo, "%s %s" % (uns, lo)) or head
+        else:
+            body = _drop_decl(body, hi)
+            l2 = _redeclare(body, lo, "%s %s" % (uns, lo))
+            body = l2 or body
+        done.append(lo)
+    if LONGINFO.get("ret"):
+        m = re.search(r"(?m)^\w+\(", head)
+        if m and not re.search(r"(?m)^(?:unsigned )?long\s*$", head):
+            head = head[:m.start()] + "long\n" + head[m.start():]
+    return head + sep + body
+
+
+LONGINFO = {}                                               # (the function's longs the code shows: unsigned ones, its value)
+
+
+def _drop_decl(t, x):
+    """t without x in its `int a, x, b;` declaration (the line gone if x was all of it)"""
+    def one(m):
+        rest = (m.group(2) + m.group(3).lstrip(", ")).strip(", ")
+        return "%sint %s;\n" % (m.group(1), rest) if rest else ""
+    return re.sub(r"(?m)^(\s*)int ((?:\w+, )*)%s((?:, \w+)*);\n" % re.escape(x), one, t, count=1)
 
 
 def local_pointers(text):
@@ -2145,6 +2225,18 @@ FUNC_BUDGET = 150                                           # (compiles a functi
 BYTEPTR = set()                                             # (the byte-wide places the code reads: (pointer, offset))
 
 
+def _probes(code):
+    """True: the prologue calls the stack probe (`mov ax,N` or `xor ax,ax`, then a call, after `mov bp,sp`);
+    False: a frame without one (`sub sp,N`, or none and no call there); None: not a frame the rule knows"""
+    from codebreaker.exact import x86
+    ins = list(x86.disasm(bytes(code), 0, min(len(code), 16), False))
+    if len(ins) < 2 or ins[0].mnemonic != "push" or ins[0].op_str != "bp" or ins[1].op_str != "bp, sp":
+        return None
+    if len(ins) > 3 and (ins[2].op_str.startswith("ax, ") and ins[2].mnemonic in ("mov", "xor")) and ins[3].mnemonic == "call":
+        return True
+    return False
+
+
 def prove_best(prj, tc, inv, text, a, ln, names, regparam=None):
     """-> (source, verdict): of the model's text and its variants, the first the compiler proves identical; else
     the first that compiles (or the first)"""
@@ -2162,11 +2254,19 @@ def prove_best(prj, tc, inv, text, a, ln, names, regparam=None):
             seen.add(src)
             uniq.append((src, left))
     cands = uniq[:MAXCANDS]
-    fpsw, fsw = tc.p.get("fp_switch"), tc.p.get("file_switches")
-    if FPINFO.get("fp") and fpsw and fsw:                   # (code of the 8087's: compiled for it - the profile's
-        sw = prj.switches if prj.switches is not None else tc.p.get("switches", "")   # "fp_switch")
-        if fpsw not in sw.split():
-            cands = [("/* %s: %s */\n" % (fsw, (sw + " " + fpsw).strip()) + src, left) for src, left in cands]
+    fpsw, fsw, gs = tc.p.get("fp_switch"), tc.p.get("file_switches"), tc.p.get("probe_switch")
+    sw = prj.switches if prj.switches is not None else tc.p.get("switches", "")
+    want = sw.split()
+    if FPINFO.get("fp") and fpsw and fpsw not in want:      # (code of the 8087's: compiled for it - the profile's
+        want.append(fpsw)                                   #  "fp_switch")
+    if gs:                                                  # (a stack probe in the prologue, or none: the switch
+        probe = _probes(bytes(prj.image[a:a + ln]))         #  that leaves it out - "probe_switch" - as it shows)
+        if probe and gs in want:
+            want.remove(gs)
+        elif probe is False and gs not in want:
+            want.append(gs)
+    if fsw and want != sw.split():
+        cands = [("/* %s: %s */\n" % (fsw, " ".join(want)) + src, left) for src, left in cands]
     best = None
     _prove.spent = 0
     for src, left in cands:
@@ -2284,6 +2384,8 @@ def model_texts(inv, code, name, base=None):
     """[(text, register parameters)] - the model's text of a function, from each of its structurers (a linear walk;
     a structured control-flow graph, where the model has one): the compiler decides between them"""
     raw, code = code, fp_native(code)
+    if hasattr(inv, "FRAME_AFTER_BP"):                      # (a draft is of 3.00 or later code: its -Gs frames)
+        inv.FRAME_AFTER_BP = True
     out = []
     try:
         fs, params, stmts, pt, loc = inv.recover(code)
@@ -2332,6 +2434,16 @@ def _fpinfo(inv, raw, code):
     FPINFO.clear()
     FPINFO.update(types=dict(last.get("fptypes") or {}), ret=last.get("fpret"),
                   fp=raw != code or bool(re.search(rb"\x9b[\xd8-\xdf]", bytes(raw))))
+    LONGINFO.clear()                                        # (the longs: shifted without sign; a value widened last)
+    LONGINFO["unsigned"] = set(last.get("unsigned_longs") or ())
+    from codebreaker.exact import x86
+    ins = list(x86.disasm(bytes(code), 0, len(code), False))
+    j = len(ins) - 1
+    if ins and ins[j].mnemonic in ("ret", "retf"):
+        j -= 1
+        while j >= 0 and (ins[j].mnemonic == "pop" or ins[j].op_str == "sp, bp"):
+            j -= 1
+        LONGINFO["ret"] = j >= 0 and ins[j].mnemonic in ("cwd", "cdq")
 
 
 def run(prj, every=False, limit=None, verbose=False):
