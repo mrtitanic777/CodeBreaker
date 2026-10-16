@@ -104,6 +104,21 @@ def shapes(text):
         out.append(l)
         k += 1
     text = "\n".join(out)
+    # after a return, what stands in the same block before its end (no label) is never reached
+    lines = text.split("\n")
+    keep = []
+    dead = None
+    for l in lines:
+        ind = len(l) - len(l.lstrip(" "))
+        if dead is not None:
+            if l.strip().startswith("}") and ind < dead or re.match(r"\s*L_\w+:", l):
+                dead = None
+            else:
+                continue
+        keep.append(l)
+        if re.match(r"\s*return\b.*;\s*$", l):
+            dead = ind
+    text = "\n".join(keep)
     # a step, then the value one back read: the post-increment (in a do's test, or the next statement)
     lines = text.split("\n")
     for k, l in enumerate(lines):
@@ -121,15 +136,69 @@ def shapes(text):
     return "\n".join(l for l in lines if l is not None)
 
 
-def candidates(prj, text, at, names, regs, regparam):
+def structs(text, widths):
+    """the pointers the text goes through to fields (`p->fN`, N its offset) declared pointers to a struct of
+    those fields: a char where the code reads a byte (widths: {(pointer, offset)} of the byte ones), else an
+    int, and a pad between"""
+    uses = {}
+    for p, off in re.findall(r"\b(\w+)->f(\d+)\b", text):
+        uses.setdefault(p, set()).add(int(off))
+    if not uses:
+        return text
+    defs = []
+    for p, offs in sorted(uses.items()):
+        fields = []
+        pos = 0
+        for off in sorted(offs):
+            if off < pos:
+                continue                                    # (overlaps the field before: not this way)
+            if off > pos:
+                fields.append("char _%d[%d];" % (pos, off - pos))
+            byte = (p, off) in widths
+            fields.append("%s f%d;" % ("char" if byte else "int", off))
+            pos = off + (1 if byte else 2)
+        tag = "s_" + p
+        defs.append("struct %s { %s };" % (tag, " ".join(fields)))
+        # the declarations of p: a parameter, a register variable, a local, or data (declared by localize)
+        text = re.sub(r"(?m)^(\s*)(register )?(?:int|char \*) ?%s;" % p, r"\1\2struct %s *%s;" % (tag, p), text)
+        text = re.sub(r"(?m)^(\s*)int ((?:\w+, )*)%s((?:, \w+)*);" % p,
+                      lambda m: "%sint %s;\n%sstruct %s *%s;" % (m.group(1), (m.group(2) + m.group(3).lstrip(", ")).strip(", "), m.group(1), tag, p)
+                      if (m.group(2) + m.group(3)).strip(", ") else "%sstruct %s *%s;" % (m.group(1), tag, p), text)
+        STRUCTPTR[p] = tag
+    return "\n".join(defs) + "\n" + text
+
+
+STRUCTPTR = {}                                              # (data the draft declares a struct pointer: localize)
+
+
+def candidates(prj, text, at, names, regs, regparam, widths=()):
     """[(source, registers left)] - the model's text as the project's source, then the variants the compiler
     is to decide between: as read, without its last return (a function of no value), with the locals whose
     address it takes as the buffers they are - and both"""
     base = [text] + [v for v in [void_variant(text)] if v]
     out = []
     for t in base + [v for v in (buffers(t) for t in base) if v]:
-        out.append(localize(prj, register_variables(shapes(fold_registers(t)), regs, regparam), at, names))
+        STRUCTPTR.clear()
+        t = structs(register_variables(shapes(fold_registers(t)), regs, regparam), set(widths))
+        out.append(localize(prj, t, at, names))
     return out
+
+
+def byte_fields(inv, code):
+    """{(pointer, offset)} of the fields the code reads or writes a byte of: the model's checker mode marks
+    byte-wide memory as BYTE(x)"""
+    if not hasattr(inv, "MARK"):
+        return set()
+    old = inv.MARK
+    try:
+        inv.MARK = True
+        fs, params, stmts, pt, loc = inv.recover(code)
+        t = inv.to_c("f", fs, params, stmts, pt, loc)
+    except Exception:
+        return set()
+    finally:
+        inv.MARK = old
+    return {(p, int(o)) for p, o in re.findall(r"BYTE\(\s*\(?(\w+)->f(\d+)\)?\s*\)", t)}
 
 
 def buffers(text):
@@ -228,10 +297,19 @@ def localize(prj, text, at, names):
     head = text.split("(", 1)[0].strip()
     funcs = sorted(set(re.findall(r"\b([A-Za-z_]\w*)\(", body)) - {head, "if", "while", "for", "switch", "return", "sizeof"})
     decl = []
-    ptrs = [d for d in data if re.search(r"\*\s*\(?\s*(?:\+\+|--)?\s*%s\b|\b%s\s*(?:\+\+|--)?\s*(?:->|\[)" % (d, d), body)]
-    ints = [d for d in data if d not in ptrs]
+    fptr = [d for d in data if re.search(r"\(\s*\*\s*%s\s*\)\s*\(" % d, body)]     # (data called through)
+    for d in fptr:                                          # (a number given it that is a function's place: it)
+        text = re.sub(r"(?m)^(\s*%s = )(\d+);" % d, lambda m: m.group(1) + (names.get(int(m.group(2))) or
+                                                                             "f%05x" % int(m.group(2))) + ";", text)
+        body = text.split("{", 1)[1] if "{" in text else text
+    funcs = sorted(set(funcs) | {w for d in fptr for w in re.findall(r"(?m)^\s*%s = ([A-Za-z_]\w*);" % d, body)})
+    ptrs = [d for d in data if d not in fptr and re.search(r"\*\s*\(?\s*(?:\+\+|--)?\s*%s\b|\b%s\s*(?:\+\+|--)?\s*(?:->|\[)" % (d, d), body)]
+    ints = [d for d in data if d not in ptrs and d not in fptr]
+    if fptr:
+        decl.append("extern int %s;" % ", ".join("(*%s)()" % d for d in fptr))
     if ptrs:                                                # (data the draft goes through: pointers)
-        decl.append("extern char *%s;" % ", *".join(ptrs))
+        for d in ptrs:
+            decl.append("extern %s *%s;" % ("struct " + STRUCTPTR[d] if d in STRUCTPTR else "char", d))
     if ints:
         decl.append("extern int %s;" % ", ".join(ints))
     if funcs:
@@ -260,7 +338,9 @@ def prove_best(prj, tc, inv, text, a, ln, names):
     """-> (source, verdict): of the model's text and its variants, the first the compiler proves identical; else
     the first that compiles (or the first)"""
     regs = tc.p.get("carve", {}).get("register_variables", ["si", "di"])
-    cands = candidates(prj, text, a, names, regs, getattr(inv, "LAST", {}).get("regparam"))
+    regparam = dict(getattr(inv, "LAST", {}).get("regparam") or {})
+    widths = byte_fields(inv, bytes(prj.image[a:a + ln]))
+    cands = candidates(prj, text, a, names, regs, regparam, widths)
     best = None
     for src, left in cands:
         if left:
