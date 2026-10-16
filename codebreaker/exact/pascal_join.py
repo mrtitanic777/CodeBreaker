@@ -34,10 +34,25 @@ NL = "\n"
 class Compiland(object):
     def __init__(self, prj, name, u):
         self.prj, self.name, self.u = prj, name, u
-        self.dirs = [os.path.join(prj.dir, d) for d in u.get("over", [])] + [os.path.join(prj.dir, d) for d in u.get("dirs", [u["dir"]])]
+        root = os.path.join(prj.dir, prj.cfg.get("root", "."))
+        over = u.get("over", prj.cfg.get("over", []))
+        self.dirs = [os.path.join(root, o, u["dir"]) for o in over] + [os.path.join(root, d) for d in u.get("dirs", [u["dir"]])]
         self.src = self.dirs[-1]
         self.headline = ("PROGRAM %s (INPUT, OUTPUT);" if u["kind"] == "PROGRAM" else "MODULE %s;") % name
         self.empty = "BEGIN" + NL + "END." + NL if u["kind"] == "PROGRAM" else "END." + NL
+        mp = prj.cfg.get("map")                             # (pieces of another program's: where each is in this one)
+        self.map = json.load(open(os.path.join(root, mp))).get(name, {}) if mp and os.path.exists(os.path.join(root, mp)) else {}
+        self.over = bool(over)
+        # EDITS (FILE|old|new, FILE|+|a line; * every piece, *~ a regular expression) and REMOVED, lowest overlay first
+        self.edits = [tuple(l.rstrip(NL).split("|")) for d in reversed(self.dirs) if os.path.exists(os.path.join(d, "EDITS"))
+                      for l in open(os.path.join(d, "EDITS"), encoding="latin1") if l.count("|") == 2] if self.over else []
+        self.removed = set(x for d in self.dirs if self.over and os.path.exists(os.path.join(d, "REMOVED"))
+                           for x in open(os.path.join(d, "REMOVED")).read().split())
+        kp = prj.cfg.get("kinds")                           # (each procedure with the stack check or without)
+        self.kinds = {int(k, 16): v.get("kind") for k, v in json.load(open(os.path.join(root, kp))).items()} if kp and os.path.exists(os.path.join(root, kp)) else {}
+
+    def addr_of(self, h):
+        return int(self.map[h.upper()], 16) if self.map and h.upper() in self.map else int(h, 16)
 
     def where(self, f):
         for d in self.dirs:
@@ -46,8 +61,16 @@ class Compiland(object):
         return os.path.join(self.src, f)
 
     def pieces(self):
-        ps = {f for d in self.dirs if os.path.isdir(d) for f in os.listdir(d) if re.fullmatch(r"p[0-9a-f]{5}\.pas", f)}
-        return sorted(ps)
+        ps = {f for d in self.dirs if os.path.isdir(d) for f in os.listdir(d) if re.fullmatch(r"p[0-9a-f]{5}\.pas", f)} - self.removed
+        return sorted(ps, key=lambda f: (self.map.get(f[1:6].upper(), f[1:6]) if self.map else f))
+
+    def check(self, f):
+        """the metacommand that gives the procedure of piece f the stack check it has in the program"""
+        if not self.kinds:
+            return ""
+        a = self.addr_of(f[1:6]) if (not self.map or f[1:6].upper() in self.map) else None
+        k = self.kinds.get(a) if a is not None else None
+        return "" if k is None else ("{$STACKCK+}" if k == "check" else "{$STACKCK-}") + NL
 
     def expand(self, text, d, own=None):
         out = []
@@ -55,18 +78,41 @@ class Compiland(object):
         for line in text.split(NL):
             m = re.fullmatch(r"\s*\{\+(p[0-9a-f]{5})\}\s*", line)
             if m:
-                out.append(self.expand(open(self.where(d + "/" + m.group(1) + ".pas"), encoding="latin1").read().rstrip(NL), d, m.group(1)))
+                out.append(self.check(m.group(1)) + self.expand(open(self.where(d + "/" + m.group(1) + ".pas"), encoding="latin1").read().rstrip(NL), d, m.group(1)))
                 again = True
             else:
+                if again and own and re.match(r"BEGIN\b", line):
+                    out.append(self.check(own).rstrip(NL))   # (back to the outer procedure's own setting)
+                    again = False
                 out.append(line)
         return NL.join(out)
 
     def piece(self, f):
-        return self.expand(open(self.where(f), encoding="latin1").read().rstrip(NL), f[:-4] + ".d", f) + NL
+        t = self.check(f) + self.expand(open(self.where(f), encoding="latin1").read().rstrip(NL), f[:-4] + ".d", f) + NL
+        for name, old, new in self.edits:
+            if name == "*":
+                t = t.replace(old, new)
+            if name == "*~":
+                t = re.sub(old, new, t)
+        return t
 
     def rd(self, f):
         p = self.where(f)
         t = open(p, encoding="latin1").read().rstrip(NL) + NL if os.path.exists(p) else ""
+        for name, old, new in self.edits:
+            if name == f:
+                if old == "+":
+                    t += new + NL
+                elif old in t:
+                    t = t.replace(old, new)
+        if f == "GLOBALS.pas" and self.edits:              # (one declaration a line again)
+            t = NL.join(re.sub(r";\s+(?=G_[0-9A-F]{4})", ";" + NL + "  ", l) if re.match(r"  G_[0-9A-F]{4}", l) else l for l in t.split(NL))
+        if f == "MAIN.pas":
+            for name, old, new in self.edits:
+                if name == "*":
+                    t = t.replace(old, new)
+                if name == "*~":
+                    t = re.sub(old, new, t)
         return t.replace(" {$STACKCK-}", "") if self.u.get("stackck") else t
 
     def result_types(self):
@@ -133,7 +179,7 @@ class Compiland(object):
 
 
 def _procedures(prj):
-    p = os.path.join(prj.dir, prj.cfg["procedures"])
+    p = os.path.join(prj.dir, prj.cfg.get("root", "."), prj.cfg["procedures"])
     return {int(k, 16): v for k, v in json.load(open(p)).items()}
 
 
@@ -161,11 +207,11 @@ def run(prj, verbose=False):
             off_of = {n.upper(): (of, ln) for n, of, ln in fs}
             # where each compiled procedure stands in the program: P<ADDR> at ADDR, the block at main, the helper after
             places = []
+            main_at = int(u["main"], 0) if isinstance(u["main"], str) else u["main"]
             for n, of, ln in fs:
                 m = re.fullmatch(r"P([0-9A-F]{5})", n.upper())
-                a = int(m.group(1), 16) if m else u["main"] if n.upper() == name.upper() else helper_at if n == "(helper)" else None
-                if isinstance(a, str):
-                    a = int(a, 0)
+                a = c.addr_of(m.group(1)) if m and (not c.map or m.group(1) in c.map) else None if m else \
+                    main_at if n.upper() == name.upper() else helper_at if n == "(helper)" else None
                 places.append((of, ln, a))
 
             def where(x, places=places):
@@ -175,7 +221,10 @@ def run(prj, verbose=False):
                 return -1
             for h in c.names_of(part):
                 pn = name.upper() if h == "MAIN" else "P" + h
-                a = int(u["main"], 0) if h == "MAIN" and isinstance(u["main"], str) else u["main"] if h == "MAIN" else int(h, 16)
+                if h != "MAIN" and c.map and h not in c.map:
+                    rows.append((label, pn, None, 0, "no place", ["not in the program (no place in the map)"]))
+                    continue
+                a = main_at if h == "MAIN" else c.addr_of(h)
                 if pn not in off_of:
                     rows.append((label, pn, a, 0, "no place", ["not in the compiled code"]))
                     continue
@@ -184,8 +233,22 @@ def run(prj, verbose=False):
                 bad, notes = compare.function(o, img, pn, of, ln, a, prj, dict(prj.symbols()), {}, seg, where)
                 if size is not None and size != ln:
                     notes.append("%d bytes, the program's %d" % (ln, size))
-                ok = compare.identical(bad, notes)
-                rows.append((label, pn, a, ln, "identical" if ok else "differs", notes))
+                verdict = "identical" if compare.identical(bad, notes) else "differs"
+                eq = u.get("equivalent", prj.cfg.get("equivalent"))
+                if verdict == "differs" and eq and size:    # (the same code but for another compiler state's habits?)
+                    import importlib
+                    mod, _, fn = eq.partition(":")
+                    hole = omf.holes(o, seg)
+                    got = o.seg[seg][of:of + ln]
+                    want = img[a:a + size]
+                    try:
+                        same, why = getattr(importlib.import_module(mod), fn)(want, got, {k - of for k in hole if of <= k < of + ln})
+                    except Exception as e:
+                        same, why = False, ["%s" % e]
+                    if same:
+                        verdict = "equivalent"
+                        notes = ["the same code but for the habits of another compiler state: " + "; ".join(why)[:200]]
+                rows.append((label, pn, a, ln, verdict, notes))
                 if verbose:
-                    print("%-22s %-10s %05x %s %s" % (label, pn, a, "identical" if ok else "differs", "; ".join(notes[:2])))
+                    print("%-22s %-10s %05x %s %s" % (label, pn, a or 0, verdict, "; ".join(notes[:2])))
     return rows

@@ -161,8 +161,10 @@ def main(prj, argv):
         write(prj, rows)
     n = len(rows)
     same = sum(1 for r in rows if r[4] == "identical")
-    print("%d functions, %d identical, %d differ, %d no place, %d files do not compile" % (
-        n, same, sum(1 for r in rows if r[4] == "differs"), sum(1 for r in rows if r[4] == "no place"),
+    eq = sum(1 for r in rows if r[4] == "equivalent")
+    print("%d functions, %d identical, %s%d differ, %d no place, %d files do not compile" % (
+        n, same, ("%d the same code by another compiler state's habits, " % eq) if eq else "",
+        sum(1 for r in rows if r[4] == "differs"), sum(1 for r in rows if r[4] == "no place"),
         sum(1 for r in rows if r[4] == "does not compile")))
     tcs = [lb for lb, tc in prj.toolchains()]
     if len(tcs) > 1:
