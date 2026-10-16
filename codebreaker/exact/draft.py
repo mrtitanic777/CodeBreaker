@@ -2906,6 +2906,18 @@ def long_pairs(text):
         return "%s%s = %s;" % (ind, x, "%dL" % v if abs(v) > 0x7FFF else str(v))
     body = _line_pairs(body, r"([ \t]*)(\w+) = (-?\d+);\n\s*(\w+) = (-?\d+);", const_pair)
 
+    def lfield(p, n):                                       # (a long field: offset n of what p points to)
+        LONGINFO.setdefault("fields", set()).add(int(n))
+        return "%s->f%s" % (p, n)
+    body = re.sub(r"(?m)^([ \t]*)(\w+)->f(\d+) = \(~\2->f\3\);\n[ \t]*\2->f(\d+) = \(~\2->f\4\);$",
+                  lambda m: "%s%s = ~%s;" % (m.group(1), lfield(m.group(2), m.group(3)), lfield(m.group(2), m.group(3)))
+                  if int(m.group(4)) == int(m.group(3)) + 2 else m.group(0), body)        # (both words complemented)
+    body = re.sub(r"(?m)^([ \t]*)(\w+)->f(\d+) = (\w+);\n[ \t]*\2->f(\d+) = \(0 - \(\4 >> 15\)\);$",
+                  lambda m: "%s%s = %s;" % (m.group(1), lfield(m.group(2), m.group(3)), m.group(4))
+                  if int(m.group(5)) == int(m.group(3)) + 2 else m.group(0), body)        # (an int widened into it)
+    body = re.sub(r"\((\w+)->f(\d+) \| \1->f(\d+)\)", lambda m: lfield(m.group(1), m.group(2))
+                  if int(m.group(3)) == int(m.group(2)) + 2 else m.group(0), body)        # (its words tested together)
+
     def masked_test(m):                                     # (a long and-ed with a long field and tested: the high
         ind, hi, p, n2, rest, lo, n1 = m.groups()           #  words in dx first, then the low words or-ed in)
         if hi_of(lo) != hi or int(n2) != int(n1) + 2:
@@ -3216,7 +3228,8 @@ def localize(prj, text, at, names):
     longf = {re.sub(r"\bsub_(-?[0-9a-f]+)\(", call, f + "(")[:-1] for f in LONGINFO.get("funcs", ())}   # (routines of a long value)
     text = re.sub(r"\bsub_(-?[0-9a-f]+)\(", call, text)
     text = re.sub(r"\bg_([0-9a-f]{1,4})\b", lambda m: "g_%04x" % int(m.group(1), 16), text)
-    macros = prj.toolchain().p.get("macros")
+    text = re.sub(r"(?m)^([ \t]*)(L_\w+:)\n(?=[ \t]*\})", r"\1\2\n\1;\n", text)   # (a label last in its block: on an
+    macros = prj.toolchain().p.get("macros")                                         #  empty statement)
     text = re.sub(r"\*\((\w+)(\+\+|--)\)", r"*\1\2", text)   # (*(p++): *p++ - the same, and mendable)
     text = fp_conversions(text, prj.toolchain().p.get("fp_conversions"))
     text = long_helpers(text, prj.toolchain().p.get("long_helpers"))
