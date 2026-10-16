@@ -347,7 +347,7 @@ class R:
         elif re.match(r"(0x[0-9a-f]+|\d+)$",src):            # constant (often a data address)
             setattr(s,d,str(s.num(src)))
         elif s.msc3 and (re.search(r"\[(?:si|di)(?: [+-] (?:0x[0-9a-f]+|\d+))?\]", src) and src.split("[")[1][:2] != d or
-                         re.fullmatch(r"word ptr \[(?:bp [+-] (?:0x[0-9a-f]+|\d+)|bx(?: \+ (?:0x[0-9a-f]+|\d+))?)\]", src) and s._var_later(d)) \
+                         re.fullmatch(r"word ptr \[(?:bp [+-] (?:0x[0-9a-f]+|\d+)|bx(?: \+ (?:0x[0-9a-f]+|\d+))?|0x[0-9a-f]+|\d+)\]", src) and s._var_later(d)) \
                 and s.memname(src) is not None and s.out is not None:   # (a frame word too: a copy of it, the
                                                                         #  register a variable - changed, or a value)
             s.emit(s.out,"%s = %s;"%(d,s.memname(src))); setattr(s,d,d)   # (3.00: a register variable given a

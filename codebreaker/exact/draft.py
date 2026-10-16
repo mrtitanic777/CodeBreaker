@@ -2450,7 +2450,8 @@ def structs(text, widths):
                 text = t2
                 del uses[p]
                 continue
-        steps = set(re.findall(r"\b%s = %s [+-] (\d+);" % (p, p), text))   # (stepped by one, bytes alone read through
+        steps = set(re.findall(r"\b%s = %s [+-] (\d+);" % (p, p), text)) | \
+            ({"1"} if re.search(r"(?<![\w>.])%s(?:\+\+|--)|(?:\+\+|--)%s\b" % (p, p), text) else set())   # (stepped by one, bytes alone read through
         if steps == {"1"} and all(byte(o) for o in offs) and max(offs) < 0x10 and \
                 not re.search(r"\b%s->f\d+->" % p, text):                 #  it: a char *, its bytes p[N])
             t2 = re.sub(r"\b%s->f(\d+)\b" % p, lambda m: "*%s" % p if m.group(1) == "0" else "%s[%s]" % (p, m.group(1)), text)
@@ -3183,7 +3184,7 @@ def localize(prj, text, at, names):
             body = bd
             data = [d for d in data if d not in near]
     arrs = [d for d in data if d in ARRAYS and d not in fptr]   # (indexed in place: an array, not a pointer)
-    pvars = set(re.findall(r"(?m)^[ \t]*(?:register\s+)?char\s*\*\s*(\w+);", text))   # (pointers the draft declares)
+    pvars = set(re.findall(r"(?m)^[ \t]*(?:register\s+)?(?:unsigned\s+)?(?:char|int)\s*\*\s*(\w+);", text))   # (pointers the draft declares)
     sptrs = dict((n, t_) for t_, n in re.findall(r"(?m)^[ \t]*(?:register\s+)?(struct \w+)\s*\*\s*(\w+);", text))
     pvars |= set(sptrs)
     flows = lambda d: any(re.search(r"(?m)^[ \t]*%s = %s\b|^\s*%s = %s\b" % (p, d, d, p), body) for p in pvars)
@@ -3253,7 +3254,8 @@ def localize(prj, text, at, names):
     if ptrs:                                                # (data the draft goes through: pointers)
         sp_ = {("g_%04x" % int(k[2:], 16) if re.fullmatch(r"g_[0-9a-f]{1,4}", k) else k): v for k, v in STRUCTPTR.items()}
         for d in ptrs:                                      # (a word read through it, never a byte: an int *)
-            word = ("bxw", 0) in BYTEPTR and ("bx*", 0) not in BYTEPTR and re.search(r"\*%s\b" % d, body)
+            word = any((r + "w", 0) in BYTEPTR for r in ("bx", "si", "di")) and \
+                not any((r + "*", 0) in BYTEPTR for r in ("bx", "si", "di")) and re.search(r"\*%s\b" % d, body)
             decl.append("extern %s *%s;" % ("struct " + sp_[d] if d in sp_ else "char *" if PTRSIZE.get(d) == 2 and re.search(r"\*\+\+%s\b" % d, body)
                                             else "int" if word else "char", d))
     uch = [d for d in ints if d in UCHAR]
