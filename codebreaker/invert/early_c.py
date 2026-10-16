@@ -1896,13 +1896,22 @@ class R:
         elif kind == "switch":
             b, cases = node[1], node[2]
             blk = blocks[b]; hi = blk.hi
-            t3 = [(x.mnemonic, x.op_str.replace(" ", "")) for x in s.ins[max(blk.lo, hi-3):hi]]
-            if len(t3) != 3 or t3[1] != ("xchg", "bx,ax") or t3[0] not in (("add", "ax,ax"), ("shl", "ax,1")):
-                raise ValueError("unrecognized jump-table dispatch")
-            s._emit_range(blk.lo, hi-3, out)
-            allr = set(s._WR)
-            if s._hascall(s.ax or ""): s._materialize(out, "ax")
-            sel = s.ax if s.ax is not None else "ax"
+            if getattr(blk, "cases", None) is not None:   # a switch by compares: the selector, then the tests
+                s._emit_range(blk.lo, blk.lo + blk.selbase if getattr(blk, "selbase", None) is not None else hi-2, out)
+                reg = blk.selreg
+                if reg == "al": sel = s.breg.get("al", s.ax if s.ax is not None else "al")
+                elif reg == "ax": sel = s.ax if s.ax is not None else "ax"
+                else: v_ = getattr(s, reg, None); sel = v_ if v_ is not None else reg
+                if s._hascall(sel or ""): s._materialize(out, "ax"); sel = s.ax if reg == "ax" and s.ax is not None else sel
+                allr = set(s._WR)
+            else:
+                t3 = [(x.mnemonic, x.op_str.replace(" ", "")) for x in s.ins[max(blk.lo, hi-3):hi]]
+                if len(t3) != 3 or t3[1] != ("xchg", "bx,ax") or t3[0] not in (("add", "ax,ax"), ("shl", "ax,1")):
+                    raise ValueError("unrecognized jump-table dispatch")
+                s._emit_range(blk.lo, hi-3, out)
+                allr = set(s._WR)
+                if s._hascall(s.ax or ""): s._materialize(out, "ax")
+                sel = s.ax if s.ax is not None else "ax"
             s._pin(out, allr - {"ax", "bx"})               # arms start from plain register variables
             s.ax = None; s.bx = None; s.breg = {}          # (the dispatch itself clobbers ax/bx)
             pre = s._snap(); arms = []
@@ -1920,7 +1929,8 @@ class R:
                 def chain(k, ind):
                     if k == len(arms): return []
                     vals, body = arms[k]
-                    c = " || ".join("(%s == %d)" % (t, v) for v in vals)
+                    if "default" in vals: c = "1"
+                    else: c = " || ".join("(%s == %d)" % (t, v) for v in vals)
                     L = [ind + "if (%s) {" % c] + [ind + "    " + x for x in body]
                     rest = chain(k + 1, ind + "    ")
                     return L + ([ind + "} else {"] + rest + [ind + "}"] if rest else [ind + "}"])
@@ -1928,7 +1938,7 @@ class R:
             else:
                 out.append("switch (%s) {" % sel)
                 for vals, body in arms:
-                    out += ["case %d:" % v for v in vals]
+                    out += ["default:" if v == "default" else "case %d:" % v for v in vals]
                     out += ["    " + x for x in body]
                     if not s._terminal(body): out.append("    break;")
                 out.append("}")

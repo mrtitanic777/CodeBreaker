@@ -62,6 +62,30 @@ def kit_path(kit, path, base=None):
     return os.path.normpath(os.path.join(base or ".", path))
 
 
+
+def cache_get(cf):
+    """a compile's answer kept from before, or None (none, or one another process is still writing)"""
+    try:
+        with open(cf, "rb") as f:
+            return pickle.load(f)
+    except (OSError, EOFError, pickle.UnpicklingError, ValueError):
+        return None
+
+
+def cache_put(cf, res):
+    """kept whole or not at all: written aside, then put in its place (processes share the cache)"""
+    os.makedirs(os.path.dirname(cf), exist_ok=True)
+    tmp = "%s.%d.tmp" % (cf, os.getpid())
+    with open(tmp, "wb") as f:
+        pickle.dump(res, f)
+    try:
+        os.replace(tmp, cf)
+    except OSError:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+
 def profiles():
     d = os.path.join(HERE, "toolchains")
     return sorted(f[:-5] for f in os.listdir(d) if f.endswith(".json"))
@@ -184,9 +208,10 @@ class Toolchain(object):
         key = hashlib.sha1(b"\0".join([src, repr(sorted(headers.items())).encode(), repr(incs).encode(), sw.encode(),
                                        repr(sorted(ans.items())).encode(), self.key.encode(), CACHE_VERSION.encode()])).hexdigest()
         cf = settings.state("exact", "cache", key[:2], key)
-        if cache and os.path.exists(cf):
-            with open(cf, "rb") as f:
-                return pickle.load(f)
+        if cache:
+            got = cache_get(cf)
+            if got is not None:
+                return got
         w = self.stage()
         _SEQ[0] += 1                                        # (a name of its own each time: the emulator may hold
         tag = "T%05d" % ((os.getpid() * 7 + _SEQ[0]) % 100000)   #  the last one's files open a while)
@@ -215,9 +240,7 @@ class Toolchain(object):
         for f in [tag + self.p.get("source_ext", ".C"), os.path.basename(out)] + [h.upper() for h in headers]:
             _remove(os.path.join(w, f))
         res = (obj, con.decode("latin1").replace("\r", ""))
-        os.makedirs(os.path.dirname(cf), exist_ok=True)
-        with open(cf, "wb") as f:
-            pickle.dump(res, f)
+        cache_put(cf, res)
         return res
 
     def _run(self, w, sw, tag, ans):

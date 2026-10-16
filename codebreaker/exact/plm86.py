@@ -41,13 +41,12 @@ class PLM86(object):
         controls = switches or self.controls
         key = hashlib.sha1(b"\0".join([src, repr(hs).encode(), controls.encode(), self.key.encode()])).hexdigest()
         cf = settings.state("exact", "cache", key[:2], key)
-        if cache and os.path.exists(cf):
-            with open(cf, "rb") as f:
-                return pickle.load(f)
+        if cache:
+            got = tcm.cache_get(cf)
+            if got is not None:
+                return got
         res = self._compile(src, hs, controls)
-        os.makedirs(os.path.dirname(cf), exist_ok=True)
-        with open(cf, "wb") as f:
-            pickle.dump(res, f)
+        tcm.cache_put(cf, res)
         return res
 
     def _compile(self, src, headers, controls):

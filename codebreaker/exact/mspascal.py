@@ -140,13 +140,12 @@ class MSPascal(object):
         src = src.replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
         key = hashlib.sha1(b"\0".join([src, name.encode(), self.key.encode()])).hexdigest()
         cf = settings.state("exact", "cache", key[:2], key)
-        if cache and os.path.exists(cf):
-            with open(cf, "rb") as f:
-                return pickle.load(f)
+        if cache:
+            got = tcm.cache_get(cf)
+            if got is not None:
+                return got
         res = self._compile(src, name)
-        os.makedirs(os.path.dirname(cf), exist_ok=True)
-        with open(cf, "wb") as f:
-            pickle.dump(res, f)
+        tcm.cache_put(cf, res)
         return res
 
     def _compile(self, src, name):

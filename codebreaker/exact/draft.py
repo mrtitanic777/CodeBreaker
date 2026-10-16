@@ -21,6 +21,7 @@ person or a later model - the ledger never counts a draft.
 import importlib
 import os
 import re
+import struct
 
 from codebreaker.exact import carve, compare, library, omf
 
@@ -162,7 +163,7 @@ def post_increments(text):
     k = 0
     while k < len(lines):
         l = lines[k]
-        m = re.match(r"(\s*)%s = (.*);\s*$" % WREG, l)
+        m = re.match(r"(\s*)(ax|bx|cx|dx|si|di|al|bl|cl|dl) = (.*);\s*$", l)    # (a byte register too: a char)
         if m and k + 2 < len(lines):
             ind, reg, e = m.groups()
             st = re.match(r"\s*(\w+) = \1 \+ (\d)\s*;\s*$", lines[k + 1])
@@ -180,6 +181,41 @@ def post_increments(text):
         out.append(l)
         k += 1
     return "\n".join(out)
+
+
+def post_steps(text):
+    """R = X; X = X + 1 (or - 1); then R read once: the value before the step - X++ (X--) in its place"""
+    lines = text.split("\n")
+    out = []
+    k = 0
+    while k < len(lines):
+        m = re.match(r"(\s*)(ax|bx|cx|dx|al|bl|cl|dl) = ([A-Za-z_]\w*);\s*$", lines[k])
+        if m and k + 2 < len(lines):
+            ind, reg, x = m.groups()
+            st = re.match(r"\s*%s = %s ([+-]) 1;\s*$" % (x, x), lines[k + 1])
+            nxt = lines[k + 2]
+            rest = "\n".join(lines[k + 3:])
+            if st and len(re.findall(r"\b%s\b" % reg, nxt)) == 1 and not re.search(r"\b%s\b" % x, nxt) and \
+                    not re.search(r"\b%s\b" % reg, re.split(r"\n\s*%s = " % reg, rest)[0]):
+                out.append(re.sub(r"\b%s\b" % reg, x + ("++" if st.group(1) == "+" else "--"), nxt, count=1))
+                k += 3
+                continue
+        out.append(lines[k])
+        k += 1
+    return "\n".join(out)
+
+
+def test_first_loops(text):
+    """for (;;) { if (C) break; ..} - the loop's test first: while (!C) { ..}"""
+    lines = text.split("\n")
+    for k, l in enumerate(lines):
+        m = re.match(r"(\s*)for \(;;\) \{\s*$", l) if l is not None else None
+        if m and k + 1 < len(lines) and lines[k + 1] is not None:
+            b = re.match(r"\s*if (\(.*\)) break;\s*$", lines[k + 1])
+            if b:
+                lines[k] = "%swhile (%s) {" % (m.group(1), _not(b.group(1)))
+                lines[k + 1] = None
+    return "\n".join(l for l in lines if l is not None)
 
 
 def stored_calls(text):
@@ -432,6 +468,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
     for t in base + [v for v in (buffers(t) for t in base) if v]:
         STRUCTPTR.clear()
         t = fold_registers(stored_calls(post_increments(widen_bytes(compare_values(branch_returns(logical_values(t)))))))
+        t = test_first_loops(post_steps(t))
         t = structs(register_variables(shapes(t), regs, regparam), set(widths))
         variants = [t] + [v for v in [store_increments(t)] if v]
         rule = prj.toolchain().p.get("frame_order")
@@ -491,8 +528,9 @@ def register_variables(text, regs=("si", "di"), regparam=None):
     head, sep, body = text.partition("{")
     if not sep:
         return text
-    for r, ix in sorted((regparam or {}).items(), key=lambda kv: kv[1]):
-        p = chr(ord("a") + ix)
+    rdecl = []                                              # (declared in the order of their registers: the
+    for r, ix in sorted((regparam or {}).items(), key=lambda kv: list(regs).index(kv[0]) if kv[0] in regs else 9):
+        p = chr(ord("a") + ix)                              #  compiler gives the first declared the first)
         body = re.sub(r"\b%s\b" % r, p, body)
         ptr = re.search(r"\*\s*\(?\s*(?:\+\+|--)?\s*%s\b|\b%s\s*(?:\+\+|--)?\s*\[" % (p, p), body)
         lines = head.split("\n")
@@ -500,9 +538,11 @@ def register_variables(text, regs=("si", "di"), regparam=None):
             m = re.match(r"(\s*)int (.*);$", l)
             if m and re.search(r"\b%s\b" % p, m.group(2)):
                 rest = [x.strip() for x in m.group(2).split(",") if x.strip() != p]
-                lines[j] = (m.group(1) + "int " + ", ".join(rest) + ";\n" if rest else "") + \
-                    "register %s%s;" % ("char *" if ptr else "int ", p)
-        head = "\n".join(lines)
+                lines[j] = m.group(1) + "int " + ", ".join(rest) + ";" if rest else None
+        head = "\n".join(l for l in lines if l is not None)
+        rdecl.append("register %s%s;" % ("char *" if ptr else "int ", p))
+    if rdecl:
+        head = head.rstrip("\n") + "\n" + "\n".join(rdecl) + "\n"
     used = [r for r in regs if re.search(r"\b%s\b" % r, body)]
     if not used:
         return head + sep + body
@@ -634,7 +674,31 @@ def prove_best(prj, tc, inv, text, a, ln, names, regparam=None):
     return best[1], best[2]
 
 
-def model_texts(inv, code, name):
+def table_hook(code):
+    """SWITCH(address) for the model: the places a near jump through a table goes (`jmp cs:[bx + T]`, after
+    `cmp R, N`: N + 1 words at T) - addresses in the function's own code, from 0. T is the program's offset of
+    the table, so the function's own offset is found where its code begins being the program's"""
+    from codebreaker.exact import x86
+    ins = list(x86.disasm(code, 0, len(code), False))
+
+    def hook(addr):
+        k = next((j for j, i in enumerate(ins) if i.address == addr), None)
+        if k is None:
+            return None
+        m = re.search(r"cs:\[bx \+ (0x[0-9a-f]+)\]", ins[k].op_str)
+        n = next((int(x.group(1), 0) for i in reversed(ins[max(0, k - 8):k])
+                  for x in [re.fullmatch(r"\w+, (0x[0-9a-f]+|\d+)", i.op_str)] if i.mnemonic == "cmp" and x), None)
+        if not m or n is None:
+            return None
+        t = int(m.group(1), 16) - hook.base
+        if not (0 <= t and t + 2 * (n + 1) <= len(code)):
+            return None
+        return [struct.unpack_from("<H", code, t + 2 * j)[0] - hook.base for j in range(n + 1)]
+    hook.base = 0
+    return hook
+
+
+def model_texts(inv, code, name, base=None):
     """[(text, register parameters)] - the model's text of a function, from each of its structurers (a linear walk;
     a structured control-flow graph, where the model has one): the compiler decides between them"""
     out = []
@@ -642,10 +706,21 @@ def model_texts(inv, code, name):
     regparam = dict(getattr(inv, "LAST", {}).get("regparam") or {})
     out.append((inv.to_c(name, fs, params, stmts, pt, loc), regparam))
     if hasattr(inv, "recover_cfg"):
+        from codebreaker.invert import flow16
+        flow16.CMPSWITCH = True                             # (switches by compares read as switches)
+        old = getattr(inv, "SWITCH", None)
+        if base is not None and hasattr(inv, "SWITCH"):     # (and by a table: where it sends each value)
+            hook = table_hook(code)
+            hook.base = base
+            inv.SWITCH = hook
         try:
             fs, params, stmts, pt, loc = inv.recover_cfg(code)
         except Exception:
             return out
+        finally:
+            flow16.CMPSWITCH = False
+            if hasattr(inv, "SWITCH"):
+                inv.SWITCH = old
         stmts = [s for s in stmts if not s.startswith("/* register variables")]
         for reg, ix in regparam.items():                    # (a register parameter's load is not a statement)
             p = chr(ord("a") + ix)
@@ -674,7 +749,7 @@ def run(prj, every=False, limit=None, verbose=False):
         if a in have:
             continue
         try:
-            texts = model_texts(inv, bytes(img[a:a + ln]), "f%05x" % a)
+            texts = model_texts(inv, bytes(img[a:a + ln]), "f%05x" % a, a)
         except Exception as e:                              # (the model declines: it says why)
             out[a] = "declined: %s" % str(e).splitlines()[0][:100] if str(e) else "declined"
             continue

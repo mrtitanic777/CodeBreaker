@@ -22,7 +22,7 @@ RET  = {"ret","retf","iret"}
 
 
 class Block:
-    __slots__ = ("id","lo","hi","insns","term","succ","cond_idx","addr", "table")
+    __slots__ = ("id","lo","hi","insns","term","succ","cond_idx","addr", "table", "cases", "default", "selreg", "selbase")
     def __init__(s, bid, lo, hi, insns, addr):
         s.id = bid           # 0-based block index
         s.lo = lo            # first instruction index (into the function's insn list)
@@ -32,6 +32,11 @@ class Block:
         s.term = None        # 'ret' | 'jmp' | 'cond' | 'fall' | 'tailcall'
         s.succ = []          # list of successor block ids; for 'cond' = [taken, fallthrough]
         s.cond_idx = None    # instruction index of the terminating jcc (for 'cond')
+        s.table = None       # 'switch' by a jump table: the case blocks in table order
+        s.cases = None       # 'switch' by compares: [(value, block)]; default: the block the rest go to
+        s.default = None
+        s.selreg = None
+        s.selbase = None     # (by a table: the instruction in the block where the selector's code ends)
     def __repr__(s):
         return "B%d[%05x..%05x %s->%s]" % (s.id, s.addr, (s.insns[-1].address if s.insns else s.addr),
                                            s.term, s.succ)
@@ -115,7 +120,140 @@ def build_cfg(insns, lo_addr, hi_addr):
             if t not in seen: seen.add(t); work.append(t)
     for blk in blocks:
         if blk.id not in seen: blk.succ = []; blk.term = "dead"
+    if CMPSWITCH:
+        _compare_switches(blocks)
+        _table_switches(blocks)
     return blocks, idx2blk, 0
+
+
+def _table_switches(blocks):
+    """a jump table behind its bounds test - [sub R, K] cmp R, N / ja default (or jbe on, jmp default) / the
+    table's dispatch - read as one switch by values: K + each place in the table, the bounds test's other way
+    out the default (the table's entries that go there are no cases)"""
+    preds = {b.id: [] for b in blocks}
+    for b in blocks:
+        for t in b.succ:
+            preds[t].append(b.id)
+    jmp_to = lambda bid: blocks[bid].succ[0] if blocks[bid].term == "jmp" and len(blocks[bid].insns) == 1 else bid
+    for d in blocks:
+        if d.term != "switch" or d.table is None or len(preds[d.id]) != 1:
+            continue
+        h = blocks[preds[d.id][0]]
+        if h.term != "cond" or len(h.insns) < 2 or _cmp_of(h.insns[-2]) is None or h.insns[-1].mnemonic not in ("ja", "jbe"):
+            continue
+        reg, n = _cmp_of(h.insns[-2])
+        taken, fall = h.succ[0], h.succ[1]
+        other = fall if taken == d.id else taken
+        if d.id not in (taken, fall) or len(d.table) != n + 1:
+            continue
+        default = jmp_to(other)
+        base, cut = 0, len(h.insns) - 2
+        if len(h.insns) >= 3:
+            m = re.fullmatch(r"%s, (0x[0-9a-f]+|\d+)" % reg, h.insns[-3].op_str)
+            if h.insns[-3].mnemonic == "sub" and m:
+                base, cut = int(m.group(1), 0), len(h.insns) - 3
+        h.term = "switch"
+        h.cases = [(base + k, t) for k, t in enumerate(d.table) if t != default]
+        h.default = default
+        h.selreg = reg
+        h.selbase = cut                                     # (the selector's code ends there: the sub is the table's)
+        h.table = None
+        h.succ = list(dict.fromkeys([t for v, t in sorted(h.cases)] + [default]))
+        d.succ, d.term = [], "dead"
+        if other != default:
+            blocks[other].succ, blocks[other].term = [], "dead"
+
+
+# A switch a compiler lays out as compares (a few cases, or values far apart): the selector in a register,
+# then blocks that only compare it with a constant and branch - je to a case, the other tests (ja, jbe ..)
+# splitting the values in halves, a jmp on to the next test - every way out that is not a case's going to
+# one block, the default. Off unless the driver asks (CMPSWITCH): the 2.03 path keeps its own reading.
+CMPSWITCH = False
+_REG16 = {"ax", "bx", "cx", "dx", "si", "di"}
+
+
+def _cmp_of(ins, reg=None):
+    if ins.mnemonic != "cmp":
+        return None
+    m = re.fullmatch(r"(\w+), (0x[0-9a-f]+|\d+)", ins.op_str)
+    if not m or m.group(1) not in _REG16 | {"al"} or reg and m.group(1) != reg:
+        return None
+    return m.group(1), int(m.group(2), 0)
+
+
+def _compare_switches(blocks):
+    preds = {b.id: [] for b in blocks}
+    for b in blocks:
+        for t in b.succ:
+            preds[t].append(b.id)
+
+    def test_block(bid, reg):
+        blk = blocks[bid]
+        ins = blk.insns
+        if not ins or blk.term == "dead":
+            return False
+        if len(ins) == 1:
+            return ins[0].mnemonic in CJMP or blk.term == "jmp"
+        return len(ins) == 2 and _cmp_of(ins[0], reg) is not None and (ins[1].mnemonic in CJMP or blk.term == "jmp")
+
+    for h in blocks:
+        ins = h.insns
+        if h.term != "cond" or len(ins) < 2 or _cmp_of(ins[-2]) is None:
+            continue
+        reg = _cmp_of(ins[-2])[0]
+        if any(i.mnemonic in ("mov", "add", "sub", "inc", "dec", "pop") and i.op_str.startswith(reg + ",") for i in ins[-2:-1]):
+            continue
+        cases, leaves, region, ok = [], set(), {h.id}, [True]
+
+        def walk(bid, v, first=False):
+            blk = blocks[bid]
+            seq = blk.insns[-2:] if first else blk.insns
+            k = 0
+            c = _cmp_of(seq[0], reg)
+            if c:
+                v = c[1]
+                k = 1
+            last = seq[k]
+            if blk.term == "jmp":
+                follow(blk.succ[0], v)
+                return
+            if v is None or len(blk.succ) != 2:
+                ok[0] = False
+                return
+            taken, fall = blk.succ[0], blk.succ[1]
+            if last.mnemonic in ("je", "jz"):
+                cases.append((v, taken))
+                follow(fall, v)
+            elif last.mnemonic in ("jne", "jnz"):
+                cases.append((v, fall))
+                follow(taken, v)
+            else:
+                follow(taken, v)
+                follow(fall, v)
+
+        def follow(t, v):
+            if t in region:
+                return
+            if test_block(t, reg) and all(p in region for p in preds[t]):
+                region.add(t)
+                walk(t, v)
+            else:
+                leaves.add(t)
+
+        walk(h.id, None, first=True)
+        vals = [v for v, t in cases]
+        if not ok[0] or len(leaves) != 1 or len(set(vals)) < 3 or len(set(vals)) != len(vals):
+            continue
+        default = leaves.pop()
+        h.term = "switch"
+        h.cases = cases
+        h.default = default
+        h.selreg = reg
+        h.table = None
+        h.succ = list(dict.fromkeys([t for v, t in sorted(cases)] + [default]))
+        for r in region - {h.id}:
+            blocks[r].succ = []
+            blocks[r].term = "dead"
 
 
 def dominators(blocks, entry=0):
@@ -327,8 +465,13 @@ def structure(blocks, entry=0):
         sub = stops | ({join} if join is not None else set())
         cases = []
         for t in blk.succ:
-            vals = [i for i, x in enumerate(blk.table) if x == t]
-            cases.append((vals, seq_from(t, sub)))
+            if blk.cases is not None:                      # (by compares: the values, the default's arm)
+                vals = sorted(v for v, x in blk.cases if x == t) + (["default"] if t == blk.default else [])
+                if t == join and vals == ["default"]:
+                    continue                               # (no default: the rest go to the end)
+            else:
+                vals = [i for i, x in enumerate(blk.table) if x == t]
+            cases.append((vals, seq_from(t, sub) if t != join else []))
         return ('switch', b, cases, join), join
 
     def do_if(b, stops):

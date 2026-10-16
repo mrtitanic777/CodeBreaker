@@ -27,7 +27,8 @@ STAGES = {"ledger": "codebreaker.exact.ledger", "library": "codebreaker.exact.li
           "names": "codebreaker.exact.names",
           "readable": "codebreaker.exact.readable",
           "seed": "codebreaker.exact.seed",
-          "identify": "codebreaker.exact.identify"}
+          "identify": "codebreaker.exact.identify",
+          "bench": "codebreaker.exact.bench"}
 
 
 def main(argv):
