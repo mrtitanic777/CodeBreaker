@@ -123,11 +123,29 @@ def shapes(text):
 
 def candidates(prj, text, at, names, regs, regparam):
     """[(source, registers left)] - the model's text as the project's source, then the variants the compiler
-    is to decide between: as read, and without its last return (a function of no value)"""
+    is to decide between: as read, without its last return (a function of no value), with the locals whose
+    address it takes as the buffers they are - and both"""
+    base = [text] + [v for v in [void_variant(text)] if v]
     out = []
-    for t in [text] + [v for v in [void_variant(text)] if v]:
+    for t in base + [v for v in (buffers(t) for t in base) if v]:
         out.append(localize(prj, register_variables(shapes(fold_registers(t)), regs, regparam), at, names))
     return out
+
+
+def buffers(text):
+    """the locals whose address the text takes (`&vN`) as char arrays, each as long as the frame has room before
+    the next local (vN is at bp-N); a store into one goes through an int"""
+    locs = sorted({int(n) for n in re.findall(r"(?m)^\s*int v(\d+);", text)})
+    taken = [n for n in locs if re.search(r"&v%d\b" % n, text)]
+    if not taken:
+        return None
+    for n in taken:
+        lower = [m for m in locs if m < n]
+        size = n - (max(lower) if lower else 0)
+        text = re.sub(r"(?m)^(\s*)int v%d;" % n, r"\1char v%d[%d];" % (n, size), text)
+        text = re.sub(r"&v%d\b" % n, "v%d" % n, text)
+        text = re.sub(r"(?m)^(\s*)v%d = " % n, r"\1*(int *)v%d = " % n, text)
+    return text
 
 
 def void_variant(text):
