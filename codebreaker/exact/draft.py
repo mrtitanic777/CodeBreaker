@@ -166,10 +166,10 @@ def _ternary(c, a, b):
         m = re.fullmatch(r"\((.*) \? (.*) : (.*)\)", inner)
         if m and _balanced(m.group(1)) and _balanced(m.group(2)) and m.group(2) == other:
             first = _truth(_not("(" + c + ")")) if join == "or-not" else _truth("(" + c + ")")
-            return "%s || %s ? %s : %s" % (first, _truth("(" + m.group(1) + ")"), m.group(2), m.group(3))
+            return "%s ? %s : %s" % (_conj("||", first, _truth("(" + m.group(1) + ")")), m.group(2), m.group(3))
         if m and _balanced(m.group(1)) and _balanced(m.group(2)) and m.group(3) == other:   # (C ? (C2 ? X : Y) : Y:
             first = _truth("(" + c + ")") if join == "or-not" else _truth(_not("(" + c + ")"))   #  C && C2 ? X : Y)
-            return "%s && %s ? %s : %s" % (first, _truth("(" + m.group(1) + ")"), m.group(2), m.group(3))
+            return "%s ? %s : %s" % (_conj("&&", first, _truth("(" + m.group(1) + ")")), m.group(2), m.group(3))
     return "%s ? %s : %s" % (_truth(c), a, b)
 
 
@@ -1410,6 +1410,24 @@ def temporaries(text):
     return text
 
 
+def split_ternaries(text):
+    """return (C ? A : B); - as the two returns it may have been: if (C) return A; return B; (a variant: the
+    compiler keeps one copy of a tail both share either way)"""
+    def one(m):
+        ind, inner = m.group(1), m.group(2)
+        depth, q = 0, None
+        for i, ch in enumerate(inner):                      # (the top-level ? and :)
+            depth += (ch == "(") - (ch == ")")
+            if ch == "?" and depth == 0 and q is None:
+                q = i
+            if ch == ":" and depth == 0 and q is not None:
+                c, a, b = inner[:q].strip(), inner[q + 1:i].strip(), inner[i + 1:].strip()
+                return "%sif (%s) {\n%s    return %s;\n%s}\n%sreturn %s;" % (ind, c if c.startswith("(") else "(%s)" % c, ind, a, ind, ind, b)
+        return m.group(0)
+    t = re.sub(r"(?m)^([ \t]*)return \((.*)\);$", one, text)
+    return t if t != text else None
+
+
 def assign_in_args(text):
     """X = E; f(..X..); - the value passed from the register it was stored from: f(..(X = E)..) (a variant)"""
     def one(m):
@@ -2029,7 +2047,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = long_ladders(long_pairs(t))                     # (the longs again, as the passes left them)
         t = frame_chars(t, widths)
         t = fill_frame(t, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
-        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t)] if v]
+        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t)] if v]
         both = pre_steps(t)
         both = pre_increments(both) if both else None
         if both:
@@ -3025,7 +3043,8 @@ REFINERS = [lambda prj, s: [assign_in_args(s)], lambda prj, s: [return_sources(s
             lambda prj, s: [chain_assigns(s)], lambda prj, s: [for_loops(s)], lambda prj, s: [store_increments(s)],
             lambda prj, s: [pre_steps(s)], lambda prj, s: [pre_increments(s)], lambda prj, s: [assign_in_tests(s)],
             lambda prj, s: [and_returns(s)], lambda prj, s: [register_temps(s)], lambda prj, s: [void_variant(s)],
-            lambda prj, s: pointer_widths(s), _place_variants, lambda prj, s: string_variants(prj, s)]
+            lambda prj, s: pointer_widths(s), _place_variants, lambda prj, s: string_variants(prj, s),
+            lambda prj, s: [split_ternaries(s)]]
 
 
 def refine(prj, tc, a, ln, best, rounds=2, budget=40):
