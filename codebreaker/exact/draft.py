@@ -2797,8 +2797,21 @@ def structs(text, widths):
             b_ = o in bytes_                     # (a byte read: a char - an
             pg = re.search(r"\b%s->f%d->f%d = (\w+);" % (p, n, o), text)   # (given a pointer variable: a pointer)
             pty = re.search(r"(?m)^[ \t]*(?:register\s+)?((?:unsigned\s+)?(?:char|int)|struct \w+) \*%s;$" % pg.group(1), text) if pg else None
+            deep = sorted(set(int(x) for x in re.findall(r"\b%s->f%d->f%d->f(\d+)\b" % (p, n, o), text)))
+            if deep and not b_:                             # (gone through once more: a pointer to a struct of its own)
+                dl, dp = [], 0
+                for x in deep:
+                    if x < dp:
+                        continue
+                    if x > dp:
+                        dl.append("char _%d[%d];" % (dp, x - dp))
+                    dl.append("%s f%d;" % ("long" if x in LONGINFO.get("fields", ()) and x + 2 not in deep else "int", x))
+                    dp = x + (4 if dl[-1].startswith("long") else 2)
+                defs.append("struct s_%s_%d_%d { %s };" % (p, n, o, " ".join(dl)))
+                pty = None
             fl.append("%s f%d;" % ("unsigned char" if any(isinstance(u, tuple) and u[1] == o for u in UCHAR) and b_
-                                   else "char" if b_ else "%s *" % pty.group(1) if pty else "int", o))   #  unsigned one widened with zeros)
+                                   else "char" if b_ else "struct s_%s_%d_%d *" % (p, n, o) if deep else
+                                   "%s *" % pty.group(1) if pty else "int", o))   #  unsigned one widened with zeros)
             pos = o + (1 if b_ else 2)
         defs.append("struct s_%s_%d { %s };" % (p, n, " ".join(fl)))
         ptrfield[(p, n)] = "struct s_%s_%d *" % (p, n)
@@ -3219,8 +3232,8 @@ def long_pairs(text):
         while i < len(args):
             a1 = re.fullmatch(r"(\w+(?:->f\d+)*)->f(\d+)", args[i])
             a2 = re.fullmatch(r"(\w+(?:->f\d+)*)->f(\d+)", args[i + 1]) if i + 1 < len(args) else None
-            together = a1 and len(re.findall(r"%s\b(?!->)" % re.escape(args[i]), body)) == \
-                len(re.findall(r"%s, %s\b" % (re.escape(args[i]), re.escape(args[i + 1] if i + 1 < len(args) else "")), body))
+            together = a1 and i + 1 < len(args) and len(re.findall(r"%s\b(?!->)" % re.escape(args[i + 1]), body)) == \
+                len(re.findall(r"%s, %s\b" % (re.escape(args[i]), re.escape(args[i + 1])), body))   # (the high word never alone)
             if a1 and a2 and a1.group(1) == a2.group(1) and int(a2.group(2)) == int(a1.group(2)) + 2 and together and \
                     (a1.group(1), int(a1.group(2))) not in BYTEPTR and int(a1.group(2)) in LONGINFO.get("fields", ()):
                 out.append(lfield(a1.group(1), a1.group(2)))
@@ -3340,6 +3353,10 @@ def long_pairs(text):
             l2 = _redeclare(body, lo, "%s %s" % (uns, lo))
             body = l2 or body
         done.append(lo)
+    lrets = [x for x in re.findall(r"(?m)^[ \t]*return (\w+);$", body)
+             if re.search(r"(?m)^[ \t]*(?:unsigned )?long (?:\w+, )*%s\b" % x, body)]
+    if lrets and not re.search(r"(?m)^[ \t]*return [^;]*\w\(", body):
+        LONGINFO["ret"] = True                              # (a long local returned: the function's a long)
     if LONGINFO.get("ret"):
         m = re.search(r"(?m)^\w+\(", head)
         if m and not re.search(r"(?m)^(?:unsigned )?long\s*$", head):
