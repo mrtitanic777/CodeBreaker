@@ -371,10 +371,10 @@ def zero_extends(text):
     struct so laid out)"""
     lines = text.split("\n")
     for k in range(len(lines) - 1):
-        m = re.match(r"(\s*)al = (.+);\s*$", lines[k] or "")
-        if m and re.fullmatch(r"\s*ah = 0;\s*", lines[k + 1] or ""):
-            e = m.group(2)
-            lines[k] = "%sax = %s;" % (m.group(1), e)
+        m = re.match(r"(\s*)([abcd])[lx] = (.+);\s*$", lines[k] or "")   # (al, bl.. - or the word the model wrote)
+        if m and re.fullmatch(r"\s*%sh = 0;\s*" % m.group(2), lines[k + 1] or ""):
+            e = m.group(3)
+            lines[k] = "%s%sx = %s;" % (m.group(1), m.group(2), e)
             lines[k + 1] = None
             g = re.fullmatch(r"(g_[0-9a-f]{1,4})", e)
             f = re.fullmatch(r"(\w+(?:->f\d+)*)->f(\d+)", e)       # (through a field too: its own struct's)
@@ -806,6 +806,7 @@ def pre_steps(text):
 
 
 PTRSIZE = {}                                                # (data a draft steps through by 2: a pointer to words)
+STRUCTARR = {}                                              # (data an array of structs: name -> (size, first field's type))
 ARRAYS = {}                                                 # (data a draft indexes: an array - name: element type)
 
 
@@ -830,7 +831,7 @@ def address_variants(text, dsize, most=2, lo=0x100):
 def word_arrays(text, lo=0x40):
     """(E << 1)->fN, N a place in the data (not a field's small offset): an array of words there indexed by E -
     g_XXXX[E] (the model reads `mov bx,E / shl bx,1 / [bx+N]` as a field of a pointer)"""
-    rx = re.compile(r"\(((?:(?:\+\+|--)?[A-Za-z_]\w*(?:\+\+|--)?|\d+)(?:\s*[-+]\s*\d+)?) << 1\)->f(\d+)\b")
+    rx = re.compile(r"\(((?:(?:\+\+|--)?[A-Za-z_]\w*(?:->f\d+)*(?:\+\+|--)?|\d+)(?:\s*[-+]\s*\d+)?) << 1\)->f(\d+)\b")
 
     def one(m):
         n = int(m.group(2))
@@ -846,9 +847,20 @@ def word_arrays(text, lo=0x40):
         if n < 0x100:
             return m.group(0)
         name = "g_%04x" % n
-        ARRAYS[name] = "char"
+        ARRAYS[name] = "char" if ("data", n) in BYTEPTR else "int"
         return "%s[%s]" % (name, m.group(1))
     t = re.sub(r"\b(ax|bx|cx|dx)->f(\d+)\b", byte_index, t)
+    # (a register given K * E, then an element at a place in the data through it: an array of structs of K
+    #  bytes - g_N[E].f0, the struct laid out in localize)
+    def struct_index(m):
+        ind, k, e, rest = m.group(1), int(m.group(2)), m.group(3), m.group(4)
+        g = re.search(r"\b(g_[0-9a-f]{4})\[bx\]", rest)
+        if not g or k < 2 or k > 0x400:
+            return m.group(0)
+        STRUCTARR[g.group(1)] = (k, ARRAYS.get(g.group(1), "int"))
+        ARRAYS[g.group(1)] = "struct s_%s" % g.group(1)
+        return "%s%s" % (ind, rest.replace("%s[bx]" % g.group(1), "%s[%s].f0" % (g.group(1), e), 1))
+    t = re.sub(r"(?m)^([ \t]*)bx = \((\d+) \* (.+?)\);\n[ \t]*(.*\bg_[0-9a-f]{4}\[bx\].*)$", struct_index, t)
     # (I << 1)[E]: the model's word index into the words at E - ((int *)(E))[I]
     def word_index(m):                                      # (an offset in bytes: through a char *)
         i, e = m.group(1), m.group(2)
@@ -1741,14 +1753,20 @@ def structs(text, widths):
     defs = []
     for (p, n), subs in sorted(inner.items()):
         bytes_ = {o for o in subs if ("*", o) in widths}    # (a byte the code reads where p has a word: another struct)
-        if (subs <= uses[p] or (p, n) == (p, 0) and subs <= uses[p] | {0}) and not (bytes_ & ({n} | set(k for (q, k) in inner if q == p))):
+        # (what bx - the register the model goes on through - reads at an offset, beside what the others read
+        #  there: a byte through one and a word through the other is two structs)
+        width = lambda regs, o: {("b" if (r + "*", o) in widths else "") + ("w" if (r + "w", o) in widths else "") for r in regs} - {""}
+        both = {o for o in subs if width(["bx"], o) and width(["si", "di"], o) and width(["bx"], o) != width(["si", "di"], o)}
+        bytes_ = {o for o in subs if "b" in "".join(width(["bx"], o)) or (not width(["bx"], o) and o in bytes_)}
+        if (subs <= uses[p] or (p, n) == (p, 0) and subs <= uses[p] | {0}) and not both and \
+                not (bytes_ & ({n} | set(k for (q, k) in inner if q == p))):
             ptrfield[(p, n)] = "struct s_%s *" % p
             continue
         fl, pos = [], 0
         for o in sorted(subs):
             if o > pos:
                 fl.append("char _%d[%d];" % (pos, o - pos))
-            b_ = ("*", o) in widths and (o != n or True) and o in bytes_   # (a byte read: a char - an
+            b_ = o in bytes_                     # (a byte read: a char - an
             fl.append("%s f%d;" % ("unsigned char" if any(isinstance(u, tuple) and u[1] == o for u in UCHAR) and b_
                                    else "char" if b_ else "int", o))                   #  unsigned one widened with zeros)
             pos = o + (1 if b_ else 2)
@@ -1802,6 +1820,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         STRUCTPTR.clear()
         PTRSIZE.clear()
         ARRAYS.clear()
+        STRUCTARR.clear()
         UCHAR.clear()
         BYTEG.clear()
         BYTEG.update(n for k, n in widths if k == "g")
@@ -1875,6 +1894,12 @@ def byte_fields(inv, code):
         m = re.search(r"byte ptr \[(?:bx|si|di) \+ (0x[0-9a-f]+|\d+)\]", i.op_str)    # draft names the pointer)
         if m and int(m.group(1), 0) < 0x100:
             out.add(("*", int(m.group(1), 0)))
+        elif m:
+            out.add(("data", int(m.group(1), 0)))           # (a byte in the data indexed by a register)
+        for wd, r_, o_ in re.findall(r"(byte|word) ptr \[(bx|si|di)(?: \+ (0x[0-9a-f]+|\d+))?\]", i.op_str):
+            o_ = int(o_ or "0", 0)                          # (each width at each offset through each register:
+            if o_ < 0x100:                                  #  an offset read both ways is two structs')
+                out.add((r_ + ("*" if wd == "byte" else "w"), o_))
         g = re.search(r"byte ptr \[(0x[0-9a-f]+|\d+)\]", i.op_str)     # (a global read or written a byte at a time)
         if g:
             out.add(("g", "g_%04x" % int(g.group(1), 0)))
@@ -2317,6 +2342,11 @@ def localize(prj, text, at, names):
                                                                   or flows(d))]   # (or given a pointer's value, or giving one)
     ints = [d for d in data if d not in ptrs and d not in fptr and d not in arrs]
     if arrs:
+        for d in arrs:                                      # (an array of structs: its element laid out - the field
+            if d in STRUCTARR:                              #  the code reads first, the rest of its size after)
+                k, ty = STRUCTARR[d]
+                sz = 1 if ty == "char" else 2
+                decl.append("struct s_%s { %s f0;%s };" % (d, ty, " char _%d[%d];" % (sz, k - sz) if k > sz else ""))
         decl += ["extern %s %s[];" % (ARRAYS[d], d) for d in arrs]
     if fptr:
         decl.append("extern int %s;" % ", ".join("(*%s)()" % d for d in fptr))
