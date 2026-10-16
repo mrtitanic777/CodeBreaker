@@ -130,6 +130,7 @@ def module16(path, more=None):
 
 def _judge(o, md, image, start, end, imported, starts=()):
     written, prologue_ax, frame, last_push_seg, flags_set = set(), False, False, False, False
+    ax_from_ss = False
     prev_call, pending, code_in = False, None, {}
     first_ins = next(md.disasm(image[start:end], start), None)
     if first_ins is not None and first_ins.mnemonic == "pop":
@@ -184,6 +185,10 @@ def _judge(o, md, image, start, end, imported, starts=()):
                 and not (ops[0].type == X.X86_OP_REG and ops[0].reg == X.X86_REG_BP):
             # SP copied to reach the stack through another register (no frame): hand-written
             o.evidence.append("reaches the stack through SP (%04x %s %s)" % (ins.address, mn, ins.op_str))
+        elif mn == "mov" and ins.op_str == "ds, ax" and ax_from_ss:
+            # DS made the stack segment (`mov ax, ss / mov ds, ax`): the data the callee is to
+            # see is on the stack -- switched by hand, around a call
+            o.evidence.append("loads DS with SS (%04x)" % ins.address)
         elif mn == "mov" and ins.op_str.startswith("ds, word ptr ["):
             # DS loaded from a variable (a segment it keeps, switched to): compiled code loads DS
             # from a register (the prologue's AX, far data), not from one of its own globals
@@ -267,6 +272,8 @@ def _judge(o, md, image, start, end, imported, starts=()):
             else:
                 pending = (pending[0], pending[1], pending[2] - 1)
         prev_call = mn in ("call", "lcall") or (prev_call and mn == "pop")
+        if "ax" in {ins.reg_name(r) for r in regs_written} or "eax" in {ins.reg_name(r) for r in regs_written}:
+            ax_from_ss = mn == "mov" and ins.op_str == "ax, ss"
         for r in regs_written:
             nm = ins.reg_name(r)
             written.add(nm)

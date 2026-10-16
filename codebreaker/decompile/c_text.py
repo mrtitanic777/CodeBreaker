@@ -712,18 +712,25 @@ def compilable16(module_path, outdir=None):
                 parts = line.rstrip("\n").split("\t")
                 if parts[4].startswith("__stdcall"):
                     callee_pops[int(parts[2], 16)] = True
-    distance = {}
+    distance, model_of = {}, {}
     with open(d.path, encoding="utf-8") as f:
         for line in f:
             parts = line.rstrip("\n").split("\t")
             if parts[0] == "F" and len(parts) > 4:
                 distance[parts[2]] = "far" if parts[4].endswith("far") else "near" if parts[4].endswith("near") else None
+                if parts[4].startswith(("__stdcall16", "__cdecl16")):
+                    model_of[parts[2]] = parts[4]
     for va in sorted(by_va):
         name = by_va[va]
         raw = texts[name]
         head0 = raw.split("{", 1)[0]
         if distance.get(name) and "16near" not in head0 and "16far" not in head0 and re.search(r"\b%s\s*\(" % re.escape(name), head0):
-            raw = raw.replace(head0, re.sub(r"\b(%s\s*\()" % re.escape(name), "__%s \\1" % distance[name], head0, count=1), 1)
+            # its whole model, convention too: the decompiler leaves the default one
+            # (__stdcall16near) out, and a function with no convention named is compiled with
+            # OpenWatcom's own -- arguments in registers, where its callers push them
+            marker = model_of.get(name) if not re.search(r"__(stdcall|cdecl|pascal)\b", head0) else None
+            raw = raw.replace(head0, re.sub(r"\b(%s\s*\()" % re.escape(name), "%s \\1" % (marker or "__" + distance[name]),
+                                            head0, count=1), 1)
         far = set()
         for mm in _FACT.finditer(raw):
             if mm.group(1) == "P" and mm.group(3) == "4":
