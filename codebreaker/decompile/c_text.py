@@ -755,7 +755,7 @@ def compilable16(module_path, outdir=None):
         if head.split()[0] in _WIDE or "*" in head.split(name)[0] and "__far" in head.split(name)[0]:
             m.wide.add(name)
         text = re.sub(r"\b_([a-z]+Ram[0-9a-f]{8})\b", r"\1", text)     # (a global the decompiler named twice)
-        m.texts[name] = _buffer_fields(_far_locals(_stack_arguments(_entry_sp(_far_addresses(_interrupts(_open_arguments(text), m.interrupts))))))
+        m.texts[name] = _near_to_far(_far_reads(_buffer_fields(_far_locals(_stack_arguments(_entry_sp(_far_addresses(_interrupts(_open_arguments(text), m.interrupts))))))))
         if callee_pops.get(va):
             # its calls through pointers remove nothing themselves: the callee does (the arguments
             # are listed in stack order, so __stdcall lays them out as the original pushed them)
@@ -973,6 +973,51 @@ def _stack_arguments(text):
 
 _SIZE = {"1": 1, "2": 2, "4": 4}
 _LOCAL = re.compile(r"(?m)^  (\w+?)(\d)? +(\w*Stack_([0-9a-f]+))( \[(\d+)\])?;\s*$")
+
+
+_NEAR_OF_FAR = re.compile(r"\*\((\w+(?: \w+)?) \*\)\(\((\w+) __far \*\)")
+
+
+_TO_FAR = re.compile(r"\((\w+(?: \w+)?) __far \*\)\(")
+
+
+def _near_to_far(text):
+    """`(T __far *)(n)` of a number `n` -- an offset in the data segment, as the original reads
+    it through DS: C makes a far pointer of a number with segment 0. Through a near pointer it
+    gets DS: `(T __far *)(T *)(n)`. (Not where the value is far already: MK_FP, a far cast.)"""
+    # (the function's four-byte variables already hold a segment and an offset: left as they are)
+    wide = set(re.findall(r"(?m)^\s*(?:int4|uint4|xunknown4|undefined4|float4)\s+(\w+)", text))
+    out, i = [], 0
+    for mm in _TO_FAR.finditer(text):
+        start = mm.end() - 1                                 # the "(" of the operand
+        depth, j = 0, start
+        while j < len(text):
+            if text[j] == "(":
+                depth += 1
+            elif text[j] == ")":
+                depth -= 1
+                if depth == 0:
+                    break
+            j += 1
+        inner = text[start:j + 1]
+        if j >= len(text) or "__far" in inner or "MK_FP" in inner or "CONCAT" in inner or "&" in inner \
+                or re.search(r"\b(?:int4|uint4|xunknown4|undefined4)\b", inner) \
+                or any(re.search(r"\b%s\b" % re.escape(w), inner) for w in wide):
+            continue
+        if re.fullmatch(r"\(\s*0\s*\)", inner):          # (a null pointer stays null)
+            continue
+        out.append(text[i:start])
+        out.append("(%s *)" % mm.group(1))
+        i = start
+    out.append(text[i:])
+    return "".join(out)
+
+
+def _far_reads(text):
+    """`*(T *)((U __far *)MK_FP(s, o))` -- a far place read (or written) through a near cast:
+    the segment dropped, DS:o in its stead (a RECT read out of the caller's segment, read out of
+    the module's own). What is reached through a far pointer is reached far."""
+    return _NEAR_OF_FAR.sub(lambda mm: "*(%s __far *)((%s __far *)" % (mm.group(1), mm.group(2)), text)
 
 
 def _buffer_fields(text):
