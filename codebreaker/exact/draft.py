@@ -183,6 +183,27 @@ def post_increments(text):
     return "\n".join(out)
 
 
+def self_updates(text):
+    """X = E; X = X op F; (F not reading X): one expression - X = E op F (the compiler kept the value in X's
+    register between the two)"""
+    lines = text.split("\n")
+    out = []
+    k = 0
+    while k < len(lines):
+        m = re.match(r"(\s*)([A-Za-z_]\w*) = ([^;]+);\s*$", lines[k])
+        if m and k + 1 < len(lines):
+            ind, x, e = m.groups()
+            u = re.match(r"\s*%s = %s ([-+*&|^]|<<|>>) (.+);\s*$" % (x, x), lines[k + 1])
+            if u and not re.search(r"\b%s\b" % x, e + u.group(2)) and not re.match(r"\s*(?:if|while|return)\b", lines[k]):
+                f = u.group(2)
+                out.append("%s%s = %s %s %s;" % (ind, x, e, u.group(1), f))
+                k += 2
+                continue
+        out.append(lines[k])
+        k += 1
+    return "\n".join(out)
+
+
 def post_steps(text):
     """R = X; X = X + 1 (or - 1); then R read once: the value before the step - X++ (X--) in its place"""
     lines = text.split("\n")
@@ -229,9 +250,16 @@ def stored_calls(text):
             ind, reg, call = m.groups()
             st = re.match(r"(\s*)(.+?) = %s;\s*$" % reg, lines[k + 1])
             rest = "\n".join(lines[k + 2:])
-            if st and not re.search(r"\b%s\b" % reg, st.group(2)) and not re.search(r"\b%s\b" % reg, re.split(r"\n\s*%s = " % reg, rest)[0]):
+            later = not re.search(r"\b%s\b" % reg, re.split(r"\n\s*%s = " % reg, rest)[0])
+            if st and not re.search(r"\b%s\b" % reg, st.group(2)) and later:
                 out.append("%s%s = %s;" % (st.group(1), st.group(2), call))
                 k += 2
+                continue
+            nxt = lines[k + 1]                              # (read once, anywhere in the next statement - which
+            if later and len(re.findall(r"\b%s\b" % reg, nxt)) == 1 and not re.search(r"\w\(", nxt) and \
+                    not re.match(r"\s*(?:\}|L_\w+:|else\b)", nxt) and not re.search(r"\b%s\s*=[^=]" % reg, nxt):
+                out.append(re.sub(r"\b%s\b" % reg, lambda x: call, nxt, count=1))   # makes no call of its own:
+                k += 2                                                               #  the order stays)
                 continue
         out.append(lines[k])
         k += 1
@@ -342,6 +370,24 @@ def pre_steps(text):
 
 PTRSIZE = {}                                                # (data a draft steps through by 2: a pointer to words)
 ARRAYS = {}                                                 # (data a draft indexes: an array - name: element type)
+
+
+def address_variants(text, dsize, most=2, lo=0x100):
+    """a number a pointer is compared with, or given (`p < 14708`, `p = 14708`): the place of data there - an array
+    at that offset, g_XXXX (a variant each: the compiler decides; a pointer compares without its sign)"""
+    ptrs = set(re.findall(r"(?m)^\s*(?:register\s+)?(?:char|int|struct \w+)\s*\*\s*(\w+);", text))
+    if not ptrs:
+        return []
+    nums = []
+    for m in re.finditer(r"\b(%s)\s*(?:[<>]=?|==|!=|=)\s*(\d{3,5})\b" % "|".join(map(re.escape, ptrs)), text):
+        n = int(m.group(2))
+        if lo <= n < dsize and n not in nums:
+            nums.append(n)
+    out = []
+    for n in nums[:most]:
+        name = "g_%04x" % n
+        out.append((name, re.sub(r"(?<![\w.])%d(?![\w.])" % n, name, text)))
+    return out
 
 
 def word_arrays(text, lo=0x40):
@@ -633,6 +679,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         FILEPTR.clear()
         t = fold_registers(stored_calls(post_increments(widen_bytes(compare_values(branch_returns(logical_values(char_params(t))))))))
         t = word_arrays(test_first_loops(post_steps(t)))
+        t = self_updates(t)
         t = structs(register_variables(shapes(t), regs, regparam), set(widths))
         variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t)] if v]
         both = pre_steps(t)
@@ -646,6 +693,11 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         for v in list(variants):                            # (the names the frame's order asks for)
             fn = frame_names(v, rule) if rule else None
             variants.insert(variants.index(v) + 1, fn) if fn else None
+        dsize = len(prj.image) - prj.dgroup
+        for v in list(variants)[:2]:                        # (a number that is a place in the data)
+            for name, av in address_variants(v, dsize):
+                ARRAYS.setdefault(name, "char")
+                variants.append(av)
         out += [localize(prj, v, at, names) for v in variants]
     return out
 
@@ -782,7 +834,10 @@ def localize(prj, text, at, names):
         body = text.split("{", 1)[1] if "{" in text else text
     funcs = sorted(set(funcs) | {w for d in fptr for w in re.findall(r"(?m)^\s*%s = ([A-Za-z_]\w*);" % d, body)})
     arrs = [d for d in data if d in ARRAYS and d not in fptr]   # (indexed in place: an array, not a pointer)
-    ptrs = [d for d in data if d not in fptr and d not in arrs and re.search(r"\*\s*\(?\s*(?:\+\+|--)?\s*%s\b|\b%s\s*(?:\+\+|--)?\s*(?:->|\[)" % (d, d), body)]
+    pvars = set(re.findall(r"(?m)^\s*(?:register\s+)?char\s*\*\s*(\w+);", text))   # (pointers the draft declares)
+    flows = lambda d: any(re.search(r"(?m)^\s*%s = %s\b|^\s*%s = %s\b" % (p, d, d, p), body) for p in pvars)
+    ptrs = [d for d in data if d not in fptr and d not in arrs and (re.search(r"\*\s*\(?\s*(?:\+\+|--)?\s*%s\b|\b%s\s*(?:\+\+|--)?\s*(?:->|\[)" % (d, d), body)
+                                                                  or flows(d))]   # (or given a pointer's value, or giving one)
     ints = [d for d in data if d not in ptrs and d not in fptr and d not in arrs]
     if arrs:
         decl += ["extern %s %s[];" % (ARRAYS[d], d) for d in arrs]
