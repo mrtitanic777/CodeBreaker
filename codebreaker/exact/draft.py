@@ -2524,7 +2524,19 @@ def localize(prj, text, at, names):
     # (a byte through a char pointer compared with 128..255: the compiler compares bytes only of an unsigned char)
     for p in set(re.findall(r"\*\(?(?:\+\+|--)?(\w+)(?:\+\+|--)?\)? [!=]= (?:1(?:2[89]|[3-9]\d)|2[0-4]\d|25[0-5])\b", text)):
         text = re.sub(r"(?m)^([ \t]*)(register )?char \*%s;$" % p, r"\1\2unsigned char *%s;" % p, text)
-    return ("\n".join(decl) + "\n\n" if decl else "") + text, left
+    out = ("\n".join(decl) + "\n\n" if decl else "") + text
+    dn = _data_names(prj)                                   # (data the program has names for: those, by place - a
+    if dn:                                                  #  name of the form g_XXXX may be another place's)
+        out = re.sub(r"\bg_([0-9a-f]{4})\b", lambda m: dn.get(int(m.group(1), 16), m.group(0)), out)
+    return out, left
+
+
+def _data_names(prj):
+    """{data offset: name} of the data SYMBOLS names (where a name differs from the place's own g_XXXX)"""
+    if getattr(prj, "_dnames", None) is None:
+        prj._dnames = {a: n.lstrip("_") for n, (t, a) in prj.symbols().items()
+                       if t == "D" and ":" not in n and re.fullmatch(r"_?\w+", n) and n.lstrip("_") != "g_%04x" % a}
+    return prj._dnames
 
 
 def long_helpers(text, helpers):
