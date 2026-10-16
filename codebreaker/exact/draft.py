@@ -827,6 +827,22 @@ def unused_locals(text):
     return head + sep + "\n".join(l for k, l in enumerate(lines) if k not in drop)
 
 
+def _top_commas(s):
+    """s split at its commas outside parentheses and brackets"""
+    out, depth, cur = [], 0, ""
+    for ch in s:
+        if ch in "([":
+            depth += 1
+        elif ch in ")]":
+            depth -= 1
+        if ch == "," and depth == 0:
+            out.append(cur)
+            cur = ""
+        else:
+            cur += ch
+    return out + [cur]
+
+
 def library_macros(text, macros):
     """a library macro the compiler expanded in line - stdio's getc(f) and putc(c, f): the count of the stream's
     buffer stepped, then its pointer, else the routine that fills or empties the buffer (the profile's "macros":
@@ -835,18 +851,22 @@ def library_macros(text, macros):
     if not macros:
         return text
     for mac in macros:
-        rx = re.compile(r"\b%s\(([^()]*)\)" % re.escape(mac["call"]))
+        rx = re.compile(r"\b%s\(((?:[^()]|\((?:[^()]|\([^()]*\))*\))*)\)" % re.escape(mac["call"]))
         while True:
             lines = text.split("\n")
             hit = next(((k, m) for k, l in enumerate(lines) for m in [rx.search(l)] if m), None)
             if not hit:
                 break
             k1, m = hit
-            args = [x.strip() for x in m.group(1).split(",")]
+            args = [x.strip() for x in _top_commas(m.group(1))]
             f = args[-1]
             k0 = next((j for j in range(k1, -1, -1) if re.search(r"\b%s->f2(?:--| = %s->f2 - 1)" % (re.escape(f), re.escape(f)), lines[j])), None)
             if k0 is None:
                 break
+            for ix in mac.get("byte_args", []):             # (an argument the macro stores as a byte - putc's c:
+                p_ = re.fullmatch(r"\*(\w+)", args[ix]) if ix < len(args) else None   # *p of an int *p read
+                if p_ and re.search(r"(?m)^\s*(?:register )?int \*%s;$" % p_.group(1), text):   # a byte at a time)
+                    args[ix] = "*(char *)%s" % p_.group(1)
             val = mac["as"] % tuple(args)
             k2 = k1
             depth = sum(l.count("{") - l.count("}") for l in lines[k0:k2 + 1])
@@ -1073,6 +1093,22 @@ def _if_parts(lines, k):
     return m.group(2), then, lines[j + 1:e], e + 1
 
 
+def _unlabelled(arm):
+    return [l for l in arm if not re.match(r"\s*L_\w+:$", l)]
+
+
+def _same_arm(x, y):
+    """do the arms x and y run the same: equal, or x the statements y begins with and then a goto to y's label
+    there (the compiler's one copy of a tail both reach) - and the label then wanted by none else"""
+    if x == y:
+        return True
+    if not x or not re.match(r"\s*goto (L_\w+);$", x[-1]):
+        return False
+    lab = re.match(r"\s*goto (L_\w+);$", x[-1]).group(1)
+    at = next((j for j, l in enumerate(y) if l.strip() == lab + ":"), None)
+    return at is not None and x[:-1] == y[:at] and _unlabelled(x[:-1]) == x[:-1]
+
+
 def merge_conditions(text):
     """ifs nested as the compiler's || and && leave them, joined again:
         if (A) { if (B) { P } else { Q } } else { Q }   ->  if (A && B) { P } else { Q }
@@ -1100,10 +1136,10 @@ def merge_conditions(text):
             new = None
             if els is None and q2 is None:
                 new = ["%sif (%s && %s) {" % (ind, _truth("(" + c1 + ")"), _truth("(" + c2 + ")"))] + dd(p2) + [ind + "}"]
-            elif els is not None and q2 is not None and dd(q2) == els:
-                new = ["%sif (%s && %s) {" % (ind, _truth("(" + c1 + ")"), _truth("(" + c2 + ")"))] + dd(p2) + [ind + "} else {"] + els + [ind + "}"]
-            elif els is not None and q2 is not None and dd(p2) == els:
-                new = ["%sif (%s || %s) {" % (ind, _truth(_not("(" + c1 + ")")), _truth("(" + c2 + ")"))] + els + [ind + "} else {"] + dd(q2) + [ind + "}"]
+            elif els is not None and q2 is not None and _same_arm(els, dd(q2)):
+                new = ["%sif (%s && %s) {" % (ind, _truth("(" + c1 + ")"), _truth("(" + c2 + ")"))] + dd(p2) + [ind + "} else {"] + _unlabelled(dd(q2)) + [ind + "}"]
+            elif els is not None and q2 is not None and _same_arm(els, dd(p2)):
+                new = ["%sif (%s || %s) {" % (ind, _truth(_not("(" + c1 + ")")), _truth("(" + c2 + ")"))] + _unlabelled(dd(p2)) + [ind + "} else {"] + dd(q2) + [ind + "}"]
             if new:
                 lines[k:end] = new
                 changed = True
@@ -1373,6 +1409,17 @@ def structs(text, widths):
         if any(whole.search(l) for l in lines if not decl.match(l)):
             text = "\n".join(l if decl.match(l) else whole.sub("%s->f0" % p, l) for l in lines)
             uses[p].add(0)
+    for p, offs in list(uses.items()):                      # (a byte read inside a word read: no struct - the
+        byte = lambda o: (p, o) in widths or ("*", o) in widths     # words through an int *, the bytes through
+        words = {o for o in offs if not byte(o)}                     # a char * of it)
+        if any(o % 2 and o - 1 in offs for o in offs if byte(o)) and all(o % 2 == 0 for o in words):
+            t2 = re.sub(r"\b%s->f(\d+)\b" % p, lambda m: "((char *)%s)[%s]" % (p, m.group(1)) if byte(int(m.group(1))) and
+                        int(m.group(1)) % 2 else ("*%s" % p if m.group(1) == "0" else "%s[%d]" % (p, int(m.group(1)) // 2)), text)
+            t3 = re.sub(r"(?m)^(\s*)(register )?char \*%s;$" % p, r"\1\2int *%s;" % p, t2)
+            t2 = t3 if t3 != t2 else _declare_pointer(t2, p, "int")
+            if t2:
+                text = t2
+                del uses[p]
     defs = []
     for p, offs in sorted(uses.items()):
         fields = []
@@ -1431,6 +1478,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = word_arrays(test_first_loops(post_steps(t)))
         t = merge_conditions(self_updates(t))
         t = structs(pointer_flow(local_pointers(register_variables(shapes(t), regs, regparam))), set(widths))
+        t = re.sub(r"(?m)^\s*(\w+) = \1;\n", "", t)         # (a register variable given itself: nothing)
         t = fill_frame(t, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
         variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t)] if v]
         both = pre_steps(t)

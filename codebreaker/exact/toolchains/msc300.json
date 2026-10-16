@@ -356,6 +356,7 @@
   {
    "call": "flsbuf",
    "as": "putc(%s, %s)",
+   "byte_args": [0],
    "type": "FILE",
    "include": "stdio.h"
   }
