@@ -1324,6 +1324,22 @@ class R:
         pop di; pop si - *(struct _bS *)di = *(struct _bS *)si, S the bytes moved. 0: not one"""
         ins=s.ins; seq=[(x.mnemonic,x.op_str) for x in ins[i:i+4]]
         bare=seq[:2]==[("push","ds"),("pop","es")] and "si" in LAST.get("saved",()) and "di" in LAST.get("saved",())
+        given={}                                           # (push si; push di; mov di,X; mov si,Y; push ds: the
+        if seq[:2]==[("push","si"),("push","di")] and not bare:   #  copy's pointers given between the saves)
+            k=i+2
+            while k<i+4 and k<len(ins) and ins[k].mnemonic=="mov" and re.match(r"(di|si), ", ins[k].op_str):
+                r_, src=ins[k].op_str.split(", ")
+                if src in ("si","di"): v_=given.get(src, getattr(s,src,None) or src)
+                elif src in ("ax","bx","cx","dx"): v_=s._val(src)
+                elif re.fullmatch(r"0x[0-9a-f]+|\d+", src): v_=("&g_%x"%s.num(src)) if s.num(src)>=0x100 else str(s.num(src))
+                else: v_=s.memname(src)
+                if v_ is None: break
+                given[r_]=str(v_); k+=1
+            if given and [(x.mnemonic,x.op_str) for x in ins[k:k+2]]==[("push","ds"),("pop","es")]:
+                seq=[("push","si"),("push","di"),("push","ds"),("pop","es")]
+                i0=i; i=k-2                                 # (read on as the plain form from here)
+            else:
+                given={}
         if seq!=[("push","si"),("push","di"),("push","ds"),("pop","es")] and not bare: return 0
         j=i+(2 if bare else 4); n=0                         # (bare: si and di saved by the function itself)
         if j+1<len(ins) and ins[j].mnemonic=="mov" and re.match(r"cx, (0x[0-9a-f]+|\d+)$",ins[j].op_str) and \
@@ -1335,6 +1351,12 @@ class R:
         if not n or not bare and (j+1>=len(ins) or (ins[j].mnemonic,ins[j].op_str)!=("pop","di") or (ins[j+1].mnemonic,ins[j+1].op_str)!=("pop","si")):
             return 0
         d_=s.di if s.di is not None else "di"; s_=s.si if s.si is not None else "si"
+        if given:
+            d_=given.get("di", d_); s_=given.get("si", s_)
+            if not re.fullmatch(r"[\w\->.&]+", str(d_)): d_="(%s)"%d_
+            if not re.fullmatch(r"[\w\->.&]+", str(s_)): s_="(%s)"%s_
+            s.emit(out,"*(struct _b%d *)%s = *(struct _b%d *)%s;"%(n,d_,n,s_))
+            return j+2-i0
         if bare:                                           # (the copy's own pointers given just before: their values)
             for _ in range(2):
                 mk=re.fullmatch(r"(si|di) = (-?\d+|[\w\->.]+);", out[-1].strip()) if out else None

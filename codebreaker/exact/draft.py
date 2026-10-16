@@ -2488,6 +2488,39 @@ def store_increments(text):
     return t if t != text else None
 
 
+def register_values(text):
+    """r = E; (E a variable, a field, *p) read more than once after, nothing between changing E or calling: E at
+    each read - the compiler kept E in the register and read it there (r a machine register left over)"""
+    lines = text.split("\n")
+    for k, l in enumerate(lines):
+        m = re.fullmatch(r"([ \t]*)(ax|al|bx|bl|cx|cl|dx|dl) = ([A-Za-z_]\w*(?:->f\d+)*|\*[A-Za-z_]\w*);", l)
+        if not m:
+            continue
+        reg, e = m.group(2), m.group(3)
+        names = re.findall(r"[A-Za-z_]\w*", e)
+        depth, uses, end = 0, [], len(lines)
+        for j in range(k + 1, len(lines)):
+            x = lines[j]
+            depth += x.count("{") - x.count("}")
+            if depth < 0 or re.match(r"[ \t]*%s = " % reg, x) or re.match(r"[ \t]*L_\w+:", x):
+                end = j
+                break
+            if re.search(r"\w\s*\(", re.sub(r"\b(?:if|while|for|switch|return)\s*\(", "", x)) or \
+                    any(re.search(r"(?<![\w>.])%s\s*(?:=[^=]|\+\+|--)" % re.escape(n), x) for n in names) or \
+                    re.search(r"%s\s*=[^=]" % re.escape(e), x):
+                end = None
+                break
+            if re.search(r"\b%s\b" % reg, x):
+                uses.append(j)
+        if end is None or len(uses) < 2 or _live_after(lines, (end - 1) if end else len(lines) - 1, reg):
+            continue
+        for j in uses:
+            lines[j] = re.sub(r"\b%s\b" % reg, e, lines[j])
+        lines[k] = None
+        return "\n".join(x for x in lines if x is not None)
+    return text
+
+
 def _plain_store(l, reg):
     """`X = E;` with reg read in E alone and E giving nothing a value: reg's value read before the store"""
     m = re.fullmatch(r"\s*([^=;]+?) = ([^;]+);\s*", l)
@@ -2805,7 +2838,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
                 wd |= {(chr(97 + i_), o) for (q, o) in widths if q in (r_, r_ + "*") and (r_ + "w", o) not in widths}
         t = structs(pointer_flow(local_pointers(register_variables(shapes(long_pairs(t)), regs, regparam))), wd)
         t = re.sub(r"(?m)^[ \t]*(\w+) = \1;\n", "", t)         # (a register variable given itself: nothing)
-        t = long_ladders(long_pairs(t))                     # (the longs again, as the passes left them)
+        t = register_values(long_ladders(long_pairs(t)))                     # (the longs again, as the passes left them)
         t = frame_chars(fn_pointers(t), widths)
         t = fill_frame(t, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
         variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t), register_copies(t), lead_filler(t), scaled_places(t), shared_tails(t)] if v]
