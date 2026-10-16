@@ -290,6 +290,8 @@ def copy_props(text):
         used = False
         for j in range(k + 1, len(lines)):
             y = out[j]
+            if y is None:                                   # (a copy dropped before: nothing)
+                continue
             depth += y.count("{") - y.count("}")
             if depth < 0 or re.match(r"\s*L_\w+:", y):
                 break
