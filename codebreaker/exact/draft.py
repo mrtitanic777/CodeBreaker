@@ -235,7 +235,7 @@ def range_switches(text):
         a = re.fullmatch(r"([ \t]*)(ax|bx|cx|dx) = (.+);", lines[k])
         v = None
         if not a:                                           # (or a variable the code loads for the tests: RANGES)
-            v = re.fullmatch(r"([ \t]*)if \(\((\w+) >= (\d+)\)\) \{", lines[k])
+            v = re.fullmatch(r"([ \t]*)if \(\(([\w\->]+) >= (\d+)\)\) \{", lines[k])
             if not v or not any(lo == int(v.group(3)) for lo, hi, _cf in RANGES):
                 continue
             a = type("M", (), {"group": lambda s, i, v=v: {1: v.group(1), 2: v.group(2), 3: v.group(2)}[i]})()
@@ -243,13 +243,23 @@ def range_switches(text):
         if not p or p[2] is None:
             continue
         c1 = re.fullmatch(r"\(\(%s >= (\d+)\)\)" % a.group(2), "(" + p[0] + ")")
+        if c1 and p[1] and re.fullmatch(r"\s*(?:ax|bx|cx|dx) = %s;" % re.escape(a.group(2)), p[1][0]):
+            p = (p[0], p[1][1:], p[2], p[3])                # (the selector loaded again for the next test: nothing)
         q = _if_parts(p[1], 0) if c1 and p[1] else None
-        if not q or q[3] != len(p[1]) or q[2] is None:
+        if not q or q[3] != len(p[1]):
             continue
+        if q[2] is None:                                    # (the range's own arm empty: only a break)
+            q = (q[0], q[1], [], q[3])
         c2 = re.fullmatch(r"\(\(%s (>|<=) (\d+)\)\)" % a.group(2), "(" + q[0] + ")")
         dd = lambda ls: [l[4:] if l.startswith("    ") else l for l in ls]
         if c2 and c2.group(1) == "<=":                      # (the range's own arm first: the same, turned about)
             q = (q[0], q[2], q[1], q[3])
+        g_ = re.fullmatch(r"\s*goto (L_\w+);", p[2][0]) if c2 and len(p[2]) == 1 else None
+        if g_ and dd(q[1]) and dd(q[1])[0].strip() == g_.group(1) + ":":   # (the other way out a goto into it:
+            body_ = [l for l in dd(q[1]) if l.strip() != g_.group(1) + ":"]   #  the same code)
+            if not re.search(r"\bgoto %s;" % g_.group(1), "\n".join(lines[:k] + lines[p[3]:])):
+                p = (p[0], p[1], body_, p[3])
+                q = (q[0], ["    " + l if l.strip() else l for l in body_], q[2], q[3])
         if not c2 or dd(q[1]) != p[2]:
             continue
         c2 = type("M", (), {"group": lambda s, i, c=c2: c.group(2)})()
@@ -1994,11 +2004,12 @@ def byte_fields(inv, code):
     insns = list(x86.disasm(code, 0, len(code), False))
     for k in range(len(insns) - 4):                         # (a register loaded and tested against a range: a switch's)
         a_, b_, c_, d_ = insns[k + 1:k + 5]
-        if insns[k].mnemonic == "mov" and insns[k].op_str.startswith("ax, ") and a_.mnemonic == "cmp" and \
-                c_.mnemonic == "cmp" and a_.op_str.startswith("ax, ") and c_.op_str.startswith("ax, ") and \
+        lo_ = "0" if a_.mnemonic == "or" and a_.op_str == "ax, ax" else a_.op_str[4:] if a_.mnemonic == "cmp" else None
+        if insns[k].mnemonic == "mov" and insns[k].op_str.startswith("ax, ") and lo_ is not None and \
+                c_.mnemonic == "cmp" and (a_.op_str.startswith("ax, ")) and c_.op_str.startswith("ax, ") and \
                 b_.mnemonic in ("jl", "jb") and d_.mnemonic in ("jg", "ja", "jle", "jbe"):
             try:                                            # (jg/ja to the default: the cases' code first)
-                RANGES.add((int(a_.op_str[4:], 0), int(c_.op_str[4:], 0), d_.mnemonic in ("jg", "ja")))
+                RANGES.add((int(lo_, 0), int(c_.op_str[4:], 0), d_.mnemonic in ("jg", "ja")))
             except ValueError:
                 pass
     for k, i in enumerate(insns):                           # (a slot's byte loaded and widened with zeros: unsigned)
