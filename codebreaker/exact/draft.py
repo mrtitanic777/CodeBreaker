@@ -184,6 +184,28 @@ def chain_returns(text):
     return text
 
 
+UCHAR = set()                                               # (bytes the code widens with zeros: unsigned char)
+
+
+def zero_extends(text):
+    """al = E; ah = 0;  - a byte widened with zeros: ax = E, E an unsigned char (a global so declared, a field of a
+    struct so laid out)"""
+    lines = text.split("\n")
+    for k in range(len(lines) - 1):
+        m = re.match(r"(\s*)al = (.+);\s*$", lines[k] or "")
+        if m and re.fullmatch(r"\s*ah = 0;\s*", lines[k + 1] or ""):
+            e = m.group(2)
+            lines[k] = "%sax = %s;" % (m.group(1), e)
+            lines[k + 1] = None
+            g = re.fullmatch(r"(g_[0-9a-f]{1,4})", e)
+            f = re.fullmatch(r"(\w+)->f(\d+)", e)
+            if g:
+                UCHAR.add("g_%04x" % int(g.group(1)[2:], 16))
+            elif f:
+                UCHAR.add((f.group(1), int(f.group(2))))
+    return "\n".join(l for l in lines if l is not None)
+
+
 def widen_bytes(text):
     """al = E; ... ax read before ax or al is given again, al never read: the byte widened for its use (cbw) -
     in C a char is an int where it is used: ax = E"""
@@ -861,8 +883,9 @@ def fold_registers(text):
             rest = "\n".join(lines[k + 1:])
             nxt = next((x for x in lines[k + 1:] if x.strip()), "")
             later = "\n".join(lines[lines.index(nxt, k + 1) + 1:]) if nxt in lines[k + 1:] else ""
-            pure = re.fullmatch(r"[A-Za-z_]\w*|-?\d+", expr) or (     # (or a value with no effect: no call, no
-                not re.search(r"\w\s*\(|\+\+|--|[^=!<>]=[^=]", expr) and expr.startswith("(") and expr.endswith(")"))   # store)
+            pure = re.fullmatch(r"[A-Za-z_]\w*|-?\d+|[A-Za-z_]\w*->f\d+|\*[A-Za-z_]\w*|[A-Za-z_]\w*\[[A-Za-z_0-9]+\]", expr) or (
+                not re.search(r"\w\s*\(|\+\+|--|[^=!<>]=[^=]", expr) and expr.startswith("(") and expr.endswith(")"))
+            # (a value with no effect: a name, a field, an element, or no call and no store in it)
             names = re.findall(r"[A-Za-z_]\w*", expr)
             if pure and reg not in ("si", "di") and len(re.findall(r"\b%s\b" % reg, nxt)) == 1 and \
                not any(re.search(r"\b%s\s*(=[^=]|\+\+|--)|(\+\+|--)\s*%s\b" % (n, n), nxt) for n in names) and \
@@ -977,8 +1000,10 @@ def structs(text, widths):
                 continue                                    # (overlaps the field before: not this way)
             if off > pos:
                 fields.append("char _%d[%d];" % (pos, off - pos))
-            byte = (p, off) in widths
-            fields.append("%s f%d;" % ("struct s_%s *" % p if off == 0 and selfref else "char" if byte else "int", off))
+            uch = any(isinstance(u, tuple) and u[1] == off for u in UCHAR)   # (widened with zeros: unsigned)
+            byte = (p, off) in widths or uch
+            fields.append("%s f%d;" % ("struct s_%s *" % p if off == 0 and selfref else "unsigned char" if uch else
+                                       "char" if byte else "int", off))
             pos = off + (1 if byte else 2)
         tag = "s_" + p
         defs.append("struct %s { %s };" % (tag, " ".join(fields)))
@@ -1004,8 +1029,9 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         STRUCTPTR.clear()
         PTRSIZE.clear()
         ARRAYS.clear()
+        UCHAR.clear()
         FILEPTR.clear()
-        t = copy_props(table_macros(prj, char_params(t), prj.toolchain().p.get("table_macros")))
+        t = zero_extends(copy_props(table_macros(prj, char_params(t), prj.toolchain().p.get("table_macros"))))
         t = re.sub(r"&(\w+)\[(-?)(\d+)\]", lambda m: "(%s %s %s)" % (m.group(1), "-" if m.group(2) else "+", m.group(3)), t)
         t = re.sub(r"&(\w+)->f(\d+)\b", r"(\1 + \2)", t)  # (lea: &p[N], &p->fN - the place, p + N)
         t = fold_registers(stored_calls(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(logical_values(t))))))))
@@ -1208,6 +1234,10 @@ def localize(prj, text, at, names):
     if ptrs:                                                # (data the draft goes through: pointers)
         for d in ptrs:
             decl.append("extern %s *%s;" % ("struct " + STRUCTPTR[d] if d in STRUCTPTR else "char *" if PTRSIZE.get(d) == 2 and re.search(r"\*\+\+%s\b" % d, body) else "char", d))
+    uch = [d for d in ints if d in UCHAR]
+    ints = [d for d in ints if d not in UCHAR]
+    if uch:
+        decl.append("extern unsigned char %s;" % ", ".join(uch))
     if ints:
         decl.append("extern int %s;" % ", ".join(ints))
     for h in incs:                                          # (what an included header declares: its)
