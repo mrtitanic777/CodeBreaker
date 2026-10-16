@@ -1345,6 +1345,17 @@ def temporaries(text):
     return text
 
 
+def assign_in_args(text):
+    """X = E; f(..X..); - the value passed from the register it was stored from: f(..(X = E)..) (a variant)"""
+    def one(m):
+        ind, x, e, call = m.groups()
+        if len(re.findall(r"(?<![\w>.])%s(?![\w(])" % re.escape(x), call)) != 1:
+            return m.group(0)
+        return ind + re.sub(r"(?<![\w>.])%s(?![\w(])" % re.escape(x), lambda _: "(%s = %s)" % (x, e), call, count=1)
+    t = re.sub(r"(?m)^([ \t]*)([A-Za-z_][\w\->\[\]]*) = ([^;\n=]+);\n[ \t]*((?:return )?[A-Za-z_]\w*\(.*\);)$", one, text)
+    return t if t != text else None
+
+
 def return_sources(text):
     """X = Y; return X; - the value still in the register it was stored from: return Y (a variant: a reload of X
     is other code)"""
@@ -1692,7 +1703,7 @@ def fold_registers(text):
     lines = text.split("\n")
     out = []
     for k, l in enumerate(lines):
-        m = re.match(r"(\s*)(ax|al|bx|cx|dx|si|di) = (.*);\s*$", l)
+        m = re.match(r"(\s*)(ax|al|bx|cx|dx|si|di|bl|cl|dl|ah|bh|ch|dh) = (.*);\s*$", l)
         if m:
             ind, reg, expr = m.groups()
             rest = "\n".join(lines[k + 1:])
@@ -1950,7 +1961,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = long_ladders(long_pairs(t))                     # (the longs again, as the passes left them)
         t = frame_chars(t, widths)
         t = fill_frame(t, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
-        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t)] if v]
+        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t)] if v]
         both = pre_steps(t)
         both = pre_increments(both) if both else None
         if both:
@@ -2924,7 +2935,54 @@ def prove_best(prj, tc, inv, text, a, ln, names, regparam=None):
         rank = _rank(v)
         if best is None or rank < best[0]:
             best = (rank, src, v)
-    return best[1], best[2]
+    if best and best[2].startswith("differs"):              # (the best that compiles, rewritten a way at a time:
+        return refine(prj, tc, a, ln, best)                 #  each kept that brings it nearer - combinations
+    return best[1], best[2]                                 #  the variants alone do not make)
+
+
+def _place_variants(prj, src):
+    """the numbers a pointer is given or compared with in a localized source as the places in the data they are"""
+    out = []
+    for name, t in address_variants(src, 0x10000, most=3):
+        if not re.search(r"(?m)^extern .*\b%s\b" % name, t):
+            t = "extern char %s[];\n" % name + t
+        out.append(t)
+    return out
+
+
+REFINERS = [lambda prj, s: [assign_in_args(s)], lambda prj, s: [return_sources(s)], lambda prj, s: [compound_assigns(s)],
+            lambda prj, s: [chain_assigns(s)], lambda prj, s: [for_loops(s)], lambda prj, s: [store_increments(s)],
+            lambda prj, s: [pre_steps(s)], lambda prj, s: [pre_increments(s)], lambda prj, s: [assign_in_tests(s)],
+            lambda prj, s: [and_returns(s)], lambda prj, s: [register_temps(s)], lambda prj, s: [void_variant(s)],
+            lambda prj, s: pointer_widths(s), _place_variants, lambda prj, s: string_variants(prj, s)]
+
+
+def refine(prj, tc, a, ln, best, rounds=2, budget=40):
+    """-> (source, verdict): best (rank, source, verdict) rewritten by REFINERS one at a time, each rewriting
+    kept when the compiler finds the result nearer - a greedy climb, bounded"""
+    rank, src, v = best
+    spent = 0
+    for _ in range(rounds):
+        moved = False
+        for f in REFINERS:
+            try:
+                alts = [x for x in f(prj, src) if x and x != src]
+            except Exception:
+                continue
+            for alt in alts:
+                if spent >= budget:
+                    return src, v
+                spent += 1
+                v2 = _prove(prj, tc, alt, a, ln, tries=2, budget=3)
+                if v2 == "identical":
+                    return _prove.src, v2
+                r2 = _rank(v2)
+                if r2 < rank:
+                    rank, src, v, moved = r2, _prove.src, v2, True
+                    break
+        if not moved:
+            break
+    return src, v
 
 
 def table_hook(code):
