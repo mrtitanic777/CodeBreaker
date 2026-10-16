@@ -1647,6 +1647,33 @@ def default_last(text):
     return None
 
 
+def empty_cases_first(text):
+    """a switch's arms that only break (case K: break;) moved to its top (a variant: such an arm has no code of
+    its own - where it is written decides the layout of the others)"""
+    lines = text.split("\n")
+    for k, l in enumerate(lines):
+        m = re.fullmatch(r"(\s*)switch \(.*\) \{", l)
+        if not m:
+            continue
+        ind = m.group(1)
+        end = next((j for j in range(k + 1, len(lines)) if lines[j] == ind + "}"), None)
+        if end is None:
+            continue
+        moved, rest, j = [], [], k + 1
+        while j < end:
+            if re.fullmatch(r"%scase [^:]+:" % re.escape(ind), lines[j]) and j + 1 < end and lines[j + 1].strip() == "break;" and \
+                    (j == k + 1 or re.match(r"\s*(?:break;|return\b|goto\b|continue;)", lines[j - 1]) or lines[j - 1].strip().endswith("}")) and \
+                    j > k + 1:
+                moved += lines[j:j + 2]
+                j += 2
+                continue
+            rest.append(lines[j])
+            j += 1
+        if moved:
+            return "\n".join(lines[:k + 1] + moved + rest + lines[end:])
+    return None
+
+
 def push_tails(text):
     """if (C) { ..; r = A; } else { ..; r = B; } S(r); - the statement after, taking what each arm leaves in r, in
     each arm with its value: the compiler's one copy of a tail both arms ended with (a variant)"""
@@ -2475,7 +2502,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = long_ladders(long_pairs(t))                     # (the longs again, as the passes left them)
         t = frame_chars(fn_pointers(t), widths)
         t = fill_frame(t, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
-        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t)] if v]
+        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t)] if v]
         both = pre_steps(t)
         both = pre_increments(both) if both else None
         if both:
@@ -3524,6 +3551,7 @@ REFINERS = [lambda prj, s: [assign_in_args(s)], lambda prj, s: [return_sources(s
             lambda prj, s: pointer_widths(s), _place_variants, lambda prj, s: string_variants(prj, s),
             lambda prj, s: [split_ternaries(s)], lambda prj, s: [default_last(s)], lambda prj, s: [push_tails(s)],
             lambda prj, s: [unsigned_registers(s)], lambda prj, s: [unmasked(s)], lambda prj, s: [no_default(s)],
+            lambda prj, s: [empty_cases_first(s)],
             lambda prj, s: [re.sub(r"\b0, 0\)", "0L)", s)]]     # (two zero words pushed: a long 0)
 
 

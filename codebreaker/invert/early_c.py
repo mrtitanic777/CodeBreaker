@@ -1347,11 +1347,32 @@ class R:
         s.args.append("*(double *)%s"%v if n==8 else "*(struct _b%d *)%s"%(n,v))
         return j-i
 
+    def _scratch_index(s,i):
+        """3.00's index of words in a free index register: mov di,R; shl di,1; .. [bx + di] - and di read no
+        more before it is given again: di is (R << 1) there, no variable. 0: not one"""
+        ins=s.ins
+        if i+2>=len(ins) or ins[i].mnemonic!="mov": return 0
+        m=re.fullmatch(r"(si|di), (ax|bx|cx|dx|si|di)", ins[i].op_str)
+        if not m or m.group(1)==m.group(2) or (ins[i+1].mnemonic,ins[i+1].op_str)!=("shl","%s, 1"%m.group(1)): return 0
+        r=m.group(1)
+        k=i+2
+        if "[bx + %s]"%r not in ins[k].op_str: return 0
+        for x in ins[k+1:]:                               # (read again before given again: a variable after all)
+            if x.mnemonic in CJMP or x.mnemonic in ("jmp","ret","retf","call"): break
+            if re.search(r"\b%s\b"%r, x.op_str):
+                if x.mnemonic=="mov" and x.op_str.startswith(r+", ") and not re.search(r"\b%s\b"%r, x.op_str[4:]): break
+                return 0
+        v=s._val(m.group(2)); v=str(v)
+        setattr(s,r,"(%s << 1)"%(v if re.fullmatch(r"[\w\->.]+", v) else "(%s)"%v))
+        return 2
+
     def _step0(s,i,out):
         if s.msc3:
             n=s._struct_copy(i,out)
             if n: return i+n
             n=s._arg_copy(i)
+            if n: return i+n
+            n=s._scratch_index(i)
             if n: return i+n
         """Straight-line: process ins[i], maybe append a statement. Return next i."""
         s.i=i; s.out=out
