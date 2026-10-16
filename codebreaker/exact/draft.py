@@ -1838,8 +1838,20 @@ def structs(text, widths):
         if p in uses:
             inner.setdefault((p, int(n)), set()).add(int(m_))
     text = re.sub(r"\((\w+->f\d+)\)->", r"\1->", text)
+    # (a whole deref of a field chain that goes on as a pointer elsewhere - *p->fN, *p->fN->fM: its first field)
+    for _ in range(3):
+        for p, chain in set(re.findall(r"(?<![\w>)\]])\*(\w+)((?:->f\d+)+)\b(?!\s*(?:->|\[|\.))", text)):
+            n = int(re.findall(r"->f(\d+)", chain)[-1])
+            if p in uses and (re.search(r"\b%s%s->f\d+" % (p, re.escape(chain)), text) or (len(chain.split("->")) > 2)):
+                text = re.sub(r"(?<![\w>)\]])\*%s%s\b(?!\s*(?:->|\[|\.))" % (p, re.escape(chain)), "%s%s->f0" % (p, chain), text)
+                if len(chain.split("->")) == 2:
+                    inner.setdefault((p, n), set()).add(0)
     ptrfield = {}
     defs = []
+    deeper = {}                                             # (what chains reach further down: p->fA->fB->fC..)
+    for p, chain in re.findall(r"\b(\w+)((?:->f\d+){3,})", text):
+        if p in uses:
+            deeper.setdefault(p, set()).update(int(o) for o in re.findall(r"->f(\d+)", chain)[2:])
     for (p, n), subs in sorted(inner.items()):
         bytes_ = {o for o in subs if ("*", o) in widths}    # (a byte the code reads where p has a word: another struct)
         # (what bx - the register the model goes on through - reads at an offset, beside what the others read
@@ -1850,6 +1862,7 @@ def structs(text, widths):
         if (subs <= uses[p] or (p, n) == (p, 0) and subs <= uses[p] | {0}) and not both and \
                 not (bytes_ & ({n} | set(k for (q, k) in inner if q == p))):
             ptrfield[(p, n)] = "struct s_%s *" % p
+            uses[p] |= deeper.get(p, set())                 # (p's own struct: what the chains reach further too)
             continue
         fl, pos = [], 0
         for o in sorted(subs):
@@ -1893,6 +1906,8 @@ def structs(text, widths):
                       lambda m: "%sint %s;\n%sstruct %s *%s;" % (m.group(1), (m.group(2) + m.group(3).lstrip(", ")).strip(", "), m.group(1), tag, p)
                       if (m.group(2) + m.group(3)).strip(", ") else "%sstruct %s *%s;" % (m.group(1), tag, p), text)
         STRUCTPTR[p] = tag
+        if ("*", 0) in widths or any(w[0].endswith("*") for w in widths if isinstance(w, tuple) and len(w) == 2 and isinstance(w[0], str)):
+            text = re.sub(r"(?<![\w>.])%s\[" % p, "((char *)%s)[" % p, text)   # (indexed by bytes: through a char *)
     return "\n".join(defs) + "\n" + text
 
 
@@ -2438,7 +2453,13 @@ def localize(prj, text, at, names):
             data = [d for d in data if d not in near]
     arrs = [d for d in data if d in ARRAYS and d not in fptr]   # (indexed in place: an array, not a pointer)
     pvars = set(re.findall(r"(?m)^[ \t]*(?:register\s+)?char\s*\*\s*(\w+);", text))   # (pointers the draft declares)
+    sptrs = dict((n, t_) for t_, n in re.findall(r"(?m)^[ \t]*(?:register\s+)?(struct \w+)\s*\*\s*(\w+);", text))
+    pvars |= set(sptrs)
     flows = lambda d: any(re.search(r"(?m)^[ \t]*%s = %s\b|^\s*%s = %s\b" % (p, d, d, p), body) for p in pvars)
+    for d in data:                                          # (data given a struct pointer's value: a pointer to it)
+        src_ = next((p for p in sptrs if re.search(r"(?m)^[ \t]*(?:\w+ = )*%s = (?:\w+ = )*%s;$" % (d, p), body)), None)
+        if src_ and d not in STRUCTPTR:
+            STRUCTPTR[d] = sptrs[src_].split()[1]
     ptrs = [d for d in data if d not in fptr and d not in arrs and (re.search(r"\*\s*\(?\s*(?:\+\+|--)?\s*%s\b|\b%s\s*(?:\+\+|--)?\s*(?:->|\[)" % (d, d), body)
                                                                   or flows(d))]   # (or given a pointer's value, or giving one)
     ints = [d for d in data if d not in ptrs and d not in fptr and d not in arrs]
