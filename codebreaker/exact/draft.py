@@ -86,8 +86,43 @@ def _truth(c):
     return c
 
 
+def _balanced(s):
+    depth = 0
+    for ch in s:
+        depth += (ch == "(") - (ch == ")")
+        if depth < 0:
+            return False
+    return depth == 0
+
+
+def _top_split(c, op):
+    """c split at op (&& or ||) outside parentheses, or [c]"""
+    out, depth, cur, k = [], 0, "", 0
+    while k < len(c):
+        ch = c[k]
+        depth += (ch == "(") - (ch == ")")
+        if depth == 0 and c.startswith(" %s " % op, k):
+            out.append(cur)
+            cur = ""
+            k += len(op) + 2
+            continue
+        cur += ch
+        k += 1
+    return out + [cur]
+
+
 def _not(c):
     c = _strip(c)
+    inner = c[1:-1] if c.startswith("(") and c.endswith(")") and _balanced(c[1:-1]) else c
+    m = re.fullmatch(r"!\((.*)\)", inner)                   # (!(X): X)
+    if m and _balanced(m.group(1)):
+        return "(%s)" % m.group(1)
+    if re.fullmatch(r"![\w\->\[\].]+", inner):              # (!x: x)
+        return inner[1:]
+    for op, other in (("&&", "||"), ("||", "&&")):          # (De Morgan, a level down)
+        parts = _top_split(inner, op)
+        if len(parts) > 1:
+            return "(%s)" % (" %s " % other).join(_truth(_not("(" + p + ")")) for p in parts)
     m = re.fullmatch(r"\((.*?) (==|!=|<=|>=|<|>) (.*)\)", c)
     if m and m.group(2) and "(" not in m.group(3).replace("(", "", 0) and m.group(1).count("(") == m.group(1).count(")"):
         flip = {"==": "!=", "!=": "==", "<": ">=", ">=": "<", ">": "<=", "<=": ">"}[m.group(2)]
@@ -99,6 +134,8 @@ def _not(c):
     m = re.fullmatch(r"\((.*) != 0\)", c)
     if m:
         return "!%s" % m.group(1)
+    if re.fullmatch(r"[\w\->\[\].]+", inner):
+        return "!%s" % inner
     return "!%s" % c
 
 
@@ -1162,6 +1199,53 @@ def _same_arm(x, y):
     return at is not None and x[:-1] == y[:at] and _unlabelled(x[:-1]) == x[:-1]
 
 
+def guard_gotos(text):
+    """a goto past statements under a test - the compiler's || of a test that skips them:
+        if (C1) { if (C2) goto L; } S.. L:   ->   if (!C1 || !C2) { S.. }
+        if (C) goto L; S.. L:                ->   if (!C) { S.. }
+    (L then wanted by none else: dropped)"""
+    lines = text.split("\n")
+    changed = True
+    while changed:
+        changed = False
+        for k in range(len(lines)):
+            m = re.match(r"(\s*)if \((.*)\) \{$", lines[k])
+            g = re.match(r"(\s*)if \((.*)\) goto (L_\w+);$", lines[k + 1]) if m and k + 2 < len(lines) else None
+            one = re.match(r"(\s*)if \((.*)\) goto (L_\w+);$", lines[k])
+            if m and g and lines[k + 2] == m.group(1) + "}":
+                ind, lab = m.group(1), g.group(3)
+                cond = "%s || %s" % (_truth(_not("(" + m.group(2) + ")")), _truth(_not("(" + g.group(2) + ")")))
+                start = k + 3
+            elif one:
+                ind, lab = one.group(1), one.group(3)
+                cond = _truth(_not("(" + one.group(2) + ")"))
+                start = k + 1
+            else:
+                continue
+            end = next((j for j in range(start, len(lines)) if lines[j] == ind + lab + ":"), None)
+            if end is None or end == start:
+                continue
+            body = lines[start:end]
+            if any(l.strip() and not l.startswith(ind) for l in body) or any(re.match(r"\s*L_\w+:", l) for l in body):
+                continue
+            depth = 0
+            ok = True
+            for l in body:                                  # (the statements between: whole ones)
+                depth += l.count("{") - l.count("}")
+                if depth < 0:
+                    ok = False
+            if not ok or depth:
+                continue
+            new = ["%sif (%s) {" % (ind, cond)] + ["    " + l if l.strip() else l for l in body] + [ind + "}"]
+            rest = lines[:k] + new + lines[end + 1:]
+            if re.search(r"\bgoto %s;" % lab, "\n".join(rest)):
+                rest = lines[:k] + new + lines[end:]        # (wanted elsewhere: kept)
+            lines = rest
+            changed = True
+            break
+    return "\n".join(lines)
+
+
 def merge_conditions(text):
     """ifs nested as the compiler's || and && leave them, joined again:
         if (A) { if (B) { P } else { Q } } else { Q }   ->  if (A && B) { P } else { Q }
@@ -1529,7 +1613,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = re.sub(r"&(\w+)->f(\d+)\b", r"(\1 + \2)", t)  # (lea: &p[N], &p->fN - the place, p + N)
         t = fold_registers(stored_calls(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(conditional_values(logical_values(t)))))))))
         t = word_arrays(test_first_loops(post_steps(t)))
-        t = temporaries(merge_conditions(self_updates(t)))
+        t = temporaries(merge_conditions(guard_gotos(self_updates(t))))
         t = structs(pointer_flow(local_pointers(register_variables(shapes(t), regs, regparam))), set(widths))
         t = re.sub(r"(?m)^\s*(\w+) = \1;\n", "", t)         # (a register variable given itself: nothing)
         t = fill_frame(t, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
@@ -1769,6 +1853,17 @@ def localize(prj, text, at, names):
                                                                              "f%05x" % int(m.group(2))) + ";", text)
         body = text.split("{", 1)[1] if "{" in text else text
     funcs = sorted(set(funcs) | {w for d in fptr for w in re.findall(r"(?m)^\s*%s = ([A-Za-z_]\w*);" % d, body)})
+    for a_ in [d for d in data if ARRAYS.get(d) == "int"]:  # (an array of words named whole, and the words just
+        base = int(a_[2:], 16)                              #  after it by their own places: its elements)
+        near = [d for d in data if d != a_ and d not in ARRAYS and 0 < int(d[2:], 16) - base < 0x40 and (int(d[2:], 16) - base) % 2 == 0]
+        if re.search(r"\b%s\b(?!\[)" % a_, body) or near:
+            hd, sp_, bd = text.partition("{")
+            bd = re.sub(r"\b%s\b(?!\[)" % a_, "%s[0]" % a_, bd)
+            for d in near:
+                bd = re.sub(r"\b%s\b" % d, "%s[%d]" % (a_, (int(d[2:], 16) - base) // 2), bd)
+            text = hd + sp_ + bd
+            body = bd
+            data = [d for d in data if d not in near]
     arrs = [d for d in data if d in ARRAYS and d not in fptr]   # (indexed in place: an array, not a pointer)
     pvars = set(re.findall(r"(?m)^\s*(?:register\s+)?char\s*\*\s*(\w+);", text))   # (pointers the draft declares)
     flows = lambda d: any(re.search(r"(?m)^\s*%s = %s\b|^\s*%s = %s\b" % (p, d, d, p), body) for p in pvars)
@@ -1982,6 +2077,7 @@ def _prove(prj, tc, src, a, ln, tries=4, budget=10):
             if budget <= 0:
                 break
             budget -= 1
+            _prove.spent = getattr(_prove, "spent", 0) + 1
             raw, con = comp(s)
             if raw is None:
                 first_con = first_con or (s, con)
@@ -2045,6 +2141,7 @@ def prove_texts(prj, tc, inv, texts, a, ln, names):
 
 
 MAXCANDS = 48
+FUNC_BUDGET = 150                                           # (compiles a function's candidates may take in all)
 BYTEPTR = set()                                             # (the byte-wide places the code reads: (pointer, offset))
 
 
@@ -2071,9 +2168,12 @@ def prove_best(prj, tc, inv, text, a, ln, names, regparam=None):
         if fpsw not in sw.split():
             cands = [("/* %s: %s */\n" % (fsw, (sw + " " + fpsw).strip()) + src, left) for src, left in cands]
     best = None
+    _prove.spent = 0
     for src, left in cands:
         if left:
             v = "registers left: %s" % " ".join(left)
+        elif _prove.spent >= FUNC_BUDGET and best is not None:
+            break                                           # (compiled enough for one function: the best so far)
         else:
             v = _prove(prj, tc, src, a, ln)
             src = _prove.src                                # (as the compiler's errors mended it)
