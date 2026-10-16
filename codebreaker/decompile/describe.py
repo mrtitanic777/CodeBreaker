@@ -317,6 +317,28 @@ def returns(code, off, limit=600, want=None):
     return None, -1
 
 
+def popped_by_hand(code, off, kind):
+    """Bytes of arguments a function takes off the stack itself at its start: its return
+    address popped (one word near, two far), then more words popped, then the return address
+    pushed back. -> bytes, or None when it does not start so."""
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    ins = list(md.disasm(bytes(code[off:off + 24]), off))[:12]
+    words = 2 if kind == "far" else 1
+    pops = []
+    for i in ins:
+        if i.mnemonic != "pop" or i.op_str not in ("ax", "bx", "cx", "dx", "si", "di", "bp", "es"):
+            break
+        pops.append(i.op_str)
+    if len(pops) <= words:
+        return None
+    back = ins[len(pops):len(pops) + words]
+    ret_regs = pops[:words]
+    # (the return address pushed back as it came: the last popped of it first)
+    if [i.op_str for i in back if i.mnemonic == "push"] != list(reversed(ret_regs)):
+        return None
+    return 2 * (len(pops) - words)
+
+
 def windows_far_prologue(code, off):
     """The prologue of a far function that Windows calls (exports, callbacks): `mov ax,ds` or
     `push ds; pop ax`, `nop`, `inc bp; push bp` -- the odd BP marking a far frame."""
@@ -531,7 +553,11 @@ def model_line(d, va, name, default="near"):
     else:
         kind, pop = returns(code, off)
     # A function that removes its own arguments says so in its return (`retf 6`); one that ends
-    # in a plain return leaves them to the caller.
+    # in a plain return leaves them to the caller -- unless it took them off by hand first
+    # (USER's IsChild: `pop ax; pop dx` its return address, `pop bx; pop cx` its two arguments,
+    # `push dx; push ax` the return address back, then a plain `retf`).
+    if pop == 0:
+        pop = popped_by_hand(code, off, kind or default) or 0
     conv = "__stdcall16" if pop > 0 else "__cdecl16" if pop == 0 else "__stdcall16"
     # what it returns, as its instructions show (where it runs to: the next function's start)
     result = getattr(d, "results", {}).get(va)

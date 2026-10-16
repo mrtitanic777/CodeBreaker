@@ -189,6 +189,15 @@ def _judge(o, md, image, start, end, imported, starts=()):
         o.evidence.append("does nothing but return (%04x %s)" % (start, first_ins.mnemonic))
         o.language = "assembly"
         return
+    two = list(md.disasm(image[start:min(end, start + 12)], start))[:2]
+    if len(two) == 2 and two[0].mnemonic in ("call", "lcall") and two[1].mnemonic in ("ret", "retf") \
+            and not two[1].op_str:
+        # a call and a return, nothing else: whatever the callee leaves -- DS or ES from
+        # GetTaskQueueDS/ES, flags, any register -- goes back to the caller as it came. C hands
+        # back AX and DX only.
+        o.evidence.append("a call passed on (%04x %s %s; %s)" % (start, two[0].mnemonic, two[0].op_str, two[1].mnemonic))
+        o.language = "assembly"
+        return
     if first_ins is not None and first_ins.mnemonic in ("jmp", "ljmp") and end - start <= first_ins.size + 2:
         o.evidence.append("a jump stub (%04x %s %s)" % (start, first_ins.mnemonic, first_ins.op_str))
         o.language = "assembly"
