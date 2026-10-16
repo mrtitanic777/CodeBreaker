@@ -283,8 +283,12 @@ def _assembled16(b, nef, at, segs, stems, public, folder, env, carried=(), force
     through CS -- linked first into the segment so that it stays where it was; and each rejected
     function, instead of a stand-in, when it can be written so and assembles back to the
     original's bytes. -> {import symbol without its underscore: (module, what)} they need."""
+    import pickle
     from codebreaker.build import asm16
+    from codebreaker.source import assembly as _assembly
     wasm = watcom.ow_tool("wasm")
+    asm_stamp = cache.key(cache.tool(wasm) if wasm else "", open(asm16.__file__, "rb").read(),
+                          open(_assembly.__file__, "rb").read(), open(__file__, "rb").read())
     b.lead_ins, b.placed_c, b.moved_c, b._publics = [], set(), set(), dict(public)
     if not wasm:
         return {}
@@ -333,6 +337,28 @@ def _assembled16(b, nef, at, segs, stems, public, folder, env, carried=(), force
         that did not come back as they were go back to bytes. -> "" or why it could not be."""
         from codebreaker.build import msc6
         from codebreaker.source import assembly
+        # (what the rounds came to is kept by what decides it -- the module, where the piece is,
+        # its names and holes, this code and the assembler: the same piece in a later build is
+        # written once, as it ended, and not probed and assembled round after round again)
+        k = cache.key(f.text, f.start, f.end, asm_stamp)
+        had = cache.get("assembled16", k)
+        if had is not None:
+            why, good = pickle.loads(had)
+            f.good = set(good)
+            if why:
+                return why
+            code, _msg = _wasm(wasm, env, folder, stem, f.write(f.good))
+            obj = os.path.join(folder, stem + ".obj")
+            if not code and os.path.isfile(obj):                # (checked again: the original's bytes)
+                with open(obj, "rb") as fh:
+                    got, mask = msc6.object_code(fh.read())
+                if len(got) == f.end - f.start and not asm16.differences(got, mask, f):
+                    return ""
+        result = _assemble_rounds(stem, f, msc6, assembly)
+        cache.put("assembled16", k, pickle.dumps((result, sorted(f.good))))
+        return result
+
+    def _assemble_rounds(stem, f, msc6, assembly):
         cand = f.candidates()
         ok = assembly.probe(list(cand.values()), set(), folder, mode="real16") if cand else set()
         good = {at for at, c in cand.items() if c in ok} | {at for at, t in f.ins.items() if t[3] is not None}
@@ -664,9 +690,16 @@ def _publics(folder, stems):
     for name, stem in stems.items():
         try:
             with open(os.path.join(folder, stem + ".obj"), "rb") as f:
-                symbols = watcom._omf_publics(f.read())
+                body = f.read()
         except OSError:
             continue
+        k = cache.key(body)                                  # (an object's publics: read once, kept by its bytes)
+        had = cache.get("omf_publics", k)
+        if had is None:
+            symbols = watcom._omf_publics(body)
+            cache.put("omf_publics", k, "\n".join(sorted(symbols)).encode("utf-8"))
+        else:
+            symbols = set(had.decode("utf-8").split("\n")) - {""}
         # as the compiler decorates a C name: _name (__cdecl, or __stdcall with an open argument
         # list), _name@N (__stdcall), name_ (register arguments)
         symbol = next((s for s in sorted(symbols) if s in ("_" + name, name, name + "_") or
@@ -966,6 +999,34 @@ def _build16(b, path, m, folder):
         _last, _pages = struct.unpack_from("<HH", fh.read(6), 2)
     loads_itself = _pages * 512 >= os.path.getsize(path) - 511
 
+    asm_read = {}                                            # (file -> (size, mtime, text): each read once)
+
+    def _asm_texts():
+        asm_dir = os.path.join(folder, "asm")
+        texts = []
+        for fn in (os.listdir(asm_dir) if os.path.isdir(asm_dir) else []):
+            if fn.endswith(".asm"):
+                p = os.path.join(asm_dir, fn)
+                st = os.stat(p)
+                had = asm_read.get(p)
+                if had is None or had[:2] != (st.st_size, st.st_mtime_ns):
+                    with open(p, encoding="utf-8", errors="replace") as fh:
+                        had = asm_read[p] = (st.st_size, st.st_mtime_ns, fh.read())
+                texts.append(had[2])
+        return "\n".join(texts)
+
+    near_seen = {}
+
+    def _near_reached():
+        """The symbols the hand-written code beside reaches near (`near ptr NAME`) -- found again
+        only when the assembly has changed since."""
+        text = _asm_texts()
+        k = hash(text)
+        if k not in near_seen:
+            near_seen.clear()
+            near_seen[k] = set(re.findall(r"near ptr ([\w@$?]+)", text))
+        return near_seen[k]
+
     def elsewhere(name):
         """A far function rebuilt from C, compiled into a code segment of its own beside its
         segment (CODE<n>X) -- for one that does not fit back into its place. -> stem or None.
@@ -978,12 +1039,8 @@ def _build16(b, path, m, folder):
         if any(c in m.near for c in re.findall(r"\b(\w+)\s*\(", texts[name].split("{", 1)[-1])):
             return None                                     # it calls near ones, which only its own segment reaches
         sym = public[name][0] if name in public else "_" + name
-        asm_dir = os.path.join(folder, "asm")
-        for fn in (os.listdir(asm_dir) if os.path.isdir(asm_dir) else []):
-            if fn.endswith(".asm"):
-                with open(os.path.join(asm_dir, fn), encoding="utf-8", errors="replace") as fh:
-                    if re.search(r"near ptr %s\b" % re.escape(sym), fh.read()):
-                        return None                         # hand-written code beside it reaches it near
+        if sym in _near_reached():
+            return None                                     # hand-written code beside it reaches it near
         sub = os.path.join(folder, "s%02dx" % seg)
         os.makedirs(sub, exist_ok=True)
         if sub not in fresh:                                    # (the header beside the function, as in its own
@@ -1311,6 +1368,13 @@ def build(module, outdir=None, call=True, log=print, gated=None):
     log("%s: decompiling" % b.name)
     m = kind.prepare(path, os.path.join(folder, "decompiled"))
     b.functions = len(m.all_keys)
+    from_cache = False
+    if b.kind == "ne" and gated is None and not os.environ.get("CB_NO_GATE"):
+        # every C function's verdict already known (kept by _gate16): the ones that differ go to
+        # assembly now, and the module is built once instead of twice
+        known = _gate16_known(path, m)
+        if known is not None:
+            b.gated, gated, from_cache = dict(known), known, True
     log("%s: compiling %d functions, data and resources" % (b.name, len(m.order)))
     image = (_build16 if b.kind == "ne" else _build32)(b, path, m, folder)
     if not image:
@@ -1319,18 +1383,71 @@ def build(module, outdir=None, call=True, log=print, gated=None):
     shutil.copyfile(image, b.image)
     if b.kind == "ne":
         _whole_file_image(path, b.image)
-        if gated is None and not os.environ.get("CB_NO_GATE"):
-            from codebreaker.verify import isolated16
+        if (gated is None or from_cache) and not os.environ.get("CB_NO_GATE"):
+            # (built with the kept verdicts: only a C function not among them is run now)
             c = sorted(b.placed_c | getattr(b, "moved_c", set()))
             log("%s: running %d functions rebuilt from C beside the original's" % (b.name, len(c)))
-            differ = {n: why for n, verdict, why in isolated16.check(path, folder, c) if verdict == "differs"}
+            differ = _gate16(path, folder, c, m)
+            cache.put("gate16_set", cache.key(open(path, "rb").read(), getattr(m, "header", "")),
+                      "\n".join(sorted(set(c) | set(gated or {}))).encode("utf-8"))
             if differ:
                 log("%s: %d do not do what the original does: rebuilt from their instructions" % (b.name, len(differ)))
-                return build(module, outdir=outdir, call=call, log=log, gated=differ)
+                return build(module, outdir=outdir, call=call, log=log, gated=dict(gated or {}, **differ))
     check(b)
     if call:
         run(b)
     return b
+
+
+def _gate16_keys(path, names, m):
+    import sys
+    from codebreaker.emulate import windows16
+    from codebreaker.verify import isolated16
+    with open(path, "rb") as f:
+        module_key = cache.key(f.read())
+    tools = cache.key(cache.tool(watcom.ow_tool("wcc") or ""), functions.CFLAGS16,
+                      *[open(sys.modules[x.__name__].__file__, "rb").read() for x in (isolated16, windows16)])
+    header = cache.key(getattr(m, "header", ""))
+    return {n: cache.key(module_key, tools, header, n, m.texts.get(n, "")) for n in names}
+
+
+def _gate16_known(path, m):
+    """{name: how it differs} when the gate's verdict is kept for every function the module has
+    as C text (the last build's set, recorded with it) -- else None."""
+    names = cache.get("gate16_set", cache.key(open(path, "rb").read(), getattr(m, "header", "")))
+    if names is None:
+        return None
+    names = [n for n in names.decode("utf-8").split("\n") if n]
+    differ = {}
+    for n, k in _gate16_keys(path, names, m).items():
+        had = cache.get("gate16", k)
+        if had is None:
+            return None
+        if had[:1] == b"D":
+            differ[n] = had[1:].decode("utf-8", "replace")
+    return differ
+
+
+def _gate16(path, folder, names, m):
+    """{name: how it differs} for the named functions rebuilt from C, each run beside the
+    original's (verify/isolated16.py). A function's verdict is kept (base/cache.py) by what
+    makes it: the original module, the function's C and the header it compiles with, the
+    compiler and its options, and the source of the checker and the emulator -- a function
+    the same as in an earlier build is not run again."""
+    from codebreaker.verify import isolated16
+    keys = _gate16_keys(path, names, m)
+    differ, run = {}, []
+    for n in names:
+        had = cache.get("gate16", keys[n])
+        if had is None:
+            run.append(n)
+        elif had[:1] == b"D":
+            differ[n] = had[1:].decode("utf-8", "replace")
+    for n, verdict, why in isolated16.check(path, folder, run) if run else ():
+        cache.put("gate16", keys[n], (b"D" + (why or "").encode("utf-8", "replace")) if verdict == "differs" else b"S")
+        if verdict == "differs":
+            differ[n] = why
+    return differ
 
 
 def main(argv):

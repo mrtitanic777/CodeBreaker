@@ -67,8 +67,12 @@ class Function(object):
         self.reaches = None                                 # refused for jumping into the middle of this offset's function
         self.holes = sorted(holes)
 
-        def hole_at(x):
-            return next((h for h in self.holes if h[0] <= x < h[1]), None)
+        import bisect
+        hole_starts = [h[0] for h in self.holes]
+
+        def hole_at(x):                                     # (the holes do not overlap: the last one starting at or before x)
+            k = bisect.bisect_right(hole_starts, x) - 1
+            return self.holes[k] if k >= 0 and x < self.holes[k][1] else None
         self.publics = [(start, public)] if isinstance(public, str) else sorted(public)
         public = self.publics[0][1]
         self.cs_labels = {}                                 # offset of an instruction -> the place in the run it reads through CS
