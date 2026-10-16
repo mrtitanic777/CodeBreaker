@@ -121,6 +121,7 @@ class MSPascal(object):
         self.variant = variant or profile.get("default_variant")
         v = profile.get("variants", {}).get(self.variant, {})
         self.version = v.get("version", "1.10")
+        self.helper_data = v.get("helper_data", profile.get("helper_data", 3))
         self.key = hashlib.sha1((self.name + self.version + CACHE_VERSION).encode()).hexdigest()[:12]
 
     def kit(self):

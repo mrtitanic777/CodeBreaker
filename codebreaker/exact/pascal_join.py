@@ -244,6 +244,8 @@ def run(prj, verbose=False):
                     hole = omf.holes(o, seg)
                     got = o.seg[seg][of:of + ln]
                     want = img[a:a + size]
+                    from codebreaker.exact.habits import cmpp
+                    cmpp.HDRLEN = getattr(tc, "helper_data", 3)   # (the bytes after the entry helper's call)
                     try:
                         same, why = getattr(importlib.import_module(mod), fn)(want, got, {k - of for k in hole if of <= k < of + ln})
                     except Exception as e:

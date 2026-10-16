@@ -7,11 +7,13 @@
  "_kit": "mspascal: binaries/mspascal-scp (a folder a version); mspascal110: the 1.10 kit's zips",
  "emulator": "dos",
  "default_variant": "1.10",
+ "_helper_data": "the bytes after a procedure's call of the entry helper: a byte and a word (1.x), the frame size alone (3.x)",
+ "helper_data": 3,
  "variants": {
   "1.10": {"version": "1.10"},
   "2.00": {"version": "2.00"},
   "2.05": {"version": "2.05"},
   "3.04": {"version": "3.04"},
-  "3.11": {"version": "3.11"}
+  "3.11": {"version": "3.11", "helper_data": 2}
  }
 }
