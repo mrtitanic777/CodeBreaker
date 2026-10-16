@@ -226,6 +226,35 @@ def branch_returns(text):
     return text
 
 
+def range_switches(text):
+    """a switch whose cases are one run of values - LO..HI - the compiler tests as a range (cmp LO, jb; cmp HI,
+    jbe): R = E; if ((R >= LO)) { if ((R > HI)) { D } else { C } } else { D }  ->
+    switch (E) { default: D case LO: .. case HI: C }"""
+    lines = text.split("\n")
+    for k in range(len(lines) - 1):
+        a = re.fullmatch(r"([ \t]*)(ax|bx|cx|dx) = (.+);", lines[k])
+        p = _if_parts(lines, k + 1) if a else None
+        if not p or p[2] is None:
+            continue
+        c1 = re.fullmatch(r"\(\(%s >= (\d+)\)\)" % a.group(2), "(" + p[0] + ")")
+        q = _if_parts(p[1], 0) if c1 and p[1] else None
+        if not q or q[3] != len(p[1]) or q[2] is None:
+            continue
+        c2 = re.fullmatch(r"\(\(%s > (\d+)\)\)" % a.group(2), "(" + q[0] + ")")
+        dd = lambda ls: [l[4:] if l.startswith("    ") else l for l in ls]
+        if not c2 or dd(q[1]) != p[2]:
+            continue
+        lo, hi = int(c1.group(1)), int(c2.group(1))
+        if not 0 <= lo <= hi or hi - lo > 16:
+            continue
+        ind = a.group(1)
+        new = ["%sswitch (%s) {" % (ind, a.group(3)), ind + "default:"] + p[2] + [ind + "    break;"] + \
+            ["%scase %d:" % (ind, v) for v in range(lo, hi + 1)] + dd(q[2]) + [ind + "    break;", ind + "}"]
+        lines[k:p[3]] = new
+        return range_switches("\n".join(lines))
+    return text
+
+
 def push_returns(text):
     """`return r;` at the end, every way to it giving r a value last (an if's arms, nested): each of those
     a return of its value, the last return gone - the compiler's jumps to the one exit read back"""
@@ -1780,7 +1809,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = zero_extends(copy_props(table_macros(prj, case_falls(char_stores(char_params(long_pairs(long_returns(t))))), prj.toolchain().p.get("table_macros"))))
         t = re.sub(r"&(\w+)\[(-?)(\d+)\]", lambda m: "(%s %s %s)" % (m.group(1), "-" if m.group(2) else "+", m.group(3)), t)
         t = re.sub(r"&(\w+)->f(\d+)\b", r"(\1 + \2)", t)  # (lea: &p[N], &p->fN - the place, p + N)
-        t = fold_registers(stored_calls(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(push_returns(conditional_values(logical_values(t))))))))))
+        t = fold_registers(stored_calls(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(push_returns(conditional_values(logical_values(range_switches(t)))))))))))
         t = word_arrays(test_first_loops(copy_tests(post_steps(t))))
         t = temporaries(merge_conditions(guard_gotos(self_updates(t))))
         t = structs(pointer_flow(local_pointers(register_variables(shapes(t), regs, regparam))), set(widths))
@@ -1837,7 +1866,12 @@ def byte_fields(inv, code):
     out |= {(p, 0) for p in re.findall(r"BYTE\(\*\(?(?:\+\+|--)?(\w+)(?:\+\+|--)?\)?\)", t)}   # (*p a byte: a char *)
     from codebreaker.exact import x86                       # (and from the code itself: a byte read or written
     FRAMEW.clear()
-    for i in x86.disasm(code, 0, len(code), False):         #  through a register at an offset - whatever the
+    insns = list(x86.disasm(code, 0, len(code), False))
+    for k, i in enumerate(insns):                           # (a slot's byte loaded and widened with zeros: unsigned)
+        z = re.fullmatch(r"al, byte ptr \[bp ([+-]) (0x[0-9a-f]+|\d+)\]", i.op_str) if i.mnemonic == "mov" else None
+        if z and any(x.op_str in ("ah, ah", "ah, 0") and x.mnemonic in ("sub", "xor", "mov") for x in insns[k + 1:k + 4]):
+            FRAMEW.add(((1 if z.group(1) == "+" else -1) * int(z.group(2), 0), "zx"))
+    for i in insns:         #  through a register at an offset - whatever the
         m = re.search(r"byte ptr \[(?:bx|si|di) \+ (0x[0-9a-f]+|\d+)\]", i.op_str)    # draft names the pointer)
         if m and int(m.group(1), 0) < 0x100:
             out.add(("*", int(m.group(1), 0)))
@@ -1860,15 +1894,16 @@ def frame_chars(text, widths):
         slots.setdefault(off, set()).add(w)
     chars = []
     for off, ws in slots.items():
-        if ws != {"byte"}:
+        if ws - {"zx"} != {"byte"}:
             continue
         name = "v%d" % -off if off < 0 else chr(ord("a") + (off - 4) // 2) if off >= 4 and off % 2 == 0 else None
-        if name:
-            chars.append(name)
-    for x in chars:
-        text = re.sub(r"(?m)^([ \t]*)int %s;$" % x, r"\1char %s;" % x, text)
-        text = re.sub(r"(?m)^([ \t]*)int ((?:\w+, )*)%s((?:, \w+)*);$" % x, lambda m: "%sint %s;\n%schar %s;" % (
-            m.group(1), (m.group(2) + m.group(3).lstrip(", ")).strip(", "), m.group(1), x), text)
+        if name:                                            # (widened with zeros where it is read: unsigned)
+            chars.append((name, "unsigned char" if "zx" in ws else "char"))
+    for x, ty in chars:
+        text = re.sub(r"(?m)^([ \t]*)int %s;$" % x, r"\1%s %s;" % (ty, x), text)
+        text = re.sub(r"(?m)^([ \t]*)int ((?:\w+, )*)%s((?:, \w+)*);$" % x, lambda m: "%sint %s;\n%s%s %s;" % (
+            m.group(1), (m.group(2) + m.group(3).lstrip(", ")).strip(", "), m.group(1), ty, x), text)
+        text = re.sub(r"(?m)^([ \t]*)char %s;$" % x, r"\1%s %s;" % (ty, x), text) if ty != "char" else text
     return text
 
 
