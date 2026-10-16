@@ -1239,7 +1239,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         BYTEG.clear()
         BYTEG.update(n for k, n in widths if k == "g")
         FILEPTR.clear()
-        t = zero_extends(copy_props(table_macros(prj, case_falls(char_stores(char_params(t))), prj.toolchain().p.get("table_macros"))))
+        t = zero_extends(copy_props(table_macros(prj, case_falls(char_stores(char_params(long_returns(t)))), prj.toolchain().p.get("table_macros"))))
         t = re.sub(r"&(\w+)\[(-?)(\d+)\]", lambda m: "(%s %s %s)" % (m.group(1), "-" if m.group(2) else "+", m.group(3)), t)
         t = re.sub(r"&(\w+)->f(\d+)\b", r"(\1 + \2)", t)  # (lea: &p[N], &p->fN - the place, p + N)
         t = fold_registers(stored_calls(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(conditional_values(logical_values(t)))))))))
@@ -1317,11 +1317,43 @@ def buffers(text):
     return text
 
 
+def long_returns(text):
+    """a function whose every return gives dx too (the high half: dx:ax) returns a long: `dx = vM; return vN;`
+    (M = N - 2, the two halves of one local) is `return vN;` of a long vN; `dx = (0 - (E >> 15)); return E;` (the
+    sign of E spread: cwd) and `dx = 0; return E;` the value widened - C does that itself"""
+    head, sep, body = split_body(text)
+    if not sep:
+        return text
+    rets = list(re.finditer(r"(?m)^(\s*)return ([^;]+);$", body))
+    if not rets or not all(re.search(r"(?m)^\s*dx = [^;]+;\n\s*\Z", body[:r.start()]) for r in rets):
+        return text
+    longs = set()
+
+    def one(m):
+        ind, hi, lo = m.group(1), m.group(2), m.group(3)
+        h, l = re.fullmatch(r"v(\d+)", hi), re.fullmatch(r"v(\d+)", lo)
+        if h and l and int(h.group(1)) == int(l.group(1)) - 2:
+            longs.add((lo, hi))
+            return "%sreturn %s;" % (ind, lo)
+        if hi == "(0 - (%s >> 15))" % lo or hi == "(0 - (%s >> 15))" % lo.strip("()") or hi == "0":
+            return "%sreturn %s;" % (ind, lo)
+        return m.group(0)
+    body = re.sub(r"(?m)^(\s*)dx = ([^;\n]+);\n\s*return ([^;\n]+);$", one, body)
+    for lo, hi in longs:
+        body = re.sub(r"(?m)^(\s*)int %s;\n" % hi, "", body)
+        body = re.sub(r"(?m)^(\s*)int %s;" % lo, r"\1long %s;" % lo, body)
+    m = re.search(r"(?m)^(\w+\()", head)
+    if m:
+        head = head[:m.start()] + "long\n" + head[m.start():]
+    return head + sep + body
+
+
 def local_pointers(text):
     """a register given the place of a local (`r = bp - N`, the model's lea of [bp-N]): a char pointer into it,
     `r = (char *)&vN;`, its fields the bytes it reaches (`r->fK` is r[K])"""
+    text = re.sub(r"(?m)^(\s*)(\w+) = bp;\n\s*\2 = \2 - (\d+);$", r"\1\2 = bp - \3;", text)   # (mov r,bp; sub r,N)
     for reg, n in re.findall(r"(?m)^\s*(\w+) = bp - (\d+);", text):
-        if not re.search(r"(?m)^\s*int v%s;" % n, text):
+        if not re.search(r"(?m)^\s*(?:int|long) v%s;" % n, text):
             continue
         text = re.sub(r"(?m)^(\s*)%s = bp - %s;" % (reg, n), r"\1%s = (char *)&v%s;" % (reg, n), text)
         text = re.sub(r"\b%s->f(\d+)\b" % reg, r"%s[\1]" % reg, text)
@@ -1409,11 +1441,12 @@ def localize(prj, text, at, names):
         rel = int(m.group(1), 16)
         if rel >= 0x80000000:
             rel -= 1 << 32
-        t = (at + rel) & 0xFFFFF
+        t = (at + rel) & 0xFFFFF if at + rel >= 0 else at + rel + 0x10000   # (a near call wraps in its 64K: the segment's)
         return (names.get(t) or "f%05x" % t) + "("
     text = re.sub(r"\bsub_(-?[0-9a-f]+)\(", call, text)
     text = re.sub(r"\bg_([0-9a-f]{1,4})\b", lambda m: "g_%04x" % int(m.group(1), 16), text)
     macros = prj.toolchain().p.get("macros")
+    text = fp_conversions(text, prj.toolchain().p.get("fp_conversions"))
     text = library_macros(text, macros)                     # (the routines named: the macros they show)
     text = data_macros(prj, text, prj.toolchain().p.get("data_macros"))
     if FILEPTR:                                             # (the stream's fields the struct pass read: the macro's now)
@@ -1477,7 +1510,81 @@ def localize(prj, text, at, names):
         funcs = [f for f in funcs if f not in header_names(prj, h)]
     if funcs:
         decl.append("extern %s;" % ", ".join("%s()" % f for f in funcs))
+    text = fp_types(text)
     return ("\n".join(decl) + "\n\n" if decl else "") + text, left
+
+
+def fp_conversions(text, routines):
+    """the library's conversion of the 8087's top to an integer (the profile's "fp_conversions": its names - ftol)
+    is C's own conversion in an assignment: `X = ftol(E);` is `X = E;`, and `p->f0 = ftol(E); p->f2 = dx;` (the
+    high half too) `*p = E;` of a long *p"""
+    if not routines:
+        return text
+    rx = "|".join(re.escape(r) for r in routines)
+    arg = r"((?:[^()]|\((?:[^()]|\([^()]*\))*\))*)"
+    def long_(m):
+        FPINFO.setdefault("types", {})["*" + m.group(2)] = "long"
+        return "%s*%s = %s;" % (m.group(1), m.group(2), m.group(3))
+    text = re.sub(r"(?m)^(\s*)(\w+)->f0 = (?:%s)\(%s\);\n\s*\2->f2 = dx;$" % (rx, arg), lambda m: long_(m) if True else "", text)
+    text = re.sub(r"(?m)^(\s*)(.+?) = (?:%s)\(%s\);$" % (rx, arg), r"\1\2 = \3;", text)
+    return text
+
+
+def _redeclare(t, x, new):
+    """t with x's declaration (`int a, x, b;` - a parameter's, a local's) as `new;`, or None"""
+    d = re.search(r"(?m)^(\s*)(register\s+)?(struct \w+|\w+)\s*\*?\s*((?:\w+, )*)%s((?:, \w+)*);$" % re.escape(x), t)
+    if not d or d.group(3) in ("return", "goto", "extern"):
+        return None
+    rest = (d.group(4) + d.group(5).lstrip(", ")).strip(", ")
+    rep = ("%s%s%s %s;\n" % (d.group(1), d.group(2) or "", d.group(3), rest) if rest else "") + \
+        "%s%s%s;" % (d.group(1), d.group(2) or "", new)
+    return t[:d.start()] + rep + t[d.end():]
+
+
+def fp_types(text):
+    """the types the 8087's operands showed (FPINFO): `*p` a float/double/long - p a pointer to one; vN or a
+    parameter one itself; data declared so; a function giving a double back declared double"""
+    types = FPINFO.get("types") or {}
+    if not types and not FPINFO.get("ret"):
+        return text
+    head, sep, body = split_body(text)
+    if not sep:
+        return text
+    pre, fn = "", head
+    m = re.search(r"(?m)^(?:\w+\s*\n)?\w+\(", head)         # (the declarations before the function: data's)
+    if m:
+        pre, fn = head[:m.start()], head[m.start():]
+    for nm, ty in types.items():
+        m = re.fullmatch(r"\*\(?(\w+)\)?", nm)
+        x, ptr = (m.group(1), True) if m else (nm, False)
+        if not re.fullmatch(r"\w+", x):
+            continue
+        new = "%s %s%s" % (ty, "*" if ptr else "", x)
+        f2 = _redeclare(fn, x, new)
+        if f2:
+            fn = f2
+            continue
+        lines = body.split("\n")                            # (a local: among the declarations at the top)
+        for k, l in enumerate(lines):
+            if l.strip() and not re.match(r"\s*(?:register\s+)?(?:int|char|long|unsigned|short|struct|float|double)\b", l):
+                break
+            l2 = _redeclare(l, x, new) if l.strip() else None
+            if l2:
+                lines[k] = l2
+                break
+        else:
+            lines = None
+        if lines is not None:
+            body = "\n".join(lines)
+        if x.startswith("g_"):
+            pre = re.sub(r"(?m)^extern int ((?:\w+, )*)%s((?:, \w+)*);$" % x, lambda d: (
+                ("extern int %s;\n" % (d.group(1) + d.group(2).lstrip(", ")).strip(", ") if (d.group(1) + d.group(2)).strip(", ") else "") +
+                "extern %s;" % new), pre)
+    if FPINFO.get("ret"):
+        m = re.search(r"(?m)^\w+\(", fn)
+        if m and not re.search(r"(?m)^double\s*$", fn):
+            fn = fn[:m.start()] + FPINFO["ret"] + "\n" + fn[m.start():]
+    return pre + fn + sep + body
 
 
 ERRLINE = re.compile(r"\((\d+)\) : (?:error \w+: )?(.*)$", re.M)
@@ -1659,6 +1766,11 @@ def prove_best(prj, tc, inv, text, a, ln, names, regparam=None):
             seen.add(src)
             uniq.append((src, left))
     cands = uniq[:MAXCANDS]
+    fpsw, fsw = tc.p.get("fp_switch"), tc.p.get("file_switches")
+    if FPINFO.get("fp") and fpsw and fsw:                   # (code of the 8087's: compiled for it - the profile's
+        sw = prj.switches if prj.switches is not None else tc.p.get("switches", "")   # "fp_switch")
+        if fpsw not in sw.split():
+            cands = [("/* %s: %s */\n" % (fsw, (sw + " " + fpsw).strip()) + src, left) for src, left in cands]
     best = None
     for src, left in cands:
         if left:
@@ -1746,11 +1858,40 @@ def fill_frame(text, fs, regs_count=True):
     return head + sep + "\n".join(lines)
 
 
+def fp_native(code):
+    """the code with the floating-point emulator's calls (int 34h..3Bh: an 8087 instruction, its first byte
+    D8h + n; int 3Ch: one with a segment; int 3Dh: fwait) written as the 8087's own - each as long as it was
+    (a wait before it), so the model reads them as the instructions they stand for"""
+    from codebreaker.exact import x86
+    b = bytearray(code)
+    if not re.search(rb"\xcd[\x34-\x3d]", bytes(code)):
+        return bytes(code)
+    for i in x86.disasm(bytes(code), 0, len(code), True):
+        raw = bytes(i.bytes)
+        if raw[:1] != b"\xcd" or len(raw) < 2 or not 0x34 <= raw[1] <= 0x3D:
+            continue
+        a = i.address
+        if raw[1] <= 0x3B:
+            b[a:a + 2] = bytes([0x9B, 0xD8 + raw[1] - 0x34])
+        elif raw[1] == 0x3D:
+            b[a:a + 2] = b"\x9b\x90"
+        elif len(raw) >= 3:
+            seg = {0x00: 0x26, 0x40: 0x2E, 0x80: 0x36, 0xC0: 0x3E}[raw[2] & 0xC0]
+            b[a:a + 3] = bytes([0x9B, seg, 0xD8 | (raw[2] & 7)])
+    return bytes(b)
+
+
 def model_texts(inv, code, name, base=None):
     """[(text, register parameters)] - the model's text of a function, from each of its structurers (a linear walk;
     a structured control-flow graph, where the model has one): the compiler decides between them"""
+    raw, code = code, fp_native(code)
     out = []
-    fs, params, stmts, pt, loc = inv.recover(code)
+    try:
+        fs, params, stmts, pt, loc = inv.recover(code)
+    except Exception:
+        if raw == code:
+            raise
+        fs, params, stmts, pt, loc = inv.recover(raw)       # (the linear walk lost in the 8087's code: as it was)
     FRAME[0] = fs                                           # (the frame's size: fill_frame)
     regparam = dict(getattr(inv, "LAST", {}).get("regparam") or {})
     out.append((inv.to_c(name, fs, params, stmts, pt, loc), regparam))
@@ -1765,6 +1906,7 @@ def model_texts(inv, code, name, base=None):
         try:
             fs, params, stmts, pt, loc = inv.recover_cfg(code)
         except Exception:
+            _fpinfo(inv, raw, code)
             return out
         finally:
             flow16.CMPSWITCH = False
@@ -1779,7 +1921,18 @@ def model_texts(inv, code, name, base=None):
         t = inv.to_c(name, fs, params, stmts, pt, loc)
         if t != out[0][0]:
             out.append((t, regparam))
+    _fpinfo(inv, raw, code)
     return out
+
+
+FPINFO = {}                                                 # (the function's floating point: types, its value, any)
+
+
+def _fpinfo(inv, raw, code):
+    last = getattr(inv, "LAST", {})                         # (what the model read of the 8087's values: localize)
+    FPINFO.clear()
+    FPINFO.update(types=dict(last.get("fptypes") or {}), ret=last.get("fpret"),
+                  fp=raw != code or bool(re.search(rb"\x9b[\xd8-\xdf]", bytes(raw))))
 
 
 def run(prj, every=False, limit=None, verbose=False):

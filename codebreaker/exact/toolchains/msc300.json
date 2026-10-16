@@ -25,6 +25,9 @@
  "_env_unless": "the passes' own floating point emulator stops under emulation (\"Floating point error: Stack overflow\"); with -FPi the 8087 path runs instead",
  "switches": "-Oat",
  "file_switches": "MFLAGS",
+ "fp_switch": "-FPi",
+ "fp_conversions": ["ftol", "_ftol", "__ftol"],
+ "_fp_switch": "the switch a function using the 8087 (or its emulator) was compiled with: the draft stage gives it to such a function's source",
  "derive": {
   "ot": {
    "regex": "-O[a-z]*t",

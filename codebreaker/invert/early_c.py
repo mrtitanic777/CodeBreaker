@@ -20,6 +20,7 @@ INV={"jge":"<","jg":"<=","jle":">","jl":">=","jne":"==","je":"!=","jz":"!=","jnz
      "ja":"<=","jae":"<","jb":">=","jbe":">","jc":">=","jnc":"<"}        # unsigned, negated (fall-through)
 CJMP=set(JCC)|{"jz","jnz","js","jns"}
 BYTEREG=("al","bl","cl","dl","ah","bh","ch","dh")        # 8-bit sub-registers (exposed as vars)
+FPOPS={"fld","fild","fldz","fld1","fst","fstp","fist","fistp","fchs","fxch","fadd","faddp","fsub","fsubp","fmul","fmulp","fdiv","fdivp","fsubr","fsubrp","fdivr","fdivrp","fiadd","fisub","fimul","fidiv","fisubr","fidivr","fwait","fnop","finit","fninit","fclex","fnclex"}   # (the 8087 instructions fp_step reads)
 BYTEPARENT={"al":"ax","ah":"ax","bl":"bx","bh":"bx","cl":"cx","ch":"cx","dl":"dx","dh":"dx"}
 WORDHALVES={"ax":("al","ah"),"bx":("bl","bh"),"cx":("cl","ch"),"dx":("dl","dh")}
 TRACKED_BYTE={"mov","add","sub","or","and","xor","inc","dec","shl","sal","shr","sar","neg","not"}   # byte-reg ops tracked as breg values
@@ -188,6 +189,86 @@ class R:
         elif re.match(r"(0x[0-9a-f]+|\d+)$", e): e="0x%x"%(int(e,0)+2)
         else: e=e+" + 2"
         return op[:m.start()]+"["+e+"]"+op[m.end():]
+    def fp_step(s,i,out):
+        """The 8087's instructions (the emulator's calls written as them: draft.fp_native) as C: its stack of
+        values (s.fst, the top last) - a load pushes a variable, an operation combines, a store gives the top
+        to a variable. The operands' types the sizes show (LAST["fptypes"]: name -> float/double/long/int); a
+        double stored to a fixed place whose address goes to ax is the function's value (LAST["fpret"]).
+        0: not one it reads (a compare: left to the rest)"""
+        ii=s.ins[i]; mn=ii.mnemonic; ops=ii.op_str
+        st=s.__dict__.setdefault("fst",[])
+        types=LAST.setdefault("fptypes",{})
+        if mn in ("wait","fwait","fnop","finit","fninit","fclex","fnclex"): return i+1
+        def mem(op, integer):
+            m=re.match(r"(?:(\w+):\s*)?(byte|word|dword|qword|tbyte) ptr (.*)$", op)
+            if not m: return None
+            size=m.group(2)
+            nm=s.memname(("word ptr " if size!="byte" else "byte ptr ")+m.group(3))
+            if nm is None: return None
+            ty={"word":"int","dword":"long","qword":"long"}.get(size) if integer else {"dword":"float","qword":"double","tbyte":"double"}.get(size)
+            if ty: types.setdefault(nm,ty)
+            return nm
+        def sti(op):
+            m=re.fullmatch(r"st\((\d)\)",op.strip()); return int(m.group(1)) if m else (0 if op.strip()=="st" else None)
+        OPS={"fadd":"+","fsub":"-","fmul":"*","fdiv":"/","fiadd":"+","fisub":"-","fimul":"*","fidiv":"/",
+             "fsubr":"-","fdivr":"/","fisubr":"-","fidivr":"/"}
+        if mn in ("fld","fild"):
+            k=sti(ops)
+            if k is not None:
+                if k>=len(st): return 0
+                st.append(st[-1-k]); return i+1
+            x=mem(ops, mn=="fild")
+            if x is None: return 0
+            st.append(x); return i+1
+        if mn in ("fldz","fld1"): st.append("0.0" if mn=="fldz" else "1.0"); return i+1
+        if mn in ("fst","fstp","fist","fistp"):
+            if not st: return 0
+            k=sti(ops)
+            if k is not None:                              # (fstp st(i): the top to st(i))
+                v=st[-1]
+                if k: st[-1-k]=v
+                if mn.endswith("p"): st.pop()
+                return i+1
+            # the function's value: a double stored to a fixed place, then its address to ax
+            j=i+1
+            while j<len(s.ins) and s.ins[j].mnemonic in ("wait","fwait","nop"): j+=1
+            m=re.match(r"qword ptr \[(0x[0-9a-f]+|\d+)\]$", ops)
+            if m and j<len(s.ins) and s.ins[j].mnemonic=="mov" and s.ins[j].op_str=="ax, %s"%m.group(1):
+                LAST["fpret"]="double"
+                s.emit(out,"return %s;"%st[-1])
+                if mn.endswith("p"): st.pop()
+                return j+1
+            x=mem(ops, mn.startswith("fi"))
+            if x is None: return 0
+            s.emit(out,"%s = %s;"%(x,st[-1]))
+            if mn.endswith("p"): st.pop()
+            return i+1
+        if mn=="fchs":
+            if not st: return 0
+            st[-1]="(-%s)"%st[-1]; return i+1
+        if mn=="fxch":
+            k=sti(ops) or 1
+            if k>=len(st): return 0
+            st[-1],st[-1-k]=st[-1-k],st[-1]; return i+1
+        base=mn[:-1] if mn.endswith("p") and mn[:-1] in OPS else mn
+        if base in OPS:
+            op=OPS[base]; rev=base.endswith("r")
+            parts=[p.strip() for p in ops.split(",")] if ops else []
+            if len(parts)==1 and sti(parts[0]) is None:    # (a memory operand: the top with it)
+                if not st: return 0
+                x=mem(parts[0], base.startswith("fi"))
+                if x is None: return 0
+                st[-1]="(%s %s %s)"%((x,op,st[-1]) if rev else (st[-1],op,x)); return i+1
+            if not parts: parts=["st(1)","st"]             # (the bare form: st(1) op st, popped)
+            if len(parts)==1: parts=[parts[0],"st"] if mn.endswith("p") else ["st",parts[0]]
+            d,src=sti(parts[0]),sti(parts[1])
+            if d is None or src is None or max(d,src)>=len(st): return 0
+            a,b=st[-1-d],st[-1-src]
+            st[-1-d]="(%s %s %s)"%((b,op,a) if rev else (a,op,b))
+            if mn.endswith("p"): st.pop()
+            return i+1
+        return 0
+
     def memname(s,op):
         r=s._memname0(op)
         if MARK and FARPTR and r is not None and re.search(r"\bes:", op): r="FARM(es, %s)"%r   # through es, not ds
@@ -1188,6 +1269,9 @@ class R:
         n=s._carry(i,out)
         if n: return i+n
         ii=s.ins[i]; mn=ii.mnemonic; ops=ii.op_str; d0=ops.split(",")[0].strip()
+        if mn in ("wait","fwait") or (mn.startswith("f") and mn in FPOPS):
+            n=s.fp_step(i,out)
+            if n: return n
         if mn in ("cmp","test") and ops.count(", ")==1:
             # A compare stepped over here is not followed by its jump in the same block: the
             # jump sits in a block reached by fall-through or by a plain jmp (a conditional jump
@@ -1265,6 +1349,8 @@ class R:
         if mn=="call":
             m=re.match(r"(0x[0-9a-f]+|\d+)$", ops)
             args=", ".join(s._take_args(i, "near", s.num(m.group(1)) if m else None))
+            if not args and getattr(s,"fst",None):            # (the 8087's top taken by a routine of no
+                args=s.fst.pop()                               #  arguments: a conversion - __ftol)
             if m:
                 expr="sub_%x(%s)"%(s.num(m.group(1)), args)
             else:                                              # indirect call: through a ptr/reg
