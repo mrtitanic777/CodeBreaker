@@ -698,6 +698,13 @@ def empty_loops(text):
     return "\n".join(lines)
 
 
+def stored_reads(text):
+    """M = E; x = M; - a value stored and read straight back from where it went (E a call's: no other way to
+    have it twice): x = M = E, the compiler's chained store (the value kept in the register)"""
+    return re.sub(r"(?m)^([ \t]*)(\w+(?:->f\d+)+) = ([^;\n]*\w\([^;\n]*\));\n\1(\w+) = \2;$",
+                  lambda m: "%s%s = %s = %s;" % (m.group(1), m.group(4), m.group(2), m.group(3)), text)
+
+
 def register_chains(text):
     """r = E; A = r; B = r; - r given once and stored twice at once, read no more: the value given twice,
     B = A = E (A stored first, as the compiler stores a chain from the right)"""
@@ -2809,10 +2816,11 @@ def structs(text, widths):
                     dp = x + (4 if dl[-1].startswith("long") else 2)
                 defs.append("struct s_%s_%d_%d { %s };" % (p, n, o, " ".join(dl)))
                 pty = None
+            lng_ = not b_ and not deep and not pty and o in LONGINFO.get("fields", ()) and o + 2 not in subs   # (a long one)
             fl.append("%s f%d;" % ("unsigned char" if any(isinstance(u, tuple) and u[1] == o for u in UCHAR) and b_
                                    else "char" if b_ else "struct s_%s_%d_%d *" % (p, n, o) if deep else
-                                   "%s *" % pty.group(1) if pty else "int", o))   #  unsigned one widened with zeros)
-            pos = o + (1 if b_ else 2)
+                                   "%s *" % pty.group(1) if pty else "long" if lng_ else "int", o))   #  unsigned one widened with zeros)
+            pos = o + (1 if b_ else 4 if lng_ else 2)
         defs.append("struct s_%s_%d { %s };" % (p, n, " ".join(fl)))
         ptrfield[(p, n)] = "struct s_%s_%d *" % (p, n)
     for p, offs in sorted(uses.items()):
@@ -2891,7 +2899,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = re.sub(r"&(\w+)->f(\d+)\b", r"(\1 + \2)", t)  # (lea: &p[N], &p->fN - the place, p + N)
         t = fold_registers(stored_calls(store_loops(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(push_returns(conditional_values(logical_values(step_tests(bool_trees(range_switches(loop_gotos(empty_loops(fall_gotos(t)))))))))))))))))
         t = stored_calls(fold_registers(push_returns(t)))   # (returns again, as the passes left the arms)
-        t = scaled_index(register_chains(word_arrays(test_first_loops(copy_tests(post_steps(t))))))
+        t = stored_reads(scaled_index(register_chains(word_arrays(test_first_loops(copy_tests(post_steps(t)))))))
         t = fold_registers(conditional_values(t))           # (the ?: values again, the elements folded)
         t = fold_registers(push_returns(temporaries(empty_loops(merge_conditions(guard_gotos(self_updates(t)))))))
         wd = set(widths)                                    # (a parameter kept in a register: the bytes read through
@@ -3299,6 +3307,9 @@ def long_pairs(text):
         pairs.add(lo)
         return "%s%s = %s;" % (ind, lo, e)
     body = re.sub(r"(?m)^([ \t]*)(t\d+) = (.+);\n\s*(\w+) = LO\(\2\);\n\s*(\w+) = HI\(\2\);$", halves, body)
+    body = re.sub(r"(?m)^([ \t]*)(\w+(?:->f\d+)*)->f(\d+) = LO\((.+)\);\n[ \t]*\2->f(\d+) = HI\(\4\);$",
+                  lambda m: "%s%s = %s;" % (m.group(1), lfield(m.group(2), m.group(3)), m.group(4))
+                  if int(m.group(5)) == int(m.group(3)) + 2 else m.group(0), body)   # (a long field given a long)
     body = re.sub(r"(?m)^([ \t]*)()(\w+) = LO\((.+)\);\n\s*(\w+) = HI\(\4\);$",
                   lambda m: halves(type("M", (), {"groups": lambda s: (m.group(1), "", m.group(4), m.group(3), m.group(5)),
                                                   "group": lambda s, i=0: m.group(0)})()), body)
