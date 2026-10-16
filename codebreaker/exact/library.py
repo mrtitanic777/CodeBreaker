@@ -122,6 +122,12 @@ class Map(object):
 
 
 def locate(prj, verbose=False):
+    if getattr(prj, "_library", None) is None:
+        prj._library = _locate(prj)
+    return prj._library
+
+
+def _locate(prj):
     img = prj.image
     dg = prj.dgroup
     syms = prj.symbols()
@@ -326,9 +332,73 @@ def locate(prj, verbose=False):
     mp = Map()
     mp.start, mp.coded, mp.donly, mp.first, mp.raws, mp.refs, mp.missing = start, coded, donly, first, raws, refs, missing
     mp.lone = lone
+    mp.allrefs = _refs(prj, coded + donly)
     mp.objects = _objects(prj, img, dg)
-    mp.order = [(None, "first", p) for p in first] + _order(coded, donly, raws)
+    mp.dataraws = _data_standins(prj, mods, taken, missing, mp.allrefs, coded, donly)
+    for d in mp.dataraws:
+        for n in d.pubs:
+            missing.pop(n, None)
+    mp.order = [(None, "first", p) for p in first] + _order(coded, donly + mp.dataraws, raws)
+    for d in [d for d in mp.dataraws if d.by_next]:          # (the modules after the stand-in, before the next known
+        k = [x[2] for x in mp.order].index(d)               #  data, have their _DATA there too: it ends before them)
+        room = 0
+        for a, kind, x in mp.order[k + 1:]:
+            if getattr(x, "data", None) is not None:
+                break
+            if kind == "mod":
+                ln, al = x.m.seglen("_DATA")
+                room += ln + (room & 1 if ln and al == 2 else 0)
+        d.end -= room
+        d.pubs = {n: o for n, o in d.pubs.items() if o < d.end - d.data}
     return mp
+
+
+class DataRaw(object):
+    """a data-only module of another version than the kit's: its data as the program has it (a stand-in)"""
+    def __init__(self, m, lo, hi, pubs, why):
+        self.m, self.data, self.end, self.pubs, self.why = m, lo, hi, pubs, why
+        self.code = None
+        self.also = []
+
+    def seglen(self, seg):
+        return (self.end - self.data, 2) if seg == "_DATA" else (0, 1)
+
+
+def _data_standins(prj, mods, taken, missing, refs, coded, donly):
+    """for each data-only module whose publics the program needs but whose bytes are not the kit's: where its
+    data stands (the publics' places, the words of the placed modules show them, less their offsets in the kit's
+    module: the first agree), to the next data whose place is known; its publics: those placed by words, and
+    those before the first that moved at the kit's offsets"""
+    out = []
+    starts = sorted({p.data for p in coded + donly if p.data is not None})
+    for m in mods:
+        if m.code or id(m) in taken or not m.data or not any(n in missing for n in m.pubs):
+            continue
+        kit = sorted((off, n) for n, (s, off) in m.pubs.items() if s == "_DATA")
+        placed = [(off, n, refs[n][1]) for off, n in kit if n in refs and refs[n][0] == "D"]
+        if not placed:
+            continue
+        lo = placed[0][2] - placed[0][0]
+        span = m.seglen("_DATA")[0]                         # (a public placed far off is not in this version's module)
+        placed = [(off, n, a) for off, n, a in placed if lo <= a < lo + span + 16]
+        moved = min([off for off, n, a in placed if a - lo != off] or [1 << 16])
+        shifts = {a - lo - off for off, n, a in placed if off >= moved}
+        hi = min([s for s in starts if s > lo] or [1 << 16])
+        by_next = True
+        if len(shifts) <= 1:                                # (what moved, moved alike: the version's length is the
+            own = lo + m.seglen("_DATA")[0] + (shifts.pop() if shifts else 0)        # kit's and that much)
+            if own <= hi:
+                hi, by_next = own, False
+        pubs = {n: a - lo for off, n, a in placed if lo <= a < hi}
+        for off, n in kit:                                  # (a public the words place elsewhere is not this one's)
+            if off < moved and n not in pubs and n not in refs:
+                pubs[n] = off
+        why = "(another version of %s: its data as the program has it%s)" % (
+            m.label, ", the publics from +%x on moved" % moved if moved < 1 << 16 else "")
+        out.append(DataRaw(m, lo, hi, pubs, why))
+        out[-1].by_next = by_next
+        taken.add(id(m))
+    return out
 
 
 def _objects(prj, img, dg):
@@ -361,22 +431,30 @@ def _first_object_names(prj):
 
 
 def _refs(prj, placed):
-    """{external name: (C or D, address)}: what the words of the placed modules' code that name externals show"""
+    """{external name: (C or D, address)}: what the words of the placed modules that name externals show - in
+    their code, and in their data where its place is known (stdio's _iob names the buffers)"""
     img = prj.image
     refs = {}
     for p in placed:
-        s0 = p.m.code[0][0]
-        b = p.m.o.seg[s0]
-        for seg, fo, kind, tgt, disp in p.m.o.fix:
-            if seg != s0 or tgt[0] != "ext" or fo + 2 > len(b) or p.code + fo + 2 > len(img):
-                continue
-            mine = (W(b, fo) + disp) & 0xFFFF
-            theirs = W(img, p.code + fo)
-            if kind == "rel":
-                base = prj.code_base(p.code)
-                refs.setdefault(tgt[1], ("C", base + ((p.code + fo + 2 + theirs - base) & 0xFFFF) - mine))
-            elif kind == "off":
-                refs.setdefault(tgt[1], ("D", (theirs - mine) & 0xFFFF))
+        if p.code is not None:
+            s0 = p.m.code[0][0]
+            b = p.m.o.seg[s0]
+            for seg, fo, kind, tgt, disp in p.m.o.fix:
+                if seg != s0 or tgt[0] != "ext" or fo + 2 > len(b) or p.code + fo + 2 > len(img):
+                    continue
+                mine = (W(b, fo) + disp) & 0xFFFF
+                theirs = W(img, p.code + fo)
+                if kind == "rel":
+                    base = prj.code_base(p.code)
+                    refs.setdefault(tgt[1], ("C", base + ((p.code + fo + 2 + theirs - base) & 0xFFFF) - mine))
+                elif kind == "off":
+                    refs.setdefault(tgt[1], ("D", (theirs - mine) & 0xFFFF))
+        if p.data is not None:
+            b = p.m.o.seg.get("_DATA", b"")
+            for seg, fo, kind, tgt, disp in p.m.o.fix:
+                at = prj.dgroup + p.data + fo
+                if seg == "_DATA" and tgt[0] == "ext" and kind == "off" and fo + 2 <= len(b) and at + 2 <= len(img):
+                    refs.setdefault(tgt[1], ("D", (W(img, at) - ((W(b, fo) + disp) & 0xFFFF)) & 0xFFFF))
     return refs
 
 
@@ -408,7 +486,8 @@ def _order(coded, donly, raws):
             ln, al = r[2].m.seglen("_DATA") if r[1] == "mod" else (0, 1)
             while bi < len(blocks) and blocks[bi].data <= pos + (pos & 1 if al == 2 else 0):
                 out.append((None, "data", blocks[bi]))
-                pos = max(pos, blocks[bi].data + blocks[bi].m.seglen("_DATA")[0])
+                b = blocks[bi]
+                pos = max(pos, b.data + (b.seglen("_DATA") if isinstance(b, DataRaw) else b.m.seglen("_DATA"))[0])
                 bi += 1
             if ln and al == 2 and pos & 1:
                 pos += 1
@@ -436,6 +515,10 @@ def lines(mp, title=""):
             nm = pubs[0][1].lstrip("_$") if pubs else "lib%05x" % lo
             out.append("RAW %s code=%05x-%05x%s  # (no library module has these bytes)" % (
                 nm, lo, hi, "".join(" pub=%s@%x" % (n, o) for o, n in pubs)))
+            continue
+        if isinstance(x, DataRaw):
+            out.append("RAW %s data=%04x-%04x%s  # %s" % (x.m.name, x.data, x.end, "".join(
+                " dpub=%s@%x" % (n, o) for n, o in sorted(x.pubs.items(), key=lambda kv: (kv[1], kv[0]))), x.why))
             continue
         p = x
         note = []

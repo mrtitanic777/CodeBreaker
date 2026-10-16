@@ -273,3 +273,50 @@ def rename_externs(data, mapping):
             r = nb
         out += record(t, r)
     return out
+
+
+def raw_object(title, code, pubs, data=b"", dpubs=None, text="_TEXT"):
+    """an object module of the program's own bytes: a run of its code (and of its data), with the public names
+    others call it by - a stand-in for a part no source and no library module gives. Its words for the linker
+    are the program's already, so it stands only where it stood."""
+    out = record(0x80, name(title))
+    out += record(0x96, name("") + name("DGROUP") + name(text) + name("CODE") + name("_DATA") + name("DATA"))
+    out += record(0x98, bytes([0x28]) + struct.pack("<H", len(code)) + bytes([3, 4, 1]))      # byte aligned, public
+    out += record(0x98, bytes([0x28]) + struct.pack("<H", len(data)) + bytes([5, 6, 1]))
+    out += record(0x9A, bytes([2, 0xFF, 2]))                                                  # DGROUP: _DATA
+    for seg, b in ((1, code), (2, data)):
+        for k in range(0, len(b), 1000):
+            out += record(0xA0, bytes([seg]) + struct.pack("<H", k) + b[k:k + 1000])
+    for grp, seg, ps in ((0, 1, pubs), (1, 2, dpubs or {})):
+        if ps:
+            body = bytes([grp, seg])
+            for n, a in sorted(ps.items(), key=lambda kv: kv[1]):
+                body += name(n) + struct.pack("<H", a) + b"\x00"
+            out += record(0x90, body)
+    return out + record(0x8A, b"\x00")
+
+
+def bss_object(names, start, end, title="bssvars"):
+    """an object module of variables without a value, each a public name at its place in _BSS (start..end): the
+    linker places communal names by its own table's order (a hash of the names), and ours are not the original
+    names - so they are given their places outright and nothing communal is left to place"""
+    out = record(0x80, name(title))
+    out += record(0x96, name("") + name("DGROUP") + name("_BSS") + name("BSS"))
+    out += record(0x98, bytes([0x48]) + struct.pack("<H", end - start) + bytes([3, 4, 1]))    # word aligned, public
+    out += record(0x9A, bytes([2, 0xFF, 1]))
+    items = sorted(names.items(), key=lambda kv: (kv[1], kv[0]))
+    k = 0
+    while k < len(items):
+        body = bytes([1, 1])
+        while k < len(items) and len(body) < 900:
+            n, a = items[k]
+            body += name(n) + struct.pack("<H", a - start) + b"\x00"
+            k += 1
+        out += record(0x90, body)
+    return out + record(0x8A, b"\x00")
+
+
+def names_of(data):
+    """(the public names an object module defines, the external names it needs)"""
+    o = read(data)
+    return {n for n, s, off in o.pubs}, set(o.ext)

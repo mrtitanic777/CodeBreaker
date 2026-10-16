@@ -312,5 +312,25 @@
    "disk2/LIB/BINMODE.OBJ"
   ]
  },
- "_objects": "the kit's loose objects a program may link: wildcard arguments, malloc on the stack's side, files opened binary"
+ "_objects": "the kit's loose objects a program may link: wildcard arguments, malloc on the stack's side, files opened binary",
+ "link": {
+  "run": "disk3/LINK.EXE",
+  "dir": "disk2/LIB",
+  "libs": {
+   "S": [
+    "SLIBC.LIB"
+   ],
+   "M": [
+    "MLIBC.LIB"
+   ]
+  },
+  "copy": [
+   "SLIBC.LIB",
+   "SLIBFP.LIB",
+   "EM.LIB"
+  ],
+  "exemod": "disk3/EXEMOD.EXE",
+  "psp": "0x1000",
+  "_": "LINK 3.01 of the diskettes, run as MSC.EXE runs it (a response file); EXEMOD after, when the project says"
+ }
 }

@@ -65,6 +65,14 @@ class Project(object):
         """the image offset of the code segment `a` is in"""
         return max([b for b in self.code_segments if b <= a] or [0])
 
+    def own_end(self):
+        """where the program's own code ends (the last of its functions, exact/carve.py)"""
+        if getattr(self, "_own_end", None) is None:
+            from codebreaker.exact import carve
+            fs = carve.functions(self)
+            self._own_end = max(a + n for a, n, w in fs) if fs else 0
+        return self._own_end
+
     def starts(self):
         """[image offsets where functions begin], or None"""
         if not self.cfg.get("starts"):
