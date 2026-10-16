@@ -1067,6 +1067,22 @@ class R:
                     if mn=="jmp": j=s.tgt.get(j); continue
                     if mn in CJMP: work.append((s.tgt.get(j), d))
                     j+=1
+            if not rv and s.msc3:
+                # (MS C 3.00: a path that gives ax a value itself - not a call's - after its last call, then
+                # returns, is a value returned: a function whose other paths fall off its end still returns one)
+                seen=set(); work=[(getattr(s,"emit_start",0), False)]
+                while work and not rv:
+                    j,d=work.pop()
+                    while j is not None and 0<=j<len(s.ins) and (j,d) not in seen:
+                        seen.add((j,d)); ii=s.ins[j]; mn=ii.mnemonic
+                        if mn in ("ret","retf"):
+                            if d: rv=True
+                            break
+                        if mn in ("call","lcall"): d=False
+                        elif s._axrw(mn, ii.op_str or "")=="def": d=True
+                        if mn=="jmp": j=s.tgt.get(j); continue
+                        if mn in CJMP: work.append((s.tgt.get(j), d))
+                        j+=1
             s._rv=rv
         return s._rv
 

@@ -147,6 +147,43 @@ def branch_returns(text):
     return text
 
 
+def chain_returns(text):
+    """if (A) { ..; r = E1; } else if (B) { ..; r = E2; } .. return r;  -> each arm returns its value (with no
+    last else the function falls off its end there, as its source did)"""
+    lines = text.split("\n")
+    for k, l in enumerate(lines):
+        m = re.match(r"(\s*)if \(.*\) \{\s*$", l)
+        if not m:
+            continue
+        ind = m.group(1)
+        arms_end = []                                       # (the closing line of each arm)
+        j = k + 1
+        while j < len(lines):
+            x = lines[j]
+            if x.startswith(ind + "} else if (") and x.endswith("{") or x == ind + "} else {":
+                arms_end.append(j)
+            elif x == ind + "}":
+                arms_end.append(j)
+                break
+            elif x.startswith(ind) and not x.startswith(ind + " ") and x.strip():
+                break
+            j += 1
+        if not arms_end or lines[arms_end[-1]] != ind + "}" or arms_end[-1] + 1 >= len(lines):
+            continue
+        ret = re.fullmatch(r"\s*return (ax|bx|cx|dx|si|di);\s*", lines[arms_end[-1] + 1])
+        if not ret or len(arms_end) < 2:
+            continue
+        reg = ret.group(1)
+        lasts = [e - 1 for e in arms_end]
+        if not all(re.fullmatch(r"\s*%s = .+;\s*" % reg, lines[q]) for q in lasts):
+            continue
+        for q in lasts:
+            lines[q] = re.sub(r"^(\s*)%s = (.+);\s*$" % reg, r"\1return \2;", lines[q])
+        lines[arms_end[-1] + 1] = None
+        return chain_returns("\n".join(x for x in lines if x is not None))
+    return text
+
+
 def widen_bytes(text):
     """al = E; ... ax read before ax or al is given again, al never read: the byte widened for its use (cbw) -
     in C a char is an int where it is used: ax = E"""
@@ -511,6 +548,60 @@ FILEPTR = {}                                                # (a stream a librar
 
 _LIBDATA = {}
 _HEADERS = {}
+_TABLES = {}
+
+
+def header_text(prj, header):
+    """a header of the kit, as text ('' when the kit has none)"""
+    from codebreaker.exact import toolchain as tcm
+    try:
+        root = tcm.kit_dir(prj.toolchain().p["kit"])
+    except Exception:
+        return ""
+    for d, _, fs in os.walk(root):
+        for f in fs:
+            if f.lower() == header.lower():
+                return open(os.path.join(d, f), encoding="latin1").read()
+    return ""
+
+
+def table_macros(prj, text, specs):
+    """the macros of a header that read a table of the library - ctype.h's isdigit(c) .. ( (_ctype_+1)[c] & _DIGIT ) -
+    read back where the model has the table's place: (c->fN & M), N the table's place + its offset, M a macro's
+    mask (the profile's "table_macros": [{"header": "ctype.h"}]: the macros and masks are the kit's header's, the
+    table's place the library stage's)"""
+    for sp in specs or []:
+        key = (prj.dir, sp["header"])
+        if key not in _TABLES:
+            h = header_text(prj, sp["header"])
+            masks = {n: int(v, 0) for n, v in re.findall(r"#define\s+(_[A-Z]+)\s+(0x[0-9a-fA-F]+|\d+)", h)}
+            macs = []
+            for name, arg, tab, off, expr in re.findall(r"#define\s+(\w+)\((\w)\)\s*\(\s*\((\w+)\+(\d+)\)\[\2\]\s*&\s*([^)]*\)?)\s*\)", h):
+                bits = re.findall(r"_[A-Z]+", expr)
+                if bits and all(b in masks for b in bits):
+                    m = 0
+                    for b in bits:
+                        m |= masks[b]
+                    macs.append((name, tab, int(off), m))
+            if prj.dir not in _LIBDATA:
+                data_macros(prj, "", [{"base": "-", "size": 1, "names": []}])
+            _TABLES[key] = macs
+        hit = False
+        for name, tab, off, mask in _TABLES[key]:
+            base = _LIBDATA.get(prj.dir, {}).get("_" + tab) or _LIBDATA.get(prj.dir, {}).get(tab)
+            if base is None:
+                continue
+            n = base + off
+            for form, fmt in ((r"\(\((\w+)->f%d & %d\) != 0\)" % (n, mask), "%s(%%s)" % name),
+                              (r"\(\((\w+)->f%d & %d\) == 0\)" % (n, mask), "!%s(%%s)" % name),
+                              (r"\((\w+)->f%d & %d\)" % (n, mask), "%s(%%s)" % name)):
+                new = re.sub(form, lambda m: fmt % m.group(1), text)
+                if new != text:
+                    hit, text = True, new
+        if hit:
+            FILEPTR.setdefault("#include", sp["header"])
+            FILEPTR["#include2"] = sp["header"]
+    return text
 
 
 def header_names(prj, header):
@@ -547,7 +638,15 @@ def data_macros(prj, text, specs):
     if prj.dir not in _LIBDATA:
         try:
             from codebreaker.exact import library
-            _LIBDATA[prj.dir] = {n: a for n, (t, a) in library.locate(prj).allrefs.items() if t == "D"}
+            mp = library.locate(prj)
+            places = {n: a for n, (t, a) in mp.allrefs.items() if t == "D"}
+            for p in mp.coded + mp.donly:                   # (and the placed modules' own data names: a table
+                if p.data is None:                          #  the macros read in line, which no code calls)
+                    continue
+                for n, s, off in p.m.o.pubs:
+                    if s and s.upper() in ("_DATA", "DATA", "CONST"):
+                        places.setdefault(n, p.data + off)
+            _LIBDATA[prj.dir] = places
         except Exception:
             _LIBDATA[prj.dir] = {}
     places = _LIBDATA[prj.dir]
@@ -819,6 +918,7 @@ def structs(text, widths):
     those fields: a char where the code reads a byte (widths: {(pointer, offset)} of the byte ones), else an
     int, and a pad between"""
     text = re.sub(r"&(\w+)->f(\d+)\b", r"(\1 + \2)", text)  # (lea ax,[p+N] - the model's &p->fN - is p + N)
+    text = re.sub(r"&(\w+)\[(-?)(\d+)\]", lambda m: "(%s %s %s)" % (m.group(1), "-" if m.group(2) else "+", m.group(3)), text)
     uses = {}
     for p, off in re.findall(r"\b(\w+)->f(\d+)\b", text):
         uses.setdefault(p, set()).add(int(off))
@@ -869,7 +969,10 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         PTRSIZE.clear()
         ARRAYS.clear()
         FILEPTR.clear()
-        t = fold_registers(stored_calls(post_increments(widen_bytes(compare_values(branch_returns(logical_values(char_params(t))))))))
+        t = table_macros(prj, char_params(t), prj.toolchain().p.get("table_macros"))
+        t = re.sub(r"&(\w+)\[(-?)(\d+)\]", lambda m: "(%s %s %s)" % (m.group(1), "-" if m.group(2) else "+", m.group(3)), t)
+        t = re.sub(r"&(\w+)->f(\d+)\b", r"(\1 + \2)", t)  # (lea: &p[N], &p->fN - the place, p + N)
+        t = fold_registers(stored_calls(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(logical_values(t))))))))
         t = word_arrays(test_first_loops(post_steps(t)))
         t = self_updates(t)
         t = structs(pointer_flow(register_variables(shapes(t), regs, regparam)), set(widths))
@@ -1063,15 +1166,16 @@ def localize(prj, text, at, names):
                        lambda m: ("%sint %s;\n" % (m.group(1), (m.group(2) + m.group(3).lstrip(", ")).strip(", ")) if (m.group(2) + m.group(3)).strip(", ") else "") +
                        "%s%s *%s;" % (m.group(1), FILEPTR[p], p), head2)
     text = head2 + sep2 + body2
-    if FILEPTR.get("#include"):
-        decl.insert(0, "#include <%s>" % FILEPTR["#include"])
+    incs = list(dict.fromkeys(FILEPTR[k] for k in ("#include", "#include2") if FILEPTR.get(k)))
+    for h in reversed(incs):
+        decl.insert(0, "#include <%s>" % h)
     if ptrs:                                                # (data the draft goes through: pointers)
         for d in ptrs:
             decl.append("extern %s *%s;" % ("struct " + STRUCTPTR[d] if d in STRUCTPTR else "char *" if PTRSIZE.get(d) == 2 and re.search(r"\*\+\+%s\b" % d, body) else "char", d))
     if ints:
         decl.append("extern int %s;" % ", ".join(ints))
-    if FILEPTR.get("#include"):                             # (what the included header declares: its)
-        funcs = [f for f in funcs if f not in header_names(prj, FILEPTR["#include"])]
+    for h in incs:                                          # (what an included header declares: its)
+        funcs = [f for f in funcs if f not in header_names(prj, h)]
     if funcs:
         decl.append("extern %s;" % ", ".join("%s()" % f for f in funcs))
     return ("\n".join(decl) + "\n\n" if decl else "") + text, left
@@ -1210,9 +1314,10 @@ def _rank(v):
     """how near a verdict is: one that differs (the right length first, then by fewer bytes), before one that
     does not compile, before one with registers left"""
     import re as _re
-    m = _re.match(r"differs: (\d+) bytes(, length)?", v)
+    m = _re.match(r"differs: (\d+) bytes(?:, length (\d+) not (\d+))?", v)
     if m:
-        return (0, 1 if m.group(2) else 0, int(m.group(1)))
+        gap = abs(int(m.group(2)) - int(m.group(3))) if m.group(2) else 0
+        return (0, 1 if gap else 0, int(m.group(1)) + gap)  # (what is missing counts as differing)
     return (1, 0, 0) if v.startswith("does not") else (2, 0, 0)
 
 

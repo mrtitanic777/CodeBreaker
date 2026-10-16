@@ -375,5 +375,11 @@
    "include": "stdio.h"
   }
  ],
- "_data_macros": "a library's data named by macros: stdio's streams, the elements of _iob (8 bytes: ptr, cnt, base, flag, file), fileno(f) its byte at +7"
+ "_data_macros": "a library's data named by macros: stdio's streams, the elements of _iob (8 bytes: ptr, cnt, base, flag, file), fileno(f) its byte at +7",
+ "table_macros": [
+  {
+   "header": "ctype.h"
+  }
+ ],
+ "_table_macros": "the macros of a kit header that read a library table (ctype.h's isdigit ..: (_ctype_+1)[c] & mask), read from the header itself"
 }
