@@ -216,7 +216,7 @@ def _judge(o, md, image, start, end, imported, starts=()):
     # the caller DS back as it came. C makes no such promise (a function rebuilt from it hands
     # back whatever DS the callee left). KRNL386's far wrappers of near routines.
     pushes = [i for i in body[:6] if i.mnemonic == "push" and i.op_str == "ds"]
-    if pushes and any(i.mnemonic == "call" for i in body) and \
+    if pushes and any(i.mnemonic in ("call", "lcall") for i in body) and \
             not any(i.mnemonic in ("mov", "lds", "pop") and i.op_str.startswith("ds") and
                     not (i.mnemonic == "pop" and any(r.address > i.address and r.mnemonic in ("ret", "retf")
                                                      for r in body[body.index(i) + 1:body.index(i) + 4]))

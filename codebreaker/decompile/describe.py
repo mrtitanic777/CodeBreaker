@@ -359,6 +359,27 @@ def result_bytes(code, start, end, passes=None):
         for i in ins:                                        # body: its result is that one's
             if i.mnemonic == "jmp" and i.operands and i.operands[0].type == capstone.CS_OP_IMM                     and not start <= (i.operands[0].imm & 0xFFFF) < end:
                 passes.append(("into", i.operands[0].imm & 0xFFFF))
+    def _segment_in_dx(a):
+        # Before what sets AX, along the straight run into it: the first thing to set DX is a
+        # segment register put there (`mov dx, es`) -- the selector of a far pointer that goes
+        # back in DX:AX (KRNL386's `mov es, sel / mov dx, es / mov ax, es:[off]`). A number or
+        # a sum there is as often scratch, and is left out.
+        for _n in range(8):
+            prev = into.get(a, [])
+            if len(prev) != 1 or prev[0] not in at or prev[0] < prologue:
+                return False
+            a = prev[0]
+            p = ins[at[a]]
+            if p.group(capstone.CS_GRP_CALL):
+                return False
+            try:
+                _r, w = p.regs_access()
+            except capstone.CsError:
+                return False
+            if dx & set(w):
+                return p.mnemonic == "mov" and p.op_str.split(", ")[-1] in ("es", "ds", "ss", "cs")
+        return False
+
     best = 0
     for i in ins:
         if i.mnemonic not in ("ret", "retf"):
@@ -387,7 +408,7 @@ def result_bytes(code, start, end, passes=None):
                 continue
             if ax & set(written):
                 if p.mnemonic != "pop":
-                    best = max(best, 4 if wide or (dx & set(written)) else 2)
+                    best = max(best, 4 if wide or (dx & set(written)) or _segment_in_dx(p.address) else 2)
                 continue
             w = wide or bool(dx & set(written) and steps < 3 and (p.mnemonic != "pop" or not saves_dx))
             work += [(q, w, steps + (0 if p.mnemonic in ("pop", "leave", "push") else 1)) for q in into.get(a, [])]
