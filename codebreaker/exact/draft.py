@@ -258,7 +258,37 @@ def push_returns(text):
         b = tail(then_hi + 1, k)
         return a + b if a is not None and b is not None else None
     ks = tail(0, end)
-    if not ks or len(ks) < 2:
+    if not ks:                                              # (a switch last, each arm giving it: case ..: return X;)
+        k = end - 1
+        if lines[k].strip() == "}":
+            ind = lines[k][:len(lines[k]) - len(lines[k].lstrip())]
+            st = next((j for j in range(k - 1, -1, -1) if lines[j].startswith(ind + "switch (") and lines[j].endswith("{")), None)
+            if st is not None:
+                arm, ok, rets = [], True, []
+                for j in range(st + 1, k + 1):
+                    l = lines[j]
+                    if re.match(r"\s*(?:case [^:]+|default):$", l) or j == k:
+                        if arm:
+                            idx = [x for x in arm if lines[x].strip()]
+                            if len(idx) >= 2 and lines[idx[-1]].strip() == "break;" and re.fullmatch(r"\s*%s = [^;]+;" % reg, lines[idx[-2]]):
+                                rets.append((idx[-2], idx[-1]))
+                            elif idx and re.fullmatch(r"\s*%s = [^;]+;" % reg, lines[idx[-1]]) and j == k:
+                                rets.append((idx[-1], None))
+                            else:
+                                ok = False
+                        arm = []
+                    else:
+                        arm.append(j)
+                if ok and rets:
+                    drop = set()
+                    for a_, b_ in rets:
+                        lines[a_] = re.sub(r"^(\s*)%s = (.*);$" % reg, r"\1return \2;", lines[a_])
+                        if b_ is not None:
+                            drop.add(b_)
+                    lines = [l for j, l in enumerate(lines) if j not in drop and j != end]
+                    return "\n".join(lines)
+        return text
+    if len(ks) < 2:
         return text
     for k in ks:
         lines[k] = re.sub(r"^(\s*)%s = (.*);$" % reg, r"\1return \2;", lines[k])
@@ -356,9 +386,9 @@ def post_increments(text):
         m = re.match(r"(\s*)(ax|bx|cx|dx|si|di|al|bl|cl|dl) = (.*);\s*$", l)    # (a byte register too: a char)
         if m and k + 2 < len(lines):
             ind, reg, e = m.groups()
-            st = re.match(r"\s*(\w+) = \1 \+ (\d)\s*;\s*$", lines[k + 1])
+            st = re.match(r"\s*(\w+) = \1 \+ (\d)\s*;\s*$", lines[k + 1]) or re.match(r"\s*(\w+)\+\+()\s*;\s*$", lines[k + 1])
             if st:
-                p, n = st.group(1), int(st.group(2))
+                p, n = st.group(1), int(st.group(2) or 1)   # (p++: a step of one)
                 deref = re.fullmatch(r"\*\((?:unsigned )?(char|int) \*\)%s|\*%s" % (p, p), e)
                 size = 1 if deref and deref.group(1) == "char" else 2 if deref and deref.group(1) == "int" else None
                 nxt = lines[k + 2]

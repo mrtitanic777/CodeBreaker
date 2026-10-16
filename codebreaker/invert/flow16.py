@@ -266,9 +266,8 @@ def _compare_switches(blocks):
         h.default = default
         h.selreg = reg
         h.table = None
-        h.succ = sorted(set(t for v, t in cases)) + ([default] if default not in [t for v, t in cases] else [])
-        # (the arms in the code's order - the source's, and one falls into the next as written - the default
-        #  last: the compiler puts its code after the tests)
+        h.succ = sorted(set([t for v, t in cases] + [default]))
+        # (the arms in the code's order, the default's too - the source's, and one falls into the next as written)
         for r in region - {h.id}:
             blocks[r].succ = []
             blocks[r].term = "dead"
