@@ -45,6 +45,7 @@ RETVAL=None
 # What recover() last found of MS-C 3.00's register variables: {"saved": [si, di] the function keeps its
 # register variables in, "regparam": {register: parameter index} the parameters declared register}.
 LAST={}
+REGVARS_EAGER=False    # (a driver of 3.00 code: a register variable updated from itself - di = di >> 3 - is a statement at once)
 FRAME_AFTER_BP=False   # (a driver of 3.00 or later code: `sub sp,N` after `mov bp,sp` - no stack probe, -Gs - is its frame too)
 REGPARAM_REREAD=True    # (MS C 3.00: a register a parameter is loaded into is the parameter only if its slot is not read again)
 # Optional driver hook: SWITCH(addr_0based) -> case-target addresses (0-based, table order) of the
@@ -1275,6 +1276,17 @@ class R:
         return False
 
     def step(s,i,out):
+        n=s._step0(i,out)
+        if REGVARS_EAGER and s.msc3:                       # (3.00's register variables are variables: a value given
+            for r in LAST.get("saved",()):                 #  one is a statement at once, not a value carried on -
+                v=getattr(s,r,None)                        #  a later test of it reads the variable)
+                own={r}|({s.pname(4+2*LAST["regparam"][r])} if r in LAST.get("regparam",{}) else set())
+                if v is not None and str(v)!=r and not re.match(r"-?\d+$|&|[A-Za-z_]\w*$", str(v)) and \
+                        not s._hascall(str(v)) and any(re.search(r"\b%s\b" % o, str(v)) for o in own):
+                    s._materialize(out, r)
+        return n
+
+    def _step0(s,i,out):
         """Straight-line: process ins[i], maybe append a statement. Return next i."""
         s.i=i; s.out=out
         if i in s.hoisted: return i+1                          # store already emitted (hoisted)

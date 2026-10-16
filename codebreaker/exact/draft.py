@@ -2679,8 +2679,10 @@ def model_texts(inv, code, name, base=None):
     """[(text, register parameters)] - the model's text of a function, from each of its structurers (a linear walk;
     a structured control-flow graph, where the model has one): the compiler decides between them"""
     raw, code = code, fp_native(code)
-    if hasattr(inv, "FRAME_AFTER_BP"):                      # (a draft is of 3.00 or later code: its -Gs frames)
-        inv.FRAME_AFTER_BP = True
+    if hasattr(inv, "FRAME_AFTER_BP"):                      # (a draft is of 3.00 or later code: its -Gs frames,
+        inv.FRAME_AFTER_BP = True                           #  its register variables)
+    if hasattr(inv, "REGVARS_EAGER"):
+        inv.REGVARS_EAGER = True
     out = []
     try:
         fs, params, stmts, pt, loc = inv.recover(code)
