@@ -818,6 +818,9 @@ class R:
         elif mn in ("cwd","cdq"):
             _v=str(s.ax if s.ax is not None else "ax")
             s.dx=("65535" if int(_v)&0x8000 else "0") if re.match(r"\d+$",_v) else "(0 - (%s >> 15))"%_v
+            if s.msc3 and not MARK and re.match(r"\d+$",_v) and i+2<len(s.ins) and \
+                    [(x.mnemonic,x.op_str) for x in s.ins[i+1:i+3]]==[("push","dx"),("push","ax")]:
+                s.dx="(0 - (%s >> 15))"%_v                 # (3.00: a number widened to a long argument)
         elif mn in ("or","and") and ops=="ax, ax": pass             # `or/and ax,ax` is flag-only (ax
                                                                     # unchanged) -- never `(ax|ax)`, which
                                                                     # would DUPLICATE a call in s.ax
