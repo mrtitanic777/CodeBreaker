@@ -408,11 +408,12 @@ def test_first_loops(text):
                 lines[k] = "%swhile (%s) {" % (m.group(1), _not(b.group(1)))
                 lines[k + 1] = None
                 continue
-            s = re.match(r"\s*(\w+) = \1 ([+-]) 1;\s*$", lines[k + 1])     # (a step, then the test: --p in it)
-            b = re.match(r"\s*if \(\((%s)\b(.*)\)\) break;\s*$" % s.group(1), lines[k + 2]) if s and k + 2 < len(lines) and lines[k + 2] else None
-            if b:
+            s = re.match(r"\s*(\w+) = \1 ([+-]) ([12]);\s*$", lines[k + 1])     # (a step, then the test: --p in it;
+            b = re.match(r"\s*if (\(.*\)) break;\s*$", lines[k + 2]) if s and k + 2 < len(lines) and lines[k + 2] else None   # by 2: words)
+            if b and len(re.findall(r"\b%s\b" % s.group(1), b.group(1))) == 1:
                 op = "++" if s.group(2) == "+" else "--"
-                lines[k] = "%swhile (%s) {" % (m.group(1), _not("((%s%s%s))" % (op, b.group(1), b.group(2))))
+                c = re.sub(r"\b%s\b" % s.group(1), op + s.group(1), b.group(1))
+                lines[k] = "%swhile (%s) {" % (m.group(1), _truth(_not(c)))
                 lines[k + 1] = lines[k + 2] = None
     return "\n".join(l for l in lines if l is not None)
 
@@ -586,7 +587,8 @@ def pre_steps(text):
     changed = False
     k = 0
     while k + 1 < len(lines):
-        m = re.match(r"\s*(\w+(?:->f\d+)?)(\+\+|--);\s*$", lines[k]) or re.match(r"\s*(\w+) = \1 ([+-]) 1;\s*$", lines[k])
+        m = re.match(r"\s*(\w+(?:->f\d+)?)(\+\+|--);\s*$", lines[k]) or re.match(r"\s*(\w+) = \1 ([+-]) [12];\s*$", lines[k])
+        # (by 2: a pointer to words stepped once - declared so where the compiler asks)
         if m:
             x = m.group(1)
             op = m.group(2)
@@ -635,7 +637,7 @@ def address_variants(text, dsize, most=2, lo=0x100):
 def word_arrays(text, lo=0x40):
     """(E << 1)->fN, N a place in the data (not a field's small offset): an array of words there indexed by E -
     g_XXXX[E] (the model reads `mov bx,E / shl bx,1 / [bx+N]` as a field of a pointer)"""
-    rx = re.compile(r"\(((?:[A-Za-z_]\w*|\d+)(?:\s*[-+]\s*\d+)?) << 1\)->f(\d+)\b")
+    rx = re.compile(r"\(((?:(?:\+\+|--)?[A-Za-z_]\w*(?:\+\+|--)?|\d+)(?:\s*[-+]\s*\d+)?) << 1\)->f(\d+)\b")
 
     def one(m):
         n = int(m.group(2))
@@ -993,6 +995,34 @@ def for_loops(text):
             k += 1
         changed = True
     return "\n".join(lines) if changed else None
+
+
+def compound_assigns(text):
+    """X = X op E; - the compiler's `op [X], reg` - as C's compound assignment X op= E (a variant: MS C gives the
+    two different code)"""
+    rx = re.compile(r"(?m)^(\s*)([A-Za-z_*][\w\->\[\]*]*) = \2 ([-+*/%&|^]|<<|>>) (.+);$")
+
+    def one(m):
+        ind, x, op, e = m.groups()
+        if e.startswith("(") and e.endswith(")") and _strip("(" + e + ")") == e:
+            e = e[1:-1]
+        return "%s%s %s= %s;" % (ind, x, op, e)
+    t = rx.sub(one, text)
+    return t if t != text else None
+
+
+def chain_assigns(text):
+    """A = E; B = A; - the value given twice from the register it is in: B = A = E (a variant: a reload of A
+    reads the same)"""
+    rx = re.compile(r"(?m)^(\s*)([^\s=;][^=;]*?) = ([^;\n]+);\n\1([^\s=;][^=;]*?) = \2;$")
+
+    def one(m):
+        ind, a, e, b = m.groups()
+        if b == a or re.search(r"\b%s\b" % re.escape(b), e) or re.search(r"\+\+|--|\w\(", a + b):
+            return m.group(0)
+        return "%s%s = %s = %s;" % (ind, b, a, e)
+    t = rx.sub(one, text)
+    return t if t != text else None
 
 
 def _else_ifs(lines):
@@ -1402,11 +1432,15 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = merge_conditions(self_updates(t))
         t = structs(pointer_flow(local_pointers(register_variables(shapes(t), regs, regparam))), set(widths))
         t = fill_frame(t, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
-        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t)] if v]
+        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t)] if v]
         both = pre_steps(t)
         both = pre_increments(both) if both else None
         if both:
             variants.append(both)
+        for v in list(variants)[:4]:                        # (a value given twice: chained)
+            c = chain_assigns(v)
+            if c:
+                variants.insert(variants.index(v) + 1, c)
         for v in list(variants):                            # (a pointer register variable through which words
             for w in pointer_widths(v):                     #  are read: int *, the compiler decides)
                 variants.append(w)
@@ -1581,13 +1615,22 @@ def string_variants(prj, text):
                 cands.append((v, cstr(s)))
     out = []
     for v, lit in cands:                                    # (each alone, then all together)
-        out.append(re.sub(r"(?<![\w.])%d(?![\w.])" % v, lambda m: lit, text))
+        out.append(_string_decls(re.sub(r"(?<![\w.])%d(?![\w.])" % v, lambda m: lit, text)))
     if len(cands) > 1:
         t = text
         for v, lit in cands:
             t = re.sub(r"(?<![\w.])%d(?![\w.])" % v, lambda m: lit, t)
-        out.append(t)
+        out.append(_string_decls(t))
     return out
+
+
+def _string_decls(text):
+    """data given a string (`g = "..";`, `g[i] = "..";`) declared int: a char * (an array of them)"""
+    for g, ix in re.findall(r"\b(g_[0-9a-f]{4})(\[[^\]]*\])? = \"", text):
+        text = re.sub(r"(?m)^extern int ((?:\w+(?:\[\])?, )*)%s(\[\])?((?:, \w+(?:\[\])?)*);$" % g, lambda d: (
+            ("extern int %s;\n" % (d.group(1) + d.group(3).lstrip(", ")).strip(", ") if (d.group(1) + d.group(3)).strip(", ") else "") +
+            "extern char *%s%s;" % (g, d.group(2) or "")), text)
+    return text
 
 
 def localize(prj, text, at, names):
@@ -1781,7 +1824,7 @@ def compile_fixes(src, con):
         return []
     l = lines[n - 1]
     out = []
-    m = re.search(r"(?<![\w)\]])\*(?!\()\s*([A-Za-z_]\w*)", l) if "illegal indirection" in msg else \
+    m = re.search(r"(?<![\w)\]])\*(?!\()\s*(?:\+\+|--)?([A-Za-z_]\w*)", l) if "illegal indirection" in msg else \
         re.search(r"\b([A-Za-z_]\w*)\[", l) if "subscript on non-array" in msg else None
     if m:
         for ty in ("char", "int") if (m.group(1), 0) in BYTEPTR else ("int", "char"):   # (read a byte at a time: char)

@@ -239,6 +239,10 @@ def _compare_switches(blocks):
                 walk(t, v)
             else:
                 leaves.add(t)
+                ins_ = blocks[t].insns                      # (a last compare with no jump after it: its case is
+                c_ = _cmp_of(ins_[0], reg) if ins_ else None  #  the block it falls into - the default's too)
+                if c_ and len(ins_) > 1 and ins_[1].mnemonic not in CJMP and all(p in region for p in preds[t]):
+                    cases.append((c_[1], t))
 
         walk(h.id, None, first=True)
         vals = [v for v, t in cases]
