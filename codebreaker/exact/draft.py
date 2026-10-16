@@ -362,6 +362,9 @@ def push_returns(text):
                                 rets.append((idx[-2], idx[-1]))
                             elif idx and re.fullmatch(r"\s*%s = [^;]+;" % reg, lines[idx[-1]]) and j == k:
                                 rets.append((idx[-1], None))
+                            elif idx and j != k and not re.match(r"\s*(?:break|continue|return|goto)\b", lines[idx[-1]]) and \
+                                    not re.search(r"\b%s\b" % reg, " ".join(lines[x] for x in idx)):
+                                pass                        # (an arm falling into the next: that one returns)
                             else:
                                 ok = False
                         arm = []
@@ -1744,7 +1747,11 @@ def unmasked(text):
     compiler compares bytes of two chars as they are)"""
     t = re.sub(r"(==|!=) \(((?:\*|\b)[A-Za-z_]\w*(?:->f\d+|\[[^\]]+\])?) & 0xff\)", r"\1 \2", text)
     t = re.sub(r"\(((?:\*|\b)[A-Za-z_]\w*(?:->f\d+|\[[^\]]+\])?) & 0xff\) (==|!=)", r"\1 \2", t)
-    return t if t != text else None
+    flip = {"==": "!=", "!=": "=="}
+    t = re.sub(r"!\(([\w\->.*\[\]]+) (==|!=) ([\w\->.*\[\]]+)\)", lambda m: "(%s %s %s)" % (m.group(1), flip[m.group(2)], m.group(3)), t)
+    u = re.sub(r"\b(\w+->f\d+|\*\w+) (==|!=) (12[89]|1[3-9]\d|2[0-4]\d|25[0-5])\b",     # (a byte compared with
+               lambda m: "%s %s (char)0x%x" % (m.group(1), m.group(2), int(m.group(3))), t)   #  128..255: the char's)
+    return u if u != text else None
 
 
 def high_words(text):
@@ -2857,7 +2864,9 @@ def register_variables(text, regs=("si", "di"), regparam=None):
                 rest = [x.strip() for x in m.group(2).split(",") if x.strip() != p]
                 lines[j] = m.group(1) + "int " + ", ".join(rest) + ";" if rest else None
         head = "\n".join(l for l in lines if l is not None)
-        rdecl.append("register %s%s;" % ("char *" if ptr else "int ", p))
+        pp = re.search(r"\*\(\*%s\)|\*\*%s\b" % (p, p), body) and not re.search(r"\b%s->" % p, body)   # (read through
+                                                                                                    #  twice: a pointer to pointers)
+        rdecl.append("register %s%s;" % ("char **" if pp else "char *" if ptr else "int ", p))
     if rdecl:
         head = head.rstrip("\n") + "\n" + "\n".join(rdecl) + "\n"
         sig = re.search(r"(?m)^(\w+)\(([\w, ]*)\)\s*$", head)    # (the parameters in the signature, all of them)
@@ -2874,7 +2883,8 @@ def register_variables(text, regs=("si", "di"), regparam=None):
     for r in used:
         ptr = re.search(r"\*\s*%s\b|\b%s\s*\[" % (r, r), body) or \
             any(re.search(r"(?m)^[ \t]*%s = %s;" % (r, p), body) for p in pnames)       # (given a pointer's value)
-        decls.append("    register %s%s;" % ("char *" if ptr else "int ", "r_" + r))
+        pp = re.search(r"\*\(\*%s\)|\*\*%s\b" % (r, r), body) and not re.search(r"\b%s->" % r, body)
+        decls.append("    register %s%s;" % ("char **" if pp else "char *" if ptr else "int ", "r_" + r))
         body = re.sub(r"\b%s\b" % r, "r_" + r, body)
     return head + "{\n" + "\n".join(decls) + body
 

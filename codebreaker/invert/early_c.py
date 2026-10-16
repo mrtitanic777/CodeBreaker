@@ -1329,9 +1329,29 @@ class R:
         s.emit(out,"*(struct _b%d *)%s = *(struct _b%d *)%s;"%(n,d_,n,s_))
         return j+2-i
 
+    def _arg_copy(s,i):
+        """3.00's argument passed by value from memory: sub sp,N; mov si,X; mov di,sp; push ss; pop es; movsw x
+        N/2 - an argument *(double *)X (8 bytes), *(struct _bN *)X else. 0: not one"""
+        ins=s.ins
+        if i+5>=len(ins) or ins[i].mnemonic!="sub" or not re.fullmatch(r"sp, (0x[0-9a-f]+|\d+)", ins[i].op_str): return 0
+        m=ins[i+1]
+        if m.mnemonic!="mov" or not m.op_str.startswith("si, "): return 0
+        if [(x.mnemonic,x.op_str) for x in ins[i+2:i+5]]!=[("mov","di, sp"),("push","ss"),("pop","es")]: return 0
+        n=s.num(ins[i].op_str.split(", ")[1]); j=i+5; k=0
+        while j<len(ins) and ins[j].mnemonic in ("movsw","movsb"):
+            k+=2 if ins[j].mnemonic=="movsw" else 1; j+=1
+        if k!=n: return 0
+        src=m.op_str[4:]
+        v=s._val(src) if src in ("ax","bx","cx","dx","si","di") else (s.memname(src) or src)
+        v=str(v) if re.fullmatch(r"[\w\->.]+", str(v)) else "(%s)"%v
+        s.args.append("*(double *)%s"%v if n==8 else "*(struct _b%d *)%s"%(n,v))
+        return j-i
+
     def _step0(s,i,out):
         if s.msc3:
             n=s._struct_copy(i,out)
+            if n: return i+n
+            n=s._arg_copy(i)
             if n: return i+n
         """Straight-line: process ins[i], maybe append a statement. Return next i."""
         s.i=i; s.out=out
