@@ -122,5 +122,20 @@ Stages and what they reproduce of the hand work, run with no project-specific co
 - **draft** - functions from no source by the inverse model (`invert/early_c`, 3.00 idioms under msc3)
   and variant search, kept only when the compiler proves them: P0 29/127, MSC 21/74
 
-Open: the inverse model's structuring (rotated loops with
+Further stages (2026-10-16):
+
+- **link** for every toolchain: 23 programs relinked as by hand - 15 file-identical (MS C 3.00's six, MASM 5.10
+  packed, the four XENIX-C programs by `linkemu.link24`, LINK 1.02/1.10/2.00, MC1/MC2 1.04), 8 identical but for
+  documented linker leftovers (project `link.accept`). `linkwhole.py` (programs of whole source files),
+  `linkemu.py`, `exepack.py`, `recut.py`
+- **repair** - uniformly shifted immediates mended in the source, kept when the compiler proves them
+- **names --from OTHER** - a version named after another (masked code, calls, call signatures); blind on MS C
+  1.0x/2.03: 455 named, all right
+- **readable** - address-names replaced by SYMBOLS's names, ledger-proven; **seed --from OTHER** - paired
+  functions given the sibling's source; **identify** - the toolchain and switches that make the sources the
+  program's
+- a binary never worked on: LIB 3.00 (MASM 3.0 diskette) from a one-line project.json - 43 of 113 functions
+  identical, the toolchain found to be MS C 3.00 -Gs (LIB 2.20's XENIX-C sources recompiled)
+
+Open: switch statements in the inverse model, structs, long and floating arithmetic; the inverse model's structuring (rotated loops with
 `&&` tests, struct arrays, long and floating arithmetic); the names and readable stages.
