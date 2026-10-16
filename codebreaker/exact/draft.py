@@ -1852,6 +1852,60 @@ def scaled_index(text):
     return text
 
 
+def scaled_places(text):
+    """(i << 1) + K, K a place in the data: the address of a word there, &g_K[i] (a variant)"""
+    def one(m):
+        k = int(m.group(2)) & 0xFFFF
+        if k < 0x100:
+            return m.group(0)
+        name = "g_%04x" % k
+        ARRAYS.setdefault(name, "int")
+        return "&%s[%s]" % (name, m.group(1))
+    t = re.sub(r"\(\(([\w\->.]+) << 1\) \+ (-?\d+)\)", one, text)
+    for g in sorted(set(re.findall(r"&(g_[0-9a-f]{4})\[", t))):   # (declared, when the text is a whole source)
+        if re.search(r"(?m)^\w+\(.*\)$", t) and not re.search(r"(?m)^(?:extern|struct)[^\n]*\b%s\b" % g, t):
+            t = "extern int %s[];\n" % g + t
+    return t if t != text else None
+
+
+def lead_filler(text):
+    """the frame's first local vN (bp-N) with room between it and bp: a filler declared before it (a variant:
+    unused locals the source declared first, the model's layout taking the first one for read)"""
+    head, sep, body = split_body(text)
+    if not sep:
+        return None
+    m = re.search(r"(?m)^([ \t]*)((?:unsigned\s+)?(int|char|long|short)|(?:\w+ )?\w+ \*) ?v(\d+);$", body)
+    first = re.search(r"(?m)^[ \t]*(?!register\b)(?:unsigned\s+)?(?:int|char|long|short|struct \w+)[ \t*]+\w+(?:\[\d+\])?;$", body)
+    if not m or not first or first.start() != m.start():
+        return None
+    size = 4 if m.group(3) == "long" else 1 if m.group(3) == "char" else 2
+    gap = int(m.group(4)) - size
+    if gap <= 0:
+        return None
+    fill = "".join("%sint _q%d;\n" % (m.group(1), 2 * j) for j in range(gap // 2)) + \
+        ("%schar _q%d;\n" % (m.group(1), gap) if gap % 2 else "")      # (words: an array goes elsewhere in the frame)
+    return head + sep + body[:m.start()] + fill + body[m.start():]
+
+
+def register_copies(text):
+    """r = x = E; with the register variable r given nothing else: x itself where r is read (a variant: the
+    compiler went on through the value it still held - the register its own scratch, not a variable)"""
+    for m in re.finditer(r"(?m)^([ \t]*)(r_\w+) = (\w+) = ([^;\n]+);$", text):
+        r, x = m.group(2), m.group(3)
+        rest = text[m.end():]
+        if re.search(r"(?<![\w>.*])%s\s*(?:=[^=]|\+\+|--)|(?:\+\+|--)%s\b" % (r, r), rest) or \
+                re.search(r"(?<![\w>.*])%s\s*(?:=[^=]|\+\+|--)" % x, rest):
+            continue
+        t = text[:m.start()] + "%s%s = %s;" % (m.group(1), x, m.group(4)) + re.sub(r"\b%s\b" % r, x, rest)
+        d = re.search(r"(?m)^[ \t]*register [^;\n]*\b%s;\n" % r, t)
+        if d:
+            t = t[:d.start()] + t[d.end():]
+        if (r[2:] + "w", 0) in BYTEPTR and (r[2:] + "*", 0) not in BYTEPTR:   # (words read through the register:
+            t = _redeclare(t, x, "int *%s" % x) or t                        #  an int's pointer)
+        return t
+    return None
+
+
 def unsigned_registers(text):
     """the text with its int register locals unsigned (a variant: compared, the compiler's jumps say which)"""
     t = re.sub(r"(?m)^([ \t]*)register int (r_\w+);$", r"\1register unsigned \2;", text)
@@ -2594,7 +2648,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = long_ladders(long_pairs(t))                     # (the longs again, as the passes left them)
         t = frame_chars(fn_pointers(t), widths)
         t = fill_frame(t, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
-        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t)] if v]
+        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t), register_copies(t), lead_filler(t), scaled_places(t)] if v]
         both = pre_steps(t)
         both = pre_increments(both) if both else None
         if both:
@@ -3714,7 +3768,8 @@ REFINERS = [lambda prj, s: [assign_in_args(s)], lambda prj, s: [return_sources(s
             lambda prj, s: pointer_widths(s), _place_variants, lambda prj, s: string_variants(prj, s),
             lambda prj, s: [split_ternaries(s)], lambda prj, s: [default_last(s)], lambda prj, s: [push_tails(s)],
             lambda prj, s: [unsigned_registers(s)], lambda prj, s: [unmasked(s)], lambda prj, s: [no_default(s)],
-            lambda prj, s: [empty_cases_first(s)], lambda prj, s: [register_slots(s)],
+            lambda prj, s: [empty_cases_first(s)], lambda prj, s: [register_slots(s)], lambda prj, s: [register_copies(s)],
+            lambda prj, s: [lead_filler(s)], lambda prj, s: [scaled_places(s)],
             lambda prj, s: [re.sub(r"\b0, 0\)", "0L)", s)]]     # (two zero words pushed: a long 0)
 
 
