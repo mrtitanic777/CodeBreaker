@@ -290,5 +290,27 @@
    }
   ]
  },
- "_libraries": "by memory model: the C library, its floating point part, the 8087 emulator"
+ "_libraries": "by memory model: the C library, its floating point part, the 8087 emulator",
+ "carve": {
+  "prologues": [
+   "55 8b ec (?:33c0|b8....) e8 (....)"
+  ],
+  "prologue_call": "__chkstk",
+  "frames": true,
+  "calls": true,
+  "_prologues": "push bp / mov bp,sp / the frame's size in AX (xor ax,ax or mov ax,N) / call __chkstk; under -Gs no call: a frame after a return"
+ },
+ "objects": {
+  "S": [
+   "disk2/LIB/SSETARGV.OBJ",
+   "disk2/LIB/SVARSTCK.OBJ",
+   "disk2/LIB/BINMODE.OBJ"
+  ],
+  "M": [
+   "disk2/LIB/MSETARGV.OBJ",
+   "disk2/LIB/MVARSTCK.OBJ",
+   "disk2/LIB/BINMODE.OBJ"
+  ]
+ },
+ "_objects": "the kit's loose objects a program may link: wildcard arguments, malloc on the stack's side, files opened binary"
 }

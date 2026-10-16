@@ -14,7 +14,7 @@ segment, the filled words left out) among the program's code, its data in the da
   - a module of data only is placed by its data, else by its names' places (SYMBOLS, or the words
     of the placed modules' code that name them)
   - the library part is the run of placed modules at the end of the code: it begins after the last
-    gap longer than `gap` bytes (project "library_gap", default 2048) before them - a lone module
+    gap longer than `gap` bytes (project "library_gap", default 4096) before them - a lone module
     among the program's own functions is not its start (project "library_start" says it outright)
   - inside the library part, code no module accounts for becomes a stand-in (RAW: the program's own
     bytes), with the public names the placed modules' calls into it show
@@ -179,7 +179,7 @@ def locate(prj, verbose=False):
                 break
     coded = [placed[a] for a in sorted(placed)]
     # the library part: the run of modules at the end of the code
-    gap = prj.cfg.get("library_gap", 2048)
+    gap = prj.cfg.get("library_gap", 4096)
     start = prj.cfg.get("library_start")
     start = int(start, 0) if isinstance(start, str) else start
     if start is None and coded:
@@ -187,6 +187,22 @@ def locate(prj, verbose=False):
         while k > 0 and coded[k].code - coded[k - 1].end <= gap:
             k -= 1
         start = coded[k].code
+    lone = [p for p in coded if start is not None and p.code < start]   # (a library module among the program's own)
+    lib_pubs = {}
+    for p in coded:
+        if start is not None and p.code >= start:
+            for m in [p.m] + p.also:
+                for n, (s, off) in m.pubs.items():
+                    lib_pubs.setdefault(n, p.code + off)
+
+    def calls_library(p):
+        """a lone module counts when what it calls is in the library part (a wrapper of the program's own that has
+        a library routine's bytes calls the program's code: P2's f05a85, fscanf's bytes)"""
+        for n, (t, a) in _refs(prj, [p]).items():
+            if t == "C" and (a < start or n in lib_pubs and lib_pubs[n] != a):
+                return False
+        return True
+    lone = [p for p in lone if calls_library(p)]
     coded = [p for p in coded if start is None or p.code >= start]
     refs = _refs(prj, coded)
     taken = {id(p.m) for p in coded} | {id(m) for p in coded for m in p.also}
@@ -214,7 +230,11 @@ def locate(prj, verbose=False):
                     got = (base, "(by %s, %04x%s)" % (n, a, " in SYMBOLS" if n in syms else ": a word of the code"))
                     break
         if got:
-            donly.append(Placed(m, None, got[0], got[1]))
+            same = [d for d in donly if d.data == got[0] and d.m.seglen("_DATA") == m.seglen("_DATA")]
+            if same:                                        # (the same data in another library: one module)
+                same[0].also.append(m)
+            else:
+                donly.append(Placed(m, None, got[0], got[1]))
             taken.add(id(m))
             continue
         other = [(s, m.o.seg[s][:m.o.filled[s]], omf.holes(m.o, s)) for s, cls, ln, al in m.o.segs
@@ -305,8 +325,28 @@ def locate(prj, verbose=False):
                 pos = max(pos, p.end)
     mp = Map()
     mp.start, mp.coded, mp.donly, mp.first, mp.raws, mp.refs, mp.missing = start, coded, donly, first, raws, refs, missing
+    mp.lone = lone
+    mp.objects = _objects(prj, img, dg)
     mp.order = [(None, "first", p) for p in first] + _order(coded, donly, raws)
     return mp
+
+
+def _objects(prj, img, dg):
+    """[(code start, end, object)] the kit's loose objects (the profile's "objects" for the model: SVARSTCK.OBJ,
+    SSETARGV.OBJ ...) whose code stands in the program at one place"""
+    from codebreaker.exact import toolchain
+    tc = prj.toolchain()
+    out = []
+    for x in tc.p.get("objects", {}).get(prj.cfg.get("model", "S"), []):
+        try:
+            m = Module("", x.split("/")[-1], open(toolchain.kit_path(tc.p["kit"], x), "rb").read(), -1)
+        except OSError:
+            continue
+        if m.code and len(m.code[0][1]) - len(m.code[0][2]) >= 3:
+            ps = find(img, m.code[0][1], m.code[0][2], 0, dg)
+            if len(ps) == 1:
+                out.append((ps[0], ps[0] + len(m.code[0][1]), m.label))
+    return out
 
 
 def _first_object_names(prj):
@@ -410,7 +450,8 @@ def lines(mp, title=""):
             if m is p.m:
                 out.append("%-16s # %s" % (p.m.label, "  ".join(note)))
             else:
-                out.append("%-16s # code %05x  (the same bytes as %s)" % (m.label, p.code, p.m.label))
+                out.append("%-16s # %s  (the same bytes as %s)" % (
+                    m.label, "code %05x" % p.code if p.code is not None else "data %04x" % p.data, p.m.label))
     return out
 
 
@@ -418,6 +459,10 @@ def main(prj, argv):
     mp = locate(prj, verbose="-v" in argv)
     txt = "\n".join(lines(mp)) + "\n"
     print(txt)
+    for p in mp.lone:
+        print("   among the program's own code: %s at %05x (%d bytes)" % (p.m.label, p.code, p.end - p.code))
+    for a, b, nm in mp.objects:
+        print("   the kit's object %s at %05x (%d bytes)" % (nm, a, b - a))
     print("library part from %05x: %d modules with code, %d of data only, %d stand-ins (%d bytes)" % (
         mp.start or 0, len(mp.coded), len(mp.donly), len(mp.raws), sum(hi - lo for lo, hi, p in mp.raws)))
     for n, (who, by) in sorted(mp.missing.items()):

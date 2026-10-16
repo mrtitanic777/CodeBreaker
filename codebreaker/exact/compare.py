@@ -98,7 +98,9 @@ def function(o, img, name, off, ln, at, prj, syms, learn, text="_TEXT", where=No
             else:                                           # the file's own data: what the word points at must be there
                 fs = [f for f in o.fix if f[0] == tgt[1] and f[1] == mine and f[2] == "base" and f[3][0] == "ext"]
                 if fs:                                      # the segment of a far item, kept among the constants
-                    if dg + theirs not in prj.relocs():
+                    if not prj.relocs():                    # (an image without its relocation table: EXEPACK's)
+                        bind(fs[0][3][1] + "@seg", "S", W(img, dg + theirs))
+                    elif dg + theirs not in prj.relocs():
                         notes.append("+%x: DS:%04x is not a segment the loader sets" % (k, theirs))
                     else:
                         bind(fs[0][3][1] + "@seg", "S", W(img, dg + theirs))

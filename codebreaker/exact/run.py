@@ -8,11 +8,12 @@
 PROJECT is a folder with a project.json (codebreaker/exact/project.py). Stages:
 
     ledger      every one-function source compiled and put against the program (exact/ledger.py)
+    carve       where the program's own functions begin and end (exact/carve.py)
     library     the library modules found in the program, in the linker's order; stand-ins (exact/library.py)
 """
 import sys
 
-STAGES = {"ledger": "codebreaker.exact.ledger", "library": "codebreaker.exact.library"}
+STAGES = {"ledger": "codebreaker.exact.ledger", "library": "codebreaker.exact.library", "carve": "codebreaker.exact.carve"}
 
 
 def main(argv):
