@@ -381,6 +381,60 @@ def pre_increments(text):
     return "\n".join(l for l in lines if l is not None) if changed else None
 
 
+FILEPTR = {}                                                # (a stream a library macro reads: name -> its type)
+
+
+def unused_locals(text):
+    """the locals declared in the function's body that nothing in it names any more, left out"""
+    head, sep, body = text.partition("{")
+    if not sep:
+        return text
+    lines = body.split("\n")
+    for k, l in enumerate(lines):
+        m = re.match(r"\s*(?:register\s+)?(?:unsigned\s+)?(?:int|char|long|short|struct \w+)\s*\**\s*(\w+)\s*(?:\[\d+\])?;\s*$", l)
+        if m and not re.search(r"\b%s\b" % m.group(1), "\n".join(lines[:k] + lines[k + 1:])):
+            lines[k] = None
+    return head + sep + "\n".join(l for l in lines if l is not None)
+
+
+def library_macros(text, macros):
+    """a library macro the compiler expanded in line - stdio's getc(f) and putc(c, f): the count of the stream's
+    buffer stepped, then its pointer, else the routine that fills or empties the buffer (the profile's "macros":
+    [{"call": routine, "as": "getc(%s)", "type": "FILE", "include": "stdio.h"}]) - read back as the macro: from
+    the line that steps the stream's count to the routine's call, the region is the macro's value"""
+    if not macros:
+        return text
+    for mac in macros:
+        rx = re.compile(r"\b%s\(([^()]*)\)" % re.escape(mac["call"]))
+        while True:
+            lines = text.split("\n")
+            hit = next(((k, m) for k, l in enumerate(lines) for m in [rx.search(l)] if m), None)
+            if not hit:
+                break
+            k1, m = hit
+            args = [x.strip() for x in m.group(1).split(",")]
+            f = args[-1]
+            k0 = next((j for j in range(k1, -1, -1) if re.search(r"\b%s->f2(?:--| = %s->f2 - 1)" % (re.escape(f), re.escape(f)), lines[j])), None)
+            if k0 is None:
+                break
+            val = mac["as"] % tuple(args)
+            k2 = k1
+            depth = sum(l.count("{") - l.count("}") for l in lines[k0:k2 + 1])
+            while depth > 0 and k2 + 1 < len(lines):        # (to the region's own closing brace)
+                k2 += 1
+                depth += lines[k2].count("{") - lines[k2].count("}")
+            ind = re.match(r"\s*", lines[k0]).group(0)
+            r = re.match(r"\s*return\b", lines[k1])
+            new = ["%sreturn %s;" % (ind, val)] if r else ["%sax = %s;" % (ind, val)]
+            if depth < 0:
+                new.append(ind + "}")
+            lines[k0:k2 + 1] = new
+            text = "\n".join(lines)
+            FILEPTR[f] = mac.get("type", "FILE")
+            FILEPTR["#include"] = mac.get("include")
+    return text
+
+
 def char_params(text):
     """a parameter the model only reads into a byte register (al = b) is a char: declared so (K&R widens it
     in the call; the function reads its low byte)"""
@@ -576,6 +630,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         STRUCTPTR.clear()
         PTRSIZE.clear()
         ARRAYS.clear()
+        FILEPTR.clear()
         t = fold_registers(stored_calls(post_increments(widen_bytes(compare_values(branch_returns(logical_values(char_params(t))))))))
         t = word_arrays(test_first_loops(post_steps(t)))
         t = structs(register_variables(shapes(t), regs, regparam), set(widths))
@@ -704,12 +759,21 @@ def localize(prj, text, at, names):
         return (names.get(t) or "f%05x" % t) + "("
     text = re.sub(r"\bsub_(-?[0-9a-f]+)\(", call, text)
     text = re.sub(r"\bg_([0-9a-f]{1,4})\b", lambda m: "g_%04x" % int(m.group(1), 16), text)
+    macros = prj.toolchain().p.get("macros")
+    text = library_macros(text, macros)                     # (the routines named: the macros they show)
+    if FILEPTR:                                             # (the stream's fields the struct pass read: the macro's now)
+        norm = lambda n: "g_%04x" % int(n[2:], 16) if re.fullmatch(r"g_[0-9a-f]{1,4}", n) else n
+        streams = {norm(k) for k in FILEPTR if not k.startswith("#")}
+        text = re.sub(r"(?m)^struct s_(\w+) \{[^}]*\};\n", lambda m: "" if norm(m.group(1)) in streams else m.group(0), text)
+        text = fold_registers(stored_calls(text))
+        text = unused_locals(text)
+    macnames = {re.match(r"\w+", m["as"]).group(0) for m in (macros or [])}
     body = text.split("{", 1)[1] if "{" in text else text
     # registers the model left: a draft for a person, not for the compiler
     left = sorted(set(re.findall(REGS, re.sub(r'"(?:[^"\\]|\\.)*"', "", body))))
     data = sorted(set(re.findall(r"\bg_[0-9a-f]{4}\b", text)))
     head = text.split("(", 1)[0].strip()
-    funcs = sorted(set(re.findall(r"\b([A-Za-z_]\w*)\(", body)) - {head, "if", "while", "for", "switch", "return", "sizeof"})
+    funcs = sorted(set(re.findall(r"\b([A-Za-z_]\w*)\(", body)) - {head, "if", "while", "for", "switch", "return", "sizeof"} - macnames)
     decl = []
     fptr = [d for d in data if re.search(r"\(\s*\*\s*%s\s*\)\s*\(" % d, body)]     # (data called through)
     for d in fptr:                                          # (a number given it that is a function's place: it)
@@ -724,6 +788,19 @@ def localize(prj, text, at, names):
         decl += ["extern %s %s[];" % (ARRAYS[d], d) for d in arrs]
     if fptr:
         decl.append("extern int %s;" % ", ".join("(*%s)()" % d for d in fptr))
+    streams = [d for d in data if d in FILEPTR]             # (a stream a library macro reads)
+    ptrs = [d for d in ptrs if d not in streams]
+    ints = [d for d in ints if d not in streams]
+    decl += ["extern %s *%s;" % (FILEPTR[d], d) for d in streams]
+    head2, sep2, body2 = text.partition("{")
+    for p in [n for n in FILEPTR if not n.startswith("#") and n not in data]:   # (a parameter that is one)
+        head2 = re.sub(r"(?m)^(\s*)(?:register )?(?:int|char \*|struct \w+ \*) ?%s;$" % p, r"\1%s *%s;" % (FILEPTR[p], p), head2)
+        head2 = re.sub(r"(?m)^(\s*)int ((?:\w+, )*)%s((?:, \w+)*);$" % p,
+                       lambda m: ("%sint %s;\n" % (m.group(1), (m.group(2) + m.group(3).lstrip(", ")).strip(", ")) if (m.group(2) + m.group(3)).strip(", ") else "") +
+                       "%s%s *%s;" % (m.group(1), FILEPTR[p], p), head2)
+    text = head2 + sep2 + body2
+    if FILEPTR.get("#include"):
+        decl.insert(0, "#include <%s>" % FILEPTR["#include"])
     if ptrs:                                                # (data the draft goes through: pointers)
         for d in ptrs:
             decl.append("extern %s *%s;" % ("struct " + STRUCTPTR[d] if d in STRUCTPTR else "char *" if PTRSIZE.get(d) == 2 and re.search(r"\*\+\+%s\b" % d, body) else "char", d))

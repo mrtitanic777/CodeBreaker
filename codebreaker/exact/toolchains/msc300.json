@@ -342,5 +342,20 @@
  "try_switches": [
   "-Gs"
  ],
- "_try_switches": "switches that change the code, for identify: -Gs (no stack probe: LIB 3.00)"
+ "_try_switches": "switches that change the code, for identify: -Gs (no stack probe: LIB 3.00)",
+ "macros": [
+  {
+   "call": "filbuf",
+   "as": "getc(%s)",
+   "type": "FILE",
+   "include": "stdio.h"
+  },
+  {
+   "call": "flsbuf",
+   "as": "putc(%s, %s)",
+   "type": "FILE",
+   "include": "stdio.h"
+  }
+ ],
+ "_macros": "library macros the compiler expands in line, found by the routine the expansion calls (exact/draft.py library_macros)"
 }
