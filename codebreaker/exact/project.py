@@ -57,6 +57,12 @@ class Project(object):
             self.header = None
             self.image = b
         self._relocs = None
+        self.packed = None                                  # (the original as EXEPACK left it, when the image is the
+        if c.get("packed"):                                 #  unpacked program: its entry, stack, relocations)
+            from codebreaker.exact import exepack
+            with open(os.path.normpath(os.path.join(self.dir, c["packed"])), "rb") as f:
+                self.packed_file = f.read()
+            self.packed = exepack.read(self.packed_file)
         if c.get("code_segments") == "relocs" or c.get("code", "near") == "far" and "code_segments" not in c:
             # (far code: the segments the loader sets, from the words the relocation table points at - those
             # outside the data segment)

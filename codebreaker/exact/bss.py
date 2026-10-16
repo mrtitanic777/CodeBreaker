@@ -32,6 +32,9 @@ def propose(prj):
     h = prj.header
     edata = len(img) - dg
     stack = h[7] * 16 - dg if h else edata
+    if prj.packed:                                          # (an image unpacked from EXEPACK holds its variables as
+        edata = prj.packed.dest * 16 - dg                   #  zeros: the packed file says where its data ended, and
+        stack = prj.packed.ss * 16 - dg                     #  where its stack is)
     mp = library.locate(prj)
     lib_defined = {n for p in mp.coded + mp.donly + mp.first for m in [p.m] + p.also for n in m.pubs}
     linker = set(prj.toolchain().p.get("link", {}).get("names", ["_edata", "_end"]))
@@ -83,6 +86,14 @@ def propose(prj):
             merged[-1] = (pa, max(pl, a + ln - pa), pn + [nm])
         else:
             merged.append((a, ln, [nm]))
+    comm = prj.toolchain().p.get("communal")               # (a compiler whose communal names go to a segment of their
+    if comm:                                                #  own after every module's _BSS: c_common)
+        lo = max(a + ln for a, ln, nm in merged) if merged else edata     # (behind the library's _BSS: an unpacked image
+                                                    #  can hold its variables as zeros, so not the image's end)
+        if comm.get("align") == "para":
+            lo = (dg + lo + 15) // 16 * 16 - dg
+        names = {n: a for n, a in names.items() if a >= lo}
+        return lo, stack, names, []
     return edata, stack, names, merged
 
 
@@ -90,6 +101,9 @@ def lines(prj, edata, stack, names, holes):
     out = ["# the variables that begin without a value (codebreaker exact bss): their range; a library module's",
            "# own _BSS between them (hole: its place and length); then a name and its DS offset each (hex)",
            "range %04x %04x" % (edata, stack)]
+    comm = prj.toolchain().p.get("communal")
+    if comm:
+        out.append("segment %s%s     # (the compiler's segment of communal names: after the library)" % (comm["segment"], " para" if comm.get("align") == "para" else ""))
     for a, ln, nms in holes:
         out.append("hole %04x %x     # the _BSS of the library's %s" % (a, ln, ", ".join(nms)))
     out += ["%s %04x" % (n, a) for n, a in sorted(names.items(), key=lambda kv: (kv[1], kv[0]))]

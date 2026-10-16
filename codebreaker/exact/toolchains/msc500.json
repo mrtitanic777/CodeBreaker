@@ -75,5 +75,22 @@
   "frames": true,
   "calls": true,
   "_": "C 5.0: push bp / mov bp,sp (far: inc bp first), the stack probe a call to __chkstk with the frame's size in AX"
- }
+ },
+ "link": {
+  "run": "UTILITES/LINK.EXE",
+  "dir": "LIB_M_C",
+  "libs": {
+   "M": [
+    "MLIBC.LIB"
+   ]
+  },
+  "psp": "0x1000",
+  "_": "LINK 3.61 of the C 5.0 diskettes (a response file); the medium model's library"
+ },
+ "communal": {
+  "segment": "c_common",
+  "align": "para",
+  "_": "communal names: segment c_common (class BSS) after every module's _BSS, paragraph aligned"
+ },
+ "segment_switch": "-NT {name}"
 }

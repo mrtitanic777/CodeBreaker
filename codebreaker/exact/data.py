@@ -72,7 +72,7 @@ def _functions_only(prj, row):
 def walk(prj, row):
     mod, a, e, dstart, x = row
     rows = modules.rows(prj)
-    nxt = sorted(r[3] for r in rows if r[3] > dstart)
+    nxt = sorted(r[3] for r in rows if r[3] is not None and r[3] > dstart)
     ds = prj.image[prj.dgroup:]
     dend = nxt[0] if nxt else len(ds)
     got = _functions_only(prj, row)

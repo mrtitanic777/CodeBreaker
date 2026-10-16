@@ -331,6 +331,10 @@ def _locate(prj):
         end = prj.code_end or _code_end(img, dg)
         if far:                                             # (the classes after CODE - far data - begin there)
             end = min(end, min(a for a, b in far))
+        from codebreaker.exact import modules as mdl
+        later = [a for a in mdl.starts(prj) if a > start]
+        if later:                                           # (the program's own modules after the library: a code
+            end = min(end, min(later))                      #  segment of their own, placed later by the linker)
         segs = [p.m.code[0][0] for p in coded]
         main_seg = max(set(segs), key=segs.count)
         if segs[-1] != main_seg:                            # (the last is a code segment of its own, after the main

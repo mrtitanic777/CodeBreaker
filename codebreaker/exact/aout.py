@@ -11,9 +11,11 @@ bit 15 set, the operand begins one byte on (the 8086 has operands at odd places 
 
     o = aout.read(data)       o.seg o.segs o.filled o.pubs o.ext o.comm o.fix o.raw   (as omf.read)
         o.fix kinds: 'off' a word that holds a place, 'rel' a place relative to the word's end;
-        targets ('seg', '_TEXT'|'_DATA'|'_BSS') or ('ext', name). A relative word's own value in
-        the object counts from the start of the text, so its displacement is set to make it count
-        as an OMF self-relative fixup's would.
+        targets ('seg', '_TEXT'|'_DATA'|'_BSS') or ('ext', name). A word that names the data or the
+        bss, and a symbol's value, count from that segment's own start (the linker adds the piece's
+        place; LINK 2.4x relinked from these objects shows it). A relative word's own value counts
+        from the start of the text, so its displacement is set to make it count as an OMF
+        self-relative fixup's would.
 """
 import struct
 
@@ -53,8 +55,8 @@ def read(data):
     seg_of = {2: "_TEXT", 3: "_DATA", 4: "_BSS"}
     for nm, ty, val in syms:
         if ty & 0x20 and ty & 7 in seg_of:
-            off = val - (tsz if ty & 7 == 3 else tsz + dsz if ty & 7 == 4 else 0)
-            o.pubs.append((nm, seg_of[ty & 7], off))
+            o.pubs.append((nm, seg_of[ty & 7], val))        # (a value counts from its own segment's start, as the
+                                                            #  relocated words do: XENIX C's objects keep I and D apart)
         elif ty & 0x20 and ty & 7 == 0:
             o.ext.append(nm)
             if val:
@@ -71,10 +73,8 @@ def read(data):
                 tgt = ("ext", syms[(v & 0x7FFF) >> 4][0])
             else:
                 tgt = ("seg", {1: "_TEXT", 2: "_DATA", 3: "_BSS"}.get(kind, "?"))
-            disp = 0
-            if kind in (2, 3):                              # (the word counts from the start of the text)
-                disp = -(tsz if kind == 2 else tsz + dsz)
-            if pcrel:
+            disp = 0                                        # (a word naming the data or the bss counts from that
+            if pcrel:                                       #  segment's start: the linker adds the piece's place)
                 o.fix.append((segname, k, "rel", tgt, k + 2))
             else:
                 o.fix.append((segname, k, "off", tgt, disp))

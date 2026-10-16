@@ -84,7 +84,7 @@ def fixrec(fs, base):
 
 
 def _model(raw):
-    names, segs, exts, thr, last, allfix = [], [], [], {}, None, {}
+    names, segs, exts, thr, last, allfix, grps = [], [], [], {}, None, {}, []
     for t, r in omf.records(raw):
         if t == 0x96:
             q = 0
@@ -95,6 +95,9 @@ def _model(raw):
             q = 1 if r[0] >> 5 else 4
             ni, _ = _idx(r, q + 2)
             segs.append(names[ni - 1])
+        elif t == 0x9A:
+            gi, _ = _idx(r, 0)
+            grps.append(names[gi - 1])
         elif t == 0x8C:
             q = 0
             while q < len(r):
@@ -111,7 +114,7 @@ def _model(raw):
                 allfix.setdefault(last[0], []).append(f)
     o = omf.read(raw)
     text = omf.code_segments(o)[0]
-    return dict(o=o, segs=segs, exts=exts, fix=allfix, ti=segs.index(text) + 1, textname=text,
+    return dict(o=o, segs=segs, exts=exts, grps=grps, fix=allfix, ti=segs.index(text) + 1, textname=text,
                 text=bytearray(o.seg[text]), fns=omf.functions(o, text))
 
 
@@ -148,11 +151,18 @@ def rebuild(prj, raw, addrs, end, title=None, alts=()):
         src = None
         for tag, M in [("B", B)] + [("A", A) for A in As]:
             f_, off, ln = M["fns"][k]
-            bad, notes = compare.function(M["o"], img, f_, off, ln, at, prj, dict(syms), {}, M["textname"])
-            if compare.identical(bad, notes) and ln == nxt - at:
+            # (each of the file's functions at its own place: one before it may be of another length - a stand-in)
+            where = lambda x, M=M: next((addrs[j] + x - o_ for j, (n_, o_, l_) in enumerate(M["fns"])
+                                         if o_ <= x < o_ + max(l_, 1)), at - off + x)
+            bad, notes = compare.function(M["o"], img, f_, off, ln, at, prj, dict(syms), {}, M["textname"], where)
+            tail = k == len(addrs) - 1 and ln < nxt - at and not img[at + ln:nxt].strip(bytes(1))
+            if compare.identical(bad, notes) and (ln == nxt - at or tail):     # (the last: zeros after it are not
+                if tail:                                                        #  the module's - a segment of the
+                    nxt = min(nxt, at + ln + ((at + ln) & 1))                   #  next ones begins with them - but
+                                                                                #  its pad to an even place is)
                 src = (tag, M, k)
                 break
-        F.append(dict(name=B["fns"][k][0], src=src, new=len(new)))
+        F.append(dict(name=B["fns"][k][0], src=src, new=len(new), at=at, end=nxt))
         if src is None:
             new += img[at:nxt]
             stand.append(B["fns"][k][0])
@@ -160,6 +170,8 @@ def rebuild(prj, raw, addrs, end, title=None, alts=()):
             tag, M, idx = src
             _, off, ln = M["fns"][idx]
             new += M["text"][off:off + ln]
+            if nxt > at + ln:                               # (the module's pad to an even place, behind its last)
+                new += img[at + ln:nxt]
 
     def moved(M, v):
         for k, (fn, off, ln) in enumerate(M["fns"]):
@@ -168,6 +180,33 @@ def rebuild(prj, raw, addrs, end, title=None, alts=()):
         return None, None
     extnames = list(B["exts"])
     tfix = []
+    # a stand-in's segment words (a far call's, DGROUP's): the program's relocations there are fixups again, so
+    # that the linker lists them; the word itself is the linker's to fill
+    rel = sorted(prj.packed.relocs) if getattr(prj, "packed", None) else sorted(prj.relocs())
+    byaddr = {a: n for n, (t, a) in syms.items() if t == "C" and ":" not in n}
+    for fd in F:
+        if fd["src"] is not None:
+            continue
+        for s in rel:
+            if not (fd["at"] <= s < fd["end"]) or s + 2 > fd["end"]:
+                continue
+            k = fd["new"] + s - fd["at"]
+            w = struct.unpack_from("<H", img, s)[0]
+            struct.pack_into("<H", new, k, 0)               # (the linker adds the segment to what is there)
+            g = dict(M=1, loc=2, fm=5, fi=None, P=1, disp=0, at=k)
+            if s >= 3 and img[s - 3] == 0x9A and s - 3 >= fd["at"]:     # a far call: the function it calls
+                dest = (w - prj.loadseg) * 16 + struct.unpack_from("<H", img, s - 2)[0]
+                nm = byaddr.get(dest)
+                if nm is None:
+                    raise ValueError("%s: a far call to %05x, which SYMBOLS has no name for" % (fd["name"], dest))
+                if nm not in extnames:
+                    extnames.append(nm)
+                g.update(tm=2, ti=extnames.index(nm) + 1)
+            elif (w - prj.loadseg) * 16 == prj.dgroup and "DGROUP" in B["grps"]:
+                g.update(tm=1, ti=B["grps"].index("DGROUP") + 1)
+            else:
+                raise ValueError("%s: a segment word %04x at %05x of no kind known" % (fd["name"], w, s))
+            tfix.append(g)
     for k, fd in enumerate(F):
         if fd["src"] is None:
             continue

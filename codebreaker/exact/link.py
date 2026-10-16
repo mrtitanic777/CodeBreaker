@@ -48,6 +48,8 @@ def objects(prj, verbose=False):
     tc, lk = _lp(prj)
     rows = modules.rows(prj)
     starts = sorted(a for m, a, e, d, x in rows if a is not None) + [_library_start(prj)]
+    if prj.cfg.get("link_order") == "name":                 # (the objects named to the linker in the order of their
+        rows = sorted(rows, key=lambda r: os.path.splitext(r[0])[0].lower())     # names - the data segment shows it)
     out = []
     stand = []
     tcs = [t for lb, t in prj.toolchains()]
@@ -66,11 +68,14 @@ def objects(prj, verbose=False):
                 r2, c2, _ = modules.compile_module(prj, row, t)
                 if r2 is not None:
                     alts.append(r2)
-            end = min(s for s in starts if s > a)
+            end = min([s for s in starts if s > a] + ([e] if e else []))
             raw, st = standin.rebuild(prj, raw, addrs, end, title, alts)
             stand += st
             if verbose and st:
                 print("   %s: stand-ins %s" % (mod, " ".join(st)))
+        if a is not None and prj.cfg.get("recut"):          # (its code's records cut as the program's relocations show)
+            from codebreaker.exact import recut
+            raw = recut.recut(prj, raw)
         out.append((title, raw))
     return out, stand
 
@@ -103,12 +108,14 @@ def bss_objects(prj):
     p = prj.path("BSS")
     if not os.path.exists(p):
         return []
-    names, rng, holes = {}, None, []
+    names, rng, holes, seg = {}, None, [], None
     for l in open(p):
         f = l.split("#")[0].split()
         if not f:
             continue
-        if f[0] == "range":
+        if f[0] == "segment":                               # (communal names in a segment of their own: after all)
+            seg = (f[1], "para" in f[2:])
+        elif f[0] == "range":
             rng = (int(f[1], 16), int(f[2], 16))
         elif f[0] == "hole":
             holes.append((int(f[1], 16), int(f[2], 16)))
@@ -119,7 +126,9 @@ def bss_objects(prj):
     for k in range(0, len(cuts), 2):
         lo, hi = cuts[k], cuts[k + 1]
         nm = "bssvar%d" % (k // 2)
-        out.append((nm, omf.bss_object({n: a for n, a in names.items() if lo <= a < hi}, lo, hi, nm)))
+        out.append((nm, omf.bss_object({n: a for n, a in names.items() if lo <= a < hi}, lo, hi, nm,
+                                       seg[0] if seg else "_BSS", seg[1] if seg else False)))
+    bss_objects.after = bool(seg)
     return out
 
 
@@ -135,11 +144,31 @@ def crt(prj, objs):
     group = {}                                              # (modules of the same bytes at one place: one is taken)
     proven = set()
     for l in open(p):
-        f = l.split("#")[0].split()
+        if l.startswith("#"):
+            continue
+        m = re.search(r"\s#", l)                            # (the note begins at " #": a name may hold a #, NAME#2)
+        body, note = (l[:m.start()], l[m.end():]) if m else (l, "")
+        f = body.split()
         if not f:
             continue
-        note = l.partition("#")[2]
+        if f[0].lower().endswith(".asm") and ":" not in f[0] and f[0] not in mods:     # (a transcription of the
+            from codebreaker.exact import modules as mdl                                #  program's bytes: src/crt)
+            part, tc = mdl.set_of(prj, f[0])
+            raw, con = tc.compile(open(os.path.join(prj.src, "crt", f[0]), "rb").read(), headers=part.headers(), include=part.include)
+            if raw is None:
+                raise SystemExit("crt/%s does not assemble:\n%s" % (f[0], con[-600:]))
+            if prj.cfg.get("recut"):
+                from codebreaker.exact import recut
+                raw = recut.recut(prj, raw)
+            mods[f[0]] = raw
+        if len(f) > 1 and f[1].startswith("!"):             # TAG:NAME !SEG+OFF=HEX: a byte or two of its data as the
+            key = f[0] + " " + f[1]                         #  program has them (the version linked had them)
+            if key not in mods and f[0] in mods:
+                mods[key] = omf.patched(mods[f[0]], f[1][1:])
+            f = [key]
         mc = re.search(r"\bcode ([0-9a-f]{5})\b", note)
+        if not mc and re.match(r"\s*([0-9a-f]{5}\b|\(data only)", note) and f[0] != "RAW":    # (a place alone, or
+            always.append(f[0])                                 #  "data only": a module written down as found in the program)
         md = re.match(r"\s*data [0-9a-f]{4}\b", note)
         if f[0] != "RAW" and (mc or md):                    # (found in the program by its bytes: it is there)
             ms = group.setdefault(mc.group(1) if mc else "data:" + f[0], [])
@@ -271,9 +300,22 @@ FIELDS = "magic lastpage pages relocs hdrparas minalloc maxalloc ss sp csum ip c
 def diagnose(prj, ref, exe, mp=None):
     """-> [lines]: where ours parts from the original, and which stage makes that part"""
     out = []
-    ha, ia, ra = parts(ref)
     hb, ib, rb = parts(exe)
-    for f, x, y in zip(FIELDS, ha, hb):
+    if ref is None:                                         # (the original packed: ours, linked unpacked, against the
+        ha, ia = None, prj.image[:prj.packed.dest * 16]     #  unpacked image - its segment words as loaded at loadseg -
+        ra = list(prj.packed.relocs)                        #  and the relocations EXEPACK kept, in their order)
+        rb = [s * 16 + o for o, s in rb]
+        ib = bytearray(ib)
+        for a in rb:
+            if a + 2 <= len(ib):
+                struct.pack_into("<H", ib, a, (struct.unpack_from("<H", ib, a)[0] + prj.loadseg) & 0xFFFF)
+        ib = bytes(ib) + bytes(max(0, len(ia) - len(ib)))  # (its variables: zeros in the unpacked image)
+        if prj.packed.ss * 16 + prj.packed.sp != hb[7] * 16 + hb[8]:
+            out.append("the stack: theirs %04x:%04x, ours %04x:%04x (LINKOPT /STACK, the variables' length)" % (
+                prj.packed.ss, prj.packed.sp, hb[7], hb[8]))
+    else:
+        ha, ia, ra = parts(ref)
+    for f, x, y in zip(FIELDS, ha or (), hb):
         if x != y and f != "csum":
             out.append("header %-8s theirs %04x ours %04x%s" % (f, x, y, "  (EXEMOD, LINKOPT: /STACK)" if f in ("minalloc", "maxalloc", "sp") else ""))
     if sorted(ra) != sorted(rb):
@@ -314,12 +356,12 @@ def diagnose(prj, ref, exe, mp=None):
         da, db = ia[dg:], ib[dg:] if len(ib) > dg else b""
         dbad = next((k for k in range(min(len(da), len(db))) if da[k] != db[k]), None)
         if dbad is not None:
-            who = [r for r in modules.rows(prj) if r[3] <= dbad]
+            who = [r for r in modules.rows(prj) if r[3] is not None and r[3] <= dbad]
             mod = max(who, key=lambda r: r[3])[0] if who else "?"
             lib = [x for x in library.locate(prj).order if getattr(x[2], "data", None) is not None and x[2].data <= dbad]
             lname = max(lib, key=lambda x: x[2].data)[2].m.label if lib else None
             out.append("the data segment parts at DS:%04x (after the module %s%s)" % (
-                dbad, mod, (", the library's %s" % lname) if lname and max(lib, key=lambda x: x[2].data)[2].data > max(who, key=lambda r: r[3])[3] else ""))
+                dbad, mod, (", the library's %s" % lname) if lname and (not who or max(lib, key=lambda x: x[2].data)[2].data > max(who, key=lambda r: r[3])[3]) else ""))
             for d in range(-64, 65):
                 if d and all(0 <= dbad + d + k < len(db) and db[dbad + d + k] == da[dbad + k] for k in range(24)):
                     out.append("   from there ours is the program's moved by %+d: what comes before is %d bytes %s" % (
@@ -352,19 +394,37 @@ def drift(a, b, step=2, span=12, reach=160):
     return out[:16]
 
 
-def build(prj, keep=None, verbose=False, quiet=False):
+def opts_of(prj):
+    """the linker's switches (src/LINKOPT)"""
+    lf = prj.path("LINKOPT")
+    return " ".join(l.split("#")[0].strip() for l in open(lf) if l.split("#")[0].strip()) if os.path.exists(lf) else ""
+
+
+def build(prj, keep=None, verbose=False, quiet=False, opts=None):
     """-> (the linked file or None, LINK's words, its map, [stand-ins])"""
     objs, stand = objects(prj, verbose)
     objs = first_objects(prj) + objs
     bss = bss_objects(prj)
-    lib, miss = crt(prj, objs + bss)
+    after = []
+    for f in prj.cfg.get("after_library", []):              # (whole files linked after the library: a module of the
+        from codebreaker.exact import modules as mdl        #  communal variables at their places, as c_common is last)
+        part, tc = mdl.set_of(prj, f)
+        raw, con = tc.compile(open(os.path.join(prj.src, f), "rb").read(), headers=part.headers(), include=part.include)
+        if raw is None:
+            raise SystemExit("%s does not compile:\n%s" % (f, con[-600:]))
+        after.append((os.path.splitext(f)[0], raw))
+    lib, miss = crt(prj, objs + bss + after)
+    comm = set()                                            # (communal names are the linker's to place, and _edata,
+    for n, b in objs + bss + after + lib:                   #  _end its own: not left open)
+        comm |= set(omf.read(b).comm)
+    miss = [m for m in miss if m not in comm and m not in prj.toolchain().p.get("link", {}).get("names", ["_edata", "_end"])]
     if miss and not quiet:
         print("   not resolved: " + " ".join(miss))
     for c in getattr(crt, "conflicts", []) if not quiet else []:
         print("   " + c)
-    objs = objs + bss[:1] + lib + bss[1:]
-    lf = prj.path("LINKOPT")
-    opts = "".join(l.split("#")[0].strip() for l in open(lf) if l.split("#")[0].strip()) if os.path.exists(lf) else ""
+    objs = objs + (lib + bss if getattr(bss_objects, "after", False) else bss[:1] + lib + bss[1:])
+    objs += after
+    opts = opts_of(prj) if opts is None else opts
     exe, con, mp = run_link(prj, objs, keep, opts)
     return exe, con, mp, stand
 
@@ -443,8 +503,18 @@ def main(prj, argv):
     if exe is None:
         print("no program was written")
         return 1
-    same = exe == prj.file
-    diag = diagnose(prj, prj.file, exe, mp) if not same else []
+    ref = prj.packed_file if prj.packed else prj.file      # (an unpacked image: the file is held to the packed one)
+    same = exe == ref
+    diag = []
+    if not same and prj.packed:                             # (where ours parts from it: linked again, not packed, and
+        un = re.sub(r"\s*/E(XEPACK|XE|X)?\b", "", opts_of(prj), flags=re.I)   #  held to the unpacked image)
+        e2, c2, m2, s2 = build(prj, keep, False, quiet=True, opts=un)
+        if e2:
+            diag = diagnose(prj, None, e2, m2)
+        if not same and exe and e2 and not [l for l in diag if "differ" in l or "stack" in l or "image is" in l]:
+            diag.append("unpacked, ours is the program; the packed files differ: EXEPACK's work (its table's order: the order of the fixups)")
+    elif not same:
+        diag = diagnose(prj, ref, exe, mp)
     for l in diag:
         print("   " + l)
     ok = same or not [l for l in diag if "image" in l or "header" in l or "relocations differ" in l]

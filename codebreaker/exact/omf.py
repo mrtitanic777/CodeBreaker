@@ -44,6 +44,36 @@ def record(t, payload):
     return b + bytes([(-sum(b)) & 0xFF])
 
 
+def patched(raw, spec):
+    """the module with bytes of a segment's data replaced: spec SEG+OFF=HEXBYTES (in its LEDATA records)"""
+    import re
+    m = re.fullmatch(r"(\w+)\+([0-9a-fA-F]+)=([0-9a-fA-F]+)", spec)
+    seg, off, val = m.group(1), int(m.group(2), 16), bytes.fromhex(m.group(3))
+    ix = lambda r, q: (r[q], q + 1) if r[q] < 0x80 else (((r[q] & 0x7F) << 8) | r[q + 1], q + 2)
+    names, segs, out = [], [], b""
+    for t, r in records(raw):
+        if t == 0x96:
+            q = 0
+            while q < len(r):
+                names.append(r[q + 1:q + 1 + r[q]].decode("latin1"))
+                q += 1 + r[q]
+        elif t == 0x98:
+            q = 1 if r[0] >> 5 else 4
+            ni, _ = ix(r, q + 2)
+            segs.append(names[ni - 1])
+        elif t == 0xA0:
+            si, q = ix(r, 0)
+            lo = r[q] | r[q + 1] << 8
+            if segs[si - 1] == seg:
+                r = bytearray(r)
+                for k, b in enumerate(val):
+                    if lo <= off + k < lo + len(r) - q - 2:
+                        r[q + 2 + off + k - lo] = b
+                r = bytes(r)
+        out += record(t, r)
+    return out
+
+
 def name(s):
     s = s.encode("latin1") if isinstance(s, str) else s
     return bytes([len(s)]) + s
@@ -63,6 +93,7 @@ def read(data):
     seginfo = []
     buf = {}
     o.pubs, o.ext, o.fix, o.groups, o.comm = [], [], [], {}, {}
+    o.combine, o.start = {}, None
     last = None
     thr = {}
     filled = {}
@@ -82,7 +113,18 @@ def read(data):
             ci, q = _idx(r, q)
             segs.append(names[ni - 1])
             seginfo.append((names[ni - 1], names[ci - 1] if ci else "", ln, align))
+            o.combine[names[ni - 1]] = (r[0] >> 2) & 7      # (5: a stack segment)
             buf.setdefault(len(segs), bytearray(ln))
+        elif t in (0x8A, 0x8B) and r and r[0] & 0x40:     # MODEND with the program's start: (segment, offset)
+            fd = r[1]
+            q = 2
+            if not fd & 0x80 and (fd >> 4) & 7 < 3:
+                _, q = _idx(r, q)
+            if not fd & 8:
+                ti, q = _idx(r, q)
+                disp = r[q] | r[q + 1] << 8 if not fd & 4 else 0
+                if fd & 3 == 0 and ti:
+                    o.start = (segs[ti - 1], disp)
         elif t == 0x9A:
             gi, q = _idx(r, 0)
             mem = []
@@ -300,13 +342,14 @@ def raw_object(title, code, pubs, data=b"", dpubs=None, text="_TEXT", dalign=1):
     return out + record(0x8A, b"\x00")
 
 
-def bss_object(names, start, end, title="bssvars"):
+def bss_object(names, start, end, title="bssvars", seg="_BSS", para=False):
     """an object module of variables without a value, each a public name at its place in _BSS (start..end): the
     linker places communal names by its own table's order (a hash of the names), and ours are not the original
     names - so they are given their places outright and nothing communal is left to place"""
     out = record(0x80, name(title))
-    out += record(0x96, name("") + name("DGROUP") + name("_BSS") + name("BSS"))
-    out += record(0x98, bytes([0x48]) + struct.pack("<H", end - start) + bytes([3, 4, 1]))    # word aligned, public
+    out += record(0x96, name("") + name("DGROUP") + name(seg) + name("BSS"))
+    out += record(0x98, bytes([0x68 if para else 0x48]) + struct.pack("<H", end - start) + bytes([3, 4, 1]))   # word (or
+                                                                                    # paragraph) aligned, public
     out += record(0x9A, bytes([2, 0xFF, 1]))
     items = sorted(names.items(), key=lambda kv: (kv[1], kv[0]))
     k = 0

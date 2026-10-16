@@ -41,7 +41,23 @@ def _cfg(prj):
 
 
 def wanted(prj):
-    return isinstance(prj.cfg.get("link"), dict) and "linker" in prj.cfg["link"]
+    return isinstance(prj.cfg.get("link"), dict) and ("linker" in prj.cfg["link"] or "emulate" in prj.cfg["link"])
+
+
+def listed(prj, lk):
+    """the modules a file lists in the order they were linked: "name [odd]" a line, each a file of one of the
+    project's source sets, compiled by its toolchain -> [(k, name, object bytes, odd)]"""
+    out = []
+    for k, l in enumerate(x for x in open(os.path.join(prj.dir, lk["order"])) if x.split() and not x.startswith("#")):
+        f = l.split("#")[0].split()
+        part = next((p for p in prj.sets() if os.path.exists(os.path.join(p.src, f[0]))), None)
+        if part is None:
+            raise SystemExit("%s: no source set has it" % f[0])
+        raw, con = part.toolchain().compile(open(os.path.join(part.src, f[0]), "rb").read(), headers=part.headers(), include=part.include, switches=part.switches)
+        if raw is None:
+            raise SystemExit("%s does not compile:\n%s" % (f[0], (con or "")[-1500:]))
+        out.append((k, f[0], raw, "odd" in f[1:]))
+    return out
 
 
 def modules(prj):
@@ -251,6 +267,18 @@ def compare(prj, exe):
 
 def main(prj, argv):
     keep = argv[argv.index("--keep") + 1] if "--keep" in argv else None
+    lk = _cfg(prj)
+    if lk.get("emulate"):                                   # (a linker done here: exact/linkemu.py)
+        from codebreaker.exact import linkemu
+        objs = listed(prj, lk) if lk.get("order") else [(k, f, raw, False) for k, (at, f, raw) in enumerate(modules(prj))]
+        exe = getattr(linkemu, lk["emulate"])([(f, raw, odd) for k, f, raw, odd in objs], prj.symbols(),
+                                              print if "-v" in argv else None)
+        ok, lines = compare(prj, exe)
+        for l in lines:
+            print("   " + l)
+        print("%s linked from %d modules (%s, done here): %d bytes; %s" % (os.path.basename(prj.exe), len(objs), lk["emulate"], len(exe),
+              ("the FILE IDENTICAL" if exe == prj.file else "identical but for what the project accepts") if ok else "not identical"))
+        return 0 if ok else 1
     objs = modules(prj)
     if "-v" in argv:
         for at, f, raw in objs:
