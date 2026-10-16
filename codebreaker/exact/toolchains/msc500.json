@@ -1,0 +1,22 @@
+{
+ "name": "msc500",
+ "title": "Microsoft C 5.0 (CL.EXE and its passes C1-C3), 1987",
+ "kit": "msc500",
+ "emulator": "dos",
+ "stage": {"files": {"CL.EXE": "SETUP/CL.EXE", "C1.EXE": "SETUP/C1.EXE", "CL.ERR": "SETUP/CL.ERR",
+                     "C2.EXE": "COMPILER/C2.EXE", "C3.EXE": "COMPILER/C3.EXE", "C1.ERR": "COMPILER/C1.ERR", "C23.ERR": "COMPILER/C23.ERR"},
+           "include": "INCLIBSM/INCLUDE"},
+ "psp": "0x1000",
+ "_psp": "the passes are packed; their unpacker fails when loaded below 64K",
+ "env": ["PATH=C:\\", "INCLUDE=C:\\INCX;C:\\INCLUDE", "TMP=C:\\"],
+ "_env": "the project's own headers (INCX) are searched before the kit's",
+ "switches": "-AS",
+ "file_switches": "MFLAGS",
+ "passes": [
+  {"run": "CL.EXE", "args": "/c {switches} {tag}.C"}
+ ],
+ "_passes": "the driver runs the passes itself (CL.EXE's EXEC)",
+ "output": "{tag}.OBJ",
+ "default_variant": "release",
+ "variants": {"release": []}
+}

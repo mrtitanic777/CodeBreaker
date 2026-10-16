@@ -12,6 +12,9 @@
                    ('seg', name) / ('grp', name)
         o.raw      the bytes read
     omf.functions(o, seg="_TEXT")  -> [(name, offset, length)] the segment's publics, in order
+    omf.code_segments(o)           -> the object's code segments
+    omf.holes(o, seg)              -> offsets of the segment the linker fills in
+    omf.library(data)              -> [(module name, bytes)] of a .LIB
     omf.records(data)              -> [(type, payload)]
     omf.record(type, payload)      -> one record's bytes, checksum included
     omf.name(s)                    -> a length-prefixed name
@@ -59,6 +62,7 @@ def read(data):
     o.pubs, o.ext, o.fix, o.groups, o.comm = [], [], [], {}, {}
     last = None
     thr = {}
+    filled = {}
     for t, r in records(data):
         if t == 0x96:
             q = 0
@@ -120,6 +124,7 @@ def read(data):
                 b.extend(bytes(off + len(d) - len(b)))
             b[off:off + len(d)] = d
             last = (si, off)
+            filled[si] = max(filled.get(si, 0), off + len(d))
         elif t == 0xA2:
             si, q = _idx(r, 0)
             off = r[q] | r[q + 1] << 8
@@ -145,6 +150,7 @@ def read(data):
                 b.extend(bytes(off + len(out) - len(b)))
             b[off:off + len(out)] = out
             last = (si, off)
+            filled[si] = max(filled.get(si, 0), off + len(out))
         elif t == 0x9C:
             q = 0
             while q < len(r):
@@ -188,13 +194,64 @@ def read(data):
                 o.fix.append((segs[last[0] - 1], last[1] + off, kind, tgt, disp))
     o.seg = {segs[i - 1]: bytes(d) for i, d in buf.items()}
     o.segs = seginfo
+    o.filled = {segs[i - 1]: n for i, n in filled.items()}
     o.raw = bytes(data)
     return o
 
 
+def library(data):
+    """[(name, module bytes)] of an OMF library (.LIB), in its order; a name met again is NAME#2, #3 ..."""
+    if data[0] != 0xF0:
+        return [("(object)", data)]
+    page = (data[1] | data[2] << 8) + 3
+    dict_off = struct.unpack_from("<I", data, 3)[0]
+    out = []
+    seen = {}
+    p = page
+    while p < dict_off:
+        if data[p] != 0x80:
+            p += page - (p % page) if p % page else page
+            continue
+        q = p
+        while q + 3 <= len(data):
+            t = data[q]
+            q += 3 + (data[q + 1] | data[q + 2] << 8)
+            if t in (0x8A, 0x8B):
+                break
+        nm = data[p + 4:p + 4 + data[p + 3]].decode("latin1")
+        seen[nm] = seen.get(nm, 0) + 1
+        out.append((nm + ("#%d" % seen[nm] if seen[nm] > 1 else ""), data[p:q]))
+        p = q
+        if p % page:
+            p += page - p % page
+    return out
+
+
+FIXLEN = {"lo": 1, "off": 2, "base": 2, "ptr": 4, "rel": 2}
+
+
+def holes(o, seg):
+    """the offsets of a segment's bytes the linker fills in"""
+    out = set()
+    for s, at, kind, tgt, disp in o.fix:
+        if s == seg:
+            out.update(range(at, at + FIXLEN.get(kind, 2)))
+    return out
+
+
+def code_segments(o):
+    """the object's code segments, the first named first (a compiler's NAME_TEXT, or more by #pragma alloc_text)"""
+    return [s for s, cls, ln, al in o.segs if s.endswith("_TEXT") or cls.upper() == "CODE"]
+
+
 def functions(o, seg="_TEXT"):
+    """[(name, offset, length)] of a code segment, in order. The last ends where the segment's data end (a SEGDEF
+    may count a byte more: C 5.0 at times counts one past a closing NOP); code before the first name is
+    "(module start)" (an assembly module's)"""
     ps = sorted((off, nm) for nm, s, off in o.pubs if s == seg)
-    n = len(o.seg.get(seg, b""))
+    n = min(len(o.seg.get(seg, b"")), o.filled.get(seg, 0))
+    if ps and ps[0][0] > 0:
+        ps.insert(0, (0, "(module start)"))
     return [(nm, off, (ps[k + 1][0] if k + 1 < len(ps) else n) - off) for k, (off, nm) in enumerate(ps)]
 
 

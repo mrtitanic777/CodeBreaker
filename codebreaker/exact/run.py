@@ -8,10 +8,11 @@
 PROJECT is a folder with a project.json (codebreaker/exact/project.py). Stages:
 
     ledger      every one-function source compiled and put against the program (exact/ledger.py)
+    library     the library modules found in the program, in the linker's order; stand-ins (exact/library.py)
 """
 import sys
 
-STAGES = {"ledger": "codebreaker.exact.ledger"}
+STAGES = {"ledger": "codebreaker.exact.ledger", "library": "codebreaker.exact.library"}
 
 
 def main(argv):
@@ -28,13 +29,17 @@ def main(argv):
         from codebreaker.exact import toolchain, omf
         name, _, variant = argv[1].partition(":")
         tc = toolchain.load(name, variant or None)
-        obj, con = tc.compile(open(argv[2], "rb").read(), switches=" ".join(argv[3:]) or None)
+        import os
+        d = os.path.dirname(os.path.abspath(argv[2]))         # (the headers beside the file)
+        hs = {f: open(os.path.join(d, f), "rb").read() for f in os.listdir(d) if f.lower().endswith(".h")}
+        obj, con = tc.compile(open(argv[2], "rb").read(), headers=hs, switches=" ".join(argv[3:]) or None)
         if obj is None:
             print(con)
             return 1
         o = omf.read(obj)
-        for fn, off, ln in omf.functions(o):
-            print("%-24s %5x %5d  %s" % (fn, off, ln, o.seg["_TEXT"][off:off + ln].hex()))
+        for text in omf.code_segments(o):
+            for fn, off, ln in omf.functions(o, text):
+                print("%-10s %-24s %5x %5d  %s" % (text, fn, off, ln, o.seg[text][off:off + ln].hex()))
         return 0
     from codebreaker.exact import project
     import importlib

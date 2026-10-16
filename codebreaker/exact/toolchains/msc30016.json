@@ -1,0 +1,76 @@
+{
+ "name": "msc30016",
+ "title": "Microsoft C 3.00.16 (CC.EXE and its passes P1-P3), the C update of the Windows 1.01 SDK, August 1985",
+ "kit": "win101sdk",
+ "emulator": "dos",
+ "stage": {
+  "files": {
+   "CC.EXE": "C-UPDATE/CC.EXE",
+   "P1.EXE": "C-UPDATE/P1.EXE",
+   "P2.EXE": "C-UPDATE/P2.EXE",
+   "P3.EXE": "C-UPDATE/P3.EXE"
+  },
+  "include": "msc300:disk2/INCLUDE"
+ },
+ "_stage": "3.00's headers (4.00's have prototypes); the preprocessor is in P1 now, and P2 has cse.c, as in 4.00",
+ "psp": "0x1000",
+ "_psp": "loaded low, its unpacker says \"Packed file is corrupt\"",
+ "env": [
+  "PATH=C:\\",
+  "INCLUDE=C:\\INCLUDE",
+  "TMP=C:\\",
+  "NO87= "
+ ],
+ "switches": "-Oat",
+ "file_switches": "MFLAGS",
+ "derive": {
+  "ot": {
+   "regex": "-O[a-z]*t",
+   "then": "-Ot",
+   "else": "-Os"
+  },
+  "gs": {
+   "regex": "(^|\\s)-Gs(\\s|$)",
+   "then": " -Gs",
+   "else": ""
+  },
+  "oa": {
+   "regex": "-O[a-z]*a",
+   "then": " -Oa",
+   "else": ""
+  },
+  "ze": {
+   "regex": "(^|\\s)-Ze(\\s|$)",
+   "then": " -Ze",
+   "else": ""
+  }
+ },
+ "passes": [
+  {
+   "run": "P1.EXE",
+   "args": "-il C:\\{tag6} -f {tag}.C -pc \\:/ -psize 2 -isize 2 -fsize 2{ze} -I C:/INCX -I C:/INCLUDE -DM_I86 -DMSDOS -DM_I86SM -W 1"
+  },
+  {
+   "run": "P2.EXE",
+   "args": "-il C:\\{tag6} -psize 2 -isize 2 -fsize 2 -CSN {ot} -G0{gs} -Gf -A snd -W 1"
+  },
+  {
+   "run": "P3.EXE",
+   "args": "-il C:\\{tag6} -FPc {ot}{oa} -c {tag}.OBJ -A snd -CC 0sO"
+  }
+ ],
+ "output": "{tag}.OBJ",
+ "rename_externs": {
+  "__ctype_": "__ctype",
+  "__ulmul": "__aNulmul",
+  "__lshl": "__aNlshl",
+  "__lmul": "__aNlmul",
+  "__ldiv": "__aNldiv",
+  "__uldiv": "__aNuldiv",
+  "__lrem": "__aNlrem",
+  "__ulrem": "__aNulrem",
+  "__lshr": "__aNlshr",
+  "__ulshr": "__aNulshr"
+ },
+ "_rename_externs": "3.00.16 calls the long arithmetic's helpers by 3.00's names (and <ctype.h> names the table _ctype_); a program linked with 4.00's library has 4.00's names"
+}

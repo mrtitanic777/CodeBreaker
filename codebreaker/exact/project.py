@@ -2,9 +2,17 @@
 
     project.json   {"image": the original program (a path from the project's directory),
                     "toolchain": profile name, "variant": the compiler's variant,
+                    "toolchains": [{"label", "toolchain", "variant"}] instead, when the program's
+                        compiler is not in hand and several come near it (a function counts when one
+                        of them gives its bytes),
                     "switches": the switches most files had,
                     "dgroup": image offset of the data segment (DGROUP),
-                    "code": "near" (one code segment; near calls wrap at 64K) | "far",
+                    "code_segments": [image offsets where the code segments begin] (default [0]),
+                    "loadseg": the paragraph the image's segment words were made for (default 0),
+                    "starts": a file (from the project's directory) listing where every function
+                        begins, one hex address a line: a function is then only identical when it
+                        reaches the next (it is not shorter than the program's),
+                    "code_end": where the code ends (with "starts"),
                     "src": the sources' folder (default "src"),
                     "include": [folders of headers searched before the kit's]}
     src/SYMBOLS    name  C|D|S  address        (C code: image offset; D data: DS offset; S a segment)
@@ -30,7 +38,10 @@ class Project(object):
         self.src = os.path.join(self.dir, c.get("src", "src"))
         self.include = [os.path.normpath(os.path.join(self.dir, x)) for x in c.get("include", [])]
         self.dgroup = int(c["dgroup"], 0) if isinstance(c.get("dgroup"), str) else c.get("dgroup", 0)
-        self.code_mask = 0xFFFF if c.get("code", "near") == "near" else 0xFFFFF
+        num = lambda x: int(x, 0) if isinstance(x, str) else x
+        self.code_segments = sorted(num(x) for x in c.get("code_segments", [0]))
+        self.loadseg = num(c.get("loadseg", 0))
+        self.code_end = num(c.get("code_end", 0))
         self.switches = c.get("switches")
         b = open(self.exe, "rb").read()
         self.file = b
@@ -50,9 +61,27 @@ class Project(object):
             self._relocs = {o + s * 16 for o, s in struct.iter_unpack("<HH", self.file[h[12]:h[12] + 4 * h[3]])} if h else set()
         return self._relocs
 
+    def code_base(self, a):
+        """the image offset of the code segment `a` is in"""
+        return max([b for b in self.code_segments if b <= a] or [0])
+
+    def starts(self):
+        """[image offsets where functions begin], or None"""
+        if not self.cfg.get("starts"):
+            return None
+        p = os.path.join(self.dir, self.cfg["starts"])
+        return sorted(int(l.split()[0], 16) for l in open(p) if l.strip() and not l.startswith("#"))
+
     def toolchain(self):
+        return self.toolchains()[0][1]
+
+    def toolchains(self):
+        """[(label, Toolchain)]"""
         from codebreaker.exact import toolchain
-        return toolchain.load(self.cfg["toolchain"], self.cfg.get("variant"))
+        c = self.cfg
+        if "toolchains" in c:
+            return [(x.get("label") or x["toolchain"], toolchain.load(x["toolchain"], x.get("variant"))) for x in c["toolchains"]]
+        return [(c["toolchain"], toolchain.load(c["toolchain"], c.get("variant")))]
 
     def path(self, name):
         return os.path.join(self.src, name)

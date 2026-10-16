@@ -1,0 +1,141 @@
+{
+ "name": "msc400",
+ "title": "Microsoft C 4.00 (MSC.EXE and its passes C1-C3), 1986",
+ "kit": "msc400",
+ "emulator": "dos",
+ "stage": {
+  "files": {
+   "MSC.EXE": "C_COMPILER/MSC.EXE",
+   "C1.EXE": "C_COMPILER/C1.EXE",
+   "C2.EXE": "C_COMPILER/C2.EXE",
+   "C3.EXE": "C_COMPILER/C3.EXE"
+  },
+  "include": "C_INC_LIB_S"
+ },
+ "_stage": "(the include folder also holds the libraries; only files are copied, the .H among them are what the passes read)",
+ "psp": "0x1000",
+ "_psp": "the passes are packed; their unpacker fails when loaded below 64K",
+ "env": [],
+ "switches": "-Oat",
+ "file_switches": "MFLAGS",
+ "derive": {
+  "ot": {
+   "regex": "-O[a-z]*s",
+   "then": "-Os",
+   "else": "-Ot"
+  },
+  "gs": {
+   "regex": "(^|\\s)-Gs(\\s|$)",
+   "then": " -Gs",
+   "else": ""
+  }
+ },
+ "passes": [
+  {
+   "run": "C1.EXE",
+   "env": [
+    "MSC_CMD_FLAGS=-il C:\\{tag6} -f {tag}.C -pc \\:/ -Q 24242 -A snd -Ze{gs} -I C:/INCX -I C:/INCLUDE -DM_I86 -DMSDOS -DM_I86SM -W 1 ",
+    "NO87= "
+   ]
+  },
+  {
+   "run": "C2.EXE",
+   "env": [
+    "MSC_CMD_FLAGS=-il C:\\{tag6} -CSN {ot} -G0{gs} -A snd -W 1 ",
+    "NO87= "
+   ]
+  },
+  {
+   "run": "C3.EXE",
+   "env": [
+    "MSC_CMD_FLAGS=-il C:\\{tag6} -FPi {ot} -Oa -c {tag}.OBJ -A snd -CC 0sO ",
+    "NO87= "
+   ]
+  }
+ ],
+ "_passes": "MSC.EXE gives each pass its switches in the environment (MSC_CMD_FLAGS), not on its command line; its default is -Ot",
+ "output": "{tag}.OBJ",
+ "default_variant": "release",
+ "variants": {
+  "release": [],
+  "masm400": [
+   1,
+   5
+  ]
+ },
+ "_variants": "masm400: the state between 3.00 and 4.00 that compiled MASM 4.00 (changes 2-4 are other tries at it)",
+ "patches": [
+  {
+   "change": 1,
+   "file": "C3.EXE",
+   "at": 44732,
+   "was": "740f",
+   "now": "eb0f",
+   "in_memory": true,
+   "note": "AND of memory with 0 stays an AND (C3 AEBC; change 3 of 3.00's list)"
+  },
+  {
+   "change": 5,
+   "file": "C2.EXE",
+   "at": 2500,
+   "was": "8b1c8b5f14833f2f",
+   "now": "e928fa9090",
+   "in_memory": true,
+   "note": "a multiplication by a constant from 3 to 15 stays a multiplication (C2 09C4: under -Ot the code tables' question before they choose shifts and additions is answered no)"
+  },
+  {
+   "change": 2,
+   "file": "C3.EXE",
+   "at": 18001,
+   "was": "56e8610a83c4020bc0754b56e87a0783c4020bc0754056e8bd0883c4020bc075352bc05056e8d80783c404",
+   "now": "56e8610a590bc0754d56e87c07590bc0754456e8c108590bc0753b2bc05056e8de07595956e83d0a590bc0752956e810065956e8f40459e91c0090",
+   "in_memory": true,
+   "note": "the third pass's walk over equal ends of code takes its steps in 3.00's order (change 5 of 3.00's list)"
+  },
+  {
+   "change": 4,
+   "file": "C3.EXE",
+   "at": 18001,
+   "was": "56e8610a83c4020bc0754b56e87a0783c4020bc0754056e8bd0883c4020bc075352bc05056e8d80783c404",
+   "now": "8b5c0aff77082bc05056e8f3075959e9ac0556e84f0a590bc0753b56e86a07590bc0753256e8af08590bc0752956e810065956e8f40459eb1d9090",
+   "in_memory": true,
+   "note": "the walk as change 7 of 3.00's list"
+  },
+  {
+   "change": 4,
+   "file": "C3.EXE",
+   "at": 19468,
+   "was": "a14a4fff064a4f3d02007d74",
+   "now": "e97d008b5c0a8b5f08583bc37503e946fa8b4f128bdee9e600",
+   "in_memory": true,
+   "note": "the walk as change 7 of 3.00's list"
+  },
+  {
+   "change": 4,
+   "file": "C3.EXE",
+   "at": 19720,
+   "was": "a14a4fff064a4f3d02007d51",
+   "now": "e95a008b1f0bdb74073bd975f6e94bf9e951f9",
+   "in_memory": true,
+   "note": "the walk as change 7 of 3.00's list"
+  },
+  {
+   "change": 3,
+   "file": "C3.EXE",
+   "at": 18001,
+   "was": "56e8610a83c4020bc0754b56e87a0783c4020bc0754056e8bd0883c4020bc075352bc05056e8d80783c404",
+   "now": "56e8610a590bc0754d56e87c07590bc0754456e8c108590bc0753b5056e8e0075959e9990556e83c0a590bc0752856e80f065956e8f30459eb1c90",
+   "in_memory": true,
+   "note": "the walk as change 6 of 3.00's list"
+  },
+  {
+   "change": 3,
+   "file": "C3.EXE",
+   "at": 19468,
+   "was": "a14a4fff064a4f3d02007d74",
+   "now": "e97d008b5c0a8b5f088b4f128bde8b1f0bdb74073bd975f6e94ffae955fa",
+   "in_memory": true,
+   "note": "the walk as change 6 of 3.00's list"
+  }
+ ]
+}

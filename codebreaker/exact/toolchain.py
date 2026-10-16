@@ -52,6 +52,16 @@ def kit_dir(name):
     return path
 
 
+def kit_path(kit, path, base=None):
+    """a file named in a profile or project: "KIT:path" in that kit, else in `kit`, else from `base`"""
+    k, sep, rest = path.partition(":")
+    if sep and len(k) > 1:
+        return os.path.join(kit_dir(k), rest)
+    if kit:
+        return os.path.join(kit_dir(kit), path)
+    return os.path.normpath(os.path.join(base or ".", path))
+
+
 def profiles():
     d = os.path.join(HERE, "toolchains")
     return sorted(f[:-5] for f in os.listdir(d) if f.endswith(".json"))
@@ -80,11 +90,15 @@ class Toolchain(object):
             return d
         kit = kit_dir(self.p["kit"])
         st = self.p.get("stage", {})
+
+        def where(src):                                     # "otherkit:path" names a file of another kit
+            k, sep, rest = src.partition(":")
+            return os.path.join(kit_dir(k), rest) if sep and len(k) > 1 else os.path.join(kit, src)
         for dst, src in st.get("files", {}).items():
-            b = bytearray(open(os.path.join(kit, src), "rb").read())
+            b = bytearray(open(where(src), "rb").read())
             hdr = struct.unpack_from("<H", b, 8)[0] * 16 if b[:2] == b"MZ" else 0
             for x in self.patches:
-                if x["file"] != dst:
+                if x["file"] != dst or x.get("in_memory"):
                     continue
                 at = hdr + _int(x["at"])
                 was, now = bytes.fromhex(x["was"]), bytes.fromhex(x["now"])
@@ -95,11 +109,11 @@ class Toolchain(object):
             open(os.path.join(d, dst), "wb").write(b)
         inc = st.get("include")
         if inc:
-            os.makedirs(os.path.join(d, "INCLUDE"), exist_ok=True)
-            for f in os.listdir(os.path.join(kit, inc)):
-                p = os.path.join(kit, inc, f)
-                if os.path.isfile(p):
-                    shutil.copy(p, os.path.join(d, "INCLUDE", f.upper()))
+            for root, _, fs in os.walk(where(inc)):         # (with its folders: SYS\)
+                to = os.path.join(d, "INCLUDE", os.path.relpath(root, where(inc)).upper())
+                os.makedirs(to, exist_ok=True)
+                for f in fs:
+                    shutil.copy(os.path.join(root, f), os.path.join(to, f.upper()))
         open(done, "w").write(self.key)
         return d
 
@@ -200,12 +214,16 @@ class Toolchain(object):
         env = self._env(sw)
         con = b""
         for ps in self.p["passes"]:
-            inst = None
+            inst = when = None
             for hname, h in self.p.get("hooks", {}).items():
                 if h["pass"] == ps["run"] and ans.get(hname):
                     inst = _hook(h, set(ans[hname]))
-            r = dos.run(os.path.join(w, ps["run"]), w, ps["args"].format(**v), env=env, instrument=inst,
-                        psp=_int(self.p.get("psp", 0x100)))
+            mem = [x for x in self.patches if x["file"] == ps["run"] and x.get("in_memory")]
+            if mem:                                         # a packed pass: changed once it has unpacked itself
+                inst, when = _in_memory(mem, inst)
+            penv = env + b"".join(e.format(**v).encode("latin1") + b"\0" for e in ps.get("env", []))
+            r = dos.run(os.path.join(w, ps["run"]), w, ps.get("args", "").format(**v), env=penv, instrument=inst,
+                        instrument_when=when, psp=_int(self.p.get("psp", 0x100)))
             con += r.console
             if r.exit:
                 return r.exit, con + b"(the pass that stopped: " + ps["run"].encode() + b")\n"
@@ -227,6 +245,20 @@ def _hook(h, counts):
             a = load * 16 + _int(a)
             mu.hook_add(UC_HOOK_CODE, hit, begin=a, end=a)
     return inst
+
+
+def _in_memory(mem, then=None):
+    pairs = [(_int(x["at"]), bytes.fromhex(x["was"]), bytes.fromhex(x["now"])) for x in mem]
+
+    def when(uc, addr, load):
+        return all(bytes(uc.mem_read(load * 16 + a, len(was))) == was for a, was, now in pairs)
+
+    def inst(mu, load):
+        for a, was, now in pairs:
+            mu.mem_write(load * 16 + a, now)
+        if then:
+            then(mu, load)
+    return inst, when
 
 
 _LOADED = {}
