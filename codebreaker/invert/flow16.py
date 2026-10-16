@@ -242,15 +242,29 @@ def _compare_switches(blocks):
 
         walk(h.id, None, first=True)
         vals = [v for v, t in cases]
-        if not ok[0] or len(leaves) != 1 or len(set(vals)) < 3 or len(set(vals)) != len(vals):
+        # (two values are a switch too when the selector was loaded into the register for the tests alone -
+        #  `mov ax,[m]; cmp ax,K1; je; cmp ax,K2; je`: an if would compare the memory itself)
+        loaded = len(ins) >= 3 and ins[-3].mnemonic == "mov" and ins[-3].op_str.startswith(reg + ", ") and "[" in ins[-3].op_str
+        if not ok[0] or len(leaves) != 1 or len(set(vals)) < (2 if loaded else 3) or len(set(vals)) != len(vals):
             continue
         default = leaves.pop()
+
+        def through(t):                                     # (a case reached by a jmp of the compares' own - the
+            blk = blocks[t]                                 #  long form of a jump: jne over, jmp to the case)
+            if len(blk.insns) == 1 and blk.term == "jmp" and all(p in region for p in preds[t]):
+                region.add(t)
+                return blk.succ[0]
+            return t
+        cases = [(v, through(t)) for v, t in cases]
+        default = through(default)
         h.term = "switch"
         h.cases = cases
         h.default = default
         h.selreg = reg
         h.table = None
-        h.succ = list(dict.fromkeys([t for v, t in sorted(cases)] + [default]))
+        h.succ = sorted(set(t for v, t in cases)) + ([default] if default not in [t for v, t in cases] else [])
+        # (the arms in the code's order - the source's, and one falls into the next as written - the default
+        #  last: the compiler puts its code after the tests)
         for r in region - {h.id}:
             blocks[r].succ = []
             blocks[r].term = "dead"
@@ -384,6 +398,7 @@ def structure(blocks, entry=0):
 
     active = set()        # blocks currently being expanded on the recursion stack (ancestor guard)
     loopstack = []        # enclosing loops as (header, follow): edges to follow -> break, to header -> continue
+    casestack = []        # the arms of the switches by compares being structured: reaching another is a goto
 
     def ends_terminal(nodes):
         if not nodes: return False
@@ -401,6 +416,8 @@ def structure(blocks, entry=0):
         while b is not None and b != EXIT:
             if loopstack:                                   # break/continue for the innermost loop
                 h, fol, lbody, lflag = loopstack[-1]
+                if casestack and casestack[-1][1] == (len(loopstack), b):
+                    return out                              # (a switch's arm at its join, the loop's follow: the switch then breaks)
                 if b == fol: out.append(('break',)); return out
                 if b == h: out.append(('continue',)); return out
                 if b not in lbody and not lflag[0]:
@@ -427,6 +444,8 @@ def structure(blocks, entry=0):
                     out.extend(sub) if ends_terminal(sub) else out.append(('goto', None, b))
                     return out
             if b in stops:
+                if casestack and b in casestack[-1][0]:
+                    out.append(('goto', None, b))       # (into another arm: the case falls into it)
                 break
             if b in active or b in local:                   # ancestor/irreducible re-entry -> goto
                 out.append(('goto', None, b)); break
@@ -469,6 +488,13 @@ def structure(blocks, entry=0):
                 vals = sorted(v for v, x in blk.cases if x == t) + (["default"] if t == blk.default else [])
                 if t == join and vals == ["default"]:
                     continue                               # (no default: the rest go to the end)
+                arms = set(blk.succ) - {t, join}
+                casestack.append((arms, (len(loopstack), join)))
+                try:
+                    cases.append((vals, seq_from(t, sub | arms) if t != join else []))
+                finally:
+                    casestack.pop()
+                continue
             else:
                 vals = [i for i, x in enumerate(blk.table) if x == t]
             cases.append((vals, seq_from(t, sub) if t != join else []))

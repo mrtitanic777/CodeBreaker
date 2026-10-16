@@ -1330,6 +1330,7 @@ class R:
             # old value, `m++` (the store is the increment). `dec [m]; mov R,[m]`: R is `--m`.
             nm=s.memname(ops) or ops; o="++" if mn=="inc" else "--"
             nx=s.ins[i+1] if i+1<len(s.ins) else None
+            if s.msc3 and i+1 >= getattr(s,"range_hi",len(s.ins)): nx=None   # (the next block's: not this step's)
             if nx is not None and nx.mnemonic=="mov" and nx.op_str.endswith(", "+ops) and \
                nx.op_str.split(",")[0] in ("bx","si","di","ax","cx","dx"):
                 r=nx.op_str.split(",")[0]
@@ -1693,6 +1694,7 @@ class R:
         """Emit straight-line statements for instruction indices [lo, hi) via step().
         Skips indices before s.emit_start (the prologue)."""
         i = max(lo, getattr(s, "emit_start", 0))
+        s.range_hi = hi                                # (a step that reads on may not pass the range's end)
         while i < hi:
             ni = s.step(i, out)
             i = ni if ni > i else i + 1
@@ -1945,6 +1947,7 @@ class R:
                 # leave the switch, so render the dispatch as an if-chain on the selector.
                 s._tn = getattr(s, "_tn", 0) + 1; t = "t%d" % s._tn
                 out.append("%s = %s;" % (t, sel))
+                arms = [x for x in arms if "default" not in x[0]] + [x for x in arms if "default" in x[0]]   # (the rest: last)
                 def chain(k, ind):
                     if k == len(arms): return []
                     vals, body = arms[k]

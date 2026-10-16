@@ -122,6 +122,26 @@ def logical_values(text):
     return text
 
 
+def conditional_values(text):
+    """a register given one value or another by a test, then read once by the next statement - C's ?: read back:
+        if (C) { r = A; } else { r = B; } X = ..r..;   ->   X = ..(C ? A : B)..;
+    (the arms give it nothing else, and the statement after reads it no more)"""
+    rx = re.compile(r"(?m)^(\s*)if (\(.*\)) \{\n\s*%s = ([^;\n]+);\n\s*\} else \{\n\s*\3 = ([^;\n]+);\n\s*\}\n(\s*)(.*)$" % (r"(ax|bx|cx|dx|si|di)"))
+
+    def one(m):
+        ind, c, r, a, b, ind2, nxt = m.groups()
+        if ind2 != ind or len(re.findall(r"\b%s\b" % r, nxt)) != 1 or re.match(r"(?:if|while|for|switch|\}|L_\w+:)", nxt):
+            return m.group(0)
+        rest = m.string[m.end():]
+        if re.search(r"\b%s\b" % r, re.split(r"\n\s*%s = (?![^;\n]*\b%s\b)" % (r, r), "\n" + rest)[0]) and r not in ("si", "di"):
+            return m.group(0)                               # (read again later: not this way)
+        if r in ("si", "di"):
+            return m.group(0)                               # (a register variable: given a value it keeps)
+        val = "%s ? %s : %s" % (_truth(c), a, b)
+        return ind + re.sub(r"\b%s\b" % r, lambda x: "(%s)" % val, nxt, count=1)
+    return rx.sub(one, text)
+
+
 def branch_returns(text):
     """if (C) { r = E1; } else { ..; r = E2; } return r;  ->  if (C) return E1; ..; return E2; (each branch ends
     the function: the compiler jumps from the first to the end)"""
@@ -398,12 +418,14 @@ def frame_names(text, rule):
     lines = body.split("\n")
     decls = []
     for k, l in enumerate(lines[1:], 1):
-        m = re.match(r"\s+(register\s+)?((?:unsigned\s+)?(?:int|char|long|short)\b)\s*(\**)\s*(\w+)\s*(?:\[(\d+)\])?;\s*$", l)
+        m = re.match(r"\s+(register\s+)?((?:unsigned\s+)?(?:int|char|long|short)\b|struct\s+\w+)\s*(\**)\s*(\w+)\s*(?:\[(\d+)\])?;\s*$", l)
         if not m:
             if l.strip():
                 break
             continue
         reg, ty, star, name, cnt = m.groups()
+        if ty.startswith("struct") and not star:
+            return None                                     # (a struct's size the text does not say)
         size = 2 if star else SIZES.get(ty.split()[-1], 2) * int(cnt or 1)
         decls.append(dict(name=name, reg=bool(reg), size=max(size, 2) if not cnt else size + (size & 1)))
     autos = sorted((d for d in decls if not d["reg"] and re.fullmatch(r"v\d+", d["name"])), key=lambda d: int(d["name"][1:]))
@@ -412,6 +434,7 @@ def frame_names(text, rule):
     fill = {d["name"]: d for d in decls if re.fullmatch(r"_p\d+", d["name"])}
     regs = [d for d in decls if d["reg"]]
     order = []
+    drop = set()
     cum = 0
     for d in autos:                                         # (each auto at its place; what lies between: register
         n = int(d["name"][1:])                              #  locals, then a filler)
@@ -419,10 +442,12 @@ def frame_names(text, rule):
         while gap >= 2 and regs:
             order.append(regs.pop(0))
             gap -= 2
-        if order and order[-1]["name"] in ("v%d" % cum,) and "_p%d" % cum in fill:
-            pass
         if "_p%d" % cum in fill:
-            order.append(fill["_p%d" % cum])
+            if gap <= 0:                                    # (the register locals take the room: no filler)
+                drop.add("_p%d" % cum)
+                fill.pop("_p%d" % cum)
+            else:
+                order.append(fill["_p%d" % cum])
         order.append(d)
         cum = n
     order += regs + [fill[f] for f in fill if fill[f] not in order]
@@ -442,8 +467,10 @@ def frame_names(text, rule):
                 return None
             new[d["name"]] = nm
         prev = bucket(nm)
-    if not new:
+    if not new and not drop:
         return None
+    for f in drop:
+        body = re.sub(r"(?m)^\s*char %s\[\d+\];\n" % f, "", body)
     for a, b in new.items():
         body = re.sub(r"\b%s\b" % a, b, body)
     return head + "{" + body
@@ -867,6 +894,94 @@ def char_params(text):
     return "\n".join(lines) + sep + body
 
 
+def _block_end(lines, k):
+    """the index of the line closing the block line k opens (by indentation: the first line back at its indent)"""
+    ind = len(lines[k]) - len(lines[k].lstrip())
+    for j in range(k + 1, len(lines)):
+        if lines[j].strip() and len(lines[j]) - len(lines[j].lstrip()) <= ind:
+            return j
+    return None
+
+
+def for_loops(text):
+    """a while loop whose body ends by stepping a variable - `X = X + K;`, or `else { X = X + K; continue; }`
+    after a test whose other arm leaves - a for loop: for (INIT; C; X = X + K), its first statement the init when
+    the line before gives a value to what C tests (a variant: the compiler lays a for out its own way - the step
+    where a continue goes)"""
+    lines = text.split("\n")
+    changed = False
+    k = 0
+    while k < len(lines):
+        m = re.match(r"(\s*)while \((.*)\) \{$", lines[k])
+        e = _block_end(lines, k) if m else None
+        if not m or e is None or lines[e].strip() != "}":
+            k += 1
+            continue
+        ind = m.group(1)
+        i4 = ind + "    "
+        body = lines[k + 1:e]
+        own = [l for l in body if l.startswith(i4) and not l.startswith(i4 + " ")]
+        step = None
+        st = r"([A-Za-z_]\w*) = \1 [+-] \d+;|[A-Za-z_]\w*(?:\+\+|--);"
+        if body and re.fullmatch(i4 + "(?:%s)" % st, body[-1]) and i4 + "continue;" not in own:
+            step = body[-1].strip()
+            body = body[:-1]
+        elif len(body) >= 4 and body[-4:-3] == [i4 + "} else {"] and re.fullmatch(i4 + "    (?:%s)" % st, body[-3]) and \
+                body[-2] == i4 + "    continue;" and body[-1] == i4 + "}" and i4 + "continue;" not in own and \
+                re.match(r"\s*(?:break|return)\b", body[-5] if len(body) >= 5 else ""):
+            step = body[-3].strip()
+            body = body[:-4] + [i4 + "}"]
+        if not step:
+            k += 1
+            continue
+        init = ""
+        p = k - 1
+        im = re.fullmatch(re.escape(ind) + r"([A-Za-z_]\w*) = ([^;]+);", lines[p]) if p >= 0 else None
+        if im and re.search(r"\b%s\b" % im.group(1), m.group(2)):
+            init = "%s = %s" % (im.group(1), im.group(2))
+        head = "%sfor (%s; %s; %s) {" % (ind, init, _truth("(" + m.group(2) + ")"), step.rstrip(";"))
+        new = [head] + body + [lines[e]]
+        if init:
+            lines[p:e + 1] = new
+            k = p + 1
+        else:
+            lines[k:e + 1] = new
+            k += 1
+        changed = True
+    return "\n".join(lines) if changed else None
+
+
+def case_falls(text):
+    """a case that goes on into the next (`goto L;` to the label the next case starts with): it falls into it -
+    an arm's last `goto L;` is dropped, and `if (C) { X } else { goto L; } break;` is `if (C) { X break; }`"""
+    lines = text.split("\n")
+    k = 0
+    while k < len(lines):
+        m = re.match(r"(\s*)(L_\w+):$", lines[k])
+        c = k
+        while c > 0 and re.match(r"\s*(?:case [^:]+|default):$", lines[c - 1]):
+            c -= 1
+        if not m or c == k:
+            k += 1
+            continue
+        lab, ind = m.group(2), re.match(r"\s*", lines[c]).group(0)
+        i4 = ind + "    "
+        if lines[c - 1] == i4 + "goto %s;" % lab:
+            del lines[c - 1]
+            k -= 1
+        elif c >= 5 and lines[c - 4:c] == [i4 + "} else {", i4 + "    goto %s;" % lab, i4 + "}", i4 + "break;"] and \
+                not re.match(r"\s*(?:return|break|continue|goto)\b", lines[c - 5]):
+            lines[c - 4:c] = [i4 + "    break;", i4 + "}"]
+            k -= 2
+        else:
+            k += 1
+            continue
+        if not re.search(r"\bgoto %s;" % lab, "\n".join(lines)):
+            del lines[k]
+        k += 1
+    return "\n".join(lines)
+
+
 def inner_registers(text):
     """a register variable first given a value after other statements: declared in a block from there (to
     before the function's last return) - a variant: before the block the compiler has the register free for
@@ -1083,10 +1198,18 @@ def structs(text, widths):
                 fields.append("char _%d[%d];" % (pos, off - pos))
             uch = any(isinstance(u, tuple) and u[1] == off for u in UCHAR)   # (widened with zeros: unsigned)
             byte = (p, off) in widths or ("*", off) in widths or uch
+            deref = re.search(r"(?<![\w>)\]])\*%s->f%d\b(?!\s*(?:->|\[|\.))" % (p, off), text)   # (*p->fN: a pointer)
             fields.append("%s f%d;" % ("struct s_%s *" % p if off == 0 and selfref else "unsigned char" if uch else
-                                       "char" if byte else "int", off))
+                                       "char" if byte else "int *" if deref else "int", off))
             pos = off + (1 if byte else 2)
         tag = "s_" + p
+        steps = {int(n) for n in re.findall(r"\b%s = %s [+-] (\d+);" % (p, p), text)}
+        if len(steps) == 1:                                 # (stepped through an array of them: the step is the
+            n = steps.pop()                                 #  struct's size, and in C a step of one)
+            if n >= pos and n < 0x100:
+                if n > pos:
+                    fields.append("char _%d[%d];" % (pos, n - pos))
+                text = re.sub(r"\b%s = %s ([+-]) %d;" % (p, p, n), r"%s = %s \1 1;" % (p, p), text)
         defs.append("struct %s { %s };" % (tag, " ".join(fields)))
         # the declarations of p: a parameter, a register variable, a local, or data (declared by localize)
         text = re.sub(r"(?m)^(\s*)(register )?(?:int|char \*) ?%s;" % p, r"\1\2struct %s *%s;" % (tag, p), text)
@@ -1114,15 +1237,15 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         BYTEG.clear()
         BYTEG.update(n for k, n in widths if k == "g")
         FILEPTR.clear()
-        t = zero_extends(copy_props(table_macros(prj, char_stores(char_params(t)), prj.toolchain().p.get("table_macros"))))
+        t = zero_extends(copy_props(table_macros(prj, case_falls(char_stores(char_params(t))), prj.toolchain().p.get("table_macros"))))
         t = re.sub(r"&(\w+)\[(-?)(\d+)\]", lambda m: "(%s %s %s)" % (m.group(1), "-" if m.group(2) else "+", m.group(3)), t)
         t = re.sub(r"&(\w+)->f(\d+)\b", r"(\1 + \2)", t)  # (lea: &p[N], &p->fN - the place, p + N)
-        t = fold_registers(stored_calls(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(logical_values(t))))))))
+        t = fold_registers(stored_calls(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(conditional_values(logical_values(t)))))))))
         t = word_arrays(test_first_loops(post_steps(t)))
         t = self_updates(t)
         t = structs(pointer_flow(local_pointers(register_variables(shapes(t), regs, regparam))), set(widths))
         t = fill_frame(t, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
-        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t)] if v]
+        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t)] if v]
         both = pre_steps(t)
         both = pre_increments(both) if both else None
         if both:
@@ -1164,6 +1287,7 @@ def byte_fields(inv, code):
     finally:
         inv.MARK = old
     out = {(p, int(o)) for p, o in re.findall(r"BYTE\(\s*\(?(\w+)->f(\d+)\)?\s*\)", t)}
+    out |= {(p, 0) for p in re.findall(r"BYTE\(\*\(?(?:\+\+|--)?(\w+)(?:\+\+|--)?\)?\)", t)}   # (*p a byte: a char *)
     from codebreaker.exact import x86                       # (and from the code itself: a byte read or written
     for i in x86.disasm(code, 0, len(code), False):         #  through a register at an offset - whatever the
         m = re.search(r"byte ptr \[(?:bx|si|di) \+ (0x[0-9a-f]+|\d+)\]", i.op_str)    # draft names the pointer)
@@ -1371,6 +1495,9 @@ def _declare_pointer(src, x, ty):
             if ty == "int":                                 # (its byte offsets, now in words: x + N/2)
                 out = re.sub(r"\(\(int \*\)\(\(char \*\)%s \+ (\d+)\)\)" % re.escape(x),
                              lambda m2: "(%s + %d)" % (x, int(m2.group(1)) // 2) if int(m2.group(1)) % 2 == 0 else m2.group(0), out)
+                out = re.sub(r"\b%s\[\((.+?) << 1\) \+ (\d+)\]" % re.escape(x),     # (an index the code doubles)
+                             lambda m2: "%s[%s + %d]" % (x, m2.group(1), int(m2.group(2)) // 2) if int(m2.group(2)) % 2 == 0 else m2.group(0), out)
+                out = re.sub(r"\b%s\[\((.+?) << 1\)\]" % re.escape(x), r"%s[\1]" % x, out)
             return out
     return None
 
@@ -1393,7 +1520,7 @@ def compile_fixes(src, con):
     m = re.search(r"(?<![\w)\]])\*(?!\()\s*([A-Za-z_]\w*)", l) if "illegal indirection" in msg else \
         re.search(r"\b([A-Za-z_]\w*)\[", l) if "subscript on non-array" in msg else None
     if m:
-        for ty in ("int", "char"):
+        for ty in ("char", "int") if (m.group(1), 0) in BYTEPTR else ("int", "char"):   # (read a byte at a time: char)
             d = _declare_pointer(src, m.group(1), ty)
             if d:
                 out.append(d)
@@ -1510,6 +1637,7 @@ def prove_texts(prj, tc, inv, texts, a, ln, names):
 
 
 MAXCANDS = 48
+BYTEPTR = set()                                             # (the byte-wide places the code reads: (pointer, offset))
 
 
 def prove_best(prj, tc, inv, text, a, ln, names, regparam=None):
@@ -1519,6 +1647,8 @@ def prove_best(prj, tc, inv, text, a, ln, names, regparam=None):
     if regparam is None:
         regparam = dict(getattr(inv, "LAST", {}).get("regparam") or {})
     widths = byte_fields(inv, bytes(prj.image[a:a + ln]))
+    BYTEPTR.clear()
+    BYTEPTR.update(widths)
     cands = candidates(prj, text, a, names, regs, regparam, widths)
     seen = set()
     uniq = []
