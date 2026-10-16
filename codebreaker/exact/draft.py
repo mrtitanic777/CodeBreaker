@@ -2827,9 +2827,17 @@ def long_pairs(text):
 
     def pair_copy(m):                                       # (a pair given a pair: x = y, the high words too)
         ind, x, y, hx, hy = m.groups()
+        ghi = lambda g: "g_%x" % (int(g[2:], 16) + 2) if re.fullmatch(r"g_[0-9a-f]+", g) else None
         if hi_of(x) == hx and hi_of(y) == hy:
             pairs.add(x)
             pairs.add(y)
+            return "%s%s = %s;" % (ind, x, y)
+        if (hi_of(x) == hx or ghi(x) and int(hx[2:] if hx.startswith("g_") else "0", 16) == int(x[2:], 16) + 2) and \
+                re.fullmatch(r"g_[0-9a-f]+", y) and re.fullmatch(r"g_[0-9a-f]+", hy) and int(hy[2:], 16) == int(y[2:], 16) + 2:
+            pairs.add(x)                                    # (a long in the data copied: one long)
+            LONGINFO.setdefault("globals", set()).add("g_%04x" % int(y[2:], 16))
+            if x.startswith("g_"):
+                LONGINFO["globals"].add("g_%04x" % int(x[2:], 16))
             return "%s%s = %s;" % (ind, x, y)
         return m.group(0)
     body = _line_pairs(body, r"([ \t]*)(\w+) = (\w+);\n\s*(\w+) = (\w+);", pair_copy)
