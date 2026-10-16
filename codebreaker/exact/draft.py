@@ -874,6 +874,25 @@ def word_arrays(text, lo=0x40):
         ARRAYS[g.group(1)] = "struct s_%s" % g.group(1)
         return "%s%s" % (ind, rest.replace("%s[bx]" % g.group(1), "%s[%s].f0" % (g.group(1), e), 1))
     t = re.sub(r"(?m)^([ \t]*)bx = \((\d+) \* (.+?)\);\n[ \t]*(.*\bg_[0-9a-f]{4}\[bx\].*)$", struct_index, t)
+    # (the compiler keeps bx on: later elements through it, until it is given again - and the product itself
+    #  read as a pointer to a field, (K * E)->fN, an element at N)
+    lines = t.split("\n")
+    for k, l in enumerate(lines):
+        m = re.match(r"[ \t]*(\w+)\[(.+?)\]\.f0\b", l) if "].f0" in l else None
+        prod = re.search(r"\b(g_[0-9a-f]{4})\[(.+?)\]\.f0", l)
+        if not prod or prod.group(1) not in STRUCTARR:
+            continue
+        kk, e = STRUCTARR[prod.group(1)][0], prod.group(2)
+        for j in range(k + 1, len(lines)):
+            if re.match(r"[ \t]*bx = ", lines[j]) or re.search(r"\b%s\s*(?:=[^=]|\+\+|--)|(?:\+\+|--)\s*%s\b" % (re.escape(e), re.escape(e)), lines[j]):
+                break
+            def elem(m2):
+                STRUCTARR.setdefault(m2.group(1), (kk, ARRAYS.get(m2.group(1), "int") if not str(ARRAYS.get(m2.group(1), "")).startswith("struct") else "int"))
+                ARRAYS[m2.group(1)] = "struct s_%s" % m2.group(1)
+                return "%s[%s].f0" % (m2.group(1), e)
+            lines[j] = re.sub(r"\b(g_[0-9a-f]{4})\[bx\]", elem, lines[j])
+            lines[j] = re.sub(r"\(%d \* %s\)->f(\d+)\b" % (kk, re.escape(e)), lambda m2: elem(type("M", (), {"group": lambda s, i: "g_%04x" % int(m2.group(1))})()), lines[j])
+    t = "\n".join(lines)
     # (I << 1)[E]: the model's word index into the words at E - ((int *)(E))[I]
     def word_index(m):                                      # (an offset in bytes: through a char *)
         i, e = m.group(1), m.group(2)
@@ -2367,11 +2386,37 @@ def localize(prj, text, at, names):
     for nb in sorted(set(re.findall(r"\bstruct _b(\d+) \*", text)), key=int):   # (a block of bytes copied whole)
         decl.insert(0, "struct _b%s { char _c[%s]; };" % (nb, nb))
     if arrs:
+        # (arrays of structs of one size whose places lie within one element: one array, its fields at the
+        #  places' distances from the first)
+        sa = sorted((int(d[2:], 16), d) for d in arrs if d in STRUCTARR)
+        merged = {}
+        for b, d in sa:
+            base = next((x for x in merged if STRUCTARR[merged[x][0]][0] == STRUCTARR[d][0] and 0 < b - x < STRUCTARR[d][0]), None)
+            if base is None:
+                merged[b] = [d]
+            else:
+                merged[base].append(d)
+        for base, ds in merged.items():
+            if len(ds) < 2:
+                continue
+            bn = ds[0]
+            for d in ds[1:]:
+                off = int(d[2:], 16) - base
+                text = re.sub(r"\b%s\[([^\[\]]+)\]\.f0\b" % d, lambda m, o=off: "%s[%s].f%d" % (bn, m.group(1), o), text)
+                arrs = [x for x in arrs if x != d]
+            STRUCTARR[bn] = (STRUCTARR[bn][0], [(int(d[2:], 16) - base, STRUCTARR[d][1]) for d in ds])
         for d in arrs:                                      # (an array of structs: its element laid out - the field
             if d in STRUCTARR:                              #  the code reads first, the rest of its size after)
                 k, ty = STRUCTARR[d]
-                sz = 1 if ty == "char" else 2
-                decl.append("struct s_%s { %s f0;%s };" % (d, ty, " char _%d[%d];" % (sz, k - sz) if k > sz else ""))
+                fl, pos = [], 0
+                for off, t_ in (ty if isinstance(ty, list) else [(0, ty)]):
+                    if off > pos:
+                        fl.append("char _%d[%d];" % (pos, off - pos))
+                    fl.append("%s f%d;" % (t_, off))
+                    pos = off + (1 if t_ == "char" else 2)
+                if k > pos:
+                    fl.append("char _%d[%d];" % (pos, k - pos))
+                decl.append("struct s_%s { %s };" % (d, " ".join(fl)))
         decl += ["extern %s %s[];" % (ARRAYS[d], d) for d in arrs]
     if fptr:
         decl.append("extern int %s;" % ", ".join("(*%s)()" % d for d in fptr))
