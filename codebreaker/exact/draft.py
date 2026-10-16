@@ -2091,7 +2091,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = fold_registers(stored_calls(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(push_returns(conditional_values(logical_values(step_tests(range_switches(t))))))))))))
         t = fold_registers(push_returns(t))                 # (returns again, as the passes left the arms)
         t = word_arrays(test_first_loops(copy_tests(post_steps(t))))
-        t = temporaries(merge_conditions(guard_gotos(self_updates(t))))
+        t = fold_registers(push_returns(temporaries(merge_conditions(guard_gotos(self_updates(t))))))
         t = structs(pointer_flow(local_pointers(register_variables(shapes(t), regs, regparam))), set(widths))
         t = re.sub(r"(?m)^[ \t]*(\w+) = \1;\n", "", t)         # (a register variable given itself: nothing)
         t = long_ladders(long_pairs(t))                     # (the longs again, as the passes left them)
