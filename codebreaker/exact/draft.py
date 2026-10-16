@@ -2267,6 +2267,8 @@ def fold_registers(text):
             later = "\n".join(lines[lines.index(nxt, k + 1) + 1:]) if nxt in lines[k + 1:] else ""
             pure = re.fullmatch(r"[A-Za-z_]\w*|-?\d+|[A-Za-z_]\w*(?:->f\d+)+|\*[A-Za-z_]\w*|[A-Za-z_]\w*\[[A-Za-z_0-9]+\]", expr) or (
                 not re.search(r"\w\s*\(|\+\+|--|[^=!<>]=[^=]", expr) and expr.startswith("(") and expr.endswith(")"))
+            if not pure and re.fullmatch(r"[A-Za-z_][\w\->.]* (?:[-+&|^*]|<<|>>) (?:[A-Za-z_][\w\->.]*|\d+)", expr):
+                expr, pure = "(%s)" % expr, True            # (a plain operation: in parentheses where it goes)
             # (a value with no effect: a name, a field, an element, or no call and no store in it)
             names = re.findall(r"[A-Za-z_]\w*", expr)
             if pure and reg not in ("si", "di") and len(re.findall(r"\b%s\b" % reg, nxt)) == 1 and \
@@ -2766,6 +2768,25 @@ def long_pairs(text):
             i += 1
         return "%s(%s)" % (m.group(1), ", ".join(out))
 
+    bl = body.split("\n")                                   # (the model's temporaries holding an int and its sign
+    for k in range(len(bl)):                                #  spread, read once by a call a line or two on: in their
+        m = re.fullmatch(r"[ \t]*(t\d+) = (\(0 - \((\w+) >> 15\)\)|(\w+));", bl[k] or "")   # places - the call
+        if not m:                                                                        #  passes a long)
+            continue
+        t, e, x = m.group(1), m.group(2), m.group(3) or m.group(4)
+        uses = [j for j in range(k + 1, min(k + 4, len(bl))) if bl[j] is not None and re.search(r"\b%s\b" % t, bl[j])]
+        if len(uses) != 1 or any(re.search(r"\b%s\b" % t, bl[j] or "") for j in range(uses[0] + 1, len(bl))) or \
+                len(re.findall(r"\b%s\b" % t, bl[uses[0]])) != 1 or not re.search(r"\w\(", bl[uses[0]]) or \
+                any(re.match(r"[ \t]*%s = " % x, bl[j] or "") for j in range(k + 1, uses[0])) or \
+                any("{" in (bl[j] or "") or "}" in (bl[j] or "") for j in range(k + 1, uses[0] + 1)):   # (one block)
+            continue
+        bl[uses[0]] = re.sub(r"\b%s\b" % t, lambda _: e, bl[uses[0]])
+        bl[k] = None
+    body = "\n".join(x for x in bl if x is not None)
+    for t in set(re.findall(r"(?m)^[ \t]*int ((?:t\d+, )*t\d+);$", body)):
+        for t1 in t.split(", "):
+            if not re.search(r"\b%s\b" % t1, body.split("int " + t, 1)[-1].split(";", 1)[-1]):
+                body = _drop_decl(body, t1)
     body = re.sub(r"\bLONG\(\(0 - \((\w+) >> 15\)\), \1\)", r"(long)\1", body)   # (an int's sign spread: widened)
     body = re.sub(r"\bLONG\(0, (\w+)\)", r"(long)(unsigned)\1", body)
 
