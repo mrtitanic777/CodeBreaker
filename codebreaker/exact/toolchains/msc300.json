@@ -332,5 +332,7 @@
   "exemod": "disk3/EXEMOD.EXE",
   "psp": "0x1000",
   "_": "LINK 3.01 of the diskettes, run as MSC.EXE runs it (a response file); EXEMOD after, when the project says"
- }
+ },
+ "inverse": "early_c",
+ "_inverse": "the inverse model of the Lattice-lineage compilers (MS C 1.x-2.03); 3.00's codegen is the next of that line"
 }
