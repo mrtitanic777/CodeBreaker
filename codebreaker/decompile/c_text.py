@@ -620,6 +620,23 @@ def _global_type(prefix, size):
         size, "uint2")
 
 
+def _loads_dgroup(code, off, dgroup):
+    """Whether a function's prologue loads DS with its own data segment: `mov ax, DGROUP`
+    then `mov ds, ax`, among its first instructions (before or after `enter`/`push bp`, saves)."""
+    import capstone
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    loaded = False
+    for i in md.disasm(bytes(code[off:off + 24]), off):
+        if i.mnemonic == "mov" and i.op_str == "ax, 0x%x" % dgroup:
+            loaded = True
+        elif i.mnemonic == "mov" and i.op_str == "ds, ax":
+            return loaded
+        elif not (i.mnemonic in ("push", "enter", "inc", "nop", "sub")
+                  or (i.mnemonic == "mov" and i.op_str == "bp, sp")):
+            return False
+    return False
+
+
 def _selector_sites(module_path):
     """{segment: [(offset, segment whose selector the loader puts there)]} -- the module's own
     selector fix-ups (a selector, or the selector half of a far pointer), chains followed."""
@@ -746,11 +763,9 @@ def compilable16(module_path, outdir=None):
             # this (the compiler then writes that prologue: build/functions.py)
             text = re.sub(r"\b%s\s*\(" % re.escape(name), "__export " + name + "(", text, count=1)
             m.exported_prologue.add(name)
-        if seg in d.images and d.data_segment and len(d.images[seg]) > off + 4 \
-                and d.images[seg][off] == 0xB8 and d.images[seg][off + 3] in (0x55, 0x45) \
-                and struct.unpack_from("<H", d.images[seg], off + 1)[0] == describe.selector(d.data_segment):
-            # it starts `mov ax, DGROUP`: it loads its own data segment, whoever calls it (the
-            # source's _loadds) -- so does this
+        if seg in d.images and d.data_segment and _loads_dgroup(d.images[seg], off, describe.selector(d.data_segment)):
+            # it loads its own data segment, whoever calls it -- `mov ax, DGROUP` / `mov ds, ax`,
+            # first or after its frame is set up (the source's _loadds): so does this
             text = re.sub(r"\b%s\s*\(" % re.escape(name), "__loadds " + name + "(", text, count=1)
         if head.split()[0] in _WIDE or "*" in head.split(name)[0] and "__far" in head.split(name)[0]:
             m.wide.add(name)
