@@ -315,6 +315,112 @@ def windows_far_prologue(code, off):
     return head[:4] in (b"\x8c\xd8\x90\x45", b"\x1e\x58\x90\x45") or head[:2] == b"\x45\x55"
 
 
+def result_bytes(code, start, end, passes=None):
+    """What a function returns, by its instructions: 2 when on a way to one of its returns the
+    last thing to set AX is its own (past the prologue's `mov ax, ds` / `push ds; pop ax` /
+    `mov ax, DGROUP` ahead of `mov ds, ax`, and not a `pop ax` -- AX given back as it came) or
+    a call (what the callee left there goes back as it came); 4 when DX is set there as well.
+    0 when no return is seen to carry anything. Walked back from each return through its
+    straight run of instructions."""
+    import capstone
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    md.detail = True
+    ins = list(md.disasm(code[start:end], start))
+    prologue = next((i.address + i.size for i in ins[:6] if i.mnemonic == "mov" and i.op_str == "ds, ax"), start)
+    targets = set()
+    for i in ins:
+        if i.group(capstone.CS_GRP_JUMP) and i.operands and i.operands[0].type == capstone.CS_OP_IMM:
+            targets.add(i.operands[0].imm & 0xFFFF)
+    X = capstone.x86
+    ax = {X.X86_REG_AX, X.X86_REG_AL, X.X86_REG_AH, X.X86_REG_EAX}
+    dx = {X.X86_REG_DX, X.X86_REG_DL, X.X86_REG_DH, X.X86_REG_EDX}
+    # every way into each instruction: the one before it (unless that one jumps away or
+    # returns) and every jump to it
+    at = {i.address: k for k, i in enumerate(ins)}
+    into = {}
+    for k, i in enumerate(ins):
+        if k + 1 < len(ins) and i.mnemonic not in ("jmp", "ljmp", "ret", "retf", "iret"):
+            into.setdefault(ins[k + 1].address, []).append(i.address)
+        if i.group(capstone.CS_GRP_JUMP) and i.operands and i.operands[0].type == capstone.CS_OP_IMM:
+            into.setdefault(i.operands[0].imm & 0xFFFF, []).append(i.address)
+    # (a `pop dx` hands DX a value -- `push ax ... pop dx` -- unless the function saves DX
+    # itself, when it is DX given back)
+    saves_dx = any(i.mnemonic == "push" and i.op_str in ("dx", "edx") for i in ins)
+    if passes is not None:                                   # a jump on into another function's
+        for i in ins:                                        # body: its result is that one's
+            if i.mnemonic == "jmp" and i.operands and i.operands[0].type == capstone.CS_OP_IMM                     and not start <= (i.operands[0].imm & 0xFFFF) < end:
+                passes.append(("into", i.operands[0].imm & 0xFFFF))
+    best = 0
+    for i in ins:
+        if i.mnemonic not in ("ret", "retf"):
+            continue
+        # back from the return along every way into it, to what last set AX on each
+        # (DX set too makes it four bytes only right at the end -- `mov ax, lo / mov dx, hi` --
+        # or by what sets AX itself: DX on the way is as often a scratch register)
+        work, seen = [(p, False, 0) for p in into.get(i.address, [])], set()
+        while work:
+            a, wide, steps = work.pop()
+            if (a, wide) in seen or a not in at or a < prologue:
+                continue
+            seen.add((a, wide))
+            p = ins[at[a]]
+            if p.group(capstone.CS_GRP_CALL):
+                if passes is not None:                      # (its size is the callee's: see results())
+                    near = p.operands and p.operands[0].type == capstone.CS_OP_IMM and p.bytes[0] == 0xE8
+                    passes.append((p.operands[0].imm & 0xFFFF) if near else None)
+                    best = max(best, 4 if wide else 0)
+                else:
+                    best = max(best, 4 if wide else 2)      # the callee's result, passed on
+                continue
+            try:
+                _r, written = p.regs_access()
+            except capstone.CsError:
+                continue
+            if ax & set(written):
+                if p.mnemonic != "pop":
+                    best = max(best, 4 if wide or (dx & set(written)) else 2)
+                continue
+            w = wide or bool(dx & set(written) and steps < 3 and (p.mnemonic != "pop" or not saves_dx))
+            work += [(q, w, steps + (0 if p.mnemonic in ("pop", "leave", "push") else 1)) for q in into.get(a, [])]
+    return best
+
+
+def results(d):
+    """{address: bytes it returns} for every function described: its own (result_bytes), or for
+    one that passes on a callee's result, the callee's -- four bytes passed on are four bytes
+    (a near callee in its segment; any other call counts as two)."""
+    by_seg = {}
+    for va in d.names:
+        sg, off = where(va)
+        by_seg.setdefault(sg, []).append(off)
+    own, passes = {}, {}
+    for sg, offs in by_seg.items():
+        code = d.segment_bytes.get(sg, b"")
+        offs = sorted(offs)
+        for k, off in enumerate(offs):
+            p = []
+            own[(sg, off)] = result_bytes(code, off, offs[k + 1] if k + 1 < len(offs) else len(code), p)
+            passes[(sg, off)] = p
+    size = dict(own)
+    for _round in range(8):                                   # (wrappers of wrappers)
+        changed = False
+        for place, ps in passes.items():
+            for t in ps:
+                if isinstance(t, tuple):                     # ("into", offset): the function it runs on in
+                    inside = max([o for o in by_seg[place[0]] if o <= t[1]] or [None])
+                    got = size.get((place[0], inside), 0) if inside is not None else 0
+                    if not got:
+                        continue
+                else:
+                    got = size.get((place[0], t), 0) if t is not None else 2
+                    got = got or 2
+                if got > size[place]:
+                    size[place], changed = got, True
+        if not changed:
+            break
+    return {va: size.get(where(va), 0) for va in d.names}
+
+
 def model_line(d, va, name, default="near"):
     """The description line for a function at `va`."""
     seg, off = where(va)
@@ -332,7 +438,19 @@ def model_line(d, va, name, default="near"):
     # A function that removes its own arguments says so in its return (`retf 6`); one that ends
     # in a plain return leaves them to the caller.
     conv = "__stdcall16" if pop > 0 else "__cdecl16" if pop == 0 else "__stdcall16"
-    return "F\t%x\t%s\t%d\t%s%s" % (va, name, pop, conv, kind or default)
+    # what it returns, as its instructions show (where it runs to: the next function's start)
+    result = getattr(d, "results", {}).get(va)
+    if result is None:                                       # (one found later: on its own)
+        later = [o for v in getattr(d, "names", {}) for (sg, o) in [where(v)] if sg == seg and o > off]
+        ps = []
+        result = result_bytes(code, off, min(later) if later else len(code), ps)
+        known = getattr(d, "results", {})
+        for t in ps:                                         # a callee's result passed on: its size
+            if isinstance(t, tuple):
+                continue
+            got = known.get(address(seg, t), 0) if t is not None and seg in d.segment_bytes else 2
+            result = max(result, got or 2)
+    return "F\t%x\t%s\t%d\t%s%s%s" % (va, name, pop, conv, kind or default, "\t%d" % result if result else "")
 
 
 def describe16(module_path, outdir):
@@ -467,6 +585,7 @@ def describe16(module_path, outdir):
     d.data_segment = data_seg or 0
     d.segment_bytes = {s["idx"]: bytes(nef.data[s["file_off"]:s["file_off"] + s["length"]])
                        for s in segs if s["kind"] == "CODE" and s["file_off"]}
+    d.results = results(d)
     for va, nm, dist in funcs:
         lines.append(model_line(d, va, nm, default=dist))
     from codebreaker.symbols import api_arguments as api16

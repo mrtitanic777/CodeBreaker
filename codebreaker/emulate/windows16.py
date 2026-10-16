@@ -9,6 +9,7 @@ call to Windows is seen, named, and returned from with the arguments it was give
 is entered the way it is really called (far or near). Memory is kept by the same hooks as the
 32-bit emulator's (emulator._memory_hooks). What a run did is judged in verify/win16.py.
 """
+import hashlib
 import os
 import sys
 from codebreaker.emulate.emulator import _MAX_INSNS, _PAGE, _memory_hooks
@@ -206,7 +207,8 @@ FAR_RET = 0xFFF0                  # offset in the sentinel segment a far functio
 
 
 def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity=0,
-                     insn_cap=_MAX_INSNS, import_stub=None, prelude=None, near=False, data_image=None):
+                     insn_cap=_MAX_INSNS, import_stub=None, prelude=None, near=False, data_image=None,
+                     callees=None):
     """Trace one exported 16-bit function. Identify it by `ordinal` (entry-table) or explicit
     (seg, offset). `args` are 16-bit Pascal args (pushed left-to-right); a far-RET sentinel sits
     under them. Returns a TraceRecord dict like tracer.trace_function.
@@ -218,7 +220,12 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
 
     near=True enters a NEAR function: only a return offset is pushed, and returning to it ends the
     run. data_image (bytes) is written over the start of the data segment before the run -- used
-    to give a rebuilt module the ORIGINAL's data, so both sides start from the same globals."""
+    to give a rebuilt module the ORIGINAL's data, so both sides start from the same globals.
+
+    callees: {(seg, offset): (name, bytes of arguments it removes, far)} -- the module's other
+    functions, not run: reaching one is a call recorded (rec["calls_out"]: name and argument
+    words) and answered at once with a result made from them, the same on any build. A function
+    is then judged on what it does itself, whatever its callees' state."""
     import unicorn as U
     from unicorn.x86_const import (UC_X86_REG_CS, UC_X86_REG_DS, UC_X86_REG_SS, UC_X86_REG_ES,
                                    UC_X86_REG_ESP, UC_X86_REG_EIP, UC_X86_REG_EAX, UC_X86_REG_EDX)
@@ -274,7 +281,33 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
                      "autodata_seg": auto, "seg_stride": SEG_STRIDE,
                      "stack_base": STACK_BASE, "scratch_base": SCRATCH_BASE, "sent_base": SENT_BASE}
 
+    intercept = {}
+    for (cseg, coff), what in (callees or {}).items():
+        if cseg in seg_bases and (cseg, coff) != (seg, offset):
+            intercept[seg_bases[cseg] + coff] = what
+    rec["calls_out"] = []
+
+    def answer(address):
+        """A call into another of the module's functions, recorded and answered."""
+        name, pop, far = intercept[address]
+        spn = uc.reg_read(UC_X86_REG_ESP) & 0xFFFF
+        ip = int.from_bytes(uc.mem_read(STACK_BASE + spn, 2), "little")
+        cs = int.from_bytes(uc.mem_read(STACK_BASE + spn + 2, 2), "little") if far else uc.reg_read(UC_X86_REG_CS)
+        first = spn + (4 if far else 2)
+        words = [int.from_bytes(uc.mem_read(STACK_BASE + ((first + 2 * k) & 0xFFFF), 2), "little")
+                 for k in range(pop // 2)]
+        rec["calls_out"].append({"name": name, "args": words, "sp": spn})
+        h = int(hashlib.sha1(("%s%r" % (name, words)).encode()).hexdigest()[:8], 16)
+        uc.reg_write(UC_X86_REG_EAX, h & 0xFFFF)
+        uc.reg_write(UC_X86_REG_EDX, (h >> 16) & 0xFFFF)
+        uc.reg_write(UC_X86_REG_ESP, (first + pop) & 0xFFFF)
+        uc.reg_write(UC_X86_REG_CS, cs)
+        uc.reg_write(UC_X86_REG_EIP, ip)
+
     def hook_code(uc, address, size, _ud):
+        if address in intercept and rec["insn_count"]:
+            answer(address)
+            return
         if rec["insn_count"] >= insn_cap:
             rec["truncated"] = True; uc.emu_stop(); return
         if near and address == cs_base + NEAR_RET:           # the near function returned
@@ -460,7 +493,7 @@ def default_stub(hit, uc, U, ctx):
 
 
 def probe(dll, ordinal=None, seg=None, offset=None, args=None, stub=default_stub, insn_cap=None,
-          prelude=None, cdecl=False, near=False, data_image=None):
+          prelude=None, cdecl=False, near=False, data_image=None, callees=None):
     """Run one NE function under the controlled Win16 environment. Returns the tracer16 TraceRecord
     (with rec['layout'] + rec['imports_hit'] + rec['mem_*'] + rec['ret']).
 
@@ -490,7 +523,7 @@ def probe(dll, ordinal=None, seg=None, offset=None, args=None, stub=default_stub
         kw["insn_cap"] = insn_cap
     rec = trace_function16(dll, ordinal=ordinal, seg=seg, offset=offset,
                              args=args, arity=len(args or []), import_stub=_stub,
-                             prelude=prelude, near=near, data_image=data_image, **kw)
+                             prelude=prelude, near=near, data_image=data_image, callees=callees, **kw)
     rec["heaps"] = {"base": HEAP_BASE, "stride": HEAP_STRIDE}
     ctx = ctx_box.get("ctx")
     rec["heap_sels"] = {s: b for s, (b, _sz) in ctx.heaps.items()} if ctx else {}

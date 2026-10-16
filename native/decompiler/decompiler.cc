@@ -53,7 +53,7 @@ using namespace ghidra;
 
 namespace {
 
-struct Fact { uint64_t va; std::string name; int pop; std::string model; };
+struct Fact { uint64_t va; std::string name; int pop; std::string model; int result = -1; };   // result: bytes it returns in AX (DX:AX), when known
 struct Span { uint64_t va; std::vector<uint8_t> data; };
 
 // Imports live at made-up addresses outside the image: an import slot reads as the address of
@@ -216,6 +216,7 @@ int main(int argc, char** argv) {
       } else if (f.size() >= 3 && (f[0] == "F" || f[0] == "I" || f[0] == "X")) {
         Fact x{strtoull(f[1].c_str(), nullptr, 16), f[2], f.size() > 3 ? atoi(f[3].c_str()) : -1,
                f.size() > 4 ? f[4] : std::string()};
+        if (f.size() > 5 && !f[5].empty()) x.result = atoi(f[5].c_str());
         (f[0] == "I" ? imports : f[0] == "X" ? externs : funcs).push_back(x);
       } else if (f.size() >= 3 && f[0] == "reg") {
         regs.push_back({f[1], strtoull(f[2].c_str(), nullptr, 16)});
@@ -286,11 +287,27 @@ int main(int argc, char** argv) {
             pieces.intypes.push_back(m.types->getBase(2, TYPE_INT));
             pieces.innames.push_back("a" + std::to_string(i + 1));
           }
+          if (f.result == 2 || f.result == 4)
+            pieces.outtype = m.types->getBase(f.result, TYPE_INT);
           fp.setPieces(pieces);
           fp.setInputLock(true);
-          fp.setOutputLock(false);                 // two bytes or four: left to the analysis
+          // the result: what its instructions leave in AX (DX:AX) when it returns, where the
+          // description says (an export's caller is Windows: nothing in the module shows it read);
+          // otherwise two bytes or four, left to the analysis
+          fp.setOutputLock(f.result == 2 || f.result == 4);
         } else {
           fp.setModel(m.getModel(f.model));
+          if (f.result == 2 || f.result == 4) {
+            // the arguments left to the analysis, the result as the description says
+            PrototypePieces pieces;
+            pieces.model = m.getModel(f.model);
+            pieces.name = f.name;
+            pieces.outtype = m.types->getBase(f.result, TYPE_INT);
+            pieces.firstVarArgSlot = -1;
+            fp.setPieces(pieces);
+            fp.setInputLock(false);
+            fp.setOutputLock(true);
+          }
         }
         fp.setModelLock(true);
         // the bytes a function removes: its own `ret N` plus the return address
