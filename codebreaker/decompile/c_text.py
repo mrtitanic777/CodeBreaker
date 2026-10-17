@@ -1202,11 +1202,16 @@ def interrupt_helper_name(vector, regs):
     return "int%02x_%s" % (vector, "_".join(regs) if regs else "none")
 
 
-def _far_addresses(text):
+def _far_addresses(text, pointers=None):
     """An address made of a segment the decompiler could not fold to a constant and an offset
-    (`MK_FP(seg, (T *)off)`, its printing) as a far pointer to T: `(T __far *)MK_FP(seg, off)`."""
+    (`MK_FP(seg, (T *)off)`, its printing) as a far pointer to T: `(T __far *)MK_FP(seg, off)`.
+    An offset with no cast is a pointer's own arithmetic (`MK_FP(seg, p + 2)`, p an `int2 *`:
+    the word two words on) -- the place is a T as the pointer is; only an offset that is no
+    pointer at all is taken a byte at a time."""
     if "MK_FP(" not in text:
         return text
+    if pointers is None:                                    # (the function's own: `T *name;`)
+        pointers = {name: ty for ty, name in re.findall(r"(?m)^\s+([A-Za-z_]\w*(?: [A-Za-z_]\w*)?) \*(\w+);", text)}
     out, at = [], 0
     for mm in re.finditer(r"\bMK_FP\(", text):
         if mm.start() < at:
@@ -1216,12 +1221,15 @@ def _far_addresses(text):
             continue
         seg, off = args[0].strip(), args[1].strip()
         cast = re.match(r"^\(([\w ]+?)\s*\*\)\s*(.*)$", off, re.S)
-        target = cast.group(1) if cast else "uint1"
+        base = re.match(r"^\(?\s*(\w+)\s*(?:[+-][^,]*)?\)?$", off)
+        target = cast.group(1) if cast else pointers.get(base.group(1), "uint1") if base else "uint1"
+        if target in ("void", "code"):
+            target = "uint1"
         offset = cast.group(2) if cast else off
         if text[:mm.start()].rstrip().endswith("(*") and text[after:].lstrip().startswith(")("):
             target = "code"                                # (*MK_FP(seg, off))(...): a call to code there
-        out.append(text[at:mm.start()] + "((%s __far *)MK_FP(%s, %s))" % (target, _far_addresses(seg),
-                                                                          _far_addresses(offset)))
+        out.append(text[at:mm.start()] + "((%s __far *)MK_FP(%s, %s))" % (target, _far_addresses(seg, pointers),
+                                                                          _far_addresses(offset, pointers)))
         at = after
     return "".join(out) + text[at:]
 
