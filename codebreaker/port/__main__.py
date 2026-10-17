@@ -104,6 +104,8 @@ def main(argv):
         print(__doc__)
         return 2
     src, out = argv[0], argv[1]
+    from codebreaker.base import parallel
+    parallel.throttle(below_normal=True)                    # (the machine first; the compilers inherit it)
     opt = lambda k, d=None: argv[argv.index(k) + 1] if k in argv else d
     comp = opt("--compiler", "gcc")
     profile = json.load(open(os.path.join(HERE, "runtimes", opt("--runtime", "dos_c_early") + ".json")))
@@ -142,6 +144,10 @@ def main(argv):
         rounds += 1
         if rounds > 8 or not early_c.mend(port, res, diags):
             break
+    if port.int16:                                          # (the 8086's arithmetic, where the C of today's differs)
+        arith = arith16_pass(port, out, res, compilers)
+        if arith:
+            res = write()
     srcs = sorted(n for n in res if n.endswith(".c")) + ["dosrt.c"]
     exe = os.path.join(out, "program.exe" if os.name == "nt" else "program")
     cases = opt("--cases")
@@ -165,9 +171,31 @@ def main(argv):
     return 0 if built else 1
 
 
+def arith16_pass(port, out, res, compilers):
+    """arith16 over the port's C (clang reads it): each line it changed kept as a rule; -> how many casts"""
+    from codebreaker.port import arith16
+    cc = find(compilers["clang"]["find"])
+    if not cc:
+        port.mended["the 16-bit arithmetic NOT checked (no clang to read the port): comparisons of unsigned and "
+                    "signed 16-bit values may differ"].append("-")
+        return 0
+    files = sorted(n for n in res if n.endswith(".c"))
+    new = arith16.run(cc, out, files)
+    n = 0
+    for f, t in new.items():
+        for a, b in zip(res[f].split("\n"), t.split("\n")):
+            if a != b:
+                port.line_fixes[(f, a)] = b
+                n += b.count("_t)") - a.count("_t)")
+                port.mended["the 8086's 16-bit arithmetic kept (an unsigned met by an int was unsigned; a sum was "
+                            "cut to 16 bits before it was compared or made a long): a cast"].append(f)
+    return n
+
+
 def sanitize_loop(port, out, write, srcs, compilers, comp, cases, rounds=6):
     """the port built with AddressSanitizer and run on the cases until it reports nothing; -> the rounds' notes"""
     from codebreaker.port import sanitize, verify
+    from codebreaker.base import parallel
     for name in ([comp] if comp != "msvc" else []) + ["clang", "gcc"]:
         spec = compilers.get(name)
         cc = find(spec["find"]) if spec else None
@@ -181,6 +209,7 @@ def sanitize_loop(port, out, write, srcs, compilers, comp, cases, rounds=6):
     exe = os.path.join(d, "program.exe" if os.name == "nt" else "program")
     notes = []
     for r in range(rounds):
+        parallel.wait_for_memory("sanitized build")         # (the sanitizer's builds and runs want memory)
         write()
         tpl = [a for a in spec["build"] if a not in ("-O1", "/O1")]
         tpl = tpl[:1] + ["-g", "-fsanitize=address"] + tpl[1:]

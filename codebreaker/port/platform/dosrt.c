@@ -22,6 +22,12 @@
 #undef unlink
 #undef isatty
 #undef fopen
+#undef exit
+
+void dos_exit(int code)
+{
+	exit(code & 0377);
+}
 
 FILE *dos_fopen(const char *name, const char *mode)
 {

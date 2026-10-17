@@ -29,6 +29,11 @@ int dos_close(int fd);
 int dos_unlink(const char *name);
 int dos_isatty(int fd);
 
+/* the code a program ends with: DOS kept its low byte (exit(272) left 16 for ERRORLEVEL) */
+#include <stdlib.h>
+#define exit(n)	dos_exit(n)
+void dos_exit(int code);
+
 /* the old C library had no text mode: a file is read and written as its bytes are, whatever the mode said */
 #include <stdio.h>
 #define fopen	dos_fopen

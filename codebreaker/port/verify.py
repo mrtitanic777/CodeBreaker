@@ -25,6 +25,8 @@ import tempfile
 
 def run_original(cfg, exe, folder, cmd, stdin):
     from codebreaker.exact.emu import dos
+    from codebreaker.base import parallel
+    parallel.wait_for_memory("verify")
     try:
         r = dos.run(exe, folder, cmdline=(" " + cmd) if cmd else "", stdin=stdin.encode("latin1"), fast=True)
     except RuntimeError as e:                               # (a run that does not end: what it showed, and that)
@@ -86,6 +88,8 @@ def show(b):
 
 
 def main(argv):
+    from codebreaker.base import parallel
+    parallel.throttle(below_normal=True)
     path = argv[0]
     base = os.path.dirname(os.path.abspath(path))
     cfg = json.load(open(path))
