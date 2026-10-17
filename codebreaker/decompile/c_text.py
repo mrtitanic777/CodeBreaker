@@ -746,7 +746,18 @@ def _compilable16(module_path, outdir=None):
             if line.startswith("O\t"):
                 parts = line.rstrip("\n").split("\t")
                 if parts[4].startswith("__stdcall"):
-                    callee_pops[int(parts[2], 16)] = True
+                    # (kept by the call's own place: the function the description named for it
+                    # may since have been found to be two -- the call belongs to the one that
+                    # holds it, below)
+                    callee_pops[int(parts[1], 16)] = True
+    import bisect
+    starts_all = sorted(by_va)
+    held = {}
+    for site in callee_pops:
+        k = bisect.bisect_right(starts_all, site) - 1
+        if k >= 0 and starts_all[k] >> 16 == site >> 16:
+            held[starts_all[k]] = True
+    callee_pops = held
     distance, model_of = {}, {}
     with open(d.path, encoding="utf-8") as f:
         for line in f:

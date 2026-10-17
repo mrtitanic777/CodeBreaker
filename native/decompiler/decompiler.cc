@@ -357,9 +357,12 @@ int main(int argc, char** argv) {
       std::cout << "/*@@ " << t.second.name << " " << std::hex << t.second.va << std::dec << " */" << std::endl;
       try {
         // its calls through pointers: each passed the words the code pushed before it, removed
-        // by the callee (Windows' drivers and callbacks are Pascal)
+        // by the callee (Windows' drivers and callbacks are Pascal). Every call's override is
+        // offered, by the call's own address: the function the description named for a call may
+        // since have been found to be two, and the call belongs to the one that holds it (an
+        // override at an address the function has no call at is never used).
         for (const auto& c : calls) {
-          if (c.func != t.second.va || !m.hasModel(c.model)) continue;
+          if (!m.hasModel(c.model)) continue;
           FuncProto* p = new FuncProto();
           p->setInternal(m.getModel(c.model), m.types->getTypeVoid());
           PrototypePieces pieces;
