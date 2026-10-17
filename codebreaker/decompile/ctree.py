@@ -70,6 +70,34 @@ class Source(object):
             return n.child_by_field_name("body")
         return None
 
+    def parameter_list(self):
+        """The function's own `( ... )` (of the function being defined, not of a pointer it returns)."""
+        for n in self.find("function_definition"):
+            dcl = n.child_by_field_name("declarator")
+            while dcl is not None and dcl.type != "function_declarator":
+                dcl = dcl.child_by_field_name("declarator")
+            return dcl.child_by_field_name("parameters") if dcl is not None else None
+        return None
+
+    def parameters(self):
+        """Each parameter as written (stripped), or None when there is no parameter list."""
+        plist = self.parameter_list()
+        if plist is None:
+            return None
+        inner = self.data[plist.start_byte + 1:plist.end_byte - 1].decode("utf-8")
+        return [x.strip() for x in inner.split(",")] if "(" not in inner else \
+            [self.at(c) for c in plist.named_children]
+
+    def leading(self, node, kind):
+        """The outermost node of `kind` that starts where `node` starts (`node` itself, or the
+        first thing in it: the cast in `(T *)x + 2`), else None."""
+        n = node
+        while n is not None and n.start_byte == node.start_byte:
+            if n.type == kind:
+                return n
+            n = n.children[0] if n.children else None
+        return None
+
     def misread(self, node):
         """For a binary `*`, `&`, `-` or `+` whose left side is nothing but casts -- `(uint4)`,
         `(uint2)(uint1)`, `(xunknown1 [4])` -- the operator of the unary expression the grammar

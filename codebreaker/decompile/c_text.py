@@ -531,16 +531,35 @@ def _far(text, far):
     """Declare the four-byte pointers `far` and make what is assigned to them far too."""
     if not far:
         return text
-    names = "|".join(re.escape(n) for n in sorted(far, key=len, reverse=True))
-    star = re.compile(r"(?<![\w*])(\*+)\s*(%s)\b" % names)
-    head, brace, body = text.partition("{")
-    head = star.sub(r"__far \1\2", head)                      # parameters
-    decl = re.compile(r"^\s+(?!return\b)[A-Za-z_][\w ]*?\*+\s*(?:%s)(?: \[\d+\])?;\s*$" % names)
-    lines = [star.sub(r"__far \1\2", ln) if decl.match(ln) else ln for ln in body.split("\n")]   # locals
-    body = "\n".join(lines)
-    # `name = (type *)expr` -> `name = (type __far *)expr`
-    body = re.sub(r"\b(%s) = \(([A-Za-z_][\w ]*?) ?(\*+)\)" % names, r"\1 = (\2 __far \3)", body)
-    return head + brace + _far_from_stack(body, far)
+
+    def star(src, dcl):
+        """`*name` (a pointer declarator of one of `far`) -> `__far *name`"""
+        m = re.match(r"(\*+)\s*(\w+)", src.at(dcl))
+        if m and m.group(2) in far and src.declared_name(dcl) == m.group(2):
+            src.replace((dcl.start_byte, dcl.start_byte + m.end()), "__far %s%s" % (m.group(1), m.group(2)))
+
+    def fix(src):
+        for n in src.find("parameter_declaration"):          # parameters
+            dcl = n.child_by_field_name("declarator")
+            if dcl is not None and dcl.type == "pointer_declarator":
+                star(src, dcl)
+        for n in src.find("declaration", under=src.body()):  # locals, one to a line
+            ds = n.children_by_field_name("declarator")
+            if len(ds) == 1 and ds[0].type == "pointer_declarator" and src.at(n) == src.line(n).strip():
+                star(src, ds[0])
+        for n in src.find("assignment_expression"):        # `name = (type *)expr` -> `name = (type __far *)expr`
+            left, right = n.child_by_field_name("left"), n.child_by_field_name("right")
+            while left.type == "pointer_expression" and src.at(left.child_by_field_name("operator")) == "*":
+                left = left.child_by_field_name("argument")       # (`*pp = ...`: pp is declared T __far **)
+            if src.at(n.child_by_field_name("operator")) != "=" or left.type != "identifier" or src.at(left) not in far:
+                continue
+            cast = src.leading(right, "cast_expression")       # (the cast the right side starts with)
+            if cast is not None:
+                ty = cast.child_by_field_name("type")
+                m = re.fullmatch(r"([A-Za-z_][\w ]*?) ?(\*+)", src.at(ty))
+                if m:
+                    src.replace(ty, "%s __far %s" % (m.group(1), m.group(2)))
+    return _far_from_stack(ctree.rewrite(text, fix), far)
 
 
 def _global_pointer_steps(text):
@@ -566,16 +585,40 @@ def _far_from_stack(body, far):
     The decompiler keeps the destination far but not the ES it was given; C makes a far pointer
     of a near one with DS, and the 14 bytes went to the frame's offset in the data segment --
     over the code of whatever lay there. Given SS, as the original."""
+    src = ctree.Source(body)
+    sets = []                                            # (variable, the assignment's right side) of `v = ...;` statements
+    for st in src.find("expression_statement"):
+        a = st.named_children[0] if st.named_child_count == 1 else None
+        line = src.line(st)
+        if a is not None and a.type == "assignment_expression" and src.at(a.child_by_field_name("operator")) == "=" \
+                and a.child_by_field_name("left").type == "identifier" \
+                and line[:1].isspace() and line.lstrip().startswith(src.at(st)):     # (a statement of its own line)
+            sets.append((src.at(a.child_by_field_name("left")), a.child_by_field_name("right")))
     # (an address in the frame: an array local, or & of a local -- not the value a local holds)
     arrays = set(re.findall(r"(?m)^\s+[\w ]+?\**\s*(\w*Stack_[0-9a-f]+) \[\d+\];", body))
 
-    def in_frame(amp, src):
-        return (amp and re.fullmatch(r"\w*Stack_[0-9a-f]+", src)) or src in arrays or (not amp and src in stack)
+    def origin(n):
+        """(the variable a pointer is set from, whether its address was taken): `x`, `&x`,
+        `(T *)x`, `(T *)&x`, each `+ n` -- or (None, False)"""
+        if n.type == "binary_expression" and n.child_by_field_name("operator").type == "+" and \
+                re.fullmatch(r"[\w()]+", src.at(n.child_by_field_name("right"))) and \
+                src.at(n)[len(src.at(n.child_by_field_name("left"))):].startswith(" + "):
+            n = n.child_by_field_name("left")
+        if n.type == "cast_expression" and re.fullmatch(r"[\w ]+\*", src.at(n.child_by_field_name("type"))):
+            n = n.child_by_field_name("value")
+        amp = False
+        if n.type == "pointer_expression" and src.at(n.child_by_field_name("operator")) == "&":
+            n, amp = n.child_by_field_name("argument"), True
+        return (src.at(n), amp) if n.type == "identifier" else (None, False)
+
+    def in_frame(found, stack):
+        name, amp = found
+        return name is not None and bool((amp and re.fullmatch(r"\w*Stack_[0-9a-f]+", name)) or name in arrays or
+                                         (not amp and name in stack))
     stack = set()
     for _ in range(3):                                   # (pointers set from those, in turn)
-        for mm in re.finditer(r"(?m)^\s+(\w+) = (?:\([\w ]+\*\))?\s*(&?)(\w+)(?: \+ [\w()]+)?;", body):
-            v, amp, src = mm.groups()
-            if v not in far and in_frame(amp, src):
+        for v, rhs in sets:
+            if v not in far and in_frame(origin(rhs), stack):
                 stack.add(v)
     # (a pointer set from anything else too is not known to be in the frame -- nor, then, one set
     # from it: dropped until none is left to drop, so the answer does not depend on the order a
@@ -584,19 +627,15 @@ def _far_from_stack(body, far):
     while dropped:
         dropped = False
         for v in sorted(stack):
-            for mm in re.finditer(r"(?m)^\s+%s = ([^;]+);" % re.escape(v), body):
-                rhs = mm.group(1)
-                ok = re.fullmatch(r"(?:\([\w ]+\*\))?\s*(&?)(\w+)(?: \+ [\w()]+)?", rhs.strip())
-                if not ok or not in_frame(ok.group(1), ok.group(2)):
-                    stack.discard(v)
-                    dropped = True
-                    break
+            if any(not in_frame(origin(rhs), stack) for w, rhs in sets if w == v):
+                stack.discard(v)
+                dropped = True
     if not stack:
         return body
-    srcs = "|".join(re.escape(v) for v in sorted(stack, key=len, reverse=True))
-    names = "|".join(re.escape(n) for n in sorted(far, key=len, reverse=True))
-    return re.sub(r"(?m)^(\s+)(%s) = (%s);" % (names, srcs),
-                  r"\1\2 = MK_FP(codebreaker_ss(), \3);", body)
+    for v, rhs in sets:
+        if v in far and rhs.type == "identifier" and src.at(rhs) in stack:
+            src.replace(rhs, "MK_FP(codebreaker_ss(), %s)" % src.at(rhs))
+    return src.text()
 
 
 _SIZED = {1: "uint1", 2: "uint2", 4: "uint4"}
@@ -741,30 +780,49 @@ def _far_arguments(text, loads, near):
     function and 4 in a near one."""
     if not loads:
         return text
-    head, brace, body = text.partition("{")
-    m = re.search(r"\(([^()]*)\)\s*$", head)
-    if not m or m.group(1).strip() in ("", "void"):
+    src = ctree.Source(text)
+    params = src.parameters()
+    if params is None or ",".join(params).strip() in ("", "void"):
         return text
     at, where = (4 if near else 6), {}
-    params = [x.strip() for x in m.group(1).split(",")]
     for prm in params:
         words = prm.split()
         name = words[-1].lstrip("*")
         wide = "*" in prm and "__far" in prm or words[0] in _WIDE
         where[at] = (name, words[0], wide)
         at += 4 if wide else 2
+    segment_of = {}
     for off in sorted(loads):
         if off not in where or off + 2 not in where:
             continue
         (name, kind, wide), (segment, kind2, wide2) = where[off], where[off + 2]
         if wide or wide2 or kind not in ("int2", "uint2", "xunknown2") or kind2 not in ("int2", "uint2", "xunknown2"):
             continue
-        n = re.escape(name)
-        body = re.sub(r"\*\(([A-Za-z_]\w*) \*\)\(%s \+ ([^()]*)\)" % n,
-                      lambda mm: "*(%s __far *)CODEBREAKER_FAR(%s, %s + %s)" % (mm.group(1), segment, name, mm.group(2)), body)
-        body = re.sub(r"\*\(([A-Za-z_]\w*) \*\)%s(?![\w(])" % n,
-                      lambda mm: "*(%s __far *)CODEBREAKER_FAR(%s, %s)" % (mm.group(1), segment, name), body)
-    return head + brace + body
+        segment_of.setdefault(name, segment)
+    if not segment_of:
+        return text
+    for cast in src.find("cast_expression", under=src.body()):
+        op = src.unary(cast)
+        ty = re.fullmatch(r"([A-Za-z_]\w*) \*", src.at(cast.child_by_field_name("type")))
+        if not op or op[0] != "*" or not ty:
+            continue
+        v = cast.child_by_field_name("value")
+        if v.type == "identifier" and src.at(v) in segment_of:              # *(T *)name
+            name, rest = src.at(v), ""
+        elif v.type == "parenthesized_expression" and v.named_child_count == 1 and \
+                v.named_children[0].type == "binary_expression" and \
+                v.named_children[0].child_by_field_name("operator").type == "+" and \
+                src.at(v.named_children[0].child_by_field_name("left")) in segment_of and \
+                "(" not in src.at(v)[1:-1] and ")" not in src.at(v)[1:-1]:      # *(T *)(name + offset)
+            b = v.named_children[0]
+            name = src.at(b.child_by_field_name("left"))
+            rest = " + " + src.at(v)[1:-1].split("+", 1)[1].strip() if src.at(v)[1:-1].startswith(name + " + ") else None
+            if rest is None:
+                continue
+        else:
+            continue
+        src.replace((op[1], cast.end_byte), "*(%s __far *)CODEBREAKER_FAR(%s, %s%s)" % (ty.group(1), segment_of[name], name, rest))
+    return src.text()
 
 
 def _open_arguments(text):
@@ -775,11 +833,12 @@ def _open_arguments(text):
     passes three words where the definition takes one far pointer and a word is the same bytes on
     the stack, but not the same C. In the older style the definition says what the function
     takes and each call is compiled as written."""
-    head, brace, body = text.partition("{")
-    m = re.match(r"(?s)(.*?)\(([^()]*)\)\s*$", head)
-    if not m or not brace:
+    src = ctree.Source(text)
+    plist = src.parameter_list()
+    body = src.body()
+    if plist is None or body is None or any("(" in p or ")" in p for p in src.parameters()):
         return text
-    params = [x.strip() for x in m.group(2).split(",")] if m.group(2).strip() not in ("", "void") else []
+    params = [p for p in src.parameters() if p not in ("", "void")] if src.parameters() != ["void"] else []
     names = []
     for prm in params:
         nm = re.search(r"([A-Za-z_]\w*)\s*(?:\[\d*\])?$", prm)
@@ -787,7 +846,8 @@ def _open_arguments(text):
             return text
         names.append(nm.group(1))
     decls = "".join("%s;\n" % prm for prm in params)
-    return "%s(%s)\n%s%s%s" % (m.group(1).rstrip(), ",".join(names), decls, brace, body)
+    before = src.data[:plist.start_byte].decode("utf-8").rstrip()
+    return "%s(%s)\n%s%s" % (before, ",".join(names), decls, src.data[body.start_byte:].decode("utf-8"))
 
 
 def declaration(text):
