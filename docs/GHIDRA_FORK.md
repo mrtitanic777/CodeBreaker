@@ -6,13 +6,13 @@ came from and every local change, so the fork can be rebased onto a newer Ghidra
 change judged on its own (kept, sent upstream, or dropped).
 
 Upstream: https://github.com/NationalSecurityAgency/ghidra (Apache 2.0; `core/LICENSE`,
-`core/NOTICE` are upstream's, unchanged). Recorded against our master `ab85196`, 2026-10-17.
+`core/NOTICE` are upstream's, unchanged). Recorded against our master `31a2694`, 2026-10-17.
 
 ## Upstream base
 
 | Part | Upstream path | Base | Files |
 |---|---|---|---|
-| `core/cpp` | `Ghidra/Features/Decompiler/src/decompile/cpp` | **master `f0774b72f2` (2026-09-01), version 12.2-DEV** -- cpp tree `c35e0406` | 236: 224 identical, 12 patched |
+| `core/cpp` | `Ghidra/Features/Decompiler/src/decompile/cpp` | **master `f0774b72f2` (2026-09-01), version 12.2-DEV** -- cpp tree `c35e0406` | 236: 223 identical, 13 patched |
 | `core/zlib` | `Ghidra/Features/Decompiler/src/decompile/zlib` | same commit (tree `4dd91ac1`, unchanged since 12.1) | 18 identical |
 | `languages/` | `Ghidra/Processors/{x86,PowerPC}/data/languages` | **release `Ghidra_12.1.3_build`** (the installed Ghidra, see below) | 21: 12 identical, 5 patched or 12.1.3-only, 4 ours/built |
 
@@ -21,7 +21,7 @@ every commit touching the cpp directory since 12.0 was scored by the number of f
 byte-identical to ours, line endings ignored. No release tag is close (best: 12.1.2-12.1.4, 139
 of 236). The best is commit `f17a0b5719` "GP-7167 highPtrPossible in ActionConstantPtr"
 (2026-08-25, on a feature branch), which reached master as merge `f0774b72f2` on 2026-09-01:
-224 of 236, and every one of the 12 left differs only by a change marked "CodeBreaker" in its
+224 of 236 at the time (223 after `31a2694` patched jumptable.cc), and every one of the files left differs only by a change marked "CodeBreaker" in its
 comments. The tree stays the same until the next cpp change on master, `e46ab18c5d` (merge
 of `Ghidra_12.2`, 2026-09-08), so the vendored copy was taken between 2026-09-01 and 09-08.
 Not vendored: upstream's `Makefile`, `Doxyfile`, `.gitignore` (we build with our CMakeLists).
@@ -49,8 +49,7 @@ Every change carries a `CodeBreaker:` comment at its place in the source.
 | C7 | `varmap.cc` (`ScopeLocal::markUnaliased`) | At alias block level 0 ("nothing blocks aliases") a pointer to a local reaches through unmapped stretches of the frame | Upstream stops aliases at unmapped ranges even at level 0, contradicting the level's meaning: USER's CreateWindow builds a CBT_CREATEWND on the stack and passes its address; the two stores past the first local were cut as dead stores. Candidate to send upstream | `cf27f50`, comment `71da0ea` |
 | C8 | `override.hh` | `Override::clear()` made public | `decompiler.cc` frees a function's call overrides once it is written (memory over a whole module) | `3fc874b` |
 
-The main checkout has further uncommitted work in `core/cpp/jumptable.cc` (the Windows 95
-session); it belongs in this table when it is committed.
+| C9 | `jumptable.cc` (`JumpBasicOverride::findLikelyNorm`) | The index's scale is only the INT_MULT directly before the ADD, by a constant 2, 4 or 8 -- not any MULT further back on the path | **Upstream bug** for supplied jump tables: a MULT that made the index (USER 1:03A5 indexes by `((x - (x & 0xf)) + 0x1000) >> 3`, the subtraction an ADD of a MULT by -1) was taken for the scale, so the switch variable was a value the jump never used and the switch printed on its targets' addresses (USER sub_1_032E also ran away). Candidate to send upstream | `31a2694` |
 
 ## Local changes to the language files (`languages/`)
 
@@ -69,7 +68,7 @@ master later added Swift and raised the x86 language version 4.8 -> 4.9. `ppc.ld
 ## Rebasing onto a newer upstream
 
 1. `git clone --filter=blob:none --no-checkout https://github.com/NationalSecurityAgency/ghidra.git`
-2. Copy the new upstream `cpp/`, `zlib/` and the language files over ours; re-apply C1-C8 and
+2. Copy the new upstream `cpp/`, `zlib/` and the language files over ours; re-apply C1-C9 and
    L1-L3 (each is small and marked); drop any upstream has fixed itself (C2, C6 and C7 first).
 3. Recompile the `.sla` files with the new `slgh_compile`.
 4. `python tools/ghidra_fork.py <clone> <new ref>`: only the files in the tables above may show
