@@ -1324,9 +1324,11 @@ def word_offsets(text):
     compiler folds the constant into the place, [bx+si+N])"""
     def one(m):
         p, n, e = m.group(1), int(m.group(2)), m.group(3)
-        if n % 2 or not re.search(r"(?m)^[ \t]*(?:register )?int \*%s;" % re.escape(p), text):
+        if n % 2:
             return m.group(0)
-        return "%s[%s + %d]" % (p, e, n // 2)
+        if re.search(r"(?m)^[ \t]*(?:register )?int \*%s;" % re.escape(p), text):
+            return "%s[%s + %d]" % (p, e, n // 2)
+        return "((int *)%s)[%s + %d]" % (p, e, n // 2)       # (another pointer: through an int * of it)
     return re.sub(r"\(\(int \*\)\(\(char \*\)(\w+) \+ (\d+)\)\)\[([^\[\]]+)\]", one, text)
 
 
@@ -4227,6 +4229,8 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = lvalue_choices(register_values(long_ladders(long_pairs(t))))                     # (the longs again, as the passes left them)
         if re.search(r"\bbp - \d+\b", t):                   # (a frame place the passes left as bp - N: the local)
             t = buffers(t) or t
+            t = re.sub(r"\bbp - (\d+)\b", lambda m: ("v%s" % m.group(1)) if re.search(r"(?m)^[ \t]*char v%s\[" % m.group(1), t)
+                       else ("(char *)&v%s" % m.group(1)) if re.search(r"(?m)^[ \t]*\w[\w ]*\bv%s;" % m.group(1), t) else m.group(0), t)
         t = frame_chars(fn_pointers(t), widths)
         t0_ = t
         t = fill_frame(t0_, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
@@ -5512,6 +5516,16 @@ def _probes(code):
     return False
 
 
+def _decl_sig(src):
+    """a candidate's declarations - its parameters' and locals' types, names aside - and whether it returns a
+    value: the kind of reading it is"""
+    head, sep, body = split_body(src)
+    decls = re.findall(r"(?m)^[ \t]*((?:register )?(?:unsigned )?(?:char|int|long|short|struct \w+|double|float)\b[^;(]*);",
+                       head.split("\n", 1)[-1] + body.split("\n\n", 1)[0])
+    norm = tuple(sorted(re.sub(r"\b(?:[a-z]|v\d+\w*|r_\w+|_p\w*)\b(?=[\[;, ]|$)", "X", d) for d in decls))
+    return norm, bool(re.search(r"\breturn [^;]", body))
+
+
 def prove_best(prj, tc, inv, text, a, ln, names, regparam=None):
     """-> (source, verdict): of the model's text and its variants, the first the compiler proves identical; else
     the first that compiles (or the first)"""
@@ -5566,7 +5580,15 @@ def prove_best(prj, tc, inv, text, a, ln, names, regparam=None):
         if best is None or rank < best[0]:
             best = (rank, src, v)
     if best and best[2].startswith("differs"):              # (the nearest that compile, rewritten - a beam of them:
-        return refine(prj, tc, a, ln, best, seeds=sorted(tops, key=lambda x: x[0])[:BEAM])   # combinations the
+        ranked = sorted(tops, key=lambda x: x[0])
+        seeds = ranked[:BEAM]
+        kinds = {}                                          # (and the nearest of each other way of declaring the
+        for r_ in ranked:                                   #  locals - a buffer, a pointer's type - the beam's
+            sig = _decl_sig(r_[1])                          #  start from each reading, not only the nearest)
+            if sig not in kinds:
+                kinds[sig] = r_
+        seeds += [r_ for r_ in kinds.values() if r_ not in seeds][:BEAM]
+        return refine(prj, tc, a, ln, best, seeds=seeds)    # combinations the
     return best[1], best[2]                                                                  #  variants alone miss)
 
 
@@ -5618,7 +5640,16 @@ def refine(prj, tc, a, ln, best, rounds=6, budget=None, seeds=None):
         if s_ not in seen:
             seen.add(s_)
             beam.append((r_, s_, v_))
-    beam = sorted(beam, key=lambda x: x[0])[:BEAM]
+    def keep(xs):                                           # (the nearest BEAM, and the nearest of each other kind
+        xs = sorted(xs, key=lambda x: x[0])                 #  of reading - its declarations - up to BEAM more)
+        out, kinds = xs[:BEAM], {_decl_sig(x[1]) for x in xs[:BEAM]}
+        for x in xs[BEAM:]:
+            k = _decl_sig(x[1])
+            if k not in kinds and len(out) < 2 * BEAM:
+                kinds.add(k)
+                out.append(x)
+        return out
+    beam = keep(beam)
     spent = 0
     top = beam[0]
     for _ in range(rounds):
@@ -5643,7 +5674,7 @@ def refine(prj, tc, a, ln, best, rounds=6, budget=None, seeds=None):
                         pool.append((_rank(v2), _prove.src, v2))
         if not pool:
             break
-        merged = sorted(beam + pool, key=lambda x: x[0])[:BEAM]
+        merged = keep(beam + pool)
         if merged[0][0] >= top[0] and all(x in beam for x in merged):
             break                                           # (nothing nearer, nothing new: the search is done)
         beam = merged
