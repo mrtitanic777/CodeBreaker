@@ -1261,6 +1261,53 @@ def selector_reads(text):
     return "\n".join(lines)
 
 
+def _changed(f, text):
+    """f(text), or None when it changes nothing (a pass as a variant)"""
+    t = f(text)
+    return t if t != text else None
+
+
+def byte_heads(text):
+    """*(int *)buf = E; - a buffer's first word given: its first byte (a variant: the store's width the model
+    left to the type it guessed)"""
+    return re.sub(r"(?m)^([ \t]*)\*\(int \*\)(\w+) = ([^;]+);$", r"\1\2[0] = \3;", text)
+
+
+def common_tails(text):
+    """if (C) { A; T } else { T } - both arms ending in the same statements (the compiler's one copy of them,
+    jumped to): if (C) { A } T (the else's alone the same: if (!C) { B } T)"""
+    lines = text.split("\n")
+    k = 0
+    while k < len(lines):
+        p = _if_parts(lines, k)
+        if not p or p[2] is None:
+            k += 1
+            continue
+        a, b = [x for x in p[1]], [x for x in p[2]]
+        n = 0
+        while n < min(len(a), len(b)) and a[-1 - n] == b[-1 - n] and a[-1 - n].strip():
+            n += 1
+        if not n or any(re.match(r"\s*(?:L_\w+:|case\b|default:|\}|else\b)", x) or x.rstrip().endswith("{") for x in a[len(a) - n:]):
+            k += 1
+            continue
+        ind = re.match(r"\s*", lines[k]).group(0)
+        tail = [x[4:] if x.startswith(ind + "    ") else x for x in a[len(a) - n:]]
+        ra, rb = a[:len(a) - n], b[:len(b) - n]
+        if not any(x.strip() for x in ra) and not any(x.strip() for x in rb):
+            k += 1
+            continue
+        if not any(x.strip() for x in rb):
+            new = [lines[k]] + ra + [ind + "}"]
+        elif not any(x.strip() for x in ra):
+            neg = _not("(%s)" % p[0])
+            new = ["%sif %s {" % (ind, neg if neg.startswith("(") and _balanced(neg[1:-1]) else "(%s)" % neg)] + rb + [ind + "}"]
+        else:
+            new = [lines[k]] + ra + [ind + "} else {"] + rb + [ind + "}"]
+        lines[k:p[3]] = new + tail
+        k += 1
+    return "\n".join(lines)
+
+
 def goto_returns(text):
     """goto L; ... L: return x; - a jump to a plain return (the compiler's one copy of the return, the others
     jumping to it): the return in the goto's place, the label gone when nothing else jumps to it"""
@@ -3739,7 +3786,8 @@ def structs(text, widths):
                 ptrfield[(p, off)] = "%s *" % pty.group(1)
             fields.append("%s f%d;" % ("struct s_%s *" % p if off == 0 and selfref else ptrfield[(p, off)] if (p, off) in ptrfield
                                        else "unsigned char" if uch else
-                                       "char" if byte else "int *" if deref else "long" if lng else "int", off))
+                                       "char" if byte else ("char *" if ("bx*", 0) in widths and ("bxw", 0) not in widths else "int *")
+                                       if deref else "long" if lng else "int", off))   # (*p->fN read a byte: a char *)
             pos = off + (2 if (p, off) in ptrfield else 1 if byte else 4 if lng else 2)
         tag = "s_" + p
         steps = {int(n) for n in re.findall(r"\b%s = %s [+-] (\d+);" % (p, p), text)}
@@ -3805,7 +3853,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
             t = buffers(t) or t
         t = frame_chars(fn_pointers(t), widths)
         t = fill_frame(t, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
-        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t), register_copies(t), lead_filler(t), scaled_places(t), shared_tails(t), guard_returns(t), default_after(t), frame_more(t), loop_tests(t), switch_breaks(t), register_reads(t), compare_results(t), or_loops(t), loop_guards(t), const_tests(t), flat_returns(t), return_cases_first(t), registers_last(t), guard_shared(t)] if v]
+        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t), register_copies(t), lead_filler(t), scaled_places(t), shared_tails(t), guard_returns(t), default_after(t), frame_more(t), loop_tests(t), switch_breaks(t), register_reads(t), compare_results(t), or_loops(t), loop_guards(t), const_tests(t), flat_returns(t), return_cases_first(t), registers_last(t), guard_shared(t), _changed(common_tails, t), _changed(byte_heads, t)] if v]
         both = pre_steps(t)
         both = pre_increments(both) if both else None
         if both:
@@ -5118,7 +5166,7 @@ REFINERS = [lambda prj, s: [assign_in_args(s)], lambda prj, s: [return_sources(s
             lambda prj, s: [loop_tests(s)], lambda prj, s: [switch_breaks(s)], lambda prj, s: [register_reads(s)],
             lambda prj, s: [compare_results(s)], lambda prj, s: [or_loops(s)], lambda prj, s: [loop_guards(s)],
             lambda prj, s: [const_tests(s)], lambda prj, s: [flat_returns(s)], lambda prj, s: [return_cases_first(s)],
-            lambda prj, s: [registers_last(s)], lambda prj, s: unsigned_locals(s), lambda prj, s: [guard_shared(s)],
+            lambda prj, s: [registers_last(s)], lambda prj, s: unsigned_locals(s), lambda prj, s: [guard_shared(s)], lambda prj, s: [_changed(common_tails, s)], lambda prj, s: [_changed(byte_heads, s)],
             lambda prj, s: [frame_names(s, prj.toolchain().p["frame_order"]), frame_names(s, prj.toolchain().p["frame_order"], True)]
             if prj.toolchain().p.get("frame_order") else [],
             lambda prj, s: [re.sub(r"\b([A-Za-z_]\w*), 0\)", r"(long)\1)", s, count=1)],   # (a value and a zero word
