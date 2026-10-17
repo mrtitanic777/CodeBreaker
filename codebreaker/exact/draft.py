@@ -2079,6 +2079,31 @@ def scaled_index(text):
     return text
 
 
+def shared_arms(text):
+    """if (A) { if (B) { S } } else { S } - S reached both ways (the compiler's one copy): if (!A || B) { S }"""
+    lines = text.split("\n")
+    changed = True
+    while changed:
+        changed = False
+        for k in range(len(lines)):
+            p = _if_parts(lines, k)
+            if not p or p[2] is None:
+                continue
+            th = [x for x in p[1] if x.strip()]
+            q = _if_parts(th, 0) if th else None
+            if not q or q[2] is not None or q[3] != len(th):
+                continue
+            inner = [x[4:] for x in q[1] if x.strip()]
+            if inner != [x for x in p[2] if x.strip()]:
+                continue
+            ind = re.match(r"\s*", lines[k]).group(0)
+            cond = _conj("||", _truth(_not("(%s)" % p[0])), _truth("(%s)" % q[0]))
+            lines[k:p[3]] = ["%sif (%s) {" % (ind, cond)] + p[2] + [ind + "}"]
+            changed = True
+            break
+    return "\n".join(lines)
+
+
 def guard_returns(text):
     """if (C) { S } return X; last in the function: if (!C) return X; S return X; (a variant: a guard returning
     at once is laid out its own way)"""
@@ -3054,8 +3079,11 @@ def structs(text, widths):
                                                                                     #  compared with 128..255: unsigned)
             deref = re.search(r"(?<![\w>)\]])\*%s->f%d\b(?!\s*(?:->|\[|\.))" % (p, off), text)   # (*p->fN: a pointer)
             lng = off in LONGINFO.get("fields", ()) and off + 2 not in offs   # (a long field: two words given as one)
-            pg = re.search(r"\b%s->f%d = (\w+);" % (p, off), text)          # (given a pointer variable: a pointer)
+            pg = re.search(r"\b%s->f%d = (\w+);" % (p, off), text) or \
+                re.search(r"(?m)^[ \t]*(\w+) = %s->f%d = " % (p, off), text)   # (given a pointer variable, or given
             pty = re.search(r"(?m)^[ \t]*(?:register\s+)?((?:unsigned\s+)?(?:char|int)|struct \w+) \*%s;$" % pg.group(1), text) if pg else None
+            if pty and byte and (p, off) not in widths:     #  with one in a chain: a pointer - not another's byte)
+                byte = False
             deref = deref or (pty and pty.group(1) == "int" and not byte and not lng)
             if pty and pty.group(1) != "int" and not byte and not lng and (p, off) not in ptrfield and not (off == 0 and selfref):
                 ptrfield[(p, off)] = "%s *" % pty.group(1)
@@ -3114,7 +3142,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = stored_calls(fold_registers(push_returns(t)))   # (returns again, as the passes left the arms)
         t = stored_reads(scaled_index(register_chains(word_arrays(test_first_loops(copy_tests(post_steps(t)))))))
         t = fold_registers(conditional_values(t))           # (the ?: values again, the elements folded)
-        t = fold_registers(push_returns(temporaries(empty_loops(merge_conditions(guard_gotos(self_updates(t)))))))
+        t = fold_registers(push_returns(temporaries(empty_loops(shared_arms(merge_conditions(guard_gotos(self_updates(t))))))))
         wd = set(widths)                                    # (a parameter kept in a register: the bytes read through
         for r_, i_ in (regparam or {}).items():             #  that register its own)
             if isinstance(i_, int) and 0 <= i_ < 26:
