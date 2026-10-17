@@ -210,7 +210,7 @@ def _compare_switches(blocks):
             continue
         cases, leaves, region, ok = [], set(), {h.id}, [True]
 
-        def walk(bid, v, first=False):
+        def walk(bid, v, first=False, lo=None):
             blk = blocks[bid]
             seq = blk.insns[-2:] if first else blk.insns
             k = 0
@@ -232,16 +232,25 @@ def _compare_switches(blocks):
             elif last.mnemonic in ("jne", "jnz"):
                 cases.append((v, fall))
                 follow(taken, v)
+            elif last.mnemonic in ("jl", "jb") and k:       # (below LO one way: the values from LO on the other)
+                follow(taken, v)
+                follow(fall, v, v)
+            elif last.mnemonic in ("jle", "jbe") and lo is not None and 0 <= v - lo <= 16 and not test_block(taken, reg):
+                cases.extend((x, taken) for x in range(lo, v + 1))   # (LO..HI: a run of cases the compiler tests
+                follow(fall, v)                                    #  as a range)
+            elif last.mnemonic in ("jg", "ja") and lo is not None and 0 <= v - lo <= 16 and not test_block(fall, reg):
+                cases.extend((x, fall) for x in range(lo, v + 1))
+                follow(taken, v)
             else:
                 follow(taken, v)
                 follow(fall, v)
 
-        def follow(t, v):
+        def follow(t, v, lo=None):
             if t in region:
                 return
             if test_block(t, reg) and all(p in region for p in preds[t]):
                 region.add(t)
-                walk(t, v)
+                walk(t, v, lo=lo)
             else:
                 leaves.add(t)
                 ins_ = blocks[t].insns                      # (a last compare with no jump after it: its case is

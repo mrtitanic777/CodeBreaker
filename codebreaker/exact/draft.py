@@ -1132,6 +1132,94 @@ def flat_returns(text):
     return head + sep + "\n".join(lines)
 
 
+def _in_loop(lines, lo, j, ind):
+    """is line j inside a loop or a switch opened after line lo, deeper than the indentation ind"""
+    want = len(lines[j]) - len(lines[j].lstrip())
+    for x in range(j - 1, lo, -1):
+        l = lines[x]
+        if not l.strip():
+            continue
+        d = len(l) - len(l.lstrip())
+        if d < want and l.rstrip().endswith("{"):
+            if d <= ind:
+                return False
+            if re.match(r"\s*(?:while|for|do|switch)\b", l) or l.strip() == "do {":
+                return True
+            want = d
+    return False
+
+
+def switch_follow(text):
+    """switch (x) { default: L: S .. case K: .. goto L; .. } - the default arm the code after the switch (every
+    way through S leaving, the other arms jumping to it): default: break; the gotos breaks, S after the switch"""
+    lines = text.split("\n")
+    for k, l in enumerate(lines):
+        m = re.match(r"(\s*)switch \(.*\) \{$", l)
+        if not m or k + 2 >= len(lines) or lines[k + 1] != m.group(1) + "default:":
+            continue
+        ind = m.group(1)
+        lab = re.fullmatch(r"%s    (L_\w+):" % re.escape(ind), lines[k + 2])
+        end = next((j for j in range(k + 1, len(lines)) if lines[j] == ind + "}"), None)
+        if not lab or end is None:
+            continue
+        nxt = next((j for j in range(k + 2, end) if re.fullmatch(r"%s(?:case [^:]+|default):" % re.escape(ind), lines[j])), None)
+        if nxt is None:
+            continue
+        body = lines[k + 3:nxt]
+        last = next((x for x in reversed(body) if x.strip()), "")
+        gotos = [j for j in range(nxt, end) if lines[j].strip() == "goto %s;" % lab.group(1)]
+        if not gotos or not re.fullmatch(r"%s    return\b[^;]*;" % re.escape(ind), last) or \
+           any(re.fullmatch(r"%s    break;" % re.escape(ind), x) for x in body) or any(_in_loop(lines, k, j, len(ind)) for j in gotos):
+            continue
+        new = list(lines)
+        for j in gotos:
+            new[j] = new[j].replace("goto %s;" % lab.group(1), "break;")
+        rest = new[nxt:end + 1]
+        after = [x[4:] if x.startswith(ind + "    ") else x for x in body]
+        out = new[:k + 1] + [ind + "default:", ind + "    break;"] + rest + after + new[end + 1:]
+        t = "\n".join(out)
+        if re.search(r"\bgoto %s;" % lab.group(1), t):
+            t = "\n".join(new[:k + 1] + [ind + "default:", ind + "    break;"] + rest + [ind + lab.group(1) + ":"] + after + new[end + 1:])
+        return switch_follow(t)
+    return text
+
+
+def return_cases_first(text):
+    """switch (..) { .. case K: return V; } - the arms that only return written first (a variant: the compiler
+    lays a switch's arms out from the source's order its own way)"""
+    lines = text.split("\n")
+    for k, l in enumerate(lines):
+        m = re.match(r"(\s*)switch \(.*\) \{$", l)
+        if not m:
+            continue
+        ind = m.group(1)
+        end = next((j for j in range(k + 1, len(lines)) if lines[j] == ind + "}"), None)
+        if end is None:
+            continue
+        labels = [j for j in range(k + 1, end) if re.fullmatch(r"%s(?:case [^:]+|default):" % re.escape(ind), lines[j])]
+        if not labels or labels[0] != k + 1:
+            continue
+        groups, j = [], 0                                   # (arms: their labels together, then the statements)
+        while j < len(labels):
+            a = j
+            while j + 1 < len(labels) and labels[j + 1] == labels[j] + 1:
+                j += 1
+            b = labels[j + 1] if j + 1 < len(labels) else end
+            groups.append((labels[a], b))
+            j += 1
+        rets = [g for g in groups if [x.strip() for x in lines[g[0]:g[1]] if x.strip() and not re.fullmatch(r"\s*(?:case [^:]+|default):", x)][:1] and
+                all(re.fullmatch(r"\s*(?:case [^:]+|default):|%s    return(?: -?\d+)?;" % re.escape(ind), x) for x in lines[g[0]:g[1]] if x.strip())]
+        if not rets or rets[0] == groups[0] or len(rets) == len(groups):
+            continue
+        prev = {g: lines[groups[i - 1][0]:groups[i - 1][1]] for i, g in enumerate(groups) if i}
+        if any(not re.match(r"\s*(?:break|continue|return\b|goto\b)", next((x for x in reversed(prev[g]) if x.strip()), "")) for g in rets if g in prev):
+            continue                                        # (an arm falling into it: not moved)
+        order = rets + [g for g in groups if g not in rets]
+        body = [x for g in order for x in lines[g[0]:g[1]]]
+        return "\n".join(lines[:k + 1] + body + lines[end:])
+    return None
+
+
 def selector_reads(text):
     """switch (x) { case K: .. f(ax) .. } - an arm reading the register the selector was compared in before
     anything gives it a value (an arm only the dispatch enters: the first, or after one that leaves): x itself"""
@@ -1674,11 +1762,25 @@ def address_variants(text, dsize, most=2, lo=0x100):
 def word_arrays(text, lo=0x40):
     """(E << 1)->fN, N a place in the data (not a field's small offset): an array of words there indexed by E -
     g_XXXX[E] (the model reads `mov bx,E / shl bx,1 / [bx+N]` as a field of a pointer)"""
-    def longs(m):                                           # (an index doubled twice: an array of longs there)
-        n = int(m.group(2))
+    rx4 = r"\(\(([A-Za-z_]\w*(?:->f\d+)*) << 1\) << 1\)->f(\d+)\b|\(([A-Za-z_]\w*(?:->f\d+)*) << 2\)->f(\d+)\b"
+    at4 = {}                                                # (the places read through an index times 4: the lines)
+    ls_ = text.split("\n")
+    for k_, l_ in enumerate(ls_):
+        for m_ in re.finditer(rx4, l_):
+            at4.setdefault(int(m_.group(2) or m_.group(4)), set()).add(k_)
+    halves = lambda x, y: x == y or abs(x - y) == 1 and all(re.match(r"\s*(?:ax|bx|cx|dx) = ", ls_[z]) for z in (x, y))
+    near = lambda a, b: any(halves(x, y) for x in at4.get(a, ()) for y in at4.get(b, ()))   # (a long's two words together)
+    pair4 = {n for n in at4 if (n + 2 in at4 and not near(n, n + 2)) or (n - 2 in at4 and not near(n, n - 2))}
+
+    def longs(m):                                           # (an index doubled twice: an array of longs there - two
+        n = int(m.group(2))                                 #  words 2 apart read on their own: of 4-byte structs)
         if n < lo:
             return m.group(0)
         name = "g_%04x" % n
+        if n in pair4:
+            STRUCTARR.setdefault(name, (4, "int"))
+            ARRAYS[name] = "struct s_%s" % name
+            return "%s[%s].f0" % (name, m.group(1))
         ARRAYS[name] = "long"
         return "%s[%s]" % (name, m.group(1))
     text = re.sub(r"\(\(([A-Za-z_]\w*(?:->f\d+)*) << 1\) << 1\)->f(\d+)\b", longs, text)
@@ -1737,6 +1839,34 @@ def word_arrays(text, lo=0x40):
         ARRAYS[name] = "struct s_%s" % name
         return "&%s[%s]" % (name, e)
     t = re.sub(r"\(\((\d+) \* ([\w\->.]+)\) \+ (\d+)\)(?!->)", struct_place, t)
+
+    ls_ = t.split("\n")                                     # (a register given K * E read only at places in the
+    for k_, l_ in enumerate(ls_):                           #  data through it until given again: the product there)
+        m_ = re.fullmatch(r"([ \t]*)(bx|si|di) = \((\d+) \* ([A-Za-z_]\w*)\);", l_)
+        if not m_ or int(m_.group(3)) < 2:
+            continue
+        r_, e_ = m_.group(2), m_.group(4)
+        uses, j_ = [], k_ + 1
+        while j_ < len(ls_):
+            y_ = ls_[j_]
+            if re.match(r"\s*(?:%s|%s) = |\s*(?:L_\w+:|\}|case\b|default:)" % (r_, re.escape(e_)), y_) or re.search(r"\b%s\s*(?:\+\+|--)" % re.escape(e_), y_):
+                break
+            if re.search(r"\b%s\b" % r_, y_):
+                uses.append(j_)
+            j_ += 1
+        if r_ == "bx":                                      # (an element of words through it: the place there)
+            uses_ = [re.sub(r"\bg_([0-9a-f]{4})\[bx\]", lambda q: "bx->f%d" % int(q.group(1), 16), ls_[u]) for u in uses]
+            if all(not re.search(r"\bbx\b(?!->f(?:\d{3,}))", x) for x in uses_):
+                for u, x in zip(uses, uses_):
+                    ls_[u] = x
+        if not uses or not all(not re.search(r"\b%s\b(?!->f(?:\d{3,}))" % r_, ls_[u]) for u in uses) or \
+           any(int(n_) < 0x100 for u in uses for n_ in re.findall(r"\b%s->f(\d+)" % r_, ls_[u])) or \
+           _live_after(ls_, uses[-1], r_):
+            continue
+        for u in uses:
+            ls_[u] = re.sub(r"\b%s->f(\d+)" % r_, lambda q: "(%s * %s)->f%s" % (m_.group(3), e_, q.group(1)), ls_[u])
+        ls_[k_] = None
+    t = "\n".join(x for x in ls_ if x is not None)
 
     def struct_product(m):                                  # (the product folded in place: (K * E)->fN)
         k, e, n = int(m.group(1)), m.group(2), int(m.group(3))
@@ -3634,7 +3764,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = stored_calls(fold_registers(push_returns(t)))   # (returns again, as the passes left the arms)
         t = stored_reads(scaled_index(register_chains(word_arrays(test_first_loops(copy_tests(post_steps(selector_reads(t))))))))
         t = fold_registers(conditional_values(t))           # (the ?: values again, the elements folded)
-        t = fold_registers(stored_tests(push_returns(temporaries(compare_values(goto_returns(sunk_tails(empty_loops(shared_arms(merge_conditions(guard_gotos(self_updates(t))))))))))))
+        t = fold_registers(stored_tests(push_returns(temporaries(compare_values(goto_returns(sunk_tails(empty_loops(shared_arms(merge_conditions(guard_gotos(self_updates(switch_follow(t)))))))))))))
         wd = set(widths)                                    # (a parameter kept in a register: the bytes read through
         for r_, i_ in (regparam or {}).items():             #  that register its own)
             if isinstance(i_, int) and 0 <= i_ < 26:
@@ -3646,7 +3776,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
             t = buffers(t) or t
         t = frame_chars(fn_pointers(t), widths)
         t = fill_frame(t, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
-        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t), register_copies(t), lead_filler(t), scaled_places(t), shared_tails(t), guard_returns(t), default_after(t), frame_more(t), loop_tests(t), switch_breaks(t), register_reads(t), compare_results(t), or_loops(t), loop_guards(t), const_tests(t), flat_returns(t)] if v]
+        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t), register_copies(t), lead_filler(t), scaled_places(t), shared_tails(t), guard_returns(t), default_after(t), frame_more(t), loop_tests(t), switch_breaks(t), register_reads(t), compare_results(t), or_loops(t), loop_guards(t), const_tests(t), flat_returns(t), return_cases_first(t), registers_last(t)] if v]
         both = pre_steps(t)
         both = pre_increments(both) if both else None
         if both:
@@ -4308,6 +4438,39 @@ def register_slots(text):
     return text[:m.start()] + ("%schar %s[%d];\n" % (m.group(1), m.group(2), n) if n > 0 else "") + text[m.end():]
 
 
+def unsigned_locals(text, most=3):
+    """[the text with one int local unsigned] - a variant each, for the locals compared (<, <=, >, >=): the
+    compiler's unsigned jumps"""
+    out = []
+    for name in re.findall(r"(?m)^[ \t]*int (v\d+);$", text)[:most]:
+        if re.search(r"(?:[<>]=? %s\b|\b%s [<>]=?)(?![<>])" % (name, name), text):
+            out.append(re.sub(r"(?m)^([ \t]*)int %s;$" % name, r"\1unsigned %s;" % name, text))
+    return out
+
+
+def registers_last(text):
+    """the register locals declared after the others (a variant: the slots MS C 3.00 gives some register locals
+    below the frame's locals, in the order declared)"""
+    if not REGSLOTS[0]:
+        return None
+    head, sep, body = split_body(text)
+    if not sep:
+        return None
+    lines = body.split("\n")
+    k = 0
+    while k < len(lines) and (not lines[k].strip() or lines[k].strip() == "{"):
+        k += 1
+    j = k
+    while j < len(lines) and re.fullmatch(r"[ \t]*(?:register |unsigned |int |char |long |short |struct \w+ )[^;(=]*;", lines[j]):
+        j += 1
+    decl = lines[k:j]
+    regs = [x for x in decl if x.strip().startswith("register ")]
+    rest = [x for x in decl if not x.strip().startswith("register ")]
+    if not regs or not rest or decl == rest + regs:
+        return None
+    return head + sep + "\n".join(lines[:k] + rest + regs + lines[j:])
+
+
 REGSLOTS = [False]                                          # (the toolchain gives a register local a frame slot)
 
 
@@ -4826,7 +4989,7 @@ def prove_texts(prj, tc, inv, texts, a, ln, names):
     return best[1], best[2]
 
 
-MAXCANDS = 48
+MAXCANDS = 64
 FUNC_BUDGET = 150                                           # (compiles a function's candidates may take in all)
 BYTEPTR = set()                                             # (the byte-wide places the code reads: (pointer, offset))
 
@@ -4923,7 +5086,9 @@ REFINERS = [lambda prj, s: [assign_in_args(s)], lambda prj, s: [return_sources(s
             lambda prj, s: [guard_returns(s)], lambda prj, s: [default_after(s)], lambda prj, s: [frame_more(s)],
             lambda prj, s: [loop_tests(s)], lambda prj, s: [switch_breaks(s)], lambda prj, s: [register_reads(s)],
             lambda prj, s: [compare_results(s)], lambda prj, s: [or_loops(s)], lambda prj, s: [loop_guards(s)],
-            lambda prj, s: [const_tests(s)],
+            lambda prj, s: [const_tests(s)], lambda prj, s: [flat_returns(s)], lambda prj, s: [return_cases_first(s)],
+            lambda prj, s: [registers_last(s)], lambda prj, s: unsigned_locals(s),
+            lambda prj, s: [frame_names(s, prj.toolchain().p["frame_order"])] if prj.toolchain().p.get("frame_order") else [],
             lambda prj, s: [re.sub(r"\b([A-Za-z_]\w*), 0\)", r"(long)\1)", s, count=1)],   # (a value and a zero word
                                                                                                #  pushed: it widened)
             lambda prj, s: [re.sub(r"\b0, 0\)", "0L)", s)]]     # (two zero words pushed: a long 0)
