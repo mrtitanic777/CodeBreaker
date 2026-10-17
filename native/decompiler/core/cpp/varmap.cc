@@ -1489,8 +1489,11 @@ void ScopeLocal::markUnaliased(const vector<uintb> &alias)
       aliason = true;
       curalias = alias[i++];
     }
-    // Aliases shouldn't go thru unmapped regions of the local variables
-    while(rangeIter != rangeEndIter) {
+    // Aliases shouldn't go thru unmapped regions of the local variables -- unless nothing blocks
+    // aliases (level 0): then a pointer to a local reaches every place above it, mapped or not
+    // (USER's CreateWindow builds a CBT_CREATEWND -- a pointer's offset, then SS, then a word --
+    // and hands the hook its address: the two stores past the 2-byte local it saw were cut as dead)
+    while(alias_block_level != 0 && rangeIter != rangeEndIter) {
       const Range &rng(*rangeIter);
       if (rng.getSpace() == space) {
 	if (rng.getFirst() > curalias && curoff >= rng.getFirst())

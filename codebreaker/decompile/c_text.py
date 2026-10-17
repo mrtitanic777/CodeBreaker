@@ -824,6 +824,8 @@ def _compilable16(module_path, outdir=None):
             m.wide.add(name)
         text = re.sub(r"\b_([a-z]+Ram[0-9a-f]{8})\b", r"\1", text)     # (a global the decompiler named twice)
         m.texts[name] = _near_to_far(_far_reads(_buffer_fields(_far_locals(_stack_arguments(_entry_sp(_far_addresses(_interrupts(_open_arguments(text), m.interrupts))))))))
+        if seg in d.images:
+            m.texts[name] = _stack_segment_stores(m.texts[name], d.images[seg], off, _end_of(d, seg, off))
         if callee_pops.get(va):
             # its calls through pointers remove nothing themselves: the callee does (the arguments
             # are listed in stack order, so __stdcall lays them out as the original pushed them)
@@ -1040,7 +1042,9 @@ def _stack_arguments(text):
 
 
 _SIZE = {"1": 1, "2": 2, "4": 4}
-_LOCAL = re.compile(r"(?m)^  (\w+?)(\d)? +(\w*Stack_([0-9a-f]+))( \[(\d+)\])?;\s*$")
+# (a name of its own: it was `_LOCAL` too, and replaced the 32-bit one above for every pass that
+# read it -- _keep_frame among them. A near pointer local is two bytes, its type kept for casts.)
+_LOCAL16 = re.compile(r"(?m)^  (\w+?)(\d)?(\s*\*+\s*|\s+)(\w*Stack_([0-9a-f]+))( \[(\d+)\])?;\s*$")
 
 
 _NEAR_OF_FAR = re.compile(r"\*\((\w+(?: \w+)?) \*\)\(\((\w+) __far \*\)")
@@ -1096,11 +1100,13 @@ def _buffer_fields(text):
     the buffer is made to reach it."""
     head, brace, body = text.partition("{")
     decl = {}
-    for mm in _LOCAL.finditer(body):
-        typ, width, name, off, _a, count = mm.groups()
-        elem = _SIZE.get(width or "", 2) if width else 2
+    for mm in _LOCAL16.finditer(body):
+        typ, width, stars, name, off, _a, count = mm.groups()
+        stars = (stars or "").strip()
+        elem = 2 if stars else _SIZE.get(width or "", 2) if width else 2
         size = int(count) * elem if count else elem                  # (bytes)
-        decl[name] = (int(off, 16), size, bool(count), mm.group(0), (typ or "") + (width or ""))
+        decl[name] = (int(off, 16), size, bool(count), mm.group(0),
+                      (typ or "") + (width or "") + (" " + stars if stars else ""))
     # A local whose address is passed on, with locals of its width right after it in the frame:
     # one buffer of them (a RECT copied into four words, its address given to a function that
     # converts it in place -- four variables of their own, only the first where the callee
@@ -1130,45 +1136,29 @@ def _buffer_fields(text):
               if v[2] and re.search(r"[(,]\s*(?:\(\w+\s*\*?\))?\s*&?%s\b" % n, body)}
     if not arrays:
         return text
-    # A local past the end of a buffer whose address is passed on is a field of it when, after
-    # that call, the function READS it before it writes it: the callee filled it (GetObject's
-    # BITMAP: bmWidth read straight after, at bp-0Ch, two bytes into the buffer at bp-0Eh). One it
-    # writes first is a variable of its own that happens to lie there. The buffer then reaches
-    # every byte up to the next variable of its own, or the top of the frame (the saved BP, at
-    # 2): what the callee fills is as long as the original's frame made room for.
-    def first_after(name, at):
-        mm = re.search(r"(?<![\w.])%s\b" % re.escape(name), body[at:])
-        if not mm:
-            return None
-        rest = body[at + mm.end():at + mm.end() + 8]
-        return "write" if re.match(r"\s*=(?!=)", rest) else "read"
-
-    fields, owners = {}, {}
-    for owner, (ao, asz, _i, aline, _atyp) in arrays.items():
-        call = re.search(r"[(,]\s*(?:\(\w+\s*\*?\))?\s*&?%s\b" % re.escape(owner), body)
-        start = call.start() if call else 0
-        above = sorted(((v[0], n) for n, v in decl.items() if not v[2] and n not in arrays and v[0] < ao), reverse=True)
-        top = 2
-        for off, n in above:                                  # (from just past the buffer, upward)
-            if first_after(n, start) == "read" and off < ao:
-                fields[n] = owner
-                continue
-            top = off + decl[n][1]                            # (a variable of its own: the buffer stops below it)
-            break
+    # A buffer whose address is passed on is laid out as the original's frame had it: from its
+    # place up to the next buffer passed on, or the top of the frame (the saved BP, at 2) -- what
+    # the callee reads or fills is as long as the frame made room for (GetObject's 14-byte BITMAP;
+    # a WNDCLASS built word by word, then its address given to RegisterClass). Every local in that
+    # stretch, read or written, is a field of it, where it is: C would otherwise place them where
+    # it likes, and the callee would read past the buffer into whatever is there.
+    for owner, (ao, asz, _i, aline, _atyp) in list(arrays.items()):
+        others = [v[0] for k, v in arrays.items() if k != owner and v[0] < ao]
+        top = max(others + [2])
         need = ao - top
         if asz < need <= 0x400:
             elem = _SIZE.get(_atyp[-1:], 2)
             newline = re.sub(r"\[\d+\]", "[%d]" % ((need + elem - 1) // elem), aline)
             body = body.replace(aline, newline, 1)
             arrays[owner] = (ao, need, True, newline, _atyp)
-        owners[owner] = top
     for name, (off, size, is_array, line, typ) in sorted(decl.items()):
-        if is_array or name in arrays or name not in fields:
+        if is_array or name in arrays:
             continue
         n = re.escape(name)
-        owner = fields[name]
-        ao, asz = arrays[owner][0], arrays[owner][1]
-        if not ao > off >= ao - asz:
+        if not re.search(r"(?<![\w.])%s\b" % n, body.replace(line, "", 1)):
+            continue
+        owner = next((a for a, (ao, asz, _i, _l, _t) in arrays.items() if ao > off >= ao - asz), None)
+        if owner is None:
             continue
         ao, asz, _i, aline, _atyp = arrays[owner]
         at = ao - off                                        # bytes into the buffer
@@ -1181,6 +1171,54 @@ def _buffer_fields(text):
             body = body.replace(aline, newline, 1)
             arrays[owner] = (ao, need, True, newline, _atyp)
     return head + brace + re.sub(r"\n\n\n+", "\n\n", body)
+
+
+_ENDS = {}
+
+
+def _end_of(d, seg, off):
+    """Where the function at seg:off ends: the next function's start in its segment."""
+    key = (id(d), seg)
+    if key not in _ENDS:
+        _ENDS[key] = sorted(o for (s, o) in d.where.values() if s == seg)
+    starts = _ENDS[key]
+    import bisect
+    k = bisect.bisect_right(starts, off)
+    return starts[k] if k < len(starts) else len(d.images.get(seg, b""))
+
+
+def _stack_segment_stores(text, code, start, end):
+    """The original stores SS into its frame (`mov [bp-0Ch], ss`) as the segment half of a far
+    pointer it builds there to a local -- WNDCLASS.lpszClassName, CBT_CREATEWND.lpcs -- and the
+    decompiler drops that store (a copy of the incoming SS, taken for a register saved). Put back
+    where the buffer holding that place has it: SS written there just before the first call the
+    buffer's address is passed to."""
+    import capstone
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    places = []
+    for ins in md.disasm(bytes(code[start:end]), start):
+        mm = re.fullmatch(r"word ptr \[bp - (0x[0-9a-f]+|\d+)\], ss", ins.op_str) if ins.mnemonic == "mov" else None
+        if mm:
+            places.append(int(mm.group(1), 0) + 2)              # (the decompiler's offset: from the entry SP)
+    if not places:
+        return text
+    arrays = {mm.group(2): (int(mm.group(3), 16), int(mm.group(4)), mm.group(1))
+              for mm in re.finditer(r"(?m)^  ([\w ]*?\w(?:\s*\*+)?)\s*\b(\w*Stack_([0-9a-f]+)) \[(\d+)\];", text)}
+    ss = "unaff_SS" if re.search(r"\bunaff_SS\b", text) else "codebreaker_ss()"
+    for place in sorted(set(places)):
+        for arr, (ao, count, typ) in arrays.items():
+            elem = 2 if "*" in typ else _SIZE.get(typ.strip()[-1:], 2)
+            if not ao > place >= ao - count * elem:
+                continue
+            at = ao - place
+            store = "(*(int2 *)((uint1 *)%s + 0x%x)) = %s;" % (arr, at, ss)
+            if store in text:
+                break
+            call = re.search(r"(?m)^([ \t]+)(?=[^\n;]*\w\((?:[^\n;]*[(,])?\s*(?:\(\w+\s*\*?\))?\s*&?%s\b)" % re.escape(arr), text)
+            if call:
+                text = text[:call.start()] + call.group(1) + store + "\n" + text[call.start():]
+            break
+    return text
 
 
 def _far_locals(text):
