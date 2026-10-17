@@ -66,6 +66,7 @@ class Function(object):
         self.far_missing = set()                            # (segment, offset) a far call or jump reaches mid-run
         self.reaches = None                                 # refused for jumping into the middle of this offset's function
         self.holes = sorted(holes)
+        self.raw_hole_calls = {}                           # offset -> (symbol, opcode): see raw_calls_into_holes
 
         import bisect
         hole_starts = [h[0] for h in self.holes]
@@ -349,6 +350,36 @@ class Function(object):
                 out[at] = (self.mnemonic(at), data, bytes(len(data)))
         return out
 
+    def raw_calls_into_holes(self):
+        """{name: offset} of each function rebuilt from C (a hole) that a near call or jump in
+        the part of the frame NOT followed as code -- written out as its bytes -- goes to: the
+        bytes hold the displacement to where the function was, and it is placed elsewhere
+        (USER's 25:2460 `E8 59 FB`, call 1FBC, in code reached only through a table)."""
+        import capstone as cs
+        md = cs.Cs(cs.CS_ARCH_X86, cs.CS_MODE_16)
+        decoded = set()
+        for a, t in self.ins.items():
+            decoded.update(range(a, a + len(t[0])))
+        holes = {h[0]: h[2] for h in self.holes}
+        hole_spans = [(h[0], h[1]) for h in self.holes]
+        out = {}
+        at = self.start
+        while at < self.end:
+            if at in decoded or any(lo <= at < hi for lo, hi in hole_spans):
+                at += 1
+                continue
+            stop = at
+            while stop < self.end and stop not in decoded and not any(lo <= stop < hi for lo, hi in hole_spans):
+                stop += 1
+            for ins in md.disasm(bytes(self.blob[at:stop]), at):
+                if ins.bytes[0] in (0xE8, 0xE9) and ins.size == 3:
+                    target = (ins.address + 3 + struct.unpack_from("<h", bytes(ins.bytes), 1)[0]) & 0xFFFF
+                    if target in holes:
+                        out.setdefault(holes[target], ins.address)
+                        self.raw_hole_calls[ins.address] = (holes[target], ins.bytes[0])
+            at = stop
+        return out
+
     def write(self, good, lo=None, hi=None):
         """The source, with the instructions in `good` (offsets) as mnemonics and the rest as bytes.
         With `lo`, `hi`: only that piece of it -- one between two functions rebuilt from C, in a
@@ -356,6 +387,13 @@ class Function(object):
         read through CS, a table's entry) is written as the original's bytes, which stay right."""
         lo = self.start if lo is None else lo
         hi = self.end if hi is None else hi
+        if self.holes and not hasattr(self, "_raw_scanned"):
+            # (a call in bytes not followed as code to a function rebuilt from C is written by its
+            # name: the function is placed elsewhere, and the displacement in the bytes would not)
+            self._raw_scanned = True
+            self.raw_calls_into_holes()
+            for _a, (sym, _b) in self.raw_hole_calls.items():
+                self.externs[sym] = "near"
 
         def inside(x):
             return lo <= x < hi
@@ -432,6 +470,11 @@ class Function(object):
                 out.append("        db   %-40s ; %s %s" % (", ".join("0%02Xh" % b for b in data), self.ins[at][1],
                                                           self.ins[at][2]))
                 at += len(data)
+            elif at in self.raw_hole_calls:
+                flush()
+                sym, b0 = self.raw_hole_calls[at]
+                out.append("        %-4s near ptr %s" % ("call" if b0 == 0xE8 else "jmp", sym))
+                at += 3
             else:
                 run.append(self.blob[at])
                 at += 1

@@ -438,6 +438,7 @@ def _assembled16(b, nef, at, segs, stems, public, folder, env, carried=(), force
     # each rejected C function on its own
     forced = set(forced)
     done = {}                                              # run (tuple of names) -> stem, or why it was refused
+    raw_reached = {}                                       # name -> where the frame's bytes call it
     for _pass in range(40):                                # (each pass may find a place entered mid-run: its run is written again)
         runs = []
         for seg in sorted(whole):                          # one frame per such segment
@@ -525,7 +526,9 @@ def _assembled16(b, nef, at, segs, stems, public, folder, env, carried=(), force
         for name in joined:
             if name in b.origins:
                 b.origins[name].language = "assembly"
-                b.origins[name].evidence.append("entered in its middle from assembly beside it")
+                b.origins[name].evidence.append(
+                    "called where it was from bytes of the assembly beside it (%04x)" % raw_reached[name]
+                    if name in raw_reached else "entered in its middle from assembly beside it")
         forced |= joined
     claimed = set()
     for run, result in done.items():
