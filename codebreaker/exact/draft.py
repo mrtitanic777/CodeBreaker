@@ -1822,6 +1822,56 @@ def empty_cases_first(text):
     return None
 
 
+def or_loops(text):
+    """for (;;) { if (A) { L: S; continue; } if (B) { goto L; } else { break; } } - a test or-ed with the first:
+    while (A || B) { S } (a variant)"""
+    lines = text.split("\n")
+    for k in range(len(lines)):
+        m = re.fullmatch(r"([ \t]*)for \(;;\) \{", lines[k])
+        e = _block_end(lines, k) if m else None
+        if e is None or lines[e].strip() != "}":
+            continue
+        ind = m.group(1)
+        i4 = ind + "    "
+        p1 = _if_parts(lines, k + 1)
+        if not p1 or p1[2] is not None:
+            continue
+        arm = p1[1]
+        lab = re.fullmatch(r"[ \t]*(L_\w+):", arm[0]) if arm else None
+        if not lab or arm[-1].strip() != "continue;":
+            continue
+        p2 = _if_parts(lines, p1[3])
+        if not p2 or p2[3] != e or [x.strip() for x in p2[1] if x.strip()] != ["goto %s;" % lab.group(1)] or \
+                [x.strip() for x in (p2[2] or []) if x.strip()] != ["break;"]:
+            continue
+        if re.search(r"\bgoto %s;" % lab.group(1), "\n".join(lines[:k] + lines[e + 1:])):
+            continue
+        a, b = _truth("(%s)" % p1[0]), _truth("(%s)" % p2[0])
+        body = [x[4:] if x.startswith(i4 + "    ") else x for x in arm[1:-1]]
+        new = ["%swhile (%s || %s) {" % (ind, a, b)] + body + ["%s}" % ind]
+        return "\n".join(lines[:k] + new + lines[e + 1:])
+    return None
+
+
+def compare_results(text):
+    """((A op B) ? 1 : 0) - a comparison's value: (A op B) itself, ? 0 : 1 its negation, and a call's side on the
+    right (B mirror-op A) when the call was A (a variant: the compiler calls first whichever side it is on)"""
+    mirror = {"<": ">", ">": "<", "<=": ">=", ">=": "<=", "==": "==", "!=": "!="}
+    neg = {"<": ">=", ">=": "<", ">": "<=", "<=": ">", "==": "!=", "!=": "=="}
+
+    def one(m):
+        a, op, b, t, f = m.group(1), m.group(2), m.group(3), m.group(4), m.group(5)
+        if not (_balanced(a) and _balanced(b)) or t == f:
+            return m.group(0)
+        if t == "0":
+            op = neg[op]
+        if re.search(r"\w\(", a) and not re.search(r"\w\(", b):
+            a, b, op = b, a, mirror[op]
+        return "(%s %s %s)" % (a, op, b)
+    t = re.sub(r"\(\(([^?:\n]+?) (==|!=|<=|>=|<|>) ([^?:\n]+?)\) \? ([01]) : ([01])\)", one, text)
+    return t if t != text else None
+
+
 def register_reads(text):
     """r = E; S(E->f0 ..) - the next statement reading E again where the compiler had it in r: through r (*r, r->fN)
     (a variant: the source read it through the variable, as switch ((k = n->left)->op))"""
@@ -3047,7 +3097,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = register_values(long_ladders(long_pairs(t)))                     # (the longs again, as the passes left them)
         t = frame_chars(fn_pointers(t), widths)
         t = fill_frame(t, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
-        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t), register_copies(t), lead_filler(t), scaled_places(t), shared_tails(t), guard_returns(t), default_after(t), frame_more(t), loop_tests(t), switch_breaks(t), register_reads(t)] if v]
+        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t), register_copies(t), lead_filler(t), scaled_places(t), shared_tails(t), guard_returns(t), default_after(t), frame_more(t), loop_tests(t), switch_breaks(t), register_reads(t), compare_results(t), or_loops(t)] if v]
         both = pre_steps(t)
         both = pre_increments(both) if both else None
         if both:
@@ -4281,6 +4331,7 @@ REFINERS = [lambda prj, s: [assign_in_args(s)], lambda prj, s: [return_sources(s
             lambda prj, s: [lead_filler(s)], lambda prj, s: [scaled_places(s)], lambda prj, s: [shared_tails(s)],
             lambda prj, s: [guard_returns(s)], lambda prj, s: [default_after(s)], lambda prj, s: [frame_more(s)],
             lambda prj, s: [loop_tests(s)], lambda prj, s: [switch_breaks(s)], lambda prj, s: [register_reads(s)],
+            lambda prj, s: [compare_results(s)], lambda prj, s: [or_loops(s)],
             lambda prj, s: [re.sub(r"\b([A-Za-z_]\w*), 0\)", r"(long)\1)", s, count=1)],   # (a value and a zero word
                                                                                                #  pushed: it widened)
             lambda prj, s: [re.sub(r"\b0, 0\)", "0L)", s)]]     # (two zero words pushed: a long 0)
