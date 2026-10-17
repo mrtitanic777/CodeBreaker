@@ -1327,9 +1327,11 @@ class R:
         given={}                                           # (push si; push di; mov di,X; mov si,Y; push ds: the
         if seq[:2]==[("push","si"),("push","di")] and not bare:   #  copy's pointers given between the saves)
             k=i+2
-            while k<i+4 and k<len(ins) and ins[k].mnemonic=="mov" and re.match(r"(di|si), ", ins[k].op_str):
+            while k<i+4 and k<len(ins) and ins[k].mnemonic in ("mov","lea") and re.match(r"(di|si), ", ins[k].op_str):
                 r_, src=ins[k].op_str.split(", ")
-                if src in ("si","di"): v_=given.get(src, getattr(s,src,None) or src)
+                if ins[k].mnemonic=="lea":                  # (the place of a field: its address)
+                    v_=s.memname(src); v_=("&%s"%v_) if v_ else None
+                elif src in ("si","di"): v_=given.get(src, getattr(s,src,None) or src)
                 elif src in ("ax","bx","cx","dx"): v_=s._val(src)
                 elif re.fullmatch(r"0x[0-9a-f]+|\d+", src): v_=("&g_%x"%s.num(src)) if s.num(src)>=0x100 else str(s.num(src))
                 else: v_=s.memname(src)

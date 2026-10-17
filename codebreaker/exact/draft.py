@@ -612,6 +612,48 @@ def post_increments(text):
     return "\n".join(out)
 
 
+def loop_registers(text):
+    """r = E0; for (;;) { v = r; .. r = E1; continue; .. } - a register carried round a loop into a variable at its
+    top (the model's phi): v itself - v = E0 before, v = E1 at each way round, the tests of r tests of v"""
+    lines = text.split("\n")
+    for k in range(1, len(lines)):
+        m = re.fullmatch(r"([ \t]*)(?:for \(;;\)|while \(1\)) \{", lines[k])
+        if not m:
+            continue
+        e = _block_end(lines, k)
+        f = re.fullmatch(r"[ \t]*(\w+) = (ax|bx|cx|dx);", lines[k + 1] or "") if e else None
+        pre = re.fullmatch(r"([ \t]*)(ax|bx|cx|dx) = ([^;]+);", lines[k - 1])
+        if not f or not pre or pre.group(2) != f.group(2):
+            continue
+        v, r = f.group(1), f.group(2)
+        body = lines[k + 2:e]
+        ok = True
+        for j, x in enumerate(body):                        # (r read only as v's value; given only before going round)
+            if re.match(r"[ \t]*%s = " % r, x):
+                if not (j + 1 < len(body) and body[j + 1].strip() == "continue;"):
+                    ok = False
+        if not ok or _live_after(lines, e, r):
+            continue
+        new = [pre.group(1) + "%s = %s;" % (v, pre.group(3)), lines[k]] + \
+            [re.sub(r"\b%s\b" % r, v, x) for x in body] + lines[e:e + 1]
+        return loop_registers("\n".join(lines[:k - 1] + new + lines[e + 1:]))
+    return text
+
+
+def first_breaks(text):
+    """for (;;) { if (C) break; S } - the loop's test first: while (!C) { S }"""
+    lines = text.split("\n")
+    for k in range(len(lines) - 1):
+        m = re.fullmatch(r"([ \t]*)for \(;;\) \{", lines[k])
+        b = re.fullmatch(r"[ \t]*if (\(.*\)) break;", lines[k + 1]) if m else None
+        if not b or not _balanced(b.group(1)):
+            continue
+        cond = _truth(_not(b.group(1)))
+        lines[k:k + 2] = ["%swhile %s {" % (m.group(1), cond if cond.startswith("(") and _balanced(cond[1:-1]) else "(%s)" % cond)]
+        return first_breaks("\n".join(lines))
+    return text
+
+
 def loop_tests(text):
     """while (C) { if (D) { S } else { break; } } - the loop's own test the two: while (C && D) { S } (and the
     other way about, if (D) { break; } S: while (C && !D) { S })"""
@@ -1587,7 +1629,8 @@ def assign_in_tests(text):
         if not m or re.match(r"\s*(?:if|while|return)\b", lines[k]):
             continue
         x, e = m.group(2), m.group(3)
-        t = re.match(r"(\s*(?:if|while) \(\(?)(%s)\b(.*)$" % re.escape(x), lines[k + 1] or "")
+        t = re.match(r"(\s*if \(\(?)(%s)\b(.*)$" % re.escape(x), lines[k + 1] or "")   # (an if's: a loop's test
+                                                                                         #  would give it again each time)
         if t and not re.search(r"\b%s\b" % re.escape(x), e):
             lines[k + 1] = "%s(%s = %s)%s" % (t.group(1), x, e, t.group(3))
             lines[k] = None
@@ -3139,7 +3182,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = zero_extends(high_zero(copy_props(table_macros(prj, case_falls(char_stores(char_params(long_pairs(long_returns(store_reloads(fall_gotos(t))))))), prj.toolchain().p.get("table_macros")))))
         t = re.sub(r"&(\w+)\[(-?)(\d+)\]", lambda m: "(%s %s %s)" % (m.group(1), "-" if m.group(2) else "+", m.group(3)), t)
         t = re.sub(r"&(\w+)->f(\d+)\b", r"(\1 + \2)", t)  # (lea: &p[N], &p->fN - the place, p + N)
-        t = fold_registers(stored_calls(store_loops(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(push_returns(conditional_values(logical_values(step_tests(bool_trees(range_switches(loop_gotos(empty_loops(fall_gotos(t)))))))))))))))))
+        t = fold_registers(stored_calls(store_loops(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(push_returns(conditional_values(logical_values(step_tests(bool_trees(range_switches(loop_gotos(empty_loops(first_breaks(loop_registers(fall_gotos(t)))))))))))))))))))
         t = stored_calls(fold_registers(push_returns(t)))   # (returns again, as the passes left the arms)
         t = stored_reads(scaled_index(register_chains(word_arrays(test_first_loops(copy_tests(post_steps(t)))))))
         t = fold_registers(conditional_values(t))           # (the ?: values again, the elements folded)
