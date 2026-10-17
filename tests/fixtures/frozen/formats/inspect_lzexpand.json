@@ -1,0 +1,654 @@
+{
+ "file": "lzexpand.dll",
+ "output": {
+  "dos": {
+   "bytes_in_last_page": 155,
+   "checksum": 0,
+   "cs": 0,
+   "header_paragraphs": 4,
+   "header_size": 64,
+   "ip": 0,
+   "load_size": 603,
+   "max_alloc": 65535,
+   "min_alloc": 5,
+   "new_header": 128,
+   "overlay": 0,
+   "pages": 2,
+   "relocation_table": 64,
+   "relocations": 0,
+   "sp": 184,
+   "ss": 0
+  },
+  "exports": {
+   "count": 30,
+   "module": "LZEXPAND",
+   "symbols": [
+    {
+     "address": "4:015c",
+     "exported": true,
+     "forward": "",
+     "hint": -1,
+     "movable": true,
+     "name": "LZCOPY",
+     "ordinal": 1
+    },
+    {
+     "address": "2:0262",
+     "exported": true,
+     "forward": "",
+     "hint": -1,
+     "movable": true,
+     "name": "LZOPENFILE",
+     "ordinal": 2
+    },
+    {
+     "address": "2:0000",
+     "exported": true,
+     "forward": "",
+     "hint": -1,
+     "movable": true,
+     "name": "LZINIT",
+     "ordinal": 3
+    },
+    {
+     "address": "2:02ee",
+     "exported": true,
+     "forward": "",
+     "hint": -1,
+     "movable": true,
+     "name": "LZSEEK",
+     "ordinal": 4
+    },
+    {
+     "address": "2:03d6",
+     "exported": true,
+     "forward": "",
+     "hint": -1,
+     "movable": true,
+     "name": "LZREAD",
+     "ordinal": 5
+    },
+    {
+     "address": "2:06f0",
+     "exported": true,
+     "forward": "",
+     "hint": -1,
+     "movable": true,
+     "name": "LZCLOSE",
+     "ordinal": 6
+    },
+    {
+     "address": "4:0000",
+     "exported": true,
+     "forward": "",
+     "hint": -1,
+     "movable": true,
+     "name": "LZSTART",
+     "ordinal": 7
+    },
+    {
+     "address": "4:013a",
+     "exported": true,
+     "forward": "",
+     "hint": -1,
+     "movable": true,
+     "name": "COPYLZFILE",
+     "ordinal": 8
+    },
+    {
+     "address": "4:00a6",
+     "exported": true,
+     "forward": "",
+     "hint": -1,
+     "movable": true,
+     "name": "LZDONE",
+     "ordinal": 9
+    },
+    {
+     "address": "2:01bc",
+     "exported": true,
+     "forward": "",
+     "hint": -1,
+     "movable": true,
+     "name": "GETEXPANDEDNAME",
+     "ordinal": 10
+    },
+    {
+     "address": "3:0000",
+     "exported": true,
+     "forward": "",
+     "hint": -1,
+     "movable": true,
+     "name": "WEP",
+     "ordinal": 11
+    },
+    {
+     "address": "11:035e",
+     "exported": true,
+     "forward": "",
+     "hint": -1,
+     "movable": true,
+     "name": "___EXPORTEDSTUB",
+     "ordinal": 12
+    },
+    {
+     "address": "10:0124",
+     "exported": false,
+     "forward": "",
+     "hint": -1,
+     "movable": true,
+     "name": "",
+     "ordinal": 13
+    },
+    {
+     "address": "10:01b6",
+     "exported": false,
+     "forward": "",
+     "hint": -1,
+     "movable": true,
+     "name": "",
+     "ordinal": 14
+    },
+    {
+     "address": "8:01a2",
+     "exported": false,
+     "forward": "",
+     "hint": -1,
+     "movable": true,
+     "name": "",
+     "ordinal": 15
+    },
+    {
+     "address": "8:00aa",
+     "exported": false,
+     "forward": "",
+     "hint": -1,
+     "movable": true,
+     "name": "",
+     "ordinal": 16
+    },
+    {
+     "address": "5:0052",
+     "exported": false,
+     "forward": "",
+     "hint": -1,
+     "movable": true,
+     "name": "",
+     "ordinal": 17
+    },
+    {
+     "address": "5:0000",
+     "exported": false,
+     "forward": "",
+     "hint": -1,
+     "movable": true,
+     "name": "",
+     "ordinal": 18
+    },
+    {
+     "address": "5:00d0",
+     "exported": false,
+     "forward": "",
+     "hint": -1,
+     "movable": true,
+     "name": "",
+     "ordinal": 19
+    },
+    {
+     "address": "9:0000",
+     "exported": false,
+     "forward": "",
+     "hint": -1,
+     "movable": true,
+     "name": "",
+     "ordinal": 20
+    },
+    {
+     "address": "7:00f4",
+     "exported": false,
+     "forward": "",
+     "hint": -1,
+     "movable": true,
+     "name": "",
+     "ordinal": 21
+    },
+    {
+     "address": "1:00b2",
+     "exported": false,
+     "forward": "",
+     "hint": -1,
+     "movable": true,
+     "name": "",
+     "ordinal": 22
+    },
+    {
+     "address": "1:0000",
+     "exported": false,
+     "forward": "",
+     "hint": -1,
+     "movable": true,
+     "name": "",
+     "ordinal": 23
+    },
+    {
+     "address": "1:0116",
+     "exported": false,
+     "forward": "",
+     "hint": -1,
+     "movable": true,
+     "name": "",
+     "ordinal": 24
+    },
+    {
+     "address": "10:02a8",
+     "exported": false,
+     "forward": "",
+     "hint": -1,
+     "movable": true,
+     "name": "",
+     "ordinal": 25
+    },
+    {
+     "address": "6:00a4",
+     "exported": false,
+     "forward": "",
+     "hint": -1,
+     "movable": true,
+     "name": "",
+     "ordinal": 26
+    },
+    {
+     "address": "6:0000",
+     "exported": false,
+     "forward": "",
+     "hint": -1,
+     "movable": true,
+     "name": "",
+     "ordinal": 27
+    },
+    {
+     "address": "11:0042",
+     "exported": false,
+     "forward": "",
+     "hint": -1,
+     "movable": true,
+     "name": "",
+     "ordinal": 28
+    },
+    {
+     "address": "11:0010",
+     "exported": false,
+     "forward": "",
+     "hint": -1,
+     "movable": true,
+     "name": "",
+     "ordinal": 29
+    },
+    {
+     "address": "11:034e",
+     "exported": false,
+     "forward": "",
+     "hint": -1,
+     "movable": true,
+     "name": "",
+     "ordinal": 30
+    }
+   ]
+  },
+  "format": "NE",
+  "headers": {
+   "alignment_shift": 4,
+   "automatic_data_segment": 12,
+   "checksum": 2151119658,
+   "entry_offset": 0,
+   "entry_segment": 0,
+   "expected_windows": "3.0",
+   "flags": [
+    "SINGLE_DATA",
+    "LIBRARY"
+   ],
+   "flags_value": 33537,
+   "heap": 1024,
+   "linker_version": "5.20",
+   "module_references": 2,
+   "movable_entries": 30,
+   "segments": 12,
+   "stack": 0,
+   "stack_pointer": 0,
+   "stack_segment": 0,
+   "target_system": "Windows"
+  },
+  "imports": [
+   {
+    "count": 19,
+    "delay": false,
+    "module": "KERNEL",
+    "symbols": [
+     {
+      "hint": -1,
+      "name": "",
+      "ordinal": 1
+     },
+     {
+      "hint": -1,
+      "name": "",
+      "ordinal": 15
+     },
+     {
+      "hint": -1,
+      "name": "",
+      "ordinal": 17
+     },
+     {
+      "hint": -1,
+      "name": "",
+      "ordinal": 18
+     },
+     {
+      "hint": -1,
+      "name": "",
+      "ordinal": 19
+     },
+     {
+      "hint": -1,
+      "name": "",
+      "ordinal": 74
+     },
+     {
+      "hint": -1,
+      "name": "",
+      "ordinal": 81
+     },
+     {
+      "hint": -1,
+      "name": "",
+      "ordinal": 82
+     },
+     {
+      "hint": -1,
+      "name": "",
+      "ordinal": 83
+     },
+     {
+      "hint": -1,
+      "name": "",
+      "ordinal": 84
+     },
+     {
+      "hint": -1,
+      "name": "",
+      "ordinal": 85
+     },
+     {
+      "hint": -1,
+      "name": "",
+      "ordinal": 86
+     },
+     {
+      "hint": -1,
+      "name": "",
+      "ordinal": 88
+     },
+     {
+      "hint": -1,
+      "name": "",
+      "ordinal": 89
+     },
+     {
+      "hint": -1,
+      "name": "",
+      "ordinal": 90
+     },
+     {
+      "hint": -1,
+      "name": "",
+      "ordinal": 102
+     },
+     {
+      "hint": -1,
+      "name": "",
+      "ordinal": 115
+     },
+     {
+      "hint": -1,
+      "name": "",
+      "ordinal": 137
+     },
+     {
+      "hint": -1,
+      "name": "",
+      "ordinal": 178
+     }
+    ]
+   },
+   {
+    "count": 3,
+    "delay": false,
+    "module": "USER",
+    "symbols": [
+     {
+      "hint": -1,
+      "name": "",
+      "ordinal": 430
+     },
+     {
+      "hint": -1,
+      "name": "",
+      "ordinal": 435
+     },
+     {
+      "hint": -1,
+      "name": "",
+      "ordinal": 436
+     }
+    ]
+   }
+  ],
+  "kind": "ne",
+  "name": "lzexpand.dll",
+  "notes": [],
+  "ok": true,
+  "relocations": {
+   "records": 61
+  },
+  "resources": {
+   "count": 1,
+   "types": [
+    {
+     "count": 1,
+     "id": 16,
+     "items": [
+      {
+       "language": 0,
+       "name": "#1",
+       "offset": 9456,
+       "preview": "text",
+       "size": 480,
+       "type_id": 16,
+       "wide": false
+      }
+     ],
+     "type": "VERSION"
+    }
+   ]
+  },
+  "sections": [
+   {
+    "address": "1:0000",
+    "code": true,
+    "file_offset": 768,
+    "file_size": 456,
+    "flags": [
+     "MOVABLE",
+     "PRELOAD",
+     "RELOCINFO",
+     "DISCARDABLE"
+    ],
+    "name": "seg 1",
+    "size": 456
+   },
+   {
+    "address": "2:0000",
+    "code": true,
+    "file_offset": 2016,
+    "file_size": 1882,
+    "flags": [
+     "MOVABLE",
+     "RELOCINFO",
+     "DISCARDABLE"
+    ],
+    "name": "seg 2",
+    "size": 1882
+   },
+   {
+    "address": "3:0000",
+    "code": true,
+    "file_offset": 4048,
+    "file_size": 24,
+    "flags": [
+     "MOVABLE",
+     "DISCARDABLE"
+    ],
+    "name": "seg 3",
+    "size": 24
+   },
+   {
+    "address": "4:0000",
+    "code": true,
+    "file_offset": 4080,
+    "file_size": 504,
+    "flags": [
+     "MOVABLE",
+     "RELOCINFO",
+     "DISCARDABLE"
+    ],
+    "name": "seg 4",
+    "size": 504
+   },
+   {
+    "address": "5:0000",
+    "code": true,
+    "file_offset": 4640,
+    "file_size": 402,
+    "flags": [
+     "MOVABLE",
+     "DISCARDABLE"
+    ],
+    "name": "seg 5",
+    "size": 402
+   },
+   {
+    "address": "6:0000",
+    "code": true,
+    "file_offset": 5056,
+    "file_size": 268,
+    "flags": [
+     "MOVABLE",
+     "RELOCINFO",
+     "DISCARDABLE"
+    ],
+    "name": "seg 6",
+    "size": 268
+   },
+   {
+    "address": "7:0000",
+    "code": true,
+    "file_offset": 5344,
+    "file_size": 752,
+    "flags": [
+     "MOVABLE",
+     "RELOCINFO",
+     "DISCARDABLE"
+    ],
+    "name": "seg 7",
+    "size": 752
+   },
+   {
+    "address": "8:0000",
+    "code": true,
+    "file_offset": 6208,
+    "file_size": 584,
+    "flags": [
+     "MOVABLE",
+     "RELOCINFO",
+     "DISCARDABLE"
+    ],
+    "name": "seg 8",
+    "size": 584
+   },
+   {
+    "address": "9:0000",
+    "code": true,
+    "file_offset": 6832,
+    "file_size": 826,
+    "flags": [
+     "MOVABLE",
+     "RELOCINFO",
+     "DISCARDABLE"
+    ],
+    "name": "seg 9",
+    "size": 826
+   },
+   {
+    "address": "10:0000",
+    "code": true,
+    "file_offset": 7696,
+    "file_size": 760,
+    "flags": [
+     "MOVABLE",
+     "RELOCINFO",
+     "DISCARDABLE"
+    ],
+    "name": "seg 10",
+    "size": 760
+   },
+   {
+    "address": "11:0000",
+    "code": true,
+    "file_offset": 8512,
+    "file_size": 882,
+    "flags": [
+     "MOVABLE",
+     "RELOCINFO",
+     "DISCARDABLE"
+    ],
+    "name": "seg 11",
+    "size": 882
+   },
+   {
+    "address": "12:0000",
+    "code": false,
+    "file_offset": 1312,
+    "file_size": 644,
+    "flags": [
+     "DATA",
+     "MOVABLE",
+     "SHAREABLE",
+     "PRELOAD"
+    ],
+    "name": "seg 12",
+    "size": 644
+   }
+  ],
+  "size": 9936,
+  "summary": {
+   "code_bytes": 7340,
+   "description": "Windows file expansion library",
+   "entry": "0:0000",
+   "exports": 30,
+   "format": "NE",
+   "image_base": 0,
+   "import_modules": 2,
+   "imports": 22,
+   "linked": "",
+   "linker": "5.20",
+   "machine": "i286/i386 (16-bit)",
+   "module": "LZEXPAND",
+   "resources": 1,
+   "sections": 12,
+   "subsystem": "Windows",
+   "type": "DLL"
+  }
+ },
+ "sha256": "faf467ce496dd59655ccd91c26c8ea694551f54fa6bbf5f480f398fc54d12fdd"
+}

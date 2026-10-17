@@ -1,0 +1,157 @@
+{
+ "cases": [
+  {
+   "args": [
+    {
+     "$w": [
+      5652,
+      "32ede306d1e0d1d2e2facb00"
+     ]
+    },
+    5652,
+    4136
+   ],
+   "kwargs": {},
+   "result": false
+  },
+  {
+   "args": [
+    {
+     "$w": [
+      107,
+      "558bec8b46082d060072198cdb0f03db3bc373108bd88b46"
+     ]
+    },
+    107,
+    4192
+   ],
+   "kwargs": {},
+   "result": false
+  },
+  {
+   "args": [
+    {
+     "$w": [
+      416,
+      "f9cb558bec66600fa80fa0fc8b46123dc30375328b5e14b8"
+     ]
+    },
+    416,
+    4192
+   ],
+   "kwargs": {},
+   "result": false
+  },
+  {
+   "args": [
+    {
+     "$w": [
+      1172,
+      "1eb860108ed8b801011fcb90c8020000568b3614030bf674"
+     ]
+    },
+    1172,
+    4192
+   ],
+   "kwargs": {},
+   "result": true
+  },
+  {
+   "args": [
+    {
+     "$w": [
+      6018,
+      "c808000057561eb860108ed8f746069fff7406b80a00e99a"
+     ]
+    },
+    6018,
+    4192
+   ],
+   "kwargs": {},
+   "result": true
+  },
+  {
+   "args": [
+    {
+     "$w": [
+      2023,
+      "558bec83ec0450a1a2010b06a001742ba1a0018b16a20189"
+     ]
+    },
+    2023,
+    4192
+   ],
+   "kwargs": {},
+   "result": false
+  },
+  {
+   "args": [
+    {
+     "$w": [
+      3162,
+      "9abc000010ca0200c80400006660668b5e06668bcb660bdb"
+     ]
+    },
+    3162,
+    4192
+   ],
+   "kwargs": {},
+   "result": false
+  },
+  {
+   "args": [
+    {
+     "$w": [
+      6004,
+      "c8300100c746fe000066ff760666ff760a0e68a501681010"
+     ]
+    },
+    6004,
+    4192
+   ],
+   "kwargs": {},
+   "result": false
+  },
+  {
+   "args": [
+    {
+     "$w": [
+      10296,
+      "558bec83ec1c57568b46048bc88ac42ae48946fc8a56062a"
+     ]
+    },
+    10296,
+    4160
+   ],
+   "kwargs": {},
+   "result": false
+  },
+  {
+   "args": [
+    {
+     "$w": [
+      29276,
+      "558bec83ec1a33c08946f28946f08b46048b56068946ec89"
+     ]
+    },
+    29276,
+    4160
+   ],
+   "kwargs": {},
+   "result": false
+  }
+ ],
+ "modules": [
+  "lzexpand.dll",
+  "keyboard.drv",
+  "comm.drv",
+  "system.drv",
+  "ver.dll",
+  "commdlg.dll",
+  "mmsystem.dll",
+  "shell.dll",
+  "lz32.dll",
+  "notepad.exe"
+ ],
+ "pass": "_loads_dgroup"
+}

@@ -1,0 +1,1616 @@
+{
+ "file": "keyboard.drv",
+ "output": {
+  "entries": [
+   {
+    "flags": 3,
+    "kind": "MOVEABLE",
+    "offset": 996,
+    "ordinal": 1,
+    "seg": 2
+   },
+   {
+    "flags": 3,
+    "kind": "MOVEABLE",
+    "offset": 2876,
+    "ordinal": 2,
+    "seg": 9
+   },
+   {
+    "flags": 3,
+    "kind": "MOVEABLE",
+    "offset": 2999,
+    "ordinal": 3,
+    "seg": 9
+   },
+   {
+    "flags": 3,
+    "kind": "MOVEABLE",
+    "offset": 1344,
+    "ordinal": 4,
+    "seg": 9
+   },
+   {
+    "flags": 3,
+    "kind": "MOVEABLE",
+    "offset": 2541,
+    "ordinal": 5,
+    "seg": 9
+   },
+   {
+    "flags": 3,
+    "kind": "MOVEABLE",
+    "offset": 2582,
+    "ordinal": 6,
+    "seg": 9
+   },
+   {
+    "flags": 3,
+    "kind": "MOVEABLE",
+    "offset": 32,
+    "ordinal": 7,
+    "seg": 5
+   },
+   {
+    "flags": 3,
+    "kind": "MOVEABLE",
+    "offset": 3076,
+    "ordinal": 8,
+    "seg": 9
+   },
+   {
+    "flags": 3,
+    "kind": "MOVEABLE",
+    "offset": 1222,
+    "ordinal": 9,
+    "seg": 9
+   },
+   {
+    "flags": 3,
+    "kind": "MOVEABLE",
+    "offset": 1363,
+    "ordinal": 10,
+    "seg": 9
+   },
+   {
+    "flags": 3,
+    "kind": "MOVEABLE",
+    "offset": 19,
+    "ordinal": 11,
+    "seg": 4
+   },
+   {
+    "flags": 3,
+    "kind": "MOVEABLE",
+    "offset": 19,
+    "ordinal": 12,
+    "seg": 7
+   },
+   {
+    "flags": 3,
+    "kind": "MOVEABLE",
+    "offset": 1248,
+    "ordinal": 13,
+    "seg": 2
+   },
+   {
+    "flags": 3,
+    "kind": "MOVEABLE",
+    "offset": 4352,
+    "ordinal": 14,
+    "seg": 9
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 15
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 16
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 17
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 18
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 19
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 20
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 21
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 22
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 23
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 24
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 25
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 26
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 27
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 28
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 29
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 30
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 31
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 32
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 33
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 34
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 35
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 36
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 37
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 38
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 39
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 40
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 41
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 42
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 43
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 44
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 45
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 46
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 47
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 48
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 49
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 50
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 51
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 52
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 53
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 54
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 55
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 56
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 57
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 58
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 59
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 60
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 61
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 62
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 63
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 64
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 65
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 66
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 67
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 68
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 69
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 70
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 71
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 72
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 73
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 74
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 75
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 76
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 77
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 78
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 79
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 80
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 81
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 82
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 83
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 84
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 85
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 86
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 87
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 88
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 89
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 90
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 91
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 92
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 93
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 94
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 95
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 96
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 97
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 98
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 99
+   },
+   {
+    "flags": 3,
+    "kind": "MOVEABLE",
+    "offset": 2812,
+    "ordinal": 100,
+    "seg": 9
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 101
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 102
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 103
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 104
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 105
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 106
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 107
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 108
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 109
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 110
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 111
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 112
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 113
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 114
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 115
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 116
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 117
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 118
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 119
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 120
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 121
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 122
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 123
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 124
+   },
+   {
+    "kind": "UNUSED",
+    "ordinal": 125
+   },
+   {
+    "flags": 3,
+    "kind": "MOVEABLE",
+    "offset": 1324,
+    "ordinal": 126,
+    "seg": 9
+   },
+   {
+    "flags": 3,
+    "kind": "MOVEABLE",
+    "offset": 53,
+    "ordinal": 127,
+    "seg": 2
+   },
+   {
+    "flags": 3,
+    "kind": "MOVEABLE",
+    "offset": 0,
+    "ordinal": 128,
+    "seg": 3
+   },
+   {
+    "flags": 3,
+    "kind": "MOVEABLE",
+    "offset": 0,
+    "ordinal": 129,
+    "seg": 4
+   },
+   {
+    "flags": 3,
+    "kind": "MOVEABLE",
+    "offset": 0,
+    "ordinal": 130,
+    "seg": 6
+   },
+   {
+    "flags": 3,
+    "kind": "MOVEABLE",
+    "offset": 0,
+    "ordinal": 131,
+    "seg": 7
+   },
+   {
+    "flags": 3,
+    "kind": "MOVEABLE",
+    "offset": 2536,
+    "ordinal": 132,
+    "seg": 9
+   },
+   {
+    "flags": 3,
+    "kind": "MOVEABLE",
+    "offset": 0,
+    "ordinal": 133,
+    "seg": 8
+   },
+   {
+    "flags": 3,
+    "kind": "MOVEABLE",
+    "offset": 2709,
+    "ordinal": 134,
+    "seg": 9
+   },
+   {
+    "flags": 3,
+    "kind": "MOVEABLE",
+    "offset": 2749,
+    "ordinal": 135,
+    "seg": 9
+   },
+   {
+    "flags": 3,
+    "kind": "MOVEABLE",
+    "offset": 2815,
+    "ordinal": 136,
+    "seg": 9
+   },
+   {
+    "flags": 3,
+    "kind": "MOVEABLE",
+    "offset": 46,
+    "ordinal": 137,
+    "seg": 9
+   }
+  ],
+  "exports": [
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8,
+   9,
+   10,
+   11,
+   12,
+   13,
+   14,
+   100,
+   126,
+   127,
+   128,
+   129,
+   130,
+   131,
+   132,
+   133,
+   134,
+   135,
+   136,
+   137
+  ],
+  "module": "KEYBOARD",
+  "nonresident": [
+   [
+    "KEYBOARD (Enhanced keyboard):",
+    0
+   ],
+   [
+    "TOASCIIEX",
+    10
+   ],
+   [
+    "VKKEYSCANEX",
+    11
+   ],
+   [
+    "SCREENSWITCHENABLE",
+    100
+   ],
+   [
+    "GETKBCODEPAGE",
+    132
+   ],
+   [
+    "DISABLE",
+    3
+   ],
+   [
+    "GETKEYBOARDTYPE",
+    130
+   ],
+   [
+    "NEWTABLEEX",
+    13
+   ],
+   [
+    "MAPVIRTUALKEY",
+    131
+   ],
+   [
+    "NEWTABLE",
+    127
+   ],
+   [
+    "GETKEYNAMETEXT",
+    133
+   ],
+   [
+    "OEMTOANSIBUFF",
+    135
+   ],
+   [
+    "ENABLE",
+    2
+   ],
+   [
+    "ANSITOOEM",
+    5
+   ],
+   [
+    "MAPVIRTUALKEYEX",
+    12
+   ],
+   [
+    "SETSPEED",
+    7
+   ],
+   [
+    "VKKEYSCAN",
+    129
+   ],
+   [
+    "INQUIRE",
+    1
+   ],
+   [
+    "OEMKEYSCAN",
+    128
+   ],
+   [
+    "OEMTOANSI",
+    6
+   ],
+   [
+    "GETBIOSKEYPROC",
+    137
+   ],
+   [
+    "TOASCII",
+    4
+   ],
+   [
+    "GETTABLESEG",
+    126
+   ],
+   [
+    "INQUIREEX",
+    9
+   ],
+   [
+    "ANSITOOEMBUFF",
+    134
+   ],
+   [
+    "ENABLEKBSYSREQ",
+    136
+   ]
+  ],
+  "refs": [
+   "KERNEL"
+  ],
+  "relocations": {
+   "1": [
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 17,
+     "ordinal": 4,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 60,
+     "ordinal": 5,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "entry": 0,
+     "kind": "INTERNAL",
+     "offset": 90,
+     "rel_type": 0,
+     "seg": 9,
+     "src": 2
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 35,
+     "ordinal": 173,
+     "rel_type": 1,
+     "src": 5
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 79,
+     "ordinal": 197,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 99,
+     "ordinal": 230,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 85,
+     "ordinal": 111,
+     "rel_type": 1,
+     "src": 3
+    }
+   ],
+   "10": [],
+   "2": [
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 558,
+     "ordinal": 127,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 1862,
+     "ordinal": 128,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 211,
+     "ordinal": 5,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 198,
+     "ordinal": 6,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 1553,
+     "ordinal": 7,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 1464,
+     "ordinal": 135,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 181,
+     "ordinal": 16,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 2036,
+     "ordinal": 17,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 167,
+     "ordinal": 20,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "entry": 0,
+     "kind": "INTERNAL",
+     "offset": 1682,
+     "rel_type": 0,
+     "seg": 9,
+     "src": 2
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 377,
+     "ordinal": 170,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 857,
+     "ordinal": 47,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 448,
+     "ordinal": 176,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 873,
+     "ordinal": 50,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 1932,
+     "ordinal": 60,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 1946,
+     "ordinal": 61,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 1959,
+     "ordinal": 62,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 226,
+     "ordinal": 197,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 155,
+     "ordinal": 198,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 362,
+     "ordinal": 74,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 1631,
+     "ordinal": 81,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 1618,
+     "ordinal": 82,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 1579,
+     "ordinal": 84,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 1507,
+     "ordinal": 85,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 1498,
+     "ordinal": 89,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 232,
+     "ordinal": 230,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 149,
+     "ordinal": 231,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 220,
+     "ordinal": 111,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 161,
+     "ordinal": 112,
+     "rel_type": 1,
+     "src": 3
+    }
+   ],
+   "3": [
+    {
+     "additive": false,
+     "entry": 0,
+     "kind": "INTERNAL",
+     "offset": 136,
+     "rel_type": 0,
+     "seg": 4,
+     "src": 2
+    },
+    {
+     "additive": false,
+     "entry": 0,
+     "kind": "INTERNAL",
+     "offset": 164,
+     "rel_type": 0,
+     "seg": 7,
+     "src": 2
+    },
+    {
+     "additive": false,
+     "entry": 0,
+     "kind": "INTERNAL",
+     "offset": 56,
+     "rel_type": 0,
+     "seg": 9,
+     "src": 2
+    }
+   ],
+   "4": [
+    {
+     "additive": false,
+     "entry": 0,
+     "kind": "INTERNAL",
+     "offset": 40,
+     "rel_type": 0,
+     "seg": 9,
+     "src": 2
+    }
+   ],
+   "5": [],
+   "6": [],
+   "7": [
+    {
+     "additive": false,
+     "entry": 0,
+     "kind": "INTERNAL",
+     "offset": 42,
+     "rel_type": 0,
+     "seg": 9,
+     "src": 2
+    }
+   ],
+   "8": [
+    {
+     "additive": false,
+     "entry": 0,
+     "kind": "INTERNAL",
+     "offset": 71,
+     "rel_type": 0,
+     "seg": 7,
+     "src": 2
+    }
+   ],
+   "9": [
+    {
+     "additive": false,
+     "entry": 0,
+     "kind": "INTERNAL",
+     "offset": 2916,
+     "rel_type": 0,
+     "seg": 2,
+     "src": 2
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 3855,
+     "ordinal": 1,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 3197,
+     "ordinal": 3,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 3581,
+     "ordinal": 131,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 3188,
+     "ordinal": 4,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 4182,
+     "ordinal": 5,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 4319,
+     "ordinal": 6,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 4241,
+     "ordinal": 7,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 3846,
+     "ordinal": 137,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 2686,
+     "ordinal": 114,
+     "rel_type": 1,
+     "src": 5
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 4345,
+     "ordinal": 10,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 4054,
+     "ordinal": 16,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 4068,
+     "ordinal": 20,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 4293,
+     "ordinal": 23,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 4329,
+     "ordinal": 24,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "entry": 0,
+     "kind": "INTERNAL",
+     "offset": 3338,
+     "rel_type": 0,
+     "seg": 9,
+     "src": 2
+    },
+    {
+     "additive": false,
+     "entry": 0,
+     "kind": "INTERNAL",
+     "offset": 72,
+     "rel_type": 0,
+     "seg": 10,
+     "src": 2
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 3118,
+     "ordinal": 48,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 3088,
+     "ordinal": 178,
+     "rel_type": 1,
+     "src": 5
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 442,
+     "ordinal": 205,
+     "rel_type": 1,
+     "src": 3
+    },
+    {
+     "additive": true,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 3100,
+     "ordinal": 91,
+     "rel_type": 5,
+     "src": 3
+    },
+    {
+     "additive": false,
+     "kind": "IMPORTORD",
+     "module": 1,
+     "offset": 3510,
+     "ordinal": 102,
+     "rel_type": 1,
+     "src": 3
+    }
+   ]
+  },
+  "resident": [
+   [
+    "KEYBOARD",
+    0
+   ],
+   [
+    "WEP",
+    8
+   ],
+   [
+    "___EXPORTEDSTUB",
+    14
+   ]
+  ],
+  "resources": [
+   {
+    "flags": 7280,
+    "id": "#1",
+    "length": 32,
+    "off": 9440,
+    "type": "STRING"
+   },
+   {
+    "flags": 7280,
+    "id": "#2",
+    "length": 32,
+    "off": 9504,
+    "type": "STRING"
+   },
+   {
+    "flags": 7280,
+    "id": "#3",
+    "length": 32,
+    "off": 9568,
+    "type": "STRING"
+   },
+   {
+    "flags": 7280,
+    "id": "#4",
+    "length": 64,
+    "off": 9632,
+    "type": "STRING"
+   },
+   {
+    "flags": 7280,
+    "id": "#5",
+    "length": 96,
+    "off": 9728,
+    "type": "STRING"
+   },
+   {
+    "flags": 7280,
+    "id": "#6",
+    "length": 48,
+    "off": 9856,
+    "type": "STRING"
+   },
+   {
+    "flags": 7280,
+    "id": "#17",
+    "length": 32,
+    "off": 9920,
+    "type": "STRING"
+   },
+   {
+    "flags": 7280,
+    "id": "#21",
+    "length": 64,
+    "off": 9984,
+    "type": "STRING"
+   },
+   {
+    "flags": 7280,
+    "id": "#18",
+    "length": 48,
+    "off": 10080,
+    "type": "STRING"
+   },
+   {
+    "flags": 7280,
+    "id": "#20",
+    "length": 32,
+    "off": 10144,
+    "type": "STRING"
+   },
+   {
+    "flags": 7280,
+    "id": "#22",
+    "length": 80,
+    "off": 10208,
+    "type": "STRING"
+   },
+   {
+    "flags": 7280,
+    "id": "#60",
+    "length": 64,
+    "off": 10304,
+    "type": "STRING"
+   },
+   {
+    "flags": 7280,
+    "id": "#58",
+    "length": 32,
+    "off": 10400,
+    "type": "STRING"
+   },
+   {
+    "flags": 7280,
+    "id": "#55",
+    "length": 32,
+    "off": 10464,
+    "type": "STRING"
+   },
+   {
+    "flags": 7280,
+    "id": "#54",
+    "length": 32,
+    "off": 10528,
+    "type": "STRING"
+   },
+   {
+    "flags": 7280,
+    "id": "#51",
+    "length": 32,
+    "off": 10592,
+    "type": "STRING"
+   },
+   {
+    "flags": 7280,
+    "id": "#59",
+    "length": 48,
+    "off": 10656,
+    "type": "STRING"
+   },
+   {
+    "flags": 7280,
+    "id": "#56",
+    "length": 32,
+    "off": 10720,
+    "type": "STRING"
+   },
+   {
+    "flags": 7280,
+    "id": "#57",
+    "length": 32,
+    "off": 10784,
+    "type": "STRING"
+   },
+   {
+    "flags": 3120,
+    "id": "#1000",
+    "length": 400,
+    "off": 11808,
+    "type": "RCDATA"
+   },
+   {
+    "flags": 3120,
+    "id": "#1",
+    "length": 480,
+    "off": 12208,
+    "type": "VERSION"
+   }
+  ],
+  "segments": [
+   {
+    "file_off": 1216,
+    "flags": 7504,
+    "idx": 1,
+    "kind": "CODE",
+    "length": 113,
+    "minalloc": 113
+   },
+   {
+    "file_off": 1408,
+    "flags": 7504,
+    "idx": 2,
+    "kind": "CODE",
+    "length": 2049,
+    "minalloc": 2049
+   },
+   {
+    "file_off": 10880,
+    "flags": 7440,
+    "idx": 3,
+    "kind": "CODE",
+    "length": 182,
+    "minalloc": 183
+   },
+   {
+    "file_off": 11088,
+    "flags": 7440,
+    "idx": 4,
+    "kind": "CODE",
+    "length": 199,
+    "minalloc": 200
+   },
+   {
+    "file_off": 3712,
+    "flags": 7248,
+    "idx": 5,
+    "kind": "CODE",
+    "length": 165,
+    "minalloc": 165
+   },
+   {
+    "file_off": 11312,
+    "flags": 7184,
+    "idx": 6,
+    "kind": "CODE",
+    "length": 53,
+    "minalloc": 54
+   },
+   {
+    "file_off": 11376,
+    "flags": 7440,
+    "idx": 7,
+    "kind": "CODE",
+    "length": 244,
+    "minalloc": 245
+   },
+   {
+    "file_off": 11632,
+    "flags": 7440,
+    "idx": 8,
+    "kind": "CODE",
+    "length": 163,
+    "minalloc": 164
+   },
+   {
+    "file_off": 3904,
+    "flags": 3408,
+    "idx": 9,
+    "kind": "CODE",
+    "length": 4372,
+    "minalloc": 4372
+   },
+   {
+    "file_off": 8480,
+    "flags": 3185,
+    "idx": 10,
+    "kind": "DATA",
+    "length": 916,
+    "minalloc": 916
+   }
+  ]
+ },
+ "sha256": "7acd0a7170cc28c690795439f4cf50e080a63e31e57d8aec665111dd5f871ecd"
+}

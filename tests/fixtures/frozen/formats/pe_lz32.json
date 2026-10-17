@@ -1,0 +1,225 @@
+{
+ "file": "lz32.dll",
+ "output": {
+  "build": {
+   "entry_rva": 4096,
+   "entry_va": 3219787776,
+   "image_base": 3219783680,
+   "kind": "DLL",
+   "linker_version": "2.50",
+   "machine": "i386",
+   "magic": "PE32",
+   "subsystem": "GUI",
+   "timestamp": 839713624
+  },
+  "code_sections": [
+   [
+    3219787776,
+    {
+     "len": 1536,
+     "sha256": "3d40518d680322e12105c268666c35eb8232af0fdc02239f025d29baad050e93"
+    },
+    ".text"
+   ]
+  ],
+  "codeview": null,
+  "dll": true,
+  "exports": [
+   [
+    1,
+    "LZCopy",
+    4522
+   ],
+   [
+    2,
+    "LZOpenFileA",
+    4664
+   ],
+   [
+    3,
+    "LZInit",
+    4609
+   ],
+   [
+    4,
+    "LZSeek",
+    5076
+   ],
+   [
+    5,
+    "LZRead",
+    4963
+   ],
+   [
+    6,
+    "LZClose",
+    4573
+   ],
+   [
+    7,
+    "LZStart",
+    4387
+   ],
+   [
+    8,
+    "CopyLZFile",
+    4912
+   ],
+   [
+    9,
+    "LZDone",
+    4443
+   ],
+   [
+    10,
+    "GetExpandedNameA",
+    4824
+   ],
+   [
+    11,
+    "LZOpenFileW",
+    4513
+   ],
+   [
+    12,
+    "GetExpandedNameW",
+    4504
+   ]
+  ],
+  "imports": {
+   "3219796080": [
+    "KERNEL32.dll",
+    "#21"
+   ],
+   "3219796084": [
+    "KERNEL32.dll",
+    "SMapLS_IP_EBP_12"
+   ],
+   "3219796088": [
+    "KERNEL32.dll",
+    "#89"
+   ],
+   "3219796092": [
+    "KERNEL32.dll",
+    "SMapLS_IP_EBP_8"
+   ],
+   "3219796096": [
+    "KERNEL32.dll",
+    "SUnMapLS_IP_EBP_12"
+   ],
+   "3219796100": [
+    "KERNEL32.dll",
+    "#41"
+   ],
+   "3219796104": [
+    "KERNEL32.dll",
+    "#90"
+   ],
+   "3219796108": [
+    "KERNEL32.dll",
+    "SUnMapLS_IP_EBP_8"
+   ],
+   "3219796112": [
+    "KERNEL32.dll",
+    "#17"
+   ],
+   "3219796116": [
+    "KERNEL32.dll",
+    "DisableThreadLibraryCalls"
+   ],
+   "3219796120": [
+    "KERNEL32.dll",
+    "#22"
+   ],
+   "3219796124": [
+    "KERNEL32.dll",
+    "#20"
+   ],
+   "3219796128": [
+    "KERNEL32.dll",
+    "OpenFile"
+   ],
+   "3219796132": [
+    "KERNEL32.dll",
+    "GlobalFree"
+   ],
+   "3219796136": [
+    "KERNEL32.dll",
+    "GetShortPathNameA"
+   ],
+   "3219796140": [
+    "KERNEL32.dll",
+    "SetLastError"
+   ],
+   "3219796144": [
+    "KERNEL32.dll",
+    "GlobalAlloc"
+   ]
+  },
+  "machine": "i386",
+  "module": "LZ32.dll",
+  "optional": {
+   "checksum": 15188,
+   "code_base": 4096,
+   "code_size": 1536,
+   "dll_characteristics": 0,
+   "entry_point": 4096,
+   "file_alignment": 512,
+   "headers_size": 1024,
+   "image_base": 3219783680,
+   "image_size": 28672,
+   "image_version": "0.0",
+   "initialized_data_size": 3072,
+   "linker_version": "2.50",
+   "magic": 267,
+   "os_version": "1.0",
+   "section_alignment": 4096,
+   "subsystem": 2,
+   "subsystem_name": "GUI",
+   "subsystem_version": "4.0",
+   "uninitialized_data_size": 0
+  },
+  "relocs": [
+   4111,
+   4128,
+   4133,
+   4190,
+   4195,
+   4205,
+   4209,
+   4240,
+   4276,
+   4307,
+   4347,
+   4376,
+   4398,
+   4428,
+   4454,
+   4483,
+   4686,
+   4700,
+   4715,
+   4753,
+   4776,
+   4791,
+   4835,
+   4857,
+   4894,
+   5116,
+   5122,
+   5128,
+   5134,
+   5140,
+   5146,
+   5152,
+   5158,
+   5164,
+   5170,
+   5176,
+   5182,
+   8269,
+   8325
+  ]
+ },
+ "sha256": "31680afbd8006a6edd0e18611f53fbea10776bc9937171fee017495d940f39af"
+}

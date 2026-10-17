@@ -1,0 +1,22 @@
+{
+ "file": "notepad.exe",
+ "output": [
+  "<ICON 1 lang=1033 296 bytes>",
+  "<ICON 2 lang=1033 744 bytes>",
+  "<ICON 3 lang=1033 744 bytes>",
+  "<ICON 4 lang=1033 296 bytes>",
+  "<MENU 1 lang=1033 600 bytes>",
+  "<DIALOG 12 lang=1033 186 bytes>",
+  "<DIALOG 14 lang=1033 1090 bytes>",
+  "<STRING 1 lang=1033 586 bytes>",
+  "<STRING 2 lang=1033 2540 bytes>",
+  "<STRING 3 lang=1033 648 bytes>",
+  "<STRING 4 lang=1033 1330 bytes>",
+  "<ACCELERATOR 1 lang=1033 72 bytes>",
+  "<ACCELERATOR 2 lang=1033 104 bytes>",
+  "<GROUP_ICON 1 lang=1033 34 bytes>",
+  "<GROUP_ICON 2 lang=1033 34 bytes>",
+  "<VERSION 1 lang=1033 844 bytes>"
+ ],
+ "sha256": "6bcd5e9cbe1605fa2f36ad0f5a6d65bff016c52806afa44adde7d0932839b324"
+}

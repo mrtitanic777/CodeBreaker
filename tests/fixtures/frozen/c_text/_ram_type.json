@@ -1,0 +1,107 @@
+{
+ "cases": [
+  {
+   "args": [
+    "i",
+    4,
+    false
+   ],
+   "kwargs": {},
+   "result": "int4"
+  },
+  {
+   "args": [
+    "u",
+    1,
+    false
+   ],
+   "kwargs": {},
+   "result": "uint1"
+  },
+  {
+   "args": [
+    "u",
+    4,
+    false
+   ],
+   "kwargs": {},
+   "result": "uint4"
+  },
+  {
+   "args": [
+    "x",
+    1,
+    false
+   ],
+   "kwargs": {},
+   "result": "uint1"
+  },
+  {
+   "args": [
+    "x",
+    4,
+    false
+   ],
+   "kwargs": {},
+   "result": "uint4"
+  },
+  {
+   "args": [
+    "x",
+    4,
+    true
+   ],
+   "kwargs": {},
+   "result": "code *"
+  },
+  {
+   "args": [
+    "pc",
+    4,
+    true
+   ],
+   "kwargs": {},
+   "result": "code *"
+  },
+  {
+   "args": [
+    "pc",
+    4,
+    false
+   ],
+   "kwargs": {},
+   "result": "char *"
+  },
+  {
+   "args": [
+    "pi",
+    4,
+    false
+   ],
+   "kwargs": {},
+   "result": "int4 *"
+  },
+  {
+   "args": [
+    "px",
+    4,
+    false
+   ],
+   "kwargs": {},
+   "result": "xunknown4 *"
+  }
+ ],
+ "modules": [
+  "lzexpand.dll",
+  "keyboard.drv",
+  "comm.drv",
+  "system.drv",
+  "ver.dll",
+  "commdlg.dll",
+  "mmsystem.dll",
+  "shell.dll",
+  "lz32.dll",
+  "notepad.exe"
+ ],
+ "pass": "_ram_type"
+}

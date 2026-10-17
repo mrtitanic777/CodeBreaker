@@ -1,0 +1,46 @@
+{
+ "file": "mode.com",
+ "output": {
+  "kind": "com",
+  "packer": null,
+  "program": {
+   "base": 65536,
+   "cs": 4096,
+   "device_segment": 4096,
+   "devices": [],
+   "ds": 4096,
+   "entries": [
+    [
+     65792,
+     "entry",
+     "near"
+    ]
+   ],
+   "image": {
+    "len": 29527,
+    "sha256": "8b89d8aad4e94ab0227d8de2d38ca035aec1132ed7364a482f09220736baaf7d"
+   },
+   "ip": 256,
+   "kind": "com",
+   "name": "mode.com",
+   "notes": [],
+   "overlay": "",
+   "packer": null,
+   "relocations": [],
+   "segments": {
+    "65792": 4096
+   },
+   "sp": 65534,
+   "spans": [
+    [
+     65792,
+     29271,
+     "program"
+    ]
+   ],
+   "ss": 4096,
+   "unpacked": null
+  }
+ },
+ "sha256": "51af7fbc7fd56b159fccb1e736b670e98a0a1173d597363f23005a9e5304573c"
+}

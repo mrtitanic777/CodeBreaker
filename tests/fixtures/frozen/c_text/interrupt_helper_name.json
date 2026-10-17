@@ -1,0 +1,164 @@
+{
+ "cases": [
+  {
+   "args": [
+    3,
+    {
+     "$t": []
+    }
+   ],
+   "kwargs": {},
+   "result": "int03_none"
+  },
+  {
+   "args": [
+    33,
+    {
+     "$t": [
+      "ax",
+      "bx"
+     ]
+    }
+   ],
+   "kwargs": {},
+   "result": "int21_ax_bx"
+  },
+  {
+   "args": [
+    33,
+    {
+     "$t": [
+      "ax",
+      "dx"
+     ]
+    }
+   ],
+   "kwargs": {},
+   "result": "int21_ax_dx"
+  },
+  {
+   "args": [
+    33,
+    {
+     "$t": [
+      "ax",
+      "bx",
+      "dx"
+     ]
+    }
+   ],
+   "kwargs": {},
+   "result": "int21_ax_bx_dx"
+  },
+  {
+   "args": [
+    17,
+    {
+     "$t": [
+      "ax",
+      "bx",
+      "cx",
+      "dx"
+     ]
+    }
+   ],
+   "kwargs": {},
+   "result": "int11_ax_bx_cx_dx"
+  },
+  {
+   "args": [
+    33,
+    {
+     "$t": [
+      "ax",
+      "bx",
+      "dx",
+      "si"
+     ]
+    }
+   ],
+   "kwargs": {},
+   "result": "int21_ax_bx_dx_si"
+  },
+  {
+   "args": [
+    47,
+    {
+     "$t": [
+      "ax",
+      "bx",
+      "di",
+      "es"
+     ]
+    }
+   ],
+   "kwargs": {},
+   "result": "int2f_ax_bx_di_es"
+  },
+  {
+   "args": [
+    33,
+    {
+     "$t": [
+      "ax",
+      "bx",
+      "dx",
+      "si",
+      "di",
+      "ds"
+     ]
+    }
+   ],
+   "kwargs": {},
+   "result": "int21_ax_bx_dx_si_di_ds"
+  },
+  {
+   "args": [
+    47,
+    {
+     "$t": [
+      "ax",
+      "bx",
+      "dx",
+      "si",
+      "di",
+      "es"
+     ]
+    }
+   ],
+   "kwargs": {},
+   "result": "int2f_ax_bx_dx_si_di_es"
+  },
+  {
+   "args": [
+    47,
+    {
+     "$t": [
+      "ax",
+      "bx",
+      "cx",
+      "dx",
+      "si",
+      "di",
+      "es"
+     ]
+    }
+   ],
+   "kwargs": {},
+   "result": "int2f_ax_bx_cx_dx_si_di_es"
+  }
+ ],
+ "modules": [
+  "lzexpand.dll",
+  "keyboard.drv",
+  "comm.drv",
+  "system.drv",
+  "ver.dll",
+  "commdlg.dll",
+  "mmsystem.dll",
+  "shell.dll",
+  "lz32.dll",
+  "notepad.exe"
+ ],
+ "pass": "interrupt_helper_name"
+}

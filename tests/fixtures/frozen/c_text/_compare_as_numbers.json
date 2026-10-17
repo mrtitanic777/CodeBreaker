@@ -1,0 +1,52 @@
+{
+ "cases": [
+  {
+   "args": [
+    "int4 __fastcall sub_004446(int4 self,int4 second)\n\n{\n  char *pcVar1;\n  char cVar2;\n  \n  cVar2 = *(char *)self;\n  pcVar1 = (char *)((int2)second + self);\n  while ((cVar2 != '\\0' && ((uint4)self < pcVar1))) {\n    self = CharNextA(self);\n    cVar2 = *(char *)self;\n  }\n  if (pcVar1 < (uint4)self) {\n    self = self + -2;\n  }\n  return self;\n}"
+   ],
+   "kwargs": {},
+   "result": "int4 __fastcall sub_004446(int4 self,int4 second)\n\n{\n  char *pcVar1;\n  char cVar2;\n  \n  cVar2 = *(char *)self;\n  pcVar1 = (char *)((int2)second + self);\n  while ((cVar2 != '\\0' && ((uint4)self < (uint4)pcVar1))) {\n    self = CharNextA(self);\n    cVar2 = *(char *)self;\n  }\n  if ((uint4)pcVar1 < (uint4)self) {\n    self = self + -2;\n  }\n  return self;\n}"
+  },
+  {
+   "args": [
+    "int4 sub_003155(int4 a1)\n\n{\n  char cVar1;\n  int4 iVar2;\n  char *a2;\n  \n  iVar2 = lstrlenA(a1);\n  a2 = (char *)(iVar2 + a1);\n  cVar1 = *a2;\n  while ((((cVar1 != '.' && (cVar1 != '\\\\')) && (cVar1 != ':')) && ((uint4)a1 < a2))) {\n    a2 = (char *)CharPrevA(a1,(int4)a2);\n    cVar1 = *a2;\n  }\n  if (*a2 != '.') {\n    a2 = (char *)lstrcatA(a1,0x4061c0);\n  }\n  return (int4)a2;\n}"
+   ],
+   "kwargs": {},
+   "result": "int4 sub_003155(int4 a1)\n\n{\n  char cVar1;\n  int4 iVar2;\n  char *a2;\n  \n  iVar2 = lstrlenA(a1);\n  a2 = (char *)(iVar2 + a1);\n  cVar1 = *a2;\n  while ((((cVar1 != '.' && (cVar1 != '\\\\')) && (cVar1 != ':')) && ((uint4)a1 < (uint4)a2))) {\n    a2 = (char *)CharPrevA(a1,(int4)a2);\n    cVar1 = *a2;\n  }\n  if (*a2 != '.') {\n    a2 = (char *)lstrcatA(a1,0x4061c0);\n  }\n  return (int4)a2;\n}"
+  },
+  {
+   "args": [
+    "/* WARNING: Inlined function: __savegprlr_24 */\n\nvoid sub_930169C8(int4 param_1,int4 param_2)\n\n{\n  code *pcVar1;\n  int4 iVar2;\n  int4 *piVar3;\n  int4 *piVar4;\n  int4 *piVar5;\n  int4 *piVar6;\n  int4 iStack0000001c;\n  \n  iStack0000001c = param_2;\n  sub_930171B0(8);\n  if (iRam93020b00 != 1) {\n    iVar2 = -0x6cfe0000;\n    if (iRam93020afc == 1) {\n      iVar2 = -0x6cfe0000;\n      func_0x93000000(0);\n    }\n    *(xunknown4 *)(iVar2 + 0xafc) = 1;\n    xRam93020af8 = (xunknown1)param_2;\n    if (param_1 == 0) {\n      if (piRam93020ca8 != (int4 *)0x0) {\n        piVar4 = piRam93020ca8;\n        piVar5 = piRam93020ca8;\n        piVar3 = piRam93020ca4;\n        piVar6 = piRam93020ca4;\ncode_r0x93016a60:\n        do {\n          piVar6 = piVar6 + -1;\n          if (piVar6 < piVar4) break;\n          if (*piVar6 != 0) {\n            if (piVar6 < piVar4) break;\n            pcVar1 = (code *)*piVar6;\n            *piVar6 = 0;\n            (*pcVar1)();\n            if (piVar5 == piRam93020ca8) {\n              if (piVar3 == piRam93020ca4) goto code_r0x93016a60;\n            }\n            piVar4 = piRam93020ca8;\n            piVar5 = piRam93020ca8;\n            piVar6 = piRam93020ca4;\n            piVar3 = piRam93020ca4;\n          }\n        } while( true );\n      }\n      sub_93016900(0x93020004,0x93020008);\n    }\n    sub_93016900(0x9302000c,0x93020010);\n  }\n  sub_93016B4C();\n  if (iStack0000001c == 0) {\n    func_0x93000000(0);\n  }\n  return;\n}"
+   ],
+   "kwargs": {},
+   "result": "/* WARNING: Inlined function: __savegprlr_24 */\n\nvoid sub_930169C8(int4 param_1,int4 param_2)\n\n{\n  code *pcVar1;\n  int4 iVar2;\n  int4 *piVar3;\n  int4 *piVar4;\n  int4 *piVar5;\n  int4 *piVar6;\n  int4 iStack0000001c;\n  \n  iStack0000001c = param_2;\n  sub_930171B0(8);\n  if (iRam93020b00 != 1) {\n    iVar2 = -0x6cfe0000;\n    if (iRam93020afc == 1) {\n      iVar2 = -0x6cfe0000;\n      func_0x93000000(0);\n    }\n    *(xunknown4 *)(iVar2 + 0xafc) = 1;\n    xRam93020af8 = (xunknown1)param_2;\n    if (param_1 == 0) {\n      if (piRam93020ca8 != (int4 *)0x0) {\n        piVar4 = piRam93020ca8;\n        piVar5 = piRam93020ca8;\n        piVar3 = piRam93020ca4;\n        piVar6 = piRam93020ca4;\ncode_r0x93016a60:\n        do {\n          piVar6 = piVar6 + -1;\n          if (piVar6 < piVar4) break;\n          if (*piVar6 != 0) {\n            if (piVar6 < piVar4) break;\n            pcVar1 = (code *)*piVar6;\n            *piVar6 = 0;\n            (*pcVar1)();\n            if ((uint4)piVar5 == piRam93020ca8) {\n              if ((uint4)piVar3 == piRam93020ca4) goto code_r0x93016a60;\n            }\n            piVar4 = piRam93020ca8;\n            piVar5 = piRam93020ca8;\n            piVar6 = piRam93020ca4;\n            piVar3 = piRam93020ca4;\n          }\n        } while( true );\n      }\n      sub_93016900(0x93020004,0x93020008);\n    }\n    sub_93016900(0x9302000c,0x93020010);\n  }\n  sub_93016B4C();\n  if (iStack0000001c == 0) {\n    func_0x93000000(0);\n  }\n  return;\n}"
+  },
+  {
+   "args": [
+    "xunknown8 sub_93010478(void)\n\n{\n  return 0;\n}"
+   ],
+   "kwargs": {},
+   "result": "xunknown8 sub_93010478(void)\n\n{\n  return 0;\n}"
+  },
+  {
+   "args": [
+    "xunknown8 sub_93015838(void)\n\n{\n  return 0;\n}"
+   ],
+   "kwargs": {},
+   "result": "xunknown8 sub_93015838(void)\n\n{\n  return 0;\n}"
+  }
+ ],
+ "modules": [
+  "lzexpand.dll",
+  "keyboard.drv",
+  "comm.drv",
+  "system.drv",
+  "ver.dll",
+  "commdlg.dll",
+  "mmsystem.dll",
+  "shell.dll",
+  "lz32.dll",
+  "notepad.exe"
+ ],
+ "pass": "_compare_as_numbers"
+}
