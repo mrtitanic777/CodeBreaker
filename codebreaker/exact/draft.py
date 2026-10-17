@@ -882,13 +882,14 @@ def self_updates(text):
         m = re.match(r"(\s*)([A-Za-z_]\w*) = ([^;]+);\s*$", lines[k])
         if m and k + 1 < len(lines):
             ind, x, e = m.groups()
-            u = re.match(r"\s*%s = %s ([-+*&|^]|<<|>>) (.+);\s*$" % (x, x), lines[k + 1])
+            u = re.match(r"\s*%s = %s ([-+*&|^]|<<|>>) (.+);\s*$" % (x, x), lines[k + 1]) or \
+                re.match(r"\s*%s = \(%s ([-+*&|^]|<<|>>) ([^()]+)\);\s*$" % (x, x), lines[k + 1])   # (or in parentheses)
             if u and not re.search(r"\b%s\b" % x, e + u.group(2)) and not re.match(r"\s*(?:if|while|return)\b", lines[k]):
                 f = u.group(2)
                 if re.search(r" [-+*/%&|^<>]{1,2} ", e) and not (e.startswith("(") and e.endswith(")") and _balanced(e[1:-1])):
                     e = "(%s)" % e                          # (E an expression of its own: kept one, whatever op)
-                out.append("%s%s = %s %s %s;" % (ind, x, e, u.group(1), f))
-                k += 2
+                lines[k + 1] = "%s%s = %s %s %s;" % (ind, x, e, u.group(1), f)
+                k += 1                                      # (and on: the next step of it too)
                 continue
         out.append(lines[k])
         k += 1
