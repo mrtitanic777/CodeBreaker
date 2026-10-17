@@ -1821,6 +1821,30 @@ def empty_cases_first(text):
     return None
 
 
+def register_reads(text):
+    """r = E; S(E->f0 ..) - the next statement reading E again where the compiler had it in r: through r (*r, r->fN)
+    (a variant: the source read it through the variable, as switch ((k = n->left)->op))"""
+    lines = text.split("\n")
+    for k in range(len(lines) - 1):
+        m = re.fullmatch(r"([ \t]*)(r_\w+) = (\w+(?:->f\d+)+);", lines[k])
+        if not m:
+            continue
+        r, e = m.group(2), m.group(3)
+        nxt = lines[k + 1]
+        if not re.search(re.escape(e) + r"->f\d+", nxt):
+            continue
+        st = re.search(r"(?m)^[ \t]*register struct \w+ \*%s;$" % r, text)
+
+        def via(mm):
+            n = int(mm.group(1))
+            return "%s->f%d" % (r, n) if st else "*%s" % r if n == 0 else mm.group(0)
+        new = re.sub(re.escape(e) + r"->f(\d+)\b", via, nxt)
+        if new != nxt:
+            lines[k + 1] = new
+            return "\n".join(lines)
+    return None
+
+
 def switch_breaks(text):
     """a switch last in a loop's body whose arms go on with `continue;`: break (the same - the loop's end), and a
     default that only goes on gone (a variant: which the source wrote decides the layout)"""
@@ -3022,7 +3046,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = register_values(long_ladders(long_pairs(t)))                     # (the longs again, as the passes left them)
         t = frame_chars(fn_pointers(t), widths)
         t = fill_frame(t, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
-        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t), register_copies(t), lead_filler(t), scaled_places(t), shared_tails(t), guard_returns(t), default_after(t), frame_more(t), loop_tests(t), switch_breaks(t)] if v]
+        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t), register_copies(t), lead_filler(t), scaled_places(t), shared_tails(t), guard_returns(t), default_after(t), frame_more(t), loop_tests(t), switch_breaks(t), register_reads(t)] if v]
         both = pre_steps(t)
         both = pre_increments(both) if both else None
         if both:
@@ -4253,7 +4277,9 @@ REFINERS = [lambda prj, s: [assign_in_args(s)], lambda prj, s: [return_sources(s
             lambda prj, s: [empty_cases_first(s)], lambda prj, s: [register_slots(s)], lambda prj, s: [register_copies(s)],
             lambda prj, s: [lead_filler(s)], lambda prj, s: [scaled_places(s)], lambda prj, s: [shared_tails(s)],
             lambda prj, s: [guard_returns(s)], lambda prj, s: [default_after(s)], lambda prj, s: [frame_more(s)],
-            lambda prj, s: [loop_tests(s)], lambda prj, s: [switch_breaks(s)],
+            lambda prj, s: [loop_tests(s)], lambda prj, s: [switch_breaks(s)], lambda prj, s: [register_reads(s)],
+            lambda prj, s: [re.sub(r"\b([A-Za-z_]\w*), 0\)", r"(long)\1)", s, count=1)],   # (a value and a zero word
+                                                                                               #  pushed: it widened)
             lambda prj, s: [re.sub(r"\b0, 0\)", "0L)", s)]]     # (two zero words pushed: a long 0)
 
 
