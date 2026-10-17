@@ -661,8 +661,11 @@ def model_line(d, va, name, default="near"):
     fwd = forwards(d, seg, off, kind or default)
     if fwd is not None:
         pop, kind = fwd, "far" if (kind or default) == "far" else kind
-    if pop == 0:
-        pop = popped_by_hand(code, off, kind or default) or 0
+    # (and what it took off by hand at its start comes on top of what its return removes: USER's
+    # call-hook dispatcher 1:8005 pops one word by hand, then `retf 8` -- five words in all)
+    hand = popped_by_hand(code, off, kind or default) or 0
+    if hand and pop >= 0:
+        pop += hand
     conv = "__stdcall16" if pop > 0 else "__cdecl16" if pop == 0 else "__stdcall16"
     # what it returns, as its instructions show (where it runs to: the next function's start)
     result = getattr(d, "results", {}).get(va)
