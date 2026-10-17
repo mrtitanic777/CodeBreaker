@@ -189,6 +189,15 @@ def _judge(o, md, image, start, end, imported, starts=()):
         o.evidence.append("does nothing but return (%04x %s)" % (start, first_ins.mnemonic))
         o.language = "assembly"
         return
+    for kind in ("far", "near"):
+        taken = describe.popped_by_hand(image, start, kind)
+        if taken:
+            # it takes its own return address and its arguments off the stack by hand (IsZoomed:
+            # `mov cl, 20h / test ax, ... / pop ax / pop dx / pop bx / push dx / push ax`) -- a
+            # place in the first few instructions, not only the first; C cannot
+            o.evidence.append("takes its return address and %d bytes of arguments off by hand" % taken)
+            o.language = "assembly"
+            return
     two = list(md.disasm(image[start:min(end, start + 12)], start))[:2]
     if len(two) == 2 and two[0].mnemonic in ("call", "lcall") and two[1].mnemonic in ("ret", "retf") \
             and not two[1].op_str:
