@@ -269,6 +269,8 @@ def _compare_switches(blocks):
             ins[-4].mnemonic == "mov" and ins[-4].op_str.startswith("al, ") and "[" in ins[-4].op_str   # (a byte widened)
         computed = reg in ("ax", "al") and len(ins) >= 3 and ins[-3].mnemonic in ("and", "or", "xor", "add", "sub", "shl", "shr", "sar") \
             and ins[-3].op_str.split(",")[0] in ("ax", "al")   # (a value worked out once, compared twice: a switch's)
+        if loaded and set(vals) == {0} and ins[-2].mnemonic in ("or", "test"):
+            loaded = False                                  # (a value tested for zero alone: an if's test, `if (c)`)
         if not ok[0] or len(leaves) != 1 or len(set(vals)) < (1 if loaded else 2 if computed else 3) or len(set(vals)) != len(vals):
             continue
         default = leaves.pop()

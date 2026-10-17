@@ -1610,6 +1610,92 @@ def goto_returns(text):
     return out
 
 
+def char_widens(text):
+    """a char local read in a test as (int)c (a variant: the compiler widens it, cbw, before comparing - or
+    compares the byte, as the source asked)"""
+    names = re.findall(r"(?m)^[ \t]*char (v\d+|[a-z]|r_\w+);", text)
+    if not names:
+        return None
+    rx = re.compile(r"(?<![\w])(?<!\(char\))(%s)\b(?!\s*=[^=])" % "|".join(map(re.escape, names)))
+    out = []
+    for l in text.split("\n"):
+        m = re.match(r"(\s*)(if|while|for|switch) \((.*)\)( \{| break;| continue;| return [^;]*;)?$", l)
+        if m:
+            l = m.group(1) + m.group(2) + " (" + rx.sub(r"(int)\1", m.group(3)) + ")" + (m.group(4) or "")
+        out.append(l)
+    t = "\n".join(out)
+    return t if t != text else None
+
+
+def assign_loops(text):
+    """for (;;) { x = E; if (C(x)) break; S } - the value tested as it is given: while (!C((x = E))) { S }"""
+    lines = text.split("\n")
+    for k in range(len(lines) - 2):
+        m = re.fullmatch(r"(\s*)for \(;;\) \{", lines[k])
+        if not m:
+            continue
+        ind = m.group(1)
+        a = re.fullmatch(r"%s    ([a-z]|v\d+|r_\w+) = ([^;]+);" % re.escape(ind), lines[k + 1])
+        b = re.fullmatch(r"%s    if \((.+)\) break;" % re.escape(ind), lines[k + 2])
+        if not a or not b or len(re.findall(r"\b%s\b" % a.group(1), b.group(1))) != 1:
+            continue
+        end = next((j for j in range(k + 3, len(lines)) if lines[j] == ind + "}"), None)
+        body = lines[k + 3:end] if end else None
+        if body is None or any(x.strip() == "continue;" and len(x) - len(x.lstrip()) == len(ind) + 4 for x in body):
+            continue
+        cond = re.sub(r"\b%s\b" % a.group(1), "(%s = %s)" % (a.group(1), a.group(2)), b.group(1), count=1)
+        neg = _not("(%s)" % cond)
+        lines[k:k + 3] = ["%swhile %s {" % (ind, neg if neg.startswith("(") and _balanced(neg[1:-1]) else "(%s)" % neg)]
+        return "\n".join(lines)
+    return None
+
+
+def loop_collapse(text):
+    """L: for (;;) { for (;;) { S } break; } - an outer loop only restarting the inner one (a goto L in S): the
+    inner loop alone, the gotos its continues (the model's reading of a loop entered at a shared clean-up)"""
+    lines = text.split("\n")
+    for k in range(len(lines) - 3):
+        m = re.fullmatch(r"(\s*)(L_\w+):", lines[k])
+        if not m or lines[k + 1] != m.group(1) + "for (;;) {" or lines[k + 2] != m.group(1) + "    for (;;) {":
+            continue
+        ind, lab = m.group(1), m.group(2)
+        e_in = next((j for j in range(k + 3, len(lines)) if lines[j] == ind + "    }"), None)
+        if e_in is None or e_in + 2 >= len(lines) or lines[e_in + 1].strip() != "break;" or lines[e_in + 2] != ind + "}":
+            continue
+        body = lines[k + 3:e_in]
+        gotos = [j for j, x in enumerate(body) if x.strip() == "goto %s;" % lab]
+        def in_inner_loop(j):                               # (a loop of its own around the goto: a continue would be
+            want = len(body[j]) - len(body[j].lstrip())     #  that loop's - a switch is no loop for a continue)
+            for x in reversed(body[:j]):
+                d = len(x) - len(x.lstrip())
+                if x.strip() and d < want and x.rstrip().endswith("{"):
+                    if re.match(r"\s*(?:while|for|do)\b", x) or x.strip() == "do {":
+                        return True
+                    want = d
+            return False
+        if not gotos or re.search(r"\bgoto %s;" % lab, "\n".join(lines[:k] + lines[e_in:])) or \
+           any(in_inner_loop(j) for j in gotos):
+            continue
+        for j in gotos:
+            body[j] = body[j].replace("goto %s;" % lab, "continue;")
+        new = [ind + "for (;;) {"] + [x[4:] if x.startswith(ind + "        ") else x for x in body] + [ind + "}"]
+        return "\n".join(lines[:k] + new + lines[e_in + 3:])
+    return text
+
+
+def switch_ifs(text):
+    """switch (x) { default: S continue; case K: break; } last in a loop's body - one value passed over: if (x != K)
+    { S } (the compiler's one compare either way)"""
+    rx = re.compile(r"(?m)^([ \t]*)switch \((.+)\) \{\n\1default:\n((?:\1    .*\n)+?)\1    continue;\n\1case (-?\w+):\n\1    break;\n\1\}\n(\1[ \t]*\}|[ \t]*\})")
+
+    def one(m):
+        ind, sel, body, k, close = m.groups()
+        if len(re.match(r"\s*", close).group(0)) >= len(ind):
+            return m.group(0)
+        return "%sif ((%s != %s)) {\n%s%s}\n%s" % (ind, sel, k, body, ind, close)
+    return rx.sub(one, text)
+
+
 def ternary_joins(text):
     """if (C) { r = A; L: V = r; S } else { r = B; goto L; } - the value of a ?: the compiler gives in each arm,
     the two meeting at the store: V = C ? A : B; S"""
@@ -1643,6 +1729,8 @@ def ternary_joins(text):
 def stored_values(text):
     """V = ax; .. f(.., ax) - the register read again while it still holds what was stored from it (no write to
     it between, no call, no label - a way in from elsewhere): V there"""
+    # (inc al; jne: a byte compared with -1 - ((r + 1) & 0xff) == 0 is (char)r == -1)
+    text = re.sub(r"\(\(\((\w+) \+ 1\) & 0xff\) ([!=]=) 0\)", r"((char)\1 \2 -1)", text)
     lines = text.split("\n")
     for k, l in enumerate(lines):
         m = re.fullmatch(r"\s*([a-z]|v\d+|g_[0-9a-f]+|r_\w+) = (ax|al);", l)
@@ -4330,7 +4418,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = fold_registers(stored_calls(store_loops(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(push_returns(conditional_values(logical_values(step_tests(bool_trees(range_switches(loop_gotos(empty_loops(tested_zero(continue_loops(first_breaks(loop_registers(fall_dups(fall_gotos(goto_tails(t) or t))))))))))))))))))))))
         t = stored_calls(fold_registers(push_returns(t)))   # (returns again, as the passes left the arms)
         t = stored_reads(scaled_index(register_chains(word_arrays(pointer_index(test_first_loops(copy_tests(post_steps(selector_reads(lvalue_choices(t))))))))))
-        t = fold_registers(stored_values(conditional_values(ternary_joins(t))))       # (the ?: values again, the elements folded)
+        t = fold_registers(stored_values(conditional_values(ternary_joins(switch_ifs(loop_collapse(t))))))     # (the ?: values again, the elements folded)
         t = fold_registers(stored_tests(push_returns(temporaries(compare_values(goto_returns(sunk_tails(sunk_pairs(empty_loops(shared_arms(merge_conditions(guard_gotos(self_updates(switch_follow(t))))))))))))))
         wd = set(widths)                                    # (a parameter kept in a register: the bytes read through
         for r_, i_ in (regparam or {}).items():             #  that register its own)
@@ -4349,7 +4437,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         FILLNAME[0] = "_p%d"                                # (the filler named by its place: the frame's order
         tp_ = fill_frame(t0_, FRAME[0], bool(prj.toolchain().p.get("frame_order")))   #  lays it out - a variant)
         FILLNAME[0] = "_pf"
-        variants = [t] + [v for v in [tp_ if tp_ != t else None,store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t), register_copies(t), lead_filler(t), scaled_places(t), shared_tails(t), guard_returns(t), default_after(t), frame_more(t), loop_tests(t), switch_breaks(t), register_reads(t), compare_results(t), or_loops(t), loop_guards(t), const_tests(t), flat_returns(t), return_cases_first(t), registers_last(t), guard_shared(t), guard_flat(t), _changed(common_tails, t), _changed(byte_heads, t), _changed(word_offsets, t), chain_tails(t), heads_variant(t), shared_exit(t), call_pairs(t), label_sinks(t)] + case_guards(t) if v]
+        variants = [t] + [v for v in [tp_ if tp_ != t else None,store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t), register_copies(t), lead_filler(t), scaled_places(t), shared_tails(t), guard_returns(t), default_after(t), frame_more(t), loop_tests(t), switch_breaks(t), register_reads(t), compare_results(t), or_loops(t), loop_guards(t), const_tests(t), flat_returns(t), return_cases_first(t), registers_last(t), guard_shared(t), guard_flat(t), _changed(common_tails, t), _changed(byte_heads, t), _changed(word_offsets, t), chain_tails(t), heads_variant(t), shared_exit(t), call_pairs(t), label_sinks(t), assign_loops(t), char_widens(t)] + case_guards(t) if v]
         both = pre_steps(t)
         both = pre_increments(both) if both else None
         if both:
@@ -5789,7 +5877,7 @@ REFINERS = [lambda prj, s: [assign_in_args(s)], lambda prj, s: [return_sources(s
             lambda prj, s: [loop_tests(s)], lambda prj, s: [switch_breaks(s)], lambda prj, s: [register_reads(s)],
             lambda prj, s: [compare_results(s)], lambda prj, s: [or_loops(s)], lambda prj, s: [loop_guards(s)],
             lambda prj, s: [const_tests(s)], lambda prj, s: [flat_returns(s)], lambda prj, s: [return_cases_first(s)],
-            lambda prj, s: [registers_last(s)], lambda prj, s: unsigned_locals(s), lambda prj, s: [guard_shared(s)], lambda prj, s: [guard_flat(s)], lambda prj, s: [_changed(common_tails, s)], lambda prj, s: [_changed(byte_heads, s)], lambda prj, s: [_changed(word_offsets, s)], lambda prj, s: [chain_tails(s)], lambda prj, s: [heads_variant(s)], lambda prj, s: case_guards(s), lambda prj, s: [shared_exit(s)], lambda prj, s: [label_sinks(s)], lambda prj, s: [call_pairs(s)], lambda prj, s: adjacent_swaps(s), lambda prj, s: unsigned_fields(s),
+            lambda prj, s: [registers_last(s)], lambda prj, s: unsigned_locals(s), lambda prj, s: [guard_shared(s)], lambda prj, s: [guard_flat(s)], lambda prj, s: [_changed(common_tails, s)], lambda prj, s: [_changed(byte_heads, s)], lambda prj, s: [_changed(word_offsets, s)], lambda prj, s: [chain_tails(s)], lambda prj, s: [heads_variant(s)], lambda prj, s: case_guards(s), lambda prj, s: [shared_exit(s)], lambda prj, s: [label_sinks(s)], lambda prj, s: [call_pairs(s)], lambda prj, s: [assign_loops(s)], lambda prj, s: [char_widens(s)], lambda prj, s: adjacent_swaps(s), lambda prj, s: unsigned_fields(s),
             lambda prj, s: [frame_names(s, prj.toolchain().p["frame_order"]), frame_names(s, prj.toolchain().p["frame_order"], True)]
             if prj.toolchain().p.get("frame_order") else [],
             lambda prj, s: [re.sub(r"\b([A-Za-z_]\w*), 0\)", r"(long)\1)", s, count=1)],   # (a value and a zero word
@@ -5800,13 +5888,13 @@ REFINERS = [lambda prj, s: [assign_in_args(s)], lambda prj, s: [return_sources(s
 
 AIM_KIND = {                                                # (the refiners each kind of difference asks for first -
     "frame": {"frame_names", "registers_last", "frame_more", "lead_filler", "register_slots"},   # aim.py's kinds;
-    "width": {"pointer_widths", "unsigned_registers", "unmasked", "byte_heads", "unsigned_fields", "high_words",   # the
+    "width": {"pointer_widths", "char_widens", "unsigned_registers", "unmasked", "byte_heads", "unsigned_fields", "high_words",   # the
               "word_offsets", "scaled_places"},                                                  # rest after them)
     "sign": {"unsigned_locals", "unsigned_fields", "unsigned_registers"},
     "order": {"adjacent_swaps", "return_cases_first", "empty_cases_first", "default_after", "default_last", "switch_breaks",
               "flat_returns", "guard_returns", "guard_shared", "guard_flat", "shared_tails", "push_tails", "loop_tests",
               "or_loops", "loop_guards", "for_loops", "label_sinks", "shared_exit", "case_guards", "chain_tails",
-              "common_tails", "heads_variant", "no_default"},
+              "common_tails", "heads_variant", "no_default", "assign_loops"},
     "shape": {"assign_in_args", "return_sources", "compound_assigns", "chain_assigns", "store_increments", "pre_steps",
               "pre_increments", "assign_in_tests", "and_returns", "register_temps", "split_ternaries", "compare_results",
               "const_tests", "register_reads", "register_copies", "word_offsets", "call_pairs", "string_variants",
