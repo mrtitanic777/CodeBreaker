@@ -383,17 +383,20 @@ class State:
         self.r = {}                                         # (16-bit name: K)
         self.stack = []                                     # ([old size, new size, K] from entry down)
         self.sp_old = self.sp_new = 0
+        self.routines = frozenset()                         # (the routines this code runs for: a ret returns theirs)
 
     def copy(self):
         s = State()
         s.r = dict(self.r)
         s.stack = [list(x) for x in self.stack]
         s.sp_old, s.sp_new = self.sp_old, self.sp_new
+        s.routines = self.routines
         return s
 
     def key(self):
         return (tuple(sorted((k, v.key(), v.origin) for k, v in self.r.items())),
-                tuple((a, b, c.key() if c else None) for a, b, c in self.stack), self.sp_old, self.sp_new)
+                tuple((a, b, c.key() if c else None) for a, b, c in self.stack), self.sp_old, self.sp_new,
+                self.routines)
 
 
 def merge(a, b):
@@ -404,6 +407,7 @@ def merge(a, b):
         s.r[k] = join(a.r.get(k), b.r.get(k))
     if len(a.stack) == len(b.stack):
         s.stack = [[x[0], x[1], join(x[2], y[2])] for x, y in zip(a.stack, b.stack)]
+    s.routines = a.routines | b.routines
     return s
 
 
@@ -459,6 +463,17 @@ class Module:
         if best:
             return best[0], v - best[1]
         return None
+
+    def table_targets(self):
+        """the routines a table of the code segment names (DW place, as the listing places them)"""
+        out = set()
+        for l in self.code:
+            if l.directive and l.directive[0] == "DW":
+                for v in split_ops(strip_comment(l.directive[2])):
+                    c = self.code_label(getattr(l, "seg", None), number(v)) if number(v) is not None else None
+                    if c and c[1] == 0:
+                        out.add(c[0])
+        return out
 
     def cs_address(self, i, r):
         """whether register r, given a number at line i, is then used to read the code segment (cs:[r]): the
@@ -544,6 +559,7 @@ class Module:
         for r in R16:
             s.r[r] = K("opq", origin=frozenset([("in", routine, r)]))
         s.r["sp"] = K("frame", old=0, new=0)
+        s.routines = frozenset([routine])
         return s
 
     def analyse(self):
@@ -554,6 +570,11 @@ class Module:
             i = self.labels[p]
             self.before[i] = self.entry_state(p)
             work.append(i)
+        for p in sorted(self.table_targets()):               # (a routine called through a table of the code: an
+            i = self.labels[p]                              #  entry of its own, whoever calls it)
+            if i not in self.before:
+                self.before[i] = self.entry_state(p)
+                work.append(i)
         self.routine_of = {}
         seen = 0
         while work:
@@ -565,6 +586,7 @@ class Module:
             l = self.code[i]
             nxt = []
             if l.op:
+                pre_call = st.copy()                        # (the state the callee is entered with: before)
                 st, flow = self.step(i, l, st)
             else:
                 flow = ["next"]
@@ -579,7 +601,7 @@ class Module:
                 elif isinstance(f, tuple) and f[0] == "call":
                     t = self.labels.get(f[1])
                     if t is not None:
-                        cs = st.copy()
+                        cs = pre_call.copy()
                         cs.stack.append([2, 8, K("ret")])   # (the return address)
                         cs.sp_old -= 2
                         cs.sp_new -= 8
@@ -589,6 +611,7 @@ class Module:
                             if cs.r.get(r) and cs.r[r].kind == "frame":
                                 rel.r[r] = K("opq")         # (a frame of the caller's is none of the callee's)
                         rel.r["sp"] = K("frame", old=0, new=0)
+                        rel.routines = frozenset([f[1]])
                         self._flow(t, rel, work)
                     nxt.append(i + 1)
             for j in nxt:
@@ -606,6 +629,8 @@ class Module:
         """the kind of what a memory operand holds, and its new place: (K or None, where)"""
         if m.sym and not m.regs:
             name = self.c(m.sym)
+            if (m.sym, m.disp) in self.own_ptr:              # (a slot of the module's own data holding an address)
+                return K("ptr"), None
             if self.ct.is_pointer(name) and (m.size in (None, 2, 4)) and m.disp == 0:
                 return K("ptr", self.ct.pointee(name)), None
             return VAL, None
@@ -651,7 +676,7 @@ class Module:
             return VAL
 
         if op in JUMPS:
-            flow = [("jump", a[0][1] if a[0][0] == "sym" else l.args[0].split()[-1])]
+            flow = [("jump", l.args[0].split()[-1])]       # (SHORT, NEAR PTR...: the label is the last word)
             if op != "jmp":
                 flow.append("next")
             if op.startswith("loop") or op == "jcxz":
@@ -664,15 +689,19 @@ class Module:
                     st.r[r] = VAL if r != "ax" else K("opq")
             if t in self.labels:
                 after = self.exit_of(t)
+                mods = self.writes(t)
                 if after:
-                    for r in ("ax", "bx", "cx", "dx", "si", "di"):
+                    for r in ("ax", "bx", "cx", "dx", "si", "di", "bp"):
+                        if r not in mods:                   # (what the routine never writes is the caller's still)
+                            continue
                         if r in after.r:
                             k = after.r[r]
                             if not (k.origin and any(o[0] == "in" for o in k.origin)):
                                 st.r[r] = k
             return st, [("call", t)]
         if op in ("ret", "retf", "retn", "iret"):
-            self.exits.setdefault(self.routine(i), []).append(st.copy())
+            for rt in (st.routines or {self.routine(i)}):     # (the routines whose code this is)
+                self.exits_new.setdefault(rt, []).append(st.copy())
             return st, ["ret"]
         if op == "push":
             k = get(a[0]) if a[0][0] in ("reg", "mem") else VAL
@@ -782,6 +811,65 @@ class Module:
             return st, flow
         return st, flow
 
+    def writes(self, label, _seen=None):
+        """the 16-bit registers a routine (from its label: the lines its jumps reach, and the routines it calls)
+        gives a value - a push and pop of one around it not counted"""
+        if not hasattr(self, "_writes"):
+            self._writes = {}
+        if label in self._writes:
+            return self._writes[label]
+        seen = _seen if _seen is not None else set()
+        if label in seen or label not in self.labels:
+            return set()
+        seen.add(label)
+        out, todo, done, pushed = set(), [self.labels[label]], set(), collections.Counter()
+        while todo:
+            i = todo.pop()
+            if i in done or i >= len(self.code):
+                continue
+            done.add(i)
+            l = self.code[i]
+            nxt = [i + 1]
+            if l.op:
+                a0 = l.args[0].lower() if l.args else ""
+                r16 = R8.get(a0, a0)
+                if l.op == "push" and a0 in R16:
+                    pushed[a0] += 1
+                elif l.op == "pop" and a0 in R16:
+                    if not pushed[a0]:
+                        out.add(a0)                         # (a pop of what it did not push: a value given)
+                elif l.op in ("mov", "add", "sub", "and", "or", "xor", "adc", "sbb", "inc", "dec", "neg", "not",
+                              "shl", "shr", "sal", "sar", "rol", "ror", "rcl", "rcr", "lea", "les", "lds",
+                              "xchg") and r16 in R16 and not (l.op in ("and", "or") and len(l.args) == 2 and
+                                                               l.args[0].lower() == l.args[1].lower()):
+                    out.add(r16)
+                    if l.op == "xchg" and len(l.args) == 2 and R8.get(l.args[1].lower(), l.args[1].lower()) in R16:
+                        out.add(R8.get(l.args[1].lower(), l.args[1].lower()))
+                if l.op in ("lodsb", "lodsw", "cbw", "lahf", "in"):
+                    out.add("ax")
+                if l.op in ("cwd", "mul", "imul", "div", "idiv"):
+                    out |= {"ax", "dx"}
+                if l.op in STRING:
+                    out |= {"si"} if l.op[:4] == "lods" else {"di"} if l.op[:4] in ("stos", "scas") else {"si", "di"}
+                    if l.prefix:
+                        out.add("cx")
+                if l.op.startswith("loop") or l.op == "int":
+                    out |= {"cx"} if l.op.startswith("loop") else {"ax"}
+                if l.op == "call":
+                    t = l.args[0].split()[-1]
+                    out |= self.writes(t, seen) if t in self.labels else {"ax", "bx", "cx", "dx"}
+                if l.op in JUMPS:
+                    t = l.args[0].split()[-1]
+                    if t in self.labels:
+                        nxt.append(self.labels[t])
+                    if l.op == "jmp":
+                        nxt = nxt[1:]
+                if l.op in ("ret", "retf", "retn", "iret"):
+                    nxt = []
+            todo += nxt
+        self._writes[label] = out
+        return out
+
     def routine(self, i):
         """the public routine (or the label called) a line belongs to: the nearest such label above it"""
         best = None
@@ -791,7 +879,7 @@ class Module:
         return best
 
     def exit_of(self, label):
-        ex = self.exits.get(label)
+        ex = self.exits.get(label) or self.exits_new.get(label)   # (the round before's, whole; else this one's)
         if not ex:
             return None
         s = None
@@ -799,15 +887,120 @@ class Module:
             s = merge(s, e)
         return s
 
+    own_ptr = frozenset()
+    exits = {}
+    exits_new = {}
+
     def run(self):
         self.prepare()
-        self.exits = {}
-        self.called = {l.args[0].split()[-1] for l in self.code if l.op == "call"}
-        for _ in range(4):                                  # (the callees' exits, and again)
-            self.exits = {}
-            self.analyse()
+        self.called = {l.args[0].split()[-1] for l in self.code if l.op == "call"} | self.table_targets()
+        for rnd in range(4):                                # (then again, knowing the slots that hold addresses)
+            for _ in range(4):                              # (the callees' exits, and again: each round looks
+                self.exits_new = {}                         #  up the round before's, whole)
+                self.analyse()
+                self.exits = self.exits_new
+            found = self.own_slots()
+            if found == self.own_ptr:
+                break
+            self.own_ptr = found
         self._params()
         return self
+
+    def own_data(self):
+        """{label: bytes} of the module's own data (its data segments' labels)"""
+        out, cur = {}, None
+        for seg, l in self.data:
+            d = l.directive
+            if d and d[0] in ("DB", "DW", "DD", "DQ", "DT") and d[1]:
+                cur = d[1]
+                out[cur] = 0
+            elif d and d[0] == "LABEL":
+                cur = d[1]
+                out[cur] = 0
+            if d and d[0] in ("DB", "DW", "DD", "DQ", "DT") and cur:
+                m = re.match(r"\s*(\d+)\s+DUP", d[2], re.I)
+                unit = {"DB": 1, "DW": 2, "DD": 4, "DQ": 8, "DT": 10}[d[0]]
+                out[cur] += (int(m.group(1)) if m else len(split_ops(strip_comment(d[2])))) * unit
+        return out
+
+    def own_slots(self):
+        """the words of the module's own data that are given an address (a whole register stored there): their
+        (label, offset) - those alone, where no other access overlaps them"""
+        own = self.own_data()
+        acc, ptr = collections.defaultdict(set), set()
+        for i, l in enumerate(self.code):
+            st = self.before.get(i)
+            if not st or not l.op:
+                continue
+            ops = [operand(x, self.equ) for x in l.args]
+            for k_, o in enumerate(ops):
+                if o[0] == "off" and o[1] in own:
+                    acc[o[1]].add((o[2], 0))
+                if o[0] != "mem" or not o[1].sym or o[1].sym not in own or o[1].regs:
+                    continue
+                m = o[1]
+                other = ops[1 - k_] if len(ops) == 2 else None
+                size = m.size or (1 if other and other[0] == "reg" and other[1] in R8 else 2)
+                acc[m.sym].add((m.disp, size))
+                if l.op in ("mov", "xchg") and k_ == 0 and other and other[0] == "reg" and other[1] in R16:
+                    kr = st.r.get(other[1])
+                    if kr and kr.wide() and kr.kind != "frame" and size == 2:
+                        ptr.add((m.sym, m.disp))
+        good = set()
+        for sym, d in ptr:                                  # (none other reaches into the slot)
+            if all(not (o < d + 2 and d < o + max(sz, 1)) or (o, sz) in ((d, 2), (d, 0)) for o, sz in acc[sym]):
+                if self.used_as_address(sym, d):
+                    good.add((sym, d))
+        return frozenset(good)
+
+    def used_as_address(self, sym, d):
+        """the evidence that a slot holds an address: what is read from it is then used as one (a register's
+        base, the si or di of a string instruction), or it is compared with an address"""
+        for i, l in enumerate(self.code):
+            st = self.before.get(i)
+            if not st or not l.op:
+                continue
+            ops = [operand(x, self.equ) for x in l.args]
+            hit = [k for k, o in enumerate(ops) if o[0] == "mem" and o[1].sym == sym and o[1].disp == d and
+                   not o[1].regs]
+            if not hit:
+                continue
+            if l.op in ("cmp", "sub") and len(ops) == 2 and ops[1 - hit[0]][0] == "reg":
+                k = st.r.get(ops[1 - hit[0]][1])
+                if k and k.kind == "ptr" or ops[1 - hit[0]][1] in R16 and                         self.address_use(i + 1, ops[1 - hit[0]][1], 3, set()):
+                    return True                             # (compared with an address)
+            if l.op == "mov" and hit[0] == 1 and ops[0][0] == "reg" and ops[0][1] in R16 and \
+                    self.address_use(i + 1, ops[0][1], 3, set()):
+                return True
+        return False
+
+    def address_use(self, j0, r, depth, seen):
+        """whether register r, from line j0 on (into the routines called, depth levels), is used as an address
+        before it is given another value"""
+        if j0 in seen:
+            return False
+        seen.add(j0)
+        for j in range(j0, min(j0 + 60, len(self.code))):
+            l2 = self.code[j]
+            if not l2.op:
+                continue
+            if any(re.search(r"\[[^\]]*\b%s\b" % r, x, re.I) for x in l2.args):
+                return True                                 # (used as a base)
+            if l2.op in STRING and ((r == "si" and l2.op[:4] in ("lods", "movs", "cmps")) or
+                                    (r == "di" and l2.op[:4] in ("stos", "movs", "cmps", "scas"))):
+                return True                                 # (the string instruction's address)
+            if l2.op == "call" and depth and l2.args[0].split()[-1] in self.labels:
+                if self.address_use(self.labels[l2.args[0].split()[-1]], r, depth - 1, seen):
+                    return True
+            if l2.args and l2.args[0].lower() == r and l2.op in ("mov", "lea", "les", "lds", "xor"):
+                return False                                # (given another value; a pop gives back the one pushed)
+            if l2.op in ("ret", "retf", "jmp"):
+                return False
+        return False
+
+    def own_place(self, sym, disp):
+        """an old offset in the module's own data: the new one (the slots that hold addresses 8 bytes now)"""
+        return disp + 6 * sum(1 for s2, d in self.own_ptr if s2 == sym and d < disp)
 
     def prepare(self):
         """before the kinds: the table lines of the code placed (the listing's offsets)"""
@@ -865,6 +1058,7 @@ class Module:
         """the module for ml64: data, an entry of today's C for each routine it calls, the routines"""
         self.used_int21 = False
         self.ptr_args = {}
+        self.unreached = []                                 # (lines no path reaches: said in the report)
         out = ["; %s" % "ported by CodeBreaker (port/asm16) for a 64-bit machine: the instructions as they were, the",
                "; registers that hold addresses used whole, members of structures at their new places, segments gone,",
                "; DOS called through the platform layer.", "OPTION CASEMAP:NONE", ""]
@@ -873,7 +1067,11 @@ class Module:
             ext.append("EXTERN %s:%s" % (self.c(n), "PROC" if kind in ("NEAR", "FAR", "PROC") else kind))
         body = []
         bases = set()
+        import os as _os
+        debug = _os.environ.get("CB_ASM16_DEBUG") == "1"    # (every label public: a debugger names them)
         for i, l in enumerate(self.code):
+            if debug and l.label and not l.directive:
+                body.append("PUBLIC %s" % self.local(l.label))
             if l.seg not in bases:
                 bases.add(l.seg)
                 body.append("@base_%s:\t\t\t; (the start of the segment %s: what its tables count from)" % (
@@ -887,6 +1085,7 @@ class Module:
                 st = self.before.get(i)
                 if st is None:
                     body.append("\t; (never reached) %s" % strip_comment(l.text).strip())
+                    self.unreached.append(l.no)
                     continue
                 try:
                     body += ["\t" + x for x in self.instr(i, l, st)]
@@ -946,6 +1145,11 @@ class Module:
             rest = strip_comment(rest).strip()
             if kind == "LABEL":
                 out += pub + ["%s\tLABEL\t%s" % (nm, rest)]
+            elif kind in ("DB", "DW", "DD", "DQ", "DT") and name and \
+                    any(s2 == name for s2, d in self.own_ptr):   # (room for the addresses it holds, 8 bytes each)
+                grow = 6 * sum(1 for s2, d in self.own_ptr if s2 == name)
+                out += pub + ["%s\t%s\t%s\t\t; (%d bytes more: %d words of it hold addresses)" % (
+                    nm, kind, rest, grow, grow // 6), "\tDB\t%d DUP (0)" % grow]
             elif kind in ("DB", "DW", "DD", "DQ", "DT"):
                 if kind == "DW" and re.search(r"(?i)\boffset\b", rest):
                     vals = [re.sub(r"(?i)offset\s+(?:\w+:)?", "", v).strip() for v in split_ops(rest)]
@@ -1016,6 +1220,7 @@ class Module:
         scratch = ["r11", "r9"]
         if m.sym:
             name = self.sym(m.sym)
+            disp = self.own_place(m.sym, disp)
             if not m.regs:
                 return sz + name + ("%+d" % disp if disp else "")
             pre.append("lea\tr10, %s" % name)
@@ -1186,7 +1391,8 @@ class Module:
             size = self.access_size(l, a, st, 0)
             return done("%s\t%s, %s" % (op, M(0, size), R64[s] if size == 8 else s))
         if op == "mov" and a[0][0] == "reg" and a[1][0] == "off":
-            return ["lea\t%s, %s" % (R64[a[0][1]], self.sym(a[1][1]) + ("%+d" % a[1][2] if a[1][2] else ""))]
+            dd = self.own_place(a[1][1], a[1][2])
+            return ["lea\t%s, %s" % (R64[a[0][1]], self.sym(a[1][1]) + ("%+d" % dd if dd else ""))]
         k_after = None
         if op == "mov" and a[0][0] == "reg" and a[1][0] == "imm" and i + 1 < len(self.code):
             k_after = (self.before.get(i + 1) or State()).r.get(a[0][1])
@@ -1224,6 +1430,9 @@ class Module:
                     return ["%s\t%s, %s" % (op, R64[d], R64[src[1]])]
                 if kd and kd.wide() and kd.kind != "opq" and op in ("add", "sub"):
                     return ["movsx\tr11, %s" % src[1], "%s\t%s, r11" % (op, R64[d])]
+                if op == "add" and ks and ks.wide() and ks.kind != "frame" and (not kd or not kd.wide()):
+                    return ["movzx\te%s, %s" % (d, d) if d not in ("si", "di", "bp") else "movzx\te%s, %s" % (d, d),
+                            "add\t%s, %s\t\t; (a count added to an address: the address)" % (R64[d], R64[src[1]])]
                 return ["%s\t%s, %s" % (op, d, src[1])]
             if src[0] == "mem":
                 k, f = self.kind_of_mem(src[1], st)
@@ -1232,7 +1441,7 @@ class Module:
                 return done("%s\t%s, %s" % (op, d, M(1, 2)))
             if src[0] == "off":
                 return ["lea\tr11, %s" % self.sym(src[1]), "%s\t%s, r11" % (op, R64[d])]
-            if kd and kd.kind == "ptr" and kd.to == "code" and number(l.args[1]) is not None and \
+            if op == "cmp" and kd and kd.kind == "ptr" and kd.to == "code" and number(l.args[1]) is not None and \
                     (self.data_address(l.seg, number(l.args[1])) or self.code_label(l.seg, number(l.args[1]))):
                 lab, dist = self.data_address(l.seg, number(l.args[1])) or self.code_label(l.seg, number(l.args[1]))
                 return ["lea\tr11, %s%s" % (lab, "%+d" % dist if dist else ""), "%s\t%s, r11" % (op, R64[d])]

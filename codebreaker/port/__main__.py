@@ -182,6 +182,9 @@ def asm_modules(port, out, res, asm, paths, roles, profile, opt, compilers):
         objs.append(base + ".obj")
         notes.append("%s: ported as assembly language to %s.asm (%d routines the C program calls)" % (
             n, base, len(m.cname)))
+        if m.unreached:                                     # (code no path was found to: kept as comments - said)
+            notes.append("**%s: %d lines no path reaches were left as comments (lines %s) - look at them**" % (
+                n, len(m.unreached), ", ".join(map(str, m.unreached[:12]))))
     return objs, protos, notes
 
 

@@ -113,7 +113,10 @@ def main(argv):
                 open(os.path.join(f, n), "wb").write(text.encode("latin1"))
         cmd, stdin = case.get("cmd", ""), case.get("stdin", "")
         ca, xa = run_original(cfg, orig, fa, cmd, stdin)
-        cb, xb = run_port(cfg, port, fb, cmd, stdin, cfg.get("env", {}))
+        try:
+            cb, xb = run_port(cfg, port, fb, cmd, stdin, cfg.get("env", {}))
+        except subprocess.TimeoutExpired:                   # (a port that does not end: so recorded)
+            cb, xb = b"(did not end)", "did not end"
         A, B = files_of(fa), files_of(fb)
         vol = [re.compile(v.encode("latin1")) for v in cfg.get("volatile", [])]
         if vol:                                             # (what depends on the machine - free memory - masked
