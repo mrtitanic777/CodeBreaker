@@ -640,6 +640,18 @@ def loop_registers(text):
     return text
 
 
+def const_tests(text):
+    """x = K; if/while (.. x ..) at once - the test of what x was just given: of K (a variant: the compiler
+    compares with the register it still holds K in)"""
+    def one(m):
+        ind, x, k, kw, test = m.groups()
+        if len(re.findall(r"\b%s\b" % re.escape(x), test)) != 1:
+            return m.group(0)
+        return "%s%s = %s;\n%s%s (%s) {" % (ind, x, k, ind, kw, re.sub(r"\b%s\b" % re.escape(x), k, test))
+    t = re.sub(r"(?m)^([ \t]*)(\w+) = (-?\d+);\n\1(if|while) \((.*)\) \{$", one, text)
+    return t if t != text else None
+
+
 def loop_guards(text):
     """in a loop: if (C) { S; continue; } else { R } (R leaving: return, break) last in its body - the leaving
     test first: if (!C) { R } S (a variant, with its for when S ends by a step)"""
@@ -3345,7 +3357,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
             t = buffers(t) or t
         t = frame_chars(fn_pointers(t), widths)
         t = fill_frame(t, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
-        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t), register_copies(t), lead_filler(t), scaled_places(t), shared_tails(t), guard_returns(t), default_after(t), frame_more(t), loop_tests(t), switch_breaks(t), register_reads(t), compare_results(t), or_loops(t), loop_guards(t)] if v]
+        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t), register_copies(t), lead_filler(t), scaled_places(t), shared_tails(t), guard_returns(t), default_after(t), frame_more(t), loop_tests(t), switch_breaks(t), register_reads(t), compare_results(t), or_loops(t), loop_guards(t), const_tests(t)] if v]
         both = pre_steps(t)
         both = pre_increments(both) if both else None
         if both:
@@ -3831,7 +3843,7 @@ def long_pairs(text):
         done.append(lo)
     lrets = [x for x in re.findall(r"(?m)^[ \t]*return (\w+);$", body)
              if re.search(r"(?m)^[ \t]*(?:unsigned )?long (?:\w+, )*%s\b" % x, body)]
-    if lrets and not re.search(r"(?m)^[ \t]*return [^;]*\w\(", body):
+    if lrets and LONGINFO.get("ret") is not False and not re.search(r"(?m)^[ \t]*return [^;]*\w\(", body):
         LONGINFO["ret"] = True                              # (a long local returned: the function's a long)
     if LONGINFO.get("ret"):
         m = re.search(r"(?m)^\w+\(", head)
@@ -4611,6 +4623,7 @@ REFINERS = [lambda prj, s: [assign_in_args(s)], lambda prj, s: [return_sources(s
             lambda prj, s: [guard_returns(s)], lambda prj, s: [default_after(s)], lambda prj, s: [frame_more(s)],
             lambda prj, s: [loop_tests(s)], lambda prj, s: [switch_breaks(s)], lambda prj, s: [register_reads(s)],
             lambda prj, s: [compare_results(s)], lambda prj, s: [or_loops(s)], lambda prj, s: [loop_guards(s)],
+            lambda prj, s: [const_tests(s)],
             lambda prj, s: [re.sub(r"\b([A-Za-z_]\w*), 0\)", r"(long)\1)", s, count=1)],   # (a value and a zero word
                                                                                                #  pushed: it widened)
             lambda prj, s: [re.sub(r"\b0, 0\)", "0L)", s)]]     # (two zero words pushed: a long 0)
@@ -4899,7 +4912,9 @@ def _fpinfo(inv, raw, code):
         gives_dx = lambda x: x.mnemonic in ("cwd", "cdq") or (x.mnemonic not in ("cmp", "test", "push") and
                                                             (x.op_str.startswith("dx, ") or x.op_str == "dx"))   # (any write of dx)
         ends = [j] + [k - 1 for k, x in enumerate(ins) if x.mnemonic == "jmp" and x.op_str in ("0x%x" % epi, str(epi)) and k > 0] if epi is not None else [j]
-        LONGINFO["ret"] = j >= 0 and all(e >= 0 and gives_dx(ins[e]) for e in ends)   # (dx given before every way out)
+        near = lambda e: any(gives_dx(ins[q]) for q in range(max(0, e - 2), e + 1)) if e >= 0 else False
+        LONGINFO["ret"] = j >= 0 and all(near(e) for e in ends)   # (dx given before every way out - just before it,
+                                                                  #  a store of the pair after it allowed)
 
 
 def run(prj, every=False, limit=None, verbose=False):
