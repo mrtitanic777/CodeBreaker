@@ -1212,6 +1212,15 @@ def address_variants(text, dsize, most=2, lo=0x100):
 def word_arrays(text, lo=0x40):
     """(E << 1)->fN, N a place in the data (not a field's small offset): an array of words there indexed by E -
     g_XXXX[E] (the model reads `mov bx,E / shl bx,1 / [bx+N]` as a field of a pointer)"""
+    def longs(m):                                           # (an index doubled twice: an array of longs there)
+        n = int(m.group(2))
+        if n < lo:
+            return m.group(0)
+        name = "g_%04x" % n
+        ARRAYS[name] = "long"
+        return "%s[%s]" % (name, m.group(1))
+    text = re.sub(r"\(\(([A-Za-z_]\w*(?:->f\d+)*) << 1\) << 1\)->f(\d+)\b", longs, text)
+    text = re.sub(r"\(([A-Za-z_]\w*(?:->f\d+)*) << 2\)->f(\d+)\b", longs, text)
     rx = re.compile(r"\(((?:(?:\+\+|--)?[A-Za-z_]\w*(?:->f\d+)*(?:\+\+|--)?|\d+)(?:\s*[-+]\s*\d+)?) << 1\)->f(\d+)\b")
 
     def one(m):
