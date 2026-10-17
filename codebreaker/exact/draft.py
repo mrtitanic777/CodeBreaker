@@ -2079,6 +2079,25 @@ def scaled_places(text):
     return t if t != text else None
 
 
+def frame_more(text):
+    """the frame one word bigger: the trailing filler two bytes more, or one added after the last local (a
+    variant: a local the model's frame left out)"""
+    head, sep, body = split_body(text)
+    if not sep:
+        return None
+    decls = list(re.finditer(r"(?m)^[ \t]*(?!return\b)(?:register\s+)?(?:unsigned\s+)?(?:int|char|long|short|struct \w+)[ \t*]+\w+(?:\[\d+\])?;\n", body))
+    decls = [d for d in decls if d.start() < (re.search(r"(?m)^[ \t]*(?!register|unsigned|int|char|long|short|struct)\S", body) or re.search(r"$", body)).start()]
+    if not decls:
+        return None
+    last = decls[-1]
+    f = re.fullmatch(r"([ \t]*)char (_p\w*)\[(\d+)\];\n", last.group(0))
+    if f:
+        new = "%schar %s[%d];\n" % (f.group(1), f.group(2), int(f.group(3)) + 2)
+    else:
+        new = last.group(0) + "    char _pm[2];\n"
+    return head + sep + body[:last.start()] + new + body[last.end():]
+
+
 def lead_filler(text):
     """the frame's first local vN (bp-N) with room between it and bp: a filler declared before it (a variant:
     unused locals the source declared first, the model's layout taking the first one for read)"""
@@ -2911,7 +2930,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = register_values(long_ladders(long_pairs(t)))                     # (the longs again, as the passes left them)
         t = frame_chars(fn_pointers(t), widths)
         t = fill_frame(t, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
-        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t), register_copies(t), lead_filler(t), scaled_places(t), shared_tails(t), guard_returns(t), default_after(t)] if v]
+        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t), register_copies(t), lead_filler(t), scaled_places(t), shared_tails(t), guard_returns(t), default_after(t), frame_more(t)] if v]
         both = pre_steps(t)
         both = pre_increments(both) if both else None
         if both:
@@ -4135,7 +4154,7 @@ REFINERS = [lambda prj, s: [assign_in_args(s)], lambda prj, s: [return_sources(s
             lambda prj, s: [unsigned_registers(s)], lambda prj, s: [unmasked(s)], lambda prj, s: [no_default(s)],
             lambda prj, s: [empty_cases_first(s)], lambda prj, s: [register_slots(s)], lambda prj, s: [register_copies(s)],
             lambda prj, s: [lead_filler(s)], lambda prj, s: [scaled_places(s)], lambda prj, s: [shared_tails(s)],
-            lambda prj, s: [guard_returns(s)], lambda prj, s: [default_after(s)],
+            lambda prj, s: [guard_returns(s)], lambda prj, s: [default_after(s)], lambda prj, s: [frame_more(s)],
             lambda prj, s: [re.sub(r"\b0, 0\)", "0L)", s)]]     # (two zero words pushed: a long 0)
 
 
