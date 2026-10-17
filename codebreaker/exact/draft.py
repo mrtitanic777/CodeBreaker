@@ -1201,7 +1201,8 @@ def pointer_flow(text):
             for p in ptr:
                 st = r"(?:\+\+|--)?"
                 if re.search(r"\(\(?%s%s (?:==|!=|<|>|<=|>=) %s%s\)|\(\(?%s%s (?:==|!=|<|>|<=|>=) %s%s\)" % (st, x, st, p, st, p, st, x), body) or \
-                        re.search(r"(?m)^[ \t]*%s = %s\b|^\s*%s = %s\b" % (x, p, p, x), body):
+                        re.search(r"(?m)^[ \t]*%s = %s;|^\s*%s = %s;" % (x, p, p, x), body):   # (the value itself:
+                                                                                                  #  not a field of it)
                     ptr.add(x)
                     changed = True
                     break
@@ -2003,9 +2004,20 @@ def register_reads(text):
                 return r                                    # (the value itself: the register)
             n = int(mm.group(1))
             return "%s->f%d" % (r, n) if st else "*%s" % r if n == 0 else mm.group(0)
-        new = re.sub(re.escape(e) + r"(?:->f(\d+))?\b(?!->)", via, nxt)
-        if new != nxt:
-            lines[k + 1] = new
+        ind = len(lines[k]) - len(lines[k].lstrip())
+        base = re.match(r"\w+", e).group(0)
+        changed = False
+        for j in range(k + 1, len(lines)):                  # (on through the block: until r or E's pointer is given
+            x = lines[j]                                    #  again, or a call could change E)
+            if x.strip() and len(x) - len(x.lstrip()) < ind:
+                break
+            new = re.sub(re.escape(e) + r"(?:->f(\d+))?\b(?!->)", via, x)
+            if new != x:
+                lines[j] = new
+                changed = True
+            if re.match(r"[ \t]*(?:%s|%s) = " % (r, base), x):
+                break
+        if changed:
             return "\n".join(lines)
     return None
 
