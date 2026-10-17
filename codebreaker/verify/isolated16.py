@@ -142,20 +142,32 @@ def check(original, folder, names, image=None, inputs=None, workers=None, tables
         code = ("import sys, json; sys.path.insert(0, %r); import capstone; "
                 "from codebreaker.verify import isolated16 as v; a = json.load(sys.stdin); "
                 "print(json.dumps(v._part(a)))" % root)
+        import tempfile
+        errs = [tempfile.TemporaryFile(mode="w+") for _ in range(workers)]
         procs = [subprocess.Popen([sys.executable, "-c", code], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                  stderr=subprocess.DEVNULL, text=True)
-                 for _ in range(workers)]
+                                  stderr=errs[k], text=True)
+                 for k in range(workers)]
         for k, p in enumerate(procs):
             p.stdin.write(json.dumps([original, folder, names[k::workers], image, tables]))
             p.stdin.close()
-        for p in procs:
+        for k, p in enumerate(procs):
             out = p.stdout.read()
             p.wait()
+            got = set()
             try:
                 for item in json.loads(out.strip().splitlines()[-1]):
+                    got.add(item[0])
                     yield tuple(item)
             except (ValueError, IndexError):
                 pass
+            # (a share the worker did not answer for is NOT the same as the original: it was
+            # not run, and says why)
+            errs[k].seek(0)
+            why = (errs[k].read().strip().splitlines() or ["the worker gave no answer"])[-1][:200]
+            errs[k].close()
+            for n in names[k::workers]:
+                if n not in got:
+                    yield (n, "not run", "the checker failed: " + why)
         return
     from codebreaker.emulate import windows16 as emu
     from codebreaker.formats.ne import NEFile

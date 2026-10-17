@@ -317,6 +317,33 @@ def returns(code, off, limit=600, want=None):
     return None, -1
 
 
+def callers_say(d):
+    """{(seg, off): "callee" | "caller"} -- who removes a function's arguments, as the original's
+    own calls to it show: every call that pushed something before it and is followed by
+    `add sp, n` says the caller does; every one that is not says the callee does. Only a function
+    whose calls (two at least) all say the same is in it. The callers are the original program's
+    own word on how each callee is called -- the callee's instructions can hide it (arguments
+    taken off by hand, a shared epilogue)."""
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    votes = {}
+    for seg, img in d.images.items():
+        ins = list(md.disasm(bytes(img), 0))
+        for k, i in enumerate(ins[:-1]):
+            if i.mnemonic == "call" and i.op_str.startswith("0x") and "," not in i.op_str:
+                target = (seg, int(i.op_str, 16) & 0xFFFF)
+            elif i.mnemonic == "lcall" and "," in i.op_str and i.op_str.startswith("0x"):
+                s, o = (int(x, 16) for x in i.op_str.split(", "))
+                target = where((s << 16) | o) if s < 0xE000 else None
+            else:
+                continue
+            if target is None or k == 0 or ins[k - 1].mnemonic != "push":
+                continue                                     # (nothing pushed just before: says nothing)
+            nxt = ins[k + 1]
+            who = "caller" if nxt.mnemonic == "add" and nxt.op_str.startswith("sp, ") else "callee"
+            votes.setdefault(target, []).append(who)
+    return {t: v[0] for t, v in votes.items() if len(v) >= 2 and len(set(v)) == 1}
+
+
 def popped_by_hand(code, off, kind):
     """Bytes of arguments a function takes off the stack itself at its start: its return
     address popped (one word near, two far), then more words popped, then the return address
@@ -333,6 +360,27 @@ def popped_by_hand(code, off, kind):
     k = 0
     while k < len(ins) and k < 3 and quiet(ins[k]):          # (IsIconic: `mov cl, 20h / test ax, ...` first)
         k += 1
+    if k < len(ins) and ins[k].mnemonic == "call" and ins[k].op_str.startswith("0x") and "," not in ins[k].op_str:
+        # a helper does it for it (USER's PostQuitMessage, GetSysColor: `call 8128`, which pops
+        # its own return address, this one's, and the arguments, pushes this one's back and
+        # `jmp bx` home): the helper's pops past its own return address are this function's
+        helper = int(ins[k].op_str, 16) & 0xFFFF
+        if helper != off:
+            h = list(md.disasm(bytes(code[helper:helper + 40]), helper))[:20]
+            hp = []
+            j = 0
+            while j < len(h) and h[j].mnemonic == "pop" and h[j].op_str in regs:
+                hp.append(h[j].op_str)
+                j += 1
+            if len(hp) > 1 + words:
+                while j < len(h) and j < 14 and quiet(h[j]):
+                    j += 1
+                back = [i.op_str for i in h[j:j + words] if i.mnemonic == "push"]
+                rest = h[j + words:j + words + 6]
+                home = any(i.mnemonic == "jmp" and i.op_str == hp[0] for i in rest)
+                if back == list(reversed(hp[1:1 + words])) and home:
+                    return 2 * (len(hp) - 1 - words)
+        return None
     pops = []
     while k < len(ins) and ins[k].mnemonic == "pop" and ins[k].op_str in regs:
         pops.append(ins[k].op_str)

@@ -121,6 +121,19 @@ class Built(object):
             out.append("  data        %d bytes as C, %d pointers written as pointers, %d left as numbers, "
                        "%d addresses used by the code not placed" % (d.size, d.pointers, len(d.unresolved),
                                                                          self.lost_addresses))
+        disputes = getattr(self, "disputes", None)
+        if disputes:
+            out.append("  conventions %d functions whose callers contradict how they are described (who removes "
+                       "the arguments): %s" % (len(disputes), ", ".join("%s (callers: %s)" % (n, w)
+                                                                         for n, w in disputes[:12])))
+        if getattr(self, "contract_error", None):
+            out.append("  contracts   NOT CHECKED: %s" % self.contract_error)
+        if getattr(self, "gate_error", None):
+            out.append("  gate        NOT CHECKED for %s" % self.gate_error)
+        gated = getattr(self, "gated", None)
+        if gated:
+            out.append("  gated       %d functions' C differs from the original (rebuilt from their instructions)%s" % (
+                len(gated), "".join("\n              %s: %s" % (n, why[:140]) for n, why in sorted(gated.items())[:12])))
         out.append("  entry       %s" % self.entry)
         out.append("  format      %s" % ("same as the original" if self.format_same else "DIFFERENT from the original"))
         out.append("  exports     %d of %d with the original's ordinal and name (%d of them point at stand-ins)%s" % (
@@ -277,6 +290,11 @@ def _link_resolving(b, tool, env, folder, lines, stand_in, compile_extra):
     return image
 
 
+def _source_of(fn):
+    import inspect
+    return inspect.getsource(fn)
+
+
 def _assembled16(b, nef, at, segs, stems, public, folder, env, carried=(), forced=(), elsewhere=None):
     """Assembly of the module's own instructions where C does not do (build/asm16.py): each code
     segment's lead-in -- what is before its first function, often a variable the code reads
@@ -286,9 +304,11 @@ def _assembled16(b, nef, at, segs, stems, public, folder, env, carried=(), force
     import pickle
     from codebreaker.build import asm16
     from codebreaker.source import assembly as _assembly
+    from codebreaker.build import msc6 as _msc6
     wasm = watcom.ow_tool("wasm")
     asm_stamp = cache.key(cache.tool(wasm) if wasm else "", open(asm16.__file__, "rb").read(),
-                          open(_assembly.__file__, "rb").read(), open(__file__, "rb").read())
+                          open(_assembly.__file__, "rb").read(), open(_msc6.__file__, "rb").read(),
+                          _source_of(_assembled16))         # (this function's own code: the rounds are in it)
     b.lead_ins, b.placed_c, b.moved_c, b._publics = [], set(), set(), dict(public)
     if not wasm:
         return {}
@@ -1375,6 +1395,8 @@ def build(module, outdir=None, call=True, log=print, gated=None):
         known = _gate16_known(path, m)
         if known is not None:
             b.gated, gated, from_cache = dict(known), known, True
+    if b.kind == "ne" and getattr(m, "description", None) is not None:
+        b.disputes = _disputes(m.description)
     log("%s: compiling %d functions, data and resources" % (b.name, len(m.order)))
     image = (_build16 if b.kind == "ne" else _build32)(b, path, m, folder)
     if not image:
@@ -1388,6 +1410,19 @@ def build(module, outdir=None, call=True, log=print, gated=None):
             c = sorted(b.placed_c | getattr(b, "moved_c", set()))
             log("%s: running %d functions rebuilt from C beside the original's" % (b.name, len(c)))
             differ = _gate16(path, folder, c, m)
+            failed = [(n, w) for n, w in getattr(_gate16, "not_run", []) if w.startswith("the checker failed")]
+            if failed:
+                b.gate_error = "%d functions (%s)" % (len(failed), failed[0][1][:120])
+                log("%s: the gate could not run %d functions: %s" % (b.name, len(failed), failed[0][1][:120]))
+            # (and its calls beside the original's: what each call is followed by -- the check
+            # above answers a call as the description believes; this reads both as they are)
+            from codebreaker.verify import contract16
+            try:
+                for n, why in contract16.mismatches(path, folder, b.image, c).items():
+                    differ.setdefault(n, "its calls are not the original's: " + why)
+            except Exception as e:                           # (a check that fails says so: never "all agree")
+                b.contract_error = "%s: %s" % (type(e).__name__, e)
+                log("%s: the call-contract check FAILED: %s" % (b.name, b.contract_error))
             cache.put("gate16_set", cache.key(open(path, "rb").read(), getattr(m, "header", "")),
                       "\n".join(sorted(set(c) | set(gated or {}))).encode("utf-8"))
             if differ:
@@ -1399,16 +1434,52 @@ def build(module, outdir=None, call=True, log=print, gated=None):
     return b
 
 
+def _disputes(d):
+    """[(name, who the callers say removes the arguments)] for each function the description
+    says otherwise of -- the original's own calls are the evidence (describe.callers_say)."""
+    from codebreaker.decompile import describe
+    try:
+        say = describe.callers_say(d)
+        out = []
+        with open(d.path, encoding="utf-8") as f:
+            for line in f:
+                p = line.rstrip("\n").split("\t")
+                if p[0] != "F" or len(p) < 4:
+                    continue
+                who = say.get(describe.where(int(p[1], 16)))
+                if who and who != ("callee" if int(p[3]) > 0 else "caller"):
+                    out.append((p[2], who))
+        return out
+    except Exception as e:                                   # (a report, not the build: never stops it)
+        return [("(not checked)", str(e)[:80])]
+
+
 def _gate16_keys(path, names, m):
     import sys
     from codebreaker.emulate import windows16
-    from codebreaker.verify import isolated16
+    from codebreaker.verify import isolated16, win16
     with open(path, "rb") as f:
         module_key = cache.key(f.read())
     tools = cache.key(cache.tool(watcom.ow_tool("wcc") or ""), functions.CFLAGS16,
-                      *[open(sys.modules[x.__name__].__file__, "rb").read() for x in (isolated16, windows16)])
+                      *[open(sys.modules[x.__name__].__file__, "rb").read() for x in (isolated16, windows16, win16)])
     header = cache.key(getattr(m, "header", ""))
-    return {n: cache.key(module_key, tools, header, n, m.texts.get(n, "")) for n in names}
+    # (and the description's lines for the function and for each it calls: the checker answers
+    # a call as the description says the callee does -- what it removes, what it returns -- so
+    # a callee described anew is a verdict to make again)
+    name_line = {}
+    try:
+        with open(m.description.path, encoding="utf-8") as f:
+            for line in f:
+                p = line.split("\t")
+                if p[0] in ("F", "X") and len(p) > 2:
+                    name_line[p[2]] = line.rstrip("\n")
+    except (AttributeError, OSError):
+        pass
+
+    def deps(n):
+        called = set(re.findall(r"\b([A-Za-z_]\w*)\s*\(", m.texts.get(n, ""))) | {n}
+        return sorted(name_line[c] for c in called if c in name_line)
+    return {n: cache.key(module_key, tools, header, n, m.texts.get(n, ""), deps(n)) for n in names}
 
 
 def _gate16_known(path, m):
@@ -1443,7 +1514,11 @@ def _gate16(path, folder, names, m):
             run.append(n)
         elif had[:1] == b"D":
             differ[n] = had[1:].decode("utf-8", "replace")
+    _gate16.not_run = []
     for n, verdict, why in isolated16.check(path, folder, run) if run else ():
+        if verdict == "not run":                             # (no verdict: not kept, and said)
+            _gate16.not_run.append((n, why))
+            continue
         cache.put("gate16", keys[n], (b"D" + (why or "").encode("utf-8", "replace")) if verdict == "differs" else b"S")
         if verdict == "differs":
             differ[n] = why
