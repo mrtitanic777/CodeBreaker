@@ -682,6 +682,39 @@ def loop_tests(text):
     return None
 
 
+def goto_tails(text, most=3):
+    """goto L; with L: in another arm, a few plain statements to that arm's end after it - the compiler's one
+    copy of a tail two arms share: the statements in place of the goto (the value it carried given just before)"""
+    lines = text.split("\n")
+    for k, l in enumerate(lines):
+        m = re.fullmatch(r"([ \t]*)goto (L_\w+);", l)
+        if not m:
+            continue
+        at = next((j for j, x in enumerate(lines) if x.strip() == m.group(2) + ":"), None)
+        if at is None or at > k and all(not x.strip() or x.strip().endswith(":") for x in lines[k + 1:at]):
+            continue                                        # (a goto that only falls there: fall_gotos')
+        ind = len(lines[at]) - len(lines[at].lstrip())
+        tail, j = [], at + 1
+        while j < len(lines) and lines[j].strip() and len(lines[j]) - len(lines[j].lstrip()) == ind:
+            x = lines[j].strip()
+            if x.endswith("{") or x.endswith(":") and not re.fullmatch(r"L_\w+:", x) or re.match(r"(?:case |default)", x):
+                tail = None
+                break
+            if re.fullmatch(r"L_\w+:", x):
+                j += 1
+                continue
+            tail.append(x)
+            j += 1
+        if not tail or len(tail) > most or j >= len(lines) or len(lines[j]) - len(lines[j].lstrip()) >= ind or \
+                any(re.match(r"(?:goto|break|continue|return)\b", x) for x in tail):
+            continue
+        lines[k:k + 1] = [m.group(1) + x for x in tail]
+        t = "\n".join(lines)
+        used = set(re.findall(r"goto (L_\w+);", t))
+        return "\n".join(x for x in t.split("\n") if not (re.fullmatch(r"[ \t]*(L_\w+):", x) and x.strip()[:-1] not in used))
+    return None
+
+
 def fall_gotos(text):
     """goto L; where what comes after it, past the ends of ifs and a switch's case labels, is L: itself - the
     goto only falls there (a case falling into the next): gone, and L with it when nothing else goes there"""
@@ -716,6 +749,26 @@ def fall_gotos(text):
                 break
             if j < len(lines) and (lines[j] or "").strip() == m.group(1) + ":":
                 lines[k] = None
+                changed = True
+                break
+            def after(q):                                   # (where the flow goes from line q on: past ends of ifs
+                while q < len(lines):                       #  and the else arms beside them, to a statement)
+                    x = (lines[q] or "").strip()
+                    if lines[q] is None or not x or re.fullmatch(r"L_\w+:", x):
+                        q += 1
+                    elif x == "}":
+                        o = opener(q)
+                        if o is None or not re.match(r"[ \t]*(?:if \(.*\)|\} else|else) \{$", lines[o]):
+                            return None
+                        q += 1
+                    elif x == "} else {":
+                        q = _block_end([y if y is not None else "" for y in lines], q) or len(lines)
+                    else:
+                        return q
+                return None
+            at = next((q for q, x in enumerate(lines) if x is not None and x.strip() == m.group(1) + ":"), None)
+            if at is not None and after(k + 1) is not None and after(k + 1) == after(at + 1):
+                lines[k] = None                             # (the goto goes where its own way goes anyway)
                 changed = True
                 break
             # (if (C) { goto L; } else { S } with L just after: if (!C) { S }, falling into L)
@@ -1812,7 +1865,13 @@ def temporaries(text):
         m = re.match(r"(\s*)(t\d+) = (.+);$", lines[k])
         if m:
             x = m.group(2)
-            uses = [j for j in range(len(lines)) if j != k and re.search(r"\b%s\b" % x, lines[j])]
+            uses = [j for j in range(len(lines)) if j != k and re.search(r"\b%s\b" % x, lines[j]) and
+                    not re.match(r"[ \t]*(?:int|char|long|unsigned|register)\b", lines[j])]
+            nd = next((j for j in range(k + 1, len(lines)) if re.match(r"\s*%s = " % x, lines[j])), len(lines))
+            mine = [j for j in uses if k < j < nd]          # (this value's reads: up to where it is given again)
+            if mine == [k + 1] and not any(re.search(r"\b%s\b" % x, lines[j]) for j in range(nd + 1, len(lines))
+                                           if j in uses and not any(re.match(r"\s*%s = " % x, lines[q]) for q in range(nd, j))):
+                uses = [k + 1]                              # (read once before it is given again: that value's)
             if uses == [k + 1] and len(re.findall(r"\b%s\b" % x, lines[k + 1])) == 1:
                 e = m.group(3)
                 lines[k + 1] = re.sub(r"\b%s\b" % x, lambda _: e if re.fullmatch(r"[\w\[\]\->.]+", e) else "(%s)" % e, lines[k + 1])
@@ -1935,14 +1994,16 @@ def register_reads(text):
             continue
         r, e = m.group(2), m.group(3)
         nxt = lines[k + 1]
-        if not re.search(re.escape(e) + r"->f\d+", nxt):
+        if not re.search(re.escape(e) + r"\b", nxt):
             continue
         st = re.search(r"(?m)^[ \t]*register struct \w+ \*%s;$" % r, text)
 
         def via(mm):
+            if mm.group(1) is None:
+                return r                                    # (the value itself: the register)
             n = int(mm.group(1))
             return "%s->f%d" % (r, n) if st else "*%s" % r if n == 0 else mm.group(0)
-        new = re.sub(re.escape(e) + r"->f(\d+)\b", via, nxt)
+        new = re.sub(re.escape(e) + r"(?:->f(\d+))?\b(?!->)", via, nxt)
         if new != nxt:
             lines[k + 1] = new
             return "\n".join(lines)
@@ -3179,10 +3240,11 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         BYTEG.clear()
         BYTEG.update(n for k, n in widths if k == "g")
         FILEPTR.clear()
+        t = re.sub(r"\btarg(\d+)\b", r"t9\1", t)              # (the model's temporaries of a shared tail: temporaries)
         t = zero_extends(high_zero(copy_props(table_macros(prj, case_falls(char_stores(char_params(long_pairs(long_returns(store_reloads(fall_gotos(t))))))), prj.toolchain().p.get("table_macros")))))
         t = re.sub(r"&(\w+)\[(-?)(\d+)\]", lambda m: "(%s %s %s)" % (m.group(1), "-" if m.group(2) else "+", m.group(3)), t)
         t = re.sub(r"&(\w+)->f(\d+)\b", r"(\1 + \2)", t)  # (lea: &p[N], &p->fN - the place, p + N)
-        t = fold_registers(stored_calls(store_loops(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(push_returns(conditional_values(logical_values(step_tests(bool_trees(range_switches(loop_gotos(empty_loops(first_breaks(loop_registers(fall_gotos(t)))))))))))))))))))
+        t = fold_registers(stored_calls(store_loops(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(push_returns(conditional_values(logical_values(step_tests(bool_trees(range_switches(loop_gotos(empty_loops(first_breaks(loop_registers(fall_gotos(goto_tails(t) or t)))))))))))))))))))
         t = stored_calls(fold_registers(push_returns(t)))   # (returns again, as the passes left the arms)
         t = stored_reads(scaled_index(register_chains(word_arrays(test_first_loops(copy_tests(post_steps(t)))))))
         t = fold_registers(conditional_values(t))           # (the ?: values again, the elements folded)
@@ -3471,7 +3533,7 @@ def long_pairs(text):
 
     def const_pair(m):                                      # (a pair given two numbers: one long number)
         ind, x, k1, hx, k2 = m.groups()
-        if hi_of(x) != hx:
+        if hi_of(x) != hx or x.startswith("g_"):            # (two words of the data given numbers: two ints)
             return m.group(0)
         pairs.add(x)
         v = (int(k2) & 0xFFFF) << 16 | (int(k1) & 0xFFFF)
@@ -3604,7 +3666,7 @@ def long_pairs(text):
     def zero_pair(m):                                       # (both halves given 0, or -1: the long 0, -1)
         ind, a, v, b = m.groups()
         lo, hi = (b, a) if hi_of(b) == a else (a, b) if hi_of(a) == b else (None, None)
-        if not lo:
+        if not lo or lo.startswith("g_"):
             return m.group(0)
         pairs.add(lo)
         return "%s%s = %s;" % (ind, lo, v)
