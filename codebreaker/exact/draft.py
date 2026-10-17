@@ -1550,6 +1550,52 @@ def goto_returns(text):
     return out
 
 
+def sunk_pairs(text):
+    """if (C) { .. ax = E; } else { .. ax = q->fM; dx = q->fM+2; } p->fN = ax; p->fN+2 = dx; - a long both
+    arms leave in dx:ax, stored a word at a time after them: the long store in each arm (E a long already - a
+    double converted, a long cast - or the two words of a long field)"""
+    lines = text.split("\n")
+    k = 0
+    while k < len(lines):
+        p = _if_parts(lines, k)
+        k += 1
+        if not p or p[2] is None or p[3] + 1 >= len(lines):
+            continue
+        st = re.fullmatch(r"(\s*)(\w+(?:->f\d+)*)->f(\d+) = ax;", lines[p[3]])
+        st2 = re.fullmatch(r"\s*(\w+(?:->f\d+)*)->f(\d+) = dx;", lines[p[3] + 1])
+        if not st or not st2 or st.group(2) != st2.group(1) or int(st2.group(2)) != int(st.group(3)) + 2:
+            continue
+        if _live_after(lines, p[3] + 1, "ax", r"\b(?:ax|al|ah|dx)\b"):
+            continue
+
+        def value(arm):                                     # (the long an arm leaves, and the arm without it)
+            body = [x for x in arm if x.strip()]
+            if len(body) >= 2:
+                a = re.fullmatch(r"\s*ax = (\w+(?:->f\d+)*)->f(\d+);", body[-2]) or re.fullmatch(r"\s*dx = (\w+(?:->f\d+)*)->f(\d+);", body[-2])
+                b = re.fullmatch(r"\s*dx = (\w+(?:->f\d+)*)->f(\d+);", body[-1]) or re.fullmatch(r"\s*ax = (\w+(?:->f\d+)*)->f(\d+);", body[-1])
+                if a and b and a.group(1) == b.group(1) and body[-2].strip()[:2] != body[-1].strip()[:2]:
+                    lo = a if body[-2].strip().startswith("ax") else b
+                    hi = b if lo is a else a
+                    if int(hi.group(2)) == int(lo.group(2)) + 2:
+                        return "*(long *)&%s->f%s" % (lo.group(1), lo.group(2)), arm[:arm.index(body[-2])]
+            if body:
+                e = re.fullmatch(r"\s*ax = (.+);", body[-1])
+                if e and re.search(r"\(double \*\)|\(float \*\)|\(long\)|\(double\)", e.group(1)) and \
+                   not any(re.match(r"\s*dx = ", x) for x in body[-3:]):
+                    return e.group(1), arm[:arm.index(body[-1])]
+            return None
+        a, b = value(p[1]), value(p[2])
+        if not a or not b:
+            continue
+        ind = st.group(1)
+        dst = "*(long *)&%s->f%s" % (st.group(2), st.group(3))
+        LONGINFO.setdefault("fields", set()).add(int(st.group(3)))
+        new = [lines[k - 1]] + a[1] + [ind + "    %s = %s;" % (dst, a[0])] + [ind + "} else {"] + b[1] + \
+              [ind + "    %s = %s;" % (dst, b[0])] + [ind + "}"]
+        lines[k - 1:p[3] + 2] = new
+    return "\n".join(lines)
+
+
 def sunk_tails(text):
     """if (C) { .. r = E1; } else { .. r = E2; } S(r); - a statement both arms ended with, the compiler's one copy
     of it after them (cross-jumped), the value it reads given in each: S in each arm, S(E1) and S(E2)"""
@@ -4113,7 +4159,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = stored_calls(fold_registers(push_returns(t)))   # (returns again, as the passes left the arms)
         t = stored_reads(scaled_index(register_chains(word_arrays(pointer_index(test_first_loops(copy_tests(post_steps(selector_reads(t)))))))))
         t = fold_registers(conditional_values(t))           # (the ?: values again, the elements folded)
-        t = fold_registers(stored_tests(push_returns(temporaries(compare_values(goto_returns(sunk_tails(empty_loops(shared_arms(merge_conditions(guard_gotos(self_updates(switch_follow(t)))))))))))))
+        t = fold_registers(stored_tests(push_returns(temporaries(compare_values(goto_returns(sunk_tails(sunk_pairs(empty_loops(shared_arms(merge_conditions(guard_gotos(self_updates(switch_follow(t))))))))))))))
         wd = set(widths)                                    # (a parameter kept in a register: the bytes read through
         for r_, i_ in (regparam or {}).items():             #  that register its own)
             if isinstance(i_, int) and 0 <= i_ < 26:
@@ -5725,6 +5771,25 @@ def model_texts(inv, code, name, base=None):
         t = inv.to_c(name, fs, params, stmts, pt, loc)
         if t != out[0][0]:
             out.append((t, regparam))
+        if hasattr(inv, "FPCASTS") and any(re.search(r"->|\[", k) for k in (getattr(inv, "LAST", {}).get("fptypes") or {})):
+            inv.FPCASTS = True                              # (the 8087's fields at their own widths: read again with
+            flow16.CMPSWITCH = True                         #  casts - a union's place used both ways)
+            try:
+                fs2, params2, stmts2, pt2, loc2 = inv.recover_cfg(code)
+                stmts2 = [s for s in stmts2 if not s.startswith("/* register variables")]
+                for reg, ix in regparam.items():
+                    p = chr(ord("a") + ix)
+                    stmts2 = [s for k, s in enumerate(stmts2) if not (k < 3 and re.fullmatch(r"%s = %s;" % (reg, p), s.strip()))]
+                    if p not in params2:
+                        params2 = sorted(set(params2) | {p})
+                t2 = inv.to_c(name, fs2, params2, stmts2, pt2, loc2)
+                if all(t2 != x for x, _ in out):
+                    out.append((t2, regparam))
+            except Exception:
+                pass
+            finally:
+                inv.FPCASTS = False
+                flow16.CMPSWITCH = False
         # (a long compared the compiler's way - the high words, then the low words without sign - three nested
         #  ifs: read again with the unsigned compares marked, and the ladders folded into one long comparison)
         from codebreaker.exact import x86 as _x86          # (or a compare without sign: the text with it marked)

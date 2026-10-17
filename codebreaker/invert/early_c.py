@@ -20,6 +20,7 @@ INV={"jge":"<","jg":"<=","jle":">","jl":">=","jne":"==","je":"!=","jz":"!=","jnz
      "ja":"<=","jae":"<","jb":">=","jbe":">","jc":">=","jnc":"<"}        # unsigned, negated (fall-through)
 CJMP=set(JCC)|{"jz","jnz","js","jns"}
 BYTEREG=("al","bl","cl","dl","ah","bh","ch","dh")        # 8-bit sub-registers (exposed as vars)
+FPCASTS=False                                              # (8087 field operands through casts: the variant model text)
 FPOPS={"fld","fild","fldz","fld1","fst","fstp","fist","fistp","fchs","fxch","fadd","faddp","fsub","fsubp","fmul","fmulp","fdiv","fdivp","fsubr","fsubrp","fdivr","fdivrp","fiadd","fisub","fimul","fidiv","fisubr","fidivr","fwait","fnop","finit","fninit","fclex","fnclex"}   # (the 8087 instructions fp_step reads)
 BYTEPARENT={"al":"ax","ah":"ax","bl":"bx","bh":"bx","cl":"cx","ch":"cx","dl":"dx","dh":"dx"}
 WORDHALVES={"ax":("al","ah"),"bx":("bl","bh"),"cx":("cl","ch"),"dx":("dl","dh")}
@@ -213,6 +214,10 @@ class R:
             nm=s.memname(("word ptr " if size!="byte" else "byte ptr ")+m.group(3))
             if nm is None: return None
             ty={"word":"int","dword":"long","qword":"long"}.get(size) if integer else {"dword":"float","qword":"double","tbyte":"double"}.get(size)
+            if ty and FPCASTS and re.search(r"->|\[|\.", nm) and ty != "int":
+                return "*(%s *)&%s"%(ty, nm)                    # (a field the 8087 reads at its own width - the
+                                                               #  same place may be a long one way, a double the
+                                                               #  other: a union's - written through a cast)
             if ty: types.setdefault(nm,ty)
             return nm
         def sti(op):
@@ -1348,6 +1353,8 @@ class R:
                 else: v_=s.memname(src)
                 if v_ is None: break
                 given[r_]=str(v_); k+=1
+                if k<len(ins) and ins[k].mnemonic=="xchg" and ins[k].op_str in ("di, si","si, di") and len(given)==2:
+                    given={"di":given["si"],"si":given["di"]}; k+=1   # (the two given, then swapped)
             if given and [(x.mnemonic,x.op_str) for x in ins[k:k+2]]==[("push","ds"),("pop","es")]:
                 seq=[("push","si"),("push","di"),("push","ds"),("pop","es")]
                 i0=i; i=k-2                                 # (read on as the plain form from here)
