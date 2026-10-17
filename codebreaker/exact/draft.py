@@ -4360,6 +4360,7 @@ def prove_best(prj, tc, inv, text, a, ln, names, regparam=None):
     if fsw and want != sw.split():
         cands = [("/* %s: %s */\n" % (fsw, " ".join(want)) + src, left) for src, left in cands]
     best = None
+    tops = []                                               # (every reading that compiled, near or far: the beam's seeds)
     _prove.spent = 0
     for src, left in cands:
         if left:
@@ -4377,11 +4378,13 @@ def prove_best(prj, tc, inv, text, a, ln, names, regparam=None):
         if v == "identical":
             return src, v
         rank = _rank(v)
+        if v.startswith("differs"):
+            tops.append((rank, src, v))
         if best is None or rank < best[0]:
             best = (rank, src, v)
-    if best and best[2].startswith("differs"):              # (the best that compiles, rewritten a way at a time:
-        return refine(prj, tc, a, ln, best)                 #  each kept that brings it nearer - combinations
-    return best[1], best[2]                                 #  the variants alone do not make)
+    if best and best[2].startswith("differs"):              # (the nearest that compile, rewritten - a beam of them:
+        return refine(prj, tc, a, ln, best, seeds=sorted(tops, key=lambda x: x[0])[:BEAM])   # combinations the
+    return best[1], best[2]                                                                  #  variants alone miss)
 
 
 def _place_variants(prj, src):
@@ -4411,32 +4414,55 @@ REFINERS = [lambda prj, s: [assign_in_args(s)], lambda prj, s: [return_sources(s
             lambda prj, s: [re.sub(r"\b0, 0\)", "0L)", s)]]     # (two zero words pushed: a long 0)
 
 
-def refine(prj, tc, a, ln, best, rounds=2, budget=40):
-    """-> (source, verdict): best (rank, source, verdict) rewritten by REFINERS one at a time, each rewriting
-    kept when the compiler finds the result nearer - a greedy climb, bounded"""
-    rank, src, v = best
+BEAM = 4                                                    # (the readings the search carries on with each round)
+REFINE_BUDGET = 240                                         # (the compiles it may spend on one function)
+
+
+def refine(prj, tc, a, ln, best, rounds=6, budget=None, seeds=None):
+    """-> (source, verdict): a beam search over the REFINERS' rewritings - the BEAM nearest readings (the best and
+    the other seeds) each rewritten every way, the nearest BEAM of all kept, again, until one is identical, no round
+    brings any nearer, or the budget of compiles is spent. Two rewritings neither of which helps alone are found
+    together: a reading as near as the worst kept goes on (sideways moves) when the beam has room"""
+    budget = REFINE_BUDGET if budget is None else budget
+    beam = []
+    seen = set()
+    for r_, s_, v_ in [best] + list(seeds or []):
+        if s_ not in seen:
+            seen.add(s_)
+            beam.append((r_, s_, v_))
+    beam = sorted(beam, key=lambda x: x[0])[:BEAM]
     spent = 0
+    top = beam[0]
     for _ in range(rounds):
-        moved = False
-        for f in REFINERS:
-            try:
-                alts = [x for x in f(prj, src) if x and x != src]
-            except Exception:
-                continue
-            for alt in alts:
-                if spent >= budget:
-                    return src, v
-                spent += 1
-                v2 = _prove(prj, tc, alt, a, ln, tries=2, budget=3)
-                if v2 == "identical":
-                    return _prove.src, v2
-                r2 = _rank(v2)
-                if r2 < rank:
-                    rank, src, v, moved = r2, _prove.src, v2, True
-                    break
-        if not moved:
+        pool = []
+        for r_, s_, v_ in beam:
+            for f in REFINERS:
+                try:
+                    alts = [x for x in f(prj, s_) if x and x != s_]
+                except Exception:
+                    continue
+                for alt in alts:
+                    if alt in seen:
+                        continue
+                    seen.add(alt)
+                    if spent >= budget:
+                        break
+                    spent += 1
+                    v2 = _prove(prj, tc, alt, a, ln, tries=2, budget=3)
+                    if v2 == "identical":
+                        return _prove.src, v2
+                    if v2.startswith("differs"):
+                        pool.append((_rank(v2), _prove.src, v2))
+        if not pool:
             break
-    return src, v
+        merged = sorted(beam + pool, key=lambda x: x[0])[:BEAM]
+        if merged[0][0] >= top[0] and all(x in beam for x in merged):
+            break                                           # (nothing nearer, nothing new: the search is done)
+        beam = merged
+        top = min(top, beam[0], key=lambda x: x[0])
+        if spent >= budget:
+            break
+    return top[1], top[2]
 
 
 def table_hook(code):
