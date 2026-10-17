@@ -3151,6 +3151,8 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = structs(pointer_flow(local_pointers(register_variables(shapes(long_pairs(t)), regs, regparam))), wd)
         t = re.sub(r"(?m)^[ \t]*(\w+) = \1;\n", "", t)         # (a register variable given itself: nothing)
         t = register_values(long_ladders(long_pairs(t)))                     # (the longs again, as the passes left them)
+        if re.search(r"\bbp - \d+\b", t):                   # (a frame place the passes left as bp - N: the local)
+            t = buffers(t) or t
         t = frame_chars(fn_pointers(t), widths)
         t = fill_frame(t, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
         variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t), register_copies(t), lead_filler(t), scaled_places(t), shared_tails(t), guard_returns(t), default_after(t), frame_more(t), loop_tests(t), switch_breaks(t), register_reads(t), compare_results(t), or_loops(t)] if v]
@@ -3267,6 +3269,13 @@ def frame_chars(text, widths):
 def buffers(text):
     """the locals whose address the text takes (`&vN`) as char arrays, each as long as the frame has room before
     the next local (vN is at bp-N); a store into one goes through an int"""
+    for n in sorted({int(x) for x in re.findall(r"\bbp - (\d+)\b", text)}):   # (the frame's place bp-N: a local there,
+        if not re.search(r"(?m)^[ \t]*int v%d;" % n, text):                   #  in place of the filler that stood for it)
+            f = list(re.finditer(r"(?m)^([ \t]*)char (_p\w*)\[(\d+)\];\n", text))
+            if not f:
+                continue
+            text = text[:f[-1].start()] + "%sint v%d;\n" % (f[-1].group(1), n) + text[f[-1].end():]
+        text = re.sub(r"\bbp - %d\b" % n, "&v%d" % n, text)
     locs = sorted({int(n) for n in re.findall(r"(?m)^[ \t]*int v(\d+);", text)})
     taken = [n for n in locs if re.search(r"&v%d\b" % n, text)]
     if not taken:
@@ -3570,6 +3579,9 @@ def long_pairs(text):
         pairs.add(lo)
         return "%s%s = %s;" % (ind, lo, e)
     body = re.sub(r"(?m)^([ \t]*)(t\d+) = (.+);\n\s*(\w+) = LO\(\2\);\n\s*(\w+) = HI\(\2\);$", halves, body)
+    body = re.sub(r"(?m)^([ \t]*)dx = HI\((.+)\);\n[ \t]*(\w+) = LO\(\2\);\n[ \t]*(\w+) = dx;$",   # (the high half
+                  lambda m: "%s%s = %s;" % (m.group(1), m.group(3), m.group(2)) if hi_of(m.group(3)) == m.group(4) and
+                  pairs.add(m.group(3)) is None else m.group(0), body)                              #  kept in dx first)
     body = re.sub(r"(?m)^([ \t]*)(\w+(?:->f\d+)*)->f(\d+) = LO\((.+)\);\n[ \t]*\2->f(\d+) = HI\(\4\);$",
                   lambda m: "%s%s = %s;" % (m.group(1), lfield(m.group(2), m.group(3)), m.group(4))
                   if int(m.group(5)) == int(m.group(3)) + 2 else m.group(0), body)   # (a long field given a long)
