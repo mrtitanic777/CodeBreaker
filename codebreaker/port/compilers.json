@@ -12,6 +12,7 @@
       "-std=c11",
       "-fsyntax-only",
       "-fdiagnostics-column-unit=byte",
+      "-Wtype-limits",
       "-Wall",
       "-fsigned-char",
       "-I{inc}",

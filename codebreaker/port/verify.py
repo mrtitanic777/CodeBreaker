@@ -25,7 +25,10 @@ import tempfile
 
 def run_original(cfg, exe, folder, cmd, stdin):
     from codebreaker.exact.emu import dos
-    r = dos.run(exe, folder, cmdline=(" " + cmd) if cmd else "", stdin=stdin.encode("latin1"), fast=True)
+    try:
+        r = dos.run(exe, folder, cmdline=(" " + cmd) if cmd else "", stdin=stdin.encode("latin1"), fast=True)
+    except RuntimeError as e:                               # (a run that does not end: what it showed, and that)
+        return str(e).encode("latin1", "replace"), "did not end"
     return r.console, r.exit
 
 

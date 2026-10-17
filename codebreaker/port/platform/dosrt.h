@@ -34,6 +34,10 @@ int dos_isatty(int fd);
 #define fopen	dos_fopen
 FILE *dos_fopen(const char *name, const char *mode);
 
+/* movbytes(count, from, to): the bytes moved one at a time from the first up (REP MOVSB: an overlap
+   repeats, as memmove would not) */
+void movbytes(unsigned n, const char *from, char *to);
+
 /* the current drive, 0 for A: */
 int getdrive(void);
 

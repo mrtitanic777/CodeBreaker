@@ -72,6 +72,11 @@ int dos_close(int fd)			{ return close(fd); }
 int dos_unlink(const char *name)		{ return unlink(name); }
 int dos_isatty(int fd)			{ return isatty(fd) ? -1 : 0; }
 
+void movbytes(unsigned n, const char *from, char *to)
+{
+	while (n--) *to++ = *from++;
+}
+
 int getdrive(void)
 {
 #ifdef _WIN32

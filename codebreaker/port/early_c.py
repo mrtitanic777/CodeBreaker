@@ -360,6 +360,7 @@ class Port:
         self.fptr, self.fptr_done = {}, set()               # (a function pointer: the types of what it is given)
         self.int16 = profile.get("int_storage") == 16       # (every int 16 bits; else only where bytes are laid out)
         self.grown = {}                                     # (an array the sanitizer saw reached past its end: size)
+        self.retyped = {}                                   # (an int variable that holds a pointer: its type)
 
     def _runtime(self, name, text):
         p = self.profile
@@ -797,11 +798,25 @@ SAYS = {
                 r"passing '(?P<frm>[^']*)'(?: \(aka '[^']*'\))? to parameter of type '(?P<to>[^']*)'",
                 r"'function': incompatible types - from '(?P<frm>[^']*)' to '(?P<to>[^']*)'",
                 r"'function': '(?P<to>[^']*)' differs in levels of indirection from '(?P<frm>[^']*)'"],
-    "fnptr": [r"assignment to '(?P<to>[^']*\(\*\)\([^']*\))'(?: \{aka '[^']*'\})? from incompatible pointer type "
+    "fnptr": [r"(?:assignment to|initialization of) '(?P<to>[^']*\(\*\)\([^']*\))'(?: \{aka '[^']*'\})? from "
+              r"incompatible pointer type "
               r"'(?P<frm>[^']*\(\*\)\([^']*\))'",
               r"incompatible function pointer types assigning to '(?P<to>[^']*)'(?: \(aka '[^']*'\))? from "
               r"'(?P<frm>[^']*)'",
               r"'=': incompatible types - from '(?P<frm>[^']*\*\)\([^']*\))' to '(?P<to>[^']*)'"],
+    "intptr": [r"assignment to '(?P<to>[^']*)'(?: \{aka '[^']*'\})? from '(?P<frm>[^']*\*)'(?: \{aka '[^']*'\})? makes "
+               r"integer from pointer",
+               r"incompatible pointer to integer conversion assigning to '(?P<to>[^']*)'(?: \(aka '[^']*'\))? from "
+               r"'(?P<frm>[^']*\*)'",
+               r"'=': '(?P<to>[^'*]*)' differs in levels of indirection from '(?P<frm>[^']*\*)'"],
+    "assign": [r"(?:assignment to|initialization of) '(?P<to>[^']*\*)'(?: \{aka '[^']*'\})? from incompatible pointer "
+               r"type '(?P<frm>[^']*)'",
+               r"incompatible pointer types (?:assigning to|initializing) '(?P<to>[^']*\*)'(?: \(aka '[^']*'\))? "
+               r"(?:from|with an expression of type) '(?P<frm>[^']*)'",
+               r"'(?:=|initializing)': incompatible types - from '(?P<frm>[^']*)' to '(?P<to>[^']*\*)'"],
+    "neg": [r"comparison is always (?:false|true) due to limited range of data type",
+            r"result of comparison of constant -\d+ with expression of type '(?P<t>[^']*)'.* is always",
+            r"'(?:==|!=)': signed/unsigned mismatch"],
     "member": [r"request for member '(?P<m>\w+)' in something not a structure or union",
                r"member reference base type '[^']*' is not a structure or union",
                r"left of '->(?P<m>\w+)' must point to struct", r"'(?P<m>\w+)' : is not a member of"],
@@ -810,6 +825,9 @@ SAYS = {
              r"controlling expression has type 'void'"],
     "arity": [r"too (?:many|few) arguments to function (?:'(?P<fn>\w+)'|call)", r"too (?:many|few) actual parameters"],
 }
+
+
+CAST = r"\(\s*(?:(?:struct|union)\s+\w+|\w+)(?:\s+\w+)*\s*\**\s*\)|\(\s*[\w\s]+\**\s*\(\s*\*\s*\)\s*\([^()]*\)\s*\)"
 
 
 def said(text):
@@ -887,7 +905,7 @@ def mend(port, out, diags):
                 n, decl = fn.params[at[1]]
                 a, b = at[2]
                 arg = l[a:b].strip()
-                if re.match(r"\((?:struct \w+|\w+)\s*\**\s*\)", arg) or arg.endswith("!= 0"):
+                if re.match(CAST, arg) or arg.endswith("!= 0"):
                     continue                                # (mended already)
                 how = g("how") or ""
                 if "from pointer" in how or "pointer to integer" in how or \
@@ -898,19 +916,87 @@ def mend(port, out, diags):
                         new, why = "(%s)(intptr_t)%s" % (abstract(decl, n), arg), \
                                    "pointer given for an integer parameter: a cast (the 8086's pointer was 16 bits)"
                 else:
-                    new = "(%s)%s" % (ctype(g("to"), tags) if g("to") else abstract(decl, n), arg)
+                    t = ctype(g("to"), tags) if g("to") else abstract(decl, n)
+                    t = widths(t, blank(t), collections.defaultdict(list), f, port.int16)[0]
+                    new = "(%s)%s" % (t, arg)
                     why = "argument of another type than the parameter (as old C took it): a cast"
                 l = l[:a] + (" " if l[a:a + 1] == " " else "") + new + l[b:]
                 notes[why].append("%s:%d (%s, argument %d)" % (f, ln, fn.name, at[1] + 1))
                 changed = True
             elif kind == "fnptr":
                 x = re.match(r"\s*(\w+)\s*=\s*(\w+)\s*;", l)
-                if x and x.group(2) in port.fns:
+                at = re.match(r"\w+", l[col:])
+                fn = port.fns.get(at.group()) if at else None
+                if fn and fn.void and not ctype(g("to")).startswith("void"):
+                    fn.void, fn.keep_int = False, True      # (kept with functions that give an int: so does it)
+                    notes["function put where functions giving an int are (a table, a pointer): int"].append(
+                        "%s:%d (%s)" % (f, ln, fn.name))
+                    changed = True
+                elif x and x.group(2) in port.fns:
                     t = ctype(g("frm"), tags)
                     if "*)" not in t:
                         t = t.replace("(", "(*)(", 1)       # (clang names the function's type, not its pointer's)
                     t = re.sub(r"\(\s*\*\s*\)", "(*)", t)
                     port.fptr.setdefault(x.group(1), set()).add(t)
+                    changed = True
+                else:
+                    kind = "assign"                         # (no function of the program given: a cast)
+            if kind == "assign":
+                eq = [x for x in re.finditer(r"(?<![=!<>+\-*/%&|^])=(?!=)", l)]
+                eq.sort(key=lambda x: abs(x.start() - col))
+                if eq:
+                    a = eq[0].end()
+                    b = a
+                    d, inq = 0, None
+                    while b < len(l) and not (d == 0 and l[b] in ";,"):
+                        d += (l[b] in "([") - (l[b] in ")]")
+                        if d < 0:
+                            break
+                        b += 1
+                    rhs = l[a:b].strip()
+                    t = ctype(g("to"), tags)
+                    c = re.match(CAST, rhs)
+                    if c and c.end() < len(rhs) and rhs[:c.end()].replace(" ", "") != "(%s)" % t.replace(" ", ""):
+                        rhs = rhs[c.end():].strip()         # (a cast of an earlier round, to another type: replaced)
+                        c = None
+                    if rhs and not c:
+                        l = l[:a] + " (%s)%s" % (t, rhs if re.fullmatch(r"[\w.\->\[\]]+|\w+\(.*\)", rhs) else
+                                                  "(%s)" % rhs) + l[b:]
+                        notes["pointer given to a pointer of another type (as old C took it): a cast"].append(
+                            "%s:%d" % (f, ln))
+                        changed = True
+            elif kind == "neg":
+                # x == -1 of an unsigned: 16 bits, the 8086 compared it unsigned (0xFFFF); here the uint16_t is made
+                # an int first and the test fails - the constant given the operand's type keeps the meaning
+                t = ctype(g("t")) if g("t") else None
+                best = None
+                for x in re.finditer(r"(?P<a>[\w\]\)]+)\s*(?P<op>[=!<>]=|[<>])\s*(?P<k>-\s*\d+)\b|"
+                                     r"(?P<k2>-\s*\d+)\s*(?P<op2>[=!<>]=|[<>])\s*(?P<b>[\w\[(]+)", l):
+                    if best is None or abs(x.start() - col) < abs(best.start() - col):
+                        best = x
+                if best:
+                    opnd = best.group("a") or best.group("b")
+                    name = re.sub(r"\[.*", "", opnd).strip("()")
+                    decl = re.search(r"\b(u?int16_t|uint8_t|unsigned char)\b[^;]*\b%s\b" % re.escape(name), out[f])
+                    t = t or (decl.group(1) if decl else "uint16_t")   # (a byte's test was always false there too)
+                    if t in ("uint16_t", "unsigned short"):
+                        k = "k" if best.group("k") else "k2"
+                        a, b = best.span(k)
+                        l = l[:a] + "(uint16_t)%s" % best.group(k).replace(" ", "") + l[b:]
+                        notes["negative constant compared with a 16-bit unsigned (unsigned there, an int here): "
+                              "(uint16_t)-1"].append("%s:%d" % (f, ln))
+                        changed = True
+            elif kind == "intptr":
+                x = re.match(r"\s*(\w+)\s*=", l)
+                t = ctype(g("frm"), tags)
+                if x and x.group(1) not in port.retyped:
+                    port.retyped[x.group(1)] = t            # (the variable holds a pointer: it is declared one)
+                    v = re.escape(x.group(1))
+                    port.decl_rules.append((r"(?m)^(\s*(?:static\s+|extern\s+|register\s+)?)(?:u?int16_t|int|unsigned)"
+                                            r"\s+%s\s*;" % v, r"\g<1>%s%s%s;" % (t, "" if t.endswith("*") else " ",
+                                                                                x.group(1))))
+                    notes["integer variable that holds a pointer (the 8086's were both 16 bits): declared a "
+                          "pointer"].append("%s:%d (%s, %s)" % (f, ln, x.group(1), t))
                     changed = True
             elif kind == "member":
                 name = g("m")
