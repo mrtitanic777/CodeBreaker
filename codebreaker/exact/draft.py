@@ -650,6 +650,27 @@ def const_tests(text):
             return m.group(0)
         return "%s%s = %s;\n%s%s (%s) {" % (ind, x, k, ind, kw, re.sub(r"\b%s\b" % re.escape(x), k, test))
     t = re.sub(r"(?m)^([ \t]*)(\w+) = (-?\d+);\n\1(if|while) \((.*)\) \{$", one, text)
+    lines = t.split("\n")                                   # (and on past statements not giving it, to the first
+    for k, l in enumerate(lines):                           #  test of it in the block or one inside)
+        m = re.fullmatch(r"([ \t]*)(\w+) = (-?\d+);", l)
+        if not m:
+            continue
+        x, kv = m.group(2), m.group(3)
+        ind = len(m.group(1))
+        for j in range(k + 1, len(lines)):
+            y = lines[j]
+            if y.strip() and len(y) - len(y.lstrip()) < ind or re.match(r"\s*(?:L_\w+:|\}\s*else)", y):
+                break
+            if re.search(r"(?<![\w>.])%s\s*(?:=[^=]|\+\+|--)" % x, y) or re.match(r"\s*(?:while|for|do)\b", y):
+                break
+            tm = re.fullmatch(r"(\s*)if \((.*)\) \{", y)
+            if tm and re.search(r"\b%s\b" % x, tm.group(2)):
+                if len(re.findall(r"\b%s\b" % x, tm.group(2))) == 1:
+                    lines[j] = "%sif (%s) {" % (tm.group(1), re.sub(r"\b%s\b" % x, kv, tm.group(2)))
+                break
+            if re.search(r"\b%s\b" % x, y):
+                break
+    t = "\n".join(lines)
     return t if t != text else None
 
 
@@ -765,7 +786,7 @@ def call_tests(text):
             return m.group(0)
         return "%sif %s {" % (ind, re.sub(r"\bax\b", lambda _: call, test))
     text = re.sub(r"(?m)^([ \t]*)([A-Za-z_]\w*\([^;\n]*\));\n\1if (\(.*\)) \{$", one, text)
-    return re.sub(r"\(\(([^()]+|[A-Za-z_]\w*\([^()]*\)) \+ 1\) == 0\)", r"(\1 == -1)", text)
+    return re.sub(r"\(\(([^()]+|[A-Za-z_]\w*\([^()]*\)) \+ 1\) (==|!=) 0\)", r"(\1 \2 -1)", text)
 
 
 def fall_dups(text):
