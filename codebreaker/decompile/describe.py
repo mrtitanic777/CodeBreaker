@@ -311,6 +311,8 @@ def returns(code, off, limit=600, want=None):
             if target is not None:                       # (through a table or register: not followed)
                 work.append(target)
             continue
+        if ins.mnemonic in ("ljmp", "iret"):
+            continue                                     # (a far jump leaves: what is after it is someone else's)
         if (ins.mnemonic.startswith("j") or ins.mnemonic in ("loop", "loope", "loopne", "jcxz")) and target is not None:
             work.append(target)
         work.append(ins.address + ins.size)
@@ -342,6 +344,47 @@ def callers_say(d):
             who = "caller" if nxt.mnemonic == "add" and nxt.op_str.startswith("sp, ") else "callee"
             votes.setdefault(target, []).append(who)
     return {t: v[0] for t, v in votes.items() if len(v) >= 2 and len(set(v)) == 1}
+
+
+def forwards(d, seg, off, kind):
+    """Bytes of arguments a thunk's caller has removed, for a thunk that puts more arguments
+    under its return address and jumps on: `pop bx / pop dx` (the return address), `push`es (the
+    words it adds), `push dx / push bx`, then `jmp` / `ljmp` to the function that does the work
+    (USER's 1:0110 adds a 0 and goes to BeginPaint's body at 1:75C8). What the target removes,
+    less the words the thunk added. -> bytes, or None when it is not such a thunk."""
+    code = (getattr(d, "images", None) or {}).get(seg) or d.segment_bytes.get(seg, b"")   # (relocated: a far jump's segment as the placeholder)
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    ins = list(md.disasm(bytes(code[off:off + 32]), off))[:12]
+    words = 2 if kind == "far" else 1
+    regs = ("ax", "bx", "cx", "dx", "si", "di", "es")
+    if len(ins) < 2 * words + 2 or any(i.mnemonic != "pop" or i.op_str not in regs for i in ins[:words]):
+        return None
+    ret = [i.op_str for i in ins[:words]]
+    k, added = words, 0
+    while k < len(ins) and ins[k].mnemonic in ("push", "xor", "mov", "sub") and \
+            not (ins[k].mnemonic == "push" and ins[k].op_str == ret[-1]):
+        if ins[k].mnemonic == "push":
+            added += 1
+        elif any(r in ins[k].op_str.split(",")[0] for r in ret):
+            return None                                      # (its return address changed)
+        k += 1
+    back = [i.op_str for i in ins[k:k + words] if i.mnemonic == "push"]
+    if back != list(reversed(ret)) or not added or k + words >= len(ins):
+        return None
+    j = ins[k + words]
+    if j.mnemonic == "ljmp" and re.fullmatch(r"0x[0-9a-f]+(, |:)0x[0-9a-f]+", j.op_str):
+        s, o = (int(x, 16) for x in re.split(r", |:", j.op_str))
+        if s >= 0xE000:
+            return None                                      # (another module's: not known here)
+        tseg, toff = where((s << 16) | o)
+    elif j.mnemonic == "jmp" and re.fullmatch(r"0x[0-9a-f]+", j.op_str):
+        tseg, toff = seg, int(j.op_str, 16) & 0xFFFF
+    else:
+        return None
+    _k, pop = returns(d.segment_bytes.get(tseg, b""), toff, want=kind)
+    if pop is None or pop < 0:
+        return None
+    return max(0, pop - 2 * added)
 
 
 def popped_by_hand(code, off, kind):
@@ -615,6 +658,9 @@ def model_line(d, va, name, default="near"):
     # in a plain return leaves them to the caller -- unless it took them off by hand first
     # (USER's IsChild: `pop ax; pop dx` its return address, `pop bx; pop cx` its two arguments,
     # `push dx; push ax` the return address back, then a plain `retf`).
+    fwd = forwards(d, seg, off, kind or default)
+    if fwd is not None:
+        pop, kind = fwd, "far" if (kind or default) == "far" else kind
     if pop == 0:
         pop = popped_by_hand(code, off, kind or default) or 0
     conv = "__stdcall16" if pop > 0 else "__cdecl16" if pop == 0 else "__stdcall16"

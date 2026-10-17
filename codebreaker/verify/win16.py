@@ -92,16 +92,34 @@ def directed(module_path, seg, span, most=8):
         md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
         md.detail = True
         seen = []
+        # (a switch written as a chain of subtractions -- `dec ax / dec ax / sub ax, 4 / sub ax, 9
+        # / sub ax, 72h`, each case's `je` after its step: a window procedure's messages 1, 2, 6,
+        # 0Fh, 81h -- tests the running total, not each step's number: the totals are the cases)
+        X = capstone.x86
+        total = {}
         for ins in md.disasm(bytes(code[span[0]:span[1]]), span[0]):
-            if ins.mnemonic not in ("cmp", "test", "sub", "and"):
+            ops = ins.operands
+            reg = ops[0].reg if ops and ops[0].type == X.X86_OP_REG else None
+            if reg is not None and ins.mnemonic in ("dec", "inc", "sub", "add") and \
+                    (ins.mnemonic in ("dec", "inc") or (len(ops) > 1 and ops[1].type == X.X86_OP_IMM)):
+                step = 1 if ins.mnemonic in ("dec", "inc") else ops[1].imm
+                step = step if ins.mnemonic in ("dec", "sub") else -step
+                total[reg] = (total.get(reg, 0) + step) & 0xFFFF
+                c = total[reg]
+                if c not in seen and c not in (0, 0xFFFF):
+                    seen.append(c)
                 continue
-            for op in ins.operands:
-                if op.type == capstone.x86.X86_OP_IMM:
+            if reg is not None and ins.mnemonic not in ("cmp", "test", "or"):
+                total.pop(reg, None)                         # (the register set anew: a chain ends)
+            if ins.mnemonic not in ("cmp", "test", "and"):
+                continue
+            for op in ops:
+                if op.type == X.X86_OP_IMM:
                     c = op.imm & 0xFFFF
                     if c not in seen and c not in (0, 0xFFFF):
                         seen.append(c)
         n, sel, out = ARG_WORDS, emulator.SAFE_ARG, []
-        for c in seen[:most // 2]:
+        for c in seen[:max(most // 2, 24)]:
             out.append({"args": [c] * n})
             out.append({"args": [c if i % 2 == 0 else sel for i in range(n)]})
         _DIRECTED[key] = out
