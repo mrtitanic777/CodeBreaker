@@ -1040,6 +1040,38 @@ def _build16(b, path, m, folder):
     with open(path, "rb") as fh:
         _last, _pages = struct.unpack_from("<HH", fh.read(6), 2)
     loads_itself = _pages * 512 >= os.path.getsize(path) - 511
+    if loads_itself:
+        # A module that loads itself keeps only what the original's segments held: KERNEL trims
+        # its segment 1 after start-up (the selector's limit A93F, the init code past it thrown
+        # away), so a function of ours that does not fit its own place and goes after the frame
+        # is past the end -- KRNL386's C fault decoder (1:A296) placed at 1:C602 faulted on every
+        # fault it was to decode ("Invalid DPMI return from 0367:C608"). Such a one stays as its
+        # instructions.
+        from codebreaker.build import msc6
+        starts_of = {}
+        for (sg, o) in at:
+            starts_of.setdefault(sg, []).append(o)
+        for sg in starts_of:
+            starts_of[sg].sort()
+        for n in m.order:
+            if n in forced or n not in stems or n not in segment_of or stems[n].startswith("asm/"):
+                continue
+            sg = segment_of[n]
+            o = next((o for (s2, o), nm in at.items() if s2 == sg and nm == n), None)
+            if o is None:
+                continue
+            later = [x for x in starts_of[sg] if x > o]
+            room = (later[0] if later else segs[sg]["length"] if sg in segs else o) - o
+            try:
+                with open(os.path.join(folder, stems[n] + ".obj"), "rb") as fh:
+                    need = (o & 1) + len(msc6.object_code(fh.read())[0])     # (word-aligned, as placed)
+            except OSError:
+                continue
+            if need > room:
+                forced.add(n)
+                if n in b.origins:
+                    b.origins[n].evidence.append(
+                        "its C (%d bytes) does not fit its place (%d) in a module that loads itself" % (need, room))
 
     asm_read = {}                                            # (file -> (size, mtime, text): each read once)
 

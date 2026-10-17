@@ -499,18 +499,23 @@ def _far_from_stack(body, far):
     The decompiler keeps the destination far but not the ES it was given; C makes a far pointer
     of a near one with DS, and the 14 bytes went to the frame's offset in the data segment --
     over the code of whatever lay there. Given SS, as the original."""
+    # (an address in the frame: an array local, or & of a local -- not the value a local holds)
+    arrays = set(re.findall(r"(?m)^\s+[\w ]+?\**\s*(\w*Stack_[0-9a-f]+) \[\d+\];", body))
+
+    def in_frame(amp, src):
+        return (amp and re.fullmatch(r"\w*Stack_[0-9a-f]+", src)) or src in arrays or (not amp and src in stack)
     stack = set()
     for _ in range(3):                                   # (pointers set from those, in turn)
-        for mm in re.finditer(r"(?m)^\s+(\w+) = (?:\([\w ]+\*\))?\s*&?(\w+)(?: \+ [\w()]+)?;", body):
-            v, src = mm.groups()
-            if v not in far and (re.fullmatch(r"\w*Stack_[0-9a-f]+", src) or src in stack):
+        for mm in re.finditer(r"(?m)^\s+(\w+) = (?:\([\w ]+\*\))?\s*(&?)(\w+)(?: \+ [\w()]+)?;", body):
+            v, amp, src = mm.groups()
+            if v not in far and in_frame(amp, src):
                 stack.add(v)
     # (a pointer set from anything else too is not known to be in the frame)
     for v in list(stack):
         for mm in re.finditer(r"(?m)^\s+%s = ([^;]+);" % re.escape(v), body):
             rhs = mm.group(1)
-            ok = re.fullmatch(r"(?:\([\w ]+\*\))?\s*&?(\w+)(?: \+ [\w()]+)?", rhs.strip())
-            if not ok or not (re.fullmatch(r"\w*Stack_[0-9a-f]+", ok.group(1)) or ok.group(1) in stack):
+            ok = re.fullmatch(r"(?:\([\w ]+\*\))?\s*(&?)(\w+)(?: \+ [\w()]+)?", rhs.strip())
+            if not ok or not in_frame(ok.group(1), ok.group(2)):
                 stack.discard(v)
                 break
     if not stack:
