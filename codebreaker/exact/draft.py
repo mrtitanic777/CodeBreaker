@@ -369,7 +369,8 @@ def push_returns(text):
                     dflt = dflt or lines[j].strip() == "default:"
                 else:
                     arm.append(j)
-            return got if ok_ and got and dflt else None
+            return got if ok_ and got else None             # (no default: the function falls off its end there,
+                                                            #  as the source does)
         start = next((j for j in range(k - 1, lo - 1, -1) if re.match(r"\s*if \(.*\) \{$", lines[j]) and
                       len(lines[j]) - len(lines[j].lstrip()) == len(lines[k]) - len(lines[k].lstrip())), None)
         if start is None:
