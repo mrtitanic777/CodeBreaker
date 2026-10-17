@@ -640,6 +640,31 @@ def loop_registers(text):
     return text
 
 
+def loop_guards(text):
+    """in a loop: if (C) { S; continue; } else { R } (R leaving: return, break) last in its body - the leaving
+    test first: if (!C) { R } S (a variant, with its for when S ends by a step)"""
+    lines = text.split("\n")
+    for k in range(len(lines)):
+        m = re.fullmatch(r"([ \t]*)(?:while \(.*\)|for \(.*\)) \{", lines[k])
+        e = _block_end(lines, k) if m else None
+        if e is None:
+            continue
+        i4 = m.group(1) + "    "
+        j0 = max((j for j in range(k + 1, e) if lines[j].startswith(i4 + "if (") and lines[j].endswith("{")), default=None)
+        p = _if_parts(lines, j0) if j0 is not None else None
+        if not p or p[2] is None or p[3] != e:
+            continue
+        th = [x for x in p[1] if x.strip()]
+        el = [x for x in p[2] if x.strip()]
+        if not th or th[-1].strip() != "continue;" or not el or not re.match(r"\s*(?:return\b|break;)", el[-1]):
+            continue
+        neg = _truth(_not("(%s)" % p[0]))
+        new = ["%sif (%s) {" % (i4, neg)] + p[2] + [i4 + "}"] + [x[4:] for x in th[:-1]]
+        t = "\n".join(lines[:j0] + new + lines[e:])
+        return for_loops(t) or t
+    return None
+
+
 def first_breaks(text):
     """for (;;) { if (C) break; S } - the loop's test first: while (!C) { S }"""
     lines = text.split("\n")
@@ -1004,7 +1029,7 @@ def copy_props(text):
                 out[j] = None
                 continue
             reads = len(re.findall(r"\b%s\b" % r, y))
-            sets_r = re.match(r"\s*%s\s*=[^=]" % r, y)
+            sets_r = re.match(r"\s*(?:%s|%sl|%sh)\s*=[^=]" % (r, r[0], r[0]), y)   # (or a half of it)
             if reads and not sets_r:
                 out[j] = re.sub(r"\b%s\b" % r, x, y)
                 used = True
@@ -3320,7 +3345,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
             t = buffers(t) or t
         t = frame_chars(fn_pointers(t), widths)
         t = fill_frame(t, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
-        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t), register_copies(t), lead_filler(t), scaled_places(t), shared_tails(t), guard_returns(t), default_after(t), frame_more(t), loop_tests(t), switch_breaks(t), register_reads(t), compare_results(t), or_loops(t)] if v]
+        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t), register_copies(t), lead_filler(t), scaled_places(t), shared_tails(t), guard_returns(t), default_after(t), frame_more(t), loop_tests(t), switch_breaks(t), register_reads(t), compare_results(t), or_loops(t), loop_guards(t)] if v]
         both = pre_steps(t)
         both = pre_increments(both) if both else None
         if both:
@@ -4585,7 +4610,7 @@ REFINERS = [lambda prj, s: [assign_in_args(s)], lambda prj, s: [return_sources(s
             lambda prj, s: [lead_filler(s)], lambda prj, s: [scaled_places(s)], lambda prj, s: [shared_tails(s)],
             lambda prj, s: [guard_returns(s)], lambda prj, s: [default_after(s)], lambda prj, s: [frame_more(s)],
             lambda prj, s: [loop_tests(s)], lambda prj, s: [switch_breaks(s)], lambda prj, s: [register_reads(s)],
-            lambda prj, s: [compare_results(s)], lambda prj, s: [or_loops(s)],
+            lambda prj, s: [compare_results(s)], lambda prj, s: [or_loops(s)], lambda prj, s: [loop_guards(s)],
             lambda prj, s: [re.sub(r"\b([A-Za-z_]\w*), 0\)", r"(long)\1)", s, count=1)],   # (a value and a zero word
                                                                                                #  pushed: it widened)
             lambda prj, s: [re.sub(r"\b0, 0\)", "0L)", s)]]     # (two zero words pushed: a long 0)

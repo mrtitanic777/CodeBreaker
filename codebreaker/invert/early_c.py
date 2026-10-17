@@ -1544,7 +1544,9 @@ class R:
             return i+1
         if mn=="push":
             if ops=="cs" and i+1<len(s.ins) and s.ins[i+1].mnemonic=="call": return i+1
-            if ops=="ax": s.args.append(s.ax if s.ax is not None else "ax")
+            if ops=="ax" and s.ax is None and s.msc3 and "al" in s.breg and str(s.breg.get("ah"))=="0":
+                s.args.append(str(s.breg["al"]))             # (3.00: al given, ah cleared: the byte widened - a char)
+            elif ops=="ax": s.args.append(s.ax if s.ax is not None else "ax")
             elif ops in ("bx","cx","dx","si","di"):
                 v=getattr(s,ops,None); s.args.append(v if v is not None else ops)
             else: s.args.append(s.memname(ops) or ops)
