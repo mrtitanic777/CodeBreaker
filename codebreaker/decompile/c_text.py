@@ -18,6 +18,8 @@ import os
 import re
 import struct
 
+from codebreaker.decompile import ctree
+
 
 # The printed text gives a function in the module's default convention (stdcall) without saying
 # so, and spells the others out. Compile with stdcall as the default (-ecd; -ecs is __syscall) so
@@ -190,19 +192,27 @@ def _keep_frame(t):
 _PTR_DECL = re.compile(r"(?m)^  [A-Za-z_][\w ]*?\*+\s*(\w+)(?: \[\d+\])?;[ \t]*$")
 
 
-_OPERAND = r"(?:\(u?int4\))?(?:_f\.)?[A-Za-z_]\w*"
-
-
-_COMPARE = re.compile(r"(?<![\w.>)\]*&])(%s) (<=|>=|<|>|==|!=) (%s)(?![\w.(\[]|->)" % (_OPERAND, _OPERAND))
-
-
-_NULL = re.compile(r"([=!]=) \((?:[A-Za-z_][\w ]*?) ?\*+\)0x0\b")
+_COMPARISONS = ("<=", ">=", "<", ">", "==", "!=")
 
 
 def _null_is_zero(t):
     """`x == (int4 *)0x0` is `x == 0` whatever x is; written with the cast, it does not compile
     when x is a number."""
-    return _NULL.sub(lambda m: m.group(1) + " 0", t)
+    def fix(src):
+        for n in src.find("binary_expression"):
+            if n.child_by_field_name("operator").type in ("==", "!="):
+                r = n.child_by_field_name("right")
+                if r.type == "cast_expression" and _null_pointer(src, r):
+                    src.replace(r, "0")
+    return ctree.rewrite(t, fix)
+
+
+def _null_pointer(src, cast):
+    """`(T *)0x0`: a pointer type, the value 0x0"""
+    ty, value = cast.child_by_field_name("type"), cast.child_by_field_name("value")
+    star = ty.child_by_field_name("declarator")
+    return value.type == "number_literal" and src.at(value) == "0x0" and star is not None and \
+        star.type == "abstract_pointer_declarator"
 
 
 def _compare_as_numbers(t):
@@ -215,15 +225,33 @@ def _compare_as_numbers(t):
     if not ptrs:
         return t
 
-    def is_ptr(x):
-        return "(" not in x and x.split(".")[-1] in ptrs
+    def operand(src, n):
+        """A variable -- itself, a field of the frame record `_f.x`, or it cast to a number: the
+        name it is a pointer by ('' when cast); None when it is not such an operand"""
+        if n.type == "cast_expression" and src.at(n.child_by_field_name("type")) in ("int4", "uint4"):
+            v = n.child_by_field_name("value")
+            return "" if v.type != "cast_expression" and operand(src, v) is not None else None
+        if n.type == "identifier":
+            return src.at(n)
+        if n.type == "field_expression" and src.at(n.child_by_field_name("argument")) == "_f" and \
+                src.at(n.child_by_field_name("operator")) == ".":
+            return src.at(n.child_by_field_name("field"))
+        return None
 
-    def fix(m):
-        l, op, r = m.groups()
-        if is_ptr(l) == is_ptr(r) or "0" in (l, r):
-            return m.group(0)
-        return "%s %s %s" % ("(uint4)" + l if is_ptr(l) else l, op, "(uint4)" + r if is_ptr(r) else r)
-    return _COMPARE.sub(fix, t)
+    def fix(src):
+        for n in src.find("binary_expression"):
+            if n.child_by_field_name("operator").type not in _COMPARISONS:
+                continue
+            sides = [n.child_by_field_name("left"), n.child_by_field_name("right")]
+            names = [operand(src, s) for s in sides]
+            if None in names:
+                continue
+            ptr = [x in ptrs for x in names]
+            if ptr[0] != ptr[1]:
+                for s, is_ptr in zip(sides, ptr):
+                    if is_ptr:
+                        src.insert(s.start_byte, "(uint4)")
+    return ctree.rewrite(t, fix)
 
 
 def _fit_calls(out, order):
@@ -295,9 +323,7 @@ def compilable32(module_path, funcs, outdir):
         # is not part of it: left in, it became the function's declaration and broke the header)
         t = _LEADING.sub("", "\n".join(body).strip())
         # `x._1_2_` is the core's spelling of "2 bytes of x starting at byte 1"
-        t = re.sub(r"\b([A-Za-z_]\w*)\._(\d+)_(\d+)_",
-                   lambda mm: "(*(%s *)((char *)&%s + %s))" % (_BY_SIZE.get(int(mm.group(3)), "uint4"),
-                                                               mm.group(1), mm.group(2)), t)
+        t = _pieces(t, _BY_SIZE, "uint4")
         t = _compare_as_numbers(_keep_frame(_null_is_zero(t)))
         # a function's address stored in a pointer the core typed loosely
         t = re.sub(r"(?m)(= )((?:%s);)$" % "|".join(re.escape(x) for x in order), r"\1(code *)\2", t)
@@ -571,23 +597,49 @@ _SIZED = {1: "uint1", 2: "uint2", 4: "uint4"}
 
 
 _SIGNED = {1: "int1", 2: "int2", 4: "int4"}
-_ORDER = re.compile(r"(?:<=|>=|(?<![<>])<(?![<=])|(?<![->])>(?![>=]))")
+_ORDERING = ("<", ">", "<=", ">=")
 
 
-def _pieces(text):
-    """`x._2_2_` is the decompiler's spelling of "2 bytes of x starting at byte 2". Unsigned,
-    except as one side of an ordering comparison: the core prints its signed compare
-    (INT_SLESS) with no cast there, and an unsigned piece made it unsigned -- USER's
-    sub_10_2F28 `xRam116001bc._2_2_ < a1` took the other branch for a1 = FFFFh. (Against an
-    unsigned other side a signed piece of the same size still compares unsigned in C.)"""
-    def piece(m):
-        before = text[max(0, m.start() - 4):m.start()].rstrip()
-        after = text[m.end():m.end() + 4].lstrip()
-        ordered = _ORDER.match(after) or (before and _ORDER.search(before[-2:]) and before[-2:].strip()[-1:] in "<>=")
-        size = int(m.group(3))
-        ty = (_SIGNED if ordered else _SIZED).get(size, "uint2")
-        return "(*(%s *)((char *)&%s + %s))" % (ty, m.group(1), m.group(2))
-    return re.sub(r"\b([A-Za-z_]\w*)\._(\d+)_(\d+)_", piece, text)
+def _pieces(text, sized=None, default="uint2", spell=None):
+    """`x._2_2_` is the decompiler's spelling of "2 bytes of x starting at byte 2": the bytes at
+    that place, as the type of that size (`spell(x, offset, type)` writes it another way).
+    Unsigned, except as one side of an ordering comparison: the core prints its signed compare
+    (INT_SLESS) with no cast there, and an unsigned piece made it unsigned -- USER's sub_10_2F28
+    `xRam116001bc._2_2_ < a1` took the other branch for a1 = FFFFh. (Against an unsigned other
+    side a signed piece of the same size still compares unsigned in C.)"""
+    spell = spell or (lambda x, off, ty: "(*(%s *)((char *)&%s + %s))" % (ty, x, off))
+
+    def fix(src):
+        for n in src.find("field_expression"):
+            m = re.fullmatch(r"_(\d+)_(\d+)_", src.at(n.child_by_field_name("field")))
+            if m and src.at(n.child_by_field_name("operator")) == "." and not _has_piece(n.child_by_field_name("argument")):
+                table = sized or (_SIGNED if _ordered(src, n) else _SIZED)
+                src.replace(n, spell(src.at(n.child_by_field_name("argument")), m.group(1),
+                                     table.get(int(m.group(2)), default)))
+    before = None
+    while before != text:                                # (a piece of a piece: the inner one first)
+        before, text = text, ctree.rewrite(text, fix)
+    return text
+
+
+def _ordered(src, n):
+    """Is this expression (in parentheses or not) one side of <, >, <= or >=?"""
+    up = n.parent
+    while up is not None and up.type == "parenthesized_expression":
+        up = up.parent
+    return up is not None and up.type == "binary_expression" and \
+        src.at(up.child_by_field_name("operator")) in _ORDERING
+
+
+def _has_piece(n):
+    todo = [n]
+    while todo:
+        c = todo.pop()
+        f = c.child_by_field_name("field") if c.type == "field_expression" else None
+        if f is not None and re.fullmatch(rb"_\d+_\d+_", f.text or b""):
+            return True
+        todo.extend(c.children)
+    return False
 
 
 def _joined_arguments(text, widths=None):
@@ -601,10 +653,24 @@ def _joined_arguments(text, widths=None):
     # an extra 0 went into the template, and every item after the icon was read askew -- the
     # icon message boxes failed with a divide error)
     widths = widths or {}
-    text = re.sub(r"\*_(a\d+|param_\d+)\b",
-                  lambda mm: "*(*(%s __far * *)&%s)" % ("char" if widths.get(mm.group(1)) == 1 else "int2", mm.group(1)),
-                  text)
-    return re.sub(r"(?<![\w.])_(a\d+|param_\d+)\b", r"(*(uint4 *)&\1)", text)
+
+    def through(name):
+        return "*(*(%s __far * *)&%s)" % ("char" if widths.get(name) == 1 else "int2", name)
+
+    def fix(src):
+        for n in src.find("identifier"):
+            m = re.fullmatch(r"_(a\d+|param_\d+)", src.at(n))
+            if not m:
+                continue
+            up = n.parent
+            if up is not None and up.type == "pointer_expression" and src.at(up.child_by_field_name("operator")) == "*":
+                src.replace(up, through(m.group(1)))
+            elif up is not None and src.misread(up) == "*" and up.child_by_field_name("right") == n:
+                # (`(uint4)*_a1`: read as a product of `(uint4)` and `_a1`)
+                src.replace((up.child_by_field_name("operator").start_byte, n.end_byte), through(m.group(1)))
+            else:
+                src.replace(n, "(*(uint4 *)&%s)" % m.group(1))
+    return ctree.rewrite(text, fix)
 
 
 def _far_argument_widths(code, start, end, far_fn):
@@ -636,8 +702,14 @@ def _segment_registers(text):
     register held when the function was entered" -- used when it passes the address of a local
     as a far pointer (offset, SS) or a string constant as (offset, CS). Left as plain locals
     they would be garbage; they are given the register's value."""
-    return re.sub(r"(?m)^(\s+(?!return\b)\w+ )unaff_(SS|DS|CS);\s*$",     # (a declaration, not `return unaff_DS;`)
-                  lambda m: "%sunaff_%s = codebreaker_%s();" % (m.group(1), m.group(2), m.group(2).lower()), text)
+    def fix(src):
+        for n in src.find("declaration"):
+            ds = n.children_by_field_name("declarator")
+            if len(ds) == 1 and ds[0].type == "identifier" and src.at(n.child_by_field_name("type")).isidentifier():
+                m = re.fullmatch(r"unaff_(SS|DS|CS)", src.at(ds[0]))
+                if m:
+                    src.insert(ds[0].end_byte, " = codebreaker_%s()" % m.group(1).lower())
+    return ctree.rewrite(text, fix)
 
 
 _FAR_LOAD = re.compile(r"\[bp \+ (0x[0-9a-f]+|\d+)\]")
@@ -1378,15 +1450,14 @@ def _frame_block(body, arrays):
     return body
 
 
-_ENDS = {}
-
-
 def _end_of(d, seg, off):
-    """Where the function at seg:off ends: the next function's start in its segment."""
-    key = (id(d), seg)
-    if key not in _ENDS:
-        _ENDS[key] = sorted(o for (s, o) in d.where.values() if s == seg)
-    starts = _ENDS[key]
+    """Where the function at seg:off ends: the next function's start in its segment. (Kept on the
+    description: kept by id() it was given to the next module's description when that one came
+    to the same address -- and its functions were cut at the other module's starts.)"""
+    ends = d.__dict__.setdefault("_ends", {})
+    if seg not in ends:
+        ends[seg] = sorted(o for (s, o) in d.where.values() if s == seg)
+    starts = ends[seg]
     import bisect
     k = bisect.bisect_right(starts, off)
     return starts[k] if k < len(starts) else len(d.images.get(seg, b""))
@@ -1635,7 +1706,6 @@ static void codebreaker_trap(uint4 to, int8 a, int8 b, uint8 ua, uint8 ub) {
 #define trapDoubleWord(to, a, b) codebreaker_trap((uint4)(to), (int8)(a), (int8)(b), (uint8)(a), (uint8)(b))
 """
 _WIDE_ADDRESS = re.compile(r"\b0xffffffff([89a-f][0-9a-f]{7})\b")
-_PIECE = re.compile(r"\b([A-Za-z_]\w*(?:\[[^\[\]]*\])?)\._(\d+)_(\d+)_")
 
 
 _HOME = re.compile(r"\b_?([a-z]+)Stack(000000[0-9a-f]{2})\b")
@@ -1737,7 +1807,7 @@ def compilable_powerpc(module_path, outdir):
                 body.append(ln)
         t = "\n".join(body).strip()
         t = _WIDE_ADDRESS.sub(r"0x\1", t)
-        t = _PIECE.sub(lambda mm: "PIECE(%s, %s, %s)" % (mm.group(1), mm.group(2), _BY_SIZE.get(int(mm.group(3)), "uint4")), t)
+        t = _pieces(t, _BY_SIZE, "uint4", lambda x, off, ty: "PIECE(%s, %s, %s)" % (x, off, ty))
         t = _compare_as_numbers(t)
         t = re.sub(r"(?m)(= )((?:%s);)$" % "|".join(re.escape(x) for x in order), r"\1(code *)\2", t)
         t = _homed_arguments(t)

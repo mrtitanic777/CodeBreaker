@@ -310,7 +310,7 @@
   },
   {
    "args": [
-    "int2 __cdecl16far __export sub_11_01B7(param_1)\nxunknown1 param_1;\n{\n  int2 iVar1;\n  xunknown2 xVar2;\n  xunknown2 in_DX;\n  xunknown2 extraout_DX;\n  xunknown2 in_BX;\n  xunknown2 unaff_DS = codebreaker_ds();\n  xVar2 = 0;\n  sub_11_02A0();\n  sub_11_02A0();\n  if (*(int2 *)0xfa == -0x292a) {\n    (*(code *)*(xunknown2 *)0x100)();\n    in_DX = extraout_DX;\n  }\n  sub_11_02A0();\n  sub_11_02A0();\n  sub_11_0253();\n  if ((uRam10500071 & 1) == 0) {\n    iVar1 = int21(CONCAT11(0x4c,param_1),in_BX,xVar2,in_DX,0xfa,0xfa);\n  }\n  else {\n    iVar1 = KERNEL_102();\n  }\n  return iVar1;\n}",
+    "int2 __cdecl16far __export sub_11_01B7(param_1)\nxunknown1 param_1;\n{\n  int2 iVar1;\n  xunknown2 xVar2;\n  xunknown2 in_DX;\n  xunknown2 extraout_DX;\n  xunknown2 in_BX;\n  xunknown2 unaff_DS = codebreaker_ds();\n  \n  xVar2 = 0;\n  sub_11_02A0();\n  sub_11_02A0();\n  if (*(int2 *)0xfa == -0x292a) {\n    (*(code *)*(xunknown2 *)0x100)();\n    in_DX = extraout_DX;\n  }\n  sub_11_02A0();\n  sub_11_02A0();\n  sub_11_0253();\n  if ((uRam10500071 & 1) == 0) {\n    iVar1 = int21(CONCAT11(0x4c,param_1),in_BX,xVar2,in_DX,0xfa,0xfa);\n  }\n  else {\n    iVar1 = KERNEL_102();\n  }\n  return iVar1;\n}",
     {
      "$s": [
       {
@@ -363,7 +363,7 @@
     }
    ],
    "args_after": [
-    "int2 __cdecl16far __export sub_11_01B7(param_1)\nxunknown1 param_1;\n{\n  int2 iVar1;\n  xunknown2 xVar2;\n  xunknown2 in_DX;\n  xunknown2 extraout_DX;\n  xunknown2 in_BX;\n  xunknown2 unaff_DS = codebreaker_ds();\n  xVar2 = 0;\n  sub_11_02A0();\n  sub_11_02A0();\n  if (*(int2 *)0xfa == -0x292a) {\n    (*(code *)*(xunknown2 *)0x100)();\n    in_DX = extraout_DX;\n  }\n  sub_11_02A0();\n  sub_11_02A0();\n  sub_11_0253();\n  if ((uRam10500071 & 1) == 0) {\n    iVar1 = int21(CONCAT11(0x4c,param_1),in_BX,xVar2,in_DX,0xfa,0xfa);\n  }\n  else {\n    iVar1 = KERNEL_102();\n  }\n  return iVar1;\n}",
+    "int2 __cdecl16far __export sub_11_01B7(param_1)\nxunknown1 param_1;\n{\n  int2 iVar1;\n  xunknown2 xVar2;\n  xunknown2 in_DX;\n  xunknown2 extraout_DX;\n  xunknown2 in_BX;\n  xunknown2 unaff_DS = codebreaker_ds();\n  \n  xVar2 = 0;\n  sub_11_02A0();\n  sub_11_02A0();\n  if (*(int2 *)0xfa == -0x292a) {\n    (*(code *)*(xunknown2 *)0x100)();\n    in_DX = extraout_DX;\n  }\n  sub_11_02A0();\n  sub_11_02A0();\n  sub_11_0253();\n  if ((uRam10500071 & 1) == 0) {\n    iVar1 = int21(CONCAT11(0x4c,param_1),in_BX,xVar2,in_DX,0xfa,0xfa);\n  }\n  else {\n    iVar1 = KERNEL_102();\n  }\n  return iVar1;\n}",
     {
      "$s": [
       {
@@ -429,7 +429,7 @@
     }
    ],
    "kwargs": {},
-   "result": "int2 __cdecl16far __export sub_11_01B7(param_1)\nxunknown1 param_1;\n{\n  int2 iVar1;\n  xunknown2 xVar2;\n  xunknown2 in_DX;\n  xunknown2 extraout_DX;\n  xunknown2 in_BX;\n  xunknown2 unaff_DS = codebreaker_ds();\n  xVar2 = 0;\n  sub_11_02A0();\n  sub_11_02A0();\n  if (*(int2 *)0xfa == -0x292a) {\n    (*(code *)*(xunknown2 *)0x100)();\n    in_DX = extraout_DX;\n  }\n  sub_11_02A0();\n  sub_11_02A0();\n  sub_11_0253();\n  if ((uRam10500071 & 1) == 0) {\n    iVar1 = int21_ax_cx_si_di(CONCAT11(0x4c,param_1),xVar2,0xfa,0xfa);\n  }\n  else {\n    iVar1 = KERNEL_102();\n  }\n  return iVar1;\n}"
+   "result": "int2 __cdecl16far __export sub_11_01B7(param_1)\nxunknown1 param_1;\n{\n  int2 iVar1;\n  xunknown2 xVar2;\n  xunknown2 in_DX;\n  xunknown2 extraout_DX;\n  xunknown2 in_BX;\n  xunknown2 unaff_DS = codebreaker_ds();\n  \n  xVar2 = 0;\n  sub_11_02A0();\n  sub_11_02A0();\n  if (*(int2 *)0xfa == -0x292a) {\n    (*(code *)*(xunknown2 *)0x100)();\n    in_DX = extraout_DX;\n  }\n  sub_11_02A0();\n  sub_11_02A0();\n  sub_11_0253();\n  if ((uRam10500071 & 1) == 0) {\n    iVar1 = int21_ax_cx_si_di(CONCAT11(0x4c,param_1),xVar2,0xfa,0xfa);\n  }\n  else {\n    iVar1 = KERNEL_102();\n  }\n  return iVar1;\n}"
   },
   {
    "args": [

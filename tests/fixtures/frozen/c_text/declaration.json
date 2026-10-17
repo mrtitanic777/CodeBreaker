@@ -9,31 +9,31 @@
   },
   {
    "args": [
-    "int2 __cdecl16far sub_3_3EC8()\n{\n  int2 iVar1;\n  \n  sub_3_28FA(1);\n  iVar1 = sub_3_0060();\n  if (iVar1 == 0) {\n    return 0;\n  }\n  sub_3_417C();\n  return 1;\n}"
+    "int4 __stdcall16far sub_3_09C8(a1)\nint2 a1;\n{\n  xunknown2 unaff_DS = codebreaker_ds();\n  \n  return CONCAT22(*(xunknown2 *)(a1 + 0x10),*(xunknown2 *)(a1 + 0xe));\n}"
    ],
    "kwargs": {},
-   "result": "int2 __cdecl16far sub_3_3EC8();"
+   "result": "int4 __stdcall16far sub_3_09C8();"
   },
   {
    "args": [
-    "int2 __stdcall16far __loadds MIDISTREAMPAUSE(a1)\nint2 a1;\n{\n  int2 iVar1;\n  int4 iVar2;\n  \n  iVar1 = sub_1_006B(0xd,a1);\n  if (iVar1 == 0) {\n    iVar2 = sub_7_00D8(0,0,0,0,0x12,a1);\n    iVar1 = (int2)iVar2;\n  }\n  else {\n    iVar1 = 5;\n  }\n  return iVar1;\n}"
+    "int2 __stdcall16far sub_4_0A5E(a1,a2)\nint2 a1;\nint2 a2;\n{\n  int2 iVar1;\n  \n  if (((a2 == 0 && a1 == 0) || ((*(uint1 __far *)((uint1 __far *)MK_FP(a2, a1)) & 0x20) != 0)) ||\n     (iVar1 = sub_4_0612(a1,a2), iVar1 != 0)) {\n    return 0;\n  }\n  sub_4_0000(a1,a2);\n  return 1;\n}"
    ],
    "kwargs": {},
-   "result": "int2 __stdcall16far __loadds MIDISTREAMPAUSE();"
+   "result": "int2 __stdcall16far sub_4_0A5E();"
   },
   {
    "args": [
-    "int2 __stdcall16near sub_1_014E(a1,a2,a3)\nint2 a1;\nint2 a2;\nint2 a3;\n{\n  int2 a1_00;\n  xunknown2 unaff_DS = codebreaker_ds();\n  a1_00 = 0;\n  while ((a1_00 < 0x40 &&\n         ((*(int2 *)(a1_00 * 4 + a3 + 0x5e) != a1 || (*(int2 *)(a1_00 * 4 + a3 + 0x60) != a2))))) {\n    a1_00 = a1_00 + 1;\n  }\n  if (a1_00 < 0x40) {\n    sub_1_107E(a1_00,a3);\n    *(int2 *)(a3 + 0x1c) = a1_00;\n  }\n  return (uint2)(a1_00 < 0x40);\n}"
+    "int4 __stdcall16far __loadds MIXERMESSAGE(a1,a2,a3,a4,a5,a6)\nint2 a1;\nint2 a2;\nint2 a3;\nint2 a4;\nint2 a5;\nint2 a6;\n{\n  int2 iVar1;\n  int4 iVar2;\n  \n  iVar1 = sub_1_006B(6,a6);\n  if (iVar1 == 0) {\n    if ((uint2)a5 < 0x2000) {\n      iVar2 = 0xb;\n    }\n    else {\n      iVar2 = sub_9_0130(a1,a2,a3,a4,a5,a6);\n    }\n  }\n  else {\n    iVar2 = sub_3_0476(a1,a2,a3,a4,a5,0x406,a6);\n  }\n  return iVar2;\n}"
    ],
    "kwargs": {},
-   "result": "int2 __stdcall16near sub_1_014E();"
+   "result": "int4 __stdcall16far __loadds MIXERMESSAGE();"
   },
   {
    "args": [
-    "int2 __stdcall16far __export DRAGQUERYPOINT(a1,a2,a3)\nint2 a1;\nint2 a2;\nint2 a3;\n{\n  xunknown2 xVar1;\n  int2 iVar2;\n  xunknown2 xVar3;\n  xunknown4 xVar4;\n  \n  xVar4 = KERNEL_18(a3);\n  xVar3 = (xunknown2)((uint4)xVar4 >> 0x10);\n  iVar2 = (int2)xVar4;\n  xVar1 = *((xunknown2 __far *)MK_FP(xVar3, (iVar2 + 4)));\n  *(*(int2 __far * *)&a1) = *((xunknown2 __far *)MK_FP(xVar3, (iVar2 + 2)));\n  *((xunknown2 __far *)MK_FP(a2, (a1 + 2))) = xVar1;\n  iVar2 = *((int2 __far *)MK_FP(xVar3, (iVar2 + 6)));\n  KERNEL_19(a3);\n  return (uint2)(iVar2 == 0);\n}"
+    "int4 __stdcall16far sub_11_008A(a1)\nint2 a1;\n{\n  int2 iVar1;\n  uint2 in_DX;\n  xunknown4 xVar2;\n  \n  iVar1 = sub_11_000B();\n  if (0x1f < iVar1) {\n    if ((iRam1058000c == 0) && (iRam1058000a == 0)) {\n      xVar2 = KERNEL_50(7,0,iRam10580000);\n      iRam1058000c = (int2)((uint4)xVar2 >> 0x10);\n      iRam1058000a = (int2)xVar2;\n      if (iRam1058000c == 0) {\n        iRam1058000a = iRam1058000a + 1;\n      }\n    }\n    in_DX = 0;\n    if (iRam1058000c != 0) {\n      return CONCAT22(iRam1058000c,iRam1058000a);\n    }\n  }\n  return (uint4)in_DX << 0x10;\n}"
    ],
    "kwargs": {},
-   "result": "int2 __stdcall16far __export DRAGQUERYPOINT();"
+   "result": "int4 __stdcall16far sub_11_008A();"
   },
   {
    "args": [

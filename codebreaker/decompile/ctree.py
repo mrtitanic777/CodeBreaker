@@ -1,0 +1,113 @@
+"""ctree.py -- the decompiler's C as a syntax tree, for the passes of c_text.py that rewrite it.
+
+A pass that finds what to change with a regular expression over the text also finds it inside a
+string or a comment, takes `a.b._1_2_` for a piece of `b`, and cannot tell a declaration from an
+expression that looks like one. Here the text is parsed (tree-sitter's C grammar, which goes on
+past what it cannot parse -- a calling convention it does not know, a type never declared -- and
+keeps every byte's place), a pass finds the nodes it means, and replaces exactly their text:
+everything else stays as it was, byte for byte.
+
+    src = ctree.Source(text)
+    for node in src.find("field_expression"):
+        ...
+        src.replace(node, "new text")
+    text = src.text()                   # the edits applied (they must not overlap)
+
+Nodes are tree-sitter nodes: `.type`, `.children`, `.named_children`, `.child_by_field_name`,
+`.start_byte`, `.end_byte`, `.parent`. `src.at(node)` is a node's text."""
+
+import re
+
+_PARSER = []
+
+# The decompiler's own type names (decompile/c_text.py HEADER) and C's. The grammar does not know
+# which names are types, so `(uint4)*p` reads as `(uint4) * p`, a product, `(uint2)&x` as a bitwise
+# and, and `(uint2)(uint1)*p` as a call: misread() tells such a node from the cast it is.
+_TYPE = (r"(?:u?int\d+|xunknown\d+|undefined\d*|unk(?:byte|int|uint)\d+|float\d+|code(?:_callee_pops)?|bool|char|"
+         r"short|int|long|unsigned|signed|double|float|void)")
+_CASTS = re.compile(r"(?:\(\s*%s(?:\s+%s)*(?:\s*(?:__far|__near))?(?:\s*\*+)?(?:\s*\[\d*\])?\s*\)\s*)+\Z" % (_TYPE, _TYPE))
+
+
+def _parser():
+    if not _PARSER:
+        import tree_sitter
+        import tree_sitter_c
+        _PARSER.append(tree_sitter.Parser(tree_sitter.Language(tree_sitter_c.language())))
+    return _PARSER[0]
+
+
+class Source(object):
+    def __init__(self, text):
+        self.original = text
+        self.data = text.encode("utf-8")
+        self.tree = _parser().parse(self.data)
+        self.root = self.tree.root_node
+        self.edits = []
+
+    # -- reading ----------------------------------------------------------------------------------
+    def at(self, node):
+        return self.data[node.start_byte:node.end_byte].decode("utf-8")
+
+    def find(self, *types, under=None):
+        """Every node of these types, in the order they appear (outermost first)."""
+        out, todo = [], [under or self.root]
+        while todo:
+            n = todo.pop()
+            if n.type in types:
+                out.append(n)
+            todo.extend(reversed(n.children))
+        return out
+
+    def body(self):
+        """The function's compound statement (its `{ ... }`), or None."""
+        for n in self.find("function_definition"):
+            return n.child_by_field_name("body")
+        return None
+
+    def misread(self, node):
+        """For a binary `*`, `&`, `-` or `+` whose left side is nothing but casts -- `(uint4)`,
+        `(uint2)(uint1)`, `(xunknown1 [4])` -- the operator of the unary expression the grammar
+        took for an operation on two values; otherwise None."""
+        if node.type != "binary_expression":
+            return None
+        op = node.child_by_field_name("operator").type
+        if op in ("*", "&", "-", "+") and _CASTS.match(self.at(node.child_by_field_name("left"))):
+            return op
+        return None
+
+    @staticmethod
+    def in_text(node):
+        """Inside a string, a character constant or a comment: not code."""
+        while node is not None:
+            if node.type in ("string_literal", "char_literal", "comment", "system_lib_string"):
+                return True
+            node = node.parent
+        return False
+
+    # -- writing ----------------------------------------------------------------------------------
+    def replace(self, node_or_span, text):
+        s, e = (node_or_span.start_byte, node_or_span.end_byte) if hasattr(node_or_span, "start_byte") else node_or_span
+        self.edits.append((s, e, text.encode("utf-8")))
+
+    def insert(self, at, text):
+        self.edits.append((at, at, text.encode("utf-8")))
+
+    def text(self):
+        if not self.edits:
+            return self.original
+        out, pos = [], 0
+        for s, e, t in sorted(self.edits, key=lambda x: (x[0], x[1])):
+            if s < pos:
+                raise ValueError("overlapping edits at byte %d" % s)
+            out.append(self.data[pos:s])
+            out.append(t)
+            pos = e
+        out.append(self.data[pos:])
+        return b"".join(out).decode("utf-8")
+
+
+def rewrite(text, fn):
+    """`fn(src)` records edits on the parsed text; the text with them applied."""
+    src = Source(text)
+    fn(src)
+    return src.text()
