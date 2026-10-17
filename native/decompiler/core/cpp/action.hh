@@ -323,5 +323,21 @@ public:
   void universalAction(Architecture *glb);		///< Build the universal action
 };
 
+/// CodeBreaker: where the analysis is, and a way to stop it there. The analysis looks at the hook
+/// between actions and between rule applications -- places it can stop cleanly: what it throws
+/// unwinds like any LowlevelError (the function fails, its memory is freed, the next one goes on).
+extern const char *cb_action;                 ///< The action being performed
+extern const char *cb_rule;                   ///< The rule last applied
+extern unsigned long long cb_steps;           ///< Rule tests since the function began
+extern const char *(*cb_over_budget)(void);   ///< Why the analysis must stop now, or null
+
+/// Throw if the hook says the analysis must stop (looked at every 1024 steps)
+inline void cb_check(void) {
+  if (cb_over_budget != (const char *(*)(void))0 && (++cb_steps & 1023) == 0) {
+    const char *why = cb_over_budget();
+    if (why != (const char *)0) throw LowlevelError(why);
+  }
+}
+
 } // End ghidra namespace
 #endif

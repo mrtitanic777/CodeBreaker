@@ -295,10 +295,17 @@ Rule *Action::getSubRule(const string &specify)
 /// A successive call to perform() will "continue" from the break point.
 /// \param data is the function being acted on
 /// \return the number of changes or -1
+const char *cb_action = "";
+const char *cb_rule = "";
+unsigned long long cb_steps = 0;
+const char *(*cb_over_budget)(void) = (const char *(*)(void))0;
+
 int4 Action::perform(Funcdata &data)
 
 {
   int4 res;
+  cb_action = name.c_str();
+  cb_check();
 
   do {
     switch(status) {
@@ -840,6 +847,8 @@ int4 ActionPool::processOp(PcodeOp *op,Funcdata &data)
     data.debugActivate();
 #endif
     rl->count_tests += 1;
+    cb_rule = rl->getName().c_str();
+    cb_check();
     res = rl->applyOp(op,data);
 #ifdef OPACTION_DEBUG
     data.debugModPrint(rl->getName());

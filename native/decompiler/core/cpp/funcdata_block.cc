@@ -224,9 +224,13 @@ void Funcdata::branchRemoveInternal(BlockBasic *bb,int4 num)
   bbout = (BlockBasic *) bb->getOut(num);
   blocknum = bbout->getInIndex(bb);
   bblocks.removeEdge(bb,bbout); // Sever (one) connection between bb and bbout
-  for(iter=bbout->beginOp();iter!=bbout->endOp();++iter) {
-    op = *iter;
-    if (op->code() != CPUI_MULTIEQUAL) break;
+  // CodeBreaker: every MULTIEQUAL of the block, not only those at its head -- one left behind
+  // another op kept an input for the edge just removed, and removing the block that edge came
+  // from then grew without end (descend2Undef put a COPY into the dying block for it, again and
+  // again: LZEXPAND's runtime exit, 11:01C5)
+  for(iter=bbout->beginOp();iter!=bbout->endOp();) {
+    op = *iter++;		// (opZeroMulti may change the op in place)
+    if (op->code() != CPUI_MULTIEQUAL) continue;
     opRemoveInput(op,blocknum);
     opZeroMulti(op);
   }

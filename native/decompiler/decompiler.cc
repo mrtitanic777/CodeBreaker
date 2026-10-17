@@ -84,8 +84,9 @@ std::atomic<long long> started_ms{0};    // when the function being done began (
 void fail_and_exit(const char* why, int code) {
   if (tripping.exchange(true)) return;
   // (no allocation here: the stream library would come back into operator new)
-  char buf[160];
-  int n = std::snprintf(buf, sizeof(buf), "/* decompile failed: %s */\n\n", why);
+  char buf[400];
+  int n = std::snprintf(buf, sizeof(buf), "/* decompile failed: %s, in %s / %s */\n\n", why,
+                        ghidra::cb_action, ghidra::cb_rule);
   std::fflush(stdout);
 #ifdef _WIN32
   _write(1, buf, n);
@@ -117,6 +118,47 @@ void operator delete[](void* p) noexcept { operator delete(p); }
 void operator delete[](void* p, std::size_t) noexcept { operator delete(p); }
 
 namespace governor {
+long long now_ms();
+
+long long process_bytes() {
+#ifdef _WIN32
+  PROCESS_MEMORY_COUNTERS_EX pm = {};
+  if (GetProcessMemoryInfo(GetCurrentProcess(), (PROCESS_MEMORY_COUNTERS*)&pm, sizeof(pm)))
+    return (long long)pm.PrivateUsage;
+#endif
+  return held.load();
+}
+
+// Bounded analysis (docs/CORE_ROADMAP.md, phase 1): the analysis asks, at the places it can stop
+// cleanly, whether it must. A function past three quarters of the memory budget -- what the
+// process held when it began, and then some -- or past CB_MAX_STEPS rule tests fails there, like
+// any analysis error: its memory freed, and the next function goes on in the same process.
+long long base_bytes = 0;                // what the process held when the function began
+long long soft_bytes = 0;
+unsigned long long max_steps = 0;
+char soft_why[200];
+
+const char* over_budget() {
+  if (max_steps && ghidra::cb_steps > max_steps) {
+    std::snprintf(soft_why, sizeof(soft_why), "over the analysis budget (%llu rule tests) in %s / %s",
+                  ghidra::cb_steps, ghidra::cb_action, ghidra::cb_rule);
+    return soft_why;
+  }
+  long long now = process_bytes();
+  if (soft_bytes && now - base_bytes > soft_bytes) {
+    std::snprintf(soft_why, sizeof(soft_why), "over the analysis budget (%lld MB) in %s / %s",
+                  (now - base_bytes) >> 20, ghidra::cb_action, ghidra::cb_rule);
+    return soft_why;
+  }
+  return nullptr;
+}
+
+void begin_function() {
+  ghidra::cb_steps = 0;
+  base_bytes = process_bytes();
+  started_ms = now_ms();
+}
+
 long long now_ms() {
   return std::chrono::duration_cast<std::chrono::milliseconds>(
              std::chrono::steady_clock::now().time_since_epoch()).count();
@@ -138,6 +180,10 @@ void set_up() {
       AssignProcessToJobObject(job, GetCurrentProcess());
   }
 #endif
+  soft_bytes = limit / 4 * 3;
+  const char* st = std::getenv("CB_MAX_STEPS");
+  max_steps = st ? std::strtoull(st, nullptr, 10) : 400000000ULL;
+  ghidra::cb_over_budget = over_budget;
   const char* sec = std::getenv("CB_FUNCTION_SECONDS");
   const long long max_ms = (sec ? std::atoll(sec) : 120) * 1000;
   // (the count above is what was asked for; what the process really holds is more -- the
@@ -467,7 +513,7 @@ int main(int argc, char** argv) {
     m.print->setOutputStream(&std::cout);
     for (auto& t : todo) {
       std::cout << "/*@@ " << t.second.name << " " << std::hex << t.second.va << std::dec << " */" << std::endl;
-      governor::started_ms = governor::now_ms();
+      governor::begin_function();
       try {
         // its calls through pointers: each passed the words the code pushed before it, removed
         // by the callee (Windows' drivers and callbacks are Pascal). Every call's override is

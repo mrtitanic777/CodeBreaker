@@ -15,6 +15,7 @@
  */
 #include "funcdata.hh"
 #include "flow.hh"
+#include "action.hh"
 
 namespace ghidra {
 
@@ -322,6 +323,7 @@ void Funcdata::opInsertInput(PcodeOp *op,Varnode *vn,int4 slot)
 PcodeOp *Funcdata::newOp(int4 inputs,const Address &pc)
 
 {
+  cb_check();		// CodeBreaker: a loop that makes ops without end stops here (action.hh)
   return obank.create(inputs,pc);
 }
 
@@ -332,6 +334,7 @@ PcodeOp *Funcdata::newOp(int4 inputs,const Address &pc)
 PcodeOp *Funcdata::newOp(int4 inputs,const SeqNum &sq)
 
 {
+  cb_check();		// CodeBreaker: (as above)
   return obank.create(inputs,sq);
 }
 
