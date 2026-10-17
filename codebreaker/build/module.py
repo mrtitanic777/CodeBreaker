@@ -564,6 +564,63 @@ def _assembled16(b, nef, at, segs, stems, public, folder, env, carried=(), force
     return out
 
 
+_REGISTER_IN = re.compile(r"\b(?:in|unaff)_(BX|CX|DX|SI|DI)\b")
+
+
+def _registers_c_cannot_carry(nef, segs, at, texts):
+    """Functions whose C cannot say what the original passes or returns in a register.
+    -> {name: why}
+    - It sets a register just before calling one that reads that register as it comes in
+      (USER's CallMsgFilter, sub_1_80CD: `mov bx, 6` / `mov bx, -1`, then the hook caller
+      sub_1_800A, which takes the hook type in BX; the C passed no BX, the caller looked up a
+      hook record at 1 and jumped to a selector D400 -- a GP on Setup's License page).
+    - It returns a word, but the original sets DX just before it returns: a DX:AX result
+      (sub_1_81C8 returns es:[38h]:1Eh, the C 1Eh alone)."""
+    import capstone
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    starts, takes = {}, {}
+    for (sg, o), n in at.items():
+        starts.setdefault(sg, []).append(o)
+        regs = {r.lower() for r in _REGISTER_IN.findall(texts.get(n, "").split("{", 1)[-1])}
+        if regs:
+            takes.setdefault(o, []).append((sg, n, regs))
+    for sg in starts:
+        starts[sg].sort()
+    images = {}
+    out = {}
+    for (sg, o), n in at.items():
+        text = texts.get(n)
+        if text is None or sg not in segs:
+            continue
+        if sg not in images:
+            s = segs[sg]
+            images[sg] = bytes(nef.data[s["file_off"]:s["file_off"] + s["length"]])
+        code = images[sg]
+        later = [x for x in starts[sg] if x > o]
+        ins = list(md.disasm(code[o:later[0] if later else len(code)], o))
+        wide = re.search(r"\b(?:int4|uint4|xunknown4|undefined4)\b|__far\s*\*", text.split("(", 1)[0])
+        for k, i in enumerate(ins):
+            prev = ins[max(0, k - 4):k]
+            if i.mnemonic in ("call", "lcall"):
+                try:
+                    target = int(i.op_str.split(",")[-1].strip(), 0)
+                except ValueError:
+                    continue
+                for csg, callee, regs in takes.get(target, []):
+                    if (i.mnemonic == "call" and csg != sg) or callee == n:
+                        continue
+                    set_ = [p for p in prev[-3:] if p.op_str.split(",")[0].strip() in regs
+                            and p.mnemonic in ("mov", "xor", "sub", "lea", "les", "lds", "add", "or")]
+                    if set_:
+                        out.setdefault(n, "it passes %s to %s in a register (%04x)" % (
+                            set_[-1].op_str.split(",")[0].strip().upper(), callee, i.address))
+            elif i.mnemonic in ("ret", "retf") and not wide:
+                if any((p.mnemonic in ("mov", "xor", "sub", "les", "lds") and p.op_str.startswith("dx,"))
+                       or p.mnemonic == "cwd" for p in prev):
+                    out.setdefault(n, "it returns DX:AX where its C returns a word (%04x)" % i.address)
+    return out
+
+
 def _frame_pieces(b, f, seg, stems, folder, wasm, env, assemble_piece, elsewhere=None):
     """The frame of a segment with assembly in it, in the order the linker is to lay it out:
     its pieces at the original's places, and in the places of the functions rebuilt from C
@@ -983,6 +1040,24 @@ def _build16(b, path, m, folder):
     # ... and C one of whose calls passes clearly fewer (or more) words than the callee takes
     # off (its `ret N`): the decompiler kept to the pushes it could see, and the stack would
     # come back wrong
+    # ... and C that reads ES as the function was entered: no compiled C takes ES in. The
+    # original read ES as a callee left it -- USER's sub_1_7CD4 returns `mov ax, es` after
+    # KERNEL's GetCodeInfo (its unwritten second result, the module); the C returned the ES
+    # it came in with, SetWindowsHook stored that as the hook's module, and calling the hook
+    # faulted (1:8093, selector D400) on Setup's License page.
+    for n in m.order:
+        if n in forced or n not in stems or n not in m.texts:
+            continue
+        body = m.texts[n].split("{", 1)[-1]
+        if re.search(r"(?<![\w.])unaff_ES\b(?!\s*=[^=])", body):
+            forced.add(n)
+            if n in b.origins:
+                b.origins[n].evidence.append("its C reads ES as the function was entered (not trusted as C)")
+    for n, why in _registers_c_cannot_carry(nef, segs, at, m.texts).items():
+        if n not in forced and n in stems:
+            forced.add(n)
+            if n in b.origins:
+                b.origins[n].evidence.append(why + " (not trusted as C)")
     arity = {}
     with open(m.description.path, encoding="utf-8") as fh:
         for line in fh:
@@ -1110,7 +1185,8 @@ def _build16(b, path, m, folder):
         seg = segment_of.get(name)
         if seg is None or name in m.near or loads_itself:
             return None
-        if any(c in m.near for c in re.findall(r"\b(\w+)\s*\(", texts[name].split("{", 1)[-1])):
+        if any(c in m.near for c in re.findall(r"\b(\w+)\s*\(", texts[name].split("{", 1)[-1])) \
+                or "code __near *" in texts[name]:
             return None                                     # it calls near ones, which only its own segment reaches
         sym = public[name][0] if name in public else "_" + name
         if sym in _near_reached():

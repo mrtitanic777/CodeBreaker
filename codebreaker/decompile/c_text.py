@@ -493,6 +493,15 @@ def _far(text, far):
     return head + brace + _far_from_stack(body, far)
 
 
+def _near_calls(text):
+    """A call through a word -- `call word ptr [18h]`, the decompiler's `(*(code *)*(xunknown2
+    *)0x18)()` -- is a near call into the function's own code segment. `code *` is a far
+    pointer in the model the 16-bit C is built in; a word made into one gets segment 0, and
+    the call faults: MSMOUS31's Disable (`call word ptr [18h]` to the hardware's own disable)
+    took a GP at Setup's restart, after the file copy. Called near, as the original does."""
+    return re.sub(r"\(\*\(code \*\)(?=\*\((?:xunknown2|int2|uint2|undefined2) \*\))", "(*(code __near *)", text)
+
+
 def _far_from_stack(body, far):
     """A far pointer set from a near one into the frame: the original made it with SS (`push ss;
     pop es; rep movsw` -- USER's WM_WINDOWPOSCHANGED copies each WINDOWPOS into its frame so).
@@ -818,7 +827,7 @@ def _compilable16(module_path, outdir=None):
                 a = int(mm.group(2), 16)
                 sizes[a] = max(sizes.get(a, 0), int(mm.group(3))) if int(mm.group(3)) <= 4 else sizes.get(a, 2)
         text = _LEADING.sub("", _FACT.sub("", raw))          # notes the decompiler put before the function
-        text = _null_is_zero(_segment_registers(_joined_arguments(_pieces(_far(text.strip(), far)))))
+        text = _near_calls(_null_is_zero(_segment_registers(_joined_arguments(_pieces(_far(text.strip(), far))))))
         seg, off = d.where[va]
         if seg in d.images:
             text = _far_arguments(text, _far_loads(d.images[seg], off, ends.get(va, off)), "far" not in text.split("{", 1)[0])
