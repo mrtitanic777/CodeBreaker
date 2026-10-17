@@ -2158,8 +2158,10 @@ def word_arrays(text, lo=0x40):
             return m.group(0)
         name = "g_%04x" % n
         ln_ = m.string[m.string.rfind("\n", 0, m.start()) + 1:m.string.find("\n", m.end()) if "\n" in m.string[m.end():] else len(m.string)]
-        word = re.fullmatch(r"\s*(?:si|di|bx|cx) = %s;" % re.escape(m.group(0)), ln_)   # (one word of it loaded into
-        if n in pair4 or word:                                                          #  a pointer register)
+        word = re.fullmatch(r"\s*(?:si|di|bx|cx) = %s;" % re.escape(m.group(0)), ln_) or \
+            re.search(r"\w\((?:[^()]*, )?%s(?:, [^()]*)?\)" % re.escape(m.group(0)), ln_) and not re.search(r"\bLONG\(", ln_)
+        if n in pair4 or word:                              # (one word of it loaded into a pointer register, or
+                                                            #  pushed alone as an argument)
             STRUCTARR.setdefault(name, (4, "int"))
             ARRAYS[name] = "struct s_%s" % name
             return "%s[%s].f0" % (name, m.group(1))
@@ -4493,6 +4495,9 @@ def long_pairs(text):
     def pair_copy(m):                                       # (a pair given a pair: x = y, the high words too)
         ind, x, y, hx, hy = m.groups()
         ghi = lambda g: "g_%x" % (int(g[2:], 16) + 2) if re.fullmatch(r"g_[0-9a-f]+", g) else None
+        gb = lambda g: re.fullmatch(r"g_[0-9a-f]+", g) and "g_%04x" % int(g[2:], 16) in {"g_%04x" % int(b_[2:], 16) for b_ in BYTEG if re.fullmatch(r"g_[0-9a-f]+", b_)}
+        if gb(x) or gb(hx) or gb(y) or gb(hy):
+            return m.group(0)                               # (bytes of the data given: no long's words)
         if hi_of(x) == hx and hi_of(y) == hy:
             pairs.add(x)
             pairs.add(y)
