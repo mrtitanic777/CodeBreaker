@@ -1627,6 +1627,35 @@ def char_widens(text):
     return t if t != text else None
 
 
+def tail_continues(text):
+    """a continue last in the last statement of a loop's body (an if's arm closing it): nothing - the loop goes on
+    there anyway (the compiler falls into the test; a continue is a jump to it)"""
+    lines = text.split("\n")
+    changed = True
+    while changed:
+        changed = False
+        for k, l in enumerate(lines):
+            if l.strip() != "continue;" or k + 1 >= len(lines):
+                continue
+            ind = len(l) - len(l.lstrip())
+            j = k + 1                                       # (only closing braces after it, to the loop's own)
+            while j < len(lines) and lines[j].strip() == "}":
+                op = _opener(lines, j)
+                if op is None:
+                    break
+                if re.match(r"\s*(?:while|for)\b.*\{$", lines[op]):
+                    if j > k + 1:                            # (inside an if at the body's end, not the body's own)
+                        del lines[k]
+                        changed = True
+                    break
+                if not re.match(r"\s*(?:if \(.*\) \{|\} else \{)$", lines[op]):
+                    break
+                j += 1
+            if changed:
+                break
+    return "\n".join(lines)
+
+
 def assign_loops(text):
     """for (;;) { x = E; if (C(x)) break; S } - the value tested as it is given: while (!C((x = E))) { S }"""
     lines = text.split("\n")
@@ -1693,7 +1722,24 @@ def switch_ifs(text):
         if len(re.match(r"\s*", close).group(0)) >= len(ind):
             return m.group(0)
         return "%sif ((%s != %s)) {\n%s%s}\n%s" % (ind, sel, k, body, ind, close)
-    return rx.sub(one, text)
+    text = rx.sub(one, text)
+    # (switch (x) { case K: break; default: S } last: the value passed over first - if (x == K) continue; S)
+    rx2 = re.compile(r"(?m)^([ \t]*)switch \((.+)\) \{\n\1case (-?\w+):\n\1    break;\n\1default:\n((?:\1    .*\n)+?)\1\}\n([ \t]*\})")
+
+    def two(m):
+        ind, sel, k, body, close = m.groups()
+        if len(re.match(r"\s*", close).group(0)) >= len(ind) or re.search(r"(?m)^%s    break;$" % re.escape(ind), body):
+            return m.group(0)
+        dd = "".join(x[4:] + "\n" if x.startswith(ind + "    ") else x + "\n" for x in body.rstrip("\n").split("\n"))
+        return "%sif ((%s == %s)) continue;\n%s%s" % (ind, sel, k, dd, close)
+    text = rx2.sub(two, text)
+    # (the same, the default first: switch (x) { default: S case K: break; } - S falls into the break)
+    rx3 = re.compile(r"(?m)^([ \t]*)switch \((.+)\) \{\n\1default:\n((?:\1    .*\n)+?)\1case (-?\w+):\n\1    break;\n\1\}\n([ \t]*\})")
+
+    def three(m):
+        ind, sel, body, k, close = m.groups()
+        return two(type("M", (), {"groups": lambda s_: (ind, sel, k, body, close), "group": lambda s_, i=0: m.group(0)})())
+    return rx3.sub(three, text)
 
 
 def ternary_joins(text):
@@ -4426,7 +4472,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
                 wd |= {(chr(97 + i_), o) for (q, o) in widths if q in (r_, r_ + "*") and (r_ + "w", o) not in widths}
         t = structs(pointer_flow(local_pointers(register_variables(shapes(long_pairs(t)), regs, regparam))), wd)
         t = re.sub(r"(?m)^[ \t]*(\w+) = \1;\n", "", t)         # (a register variable given itself: nothing)
-        t = lvalue_choices(register_values(long_ladders(long_pairs(t))))                     # (the longs again, as the passes left them)
+        t = switch_ifs(lvalue_choices(register_values(long_ladders(long_pairs(t)))))                     # (the longs again, as the passes left them)
         if re.search(r"\bbp - \d+\b", t):                   # (a frame place the passes left as bp - N: the local)
             t = buffers(t) or t
             t = re.sub(r"\bbp - (\d+)\b", lambda m: ("v%s" % m.group(1)) if re.search(r"(?m)^[ \t]*char v%s\[" % m.group(1), t)
@@ -4437,7 +4483,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         FILLNAME[0] = "_p%d"                                # (the filler named by its place: the frame's order
         tp_ = fill_frame(t0_, FRAME[0], bool(prj.toolchain().p.get("frame_order")))   #  lays it out - a variant)
         FILLNAME[0] = "_pf"
-        variants = [t] + [v for v in [tp_ if tp_ != t else None,store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t), register_copies(t), lead_filler(t), scaled_places(t), shared_tails(t), guard_returns(t), default_after(t), frame_more(t), loop_tests(t), switch_breaks(t), register_reads(t), compare_results(t), or_loops(t), loop_guards(t), const_tests(t), flat_returns(t), return_cases_first(t), registers_last(t), guard_shared(t), guard_flat(t), _changed(common_tails, t), _changed(byte_heads, t), _changed(word_offsets, t), chain_tails(t), heads_variant(t), shared_exit(t), call_pairs(t), label_sinks(t), assign_loops(t), char_widens(t)] + case_guards(t) if v]
+        variants = [t] + [v for v in [tp_ if tp_ != t else None,store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t), register_copies(t), lead_filler(t), scaled_places(t), shared_tails(t), guard_returns(t), default_after(t), frame_more(t), loop_tests(t), switch_breaks(t), register_reads(t), compare_results(t), or_loops(t), loop_guards(t), const_tests(t), flat_returns(t), return_cases_first(t), registers_last(t), guard_shared(t), guard_flat(t), _changed(common_tails, t), _changed(byte_heads, t), _changed(word_offsets, t), chain_tails(t), heads_variant(t), shared_exit(t), call_pairs(t), label_sinks(t), assign_loops(t), char_widens(t), _changed(tail_continues, t)] + case_guards(t) if v]
         both = pre_steps(t)
         both = pre_increments(both) if both else None
         if both:
@@ -5877,7 +5923,7 @@ REFINERS = [lambda prj, s: [assign_in_args(s)], lambda prj, s: [return_sources(s
             lambda prj, s: [loop_tests(s)], lambda prj, s: [switch_breaks(s)], lambda prj, s: [register_reads(s)],
             lambda prj, s: [compare_results(s)], lambda prj, s: [or_loops(s)], lambda prj, s: [loop_guards(s)],
             lambda prj, s: [const_tests(s)], lambda prj, s: [flat_returns(s)], lambda prj, s: [return_cases_first(s)],
-            lambda prj, s: [registers_last(s)], lambda prj, s: unsigned_locals(s), lambda prj, s: [guard_shared(s)], lambda prj, s: [guard_flat(s)], lambda prj, s: [_changed(common_tails, s)], lambda prj, s: [_changed(byte_heads, s)], lambda prj, s: [_changed(word_offsets, s)], lambda prj, s: [chain_tails(s)], lambda prj, s: [heads_variant(s)], lambda prj, s: case_guards(s), lambda prj, s: [shared_exit(s)], lambda prj, s: [label_sinks(s)], lambda prj, s: [call_pairs(s)], lambda prj, s: [assign_loops(s)], lambda prj, s: [char_widens(s)], lambda prj, s: adjacent_swaps(s), lambda prj, s: unsigned_fields(s),
+            lambda prj, s: [registers_last(s)], lambda prj, s: unsigned_locals(s), lambda prj, s: [guard_shared(s)], lambda prj, s: [guard_flat(s)], lambda prj, s: [_changed(common_tails, s)], lambda prj, s: [_changed(byte_heads, s)], lambda prj, s: [_changed(word_offsets, s)], lambda prj, s: [chain_tails(s)], lambda prj, s: [heads_variant(s)], lambda prj, s: case_guards(s), lambda prj, s: [shared_exit(s)], lambda prj, s: [label_sinks(s)], lambda prj, s: [call_pairs(s)], lambda prj, s: [assign_loops(s)], lambda prj, s: [char_widens(s)], lambda prj, s: [_changed(tail_continues, s)], lambda prj, s: adjacent_swaps(s), lambda prj, s: unsigned_fields(s),
             lambda prj, s: [frame_names(s, prj.toolchain().p["frame_order"]), frame_names(s, prj.toolchain().p["frame_order"], True)]
             if prj.toolchain().p.get("frame_order") else [],
             lambda prj, s: [re.sub(r"\b([A-Za-z_]\w*), 0\)", r"(long)\1)", s, count=1)],   # (a value and a zero word
@@ -5894,7 +5940,7 @@ AIM_KIND = {                                                # (the refiners each
     "order": {"adjacent_swaps", "return_cases_first", "empty_cases_first", "default_after", "default_last", "switch_breaks",
               "flat_returns", "guard_returns", "guard_shared", "guard_flat", "shared_tails", "push_tails", "loop_tests",
               "or_loops", "loop_guards", "for_loops", "label_sinks", "shared_exit", "case_guards", "chain_tails",
-              "common_tails", "heads_variant", "no_default", "assign_loops"},
+              "common_tails", "heads_variant", "no_default", "assign_loops", "tail_continues"},
     "shape": {"assign_in_args", "return_sources", "compound_assigns", "chain_assigns", "store_increments", "pre_steps",
               "pre_increments", "assign_in_tests", "and_returns", "register_temps", "split_ternaries", "compare_results",
               "const_tests", "register_reads", "register_copies", "word_offsets", "call_pairs", "string_variants",
