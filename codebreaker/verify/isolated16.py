@@ -127,13 +127,13 @@ def _tables(original):
             "place": {n: list(m.where[va]) for va, n in m.by_va.items() if m.where.get(va)}}
 
 
-def check(original, folder, names, image=None, inputs=None, workers=None, tables=None):
+def check(original, folder, names, image=None, inputs=None, workers=None, tables=None, chain=False):
     """Each named function (one the build has as C) beside the original's. Yields
     (name, "same" | "differs" | "not run", why). Many at once: shared out over processes."""
     names = list(names)
     workers = workers or min(os.cpu_count() or 4, 12)
     tables = tables or _tables(original)
-    if workers > 1 and len(names) > 2 * workers and inputs is None:
+    if workers > 1 and len(names) > 2 * workers and inputs is None and not chain:
         # (each share a Python of its own, started fresh: nothing of the caller's script runs again)
         import json
         import subprocess
@@ -179,10 +179,14 @@ def check(original, folder, names, image=None, inputs=None, workers=None, tables
                           if f.lower() == os.path.basename(original).lower())
     nef = NEFile(original)
     auto = nef.h.get("autodata_seg")
-    seg = next(s for s in nef.segments() if s["idx"] == auto)
-    data = bytes(nef.data[seg["file_off"]:seg["file_off"] + seg["length"]]) if seg["file_off"] else b""
+    seg = next((s for s in nef.segments() if s["idx"] == auto), None)   # (a driver may have none)
+    data = bytes(nef.data[seg["file_off"]:seg["file_off"] + seg["length"]]) if seg and seg["file_off"] else b""
     callees_orig = {place[n]: (n, pop, far) for n, (pop, far) in funcs.items() if n in place}
     callees_ours = {ours[n]: (n, pop, far) for n, (pop, far) in funcs.items() if n in ours}
+    if chain:
+        # (chained: the module's other functions run for real on both sides -- what one function
+        # leaves for another, through the stack, registers or memory, is then seen)
+        callees_orig = callees_ours = None
     for name in names:
         if name not in place or name not in ours or name not in funcs:
             yield name, "not run", "not found on both sides"
@@ -197,9 +201,9 @@ def check(original, folder, names, image=None, inputs=None, workers=None, tables
         for v in (inputs or win16.vectors() + aimed):
             try:
                 a = emu.probe(original, seg=oseg, offset=ooff, args=v["args"], near=not far,
-                              callees=callees_orig, insn_cap=20000)
+                              callees=callees_orig, insn_cap=200000 if chain else 20000)
                 b = emu.probe(image, seg=bseg, offset=boff, args=v["args"], near=not far,
-                              callees=callees_ours, insn_cap=20000, data_image=data)
+                              callees=callees_ours, insn_cap=200000 if chain else 20000, data_image=data)
             except Exception as e:                           # (the emulator itself fell over)
                 why = why or "the emulator: %s" % type(e).__name__
                 continue

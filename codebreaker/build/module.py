@@ -1163,8 +1163,23 @@ def _build16(b, path, m, folder):
     if code_numbers and all(n in by_segment for n in code_numbers):
         order = "order clname MCODE " + " ".join("segment CODE%d" % n for n in code_numbers)
         auto = nef.h.get("autodata_seg")
-        if auto == max(code_numbers) + 1:                   # (and the data segment next, as there)
-            order += " clname BEGDATA clname DATA clname BSS clname STACK"
+        # the data segments after them, each at its number as there: the automatic one (its
+        # classes) and those carried as they were (CODEBREAKER_SEGMENT_<n>, class FAR_DATA).
+        # Anything the build adds goes after all of the original's -- a runtime helper's code
+        # put before a data segment renumbers it and every selector after it (USER's
+        # segment 44, its second data segment, became 46 behind the long-division routine)
+        data_numbers = [s["idx"] for s in nef.segments() if s["kind"] != "CODE"]
+        if data_numbers and min(data_numbers) == max(code_numbers) + 1:
+            far = [n for n in data_numbers if n != auto]
+            if not far or (far == sorted(far) and (auto not in data_numbers or
+                                                   all(n < auto for n in far) or all(n > auto for n in far))):
+                pieces = []
+                for n in data_numbers:
+                    if n == auto:
+                        pieces.append("clname BEGDATA clname DATA clname BSS clname STACK")
+                    elif n == far[0]:
+                        pieces.append("clname FAR_DATA " + " ".join("segment CODEBREAKER_SEGMENT_%d" % k for k in far))
+                order += " " + " ".join(pieces)
         lines.append(order + " clname XCODE clname CODE")   # (the runtime's CODE last)
     else:
         b.layout = "segments renumbered: the original's code segments %s are not all rebuilt" % (

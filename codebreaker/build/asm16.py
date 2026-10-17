@@ -272,6 +272,8 @@ class Function(object):
             self.reaches = min(self.missing)
             return
         self.calls = calls
+        self._far_pointer_offsets(md, symbol_for, internal_selector, seg)
+        self._raw_far_pointers(symbol_for, internal_selector)
         self.module, self.seg, self.public = nef.module_name(), seg, public
         # a jump into the middle of an instruction: that instruction is not written as one
         # (each instruction's own few bytes looked up in the set: not every target for each)
@@ -298,6 +300,76 @@ class Function(object):
             if any(x in held for x in range(a, a + len(self.ins[a][0]))):
                 del self.ins[a]
         self.text = self.write(set())
+
+    def _raw_far_pointers(self, symbol_for, internal_selector):
+        """The same far pointers where the frame is written as bytes (code not followed, a
+        table): a selector fix-up to one of the module's code segments, and in the two bytes
+        before it the offset -- of `call far` (9A) or of a pointer stored -- is a number. If it
+        is where a function begins, it is that function's offset, by its name (USER's 25:23DF
+        `call far 12:085E`, LoadIcon's, in code reached only through a table: with 085E rebuilt
+        from C and placed after its frame, the call ran its filler into the next function)."""
+        covered = set()
+        for a, t in self.ins.items():
+            covered.update(range(a, a + len(t[0])))
+        for a, (size, _t) in self.symbolic.items():
+            covered.update(range(a, a + size))
+        for off, tseg in sorted(internal_selector.items()):
+            if off not in self.sites:
+                continue
+            # the offset before the selector (a stored pointer, `call far`), or pushed right
+            # after it (`push seg X` / `push 0FF1h`: 68 ss ss 68 oo oo)
+            places = [off - 2]
+            if self.blob[off - 1:off] == b"\x68" and self.blob[off + 2:off + 3] == b"\x68":
+                places = [off + 3]
+            for p in places:
+                if p < self.start or p + 2 > self.end or p in self.sites or p + 1 in self.sites \
+                        or p in covered or p + 1 in covered:
+                    continue
+                value = struct.unpack_from("<H", self.blob, p)[0]
+                name = symbol_for("function", tseg, value)
+                if name:
+                    self.externs.setdefault(name, "far")
+                    self.sites[p] = (2, "dw   offset %s" % name)
+                    break
+
+    def _far_pointer_offsets(self, md, symbol_for, selectors, seg):
+        # selectors: {offset of the fix-up: the segment it is the selector of}
+        """A far pointer to one of the module's functions put together in the code: its selector
+        is a fix-up (or CS), its offset a plain number -- the function's, in the original. Built
+        from the number, the pointer would still go where the function WAS (USER's 3:1505
+        `mov word ptr [bp-18h], 1587h` with segment 10's selector: the window procedure
+        BEAR306, rebuilt from C and placed after its frame, entered at its old place -- the
+        frame's filler). So that number is written as the function's offset, by its name."""
+        # (the selector is the one beside it -- a few instructions away: a frame may hold
+        # selectors of several segments, each with a function at the same offset: USER's
+        # `push seg 12; push 0FF1h`, LoadDIBCursorHandler, where 35:0FF1 is a function too)
+        near = 24
+        own = [a for a, (_d, mn, ops, _t) in self.ins.items()
+               if mn == "push" and ops == "cs" or mn == "mov" and ops.endswith(", cs")]
+        if not selectors and not own:
+            return
+        for at, (data, mn, ops, target) in list(self.ins.items()):
+            if target is not None or mn not in ("mov", "push") or len(data) < 3:
+                continue
+            if not (data[0] == 0x68 or 0xB8 <= data[0] <= 0xBF or data[0] == 0xC7 or
+                    data[0] in (0x26, 0x2E, 0x36, 0x3E) and len(data) > 3 and data[1] == 0xC7):
+                continue                                    # (an imm16 form: push, mov reg / mem)
+            value = struct.unpack_from("<H", data, len(data) - 2)[0]
+            if not value:
+                continue
+            segs = {t for o, t in selectors.items() if abs(o - at) <= near}
+            if any(abs(a - at) <= near for a in own):
+                segs.add(seg)
+            names = {symbol_for("function", t, value) for t in segs} - {None}
+            if len(names) != 1:
+                continue
+            name = names.pop()
+            text = self.mnemonic(at)
+            new = re.sub(r"(?i)\b0*%Xh$" % value, "offset %s" % name, text)
+            if new == text:
+                continue
+            self.externs.setdefault(name, "far")
+            self.symbolic[at] = (len(data), new)            # (written by its name: see write)
 
     def mnemonic(self, at):
         """The instruction at `at` as the assembler reads it, or None."""
