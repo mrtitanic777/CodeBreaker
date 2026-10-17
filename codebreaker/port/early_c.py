@@ -489,7 +489,12 @@ class Port:
         port = ["/* port.h -- what every file of the port includes first (made by CodeBreaker's port) */",
                 "#ifndef PORT_H", "#define PORT_H", "#include <stdio.h>", "#include <stdlib.h>",
                 "#include <string.h>", "#include <stdint.h>",
-                '#include "%s"' % self.profile["platform"]["header"], '#include "proto.h"', "#endif"]
+                '#include "%s"' % self.profile["platform"]["header"]]
+        align = self.profile.get("struct_align")
+        if align:                                           # (the program's structures laid out as its compiler
+            port += ["/* the program's structures laid out as its compiler did: members on %d-byte boundaries "
+                     "at most */" % align, "#pragma pack(push, %d)" % align]   # did - the system's headers above)
+        port += ['#include "proto.h"', "#endif"]
         hs = sorted({h for h, d in self.data})
         data = ["/* data.c -- the variables the headers share, defined once (made by CodeBreaker's port) */",
                 '#include "port.h"'] + ['#include "%s"' % h for h in hs] + [""] + [d for h, d in self.data]

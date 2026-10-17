@@ -98,7 +98,8 @@
       "coreout",
       "coremax",
       "ipnCore",
-      "movbytes"
+      "movbytes",
+      "fillb"
     ]
   },
   "widths": {
@@ -117,5 +118,6 @@
     "kbdchar": "DOS's buffered line input (function 0Ah): the line, a carriage return, a line feed; at the end of the input -1",
     "corein": "the memory above the program's 64K: here pages of a block of the heap of as many pages as coremax says",
     "getdrive": "the current drive (0 = A:); on a system without drives, C:"
-  }
+  },
+  "struct_align": 2
 }

@@ -43,6 +43,9 @@ FILE *dos_fopen(const char *name, const char *mode);
    repeats, as memmove would not) */
 void movbytes(unsigned n, const char *from, char *to);
 
+/* fillb(c, p, n): n bytes at p all made c (REP STOSB) */
+void fillb(int c, void *p, unsigned n);
+
 /* the current drive, 0 for A: */
 int getdrive(void);
 

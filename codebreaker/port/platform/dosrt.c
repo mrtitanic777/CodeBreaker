@@ -83,6 +83,8 @@ void movbytes(unsigned n, const char *from, char *to)
 	while (n--) *to++ = *from++;
 }
 
+void fillb(int c, void *p, unsigned n)	{ memset(p, c, n); }
+
 int getdrive(void)
 {
 #ifdef _WIN32
