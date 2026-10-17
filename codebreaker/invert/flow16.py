@@ -254,6 +254,8 @@ def _compare_switches(blocks):
         # (one or two values are a switch too when the selector was loaded into the register for the tests alone -
         #  `mov ax,[m]; cmp ax,K1; je; cmp ax,K2; je`: an if would compare the memory itself)
         loaded = reg in ("ax", "al") and len(ins) >= 3 and ins[-3].mnemonic == "mov" and ins[-3].op_str.startswith(reg + ", ") and "[" in ins[-3].op_str
+        loaded = loaded or reg == "ax" and len(ins) >= 3 and ins[-3].mnemonic == "mov" and \
+            ins[-3].op_str in ("si, ax", "di, ax")          # (an assignment's value - c = f() - compared: a switch's)
         loaded = loaded or reg == "ax" and len(ins) >= 4 and ins[-3].mnemonic in ("cbw", "cwde") and \
             ins[-4].mnemonic == "mov" and ins[-4].op_str.startswith("al, ") and "[" in ins[-4].op_str   # (a byte widened)
         computed = reg in ("ax", "al") and len(ins) >= 3 and ins[-3].mnemonic in ("and", "or", "xor", "add", "sub", "shl", "shr", "sar") \

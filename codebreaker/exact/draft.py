@@ -715,6 +715,54 @@ def goto_tails(text, most=3):
     return None
 
 
+def call_tests(text):
+    """ax = E; r = ax; switch (ax) - the selector an assignment: switch (r = E); and F(..); if (.. ax ..) - a call
+    whose value the next test reads: the call in the test; ((x + 1) == 0) as (x == -1)"""
+    text = re.sub(r"(?m)^([ \t]*)ax = ([^;\n]+);\n\1(\w+) = ax;\n\1switch \(ax\) \{$",
+                  lambda m: "%sswitch (%s = %s) {" % (m.group(1), m.group(3), m.group(2)), text)
+
+    def one(m):
+        ind, call, test = m.group(1), m.group(2), m.group(3)
+        if len(re.findall(r"\bax\b", test)) != 1:
+            return m.group(0)
+        return "%sif %s {" % (ind, re.sub(r"\bax\b", lambda _: call, test))
+    text = re.sub(r"(?m)^([ \t]*)([A-Za-z_]\w*\([^;\n]*\));\n\1if (\(.*\)) \{$", one, text)
+    return re.sub(r"\(\(([^()]+|[A-Za-z_]\w*\([^()]*\)) \+ 1\) == 0\)", r"(\1 == -1)", text)
+
+
+def fall_dups(text):
+    """a switch arm ending with what the next arm is, word for word, and leaves (return, break): that tail gone -
+    it falls into the next (the compiler's one copy, the model's two)"""
+    lines = text.split("\n")
+    for k, l in enumerate(lines):
+        m = re.fullmatch(r"([ \t]*)switch \(.*\) \{", l)
+        if not m:
+            continue
+        ind = m.group(1)
+        end = next((j for j in range(k + 1, len(lines)) if lines[j] == ind + "}"), None)
+        if end is None:
+            continue
+        heads = [j for j in range(k + 1, end) if re.fullmatch(r"%s(?:case [^:]+|default):" % re.escape(ind), lines[j])]
+        arms = []
+        for i, h in enumerate(heads):
+            stop = heads[i + 1] if i + 1 < len(heads) else end
+            j = h
+            while j + 1 < stop and re.fullmatch(r"%s(?:case [^:]+|default):" % re.escape(ind), lines[j + 1]):
+                j += 1
+            if j + 1 < stop:
+                arms.append((j + 1, stop))
+        for (a0, a1), (b0, b1) in zip(arms, arms[1:]):
+            nb = b1 - b0
+            body_b = lines[b0:b1]
+            if not body_b or not re.match(r"\s*(?:return\b|break;)", body_b[-1]) or a1 - a0 <= nb or lines[a1 - nb:a1] != body_b:
+                continue
+            if any(re.fullmatch(r"\s*L_\w+:", x) for x in body_b):
+                continue
+            del lines[a1 - nb:a1]
+            return fall_dups("\n".join(lines))
+    return text
+
+
 def fall_gotos(text):
     """goto L; where what comes after it, past the ends of ifs and a switch's case labels, is L: itself - the
     goto only falls there (a case falling into the next): gone, and L with it when nothing else goes there"""
@@ -3256,7 +3304,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = zero_extends(high_zero(copy_props(table_macros(prj, case_falls(char_stores(char_params(long_pairs(long_returns(store_reloads(fall_gotos(t))))))), prj.toolchain().p.get("table_macros")))))
         t = re.sub(r"&(\w+)\[(-?)(\d+)\]", lambda m: "(%s %s %s)" % (m.group(1), "-" if m.group(2) else "+", m.group(3)), t)
         t = re.sub(r"&(\w+)->f(\d+)\b", r"(\1 + \2)", t)  # (lea: &p[N], &p->fN - the place, p + N)
-        t = fold_registers(stored_calls(store_loops(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(push_returns(conditional_values(logical_values(step_tests(bool_trees(range_switches(loop_gotos(empty_loops(first_breaks(loop_registers(fall_gotos(goto_tails(t) or t)))))))))))))))))))
+        t = fold_registers(stored_calls(store_loops(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(push_returns(conditional_values(logical_values(step_tests(bool_trees(range_switches(loop_gotos(empty_loops(first_breaks(loop_registers(fall_dups(fall_gotos(goto_tails(t) or t))))))))))))))))))))
         t = stored_calls(fold_registers(push_returns(t)))   # (returns again, as the passes left the arms)
         t = stored_reads(scaled_index(register_chains(word_arrays(test_first_loops(copy_tests(post_steps(t)))))))
         t = fold_registers(conditional_values(t))           # (the ?: values again, the elements folded)
@@ -3978,7 +4026,7 @@ def localize(prj, text, at, names):
     text = fp_conversions(text, prj.toolchain().p.get("fp_conversions"))
     text = long_helpers(text, prj.toolchain().p.get("long_helpers"))
     text = library_macros(text, macros)                     # (the routines named: the macros they show)
-    text = data_macros(prj, text, prj.toolchain().p.get("data_macros"))
+    text = call_tests(data_macros(prj, text, prj.toolchain().p.get("data_macros")))   # (a macro's value tested, switched on)
     if FILEPTR:                                             # (the stream's fields the struct pass read: the macro's now)
         norm = lambda n: "g_%04x" % int(n[2:], 16) if re.fullmatch(r"g_[0-9a-f]{1,4}", n) else n
         streams = {norm(k) for k in FILEPTR if not k.startswith("#")}
