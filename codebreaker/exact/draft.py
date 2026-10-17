@@ -3957,6 +3957,11 @@ def long_helpers(text, helpers):
     def one(m):
         op = helpers[m.group(1)]
         args = [x.strip() for x in _top_commas(m.group(2))]
+        if len(args) == 3:                                  # (the long operand pushed a word at a time: its words
+            f1 = re.fullmatch(r"(\w+(?:->f\d+)*)->f(\d+)", args[1])   #  a field's two - the long there)
+            f2 = re.fullmatch(r"(\w+(?:->f\d+)*)->f(\d+)", args[2])
+            if f1 and f2 and f1.group(1) == f2.group(1) and int(f2.group(2)) == int(f1.group(2)) + 2:
+                args = [args[0], "*(long *)&%s" % args[1]]
         if len(args) != 2:
             return m.group(0)
         if re.match(r"a?ul", m.group(1)) and re.fullmatch(r"&?\w+", args[0]):   # (an unsigned one's operand:
