@@ -3423,6 +3423,17 @@ def long_pairs(text):
         return "(%s %s 0)" % (x, m.group(2)) if x else m.group(0)
     body = re.sub(r"\((\((?:[^()]|\((?:[^()]|\((?:[^()]|\([^()]*\))*\))*\))*\)) (!=|==) 0\)", long_test, body)
 
+    def field_pair(m):                                      # (a long field given a long a word at a time - another
+        ind, p, n, x, p2, n2, y = m.groups()                #  long field's, a long in the data, ..)
+        if p2 != p or int(n2) != int(n) + 2 or re.fullmatch(r"[a-z]|v\d+", x.strip()):
+            return m.group(0)                               # (two variables: pair_store's, with its guards)
+        lx = long_of(x, y)
+        if not lx:
+            return m.group(0)
+        LONGINFO.setdefault("fields", set()).add(int(n))
+        return "%s%s->f%s = %s;" % (ind, p, n, lx)
+    body = _line_pairs(body, r"([ \t]*)(\w+(?:->f\d+)*)->f(\d+) = ([^;\n]+);\n\s*(\w+(?:->f\d+)*)->f(\d+) = ([^;\n]+);", field_pair)
+
     def lfield(p, n):                                       # (a long field: offset n of what p points to)
         LONGINFO.setdefault("fields", set()).add(int(n))
         return "%s->f%s" % (p, n)
