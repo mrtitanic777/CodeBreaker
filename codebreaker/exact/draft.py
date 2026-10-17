@@ -1565,7 +1565,7 @@ def stored_calls(text):
 SIZES = {"char": 1, "int": 2, "unsigned": 2, "short": 2, "long": 4}
 
 
-def frame_names(text, rule):
+def frame_names(text, rule, regs_last=False):
     """the locals renamed so that the compiler gives each the frame slot the program shows. rule (the toolchain
     profile's "frame_order"): {"mod": M} - the compiler gives the locals of a function (register ones too) their
     slots in the order of their names' buckets in its table of names, (the sum of the name's characters) mod M,
@@ -1595,19 +1595,24 @@ def frame_names(text, rule):
     regs = [d for d in decls if d["reg"]]
     order = []
     drop = set()
+    resize = {}
     cum = 0
     for d in autos:                                         # (each auto at its place; what lies between: register
         n = int(d["name"][1:])                              #  locals, then a filler)
         gap = n - d["size"] - cum
-        while gap >= 2 and regs:
+        took = 0
+        while gap >= 2 and regs and not regs_last:
             order.append(regs.pop(0))
             gap -= 2
+            took += 1
         if "_p%d" % cum in fill:
             if gap <= 0:                                    # (the register locals take the room: no filler)
                 drop.add("_p%d" % cum)
                 fill.pop("_p%d" % cum)
             else:
                 order.append(fill["_p%d" % cum])
+                if took:                                    # (the filler what they leave of it)
+                    resize["_p%d" % cum] = gap
         order.append(d)
         cum = n
     order += regs + [fill[f] for f in fill if fill[f] not in order]
@@ -1627,10 +1632,12 @@ def frame_names(text, rule):
                 return None
             new[d["name"]] = nm
         prev = bucket(nm)
-    if not new and not drop:
+    if not new and not drop and not resize:
         return None
     for f in drop:
         body = re.sub(r"(?m)^[ \t]*char %s\[\d+\];\n" % f, "", body)
+    for f, z in resize.items():
+        body = re.sub(r"(?m)^([ \t]*char %s)\[\d+\];$" % f, lambda m: "%s[%d];" % (m.group(1), z), body)
     for a, b in new.items():
         body = re.sub(r"\b%s\b" % a, b, body)
     return head + "{" + body
@@ -2754,6 +2761,28 @@ def guard_returns(text):
     return None
 
 
+def guard_shared(text):
+    """if (C) { S } [else { }] last, the function falling off its end the other way - S returning K somewhere:
+    if (!C) return K; S (a variant: the way out the compiler shares with S's return of K, the model reading the
+    jump to it as the end)"""
+    lines = text.split("\n")
+    for k in range(len(lines)):
+        if not lines[k].startswith("    if (") or not lines[k].endswith("{"):
+            continue
+        p = _if_parts(lines, k)
+        if not p or (p[2] is not None and any(x.strip() for x in p[2])) or [x for x in lines[p[3]:] if x.strip()] != ["}"]:
+            continue
+        ks = [m.group(1) for m in (re.match(r"\s*return (-?\d+);$", x) for x in p[1]) if m]
+        if not ks:
+            continue
+        neg = _not("(%s)" % p[0])
+        new = ["    if %s return %s;" % (neg if neg.startswith("(") and _balanced(neg[1:-1]) else "(%s)" % neg, ks[0])] + \
+            [x[4:] if x.startswith("        ") else x for x in p[1]]
+        t = "\n".join(lines[:k] + new + lines[p[3]:])
+        return flat_returns(t) or t
+    return None
+
+
 def bool_trees(text):
     """an if-tree whose every way ends giving r 1 or 0 (a goto to a labelled part of it the same part again):
     if (E) { r = 1; } else { r = 0; } - E the && / || of its tests, a part both ways share factored out
@@ -3776,7 +3805,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
             t = buffers(t) or t
         t = frame_chars(fn_pointers(t), widths)
         t = fill_frame(t, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
-        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t), register_copies(t), lead_filler(t), scaled_places(t), shared_tails(t), guard_returns(t), default_after(t), frame_more(t), loop_tests(t), switch_breaks(t), register_reads(t), compare_results(t), or_loops(t), loop_guards(t), const_tests(t), flat_returns(t), return_cases_first(t), registers_last(t)] if v]
+        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t), register_copies(t), lead_filler(t), scaled_places(t), shared_tails(t), guard_returns(t), default_after(t), frame_more(t), loop_tests(t), switch_breaks(t), register_reads(t), compare_results(t), or_loops(t), loop_guards(t), const_tests(t), flat_returns(t), return_cases_first(t), registers_last(t), guard_shared(t)] if v]
         both = pre_steps(t)
         both = pre_increments(both) if both else None
         if both:
@@ -3794,6 +3823,8 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         for v in list(variants):                            # (the names the frame's order asks for)
             fn = frame_names(v, rule) if rule else None
             variants.insert(variants.index(v) + 1, fn) if fn else None
+            fl = frame_names(v, rule, True) if rule and REGSLOTS[0] else None   # (the register locals' slots last)
+            variants.append(fl) if fl and fl != fn else None
         dsize = 0x10000                                     # (the data and the BSS after it: any place a pointer is compared with)
         for v in list(variants)[:2]:                        # (a number that is a place in the data)
             for name, av in address_variants(v, dsize):
@@ -5087,11 +5118,13 @@ REFINERS = [lambda prj, s: [assign_in_args(s)], lambda prj, s: [return_sources(s
             lambda prj, s: [loop_tests(s)], lambda prj, s: [switch_breaks(s)], lambda prj, s: [register_reads(s)],
             lambda prj, s: [compare_results(s)], lambda prj, s: [or_loops(s)], lambda prj, s: [loop_guards(s)],
             lambda prj, s: [const_tests(s)], lambda prj, s: [flat_returns(s)], lambda prj, s: [return_cases_first(s)],
-            lambda prj, s: [registers_last(s)], lambda prj, s: unsigned_locals(s),
-            lambda prj, s: [frame_names(s, prj.toolchain().p["frame_order"])] if prj.toolchain().p.get("frame_order") else [],
+            lambda prj, s: [registers_last(s)], lambda prj, s: unsigned_locals(s), lambda prj, s: [guard_shared(s)],
+            lambda prj, s: [frame_names(s, prj.toolchain().p["frame_order"]), frame_names(s, prj.toolchain().p["frame_order"], True)]
+            if prj.toolchain().p.get("frame_order") else [],
             lambda prj, s: [re.sub(r"\b([A-Za-z_]\w*), 0\)", r"(long)\1)", s, count=1)],   # (a value and a zero word
                                                                                                #  pushed: it widened)
-            lambda prj, s: [re.sub(r"\b0, 0\)", "0L)", s)]]     # (two zero words pushed: a long 0)
+            lambda prj, s: [re.sub(r"\b0, 0\)", "0L)", s)],     # (two zero words pushed: a long 0)
+            lambda prj, s: [re.sub(r"(?<=\()0, 0(?=, )", "0L", s, count=1)]]   # (the same first of more arguments)
 
 
 BEAM = 4                                                    # (the readings the search carries on with each round)
