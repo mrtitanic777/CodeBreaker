@@ -1327,6 +1327,9 @@ class R:
         given={}                                           # (push si; push di; mov di,X; mov si,Y; push ds: the
         if seq[:2]==[("push","si"),("push","di")] and not bare:   #  copy's pointers given between the saves)
             k=i+2
+            if k<len(ins) and ins[k].mnemonic=="xchg" and ins[k].op_str in ("di, si","si, di"):   # (the two swapped)
+                vs, vd = getattr(s,"si",None) or "si", getattr(s,"di",None) or "di"
+                given={"di":str(vs),"si":str(vd)}; k+=1
             while k<i+4 and k<len(ins) and ins[k].mnemonic in ("mov","lea") and re.match(r"(di|si), ", ins[k].op_str):
                 r_, src=ins[k].op_str.split(", ")
                 if ins[k].mnemonic=="lea":                  # (the place of a field: its address)
