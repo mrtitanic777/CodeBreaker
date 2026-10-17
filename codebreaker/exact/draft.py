@@ -1679,6 +1679,66 @@ def assign_loops(text):
     return None
 
 
+def _openers(lines, k):
+    """[the line opening each block around line k, the innermost first]"""
+    out, want = [], len(lines[k]) - len(lines[k].lstrip())
+    for j in range(k - 1, -1, -1):
+        x = lines[j]
+        if not x.strip():
+            continue
+        d = len(x) - len(x.lstrip())
+        if d < want and x.rstrip().endswith("{"):
+            out.append(j)
+            want = d
+    return out
+
+
+def store_joins(text):
+    """.. r = A; L: X = r; } .. } else { .. r = B; goto L; } - one store the compiler shares between the two arms of
+    an if (the jump to it from the other): each arm its own, X = A and X = B (both arms ending there)"""
+    lines = text.split("\n")
+    for i in range(1, len(lines) - 1):
+        m = re.fullmatch(r"\s*(L_\w+):", lines[i])
+        st = re.fullmatch(r"(\s*)([\w\->.\[\]]+) = (ax|al|bx|cx|dx);", lines[i + 1]) if m else None
+        a = re.fullmatch(r"\s*%s = ([^;]+);" % st.group(3), lines[i - 1]) if st else None
+        if not a:
+            continue
+        lab = m.group(1)
+        gs = [j for j, x in enumerate(lines) if x.strip() == "goto %s;" % lab]
+        if len(gs) != 1:
+            continue
+        g = gs[0]
+        b = re.fullmatch(r"\s*%s = ([^;]+);" % st.group(3), lines[g - 1])
+        if not b:
+            continue
+        ol, og = _openers(lines, i), _openers(lines, g)
+        common = next((x for x in ol if x in og), None)    # (the innermost block around both)
+        if common is None:
+            continue
+        # (the two ways: the arms of one if below that block; after each store only blocks closing to it)
+        def closes_to(k):
+            j = k + 1
+            while j < len(lines) and lines[j].strip() in ("}", "} else {"):
+                if lines[j].strip() == "} else {":
+                    return j
+                j += 1
+            return j
+        el = next((j for j in range(min(i, g), max(i, g)) if lines[j].strip() == "} else {" and _opener(lines, j) in ol + og), None)
+        if el is None:
+            continue
+        ends = (closes_to(i + 1), closes_to(g))
+        if not all(lines[e].strip() == "} else {" and e == el or (e < len(lines) and len(lines[e]) - len(lines[e].lstrip()) <=
+                   len(lines[_opener(lines, el)]) - len(lines[_opener(lines, el)].lstrip())) for e in ends):
+            continue
+        ind_s, ind_g = st.group(1), re.match(r"\s*", lines[g]).group(0)
+        lines[g - 1:g + 1] = ["%s%s = %s;" % (ind_g, st.group(2), b.group(1))]
+        if g < i:
+            i -= 1
+        lines[i - 1:i + 2] = ["%s%s = %s;" % (ind_s, st.group(2), a.group(1))]
+        return store_joins("\n".join(lines))
+    return text
+
+
 def loop_collapse(text):
     """L: for (;;) { for (;;) { S } break; } - an outer loop only restarting the inner one (a goto L in S): the
     inner loop alone, the gotos its continues (the model's reading of a loop entered at a shared clean-up)"""
@@ -1802,6 +1862,50 @@ def stored_values(text):
                re.search(r"\b%s\s*=[^=]" % re.escape(v), y) or re.match(r"\s*(?:return|break|continue|goto)\b", y):
                 break                                       # (a call - it gives ax - or V given again: done)
     return "\n".join(lines)
+
+
+def two_case_switches(text):
+    """r = E; if ((r != K1)) { if ((r == K2)) { L: S } } else { goto L; } - two values to one arm, the compiler's
+    compares of a switch: switch (E) { case K1: case K2: S }"""
+    lines = text.split("\n")
+    for k in range(len(lines) - 4):
+        a = re.fullmatch(r"(\s*)(ax|al|bx|cx|dx) = ([^;]+);", lines[k])
+        if not a:
+            continue
+        ind, r, e = a.groups()
+        p = _if_parts(lines, k + 1)
+        c1 = re.fullmatch(r"\(\(%s != (-?\d+)\)\)" % r, "(" + p[0] + ")") if p else None
+        if not c1 or p[2] is None or [x.strip() for x in p[2] if x.strip()][:1] != [x.strip() for x in p[2] if x.strip()] or \
+           not re.fullmatch(r"goto (L_\w+);", "".join(x.strip() for x in p[2])):
+            continue
+        lab = re.fullmatch(r"goto (L_\w+);", "".join(x.strip() for x in p[2])).group(1)
+        q = _if_parts(p[1], 0) if p[1] else None
+        c2 = re.fullmatch(r"\(\(%s == (-?\d+)\)\)" % r, "(" + q[0] + ")") if q else None
+        if not c2 or q[2] is not None or q[3] != len(p[1]) or not q[1] or q[1][0].strip() != lab + ":":
+            continue
+        body = [x[8:] if x.startswith(ind + "        ") else x for x in q[1][1:]]
+        if re.search(r"\bgoto %s;" % lab, "\n".join(lines[:k] + body + lines[p[3]:])) or \
+           any(x.strip() == "break;" for x in body) or re.search(r"\b%s\b" % r, "\n".join(body)):
+            continue
+        new = ["%sswitch (%s) {" % (ind, e if not e.startswith("(") or not _balanced(e[1:-1]) else e[1:-1]),
+               "%scase %s:" % (ind, c1.group(1)), "%scase %s:" % (ind, c2.group(1))] + \
+              ["    " + x if x.strip() else x for x in body] + ["%s}" % ind]
+        lines[k:p[3]] = new
+        return "\n".join(lines)
+    return text
+
+
+def long_tests(text):
+    """ax = E; X = ax; X' = dx; ax = (ax | dx); if ((ax == 0)) - a long given and tested at once: if ((X = E) == 0)
+    (X a long field's, a long of the data's or a local's two words)"""
+    def one(m):
+        ind, e, lo, hi, op, rest = m.groups()
+        x = _pair_long(lo, hi)
+        if not x or x.startswith("(long)"):
+            return m.group(0)
+        return "%sif (((%s = %s) %s 0))%s" % (ind, x, e, op, rest)
+    return re.sub(r"(?m)^([ \t]*)ax = ([^;\n]+);\n[ \t]*([\w\->.]+) = ax;\n[ \t]*([\w\->.]+) = dx;\n[ \t]*ax = \(ax \| dx\);\n"
+                  r"[ \t]*if \(\(ax ([!=]=) 0\)\)(.*)$", one, text)
 
 
 def _pair_long(lo, hi):
@@ -4464,7 +4568,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = fold_registers(stored_calls(store_loops(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(push_returns(conditional_values(logical_values(step_tests(bool_trees(range_switches(loop_gotos(empty_loops(tested_zero(continue_loops(first_breaks(loop_registers(fall_dups(fall_gotos(goto_tails(t) or t))))))))))))))))))))))
         t = stored_calls(fold_registers(push_returns(t)))   # (returns again, as the passes left the arms)
         t = stored_reads(scaled_index(register_chains(word_arrays(pointer_index(test_first_loops(copy_tests(post_steps(selector_reads(lvalue_choices(t))))))))))
-        t = fold_registers(stored_values(conditional_values(ternary_joins(switch_ifs(loop_collapse(t))))))     # (the ?: values again, the elements folded)
+        t = fold_registers(stored_values(conditional_values(store_joins(ternary_joins(switch_ifs(loop_collapse(two_case_switches(long_tests(t)))))))))     # (the ?: values again, the elements folded)
         t = fold_registers(stored_tests(push_returns(temporaries(compare_values(goto_returns(sunk_tails(sunk_pairs(empty_loops(shared_arms(merge_conditions(guard_gotos(self_updates(switch_follow(t))))))))))))))
         wd = set(widths)                                    # (a parameter kept in a register: the bytes read through
         for r_, i_ in (regparam or {}).items():             #  that register its own)
