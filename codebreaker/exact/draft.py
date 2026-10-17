@@ -1821,6 +1821,43 @@ def empty_cases_first(text):
     return None
 
 
+def switch_breaks(text):
+    """a switch last in a loop's body whose arms go on with `continue;`: break (the same - the loop's end), and a
+    default that only goes on gone (a variant: which the source wrote decides the layout)"""
+    lines = text.split("\n")
+    for k in range(len(lines)):
+        m = re.fullmatch(r"([ \t]*)(?:while \(.*\)|for \(.*\)) \{", lines[k])
+        e = _block_end(lines, k) if m else None
+        if e is None:
+            continue
+        i4 = m.group(1) + "    "
+        sw = next((j for j in range(e - 1, k, -1) if lines[j].strip()), None)
+        if sw is None or lines[sw] != i4 + "}":
+            continue
+        st = next((j for j in range(sw - 1, k, -1) if lines[j].startswith(i4 + "switch (") and lines[j].endswith("{")), None)
+        if st is None or any(lines[j].strip() == "continue;" and len(lines[j]) - len(lines[j].lstrip()) > len(i4) + 4
+                             for j in range(st, sw)):
+            continue
+        new = list(lines)
+        changed = False
+        for j in range(st + 1, sw):
+            if new[j] == i4 + "    continue;":
+                new[j] = i4 + "    break;"
+                changed = True
+        j = st + 1
+        while j < sw:                                       # (a default that only breaks: none)
+            if new[j] == i4 + "default:" and j + 1 < sw and new[j + 1] == i4 + "    break;" and \
+                    (j + 2 >= sw or re.match(r"\s*(?:case [^:]+|default):$", new[j + 2])):
+                new[j] = new[j + 1] = None
+                changed = True
+                j += 2
+                continue
+            j += 1
+        if changed:
+            return "\n".join(x for x in new if x is not None)
+    return None
+
+
 def default_after(text):
     """switch (..) { .. default: S; case K: return V; } - the default falling into a case that only returns: the
     case written first, S after the switch with its own return V (a variant: the source's layout of both)"""
@@ -2985,7 +3022,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = register_values(long_ladders(long_pairs(t)))                     # (the longs again, as the passes left them)
         t = frame_chars(fn_pointers(t), widths)
         t = fill_frame(t, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
-        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t), register_copies(t), lead_filler(t), scaled_places(t), shared_tails(t), guard_returns(t), default_after(t), frame_more(t), loop_tests(t)] if v]
+        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t), register_copies(t), lead_filler(t), scaled_places(t), shared_tails(t), guard_returns(t), default_after(t), frame_more(t), loop_tests(t), switch_breaks(t)] if v]
         both = pre_steps(t)
         both = pre_increments(both) if both else None
         if both:
@@ -3202,9 +3239,10 @@ def long_pairs(text):
 
     bl = body.split("\n")                                   # (the model's temporaries holding an int and its sign
     for k in range(len(bl)):                                #  spread, read once by a call a line or two on: in their
-        m = re.fullmatch(r"[ \t]*(t\d+) = (\(0 - \((\w+) >> 15\)\)|(\w+));", bl[k] or "")   # places - the call
-        if not m:                                                                        #  passes a long)
-            continue
+        m = re.fullmatch(r"[ \t]*(t\d+) = (\(0 - \((\w+) >> 15\)\)|(\w+));", bl[k] or "") or \
+            re.fullmatch(r"[ \t]*(bx|cx|dx|di) = (\(0 - \((\w+) >> 15\)\))()();", bl[k] or "")   # places - the call
+        if not m:                                                                        #  passes a long; the
+            continue                                                                     #  sign in a register too)
         t, e, x = m.group(1), m.group(2), m.group(3) or m.group(4)
         uses = [j for j in range(k + 1, min(k + 4, len(bl))) if bl[j] is not None and re.search(r"\b%s\b" % t, bl[j])]
         if len(uses) != 1 or any(re.search(r"\b%s\b" % t, bl[j] or "") for j in range(uses[0] + 1, len(bl))) or \
@@ -3221,6 +3259,11 @@ def long_pairs(text):
                 body = _drop_decl(body, t1)
     body = re.sub(r"\bLONG\(\(0 - \((\w+) >> 15\)\), \1\)", r"(long)\1", body)   # (an int's sign spread: widened)
     body = re.sub(r"\bLONG\(0, (\w+)\)", r"(long)(unsigned)\1", body)
+    body = re.sub(r"\bLONG\((\w+(?:->f\d+)*)->f(\d+), \1->f(\d+)\)", lambda m: "%s->f%s" % (m.group(1), m.group(3))
+                  if int(m.group(2)) == int(m.group(3)) + 2 and LONGINFO.setdefault("fields", set()).add(int(m.group(3))) is None
+                  else m.group(0), body)                    # (a long field's two words: the field)
+    if LONGINFO.get("ret"):                                 # (a long function's value its long's low word: the long)
+        body = re.sub(r"\bLO\(((?:[^()]|\((?:[^()]|\([^()]*\))*\))*)\)", r"(\1)", body)
 
     def pair_copy(m):                                       # (a pair given a pair: x = y, the high words too)
         ind, x, y, hx, hy = m.groups()
@@ -4210,7 +4253,7 @@ REFINERS = [lambda prj, s: [assign_in_args(s)], lambda prj, s: [return_sources(s
             lambda prj, s: [empty_cases_first(s)], lambda prj, s: [register_slots(s)], lambda prj, s: [register_copies(s)],
             lambda prj, s: [lead_filler(s)], lambda prj, s: [scaled_places(s)], lambda prj, s: [shared_tails(s)],
             lambda prj, s: [guard_returns(s)], lambda prj, s: [default_after(s)], lambda prj, s: [frame_more(s)],
-            lambda prj, s: [loop_tests(s)],
+            lambda prj, s: [loop_tests(s)], lambda prj, s: [switch_breaks(s)],
             lambda prj, s: [re.sub(r"\b0, 0\)", "0L)", s)]]     # (two zero words pushed: a long 0)
 
 
@@ -4471,7 +4514,8 @@ def _fpinfo(inv, raw, code):
         while j >= 0 and (ins[j].mnemonic == "pop" or ins[j].op_str == "sp, bp"):
             j -= 1
         epi = ins[j + 1].address if j + 1 < len(ins) else None
-        gives_dx = lambda x: x.mnemonic in ("cwd", "cdq") or (x.mnemonic in ("mov", "xor", "sub") and x.op_str.startswith("dx, "))
+        gives_dx = lambda x: x.mnemonic in ("cwd", "cdq") or (x.mnemonic not in ("cmp", "test", "push") and
+                                                            (x.op_str.startswith("dx, ") or x.op_str == "dx"))   # (any write of dx)
         ends = [j] + [k - 1 for k, x in enumerate(ins) if x.mnemonic == "jmp" and x.op_str in ("0x%x" % epi, str(epi)) and k > 0] if epi is not None else [j]
         LONGINFO["ret"] = j >= 0 and all(e >= 0 and gives_dx(ins[e]) for e in ends)   # (dx given before every way out)
 
