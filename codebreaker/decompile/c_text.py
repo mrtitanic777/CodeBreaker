@@ -275,30 +275,14 @@ def _fit_calls(out, order):
         takes[n] = 0 if inside in ("", "void") else inside.count(",") + 1
     if not takes:
         return out
-    call = re.compile(r"(?<![\w.>])(%s)\(" % "|".join(re.escape(n) for n in sorted(takes, key=len, reverse=True)))
-    fitted = {}
-    for n in order:
-        head, brace, body = out[n].partition("{")
-        pieces, at = [], 0
-        for m in call.finditer(body):
-            depth, i, commas, empty = 1, m.end(), 0, True
-            while i < len(body) and depth:
-                c = body[i]
-                if c in "([":
-                    depth += 1
-                elif c in ")]":
-                    depth -= 1
-                elif c == "," and depth == 1:
-                    commas += 1
-                if depth and not c.isspace():
-                    empty = False
-                i += 1
-            given = 0 if empty else commas + 1
-            if depth == 0 and given != takes[m.group(1)]:
-                pieces.append(body[at:m.start()] + "((int4 (*)())%s)(" % m.group(1))
-                at = m.end()
-        fitted[n] = head + brace + "".join(pieces) + body[at:] if pieces else out[n]
-    return fitted
+
+    def fit(src):
+        for c in src.find("call_expression", under=src.body()):
+            f = c.child_by_field_name("function")
+            if f.type == "identifier" and src.at(f) in takes and \
+                    len(c.child_by_field_name("arguments").named_children) != takes[src.at(f)]:
+                src.replace(f, "((int4 (*)())%s)" % src.at(f))
+    return {n: ctree.rewrite(out[n], fit) for n in order} if takes else out
 
 
 def compilable32(module_path, funcs, outdir):
@@ -1593,9 +1577,21 @@ def _stack_segment_stores(text, code, start, end):
             places.append(int(mm.group(1), 0) + 2)              # (the decompiler's offset: from the entry SP)
     if not places:
         return text
-    arrays = {mm.group(2): (int(mm.group(3), 16), int(mm.group(4)), mm.group(1))
-              for mm in re.finditer(r"(?m)^  ([\w ]*?\w(?:\s*\*+)?)\s*\b(\w*Stack_([0-9a-f]+)) \[(\d+)\];", text)}
-    ss = "unaff_SS" if re.search(r"\bunaff_SS\b", text) else "codebreaker_ss()"
+    src = ctree.Source(text)
+    arrays = {}
+    for n in src.find("declaration", under=src.body()):
+        ds = n.children_by_field_name("declarator")
+        a = ds[0] if len(ds) == 1 else None
+        while a is not None and a.type == "pointer_declarator":
+            a = a.child_by_field_name("declarator")
+        if a is None or a.type != "array_declarator" or not src.line(n).startswith("  "):
+            continue
+        name, size = src.at(a.child_by_field_name("declarator")), a.child_by_field_name("size")
+        m = re.fullmatch(r"\w*Stack_([0-9a-f]+)", name)
+        if m and size is not None and size.type == "number_literal" and src.at(size).isdigit():
+            typ = src.at(n)[:src.at(n).index(name)].strip()
+            arrays.setdefault(name, (int(m.group(1), 16), int(src.at(size)), typ))
+    ss = "unaff_SS" if any(src.at(n) == "unaff_SS" for n in src.find("identifier")) else "codebreaker_ss()"
     for place in sorted(set(places)):
         for arr, (ao, count, typ) in arrays.items():
             elem = 2 if "*" in typ else _SIZE.get(typ.strip()[-1:], 2)
@@ -1609,14 +1605,37 @@ def _stack_segment_stores(text, code, start, end):
             store = "(*(int2 *)((uint1 *)%s + 0x%x)) = %s;" % (ref, at, ss)
             if store in text:
                 break
-            call = re.search(r"(?m)^([ \t]+)(?=[^\n;]*\w\((?:[^\n;]*[(,])?\s*(?:\(\w+\s*\*?\))?\s*&?(?:codebreaker_frame\.)?%s\b)"
-                             % re.escape(arr), text)
-            if call:
-                text = text[:call.start()] + call.group(1) + store + "\n" + text[call.start():]
+            before = _first_passing(ctree.Source(text), arr)
+            if before is not None:
+                text = text[:before[0]] + before[1] + store + "\n" + text[before[0]:]
             break
         else:
             text = _far_record(text, place, ss)
     return text
+
+
+def _first_passing(src, arr):
+    """(where its line starts, its indentation) of the first statement with a call whose
+    arguments use `arr` -- passed, or anything made from it (`f((int2)*(char **)(arr + 2), ss)`:
+    the far pointer kept in the buffer handed on) -- or None. A buffer kept in the frame's layout
+    is a field of codebreaker_frame by now, and found by that name too."""
+    best = None
+    framed = "codebreaker_frame." + arr
+    for c in src.find("call_expression", under=src.body()):
+        args = c.child_by_field_name("arguments")
+        if not src.is_call(c) or not (any(src.at(n) == arr for n in src.find("identifier", under=args)) or
+                                      any(src.at(n) == framed for n in src.find("field_expression", under=args))):
+            continue
+        st = c                                       # (the statement it is in: after a label, not before it)
+        while st.parent is not None and st.parent.type not in ("compound_statement", "labeled_statement"):
+            st = st.parent
+        if best is None or st.start_byte < best.start_byte:
+            best = st
+    if best is None:
+        return None
+    start = src.line_span(best)[0]
+    line = src.line(best)
+    return start, line[:len(line) - len(line.lstrip())]
 
 
 def _far_record(text, place, ss):
@@ -1861,7 +1880,7 @@ static void codebreaker_trap(uint4 to, int8 a, int8 b, uint8 ua, uint8 ub) {
 _WIDE_ADDRESS = re.compile(r"\b0xffffffff([89a-f][0-9a-f]{7})\b")
 
 
-_HOME = re.compile(r"\b_?([a-z]+)Stack(000000[0-9a-f]{2})\b")
+_HOME = re.compile(r"_?([a-z]+)Stack(000000[0-9a-f]{2})")
 
 
 class ModulePowerPC(object):
@@ -1873,20 +1892,36 @@ def _homed_arguments(t):
     each, from 0x10 above the stack pointer at entry), and a function that needs an argument's
     address stores it there. The decompiler shows that slot as a stack variable of the CALLER's
     frame; it is the argument, and is written as the argument."""
-    head = t.split("{", 1)[0]
-    m = re.search(r"\(([^()]*)\)", head)
-    names = [x.strip().split()[-1].lstrip("*") for x in m.group(1).split(",")]         if m and m.group(1).strip() not in ("", "void") else []
+    src = ctree.Source(t)
+    params = src.parameters()
+    names = [x.split()[-1].lstrip("*") for x in params] if params and ",".join(params).strip() not in ("", "void") else []
 
     def slot(off):
         k = (off - 0x10) // 8
         return names[k] if 0 <= k < len(names) and off % 8 in (0, 4) else None
-    head, brace, body = t.partition("{")
-    # the slot's own declaration goes; every other mention becomes the argument
-    body = re.sub(r"(?m)^  [A-Za-z_][\w ]*?[ *]_?[a-z]+Stack(000000[0-9a-f]{2})(?: \[\d+\])?;[ \t]*\n",
-                  lambda mm: "" if slot(int(mm.group(1), 16)) else mm.group(0), body)
-    body = _HOME.sub(lambda mm: slot(int(mm.group(2), 16)) or mm.group(0), body)
-    body = re.sub(r"(?m)^\s*(\w+) = \1;[ \t]*\n", "", body)   # the store into its own slot
-    return head + brace + body
+
+    def home(src):
+        # the slot's own declaration goes; every other mention becomes the argument
+        for n in src.find("declaration", under=src.body()):
+            ds = n.children_by_field_name("declarator")
+            name = src.declared_name(ds[0]) if len(ds) == 1 else None
+            m = _HOME.fullmatch(name or "")
+            if m and src.line(n).startswith("  ") and src.at(n) == src.line(n).strip() and slot(int(m.group(2), 16)):
+                src.replace(src.line_span(n), "")
+        for n in src.find("identifier", under=src.body()):
+            m = _HOME.fullmatch(src.at(n))
+            if m and slot(int(m.group(2), 16)) and n.parent.type not in ("declaration", "pointer_declarator", "array_declarator"):
+                src.replace(n, slot(int(m.group(2), 16)))
+
+    def own_slot(src):                                       # the store into its own slot: `a1 = a1;`
+        for st in src.find("expression_statement", under=src.body()):
+            a = st.named_children[0] if st.named_child_count == 1 else None
+            if a is not None and a.type == "assignment_expression" and src.at(a.child_by_field_name("operator")) == "=" \
+                    and a.child_by_field_name("left").type == "identifier" \
+                    and src.at(a.child_by_field_name("left")) == src.at(a.child_by_field_name("right")) \
+                    and src.line(st).strip() == src.at(st):
+                src.replace(src.line_span(st), "")
+    return ctree.rewrite(ctree.rewrite(t, home), own_slot)
 
 
 def _ram_type(prefix, size, called):
@@ -1913,23 +1948,14 @@ def call_counts(texts, names):
     a function outside it takes; that all its callers set up the same number is the evidence
     there is."""
     seen = {}
-    pat = re.compile(r"\b(%s)\s*\(" % "|".join(re.escape(n) for n in sorted(names, key=len, reverse=True))) if names else None
-    for t in texts.values() if pat else ():
-        body = t.split("{", 1)[-1]
-        for m in pat.finditer(body):
-            depth, count, i, empty = 1, 1, m.end(), True
-            while i < len(body) and depth:
-                c = body[i]
-                if c in "([":
-                    depth += 1
-                elif c in ")]":
-                    depth -= 1
-                elif c == "," and depth == 1:
-                    count += 1
-                if depth and not c.isspace():
-                    empty = False
-                i += 1
-            seen.setdefault(m.group(1), set()).add(0 if empty else count)
+    for t in texts.values() if names else ():
+        src = ctree.Source(t)
+        for c in src.find("call_expression", under=src.body()):
+            f = c.child_by_field_name("function")
+            if f.type == "field_expression":                  # (`p->name(...)` counts as a call of name)
+                f = f.child_by_field_name("field")
+            if src.at(f) in names:
+                seen.setdefault(src.at(f), set()).add(len(c.child_by_field_name("arguments").named_children))
     return {n: next(iter(c)) for n, c in seen.items() if len(c) == 1}
 
 

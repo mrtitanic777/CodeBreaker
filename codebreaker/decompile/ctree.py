@@ -31,6 +31,7 @@ _QUALIFIERS = re.compile(rb"\b__(?:far|near|huge|export|loadds|saveregs|interrup
 _CASTS = re.compile(r"(?:\(\s*%s(?:\s+%s)*(?:\s*(?:__far|__near))?(?:\s*\*+)?(?:\s*\[\d*\])?\s*\)\s*)+\Z" % (_TYPE, _TYPE))
 
 
+
 def _parser():
     if not _PARSER:
         import tree_sitter
@@ -97,6 +98,12 @@ class Source(object):
                 return n
             n = n.children[0] if n.children else None
         return None
+
+    def is_call(self, node):
+        """A call_expression that is a call: not a cast the grammar read as one (`(uint4)(x)`,
+        `(uint2)(uint1)x`), nor a declaration with a type name in front (`uint2 (*p)`)."""
+        f = self.at(node.child_by_field_name("function"))
+        return not (_CASTS.match(f) or re.fullmatch(_TYPE, f.strip()))
 
     def misread(self, node):
         """For a binary `*`, `&`, `-` or `+` whose left side is nothing but casts -- `(uint4)`,
