@@ -19,6 +19,7 @@ person or a later model - the ledger never counts a draft.
     draft.run(project) -> {address: verdict}
 """
 import importlib
+import itertools
 import os
 import re
 import struct
@@ -3180,8 +3181,10 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         for src, left in loc[:3]:                           # (a global compared: unsigned, a variant)
             if not left and re.search(r"[<>=]=?\s*-?\d", src):
                 loc += [(u, left) for u in unsigned_globals(src)]
-        out += loc
-    return out
+        out.append(loc)
+    # (the bases' readings taken in turn - each base's first, then each one's second, .. - so that no base's
+    #  many variants keep another's first readings from the compiler)
+    return [x for group in itertools.zip_longest(*out) for x in group if x is not None]
 
 
 def byte_fields(inv, code):
