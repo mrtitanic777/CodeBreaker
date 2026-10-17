@@ -136,6 +136,11 @@ def freeze_c_text(modules):
             setattr(c_text, n, fn)
     for n in PASSES:
         cases, changed, same = _choose(store.get(n, {}))
+        if not cases and os.path.isfile(frozen.path("c_text", n)):
+            # not reached this time (a pass the C text no longer calls itself, still called from
+            # elsewhere): its earlier cases stand -- it is a function of its arguments
+            print("  %-24s not reached: its earlier cases kept" % n)
+            continue
         frozen.save("c_text", n, {"pass": n, "modules": modules, "cases": cases})
         print("  %-24s kept %2d of %4d changed, %4d unchanged%s" % (n, len(cases), changed, same,
                                                                     "   <- NEVER CHANGED ANYTHING" if not changed else ""))
