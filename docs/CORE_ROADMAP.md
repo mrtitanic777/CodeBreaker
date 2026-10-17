@@ -40,4 +40,6 @@ thunks) and 7.
 ## Status
 
 - Governor (memory budget, OS ceiling, time limit) -- built into `decompiler.cc`, 2026-10-17.
-- Phase 0 -- next.
+- Phase 0 -- the golden corpus frozen (tools/golden.py; state/golden): 11 modules, 6,813 functions,
+  deterministic. Baseline: 59 failures (GDI32 38); LZEXPAND has 2 runaway functions the governor
+  stops at 1.5 GB; COMMAND.COM takes 116 s for 536 functions (~10x the NE rate). Next: phase 1.
