@@ -1242,8 +1242,17 @@ def selector_reads(text):
                     prev == lines[k] or re.fullmatch(r"\s*(?:break|continue|return\b.*|goto \w+);", prev))
                 ok = entered
                 j += 1
+                bsel = re.fullmatch(r"\*(\w+)", sel)              # (a byte the selector: its al)
                 while ok and j < len(lines) and not re.fullmatch(r"%s(?:case [^:]+|default):|%s\}" % (re.escape(ind), re.escape(ind)), lines[j]):
                     y = lines[j]
+                    if bsel and re.fullmatch(r"\s*%s = %s \+ 1;" % (bsel.group(1), bsel.group(1)), y) and j + 1 < len(lines) and \
+                       len(re.findall(r"\bal\b", lines[j + 1])) == 1 and not re.search(r"\b%s\b" % bsel.group(1), lines[j + 1]):
+                        lines[j + 1] = re.sub(r"\bal\b", "*%s++" % bsel.group(1), lines[j + 1])   # (read, then stepped:
+                        lines[j] = "\x00"                                                   #  *p++)
+                        break
+                    if bsel and len(re.findall(r"\bal\b", y)) == 1 and not re.search(r"\b(?:ax|ah)\b|\bal = ", y):
+                        lines[j] = re.sub(r"\bal\b", sel, y)
+                        break
                     if re.match(r"\s*L_\w+:", y) or re.search(r"\b(?:al|ah)\b", y):
                         break
                     if re.search(r"\bax\b", y):
@@ -1262,7 +1271,7 @@ def selector_reads(text):
                     j += 1
                 continue
             j += 1
-    return "\n".join(lines)
+    return "\n".join(l for l in lines if l != "\x00")
 
 
 def _changed(f, text):

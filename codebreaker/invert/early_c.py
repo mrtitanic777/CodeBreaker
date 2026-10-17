@@ -1157,8 +1157,11 @@ class R:
                 tx=s.ins[s.tgt[i+1]]
                 if tx.mnemonic=="add" and re.match(r"sp, (0x[0-9a-f]+|\d+)$", tx.op_str):
                     n=s.num(tx.op_str[4:])//2
-        if n is None and not pascal and s.msc3 and i+1<len(s.ins) and s.ins[i+1].mnemonic=="push" and \
-                s.ins[i+1].op_str in ("ax","dx"):
+        nx_=s.ins[i+1] if i+1<len(s.ins) else None
+        if nx_ is not None and nx_.mnemonic=="jmp" and s.tgt.get(i+1) is not None:
+            nx_=s.ins[s.tgt[i+1]]                              # (through a jump to a tail shared with another path)
+        if n is None and not pascal and s.msc3 and nx_ is not None and nx_.mnemonic=="push" and \
+                nx_.op_str in ("ax","dx"):
             n=0                                                # (3.00: a call whose value is pushed at once, no clean-up
                                                                #  between: no arguments of its own - the words pushed
                                                                #  before it the outer call's)
