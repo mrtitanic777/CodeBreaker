@@ -1336,13 +1336,18 @@ class R:
                     v_=s.memname(src); v_=("&%s"%v_) if v_ else None
                 elif src in ("si","di"): v_=given.get(src, getattr(s,src,None) or src)
                 elif src in ("ax","bx","cx","dx"): v_=s._val(src)
-                elif re.fullmatch(r"0x[0-9a-f]+|\d+", src): v_=("&g_%x"%s.num(src)) if s.num(src)>=0x100 else str(s.num(src))
+                elif re.fullmatch(r"0x[0-9a-f]+|\d+", src): v_=("&g_%04x"%s.num(src)) if s.num(src)>0 else str(s.num(src))   # (a copy's place: data)
                 else: v_=s.memname(src)
                 if v_ is None: break
                 given[r_]=str(v_); k+=1
             if given and [(x.mnemonic,x.op_str) for x in ins[k:k+2]]==[("push","ds"),("pop","es")]:
                 seq=[("push","si"),("push","di"),("push","ds"),("pop","es")]
                 i0=i; i=k-2                                 # (read on as the plain form from here)
+            elif given and k<len(ins) and (ins[k].mnemonic in ("movsw","movsb") or ins[k].mnemonic=="mov" and
+                    ins[k].op_str.startswith("cx, ") and k+1<len(ins) and ins[k+1].mnemonic.startswith("rep")) and \
+                    any((x.mnemonic,x.op_str)==("pop","es") for x in ins[max(0,i-24):i]):
+                seq=[("push","si"),("push","di"),("push","ds"),("pop","es")]   # (es still ds from a copy just
+                i0=i; i=k-4                                                    #  before: not set again)
             else:
                 given={}
         if seq!=[("push","si"),("push","di"),("push","ds"),("pop","es")] and not bare: return 0
@@ -1565,6 +1570,20 @@ class R:
                         {p_[1].split(",")[0] for p_ in pre[:2] if p_[0]=="mov"}=={"ax","dx"}:
                     lo_=s.ax if s.ax is not None else "ax"; hi_=s.dx if s.dx is not None else "dx"
                     args="LONG(%s, %s), %s"%(hi_, lo_, s.num(pre[-1][1].split(", ")[1]) if re.match(r"(0x[0-9a-f]+|\d+)$", pre[-1][1].split(", ")[1]) else "cl")
+                    s.ax=None; s.dx=None
+                elif pre[-1][0]=="mov" and pre[-1][1].startswith("cl, ") and \
+                        any(p_[0] in ("cdq","cwd") or p_[0]=="mov" and p_[1].startswith(("ax, ","dx, ")) for p_ in pre[:2]) and \
+                        all(p_[0] in ("mov","cdq","cwd") and not p_[1].startswith(("si,","di,")) for p_ in pre[:2]):
+                    # (the same with the value's high word spread from its low one - cdq - or left in dx from
+                    #  before, a register or the data giving the count: the count's own byte read)
+                    src_=pre[-1][1].split(", ",1)[1]
+                    cnt=s.num(src_) if re.match(r"(0x[0-9a-f]+|\d+)$", src_) else (s.memname(src_) if "[" in src_ else "cl")
+                    lo_=s.ax if s.ax is not None else "ax"
+                    if any(p_[0] in ("cdq","cwd") for p_ in pre[:2]):
+                        args="(long)%s, %s"%(lo_, cnt)
+                    else:
+                        hi_=s.dx if s.dx is not None else "dx"
+                        args="LONG(%s, %s), %s"%(hi_, lo_, cnt)
                     s.ax=None; s.dx=None
             if m:
                 expr="sub_%x(%s)"%(s.num(m.group(1)), args)
@@ -1853,7 +1872,10 @@ class R:
             tv, ev = then_snap[r], else_snap[r]
             if tv==ev:
                 setattr(s, r, tv); continue
-            if not DEADREGS and r in s._WR and not s._live(r, s.i) and not s._hascall(tv) and not s._hascall(ev):
+            if not DEADREGS and r in s._WR and not s._live(r, s.i) and not s._hascall(tv) and not s._hascall(ev) and \
+                    not (s.msc3 and r == "ax" and s._retval() and None in (tv, ev)):   # (3.00: one arm's value
+                                                                                    #  the function returns - the
+                                                                                    #  other's set inside it)
                 setattr(s, r, None); continue              # dead after the merge: nothing to keep
             # (with DEADREGS the assignment is always written: "where we are" can sit inside a
             # nested arm that redefines r, which made this test drop live values; the liveness

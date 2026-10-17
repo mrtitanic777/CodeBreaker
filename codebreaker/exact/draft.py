@@ -343,6 +343,7 @@ def push_returns(text):
         return text
     reg = re.fullmatch(r"\s*return (\w+);", lines[end]).group(1)
     breaks = set()                                          # (a switch's breaks after the values become returns)
+    leaves = [0]
 
     def tail(lo, hi):                                       # (the statements lines[lo:hi] end giving reg a value:
         k = hi - 1                                          #  [indexes of those assignments], or None)
@@ -352,6 +353,9 @@ def push_returns(text):
             return None
         if re.fullmatch(r"\s*%s = [^;]+;" % reg, lines[k]):
             return [k]
+        if re.fullmatch(r"\s*return\b[^;]*;", lines[k]) and k != end:
+            leaves[0] += 1                                  # (an arm returning its own value: nothing to give)
+            return []
         if lines[k].strip() != "}":
             return None
         sw = next((j for j in range(k - 1, lo - 1, -1) if lines[j].strip() and not re.match(r"\s*(?:case [^:]+|default):$", lines[j]) and
@@ -442,7 +446,7 @@ def push_returns(text):
                         new[end] = None
                         return "\n".join(x for x in new if x is not None)
         return text
-    if len(ks) < 2:
+    if len(ks) + leaves[0] < 2:
         return text
     for k in ks:
         lines[k] = re.sub(r"^(\s*)%s = (.*);$" % reg, r"\1return \2;", lines[k])
@@ -1306,6 +1310,17 @@ def adjacent_swaps(text, most=4):
     return out
 
 
+def word_offsets(text):
+    """((int *)((char *)p + N))[E] - words from N bytes into what an int *p points to: p[E + N/2] (a variant: the
+    compiler folds the constant into the place, [bx+si+N])"""
+    def one(m):
+        p, n, e = m.group(1), int(m.group(2)), m.group(3)
+        if n % 2 or not re.search(r"(?m)^[ \t]*(?:register )?int \*%s;" % re.escape(p), text):
+            return m.group(0)
+        return "%s[%s + %d]" % (p, e, n // 2)
+    return re.sub(r"\(\(int \*\)\(\(char \*\)(\w+) \+ (\d+)\)\)\[([^\[\]]+)\]", one, text)
+
+
 def byte_heads(text):
     """*(int *)buf = E; - a buffer's first word given: its first byte (a variant: the store's width the model
     left to the type it guessed)"""
@@ -1345,6 +1360,83 @@ def common_tails(text):
         lines[k:p[3]] = new + tail
         k += 1
     return "\n".join(lines)
+
+
+def common_heads(text):
+    """if (C) { S; A } else { S; B } - both arms beginning with the same statement, no call in it and nothing C
+    reads given by it: S; if (C) { A } else { B } (the model's copy of what the compiler did before the test)"""
+    lines = text.split("\n")
+    k = 0
+    while k < len(lines):
+        p = _if_parts(lines, k)
+        if not p or p[2] is None:
+            k += 1
+            continue
+        a = [x for x in p[1] if x.strip()]
+        b = [x for x in p[2] if x.strip()]
+        m = re.fullmatch(r"\s*([\w\->.\[\]*]+) = ([^;]+);", a[0]) if a and b and a[0].strip() == b[0].strip() else None
+        if not m or re.search(r"\w\s*\(|\+\+|--", a[0]) or \
+           re.search(r"\b%s\b" % re.escape(re.sub(r"->.*|\[.*", "", m.group(1)).lstrip("*")), p[0]):
+            k += 1
+            continue
+        ind = re.match(r"\s*", lines[k]).group(0)
+        ia, ib = p[1].index(a[0]), p[2].index(b[0])
+        lines[k:p[3]] = [ind + a[0].strip(), lines[k]] + p[1][:ia] + p[1][ia + 1:] + [ind + "} else {"] + \
+            p[2][:ib] + p[2][ib + 1:] + [ind + "}"]
+        k += 2
+    return "\n".join(lines)
+
+
+def heads_variant(text):
+    """common_heads, then the ?: values it leaves and the registers and temporaries folded (a variant: the
+    compiler may have done the statement before the test, or in each arm)"""
+    h = common_heads(text)
+    return temporaries(fold_registers(fold_registers(conditional_values(h)))) if h != text else None
+
+
+def chain_tails(text):
+    """if (C1) { A; T } else if (C2) { B; T } else { return R; } - every way on ending in the same tail T (a
+    return last), the others leaving: if (C1) { A } else if (C2) { B } else { return R; } T - the compiler's
+    one copy of T, jumped to"""
+    lines = text.split("\n")
+    rel = lambda ls, d: [x[d:] if x[:d].strip() == "" else x.strip() for x in ls]
+    leaves = lambda ls: bool(ls) and re.match(r"\s*(?:return\b|goto\b|break;|continue;)", [x for x in ls if x.strip()][-1] or "")
+
+    def strip(arm, t):                                      # (the arm without the tail t - its lines stripped of
+        body = [x for x in arm]                             #  their indentation - or None)
+        while body and not body[-1].strip():
+            body.pop()
+        if len(body) >= len(t) and [x.strip() for x in body[-len(t):]] == t:
+            return body[:-len(t)], True
+        p = _if_parts(body, 0) if body else None
+        if p and p[3] == len(body) and p[2] is not None:
+            a, b = strip(p[1], t), strip(p[2], t)
+            ind = re.match(r"\s*", body[0]).group(0)
+            if a and b and (a[1] or b[1]) and (a[1] or leaves(p[1])) and (b[1] or leaves(p[2])):
+                return [body[0]] + a[0] + [ind + "} else {"] + b[0] + [ind + "}"], True
+        return (body, False) if leaves(body) else None
+
+    for k in range(len(lines)):
+        p = _if_parts(lines, k)
+        if not p or p[2] is None:
+            continue
+        th = [x for x in p[1] if x.strip()]
+        best = None
+        for n in range(1, 7):                               # (the longest tail every way shares)
+            if len(th) < n or not re.match(r"\s*return\b", th[-1]):
+                break
+            t = [x.strip() for x in th[-n:]]
+            if any(x.endswith("{") or x.startswith("}") or re.match(r"(?:L_\w+:|case\b|default:)", x) for x in t):
+                break
+            a, b = strip(p[1], t), strip(p[2], t)
+            if a and b and b[1]:
+                best = (t, a, b)
+        if best:
+            t, a, b = best
+            ind = re.match(r"\s*", lines[k]).group(0)
+            new = [lines[k]] + a[0] + [ind + "} else {"] + b[0] + [ind + "}"] + [ind + x for x in t]
+            return "\n".join(lines[:k] + new + lines[p[3]:])
+    return None
 
 
 def goto_returns(text):
@@ -2482,7 +2574,8 @@ def temporaries(text):
                 del lines[k]
                 continue
         k += 1
-    text = "\n".join(lines)
+    lines = [l for l in lines if not re.fullmatch(r"[ \t]*int t\d+(?:, t\d+)*;", l)]   # (declared again below: the
+    text = "\n".join(lines)                                                         #  ones still read)
     left = sorted(set(re.findall(r"\b(t\d+)\b", text.split("{", 1)[-1])))
     if left:
         head, sep, body = split_body(text)
@@ -3824,7 +3917,9 @@ def structs(text, widths):
             if off > pos:
                 fields.append("char _%d[%d];" % (pos, off - pos))
             uch = any(isinstance(u, tuple) and u[1] == off for u in UCHAR)   # (widened with zeros: unsigned)
-            byte = (p, off) in widths or ("*", off) in widths or uch
+            byte = (p, off) in widths or ("*", off) in widths or uch or \
+                p.startswith("r_") and (p[2:] + "*", off) in widths and (p[2:] + "w", off) not in widths   # (a register
+                                                                                                        #  variable's)
             if byte and not uch and (p, off) not in widths and p.startswith("g_") and ("bxw", off) in widths and \
                     ("bx*", off) not in widths:
                 byte = False                                # (data's pointer, gone through in bx: bx's width there)
@@ -3832,6 +3927,8 @@ def structs(text, widths):
                                                                                     #  compared with 128..255: unsigned)
             deref = re.search(r"(?<![\w>)\]])\*%s->f%d\b(?!\s*(?:->|\[|\.))" % (p, off), text)   # (*p->fN: a pointer)
             lng = off in LONGINFO.get("fields", ()) and off + 2 not in offs   # (a long field: two words given as one)
+            if lng and byte and (p, off) not in widths and (p.lstrip("r_") + "*", off) not in widths:
+                byte = False                                # (a byte another pointer reads there: not this one's)
             pg = re.search(r"\b%s->f%d = (\w+);" % (p, off), text) or \
                 re.search(r"(?m)^[ \t]*(\w+) = %s->f%d = " % (p, off), text)   # (given a pointer variable, or given
             pty = re.search(r"(?m)^[ \t]*(?:register\s+)?((?:unsigned\s+)?(?:char|int)|struct \w+) \*%s;$" % pg.group(1), text) if pg else None
@@ -3913,7 +4010,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         FILLNAME[0] = "_p%d"                                # (the filler named by its place: the frame's order
         tp_ = fill_frame(t0_, FRAME[0], bool(prj.toolchain().p.get("frame_order")))   #  lays it out - a variant)
         FILLNAME[0] = "_pf"
-        variants = [t] + [v for v in [tp_ if tp_ != t else None,store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t), register_copies(t), lead_filler(t), scaled_places(t), shared_tails(t), guard_returns(t), default_after(t), frame_more(t), loop_tests(t), switch_breaks(t), register_reads(t), compare_results(t), or_loops(t), loop_guards(t), const_tests(t), flat_returns(t), return_cases_first(t), registers_last(t), guard_shared(t), _changed(common_tails, t), _changed(byte_heads, t)] if v]
+        variants = [t] + [v for v in [tp_ if tp_ != t else None,store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t), register_copies(t), lead_filler(t), scaled_places(t), shared_tails(t), guard_returns(t), default_after(t), frame_more(t), loop_tests(t), switch_breaks(t), register_reads(t), compare_results(t), or_loops(t), loop_guards(t), const_tests(t), flat_returns(t), return_cases_first(t), registers_last(t), guard_shared(t), _changed(common_tails, t), _changed(byte_heads, t), _changed(word_offsets, t), chain_tails(t), heads_variant(t)] if v]
         both = pre_steps(t)
         both = pre_increments(both) if both else None
         if both:
@@ -4383,6 +4480,9 @@ def long_pairs(text):
     params = re.findall(r"(?m)^\w+\(([\w, ]*)\)", head)
     plist = [p.strip() for p in (params[-1].split(",") if params else []) if p.strip()]
     done = []
+    for x in re.findall(r"(?m)^[ \t]*(?:unsigned )?long (v\d+);$", body):   # (a long a pass made, its high word
+        if hi_of(x) and re.search(r"\b%s\b" % hi_of(x), body.split("{", 1)[-1]):   #  still read by name: the pair)
+            pairs.add(x)
     for lo in sorted(pairs):
         hi = hi_of(lo)
         if not hi:
@@ -4397,6 +4497,17 @@ def long_pairs(text):
         body = re.sub(r"\bLONG\(%s, %s\)" % (hi, lo), lo, body)
         body = re.sub(r"\(%s \| %s\)|\(%s \| %s\)" % (lo, hi, hi, lo), lo, body)
         body = re.sub(r"\(%s (<|>=) 0\)" % hi, r"(%s \1 0)" % lo, body)   # (the high word's sign: the long's)
+        for lo2 in [x for x in sorted(pairs) if x != lo and hi_of(x)]:   # (two longs compared a half at a time)
+            hi2 = hi_of(lo2)
+            body = body.replace("(%s != %s) || (%s != %s)" % (hi, hi2, lo, lo2), "(%s != %s)" % (lo, lo2))
+            body = body.replace("(%s == %s) && (%s == %s)" % (hi, hi2, lo, lo2), "(%s == %s)" % (lo, lo2))
+            body = body.replace("((%s & %s) == %s) && ((%s & %s) == %s)" % (hi, hi2, hi2, lo, lo2, lo2), "((%s & %s) == %s)" % (lo, lo2, lo2))
+            # (one masked with the other and compared with it: dx the high words' and)
+            body = re.sub(r"(?m)^([ \t]*)dx = %s & %s;\n([ \t]*if \(.*)\(dx == %s\) && \(\(%s & %s\) == %s\)" %
+                          (hi, hi2, hi2, lo, lo2, lo2), r"\2((%s & %s) == %s)" % (lo, lo2, lo2), body)
+        body = re.sub(r"(?m)^([ \t]*)%s = (\w+(?:->f\d+)*)->f(\d+);\n[ \t]*%s = \2->f(\d+);$" % (lo, hi),
+                      lambda m: "%s%s = *(long *)&%s->f%s;" % (m.group(1), lo, m.group(2), m.group(3))
+                      if int(m.group(4)) == int(m.group(3)) + 2 else m.group(0), body)   # (a long field read)
         body = re.sub(r"\(%s & (-?\d+)\)" % hi, lambda m: "(%s & 0x%xL)" % (lo, (int(m.group(1)) & 0xFFFF) << 16), body)
         if re.search(r"\b%s\b" % hi, body.split("\n", 1)[-1] if islocal else body):
             pass                                            # (the high word read alone: kept as it is)
@@ -4410,6 +4521,19 @@ def long_pairs(text):
             l2 = _redeclare(body, lo, "%s %s" % (uns, lo))
             body = l2 or body
         done.append(lo)
+    longs_ = set(re.findall(r"(?m)^[ \t]*(?:register )?(?:unsigned )?long (\w+);", body))
+
+    def lstore(m):                                          # (a long value - one of a long's - stored a word at a time
+        ind, e, p, n, op, n2 = m.group(1), m.group(2), m.group(3), int(m.group(4)), m.group(5) or "", int(m.group(6))
+        if n2 != n + 2 or not any(re.search(r"\b%s\b" % x, e) for x in longs_):   #  into a field, dx the high one)
+            return m.group(0)
+        LONGINFO.setdefault("fields", set()).add(n)
+        return "%s*(long *)&%s->f%d = %s%s;" % (ind, p, n, op, e if not op or e.startswith("(") else "(%s)" % e)
+    if longs_:
+        body = re.sub(r"(?m)^([ \t]*)ax = (.+);\n[ \t]*(\w+(?:->f\d+)*)->f(\d+) = \(?(~?)ax\)?;\n[ \t]*\3->f(\d+) = \(?~?dx\)?;$", lstore, body)
+        body = re.sub(r"(?m)^([ \t]*)(\w+(?:->f\d+)*)->f(\d+) = (\(.+\));\n[ \t]*\2->f(\d+) = dx;$",
+                      lambda m: lstore(type("M", (), {"group": lambda s_, i: {0: m.group(0), 1: m.group(1), 2: m.group(4), 3: m.group(2),
+                                                                         4: m.group(3), 5: "", 6: m.group(5)}[i]})()), body)
     lrets = [x for x in re.findall(r"(?m)^[ \t]*return (\w+);$", body)
              if re.search(r"(?m)^[ \t]*(?:unsigned )?long (?:\w+, )*%s\b" % x, body)]
     if lrets and LONGINFO.get("ret") is not False and not re.search(r"(?m)^[ \t]*return [^;]*\w\(", body):
@@ -5226,7 +5350,7 @@ REFINERS = [lambda prj, s: [assign_in_args(s)], lambda prj, s: [return_sources(s
             lambda prj, s: [loop_tests(s)], lambda prj, s: [switch_breaks(s)], lambda prj, s: [register_reads(s)],
             lambda prj, s: [compare_results(s)], lambda prj, s: [or_loops(s)], lambda prj, s: [loop_guards(s)],
             lambda prj, s: [const_tests(s)], lambda prj, s: [flat_returns(s)], lambda prj, s: [return_cases_first(s)],
-            lambda prj, s: [registers_last(s)], lambda prj, s: unsigned_locals(s), lambda prj, s: [guard_shared(s)], lambda prj, s: [_changed(common_tails, s)], lambda prj, s: [_changed(byte_heads, s)], lambda prj, s: adjacent_swaps(s), lambda prj, s: unsigned_fields(s),
+            lambda prj, s: [registers_last(s)], lambda prj, s: unsigned_locals(s), lambda prj, s: [guard_shared(s)], lambda prj, s: [_changed(common_tails, s)], lambda prj, s: [_changed(byte_heads, s)], lambda prj, s: [_changed(word_offsets, s)], lambda prj, s: [chain_tails(s)], lambda prj, s: [heads_variant(s)], lambda prj, s: adjacent_swaps(s), lambda prj, s: unsigned_fields(s),
             lambda prj, s: [frame_names(s, prj.toolchain().p["frame_order"]), frame_names(s, prj.toolchain().p["frame_order"], True)]
             if prj.toolchain().p.get("frame_order") else [],
             lambda prj, s: [re.sub(r"\b([A-Za-z_]\w*), 0\)", r"(long)\1)", s, count=1)],   # (a value and a zero word
