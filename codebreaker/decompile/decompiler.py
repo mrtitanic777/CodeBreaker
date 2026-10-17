@@ -21,6 +21,7 @@ base types defined, globals bound to their addresses in the original, every func
 declared before use with its real convention, and stack locals kept where the original had them
 whenever an address to one can escape.
 """
+import json
 import os
 import re
 import subprocess
@@ -49,7 +50,80 @@ LARGE = 200000          # instructions a function may have, tried again when the
 
 def run(description, only=(), timeout=3600, max_instructions=None):
     """Run the native program on a description. -> ({name: text}, [names], {va: name}, stderr)
-    Works for any processor it has a language for; `only` limits it to those addresses."""
+    Works for any processor it has a language for; `only` limits it to those addresses.
+
+    Each function's text is kept on its own (base/cache.py) with the lines of the description
+    it was made from: its own line, the calls through pointers inside it, and the line of every
+    function and import its text calls (or that there was none, for a `func_0x...` it calls).
+    A function whose lines are all as they were is not decompiled again: a change to the
+    description -- one function found to take its arguments off by hand -- has only the
+    functions it touches made again."""
+    from codebreaker.base import cache
+    with open(description, encoding="utf-8", errors="replace") as f:
+        lines = f.read().splitlines()
+    fn_line, name_line, o_lines, base = {}, {}, [], []
+    for ln in lines:
+        p = ln.split("\t")
+        if p[0] == "F" and len(p) > 2:
+            fn_line[int(p[1], 16)] = ln
+            name_line[p[2]] = ln
+        elif p[0] == "X" and len(p) > 2:
+            name_line[p[2]] = ln
+            base.append(ln)                                  # (an import: every caller's as well)
+        elif p[0] == "O" and len(p) > 2:
+            o_lines.append((int(p[1], 16), ln))
+        elif p[0] == "bytes" and len(p) > 2:
+            with open(p[2], "rb") as fh:
+                base.append("bytes\t%s\t%s" % (p[1], cache.key(fh.read())))
+        else:
+            base.append(ln)
+    if not fn_line:
+        return _run_whole(description, only, timeout, max_instructions)
+    common = cache.key(cache.tool(_exe()), _language_stamp(), base, max_instructions or "")
+    starts = sorted(fn_line)
+    import bisect
+
+    def own(va):
+        k = bisect.bisect_right(starts, va)
+        end = starts[k] if k < len(starts) and starts[k] >> 16 == va >> 16 else ((va >> 16) + 1) << 16
+        return [ln for site, ln in o_lines if va <= site < end]
+
+    wanted = sorted(only) if only else starts
+    reused, misses = {}, []
+    for va in wanted:
+        if va not in fn_line:
+            misses.append(va)
+            continue
+        had = cache.get("decompiled_fn", cache.key(common, fn_line[va], own(va)))
+        if had is None:
+            misses.append(va)
+            continue
+        entry = json.loads(had.decode("utf-8"))
+        if all(name_line.get(n) == ln for n, ln in entry["deps"].items()) and \
+                all((int(v, 16) in fn_line) == present for v, present in entry["unknown"].items()):
+            reused[va] = entry
+        else:
+            misses.append(va)
+    out, order, by_va, stderr = ({}, [], {}, "") if not misses else \
+        _run_whole(description, misses if (only or len(misses) < len(starts)) else (), timeout, max_instructions)
+    for va, name in by_va.items():                           # (kept for the next time, with their lines)
+        if va not in fn_line:
+            continue
+        text = out.get(name, "")
+        deps = {n: name_line[n] for n in set(re.findall(r"\b([A-Za-z_]\w*)\s*\(", text))
+                if n in name_line and n != name}
+        unknown = {"%08x" % int(v, 16): False for v in re.findall(r"\bfunc_0x([0-9a-f]{8})\b", text)}
+        cache.put("decompiled_fn", cache.key(common, fn_line[va], own(va)),
+                  json.dumps({"name": name, "text": text, "deps": deps, "unknown": unknown}).encode("utf-8"))
+    for va, entry in reused.items():
+        out[entry["name"]] = entry["text"]
+        by_va[va] = entry["name"]
+    order = [by_va[va] for va in sorted(by_va)]
+    return out, order, by_va, stderr
+
+
+def _run_whole(description, only=(), timeout=3600, max_instructions=None):
+    """(run(), for the functions not kept: the native program on the description as a whole)"""
     # The description holds the module's bytes and every fact given with them, so what the
     # program says of it is kept under its hash (base/cache.py): a module is decompiled once.
     from codebreaker.base import cache

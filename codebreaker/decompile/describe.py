@@ -322,19 +322,30 @@ def popped_by_hand(code, off, kind):
     address popped (one word near, two far), then more words popped, then the return address
     pushed back. -> bytes, or None when it does not start so."""
     md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
-    ins = list(md.disasm(bytes(code[off:off + 24]), off))[:12]
+    ins = list(md.disasm(bytes(code[off:off + 40]), off))[:20]
     words = 2 if kind == "far" else 1
+    regs = ("ax", "bx", "cx", "dx", "si", "di", "bp", "es")
+
+    def quiet(i):                                            # (leaves the stack and the flow alone)
+        return i.mnemonic not in ("push", "pop", "call", "lcall", "ret", "retf", "jmp", "ljmp", "int", "enter",
+                                  "leave", "pushf", "popf", "pusha", "popa") \
+            and not i.mnemonic.startswith("j") and "sp" not in i.op_str
+    k = 0
+    while k < len(ins) and k < 3 and quiet(ins[k]):          # (IsIconic: `mov cl, 20h / test ax, ...` first)
+        k += 1
     pops = []
-    for i in ins:
-        if i.mnemonic != "pop" or i.op_str not in ("ax", "bx", "cx", "dx", "si", "di", "bp", "es"):
-            break
-        pops.append(i.op_str)
+    while k < len(ins) and ins[k].mnemonic == "pop" and ins[k].op_str in regs:
+        pops.append(ins[k].op_str)
+        k += 1
     if len(pops) <= words:
         return None
-    back = ins[len(pops):len(pops) + words]
-    ret_regs = pops[:words]
+    while k < len(ins) and k < 12 and quiet(ins[k]):         # (GetAsyncKeyState: `xor ah, ah` between)
+        if any(r in ins[k].op_str.split(",")[0] for r in pops[:words]):
+            return None                                      # (its return address changed: not given back)
+        k += 1
+    back = [i.op_str for i in ins[k:k + words] if i.mnemonic == "push"]
     # (the return address pushed back as it came: the last popped of it first)
-    if [i.op_str for i in back if i.mnemonic == "push"] != list(reversed(ret_regs)):
+    if back != list(reversed(pops[:words])):
         return None
     return 2 * (len(pops) - words)
 
