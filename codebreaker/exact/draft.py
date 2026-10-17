@@ -873,6 +873,75 @@ def fall_gotos(text):
     return "\n".join(x for x in lines if x is not None and not (re.fullmatch(r"[ \t]*(L_\w+):", x) and x.strip()[:-1] not in used))
 
 
+def tested_zero(text):
+    """if ((f(..) != 0)) { .. return ..; } then the arm's end, the function's value read after: ax is that call's
+    value, 0 there - ax = 0; written (the model's value left in the register)"""
+    lines = text.split("\n")
+    if not re.search(r"(?m)^[ \t]*return ax;$", text):
+        return text
+    for k in range(len(lines)):
+        m = re.fullmatch(r"([ \t]*)if \(\(([A-Za-z_]\w*\(.*\)) != 0\)\) \{", lines[k])
+        p = _if_parts(lines, k) if m else None
+        if not p or p[2] is not None or p[3] >= len(lines):
+            continue
+        th = [x for x in p[1] if x.strip()]
+        if not th or not re.match(r"\s*return\b", th[-1]) or not re.fullmatch(r"[ \t]*\}(?: else \{)?", lines[p[3]]):
+            continue
+        lines.insert(p[3], m.group(1) + "ax = 0;")
+        return tested_zero("\n".join(lines))
+    return text
+
+
+def continue_loops(text):
+    """for (;;) { [x = E;] if (C1) continue; .. if (Cn) { leave } [else { continue; }] } - a loop of tests going
+    round while one fails: while (!((x = E) .. && !C1 && .. Cn)) ; then leave (a return of a number, a break)"""
+    lines = text.split("\n")
+    k = 0
+    while k < len(lines):
+        m = re.fullmatch(r"([ \t]*)for \(;;\) \{", lines[k])
+        e = _block_end(lines, k) if m else None
+        if not m or e is None or lines[e].strip() != "}":
+            k += 1
+            continue
+        body = [x.strip() for x in lines[k + 1:e] if x.strip()]
+        first = re.fullmatch(r"(\w+) = ([^;=]+);", body[0]) if body else None
+        q = 1 if first else 0
+        parts, leave, ok = [], None, True
+        while q < len(body):
+            c = re.fullmatch(r"if (\(.*\)) \{", body[q])
+            c1 = re.fullmatch(r"if (\(.*\)) continue;", body[q])
+            if c1:
+                parts.append(_truth(_not(c1.group(1)))); q += 1
+                continue
+            if c and body[q + 1:q + 3] == ["continue;", "}"]:
+                parts.append(_truth(_not(c.group(1)))); q += 3
+                continue
+            if c and q + 2 < len(body) and re.fullmatch(r"(?:return -?\d+|break);", body[q + 1]) and \
+                    (body[q + 2:] == ["}"] or body[q + 2:] == ["} else {", "continue;", "}"]):
+                parts.append(_truth(c.group(1)))
+                leave = body[q + 1]
+                q = len(body)
+                break
+            ok = False
+            break
+        if not ok or leave is None or len(parts) < 2:
+            k += 1
+            continue
+        if first:
+            x, v = first.groups()
+            p0 = parts[0]
+            if len(re.findall(r"\b%s\b" % x, p0)) != 1:
+                k += 1
+                continue
+            parts[0] = re.sub(r"\b%s\b" % x, lambda _: "(%s = %s)" % (x, v), p0, count=1)
+        cond = " && ".join(p if re.fullmatch(r"!?[\w\->.\[\]]+|!?\(.*\)", p) and _balanced(p) else "(%s)" % p for p in parts)
+        ind = m.group(1)
+        new = ["%swhile (!(%s))" % (ind, cond), "%s    ;" % ind] + (["%s%s" % (ind, leave)] if leave != "break;" else [])
+        lines[k:e + 1] = new
+        k += len(new)
+    return "\n".join(lines)
+
+
 def empty_loops(text):
     """for (;;) { [x = E;] if (C1) break; .. if (Cn) { break; } [else { continue; }] } - a loop of tests alone
     (its value given first): while ((x = E) && !C1 .. && !Cn) ; - the first test x's zero"""
@@ -3341,7 +3410,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = zero_extends(high_zero(copy_props(table_macros(prj, case_falls(char_stores(char_params(long_pairs(long_returns(store_reloads(fall_gotos(t))))))), prj.toolchain().p.get("table_macros")))))
         t = re.sub(r"&(\w+)\[(-?)(\d+)\]", lambda m: "(%s %s %s)" % (m.group(1), "-" if m.group(2) else "+", m.group(3)), t)
         t = re.sub(r"&(\w+)->f(\d+)\b", r"(\1 + \2)", t)  # (lea: &p[N], &p->fN - the place, p + N)
-        t = fold_registers(stored_calls(store_loops(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(push_returns(conditional_values(logical_values(step_tests(bool_trees(range_switches(loop_gotos(empty_loops(first_breaks(loop_registers(fall_dups(fall_gotos(goto_tails(t) or t))))))))))))))))))))
+        t = fold_registers(stored_calls(store_loops(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(push_returns(conditional_values(logical_values(step_tests(bool_trees(range_switches(loop_gotos(empty_loops(tested_zero(continue_loops(first_breaks(loop_registers(fall_dups(fall_gotos(goto_tails(t) or t))))))))))))))))))))))
         t = stored_calls(fold_registers(push_returns(t)))   # (returns again, as the passes left the arms)
         t = stored_reads(scaled_index(register_chains(word_arrays(test_first_loops(copy_tests(post_steps(t)))))))
         t = fold_registers(conditional_values(t))           # (the ?: values again, the elements folded)
