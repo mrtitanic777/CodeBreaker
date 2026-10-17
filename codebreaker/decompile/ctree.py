@@ -106,6 +106,53 @@ class Source(object):
         e = self.data.find(b"\n", node.start_byte)
         return s, (len(self.data) if e < 0 else e + 1)
 
+    def ancestors(self, node, *types):
+        """The nodes `node` is inside, nearest first (only those of `types`, if given)."""
+        out, up = [], node.parent
+        while up is not None:
+            if not types or up.type in types:
+                out.append(up)
+            up = up.parent
+        return out
+
+    def raw_arguments(self, call):
+        """A call's arguments as written, each with the spaces and line breaks before it."""
+        args = call.child_by_field_name("arguments")
+        delims = [c for c in args.children if c.type in ("(", ",", ")")]
+        out = []
+        for a, b in zip(delims, delims[1:]):
+            piece = self.data[a.end_byte:b.start_byte].decode("utf-8")
+            if b.type == ")" and not piece.strip():
+                continue                                     # (no argument after the last comma, or none at all)
+            out.append(piece)
+        return out
+
+    def declared_name(self, declarator):
+        """The name a declarator declares (through pointers, arrays, an initialiser)."""
+        n = declarator
+        while n is not None and n.type in ("pointer_declarator", "array_declarator", "init_declarator",
+                                           "parenthesized_declarator"):
+            n = n.child_by_field_name("declarator") or (n.named_children[0] if n.named_children else None)
+        return self.at(n) if n is not None and n.type == "identifier" else None
+
+    def render(self, node, override):
+        """`node`'s text with each node inside it for which override(n) gives text replaced by that
+        (override(node) itself is not asked)."""
+        out, pos = [], node.start_byte
+        for c in node.children:
+            new = override(c)
+            if new is None:
+                if c.child_count:
+                    out.append(self.data[pos:c.start_byte].decode("utf-8"))
+                    out.append(self.render(c, override))
+                    pos = c.end_byte
+                continue
+            out.append(self.data[pos:c.start_byte].decode("utf-8"))
+            out.append(new)
+            pos = c.end_byte
+        out.append(self.data[pos:node.end_byte].decode("utf-8"))
+        return "".join(out)
+
     @staticmethod
     def in_text(node):
         """Inside a string, a character constant or a comment: not code."""

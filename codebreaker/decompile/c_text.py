@@ -149,7 +149,9 @@ def _keep_frame(t):
     if not locs:
         return t
     names = [m.group(2) for m in locs]
-    if not (any(m.group(4) for m in locs) or re.search(r"&\s*(?:%s)\b" % "|".join(names), t)):
+    src = ctree.Source(t)
+    if not (any(m.group(4) for m in locs) or any(src.unary(n) and src.unary(n)[0] == "&"
+                                                for n in src.find("identifier") if src.at(n) in names)):
         return t
     items = []
     for m in locs:
@@ -181,12 +183,16 @@ def _keep_frame(t):
     def strip(_m):
         if first[0]:
             first[0] = False
-            return "\x00FRAME\x00"
+            return "/*codebreaker:frame*/"                # (a comment: the parser reads past it; it stopped at a NUL)
         return ""
     t = _LOCAL.sub(lambda m: m.group(0) if m.group(1).strip() in ("return", "goto") else strip(m), t)
-    for name in sorted(names, key=len, reverse=True):
-        t = re.sub(r"(?<![\w.])%s\b" % re.escape(name), "_f." + name, t)
-    return t.replace("\x00FRAME\x00", decl)
+    wanted = set(names)
+
+    def fields(src):
+        for n in src.find("identifier"):
+            if src.at(n) in wanted:
+                src.replace(n, "_f." + src.at(n))
+    return ctree.rewrite(t, fields).replace("/*codebreaker:frame*/", decl)
 
 
 _PTR_DECL = re.compile(r"(?m)^  [A-Za-z_][\w ]*?\*+\s*(\w+)(?: \[\d+\])?;[ \t]*$")
@@ -1183,8 +1189,8 @@ def _compilable16(module_path, outdir=None):
 # A register the code did not set before the interrupt (the decompiler passes it on as in_BX,
 # unaff_DS ...) is not an argument: it keeps the value it has -- DS the caller's data segment.
 INTERRUPT_REGISTERS = ("ax", "bx", "cx", "dx", "si", "di", "ds", "es")
-_INT_CALL = re.compile(r"\bint([0-9a-f]{2})\(")
-_INT_RESULT = re.compile(r"\bint_E?([A-Z][A-Z])(?:_[0-9a-f]+)?\b")
+_INT_CALL_NAME = re.compile(r"int[0-9a-f]{2}")
+_INT_RESULT = re.compile(r"int_E?([A-Z][A-Z])(?:_[0-9a-f]+)?")
 
 
 def _arguments_at(text, open_paren):
@@ -1211,22 +1217,32 @@ def _interrupts(text, used):
     """A function's interrupts and their results as the C helpers take them (see above)."""
     if "int" not in text:
         return text
-    out, at = [], 0
-    for mm in _INT_CALL.finditer(text):
-        if mm.start() < at:
-            continue
-        args, after = _arguments_at(text, mm.end() - 1)
-        args = args[:len(INTERRUPT_REGISTERS)]
-        regs = tuple(r for r, a in zip(INTERRUPT_REGISTERS, args) if not _passed_on(a, r))
-        values = [a for r, a in zip(INTERRUPT_REGISTERS, args) if r in regs]
-        used.add((int(mm.group(1), 16), regs))
-        out.append(text[at:mm.start()] + "%s(%s)" % (interrupt_helper_name(int(mm.group(1), 16), regs),
-                                                     ",".join(values)))
-        at = after
-    text = "".join(out) + text[at:]
+
+    def calls(src):
+        for n in src.find("call_expression"):
+            m = re.fullmatch(r"int([0-9a-f]{2})", src.at(n.child_by_field_name("function")))
+            if not m or any(_INT_CALL_NAME.fullmatch(src.at(up.child_by_field_name("function")))
+                            for up in src.ancestors(n, "call_expression")):
+                continue                                     # (one inside another's arguments: as it was)
+            args = src.raw_arguments(n)[:len(INTERRUPT_REGISTERS)]
+            regs = tuple(r for r, a in zip(INTERRUPT_REGISTERS, args) if not _passed_on(a, r))
+            values = [a for r, a in zip(INTERRUPT_REGISTERS, args) if r in regs]
+            used.add((int(m.group(1), 16), regs))
+            src.replace(n, "%s(%s)" % (interrupt_helper_name(int(m.group(1), 16), regs), ",".join(values)))
+    text = ctree.rewrite(text, calls)
+
     # the results: no variables of their own -- the registers as the interrupt left them
-    text = re.sub(r"(?m)^[ \t]+[\w ]+?[ *]\**int_E?[A-Z][A-Z](?:_[0-9a-f]+)?;[ \t]*\n", "", text)
-    return _INT_RESULT.sub(lambda r: "int_" + r.group(1), text)
+    def results(src):
+        for n in src.find("declaration"):
+            ds = n.children_by_field_name("declarator")
+            name = src.declared_name(ds[0]) if len(ds) == 1 else None
+            if name and _INT_RESULT.fullmatch(name) and src.at(n) == src.line(n).strip():
+                src.replace(src.line_span(n), "")
+        for n in src.find("identifier"):
+            m = _INT_RESULT.fullmatch(src.at(n))
+            if m and n.parent.type != "declaration" and not (n.parent.type == "pointer_declarator"):
+                src.replace(n, "int_" + m.group(1))
+    return ctree.rewrite(text, results)
 
 
 def _entry_sp(text):
@@ -1647,28 +1663,65 @@ def _far_addresses(text, pointers=None):
     pointer at all is taken a byte at a time."""
     if "MK_FP(" not in text:
         return text
+    src = ctree.Source(text)
     if pointers is None:                                    # (the function's own: `T *name;`)
-        pointers = {name: ty for ty, name in re.findall(r"(?m)^\s+([A-Za-z_]\w*(?: [A-Za-z_]\w*)?) \*(\w+);", text)}
-    out, at = [], 0
-    for mm in re.finditer(r"\bMK_FP\(", text):
-        if mm.start() < at:
-            continue
-        args, after = _arguments_at(text, mm.end() - 1)
+        pointers = {}
+        for n in src.find("declaration"):
+            if not src.line(n)[:1].isspace():
+                continue                                    # (a parameter's, in the older style: not the function's own)
+            ds = n.children_by_field_name("declarator")
+            ty = src.at(n.child_by_field_name("type"))
+            if len(ds) == 1 and ds[0].type == "pointer_declarator" and ds[0].child_by_field_name("declarator").type == "identifier" \
+                    and re.fullmatch(r"[A-Za-z_]\w*(?: [A-Za-z_]\w*)?", ty) and src.at(ds[0]).startswith("*"):
+                pointers[src.at(ds[0].child_by_field_name("declarator"))] = ty
+
+    def leftmost(n):
+        """what an offset counts from: itself, or the first term of a sum or difference"""
+        while True:
+            while n.type == "parenthesized_expression" and n.named_child_count == 1:
+                n = n.named_children[0]
+            if n.type == "binary_expression" and n.child_by_field_name("operator").type in ("+", "-"):
+                n = n.child_by_field_name("left")
+            else:
+                return n
+
+    def pointer_cast(n):
+        """T of a cast to `T *`, else None"""
+        if n.type != "cast_expression":
+            return None
+        ty = src.at(n.child_by_field_name("type")).strip()
+        return ty[:-1].strip() if ty.endswith("*") and ty.count("*") == 1 else None
+
+    def far(n):
+        """MK_FP(seg, off) as a far pointer to what is there; None for any other node"""
+        if n.type != "call_expression" or src.at(n.child_by_field_name("function")) != "MK_FP":
+            return None
+        args = n.child_by_field_name("arguments").named_children
         if len(args) != 2:
-            continue
-        seg, off = args[0].strip(), args[1].strip()
-        cast = re.match(r"^\(([\w ]+?)\s*\*\)\s*(.*)$", off, re.S)
-        base = re.match(r"^\(?\s*(\w+)\s*(?:[+-][^,]*)?\)?$", off)
-        target = cast.group(1) if cast else pointers.get(base.group(1), "uint1") if base else "uint1"
+            return None
+        seg, off = args
+        first = leftmost(off)
+        if pointer_cast(off):                              # (T *)x: a T there, at x
+            target, offset = pointer_cast(off), off.child_by_field_name("value")
+        elif pointer_cast(first):                          # (T *)x + n: a T there, the sum as written
+            target, offset = pointer_cast(first), off
+        else:                                              # p + n, p a T *: as the pointer is
+            target, offset = pointers.get(src.at(first) if first.type == "identifier" else None, "uint1"), off
         if target in ("void", "code"):
             target = "uint1"
-        offset = cast.group(2) if cast else off
-        if text[:mm.start()].rstrip().endswith("(*") and text[after:].lstrip().startswith(")("):
+        up = n.parent
+        if up is not None and up.type == "pointer_expression" and up.parent is not None and \
+                up.parent.type == "parenthesized_expression" and up.parent.parent is not None and \
+                up.parent.parent.type == "call_expression" and up.parent.parent.child_by_field_name("function") == up.parent:
             target = "code"                                # (*MK_FP(seg, off))(...): a call to code there
-        out.append(text[at:mm.start()] + "((%s __far *)MK_FP(%s, %s))" % (target, _far_addresses(seg, pointers),
-                                                                          _far_addresses(offset, pointers)))
-        at = after
-    return "".join(out) + text[at:]
+        return "((%s __far *)MK_FP(%s, %s))" % (target, src.render(seg, far), src.render(offset, far))
+    for n in src.find("call_expression"):
+        if src.at(n.child_by_field_name("function")) == "MK_FP" and \
+                not any(src.at(up.child_by_field_name("function")) == "MK_FP" for up in src.ancestors(n, "call_expression")):
+            new = far(n)
+            if new is not None:
+                src.replace(n, new)
+    return src.text()
 
 
 def interrupt_helpers(used):

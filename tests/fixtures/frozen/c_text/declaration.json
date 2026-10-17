@@ -16,10 +16,10 @@
   },
   {
    "args": [
-    "int2 __stdcall16far sub_4_0A5E(a1,a2)\nint2 a1;\nint2 a2;\n{\n  int2 iVar1;\n  \n  if (((a2 == 0 && a1 == 0) || ((*(uint1 __far *)((uint1 __far *)MK_FP(a2, a1)) & 0x20) != 0)) ||\n     (iVar1 = sub_4_0612(a1,a2), iVar1 != 0)) {\n    return 0;\n  }\n  sub_4_0000(a1,a2);\n  return 1;\n}"
+    "int2 __cdecl16near sub_1_09D1()\n{\n  int2 iVar1;\n  xunknown4 in_EBX;\n  xunknown2 unaff_DS = codebreaker_ds();\n  \n  iVar1 = (*((code_callee_pops __far *)MK_FP(((xunknown2 *)0x30)[1], *(xunknown2 *)0x30)))\n                    ((int2)in_EBX,(int2)((uint4)in_EBX >> 0x10));\n  return iVar1;\n}"
    ],
    "kwargs": {},
-   "result": "int2 __stdcall16far sub_4_0A5E();"
+   "result": "int2 __cdecl16near sub_1_09D1();"
   },
   {
    "args": [
@@ -30,10 +30,10 @@
   },
   {
    "args": [
-    "int4 __stdcall16far sub_11_008A(a1)\nint2 a1;\n{\n  int2 iVar1;\n  uint2 in_DX;\n  xunknown4 xVar2;\n  \n  iVar1 = sub_11_000B();\n  if (0x1f < iVar1) {\n    if ((iRam1058000c == 0) && (iRam1058000a == 0)) {\n      xVar2 = KERNEL_50(7,0,iRam10580000);\n      iRam1058000c = (int2)((uint4)xVar2 >> 0x10);\n      iRam1058000a = (int2)xVar2;\n      if (iRam1058000c == 0) {\n        iRam1058000a = iRam1058000a + 1;\n      }\n    }\n    in_DX = 0;\n    if (iRam1058000c != 0) {\n      return CONCAT22(iRam1058000c,iRam1058000a);\n    }\n  }\n  return (uint4)in_DX << 0x10;\n}"
+    "int2 __stdcall16far __export sub_3_03B2(a1,a2,a3,a4)\nint2 a1;\nint2 a2;\nint2 a3;\nint2 a4;\n{\n  int4 iVar1;\n  int2 __far *xStack_8;\n  \n  xStack_8 = (int2 __far *)CONCAT22(a4,a3);\n  if ((a4 == 0 && a3 == 0) || (a2 == 0 && a1 == 0)) {\n    a3 = 0;\n  }\n  else {\n    while ((char)*xStack_8 != '\\0') {\n      iVar1 = sub_3_0252(*xStack_8,a1,a2);\n      if (iVar1 != 0) break;\n      xStack_8 = (int2 __far *)CONCAT22((*(uint2 *)((char *)&xStack_8 + 2)),(int2 *)((int2)(int2 *)xStack_8 + 1));\n    }\n    a3 = (int2)(int2 *)xStack_8 - a3;\n  }\n  return a3;\n}"
    ],
    "kwargs": {},
-   "result": "int4 __stdcall16far sub_11_008A();"
+   "result": "int2 __stdcall16far __export sub_3_03B2();"
   },
   {
    "args": [
@@ -44,10 +44,10 @@
   },
   {
    "args": [
-    "int4 __stdcall16far __export sub_3_0810(a1,a2,a3,a4,a5,a6)\nint2 a1;\nint2 a2;\nint2 a3;\nint2 a4;\nint2 a5;\nint2 a6;\n{\n  xunknown1 xVar1;\n  int2 a1_00;\n  int2 iVar2;\n  int2 a5_00;\n  int4 iVar3;\n  int4 iVar4;\n  \n  iVar3 = CONCAT22(a4,a3);\n  a1_00 = KERNEL_90(a1,a2);\n  xVar1 = *(*(int2 __far * *)&a1);\n  if (a4 == 0 && a3 == 0) {\n    iVar2 = KERNEL_90(a5,a6);\n    iVar3 = CONCAT22(a6,iVar2 + a5);\n  }\n  do {\n    do {\n      a4 = (int2)((uint4)iVar3 >> 0x10);\n      a3 = (int2)iVar3;\n      if (iVar3 == CONCAT22(a6,a5)) {\n        iVar2 = 0;\n        a5_00 = 0;\n        goto code_r0x101008bb;\n      }\n      iVar2 = ((a3 + -1) - a5) + 1;\n      iVar3 = sub_3_0228(CONCAT11((char)((uint2)iVar2 >> 8),xVar1),iVar2,a3 + -1,a4);\n      a5_00 = (int2)((uint4)iVar3 >> 0x10);\n      iVar2 = (int2)iVar3;\n      if (iVar3 == 0) goto code_r0x101008bb;\n      iVar2 = sub_3_0462(a1_00,a1,a2,iVar2,a5_00);\n    } while (iVar2 != 0);\n    iVar4 = sub_3_01EC(a5,a6);\n    iVar2 = (int2)iVar4;\n  } while (iVar3 != iVar4);\ncode_r0x101008bb:\n  return CONCAT22(a5_00,iVar2);\n}"
+    "int4 __stdcall16far sub_2_0D6A(a1)\nint2 a1;\n{\n  xunknown2 unaff_DS = codebreaker_ds();\n  xunknown4 xVar1;\n  int4 iVar2;\n  xunknown4 xStack_6;\n  \n  xVar1 = (*((code_callee_pops __far *)MK_FP(((xunknown2 *)(a1 + 0x18))[1], *(xunknown2 *)(a1 + 0x18))))(a1);\n  xStack_6 = *(int4 *)(a1 + 4);\n  if (*(int4 *)(a1 + 0x14) == 2) {\n    iVar2 = sub_2_0C62((int2)*(xunknown4 *)(a1 + 0x10),\n                       (int2)((uint4)*(xunknown4 *)(a1 + 0x10) >> 0x10),\n                       (int2)*(xunknown4 *)(a1 + 0xc),\n                       (int2)((uint4)*(xunknown4 *)(a1 + 0xc) >> 0x10),\n                       (uint2)xVar1 - *(uint2 *)(a1 + 8),\n                       ((int2)((uint4)xVar1 >> 0x10) - *(int2 *)(a1 + 10)) -\n                       (uint2)((uint2)xVar1 < *(uint2 *)(a1 + 8)));\n    (*(uint2 *)((char *)&xStack_6 + 2)) = (int2)((uint4)xStack_6 >> 0x10);\n    xStack_6 = CONCAT22((*(uint2 *)((char *)&xStack_6 + 2)) + (int2)((uint4)iVar2 >> 0x10) +\n                        (uint2)CARRY2((uint2)xStack_6,(uint2)iVar2),(uint2)xStack_6 + (uint2)iVar2);\n  }\n  return xStack_6;\n}"
    ],
    "kwargs": {},
-   "result": "int4 __stdcall16far __export sub_3_0810();"
+   "result": "int4 __stdcall16far sub_2_0D6A();"
   },
   {
    "args": [
