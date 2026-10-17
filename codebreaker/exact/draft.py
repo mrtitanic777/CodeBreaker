@@ -1267,6 +1267,45 @@ def _changed(f, text):
     return t if t != text else None
 
 
+def unsigned_fields(text, most=3):
+    """[the text with one int field of a struct unsigned] - a variant each, for the fields shifted right or
+    compared (<, <=, >, >=): the compiler's shr and unsigned jumps say unsigned"""
+    out = []
+    fields = [(s.group(1), s.start() + f.start(), s.start() + f.end(), f.group(1))
+              for s in re.finditer(r"struct (\w+) \{[^}]*\}", text) for f in re.finditer(r"(?<![\w ])int f(\d+);|(?<=[{;] )int f(\d+);", s.group(0))]
+    for tag, a, b, n in fields[:16]:
+        n = n or re.search(r"\d+", text[a:b]).group(0)
+        ptrs = set(re.findall(r"struct %s \*\s*(\w+)" % tag, text)) | set(re.findall(r"struct %s (\w+)\[" % tag, text))
+        if not any(re.search(r"\b%s(?:\[[^\]]*\])?(?:->|\.)f%s\b\)? (?:>>|[<>]=?(?![<>]))" % (re.escape(p), n), text) for p in ptrs):
+            continue
+        out.append(text[:a] + "unsigned f%s;" % n + text[b:])
+        if len(out) >= most:
+            break
+    return out
+
+
+def adjacent_swaps(text, most=4):
+    """[the text with two next statements swapped] - assignments neither of which reads or gives what the other
+    gives, no call in either (a variant each: the order the model wrote two independent stores in may not be
+    the source's)"""
+    lines = text.split("\n")
+    out = []
+    rx = re.compile(r"([ \t]*)([\w\->.\[\]*]+) = ([^;]+);$")
+    for k in range(len(lines) - 1):
+        a, b = rx.fullmatch(lines[k]), rx.fullmatch(lines[k + 1])
+        if not a or not b or a.group(1) != b.group(1) or re.search(r"\w\s*\(", a.group(3) + b.group(3)):
+            continue
+        la, lb = re.sub(r"->.*|\[.*", "", a.group(2)).lstrip("*"), re.sub(r"->.*|\[.*", "", b.group(2)).lstrip("*")
+        if re.search(r"\b%s\b" % re.escape(la), lines[k + 1]) or re.search(r"\b%s\b" % re.escape(lb), lines[k]):
+            continue
+        new = list(lines)
+        new[k], new[k + 1] = lines[k + 1], lines[k]
+        out.append("\n".join(new))
+        if len(out) >= most:
+            break
+    return out
+
+
 def byte_heads(text):
     """*(int *)buf = E; - a buffer's first word given: its first byte (a variant: the store's width the model
     left to the type it guessed)"""
@@ -1643,6 +1682,7 @@ def frame_names(text, rule, regs_last=False):
     order = []
     drop = set()
     resize = {}
+    added = []
     cum = 0
     for d in autos:                                         # (each auto at its place; what lies between: register
         n = int(d["name"][1:])                              #  locals, then a filler)
@@ -1660,6 +1700,10 @@ def frame_names(text, rule, regs_last=False):
                 order.append(fill["_p%d" % cum])
                 if took:                                    # (the filler what they leave of it)
                     resize["_p%d" % cum] = gap
+        elif gap > 0 and REGSLOTS[0]:                       # (room no local or register takes: a filler there -
+            f_ = dict(name="_p%d" % cum, reg=False, size=gap)   #  an unused local of the source's)
+            order.append(f_)
+            added.append(f_)
         order.append(d)
         cum = n
     order += regs + [fill[f] for f in fill if fill[f] not in order]
@@ -1679,8 +1723,16 @@ def frame_names(text, rule, regs_last=False):
                 return None
             new[d["name"]] = nm
         prev = bucket(nm)
-    if not new and not drop and not resize:
+    if not new and not drop and not resize and not added:
         return None
+    if added:                                               # (the fillers made: declared after the others)
+        bl = body.split("\n")
+        j = 1
+        while j < len(bl) and (not bl[j].strip() or re.fullmatch(r"\s+(?:register\s+)?[\w\s*]+?\w+(?:\[\d+\])?;", bl[j])):
+            j += 1
+        ind_ = re.match(r"\s*", bl[1]).group(0) if len(bl) > 1 and bl[1].strip() else "    "
+        bl[j:j] = ["%schar %s[%d];" % (ind_, f_["name"], f_["size"]) for f_ in added]
+        body = "\n".join(bl)
     for f in drop:
         body = re.sub(r"(?m)^[ \t]*char %s\[\d+\];\n" % f, "", body)
     for f, z in resize.items():
@@ -1831,7 +1883,9 @@ def word_arrays(text, lo=0x40):
         if n < lo:
             return m.group(0)
         name = "g_%04x" % n
-        if n in pair4:
+        ln_ = m.string[m.string.rfind("\n", 0, m.start()) + 1:m.string.find("\n", m.end()) if "\n" in m.string[m.end():] else len(m.string)]
+        word = re.fullmatch(r"\s*(?:si|di|bx|cx) = %s;" % re.escape(m.group(0)), ln_)   # (one word of it loaded into
+        if n in pair4 or word:                                                          #  a pointer register)
             STRUCTARR.setdefault(name, (4, "int"))
             ARRAYS[name] = "struct s_%s" % name
             return "%s[%s].f0" % (name, m.group(1))
@@ -3650,6 +3704,8 @@ def structs(text, widths):
     if rets:
         text = re.sub(callrx, lambda m: "((struct s_r_%s *)%s(%s))->f%s" % (m.group(1), m.group(1), m.group(2), m.group(3)), text)
         text = "\n".join(pre) + "\n" + text
+    if ("bx*", 0) in widths and ("bxw", 0) not in widths:  # (*p->fA->fB read a byte: a char there)
+        text = re.sub(r"(?<![\w>)\]])\*(\w+(?:->f\d+){2,})\b(?!\s*(?:->|\[|\.|\+\+|--))", r"*(char *)\1", text)
     uses = {}
     for p, off in re.findall(r"\b(\w+)->f(\d+)\b", text):
         if p.startswith("s_r_"):
@@ -3852,8 +3908,12 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         if re.search(r"\bbp - \d+\b", t):                   # (a frame place the passes left as bp - N: the local)
             t = buffers(t) or t
         t = frame_chars(fn_pointers(t), widths)
-        t = fill_frame(t, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
-        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t), register_copies(t), lead_filler(t), scaled_places(t), shared_tails(t), guard_returns(t), default_after(t), frame_more(t), loop_tests(t), switch_breaks(t), register_reads(t), compare_results(t), or_loops(t), loop_guards(t), const_tests(t), flat_returns(t), return_cases_first(t), registers_last(t), guard_shared(t), _changed(common_tails, t), _changed(byte_heads, t)] if v]
+        t0_ = t
+        t = fill_frame(t0_, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
+        FILLNAME[0] = "_p%d"                                # (the filler named by its place: the frame's order
+        tp_ = fill_frame(t0_, FRAME[0], bool(prj.toolchain().p.get("frame_order")))   #  lays it out - a variant)
+        FILLNAME[0] = "_pf"
+        variants = [t] + [v for v in [tp_ if tp_ != t else None,store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t), register_copies(t), lead_filler(t), scaled_places(t), shared_tails(t), guard_returns(t), default_after(t), frame_more(t), loop_tests(t), switch_breaks(t), register_reads(t), compare_results(t), or_loops(t), loop_guards(t), const_tests(t), flat_returns(t), return_cases_first(t), registers_last(t), guard_shared(t), _changed(common_tails, t), _changed(byte_heads, t)] if v]
         both = pre_steps(t)
         both = pre_increments(both) if both else None
         if both:
@@ -5166,7 +5226,7 @@ REFINERS = [lambda prj, s: [assign_in_args(s)], lambda prj, s: [return_sources(s
             lambda prj, s: [loop_tests(s)], lambda prj, s: [switch_breaks(s)], lambda prj, s: [register_reads(s)],
             lambda prj, s: [compare_results(s)], lambda prj, s: [or_loops(s)], lambda prj, s: [loop_guards(s)],
             lambda prj, s: [const_tests(s)], lambda prj, s: [flat_returns(s)], lambda prj, s: [return_cases_first(s)],
-            lambda prj, s: [registers_last(s)], lambda prj, s: unsigned_locals(s), lambda prj, s: [guard_shared(s)], lambda prj, s: [_changed(common_tails, s)], lambda prj, s: [_changed(byte_heads, s)],
+            lambda prj, s: [registers_last(s)], lambda prj, s: unsigned_locals(s), lambda prj, s: [guard_shared(s)], lambda prj, s: [_changed(common_tails, s)], lambda prj, s: [_changed(byte_heads, s)], lambda prj, s: adjacent_swaps(s), lambda prj, s: unsigned_fields(s),
             lambda prj, s: [frame_names(s, prj.toolchain().p["frame_order"]), frame_names(s, prj.toolchain().p["frame_order"], True)]
             if prj.toolchain().p.get("frame_order") else [],
             lambda prj, s: [re.sub(r"\b([A-Za-z_]\w*), 0\)", r"(long)\1)", s, count=1)],   # (a value and a zero word
@@ -5301,8 +5361,12 @@ def fill_frame(text, fs, regs_count=True):
         return head + sep + "\n".join(lines)
     if fs <= size or re.search(r"(?m)^\s+(?:int|char|long|short)\s+v\d+", body):
         return text if not gaps else head + sep + "\n".join(lines)   # (the model's autos: the frame model lays those out)
-    lines.insert(last + 1, "    char _pf[%d];" % (fs - size))
+    lines.insert(last + 1, "    char %s[%d];" % (FILLNAME[0] % size if "%" in FILLNAME[0] else FILLNAME[0], fs - size))
     return head + sep + "\n".join(lines)
+
+
+FILLNAME = ["_pf"]                                          # (the trailing filler's name: _pf, or _p%d - its place,
+                                                            #  for frame_names to lay out by the names' buckets)
 
 
 def fp_native(code):
