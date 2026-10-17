@@ -662,12 +662,9 @@ def _joined_arguments(text, widths=None):
             m = re.fullmatch(r"_(a\d+|param_\d+)", src.at(n))
             if not m:
                 continue
-            up = n.parent
-            if up is not None and up.type == "pointer_expression" and src.at(up.child_by_field_name("operator")) == "*":
-                src.replace(up, through(m.group(1)))
-            elif up is not None and src.misread(up) == "*" and up.child_by_field_name("right") == n:
-                # (`(uint4)*_a1`: read as a product of `(uint4)` and `_a1`)
-                src.replace((up.child_by_field_name("operator").start_byte, n.end_byte), through(m.group(1)))
+            op = src.unary(n)
+            if op and op[0] == "*":
+                src.replace((op[1], n.end_byte), through(m.group(1)))
             else:
                 src.replace(n, "(*(uint4 *)&%s)" % m.group(1))
     return ctree.rewrite(text, fix)
@@ -1237,9 +1234,17 @@ def _entry_sp(text):
     the stack pointer, or makes an address on the stack from it): codebreaker_entry_sp(). A place
     on the stack it names by that (stack0xffec: entry SP - 0x14, above the function's own frame,
     the caller's) is that address."""
-    text = text.replace("register0x00000010", "codebreaker_entry_sp()")
-    return re.sub(r"&stack0x([0-9a-f]{4})\b",
-                  lambda m: "((uint1 *)codebreaker_entry_sp() + (int2)0x%s)" % m.group(1), text)
+    def fix(src):
+        for n in src.find("identifier"):
+            name = src.at(n)
+            if name == "register0x00000010":
+                src.replace(n, "codebreaker_entry_sp()")
+                continue
+            m = re.fullmatch(r"stack0x([0-9a-f]{4})", name)
+            op = src.unary(n) if m else None
+            if op and op[0] == "&":
+                src.replace((op[1], n.end_byte), "((uint1 *)codebreaker_entry_sp() + (int2)0x%s)" % m.group(1))
+    return ctree.rewrite(text, fix)
 
 
 def _stack_arguments(text):
@@ -1249,20 +1254,46 @@ def _stack_arguments(text):
     plus its offset."""
     def place(ty, off):
         return "codebreaker_stack(%s, 0x%x)" % (ty, off)
-    for mm in list(re.finditer(r"(?m)^[ \t]+([\w ]+?) (in_stack_([0-9a-f]{8}));[ \t]*\n", text)):
-        ty, name, off = mm.group(1).strip(), mm.group(2), int(mm.group(3), 16)
-        if "*" in ty or off >= 0x10000:
-            continue
-        text = text.replace(mm.group(0), "", 1)
-        text = re.sub(r"\b%s\b" % name, place(ty, off), text)
-    declared = set(re.findall(r"(?m)^[ \t]+[\w ]+?\**(\w+)(?: \[\d+\])?;[ \t]*$", text))
 
-    def piece(mm):
-        if mm.group(0) in declared:
-            return mm.group(0)
-        ty = {"u": "uint2", "i": "int2", "c": "char", "b": "uint1", "x": "xunknown2"}.get(mm.group(1)[:1], "uint2")
-        return place(ty, int(mm.group(2), 16))
-    return re.sub(r"\b_?([a-z]+)Stack([0-9a-f]{4})\b", piece, text)
+    def declared_alone(src, n):
+        """(type, name) of a declaration of one plain variable alone on its line, else None"""
+        ds = n.children_by_field_name("declarator")
+        if len(ds) != 1 or ds[0].type != "identifier":
+            return None
+        line = src.line(n)
+        if src.at(n) != line.strip():
+            return None
+        return line.strip()[:-1].rsplit(None, 1)[0].strip(), src.at(ds[0])
+
+    def arguments(src):
+        locals_ = {}
+        for n in src.find("declaration", under=src.body()):
+            got = declared_alone(src, n)
+            m = re.fullmatch(r"in_stack_([0-9a-f]{8})", got[1]) if got else None
+            if m and int(m.group(1), 16) < 0x10000 and got[1] not in locals_:
+                locals_[got[1]] = (got[0], int(m.group(1), 16))
+                src.replace(src.line_span(n), "")
+        for n in src.find("identifier"):
+            name = src.at(n)
+            if name in locals_ and n.parent.type != "declaration":
+                src.replace(n, place(*locals_[name]))
+    text = ctree.rewrite(text, arguments)
+
+    def pieces(src):
+        body = src.body()
+        declared = set()
+        for n in src.find("declaration", under=body):
+            if src.at(n) == src.line(n).strip():
+                for dcl in n.children_by_field_name("declarator"):
+                    while dcl.type in ("pointer_declarator", "array_declarator"):
+                        dcl = dcl.child_by_field_name("declarator")
+                    declared.add(src.at(dcl))
+        for n in src.find("identifier"):
+            m = re.fullmatch(r"_?([a-z]+)Stack([0-9a-f]{4})", src.at(n))
+            if m and src.at(n) not in declared:
+                ty = {"u": "uint2", "i": "int2", "c": "char", "b": "uint1", "x": "xunknown2"}.get(m.group(1)[:1], "uint2")
+                src.replace(n, place(ty, int(m.group(2), 16)))
+    return ctree.rewrite(text, pieces)
 
 
 _SIZE = {"1": 1, "2": 2, "4": 4}
@@ -1279,10 +1310,8 @@ def _elem16(typ):
 _LOCAL16 = re.compile(r"(?m)^  (\w+?)(\d)?(\s*\*+\s*|\s+)(\w*Stack_([0-9a-f]+))( \[(\d+)\])?;\s*$")
 
 
-_NEAR_OF_FAR = re.compile(r"\*\((\w+(?: \w+)?) \*\)\(\((\w+) __far \*\)")
 
 
-_TO_FAR = re.compile(r"\((\w+(?: \w+)?) __far \*\)\(")
 
 
 def _near_to_far(text):
@@ -1290,38 +1319,48 @@ def _near_to_far(text):
     it through DS: C makes a far pointer of a number with segment 0. Through a near pointer it
     gets DS: `(T __far *)(T *)(n)`. (Not where the value is far already: MK_FP, a far cast.)"""
     # (the function's four-byte variables already hold a segment and an offset: left as they are)
-    wide = set(re.findall(r"(?m)^\s*(?:int4|uint4|xunknown4|undefined4|float4)\s+(\w+)", text))
-    out, i = [], 0
-    for mm in _TO_FAR.finditer(text):
-        start = mm.end() - 1                                 # the "(" of the operand
-        depth, j = 0, start
-        while j < len(text):
-            if text[j] == "(":
-                depth += 1
-            elif text[j] == ")":
-                depth -= 1
-                if depth == 0:
-                    break
-            j += 1
-        inner = text[start:j + 1]
-        if j >= len(text) or "__far" in inner or "MK_FP" in inner or "CONCAT" in inner or "&" in inner \
-                or re.search(r"\b(?:int4|uint4|xunknown4|undefined4)\b", inner) \
-                or any(re.search(r"\b%s\b" % re.escape(w), inner) for w in wide):
-            continue
-        if re.fullmatch(r"\(\s*0\s*\)", inner):          # (a null pointer stays null)
-            continue
-        out.append(text[i:start])
-        out.append("(%s *)" % mm.group(1))
-        i = start
-    out.append(text[i:])
-    return "".join(out)
+    def fix(src):
+        wide = set()                                         # (four-byte variables and arrays of them)
+        for n in src.find("declaration"):
+            if src.at(n.child_by_field_name("type")) in ("int4", "uint4", "xunknown4", "undefined4", "float4"):
+                dcl = n.children_by_field_name("declarator")
+                dcl = dcl[0] if dcl else None
+                while dcl is not None and dcl.type in ("init_declarator", "array_declarator"):
+                    dcl = dcl.child_by_field_name("declarator")
+                if dcl is not None and dcl.type == "identifier":
+                    wide.add(src.at(dcl))
+        for n in src.find("cast_expression"):
+            far = re.fullmatch(r"(\w+(?: \w+)?) __far \*", src.at(n.child_by_field_name("type")))
+            value = n.child_by_field_name("value")
+            if not far or value.type != "parenthesized_expression":
+                continue
+            inner = src.at(value)
+            if "__far" in inner or "MK_FP" in inner or "CONCAT" in inner or "&" in inner \
+                    or re.search(r"\b(?:int4|uint4|xunknown4|undefined4)\b", inner) \
+                    or any(re.search(r"\b%s\b" % re.escape(w), inner) for w in wide) \
+                    or re.fullmatch(r"\(\s*0\s*\)", inner):          # (a null pointer stays null)
+                continue
+            src.insert(value.start_byte, "(%s *)" % far.group(1))
+    return ctree.rewrite(text, fix)
 
 
 def _far_reads(text):
     """`*(T *)((U __far *)MK_FP(s, o))` -- a far place read (or written) through a near cast:
     the segment dropped, DS:o in its stead (a RECT read out of the caller's segment, read out of
     the module's own). What is reached through a far pointer is reached far."""
-    return _NEAR_OF_FAR.sub(lambda mm: "*(%s __far *)((%s __far *)" % (mm.group(1), mm.group(2)), text)
+    def fix(src):
+        for cast in src.find("cast_expression"):
+            op = src.unary(cast)
+            if not op or op[0] != "*":
+                continue
+            ty = cast.child_by_field_name("type")
+            near = re.fullmatch(r"(\w+(?: \w+)?) \*", src.at(ty))
+            inner = cast.child_by_field_name("value")
+            inner = inner.named_children[0] if inner.type == "parenthesized_expression" and inner.named_child_count == 1 else None
+            if near and inner is not None and inner.type == "cast_expression" and \
+                    re.fullmatch(r"\w+ __far \*", src.at(inner.child_by_field_name("type"))):
+                src.insert(ty.start_byte + len(near.group(1)), " __far")
+    return ctree.rewrite(text, fix)
 
 
 def _buffer_fields(text):
@@ -1592,7 +1631,8 @@ def _far_locals(text):
 
 def _passed_on(arg, reg):
     """Is `arg` the register `reg` itself as the function had it -- not set for the interrupt?"""
-    return re.fullmatch(r"\s*(?:in|unaff)_E?%s\s*" % reg.upper(), arg) is not None
+    r = reg.upper()
+    return arg.strip() in ("in_" + r, "in_E" + r, "unaff_" + r, "unaff_E" + r)
 
 
 def interrupt_helper_name(vector, regs):

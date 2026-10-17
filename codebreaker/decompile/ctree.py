@@ -14,7 +14,8 @@ everything else stays as it was, byte for byte.
     text = src.text()                   # the edits applied (they must not overlap)
 
 Nodes are tree-sitter nodes: `.type`, `.children`, `.named_children`, `.child_by_field_name`,
-`.start_byte`, `.end_byte`, `.parent`. `src.at(node)` is a node's text."""
+`.start_byte`, `.end_byte`, `.parent`. `src.at(node)` is a node's text as written (with its
+`__far` -- see Source.__init__)."""
 
 import re
 
@@ -25,6 +26,8 @@ _PARSER = []
 # and, and `(uint2)(uint1)*p` as a call: misread() tells such a node from the cast it is.
 _TYPE = (r"(?:u?int\d+|xunknown\d+|undefined\d*|unk(?:byte|int|uint)\d+|float\d+|code(?:_callee_pops)?|bool|char|"
          r"short|int|long|unsigned|signed|double|float|void)")
+_QUALIFIERS = re.compile(rb"\b__(?:far|near|huge|export|loadds|saveregs|interrupt|cdecl\w*|stdcall\w*|pascal\w*|"
+                         rb"thiscall|fastcall)\b")
 _CASTS = re.compile(r"(?:\(\s*%s(?:\s+%s)*(?:\s*(?:__far|__near))?(?:\s*\*+)?(?:\s*\[\d*\])?\s*\)\s*)+\Z" % (_TYPE, _TYPE))
 
 
@@ -40,7 +43,10 @@ class Source(object):
     def __init__(self, text):
         self.original = text
         self.data = text.encode("utf-8")
-        self.tree = _parser().parse(self.data)
+        # (parsed with the 16-bit qualifiers and the calling conventions blanked, byte for byte:
+        # the grammar has no word for `__far`, and took `(char __far *)` for a cast to a type
+        # named __far; every place in the tree is still a place in the text as written)
+        self.tree = _parser().parse(_QUALIFIERS.sub(lambda m: b" " * len(m.group(0)), self.data))
         self.root = self.tree.root_node
         self.edits = []
 
@@ -74,6 +80,31 @@ class Source(object):
         if op in ("*", "&", "-", "+") and _CASTS.match(self.at(node.child_by_field_name("left"))):
             return op
         return None
+
+    def unary(self, node):
+        """(operator, where it starts) when `node` is the operand of a unary `*`, `&`, `-` or `+`
+        -- also one the grammar read as a binary operation after a cast (see misread) -- else None."""
+        up = node.parent
+        if up is None:
+            return None
+        if up.type in ("pointer_expression", "unary_expression") and up.child_by_field_name("argument") == node:
+            op = up.child_by_field_name("operator")
+            return self.at(op), op.start_byte
+        if self.misread(up) and up.child_by_field_name("right") == node:
+            op = up.child_by_field_name("operator")
+            return self.at(op), op.start_byte
+        return None
+
+    def line(self, node):
+        """The text of the line `node` starts on (without its line end)."""
+        s, e = self.line_span(node)
+        return self.data[s:e].decode("utf-8").rstrip("\r\n")
+
+    def line_span(self, node):
+        """(start, end) of the line `node` starts on, its line end included."""
+        s = self.data.rfind(b"\n", 0, node.start_byte) + 1
+        e = self.data.find(b"\n", node.start_byte)
+        return s, (len(self.data) if e < 0 else e + 1)
 
     @staticmethod
     def in_text(node):
