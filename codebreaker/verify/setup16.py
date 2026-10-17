@@ -11,6 +11,7 @@ when the run ends; only the last screen is kept, for whoever looks at a failure.
 
     continue_test({"USER.EXE": path, ...}, tag) -> (verdict, screenshot)
       verdict: "PASS" | "FAIL(dos)" | "FAIL(hang)" | "FAIL(error box)" | "FAIL(timeout)"
+               | "FAIL(error box before Welcome)"
                | "SLOW" (Setup's DOS part never finished: the run says nothing)"""
 import io
 import os
@@ -146,6 +147,9 @@ def continue_test(replace, tag, wait=150, keep_shot=None):
                 img = mon.shot(png)
             except (OSError, ValueError):
                 continue
+            if _error_box(img):                              # (white like the Welcome dialog: not it)
+                verdict = "FAIL(error box before Welcome)"
+                break
             if _welcome(img):
                 time.sleep(8)
                 mon.send("sendkey ret")
@@ -167,8 +171,8 @@ def continue_test(replace, tag, wait=150, keep_shot=None):
                         verdict = "FAIL(error box)"
                         break
                 break
-            if img.size[0] == 720 and i % 4 == 3:
-                mon.send("sendkey ret")                      # (Setup's DOS prompts)
+            # (no keys while Setup's DOS part runs: it asks for none from a prepared disk, and an
+            # Enter it did not need reached Windows and hid a fault -- USER's 1:007F)
         else:
             if img is not None:
                 verdict = "FAIL(dos)" if _black(img) else "FAIL(hang)" if img.size[0] == 640 else "SLOW"

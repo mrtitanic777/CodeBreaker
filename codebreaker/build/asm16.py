@@ -67,6 +67,8 @@ class Function(object):
         self.reaches = None                                 # refused for jumping into the middle of this offset's function
         self.holes = sorted(holes)
         self.raw_hole_calls = {}                           # offset -> (symbol, opcode): see raw_calls_into_holes
+        self.raw_far_entries = set()                       # (segment, offset) a raw far call or pushed pointer
+        #                                                    goes to where no function begins: see _raw_far_pointers
 
         import bisect
         hole_starts = [h[0] for h in self.holes]
@@ -90,6 +92,7 @@ class Function(object):
             return
         self.start, self.end, self.blob = start, end, blob
         segs = nef.segments()
+        self.code_segments = {x["idx"]: x["length"] for x in segs if x["kind"] == "CODE"}
         entries = {e["ordinal"]: e for e in nef.entries() if e.get("kind") in ("FIXED", "MOVEABLE")}
         refs = nef.module_refs()
         sites = {}                                         # offset -> (width, directive text)
@@ -331,6 +334,41 @@ class Function(object):
                     self.externs.setdefault(name, "far")
                     self.sites[p] = (2, "dw   offset %s" % name)
                     break
+                if p == off + 3 or self.blob[p - 1] in (0x9A, 0xEA):
+                    # a call or a pushed pointer into the middle of a function: that place is
+                    # an entry of its own (USER 35:035A `call far 43:0234`, inside sub_43_01D4 --
+                    # rebuilt from C, the call ran its filler)
+                    self.raw_far_entries.add((tseg, value))
+
+    def _pointer_selector(self, md, at, data, selectors):
+        """The code segment whose selector makes a far pointer with the number the instruction
+        at `at` gives, in one of the two shapes a far pointer is built in -- `push seg X` right
+        before `push n`, or the two words stored side by side (`mov [m], n` / `mov [m+2], seg
+        X`, either order) -- or None."""
+        if data[0] == 0x68 and len(data) == 3:
+            if self.blob[at - 3:at - 2] == b"\x68" and (at - 2) in selectors:
+                return selectors[at - 2]
+            return None
+        me = _decoded(md, self.blob[at:at + 16], at)
+        mem = [o for o in (me.operands if me else ()) if o.type == X.X86_OP_MEM]
+        if not mem:
+            return None
+        m = mem[0].mem
+        sizes = {a: len(t[0]) for a, t in self.ins.items()}
+        sizes.update({a: n for a, (n, _t) in self.symbolic.items()})   # (the selector's own: a fix-up)
+        before = [a for a, n in sizes.items() if a + n == at]
+        for other in [at + len(data)] + before:
+            if other not in sizes:
+                continue
+            site = other + sizes[other] - 2
+            if site not in selectors:
+                continue
+            ins = _decoded(md, self.blob[other:other + 16], other)
+            om = [o for o in (ins.operands if ins else ()) if o.type == X.X86_OP_MEM]
+            if om and (om[0].mem.base, om[0].mem.index, om[0].mem.segment) == (m.base, m.index, m.segment) \
+                    and om[0].mem.disp == m.disp + 2:
+                return selectors[site]
+        return None
 
     def _far_pointer_offsets(self, md, symbol_for, selectors, seg):
         # selectors: {offset of the fix-up: the segment it is the selector of}
@@ -361,6 +399,17 @@ class Function(object):
             if any(abs(a - at) <= near for a in own):
                 segs.add(seg)
             names = {symbol_for("function", t, value) for t in segs} - {None}
+            if not names:
+                # a far pointer to where no function is known to begin: a function nothing
+                # else calls (USER's callback at 1:3452, `push seg 1 / push 3452h`, passed to an
+                # enumeration -- taken for the tail of sub_1_3412, and gone with it when that
+                # was rebuilt from C): that place is an entry of its own. Only in the exact
+                # shapes of a far pointer -- a number merely near a selector is not one (taken
+                # loosely, 126 of USER's functions went back to assembly for constants)
+                t = self._pointer_selector(md, at, data, selectors)
+                if t is not None and value < self.code_segments.get(t, 0):
+                    self.raw_far_entries.add((t, value))
+                continue
             if len(names) != 1:
                 continue
             name = names.pop()

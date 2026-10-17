@@ -494,6 +494,9 @@ def _assembled16(b, nef, at, segs, stems, public, folder, env, carried=(), force
             made = list(pool.map(one, [r for r in runs if r not in done]))
         for run, f in made:
             seg = where[run[0]][0]
+            for place in f.raw_far_entries:                # (from its bytes: a far call into a middle)
+                if place not in entries:
+                    wanted.add(place)
             if f.text is None and (f.missing or f.far_missing):
                 # it calls into the middle of a run of assembly (in its segment, or far in
                 # another): that place is an entry of its own

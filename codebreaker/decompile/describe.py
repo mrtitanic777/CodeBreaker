@@ -271,6 +271,41 @@ def functions(nef):
         code = nef.data[s["file_off"]:s["file_off"] + s["length"]]
         for off in _near_call_targets(code):
             out.setdefault((s["idx"], off), "near")
+        for place in _far_pointer_targets(nef, s, bytes(code), segs):
+            out.setdefault(place, "far")
+    return out
+
+
+def _far_pointer_targets(nef, s, code, segs):
+    """Places in the module's code segments a far pointer names whose offset is a plain number
+    beside a selector fix-up: `call far` / `jmp far` (9A/EA, the offset inline), a pointer
+    pushed (`push seg X` / `push n`), or stored as two words side by side (`mov [bp+d], n` /
+    `mov [bp+d+2], seg X`, either order). Such a place is a function -- often one nothing calls
+    by a near call and the module does not export: a callback (USER's 1:3452, passed to an
+    enumeration from 1:36E8). Not seen, it was taken for the tail of the function before it."""
+    from codebreaker.build import data as data16
+    out = set()
+    n = len(code)
+    for o, src, _add, r in data16._places(nef, s, code):
+        if src != 2 or r.get("kind") != "INTERNAL" or r.get("seg") in (None, 0xFF):
+            continue
+        t = r["seg"]
+        if segs.get(t, {}).get("kind") != "CODE":
+            continue
+        offs = []
+        if o >= 3 and code[o - 3] in (0x9A, 0xEA):                         # call/jmp far off:seg
+            offs.append(struct.unpack_from("<H", code, o - 2)[0])
+        if o >= 1 and code[o - 1] == 0x68 and o + 5 <= n and code[o + 2] == 0x68:   # push seg / push off
+            offs.append(struct.unpack_from("<H", code, o + 3)[0])
+        if o >= 3 and code[o - 3] == 0xC7 and code[o - 2] == 0x46:          # mov [bp+d], seg ...
+            d = code[o - 1]
+            if o >= 8 and code[o - 8] == 0xC7 and code[o - 7] == 0x46 and code[o - 6] == (d - 2) & 0xFF:
+                offs.append(struct.unpack_from("<H", code, o - 5)[0])     # ... after mov [bp+d-2], off
+            if o + 7 <= n and code[o + 2] == 0xC7 and code[o + 3] == 0x46 and code[o + 4] == (d - 2) & 0xFF:
+                offs.append(struct.unpack_from("<H", code, o + 5)[0])     # ... before it
+        for v in offs:
+            if 0 <= v < segs[t]["length"]:
+                out.add((t, v))
     return out
 
 

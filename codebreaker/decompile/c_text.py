@@ -871,6 +871,7 @@ def _compilable16(module_path, outdir=None):
             starts.setdefault(sg_off[0], []).append(sg_off[1])
     for sg in starts:
         starts[sg].sort()
+    at_place = {m.where[va]: n for va, n in m.by_va.items() if m.where.get(va)}
     if sel_expr:
         for va, name in m.by_va.items():
             sg_off = m.where.get(va)
@@ -885,7 +886,22 @@ def _compilable16(module_path, outdir=None):
                 continue
             selector = re.compile(r"(?<![\w.])0x(%s)\b" % "|".join("%x" % v for v in here))
             head, brace, body = m.texts[name].partition("{")
-            m.texts[name] = head + brace + selector.sub(lambda mm: here[int(mm.group(1), 16)], body)
+            body = selector.sub(lambda mm: here[int(mm.group(1), 16)], body)
+            # a far pointer passed whole -- its offset the argument before its selector: a
+            # function's place, written by the function's name (USER's sub_1_3514 passes the
+            # callback 1:3452 to an enumeration as `0x3452, <segment 1>`: a number, it would
+            # still go where the function was if that one moved)
+            for v, expr in here.items():
+                sg_t = (v - describe.FIRST_SELECTOR) // 8 + 1
+                pair = re.compile(r"(?<![\w.])0x([0-9a-f]+)(\s*,\s*)" + re.escape(expr))
+
+                def _named(mm, sg_t=sg_t, expr=expr):
+                    fn = at_place.get((sg_t, int(mm.group(1), 16)))
+                    if not fn:
+                        return mm.group(0)
+                    return "((uint2)(uint4)(void __far *)&%s)%s%s" % (fn, mm.group(2), expr)
+                body = pair.sub(_named, body)
+            m.texts[name] = head + brace + body
     body = "\n".join(m.texts.values())
     called = set(re.findall(r"\b([A-Za-z_]\w*)\s*\(", body))
     m.imports = {}
@@ -1170,7 +1186,40 @@ def _buffer_fields(text):
             newline = re.sub(r"\[\d+\]", "[%d]" % ((need + elem - 1) // elem), aline)
             body = body.replace(aline, newline, 1)
             arrays[owner] = (ao, need, True, newline, _atyp)
+    body = _frame_block(body, arrays)
     return head + brace + re.sub(r"\n\n\n+", "\n\n", body)
+
+
+def _frame_block(body, arrays):
+    """The buffers a function passes on, kept in the order and at the distances the original's
+    frame had them: one packed structure. What a callee writes past one buffer then lands in the
+    next one, as in the original -- USER's sub_3_1C4E has GetObject write a 50-byte LOGFONT into
+    an 18-byte buffer, running on into the 32-byte one after it, which the function fills later
+    anyway. Laid out by the compiler instead, the 50 bytes went over the saved DS and the return
+    address. {name: (offset below BP, size, _, its declaration, type)}"""
+    if len(arrays) < 2:
+        return body
+    order = sorted(arrays.items(), key=lambda kv: -kv[1][0])          # (lowest address first)
+    fields, at = [], None
+    for k, (name, (off, size, _i, line, _typ)) in enumerate(order):
+        if at is not None and at > off:
+            fields.append("    uint1 codebreaker_gap%d [%d];" % (k, at - off))
+        elif at is not None and at < off:
+            return body                                                 # (overlapping: left alone)
+        fields.append("  " + line.strip())
+        at = off - size
+    for name, (off, size, _i, line, _typ) in order:
+        body = body.replace(line, "", 1)
+    decl = "  _Packed struct {\n%s\n  } codebreaker_frame;\n" % "\n".join(fields)
+    # (the declaration first among the locals: after the brace that opened the body)
+    body = re.sub(r"^\n?", "\n" + decl, body, count=1)
+    for name in arrays:
+        body = re.sub(r"(?<![\w.])%s\b" % re.escape(name), "codebreaker_frame.%s" % name, body)
+    body = body.replace("codebreaker_frame.codebreaker_frame.", "codebreaker_frame.")
+    # (the field declarations themselves keep their plain names)
+    for name in arrays:
+        body = re.sub(r"(\n {2,4}\w[\w ]*\s)codebreaker_frame\.(%s \[)" % re.escape(name), r"\1\2", body)
+    return body
 
 
 _ENDS = {}
