@@ -244,6 +244,7 @@ def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSR
                 if c == 0x0D: break
                 line.append(c)
             line = line[:max(mx - 1, 0)]
+            st["console"] += bytes(line) + b"\r"                 # (DOS echoes the line, and the carriage return)
             mu.mem_write(a + 1, bytes([len(line)]) + bytes(line) + b"\r"); return
         if ah in (0x01, 0x07, 0x08):
             c = st["stdin"].pop(0) if st["stdin"] else 0x0D
@@ -446,7 +447,11 @@ def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSR
             dta[0x1E:0x1E + len(base)] = base
             mu.mem_write(st["dta"], bytes(dta)); carry(False, 0); return
         if ah == 0x4F: carry(True, 18); return
-        if ah == 0x56: carry(False); return
+        if ah == 0x56:                                           # rename DS:DX to ES:DI
+            old, new = hostpath(cstr(ds, dx)), hostpath(cstr(es, R(UC_X86_REG_DI)))
+            if not fsisfile(old): carry(True, 2); return
+            if fsisfile(new): carry(True, 5); return
+            fsreplace(old, new); carry(False); return
         if ah == 0x57: W(UC_X86_REG_CX, 0); W(UC_X86_REG_DX, 0x1221); carry(False); return
         if ah == 0x59: W(UC_X86_REG_AX, 2); return
         if ah == 0x62 or ah == 0x51: W(UC_X86_REG_BX, PSP); return

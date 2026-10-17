@@ -1,0 +1,101 @@
+{
+  "about": "how each compiler of today is run on a port. {out} the program, {srcs} the C files, {inc} the folder of the headers. diag: the pattern of a complaint (file, line, column, kind, text). Override any of them, or add a compiler of your own, in settings.json under port.compilers. find: names or paths (globs allowed) tried in turn; setup: a script run first in the same shell (MSVC's vcvars)",
+  "gcc": {
+    "find": [
+      "gcc",
+      "C:/msys64/mingw64/bin/gcc.exe",
+      "C:/msys64/ucrt64/bin/gcc.exe",
+      "C:/msys64/mingw32/bin/gcc.exe"
+    ],
+    "check": [
+      "{cc}",
+      "-std=c11",
+      "-fsyntax-only",
+      "-fdiagnostics-column-unit=byte",
+      "-Wall",
+      "-fsigned-char",
+      "-I{inc}",
+      "{src}"
+    ],
+    "build": [
+      "{cc}",
+      "-std=c11",
+      "-O1",
+      "-fsigned-char",
+      "-fwrapv",
+      "-Wall",
+      "-I{inc}",
+      "-o",
+      "{out}",
+      "{srcs}"
+    ],
+    "diag": "^(?P<file>[^:\\n]+?):(?P<line>\\d+):(?P<col>\\d+): (?P<kind>error|warning): (?P<text>.*)$"
+  },
+  "clang": {
+    "find": [
+      "clang",
+      "C:/Program Files/Microsoft Visual Studio/*/*/VC/Tools/Llvm/x64/bin/clang.exe",
+      "C:/Program Files/LLVM/bin/clang.exe"
+    ],
+    "check": [
+      "{cc}",
+      "-D_CRT_SECURE_NO_WARNINGS",
+      "-D_CRT_NONSTDC_NO_WARNINGS",
+      "-std=c11",
+      "-fsyntax-only",
+      "-Wall",
+      "-fsigned-char",
+      "-I{inc}",
+      "{src}"
+    ],
+    "build": [
+      "{cc}",
+      "-D_CRT_SECURE_NO_WARNINGS",
+      "-D_CRT_NONSTDC_NO_WARNINGS",
+      "-std=c11",
+      "-O1",
+      "-fsigned-char",
+      "-fwrapv",
+      "-Wall",
+      "-I{inc}",
+      "-o",
+      "{out}",
+      "{srcs}"
+    ],
+    "diag": "^(?P<file>[^:\\n]+?(?::\\\\[^:\\n]+)?):(?P<line>\\d+):(?P<col>\\d+): (?P<kind>error|warning): (?P<text>.*)$"
+  },
+  "msvc": {
+    "find": [
+      "C:/Program Files/Microsoft Visual Studio/*/*/VC/Tools/MSVC/*/bin/Hostx64/x64/cl.exe",
+      "cl"
+    ],
+    "check": [
+      "{cc}",
+      "/D_CRT_SECURE_NO_WARNINGS",
+      "/D_CRT_NONSTDC_NO_WARNINGS",
+      "/diagnostics:column",
+      "/nologo",
+      "/std:c11",
+      "/Zs",
+      "/W3",
+      "/I{inc}",
+      "{src}"
+    ],
+    "build": [
+      "{cc}",
+      "/D_CRT_SECURE_NO_WARNINGS",
+      "/D_CRT_NONSTDC_NO_WARNINGS",
+      "/nologo",
+      "/std:c11",
+      "/O1",
+      "/W3",
+      "/I{inc}",
+      "/Fe:{out}",
+      "{srcs}"
+    ],
+    "diag": "^(?P<file>.+?)\\((?P<line>\\d+)(?:,(?P<col>\\d+))?\\): (?P<kind>error|warning) \\w+: (?P<text>.*)$",
+    "setup": [
+      "C:/Program Files/Microsoft Visual Studio/*/*/VC/Auxiliary/Build/vcvars64.bat"
+    ]
+  }
+}

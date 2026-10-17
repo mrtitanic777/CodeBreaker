@@ -1,0 +1,29 @@
+{
+  "name": "dos_c_early",
+  "about": "the C libraries of the DOS compilers of 1982-1985 (Microsoft C 1.0-3.0, Lattice, XENIX C's DOS library): K&R stdio over DOS handles, a printf of its own, malloc between the data and the stack, _main cutting the command line",
+  "libc": ["fopen", "fclose", "fflush", "fseek", "ftell", "fgetc", "fputc", "fputs", "fgets", "fread", "fwrite",
+           "ungetc", "fprintf", "printf", "sprintf", "puts", "getchar", "putchar", "malloc", "free", "calloc",
+           "realloc", "exit", "strcpy", "strcat", "strlen", "strcmp", "strncmp", "strncpy", "memcpy", "memset",
+           "rename", "atoi", "abort", "getenv", "rewind", "setbuf", "fileno", "feof", "ferror", "getc", "putc",
+           "toupper", "tolower", "isdigit", "isalpha", "isspace", "isupper", "islower", "isalnum"],
+  "runtime_defines": ["fopen", "fprintf", "malloc", "_main", "_filbuf", "_flsbuf", "_cleanup"],
+  "runtime_headers": ["stdio.h", "ctype.h", "fcntl.h"],
+  "runtime_internals": ["_ptr", "_cnt", "_base", "_flag", "_file", "_iob", "_filbuf", "_flsbuf", "_IOREAD", "_IOWRT"],
+  "platform": {
+    "header": "dosrt.h",
+    "source": "dosrt.c",
+    "calls": ["open", "creat", "read", "write", "lseek", "close", "unlink", "isatty", "getdrive", "kbdchar",
+              "kbdnew", "corein", "coreout", "coremax", "ipnCore"]
+  },
+  "widths": {"char": 8, "short": 16, "int": 16, "long": 32, "pointer": 16},
+  "int_storage": 16,
+  "printf_hex_upper": true,
+  "char_signed": true,
+  "notes": {
+    "_main": "the command line was cut into words at spaces alone (no quotes); the C library of today cuts it its own way",
+    "fopen": "the old library had no text mode: every file is opened binary (\"rb\", \"wb\")",
+    "kbdchar": "DOS's buffered line input (function 0Ah): the line, a carriage return, a line feed; at the end of the input -1",
+    "corein": "the memory above the program's 64K: here pages of a block of the heap of as many pages as coremax says",
+    "getdrive": "the current drive (0 = A:); on a system without drives, C:"
+  }
+}
