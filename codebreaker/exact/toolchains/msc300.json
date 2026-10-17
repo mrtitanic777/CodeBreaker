@@ -79,7 +79,8 @@
   },
   {
    "run": "P3.EXE",
-   "args": "-il C:\\{tag6} {fp} {ot}{oa} -c {tag}.OBJ -A snd -CC 0sO"
+   "args": "-il C:\\{tag6} {fp} {ot}{oa} -c {tag}.OBJ -A snd -CC 0sO",
+   "listing": "-L {tag}.LST"
   }
  ],
  "_passes": "the switches MSC.EXE gives each pass (small model)",

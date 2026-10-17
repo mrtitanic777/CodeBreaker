@@ -19,9 +19,114 @@ import os, sys, struct, time, collections
 
 PSP = 0x0100                 # PSP segment; the program loads at PSP + 0x10 = 0x0110
 TOP = 0xA000                 # first segment past conventional memory
+FAST_LIMIT = float(os.environ.get("DOSRUN_FAST_LIMIT", "20"))   # (seconds a fast run may take: one that never ends)
 Result = collections.namedtuple("Result", "exit console blocks load_seg files steps calls")
 
 class DosExit(Exception): pass
+
+
+class MemFS:
+    """the files a run sees, kept in memory: what the program writes stays here (its passes share them), what it
+    reads and was not written comes from the disk - read once, kept for every run after (DISK) - except under the
+    folders hidden (an include folder given whole each run). No file is written to the disk"""
+    DISK = {}                                               # (path -> (mtime, size, bytes)) - the tools' own files
+
+    def __init__(self, hide=()):
+        self.files = {}
+        self.gone = set()
+        self.hide = [os.path.normcase(os.path.abspath(h)) + os.sep for h in hide]
+
+    def key(self, p):
+        return os.path.normcase(os.path.abspath(p))
+
+    def _hidden(self, k):
+        return any(k.startswith(h) for h in self.hide)
+
+    def disk(self, p):
+        k = self.key(p)
+        st_ = os.stat(p)
+        got = MemFS.DISK.get(k)
+        if got and got[0] == st_.st_mtime and got[1] == st_.st_size:
+            return got[2]
+        b = ropen(p, "rb").read()
+        MemFS.DISK[k] = (st_.st_mtime, st_.st_size, b)
+        return b
+
+    def isfile(self, p):
+        k = self.key(p)
+        if k in self.files:
+            return True
+        return k not in self.gone and not self._hidden(k) and os.path.isfile(p)
+
+    def getsize(self, p):
+        k = self.key(p)
+        return len(self.files[k]) if k in self.files else os.path.getsize(p)
+
+    def read(self, p):
+        k = self.key(p)
+        return bytes(self.files[k]) if k in self.files else self.disk(p)
+
+    def open(self, p, mode="rb"):
+        k = self.key(p)
+        if "w" in mode:
+            self.files[k] = bytearray()
+            self.gone.discard(k)
+        elif k not in self.files:
+            if not self.isfile(p):
+                raise FileNotFoundError(p)
+            self.files[k] = bytearray(self.disk(p))
+        return MemFile(self.files[k])
+
+    def put(self, p, b):
+        self.files[self.key(p)] = bytearray(b)
+        self.gone.discard(self.key(p))
+
+    def remove(self, p):
+        k = self.key(p)
+        if k in self.files:
+            del self.files[k]
+        elif not self.isfile(p):
+            raise FileNotFoundError(p)
+        self.gone.add(k)
+
+    def replace(self, a, b):
+        self.put(b, self.read(a))
+        self.remove(a)
+
+
+class MemFile:
+    """a file of a MemFS: the operations the DOS calls use"""
+    def __init__(self, buf):
+        self.buf, self.pos = buf, 0
+
+    def read(self, n=-1):
+        end = len(self.buf) if n is None or n < 0 else min(len(self.buf), self.pos + n)
+        d = bytes(self.buf[self.pos:end])
+        self.pos = max(self.pos, end)
+        return d
+
+    def write(self, d):
+        if self.pos > len(self.buf):
+            self.buf.extend(b"\0" * (self.pos - len(self.buf)))
+        self.buf[self.pos:self.pos + len(d)] = d
+        self.pos += len(d)
+        return len(d)
+
+    def seek(self, off, whence=0):
+        self.pos = max(0, off if whence == 0 else self.pos + off if whence == 1 else len(self.buf) + off)
+        return self.pos
+
+    def tell(self):
+        return self.pos
+
+    def truncate(self, size=None):
+        del self.buf[self.pos if size is None else size:]
+
+    def flush(self):
+        pass
+
+    def close(self):
+        pass
 
 def ropen(path, mode="rb", **kw):
     """open(), retried: on a busy Windows machine (virus scanner, indexer) a file just created or
@@ -35,14 +140,23 @@ def ropen(path, mode="rb", **kw):
             if k == 39: raise
             time.sleep(0.05 * (k + 1))
 
-def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSRUN_MAX_BLOCKS", "60000000")), trace_calls=False, env=b"PATH=\0", instrument=None, instrument_when=None, driver=None, psp=None, top=None):
+def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSRUN_MAX_BLOCKS", "60000000")), trace_calls=False, env=b"PATH=\0", instrument=None, instrument_when=None, driver=None, psp=None, top=None, fast=False, fs=None):
+    # fast: no hook on every basic block (the blocks are not counted or kept - Result.blocks is empty); a run
+    # that does not end is stopped by a time limit instead (FAST_LIMIT seconds). Most of a compile's time
+    # went to that hook.
     PSP = psp or globals()["PSP"]                # (the PSP's segment: some passes need to be loaded low, some high)
     TOP = top or globals()["TOP"]                # (the top of memory: some programs fail above 512K)
     from unicorn import Uc, UC_ARCH_X86, UC_MODE_16, UC_HOOK_INTR, UC_HOOK_BLOCK, UC_HOOK_CODE, UcError
     from unicorn.x86_const import (UC_X86_REG_AX, UC_X86_REG_BX, UC_X86_REG_CX, UC_X86_REG_DX, UC_X86_REG_SI,
         UC_X86_REG_DI, UC_X86_REG_BP, UC_X86_REG_SP, UC_X86_REG_IP, UC_X86_REG_CS, UC_X86_REG_DS,
         UC_X86_REG_ES, UC_X86_REG_SS, UC_X86_REG_EFLAGS)
-    b = ropen(exe, "rb").read()
+    # fs: a MemFS - the files the program opens, makes, removes kept in memory (the disk only read)
+    fsopen = fs.open if fs else ropen
+    fsisfile = fs.isfile if fs else os.path.isfile
+    fssize = fs.getsize if fs else os.path.getsize
+    fsremove = fs.remove if fs else os.remove
+    fsreplace = fs.replace if fs else os.replace
+    b = fs.read(exe) if fs else ropen(exe, "rb").read()
     assert b[:2] in (b"MZ", b"ZM"), "not an MZ executable"
     (lastpage, pages, nreloc, hdrp, minalloc, maxalloc, ss, sp, _ck, ip, cs, relofs) = struct.unpack_from("<12H", b, 2)
     size = pages * 512 - ((512 - lastpage) if lastpage else 0)
@@ -155,9 +269,9 @@ def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSR
             if ah in (0x0F, 0x16):
                 try:
                     if ah == 0x0F:
-                        if not os.path.isfile(hp): setal(0xFF); return
-                        f = ropen(hp, "r+b")
-                    else: f = ropen(hp, "w+b")
+                        if not fsisfile(hp): setal(0xFF); return
+                        f = fsopen(hp, "r+b")
+                    else: f = fsopen(hp, "w+b")
                 except OSError: setal(0xFF); return
                 fcbs[fa] = f
                 ww(0x0C, 0); ww(0x0E, 0x80); mu.mem_write(fa + 0x10, size_now(f).to_bytes(4, "little"))
@@ -167,13 +281,13 @@ def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSR
                 if f: f.close()
                 setal(0); return
             if ah in (0x11, 0x12):
-                if ah == 0x11 and "?" not in nm + ex and os.path.isfile(hp):
+                if ah == 0x11 and "?" not in nm + ex and fsisfile(hp):
                     d_ = bytearray(32); d_[0] = rb(0)[0]; d_[1:12] = rb(1, 11)
-                    d_[0x1C:0x20] = os.path.getsize(hp).to_bytes(4, "little"); mu.mem_write(st["dta"], bytes(d_)); setal(0)
+                    d_[0x1C:0x20] = fssize(hp).to_bytes(4, "little"); mu.mem_write(st["dta"], bytes(d_)); setal(0)
                 else: setal(0xFF)
                 return
             if ah == 0x13:
-                try: os.remove(hp); setal(0)
+                try: fsremove(hp); setal(0)
                 except OSError: setal(0xFF)
                 return
             f = fcbs.get(fa)
@@ -214,7 +328,7 @@ def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSR
             if mu.mem_read(fa, 1)[0] == 0xFF: fa += 7
             nm = lambda o: (bytes(mu.mem_read(fa + o, 8)).decode("latin1").rstrip(), bytes(mu.mem_read(fa + o + 8, 3)).decode("latin1").rstrip())
             (n1, e1), (n2, e2) = nm(1), nm(0x11)
-            try: os.replace(hostpath(n1 + ("." + e1 if e1 else "")), hostpath(n2 + ("." + e2 if e2 else ""))); W(UC_X86_REG_AX, 0x1700)
+            try: fsreplace(hostpath(n1 + ("." + e1 if e1 else "")), hostpath(n2 + ("." + e2 if e2 else ""))); W(UC_X86_REG_AX, 0x1700)
             except OSError: W(UC_X86_REG_AX, 0x17FF)
             return
         if ah == 0x29:                                           # parse a file name at DS:SI into the FCB at ES:DI
@@ -258,9 +372,9 @@ def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSR
             hp = hostpath(name)
             try:
                 if ah == 0x3D:
-                    if not os.path.isfile(hp): carry(True, 2); return
-                    f = ropen(hp, "r+b" if (al & 3) else "rb")
-                else: f = ropen(hp, "w+b")
+                    if not fsisfile(hp): carry(True, 2); return
+                    f = fsopen(hp, "r+b" if (al & 3) else "rb")
+                else: f = fsopen(hp, "w+b")
             except OSError: carry(True, 5); return
             h = newh(); files[h] = dict(dev=None, f=f, name=name); carry(False, h); return
         if ah == 0x3E:
@@ -284,7 +398,7 @@ def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSR
                 else: files[bx]["f"].write(data)
             carry(False, cx); return
         if ah == 0x41:
-            try: os.remove(hostpath(cstr(ds, dx))); carry(False)
+            try: fsremove(hostpath(cstr(ds, dx))); carry(False)
             except OSError: carry(True, 2)
             return
         if ah == 0x42:
@@ -295,7 +409,7 @@ def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSR
                 W(UC_X86_REG_DX, p >> 16); carry(False, p & 0xFFFF)
             else: W(UC_X86_REG_DX, 0); carry(False, 0)
             return
-        if ah == 0x43: carry(not os.path.exists(hostpath(cstr(ds, dx))), 2 if not os.path.exists(hostpath(cstr(ds, dx))) else None); W(UC_X86_REG_CX, 0x20); return
+        if ah == 0x43: carry(not fsisfile(hostpath(cstr(ds, dx))), 2 if not fsisfile(hostpath(cstr(ds, dx))) else None); W(UC_X86_REG_CX, 0x20); return
         if ah == 0x44:
             if al == 0:
                 dev = bx <= 4 or (bx in files and files[bx]["dev"])
@@ -325,9 +439,9 @@ def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSR
             carry(True, 9); return
         if ah == 0x4E:                                           # find first: an exact name only
             name = cstr(ds, dx); hp = hostpath(name)
-            if "*" in name or "?" in name or not os.path.isfile(hp): carry(True, 18); return
+            if "*" in name or "?" in name or not fsisfile(hp): carry(True, 18); return
             dta = bytearray(43); dta[0x15] = 0x20
-            struct.pack_into("<I", dta, 0x1A, os.path.getsize(hp))
+            struct.pack_into("<I", dta, 0x1A, fssize(hp))
             base = os.path.basename(hp).upper().encode("latin1")[:12]
             dta[0x1E:0x1E + len(base)] = base
             mu.mem_write(st["dta"], bytes(dta)); carry(False, 0); return
@@ -340,7 +454,7 @@ def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSR
         if ah == 0x87: W(UC_X86_REG_AX, ax & 0xFF00); return        # no such function on MS-DOS (a C run-time asks: XENIX answers it)
         if ah == 0x4B:                                           # EXEC: the child runs to its end in an emulator of its own
             name = cstr(ds, dx); hp = hostpath(name)
-            if not os.path.isfile(hp): carry(True, 2); return
+            if not fsisfile(hp): carry(True, 2); return
             blk = es * 16 + bx; envs, toff, tseg = struct.unpack("<HHH", bytes(mu.mem_read(blk, 6)))
             n = mu.mem_read(tseg * 16 + toff, 1)[0]; tail = bytes(mu.mem_read(tseg * 16 + toff + 1, n)).decode("latin1")
             cenv = env
@@ -351,7 +465,7 @@ def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSR
             for h in files.values():                             # what the parent has written must be on the disk for the child
                 try: h.flush()
                 except Exception: pass
-            r = run(hp, workdir, tail.lstrip(" "), stdin=bytes(st["stdin"]), max_blocks=max_blocks, env=cenv, psp=PSP)
+            r = run(hp, workdir, tail.lstrip(" "), stdin=bytes(st["stdin"]), max_blocks=max_blocks, env=cenv, psp=PSP, fast=fast, fs=fs)
             st["console"] += r.console; st["child"] = r.exit or 0
             if os.environ.get("DOSRUN_DEBUG"): print("exec %s%s -> %s  env %r" % (name, tail, r.exit, cenv[:300]), file=sys.stderr)
             carry(False); return
@@ -381,7 +495,10 @@ def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSR
         if st.get("arm") and instrument_when(uc, addr, load):      # the program proper has started:
             st["arm"] = False; st["resume"] = True; uc.emu_stop(); return   # attach the heavy hooks now
         if st["n"] > max_blocks: err.append(RuntimeError("block limit at image %05x; console so far: %r" % (addr - load * 16, bytes(st["console"])[-400:]))); uc.emu_stop()
-    mu.hook_add(UC_HOOK_INTR, intr_safe); mu.hook_add(UC_HOOK_BLOCK, block)
+    fast = fast and not instrument and not instrument_when and not trace_calls and not driver
+    mu.hook_add(UC_HOOK_INTR, intr_safe)
+    if not fast: mu.hook_add(UC_HOOK_BLOCK, block)
+    lim = {"timeout": int(FAST_LIMIT * 1e6)} if fast else {}
     if trace_calls:
         def code(uc, addr, sz, _):
             b0 = uc.mem_read(addr, 1)[0]
@@ -396,9 +513,12 @@ def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSR
         if driver:                                           # tools/hybrid.py runs the CPU itself
             driver(mu, load, st, err, (cs + load) * 16 + ip)
             raise StopIteration
-        mu.emu_start((cs + load) * 16 + ip, 0x10FFFF)
+        t_start = time.time()
+        mu.emu_start((cs + load) * 16 + ip, 0x10FFFF, **lim)
         while st.get("again") and st["exit"] is None and not err:
-            st["again"] = False; mu.emu_start(R(UC_X86_REG_CS) * 16 + R(UC_X86_REG_IP), 0x10FFFF)
+            st["again"] = False; mu.emu_start(R(UC_X86_REG_CS) * 16 + R(UC_X86_REG_IP), 0x10FFFF, **lim)
+        if fast and st["exit"] is None and not err and time.time() - t_start >= FAST_LIMIT * 0.9:
+            err.append(RuntimeError("time limit at %05x; console so far: %r" % (R(UC_X86_REG_CS) * 16 + R(UC_X86_REG_IP) - load * 16, bytes(st["console"])[-400:])))
         if st.get("resume") and st["exit"] is None and not err:
             st["resume"] = False; instrument(mu, load)
             mu.emu_start(R(UC_X86_REG_CS) * 16 + R(UC_X86_REG_IP), 0x10FFFF)

@@ -108,11 +108,14 @@ class Toolchain(object):
         if self.variant and self.variant not in profile.get("variants", {}):
             raise ValueError("%s has no variant %r (it has %s)" % (self.name, self.variant, sorted(profile.get("variants", {}))))
         self.patches = [x for x in profile.get("patches", []) if x["change"] in on]
-        self.key = hashlib.sha1(json.dumps([profile, self.variant], sort_keys=True).encode()).hexdigest()[:12]
+        keyed = dict(profile, passes=[{k: v for k, v in ps.items() if k != "listing"} for ps in profile.get("passes", [])])
+        self.key = hashlib.sha1(json.dumps([keyed, self.variant], sort_keys=True).encode()).hexdigest()[:12]   # (a
+        #  listing's switch changes no object: not in the key)
 
     # ---- the stage: the tool's files, patched as the variant has them
     def stage(self):
-        d = settings.state("exact", "stage", "%s-%s" % (self.name, self.key))
+        tag = os.environ.get("CB_STAGE_TAG")                # (a worker of a parallel run: a stage of its own, the
+        d = settings.state("exact", "stage", "%s-%s%s" % (self.name, self.key, "-" + tag if tag else ""))   #  cache shared)
         done = os.path.join(d, ".staged")
         if os.path.exists(done):
             return d
@@ -194,8 +197,21 @@ class Toolchain(object):
                 out += e.encode("latin1") + b"\0"
         return out
 
-    def compile(self, src, headers=None, include=(), switches=None, cache=True):
-        """-> (object bytes or None, what the tool printed)"""
+    def compile(self, src, headers=None, include=(), switches=None, cache=True, listing=False):
+        """-> (object bytes or None, what the tool printed); listing: (object, printed, the listing's text) - the
+        pass the profile's "listing" names writing its listing of the code (the source line each comes from)"""
+        if listing:
+            lp = next((ps for ps in self.p["passes"] if ps.get("listing")), None)
+            if lp is None:
+                return self.compile(src, headers, include, switches, cache) + ("",)
+            saved = lp["args"]
+            lp["args"] = saved + " " + lp["listing"]
+            self._listing = None
+            try:
+                obj, con = self.compile(src + b"\n/* listing */", headers, include, switches, cache, False)
+            finally:
+                lp["args"] = saved
+            return obj, con, getattr(self, "_listing", None) or ""
         src = src.replace(b"\r\n", b"\n")
         headers = dict(headers or {})
         incs = []
@@ -211,36 +227,60 @@ class Toolchain(object):
         if cache:
             got = cache_get(cf)
             if got is not None:
-                return got
+                if len(got) > 2:                            # (a listing kept with it)
+                    self._listing = got[2]
+                return got[:2]
         w = self.stage()
         _SEQ[0] += 1                                        # (a name of its own each time: the emulator may hold
         tag = "T%05d" % ((os.getpid() * 7 + _SEQ[0]) % 100000)   #  the last one's files open a while)
         crlf = lambda b: b.replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
-        for f, b in headers.items():
-            open(os.path.join(w, f.upper()), "wb").write(crlf(b))
         ix = os.path.join(w, "INCX")
-        os.makedirs(ix, exist_ok=True)
-        for f in os.listdir(ix):
-            _remove(os.path.join(ix, f))
-        for f, b in incs:
-            open(os.path.join(ix, f.upper()), "wb").write(crlf(b))
         ext = self.p.get("source_ext", ".C")
         body = crlf(src.replace(b"\x1a", b""))
         if self.p.get("source_eof"):                        # (a ^Z after the text: MASM 1.00 wants it)
             body += b"\x1a"
-        open(os.path.join(w, tag + ext), "wb").write(body)
         out = os.path.join(w, self.p["output"].format(**self._values(sw, tag)))
-        if os.path.exists(out):
-            os.remove(out)
-        code, con = self._run(w, sw, tag, ans)
-        obj = open(out, "rb").read() if code == 0 and os.path.exists(out) else None
+        lst = os.path.join(w, tag + ".LST")                 # (a listing the pass was asked for)
+        if MEMFS and self.p.get("emulator", "dos") == "dos":
+            from codebreaker.exact.emu import dos           # (the run's files in memory: nothing written, no other
+            fs = dos.MemFS(hide=[ix])                       #  run's files in the way)
+            for f, b in headers.items():
+                fs.put(os.path.join(w, f.upper()), crlf(b))
+            for f, b in incs:
+                fs.put(os.path.join(ix, f.upper()), crlf(b))
+            fs.put(os.path.join(w, tag + ext), body)
+            self._fs = fs
+            try:
+                code, con = self._run(w, sw, tag, ans)
+            finally:
+                self._fs = None
+            obj = fs.read(out) if code == 0 and fs.isfile(out) else None
+            lst_text = fs.read(lst).decode("latin1").replace("\r", "") if fs.isfile(lst) else None
+        else:
+            for f, b in headers.items():
+                open(os.path.join(w, f.upper()), "wb").write(crlf(b))
+            os.makedirs(ix, exist_ok=True)
+            for f in os.listdir(ix):
+                _remove(os.path.join(ix, f))
+            for f, b in incs:
+                open(os.path.join(ix, f.upper()), "wb").write(crlf(b))
+            open(os.path.join(w, tag + ext), "wb").write(body)
+            if os.path.exists(out):
+                os.remove(out)
+            code, con = self._run(w, sw, tag, ans)
+            obj = open(out, "rb").read() if code == 0 and os.path.exists(out) else None
+            lst_text = open(lst, encoding="latin1").read().replace("\r", "") if os.path.exists(lst) else None
+            for f in [tag + ext, os.path.basename(out), tag + ".LST"] + [h.upper() for h in headers]:
+                _remove(os.path.join(w, f))
+            for f in os.listdir(w):                         # (the passes' own files a failed run leaves: T12345EX ..)
+                if f.startswith(tag) and len(f) == len(tag) + 2:
+                    _remove(os.path.join(w, f))
         if obj is not None and self.p.get("rename_externs"):
             from codebreaker.exact import omf
             obj = omf.rename_externs(obj, self.p["rename_externs"])
-        for f in [tag + self.p.get("source_ext", ".C"), os.path.basename(out)] + [h.upper() for h in headers]:
-            _remove(os.path.join(w, f))
         res = (obj, con.decode("latin1").replace("\r", ""))
-        cache_put(cf, res)
+        self._listing = lst_text
+        cache_put(cf, res + ((lst_text,) if lst_text is not None else ()))
         return res
 
     def _run(self, w, sw, tag, ans):
@@ -264,7 +304,9 @@ class Toolchain(object):
                 inst, when = _in_memory(mem, inst)
             penv = env + b"".join(e.format(**v).encode("latin1") + b"\0" for e in ps.get("env", []))
             r = dos.run(os.path.join(w, ps["run"]), w, ps.get("args", "").format(**v), env=penv, instrument=inst,
-                        instrument_when=when, psp=_int(self.p.get("psp", 0x100)), top=_int(self.p.get("top", 0)) or None)
+                        instrument_when=when, psp=_int(self.p.get("psp", 0x100)), top=_int(self.p.get("top", 0)) or None,
+                        fast=inst is None and when is None,    # (no hook of ours in the pass: the fast run)
+                        fs=getattr(self, "_fs", None))
             con += r.console
             if r.exit:
                 return r.exit, con + b"(the pass that stopped: " + ps["run"].encode() + b")\n"
@@ -272,6 +314,7 @@ class Toolchain(object):
 
 
 _SEQ = [0]
+MEMFS = os.environ.get("CB_MEMFS", "1") != "0"           # (a compile's files in memory: dos.MemFS)
 
 
 def _remove(p):

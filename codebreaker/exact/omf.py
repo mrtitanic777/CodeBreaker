@@ -321,6 +321,54 @@ def rename_externs(data, mapping):
     return out
 
 
+def rename_symbols(data, fn):
+    """the object with every external and public name nm made fn(nm) (EXTDEF, COMDEF, PUBDEF): the names a batch
+    of candidates was compiled under given back"""
+    out = b""
+    for t, r in records(data):
+        if t in (0x8C, 0xB0):                               # (EXTDEF: name, type; COMDEF: name, type, kind, sizes)
+            q, nb = 0, b""
+            while q < len(r):
+                nm = r[q + 1:q + 1 + r[q]]
+                q += 1 + r[q]
+                if t == 0x8C:
+                    rest = r[q:q + 1]
+                    q += 1
+                else:                                       # (COMDEF: the rest of the entry as it is - type index,
+                    st = q                                  #  data type, then the communal's length fields)
+                    q += 1
+                    kind = r[q]
+                    q += 1
+                    for _ in range(2 if kind == 0x61 else 1):
+                        b0 = r[q]
+                        q += 1 + ({0x81: 2, 0x84: 3, 0x88: 4}.get(b0, 0))
+                    rest = r[st:q]
+                nm = fn(nm.decode("latin1")).encode("latin1")
+                nb += bytes([len(nm)]) + nm + rest
+            r = nb
+        elif t in (0x90, 0x91):                             # (PUBDEF: group, segment [, frame], then name, offset, type)
+            q = 0
+            g, q = _idx(r, q)
+            s, q = _idx(r, q)
+            if s == 0:
+                q += 2
+            nb = r[:q]
+            w = 4 if t == 0x91 else 2
+            while q < len(r):
+                nm = r[q + 1:q + 1 + r[q]]
+                q += 1 + r[q]
+                rest = r[q:q + w]
+                q += w
+                ti, q2 = _idx(r, q)
+                rest += r[q:q2]
+                q = q2
+                nm = fn(nm.decode("latin1")).encode("latin1")
+                nb += bytes([len(nm)]) + nm + rest
+            r = nb
+        out += record(t, r)
+    return out
+
+
 def raw_object(title, code, pubs, data=b"", dpubs=None, text="_TEXT", dalign=1):
     """an object module of the program's own bytes: a run of its code (and of its data), with the public names
     others call it by - a stand-in for a part no source and no library module gives. Its words for the linker

@@ -18,12 +18,14 @@ person or a later model - the ledger never counts a draft.
 
     draft.run(project) -> {address: verdict}
 """
+import difflib
 import importlib
 import itertools
 import os
 import re
 import struct
 
+from codebreaker.base import settings
 from codebreaker.exact import carve, compare, library, omf
 
 REGS = r"\b(ax|bx|cx|dx|si|di|al|ah|bl|bh|cl|ch|dl|dh|es)\b"
@@ -5453,13 +5455,37 @@ def _prove(prj, tc, src, a, ln, tries=4, budget=10):
     return "does not compile: %s" % (last[-1][:100] if last else "")
 
 
-def _verdict(prj, raw, a, ln):
+BATCH = int(os.environ.get("CB_BATCH", "16"))               # (candidates compiled in one run: batch.py; 0 none)
+
+
+def _batched(prj, tc, srcs, a, ln):
+    """{source: verdict} of those of srcs a batch compiled (one run of the compiler, counted as two compiles);
+    the rest are left to _prove"""
+    if len(srcs) < 2:
+        return {}
+    from codebreaker.exact import batch
+    try:
+        got = batch.compile_many(prj, tc, srcs)
+    except Exception:
+        return {}
+    _prove.spent = getattr(_prove, "spent", 0) + 2
+    out = {}
+    for i, (obj, k) in got.items():
+        try:
+            out[srcs[i]] = _verdict(prj, obj, a, ln, k)
+        except Exception:
+            pass
+    return out
+
+
+def _verdict(prj, raw, a, ln, k=0):
+    """the verdict on the k-th function of the object (a batch's: batch.compile_many)"""
     o = omf.read(raw)
     segs = omf.code_segments(o)
-    fns = omf.functions(o, segs[0]) if segs else []
-    if not fns:
+    fns = sorted(omf.functions(o, segs[0]), key=lambda f: f[1]) if segs else []
+    if len(fns) <= k:
         return "no function compiled"
-    name, off, l2 = fns[0]
+    name, off, l2 = fns[k]
     bad, notes = compare.function(o, prj.image, name, off, l2, a, prj, dict(prj.symbols()), {}, segs[0])
     if compare.identical(bad, notes) and l2 == ln:
         return "identical"
@@ -5516,6 +5542,34 @@ def _probes(code):
     return False
 
 
+HOPELESS = (0.25, 0.6)                                      # (a length off by more than this part of the function's,
+                                                            #  or more than this part of its bytes differing: no beam)
+
+
+def _hopeless(v, ln):
+    """a verdict too far from the program's code for the beam's rewrites to close (a statement missing, a loop
+    misread): the model's reading is wrong, not its spelling"""
+    m = re.match(r"differs: (\d+) bytes(?:, length (\d+) not (\d+))?", v)
+    if not m or not ln:
+        return False
+    gap = abs(int(m.group(2)) - int(m.group(3))) if m.group(2) else 0
+    # (by the length alone: a byte too many early shifts every byte after it, so the bytes that differ say
+    #  little - a function 36 bytes off by one instruction was closed by the beam)
+    return gap > max(16, HOPELESS[0] * ln)
+
+
+def _canon(src):
+    """a candidate as the compiler sees it, for telling two apart: a doubled pair of parentheses one, the
+    spacing one (neither changes a byte of the code) - not what is compiled, only what is compared"""
+    t = re.sub(r"[ \t]+", " ", src)
+    for _ in range(6):
+        t2 = re.sub(r"\(\((?P<x>[^()]*(?:\([^()]*\)[^()]*)*)\)\)", r"(\g<x>)", t)
+        if t2 == t:
+            break
+        t = t2
+    return t
+
+
 def _decl_sig(src):
     """a candidate's declarations - its parameters' and locals' types, names aside - and whether it returns a
     value: the kind of reading it is"""
@@ -5538,9 +5592,10 @@ def prove_best(prj, tc, inv, text, a, ln, names, regparam=None):
     cands = candidates(prj, text, a, names, regs, regparam, widths)
     seen = set()
     uniq = []
-    for src, left in cands:                                 # (each text once; the first readings first, and at
-        if src not in seen:                                 #  most MAXCANDS of them: a bench must end)
-            seen.add(src)
+    for src, left in cands:                                 # (each text once - spacing and doubled parentheses
+        c_ = _canon(src)                                    #  aside; the first readings first, and at most
+        if c_ not in seen:                                  #  MAXCANDS of them: a bench must end)
+            seen.add(c_)
             uniq.append((src, left))
     cands = uniq[:MAXCANDS]
     fpsw, fsw, gs = tc.p.get("fp_switch"), tc.p.get("file_switches"), tc.p.get("probe_switch")
@@ -5559,14 +5614,21 @@ def prove_best(prj, tc, inv, text, a, ln, names, regparam=None):
     best = None
     tops = []                                               # (every reading that compiled, near or far: the beam's seeds)
     _prove.spent = 0
-    for src, left in cands:
+    known = {}                                              # (verdicts a batch gave: batch.compile_many)
+    for ci, (src, left) in enumerate(cands):
         if left:
             v = "registers left: %s" % " ".join(left)
         elif _prove.spent >= FUNC_BUDGET and best is not None:
             break                                           # (compiled enough for one function: the best so far)
         else:
-            v = _prove(prj, tc, src, a, ln)
-            src = _prove.src                                # (as the compiler's errors mended it)
+            if BATCH and src not in known:                  # (the next ones compiled together, one run of the compiler)
+                ahead = [s for s, l in cands[ci:] if not l and s not in known][:BATCH]
+                known.update(_batched(prj, tc, ahead, a, ln))
+            if src in known:
+                v = known[src]
+            else:
+                v = _prove(prj, tc, src, a, ln)
+                src = _prove.src                            # (as the compiler's errors mended it)
             if v != "identical":
                 for alt in string_variants(prj, src):       # (a number that is a string's place: the string)
                     if _prove(prj, tc, alt, a, ln) == "identical":
@@ -5579,6 +5641,8 @@ def prove_best(prj, tc, inv, text, a, ln, names, regparam=None):
             tops.append((rank, src, v))
         if best is None or rank < best[0]:
             best = (rank, src, v)
+    if best and best[2].startswith("differs") and _hopeless(best[2], ln):
+        return best[1], best[2]                             # (too far for rewrites to close: the reading's own fault)
     if best and best[2].startswith("differs"):              # (the nearest that compile, rewritten - a beam of them:
         ranked = sorted(tops, key=lambda x: x[0])
         seeds = ranked[:BEAM]
@@ -5624,7 +5688,117 @@ REFINERS = [lambda prj, s: [assign_in_args(s)], lambda prj, s: [return_sources(s
             lambda prj, s: [re.sub(r"(?<=\()0, 0(?=, )", "0L", s, count=1)]]   # (the same first of more arguments)
 
 
+AIM_KIND = {                                                # (the refiners each kind of difference asks for first -
+    "frame": {"frame_names", "registers_last", "frame_more", "lead_filler", "register_slots"},   # aim.py's kinds;
+    "width": {"pointer_widths", "unsigned_registers", "unmasked", "byte_heads", "unsigned_fields", "high_words",   # the
+              "word_offsets", "scaled_places"},                                                  # rest after them)
+    "sign": {"unsigned_locals", "unsigned_fields", "unsigned_registers"},
+    "order": {"adjacent_swaps", "return_cases_first", "empty_cases_first", "default_after", "default_last", "switch_breaks",
+              "flat_returns", "guard_returns", "guard_shared", "guard_flat", "shared_tails", "push_tails", "loop_tests",
+              "or_loops", "loop_guards", "for_loops", "label_sinks", "shared_exit", "case_guards", "chain_tails",
+              "common_tails", "heads_variant", "no_default"},
+    "shape": {"assign_in_args", "return_sources", "compound_assigns", "chain_assigns", "store_increments", "pre_steps",
+              "pre_increments", "assign_in_tests", "and_returns", "register_temps", "split_ternaries", "compare_results",
+              "const_tests", "register_reads", "register_copies", "word_offsets", "call_pairs", "string_variants",
+              "address_variants"},
+}
+LINE_KINDS = AIM_KIND["shape"]                              # (rewrites of a statement: kept only where the code differs)
+
+
+def _refiner_name(f):
+    skip = {"re", "sub", "toolchain", "p", "get", "prj", "_changed", "search"}
+    return next((n for n in f.__code__.co_names if n not in skip), "other")
+
+
+_AIMS = {}
+PRIORS = {}                                                 # ({kind: {refiner: wins}} - the beam's history, learned)
+
+
+def _priors():
+    if not PRIORS:
+        try:
+            import json
+            PRIORS.update(json.load(open(settings.state("exact", "priors.json"))))
+        except Exception:
+            PRIORS["_"] = {}
+    return PRIORS
+
+
+def _learn(kinds, name):
+    """a refiner that brought a reading nearer, for a difference of these kinds: counted (state/exact/priors.json)"""
+    import json
+    p = _priors()
+    for k in kinds or ("shape",):
+        p.setdefault(k, {})
+        p[k][name] = p[k].get(name, 0) + 1
+    f = settings.state("exact", "priors.json")
+    try:                                                    # (merged with what other processes wrote meanwhile)
+        disk = json.load(open(f))
+        for k, d in disk.items():
+            for n_, c in d.items():
+                if isinstance(c, int):
+                    p.setdefault(k, {})
+                    p[k][n_] = max(p[k].get(n_, 0), c)
+    except Exception:
+        pass
+    tmp = "%s.%d.tmp" % (f, os.getpid())
+    try:
+        json.dump(p, open(tmp, "w"), sort_keys=True)
+        os.replace(tmp, f)
+    except OSError:
+        pass
+
+
+def _aim(prj, tc, src, a, ln):
+    """aim.diagnose of a candidate (one compile more, with the listing; kept per text)"""
+    if src in _AIMS:
+        return _AIMS[src]
+    from codebreaker.exact import aim
+    d = None
+    try:
+        obj, con, lst = tc.compile(src.encode("latin1", errors="replace"), headers=prj.headers(), include=prj.include,
+                                   switches=prj.switches, listing=True)
+        code = aim.listing_code(lst)
+        if obj is not None and code:
+            d = aim.diagnose(bytes(prj.image[a:a + ln]), aim.code_of(code), code)
+    except Exception:
+        d = None
+    _AIMS[src] = d
+    return d
+
+
+def _touches(s, alt, lines):
+    """does alt change s at one of these source lines (or within one of them)"""
+    if not lines:
+        return True
+    sl, al = s.split("\n"), alt.split("\n")
+    sm = difflib.SequenceMatcher(None, sl, al, autojunk=False)
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        if tag != "equal" and any(i1 - 1 <= l - 1 <= max(i2, i1 + 1) for l in lines):
+            return True
+    return False
+
+
+def _ordered(prj, tc, s_, a, ln):
+    """the refiners in the order a reading's difference asks for: [(refiner, name, lines-filter or None)] - the
+    kinds diagnosed first (by their wins so far), the rest after"""
+    d = _aim(prj, tc, s_, a, ln)
+    kinds = sorted((d or {}).get("kinds", {}), key=lambda k: -(d["kinds"][k]))
+    pri = _priors()
+    named = [(f, _refiner_name(f)) for f in REFINERS]
+    first, rest = [], []
+    for f, n in named:
+        hit = [k for k in kinds if n in AIM_KIND.get(k, ())]
+        (first if hit else rest).append((f, n))
+    score = lambda fn: -sum(pri.get(k, {}).get(fn[1], 0) for k in (kinds or ["shape"]))
+    first.sort(key=score)
+    rest.sort(key=score)
+    lines = (d or {}).get("lines", [])[:6] if kinds and set(kinds) <= {"shape"} else None
+    return [(f, n, lines if n in LINE_KINDS else None) for f, n in first] + [(f, n, None) for f, n in rest], kinds
+
+
 BEAM = 4                                                    # (the readings the search carries on with each round)
+AIM = os.environ.get("CB_AIM", "1") != "0"                 # (the beam aimed by the differences: aim.py)
 REFINE_BUDGET = 240                                         # (the compiles it may spend on one function)
 
 
@@ -5637,8 +5811,8 @@ def refine(prj, tc, a, ln, best, rounds=6, budget=None, seeds=None):
     beam = []
     seen = set()
     for r_, s_, v_ in [best] + list(seeds or []):
-        if s_ not in seen:
-            seen.add(s_)
+        if _canon(s_) not in seen:
+            seen.add(_canon(s_))
             beam.append((r_, s_, v_))
     def keep(xs):                                           # (the nearest BEAM, and the nearest of each other kind
         xs = sorted(xs, key=lambda x: x[0])                 #  of reading - its declarations - up to BEAM more)
@@ -5655,23 +5829,43 @@ def refine(prj, tc, a, ln, best, rounds=6, budget=None, seeds=None):
     for _ in range(rounds):
         pool = []
         for r_, s_, v_ in beam:
-            for f in REFINERS:
+            order, kinds = _ordered(prj, tc, s_, a, ln) if AIM else ([(f, _refiner_name(f), None) for f in REFINERS], [])
+            work, deferred = [], []                         # (the rewrites of this reading, in the aim's order: those
+            for f, name, lines in order:                    #  at the lines that differ, then the rest)
                 try:
                     alts = [x for x in f(prj, s_) if x and x != s_]
                 except Exception:
                     continue
                 for alt in alts:
-                    if alt in seen:
+                    c_ = _canon(alt)
+                    if c_ in seen:
                         continue
-                    seen.add(alt)
-                    if spent >= budget:
-                        break
-                    spent += 1
-                    v2 = _prove(prj, tc, alt, a, ln, tries=2, budget=3)
+                    seen.add(c_)
+                    (deferred if lines is not None and not _touches(s_, alt, lines) else work).append((name, alt))
+            work += deferred
+            for w0 in range(0, len(work), max(1, BATCH)):
+                if spent >= budget:
+                    break
+                chunk = work[w0:w0 + max(1, BATCH)]
+                known = _batched(prj, tc, [x for _, x in chunk], a, ln) if BATCH else {}
+                spent += 2 if known else 0
+                for name, alt in chunk:
+                    if alt in known:
+                        v2, got = known[alt], alt
+                    else:
+                        if spent >= budget:
+                            break
+                        spent += 1
+                        v2 = _prove(prj, tc, alt, a, ln, tries=2, budget=3)
+                        got = _prove.src
                     if v2 == "identical":
-                        return _prove.src, v2
+                        if AIM:
+                            _learn(kinds, name)
+                        return got, v2
                     if v2.startswith("differs"):
-                        pool.append((_rank(v2), _prove.src, v2))
+                        if AIM and _rank(v2) < r_:
+                            _learn(kinds, name)
+                        pool.append((_rank(v2), got, v2))
         if not pool:
             break
         merged = keep(beam + pool)
