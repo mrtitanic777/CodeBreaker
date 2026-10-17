@@ -1418,6 +1418,24 @@ def call_pairs(text):
     return re.sub(r"\n\n+", "\n", t)
 
 
+def lvalue_choices(text):
+    """*(C ? A : B) = E; - one store the compiler shares between two ways to its place: if (C) *A = E; else
+    *B = E; (A, B: `*X` read as the field X->f0 when they end in one)"""
+    def one(m):
+        ind, inner, e = m.group(1), m.group(2), m.group(3)
+        parts = _top_split(inner, "?")
+        if len(parts) != 2:
+            return m.group(0)
+        c = parts[0].strip()
+        ab = _top_split(parts[1], ":")
+        if len(ab) != 2 or re.search(r"\w\s*\(|\+\+|--", e):
+            return m.group(0)
+        a, b = ab[0].strip(), ab[1].strip()
+        c = c if c.startswith("(") else "(%s)" % c
+        return "%sif %s {\n%s    *%s = %s;\n%s} else {\n%s    *%s = %s;\n%s}" % (ind, c, ind, a, e, ind, ind, b, e, ind)
+    return re.sub(r"(?m)^([ \t]*)\*\((.+\?.+:.+)\) = ([^;]+);$", one, text)
+
+
 def label_sinks(text):
     """L: S; goto H; inside a loop H: while (..) { .. } - the code a goto in the loop jumps to, the loop's own
     last statements (S then the next test): S at the end of the loop's body, `goto L;` where it was (a
@@ -4197,7 +4215,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = re.sub(r"&(\w+)->f(\d+)\b", r"(\1 + \2)", t)  # (lea: &p[N], &p->fN - the place, p + N)
         t = fold_registers(stored_calls(store_loops(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(push_returns(conditional_values(logical_values(step_tests(bool_trees(range_switches(loop_gotos(empty_loops(tested_zero(continue_loops(first_breaks(loop_registers(fall_dups(fall_gotos(goto_tails(t) or t))))))))))))))))))))))
         t = stored_calls(fold_registers(push_returns(t)))   # (returns again, as the passes left the arms)
-        t = stored_reads(scaled_index(register_chains(word_arrays(pointer_index(test_first_loops(copy_tests(post_steps(selector_reads(t)))))))))
+        t = stored_reads(scaled_index(register_chains(word_arrays(pointer_index(test_first_loops(copy_tests(post_steps(selector_reads(lvalue_choices(t))))))))))
         t = fold_registers(conditional_values(t))           # (the ?: values again, the elements folded)
         t = fold_registers(stored_tests(push_returns(temporaries(compare_values(goto_returns(sunk_tails(sunk_pairs(empty_loops(shared_arms(merge_conditions(guard_gotos(self_updates(switch_follow(t))))))))))))))
         wd = set(widths)                                    # (a parameter kept in a register: the bytes read through
@@ -4206,7 +4224,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
                 wd |= {(chr(97 + i_), o) for (q, o) in widths if q in (r_, r_ + "*") and (r_ + "w", o) not in widths}
         t = structs(pointer_flow(local_pointers(register_variables(shapes(long_pairs(t)), regs, regparam))), wd)
         t = re.sub(r"(?m)^[ \t]*(\w+) = \1;\n", "", t)         # (a register variable given itself: nothing)
-        t = register_values(long_ladders(long_pairs(t)))                     # (the longs again, as the passes left them)
+        t = lvalue_choices(register_values(long_ladders(long_pairs(t))))                     # (the longs again, as the passes left them)
         if re.search(r"\bbp - \d+\b", t):                   # (a frame place the passes left as bp - N: the local)
             t = buffers(t) or t
         t = frame_chars(fn_pointers(t), widths)
@@ -5088,6 +5106,11 @@ def localize(prj, text, at, names):
                 for off, t_ in (ty if isinstance(ty, list) else [(0, ty)]):
                     if off > pos:
                         fl.append("char _%d[%d];" % (pos, off - pos))
+                    if t_ == "int" and re.search(r"\b%s\[[^\]]*\]\.f%d->" % (d, off), text) and \
+                       re.search(r"(?m)^struct s_f%d \{" % off, text):
+                        t_ = "struct s_f%d *" % off             # (a field gone through: a pointer to what it reads)
+                    elif t_ == "int" and re.search(r"(?<![\w)\]])\*%s\[[^\]]*\]\.f%d\b(?!\s*(?:->|\[|\.))" % (d, off), text):
+                        t_ = "int *"
                     fl.append("%s f%d;" % (t_, off))
                     pos = off + (1 if t_ == "char" else 2)
                 if k > pos:
