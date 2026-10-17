@@ -2096,6 +2096,24 @@ def guard_returns(text):
         new = ["    if %s %s" % (neg if neg.startswith("(") and _balanced(neg[1:-1]) else "(%s)" % neg, rest[0].strip())] + \
             [x[4:] if x.startswith("        ") else x for x in p[1]]
         return "\n".join(lines[:k] + new + lines[p[3]:])
+    for k in range(len(lines)):                             # (if (C) { S } else { return x; } last: the same guard;
+        if not lines[k].startswith("    if (") or not lines[k].endswith("{"):   #  then an arm ending in a return
+            continue                                                         #  its else flattened after it)
+        p = _if_parts(lines, k)
+        if not p or p[2] is None or [x for x in lines[p[3]:] if x.strip()] != ["}"]:
+            continue
+        el = [x.strip() for x in p[2] if x.strip()]
+        th = [x for x in p[1] if x.strip()]
+        if len(el) == 1 and el[0].startswith("return"):
+            neg = _not("(%s)" % p[0])
+            new = ["    if %s %s" % (neg if neg.startswith("(") and _balanced(neg[1:-1]) else "(%s)" % neg, el[0])] + \
+                [x[4:] if x.startswith("        ") else x for x in p[1]]
+        elif th and re.match(r"\s*return\b", th[-1]) and th[-1].startswith("        return"):
+            new = lines[k:k + 1] + p[1] + ["    }"] + [x[4:] if x.startswith("        ") else x for x in p[2]]
+        else:
+            continue
+        t = "\n".join(lines[:k] + new + lines[p[3]:])
+        return guard_returns(t) or t
     return None
 
 
