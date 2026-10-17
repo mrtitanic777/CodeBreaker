@@ -338,6 +338,7 @@ def push_returns(text):
     if end is None or end + 1 >= len(lines) or lines[end + 1] != "}":
         return text
     reg = re.fullmatch(r"\s*return (\w+);", lines[end]).group(1)
+    breaks = set()                                          # (a switch's breaks after the values become returns)
 
     def tail(lo, hi):                                       # (the statements lines[lo:hi] end giving reg a value:
         k = hi - 1                                          #  [indexes of those assignments], or None)
@@ -349,6 +350,25 @@ def push_returns(text):
             return [k]
         if lines[k].strip() != "}":
             return None
+        sw = next((j for j in range(k - 1, lo - 1, -1) if lines[j].strip() and not re.match(r"\s*(?:case [^:]+|default):$", lines[j]) and
+                   len(lines[j]) - len(lines[j].lstrip()) == len(lines[k]) - len(lines[k].lstrip())), None)
+        if sw is not None and re.match(r"\s*switch \(.*\) \{$", lines[sw]):   # (a switch each arm of which gives
+            got, arm, ok_ = [], [], True                                    #  reg and breaks, a default among them)
+            dflt = False
+            for j in range(sw + 1, k + 1):
+                if re.match(r"\s*(?:case [^:]+|default):$", lines[j]) or j == k:
+                    if arm:
+                        idx = [x for x in arm if lines[x].strip()]
+                        if len(idx) >= 2 and lines[idx[-1]].strip() == "break;" and re.fullmatch(r"\s*%s = [^;]+;" % reg, lines[idx[-2]]):
+                            got.append(idx[-2])
+                            breaks.add(idx[-1])
+                        else:
+                            ok_ = False
+                    arm = []
+                    dflt = dflt or lines[j].strip() == "default:"
+                else:
+                    arm.append(j)
+            return got if ok_ and got and dflt else None
         start = next((j for j in range(k - 1, lo - 1, -1) if re.match(r"\s*if \(.*\) \{$", lines[j]) and
                       len(lines[j]) - len(lines[j].lstrip()) == len(lines[k]) - len(lines[k].lstrip())), None)
         if start is None:
@@ -416,8 +436,10 @@ def push_returns(text):
         return text
     for k in ks:
         lines[k] = re.sub(r"^(\s*)%s = (.*);$" % reg, r"\1return \2;", lines[k])
-    del lines[end]
-    return "\n".join(lines)
+    lines[end] = None
+    for b_ in breaks:
+        lines[b_] = None
+    return "\n".join(x for x in lines if x is not None)
 
 
 def chain_returns(text):
@@ -587,6 +609,34 @@ def post_increments(text):
         out.append(l)
         k += 1
     return "\n".join(out)
+
+
+def loop_tests(text):
+    """while (C) { if (D) { S } else { break; } } - the loop's own test the two: while (C && D) { S } (and the
+    other way about, if (D) { break; } S: while (C && !D) { S })"""
+    lines = text.split("\n")
+    for k in range(len(lines)):
+        m = re.fullmatch(r"([ \t]*)while (\(.*\)) \{", lines[k])
+        if not m:
+            continue
+        e = _block_end(lines, k)
+        if e is None or lines[e].strip() != "}":
+            continue
+        p = _if_parts(lines, k + 1)
+        if not p or p[3] != e:
+            continue
+        ind = m.group(1)
+        if p[2] is not None and [x.strip() for x in p[2] if x.strip()] == ["break;"]:
+            body, d = p[1], "(%s)" % p[0] if not p[0].startswith("(") else p[0]
+        elif p[2] is None and [x.strip() for x in p[1] if x.strip()] == ["break;"]:
+            continue                                        # (if (D) break; and nothing after: no body to keep)
+        else:
+            continue
+        cond = _conj("&&", _truth(m.group(2)), _truth(d))
+        new = ["%swhile (%s) {" % (ind, cond)] + [x[4:] if x.startswith(ind + "        ") else x for x in body] + ["%s}" % ind]
+        t = "\n".join(lines[:k] + new + lines[e + 1:])
+        return for_loops(t) or t                            # (and its step a for's, when it has one)
+    return None
 
 
 def fall_gotos(text):
@@ -1668,6 +1718,11 @@ def for_loops(text):
                     i4 + "continue;" not in own:
                 step = q[1][0].strip()
                 body = body[:j0] + ["%sif (%s) {" % (i4, _truth(_not("(" + q[0] + ")")))] + q[2] + [i4 + "}"]
+            elif q and q[3] == len(body) and q[2] and len(q[2]) >= 3 and re.fullmatch(i4 + "    (?:%s)" % st, q[2][-2]) and \
+                    q[2][-1] == i4 + "    continue;" and re.match(r"\s*(?:break|return)\b", q[1][-1]) and \
+                    i4 + "continue;" not in own and not any(x.strip() == "continue;" for x in q[2][:-1]):
+                step = q[2][-2].strip()                     # (if (C) { ..leaves.. } else { S; X = X + K; continue; })
+                body = body[:j0 + 1] + q[1] + [i4 + "}"] + [x[4:] for x in q[2][:-2]]
         if not step:
             k += 1
             continue
@@ -2930,7 +2985,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = register_values(long_ladders(long_pairs(t)))                     # (the longs again, as the passes left them)
         t = frame_chars(fn_pointers(t), widths)
         t = fill_frame(t, FRAME[0], bool(prj.toolchain().p.get("frame_order")))
-        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t), register_copies(t), lead_filler(t), scaled_places(t), shared_tails(t), guard_returns(t), default_after(t), frame_more(t)] if v]
+        variants = [t] + [v for v in [store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t), register_copies(t), lead_filler(t), scaled_places(t), shared_tails(t), guard_returns(t), default_after(t), frame_more(t), loop_tests(t)] if v]
         both = pre_steps(t)
         both = pre_increments(both) if both else None
         if both:
@@ -4155,6 +4210,7 @@ REFINERS = [lambda prj, s: [assign_in_args(s)], lambda prj, s: [return_sources(s
             lambda prj, s: [empty_cases_first(s)], lambda prj, s: [register_slots(s)], lambda prj, s: [register_copies(s)],
             lambda prj, s: [lead_filler(s)], lambda prj, s: [scaled_places(s)], lambda prj, s: [shared_tails(s)],
             lambda prj, s: [guard_returns(s)], lambda prj, s: [default_after(s)], lambda prj, s: [frame_more(s)],
+            lambda prj, s: [loop_tests(s)],
             lambda prj, s: [re.sub(r"\b0, 0\)", "0L)", s)]]     # (two zero words pushed: a long 0)
 
 
