@@ -410,6 +410,20 @@ def structure(blocks, entry=0):
     # nested shared tails multiply: one MASM 5.10 function came out at 39,000 lines.
     emitted = set()
     _big = {}
+    def short_to(b, stops):
+        """a straight run of few blocks from b to one of stops (a switch's join, a loop's head): a tail
+        the compiler shares between arms (cross-jumped), each arm's own copy in the source"""
+        if not stops or not casestack:                      # (a switch's arms only)
+            return False
+        n, c = 0, b
+        while c not in stops:
+            blk = blocks[c]
+            if blk.term not in ("fall", "jmp") or len(blk.succ) != 1 or n >= 3:
+                return False
+            n += 1
+            c = blk.succ[0]
+        return 0 < n and sum(blocks[x].hi - blocks[x].lo for x in [b]) <= 8
+
     def big(b):
         if b not in _big:
             seen = {b}; work = [b]
@@ -441,6 +455,10 @@ def structure(blocks, entry=0):
                 h, fol, lbody, lflag = loopstack[-1]
                 if casestack and casestack[-1][1] == (len(loopstack), b):
                     return out                              # (a switch's arm at its join, the loop's follow: the switch then breaks)
+                if b == fol and casestack and casestack[-1][1][0] == len(loopstack):
+                    # (a switch's arm leaving the loop: a break would leave the switch - the return
+                    #  there copied in, or a goto)
+                    out.append(('block', b) if blocks[b].term == "ret" else ('goto', None, b)); return out
                 if b == fol: out.append(('break',)); return out
                 if b == h: out.append(('continue',)); return out
                 if b not in lbody and not lflag[0]:
@@ -472,7 +490,8 @@ def structure(blocks, entry=0):
                 break
             if b in active or b in local:                   # ancestor/irreducible re-entry -> goto
                 out.append(('goto', None, b)); break
-            if b in emitted and big(b) and not os.environ.get("CFG_NOCAP"):   # large region already emitted elsewhere
+            if b in emitted and big(b) and not os.environ.get("CFG_NOCAP") and not short_to(b, stops):   # large region already emitted elsewhere
+                                                                          # (a short tail to where the arm ends: copied)
                 out.append(('goto', None, b)); break
             emitted.add(b)
             local.add(b)
@@ -504,6 +523,20 @@ def structure(blocks, entry=0):
         if loopstack and join is not None:
             _h, _fol, _lbody, _lf = loopstack[-1]
             if join not in _lbody and join != _fol: join = None
+        if loopstack and loopstack[-1][0] == b and (join is None or join not in loopstack[-1][2]):
+            _h, _fol, _lbody, _lf = loopstack[-1]          # (the switch heading its loop: the join where the arms
+            def reach(t):                                   #  that stay in the loop meet, before the back edge)
+                seen_, work_ = {t}, [t]
+                while work_:
+                    for x in blocks[work_.pop()].succ:
+                        if x in _lbody and x != b and x not in seen_:
+                            seen_.add(x); work_.append(x)
+                return seen_
+            stay = [reach(t) for t in blk.succ if t in _lbody and t != b]
+            common = set.intersection(*stay) if stay else set()
+            firsts = [j for j in common if all(j == k or k in reach(j) for k in common)]
+            if len(firsts) == 1:
+                join = firsts[0]
         sub = stops | ({join} if join is not None else set())
         cases = []
         for t in blk.succ:
@@ -600,7 +633,12 @@ def structure(blocks, entry=0):
         # first, then walk onward; re-reaching h is the back-edge -> continue, reaching follow -> break.
         loopstack.append((h, follow, body, [False]))
         hblk = blocks[h]
-        if hblk.term == "cond":
+        if hblk.term == "switch":                          # (a switch heading the loop: its arms, then on)
+            node, after = do_switch(h, {h})
+            body_t = [node]
+            if after is not None and after != h and after != EXIT:
+                body_t += seq_from(after, {h})
+        elif hblk.term == "cond":
             node, after = do_if(h, {h})
             body_t = [node]
             if after is not None and after != h and after != EXIT:
