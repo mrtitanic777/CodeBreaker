@@ -50,6 +50,8 @@ def old_type(n, text):
         return W16.get(t)
     if k == "IntegerLiteral":
         s = spelled(n, text) or ""
+        if not re.fullmatch(r"(?:0[xX][0-9a-fA-F]+|\d+)[uUlL]*", s):
+            s = ""                                          # (a macro's name, not the number's own spelling)
         v = int(n.get("value", "0"))
         if re.search(r"[lL]$", s) or v > 0xFFFF:
             return "i32"
