@@ -22,7 +22,7 @@ import hashlib
 
 from codebreaker.verify import compare
 
-REV = 3
+REV = 4                                 # 4: branch-guided inputs (verify/guided.py); calls into absent code
 ARGS = 8
 M32 = 0xFFFFFFFF
 _OFFSET = 0x01000000                    # the rebuilt image sits this far above the original
@@ -75,6 +75,37 @@ def directed(image, span, most=6):
     return _DIRECTED[span]
 
 
+MAX_GUIDED = 16                 # branch-guided inputs kept per function (verify/guided.py)
+GUIDED_BUDGET = 96              # runs of the original it may spend finding them
+
+
+def guided_vectors(shared, va, span, externs, seeds, absent=None):
+    """Inputs that take branches of the original no seed took (verify/guided.py)."""
+    import os
+    from codebreaker.emulate import powerpc
+    from codebreaker.verify import guided
+    if os.environ.get("CB_NO_GUIDED"):              # (to measure what the guided inputs add)
+        return []
+
+    def run(v):
+        try:
+            r = powerpc.run(v.get("mem_init") or (), va, v["args"], externs=externs, span=span,
+                            stub_ret=v.get("stub_ret", 0), shared=shared, fill=v.get("fill"), branches=True,
+                            absent=absent)
+        except Exception:
+            return None
+        return {"branches": r["branches"], "reach": r["path"], "args_at": None,
+                "stack": (powerpc.STACK_LOW, powerpc.STACK_TOP)}
+    return guided.guided_inputs(run, seeds, budget=GUIDED_BUDGET, keep=MAX_GUIDED, seed=va & 0xFFFF,
+                                byteorder="big", word=8)
+
+
+def directed_and_guided(module_path, shared, va, span, externs, absent=None):
+    from codebreaker.formats import powerpc_image
+    d = directed(powerpc_image.read(module_path), span)
+    return list(d) + guided_vectors(shared, va, span, externs, vectors() + list(d), absent)
+
+
 def _argument(machine, v, images):
     """One argument of a recorded call, written as what it is rather than its bit pattern where
     the two builds would legitimately differ."""
@@ -92,8 +123,8 @@ def fingerprint(shared, entry, v, externs, argc, images, span=None, novalue=Fals
     """What one run of one function did, in a form two builds can be compared on."""
     from codebreaker.emulate import powerpc
     try:
-        r = powerpc.run((), entry, v["args"], externs=externs, span=span, stub_ret=v.get("stub_ret", 0),
-                        shared=shared, fill=v.get("fill"))
+        r = powerpc.run(v.get("mem_init") or (), entry, v["args"], externs=externs, span=span,
+                        stub_ret=v.get("stub_ret", 0), shared=shared, fill=v.get("fill"), absent=images[0])
     except Exception as e:
         return {"err": type(e).__name__}
     ex = compare._exit_norm(r["exit"])
@@ -138,14 +169,14 @@ def _judge(context, item):
     _key, va, span, insns, rebuilt_va, novalue = item
     info = {}
     try:
-        from codebreaker.formats import powerpc_image
         alone, both, images = _memory(module_path, dll)
         merged = {**ext_original, **ext_rebuilt}
         verdict, reason, limits = compare.compare(
             lambda v: fingerprint(alone, va, v, ext_original, argc, images[:1], span=span, novalue=novalue),
             lambda v: fingerprint(both, rebuilt_va, v, merged, argc, images, novalue=novalue),
             vectors(), (), insns=insns, info=info,
-            directed=lambda covered, reached: directed(powerpc_image.read(module_path), span))
+            directed=lambda covered, reached: directed_and_guided(module_path, alone, va, span, ext_original,
+                                                                  images[0]))
     except ImportError:
         raise
     except Exception as e:
@@ -194,7 +225,15 @@ def build(m, module_path, work):
     ext_original = {va: name for name, va in m.externs.items()}
     ext_original.update({va: name for va, name in img.imports.items() if va not in ext_original})
     ext_rebuilt = {placed[name]: name for name in m.externs if name in placed}
-    return (module_path, dll, ext_original, ext_rebuilt, m.argc), items, dropped
+    # Calls to code the image does not hold (func_0x<address>: a partial image calling into the
+    # rest of its title) are recorded by the interpreter as calls to "@<address>"; their argument
+    # counts, where every call in the C agrees, from the C as for any function outside.
+    import re
+    from codebreaker.decompile import c_text
+    absent = {"func_0x" + h for h in re.findall(r"\bfunc_0x([0-9a-f]{8})\s*\(", "\n".join(m.texts.values()))}
+    argc = dict(m.argc)
+    argc.update({"@" + n[len("func_0x"):]: k for n, k in c_text.call_counts(m.texts, absent).items()})
+    return (module_path, dll, ext_original, ext_rebuilt, argc), items, dropped
 
 
 judge = _judge

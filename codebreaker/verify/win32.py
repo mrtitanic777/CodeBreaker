@@ -10,6 +10,7 @@ import os
 from codebreaker.build import watcom as toolchain
 from codebreaker.base import corpus
 from codebreaker.verify import compare
+from codebreaker.verify import guided
 from codebreaker.formats.pe import open_pe
 from codebreaker.emulate import emulator as tracer
 import struct as _struct
@@ -71,8 +72,8 @@ def judge(module_path, item):
             lambda v: _fp_pe(dll, entry, shape(v), rebuilt=module_path),
             _vectors(4, "pe"), _confirm_vectors(4, "pe"),
             insns=insn_count(module_path, va),
-            directed=lambda cov, rch: directed_vectors(module_path, va, cov, reached=rch,
-                                                       shape=shape if len(item) > 4 and item[4] else None),
+            directed=lambda cov, rch: directed_and_guided(module_path, va, cov, rch,
+                                                          shape if len(item) > 4 and item[4] else None),
             info=info, leftover=undefined_ret_bits)
     except ImportError:
         raise
@@ -110,6 +111,7 @@ def settings_profile(lane):
             "confirm_inputs": [v["args"] for v in _confirm_vectors(4, lane)],
             "max_calls": _MAX_CALLS, "max_support": MAX_SUPPORT,
             "directed": [MAX_DIRECTED, _HARVEST_DEPTH] if lane == "pe" else [],
+            "guided": [GUIDED_BUDGET, MAX_GUIDED] if lane == "pe" else [],
             # (not the decompiler's revision: a verdict is for a text, whichever revision wrote it)
             "cflags": list(c_text.CFLAGS), "runtime": B._RTL,
             "compiler": compiler,
@@ -371,19 +373,54 @@ def _coverage(r):
 
 
 def insn_count(path, func):
-    """How many instructions the function at `func` has (linear decode of its extent), or 0."""
+    """How many instructions the function at `func` has, or 0: those reachable from its entry
+    through its own jumps (a decode to the next known function also counted what lies after the
+    function's last jump or return -- the rest of an import-thunk table, padding, the next
+    function's data -- and so called a one-instruction thunk 2% covered). Where the function
+    jumps through a register or a table, its reach is not known: then every instruction to the
+    end of its extent, as before."""
     key = (path, func)
     if key not in _INSN_COUNT:
         n = 0
         try:
             off, va0, code, end, _sec = tracer._resolve_func(path, func)
-            import capstone
-            md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
-            n = sum(1 for _ in md.disasm_lite(bytes(code[off:end]), va0 + off))
+            n = _reachable_insns(bytes(code[off:end]), va0 + off)
         except Exception:
             n = 0
         _INSN_COUNT[key] = n
     return _INSN_COUNT[key]
+
+
+def _reachable_insns(code, start):
+    import capstone
+    from capstone import x86_const as X
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
+    md.detail = True
+    lo, hi = start, start + len(code)
+    seen, todo = set(), [start]
+    while todo:
+        a = todo.pop()
+        while lo <= a < hi and a not in seen:
+            try:
+                ins = next(md.disasm(code[a - lo:a - lo + 16], a, 1))
+            except StopIteration:
+                break
+            seen.add(a)
+            mn = ins.mnemonic
+            op = ins.operands[0] if ins.operands else None
+            if mn in ("ret", "retf", "iret", "iretd", "hlt", "int3", "ud2"):
+                break
+            if mn == "jmp" or (mn.startswith("j") and op is not None):
+                if op is not None and op.type == X.X86_OP_IMM:
+                    todo.append(op.imm & 0xFFFFFFFF)
+                elif mn == "jmp" and not (op is not None and op.type == X.X86_OP_MEM and not op.mem.base
+                                          and not op.mem.index):
+                    # through a register or a table: where it goes is not known here
+                    return sum(1 for _ in md.disasm_lite(code, start))
+                if mn == "jmp":
+                    break
+            a += ins.size
+    return len(seen)
 
 
 def _fp_pe(path, func, spec, rebuilt=False):
@@ -625,6 +662,44 @@ def directed_vectors(path, func, covered, arity=4, reached=(), shape=None):
         if len(keep) >= MAX_DIRECTED:
             break
     return keep
+
+
+MAX_GUIDED = 16                  # branch-guided inputs kept per body (verify/guided.py)
+GUIDED_BUDGET = 96               # runs of the original it may spend finding them
+
+
+def _branch_run(path, func, spec):
+    """The original run on `spec` with its branches logged: {"branches", "reach"}, or None when
+    the run is not an observation (as _fp_pe: an error, or a call into nothing)."""
+    try:
+        r = tracer.trace_function(path, func=func, args=spec["args"], mem_init=spec.get("mem_init"),
+                                  stub_externals=True, sig_resolver=_argc, stub_ret=int(spec.get("stub_ret", 0)),
+                                  sentinels=spec.get("sentinels"), reads=False, stop_wild=True,
+                                  ecx=spec.get("ecx"), edx=spec.get("edx"), quiet_stack=True,
+                                  reuse=not _PLAIN, fast=not _PLAIN, lean=not _PLAIN, pads=_PADS, branches=True)
+    except ImportError:
+        raise
+    except Exception:
+        return None
+    if r.get("bogus_stubs") or r.get("ran_into_zeros"):
+        return None
+    return {"branches": r.get("branches") or [], "reach": set(_coverage(r)[1]),
+            "args_at": (r.get("entry") or {}).get("esp", 0) + 4, "stack": (_STACK_LO, _STACK_HI)}
+
+
+def guided_vectors(path, func, seeds, shape=None):
+    """Inputs that take branches of the original no seed took (verify/guided.py)."""
+    return guided.guided_inputs(lambda v: _branch_run(path, func, shape(v) if shape else v), seeds,
+                                budget=GUIDED_BUDGET, keep=MAX_GUIDED, seed=func & 0xFFFF)
+
+
+def directed_and_guided(path, func, covered, reached, shape=None):
+    """The directed inputs, then branch-guided ones seeded with every input run so far."""
+    d = directed_vectors(path, func, covered, reached=reached, shape=shape)
+    if os.environ.get("CB_NO_GUIDED"):              # (to measure what the guided inputs add)
+        return d
+    seeds = list(_vectors(4, "pe")) + list(_confirm_vectors(4, "pe")) + list(d)
+    return list(d) + guided_vectors(path, func, seeds, shape)
 
 
 # The saved registers hold these instead when asking which bits of a return value are leftovers.

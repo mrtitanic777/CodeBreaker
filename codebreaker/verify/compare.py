@@ -178,11 +178,18 @@ def compare(fp_retail, fp_rebuilt, vectors, confirm=(), insns=0, directed=None, 
         d = run(confirm)
         if d:
             return "divergent", d, []
-    # `directed(covered, reached)` supplies inputs aimed at code no input has reached yet.
-    if directed and clean:
+    # `directed(covered, reached)` supplies inputs aimed at code no input has reached yet -- also
+    # for a body no input has yet returned from: an input that gets it past what makes it fault
+    # is what turns "only ever fails alike" into a comparison of what it does.
+    if directed:
+        before = clean
         d = run(directed(covered, reached))
         if d:
             return "divergent", d, []
+        if clean and not before and confirm:
+            d = run(confirm)
+            if d:
+                return "divergent", d, []
     if insns:
         pct = min(100, 100 * len(covered) // insns)
         if pct < 50:

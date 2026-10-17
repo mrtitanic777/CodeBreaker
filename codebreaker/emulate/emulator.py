@@ -335,6 +335,137 @@ def _pattern(base):
     return bytes(((base + i) * 0x9E3779B1 >> 13) & 0xFF for i in range(_PAGE))
 
 
+# Branch log (trace_function(branches=True)): for each conditional jump of the function itself,
+# which way it went and what the comparison just before it compared. An input generator reads
+# this to aim at the side of a branch no input has taken yet (verify/guided.py).
+_BRANCH_CAP = 4096                   # branch events kept per run
+_COMPARES = ("cmp", "test", "sub", "and", "or", "dec", "inc", "add", "xor")
+# instructions that leave the flags alone: a compare before them still decides the jump after
+_FLAGLESS = ("mov", "movzx", "movsx", "lea", "push", "pop", "nop", "xchg", "not", "cdq", "cwde", "cbw", "bswap")
+_PARENT = {}                         # capstone register name -> the 32-bit register it is part of
+for _r in "abcd":
+    for _n in (_r + "l", _r + "h", _r + "x", "e" + _r + "x"):
+        _PARENT[_n] = "e" + _r + "x"
+for _r in ("si", "di", "bp", "sp"):
+    _PARENT[_r] = _PARENT["e" + _r] = "e" + _r
+# (sha, address) -> (kind, detail, registers written, load) where kind is "jcc" (detail: target,
+# next), "cmp" (detail: mnemonic, operands, size), "keep" (flags untouched) or "other"; load is
+# (register, memory operand, size) for a load from memory into a register, else None
+_DECODED = {}
+
+
+def _decode_branchy(uc, md, sha, address):
+    key = (sha, address)
+    if key not in _DECODED:
+        from capstone import x86_const as X
+        out = ("other", None, (), None)
+        try:
+            ins = next(md.disasm(bytes(uc.mem_read(address, 16)), address, 1))
+            mn = ins.mnemonic
+
+            def operand(op):
+                if op.type == X.X86_OP_REG:
+                    name = ins.reg_name(op.reg)
+                    return ("reg", (_uc_reg(name), _PARENT.get(name, name)), op.size)
+                if op.type == X.X86_OP_IMM:
+                    return ("imm", op.imm, op.size)
+                if op.type == X.X86_OP_MEM and op.mem.segment == 0:
+                    m = op.mem
+                    return ("mem", (_uc_reg(ins.reg_name(m.base)) if m.base else None,
+                                    _uc_reg(ins.reg_name(m.index)) if m.index else None, m.scale, m.disp), op.size)
+                return None
+            try:
+                written = tuple({_PARENT.get(ins.reg_name(r), ins.reg_name(r)) for r in ins.regs_access()[1]})
+            except Exception:
+                written = ()
+            load = None
+            if mn in ("mov", "movzx", "movsx") and len(ins.operands) == 2 and ins.operands[0].type == X.X86_OP_REG \
+                    and ins.operands[1].type == X.X86_OP_MEM:
+                src = operand(ins.operands[1])
+                if src:
+                    load = (_PARENT.get(ins.reg_name(ins.operands[0].reg)), src, ins.operands[1].size)
+            if mn in _FLAGLESS or mn.startswith(("cmov", "set")):
+                out = ("keep", None, written, load)
+            elif mn.startswith("j") and mn != "jmp" and ins.operands and ins.operands[0].type == X.X86_OP_IMM:
+                out = ("jcc", (ins.operands[0].imm & 0xFFFFFFFF, address + ins.size), (), None)
+            elif mn in _COMPARES and len(ins.operands) in (1, 2):
+                ops = [operand(op) for op in ins.operands]
+                if all(o is not None and (o[0] != "reg" or o[1][0] is not None) for o in ops):
+                    if len(ops) == 1:                        # dec/inc: compared with what it becomes
+                        ops.append(("imm", 1 if mn == "dec" else -1, ops[0][2]))
+                    out = ("cmp", (mn, ops, ops[0][2]), written, None)
+                else:
+                    out = ("other", None, written, None)
+            else:
+                out = ("other", None, written, None)
+        except Exception:
+            pass
+        _DECODED[key] = out
+    return _DECODED[key]
+
+
+def _uc_reg(name):
+    from unicorn import x86_const
+    return getattr(x86_const, "UC_X86_REG_" + name.upper(), None)
+
+
+def _address(uc, mem):
+    base, index, scale, disp = mem
+    return (disp + (uc.reg_read(base) if base else 0) + (uc.reg_read(index) * scale if index else 0)) & 0xFFFFFFFF
+
+
+def _operand_value(uc, op, loaded):
+    """(value, the address it came from or None): a register's is where it was last loaded from,
+    if it was loaded from memory in this function and not written since (`loaded`)."""
+    kind, what, size = op
+    mask = (1 << (8 * size)) - 1
+    if kind == "imm":
+        return what & mask, None
+    if kind == "reg":
+        at = loaded.get(what[1])
+        return uc.reg_read(what[0]) & mask, (at if at and at[1] == size else (None, 0))[0]
+    a = _address(uc, what)
+    return int.from_bytes(bytes(uc.mem_read(a, size)), "little"), a
+
+
+def _branch_hook(rec, md, sha, lo, hi):
+    """A code hook for [lo, hi): appends (jump address, taken, compare) to rec["branches"], where
+    compare is (mnemonic, size, first operand's value, second's, the address the first came from
+    or None, the second's) when the last instruction before the jump that set the flags compared
+    two values, else None. A register operand's address is the memory it was loaded from."""
+    log = rec["branches"] = []
+    state = [None, None]                                     # [pending jump, compare in force]
+    loaded = {}                                              # 32-bit register -> (address, size) it was loaded from
+
+    def hook(uc, address, _size, _ud):
+        pend = state[0]
+        if pend is not None:
+            state[0] = None
+            if len(log) < _BRANCH_CAP and address in (pend[1], pend[2]):
+                log.append((pend[0], address == pend[1], pend[3]))
+        kind, detail, written, load = _decode_branchy(uc, md, sha, address)
+        if kind == "cmp":
+            try:
+                (a, at_a), (b, at_b) = (_operand_value(uc, detail[1][0], loaded),
+                                        _operand_value(uc, detail[1][1], loaded))
+                state[1] = (detail[0], detail[2], a, b, at_a, at_b)
+            except Exception:
+                state[1] = None
+        elif kind == "jcc":
+            if lo <= detail[0] < hi and detail[0] != detail[1]:
+                state[0] = (address, detail[0], detail[1], state[1])
+        elif kind == "other":
+            state[1] = None
+        for r in written:
+            loaded.pop(r, None)
+        if load is not None and load[0]:
+            try:
+                loaded[load[0]] = (_address(uc, load[1][1]), load[2])
+            except Exception:
+                pass
+    return hook
+
+
 def _straight_run(md, image, lo, address, size):
     """(how many instructions, {address: text}, their addresses, is any of them 00 00) for the
     `size` bytes of code at `address`, or False when they do not decode into exactly that."""
@@ -436,7 +567,7 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
                    stub_externals=None, stub_ret=0, stub_cleanup=0, sig_resolver=None,
                    stub_ret_unique=False, overlay=None, sentinels=None, reads=True, stop_wild=False,
                    quiet_stack=False, reuse=False, fast=False, lean=False, ecx=None, edx=None,
-                   pads=None):
+                   pads=None, branches=False):
     """Run one function under Unicorn with full hooks; return a TraceRecord (a plain dict).
 
     module  -- e.g. "gdi32.dll"; resolved through the active target like difftest.
@@ -454,6 +585,8 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
                call is recorded as a dependency. This is the first step of the controlled
                environment -- enough to get past benign API calls and discover dependencies;
                it does not model the API's real effects.
+    branches -- also log each conditional jump of the function itself: which way it went and
+               what the comparison before it compared (rec["branches"]; see _branch_hook).
     """
     import unicorn as U
     from unicorn.x86_const import (UC_X86_REG_ESP, UC_X86_REG_EAX, UC_X86_REG_EIP,
@@ -846,6 +979,9 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
              uc.hook_add(U.UC_HOOK_INTR, hook_intr)]
     if lean:
         hooks.append(uc.hook_add(U.UC_HOOK_MEM_WRITE, hook_write, None, _STACK_BASE + _STACK_SIZE, 0xFFFFFFFF))
+    if branches:
+        hooks.append(uc.hook_add(U.UC_HOOK_CODE, _branch_hook(rec, md, sha, func_lo, func_hi), None,
+                                 func_lo, func_hi - 1))
 
     try:
         if fast:

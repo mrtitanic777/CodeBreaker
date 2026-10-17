@@ -736,12 +736,15 @@ _FILLED = {}
 
 
 def run(regions, entry, args=(), externs=None, span=None, stub_ret=0, steps=MAX_STEPS, fargs=(), shared=None,
-        fill=None):
+        fill=None, branches=False, absent=None):
     """Run the function at `entry`. `regions` is [(address, bytes)] to place in memory; `args`
     go in r3..r10 and `fargs` (floats) in f1..; `externs` {address: name} are functions outside
     what was given: a call to one is recorded with its eight argument registers and returns
     `stub_ret`. `shared` is memory prepared with pages(), used instead of (or under) `regions`;
-    `fill` names what the memory behind pointer-shaped inputs holds (see filled())."""
+    `fill` names what the memory behind pointer-shaped inputs holds (see filled()). With
+    `branches`, each conditional branch inside `span` is logged in out["branches"] (see _Branches).
+    `absent` (low, high): where code the image calls may be missing -- a call that lands on nothing
+    there is a call out, recorded as "@<address>" (a partial image calls into the rest of its title)."""
     m = Machine(regions, shared)
     if fill:
         if fill not in _FILLED:
@@ -762,6 +765,8 @@ def run(regions, entry, args=(), externs=None, span=None, stub_ret=0, steps=MAX_
     entry_saved = (list(m.r[14:32]), m.r[1])
     calls, path = [], set()
     lo, hi = span or (0, 0)
+    log = _Branches() if branches else None
+    last, linked = None, None                                # the last instruction; where a call from it went
     out = {"exit": "none", "truncated": False, "calls": calls}
     count = 0
     try:
@@ -789,11 +794,85 @@ def run(regions, entry, args=(), externs=None, span=None, stub_ret=0, steps=MAX_
                 raise Stop("alignment")
             w = m.read(pc, 4)
             if w == 0:
+                if absent and absent[0] <= pc < absent[1] and linked == pc and m.lr == (last + 4) & M32:
+                    # Called, and nothing is there: code outside what was given (a partial image
+                    # calls into the rest of its title). A call out, like one to `externs`.
+                    if len(calls) >= MAX_CALLS:
+                        out["truncated"] = True
+                        break
+                    calls.append(("@%08x" % pc, [m.r[3 + i] for i in range(8)]))
+                    m.r[3] = stub_ret & M64
+                    m.pc = m.lr & M32
+                    continue
                 raise Stop("invalid")
-            _step(m, w)
+            last, linked = pc, None
+            if log is not None and lo <= pc < hi:
+                log.step(m, pc, w)
+            else:
+                _step(m, w)
+            if w & 1 and (w >> 26) in (16, 18, 19):          # a branch that links: where it went
+                linked = m.pc
     except Stop as e:
         out["exit"] = "exception:%s" % e
     out.update(ret=m.r[3], fret=m.f[1], steps=count, path=path, pc=m.pc,
                writes={a: v for a, v in m.writes.items() if v[0] != v[1]},
                saved=(list(m.r[14:32]), m.r[1]) == entry_saved, machine=m)
+    if log is not None:
+        out["branches"] = log.events
     return out
+
+
+class _Branches(object):
+    """The branch log of run(branches=True), for an input generator (verify/guided.py): each
+    conditional branch -- (address, taken, compare) -- where compare is what the last compare
+    into the condition field it tests compared: ("cmp", size, a, b, where a was loaded from or
+    None, where b was), or None when that field was last set some other way. A register's
+    "where" is the memory it was last loaded from, if nothing has written it since."""
+    CAP = 4096
+
+    def __init__(self):
+        self.events, self.field, self.loaded = [], {}, {}
+
+    def step(self, m, pc, w):
+        op = w >> 26
+        rt, ra, rb = (w >> 21) & 31, (w >> 16) & 31, (w >> 11) & 31
+        xo = (w >> 1) & 0x3FF
+        r = m.r
+        compare = branch = load = None
+        if op in (10, 11) or (op == 31 and xo in (0, 32)):
+            size = 8 if rt & 1 else 4
+            mask = M64 if size == 8 else M32
+            if op == 11:
+                b, at_b = _sext(w & 0xFFFF, 16) & mask, None
+            elif op == 10:
+                b, at_b = w & 0xFFFF, None
+            else:
+                b, at_b = r[rb] & mask, self._where(rb, size)
+            compare = (rt >> 2, ("cmp", size, r[ra] & mask, b, self._where(ra, size), at_b))
+        elif (op == 16 or (op == 19 and xo == 16)) and (rt & 0x14) != 0x14:
+            branch = None if rt & 16 else ra >> 2                # (the field it tests; None: the counter alone)
+        elif op in _LOADS or (op == 58 and w & 3 in (0, 2)):
+            size = _LOADS[op][0] if op in _LOADS else (8 if w & 3 == 0 else 4)
+            d = _sext(w & (0xFFFC if op == 58 else 0xFFFF), 16)
+            load = (rt, ((r[ra] if ra else 0) + d) & M32, size)
+        cr = m.cr
+        _step(m, w)
+        if compare is not None:
+            self.field[compare[0]] = compare[1]
+        elif cr != m.cr:                                     # a field set by something else
+            for f in range(8):
+                if ((cr ^ m.cr) >> (28 - 4 * f)) & 0xF:
+                    self.field[f] = None
+        if op == 16 or (op == 19 and xo == 16):
+            if (rt & 0x14) != 0x14 and len(self.events) < self.CAP:
+                self.events.append((pc, m.pc != (pc + 4) & M32, self.field.get(branch) if branch is not None else None))
+        elif compare is None:
+            if not (op in _STORES and not _STORES[op][1]):       # (a plain store writes no register)
+                self.loaded.pop(rt, None)
+            self.loaded.pop(ra, None)
+            if load is not None and load[0] != ra:
+                self.loaded[load[0]] = load[1:]
+
+    def _where(self, reg, size):
+        at = self.loaded.get(reg)
+        return at[0] + (at[1] - size if at[1] > size else 0) if at and at[1] >= size else None
