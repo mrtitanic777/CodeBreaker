@@ -154,9 +154,10 @@ private:
   map<Address,Address> deindirect;	///< Convert CALLIND into CALL with recovered direct \b addr
   map<Address,FuncProto *> protoover;	///< Override prototype at \b call-point
   vector<Address> multistagejump;	///< Addresses of indirect jumps that need multistage recovery
-  void clear(void);			///< Clear the entire set of overrides
   static string generateDeadcodeDelayMessage(int4 index,Architecture *glb);
 public:
+  void clear(void);			///< Clear the entire set of overrides (public: CodeBreaker frees a
+					///< function's call overrides once it is written)
   ~Override(void) { clear(); }		///< Destructor
   void insertForceGoto(const Address &targetpc,const Address &destpc);
   void insertDeadcodeDelay(AddrSpace *spc,int4 delay);

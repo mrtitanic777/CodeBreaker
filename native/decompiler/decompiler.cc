@@ -49,6 +49,117 @@
 #include "sleigh_arch.hh"
 #include "loadimage.hh"
 
+#include <atomic>
+#include <chrono>
+#include <new>
+#include <thread>
+#ifdef _WIN32
+#define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <psapi.h>
+#include <io.h>
+#pragma comment(lib, "psapi.lib")
+#undef LoadImage                // (a Windows macro: the decompiler core has a class by that name)
+#else
+#include <unistd.h>
+#endif
+
+// ---- The governor: one function may not take the machine down -------------------------------
+// A wrong function start (the middle of an instruction, data that decodes) sends the analysis
+// through "flow" that never ends, and its data structures grow with the square of what it saw:
+// once, one run grew to 27 GB and the machine went down with it. So the program keeps its own
+// account of the memory it holds (every new and delete), and a function that takes more than its
+// budget (CB_MEMORY_MB, 1536 by default) or runs longer than CB_FUNCTION_SECONDS (120) is ended
+// where it is: its failure is written after its marker, and the program exits. Whoever runs it
+// starts it again from the next function (codebreaker/decompile/decompiler.py: _run_resuming).
+// And the operating system holds it to a hard ceiling besides (a Windows job), for what the
+// account does not see.
+namespace governor {
+std::atomic<long long> held{0};          // bytes held now
+long long budget = 0;                    // 0: not yet set up (before main) -- no limit
+std::atomic<bool> tripping{false};
+std::atomic<long long> started_ms{0};    // when the function being done began (0: none)
+
+void fail_and_exit(const char* why, int code) {
+  if (tripping.exchange(true)) return;
+  // (no allocation here: the stream library would come back into operator new)
+  char buf[160];
+  int n = std::snprintf(buf, sizeof(buf), "/* decompile failed: %s */\n\n", why);
+  std::fflush(stdout);
+#ifdef _WIN32
+  _write(1, buf, n);
+#else
+  ::write(1, buf, n);
+#endif
+  std::_Exit(code);
+}
+}  // namespace governor
+
+void* operator new(std::size_t n) {
+  if (governor::budget && governor::held.load(std::memory_order_relaxed) + (long long)n > governor::budget)
+    governor::fail_and_exit("over the memory budget (CB_MEMORY_MB)", 3);
+  void* p = std::malloc(n + 16);
+  if (!p) throw std::bad_alloc();
+  *(std::size_t*)p = n;
+  governor::held.fetch_add((long long)n, std::memory_order_relaxed);
+  return (char*)p + 16;
+}
+void operator delete(void* p) noexcept {
+  if (!p) return;
+  char* q = (char*)p - 16;
+  governor::held.fetch_sub((long long)*(std::size_t*)q, std::memory_order_relaxed);
+  std::free(q);
+}
+void operator delete(void* p, std::size_t) noexcept { operator delete(p); }
+void* operator new[](std::size_t n) { return operator new(n); }
+void operator delete[](void* p) noexcept { operator delete(p); }
+void operator delete[](void* p, std::size_t) noexcept { operator delete(p); }
+
+namespace governor {
+long long now_ms() {
+  return std::chrono::duration_cast<std::chrono::milliseconds>(
+             std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+void set_up() {
+  const char* mb = std::getenv("CB_MEMORY_MB");
+  long long limit = (mb ? std::atoll(mb) : 1536) * 1024 * 1024;
+  budget = limit;
+#ifdef _WIN32
+  // the operating system's ceiling: the budget and room for what is not counted (the
+  // runtime's own, the stream buffers)
+  HANDLE job = CreateJobObjectA(nullptr, nullptr);
+  if (job) {
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION li = {};
+    li.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_PROCESS_MEMORY;
+    li.ProcessMemoryLimit = (SIZE_T)(limit + 512LL * 1024 * 1024);
+    if (SetInformationJobObject(job, JobObjectExtendedLimitInformation, &li, sizeof(li)))
+      AssignProcessToJobObject(job, GetCurrentProcess());
+  }
+#endif
+  const char* sec = std::getenv("CB_FUNCTION_SECONDS");
+  const long long max_ms = (sec ? std::atoll(sec) : 120) * 1000;
+  // (the count above is what was asked for; what the process really holds is more -- the
+  // allocator's own overhead, memory freed but kept by the heap: one function reached the
+  // operating system's ceiling with its count still under budget. So what Windows says the
+  // process holds is looked at too, ten times a second.)
+  std::thread([max_ms, limit] {
+    for (;;) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      long long s = started_ms.load();
+      if (s && now_ms() - s > max_ms) fail_and_exit("over the time limit (CB_FUNCTION_SECONDS)", 4);
+#ifdef _WIN32
+      PROCESS_MEMORY_COUNTERS_EX pm = {};
+      if (GetProcessMemoryInfo(GetCurrentProcess(), (PROCESS_MEMORY_COUNTERS*)&pm, sizeof(pm)) &&
+          (long long)pm.PrivateUsage > limit)
+        fail_and_exit("over the memory budget (CB_MEMORY_MB)", 3);
+#endif
+    }
+  }).detach();
+}
+}  // namespace governor
+
 using namespace ghidra;
 
 namespace {
@@ -196,6 +307,7 @@ int main(int argc, char** argv) {
   }
   const char* specs = std::getenv("CB_LANGUAGES");
   if (!specs) { std::fprintf(stderr, "FAIL: CB_LANGUAGES is not set\n"); return 1; }
+  governor::set_up();
 
   std::string arch;
   std::vector<Fact> funcs, imports, externs;
@@ -355,6 +467,7 @@ int main(int argc, char** argv) {
     m.print->setOutputStream(&std::cout);
     for (auto& t : todo) {
       std::cout << "/*@@ " << t.second.name << " " << std::hex << t.second.va << std::dec << " */" << std::endl;
+      governor::started_ms = governor::now_ms();
       try {
         // its calls through pointers: each passed the words the code pushed before it, removed
         // by the callee (Windows' drivers and callbacks are Pascal). Every call's override is
@@ -415,7 +528,10 @@ int main(int argc, char** argv) {
         std::cout << "/* decompile failed: " << e.explain << " */" << std::endl;
       }
       std::cout << std::endl;
+      governor::started_ms = 0;
       m.clearAnalysis(t.first);                    // free this function's analysis; keep its symbol
+      t.first->getOverride().clear();              // ...and the call overrides it was given (they were
+                                                   // kept for the whole run: every function, every call)
     }
     if (!errs.str().empty()) std::fprintf(stderr, "%s\n", errs.str().c_str());
   } catch (LowlevelError& e) {

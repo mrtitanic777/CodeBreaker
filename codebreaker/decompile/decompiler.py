@@ -197,8 +197,13 @@ def _run_resuming(description, only, timeout, max_instructions=None):
         done = {int(m.group(1), 16) for m in _MARK.finditer(out)}
         # (the last one written may be cut off by the crash: it is done again)
         last = max(done) if done else None
-        left = [va for va in left if va not in done or va == last]
-        if done and last is not None:
+        # the governor stopped it on one function (over its memory budget or its time): that one
+        # is done -- failed, as written -- and is not tried again
+        governed = re.search(r"/\* decompile failed: over the (?:memory budget|time limit)[^*]*\*/\s*$", out)
+        if governed:
+            errs.append("\n[%x stopped by the governor: %s]\n" % (last, re.search(r"over the [^*]*", governed.group(0)).group(0).strip()))
+        left = [va for va in left if va not in done or (va == last and not governed)]
+        if done and last is not None and not governed:
             outs[-1] = out[:list(_MARK.finditer(out))[-1].start()]
         if not done or done == {last} and left and left[0] == last:
             dead = left.pop(0)                               # dies at once on this one: left out
