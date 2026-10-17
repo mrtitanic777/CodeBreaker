@@ -1130,17 +1130,45 @@ def _buffer_fields(text):
               if v[2] and re.search(r"[(,]\s*(?:\(\w+\s*\*?\))?\s*&?%s\b" % n, body)}
     if not arrays:
         return text
+    # A local past the end of a buffer whose address is passed on is a field of it when, after
+    # that call, the function READS it before it writes it: the callee filled it (GetObject's
+    # BITMAP: bmWidth read straight after, at bp-0Ch, two bytes into the buffer at bp-0Eh). One it
+    # writes first is a variable of its own that happens to lie there. The buffer then reaches
+    # every byte up to the next variable of its own, or the top of the frame (the saved BP, at
+    # 2): what the callee fills is as long as the original's frame made room for.
+    def first_after(name, at):
+        mm = re.search(r"(?<![\w.])%s\b" % re.escape(name), body[at:])
+        if not mm:
+            return None
+        rest = body[at + mm.end():at + mm.end() + 8]
+        return "write" if re.match(r"\s*=(?!=)", rest) else "read"
+
+    fields, owners = {}, {}
+    for owner, (ao, asz, _i, aline, _atyp) in arrays.items():
+        call = re.search(r"[(,]\s*(?:\(\w+\s*\*?\))?\s*&?%s\b" % re.escape(owner), body)
+        start = call.start() if call else 0
+        above = sorted(((v[0], n) for n, v in decl.items() if not v[2] and n not in arrays and v[0] < ao), reverse=True)
+        top = 2
+        for off, n in above:                                  # (from just past the buffer, upward)
+            if first_after(n, start) == "read" and off < ao:
+                fields[n] = owner
+                continue
+            top = off + decl[n][1]                            # (a variable of its own: the buffer stops below it)
+            break
+        need = ao - top
+        if asz < need <= 0x400:
+            elem = _SIZE.get(_atyp[-1:], 2)
+            newline = re.sub(r"\[\d+\]", "[%d]" % ((need + elem - 1) // elem), aline)
+            body = body.replace(aline, newline, 1)
+            arrays[owner] = (ao, need, True, newline, _atyp)
+        owners[owner] = top
     for name, (off, size, is_array, line, typ) in sorted(decl.items()):
-        if is_array or name in arrays:
+        if is_array or name in arrays or name not in fields:
             continue
         n = re.escape(name)
-        uses = len(re.findall(r"(?<![\w.])%s\b" % n, body))
-        sets = re.search(r"(?<![\w.])%s\s*(?:[-+*/|&^]|<<|>>)?=(?!=)|&%s\b|%s\s*(?:\+\+|--)|(?:\+\+|--)\s*%s\b"
-                         % (n, n, n, n), body)
-        if uses < 2 or sets:                                 # (declared and read, never set)
-            continue
-        owner = next((a for a, (ao, asz, _i, _l, _t) in arrays.items() if ao > off >= ao - asz - 0x10), None)
-        if owner is None:
+        owner = fields[name]
+        ao, asz = arrays[owner][0], arrays[owner][1]
+        if not ao > off >= ao - asz:
             continue
         ao, asz, _i, aline, _atyp = arrays[owner]
         at = ao - off                                        # bytes into the buffer
