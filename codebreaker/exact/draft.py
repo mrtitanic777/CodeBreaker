@@ -3212,8 +3212,10 @@ def long_pairs(text):
     pairs = set(re.findall(r"\*\(long \*\)&(\w+)\b(?!->|\[)", body))   # (a variable's own two words - not a field's)
     for hi, lo in re.findall(r"\bLONG\((\w+), (\w+)\)", body):
         pairs.add(lo)
+    hi0 = lambda x: chr(ord(x) + 1) if re.fullmatch(r"[a-y]", x) else "v%d" % (int(x[1:]) - 2) if re.fullmatch(r"v\d+", x) else None
     for x, y in re.findall(r"\((\w+) \| (\w+)\)", body):
-        pairs.add(x)
+        if hi0(x) == y:                                     # (a pair's two words or-ed: tested as one long)
+            pairs.add(x)
     hi_of = lambda x: chr(ord(x) + 1) if re.fullmatch(r"[a-y]", x) else "v%d" % (int(x[1:]) - 2) if re.fullmatch(r"v\d+", x) else \
         "g_%x" % (int(x[2:], 16) + 2) if re.fullmatch(r"g_[0-9a-f]+", x) else None   # (a word of the data: the one after)
     # (a pair given a pair: `p->fN = x; p->fN+2 = y;` - a long field given a long - written as one store)
