@@ -2,6 +2,9 @@
 
     python -m codebreaker.exact.fleet PROJECT.. --out PREFIX [--jobs N] [--since PREFIX] [--keep FILE]
 
+The workers run at below-normal priority, as many as settings.json "workers" (CB_JOBS) unless --jobs says; none
+begins a function while the system has less than "min_free_gb" free (CB_MIN_FREE_GB, 6 GB unless set).
+
 Every function each project has a source for is drafted and proven as `bench` does, the largest first so the
 pool stays busy to the end. Each worker has a stage of its own (CB_STAGE_TAG); the compile cache is shared.
 
@@ -22,6 +25,8 @@ _PRJ = {}
 
 
 def _init(tags):
+    from codebreaker.base import parallel
+    parallel.throttle(below_normal=True)                    # (the machine first: Windows and its programs ahead)
     with tags.get_lock():                                   # (a stage of the worker's own, numbered from 1)
         tags.value += 1
         os.environ["CB_STAGE_TAG"] = "w%d" % tags.value
@@ -30,6 +35,8 @@ def _init(tags):
 def _one(task):
     path, a = task
     from codebreaker.exact import project, bench
+    from codebreaker.base import parallel
+    parallel.wait_for_memory("fleet")                       # (no function begun while memory is short)
     if path not in _PRJ:
         _PRJ[path] = project.load(path)
     t0 = time.time()
@@ -54,7 +61,9 @@ def _read(f):
 def main(argv):
     from codebreaker.exact import project, carve
     out = argv[argv.index("--out") + 1]
-    jobs = int(argv[argv.index("--jobs") + 1]) if "--jobs" in argv else max(1, (os.cpu_count() or 2) - 2)
+    from codebreaker.base import parallel
+    jobs = int(argv[argv.index("--jobs") + 1]) if "--jobs" in argv else parallel.workers()   # (settings.json
+                                                            #  "workers": the machine's budget, not all of it)
     since = argv[argv.index("--since") + 1] if "--since" in argv else None
     keep = set()
     if "--keep" in argv:                                    # (NAME ADDR lines, or `echo "NAME: ... bench A B ..."`)

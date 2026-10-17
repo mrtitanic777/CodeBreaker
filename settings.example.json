@@ -17,5 +17,6 @@
   "nasm": "<optional: nasm.exe of the nasm-masm project (a MASM-compatible NASM)>",
   "msvc152": "<optional: folder of Visual C++ 1.52c's compiler (BIN\\CL.EXE)>",
   "xenix_c": "<optional: folder holding xcc.py (the XENIX C compiler of Microsoft's 1984 tools), for `repair --truth`>",
-  "workers": 0
+  "workers": 0,
+  "min_free_gb": 6
 }

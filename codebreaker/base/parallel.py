@@ -80,6 +80,61 @@ def throttle(cores=None, below_normal=True):
         return False
 
 
+def available_gb():
+    """the memory the system can still give out without paging, in GB (None where not known)"""
+    if os.name == "nt":
+        try:
+            import ctypes
+
+            class MS(ctypes.Structure):
+                _fields_ = [("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong),
+                            ("ullTotalPhys", ctypes.c_ulonglong), ("ullAvailPhys", ctypes.c_ulonglong),
+                            ("ullTotalPageFile", ctypes.c_ulonglong), ("ullAvailPageFile", ctypes.c_ulonglong),
+                            ("ullTotalVirtual", ctypes.c_ulonglong), ("ullAvailVirtual", ctypes.c_ulonglong),
+                            ("ullAvailExtendedVirtual", ctypes.c_ulonglong)]
+            m = MS()
+            m.dwLength = ctypes.sizeof(MS)
+            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(m)):
+                return min(m.ullAvailPhys, m.ullAvailPageFile) / 2 ** 30   # (RAM free, and commit left)
+        except Exception:
+            return None
+    try:
+        with open("/proc/meminfo") as f:
+            for l in f:
+                if l.startswith("MemAvailable:"):
+                    return int(l.split()[1]) / 2 ** 20
+    except OSError:
+        pass
+    return None
+
+
+def min_free_gb():
+    """settings.json "min_free_gb" (or CB_MIN_FREE_GB): below this much free memory no new heavy job starts"""
+    from codebreaker.base import settings
+    v = os.environ.get("CB_MIN_FREE_GB") or settings.get("min_free_gb")
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return 6.0
+
+
+def wait_for_memory(label="", poll=2.0, limit=600):
+    """before a heavy job: wait while the system has less than min_free_gb free - the machine first, the work
+    after. Returns the seconds waited."""
+    import time
+    need, waited = min_free_gb(), 0.0
+    while True:
+        a = available_gb()
+        if a is None or a >= need or waited >= limit:
+            return waited
+        if waited == 0:
+            import sys
+            print("(waiting: %.1f GB free, %.1f wanted%s)" % (a, need, " - " + label if label else ""),
+                  file=sys.stderr, flush=True)
+        time.sleep(poll)
+        waited += poll
+
+
 def _load_state(path):
     import json
     try:
