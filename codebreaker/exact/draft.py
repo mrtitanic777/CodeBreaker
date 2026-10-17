@@ -1610,10 +1610,89 @@ def goto_returns(text):
     return out
 
 
+def ternary_joins(text):
+    """if (C) { r = A; L: V = r; S } else { r = B; goto L; } - the value of a ?: the compiler gives in each arm,
+    the two meeting at the store: V = C ? A : B; S"""
+    lines = text.split("\n")
+    k = 0
+    while k < len(lines):
+        p = _if_parts(lines, k)
+        if not p or p[2] is None or len(p[1]) < 3:
+            k += 1
+            continue
+        a = re.fullmatch(r"(\s*)(ax|al|bx|cx|dx) = ([^;]+);", p[1][0])
+        lab = re.fullmatch(r"\s*(L_\w+):", p[1][1]) if a else None
+        st = re.fullmatch(r"\s*([\w\->.\[\]]+) = %s;" % a.group(2), p[1][2]) if lab else None
+        el = [x.strip() for x in p[2] if x.strip()]
+        if not st or len(el) != 2:
+            k += 1
+            continue
+        b = re.fullmatch(r"%s = ([^;]+);" % a.group(2), el[0])
+        if not b or el[1] != "goto %s;" % lab.group(1) or \
+           len(re.findall(r"\bgoto %s;" % lab.group(1), "\n".join(lines))) != 1:
+            k += 1
+            continue
+        ind = re.match(r"\s*", lines[k]).group(0)
+        c = p[0] if p[0].startswith("(") else "(%s)" % p[0]
+        rest = [x[4:] if x.startswith(ind + "    ") else x for x in p[1][3:]]
+        lines[k:p[3]] = ["%s%s = (%s ? %s : %s);" % (ind, a.group(2), c, a.group(3), b.group(1)),   # (the register
+                         "%s%s = %s;" % (ind, st.group(1), a.group(2))] + rest                     #  still holds it)
+    return "\n".join(lines)
+
+
+def stored_values(text):
+    """V = ax; .. f(.., ax) - the register read again while it still holds what was stored from it (no write to
+    it between, no call, no label - a way in from elsewhere): V there"""
+    lines = text.split("\n")
+    for k, l in enumerate(lines):
+        m = re.fullmatch(r"\s*([a-z]|v\d+|g_[0-9a-f]+|r_\w+) = (ax|al);", l)
+        if not m:
+            continue
+        v, r = m.group(1), m.group(2)
+        rx = re.compile(r"\b(?:ax|al|ah)\b" if r == "ax" else r"\b(?:al)\b")
+        for j in range(k + 1, len(lines)):
+            y = lines[j]
+            if re.match(r"\s*L_\w+:", y) or re.match(r"\s*(?:case\b|default:|\} else\b)", y):
+                break
+            w = re.match(r"(\s*)(?:ax|al|ah) = (.*)$", y)
+            if w:                                           # (written: its value read first, then no more)
+                if rx.search(w.group(2)) and r == "ax":
+                    lines[j] = y[:len(y) - len(w.group(2))] + re.sub(r"\bax\b", v, w.group(2))
+                break
+            if rx.search(y):
+                if r == "ax" and re.search(r"\b(?:al|ah)\b", y):
+                    break
+                lines[j] = re.sub(r"\b%s\b" % r, v, y)
+            calls = [c for c in re.findall(r"\b([A-Za-z_]\w*)\s*\(", y) if c not in ("if", "while", "for", "switch", "sizeof", "return")]
+            if calls or re.search(r"\(\*[^()]+\)\s*\(", y) or \
+               re.search(r"\b%s\s*=[^=]" % re.escape(v), y) or re.match(r"\s*(?:return|break|continue|goto)\b", y):
+                break                                       # (a call - it gives ax - or V given again: done)
+    return "\n".join(lines)
+
+
+def _pair_long(lo, hi):
+    """the long two word expressions are, the low and the high (a long field's, a long of the data's, a long
+    local's two words, an int and its sign spread), or None"""
+    f, g = re.fullmatch(r"(\w+(?:->f\d+)*)->f(\d+)", lo), re.fullmatch(r"(\w+(?:->f\d+)*)->f(\d+)", hi)
+    if f and g and f.group(1) == g.group(1) and int(g.group(2)) == int(f.group(2)) + 2:
+        LONGINFO.setdefault("fields", set()).add(int(f.group(2)))
+        return "*(long *)&%s->f%s" % (f.group(1), f.group(2))
+    f, g = re.fullmatch(r"g_([0-9a-f]+)", lo), re.fullmatch(r"g_([0-9a-f]+)", hi)
+    if f and g and int(g.group(1), 16) == int(f.group(1), 16) + 2:
+        LONGINFO.setdefault("globals", set()).add("g_%04x" % int(f.group(1), 16))
+        return lo
+    f, g = re.fullmatch(r"v(\d+)", lo), re.fullmatch(r"v(\d+)", hi)
+    if f and g and int(g.group(1)) == int(f.group(1)) - 2:
+        return "*(long *)&%s" % lo
+    if re.fullmatch(r"\(?0 - \(%s >> 15\)\)?" % re.escape(lo), hi) and re.fullmatch(r"[\w\->.\[\]]+", lo):
+        return "(long)%s" % lo
+    return None
+
+
 def sunk_pairs(text):
-    """if (C) { .. ax = E; } else { .. ax = q->fM; dx = q->fM+2; } p->fN = ax; p->fN+2 = dx; - a long both
-    arms leave in dx:ax, stored a word at a time after them: the long store in each arm (E a long already - a
-    double converted, a long cast - or the two words of a long field)"""
+    """if (C) { .. ax = E; } else { .. ax = L; dx = H; } X = ax; X' = dx; - a long both arms leave in dx:ax,
+    stored a word at a time after them (a long field's words, a long of the data's, a long local's): the long
+    stored in each arm (E a long already - a double converted, a long cast - or the long L and H are)"""
     lines = text.split("\n")
     k = 0
     while k < len(lines):
@@ -1621,9 +1700,10 @@ def sunk_pairs(text):
         k += 1
         if not p or p[2] is None or p[3] + 1 >= len(lines):
             continue
-        st = re.fullmatch(r"(\s*)(\w+(?:->f\d+)*)->f(\d+) = ax;", lines[p[3]])
-        st2 = re.fullmatch(r"\s*(\w+(?:->f\d+)*)->f(\d+) = dx;", lines[p[3] + 1])
-        if not st or not st2 or st.group(2) != st2.group(1) or int(st2.group(2)) != int(st.group(3)) + 2:
+        st = re.fullmatch(r"(\s*)([\w\->.]+) = ax;", lines[p[3]])
+        st2 = re.fullmatch(r"\s*([\w\->.]+) = dx;", lines[p[3] + 1])
+        dst = _pair_long(st.group(2), st2.group(1)) if st and st2 else None
+        if not dst or dst.startswith("(long)"):
             continue
         if _live_after(lines, p[3] + 1, "ax", r"\b(?:ax|al|ah|dx)\b"):
             continue
@@ -1631,13 +1711,13 @@ def sunk_pairs(text):
         def value(arm):                                     # (the long an arm leaves, and the arm without it)
             body = [x for x in arm if x.strip()]
             if len(body) >= 2:
-                a = re.fullmatch(r"\s*ax = (\w+(?:->f\d+)*)->f(\d+);", body[-2]) or re.fullmatch(r"\s*dx = (\w+(?:->f\d+)*)->f(\d+);", body[-2])
-                b = re.fullmatch(r"\s*dx = (\w+(?:->f\d+)*)->f(\d+);", body[-1]) or re.fullmatch(r"\s*ax = (\w+(?:->f\d+)*)->f(\d+);", body[-1])
-                if a and b and a.group(1) == b.group(1) and body[-2].strip()[:2] != body[-1].strip()[:2]:
-                    lo = a if body[-2].strip().startswith("ax") else b
-                    hi = b if lo is a else a
-                    if int(hi.group(2)) == int(lo.group(2)) + 2:
-                        return "*(long *)&%s->f%s" % (lo.group(1), lo.group(2)), arm[:arm.index(body[-2])]
+                a = re.fullmatch(r"\s*(ax|dx) = ([^;]+);", body[-2])
+                b = re.fullmatch(r"\s*(ax|dx) = ([^;]+);", body[-1])
+                if a and b and a.group(1) != b.group(1):
+                    lo, hi = (a, b) if a.group(1) == "ax" else (b, a)
+                    v = _pair_long(lo.group(2), hi.group(2))
+                    if v:
+                        return v, arm[:arm.index(body[-2])]
             if body:
                 e = re.fullmatch(r"\s*ax = (.+);", body[-1])
                 if e and re.search(r"\(double \*\)|\(float \*\)|\(long\)|\(double\)", e.group(1)) and \
@@ -1648,10 +1728,13 @@ def sunk_pairs(text):
         if not a or not b:
             continue
         ind = st.group(1)
-        dst = "*(long *)&%s->f%s" % (st.group(2), st.group(3))
-        LONGINFO.setdefault("fields", set()).add(int(st.group(3)))
-        new = [lines[k - 1]] + a[1] + [ind + "    %s = %s;" % (dst, a[0])] + [ind + "} else {"] + b[1] + \
-              [ind + "    %s = %s;" % (dst, b[0])] + [ind + "}"]
+        same = lambda v: v == dst or v.replace("*(long *)&", "") == dst.replace("*(long *)&", "")
+        if not any(x.strip() for x in a[1] + b[1]) and (same(a[0]) or same(b[0])):
+            c = p[0] if p[0].startswith("(") else "(%s)" % p[0]   # (one way the long kept: the other's value or it -
+            new = [ind + "%s = %s ? %s : %s;" % (dst, c, a[0], b[0])]   #  a ?:)
+        else:
+            new = [lines[k - 1]] + a[1] + [ind + "    %s = %s;" % (dst, a[0])] + [ind + "} else {"] + b[1] + \
+                  [ind + "    %s = %s;" % (dst, b[0])] + [ind + "}"]
         lines[k - 1:p[3] + 2] = new
     return "\n".join(lines)
 
@@ -1723,6 +1806,9 @@ def store_loops(text):
     return rx.sub(one, text)
 
 
+GOTO_LIVE = [True]
+
+
 def _live_after(lines, k, reg, read=None):
     """is reg (or what `read` matches: its byte too) read after line k before it is given a new value - on any
     path: a value given it inside a nested block (an arm, a loop) is not on every path, so it ends nothing; one
@@ -1746,6 +1832,19 @@ def _live_after(lines, k, reg, read=None):
             continue
         if not stack and re.match(r"\s*return\b", l) and not rx.search(l):
             return False                                    # (the path ends)
+        g_ = re.match(r"\s*goto (L_\w+);", l) if GOTO_LIVE[0] and killed is None else None
+        if g_ and lines is not None:                        # (a jump elsewhere: read there before it is given?)
+            at = next((j for j, x in enumerate(lines) if x is not None and x.strip() == g_.group(1) + ":"), None)
+            if at is not None:
+                for x in lines[at + 1:at + 40]:
+                    if x is None:
+                        continue
+                    if kill.match(x):
+                        break                               # (given there first: not this value)
+                    if rx.search(x):
+                        return True
+                    if re.match(r"\s*(?:return|goto|break|continue)\b", x):
+                        break
         if not stack and re.match(r"\s*(?:break|continue);", l):
             skip = 0                                        # (to the end of the block it leaves: the rest of
             continue                                        #  it - a switch's other cases - not on its path)
@@ -4050,6 +4149,17 @@ def structs(text, widths):
         if any(whole.search(l) for l in lines if not decl.match(l)):
             text = "\n".join(l if decl.match(l) else whole.sub("%s->f0" % p, l) for l in lines)
             uses[p].add(0)
+    for p, offs in list(uses.items()):                      # (a pointer stepped and read as *p++, its places all
+        bytes_ = lambda o: (p, o) in widths or ("*", o) in widths or \
+            p.startswith("r_") and (p[2:] + "*", o) in widths and (p[2:] + "w", o) not in widths
+        if re.search(r"\*(?:%s(?:\+\+|--)|(?:\+\+|--)%s\b)" % (re.escape(p), re.escape(p)), text) and offs and \
+           max(offs) < 16 and all(bytes_(o) for o in offs):  #  bytes: a char *, the places p[N])
+            t2 = re.sub(r"\b%s->f(\d+)\b" % re.escape(p), lambda m: "*%s" % p if m.group(1) == "0" else "%s[%s]" % (p, m.group(1)), text)
+            t3 = _declare_pointer(t2, p, "char") if not re.search(r"(?m)^[ \t]*(?:register )?char \*%s;" % re.escape(p), t2) else t2
+            if t3:
+                text = t3
+                del uses[p]
+                continue
     for p, offs in list(uses.items()):                      # (a byte read inside a word read: no struct - the
         byte = lambda o: (p, o) in widths or ("*", o) in widths or \
             p.startswith("r_") and (p[2:] + "*", o) in widths and (p[2:] + "w", o) not in widths   # (a register variable's
@@ -4220,7 +4330,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         t = fold_registers(stored_calls(store_loops(post_increments(widen_bytes(compare_values(chain_returns(branch_returns(push_returns(conditional_values(logical_values(step_tests(bool_trees(range_switches(loop_gotos(empty_loops(tested_zero(continue_loops(first_breaks(loop_registers(fall_dups(fall_gotos(goto_tails(t) or t))))))))))))))))))))))
         t = stored_calls(fold_registers(push_returns(t)))   # (returns again, as the passes left the arms)
         t = stored_reads(scaled_index(register_chains(word_arrays(pointer_index(test_first_loops(copy_tests(post_steps(selector_reads(lvalue_choices(t))))))))))
-        t = fold_registers(conditional_values(t))           # (the ?: values again, the elements folded)
+        t = fold_registers(stored_values(conditional_values(ternary_joins(t))))       # (the ?: values again, the elements folded)
         t = fold_registers(stored_tests(push_returns(temporaries(compare_values(goto_returns(sunk_tails(sunk_pairs(empty_loops(shared_arms(merge_conditions(guard_gotos(self_updates(switch_follow(t))))))))))))))
         wd = set(widths)                                    # (a parameter kept in a register: the bytes read through
         for r_, i_ in (regparam or {}).items():             #  that register its own)
