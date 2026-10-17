@@ -15,6 +15,8 @@ CASES.json (paths relative to it):
                 "then": [...more cases run in the same folders after it...]}]}
 """
 import difflib
+import functools
+import re
 import json
 import os
 import shutil
@@ -113,6 +115,12 @@ def main(argv):
         ca, xa = run_original(cfg, orig, fa, cmd, stdin)
         cb, xb = run_port(cfg, port, fb, cmd, stdin, cfg.get("env", {}))
         A, B = files_of(fa), files_of(fb)
+        vol = [re.compile(v.encode("latin1")) for v in cfg.get("volatile", [])]
+        if vol:                                             # (what depends on the machine - free memory - masked
+            mask = lambda b: functools.reduce(lambda x, rx: rx.sub(b"<varies>", x), vol, b)   #  alike in both)
+            ca, cb = mask(ca), mask(cb)
+            A = {n: (mask(v) if n.endswith((".LST", ".MAP", ".TXT")) else v) for n, v in A.items()}
+            B = {n: (mask(v) if n.endswith((".LST", ".MAP", ".TXT")) else v) for n, v in B.items()}
         bad = []
         if ca != cb:
             bad.append("console")

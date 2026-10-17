@@ -98,5 +98,11 @@
     "setup": [
       "C:/Program Files/Microsoft Visual Studio/*/*/VC/Auxiliary/Build/vcvars64.bat"
     ]
+  },
+  "ml64": {
+    "find": [
+      "ml64",
+      "C:/Program Files/Microsoft Visual Studio/*/*/VC/Tools/MSVC/*/bin/Hostx64/x64/ml64.exe"
+    ]
   }
 }

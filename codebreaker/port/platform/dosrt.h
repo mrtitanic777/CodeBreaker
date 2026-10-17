@@ -20,7 +20,7 @@
 #define close	dos_close
 #define unlink	dos_unlink
 #define isatty	dos_isatty
-int dos_open(const char *name, int mode);
+int dos_open(const char *name, int mode, ...);
 int dos_creat(const char *name, int mode);
 int dos_read(int fd, void *buf, unsigned n);
 int dos_write(int fd, const void *buf, unsigned n);
@@ -60,5 +60,46 @@ extern uint16_t ipnCore;
 void coremax(void);
 void corein(unsigned ipn, char *buf);
 void coreout(unsigned ipn, char *buf);
+
+/* DOS's own calls, as Microsoft C's dos.h gave them: the registers in a union, INT 21h by intdos() (the
+   date and the time, and whatever dos_int21 knows); the same block for assembly language (dos_int21: rax rbx
+   rcx rdx rsi rdi, then the carry) */
+union REGS {
+	struct { uint16_t ax, bx, cx, dx, si, di, cflag; } x;
+	struct { uint8_t al, ah, bl, bh, cl, ch, dl, dh; } h;
+};
+int intdos(union REGS *in, union REGS *out);
+void dos_int21(uint64_t *r);
+
+/* a far pointer built of a segment and an offset: the program's PSP (its segment _psp, the command line at
+   80h, as DOS laid it out) is the one kind there is now */
+extern uint16_t _psp;
+
+/* what a NULL pointer read on DOS: the start of the data segment (Microsoft C's NULL segment, zeros where a
+   string is looked for) - the assembly routines are given this for a NULL address */
+extern unsigned char dos_nullseg[256];
+void *dos_far(unsigned seg, unsigned off);
+
+/* the old library's others: the far heap (one heap now), what is left of it (DOSRT_HEAP_AVAIL paragraphs,
+   what the original found), the end through the library's exit, a line of the standard input, numbers
+   and names compared without case */
+#define _fmalloc(n)	malloc(n)
+#define _ffree(p)	free(p)
+#define _fstrcpy	strcpy
+#define _fstrlen	strlen
+#define _fmemcpy	memcpy
+unsigned heap_avail(int which);
+void terminate(int code);
+/* the old library's table of the characters' kinds (_ctype; indexed from -1, EOF): 1 upper, 2 lower, 4 digit,
+   8 space, 10h punctuation, 20h control, 40h blank, 80h hex digit - as Microsoft C numbered them */
+#define _ctype	dos_ctype
+extern unsigned char dos_ctype[257];
+#define gets	dos_gets
+char *dos_gets(char *buf);
+#define itoa	dos_itoa
+char *dos_itoa(int v, char *buf, int radix);
+#define strcmpi	dos_strcmpi
+#define stricmp	dos_strcmpi
+int dos_strcmpi(const char *a, const char *b);
 
 #endif
