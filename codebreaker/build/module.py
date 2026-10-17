@@ -134,6 +134,10 @@ class Built(object):
         if gated:
             out.append("  gated       %d functions' C differs from the original (rebuilt from their instructions)%s" % (
                 len(gated), "".join("\n              %s: %s" % (n, why[:140]) for n, why in sorted(gated.items())[:12])))
+        hidden = getattr(self, "hidden", None)
+        if hidden:
+            out.append("  HIDDEN      %d functions begin inside another (an entry sequence after its end) and "
+                       "are not described: %s" % (len(hidden), " ".join("%d:%04X" % h for h in hidden[:16])))
         out.append("  entry       %s" % self.entry)
         out.append("  format      %s" % ("same as the original" if self.format_same else "DIFFERENT from the original"))
         out.append("  exports     %d of %d with the original's ordinal and name (%d of them point at stand-ins)%s" % (
@@ -614,7 +618,10 @@ def _frame_pieces(b, f, seg, stems, folder, wasm, env, assemble_piece, elsewhere
     # far ones give up their places, largest first, while near ones are still left over.
     aside = set()
     bins, no_room_far, no_room_near = place(aside)
-    while no_room_near and elsewhere:
+    # (no longer done: every function stays in its own segment -- a segment the original does not
+    # have renumbers the selectors of all that loads after it. The link moves far ones out of a
+    # segment only past 64K.)
+    while no_room_near and elsewhere and os.environ.get("CB_ASIDE"):
         placed_far = sorted((n for n in size if n not in near and n not in aside and n not in no_room_far),
                             key=lambda n: -size[n])
         if not placed_far:
@@ -626,7 +633,12 @@ def _frame_pieces(b, f, seg, stems, folder, wasm, env, assemble_piece, elsewhere
         b.frame_fit = getattr(b, "frame_fit", []) + [(name, hi - lo, size.get(name, 0))]
     after = []
     for name in sorted(aside) + no_room_far + no_room_near:
-        moved = elsewhere(name) if elsewhere and name not in near else None
+        # (only those that gave up their places for near ones go to the segment beside; a far one
+        # that just did not fit its own place goes after the frame, as a near one does: a segment
+        # the original does not have renumbers the selectors of all that loads after it -- USER's
+        # sub_39_05AC, sent to a new segment 46, broke Setup with sub_7_03F8 rebuilt from C as
+        # well, though it never ran. The link moves far ones out only past 64K.)
+        moved = elsewhere(name) if elsewhere and name in aside else None
         if moved:                                          # far: into the segment beside this one
             stems[name] = moved
             b.moved_c.add(name)
@@ -880,6 +892,10 @@ def _build16(b, path, m, folder):
     segs = {s["idx"]: s for s in nef.segments()}
     at = {m.where[va]: name for va, name in m.by_va.items() if m.where.get(va)}
     b.with_text = len(m.order)
+    # the guard: a function the description does not have would be taken for the tail of the
+    # one before it, and erased with it if that one is rebuilt from C -- never silently
+    from codebreaker.decompile import describe as _describe
+    b.hidden = _describe.hidden_functions(nef, set(at))
     # each function into a code segment named for the segment it came from
     stems, by_segment = {}, {}
     for (seg, _off), name in sorted(at.items()):

@@ -273,6 +273,104 @@ def functions(nef):
             out.setdefault((s["idx"], off), "near")
         for place in _far_pointer_targets(nef, s, bytes(code), segs):
             out.setdefault(place, "far")
+        # a function nothing visibly reaches (through a table, a pointer computed or kept in
+        # data): its entry sequence right after another function's end. Taken for that one's
+        # tail, it was erased with it when that one was rebuilt from C (USER had 95)
+        for off in prologues_after_ends(bytes(code)):
+            how = returns(bytes(code), off)[0]
+            out.setdefault((s["idx"], off), how or "far")
+    # what the code calls, followed from every start known -- one call is enough when it is in
+    # code that is followed (a stray E8 in data is not)
+    codes = {s["idx"]: bytes(nef.data[s["file_off"]:s["file_off"] + s["length"]])
+             for s in nef.segments() if s["kind"] == "CODE" and s["file_off"]}
+    done = set()
+    while True:
+        new = [(sg, o) for (sg, o) in out if (sg, o) not in done and sg in codes]
+        if not new:
+            break
+        for sg, o in new:
+            done.add((sg, o))
+            for t in _calls_followed(codes[sg], o):
+                out.setdefault((sg, t), "near")
+    return out
+
+
+# The entry sequences of Win16 functions (the compilers' and the hand-written ones' alike)
+_PROLOGUES = (b"\x55\x8b\xec",                 # push bp; mov bp, sp
+              b"\x45\x55\x8b\xec",             # inc bp; push bp; mov bp, sp   (a far frame)
+              b"\x1e\x58\x90",                 # push ds; pop ax; nop          (exported, as in the file)
+              b"\x8c\xd8\x90")                 # mov ax, ds; nop
+_ENDS = ("ret", "retf", "iret", "jmp", "ljmp")
+
+
+def _is_prologue(code, o):
+    if any(code.startswith(p, o) for p in _PROLOGUES):
+        return True
+    if code[o:o + 1] == b"\xc8" and o + 4 <= len(code) and code[o + 3] in (0, 1):   # enter n, 0|1
+        return True
+    return code[o:o + 1] == b"\xb8" and code.startswith(b"\x45\x55\x8b\xec", o + 3)  # mov ax, DGROUP; inc bp ...
+
+
+def prologues_after_ends(code):
+    """Offsets in one code segment where an entry sequence follows the end of code (a return or
+    a jump, then padding): where a function begins, whether or not anything seen reaches it."""
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    out, at, n = [], 0, len(code)
+    while at < n:
+        ins = next(md.disasm(code[at:at + 16], at), None)
+        if ins is None:
+            at += 1
+            continue
+        at += ins.size
+        if ins.mnemonic in _ENDS:
+            p = at
+            while p < n and code[p] in (0x00, 0x90, 0xCC):
+                p += 1
+            if p < n and _is_prologue(code, p):
+                out.append(p)
+    return out
+
+
+def _calls_followed(code, start, limit=20000):
+    """Near call targets in the code reached from `start` (fall-through and jumps followed)."""
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    calls, seen, work, n = set(), set(), [start], len(code)
+    while work and len(seen) < limit:
+        at = work.pop()
+        while 0 <= at < n and at not in seen:
+            ins = next(md.disasm(code[at:at + 16], at), None)
+            if ins is None:
+                break
+            seen.add(at)
+            b0 = ins.bytes[0]
+            if b0 == 0xE8 and ins.size == 3:
+                t = (at + 3 + struct.unpack_from("<h", bytes(ins.bytes), 1)[0]) & 0xFFFF
+                if t < n:
+                    calls.add(t)
+            elif b0 in (0xEB, 0xE9) or 0x70 <= b0 <= 0x7F or 0xE0 <= b0 <= 0xE3 \
+                    or (b0 == 0x0F and 0x80 <= ins.bytes[1] <= 0x8F):
+                try:
+                    t = int(ins.op_str, 16) & 0xFFFF
+                    if t < n:
+                        work.append(t)
+                except ValueError:
+                    pass
+            if ins.mnemonic in _ENDS:
+                break
+            at += ins.size
+    return calls
+
+
+def hidden_functions(nef, known):
+    """The guard: entry sequences after an end that are not among `known` {(segment, offset)} --
+    functions the description does not have, so that the build would take them for the tail of
+    the function before. [(segment, offset)]"""
+    out = []
+    for s in nef.segments():
+        if s["kind"] != "CODE" or not s["file_off"]:
+            continue
+        code = bytes(nef.data[s["file_off"]:s["file_off"] + s["length"]])
+        out += [(s["idx"], o) for o in prologues_after_ends(code) if (s["idx"], o) not in known]
     return out
 
 
@@ -335,13 +433,31 @@ def returns(code, off, limit=600, want=None):
         n += 1
         if ins.mnemonic in ("ret", "retf", "lret"):
             kind = "near" if ins.mnemonic == "ret" else "far"
+            pop = int(ins.op_str, 0) if ins.op_str else 0
+            if pop & 1 or pop > 0x7E:
+                continue                                 # (no function removes an odd count or so many:
+                #                                          bytes that are not code, decoded -- USER 24:09B8)
             if want is None or kind == want:
-                pop = int(ins.op_str, 0) if ins.op_str else 0
                 return kind, pop
             continue
         target = int(ins.op_str, 0) if ins.op_str[:2] == "0x" and ins.op_str[2:].isalnum() else None
         if ins.mnemonic == "push" and target is not None and off < target < len(code):
-            work.append(target)                          # a return address it pushes (push 198b; jmp worker)
+            # a return address it pushes -- the stubs push the place of a `retf N` (KRNL386's
+            # LoadResource: push 13Dh ... jmp worker; at 13Dh, retf 4) -- only when a return is
+            # what is there: a constant pushed as an argument is not one (USER sub_24_00F6's
+            # `push 98Bh` was followed into the function after it, to a `ret 0EEBh` in its bytes,
+            # and the dialog builder was called with two words fewer than it takes)
+            # (or a few straight instructions before it: GetMessage's is `mov ax, -1` / `retf 0Ah`;
+            # or a shared tail with a frame of its own: GetWindowText pushes AB36h, `push bp /
+            # mov bp, sp ...`, which ends in its `retf 8`)
+            if _is_prologue(bytes(code), target):
+                work.append(target)
+            for k, there in enumerate(md.disasm(bytes(code[target:target + 16]), target)):
+                if there.mnemonic in ("ret", "retf"):
+                    work.append(target)
+                    break
+                if k >= 2 or there.mnemonic.startswith("j") or there.mnemonic in ("call", "lcall"):
+                    break
         if ins.mnemonic == "jmp":
             if target is not None:                       # (through a table or register: not followed)
                 work.append(target)
@@ -572,6 +688,71 @@ def result_bytes(code, start, end, passes=None):
             w = wide or bool(dx & set(written) and steps < 3 and (p.mnemonic != "pop" or not saves_dx))
             work += [(q, w, steps + (0 if p.mnemonic in ("pop", "leave", "push") else 1)) for q in into.get(a, [])]
     return best
+
+
+_UNSIGNED_BOUND = {"ja": 1, "jbe": 1, "jae": 0, "jb": 0}     # index <= bound (1) or < bound (0)
+
+
+def jump_tables(d):
+    """`J` lines: each switch jump through a table in its own code segment, `jmp word ptr
+    cs:[reg + table]`, with the places its table sends to. The analysis finds the table by the
+    range it can prove for the index -- and the range it proves can be wrong: USER's 1:03A5
+    indexes by a byte offset known to be even (the code tested the low four bits, then shifted),
+    the analysis took odd offsets too, read garbage words as places, and followed them through
+    half the segment (sub_1_032E: 1.5 GB). Here the table is read as the code bounds it: the
+    compare that guards the jump (`cmp reg, n` / `ja`), the index a byte offset unless doubled
+    before (`shl bx, 1` / `add bx, bx`) -- and no further than where the code it sends to begins."""
+    import capstone
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    lines = []
+    for sg, code in d.segment_bytes.items():
+        at = 0
+        while True:
+            at = code.find(b"\x2e\xff", at)
+            if at < 0:
+                break
+            ins = next(md.disasm(code[at:at + 8], at), None)
+            at += 1
+            mm = re.fullmatch(r"word ptr cs:\[(bx|si|di) \+ 0x([0-9a-f]+)\]", ins.op_str if ins else "")
+            if not ins or ins.mnemonic != "jmp" or not mm:
+                continue
+            reg, table = mm.group(1), int(mm.group(2), 16)
+            # the guard: back from the jump, the last conditional branch on an unsigned compare
+            back = []
+            for start in range(max(0, ins.address - 24), ins.address):   # (a decode in step with the jump)
+                cand = list(md.disasm(code[start:ins.address], start))
+                if cand and cand[-1].address + cand[-1].size == ins.address \
+                        and sum(c.size for c in cand) == ins.address - start:
+                    back = cand
+                    break
+            if not back:
+                continue
+            bound, doubled, step = None, False, 2
+            for k in range(len(back) - 1, -1, -1):
+                i = back[k]
+                if i.mnemonic in ("shl", "sal") and i.op_str == "%s, 1" % reg or \
+                        i.mnemonic == "add" and i.op_str == "%s, %s" % (reg, reg):
+                    doubled = True
+                if i.mnemonic in _UNSIGNED_BOUND and k > 0 and back[k - 1].mnemonic == "cmp":
+                    m2 = re.fullmatch(r"\w+, (0x[0-9a-f]+|\d+)", back[k - 1].op_str)
+                    if m2:
+                        bound = int(m2.group(1), 0) + _UNSIGNED_BOUND[i.mnemonic] - 1   # (largest index)
+                    break
+            if bound is None or bound < 0 or bound > 0x400:
+                continue
+            count = bound + 1 if doubled else bound // 2 + 1
+            targets = []
+            for k in range(count):
+                p = table + 2 * k
+                if p + 2 > len(code):
+                    break
+                t = struct.unpack_from("<H", code, p)[0]
+                if table <= t < table + 2 * count or t >= len(code):
+                    break                                      # (into the table itself: past its end)
+                targets.append(t)
+            if targets:
+                lines.append("J\t%x\t%s" % (address(sg, ins.address), ",".join("%x" % address(sg, t) for t in targets)))
+    return lines
 
 
 def call_overrides(d):
@@ -862,6 +1043,7 @@ def describe16(module_path, outdir):
         lines.append(model_line(d, va, nm, default=dist))
     if not os.environ.get("CB_NO_CALL_OVERRIDES"):
         lines += call_overrides(d)
+    lines += jump_tables(d)
     from codebreaker.symbols import api_arguments as api16
     for nm in order:                 # Windows API: far, and the callee removes its arguments --
         size = api16.of(nm)          # how many bytes is read from the module that exports it

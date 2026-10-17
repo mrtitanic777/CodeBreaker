@@ -190,9 +190,16 @@ void set_up() {
   // allocator's own overhead, memory freed but kept by the heap: one function reached the
   // operating system's ceiling with its count still under budget. So what Windows says the
   // process holds is looked at too, ten times a second.)
-  std::thread([max_ms, limit] {
+  // CB_TRACE=1: what the analysis is doing, five times a second, on stderr -- where a function
+  // that runs long or grows spends it (the action, the rule last applied, the steps, the memory)
+  const bool trace = std::getenv("CB_TRACE") != nullptr;
+  std::thread([max_ms, limit, trace] {
+    int tick = 0;
     for (;;) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      if (trace && (++tick & 1) == 0 && started_ms.load())
+        std::fprintf(stderr, "[trace] %6lld ms  %-24s %-24s steps %llu  %lld MB\n", now_ms() - started_ms.load(),
+                     ghidra::cb_action, ghidra::cb_rule, ghidra::cb_steps, process_bytes() >> 20);
       long long s = started_ms.load();
       if (s && now_ms() - s > max_ms) fail_and_exit("over the time limit (CB_FUNCTION_SECONDS)", 4);
 #ifdef _WIN32
@@ -215,6 +222,11 @@ struct Span { uint64_t va; std::vector<uint8_t> data; };
 // A call through a pointer (a driver's dispatch table, a callback): what it is passed, as the
 // code pushed it -- the callee is not known, so the analysis cannot tell what it takes.
 struct CallSite { uint64_t site; uint64_t func; int pop; std::string model; };
+// A switch jump through a table, and the places its table sends to (`J <site> <t>,<t>,...`):
+// the describer reads the table as the code bounds it; the analysis would take the range it can
+// prove for the index, which can be wrong (USER 1:03A5: odd offsets of an even index, garbage
+// words read as places, half a segment followed).
+struct JumpOverride { uint64_t site; std::vector<uint64_t> targets; };
 
 // Imports live at made-up addresses outside the image: an import slot reads as the address of
 // "its" function, so a call through the slot resolves to a named function with a real prototype.
@@ -360,6 +372,7 @@ int main(int argc, char** argv) {
   std::vector<std::pair<std::string, uint64_t>> regs;
   std::vector<Span> spans;
   std::vector<CallSite> calls;
+  std::vector<JumpOverride> jumps;
   {
     std::ifstream in(argv[1]);
     if (!in) { std::fprintf(stderr, "FAIL: cannot read %s\n", argv[1]); return 1; }
@@ -383,6 +396,12 @@ int main(int argc, char** argv) {
       } else if (f.size() >= 5 && f[0] == "O") {
         calls.push_back({strtoull(f[1].c_str(), nullptr, 16), strtoull(f[2].c_str(), nullptr, 16),
                          atoi(f[3].c_str()), f[4]});
+      } else if (f.size() >= 3 && f[0] == "J") {
+        JumpOverride j{strtoull(f[1].c_str(), nullptr, 16), {}};
+        std::stringstream ts(f[2]);
+        std::string t;
+        while (std::getline(ts, t, ',')) if (!t.empty()) j.targets.push_back(strtoull(t.c_str(), nullptr, 16));
+        if (!j.targets.empty()) jumps.push_back(j);
       } else if (f.size() >= 3 && f[0] == "reg") {
         regs.push_back({f[1], strtoull(f[2].c_str(), nullptr, 16)});
       }
@@ -538,6 +557,18 @@ int main(int argc, char** argv) {
           p->setOutputLock(false);
           p->setExtraPop(c.pop + (c.model.find("far") != std::string::npos ? 4 : 2));
           t.first->getOverride().insertProtoOverride(Address(code, (uintb)c.site), p);
+        }
+        // its switch jumps: each jump belongs to the function that starts last before it in its
+        // segment (the 16-bit segment is the address's upper half)
+        for (const auto& j : jumps) {
+          uint64_t owner = 0;
+          for (const auto& f : funcs)
+            if (f.va <= j.site && f.va > owner && (f.va >> 16) == (j.site >> 16)) owner = f.va;
+          if (owner != t.second.va) continue;
+          std::vector<Address> addrs;
+          for (uint64_t a : j.targets) addrs.push_back(Address(code, (uintb)a));
+          JumpTable* jt = t.first->installJumpTable(Address(code, (uintb)j.site));
+          jt->setOverride(addrs, Address(), 0, 0);
         }
         Action* act = m.allacts.getCurrent();
         act->reset(*t.first);

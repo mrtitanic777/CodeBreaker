@@ -1970,14 +1970,19 @@ Varnode *JumpBasicOverride::findLikelyNorm(void)
     }
     ++i;
   }
+  // CodeBreaker: the MULT that scales the index is the op that feeds the ADD -- the next one on
+  // the path -- by a small constant (2, 4, 8). One further back belongs to how the index was
+  // made, not to the table: USER 1:03A5 indexes by ((x - (x & 0xf)) + 0x1000) >> 3, the
+  // subtraction an ADD of a MULT by -1; taken for the scale, it made the switch variable a value
+  // the jump never used, and the switch was printed on its targets' addresses.
   i += 1;
-  while(i<pathMeld.numOps()) { // Look for preceding MULT
+  if (i<pathMeld.numOps()) {
     op = pathMeld.getOp(i);
-    if (op->code() == CPUI_INT_MULT) {
-      res = pathMeld.getOpParent(i);
-      break;
+    if (op->code() == CPUI_INT_MULT && op->getIn(1)->isConstant()) {
+      uintb sc = op->getIn(1)->getOffset();
+      if (sc == 2 || sc == 4 || sc == 8)
+	res = pathMeld.getOpParent(i);
     }
-    ++i;
   }
   return res;
 }
@@ -2006,7 +2011,7 @@ bool JumpBasicOverride::recoverModel(Funcdata *fd,PcodeOp *indop,const JumpModel
     // If there was never a specified norm, or the specified norm was never recovered
     if ((trialvn == (Varnode *)0)&&(values.empty()||(hash==0)))
       trialvn = findLikelyNorm();
-    
+
     if (trialvn != (Varnode *)0) {
       int4 opi = trialNorm(fd,trialvn,10);
       if (opi >= 0) {

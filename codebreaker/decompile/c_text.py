@@ -490,7 +490,35 @@ def _far(text, far):
     body = "\n".join(lines)
     # `name = (type *)expr` -> `name = (type __far *)expr`
     body = re.sub(r"\b(%s) = \(([A-Za-z_][\w ]*?) ?(\*+)\)" % names, r"\1 = (\2 __far \3)", body)
-    return head + brace + body
+    return head + brace + _far_from_stack(body, far)
+
+
+def _far_from_stack(body, far):
+    """A far pointer set from a near one into the frame: the original made it with SS (`push ss;
+    pop es; rep movsw` -- USER's WM_WINDOWPOSCHANGED copies each WINDOWPOS into its frame so).
+    The decompiler keeps the destination far but not the ES it was given; C makes a far pointer
+    of a near one with DS, and the 14 bytes went to the frame's offset in the data segment --
+    over the code of whatever lay there. Given SS, as the original."""
+    stack = set()
+    for _ in range(3):                                   # (pointers set from those, in turn)
+        for mm in re.finditer(r"(?m)^\s+(\w+) = (?:\([\w ]+\*\))?\s*&?(\w+)(?: \+ [\w()]+)?;", body):
+            v, src = mm.groups()
+            if v not in far and (re.fullmatch(r"\w*Stack_[0-9a-f]+", src) or src in stack):
+                stack.add(v)
+    # (a pointer set from anything else too is not known to be in the frame)
+    for v in list(stack):
+        for mm in re.finditer(r"(?m)^\s+%s = ([^;]+);" % re.escape(v), body):
+            rhs = mm.group(1)
+            ok = re.fullmatch(r"(?:\([\w ]+\*\))?\s*&?(\w+)(?: \+ [\w()]+)?", rhs.strip())
+            if not ok or not (re.fullmatch(r"\w*Stack_[0-9a-f]+", ok.group(1)) or ok.group(1) in stack):
+                stack.discard(v)
+                break
+    if not stack:
+        return body
+    srcs = "|".join(re.escape(v) for v in sorted(stack, key=len, reverse=True))
+    names = "|".join(re.escape(n) for n in sorted(far, key=len, reverse=True))
+    return re.sub(r"(?m)^(\s+)(%s) = (%s);" % (names, srcs),
+                  r"\1\2 = MK_FP(codebreaker_ss(), \3);", body)
 
 
 _SIZED = {1: "uint1", 2: "uint2", 4: "uint4"}
@@ -1267,6 +1295,53 @@ def _stack_segment_stores(text, code, start, end):
             if call:
                 text = text[:call.start()] + call.group(1) + store + "\n" + text[call.start():]
             break
+        else:
+            text = _far_record(text, place, ss)
+    return text
+
+
+def _far_record(text, place, ss):
+    """The far pointer is not in a buffer but in a record of single words the decompiler split
+    into separate locals -- USER's CreateWindow builds CBT_CREATEWND {lpcs = ss:&args,
+    hwndInsertAfter} at [bp-26h] and passes its address to the CBT hook: the offset half a local
+    of its own, the SS half dropped, the next field another local. Laid out by the compiler those
+    are anywhere, and the hook read a garbage selector. Kept as one packed record, from the word
+    whose address is passed on, through SS, through the words after it with no gap."""
+    def scalar(off):
+        mm = re.search(r"(?m)^  ([\w ]*?\w(?:\s*\*+)?)\s*\b(\w*Stack_%x);[ \t]*$" % off, text)
+        if not mm:
+            return None
+        typ = mm.group(1)
+        size = 2 if "*" in typ else _SIZE.get(typ.strip()[-1:], 0)
+        return (mm.group(0), mm.group(2), size) if size == 2 else None
+    first = scalar(place + 2)
+    if not first or not re.search(r"&\s*%s\b" % first[1], text):
+        return text
+    words = [first, None]
+    off = place - 2
+    while scalar(off):
+        words.append(scalar(off))
+        off -= 2
+    rec = "codebreaker_far_%x" % (place + 2)
+    fields = []
+    for w in words:
+        fields.append("    int2 codebreaker_ss;" if w is None else "  " + w[0].strip())
+    for w in words:
+        if w:
+            text = text.replace(w[0] + "\n", "", 1)
+    decl = "  _Packed struct {\n%s\n  } %s;\n" % ("\n".join(fields), rec)
+    brace = text.find("{\n")
+    if brace < 0:
+        return text
+    text = text[:brace + 2] + decl + text[brace + 2:]
+    for w in words:
+        if w:
+            text = re.sub(r"(?<![\w.])%s\b" % re.escape(w[1]), "%s.%s" % (rec, w[1]), text)
+            text = re.sub(r"(\n {2,4}\w[\w ]*\s\**)%s\.(%s;)" % (rec, re.escape(w[1])), r"\1\2", text)
+    # (SS written with the offset: where the offset is set)
+    setit = re.search(r"(?m)^([ \t]+)%s\.%s = [^\n]*;[ \t]*$" % (rec, re.escape(first[1])), text)
+    if setit:
+        text = text[:setit.end()] + "\n" + setit.group(1) + "%s.codebreaker_ss = %s;" % (rec, ss) + text[setit.end():]
     return text
 
 
