@@ -1418,6 +1418,44 @@ def call_pairs(text):
     return re.sub(r"\n\n+", "\n", t)
 
 
+def label_sinks(text):
+    """L: S; goto H; inside a loop H: while (..) { .. } - the code a goto in the loop jumps to, the loop's own
+    last statements (S then the next test): S at the end of the loop's body, `goto L;` where it was (a
+    variant: the source's `nomatch: ;` before the step, the model's copy at the first jump to it)"""
+    lines = text.split("\n")
+    for i, l in enumerate(lines):
+        m = re.fullmatch(r"(\s*)(L_\w+):", l)
+        if not m:
+            continue
+        ind, lab = m.group(1), m.group(2)
+        j = i + 1
+        body = []
+        while j < len(lines) and lines[j].startswith(ind) and lines[j].strip() and not lines[j].startswith(ind + "}") \
+                and not re.fullmatch(r"\s*L_\w+:", lines[j]):
+            body.append(lines[j])
+            j += 1
+        if len(ind) < 8 or not body or j >= len(lines) or not lines[j].startswith(ind[:-4] + "}"):
+            continue                                        # (the block's last statements, inside an arm)
+        g = re.fullmatch(r"\s*goto (L_\w+);", body[-1])
+        if not g or any(x.rstrip().endswith("{") or x.strip().startswith("}") for x in body):
+            continue
+        h = g.group(1)
+        hj = next((k for k in range(i) if lines[k].strip() == h + ":"), None)
+        if hj is None or not re.match(r"\s*while \(.*\) \{$", lines[hj + 1]):
+            continue
+        hind = re.match(r"\s*", lines[hj + 1]).group(0)
+        end = next((k for k in range(hj + 2, len(lines)) if lines[k] == hind + "}"), None)
+        if end is None or not hj + 1 < i < end:
+            continue
+        moved = [hind + "    " + lab + ":"] + [hind + "    " + x.strip() for x in body[:-1]]
+        new = lines[:i] + [ind + "goto %s;" % lab] + lines[j:end] + moved + lines[end:]
+        t = "\n".join(new)
+        if not re.search(r"\bgoto %s;" % h, t):
+            t = re.sub(r"(?m)^[ \t]*%s:\n" % h, "", t)
+        return t
+    return None
+
+
 def shared_exit(text):
     """a function ending in a loop that never ends, returning a variable from inside it: the return at the end,
     jumped to (goto out; .. out: return x;) - a variant: the code the compiler lays after the loop"""
@@ -4175,7 +4213,7 @@ def candidates(prj, text, at, names, regs, regparam, widths=()):
         FILLNAME[0] = "_p%d"                                # (the filler named by its place: the frame's order
         tp_ = fill_frame(t0_, FRAME[0], bool(prj.toolchain().p.get("frame_order")))   #  lays it out - a variant)
         FILLNAME[0] = "_pf"
-        variants = [t] + [v for v in [tp_ if tp_ != t else None,store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t), register_copies(t), lead_filler(t), scaled_places(t), shared_tails(t), guard_returns(t), default_after(t), frame_more(t), loop_tests(t), switch_breaks(t), register_reads(t), compare_results(t), or_loops(t), loop_guards(t), const_tests(t), flat_returns(t), return_cases_first(t), registers_last(t), guard_shared(t), guard_flat(t), _changed(common_tails, t), _changed(byte_heads, t), _changed(word_offsets, t), chain_tails(t), heads_variant(t), shared_exit(t), call_pairs(t)] + case_guards(t) if v]
+        variants = [t] + [v for v in [tp_ if tp_ != t else None,store_increments(t), pre_steps(t), pre_increments(t), assign_in_tests(t), and_returns(t), inner_registers(t), for_loops(t), register_temps(t), compound_assigns(t), return_sources(t), assign_in_args(t), split_ternaries(t), default_last(t), push_tails(t), high_words(t), unmasked(t), no_default(t), unsigned_registers(t), empty_cases_first(t), register_slots(t), register_copies(t), lead_filler(t), scaled_places(t), shared_tails(t), guard_returns(t), default_after(t), frame_more(t), loop_tests(t), switch_breaks(t), register_reads(t), compare_results(t), or_loops(t), loop_guards(t), const_tests(t), flat_returns(t), return_cases_first(t), registers_last(t), guard_shared(t), guard_flat(t), _changed(common_tails, t), _changed(byte_heads, t), _changed(word_offsets, t), chain_tails(t), heads_variant(t), shared_exit(t), call_pairs(t), label_sinks(t)] + case_guards(t) if v]
         both = pre_steps(t)
         both = pre_increments(both) if both else None
         if both:
@@ -5347,7 +5385,7 @@ def compile_fix(src, con):
 def _prove(prj, tc, src, a, ln, tries=4, budget=10):
     """the verdict on src - mended where the compiler says it cannot be compiled, each way the error offers, and
     again (a few rounds, a few compiles): the best of what compiles. _prove.src is the source the verdict is of"""
-    comp = lambda s: tc.compile(s.encode("latin1"), headers=prj.headers(), include=prj.include, switches=prj.switches)
+    comp = lambda s: tc.compile(s.encode("latin1", errors="replace"), headers=prj.headers(), include=prj.include, switches=prj.switches)
     frontier = [src]
     best = None
     first_con = None
@@ -5527,7 +5565,7 @@ REFINERS = [lambda prj, s: [assign_in_args(s)], lambda prj, s: [return_sources(s
             lambda prj, s: [loop_tests(s)], lambda prj, s: [switch_breaks(s)], lambda prj, s: [register_reads(s)],
             lambda prj, s: [compare_results(s)], lambda prj, s: [or_loops(s)], lambda prj, s: [loop_guards(s)],
             lambda prj, s: [const_tests(s)], lambda prj, s: [flat_returns(s)], lambda prj, s: [return_cases_first(s)],
-            lambda prj, s: [registers_last(s)], lambda prj, s: unsigned_locals(s), lambda prj, s: [guard_shared(s)], lambda prj, s: [guard_flat(s)], lambda prj, s: [_changed(common_tails, s)], lambda prj, s: [_changed(byte_heads, s)], lambda prj, s: [_changed(word_offsets, s)], lambda prj, s: [chain_tails(s)], lambda prj, s: [heads_variant(s)], lambda prj, s: case_guards(s), lambda prj, s: [shared_exit(s)], lambda prj, s: [call_pairs(s)], lambda prj, s: adjacent_swaps(s), lambda prj, s: unsigned_fields(s),
+            lambda prj, s: [registers_last(s)], lambda prj, s: unsigned_locals(s), lambda prj, s: [guard_shared(s)], lambda prj, s: [guard_flat(s)], lambda prj, s: [_changed(common_tails, s)], lambda prj, s: [_changed(byte_heads, s)], lambda prj, s: [_changed(word_offsets, s)], lambda prj, s: [chain_tails(s)], lambda prj, s: [heads_variant(s)], lambda prj, s: case_guards(s), lambda prj, s: [shared_exit(s)], lambda prj, s: [label_sinks(s)], lambda prj, s: [call_pairs(s)], lambda prj, s: adjacent_swaps(s), lambda prj, s: unsigned_fields(s),
             lambda prj, s: [frame_names(s, prj.toolchain().p["frame_order"]), frame_names(s, prj.toolchain().p["frame_order"], True)]
             if prj.toolchain().p.get("frame_order") else [],
             lambda prj, s: [re.sub(r"\b([A-Za-z_]\w*), 0\)", r"(long)\1)", s, count=1)],   # (a value and a zero word
