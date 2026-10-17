@@ -1,0 +1,78 @@
+# The Ghidra fork: where `native/decompiler` came from, and what we changed
+
+The native decompiler is Ghidra's decompiler core, vendored as source, driven by our
+`native/decompiler/decompiler.cc`. This file records exactly which upstream version each part
+came from and every local change, so the fork can be rebased onto a newer Ghidra and each
+change judged on its own (kept, sent upstream, or dropped).
+
+Upstream: https://github.com/NationalSecurityAgency/ghidra (Apache 2.0; `core/LICENSE`,
+`core/NOTICE` are upstream's, unchanged). Recorded against our master `ab85196`, 2026-10-17.
+
+## Upstream base
+
+| Part | Upstream path | Base | Files |
+|---|---|---|---|
+| `core/cpp` | `Ghidra/Features/Decompiler/src/decompile/cpp` | **master `f0774b72f2` (2026-09-01), version 12.2-DEV** -- cpp tree `c35e0406` | 236: 224 identical, 12 patched |
+| `core/zlib` | `Ghidra/Features/Decompiler/src/decompile/zlib` | same commit (tree `4dd91ac1`, unchanged since 12.1) | 18 identical |
+| `languages/` | `Ghidra/Processors/{x86,PowerPC}/data/languages` | **release `Ghidra_12.1.3_build`** (the installed Ghidra, see below) | 21: 12 identical, 5 patched or 12.1.3-only, 4 ours/built |
+
+How it was found (repeatable with `tools/ghidra_fork.py`): every upstream release tag and
+every commit touching the cpp directory since 12.0 was scored by the number of files
+byte-identical to ours, line endings ignored. No release tag is close (best: 12.1.2-12.1.4, 139
+of 236). The best is commit `f17a0b5719` "GP-7167 highPtrPossible in ActionConstantPtr"
+(2026-08-25, on a feature branch), which reached master as merge `f0774b72f2` on 2026-09-01:
+224 of 236, and every one of the 12 left differs only by a change marked "CodeBreaker" in its
+comments. The tree stays the same until the next cpp change on master, `e46ab18c5d` (merge
+of `Ghidra_12.2`, 2026-09-08), so the vendored copy was taken between 2026-09-01 and 09-08.
+Not vendored: upstream's `Makefile`, `Doxyfile`, `.gitignore` (we build with our CMakeLists).
+
+The decompiler reports itself as version 6.2 (`architecture.cc`, majorversion/minorversion),
+upstream's numbering, unchanged.
+
+**Mixed base.** The core is 12.2-DEV; the language files are from the 12.1.3 release and the
+`.sla` files were compiled by its SLEIGH compiler. This works because the `.sla` format
+(`slaformat.cc/.hh`) has not changed between 12.1.3 and the core's base. A rebase must check
+that again, and should recompile the `.sla` files with the vendored `slgh_compile`.
+
+## Local changes to the core (`core/cpp`)
+
+Every change carries a `CodeBreaker:` comment at its place in the source.
+
+| # | Files | What it does | Why | Since |
+|---|---|---|---|---|
+| C1 | `action.hh`, `action.cc`, `funcdata_op.cc` | The analysis governor hook: `cb_action`/`cb_rule` record where the analysis is; `cb_check()` (every 1024 steps: each action, each rule application, each new PcodeOp) calls `cb_over_budget` and throws a `LowlevelError` if it says stop | No function may take the machine down: a runaway function stops cleanly (its memory freed, the next one goes on) instead of growing without end -- see CORE_ROADMAP "bounded analysis" | `ab85196` |
+| C2 | `funcdata_block.cc` (`branchRemoveInternal`) | When an edge is removed, every MULTIEQUAL of the destination block loses that input, not only those at the head of the block | **Upstream bug fix.** A MULTIEQUAL behind another op kept an input for the removed edge; removing the source block then looped forever (`descend2Undef` adding COPYs to the dying block): LZEXPAND's runtime exit, 11:01C5. Candidate to send upstream | `ab85196` |
+| C3 | `flow.cc` (`processInstruction`) | A jump to the start of another known function becomes a call followed by a return | Tail calls and import thunks. Ghidra's application supplies this as a per-instruction flow override; we have the whole function table before analysis, so it is decided on the spot. Without it flow walks into the other function, or into nothing for an import | `b063646` |
+| C4 | `fspec.hh`, `fspec.cc` | "Arguments by position" (`ParamListStandard::keepHoles`, `ProtoModel::keepArgumentHoles/argumentsByPosition`, `FuncCallSpecs::modelArgumentsByPosition`): every register before the last one set is an argument; a constant put in one is an argument however early it was folded; a register set before the call is an argument even if used elsewhere; unused slots are not cleared | Software interrupts (INT 21h etc.) take their arguments in fixed registers, not a packed list: `mov dx,3E8h; xor cx,cx; int` must keep CX. Used by the `__int16` prototypes in `x86-16.cspec` | `3528339` |
+| C5 | `database.cc` (`Scope::buildDefaultName`) | A register handed back by a call under an `__int16*` model is named `int_<register>` instead of `extraout_...` | Readable interrupt results (`int_CF`, `int_BX`) | `b9cbd37` |
+| C6 | `printc.hh`, `printc.cc` (`opSegmentOp`, `checkArrayDeref`, new `enteredSegment`) | A segmented address whose segment is not a constant, and is not the DS/SS the function was entered with (carried through COPY/INDIRECT/MULTIEQUAL), prints as `MK_FP(seg, off)` | **Upstream bug** for 16-bit code: SEGMENTOP printed only the offset, so `es:[6c]` and `ds:[6c]` were the same thing. Entry DS/SS stay as plain near pointers, which is what C already means | `3528339` |
+| C7 | `varmap.cc` (`ScopeLocal::markUnaliased`) | At alias block level 0 ("nothing blocks aliases") a pointer to a local reaches through unmapped stretches of the frame | Upstream stops aliases at unmapped ranges even at level 0, contradicting the level's meaning: USER's CreateWindow builds a CBT_CREATEWND on the stack and passes its address; the two stores past the first local were cut as dead stores. Candidate to send upstream | `cf27f50`, comment `71da0ea` |
+| C8 | `override.hh` | `Override::clear()` made public | `decompiler.cc` frees a function's call overrides once it is written (memory over a whole module) | `3fc874b` |
+
+The main checkout has further uncommitted work in `core/cpp/jumptable.cc` (the Windows 95
+session); it belongs in this table when it is committed.
+
+## Local changes to the language files (`languages/`)
+
+| # | File | Change | Why | Since |
+|---|---|---|---|---|
+| L1 | `x86-16.cspec` | Default prototype: DX:AX (`join`) as a 3-4 byte return | 16-bit far pointers and longs come back in DX:AX | `cf27f50`..`77c7c48` |
+| L2 | `x86-16.cspec` | New prototypes `__int16` and `__int16keepds`: arguments AX BX CX DX SI DI DS ES by position, result AX or DX:AX, killed-by-call registers and CF/ZF as outputs; the `keepds` one for interrupts that keep DS (all but 21h and 2Fh) | Software interrupts as calls with register arguments and results (with C4, C5) | `b9cbd37`, `3528339` |
+| L3 | `ppc_64_32_homed.cspec` (ours) + one line in `ppc.ldefs` | `ppc_64_32.cspec` without stack arguments, registered as compiler id `homed` | Microsoft's PowerPC compilers (Xbox 360): locals sit directly above the outgoing argument home area, so "8 bytes above SP is an argument" made locals look like arguments and branches vanish as unreachable | `4903b51` |
+| L4 | `x86.sla`, `ppc_32_be.sla`, `ppc_64_isa_altivec_be.sla` | Compiled SLEIGH, not in the upstream source tree | Built with Ghidra 12.1.3's SLEIGH compiler from that release's `.slaspec` | `cf27f50` |
+
+Not local changes: `x86.ldefs`, `x86.opinion`, `x86gcc.cspec` differ from the core's base
+commit only because they are the 12.1.3 release's copies (identical to `Ghidra_12.1.3_build`);
+master later added Swift and raised the x86 language version 4.8 -> 4.9. `ppc.ldefs` and
+`x86-16.cspec` differ from 12.1.3 only by L1-L3.
+
+## Rebasing onto a newer upstream
+
+1. `git clone --filter=blob:none --no-checkout https://github.com/NationalSecurityAgency/ghidra.git`
+2. Copy the new upstream `cpp/`, `zlib/` and the language files over ours; re-apply C1-C8 and
+   L1-L3 (each is small and marked); drop any upstream has fixed itself (C2, C6 and C7 first).
+3. Recompile the `.sla` files with the new `slgh_compile`.
+4. `python tools/ghidra_fork.py <clone> <new ref>`: only the files in the tables above may show
+   as patched. Then `tools/golden.py` and the emulation checks must agree; explain any
+   difference.
+5. Update this file: base commit, dates, and the tables.

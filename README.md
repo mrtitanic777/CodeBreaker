@@ -74,7 +74,8 @@ codebreaker/
                              rewrites, the Visual Studio project; run.py: `java <tool>`
   ui/          the local web console and the desktop window
 native/decompiler/   the native decompiler (C++): decompiler.cc around the Ghidra decompiler core
-                     in core/ (Apache-2.0, see core/LICENSE, core/NOTICE)
+                     in core/ (Apache-2.0, see core/LICENSE, core/NOTICE); upstream
+                     version and every local patch: docs/GHIDRA_FORK.md
 tests/               python tests/run_all.py -- run before every commit
 tools/               measuring and keeping the code base itself in order
 docs/                STATUS.md (where things stand), NOT_IN_REPO.md (what to attach, and its setting)
