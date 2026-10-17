@@ -25,16 +25,16 @@
   },
   {
    "args": [
-    33,
+    47,
     {
      "$t": [
       "ax",
-      "dx"
+      "bx"
      ]
     }
    ],
    "kwargs": {},
-   "result": "int21_ax_dx"
+   "result": "int2f_ax_bx"
   },
   {
    "args": [
@@ -42,13 +42,13 @@
     {
      "$t": [
       "ax",
-      "bx",
+      "cx",
       "dx"
      ]
     }
    ],
    "kwargs": {},
-   "result": "int21_ax_bx_dx"
+   "result": "int21_ax_cx_dx"
   },
   {
    "args": [
@@ -71,14 +71,14 @@
     {
      "$t": [
       "ax",
-      "bx",
+      "cx",
       "dx",
-      "si"
+      "ds"
      ]
     }
    ],
    "kwargs": {},
-   "result": "int21_ax_bx_dx_si"
+   "result": "int21_ax_cx_dx_ds"
   },
   {
    "args": [
@@ -102,15 +102,15 @@
      "$t": [
       "ax",
       "bx",
+      "cx",
       "dx",
       "si",
-      "di",
-      "ds"
+      "di"
      ]
     }
    ],
    "kwargs": {},
-   "result": "int21_ax_bx_dx_si_di_ds"
+   "result": "int21_ax_bx_cx_dx_si_di"
   },
   {
    "args": [

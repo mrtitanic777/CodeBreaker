@@ -59,64 +59,6 @@
      "$s": [
       {
        "$t": [
-        33,
-        {
-         "$t": [
-          "ax",
-          "bx",
-          "cx",
-          "dx"
-         ]
-        }
-       ]
-      },
-      {
-       "$t": [
-        33,
-        {
-         "$t": [
-          "ax",
-          "bx"
-         ]
-        }
-       ]
-      }
-     ]
-    }
-   ],
-   "kwargs": {},
-   "result": [
-    "struct codebreaker_registers { uint2 ax, bx, cx, dx, si, di, ds, es; uint1 cf, zf; uint2 set; };",
-    "extern struct codebreaker_registers codebreaker_int;   /* as the last interrupt left them */",
-    "#define int_AX codebreaker_int.ax",
-    "#define int_BX codebreaker_int.bx",
-    "#define int_CX codebreaker_int.cx",
-    "#define int_DX codebreaker_int.dx",
-    "#define int_SI codebreaker_int.si",
-    "#define int_DI codebreaker_int.di",
-    "#define int_DS codebreaker_int.ds",
-    "#define int_ES codebreaker_int.es",
-    "#define int_CF codebreaker_int.cf",
-    "#define int_ZF codebreaker_int.zf",
-    "#define int_AL (*(uint1 *)&codebreaker_int.ax)",
-    "#define int_AH (*((uint1 *)&codebreaker_int.ax + 1))",
-    "#define int_BL (*(uint1 *)&codebreaker_int.bx)",
-    "#define int_BH (*((uint1 *)&codebreaker_int.bx + 1))",
-    "#define int_CL (*(uint1 *)&codebreaker_int.cx)",
-    "#define int_CH (*((uint1 *)&codebreaker_int.cx + 1))",
-    "#define int_DL (*(uint1 *)&codebreaker_int.dx)",
-    "#define int_DH (*((uint1 *)&codebreaker_int.dx + 1))",
-    "void __far codebreaker_int21(void);              /* INT 21h */",
-    "static uint4 int21_ax_bx(uint2 ax, uint2 bx) { codebreaker_int.ax = ax; codebreaker_int.bx = bx; codebreaker_int.set = 0x03; codebreaker_int21(); return (uint4)codebreaker_int.dx << 16 | codebreaker_int.ax; }",
-    "static uint4 int21_ax_bx_cx_dx(uint2 ax, uint2 bx, uint2 cx, uint2 dx) { codebreaker_int.ax = ax; codebreaker_int.bx = bx; codebreaker_int.cx = cx; codebreaker_int.dx = dx; codebreaker_int.set = 0x0f; codebreaker_int21(); return (uint4)codebreaker_int.dx << 16 | codebreaker_int.ax; }"
-   ]
-  },
-  {
-   "args": [
-    {
-     "$s": [
-      {
-       "$t": [
         47,
         {
          "$t": [
@@ -326,6 +268,129 @@
           "ax",
           "bx",
           "cx",
+          "dx"
+         ]
+        }
+       ]
+      },
+      {
+       "$t": [
+        33,
+        {
+         "$t": [
+          "ax",
+          "bx"
+         ]
+        }
+       ]
+      },
+      {
+       "$t": [
+        33,
+        {
+         "$t": [
+          "ax",
+          "cx",
+          "dx",
+          "ds"
+         ]
+        }
+       ]
+      },
+      {
+       "$t": [
+        33,
+        {
+         "$t": [
+          "ax",
+          "cx",
+          "dx"
+         ]
+        }
+       ]
+      },
+      {
+       "$t": [
+        33,
+        {
+         "$t": [
+          "ax",
+          "cx",
+          "si",
+          "di"
+         ]
+        }
+       ]
+      },
+      {
+       "$t": [
+        33,
+        {
+         "$t": [
+          "ax",
+          "dx",
+          "ds"
+         ]
+        }
+       ]
+      },
+      {
+       "$t": [
+        33,
+        {
+         "$t": [
+          "ax"
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "kwargs": {},
+   "result": [
+    "struct codebreaker_registers { uint2 ax, bx, cx, dx, si, di, ds, es; uint1 cf, zf; uint2 set; };",
+    "extern struct codebreaker_registers codebreaker_int;   /* as the last interrupt left them */",
+    "#define int_AX codebreaker_int.ax",
+    "#define int_BX codebreaker_int.bx",
+    "#define int_CX codebreaker_int.cx",
+    "#define int_DX codebreaker_int.dx",
+    "#define int_SI codebreaker_int.si",
+    "#define int_DI codebreaker_int.di",
+    "#define int_DS codebreaker_int.ds",
+    "#define int_ES codebreaker_int.es",
+    "#define int_CF codebreaker_int.cf",
+    "#define int_ZF codebreaker_int.zf",
+    "#define int_AL (*(uint1 *)&codebreaker_int.ax)",
+    "#define int_AH (*((uint1 *)&codebreaker_int.ax + 1))",
+    "#define int_BL (*(uint1 *)&codebreaker_int.bx)",
+    "#define int_BH (*((uint1 *)&codebreaker_int.bx + 1))",
+    "#define int_CL (*(uint1 *)&codebreaker_int.cx)",
+    "#define int_CH (*((uint1 *)&codebreaker_int.cx + 1))",
+    "#define int_DL (*(uint1 *)&codebreaker_int.dx)",
+    "#define int_DH (*((uint1 *)&codebreaker_int.dx + 1))",
+    "void __far codebreaker_int21(void);              /* INT 21h */",
+    "static uint4 int21_ax(uint2 ax) { codebreaker_int.ax = ax; codebreaker_int.set = 0x01; codebreaker_int21(); return (uint4)codebreaker_int.dx << 16 | codebreaker_int.ax; }",
+    "static uint4 int21_ax_bx(uint2 ax, uint2 bx) { codebreaker_int.ax = ax; codebreaker_int.bx = bx; codebreaker_int.set = 0x03; codebreaker_int21(); return (uint4)codebreaker_int.dx << 16 | codebreaker_int.ax; }",
+    "static uint4 int21_ax_bx_cx_dx(uint2 ax, uint2 bx, uint2 cx, uint2 dx) { codebreaker_int.ax = ax; codebreaker_int.bx = bx; codebreaker_int.cx = cx; codebreaker_int.dx = dx; codebreaker_int.set = 0x0f; codebreaker_int21(); return (uint4)codebreaker_int.dx << 16 | codebreaker_int.ax; }",
+    "static uint4 int21_ax_cx_dx(uint2 ax, uint2 cx, uint2 dx) { codebreaker_int.ax = ax; codebreaker_int.cx = cx; codebreaker_int.dx = dx; codebreaker_int.set = 0x0d; codebreaker_int21(); return (uint4)codebreaker_int.dx << 16 | codebreaker_int.ax; }",
+    "static uint4 int21_ax_cx_dx_ds(uint2 ax, uint2 cx, uint2 dx, uint2 ds) { codebreaker_int.ax = ax; codebreaker_int.cx = cx; codebreaker_int.dx = dx; codebreaker_int.ds = ds; codebreaker_int.set = 0x4d; codebreaker_int21(); return (uint4)codebreaker_int.dx << 16 | codebreaker_int.ax; }",
+    "static uint4 int21_ax_cx_si_di(uint2 ax, uint2 cx, uint2 si, uint2 di) { codebreaker_int.ax = ax; codebreaker_int.cx = cx; codebreaker_int.si = si; codebreaker_int.di = di; codebreaker_int.set = 0x35; codebreaker_int21(); return (uint4)codebreaker_int.dx << 16 | codebreaker_int.ax; }",
+    "static uint4 int21_ax_dx_ds(uint2 ax, uint2 dx, uint2 ds) { codebreaker_int.ax = ax; codebreaker_int.dx = dx; codebreaker_int.ds = ds; codebreaker_int.set = 0x49; codebreaker_int21(); return (uint4)codebreaker_int.dx << 16 | codebreaker_int.ax; }"
+   ]
+  },
+  {
+   "args": [
+    {
+     "$s": [
+      {
+       "$t": [
+        33,
+        {
+         "$t": [
+          "ax",
+          "bx",
+          "cx",
           "dx",
           "si",
           "di",
@@ -504,6 +569,20 @@
          "$t": [
           "ax",
           "dx",
+          "di",
+          "ds",
+          "es"
+         ]
+        }
+       ]
+      },
+      {
+       "$t": [
+        33,
+        {
+         "$t": [
+          "ax",
+          "dx",
           "si",
           "di",
           "ds",
@@ -640,6 +719,7 @@
     "static uint4 int21_ax_bx_dx(uint2 ax, uint2 bx, uint2 dx) { codebreaker_int.ax = ax; codebreaker_int.bx = bx; codebreaker_int.dx = dx; codebreaker_int.set = 0x0b; codebreaker_int21(); return (uint4)codebreaker_int.dx << 16 | codebreaker_int.ax; }",
     "static uint4 int21_ax_bx_dx_ds(uint2 ax, uint2 bx, uint2 dx, uint2 ds) { codebreaker_int.ax = ax; codebreaker_int.bx = bx; codebreaker_int.dx = dx; codebreaker_int.ds = ds; codebreaker_int.set = 0x4b; codebreaker_int21(); return (uint4)codebreaker_int.dx << 16 | codebreaker_int.ax; }",
     "static uint4 int21_ax_dx(uint2 ax, uint2 dx) { codebreaker_int.ax = ax; codebreaker_int.dx = dx; codebreaker_int.set = 0x09; codebreaker_int21(); return (uint4)codebreaker_int.dx << 16 | codebreaker_int.ax; }",
+    "static uint4 int21_ax_dx_di_ds_es(uint2 ax, uint2 dx, uint2 di, uint2 ds, uint2 es) { codebreaker_int.ax = ax; codebreaker_int.dx = dx; codebreaker_int.di = di; codebreaker_int.ds = ds; codebreaker_int.es = es; codebreaker_int.set = 0xe9; codebreaker_int21(); return (uint4)codebreaker_int.dx << 16 | codebreaker_int.ax; }",
     "static uint4 int21_ax_dx_si_di_ds_es(uint2 ax, uint2 dx, uint2 si, uint2 di, uint2 ds, uint2 es) { codebreaker_int.ax = ax; codebreaker_int.dx = dx; codebreaker_int.si = si; codebreaker_int.di = di; codebreaker_int.ds = ds; codebreaker_int.es = es; codebreaker_int.set = 0xf9; codebreaker_int21(); return (uint4)codebreaker_int.dx << 16 | codebreaker_int.ax; }",
     "static uint4 int2f_ax_bx_cx_dx_si_di_es(uint2 ax, uint2 bx, uint2 cx, uint2 dx, uint2 si, uint2 di, uint2 es) { codebreaker_int.ax = ax; codebreaker_int.bx = bx; codebreaker_int.cx = cx; codebreaker_int.dx = dx; codebreaker_int.si = si; codebreaker_int.di = di; codebreaker_int.es = es; codebreaker_int.set = 0xbf; codebreaker_int2f(); return (uint4)codebreaker_int.dx << 16 | codebreaker_int.ax; }",
     "static uint4 int2f_ax_bx_di_es(uint2 ax, uint2 bx, uint2 di, uint2 es) { codebreaker_int.ax = ax; codebreaker_int.bx = bx; codebreaker_int.di = di; codebreaker_int.es = es; codebreaker_int.set = 0xa3; codebreaker_int2f(); return (uint4)codebreaker_int.dx << 16 | codebreaker_int.ax; }",

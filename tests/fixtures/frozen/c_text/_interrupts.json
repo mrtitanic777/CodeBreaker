@@ -30,18 +30,292 @@
   },
   {
    "args": [
-    "int2 __stdcall16near sub_2_7178(a1)\nint2 a1;\n{\n  int2 iVar1;\n  xunknown2 int_DX;\n  int2 int_BX;\n  xunknown2 unaff_DS = codebreaker_ds();\n  if (*(int2 *)0xf8a == 0) {\n    int2f(0x1500,0);\n    iVar1 = 0;\n    if (int_BX != 0) {\n      iVar1 = int2f(0x150b,int_BX,a1,int_DX);\n    }\n  }\n  else {\n    iVar1 = 0;\n  }\n  return iVar1;\n}",
+    "int2 __stdcall16near sub_5_00FD(a1,a2,a3,a4)\nint2 a1;\nint2 a2;\nint2 a3;\nint2 a4;\n{\n  int2 int_CX;\n  xunknown2 in_DX;\n  uint2 int_DX;\n  xunknown2 int_SI;\n  bool int_CF;\n  char int_CF_00;\n  char cVar1;\n  \n  int31(6,a4,0x601,in_DX,0x601);\n  cVar1 = int_CF;\n  if (!int_CF) {\n    int31(int_SI,int_CX + (uint2)CARRY2(int_DX,a3),int_DX + a3,int_DX,a2,a1);\n    cVar1 = int_CF_00;\n  }\n  return -(uint2)(cVar1 == '\\0');\n}",
     {
-     "$s": []
+     "$s": [
+      {
+       "$t": [
+        33,
+        {
+         "$t": [
+          "ax",
+          "bx",
+          "dx"
+         ]
+        }
+       ]
+      },
+      {
+       "$t": [
+        47,
+        {
+         "$t": [
+          "ax",
+          "bx",
+          "cx",
+          "dx",
+          "si",
+          "di",
+          "es"
+         ]
+        }
+       ]
+      },
+      {
+       "$t": [
+        47,
+        {
+         "$t": [
+          "ax",
+          "bx",
+          "di",
+          "es"
+         ]
+        }
+       ]
+      },
+      {
+       "$t": [
+        47,
+        {
+         "$t": [
+          "ax",
+          "bx",
+          "dx",
+          "si",
+          "di",
+          "es"
+         ]
+        }
+       ]
+      },
+      {
+       "$t": [
+        49,
+        {
+         "$t": [
+          "ax",
+          "bx",
+          "cx",
+          "dx",
+          "si",
+          "di"
+         ]
+        }
+       ]
+      },
+      {
+       "$t": [
+        49,
+        {
+         "$t": [
+          "ax",
+          "bx",
+          "cx",
+          "si"
+         ]
+        }
+       ]
+      }
+     ]
     }
    ],
-   "args_after": [
-    "int2 __stdcall16near sub_2_7178(a1)\nint2 a1;\n{\n  int2 iVar1;\n  xunknown2 int_DX;\n  int2 int_BX;\n  xunknown2 unaff_DS = codebreaker_ds();\n  if (*(int2 *)0xf8a == 0) {\n    int2f(0x1500,0);\n    iVar1 = 0;\n    if (int_BX != 0) {\n      iVar1 = int2f(0x150b,int_BX,a1,int_DX);\n    }\n  }\n  else {\n    iVar1 = 0;\n  }\n  return iVar1;\n}",
+   "kwargs": {},
+   "result": "int2 __stdcall16near sub_5_00FD(a1,a2,a3,a4)\nint2 a1;\nint2 a2;\nint2 a3;\nint2 a4;\n{\n  xunknown2 in_DX;\n  char cVar1;\n  \n  int31_ax_bx_cx_si(6,a4,0x601,0x601);\n  cVar1 = int_CF;\n  if (!int_CF) {\n    int31_ax_bx_cx_dx_si_di(int_SI,int_CX + (uint2)CARRY2(int_DX,a3),int_DX + a3,int_DX,a2,a1);\n    cVar1 = int_CF;\n  }\n  return -(uint2)(cVar1 == '\\0');\n}"
+  },
+  {
+   "args": [
+    "int2 __cdecl16near sub_3_0060()\n{\n  xunknown2 in_CX;\n  int2 a1;\n  xunknown2 int_DI;\n  xunknown2 int_ES;\n  xunknown2 unaff_DS = codebreaker_ds();\n  xunknown4 xVar1;\n  \n  xVar1 = KERNEL_170(0x1000);\n  int2f(0x1684,0x442,in_CX,(int2)((uint4)xVar1 >> 0x10),(int2)xVar1,0,unaff_DS,0);\n  *MK_FP(a1,(xunknown2 *)0xb8) = int_DI;\n  *MK_FP(a1,(xunknown2 *)0xba) = int_ES;\n  KERNEL_176(a1);\n  return a1;\n}",
     {
      "$s": [
       {
        "$t": [
         47,
+        {
+         "$t": [
+          "ax",
+          "bx",
+          "cx",
+          "dx",
+          "si",
+          "di",
+          "es"
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "args_after": [
+    "int2 __cdecl16near sub_3_0060()\n{\n  xunknown2 in_CX;\n  int2 a1;\n  xunknown2 int_DI;\n  xunknown2 int_ES;\n  xunknown2 unaff_DS = codebreaker_ds();\n  xunknown4 xVar1;\n  \n  xVar1 = KERNEL_170(0x1000);\n  int2f(0x1684,0x442,in_CX,(int2)((uint4)xVar1 >> 0x10),(int2)xVar1,0,unaff_DS,0);\n  *MK_FP(a1,(xunknown2 *)0xb8) = int_DI;\n  *MK_FP(a1,(xunknown2 *)0xba) = int_ES;\n  KERNEL_176(a1);\n  return a1;\n}",
+    {
+     "$s": [
+      {
+       "$t": [
+        47,
+        {
+         "$t": [
+          "ax",
+          "bx",
+          "cx",
+          "dx",
+          "si",
+          "di",
+          "es"
+         ]
+        }
+       ]
+      },
+      {
+       "$t": [
+        47,
+        {
+         "$t": [
+          "ax",
+          "bx",
+          "dx",
+          "si",
+          "di",
+          "es"
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "kwargs": {},
+   "result": "int2 __cdecl16near sub_3_0060()\n{\n  xunknown2 in_CX;\n  int2 a1;\n  xunknown2 unaff_DS = codebreaker_ds();\n  xunknown4 xVar1;\n  \n  xVar1 = KERNEL_170(0x1000);\n  int2f_ax_bx_dx_si_di_es(0x1684,0x442,(int2)((uint4)xVar1 >> 0x10),(int2)xVar1,0,0);\n  *MK_FP(a1,(xunknown2 *)0xb8) = int_DI;\n  *MK_FP(a1,(xunknown2 *)0xba) = int_ES;\n  KERNEL_176(a1);\n  return a1;\n}"
+  },
+  {
+   "args": [
+    "int4 __cdecl16far sub_3_0092()\n{\n  xunknown2 in_CX;\n  xunknown2 in_DX;\n  xunknown2 unaff_SI;\n  xunknown2 int_DI;\n  xunknown2 int_ES;\n  xunknown2 unaff_DS = codebreaker_ds();\n  xunknown2 int_DS;\n  \n  if (*(int2 *)0x12 == 0 && *(int2 *)0x10 == 0) {\n    int2f(0x1684,0x33,in_CX,in_DX,unaff_SI,0,unaff_DS,0);\n    *MK_FP(int_DS,(xunknown2 *)0x12) = int_ES;\n    *MK_FP(int_DS,(xunknown2 *)0x10) = int_DI;\n    unaff_DS = int_DS;\n  }\n  return CONCAT22(*MK_FP(unaff_DS,(xunknown2 *)0x12),*MK_FP(unaff_DS,(xunknown2 *)0x10));\n}",
+    {
+     "$s": [
+      {
+       "$t": [
+        47,
+        {
+         "$t": [
+          "ax",
+          "bx",
+          "cx",
+          "dx",
+          "si",
+          "di",
+          "es"
+         ]
+        }
+       ]
+      },
+      {
+       "$t": [
+        47,
+        {
+         "$t": [
+          "ax",
+          "bx",
+          "dx",
+          "si",
+          "di",
+          "es"
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "args_after": [
+    "int4 __cdecl16far sub_3_0092()\n{\n  xunknown2 in_CX;\n  xunknown2 in_DX;\n  xunknown2 unaff_SI;\n  xunknown2 int_DI;\n  xunknown2 int_ES;\n  xunknown2 unaff_DS = codebreaker_ds();\n  xunknown2 int_DS;\n  \n  if (*(int2 *)0x12 == 0 && *(int2 *)0x10 == 0) {\n    int2f(0x1684,0x33,in_CX,in_DX,unaff_SI,0,unaff_DS,0);\n    *MK_FP(int_DS,(xunknown2 *)0x12) = int_ES;\n    *MK_FP(int_DS,(xunknown2 *)0x10) = int_DI;\n    unaff_DS = int_DS;\n  }\n  return CONCAT22(*MK_FP(unaff_DS,(xunknown2 *)0x12),*MK_FP(unaff_DS,(xunknown2 *)0x10));\n}",
+    {
+     "$s": [
+      {
+       "$t": [
+        47,
+        {
+         "$t": [
+          "ax",
+          "bx",
+          "cx",
+          "dx",
+          "si",
+          "di",
+          "es"
+         ]
+        }
+       ]
+      },
+      {
+       "$t": [
+        47,
+        {
+         "$t": [
+          "ax",
+          "bx",
+          "di",
+          "es"
+         ]
+        }
+       ]
+      },
+      {
+       "$t": [
+        47,
+        {
+         "$t": [
+          "ax",
+          "bx",
+          "dx",
+          "si",
+          "di",
+          "es"
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "kwargs": {},
+   "result": "int4 __cdecl16far sub_3_0092()\n{\n  xunknown2 in_CX;\n  xunknown2 in_DX;\n  xunknown2 unaff_SI;\n  xunknown2 unaff_DS = codebreaker_ds();\n  \n  if (*(int2 *)0x12 == 0 && *(int2 *)0x10 == 0) {\n    int2f_ax_bx_di_es(0x1684,0x33,0,0);\n    *MK_FP(int_DS,(xunknown2 *)0x12) = int_ES;\n    *MK_FP(int_DS,(xunknown2 *)0x10) = int_DI;\n    unaff_DS = int_DS;\n  }\n  return CONCAT22(*MK_FP(unaff_DS,(xunknown2 *)0x12),*MK_FP(unaff_DS,(xunknown2 *)0x10));\n}"
+  },
+  {
+   "args": [
+    "int2 __cdecl16far sub_1_0323()\n{\n  int2 iVar1;\n  uint4 uVar2;\n  int2 a1;\n  int2 int_DI;\n  int2 int_ES;\n  xunknown2 unaff_DS = codebreaker_ds();\n  xunknown4 xVar3;\n  \n  if (uRam10000310 != 0) {\n                    /* WARNING: Could not recover jumptable at 0x10000334. Too many branches */\n                    /* WARNING: Treating indirect jump as call */\n    iVar1 = (*(code *)(uRam10000310 & 0xffff))();\n    return iVar1;\n  }\n  uVar2 = uRam10000310;\n  xVar3 = KERNEL_170(0x1000);\n  int2f(0x1684,0x44a,(int2)uVar2,(int2)((uint4)xVar3 >> 0x10),(int2)xVar3,0,unaff_DS,0);\n  *MK_FP(a1,(int2 *)0x310) = int_DI;\n  *MK_FP(a1,(int2 *)0x312) = int_ES;\n  iVar1 = int_ES;\n  KERNEL_176(a1);\n  if (iVar1 == 0 && int_DI == 0) {\n    return 6;\n  }\n                    /* WARNING: Could not recover jumptable at 0x1000036c. Too many branches */\n                    /* WARNING: Treating indirect jump as call */\n  iVar1 = (*(code *)(uRam10000310 & 0xffff))();\n  return iVar1;\n}",
+    {
+     "$s": [
+      {
+       "$t": [
+        47,
+        {
+         "$t": [
+          "ax",
+          "bx",
+          "cx",
+          "dx",
+          "si",
+          "di",
+          "es"
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "kwargs": {},
+   "result": "int2 __cdecl16far sub_1_0323()\n{\n  int2 iVar1;\n  uint4 uVar2;\n  int2 a1;\n  xunknown2 unaff_DS = codebreaker_ds();\n  xunknown4 xVar3;\n  \n  if (uRam10000310 != 0) {\n                    /* WARNING: Could not recover jumptable at 0x10000334. Too many branches */\n                    /* WARNING: Treating indirect jump as call */\n    iVar1 = (*(code *)(uRam10000310 & 0xffff))();\n    return iVar1;\n  }\n  uVar2 = uRam10000310;\n  xVar3 = KERNEL_170(0x1000);\n  int2f_ax_bx_cx_dx_si_di_es(0x1684,0x44a,(int2)uVar2,(int2)((uint4)xVar3 >> 0x10),(int2)xVar3,0,0);\n  *MK_FP(a1,(int2 *)0x310) = int_DI;\n  *MK_FP(a1,(int2 *)0x312) = int_ES;\n  iVar1 = int_ES;\n  KERNEL_176(a1);\n  if (iVar1 == 0 && int_DI == 0) {\n    return 6;\n  }\n                    /* WARNING: Could not recover jumptable at 0x1000036c. Too many branches */\n                    /* WARNING: Treating indirect jump as call */\n  iVar1 = (*(code *)(uRam10000310 & 0xffff))();\n  return iVar1;\n}"
+  },
+  {
+   "args": [
+    "int2 __cdecl16far __export sub_11_01B7(param_1)\nxunknown1 param_1;\n{\n  int2 iVar1;\n  xunknown2 xVar2;\n  xunknown2 in_DX;\n  xunknown2 extraout_DX;\n  xunknown2 in_BX;\n  xunknown2 unaff_DS = codebreaker_ds();\n  xVar2 = 0;\n  sub_11_02A0();\n  sub_11_02A0();\n  if (*(int2 *)0xfa == -0x292a) {\n    (*(code *)*(xunknown2 *)0x100)();\n    in_DX = extraout_DX;\n  }\n  sub_11_02A0();\n  sub_11_02A0();\n  sub_11_0253();\n  if ((uRam10500071 & 1) == 0) {\n    iVar1 = int21(CONCAT11(0x4c,param_1),in_BX,xVar2,in_DX,0xfa,0xfa);\n  }\n  else {\n    iVar1 = KERNEL_102();\n  }\n  return iVar1;\n}",
+    {
+     "$s": [
+      {
+       "$t": [
+        33,
         {
          "$t": [
           "ax",
@@ -54,7 +328,7 @@
       },
       {
        "$t": [
-        47,
+        33,
         {
          "$t": [
           "ax",
@@ -62,122 +336,6 @@
          ]
         }
        ]
-      }
-     ]
-    }
-   ],
-   "kwargs": {},
-   "result": "int2 __stdcall16near sub_2_7178(a1)\nint2 a1;\n{\n  int2 iVar1;\n  xunknown2 unaff_DS = codebreaker_ds();\n  if (*(int2 *)0xf8a == 0) {\n    int2f_ax_bx(0x1500,0);\n    iVar1 = 0;\n    if (int_BX != 0) {\n      iVar1 = int2f_ax_bx_cx_dx(0x150b,int_BX,a1,int_DX);\n    }\n  }\n  else {\n    iVar1 = 0;\n  }\n  return iVar1;\n}"
-  },
-  {
-   "args": [
-    "int4 __cdecl16near sub_3_0060()\n{\n  xunknown2 in_CX;\n  xunknown2 extraout_DX;\n  int2 a1;\n  xunknown2 int_DI;\n  xunknown2 int_ES;\n  xunknown2 unaff_DS = codebreaker_ds();\n  xunknown4 xVar1;\n  \n  xVar1 = KERNEL_170(0x1000);\n  int2f(0x1684,0x442,in_CX,(int2)((uint4)xVar1 >> 0x10),(int2)xVar1,0,unaff_DS,0);\n  *MK_FP(a1,(xunknown2 *)0xb8) = int_DI;\n  *MK_FP(a1,(xunknown2 *)0xba) = int_ES;\n  KERNEL_176(a1);\n  return CONCAT22(extraout_DX,a1);\n}",
-    {
-     "$s": [
-      {
-       "$t": [
-        47,
-        {
-         "$t": [
-          "ax",
-          "bx",
-          "cx",
-          "dx",
-          "si",
-          "di",
-          "es"
-         ]
-        }
-       ]
-      }
-     ]
-    }
-   ],
-   "args_after": [
-    "int4 __cdecl16near sub_3_0060()\n{\n  xunknown2 in_CX;\n  xunknown2 extraout_DX;\n  int2 a1;\n  xunknown2 int_DI;\n  xunknown2 int_ES;\n  xunknown2 unaff_DS = codebreaker_ds();\n  xunknown4 xVar1;\n  \n  xVar1 = KERNEL_170(0x1000);\n  int2f(0x1684,0x442,in_CX,(int2)((uint4)xVar1 >> 0x10),(int2)xVar1,0,unaff_DS,0);\n  *MK_FP(a1,(xunknown2 *)0xb8) = int_DI;\n  *MK_FP(a1,(xunknown2 *)0xba) = int_ES;\n  KERNEL_176(a1);\n  return CONCAT22(extraout_DX,a1);\n}",
-    {
-     "$s": [
-      {
-       "$t": [
-        47,
-        {
-         "$t": [
-          "ax",
-          "bx",
-          "cx",
-          "dx",
-          "si",
-          "di",
-          "es"
-         ]
-        }
-       ]
-      },
-      {
-       "$t": [
-        47,
-        {
-         "$t": [
-          "ax",
-          "bx",
-          "dx",
-          "si",
-          "di",
-          "es"
-         ]
-        }
-       ]
-      }
-     ]
-    }
-   ],
-   "kwargs": {},
-   "result": "int4 __cdecl16near sub_3_0060()\n{\n  xunknown2 in_CX;\n  xunknown2 extraout_DX;\n  int2 a1;\n  xunknown2 unaff_DS = codebreaker_ds();\n  xunknown4 xVar1;\n  \n  xVar1 = KERNEL_170(0x1000);\n  int2f_ax_bx_dx_si_di_es(0x1684,0x442,(int2)((uint4)xVar1 >> 0x10),(int2)xVar1,0,0);\n  *MK_FP(a1,(xunknown2 *)0xb8) = int_DI;\n  *MK_FP(a1,(xunknown2 *)0xba) = int_ES;\n  KERNEL_176(a1);\n  return CONCAT22(extraout_DX,a1);\n}"
-  },
-  {
-   "args": [
-    "int2 __cdecl16far sub_1_0319()\n{\n  int2 iVar1;\n  uint4 uVar2;\n  int2 a1;\n  int2 int_DI;\n  int2 int_ES;\n  xunknown2 unaff_DS = codebreaker_ds();\n  xunknown4 xVar3;\n  \n  if (uRam10000310 != 0) {\n                    /* WARNING: Could not recover jumptable at 0x10000334. Too many branches */\n                    /* WARNING: Treating indirect jump as call */\n    iVar1 = (*(code *)(uRam10000310 & 0xffff))();\n    return iVar1;\n  }\n  uVar2 = uRam10000310;\n  xVar3 = KERNEL_170(0x1000);\n  int2f(0x1684,0x44a,(int2)uVar2,(int2)((uint4)xVar3 >> 0x10),(int2)xVar3,0,unaff_DS,0);\n  *MK_FP(a1,(int2 *)0x310) = int_DI;\n  *MK_FP(a1,(int2 *)0x312) = int_ES;\n  iVar1 = int_ES;\n  KERNEL_176(a1);\n  if (iVar1 == 0 && int_DI == 0) {\n    return 6;\n  }\n                    /* WARNING: Could not recover jumptable at 0x1000036c. Too many branches */\n                    /* WARNING: Treating indirect jump as call */\n  iVar1 = (*(code *)(uRam10000310 & 0xffff))();\n  return iVar1;\n}",
-    {
-     "$s": [
-      {
-       "$t": [
-        47,
-        {
-         "$t": [
-          "ax",
-          "bx",
-          "cx",
-          "dx",
-          "si",
-          "di",
-          "es"
-         ]
-        }
-       ]
-      }
-     ]
-    }
-   ],
-   "kwargs": {},
-   "result": "int2 __cdecl16far sub_1_0319()\n{\n  int2 iVar1;\n  uint4 uVar2;\n  int2 a1;\n  xunknown2 unaff_DS = codebreaker_ds();\n  xunknown4 xVar3;\n  \n  if (uRam10000310 != 0) {\n                    /* WARNING: Could not recover jumptable at 0x10000334. Too many branches */\n                    /* WARNING: Treating indirect jump as call */\n    iVar1 = (*(code *)(uRam10000310 & 0xffff))();\n    return iVar1;\n  }\n  uVar2 = uRam10000310;\n  xVar3 = KERNEL_170(0x1000);\n  int2f_ax_bx_cx_dx_si_di_es(0x1684,0x44a,(int2)uVar2,(int2)((uint4)xVar3 >> 0x10),(int2)xVar3,0,0);\n  *MK_FP(a1,(int2 *)0x310) = int_DI;\n  *MK_FP(a1,(int2 *)0x312) = int_ES;\n  iVar1 = int_ES;\n  KERNEL_176(a1);\n  if (iVar1 == 0 && int_DI == 0) {\n    return 6;\n  }\n                    /* WARNING: Could not recover jumptable at 0x1000036c. Too many branches */\n                    /* WARNING: Treating indirect jump as call */\n  iVar1 = (*(code *)(uRam10000310 & 0xffff))();\n  return iVar1;\n}"
-  },
-  {
-   "args": [
-    "int2 __stdcall16far sub_6_0089(a1)\nint2 a1;\n{\n  xunknown1 in_AL;\n  xunknown1 xVar1;\n  char cVar2;\n  xunknown2 in_CX;\n  xunknown2 int_CX;\n  char int_DL;\n  xunknown2 int_DX;\n  xunknown2 in_BX;\n  xunknown2 int_BX;\n  \n  xVar1 = int21(CONCAT11(0xe,in_AL),in_BX,in_CX,a1);\n  cVar2 = int21(CONCAT11(0x19,xVar1),int_BX,int_CX,int_DX);\n  return (uint2)(cVar2 == int_DL);\n}",
-    {
-     "$s": [
-      {
-       "$t": [
-        33,
-        {
-         "$t": [
-          "ax",
-          "bx",
-          "cx",
-          "dx"
-         ]
-        }
-       ]
       },
       {
        "$t": [
@@ -185,21 +343,8 @@
         {
          "$t": [
           "ax",
-          "bx",
           "dx",
           "ds"
-         ]
-        }
-       ]
-      },
-      {
-       "$t": [
-        33,
-        {
-         "$t": [
-          "ax",
-          "bx",
-          "dx"
          ]
         }
        ]
@@ -213,84 +358,12 @@
          ]
         }
        ]
-      },
-      {
-       "$t": [
-        47,
-        {
-         "$t": [
-          "ax",
-          "bx",
-          "cx",
-          "dx",
-          "si",
-          "di",
-          "es"
-         ]
-        }
-       ]
-      },
-      {
-       "$t": [
-        47,
-        {
-         "$t": [
-          "ax",
-          "bx",
-          "di",
-          "es"
-         ]
-        }
-       ]
-      },
-      {
-       "$t": [
-        47,
-        {
-         "$t": [
-          "ax",
-          "bx",
-          "dx",
-          "si",
-          "di",
-          "es"
-         ]
-        }
-       ]
-      },
-      {
-       "$t": [
-        49,
-        {
-         "$t": [
-          "ax",
-          "bx",
-          "cx",
-          "dx",
-          "si",
-          "di"
-         ]
-        }
-       ]
-      },
-      {
-       "$t": [
-        49,
-        {
-         "$t": [
-          "ax",
-          "bx",
-          "cx",
-          "si"
-         ]
-        }
-       ]
       }
      ]
     }
    ],
    "args_after": [
-    "int2 __stdcall16far sub_6_0089(a1)\nint2 a1;\n{\n  xunknown1 in_AL;\n  xunknown1 xVar1;\n  char cVar2;\n  xunknown2 in_CX;\n  xunknown2 int_CX;\n  char int_DL;\n  xunknown2 int_DX;\n  xunknown2 in_BX;\n  xunknown2 int_BX;\n  \n  xVar1 = int21(CONCAT11(0xe,in_AL),in_BX,in_CX,a1);\n  cVar2 = int21(CONCAT11(0x19,xVar1),int_BX,int_CX,int_DX);\n  return (uint2)(cVar2 == int_DL);\n}",
+    "int2 __cdecl16far __export sub_11_01B7(param_1)\nxunknown1 param_1;\n{\n  int2 iVar1;\n  xunknown2 xVar2;\n  xunknown2 in_DX;\n  xunknown2 extraout_DX;\n  xunknown2 in_BX;\n  xunknown2 unaff_DS = codebreaker_ds();\n  xVar2 = 0;\n  sub_11_02A0();\n  sub_11_02A0();\n  if (*(int2 *)0xfa == -0x292a) {\n    (*(code *)*(xunknown2 *)0x100)();\n    in_DX = extraout_DX;\n  }\n  sub_11_02A0();\n  sub_11_02A0();\n  sub_11_0253();\n  if ((uRam10500071 & 1) == 0) {\n    iVar1 = int21(CONCAT11(0x4c,param_1),in_BX,xVar2,in_DX,0xfa,0xfa);\n  }\n  else {\n    iVar1 = KERNEL_102();\n  }\n  return iVar1;\n}",
     {
      "$s": [
       {
@@ -312,32 +385,32 @@
         {
          "$t": [
           "ax",
-          "bx",
+          "bx"
+         ]
+        }
+       ]
+      },
+      {
+       "$t": [
+        33,
+        {
+         "$t": [
+          "ax",
+          "cx",
+          "si",
+          "di"
+         ]
+        }
+       ]
+      },
+      {
+       "$t": [
+        33,
+        {
+         "$t": [
+          "ax",
           "dx",
           "ds"
-         ]
-        }
-       ]
-      },
-      {
-       "$t": [
-        33,
-        {
-         "$t": [
-          "ax",
-          "bx",
-          "dx"
-         ]
-        }
-       ]
-      },
-      {
-       "$t": [
-        33,
-        {
-         "$t": [
-          "ax",
-          "dx"
          ]
         }
        ]
@@ -351,206 +424,16 @@
          ]
         }
        ]
-      },
-      {
-       "$t": [
-        47,
-        {
-         "$t": [
-          "ax",
-          "bx",
-          "cx",
-          "dx",
-          "si",
-          "di",
-          "es"
-         ]
-        }
-       ]
-      },
-      {
-       "$t": [
-        47,
-        {
-         "$t": [
-          "ax",
-          "bx",
-          "di",
-          "es"
-         ]
-        }
-       ]
-      },
-      {
-       "$t": [
-        47,
-        {
-         "$t": [
-          "ax",
-          "bx",
-          "dx",
-          "si",
-          "di",
-          "es"
-         ]
-        }
-       ]
-      },
-      {
-       "$t": [
-        49,
-        {
-         "$t": [
-          "ax",
-          "bx",
-          "cx",
-          "dx",
-          "si",
-          "di"
-         ]
-        }
-       ]
-      },
-      {
-       "$t": [
-        49,
-        {
-         "$t": [
-          "ax",
-          "bx",
-          "cx",
-          "si"
-         ]
-        }
-       ]
       }
      ]
     }
    ],
    "kwargs": {},
-   "result": "int2 __stdcall16far sub_6_0089(a1)\nint2 a1;\n{\n  xunknown1 in_AL;\n  xunknown1 xVar1;\n  char cVar2;\n  xunknown2 in_CX;\n  xunknown2 in_BX;\n  \n  xVar1 = int21_ax_dx(CONCAT11(0xe,in_AL),a1);\n  cVar2 = int21_ax_bx_cx_dx(CONCAT11(0x19,xVar1),int_BX,int_CX,int_DX);\n  return (uint2)(cVar2 == int_DL);\n}"
+   "result": "int2 __cdecl16far __export sub_11_01B7(param_1)\nxunknown1 param_1;\n{\n  int2 iVar1;\n  xunknown2 xVar2;\n  xunknown2 in_DX;\n  xunknown2 extraout_DX;\n  xunknown2 in_BX;\n  xunknown2 unaff_DS = codebreaker_ds();\n  xVar2 = 0;\n  sub_11_02A0();\n  sub_11_02A0();\n  if (*(int2 *)0xfa == -0x292a) {\n    (*(code *)*(xunknown2 *)0x100)();\n    in_DX = extraout_DX;\n  }\n  sub_11_02A0();\n  sub_11_02A0();\n  sub_11_0253();\n  if ((uRam10500071 & 1) == 0) {\n    iVar1 = int21_ax_cx_si_di(CONCAT11(0x4c,param_1),xVar2,0xfa,0xfa);\n  }\n  else {\n    iVar1 = KERNEL_102();\n  }\n  return iVar1;\n}"
   },
   {
    "args": [
-    "int4 __stdcall16near sub_3_28A4(a1,a2)\nint2 a1;\nint2 a2;\n{\n  xunknown2 xVar1;\n  xunknown2 in_CX;\n  xunknown2 int_CX;\n  xunknown2 xVar2;\n  xunknown2 int_DX;\n  int2 unaff_SS = codebreaker_ss();\n  xunknown4 xVar3;\n  xunknown1 axStack_8c [136];\n  int2 iStack_4;\n  \n  xVar3 = KERNEL_74(0x40,(int2)axStack_8c,unaff_SS,a1,a2);\n  iStack_4 = (int2)xVar3;\n  if (iStack_4 == -1) {\n    xVar1 = 0;\n    xVar2 = 0;\n  }\n  else {\n    int21(0x5700,iStack_4,in_CX,(int2)((uint4)xVar3 >> 0x10));\n    KERNEL_81(iStack_4);\n    xVar1 = int_CX;\n    xVar2 = int_DX;\n  }\n  return CONCAT22(xVar2,xVar1);\n}",
-    {
-     "$s": [
-      {
-       "$t": [
-        47,
-        {
-         "$t": [
-          "ax",
-          "bx",
-          "cx",
-          "dx",
-          "si",
-          "di",
-          "es"
-         ]
-        }
-       ]
-      },
-      {
-       "$t": [
-        47,
-        {
-         "$t": [
-          "ax",
-          "bx",
-          "di",
-          "es"
-         ]
-        }
-       ]
-      },
-      {
-       "$t": [
-        47,
-        {
-         "$t": [
-          "ax",
-          "bx",
-          "dx",
-          "si",
-          "di",
-          "es"
-         ]
-        }
-       ]
-      }
-     ]
-    }
-   ],
-   "args_after": [
-    "int4 __stdcall16near sub_3_28A4(a1,a2)\nint2 a1;\nint2 a2;\n{\n  xunknown2 xVar1;\n  xunknown2 in_CX;\n  xunknown2 int_CX;\n  xunknown2 xVar2;\n  xunknown2 int_DX;\n  int2 unaff_SS = codebreaker_ss();\n  xunknown4 xVar3;\n  xunknown1 axStack_8c [136];\n  int2 iStack_4;\n  \n  xVar3 = KERNEL_74(0x40,(int2)axStack_8c,unaff_SS,a1,a2);\n  iStack_4 = (int2)xVar3;\n  if (iStack_4 == -1) {\n    xVar1 = 0;\n    xVar2 = 0;\n  }\n  else {\n    int21(0x5700,iStack_4,in_CX,(int2)((uint4)xVar3 >> 0x10));\n    KERNEL_81(iStack_4);\n    xVar1 = int_CX;\n    xVar2 = int_DX;\n  }\n  return CONCAT22(xVar2,xVar1);\n}",
-    {
-     "$s": [
-      {
-       "$t": [
-        33,
-        {
-         "$t": [
-          "ax",
-          "bx",
-          "dx"
-         ]
-        }
-       ]
-      },
-      {
-       "$t": [
-        47,
-        {
-         "$t": [
-          "ax",
-          "bx",
-          "cx",
-          "dx",
-          "si",
-          "di",
-          "es"
-         ]
-        }
-       ]
-      },
-      {
-       "$t": [
-        47,
-        {
-         "$t": [
-          "ax",
-          "bx",
-          "di",
-          "es"
-         ]
-        }
-       ]
-      },
-      {
-       "$t": [
-        47,
-        {
-         "$t": [
-          "ax",
-          "bx",
-          "dx",
-          "si",
-          "di",
-          "es"
-         ]
-        }
-       ]
-      }
-     ]
-    }
-   ],
-   "kwargs": {},
-   "result": "int4 __stdcall16near sub_3_28A4(a1,a2)\nint2 a1;\nint2 a2;\n{\n  xunknown2 xVar1;\n  xunknown2 in_CX;\n  xunknown2 xVar2;\n  int2 unaff_SS = codebreaker_ss();\n  xunknown4 xVar3;\n  xunknown1 axStack_8c [136];\n  int2 iStack_4;\n  \n  xVar3 = KERNEL_74(0x40,(int2)axStack_8c,unaff_SS,a1,a2);\n  iStack_4 = (int2)xVar3;\n  if (iStack_4 == -1) {\n    xVar1 = 0;\n    xVar2 = 0;\n  }\n  else {\n    int21_ax_bx_dx(0x5700,iStack_4,(int2)((uint4)xVar3 >> 0x10));\n    KERNEL_81(iStack_4);\n    xVar1 = int_CX;\n    xVar2 = int_DX;\n  }\n  return CONCAT22(xVar2,xVar1);\n}"
-  },
-  {
-   "args": [
-    "int2 __cdecl16near sub_1_02C1()\n{\n  xunknown2 xVar1;\n  int2 iVar2;\n  xunknown2 in_CX;\n  xunknown2 in_DX;\n  xunknown2 unaff_SI;\n  xunknown2 unaff_DI;\n  int2 int_DI;\n  int2 int_ES;\n  xunknown2 int_DS;\n  \n  int2f(0x1684,0x442,in_CX,in_DX,unaff_SI,unaff_DI,xRam10000000);\n  iVar2 = 0;\n  if (int_ES != 0 || int_DI != 0) {\n    *MK_FP(int_DS,(int2 *)0x18) = int_DI;\n    *MK_FP(int_DS,(int2 *)0x1a) = int_ES;\n    xVar1 = (*MK_FP(MK_FP(int_DS,(xunknown2 *)0x18)[1],(code *)*MK_FP(int_DS,(xunknown2 *)0x18)))\n                      (0x1000);\n    *MK_FP(int_DS,(xunknown2 *)0x1c) = xVar1;\n    *MK_FP(int_DS,(xunknown4 *)0x1e) = xRam00000000;\n    iVar2 = (*MK_FP(MK_FP(int_DS,(xunknown2 *)0x18)[1],(code *)*MK_FP(int_DS,(xunknown2 *)0x18)))\n                      (0x1000);\n  }\n  return iVar2;\n}",
+    "int2 __cdecl16near sub_1_02C1()\n{\n  xunknown2 xVar1;\n  int2 iVar2;\n  xunknown2 in_CX;\n  xunknown2 in_DX;\n  xunknown2 unaff_SI;\n  xunknown2 unaff_DI;\n  int2 int_DI;\n  int2 int_ES;\n  xunknown2 int_DS;\n  \n  int2f(0x1684,0x442,in_CX,in_DX,unaff_SI,unaff_DI,xRam10000000);\n  iVar2 = 0;\n  if (int_ES != 0 || int_DI != 0) {\n    *MK_FP(int_DS,(int2 *)0x18) = int_DI;\n    *MK_FP(int_DS,(int2 *)0x1a) = int_ES;\n    xVar1 = (*MK_FP(MK_FP(int_DS,(xunknown2 *)0x18)[1],(code *)*MK_FP(int_DS,(xunknown2 *)0x18)))\n                      (0x1000);\n    *MK_FP(int_DS,(xunknown2 *)0x1c) = xVar1;\n    *MK_FP(int_DS,(xunknown4 *)0x1e) = iRam00000000;\n    iVar2 = (*MK_FP(MK_FP(int_DS,(xunknown2 *)0x18)[1],(code *)*MK_FP(int_DS,(xunknown2 *)0x18)))\n                      (0x1000);\n  }\n  return iVar2;\n}",
     {
      "$s": [
       {
@@ -581,7 +464,7 @@
     }
    ],
    "args_after": [
-    "int2 __cdecl16near sub_1_02C1()\n{\n  xunknown2 xVar1;\n  int2 iVar2;\n  xunknown2 in_CX;\n  xunknown2 in_DX;\n  xunknown2 unaff_SI;\n  xunknown2 unaff_DI;\n  int2 int_DI;\n  int2 int_ES;\n  xunknown2 int_DS;\n  \n  int2f(0x1684,0x442,in_CX,in_DX,unaff_SI,unaff_DI,xRam10000000);\n  iVar2 = 0;\n  if (int_ES != 0 || int_DI != 0) {\n    *MK_FP(int_DS,(int2 *)0x18) = int_DI;\n    *MK_FP(int_DS,(int2 *)0x1a) = int_ES;\n    xVar1 = (*MK_FP(MK_FP(int_DS,(xunknown2 *)0x18)[1],(code *)*MK_FP(int_DS,(xunknown2 *)0x18)))\n                      (0x1000);\n    *MK_FP(int_DS,(xunknown2 *)0x1c) = xVar1;\n    *MK_FP(int_DS,(xunknown4 *)0x1e) = xRam00000000;\n    iVar2 = (*MK_FP(MK_FP(int_DS,(xunknown2 *)0x18)[1],(code *)*MK_FP(int_DS,(xunknown2 *)0x18)))\n                      (0x1000);\n  }\n  return iVar2;\n}",
+    "int2 __cdecl16near sub_1_02C1()\n{\n  xunknown2 xVar1;\n  int2 iVar2;\n  xunknown2 in_CX;\n  xunknown2 in_DX;\n  xunknown2 unaff_SI;\n  xunknown2 unaff_DI;\n  int2 int_DI;\n  int2 int_ES;\n  xunknown2 int_DS;\n  \n  int2f(0x1684,0x442,in_CX,in_DX,unaff_SI,unaff_DI,xRam10000000);\n  iVar2 = 0;\n  if (int_ES != 0 || int_DI != 0) {\n    *MK_FP(int_DS,(int2 *)0x18) = int_DI;\n    *MK_FP(int_DS,(int2 *)0x1a) = int_ES;\n    xVar1 = (*MK_FP(MK_FP(int_DS,(xunknown2 *)0x18)[1],(code *)*MK_FP(int_DS,(xunknown2 *)0x18)))\n                      (0x1000);\n    *MK_FP(int_DS,(xunknown2 *)0x1c) = xVar1;\n    *MK_FP(int_DS,(xunknown4 *)0x1e) = iRam00000000;\n    iVar2 = (*MK_FP(MK_FP(int_DS,(xunknown2 *)0x18)[1],(code *)*MK_FP(int_DS,(xunknown2 *)0x18)))\n                      (0x1000);\n  }\n  return iVar2;\n}",
     {
      "$s": [
       {
@@ -624,7 +507,7 @@
     }
    ],
    "kwargs": {},
-   "result": "int2 __cdecl16near sub_1_02C1()\n{\n  xunknown2 xVar1;\n  int2 iVar2;\n  xunknown2 in_CX;\n  xunknown2 in_DX;\n  xunknown2 unaff_SI;\n  xunknown2 unaff_DI;\n  \n  int2f_ax_bx_ds(0x1684,0x442,xRam10000000);\n  iVar2 = 0;\n  if (int_ES != 0 || int_DI != 0) {\n    *MK_FP(int_DS,(int2 *)0x18) = int_DI;\n    *MK_FP(int_DS,(int2 *)0x1a) = int_ES;\n    xVar1 = (*MK_FP(MK_FP(int_DS,(xunknown2 *)0x18)[1],(code *)*MK_FP(int_DS,(xunknown2 *)0x18)))\n                      (0x1000);\n    *MK_FP(int_DS,(xunknown2 *)0x1c) = xVar1;\n    *MK_FP(int_DS,(xunknown4 *)0x1e) = xRam00000000;\n    iVar2 = (*MK_FP(MK_FP(int_DS,(xunknown2 *)0x18)[1],(code *)*MK_FP(int_DS,(xunknown2 *)0x18)))\n                      (0x1000);\n  }\n  return iVar2;\n}"
+   "result": "int2 __cdecl16near sub_1_02C1()\n{\n  xunknown2 xVar1;\n  int2 iVar2;\n  xunknown2 in_CX;\n  xunknown2 in_DX;\n  xunknown2 unaff_SI;\n  xunknown2 unaff_DI;\n  \n  int2f_ax_bx_ds(0x1684,0x442,xRam10000000);\n  iVar2 = 0;\n  if (int_ES != 0 || int_DI != 0) {\n    *MK_FP(int_DS,(int2 *)0x18) = int_DI;\n    *MK_FP(int_DS,(int2 *)0x1a) = int_ES;\n    xVar1 = (*MK_FP(MK_FP(int_DS,(xunknown2 *)0x18)[1],(code *)*MK_FP(int_DS,(xunknown2 *)0x18)))\n                      (0x1000);\n    *MK_FP(int_DS,(xunknown2 *)0x1c) = xVar1;\n    *MK_FP(int_DS,(xunknown4 *)0x1e) = iRam00000000;\n    iVar2 = (*MK_FP(MK_FP(int_DS,(xunknown2 *)0x18)[1],(code *)*MK_FP(int_DS,(xunknown2 *)0x18)))\n                      (0x1000);\n  }\n  return iVar2;\n}"
   },
   {
    "args": [
@@ -661,15 +544,53 @@
   },
   {
    "args": [
-    "int2 __cdecl16far sub_1_0918()\n{\n  char cVar1;\n  xunknown2 in_CX;\n  int2 iVar2;\n  xunknown2 in_DX;\n  xunknown2 unaff_SI;\n  xunknown2 unaff_DI;\n  int2 int_DI;\n  char *pcVar3;\n  xunknown1 *pxVar4;\n  int2 int_ES;\n  xunknown2 unaff_DS = codebreaker_ds();\n  xunknown2 int_DS;\n  \n  *(xunknown2 *)0x4be = unaff_DI;\n  int2f(0x1684,0x2b,in_CX,in_DX,unaff_SI,0,unaff_DS,0);\n  *MK_FP(int_DS,(int2 *)0x30) = int_DI;\n  *MK_FP(int_DS,(int2 *)0x32) = int_ES;\n  if (int_ES != 0 || int_DI != 0) {\n    pcVar3 = (char *)0x7c;\n    iVar2 = 10;\n    cVar1 = '\\0';\n    do {\n      MK_FP(int_DS,pcVar3 + 0x1c)[0] = -1;\n      MK_FP(int_DS,pcVar3 + 0x1c)[1] = -1;\n      *MK_FP(int_DS,pcVar3) = cVar1;\n      cVar1 = cVar1 + '\\x01';\n      pcVar3 = pcVar3 + 0x61;\n      iVar2 = iVar2 + -1;\n    } while (iVar2 != 0);\n    pxVar4 = (xunknown1 *)0x446;\n    iVar2 = 3;\n    do {\n      *MK_FP(int_DS,pxVar4) = 0xff;\n      pxVar4 = pxVar4 + 0x19;\n      iVar2 = iVar2 + -1;\n    } while (iVar2 != 0);\n  }\n  *MK_FP(int_DS,(xunknown2 *)0x39) = xRam00000008;\n  *MK_FP(int_DS,(xunknown2 *)0x3b) = xRam0000000a;\n  *MK_FP(int_DS,(xunknown2 *)0x3d) = xRam0000000c;\n  return -1;\n}",
+    "int2 __cdecl16near sub_11_0253()\n{\n  int2 iVar1;\n  int2 iVar2;\n  int2 int_CX;\n  int2 int_CX_00;\n  xunknown2 in_BX;\n  xunknown2 int_BX;\n  xunknown2 int_BX_00;\n  xunknown2 unaff_SI;\n  xunknown2 int_SI;\n  xunknown2 unaff_DI;\n  xunknown2 int_DI;\n  xunknown2 unaff_DS = codebreaker_ds();\n  xunknown4 xVar3;\n  \n  iVar2 = *(int2 *)0xf0;\n  if (iVar2 != 0) {\n    in_BX = 2;\n    (*MK_FP(((xunknown2 *)0xee)[1],(code *)*(xunknown2 *)0xee))();\n  }\n  xVar3 = CONCAT22((int2)*(xunknown4 *)0xa4,0x2500);\n  if ((uRam10500071 & 1) == 0) goto code_r0x10500278;\n  iVar1 = KERNEL_102();\n  while( true ) {\n    if (*(char *)0xe2 == '\\0') {\n      return iVar1;\n    }\n    if ((uRam10500071 & 1) != 0) break;\n    xVar3 = int21(CONCAT11(0x25,*(xunknown1 *)0xe3),in_BX,iVar2,(int2)*(xunknown4 *)0xe4,unaff_SI,\n                  unaff_DI,(int2)((uint4)*(xunknown4 *)0xe4 >> 0x10));\n    iVar2 = int_CX_00;\n    in_BX = int_BX_00;\ncode_r0x10500278:\n    iVar1 = int21((int2)xVar3,in_BX,iVar2,(int2)((uint4)xVar3 >> 0x10));\n    iVar2 = int_CX;\n    in_BX = int_BX;\n    unaff_SI = int_SI;\n    unaff_DI = int_DI;\n  }\n  iVar2 = KERNEL_102();\n  return iVar2;\n}",
     {
      "$s": [
       {
        "$t": [
-        3,
+        33,
         {
          "$t": [
           "ax",
+          "bx",
+          "cx",
+          "dx"
+         ]
+        }
+       ]
+      },
+      {
+       "$t": [
+        33,
+        {
+         "$t": [
+          "ax",
+          "bx"
+         ]
+        }
+       ]
+      },
+      {
+       "$t": [
+        33,
+        {
+         "$t": [
+          "ax",
+          "cx",
+          "si",
+          "di"
+         ]
+        }
+       ]
+      },
+      {
+       "$t": [
+        33,
+        {
+         "$t": [
+          "ax",
+          "dx",
           "ds"
          ]
         }
@@ -677,12 +598,10 @@
       },
       {
        "$t": [
-        3,
+        33,
         {
          "$t": [
-          "ax",
-          "dx",
-          "ds"
+          "ax"
          ]
         }
        ]
@@ -691,15 +610,41 @@
     }
    ],
    "args_after": [
-    "int2 __cdecl16far sub_1_0918()\n{\n  char cVar1;\n  xunknown2 in_CX;\n  int2 iVar2;\n  xunknown2 in_DX;\n  xunknown2 unaff_SI;\n  xunknown2 unaff_DI;\n  int2 int_DI;\n  char *pcVar3;\n  xunknown1 *pxVar4;\n  int2 int_ES;\n  xunknown2 unaff_DS = codebreaker_ds();\n  xunknown2 int_DS;\n  \n  *(xunknown2 *)0x4be = unaff_DI;\n  int2f(0x1684,0x2b,in_CX,in_DX,unaff_SI,0,unaff_DS,0);\n  *MK_FP(int_DS,(int2 *)0x30) = int_DI;\n  *MK_FP(int_DS,(int2 *)0x32) = int_ES;\n  if (int_ES != 0 || int_DI != 0) {\n    pcVar3 = (char *)0x7c;\n    iVar2 = 10;\n    cVar1 = '\\0';\n    do {\n      MK_FP(int_DS,pcVar3 + 0x1c)[0] = -1;\n      MK_FP(int_DS,pcVar3 + 0x1c)[1] = -1;\n      *MK_FP(int_DS,pcVar3) = cVar1;\n      cVar1 = cVar1 + '\\x01';\n      pcVar3 = pcVar3 + 0x61;\n      iVar2 = iVar2 + -1;\n    } while (iVar2 != 0);\n    pxVar4 = (xunknown1 *)0x446;\n    iVar2 = 3;\n    do {\n      *MK_FP(int_DS,pxVar4) = 0xff;\n      pxVar4 = pxVar4 + 0x19;\n      iVar2 = iVar2 + -1;\n    } while (iVar2 != 0);\n  }\n  *MK_FP(int_DS,(xunknown2 *)0x39) = xRam00000008;\n  *MK_FP(int_DS,(xunknown2 *)0x3b) = xRam0000000a;\n  *MK_FP(int_DS,(xunknown2 *)0x3d) = xRam0000000c;\n  return -1;\n}",
+    "int2 __cdecl16near sub_11_0253()\n{\n  int2 iVar1;\n  int2 iVar2;\n  int2 int_CX;\n  int2 int_CX_00;\n  xunknown2 in_BX;\n  xunknown2 int_BX;\n  xunknown2 int_BX_00;\n  xunknown2 unaff_SI;\n  xunknown2 int_SI;\n  xunknown2 unaff_DI;\n  xunknown2 int_DI;\n  xunknown2 unaff_DS = codebreaker_ds();\n  xunknown4 xVar3;\n  \n  iVar2 = *(int2 *)0xf0;\n  if (iVar2 != 0) {\n    in_BX = 2;\n    (*MK_FP(((xunknown2 *)0xee)[1],(code *)*(xunknown2 *)0xee))();\n  }\n  xVar3 = CONCAT22((int2)*(xunknown4 *)0xa4,0x2500);\n  if ((uRam10500071 & 1) == 0) goto code_r0x10500278;\n  iVar1 = KERNEL_102();\n  while( true ) {\n    if (*(char *)0xe2 == '\\0') {\n      return iVar1;\n    }\n    if ((uRam10500071 & 1) != 0) break;\n    xVar3 = int21(CONCAT11(0x25,*(xunknown1 *)0xe3),in_BX,iVar2,(int2)*(xunknown4 *)0xe4,unaff_SI,\n                  unaff_DI,(int2)((uint4)*(xunknown4 *)0xe4 >> 0x10));\n    iVar2 = int_CX_00;\n    in_BX = int_BX_00;\ncode_r0x10500278:\n    iVar1 = int21((int2)xVar3,in_BX,iVar2,(int2)((uint4)xVar3 >> 0x10));\n    iVar2 = int_CX;\n    in_BX = int_BX;\n    unaff_SI = int_SI;\n    unaff_DI = int_DI;\n  }\n  iVar2 = KERNEL_102();\n  return iVar2;\n}",
     {
      "$s": [
       {
        "$t": [
-        3,
+        33,
         {
          "$t": [
           "ax",
+          "bx",
+          "cx",
+          "dx"
+         ]
+        }
+       ]
+      },
+      {
+       "$t": [
+        33,
+        {
+         "$t": [
+          "ax",
+          "bx"
+         ]
+        }
+       ]
+      },
+      {
+       "$t": [
+        33,
+        {
+         "$t": [
+          "ax",
+          "cx",
+          "dx",
           "ds"
          ]
         }
@@ -707,7 +652,32 @@
       },
       {
        "$t": [
-        3,
+        33,
+        {
+         "$t": [
+          "ax",
+          "cx",
+          "dx"
+         ]
+        }
+       ]
+      },
+      {
+       "$t": [
+        33,
+        {
+         "$t": [
+          "ax",
+          "cx",
+          "si",
+          "di"
+         ]
+        }
+       ]
+      },
+      {
+       "$t": [
+        33,
         {
          "$t": [
           "ax",
@@ -719,13 +689,10 @@
       },
       {
        "$t": [
-        47,
+        33,
         {
          "$t": [
-          "ax",
-          "bx",
-          "di",
-          "es"
+          "ax"
          ]
         }
        ]
@@ -734,7 +701,7 @@
     }
    ],
    "kwargs": {},
-   "result": "int2 __cdecl16far sub_1_0918()\n{\n  char cVar1;\n  xunknown2 in_CX;\n  int2 iVar2;\n  xunknown2 in_DX;\n  xunknown2 unaff_SI;\n  xunknown2 unaff_DI;\n  char *pcVar3;\n  xunknown1 *pxVar4;\n  xunknown2 unaff_DS = codebreaker_ds();\n  \n  *(xunknown2 *)0x4be = unaff_DI;\n  int2f_ax_bx_di_es(0x1684,0x2b,0,0);\n  *MK_FP(int_DS,(int2 *)0x30) = int_DI;\n  *MK_FP(int_DS,(int2 *)0x32) = int_ES;\n  if (int_ES != 0 || int_DI != 0) {\n    pcVar3 = (char *)0x7c;\n    iVar2 = 10;\n    cVar1 = '\\0';\n    do {\n      MK_FP(int_DS,pcVar3 + 0x1c)[0] = -1;\n      MK_FP(int_DS,pcVar3 + 0x1c)[1] = -1;\n      *MK_FP(int_DS,pcVar3) = cVar1;\n      cVar1 = cVar1 + '\\x01';\n      pcVar3 = pcVar3 + 0x61;\n      iVar2 = iVar2 + -1;\n    } while (iVar2 != 0);\n    pxVar4 = (xunknown1 *)0x446;\n    iVar2 = 3;\n    do {\n      *MK_FP(int_DS,pxVar4) = 0xff;\n      pxVar4 = pxVar4 + 0x19;\n      iVar2 = iVar2 + -1;\n    } while (iVar2 != 0);\n  }\n  *MK_FP(int_DS,(xunknown2 *)0x39) = xRam00000008;\n  *MK_FP(int_DS,(xunknown2 *)0x3b) = xRam0000000a;\n  *MK_FP(int_DS,(xunknown2 *)0x3d) = xRam0000000c;\n  return -1;\n}"
+   "result": "int2 __cdecl16near sub_11_0253()\n{\n  int2 iVar1;\n  int2 iVar2;\n  xunknown2 in_BX;\n  xunknown2 unaff_SI;\n  xunknown2 unaff_DI;\n  xunknown2 unaff_DS = codebreaker_ds();\n  xunknown4 xVar3;\n  \n  iVar2 = *(int2 *)0xf0;\n  if (iVar2 != 0) {\n    in_BX = 2;\n    (*MK_FP(((xunknown2 *)0xee)[1],(code *)*(xunknown2 *)0xee))();\n  }\n  xVar3 = CONCAT22((int2)*(xunknown4 *)0xa4,0x2500);\n  if ((uRam10500071 & 1) == 0) goto code_r0x10500278;\n  iVar1 = KERNEL_102();\n  while( true ) {\n    if (*(char *)0xe2 == '\\0') {\n      return iVar1;\n    }\n    if ((uRam10500071 & 1) != 0) break;\n    xVar3 = int21_ax_cx_dx_ds(CONCAT11(0x25,*(xunknown1 *)0xe3),iVar2,(int2)*(xunknown4 *)0xe4,(int2)((uint4)*(xunknown4 *)0xe4 >> 0x10));\n    iVar2 = int_CX;\n    in_BX = int_BX;\ncode_r0x10500278:\n    iVar1 = int21_ax_cx_dx((int2)xVar3,iVar2,(int2)((uint4)xVar3 >> 0x10));\n    iVar2 = int_CX;\n    in_BX = int_BX;\n    unaff_SI = int_SI;\n    unaff_DI = int_DI;\n  }\n  iVar2 = KERNEL_102();\n  return iVar2;\n}"
   },
   {
    "args": [

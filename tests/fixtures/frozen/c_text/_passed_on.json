@@ -11,7 +11,7 @@
   {
    "args": [
     "a2",
-    "es"
+    "si"
    ],
    "kwargs": {},
    "result": false
@@ -26,8 +26,8 @@
   },
   {
    "args": [
-    "uVar2",
-    "bx"
+    "uVar4",
+    "cx"
    ],
    "kwargs": {},
    "result": false
@@ -42,8 +42,8 @@
   },
   {
    "args": [
-    "int_BX",
-    "bx"
+    "iVar14",
+    "ds"
    ],
    "kwargs": {},
    "result": false
@@ -51,22 +51,22 @@
   {
    "args": [
     "iStack_4",
-    "bx"
+    "ds"
    ],
    "kwargs": {},
    "result": false
   },
   {
    "args": [
-    "(int2)xVar1",
-    "si"
+    "int_DX + a3",
+    "cx"
    ],
    "kwargs": {},
    "result": false
   },
   {
    "args": [
-    "CONCAT11(0x3b,unaff_CS)",
+    "CONCAT11(0x30,(char)iVar1)",
     "ax"
    ],
    "kwargs": {},

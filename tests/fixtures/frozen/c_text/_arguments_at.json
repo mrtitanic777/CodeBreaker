@@ -2,8 +2,40 @@
  "cases": [
   {
    "args": [
-    "((int2)*(xunknown4 *)MK_FP(a3,a2) + 8)",
-    26
+    "*MK_FP(iVar2,piVar1 + 1)",
+    6
+   ],
+   "kwargs": {},
+   "result": {
+    "$t": [
+     [
+      "iVar2",
+      "piVar1 + 1"
+     ],
+     24
+    ]
+   }
+  },
+  {
+   "args": [
+    "int2 __stdcall16near sub_2_2E64(a1,a2)\nint2 a1;\nint2 a2;\n{\n  char cVar1;\n  char cVar2;\n  int2 iVar3;\n  int2 unaff_DI;\n  int2 unaff_DS = codebreaker_ds();\n  int2 iStack_6;\n  \n  cVar1 = *MK_FP(a2,(char *)(a1 + 4));\n  if (cVar1 == '.') {\n    *MK_FP(a2,(xunknown1 *)(a1 + 4)) = 0;\n  }\n  cVar2 = *MK_FP(a2,(char *)(a1 + 3));\n  if (cVar2 == '.') {\n    *MK_FP(a2,(xunknown1 *)(a1 + 3)) = 0;\n  }\n  iStack_6 = 0;\n  while ((iStack_6 < 0xe &&\n         (iVar3 = USER_471(a1,a2,*(int2 *)(iStack_6 * 2 + 0xbe),unaff_DS,unaff_DI), iVar3 != 0))) {\n    iStack_6 = iStack_6 + 1;\n  }\n  *MK_FP(a2,(char *)(a1 + 4)) = cVar1;\n  *MK_FP(a2,(char *)(a1 + 3)) = cVar2;\n  return (uint2)(iStack_6 != 0xe);\n}",
+    245
+   ],
+   "kwargs": {},
+   "result": {
+    "$t": [
+     [
+      "a2",
+      "(xunknown1 *)(a1 + 4)"
+     ],
+     271
+    ]
+   }
+  },
+  {
+   "args": [
+    "int4 __stdcall16far __loadds MMIOSTRINGTOFOURCC(a1,a2,a3)\nint2 a1;\nint2 a2;\nint2 a3;\n{\n  char cVar1;\n  int2 iVar2;\n  char *pcVar3;\n  xunknown2 unaff_SS = codebreaker_ss();\n  xunknown2 xStack_c;\n  xunknown2 xStack_a;\n  char *pcStack_8;\n  int2 iStack_4;\n  \n  pcStack_8 = (char *)&xStack_c;\n  iVar2 = KERNEL_337(-1,a2,a3);\n  if (iVar2 == 0) {\n    if ((a1 & 0xffefU) == 0) {\n      iStack_4 = 3;\n      pcVar3 = pcStack_8;\n      do {\n        if (*(char *)MK_FP(a3,a2) == '\\0') {\n          *pcVar3 = ' ';\n        }\n        else {\n          cVar1 = *(char *)MK_FP(a3,a2);\n          *pcVar3 = cVar1;\n          a2 = a2 + 1;\n          if ((a1 & 0x10U) != 0) {\n            cVar1 = USER_431((int2)cVar1,(int2)cVar1 >> 0xf);\n            *pcVar3 = cVar1;\n          }\n        }\n        pcVar3 = pcVar3 + 1;\n        iStack_4 = iStack_4 + -1;\n      } while (-1 < iStack_4);\n      goto code_r0x10380e22;\n    }\n    xStack_c = 0xffff;\n  }\n  else {\n    xStack_c = 0;\n  }\n  xStack_a = 0;\ncode_r0x10380e22:\n  return CONCAT22(xStack_a,xStack_c);\n}",
+    555
    ],
    "kwargs": {},
    "result": {
@@ -12,135 +44,103 @@
       "a3",
       "a2"
      ],
-     33
+     562
     ]
    }
   },
   {
    "args": [
-    "int2 __stdcall16near sub_1_2576(a1,a2,a3,a4)\nint2 a1;\nint2 a2;\nint2 a3;\nint2 a4;\n{\n  int2 in_AX;\n  int2 a1_00;\n  xunknown2 unaff_DS = codebreaker_ds();\n  if (*(int2 *)0xd86 != 0) {\n    a1_00 = GDI_45(*(int2 *)0xd86,*(int2 *)0x2a8);\n    GDI_34(0x20,0xcc,*MK_FP(a3,(int2 *)(a2 + 2)) - *(int2 *)(a1 + 0x2e),*(*(int2 __far * *)&a2) - *(int2 *)(a1 + 0x2c),\n           *(int2 *)0x2a8,*MK_FP(a3,(int2 *)(a2 + 6)) - *MK_FP(a3,(int2 *)(a2 + 2)),\n           *MK_FP(a3,(int2 *)(a2 + 4)) - *(*(int2 __far * *)&a2),*MK_FP(a3,(int2 *)(a2 + 2)),*(*(int2 __far * *)&a2),a4);\n    GDI_45(a1_00,*(int2 *)0x2a8);\n    sub_1_1EBA(a1,*(int2 *)(a1 + 0x20),*(int2 *)(a1 + 0x1e),a4);\n    in_AX = USER_124(*(int2 *)(a1 + 2));\n  }\n  return in_AX;\n}",
-    508
+    "int4 __stdcall16near sub_4_00E0(a1,a2)\nint2 a1;\nint2 a2;\n{\n  uint4 uVar1;\n  int2 a3;\n  int2 unaff_DS = codebreaker_ds();\n  int4 iVar2;\n  xunknown4 xStack_a;\n  xunknown4 xStack_6;\n  \n  if (*(int2 *)0xba == 0 && *(int2 *)0xb8 == 0) {\n    iVar2 = sub_3_0110(a1,a2,0x80);\n    a3 = (int2)((uint4)iVar2 >> 0x10);\n    *(int2 *)0xb8 = (int2)iVar2;\n    *(int2 *)0xba = a3;\n    KERNEL_58(0x7f,(int2)iVar2,a3,0xa8,unaff_DS,0x76,unaff_DS,0x6e,unaff_DS);\n    xStack_6 = (char *)CONCAT22(*(xunknown2 *)0xba,(char *)*(xunknown2 *)0xb8);\n    xStack_a = (char *)CONCAT22(*(xunknown2 *)0xba,(char *)*(xunknown2 *)0xb8);\n    while( true ) {\n      uVar1 = (uint4)xStack_6 >> 0x10;\n      if (*xStack_6 == '\\0') break;\n      if (*xStack_6 == ' ') {\n        while( true ) {\n          if (*MK_FP((int2)uVar1,(char *)xStack_6) != ' ') break;\n          xStack_6 = (char *)CONCAT22((*(uint2 *)((char *)&xStack_6 + 2)),(char *)xStack_6 + 1);\n        }\n        xStack_6 = (char *)CONCAT22((*(uint2 *)((char *)&xStack_6 + 2)),(char *)xStack_6 + -1);\n        *xStack_a = '\\0';\n      }\n      else {\n        *xStack_a = *xStack_6;\n      }\n      xStack_a = (char *)CONCAT22((*(uint2 *)((char *)&xStack_a + 2)),(char *)xStack_a + 1);\n      xStack_6 = (char *)CONCAT22((*(uint2 *)((char *)&xStack_6 + 2)),(char *)xStack_6 + 1);\n    }\n    *xStack_a = '\\0';\n    *MK_FP((*(uint2 *)((char *)&xStack_a + 2)),(char *)xStack_a + 1) = '\\0';\n  }\n  return CONCAT22(*(xunknown2 *)0xba,*(xunknown2 *)0xb8);\n}",
+    771
    ],
    "kwargs": {},
    "result": {
     "$t": [
      [
-      "a3",
-      "(int2 *)(a2 + 2)"
+      "(int2)uVar1",
+      "(char *)xStack_6"
      ],
-     529
+     801
     ]
    }
   },
   {
    "args": [
-    "int4 __stdcall16far sub_5_09EE(a1)\nint2 a1;\n{\n  uint1 __far *puVar1;\n  xunknown4 xVar2;\n  xunknown2 xVar3;\n  int2 iVar4;\n  xunknown2 unaff_DS = codebreaker_ds();\n  int4 iVar5;\n  \n  iVar4 = a1 * 4;\n  xVar2 = *MK_FP((int2)((uint4)*(xunknown4 *)0x6c >> 0x10),\n                 (xunknown4 *)(iVar4 + (int2)*(xunknown4 *)0x6c));\n  puVar1 = MK_FP((int2)((uint4)xVar2 >> 0x10),(uint1 *)((int2)xVar2 + 0x2c));\n  *puVar1 = *puVar1 & 0xfc;\n  xVar3 = KERNEL_36();\n  xVar2 = *MK_FP((int2)((uint4)*(xunknown4 *)0x6c >> 0x10),\n                 (xunknown4 *)((int2)*(xunknown4 *)0x6c + iVar4));\n  *MK_FP((int2)((uint4)xVar2 >> 0x10),(xunknown2 *)((int2)xVar2 + 0x28)) = xVar3;\n  xVar3 = KERNEL_36();\n  xVar2 = *MK_FP((int2)((uint4)*(xunknown4 *)0x6c >> 0x10),\n                 (xunknown4 *)((int2)*(xunknown4 *)0x6c + iVar4));\n  *MK_FP((int2)((uint4)xVar2 >> 0x10),(xunknown2 *)((int2)xVar2 + 0x26)) = xVar3;\n  iVar5 = MCISENDCOMMAND(0,0,0,0,0x804,a1);\n  return iVar5;\n}",
-    469
-   ],
-   "kwargs": {},
-   "result": {
-    "$t": [
-     [
-      "(int2)((uint4)*(xunknown4 *)0x6c >> 0x10)",
-      "\n                 (xunknown4 *)((int2)*(xunknown4 *)0x6c + iVar4)"
-     ],
-     578
-    ]
-   }
-  },
-  {
-   "args": [
-    "int2 __stdcall16near sub_6_2ADA(a1,a2,a3,a4,a5,a6)\nint2 a1;\nint2 a2;\nint2 a3;\nint2 a4;\nint2 a5;\nint2 a6;\n{\n  int2 a1_00;\n  int2 a1_01;\n  int2 *piVar1;\n  xunknown2 unaff_SS = codebreaker_ss();\n  xunknown2 unaff_DS = codebreaker_ds();\n  int4 iVar2;\n  xunknown1 axStack_c [6];\n  int2 iStack_6;\n  int2 iStack_4;\n  \n  piVar1 = (int2 *)(a6 * 4 + *(int2 *)0x6c);\n  a1_00 = *MK_FP(*(xunknown2 *)0x6e,piVar1);\n  iStack_6 = *MK_FP(*(xunknown2 *)0x6e,piVar1 + 1);\n  if ((iStack_6 == 0 && a1_00 == 0) || ((*MK_FP(iStack_6,(uint1 *)(a1_00 + 0x2c)) & 1) != 0)) {\n    iStack_4 = 0;\n  }\n  else {\n    *MK_FP(iStack_6,(uint1 *)(a1_00 + 0x2c)) = *MK_FP(iStack_6,(uint1 *)(a1_00 + 0x2c)) | 1;\n    if (a1 == 0) {\n      iStack_4 = 0;\n    }\n    else {\n      if ((*(uint4 *)&a2) == 0) {\n        (*(uint4 *)&a2) = (xunknown1 *)CONCAT22(unaff_SS,axStack_c);\n      }\n      iVar2 = MCISENDCOMMAND((int2)(xunknown1 *)(*(uint4 *)&a2),(int2)((uint4)(*(uint4 *)&a2) >> 0x10),a4,a5,0x802,a6);\n      iStack_4 = (int2)iVar2;\n    }\n    a1_01 = *MK_FP(iStack_6,(int2 *)(a1_00 + 0x20));\n    *MK_FP(iStack_6,(xunknown4 *)(a1_00 + 0x20)) = 0;\n    MCIFREECOMMANDRESOURCE(a1_01);\n    USER_253(0,0,0,0,*MK_FP(iStack_6,(int2 *)(a1_00 + 0x2a)));\n    *MK_FP(iStack_6,(uint1 *)(a1_00 + 0x2c)) = *MK_FP(iStack_6,(uint1 *)(a1_00 + 0x2c)) | 8;\n    if ((*MK_FP(iStack_6,(uint1 *)(a1_00 + 0x2c)) & 4) == 0) {\n      sub_6_2A36(a1_00,iStack_6);\n    }\n    else {\n      USER_110(a6,0,0,0x405,*(int2 *)0x352);\n    }\n  }\n  return iStack_4;\n}",
-    1165
-   ],
-   "kwargs": {},
-   "result": {
-    "$t": [
-     [
-      "iStack_6",
-      "(int2 *)(a1_00 + 0x2a)"
-     ],
-     1198
-    ]
-   }
-  },
-  {
-   "args": [
-    "int2 __stdcall16far __loadds MMTHREADCREATE(a1,a2,a3,a4,a5,a6,a7,a8)\nint2 a1;\nint2 a2;\nint2 a3;\nint2 a4;\nint2 a5;\nint2 a6;\nint2 a7;\nint2 a8;\n{\n  int2 a5_00;\n  int2 iVar1;\n  int2 unaff_SI;\n  int2 unaff_DI;\n  int2 iVar2;\n  int2 unaff_DS = codebreaker_ds();\n  int4 iVar3;\n  xunknown4 in_stack_0000fff2;\n  xunknown4 xVar4;\n  int2 in_stack_0000fff6;\n  int2 in_stack_0000fff8;\n  \n  iVar1 = (int2)((uint4)in_stack_0000fff2 >> 0x10);\n  a5_00 = KERNEL_15(0x2e,0,0x2040);\n  if (a5_00 == 0) {\n    iVar1 = 2;\n    goto code_r0x10200c99;\n  }\n  sub_5_0130(0,0x2e,0,0,a5_00);\n  *MK_FP(a5_00,(xunknown4 *)0x24) = 0;\n  *MK_FP(a5_00,(xunknown4 *)0x28) = (*(uint4 *)&a1);\n  *MK_FP(a5_00,(xunknown4 *)0x10) = (*(uint4 *)&a7);\n  *MK_FP(a5_00,(xunknown4 *)0x14) = (*(uint4 *)&a3);\n  *MK_FP(a5_00,(xunknown4 *)0x0) = 0x4153494c;\n  *MK_FP(a5_00,(xunknown4 *)0x4) = 0;\n  if ((a1 & 1U) == 0) {\n    iVar1 = sub_11_022E(unaff_DS,unaff_SI,unaff_DI,iVar1);\n    if (iVar1 == 0) goto code_r0x10200c36;\n    iVar2 = 0x1050;\n    iVar3 = sub_11_0242(0,a5_00,0,a5_00);\n    *MK_FP(a5_00,(xunknown2 *)0x8) = (int2)iVar3;\n    *MK_FP(a5_00,(xunknown2 *)0xa) = (int2)((uint4)iVar3 >> 0x10);\n    if (iVar3 == 0) {\n      iVar1 = 2;\n    }\n    else {\n      iVar1 = 0;\n    }\n  }\n  else {\ncode_r0x10200c36:\n    iVar2 = 0x1020;\n    iVar1 = MMTASKCREATE(0,a5_00,0,0,0xae8,0x1020);\n  }\n  if (iVar1 == 0) {\n    if (*MK_FP(a5_00,(int4 *)0x8) != 0) {\n      xVar4 = *MK_FP(a5_00,(xunknown4 *)0x8);\n      iVar2 = 0x1050;\n      sub_11_0224((int2)xVar4,(int2)((uint4)xVar4 >> 0x10),in_stack_0000fff6,in_stack_0000fff8);\n      iVar1 = (int2)((uint4)xVar4 >> 0x10);\n    }\n    if ((*MK_FP(a5_00,(int2 *)0x24) != 0x10) || (*MK_FP(a5_00,(int2 *)0x26) != 0)) {\n      do {\n        iVar1 = iVar2;\n        KERNEL_29();\n        iVar2 = -0x2000;\n      } while (*MK_FP(a5_00,(int4 *)0x24) != 0x10);\n    }\n  }\n  *(*(int2 __far * *)&a5) = a5_00;\ncode_r0x10200c99:\n  if ((iVar1 != 0) && (a5_00 != 0)) {\n    sub_5_0166(0,0x2e,0,0,a5_00);\n    KERNEL_17(a5_00);\n  }\n  return iVar1;\n}",
-    766
-   ],
-   "kwargs": {},
-   "result": {
-    "$t": [
-     [
-      "a5_00",
-      "(xunknown4 *)0x0"
-     ],
-     790
-    ]
-   }
-  },
-  {
-   "args": [
-    "int2 __stdcall16far __export VERQUERYVALUE(a1,a2,a3,a4,a5,a6,a7,a8)\nint2 a1;\nint2 a2;\nint2 a3;\nint2 a4;\nint2 a5;\nint2 a6;\nint2 a7;\nint2 a8;\n{\n  xunknown1 xVar1;\n  char cVar2;\n  int2 a4_00;\n  int2 iVar3;\n  int2 iVar4;\n  uint2 uVar5;\n  uint2 *puVar6;\n  int2 unaff_SI;\n  xunknown1 *pxVar7;\n  int2 a2_00;\n  xunknown2 xVar8;\n  xunknown4 xStack_1a;\n  int2 iStack_16;\n  \n  if (4 < (int2)*(*(int2 __far * *)&a7)) {\n    pxVar7 = (xunknown1 *)(*(*(int2 __far * *)&a7) + a7 + -1);\n    xStack_1a = (xunknown1 *)CONCAT22(a8,pxVar7);\n    xVar1 = *MK_FP(a8,pxVar7);\n    *MK_FP(a8,pxVar7) = 0;\n    do {\n      do {\n        xVar8 = (xunknown2)((uint4)(*(uint4 *)&a5) >> 0x10);\n        if (*(*(int2 __far * *)&a5) == '\\0') {\n          if (a2 != 0 || a1 != 0) {\n            *(*(int2 __far * *)&a1) = *MK_FP(a8,(xunknown2 *)(a7 + 2));\n          }\n          iVar4 = KERNEL_90(a7 + 4,a8);\n          *(*(int2 __far * *)&a3) = (iVar4 + 4U & 0xfffc) + a7 + 4;\n          *MK_FP(a4,(int2 *)(a3 + 2)) = a8;\n          *xStack_1a = xVar1;\n          return 1;\n        }\n        while( true ) {\n          iVar4 = a5;\n          a4_00 = a6;\n          if (*(char *)MK_FP(xVar8,a5) != '\\\\') break;\n          (*(uint4 *)&a5) = (char *)CONCAT22(a6,(char *)(a5 + 1));\n        }\n      } while (*(char *)MK_FP(xVar8,a5) == '\\0');\n      if (((int2)(pxVar7 + (1 - a7)) < 5) || (pxVar7 + (1 - a7) < (xunknown1 *)*(*(int2 __far * *)&a7))) break;\n      iVar3 = KERNEL_90(a7 + 4,a8);\n      uVar5 = (*MK_FP(a8,(int2 *)(a7 + 2)) + 3U & 0xfffc) + (iVar3 + 4U & 0xfffc) + 4;\n      if (*(*(int2 __far * *)&a7) < uVar5) break;\n      iVar3 = a7 + *(*(int2 __far * *)&a7);\n      (*(uint4 *)&a7) = (uint2 *)CONCAT22(a8,(uint2 *)(a7 + uVar5));\n      while ((*(*(int2 __far * *)&a5) != '\\0' && (*(*(int2 __far * *)&a5) != '\\\\'))) {\n        (*(uint4 *)&a5) = (char *)CONCAT22(a6,(char *)(a5 + 1));\n      }\n      cVar2 = *(*(int2 __far * *)&a5);\n      *(*(int2 __far * *)&a5) = '\\0';\n      iStack_16 = 1;\n      while( true ) {\n        a2_00 = (int2)((uint4)(*(uint4 *)&a7) >> 0x10);\n        puVar6 = (uint2 *)(*(uint4 *)&a7);\n        if ((((int2)*(*(int2 __far * *)&a7) < 6) || (-((int2)puVar6 - iVar3) < (int2)*(*(int2 __far * *)&a7))) ||\n           (iStack_16 = USER_471((int2)(puVar6 + 2),a2_00,iVar4,a4_00,unaff_SI), iStack_16 == 0))\n        break;\n        (*(uint4 *)&a7) = (uint2 *)CONCAT22(a2_00,(uint2 *)((int2)puVar6 + (*(*(int2 __far * *)&a7) + 3 & 0xfffc)));\n      }\n      *(*(int2 __far * *)&a5) = cVar2;\n    } while (iStack_16 == 0);\n    *xStack_1a = xVar1;\n  }\n  return 0;\n}",
-    561
-   ],
-   "kwargs": {},
-   "result": {
-    "$t": [
-     [
-      "a8",
-      "pxVar7"
-     ],
-     572
-    ]
-   }
-  },
-  {
-   "args": [
-    "uint2 __stdcall16near sub_6_2DFA(a1,a2,a3,a4,a5,a6,a7,a8,a9)\nint2 a1;\nint2 a2;\nint2 a3;\nint2 a4;\nint2 a5;\nint2 a6;\nint2 a7;\nint2 a8;\nint2 a9;\n{\n  uint2 *puVar1;\n  uint2 uVar2;\n  uint2 uVar3;\n  int2 __far *piVar4;\n  int2 iVar5;\n  int2 *piVar6;\n  int2 a2_00;\n  xunknown2 unaff_DS = codebreaker_ds();\n  xunknown4 xStack_1a;\n  uint2 uStack_16;\n  uint2 uStack_14;\n  xunknown4 xStack_12;\n  int2 iStack_e;\n  int2 iStack_c;\n  uint2 uStack_4;\n  \n  uStack_16 = *(*(int2 __far * *)&a1);\n  uStack_14 = 0;\n  xStack_1a = (uint2 *)*(xunknown4 *)(a9 * 0x10 + 0x84);\n  if (xStack_1a == 0) {\n    uStack_14 = 0;\n  }\n  else {\n    iStack_e = 0;\n    xStack_12 = (uint2 *)CONCAT22(a8,(uint2 *)(a7 + 4));\n    do {\n      a2_00 = (int2)((uint4)xStack_1a >> 0x10);\n      iVar5 = KERNEL_90((int2)(uint2 *)xStack_1a,a2_00);\n      puVar1 = (uint2 *)((int2)(uint2 *)xStack_1a + iVar5 + 1);\n      xStack_1a = (uint2 *)CONCAT22(a2_00,puVar1);\n      uVar2 = *xStack_1a;\n      uVar3 = *MK_FP(a2_00,puVar1 + 1);\n      xStack_1a = (uint2 *)CONCAT22(a2_00,puVar1 + 3);\n      uStack_4 = *MK_FP(a2_00,puVar1 + 2);\n      iVar5 = iStack_e;\n      switch(uStack_4) {\n      case 0:\n        iStack_e = 0;\n        if (uStack_14 < (uint2)a6) {\n          *xStack_12 = uStack_16;\n          *MK_FP((*(uint2 *)((char *)&xStack_12 + 2)),(uint2 *)xStack_12 + -2) = uVar2;\n        }\n        break;\n      case 1:\n        if (uStack_16 < (uint2)a3) {\n          piVar6 = (int2 *)(uStack_16 * 8 + a4);\n          *MK_FP(a5,piVar6) = iStack_e;\n          *MK_FP(a5,piVar6 + 1) = 2;\n          *MK_FP(a5,piVar6 + 2) = uVar2;\n          *MK_FP(a5,piVar6 + 3) = uVar3;\n        }\n        goto code_r0x10282ed1;\n      case 3:\n        if (uStack_14 < (uint2)a6) {\n          *MK_FP((*(uint2 *)((char *)&xStack_12 + 2)),(uint2 *)xStack_12 + 1) = iStack_e << 2;\n          *MK_FP((*(uint2 *)((char *)&xStack_12 + 2)),(uint2 *)xStack_12 + -1) = uStack_16 - *xStack_12;\n        }\n        xStack_12 = (uint2 *)CONCAT22((*(uint2 *)((char *)&xStack_12 + 2)),(uint2 *)xStack_12 + 4);\n        uStack_14 = uStack_14 + 1;\n        break;\n      case 4:\n        iStack_c = 1;\n        if ((uVar2 == 1) && (uVar3 == 0)) {\n          iStack_c = 3;\n          iVar5 = iStack_e + 1;\n        }\n        else if ((uVar2 == 7) && (uVar3 == 0)) {\n          iStack_c = 5;\n          iVar5 = iStack_e + 3;\n        }\n        if (uStack_16 < (uint2)a3) {\n          piVar6 = (int2 *)(uStack_16 * 8 + a4);\n          *MK_FP(a5,piVar6) = iStack_e;\n          *MK_FP(a5,piVar6 + 1) = iStack_c;\n        }\n        goto code_r0x10282ed1;\n      case 5:\n        iStack_e = iStack_e + -1;\n        break;\n      case 7:\n        if (uStack_16 < (uint2)a3) {\n          piVar6 = (int2 *)(uStack_16 * 8 + a4);\n          *MK_FP(a5,piVar6) = iStack_e;\n          *MK_FP(a5,piVar6 + 1) = 4;\n          *MK_FP(a5,piVar6 + 2) = uVar2;\n          *MK_FP(a5,piVar6 + 3) = uVar3;\n        }\n        iVar5 = iStack_e + 3;\ncode_r0x10282ed1:\n        iStack_e = iVar5;\n        uStack_16 = uStack_16 + 1;\n        break;\n      case 8:\n        do {\n          iVar5 = KERNEL_90((int2)(uint2 *)xStack_1a,a2_00);\n          piVar6 = (int2 *)((int2)(uint2 *)xStack_1a + iVar5 + 5);\n          xStack_1a = (uint2 *)CONCAT22((*(uint2 *)((char *)&xStack_1a + 2)),piVar6);\n          piVar4 = (int2 __far *)xStack_1a;\n          xStack_1a = (uint2 *)CONCAT22((*(uint2 *)((char *)&xStack_1a + 2)),piVar6 + 1);\n          a2_00 = (*(uint2 *)((char *)&xStack_1a + 2));\n        } while (*piVar4 != 9);\n        uStack_4 = 9;\n      }\n      iStack_e = iStack_e + 1;\n    } while (uStack_4 != 6);\n    *(*(int2 __far * *)&a1) = uStack_16;\n  }\n  return uStack_14;\n}",
-    1577
-   ],
-   "kwargs": {},
-   "result": {
-    "$t": [
-     [
-      "a5",
-      "piVar6 + 3"
-     ],
-     1592
-    ]
-   }
-  },
-  {
-   "args": [
-    "int2 __stdcall16far __loadds MIXERGETLINEINFO(a1,a2,a3,a4,a5)\nint2 a1;\nint2 a2;\nint2 a3;\nint2 a4;\nint2 a5;\n{\n  int2 iVar1;\n  uint2 uVar2;\n  int2 iVar3;\n  int2 a4_00;\n  int2 unaff_SS = codebreaker_ss();\n  int2 unaff_DS = codebreaker_ds();\n  int4 iVar4;\n  uint4 uVar5;\n  int2 iStack_3c;\n  int2 iStack_3a;\n  int2 iStack_38;\n  int2 iStack_36;\n  int2 iStack_34;\n  int2 iStack_32;\n  int2 iStack_30;\n  xunknown1 axStack_2e [36];\n  int2 iStack_a;\n  int2 iStack_8;\n  xunknown4 xStack_6;\n  \n  if (((*(uint4 *)&a1) & 0xffffff0) != 0) {\n    return 10;\n  }\n  iVar1 = KERNEL_335(4,a3,a4);\n  if (((iVar1 != 0) || (*(uint4 *)MK_FP(a4,a3) < 0xa6)) ||\n     (iVar1 = KERNEL_335(*(int2 *)MK_FP(a4,a3),a3,a4), iVar1 != 0)) {\n    return 0xb;\n  }\n  uVar2 = a1 & 0xf;\n  if ((a1 & 0xfU) == 0) {\n    *MK_FP(a4,(xunknown4 *)(a3 + 8)) = 0xffffffff;\ncode_r0x104009f6:\n    *MK_FP(a4,(xunknown2 *)(a3 + 0xc)) = 0xffff;\n    *MK_FP(a4,(xunknown2 *)(a3 + 0xe)) = 0xffff;\ncode_r0x104009fe:\n    *MK_FP(a4,(xunknown2 *)(a3 + 0x18)) = 0xffff;\n    *MK_FP(a4,(xunknown2 *)(a3 + 0x1a)) = 0xffff;\n  }\n  else {\n    if (uVar2 == 1) goto code_r0x104009f6;\n    if (uVar2 == 2) {\n      *MK_FP(a4,(xunknown4 *)(a3 + 8)) = 0xffffffff;\n      *MK_FP(a4,(xunknown4 *)(a3 + 4)) = 0xffffffff;\n      goto code_r0x104009fe;\n    }\n    if (uVar2 != 3) {\n      if (uVar2 != 4) {\n        return 10;\n      }\n      *MK_FP(a4,(xunknown4 *)(a3 + 8)) = 0xffffffff;\n      *MK_FP(a4,(xunknown4 *)(a3 + 4)) = 0xffffffff;\n      goto code_r0x104009f6;\n    }\n    *MK_FP(a4,(xunknown4 *)(a3 + 8)) = 0xffffffff;\n    *MK_FP(a4,(xunknown4 *)(a3 + 4)) = 0xffffffff;\n    *MK_FP(a4,(xunknown2 *)(a3 + 0xc)) = 0xffff;\n    *MK_FP(a4,(xunknown2 *)(a3 + 0xe)) = 0xffff;\n  }\n  xStack_6 = (uint4)(a2 & 0xf000) << 0x10;\n  uVar5 = CONCAT22(a3,a2) & 0xfffff000;\n  iVar1 = sub_9_0272(0,(int2)uVar5,(int2)(uVar5 >> 0x10),a4,(int2)&iStack_8,unaff_SS,a5);\n  if (iVar1 != 0) {\n    return iVar1;\n  }\n  if ((xStack_6 != 0) && (xStack_6 != -0x80000000)) {\n    return 0;\n  }\n  if (iStack_8 == a5) {\n    a5 = 0;\n  }\n  if (a5 == 0) {\n    iStack_a = sub_9_01A2(a1,a2,a3,a4,5,iStack_8);\n  }\n  else {\n    iVar4 = sub_9_0130(a1,a2,a3,a4,5,a5);\n    iStack_a = (int2)iVar4;\n  }\n  if (iStack_a != 0) {\n    return iStack_a;\n  }\n  if ((*MK_FP(a4,(int2 *)(a3 + 2)) == 0) && (*(uint2 *)MK_FP(a4,a3) < 0xa6)) {\n    return 0;\n  }\n  if (*MK_FP(a4,(int4 *)(a3 + 0x78)) == 0) {\n    return 0;\n  }\n  *MK_FP(a4,(xunknown4 *)(a3 + 0x7c)) = 0xffffffff;\n  iVar1 = *MK_FP(a4,(int2 *)(a3 + 0x78));\n  if (*MK_FP(a4,(int2 *)(a3 + 0x7a)) == 0) {\n    if (iVar1 == 1) {\n      iVar1 = sub_3_095A(1);\n      xStack_6 = CONCAT22(iVar1,(xunknown2)xStack_6);\n      do {\n        a4_00 = iVar1 + -1;\n        if (iVar1 == 0) {\n          return iStack_a;\n        }\n        iVar4 = WAVEOUTGETDEVCAPS(0x30,(int2)&iStack_3a,unaff_SS,a4_00);\n        iStack_a = (int2)iVar4;\n        iVar1 = a4_00;\n      } while ((((iStack_a != 0) || (*MK_FP(a4,(int2 *)(a3 + 0x80)) != iStack_3a)) ||\n               (*MK_FP(a4,(int2 *)(a3 + 0x82)) != iStack_38)) ||\n              ((*MK_FP(a4,(int2 *)(a3 + 0x84)) != iStack_36 ||\n               (iVar3 = USER_430(a3 + 0x86,a4,(int2)&iStack_34,unaff_SS,unaff_DS), iVar3 != 0))));\n    }\n    else if (iVar1 == 2) {\n      iVar1 = sub_3_095A(2);\n      do {\n        a4_00 = iVar1 + -1;\n        if (iVar1 == 0) {\n          return iStack_a;\n        }\n        iVar4 = WAVEINGETDEVCAPS(0x2c,(int2)&iStack_36,unaff_SS,a4_00);\n        iStack_a = (int2)iVar4;\n        iVar1 = a4_00;\n      } while (((iStack_a != 0) || (*MK_FP(a4,(int2 *)(a3 + 0x80)) != iStack_36)) ||\n              ((*MK_FP(a4,(int2 *)(a3 + 0x82)) != iStack_34 ||\n               ((*MK_FP(a4,(int2 *)(a3 + 0x84)) != iStack_32 ||\n                (iVar3 = USER_430(a3 + 0x86,a4,(int2)&iStack_30,unaff_SS,unaff_DS), iVar3 != 0))))))\n      ;\n    }\n    else if (iVar1 == 3) {\n      iVar1 = sub_3_095A(3);\n      do {\n        a4_00 = iVar1 + -1;\n        if (iVar1 == 0) {\n          return iStack_a;\n        }\n        iStack_a = MIDIOUTGETDEVCAPS(0x32,(int2)&iStack_3c,unaff_SS,a4_00);\n        iVar1 = a4_00;\n      } while ((((iStack_a != 0) || (*MK_FP(a4,(int2 *)(a3 + 0x80)) != iStack_3c)) ||\n               (*MK_FP(a4,(int2 *)(a3 + 0x82)) != iStack_3a)) ||\n              ((*MK_FP(a4,(int2 *)(a3 + 0x84)) != iStack_38 ||\n               (iVar3 = USER_430(a3 + 0x86,a4,(int2)&iStack_36,unaff_SS,unaff_DS), iVar3 != 0))));\n    }\n    else if (iVar1 == 4) {\n      iVar1 = sub_3_095A(4);\n      do {\n        a4_00 = iVar1 + -1;\n        if (iVar1 == 0) {\n          return iStack_a;\n        }\n        iStack_a = MIDIINGETDEVCAPS(0x2a,(int2)&iStack_34,unaff_SS,a4_00);\n        iVar1 = a4_00;\n      } while (((iStack_a != 0) || (*MK_FP(a4,(int2 *)(a3 + 0x80)) != iStack_34)) ||\n              ((*MK_FP(a4,(int2 *)(a3 + 0x82)) != iStack_32 ||\n               ((*MK_FP(a4,(int2 *)(a3 + 0x84)) != iStack_30 ||\n                (iVar3 = USER_430(a3 + 0x86,a4,(int2)axStack_2e,unaff_SS,unaff_DS), iVar3 != 0))))))\n      ;\n    }\n    else {\n      if (iVar1 != 5) goto code_r0x10400ac1;\n      iVar1 = sub_3_095A(5);\n      do {\n        a4_00 = iVar1 + -1;\n        if (iVar1 == 0) {\n          return iStack_a;\n        }\n        iVar4 = AUXGETDEVCAPS(0x2c,(int2)&iStack_36,unaff_SS,a4_00);\n        iStack_a = (int2)iVar4;\n        iVar1 = a4_00;\n      } while ((((iStack_a != 0) || (*MK_FP(a4,(int2 *)(a3 + 0x80)) != iStack_36)) ||\n               (*MK_FP(a4,(int2 *)(a3 + 0x82)) != iStack_34)) ||\n              ((*MK_FP(a4,(int2 *)(a3 + 0x84)) != iStack_32 ||\n               (iVar3 = USER_430(a3 + 0x86,a4,(int2)&iStack_30,unaff_SS,unaff_DS), iVar3 != 0))));\n    }\n    *MK_FP(a4,(int2 *)(a3 + 0x7c)) = a4_00;\n    *MK_FP(a4,(xunknown2 *)(a3 + 0x7e)) = 0;\n  }\n  else {\ncode_r0x10400ac1:\n    *MK_FP(a4,(xunknown4 *)(a3 + 0x78)) = 0;\n    iStack_a = 0;\n  }\n  return iStack_a;\n}",
-    2964
+    "int2 __cdecl16near sub_3_00EE()\n{\n  char *pcVar1;\n  int2 __far *piVar2;\n  char __far *pcVar3;\n  uint2 uVar4;\n  int2 a1;\n  int2 *piVar5;\n  int2 a4;\n  xunknown2 xVar6;\n  int2 unaff_SS = codebreaker_ss();\n  int2 unaff_DS = codebreaker_ds();\n  int2 __far *piVar7;\n  xunknown4 xStack_8a;\n  xunknown1 axStack_86 [132];\n  \n  uVar4 = KERNEL_58(0x84,(int2)axStack_86,unaff_SS,0x269,unaff_DS,0x180,unaff_DS,0x178,unaff_DS);\n  if (uVar4 == 0) {\n    *(xunknown2 *)0x2ac = 0x1008;\n  }\n  else {\n    a1 = KERNEL_15(uVar4 + 0x29,((int2)uVar4 >> 0xf) + (uint2)(0xffd6 < uVar4),0x42);\n    if (a1 != 0) {\n      piVar7 = (int2 __far *)KERNEL_18(a1);\n      a4 = (int2)((uint4)piVar7 >> 0x10);\n      piVar5 = (int2 *)piVar7;\n      *MK_FP(a4,piVar5 + 1) = 8;\n      xStack_8a = (int2 *)CONCAT22(a4,piVar5 + 4);\n      KERNEL_88((int2)axStack_86,unaff_SS,(int2)(piVar5 + 4),a4);\n      while( true ) {\n        piVar2 = xStack_8a;\n        xVar6 = (xunknown2)((uint4)xStack_8a >> 0x10);\n        if ((char)*xStack_8a == ',') break;\n        xStack_8a = (int2 *)CONCAT22(xVar6,(int2 *)((int2)(int2 *)xStack_8a + 1));\n        if ((char)*piVar2 == '\\0') goto code_r0x101001a8;\n      }\n      pcVar1 = (char *)((int2)(int2 *)xStack_8a + 1);\n      xStack_8a = (int2 *)CONCAT22(xVar6,pcVar1);\n      *(char *)piVar2 = '\\0';\n      *piVar7 = (int2)pcVar1 - (int2)piVar5;\n      do {\n        pcVar3 = (char __far *)xStack_8a;\n        if (*(char *)xStack_8a == ',') {\n          *(char *)xStack_8a = '\\0';\n          *MK_FP(a4,piVar5 + 2) = (int2)((char *)xStack_8a + (1 - (int2)piVar5));\n          *MK_FP(a4,piVar5 + 3) = 0x4001;\n          KERNEL_19(a1);\n          return a1;\n        }\n        xStack_8a = (int2 *)CONCAT22((int2)((uint4)xStack_8a >> 0x10),(char *)xStack_8a + 1);\n      } while (*pcVar3 != '\\0');\ncode_r0x101001a8:\n      *(xunknown2 *)0x2ac = 0x1002;\n      *(xunknown2 *)0x2ae = 0;\n      KERNEL_19(a1);\n      KERNEL_17(a1);\n      return 0;\n    }\n    *(xunknown2 *)0x2ac = 9;\n  }\n  *(xunknown2 *)0x2ae = 0;\n  return 0;\n}",
+    1477
    ],
    "kwargs": {},
    "result": {
     "$t": [
      [
       "a4",
-      "(int2 *)(a3 + 0x82)"
+      "piVar5 + 2"
      ],
-     2988
+     1492
+    ]
+   }
+  },
+  {
+   "args": [
+    "int2 __stdcall16far __loadds MIXERGETCONTROLDETAILS(a1,a2,a3,a4,a5)\nint2 a1;\nint2 a2;\nint2 a3;\nint2 a4;\nint2 a5;\n{\n  int2 iVar1;\n  int2 unaff_SS = codebreaker_ss();\n  int4 iVar2;\n  xunknown4 xVar3;\n  int2 iStack_a;\n  int4 iStack_8;\n  \n  if (((*(uint4 *)&a1) & 0xffffff0) == 0) {\n    iVar1 = KERNEL_335(4,a3,a4);\n    if (((iVar1 == 0) && (0x17 < *(uint4 *)MK_FP(a4,a3))) &&\n       (iVar1 = KERNEL_335(*(int2 *)MK_FP(a4,a3),a3,a4), iVar1 == 0)) {\n      if ((a1 & 0xfU) == 0) {\n        if ((*MK_FP(a4,(int4 *)(a3 + 8)) == 0) && (*MK_FP(a4,(int4 *)(a3 + 0xc)) == 0)) {\n          if (*MK_FP(a4,(int4 *)(a3 + 0x10)) != 0) {\n            xVar3 = *MK_FP(a4,(xunknown4 *)(a3 + 0x14));\n            iVar1 = *MK_FP(a4,(int2 *)(a3 + 0x10));\n            goto code_r0x10400e7c;\n          }\n        }\n        else if ((*MK_FP(a4,(int4 *)(a3 + 8)) != 0) &&\n                ((*MK_FP(a4,(int2 *)(a3 + 0x12)) != 0 || (3 < *MK_FP(a4,(uint2 *)(a3 + 0x10)))))) {\n          iVar1 = *MK_FP(a4,(int2 *)(a3 + 8));\n          if (*MK_FP(a4,(int4 *)(a3 + 0xc)) != 0) {\n            iVar1 = *MK_FP(a4,(int2 *)(a3 + 0xc)) * iVar1;\n          }\n          goto code_r0x10400eb0;\n        }\n      }\n      else {\n        if ((a1 & 0xfU) != 1) goto code_r0x10400e11;\n        if (((*MK_FP(a4,(int4 *)(a3 + 8)) != 0) &&\n            ((*MK_FP(a4,(int2 *)(a3 + 0xe)) != 0 || (1 < *MK_FP(a4,(uint2 *)(a3 + 0xc)))))) &&\n           ((*MK_FP(a4,(int2 *)(a3 + 0x12)) != 0 || (0x47 < *MK_FP(a4,(uint2 *)(a3 + 0x10)))))) {\n          iVar1 = *MK_FP(a4,(int2 *)(a3 + 8)) * *MK_FP(a4,(int2 *)(a3 + 0xc));\ncode_r0x10400eb0:\n          xVar3 = *MK_FP(a4,(xunknown4 *)(a3 + 0x14));\n          iVar1 = *MK_FP(a4,(int2 *)(a3 + 0x10)) * iVar1;\ncode_r0x10400e7c:\n          iVar1 = KERNEL_335(iVar1,(int2)xVar3,(int2)((uint4)xVar3 >> 0x10));\n          if (iVar1 == 0) {\n            iStack_8 = (uint4)(a2 & 0xf000U) << 0x10;\n            iVar1 = sub_9_0272(0,a2 & 0xf000U,0,0,(int2)&iStack_a,unaff_SS,a5);\n            if (iVar1 == 0) {\n              if (((iStack_8 != 0) && (iStack_8 != -0x80000000)) || (iStack_a == a5)) {\n                a5 = 0;\n              }\n              if (a5 == 0) {\n                iVar1 = sub_9_01A2(a1,a2,a3,a4,7,iStack_a);\n              }\n              else {\n                iVar2 = sub_9_0130(a1,a2,a3,a4,7,a5);\n                iVar1 = (int2)iVar2;\n              }\n            }\n            return iVar1;\n          }\n        }\n      }\n    }\n    iVar1 = 0xb;\n  }\n  else {\ncode_r0x10400e11:\n    iVar1 = 10;\n  }\n  return iVar1;\n}",
+    644
+   ],
+   "kwargs": {},
+   "result": {
+    "$t": [
+     [
+      "a4",
+      "(xunknown4 *)(a3 + 0x14)"
+     ],
+     673
+    ]
+   }
+  },
+  {
+   "args": [
+    "int2 __stdcall16near sub_4_2420(a1,a2,a3,a4,a5,a6)\nint2 a1;\nint2 a2;\nint2 a3;\nint2 a4;\nint2 a5;\nint2 a6;\n{\n  xunknown2 __far *pxVar1;\n  xunknown2 __far *pxVar2;\n  xunknown1 xVar3;\n  int2 iVar4;\n  int2 iVar5;\n  int2 unaff_SI;\n  xunknown2 *pxVar6;\n  int2 unaff_SS = codebreaker_ss();\n  xunknown2 unaff_DS = codebreaker_ds();\n  int2 a2_00;\n  int2 iVar7;\n  int2 iStack_b4;\n  xunknown1 axStack_b2 [128];\n  xunknown1 axStack_32 [32];\n  xunknown2 *pxStack_12;\n  xunknown2 xStack_10;\n  xunknown2 *pxStack_e;\n  uint2 uStack_c;\n  int2 iStack_a;\n  int2 iStack_8;\n  int2 iStack_6;\n  int2 iStack_4;\n  \n  iStack_b4 = 1;\n  sub_4_1A26(a2,a3);\n  USER_93(0x20,a2 + 0x12,a3,0x470,a6,unaff_SI);\n  iVar7 = 0x470;\n  iVar4 = USER_91(0x470,a6);\n  iVar4 = sub_4_0A16(a2 + 0x12,a3,iVar4);\n  if (iVar4 < 0) {\n    iStack_b4 = 0;\n    if (a1 != 0) {\n      *MK_FP(a5,(uint1 *)(a4 + 0x10)) = *MK_FP(a5,(uint1 *)(a4 + 0x10)) | 8;\n    }\n  }\n  else if (a1 != 0) {\n    *MK_FP(a5,(uint1 *)(a4 + 0x10)) = *MK_FP(a5,(uint1 *)(a4 + 0x10)) & 0xf7;\n  }\n  a2_00 = 0x471;\n  iVar4 = a6;\n  iVar5 = USER_91();\n  iStack_6 = sub_4_09C6((int2)&pxStack_e,unaff_SS,0x20,(int2)axStack_32,unaff_SS,iVar5);\n  if (iStack_6 < 0) {\n    iStack_b4 = 0;\n    if (a1 != 0) {\n      *MK_FP(a5,(uint1 *)(a4 + 0x10)) = *MK_FP(a5,(uint1 *)(a4 + 0x10)) | 0x10;\n    }\n    xStack_10 = 0;\n  }\n  else {\n    xStack_10 = uStack_c;\n    pxStack_12 = pxStack_e;\n    pxVar6 = (xunknown2 *)a2;\n    for (iVar5 = 0x19; iVar5 != 0; iVar5 = iVar5 + -1) {\n      pxVar2 = MK_FP(a3,pxVar6);\n      pxVar6 = pxVar6 + 1;\n      pxVar1 = MK_FP(codebreaker_ss(), pxStack_e);\n      pxStack_e = pxStack_e + 1;\n      *pxVar2 = *pxVar1;\n    }\n    *MK_FP(a3,(xunknown2 *)(a2 + 2)) = 0;\n    if (a1 != 0) {\n      *MK_FP(a5,(uint1 *)(a4 + 0x10)) = *MK_FP(a5,(uint1 *)(a4 + 0x10)) & 0xef;\n    }\n  }\n  sub_4_0A76(0,(int2)&iStack_a,unaff_SS,a4,a5,a6);\n  iStack_4 = USER_66(0,a2_00,iVar4,iVar7);\n  if (iStack_a == 0) {\n    iVar7 = 10;\n    iVar4 = GDI_80(0x5a,iStack_4);\n    iVar4 = GDI_128(0x48,iVar4,iVar7);\n    *(*(int2 __far * *)&a2) = -iVar4;\n    iStack_b4 = 0;\n    if (a1 != 0) {\n      *MK_FP(a5,(uint1 *)(a4 + 0x10)) = *MK_FP(a5,(uint1 *)(a4 + 0x10)) | 0x20;\n    }\n  }\n  else {\n    iVar4 = GDI_80(0x5a,iStack_4);\n    iVar4 = GDI_128(0x48,iVar4,iStack_a);\n    *(*(int2 __far * *)&a2) = -iVar4;\n    if (a1 != 0) {\n      *MK_FP(a5,(uint1 *)(a4 + 0x10)) = *MK_FP(a5,(uint1 *)(a4 + 0x10)) & 0xdf;\n    }\n  }\n  USER_68(iStack_4,0);\n  xVar3 = USER_98(0x410,a6);\n  *MK_FP(a3,(xunknown1 *)(a2 + 0xc)) = xVar3;\n  iVar4 = 0x411;\n  xVar3 = USER_98(0x411,a6);\n  *MK_FP(a3,(xunknown1 *)(a2 + 0xb)) = xVar3;\n  if ((xStack_10 == *(uint2 *)0xd62) || ((*MK_FP(a5,(uint1 *)(a4 + 0xe)) & 2) == 0))\n  goto code_r0x10182638;\n  if ((xStack_10 & 0x8000) == 0) {\n    if ((xStack_10 & 4) != 0) {\n      iStack_8 = 0x44d;\n      goto code_r0x10182610;\n    }\n    if (((*(uint1 *)((char *)&xStack_10 + 1)) & 0x60) == 0x20) {\n      iStack_8 = 0x44f;\n      goto code_r0x10182610;\n    }\n    if ((xStack_10 & 0x4002) == 0x4002) {\n      iStack_8 = 0x44e;\n      goto code_r0x10182610;\n    }\n    axStack_b2[0] = 0;\n  }\n  else {\n    iStack_8 = 0x44c;\ncode_r0x10182610:\n    USER_176(0x80,(int2)axStack_b2,unaff_SS,iStack_8,*(int2 *)0x2aa);\n  }\n  USER_92((int2)axStack_b2,unaff_SS,0x445,a6,iVar4);\ncode_r0x10182638:\n  *(uint2 *)0xd62 = xStack_10;\n  return iStack_b4;\n}",
+    973
+   ],
+   "kwargs": {},
+   "result": {
+    "$t": [
+     [
+      "a5",
+      "(uint1 *)(a4 + 0x10)"
+     ],
+     998
+    ]
+   }
+  },
+  {
+   "args": [
+    "int2 __stdcall16near sub_2_6A28(a1,a2,a3,a4,a5,a6)\nint2 a1;\nint2 a2;\nint2 a3;\nint2 a4;\nint2 a5;\nint2 a6;\n{\n  uint2 uVar1;\n  xunknown4 xVar2;\n  int2 in_AX;\n  int2 iVar3;\n  int2 iVar4;\n  int2 iVar5;\n  int2 iVar6;\n  int2 a9;\n  int2 unaff_SI;\n  int2 unaff_DI;\n  int2 unaff_SS = codebreaker_ss();\n  int2 unaff_DS = codebreaker_ds();\n  int2 a4_00;\n  int2 *a6_00;\n  int2 a8;\n  int2 in_stack_0000ffd2;\n  int2 in_stack_0000ffd4;\n  int2 iStack_26;\n  int2 iStack_24;\n  int2 iStack_22;\n  int2 iStack_20;\n  int2 iStack_1e;\n  int2 iStack_1a;\n  int2 iStack_18;\n  int2 iStack_16;\n  int2 iStack_14;\n  xunknown4 xStack_12;\n  uint2 uStack_e;\n  uint2 uStack_c;\n  int2 iStack_a;\n  xunknown4 xStack_8;\n  \n  iStack_22 = 1;\n  *(xunknown1 *)0x2d4 = 0;\n  if (((*MK_FP(a3,(int2 *)(a2 + 2)) == 0x460) || (*MK_FP(a3,(int2 *)(a2 + 2)) == 0x461)) ||\n     (*MK_FP(a3,(int2 *)(a2 + 2)) == 0x471)) {\n    iStack_a = *MK_FP(a3,(int2 *)(a2 + 0xc));\n    if ((*MK_FP(a3,(int2 *)(a2 + 2)) == 0x460) || (*MK_FP(a3,(int2 *)(a2 + 2)) == 0x461)) {\n      iVar3 = 0x40a;\n    }\n    else {\n      iVar3 = 0x408;\n    }\n    USER_101(0x2d4,unaff_DS,*MK_FP(a3,(int2 *)(a2 + 4)),iVar3,*MK_FP(a3,(int2 *)(a2 + 2)),a5,\n             unaff_DI,unaff_SI);\n    if (*(char *)0x2d4 == '\\0') {\n      in_AX = USER_107(a2,a3,a4,0x2b,a5);\n    }\n    else {\n      USER_432(0x2d4,unaff_DS);\n      if (*MK_FP(a3,(int2 *)(a2 + 2)) == 0x460) {\n        iVar3 = *(int2 *)0xa5c;\n      }\n      else {\n        iVar3 = *(int2 *)0x52;\n      }\n      USER_74(a2 + 0xe,a3,(int2)&iStack_20,unaff_SS);\n      iStack_1a = iStack_1e + iVar3;\n      if ((a1 == 0) || (*MK_FP(a3,(int2 *)(a2 + 2)) != 0x460)) {\n        if ((*(uint2 *)0xf90 < 0x30a) &&\n           (((*(*(int2 __far * *)&a2) == 3 && (*MK_FP(a3,(int2 *)(a2 + 0xe)) == 0)) &&\n            ((*MK_FP(a3,(uint2 *)(a2 + 8)) & 1) != 0)))) {\n          *MK_FP(a3,(uint2 *)(a2 + 8)) = *MK_FP(a3,(uint2 *)(a2 + 8)) | 0x10;\n        }\n        uVar1 = *MK_FP(a3,(uint2 *)(a2 + 8));\n        uStack_c = uVar1 & 0x11;\n        if (((uVar1 & 1) == 0) || ((*MK_FP(a3,(int2 *)(a2 + 2)) == 0x461 && ((uVar1 & 0x10) == 0))))\n        {\n          iStack_16 = *(int2 *)0x2e;\n          iStack_14 = *(int2 *)0x30;\n          iStack_26 = *(int2 *)0x36;\n          iStack_24 = *(int2 *)0x38;\n        }\n        else {\n          iStack_16 = *(int2 *)0x32;\n          iStack_14 = *(int2 *)0x34;\n          iStack_26 = *(int2 *)0x3a;\n          iStack_24 = *(int2 *)0x3c;\n        }\n      }\n      else {\n        iStack_16 = *(int2 *)0x2e;\n        iStack_14 = *(int2 *)0x30;\n        iStack_26 = *(int2 *)0x3e;\n        iStack_24 = *(int2 *)0x40;\n      }\n      xStack_12 = GDI_1(iStack_16,iStack_14,iStack_a);\n      xStack_8 = GDI_9(iStack_26,iStack_24,iStack_a);\n      if (*MK_FP(a3,(int2 *)(a2 + 2)) == 0x471) {\n        uStack_e = *(uint2 *)0x4e / 8;\n        iStack_18 = USER_101(0,0,*MK_FP(a3,(int2 *)(a2 + 4)),0x410,0x471,a5,in_stack_0000ffd2,\n                             in_stack_0000ffd4);\n        if ((uStack_c & 1) != 0) {\n          iStack_18 = iStack_18 + 8;\n        }\n      }\n      else if (*MK_FP(a3,(int2 *)(a2 + 2)) == 0x461) {\n        uStack_e = *(uint2 *)0x4e / 8;\n        if (*(uint2 *)(a6 + 0x40b) < *MK_FP(a3,(uint2 *)(a2 + 4))) {\n          iStack_22 = *(int2 *)(a6 + 0x40b);\n        }\n        else {\n          iStack_22 = *MK_FP(a3,(int2 *)(a2 + 4));\n        }\n        iStack_22 = iStack_22 + 1;\n        iVar4 = sub_2_60D0((*MK_FP(a3,(int2 *)(a2 + 4)) + 1) - *(int2 *)(a6 + 0x40b));\n        iStack_18 = iVar4 + 1;\n        if ((uStack_c & 0x10) != 0) {\n          iStack_18 = iVar4 + 9;\n        }\n      }\n      else if (*MK_FP(a3,(int2 *)(a2 + 2)) == 0x460) {\n        uStack_e = 0xfffc;\n      }\n      if (((a1 == 0) || (*MK_FP(a3,(int2 *)(a2 + 2)) != 0x460)) ||\n         ((iStack_26 != 0 || (iStack_24 != 0)))) {\n        iVar6 = iStack_20 + 4 + uStack_e + iStack_22 * 4;\n        a9 = iStack_1e + (uint2)(iVar3 - *(int2 *)0xa5c) / 2;\n        a8 = 6;\n        a6_00 = &iStack_20;\n        a4_00 = 0x2d4;\n        iVar3 = unaff_DS;\n        iVar4 = iStack_a;\n        iVar5 = KERNEL_90(0x2d4,unaff_DS);\n        GDI_351(0,0,iVar5,a4_00,iVar3,(int2)a6_00,unaff_SS,a8,a9,iVar6,iVar4);\n      }\n      else {\n        iVar6 = GDI_66(iStack_16,iStack_14);\n        iVar5 = GDI_2(1,iStack_a);\n        iVar3 = *MK_FP(a3,(int2 *)(a2 + 0xc));\n        iVar4 = iVar6;\n        if (iVar6 == 0) {\n          iVar6 = GDI_87(0);\n        }\n        iVar3 = GDI_45(iVar6,iVar3);\n        USER_81(iVar4,a2 + 0xe,a3,*MK_FP(a3,(int2 *)(a2 + 0xc)));\n        GDI_45(iVar3,*MK_FP(a3,(int2 *)(a2 + 0xc)));\n        if (iVar4 != 0) {\n          GDI_69(iVar4);\n        }\n        iVar3 = *MK_FP(a3,(int2 *)(a2 + 0xc));\n        iVar6 = GDI_87(4);\n        USER_185(0,0,*MK_FP(a3,(int2 *)(a2 + 0x10)),*MK_FP(a3,(int2 *)(a2 + 0xe)) + 4,0,0x2d4,\n                 unaff_DS,0,0,iVar6,iVar3,iVar4);\n        GDI_2(iVar5,iStack_a);\n      }\n      xVar2 = xStack_8;\n      if (*MK_FP(a3,(int2 *)(a2 + 2)) != 0x460) {\n        GDI_34(0x20,0xcc,0,iStack_18 * uStack_e,*(int2 *)0x2b0,*(int2 *)0x50,uStack_e,\n               iStack_1e + (uint2)(*(int2 *)0x52 - *(int2 *)0x50) / 2,iStack_22 * 4 + iStack_20,\n               iStack_a);\n        xVar2 = xStack_8;\n      }\n      (*(uint2 *)((char *)&xStack_8 + 2)) = (int2)((uint4)xVar2 >> 0x10);\n      (*(uint2 *)((char *)&xStack_8 + 0)) = (int2)xVar2;\n      GDI_9((int2)xStack_8,(*(uint2 *)((char *)&xStack_8 + 2)),iStack_a);\n      xStack_8 = xVar2;\n      GDI_1((int2)xStack_12,(*(uint2 *)((char *)&xStack_12 + 2)),iStack_a);\n      if ((*MK_FP(a3,(uint2 *)(a2 + 8)) & 0x10) == 0) {\n        in_AX = 0;\n      }\n      else {\n        in_AX = USER_466(a2 + 0xe,a3,iStack_a);\n      }\n    }\n  }\n  return in_AX;\n}",
+    1713
+   ],
+   "kwargs": {},
+   "result": {
+    "$t": [
+     [
+      "a3",
+      "(int2 *)(a2 + 0xe)"
+     ],
+     1736
     ]
    }
   },
   {
    "args": [
     "int2 __stdcall16far sub_7_218A(a1,a2,a3,a4)\nint2 a1;\nint2 a2;\nint2 a3;\nint2 a4;\n{\n  uint4 uVar1;\n  int4 iVar2;\n  uint2 uVar3;\n  xunknown4 *pxVar4;\n  uint2 uVar5;\n  int2 iVar6;\n  int2 a5;\n  int2 iVar7;\n  uint2 uVar8;\n  int2 iVar9;\n  xunknown2 xVar10;\n  xunknown2 unaff_DS = codebreaker_ds();\n  bool bVar11;\n  xunknown4 xStack_22;\n  xunknown4 xStack_1e;\n  int2 iStack_1a;\n  xunknown4 xStack_12;\n  xunknown4 xStack_e;\n  uint2 uStack_a;\n  \n  iStack_1a = 0;\n  uVar3 = KERNEL_15(6,0,0x2002);\n  xStack_1e = (uint2 *)((uint4)uVar3 << 0x10);\n  if (uVar3 == 0) {\ncode_r0x103021af:\n    iStack_1a = 7;\n  }\n  else {\n    *MK_FP(a3,(xunknown4 *)(a2 + 0x18)) = xStack_1e;\n    *MK_FP(a3,(xunknown2 *)(a2 + 0x26)) = 0;\n    *MK_FP(a3,(xunknown2 *)(a2 + 0x24)) = 0;\n    *MK_FP(uVar3,(xunknown2 *)0x0) = 0;\n    *MK_FP(uVar3,(xunknown2 *)0x2) = 6;\n    *MK_FP(uVar3,(uint2 *)0x4) = uVar3;\n    xStack_22 = *(int4 **)MK_FP(a3,a2);\n    xStack_e = *MK_FP(a3,(uint4 *)(a2 + 8));\n    if (xStack_e != 0) {\ncode_r0x103021fe:\n      if (3 < xStack_e) {\n        iVar9 = (int2)xStack_22;\n        xStack_22 = (int4 *)CONCAT22((*(uint2 *)((char *)&xStack_22 + 2)),(int4 *)((int2)xStack_22 + 4));\n        iVar2 = *xStack_22;\n        if (xStack_e - 4 < 4) goto code_r0x10302408;\n        uVar3 = *MK_FP((*(uint2 *)((char *)&xStack_22 + 2)),(uint2 *)(iVar9 + 8));\n        uVar5 = *MK_FP((*(uint2 *)((char *)&xStack_22 + 2)),(uint2 *)(iVar9 + 10));\n        uVar8 = uVar5 & 0xff;\n        xStack_12 = CONCAT22(uVar5,uVar3) & 0xffffff;\n        if (xStack_e - 8 < 4) goto code_r0x10302408;\n        xStack_22 = (int4 *)CONCAT22((*(uint2 *)((char *)&xStack_22 + 2)),iVar9 + 0xc);\n        uVar1 = xStack_e - 0xc;\n        (*(uint2 *)((char *)&xStack_e + 0)) = (uint2)uVar1;\n        (*(uint2 *)((char *)&xStack_e + 2)) = (uint2)(uVar1 >> 0x10);\n        if (((uint1)(uVar5 >> 8) & 0xbf) != 0x80) {\n          xStack_e = uVar1;\n          if ((uVar5 >> 8 & 0x80) != 0) goto code_r0x1030235c;\ncode_r0x10302383:\n          if (xStack_e == 0) goto code_r0x1030238c;\n          goto code_r0x103021fe;\n        }\n        if ((uVar8 <= (*(uint2 *)((char *)&xStack_e + 2))) &&\n           ((uVar8 < (*(uint2 *)((char *)&xStack_e + 2)) || ((uint2)xStack_12 <= (uint2)xStack_e)))) {\n          iVar7 = 1;\n          if (iVar2 == -1) {\n            iVar7 = *(int2 *)(a4 + 0x65);\n          }\n          *xStack_1e = *xStack_1e + iVar7;\n          uVar3 = KERNEL_16(0x2002,*xStack_1e * 0x40 + 6,0,(int2)((uint4)xStack_1e >> 0x10));\n          if (uVar3 != 0) {\n            xStack_1e = (uint2 *)((uint4)uVar3 << 0x10);\n            pxVar4 = (xunknown4 *)((*MK_FP(uVar3,(int2 *)0x0) - iVar7) * 0x40 + 6);\n            for (; iVar7 != 0; iVar7 = iVar7 + -1) {\n              *MK_FP(uVar3,pxVar4) = xStack_22;\n              *MK_FP(uVar3,pxVar4 + 1) = xStack_12;\n              *MK_FP(uVar3,pxVar4 + 2) = 0;\n              *MK_FP(uVar3,pxVar4 + 3) = 0;\n              *(uint2 *)MK_FP(uVar3,pxVar4 + 4) =\n                   (*MK_FP(a3,(uint1 *)(a2 + 0x11)) & 0xff10 | 0x20) << 8;\n              *MK_FP(uVar3,(xunknown2 *)((int2)pxVar4 + 0x12)) = 0;\n              if (iVar2 == -1) {\n                *(int2 *)MK_FP(uVar3,pxVar4 + 8) = iVar7 + -1;\n                *MK_FP(uVar3,(xunknown2 *)((int2)pxVar4 + 0x22)) = 0;\n              }\n              else {\n                *MK_FP(uVar3,pxVar4 + 8) = iVar2;\n              }\n              *(int2 *)MK_FP(uVar3,pxVar4 + 10) = a4;\n              *MK_FP(uVar3,(xunknown2 *)((int2)pxVar4 + 0x2a)) = 0;\n              pxVar4 = pxVar4 + 0x10;\n            }\n            uVar8 = (*(uint2 *)((char *)&xStack_12 + 2));\n            uVar3 = (uint2)xStack_12;\ncode_r0x1030235c:\n            uVar5 = uVar3 + 3;\n            iVar7 = uVar8 + (0xfffc < uVar3);\n            if ((CONCAT22(iVar7,uVar5) & 0xfffffffc) <= uVar1) {\n              xStack_22 = (int4 *)CONCAT22((*(uint2 *)((char *)&xStack_22 + 2)),iVar9 + 0xc + (uVar5 & 0xfffc));\n              xStack_e = uVar1 - (CONCAT22(iVar7,uVar5) & 0xfffffffc);\n              goto code_r0x10302383;\n            }\n            goto code_r0x10302408;\n          }\n          *xStack_1e = *xStack_1e - iVar7;\n          goto code_r0x103021af;\n        }\n      }\ncode_r0x10302408:\n      iStack_1a = 0xb;\n      goto code_r0x103024b6;\n    }\ncode_r0x1030238c:\n    iVar7 = 6;\n    iVar9 = (*(uint2 *)((char *)&xStack_1e + 2));\n    if (*xStack_1e != 0) {\n      uStack_a = 0;\n      do {\n        iVar6 = sub_2_050A((int2)*MK_FP((*(uint2 *)((char *)&xStack_1e + 2)),(xunknown4 *)(iVar7 + 0x20)),\n                           (int2)((uint4)*MK_FP((*(uint2 *)((char *)&xStack_1e + 2)),(xunknown4 *)(iVar7 + 0x20)) >> 0x10\n                                 ),a4);\n        if ((iVar6 != 0) &&\n           (iStack_1a = MIDIOUTPREPAREHEADER(0x40,iVar7,(*(uint2 *)((char *)&xStack_1e + 2)),iVar6), iStack_1a != 0))\n        goto code_r0x103024b6;\n        iVar7 = iVar7 + 0x40;\n        uStack_a = uStack_a + 1;\n      } while (uStack_a < *xStack_1e);\n    }\n    *MK_FP((*(uint2 *)((char *)&xStack_1e + 2)),(xunknown2 *)0x2) = 6;\n    *MK_FP((*(uint2 *)((char *)&xStack_1e + 2)),(int2 *)0x4) = (*(uint2 *)((char *)&xStack_1e + 2));\n    iVar7 = *(int2 *)(a4 + 8);\n    *(int2 *)(a4 + 8) = *(int2 *)(a4 + 8) + 1;\n    if (iVar7 == 0) {\n      bVar11 = *(int4 *)(a4 + 0x1e) != 0;\n      if (bVar11) {\n        xVar10 = (xunknown2)((uint4)*(xunknown4 *)(a4 + 0x1e) >> 0x10);\n        iVar7 = (int2)*(xunknown4 *)(a4 + 0x1e);\n        *MK_FP(xVar10,(int2 *)(iVar7 + 0x14)) = a2;\n        *MK_FP(xVar10,(int2 *)(iVar7 + 0x16)) = a3;\n      }\n      else {\n        *(int2 *)(a4 + 0x1a) = a2;\n        *(int2 *)(a4 + 0x1c) = a3;\n      }\n      bVar11 = !bVar11;\n      *(int2 *)(a4 + 0x1e) = a2;\n      *(int2 *)(a4 + 0x20) = a3;\n      *MK_FP(a3,(xunknown4 *)(a2 + 0x14)) = 0;\n      *MK_FP(a3,(uint1 *)(a2 + 0x10)) = *MK_FP(a3,(uint1 *)(a2 + 0x10)) | 4;\n      *(int2 *)(a4 + 8) = *(int2 *)(a4 + 8) + -1;\n      if ((*(int2 *)(a4 + 0x12) == 4) && (*(int2 *)(a4 + 0x14) == 0)) {\n        if (bVar11) {\n          *(xunknown2 *)(a4 + 0x18) = 0;\n          *(xunknown2 *)(a4 + 0x16) = 0;\n        }\n      }\n      else if ((bVar11) &&\n              ((*(int2 *)0x5e == 0 || (iVar7 = TIMEKILLEVENT(*(int2 *)0x5e), iVar7 == 0)))) {\n        iVar6 = 0;\n        *(xunknown2 *)0x5e = 0;\n        *(xunknown2 *)(a4 + 0x14) = 0;\n        *(xunknown2 *)(a4 + 0x12) = 0;\n        iVar7 = iVar6;\n        a5 = TIMEGETTIME();\n        sub_2_0B28(0,0,0,0,a5,iVar9,iVar7,iVar6);\n      }\n    }\n    else {\n      iStack_1a = 1;\n      *(int2 *)(a4 + 8) = *(int2 *)(a4 + 8) + -1;\n    }\n  }\ncode_r0x103024b6:\n  if ((iStack_1a != 0) && (xStack_1e != 0)) {\n    iVar9 = 6;\n    while (uVar3 = *xStack_1e, *xStack_1e = *xStack_1e - 1, uVar3 != 0) {\n      iVar7 = sub_2_050A((int2)*MK_FP((*(uint2 *)((char *)&xStack_1e + 2)),(xunknown4 *)(iVar9 + 0x20)),\n                         (int2)((uint4)*MK_FP((*(uint2 *)((char *)&xStack_1e + 2)),(xunknown4 *)(iVar9 + 0x20)) >> 0x10),\n                         a4);\n      MIDIOUTUNPREPAREHEADER(0x40,iVar9,(*(uint2 *)((char *)&xStack_1e + 2)),iVar7);\n      iVar9 = iVar9 + 0x40;\n    }\n    KERNEL_17((*(uint2 *)((char *)&xStack_1e + 2)));\n  }\n  return iStack_1a;\n}",
-    4505
+    5426
    ],
    "kwargs": {},
    "result": {
     "$t": [
      [
-      "(*(uint2 *)((char *)&xStack_1e + 2))",
-      "(xunknown4 *)(iVar7 + 0x20)"
+      "xVar10",
+      "(int2 *)(iVar7 + 0x16)"
      ],
-     4571
+     5457
     ]
    }
   },

@@ -545,14 +545,20 @@ def _far_from_stack(body, far):
             v, amp, src = mm.groups()
             if v not in far and in_frame(amp, src):
                 stack.add(v)
-    # (a pointer set from anything else too is not known to be in the frame)
-    for v in list(stack):
-        for mm in re.finditer(r"(?m)^\s+%s = ([^;]+);" % re.escape(v), body):
-            rhs = mm.group(1)
-            ok = re.fullmatch(r"(?:\([\w ]+\*\))?\s*(&?)(\w+)(?: \+ [\w()]+)?", rhs.strip())
-            if not ok or not in_frame(ok.group(1), ok.group(2)):
-                stack.discard(v)
-                break
+    # (a pointer set from anything else too is not known to be in the frame -- nor, then, one set
+    # from it: dropped until none is left to drop, so the answer does not depend on the order a
+    # set is gone through, which changes from run to run)
+    dropped = True
+    while dropped:
+        dropped = False
+        for v in sorted(stack):
+            for mm in re.finditer(r"(?m)^\s+%s = ([^;]+);" % re.escape(v), body):
+                rhs = mm.group(1)
+                ok = re.fullmatch(r"(?:\([\w ]+\*\))?\s*(&?)(\w+)(?: \+ [\w()]+)?", rhs.strip())
+                if not ok or not in_frame(ok.group(1), ok.group(2)):
+                    stack.discard(v)
+                    dropped = True
+                    break
     if not stack:
         return body
     srcs = "|".join(re.escape(v) for v in sorted(stack, key=len, reverse=True))
