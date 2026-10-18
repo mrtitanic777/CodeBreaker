@@ -1,0 +1,12 @@
+{
+  "subsystem": "javax.swing",
+  "language": "javax.swing",
+  "description": "AWT/Swing desktop UI. Almost entirely dead on console; the few reachable calls resolve to a minimal shim (or an on-screen-keyboard / log) so they compile.",
+  "symbols": {
+    "JOptionPane.showMessageDialog": {"signature": "(Component,Object,...)",
+      "maps": {"xbox360": {"target": "JOptionPane::showMessageDialog", "kind": "shim",
+        "note": "No desktop dialog on console: route the message to the debug log (or an XOverlapped message box); a stub that compiles is enough since it is a fatal-error path."}}},
+    "JOptionPane.showConfirmDialog": {"signature": "(...)",
+      "maps": {"xbox360": {"target": "JOptionPane::showConfirmDialog", "kind": "shim", "note": "Returns a default; dead on console."}}}
+  }
+}

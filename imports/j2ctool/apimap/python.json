@@ -1,0 +1,32 @@
+{
+  "subsystem": "python.builtins",
+  "language": "python",
+  "description": "CPython builtins / stdlib -> C++ and C. A demonstrator that the registry is genuinely multi-language (a Python->C conversion resolves against exactly these rows), not a Java->C++ tool wearing a general coat.",
+  "symbols": {
+    "len": {"signature": "(seq)",
+      "maps": {"cpp": {"target": "std::size", "kind": "direct",
+                 "by_version": {"c++98": {"target": ".size()", "kind": "macro",
+                   "note": "Pre-C++17 has no std::size; call the container's .size() member."}}},
+               "c": {"target": "(explicit length arg)", "kind": "unsupported",
+                 "note": "C arrays carry no length; the caller must thread an explicit count."}}},
+    "print": {"signature": "(*args)",
+      "maps": {"cpp": {"target": "std::cout <<", "kind": "macro", "note": "Join args with ' ', append '\\n'."},
+               "c": {"target": "printf", "kind": "signature-adapted", "note": "Needs a format string built from arg types."}}},
+    "range": {"signature": "(start,stop,step)",
+      "maps": {"cpp": {"target": "(for-loop)", "kind": "macro", "note": "Lower to a counted for-loop; no lazy sequence object."},
+               "c": {"target": "(for-loop)", "kind": "macro"}}},
+    "str.upper": {"signature": "()",
+      "maps": {"cpp": {"target": "j2c::toUpper", "kind": "shim", "note": "std::toupper per char over the string."},
+               "c": {"target": "toupper (per char)", "kind": "shim"}}},
+    "str.split": {"signature": "(sep)",
+      "maps": {"cpp": {"target": "j2c::split", "kind": "shim", "note": "Returns std::vector<std::string>."},
+               "c": {"target": "strtok_r", "kind": "signature-adapted", "note": "Destructive; different ownership model."}}},
+    "math.sqrt": {"signature": "(x)",
+      "maps": {"cpp": {"target": "std::sqrt", "kind": "direct"}, "c": {"target": "sqrt", "kind": "direct"}}},
+    "list.append": {"signature": "(x)",
+      "maps": {"cpp": {"target": "std::vector::push_back", "kind": "direct"},
+               "c": {"target": "(manual realloc)", "kind": "unsupported", "note": "No growable array in C stdlib."}}},
+    "dict.get": {"signature": "(k,default)",
+      "maps": {"cpp": {"target": "j2c::mapGet", "kind": "shim", "note": "std::map::find with a default; not operator[] (which inserts)."}}}
+  }
+}

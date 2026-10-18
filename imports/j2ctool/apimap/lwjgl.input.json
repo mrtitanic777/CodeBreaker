@@ -1,0 +1,25 @@
+{
+  "subsystem": "lwjgl.input",
+  "language": "lwjgl",
+  "description": "LWJGL Keyboard/Mouse/Display. On Xbox 360 the controller adapter synthesizes key/mouse events; key CONSTANTS must all resolve so bind tables compile.",
+  "symbols": {
+    "Keyboard.isKeyDown": {"signature": "(int)",
+      "maps": {"xbox360": {"target": "Keyboard::isKeyDown", "kind": "shim",
+        "note": "Backed by the XInput controller->keyboard adapter (Input.reference)."}}},
+    "Keyboard.next": {"signature": "()", "maps": {"xbox360": {"target": "Keyboard::next", "kind": "shim"}}},
+    "Keyboard.getEventKey": {"signature": "()", "maps": {"xbox360": {"target": "Keyboard::getEventKey", "kind": "shim"}}},
+    "Keyboard.KEY_LMETA": {"doc": "Left meta/command key constant.",
+      "maps": {"xbox360": {"target": "Keyboard::KEY_LMETA", "kind": "constant",
+        "note": "Must be DEFINED even though no 360 key maps to it (bind tables reference it); value = LWJGL 0xDB."}}},
+    "Keyboard.KEY_RMETA": {"maps": {"xbox360": {"target": "Keyboard::KEY_RMETA", "kind": "constant", "note": "0xDD."}}},
+    "Keyboard.KEY_LCONTROL": {"maps": {"xbox360": {"target": "Keyboard::KEY_LCONTROL", "kind": "constant"}}},
+    "Keyboard.KEY_LSHIFT": {"maps": {"xbox360": {"target": "Keyboard::KEY_LSHIFT", "kind": "constant"}}},
+    "Keyboard.KEY_SPACE": {"maps": {"xbox360": {"target": "Keyboard::KEY_SPACE", "kind": "constant"}}},
+    "Mouse.isButtonDown": {"signature": "(int)", "maps": {"xbox360": {"target": "Mouse::isButtonDown", "kind": "shim"}}},
+    "Mouse.getDX": {"signature": "()", "maps": {"xbox360": {"target": "Mouse::getDX", "kind": "shim",
+      "note": "Right-stick delta."}}},
+    "Display.update": {"signature": "()", "maps": {"xbox360": {"target": "Display::update", "kind": "shim",
+      "note": "Poll input + Present."}}},
+    "Display.getWidth": {"signature": "()", "maps": {"xbox360": {"target": "Display::getWidth", "kind": "shim"}}}
+  }
+}

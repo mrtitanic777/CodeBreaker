@@ -1,0 +1,16 @@
+# The transpiler core (parse -> IR -> emit -> pipeline, and the CLI) runs on the Python
+# standard library alone -- no packages required for `python -m j2ctool convert ...`.
+#
+# The two dependencies below are OPTIONAL and unlock specific features; each is guarded in code
+# and degrades gracefully when absent:
+#
+#   PySide6  -- the desktop GUI (the default no-argument entry point). Without it, use the CLI.
+#   Pillow   -- texture/asset extraction and PNG->RGBA normalization (`j2ctool assets`) and
+#               achievement icon handling (`j2ctool achievements`). Without it, those steps warn/skip.
+#
+# Install everything for the full experience:
+PySide6
+Pillow
+
+# Dev/test:
+pytest
