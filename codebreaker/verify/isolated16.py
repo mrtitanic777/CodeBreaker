@@ -93,7 +93,10 @@ def _fingerprint(r, wide, data_len):
             at.setdefault(k, ((w.get("old") or 0) >> (8 * i)) & 0xFF)
             into[k] = (val >> (8 * i)) & 0xFF
     state = {k: x for k, x in state.items() if x != before.get(k)}
-    far = {k: x for k, x in far.items() if x != far_before.get(k)}
+    # (through a far pointer: what is written, not whether it changed what was there -- the place
+    # may be in the module's own segments, whose bytes the two builds lay out differently: USER's
+    # GetCaretPos wrote 0 over 56F8h in the original and over 007Bh in the build, and its high
+    # byte "changed" on one side only)
     regs = r.get("exit_regs") or {}
     out = {"exit": ex, "calls": tuple(calls), "data": tuple(sorted(state.items())), "far": tuple(sorted(far.items()))}
     if ex == "ret":
