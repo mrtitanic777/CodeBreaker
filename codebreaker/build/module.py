@@ -578,9 +578,10 @@ def _registers_c_cannot_carry(nef, segs, at, texts):
       (sub_1_81C8 returns es:[38h]:1Eh, the C 1Eh alone)."""
     import capstone
     md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
-    starts, takes = {}, {}
+    starts, takes, by_offset = {}, {}, {}
     for (sg, o), n in at.items():
         starts.setdefault(sg, []).append(o)
+        by_offset.setdefault(o, []).append((sg, n))
         regs = {r.lower() for r in _REGISTER_IN.findall(texts.get(n, "").split("{", 1)[-1])}
         if regs:
             takes.setdefault(o, []).append((sg, n, regs))
@@ -614,6 +615,16 @@ def _registers_c_cannot_carry(nef, segs, at, texts):
                     if set_:
                         out.setdefault(n, "it passes %s to %s in a register (%04x)" % (
                             set_[-1].op_str.split(",")[0].strip().upper(), callee, i.address))
+                # ... and the caller reads ES the callee left: an ES result no C returns
+                # (USER's sub_1_281C leaves ES = the task's queue, and its caller clears a
+                # flag at es:[30h]; the C left ES at another segment, the flag stayed set and
+                # Setup sat idle on its Options page)
+                nxt = ins[k + 1] if k + 1 < len(ins) else None
+                if nxt is not None and re.search(r"\bes\b", nxt.op_str) \
+                        and not re.match(r"\s*es\s*,", nxt.op_str) and nxt.mnemonic not in ("les", "pop"):
+                    for csg, callee in by_offset.get(target, []):
+                        if not (i.mnemonic == "call" and csg != sg) and callee != n:
+                            out.setdefault(callee, "its callers read the ES it returns (%s, %04x)" % (n, nxt.address))
             elif i.mnemonic in ("ret", "retf") and not wide:
                 if any((p.mnemonic in ("mov", "xor", "sub", "les", "lds") and p.op_str.startswith("dx,"))
                        or p.mnemonic == "cwd" for p in prev):
