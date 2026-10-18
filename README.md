@@ -20,7 +20,7 @@ all behave right is nearest to what a person wrote.
 | PowerPC images | yes | per function, into one image | by behaviour, beside the original |
 | Virtual device drivers | to assembly source | whole, from that source | byte for byte, and by behaviour |
 | Real-mode DOS programs | to assembly source | whole, from that source | byte for byte |
-| Java programs (source) | transpiled to C++03 | per class, with the host compiler | compiles; not yet run |
+| Java programs (source) | transpiled to C++03 | per class, with the host compiler | by behaviour beside the JVM (static methods), else compiles |
 
 All six go through one path (`verify/reconstruct.py`); a kind is one small file that says how
 its modules are prepared, built and judged.
@@ -126,8 +126,10 @@ DOES NOT COMPILE    the reconstruction is not yet C the compiler accepts
 NO SOURCE           the decompiler produced nothing
 ```
 
-A Java class is at most NOT JUDGED for now: it is transpiled and compiled, but there is no judge
-yet that runs Java beside its translation.
+A Java class is run beside the original where it can be: its static methods with primitive
+parameters and results are called on the same inputs in the JVM (the source compiled by javac) and
+natively, and compared exactly -- VERIFIED, or VERIFIED (weak) "methods-partial" when only some of
+its methods could be run. A class with no such method is NOT JUDGED once it compiles.
 
 `teeth` is what says how far to trust the first of these: it breaks functions the judge passed
 (a constant one higher, a comparison turned round, a store left out) and counts how many of the

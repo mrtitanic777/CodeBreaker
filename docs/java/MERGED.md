@@ -22,7 +22,9 @@ J2CTool, the deterministic Java -> C++03 transpiler, is `codebreaker/java` since
 On CodeBreaker's path a folder of Java source is a module of the `java` kind (verify/java.py): its
 classes are its functions, each is compiled on its own with the host compiler, verdicts go to the
 store, and `codebreaker module FOLDER` writes the C++ with each class's status line and STATUS.md.
-A class that compiles is NOT JUDGED: nothing runs Java beside its translation yet.
+A class that compiles is then run beside the JVM where it can be (codebreaker/java/probe.py): its
+static methods with primitive parameters and results, on the same inputs, results compared exactly.
+The support headers are precompiled once per module, so a class compiles in about a fifth of the time.
 
 Conversions in one process run one at a time (transpile.convert holds a lock): the target profile
 and the per-corpus tables are module-level. Side-by-side work runs in separate processes, as
