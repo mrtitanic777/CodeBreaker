@@ -76,6 +76,16 @@ class Source(object):
             return n.child_by_field_name("body")
         return None
 
+    def function_name(self):
+        """The identifier naming the function being defined, or None."""
+        for n in self.find("function_definition"):
+            dcl = n.child_by_field_name("declarator")
+            while dcl is not None and dcl.type != "function_declarator":
+                dcl = dcl.child_by_field_name("declarator")
+            name = dcl.child_by_field_name("declarator") if dcl is not None else None
+            return name if name is not None and name.type == "identifier" else None
+        return None
+
     def parameter_list(self):
         """The function's own `( ... )` (of the function being defined, not of a pointer it returns)."""
         for n in self.find("function_definition"):

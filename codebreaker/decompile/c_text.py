@@ -287,6 +287,66 @@ def _fit_calls(out, order):
     return {n: ctree.rewrite(out[n], fit) for n in order} if takes else out
 
 
+def _called(text):
+    """The names of the functions the text calls (`f(...)`; not a cast or a declaration the grammar
+    read as a call)."""
+    src = ctree.Source(text)
+    return {src.at(c.child_by_field_name("function")) for c in src.find("call_expression")
+            if c.child_by_field_name("function").type == "identifier" and src.is_call(c)}
+
+
+def _called_through(text):
+    """Globals the text calls through: `(*xRam0040c000)(...)`."""
+    src = ctree.Source(text)
+    out = set()
+    for c in src.find("call_expression"):
+        f = c.child_by_field_name("function")
+        if f.type == "parenthesized_expression" and f.named_child_count == 1:
+            p = f.named_children[0]
+            if p.type == "pointer_expression" and src.at(p.child_by_field_name("operator")) == "*" and \
+                    p.child_by_field_name("argument").type == "identifier" and \
+                    _RAM.fullmatch(src.at(p.child_by_field_name("argument"))):
+                out.add(src.at(p.child_by_field_name("argument")))
+    return out
+
+
+def _globals(text):
+    """(prefix, address) of every global the text names by its address (`iRam0040c000`)."""
+    src = ctree.Source(text)
+    return {m.groups() for m in (_RAM.fullmatch(src.at(n)) for n in src.find("identifier")) if m}
+
+
+def _without_notes(text):
+    """The text without the notes the decompiler put before the function (`/* WARNING: ... */`)."""
+    src = ctree.Source(text)
+    end = 0
+    for c in src.root.children:
+        if c.type != "comment" or not src.at(c).startswith("/*"):
+            break
+        end = c.end_byte
+    if not end:
+        return text
+    return src.data[end:].decode("utf-8").lstrip()
+
+
+def _code_pointers(text, functions):
+    """`p = sub_401000;` -- a function's address stored in a pointer the core typed loosely:
+    `p = (code *)sub_401000;` (where the statement ends its line)."""
+    src = ctree.Source(text)
+    for n in src.find("assignment_expression", "init_declarator"):
+        v = n.child_by_field_name("right" if n.type == "assignment_expression" else "value")
+        if v is not None and v.type == "identifier" and src.at(v) in functions and \
+                src.data[v.end_byte:v.end_byte + 1] == b";" and src.data[v.end_byte + 1:v.end_byte + 2] in (b"\n", b"\r", b"") \
+                and src.data[v.start_byte - 2:v.start_byte] == b"= ":
+            src.insert(v.start_byte, "(code *)")
+    return src.text()
+
+
+def _numbers(src, under=None):
+    """The number literals of the text (not inside strings or comments)."""
+    return src.find("number_literal", under=under)
+
+
 def compilable32(module_path, funcs, outdir):
     """-> (preamble, {name: text}, [names], {va: name}, [import names used]) for a whole-module build:
     the core's output with its base types defined, its globals bound to the original's addresses,
@@ -313,14 +373,15 @@ def compilable32(module_path, funcs, outdir):
                 body.append(ln)
         # (a note the core put before the function -- "WARNING: Removing unreachable block" --
         # is not part of it: left in, it became the function's declaration and broke the header)
-        t = _LEADING.sub("", "\n".join(body).strip())
+        t = _without_notes("\n".join(body).strip())
         # `x._1_2_` is the core's spelling of "2 bytes of x starting at byte 1"
         t = _pieces(t, _BY_SIZE, "uint4")
         t = _compare_as_numbers(_keep_frame(_null_is_zero(t)))
         # a function's address stored in a pointer the core typed loosely
-        t = re.sub(r"(?m)(= )((?:%s);)$" % "|".join(re.escape(x) for x in order), r"\1(code *)\2", t)
+        t = _code_pointers(t, set(order))
         # every function returns a value in EAX whether or not the core saw it used
-        t = re.sub(r"\Avoid(\s)", r"int\1", t)
+        if t.startswith("void") and t[4:5].isspace():
+            t = "int" + t[4:]
         # the compiler used here has no word for "first argument in ECX": the function is
         # declared plainly, and a #pragma in the header says where its first argument is
         if "__thiscall" in t.split("{", 1)[0]:
@@ -334,25 +395,29 @@ def compilable32(module_path, funcs, outdir):
         out[n] = t
     text = "\n".join(out.values())
     macros = []
+    underscored = {"_" + "%sRam%s" % g for t in out.values() for g in
+                   (m2.groups() for m2 in (re.fullmatch(r"_([a-z]+)Ram([0-9a-f]{8})", n2) for n2 in _identifiers(t)) if m2)}
     # a global the code calls through holds a function pointer, whatever else it is compared with
-    called_through = set(re.findall(r"\(\*([a-z]+Ram[0-9a-f]{8})\)\s*\(", text))
+    called_through = set().union(*(_called_through(t) for t in out.values())) if out else set()
     # A global the decompiler named as a number but reads through (`*iRam..`, `iRam..[n]`) is
     # read through as a pointer THERE; it stays a number everywhere else, where it is added to
     # and compared as one. (Declaring it a pointer would change what `iRam.. + 4` means.)
     kind = {"i": "int4", "u": "uint4", "x": "xunknown4"}
 
-    def through(m):
-        name = m.group(2) if m.lastindex == 2 else m.group(1)
-        if name in called_through or name[0] not in kind:
-            return m.group(0)
-        if m.lastindex == 2:
-            return "%s*(%s *)%s" % (m.group(1), kind[name[0]], name)
-        return "((%s *)%s)[" % (kind[name[0]], name)
+    def through(src):
+        for n in src.find("identifier"):
+            name = src.at(n)
+            if not _RAM.fullmatch(name) or name in called_through or name[0] not in kind:
+                continue
+            up = n.parent
+            if up.type == "pointer_expression" and src.at(up.child_by_field_name("operator")) == "*":
+                src.replace(n, "(%s *)%s" % (kind[name[0]], name))
+            elif up.type == "subscript_expression" and up.child_by_field_name("argument") == n:
+                src.replace(n, "((%s *)%s)" % (kind[name[0]], name))
     for n in order:
-        t = re.sub(r"((?<![\w)\]]))\*([a-z]+Ram[0-9a-f]{8})\b", through, out[n])
-        out[n] = re.sub(r"\b([a-z]+Ram[0-9a-f]{8})\[", through, t)
+        out[n] = ctree.rewrite(out[n], through)
     text = "\n".join(out.values())
-    for pre, addr in sorted(set(re.findall(r"\b([a-z]+)Ram([0-9a-f]{8})\b", text))):
+    for pre, addr in sorted(set().union(*(_globals(t) for t in out.values())) if out else ()):
         szs = sizes.get(int(addr, 16)) or {4}
         size = min(szs) if len(szs) > 1 and pre[0] in "cb" else max(s for s in szs if s <= 8) if any(s <= 8 for s in szs) else 4
         # `pc` is the decompiler's prefix for a pointer to char; a global is a code pointer
@@ -362,7 +427,7 @@ def compilable32(module_path, funcs, outdir):
         if pre[0] == "p" and len(pre) > 1 and ty != "code *":
             ty = _ram_type(pre, size, False)             # a pointer, by the decompiler's own naming (piRam: int *)
         macros.append("#define %sRam%s (*(%s *)0x%s)" % (pre, addr, ty, addr))
-        if re.search(r"(?<![A-Za-z0-9])_%sRam%s\b" % (pre, addr), text):
+        if ("_%sRam%s" % (pre, addr)) in underscored:
             # (the core's name for the same place read at another width: `_uRam0040c000`)
             macros.append("#define _%sRam%s (*(%s *)0x%s)" % (pre, addr, ty, addr))
         # A function that uses the place at one width other than the declared one (a byte
@@ -385,13 +450,23 @@ def compilable32(module_path, funcs, outdir):
     # same integer, whatever it points to
     pointers = [m.group(1) for m in re.finditer(r"#define (\w+Ram[0-9a-f]{8}) \(\*\([^()]*\* \*\)", "\n".join(macros))]
     if pointers:
-        cast = r"\((u?int\d)\)"
-        names = "|".join(pointers)
+        pset = set(pointers)
+
+        def same_cast(src):
+            for b in src.find("binary_expression"):
+                if b.child_by_field_name("operator").type not in _COMPARISONS:
+                    continue
+                left, right = b.child_by_field_name("left"), b.child_by_field_name("right")
+                for g, other in ((right, left), (left, right)):
+                    if g.type == "identifier" and src.at(g) in pset and other.type == "cast_expression":
+                        ty = src.at(other.child_by_field_name("type"))
+                        if re.fullmatch(r"u?int\d", ty) and re.fullmatch(r"[\w.>\-]+", src.at(other.child_by_field_name("value"))):
+                            src.insert(g.start_byte, "(%s)" % ty)
+                            break
         for n in order:
-            t = re.sub(r"(%s[\w.>\-]+\s*(?:[!=]=|[<>]=?)\s*)(%s)\b" % (cast, names), r"\1(\2)\3", out[n])
-            out[n] = re.sub(r"\b(%s)(\s*(?:[!=]=|[<>]=?)\s*%s)" % (names, cast), r"(\3)\1\2", t)
+            out[n] = ctree.rewrite(out[n], same_cast)
         text = "\n".join(out.values())
-    called = set(re.findall(r"\b([A-Za-z_]\w*)\s*\(", text))
+    called = set().union(*(_called(t) for t in out.values())) if out else set()
     used = sorted(n for n in called if n in imports and n not in out)
     decls = []
     for n in used:
@@ -846,8 +921,7 @@ def declaration(text):
     return head[:head.index("(")] + "();"
 
 
-_RAM = re.compile(r"\b([a-z]+)Ram([0-9a-f]{8})\b")
-_LEADING = re.compile(r"\A(?:\s*/\*.*?\*/)+\s*", re.S)
+_RAM = re.compile(r"([a-z]+)Ram([0-9a-f]{8})")
 
 
 def _global_type(prefix, size, elem=None):
@@ -954,6 +1028,81 @@ def compilable16(module_path, outdir=None):
     return m
 
 
+def _before_name(text, name, word):
+    """`word` written before the function's name in its heading (`__export F(`)."""
+    src = ctree.Source(text)
+    n = src.function_name()
+    if n is None or src.at(n) != name:
+        return text
+    src.insert(n.start_byte, word)
+    return src.text()
+
+
+def _far_before_name(text, name):
+    """Is the function declared `__far name(`?"""
+    src = ctree.Source(text)
+    n = src.function_name()
+    return n is not None and src.at(n) == name and \
+        src.data[:n.start_byte].decode("utf-8").rstrip().endswith("__far")
+
+
+def _far_result(text, name):
+    """The `*` of the result in the heading made `__far *` (the function returns a far pointer)."""
+    src = ctree.Source(text)
+    n = src.function_name()
+    if n is None or src.at(n) != name:
+        return text
+    at = n.start_byte
+    while at > 0 and (chr(src.data[at - 1]).isspace() or chr(src.data[at - 1]).isalnum() or src.data[at - 1:at] == b"_"):
+        at -= 1                                          # (back over the words between: `* __stdcall16far name`)
+    if src.data[at - 1:at] != b"*":
+        return text
+    src.replace((at - 1, at), "__far *")
+    return src.text()
+
+
+def _byte_result(text):
+    """(the type, where what follows it starts) when the function's result is a byte type, else None"""
+    src = ctree.Source(text)
+    for f in src.find("function_definition"):
+        ty = f.child_by_field_name("type")
+        dcl = f.child_by_field_name("declarator")
+        if src.at(ty) in ("bool", "char", "int1", "uint1", "xunknown1", "undefined1", "undefined") and \
+                dcl is not None and dcl.type != "pointer_declarator" and not src.data[:ty.start_byte].strip():
+            end = ty.end_byte
+            while end < len(src.data) and chr(src.data[end]).isspace():
+                end += 1
+            return src.at(ty), len(src.data[:end].decode("utf-8"))
+        break
+    return None
+
+
+def _one_name_for_globals(text):
+    """`_iRam0040c000` -> `iRam0040c000`: the decompiler's second name for a global (read at
+    another width) is the global."""
+    src = ctree.Source(text)
+    for n in src.find("identifier"):
+        if re.fullmatch(r"_[a-z]+Ram[0-9a-f]{8}", src.at(n)):
+            src.replace(n, src.at(n)[1:])
+    return src.text()
+
+
+def _callee_pops(text):
+    """Calls through pointers whose callee removes the arguments: `(code *)` -> `(code_callee_pops *)`."""
+    src = ctree.Source(text)
+    for c in src.find("cast_expression"):
+        ty = c.child_by_field_name("type")
+        m = re.fullmatch(r"code (__far |__near )?\*", src.at(ty))
+        if m:
+            src.replace(ty, "code_callee_pops %s*" % (m.group(1) or ""))
+    return src.text()
+
+
+def _identifiers(text):
+    src = ctree.Source(text)
+    return [src.at(n) for n in src.find("identifier")]
+
+
 def _compilable16(module_path, outdir=None):
     from codebreaker.decompile import decompiler, describe
     texts, order, by_va, d = decompiler.decompile16(module_path, outdir)
@@ -1020,13 +1169,17 @@ def _compilable16(module_path, outdir=None):
         name = by_va[va]
         raw = texts[name]
         head0 = raw.split("{", 1)[0]
-        if distance.get(name) and "16near" not in head0 and "16far" not in head0 and re.search(r"\b%s\s*\(" % re.escape(name), head0):
+        named = ctree.Source(raw).function_name()
+        if distance.get(name) and "16near" not in head0 and "16far" not in head0 and named is not None and \
+                named.start_byte < len(head0.encode("utf-8")) and named.text.decode("utf-8") == name:
             # its whole model, convention too: the decompiler leaves the default one
             # (__stdcall16near) out, and a function with no convention named is compiled with
             # OpenWatcom's own -- arguments in registers, where its callers push them
-            marker = model_of.get(name) if not re.search(r"__(stdcall|cdecl|pascal)\b", head0) else None
-            raw = raw.replace(head0, re.sub(r"\b(%s\s*\()" % re.escape(name), "%s \\1" % (marker or "__" + distance[name]),
-                                            head0, count=1), 1)
+            words = head0.replace("(", " ").replace(")", " ").replace("*", " ").split()
+            marker = model_of.get(name) if not set(words) & {"__stdcall", "__cdecl", "__pascal"} else None
+            at = named.start_byte
+            raw = (raw.encode("utf-8")[:at] + ("%s " % (marker or "__" + distance[name])).encode("utf-8") +
+                   raw.encode("utf-8")[at:]).decode("utf-8")
         far = set()
         for mm in _FACT.finditer(raw):
             if mm.group(1) == "P" and mm.group(3) == "4":
@@ -1036,7 +1189,7 @@ def _compilable16(module_path, outdir=None):
                 sizes[a] = max(sizes.get(a, 0), int(mm.group(3))) if int(mm.group(3)) <= 4 else sizes.get(a, 2)
                 if mm.group(4) and int(mm.group(4)) in (1, 2, 4):
                     elems[a] = int(mm.group(4))
-        text = _LEADING.sub("", _FACT.sub("", raw))          # notes the decompiler put before the function
+        text = _without_notes(_FACT.sub("", raw))            # notes the decompiler put before the function
         seg, off = d.where[va]
         widths = _far_argument_widths(d.images[seg], off, ends.get(va, off),
                                       "far" in text.split("(", 1)[0]) if seg in d.images else {}
@@ -1044,9 +1197,7 @@ def _compilable16(module_path, outdir=None):
         if seg in d.images:
             text = _far_arguments(text, _far_loads(d.images[seg], off, ends.get(va, off)), "far" not in text.split("{", 1)[0])
         if "return" in far:                                  # the function returns a far pointer
-            head, brace, body = text.partition("{")
-            head = re.sub(r"\*(?=[\s\w]*\b%s\s*\()" % re.escape(name), "__far *", head, count=1)
-            text = head + brace + body
+            text = _far_result(text, name)
             m.wide.add(name)
         head = text.split("{", 1)[0]
         if head.split()[0] == "void":
@@ -1056,50 +1207,55 @@ def _compilable16(module_path, outdir=None):
             m.novalue.add(name)
             text = "xunknown2" + text[4:]
             head = text.split("{", 1)[0]
-        byte_result = re.match(r"\s*(bool|char|int1|uint1|xunknown1|undefined1|undefined)\s+(?!\*)", head)
+        byte_result = _byte_result(text)
         if byte_result:
             # A result the decompiler sized as a byte is returned in AX all the same: Windows'
             # BOOL is an int, and callers test the whole of AX (a byte would leave AH as it was)
-            text = text.replace(byte_result.group(0), ("int2 " if byte_result.group(1) in ("char", "int1") else "uint2 "), 1)
+            text = ("int2 " if byte_result[0] in ("char", "int1") else "uint2 ") + text[byte_result[1]:]
             head = text.split("{", 1)[0]
-        if not ("__stdcall16far" in head or "__cdecl16far" in head or re.search(r"\b__far\s+%s\s*\(" % re.escape(name), head)):
+        if not ("__stdcall16far" in head or "__cdecl16far" in head or _far_before_name(text, name)):
             m.near.add(name)                                 # near is the default and is not printed
         elif seg in d.images and bytes(d.images[seg][off:off + 3]) in (b"\x8c\xd8\x90", b"\x1e\x58\x90"):
             # The original starts `mov ax,ds; nop` -- the prologue Windows rewrites, for an export,
             # to load the module's own data segment: the source marked it _export, and so does
             # this (the compiler then writes that prologue: build/functions.py)
-            text = re.sub(r"\b%s\s*\(" % re.escape(name), "__export " + name + "(", text, count=1)
+            text = _before_name(text, name, "__export ")
             m.exported_prologue.add(name)
         if seg in d.images and d.data_segment and _loads_dgroup(d.images[seg], off, describe.selector(d.data_segment)):
             # it loads its own data segment, whoever calls it -- `mov ax, DGROUP` / `mov ds, ax`,
             # first or after its frame is set up (the source's _loadds): so does this
-            text = re.sub(r"\b%s\s*\(" % re.escape(name), "__loadds " + name + "(", text, count=1)
+            text = _before_name(text, name, "__loadds ")
         if head.split()[0] in _WIDE or "*" in head.split(name)[0] and "__far" in head.split(name)[0]:
             m.wide.add(name)
-        text = re.sub(r"\b_([a-z]+Ram[0-9a-f]{8})\b", r"\1", text)     # (a global the decompiler named twice)
+        text = _one_name_for_globals(text)                  # (a global the decompiler named twice)
         m.texts[name] = _near_to_far(_far_reads(_buffer_fields(_far_locals(_stack_arguments(_entry_sp(_far_addresses(_interrupts(_open_arguments(text), m.interrupts))))))))
         if seg in d.images:
             m.texts[name] = _stack_segment_stores(m.texts[name], d.images[seg], off, _end_of(d, seg, off))
         if callee_pops.get(va):
             # its calls through pointers remove nothing themselves: the callee does (the arguments
             # are listed in stack order, so __stdcall lays them out as the original pushed them)
-            m.texts[name] = re.sub(r"\(code (__far |__near )?\*\)", lambda mm: "(code_callee_pops %s*)" % (mm.group(1) or ""),
-                                   m.texts[name])
+            m.texts[name] = _callee_pops(m.texts[name])
         m.order.append(name)
         m.by_va[va] = name
         m.where[va] = d.where.get(va)
     # an import's value used bare (mov es, __0040H; test ax, __WINFLAGS) is the import
     values = getattr(d, "selector_imports", {})
 
-    def _value(mm):
-        if int(mm.group(0), 16) not in values:
-            return mm.group(0)
-        imp, how = values[int(mm.group(0), 16)]
+    def _value(number):
+        if int(number, 16) not in values:
+            return number
+        imp, how = values[int(number, 16)]
         m.selector_imports[imp] = how
         return "%s(&%s)" % ("FP_SEG" if how == "segment" else "FP_OFF", imp)
     if values:
         for name in m.texts:
-            m.texts[name] = re.sub(r"\b0x[dD]0[0-9a-fA-F]{2}\b", _value, m.texts[name])
+            src = ctree.Source(m.texts[name])
+            for num in _numbers(src):
+                if re.fullmatch(r"0x[dD]0[0-9a-fA-F]{2}", src.at(num)):
+                    new = _value(src.at(num))
+                    if new != src.at(num):
+                        src.replace(num, new)
+            m.texts[name] = src.text()
     # A segment of the module's own as a value -- its selector passed on, pushed, left in AX: the
     # decompiler shows the made-up selector the description gave it. The automatic data segment
     # is DS; a code segment, the selector of a far function in it (the loader fixes that one up).
@@ -1138,26 +1294,30 @@ def _compilable16(module_path, outdir=None):
             here = {v: e for v, e in sel_expr.items() if v in wanted}
             if not here:
                 continue
-            selector = re.compile(r"(?<![\w.])0x(%s)\b" % "|".join("%x" % v for v in here))
-            head, brace, body = m.texts[name].partition("{")
-            body = selector.sub(lambda mm: here[int(mm.group(1), 16)], body)
+            spelled = {"0x%x" % v: v for v in here}
+            src = ctree.Source(m.texts[name])
+            for num in _numbers(src, under=src.body()):
+                if src.at(num) in spelled:
+                    src.replace(num, here[spelled[src.at(num)]])
+            t = src.text()
             # a far pointer passed whole -- its offset the argument before its selector: a
             # function's place, written by the function's name (USER's sub_1_3514 passes the
             # callback 1:3452 to an enumeration as `0x3452, <segment 1>`: a number, it would
             # still go where the function was if that one moved)
-            for v, expr in here.items():
-                sg_t = (v - describe.FIRST_SELECTOR) // 8 + 1
-                pair = re.compile(r"(?<![\w.])0x([0-9a-f]+)(\s*,\s*)" + re.escape(expr))
-
-                def _named(mm, sg_t=sg_t, expr=expr):
-                    fn = at_place.get((sg_t, int(mm.group(1), 16)))
-                    if not fn:
-                        return mm.group(0)
-                    return "((uint2)(uint4)(void __far *)&%s)%s%s" % (fn, mm.group(2), expr)
-                body = pair.sub(_named, body)
-            m.texts[name] = head + brace + body
+            src = ctree.Source(t)
+            by_expr = {expr: (v - describe.FIRST_SELECTOR) // 8 + 1 for v, expr in here.items()}
+            for args in src.find("argument_list", under=src.body()):
+                items = args.named_children
+                for a, b in zip(items, items[1:]):
+                    sg_t = by_expr.get(src.at(b).strip())
+                    if sg_t is None or a.type != "number_literal" or not re.fullmatch(r"0x[0-9a-f]+", src.at(a)):
+                        continue
+                    fn = at_place.get((sg_t, int(src.at(a), 16)))
+                    if fn:
+                        src.replace(a, "((uint2)(uint4)(void __far *)&%s)" % fn)
+            m.texts[name] = src.text()
     body = "\n".join(m.texts.values())
-    called = set(re.findall(r"\b([A-Za-z_]\w*)\s*\(", body))
+    called = set().union(*(_called(t) for t in m.texts.values())) if m.texts else set()
     m.imports = {}
     for nm in d.imports:
         if nm in called and nm not in m.texts:
@@ -1169,8 +1329,8 @@ def _compilable16(module_path, outdir=None):
     # the module carries that segment's bytes, and the global is a place in them.
     macros, m.segments = [], {}
     # a global the code calls through holds a function pointer -- near or far by its size
-    called_through = set(re.findall(r"\(\*([a-z]+Ram[0-9a-f]{8})\)\s*\(", body))
-    for prefix, addr in sorted(set(_RAM.findall(body))):
+    called_through = set().union(*(_called_through(t) for t in m.texts.values())) if m.texts else set()
+    for prefix, addr in sorted(set().union(*(_globals(t) for t in m.texts.values())) if m.texts else ()):
         va = int(addr, 16)
         seg, off = describe.where(va)
         ty = _global_type(prefix, sizes.get(va, 2), elems.get(va))
@@ -1217,7 +1377,7 @@ def _compilable16(module_path, outdir=None):
                 m.imports[n] = (mm.group(1), int(mm.group(2)))
     decls += ["extern uint4 __far __stdcall %s();" % nm for nm in sorted(m.imports) if nm not in m.selector_imports]
     decls += [declaration(m.texts[n]) for n in m.order]
-    intrinsics = [INTRINSICS16[n] for n in sorted(INTRINSICS16) if re.search(r"\b%s\s*\(" % n, body)]
+    intrinsics = [INTRINSICS16[n] for n in sorted(INTRINSICS16) if n in called]
     intrinsics += interrupt_helpers(m.interrupts)
     if ("MK_FP(" in body or getattr(m, "bios_data", False)) and not m.selector_imports:
         intrinsics.append("#define MK_FP(s, o) ((void __far *)(((uint4)(uint2)(s) << 16) | (uint2)(o)))")
@@ -2006,7 +2166,7 @@ static void codebreaker_trap(uint4 to, int8 a, int8 b, uint8 ua, uint8 ub) {
 #define trapWord(to, a, b) codebreaker_trap((uint4)(to), (int8)(int4)(a), (int8)(int4)(b), (uint8)(uint4)(a), (uint8)(uint4)(b))
 #define trapDoubleWord(to, a, b) codebreaker_trap((uint4)(to), (int8)(a), (int8)(b), (uint8)(a), (uint8)(b))
 """
-_WIDE_ADDRESS = re.compile(r"\b0xffffffff([89a-f][0-9a-f]{7})\b")
+_WIDE_ADDRESS = re.compile(r"0xffffffff([89a-f][0-9a-f]{7})")
 
 
 _HOME = re.compile(r"_?([a-z]+)Stack(000000[0-9a-f]{2})")
@@ -2114,22 +2274,27 @@ def compilable_powerpc(module_path, outdir):
             elif not ln.startswith("/*@P "):
                 body.append(ln)
         t = "\n".join(body).strip()
-        t = _WIDE_ADDRESS.sub(r"0x\1", t)
+        src = ctree.Source(t)
+        for num in _numbers(src):
+            wide = _WIDE_ADDRESS.fullmatch(src.at(num))
+            if wide:
+                src.replace(num, "0x" + wide.group(1))
+        t = src.text()
         t = _pieces(t, _BY_SIZE, "uint4", lambda x, off, ty: "PIECE(%s, %s, %s)" % (x, off, ty))
         t = _compare_as_numbers(t)
-        t = re.sub(r"(?m)(= )((?:%s);)$" % "|".join(re.escape(x) for x in order), r"\1(code *)\2", t)
+        t = _code_pointers(t, set(order))
         t = _homed_arguments(t)
-        lead = _LEADING.match(t)
-        body = t[lead.end():] if lead else t
+        body = _without_notes(t)
+        lead = t[:len(t) - len(body)]
         if body.startswith("void") and not body[4:5].isalnum():
             # every function leaves something in r3 and callers are free to use it
             novalue.add(n)
-            t = (lead.group(0) if lead else "") + "uint8" + body[4:]
+            t = lead + "uint8" + body[4:]
         out[n] = _open_arguments(t)
     text = "\n".join(out.values())
     macros = []
-    called_through = set(re.findall(r"\(\*([a-z]+Ram[0-9a-f]{8})\)\s*\(", text))
-    for pre, addr in sorted(set(_RAM.findall(text))):
+    called_through = set().union(*(_called_through(t) for t in out.values())) if out else set()
+    for pre, addr in sorted(set().union(*(_globals(t) for t in out.values())) if out else ()):
         szs = sizes.get(int(addr, 16)) or {4}
         size = max((x for x in szs if x <= 8), default=4)
         macros.append("#define %sRam%s (*(%s *)0x%s)" % (
@@ -2138,13 +2303,14 @@ def compilable_powerpc(module_path, outdir):
     # in the original, which is in memory beside the rebuilt image when it is judged
     lo_image = min(va for va, _off, _size in img.spans)
     hi_image = max(va + size for va, _off, size in img.spans)
-    for addr in sorted(set(re.findall(r"\bfunc_0x([0-9a-f]{8})\b", text))):
+    for addr in sorted({n[len("func_0x"):] for t in out.values() for n in _identifiers(t)
+                        if re.fullmatch(r"func_0x[0-9a-f]{8}", n)}):
         if lo_image <= int(addr, 16) < hi_image and "func_0x" + addr not in out:
             macros.append("#define func_0x%s ((code *)0x%s)" % (addr, addr))
-    used = sorted(set(re.findall(r"\b(import\d+_ord_\d+)\s*\(", text)))
+    used = sorted({n for t in out.values() for n in _called(t) if re.fullmatch(r"import\d+_ord_\d+", n)})
     decls = ["uint8 %s();" % n for n in used]
     for n in order:
-        head = " ".join(_LEADING.sub("", out[n]).split("{", 1)[0].split())
+        head = " ".join(_without_notes(out[n]).split("{", 1)[0].split())
         if "(" not in head:
             continue
         decls.append(head[:head.index("(")] + "();")
