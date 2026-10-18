@@ -170,7 +170,7 @@ struct JObject {
 	// box a string-concat builder as its String (a varargs `Object...` element is often a `"x" + n`
 	// concat -> JCat; without this it needs two user conversions to reach JObject and silently degrades
 	// to the built-in comma operator in the JArrayInit chain -- GuiConnectFailed(..., "..." + host)).
-	JObject(const JCat& v) : kind(4), i(0), d(0), s(v), p(0), ti(0) {}
+	JObject(const JCat& v) : kind(4), i(0), d(0), s(v._s), p(0), ti(0) {}   // _s: JCat converts to both JavaString and std::string
 	JObject(const JArray<JavaString>& v) : kind(6), i(0), d(0), sa(v), p(0), ti(0) {}
 	// box a primitive/reference array (`Object o = intArray`, `map.put(k, int[])`) as a heap copy,
 	// RTTI-tagged so `(int[])o` unboxes it. Non-String arrays only (String[] uses the kind-6 ctor above).

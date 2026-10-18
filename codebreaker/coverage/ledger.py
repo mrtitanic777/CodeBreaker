@@ -41,7 +41,7 @@ from codebreaker.formats import inspect, ne, pe
 from codebreaker.store import functions as F
 from codebreaker.verify import reconstruct
 
-KINDS = (("pe", "32-bit"), ("ne", "16-bit"), ("le", "driver"), ("dos", "DOS"))
+KINDS = (("pe", "32-bit"), ("ne", "16-bit"), ("le", "driver"), ("dos", "DOS"), ("java", "Java"))
 TITLE = dict(KINDS)
 _SWEPT = (".dll", ".exe", ".drv", ".ocx", ".cpl")                # what `sweep` goes through
 _EXTS = {"pe": _SWEPT, "ne": _SWEPT, "le": (".vxd", ".386", ".pdr", ".sys", ".drv", ".exe"),
@@ -94,6 +94,8 @@ def corpus_modules(refresh=False):
             pass
     out, changed = [], False
     for kind, _title in KINDS:
+        if kind not in _EXTS:                                    # not in the binary corpus (java: given by folder)
+            continue
         for path in corpus.modules(kind, exts=_EXTS[kind]):
             st = os.stat(path)
             got = memo.get(path)

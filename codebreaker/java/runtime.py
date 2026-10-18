@@ -1565,6 +1565,10 @@ def generate_files(cpp_std=None, platform_id=None):
         # file and all sources fail with C1083 "cannot open precompiled header". (Emitted for all
         # platforms -- it is just `#include "stdafx.h"`, harmless where no PCH is used.)
         out['stdafx.cpp'] = '#include "stdafx.h"\n'
+    else:
+        # Every emitted file includes stdafx.h; with no platform it is the generic one (the C/C++
+        # standard library and the fixed-width typedefs), so a platform-less conversion compiles.
+        out['stdafx.h'] = generate_stdafx('generic', std_label)
 
     is_non_windows = platform_id in ('ps3', 'wii', 'psp', 'nds')
 
@@ -1580,8 +1584,8 @@ def generate_files(cpp_std=None, platform_id=None):
             if sub_info:
                 content = content.replace(_PLATFORM_BANNER_SDK_OLD,
                                           '// (%s / %s).' % (sub_info['sdk'], sub_info['libs']))
-        if is_non_windows and fname in ('JavaRT.h', 'Random.h'):
-            content = _patch_timer_for_platform(content, platform_id)
+        if (is_non_windows or not platform_id) and fname in ('JavaRT.h', 'Random.h'):
+            content = _patch_timer_for_platform(content, platform_id or 'generic')
         if platform_id:
             content = annotate_stub(content, class_name, platform_id)
         if cpp_std is not None:
@@ -1591,6 +1595,20 @@ def generate_files(cpp_std=None, platform_id=None):
 
 
 _TIMER_PATCHES = {
+    # no platform: the C library's clocks (coarse, but portable C++03 -- no <windows.h> timers)
+    'generic': {
+        'GetTickCount()': '((unsigned long)(clock() * 1000.0 / CLOCKS_PER_SEC))',
+        'currentTimeMillis': (
+            'inline long long currentTimeMillis() {\n'
+            '\t\treturn (long long)time(0) * 1000LL;\n'
+            '\t}'
+        ),
+        'nanoTime': (
+            'inline long long nanoTime() {\n'
+            '\t\treturn (long long)(clock() * (1000000000.0 / CLOCKS_PER_SEC));\n'
+            '\t}'
+        ),
+    },
     'ps3': {
         'GetTickCount()': '((unsigned long)(sys_time_get_system_time() / 1000))',
         'currentTimeMillis': (

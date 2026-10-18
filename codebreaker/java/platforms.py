@@ -192,6 +192,7 @@ _STDAFX_COMMON_CRT = """\
 #include <cstring>
 #include <cmath>
 #include <cassert>
+#include <ctime>
 #include <malloc.h>
 #include <string>
 #include <vector>

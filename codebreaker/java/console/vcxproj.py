@@ -131,7 +131,6 @@ def write_filters(proj_dir, proj_name, cpps, hs):
 
 # No hardcoded project path -- callers pass the actual output/project dir. Fall back to CWD so a
 # bare invocation operates on the current directory rather than a stale, non-existent path.
-_DEFAULT_PROJ = os.getcwd()
 
 
 def _find_vcxproj(proj_dir, name=None):
@@ -186,7 +185,7 @@ def _enum_sources(proj_dir):
 def run(proj_dir=None, name=None, write_filters_too=True):
     """Regenerate the .vcxproj ClCompile/ClInclude file list from the .cpp/.h in proj_dir, and (by
     default) also (re)write the subsystem <name>.vcxproj.filters so Solution Explorer shows folders."""
-    proj_dir = proj_dir or _DEFAULT_PROJ
+    proj_dir = proj_dir or os.getcwd()      # the folder the command is run in (read at call time)
     vcx = _find_vcxproj(proj_dir, name)
     proj_name = os.path.splitext(os.path.basename(vcx))[0]
 
