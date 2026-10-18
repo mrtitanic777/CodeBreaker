@@ -145,7 +145,10 @@ def check(original, folder, names, image=None, inputs=None, workers=None, tables
     """Each named function (one the build has as C) beside the original's. Yields
     (name, "same" | "differs" | "not run", why). Many at once: shared out over processes."""
     names = list(names)
-    workers = workers or min(os.cpu_count() or 4, 12)
+    # (four: the machine is Logan's to work on while it runs -- twelve made it crawl. More than
+    # one per hardware thread gains nothing: the run is computation, the emulator calling back
+    # into Python on every instruction. CB_GATE_WORKERS for another number)
+    workers = workers or max(1, int(os.environ.get("CB_GATE_WORKERS", "4")))
     tables = tables or _tables(original)
     if workers > 1 and len(names) > 2 * workers and inputs is None and not chain:
         # (each share a Python of its own, started fresh: nothing of the caller's script runs again)

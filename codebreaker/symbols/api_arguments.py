@@ -302,7 +302,11 @@ def argc(dll, name):
     return None if b is None or b % 4 else b // 4
 
 
-_FILES = {"KERNEL": ("krnl386.exe", "kernel.exe"), "USER": ("user.exe",), "GDI": ("gdi.exe",)}
+_FILES = {"KERNEL": ("krnl386.exe", "kernel.exe"), "USER": ("user.exe",), "GDI": ("gdi.exe",),
+          # (a driver exports under its interface's name, not its file's: Setup's display
+          # driver is VGA.DRV, module DISPLAY -- found by its file, USER's ShowCursor calling
+          # DISPLAY.102 (SetCursor) was given no argument size, and its C "faulted" in the gate)
+          "DISPLAY": ("vga.drv", "display.drv"), "MOUSE": ("msmous31.drv", "lmouse31.drv", "mouse.drv")}
 _cache = None
 _modules = {}
 

@@ -1705,8 +1705,14 @@ def _gate16_keys(path, names, m):
     from codebreaker.verify import isolated16, win16
     with open(path, "rb") as f:
         module_key = cache.key(f.read())
-    tools = cache.key(cache.tool(watcom.ow_tool("wcc") or ""), functions.CFLAGS16,
-                      *[open(sys.modules[x.__name__].__file__, "rb").read() for x in (isolated16, windows16, win16)])
+    from codebreaker.symbols import api_arguments
+    try:                                                     # (what each Windows call removes: the
+        sizes = open(api_arguments._cache16_path(), "rb").read()     # checker answers calls by it)
+    except OSError:
+        sizes = b""
+    tools = cache.key(cache.tool(watcom.ow_tool("wcc") or ""), functions.CFLAGS16, sizes,
+                      *[open(sys.modules[x.__name__].__file__, "rb").read()
+                        for x in (isolated16, windows16, win16, api_arguments)])
     header = cache.key(getattr(m, "header", ""))
     # (and the description's lines for the function and for each it calls: the checker answers
     # a call as the description says the callee does -- what it removes, what it returns -- so

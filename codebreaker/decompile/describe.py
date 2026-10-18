@@ -505,14 +505,25 @@ def forwards(d, seg, off, kind):
     less the words the thunk added. -> bytes, or None when it is not such a thunk."""
     code = (getattr(d, "images", None) or {}).get(seg) or d.segment_bytes.get(seg, b"")   # (relocated: a far jump's segment as the placeholder)
     md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
-    ins = list(md.disasm(bytes(code[off:off + 32]), off))[:12]
+    ins = list(md.disasm(bytes(code[off:off + 64]), off))[:24]
     words = 2 if kind == "far" else 1
     regs = ("ax", "bx", "cx", "dx", "si", "di", "es")
     if len(ins) < 2 * words + 2 or any(i.mnemonic != "pop" or i.op_str not in regs for i in ins[:words]):
         return None
     ret = [i.op_str for i in ins[:words]]
-    k, added = words, 0
-    while k < len(ins) and ins[k].mnemonic in ("push", "xor", "mov", "sub") and \
+    k, added, taken = words, 0, 0
+    # (and the caller's arguments it takes off before adding its own -- USER's 1:014C pops one,
+    # pushes 0 and 1 or 5 (a `jcxz` choosing), puts the return address back, sets slots in the
+    # stack and goes to 1:3E1E: its callers' stack came out four bytes short in the gate)
+    while k < len(ins) and ins[k].mnemonic == "pop" and ins[k].op_str in regs and ins[k].op_str not in ret:
+        taken += 1
+        k += 1
+
+    def quiet(i):                                            # (moves nothing on the stack)
+        return i.mnemonic in ("xor", "mov", "sub", "cmp", "test", "and", "or") and "sp" not in i.op_str.split(",")[0] \
+            or (i.mnemonic in ("jcxz", "je", "jne") and re.fullmatch(r"0x[0-9a-f]+", i.op_str)
+                and i.address < int(i.op_str, 16) <= i.address + 0x20)
+    while k < len(ins) and (ins[k].mnemonic == "push" or quiet(ins[k])) and \
             not (ins[k].mnemonic == "push" and ins[k].op_str == ret[-1]):
         if ins[k].mnemonic == "push":
             added += 1
@@ -522,7 +533,10 @@ def forwards(d, seg, off, kind):
     back = [i.op_str for i in ins[k:k + words] if i.mnemonic == "push"]
     if back != list(reversed(ret)) or not added or k + words >= len(ins):
         return None
-    j = ins[k + words]
+    k += words
+    while k < len(ins) - 1 and quiet(ins[k]):                # (slots set beneath, then the jump)
+        k += 1
+    j = ins[k]
     if j.mnemonic == "ljmp" and re.fullmatch(r"0x[0-9a-f]+(, |:)0x[0-9a-f]+", j.op_str):
         s, o = (int(x, 16) for x in re.split(r", |:", j.op_str))
         if s >= 0xE000:
@@ -535,7 +549,7 @@ def forwards(d, seg, off, kind):
     _k, pop = returns(d.segment_bytes.get(tseg, b""), toff, want=kind)
     if pop is None or pop < 0:
         return None
-    return max(0, pop - 2 * added)
+    return max(0, pop - 2 * added + 2 * taken)
 
 
 def popped_by_hand(code, off, kind):
