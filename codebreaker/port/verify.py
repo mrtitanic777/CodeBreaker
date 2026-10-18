@@ -74,8 +74,8 @@ def run_cases(path, exe, env=None):
                 return
         try:
             c, x = run_port(cfg, at(prog["port"]) if prog else exe, fb, case.get("cmd", ""), case.get("stdin", ""), e)
-        except subprocess.TimeoutExpired:
-            c = b"(did not end)"
+        except subprocess.TimeoutExpired as ex:             # (what it said before it was stopped: the sanitizer's
+            c = (ex.output or b"")[-200000:] + b"\n(did not end)"   #  reports among it)
         out.append((case["name"], c.decode("latin1")))
         for c2 in case.get("then", []):
             one(c2, fb)

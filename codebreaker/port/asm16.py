@@ -320,6 +320,7 @@ class CTypes:
     @staticmethod
     def _layouts(texts, ptr, far):
         out = Layouts()
+        defs = {}                                           # (each tag's first definition: its body)
         for t in texts:
             code = early_c.blank(t)
             for m in re.finditer(r"\b(struct|union)\s+(\w+)\s*\{", code):
@@ -329,9 +330,13 @@ class CTypes:
                     if d == 0:
                         break
                     k += 1
-                name = "%s %s" % (m.group(1), m.group(2))
-                lay = CTypes._body(code[m.end():k], m.group(1) == "union", ptr, far, out, name)
-                out.setdefault(name, lay)
+                defs.setdefault("%s %s" % (m.group(1), m.group(2)), (code[m.end():k], m.group(1) == "union"))
+        for _ in range(6):                                  # (again until the sizes settle: a structure of one
+            before = {n: dict(v) for n, v in out.items()}    #  defined later in the texts is known the next time)
+            for name, (body, union) in defs.items():
+                out[name] = CTypes._body(body, union, ptr, far, out, name)
+            if {n: dict(v) for n, v in out.items()} == before:
+                break
         return out
 
     @staticmethod

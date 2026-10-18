@@ -9,6 +9,7 @@
 #define DOSRT_H
 
 #include <stdint.h>
+#include <stdio.h>
 
 /* handles: open(name, 0 read / 1 write / 2 both), creat(name, mode) a new empty file; every file binary,
    as DOS's were. -1 when it cannot be done */
@@ -32,6 +33,31 @@ int dos_isatty(int fd);
 /* the code a program ends with: DOS kept its low byte (exit(272) left 16 for ERRORLEVEL) */
 #include <stdlib.h>
 #define exit	dos_exit
+
+/* a function of any number of arguments the old way - f(fmt, args) giving &args on to a routine that walks
+   them a word at a time: the arguments put in words again, by the format (a pointer in one whole, a long in
+   one with its high word in the next, a double in four), so the walk finds them where it did */
+/* what the old C set before main: a variable given stdout and the like (a constant then, not now) - set by a
+   routine run before main */
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma section(".CRT$XCU", read)
+#define DOS_INIT(f) static void f(void); __declspec(allocate(".CRT$XCU")) void (*f##_)(void) = f; static void f(void)
+#else
+#define DOS_INIT(f) static void f(void) __attribute__((constructor)); static void f(void)
+#endif
+
+/* the head of a block chained by its first word: n bytes then, a 2-byte link and what followed it - the link a
+   pointer now */
+#define DOS_HEAD(n)	((n) - 2 + (int)sizeof(char *))
+
+/* the old FILE's flags a program read: end of file 10h, an error 20h */
+int dos_fflag(FILE *f);
+
+#include <stdarg.h>
+#define DOS_VA_SLOTS 48
+void dos_va_words(intptr_t *w, int n, const char *fmt, va_list ap);
+#define DOS_VA_WORDS(w, last) intptr_t w[DOS_VA_SLOTS]; do { va_list ap_; va_start(ap_, last); \
+	dos_va_words(w, DOS_VA_SLOTS, (const char *)(last), ap_); va_end(ap_); } while (0)
 void dos_exit();			/* (Lattice's programs call exit() with none: an old declaration takes either) */
 
 /* the old C library had no text mode: a file is read and written as its bytes are, whatever the mode said */

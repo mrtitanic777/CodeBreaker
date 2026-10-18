@@ -17,6 +17,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 
 from codebreaker.port import early_c
 
@@ -95,6 +96,129 @@ def read_tree(src):
             asm[os.path.basename(p)] = open(p, encoding="latin1").read()
             paths[os.path.basename(p)] = p
     return files, asm, paths
+
+
+def memory_used():
+    """the bytes this process has committed (Windows: its private bytes; elsewhere: its resident set) - or None"""
+    try:
+        if os.name == "nt":
+            import ctypes
+            import ctypes.wintypes as w
+
+            class PMC(ctypes.Structure):
+                _fields_ = [("cb", w.DWORD), ("PageFaultCount", w.DWORD)] + \
+                    [(n, ctypes.c_size_t) for n in ("PeakWorkingSetSize", "WorkingSetSize", "QuotaPeakPagedPoolUsage",
+                                                    "QuotaPagedPoolUsage", "QuotaPeakNonPagedPoolUsage",
+                                                    "QuotaNonPagedPoolUsage", "PagefileUsage", "PeakPagefileUsage")]
+            c = PMC()
+            c.cb = ctypes.sizeof(c)
+            k32, psapi = ctypes.WinDLL("kernel32"), ctypes.WinDLL("psapi")
+            k32.GetCurrentProcess.restype = w.HANDLE        # (a handle is 64 bits: so declared)
+            psapi.GetProcessMemoryInfo.argtypes = [w.HANDLE, ctypes.c_void_p, w.DWORD]
+            if psapi.GetProcessMemoryInfo(k32.GetCurrentProcess(), ctypes.byref(c), c.cb):
+                return c.PagefileUsage
+            return None
+        with open("/proc/self/statm") as f:
+            return int(f.read().split()[1]) * os.sysconf("SC_PAGE_SIZE")
+    except Exception:
+        return None
+
+
+def memory_guard(out):
+    """a watch on the port's own memory: above the ceiling (settings.json port.max_memory_gb, 4 by default) it
+    stops - where it was written to OUT/port-memory.txt - before it can starve the machine (a rule that runs away)"""
+    import threading
+    import time
+    from codebreaker.base import settings
+    conf = (settings.get("port") or {}) if hasattr(settings, "get") else {}
+    limit = float(conf.get("max_memory_gb", 4)) * 1024 ** 3
+    if memory_used() is None:
+        return
+
+    def watch():
+        while True:
+            used = memory_used() or 0
+            if used > limit:
+                import faulthandler
+                try:
+                    os.makedirs(out, exist_ok=True)
+                    with open(os.path.join(out, "port-memory.txt"), "w") as f:
+                        f.write("the port stopped itself: %.1f GB used, the ceiling %.1f GB (settings.json "
+                                "port.max_memory_gb) - where it was:\n\n" % (used / 1024 ** 3, limit / 1024 ** 3))
+                        f.flush()
+                        faulthandler.dump_traceback(file=f, all_threads=True)
+                except OSError:
+                    pass
+                sys.stderr.write("port: stopped - %.1f GB of memory, above the ceiling of %.1f GB (where it was: "
+                                 "%s)\n" % (used / 1024 ** 3, limit / 1024 ** 3, os.path.join(out, "port-memory.txt")))
+                sys.stderr.flush()
+                os._exit(3)
+            time.sleep(1)
+    threading.Thread(target=watch, daemon=True, name="memory-guard").start()
+
+
+def changed_files(res, before, cfiles):
+    """the C files to check again: those whose text is not what it was, and those that include (themselves or
+    through another header) a header whose text is not"""
+    if not before:
+        return list(cfiles)
+    inc = {n: set(re.findall(r'#\s*include\s*"([^"]+)"', t)) for n, t in res.items()}
+    changed = {n for n, t in res.items() if before.get(n) != t}
+    hdrs = {n for n in changed if not n.endswith(".c")}
+
+    def reaches(n, seen):
+        for h in inc.get(n, ()):
+            if h in hdrs:
+                return True
+            if h not in seen:
+                seen.add(h)
+                if reaches(h, seen):
+                    return True
+        return False
+    return [n for n in cfiles if n in changed or reaches(n, set())]
+
+
+def read_symbols(src):
+    """{C name: its place in the data segment} of a SYMBOLS list (the recon's: name, C or D, address)"""
+    for d in (src, os.path.join(src, "src")):
+        p = os.path.join(d, "SYMBOLS")
+        if os.path.isfile(p):
+            out = {}
+            for l in open(p, encoding="latin1"):
+                w = l.split("#", 1)[0].split()
+                if len(w) == 3 and w[1] == "D":
+                    try:
+                        out[w[0][1:] if w[0].startswith("_") else w[0]] = int(w[2], 16)
+                    except ValueError:
+                        pass
+            return out
+    return {}
+
+
+def read_bss(src):
+    """{C name: its bytes} of the variables a BSS list names (the recon's: what the old build defined beginning
+    without a value, by DS offset - 'range from to', 'hole at length', 'name offset')"""
+    for d in (src, os.path.join(src, "src")):
+        p = os.path.join(d, "BSS")
+        if not os.path.isfile(p):
+            continue
+        ents, rng, holes = [], None, []
+        for l in open(p, encoding="latin1"):
+            w = l.split("#", 1)[0].split()
+            if len(w) == 3 and w[0] == "range":
+                rng = (int(w[1], 16), int(w[2], 16))
+            elif len(w) == 3 and w[0] == "hole":
+                holes.append((int(w[1], 16), int(w[2], 16)))
+            elif len(w) == 2:
+                ents.append((int(w[1], 16), w[0]))
+        ents.sort()
+        out = {}
+        for i, (off, name) in enumerate(ents):
+            end = ents[i + 1][0] if i + 1 < len(ents) else (rng[1] if rng else off + 2)
+            end = min([h for h, n in holes if off < h < end] + [end])
+            out[name[1:] if name.startswith("_") else name] = end - off
+        return out
+    return {}
 
 
 def asm_role(text, profile):
@@ -497,9 +621,18 @@ def main(argv):
     src, out = argv[0], os.path.abspath(argv[1])            # (the compilers run in OUT_DIR: its own path whole)
     from codebreaker.base import parallel
     parallel.throttle(below_normal=True)                    # (the machine first; the compilers inherit it)
+    memory_guard(out)                                       # (and never more of its memory than it may have)
     opt = lambda k, d=None: argv[argv.index(k) + 1] if k in argv else d
     comp = opt("--compiler", "gcc")
     profile = json.load(open(os.path.join(HERE, "runtimes", opt("--runtime", "dos_c_early") + ".json")))
+    for pj in (os.path.join(src, "project.json"), os.path.join(src, "src", "project.json")):
+        if os.path.isfile(pj):                              # (the recon's build: the library's objects linked first -
+            firsts = [os.path.basename(x).upper() for x in json.load(open(pj)).get("first_objects", [])]
+            if "BINMODE.OBJ" in firsts:                     #  BINMODE.OBJ: every file binary by default)
+                profile["console_text"] = profile.get("text_mode", False)
+                profile["text_mode"] = False
+                profile.setdefault("notes", {})["binmode"] = "linked with BINMODE.OBJ: files open binary by " \
+                    "default (no \\r\\n for \\n), so here"
     compilers = load_compilers()
     spec = compilers[comp]
     cc = find(spec["find"], opt("--cc"))
@@ -509,14 +642,20 @@ def main(argv):
     files, asm, paths = read_tree(src)
     types = json.load(open(opt("--types"))) if opt("--types") else {}
     port = early_c.Port(files, profile, members=types.get("members", {}))
+    port.bss = read_bss(src)
+    port.ds = read_symbols(src)
+    for t in files.values():                                # (and CodeBreaker's own names: g_304a is DS 304Ah)
+        for m in re.finditer(r"\bg_([0-9a-f]{4})\b", t):
+            port.ds.setdefault(m.group(0), int(m.group(1), 16))
     roles = {n: asm_role(t, profile) for n, t in asm.items()}
     os.makedirs(out, exist_ok=True)
     for n in ("dosrt.h", "dosrt.c"):
         shutil.copy(os.path.join(HERE, "platform", n), os.path.join(out, n))
     with open(os.path.join(out, "dosrt_config.h"), "w", newline="\n") as f:   # (the old runtime's ways)
         f.write("/* dosrt_config.h -- the old runtime's ways (made by CodeBreaker's port from the profile %s) */\n"
-                "#define DOSRT_TEXT_MODE %d\n#define DOSRT_EXIT_STATUS %d\n" % (
+                "#define DOSRT_TEXT_MODE %d\n#define DOSRT_CONSOLE_TEXT %d\n#define DOSRT_EXIT_STATUS %d\n" % (
                     profile["name"], 1 if profile.get("text_mode") else 0,
+                    1 if profile.get("console_text", profile.get("text_mode")) else 0,
                     0 if profile.get("exit_status") is False else 1))
 
     def write():
@@ -543,22 +682,38 @@ def main(argv):
     from codebreaker.base import parallel
     for k_, (spec_, cc_) in enumerate(checkers):
         start = rounds
+        seen_text, seen_diags, t_round, same, last_said = {}, {}, time.time(), 0, None                  # (what each file was, and what the compiler said of it)
         while True:
             res = write()
             diags = []
             if cc_ is None:
                 break
             cfiles = [n for n in sorted(res) if n.endswith(".c")]
-            with ThreadPoolExecutor(max(1, parallel.workers())) as ex:   # (the machine's budget of compilers at once)
-                done = list(ex.map(lambda n: run(spec_, args(spec_["check"], cc=cc_, inc=".", src=n), out, cc_),
-                                   cfiles))
-            for p in done:                                  # (in the files' order, as one compiler would say them)
-                diags += diagnostics(spec_, p.stdout + p.stderr, out)
+            todo = changed_files(res, seen_text, cfiles)   # (the files whose text, or a header's they include,
+            with ThreadPoolExecutor(max(1, parallel.workers())) as ex:   # changed: the others said it already)
+                done = dict(zip(todo, ex.map(lambda n: run(spec_, args(spec_["check"], cc=cc_, inc=".", src=n), out,
+                                                           cc_), todo)))
+            for n in cfiles:                                # (in the files' order, as one compiler would say them)
+                if n in done:
+                    seen_diags[n] = diagnostics(spec_, done[n].stdout + done[n].stderr, out)
+                diags += seen_diags.get(n, [])
+            seen_text = dict(res)
+            sys.stderr.write("port: round %d (%s): %d of %d files checked, %d errors, %d warnings, %.0fs\n" % (
+                rounds + 1, os.path.basename(cc_), len(todo), len(cfiles),
+                sum(1 for d in diags if d["kind"] == "error"), sum(1 for d in diags if d["kind"] != "error"),
+                time.time() - t_round))
+            sys.stderr.flush()
+            t_round = time.time()
             if k_ and not any(d["kind"] == "error" for d in diags):
                 break                                       # (the second compiler: its errors only)
             if k_:
                 diags = [d for d in diags if d["kind"] == "error"]
             rounds += 1
+            said_ = sorted((d["file"], d["line"], d["text"]) for d in diags)
+            same = same + 1 if said_ == last_said else 0    # (a round that left the compiler saying all it said
+            last_said = said_                               #  before - twice: the rules have nothing more)
+            if same >= 2:
+                break
             if rounds - start > 8 or not early_c.mend(port, res, diags):
                 break
     if port.int16:                                          # (the 8086's arithmetic, where the C of today's differs)
@@ -669,7 +824,7 @@ def sanitize_loop(port, out, write, srcs, compilers, comp, cases, rounds=6):
         parallel.wait_for_memory("sanitized build")         # (the sanitizer's builds and runs want memory)
         write()
         tpl = [a for a in spec["build"] if a not in ("-O1", "/O1")]
-        tpl = tpl[:1] + ["-g", "-fsanitize=address"] + tpl[1:]
+        tpl = tpl[:1] + ["-g", "-fsanitize=address"] + (["-fsanitize=array-bounds"] if name == "clang" else []) + tpl[1:]
         p = run(spec, args(tpl, cc=cc, inc=".", out=exe, srcs=srcs), out, cc)
         if p.returncode:
             notes.append("the sanitized build failed: %s" % (p.stdout + p.stderr)[-300:])
@@ -677,7 +832,7 @@ def sanitize_loop(port, out, write, srcs, compilers, comp, cases, rounds=6):
         env = {"PATH": (rt + os.pathsep if rt else "") + os.environ.get("PATH", ""), "ASAN_OPTIONS": "detect_leaks=0"}
         reports = verify.run_cases(cases, exe, env)
         done = sanitize.mend(port, port.out, reports)
-        bad = [c for c, t in reports if "AddressSanitizer" in t]
+        bad = [c for c, t in reports if "AddressSanitizer" in t or "runtime error: index" in t]
         if not done:
             notes.append("round %d: %d cases run sanitized, %s" % (
                 r + 1, len(reports), "no fault" if not bad else "faults not mended: " + ", ".join(bad)))

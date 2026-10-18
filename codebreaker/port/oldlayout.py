@@ -19,6 +19,7 @@ number put where its pointer was - stays the number (dos_ph keeps what is below 
 """
 import collections
 import json
+import os
 import re
 
 from codebreaker.port import arith16
@@ -232,19 +233,41 @@ def declare(text, olds, found):
     return text
 
 
+def mentions(folder, f, tags, seen=None):
+    """whether a file, or a header of the program's it includes, names one of the tags"""
+    seen = set() if seen is None else seen
+    if f in seen:
+        return False
+    seen.add(f)
+    try:
+        t = open(os.path.join(folder, f), encoding="latin1").read()
+    except OSError:
+        return False
+    if any(re.search(r"\b%s\b" % re.escape(g), t) for g in tags):
+        return True
+    return any(mentions(folder, h, tags, seen) for h in re.findall(r'#\s*include\s*"([^"]+)"', t))
+
+
 def run(cc, folder, files):
     """-> ({file: its text with the conversions}, set of records kept old, {(record, member): type}, refusals)"""
-    trees = {}
-    for f in files:
+    olds = set()                                            # (one file's tree at a time: a tree holds the system's
+    for f in files:                                         #  headers too - all of them at once were gigabytes)
         tree = arith16.dump(cc, f, folder)
         if tree:
             arith16.mark_files(tree, [None])
-            trees[f] = tree
-    olds = byte_records(list(trees.values()))
+            olds |= byte_records([tree])
+        del tree
     out, found_all, refused = {}, {}, []
     if not olds:
         return out, olds, found_all, refused
-    for f, tree in trees.items():
+    tags = [r.split()[-1] for r in olds]
+    for f in files:
+        if not mentions(folder, f, tags):                   # (a file that never names them, nor its headers: none)
+            continue
+        tree = arith16.dump(cc, f, folder)
+        if not tree:
+            continue
+        arith16.mark_files(tree, [None])
         path = next((v for v in arith16._files(tree) if v.replace("\\", "/").endswith(f)), f)
         text = open(folder + "/" + f, encoding="latin1").read()
         e, found, ref = edits_of(tree, text, path, olds)

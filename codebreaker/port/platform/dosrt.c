@@ -15,6 +15,9 @@
 #define DOSRT_IMPL			/* (today's O_ numbers here, not the old ones) */
 #include "dosrt.h"
 #include "dosrt_config.h"		/* (the old runtime's ways: written by the port from its profile) */
+#ifndef DOSRT_CONSOLE_TEXT
+#define DOSRT_CONSOLE_TEXT DOSRT_TEXT_MODE	/* (the console as files - unless BINMODE made the files alone binary) */
+#endif
 #ifndef DOSRT_TEXT_MODE
 #define DOSRT_TEXT_MODE 0		/* (1: the old library had text mode - \n written \r\n, as Microsoft C 3's) */
 #endif
@@ -60,7 +63,7 @@ static void dos_console(void)
 	setvbuf(stdout, NULL, _IONBF, 0);
 	setvbuf(stderr, NULL, _IONBF, 0);
 #ifdef _WIN32
-	if (!DOSRT_TEXT_MODE) {			/* (a library with text mode wrote \r\n for \n to the console too) */
+	if (!DOSRT_CONSOLE_TEXT) {		/* (a library with text mode wrote \r\n for \n to the console too) */
 		_setmode(_fileno(stdin), O_BINARY);
 		_setmode(_fileno(stdout), O_BINARY);
 		_setmode(_fileno(stderr), O_BINARY);
@@ -461,4 +464,68 @@ jmp_buf *dos_jmpbuf(void *old)
 	if (i == 16) abort();			/* (more buffers than any old program had) */
 	bufs[i].old = old;
 	return &bufs[i].b;
+}
+
+
+/* the arguments of a function of any number of them, in the words they were on the stack (see dosrt.h) */
+void dos_va_words(intptr_t *w, int n, const char *f, va_list ap)
+{
+	int k = 0, lng;
+	memset(w, 0, n * sizeof *w);
+	if (!f)
+		return;
+	for (; *f && k < n; f++) {
+		if (*f != '%')
+			continue;
+		if (*++f == '%')
+			continue;
+		while (*f && strchr("-+ #0", *f))
+			f++;
+		if (*f == '*') {
+			w[k++] = (int16_t)va_arg(ap, int);
+			f++;
+		} else
+			while (*f >= '0' && *f <= '9')
+				f++;
+		if (*f == '.') {
+			if (*++f == '*') {
+				if (k < n)
+					w[k++] = (int16_t)va_arg(ap, int);
+				f++;
+			} else
+				while (*f >= '0' && *f <= '9')
+					f++;
+		}
+		for (lng = 0; *f == 'l' || *f == 'h' || *f == 'F' || *f == 'N'; f++)
+			lng |= *f == 'l';
+		if (!*f || k >= n)
+			return;
+		switch (*f) {
+		case 's': case 'p': case 'n':
+			w[k++] = (intptr_t)va_arg(ap, void *);
+			break;
+		case 'e': case 'E': case 'f': case 'g': case 'G': {
+			double d = va_arg(ap, double);
+			if (k + 4 > n)
+				return;
+			memcpy(&w[k], &d, sizeof d);
+			k += 4;
+			break;
+		}
+		default:
+			if (lng) {
+				int32_t v = va_arg(ap, int32_t);
+				w[k++] = v;
+				if (k < n)
+					w[k++] = (int16_t)(v >> 16);
+			} else
+				w[k++] = (int16_t)va_arg(ap, int);
+		}
+	}
+}
+
+/* the old FILE's flags a program read (see dosrt.h) */
+int dos_fflag(FILE *f)
+{
+	return (feof(f) ? 0x10 : 0) | (ferror(f) ? 0x20 : 0);
 }
