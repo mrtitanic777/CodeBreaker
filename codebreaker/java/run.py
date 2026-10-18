@@ -1,12 +1,32 @@
-# -*- coding: utf-8 -*-
-"""
-cli.py -- command-line entry for the j2ctool converter.
+"""run.py -- the Java transpiler's tools: a Java program as C++03, and what its console port needs.
 
-    python -m j2ctool convert    <java_dir> <out_dir>
-    python -m j2ctool report     <output_dir> [--build-log FILE] [--out DIR]
-    python -m j2ctool signatures <java_dir> [--out FILE]
-    python -m j2ctool worklist   <out_dir> [--cc CC] [--std STD] [--out FILE]
-    python -m j2ctool vcxproj    [--proj DIR]
+    python -m codebreaker java <tool> [arguments]      (`java <tool> --help` for a tool's options)
+
+  Transpile
+    convert JAVA OUT [--platform P] [--edition E]   Java source -> C++ (also --mc-version ID to
+                                    decompile a Minecraft version first, --project for a buildable tree)
+    decompile VERSION WORKSPACE     a Minecraft version as Java source (RetroMCP / Vineflower;
+                                    settings.json: java, retromcp)
+    scaffold JAVA OUT               structural skeletons in C, C# or Rust (not a translation)
+    signatures JAVA                 the codebase map: class -> fields and methods, Java -> C++ types
+  Judge and report     (classes judged class by class: `codebreaker module JAVA_FOLDER`)
+    report OUT                      crash-class report of an emitted tree (and an MSVC build log)
+    worklist OUT                    compile every .cpp with the host compiler, worst last
+    bugfix-ledger                   every FIXED BUG / J2X-BUGFIX marker -> state/java/BUGFIX_LEDGER.md
+    apimap ...                      the API-mapping registry: coverage, lookups
+  Console port (Xbox 360)
+    sdk                             is the console SDK there (settings.json: xbox360_sdk)?
+    platform-config OUT             controller, storage and keyboard choices -> platform.config.json
+    assets JAR OUT                  textures and resources from the game's jar, PNGs normalised
+    xact ...                        XACT3 audio banks: dump, build, coverage, match
+    achievements JAVA               achievements -> the console's achievement data + unlock calls
+    project-layout ROOT             the Visual Studio solution layout over an emitted tree
+    vcxproj [--proj DIR]            the project's file list and filters, regenerated
+    build SLN                       build the solution with MSBuild (settings.json: msbuild)
+    debug OUT                       the one switchable Debug.h/.cpp
+  Rewrites of an emitted tree (each runs by itself in an xbox360 convert)
+    reflect-factories, sound-fix, controller-nav, render-fix, applet-ping, ui-mark, keybind-mark
+    scan-project FOLDER             a decompiled game's jar, sound folder, source and language file
 """
 
 import argparse
@@ -232,6 +252,24 @@ def _cmd_scan_project(args):
     for k in sorted(r):
         print('  %-10s %s' % (k, r[k] or '(not found)'))
     return 0
+
+
+def _cmd_build(args):
+    """MSBuild over a solution -- what the transpiler's old window did with its Build button."""
+    import subprocess
+    from codebreaker.base import settings
+    msbuild = settings.get('msbuild')
+    if not msbuild or not os.path.isfile(msbuild):
+        print('MSBuild is not set up (settings.json: msbuild)')
+        return 2
+    log = args.log or settings.state('java', 'build.log')
+    cmd = [msbuild, args.sln, '/m', '/nologo', '/p:Configuration=%s' % args.config,
+           '/p:Platform=%s' % args.platform, '/flp:LogFile=%s;Verbosity=normal' % log]
+    print(' '.join('"%s"' % c if ' ' in c else c for c in cmd))
+    code = subprocess.call(cmd)
+    print('build %s -- log: %s' % ('OK' if code == 0 else 'FAILED (exit %d)' % code, log))
+    print('crash-class report with the build log: codebreaker java report OUT --build-log %s' % log)
+    return code
 
 
 def _cmd_project_layout(args):
@@ -570,7 +608,7 @@ def _cmd_apimap(args):
 
 def main(argv=None):
     argv = argv if argv is not None else sys.argv[1:]
-    ap = argparse.ArgumentParser(prog='codebreaker java', description='Java -> C++ cross-platform converter.')
+    ap = argparse.ArgumentParser(prog='codebreaker java', description='The Java transpiler: a Java program as C++03.')
     sub = ap.add_subparsers(dest='cmd')
 
     # convert
@@ -817,6 +855,14 @@ def main(argv=None):
     amp.add_argument('--out', default=None, help='coverage: output path (default <java_dir>/APIMAP.md).')
     amp.set_defaults(func=_cmd_apimap)
 
+    # build (MSBuild over the solution)
+    bp = sub.add_parser('build', help='Build a Visual Studio solution with MSBuild (settings.json: msbuild).')
+    bp.add_argument('sln', help='The .sln to build.')
+    bp.add_argument('--config', default='Release')
+    bp.add_argument('--platform', default='Xbox 360')
+    bp.add_argument('--log', default=None, help='Build log (default: state/java/build.log).')
+    bp.set_defaults(func=_cmd_build)
+
     # scaffold (structural skeletons in other languages -- not a working translation)
     scp = sub.add_parser('scaffold', help='Emit one STRUCTURAL skeleton file per Java class in C, C# or Rust '
                                           '(types, fields, method signatures; not a working translation).')
@@ -833,6 +879,6 @@ def main(argv=None):
 
     args = ap.parse_args(argv)
     if not getattr(args, 'cmd', None):
-        ap.print_help()
+        print(__doc__)
         return 2
     return args.func(args)

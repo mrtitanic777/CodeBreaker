@@ -322,8 +322,10 @@ async function viewModule(body) {
   const meta = info.ok ? [s.format, s.type, s.machine, num(info.size) + " bytes", s.description].filter(Boolean).join(" · ") : "not an executable this can read";
   body.replaceChildren(
     h("div", {class: "title"}, h("span", {class: "name"}, info.name), h("span", {class: "meta"}, meta),
-      h("button", {onclick: () => startJob("decompile"), title: S.actions.decompile}, "Decompile this module"),
-      h("button", {class: "primary", onclick: () => startJob("measure"), title: S.actions.measure}, "Measure this module")),
+      ...(info.kind === "java"
+        ? [h("button", {class: "primary", onclick: () => startJob("module"), title: S.actions.module}, "Transpile and judge (C++)")]
+        : [h("button", {onclick: () => startJob("decompile"), title: S.actions.decompile}, "Decompile this module"),
+           h("button", {class: "primary", onclick: () => startJob("measure"), title: S.actions.measure}, "Measure this module")])),
     h("nav", {class: "sub"}, SUBS.map(([k, t]) => h("button", {class: S.sub === k ? "on" : "", onclick: () => { S.sub = k; show("module"); }}, t))),
     pane);
   const draw = {summary: subSummary, functions: subFunctions, resources: subResources, strings: subStrings, hex: subHex}[S.sub];

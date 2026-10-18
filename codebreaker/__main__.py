@@ -100,7 +100,7 @@ COMMANDS = {
     "live": ("codebreaker.ui.live", []),
     "take-apart": ("codebreaker.ui.take_apart", []),
     "settings": ("codebreaker.base.settings", []),
-    "java": ("codebreaker.java.cli", []),
+    "java": ("codebreaker.java.run", []),
 }
 
 

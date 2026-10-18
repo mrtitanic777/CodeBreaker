@@ -10,7 +10,7 @@ import subprocess
 
 import pytest
 
-from codebreaker.java import cli, edition, parse, transpile as pipeline, profiles
+from codebreaker.java import run as cli, edition, parse, transpile as pipeline, profiles
 from codebreaker.java.console import controller_nav
 from codebreaker.java.emit.statements import _balanced_call_sub
 
