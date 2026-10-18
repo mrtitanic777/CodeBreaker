@@ -244,18 +244,18 @@ struct JObject {
 	operator int() const { return (int)i; }
 	operator char() const { return (char)i; }
 	template<class T> operator T*() const { return (T*)p; }
-	// unbox a boxed array: `(int[])o` -> the stored JArray (empty if o didn't box a JArray<T>).
-	template<class T> operator JArray<T>() const {
-		return (kind == 5 && p && ti && *ti == typeid(JArray<T>)) ? *(JArray<T>*)p : JArray<T>();
-	}
-	// unbox a boxed Map: `(Map)o` -> the stored JMap (empty if o didn't box a JMap<K,V>).
-	template<class K, class V> operator JMap<K, V>() const {
-		return (kind == 5 && p && ti && *ti == typeid(JMap<K, V>)) ? *(JMap<K, V>*)p : JMap<K, V>();
-	}
 };
 
 // unbox a String: `(String)o`, `String s = o` -> the boxed string (empty if o didn't box one).
 inline JavaString::JavaString(const JObject& o) : std::string(o.s) {}
+// unbox a boxed array: `(int[])o` -> the stored JArray (empty if o didn't box a JArray<T>).
+template<class T> JArray<T>::JArray(const JObject& o) : _buf(0), length(0) {
+	if (o.kind == 5 && o.p && o.ti && *o.ti == typeid(JArray<T>)) *this = *(const JArray<T>*)o.p;
+}
+// unbox a boxed Map: `(Map)o` -> the stored JMap (empty if o didn't box a JMap<K,V>).
+template<class K, class V> JMap<K, V>::JMap(const JObject& o) {
+	if (o.kind == 5 && o.p && o.ti && *o.ti == typeid(JMap<K, V>)) *this = *(const JMap<K, V>*)o.p;
+}
 // unbox a boxed List: `(List)o` -> the stored JList (empty if o didn't box a JList<T>).
 template<class T> JList<T>::JList(const JObject& o) {
 	if (o.kind == 5 && o.p && o.ti && *o.ti == typeid(JList<T>)) *this = *(const JList<T>*)o.p;
@@ -377,6 +377,10 @@ namespace Double {
 namespace String {
 	template<class T> inline JavaString valueOf(const T& v) { std::ostringstream o; o << v; return JavaString(o.str()); }
 	template<class A> inline JavaString valueOf(const A& a, int, int) { std::ostringstream o; o << a; return JavaString(o.str()); }  // String.valueOf(char[], off, len) (stub)
+	inline JavaString valueOf(const JArray<char>& a, int off, int n) {   // String.valueOf(char[], off, len)
+		std::string s; for (int i = 0; i < n; ++i) s += a[off + i]; return JavaString(s);
+	}
+	inline JavaString valueOf(const JArray<char>& a) { return valueOf(a, 0, a.length); }   // String.valueOf(char[])
 	inline JavaString valueOf(bool v) { return JavaString(v ? "true" : "false"); }
 	inline JavaString valueOf(const char* v) { return JavaString(v ? v : ""); }
 	inline JavaString valueOf(const std::string& v) { return JavaString(v); }

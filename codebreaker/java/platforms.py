@@ -213,6 +213,31 @@ _STDAFX_HOST_WINDOWS = """\
 #endif
 """
 
+# Math.max/min are emitted as max/min (the XDK and MSVC's <windows.h> define them as macros). Without a
+# platform on another compiler there are none: these give Java's overloads -- both sides widened to the
+# wider of int, long long, float, double -- as functions, and only where no macro already exists.
+_STDAFX_HOST_MINMAX = """\
+#if !defined(max) && !defined(min)
+template<class T> struct j2x_num { enum { r = 1 }; };                // char, short, int -> int
+template<> struct j2x_num<long long> { enum { r = 2 }; };
+template<> struct j2x_num<float> { enum { r = 3 }; };
+template<> struct j2x_num<double> { enum { r = 4 }; };
+template<int R> struct j2x_numtype { typedef int type; };
+template<> struct j2x_numtype<2> { typedef long long type; };
+template<> struct j2x_numtype<3> { typedef float type; };
+template<> struct j2x_numtype<4> { typedef double type; };
+template<class A, class B> struct j2x_wider {
+	typedef typename j2x_numtype<((int)j2x_num<A>::r > (int)j2x_num<B>::r ? (int)j2x_num<A>::r : (int)j2x_num<B>::r)>::type type;
+};
+template<class A, class B> inline typename j2x_wider<A, B>::type max(A a, B b) {
+	typedef typename j2x_wider<A, B>::type W; return (W)a > (W)b ? (W)a : (W)b;
+}
+template<class A, class B> inline typename j2x_wider<A, B>::type min(A a, B b) {
+	typedef typename j2x_wider<A, B>::type W; return (W)a < (W)b ? (W)a : (W)b;
+}
+#endif
+"""
+
 _STDAFX_MSVC_WARNINGS = """\
 #pragma warning(disable: 4018) // signed/unsigned mismatch
 #pragma warning(disable: 4244) // conversion float/double
@@ -338,8 +363,8 @@ def generate_stdafx(platform_id, cpp_std_label='C++03'):
         return (
             '// stdafx.h -- precompiled header for %s\n'
             '#pragma once\n\n'
-            '%s\n%s\n%s\n'
-        ) % (plat_label, _STDAFX_HOST_WINDOWS, _STDAFX_COMMON_CRT, _STDAFX_COMMON_TYPEDEFS)
+            '%s\n%s\n%s\n%s\n'
+        ) % (plat_label, _STDAFX_HOST_WINDOWS, _STDAFX_COMMON_CRT, _STDAFX_COMMON_TYPEDEFS, _STDAFX_HOST_MINMAX)
 
     lines = [
         '// stdafx.h -- precompiled header for %s (%s)' % (plat_label, cpp_std_label),

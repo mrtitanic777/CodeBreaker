@@ -358,7 +358,7 @@ class TestPrimitiveCastAndMathConst(unittest.TestCase):
         self.assertIn('float var4 = (float)var1;', self.out)
 
     def test_math_pi_constant(self):
-        self.assertIn('float p = (float)3.1415927F;', self.out)
+        self.assertIn('float p = (float)3.141592653589793;', self.out)
 
 
 class TestNullableValueLocals(unittest.TestCase):
@@ -1383,7 +1383,7 @@ class TestPrimitiveCastAndMathConst(unittest.TestCase):
         self.assertIn('float var4 = (float)var1;', self.out)
 
     def test_math_pi_constant(self):
-        self.assertIn('float p = (float)3.1415927F;', self.out)
+        self.assertIn('float p = (float)3.141592653589793;', self.out)
 
 
 class TestNullableValueLocals(unittest.TestCase):
@@ -2143,7 +2143,7 @@ class TestPrimitiveCastAndMathConst(unittest.TestCase):
         self.assertIn('float var4 = (float)var1;', self.out)
 
     def test_math_pi_constant(self):
-        self.assertIn('float p = (float)3.1415927F;', self.out)
+        self.assertIn('float p = (float)3.141592653589793;', self.out)
 
 
 class TestNullableValueLocals(unittest.TestCase):

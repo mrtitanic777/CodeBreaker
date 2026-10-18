@@ -202,9 +202,12 @@ MATH_API = {
     # Math.round(x) returns an integer (round-half-up); overloaded free-function shim in the prelude
     # (int for float, long long for double) -- there is no single C stdlib call with Java's semantics.
     'round': 'javaMathRound',
-    # constants (no call): Math.PI is a member, not a method -> inline the float literal
-    # (this is a float-math project, consistent with the sqrtf/sinf choices above)
-    'PI': '3.1415927F',
+    # constants (no call): Math.PI is a member, not a method -> inline the literal. A DOUBLE, as in Java.
+    # J2X-BUGFIX math-pi-double: it was the float 3.1415927F, so `(float)Math.sin(i * Math.PI * 2.0D / 65536.0D)`
+    # (MathHelper's SIN_TABLE) was computed with a single-precision PI and every MathHelper.sin/cos of a
+    # non-zero angle came out a few ulps off Java's -- found by the java kind's behavioural judge. Where the
+    # game casts it, `(float)Math.PI`, the result is the same float as before.
+    'PI': '3.141592653589793',
     # no clean inline form -> free-function shims from the runtime prelude (JavaRT.h)
     'random': 'javaMathRandom', 'signum': 'javaMathSignum',
 }

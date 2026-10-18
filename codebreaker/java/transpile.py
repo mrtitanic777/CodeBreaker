@@ -1493,6 +1493,7 @@ def _convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True
              sevs.get(Severity.HIGH, 0)))
     return {
         'parsed': len(classes), 'headers': headers, 'sources': sources,
+        'markers': sorted(markers),             # empty decompiler marker classes, dropped on purpose
         'rule_findings': rule_findings, 'events': len(ledger),
         'high': sevs.get(Severity.HIGH, 0),
         'report': rep,

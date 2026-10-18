@@ -10,7 +10,7 @@
 
 class DecimalFormat : public NumberFormat {
 public:
-	DecimalFormat(...) { _maxFrac = 2; _grouping = false; }
+	explicit DecimalFormat(...) { _maxFrac = 2; _grouping = false; }   // explicit: a pattern goes to the ctor below
 	DecimalFormat(const JavaString& pattern, ...) {
 		std::string p = (std::string)pattern;
 		std::string::size_type dot = p.find('.');

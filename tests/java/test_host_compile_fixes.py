@@ -48,6 +48,7 @@ RUNTIME_UNIT = r'''#include "stdafx.h"
 #include "JavaRT.h"
 #include "Collections.h"
 #include "URL.h"
+#include "DecimalFormat.h"
 int main() {
 	JList<JObject> list;
 	std::size_t n = 3;
@@ -61,7 +62,17 @@ int main() {
 	URL* a = new URL("http://example/");                          // was ambiguous
 	URL* b = new URL((JCat() + "http://" + 1));                   // was ambiguous
 	std::string viaBase = (JCat() + "x");                         // JCat still reaches std::string
-	(void)has; (void)t; (void)back; (void)sync; (void)fresh; (void)viaBase;
+	JMap<JObject, JObject> map;
+	JMap<JObject, JObject> mapBack = (JMap<JObject, JObject>)JObject(map);   // (Map)o -- was ambiguous (Beta)
+	JArray<int> ints(3);
+	JArray<int> intsBack = (JArray<int>)JObject(ints);            // (int[])o -- was ambiguous (Beta)
+	DecimalFormat* df = new DecimalFormat("########0.00");        // was ambiguous (Beta StatBase)
+	JArray<char> chars(2); chars[0] = 'h'; chars[1] = 'i';
+	if (String::valueOf(chars) != "hi" || String::valueOf(chars, 1, 1) != "i") return 2;   // char[] (Beta)
+	if (max(3, 120) != 120 || max(2, 2.5f) != 2.5f || min(7LL, 3) != 3LL) return 3;       // Math.max/min
+	if (intsBack.length != 3) return 4;
+	(void)has; (void)t; (void)back; (void)sync; (void)fresh; (void)viaBase; (void)mapBack;
+	delete df;
 	delete a; delete b;
 	return s == "x" ? 0 : 1;
 }

@@ -6,6 +6,8 @@
 // Non-owning on copy (shallow) so a by-value copy never double-frees -- game arrays are
 // long-lived. Implicit conversion to T* for GL / nio-buffer / System.arraycopy interop.
 
+struct JObject;                                  // (int[])o unboxes through the ctor below (JavaRT.h)
+
 template<class T>
 class JArray {
 	T* _buf;
@@ -15,6 +17,7 @@ public:
 	JArray() : _buf(0), length(0) {}
 	explicit JArray(int n) : _buf(n > 0 ? new T[n]() : 0), length(n > 0 ? n : 0) {}
 	JArray(T* buf, int n) : _buf(buf), length(n) {}
+	JArray(const JObject& o);                    // unbox a boxed array; defined in JavaRT.h
 	T& operator[](int i) { return (i >= 0 && i < length) ? _buf[i] : _oob(); }
 	const T& operator[](int i) const { return (i >= 0 && i < length) ? _buf[i] : _oob(); }
 	operator T*() { return _buf; }               // raw-pointer interop

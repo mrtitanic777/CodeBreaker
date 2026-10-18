@@ -5,6 +5,7 @@
 #include "JIterator.h"
 #include "JList.h"
 #include "Entry.h"
+struct JObject;                                  // (Map)o unboxes through the ctor below (JavaRT.h)
 template<class K, class V>
 class JMap : public std::map<K, V> {
 public:
@@ -12,6 +13,7 @@ public:
 	typedef typename std::map<K, V>::const_iterator _cit;
 	JMap() {}
 	JMap(long long) {}                                   // Java `Map x = null;` -> empty map
+	JMap(const JObject& o);                              // unbox a boxed Map; defined in JavaRT.h
 	V put(const K& k, const V& v) {                      // Java returns the PREVIOUS value (or null)
 		_it it = this->find(k);
 		if (it == this->end()) { this->insert(std::make_pair(k, v)); return V(); }
