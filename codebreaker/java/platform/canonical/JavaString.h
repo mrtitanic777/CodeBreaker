@@ -95,9 +95,9 @@ public:
 		for (int i = 0; i < n; ++i) ring[slot][i] = (T)s[(size_type)i];
 		return JArray<T>(ring[slot], n);
 	}
-	// java.lang.String.toCharArray() -> char[] (JArray<char>), a COPY -- matches Java's return type so
-	// `char[] c = s.toCharArray()` (FontRenderer glyph iteration) assigns and `c.length`/`c[i]` work.
-	JArray<char> toCharArray() const { return _copyOut<char>(*this); }
+	// java.lang.String.toCharArray() -> char[] (JArray<unsigned char>: Java's char is unsigned), a COPY --
+	// matches Java's return type so `char[] c = s.toCharArray()` (FontRenderer glyph iteration) assigns.
+	JArray<unsigned char> toCharArray() const { return _copyOut<unsigned char>(*this); }
 	// java.lang.String.getBytes([charset]) -> a COPY of the bytes as byte[] (JArray<unsigned char>),
 	// matching Java's return type so `byte[] b = s.getBytes("UTF-8")` (NBT/packets) assigns + `b.length`.
 	JArray<unsigned char> getBytes(...) const { return _copyOut<unsigned char>(*this); }
@@ -131,6 +131,8 @@ public:
 	JavaString operator+(unsigned v) const { std::ostringstream o; o << v; return JavaString((const std::string&)*this + o.str()); }
 	JavaString operator+(double v) const { std::ostringstream o; o << v; return JavaString((const std::string&)*this + o.str()); }
 	JavaString operator+(char v) const { return JavaString((const std::string&)*this + std::string(1, v)); }
+	// a Java char (unsigned char) appends the character, not its number (it would promote to operator+(int))
+	JavaString operator+(unsigned char v) const { return JavaString((const std::string&)*this + std::string(1, (char)v)); }
 	// NOTE: deliberately NO operator+(bool)/(const char*)/(std::string) -- a `const char*` literal converts
 	// to bool, which would make `s + "literal"` ambiguous against the free std::operator+(string,const char*).
 	// String concatenation with a bool is handled by the JCat lowering (which has its own bool overload).

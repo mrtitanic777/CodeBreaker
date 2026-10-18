@@ -129,7 +129,7 @@ class TestCollectionsAndString(unittest.TestCase):
         # String.charAt(i) -> subscript cast to unsigned char (Java char is unsigned; C++ operator[] is
         # signed, so charAt(i)==167 for the 0xA7 section sign would compare -89==167). The cast wraps the
         # FULL receiver expression, BEFORE the this-> qualifier -- never the invalid `this->(cast)name`.
-        self.assertIn('char c = (unsigned char)this->name[2];', self.out)
+        self.assertIn('unsigned char c = (unsigned char)this->name[2];', self.out)   # Java char is unsigned
 
     def test_size_unchanged(self):
         self.assertIn('int n = this->items.size();', self.out)
@@ -1085,7 +1085,7 @@ class TestCollectionsAndString(unittest.TestCase):
         # String.charAt(i) -> subscript cast to unsigned char (Java char is unsigned; C++ operator[] is
         # signed, so charAt(i)==167 for the 0xA7 section sign would compare -89==167). The cast wraps the
         # FULL receiver expression, BEFORE the this-> qualifier -- never the invalid `this->(cast)name`.
-        self.assertIn('char c = (unsigned char)this->name[2];', self.out)
+        self.assertIn('unsigned char c = (unsigned char)this->name[2];', self.out)   # Java char is unsigned
 
     def test_size_unchanged(self):
         self.assertIn('int n = this->items.size();', self.out)
@@ -1914,7 +1914,7 @@ class TestCollectionsAndString(unittest.TestCase):
         # String.charAt(i) -> subscript cast to unsigned char (Java char is unsigned; C++ operator[] is
         # signed, so charAt(i)==167 for the 0xA7 section sign would compare -89==167). The cast wraps the
         # FULL receiver expression, BEFORE the this-> qualifier -- never the invalid `this->(cast)name`.
-        self.assertIn('char c = (unsigned char)this->name[2];', self.out)
+        self.assertIn('unsigned char c = (unsigned char)this->name[2];', self.out)   # Java char is unsigned
 
     def test_size_unchanged(self):
         self.assertIn('int n = this->items.size();', self.out)

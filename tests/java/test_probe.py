@@ -76,10 +76,12 @@ def test_methods_run_beside_the_jvm(tmp_path):
     cls = parse.parse_file(str(src / 'Calc.java'))
     javac, jvm = java.jdk()
     r = probe.run(staged, str(out), cls, str(tmp_path / 'work'), java.compiler(), javac, jvm)
-    assert sorted(r['methods']) == ['clamp', 'half', 'mix', 'wave', 'widen']    # static, primitive in and out
-    assert r['judged'] == 5 and r['total'] == 6 and r['cases'] > 50
+    # primitive in and out: the static ones, and notStatic on a Calc made with its implicit constructor
+    assert sorted(r['methods']) == ['clamp', 'half', 'mix', 'notStatic', 'wave', 'widen']
+    assert r['judged'] == 6 and r['total'] == 6 and r['cases'] > 50
     differs = set(m for m, _a, _j, _c in r['differs'])
     # wave reads a table built with Math.PI: equal only because PI is the double Java uses
     assert 'wave' not in differs and 'clamp' not in differs and 'mix' not in differs and 'half' not in differs
-    # Java's char is 16 bits, C++'s 8: (char)255 is 255 in Java and -1 here -- a known gap the judge finds
-    assert 'widen' in differs
+    # Java's char is 16 bits and unsigned; here it is unsigned char: (char)255 now agrees, (char)65535 cannot
+    widen = [a for m, a, _j, _c in r['differs'] if m == 'widen']
+    assert ('255',) not in widen and ('65535',) in widen
