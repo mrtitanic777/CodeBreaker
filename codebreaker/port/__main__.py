@@ -3,6 +3,11 @@
 SOURCE_DIR is read, never written: its C (*.c, *.h, in it or its src/) and its assembler modules (*.asm, in it or
 its asm/). OUT_DIR gets the port: the modern sources, the platform layer, a build script, the program built, and
 PORT.md - every change made and why, what the compiler still says, what could not be ported.
+
+  --cases CASES.json   the behaviour cases (port/verify): the sanitizer pass runs them
+  --asm16 ASSEMBLER    the period assembler (run under the emulator) whose listing places the assembly's tables
+  --types TYPES.json   {"members": {"struct.member": "type"}}: members the source declared otherwise than the
+                       program uses them (what the assembly shows) - the port's corrections, said in PORT.md
 """
 import collections
 import glob
@@ -122,6 +127,113 @@ def strip_asm_comment(l):
     return l.split(";", 1)[0]
 
 
+NEW_TYPES = {"": "int16_t", "int": "int16_t", "short": "int16_t", "short int": "int16_t", "unsigned": "uint16_t",
+             "unsigned int": "uint16_t", "unsigned short": "uint16_t", "long": "int32_t", "long int": "int32_t",
+             "unsigned long": "uint32_t", "char": "char", "unsigned char": "unsigned char", "void": "void"}
+
+
+def c_declared(texts):
+    """{name: the type it returns, today's spelling} from the C program's declarations of functions it does not
+    define (extern T NEAR f();) - what it expects of the assembly's"""
+    from codebreaker.port import asm16
+    macros = set()
+    for t in texts:
+        for m in re.finditer(r"(?m)^\s*#\s*define\s+(\w+)[ \t]+([\w \t]+?)\s*$", t):
+            if set(m.group(2).split()) <= asm16.CALL_WORDS:
+                macros.add(m.group(1))
+    out = {}
+    for t in texts:
+        for m in re.finditer(r"\bextern\s+([\w\s*]+?)\b([A-Za-z_]\w*)\s*\(\s*\)\s*;", early_c.blank(t)):
+            words = [w for w in re.findall(r"\w+|\*", m.group(1)) if w not in asm16.CALL_WORDS and w not in macros]
+            stars = words.count("*")
+            base = " ".join(w for w in words if w != "*")
+            if stars:
+                out.setdefault(m.group(2), base + " " + "*" * stars)
+            elif base in NEW_TYPES:
+                out.setdefault(m.group(2), NEW_TYPES[base])
+    return out
+
+
+NEW_SIZES = {"char": 1, "signed char": 1, "unsigned char": 1, "int8_t": 1, "uint8_t": 1, "int16_t": 2,
+             "uint16_t": 2, "short": 2, "int32_t": 4, "uint32_t": 4, "long": 4, "int": 4, "unsigned": 4}
+
+
+def data_places(asm_path):
+    """[(old address in the data segment, name)] of the program's variables, where the recovered source has them
+    (a SYMBOLS file beside it: name, D, address - as the original image placed them)"""
+    p = os.path.join(os.path.dirname(asm_path), "SYMBOLS")
+    out = []
+    if os.path.isfile(p):
+        for l in open(p, encoding="latin1"):
+            w = l.split()
+            if len(w) == 3 and w[1] == "D" and re.fullmatch(r"[0-9a-fA-F]+", w[2]):
+                out.append((int(w[2], 16), w[0]))
+    return sorted(out)
+
+
+def alias_places(aliases, ct):
+    """{alias: (owner, byte offset now)} of the names the old linker gave places inside other variables"""
+    out = {}
+    for al, (where, od) in aliases.items():
+        m = re.fullmatch(r"\(?&?\s*(\w+)\s*(?:\[\s*(\d+)\s*\])?\)?", where.strip())
+        if not m:
+            continue
+        owner, k = m.group(1), int(m.group(2) or 0)
+        base = re.sub(r"\b(extern|static)\b", "", (od or "").split(owner)[0]).strip()
+        if "*" in (od or "").split(owner)[0] or re.search(r"\(\s*\*", od or ""):
+            size = 8
+        elif base.startswith(("struct", "union")):
+            size = (ct.new.get(re.sub(r"\s+", " ", base)) or {}).get("@size", 1)
+        else:
+            size = NEW_SIZES.get(re.sub(r"\s+", " ", base), 1)
+        out[al] = (owner, k * size)
+    return out
+
+
+def call_arg_types(fn, texts, origs, ct):
+    """[(old size, what it points to or None)] of the arguments the C program calls an assembly routine with: a
+    pointer to a variable it declares (&g), a pointer variable (p) - far ones 4 bytes, as they were pushed"""
+    far = getattr(call_arg_types, "far", None)
+    if far is None or call_arg_types.key is not origs:
+        far = set()
+        for t in origs:
+            for d in re.finditer(r"(?m)^[^;(){}]*\bfar\b[^;(){}]*?\b(\w+)\s*(?:\[[^\]]*\])?\s*;", early_c.blank(t)):
+                far.add(d.group(1))
+        call_arg_types.far, call_arg_types.key = far, origs
+    best = []
+    for t in texts:
+        for line in early_c.blank(t).split("\n"):
+            if not re.search(r"\b%s\s*\(" % re.escape(fn), line) or re.match(r"\s*(?:extern\b|\w[\w\s*]*\b%s\s*\([^)]*\)\s*$)"
+                                                                           % re.escape(fn), line):
+                continue
+            spans = early_c.call_args(line, fn)
+            if not spans:
+                continue
+            out = []
+            for a, b in spans:
+                arg = line[a:b].strip()
+                m = re.fullmatch(r"&\s*(\w+)", arg)
+                v = ct.var(m.group(1)) if m else None
+                if v:
+                    stars = re.sub(r"\[[^\]]*\]", "", v[1]).replace(m.group(1), "").count("*")
+                    out.append((4 if m.group(1) in far else 2, v[0].strip() + (" " + "*" * stars if stars else "")))
+                    continue
+                loc = re.search(r"\b((?:struct|union)\s+\w+|char|unsigned\s+char|int16_t|uint16_t)\s*(\*+)\s*%s\s*[;,)=]"
+                                % re.escape(arg), early_c.blank(t)) if re.fullmatch(r"\w+", arg) else None
+                if loc:                                     # (a variable of the calling file: a parameter, a local)
+                    stars = len(loc.group(2))
+                    out.append((2, re.sub(r"\s+", " ", loc.group(1)) + (" " + "*" * (stars - 1) if stars > 1 else "")))
+                    continue
+                if re.fullmatch(r"\w+", arg) and ct.is_pointer(arg):
+                    out.append((4 if arg in far else 2, ct.pointee(arg)))
+                    continue
+                v = ct.var(arg) if re.fullmatch(r"\w+", arg) else None
+                out.append((4 if v and re.search(r"\b(long|int32_t|uint32_t)\b", v[0]) else 2, None))
+            if sum(1 for s, to in out if to) > sum(1 for s, to in best if to):
+                best = out
+    return best
+
+
 def asm_modules(port, out, res, asm, paths, roles, profile, opt, compilers):
     """the program's own assembly language, ported as assembly language (port/asm16) and assembled; its data
     alone as C definitions. -> ([objects to link], {name: its C declaration}, [notes])"""
@@ -135,11 +247,40 @@ def asm_modules(port, out, res, asm, paths, roles, profile, opt, compilers):
     old_asm = opt("--asm16") or (settings.get("port") or {}).get("asm16") if hasattr(settings, "get") else None
     ml = find(compilers.get("ml64", {}).get("find", []))
     objs, protos, notes = [], {}, []
-    for n, t in sorted(asm.items()):
-        role = roles[n][0]
+    cfuncs = asm16.c_functions(origs)
+    declared = c_declared(origs)
+    routines, externs = {}, {}                              # (each module's public routines: the others call them)
+    for n, t in asm.items():
+        if roles[n][0] == "code":
+            m0 = asm16.Module(t, ct, cnames=calls)
+            routines[n] = {p for p in m0.public if p in m0.labels}
+            externs[n] = set(m0.extrn)
+    for n, t in sorted(asm.items(), key=lambda x: (roles[x[0]][0] != "data", x[0])):   # (the data first: the
+        role = roles[n][0]                                                          #  names it places)
         if role == "data":
+            from codebreaker.port import asmdata
+            msg = asmdata.messages(t)
+            if msg:                                         # (the C library's numbered messages: a table of C)
+                port.asm_data.append((n, msg))
+                notes.append("%s: the numbered messages (__NMSG_TEXT, __FMSG_TEXT): a table in data.c" % n)
+                continue
+            typed = asmdata.typed(t, ct)
+            if typed:                                       # (tables with addresses in them: C, initialized)
+                port.asm_data.append((n, typed))
+                notes.append("%s: tables with addresses in them - C definitions with initializers, in data.c" % n)
+                continue
             for d in asm_data_defs(t, ct):
                 port.asm_data.append((n, d))
+            for al, canon in asm_data_defs.one_place.items():  # (one variable: its name and type everywhere)
+                v = ct.var(canon)
+                typ = (v[0] + " " + v[1].replace(canon, "", 1)).strip()
+                port.renames[al] = canon
+                rule = (r"(?m)^(\s*extern\s+)[^;(=]*?\b%s\s*;" % re.escape(canon), r"\g<1>%s%s%s;" % (
+                    typ, "" if typ.endswith("*") else " ", canon))
+                if rule not in port.decl_rules:
+                    port.decl_rules.append(rule)
+                notes.append("%s: %s and %s are one place - one variable, %s" % (n, al, canon, typ))
+            port.asm_sizes = dict(getattr(port, "asm_sizes", {}), **asm_data_defs.sizes)
             for al, where in asm_data_defs.aliases.items():   # (names of one place: one variable)
                 owner = re.search(r"[A-Za-z_]\w*", where).group(0)
                 od = next((d for m_, d in port.asm_data if re.search(r"\b%s\s*\[" % owner, d)), None)
@@ -148,7 +289,12 @@ def asm_modules(port, out, res, asm, paths, roles, profile, opt, compilers):
             continue
         if role != "code":
             continue
-        m = asm16.Module(t, ct, cnames=calls)
+        m = asm16.Module(t, ct, cnames=calls, cfuncs=cfuncs,
+                         asm_routines=set().union(*[r for k, r in routines.items() if k != n]))
+        m.used_outside = set().union(*[e for k, e in externs.items() if k != n])
+        m.param_types = {p: call_arg_types(c, texts, origs, ct) for p, c in m.cname.items()}
+        m.aliases = alias_places(port.aliases, ct)
+        m.data_map = data_places(paths[n])
         m.far = {p for p, c in m.cname.items() if c in far}
         lib = set(profile["libc"]) | {"strcmp", "strlen", "strcpy", "strcat", "memcpy", "memset", "memcmp"}
         for p, c in list(m.cname.items()):
@@ -170,6 +316,7 @@ def asm_modules(port, out, res, asm, paths, roles, profile, opt, compilers):
             ex = m.exit_of(p)
             k = ex.r.get("ax") if ex else None
             ret = "char *" if k is not None and k.wide() and k.kind != "frame" else "int16_t"
+            ret = declared.get(c, ret)                      # (the C program's own declaration says)
             protos[c] = "%s%s%s();" % (ret, "" if ret.endswith("*") else " ", c)
         if not ml:
             notes.append("**%s: ported to %s.asm, but no ml64 to assemble it**" % (n, base))
@@ -214,6 +361,21 @@ def asm_data_defs(text, ct):
             off += n
     old_size = lambda base, dcl, n: early_c.size_of(base, dcl, n, 2, {}) or 2
     out, aliases, done = [], {}, set()
+    one_place = {}                                          # (scalars of one place under two names: one variable,
+    for i, (c, at, own) in enumerate(places):               #  of the type that is a pointer if one is)
+        same = [p for p in places if p[1] == at]
+        v = ct.var(c)
+        if len(same) < 2 or c in done or not v or "[" in v[1]:
+            continue
+        typed = [(p[0], ct.var(p[0])) for p in same if ct.var(p[0]) and "[" not in ct.var(p[0])[1]]
+        if len(typed) < 2:
+            continue
+        canon = next((n for n, w in typed if "*" in w[1]), typed[-1][0])
+        for n, w in typed:
+            if n != canon:
+                one_place[n] = canon
+                done.add(n)
+    asm_data_defs.one_place = one_place
     for i, (c, at, own) in enumerate(places):
         if c in done:
             continue
@@ -260,6 +422,7 @@ def asm_data_defs(text, ct):
         else:
             out.append("char %s[%d];\t\t/* (no C declaration says its type) */" % (c, max(own, 1)))
     asm_data_defs.aliases = aliases
+    asm_data_defs.sizes = {c: own for c, at, own in places if own}
     return out
 
 
@@ -267,7 +430,7 @@ def main(argv):
     if len(argv) < 2:
         print(__doc__)
         return 2
-    src, out = argv[0], argv[1]
+    src, out = argv[0], os.path.abspath(argv[1])            # (the compilers run in OUT_DIR: its own path whole)
     from codebreaker.base import parallel
     parallel.throttle(below_normal=True)                    # (the machine first; the compilers inherit it)
     opt = lambda k, d=None: argv[argv.index(k) + 1] if k in argv else d
@@ -280,7 +443,8 @@ def main(argv):
         print("the port is written beside the source, never into it: give another OUT_DIR")
         return 2
     files, asm, paths = read_tree(src)
-    port = early_c.Port(files, profile)
+    types = json.load(open(opt("--types"))) if opt("--types") else {}
+    port = early_c.Port(files, profile, members=types.get("members", {}))
     roles = {n: asm_role(t, profile) for n, t in asm.items()}
     os.makedirs(out, exist_ok=True)
     for n in ("dosrt.h", "dosrt.c"):
@@ -309,10 +473,13 @@ def main(argv):
         diags = []
         if cc is None:
             break
-        for n in sorted(res):
-            if n.endswith(".c"):
-                p = run(spec, args(spec["check"], cc=cc, inc=".", src=n), out, cc)
-                diags += diagnostics(spec, p.stdout + p.stderr, out)
+        from concurrent.futures import ThreadPoolExecutor
+        from codebreaker.base import parallel
+        cfiles = [n for n in sorted(res) if n.endswith(".c")]
+        with ThreadPoolExecutor(max(1, parallel.workers())) as ex:   # (the machine's budget of compilers at once)
+            done = list(ex.map(lambda n: run(spec, args(spec["check"], cc=cc, inc=".", src=n), out, cc), cfiles))
+        for p in done:                                      # (in the files' order, as one compiler would say them)
+            diags += diagnostics(spec, p.stdout + p.stderr, out)
         rounds += 1
         if rounds > 8 or not early_c.mend(port, res, diags):
             break
@@ -328,6 +495,8 @@ def main(argv):
         sanitized = sanitize_loop(port, out, write, srcs, compilers, comp, cases)
         res = write()
     built, blog = False, ""
+    if os.path.exists(exe):                                 # (an old build is not this port's: a verify would run it)
+        os.remove(exe)
     if cc:
         p = run(spec, args(spec["build"], cc=cc, inc=".", out=exe, srcs=srcs), out, cc)
         built, blog = p.returncode == 0, p.stdout + p.stderr

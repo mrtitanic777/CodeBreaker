@@ -112,6 +112,7 @@
     "calls": [
       "_ffree",
       "_fmalloc",
+      "_freect",
       "_psp",
       "close",
       "corein",
@@ -121,6 +122,7 @@
       "dos_far",
       "dos_int21",
       "fillb",
+      "flushall",
       "getdrive",
       "gets",
       "heap_avail",
@@ -130,16 +132,25 @@
       "itoa",
       "kbdchar",
       "kbdnew",
+      "longjmp",
       "lseek",
+      "memicmp",
       "movbytes",
       "open",
       "read",
+      "setjmp",
+      "setmode",
+      "sopen",
       "strcmpi",
       "stricmp",
       "terminate",
       "unlink",
       "write"
-    ]
+    ],
+    "renames": {
+      "setjmp": "dos_setjmp",
+      "longjmp": "dos_longjmp"
+    }
   },
   "widths": {
     "char": 8,
@@ -156,7 +167,9 @@
     "fopen": "text mode as the old library had it: \\n is \\r\\n in a text file (on Windows the C library's own text mode; elsewhere files are binary)",
     "kbdchar": "DOS's buffered line input (function 0Ah): the line, a carriage return, a line feed; at the end of the input -1",
     "corein": "the memory above the program's 64K: here pages of a block of the heap of as many pages as coremax says",
-    "getdrive": "the current drive (0 = A:); on a system without drives, C:"
+    "getdrive": "the current drive (0 = A:); on a system without drives, C:",
+    "longjmp": "a longjmp without a value: 1 (the old one returned whatever was in AX)",
+    "sopen": "the sharing asked for is not kept (no other program shares the file)"
   },
   "struct_align": 2,
   "keywords_removed": [

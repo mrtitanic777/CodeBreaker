@@ -83,8 +83,12 @@ void *dos_far(unsigned seg, unsigned off);
 /* the old library's others: the far heap (one heap now), what is left of it (DOSRT_HEAP_AVAIL paragraphs,
    what the original found), the end through the library's exit, a line of the standard input, numbers
    and names compared without case */
-#define _fmalloc(n)	malloc(n)
-#define _ffree(p)	free(p)
+/* the far heap is as big as a DOS machine's was (DOSRT_FAR_HEAP bytes, 512K unless said): a program that
+   allocates until it is refused - to count what memory there is - is refused here too, not given the host's */
+#define _fmalloc(n)	dos_fmalloc(n)
+#define _ffree(p)	dos_ffree(p)
+void *dos_fmalloc(size_t n);
+void dos_ffree(void *p);
 #define _fstrcpy	strcpy
 #define _fstrlen	strlen
 #define _fmemcpy	memcpy
@@ -101,5 +105,57 @@ char *dos_itoa(int v, char *buf, int radix);
 #define strcmpi	dos_strcmpi
 #define stricmp	dos_strcmpi
 int dos_strcmpi(const char *a, const char *b);
+#define memicmp	dos_memicmp
+int dos_memicmp(const void *a, const void *b, size_t n);
+
+/* Microsoft C's fcntl.h numbers, which open() and sopen() are given (the platform layer makes them today's) */
+#ifndef DOSRT_IMPL
+#undef O_RDONLY
+#undef O_WRONLY
+#undef O_RDWR
+#undef O_APPEND
+#undef O_CREAT
+#undef O_TRUNC
+#undef O_EXCL
+#undef O_TEXT
+#undef O_BINARY
+#define O_RDONLY	0x0000
+#define O_WRONLY	0x0001
+#define O_RDWR	0x0002
+#define O_APPEND	0x0008
+#define O_CREAT	0x0100
+#define O_TRUNC	0x0200
+#define O_EXCL	0x0400
+#define O_TEXT	0x4000
+#define O_BINARY	0x8000
+#undef SH_COMPAT
+#undef SH_DENYRW
+#undef SH_DENYWR
+#undef SH_DENYRD
+#undef SH_DENYNO
+#define SH_COMPAT	0x00
+#define SH_DENYRW	0x10
+#define SH_DENYWR	0x20
+#define SH_DENYRD	0x30
+#define SH_DENYNO	0x40
+#endif
+/* sopen(name, mode, share[, permission]): open() - the sharing is DOS's business; setmode(handle, O_TEXT or
+   O_BINARY): the mode it had; _freect(size): how many blocks of size bytes the near heap had room for */
+#define flushall	dos_flushall
+int dos_flushall(void);
+#define sopen	dos_sopen
+#define setmode	dos_setmode
+#define _freect	dos_freect
+int dos_sopen(const char *name, int mode, int share, ...);
+int dos_setmode(int fd, int mode);
+unsigned dos_freect(unsigned size);
+
+/* setjmp(buf) and longjmp(buf[, value]) on the program's own buffer (its words were the registers): a buffer
+   of today's for each of the old ones; a longjmp without a value gave what was in AX - not 0 */
+#include <setjmp.h>
+jmp_buf *dos_jmpbuf(void *old);
+#define dos_setjmp(b)	setjmp(*dos_jmpbuf(b))
+#define dos_longjmp(...)	dos_longjmp_(__VA_ARGS__, 1, 0)
+#define dos_longjmp_(b, v, ...)	longjmp(*dos_jmpbuf(b), (v))
 
 #endif

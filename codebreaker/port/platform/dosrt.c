@@ -12,6 +12,7 @@
 #include <unistd.h>
 #define O_FLAGS	0
 #endif
+#define DOSRT_IMPL			/* (today's O_ numbers here, not the old ones) */
 #include "dosrt.h"
 #include "dosrt_config.h"		/* (the old runtime's ways: written by the port from its profile) */
 #ifndef DOSRT_TEXT_MODE
@@ -193,6 +194,23 @@ void dos_int21(uint64_t *r)
 		if (n < 0) { r[0] = (r[0] & ~(uint64_t)0xFFFF) | 5; r[6] |= 1; }
 		else r[0] = (r[0] & ~(uint64_t)0xFFFF) | (unsigned)n;
 		return;
+	case 0x42: {					/* seek: bx the handle, cx:dx where, al from where; dx:ax */
+		int32_t at = dos_lseek(bx, (int32_t)((uint32_t)cx << 16 | (r[3] & 0xFFFF)), (int)(r[0] & 0377));
+		if (at < 0) { r[0] = (r[0] & ~(uint64_t)0xFFFF) | 6; r[6] |= 1; return; }
+		r[0] = (r[0] & ~(uint64_t)0xFFFF) | ((uint32_t)at & 0xFFFF);
+		r[3] = (r[3] & ~(uint64_t)0xFFFF) | ((uint32_t)at >> 16);
+		return;
+	}
+	case 0x48:					/* memory: bx paragraphs - the largest there is said when it is
+							   more than there is (DOSRT_HEAP_AVAIL); a block is "given" (none is
+							   needed: what the program reads of it is the number) */
+		if (bx > heap_avail(0)) {
+			r[1] = (r[1] & ~(uint64_t)0xFFFF) | heap_avail(0);
+			r[0] = (r[0] & ~(uint64_t)0xFFFF) | 8;
+			r[6] |= 1;
+		} else
+			r[0] = (r[0] & ~(uint64_t)0xFFFF) | 0x8000;
+		return;
 	case 0x2A:					/* the date: cx the year, dh the month, dl the day */
 		dos_clock(&y, &mo, &d, &h, &mi, &s);
 		r[2] = (r[2] & ~(uint64_t)0xFFFF) | (unsigned)y;
@@ -316,4 +334,80 @@ int dos_strcmpi(const char *a, const char *b)
 		int x = tolower((unsigned char)*a), y = tolower((unsigned char)*b);
 		if (x != y || !x) return x - y;
 	}
+}
+
+int dos_memicmp(const void *a, const void *b, size_t n)
+{
+	const unsigned char *p = a, *q = b;
+	for (; n; n--, p++, q++) {
+		int x = tolower(*p), y = tolower(*q);
+		if (x != y) return x - y;
+	}
+	return 0;
+}
+
+static size_t far_used, far_limit;
+
+void *dos_fmalloc(size_t n)
+{
+	size_t *p;
+	if (!far_limit) {
+		const char *e = getenv("DOSRT_FAR_HEAP");
+		far_limit = e ? (size_t)strtoul(e, 0, 0) : 0x80000;	/* (512K: what a 640K machine left) */
+	}
+	if (n > far_limit - far_used)
+		return 0;
+	if (!(p = malloc(n + 16)))
+		return 0;
+	p[0] = n;
+	far_used += n;
+	return (char *)p + 16;
+}
+
+void dos_ffree(void *q)
+{
+	size_t *p;
+	if (!q) return;
+	p = (size_t *)((char *)q - 16);
+	far_used -= p[0];
+	free(p);
+}
+
+int dos_flushall(void)
+{
+	fflush(NULL);				/* (every stream written out; the old one said how many were open) */
+	return 0;
+}
+
+int dos_sopen(const char *name, int mode, int share, ...)
+{
+	(void)share;				/* (no other program shares the file here) */
+	return dos_open(name, mode, 0666);
+}
+
+int dos_setmode(int fd, int mode)
+{
+#ifdef _WIN32
+	int was = _setmode(fd, (mode & 0x4000) ? O_TEXT : O_BINARY);
+	return was == O_TEXT ? 0x4000 : 0x8000;
+#else
+	(void)fd; (void)mode;
+	return 0x8000;
+#endif
+}
+
+unsigned dos_freect(unsigned size)
+{
+	return heap_avail(0) / (size ? size : 2);
+}
+
+jmp_buf *dos_jmpbuf(void *old)
+{
+	static struct { void *old; jmp_buf b; } bufs[16];
+	int i;
+	for (i = 0; i < 16 && bufs[i].old; i++)
+		if (bufs[i].old == old) return &bufs[i].b;
+	if (i == 16) abort();			/* (more buffers than any old program had) */
+	bufs[i].old = old;
+	return &bufs[i].b;
 }

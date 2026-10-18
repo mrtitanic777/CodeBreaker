@@ -31,19 +31,47 @@ def mend(port, out, reports):
     for case, text in reports:
         for m in GLOBAL.finditer(text):
             var = m.group("var")
+            reach = getattr(port, "reach", None)
+            if reach is not None and var not in reach and hasattr(port, "joins_next") and port.joins_next(var):
+                elems = re.search(r"(?m)^\s*(?:unsigned\s+|signed\s+)?(?:char|short|int|long|unsigned)\s+%s\s*\[[^\]]*\]"
+                                  r"\s*=\s*\{([^}]*)\}" % re.escape(var), "\n".join(port.files.values()))
+                n = len([x for x in elems.group(1).split(",") if x.strip()]) if elems else 0
+                if n:                                       # (read into the variable after it: one table, as the
+                    elem = int(m.group("size")) // n        #  original's linker made them - its elements)
+                    reach[var] = (int(m.group("size")) + int(m.group("after")) + int(m.group("sz")) - 1) // elem
+                    why = "%s[%d] %s (case '%s'): the table went on into the variables after it - one table" % (
+                        var, reach[var], m.group("rw").lower(), case)
+                    port.mended["a table read past its end into the variables after it (a run showed it): one "
+                                "table"].append(why)
+                    done.append((var, why))
+                    continue
             decl = None
-            for f, t in out.items():
-                d = re.search(r"(?m)^\s*(?:static\s+)?[\w ]+?[\s*]+%s\s*\[\s*(\d+)\s*\]" % re.escape(var), t)
+            for f, t in out.items():                        # (its definition: not a declaration of it, extern)
+                d = re.search(r"(?m)^\s*(?!extern\b)(?:static\s+)?(?:[\w ]*?\b)?(?:char|short|int|long|unsigned|signed|"
+                              r"float|double|struct\s+\w+|union\s+\w+|\w+_t)\b[\s*]+%s\s*\[\s*(\d+)\s*\]" %
+                              re.escape(var), t)
                 if d:
                     decl = int(d.group(1))
                     break
+            sized = True
+            if not decl:                                    # (char s[] = "...": its size the string's)
+                for f, t in out.items():
+                    if re.search(r"(?m)^\s*(?:static\s+)?(?:unsigned\s+|signed\s+)?char\s+%s\s*\[\s*\]\s*=" %
+                                 re.escape(var), t):
+                        decl, sized = int(m.group("size")), False
+                        break
             if not decl or port.grown.get(var, 0) > decl:
                 continue                                    # (grown already, this round)
             elem = int(m.group("size")) // decl
             extra = math.ceil((int(m.group("after")) + int(m.group("sz"))) / elem)
             port.grown[var] = decl + extra
-            port.decl_rules.append((r"(?m)^(\s*(?:static\s+)?[\w ]+?[\s*]+%s\s*\[)\s*%d\s*\]" % (re.escape(var), decl),
-                                    r"\g<1>%d]" % (decl + extra)))
+            if sized:
+                port.decl_rules.append((r"(?m)^(\s*(?:extern\s+|static\s+)?(?:[\w ]*?\b)?(?:char|short|int|long|"
+                                        r"unsigned|signed|float|double|struct\s+\w+|union\s+\w+|\w+_t)\b[\s*]+%s"
+                                        r"\s*\[)\s*%d\s*\]" % (re.escape(var), decl), r"\g<1>%d]" % (decl + extra)))
+            else:
+                port.decl_rules.append((r"(?m)^(\s*(?:static\s+)?(?:unsigned\s+|signed\s+)?char\s+%s\s*\[)\s*\]" %
+                                        re.escape(var), r"\g<1>%d]" % (decl + extra)))
             why = "%s[%d] %s (case '%s'): the original reached into the variable its linker put after it" % (
                 var, decl + extra - 1, "written" if m.group("rw") == "WRITE" else "read", case)
             port.mended["array reached past its end (as the original did, harmlessly there): room made for it"].append(why)

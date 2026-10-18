@@ -263,13 +263,19 @@ def formats(text, code, notes, fname, int16=False, hex_upper=False):
         if fmt is None:
             continue
         a, b = spans[fmt]
+        lit = re.sub(r"(%[-+ #0]*(?:\d+|\*)?(?:\.\d+)?)[FN](?=l?[spndiouxXc])", r"\1", text[a:b])
+        if lit != text[a:b]:                                # (%Fs, %Np: Microsoft's far and near - one memory now)
+            notes["%Fs / %Np -> %s / %p (Microsoft's printf: a far or near pointer; one flat memory now)"].append(
+                "%s:%d" % (fname, code.count("\n", 0, a) + 1))
         if hex_upper:                                       # (the old printf's %x was in capitals)
-            lit = re.sub(r"(%[-+ #0]*(?:\d+|\*)?(?:\.\d+)?l?)x", r"\1X", text[a:b])
-            if lit != text[a:b]:
-                edits.append((a, b, lit))
+            up = re.sub(r"(%[-+ #0]*(?:\d+|\*)?(?:\.\d+)?l?)x", r"\1X", lit)
+            if up != lit:
                 notes["%x -> %X (the old printf gave its hexadecimal in capitals)"].append(
                     "%s:%d" % (fname, code.count("\n", 0, a) + 1))
-        convs = re.findall(r"%[-+ #0]*(?:\d+|\*)?(?:\.\d+)?(l?)([diouxXcsp%])", text[a:b])
+            lit = up
+        if lit != text[a:b]:
+            edits.append((a, b, lit))
+        convs = re.findall(r"%[-+ #0]*(?:\d+|\*)?(?:\.\d+)?(l?)([diouxXcsp%])", lit)
         k = fmt
         for lng, conv in convs:
             if conv == "%":
@@ -298,6 +304,41 @@ POOLS = {}                                              # ({allocator: {(struct,
 ALLOC = re.compile(r"\(\s*((?:struct|union)\s+\w+)\s*\*\s*\)\s*(\w*alloc\w*)\s*\(")
 
 
+MEMFNS = ("memset", "memcpy", "memmove", "memcmp", "movbytes", "fillb", "far_memcpy", "_fmemcpy", "_fmemset")
+
+
+def mem_sizes(text, olds, elems, notes, fname):
+    """memset(g_seg_assume, 0, 24): the bytes of a global array given as the number it had - sizeof it now"""
+    code = blank(text)
+    edits = []
+    for m in re.finditer(r"\b(%s)\s*\(" % "|".join(MEMFNS), code):
+        i, d, start, args = m.end(), 1, m.end(), []
+        while i < len(code) and d:
+            d += (code[i] in "([") - (code[i] in ")]")
+            if (code[i] == "," and d == 1) or d == 0:
+                args.append((start, i))
+                start = i + 1
+            i += 1
+        names = [re.fullmatch(r"\s*&?\s*(\w+)\s*", code[a:b]) for a, b in args]
+        names = [x.group(1) for x in names if x and x.group(1) in olds]
+        for a, b in args:
+            lit = re.fullmatch(r"\s*(0[xX][0-9a-fA-F]+|\d+)\s*", code[a:b])
+            if not lit:
+                continue
+            n = int(lit.group(1), 0) if not re.fullmatch(r"0\d+", lit.group(1)) else int(lit.group(1))
+            for nm in names:
+                if olds[nm] == n and n > 1:
+                    e = elems.get(nm)                       # (as many elements as it had, of today's size: the
+                    new = "%d * sizeof(%s[0])" % (n // e, nm) if e and n % e == 0 else "sizeof(%s)" % nm
+                    edits.append((a + lit.start(1), a + lit.end(1), new))   #  declaration may say no size)
+                    notes["the bytes of a global array given as the number it had: sizeof it now"].append(
+                        "%s:%d (%s: %d)" % (fname, code.count("\n", 0, a) + 1, nm, n))
+                    break
+    for a, b, new in sorted(edits, reverse=True):
+        text = text[:a] + new + text[b:]
+    return text
+
+
 def struct_sizes(text, old, notes, fname):
     """(struct S *)malloc(n + 29): the recovered source gave a structure's size as the number it was (the bytes the
     same) - now sizeof(struct S) and the rest: a structure of today's layout is longer"""
@@ -318,11 +359,11 @@ def struct_sizes(text, old, notes, fname):
         if not args:
             continue
         a, b = args[0] if m.group(2) != "realloc" else args[-1]
-        nums = [x for x in re.finditer(r"(?<![\w.])(\d+)(?![\w.])", code[a:b])]
+        nums = [x for x in re.finditer(r"(?<![\w.])(0[xX][0-9a-fA-F]+|\d+)(?![\w.])", code[a:b])]
         if not nums:
             continue
-        x = max(nums, key=lambda x: int(x.group(1)))
-        n, size = int(x.group(1)), old[s]["@size"]
+        x = max(nums, key=lambda x: int(x.group(1), 0) if not re.fullmatch(r"0\d+", x.group(1)) else int(x.group(1)))
+        n, size = int(x.group(1), 0) if not re.fullmatch(r"0\d+", x.group(1)) else int(x.group(1)), old[s]["@size"]
         if n < size // 2:
             continue                                        # (a count, not the structure)
         rest = n - size
@@ -353,6 +394,20 @@ def struct_sizes(text, old, notes, fname):
                 notes["a record carved from a pool by the old size of its structure (part of it): the whole "
                       "structure's size now, so that none reaches into the next"].append(
                     "%s:%d (%s: %d)" % (fname, code.count("\n", 0, x) + 1, s, n))
+                break
+        else:                                               # (size = extra[kind] + n + 0x1c: the old common part,
+            offs = {v[0] for k, v in old[s].items() if k != "@size"} | {old[s]["@size"]}   # what the kind had
+            for a in re.finditer(r"\b%s\s*=\s*([^;=]+);" % re.escape(var), code[start:m.start()]):
+                terms = [t.strip() for t in re.split(r"\+", a.group(1))]
+                lits = [t for t in terms if re.fullmatch(r"0[xX][0-9a-fA-F]+|\d+", t)]
+                if len(lits) != 1 or int(lits[0], 0) not in offs or int(lits[0], 0) < 2 or "-" in a.group(1):
+                    continue
+                keep = [t for t in terms if t not in lits and not re.fullmatch(r"\w+\s*\[[^\]]*\]", t)]
+                x, e = start + a.start(1), start + a.end(1)
+                pool_edits[x] = (e, " + ".join(["sizeof(%s)" % s] + keep))
+                notes["a record carved from a pool by the old sizes of its parts (the common part, what its "
+                      "kind had past it): the whole structure now, so that none reaches into the next"].append(
+                    "%s:%d (%s: %s)" % (fname, code.count("\n", 0, x) + 1, s, a.group(1).strip()))
                 break
     for x in sorted(pool_edits, reverse=True):
         e, new = pool_edits[x]
@@ -410,10 +465,28 @@ def header_data(text, code, fname, notes):
 # ---------------------------------------------------------------- the program
 
 class Port:
-    def __init__(self, files, profile):
-        """files: {name: text} of the source tree; profile: the old runtime's (runtimes/*.json)"""
+    def __init__(self, files, profile, members=None):
+        """files: {name: text} of the source tree; profile: the old runtime's (runtimes/*.json); members:
+        {"struct.member": type} - the port's corrections of members declared otherwise than they are used"""
         self.profile = profile
         self.notes = collections.defaultdict(list)
+        files = dict(files)
+        self.member_fixes = []
+        self.reach = {}                                     # (tables a run read past their ends: sanitize.py)
+        for key, typ in (members or {}).items():
+            st, mem = key.split(".", 1)
+            for n, t in files.items():
+                m = re.search(r"\bstruct\s+%s\s*\{" % re.escape(st), t)
+                if not m:
+                    continue
+                end = t.find("};", m.end())
+                body = t[m.end():end]
+                new = re.sub(r"(?m)^([ \t]*)[^;{}\n]*?\b%s\s*;" % re.escape(mem),
+                              lambda x: "%s%s%s%s;" % (x.group(1), typ, "" if typ.endswith("*") else " ", mem), body,
+                              count=1)
+                if new != body:
+                    files[n] = t[:m.end()] + new + t[end:]
+                    self.member_fixes.append("%s: struct %s's %s is %s (as the program uses it)" % (n, st, mem, typ))
         self.left_out = {}                                  # (file: why)
         self.originals = dict(files)                        # (the source as it was: the old layouts, far ones)
         self.asm_protos = {}                                # (the program's assembly routines: their C declarations)
@@ -426,6 +499,64 @@ class Port:
                 self.left_out[n] = why
             else:
                 self.files[n] = t
+        stand = re.compile(r"/\* SAMEFILE \*/\n([^\n{;]*\([^)]*\))\s*\{\s*\}")
+        for n, t in self.files.items():                     # (empty stand-ins of functions of the original's same
+            new = stand.sub(lambda m: "extern %s;" % re.sub(r"\(.*\)", "()", m.group(1)).strip(), t)
+            if new != t:                                    #  file, made for the byte-exact build: declarations)
+                self.files[n] = new
+                self.notes["an empty stand-in of a function defined elsewhere (for the byte-exact build): "
+                           "declared instead"].append(n)
+        self.union_notes = collections.defaultdict(list)
+        for n in sorted(self.files):                        # (unions whose views meet at the old places: so still)
+            self.files[n] = union_views(self.files[n], self.union_notes, n)
+        casts = set()                                       # (struct rfld *)&sym->u.rfl: a structure of its own laid
+        for t in self.files.values():                       #  over a view of the union - laid out as the view is
+            for m in re.finditer(r"\(\s*struct\s+(\w+)\s*(?:far\s*|near\s*|huge\s*)?\*\s*\)\s*&[^;,)]*?\bu\.(\w+)",
+                                 blank(t)):
+                casts.add((m.group(1), m.group(2)))
+        for tag, view in sorted(casts):
+            vbody = None
+            for t in self.files.values():
+                vm = re.search(r"\bstruct\s*\{([^{}]*)\}\s*%s\s*;" % re.escape(view), t)
+                if vm and "_old" in vm.group(1):
+                    vbody = vm.group(1)
+            if not vbody:
+                continue
+            for n, t in self.files.items():
+                sm = re.search(r"\bstruct\s+%s\s*\{[^{}]*\}" % re.escape(tag), t)
+                if sm:
+                    new = "struct %s {%s}" % (tag, vbody)
+                    self.files[n] = t[:sm.start()] + new + t[sm.end():]
+                    self.union_notes["a structure laid over a view of a union (by a cast): laid out as the view "
+                                     "is"].append("%s (struct %s, u.%s)" % (n, tag, view))
+        over = set()                                        # (((struct comsym *)sym)->count: a structure that is
+        for t in self.files.values():                       #  another's first bytes and then members of it)
+            for m in re.finditer(r"\(\s*\(\s*struct\s+(\w+)\s*(?:far\s*|near\s*|huge\s*)?\*\s*\)\s*(\w+)\s*\)\s*->",
+                                 blank(t)):
+                d_ = re.search(r"\bstruct\s+(\w+)\s*(?:far\s*|near\s*|huge\s*)?\*\s*%s\b" % re.escape(m.group(2)),
+                               blank(t))
+                if d_:
+                    over.add((m.group(1), "struct " + d_.group(1)))
+        if over:
+            from codebreaker.port import asm16
+            old_l = asm16.CTypes._layouts(list(self.originals.values()), 2, 4)
+            new_l = asm16.CTypes._layouts(list(self.files.values()), 8, 8)
+            ct_ = asm16.CTypes.__new__(asm16.CTypes)
+            ct_.old, ct_.new = old_l, new_l
+            for tag, under in sorted(over):
+                for n, t in self.files.items():
+                    sm = re.search(r"\bstruct\s+%s\s*\{\s*char\s+(\w+)\s*\[\s*(0[xX][0-9a-fA-F]+|\d+)\s*\]\s*;" %
+                                   re.escape(tag), blank(t))   # (its comments aside: the places are the text's)
+                    if not sm:
+                        continue
+                    k = int(sm.group(2), 0)
+                    f = ct_.field(under, k) if under in old_l else None   # (the member of the other there)
+                    best = (under, f[3]) if f and f[1] == k else None
+                    if best and best[1] != k:
+                        self.files[n] = t[:sm.start(2)] + str(best[1]) + t[sm.end(2):]
+                        self.union_notes["a structure that is another's first bytes and then members of it: the "
+                                         "bytes as many as the other's now"].append(
+                            "%s (struct %s over %s: %d)" % (n, tag, best[0], best[1]))
         fp = re.compile(r"FP_SEG\s*\(\s*(\w+)\s*\)\s*=\s*([^;]+);\s*FP_OFF\s*\(\s*\1\s*\)\s*=\s*([^;]+);")
         for n, t in self.files.items():                     # (a far pointer made of a segment and an offset: the
             new = fp.sub(lambda m: "%s = dos_far(%s, %s);" % (m.group(1), m.group(2).strip(), m.group(3).strip()),
@@ -435,7 +566,16 @@ class Port:
                 self.notes_init = getattr(self, "notes_init", collections.Counter())
         kw = profile.get("keywords_removed")                # (far, near, pascal...: the 8086's segments and
         if kw:                                              #  calling conventions, which a flat memory has not)
-            rx = re.compile(r"\b(?:%s)\b\s*" % "|".join(map(re.escape, kw)))
+            mac = set()                                     # (a macro of those words alone - #define NEAR near
+            for t in self.files.values():                   #  pascal: gone too, and the word where it was used)
+                for m in re.finditer(r"(?m)^[ \t]*#[ \t]*define[ \t]+(\w+)[ \t]+([\w \t]+?)[ \t]*$", t):
+                    if set(m.group(2).split()) <= set(kw):
+                        mac.add(m.group(1))
+            if mac:
+                drx = re.compile(r"(?m)^[ \t]*#[ \t]*define[ \t]+(?:%s)[ \t]+[\w \t]*\n" % "|".join(sorted(mac)))
+                for n, t in self.files.items():
+                    self.files[n] = drx.sub("", t)
+            rx = re.compile(r"\b(?:%s)\b[ \t]*" % "|".join(map(re.escape, list(kw) + sorted(mac))))
             for n, t in self.files.items():
                 new = sub_code(t, rx, lambda m: "")
                 if new != t:
@@ -446,7 +586,8 @@ class Port:
         self.data = []
         self.line_fixes = {}                                # ((file, a line's text): the line mended) - the loop's
         self.mended = collections.defaultdict(list)         #  (and its notes), kept from one round to the next
-        self.renames = {}                                   # (a function whose name the C library has: renamed)
+        self.renames = dict(profile.get("platform", {}).get("renames", {}))   # (a function whose name the C
+                                                            #  library has: renamed; the platform's own)
         self.decl_rules = []                                # ((pattern, replacement) on every file)
         self.fptr, self.fptr_done = {}, set()               # (a function pointer: the types of what it is given)
         self.param_types = {}                               # ((function, parameter index): its type, the loop's)
@@ -467,16 +608,92 @@ class Port:
                        ", ".join(f.name for f in got)
         return None
 
+    def agree_globals(self):
+        """extern unsigned g; in one file, extern char *g; in another (the old linker did not mind): a pointer in
+        every file - and the number that was the top of the segment (0xffff), the top of memory now"""
+        if getattr(self, "_agreed", False):
+            return
+        self._agreed = True
+        decl = re.compile(r"(?m)^(\s*extern\s+)((?:unsigned|int|short|unsigned\s+int)\s+)(\w+)\s*;")
+        ptrs = {}
+        for n, t in self.files.items():
+            for m in re.finditer(r"(?m)^\s*extern\s+((?:const\s+)?(?:struct\s+\w+|union\s+\w+|\w+)\s*\*+)\s*(\w+)\s*;",
+                                 blank(t)):
+                ptrs.setdefault(m.group(2), re.sub(r"\s+", " ", m.group(1)).replace(" *", "*").replace("*", " *", 1))
+        self.agree_notes = []
+        for n in sorted(self.files):
+            t = self.files[n]
+            names = [m.group(3) for m in decl.finditer(blank(t)) if m.group(3) in ptrs]
+            for name in names:
+                typ = ptrs[name]
+                t = re.sub(r"(?m)^(\s*extern\s+)(?:unsigned|int|short|unsigned\s+int)\s+%s\s*;" % re.escape(name),
+                           lambda m: "%s%s%s;" % (m.group(1), typ + ("" if typ.endswith("*") else " "), name), t)
+                t = re.sub(r"\b(%s\s*=\s*)(?:0[xX][fF]{4}|65535)\b" % re.escape(name),
+                           lambda m: "%s(%s)UINTPTR_MAX" % (m.group(1), typ), t)
+                self.agree_notes.append("%s (%s)" % (n, name))
+            self.files[n] = t
+
+    def joins_next(self, var):
+        """whether a table's definition is followed in its file by one of the same type (what an index past its
+        end reached, in the original)"""
+        defn = re.compile(r"(?m)^((?:unsigned\s+|signed\s+)?(?:char|short|int|long|unsigned))\s+%s\s*\[\s*\d*\s*\]\s*="
+                          r"[^;]*;[^\n]*\n\1\s+\w+\s*(?:\[\s*\d*\s*\])?\s*=" % re.escape(var))
+        return any(defn.search(t) for t in self.files.values())
+
+    def fixed_allocators(self):
+        """char *pool_alloc() { ... malloc(36) ... }, its callers (struct node *)pool_alloc(): the program's own
+        allocator of blocks of one old size, for structures - blocks of the structures' size now"""
+        if getattr(self, "_fixed", False):
+            return
+        self._fixed = True
+        old = self.old_layouts()
+        users = collections.defaultdict(set)
+        for n, t in self.files.items():
+            for m in re.finditer(r"\(\s*((?:struct|union)\s+\w+)\s*\*\s*\)\s*(\w+)\s*\(\s*\)", blank(t)):
+                users[m.group(2)].add(re.sub(r"\s+", " ", m.group(1)))
+        for n in sorted(self.files):
+            t = self.files[n]
+            code = blank(t)
+            for f, s, j, k in definitions_any(t.split("\n"), code.split("\n")):
+                structs = sorted(x for x in users.get(f, ()) if x in old)
+                if not structs:
+                    continue
+                lines = t.split("\n")
+                clines = code.split("\n")
+                for x in range(j, k + 1):
+                    m = re.search(r"\b\w*alloc\w*\s*\(\s*(0[xX][0-9a-fA-F]+|\d+)\s*\)", clines[x])
+                    if not m:
+                        continue
+                    size = int(m.group(1), 0)
+                    if size < max(old[st_]["@size"] for st_ in structs):
+                        continue                            # (not the structures' blocks)
+                    expr = "sizeof(%s)" % structs[0]
+                    for st_ in structs[1:]:
+                        expr = "(sizeof(%s) > %s ? sizeof(%s) : %s)" % (st_, expr, st_, expr)
+                    rest = size - max(old[st_]["@size"] for st_ in structs)
+                    if rest:
+                        expr = "%s + %d" % (expr, rest)
+                    a, b = m.span(1)
+                    lines[x] = lines[x][:a] + expr + lines[x][b:]
+                    self.notes_init = getattr(self, "notes_init", collections.Counter())
+                    self.alloc_notes = getattr(self, "alloc_notes", []) + [
+                        "%s:%d (%s: %d for %s)" % (n, x + 1, f, size, ", ".join(structs))]
+                t = "\n".join(lines)
+            self.files[n] = t
+
     def merge_tables(self):
         """a table the program reads past its end at a constant place (t[7] of a t[3]): it went on into the
         variables defined after it in its file - one table again, those names its elements"""
-        if getattr(self, "_merged", False):
+        reach = getattr(self, "reach", {})                  # (and where a run read one past its end: sanitize)
+        if getattr(self, "_merged", False) == len(reach) + 1:
             return
-        self._merged = True
+        self._merged = len(reach) + 1
         uses = collections.defaultdict(int)
         for n, t in self.files.items():
             for m in re.finditer(r"\b([A-Za-z_]\w*)\s*\[\s*(\d+)\s*\]", blank(t)):
                 uses[m.group(1)] = max(uses[m.group(1)], int(m.group(2)))
+        for k_, v_ in reach.items():
+            uses[k_] = max(uses[k_], v_)
         defn = re.compile(r"^(?P<base>(?:unsigned\s+|signed\s+)?(?:char|short|int|long|unsigned))\s+(?P<name>\w+)"
                           r"\s*(?P<arr>\[\s*\d*\s*\])?\s*=\s*(?P<val>\{[^;{}]*\}|[^;{}]*?)\s*;(?P<rest>.*)$")
         for n in sorted(self.files):
@@ -489,6 +706,14 @@ class Port:
                 vals = None
                 if m and m.group("arr"):
                     vals = [v.strip() for v in m.group("val").strip("{} ").split(",") if v.strip()]
+                    if m.group("val").lstrip().startswith('"'):   # (a string: its bytes, and the 0 after)
+                        vals = None
+                        lit = m.group("val").strip()
+                        size = re.search(r"\d+", m.group("arr"))
+                        size = int(size.group(0)) if size else len(c_string_bytes(lit)) + 1
+                        if uses.get(m.group("name"), -1) >= size:
+                            self.notes["a string read past its end at a constant place (not joined: "
+                                       "check)"].append("%s (%s)" % (n, m.group("name")))
                 if not m or not vals or uses.get(m.group("name"), -1) < len(vals):
                     i += 1
                     continue
@@ -523,7 +748,19 @@ class Port:
 
     def modernize(self):
         self.merge_tables()
+        self.fixed_allocators()
+        self.agree_globals()
         self.notes = collections.defaultdict(list, {k: list(v) for k, v in self.mended.items()})
+        for x in getattr(self, "agree_notes", []):
+            self.notes["a variable another file declares a pointer, declared a number here (the old linker did "
+                       "not mind): the pointer; 0xffff, the top of the segment, the top of memory"].append(x)
+        for x in getattr(self, "alloc_notes", []):
+            self.notes["the program's own allocator of blocks of a structure's old size: the structure's size "
+                       "now"].append(x)
+        for k_, v_ in self.union_notes.items():
+            self.notes[k_] += v_
+        for x in self.member_fixes:
+            self.notes["member retyped: the source declared it otherwise than the program uses it (--types)"].append(x)
         for x in getattr(self, "table_notes", []):
             self.notes["a table read past its end into the variables after it: one table, their names its "
                        "elements"].append(x)
@@ -599,6 +836,7 @@ class Port:
             t, code = widths(t, code, self.notes, n, self.int16)
             t = formats(t, code, self.notes, n, self.int16, self.profile.get("printf_hex_upper", False))
             t = struct_sizes(t, self.old_layouts(), self.notes, n)
+            t = mem_sizes(t, self.old_var_sizes(), self.old_elem_sizes(), self.notes, n)
             out[n] = t
         for n, t in out.items():                            # (the program's allocators: the old sizes they keep
             for fn_, sizes in POOLS.items():                #  their blocks by, the structures' sizes now)
@@ -629,6 +867,65 @@ class Port:
         self.out = out
         return out
 
+    def old_elem_sizes(self):
+        """{global array: the bytes of one of its elements in the original} (its far pointers 4, near ones 2)"""
+        if not hasattr(self, "_old_elems"):
+            old, out = self.old_layouts(), {}
+            for t in self.originals.values():
+                code = blank(t)
+                ds = depths(code.split("\n"))
+                for i, l in enumerate(code.split("\n")):
+                    st_ = l.strip()
+                    if ds[i] or "[" not in st_ or not st_.endswith(";") or "(" in st_.replace("(*", ""):
+                        continue
+                    isfar = bool(re.search(r"\b(far|huge)\b", st_))
+                    r = declarators(re.sub(r"\b(far|near|huge)\b", "", re.sub(r"=.*;$", ";", st_)).rstrip(";"))
+                    if not r:
+                        continue
+                    base = re.sub(r"\s+", " ", re.sub(r"\b(extern|static|register|const)\b", "", r[0])).strip()
+                    for nm, dcl in r[1]:
+                        el = re.sub(r"\[[^\]]*\]", "", dcl, count=1)
+                        if "*" in el.replace(nm, ""):
+                            out.setdefault(nm, 4 if isfar else 2)
+                        elif base.startswith(("struct ", "union ")) and base in old:
+                            out.setdefault(nm, old[base]["@size"])
+                        elif base in OLD_SCALARS:
+                            out.setdefault(nm, OLD_SCALARS[base])
+            self._old_elems = out
+        return self._old_elems
+
+    def old_var_sizes(self):
+        """{global: its bytes in the original} of the program's arrays (far pointers 4 bytes, structures as laid out)"""
+        if not hasattr(self, "_old_vars"):
+            old, out = self.old_layouts(), {}
+            for t in self.originals.values():
+                code = blank(t)
+                ds = depths(code.split("\n"))
+                for i, l in enumerate(code.split("\n")):
+                    st_ = l.strip()
+                    if ds[i] or "[" not in st_ or "(" in st_ or not st_.endswith(";"):
+                        continue
+                    isfar = bool(re.search(r"\b(far|huge)\b", st_))
+                    r = declarators(re.sub(r"\b(far|near|huge)\b", "", re.sub(r"=.*;$", ";", st_)).rstrip(";"))
+                    if not r:
+                        continue
+                    for nm, dcl in r[1]:
+                        if not re.search(r"\[\s*\d+\s*\]", dcl):
+                            continue
+                        sz = size_of(re.sub(r"\b(extern|static)\b", "", r[0]).strip(), dcl, nm,
+                                     4 if isfar else 2, old)
+                        if sz is None:
+                            base = re.sub(r"\s+", " ", re.sub(r"\b(extern|static|register|const)\b", "", r[0])).strip()
+                            unit = OLD_SCALARS.get(base)
+                            cnt = 1
+                            for x in re.findall(r"\[\s*(\d+)\s*\]", dcl):
+                                cnt *= int(x)
+                            sz = unit * cnt if unit and "*" not in dcl else None
+                        if sz:
+                            out.setdefault(nm, sz)
+            self._old_vars = out
+        return dict(self._old_vars, **getattr(self, "asm_sizes", {}))   # (and what the assembler's data placed)
+
     def old_layouts(self):
         """the structures as the old compiler laid them out (16-bit pointers, far ones 4 bytes)"""
         if not hasattr(self, "_old"):
@@ -655,9 +952,8 @@ class Port:
         for i, l in enumerate(text.split("\n")):
             m = re.match(r'\s*#\s*include\s*["<]([^">]+)[">]', l)
             if m and (m.group(1) in self.left_out or m.group(1).lower() in self.profile["runtime_headers"]):
-                if first and fname.endswith(".c"):
-                    out.append('#include "port.h"')
-                first = False
+                first = False                               # (port.h first of all, below: the program's own
+                                                            #  headers, before the library's, need its types)
                 self.notes["#include of the old library's header -> port.h"].append("%s:%d" % (fname, i + 1))
                 continue
             m = re.match(r"\s*#\s*(?:undef|define)\s+(\w+)", l)
@@ -678,9 +974,9 @@ class Port:
             g = self.fns.get(f.name, f)
             g.params, g.static = list(f.params), f.static
             g.ret = g.ret if (getattr(g, "keep_int", False) or getattr(g, "ret_set", False)) and g.ret else f.ret
-            for (fn_, k), t in self.param_types.items():    # (what the loop found the parameters to be)
-                if fn_ == f.name and k < len(g.params):
-                    g.params[k] = (g.params[k][0], t)
+            for (fn_, pk), t in self.param_types.items():   # (what the loop found the parameters to be)
+                if fn_ == f.name and pk < len(g.params):
+                    g.params[pk] = (g.params[pk][0], t)
             body = "\n".join(code[j:k + 1])
             g.body = body
             valued = re.search(r"\breturn\b\s*[^\s;]", body)
@@ -688,6 +984,27 @@ class Port:
             if f.name == "main":
                 g.ret = g.ret or "int"
             g.void = not valued and not g.ret and f.name != "main" and not getattr(g, "keep_int", False)
+            if not valued and not bare and g.ret and g.ret.strip() not in ("void", "static void") and \
+                    f.name != "main":
+                # (a function that gives a value, falling off its end: what the register held - the value of
+                # its last assignment of a call's, when nothing after it gives the register another)
+                stmts = [x for x in range(j + 1, k) if code[x].strip()]
+                last = None
+                for x in reversed(stmts):
+                    s_ = code[x].strip()
+                    a_ = re.fullmatch(r"(\w+)\s*=\s*\w+\s*\([^;]*\)\s*;", s_)
+                    if a_:
+                        last = (x, a_.group(1))
+                        break
+                    if not re.fullmatch(r"(?:\+\+|--)?\s*[\w.\->\[\]]+\s*(?:\+\+|--)?\s*;|[\w.\->\[\]]+\s*=\s*"
+                                        r"(?:\d+|0x[0-9a-fA-F]+)\s*;", s_):
+                        break
+                if last and re.search(r"\b%s\b" % last[1], "\n".join(code[j:last[0]])):
+                    ind = re.match(r"\s*", lines[last[0]]).group(0)
+                    lines[k] = ind + "return %s;\t\t/* (what the register held: the old function fell off its " \
+                        "end) */\n" % last[1] + lines[k]
+                    self.notes["function giving a value that fell off its end (the value in the register): its "
+                               "last value returned"].append("%s:%d (%s)" % (fname, k + 1, f.name))
             if valued and bare:
                 g.bare = len(bare)
                 for x in range(j, k + 1):
@@ -760,14 +1077,131 @@ class Port:
              if self.asm_data else [])
         dtext = "\n".join(data) + "\n"
         dtext = widths(dtext, blank(dtext), collections.defaultdict(list), "data.c", self.int16)[0]
-        return {"port.h": "\n".join(port) + "\n", "proto.h": self.finish("proto.h", ptext + "\n"),
+        return {"port.h": self.finish("port.h", "\n".join(port) + "\n"), "proto.h": self.finish("proto.h", ptext + "\n"),
                 "data.c": self.finish("data.c", dtext) if self.data or self.asm_data else None}
 
 
 # ---------------------------------------------------------------- the frame, where the program counts on it
 
 SIZES = {"char": 1, "signed char": 1, "unsigned char": 1, "int16_t": 2, "uint16_t": 2, "int32_t": 4, "uint32_t": 4,
-         "int": 2, "unsigned": 2, "short": 2, "long": 4, "float": 4, "double": 8}
+         "int": 2, "unsigned": 2, "short": 2, "long": 4, "float": 4, "double": 8, "unsigned int": 2,
+         "unsigned short": 2, "short int": 2, "unsigned long": 4, "long int": 4, "unsigned long int": 4,
+         "signed int": 2, "signed long": 4, "int8_t": 1, "uint8_t": 1}
+
+
+OLD_SCALARS = {"char": 1, "signed char": 1, "unsigned char": 1, "short": 2, "short int": 2, "unsigned short": 2,
+               "int": 2, "unsigned": 2, "unsigned int": 2, "signed": 2, "long": 4, "long int": 4, "unsigned long": 4,
+               "unsigned long int": 4, "float": 4, "double": 8}
+
+
+def union_views(text, notes, fname):
+    """a union whose views (its structures) meet at the same old places - prc.len where lab.scope was, the bytes
+    of a char f1c[6] over another's members: the views laid out again, each old place one new place in all of
+    them (padding where a view has nothing there), so that what one view writes another reads where it did"""
+    code = blank(text)
+    edits = []
+    for um in re.finditer(r"\bunion\s*\w*\s*\{", code):
+        d, k = 0, um.end() - 1
+        while k < len(code):
+            d += {"{": 1, "}": -1}.get(code[k], 0)
+            if d == 0:
+                break
+            k += 1
+        body_at = um.end()
+        views = []                                          # ([member: (decl start, decl end, old off, old size,
+        for vm in re.finditer(r"\bstruct\s*\{", code[body_at:k]):   # new size, name, is a byte array)])
+            vs = body_at + vm.end()
+            d2, e = 1, vs
+            while e < k and d2:
+                d2 += {"{": 1, "}": -1}.get(code[e], 0)
+                e += 1
+            members, off = [], 0
+            pos = vs
+            for stmt in re.finditer(r"[^;{}]*;", code[vs:e - 1]):
+                s = stmt.group(0)
+                if not s.strip(";").strip():
+                    continue
+                isfar = bool(re.search(r"\b(far|huge)\b", s))
+                r = declarators(re.sub(r"\b(far|near|huge)\b", "", s).strip())
+                if not r or len(r[1]) != 1:
+                    members = None
+                    break
+                n, dcl = r[1][0]
+                old_sz = size_of(r[0], dcl, n, 4 if isfar else 2, {})
+                if old_sz is None:
+                    unit = OLD_SCALARS.get(re.sub(r"\s+", " ", re.sub(r"\b(register|const|volatile)\b", "",
+                                                                         r[0])).strip())
+                    cnt_ = 1
+                    for x in re.findall(r"\[\s*(\d+)\s*\]", dcl):
+                        cnt_ *= int(x)
+                    old_sz = unit * cnt_ if unit else None
+                if old_sz is None:
+                    members = None
+                    break
+                ptr = "*" in dcl.replace(n, "", 1)
+                cnt = 1
+                for x in re.findall(r"\[\s*(\d+)\s*\]", dcl):
+                    cnt *= int(x)
+                new_sz = 8 * cnt if ptr else old_sz
+                if old_sz > 1 and off % 2:
+                    off += 1
+                bytes_ = bool(re.fullmatch(r"(?:unsigned\s+|signed\s+)?char", r[0].strip()) and "[" in dcl and
+                              not ptr)
+                members.append([vs + stmt.start(), vs + stmt.end(), off, old_sz, new_sz, n, bytes_])
+                off += old_sz
+            if members is None:
+                views = None
+                break
+            views.append((vs, e - 1, members))
+        if not views or len(views) < 2 or not any(m[4] != m[3] for v in views for m in v[2]):
+            continue
+        bounds = sorted({0} | {m[2] for v in views for m in v[2]} | {m[2] + m[3] for v in views for m in v[2]})
+        new, prev = {}, None
+        for b in bounds:                                    # (each old place: the least new one all views allow)
+            n_ = 0 if prev is None else new[prev] + (b - prev)
+            for v in views:
+                for m in v[2]:
+                    if m[2] + m[3] == b and not m[6]:
+                        n_ = max(n_, new[m[2]] + m[4])
+            new[b] = n_ + (n_ % 2 if b % 2 == 0 else 0)
+            prev = b
+        changed = False
+        for vs, ve, members in views:
+            cur, pad = 0, 0
+            for m in members:
+                at = new[m[2]]
+                ds = m[0] + (len(code[m[0]:m[1]]) - len(code[m[0]:m[1]].lstrip()))   # (the declaration itself)
+                ls = text.rfind("\n", 0, ds) + 1
+                indent = text[ls:ds] if not text[ls:ds].strip() else " " * 12
+                if at > cur:                                # (a line of its own before it: the room)
+                    edits.append((ls, ls, "%schar _old%d[%d];\t\t/* (where the other views have members) */\n" % (
+                        indent, pad, at - cur)))
+                    pad += 1
+                    changed = True
+                if m[6]:                                    # (a byte array over other views' members: as long)
+                    size = new[m[2] + m[3]] - at
+                    stmt = text[ds:m[1]]
+                    new_stmt = re.sub(r"\[\s*\d+\s*\]", "[%d]" % size, stmt, count=1)
+                    if new_stmt != stmt:
+                        edits.append((ds, m[1], new_stmt))
+                        changed = True
+                    cur = at + size
+                else:
+                    cur = at + m[4]
+        if changed:
+            notes["a union whose views meet at the same old places: laid out again, each old place one new place "
+                  "in all of them"].append(fname)
+    for a, b, new_text in sorted(edits, reverse=True):
+        text = text[:a] + new_text + text[b:]
+    return text
+
+
+def c_string_bytes(lit):
+    """the bytes of a C string literal ("a\\0b" "c"): as the compiler made them, the 0 after left out"""
+    out = b""
+    for part in re.findall(r'"((?:[^"\\]|\\.)*)"', lit):
+        out += part.encode("latin1").decode("unicode_escape").encode("latin1")
+    return out
 
 
 def size_of(base, decl, name, ptr, structs):
@@ -778,7 +1212,7 @@ def size_of(base, decl, name, ptr, structs):
         n *= int(x)
     if "*" in d or "(" in d:
         return ptr * n
-    b = re.sub(r"\b(?:register|static|extern|auto|const|volatile)\s+", "", base).strip()
+    b = re.sub(r"\s+", " ", re.sub(r"\b(?:register|static|extern|auto|const|volatile)\s+", "", base)).strip()
     if b in SIZES:
         return SIZES[b] * n
     if b in structs:
@@ -997,7 +1431,8 @@ def object_before(line, at):
 
 def abstract(decl, name):
     """'register char *name' -> 'char *' (the type alone, for a cast)"""
-    t = re.sub(r"\b%s\b" % re.escape(name), "", re.sub(r"\bregister\s+", "", decl)).strip()
+    t = re.sub(r"(?<!struct )(?<!union )(?<!enum )\b%s\b" % re.escape(name), "",   # (struct bcd *bcd: the name, not
+               re.sub(r"\bregister\s+", "", decl), count=1).strip()                #  the tag)
     t = re.sub(r"\s*\[\s*\d*\s*\]$", " *", t)
     return re.sub(r"\s+\*", " *", t)
 

@@ -141,18 +141,20 @@ def listing_offsets(path, assembler, args=" /ML T.ASM,T.OBJ,T.LST;"):
     out, seg = {}, None
     out["@lines"] = []                                      # ((segment, offset, bytes, the source line's start))
     for l in lst.split("\n"):
+        l = l.expandtabs(8)                                 # (MASM 5's listing is laid out with tabs)
         m = re.match(r"^ ([0-9A-F]{4})  ((?:[0-9A-F]{2,4}R? ?)*)\s*(.*)$", l)
         if m and seg and len(l) > 32:
             nbytes = sum(len(t.rstrip("R")) // 2 for t in m.group(2).split())
-            out["@lines"].append((seg, int(m.group(1), 16), nbytes, re.sub(r"\s+", " ", l[32:]).strip()[:24]))
-        m = re.match(r"^ ([0-9A-F]{4}) {2,}.*?\b([A-Za-z_$@?][\w$@?]*)\s+SEGMENT\b", l)
+            out["@lines"].append((seg, int(m.group(1), 16), nbytes, re.sub(r"\s+", " ", l[32:]).strip()[:24],
+                                  bytes.fromhex("".join(t.rstrip("R") for t in m.group(2).split()))))
+        m = re.match(r"^ ([0-9A-F]{4}) {2,}.*?\b([A-Za-z_$@?][\w$@?]*)\s+SEGMENT\b", l, re.I)
         if m:
             seg = m.group(2)
             continue
-        if re.search(r"\bENDS\b", l):
+        if re.match(r"(?i)^ [0-9A-F]{4}\s+[A-Za-z_$@?][\w$@?]*\s+ENDS\b", l):   # (not a wrapped comment's "ends")
             seg = None
             continue
-        m = re.match(r"^ ([0-9A-F]{4})\s+(?:[0-9A-F ]+R?\s+)?\s*([A-Za-z_$@?][\w$@?]*)(?::|\s+LABEL\b)", l)
+        m = re.match(r"^ ([0-9A-F]{4})\s+(?:[0-9A-F ]+R?\s+)?\s*([A-Za-z_$@?][\w$@?]*)(?::|\s+LABEL\b)", l, re.I)
         if m and seg:
             out[m.group(2)] = (seg, int(m.group(1), 16))
     return out
@@ -163,6 +165,24 @@ def listing_offsets(path, assembler, args=" /ML T.ASM,T.OBJ,T.LST;"):
 class Mem:
     def __init__(self, size, seg, sym, regs, disp, text):
         self.size, self.seg, self.sym, self.regs, self.disp, self.text = size, seg, sym, regs, disp, text
+
+
+R16_CODE = ["ax", "cx", "dx", "bx", "sp", "bp", "si", "di"]
+R8_CODE = ["al", "cl", "dl", "bl", "ah", "ch", "dh", "bh"]
+
+
+def decode_direct(b):
+    """(length, mnemonic, [operands]) of the 8086's moves to and from a direct address (8B/89/8A/88 with
+    mod 00 r/m 110, A0-A3) written as bytes - None for anything else"""
+    if len(b) >= 4 and b[0] in (0x88, 0x89, 0x8A, 0x8B) and (b[1] & 0xC7) == 0x06:
+        reg = (R16_CODE if b[0] & 1 else R8_CODE)[(b[1] >> 3) & 7]
+        mem = "%s ptr [0%04xh]" % ("word" if b[0] & 1 else "byte", b[2] | b[3] << 8)
+        return (4, "mov", [reg, mem] if b[0] & 2 else [mem, reg])
+    if len(b) >= 3 and b[0] in (0xA0, 0xA1, 0xA2, 0xA3):
+        reg = "ax" if b[0] & 1 else "al"
+        mem = "%s ptr [0%04xh]" % ("word" if b[0] & 1 else "byte", b[1] | b[2] << 8)
+        return (3, "mov", [reg, mem] if b[0] < 0xA2 else [mem, reg])
+    return None
 
 
 def number(s):
@@ -220,7 +240,14 @@ def operand(a, equ=None):
         return ("imm", s)
     if equ and s in equ:
         return ("imm", s)
+    if getattr(equ, "data", None) and s in equ.data:        # (a variable named bare: the memory it is)
+        return ("mem", Mem(equ.data[s], None, s, [], 0, a))
     return ("sym", s)
+
+
+class Equates(dict):
+    """the module's equates; .data: its variables' sizes (a bare name of one is its memory)"""
+    data = {}
 
 
 # ---------------------------------------------------------------- the C program's types
@@ -246,10 +273,31 @@ class CTypes:
                                              d))
         self.old = self._layouts(orig_texts, ptr=2, far=4)
         self.new = self._layouts(port_texts, ptr=8, far=8)
+        self.far_ptrs = set()                               # (globals whose pointers were far: 4 bytes each)
+        for t in orig_texts:
+            for d in re.finditer(r"(?m)^[^;(){}#]*\bfar\s*\*[^;(){}]*?\b(\w+)\s*(?:\[[^\]]*\])?\s*(?:=[^;]*)?;",
+                                 early_c.blank(t)):
+                self.far_ptrs.add(d.group(1))
+
+    def elem_sizes(self, name):
+        """(old, new) bytes of an element of a global array (or of the variable) - None when not known"""
+        v = self.vars.get(name)
+        if not v:
+            return None
+        base, d = v
+        b = re.sub(r"\s+", " ", re.sub(r"\b(extern|static|register|const|volatile)\b", "", base)).strip()
+        if "*" in d:
+            return (4 if name in self.far_ptrs else 2), 8
+        if b.startswith(("struct", "union")):
+            o, n = self.old.get(b), self.new.get(b)
+            return (o["@size"], n["@size"]) if o and n else None
+        n = {"char": 1, "signed char": 1, "unsigned char": 1, "int16_t": 2, "uint16_t": 2, "short": 2,
+             "int32_t": 4, "uint32_t": 4, "long": 4, "int8_t": 1, "uint8_t": 1}.get(b)
+        return (n, n) if n else None
 
     @staticmethod
     def _layouts(texts, ptr, far):
-        out = {}
+        out = Layouts()
         for t in texts:
             code = early_c.blank(t)
             for m in re.finditer(r"\b(struct|union)\s+(\w+)\s*\{", code):
@@ -259,12 +307,13 @@ class CTypes:
                     if d == 0:
                         break
                     k += 1
-                lay = CTypes._body(code[m.end():k], m.group(1) == "union", ptr, far, out)
-                out.setdefault("%s %s" % (m.group(1), m.group(2)), lay)
+                name = "%s %s" % (m.group(1), m.group(2))
+                lay = CTypes._body(code[m.end():k], m.group(1) == "union", ptr, far, out, name)
+                out.setdefault(name, lay)
         return out
 
     @staticmethod
-    def _body(body, union, ptr, far, out):
+    def _body(body, union, ptr, far, out, path=""):
         """the layout of a structure's (or union's) members: a nested struct or union one member of its size"""
         members, d, cur = [], 0, ""
         for c in body:                                      # (the members: ; at the body's own level)
@@ -280,8 +329,14 @@ class CTypes:
                 continue
             nest = re.match(r"\s*(struct|union)\s*\w*\s*\{(.*)\}\s*(.*)$", s, re.S)
             if nest:                                        # (struct { ... } name: its own layout, one member)
-                inner = CTypes._body(nest.group(2), nest.group(1) == "union", ptr, far, out)
                 names = [x.strip() for x in nest.group(3).split(",") if x.strip()]
+                inner = CTypes._body(nest.group(2), nest.group(1) == "union", ptr, far, out,
+                                     "%s.%s" % (path, names[0] if names else "?"))
+                names = [re.sub(r"\s*\[.*", "", x) for x in names]
+                for nm in names:                            # (its members, for what is inside it)
+                    if isinstance(out, Layouts):
+                        out.inner["%s.%s" % (path, nm)] = (nest.group(1) == "union", inner)
+                        out.setdefault("%s.%s" % (path, nm), inner)
                 allptr = all(v[4] for k, v in inner.items() if k != "@size")
                 for nm in names:
                     sz = inner["@size"]
@@ -325,19 +380,69 @@ class CTypes:
         v = self.vars.get(name)
         return bool(v and "*" in v[1])
 
+    def member_type(self, struct, off_old):
+        """what the address of the member that begins at an old offset points to - None"""
+        o = self.old.get(struct)
+        if not o:
+            return None
+        for name, v in o.items():
+            if name == "@size" or not isinstance(v, tuple) or v[0] != off_old:
+                continue
+            sub = "%s.%s" % (struct, name)
+            if sub in self.old.inner:
+                return sub
+            stars = v[3].replace(name, "", 1).count("*") if isinstance(v[3], str) else 0
+            return v[2] + (" " + "*" * stars if stars else "")
+        return None
+
     def field(self, struct, off_old):
         """the member of a structure at an old offset: (name, old offset, old size, new offset, new size, is pointer,
         its type) - None when not known"""
         o, n = self.old.get(struct), self.new.get(struct)
         if not o or not n:
             return None
-        for name, v in o.items():
-            if name == "@size":
-                continue
-            fo, fs = v[0], v[1]
-            if fo <= off_old < fo + fs and name in n:
-                return (name, fo, fs, n[name][0], n[name][1], v[4], v[2])
+        return self._field(struct, o, n, off_old)
+
+    def _field(self, path, o, n, off_old):
+        for exact in (True, False):                         # (a member that begins there, else one around it)
+            for name, v in o.items():
+                if name == "@size":
+                    continue
+                fo, fs = v[0], v[1]
+                if not (fo <= off_old < fo + fs and name in n) or (exact and fo != off_old and
+                                                                     "%s.%s" % (path, name) not in self.old.inner):
+                    continue
+                sub = "%s.%s" % (path, name)
+                if sub in self.old.inner and sub in self.new.inner:   # (a structure or union inside: within it)
+                    uo, io = self.old.inner[sub]
+                    un, inn = self.new.inner[sub]
+                    if uo:                                  # (a union: its views, the one with a member there)
+                        for vname, vv in io.items():
+                            if vname == "@size" or vname not in inn:
+                                continue
+                            vsub = "%s.%s" % (sub, vname)
+                            if vsub in self.old.inner and vsub in self.new.inner:
+                                f = self._field(vsub, self.old.inner[vsub][1], self.new.inner[vsub][1],
+                                                off_old - fo - vv[0])
+                                if f and (f[1] == off_old - fo - vv[0] or not exact):
+                                    return (f[0], fo + vv[0] + f[1], f[2], n[name][0] + inn[vname][0] + f[3],
+                                            f[4], f[5], f[6])
+                        continue
+                    f = self._field(sub, io, inn, off_old - fo)
+                    if f:
+                        return (f[0], fo + f[1], f[2], n[name][0] + f[3], f[4], f[5], f[6])
+                    continue
+                stars = v[3].replace(name, "", 1).count("*") if isinstance(v[3], str) else 0
+                to = v[2] + (" " + "*" * (stars - 1) if stars > 1 else "")
+                return (name, fo, fs, n[name][0], n[name][1], v[4], to)
         return None
+
+
+class Layouts(dict):
+    """the structures' layouts; .inner: {"struct S.member": (is a union, its layout)} of those inside them"""
+    def __init__(self):
+        super().__init__()
+        self.inner = {}
 
 
 # ---------------------------------------------------------------- kinds
@@ -363,9 +468,97 @@ class K:
 VAL = K("val")
 
 
+# routines of the old C library the assembly calls: today's C library's, as each was called
+RUNTIME_C = {"__ffree": ("dos_ffree", False, [(4, "ptr")], "void"),
+             "__fmalloc": ("dos_fmalloc", False, [(2, "val")], "ptr"),
+             "_free": ("free", False, [(2, "ptr")], "void"), "_malloc": ("malloc", False, [(2, "val")], "ptr")}
+CALL_WORDS = {"near", "far", "huge", "pascal", "cdecl", "fortran", "_near", "_far", "_pascal", "_cdecl"}
+
+
+def c_functions(texts):
+    """{C name: (pascal, [(the old size of each argument, val|long|ptr|double)], what it returns)} of the functions
+    a C program defines - the old way (the arguments' types declared after the head), the macros made of calling
+    words (#define NEAR near pascal) as they were"""
+    from codebreaker.port import early_c
+    macros = {}
+    for t in texts:
+        for m in re.finditer(r"(?m)^\s*#\s*define\s+(\w+)[ \t]+([\w \t]+?)\s*$", t):
+            if set(m.group(2).split()) <= CALL_WORDS:
+                macros[m.group(1)] = m.group(2)
+    out = {}
+    for t in texts:
+        code = early_c.blank(t)
+        for k, v in macros.items():
+            code = re.sub(r"\b%s\b" % k, v, code)
+        lines = code.split("\n")
+        ds = early_c.depths(lines)
+        for i, ln in enumerate(lines):
+            m = re.match(r"^([\w\s*]*?)\b([A-Za-z_]\w*)\s*\(([\w\s,]*)\)\s*$", ln)
+            if not m or ds[i] != 0 or m.group(2) in early_c.KEYWORDS:
+                continue
+            j, decls = i + 1, {}
+            while j < len(lines) and not lines[j].strip().startswith("{"):
+                d = lines[j].strip()
+                if not d.endswith(";"):
+                    break
+                base = re.match(r"((?:\s*\b(?:register|unsigned|signed|long|short|int|char|float|double|"
+                                r"struct\s+\w+|union\s+\w+|far|near|huge)\b)+)", d)
+                if base:
+                    for dcl in early_c.split_top(d[base.end():].rstrip(";")):
+                        n = re.search(r"\w+", dcl)
+                        if n:
+                            decls[n.group(0)] = (base.group(1), dcl)
+                j += 1
+            if j >= len(lines) or not lines[j].strip().startswith("{"):
+                continue
+            ret, words = m.group(1), set(m.group(1).split())
+            args = []
+            for a in [x.strip() for x in m.group(3).split(",") if x.strip()]:
+                base, dcl = decls.get(a, ("int", a))
+                if "*" in dcl or "[" in dcl:
+                    args.append((4 if re.search(r"\b(far|huge)\b", base + dcl.split(a)[0]) else 2, "ptr"))
+                elif "double" in base or "float" in base:
+                    args.append((8, "double"))
+                elif "long" in base:
+                    args.append((4, "long"))
+                elif re.search(r"\b(struct|union)\b", base):
+                    args = None
+                    break
+                else:
+                    args.append((2, "val"))
+            if args is None:
+                continue
+            rk = "ptr" if "*" in ret else "long" if "long" in words else "void" if "void" in words and \
+                "*" not in ret else "val"
+            to = None                                       # (what the address it gives points to)
+            if rk == "ptr":
+                base = " ".join(w for w in re.findall(r"\w+", ret.split("*")[0])
+                                if w not in CALL_WORDS and w not in ("static", "extern", "register"))
+                stars = ret.count("*")
+                to = base + (" " + "*" * (stars - 1) if stars > 1 else "") if base else None
+            old = out.get(m.group(2))
+            if old is None or len(args) >= len(old[1]):
+                out[m.group(2)] = ("pascal" in words, args, rk, to)
+    return out
+
+
+def inner_name(label, cnames):
+    """the name the ported routine itself has (a routine called from C has the C name for its entry)"""
+    n = label[1:] if label.startswith("_") else label
+    c = {x.lower(): x for x in cnames}.get(n.lower(), n)
+    return ("@" + label) if c == label else label
+
+
+FIRST_MEMBER = {}                                       # (struct: the type of its first member, a pointer)
+
+
 def join(a, b):
     if a is None:
         return b
+    if a.kind == "ptr" and b is not None and b.kind == "ptr" and a.to != b.to and a.to and b.to:
+        for x, y in ((a, b), (b, a)):                       # (a pointer to a structure whose first member is a
+            if FIRST_MEMBER.get(y.to) == x.to:              #  pointer: a pointer to such a pointer too - a chain
+                return K("ptr", x.to, origin=a.origin | b.origin)   # walked from its head's place)
     if b is None or a.key() == b.key():
         return a if b is None or a.origin >= b.origin else K(a.kind, a.to, a.old, a.new, a.origin | b.origin)
     if a.kind == "val" and b.kind == "val":
@@ -473,6 +666,9 @@ class Module:
                     c = self.code_label(getattr(l, "seg", None), number(v)) if number(v) is not None else None
                     if c and c[1] == 0:
                         out.add(c[0])
+                    o = re.fullmatch(r"(?i)offset\s+(?:\w+:)?(\w+)", v.strip())
+                    if o and o.group(1) in self.labels:
+                        out.add(o.group(1))
         return out
 
     def cs_address(self, i, r):
@@ -490,10 +686,22 @@ class Module:
                 return False
         return False
 
-    def __init__(self, text, ctypes, cnames=(), pascal=()):
+    def __init__(self, text, ctypes, cnames=(), pascal=(), cfuncs=None, asm_routines=()):
         """text: the 16-bit source; ctypes: CTypes; cnames: the names the C program calls (to match the routines'
-        public names, in capitals for pascal ones); pascal: those it calls the pascal way"""
+        public names, in capitals for pascal ones); pascal: those it calls the pascal way; cfuncs: the C program's
+        functions (c_functions); asm_routines: the public routines of the program's other assembly modules"""
         self.lines = parse(text)
+        self.cfuncs = cfuncs or {}
+        self.data_used = set()
+        for st_ in list(ctypes.old):                        # (the structures that begin with a pointer)
+            f = ctypes.field(st_, 0)
+            if f and f[5] and f[1] == 0 and f[2] == 2:
+                FIRST_MEMBER[st_] = f[6] + " *"
+
+        self.asm_routines = set(asm_routines)
+        self.cnames_all = set(cnames)
+        self.used_outside = set()                           # (its routines the other modules call)
+        self.c_calls = {}
         self.ct = ctypes
         self.public, self.extrn, self.equ = set(), {}, {}
         self.code_seg = set()
@@ -543,6 +751,14 @@ class Module:
                     self.code.append(l)
             elif seg:
                 self.data.append((seg, l))
+        eq = Equates(self.equ)
+        eq.data = {n: {"BYTE": 1, "WORD": 2, "DWORD": 4, "QWORD": 8, "TBYTE": 10}[k] for n, k in self.extrn.items()
+                   if k in ("BYTE", "WORD", "DWORD", "QWORD", "TBYTE")}
+        for seg_, l in self.data:
+            d = l.directive
+            if d and d[0] in ("DB", "DW", "DD", "DQ", "DT") and d[1]:
+                eq.data[d[1]] = {"DB": 1, "DW": 2, "DD": 4, "DQ": 8, "DT": 10}[d[0]]
+        self.equ = eq
         lower = {n.lower(): n for n in cnames}
         self.cname = {}                                     # (a public routine: the name the C program calls)
         for p in self.public:
@@ -564,10 +780,11 @@ class Module:
 
     def analyse(self):
         self.before = {}
-        entries = [self.labels[p] for p in self.cname]
         work = collections.deque()
-        for p in self.cname:
-            i = self.labels[p]
+        for p in self.cname:                                # (a routine called from outside - the C program, the
+            if self.cname[p] not in self.cnames_all and p not in self.used_outside and p in self.called:
+                continue                                    #  other modules - or by none: an entry; else its
+            i = self.labels[p]                              #  callers' states are what it is given)
             self.before[i] = self.entry_state(p)
             work.append(i)
         for p in sorted(self.table_targets()):               # (a routine called through a table of the code: an
@@ -625,18 +842,40 @@ class Module:
             self.before[j] = new
             work.append(j)
 
+    def absolute(self, m):
+        """[1f62h]: memory at an old address of the data segment, as a number - the variable there (or m)"""
+        if m.sym or m.regs or m.disp < 0x100 or m.seg == "cs":
+            return m
+        v = self.data_var(m.disp) if self.data_map else None
+        if not v:
+            return m
+        self.data_used.add(v[0])
+        return Mem(m.size, None, v[0], [], v[1], m.text)
+
     def kind_of_mem(self, m, st):
         """the kind of what a memory operand holds, and its new place: (K or None, where)"""
+        m = self.absolute(m)
+        if m.sym and len(m.regs) == 1 and self.ct.is_pointer(self.c(m.sym)) and \
+                "[" in (self.ct.var(self.c(m.sym)) or ("", ""))[1]:
+            k_ = st.r.get(m.regs[0])                        # (table[bx]: an element of an array of pointers)
+            if not (k_ and k_.wide()):
+                return K("ptr", self.ct.pointee(self.c(m.sym))), None
         if m.sym and not m.regs:
             name = self.c(m.sym)
             if (m.sym, m.disp) in self.own_ptr:              # (a slot of the module's own data holding an address)
                 return K("ptr"), None
             if self.ct.is_pointer(name) and (m.size in (None, 2, 4)) and m.disp == 0:
                 return K("ptr", self.ct.pointee(name)), None
+            if self.ct.is_pointer(name) and name in self.ct.far_ptrs and m.disp == 2 and m.size in (None, 2):
+                return K("seg"), None                       # (the segment half of a far pointer variable)
             return VAL, None
         if len(m.regs) == 1 and not m.sym:
             b = st.r.get(m.regs[0])
-            if b and b.kind == "ptr" and b.to and b.to.startswith(("struct", "union")):
+            if b and b.kind == "ptr" and b.to and b.to.startswith("@ds:"):
+                return self.kind_of_mem(self.ds_mem(m, b), st)
+            if b and b.kind == "ptr" and b.to and b.to.endswith("*") and m.disp % 2 == 0 and m.size in (None, 2):
+                return K("ptr", b.to[:-1].strip()), None    # (an element of an array of pointers: one of them)
+            if b and b.kind == "ptr" and b.to and b.to.startswith(("struct", "union")) and not b.to.endswith("*"):
                 f = self.ct.field(b.to, m.disp)
                 if f:
                     name, fo, fs, no, ns, isptr, ftype = f
@@ -647,9 +886,162 @@ class Module:
                     if isptr and m.disp == fo + 2 and fs == 4:
                         return K("seg"), f
                     return VAL, f
+            if b and b.kind == "frame" and b.old + m.disp < 0:
+                e, o = b.old + m.disp, 0                    # (below the entry: what was pushed there, or room)
+                for so, sn, k in st.stack:
+                    if o - so <= e < o:
+                        return (k if k is not None and so == 2 and sn == 8 else VAL), None
+                    o -= so
+                return VAL, None
             if b and b.kind == "frame":
-                return K("opq", origin=frozenset([("param", m.regs[0], b.old + m.disp)])), None
+                e = b.old + m.disp
+                for r_ in (st.routines or ()):
+                    to = self.param_place(r_).get(e)
+                    if to and (m.size in (None, 2, 4)):     # (an argument the C program passes a pointer in)
+                        return K("ptr", to), None
+                return K("opq", origin=frozenset([("param", m.regs[0], e)])), None
         return VAL, None
+
+    param_types = {}
+
+    def param_place(self, routine):
+        """{old offset from the entry's sp: what the argument there points to} - of the C program's calls"""
+        args = self.param_types.get(routine)
+        if not args:
+            return {}
+        out, at = {}, self.retsize(routine)
+        for size, to in args:
+            if to:
+                out[at] = to
+            at += size
+        return out
+
+    def element_sizes(self, k):
+        """(old, new) size of what a pointer's kind points to - (1, 1) when not known"""
+        to = k.to or ""
+        if to.endswith("*"):
+            return 2, 8
+        if to.startswith(("struct", "union")):
+            o, n = self.ct.old.get(to), self.ct.new.get(to)
+            if o and n:
+                return o["@size"], n["@size"]
+        return 1, 1
+
+    data_map = ()                                           # ([(old address in the data segment, name)], sorted)
+
+    def data_var(self, addr):
+        """(name, offset inside it) of an old address of the data segment - None when it is none of them"""
+        best = None
+        for k, (a, n) in enumerate(self.data_map):
+            if a <= addr:
+                best = k
+            else:
+                break
+        if best is None:
+            return None
+        a, n = self.data_map[best]
+        nxt = self.data_map[best + 1][0] if best + 1 < len(self.data_map) else a + 0x10000
+        return (n, addr - a) if addr < nxt else None
+
+    def data_at(self, v):
+        """the variable whose old address is exactly v (a number of the code) - None"""
+        if v is None or v < 0x100:
+            return None
+        for a_, n_ in self.data_map:
+            if a_ == v:
+                return n_
+        return None
+
+    def ds_base(self, i, r):
+        """whether register r, given a number at line i, is then used as the base of a memory operand of the data
+        segment (not cs:) before it is given another value"""
+        for j in range(i + 1, min(i + 60, len(self.code))):
+            l = self.code[j]
+            if not l.op:
+                continue
+            for x in l.args:
+                if re.search(r"\[[^\]]*\b%s\b" % r, x, re.I) and not re.search(r"(?i)cs\s*:", x):
+                    return True
+            if l.args and l.op in ("mov", "lea", "pop", "les", "lds", "xchg") and l.args[0].lower() == r:
+                return False
+            if l.op in ("ret", "retf", "jmp", "call"):
+                return False
+        return False
+
+    def ds_mem(self, m, k):
+        """a memory operand at a register given an old address of the data segment: the variable there"""
+        addr = int(k.to[4:], 16) + m.disp
+        v = self.data_var(addr)
+        if not v:
+            raise Asm16Error("the data segment's %04xh: no variable known there" % addr)
+        self.data_used.add(v[0])
+        return Mem(m.size, None, v[0], [], v[1], m.text)
+
+    def callee(self, t):
+        """a routine outside the module called: ("asm", its name) - another module's routine, called as it was -
+        or ("c", C name, (pascal, [(old size, kind)], returns)) - the C program's or the C library's - or None"""
+        if t in self.asm_routines:
+            return ("asm", inner_name(t, self.cnames_all))
+        if t in RUNTIME_C:
+            r = RUNTIME_C[t]
+            return ("c", r[0], r[1:])
+        lower = {k.lower(): k for k in self.cfuncs}
+        if t.startswith("_") and t[1:] in self.cfuncs and not self.cfuncs[t[1:]][0]:
+            return ("c", t[1:], self.cfuncs[t[1:]])
+        k = lower.get(t.lower())
+        if not t.startswith("_") and k and self.cfuncs[k][0]:
+            return ("c", k, self.cfuncs[k])
+        return None
+
+    @staticmethod
+    def slots(sig):
+        """the old stack's words of a C function's arguments: [(arg index, size, kind, first slot)], the number of
+        slots (the lowest address first: pascal pushed the first argument first)"""
+        pascal, args = sig[0], sig[1]
+        order = list(range(len(args)))
+        if pascal:
+            order.reverse()
+        out, s = [], 0
+        for j in order:
+            size, kind = args[j]
+            out.append((j, size, kind, s))
+            s += size // 2
+        return sorted(out), s
+
+    def c_thunk(self, name, sig):
+        """the call of a C function from the old code: its arguments, on the stack as the old caller pushed them
+        (8 bytes each word), given today's way; what it returns where the old code looks (ax, dx:ax)"""
+        args, n = self.slots(sig)
+        regs = ["rcx", "rdx", "r8", "r9"]
+        extra = max(0, len(args) - 4)
+        out = ["", "; %s from the old code: the arguments from the old stack, %s" % (
+            name, "taken off by it (pascal)" if sig[0] else "left for the caller"),
+            "@@c_%s PROC" % name, "\tpush\tr15", "\tmov\tr15, rsp", "\tand\trsp, -16",
+            "\tsub\trsp, %d" % (32 + 8 * (extra + extra % 2))]
+        for j, size, kind, sl in args:
+            at = "[r15+%d]" % (16 + 8 * sl)
+            hi = "[r15+%d]" % (16 + 8 * (sl + 1))
+            dst = regs[j] if j < 4 else "rax"
+            d32 = {"rcx": "ecx", "rdx": "edx", "r8": "r8d", "r9": "r9d", "rax": "eax"}[dst]
+            if kind == "ptr":
+                out.append("\tmov\t%s, qword ptr %s" % (dst, at))
+            elif kind == "long":
+                out += ["\tmovzx\t%s, word ptr %s" % (d32, at), "\tmovzx\tr11d, word ptr %s" % hi,
+                        "\tshl\tr11d, 16", "\tor\t%s, r11d" % d32]
+            elif kind == "double":
+                out.append("\tmov\t%s, qword ptr %s" % (dst, at))
+                if j < 4:
+                    out.append("\tmovq\txmm%d, %s" % (j, dst))
+            else:
+                out.append("\tmovsx\t%s, word ptr %s" % (dst, at))
+            if j >= 4:
+                out.append("\tmov\tqword ptr [rsp+%d], rax" % (32 + 8 * (j - 4)))
+        out.append("\tcall\t%s" % name)
+        if sig[2] == "long":
+            out += ["\tmov\tedx, eax", "\tshr\tedx, 16\t\t; (a long: dx:ax)"]
+        out += ["\tmov\trsp, r15", "\tpop\tr15", "\tret\t%d" % (8 * n) if sig[0] and n else "\tret",
+                "@@c_%s ENDP" % name]
+        return out
 
     def c(self, sym):
         """the C name of an assembler symbol (_x is C's x)"""
@@ -659,6 +1051,8 @@ class Module:
         """the state after an instruction, and where control goes"""
         op, a = l.op, [operand(x, self.equ) for x in l.args]
         flow = ["next"]
+        if op in ("mov", "pop") and l.args and l.args[0].strip().lower() in ("es", "ds"):
+            st.r.pop("@" + l.args[0].strip().lower(), None)   # (another segment: no address's now)
 
         def setr(r, k):
             if r in R8:
@@ -687,6 +1081,18 @@ class Module:
             for r in ("ax", "cx", "dx", "bx"):
                 if t not in self.labels:
                     st.r[r] = VAL if r != "ax" else K("opq")
+            ce = self.callee(t) if t not in self.labels else None
+            if ce and ce[0] == "c" and ce[2][0]:            # (pascal: the callee took its arguments off)
+                words = self.slots(ce[2])[1]
+                while words > 0 and st.stack:
+                    it = st.stack.pop()
+                    st.sp_old += it[0]
+                    st.sp_new += it[1]
+                    words -= it[0] // 2
+            if ce and ce[0] == "c" and ce[2][2] == "long":
+                st.r["dx"] = VAL
+            if ce and ce[0] == "c" and ce[2][2] == "ptr":    # (the address the C function gives: its type's)
+                st.r["ax"] = K("ptr", ce[2][3] if len(ce[2]) > 3 else None)
             if t in self.labels:
                 after = self.exit_of(t)
                 mods = self.writes(t)
@@ -702,6 +1108,8 @@ class Module:
         if op in ("ret", "retf", "retn", "iret"):
             for rt in (st.routines or {self.routine(i)}):     # (the routines whose code this is)
                 self.exits_new.setdefault(rt, []).append(st.copy())
+                if op == "retf":                            # (a far return: a far routine, its arguments 4 on)
+                    self.far = set(self.far) | {rt}
             return st, ["ret"]
         if op == "push":
             k = get(a[0]) if a[0][0] in ("reg", "mem") else VAL
@@ -732,12 +1140,25 @@ class Module:
                     setr(a[1][1], k0)
                 return st, flow
             if op == "lea":
-                setr(d, K("ptr"))
+                to = None
+                if a[1][0] == "mem" and len(a[1][1].regs) == 1 and not a[1][1].sym:
+                    kb = st.r.get(a[1][1].regs[0])
+                    if kb and kb.kind == "ptr" and kb.to and kb.to.startswith(("struct", "union")) and \
+                            not kb.to.endswith("*"):
+                        to = self.ct.member_type(kb.to, a[1][1].disp)   # (the address of a member: its type's)
+                setr(d, K("ptr", to))
                 return st, flow
             if op in ("les", "lds"):
                 k = get(a[1])
                 setr(d, k if k and k.wide() else K("ptr"))
+                st.r["@" + op[1:]] = K("seg", origin=frozenset([("segof", d)]))
                 return st, flow
+            if a[1][0] == "reg" and a[1][1] in ("es", "ds") and d in R16 and st.r.get("@" + a[1][1]):
+                partner = [o[1] for o in st.r["@" + a[1][1]].origin if o[0] == "segof"]
+                pk = st.r.get(partner[0]) if partner else None
+                if pk and pk.wide():                        # (the segment of an address: the address, for its
+                    setr(d, pk)                             #  test against 0)
+                    return st, flow
             src = a[1]
             if src[0] == "reg" and src[1] == "sp":
                 setr(d, K("frame", old=st.sp_old, new=st.sp_new))
@@ -752,8 +1173,13 @@ class Module:
                      self.data_address(l.seg, number(l.args[1])) and number(l.args[1]) >= 0x100):
                 # (an address register given a number in a table of the code, or just before one: its address)
                 setr(d, K("ptr", "code"))                   # (an address in the code segment: a table)
+            elif src[0] == "imm" and d in ("bx", "si", "di") and number(l.args[1]) is not None and self.data_map \
+                    and any(a_ == number(l.args[1]) for a_, n_ in self.data_map) and self.ds_base(i, d):
+                setr(d, K("ptr", "@ds:%x" % number(l.args[1])))   # (an old address of the data segment: a
+                                                                    #  variable's)
             else:
-                setr(d, get(src) or VAL)
+                k_ = get(src) or VAL
+                setr(d, VAL if k_.kind == "seg" and src[0] == "mem" else k_)   # (a far address's segment: a number)
             return st, flow
         if op == "sub" and a[0] == ("reg", "sp"):
             n = number(l.args[1]) or 0
@@ -789,6 +1215,10 @@ class Module:
                 setr(d, VAL)
             elif op == "xor" and len(a) > 1 and a[1] == a[0]:
                 setr(d, VAL)
+            elif op in ("sub", "cmp") and k and k.wide() and len(a) > 1 and a[1][0] == "imm" and \
+                    self.data_at(number(l.args[1])):
+                if op == "sub":
+                    setr(d, VAL)                            # (an address less a variable's: how far into it)
             elif op in ("add", "sub") and k and k.wide():
                 s2 = get(a[1]) if len(a) > 1 else VAL
                 if op == "sub" and s2 and s2.wide():
@@ -894,6 +1324,7 @@ class Module:
     def run(self):
         self.prepare()
         self.called = {l.args[0].split()[-1] for l in self.code if l.op == "call"} | self.table_targets()
+        self.far = set(self.far) | {self.routine(i) for i, l in enumerate(self.code) if l.op == "retf"} - {None}
         for rnd in range(4):                                # (then again, knowing the slots that hold addresses)
             for _ in range(4):                              # (the callees' exits, and again: each round looks
                 self.exits_new = {}                         #  up the round before's, whole)
@@ -1003,8 +1434,41 @@ class Module:
         return disp + 6 * sum(1 for s2, d in self.own_ptr if s2 == sym and d < disp)
 
     def prepare(self):
-        """before the kinds: the table lines of the code placed (the listing's offsets)"""
+        """before the kinds: the table lines of the code placed (the listing's offsets); a short jump written as
+        its two bytes (DB 74h / DB 18h) the jump again, to the label where the listing puts its target"""
         self.place_data()
+        jcc = {0x70: "jo", 0x71: "jno", 0x72: "jb", 0x73: "jae", 0x74: "je", 0x75: "jne", 0x76: "jbe", 0x77: "ja",
+               0x78: "js", 0x79: "jns", 0x7C: "jl", 0x7D: "jge", 0x7E: "jle", 0x7F: "jg", 0xEB: "jmp"}
+        for i, l in enumerate(self.code[:-1]):
+            n = self.code[i + 1]
+            if not (l.directive and n.directive and l.directive[0] == n.directive[0] == "DB" and i in self.dline
+                    and not n.label):
+                continue
+            op, d = number(strip_comment(l.directive[2]).strip()), number(strip_comment(n.directive[2]).strip())
+            if op not in jcc or d is None or op is None or jcc[op] not in JUMPS:
+                continue
+            to = self.dline[i][0] + 2 + (d - 256 if d >= 128 else d)
+            c = self.code_label(l.seg, to)
+            if c and c[1] == 0:
+                l.op, l.args, l.directive = jcc[op], [c[0]], None
+                n.directive = None
+                self.notes.append("line %d: a jump written as its bytes - %s %s" % (l.no, jcc[op], c[0]))
+        lines = self.offsets.get("@lines", [])
+        at = {(x[0], x[1]): x for x in lines}
+        for i, l in enumerate(self.code[:-1]):              # (an instruction written as its bytes, running into
+            n = self.code[i + 1]                            #  the next line's: the instruction, the next gone)
+            if not (l.directive and l.directive[0] == "DB" and i in self.dline and n.op and not n.label):
+                continue
+            db = bytes(number(x) & 0xFF for x in split_ops(strip_comment(l.directive[2])) if number(x) is not None)
+            nxt = at.get((l.seg, self.dline[i][0] + len(db)))
+            if not nxt or len(nxt) < 5:
+                continue
+            ins = decode_direct(db + nxt[4][:4])
+            if ins and len(db) < ins[0] == len(db) + len(nxt[4]):
+                l.op, l.args, l.directive = ins[1], ins[2], None
+                n.op, n.args = None, []
+                self.notes.append("line %d: an instruction written as its bytes, with the next line's - %s %s" % (
+                    l.no, ins[1], ", ".join(ins[2])))
         return self
 
     # -- the parameters: where each routine reads its arguments on the stack
@@ -1062,16 +1526,26 @@ class Module:
         out = ["; %s" % "ported by CodeBreaker (port/asm16) for a 64-bit machine: the instructions as they were, the",
                "; registers that hold addresses used whole, members of structures at their new places, segments gone,",
                "; DOS called through the platform layer.", "OPTION CASEMAP:NONE", ""]
+        out += ["%s\tEQU\t%s" % (k, v) for k, v in sorted(self.equ.items()) if number(v) is not None]
         ext = []
+        self.asm_calls = set()
+        self.c_calls = {}
         for n, kind in sorted(self.extrn.items()):
+            if kind in ("NEAR", "FAR", "PROC") and (n in self.asm_routines or self.callee(n)):
+                continue                                    # (called: by its own name, or its C name, below)
+            if self.c(n) in self.aliases:                   # (a place inside another: the other is extern)
+                own = "EXTERN %s:BYTE" % self.aliases[self.c(n)][0]
+                if own not in ext:
+                    ext.append(own)
+                continue
             ext.append("EXTERN %s:%s" % (self.c(n), "PROC" if kind in ("NEAR", "FAR", "PROC") else kind))
         body = []
         bases = set()
         import os as _os
         debug = _os.environ.get("CB_ASM16_DEBUG") == "1"    # (every label public: a debugger names them)
         for i, l in enumerate(self.code):
-            if debug and l.label and not l.directive:
-                body.append("PUBLIC %s" % self.local(l.label))
+            if (debug or l.label in self.public and l.label in self.labels) and l.label and not l.directive:
+                body.append("PUBLIC %s" % self.local(l.label))   # (the other modules call it as it was)
             if l.seg not in bases:
                 bases.add(l.seg)
                 body.append("@base_%s:\t\t\t; (the start of the segment %s: what its tables count from)" % (
@@ -1093,7 +1567,16 @@ class Module:
                     raise Asm16Error("line %d (%s): %s" % (l.no, l.text.strip(), e))
         if self.used_int21:
             ext.append("EXTERN dos_int21:PROC")
+        for n in sorted(self.data_used):                    # (variables reached by their old addresses)
+            if n not in self.extrn and n not in self.public:
+                e_ = "EXTERN %s:BYTE" % self.sym_any(n)
+                if e_ not in ext:
+                    ext.append(e_)
+        ext += ["EXTERN %s:PROC" % n for n in sorted(self.asm_calls)]
+        ext += ["EXTERN %s:PROC" % n for n in sorted(self.c_calls)]
         wrappers = []
+        for n, sig in sorted(self.c_calls.items()):
+            wrappers += self.c_thunk(n, sig)
         for p in sorted(self.cname, key=lambda p: self.labels[p]):
             wrappers += self.wrapper(p, p in longret)
         if getattr(self, "used_null", False):
@@ -1122,6 +1605,10 @@ class Module:
             vals = []
             for v in split_ops(rest):
                 c = self.code_label(l.seg, number(v)) if number(v) is not None else None
+                o = re.fullmatch(r"(?i)offset\s+(?:\w+:)?(\w+)", v.strip())
+                if o and o.group(1) in self.labels:         # (a routine's place, named: from the segment's start)
+                    vals.append("%s - @base_%s" % (self.local(o.group(1)), l.seg))
+                    continue
                 vals.append("%s - @base_%s" % (c[0], l.seg) if c and c[1] == 0 else v)
             return out + ["\tDW\t%s" % ", ".join(vals)]
         return out + ["\t%s\t%s" % (kind, rest)]
@@ -1207,14 +1694,31 @@ class Module:
         w = st.r.get(r).wide() if wide is None and st.r.get(r) else bool(wide)
         return R64[r] if w else r
 
+    aliases = {}                                            # (C name: (owner, byte offset) - a name the old linker
+                                                            #  gave a place inside another variable)
+
+    data_used = set()
+
+    def sym_any(self, s):
+        """the C name of a variable of the program, whether the module declares it or not"""
+        c = self.c(s)
+        if c in self.aliases:
+            return self.aliases[c][0]
+        return c
+
     def sym(self, s):
-        if s in self.extrn or s in self.public:
-            return self.c(s)
+        if s in self.extrn or s in self.public or s in self.data_used:
+            c = self.c(s)
+            if c in self.aliases:
+                owner, off = self.aliases[c]
+                return "%s+%d" % (owner, off) if off else owner
+            return c
         return s
 
     def mem(self, m, st, size, i, pre):
         """a memory operand at its new place: text (with its size), the instructions it needs first in pre"""
         sz = {1: "byte", 2: "word", 4: "dword", 8: "qword", 10: "tbyte"}[size] + " ptr "
+        m = self.absolute(m)
         disp = m.disp
         parts = []
         scratch = ["r11", "r9"]
@@ -1225,6 +1729,20 @@ class Module:
                 return sz + name + ("%+d" % disp if disp else "")
             pre.append("lea\tr10, %s" % name)
             parts.append("r10")
+            es_ = self.ct.elem_sizes(self.c(m.sym)) if m.sym in self.extrn or m.sym in self.public else None
+            k_ = st.r.get(m.regs[0]) if len(m.regs) == 1 else None
+            if es_ and es_[0] != es_[1] and len(m.regs) == 1 and not (k_ and k_.wide()):
+                so, sn = es_                                # (an index of the old elements: today's)
+                if so & (so - 1):
+                    raise Asm16Error("an index into elements of %d bytes" % so)
+                pre += ["movzx\tr11d, %s" % m.regs[0], "imul\tr11, r11, %d" % sn,
+                        "sar\tr11, %d\t\t; (%d bytes an element then, %d now)" % (so.bit_length() - 1, so, sn)]
+                disp = disp // so * sn + disp % so
+                return sz + "[r10+r11" + ("%+d" % disp if disp else "") + "]"
+        if len(m.regs) == 1 and not m.sym:
+            k = st.r.get(m.regs[0])
+            if k and k.kind == "ptr" and k.to and k.to.startswith("@ds:"):
+                return self.mem(self.ds_mem(m, k), st, size, i, pre)
         for r in m.regs:
             k = st.r.get(r)
             self.as_address(i, k)
@@ -1239,7 +1757,10 @@ class Module:
                 disp = new - k.new
                 parts.append(R64[r])
             elif k and k.wide():
-                if k.kind == "ptr" and k.to and k.to.startswith(("struct", "union")) and len(m.regs) == 1 and not m.sym:
+                if k.kind == "ptr" and k.to and k.to.endswith("*") and len(m.regs) == 1 and not m.sym:
+                    disp = disp * 4                         # (pointers of 2 bytes, 8 now)
+                elif k.kind == "ptr" and k.to and k.to.startswith(("struct", "union")) and len(m.regs) == 1 and \
+                        not m.sym:
                     f = self.ct.field(k.to, disp)
                     if f:
                         disp = f[3] + (disp - f[1])
@@ -1303,10 +1824,27 @@ class Module:
             return pre + list(lines)
 
         segop = lambda o: o[0] == "reg" and o[1] in SEG
+        if op == "mov" and a[0][0] == "reg" and a[0][1] in R16 and a[1][0] == "reg" and a[1][1] in ("es", "ds") \
+                and st.r.get("@" + a[1][1]):
+            partner = [o[1] for o in st.r["@" + a[1][1]].origin if o[0] == "segof"]
+            pk = st.r.get(partner[0]) if partner else None
+            if pk and pk.wide():
+                return ["mov\t%s, %s\t\t; (the segment of the address in %s: the address, 0 when it is)" % (
+                    R64[a[0][1]], R64[partner[0]], partner[0])]
         if op in ("mov",) and (segop(a[0]) or segop(a[1])):
             return ["; %s\t\t(a segment: one flat memory)" % strip_comment(l.text).strip()]
         if op in ("push", "pop") and segop(a[0]):
             return ["; %s\t\t(a segment: one flat memory)" % strip_comment(l.text).strip()]
+        src_at = 0 if op == "push" else 1 if op in ("or", "and", "add", "sub", "cmp", "adc", "sbb", "xor",
+                                                     "test") and len(a) == 2 and a[0][0] == "reg" else None
+        if src_at is not None and a[src_at][0] == "mem":     # (the segment half of a far address read: none now,
+            k_, f_ = self.kind_of_mem(a[src_at][1], st)      #  0 - the address is whole in the other half's place)
+            if k_ and k_.kind == "seg":
+                if op == "push":
+                    return ["push\t0\t\t; (%s: a segment, none now)" % strip_comment(l.text).strip()]
+                kd_ = st.r.get(a[0][1])
+                d_ = R64[a[0][1]] if a[0][1] in R16 and kd_ and kd_.wide() else a[0][1]
+                return ["%s\t%s, 0\t\t; (%s: a segment, none now)" % (op, d_, strip_comment(l.text).strip())]
         if op in JUMPS:
             t = l.args[0].split()[-1]
             if op == "jcxz" or op.startswith("loop"):       # (a short jump only, and the flags kept: through a
@@ -1323,6 +1861,13 @@ class Module:
                 where = self.mem(a[0][1], st, 2, i, pre2)
                 return pre2 + ["movzx\tr11d, %s" % where, "lea\tr10, @base_%s" % l.seg, "add\tr11, r10",
                                "call\tr11"]
+            ce = self.callee(t)
+            if ce and ce[0] == "asm":
+                self.asm_calls.add(ce[1])
+                return ["call\t%s" % ce[1]]
+            if ce:
+                self.c_calls[ce[1]] = ce[2]
+                return ["call\t@@c_%s" % ce[1]]
             raise Asm16Error("a call of %s, outside the module (not yet ported)" % t)
         if op in ("ret", "retn", "retf"):
             if l.args:
@@ -1341,6 +1886,11 @@ class Module:
                     "C is)", "and\trsp, -16", "sub\trsp, 32", "lea\trcx, dosregs", "call\tdos_int21", "mov\trsp, r15",
                     "mov\trax, qword ptr dosregs", "mov\trbx, qword ptr dosregs+8", "mov\trcx, qword ptr dosregs+16",
                     "mov\trdx, qword ptr dosregs+24", "bt\tqword ptr dosregs+48, 0\t; (the carry: an error)"]
+        if op in ("xlat", "xlatb"):                          # (al from the table at bx: the table's address whole)
+            k = st.r.get("bx")
+            if not (k and k.wide()):
+                raise Asm16Error("xlat with bx not an address")
+            return ["xlatb"]
         if op in ("pushf", "pushfw"):
             return ["pushfq"]
         if op in ("popf", "popfw"):
@@ -1376,6 +1926,14 @@ class Module:
         if op in ("mov", "xchg") and a[0][0] == "reg" and a[1][0] == "mem":
             d = a[0][1]
             k, f = self.kind_of_mem(a[1][1], st)
+            if k and k.kind == "seg" and op == "mov" and d in R16:   # (the segment of a far address read: 0 when
+                m_ = a[1][1]                                 #  the address is 0, else not - what it was tested for)
+                lo = Mem(m_.size, m_.seg, m_.sym, m_.regs, m_.disp - 2, m_.text)
+                where = self.mem(lo, st, 8, i, pre)
+                return done("mov\tr11, %s" % where, "test\tr11, r11",
+                            "setnz\tr11b\t\t; (%s: the segment of an address - 0 when it is 0)" % (
+                                strip_comment(l.text).strip()), "movzx\te%s, r11b" % d if d not in ("si", "di", "bp")
+                            else "movzx\te%s, r11b" % d)
             if k and k.kind == "seg":
                 return ["; %s\t\t(a segment: one flat memory)" % strip_comment(l.text).strip()]
             if d in R8:
@@ -1389,6 +1947,9 @@ class Module:
             if k and k.kind == "seg":
                 return ["; %s\t\t(a segment: one flat memory)" % strip_comment(l.text).strip()]
             size = self.access_size(l, a, st, 0)
+            if size == 2 and f and f[5] and f[2] == 4 and f[4] == 8 and s in R16 and op == "mov":
+                return done("movzx\tr11d, %s\t\t; (the offset half of a far address: the address now)" % s,
+                            "mov\t%s, r11" % M(0, 8))
             return done("%s\t%s, %s" % (op, M(0, size), R64[s] if size == 8 else s))
         if op == "mov" and a[0][0] == "reg" and a[1][0] == "off":
             dd = self.own_place(a[1][1], a[1][2])
@@ -1396,13 +1957,25 @@ class Module:
         k_after = None
         if op == "mov" and a[0][0] == "reg" and a[1][0] == "imm" and i + 1 < len(self.code):
             k_after = (self.before.get(i + 1) or State()).r.get(a[0][1])
+        if k_after is not None and k_after.kind == "ptr" and k_after.to and k_after.to.startswith("@ds:"):
+            v = self.data_var(int(k_after.to[4:], 16))
+            self.data_used.add(v[0])
+            return ["lea\t%s, %s%s\t\t; (%s: the old address of %s)" % (
+                R64[a[0][1]], self.sym(v[0]), "%+d" % v[1] if v[1] else "", l.args[1], self.c(v[0]))]
         if k_after is not None and k_after.kind == "ptr" and k_after.to == "code":
             v = number(l.args[1])
             lab, dist = self.data_address(l.seg, v) or self.code_label(l.seg, v)
             return ["lea\t%s, %s%s\t\t; (%s: an address in the code)" % (R64[a[0][1]], lab,
                                                                      "%+d" % dist if dist else "", l.args[1])]
+        if op == "mov" and a[0][0] == "reg" and a[1][0] == "sym" and (
+                re.match(r"(?i)seg\s", a[1][1]) or a[1][1].upper() == "DGROUP" or a[1][1] in self.code_seg):
+            return ["; %s\t\t(a segment: one flat memory)" % strip_comment(l.text).strip()]
         if op == "mov" and a[0][0] == "reg" and a[1][0] in ("imm", "sym"):
             return ["mov\t%s, %s" % (a[0][1], l.args[1])]
+        if op == "mov" and a[0][0] == "mem" and a[1][0] == "off":     # (an address stored: the whole of it)
+            dd = self.own_place(a[1][1], a[1][2])
+            return done("lea\tr11, %s" % (self.sym(a[1][1]) + ("%+d" % dd if dd else "")),
+                        "mov\t%s, r11" % M(0, 8))
         if op == "mov" and a[0][0] == "mem":
             k, f = self.kind_of_mem(a[0][1], st)
             size = a[0][1].size or 2
@@ -1417,6 +1990,18 @@ class Module:
             kd = st.r.get(d) if d in R16 else None
             if op == "xor" and a[1] == a[0] and d in R16:
                 return ["xor\te%s, e%s" % (d, d)] if d not in ("si", "di", "bp") else ["xor\te%s, e%s" % (d, d)]
+            if a[1][0] == "imm" and op == "sub" and d in R16 and not (kd and kd.wide()) and \
+                    self.data_at(number(l.args[1])):
+                v = self.data_at(number(l.args[1]))         # (an offset less a variable's old address: today's, the
+                self.data_used.add(v)                       #  low 16 bits - the same difference)
+                return ["lea\tr11, %s\t\t; (%s: the old address of %s)" % (self.sym(v), l.args[1], self.c(v)),
+                        "sub\t%s, r11w" % d]
+            if a[1][0] == "imm" and op in ("sub", "cmp", "add") and kd and kd.wide() and \
+                    self.data_at(number(l.args[1])):
+                v = self.data_at(number(l.args[1]))         # (the old address of a variable: its address now)
+                self.data_used.add(v)
+                return ["lea\tr11, %s\t\t; (%s: the old address of %s)" % (self.sym(v), l.args[1], self.c(v)),
+                        "%s\t%s, r11" % (op, R64[d])]
             if d in R8:
                 if a[1][0] == "mem":
                     return done("%s\t%s, %s" % (op, d, M(1, 1)))
@@ -1428,9 +2013,24 @@ class Module:
                     return ["%s\t%s, %s" % (op, d, src[1])]
                 if kd and kd.wide() and ks and ks.wide():
                     return ["%s\t%s, %s" % (op, R64[d], R64[src[1]])]
-                if kd and kd.wide() and kd.kind != "opq" and op in ("add", "sub"):
+                if kd and kd.wide() and kd.kind != "frame" and op in ("add", "sub"):
+                    so, sn = self.element_sizes(kd)
+                    if so != sn:                            # (an index into an array: the elements' size now)
+                        out_ = ["movsx\tr11, %s" % src[1], "imul\tr11, r11, %d" % sn]
+                        if so & (so - 1) == 0:
+                            out_.append("sar\tr11, %d\t\t; (%d bytes an element then, %d now)" % (
+                                so.bit_length() - 1, so, sn))
+                        else:
+                            raise Asm16Error("an index into elements of %d bytes" % so)
+                        return out_ + ["%s\t%s, r11" % (op, R64[d])]
                     return ["movsx\tr11, %s" % src[1], "%s\t%s, r11" % (op, R64[d])]
                 if op == "add" and ks and ks.wide() and ks.kind != "frame" and (not kd or not kd.wide()):
+                    so, sn = self.element_sizes(ks)
+                    if so != sn and so & (so - 1) == 0:     # (an index of the old elements: today's)
+                        return ["movzx\te%s, %s" % (d, d), "imul\t%s, %s, %d" % (R64[d], R64[d], sn),
+                                "sar\t%s, %d\t\t; (%d bytes an element then, %d now)" % (
+                                    R64[d], so.bit_length() - 1, so, sn),
+                                "add\t%s, %s\t\t; (a count added to an address: the address)" % (R64[d], R64[src[1]])]
                     return ["movzx\te%s, %s" % (d, d) if d not in ("si", "di", "bp") else "movzx\te%s, %s" % (d, d),
                             "add\t%s, %s\t\t; (a count added to an address: the address)" % (R64[d], R64[src[1]])]
                 return ["%s\t%s, %s" % (op, d, src[1])]
@@ -1438,6 +2038,9 @@ class Module:
                 k, f = self.kind_of_mem(src[1], st)
                 if kd and kd.wide() and k and k.wide():
                     return done("%s\t%s, %s" % (op, R64[d], M(1, 8)))
+                if kd and kd.wide() and kd.kind != "frame" and op in ("add", "sub") and d in R16:
+                    where = M(1, 2)                         # (a count from memory added to an address: the whole)
+                    return pre + ["movsx\tr8, %s" % where, "%s\t%s, r8" % (op, R64[d])]
                 return done("%s\t%s, %s" % (op, d, M(1, 2)))
             if src[0] == "off":
                 return ["lea\tr11, %s" % self.sym(src[1]), "%s\t%s, r11" % (op, R64[d])]
@@ -1453,12 +2056,28 @@ class Module:
             return ["%s\t%s, %s" % (op, d, l.args[1])]
         if op in ("add", "sub", "and", "or", "xor", "cmp", "test", "adc", "sbb") and a[0][0] == "mem":
             size = 1 if (len(a) > 1 and a[1][0] == "reg" and a[1][1] in R8) else (a[0][1].size or 2)
+            k_, f_ = self.kind_of_mem(a[0][1], st)
+            if op in ("add", "sub") and size == 2 and k_ and k_.kind == "ptr":   # (an address moved on by a
+                if a[1][0] == "imm":                                             #  count: the whole of it)
+                    return done("%s\t%s, %s" % (op, M(0, 8), l.args[1]))
+                if a[1][0] == "reg" and a[1][1] in R16:
+                    where = M(0, 8)                         # (r8: the operand's own place may want r11)
+                    return pre + ["movsx\tr8, %s" % a[1][1], "%s\t%s, r8" % (op, where)]
+            if op in ("cmp", "test") and size == 2 and a[1][0] == "imm" and number(l.args[1]) == 0:
+                k_, f_ = self.kind_of_mem(a[0][1], st)
+                if k_ and k_.kind == "ptr":                 # (an address compared with 0: the whole of it)
+                    size = 8
+            if size == 8:
+                return done("%s\t%s, 0" % (op, M(0, 8)))
             return done("%s\t%s, %s" % (op, M(0, size), l.args[1] if a[1][0] != "reg" else a[1][1]))
         if op in ("inc", "dec", "neg", "not") and a[0][0] == "reg":
             d = a[0][1]
             k = st.r.get(d) if d in R16 else None
             return ["%s\t%s" % (op, R64[d] if k and k.wide() and op in ("inc", "dec") else d)]
         if op in ("inc", "dec", "neg", "not") and a[0][0] == "mem":
+            k_, f_ = self.kind_of_mem(a[0][1], st)
+            if op in ("inc", "dec") and k_ and k_.kind == "ptr" and (a[0][1].size or 2) == 2:
+                return done("%s\t%s\t\t; (an address moved on: the whole of it)" % (op, M(0, 8)))
             return done("%s\t%s" % (op, M(0, a[0][1].size or 2)))
         if op in ("shl", "shr", "sal", "sar", "rol", "ror", "rcl", "rcr"):
             if a[0][0] == "mem":
