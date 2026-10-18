@@ -658,7 +658,7 @@ def _rewrite_array_aggregates(s, resolver):
         s = s[:m.start()] + rep + s[close + 1:]
 
 
-from codebreaker.java.emit.statements.controlflow import _wrap_switch_cases, _translate_labels
+from codebreaker.java.emit.statements.controlflow import _wrap_switch_cases, _translate_labels, _inline_finally
 
 
 
@@ -2186,7 +2186,8 @@ def translate_body(method, cls, resolver, ledger=None):
     # `s_frustum[side][0]`, indexing the Frustum* singleton -> "Frustum has no operator[]".)
     own_statics -= (set(p.name for p in method.params) | _local_names(method))
     out = []
-    for raw in inner_lines(method.body):
+    # a finally body runs before every return/break/continue that leaves its try (controlflow.py)
+    for raw in _inline_finally(inner_lines(method.body), method.return_type):
         s = raw.strip()
         if not s or s.startswith('//') or s.startswith('*') or s.startswith('/*'):
             if s:

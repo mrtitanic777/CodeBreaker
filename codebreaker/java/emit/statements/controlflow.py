@@ -4,6 +4,7 @@ statements/controlflow.py -- control-flow lowering that has no C++ equivalent:
   * labeled break/continue -> goto + emitted target labels (_translate_labels)
   * each switch case/default body wrapped in `{ }` so a decl cannot cross a case
     label (C2360/C2361), fallthrough + break preserved (_wrap_switch_cases)
+  * a `finally` body run before every return/break/continue that leaves its `try` (_inline_finally)
 Leaf module: only `re` + its own regexes; imported by the statements package.
 """
 
@@ -172,3 +173,125 @@ def _translate_labels(lines):
         for b in brk_at.get(i, []):            # break-target: just after the loop
             out.append(b)
     return out
+
+
+# ---------------------------------------------------------------------------------------------------
+# try/finally. C++ has no `finally`: the line translator turns `finally {` into `catch (...) {} {`, a
+# block after the try, which runs when the try body FALLS THROUGH. FIXED BUG finally-skipped-on-return:
+# a return/break/continue leaving the try skipped it -- World.updatingLighting()'s
+# `try { ... return ...; } finally { --lightingUpdateDepth; }` never decremented, so after 50 calls
+# lighting stopped updating for good (MSVC's only warning in the build, C4715, pointed at it). Here,
+# on the Java lines before translation, each such jump gets the finally body in front of it:
+#     return EXPR;  ->  { T j2xRetN = EXPR;  <finally body>  return j2xRetN; }
+#     return; / break; / continue;  ->  { <finally body>  return; }
+# Innermost try first, so nested finallys run inside-out. Left alone (and still as before): a jump
+# inside the finally body itself, inside an anonymous class body, a break/continue whose loop or switch
+# is inside the try, and a return split over several lines.
+
+_FINALLY_LINE = re.compile(r'^\s*\}\s*finally\s*\{\s*$')
+_TRY_LINE = re.compile(r'^\s*try\s*\{\s*$')
+_RETURN_LINE = re.compile(r'^(\s*)return\b\s*(.*?)\s*;\s*$')
+_JUMP_LINE = re.compile(r'^(\s*)(break|continue)\s*(\w*)\s*;\s*$')
+_BREAKABLE = re.compile(r'^\s*(?:(\w+)\s*:\s*)?(for|while|do|switch)\b')
+_ANON_OPEN = re.compile(r'\bnew\s+[\w.<>]+\s*\([^;]*\)\s*\{\s*$')
+_DONE = '  /*j2x-finally*/'
+
+
+def _code(line):
+    """The line without string/char literals and // comments (for counting braces)."""
+    out, i, n = [], 0, len(line)
+    while i < n:
+        c = line[i]
+        if c in '"\'':
+            j = i + 1
+            while j < n and line[j] != c:
+                j += 2 if line[j] == '\\' else 1
+            i = j + 1
+            continue
+        if line.startswith('//', i):
+            break
+        out.append(c)
+        i += 1
+    return ''.join(out)
+
+
+def _depths(lines):
+    """Brace depth before each line."""
+    out, d = [], 0
+    for ln in lines:
+        out.append(d)
+        c = _code(ln)
+        d += c.count('{') - c.count('}')
+    return out
+
+
+def _close_of(lines, depths, i):
+    """Index of the line whose `}` closes the block opened on line i."""
+    for k in range(i + 1, len(lines)):
+        if depths[k] <= depths[i] and _code(lines[k]).lstrip().startswith('}'):
+            return k
+    return None
+
+
+def _inline_finally(lines, return_type):
+    """Run each `finally` body before the jumps that leave its try (see above). `return_type`: the
+    method's Java return type (an ir.JType, or None / void)."""
+    lines = list(lines)
+    rtype = None if (return_type is None or repr(return_type) == 'void') else repr(return_type)
+    counter = [0]
+    while True:
+        depths = _depths(lines)
+        todo = [k for k, ln in enumerate(lines) if _FINALLY_LINE.match(ln) and not ln.endswith(_DONE)]
+        if not todo:
+            break
+        f = max(todo, key=lambda k: (depths[k], k))                # innermost (deepest) first
+        level = depths[f] - 1                                      # the depth the `try {` line sits at
+        t = next((k for k in range(f - 1, -1, -1) if depths[k] == level and _TRY_LINE.match(lines[k])), None)
+        end = _close_of(lines, depths, f)
+        lines[f] = lines[f] + _DONE
+        if t is None or end is None:
+            continue
+        body = [ln for ln in lines[f + 1:end]]
+        if any(_RETURN_LINE.match(ln) or _JUMP_LINE.match(ln) for ln in body):
+            continue                                               # a jump in the finally itself: leave it
+        new, inner = lines[:t + 1], []                             # inner: blocks opened inside the try
+        for k in range(t + 1, f):
+            ln = lines[k]
+            while inner and depths[k] <= inner[-1][1]:
+                inner.pop()
+            in_anon = any(kind == 'anon' for kind, _d, _l in inner)
+            rm, jm = _RETURN_LINE.match(ln), _JUMP_LINE.match(ln)
+            exits = False
+            if rm and not in_anon:
+                exits = True
+            elif jm and not in_anon:
+                word, label = jm.group(2), jm.group(3)
+                loops = [l for kind, _d, l in inner if kind == 'loop' and (word == 'break' or l[1] != 'switch')]
+                exits = not (any(l[0] == label for l in loops) if label else bool(loops))
+            if exits:
+                ind = (rm or jm).group(1)
+                if rm and rm.group(2):
+                    if rtype is None:                              # `return x;` in a void method: not Java
+                        new.append(ln)
+                        continue
+                    counter[0] += 1
+                    var = 'j2xRet%d' % counter[0]
+                    new += [ind + '{', ind + '%s %s = %s;' % (rtype, var, rm.group(2))]
+                    new += body
+                    new += [ind + 'return %s;' % var, ind + '}']
+                else:
+                    new += [ind + '{'] + body + [ln.rstrip(), ind + '}']
+                continue
+            new.append(ln)
+            code = _code(ln)
+            if code.count('{') > code.count('}'):
+                bm = _BREAKABLE.match(ln)
+                if _ANON_OPEN.search(code):
+                    inner.append(('anon', depths[k], None))
+                elif bm:
+                    inner.append(('loop', depths[k], (bm.group(1) or '', bm.group(2))))
+                else:
+                    inner.append(('block', depths[k], None))
+        lines = new + lines[f:]
+    return [ln[:-len(_DONE)] if ln.endswith(_DONE) else ln for ln in lines]
+
