@@ -26,8 +26,9 @@ _PARSER = []
 # and, and `(uint2)(uint1)*p` as a call: misread() tells such a node from the cast it is.
 _TYPE = (r"(?:u?int\d+|xunknown\d+|undefined\d*|unk(?:byte|int|uint)\d+|float\d+|code(?:_callee_pops)?|bool|char|"
          r"short|int|long|unsigned|signed|double|float|void)")
-_QUALIFIERS = re.compile(rb"\b__(?:far|near|huge|export|loadds|saveregs|interrupt|cdecl\w*|stdcall\w*|pascal\w*|"
-                         rb"thiscall|fastcall)\b")
+_QUALIFIERS = re.compile(rb"\b(?:__(?:far|near|huge|export|loadds|saveregs|interrupt|cdecl\w*|stdcall\w*|pascal\w*|"
+                         rb"thiscall|fastcall)|_Packed)\b")
+_LAST_LABEL = re.compile(rb"(?m)^(\s*(?!case\b|default\b)[A-Za-z_]\w*\s*):(?=\s*\})")
 _CASTS = re.compile(r"(?:\(\s*%s(?:\s+%s)*(?:\s*(?:__far|__near))?(?:\s*\*+)?(?:\s*\[\d*\])?\s*\)\s*)+\Z" % (_TYPE, _TYPE))
 
 
@@ -47,7 +48,11 @@ class Source(object):
         # (parsed with the 16-bit qualifiers and the calling conventions blanked, byte for byte:
         # the grammar has no word for `__far`, and took `(char __far *)` for a cast to a type
         # named __far; every place in the tree is still a place in the text as written)
-        self.tree = _parser().parse(_QUALIFIERS.sub(lambda m: b" " * len(m.group(0)), self.data))
+        # A label at the end of a block (`L:` then `}`) is not C -- a label needs a statement -- and
+        # the grammar's recovery took what came after it for something else; read as `L;`.
+        masked = _QUALIFIERS.sub(lambda m: b" " * len(m.group(0)), self.data)
+        masked = _LAST_LABEL.sub(lambda m: m.group(1) + b";", masked)
+        self.tree = _parser().parse(masked)
         self.root = self.tree.root_node
         self.edits = []
 
