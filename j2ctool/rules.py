@@ -64,6 +64,15 @@ from . import profiles as _profiles
 _HEAVY_TYPES = tuple(_profiles.active().heavy_types)
 
 
+def _reseed(p):
+    """Re-derive the heavy-types tuple when the active target profile changes (profiles.on_change)."""
+    global _HEAVY_TYPES
+    _HEAVY_TYPES = tuple(p.heavy_types)
+
+
+_profiles.on_change(_reseed)
+
+
 from .textutil import read_text as _read_text
 
 

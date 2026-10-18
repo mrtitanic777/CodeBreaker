@@ -17,7 +17,16 @@ from . import parse, pipeline, profiles as _profiles
 DEFAULT_PKG = '(default package)'
 
 # Package -> role descriptions come from the active target profile (game-specific data).
-_PACKAGE_ROLES = _profiles.active().package_roles
+_PACKAGE_ROLES = dict(_profiles.active().package_roles)
+
+
+def _reseed(p):
+    """Re-derive package-role descriptions when the active target profile changes (profiles.on_change)."""
+    global _PACKAGE_ROLES
+    _PACKAGE_ROLES = dict(p.package_roles)
+
+
+_profiles.on_change(_reseed)
 
 
 def _package_role(pkg, class_names):

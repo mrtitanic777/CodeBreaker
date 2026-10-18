@@ -46,6 +46,21 @@ class Profile(object):
 
 _REGISTRY = {}
 
+# Observers reseeded whenever the active profile changes. Core modules (typemap, rules, vcxproj,
+# signatures, pipeline) freeze profile data into module-level globals for speed; without a
+# notification they would keep the profile that was active AT IMPORT TIME forever (and `use()` would
+# be a silent no-op). Each such module registers a `_reseed(profile)` callback here so switching the
+# active profile actually re-derives those globals. See use().
+_ON_CHANGE = []
+
+
+def on_change(fn):
+    """Register a callback invoked as ``fn(profile)`` every time the active profile changes (and it is
+    the caller's job to call it once for the current profile if they need an immediate seed -- the
+    import-time global assignment already does that). Returns ``fn`` so it can be used as a decorator."""
+    _ON_CHANGE.append(fn)
+    return fn
+
 
 def register(profile):
     _REGISTRY[profile.name] = profile
@@ -66,6 +81,13 @@ GENERIC = register(Profile('generic'))
 # Register the bundled target profile(s). (minecraft_xbox360 self-registers on import.)
 from . import minecraft_xbox360  # noqa: E402,F401
 
+# Per-edition Minecraft profiles (shared minecraft_base data + era overrides). Each self-registers on
+# import. minecraft_base is data-only (imported by the era modules), so it need not be imported here.
+from . import (  # noqa: E402,F401
+    minecraft_rubydung, minecraft_indev, minecraft_infdev,
+    minecraft_alpha, minecraft_beta, minecraft_release,
+)
+
 # Default active profile preserves the tool's out-of-the-box (Minecraft/Xbox-360) behavior.
 _active = _REGISTRY.get('minecraft_xbox360', GENERIC)
 
@@ -76,7 +98,12 @@ def active():
 
 
 def use(name):
-    """Switch the active target profile by name; returns it."""
+    """Switch the active target profile by name; returns it.
+
+    Fires every ``on_change`` observer so the core modules re-derive their frozen profile globals
+    from the new profile -- this is what makes a runtime profile switch actually take effect."""
     global _active
     _active = get(name)
+    for fn in _ON_CHANGE:
+        fn(_active)
     return _active
