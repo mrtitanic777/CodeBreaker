@@ -3,8 +3,11 @@
     from codebreaker.java import probe
     result = probe.run(java_src_dir, cpp_dir, "MathHelper", work, cxx, javac, java)
 
-The behavioural half of the java kind's judge (verify/java.py). For a class, every static method whose
-parameters and result are primitives is called on a fixed, deterministic set of inputs:
+The behavioural half of the java kind's judge (verify/java.py). For a class, every method whose
+parameters and result are primitives is called on a fixed, deterministic set of inputs -- a static one
+directly, an instance one on a fresh object per call, made with the class's first constructor whose
+parameters are primitives (or its implicit one); the constructor's arguments come from the same input
+set:
 
   * the original: the class's Java source compiled by javac (-sourcepath: it pulls in only what the
     class needs from the folder) and run on the JVM, from a generated J2XProbe.java;
@@ -16,7 +19,8 @@ Results are compared exactly: integers by value, floats and doubles by their bit
 NaN). An input on which the Java method throws is not run on the C++ side (Java's exception is C++'s
 undefined behaviour) and not counted. A class whose methods could not all be run -- not static, a
 parameter or result that is not a primitive, an input set Java threw on throughout -- is judged on
-the ones that could, and says how many were.
+the ones that could, and says how many were. (A class with no such constructor has only its static
+methods run.)
 """
 import itertools
 import os
@@ -24,7 +28,7 @@ import re
 import struct
 import subprocess
 
-REV = 1
+REV = 2
 TIMEOUT = 60
 
 # Java primitive -> (C++ parameter type, inputs). Inputs are the same on both sides, written as literals.
@@ -34,7 +38,7 @@ _INPUTS = {
     'long': ('long long', ['0L', '1L', '-1L', '1000000007L', '-123456789012L', '9223372036854775807L']),
     'short': ('short', ['0', '1', '-1', '255', '-32768', '32767']),
     'byte': ('signed char', ['0', '1', '-1', '100', '-128', '127']),
-    'char': ('char', ['0', '32', '65', '97', '122']),
+    'char': ('unsigned char', ['0', '32', '65', '97', '122', '167', '255']),
     'boolean': ('bool', ['true', 'false']),
     'float': ('float', ['0.0F', '1.0F', '-1.0F', '0.5F', '-0.5F', '3.14159F', '100.25F', '-1000.75F', '0.001F',
                         '1000000.0F', '-0.0F']),
@@ -63,30 +67,60 @@ def cases(param_types):
     return picked
 
 
+def _primitive(types):
+    return all(not t.is_array and t.name in _INPUTS for t in types)
+
+
+def constructor(cls):
+    """The parameter types of the constructor an instance is made with -- the first non-private one
+    whose parameters are all primitives ([] for the implicit or a no-argument one) -- or None when the
+    class cannot be made that way (abstract, an interface, only object-taking or private constructors)."""
+    if cls.is_abstract or cls.is_interface or cls.is_enum:
+        return None
+    ctors = [m for m in cls.methods if m.is_ctor]
+    if not ctors:
+        return []                                         # Java's implicit default constructor
+    for m in ctors:
+        types = [p.jtype for p in m.params]
+        if m.access != 'private' and _primitive(types):
+            return [t.name for t in types]
+    return None
+
+
 def probeable(cls, header_text):
-    """[(method, [param java types], return java type)] -- static, primitive in and out, present as a
-    static member of that name in the emitted header (renamed or dropped methods are left out)."""
+    """[(method, [param java types], return java type, ctor)] -- primitive in and out, present under that
+    name in the emitted header (renamed or dropped methods are left out). ctor is None for a static
+    method; for an instance method, the parameter types of the constructor each call makes a fresh
+    instance with (see `constructor`) -- instance methods only when the class can be made so."""
     out, seen = [], set()
+    made = constructor(cls)
     for m in cls.methods:
-        if m.is_ctor or not m.is_static or m.is_abstract or m.access == 'private':
+        if m.is_ctor or m.is_abstract or m.access == 'private' or (not m.is_static and made is None):
             continue
         rt = m.return_type
         if rt is None or rt.is_array or rt.name not in _INPUTS:
             continue
         ps = [p.jtype for p in m.params]
-        if any(p.is_array or p.name not in _INPUTS for p in ps):
+        if not _primitive(ps):
             continue
         key = (m.name, tuple(p.name for p in ps))
-        if key in seen or not re.search(_CALL_RE % re.escape(m.name), header_text):
+        pattern = (_CALL_RE % re.escape(m.name)) if m.is_static else (r'\b%s\s*\(' % re.escape(m.name))
+        if key in seen or not re.search(pattern, header_text):
             continue
         seen.add(key)
-        out.append((m.name, [p.name for p in ps], rt.name))
+        out.append((m.name, [p.name for p in ps], rt.name, None if m.is_static else made))
     return out
 
 
 def counted(cls):
     """How many methods a full judgement would have to run (all non-abstract methods and constructors)."""
     return len([m for m in cls.methods if not m.is_abstract])
+
+
+def _split(ctor, args):
+    """(constructor arguments, method arguments) of one input tuple."""
+    k = len(ctor or ())
+    return args[:k], args[k:]
 
 
 def _java_literal(t, v):
@@ -139,10 +173,12 @@ def java_harness(cls_name, methods, package=None):
     lines = (['package %s;' % package] if package else []) + ['public class J2XProbe {',
              '  static void out(String k, String v) { System.out.println(k + "|" + v); }',
              '  public static void main(String[] a) {']
-    target = cls_name
-    for mi, (name, ps, rt) in enumerate(methods):
-        for ci, args in enumerate(cases(ps)):
-            call = '%s.%s(%s)' % (target, name, ', '.join(_java_literal(t, v) for t, v in zip(ps, args)))
+    for mi, (name, ps, rt, ctor) in enumerate(methods):
+        for ci, args in enumerate(cases((ctor or []) + ps)):
+            cargs, margs = _split(ctor, args)
+            target = cls_name if ctor is None else 'new %s(%s)' % (cls_name, ', '.join(
+                _java_literal(t, v) for t, v in zip(ctor, cargs)))
+            call = '%s.%s(%s)' % (target, name, ', '.join(_java_literal(t, v) for t, v in zip(ps, margs)))
             key = '%d.%d' % (mi, ci)
             lines.append('    try { out("%s", %s); } catch (Throwable t) { out("%s", "throw"); }'
                          % (key, _JAVA_OUT[rt] % call, key))
@@ -157,19 +193,25 @@ def cpp_harness(cls_name, methods, keep, init_order):
             ['#include "%s.h"' % c for c in init_order if c != cls_name] + [
         '#include <cstdio>', '#include <cstring>',
         'static void pi(const char* k, long long v) { std::printf("%s|%lld\\n", k, v); }',
-        'static void pc(const char* k, char v) { std::printf("%s|%d\\n", k, (int)(unsigned char)v); }',
+        'static void pc(const char* k, unsigned char v) { std::printf("%s|%d\\n", k, (int)v); }',
         'static void pb(const char* k, bool v) { std::printf("%s|%d\\n", k, v ? 1 : 0); }',
         'static void pf(const char* k, float v) { unsigned int u; std::memcpy(&u, &v, 4); std::printf("%s|%x\\n", k, u); }',
         'static void pd(const char* k, double v) { unsigned long long u; std::memcpy(&u, &v, 8); '
         'std::printf("%s|%llx\\n", k, u); }',
         'int main() {']
     lines += ['\t%s::initStatics();' % c for c in init_order]
-    for mi, (name, ps, rt) in enumerate(methods):
-        for ci, args in enumerate(cases(ps)):
+    for mi, (name, ps, rt, ctor) in enumerate(methods):
+        for ci, args in enumerate(cases((ctor or []) + ps)):
             key = '%d.%d' % (mi, ci)
             if key in keep:
-                lines.append('\t%s("%s", %s::%s(%s));' % (_CPP_OUT[rt], key, cls_name, name,
-                                                         ', '.join(_cpp_literal(t, v) for t, v in zip(ps, args))))
+                cargs, margs = _split(ctor, args)
+                margs = ', '.join(_cpp_literal(t, v) for t, v in zip(ps, margs))
+                if ctor is None:
+                    call = '%s::%s(%s)' % (cls_name, name, margs)
+                else:                                       # a fresh instance per call, as the Java side makes
+                    call = '(new %s(%s))->%s(%s)' % (cls_name, ', '.join(
+                        _cpp_literal(t, v) for t, v in zip(ctor, cargs)), name, margs)
+                lines.append('\t%s("%s", %s);' % (_CPP_OUT[rt], key, call))
     lines += ['\treturn 0;', '}', '']
     return '\n'.join(lines)
 
@@ -238,7 +280,7 @@ def run(java_dir, cpp_dir, cls, work, cxx, javac, java):
         methods = []
     res = dict(methods=[m[0] for m in methods], judged=0, total=counted(cls), cases=0, differs=[], why='')
     if not methods:
-        res['why'] = 'no static method with primitive parameters and result'
+        res['why'] = 'no method with primitive parameters and result it can call (static, or on an instance it can construct)'
         return res
     folder = os.path.join(work, 'probe', cls.name)
     jdir = os.path.join(folder, 'java')
@@ -290,8 +332,8 @@ def run(java_dir, cpp_dir, cls, work, cxx, javac, java):
         return res
     cres = _results(r.stdout.decode('utf-8', 'replace'))
     judged = set()
-    for mi, (name, ps, rt) in enumerate(methods):
-        for ci, args in enumerate(cases(ps)):
+    for mi, (name, ps, rt, ctor) in enumerate(methods):
+        for ci, args in enumerate(cases((ctor or []) + ps)):
             key = '%d.%d' % (mi, ci)
             if key not in keep:
                 continue

@@ -15,7 +15,10 @@ class JArray {
 public:
 	int length;                                  // Java: arr.length
 	JArray() : _buf(0), length(0) {}
-	explicit JArray(int n) : _buf(n > 0 ? new T[n]() : 0), length(n > 0 ? n : 0) {}
+	// `new T[0]` is a real (non-null) array in Java: allocate for n == 0 too, so `arr != null` holds for it.
+	// Only the default constructor -- Java `null` -- has no buffer. J2X-BUGFIX empty-array-not-null
+	// (NibbleArray.isValid() of a 0-length array was false; found by the behavioural judge).
+	explicit JArray(int n) : _buf(n >= 0 ? new T[n > 0 ? n : 1]() : 0), length(n > 0 ? n : 0) {}
 	JArray(T* buf, int n) : _buf(buf), length(n) {}
 	JArray(const JObject& o);                    // unbox a boxed array; defined in JavaRT.h
 	T& operator[](int i) { return (i >= 0 && i < length) ? _buf[i] : _oob(); }
