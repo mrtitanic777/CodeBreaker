@@ -337,6 +337,7 @@ public:
 ///
 /// Introduce RETURN operations corresponding to individual branches flowing to the epilog.
 class ActionReturnSplit : public Action {
+  static const int4 maxSplitOps = 8;		///< CodeBreaker: the most plain ops a tail copied per path may have
   static void gatherReturnGotos(FlowBlock *parent,vector<FlowBlock *> &vec);
   static bool isSplittable(BlockBasic *b);		///< Determine if a RETURN block can be split
 public:

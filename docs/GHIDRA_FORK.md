@@ -12,7 +12,7 @@ Upstream: https://github.com/NationalSecurityAgency/ghidra (Apache 2.0; `core/LI
 
 | Part | Upstream path | Base | Files |
 |---|---|---|---|
-| `core/cpp` | `Ghidra/Features/Decompiler/src/decompile/cpp` | **master `f0774b72f2` (2026-09-01), version 12.2-DEV** -- cpp tree `c35e0406` | 236: 217 identical, 19 patched (C10, C11, C12 added two each since `31a2694`) |
+| `core/cpp` | `Ghidra/Features/Decompiler/src/decompile/cpp` | **master `f0774b72f2` (2026-09-01), version 12.2-DEV** -- cpp tree `c35e0406` | 236: 215 identical, 21 patched (C10-C13 added two each since `31a2694`) |
 | `core/zlib` | `Ghidra/Features/Decompiler/src/decompile/zlib` | same commit (tree `4dd91ac1`, unchanged since 12.1) | 18 identical |
 | `languages/` | `Ghidra/Processors/{x86,PowerPC}/data/languages` | **release `Ghidra_12.1.3_build`** (the installed Ghidra, see below) | 21: 12 identical, 5 patched or 12.1.3-only, 4 ours/built |
 
@@ -52,6 +52,7 @@ Every change carries a `CodeBreaker:` comment at its place in the source.
 | C10 | `slghscan.l`, `slghscan.cc` (`scan_number`) | Numbers read with `std::stoull`, not `std::stoul` | **Upstream bug** on Windows, where `unsigned long` is 32 bits: the C++ SLEIGH compiler refused every 64-bit constant ("Parsed integer is too big") and could not compile x86. With it, `languages/src/x86/x86.slaspec` (12.1.3) compiles byte for byte to the shipped `x86.sla`. Candidate to send upstream | item 7A |
 | C11 | `action.hh`, `action.cc`, `sleigh_arch.hh`, `sleigh_arch.cc` | C1's `cb_action`/`cb_rule`/`cb_steps` are `thread_local`; `SleighArchitecture::translators` (the cache of loaded `.sla` translators, one per language) is `thread_local` | Parallel analysis in one process (item 7B, `CB_THREADS`): each thread builds its own Architecture, and a Sleigh translator is not safe to share (its parser context cache changes as it decodes). Nothing else in the core is shared and written once set up; setting up (which runs the p-code snippet compiler, whose parser state is global) is done one thread at a time by `decompiler.cc` | item 7B |
 | C12 | `type.hh`, `type.cc` (`TypeFactory::assignFixedFields`) | Completes a structure from fields whose offsets and size are already known (packed; checked: no field outside, none overlapping) | Item 7C: the structures `decompiler.cc` recovers from a function's own accesses keep exactly the offsets the code uses; the core's public `assignRawFields` lays fields out by their alignment instead | item 7C |
+| C13 | `blockaction.hh`, `blockaction.cc` (`ActionReturnSplit::isSplittable`) | A return block that paths reach by `goto` is copied onto each path when it holds up to 8 plain ops (arithmetic, loads, stores; no calls, branches or INDIRECTs), not only when it holds nothing but copies | Item 7D: gotos to a shared exit; each path gets its own copy of the tail (the block has no flow out, so the program is the same). Golden: gotos 6,923 -> 6,449; to a bare `return` 225 -> 26 | item 7D |
 
 ## Local changes to the language files (`languages/`)
 
@@ -78,7 +79,7 @@ master later added Swift and raised the x86 language version 4.8 -> 4.9. `ppc.ld
 ## Rebasing onto a newer upstream
 
 1. `git clone --filter=blob:none --no-checkout https://github.com/NationalSecurityAgency/ghidra.git`
-2. Copy the new upstream `cpp/`, `zlib/` and the language files over ours; re-apply C1-C12 and
+2. Copy the new upstream `cpp/`, `zlib/` and the language files over ours; re-apply C1-C13 and
    L1-L3, L5 (each is small and marked); drop any upstream has fixed itself (C2, C6, C7, C10 first).
 3. Recompile the `.sla` files with `build/bin/sleigh` (the core's compiler, target `sleigh`), then
    `python tools/sleigh_verify.py`: no new disagreement.

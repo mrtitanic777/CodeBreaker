@@ -2245,6 +2245,12 @@ void ActionReturnSplit::gatherReturnGotos(FlowBlock *parent,vector<FlowBlock *> 
 /// Given a BasicBlock ending in a RETURN operation, determine
 /// if there is any other substantive operation going on in the block. If there
 /// is, the block is deemed too complicated to split.
+///
+/// CodeBreaker: a short tail of plain operations (arithmetic, loads, stores -- at most
+/// \b maxSplitOps of them) is split too, not only a block of copies: each path that would
+/// \e goto the shared tail gets its own copy of it, which is the same program (the block has no
+/// flow out, so nothing after it sees the difference). Calls are not copied (each has its own
+/// call specification), nor is anything the copier cannot duplicate.
 /// \param b is the given BasicBlock
 /// \return \b true if the block can be split
 bool ActionReturnSplit::isSplittable(BlockBasic *b)
@@ -2252,20 +2258,23 @@ bool ActionReturnSplit::isSplittable(BlockBasic *b)
 {
   list<PcodeOp *>::const_iterator iter;
   PcodeOp *op;
+  int4 plain = 0;
 
   for(iter=b->beginOp();iter!=b->endOp();++iter) {
     op = *iter;
     OpCode opc = op->code();
     if (opc == CPUI_MULTIEQUAL) continue;
-    if ((opc == CPUI_COPY)||(opc == CPUI_RETURN)) {
-      for(int4 i=0;i<op->numInput();++i) {
-	if (op->getIn(i)->isConstant()) continue;
-	if (op->getIn(i)->isAnnotation()) continue;
-	if (op->getIn(i)->isFree()) return false;
-      }
-      continue;
+    if (opc != CPUI_COPY && opc != CPUI_RETURN) {
+      if (op->isCall() || op->isBranch() || opc == CPUI_INDIRECT || opc == CPUI_NEW ||
+	  opc == CPUI_CPOOLREF || opc == CPUI_CALLOTHER)
+	return false;
+      if (++plain > maxSplitOps) return false;
     }
-    return false;
+    for(int4 i=0;i<op->numInput();++i) {
+      if (op->getIn(i)->isConstant()) continue;
+      if (op->getIn(i)->isAnnotation()) continue;
+      if (op->getIn(i)->isFree()) return false;
+    }
   }
   return true;
 }

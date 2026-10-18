@@ -123,3 +123,10 @@ RISC-V Sail, Intel XED).
   DWORD at a time). Found: OpenWatcom's wingdi.h declares FONTSIGNATURE `fsCsb[4]`; Microsoft's
   SDK and GDI32 itself have `fsCsb[2]` (24 bytes). One thread and four agree byte for byte.
   Next: far pointers (phase 2's segment types), structures passed between functions.
+- D -- fewer gotos (2026-10-18; tools/goto_report.py): a short return tail that paths reach by
+  `goto` is copied onto each path (core change C13). Golden: gotos 6,923 -> 6,449, 20.2 -> 17.9
+  per 1,000 lines; to a bare `return` 225 -> 26; 203 functions changed, no new failures. What is
+  left is mostly loops the structurer could not make one (2,453 backward) and crossing forward
+  jumps (3,266): those need restructuring proper (condition-based refinement, "no more gotos"),
+  the next step. Found on the way: the 7B governor could stop a function at once, "over the time
+  limit", when the one before it on its thread had run long (fixed, 067b32e).
