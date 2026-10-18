@@ -4,7 +4,12 @@
 
 #include "stdafx.h"
 #include "FileIO.h"
+#include "File.h"
 // #include "Save360.h"   // Save360_GetMountName()/_GetBaseDir() if you route via the live mount name
+
+// java.io.File.separator -- the ONE out-of-line definition of File's non-integral static (declared in
+// File.h). "\\" matches File::_norm(), which rewrites '/' -> '\' so 360 path APIs get a clean separator.
+JavaString File::s_separator = JavaString("\\");
 
 // ------------------------------------------------------------------------------
 // FileInputStream::_load — slurp the whole file via CreateFile/GetFileSize/ReadFile.

@@ -76,7 +76,12 @@ crept into the NBT path — revert to the byte-at-a-time codec.
    - `XShowDeviceSelectorUI` (SAVEDGAME, 512 KB hint) → user picks HDD/USB (`XOVERLAPPED`, pumped).
    - `XContentCreate(user, "Save", &XCONTENT_DATA{SAVEDGAME, deviceId, "LOGANCRAFT"}, OPENALWAYS)` —
      `ERROR_ALREADY_EXISTS` is treated as success. Mounts as **`Save:`** (no trailing backslash; falls
-     back to `Save:\` if a write test fails).
+     back to `Save:\` if a write test fails — `save-writable-probe`).
+   - **DELIVERED refinements (`Save360.reference.cpp`):** the whole `Save360_Init` is behind an Interlocked
+     mount gate (`save-mount-race`, 0→1→2) so a racing caller can't double-enter the device selector; the
+     device-selector wait has a ~5-min anti-hang backstop (`XCancelOverlapped` + `game:\` fallback) over a
+     STATIC `XOVERLAPPED`. NOTE: the reference deliberately does **not** call `XShowSigninUI` (it can pop a
+     guide blade that never dismisses under the emulator — hangs boot); no profile → `game:\` fallback.
 2. After mount, `CreateFile("Save:\level.dat")` / `Save:\<x36>\<z36>\c.<x36>.<z36>.dat` work directly —
    that's the whole point of the STFS mount, and what the `FileIO` streams rely on.
 3. **Durability:** an STFS container is **not persisted until flushed.** Call `Save360_Flush()`

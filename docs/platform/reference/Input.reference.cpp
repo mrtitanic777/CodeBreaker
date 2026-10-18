@@ -163,6 +163,60 @@ bool navDown()  { bool f = g_navDownFired;  g_navDownFired  = false; return f; }
 bool navLeft()  { bool f = g_navLeftFired;  g_navLeftFired  = false; return f; }
 bool navRight() { bool f = g_navRightFired; g_navRightFired = false; return f; }
 
+// ---- Controller MENU navigation core (see Input.reference.h) -----------------------------------------
+// Edition-agnostic 2D-spatial nav over the current screen's button rectangles. The GuiScreen adapter that
+// j2ctool injects (controller_nav.py) fills the geometry arrays from controlList and calls this, so the
+// console menu-nav can never again be a per-project overlay someone forgets. Ported from the proven Alpha
+// hand-port's GuiScreen::handleControllerMenuNav (geometry-only, no game types).
+int menuNavSelect(const int* bx, const int* by, const int* bw, const int* bh,
+                  const unsigned char* enabled, int n, int cur) {
+	bool up = navUp(), down = navDown(), left = navLeft(), right = navRight();   // consume the latched edges
+	if (n <= 0) return -1;
+	// Ensure a valid selection (first enabled button) -- first entry, or a selection that became disabled.
+	if (cur < 0 || cur >= n || !enabled[cur]) {
+		cur = -1;
+		for (int i = 0; i < n; ++i) if (enabled[i]) { cur = i; break; }
+	}
+	if (cur < 0) return -1;                          // no navigable buttons on this screen
+	int dir = up ? 1 : (down ? 2 : (left ? 3 : (right ? 4 : 0)));   // 1=up 2=down 3=left 4=right
+	if (dir == 0) return cur;                        // no edge this frame -> keep the current selection
+	int ccx = bx[cur] + bw[cur] / 2, ccy = by[cur] + bh[cur] / 2;
+	int best = -1, bestCost = 0;
+	for (int i = 0; i < n; ++i) {                    // pass 1: nearest enabled button strictly in the dir
+		if (i == cur || !enabled[i]) continue;
+		int dx = (bx[i] + bw[i] / 2) - ccx, dy = (by[i] + bh[i] / 2) - ccy;
+		int primary, perp; bool inDir;
+		if (dir == 1)      { inDir = dy < 0; primary = -dy; perp = (dx < 0 ? -dx : dx); }   // up
+		else if (dir == 2) { inDir = dy > 0; primary =  dy; perp = (dx < 0 ? -dx : dx); }   // down
+		else if (dir == 3) { inDir = dx < 0; primary = -dx; perp = (dy < 0 ? -dy : dy); }   // left
+		else               { inDir = dx > 0; primary =  dx; perp = (dy < 0 ? -dy : dy); }   // right
+		if (!inDir) continue;
+		int cost = primary + perp * 2;               // prefer well-aligned (small perp), then nearest
+		if (best < 0 || cost < bestCost) { bestCost = cost; best = i; }
+	}
+	if (best < 0 && (dir == 1 || dir == 2)) {        // pass 2 (up/down): wrap to the column's far end
+		for (int i = 0; i < n; ++i) {
+			if (i == cur || !enabled[i]) continue;
+			int bcx = bx[i] + bw[i] / 2, bcy = by[i] + bh[i] / 2;
+			int perp = (bcx < ccx ? ccx - bcx : bcx - ccx);
+			int cost = (dir == 2 ? bcy : -bcy) * 4 + perp;   // down->topmost, up->bottommost; column-aware
+			if (best < 0 || cost < bestCost) { bestCost = cost; best = i; }
+		}
+	}
+	return best >= 0 ? best : cur;
+}
+
+// Snap the virtual cursor onto a button center so the game's own hover-highlight + A-as-click land on the
+// d-pad selection. centerX/centerY are GUI-scaled; g_cursor* is DISPLAY pixels, top-down (inverse of the
+// game's mouseX/Y mapping: guiX = getX*guiW/dispW, guiY = guiH - getY*guiH/dispH - 1).
+void menuSnapCursor(int centerX, int centerY, int guiW, int guiH, int dispW, int dispH) {
+	if (guiW <= 0 || guiH <= 0) return;
+	int cx = centerX * dispW / guiW, cy = centerY * dispH / guiH;
+	if (cx < 0) cx = 0; else if (cx >= dispW) cx = dispW - 1;
+	if (cy < 0) cy = 0; else if (cy >= dispH) cy = dispH - 1;
+	g_cursorX = cx; g_cursorY = cy;
+}
+
 // [J2X-BUGFIX fps-look-scale] Real seconds elapsed since the previous poll(). poll() runs once per render
 // frame, so this is the frame time -- used to make right-stick look frame-rate independent. Uses the 64-bit
 // performance counter (smooth at hundreds of fps, where GetTickCount's ~1ms granularity would jitter).
@@ -345,7 +399,7 @@ void poll() {
 		// CONTAINER GUIs ONLY (inventory/chest/furnace/crafting -> g_guiCursorMode, set by
 		// Minecraft::displayGuiScreen) use a FREE analog cursor on the LEFT stick + D-pad nudge, and
 		// EntityRenderer draws the Pointer.png icon. EVERY OTHER screen (main menu / options / pause /
-		// server list / ...) keeps the ORIGINAL discrete button nav and shows NO cursor -- the user wants
+		// server list / ...) ALSO get the free cursor now (else branch, console-menu-nav) -- the highlight is the cue
 		// the cursor ONLY in inventory/chest/furnace.
 		if (g_guiCursorMode) {
 			g_navUpFired = g_navDownFired = g_navLeftFired = g_navRightFired = false;
@@ -371,12 +425,29 @@ void poll() {
 			if (s_fy < 0) s_fy = 0;  if (s_fy > (float)g_dispH) s_fy = (float)g_dispH;
 			g_cursorX = (int)s_fx;  g_cursorY = (int)s_fy;
 		} else {
-			// Original discrete button nav: one step per press (edge-latched). GuiScreen::navUp()/... consume
-			// these, move the selected button, and snap g_cursorX/Y onto it so its hover highlight lights up.
-			bool navU = (vUp != 0) || ly >  0.5F;
-			bool navD = (vDn != 0) || ly < -0.5F;
-			bool navL = (vLf != 0) || lx < -0.5F;
-			bool navR = (vRt != 0) || lx >  0.5F;
+			// ===================== NON-CONTAINER GUI (menus) =====================
+			// J2X-BUGFIX console-menu-nav: the console has NO mouse or keyboard, so the controller must drive
+			// menus BY CONSTRUCTION. The LEFT STICK moves a free cursor here (exactly like the container path):
+			// the game's drawScreen passes Mouse::getX/getY to each GuiButton, so the hovered button HIGHLIGHTS,
+			// and A -> a click at the cursor -> GuiButton::mousePressed -> actionPerformed. That is the STANDARD
+			// Mouse path EVERY converted GuiScreen already handles, so any menu (main menu / options / server
+			// list / ...) is navigable with NO per-game wiring -- previously this branch only latched nav edges
+			// that a bare converted GuiScreen never consumed, so a controller could not move the selection at
+			// all (frozen cursor -> apparent lock-up). The D-PAD still fires the discrete nav edges for the rare
+			// screen that DOES consume Input::navUp (e.g. the sign-line editor); harmless if unconsumed.
+			// (g_guiCursorMode / the Pointer.png sprite stays container-only; in menus the highlight is the cue.)
+			static unsigned long s_mLastMs = 0; static float s_mfx = 0.0F, s_mfy = 0.0F;
+			unsigned long nowMs = GetTickCount();
+			float dt = s_mLastMs ? (float)(nowMs - s_mLastMs) / 1000.0F : 0.0F;
+			s_mLastMs = nowMs;
+			if (dt > 0.1F) dt = 0.1F;                                    // clamp first frame / hitches
+			if ((int)s_mfx != g_cursorX || (int)s_mfy != g_cursorY) { s_mfx = (float)g_cursorX; s_mfy = (float)g_cursorY; }
+			float spd = InputConfig::CURSOR_PIXELS_PER_SECOND * dt;
+			s_mfx += lx * spd;  s_mfy += -ly * spd;                      // left stick -> cursor (stick-up = cursor up)
+			if (s_mfx < 0) s_mfx = 0;  if (s_mfx > (float)g_dispW) s_mfx = (float)g_dispW;
+			if (s_mfy < 0) s_mfy = 0;  if (s_mfy > (float)g_dispH) s_mfy = (float)g_dispH;
+			g_cursorX = (int)s_mfx;  g_cursorY = (int)s_mfy;
+			bool navU = (vUp != 0), navD = (vDn != 0), navL = (vLf != 0), navR = (vRt != 0);   // D-PAD -> nav edges
 			if (navU && !g_prevNavUp)    g_navUpFired    = true;
 			if (navD && !g_prevNavDown)  g_navDownFired  = true;
 			if (navL && !g_prevNavLeft)  g_navLeftFired  = true;
@@ -386,10 +457,17 @@ void poll() {
 
 		g_btnDown[0] = g_btnDown[1] = g_btnDown[2] = false;
 		bool prevA     = (g_prevButtons & XINPUT_GAMEPAD_A)     != 0;
+		bool prevX     = (g_prevButtons & XINPUT_GAMEPAD_X)     != 0;
 		bool prevB     = (g_prevButtons & XINPUT_GAMEPAD_B)     != 0;
 		bool prevStart = (g_prevButtons & XINPUT_GAMEPAD_START) != 0;
-		if (vA && !prevA) { g_btnDown[0] = true; pushBtnEvent(0, true,  g_cursorX, g_cursorY, 0); }  // A press -> click
+		if (vA && !prevA) { g_btnDown[0] = true; pushBtnEvent(0, true,  g_cursorX, g_cursorY, 0); }  // A press -> left click
 		if (!vA && prevA) {                      pushBtnEvent(0, false, g_cursorX, g_cursorY, 0); }  // A release
+		// J2X-BUGFIX gui-right-click: X -> RIGHT click (mouse button 1) INSIDE a container GUI, so the player
+		// can grab HALF a stack / place ONE item at a time, matching PC right-click. This is distinct from the
+		// IN-GAME map where X is intentionally unmapped -- here it only fires on container screens (this GUI
+		// path). Without it a controller can only left-click whole stacks in inventory/chest/furnace/crafting.
+		if (vX && !prevX) { g_btnDown[1] = true; pushBtnEvent(1, true,  g_cursorX, g_cursorY, 0); }  // X press -> right click
+		if (!vX && prevX) {                      pushBtnEvent(1, false, g_cursorX, g_cursorY, 0); }  // X release
 		if ((vB && !prevB) || (vStart && !prevStart)) {   // B / START -> ESCAPE (back/close screen)
 			pushKeyEvent(Keyboard::KEY_ESCAPE, true, 0);
 			pushKeyEvent(Keyboard::KEY_ESCAPE, false, 0);
@@ -451,6 +529,38 @@ void destroy() {}
 void setNativeCursor(void* /*cursor*/) {}
 
 void setGrabbed(bool grabbed) {
+	if (grabbed && !g_grabbed) {
+		// J2X-BUGFIX cross-screen-resync: transitioning from a GUI to in-game. A face button physically HELD
+		// while the menu closes has a DIFFERENT in-game meaning than in the GUI (B = back/ESCAPE in a menu,
+		// but B = Q/drop in-game). The in-game keys go through setKey(), which edge-detects against
+		// g_prevKeyDown -- and those keys are never driven during the GUI period, so g_prevKeyDown is false for
+		// them. Without a resync the first in-game frame sees a false RISING edge and fires the action: closing
+		// a container with B held DROPS the held item; A held -> phantom jump; etc. Pre-seed g_prevKeyDown with
+		// the IN-GAME mapping of any currently-held face button so setKey() sees no edge. Uses the SAME bindings
+		// the in-game poll() path uses -- A->SPACE, B->Q, Y->E (Beta's keyBindInventory=18=E, NOT Alpha's I),
+		// R3->LSHIFT. START/BACK/L3/LB/RB edge-detect against g_prevButtons (committed every frame), so they
+		// already carry the held state across the grab and need no seeding. Matches the hand-port's setGrabbed.
+		memset(g_prevKeyDown, 0, sizeof(g_prevKeyDown));
+		BOOL curA = 0, curB = 0, curY = 0, curR3 = 0;
+		XINPUT2CONTEXT ctx2 = 0; BOOL ch2 = FALSE;
+		if (XInput2Sample(XInput2InputDevice(0), &ctx2, &ch2)) {
+			XInput2GetBool(ctx2, XINPUTID_A, &curA);
+			XInput2GetBool(ctx2, XINPUTID_B, &curB);
+			XInput2GetBool(ctx2, XINPUTID_Y, &curY);
+			XInput2GetBool(ctx2, XINPUTID_RIGHT_THUMB, &curR3);
+		} else {
+			XINPUT_STATE st2; memset(&st2, 0, sizeof(st2));
+			if (XInputGetState(0, &st2) == ERROR_SUCCESS) {
+				WORD gb2 = st2.Gamepad.wButtons;
+				curA  = (gb2 & XINPUT_GAMEPAD_A) != 0;           curB  = (gb2 & XINPUT_GAMEPAD_B) != 0;
+				curY  = (gb2 & XINPUT_GAMEPAD_Y) != 0;           curR3 = (gb2 & XINPUT_GAMEPAD_RIGHT_THUMB) != 0;
+			}
+		}
+		if (curA)  g_prevKeyDown[Keyboard::KEY_SPACE]  = true;
+		if (curB)  g_prevKeyDown[Keyboard::KEY_Q]      = true;
+		if (curY)  g_prevKeyDown[Keyboard::KEY_E]      = true;
+		if (curR3) g_prevKeyDown[Keyboard::KEY_LSHIFT] = true;
+	}
 	g_grabbed = grabbed;
 	g_dx = g_dy = 0;                 // grab/ungrab resets pending look delta (MouseHelper.grabMouseCursor)
 }

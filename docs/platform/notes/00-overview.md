@@ -48,7 +48,7 @@ See the per-subsystem docs:
 
 7. **Big-endian PowerPC.** All NBT/binary I/O is assembled byte-at-a-time MSB-first (endian-safe, Java-faithful). The trap: any `memcpy`/`reinterpret_cast`/`*(int*)ptr` over a serialized buffer byte-swaps on the 360 and corrupts saves. Keep the manual byte assembly.
 
-8. **Audio is solved (Route A).** A complete XACT3 backend + shipped banks already exist; bridge via a `SoundManager` override and leave the paulscode `SoundSystem`/`CodecJOrbis` stubs no-op. (Route B = real OGG decoder, only if 3D/pitch is needed.)
+8. **Audio is solved (Route A) — DELIVERED.** The seam is the real `SoundSystem`→XACT bridge (`Audio.reference` + the `XactAudio` companion) over the shipped `sounds.xwb`/`music.xwb` banks; the paulscode `CodecJOrbis`/OGG stubs stay no-op. The generated `SoundManager` reaches the bridge via the **`sound_fix.py` generator pass**, which drops the empty-console-OGG-pool guard so SFX route to the XACT cue (`sfx-bypass`) and the music playlist starts (`music-bypass`) — replacing the old per-game `SoundManager` override. (Route B = real OGG decoder, only if 3D/pitch is needed.)
 
 9. **Random divergence:** old `Common.h` used a non-Java 64-bit LCG; the new runtime uses the faithful Java 48-bit LCG. The new one is *correct* (same seed → same world as PC Alpha), but worlds differ from the old port. Intended.
 

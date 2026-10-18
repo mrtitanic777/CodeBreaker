@@ -410,7 +410,7 @@ stubs; counts are usages across `J2CTool/`).
 | `glEnable(GL_LIGHTING)`, `glLight*`, `glColorMaterial`, `glNormal3f`, `glShadeModel`, `glEnable(GL_COLOR_MATERIAL)` | **no-op** (lighting baked into vertex color) | `RenderHelper.cpp:20-48`, `Tesselator.cpp:112` |
 | `glNewList/glEndList/glCallList/glGenLists/glDeleteLists` | display lists: simplest = no-op (re-tessellate each frame) or record+replay a `DrawPrimitiveUP` buffer | NEW FontRenderer/WorldRenderer callers |
 | `glPolygonOffset` + `GL_POLYGON_OFFSET_FILL` | `D3DRS_DEPTHBIAS` / `SLOPESCALEDEPTHBIAS` | (selection box) |
-| `glLineWidth` | no D3D9 equivalent; ignore (lines rare) | — |
+| `glLineWidth` | no-op (D3D9 lines are 1px) — BUT `GL_LINES`/`GL_LINE_STRIP`/`GL_LINE_LOOP` **are drawn** as real `D3DPT_LINELIST`/`LINESTRIP` (see Delivered §, `line-primitives`) | block-selection wireframe |
 | `glReadPixels` | `GetRenderTargetData` + lock (screenshots; can stub) | — |
 | `glGetString(GL_VENDOR/RENDERER/VERSION)` | return constant strings | stub returns "" |
 | `glGetError` | return `0` (`D3D_OK`) | stub |
@@ -422,6 +422,38 @@ GL-call surface to implement: **~52 distinct `GL11` functions** in use, **+1 `GL
 **+2 `GLU` funcs** (`gluPerspective`, `gluErrorString`). The 5 highest-frequency are
 `glEnable`/`glDisable` (55 each), `glRotatef` (25), `glBindTexture` (25), `glTranslatef` (24),
 `glColor4f` (24).
+
+---
+
+## DELIVERED (2026-08-20) — behaviors now live in `docs/platform/reference/GL11.reference.cpp`
+
+The plan below is historical; the GL→D3D9 emulator is delivered as `GL11.reference.cpp` (batched display
+lists baked to static VBs; one built-in VS/PS). The full fix list is the `reference` section of
+`BUGFIX_LEDGER.md`; the behavioral fixes harvested from the hand-written Alpha/Beta/Indev ports:
+
+- **`line-primitives`** — `GL_LINES`/`GL_LINE_STRIP`/`GL_LINE_LOOP` draw as real `D3DPT_LINELIST`/`LINESTRIP`
+  (the triangle gather would expand them to zero tris). This is what makes the **block-selection wireframe**
+  visible. Supersedes the "lines rare, ignore" mapping row above.
+- **`item-world-brightness`** — `glColor` is fed in as a GLOBAL pixel-shader tint multiplying per-vertex
+  colour arrays, so dropped/held items and entity meshes dim with block-light instead of rendering
+  full-bright. (Terrain/GUI use white `glColor`, so unaffected.) Refines the "lighting is no-op / glColor is
+  just current color" rows.
+- **`alpha-test-ref`** — the cutout threshold defaults to 0.5 (leaves/glass/saplings/sprites/item icons), so a
+  renderer that enables the test without a `glAlphaFunc` gets a clean cutout instead of `clip(a-0)` = none.
+  As in GL, the reference is independent state: `glEnable`/`glDisable(GL_ALPHA_TEST)` never reset it, so a
+  `glAlphaFunc(GL_GREATER, 0.1F)` survives later toggles.
+- **`fog-textured-only`** — fog is gated to TEXTURED geometry (the hand-port's untextured shader has no fog
+  term), so sky dome / sunset / selection lines don't tint toward the fog colour.
+- **`color-clamp`** — `glColor` channels CLAMP into range (not `& 255` wrap), so an over-range value
+  saturates instead of wrapping to transparent/near-black.
+- **`runaway-vertex-count`** — `glDrawArrays` skips + logs a count > 1,048,576 (a corrupted vertexCount, the
+  chest/TileEntity path) instead of `reserve()`-ing hundreds of MB → `bad_alloc`. See Known-bug #2 below.
+- Plus already-landed: `viewport-y-flip`, `crack-overlay-zfight` (polygon offset), `tex-endian-byte-read` /
+  `color-endian-int-read` (big-endian byte/packed-int reads), the font display-list live-texture/live-colour
+  replay (`ownsTex`/`inheritColor`), CW cull winding, and `glInit` explicit `ALPHABLENDENABLE=FALSE`.
+
+NOTE (mipmaps): the terrain atlas mip chain is deliberately NOT ported to the memory-upload path — see the
+`_uploadRGBA` note in `GL11.reference.cpp` (needs an isAtlas+tileSize hint to avoid cross-tile bleed).
 
 ---
 
@@ -449,8 +481,8 @@ verbatim — they already work.
   (Java packs `0xAABBGGRR`), choose `Shaders::useTexturedShader()`/`useUntexturedShader()` from
   `texEnabled`, `Shaders::updateShaderConstants()` (after pushing `world=mvTop`, `proj=projTop`),
   `DrawPrimitiveUP(D3DPT_TRIANGLELIST, count/3, …)`. (Alpha's Tessellator already expands quads to
-  tris, so `GL_TRIANGLES` is the only mode seen; handle `GL_TRIANGLE_FAN`/`GL_LINE_STRIP` if a
-  hand path needs them.)
+  tris; `GL_TRIANGLE_FAN`/`STRIP`/`POLYGON` are handled, and `GL_LINES`/`LINE_STRIP`/`LINE_LOOP` now
+  draw as real D3D lines — see Delivered §, `line-primitives`.)
 - `glBegin/glVertex3f/glColor*/glTexCoord2f/glEnd` accumulator — for any hand override that still
   builds geometry directly. `glEnd` flushes exactly like the OLD `Tesselator::flush`
   (`Tesselator.cpp:38-86`), including the quad→tri winding swap.

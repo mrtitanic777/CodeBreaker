@@ -105,6 +105,18 @@ namespace Input {
 	bool navDown();
 	bool navLeft();
 	bool navRight();
+
+	// Controller MENU navigation core (edition-agnostic). GuiScreen's injected handleControllerMenuNav()
+	// passes the current screen's button rectangles (GUI-scaled) + enabled flags; this CONSUMES the latched
+	// nav edges (navUp/... above) and returns the new selected button index via 2D-spatial nav (nearest
+	// button in the pressed direction, up/down wrap within a column). Pure geometry -- no game types -- so it
+	// lives in the reference and every edition's injected adapter calls it. `cur` = current selection
+	// (-1 = none yet -> first enabled). Then menuSnapCursor() puts the virtual cursor on the chosen button so
+	// the game's own hover-highlight + A-as-click land on it. This is the console menu-nav contract; the
+	// adapter is emitted by j2ctool (controller_nav.py) so it can never be forgotten per-project again.
+	int  menuNavSelect(const int* bx, const int* by, const int* bw, const int* bh,
+	                   const unsigned char* enabled, int n, int cur);
+	void menuSnapCursor(int centerX, int centerY, int guiW, int guiH, int dispW, int dispH);
 }
 
 // ---------------------------------------------------------------------------

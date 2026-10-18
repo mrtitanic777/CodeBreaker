@@ -22,6 +22,10 @@ class File {
 public:
 	std::string path;                 // the real filesystem path (game:\... or Save:\...); read by streams/RAF
 
+	// java.io.File.separator: the platform path separator. "\\" on the 360 (matches _norm(), which
+	// rewrites '/' -> '\'). Non-integral static -> declared here, DEFINED once in FileIO.reference.cpp.
+	static JavaString s_separator;
+
 	// Join parent+child into a single 360 path: '/' -> '\', collapse the separator, drop a trailing one
 	// ("resources/" -> "resources") so FindFirstFile / CreateFile see a clean path.
 	void _join(const std::string& parent, const std::string& child) {

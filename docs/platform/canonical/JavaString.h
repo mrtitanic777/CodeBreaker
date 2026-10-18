@@ -12,6 +12,15 @@ public:
 	JavaString() {}
 	JavaString(const char* s) : std::string(s ? s : "") {}
 	JavaString(const std::string& s) : std::string(s) {}
+	// new String(byte[] [,charset]) / new String(byte[], off, len [,charset]): build from a byte array
+	// (NBT keys, packet strings). Charset is ignored -- the game's text is UTF-8/ASCII and the bytes copy
+	// verbatim. Trailing `const char* = 0` swallows the "UTF-8" argument without a separate overload.
+	JavaString(const JArray<unsigned char>& b, const char* = 0) {
+		for (int i = 0; i < b.length; ++i) push_back((char)b[i]);
+	}
+	JavaString(const JArray<unsigned char>& b, int off, int len, const char* = 0) {
+		for (int i = 0; i < len; ++i) push_back((char)b[off + i]);
+	}
 
 	int length() const { return (int)size(); }
 	char charAt(int i) const { return (*this)[(size_type)i]; }
@@ -66,8 +75,30 @@ public:
 	}
 	JavaString concat(const std::string& s) const { return JavaString(*this + s); }
 	JavaString intern() const { return *this; }
-	const char* toCharArray() const { return c_str(); }              // PORT: read-only view
-	unsigned char* getBytes(...) const { return (unsigned char*)c_str(); }   // PORT: read-only view; ignores charset
+	// Copy-out buffers for toCharArray/getBytes. JArray is NON-owning (shallow copy, no destructor), so a
+	// fresh `new T[n]` per call leaked every call -- fatal for per-frame callers (FontRenderer). Instead the
+	// copy lands in a bounded ring of owned slots: a slot is freed when the ring wraps, so memory stays
+	// bounded at _RING slots. Java's copy semantics hold (each call gets its own buffer); a result retained
+	// across more than _RING later calls would dangle -- callers iterate locally, so the ring is generous.
+	// Each buffer carries a trailing NUL so a site that still treats the result as a C string stays safe.
+	// Not thread-safe: string-to-array copies run on the game thread only.
+	enum { _RING = 256 };
+	template<class T> static JArray<T> _copyOut(const std::string& s) {
+		static T* ring[_RING];                       // zero-initialized (static storage)
+		static int next = 0;
+		int slot = next; next = (next + 1) % _RING;
+		delete[] ring[slot];
+		int n = (int)s.size();
+		ring[slot] = new T[n + 1]();
+		for (int i = 0; i < n; ++i) ring[slot][i] = (T)s[(size_type)i];
+		return JArray<T>(ring[slot], n);
+	}
+	// java.lang.String.toCharArray() -> char[] (JArray<char>), a COPY -- matches Java's return type so
+	// `char[] c = s.toCharArray()` (FontRenderer glyph iteration) assigns and `c.length`/`c[i]` work.
+	JArray<char> toCharArray() const { return _copyOut<char>(*this); }
+	// java.lang.String.getBytes([charset]) -> a COPY of the bytes as byte[] (JArray<unsigned char>),
+	// matching Java's return type so `byte[] b = s.getBytes("UTF-8")` (NBT/packets) assigns + `b.length`.
+	JArray<unsigned char> getBytes(...) const { return _copyOut<unsigned char>(*this); }
 	JavaString replaceAll(const std::string&, const std::string&) const { return *this; }  // PORT: no regex
 	// String.split: splits on a LITERAL delimiter (regex not ported). Returns a JArray.
 	JArray<JavaString> split(const std::string& delim) const {

@@ -23,6 +23,12 @@ public:
 	void setSeed(long long s) { seed = (s ^ 0x5DEECE66DLL) & ((1LL << 48) - 1); }
 	int nextInt() { return next(32); }
 	int nextInt(int bound) {
+		// J2X-BUGFIX nextint-nonpositive: Java throws IllegalArgumentException for bound <= 0; on console a
+		// throw-that-isn't-caught is worse than a defined result, and a NEGATIVE bound makes the rejection
+		// loop below (`bits - val + (bound-1) < 0`) NEVER terminate -> a hard hang. Guard it: return 0. This
+		// also defuses the empty-collection idiom `x.get(rand.nextInt(x.size()))` when a converted x.size()
+		// comes back as garbage/negative from a defaulted map value (see SoundPool.getRandomSound* / sound_fix).
+		if (bound <= 0) return 0;
 		if ((bound & -bound) == bound) return (int)(((long long)bound * (long long)next(31)) >> 31);
 		int bits, val;
 		do { bits = next(31); val = bits % bound; } while (bits - val + (bound - 1) < 0);

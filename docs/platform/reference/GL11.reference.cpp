@@ -46,7 +46,19 @@ static IDirect3DDevice9* g_dev = 0;
 static IDirect3DVertexShader9* g_vs = 0;
 static IDirect3DPixelShader9*  g_ps = 0;
 
-void glSetDevice(IDirect3DDevice9* dev) { g_dev = dev; }
+static int g_fbH = 720;   // backbuffer height, for the GL(bottom-origin)->D3D(top-origin) viewport Y-flip
+// Read the REAL backbuffer height from the device (once, at hand-off). It used to be captured from any
+// glViewport(0,0,w,h), so a render-to-texture/sub-viewport like (0,0,256,256) shrank it and a later viewport
+// with y+h > 256 produced a negative Y that wrapped in the unsigned D3DVIEWPORT9::Y.
+void glSetDevice(IDirect3DDevice9* dev) {
+	g_dev = dev;
+	IDirect3DSurface9* bb = 0;
+	if (dev && SUCCEEDED(dev->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &bb)) && bb) {
+		D3DSURFACE_DESC d;
+		if (SUCCEEDED(bb->GetDesc(&d)) && d.Height > 0) g_fbH = (int)d.Height;
+		bb->Release();
+	}
+}
 IDirect3DDevice9* device() { return g_dev; }
 
 // --------------------------------------------------------------------------- stream-source binding
@@ -99,16 +111,24 @@ static D3DXMATRIX toXM(FloatBuffer* m) {
 
 // --------------------------------------------------------------------------- current attributes
 static float g_cr = 1, g_cg = 1, g_cb = 1, g_ca = 1;     // current color (0..1)
+static float g_modR = 1, g_modG = 1, g_modB = 1, g_modA = 1;  // PS gCol: white except while replaying a colourless (font) display list
 static float g_tu = 0, g_tv = 0;                          // current texcoord
+static int   _clamp255(float x) { int i = (int)(x * 255.0f + 0.5f); return i < 0 ? 0 : (i > 255 ? 255 : i); }
+static float _clampf(float x)   { return x < 0.0f ? 0.0f : (x > 1.0f ? 1.0f : x); }
 static D3DCOLOR curColor() {
-	int a = (int)(g_ca * 255.0f + 0.5f), r = (int)(g_cr * 255.0f + 0.5f),
-	    g = (int)(g_cg * 255.0f + 0.5f), b = (int)(g_cb * 255.0f + 0.5f);
-	return D3DCOLOR_ARGB(a & 255, r & 255, g & 255, b & 255);
+	// J2X-BUGFIX color-clamp: CLAMP each channel into [0,255]; do NOT `& 255` (which WRAPS -- an alpha of
+	// 1.001 -> 256 -> &255 = 0 = fully transparent, an over-bright channel wraps to near-black). Matches the
+	// hand-port's per-channel clamp in glColor4f.
+	return D3DCOLOR_ARGB(_clamp255(g_ca), _clamp255(g_cr), _clamp255(g_cg), _clamp255(g_cb));
 }
 
 // --------------------------------------------------------------------------- render-state mirror
 static bool g_texEnabled = false, g_blend = false, g_depth = true, g_cull = false, g_alphaTest = false, g_fog = false;
-static float g_alphaRef = 0.0f;
+// J2X-BUGFIX alpha-test-ref: the port's default cutout threshold is 0.5 (the hand-port's value), so a renderer
+// that enables GL_ALPHA_TEST WITHOUT a glAlphaFunc gets a clean cutout (leaves/glass/saplings/sprites/item icons)
+// instead of clip(a-0) discarding nothing. Like GL, the reference is state of its OWN: glEnable/glDisable never
+// touch it, so a glAlphaFunc(GL_GREATER, 0.1F) survives later toggles (resetting it eroded particles/sprites).
+static float g_alphaRef = 0.5f;
 static float g_clearR = 0, g_clearG = 0, g_clearB = 0, g_clearA = 1; static float g_clearDepth = 1.0f;
 static D3DVIEWPORT9 g_vp = { 0, 0, 640, 480, 0.0f, 1.0f };
 static float g_fogStart = 0, g_fogEnd = 1, g_fogDensity = 1.0f; static int g_fogMode = GL_EXP; static D3DCOLOR g_fogColor = 0;
@@ -150,9 +170,22 @@ struct GLBatch {
 	IDirect3DVertexBuffer9* vb;
 	int triCount;
 	int tex; bool texEnabled;
-	GLBatch() : vb(0), triCount(0), tex(0), texEnabled(false) {}
+	bool inheritColor;   // recorded with NO explicit vertex-colour array (font glyphs) -> tint by current glColor at glCallList; verts baked white
+	GLBatch() : vb(0), triCount(0), tex(0), texEnabled(false), inheritColor(false) {}
 };
-struct GLList { std::vector<GLBatch> batches; bool used; GLList() : used(false) {} };
+// `xform` = the NET modelview delta applied by matrix ops (glTranslatef/glRotatef/glScalef) recorded
+// INSIDE this list. Real GL records matrix ops into the list and replays them; this layer records
+// geometry-only, so it captures the net delta at glEndList and re-applies it at glCallList. The one
+// caller that needs it is FontRenderer: each glyph list ends with glTranslatef(charWidth,0,0) as the
+// pen advance, and it draws whole strings via glCallLists -- without replaying that translate every
+// glyph stacks at x=0 (one white blob per string). Identity for geometry-only lists (terrain chunks),
+// so hasXform stays false there and glCallList is unchanged.
+struct GLList {
+	std::vector<GLBatch> batches; bool used;
+	D3DXMATRIX xform; bool hasXform;
+	bool ownsTex;   // [font-fix] did this list call glBindTexture DURING recording? If not it's texture-agnostic
+	GLList() : used(false), hasXform(false), ownsTex(false) { D3DXMatrixIdentity(&xform); }
+};
 
 static void _freeBatchVBs(GLList& L) {
 	// Un-bind stream 0 FIRST: one of these buffers is very likely the currently-set stream (the list was
@@ -164,6 +197,7 @@ static void _freeBatchVBs(GLList& L) {
 }
 static std::vector<GLList> g_lists;      // index by list id (0 reserved)
 static int g_recordingList = 0;          // != 0 while inside glNewList/glEndList
+static D3DXMATRIX g_recordBaseMV;        // modelview snapshot at glNewList; glEndList records the net delta since
 // [J2X-PERF terrain-load] Display lists whose batches still need a GPU vertex buffer. glEndList only STAGES
 // the geometry (CPU-side); the actual CreateVertexBuffer happens once per frame in _pumpPendingVBs, inside a
 // SINGLE EndScene/BeginScene window. The 360 backend only requires creates to be out-of-scene, not one scene
@@ -198,12 +232,17 @@ static const char* kPS =
 	"float4 gCtl : register(c0);\n"   // x=useTex, y=alphaTest, z=alphaRef, w=fogEnable
 	"float4 gFog : register(c1);\n"   // x=start, y=end
 	"float4 gFogC: register(c2);\n"
+	"float4 gCol : register(c3);\n"   // glColor modulation: white(1,1,1,1) for coloured geometry; the string colour for FontRenderer's COLOURLESS glyph lists (baked white -> tinted here), reproducing GL's "colourless vertex inherits current glColor"
 	"sampler2D s0 : register(s0);\n"
 	"float4 main(float4 c:COLOR0, float2 t:TEXCOORD0, float fz:TEXCOORD1):COLOR{\n"
-	"  float4 o = c;\n"
+	"  float4 o = c * gCol;\n"
 	"  if (gCtl.x > 0.5) o *= tex2D(s0, t);\n"
 	"  if (gCtl.y > 0.5) clip(o.a - gCtl.z);\n"   // alpha test: discard where o.a < ref
-	"  if (gCtl.w > 0.5){ float f = (gFog.w > 0.5) ? saturate(exp(-gFog.z * fz)) : saturate((gFog.y - fz)/(gFog.y-gFog.x)); o.rgb = lerp(gFogC.rgb, o.rgb, f); }\n"
+	// J2X-BUGFIX fog-textured-only: fog applies ONLY to TEXTURED geometry (gCtl.x). The hand-port routes
+	// textured/untextured through SEPARATE pixel shaders and the untextured one has NO fog term, so untextured
+	// colour geometry (sky dome, sunset/void colours, selection/debug lines, some particles) is never fogged.
+	// Gating on useTex here reproduces that -- without it those elements get tinted toward the fog colour.
+	"  if (gCtl.w > 0.5 && gCtl.x > 0.5){ float f = (gFog.w > 0.5) ? saturate(exp(-gFog.z * fz)) : saturate((gFog.y - fz)/(gFog.y-gFog.x)); o.rgb = lerp(gFogC.rgb, o.rgb, f); }\n"
 	"  return o;\n"
 	"}\n";
 
@@ -270,9 +309,11 @@ static void _uploadControl() {
 	float fog[4] = { g_fogStart, g_fogEnd, g_fogDensity, (g_fogMode == GL_EXP || g_fogMode == 0x0801) ? 1.0f : 0.0f };
 	float fogc[4] = { ((g_fogColor >> 16) & 255) / 255.0f, ((g_fogColor >> 8) & 255) / 255.0f,
 	                  (g_fogColor & 255) / 255.0f, 1.0f };
+	float col[4] = { g_modR, g_modG, g_modB, g_modA };
 	g_dev->SetPixelShaderConstantF(0, ctl, 1);
 	g_dev->SetPixelShaderConstantF(1, fog, 1);
 	g_dev->SetPixelShaderConstantF(2, fogc, 1);
+	g_dev->SetPixelShaderConstantF(3, col, 1);   // gCol modulation (white for normal geometry)
 }
 
 // =========================================================================== lifecycle
@@ -289,6 +330,10 @@ void glInit() {
 		// does not exist in the XDK. Lighting is off by construction (the shader does color*texture).
 		g_dev->SetRenderState(D3DRS_ZENABLE, TRUE);
 		g_dev->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
+		// GL starts with blending DISABLED (g_blend=false). D3D9's device default for ALPHABLENDENABLE is also
+		// FALSE, but sync it explicitly so a device reset/re-init that left a stale enable can't leak blending
+		// onto the first opaque draws. Matches the hand-port's glInit. [J2X parity]
+		g_dev->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
 	}
 	// [J2X-PERF state-cache] invalidate the redundant-state cache: the device is (re)bound, so the next
 	// draw must re-apply shader/decl/texture/matrix once before the filtering kicks in.
@@ -330,7 +375,12 @@ void glFrustum(double l, double r, double b, double t, double n, double f) {
 	D3DXMATRIX& tp = top(curStack()); tp = m * tp;
 }
 void glViewport(int x, int y, int w, int h) {
-	g_vp.X = x; g_vp.Y = y; g_vp.Width = w; g_vp.Height = h; g_vp.MinZ = 0.0f; g_vp.MaxZ = 1.0f;
+	// J2X-BUGFIX viewport-y-flip: GL viewport origin is BOTTOM-left, D3D is TOP-left -> flip Y. Without this a
+	// GL top-strip viewport (y = H-h, e.g. GuiMainMenu's 3D block logo drawn into the top strip) lands in the
+	// BOTTOM/middle strip. Full-screen (0,0,W,H) is unaffected (Y stays 0). Matches the hand-port's glViewport.
+	int fy = g_fbH - y - h;
+	if (fy < 0) fy = 0;   // never hand D3D a wrapped (huge unsigned) Y
+	g_vp.X = x; g_vp.Y = fy; g_vp.Width = w; g_vp.Height = h; g_vp.MinZ = 0.0f; g_vp.MaxZ = 1.0f;
 	if (g_dev) g_dev->SetViewport(&g_vp);
 }
 void glLoadProjection(const D3DXMATRIX& m) { _flushEntityBatch(); g_matMode = GL_PROJECTION; top(g_proj) = m; }
@@ -359,8 +409,11 @@ void glVertex3f(float x, float y, float z) {
 }
 void glVertex2f(float x, float y) { glVertex3f(x, y, 0.0f); }
 void glTexCoord2f(float u, float v) { g_tu = u; g_tv = v; }
-void glColor3f(float r, float g, float b) { g_cr = r; g_cg = g; g_cb = b; g_ca = 1.0f; }
-void glColor4f(float r, float g, float b, float a) { g_cr = r; g_cg = g; g_cb = b; g_ca = a; }
+// J2X-BUGFIX color-clamp: clamp each channel into [0,1] at set time, exactly like the hand-port's glColor4f.
+// These floats feed BOTH the baked vertex colour (curColor) AND the gCol pixel-shader tint, so an out-of-range
+// value must not wrap or over-brighten either path.
+void glColor3f(float r, float g, float b) { g_cr = _clampf(r); g_cg = _clampf(g); g_cb = _clampf(b); g_ca = 1.0f; }
+void glColor4f(float r, float g, float b, float a) { g_cr = _clampf(r); g_cg = _clampf(g); g_cb = _clampf(b); g_ca = _clampf(a); }
 void glColor4ub(unsigned char r, unsigned char g, unsigned char b, unsigned char a) {
 	g_cr = r / 255.0f; g_cg = g / 255.0f; g_cb = b / 255.0f; g_ca = a / 255.0f;
 }
@@ -373,6 +426,9 @@ static void _gatherTris(int mode, const GLVert* v, int n, std::vector<GLVert>& t
 			tri.push_back(v[i]); tri.push_back(v[i+1]); tri.push_back(v[i+2]);
 			tri.push_back(v[i]); tri.push_back(v[i+2]); tri.push_back(v[i+3]);
 		}
+		// [defensive] a trailing 3-vertex remainder (vertexCount % 4 == 3) is one lone triangle -- emit it,
+		// matching the hand-port's Tesselator. MC's Tessellator normally emits multiples of 4, so this is rare.
+		if ((n & 3) == 3) { int i = n - 3; tri.push_back(v[i]); tri.push_back(v[i+1]); tri.push_back(v[i+2]); }
 	} else if (mode == GL_TRIANGLES) {
 		for (int i = 0; i + 2 < n; i += 3) { tri.push_back(v[i]); tri.push_back(v[i+1]); tri.push_back(v[i+2]); }
 	} else if (mode == GL_TRIANGLE_STRIP) {
@@ -404,7 +460,14 @@ static void _applyDrawState() {
 			D3DTEXTUREFILTERTYPE mag = (mg == GL_LINEAR) ? D3DTEXF_LINEAR : D3DTEXF_POINT;
 			g_dev->SetSamplerState(0, D3DSAMP_MAGFILTER, mag);
 			g_dev->SetSamplerState(0, D3DSAMP_MINFILTER, mag);
-			g_dev->SetSamplerState(0, D3DSAMP_MIPFILTER, D3DTEXF_NONE);   // no mip chain (matches the hand-port)
+			// MIPFILTER=NONE because this memory-upload path builds 1-level textures (see _uploadRGBA). NOTE:
+			// this does NOT match the hand-port, which DOES ship a 3-level terrain mip chain + MIPFILTER=LINEAR.
+			// The hand-port identifies the terrain atlas by FILENAME ("terrain.png") and either loads pre-baked
+			// per-tile mip PNGs or runs an atlas-AWARE (per-16px-tile) downsample -- both avoid the cross-tile
+			// colour bleed a naive whole-atlas mip causes. glTexImage2D here has no filename/atlas hint, and
+			// terrain/gui/items are all 256x256, so a safe port needs an atlas tag threaded in first (see the
+			// _uploadRGBA NOTE). Until then, no mips (distant terrain shimmers slightly; no regression).
+			g_dev->SetSamplerState(0, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
 			g_lastMag = mg;
 		}
 	}
@@ -416,6 +479,27 @@ static void _drawTris(const std::vector<GLVert>& tri) {
 	if (!g_dev || !g_vs || tri.empty()) return;
 	_applyDrawState();
 	g_dev->DrawPrimitiveUP(D3DPT_TRIANGLELIST, (UINT)(tri.size() / 3), &tri[0], sizeof(GLVert));
+}
+
+// J2X-BUGFIX line-primitives: draw GL line runs directly as D3D lines. GL lines CANNOT go through the
+// triangle gather -- _gatherTris expands them to ZERO triangles, so the block-selection wireframe (the
+// black outline around the targeted block, drawn by RenderGlobal::drawSelectionBox in ALL three games via
+// GL_LINE_STRIP + GL_LINES) rendered nothing. Emit the CLEAN primitive: a real D3DPT_LINESTRIP for a strip
+// (NOT the pairwise-LINELIST approximation the Beta hand-port used), a closed strip for a loop, and a
+// LINELIST for disjoint pairs. Immediate only -- the sole caller draws per frame, never into a display
+// list or the entity batch. Verts already carry their baked vertex colour (the selection box has no colour
+// array), and g_mod stays white here (this runs before the colour-array tint path), so colour is correct.
+static void _drawLines(int mode, const GLVert* v, int n) {
+	if (!g_dev || !g_vs || n < 2) return;
+	_applyDrawState();
+	if (mode == GL_LINE_STRIP) {
+		g_dev->DrawPrimitiveUP(D3DPT_LINESTRIP, (UINT)(n - 1), v, sizeof(GLVert));
+	} else if (mode == GL_LINE_LOOP) {
+		std::vector<GLVert> loop(v, v + n); loop.push_back(v[0]);   // close the ring back to vertex 0
+		g_dev->DrawPrimitiveUP(D3DPT_LINESTRIP, (UINT)n, &loop[0], sizeof(GLVert));
+	} else {   // GL_LINES: disjoint segment pairs
+		g_dev->DrawPrimitiveUP(D3DPT_LINELIST, (UINT)(n / 2), v, sizeof(GLVert));
+	}
 }
 
 // [J2X-PERF entity-batch] Draw the accumulated (view-space) immediate geometry in ONE call. Called before
@@ -440,6 +524,13 @@ static void _flushEntityBatch() {
 // terrain that is recorded into lists) passes FALSE so it keeps its proven full-WVP direct draw untouched.
 static void _drawGather(int mode, const GLVert* v, int n, bool allowBatch) {
 	if (n <= 0) return;
+	// [line-fix] line primitives can't triangulate -- draw them directly as D3D lines and return. Immediate
+	// only: the block-selection wireframe is drawn per frame, never recorded into a list or entity-batched.
+	if (mode == GL_LINES || mode == GL_LINE_STRIP || mode == GL_LINE_LOOP) {
+		_flushEntityBatch();   // keep draw order: flush any pending entity batch before the overlay lines
+		_drawLines(mode, v, n);
+		return;
+	}
 	std::vector<GLVert> tri;
 	_gatherTris(mode, v, n, tri);
 	if (tri.empty()) return;
@@ -447,10 +538,29 @@ static void _drawGather(int mode, const GLVert* v, int n, bool allowBatch) {
 		GLBatch b;                                   // capture geometry AND the current texture binding
 		b.tris.swap(tri);
 		b.tex = g_boundTex; b.texEnabled = g_texEnabled;
+		// A list drawn with NO explicit vertex-colour array (FontRenderer's glyphs: Tessellator quads with
+		// no setColor) must inherit the glColor set at glCallList time -- real GL applies the current colour
+		// to a colourless vertex. Baking record-time curColor() instead is why every glyph came out white
+		// (glColor ignored -> shadow==main == the "doubled" text, and yellow splash lost). Flag it, bake the
+		// verts WHITE, and tint via the gCol PS constant at replay (glCallList). Only the direct/Tessellator
+		// record path (allowBatch==false) qualifies; immediate glBegin verts keep their baked colour.
+		b.inheritColor = !allowBatch && !g_vaColor;
+		if (b.inheritColor)
+			for (size_t k = 0; k < b.tris.size(); ++k) b.tris[k].color = D3DCOLOR_ARGB(255, 255, 255, 255);
 		g_lists[g_recordingList].batches.push_back(b);   // matrix applied at glCallList; texture replayed too
 		return;
 	}
-	if (!allowBatch) { _drawTris(tri); return; }   // [J2X-PERF] non-entity immediate geometry: draw as before
+	if (!allowBatch) {
+		// J2X-BUGFIX item-world-brightness: a direct draw carrying a per-vertex COLOUR ARRAY (g_vaColor:
+		// dropped items, held items, entity meshes) drops glColor's block-light multiplier unless glColor is
+		// fed in as a GLOBAL tint (final = texel * vertexColour * glColor) -- otherwise they render FULL-BRIGHT
+		// and never darken at night / in caves / in shadow. No-colour-array draws already bake curColor() into
+		// the verts, so the tint stays white there. Matches the hand-port's issueDraw (stampColor==false).
+		if (g_vaColor) { g_modR = g_cr; g_modG = g_cg; g_modB = g_cb; g_modA = g_ca; }
+		_drawTris(tri);   // [J2X-PERF] non-entity immediate geometry: draw as before
+		if (g_vaColor) { g_modR = g_modG = g_modB = g_modA = 1.0f; }
+		return;
+	}
 	// Entity immediate mode: bake the current modelview into the verts (-> VIEW space) so this run can share ONE
 	// batched draw with the other entity cubes (which each have a different per-body-part matrix). The batch
 	// is flushed with a projection-only matrix; matrix changes between glEnds are absorbed by this bake.
@@ -476,6 +586,19 @@ void glEnd() {
 
 // =========================================================================== render state
 static void _rs(DWORD s, DWORD v) { if (g_dev) g_dev->SetRenderState((D3DRENDERSTATETYPE)s, v); }
+
+// Polygon offset -- block-break crack overlay depth bias. glPolygonOffset was a no-op stub, so the mining crack
+// rendered coplanar with the block face and z-fought (flicker). Map GL polygon offset to the 360 D3D9 depth-bias
+// render states: SLOPESCALEDEPTHBIAS = GL factor, DEPTHBIAS = GL units in depth-buffer LSBs (D24 -> 1/2^24 each).
+static bool  s_polyOffFill   = false;
+static float s_polyOffFactor = 0.0f;
+static float s_polyOffUnits  = 0.0f;
+static void _applyPolyOffset() {
+	float slope = s_polyOffFill ? s_polyOffFactor : 0.0f;
+	float bias  = s_polyOffFill ? (s_polyOffUnits * (1.0f / 16777216.0f)) : 0.0f;
+	_rs(D3DRS_SLOPESCALEDEPTHBIAS, *reinterpret_cast<DWORD*>(&slope));
+	_rs(D3DRS_DEPTHBIAS,           *reinterpret_cast<DWORD*>(&bias));
+}
 static DWORD _blendArg(int f) {
 	switch (f) {
 		case GL_ZERO: return D3DBLEND_ZERO; case GL_ONE: return D3DBLEND_ONE;
@@ -492,8 +615,9 @@ void glEnable(int cap) {
 		case GL_BLEND: g_blend = true; _rs(D3DRS_ALPHABLENDENABLE, TRUE); break;
 		case GL_DEPTH_TEST: g_depth = true; _rs(D3DRS_ZENABLE, TRUE); break;
 		case GL_CULL_FACE: g_cull = true; _rs(D3DRS_CULLMODE, D3DCULL_CW); break;   // CW: GL RH front-face -> D3D LH is CW. Was CCW = culled the visible faces (missing ground). Matches the working hand-port.
-		case GL_ALPHA_TEST: g_alphaTest = true; break;
+		case GL_ALPHA_TEST: g_alphaTest = true; break;   // ref stays whatever glAlphaFunc set (see g_alphaRef)
 		case GL_FOG: g_fog = true; break;
+		case GL_POLYGON_OFFSET_FILL: s_polyOffFill = true; _applyPolyOffset(); break;
 		default: break;
 	}
 }
@@ -504,8 +628,9 @@ void glDisable(int cap) {
 		case GL_BLEND: g_blend = false; _rs(D3DRS_ALPHABLENDENABLE, FALSE); break;
 		case GL_DEPTH_TEST: g_depth = false; _rs(D3DRS_ZENABLE, FALSE); break;
 		case GL_CULL_FACE: g_cull = false; _rs(D3DRS_CULLMODE, D3DCULL_NONE); break;
-		case GL_ALPHA_TEST: g_alphaTest = false; break;
+		case GL_ALPHA_TEST: g_alphaTest = false; break;   // keep all texels; the shader gates on g_alphaTest
 		case GL_FOG: g_fog = false; break;
+		case GL_POLYGON_OFFSET_FILL: s_polyOffFill = false; _applyPolyOffset(); break;
 		default: break;
 	}
 }
@@ -539,7 +664,10 @@ void glClear(int mask) {
 	g_dev->Clear(0, 0, flags, c, g_clearDepth, 0);
 }
 void glHint(int, int) {}
-void glPolygonOffset(float, float) { /* HARDWARE-VERIFY: map to D3DRS_DEPTHBIAS if z-fighting appears */ }
+void glPolygonOffset(float factor, float units) {   // FIXED BUG crack-overlay-zfight: real D3D9 depth bias (was a no-op stub -> mining crack z-fought the block face)
+	s_polyOffFactor = factor; s_polyOffUnits = units;
+	if (s_polyOffFill) _applyPolyOffset();
+}
 void glLineWidth(float) {}
 void glColorMaterial(int, int) {}
 
@@ -575,7 +703,7 @@ void glDeleteTextures(IntBuffer* buf) {
 	if (!buf) return;
 	for (int i = buf->position(); i < buf->limit(); ++i) glDeleteTextures(buf->get(i));
 }
-void glBindTexture(int, int id) { if (id != g_boundTex) _flushEntityBatch(); g_boundTex = id; }   // [J2X-PERF] texture change ends a batch
+void glBindTexture(int, int id) { if (id != g_boundTex) _flushEntityBatch(); g_boundTex = id; if (g_recordingList > 0 && g_recordingList < (int)g_lists.size()) g_lists[g_recordingList].ownsTex = true; }   // [J2X-PERF] texture change ends a batch; [font-fix] this list now owns its texture
 void glTexParameteri(int, int pname, int param) {
 	GLTex* t = boundTex(); if (!t) return;
 	if (pname == GL_TEXTURE_WRAP_S) t->wrapS = param; else if (pname == GL_TEXTURE_WRAP_T) t->wrapT = param;
@@ -584,17 +712,20 @@ void glTexParameteri(int, int pname, int param) {
 }
 void glTexParameterf(int target, int pname, float param) { glTexParameteri(target, pname, (int)param); }
 
-// Convert a game-supplied texel DWORD to a native D3DCOLOR_ARGB (0xAARRGGBB). The common LWJGL texture
-// idiom packs each pixel as an int (a<<24)|(b<<16)|(g<<8)|r and writes it via IntBuffer.put -- stored
-// NATIVELY, that value reads back as 0xAABBGGRR (ABGR), so we swap R<->B to get ARGB. Endian-independent:
-// it operates on the DWORD VALUE the game wrote, not its byte layout, so it is correct whether the title
-// runs big- or little-endian. (glTexImage2D is nominally GL_RGBA, but the packed-int idiom's little-endian
-// assumption means the real channel order is ABGR -- this was the magenta grass.)
-static inline DWORD _texelToARGB(DWORD abgr) {
-	return (abgr & 0xFF00FF00u) | ((abgr & 0x000000FFu) << 16) | ((abgr & 0x00FF0000u) >> 16);
-}
+// NOTE (tex-endian-byte-read): a DWORD-swizzle helper used to live here to turn the game's texel into ARGB.
+// It was ENDIAN-BROKEN: RenderEngine.setupTexture writes the source as a BYTE ARRAY [R,G,B,A], and reading
+// four bytes as a DWORD depends on endianness (big-endian 360 -> 0xRRGGBBAA, little-endian PC -> 0xAABBGGRR).
+// The correct, portable approach is to read the bytes DIRECTLY (see _uploadRGBA / glTexSubImage2D).
 
-// Upload a texture into a fresh LINEAR texture bound to the current id (see J2X_TEXFMT / _texelToARGB).
+// Upload a texture into a fresh LINEAR texture bound to the current id (see J2X_TEXFMT).
+// NOTE (terrain mips -- DIVERGENCE from the hand-port, deliberately not yet ported): the hand-port gives the
+// terrain atlas a 3-level mip chain so distant terrain stops aliasing (Textures::loadTerrainMipmapped +
+// MipmapGenerator::generateAtlasMipmaps). It can do that because it loads by FILENAME and knows which texture
+// is the 16x16-tile atlas, and it downsamples PER TILE to avoid cross-tile colour bleed. This memory-upload
+// path receives only (w,h,pixels) with no atlas hint, and terrain/gui/items are all 256x256, so it can't tell
+// the atlas apart -- and a naive whole-image mip would bleed neighbouring tiles together. To port it safely,
+// thread an "isAtlas + tileSize" hint from the caller (RenderEngine.setupTexture overlay) into glTexImage2D,
+// then CreateTexture(w,h,3,...) and run the per-tile alpha-weighted box filter here. Left as 1-level for now.
 static void _uploadRGBA(GLTex* t, int w, int h, const unsigned char* rgba) {
 	if (!g_dev || !t || w <= 0 || h <= 0) return;
 	if (t->tex) { t->tex->Release(); t->tex = 0; }
@@ -610,10 +741,14 @@ static void _uploadRGBA(GLTex* t, int w, int h, const unsigned char* rgba) {
 	t->w = w; t->h = h;
 	D3DLOCKED_RECT lr;
 	if (FAILED(t->tex->LockRect(0, &lr, 0, 0))) return;
+	// J2X-BUGFIX tex-endian-byte-read: the source is a BYTE ARRAY [R,G,B,A] (RenderEngine.setupTexture writes it
+	// byte by byte). Reading it as a DWORD + swizzling is ENDIAN-DEPENDENT: on the big-endian 360 those bytes
+	// read back as 0xRRGGBBAA, which the little-endian _texelToARGB mis-swizzled -> r forced to 0xFF = the red
+	// noise. Read the bytes DIRECTLY (endian-independent), matching the working hand-port's copyRGBAtoARGB.
 	for (int y = 0; y < h; ++y) {
 		DWORD* dst = (DWORD*)((unsigned char*)lr.pBits + y * lr.Pitch);
-		const DWORD* s = (const DWORD*)(rgba + y * w * 4);
-		for (int x = 0; x < w; ++x) dst[x] = _texelToARGB(s[x]);
+		const unsigned char* s = rgba + y * w * 4;   // R,G,B,A
+		for (int x = 0; x < w; ++x) dst[x] = D3DCOLOR_ARGB(s[x*4+3], s[x*4+0], s[x*4+1], s[x*4+2]);
 	}
 	t->tex->UnlockRect(0);
 }
@@ -630,10 +765,11 @@ void glTexSubImage2D(int, int, int xoff, int yoff, int w, int h, int, int, ByteB
 	g_dev->SetTexture(0, 0);   // unbind: 360 forbids LockRect on a texture still set in the device
 	D3DLOCKED_RECT lr; RECT rc; rc.left = xoff; rc.top = yoff; rc.right = xoff + w; rc.bottom = yoff + h;
 	if (FAILED(t->tex->LockRect(0, &lr, &rc, 0))) return;
-	const DWORD* src = (const DWORD*)pixels->base();
+	// J2X-BUGFIX tex-endian-byte-read: byte-array [R,G,B,A] source read directly (see _uploadRGBA).
+	const unsigned char* src = (const unsigned char*)pixels->base();
 	for (int y = 0; y < h; ++y) {
 		DWORD* dst = (DWORD*)((unsigned char*)lr.pBits + y * lr.Pitch);
-		for (int x = 0; x < w; ++x) dst[x] = _texelToARGB(src[y * w + x]);
+		for (int x = 0; x < w; ++x) { const unsigned char* p = src + (y * w + x) * 4; dst[x] = D3DCOLOR_ARGB(p[3], p[0], p[1], p[2]); }
 	}
 	t->tex->UnlockRect(0);
 }
@@ -694,6 +830,10 @@ void glNormalPointer(int, int, long long)        { _vboFormUnsupported("glNormal
 static unsigned char _u8(float f) { int i = (int)(f * 255.0f + 0.5f); return (unsigned char)(i < 0 ? 0 : i > 255 ? 255 : i); }
 void glDrawArrays(int mode, int first, int count) {
 	if (count <= 0) return;
+	// J2X-BUGFIX runaway-vertex-count: a legit Tessellator batch is <=~262K verts. A count this huge is a
+	// corrupted/uninitialized vertexCount (the chest/TileEntity render path hit this) -> the reserve() below
+	// would try to allocate hundreds of MB -> bad_alloc/hard crash. Skip + log instead, like the hand-port.
+	if (count > 1048576) { DbgPrintF("[J2X] glDrawArrays: runaway vertexCount %d -- skipped\n", count); return; }
 	std::vector<GLVert> g; g.reserve(count);
 	for (int i = 0; i < count; ++i) {
 		int idx = first + i; GLVert v; v.x = v.y = v.z = 0; v.u = v.v = 0; v.color = curColor();
@@ -709,10 +849,22 @@ void glDrawArrays(int mode, int first, int count) {
 				const float* c = (const float*)(g_cpPtr + idx * g_cpStride);
 				unsigned char a = g_cpSize >= 4 ? _u8(c[3]) : 255;
 				v.color = D3DCOLOR_ARGB(a, _u8(c[0]), _u8(c[1]), _u8(c[2]));
+			} else if (g_cpSize >= 4) {
+				// J2X-BUGFIX color-endian-int-read: the Tessellator packs each vertex colour as a NATIVE
+				// int (setColor: 0xAABBGGRR = a<<24|b<<16|g<<8|r), stores it in an int[] rawBuffer, and
+				// uploads it through IntBuffer::put -- which writes `*(int*)bytes = v` in NATIVE memory
+				// order (see NIOBuffers). glColorPointer(GL_UNSIGNED_BYTE) then reads those 4 bytes. A
+				// POSITIONAL byte read (c[0..3] as R,G,B,A) is endian-dependent: on the big-endian 360 the
+				// bytes are [A,B,G,R], so it rotates opaque alpha (0xFF) into red -> the red menu/dirt
+				// tint. Read the packed int back the SAME way it was written (as an int) and shift-extract
+				// -- endian-neutral, the dual of the byte-array texture read above.
+				const unsigned int packed = *(const unsigned int*)(g_cpPtr + idx * g_cpStride);
+				v.color = D3DCOLOR_ARGB((unsigned char)(packed >> 24), (unsigned char)packed,
+				                        (unsigned char)(packed >> 8), (unsigned char)(packed >> 16));
 			} else {
+				// size-3 byte colour (no packed alpha): positional read is correct here.
 				const unsigned char* c = (const unsigned char*)(g_cpPtr + idx * g_cpStride);
-				unsigned char a = g_cpSize >= 4 ? c[3] : 255;
-				v.color = D3DCOLOR_ARGB(a, c[0], c[1], c[2]);
+				v.color = D3DCOLOR_ARGB(255, c[0], c[1], c[2]);
 			}
 		}
 		g.push_back(v);
@@ -738,6 +890,8 @@ void glNewList(int list, int /*mode*/) {
 	_freeBatchVBs(g_lists[list]);        // releasing the old VBs before re-recording
 	g_recordingList = list;
 	g_lists[list].used = true;
+	g_lists[list].ownsTex = false;   // [font-fix] reset; set true if glBindTexture is called during this recording
+	g_recordBaseMV = top(g_mv);   // [font] baseline: glEndList records glTranslatef-inside-list as a net delta off this
 }
 // Upload one list's staged CPU geometry into GPU vertex buffers. The DEVICE MUST BE OUT OF SCENE across the
 // call (the 360 backend rejects mid-scene creates); callers bracket it with EndScene/BeginScene.
@@ -770,6 +924,16 @@ void glEndList() {
 			if (g_recordHadVB) { g_dev->EndScene(); _createListVBs(L); g_dev->BeginScene(); }   // edit: no flash
 			else g_pendingVB.push_back(g_recordingList);                                        // load: defer
 		}
+		// [font] record the net modelview delta applied during this list (FontRenderer's per-glyph
+		// glTranslatef pen advance). delta = end * base^-1 (row-vector: top = T * base), replayed at
+		// glCallList. Identity for geometry-only lists -> hasXform false. Computed even for a blank
+		// glyph (e.g. space) so the pen still advances.
+		D3DXMATRIX inv;
+		if (D3DXMatrixInverse(&inv, 0, &g_recordBaseMV)) {
+			D3DXMATRIX delta = top(g_mv) * inv, idm; D3DXMatrixIdentity(&idm);
+			L.xform = delta;
+			L.hasXform = (memcmp(&delta, &idm, sizeof(D3DXMATRIX)) != 0);
+		}
 	}
 	g_recordingList = 0;
 }
@@ -788,16 +952,35 @@ void glCallList(int list) {
 	_flushEntityBatch();   // [J2X-PERF] flush pending entity geometry before drawing a display list (world chunks etc.)
 	if (list <= 0 || list >= (int)g_lists.size() || !g_lists[list].used || !g_dev || !g_vs) return;
 	GLList& L = g_lists[list];
-	int saveTex = g_boundTex; bool saveEn = g_texEnabled;   // replay each batch with ITS recorded texture
+	int saveTex = g_boundTex; bool saveEn = g_texEnabled;
+	// [font-fix] A list that bound its OWN texture during recording (terrain chunks) replays each batch with
+	// that recorded texture. A texture-AGNOSTIC list -- one that never called glBindTexture inside glNewList,
+	// e.g. FontRenderer's glyph lists, which bind the font texture at glCallLists TIME -- must replay with the
+	// caller's CURRENT (live) texture + enable state, or the glyphs draw untextured (white boxes). This matches
+	// the hand-port's live-state display-list replay.
 	for (size_t i = 0; i < L.batches.size(); ++i) {
 		GLBatch& b = L.batches[i];
 		if (!b.vb || b.triCount <= 0) continue;
-		g_boundTex = b.tex; g_texEnabled = b.texEnabled;
+		if (L.ownsTex) { g_boundTex = b.tex;   g_texEnabled = b.texEnabled; }
+		else           { g_boundTex = saveTex; g_texEnabled = saveEn; }
+		// [font colour + item/world-brightness] EVERY batch inherits the CURRENT glColor via the gCol PS
+		// constant. Colourless (white-baked) font batches need it to take the text colour; COLOURED batches
+		// (terrain lighting, or item/entity meshes recorded into a list) need glColor as a global block-light
+		// multiplier ON TOP of their baked vertex colours -- without it list-recorded coloured geometry renders
+		// full-bright, the display-list twin of the direct-draw fix above. glColor is white for terrain/GUI
+		// (tint == no-op there), so this only dims geometry the game actually dims. Matches issueDrawListOp.
+		g_modR = g_cr; g_modG = g_cg; g_modB = g_cb; g_modA = g_ca;
 		_applyDrawState();
 		_bindStream(b.vb);
 		g_dev->DrawPrimitive(D3DPT_TRIANGLELIST, 0, b.triCount);
 	}
+	g_modR = g_modG = g_modB = g_modA = 1.0f;   // restore white for subsequent non-list draws
 	g_boundTex = saveTex; g_texEnabled = saveEn;
+	// [font] replay the list's recorded in-list translate onto the live modelview so a glCallLists run
+	// steps each glyph across (row-vector: top = delta * top). No-op for geometry-only lists (chunks).
+	// This is bracketed by the caller's glPushMatrix/glPopMatrix (FontRenderer.renderString), so the
+	// accumulation is discarded after the string.
+	if (L.hasXform) { D3DXMATRIX& m = top(g_mv); m = L.xform * m; }
 	// Leave stream 0 empty. Holding the last list's VB bound past the draw is what let a later
 	// Release/Lock hit a live resource, and it also collides with DrawPrimitiveUP's internal buffer.
 	_unbindStream();

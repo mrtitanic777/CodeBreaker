@@ -103,13 +103,18 @@ inside `MouseHelper.cpp`. Two options:
 | D-pad/left-stick Down/Right | flag or stick > ±16384 | `KEY_DOWN` / `KEY_RIGHT` key events | move selection next |
 | A | rising edge | `KEY_RETURN` key event | activate |
 | B | rising edge | `KEY_ESCAPE` key event | back out |
+| X | rising edge, **container GUI only** | mouse **button 1** (right-click) event | split stack / place one item (`gui-right-click`) |
 | Right stick | — | nudges `Mouse::getX()/getY()` cursor | pointer (for click-driven screens) |
 
 Edge detection + the menu-step threshold (16384) reuse the old port's `GuiScreen.cpp:126-139` logic.
 The **cross-screen resync bug fix** (a button held across a menu close re-firing as a fresh press —
-`Minecraft.cpp:878-883`) is handled structurally here: edges are computed against the PREVIOUS frame's
-state in `poll()`, and because the same single poll feeds both in-game and menu paths, a held button is
-never re-fired — its edge already fired on the frame it went down.
+`Minecraft.cpp:878-883`) is partly structural (edges vs the previous frame in the single shared `poll()`),
+but that alone does NOT cover the case where a held button's IN-GAME meaning goes through `setKey()` (e.g.
+B = ESCAPE in a menu but B = Q/drop in-game): those mapped keys are never driven during the GUI period, so
+`g_prevKeyDown` is false for them and the first in-game frame sees a false rising edge. The DELIVERED fix
+(`Input.reference.cpp` `Mouse::setGrabbed`, `cross-screen-resync`) therefore also samples the pad on the
+grab and pre-seeds `g_prevKeyDown` with the in-game binding of held face buttons (A→SPACE, B→Q, Y→E,
+R3→LSHIFT). This is what the "A/B double-purpose" HARDWARE-VERIFY note below anticipated.
 
 ## HARDWARE-VERIFY (can't be checked off-device — iterate on the 360)
 
@@ -132,12 +137,11 @@ never re-fired — its edge already fired on the frame it went down.
   B drives `KEY_Q` (drop) and `KEY_ESCAPE` (menu back). The Java side gates on `currentScreen`, so the
   unused half is ignored — but if you observe a double-action (e.g. closing a menu also drops an item),
   gate the in-game `KEY_SPACE/KEY_Q` lines on a "no screen open" flag pushed in from the game.
-- **OSK for chat / sign text (likely out of scope, but flagged).** The new `GuiChat`/`GuiEditSign`
-  accept `keyTyped(getEventCharacter(), getEventKey())` and call `enableRepeatEvents`, but there is NO
-  character source on a gamepad. The old port never wired one (doc 03 §"Text entry"). `keyToChar()` in
-  `Input.cpp` is a minimal placeholder. For real text entry, wire the **Xbox OSK**
-  (`XShowKeyboardUI` / `XOverlapped`) when a text screen opens and feed the returned wide string to
-  `keyTyped` char-by-char. Decide if chat/signs are in scope for the first build.
+- **OSK for chat / sign text — DELIVERED for signs.** ~~likely out of scope~~ The `OSK` reference module
+  (`XShowKeyboardUI` async, poll `XHasOverlappedIoCompleted`) is wired: `GuiEditSign` (overlay
+  `console-sign-osk`) does d-pad line select + pops the system keyboard, with the `osk-cancel-wipes-line`
+  guard so cancelling doesn't erase the pre-filled line. `keyToChar()` remains the desktop-dev fallback.
+  Chat/world-name can reuse the same `OSK` module.
 - **Single controller only.** `XInputGetState(0, …)`, as the whole old port did. No hot-plug / player 2.
 
 ## Status

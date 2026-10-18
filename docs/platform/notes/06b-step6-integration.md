@@ -27,6 +27,14 @@ This is the key finding and the reason the bridge differs from the old port.
 So **the correct Route-A seam is `SoundSystem` itself**, not a `SoundManager` override. We leave
 `SoundManager.cpp` generated and make the `SoundSystem` it talks to real.
 
+> **UPDATE (2026-08-20):** correct but not sufficient on its own. The generated `SoundManager` NEVER reaches
+> `SoundSystem` on console, because it gates every `newSource`/`play` on the OGG sound pool — EMPTY here
+> (sound lives in XACT banks) — so `getRandomSoundFromSoundPool()==NULL` skips the whole block: all SFX
+> silent, and `play("BgMusic")` (which starts the XACT playlist) never fires. The missing prerequisite is the
+> **`sound_fix.py` generator pass** (`sfx-bypass` drops the guard + routes the name to the cue; `music-bypass`
+> makes `play("BgMusic")` unconditional). With that pass, "leave `SoundManager` generated + make `SoundSystem`
+> real" holds. It replaced the per-game `SoundManager` overlays (Beta's deleted).
+
 Call sites confirmed in the generated output:
 - `Minecraft.cpp:1032` `new SoundManager()`; `:302/:1033` `loadSoundSettings`; `:533` `setListener`;
   `:1102` `playStreaming(NULL,…)`; `:1184-1200` `installResource → addSound/addStreaming/addMusic`.

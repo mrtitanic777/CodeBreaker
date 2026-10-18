@@ -40,6 +40,10 @@ inline void j2x_guest_throw_trace(const char*, int) {}   // host build (converte
 inline double javaMathRandom() { return (double)rand() / ((double)RAND_MAX + 1.0); }
 // java.lang.Math.signum(x)
 template<class T> inline T javaMathSignum(T v) { return v > 0 ? (T)1 : (v < 0 ? (T)-1 : (T)0); }
+// java.lang.Math.sqrt(x): ALWAYS double, like Java. A bare `sqrt(floatExpr)` picks MSVC's float overload,
+// so `atan2(Math.sqrt(f), d)` would be an ambiguous atan2(float, double) (C2668). The double parameter
+// forces the promotion at the call. J2X-BUGFIX sqrt-double-precision.
+inline double javaMathSqrt(double v) { return sqrt(v); }
 // java.lang.Math.round(x): round-half-up to an integer (int for float, long long for double)
 inline int javaMathRound(float v) { return (int)floorf(v + 0.5F); }
 inline long long javaMathRound(double v) { return (long long)floor(v + 0.5); }

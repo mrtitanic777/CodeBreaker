@@ -5,6 +5,10 @@ the platform layer, so they're verified by building the Xbox project, not the co
 - `GL11.reference.h` / `GL11.reference.cpp` — the OpenGL→D3D9 emulator (matrices, state, color,
   textures, the vertex-array hot path → `DrawPrimitiveUP` via `Shaders`, fog, alpha-ref, display
   lists). Built directly on the old port's proven `Shaders.cpp` + `Tesselator.cpp` mechanism.
+  Behavioral fixes harvested from the Alpha/Beta/Indev hand-ports (see [02](02-rendering-gl-to-d3d9.md)
+  "Delivered" + `BUGFIX_LEDGER.md`): `line-primitives` (block-selection wireframe), `item-world-brightness`
+  (items/entities dim with block-light), `alpha-test-ref` (cutout 0.5), `fog-textured-only`, `color-clamp`,
+  `runaway-vertex-count` (bad_alloc guard), `viewport-y-flip`, `tex-endian-byte-read`/`color-endian-int-read`.
 - `GLU.reference.cpp` — `gluPerspective` (→ `D3DXMatrixPerspectiveFovLH`) + `gluErrorString`.
 - GL12: no functions used — only the `GL_RESCALE_NORMAL` enum token (a `glEnable` no-op).
 

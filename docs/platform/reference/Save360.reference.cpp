@@ -21,6 +21,16 @@
 
 static bool             g_mounted = false;     // did the STFS package mount as "Save:"?
 static Save360PresentFn g_present = 0;          // guide-UI present pump for the blocking device/signin waits
+// The RESOLVED save-root string form ("Save:" vs "Save:\") that actually took a probe write. Set in
+// Save360_Init after XContentCreate; Save360_SaveRoot returns it once mounted. [J2X hardening save-writable-probe]
+static char             g_saveRoot[16] = "Save:";
+#ifdef _XBOX
+// J2X-BUGFIX save-mount-race: thread-safe idempotent gate for Save360_Init (0=unmounted, 1=mounting,
+// 2=mounted). A racing caller (e.g. a background autosave that reaches boot) which loses the CAS waits out
+// the winner instead of double-entering the device selector / XContentCreate. Console-only (host boot is
+// single-threaded).
+static volatile LONG    g_mountState = 0;
+#endif
 
 // The FIRST signed-in profile's controller port (0-3). Saves are per-profile on the 360.
 static const int SAVE360_USER = 0;
@@ -56,17 +66,40 @@ static DWORD Save360_WaitOverlapped(XOVERLAPPED* ov) {
 	XGetOverlappedResult(ov, &result, TRUE);
 	return result;
 }
+
+// J2X-BUGFIX save-writable-probe: write + delete a probe file at "<root>_wtest" to confirm the mounted volume
+// actually ACCEPTS a write (not just that the package opened) -- a full/write-protected/oddly-mounted volume
+// can open yet reject CreateFile, silently dropping every save. No separator is inserted: the two candidate
+// roots ("Save:" and "Save:\") intentionally probe different path forms, and we keep whichever the volume
+// accepts. Uses CreateFile/DeleteFile (the same 360 file API the FileIO streams use). Matches the hand-port.
+static bool _probeWritable(const char* root) {
+	char p[32];
+	strcpy(p, root);
+	strcat(p, "_wtest");
+	HANDLE h = CreateFileA(p, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (h == INVALID_HANDLE_VALUE) return false;
+	CloseHandle(h);
+	DeleteFileA(p);
+	return true;
+}
 #endif
 
 bool Save360_Init() {
-	if (g_mounted) return true;         // idempotent
+	if (g_mounted) return true;         // fast path: already mounted (idempotent)
 
 #ifdef _XBOX
+	// Thread-safe idempotent gate: CAS 0->1 claims the mount; a racing caller that loses waits out the winner
+	// rather than double-entering the device selector / XContentCreate. See g_mountState. [J2X hardening]
+	if (InterlockedCompareExchange(&g_mountState, 1, 0) != 0) {
+		for (int i = 0; i < 3000; ++i) { if (g_mountState != 1) break; Sleep(10); }   // ~30s: wait out the in-progress mount
+		return (g_mountState == 2);
+	}
+
 	// 1) Require a signed-in profile (local or LIVE). No profile => no per-profile save device => fallback.
 	XUSER_SIGNIN_STATE state = XUserGetSigninState(SAVE360_USER);
 	if (state == eXUserSigninState_NotSignedIn) {
 		DbgPrintF("[Save360] no signed-in profile on port 0 -- saves fall back to game:\\\n");
-		g_mounted = false;              // fall back to game:\ (the app root)
+		g_mounted = false; g_mountState = 0;   // fall back to game:\ (the app root); release the gate
 		return false;
 	}
 
@@ -91,7 +124,7 @@ bool Save360_Init() {
 		if (rc == ERROR_IO_PENDING) rc = Save360_WaitOverlapped(&ov);
 		if (rc != ERROR_SUCCESS || deviceId == XCONTENTDEVICE_ANY) {
 			DbgPrintF("[Save360] no storage device selected (rc=%lu) -- saves fall back to game:\\\n", (unsigned long)rc);
-			g_mounted = false;          // user cancelled / no device -> fallback
+			g_mounted = false; g_mountState = 0;   // user cancelled / no device -> fallback; release the gate
 			return false;
 		}
 	}
@@ -109,12 +142,25 @@ bool Save360_Init() {
 	                          &disposition, NULL, NULL /*synchronous*/);
 	// OPEN_ALWAYS: ERROR_SUCCESS (created or opened). ERROR_ALREADY_EXISTS is also a success here.
 	if (rc == ERROR_SUCCESS || rc == ERROR_ALREADY_EXISTS) {
-		DbgPrintF("[Save360] STFS save package mounted as Save:\\ (disposition=%lu) -- durable saves ON\n", (unsigned long)disposition);
-		g_mounted = true;               // "Save:\..." now resolves for CreateFile/the FileIO streams
+		// Verify the mounted volume actually ACCEPTS a write before declaring durable saves on. XContentCreate
+		// success only means the package opened; a full / write-protected / oddly-mounted volume can open yet
+		// reject CreateFile, silently dropping every later save. Probe the "Save:" form first, then the
+		// trailing-separator "Save:\" form, and publish only the one that took the write. [J2X hardening]
+		if      (_probeWritable("Save:"))   strcpy(g_saveRoot, "Save:");
+		else if (_probeWritable("Save:\\")) strcpy(g_saveRoot, "Save:\\");
+		else {
+			DbgPrintF("[Save360] mount opened but root is not writable -- saves fall back to game:\\\n");
+			XContentClose(SAVE_ROOT_NAME, NULL);   // unmount: a retry's XContentCreate needs the name free
+			g_mounted = false; g_mountState = 0;
+			return false;
+		}
+		DbgPrintF("[Save360] STFS save package mounted as %s (disposition=%lu) -- durable saves ON\n",
+		          g_saveRoot, (unsigned long)disposition);
+		g_mounted = true; g_mountState = 2;   // "Save:\..." now resolves for CreateFile/the FileIO streams
 		return true;
 	}
 	DbgPrintF("[Save360] XContentCreate failed (rc=%lu) -- saves fall back to game:\\\n", (unsigned long)rc);
-	g_mounted = false;                  // create failed -> fallback
+	g_mounted = false; g_mountState = 0;   // create failed -> fallback; release the gate
 	return false;
 #else
 	// Host build: no XDK. Saves go to the writable app root.
@@ -124,8 +170,8 @@ bool Save360_Init() {
 }
 
 const char* Save360_SaveRoot() {
-	// "Save:" once mounted (durable STFS), else the writable app root as a fallback.
-	return g_mounted ? "Save:" : GAME_ROOT;
+	// The probe-resolved form ("Save:" or "Save:\") once mounted (durable STFS), else the writable app root.
+	return g_mounted ? g_saveRoot : GAME_ROOT;
 }
 
 void Save360_Flush() {
@@ -142,6 +188,10 @@ void Save360_Shutdown() {
 #ifdef _XBOX
 	XContentFlush(SAVE_ROOT_NAME, NULL);
 	XContentClose(SAVE_ROOT_NAME, NULL);
+	// Release the mount gate too: left at 2, a later Save360_Init (sign-out -> sign-in) would lose the CAS,
+	// see g_mountState == 2 and report success WITHOUT remounting -- Save360_SaveRoot() would then return
+	// game:\ and every save would silently stop being durable.
+	g_mountState = 0;
 #endif
 	g_mounted = false;
 }

@@ -31,6 +31,11 @@ playlist auto-advances.
 - **Do:** P0 verify on device (cue coverage, music advance, first-sound race). P2 (optional) re-enable the
   `DopplerPitchScalar` RPC path (`XactAudio.cpp:556-608`) for pitch + category volume. P3 (only if 3D
   required) switch to XAudio2 (`XAudio2Create xaudio2.h:1255`) + X3DAudio.
+- **DELIVERED (2026-08-20):** the *bridge* was real, but the generated `SoundManager` never reached it — its
+  empty-console-OGG-pool guard (`getRandomSoundFromSoundPool()==NULL`) skipped every SFX and the `play(
+  "BgMusic")` playlist start. Fixed by the `sound_fix.py` generator pass (`sfx-bypass`/`music-bypass`). Banks
+  now load from `game:\Content\Audio\` (not the old `Content\resources\`, `audio-bank-path` in the `XactAudio`
+  companion). Music pump runs on the audio thread (`music-never-pumped`).
 
 ## 2. File I/O — ✅ ALREADY REAL (Win32). 
 `File.h`/`FileInputStream.h`/`FileOutputStream.h` → `FileIO.h`/`.cpp`, backed by `CreateFile`
@@ -52,6 +57,12 @@ silently no-ops.
 - XContent API: `XContentCreate xbox.h:1078`, `XContentFlush :1133`, `XContentCreateEnumerator :1329`,
   `XCONTENTTYPE_SAVEDGAME=0x1 :995`. Keep loose `CreateFile("Save:\...")` files *inside* the mounted
   container — do NOT hand-pack STFS.
+- **DELIVERED (2026-08-20) hardening in `Save360.reference.cpp`:** `save-writable-probe` — after
+  `XContentCreate` succeeds, write+delete a probe file to confirm the mounted volume actually ACCEPTS a write
+  (trying `Save:` then `Save:\`), so a mounted-but-unwritable volume fails at Init instead of silently losing
+  saves; `save-mount-race` — an Interlocked mount gate so a background autosave racing boot can't double-enter
+  the device selector. (The reference deliberately KEEPS its 5-min anti-hang backstop; the risky
+  `XShowSigninUI` was left out.)
 
 ## 4. Compression — ❌ INERT STUB. **HIGH — blocks world save/load.**
 `CompressedStreamTools.cpp` GZIP/Deflater/Inflater are empty shims; `ByteArrayOutputStream::toByteArray()`
@@ -83,6 +94,9 @@ gamepad can't produce, so all text fields are dead. World slots auto-name (`GuiS
 - **Design:** new `Osk` module (`open/poll`, static `XOVERLAPPED`+`WCHAR` buffer); poll in
   `GuiScreen::handleInput`; add `virtual oskResult(std::string)`; each text screen launches in `initGui`
   and drops the result into its public string member. No char-event synthesis needed.
+- **DELIVERED:** the `OSK` reference module exists and `GuiEditSign` uses it (overlay `console-sign-osk`) —
+  d-pad line select + system keyboard. `osk-cancel-wipes-line`: the write is guarded with `!empty()` so
+  cancelling the OSK (which returns "") doesn't erase the pre-filled sign line.
 
 ## 6. Networking — ❌ no-op `Socket.h`. LOW (after single-player).
 Packet pipeline + reader/writer threads are real; only the socket is a stub returning NULL streams → a

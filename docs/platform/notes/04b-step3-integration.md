@@ -31,6 +31,9 @@ boot textures loaded in Main. See `05b-step5-integration.md`.
 
 ## HARDWARE-VERIFY
 - Color order: D3D A8R8G8B8 == Java ARGB (0xAARRGGBB) — no swizzle expected; if textures look
-  channel-swapped, the decode surface format differs — force A8R8G8B8.
+  channel-swapped, the decode surface format differs — force A8R8G8B8. **LANDED:** the memory-upload path
+  (`GL11.reference.cpp` `_uploadRGBA`) reads the game's byte-array `[R,G,B,A]` source DIRECTLY via
+  `D3DCOLOR_ARGB(s[3],s[0],s[1],s[2])` (`tex-endian-byte-read`) — a DWORD read + swizzle would invert on the
+  big-endian 360 (the red-noise bug). Do NOT "optimize" it to a word read.
 - Animated cells / light map go through `glTexSubImage2D` → `uploadSubRGBA`; verify the sub-rect
   offsets line up (terrain.png is a 16×16 tile atlas).

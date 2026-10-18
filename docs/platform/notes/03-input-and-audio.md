@@ -108,7 +108,10 @@ copy-pasted at three sites, each owning its own edge-detection state:
 - **Cross-screen resync (bug fix):** while a screen is open, `Minecraft.cpp:878-883`
   re-reads XInput purely to overwrite `_prevBtns/_prevLT/_prevRT`, so a button
   *held* across a menu close is not re-fired as a fresh in-game press
-  (documented as the "B-double-fire / hotbar-drop" bug).
+  (documented as the "B-double-fire / hotbar-drop" bug). **DELIVERED** in the shared
+  `Input.reference.cpp` as `Mouse::setGrabbed` (`cross-screen-resync`): on the GUI→in-game grab it samples
+  the pad and pre-seeds `g_prevKeyDown` with the IN-GAME binding of held face buttons (A→SPACE, B→Q, Y→E,
+  R3→LSHIFT) so `setKey()` sees no false rising edge.
 
 ---
 
@@ -157,6 +160,12 @@ Notes:
 | **D-pad Down/Right** or **left stick** down/right | flag or `sThumbLY<-16384` / `sThumbLX>16384` | select next enabled control | `GuiScreen.cpp:130-131, 151-157` |
 | **A** | rising edge | activate selected button (`actionPerformed`, plays `random.click`) | `GuiScreen.cpp:158-165` |
 | **B** | rising edge | back out (`keyTyped(0, 1)`, i.e. Esc code 1) | `GuiScreen.cpp:168-171` |
+| **X** | rising edge, **container GUI only** | **DELIVERED** right-click (mouse button 1) → split a stack / place one item (`gui-right-click`, `Input.reference.cpp`) | `Input.reference.cpp` GUI path |
+
+**DELIVERED (2026-08-20), shared `Input.reference.cpp`:** container GUIs (inventory/chest/furnace/crafting)
+get a free analog cursor on the left stick + the `Pointer.png` icon; **A** = left-click, **X** = right-click
+(`gui-right-click`) to split stacks / place single items. Every other screen keeps the discrete button-nav
+above. See `BUGFIX_LEDGER.md` → reference (`gui-right-click`, `cross-screen-resync`).
 
 Selection lives in `m_padSelected` (a "virtual cursor" highlighted in
 `drawScreen`). The skip-disabled/invisible loop is `GuiScreen.cpp:146-156`.
@@ -353,6 +362,23 @@ faithful per-cue pitch/3D attenuation matters — both of which the old XACT pat
 already ship, and matches what the old port proved works. Defer Route B unless
 3D audio / per-cue pitch is a hard requirement. The new `SoundSystem` /
 `CodecJOrbis` stubs can stay no-op under Route A.
+
+### DELIVERED (2026-08-20) — Route A, but the SoundManager bridge is a GENERATOR pass, not a hand override
+
+Route A shipped with one refinement: the seam is the **`SoundSystem` bridge itself** (real
+`Audio.reference.cpp/.h` → `XactAudio` companion), NOT a hand-written `SoundManager` override. The generated
+`SoundManager` reaches that bridge only after a converter pass removes the empty-pool guard:
+
+- **The silence class (this doc's "Caveats" above) is exactly what broke on console.** The generated
+  `SoundManager` gates every SFX on the OGG sound pool — empty on console — so
+  `getRandomSoundFromSoundPool()==NULL` skipped the whole play block: **all sound effects silent**, and
+  `play("BgMusic")` (which starts the XACT playlist) never fired: **no music**.
+- **Fixed by `j2ctool/sound_fix.py`** (post-emit pass, xbox360, runs before overlays; `j2ctool sound-fix`):
+  `sfx-bypass` drops the guard and routes the sound name to the XACT cue (`newSource` identifier ==
+  `toCue`); `music-bypass` makes `play("BgMusic")` unconditional while keeping the `backgroundMusic` deref
+  guarded. `playStreaming` is left guarded. It keys on the paulscode guard STRUCTURE, so ONE pass covers
+  Alpha/Beta/Indev — replacing the per-game SoundManager overlays (Beta's was deleted). See `BUGFIX_LEDGER.md`
+  → Generator section (`sfx-bypass`, `music-bypass`).
 
 ### Stub surface to satisfy (new side, `runtime.py`)
 

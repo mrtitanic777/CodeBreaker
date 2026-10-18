@@ -303,6 +303,11 @@ fill them in roughly as the OLD port does:
    `*(int*)ptr` will be **byte-swapped on the 360** relative to the Java wire format and
    the .png/D3DX side. Keep the manual big-endian assembly. (Floats/doubles are safe
    because the int/long is assembled big-endian *first*, then bit-cast.)
+   - **Cross-ref (where the endian fix actually lives):** the red-noise texture and red-vertex-colour bugs
+     were NOT in this file-based `Textures` path (D3DX decodes the PNG, byte-order-agnostic) — they were in
+     the **memory-upload** path inline in `GL11.reference.cpp` (`_uploadRGBA`/`glTexSubImage2D`/`glDrawArrays`
+     colour read), fixed by reading the byte-array `[R,G,B,A]` source directly (`tex-endian-byte-read`) and
+     the packed vertex colour as a native int (`color-endian-int-read`). Look there, not here, for that class.
 2. **Saves are uncompressed NBT.** Gzip is stubbed out (`CompressedStreamTools.cpp`,
    `JavaIO.h:103-121`). 360 saves are **not** readable by desktop Minecraft and vice
    versa. The reader assumes no compression and relies on the NBT End tag to terminate

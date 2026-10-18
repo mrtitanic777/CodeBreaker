@@ -16,7 +16,7 @@
 
 // Provided by the Input platform reference (controller -> Keyboard/Mouse event pump). Declared weakly
 // here so Display.update() can pump input once per frame the way LWJGL's Display.update() does.
-namespace Input { void poll(); }
+namespace Input { void poll(); void setDisplaySize(int w, int h); }
 
 // The app-global D3D device. Some platform companions (ImageIO / Mipmaps / Shaders) reference this
 // `extern IDirect3DDevice9* g_pd3dDevice;` (declared in Common.h) for their own D3D work. Beta's Main.cpp
@@ -29,7 +29,12 @@ namespace Display {
 
 static IDirect3D9*       s_d3d = 0;
 static IDirect3DDevice9* s_dev = 0;
-static DisplayMode       s_mode(854, 480);   // sensible default until the game sets one
+// J2X-BUGFIX fb-720p-default: default to the 360's minimum HD mode (1280x720), NOT 854x480. The device-create
+// path forces a 720p BACKBUFFER, but the game reads displayWidth/Height via getDisplayMode().getWidth() and may
+// read it BEFORE that force runs -- getting 854x480 and then rendering into the top-left 2/3 of the 720p buffer
+// (854x480 is exactly 2/3 of 1280x720 -> the "squished into the corner" symptom). A 720p default makes the read
+// correct regardless of timing.
+static DisplayMode       s_mode(1280, 720);  // 360 minimum HD frame buffer; the game reads this as displayW/H
 static bool              s_created = false;
 
 // Ignored once the device is created (the entry creates it first): the backbuffer is fixed at creation,
@@ -84,6 +89,11 @@ void create() {
 	d3d9::glSetDevice(s_dev);
 	d3d9::glInit();
 	d3d9::glViewport(0, 0, w, h);
+	// [input] feed the FINAL backbuffer size to the controller->cursor pump. Without this the Input layer
+	// clamps its virtual cursor to its 854x480 default while the GUI maps clicks against displayWidth=1280
+	// (Mouse::getEventX()*width/displayWidth), so the cursor only reaches the top-left 2/3 of the menu ->
+	// controller nav appears dead/misaligned. Match the reported display mode exactly.
+	Input::setDisplaySize(w, h);
 	s_dev->SetRenderState(D3DRS_HALFPIXELOFFSET, TRUE);   // pixel-exact 2D on 360 (HARDWARE-VERIFY)
 	s_dev->BeginScene();
 	s_created = true;
