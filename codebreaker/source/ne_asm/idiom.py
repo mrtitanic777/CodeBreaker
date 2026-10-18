@@ -281,8 +281,13 @@ def assemble(asm_text, root="."):
 # since nasm's listing format differs from ML's).
 # --------------------------------------------------------------------------
 def _nasm_bin():
-    return os.environ.get(
-        "NASM_MASM", r"C:\Users\mrtit\Documents\GitHub\nasm-masm\nasm.exe")
+    """settings.json `nasm` (nasm.exe of the nasm-masm project), else the NASM_MASM env var."""
+    from codebreaker.base import settings
+    try:
+        configured = settings.get("nasm")
+    except Exception:
+        configured = None
+    return configured or os.environ.get("NASM_MASM") or "nasm.exe"
 
 
 def _nasm_inc():
