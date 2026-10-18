@@ -51,6 +51,24 @@ class TestLayout(unittest.TestCase):
         self.assertIn('Foo.cpp', vcx)                         # file list refreshed
         self.assertIn('Create</PrecompiledHeader>', vcx)      # stdafx PCH block preserved
 
+    def test_template_instantiates_to_valid_xml(self):
+        # Guards the class of bug where a comment contained '--' (illegal in XML) -> VS "could not be
+        # loaded / An XML comment cannot contain '--'". The template with {{GUID}} filled must parse.
+        import xml.dom.minidom as minidom
+        tmpl = open(pl._TEMPLATE, encoding='utf-8').read().replace(
+            '{{GUID}}', '{AAAABBBB-CCCC-DDDD-EEEE-FFFF00001111}')
+        minidom.parseString(tmpl)                             # raises if malformed
+
+    def test_generated_project_files_are_valid_xml(self):
+        import xml.dom.minidom as minidom
+        self._flat_dump()
+        r = pl.layout(self.root)
+        for key in ('vcxproj',):
+            minidom.parse(r[key])                             # .vcxproj parses
+        filt = os.path.splitext(r['vcxproj'])[0] + '.vcxproj.filters'
+        self.assertTrue(os.path.isfile(filt))
+        minidom.parse(filt)                                   # .filters parses
+
     def test_idempotent_no_triple_nest(self):
         self._flat_dump()
         r1 = pl.layout(self.root)

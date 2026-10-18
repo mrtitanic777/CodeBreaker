@@ -37,6 +37,97 @@ _GL_TO_D3D9 = False
 # languages catalog (kind == 'api', opengl-family) at convert() time; this default covers GL11/GLU.
 _GL_NAMESPACES = ('GL11', 'GLU')
 
+# Corpus field names whose declared type is an ARRAY. JArray's `length` is a VALUE member (`.length`),
+# so when the member-env misses an array field reached through a pointer the emitter can leave a wrong
+# `field->length`; _finalize_emitted flips those back to `.length`. Gated on THIS set so a real scalar
+# `length` field on a class pointer (e.g. Indev's `World.length`: this->length / worldObj->length) is
+# NOT clobbered. Populated per-conversion by convert(); empty = flip only call/index results.
+_LENGTH_ARRAY_FIELDS = set()
+# Classes that declare (or inherit) a SCALAR `length` field (Indev's `World.length`), and the names of
+# fields/methods whose type is one of those classes (`worldObj`, `getWorld`). A `->length` reached
+# through such a receiver -- `((World*)var1)->length`, `getWorld()->length`, `worldObj->length` -- is a
+# real pointer member access and keeps its `->`. Populated per-conversion alongside _LENGTH_ARRAY_FIELDS.
+_LENGTH_SCALAR_CLASSES = set()
+_LENGTH_SCALAR_RECEIVERS = set()
+
+
+def compute_length_sets(classes):
+    """(array_field_names, scalar_length_classes, scalar_length_receivers) for the `->length` finalize
+    flip: names of array-typed fields; classes with a non-array `length` field (own or inherited); and
+    names of fields + methods whose (non-array) type is one of those classes."""
+    array_fields, scalar_classes, receivers = set(), set(), set()
+    for c in classes:
+        for f in list(getattr(c, 'fields', ()) or ()) + list(getattr(c, 'inherited_fields', ()) or ()):
+            jt = getattr(f, 'jtype', None)
+            if jt is None:
+                continue
+            if jt.is_array:
+                array_fields.add(f.name)
+            elif f.name == 'length':
+                scalar_classes.add(c.name)
+    if scalar_classes:
+        for c in classes:
+            for f in getattr(c, 'fields', ()) or ():
+                jt = getattr(f, 'jtype', None)
+                if jt is not None and not jt.is_array and jt.name in scalar_classes:
+                    receivers.add(f.name)
+            for m in getattr(c, 'methods', ()) or ():
+                rt = getattr(m, 'return_type', None)
+                if rt is not None and not rt.is_array and rt.name in scalar_classes:
+                    receivers.add(m.name)
+    return array_fields, scalar_classes, receivers
+
+
+def _match_open_paren(text, close_idx):
+    """Index of the '(' matching the ')' at close_idx, or -1."""
+    depth = 0
+    for i in range(close_idx, -1, -1):
+        c = text[i]
+        if c == ')':
+            depth += 1
+        elif c == '(':
+            depth -= 1
+            if depth == 0:
+                return i
+    return -1
+
+
+_CAST_PREFIX_RE = re.compile(r'\(\s*(?:\w+::)*(\w+)\s*\*\s*\)')
+_STATIC_CAST_TAIL_RE = re.compile(r'_cast\s*<\s*(?:\w+::)*(\w+)\s*\*\s*>\s*$')
+_CALLEE_TAIL_RE = re.compile(r'(\w+)\s*$')
+
+
+def _paren_receiver_is_scalar_length(text, close_idx):
+    """True when the parenthesised receiver ending at close_idx points at a scalar-`length` class: a C
+    cast `((World*)x)`, a `static_cast<World*>(x)`, or a call `getWorld()` whose method returns one."""
+    if not _LENGTH_SCALAR_CLASSES:
+        return False
+    open_idx = _match_open_paren(text, close_idx)
+    if open_idx < 0:
+        return False
+    m = _CAST_PREFIX_RE.match(text[open_idx + 1:close_idx].lstrip())
+    if m and m.group(1) in _LENGTH_SCALAR_CLASSES:
+        return True
+    head = text[max(0, open_idx - 200):open_idx]
+    m = _STATIC_CAST_TAIL_RE.search(head)
+    if m and m.group(1) in _LENGTH_SCALAR_CLASSES:
+        return True
+    m = _CALLEE_TAIL_RE.search(head)
+    return bool(m and m.group(1) in _LENGTH_SCALAR_RECEIVERS)
+
+
+def _flip_length_after_bracket(m):
+    if m.group(1) == ')' and _paren_receiver_is_scalar_length(m.string, m.start(1)):
+        return m.group(0)
+    return m.group(1) + '.length'
+
+
+def _flip_length_after_ident(m):
+    name = m.group(1)
+    if name in _LENGTH_ARRAY_FIELDS and name not in _LENGTH_SCALAR_RECEIVERS:
+        return name + '.length'
+    return m.group(0)
+
 
 def _convert_gl_to_d3d9(text):
     """Rewrite OpenGL call sites (GL11::glX, GLU::gluX, GL11::GL_CONST) in emitted game code to the
@@ -199,10 +290,18 @@ def _finalize_emitted(text):
     # `new Object()` (a bare java.lang.Object, used only as a monitor/lock) -> a JObject VALUE. Object
     # has no C++ class; the universal box default-constructs, and the sync object is never used on the port.
     text = re.sub(r'\bnew\s+Object\s*\(\s*\)', 'JObject()', text)
-    # `arr->length` -> `arr.length`: `length` (no parens) is a field on JArray ONLY, always a value, so a
-    # pointer deref of it is a cross-class member-env miss (a byte[] field reached through a typed pointer,
-    # e.g. RenderEngine's var2->imageData->length). `->length(` (a method) and `->lengthX` are untouched.
-    text = re.sub(r'->length\b(?!\s*\()', '.length', text)
+    # `arr->length` -> `arr.length`: JArray's `length` (no parens) is a VALUE member, so a pointer deref
+    # of it is wrong -- it happens when the member-env misses an array FIELD reached through a typed
+    # pointer (e.g. RenderEngine's var2->imageData->length). BUT a real scalar `length` FIELD on a class
+    # pointer (Indev's `World` has `int length`: this->length / worldObj->length) must KEEP its `->`, so
+    # this must NOT be a blanket flip. Flip a call/index result (`)->length` / `]->length` -- almost
+    # always a JArray), and flip an identifier receiver ONLY when it names an array-typed field
+    # (_LENGTH_ARRAY_FIELDS). `->length(` (a method) and `->lengthX` are untouched either way.
+    # Either flip is skipped when the receiver is typed as a scalar-`length` class (a `(World*)` cast,
+    # a World-returning call, a World-typed field: _LENGTH_SCALAR_*); an identifier naming BOTH an array
+    # field and a World-typed field is ambiguous and is left as emitted.
+    text = re.sub(r'([)\]])->length\b(?!\s*\()', _flip_length_after_bracket, text)
+    text = re.sub(r'\b(\w+)->length\b(?!\s*\()', _flip_length_after_ident, text)
     # DISCARDED-NEW LEAK: a statement that is a bare `new X(...);` (allocation whose result is never stored)
     # is a no-op in Java (the temporary is GC'd immediately) but LEAKS in C++. Faithful even in the original
     # -- e.g. RubyDung.render() has Notch's stray `new Cube(0, 0);`. Rewrite to `delete new X(...);` so the
@@ -443,6 +542,34 @@ def build_method_renames(classes):
     for c in classes:
         fields = set(f.name for f in c.fields)
         own[c.name] = set(m.name for m in c.methods if not m.is_ctor and m.name in fields)
+    # A STATIC method with the SAME NAME AND SIGNATURE as an inherited INSTANCE (virtual) method is C++
+    # C4526 (the static "cannot override" the base virtual -> it's hidden). Java allows it (BlockFlowing's
+    # private static flow(World,int,int,int) vs BlockFluid's instance flow(World,int,int,int)); rename the
+    # static so it no longer collides. Guards, so we don't break legit overloads:
+    #  * SIGNATURE must match -- a static helper with a DIFFERENT signature (NoiseGeneratorPerlin's static
+    #    generateNoise(double) vs the base virtual generateNoise(double,double)) legally coexists in C++
+    #    and does NOT trip C4526; renaming it would kill the class's real generateNoise(double,double) OVERRIDE.
+    #  * the name must NOT also be an INSTANCE method of this class -- the rename is by name, so renaming
+    #    would clobber that instance method (the actual override) too.
+    def _sig(m):
+        return (m.name, tuple(p.jtype.name for p in getattr(m, 'params', [])))
+    for c in classes:
+        instance_names = set(m.name for m in c.methods
+                             if not m.is_ctor and not getattr(m, 'is_static', False))
+        static_methods = [m for m in c.methods if not m.is_ctor and getattr(m, 'is_static', False)
+                          and m.name not in instance_names]
+        if not static_methods:
+            continue
+        inherited_sigs, cur, guard = set(), by_name.get(c.parent), set()
+        while cur and cur.name not in guard:
+            guard.add(cur.name)
+            for m in cur.methods:
+                if not m.is_ctor and not getattr(m, 'is_static', False):
+                    inherited_sigs.add(_sig(m))
+            cur = by_name.get(cur.parent)
+        for m in static_methods:
+            if _sig(m) in inherited_sigs:
+                own[c.name].add(m.name)
     renames = {}
     for c in classes:
         s, cur, guard = set(), c, set()
@@ -641,7 +768,20 @@ def derive_nullability(classes, resolver):
     a method returning a REFERENCE type whose body can `return null;` can hand back NULL, so
     `getX()->y` on it is a NULL-deref crash on the 360 and must be guarded -- on ANY corpus, not just
     Alpha. High-precision (explicit `return null` + pointer return only), so over-guarding is bounded;
-    a spurious guard is at worst a benign extra null-check. Returns (getter_names, {getter: retType})."""
+    a spurious guard is at worst a benign extra null-check. Returns (getter_names, {getter: retType}).
+
+    AMBIGUITY GUARD: getters + return types are keyed by method NAME (global), and the emit hoist types
+    a `recv->NAME()` result from that map regardless of receiver. An obfuscated name (`a`, `b`) that
+    returns DIFFERENT types in different classes would then mistype a call on one receiver as another's
+    return -- EntityMap.a() returns List but Pathfinder.a() returns PathPoint, so `entityMap->a()` got
+    typed `PathPoint*` (then `.size()` -> C2039). A name whose return type is NOT consistent across every
+    class declaring it is EXCLUDED (a wrong-type hoist is a compile error, far worse than a missed guard)."""
+    rt_by_name = {}
+    for c in classes:
+        for m in c.methods:
+            if m.is_ctor or m.return_type is None:
+                continue
+            rt_by_name.setdefault(m.name, set()).add((m.return_type.name, m.return_type.is_array))
     getters, gtypes = set(), {}
     for c in classes:
         for m in c.methods:
@@ -652,6 +792,8 @@ def derive_nullability(classes, resolver):
                 continue                                  # value return can't form getter()->deref
             if not resolver.is_pointer(rt):
                 continue
+            if len(rt_by_name.get(m.name, ())) > 1:
+                continue                                  # ambiguous name across classes -> don't guard globally
             body = '\n'.join(t for _ln, t in m.body)
             if _RETURN_NULL.search(body):
                 getters.add(m.name)
@@ -909,7 +1051,35 @@ def _prune_unreferenced(out_dir, game_classes, prog, overlay_files=None):
 
 def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True,
             cpp_std='C++03', platform=None, progress_cb=None, platform_refs=False,
-            sdk_override=None, emit_debug=True, overlay_dir=None):
+            sdk_override=None, emit_debug=True, overlay_dir=None,
+            edition=None, mc_version=None):
+    """Convert a Java source tree to C++ (see _convert). The per-conversion module state -- the active
+    edition profile and the derived nullable-getter sets -- is snapshotted here and restored in a
+    `finally`, so a conversion that RAISES midway can't leak its profile into the next in-process
+    convert (the long-lived GUI), which would make output depend on earlier runs."""
+    from . import profiles as _profiles
+    from .emit import statements as _statements
+    _prev_profile = _profiles.active().name
+    _base_getters = set(typemap.KNOWN_NULLABLE_GETTERS)
+    _base_gtypes = dict(typemap.NULLABLE_GETTER_RETURN_TYPE)
+    try:
+        return _convert(java_dir, out_dir, value_types=value_types, ledger=ledger,
+                        write_report=write_report, cpp_std=cpp_std, platform=platform,
+                        progress_cb=progress_cb, platform_refs=platform_refs,
+                        sdk_override=sdk_override, emit_debug=emit_debug, overlay_dir=overlay_dir,
+                        edition=edition, mc_version=mc_version)
+    finally:
+        typemap.KNOWN_NULLABLE_GETTERS.clear(); typemap.KNOWN_NULLABLE_GETTERS.update(_base_getters)
+        typemap.NULLABLE_GETTER_RETURN_TYPE.clear(); typemap.NULLABLE_GETTER_RETURN_TYPE.update(_base_gtypes)
+        _statements.refresh_nullable_getters()
+        if _profiles.active().name != _prev_profile:
+            _profiles.use(_prev_profile)
+
+
+def _convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True,
+             cpp_std='C++03', platform=None, progress_cb=None, platform_refs=False,
+             sdk_override=None, emit_debug=True, overlay_dir=None,
+             edition=None, mc_version=None):
     """Convert a Java source tree to C++. Returns a summary dict.
 
     cpp_std: target C++ standard ('C++98', 'C++03', 'C++11', 'C++14', 'C++17', 'C++20', 'C++23').
@@ -918,6 +1088,11 @@ def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True,
                    (GL->D3D9 emulator, audio, input, socket) instead of the no-op stubs.
     sdk_override: explicit SDK root; else auto-detected. A console platform without a located SDK is
                   REFUSED (the converter ships no SDK headers/signatures).
+    edition: Minecraft era to target ('rubydung'/'indev'/'infdev'/'alpha'/'beta'/'release', or a
+             'minecraft_*' profile name). None -> resolve from mc_version, else auto-detect from the
+             source, else keep the default profile (a no-op that preserves today's exact behavior).
+    mc_version: the decompiler version id (e.g. 'a1.2.6'), used to infer the edition when `edition`
+                is not given.
     progress_cb: optional callable(str) invoked with per-class progress lines."""
     ledger = ledger if ledger is not None else Ledger()
     std_version = _parse_std_version(cpp_std)
@@ -963,6 +1138,20 @@ def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True,
     if len(classes) != before:
         _prog('[parse] dropped %d empty marker class(es) + synthetic bridge ctors' % (before - len(classes)))
 
+    # Select the per-edition target profile for THIS conversion (explicit `edition` > `mc_version` id
+    # > source auto-detection > keep default). profiles.use() reseeds the frozen profile globals in
+    # typemap/rules/vcxproj/signatures/pipeline, so it MUST run before build_resolver (which reads
+    # typemap.DEFAULT_VALUE_TYPES). convert() restores it in a `finally` (even on an exception), so
+    # repeated in-process conversions can't drift.
+    from . import profiles as _profiles, edition as _edition
+    _prev_profile = _profiles.active().name
+    _ed_name = _edition.resolve(edition, mc_version=mc_version, classes=classes)
+    if _ed_name and _ed_name != _profiles.active().name:
+        _profiles.use(_ed_name)
+        _prog('[edition] active target profile: %s' % _ed_name)
+    elif edition or mc_version:
+        _prog('[edition] target profile: %s' % _profiles.active().name)
+
     _prog('[resolve] inheritance + MI forwards + type resolver...')
     resolve_inheritance(classes)
     compute_mi_forwards(classes)
@@ -970,6 +1159,12 @@ def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True,
     resolver.markers = markers                            # dropped EmptyN markers -> strip their call-site args
     _prog('[resolve] done (%d known classes, %d interfaces, %d enums)'
           % (len(resolver.known), len(resolver.interfaces), len(resolver.enums)))
+
+    # Corpus array-FIELD names -> gate the `->length`->`.length` finalize flip so a real scalar `length`
+    # field on a class pointer (Indev World.length) keeps its `->` while a missed array-field length is
+    # still corrected. (See _finalize_emitted.)
+    global _LENGTH_ARRAY_FIELDS, _LENGTH_SCALAR_CLASSES, _LENGTH_SCALAR_RECEIVERS
+    _LENGTH_ARRAY_FIELDS, _LENGTH_SCALAR_CLASSES, _LENGTH_SCALAR_RECEIVERS = compute_length_sets(classes)
 
     # Java collection out-params -> C++ references. A method that MUTATES a List/Map/Set param writes the
     # caller's collection; modelled as a value struct it would copy instead, silently dropping the writes
@@ -979,7 +1174,7 @@ def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True,
 
     # DERIVE nullable getters from the corpus and union into the guarded set for THIS conversion, so
     # emit-time null-guarding + the null-deref rule cover getters that can `return null` on any corpus
-    # (not just the Alpha whitelist). Snapshot/restore keeps the module globals clean across calls.
+    # (not just the Alpha whitelist). convert()'s `finally` restores the module globals across calls.
     from .emit import statements as _statements
     _base_getters = set(typemap.KNOWN_NULLABLE_GETTERS)
     _base_gtypes = dict(typemap.NULLABLE_GETTER_RETURN_TYPE)
@@ -1015,8 +1210,13 @@ def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True,
         # game-defined class and generates a generic entry point instead of the Beta-specific one.
         _game_classes = set(c.name for c in classes)
         _main_class = _pref.detect_main_class(classes)
+        # No static main? A concrete top-level Runnable game shell (Indev's Minecraft) gets a
+        # construct-and-run() entry; Alpha/Beta (abstract Minecraft + MinecraftImpl) return None here
+        # and keep the Beta-specific Main.reference.cpp.
+        _runnable_game = _pref.detect_runnable_game_class(classes) if not _main_class else None
         emitted = _pref.emit_references(out_dir, _ref_dir0,
-                                        game_classes=_game_classes, main_class=_main_class)
+                                        game_classes=_game_classes, main_class=_main_class,
+                                        runnable_game=_runnable_game)
         _prog('[platform] emitted %d platform references (agnostic layer, replacing stubs): %s'
               % (len(emitted), ', '.join(sorted(emitted))))
         _skipped = getattr(_pref.emit_references, 'last_skipped', [])
@@ -1092,6 +1292,65 @@ def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True,
     if _rf['total_sites']:
         _prog('[reflect] %d registries -> factories (%d classes), %d sites rewritten (%d reused)'
               % (len(_rf['registries']), _rf['total_classes'], _rf['total_sites'], len(_rf['reused'])))
+
+    # SFX BYPASS (console): SoundManager gates every sound effect on the OGG sound pool, which is EMPTY on
+    # the console (sound comes from XACT banks via the Audio.reference bridge) -> getRandomSoundFromSoundPool
+    # returns NULL -> all SFX silent. Drop the null-guard and route the sound name straight to the bridge as
+    # the XACT cue, migrating the Alpha/Indev hand-fix into the emitter so every convert gets working SFX from
+    # one place (Beta's SoundManager overlay had FORGOTTEN it -> silent). xbox360 only (depends on the real
+    # Audio bridge). See j2ctool/sound_fix.py. Runs before overlays so an overlaid SoundManager can still win.
+    if platform == 'xbox360':
+        from . import sound_fix as _sfx
+        _sf = _sfx.run(out_dir)
+        if _sf['sites']:
+            _prog('[sound] SFX+music bypass: %d site(s) routed to the XACT bridge across %d file(s)'
+                  % (_sf['sites'], len(_sf['files'])))
+        if _sf['stranded']:
+            _prog('[sound] WARNING: a soundPool*->getRandomSound null-guard survived in %s -- sound may be '
+                  'silent there (guard shape changed; update sound_fix.py)' % ', '.join(_sf['stranded']))
+
+    # CONTROLLER MENU NAVIGATION: inject the D-pad menu nav adapter into GuiScreen + the per-frame call, so
+    # button menus are navigable with a pad on the console. The nav ALGORITHM lives in Input.reference
+    # (Input::menuNavSelect); this only injects the thin, edition-uniform adapter. Migrated from the Alpha
+    # hand-port overlay so no edition ships a dead menu again. xbox360 only; before overlays (overlay wins).
+    if platform == 'xbox360':
+        from . import controller_nav as _cnav
+        _cn = _cnav.run(out_dir)
+        if _cn['guiscreen_cpp'] and _cn['callsite']:
+            _prog('[controller] menu nav injected into GuiScreen (+ per-frame call)')
+        if _cn['missing']:
+            _prog('[controller] WARNING: menu-nav anchor(s) not found -> menus may be un-navigable: %s'
+                  % '; '.join(_cn['missing']))
+
+    # APPLET ANTI-PIRACY PING: early MC's setLevel opens getDocumentBase()->openStream() (a level-count /
+    # minecraft.net host check). On console URL.openStream() is a NULL stub -> readLine() faults (uncatchable)
+    # -> pressing "Create" crashes on setLevel's first line. Drop the ping, set the level directly (matches the
+    # OG Indev hand-port). xbox360 only; before overlays. See j2ctool/applet_ping.py.
+    if platform == 'xbox360':
+        from . import applet_ping as _ap
+        _apr = _ap.run(out_dir)
+        if _apr['sites']:
+            _prog('[applet] anti-piracy URL ping neutralized: %d site(s) across %d file(s)'
+                  % (_apr['sites'], len(_apr['files'])))
+        if _apr['stranded']:
+            _prog('[applet] WARNING: a getDocumentBase()->openStream() ping survived in %s -- may crash on '
+                  'setLevel (ping shape changed; update applet_ping.py)' % ', '.join(_apr['stranded']))
+
+    # CONSOLE RENDER FIXES: (1) RenderGlobal::updateRenderers rebuilt EVERY dirty chunk in one frame -- a
+    # fresh world is 1000+ chunks, so the frame never presented (stuck on "Spawning"); cap to a few chunk
+    # rebuilds/frame (nearest first). (2) EntityRenderer::hurtCameraEffect divided 0/0 on spawn
+    # (hurtTime=0) -> NaN camera matrix -> invisible world; guard hurtTime>0. Both match the proven OG
+    # hand-ports. xbox360 only; before overlays. See j2ctool/render_fix.py.
+    if platform == 'xbox360':
+        from . import render_fix as _rfx
+        _rf = _rfx.run(out_dir)
+        if _rf['update']:
+            _prog('[render] chunk-rebuild budget applied to updateRenderers (%d site(s))' % _rf['update'])
+        if _rf['hurt']:
+            _prog('[render] hurt-camera 0/0 NaN guard applied (%d site(s))' % _rf['hurt'])
+        if _rf['stranded']:
+            _prog('[render] WARNING: a render-fix trigger survived in %s -- first in-game frame may hang '
+                  'or be invisible (shape changed; update render_fix.py)' % ', '.join(_rf['stranded']))
 
     # PROJECT OVERLAYS: re-apply game/version-specific hand-fixes to GENERATED files -- leak `delete`s in
     # specific methods, the scheduled-tick value-comparing std::set, UI tweaks (OSK/FPS/tooltip), input
@@ -1201,10 +1460,7 @@ def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True,
     except Exception as _e:
         _prog('[bugfix-ledger] skipped: %s' % _e)
 
-    # restore the base nullable-getter globals (derived set was scoped to this conversion only)
-    typemap.KNOWN_NULLABLE_GETTERS.clear(); typemap.KNOWN_NULLABLE_GETTERS.update(_base_getters)
-    typemap.NULLABLE_GETTER_RETURN_TYPE.clear(); typemap.NULLABLE_GETTER_RETURN_TYPE.update(_base_gtypes)
-    _statements.refresh_nullable_getters()
+    # (the nullable-getter globals and the target profile are restored by convert()'s `finally`)
 
     cats = ledger.totals_by_category()
     sevs = ledger.totals_by_severity()
@@ -1220,6 +1476,7 @@ def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True,
         'ledger': ledger,
         'cpp_std': std_version.label,
         'platform': platform or 'none',
+        'profile': _ed_name or _prev_profile,   # the target profile active DURING this conversion
     }
 
 
@@ -1230,6 +1487,16 @@ def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True,
 # in a stable sorted order. To fix a missed dependency found on hardware, edit THIS list.
 from . import profiles as _profiles
 _STATIC_INIT_ORDER = list(_profiles.active().static_init_order)
+
+
+def _reseed_static_init_order(p):
+    """Re-derive the static-init seed when the active target profile changes (profiles.on_change).
+    compute_static_init_order() reads this module global, so an edition switch must retarget it."""
+    global _STATIC_INIT_ORDER
+    _STATIC_INIT_ORDER = list(p.static_init_order)
+
+
+_profiles.on_change(_reseed_static_init_order)
 
 
 def compute_static_init_order(classes, callable_init):

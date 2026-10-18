@@ -163,6 +163,62 @@ def _cmd_reflect_factories(args):
     return 0
 
 
+def _cmd_sound_fix(args):
+    from . import sound_fix
+    r = sound_fix.run(args.out_dir)
+    if not r['sites']:
+        print('No sound guard sites to rewrite (already applied, or none present).')
+    for fi in r['files']:
+        print('  %-22s -> %d SFX + %d music site(s) routed to the XACT bridge'
+              % (fi['file'], fi['sfx'], fi['music']))
+    if r['sites']:
+        print('Sound bypass applied: %d site(s) across %d file(s).' % (r['sites'], len(r['files'])))
+    if r['stranded']:
+        print('WARNING: soundPoolSounds null-guard survived in: %s (guard shape changed; update sound_fix.py).'
+              % ', '.join(r['stranded']))
+        return 1
+    return 0
+
+
+def _cmd_controller_nav(args):
+    from . import controller_nav
+    r = controller_nav.run(args.out_dir)
+    print('controller menu nav: GuiScreen.h=%s GuiScreen.cpp=%s call-site=%s'
+          % (r['guiscreen_h'], r['guiscreen_cpp'], r['callsite']))
+    if r['missing']:
+        print('WARNING: anchor(s) not found -> menus may be un-navigable: %s' % '; '.join(r['missing']))
+        return 1
+    return 0
+
+
+def _cmd_render_fix(args):
+    from . import render_fix
+    r = render_fix.run(args.out_dir)
+    print('render-fix: updateRenderers budget=%d site(s), hurt-camera NaN guard=%d site(s)'
+          % (r['update'], r['hurt']))
+    if r['stranded']:
+        print('WARNING: a render-fix trigger survived in: %s (shape changed; update render_fix.py). The '
+              'first in-game frame may hang on "Spawning" or render invisible.' % '; '.join(r['stranded']))
+        return 1
+    return 0
+
+
+def _cmd_applet_ping(args):
+    from . import applet_ping
+    r = applet_ping.run(args.out_dir)
+    if not r['sites']:
+        print('No applet ping sites to rewrite (already applied, or none present).')
+    for fi in r['files']:
+        print('  %-22s -> %d applet ping site(s) neutralized' % (fi['file'], fi['sites']))
+    if r['sites']:
+        print('Applet ping removed: %d site(s) across %d file(s).' % (r['sites'], len(r['files'])))
+    if r['stranded']:
+        print('WARNING: a getDocumentBase()->openStream() try survived in: %s (shape changed; update '
+              'applet_ping.py).' % ', '.join(r['stranded']))
+        return 1
+    return 0
+
+
 def _cmd_project_layout(args):
     from . import project_layout
     r = project_layout.layout(args.root, name=args.name)
@@ -227,6 +283,9 @@ def _cmd_assets(args):
     res = assets.run(args.jar, args.content_dir, code_dir=args.code, only_needed=args.only_needed,
                      normalize_png=not args.no_rgba)
     print('Extracted %d asset(s) -> %s' % (len(res['written']), os.path.abspath(args.content_dir)))
+    if res.get('console'):
+        print('  + %d console-only asset(s) from the converter bundle: %s'
+              % (len(res['console']), ', '.join(res['console'])))
     if res['converted']:
         print('  normalized %d non-RGBA PNG(s) to RGBA (360 render fix): %s'
               % (len(res['converted']), ', '.join(res['converted'][:6])
@@ -278,15 +337,17 @@ def _cmd_convert(args):
                              cpp_std=getattr(args, 'cpp_std', 'C++03'),
                              platform=getattr(args, 'platform', None),
                              platform_refs=getattr(args, 'platform_refs', False) or project,
-                             sdk_override=getattr(args, 'sdk', None))
+                             sdk_override=getattr(args, 'sdk', None),
+                             edition=getattr(args, 'edition', None),
+                             mc_version=getattr(args, 'mc_version', None))
     except sdk.SdkNotFound as e:
         print('ERROR (SDK gate): %s' % e)
         return 3
     print('Converted %s -> %s' % (os.path.abspath(java_dir), os.path.abspath(out_dir)))
     if project:
-        # One-step buildable project: preserve/re-emit config, then refresh the VS project file list. Each
-        # step is best-effort -- a missing SDK or .vcxproj is reported, never fatal to the conversion.
-        from . import platform_config, vcxproj
+        # One-step buildable project: preserve/re-emit config, then (re)generate the VS project. Each
+        # step is best-effort -- a missing SDK is reported, never fatal to the conversion.
+        from . import platform_config, vcxproj, project_layout
         try:
             _cfg, written, _info, _unv = platform_config.run(
                 out_dir, platform=(getattr(args, 'platform', None) or 'xbox360'),
@@ -296,12 +357,26 @@ def _cmd_convert(args):
             print('  project: platform-config skipped (SDK gate): %s' % e)
         except Exception as e:                       # noqa: BLE001 -- config must not abort the reconvert
             print('  project: platform-config FAILED: %s' % e)
+        # If out_dir already holds a .vcxproj, this is a RECONVERT -> just refresh its file list. If not
+        # (a brand-new edition/project), BOOTSTRAP the full solution layout (.sln + .vcxproj from the
+        # template) so the first convert of any edition is buildable without a manual `project-layout`.
+        proj_abs = os.path.abspath(out_dir)
+        has_vcxproj = os.path.isdir(proj_abs) and any(
+            f.endswith('.vcxproj') for f in os.listdir(proj_abs))
         try:
-            vcxproj.run(out_dir)                      # prints its own byte/file-count status
-            print('  project: VS project + filters refreshed')
-        except Exception as e:                       # noqa: BLE001 -- vcxproj refresh must not abort
-            print('  project: vcxproj refresh FAILED: %s' % e)
-    print('  target: %s / %s' % (s['platform'], s['cpp_std']))
+            if has_vcxproj:
+                vcxproj.run(out_dir)                  # prints its own byte/file-count status
+                print('  project: VS project + filters refreshed')
+            else:
+                # out_dir is the project subfolder (the reference layout is <root>/<Name>/<Name>.vcxproj),
+                # so the solution root is its parent and the project name is its basename.
+                info = project_layout.layout(os.path.dirname(proj_abs),
+                                             name=os.path.basename(os.path.normpath(proj_abs)))
+                print('  project: VS solution bootstrapped -> %s (+ %s)'
+                      % (os.path.basename(info['sln']), os.path.basename(info['vcxproj'])))
+        except Exception as e:                       # noqa: BLE001 -- project step must not abort convert
+            print('  project: VS project step FAILED: %s' % e)
+    print('  target: %s / %s / profile %s' % (s['platform'], s['cpp_std'], s.get('profile', '?')))
     print('  parsed=%d  headers=%d  sources=%d'
           % (s['parsed'], s['headers'], s['sources']))
     print('  verify (crash-class rule findings on output): %d' % s['rule_findings'])
@@ -368,12 +443,33 @@ def _cmd_report(args):
     return 0
 
 
+def _apply_edition(args):
+    """Activate the target profile for a standalone post-hoc command (signatures/vcxproj) that runs
+    outside `convert`. Only an explicit --edition is honored here; without it the default profile
+    stays active. Returns the previous profile name (or None) so the caller can restore it."""
+    ed = getattr(args, 'edition', None)
+    if not ed:
+        return None
+    from . import profiles as _profiles, edition as _edition
+    prev = _profiles.active().name
+    name = _edition.resolve(ed)
+    if name and name != prev:
+        _profiles.use(name)
+        print('  edition: active target profile: %s' % name)
+    return prev
+
+
 def _cmd_signatures(args):
-    from . import signatures
+    from . import signatures, profiles as _profiles
     if not os.path.isdir(args.java_dir):
         print('ERROR: not a directory: %s' % args.java_dir)
         return 2
-    signatures.run(args.java_dir, args.out)
+    _prev = _apply_edition(args)
+    try:
+        signatures.run(args.java_dir, args.out)
+    finally:
+        if _prev is not None and _profiles.active().name != _prev:
+            _profiles.use(_prev)
     return 0
 
 
@@ -386,8 +482,13 @@ def _cmd_worklist(args):
 
 
 def _cmd_vcxproj(args):
-    from . import vcxproj
-    vcxproj.run(proj_dir=args.proj)
+    from . import vcxproj, profiles as _profiles
+    _prev = _apply_edition(args)
+    try:
+        vcxproj.run(proj_dir=args.proj)
+    finally:
+        if _prev is not None and _profiles.active().name != _prev:
+            _profiles.use(_prev)
     return 0
 
 
@@ -482,13 +583,17 @@ def main(argv=None):
                     help='Emit the REAL hand-written platform layer (GL->D3D9 emulator, audio, input, '
                          'socket) from docs/platform/reference/ instead of no-op stubs.')
     cp.add_argument('--project', action='store_true',
-                    help='One-step reconvert: after converting, also (re)emit the platform config from '
-                         'the existing platform.config.json (preserving controller binds) and refresh the '
-                         'Visual Studio .vcxproj/.filters file list -- a buildable project, no GUI needed. '
-                         'Implies --platform-refs.')
+                    help='One-step buildable project: after converting, also (re)emit the platform '
+                         'config (preserving controller binds) and produce the Visual Studio project -- '
+                         'BOOTSTRAP a new .sln + .vcxproj from the template if none exists yet, or refresh '
+                         'the .vcxproj/.filters file list if it does. No GUI needed. Implies --platform-refs.')
     cp.add_argument('--sdk', default=None,
                     help='Path to the target platform SDK root (else auto-detected via env/standard '
                          'paths). A console platform with no located SDK is refused.')
+    cp.add_argument('--edition', default=None,
+                    choices=['rubydung', 'indev', 'infdev', 'alpha', 'beta', 'release'],
+                    help='Force the target Minecraft edition profile. Omit to infer from --mc-version, '
+                         'else auto-detect from the source, else keep the default profile.')
     cp.set_defaults(func=_cmd_convert)
 
     # decompile (RetroMCP/Vineflower backend: Minecraft version -> Java source)
@@ -513,6 +618,9 @@ def main(argv=None):
     sp.add_argument('java_dir', help='Directory of .java source.')
     sp.add_argument('--out', default=os.path.join(_ROOT, 'signatures.md'),
                     help='Output path (default: signatures.md at repo root).')
+    sp.add_argument('--edition', default=None,
+                    choices=['rubydung', 'indev', 'infdev', 'alpha', 'beta', 'release'],
+                    help='Use this edition profile\'s package roles (else the default profile).')
     sp.set_defaults(func=_cmd_signatures)
 
     # worklist
@@ -526,6 +634,9 @@ def main(argv=None):
     # vcxproj
     vp = sub.add_parser('vcxproj', help='Regenerate the Xbox .vcxproj file list.')
     vp.add_argument('--proj', default=None, help='Xbox project dir (default: ../MinecraftAlpha/MinecraftAlpha).')
+    vp.add_argument('--edition', default=None,
+                    choices=['rubydung', 'indev', 'infdev', 'alpha', 'beta', 'release'],
+                    help='Classify files with this edition profile\'s .filters taxonomy (else default).')
     vp.set_defaults(func=_cmd_vcxproj)
 
     # xact (audio bank tool)
@@ -642,6 +753,41 @@ def main(argv=None):
                          help='Turn Java reflection registries (newInstance) into generated C++ factories.')
     rfp.add_argument('out_dir', help='Converted output directory to rewrite in place.')
     rfp.set_defaults(func=_cmd_reflect_factories)
+
+    # sound-fix (console SFX bypass: route sound names to the XACT bridge past the empty OGG pool)
+    sfp = sub.add_parser('sound-fix',
+                         help='Drop the empty-OGG-pool null-guard in SoundManager so sound effects route to '
+                              'the XACT bridge (fixes silent SFX on console). Runs automatically on every '
+                              'xbox360 convert.')
+    sfp.add_argument('out_dir', help='Converted output directory to rewrite in place.')
+    sfp.set_defaults(func=_cmd_sound_fix)
+
+    # controller-nav (console D-pad menu navigation: inject the GuiScreen adapter + per-frame call)
+    cnp = sub.add_parser('controller-nav',
+                         help='Inject console controller MENU navigation into GuiScreen (D-pad moves the '
+                              'selection, snaps the cursor so hover+A-click work). The nav algorithm lives in '
+                              'Input.reference; this injects the thin adapter. Runs automatically on every '
+                              'xbox360 convert.')
+    cnp.add_argument('out_dir', help='Converted output directory to rewrite in place.')
+    cnp.set_defaults(func=_cmd_controller_nav)
+
+    # render-fix (console first-frame render: chunk-rebuild budget + hurt-camera NaN guard)
+    rfp = sub.add_parser('render-fix',
+                         help='Apply the two console render fixes: cap RenderGlobal::updateRenderers to a few '
+                              'chunk rebuilds per frame (else a fresh world never presents -- stuck on '
+                              '"Spawning"), and guard EntityRenderer::hurtCameraEffect against the spawn 0/0 '
+                              'NaN (else the world renders invisible). Runs automatically on every xbox360 '
+                              'convert.')
+    rfp.add_argument('out_dir', help='Converted output directory to rewrite in place.')
+    rfp.set_defaults(func=_cmd_render_fix)
+
+    # applet-ping (console setLevel: drop the applet host ping that never answers on 360)
+    app = sub.add_parser('applet-ping',
+                         help='Neutralize the applet host ping in setLevel (getDocumentBase()->openStream()) so '
+                              'the world is set unconditionally on console. Runs automatically on every '
+                              'xbox360 convert.')
+    app.add_argument('out_dir', help='Converted output directory to rewrite in place.')
+    app.set_defaults(func=_cmd_applet_ping)
 
     # gui
     # apimap (API-mapping registry: cross-language / cross-API function equivalence)

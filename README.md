@@ -59,6 +59,7 @@ j2ctool ui-mark         <tree>             # tag UI functions with greppable mar
 j2ctool keybind-mark    <tree>             # tag hardcoded key-press sites + KEYBIND_INDEX
 j2ctool bugfix-ledger   <tree>             # catalog FIXED BUG / J2X-BUGFIX markers
 j2ctool reflect-factories <tree>           # rewrite Java reflection registries -> C++ factories
+j2ctool sound-fix       <tree>             # route SFX/music past the empty console OGG pool to XACT
 j2ctool debug           <...>              # emit a single toggleable Debug.{h,cpp}
 j2ctool sdk             <...>              # detect / gatekeep the platform SDK
 j2ctool project-layout  <tree>             # impose the VS solution layout on a flat output tree
@@ -68,8 +69,8 @@ j2ctool gui                                # launch the GUI explicitly
 python -m pytest -q
 ```
 
-`convert` automatically runs the reflection-factory, keybind-marking, and bugfix-ledger passes as
-part of the pipeline.
+`convert` automatically runs the reflection-factory, sound-fix (xbox360: SFX/music XACT bypass),
+keybind-marking, and bugfix-ledger passes as part of the pipeline.
 
 ## Correct by construction
 
@@ -87,7 +88,7 @@ Fixes are made in one of two places:
 
 | Path | What |
 |------|------|
-| `j2ctool/` | The transpiler package. Core: `ir`, `parse`, `types`/`typemap`, `emit/`, `pipeline`, `rules`, `runtime`, `ledger`/`report`. Profile tooling: `assets`, `xact`, `achievements`, `platform_*`, `keybind_mark`, `ui_mark`, `signatures`, `vcxproj`, `project_*`, `cli`, `gui`. |
+| `j2ctool/` | The transpiler package. Core: `ir`, `parse`, `types`/`typemap`, `emit/`, `pipeline`, `rules`, `runtime`, `ledger`/`report`. Profile tooling: `assets`, `xact`, `achievements`, `platform_*`, `keybind_mark`, `sound_fix`, `ui_mark`, `signatures`, `vcxproj`, `project_*`, `cli`, `gui`. |
 | `tests/` | `pytest` suite. `tests/fixtures/java/` is a small **synthetic** (non-game) Java corpus used by the parser/emitter tests. |
 | `profiles/` | Conversion profiles (type/ownership defaults, skip lists). |
 | `docs/platform/` | The Xbox-360 platform layer: `notes/` (architecture write-ups), `reference/` + `companions/` (hand-written glue), `canonical/` (Java-stdlib reimplementations). |

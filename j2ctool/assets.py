@@ -111,6 +111,35 @@ def code_resource_refs(code_dir):
     return dict((k, sorted(v)) for k, v in refs.items())
 
 
+# CONSOLE-ONLY assets that no vanilla jar ships but the console platform layer needs (e.g. the controller
+# cursor icon drawn by EntityRenderer in container GUIs -- see controller_nav.py). Bundled in the converter
+# and copied into Content alongside the jar extraction so the feature is never a per-project manual asset.
+_CONSOLE_ASSETS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                   'docs', 'platform', 'assets')
+
+
+def place_console_assets(content_dir):
+    """Mirror the bundled console-only assets into content_dir (same relative paths). Returns the list of
+    relative paths written. Skips silently if the bundle dir is absent."""
+    if not os.path.isdir(_CONSOLE_ASSETS_DIR):
+        return []
+    placed = []
+    for root, _dirs, files in os.walk(_CONSOLE_ASSETS_DIR):
+        for fn in files:
+            src = os.path.join(root, fn)
+            rel = os.path.relpath(src, _CONSOLE_ASSETS_DIR)
+            dst = os.path.join(content_dir, rel)
+            d = os.path.dirname(dst)
+            if d and not os.path.isdir(d):
+                os.makedirs(d)
+            with open(src, 'rb') as fh:
+                data = fh.read()
+            with open(dst, 'wb') as out:
+                out.write(data)
+            placed.append(rel.replace(os.sep, '/'))
+    return sorted(placed)
+
+
 def extract(jar_path, content_dir, only=None, normalize_png=True, converted=None):
     """Mirror the jar's asset entries into content_dir, preserving each entry's relative path and
     name (jar `gui/gui.png` -> content_dir/gui/gui.png). If `only` (a set of slash-less paths) is
@@ -140,6 +169,19 @@ def extract(jar_path, content_dir, only=None, normalize_png=True, converted=None
     return sorted(written)
 
 
+def list_console_assets():
+    """Bundled console-only asset rel-paths (forward slash, no leading slash). Part of the coverage
+    audit's SUPPLY, since these ship from the converter rather than the jar."""
+    if not os.path.isdir(_CONSOLE_ASSETS_DIR):
+        return []
+    out = []
+    for root, _dirs, files in os.walk(_CONSOLE_ASSETS_DIR):
+        for fn in files:
+            rel = os.path.relpath(os.path.join(root, fn), _CONSOLE_ASSETS_DIR)
+            out.append(rel.replace(os.sep, '/'))
+    return sorted(out)
+
+
 def coverage(jar_path, code_dir):
     """Audit the code's texture/resource demand against the jar's supply. Returns:
       needed   {path: [files that reference it]}   (slash-less)
@@ -147,7 +189,7 @@ def coverage(jar_path, code_dir):
       missing  sorted[paths the code needs but the jar LACKS]  <- runtime NULL-image crash
       extra    sorted[asset paths in the jar the code never references]  (safe to ship anyway)"""
     needed = code_resource_refs(code_dir)
-    jar = set(list_jar_assets(jar_path))
+    jar = set(list_jar_assets(jar_path)) | set(list_console_assets())   # supply = jar + console bundle
     jar_lower = dict((n.lower(), n) for n in jar)
     needset = set(needed)
     present, missing = [], []
@@ -221,6 +263,8 @@ def run(jar_path, content_dir, code_dir=None, only_needed=False, normalize_png=T
     need_convert = indexed_pngs(jar_path) if normalize_png else []
     written = extract(jar_path, content_dir, only=only,
                       normalize_png=normalize_png, converted=converted)
+    # console-only assets (controller cursor, etc.) ship from the converter's bundle, not the jar.
+    console = place_console_assets(content_dir)
     # PNGs that needed conversion but couldn't be (Pillow absent) -> flag them, they will misrender.
     unconverted = sorted(set(need_convert) - set(converted)
                          - (set(need_convert) - set(written))) if normalize_png else []
@@ -231,4 +275,5 @@ def run(jar_path, content_dir, code_dir=None, only_needed=False, normalize_png=T
         with open(report_path, 'w', encoding='utf-8') as f:
             f.write(render_coverage(cov, converted=converted, unconverted=unconverted))
     return {'written': written, 'coverage': cov, 'content_dir': content_dir, 'report': report_path,
-            'converted': sorted(converted), 'unconverted': unconverted, 'has_pil': _HAS_PIL}
+            'converted': sorted(converted), 'unconverted': unconverted, 'has_pil': _HAS_PIL,
+            'console': console}

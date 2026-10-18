@@ -24,16 +24,27 @@ import re
 # `FIXED BUG <slug>` or `J2X-BUGFIX <slug>`; slug is kebab-case or a YYYY-MM-DD date.
 _MARK = re.compile(r'(FIXED BUG|J2X-BUGFIX)\s+([A-Za-z0-9][A-Za-z0-9\-]*)')
 
+# Words that follow the marker token in META references to the marker system itself (e.g. a help/docstring
+# line that says "grep for the J2X-BUGFIX marker") -- these are NOT real fix slugs, so skip them.
+_NON_SLUGS = frozenset(('marker', 'markers'))
+
+# The scanner's own file: it contains the marker regex + prose ABOUT markers, so exclude it from the walk.
+_SELF = 'bugfix_ledger.py'
+
 # Source extensions worth scanning (skip binaries, images, generated caches).
 _EXTS = ('.h', '.hpp', '.cpp', '.cc', '.c', '.py', '.md')
 
-# Authored layers, most-durable first. Each survives a reconvert; the emitted
-# tree is derived from these, so cataloging the sources avoids double-counting.
+# Layers scanned, most-durable first. The OUTPUT layers (canonical/reference/companion/overlay) survive a
+# reconvert and the emitted tree is derived from them. The GENERATOR layer is the converter itself
+# (`j2ctool/`) -- its emitter/runtime/toolchain fixes don't appear in the output tree but ARE revertible by an
+# edit to the converter, so they belong in the ledger too (e.g. the section-sign unsigned-char cast, the
+# SFX/music bypass pass, map-get-inserts). Listed last as a distinct "the converter itself" category.
 _LAYERS = [
     ('canonical',  os.path.join('docs', 'platform', 'canonical')),
     ('reference',  os.path.join('docs', 'platform', 'reference')),
     ('companion',  os.path.join('docs', 'platform', 'companions')),
     ('overlay',    os.path.join('overlays')),
+    ('generator',  os.path.join('j2ctool')),
 ]
 
 
@@ -59,6 +70,8 @@ def _scan_file(path):
         if not m:
             continue
         slug = m.group(2)
+        if slug in _NON_SLUGS:                    # meta reference to the marker system, not a fix slug
+            continue
         desc = _clean_comment(line)
         # If the marker line has no trailing prose, borrow the next comment line.
         if not desc and i + 1 < len(lines):
@@ -80,7 +93,7 @@ def collect(repo_root):
             if '__pycache__' in dirpath:
                 continue
             for fn in sorted(files):
-                if not fn.endswith(_EXTS):
+                if not fn.endswith(_EXTS) or fn == _SELF:
                     continue
                 full = os.path.join(dirpath, fn)
                 rel_file = os.path.relpath(full, repo_root).replace('\\', '/')
@@ -120,7 +133,8 @@ def render(entries):
         pretty = {'canonical': 'Canonical headers (real java.* replacements)',
                   'reference': 'Platform references (native 360/D3D/XInput/XACT layer)',
                   'companion': 'Companions (bolt-on platform helpers)',
-                  'overlay':   'Overlays (per-project hand-fixes, re-applied every convert)'}[layer]
+                  'overlay':   'Overlays (per-project hand-fixes, re-applied every convert)',
+                  'generator': 'Generator / emitter / runtime / toolchain (the converter itself)'}[layer]
         lines.append('## %s' % pretty)
         lines.append('')
         lines.append('| Fix (slug) | Location | What it fixes |')

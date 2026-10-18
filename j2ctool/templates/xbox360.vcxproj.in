@@ -99,7 +99,7 @@
     <CodeAnalysisRuleSet>AllRules.ruleset</CodeAnalysisRuleSet>
   </PropertyGroup>
   <!-- RETAIL-LINKED DEBUG. The target is a RETAIL/RGH console, not a devkit, so this config links the
-       RETAIL Xbox 360 system libraries (d3d9.lib, xapilib.lib, ...) and the retail static CRT -- NEVER the
+       RETAIL Xbox 360 system libraries (d3d9.lib, xapilib.lib, ...) and the retail static CRT, NEVER the
        *d.lib debug runtimes. The debug D3D/XAM/audio runtimes require devkit-only kernel services; on a
        retail console they either fail to init or (in an emulator) trip validation asserts like
        "*VdGlobalDevice == NULL". App-level debugging is a SEPARATE axis: J2X_DEBUG turns on our own trace

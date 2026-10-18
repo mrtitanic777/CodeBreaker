@@ -21,7 +21,17 @@ import hashlib
 # The (basename regex -> filter path) rules are game-specific and come from the active target
 # profile. EVERY file must resolve to a filter (fallback 'Game (misc)'), never the project root.
 from . import profiles as _profiles
-_FILTER_RULES = _profiles.active().vcxproj_filters
+_FILTER_RULES = list(_profiles.active().vcxproj_filters)
+
+
+def _reseed(p):
+    """Re-derive the .filters classification rules when the active target profile changes
+    (profiles.on_change). Copied so an edition switch retargets the Solution-Explorer layout."""
+    global _FILTER_RULES
+    _FILTER_RULES = list(p.vcxproj_filters)
+
+
+_profiles.on_change(_reseed)
 
 
 def _classify(basename, parent_of=None):
@@ -85,7 +95,10 @@ def write_filters(proj_dir, proj_name, cpps, hs):
     file_filter = {}
     filters = set()
     for fn in cpps + hs:
-        filt = _classify(fn.rsplit('.', 1)[0], parent_of)
+        if '\\' in fn:                                        # subdir'd overlay file -> folder = its subdir path
+            filt = fn.rsplit('\\', 1)[0]
+        else:
+            filt = _classify(fn.rsplit('.', 1)[0], parent_of)
         file_filter[fn] = filt
         parts = filt.split('\\')                              # register each nesting level
         for i in range(len(parts)):
@@ -151,6 +164,25 @@ def _title_id_for(proj_dir):
     return tid, ''
 
 
+def _enum_sources(proj_dir):
+    """Recursively collect .cpp/.h under proj_dir as RELATIVE (backslash) paths, skipping build/output dirs.
+    FIXED BUG overlay-subdir-not-compiled: os.listdir only saw the project ROOT, so subdir'd overlay files -- a
+    whole added subsystem like xuimenu/ (Ui/Gfx/MenuApp/...) -- were never listed in the .vcxproj and silently
+    never compiled, defeating the overlays.py "ADDED .cpp are compiled" guarantee. Walk recursively instead."""
+    SKIP = {'debug', 'release', 'release_ltcg', 'profile', 'fastcap', 'codeanalysis',
+            'report', '.vs', '_decompiled', 'x64', 'obj', 'bin', '.git', 'ipch'}
+    cpps, hs = [], []
+    for root, dirs, files in os.walk(proj_dir):
+        dirs[:] = [d for d in dirs if d.lower() not in SKIP]
+        for fn in files:
+            rel = os.path.relpath(os.path.join(root, fn), proj_dir).replace('/', '\\')
+            if fn.endswith('.cpp'):
+                cpps.append(rel)
+            elif fn.endswith('.h'):
+                hs.append(rel)
+    return sorted(cpps), sorted(hs)
+
+
 def run(proj_dir=None, name=None, write_filters_too=True):
     """Regenerate the .vcxproj ClCompile/ClInclude file list from the .cpp/.h in proj_dir, and (by
     default) also (re)write the subsystem <name>.vcxproj.filters so Solution Explorer shows folders."""
@@ -172,12 +204,16 @@ def run(proj_dir=None, name=None, write_filters_too=True):
         return '' if ('<ClCompile' in block or '<ClInclude' in block) else block
     text = re.sub(r'<ItemGroup>\s*.*?</ItemGroup>', drop_filelists, text, flags=re.S)
 
-    cpps = sorted(f for f in os.listdir(proj_dir) if f.endswith('.cpp'))
-    hs = sorted(f for f in os.listdir(proj_dir) if f.endswith('.h'))
+    cpps, hs = _enum_sources(proj_dir)
 
     def cl_compile(fn):
         if fn == 'stdafx.cpp' and stdafx_block:
             return '    ' + stdafx_block + '\n'
+        if '\\' in fn:   # subdir'd overlay subsystem (e.g. xuimenu) -- carries its OWN stdafx.h, not the game PCH
+            return ('    <ClCompile Include="%s">\n'
+                    '      <PrecompiledHeader>NotUsing</PrecompiledHeader>\n'
+                    '      <AdditionalIncludeDirectories>$(ProjectDir);%%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>\n'
+                    '    </ClCompile>\n' % fn)
         return '    <ClCompile Include="%s" />\n' % fn
 
     compile_grp = '  <ItemGroup>\n' + ''.join(cl_compile(f) for f in cpps) + '  </ItemGroup>\n'
@@ -190,14 +226,19 @@ def run(proj_dir=None, name=None, write_filters_too=True):
     # old StageContent copied $(ProjectDir)Content (never exists) -> inert. Emit a DeployContent target that
     # mirrors the canonical Debug\Content into any NON-Debug config's OutDir (Debug already has it). /D copies
     # only changed files (skips the big audio banks on rebuilds).
+    # FIXED BUG release-ltcg-no-media: the XUI front-end loads from game:\Media (skin/*.xur scenes, fonts,
+    # strings, panorama) which is ALSO emitted only into Debug\Media -> a Release/LTCG build's game:\Media was
+    # EMPTY -> the menu held a solid McDie colour. Mirror Debug\Media the same way. Both Execs are now guarded by
+    # a per-folder Exists() so a project with only Content (no XUI) deploys cleanly and one with Media gets both.
     import re as _re
     text = _re.sub(r'\s*<Target Name="StageContent".*?</Target>', '', text, flags=_re.S)
     text = _re.sub(r'\s*<Target Name="DeployContent".*?</Target>', '', text, flags=_re.S)
     deploy_target = (
-        '  <Target Name="DeployContent" AfterTargets="Build" '
-        'Condition="\'$(Configuration)\' != \'Debug\' And Exists(\'$(ProjectDir)Debug\\Content\')">\n'
-        '    <Exec Command="xcopy /E /I /Y /Q /D &quot;$(ProjectDir)Debug\\Content&quot; '
-        '&quot;$(OutDir)Content\\&quot;" />\n'
+        '  <Target Name="DeployContent" AfterTargets="Build" Condition="\'$(Configuration)\' != \'Debug\'">\n'
+        '    <Exec Condition="Exists(\'$(ProjectDir)Debug\\Content\')" '
+        'Command="xcopy /E /I /Y /Q /D &quot;$(ProjectDir)Debug\\Content&quot; &quot;$(OutDir)Content\\&quot;" />\n'
+        '    <Exec Condition="Exists(\'$(ProjectDir)Debug\\Media\')" '
+        'Command="xcopy /E /I /Y /Q /D &quot;$(ProjectDir)Debug\\Media&quot; &quot;$(OutDir)Media\\&quot;" />\n'
         '  </Target>\n'
     )
 
