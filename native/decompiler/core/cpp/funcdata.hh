@@ -54,6 +54,7 @@ extern ElementId ELEM_VARNODES;		///< Marshaling element \<varnodes>
 ///    - Access to subfunction prototypes
 ///    - Access to jump-tables (within the body of the function)
 class Funcdata {
+  friend class CloneBlockOps;	///< CodeBreaker: it registers the call specifications of the CALLs it clones
   enum {
     highlevel_on = 1,		///< Set if Varnodes have HighVariables assigned
     blocks_generated = 2,	///< Set if Basic blocks have been generated

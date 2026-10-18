@@ -130,3 +130,9 @@ RISC-V Sail, Intel XED).
   jumps (3,266): those need restructuring proper (condition-based refinement, "no more gotos"),
   the next step. Found on the way: the 7B governor could stop a function at once, "over the time
   limit", when the one before it on its thread had run long (fixed, 067b32e).
+  Then (C14) tails holding calls: the core's block copier now copies calls and their side
+  effects, so `goto L; ... L: f(); return x;` becomes the call and the return in place. Gotos
+  6,449 -> 5,701 (18.8 -> 15.7 per 1,000 lines; KERNEL32 -25%, GDI32 -29%, USER -20%); 350
+  functions changed, no new failures, one thread and four agree. Left: 2,341 backward, 3,096
+  forward, mostly COMMAND.COM (hand-written assembly; 3,090 of them) -- loops with several
+  entries and crossing jumps, for restructuring proper.

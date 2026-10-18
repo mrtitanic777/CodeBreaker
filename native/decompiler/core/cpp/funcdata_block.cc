@@ -1081,17 +1081,32 @@ void CloneBlockOps::patchInputs(int4 inedge)
       if (origOp->numInput() == 1)
 	data.opSetOpcode(origOp,CPUI_COPY);
     }
-    else if (origOp->code() == CPUI_INDIRECT) {
-      throw LowlevelError("Can't clone INDIRECTs");
-    }
-    else if (origOp->isCall()) {
-      throw LowlevelError("Can't clone CALLs");
-    }
     else {
+      // CodeBreaker: a CALL is cloned with its own copy of the call specification, and an
+      // INDIRECT with its cause (the iop annotation) pointed at the clone of the op that caused
+      // it -- so a return block holding a call can be split (ActionReturnSplit, blockaction.cc)
+      bool fspecIn = false;
       for(int4 i=0;i<cloneOp->numInput();++i) {
 	Varnode *origVn = origOp->getIn(i);
 	Varnode *cloneVn;
-	if (origVn->isConstant())
+	if (origVn->getSpace()->getType() == IPTR_IOP) {
+	  map<PcodeOp *,PcodeOp *>::const_iterator iter = origToClone.find(PcodeOp::getOpFromConst(origVn->getAddr()));
+	  if (iter == origToClone.end())
+	    throw LowlevelError("Can't clone INDIRECT caused outside the block");
+	  cloneVn = data.newVarnodeIop((*iter).second);
+	}
+	else if (origVn->getSpace()->getType() == IPTR_FSPEC) {
+	  FuncCallSpecs *origSpec = FuncCallSpecs::getFspecFromConst(origVn->getAddr());
+	  Varnode *tmp = data.newVarnodeCallSpecs(origSpec);	// (the specification's constructor reads
+	  data.opSetInput(cloneOp,tmp,i);			// the call's target: for now, the original's)
+	  FuncCallSpecs *spec = origSpec->clone(cloneOp);
+	  data.qlst.push_back(spec);
+	  cloneVn = data.newVarnodeCallSpecs(spec);
+	  data.opSetInput(cloneOp,cloneVn,i);
+	  data.deleteVarnode(tmp);
+	  fspecIn = true;
+	}
+	else if (origVn->isConstant())
 	  cloneVn = origVn;
 	else if (origVn->isAnnotation())
 	  cloneVn = data.newCodeRef(origVn->getAddr());
@@ -1110,6 +1125,12 @@ void CloneBlockOps::patchInputs(int4 inedge)
 	    cloneVn = origVn;
 	}
 	data.opSetInput(cloneOp,cloneVn,i);
+      }
+      if (origOp->isCall() && !fspecIn) {	// (its specification found by the op, not embedded)
+	FuncCallSpecs *orig = data.getCallSpecs(origOp);
+	if (orig == (FuncCallSpecs *)0)
+	  throw LowlevelError("Can't clone CALL without its specification");
+	data.qlst.push_back(orig->clone(cloneOp));
       }
     }
   }

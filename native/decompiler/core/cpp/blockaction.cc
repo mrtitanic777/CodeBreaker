@@ -2249,8 +2249,8 @@ void ActionReturnSplit::gatherReturnGotos(FlowBlock *parent,vector<FlowBlock *> 
 /// CodeBreaker: a short tail of plain operations (arithmetic, loads, stores -- at most
 /// \b maxSplitOps of them) is split too, not only a block of copies: each path that would
 /// \e goto the shared tail gets its own copy of it, which is the same program (the block has no
-/// flow out, so nothing after it sees the difference). Calls are not copied (each has its own
-/// call specification), nor is anything the copier cannot duplicate.
+/// flow out, so nothing after it sees the difference). Up to \b maxSplitCalls calls are copied
+/// too, each with its own call specification and side-effects (CloneBlockOps).
 /// \param b is the given BasicBlock
 /// \return \b true if the block can be split
 bool ActionReturnSplit::isSplittable(BlockBasic *b)
@@ -2259,14 +2259,23 @@ bool ActionReturnSplit::isSplittable(BlockBasic *b)
   list<PcodeOp *>::const_iterator iter;
   PcodeOp *op;
   int4 plain = 0;
+  int4 calls = 0;
 
   for(iter=b->beginOp();iter!=b->endOp();++iter) {
     op = *iter;
     OpCode opc = op->code();
     if (opc == CPUI_MULTIEQUAL) continue;
-    if (opc != CPUI_COPY && opc != CPUI_RETURN) {
-      if (op->isCall() || op->isBranch() || opc == CPUI_INDIRECT || opc == CPUI_NEW ||
-	  opc == CPUI_CPOOLREF || opc == CPUI_CALLOTHER)
+    if (opc == CPUI_INDIRECT) {
+      // (a side-effect is copied with what causes it, which must be in the block too)
+      const Varnode *iop = op->getIn(1);
+      if (iop->getSpace()->getType() != IPTR_IOP || PcodeOp::getOpFromConst(iop->getAddr())->getParent() != b)
+	return false;
+    }
+    else if (opc == CPUI_CALL || opc == CPUI_CALLIND) {
+      if (++calls > maxSplitCalls) return false;
+    }
+    else if (opc != CPUI_COPY && opc != CPUI_RETURN) {
+      if (op->isCall() || op->isBranch() || opc == CPUI_NEW || opc == CPUI_CPOOLREF)
 	return false;
       if (++plain > maxSplitOps) return false;
     }
@@ -2275,6 +2284,20 @@ bool ActionReturnSplit::isSplittable(BlockBasic *b)
       if (op->getIn(i)->isAnnotation()) continue;
       if (op->getIn(i)->isFree()) return false;
     }
+  }
+  return true;
+}
+
+/// CodeBreaker: the blocks the upstream splitter splits -- copies and the RETURN, nothing else
+/// \param b is the given BasicBlock
+/// \return \b true if it holds nothing else
+bool ActionReturnSplit::onlyCopies(BlockBasic *b)
+
+{
+  list<PcodeOp *>::const_iterator iter;
+  for(iter=b->beginOp();iter!=b->endOp();++iter) {
+    OpCode opc = (*iter)->code();
+    if (opc != CPUI_MULTIEQUAL && opc != CPUI_COPY && opc != CPUI_RETURN) return false;
   }
   return true;
 }
@@ -2298,6 +2321,11 @@ int4 ActionReturnSplit::apply(Funcdata &data)
     parent = op->getParent();
     if (parent->sizeIn() <= 1) continue;
     if (!isSplittable(parent)) continue;
+    // CodeBreaker: a tail of more than copies is split at most maxResplits times per function:
+    // the analysis can join identical tails back together, and splitting them again each time
+    // could go on without end
+    const bool more = !onlyCopies(parent);
+    if (more && splitCount[op->getAddr()] >= maxResplits) continue;
     vector<FlowBlock *> gotoblocks;
     gatherReturnGotos(parent,gotoblocks);
     if (gotoblocks.empty()) continue;
@@ -2327,7 +2355,10 @@ int4 ActionReturnSplit::apply(Funcdata &data)
     if (parent->sizeIn() == splitcount) {
       splitedge.pop_back();
       retnode.pop_back();
+      splitcount -= 1;
     }
+    if (more && splitcount > 0)
+      splitCount[op->getAddr()] += 1;
   }
 
   for(int4 i=0;i<splitedge.size();++i) {

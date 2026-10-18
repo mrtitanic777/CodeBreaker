@@ -338,10 +338,15 @@ public:
 /// Introduce RETURN operations corresponding to individual branches flowing to the epilog.
 class ActionReturnSplit : public Action {
   static const int4 maxSplitOps = 8;		///< CodeBreaker: the most plain ops a tail copied per path may have
+  static const int4 maxSplitCalls = 2;		///< CodeBreaker: ...and the most calls
+  map<Address,int4> splitCount;	///< CodeBreaker: times each RETURN's tail of more than copies was split
+  static const int4 maxResplits = 4;	///< CodeBreaker: ...and the most times one may be
   static void gatherReturnGotos(FlowBlock *parent,vector<FlowBlock *> &vec);
   static bool isSplittable(BlockBasic *b);		///< Determine if a RETURN block can be split
+  static bool onlyCopies(BlockBasic *b);		///< CodeBreaker: is the block only copies and the RETURN
 public:
   ActionReturnSplit(const string &g) : Action(0,"returnsplit",g) {}		///< Constructor
+  virtual void reset(Funcdata &data) { Action::reset(data); splitCount.clear(); }
   virtual Action *clone(const ActionGroupList &grouplist) const {
     if (!grouplist.contains(getGroup())) return (Action *)0;
     return new ActionReturnSplit(getGroup());
