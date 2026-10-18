@@ -106,7 +106,8 @@ struct Slot {
   std::atomic<long long> held{0};        // what this thread's allocations hold
   std::atomic<long long> base_held{0};   // ...when its function began
   std::atomic<long long> started_ms{0};  // when its function began (0: none)
-  std::atomic<bool> expired{false};      // past the time limit: stop at the next check
+  std::atomic<long long> expired{0};     // past the time limit: the start (started_ms) of the function
+                                         // to stop at its next check -- that function's, not the next one's
 };
 const int kMaxSlots = 64;
 Slot slots[kMaxSlots];
@@ -201,7 +202,7 @@ const char* over_budget() {
   }
   Slot* s = my_slot;
   if (s == nullptr) return nullptr;
-  if (s->expired.load()) {
+  if (s->expired.load() != 0 && s->expired.load() == s->started_ms.load()) {
     std::snprintf(soft_why, sizeof(soft_why), "over the time limit (CB_FUNCTION_SECONDS) in %s / %s",
                   ghidra::cb_action, ghidra::cb_rule);
     return soft_why;
@@ -238,7 +239,6 @@ void begin_function() {
   if (threads == 1) base_bytes = process_bytes();
   if (Slot* s = my_slot) {
     s->base_held = s->held.load();
-    s->expired = false;
     s->started_ms = now_ms();
   }
 }
@@ -301,7 +301,7 @@ void set_up() {
           // one thread: the process ends here, as it always has. Several: the function stops at
           // its next check; one the checks do not reach (twice the limit) ends the process
           if (threads == 1) fail_and_exit("over the time limit (CB_FUNCTION_SECONDS)", 4, &sl);
-          sl.expired = true;
+          sl.expired = s;
           if (now_ms() - s > 2 * max_ms) fail_and_exit("over twice the time limit (CB_FUNCTION_SECONDS)", 4, &sl);
         }
       }
