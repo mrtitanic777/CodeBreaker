@@ -136,7 +136,7 @@ def build(m, module_path, work):
         if not os.path.isfile(unit):
             unit = os.path.join(units, c + ".cpp")
             with open(unit, "w", encoding="utf-8") as f:
-                f.write('#include "%s.h"\n' % c)
+                f.write('#include "stdafx.h"\n#include "%s.h"\n' % c)
         items[c] = (c, unit)
     return (cxx, m.out), items, {}
 

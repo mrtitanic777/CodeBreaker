@@ -202,6 +202,17 @@ _STDAFX_COMMON_CRT = """\
 #include <algorithm>
 """
 
+# No platform, built on a Windows host (MSVC, mingw): the runtime's file and thread helpers (File.h,
+# Class.h) call the Win32 kernel API, as they do on the 360 through <xtl.h>. Lean, and without GDI --
+# GDI's Rectangle() function would hide java.awt.Rectangle.
+_STDAFX_HOST_WINDOWS = """\
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#define NOGDI
+#include <windows.h>
+#endif
+"""
+
 _STDAFX_MSVC_WARNINGS = """\
 #pragma warning(disable: 4018) // signed/unsigned mismatch
 #pragma warning(disable: 4244) // conversion float/double
@@ -327,9 +338,8 @@ def generate_stdafx(platform_id, cpp_std_label='C++03'):
         return (
             '// stdafx.h -- precompiled header for %s\n'
             '#pragma once\n\n'
-            '// TODO: Add platform system headers here\n\n'
-            '%s\n%s\n'
-        ) % (plat_label, _STDAFX_COMMON_CRT, _STDAFX_COMMON_TYPEDEFS)
+            '%s\n%s\n%s\n'
+        ) % (plat_label, _STDAFX_HOST_WINDOWS, _STDAFX_COMMON_CRT, _STDAFX_COMMON_TYPEDEFS)
 
     lines = [
         '// stdafx.h -- precompiled header for %s (%s)' % (plat_label, cpp_std_label),

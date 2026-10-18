@@ -1258,6 +1258,13 @@ def _convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True
                   % ', '.join(_vfail))
         if not _audit['orphans'] and not _vfail:
             _prog('[platform] integration verified: all %d reference(s) replaced their stub' % len(_expect))
+    else:
+        # The runtime's Inflater/GZIPInputStream include "Inflate.h" -- portable C (puff.c, no platform
+        # in it) that otherwise only arrives with the platform layer. Without a platform it comes alone.
+        from codebreaker.java._paths import data_path as _data_path
+        for _ext in ('.h', '.cpp'):
+            _write(os.path.join(out_dir, 'Inflate' + _ext),
+                   _read(_data_path('platform', 'reference', 'Inflate.reference' + _ext)))
 
     headers = sources = 0
     init_classes = []                                # concrete classes whose initStatics() does real work
