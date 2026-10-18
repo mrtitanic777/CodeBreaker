@@ -168,10 +168,11 @@ def explain(original, folder, names, image=None):
     image = image or next(os.path.join(folder, f) for f in os.listdir(folder)
                           if f.lower() == os.path.basename(original).lower())
     from codebreaker.formats.ne import NEFile
+    from codebreaker.emulate import windows16 as emu
     nef = NEFile(original)
     auto = nef.h.get("autodata_seg")
     seg = next((s for s in nef.segments() if s["idx"] == auto), None)
-    data = bytes(nef.data[seg["file_off"]:seg["file_off"] + seg["length"]]) if seg and seg["file_off"] else b""
+    data = emu.relocated_data(original) if seg and seg["file_off"] else b""   # (fixed up, as loaded)
     data_end = (seg["length"], max(seg["length"], seg.get("minalloc") or 0) or 0x10000) if seg else None
     callees_orig = {place[n]: (n, pop, far) for n, (pop, far) in funcs.items() if n in place}
     callees_ours = {ours[n]: (n, pop, far) for n, (pop, far) in funcs.items() if n in ours}

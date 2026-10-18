@@ -43,7 +43,23 @@ def vectors():
             {"args": [sel if i % 2 else 0x20 * (i + 1) for i in range(n)]},     # offset, selector, ...
             {"args": [0x20 * (i + 1) if i % 2 else sel for i in range(n)]},     # selector, offset, ...
             {"args": [sel] * n},
-            {"args": [1, 0x40, sel, 2, 0x80, sel, 3, 0x100]}]
+            {"args": [1, 0x40, sel, 2, 0x80, sel, 3, 0x100]}] + _scattered(n, sel)
+
+
+def _scattered(n, sel):
+    """Four more, every word a different one spread over the segment (the same on every run):
+    with the same word in each argument, or small ones pointing at the quiet start of the data
+    segment, a function reading the wrong argument or the wrong field read what it should have
+    -- planted that way, 17 of 40 such bugs went unseen (tools/gate_teeth16.py)."""
+    import random
+    rnd = random.Random(0x16)
+    out = []
+    for k in range(4):
+        words = [rnd.randrange(0x0100, 0x7F00) & ~1 for _ in range(n)]
+        if k % 2:                                            # (and as far pointers: offset, selector)
+            words = [sel if i % 2 else w for i, w in enumerate(words)]
+        out.append({"args": words})
+    return out
 
 
 def _call(hit, inputs, entry):

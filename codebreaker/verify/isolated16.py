@@ -194,7 +194,12 @@ def check(original, folder, names, image=None, inputs=None, workers=None, tables
     nef = NEFile(original)
     auto = nef.h.get("autodata_seg")
     seg = next((s for s in nef.segments() if s["idx"] == auto), None)   # (a driver may have none)
-    data = bytes(nef.data[seg["file_off"]:seg["file_off"] + seg["length"]]) if seg and seg["file_off"] else b""
+    data = emu.relocated_data(original) if seg and seg["file_off"] else b""   # (fixed up, as loaded)
+    # (and the scattered inputs once more over a data segment whose zeros are a pattern, the
+    # same on both sides: much of it is zeros at load, and a C function reading the global
+    # beside the one it should read the zero beside a zero -- planted so, 9 of 40 went unseen)
+    noisy = bytes(b if b else (((i * 0x9E3779B1) >> 13) & 0xFF) | 1 for i, b in enumerate(data))
+    noisy_runs = [dict(v, noisy=True) for v in win16.vectors()[-4:]] if data else []
     # (where the original's data ends and its segment ends: past them both sides hold the same)
     data_end = (seg["length"], max(seg["length"], seg.get("minalloc") or 0) or 0x10000) if seg else None
     callees_orig = {place[n]: (n, pop, far) for n, (pop, far) in funcs.items() if n in place}
@@ -214,12 +219,14 @@ def check(original, folder, names, image=None, inputs=None, workers=None, tables
         # (and inputs aimed at what its own code tests: the constants it compares with)
         later = [o for (sg, o) in place.values() if sg == oseg and o > ooff]
         aimed = win16.directed(original, oseg, (ooff, min(later) if later else 0x10000), most=12)
-        for v in (inputs or win16.vectors() + aimed):
+        for v in (inputs or win16.vectors() + aimed + noisy_runs):
             try:
+                dimg = noisy if v.get("noisy") else None
                 a = emu.probe(original, seg=oseg, offset=ooff, args=v["args"], near=not far,
-                              callees=callees_orig, insn_cap=200000 if chain else 20000, data_end=data_end)
+                              callees=callees_orig, insn_cap=200000 if chain else 20000, data_end=data_end,
+                              data_image=dimg)
                 b = emu.probe(image, seg=bseg, offset=boff, args=v["args"], near=not far,
-                              callees=callees_ours, insn_cap=200000 if chain else 20000, data_image=data,
+                              callees=callees_ours, insn_cap=200000 if chain else 20000, data_image=dimg or data,
                               data_end=data_end)
             except Exception as e:                           # (the emulator itself fell over)
                 why = why or "the emulator: %s" % type(e).__name__

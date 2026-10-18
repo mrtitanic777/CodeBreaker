@@ -227,6 +227,31 @@ NEAR_RET = 0xFFEE                 # where a near function entered by the tracer 
 FAR_RET = 0xFFF0                  # offset in the sentinel segment a far function returns to
 
 
+_RELOCATED = {}
+
+
+def relocated_data(path):
+    """The module's data segment as the loader leaves it -- its fix-ups applied (the selectors
+    of far pointers kept in it) -- the bytes a rebuilt module is given in place of its own, so
+    both sides start from the same globals. The file's bytes, unfixed, made every far pointer
+    in the data a different one on the build's side: run against itself, 23 of USER's 1,613
+    functions "differed". -> bytes (empty when it has no data segment)"""
+    if path in _RELOCATED:
+        return _RELOCATED[path]
+    import unicorn as U
+    nef = NEFile(path)
+    auto = nef.h.get("autodata_seg") or 0
+    seg = next((s for s in nef.segments() if s["idx"] == auto), None)
+    out = b""
+    if seg and seg["file_off"]:
+        uc = U.Uc(U.UC_ARCH_X86, U.UC_MODE_32)
+        sels, seg_bases, _stack, sent_sel = _load_ne(uc, U, nef)
+        _apply_relocs(uc, nef, sels, seg_bases, sent_sel, {})
+        out = bytes(uc.mem_read(seg_bases[auto], seg["length"]))
+    _RELOCATED[path] = out
+    return out
+
+
 def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity=0,
                      insn_cap=_MAX_INSNS, import_stub=None, prelude=None, near=False, data_image=None,
                      callees=None, data_end=None):
