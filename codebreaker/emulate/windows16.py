@@ -452,7 +452,10 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
 
     try:
         uc.emu_start(offset, SENT_BASE, count=insn_cap + 1)
-        rec["exit"] = "truncated" if rec["truncated"] else "ret" if rec.get("returned") else "stopped"
+        # (neither returned nor stopped by a hook: emu_start's own instruction count ran out --
+        # just short of the cap, the skipped calls counting too. That is a run cut off, as much
+        # as one the hook stops: "stopped" made a long loop in each build look like an ending)
+        rec["exit"] = "ret" if rec.get("returned") else "truncated"
     except U.UcError as e:
         rec["exit"] = "exception: %s" % e
         # fault detail: disassemble the instruction at the faulting CS:EIP (helps triage which

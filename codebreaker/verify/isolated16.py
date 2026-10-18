@@ -110,6 +110,17 @@ def _fingerprint(r, wide, data_len):
 
 def _differ(a, b):
     """The first way two fingerprints differ, in words, or None."""
+    if "truncated" in (a.get("exit"), b.get("exit")):
+        # (a run stopped at the instruction cap says nothing past where it stopped: a long loop --
+        # a count read from the patterned memory -- ran its 1,052nd pass in the original and not
+        # in the build, whose body is a few instructions longer. What both did, the calls up to
+        # the shorter run's last, is what compares)
+        x, y = a.get("calls") or (), b.get("calls") or ()
+        n = min(len(x), len(y))
+        if tuple(x[:n]) != tuple(y[:n]):
+            i = next(i for i, (p, q) in enumerate(zip(x, y)) if p != q)
+            return "calls: original %s, ours %s" % (list(x[i:i + 2]), list(y[i:i + 2]))
+        return None
     for k, what in (("exit", "ends"), ("calls", "calls"), ("data", "leaves in the data segment"),
                     ("far", "leaves through a far pointer"),
                     ("result", "returns"), ("pop", "removes argument bytes"), ("kept", "keeps SI, DI, DS")):
