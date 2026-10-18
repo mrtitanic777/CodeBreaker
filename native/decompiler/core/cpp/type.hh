@@ -937,6 +937,7 @@ public:
   Datatype *resizeInteger(Datatype *ct,int4 newSize);		///< Build a resized integer based on the given integer
   Datatype *getExactPiece(Datatype *ct,int4 offset,int4 size);	///< Get the data-type associated with piece of a structured data-type
   void assignRawFields(TypeStruct *ct,vector<TypeField> &fd,vector<TypeBitField> &bit);
+  void assignFixedFields(TypeStruct *ct,const vector<TypeField> &fd,int4 size);	///< CodeBreaker: fields at given offsets
   void assignRawFields(TypeUnion *ct,vector<TypeField> &fd);
   void destroyType(Datatype *ct);				///< Remove a data-type from \b this
   Datatype *concretize(Datatype *ct);				///< Convert given data-type to concrete form

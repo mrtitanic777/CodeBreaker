@@ -4788,6 +4788,24 @@ void TypeFactory::assignRawFields(TypeStruct *ct,vector<TypeField> &fd,vector<Ty
   glb->types->setFields(fd,bit,ct,newSize,newAlign,flags);
 }
 
+/// CodeBreaker: complete a structure whose fields' offsets and whose size are already known --
+/// a layout recovered from the code's own accesses (decompiler.cc, "Structures"), not computed
+/// from the fields' alignment. Packed (alignment 1); what lies between the fields is unknown.
+/// \param ct is the (incomplete) structure
+/// \param fd is the list of fields, each with its offset, in offset order
+/// \param size is the size of the structure in bytes
+void TypeFactory::assignFixedFields(TypeStruct *ct,const vector<TypeField> &fd,int4 size)
+
+{
+  for(uint4 i=0;i<fd.size();++i) {
+    if (fd[i].offset < 0 || fd[i].offset + fd[i].type->getSize() > size)
+      throw LowlevelError("Field outside the structure: "+ct->getName());
+    if (i > 0 && fd[i].offset < fd[i-1].offset + fd[i-1].type->getSize())
+      throw LowlevelError("Overlapping fields in structure: "+ct->getName());
+  }
+  setFields(fd,vector<TypeBitField>(),ct,size,1,0);
+}
+
 /// \brief Assign fields to a union data-type, establishing the size and alignment
 ///
 /// Field offsets are assigned.  Size and alignment are calculated.

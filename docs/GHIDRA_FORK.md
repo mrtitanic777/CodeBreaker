@@ -12,7 +12,7 @@ Upstream: https://github.com/NationalSecurityAgency/ghidra (Apache 2.0; `core/LI
 
 | Part | Upstream path | Base | Files |
 |---|---|---|---|
-| `core/cpp` | `Ghidra/Features/Decompiler/src/decompile/cpp` | **master `f0774b72f2` (2026-09-01), version 12.2-DEV** -- cpp tree `c35e0406` | 236: 219 identical, 17 patched (C10, C11 added two each since `31a2694`) |
+| `core/cpp` | `Ghidra/Features/Decompiler/src/decompile/cpp` | **master `f0774b72f2` (2026-09-01), version 12.2-DEV** -- cpp tree `c35e0406` | 236: 217 identical, 19 patched (C10, C11, C12 added two each since `31a2694`) |
 | `core/zlib` | `Ghidra/Features/Decompiler/src/decompile/zlib` | same commit (tree `4dd91ac1`, unchanged since 12.1) | 18 identical |
 | `languages/` | `Ghidra/Processors/{x86,PowerPC}/data/languages` | **release `Ghidra_12.1.3_build`** (the installed Ghidra, see below) | 21: 12 identical, 5 patched or 12.1.3-only, 4 ours/built |
 
@@ -51,6 +51,7 @@ Every change carries a `CodeBreaker:` comment at its place in the source.
 | C9 | `jumptable.cc` (`JumpBasicOverride::findLikelyNorm`) | The index's scale is only the INT_MULT directly before the ADD, by a constant 2, 4 or 8 -- not any MULT further back on the path | **Upstream bug** for supplied jump tables: a MULT that made the index (USER 1:03A5 indexes by `((x - (x & 0xf)) + 0x1000) >> 3`, the subtraction an ADD of a MULT by -1) was taken for the scale, so the switch variable was a value the jump never used and the switch printed on its targets' addresses (USER sub_1_032E also ran away). Candidate to send upstream | `31a2694` |
 | C10 | `slghscan.l`, `slghscan.cc` (`scan_number`) | Numbers read with `std::stoull`, not `std::stoul` | **Upstream bug** on Windows, where `unsigned long` is 32 bits: the C++ SLEIGH compiler refused every 64-bit constant ("Parsed integer is too big") and could not compile x86. With it, `languages/src/x86/x86.slaspec` (12.1.3) compiles byte for byte to the shipped `x86.sla`. Candidate to send upstream | item 7A |
 | C11 | `action.hh`, `action.cc`, `sleigh_arch.hh`, `sleigh_arch.cc` | C1's `cb_action`/`cb_rule`/`cb_steps` are `thread_local`; `SleighArchitecture::translators` (the cache of loaded `.sla` translators, one per language) is `thread_local` | Parallel analysis in one process (item 7B, `CB_THREADS`): each thread builds its own Architecture, and a Sleigh translator is not safe to share (its parser context cache changes as it decodes). Nothing else in the core is shared and written once set up; setting up (which runs the p-code snippet compiler, whose parser state is global) is done one thread at a time by `decompiler.cc` | item 7B |
+| C12 | `type.hh`, `type.cc` (`TypeFactory::assignFixedFields`) | Completes a structure from fields whose offsets and size are already known (packed; checked: no field outside, none overlapping) | Item 7C: the structures `decompiler.cc` recovers from a function's own accesses keep exactly the offsets the code uses; the core's public `assignRawFields` lays fields out by their alignment instead | item 7C |
 
 ## Local changes to the language files (`languages/`)
 
@@ -77,7 +78,7 @@ master later added Swift and raised the x86 language version 4.8 -> 4.9. `ppc.ld
 ## Rebasing onto a newer upstream
 
 1. `git clone --filter=blob:none --no-checkout https://github.com/NationalSecurityAgency/ghidra.git`
-2. Copy the new upstream `cpp/`, `zlib/` and the language files over ours; re-apply C1-C11 and
+2. Copy the new upstream `cpp/`, `zlib/` and the language files over ours; re-apply C1-C12 and
    L1-L3, L5 (each is small and marked); drop any upstream has fixed itself (C2, C6, C7, C10 first).
 3. Recompile the `.sla` files with `build/bin/sleigh` (the core's compiler, target `sleigh`), then
    `python tools/sleigh_verify.py`: no new disagreement.

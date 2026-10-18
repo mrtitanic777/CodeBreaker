@@ -110,3 +110,16 @@ RISC-V Sail, Intel XED).
   types, stayed for the next) -- each function now starts from the description alone; 418 golden
   functions changed, every one in a global's name, size or type. Results were already cached per
   function by input hash (codebreaker/decompile/decompiler.py), which this makes sound.
+- C -- structures from the code's own accesses (2026-10-18), `CB_STRUCTS=1`, off by default until
+  c_text.py takes in the `/*@S` notes (decompiler.cc, "Structures"; core change C12). Every load
+  and store through `v + c` is a constraint on v (a field of that size at c), followed back through
+  constant additions, copies and a near segment; a variable whose constraints agree (two or more
+  fields, none overlapping, never indexed at run time; reads only probed or written back do not
+  count) gets a structure with exactly those fields and the function is analysed again with it.
+  Golden (tools/struct_report.py): 2,349 structures, 9,096 fields in 1,701 functions;
+  `*(T *)(p + n)` 17,302 -> 7,347 (-58%); no new failures (COMMAND.COM's two are its time limit
+  under load, with or without). SDK: of 25 exported parameters the header declares a pointer to an
+  SDK structure, 24 agree field for field (85 of 91 fields; the other is CHARSETINFO, copied a
+  DWORD at a time). Found: OpenWatcom's wingdi.h declares FONTSIGNATURE `fsCsb[4]`; Microsoft's
+  SDK and GDI32 itself have `fsCsb[2]` (24 bytes). One thread and four agree byte for byte.
+  Next: far pointers (phase 2's segment types), structures passed between functions.

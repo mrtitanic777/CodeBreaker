@@ -29,6 +29,7 @@
 //
 //   decompiler <description> [--at <hexVA>...]      every function listed, or only those
 //
+// CB_STRUCTS=1 recovers structures from field accesses (the section "Structures" below).
 // CB_THREADS=N analyses N functions at once (each thread its own analysis of the whole
 // description); the output is the same, in the same order.
 //
@@ -612,6 +613,274 @@ void forgetGlobals(Analysis& a) {
   for (Symbol* sym : made) glb->removeSymbol(sym);
 }
 
+// ---- Structures (docs/CORE_ROADMAP.md, Track 1 item C) ---------------------------------------
+// CB_STRUCTS=1. The analysis types memory by what each single access reads, so a structure shows
+// as pointer arithmetic: `*(int4 *)(p + 8)`, `*(int2 *)(p + 0x10)`. Here every load and store is
+// a constraint on the variable it goes through: "points at something with a field of this size at
+// this offset". The address is followed back through constant additions (`q = p + 8; *(q + 4)` is
+// p's field at 12) and, in 16-bit code, through a near segment (the DS or SS the function was
+// entered with; a far pointer's segment is phase 2's). A variable's constraints are solved
+// together: it is a structure when it has fields at two or more offsets, none overlapping, none
+// negative, and it is never indexed by a value only known when the program runs (that is an
+// array). Such a variable is given a structure with exactly those fields -- their offsets and
+// sizes, the rest of the layout unknown and left as padding -- and the function is analysed again
+// with it, so its C reads `p->f_8`. Each structure is the function's own, named after it and the
+// variable, and reported before the function as
+//   /*@S <name> <bytes> <offset>:<bytes>:<type> ... */
+// The function's prototype is put back afterwards: what one function learned about its own
+// parameters does not change how the next one sees its calls (each function from the description
+// alone, as with the globals).
+bool g_structs = false;
+
+struct FieldUse { int size; Datatype* type; };
+
+// A function's prototype as the description set it, to put back once the function is written
+struct ProtoSnap {
+  PrototypePieces pieces;
+  bool in_lock = false, out_lock = false, model_lock = false;
+  int4 pop = 0;
+};
+
+ProtoSnap snapProto(Machine& m, FuncProto& fp, const std::string& name) {
+  ProtoSnap s;
+  s.pieces.model = m.getModel(fp.getModelName());
+  s.pieces.name = name;
+  s.pieces.outtype = fp.getOutputType();
+  s.pieces.firstVarArgSlot = fp.isDotdotdot() ? fp.numParams() : -1;
+  for (int4 i = 0; i < fp.numParams(); ++i) {
+    s.pieces.intypes.push_back(fp.getParam(i)->getType());
+    s.pieces.innames.push_back(fp.getParam(i)->getName());
+  }
+  s.in_lock = fp.isInputLocked();
+  s.out_lock = fp.isOutputLocked();
+  s.model_lock = fp.isModelLocked();
+  s.pop = fp.getExtraPop();
+  return s;
+}
+
+void restoreProto(FuncProto& fp, const ProtoSnap& s) {
+  if (s.in_lock) fp.setPieces(s.pieces);
+  fp.setExtraPop(s.pop);
+  fp.setInputLock(s.in_lock);                    // (unlocked: the analysis's parameters go with it)
+  fp.setOutputLock(s.out_lock);
+  fp.setModelLock(s.model_lock);
+}
+struct Sketch {
+  std::map<int64_t, FieldUse> fields;
+  bool bad = false;
+};
+
+// The high-level variable a varnode belongs to, or null (an annotation has none)
+HighVariable* highOf(Varnode* vn) {
+  try { return vn->getHigh(); } catch (LowlevelError&) { return nullptr; }
+}
+
+// The variable an address is `base + offset` of, through constant additions
+bool baseOf(Varnode* vn, Varnode*& base, int64_t& off) {
+  off = 0;
+  for (int depth = 0; depth < 16; ++depth) {
+    if (vn->isConstant() || vn->isSpacebase() || vn->isAnnotation()) return false;
+    PcodeOp* def = vn->isWritten() ? vn->getDef() : nullptr;
+    if (def != nullptr) {
+      const OpCode oc = def->code();
+      if ((oc == CPUI_INT_ADD || oc == CPUI_PTRSUB) && def->getIn(1)->isConstant()) {
+        const Varnode* c = def->getIn(1);
+        off += sign_extend(c->getOffset(), c->getSize() * 8 - 1);
+        vn = def->getIn(0);
+        continue;
+      }
+      // a copy is the same pointer: the constraint belongs to what it was copied from (a
+      // parameter moved to a register keeps its fields)
+      if ((oc == CPUI_COPY || oc == CPUI_CAST) && !def->getIn(0)->isConstant() &&
+          def->getIn(0)->getSize() == vn->getSize()) {
+        vn = def->getIn(0);
+        continue;
+      }
+      if (oc == CPUI_PTRADD && def->getIn(1)->isConstant() && def->getIn(2)->isConstant()) {
+        const Varnode* c = def->getIn(1);
+        off += sign_extend(c->getOffset(), c->getSize() * 8 - 1) * (int64_t)def->getIn(2)->getOffset();
+        vn = def->getIn(0);
+        continue;
+      }
+    }
+    base = vn;
+    return true;
+  }
+  return false;
+}
+
+// The near offset a 16-bit address is made from, or null when its segment is not the one the
+// function was entered with (a far pointer)
+Varnode* nearOffset(Varnode* addr) {
+  if (!addr->isWritten() || addr->getDef()->code() != CPUI_SEGMENTOP) return addr;
+  PcodeOp* seg = addr->getDef();
+  const Varnode* s = seg->getIn(1);
+  if (s->isConstant() || s->isInput()) return seg->getIn(2);
+  return nullptr;
+}
+
+// Is any member of h added to a value not known until run time (an index: an array, not a
+// structure)?
+bool indexed(HighVariable* h) {
+  std::vector<const Varnode*> work;
+  std::set<const Varnode*> seen;
+  for (int4 i = 0; i < h->numInstances(); ++i) work.push_back(h->getInstance(i));
+  while (!work.empty()) {                          // (and its copies)
+    const Varnode* vn = work.back();
+    work.pop_back();
+    if (!seen.insert(vn).second || seen.size() > 256) continue;
+    for (auto it = vn->beginDescend(); it != vn->endDescend(); ++it) {
+      const PcodeOp* op = *it;
+      const OpCode oc = op->code();
+      if (oc == CPUI_INT_ADD || oc == CPUI_INT_SUB || oc == CPUI_PTRADD) {
+        for (int4 k = 0; k < op->numInput(); ++k)
+          if (op->getIn(k) != vn && !op->getIn(k)->isConstant()) return true;
+      }
+      if ((oc == CPUI_COPY || oc == CPUI_CAST) && op->getOut() != nullptr) work.push_back(op->getOut());
+    }
+  }
+  return false;
+}
+
+std::string hexOf(int64_t v) {
+  char b[24];
+  std::snprintf(b, sizeof(b), "%llx", (unsigned long long)v);
+  return b;
+}
+
+// A byte read and written straight back to where it came from (`p->f_0 = p->f_0`): Windows
+// probes that a caller's buffer is writable this way, under an exception handler
+bool probeLoad(const PcodeOp* load) {
+  const Varnode* v = load->getOut();
+  if (v == nullptr || v->hasNoDescend()) return false;
+  for (auto it = v->beginDescend(); it != v->endDescend(); ++it) {
+    const PcodeOp* use = *it;
+    if (use->code() != CPUI_STORE || use->getIn(2) != v || use->getIn(1) != load->getIn(1)) return false;
+  }
+  return true;
+}
+
+// Gather each variable's field constraints, solve them, and give the variables that are
+// structures their structure. -> the notes to write before the function (empty: nothing changed)
+std::string recoverStructs(Machine& m, Funcdata* fd, const Fact& f, bool seg16, bool& proto_changed, bool& changed) {
+  changed = false;
+  std::map<HighVariable*, Sketch> sketches;
+  for (auto it = fd->beginOpAlive(); it != fd->endOpAlive(); ++it) {
+    PcodeOp* op = *it;
+    Varnode* addr;
+    Varnode* val;
+    if (op->code() == CPUI_LOAD) { addr = op->getIn(1); val = op->getOut(); }
+    else if (op->code() == CPUI_STORE) { addr = op->getIn(1); val = op->getIn(2); }
+    else continue;
+    if (val == nullptr) continue;
+    // a value read and never used, or only written back, says only that the memory is there --
+    // Windows probes a caller's buffer by touching its first and last byte -- not what is in it
+    if (op->code() == CPUI_LOAD && val->hasNoDescend()) continue;
+    if (op->code() == CPUI_LOAD ? probeLoad(op)
+                                : val->isWritten() && val->getDef()->code() == CPUI_LOAD && probeLoad(val->getDef()))
+      continue;
+    if (seg16 && (addr = nearOffset(addr)) == nullptr) continue;
+    Varnode* base;
+    int64_t off;
+    HighVariable* bh;
+    if (!baseOf(addr, base, off) || (bh = highOf(base)) == nullptr) continue;
+    Sketch& s = sketches[bh];
+    if (off < 0 || off > 0xffff) { s.bad = true; continue; }
+    auto at = s.fields.find(off);
+    if (at != s.fields.end() && at->second.size != val->getSize()) { s.bad = true; continue; }
+    if (at == s.fields.end()) s.fields[off] = {val->getSize(), highOf(val) ? highOf(val)->getType() : nullptr};
+  }
+  std::string notes;
+  const int ptr_size = seg16 ? 2 : (int)m.getDefaultDataSpace()->getAddrSize();
+  ScopeLocal* loc = fd->getScopeLocal();
+  FuncProto& fp = fd->getFuncProto();
+  // the variables that are structures, in an order that does not depend on where the analysis's
+  // objects happen to sit in memory: parameters by position, then locals by name
+  struct Candidate { Symbol* sym; bool param; int index; std::string name; const Sketch* sketch; int64_t end; };
+  std::vector<Candidate> found;
+  for (auto& kv : sketches) {
+    HighVariable* h = kv.first;
+    const Sketch& s = kv.second;
+    if (s.bad || s.fields.size() < 2 || h->getInstance(0)->getSize() != ptr_size) continue;
+    Symbol* sym = h->getSymbol();
+    // (the function's own: a global is every function's, and not this one's to type)
+    if (sym == nullptr || sym->getScope() != loc || indexed(h)) continue;
+    Datatype* now = h->getType();
+    if (now->getMetatype() == TYPE_PTR && ((TypePointer*)now)->getPtrTo()->getMetatype() == TYPE_STRUCT) continue;
+    int64_t end = 0;
+    bool overlap = false;
+    for (const auto& fu : s.fields) {
+      if (fu.first < end) overlap = true;
+      end = fu.first + fu.second.size;
+    }
+    if (overlap) continue;
+    const bool param = sym->getCategory() == Symbol::function_parameter;
+    const int index = param ? (int)sym->getCategoryIndex() : -1;
+    if (param && index >= fp.numParams()) continue;
+    found.push_back({sym, param, index, sym->getName(), &s, end});
+  }
+  std::sort(found.begin(), found.end(), [](const Candidate& x, const Candidate& y) {
+    if (x.param != y.param) return x.param;
+    if (x.index != y.index) return x.index < y.index;
+    return x.name < y.name;
+  });
+  std::map<int, Datatype*> param_types;            // parameter position -> its new type
+  std::set<const Symbol*> done;
+  for (const Candidate& c : found) {
+    if (!done.insert(c.sym).second) continue;      // (two variables of one symbol: typed once)
+    std::string name = "s_" + f.name + "_" +
+                       (!c.name.empty() ? c.name : c.param ? "p" + std::to_string(c.index + 1) : std::string("v"));
+    if (m.types->findByName(name) != nullptr) continue;
+    TypeStruct* st = m.types->getTypeStruct(name);
+    std::vector<TypeField> fields;
+    std::string line = "/*@S " + name + " " + std::to_string(c.end);
+    int4 id = 0;
+    for (const auto& fu : c.sketch->fields) {
+      Datatype* ft = fu.second.type;
+      if (ft == nullptr || ft->getSize() != fu.second.size || ft->getMetatype() == TYPE_STRUCT ||
+          ft->getMetatype() == TYPE_ARRAY || ft->getMetatype() == TYPE_UNION || ft->getMetatype() == TYPE_PARTIALSTRUCT)
+        ft = m.types->getBase(fu.second.size, TYPE_UNKNOWN);
+      fields.emplace_back(id++, (int4)fu.first, "f_" + hexOf(fu.first), ft);
+      line += " " + hexOf(fu.first) + ":" + std::to_string(fu.second.size) + ":" +
+              (ft->getMetatype() == TYPE_PTR ? std::string("ptr") : ft->getName());
+    }
+    m.types->assignFixedFields(st, fields, (int4)c.end);
+    Datatype* ptr = m.types->getTypePointer(ptr_size, st, m.getDefaultDataSpace()->getWordSize());
+    if (c.param) {
+      param_types[c.index] = ptr;
+    } else {
+      loc->retypeSymbol(c.sym, ptr);
+      loc->setAttribute(c.sym, Varnode::typelock);
+    }
+    changed = true;
+    notes += line + " */\n";
+  }
+  if (!param_types.empty()) {
+    // a parameter's type is part of the prototype: lock the prototype as it now stands, with
+    // those parameters pointers to their structures -- all at once (setting the prototype makes
+    // its parameters' symbols anew)
+    PrototypePieces pieces;
+    pieces.model = m.getModel(fp.getModelName());
+    pieces.name = f.name;
+    pieces.outtype = fp.getOutputType();
+    pieces.firstVarArgSlot = fp.isDotdotdot() ? fp.numParams() : -1;
+    for (int4 i = 0; i < fp.numParams(); ++i) {
+      ProtoParameter* p = fp.getParam(i);
+      auto nt = param_types.find(i);
+      pieces.intypes.push_back(nt != param_types.end() ? nt->second : p->getType());
+      pieces.innames.push_back(p->getName());
+    }
+    const int4 pop = fp.getExtraPop();
+    const bool out_locked = fp.isOutputLocked();
+    fp.setPieces(pieces);
+    fp.setExtraPop(pop);
+    fp.setInputLock(true);
+    fp.setOutputLock(out_locked);
+    fp.setModelLock(true);
+    proto_changed = true;
+  }
+  return notes;
+}
 
 // Decompile the i-th function to write, onto `out`: its marker, what it touches, its C
 void decompileOne(Analysis& a, const Description& d, size_t i, std::ostream& out) {
@@ -621,6 +890,9 @@ void decompileOne(Analysis& a, const Description& d, size_t i, std::ostream& out
   m.print->setOutputStream(&out);
   out << "/*@@ " << t.second.name << " " << std::hex << t.second.va << std::dec << " */" << std::endl;
   governor::begin_function();
+  ProtoSnap snap;
+  bool proto_changed = false;
+  if (g_structs) snap = snapProto(m, t.first->getFuncProto(), t.second.name);
   try {
     // its calls through pointers: each passed the words the code pushed before it, removed
     // by the callee (Windows' drivers and callbacks are Pascal). Every call's override is
@@ -661,6 +933,18 @@ void decompileOne(Analysis& a, const Description& d, size_t i, std::ostream& out
     Action* act = m.allacts.getCurrent();
     act->reset(*t.first);
     act->perform(*t.first);
+    std::string struct_notes;
+    if (g_structs) {
+      bool changed = false;
+      struct_notes = recoverStructs(m, t.first, t.second, d.arch.find(":16:") != std::string::npos,
+                                    proto_changed, changed);
+      if (changed) {                             // analysed again, with its structures --
+        governor::begin_function();              // a new analysis, with its own time and steps
+        m.clearAnalysis(t.first);
+        act->reset(*t.first);
+        act->perform(*t.first);
+      }
+    }
     // every global the function touches, with its size and -- for a pointer -- the size of
     // what it points at, from whichever of its varnodes carries the type it is printed with
     std::map<std::pair<uint64_t, int>, int> globals;
@@ -704,10 +988,12 @@ void decompileOne(Analysis& a, const Description& d, size_t i, std::ostream& out
       if (rt != nullptr && rt->getMetatype() == TYPE_PTR)
         out << "/*@P return " << rt->getSize() << " */" << std::endl;
     }
+    out << struct_notes;
     m.print->docFunction(t.first);
   } catch (LowlevelError& e) {
     out << "/* decompile failed: " << e.explain << " */" << std::endl;
   }
+  if (proto_changed) restoreProto(t.first->getFuncProto(), snap);
   out << std::endl;
   governor::end_function();
   m.clearAnalysis(t.first);                      // free this function's analysis; keep its symbol
@@ -770,6 +1056,7 @@ int main(int argc, char** argv) {
     if (std::string(argv[i]) == "--at")
       for (++i; i < argc && argv[i][0] != '-'; ++i) d.only.insert(strtoull(argv[i], nullptr, 16));
   d.x86_32 = d.arch.rfind("x86:LE:32", 0) == 0;
+  if (const char* sv = std::getenv("CB_STRUCTS")) g_structs = std::atoi(sv) != 0;
 
   try {
     startDecompilerLibrary(std::vector<std::string>{});
