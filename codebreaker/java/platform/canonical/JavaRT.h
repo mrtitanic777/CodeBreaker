@@ -266,6 +266,7 @@ struct JObject {
 	// void* interop. NOTE: no operator bool() -- it would make `if(x)` ambiguous with operator int().
 	operator int() const { return (int)i; }
 	operator char() const { return (char)i; }
+	operator unsigned char() const { return (unsigned char)i; }   // a Java char (unsigned): MSVC found int/char ambiguous
 	template<class T> operator T*() const { return (T*)p; }
 };
 

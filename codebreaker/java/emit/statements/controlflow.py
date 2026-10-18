@@ -333,6 +333,41 @@ def _tested(r, code):
                           % (e, e, e), code))
 
 
+_FOREVER = re.compile(r'^(?:while\s*\(\s*true\s*\)|for\s*\(\s*;\s*;\s*\))\s*\{$')
+
+
+def _breaks_out_of(lines, depths, x, head):
+    """Does the break on line x leave the loop opened on line `head` (it is that loop's own break, or a
+    labelled one)? Its owner is the nearest enclosing loop or switch."""
+    if lines[x].strip() != 'break;':
+        return True                                           # break label; -- leaves, conservatively
+    d = depths[x]
+    for y in range(x - 1, head, -1):
+        if depths[y] < d:
+            if _BREAKABLE.match(lines[y].strip()):
+                return False                                  # a nested loop/switch owns it
+            d = depths[y]
+    return True
+
+
+def _completes(lines, depths, a, b):
+    """Can the block of lines[a:b] (one depth below the line before a) run off its end? Not when its last
+    statement is a return/throw, or a while(true)/for(;;) loop that no break of its own leaves."""
+    level = depths[a]
+    q = next((x for x in range(b - 1, a - 1, -1) if lines[x].strip()), None)
+    if q is None:
+        return True
+    last = lines[q].strip()
+    if depths[q] == level and last.startswith(('return', 'throw')):
+        return False
+    if last == '}' and depths[q] == level + 1:
+        head = next((x for x in range(q - 1, a - 1, -1) if depths[x] == level), None)
+        if head is not None and _FOREVER.match(lines[head].strip()):
+            return any(lines[x].strip().startswith('break') and _breaks_out_of(lines, depths, x, head)
+                       for x in range(head + 1, q))
+    return True
+
+
 def _npe_try(lines, t, depths, k):
     """Rewrite the try opened on line t (when its handlers allow). -> (new lines, changed?)"""
     end = next((j for j in range(t + 1, len(lines)) if depths[j] == depths[t] + 1 and
@@ -356,6 +391,11 @@ def _npe_try(lines, t, depths, k):
     if any('j2xNpe' in ln for ln in body):
         return lines, False
     flag, label = 'j2xNpe%d' % k, 'j2xNpeEnd%d' % k
+    # A try body that ends in return/throw cannot fall out of its end: the label is reached only by the
+    # jump, so the handler can follow it there, unconditionally (no flag -- whose test after the try left
+    # MSVC seeing a path off the end of the method, C4715).
+    direct = not _completes(lines, depths, t + 1, end)
+    jump = ('goto %s;' % label) if direct else ('%s = true; goto %s;' % (flag, label))
     inner, new, guards = [], [], 0
     for q in range(t + 1, end):
         ln = lines[q]
@@ -370,16 +410,20 @@ def _npe_try(lines, t, depths, k):
                 if r != 'this' and r not in seen and not _tested(r, code):
                     seen.append(r)
             for r in seen:
-                new.append('if ((%s) == NULL) { %s = true; goto %s; }' % (r, flag, label))
+                new.append('if ((%s) == NULL) { %s }' % (r, jump))
                 guards += 1
         new.append(ln)
     if not guards:
         return lines, False
     used = handler[1] and any(re.search(r'\b%s\b' % re.escape(handler[1]), ln) for ln in body)
-    npe = ['if (%s) {' % flag]
+    npe = ['if (%s) {' % flag if not direct else '{']
     if used:
         npe.append('%s* %s = new NullPointerException();' % (handler[0], handler[1]))
     npe += body + ['}']
+    if direct:
+        out = lines[:t] + ['// %s: a null dereference in this try runs its handler' % flag, 'try {', '{'] + new + \
+            ['}', '%s:;' % label] + npe + lines[end:]
+        return out, True
     tail = lines[end:last]
     if lines[last].strip() == '} {':                            # a finally's trailing block follows
         closing = ['}'] + npe + ['{']
@@ -392,7 +436,7 @@ def _npe_try(lines, t, depths, k):
 
 def lines_has_npe_guard(lines, q):
     """Is the try on line q one this pass has rewritten (the flag is declared just before it)?"""
-    return q >= 1 and lines[q - 1].strip().startswith('bool j2xNpe')
+    return q >= 1 and lines[q - 1].strip().startswith(('bool j2xNpe', '// j2xNpe'))
 
 
 def _npe_to_catch(lines):
