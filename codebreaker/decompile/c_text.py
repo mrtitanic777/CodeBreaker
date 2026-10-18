@@ -546,11 +546,24 @@ def _far_from_stack(body, far):
 _SIZED = {1: "uint1", 2: "uint2", 4: "uint4"}
 
 
+_SIGNED = {1: "int1", 2: "int2", 4: "int4"}
+_ORDER = re.compile(r"(?:<=|>=|(?<![<>])<(?![<=])|(?<![->])>(?![>=]))")
+
+
 def _pieces(text):
-    """`x._2_2_` is the decompiler's spelling of "2 bytes of x starting at byte 2"."""
-    return re.sub(r"\b([A-Za-z_]\w*)\._(\d+)_(\d+)_",
-                  lambda m: "(*(%s *)((char *)&%s + %s))" % (_SIZED.get(int(m.group(3)), "uint2"),
-                                                             m.group(1), m.group(2)), text)
+    """`x._2_2_` is the decompiler's spelling of "2 bytes of x starting at byte 2". Unsigned,
+    except as one side of an ordering comparison: the core prints its signed compare
+    (INT_SLESS) with no cast there, and an unsigned piece made it unsigned -- USER's
+    sub_10_2F28 `xRam116001bc._2_2_ < a1` took the other branch for a1 = FFFFh. (Against an
+    unsigned other side a signed piece of the same size still compares unsigned in C.)"""
+    def piece(m):
+        before = text[max(0, m.start() - 4):m.start()].rstrip()
+        after = text[m.end():m.end() + 4].lstrip()
+        ordered = _ORDER.match(after) or (before and _ORDER.search(before[-2:]) and before[-2:].strip()[-1:] in "<>=")
+        size = int(m.group(3))
+        ty = (_SIGNED if ordered else _SIZED).get(size, "uint2")
+        return "(*(%s *)((char *)&%s + %s))" % (ty, m.group(1), m.group(2))
+    return re.sub(r"\b([A-Za-z_]\w*)\._(\d+)_(\d+)_", piece, text)
 
 
 def _joined_arguments(text, widths=None):
@@ -1014,8 +1027,11 @@ def _compilable16(module_path, outdir=None):
         ty = _global_type(prefix, sizes.get(va, 2), elems.get(va))
         if "%sRam%s" % (prefix, addr) in called_through:
             ty = "code __far *" if sizes.get(va, 2) == 4 else "code __near *"
-        if seg == d.data_segment:
-            macros.append("#define %sRam%s (*(%s *)0x%x)" % (prefix, addr, ty, off))
+        if seg == d.data_segment or (va >> 16) == 0:
+            # (segment 0: an address the core folded to a constant -- a table index after it
+            # copied a shared tail, LZEXPAND's sub_11_00AB `cRam00000095` -- an offset through
+            # DS like the rest; it was declared nowhere and the C did not compile)
+            macros.append("#define %sRam%s (*(%s *)0x%x)" % (prefix, addr, ty, va & 0xFFFF if (va >> 16) == 0 else off))
         elif (va >> 16) == 0x40:
             # through the selector 0040h itself: the BIOS's data, which Windows keeps at that selector
             macros.append("#define %sRam%s (*(%s __far *)MK_FP(0x40, 0x%x))" % (prefix, addr, ty, va & 0xFFFF))
