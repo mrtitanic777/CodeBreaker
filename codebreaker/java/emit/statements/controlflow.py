@@ -184,7 +184,8 @@ def _translate_labels(lines):
 # on the Java lines before translation, each such jump gets the finally body in front of it:
 #     return EXPR;  ->  { T j2xRetN = EXPR;  <finally body>  return j2xRetN; }
 #     return; / break; / continue;  ->  { <finally body>  return; }
-# Innermost try first, so nested finallys run inside-out. Left alone (and still as before): a jump
+# and `} finally {` itself becomes `} catch (...) { <finally body> throw; } {` -- the exceptional path
+# runs it and rethrows, the normal path falls into the trailing block. Innermost try first, so nested finallys run inside-out. Left alone (and still as before): a jump
 # inside the finally body itself, inside an anonymous class body, a break/continue whose loop or switch
 # is inside the try, and a return split over several lines.
 
@@ -292,6 +293,10 @@ def _inline_finally(lines, return_type):
                     inner.append(('loop', depths[k], (bm.group(1) or '', bm.group(2))))
                 else:
                     inner.append(('block', depths[k], None))
-        lines = new + lines[f:]
+        # the exceptional path: Java runs the finally and the exception goes on. `catch (...) {} {` (the
+        # line translator's) swallowed it and fell off the end of the method (MSVC C4715); this one runs
+        # the finally body and rethrows, and the normal path keeps its trailing block.
+        ind = lines[f][:len(lines[f]) - len(lines[f].lstrip())]
+        lines = new + [ind + '} catch (...) {'] + body + [ind + 'throw;', ind + '} {'] + lines[f + 1:]
     return [ln[:-len(_DONE)] if ln.endswith(_DONE) else ln for ln in lines]
 

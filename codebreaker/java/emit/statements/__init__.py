@@ -757,14 +757,22 @@ _CATCH_VAL = re.compile(r'\bcatch\s*\(\s*([\w:]+)\s+([A-Za-z_]\w*)\s*\)')
 def _drop_unused_catch_vars(lines):
     """`catch (Type* e) { ... }` where `e` is never referenced -> `catch (Type*)`. The decompiled
     Java is full of empty/rethrow-free handlers whose exception var is dead -> C4101. A name that
-    occurs exactly once in the whole body is only the catch declaration itself, so it is safe to drop
-    (decompiled locals are uniquely numbered per method, so no shadowing ambiguity)."""
-    counts = {}
+    occurs only in catch declarations is dead, so it is safe to drop (decompiled locals are uniquely
+    numbered per method, so no shadowing ambiguity). "Only in declarations", not "exactly once": a finally
+    body is emitted twice (its exceptional path and its normal path), declaring its handlers twice."""
+    counts, declared = {}, {}
     for tok in re.findall(r'[A-Za-z_]\w*', '\n'.join(lines)):
         counts[tok] = counts.get(tok, 0) + 1
+    for ln in lines:
+        for m in list(_CATCH_PTR.finditer(ln)) + list(_CATCH_VAL.finditer(ln)):
+            declared[m.group(2)] = declared.get(m.group(2), 0) + 1
+
+    def dead(name):
+        return counts.get(name, 0) <= declared.get(name, 1)
+
     def fix(ln):
-        ln = _CATCH_PTR.sub(lambda m: 'catch (%s*)' % m.group(1) if counts.get(m.group(2), 0) <= 1 else m.group(0), ln)
-        ln = _CATCH_VAL.sub(lambda m: 'catch (%s)' % m.group(1) if counts.get(m.group(2), 0) <= 1 else m.group(0), ln)
+        ln = _CATCH_PTR.sub(lambda m: 'catch (%s*)' % m.group(1) if dead(m.group(2)) else m.group(0), ln)
+        ln = _CATCH_VAL.sub(lambda m: 'catch (%s)' % m.group(1) if dead(m.group(2)) else m.group(0), ln)
         return ln
     return [fix(ln) for ln in lines]
 

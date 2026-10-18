@@ -27,7 +27,8 @@ try {
 	--depth;
 }'''), ir.JType('boolean'))
     text = '\n'.join(l.strip() for l in out)
-    assert text.count('--depth;') == 3                                   # both returns + the finally itself
+    assert text.count('--depth;') == 4                     # both returns, the exceptional path, the normal path
+    assert '} catch (...) {\n--depth;\nthrow;\n} {\n--depth;\n}' in text          # Java's finally, then rethrow
     assert 'boolean j2xRet1 = true;\n--depth;\nreturn j2xRet1;' in text
     assert 'boolean j2xRet2 = false;\n--depth;\nreturn j2xRet2;' in text
 
