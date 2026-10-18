@@ -279,7 +279,7 @@ def _memory_hooks(U, rec, mapped, reads=True, static=(), quiet=None, saved=None)
                     v = int.from_bytes(uc.mem_read(address, min(msize, 8)), "little")
                 except Exception:
                     v = None
-            bucket.append({"pc": pc, "addr": address, "size": msize, "value": v})
+            bucket.append({"pc": pc, "addr": address, "size": msize, "value": v, "n": rec.get("insn_count", 0)})
             if old is not None:
                 bucket[-1]["old"] = old
 

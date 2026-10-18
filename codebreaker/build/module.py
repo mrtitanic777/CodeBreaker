@@ -589,7 +589,8 @@ def _registers_c_cannot_carry(nef, segs, at, texts):
         starts[sg].sort()
     images = {}
     out = {}
-    for (sg, o), n in at.items():
+    leaves_ds, calls_of = set(), {}                      # (and who calls each: a caller of one that
+    for (sg, o), n in at.items():                       # leaves DS changed counts on that too)
         text = texts.get(n)
         if text is None or sg not in segs:
             continue
@@ -600,6 +601,12 @@ def _registers_c_cannot_carry(nef, segs, at, texts):
         later = [x for x in starts[sg] if x > o]
         ins = list(md.disasm(code[o:later[0] if later else len(code)], o))
         wide = re.search(r"\b(?:int4|uint4|xunknown4|undefined4)\b|__far\s*\*", text.split("(", 1)[0])
+        # (it loads DS and never puts it back: it leaves the caller another DS -- sub_1_222B's
+        # `mov ds, ax; ret`, KERNEL's sub_2_0170 `mov ds, cs:[16Eh]; ret`. Not USER's copy
+        # helper sub_1_39E2: `mov dx, ds` ... `mov ds, dx` puts it back)
+        if _leaves_ds(ins):
+            leaves_ds.add(n)
+            out.setdefault(n, "it leaves DS changed for its caller")
         for k, i in enumerate(ins):
             prev = ins[max(0, k - 4):k]
             if i.mnemonic in ("call", "lcall"):
@@ -607,6 +614,9 @@ def _registers_c_cannot_carry(nef, segs, at, texts):
                     target = int(i.op_str.split(",")[-1].strip(), 0)
                 except ValueError:
                     continue
+                for csg, callee in by_offset.get(target, []):
+                    if not (i.mnemonic == "call" and csg != sg) and callee != n:
+                        calls_of.setdefault(callee, set()).add(n)
                 for csg, callee, regs in takes.get(target, []):
                     if (i.mnemonic == "call" and csg != sg) or callee == n:
                         continue
@@ -620,6 +630,15 @@ def _registers_c_cannot_carry(nef, segs, at, texts):
                 # flag at es:[30h]; the C left ES at another segment, the flag stayed set and
                 # Setup sat idle on its Options page)
                 nxt = ins[k + 1] if k + 1 < len(ins) else None
+                # ... and the caller branches on the flags the callee leaves: a result no C
+                # returns, and a test no C can write (USER's sub_1_222B: `or ax, ax; ret`, its
+                # callers `call 222B; je` -- the C returned nothing, its callers tested AX left
+                # from elsewhere)
+                if nxt is not None and nxt.mnemonic.startswith("j") and nxt.mnemonic not in ("jmp", "jcxz", "jecxz"):
+                    for csg, callee in by_offset.get(target, []):
+                        if not (i.mnemonic == "call" and csg != sg) and callee != n:
+                            out.setdefault(callee, "it returns in the flags (%s branches on them, %04x)" % (n, nxt.address))
+                            out.setdefault(n, "it branches on the flags %s leaves (%04x)" % (callee, nxt.address))
                 if nxt is not None and re.search(r"\bes\b", nxt.op_str) \
                         and not re.match(r"\s*es\s*,", nxt.op_str) and nxt.mnemonic not in ("les", "pop"):
                     for csg, callee in by_offset.get(target, []):
@@ -629,7 +648,31 @@ def _registers_c_cannot_carry(nef, segs, at, texts):
                 if any((p.mnemonic in ("mov", "xor", "sub", "les", "lds") and p.op_str.startswith("dx,"))
                        or p.mnemonic == "cwd" for p in prev):
                     out.setdefault(n, "it returns DX:AX where its C returns a word (%04x)" % i.address)
+    # (a caller of one that leaves DS changed: the original puts its own DS back after it --
+    # KERNEL's sub_2_2437 `push ds; call 0170 ... pop ds`; its C kept the kernel's DS and the
+    # caller after it faulted, "Invalid DPMI return from 0367:2BC3")
+    for callee in leaves_ds:
+        for caller in calls_of.get(callee, ()):
+            out.setdefault(caller, "it calls %s, which leaves DS changed" % callee)
     return out
+
+
+def _leaves_ds(ins):
+    """Whether a function's instructions load DS and do not put it back: a `mov ds, x` from
+    anything but a copy taken of DS (`mov dx, ds`), with no `pop ds` or restoring `mov ds`
+    after it."""
+    saved, changed = set(), False
+    for x in ins:
+        if x.mnemonic == "mov" and re.fullmatch(r"(\w+), ds", x.op_str):
+            saved.add(x.op_str.split(",")[0])
+        elif x.mnemonic == "mov" and x.op_str.startswith("ds,"):
+            src = x.op_str.split(",", 1)[1].strip()
+            changed = src not in saved
+        elif x.mnemonic == "pop" and x.op_str == "ds":
+            changed = False
+        elif x.mnemonic == "lds":
+            changed = True
+    return changed
 
 
 def _pack_holes(holes, size, near, aside=(), limit=None):

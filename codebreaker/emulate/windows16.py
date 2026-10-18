@@ -310,7 +310,8 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
         first = spn + (4 if far else 2)
         words = [int.from_bytes(uc.mem_read(STACK_BASE + ((first + 2 * k) & 0xFFFF), 2), "little")
                  for k in range(pop // 2)]
-        rec["calls_out"].append({"name": name, "args": words, "sp": spn})
+        rec["calls_out"].append({"name": name, "args": words, "sp": spn, "n": rec["insn_count"],
+                                 "ret_ip": ip})
         h = int(hashlib.sha1(("%s%r" % (name, words)).encode()).hexdigest()[:8], 16)
         uc.reg_write(UC_X86_REG_EAX, h & 0xFFFF)
         uc.reg_write(UC_X86_REG_EDX, (h >> 16) & 0xFFFF)
@@ -342,6 +343,8 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
                                          "little") for k in range(12)]
             hit = dict(imports.get(slot, {"slot": slot}))
             hit["args_stack"] = args_stack
+            hit["n"] = rec["insn_count"]
+            hit["ret_ip"] = ip
             rec["imports_hit"].append(hit)
             res = import_stub(hit, uc, U) if import_stub else None
             ax = (res or {}).get("ax", 0) & 0xFFFF

@@ -32,7 +32,8 @@
 // For processors other than 32-bit x86, each pointer-typed local or parameter is reported as
 // `/*@P <name> <bytes> */` (16-bit code has near and far pointers; the C text does not say which).
 // Each function is preceded by `/*@@ <name> <hexVA> */`; each global it touches is reported as
-// `/*@G <hexVA> <bytes> */` (the printed name of an unnamed global does not carry its size).
+// `/*@G <hexVA> <bytes> <bytes pointed at, or 0> */` (the printed name of an unnamed global
+// carries neither its size nor, for a pointer, the size of what it points at).
 // CB_LANGUAGES names the folder of language files (*.sla, *.ldefs, *.pspec, *.cspec).
 #include <cstdio>
 #include <cstdlib>
@@ -573,16 +574,32 @@ int main(int argc, char** argv) {
         Action* act = m.allacts.getCurrent();
         act->reset(*t.first);
         act->perform(*t.first);
-        std::set<std::pair<uint64_t, int>> seen;
+        // every global the function touches, with its size and -- for a pointer -- the size of
+        // what it points at, from whichever of its varnodes carries the type it is printed with
+        std::map<std::pair<uint64_t, int>, int> globals;
         AddrSpace* ram = m.getDefaultDataSpace();
         for (VarnodeLocSet::const_iterator it = t.first->beginLoc(ram); it != t.first->endLoc(ram); ++it) {
           const Varnode* vn = *it;
           if (vn->isAnnotation()) continue;
           uint64_t va = vn->getOffset();
           if (!image->holds(va)) continue;
-          if (seen.insert({va, (int)vn->getSize()}).second)
-            std::cout << "/*@G " << std::hex << va << std::dec << " " << vn->getSize() << " */" << std::endl;
+          int& elem = globals[{va, (int)vn->getSize()}];
+          Datatype* ct = vn->getType();
+          try {                                              // (the type it is printed with: its variable's)
+            if (vn->getHigh() != nullptr) ct = vn->getHigh()->getType();
+          } catch (...) {
+          }
+          if ((ct == nullptr || ct->getMetatype() != TYPE_PTR)) {
+            // (an unnamed global is printed from the symbol the core made for it: its type)
+            const SymbolEntry* e = m.symboltab->getGlobalScope()->queryContainer(vn->getAddr(), vn->getSize(), Address());
+            if (e != nullptr && e->getSymbol() != nullptr) ct = e->getSymbol()->getType();
+          }
+          if (ct != nullptr && ct->getMetatype() == TYPE_PTR && elem == 0)
+            elem = (int)((TypePointer*)ct)->getPtrTo()->getSize();
         }
+        for (const auto& g : globals)
+          std::cout << "/*@G " << std::hex << g.first.first << std::dec << " " << g.first.second << " "
+                    << g.second << " */" << std::endl;
         // 16-bit code has two sizes of pointer and C text does not show which a variable is:
         // report every pointer-typed local and parameter with its size, `/*@P <name> <bytes> */`.
         if (!x86_32) {

@@ -284,7 +284,7 @@ def compilable32(module_path, funcs, outdir):
     for n in order:
         body = []
         for ln in out[n].split("\n"):
-            m = re.match(r"/\*@G ([0-9a-f]+) (\d+) \*/$", ln)
+            m = re.match(r"/\*@G ([0-9a-f]+) (\d+)(?: \d+)? \*/$", ln)
             if m:
                 sizes.setdefault(int(m.group(1), 16), set()).add(int(m.group(2)))
             else:
@@ -469,7 +469,7 @@ uint2 codebreaker_entry_sp(void);
 #define CODEBREAKER_FAR(seg, off) ((void __far *)(((uint4)(uint2)(seg) << 16) | (uint2)(off)))
 """
 
-_FACT = re.compile(r"(?m)^/\*@([GP]) (\S+) (\d+) \*/\n?")
+_FACT = re.compile(r"(?m)^/\*@([GP]) (\S+) (\d+)(?: (\d+))? \*/\n?")
 _WIDE = ("xunknown4", "int4", "uint4", "undefined4", "float4")
 
 
@@ -491,6 +491,14 @@ def _far(text, far):
     # `name = (type *)expr` -> `name = (type __far *)expr`
     body = re.sub(r"\b(%s) = \(([A-Za-z_][\w ]*?) ?(\*+)\)" % names, r"\1 = (\2 __far \3)", body)
     return head + brace + _far_from_stack(body, far)
+
+
+def _global_pointer_steps(text):
+    """`pxRam1160012e + 2` -- arithmetic on a pointer the core keeps in an unnamed global -- is
+    in bytes: the original reads [[12Eh]+2] (USER's DisableOEMLayer and ExitWindows), while the
+    global's own type points at words and C would step 4. Stepped as bytes; a plain `*p` keeps
+    its type."""
+    return re.sub(r"(?<![\w*)])(p+[a-z]*Ram[0-9a-f]{8}) \+ ", r"(uint1 *)\1 + ", text)
 
 
 def _near_calls(text):
@@ -684,9 +692,15 @@ _RAM = re.compile(r"\b([a-z]+)Ram([0-9a-f]{8})\b")
 _LEADING = re.compile(r"\A(?:\s*/\*.*?\*/)+\s*", re.S)
 
 
-def _global_type(prefix, size):
+def _global_type(prefix, size, elem=None):
     if prefix[0] == "p" and len(prefix) > 1:             # a pointer, by the decompiler's own naming (piRam: int *)
         to = {"i": "int2", "u": "uint2", "c": "char", "b": "bool"}.get(prefix.lstrip("p")[:1], "xunknown2")
+        # (px..: a pointer to an unknown of 1, 2 or 4 bytes -- the core says which; `p + 2` counts
+        # in those: USER's DisableOEMLayer read [[12Eh]+4] for the original's [[12Eh]+2])
+        if elem and len(prefix) - len(prefix.lstrip("p")) == 1:
+            letter = prefix.lstrip("p")[:1]
+            to = {"x": "xunknown", "i": "int", "u": "uint"}.get(letter, "")
+            to = (to + str(elem)) if to else {"c": "char", "b": "bool"}.get(letter, "xunknown%d" % elem)
         stars = "*" * (len(prefix) - len(prefix.lstrip("p")))
         return "%s %s%s" % (to, "__far " if size == 4 else "", stars)
     signed = prefix.startswith("i") or prefix.startswith("c")
@@ -788,6 +802,7 @@ def _compilable16(module_path, outdir=None):
     m.selector_imports = {}                                  # imports used for their selector
     m.exported_prologue = set()                              # far functions the original starts with Windows' prologue
     sizes = {}                                               # address of a global -> bytes of the access
+    elems = {}                                               # ... a pointer's -> bytes of what it points at
     ends, starts = {}, {}                                    # where each function's code stops: at the next one
     for va in sorted(d.where):
         starts.setdefault(d.where[va][0], []).append((d.where[va][1], va))
@@ -857,11 +872,13 @@ def _compilable16(module_path, outdir=None):
             elif mm.group(1) == "G":
                 a = int(mm.group(2), 16)
                 sizes[a] = max(sizes.get(a, 0), int(mm.group(3))) if int(mm.group(3)) <= 4 else sizes.get(a, 2)
+                if mm.group(4) and int(mm.group(4)) in (1, 2, 4):
+                    elems[a] = int(mm.group(4))
         text = _LEADING.sub("", _FACT.sub("", raw))          # notes the decompiler put before the function
         seg, off = d.where[va]
         widths = _far_argument_widths(d.images[seg], off, ends.get(va, off),
                                       "far" in text.split("(", 1)[0]) if seg in d.images else {}
-        text = _near_calls(_null_is_zero(_segment_registers(_joined_arguments(_pieces(_far(text.strip(), far)), widths))))
+        text = _global_pointer_steps(_near_calls(_null_is_zero(_segment_registers(_joined_arguments(_pieces(_far(text.strip(), far)), widths)))))
         if seg in d.images:
             text = _far_arguments(text, _far_loads(d.images[seg], off, ends.get(va, off)), "far" not in text.split("{", 1)[0])
         if "return" in far:                                  # the function returns a far pointer
@@ -994,7 +1011,7 @@ def _compilable16(module_path, outdir=None):
     for prefix, addr in sorted(set(_RAM.findall(body))):
         va = int(addr, 16)
         seg, off = describe.where(va)
-        ty = _global_type(prefix, sizes.get(va, 2))
+        ty = _global_type(prefix, sizes.get(va, 2), elems.get(va))
         if "%sRam%s" % (prefix, addr) in called_through:
             ty = "code __far *" if sizes.get(va, 2) == 4 else "code __near *"
         if seg == d.data_segment:
@@ -1641,7 +1658,7 @@ def compilable_powerpc(module_path, outdir):
     for n in order:
         body = []
         for ln in out[n].split("\n"):
-            m = re.match(r"/\*@G ([0-9a-f]+) (\d+) \*/$", ln)
+            m = re.match(r"/\*@G ([0-9a-f]+) (\d+)(?: \d+)? \*/$", ln)
             if m:
                 sizes.setdefault(int(m.group(1), 16), set()).add(int(m.group(2)))
             elif not ln.startswith("/*@P "):
