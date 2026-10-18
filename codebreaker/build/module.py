@@ -632,6 +632,48 @@ def _registers_c_cannot_carry(nef, segs, at, texts):
     return out
 
 
+def _pack_holes(holes, size, near, aside=(), limit=None):
+    """The functions rebuilt from C into the frame's holes: each in its own hole first, when it
+    fits; the rest packed into what room is left (near ones first, then the biggest). `holes`:
+    [(start, end, name)]; `size`: {name: bytes of code}; `aside`: far ones sent elsewhere first;
+    `limit`: where the segment's resident part ends -- a function from below it goes only into
+    a hole that ends below it too (KERNEL keeps only the first A940h bytes of its segment 1).
+    -> ([[start, end, [(pad, name)], used]], far names with no room, near names with no room)"""
+    bins, rest = [], []
+    for lo, hi, name in holes:
+        bins.append([lo, hi, [], lo])
+        if name in size and name not in aside:
+            pad = bins[-1][3] & 1                          # (OpenWatcom aligns its code to a word)
+            if pad + size[name] <= hi - lo:
+                bins[-1][2].append((pad, name))
+                bins[-1][3] += pad + size[name]
+            else:
+                rest.append(name)
+    own = {name: lo for lo, _hi, name in holes}
+    no_room_far, no_room_near = [], []
+    for name in sorted(rest, key=lambda n: (n not in near, -size[n])):         # (near ones first)
+        for bn in bins:
+            if limit is not None and own.get(name, 0) < limit and bn[1] > limit:
+                continue
+            pad = bn[3] & 1
+            if bn[3] + pad + size[name] <= bn[1]:
+                bn[2].append((pad, name))
+                bn[3] += pad + size[name]
+                break
+        else:
+            (no_room_near if name in near else no_room_far).append(name)
+    return bins, no_room_far, no_room_near
+
+
+def _resident_limit(code):
+    """Where a self-loading KERNEL cuts its own code segment after start-up: GlobalReAlloc of
+    CS to `mov cx, size` -- `mov cx, N / push cs / push dx / push cx / push dx`. -> N or None"""
+    for at in range(len(code) - 8):
+        if code[at] == 0xB9 and code[at + 3:at + 8] == b"\x0e\x52\x51\x52\x0e":
+            return code[at + 1] | code[at + 2] << 8
+    return None
+
+
 def _frame_pieces(b, f, seg, stems, folder, wasm, env, assemble_piece, elsewhere=None):
     """The frame of a segment with assembly in it, in the order the linker is to lay it out:
     its pieces at the original's places, and in the places of the functions rebuilt from C
@@ -654,32 +696,13 @@ def _frame_pieces(b, f, seg, stems, folder, wasm, env, assemble_piece, elsewhere
                 pass
     near = getattr(b, "near_names", set())
 
+    limit = getattr(b, "resident_limit", {}).get(seg)
+
     def place(aside):
-        """Each hole: [start, end, [(pad, stem)], used] -- its own function first, when it fits;
-        the rest packed in. `aside`: far ones sent to the segment beside before anything is
-        placed. -> (holes, far names that found no room, near names that found none)"""
-        bins, rest = [], []
-        for lo, hi, sym in f.holes:
-            name = name_of.get(sym)
-            bins.append([lo, hi, [], lo])
-            if name in size and name not in aside:
-                pad = bins[-1][3] & 1                      # (OpenWatcom aligns its code to a word)
-                if pad + size[name] <= hi - lo:
-                    bins[-1][2].append((pad, cstem[name]))
-                    bins[-1][3] += pad + size[name]
-                else:
-                    rest.append(name)
-        no_room_far, no_room_near = [], []
-        for name in sorted(rest, key=lambda n: (n not in near, -size[n])):     # (near ones first)
-            for bn in bins:
-                pad = bn[3] & 1
-                if bn[3] + pad + size[name] <= bn[1]:
-                    bn[2].append((pad, cstem[name]))
-                    bn[3] += pad + size[name]
-                    break
-            else:
-                (no_room_near if name in near else no_room_far).append(name)
-        return bins, no_room_far, no_room_near
+        bins, no_room_far, no_room_near = _pack_holes(
+            [(lo, hi, name_of.get(sym)) for lo, hi, sym in f.holes], size, near, aside, limit)
+        return [[lo, hi, [(pad, cstem[n]) for pad, n in objs], used] for lo, hi, objs, used in bins], \
+            no_room_far, no_room_near
 
     # A near function with no room goes after the frame and makes the segment bigger than the
     # original's -- past 64K, in the end. A far one can go to the segment beside instead: the
@@ -712,6 +735,13 @@ def _frame_pieces(b, f, seg, stems, folder, wasm, env, assemble_piece, elsewhere
             b.moved_c.add(name)
         else:
             after.append(cstem[name])                      # near: after the frame, in this segment
+            own = next((lo for lo, _hi, sym in f.holes if name_of.get(sym) == name), None)
+            if limit is not None and own is not None and own < limit:
+                # (past where the segment is cut after start-up: the build is done again with it
+                # as its instructions -- see _resident_limit)
+                b.resident_overflow = getattr(b, "resident_overflow", {})
+                b.resident_overflow[name] = ("its C finds no room below where segment %d is cut (%04x)"
+                                             % (seg, limit))
     for name in size:
         if name not in b.moved_c:
             b.placed_c.add(name)
@@ -1126,38 +1156,50 @@ def _build16(b, path, m, folder):
     with open(path, "rb") as fh:
         _last, _pages = struct.unpack_from("<HH", fh.read(6), 2)
     loads_itself = _pages * 512 >= os.path.getsize(path) - 511
+    b.resident_limit = {}
     if loads_itself:
-        # A module that loads itself keeps only what the original's segments held: KERNEL trims
-        # its segment 1 after start-up (the selector's limit A93F, the init code past it thrown
-        # away), so a function of ours that does not fit its own place and goes after the frame
-        # is past the end -- KRNL386's C fault decoder (1:A296) placed at 1:C602 faulted on every
-        # fault it was to decode ("Invalid DPMI return from 0367:C608"). Such a one stays as its
-        # instructions.
+        # A module that loads itself keeps only part of a segment after start-up: KERNEL cuts its
+        # segment 1 to A940h (GlobalReAlloc of CS at 1:B567), the init code past it thrown away.
+        # A function from below that point that finds no room below it would go after the frame,
+        # past the end -- KRNL386's C fault decoder (1:A296) at 1:C602 faulted on every fault it
+        # was to decode ("Invalid DPMI return from 0367:C608"). The packing the frame will do is
+        # done here first, and only such a one stays as its instructions; one from past the
+        # point (init code) may go after the frame.
         from codebreaker.build import msc6
+        for sg, s in segs.items():
+            if s["kind"] == "CODE":
+                lim = _resident_limit(bytes(nef.data[s["file_off"]:s["file_off"] + s["length"]]))
+                if lim and lim < s["length"]:
+                    b.resident_limit[sg] = lim
         starts_of = {}
-        for (sg, o) in at:
-            starts_of.setdefault(sg, []).append(o)
-        for sg in starts_of:
-            starts_of[sg].sort()
-        for n in m.order:
-            if n in forced or n not in stems or n not in segment_of or stems[n].startswith("asm/"):
-                continue
-            sg = segment_of[n]
-            o = next((o for (s2, o), nm in at.items() if s2 == sg and nm == n), None)
-            if o is None:
-                continue
-            later = [x for x in starts_of[sg] if x > o]
-            room = (later[0] if later else segs[sg]["length"] if sg in segs else o) - o
-            try:
-                with open(os.path.join(folder, stems[n] + ".obj"), "rb") as fh:
-                    need = (o & 1) + len(msc6.object_code(fh.read())[0])     # (word-aligned, as placed)
-            except OSError:
-                continue
-            if need > room:
-                forced.add(n)
-                if n in b.origins:
-                    b.origins[n].evidence.append(
-                        "its C (%d bytes) does not fit its place (%d) in a module that loads itself" % (need, room))
+        for (sg, o), nm in at.items():
+            starts_of.setdefault(sg, []).append((o, nm))
+        for sg, lim in b.resident_limit.items():
+            order = sorted(starts_of.get(sg, []))
+            size = {}
+            for o, nm in order:
+                if nm in forced or nm not in stems or stems[nm].startswith("asm/"):
+                    continue
+                try:
+                    with open(os.path.join(folder, stems[nm] + ".obj"), "rb") as fh:
+                        size[nm] = len(msc6.object_code(fh.read())[0])
+                except OSError:
+                    pass
+            while True:
+                holes = [(o, order[k + 1][0] if k + 1 < len(order) else segs[sg]["length"], nm)
+                         for k, (o, nm) in enumerate(order) if nm in size]
+                _bins, far_left, near_left = _pack_holes(holes, size, set(m.near), (), lim)
+                own = {nm: o for o, _hi, nm in holes}
+                stuck = [nm for nm in far_left + near_left if own[nm] < lim]
+                if not stuck:
+                    break
+                for nm in stuck:
+                    forced.add(nm)
+                    del size[nm]
+                    if nm in b.origins:
+                        b.origins[nm].evidence.append(
+                            "its C finds no room below where segment %d is cut (%04x) in a module that "
+                            "loads itself" % (sg, lim))
 
     asm_read = {}                                            # (file -> (size, mtime, text): each read once)
 
@@ -1555,6 +1597,10 @@ def build(module, outdir=None, call=True, log=print, gated=None):
         b.disputes = _disputes(m.description)
     log("%s: compiling %d functions, data and resources" % (b.name, len(m.order)))
     image = (_build16 if b.kind == "ne" else _build32)(b, path, m, folder)
+    if getattr(b, "resident_overflow", None):
+        log("%s: %d placed past where a segment is cut: rebuilt from their instructions"
+            % (b.name, len(b.resident_overflow)))
+        return build(module, outdir=outdir, call=call, log=log, gated=dict(b.gated, **b.resident_overflow))
     if not image:
         return b
     b.image = os.path.join(folder, os.path.basename(path).lower())
