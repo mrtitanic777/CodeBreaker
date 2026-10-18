@@ -1640,8 +1640,9 @@ def abstract(decl, name):
     return re.sub(r"\s+\*", " *", t)
 
 
-def call_args(line, fn):
-    """[(start, end) of each argument] of the first call of fn on the line, or None"""
+def call_args(line, fn, partial=False):
+    """[(start, end) of each argument] of the first call of fn on the line, or None (partial: of a call that goes
+    on to the next line, the arguments whole on this one)"""
     m = re.search(r"\b%s\s*\(" % re.escape(fn), line)
     if not m:
         return None
@@ -1656,7 +1657,7 @@ def call_args(line, fn):
             spans.append((start, i))
             start = i + 1
         i += 1
-    return spans if d == 0 else None
+    return spans if d == 0 or (partial and d >= 1 and spans) else None
 
 
 def truthy(body, name):
@@ -1742,7 +1743,7 @@ def call_at(line, col):
     for m in re.finditer(r"\b([A-Za-z_]\w*)\s*\(", line):
         if m.group(1) in KEYWORDS:
             continue
-        spans = call_args(line[m.start():], m.group(1))
+        spans = call_args(line[m.start():], m.group(1), partial=True)
         if not spans:
             continue
         for k, (a, b) in enumerate(spans):
@@ -1860,7 +1861,7 @@ def mend(port, out, diags):
             elif kind == "argtype":
                 at = call_at(l, col)
                 if g("fn"):                                 # (gcc names the function and the argument)
-                    spans = call_args(l, g("fn"))
+                    spans = call_args(l, g("fn"), partial=True)
                     k = int(g("n")) - 1
                     at = (g("fn"), k, spans[k]) if spans and k < len(spans) else at
                 fn = port.fns.get(at[0]) if at else None
