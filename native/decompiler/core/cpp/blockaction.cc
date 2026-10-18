@@ -2256,15 +2256,29 @@ void ActionReturnSplit::gatherReturnGotos(FlowBlock *parent,vector<FlowBlock *> 
 bool ActionReturnSplit::isSplittable(BlockBasic *b)
 
 {
-  list<PcodeOp *>::const_iterator iter;
-  PcodeOp *op;
   int4 plain = 0;
   int4 calls = 0;
+  return tally(b,plain,calls,false);
+}
+
+/// CodeBreaker: count the ops of a block that would be copied, against \b maxSplitOps and
+/// \b maxSplitCalls, the counts carried in from other blocks of the same tail
+/// \param b is the block
+/// \param plain is the running count of plain ops
+/// \param calls is the running count of calls
+/// \param branchEnd is \b true if the block may end in a BRANCH (removed when it is joined to its successor)
+/// \return \b true if the block (with what was counted before) can be copied
+bool ActionReturnSplit::tally(BlockBasic *b,int4 &plain,int4 &calls,bool branchEnd)
+
+{
+  list<PcodeOp *>::const_iterator iter;
+  PcodeOp *op;
 
   for(iter=b->beginOp();iter!=b->endOp();++iter) {
     op = *iter;
     OpCode opc = op->code();
     if (opc == CPUI_MULTIEQUAL) continue;
+    if (branchEnd && opc == CPUI_BRANCH && op == b->lastOp()) continue;
     if (opc == CPUI_INDIRECT) {
       // (a side-effect is copied with what causes it, which must be in the block too)
       const Varnode *iop = op->getIn(1);
@@ -2369,7 +2383,48 @@ int4 ActionReturnSplit::apply(Funcdata &data)
       data.getArch()->printWarning("Block structure is not consistent");
 #endif
   }
+  if (splitedge.empty())
+    joinReturn(data);
   return 0;
+}
+
+/// CodeBreaker: a block reached by \e goto that flows only into a shared return block gets its
+/// own copy of the return block, joined to it: the block then ends in its own RETURN, and is
+/// split onto the \e goto paths on the next pass (as any return block). A longer tail is
+/// absorbed a block at a time. Only done when the joined block can then be split (its ops within
+/// \b maxSplitOps and \b maxSplitCalls), and at most \b maxResplits times per block per function.
+/// One block per pass: the graph has changed.
+/// \param data is the function
+void ActionReturnSplit::joinReturn(Funcdata &data)
+
+{
+  const BlockGraph &graph(data.getBasicBlocks());
+  for(int4 i=0;i<graph.getSize();++i) {
+    BlockBasic *x = (BlockBasic *)graph.getBlock(i);
+    if (x->sizeOut() != 1 || x->sizeIn() <= 1) continue;
+    BlockBasic *r = (BlockBasic *)x->getOut(0);
+    if (r == x || r->sizeOut() != 0 || r->sizeIn() <= 1) continue;
+    PcodeOp *ret = r->lastOp();
+    if (ret == (PcodeOp *)0 || ret->code() != CPUI_RETURN) continue;
+    int4 plain = 0;
+    int4 calls = 0;
+    if (!tally(x,plain,calls,true) || !tally(r,plain,calls,false)) continue;
+    if (x->getStart().isInvalid() || joinCount[x->getStart()] >= maxResplits) continue;
+    vector<FlowBlock *> gotoblocks;
+    gatherReturnGotos(x,gotoblocks);
+    for(int4 j=0;j<gotoblocks.size();++j)
+      gotoblocks[j]->clearMark();
+    if (gotoblocks.empty()) continue;
+    int4 slot = -1;
+    for(int4 j=0;j<r->sizeIn();++j)
+      if (r->getIn(j) == x) slot = j;
+    if (slot < 0) continue;
+    joinCount[x->getStart()] += 1;
+    data.nodeSplit(r,slot);		// x's own copy of the return block...
+    data.spliceBlockBasic(x);		// ...joined to it
+    count += 1;
+    return;
+  }
 }
 
 int4 ActionNodeJoin::apply(Funcdata &data)

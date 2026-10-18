@@ -343,10 +343,13 @@ class ActionReturnSplit : public Action {
   static const int4 maxResplits = 4;	///< CodeBreaker: ...and the most times one may be
   static void gatherReturnGotos(FlowBlock *parent,vector<FlowBlock *> &vec);
   static bool isSplittable(BlockBasic *b);		///< Determine if a RETURN block can be split
+  void joinReturn(Funcdata &data);		///< CodeBreaker: give a goto target its own copy of its return block
   static bool onlyCopies(BlockBasic *b);		///< CodeBreaker: is the block only copies and the RETURN
+  static bool tally(BlockBasic *b,int4 &plain,int4 &calls,bool branchEnd);	///< CodeBreaker: count what a copy would hold
+  map<Address,int4> joinCount;	///< CodeBreaker: times each block was given its own copy of the return it flows into
 public:
   ActionReturnSplit(const string &g) : Action(0,"returnsplit",g) {}		///< Constructor
-  virtual void reset(Funcdata &data) { Action::reset(data); splitCount.clear(); }
+  virtual void reset(Funcdata &data) { Action::reset(data); splitCount.clear(); joinCount.clear(); }
   virtual Action *clone(const ActionGroupList &grouplist) const {
     if (!grouplist.contains(getGroup())) return (Action *)0;
     return new ActionReturnSplit(getGroup());

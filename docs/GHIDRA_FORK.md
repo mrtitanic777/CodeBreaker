@@ -54,6 +54,7 @@ Every change carries a `CodeBreaker:` comment at its place in the source.
 | C12 | `type.hh`, `type.cc` (`TypeFactory::assignFixedFields`) | Completes a structure from fields whose offsets and size are already known (packed; checked: no field outside, none overlapping) | Item 7C: the structures `decompiler.cc` recovers from a function's own accesses keep exactly the offsets the code uses; the core's public `assignRawFields` lays fields out by their alignment instead | item 7C |
 | C13 | `blockaction.hh`, `blockaction.cc` (`ActionReturnSplit::isSplittable`) | A return block that paths reach by `goto` is copied onto each path when it holds up to 8 plain ops (arithmetic, loads, stores; no calls, branches or INDIRECTs), not only when it holds nothing but copies | Item 7D: gotos to a shared exit; each path gets its own copy of the tail (the block has no flow out, so the program is the same). Golden: gotos 6,923 -> 6,449; to a bare `return` 225 -> 26 | item 7D |
 | C14 | `funcdata_block.cc` (`CloneBlockOps::patchInputs`), `funcdata.hh` (friend), `blockaction.hh`, `blockaction.cc` (`ActionReturnSplit`) | Block cloning copies CALL/CALLIND ops (each a clone of its call specification, registered with the function) and INDIRECTs (their cause pointed at the cloned op) -- upstream threw "Can't clone CALLs/INDIRECTs"; ActionReturnSplit then splits return tails with up to 2 calls, and a tail of more than copies at most 4 times per RETURN per function (the analysis can join identical tails back, and re-splitting each time did not end) | Item 7D: gotos to a shared `call(); return;` tail. Golden: gotos 6,449 -> 5,701; 350 functions changed, no new failures | item 7D |
+| C15 | `blockaction.hh`, `blockaction.cc` (`ActionReturnSplit::joinReturn`, `tally`) | A block reached by goto that flows only into a shared return block gets its own copy of that block (`nodeSplit`) joined to it (`spliceBlockBasic`); it then ends in its own RETURN and is split onto the goto paths on the next pass. Only when the joined block is within the split limits; at most 4 times per block per function | Item 7D: gotos to `x = 0;` / `f();` that then fall into the shared `return`. Golden: gotos 5,701 -> 5,417; 136 functions changed, no new failures | item 7D |
 
 ## Local changes to the language files (`languages/`)
 
@@ -80,7 +81,7 @@ master later added Swift and raised the x86 language version 4.8 -> 4.9. `ppc.ld
 ## Rebasing onto a newer upstream
 
 1. `git clone --filter=blob:none --no-checkout https://github.com/NationalSecurityAgency/ghidra.git`
-2. Copy the new upstream `cpp/`, `zlib/` and the language files over ours; re-apply C1-C14 and
+2. Copy the new upstream `cpp/`, `zlib/` and the language files over ours; re-apply C1-C15 and
    L1-L3, L5 (each is small and marked); drop any upstream has fixed itself (C2, C6, C7, C10 first).
 3. Recompile the `.sla` files with `build/bin/sleigh` (the core's compiler, target `sleigh`), then
    `python tools/sleigh_verify.py`: no new disagreement.

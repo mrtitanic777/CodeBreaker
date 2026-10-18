@@ -136,3 +136,6 @@ RISC-V Sail, Intel XED).
   functions changed, no new failures, one thread and four agree. Left: 2,341 backward, 3,096
   forward, mostly COMMAND.COM (hand-written assembly; 3,090 of them) -- loops with several
   entries and crossing jumps, for restructuring proper.
+  Then (C15) a goto target that flows into the shared return is given its own copy of it and
+  joined to it, so it too can be split: 5,701 -> 5,417 (14.9 per 1,000 lines); 136 functions
+  changed, no new failures. Since the start of 7D: 6,923 -> 5,417 (-22%).
