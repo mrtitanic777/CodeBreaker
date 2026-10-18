@@ -145,7 +145,8 @@ def _keep_frame(t):
     the callee, reading through the pointer, finds something else. When any stack local's address
     can escape, the locals are declared as the fields of one frame structure at their original
     offsets, so every address taken still points at what the original put there."""
-    locs = [m for m in _LOCAL.finditer(t) if m.group(1).strip() not in ("return", "goto")]
+    lines = _declaration_lines(t)                        # (`return x;` / `goto x;` are not declarations)
+    locs = [m for m in _LOCAL.finditer(t) if m.group(0) in lines]
     if not locs:
         return t
     names = [m.group(2) for m in locs]
@@ -185,7 +186,7 @@ def _keep_frame(t):
             first[0] = False
             return "/*codebreaker:frame*/"                # (a comment: the parser reads past it; it stopped at a NUL)
         return ""
-    t = _LOCAL.sub(lambda m: m.group(0) if m.group(1).strip() in ("return", "goto") else strip(m), t)
+    t = _LOCAL.sub(lambda m: strip(m) if m.group(0) in lines else m.group(0), t)
     wanted = set(names)
 
     def fields(src):
@@ -224,7 +225,8 @@ def _null_pointer(src, cast):
 def _compare_as_numbers(t):
     """The core compares a pointer with a plain number freely (`if (pcVar2 < (uint4)a1)`); C does
     not allow it. Where exactly one side is a pointer variable, compare its value as a number."""
-    ptrs = set(_PTR_DECL.findall(t))
+    lines = _declaration_lines(t)
+    ptrs = {m.group(1) for m in _PTR_DECL.finditer(t) if m.group(0) in lines}
     for ln in t.split("\n"):
         if "struct {" in ln and "} _f;" in ln:
             ptrs.update(re.findall(r"\*+\s*(\w+)(?:\[\d+\])?;", ln))
@@ -1717,15 +1719,19 @@ def _far_record(text, place, ss):
     of its own, the SS half dropped, the next field another local. Laid out by the compiler those
     are anywhere, and the hook read a garbage selector. Kept as one packed record, from the word
     whose address is passed on, through SS, through the words after it with no gap."""
+    lines = _declaration_lines(text)
+
     def scalar(off):
-        mm = re.search(r"(?m)^  ([\w ]*?\w(?:\s*\*+)?)\s*\b(\w*Stack_%x);[ \t]*$" % off, text)
-        if not mm:
-            return None
-        typ = mm.group(1)
-        size = 2 if "*" in typ else _SIZE.get(typ.strip()[-1:], 0)
-        return (mm.group(0), mm.group(2), size) if size == 2 else None
+        """(its declaration, its name, 2) of the word-sized local at `off`, else None"""
+        for mm in re.finditer(r"(?m)^  ([\w ]*?\w(?:\s*\*+)?)\s*\b(\w*Stack_%x);[ \t]*$" % off, text):
+            if mm.group(0) not in lines:
+                continue
+            typ = mm.group(1)
+            size = 2 if "*" in typ else _SIZE.get(typ.strip()[-1:], 0)
+            return (mm.group(0), mm.group(2), size) if size == 2 else None
+        return None
     first = scalar(place + 2)
-    if not first or not re.search(r"&\s*%s\b" % first[1], text):
+    if not first or not _addressed(text, first[1]):
         return text
     words = [first, None]
     off = place - 2
@@ -1744,56 +1750,107 @@ def _far_record(text, place, ss):
     if brace < 0:
         return text
     text = text[:brace + 2] + decl + text[brace + 2:]
-    for w in words:
+    for w in words:                                      # (the fields' own declarations keep their names)
         if w:
-            text = re.sub(r"(?<![\w.])%s\b" % re.escape(w[1]), "%s.%s" % (rec, w[1]), text)
-            text = re.sub(r"(\n {2,4}\w[\w ]*\s\**)%s\.(%s;)" % (rec, re.escape(w[1])), r"\1\2", text)
-    # (SS written with the offset: where the offset is set)
-    setit = re.search(r"(?m)^([ \t]+)%s\.%s = [^\n]*;[ \t]*$" % (rec, re.escape(first[1])), text)
-    if setit:
-        text = text[:setit.end()] + "\n" + setit.group(1) + "%s.codebreaker_ss = %s;" % (rec, ss) + text[setit.end():]
-    return text
+            text = _rename(text, w[1], "%s.%s" % (rec, w[1]))
+    # (SS written with the offset: where the offset is set -- a statement of its own line)
+    src = ctree.Source(text)
+    for st in src.find("expression_statement", under=src.body()):
+        a = st.named_children[0] if st.named_child_count == 1 else None
+        line = src.line(st)
+        if a is not None and a.type == "assignment_expression" and src.at(a.child_by_field_name("operator")) == "=" \
+                and src.at(a.child_by_field_name("left")) == "%s.%s" % (rec, first[1]) and line.strip() == src.at(st) \
+                and line[:1].isspace():
+            end = src.line_span(st)[1]
+            end -= 1 if src.data[end - 1:end] == b"\n" else 0
+            indent = line[:len(line) - len(line.lstrip())]
+            src.insert(end, "\n" + indent + "%s.codebreaker_ss = %s;" % (rec, ss))
+            break
+    return src.text()
 
 
 def _far_locals(text):
     """A four-byte local the code reads THROUGH holds a far pointer: it is set from a segment and
     an offset (CONCAT22(seg, off)) and the decompiler casts that to a near pointer, which in C
     would keep the offset alone. Declared as the far pointer it is, to what that cast names."""
+    def concat_sets(src, name, any_value=False):
+        """`name = (T *)CONCAT22(...)` (with `any_value`, `name = (T *)` anything): [(the cast's
+        type node, T)]"""
+        out = []
+        for a in src.find("assignment_expression"):
+            left, right = a.child_by_field_name("left"), a.child_by_field_name("right")
+            if src.at(a.child_by_field_name("operator")) != "=" or left.type != "identifier" or src.at(left) != name:
+                continue
+            cast = src.leading(right, "cast_expression")
+            ty = cast.child_by_field_name("type") if cast is not None else None
+            m = re.fullmatch(r"([\w ]+?) \*", src.at(ty)) if ty is not None else None
+            v = cast.child_by_field_name("value") if m else None
+            if v is not None and (any_value or v.type == "call_expression" and
+                                  src.at(v.child_by_field_name("function")) == "CONCAT22"):
+                out.append((ty, m.group(1)))
+        return out
+
+    def far_casts(t, name, any_value=False):
+        """`name = (T *)CONCAT22(` -> `name = (T __far *)CONCAT22(` (with `any_value`, any cast set)"""
+        src = ctree.Source(t)
+        for ty, to in concat_sets(src, name, any_value):
+            src.replace(ty, "%s __far *" % to)
+        return src.text()
+    lines = _declaration_lines(text)
     for mm in list(re.finditer(r"(?m)^([ \t]+)(?:xunknown4|uint4|int4|undefined4) (\w+);[ \t]*$", text)):
-        name = mm.group(2)
-        if not re.search(r"(?<![\w)\]])\*%s\b" % name, text):
+        if mm.group(0) not in lines:
             continue
-        sets = re.findall(r"\b%s = \(([\w ]+?) \*\)" % name, text)
-        to = sets[0] if sets else "xunknown1"
+        name = mm.group(2)
+        nodes, src = _uses(text, name)
+        if not any(src.unary(n) and src.unary(n)[0] == "*" for n in nodes):
+            continue                                     # (read through: `*name`, also after a cast)
+        sets = concat_sets(src, name, any_value=True)
+        to = sets[0][1] if sets else "xunknown1"
         text = text.replace(mm.group(0), "%s%s __far *%s;" % (mm.group(1), to, name), 1)
         # (whatever it is set from: a far pointer a call returns -- `(T *)GlobalLock(h)` -- cast
         # near first kept the offset alone and C gave it DS: USER's sub_43_032F copied from its
         # own data segment instead of the block GlobalLock locked)
-        text = re.sub(r"\b(%s = )\(([\w ]+?) \*\)" % name, r"\1(\2 __far *)", text)
+        text = far_casts(text, name, any_value=True)
     # `_p` beside `p`: the decompiler's name for the whole four bytes whose low half is the near
     # pointer p -- a far pointer, and p its offset
+    lines = _declaration_lines(text)
     for mm in list(re.finditer(r"(?m)^([ \t]+)([\w ]+?) \*(\w+);[ \t]*$", text)):
+        if mm.group(0) not in lines:
+            continue
         lead, to, name = mm.groups()
         whole = "_" + name
-        if not re.search(r"\b%s\b" % whole, text) or re.search(r"(?m)^[ \t]+[\w ]+\*?\s*%s;" % whole, text):
+        nodes, src = _uses(text, whole)
+        if not nodes or any(_declares(src, n, whole) for n in src.find("declaration")):
             continue
-        assigned = re.search(r"(?<![=!<>])\b%s\s*=[^=]" % name, text) or re.search(r"&\s*%s\b" % name, text)
+        assigned = _addressed(text, name) or any(
+            src.at(a.child_by_field_name("operator")) == "=" and a.child_by_field_name("left").type == "identifier"
+            and src.at(a.child_by_field_name("left")) == name for a in src.find("assignment_expression"))
         decl = "%s%s __far *%s;" % (lead, to, whole)
         text = text.replace(mm.group(0), (mm.group(0) + "\n" if assigned else "") + decl, 1)
-        text = re.sub(r"\b(%s = )\(([\w ]+?) \*\)CONCAT22\(" % whole, r"\1(\2 __far *)CONCAT22(", text)
+        text = far_casts(text, whole)
         if not assigned:
-            text = re.sub(r"(?<!_)\b%s\b" % name, "((%s *)(uint2)(uint4)%s)" % (to, whole), text)
+            text = _rename(text, name, "((%s *)(uint2)(uint4)%s)" % (to, whole))
     # one pointer local set from another the decompiler typed differently (int2 __far ** from
     # int2 **): what is kept is the value, in the type of the one it goes into
+    lines = _declaration_lines(text)
     types = {m2.group(2): m2.group(1).strip() for m2 in
-             re.finditer(r"(?m)^[ \t]+([\w ]+?[\w ]*\*+)\s*(\w+);[ \t]*$", text)}
+             re.finditer(r"(?m)^[ \t]+([\w ]+?[\w ]*\*+)\s*(\w+);[ \t]*$", text) if m2.group(0) in lines}
+    src = ctree.Source(text)
+    for st in src.find("expression_statement", under=src.body()):
+        a = st.named_children[0] if st.named_child_count == 1 else None
+        if a is None or a.type != "assignment_expression" or src.at(a.child_by_field_name("operator")) != "=":
+            continue
+        left, right = a.child_by_field_name("left"), a.child_by_field_name("right")
+        if left.type == "identifier" and right.type == "identifier" and src.line(st).strip() == src.at(st) and \
+                src.line(st)[:1].isspace() and src.at(left) in types and src.at(right) in types and \
+                types[src.at(left)] != types[src.at(right)]:
+            src.insert(right.start_byte, "(%s)" % types[src.at(left)])
+    return src.text()
 
-    def cast(m2):
-        a, b = m2.group(2), m2.group(3)
-        if a in types and b in types and types[a] != types[b]:
-            return "%s%s = (%s)%s;" % (m2.group(1), a, types[a], b)
-        return m2.group(0)
-    return re.sub(r"(?m)^([ \t]+)(\w+) = (\w+);[ \t]*$", cast, text)
+
+def _declares(src, decl, name):
+    """Does declaration node `decl` declare `name`?"""
+    return any(src.declared_name(dcl) == name for dcl in decl.children_by_field_name("declarator"))
 
 
 def _passed_on(arg, reg):
