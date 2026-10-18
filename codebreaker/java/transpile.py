@@ -16,6 +16,7 @@ the legacy output.
 
 import os
 import re
+import threading
 
 from codebreaker.java import parse, types, typemap, report, rules, runtime
 from codebreaker.java.emit import header as emit_header, source as emit_source
@@ -1056,7 +1057,23 @@ def convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True,
     """Convert a Java source tree to C++ (see _convert). The per-conversion module state -- the active
     edition profile and the derived nullable-getter sets -- is snapshotted here and restored in a
     `finally`, so a conversion that RAISES midway can't leak its profile into the next in-process
-    convert (the long-lived GUI), which would make output depend on earlier runs."""
+    convert, which would make output depend on earlier runs.
+
+    That state is module-level (the active profile reseeds typemap/rules/vcxproj/signatures; the
+    nullable-getter and `->length` sets are per corpus), so conversions in one process run ONE AT A
+    TIME: a second thread waits here. Conversions that should run side by side run in separate
+    processes -- which is how CodeBreaker runs every job (jobs/pool, the console's subprocesses)."""
+    with _ONE_AT_A_TIME:
+        return _convert_restoring(java_dir, out_dir, value_types, ledger, write_report, cpp_std, platform,
+                                  progress_cb, platform_refs, sdk_override, emit_debug, overlay_dir,
+                                  edition, mc_version)
+
+
+_ONE_AT_A_TIME = threading.Lock()
+
+
+def _convert_restoring(java_dir, out_dir, value_types, ledger, write_report, cpp_std, platform, progress_cb,
+                       platform_refs, sdk_override, emit_debug, overlay_dir, edition, mc_version):
     from codebreaker.java import profiles as _profiles
     from codebreaker.java.emit import statements as _statements
     _prev_profile = _profiles.active().name
