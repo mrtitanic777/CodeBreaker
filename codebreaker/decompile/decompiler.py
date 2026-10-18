@@ -176,7 +176,10 @@ def _run_resuming(description, only, timeout, max_instructions=None):
     before -- the function it died on decompiles on its own), start it again from the next
     function it had not written, and so on. A function a fresh start dies on at once is left
     out, with a note on stderr. -> (stdout, stderr, whether every function was attempted)"""
-    env = dict(os.environ, CB_LANGUAGES=_languages())
+    from codebreaker.base import settings
+    # CB_THREADS (setting "threads"): functions analysed at once in the one process -- the
+    # output is the same; 1 by default (a sweep already runs a process per worker)
+    env = dict(os.environ, CB_LANGUAGES=_languages(), CB_THREADS=str(settings.get("threads") or 1))
     if max_instructions:
         env["CB_MAX_INSTRUCTIONS"] = str(max_instructions)
     if only:

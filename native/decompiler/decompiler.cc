@@ -29,6 +29,9 @@
 //
 //   decompiler <description> [--at <hexVA>...]      every function listed, or only those
 //
+// CB_THREADS=N analyses N functions at once (each thread its own analysis of the whole
+// description); the output is the same, in the same order.
+//
 // For processors other than 32-bit x86, each pointer-typed local or parameter is reported as
 // `/*@P <name> <bytes> */` (16-bit code has near and far pointers; the C text does not say which).
 // Each function is preceded by `/*@@ <name> <hexVA> */`; each global it touches is reported as
@@ -50,8 +53,11 @@
 #include "sleigh_arch.hh"
 #include "loadimage.hh"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <memory>
+#include <mutex>
 #include <new>
 #include <thread>
 #ifdef _WIN32
@@ -76,41 +82,79 @@
 // starts it again from the next function (codebreaker/decompile/decompiler.py: _run_resuming).
 // And the operating system holds it to a hard ceiling besides (a Windows job), for what the
 // account does not see.
+//
+// With CB_THREADS=N (N > 1) N functions are analysed at once, each thread with its own analysis
+// (main, below). CB_MEMORY_MB is then the whole process's: a function over its share stops
+// cleanly at the analysis's next check (the one holding the most, once the process is past three
+// quarters of the budget), and so does one over its time; only what the checks cannot reach
+// ends the process -- with nothing written to the output, so the caller does that function
+// again as it would any cut-off one.
 namespace governor {
 std::atomic<long long> held{0};          // bytes held now
 long long budget = 0;                    // 0: not yet set up (before main) -- no limit
 std::atomic<bool> tripping{false};
-std::atomic<long long> started_ms{0};    // when the function being done began (0: none)
+int threads = 1;                         // CB_THREADS
 
-void fail_and_exit(const char* why, int code) {
+// What each analysing thread is doing, for the watchdog. (The analysis's own record of where it
+// is -- cb_action, cb_rule, cb_steps -- is per thread: core/cpp/action.hh. The watchdog reads it
+// only to say where a function was when it was stopped.)
+struct Slot {
+  const char* const* action = nullptr;
+  const char* const* rule = nullptr;
+  const unsigned long long* steps = nullptr;
+  std::atomic<long long> held{0};        // what this thread's allocations hold
+  std::atomic<long long> base_held{0};   // ...when its function began
+  std::atomic<long long> started_ms{0};  // when its function began (0: none)
+  std::atomic<bool> expired{false};      // past the time limit: stop at the next check
+};
+const int kMaxSlots = 64;
+Slot slots[kMaxSlots];
+std::atomic<int> nslots{0};
+thread_local Slot* my_slot = nullptr;
+
+void fail_and_exit(const char* why, int code, const Slot* s) {
   if (tripping.exchange(true)) return;
   // (no allocation here: the stream library would come back into operator new)
+  const char* act = s && s->action ? *s->action : "";
+  const char* rule = s && s->rule ? *s->rule : "";
   char buf[400];
-  int n = std::snprintf(buf, sizeof(buf), "/* decompile failed: %s, in %s / %s */\n\n", why,
-                        ghidra::cb_action, ghidra::cb_rule);
+  int n;
   std::fflush(stdout);
+  if (threads == 1) {
+    n = std::snprintf(buf, sizeof(buf), "/* decompile failed: %s, in %s / %s */\n\n", why, act, rule);
 #ifdef _WIN32
-  _write(1, buf, n);
+    _write(1, buf, n);
 #else
-  ::write(1, buf, n);
+    ::write(1, buf, n);
 #endif
+  } else {                               // (the output holds only whole functions)
+    n = std::snprintf(buf, sizeof(buf), "[decompiler stopped: %s, in %s / %s]\n", why, act, rule);
+#ifdef _WIN32
+    _write(2, buf, n);
+#else
+    ::write(2, buf, n);
+#endif
+  }
   std::_Exit(code);
 }
 }  // namespace governor
 
 void* operator new(std::size_t n) {
   if (governor::budget && governor::held.load(std::memory_order_relaxed) + (long long)n > governor::budget)
-    governor::fail_and_exit("over the memory budget (CB_MEMORY_MB)", 3);
+    governor::fail_and_exit("over the memory budget (CB_MEMORY_MB)", 3, governor::my_slot);
   void* p = std::malloc(n + 16);
   if (!p) throw std::bad_alloc();
   *(std::size_t*)p = n;
   governor::held.fetch_add((long long)n, std::memory_order_relaxed);
+  if (governor::my_slot) governor::my_slot->held.fetch_add((long long)n, std::memory_order_relaxed);
   return (char*)p + 16;
 }
 void operator delete(void* p) noexcept {
   if (!p) return;
   char* q = (char*)p - 16;
-  governor::held.fetch_sub((long long)*(std::size_t*)q, std::memory_order_relaxed);
+  const long long n = (long long)*(std::size_t*)q;
+  governor::held.fetch_sub(n, std::memory_order_relaxed);
+  if (governor::my_slot) governor::my_slot->held.fetch_sub(n, std::memory_order_relaxed);
   std::free(q);
 }
 void operator delete(void* p, std::size_t) noexcept { operator delete(p); }
@@ -134,10 +178,10 @@ long long process_bytes() {
 // cleanly, whether it must. A function past three quarters of the memory budget -- what the
 // process held when it began, and then some -- or past CB_MAX_STEPS rule tests fails there, like
 // any analysis error: its memory freed, and the next function goes on in the same process.
-long long base_bytes = 0;                // what the process held when the function began
+long long base_bytes = 0;                // what the process held when the function began (one thread)
 long long soft_bytes = 0;
 unsigned long long max_steps = 0;
-char soft_why[200];
+thread_local char soft_why[200];
 
 const char* over_budget() {
   if (max_steps && ghidra::cb_steps > max_steps) {
@@ -145,19 +189,61 @@ const char* over_budget() {
                   ghidra::cb_steps, ghidra::cb_action, ghidra::cb_rule);
     return soft_why;
   }
-  long long now = process_bytes();
-  if (soft_bytes && now - base_bytes > soft_bytes) {
+  if (threads == 1) {
+    long long now = process_bytes();
+    if (soft_bytes && now - base_bytes > soft_bytes) {
+      std::snprintf(soft_why, sizeof(soft_why), "over the analysis budget (%lld MB) in %s / %s",
+                    (now - base_bytes) >> 20, ghidra::cb_action, ghidra::cb_rule);
+      return soft_why;
+    }
+    return nullptr;
+  }
+  Slot* s = my_slot;
+  if (s == nullptr) return nullptr;
+  if (s->expired.load()) {
+    std::snprintf(soft_why, sizeof(soft_why), "over the time limit (CB_FUNCTION_SECONDS) in %s / %s",
+                  ghidra::cb_action, ghidra::cb_rule);
+    return soft_why;
+  }
+  long long own = s->held.load() - s->base_held.load();
+  bool stop = soft_bytes && own > soft_bytes;
+  if (!stop && soft_bytes && process_bytes() > soft_bytes) {
+    // the process is past three quarters of its budget: the function holding the most stops
+    stop = true;
+    for (int i = 0, n = nslots.load(); i < n; ++i)
+      if (&slots[i] != s && slots[i].started_ms.load() && slots[i].held.load() - slots[i].base_held.load() > own)
+        stop = false;
+  }
+  if (stop) {
     std::snprintf(soft_why, sizeof(soft_why), "over the analysis budget (%lld MB) in %s / %s",
-                  (now - base_bytes) >> 20, ghidra::cb_action, ghidra::cb_rule);
+                  own >> 20, ghidra::cb_action, ghidra::cb_rule);
     return soft_why;
   }
   return nullptr;
 }
 
+// This thread analyses functions: the watchdog is to look at it
+void claim_slot() {
+  int i = nslots.fetch_add(1);
+  if (i >= kMaxSlots) { nslots = kMaxSlots; return; }
+  slots[i].action = &ghidra::cb_action;
+  slots[i].rule = &ghidra::cb_rule;
+  slots[i].steps = &ghidra::cb_steps;
+  my_slot = &slots[i];
+}
+
 void begin_function() {
   ghidra::cb_steps = 0;
-  base_bytes = process_bytes();
-  started_ms = now_ms();
+  if (threads == 1) base_bytes = process_bytes();
+  if (Slot* s = my_slot) {
+    s->base_held = s->held.load();
+    s->expired = false;
+    s->started_ms = now_ms();
+  }
+}
+
+void end_function() {
+  if (Slot* s = my_slot) s->started_ms = 0;
 }
 
 long long now_ms() {
@@ -166,6 +252,10 @@ long long now_ms() {
 }
 
 void set_up() {
+  const char* th = std::getenv("CB_THREADS");
+  threads = th ? std::atoi(th) : 1;
+  if (threads < 1) threads = 1;
+  if (threads > kMaxSlots) threads = kMaxSlots;
   const char* mb = std::getenv("CB_MEMORY_MB");
   long long limit = (mb ? std::atoll(mb) : 1536) * 1024 * 1024;
   budget = limit;
@@ -198,16 +288,27 @@ void set_up() {
     int tick = 0;
     for (;;) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
-      if (trace && (++tick & 1) == 0 && started_ms.load())
-        std::fprintf(stderr, "[trace] %6lld ms  %-24s %-24s steps %llu  %lld MB\n", now_ms() - started_ms.load(),
-                     ghidra::cb_action, ghidra::cb_rule, ghidra::cb_steps, process_bytes() >> 20);
-      long long s = started_ms.load();
-      if (s && now_ms() - s > max_ms) fail_and_exit("over the time limit (CB_FUNCTION_SECONDS)", 4);
+      const bool show = trace && (++tick & 1) == 0;
+      for (int i = 0, n = nslots.load(); i < n; ++i) {
+        Slot& sl = slots[i];
+        long long s = sl.started_ms.load();
+        if (!s) continue;
+        if (show)
+          std::fprintf(stderr, "[trace %d] %6lld ms  %-24s %-24s steps %llu  %lld MB\n", i, now_ms() - s,
+                       *sl.action, *sl.rule, *sl.steps, process_bytes() >> 20);
+        if (now_ms() - s > max_ms) {
+          // one thread: the process ends here, as it always has. Several: the function stops at
+          // its next check; one the checks do not reach (twice the limit) ends the process
+          if (threads == 1) fail_and_exit("over the time limit (CB_FUNCTION_SECONDS)", 4, &sl);
+          sl.expired = true;
+          if (now_ms() - s > 2 * max_ms) fail_and_exit("over twice the time limit (CB_FUNCTION_SECONDS)", 4, &sl);
+        }
+      }
 #ifdef _WIN32
       PROCESS_MEMORY_COUNTERS_EX pm = {};
       if (GetProcessMemoryInfo(GetCurrentProcess(), (PROCESS_MEMORY_COUNTERS*)&pm, sizeof(pm)) &&
           (long long)pm.PrivateUsage > limit)
-        fail_and_exit("over the memory budget (CB_MEMORY_MB)", 3);
+        fail_and_exit("over the memory budget (CB_MEMORY_MB)", 3, nullptr);
 #endif
     }
   }).detach();
@@ -237,21 +338,21 @@ const uint64_t kExternBase = 0xE0000000u;
 const uint64_t kInterruptBase = 0xF0000000u;
 
 class Image : public LoadImage {
-  std::vector<Span> spans_;
+  std::shared_ptr<const std::vector<Span>> spans_;  // (read only: shared by every thread's analysis)
   std::map<uint64_t, uint64_t> slot_value_;        // import slot VA -> made-up function address
   std::string arch_;
   bool big_ = false;
   int slot_size_ = 4;
  public:
-  explicit Image(const std::string& arch) : LoadImage("codebreaker"), arch_(arch) {
+  Image(const std::string& arch, std::shared_ptr<const std::vector<Span>> spans)
+      : LoadImage("codebreaker"), spans_(std::move(spans)), arch_(arch) {
     big_ = arch.find(":BE:") != std::string::npos;
   }
-  void add(uint64_t va, std::vector<uint8_t> data) { spans_.push_back({va, std::move(data)}); }
   void setSlot(uint64_t slot_va, uint64_t value) { slot_value_[slot_va] = value; }
   const std::map<uint64_t, uint64_t>& slots() const { return slot_value_; }
   int slotSize() const { return slot_size_; }
   bool holds(uint64_t va) const {
-    for (const auto& s : spans_)
+    for (const auto& s : *spans_)
       if (va >= s.va && va - s.va < s.data.size()) return true;
     return false;
   }
@@ -270,7 +371,7 @@ class Image : public LoadImage {
         }
       }
       ptr[i] = 0;
-      for (const auto& s : spans_)
+      for (const auto& s : *spans_)
         if (va >= s.va && va - s.va < s.data.size()) { ptr[i] = s.data[(size_t)(va - s.va)]; break; }
     }
   }
@@ -357,6 +458,264 @@ std::vector<std::string> split(const std::string& line) {
   return out;
 }
 
+// What the description says, read once; every analysis (one per thread) is built from it
+struct Description {
+  std::string path, arch;
+  std::vector<Fact> funcs, imports, externs;
+  std::vector<std::pair<std::string, uint64_t>> regs;
+  std::shared_ptr<const std::vector<Span>> spans;
+  std::vector<CallSite> calls;
+  std::vector<JumpOverride> jumps;
+  std::set<uint64_t> only;
+  bool x86_32 = false;
+};
+
+// One analysis: a Machine over the description, every function, import and interrupt registered,
+// and the functions to write, in the description's order. Its analysis state is its own, so
+// several can run at once, one per thread.
+struct Analysis {
+  std::ostringstream errs;
+  DocumentStorage store;
+  Image* image = nullptr;                          // (the machine owns it)
+  std::unique_ptr<Machine> m;
+  std::vector<std::pair<Funcdata*, Fact>> todo;
+  std::set<const Symbol*> registered;              // the global symbols the description made
+};
+
+void setUp(Analysis& a, const Description& d) {
+  const std::vector<Fact>& imports = d.imports;
+  const bool x86_32 = d.x86_32;
+  a.image = new Image(d.arch, d.spans);
+  for (size_t i = 0; i < imports.size(); ++i)
+    a.image->setSlot(imports[i].va, kExternBase + (uint64_t)i * 0x10);
+  a.m.reset(new Machine(d.path, d.arch, &a.errs, a.image));
+  Machine& m = *a.m;
+  m.init(a.store);
+  m.readonlypropagate = true;
+  // Nothing stops an escaped local's aliasing: a buffer whose address is passed on is as long as
+  // the callee writes, not as the array the analysis guessed (KRNL386 fills a struct and reads
+  // a field past what it sized as the array -- read as a variable never set)
+  m.alias_block_level = 0;
+  m.max_instructions = 20000;                    // a wrong function start must fail quickly, not walk memory
+  if (const char* mx = std::getenv("CB_MAX_INSTRUCTIONS"))  // (a large function is tried again with more)
+    m.max_instructions = (uint4)std::atoi(mx);
+  AddrSpace* code = m.getDefaultCodeSpace();
+  Scope* glb = m.symboltab->getGlobalScope();
+  // An import slot never changes while the module runs: reading one gives a constant, so a
+  // call through it -- directly or after the slot was copied to a register -- is a call to
+  // that import.
+  for (const auto& kv : a.image->slots())
+    m.symboltab->setPropertyRange(Varnode::readonly, Range(code, kv.first, kv.first + a.image->slotSize() - 1));
+
+  for (size_t i = 0; i < imports.size(); ++i) {
+    Address ea(code, (uintb)kExternBase + (uintb)i * 0x10);
+    Funcdata* fd = glb->addFunction(ea, imports[i].name)->getFunction();
+    if (x86_32) applyX86Proto(m, fd, imports[i].name, imports[i].pop);
+  }
+  for (const auto& r : d.regs) {                   // a register known to hold one value throughout
+    const VarnodeData& vd = m.translate->getRegister(r.first);
+    TrackedSet& ts = m.context->getTrackedDefault();
+    ts.emplace_back();
+    ts.back().loc = vd;
+    ts.back().val = (uintb)r.second;
+  }
+  auto applyModel = [&](Funcdata* fd, const Fact& f) {
+    if (f.model == "inline") { fd->getFuncProto().setInline(true); return; }
+    if (x86_32) { applyX86Proto(m, fd, f.name, f.pop, f.model == "__thiscall" || f.model == "__fastcall",
+                                f.model == "__fastcall"); return; }
+    if (!f.model.empty() && m.hasModel(f.model)) {
+      FuncProto& fp = fd->getFuncProto();
+      const int ret_addr = f.model.find("far") != std::string::npos ? 4 : 2;
+      if (f.pop > 0 && f.model.find("stdcall") != std::string::npos) {
+        // 16-bit, the function removes its own arguments: `ret N` / `retf N` states how many
+        // bytes there are, so the arguments are N/2 words. (Their types are placeholders; a
+        // far pointer is two of them.) Without this the analysis decides per function how
+        // many it sees used, and a function that ignores an argument is rebuilt removing
+        // fewer bytes than its callers pushed.
+        PrototypePieces pieces;
+        pieces.model = m.getModel(f.model);
+        pieces.name = f.name;
+        pieces.outtype = m.types->getBase(2, TYPE_INT);
+        pieces.firstVarArgSlot = -1;
+        for (int i = 0; i < f.pop / 2; ++i) {
+          pieces.intypes.push_back(m.types->getBase(2, TYPE_INT));
+          pieces.innames.push_back("a" + std::to_string(i + 1));
+        }
+        if (f.result == 2 || f.result == 4)
+          pieces.outtype = m.types->getBase(f.result, TYPE_INT);
+        fp.setPieces(pieces);
+        fp.setInputLock(true);
+        // the result: what its instructions leave in AX (DX:AX) when it returns, where the
+        // description says (an export's caller is Windows: nothing in the module shows it read);
+        // otherwise two bytes or four, left to the analysis
+        fp.setOutputLock(f.result == 2 || f.result == 4);
+      } else {
+        fp.setModel(m.getModel(f.model));
+        if (f.result == 2 || f.result == 4) {
+          // the arguments left to the analysis, the result as the description says
+          PrototypePieces pieces;
+          pieces.model = m.getModel(f.model);
+          pieces.name = f.name;
+          pieces.outtype = m.types->getBase(f.result, TYPE_INT);
+          pieces.firstVarArgSlot = -1;
+          fp.setPieces(pieces);
+          fp.setInputLock(false);
+          fp.setOutputLock(true);
+        }
+      }
+      fp.setModelLock(true);
+      // the bytes a function removes: its own `ret N` plus the return address
+      if (f.pop >= 0) fp.setExtraPop(f.pop + ret_addr);
+    }
+  };
+  for (const auto& x : d.externs) {
+    Address ea(code, (uintb)x.va);
+    applyModel(glb->addFunction(ea, x.name)->getFunction(), x);
+  }
+  // 16-bit: the software interrupts. The compiler spec turns `INT n` into a call to F000:n*16
+  // (its swi fixup); each of those is a function int<n> taking its arguments and giving its
+  // result in registers (__int16), so what the code puts in them before the interrupt is seen.
+  if (!x86_32 && m.hasModel("__int16")) {
+    for (const char* nm : {"__int16", "__int16keepds"})  // its registers are its arguments, by position
+      if (m.hasModel(nm)) m.getModel(nm)->keepArgumentHoles();
+    for (int v = 0; v < 256; ++v) {
+      char nm[16];
+      std::snprintf(nm, sizeof(nm), "int%02x", v);
+      Fact x{kInterruptBase + (uint64_t)v * 16, nm, -1,
+             (v == 0x21 || v == 0x2f || !m.hasModel("__int16keepds")) ? "__int16" : "__int16keepds"};
+      Address ea(code, (uintb)x.va);
+      applyModel(glb->addFunction(ea, x.name)->getFunction(), x);
+    }
+  }
+  for (const auto& f : d.funcs) {
+    Address addr(code, (uintb)f.va);
+    Funcdata* fd = glb->addFunction(addr, f.name)->getFunction();
+    applyModel(fd, f);
+    if (f.model != "inline" && (d.only.empty() || d.only.count(f.va))) a.todo.push_back({fd, f});
+  }
+  for (MapIterator it = glb->begin(); it != glb->end(); ++it) a.registered.insert((*it)->getSymbol());
+}
+
+// Each function is decompiled from the description alone, not from what the functions before it
+// left: the global variables (and functions called by address) an analysis names are its own,
+// and go with it. Kept, the next function to touch the same global took over the type the
+// earlier one had given it -- a function's C depended on which ran before it in the same process
+// (`uRam10500071` alone, `xRam10500071` after another), and the per-function cache
+// (codebreaker/decompile/decompiler.py) would have handed back either.
+void forgetGlobals(Analysis& a) {
+  Scope* glb = a.m->symboltab->getGlobalScope();
+  std::set<Symbol*> made;
+  for (MapIterator it = glb->begin(); it != glb->end(); ++it) {
+    Symbol* sym = (*it)->getSymbol();
+    if (!a.registered.count(sym)) made.insert(sym);
+  }
+  for (Symbol* sym : made) glb->removeSymbol(sym);
+}
+
+
+// Decompile the i-th function to write, onto `out`: its marker, what it touches, its C
+void decompileOne(Analysis& a, const Description& d, size_t i, std::ostream& out) {
+  Machine& m = *a.m;
+  auto& t = a.todo[i];
+  AddrSpace* code = m.getDefaultCodeSpace();
+  m.print->setOutputStream(&out);
+  out << "/*@@ " << t.second.name << " " << std::hex << t.second.va << std::dec << " */" << std::endl;
+  governor::begin_function();
+  try {
+    // its calls through pointers: each passed the words the code pushed before it, removed
+    // by the callee (Windows' drivers and callbacks are Pascal). Every call's override is
+    // offered, by the call's own address: the function the description named for a call may
+    // since have been found to be two, and the call belongs to the one that holds it (an
+    // override at an address the function has no call at is never used).
+    for (const auto& c : d.calls) {
+      if (!m.hasModel(c.model)) continue;
+      FuncProto* p = new FuncProto();
+      p->setInternal(m.getModel(c.model), m.types->getTypeVoid());
+      PrototypePieces pieces;
+      pieces.model = m.getModel(c.model);
+      pieces.name = "";
+      pieces.outtype = m.types->getBase(2, TYPE_UNKNOWN);
+      pieces.firstVarArgSlot = -1;
+      for (int k = 0; k < c.pop / 2; ++k) {
+        pieces.intypes.push_back(m.types->getBase(2, TYPE_INT));
+        pieces.innames.push_back("p" + std::to_string(k + 1));
+      }
+      p->setPieces(pieces);
+      p->setInputLock(true);
+      p->setOutputLock(false);
+      p->setExtraPop(c.pop + (c.model.find("far") != std::string::npos ? 4 : 2));
+      t.first->getOverride().insertProtoOverride(Address(code, (uintb)c.site), p);
+    }
+    // its switch jumps: each jump belongs to the function that starts last before it in its
+    // segment (the 16-bit segment is the address's upper half)
+    for (const auto& j : d.jumps) {
+      uint64_t owner = 0;
+      for (const auto& f : d.funcs)
+        if (f.va <= j.site && f.va > owner && (f.va >> 16) == (j.site >> 16)) owner = f.va;
+      if (owner != t.second.va) continue;
+      std::vector<Address> addrs;
+      for (uint64_t ta : j.targets) addrs.push_back(Address(code, (uintb)ta));
+      JumpTable* jt = t.first->installJumpTable(Address(code, (uintb)j.site));
+      jt->setOverride(addrs, Address(), 0, 0);
+    }
+    Action* act = m.allacts.getCurrent();
+    act->reset(*t.first);
+    act->perform(*t.first);
+    // every global the function touches, with its size and -- for a pointer -- the size of
+    // what it points at, from whichever of its varnodes carries the type it is printed with
+    std::map<std::pair<uint64_t, int>, int> globals;
+    AddrSpace* ram = m.getDefaultDataSpace();
+    for (VarnodeLocSet::const_iterator it = t.first->beginLoc(ram); it != t.first->endLoc(ram); ++it) {
+      const Varnode* vn = *it;
+      if (vn->isAnnotation()) continue;
+      uint64_t va = vn->getOffset();
+      if (!a.image->holds(va)) continue;
+      int& elem = globals[{va, (int)vn->getSize()}];
+      Datatype* ct = vn->getType();
+      try {                                              // (the type it is printed with: its variable's)
+        if (vn->getHigh() != nullptr) ct = vn->getHigh()->getType();
+      } catch (...) {
+      }
+      if ((ct == nullptr || ct->getMetatype() != TYPE_PTR)) {
+        // (an unnamed global is printed from the symbol the core made for it: its type)
+        const SymbolEntry* e = m.symboltab->getGlobalScope()->queryContainer(vn->getAddr(), vn->getSize(), Address());
+        if (e != nullptr && e->getSymbol() != nullptr) ct = e->getSymbol()->getType();
+      }
+      if (ct != nullptr && ct->getMetatype() == TYPE_PTR && elem == 0)
+        elem = (int)((TypePointer*)ct)->getPtrTo()->getSize();
+    }
+    for (const auto& g : globals)
+      out << "/*@G " << std::hex << g.first.first << std::dec << " " << g.first.second << " "
+          << g.second << " */" << std::endl;
+    // 16-bit code has two sizes of pointer and C text does not show which a variable is:
+    // report every pointer-typed local and parameter with its size, `/*@P <name> <bytes> */`.
+    if (!d.x86_32) {
+      ScopeLocal* loc = t.first->getScopeLocal();
+      std::set<std::string> said;
+      for (MapIterator it = loc->begin(); it != loc->end(); ++it) {
+        const Symbol* sym = (*it)->getSymbol();
+        if (sym == nullptr || sym->getType() == nullptr) continue;
+        if (sym->getType()->getMetatype() != TYPE_PTR) continue;
+        if (said.insert(sym->getName()).second)
+          out << "/*@P " << sym->getName() << " " << sym->getType()->getSize() << " */" << std::endl;
+      }
+      // ...and the function's own result, under the name `return`
+      Datatype* rt = t.first->getFuncProto().getOutputType();
+      if (rt != nullptr && rt->getMetatype() == TYPE_PTR)
+        out << "/*@P return " << rt->getSize() << " */" << std::endl;
+    }
+    m.print->docFunction(t.first);
+  } catch (LowlevelError& e) {
+    out << "/* decompile failed: " << e.explain << " */" << std::endl;
+  }
+  out << std::endl;
+  governor::end_function();
+  m.clearAnalysis(t.first);                      // free this function's analysis; keep its symbol
+  t.first->getOverride().clear();                // ...and the call overrides it was given (they were
+                                                 // kept for the whole run: every function, every call)
+  forgetGlobals(a);
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -368,19 +727,16 @@ int main(int argc, char** argv) {
   if (!specs) { std::fprintf(stderr, "FAIL: CB_LANGUAGES is not set\n"); return 1; }
   governor::set_up();
 
-  std::string arch;
-  std::vector<Fact> funcs, imports, externs;
-  std::vector<std::pair<std::string, uint64_t>> regs;
-  std::vector<Span> spans;
-  std::vector<CallSite> calls;
-  std::vector<JumpOverride> jumps;
+  Description d;
+  d.path = argv[1];
   {
+    auto spans = std::make_shared<std::vector<Span>>();
     std::ifstream in(argv[1]);
     if (!in) { std::fprintf(stderr, "FAIL: cannot read %s\n", argv[1]); return 1; }
     std::string line;
     while (std::getline(in, line)) {
       std::vector<std::string> f = split(line);
-      if (f.size() >= 2 && f[0] == "arch") arch = f[1];
+      if (f.size() >= 2 && f[0] == "arch") d.arch = f[1];
       else if (f.size() >= 5 && f[0] == "bytes") {
         Span s;
         s.va = strtoull(f[1].c_str(), nullptr, 16);
@@ -388,251 +744,111 @@ int main(int argc, char** argv) {
           std::fprintf(stderr, "FAIL: cannot read %s\n", f[2].c_str());
           return 1;
         }
-        spans.push_back(std::move(s));
+        spans->push_back(std::move(s));
       } else if (f.size() >= 3 && (f[0] == "F" || f[0] == "I" || f[0] == "X")) {
         Fact x{strtoull(f[1].c_str(), nullptr, 16), f[2], f.size() > 3 ? atoi(f[3].c_str()) : -1,
                f.size() > 4 ? f[4] : std::string()};
         if (f.size() > 5 && !f[5].empty()) x.result = atoi(f[5].c_str());
-        (f[0] == "I" ? imports : f[0] == "X" ? externs : funcs).push_back(x);
+        (f[0] == "I" ? d.imports : f[0] == "X" ? d.externs : d.funcs).push_back(x);
       } else if (f.size() >= 5 && f[0] == "O") {
-        calls.push_back({strtoull(f[1].c_str(), nullptr, 16), strtoull(f[2].c_str(), nullptr, 16),
-                         atoi(f[3].c_str()), f[4]});
+        d.calls.push_back({strtoull(f[1].c_str(), nullptr, 16), strtoull(f[2].c_str(), nullptr, 16),
+                           atoi(f[3].c_str()), f[4]});
       } else if (f.size() >= 3 && f[0] == "J") {
         JumpOverride j{strtoull(f[1].c_str(), nullptr, 16), {}};
         std::stringstream ts(f[2]);
         std::string t;
         while (std::getline(ts, t, ',')) if (!t.empty()) j.targets.push_back(strtoull(t.c_str(), nullptr, 16));
-        if (!j.targets.empty()) jumps.push_back(j);
+        if (!j.targets.empty()) d.jumps.push_back(j);
       } else if (f.size() >= 3 && f[0] == "reg") {
-        regs.push_back({f[1], strtoull(f[2].c_str(), nullptr, 16)});
+        d.regs.push_back({f[1], strtoull(f[2].c_str(), nullptr, 16)});
       }
     }
+    d.spans = spans;
   }
-  if (arch.empty() || spans.empty()) { std::fprintf(stderr, "FAIL: the description names no arch or no bytes\n"); return 1; }
-  std::set<uint64_t> only;
+  if (d.arch.empty() || d.spans->empty()) { std::fprintf(stderr, "FAIL: the description names no arch or no bytes\n"); return 1; }
   for (int i = 2; i < argc; ++i)
     if (std::string(argv[i]) == "--at")
-      for (++i; i < argc && argv[i][0] != '-'; ++i) only.insert(strtoull(argv[i], nullptr, 16));
-  const bool x86_32 = arch.rfind("x86:LE:32", 0) == 0;
+      for (++i; i < argc && argv[i][0] != '-'; ++i) d.only.insert(strtoull(argv[i], nullptr, 16));
+  d.x86_32 = d.arch.rfind("x86:LE:32", 0) == 0;
 
   try {
     startDecompilerLibrary(std::vector<std::string>{});
     SleighArchitecture::specpaths.addDir2Path(specs);
-    Image* image = new Image(arch);
-    for (auto& s : spans) image->add(s.va, std::move(s.data));
-    for (size_t i = 0; i < imports.size(); ++i)
-      image->setSlot(imports[i].va, kExternBase + (uint64_t)i * 0x10);
-    std::ostringstream errs;
-    Machine m(argv[1], arch, &errs, image);
-    DocumentStorage store;
-    m.init(store);
-    m.readonlypropagate = true;
-    // Nothing stops an escaped local's aliasing: a buffer whose address is passed on is as long as
-    // the callee writes, not as the array the analysis guessed (KRNL386 fills a struct and reads
-    // a field past what it sized as the array -- read as a variable never set)
-    m.alias_block_level = 0;
-    m.max_instructions = 20000;                    // a wrong function start must fail quickly, not walk memory
-    if (const char* mx = std::getenv("CB_MAX_INSTRUCTIONS"))  // (a large function is tried again with more)
-      m.max_instructions = (uint4)std::atoi(mx);
-    AddrSpace* code = m.getDefaultCodeSpace();
-    Scope* glb = m.symboltab->getGlobalScope();
-    // An import slot never changes while the module runs: reading one gives a constant, so a
-    // call through it -- directly or after the slot was copied to a register -- is a call to
-    // that import.
-    for (const auto& kv : image->slots())
-      m.symboltab->setPropertyRange(Varnode::readonly, Range(code, kv.first, kv.first + image->slotSize() - 1));
-
-    for (size_t i = 0; i < imports.size(); ++i) {
-      Address ea(code, (uintb)kExternBase + (uintb)i * 0x10);
-      Funcdata* fd = glb->addFunction(ea, imports[i].name)->getFunction();
-      if (x86_32) applyX86Proto(m, fd, imports[i].name, imports[i].pop);
-    }
-    for (const auto& r : regs) {                     // a register known to hold one value throughout
-      const VarnodeData& vd = m.translate->getRegister(r.first);
-      TrackedSet& ts = m.context->getTrackedDefault();
-      ts.emplace_back();
-      ts.back().loc = vd;
-      ts.back().val = (uintb)r.second;
-    }
-    auto applyModel = [&](Funcdata* fd, const Fact& f) {
-      if (f.model == "inline") { fd->getFuncProto().setInline(true); return; }
-      if (x86_32) { applyX86Proto(m, fd, f.name, f.pop, f.model == "__thiscall" || f.model == "__fastcall",
-                                  f.model == "__fastcall"); return; }
-      if (!f.model.empty() && m.hasModel(f.model)) {
-        FuncProto& fp = fd->getFuncProto();
-        const int ret_addr = f.model.find("far") != std::string::npos ? 4 : 2;
-        if (f.pop > 0 && f.model.find("stdcall") != std::string::npos) {
-          // 16-bit, the function removes its own arguments: `ret N` / `retf N` states how many
-          // bytes there are, so the arguments are N/2 words. (Their types are placeholders; a
-          // far pointer is two of them.) Without this the analysis decides per function how
-          // many it sees used, and a function that ignores an argument is rebuilt removing
-          // fewer bytes than its callers pushed.
-          PrototypePieces pieces;
-          pieces.model = m.getModel(f.model);
-          pieces.name = f.name;
-          pieces.outtype = m.types->getBase(2, TYPE_INT);
-          pieces.firstVarArgSlot = -1;
-          for (int i = 0; i < f.pop / 2; ++i) {
-            pieces.intypes.push_back(m.types->getBase(2, TYPE_INT));
-            pieces.innames.push_back("a" + std::to_string(i + 1));
-          }
-          if (f.result == 2 || f.result == 4)
-            pieces.outtype = m.types->getBase(f.result, TYPE_INT);
-          fp.setPieces(pieces);
-          fp.setInputLock(true);
-          // the result: what its instructions leave in AX (DX:AX) when it returns, where the
-          // description says (an export's caller is Windows: nothing in the module shows it read);
-          // otherwise two bytes or four, left to the analysis
-          fp.setOutputLock(f.result == 2 || f.result == 4);
-        } else {
-          fp.setModel(m.getModel(f.model));
-          if (f.result == 2 || f.result == 4) {
-            // the arguments left to the analysis, the result as the description says
-            PrototypePieces pieces;
-            pieces.model = m.getModel(f.model);
-            pieces.name = f.name;
-            pieces.outtype = m.types->getBase(f.result, TYPE_INT);
-            pieces.firstVarArgSlot = -1;
-            fp.setPieces(pieces);
-            fp.setInputLock(false);
-            fp.setOutputLock(true);
-          }
-        }
-        fp.setModelLock(true);
-        // the bytes a function removes: its own `ret N` plus the return address
-        if (f.pop >= 0) fp.setExtraPop(f.pop + ret_addr);
-      }
-    };
-    for (const auto& x : externs) {
-      Address ea(code, (uintb)x.va);
-      applyModel(glb->addFunction(ea, x.name)->getFunction(), x);
-    }
-    // 16-bit: the software interrupts. The compiler spec turns `INT n` into a call to F000:n*16
-    // (its swi fixup); each of those is a function int<n> taking its arguments and giving its
-    // result in registers (__int16), so what the code puts in them before the interrupt is seen.
-    if (!x86_32 && m.hasModel("__int16")) {
-      for (const char* nm : {"__int16", "__int16keepds"})  // its registers are its arguments, by position
-        if (m.hasModel(nm)) m.getModel(nm)->keepArgumentHoles();
-      for (int v = 0; v < 256; ++v) {
-        char nm[16];
-        std::snprintf(nm, sizeof(nm), "int%02x", v);
-        Fact x{kInterruptBase + (uint64_t)v * 16, nm, -1,
-               (v == 0x21 || v == 0x2f || !m.hasModel("__int16keepds")) ? "__int16" : "__int16keepds"};
-        Address ea(code, (uintb)x.va);
-        applyModel(glb->addFunction(ea, x.name)->getFunction(), x);
-      }
-    }
-    std::vector<std::pair<Funcdata*, Fact>> todo;
-    for (const auto& f : funcs) {
-      Address addr(code, (uintb)f.va);
-      Funcdata* fd = glb->addFunction(addr, f.name)->getFunction();
-      applyModel(fd, f);
-      if (f.model != "inline" && (only.empty() || only.count(f.va))) todo.push_back({fd, f});
-    }
-
-    m.print->setOutputStream(&std::cout);
-    for (auto& t : todo) {
-      std::cout << "/*@@ " << t.second.name << " " << std::hex << t.second.va << std::dec << " */" << std::endl;
-      governor::begin_function();
-      try {
-        // its calls through pointers: each passed the words the code pushed before it, removed
-        // by the callee (Windows' drivers and callbacks are Pascal). Every call's override is
-        // offered, by the call's own address: the function the description named for a call may
-        // since have been found to be two, and the call belongs to the one that holds it (an
-        // override at an address the function has no call at is never used).
-        for (const auto& c : calls) {
-          if (!m.hasModel(c.model)) continue;
-          FuncProto* p = new FuncProto();
-          p->setInternal(m.getModel(c.model), m.types->getTypeVoid());
-          PrototypePieces pieces;
-          pieces.model = m.getModel(c.model);
-          pieces.name = "";
-          pieces.outtype = m.types->getBase(2, TYPE_UNKNOWN);
-          pieces.firstVarArgSlot = -1;
-          for (int i = 0; i < c.pop / 2; ++i) {
-            pieces.intypes.push_back(m.types->getBase(2, TYPE_INT));
-            pieces.innames.push_back("p" + std::to_string(i + 1));
-          }
-          p->setPieces(pieces);
-          p->setInputLock(true);
-          p->setOutputLock(false);
-          p->setExtraPop(c.pop + (c.model.find("far") != std::string::npos ? 4 : 2));
-          t.first->getOverride().insertProtoOverride(Address(code, (uintb)c.site), p);
-        }
-        // its switch jumps: each jump belongs to the function that starts last before it in its
-        // segment (the 16-bit segment is the address's upper half)
-        for (const auto& j : jumps) {
-          uint64_t owner = 0;
-          for (const auto& f : funcs)
-            if (f.va <= j.site && f.va > owner && (f.va >> 16) == (j.site >> 16)) owner = f.va;
-          if (owner != t.second.va) continue;
-          std::vector<Address> addrs;
-          for (uint64_t a : j.targets) addrs.push_back(Address(code, (uintb)a));
-          JumpTable* jt = t.first->installJumpTable(Address(code, (uintb)j.site));
-          jt->setOverride(addrs, Address(), 0, 0);
-        }
-        Action* act = m.allacts.getCurrent();
-        act->reset(*t.first);
-        act->perform(*t.first);
-        // every global the function touches, with its size and -- for a pointer -- the size of
-        // what it points at, from whichever of its varnodes carries the type it is printed with
-        std::map<std::pair<uint64_t, int>, int> globals;
-        AddrSpace* ram = m.getDefaultDataSpace();
-        for (VarnodeLocSet::const_iterator it = t.first->beginLoc(ram); it != t.first->endLoc(ram); ++it) {
-          const Varnode* vn = *it;
-          if (vn->isAnnotation()) continue;
-          uint64_t va = vn->getOffset();
-          if (!image->holds(va)) continue;
-          int& elem = globals[{va, (int)vn->getSize()}];
-          Datatype* ct = vn->getType();
-          try {                                              // (the type it is printed with: its variable's)
-            if (vn->getHigh() != nullptr) ct = vn->getHigh()->getType();
-          } catch (...) {
-          }
-          if ((ct == nullptr || ct->getMetatype() != TYPE_PTR)) {
-            // (an unnamed global is printed from the symbol the core made for it: its type)
-            const SymbolEntry* e = m.symboltab->getGlobalScope()->queryContainer(vn->getAddr(), vn->getSize(), Address());
-            if (e != nullptr && e->getSymbol() != nullptr) ct = e->getSymbol()->getType();
-          }
-          if (ct != nullptr && ct->getMetatype() == TYPE_PTR && elem == 0)
-            elem = (int)((TypePointer*)ct)->getPtrTo()->getSize();
-        }
-        for (const auto& g : globals)
-          std::cout << "/*@G " << std::hex << g.first.first << std::dec << " " << g.first.second << " "
-                    << g.second << " */" << std::endl;
-        // 16-bit code has two sizes of pointer and C text does not show which a variable is:
-        // report every pointer-typed local and parameter with its size, `/*@P <name> <bytes> */`.
-        if (!x86_32) {
-          ScopeLocal* loc = t.first->getScopeLocal();
-          std::set<std::string> said;
-          for (MapIterator it = loc->begin(); it != loc->end(); ++it) {
-            const Symbol* sym = (*it)->getSymbol();
-            if (sym == nullptr || sym->getType() == nullptr) continue;
-            if (sym->getType()->getMetatype() != TYPE_PTR) continue;
-            if (said.insert(sym->getName()).second)
-              std::cout << "/*@P " << sym->getName() << " " << sym->getType()->getSize() << " */" << std::endl;
-          }
-          // ...and the function's own result, under the name `return`
-          Datatype* rt = t.first->getFuncProto().getOutputType();
-          if (rt != nullptr && rt->getMetatype() == TYPE_PTR)
-            std::cout << "/*@P return " << rt->getSize() << " */" << std::endl;
-        }
-        m.print->docFunction(t.first);
-      } catch (LowlevelError& e) {
-        std::cout << "/* decompile failed: " << e.explain << " */" << std::endl;
-      }
-      std::cout << std::endl;
-      governor::started_ms = 0;
-      m.clearAnalysis(t.first);                    // free this function's analysis; keep its symbol
-      t.first->getOverride().clear();              // ...and the call overrides it was given (they were
-                                                   // kept for the whole run: every function, every call)
-    }
-    if (!errs.str().empty()) std::fprintf(stderr, "%s\n", errs.str().c_str());
   } catch (LowlevelError& e) {
     std::fprintf(stderr, "FAIL: %s\n", e.explain.c_str());
     return 1;
-  } catch (DecoderError& e) {
-    std::fprintf(stderr, "FAIL: %s\n", e.explain.c_str());
+  }
+
+  if (governor::threads == 1) {
+    // One thread: each function's marker is written before it is analysed, so a process that
+    // dies on a function shows which (codebreaker/decompile/decompiler.py: _run_resuming)
+    governor::claim_slot();
+    try {
+      Analysis a;
+      setUp(a, d);
+      for (size_t i = 0; i < a.todo.size(); ++i) decompileOne(a, d, i, std::cout);
+      if (!a.errs.str().empty()) std::fprintf(stderr, "%s\n", a.errs.str().c_str());
+    } catch (LowlevelError& e) {
+      std::fprintf(stderr, "FAIL: %s\n", e.explain.c_str());
+      return 1;
+    } catch (DecoderError& e) {
+      std::fprintf(stderr, "FAIL: %s\n", e.explain.c_str());
+      return 1;
+    }
+    return 0;
+  }
+
+  // CB_THREADS=N: N threads, each with its own analysis of the whole description, take the
+  // functions in turn. Each function's text is written whole, in the description's order, as soon
+  // as it and every one before it are done -- the output is what one thread writes.
+  size_t total = 0;
+  for (const auto& f : d.funcs)
+    if (f.model != "inline" && (d.only.empty() || d.only.count(f.va))) ++total;
+  std::mutex set_up_mu, out_mu;                    // (setting up runs the core's p-code compiler,
+  std::atomic<size_t> next{0};                     //  whose parser state is global: one at a time)
+  std::vector<std::string> text(total);
+  std::vector<char> ready(total, 0);
+  size_t written = 0;
+  std::string failed, warnings;
+  auto work = [&] {
+    governor::claim_slot();
+    try {
+      Analysis a;
+      {
+        std::lock_guard<std::mutex> lock(set_up_mu);
+        setUp(a, d);
+      }
+      for (size_t i; (i = next.fetch_add(1)) < total;) {
+        std::ostringstream out;
+        decompileOne(a, d, i, out);
+        std::lock_guard<std::mutex> lock(out_mu);
+        text[i] = out.str();
+        ready[i] = 1;
+        for (; written < total && ready[written]; ++written) {
+          std::fwrite(text[written].data(), 1, text[written].size(), stdout);
+          std::string().swap(text[written]);
+        }
+        std::fflush(stdout);
+      }
+      std::lock_guard<std::mutex> lock(out_mu);
+      if (warnings.empty()) warnings = a.errs.str();  // (every analysis reads the same files)
+    } catch (LowlevelError& e) {
+      std::lock_guard<std::mutex> lock(out_mu);
+      failed = e.explain;
+      next = total;
+    } catch (DecoderError& e) {
+      std::lock_guard<std::mutex> lock(out_mu);
+      failed = e.explain;
+      next = total;
+    }
+  };
+  const int n = (int)std::min<size_t>((size_t)governor::threads, std::max<size_t>(total, 1));
+  std::vector<std::thread> pool;
+  for (int k = 0; k < n; ++k) pool.emplace_back(work);
+  for (auto& th : pool) th.join();
+  if (!warnings.empty()) std::fprintf(stderr, "%s\n", warnings.c_str());
+  if (!failed.empty()) {
+    std::fprintf(stderr, "FAIL: %s\n", failed.c_str());
     return 1;
   }
   return 0;

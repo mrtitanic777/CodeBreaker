@@ -54,6 +54,7 @@ DEFAULTS = {
     "ghidra_core": os.path.join("native", "ghidra_core", "build", "bin"),
     "state": "state",
     "target": "win95",
+    "threads": "1",                    # functions the native decompiler analyses at once (CB_THREADS)
 }
 _PATHS = ("corpus", "openwatcom", "decompiler_bin", "ghidra_core", "state", "powerpc_tools", "powerpc_lib", "period_compiler", "dosbox_x", "msc6", "xenix_c", "msc203", "masm", "nasm", "msvc152",
           "java", "retromcp", "xbox360_sdk", "host_cxx", "msbuild", "java_overlays")

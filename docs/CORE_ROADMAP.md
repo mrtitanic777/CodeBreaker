@@ -98,3 +98,15 @@ RISC-V Sail, Intel XED).
   `jmp cs:[reg+table]` its exact targets (`J` lines) and the core's switch-variable search no
   longer takes an unrelated MULT for the index's scale (USER sub_1_032E: 0.37 s, was a runaway).
   Open: other jump-table forms (GDI 2, COMM 2 "flow exceeded"), GDI32's 38 failures, COMMAND.COM.
+- A -- verified SLEIGH (2026-10-18): every instruction form the golden 16-bit corpus uses checked
+  against Unicorn (tools/sleigh_verify.py; docs/SLEIGH_VERIFY.md): 476 forms, 399 agree, 9 differ
+  on purpose, 68 untested; four spec bugs fixed (pushf bit 1, iret flags, aad/aam flags, shr/shrd
+  OF). x86-32 and PowerPC next.
+- B -- parallel analysis in one process (2026-10-18): `CB_THREADS=N` (setting `threads`), each
+  thread its own Architecture over one shared read-only image (core change C11). Output identical
+  to one thread on all 11 modules. Golden corpus: 868 s -> 366 s at 4 threads (2.4x); peak memory
+  ~3x (USER 72 -> 216 MB, KERNEL32 89 -> 261 MB). Found on the way: a function's C depended on
+  the functions decompiled before it in the same process (the globals an analysis named, and their
+  types, stayed for the next) -- each function now starts from the description alone; 418 golden
+  functions changed, every one in a global's name, size or type. Results were already cached per
+  function by input hash (codebreaker/decompile/decompiler.py), which this makes sound.

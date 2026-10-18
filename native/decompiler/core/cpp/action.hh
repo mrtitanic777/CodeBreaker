@@ -326,9 +326,11 @@ public:
 /// CodeBreaker: where the analysis is, and a way to stop it there. The analysis looks at the hook
 /// between actions and between rule applications -- places it can stop cleanly: what it throws
 /// unwinds like any LowlevelError (the function fails, its memory is freed, the next one goes on).
-extern const char *cb_action;                 ///< The action being performed
-extern const char *cb_rule;                   ///< The rule last applied
-extern unsigned long long cb_steps;           ///< Rule tests since the function began
+/// Each thread has its own: several functions can be analysed at once, each by its own
+/// Architecture on its own thread (decompiler.cc, CB_THREADS).
+extern thread_local const char *cb_action;    ///< The action being performed
+extern thread_local const char *cb_rule;      ///< The rule last applied
+extern thread_local unsigned long long cb_steps;  ///< Rule tests since the function began
 extern const char *(*cb_over_budget)(void);   ///< Why the analysis must stop now, or null
 
 /// Throw if the hook says the analysis must stop (looked at every 1024 steps)

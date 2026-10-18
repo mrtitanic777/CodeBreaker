@@ -295,9 +295,9 @@ Rule *Action::getSubRule(const string &specify)
 /// A successive call to perform() will "continue" from the break point.
 /// \param data is the function being acted on
 /// \return the number of changes or -1
-const char *cb_action = "";
-const char *cb_rule = "";
-unsigned long long cb_steps = 0;
+thread_local const char *cb_action = "";
+thread_local const char *cb_rule = "";
+thread_local unsigned long long cb_steps = 0;
 const char *(*cb_over_budget)(void) = (const char *(*)(void))0;
 
 int4 Action::perform(Funcdata &data)

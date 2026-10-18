@@ -12,7 +12,7 @@ Upstream: https://github.com/NationalSecurityAgency/ghidra (Apache 2.0; `core/LI
 
 | Part | Upstream path | Base | Files |
 |---|---|---|---|
-| `core/cpp` | `Ghidra/Features/Decompiler/src/decompile/cpp` | **master `f0774b72f2` (2026-09-01), version 12.2-DEV** -- cpp tree `c35e0406` | 236: 223 identical, 13 patched |
+| `core/cpp` | `Ghidra/Features/Decompiler/src/decompile/cpp` | **master `f0774b72f2` (2026-09-01), version 12.2-DEV** -- cpp tree `c35e0406` | 236: 219 identical, 17 patched (C10, C11 added two each since `31a2694`) |
 | `core/zlib` | `Ghidra/Features/Decompiler/src/decompile/zlib` | same commit (tree `4dd91ac1`, unchanged since 12.1) | 18 identical |
 | `languages/` | `Ghidra/Processors/{x86,PowerPC}/data/languages` | **release `Ghidra_12.1.3_build`** (the installed Ghidra, see below) | 21: 12 identical, 5 patched or 12.1.3-only, 4 ours/built |
 
@@ -48,10 +48,9 @@ Every change carries a `CodeBreaker:` comment at its place in the source.
 | C6 | `printc.hh`, `printc.cc` (`opSegmentOp`, `checkArrayDeref`, new `enteredSegment`) | A segmented address whose segment is not a constant, and is not the DS/SS the function was entered with (carried through COPY/INDIRECT/MULTIEQUAL), prints as `MK_FP(seg, off)` | **Upstream bug** for 16-bit code: SEGMENTOP printed only the offset, so `es:[6c]` and `ds:[6c]` were the same thing. Entry DS/SS stay as plain near pointers, which is what C already means | `3528339` |
 | C7 | `varmap.cc` (`ScopeLocal::markUnaliased`) | At alias block level 0 ("nothing blocks aliases") a pointer to a local reaches through unmapped stretches of the frame | Upstream stops aliases at unmapped ranges even at level 0, contradicting the level's meaning: USER's CreateWindow builds a CBT_CREATEWND on the stack and passes its address; the two stores past the first local were cut as dead stores. Candidate to send upstream | `cf27f50`, comment `71da0ea` |
 | C8 | `override.hh` | `Override::clear()` made public | `decompiler.cc` frees a function's call overrides once it is written (memory over a whole module) | `3fc874b` |
-
 | C9 | `jumptable.cc` (`JumpBasicOverride::findLikelyNorm`) | The index's scale is only the INT_MULT directly before the ADD, by a constant 2, 4 or 8 -- not any MULT further back on the path | **Upstream bug** for supplied jump tables: a MULT that made the index (USER 1:03A5 indexes by `((x - (x & 0xf)) + 0x1000) >> 3`, the subtraction an ADD of a MULT by -1) was taken for the scale, so the switch variable was a value the jump never used and the switch printed on its targets' addresses (USER sub_1_032E also ran away). Candidate to send upstream | `31a2694` |
-
 | C10 | `slghscan.l`, `slghscan.cc` (`scan_number`) | Numbers read with `std::stoull`, not `std::stoul` | **Upstream bug** on Windows, where `unsigned long` is 32 bits: the C++ SLEIGH compiler refused every 64-bit constant ("Parsed integer is too big") and could not compile x86. With it, `languages/src/x86/x86.slaspec` (12.1.3) compiles byte for byte to the shipped `x86.sla`. Candidate to send upstream | item 7A |
+| C11 | `action.hh`, `action.cc`, `sleigh_arch.hh`, `sleigh_arch.cc` | C1's `cb_action`/`cb_rule`/`cb_steps` are `thread_local`; `SleighArchitecture::translators` (the cache of loaded `.sla` translators, one per language) is `thread_local` | Parallel analysis in one process (item 7B, `CB_THREADS`): each thread builds its own Architecture, and a Sleigh translator is not safe to share (its parser context cache changes as it decodes). Nothing else in the core is shared and written once set up; setting up (which runs the p-code snippet compiler, whose parser state is global) is done one thread at a time by `decompiler.cc` | item 7B |
 
 ## Local changes to the language files (`languages/`)
 
@@ -78,7 +77,7 @@ master later added Swift and raised the x86 language version 4.8 -> 4.9. `ppc.ld
 ## Rebasing onto a newer upstream
 
 1. `git clone --filter=blob:none --no-checkout https://github.com/NationalSecurityAgency/ghidra.git`
-2. Copy the new upstream `cpp/`, `zlib/` and the language files over ours; re-apply C1-C10 and
+2. Copy the new upstream `cpp/`, `zlib/` and the language files over ours; re-apply C1-C11 and
    L1-L3, L5 (each is small and marked); drop any upstream has fixed itself (C2, C6, C7, C10 first).
 3. Recompile the `.sla` files with `build/bin/sleigh` (the core's compiler, target `sleigh`), then
    `python tools/sleigh_verify.py`: no new disagreement.
