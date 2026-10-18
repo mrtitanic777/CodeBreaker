@@ -195,6 +195,8 @@ def check(original, folder, names, image=None, inputs=None, workers=None, tables
     auto = nef.h.get("autodata_seg")
     seg = next((s for s in nef.segments() if s["idx"] == auto), None)   # (a driver may have none)
     data = bytes(nef.data[seg["file_off"]:seg["file_off"] + seg["length"]]) if seg and seg["file_off"] else b""
+    # (where the original's data ends and its segment ends: past them both sides hold the same)
+    data_end = (seg["length"], max(seg["length"], seg.get("minalloc") or 0) or 0x10000) if seg else None
     callees_orig = {place[n]: (n, pop, far) for n, (pop, far) in funcs.items() if n in place}
     callees_ours = {ours[n]: (n, pop, far) for n, (pop, far) in funcs.items() if n in ours}
     if chain:
@@ -215,9 +217,10 @@ def check(original, folder, names, image=None, inputs=None, workers=None, tables
         for v in (inputs or win16.vectors() + aimed):
             try:
                 a = emu.probe(original, seg=oseg, offset=ooff, args=v["args"], near=not far,
-                              callees=callees_orig, insn_cap=200000 if chain else 20000)
+                              callees=callees_orig, insn_cap=200000 if chain else 20000, data_end=data_end)
                 b = emu.probe(image, seg=bseg, offset=boff, args=v["args"], near=not far,
-                              callees=callees_ours, insn_cap=200000 if chain else 20000, data_image=data)
+                              callees=callees_ours, insn_cap=200000 if chain else 20000, data_image=data,
+                              data_end=data_end)
             except Exception as e:                           # (the emulator itself fell over)
                 why = why or "the emulator: %s" % type(e).__name__
                 continue

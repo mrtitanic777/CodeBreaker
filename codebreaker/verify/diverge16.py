@@ -102,13 +102,15 @@ def _classify(a, b, reads_a, reads_b):
     return "differs"
 
 
-def explain_one(original, image, oplace, bplace, pop_far, args, data, callees_orig, callees_ours, wide=False):
+def explain_one(original, image, oplace, bplace, pop_far, args, data, callees_orig, callees_ours, wide=False,
+                data_end=None):
     """-> the report, or None where the gate would find this input the same on both sides."""
     from codebreaker.emulate import windows16 as emu
     pop, far = pop_far
-    a = emu.probe(original, seg=oplace[0], offset=oplace[1], args=args, near=not far, callees=callees_orig, insn_cap=20000)
+    a = emu.probe(original, seg=oplace[0], offset=oplace[1], args=args, near=not far, callees=callees_orig,
+                  insn_cap=20000, data_end=data_end)
     b = emu.probe(image, seg=bplace[0], offset=bplace[1], args=args, near=not far, callees=callees_ours,
-                  insn_cap=20000, data_image=data)
+                  insn_cap=20000, data_image=data, data_end=data_end)
     # (the gate's own judgement picks the input: what it does not count -- DX of a function
     # returning a word -- is not a divergence here either)
     gate = isolated16._differ(isolated16._fingerprint(a, wide, len(data)), isolated16._fingerprint(b, wide, len(data)))
@@ -170,6 +172,7 @@ def explain(original, folder, names, image=None):
     auto = nef.h.get("autodata_seg")
     seg = next((s for s in nef.segments() if s["idx"] == auto), None)
     data = bytes(nef.data[seg["file_off"]:seg["file_off"] + seg["length"]]) if seg and seg["file_off"] else b""
+    data_end = (seg["length"], max(seg["length"], seg.get("minalloc") or 0) or 0x10000) if seg else None
     callees_orig = {place[n]: (n, pop, far) for n, (pop, far) in funcs.items() if n in place}
     callees_ours = {ours[n]: (n, pop, far) for n, (pop, far) in funcs.items() if n in ours}
     wide_set = set(tables["wide"])
@@ -184,7 +187,7 @@ def explain(original, folder, names, image=None):
         for v in win16.vectors() + aimed:
             try:
                 r = explain_one(original, image, place[name], ours[name], funcs[name], v["args"], data,
-                                callees_orig, callees_ours, name in wide_set)
+                                callees_orig, callees_ours, name in wide_set, data_end)
             except Exception as e:
                 r = {"class": "the emulator: %s: %s" % (type(e).__name__, e)}
             if r is not None:

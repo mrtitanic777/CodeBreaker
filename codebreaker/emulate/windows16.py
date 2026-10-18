@@ -47,6 +47,7 @@ def _sel(index, rpl=0):
 
 SCRATCH_BASE = 0xB00000        # fallback segment every "unknown" selector points at
 _N_GDT = 512                   # dense GDT: fill every selector index so loads/far-rets never #GP
+_FIXED_SLOT = 101              # the stack's GDT index (the sentinel's next): the same for any module
 
 
 def _build_harness(uc, U, segs):
@@ -100,16 +101,25 @@ def _load_ne(uc, U, nef):
         if body:
             uc.mem_write(base, body)
         harness_list.append((base, 0xFFFF, s["kind"] == "CODE"))
-    # stack + import-sentinel segments appended after the NE segments
+    # stack + import-sentinel segments, at the same selectors whatever the module's segment
+    # count: a build with another number of segments had another stack selector, and a word
+    # equal to one side's SS (a loop counter at 170h) was "SS" there and a number on the other
+    # -- USER's sub_35_2008 and five more "differed"
     uc.mem_map(STACK_BASE, 0x10000)
     uc.mem_map(SENT_BASE, 0x10000)
+    try:
+        uc.mem_map(SCRATCH_BASE, 0x10000)
+    except U.UcError:
+        pass
+    while len(harness_list) < _FIXED_SLOT - 1:
+        harness_list.append((SCRATCH_BASE, 0xFFFF, False))
     harness_list.append((STACK_BASE, 0xFFFF, False))
     harness_list.append((SENT_BASE, 0xFFFF, True))            # code: far calls/rets land here
     sels_all = _build_harness(uc, U, harness_list)
-    # sels_all: [null, seg1, seg2, ..., segN, stack, sent]
+    # sels_all: [null, seg1, ..., segN, scratch..., stack, sent]
     sels = {s["idx"]: sels_all[s["idx"]] for s in segs}
-    stack_sel = sels_all[len(segs) + 1]
-    sent_sel = sels_all[len(segs) + 2]
+    stack_sel = sels_all[len(harness_list) - 1]
+    sent_sel = sels_all[len(harness_list)]
     return sels, seg_bases, stack_sel, sent_sel
 
 
@@ -219,7 +229,7 @@ FAR_RET = 0xFFF0                  # offset in the sentinel segment a far functio
 
 def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity=0,
                      insn_cap=_MAX_INSNS, import_stub=None, prelude=None, near=False, data_image=None,
-                     callees=None):
+                     callees=None, data_end=None):
     """Trace one exported 16-bit function. Identify it by `ordinal` (entry-table) or explicit
     (seg, offset). `args` are 16-bit Pascal args (pushed left-to-right); a far-RET sentinel sits
     under them. Returns a TraceRecord dict like tracer.trace_function.
@@ -280,6 +290,21 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
     entry_sp = [0]
     if data_image and seg_bases.get(auto) is not None:
         uc.mem_write(seg_bases[auto], bytes(data_image[:0x10000]))
+    if data_end and seg_bases.get(auto) is not None:
+        # (past the original's data, the same on both sides: zeros to where its segment ends --
+        # what the loader gives -- then a pattern to 64K. A build's own data segment is laid out
+        # longer, and a read past the end -- a pointer near FFFFh -- found the build's bytes on
+        # one side and nothing on the other: USER's sub_15_1772 and four more "differed")
+        base = seg_bases[auto]
+        start = len(data_image) if data_image else data_end[0]
+        for page in range((base + start) & ~0xFFF, base + 0x10000, 0x1000):
+            try:
+                uc.mem_map(page, 0x1000)
+            except U.UcError:
+                pass                                         # (mapped already)
+        uc.mem_write(base + start, bytes(max(0, data_end[1] - start)))
+        uc.mem_write(base + data_end[1], bytes(((base + a) * 0x9E3779B1 >> 13) & 0xFF      # (emulator._pattern's)
+                                               for a in range(data_end[1], 0x10000)))
     _enter(seg, offset, args)
 
     rec = {"schema": "cb.behavior.trace16/1", "module": os.path.basename(path),
@@ -519,7 +544,7 @@ def default_stub(hit, uc, U, ctx):
 
 
 def probe(dll, ordinal=None, seg=None, offset=None, args=None, stub=default_stub, insn_cap=None,
-          prelude=None, cdecl=False, near=False, data_image=None, callees=None):
+          prelude=None, cdecl=False, near=False, data_image=None, callees=None, data_end=None):
     """Run one NE function under the controlled Win16 environment. Returns the tracer16 TraceRecord
     (with rec['layout'] + rec['imports_hit'] + rec['mem_*'] + rec['ret']).
 
@@ -549,7 +574,8 @@ def probe(dll, ordinal=None, seg=None, offset=None, args=None, stub=default_stub
         kw["insn_cap"] = insn_cap
     rec = trace_function16(dll, ordinal=ordinal, seg=seg, offset=offset,
                              args=args, arity=len(args or []), import_stub=_stub,
-                             prelude=prelude, near=near, data_image=data_image, callees=callees, **kw)
+                             prelude=prelude, near=near, data_image=data_image, callees=callees,
+                             data_end=data_end, **kw)
     rec["heaps"] = {"base": HEAP_BASE, "stride": HEAP_STRIDE}
     ctx = ctx_box.get("ctx")
     rec["heap_sels"] = {s: b for s, (b, _sz) in ctx.heaps.items()} if ctx else {}
