@@ -78,8 +78,11 @@ RAW_CONTAINER_DEFAULT = {'JList': '<JObject>', 'JSet': '<JObject>', 'std::vector
                          # implicitly; reads convert out via the cast the converter already emits.
                          'JMap': '<JObject, JObject>', 'std::map': '<JObject, JObject>'}
 
-# Java stdlib types that become C++ VALUE types (not pointers).
-VALUE_STDLIB = {'String'}
+# Java stdlib types that become C++ VALUE types (not pointers). ContextCapabilities (an LWJGL GL-caps
+# struct stub) is here so `ContextCapabilities c = GLContext.getCapabilities()` is a VALUE local (a copy
+# of the reference the stub returns), which both compiles for Indev's assign-then-read and keeps Beta's
+# `getCapabilities().GL_ARB_x` working -- see the glcontext-caps-ref bugfix in runtime.py.
+VALUE_STDLIB = {'String', 'ContextCapabilities'}
 
 # Boxed primitive wrappers -- map to C++ primitives, so they're VALUE types (not pointers).
 BOXED_VALUE_TYPES = {'Integer', 'Long', 'Float', 'Double', 'Boolean', 'Byte', 'Short', 'Character'}
@@ -117,6 +120,7 @@ RUNTIME_STATIC_HOLDERS = {'GL11', 'GL12', 'GL15', 'GLU', 'NVFogDistance', 'Keybo
                           'Pattern',                # java.util.regex Pattern.compile(...) is static
                           'Runtime', 'ByteOrder',   # Runtime.getRuntime(), ByteOrder.BIG_ENDIAN
                           'Charset',                # java.nio.charset Charset.forName("UTF-8") is static
+                          'MouseInfo',              # java.awt MouseInfo.getPointerInfo() is static (Indev MouseHelper)
                           'SoundSystemConfig'}
 
 # Runtime-support classes the converter EMITS a header for (see runtime.py) and #includes when
@@ -161,7 +165,9 @@ RUNTIME_HEADERS = ({'Random', 'Runnable', 'Thread', 'Comparator', 'File',
                     'BigInteger', 'SoftReference', 'InetAddress', 'StringReader', 'Font', 'FontMetrics',
                     'AffineTransform', 'DataBufferInt', 'Graphics2D', 'BufferStrategy', 'LibraryLWJGLOpenAL',
                     'CodecWav', 'FontMetrics', 'Iterator', 'Reader', 'DataBuffer', 'Raster', 'WritableRaster',
-                    'SocketAddress', 'URI', 'Clipboard', 'JOptionPane'}
+                    'SocketAddress', 'URI', 'Clipboard', 'JOptionPane',
+                    # java.awt mouse/point stubs surfaced by Indev's MouseHelper + level-save Dialog
+                    'Point', 'PointerInfo', 'Dialog'}
                    | RUNTIME_STATIC_HOLDERS)
 
 # Java stdlib static holders shimmed in the prelude (JavaRT.h, included everywhere -- so NOT
@@ -184,7 +190,12 @@ MATH_API = {
     # cannot range-reduce an argument that large (it returns NaN on the 360 PPC CRT), which packed the
     # highlight's alpha to 0 -> invisible. `sin` (double, native on PPC -> no perf cost) reduces correctly.
     # J2X-BUGFIX trig-double-precision.
-    'abs': 'abs', 'sqrt': 'sqrtf', 'sin': 'sin', 'cos': 'cos', 'tan': 'tan',
+    # J2X-BUGFIX sqrt-double-precision: Math.sqrt returns DOUBLE in Java. Mapping it to sqrtf (float) made
+    # `atan2(Math.sqrt(...), doubleExpr)` an ambiguous (float,double) overload (RenderGlobal). A bare `sqrt`
+    # doesn't fix it either: MSVC's <math.h> has a float sqrt(float) overload, so a float argument still
+    # yields float. The JavaRT.h shim javaMathSqrt(double) forces the promotion (double sqrt is native on
+    # PPC -- no perf cost). MathHelper.sqrt_float is a separate key and stays sqrtf.
+    'abs': 'abs', 'sqrt': 'javaMathSqrt', 'sin': 'sin', 'cos': 'cos', 'tan': 'tan',
     'atan': 'atan', 'atan2': 'atan2', 'asin': 'asin', 'acos': 'acos',
     'floor': 'floorf', 'ceil': 'ceilf', 'pow': 'powf', 'exp': 'expf', 'log': 'logf',
     'min': 'min', 'max': 'max',
@@ -215,3 +226,24 @@ MATH_API_EMIT = {
 # The value-type mechanism still exists; a profile/caller can opt a genuinely-by-value struct
 # in via TypeResolver(value_types=...).
 DEFAULT_VALUE_TYPES = set(_profiles.active().default_value_types)
+
+
+def _reseed(p):
+    """Re-derive every profile-sourced global from ``p`` when the active target profile changes.
+
+    Registered as a `profiles.on_change` observer so `profiles.use()` actually retargets the
+    transpiler (the module-level assignments above only seed the IMPORT-TIME profile). Each global is
+    rebuilt as a fresh COPY -- never an alias of the profile's own collection -- because the pipeline
+    mutates some of these in place at runtime (e.g. `KNOWN_NULLABLE_GETTERS |= corpus_getters`), and
+    aliasing would leak that mutation back into the shared Profile object and across conversions."""
+    global UNSIGNED_BYTE_SCALAR_FIELDS, KNOWN_NULLABLE, KNOWN_NULLABLE_FIELDS
+    global KNOWN_NULLABLE_GETTERS, NULLABLE_GETTER_RETURN_TYPE, DEFAULT_VALUE_TYPES
+    UNSIGNED_BYTE_SCALAR_FIELDS = set(p.unsigned_byte_scalar_fields)
+    KNOWN_NULLABLE = set(p.nullable)
+    KNOWN_NULLABLE_FIELDS = set(p.nullable_fields)
+    KNOWN_NULLABLE_GETTERS = set(p.nullable_getters)
+    NULLABLE_GETTER_RETURN_TYPE = dict(p.nullable_getter_return_type)
+    DEFAULT_VALUE_TYPES = set(p.default_value_types)
+
+
+_profiles.on_change(_reseed)

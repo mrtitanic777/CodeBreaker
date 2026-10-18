@@ -273,7 +273,10 @@ def synth_default_ctor(cls, resolver):
 
 
 _NEW_ARG_TYPE = re.compile(r'^\s*new\s+([A-Za-z_]\w*)')
-_CAST_ARG_TYPE = re.compile(r'^\s*\(\s*([A-Za-z_]\w*)\s*\)\s*\S')
+# `(X)e` OR the pointer-cast `(X*)e` -- reference casts are pointer-translated (`(Block)v`->`(Block*)v`)
+# BEFORE ctor-delegation inlines, so the `*` must be tolerated or the arg's type is lost and overload
+# selection falls back to the wrong same-arity ctor (ItemStack(int,int) instead of ItemStack(Block,int)).
+_CAST_ARG_TYPE = re.compile(r'^\s*\(\s*([A-Za-z_]\w*)\s*\*?\s*\)\s*\S')
 _FACTORY_ARG_TYPE = re.compile(r'^\s*([A-Za-z_]\w*)\s*::\s*[A-Za-z_]\w*\s*\(')
 
 
@@ -437,6 +440,9 @@ def _instance_init_lines(cls, resolver, ledger):
         if f.initializer is None:
             continue
         init = f.initializer.strip()
+        if f.jtype.is_array and init in ('null', 'NULL'):
+            continue                                            # a JArray value default-constructs to empty;
+            #                                                     `arr = null` is a no-op AND invalid (JArray can't hold NULL)
         if f.jtype.is_array and init.startswith('{'):           # `int[]..[] x = {..}` shorthand ->
             init = 'new %s%s%s' % (f.jtype.name, '[]' * f.jtype.array_dims, init)   # new T[]..[]{..}
         stmts.append('this.%s = %s;' % (f.name, init))

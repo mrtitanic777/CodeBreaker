@@ -375,11 +375,13 @@ class TestMathShadowing(unittest.TestCase):
         self.assertIn('::cos(', out)
 
     def test_renamed_math_fns_not_qualified(self):
-        # sqrt->sqrtf and round->javaMathRound differ from the Java name, so no local can shadow them.
-        src = ('package s;\npublic class E {\n  public void m(float a) { float r = (float)Math.sqrt(a); }\n}\n')
+        # floor->floorf and round->javaMathRound differ from the Java name, so no local can shadow them.
+        # (sqrt now maps to `sqrt` (double) -- J2X-BUGFIX sqrt-double-precision -- so it is NO LONGER a
+        # renamed fn; floor is the standing example of a renamed, non-shadowable math fn.)
+        src = ('package s;\npublic class E {\n  public void m(float a) { float r = (float)Math.floor(a); }\n}\n')
         out = '\n'.join(statements.translate_body(_resolve(src)[0][0].method('m'), _resolve(src)[0][0], _resolve(src)[1]))
-        self.assertIn('sqrtf(', out)
-        self.assertNotIn('::sqrtf', out)
+        self.assertIn('floorf(', out)
+        self.assertNotIn('::floorf', out)
 
 
 class TestVirtualCallInCtorRule(unittest.TestCase):
@@ -535,7 +537,7 @@ class TestStaticHolderInitializers(unittest.TestCase):
 
     def test_math_in_static_init(self):
         expr = source._static_ref('0.5 * (Math.sqrt(3.0) - 1.0)', self._r(), (), None)
-        self.assertIn('sqrtf(3.0)', expr)
+        self.assertIn('javaMathSqrt(3.0)', expr)   # J2X-BUGFIX sqrt-double-precision (Math.sqrt -> double-only shim)
         self.assertNotIn('Math.', expr)
 
     def test_enum_values_in_array_size(self):

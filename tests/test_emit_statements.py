@@ -93,7 +93,7 @@ class TestStaticAndApi(unittest.TestCase):
         self.assertIn('int var2 = Direction::NORTH;', self.out)   # enum type -> int, constant scoped
 
     def test_math_mapping(self):
-        self.assertIn('float f = sqrtf(2.0F);', self.out)
+        self.assertIn('float f = javaMathSqrt(2.0F);', self.out)   # J2X-BUGFIX sqrt-double-precision (Math.sqrt is double)
         self.assertIn('float g = max(f, 1.0F);', self.out)
 
 
@@ -126,7 +126,10 @@ class TestCollectionsAndString(unittest.TestCase):
         self.assertIn('bool b = this->items.empty();', self.out)
 
     def test_charat_to_index(self):
-        self.assertIn('char c = this->name[2];', self.out)
+        # String.charAt(i) -> subscript cast to unsigned char (Java char is unsigned; C++ operator[] is
+        # signed, so charAt(i)==167 for the 0xA7 section sign would compare -89==167). The cast wraps the
+        # FULL receiver expression, BEFORE the this-> qualifier -- never the invalid `this->(cast)name`.
+        self.assertIn('char c = (unsigned char)this->name[2];', self.out)
 
     def test_size_unchanged(self):
         self.assertIn('int n = this->items.size();', self.out)
@@ -1046,7 +1049,7 @@ class TestStaticAndApi(unittest.TestCase):
         self.assertIn('int var2 = Direction::NORTH;', self.out)   # enum type -> int, constant scoped
 
     def test_math_mapping(self):
-        self.assertIn('float f = sqrtf(2.0F);', self.out)
+        self.assertIn('float f = javaMathSqrt(2.0F);', self.out)   # J2X-BUGFIX sqrt-double-precision (Math.sqrt is double)
         self.assertIn('float g = max(f, 1.0F);', self.out)
 
 
@@ -1079,7 +1082,10 @@ class TestCollectionsAndString(unittest.TestCase):
         self.assertIn('bool b = this->items.empty();', self.out)
 
     def test_charat_to_index(self):
-        self.assertIn('char c = this->name[2];', self.out)
+        # String.charAt(i) -> subscript cast to unsigned char (Java char is unsigned; C++ operator[] is
+        # signed, so charAt(i)==167 for the 0xA7 section sign would compare -89==167). The cast wraps the
+        # FULL receiver expression, BEFORE the this-> qualifier -- never the invalid `this->(cast)name`.
+        self.assertIn('char c = (unsigned char)this->name[2];', self.out)
 
     def test_size_unchanged(self):
         self.assertIn('int n = this->items.size();', self.out)
@@ -1861,7 +1867,7 @@ class TestStaticAndApi(unittest.TestCase):
         self.assertIn('int var2 = Direction::NORTH;', self.out)   # enum type -> int, constant scoped
 
     def test_math_mapping(self):
-        self.assertIn('float f = sqrtf(2.0F);', self.out)
+        self.assertIn('float f = javaMathSqrt(2.0F);', self.out)   # J2X-BUGFIX sqrt-double-precision (Math.sqrt is double)
         self.assertIn('float g = max(f, 1.0F);', self.out)
 
     def test_math_round_uses_shim(self):
@@ -1905,7 +1911,10 @@ class TestCollectionsAndString(unittest.TestCase):
         self.assertIn('bool b = this->items.empty();', self.out)
 
     def test_charat_to_index(self):
-        self.assertIn('char c = this->name[2];', self.out)
+        # String.charAt(i) -> subscript cast to unsigned char (Java char is unsigned; C++ operator[] is
+        # signed, so charAt(i)==167 for the 0xA7 section sign would compare -89==167). The cast wraps the
+        # FULL receiver expression, BEFORE the this-> qualifier -- never the invalid `this->(cast)name`.
+        self.assertIn('char c = (unsigned char)this->name[2];', self.out)
 
     def test_size_unchanged(self):
         self.assertIn('int n = this->items.size();', self.out)

@@ -131,16 +131,25 @@ def _translate_labels(lines):
         m = _LABEL_DEF.match(ln)
         if not m or m.group(1) not in referenced:
             continue
-        name = m.group(1)
-        loop_idx = (i if _LOOP_START.match(m.group(2))
-                    else i + 1 if i + 1 < len(lines) and _LOOP_START.match(lines[i + 1]) else None)
-        if loop_idx is None:
+        name, rest = m.group(1), m.group(2)
+        # The labeled construct's body is either a LOOP (for/while/do) or a plain labeled BLOCK
+        # (`label: { ... break label; }` -- a Java labeled statement, e.g. Indev's Frustrum). Find where
+        # the body opens; a block only supports `break label` (`continue label` needs a loop).
+        if _LOOP_START.match(rest):
+            body_idx, is_loop = i, True
+        elif rest.startswith('{'):
+            body_idx, is_loop = i, False               # labeled block, brace on the label line
+        elif i + 1 < len(lines) and _LOOP_START.match(lines[i + 1]):
+            body_idx, is_loop = i + 1, True
+        elif i + 1 < len(lines) and lines[i + 1].lstrip().startswith('{'):
+            body_idx, is_loop = i + 1, False           # labeled block, brace on the next line
+        else:
             continue
-        close = _loop_close(lines, loop_idx)
+        close = _loop_close(lines, body_idx)
         if close is None:
             continue
         def_strip[i] = name
-        if name in cont_refs:
+        if is_loop and name in cont_refs:              # `continue L` is only legal on a loop
             cont_at.setdefault(close, []).append('%s_cont:;' % name)
         if name in brk_refs:
             brk_at.setdefault(close, []).append('%s_brk:;' % name)

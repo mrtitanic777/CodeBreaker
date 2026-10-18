@@ -278,6 +278,7 @@ _EXT_PKG = {
     'FileDialog': 'java.awt', 'Dimension': 'java.awt', 'Applet': 'java.applet',
     'BorderLayout': 'java.awt', 'GridLayout': 'java.awt', 'FlowLayout': 'java.awt',
     'CardLayout': 'java.awt', 'GridBagLayout': 'java.awt',
+    'Point': 'java.awt', 'MouseInfo': 'java.awt', 'PointerInfo': 'java.awt', 'Dialog': 'java.awt',
     'FloatBuffer': 'java.nio', 'IntBuffer': 'java.nio', 'ByteBuffer': 'java.nio',
 }
 
@@ -1043,14 +1044,19 @@ struct ContextCapabilities {
 	bool GL_ARB_texture_env_combine, GL_EXT_blend_func_separate, GL_ARB_shader_objects;
 	bool GL_NV_fog_distance, GL_EXT_texture_filter_anisotropic, GL_ARB_texture_non_power_of_two;
 	bool OpenGL11, OpenGL12, OpenGL13, OpenGL14, OpenGL15, OpenGL20, OpenGL21;
+	bool OpenGL30, OpenGL31, OpenGL32, OpenGL33, GL_ARB_compatibility;   // Indev logs these at boot
 	ContextCapabilities() : GL_ARB_occlusion_query(false), GL_ARB_vertex_buffer_object(false),
 		GL_ARB_multitexture(false), GL_ARB_texture_env_combine(false), GL_EXT_blend_func_separate(false),
 		GL_ARB_shader_objects(false), GL_NV_fog_distance(false), GL_EXT_texture_filter_anisotropic(false),
 		GL_ARB_texture_non_power_of_two(false), OpenGL11(false), OpenGL12(false), OpenGL13(false),
-		OpenGL14(false), OpenGL15(false), OpenGL20(false), OpenGL21(false) {}
+		OpenGL14(false), OpenGL15(false), OpenGL20(false), OpenGL21(false),
+		OpenGL30(false), OpenGL31(false), OpenGL32(false), OpenGL33(false), GL_ARB_compatibility(false) {}
 };
 namespace GLContext {
-	inline ContextCapabilities getCapabilities() { return ContextCapabilities(); }
+	// J2X-BUGFIX glcontext-caps-ref: getCapabilities() returns a REFERENCE to the shared static, matching LWJGL
+	// where the game does `GLContext.getCapabilities().GL_ARB_x` (member access via `.`). Returning a POINTER
+	// made every faithful `.GL_ARB_x` site fail ("left of '.' must have class type ... use '->'").
+	inline ContextCapabilities& getCapabilities() { static ContextCapabilities _c; return _c; }
 }
 #endif // GLCONTEXT_H
 '''
@@ -1245,8 +1251,8 @@ _GENERATED['Robot.h'] = _class_stub('Robot', void_methods=['mouseMove'])
 # URL carries a resource path when built by Class::getResource("/x.png") so ImageIO::read(URL*) can
 # resolve it to game:\Content\... (the URL form of getResourceAsStream). openStream() returns
 # InputStream* so `new DataInputStream(url.openStream())` binds.
-_GENERATED['URL.h'] = _class_stub('URL', fwds=('InputStream',),
-    ret_methods=[('openConnection', ('void*', '0')), ('openStream', ('InputStream*', '0')),
+_GENERATED['URL.h'] = _class_stub('URL', fwds=('InputStream', 'URLConnection'),
+    ret_methods=[('openConnection', ('URLConnection*', '0')), ('openStream', ('InputStream*', '0')),
                  ('toString', ('std::string', 'std::string()')), ('getPath', ('std::string', 'std::string()')),
                  ('getFile', ('std::string', 'std::string()')), ('getProtocol', ('std::string', 'std::string()')),
                  ('getHost', ('std::string', 'std::string()')), ('getQuery', ('std::string', 'std::string()')),
@@ -1421,16 +1427,29 @@ _GENERATED['Applet.h'] = _class_stub('Applet', bases=['Component'], includes=['C
 _GENERATED['Canvas.h'] = _class_stub('Canvas', bases=['Component'], includes=['Component'], fwds=['Graphics', 'BufferStrategy'],
     void_methods=_AWT_VOID,
     ret_methods=[('getWidth', ('int', '0')), ('getHeight', ('int', '0')),
-                 ('getGraphics', ('Graphics*', '0')), ('getLocationOnScreen', ('void*', '0')),
+                 ('getGraphics', ('Graphics*', '0')),   # getLocationOnScreen inherited from Component (Point*)
                  ('getBufferStrategy', ('BufferStrategy*', '0'))], extra=['void createBufferStrategy(...) {}'])
-_GENERATED['Component.h'] = _class_stub('Component', fwds=['Graphics'], void_methods=_AWT_VOID,
+# getLocationOnScreen returns java.awt.Point (Indev's MouseHelper does `Point p = c.getLocationOnScreen()`);
+# a shared static Point keeps the dead cursor-centering path from NULL-derefing on the console.
+_GENERATED['Component.h'] = _class_stub('Component', includes=['Point'], fwds=['Graphics'], void_methods=_AWT_VOID,
     ret_methods=[('getWidth', ('int', '0')), ('getHeight', ('int', '0')),
-                 ('getGraphics', ('Graphics*', '0')), ('getLocationOnScreen', ('void*', '0'))])
+                 ('getGraphics', ('Graphics*', '0'))],
+    extra=['Point* getLocationOnScreen() { static Point _p; return &_p; }'])
 _GENERATED['FileDialog.h'] = _class_stub('FileDialog',
     void_methods=['setVisible', 'setMode', 'setDirectory', 'setFile', 'setFilenameFilter',
                   'setLocationRelativeTo'],
     ret_methods=[('getFile', ('std::string', 'std::string()')),
                  ('getDirectory', ('std::string', 'std::string()'))])
+# java.awt mouse/point stubs. Indev's MouseHelper centers the OS cursor via MouseInfo/Robot/Point --
+# DEAD on the console (the controller drives look through the Input layer), but the game code must
+# still compile. Point-returning getters hand back a shared static Point so the no-op path never
+# NULL-derefs (`var1->x`). Dialog is only referenced as the `(Dialog*)NULL` parent of a FileDialog.
+_GENERATED['Point.h'] = _class_stub('Point', extra=['int x;', 'int y;'])
+_GENERATED['PointerInfo.h'] = _class_stub('PointerInfo', includes=['Point'],
+    extra=['Point* getLocation() { static Point _p; return &_p; }'])
+_GENERATED['MouseInfo.h'] = _ns_stub('MouseInfo', includes=['PointerInfo'],
+    ret_fns=[('getPointerInfo', ('PointerInfo', 'PointerInfo()'))])
+_GENERATED['Dialog.h'] = _class_stub('Dialog')
 # java.awt.image raster chain: BufferedImage.getRaster().getDataBuffer() -> (DataBufferInt*)-> getData()
 # (ImageBufferDownload reads the pixel int[] directly). Dead on the 360, but must type-check.
 _GENERATED['DataBuffer.h'] = _class_stub('DataBuffer')

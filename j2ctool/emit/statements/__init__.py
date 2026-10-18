@@ -558,6 +558,13 @@ def _deref_cast_results(s, resolver):
             match[st.pop()] = i
     repl = set()
     for op in match:
+        # Skip a CALL / INDEX / TEMPLATE argument paren -- `a(`, `f()(`, `x]( `, `JArray<int>(` -- whose
+        # content may START with a cast arg (`a((Entity)null, var1)`). Its trailing `.member` belongs to
+        # the CALL RESULT, not the cast, so treating it as `((cast)...).member` wrongly derefs the result
+        # (entityMap->a((Entity*)NULL,var1).size() -> ...->size() on a List value). A genuine cast-GROUPING
+        # paren is never preceded by an identifier/`]`/`)`/`>`.
+        if op > 0 and (s[op - 1].isalnum() or s[op - 1] in '_])>'):
+            continue
         cl = match[op]
         content = s[op + 1:cl]
         m = _PTR_CAST_HEAD.match(content)
@@ -739,23 +746,49 @@ def _drop_unused_catch_vars(lines):
 
 
 from .containers import _category, _container_element, _rewrite_new_containers, _container_call
-def _balanced_call_sub(s, recv, meth, fn, standalone_only=False):
+def _member_expr_start(s, idx):
+    """Walk backwards from idx over a leading member-access chain (`this->`, `a.b->c.`) and return the
+    index where the FULL receiver expression begins. Used to place a wrapping cast BEFORE the whole
+    receiver, not after a `->`/`.` qualifier."""
+    j = idx
+    while j > 0:
+        if s[j - 1] == '.':
+            k = j - 1
+        elif j >= 2 and s[j - 2:j] == '->':
+            k = j - 2
+        else:
+            break
+        i = k
+        while i > 0 and (s[i - 1].isalnum() or s[i - 1] == '_'):
+            i -= 1
+        if i == k:                                    # no identifier before the . / -> : stop
+            break
+        j = i
+    return j
+
+
+def _balanced_call_sub(s, recv, meth, fn, standalone_only=False, pre=''):
     """Rewrite every `recv.meth(args)` via fn(arg_list) -> replacement (None = leave). With
     standalone_only, skip a `recv` that is a member of something else (`this.recv`) or the suffix of a
     longer identifier -- needed for rewrites that PARENTHESIZE the result (equals -> `(a == b)`), where
     `this.username.equals(x)` would otherwise mangle to `this.(username == x)`. Index rewrites (get->[k])
-    don't parenthesize, so they stay off it and correctly rewrite `this->map.get(k)` -> `this->map[k]`."""
+    don't parenthesize, so they stay off it and correctly rewrite `this->map.get(k)` -> `this->map[k]`.
+    With `pre` (e.g. a cast), the prefix is inserted BEFORE the whole receiver expression -- walking back
+    over any `this->`/`a.` qualifier -- so `this->name.charAt(i)` -> `(unsigned char)this->name[i]`, not
+    the broken `this->(unsigned char)name[i]` (a cast can't sit after `->`)."""
     token = '%s.%s(' % (recv, meth)
     start = 0
     while True:
         idx = s.find(token, start)
         if idx < 0:
             return s
-        if standalone_only:
-            prev = s[idx - 1] if idx > 0 else ''
-            if prev == '.' or prev == '>' or prev == '_' or prev.isalnum():
-                start = idx + 1
-                continue
+        prev = s[idx - 1] if idx > 0 else ''
+        # A hit inside a LONGER identifier (`name.charAt(` within `username.charAt(`) is a different
+        # receiver -- never rewrite it as `recv`: with `pre` that spliced the cast mid-identifier
+        # (`user(unsigned char)name[i]`). Always skipped; `standalone_only` also skips member receivers.
+        if prev == '_' or prev.isalnum() or (standalone_only and (prev == '.' or prev == '>')):
+            start = idx + 1
+            continue
         op = idx + len(token) - 1
         close = _balanced_paren(s, op)
         if close < 0:
@@ -763,7 +796,11 @@ def _balanced_call_sub(s, recv, meth, fn, standalone_only=False):
         rep = fn(_split_top_commas(s[op + 1:close]))
         if rep is None:
             return s                                  # unexpected arity -> leave (and stop)
-        s = s[:idx] + rep + s[close + 1:]
+        if pre:                                       # wrap the FULL receiver expr (incl. this->/a. qualifier) in `pre`
+            qstart = _member_expr_start(s, idx)
+            s = s[:qstart] + pre + s[qstart:idx] + rep + s[close + 1:]
+        else:
+            s = s[:idx] + rep + s[close + 1:]
         start = 0                                     # indices shifted -- rescan from the front
 
 
@@ -782,8 +819,16 @@ def _translate_calls(s, scope):
             continue
         idx_m = _INDEX_METHOD.get(cat)
         if idx_m:                                     # list/map .get(k) / String.charAt(i) -> recv[k]
+            # FIXED BUG section-sign-signed-char: Java `char` is UNSIGNED and String.charAt() promotes to an
+            # unsigned value in comparisons, but C++ std::string::operator[] returns SIGNED char -- so
+            # `str.charAt(i) == 167` (the § colour code, 0xA7) is `-89 == 167` = never true, and §-coloured
+            # text renders white. Cast the STRING subscript to unsigned char so high-byte chars (§, extended
+            # Latin) compare correctly; list/map .get() keep the plain subscript. Was a per-project overlay
+            # (FontRenderer.cpp); migrated here so every convert gets it.
+            _cast = '(unsigned char)' if cat == 'string' else ''
             s = _balanced_call_sub(s, recv, idx_m,
-                                   lambda a, r=recv: ('%s[%s]' % (r, a[0])) if a else None)
+                                   lambda a, r=recv: ('%s[%s]' % (r, a[0])) if a else None,
+                                   pre=_cast)
         if cat == 'map':                              # map.put(k, v) -> recv[k] = v
             s = _balanced_call_sub(s, recv, 'put',
                                    lambda a, r=recv: ('%s[%s] = %s' % (r, a[0], a[1])) if len(a) == 2 else None)
@@ -794,6 +839,58 @@ def _translate_calls(s, scope):
             s = _balanced_call_sub(s, recv, 'substring',   # Java end-exclusive -> substr(pos, len)
                                    lambda a, r=recv: ('%s.substr(%s, (%s) - (%s))' % (r, a[0], a[1], a[0])) if len(a) == 2
                                    else ('%s.substr(%s)' % (r, a[0])) if len(a) == 1 else None)
+    return s
+
+
+def _rewrite_noequals_identity(s, scope, resolver):
+    """`recv.equals(arg)` / `recv->equals(arg)` where recv is a scope var of a CORPUS reference type
+    that declares NO equals() -> `(recv == arg)` (Java falls back to Object.equals = reference identity).
+    Prevents a call to a non-existent member (EntityMapSlot -> C2039 'equals is not a member').
+
+    build_member_env FLATTENS inheritance, so a class that inherits OR overrides equals keeps its call;
+    String/container equals is lowered by _translate_calls; stub types (not in resolver.known) define
+    their own equals and are left alone."""
+    if 'equals(' not in s:
+        return s
+    for name, jt in list(scope.items()):
+        if jt is None or getattr(jt, 'is_array', False) or not resolver.is_pointer(jt):
+            continue
+        cn = jt.name
+        if cn not in resolver.known:                       # only corpus classes
+            continue
+        if resolver.member_method_type(cn, 'equals') is not None:
+            continue                                       # a real (own/inherited) equals -> keep the call
+        for sep in ('->', '.'):
+            token = '%s%sequals(' % (name, sep)
+            i = 0
+            while True:
+                p = s.find(token, i)
+                if p < 0:
+                    break
+                prev = s[p - 1] if p > 0 else ''
+                if prev.isalnum() or prev == '_' or prev in '.>':   # a suffix / member of something else
+                    i = p + len(token); continue
+                op = p + len(token) - 1
+                close = _balanced_paren(s, op)
+                if close < 0:
+                    break
+                repl = '(%s == %s)' % (name, s[op + 1:close].strip())
+                s = s[:p] + repl + s[close + 1:]
+                i = p + len(repl)
+    return s
+
+
+def _rewrite_array_null_assign(s, scope, resolver):
+    """`arr = NULL;` where arr is an array-typed field/local -> `arr = JArray<T>();`. A JArray is a
+    VALUE and can't hold NULL; Java `arr = null` is an empty array (matches the return-null-array rule)."""
+    m = re.match(r'^(\s*)(this->[A-Za-z_]\w*|[A-Za-z_]\w*)\s*=\s*(?:NULL|null|0)\s*;(\s*)$', s)
+    if not m:
+        return s
+    lhs = m.group(2)
+    name = lhs[6:] if lhs.startswith('this->') else lhs
+    jt = scope.get(name)
+    if jt is not None and getattr(jt, 'is_array', False):
+        return '%s%s = %s();%s' % (m.group(1), lhs, resolver.cpp_type(jt, 'local'), m.group(3))
     return s
 
 
@@ -933,10 +1030,11 @@ def _is_balanced(s):
     return depth == 0
 
 
-def _expr_object_kind(expr, scope):
+def _expr_object_kind(expr, scope, resolver=None):
     """'object' if `expr` is a JObject-typed VALUE -- a bare Object variable, a fully-indexed Object
-    array element (var[i] / var[i][j]), or a raw-Map index (map[k], value is JObject). Else None.
-    Conservative: only identifier-rooted exprs with simple [idx] groups (no nested brackets)."""
+    array element (var[i] / var[i][j]), a raw-Map index (map[k]), or a raw-List/Map element read
+    (list.get(i)/list.remove(i)/map.get(k), incl. `var->field.get/remove(...)` when `resolver` is given).
+    Else None. Conservative: only identifier-rooted exprs with simple [idx] groups (no nested brackets)."""
     o = expr.strip()
     o = re.sub(r'\s*(?:\+\+|--)\s*$', '', o)                 # x++ / x-- -> x
     while o.startswith('(') and o.endswith(')') and _is_balanced(o[1:-1]):
@@ -950,6 +1048,28 @@ def _expr_object_kind(expr, scope):
         jt2 = scope.get(mg.group(1))
         if jt2 is not None and not getattr(jt2, 'is_array', False) and jt2.name in _RAW_MAPS:
             return 'object'                                  # raw map value via .get() -> JObject
+    # raw-List element read via .get(i) / .remove(i) (JList::remove returns the removed element). A raw
+    # List is JList<JObject>, so the element is a JObject -- `(int[])list.remove(i)` unboxes here (Light's
+    # lighting-update queue). Only RAW lists (no generic element type); a typed List<T> already yields T.
+    lg = re.match(r'^([A-Za-z_]\w*)\s*\.\s*(?:get|remove)\s*\(.*\)$', o, re.S)
+    if lg:
+        jt3 = scope.get(lg.group(1))
+        if (jt3 is not None and not getattr(jt3, 'is_array', False)
+                and jt3.name in _LIST_TYPES and not getattr(jt3, 'args', None)):
+            return 'object'                                  # raw list element via get()/remove() -> JObject
+
+    def _raw_list_or_map(jt):
+        return (jt is not None and not getattr(jt, 'is_array', False)
+                and not getattr(jt, 'args', None) and (jt.name in _LIST_TYPES or jt.name in _RAW_MAPS))
+
+    # `var->field.get/remove(k)` (a raw list/map FIELD of a typed receiver, e.g. Light:253's
+    # var22->lightingUpdateList.remove(i)). Needs the resolver to type the field.
+    if resolver is not None:
+        fm = re.match(r'^([A-Za-z_]\w*)\s*(?:->|\.)\s*([A-Za-z_]\w*)\s*\.\s*(?:get|remove)\s*\(.*\)$', o, re.S)
+        if fm:
+            vjt = scope.get(fm.group(1))
+            if vjt is not None and _raw_list_or_map(resolver.member_field_type(vjt.name, fm.group(2))):
+                return 'object'
     m = _OPERAND_ROOT.match(o)
     if not m:
         return None
@@ -1087,7 +1207,7 @@ def _rewrite_jobject_casts(s, scope, resolver=None):
             out.append(s[i])
             i += 1
             continue
-        kind = _expr_object_kind(operand, scope)
+        kind = _expr_object_kind(operand, scope, resolver)
         rewritten = None
         if is_arr:
             if typ == 'String':
@@ -1292,6 +1412,8 @@ def _resolve_chains(s, scope, resolver, current):
                              current if (crecv is None or crecv == 'this') else
                              (scope[crecv].name if crecv in scope else None))
                     rt = resolver.member_method_type(owner, cmeth) if owner else None
+                    if rt is None and owner and (owner, cmeth) in _PTR_FACTORY_METHODS:
+                        rt = ir.JType(owner)         # stub factory (Runtime::getRuntime()) returns a pointer to its type
                     if rt is not None and resolver.is_pointer(rt):
                         cargs = _resolve_chains(s[op + 1:cclose], scope, resolver, current)
                         out.append((('%s%s' % (crecv, csep)) if crecv else '') + '%s(%s)' % (cmeth, cargs))
@@ -1311,6 +1433,15 @@ def _resolve_chains(s, scope, resolver, current):
         i = walk_links(i, cur_jt, is_ptr)
     return ''.join(out)
 
+
+# Stdlib STATIC FACTORY methods that return a POINTER (a shared singleton or a fresh object) whose
+# OWNING class is a runtime STUB, not a parsed-corpus class -- so resolver.member_method_type() can't
+# type the result and a following `.m()` would wrongly stay `.` instead of `->`. The canonical case is
+# `Runtime.getRuntime().maxMemory()` (Runtime.h: `static Runtime* getRuntime()`). (class, method) pairs;
+# the result is treated as a pointer to `class`. Extend as other stub factories surface.
+_PTR_FACTORY_METHODS = frozenset({
+    ('Runtime', 'getRuntime'),
+})
 
 _CALL_HEAD = re.compile(r'(\bnew\s+(\w+)|(\w+)(->|::)(\w+))\s*\(')
 
@@ -1360,6 +1491,8 @@ def _resolve_call_chains(s, scope, resolver, current):
                     continue
                 rt = resolver.member_method_type(owner, meth)
                 ptr = rt is not None and resolver.is_pointer(rt)
+                if not ptr and (owner, meth) in _PTR_FACTORY_METHODS:
+                    ptr = True                       # stub factory (Runtime::getRuntime()) returns a pointer
             if not ptr:
                 continue
             if m.group(2) is not None and not extra_close:
@@ -1565,6 +1698,9 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
     # 1d. a method called directly on a string literal: "abc".indexOf(x) -> the literal is a
     #     const char[] in C++ (no methods); wrap it so the Java String API resolves.
     s = re.sub(r'("(?:\\.|[^"\\])*")(\s*\.\s*[A-Za-z_]\w*\s*\()', r'JavaString(\1)\2', s)
+    # 1e. `new String(args)` -> `JavaString(args)`: java.lang.String is a VALUE type (JavaString), never
+    #     a heap object. Its ctors (from a byte[]/char[] [+ charset], a copy, or empty) live on JavaString.
+    s = sub_outside_literals(re.compile(r'\bnew\s+String\s*\('), 'JavaString(', s)
     # 2. this.  -> this->
     s = re.sub(r'\bthis\.', 'this->', s)
     # 3. <pointerName>.  -> <pointerName>->
@@ -1632,6 +1768,12 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
     #       misses when the receiver is a value (entrySet() -> JList). Universal: `.iterator().` -> `->`.
     if '.iterator().' in s:
         s = re.sub(r'\.iterator\(\)\s*\.(?=[A-Za-z_])', '.iterator()->', s)
+    # 6f. `recv->equals(arg)` on a corpus reference type with no equals() -> `(recv == arg)` (Object
+    #     identity). After the arrow passes so the pointer receiver is `recv->`. Value/String equals
+    #     is handled by _translate_calls (step 6).
+    s = _rewrite_noequals_identity(s, scope, resolver)
+    # 6g. `arr = NULL;` on an array-typed field/local -> `arr = JArray<T>();` (a JArray value can't be NULL).
+    s = _rewrite_array_null_assign(s, scope, resolver)
     # 6e. JObject-operand casts (Object var / Object[] element / raw-map value): lower BEFORE the
     #     generic cast pass -- (String)obj -> (obj).str(), (String[])obj -> (obj).strArray(),
     #     (Integer/Character/...)obj -> (obj) (JObject operators/unbox-methods do the rest).
@@ -1713,7 +1855,7 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
         is_arr = typ.endswith(']')
         base_typ = re.sub(r'\s*\[\s*\]$', '', typ).strip()
         # JObject operand? -- a bare Object var, an Object[] element, or a raw-map value.
-        is_obj = _expr_object_kind(lhs, scope) is not None
+        is_obj = _expr_object_kind(lhs, scope, resolver) is not None
         if not is_obj:                           # also accept a simple Object-typed scope var
             jt = scope.get(lhs)
             is_obj = jt is not None and (jt.name == 'Object'
