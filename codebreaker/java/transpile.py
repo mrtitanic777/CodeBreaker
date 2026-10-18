@@ -280,6 +280,7 @@ def _finalize_emitted(text):
       - `new X(...)->m` -> `(new X(...))->m` (C++ precedence: the member binds to the call otherwise)
       - `"lit".method()` -> `JavaString("lit").method()` (a bare literal has no Java String methods)"""
     from codebreaker.java.emit.std_transforms import sanitize_reserved_members
+    from codebreaker.java.emit.statements.expr import java_int_casts
     from codebreaker.java.emit.statements import _wrap_new_alloc_chains, _wrap_literal_method, _paren_shift_operands
     text = sanitize_reserved_members(text)
     if _GL_TO_D3D9:
@@ -288,6 +289,8 @@ def _finalize_emitted(text):
     if _TRACE_THROWS:
         text = _trace_guest_throws(text)   # tag every throw with its site (throws are no-op landmines here)
     text = text.replace(chr(39) + chr(92) + 'u0000' + chr(39), chr(39) + chr(92) + '0' + chr(39))
+    # Java's (int)/(long) of a float or double saturates; C++'s is undefined out of range (JavaRT.h)
+    text = java_int_casts(text)
     # `new Object()` (a bare java.lang.Object, used only as a monitor/lock) -> a JObject VALUE. Object
     # has no C++ class; the universal box default-constructs, and the sync object is never used on the port.
     text = re.sub(r'\bnew\s+Object\s*\(\s*\)', 'JObject()', text)

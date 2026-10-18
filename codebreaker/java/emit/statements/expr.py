@@ -239,3 +239,104 @@ def _rewrite_float_mod(s):
     return _MOD_PAT.sub(rep, s)
 
 
+# ---------------------------------------------------------------------------------------------------
+# (int)x / (long long)x -> j2xToInt(x) / j2xToLong(x): Java's float/double -> int/long conversion
+# saturates (NaN -> 0) where C++'s is undefined out of range (JavaRT.h). Applied to whole emitted class
+# files (transpile._finalize_emitted), outside string and char literals; a cast whose operand cannot be
+# read is left as it was.
+_INT_CAST = re.compile(r'\((int|long long)\)')
+_CAST_TYPES = ('int', 'long long', 'float', 'double', 'char', 'short', 'bool', 'signed char', 'unsigned char',
+               'unsigned int', 'long')
+_NUMBER = re.compile(r'(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?[FfLlDdUu]*|0[xX][0-9a-fA-F]+[LlUu]*')
+_WORD = re.compile(r'[A-Za-z_]\w*(?:\s*::\s*[A-Za-z_]\w*)*')
+_HELPER = {'int': 'j2xToInt', 'long long': 'j2xToLong'}
+
+
+def _close(s, i, open_c, close_c):
+    depth, n = 0, len(s)
+    while i < n:
+        c = s[i]
+        if c in '"\'':
+            j = i + 1
+            while j < n and s[j] != c:
+                j += 2 if s[j] == '\\' else 1
+            i = j + 1
+            continue
+        if c == open_c:
+            depth += 1
+        elif c == close_c:
+            depth -= 1
+            if depth == 0:
+                return i
+        i += 1
+    return -1
+
+
+def _cast_operand_end(s, i):
+    """End index of the unary operand starting at s[i] (a cast binds to one), or -1."""
+    n = len(s)
+    while i < n and s[i] == ' ':
+        i += 1
+    if i >= n:
+        return -1
+    if s[i] in '-+!~' and not s.startswith('--', i) and not s.startswith('++', i):
+        return _cast_operand_end(s, i + 1)
+    if s[i] == '(':
+        close = _close(s, i, '(', ')')
+        if close < 0:
+            return -1
+        if s[i + 1:close].strip() in _CAST_TYPES or s[i + 1:close].strip().endswith('*'):
+            return _cast_operand_end(s, close + 1)                  # a cast of a cast: (int)(float)x
+        j = close + 1
+    else:
+        m = _NUMBER.match(s, i) if s[i].isdigit() or s[i] == '.' else _WORD.match(s, i)
+        if not m:
+            return -1
+        j = m.end()
+    while j < n:                                                    # postfix: call, index, member access
+        if s[j] == '(':
+            k = _close(s, j, '(', ')')
+        elif s[j] == '[':
+            k = _close(s, j, '[', ']')
+        elif s.startswith('->', j) or (s[j] == '.' and j + 1 < n and (s[j + 1].isalpha() or s[j + 1] == '_')):
+            m = _WORD.match(s, j + (2 if s[j] == '-' else 1))
+            k = m.end() - 1 if m else -1
+        else:
+            break
+        if k < 0:
+            return -1
+        j = k + 1
+    if s.startswith('++', j) or s.startswith('--', j):
+        j += 2
+    return j
+
+
+def java_int_casts(text):
+    out, i, n = [], 0, len(text)
+    while i < n:
+        c = text[i]
+        if c in '"\'':                                              # literals verbatim
+            j = i + 1
+            while j < n and text[j] != c and text[j] != '\n':
+                j += 2 if text[j] == '\\' else 1
+            out.append(text[i:j + 1])
+            i = j + 1
+            continue
+        if text.startswith('//', i):                                # comments verbatim
+            j = text.find('\n', i)
+            j = n if j < 0 else j
+            out.append(text[i:j])
+            i = j
+            continue
+        m = _INT_CAST.match(text, i) if c == '(' else None
+        if m:
+            end = _cast_operand_end(text, m.end())
+            if end > m.end():
+                operand = text[m.end():end].strip()
+                out.append('%s(%s)' % (_HELPER[m.group(1)], java_int_casts(operand)))
+                i = end
+                continue
+        out.append(c)
+        i += 1
+    return ''.join(out)
+

@@ -36,6 +36,28 @@ inline void j2x_guest_throw_trace(const char*, int) {}   // host build (converte
 #endif
 #define J2X_GUEST_THROW() ::j2x_guest_throw_trace(__FILE__, __LINE__)
 
+// Java's (int) and (long) of a float or double SATURATE -- NaN gives 0, out of range gives the nearest
+// limit -- where C++'s are undefined (x86 gives 0x80000000). The converter writes every (int)x and
+// (long long)x of an expression as these; any other operand converts as the C++ cast would.
+// J2X-BUGFIX float-int-cast-saturate: MathHelper.sin(1000000F) indexed SIN_TABLE[(int)(x * 10430.378F)
+// & 0xffff] with a C++-overflowed int, reading entry 0 where Java reads entry 65535.
+template<class T> inline int j2xToInt(const T& v) { return (int)v; }
+inline int j2xToInt(float v) {
+	return v != v ? 0 : v >= 2147483647.0f ? 2147483647 : v <= -2147483648.0f ? (-2147483647 - 1) : (int)v;
+}
+inline int j2xToInt(double v) {
+	return v != v ? 0 : v >= 2147483647.0 ? 2147483647 : v <= -2147483648.0 ? (-2147483647 - 1) : (int)v;
+}
+template<class T> inline long long j2xToLong(const T& v) { return (long long)v; }
+inline long long j2xToLong(float v) {
+	return v != v ? 0 : v >= 9223372036854775807.0f ? 9223372036854775807LL
+	     : v <= -9223372036854775808.0f ? (-9223372036854775807LL - 1) : (long long)v;
+}
+inline long long j2xToLong(double v) {
+	return v != v ? 0 : v >= 9223372036854775807.0 ? 9223372036854775807LL
+	     : v <= -9223372036854775808.0 ? (-9223372036854775807LL - 1) : (long long)v;
+}
+
 // java.lang.Math.random(): pseudo-random double in [0, 1)
 inline double javaMathRandom() { return (double)rand() / ((double)RAND_MAX + 1.0); }
 // java.lang.Math.signum(x)
