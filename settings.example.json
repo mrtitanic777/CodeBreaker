@@ -17,6 +17,12 @@
   "nasm": "<optional: nasm.exe of the nasm-masm project (a MASM-compatible NASM)>",
   "msvc152": "<optional: folder of Visual C++ 1.52c's compiler (BIN\\CL.EXE)>",
   "xenix_c": "<optional: folder holding xcc.py (the XENIX C compiler of Microsoft's 1984 tools), for `repair --truth`>",
+  "java": "<optional: java.exe (JRE/JDK 8+), for decompiling a jar before transpiling; default JAVA_HOME / PATH>",
+  "retromcp": "<optional: retromcp-cli.jar (RetroMCP-Java + Vineflower), turns a Minecraft version into Java source>",
+  "xbox360_sdk": "<optional: the Xbox 360 SDK root; needed for the Java transpiler's xbox360 target>",
+  "host_cxx": "<optional: full path to the C++ compiler that judges transpiled Java (g++.exe); default g++ on PATH>",
+  "msbuild": "<optional: MSBuild.exe, to build a transpiled game's Visual Studio project>",
+  "java_overlays": "<optional: folder of per-project hand fixes for transpiled Java; default state/java/overlays>",
   "workers": 0,
   "min_free_gb": 6
 }
