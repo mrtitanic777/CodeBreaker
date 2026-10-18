@@ -1,0 +1,77 @@
+{
+  "subsystem": "opengl",
+  "language": "opengl",
+  "description": "The OpenGL 1.x (LWJGL GL11) -> Direct3D 9 for Xbox 360 CONVERSION TABLE. The 360 does NOT run OpenGL; every call is converted to native Direct3D 9. 'kind': direct = a 1:1 IDirect3DDevice9/D3DX call; constant = a D3D enum; d3d9-helper = one of the three STATEFUL GL concepts that has no single D3D9 call (immediate mode, matrix stack, display lists) and is realized by a small Direct3D 9 helper (named in 'target'). No runtime OpenGL anywhere.",
+  "symbols": {
+    "GL11.glClear":        {"maps": {"direct3d9": {"target": "IDirect3DDevice9::Clear", "kind": "direct", "note": "flags -> D3DCLEAR_TARGET|D3DCLEAR_ZBUFFER"}}},
+    "GL11.glClearColor":   {"maps": {"direct3d9": {"target": "(Clear color arg)", "kind": "direct", "note": "cached, passed to Clear as D3DCOLOR_ARGB"}}},
+    "GL11.glClearDepth":   {"maps": {"direct3d9": {"target": "(Clear Z arg)", "kind": "direct"}}},
+    "GL11.glViewport":     {"maps": {"direct3d9": {"target": "IDirect3DDevice9::SetViewport", "kind": "direct"}}},
+    "GL11.glEnable":       {"maps": {"direct3d9": {"target": "IDirect3DDevice9::SetRenderState", "kind": "direct", "note": "GL_DEPTH_TEST->D3DRS_ZENABLE, GL_BLEND->D3DRS_ALPHABLENDENABLE, GL_CULL_FACE->D3DRS_CULLMODE(CW), GL_TEXTURE_2D->texture-stage enable, GL_FOG->fog shader flag"}}},
+    "GL11.glDisable":      {"maps": {"direct3d9": {"target": "IDirect3DDevice9::SetRenderState", "kind": "direct"}}},
+    "GL11.glBlendFunc":    {"maps": {"direct3d9": {"target": "SetRenderState(D3DRS_SRCBLEND/D3DRS_DESTBLEND)", "kind": "direct"}}},
+    "GL11.glDepthFunc":    {"maps": {"direct3d9": {"target": "SetRenderState(D3DRS_ZFUNC)", "kind": "direct"}}},
+    "GL11.glDepthMask":    {"maps": {"direct3d9": {"target": "SetRenderState(D3DRS_ZWRITEENABLE)", "kind": "direct"}}},
+    "GL11.glColorMask":    {"maps": {"direct3d9": {"target": "SetRenderState(D3DRS_COLORWRITEENABLE)", "kind": "direct"}}},
+    "GL11.glShadeModel":   {"maps": {"direct3d9": {"target": "SetRenderState(D3DRS_SHADEMODE)", "kind": "direct", "note": "flat/gouraud"}}},
+
+    "GL11.glGenTextures":  {"maps": {"direct3d9": {"target": "d3d9::genTexture", "kind": "d3d9-helper", "note": "reserve a texture registry slot (id)"}}},
+    "GL11.glDeleteTextures":{"maps": {"direct3d9": {"target": "IDirect3DTexture9::Release", "kind": "direct"}}},
+    "GL11.glBindTexture":  {"maps": {"direct3d9": {"target": "IDirect3DDevice9::SetTexture", "kind": "direct"}}},
+    "GL11.glTexParameteri":{"maps": {"direct3d9": {"target": "IDirect3DDevice9::SetSamplerState", "kind": "direct", "note": "MIN/MAG filter, wrap"}}},
+    "GL11.glTexImage2D":   {"maps": {"direct3d9": {"target": "d3d9::createTexture2D", "kind": "d3d9-helper", "note": "CreateTexture(LIN_A8R8G8B8) + LockRect + RGBA->ARGB copy (360 textures are tiled: LIN_ format required)"}}},
+    "GL11.glTexSubImage2D":{"maps": {"direct3d9": {"target": "d3d9::updateTexture2D", "kind": "d3d9-helper", "note": "LockRect sub-rect + RGBA->ARGB copy"}}},
+
+    "GL11.glBegin":        {"maps": {"direct3d9": {"target": "d3d9::im::begin", "kind": "d3d9-helper", "note": "IMMEDIATE MODE (stateful): open a primitive; vertices accumulate until glEnd -> DrawPrimitiveUP"}}},
+    "GL11.glEnd":          {"maps": {"direct3d9": {"target": "d3d9::im::end", "kind": "d3d9-helper", "note": "flush accumulated verts via IDirect3DDevice9::DrawPrimitiveUP"}}},
+    "GL11.glVertex3f":     {"maps": {"direct3d9": {"target": "d3d9::im::vertex3f", "kind": "d3d9-helper"}}},
+    "GL11.glVertex2f":     {"maps": {"direct3d9": {"target": "d3d9::im::vertex2f", "kind": "d3d9-helper"}}},
+    "GL11.glTexCoord2f":   {"maps": {"direct3d9": {"target": "d3d9::im::texCoord2f", "kind": "d3d9-helper"}}},
+    "GL11.glColor4f":      {"maps": {"direct3d9": {"target": "d3d9::im::color4f", "kind": "d3d9-helper", "note": "current vertex color (D3DCOLOR)"}}},
+    "GL11.glColor3f":      {"maps": {"direct3d9": {"target": "d3d9::im::color3f", "kind": "d3d9-helper"}}},
+    "GL11.glNormal3f":     {"maps": {"direct3d9": {"target": "d3d9::im::normal3f", "kind": "d3d9-helper"}}},
+
+    "GL11.glMatrixMode":   {"maps": {"direct3d9": {"target": "d3d9::mtx::mode", "kind": "d3d9-helper", "note": "MATRIX STACK (stateful): select MODELVIEW/PROJECTION D3DXMATRIX stack"}}},
+    "GL11.glLoadIdentity": {"maps": {"direct3d9": {"target": "d3d9::mtx::loadIdentity", "kind": "d3d9-helper"}}},
+    "GL11.glPushMatrix":   {"maps": {"direct3d9": {"target": "d3d9::mtx::push", "kind": "d3d9-helper"}}},
+    "GL11.glPopMatrix":    {"maps": {"direct3d9": {"target": "d3d9::mtx::pop", "kind": "d3d9-helper"}}},
+    "GL11.glTranslatef":   {"maps": {"direct3d9": {"target": "d3d9::mtx::translate", "kind": "d3d9-helper", "note": "D3DXMatrixTranslation * top"}}},
+    "GL11.glRotatef":      {"maps": {"direct3d9": {"target": "d3d9::mtx::rotate", "kind": "d3d9-helper", "note": "D3DXMatrixRotationAxis * top"}}},
+    "GL11.glScalef":       {"maps": {"direct3d9": {"target": "d3d9::mtx::scale", "kind": "d3d9-helper"}}},
+    "GL11.glMultMatrix":   {"maps": {"direct3d9": {"target": "d3d9::mtx::mult", "kind": "d3d9-helper"}}},
+
+    "GL11.glGenLists":     {"maps": {"direct3d9": {"target": "d3d9::list::gen", "kind": "d3d9-helper", "note": "DISPLAY LISTS (stateful): reserve list ids"}}},
+    "GL11.glNewList":      {"maps": {"direct3d9": {"target": "d3d9::list::begin", "kind": "d3d9-helper", "note": "record draws into a static IDirect3DVertexBuffer9"}}},
+    "GL11.glEndList":      {"maps": {"direct3d9": {"target": "d3d9::list::end", "kind": "d3d9-helper", "note": "bake the vertex buffer (CreateVertexBuffer + Lock/copy)"}}},
+    "GL11.glCallList":     {"maps": {"direct3d9": {"target": "d3d9::list::call", "kind": "d3d9-helper", "note": "SetStreamSource + DrawPrimitive"}}},
+    "GL11.glDeleteLists":  {"maps": {"direct3d9": {"target": "d3d9::list::del", "kind": "d3d9-helper"}}},
+
+    "GL11.glVertexPointer":  {"maps": {"direct3d9": {"target": "d3d9::va::vertexPointer", "kind": "d3d9-helper", "note": "vertex-array state -> a DrawPrimitiveUP/VB on glDrawArrays"}}},
+    "GL11.glColorPointer":   {"maps": {"direct3d9": {"target": "d3d9::va::colorPointer", "kind": "d3d9-helper"}}},
+    "GL11.glTexCoordPointer":{"maps": {"direct3d9": {"target": "d3d9::va::texCoordPointer", "kind": "d3d9-helper"}}},
+    "GL11.glEnableClientState":{"maps": {"direct3d9": {"target": "d3d9::va::enable", "kind": "d3d9-helper"}}},
+    "GL11.glDisableClientState":{"maps": {"direct3d9": {"target": "d3d9::va::disable", "kind": "d3d9-helper"}}},
+    "GL11.glDrawArrays":     {"maps": {"direct3d9": {"target": "IDirect3DDevice9::DrawPrimitiveUP", "kind": "direct", "note": "gather the enabled vertex-array pointers into the FVF and draw"}}},
+
+    "GL11.glFog":          {"maps": {"direct3d9": {"target": "d3d9::fog::param", "kind": "d3d9-helper", "note": "linear fog via pixel-shader constants (no fixed-function fog on Xenos)"}}},
+    "GL11.glFogf":         {"maps": {"direct3d9": {"target": "d3d9::fog::paramf", "kind": "d3d9-helper"}}},
+    "GL11.glFogi":         {"maps": {"direct3d9": {"target": "d3d9::fog::parami", "kind": "d3d9-helper"}}},
+
+    "GL11.glGetInteger":   {"maps": {"direct3d9": {"target": "IDirect3DDevice9::GetViewport", "kind": "direct", "note": "GL_VIEWPORT -> the cached D3DVIEWPORT9"}}},
+    "GL11.glGetFloat":     {"maps": {"direct3d9": {"target": "d3d9::mtx::get", "kind": "d3d9-helper", "note": "GL_MODELVIEW_MATRIX/PROJECTION_MATRIX -> current D3DXMATRIX"}}},
+    "GL11.glGetError":     {"maps": {"direct3d9": {"target": "(none)", "kind": "constant", "note": "always GL_NO_ERROR"}}},
+
+    "GL11.glRenderMode":   {"maps": {"direct3d9": {"target": "d3d9::pick::renderMode", "kind": "d3d9-helper", "note": "GL selection has no D3D9 equivalent; realized as a software ray/pick pass"}}},
+    "GL11.glSelectBuffer": {"maps": {"direct3d9": {"target": "d3d9::pick::selectBuffer", "kind": "d3d9-helper"}}},
+    "GL11.glInitNames":    {"maps": {"direct3d9": {"target": "d3d9::pick::initNames", "kind": "d3d9-helper"}}},
+    "GL11.glPushName":     {"maps": {"direct3d9": {"target": "d3d9::pick::pushName", "kind": "d3d9-helper"}}},
+    "GL11.glPopName":      {"maps": {"direct3d9": {"target": "d3d9::pick::popName", "kind": "d3d9-helper"}}},
+    "GL11.glLoadName":     {"maps": {"direct3d9": {"target": "d3d9::pick::loadName", "kind": "d3d9-helper"}}},
+
+    "GL11.GL_TRIANGLES":  {"maps": {"direct3d9": {"target": "D3DPT_TRIANGLELIST", "kind": "constant"}}},
+    "GL11.GL_TRIANGLE_STRIP": {"maps": {"direct3d9": {"target": "D3DPT_TRIANGLESTRIP", "kind": "constant"}}},
+    "GL11.GL_QUADS":      {"maps": {"direct3d9": {"target": "(2 triangles/quad)", "kind": "constant", "note": "D3D9 has no quad primitive; the immediate/array path tessellates to triangle pairs"}}},
+    "GL11.GL_PROJECTION": {"maps": {"direct3d9": {"target": "D3DTS_PROJECTION", "kind": "constant"}}},
+    "GL11.GL_MODELVIEW":  {"maps": {"direct3d9": {"target": "D3DTS_VIEW", "kind": "constant"}}}
+  }
+}

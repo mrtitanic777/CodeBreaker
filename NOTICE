@@ -11,3 +11,8 @@ operates only on inputs that the user supplies. See DISCLAIMER in README.md.
 
 Third-party runtime dependency (not distributed here; installed separately):
   - Capstone disassembly framework (BSD-3-Clause) — https://www.capstone-engine.org
+
+The Java transpiler (codebreaker/java) began as J2CTool, by the same author, under the MIT License
+(codebreaker/java/LICENSE); its history is part of this repository's. It ships no game code, no
+game assets and no platform-SDK content (docs/java/NOTICE.md). The RetroMCP decompiler jar it can
+drive is not distributed here; settings.json `retromcp` names a copy on this machine.

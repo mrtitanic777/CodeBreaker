@@ -6,6 +6,7 @@ source tree.
 This is the number to watch while changing the decompiler or the verifier.
 """
 import collections
+import os
 
 
 def main(argv):
@@ -15,7 +16,7 @@ def main(argv):
     from codebreaker.base import corpus
     from codebreaker.store import functions as F
     from codebreaker.verify import reconstruct
-    path = corpus.retail(argv[0])
+    path = argv[0] if os.path.isdir(argv[0]) else corpus.retail(argv[0])   # a folder: a Java program
     if not path:
         raise SystemExit("no module %r in the corpus" % argv[0])
     fs = F.open()

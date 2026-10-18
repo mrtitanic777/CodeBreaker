@@ -1,0 +1,20 @@
+{
+  "subsystem": "csharp.bcl",
+  "language": "csharp",
+  "description": "C# / .NET base class library -> C++. Demonstrator rows; C#'s BCL is close to Java's, so many map cleanly.",
+  "symbols": {
+    "Console.WriteLine": {"signature": "(...)",
+      "maps": {"cpp": {"target": "std::cout << ... << std::endl", "kind": "macro"}}},
+    "List.Add": {"signature": "(T)", "maps": {"cpp": {"target": "std::vector::push_back", "kind": "direct"}}},
+    "List.Count": {"doc": "Property.", "maps": {"cpp": {"target": "std::vector::size", "kind": "macro"}}},
+    "String.Substring": {"signature": "(int) | (int,int)",
+      "maps": {"cpp": {"target": "std::string::substr", "kind": "signature-adapted",
+        "note": "C# Substring(start,length) matches substr(pos,count) directly -- unlike Java's (begin,end)."}}},
+    "String.Format": {"signature": "(String,...)",
+      "maps": {"cpp": {"target": "j2c::format", "kind": "shim", "note": "{0} placeholders -> printf/fmt."}}},
+    "Math.Sqrt": {"signature": "(double)", "maps": {"cpp": {"target": "std::sqrt", "kind": "direct"}}},
+    "Dictionary.TryGetValue": {"signature": "(K,out V)",
+      "maps": {"cpp": {"target": "std::map::find", "kind": "signature-adapted",
+        "note": "out-param + bool return -> iterator check."}}}
+  }
+}

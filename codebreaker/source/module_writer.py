@@ -6,6 +6,7 @@ r"""module_writer.py -- one source file per module, every function labelled with
     python -m codebreaker module comctl32.dll --build      also build the whole module and report it
     python -m codebreaker module comctl32.dll --split 200   at most 200 functions to a file
     python -m codebreaker scoreboard                        rewrite the scoreboard only
+    python -m codebreaker module path/to/java/src           a Java program: its C++, class by class
 
 Each function carries one status line:
 
@@ -26,7 +27,8 @@ Imports by number are written with their real names where the exporting module g
 stands for.
 
 A driver or a real-mode program is written as its assembly file (source/driver_writer.py,
-source/dos_writer.py) with the same status counts at its head. Where a module's files go in the
+source/dos_writer.py) with the same status counts at its head; a Java program (a folder of .java
+source) as the C++ folder it transpiles to (source/java_writer.py). Where a module's files go in the
 source tree is source/placement.py's business.
 
 Nothing is counted as progress except what these labels say. Everything written here is read
@@ -211,9 +213,15 @@ def in_corpus(path):
 def write_module(module, verify=True, out_dir=None, log=print, split=0, build_whole=False):
     from codebreaker.source import placement
     from codebreaker.verify import reconstruct
-    path = module if os.path.isfile(module) else corpus.retail(module)
+    path = module if (os.path.isfile(module) or os.path.isdir(module)) else corpus.retail(module)
     if not path:
         raise SystemExit("no module %r in the corpus" % module)
+    if os.path.isdir(path) or path.lower().endswith((".java", ".jar")):   # a Java program: its own writer
+        from codebreaker.source.java_writer import write_java
+        fs = F.open()
+        sha, digest = reconstruct.run(path, fs=fs, log=log) if verify else reconstruct.identity(path)
+        name = os.path.basename(os.path.normpath(path))
+        return write_java(path, fs, sha, digest, out_dir or settings.state("source", name), log)
     name = os.path.basename(path).lower()
     stem = os.path.splitext(name)[0]
     # A product's source tree is for that product's modules. A file from anywhere else (given
@@ -443,6 +451,6 @@ def main(argv):
     for m in mods:
         write_module(m, verify="--no-verify" not in argv, out_dir=out_dir, split=split,
                      build_whole="--build" in argv)
-    if "--scoreboard" in argv or any(not os.path.isfile(m) or in_corpus(m) for m in mods):
+    if "--scoreboard" in argv or any(not os.path.exists(m) or in_corpus(m) for m in mods):
         scoreboard(out_dir)                      # (not for a file that is not the product's)
     return 0

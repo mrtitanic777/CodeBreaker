@@ -1,0 +1,15 @@
+{
+  "subsystem": "glu",
+  "language": "glu",
+  "description": "OpenGL Utility (GLU) -> Direct3D 9 for Xbox 360. Matrix builders map to D3DX; texture build maps to the D3D9 texture helper; picking maps to the D3D9 software-pick helper. No OpenGL at runtime.",
+  "symbols": {
+    "GLU.gluPerspective":   {"maps": {"direct3d9": {"target": "D3DXMatrixPerspectiveFovRH -> d3d9::mtx setProjection", "kind": "direct", "note": "builds the projection matrix and pushes it to the matrix stack"}}},
+    "GLU.gluLookAt":        {"maps": {"direct3d9": {"target": "D3DXMatrixLookAtRH", "kind": "direct"}}},
+    "GLU.gluOrtho2D":       {"maps": {"direct3d9": {"target": "D3DXMatrixOrthoOffCenterRH", "kind": "direct"}}},
+    "GLU.gluBuild2DMipmaps":{"maps": {"direct3d9": {"target": "d3d9::createTexture2D", "kind": "d3d9-helper", "note": "same texture-upload helper as glTexImage2D (LIN_A8R8G8B8 + RGBA->ARGB)"}}},
+    "GLU.gluPickMatrix":    {"maps": {"direct3d9": {"target": "d3d9::pick::pickMatrix", "kind": "d3d9-helper", "note": "narrow pick frustum around the cursor; pairs with the D3D9 software-pick pass"}}},
+    "GLU.gluProject":       {"maps": {"direct3d9": {"target": "D3DXVec3Project", "kind": "direct"}}},
+    "GLU.gluUnProject":     {"maps": {"direct3d9": {"target": "D3DXVec3Unproject", "kind": "direct"}}},
+    "GLU.gluErrorString":   {"maps": {"direct3d9": {"target": "(empty string)", "kind": "constant"}}}
+  }
+}

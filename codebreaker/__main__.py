@@ -45,6 +45,8 @@
     live <binary>                   the Live reconstruction window: the file's bytes and its C appearing
     take-apart <binary>             what the Workbench does with a dropped program, to a folder
     settings                        every setting, and whether what it names is there
+    java <tool> ...                 the Java transpiler: a Java program as C++03 (convert, decompile,
+                                    worklist, ...; `java --help` lists them)
 
 `--corpus NAME` before or after any command selects another product's files (settings.json: corpora).
 
@@ -98,6 +100,7 @@ COMMANDS = {
     "live": ("codebreaker.ui.live", []),
     "take-apart": ("codebreaker.ui.take_apart", []),
     "settings": ("codebreaker.base.settings", []),
+    "java": ("codebreaker.java.run", []),
 }
 
 

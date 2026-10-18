@@ -47,7 +47,15 @@ from codebreaker.ui import progress
 PORT = 8765
 PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "console.html")
 ACTIONS = {"decompile": "decompile it to C (nothing is built or judged)",
-           "measure": "decompile, build and judge every function; results go to the store"}
+           "measure": "decompile, build and judge every function; results go to the store",
+           "module": "a folder of Java source: transpile it to C++, compile every class, write the folder"}
+
+
+def _stored_path(name):
+    """The path a module not in the corpus (a Java program's folder) was reconstructed from."""
+    fs = ledger.open_store()
+    row = fs and fs.db.execute("SELECT path FROM module WHERE name=? ORDER BY ts DESC LIMIT 1", (name,)).fetchone()
+    return row[0] if row and row[0] and os.path.exists(row[0]) else None
 
 
 class Jobs(object):
@@ -60,12 +68,12 @@ class Jobs(object):
 
     def start(self, action, module):
         """Start `action` on a module. -> the job, or raises ValueError saying why not."""
-        path = corpus.retail(module) if module else None
+        path = (module if os.path.isdir(module) else corpus.retail(module) or _stored_path(module)) if module else None
         if action not in ACTIONS:
             raise ValueError("no such action %r" % action)
         if not path:
             raise ValueError("no module %r in the corpus" % module)
-        name = os.path.basename(path).lower()
+        name = os.path.basename(os.path.normpath(path)).lower()
         with self.lock:
             running = [j for j in self.jobs.values() if j["proc"].poll() is None]
             if len(running) >= 2 or any(j["action"] == "measure" for j in running if action == "measure"):
@@ -227,7 +235,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _module(self, q):
         name = (q.get("module") or [""])[0]
-        path = corpus.retail(name) if name else None
+        path = (name if os.path.isdir(name) else corpus.retail(name) or _stored_path(name)) if name else None
         if not path:
             raise Refused(404, "no module %r in the corpus" % name)
         return path
@@ -298,6 +306,12 @@ class Handler(BaseHTTPRequestHandler):
                 raise Refused(404, "%s is not a module of the corpus or the store" % name)
             return self._json(found)
         path = self._module(q) if route in ("/api/info", "/api/strings", "/api/hex", "/api/resource") else None
+        if route == "/api/info" and os.path.isdir(path):         # a Java program: a folder of source
+            from codebreaker.java import transpile
+            n = len(transpile.discover(path))
+            return self._json({"name": os.path.basename(os.path.normpath(path)), "path": path, "ok": True,
+                               "kind": "java", "size": 0, "summary": {"format": "Java source",
+                                                                      "type": "%d classes" % n}})
         if route == "/api/info":
             info = inspect.describe(path)
             section = (q.get("section") or [""])[0]

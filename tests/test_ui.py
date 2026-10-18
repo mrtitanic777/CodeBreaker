@@ -233,7 +233,7 @@ def test_console_serves_everything():
         assert json.loads(get("/api/health")[1])["ok"]
         mods = json.loads(get("/api/modules")[1])["modules"]
         assert [m["verified"] for m in mods if m["name"] == "version.dll"] == [1]
-        assert len(json.loads(get("/api/coverage")[1])["kinds"]) == 4
+        assert len(json.loads(get("/api/coverage")[1])["kinds"]) == 5     # 32-bit, 16-bit, driver, DOS, Java
         assert json.loads(get("/api/info?module=version.dll")[1])["summary"]["exports"] == 14
         assert json.loads(get("/api/info?module=version.dll&section=sections")[1])[0]["name"] == ".text"
         assert json.loads(get("/api/strings?module=version.dll&find=kernel32")[1])["total"] >= 1

@@ -12,7 +12,8 @@ are recorded as such, with their name and library. That is said in addition: the
 decompiled, built and judged like every other function.
 
 The path is the same whatever the module is. What differs between kinds of module -- 32-bit or
-16-bit Windows, PowerPC, drivers, real-mode programs -- is in one small module per kind, each providing:
+16-bit Windows, PowerPC, drivers, real-mode programs, Java programs -- is in one small module per
+kind, each providing:
 
     KIND                          the name results are filed under
     profile(path)                 (digest, settings): everything but the source a verdict depends on
@@ -20,6 +21,11 @@ The path is the same whatever the module is. What differs between kinds of modul
                                   key {name: address}, all_keys (every function), sig
     build(prepared, path, work)   (context, {name: item to judge}, {name: why it was not built})
     judge(context, item)          (verdict, reason, limits, detail) -- runs in a worker process
+
+and, for a kind whose modules are not executables (java: a folder of source), optionally
+
+    sha(path)                     what its results are filed under (default: the file's sha256)
+    LIBRARY = False               it has no runtime-library functions to identify
 
 A new kind of module is one such file.
 """
@@ -35,7 +41,7 @@ GOOD = ("equivalent", "consistent")
 # the name results are filed under -> the module that knows that kind
 KINDS = {"pe": "codebreaker.verify.win32", "ne": "codebreaker.verify.win16",
          "powerpc": "codebreaker.verify.powerpc", "le": "codebreaker.verify.driver",
-         "dos": "codebreaker.verify.dos"}
+         "dos": "codebreaker.verify.dos", "java": "codebreaker.verify.java"}
 
 
 def kind_named(name):
@@ -44,8 +50,12 @@ def kind_named(name):
 
 
 def kind_name(module_path):
-    """Which kind a file is: 'pe', 'ne', 'powerpc', 'le' -- or None when nothing reconstructs it."""
+    """Which kind a file is: 'pe', 'ne', 'powerpc', 'le', 'dos', 'java' -- or None when nothing
+    reconstructs it."""
     from codebreaker.base import corpus
+    from codebreaker.verify import java
+    if os.path.isdir(module_path) or module_path.lower().endswith((".java", ".jar")):
+        return "java" if (module_path.lower().endswith(".jar") or java.is_module(module_path)) else None
     lane = corpus.lane(module_path)
     if lane == "pe":
         from codebreaker.formats.pe import open_pe
@@ -82,8 +92,15 @@ def digests():
 
 def identity(module_path):
     """(content hash, profile digest) -- what results for this module are filed under."""
+    kind = kind_of(module_path)
+    return module_sha(kind, module_path), kind.profile(module_path)[0]
+
+
+def module_sha(kind, module_path):
+    """What a module's results are filed under: the kind's own `sha`, else the file's sha256."""
     from codebreaker.base import corpus
-    return corpus.sha(module_path) or "", kind_of(module_path).profile(module_path)[0]
+    own = getattr(kind, "sha", None)
+    return (own(module_path) if own else corpus.sha(module_path)) or ""
 
 
 def _reaches(texts, built, dropped):
@@ -180,13 +197,12 @@ def run(module_path, fs=None, log=print):
     from codebreaker.decompile import decompiler
     from codebreaker.jobs import pool
     from codebreaker.store import functions
-    from codebreaker.base import corpus
     from codebreaker.symbols import names, runtime_library
     kind = kind_of(module_path)
     fs = fs or functions.open()
-    sha = corpus.sha(module_path) or ""
+    sha = module_sha(kind, module_path)
     digest, settings = kind.profile(module_path)
-    name = os.path.basename(module_path).lower()
+    name = os.path.basename(os.path.normpath(module_path)).lower()
     t0 = time.time()
     work = watcom._scratch("reconstruct", kind.KIND, name)
     m = kind.prepare(module_path, work)
@@ -196,8 +212,9 @@ def run(module_path, fs=None, log=print):
     fs.add_profile(digest, settings)
     fs.add_functions(sha, m.all_keys)
     fs.put_text(sha, SOURCE, "header", m.header)
-    fs.set_identified(sha, {names.key(module_path, address): found
-                            for address, found in runtime_library.identify(module_path).items()})
+    if getattr(kind, "LIBRARY", True):
+        fs.set_identified(sha, {names.key(module_path, address): found
+                                for address, found in runtime_library.identify(module_path).items()})
     known = fs.judged(sha, digest, SOURCE)
     fresh = [n for n in m.order if n in m.key and (known.get(m.key[n]) or {}).get("sig") != sig[n]]
     have = set(m.key.values())
@@ -245,7 +262,7 @@ def run(module_path, fs=None, log=print):
             rows.append(dict(addr=k, sig=sig[n], name=n, source=m.texts[n], verdict=verdict, reason=reason,
                              limits=",".join(limits), detail=detail))
         t3 = time.time()
-    fs.record_many(sha, SOURCE, str(decompiler.REV), digest, rows)
+    fs.record_many(sha, SOURCE, str(getattr(kind, "SOURCE_REV", decompiler.REV)), digest, rows)
     c = fs.scores(digest, sha)
     log("%s: %d functions, %d judged now%s: %s  (%.0fs: decompile %.0f, build %.0f, judge %.0f)" % (
         name, len(m.all_keys), len(fresh), (", %d kept (same code)" % carried) if carried else "",

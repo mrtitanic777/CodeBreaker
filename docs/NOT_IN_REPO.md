@@ -23,6 +23,12 @@ setting for one run.
 | A MASM-compatible NASM | `../nasm-masm/nasm.exe` (its own repository) | `nasm` |
 | The XENIX C compiler of Microsoft's 1984 tools | `xcc.py`'s folder | `xenix_c` |
 | PowerPC compiler, linker and runtime | | `powerpc_tools`, `powerpc_lib` |
+| A C++ compiler for judging transpiled Java (g++) | `C:/msys64/mingw64/bin/g++.exe` (or g++ on PATH) | `host_cxx` |
+| Java (a JDK 8+: java and javac), to decompile a jar and to run classes beside their translation | `JAVA_HOME`, or `java` on PATH | `java` |
+| RetroMCP CLI jar (RetroMCP-Java + Vineflower; MIT / Apache-2.0) | | `retromcp` |
+| The Xbox 360 SDK (XDK), for the Java transpiler's console target | `C:/Program Files (x86)/Microsoft Xbox 360 SDK` | `xbox360_sdk` |
+| MSBuild, to build a transpiled game's Visual Studio project | | `msbuild` |
+| Per-project hand fixes laid over transpiled Java | `state/java/overlays` | `java_overlays` |
 
 None of these is redistributable, and none is needed to read the code: each command says which
 setting it is missing.
