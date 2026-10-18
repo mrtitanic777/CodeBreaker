@@ -29,6 +29,7 @@ setting for one run.
 | The Xbox 360 SDK (XDK), for the Java transpiler's console target | `C:/Program Files (x86)/Microsoft Xbox 360 SDK` | `xbox360_sdk` |
 | MSBuild, to build a transpiled game's Visual Studio project | | `msbuild` |
 | Per-project hand fixes laid over transpiled Java | `state/java/overlays` | `java_overlays` |
+| The 12 Xbox 360 PowerPC images the store has judged (`*.basefile`) | `../powerpc-samples/images` (moved out of the old `src/xbox/samples` on 2026-10-17; its README says what else was kept) | (the store's module paths) |
 
 None of these is redistributable, and none is needed to read the code: each command says which
 setting it is missing.
