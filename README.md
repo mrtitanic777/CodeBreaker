@@ -20,8 +20,9 @@ all behave right is nearest to what a person wrote.
 | PowerPC images | yes | per function, into one image | by behaviour, beside the original |
 | Virtual device drivers | to assembly source | whole, from that source | byte for byte, and by behaviour |
 | Real-mode DOS programs | to assembly source | whole, from that source | byte for byte |
+| Java programs (source) | transpiled to C++03 | per class, with the host compiler | compiles; not yet run |
 
-All five go through one path (`verify/reconstruct.py`); a kind is one small file that says how
+All six go through one path (`verify/reconstruct.py`); a kind is one small file that says how
 its modules are prepared, built and judged.
 
 ## One of each
@@ -66,6 +67,11 @@ codebreaker/
                Microsoft C 2.03 / the C of 1983-84, Microsoft C 6, Visual C++ 1.52 and 2.0
   compare/     versions.py   the functions of two builds of a module: same, changed, added, removed
   coverage/    ledger.py     how much of every module is accounted for
+  java/        the Java transpiler (was J2CTool): Java source -> C++03, deterministic
+               transpile.py  THE converter: parse, resolve types and ownership, emit, check
+               emit/, rules.py, runtime.py, profiles/ (Minecraft eras), platform/ (the console layer)
+               console/      the Xbox 360 port: assets, XACT audio, achievements, the post-convert
+                             rewrites, the Visual Studio project; run.py: `java <tool>`
   ui/          the local web console and the desktop window
 native/decompiler/   the native decompiler (C++): decompiler.cc around the Ghidra decompiler core
                      in core/ (Apache-2.0, see core/LICENSE, core/NOTICE)
@@ -100,6 +106,8 @@ python -m codebreaker vxd idiom vkd.vxd        a driver as the driver kit's macr
 python -m codebreaker ne-asm idiom KRNL386.EXE 1 0x4a4 0x4fa   16-bit assembly as cMacros source
 python -m codebreaker build16 tests/fixtures/lzexpand          a 16-bit DLL with the period tools
 python -m codebreaker flat-thunk lz32.dll --build DIR          a thunk DLL with the period tools
+python -m codebreaker module path/to/java/src  a Java program as C++03, every class compiled and labelled
+python -m codebreaker java convert SRC OUT --platform xbox360 --project   the transpiler's own tools
 python -m codebreaker                          every command
 ```
 
@@ -117,6 +125,9 @@ NOT JUDGED          neither side could be run on any input
 DOES NOT COMPILE    the reconstruction is not yet C the compiler accepts
 NO SOURCE           the decompiler produced nothing
 ```
+
+A Java class is at most NOT JUDGED for now: it is transpiled and compiled, but there is no judge
+yet that runs Java beside its translation.
 
 `teeth` is what says how far to trust the first of these: it breaks functions the judge passed
 (a constant one higher, a comparison turned round, a store left out) and counts how many of the

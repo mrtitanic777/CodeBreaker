@@ -1,3 +1,6 @@
+> This is J2CTool's README as it was when it joined CodeBreaker. The code is now `codebreaker/java`,
+> run as `python -m codebreaker java <tool>`; see [MERGED.md](MERGED.md) for where everything went.
+
 # j2ctool — a deterministic Java → C++03 transpiler
 
 `j2ctool` turns Java source into portable **C++03**. It is a source-to-source transpiler built to be
