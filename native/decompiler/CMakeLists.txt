@@ -44,3 +44,27 @@ if(MSVC)
   target_compile_options(decompiler PRIVATE /EHsc /bigobj)
 endif()
 set_target_properties(decompiler PROPERTIES RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/bin)
+
+# The SLEIGH specification checked instruction by instruction against an emulator of the real
+# processor (tools/sleigh_verify.py): one instruction's p-code run from a given state.
+#   cmake --build native/decompiler/build --config Release --target pcodecheck
+add_executable(pcodecheck pcodecheck.cc)
+target_link_libraries(pcodecheck PRIVATE core)
+if(MSVC)
+  target_link_options(pcodecheck PRIVATE /WHOLEARCHIVE:core)
+  target_compile_options(pcodecheck PRIVATE /EHsc /bigobj)
+endif()
+set_target_properties(pcodecheck PROPERTIES RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/bin)
+
+# The SLEIGH compiler, from the core's own sources: makes languages/*.sla from the specifications
+# in languages/src (Ghidra's, with CodeBreaker's fixes: docs/GHIDRA_FORK.md).
+#   cmake --build native/decompiler/build --config Release --target sleigh
+#   build/bin/sleigh languages/src/x86/x86.slaspec languages/x86.sla
+add_executable(sleigh ${CMAKE_CURRENT_SOURCE_DIR}/core/cpp/slgh_compile.cc
+                      ${CMAKE_CURRENT_SOURCE_DIR}/core/cpp/slghparse.cc
+                      ${CMAKE_CURRENT_SOURCE_DIR}/core/cpp/slghscan.cc)
+target_link_libraries(sleigh PRIVATE core)
+if(MSVC)
+  target_compile_options(sleigh PRIVATE /w /EHsc /bigobj)
+endif()
+set_target_properties(sleigh PROPERTIES RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/bin)

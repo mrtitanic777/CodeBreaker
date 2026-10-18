@@ -51,6 +51,8 @@ Every change carries a `CodeBreaker:` comment at its place in the source.
 
 | C9 | `jumptable.cc` (`JumpBasicOverride::findLikelyNorm`) | The index's scale is only the INT_MULT directly before the ADD, by a constant 2, 4 or 8 -- not any MULT further back on the path | **Upstream bug** for supplied jump tables: a MULT that made the index (USER 1:03A5 indexes by `((x - (x & 0xf)) + 0x1000) >> 3`, the subtraction an ADD of a MULT by -1) was taken for the scale, so the switch variable was a value the jump never used and the switch printed on its targets' addresses (USER sub_1_032E also ran away). Candidate to send upstream | `31a2694` |
 
+| C10 | `slghscan.l`, `slghscan.cc` (`scan_number`) | Numbers read with `std::stoull`, not `std::stoul` | **Upstream bug** on Windows, where `unsigned long` is 32 bits: the C++ SLEIGH compiler refused every 64-bit constant ("Parsed integer is too big") and could not compile x86. With it, `languages/src/x86/x86.slaspec` (12.1.3) compiles byte for byte to the shipped `x86.sla`. Candidate to send upstream | item 7A |
+
 ## Local changes to the language files (`languages/`)
 
 | # | File | Change | Why | Since |
@@ -59,6 +61,14 @@ Every change carries a `CodeBreaker:` comment at its place in the source.
 | L2 | `x86-16.cspec` | New prototypes `__int16` and `__int16keepds`: arguments AX BX CX DX SI DI DS ES by position, result AX or DX:AX, killed-by-call registers and CF/ZF as outputs; the `keepds` one for interrupts that keep DS (all but 21h and 2Fh) | Software interrupts as calls with register arguments and results (with C4, C5) | `b9cbd37`, `3528339` |
 | L3 | `ppc_64_32_homed.cspec` (ours) + one line in `ppc.ldefs` | `ppc_64_32.cspec` without stack arguments, registered as compiler id `homed` | Microsoft's PowerPC compilers (Xbox 360): locals sit directly above the outgoing argument home area, so "8 bytes above SP is an argument" made locals look like arguments and branches vanish as unreachable | `4903b51` |
 | L4 | `x86.sla`, `ppc_32_be.sla`, `ppc_64_isa_altivec_be.sla` | Compiled SLEIGH, not in the upstream source tree | Built with Ghidra 12.1.3's SLEIGH compiler from that release's `.slaspec` | `cf27f50` |
+| L5 | `src/x86/*.slaspec, *.sinc` (12.1.3's, now in the tree) and `x86.sla` built from them with `build/bin/sleigh` (C10) | Fixes found by checking every instruction the golden 16-bit corpus uses against Unicorn (`tools/sleigh_verify.py`, item 7A): `packflags` sets FLAGS bit 1 (always 1 -- `pushf` pushed 0); `AAD`/`AAM` set SF ZF PF from AL, not AX; `IRET`/`IRETD` unpack the flags they pop (as `POPF` does -- the flag registers were left as they were) | Instruction semantics the decompiler builds on | item 7A |
+
+Known differences left on purpose (`tools/sleigh_verify.py` reports them): AF, the auxiliary
+carry, is not modelled (nothing in C reads it); far `call`/`jmp`/`retf` do not write CS -- the
+decompiler keeps CS per function and resolves far transfers through its own call overrides; in
+16-bit code an address-size prefix (`67`) also widens the stack pointer of a push or pop to ESP
+(the specification picks the stack's width by address size; the corpus has it only in data read as
+code).
 
 Not local changes: `x86.ldefs`, `x86.opinion`, `x86gcc.cspec` differ from the core's base
 commit only because they are the 12.1.3 release's copies (identical to `Ghidra_12.1.3_build`);
@@ -68,9 +78,10 @@ master later added Swift and raised the x86 language version 4.8 -> 4.9. `ppc.ld
 ## Rebasing onto a newer upstream
 
 1. `git clone --filter=blob:none --no-checkout https://github.com/NationalSecurityAgency/ghidra.git`
-2. Copy the new upstream `cpp/`, `zlib/` and the language files over ours; re-apply C1-C9 and
-   L1-L3 (each is small and marked); drop any upstream has fixed itself (C2, C6 and C7 first).
-3. Recompile the `.sla` files with the new `slgh_compile`.
+2. Copy the new upstream `cpp/`, `zlib/` and the language files over ours; re-apply C1-C10 and
+   L1-L3, L5 (each is small and marked); drop any upstream has fixed itself (C2, C6, C7, C10 first).
+3. Recompile the `.sla` files with `build/bin/sleigh` (the core's compiler, target `sleigh`), then
+   `python tools/sleigh_verify.py`: no new disagreement.
 4. `python tools/ghidra_fork.py <clone> <new ref>`: only the files in the tables above may show
    as patched. Then `tools/golden.py` and the emulation checks must agree; explain any
    difference.

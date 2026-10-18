@@ -461,7 +461,7 @@ int4 scan_number(char *numtext,SLEIGHSTYPE *lval,int4 radix,bool signednum)
 {
   uintb val;
   try {
-    val = std::stoul(numtext,(size_t *)0,radix);
+    val = std::stoull(numtext,(size_t *)0,radix);	// CodeBreaker: stoul is 32 bits on Windows (a 64-bit constant was "too big")
   }
   catch(...) {
     return BADINTEGER;
