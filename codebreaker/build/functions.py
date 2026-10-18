@@ -26,12 +26,12 @@ from concurrent.futures import ThreadPoolExecutor
 
 from codebreaker.build import watcom as period_tools
 
-# -ecd: a function declared without a convention is __stdcall, the decompiler's default
 # Medium model (far code, near data), as the module build has it (build/module.py): the C
 # runtime's helpers (long multiply, divide, shifts) are then called far, so a function reaches them
 # from whichever physical segment the linker packs it into. In the small model they were called
 # near, and a function packed into another 64K segment than the helpers could not be linked at all
 # (51 functions of the 16-bit golden modules; which ones moved whenever code grew).
+# -ecd: a function declared without a convention is __stdcall, the decompiler's default
 CFLAGS16 = ["-bt=windows", "-mm", "-ecd", "-zu", "-zc", "-zl", "-zq", "-w0", "-s", "-3", "-zfp", "-zgp", "-zastd=c99", "-e=20",
             "-j"]   # (char is signed, as the decompiler means it: OpenWatcom's own is unsigned, and a byte
                     # compared with -1 never matched -- USER's dialog-item builder missed an icon's FFh mark)
