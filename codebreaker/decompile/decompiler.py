@@ -37,8 +37,10 @@ def _exe():
 
 
 def _languages():
+    # (CB_LANGUAGES_DIR: another folder of language files -- an older decompiler's, run beside
+    # this one to compare the two)
     from codebreaker.base import settings
-    return os.path.join(settings.ROOT, "native", "decompiler", "languages")
+    return os.environ.get("CB_LANGUAGES_DIR") or os.path.join(settings.ROOT, "native", "decompiler", "languages")
 
 
 def available():
