@@ -580,6 +580,8 @@ public:
   BlockBasic *nodeJoinCreateBlock(BlockBasic *block1,BlockBasic *block2,BlockBasic *exita,BlockBasic *exitb,
 				  bool fora_block1ishigh,bool forb_block1ishigh,const Address &addr);
   void nodeSplit(BlockBasic *b,int4 inedge);
+  bool canSplitThrough(BlockBasic *b) const;	///< CodeBreaker: can a block with one way out be split
+  void nodeSplitThrough(BlockBasic *b,int4 inedge);	///< CodeBreaker: split a block with one way out
   bool forceGoto(const Address &pcop,const Address &pcdest);
   void removeFromFlowSplit(BlockBasic *bl,bool swap);
   void switchEdge(FlowBlock *inblock,BlockBasic *outbefore,FlowBlock *outafter);
@@ -661,6 +663,7 @@ class CloneBlockOps {
 public:
   CloneBlockOps(Funcdata &fd) : data(fd) {}	///< Constructor
   void cloneBlock(BlockBasic *b,BlockBasic *bprime,int4 inedge);	///< Clone all p-code ops from a block into its copy
+  void patchSuccessor(BlockBasic *b,BlockBasic *bprime);	///< CodeBreaker: give the successor's MULTIEQUALs the copy's values
   Varnode *cloneExpression(vector<PcodeOp *> &ops,PcodeOp *followOp);	///< Clone p-code ops in an expression
 };
 

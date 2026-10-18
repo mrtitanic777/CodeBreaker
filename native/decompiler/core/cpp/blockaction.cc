@@ -2383,8 +2383,8 @@ int4 ActionReturnSplit::apply(Funcdata &data)
       data.getArch()->printWarning("Block structure is not consistent");
 #endif
   }
-  if (splitedge.empty())
-    joinReturn(data);
+  if (splitedge.empty() && !joinReturn(data))
+    splitJoin(data);
   return 0;
 }
 
@@ -2395,7 +2395,7 @@ int4 ActionReturnSplit::apply(Funcdata &data)
 /// \b maxSplitOps and \b maxSplitCalls), and at most \b maxResplits times per block per function.
 /// One block per pass: the graph has changed.
 /// \param data is the function
-void ActionReturnSplit::joinReturn(Funcdata &data)
+bool ActionReturnSplit::joinReturn(Funcdata &data)
 
 {
   const BlockGraph &graph(data.getBasicBlocks());
@@ -2423,8 +2423,60 @@ void ActionReturnSplit::joinReturn(Funcdata &data)
     data.nodeSplit(r,slot);		// x's own copy of the return block...
     data.spliceBlockBasic(x);		// ...joined to it
     count += 1;
-    return;
+    return true;
   }
+  return false;
+}
+
+/// CodeBreaker: a \e goto that jumps over a small block every other path runs (`if (a) { ...;
+/// goto L; } x = 0; L: ...`): the block is a join -- several ways in, one way out, into the goto's
+/// target. Each way in is given its own copy of it (Funcdata::nodeSplitThrough), one per pass, so
+/// the paths no longer meet before the target and nest as if/else. Only the jump-over shape: one
+/// way into the block is the \e else of a branch whose other side reaches the target directly or
+/// through one block; only small blocks (the split limits) with exactly two ways in, whose values
+/// reach the target only through its MULTIEQUALs; once per block per function. Split more widely,
+/// it copied code without removing gotos (COMMAND.COM).
+/// \param data is the function
+/// \return \b true if a block was split
+bool ActionReturnSplit::jumpedOver(BlockBasic *x,BlockBasic *t)
+
+{
+  for(int4 i=0;i<x->sizeIn();++i) {
+    FlowBlock *c = x->getIn(i);
+    if (c->sizeOut() != 2) continue;
+    FlowBlock *other = c->getOut(c->getOut(0) == x ? 1 : 0);
+    if (other == t) return true;
+    if (other->sizeOut() == 1 && other->getOut(0) == t) return true;
+  }
+  return false;
+}
+
+bool ActionReturnSplit::splitJoin(Funcdata &data)
+
+{
+  const BlockGraph &graph(data.getBasicBlocks());
+  for(int4 i=0;i<graph.getSize();++i) {
+    BlockBasic *t = (BlockBasic *)graph.getBlock(i);
+    if (t->sizeIn() <= 1) continue;
+    vector<FlowBlock *> gotoblocks;
+    gatherReturnGotos(t,gotoblocks);
+    for(int4 j=0;j<gotoblocks.size();++j)
+      gotoblocks[j]->clearMark();
+    if (gotoblocks.empty()) continue;
+    for(int4 j=0;j<t->sizeIn();++j) {
+      BlockBasic *x = (BlockBasic *)t->getIn(j);
+      if (x->sizeIn() != 2 || !jumpedOver(x,t) || !data.canSplitThrough(x)) continue;
+      int4 plain = 0;
+      int4 calls = 0;
+      if (!tally(x,plain,calls,true)) continue;
+      if (x->getStart().isInvalid() || throughCount[x->getStart()] >= 1) continue;
+      throughCount[x->getStart()] += 1;
+      data.nodeSplitThrough(x,x->sizeIn()-1);
+      count += 1;
+      return true;
+    }
+  }
+  return false;
 }
 
 int4 ActionNodeJoin::apply(Funcdata &data)

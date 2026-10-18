@@ -893,6 +893,58 @@ void Funcdata::nodeSplit(BlockBasic *b,int4 inedge)
   structureReset();
 }
 
+/// CodeBreaker: can the block be split though control flows on out of it? It has one way out (not
+/// back into a loop), several ways in (none a loop's back edge, none twice), and everything it
+/// computes is used either inside it or by a MULTIEQUAL of its successor, on its own edge: then a
+/// copy's values reach the successor the same way, through one more MULTIEQUAL input, and nothing
+/// else in the function sees a difference. (Upstream's nodeSplit takes only blocks with no way out.)
+/// \param b is the given basic block
+/// \return \b true if nodeSplitThrough can split it
+bool Funcdata::canSplitThrough(BlockBasic *b) const
+
+{
+  if (b->sizeOut() != 1 || b->sizeIn() <= 1) return false;
+  if (b->isBackEdgeOut(0)) return false;
+  BlockBasic *succ = (BlockBasic *)b->getOut(0);
+  if (succ == b) return false;
+  for(int4 i=0;i<b->sizeIn();++i) {
+    if (b->isBackEdgeIn(i)) return false;
+    for(int4 j=0;j<i;++j)
+      if (b->getIn(j) == b->getIn(i)) return false;
+  }
+  int4 slot = b->getOutRevIndex(0);
+  list<PcodeOp *>::const_iterator iter;
+  for(iter=b->beginOp();iter!=b->endOp();++iter) {
+    const Varnode *out = (*iter)->getOut();
+    if (out == (const Varnode *)0) continue;
+    list<PcodeOp *>::const_iterator diter;
+    for(diter=out->beginDescend();diter!=out->endDescend();++diter) {
+      const PcodeOp *use = *diter;
+      if (use->getParent() == b) continue;
+      if (use->code() != CPUI_MULTIEQUAL || use->getParent() != succ) return false;
+      for(int4 k=0;k<use->numInput();++k)
+	if (use->getIn(k) == out && k != slot) return false;
+    }
+  }
+  return true;
+}
+
+/// CodeBreaker: split a block that has one way out (canSplitThrough): a copy takes over the given
+/// \e in edge and flows to the same successor, whose MULTIEQUALs get the copy's values on the new edge.
+/// \param b is the basic block to be duplicated and split
+/// \param inedge is the index of the input edge to move to the duplicate block
+void Funcdata::nodeSplitThrough(BlockBasic *b,int4 inedge)
+
+{
+  if (!canSplitThrough(b))
+    throw LowlevelError("Cannot split this block");
+  BlockBasic *bprime = nodeSplitBlockEdge(b,inedge);
+  CloneBlockOps cloner(*this);
+  cloner.cloneBlock(b, bprime, inedge);
+  cloner.patchSuccessor(b, bprime);
+  structureReset();
+}
+
 /// \brief Remove a basic block splitting its control-flow into two distinct paths
 ///
 /// This is used by ConditionalExecution to eliminate unnecessary control-flow joins.
@@ -1038,6 +1090,31 @@ void CloneBlockOps::cloneBlock(BlockBasic *b,BlockBasic *bprime,int4 inedge)
     data.opInsertEnd(cloneOp,bprime);
   }
   patchInputs(inedge);
+}
+
+/// CodeBreaker: after a block with one way out is copied (Funcdata::nodeSplitThrough), each
+/// MULTIEQUAL of its successor takes, on the copy's new edge, what it took from the original --
+/// the copy's version of it when the original block computed it.
+/// \param b is the original block
+/// \param bprime is its copy
+void CloneBlockOps::patchSuccessor(BlockBasic *b,BlockBasic *bprime)
+
+{
+  BlockBasic *succ = (BlockBasic *)b->getOut(0);
+  int4 slotB = b->getOutRevIndex(0);
+  int4 slotP = bprime->getOutRevIndex(0);
+  list<PcodeOp *>::iterator iter;
+  for(iter=succ->beginOp();iter!=succ->endOp();++iter) {
+    PcodeOp *op = *iter;
+    if (op->code() != CPUI_MULTIEQUAL) break;
+    Varnode *vn = op->getIn(slotB);
+    if (vn->isWritten()) {
+      map<PcodeOp *,PcodeOp *>::const_iterator citer = origToClone.find(vn->getDef());
+      if (citer != origToClone.end())
+	vn = (*citer).second->getOut();
+    }
+    data.opInsertInput(op,vn,slotP);
+  }
 }
 
 /// P-code in the list is cloned right before the given \b followOp.

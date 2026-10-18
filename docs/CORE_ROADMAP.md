@@ -139,3 +139,6 @@ RISC-V Sail, Intel XED).
   Then (C15) a goto target that flows into the shared return is given its own copy of it and
   joined to it, so it too can be split: 5,701 -> 5,417 (14.9 per 1,000 lines); 136 functions
   changed, no new failures. Since the start of 7D: 6,923 -> 5,417 (-22%).
+  Then (C16) a goto that jumps over a small join block (`if (a) { ...; goto L; } x = 0; L:`):
+  the block is copied for each way in -- the core can now split a block that flows on, patching
+  its successor's MULTIEQUALs -- 5,417 -> 5,361, no module worse. Since the start: -23%.

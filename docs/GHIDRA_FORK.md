@@ -12,7 +12,7 @@ Upstream: https://github.com/NationalSecurityAgency/ghidra (Apache 2.0; `core/LI
 
 | Part | Upstream path | Base | Files |
 |---|---|---|---|
-| `core/cpp` | `Ghidra/Features/Decompiler/src/decompile/cpp` | **master `f0774b72f2` (2026-09-01), version 12.2-DEV** -- cpp tree `c35e0406` | 236: 213 identical, 23 patched (C10-C14 since `31a2694`) |
+| `core/cpp` | `Ghidra/Features/Decompiler/src/decompile/cpp` | **master `f0774b72f2` (2026-09-01), version 12.2-DEV** -- cpp tree `c35e0406` | 236: 213 identical, 23 patched (C10-C16 since `31a2694`) |
 | `core/zlib` | `Ghidra/Features/Decompiler/src/decompile/zlib` | same commit (tree `4dd91ac1`, unchanged since 12.1) | 18 identical |
 | `languages/` | `Ghidra/Processors/{x86,PowerPC}/data/languages` | **release `Ghidra_12.1.3_build`** (the installed Ghidra, see below) | 21: 12 identical, 5 patched or 12.1.3-only, 4 ours/built |
 
@@ -55,6 +55,7 @@ Every change carries a `CodeBreaker:` comment at its place in the source.
 | C13 | `blockaction.hh`, `blockaction.cc` (`ActionReturnSplit::isSplittable`) | A return block that paths reach by `goto` is copied onto each path when it holds up to 8 plain ops (arithmetic, loads, stores; no calls, branches or INDIRECTs), not only when it holds nothing but copies | Item 7D: gotos to a shared exit; each path gets its own copy of the tail (the block has no flow out, so the program is the same). Golden: gotos 6,923 -> 6,449; to a bare `return` 225 -> 26 | item 7D |
 | C14 | `funcdata_block.cc` (`CloneBlockOps::patchInputs`), `funcdata.hh` (friend), `blockaction.hh`, `blockaction.cc` (`ActionReturnSplit`) | Block cloning copies CALL/CALLIND ops (each a clone of its call specification, registered with the function) and INDIRECTs (their cause pointed at the cloned op) -- upstream threw "Can't clone CALLs/INDIRECTs"; ActionReturnSplit then splits return tails with up to 2 calls, and a tail of more than copies at most 4 times per RETURN per function (the analysis can join identical tails back, and re-splitting each time did not end) | Item 7D: gotos to a shared `call(); return;` tail. Golden: gotos 6,449 -> 5,701; 350 functions changed, no new failures | item 7D |
 | C15 | `blockaction.hh`, `blockaction.cc` (`ActionReturnSplit::joinReturn`, `tally`) | A block reached by goto that flows only into a shared return block gets its own copy of that block (`nodeSplit`) joined to it (`spliceBlockBasic`); it then ends in its own RETURN and is split onto the goto paths on the next pass. Only when the joined block is within the split limits; at most 4 times per block per function | Item 7D: gotos to `x = 0;` / `f();` that then fall into the shared `return`. Golden: gotos 5,701 -> 5,417; 136 functions changed, no new failures | item 7D |
+| C16 | `funcdata.hh`, `funcdata_block.cc` (`Funcdata::canSplitThrough`, `nodeSplitThrough`, `CloneBlockOps::patchSuccessor`), `blockaction.hh`, `blockaction.cc` (`ActionReturnSplit::splitJoin`, `jumpedOver`) | A block with one way out can be split (upstream: only blocks with none) when everything it computes is used inside it or by a MULTIEQUAL of its successor on its own edge -- the copy's values reach the successor through one more MULTIEQUAL input. Used for the jump-over shape: a goto skips a small join block (two ways in) that is the else of a branch whose other side reaches the goto's target; split once per block per function | Item 7D: `if (a) { ...; goto L; } x = 0; L:` nests as if/else. Golden: gotos 5,417 -> 5,361, no module worse; 61 functions changed, no new failures. Split more widely it removed more outside COMMAND.COM but added gotos there | item 7D |
 
 ## Local changes to the language files (`languages/`)
 
@@ -81,7 +82,7 @@ master later added Swift and raised the x86 language version 4.8 -> 4.9. `ppc.ld
 ## Rebasing onto a newer upstream
 
 1. `git clone --filter=blob:none --no-checkout https://github.com/NationalSecurityAgency/ghidra.git`
-2. Copy the new upstream `cpp/`, `zlib/` and the language files over ours; re-apply C1-C15 and
+2. Copy the new upstream `cpp/`, `zlib/` and the language files over ours; re-apply C1-C16 and
    L1-L3, L5 (each is small and marked); drop any upstream has fixed itself (C2, C6, C7, C10 first).
 3. Recompile the `.sla` files with `build/bin/sleigh` (the core's compiler, target `sleigh`), then
    `python tools/sleigh_verify.py`: no new disagreement.
