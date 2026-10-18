@@ -5,10 +5,14 @@ folder of Java source (a decompiled game's src/, say); its "functions" are its c
 is transpiled by codebreaker/java (transpile.convert, for no particular platform) and each class's
 C++ is compiled on its own with the host compiler (settings.json `host_cxx`, else g++ on PATH).
 
-Nothing is run. There is no judge for Java yet that runs the original beside its translation, so a
-class that compiles is NOT JUDGED -- it says no more than that -- and one that does not is
-DOES NOT COMPILE, with the compiler's first complaint. A jar is not a module of this kind: decompile
-it first (`codebreaker java decompile`).
+A class that does not compile is DOES NOT COMPILE, with the compiler's first complaint. One that
+compiles is then run beside the original where it can be (codebreaker/java/probe.py): its static
+methods with primitive parameters and results are called on the same inputs in the JVM -- the Java
+source compiled by javac (settings.json `java`; javac beside it, else on PATH) -- and natively, and
+the results compared exactly. All alike: VERIFIED, or VERIFIED (weak) "methods-partial" when only some
+of the class's methods could be run. Any different: UNVERIFIED, with the method, the input and both
+results. Nothing it could run (no such method, no JDK): NOT JUDGED, saying why. A jar is not a module
+of this kind: decompile it first (`codebreaker java decompile`).
 """
 import hashlib
 import os
@@ -17,14 +21,14 @@ import shutil
 import subprocess
 
 KIND = "java"
-REV = 1                      # bump when what a verdict means changes (flags, the judge, the transpile call)
+REV = 3                      # bump when what a verdict means changes (flags, the judge, the transpile call)
 SOURCE_REV = "java-%d" % REV  # who made the candidates: the transpiler, not the native decompiler
 LIBRARY = False              # no runtime-library functions to identify
 PER_FUNCTION = True          # a class's verdict depends on its text, the support headers and the classes it names
 STD = "c++03"
 PLATFORM = None              # no platform: the generic stdafx.h, nothing a host compiler lacks
 FLAGS = ("-std=" + STD, "-fsyntax-only", "-w")
-COMPILES = "compiles (%s %s); not run -- there is no judge yet that runs Java beside its translation"
+COMPILES = "compiles (%s %s); not run: %s"
 _ERROR = re.compile(r"\berror\b")
 
 
@@ -57,6 +61,17 @@ def sha(path):
     return h.hexdigest()
 
 
+def jdk():
+    """(javac, java) -- the JDK the behavioural judge runs the original with -- or ("", "")."""
+    from codebreaker.decompile import jar
+    java = jar.find_java() or ""
+    javac = ""
+    if java:
+        sibling = os.path.join(os.path.dirname(java), "javac" + (".exe" if os.name == "nt" else ""))
+        javac = sibling if os.path.isfile(sibling) else (shutil.which("javac") or "")
+    return (javac, java) if javac else ("", "")
+
+
 def compiler():
     """The host C++ compiler, or "" when there is none."""
     from codebreaker.base import settings
@@ -66,11 +81,13 @@ def compiler():
     return shutil.which("g++") or ""
 
 
-def check(cxx, include_dir, unit):
-    """Compile one translation unit for syntax and types. -> (ok, [error lines])"""
+def check(cxx, include_dir, unit, prefix=None):
+    """Compile one translation unit for syntax and types. -> (ok, [error lines]). `prefix` is a header
+    precompiled by `precompile` -- the support headers every unit starts with -- included first."""
     # -iquote, not -I: the emitted tree has headers named like the C library's (Math.h, Locale.h) and on a
     # case-insensitive disk -I would put them in front of <math.h> and <locale.h>
-    r = subprocess.run([cxx] + list(FLAGS) + ["-iquote", include_dir, unit], stdout=subprocess.DEVNULL,
+    first = ["-include", prefix] if prefix else []
+    r = subprocess.run([cxx] + list(FLAGS) + ["-iquote", include_dir] + first + [unit], stdout=subprocess.DEVNULL,
                        stderr=subprocess.PIPE)
     err = r.stderr.decode("utf-8", "replace")
     lines = [ln for ln in err.splitlines() if _ERROR.search(ln)]
@@ -82,8 +99,29 @@ def profile(module_path=None):
     cxx = compiler()
     if not cxx:
         raise RuntimeError("no C++ compiler to judge Java with (settings.json: host_cxx, or g++ on PATH)")
-    settings = repr(("java", REV, cache.tool(cxx), FLAGS, PLATFORM))
+    from codebreaker.java import probe
+    javac, java = jdk()
+    settings = repr(("java", REV, cache.tool(cxx), FLAGS, PLATFORM, probe.REV,
+                     cache.tool(javac) if javac else "", cache.tool(java) if java else ""))
     return hashlib.sha1(settings.encode()).hexdigest()[:12], settings
+
+
+def precompile(cxx, include_dir, work):
+    """stdafx.h and the Java runtime (JavaRT.h and what it includes) precompiled once for the module: every
+    class unit starts with them, and parsing them was four fifths of each class's compile. -> the header
+    to pass as `prefix`, or None (a compiler that is not GCC's, or the header did not precompile; the units
+    are then compiled without it, as before)."""
+    if "g++" not in os.path.basename(cxx).lower():
+        return None
+    folder = os.path.join(work, "pch")
+    os.makedirs(folder, exist_ok=True)
+    head = os.path.join(folder, "j2x_pch.h")
+    with open(head, "w", encoding="utf-8") as f:
+        f.write('#include "stdafx.h"\n#include "JavaRT.h"\n')
+    flags = [x for x in FLAGS if x != "-fsyntax-only"]
+    r = subprocess.run([cxx] + flags + ["-iquote", include_dir, "-x", "c++-header", head, "-o", head + ".gch"],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return head if r.returncode == 0 and os.path.isfile(head + ".gch") else None
 
 
 class Prepared(object):
@@ -103,7 +141,9 @@ def prepare(module_path, work):
     m = Prepared()
     m.out = out
     m.summary = transpile.convert(src, out, platform=PLATFORM, write_report=False)
-    classes = [os.path.splitext(os.path.basename(p))[0] for p in transpile.discover(src)]
+    m.src = src
+    m.java = dict((os.path.splitext(os.path.basename(p))[0], p) for p in transpile.discover(src))
+    classes = sorted(set(m.java) - set(m.summary.get('markers') or ()))   # not the dropped empty markers
     emitted = set(f for f in os.listdir(out))
     m.texts = {}
     for c in classes:
@@ -137,15 +177,36 @@ def build(m, module_path, work):
             unit = os.path.join(units, c + ".cpp")
             with open(unit, "w", encoding="utf-8") as f:
                 f.write('#include "stdafx.h"\n#include "%s.h"\n' % c)
-        items[c] = (c, unit)
-    return (cxx, m.out), items, {}
+        items[c] = (c, unit, m.java.get(c, ""))
+    javac, java = jdk()
+    staged = ""
+    if javac:
+        from codebreaker.java import probe
+        staged = probe.stage_sources(m.src, os.path.join(work, "javasrc"))
+    return (cxx, m.out, precompile(cxx, m.out, work), staged, javac, java, work), items, {}
 
 
 def judge(context, item):
-    cxx, include_dir = context
-    _name, unit = item
-    ok, errors = check(cxx, include_dir, unit)
-    if ok:
-        return "inconclusive", "not-run", [], COMPILES % (os.path.basename(cxx), " ".join(FLAGS))
-    first = errors[0] if errors else "the compiler rejected it"
-    return "no-compile", first[:200], [], "\n".join(errors[:20])
+    cxx, include_dir, prefix, staged, javac, java, work = context
+    _name, unit, source = item
+    ok, errors = check(cxx, include_dir, unit, prefix)
+    if not ok:
+        first = errors[0] if errors else "the compiler rejected it"
+        return "no-compile", first[:200], [], "\n".join(errors[:20])
+    compiled = (os.path.basename(cxx), " ".join(FLAGS))
+    if not javac or not source:
+        return "inconclusive", "not-run", [], COMPILES % (compiled + ("no JDK (settings.json: java)",))
+    from codebreaker.java import parse, probe
+    try:
+        cls = parse.parse_file(source)
+    except Exception as e:                                   # the transpiler parsed it; say so if this did not
+        return "inconclusive", "not-run", [], COMPILES % (compiled + ("could not read %s: %s" % (source, e),))
+    r = probe.run(staged, include_dir, cls, work, cxx, javac, java)
+    if not r["judged"]:
+        return "inconclusive", "not-run", [], COMPILES % (compiled + (r["why"],))
+    said = "%d of %d methods run beside the JVM on %d inputs" % (r["judged"], r["total"], r["cases"])
+    if r["differs"]:
+        lines = ["%s(%s): Java %s, C++ %s" % (m, ", ".join(a), j, c) for m, a, j, c in r["differs"][:12]]
+        return "divergent", "result-differs", [], said + "; %d differ:\n" % len(r["differs"]) + "\n".join(lines)
+    limits = ["methods-partial"] if r["judged"] < r["total"] else []
+    return "equivalent", "", limits, said + ": every result alike"

@@ -79,7 +79,8 @@ WEAK = {"fault-only": "the two sides only ever fail alike; neither returned norm
         "writes-capped": "too many memory writes to compare them all",
         "stub-callee": "a function it calls was a stand-in, not that function's reconstruction",
         "argc-unknown": "an API call was compared by name only",
-        "calls-capped": "it makes more calls than are compared"}
+        "calls-capped": "it makes more calls than are compared",
+        "methods-partial": "only some of the class's methods could be run beside the original (java)"}
 
 
 # A function recognised as a runtime library's is counted on its own, not as a failure of
