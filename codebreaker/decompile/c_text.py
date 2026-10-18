@@ -545,14 +545,45 @@ def _pieces(text):
                                                              m.group(1), m.group(2)), text)
 
 
-def _joined_arguments(text):
+def _joined_arguments(text, widths=None):
     """`_a1` is the decompiler's spelling of "a1 and the argument after it, as one four-byte
     value" (a far pointer or a long passed as two words). Arguments lie next to each other on
     the stack, lowest first, so that value is the four bytes starting at a1."""
     # read through directly (`*_a1`): it is a far pointer; the decompiler gives no type for what it
-    # points at, and a word is what such a read or write is in nearly every case
-    text = re.sub(r"\*_(a\d+|param_\d+)\b", r"*(*(int2 __far * *)&\1)", text)
+    # points at -- a word in nearly every case, a byte where the original reads one through it
+    # (`widths`, from its instructions: USER's sub_42_038E compares `byte ptr es:[bx]` with FFh,
+    # the mark of an icon's resource number in a dialog item; read as a word it never matched,
+    # an extra 0 went into the template, and every item after the icon was read askew -- the
+    # icon message boxes failed with a divide error)
+    widths = widths or {}
+    text = re.sub(r"\*_(a\d+|param_\d+)\b",
+                  lambda mm: "*(*(%s __far * *)&%s)" % ("char" if widths.get(mm.group(1)) == 1 else "int2", mm.group(1)),
+                  text)
     return re.sub(r"(?<![\w.])_(a\d+|param_\d+)\b", r"(*(uint4 *)&\1)", text)
+
+
+def _far_argument_widths(code, start, end, far_fn):
+    """{a<n>: bytes} -- how wide the original reads through the far pointer it takes as
+    argument n: `les reg, [bp+N]`, then the first `es:[reg...]` through it."""
+    import capstone
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    first = 6 if far_fn else 4                             # (the first argument above the return address)
+    out, held = {}, {}
+    for ins in md.disasm(bytes(code[start:end]), start):
+        mm = re.fullmatch(r"(\w+), ptr \[bp \+ (0x[0-9a-f]+|\d+)\]", ins.op_str) if ins.mnemonic == "les" else None
+        if mm:
+            n = (int(mm.group(2), 0) - first) // 2 + 1
+            if n >= 1:
+                held[mm.group(1)] = "a%d" % n
+            continue
+        for reg, arg in list(held.items()):
+            ref = re.search(r"(byte|word|dword) ptr es:\[%s\b" % reg, ins.op_str)
+            if ref:
+                out.setdefault(arg, {"byte": 1, "word": 2, "dword": 4}[ref.group(1)])
+                del held[reg]
+            elif re.match(r"\s*%s\s*," % reg, ins.op_str) or ins.mnemonic in ("call", "lcall", "ret", "retf"):
+                del held[reg]                               # (the register set again, or gone)
+    return out
 
 
 def _segment_registers(text):
@@ -827,8 +858,10 @@ def _compilable16(module_path, outdir=None):
                 a = int(mm.group(2), 16)
                 sizes[a] = max(sizes.get(a, 0), int(mm.group(3))) if int(mm.group(3)) <= 4 else sizes.get(a, 2)
         text = _LEADING.sub("", _FACT.sub("", raw))          # notes the decompiler put before the function
-        text = _near_calls(_null_is_zero(_segment_registers(_joined_arguments(_pieces(_far(text.strip(), far))))))
         seg, off = d.where[va]
+        widths = _far_argument_widths(d.images[seg], off, ends.get(va, off),
+                                      "far" in text.split("(", 1)[0]) if seg in d.images else {}
+        text = _near_calls(_null_is_zero(_segment_registers(_joined_arguments(_pieces(_far(text.strip(), far)), widths))))
         if seg in d.images:
             text = _far_arguments(text, _far_loads(d.images[seg], off, ends.get(va, off)), "far" not in text.split("{", 1)[0])
         if "return" in far:                                  # the function returns a far pointer
