@@ -57,8 +57,10 @@ def _events(rec, data_len, entry_sp, stack_base, wide_words=None):
 
 
 def _effects(ev):
-    """What a reader would call the function's effects: writes, calls -- reads only as context."""
-    return [e for e in ev if e[1] != "rd"]
+    """What a reader would call the function's effects: writes, calls -- reads only as context.
+    A write to its own arguments is not one: they are its own to use (OpenWatcom keeps locals
+    there where the original's compiler did not), and the gate does not count them either."""
+    return [e for e in ev if e[1] != "rd" and not (e[1] == "wr" and e[2][0] == "arg")]
 
 
 def _show(e):

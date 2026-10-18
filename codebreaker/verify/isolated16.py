@@ -70,19 +70,32 @@ def _fingerprint(r, wide, data_len):
                                                      for i, w in enumerate(ws))))
     for h in r.get("imports_hit") or ():
         calls.append("api " + win16._call(h, [], entry))
-    ds = (r.get("layout") or {}).get("ds_base")
+    lay = r.get("layout") or {}
+    ds = lay.get("ds_base")
+    stack = lay.get("stack_base")
     state, before = {}, {}
+    # (and what it leaves anywhere else but its stack: a caller's buffer reached through a far
+    # pointer, a block it was given -- the same place on both sides, the module's own segments
+    # sitting at the same bases. The data segment alone hid a function filling a RECT wrongly)
+    far, far_before = {}, {}
     for w in r.get("mem_writes") or ():
         a, n, val = w["addr"], w["size"], w["value"] or 0
-        if ds is None or not ds <= a < ds + data_len:
-            continue
+        if ds is not None and ds <= a < ds + data_len:
+            into, at = state, before
+            base = ds
+        elif stack is not None and stack <= a < stack + 0x10000:
+            continue                                         # (its frame, its arguments)
+        else:
+            into, at = far, far_before
+            base = 0
         for i in range(min(n, 4)):
-            k = a - ds + i
-            before.setdefault(k, ((w.get("old") or 0) >> (8 * i)) & 0xFF)
-            state[k] = (val >> (8 * i)) & 0xFF
+            k = a - base + i
+            at.setdefault(k, ((w.get("old") or 0) >> (8 * i)) & 0xFF)
+            into[k] = (val >> (8 * i)) & 0xFF
     state = {k: x for k, x in state.items() if x != before.get(k)}
+    far = {k: x for k, x in far.items() if x != far_before.get(k)}
     regs = r.get("exit_regs") or {}
-    out = {"exit": ex, "calls": tuple(calls), "data": tuple(sorted(state.items()))}
+    out = {"exit": ex, "calls": tuple(calls), "data": tuple(sorted(state.items())), "far": tuple(sorted(far.items()))}
     if ex == "ret":
         out["result"] = (r.get("ret32") if wide else r.get("ret"))
         if r.get("unsure"):                                  # a callee removing it is not known how many
@@ -98,13 +111,14 @@ def _fingerprint(r, wide, data_len):
 def _differ(a, b):
     """The first way two fingerprints differ, in words, or None."""
     for k, what in (("exit", "ends"), ("calls", "calls"), ("data", "leaves in the data segment"),
+                    ("far", "leaves through a far pointer"),
                     ("result", "returns"), ("pop", "removes argument bytes"), ("kept", "keeps SI, DI, DS")):
         if a.get(k) != b.get(k):
             x, y = a.get(k), b.get(k)
             if k == "calls":
                 i = next((i for i, (p, q) in enumerate(zip(x, y)) if p != q), min(len(x), len(y)))
                 x, y = list(x[i:i + 2]), list(y[i:i + 2])
-            elif k == "data":
+            elif k in ("data", "far"):
                 dx, dy = dict(x), dict(y)
                 at = sorted({o for o in set(dx) | set(dy) if dx.get(o) != dy.get(o)})[:4]
                 x = ["%04x=%s" % (o, dx.get(o)) for o in at]

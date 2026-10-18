@@ -1352,10 +1352,15 @@ def _stack_segment_stores(text, code, start, end):
             if not ao > place >= ao - count * elem:
                 continue
             at = ao - place
-            store = "(*(int2 *)((uint1 *)%s + 0x%x)) = %s;" % (arr, at, ss)
+            # (a buffer kept in the frame's layout is a field of codebreaker_frame by now: found
+            # by its bare name the store was never put in -- USER's eleven RegisterClass callers
+            # in segment 3 gave the class name's far pointer no segment)
+            ref = "codebreaker_frame." + arr if "codebreaker_frame." + arr in text else arr
+            store = "(*(int2 *)((uint1 *)%s + 0x%x)) = %s;" % (ref, at, ss)
             if store in text:
                 break
-            call = re.search(r"(?m)^([ \t]+)(?=[^\n;]*\w\((?:[^\n;]*[(,])?\s*(?:\(\w+\s*\*?\))?\s*&?%s\b)" % re.escape(arr), text)
+            call = re.search(r"(?m)^([ \t]+)(?=[^\n;]*\w\((?:[^\n;]*[(,])?\s*(?:\(\w+\s*\*?\))?\s*&?(?:codebreaker_frame\.)?%s\b)"
+                             % re.escape(arr), text)
             if call:
                 text = text[:call.start()] + call.group(1) + store + "\n" + text[call.start():]
             break
@@ -1417,10 +1422,13 @@ def _far_locals(text):
         name = mm.group(2)
         if not re.search(r"(?<![\w)\]])\*%s\b" % name, text):
             continue
-        sets = re.findall(r"\b%s = \(([\w ]+?) \*\)CONCAT22\(" % name, text)
+        sets = re.findall(r"\b%s = \(([\w ]+?) \*\)" % name, text)
         to = sets[0] if sets else "xunknown1"
         text = text.replace(mm.group(0), "%s%s __far *%s;" % (mm.group(1), to, name), 1)
-        text = re.sub(r"\b(%s = )\(([\w ]+?) \*\)CONCAT22\(" % name, r"\1(\2 __far *)CONCAT22(", text)
+        # (whatever it is set from: a far pointer a call returns -- `(T *)GlobalLock(h)` -- cast
+        # near first kept the offset alone and C gave it DS: USER's sub_43_032F copied from its
+        # own data segment instead of the block GlobalLock locked)
+        text = re.sub(r"\b(%s = )\(([\w ]+?) \*\)" % name, r"\1(\2 __far *)", text)
     # `_p` beside `p`: the decompiler's name for the whole four bytes whose low half is the near
     # pointer p -- a far pointer, and p its offset
     for mm in list(re.finditer(r"(?m)^([ \t]+)([\w ]+?) \*(\w+);[ \t]*$", text)):

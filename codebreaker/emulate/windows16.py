@@ -312,7 +312,16 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
                  for k in range(pop // 2)]
         rec["calls_out"].append({"name": name, "args": words, "sp": spn, "n": rec["insn_count"],
                                  "ret_ip": ip})
-        h = int(hashlib.sha1(("%s%r" % (name, words)).encode()).hexdigest()[:8], 16)
+        # (the made-up result is made from the words as they compare between builds: a place in
+        # the stack, or the stack's or data's selector, legitimately differs -- USER's eleven
+        # RegisterClass callers kept a result made from their frame's address, and "differed")
+        ss_now, ds_now = uc.reg_read(UC_X86_REG_SS), uc.reg_read(UC_X86_REG_DS)
+        same = []
+        for i, w in enumerate(words):
+            nxt = words[i + 1] if i + 1 < len(words) else None
+            same.append("SS" if w == ss_now else "DS" if w == ds_now
+                        else "stack" if nxt == ss_now or 0xE000 <= w < 0xFFF0 else w)
+        h = int(hashlib.sha1(("%s%r" % (name, same)).encode()).hexdigest()[:8], 16)
         uc.reg_write(UC_X86_REG_EAX, h & 0xFFFF)
         uc.reg_write(UC_X86_REG_EDX, (h >> 16) & 0xFFFF)
         uc.reg_write(UC_X86_REG_ESP, (first + pop) & 0xFFFF)
