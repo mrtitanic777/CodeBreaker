@@ -192,6 +192,7 @@ def definitions(lines, code):
         static = bool(re.match(r"static\b", ret))
         ret = re.sub(r"^static\s*", "", ret).strip()
         fn = Fn(m.group("name"), ret, [(p, types.get(p, "int " + p)) for p in params], static, i + 1)
+        fn.implicit = {p for p in params if p not in types}   # (parameters it never declared: ints by default)
         k, d = j, 0                                         # (the body: to its closing brace)
         while k < len(lines):
             d += code[k].count("{") - code[k].count("}")
@@ -307,6 +308,78 @@ ALLOC = re.compile(r"\(\s*((?:struct|union)\s+\w+)\s*\*\s*\)\s*(\w*alloc\w*)\s*\
 MEMFNS = ("memset", "memcpy", "memmove", "memcmp", "movbytes", "fillb", "far_memcpy", "_fmemcpy", "_fmemset")
 
 
+LOCAL_DECL = r"(?m)^(\s*(?:register\s+)?)(u?int16_t|int|unsigned)\s+((?:\w+\s*,\s*)*)%s\s*((?:,\s*\w+\s*)*);"
+
+
+def used_as_number(code, var):
+    """whether a variable is computed with as a number somewhere (n /= 2, n * v, n << 1, n & 7, n % k)"""
+    v = re.escape(var)
+    return bool(re.search(r"\b%s\s*(?:[*/%%^|]=|<<=|>>=|[/%%]|<<|>>|\*(?!\s*\))|&(?!&)|\|(?!\|))" % v, code) or
+                re.search(r"(?:[\w)\]]\s*(?:[*/%%]|<<|>>)|[*/%%]=|<<=|>>=)\s*%s\b" % v, code) or
+                re.search(r"\(?\s*\b%s\s*(?:[+\-]=?[^;)]*)?\)?\s*(?:[<>]=?)\s*-?\s*(?:[1-9]|0\b)" % v, code) or
+                re.search(r"\b%s\s*[+\-]\s*\w+\s*\)\s*[&|]" % v, code) or   # (compared with a number; (off + n) & ~n)
+                re.search(r"\[\s*(?:\+\+|--)?\s*%s\s*(?:\+\+|--)?\s*\]" % v, code))   # (an index)
+
+
+def enclosing(text, ln):
+    """(name, first line, '{' line, last line) of the function line ln (1-based) is in - None"""
+    code = blank(text)
+    for d in definitions_any(text.split("\n"), code.split("\n")):
+        if d[1] <= ln - 1 <= d[3]:
+            return d
+    for f, s, j, k in definitions(text.split("\n"), code.split("\n")):   # (an old-style one, kept so)
+        if s <= ln - 1 <= k:
+            return (f.name, s, j, k)
+    return None
+
+
+def declares_local(text, fn, var):
+    """whether a function (definitions_any's) declares var itself: a parameter or a local"""
+    lines = blank(text).split("\n")[fn[1]:fn[3] + 1]
+    return bool(re.search(r"\b(?:u?int16_t|int|unsigned|intptr_t)\s+(?:[^;(){}]*,\s*)?%s\b\s*[;,)=]" % re.escape(var),
+                          "\n".join(lines)))
+
+
+def apply_local_retypes(text, fname, retypes):
+    """the variables of one function that hold pointers, declared pointers there alone"""
+    mine = [(fn, var, t) for (f, fn, var), t in retypes.items() if f == fname]
+    if not mine:
+        return text
+    lines = text.split("\n")
+    code = blank(text).split("\n")
+    defs = definitions_any(lines, code) + [(f.name, s, j, k) for f, s, j, k in definitions(lines, code)]
+    for d in sorted(defs, key=lambda d: -d[1]):          # (new style and old)
+        for fn, var, t in mine:
+            if fn != d[0]:
+                continue
+            body = "\n".join(lines[d[1]:d[3] + 1])
+            v = re.escape(var)
+            body = re.sub(r"(?m)^(\s*(?:register\s+)?)(?:u?int16_t|int|unsigned)\s+%s\s*;" % v,
+                          r"\g<1>%s%s%s;" % (t, "" if t.endswith("*") else " ", var), body)
+            body = re.sub(LOCAL_DECL % v, split_decl(var, t), body)
+            body = re.sub(r"\((?:u?int16_t|int|unsigned)\s+%s\s*([,)])" % v,       # (a parameter of the prototype)
+                          lambda m: "(%s%s%s%s" % (t, "" if t.endswith("*") else " ", var, m.group(1)), body)
+            body = re.sub(r",\s*(?:u?int16_t|int|unsigned)\s+%s\s*([,)])" % v,
+                          lambda m: ", %s%s%s%s" % (t, "" if t.endswith("*") else " ", var, m.group(1)), body)
+            lines[d[1]:d[3] + 1] = body.split("\n")
+    return "\n".join(lines)
+
+
+class split_decl:
+    """int16_t a, tag, b;  ->  int16_t a, b; struct tag *tag;  (a re.sub replacement: one name of a list retyped)"""
+    def __init__(self, name, typ):
+        self.name, self.typ = name, typ
+
+    def __eq__(self, other):
+        return isinstance(other, split_decl) and (self.name, self.typ) == (other.name, other.typ)
+
+    def __call__(self, m):
+        rest = [x.strip() for x in (m.group(3) + m.group(4)).replace(",", " ").split() if x.strip()]
+        lead = m.group(1)
+        out = ("%s%s %s; " % (lead, m.group(2), ", ".join(rest))) if rest else lead
+        return out + "%s%s%s;" % (self.typ, "" if self.typ.endswith("*") else " ", self.name)
+
+
 def mem_sizes(text, olds, elems, notes, fname):
     """memset(g_seg_assume, 0, 24): the bytes of a global array given as the number it had - sizeof it now"""
     code = blank(text)
@@ -337,6 +410,49 @@ def mem_sizes(text, olds, elems, notes, fname):
     for a, b, new in sorted(edits, reverse=True):
         text = text[:a] + new + text[b:]
     return text
+
+
+def header_offsets(text, old, notes, fname):
+    """p = alloc(n + 8); p[i + 8] = c; b = (struct blk *)p - a structure with its bytes after a head (a trailing
+    array): the head's old length as the number it was - offsetof(struct blk, its array) now"""
+    lines, code = text.split("\n"), blank(text).split("\n")
+    for name, s_, j_, k_ in definitions_any(lines, code):
+        body = "\n".join(code[s_:k_ + 1])
+        heads = [(m.group(1), m.group(2)) for m in
+                 re.finditer(r"\(\s*(struct\s+\w+)\s*\*\s*\)\s*(\w+)\b(?!\s*(?:\(|->|\[))", body)]
+        for m in re.finditer(r"\b(struct\s+\w+)\s*\*\s*(\w+)\s*[;,]", body):   # (b = p, b a structure's pointer)
+            for a_ in re.finditer(r"\b%s\s*=\s*(\w+)\s*;" % re.escape(m.group(2)), body):
+                heads.append((m.group(1), a_.group(1)))
+        for st_, v in heads:
+            st_ = re.sub(r"\s+", " ", st_)
+            lay = old.get(st_)
+            if not lay:
+                continue
+            mems = [(x[0], k) for k, x in lay.items() if k != "@size" and "[" in str(x[3])]
+            if not mems:
+                continue
+            off, mem = max(mems)
+            if off < 4 or off < max(x[0] for k, x in lay.items() if k != "@size"):
+                continue                                    # (its last member, the bytes after the head)
+            n_ = r"(?<![\w.])%d(?![\w.])" % off
+            what = "offsetof(%s, %s)" % (st_, mem)
+            pats = [r"\b%s\s*\[[^\]\n]*" % re.escape(v), r"\b%s\s*=\s*(?:\([^()]*\)\s*)?\w+\s*\([^;\n]*" % re.escape(v),
+                    r"\b%s\s*\+\s*" % re.escape(v)]
+            for x in range(s_, k_ + 1):
+                c, l = code[x], lines[x]
+                for pt in pats:
+                    for mm in reversed(list(re.finditer(pt + n_, c))):
+                        e = mm.end()
+                        b_ = e - len(str(off))
+                        if c[b_:e] == str(off):
+                            l = l[:b_] + what + l[e:]
+                            c = c[:b_] + what + c[e:]
+                if l != lines[x]:
+                    lines[x] = l
+                    code[x] = c
+                    notes["a structure's head given as the bytes it was (its array after it): offsetof"].append(
+                        "%s:%d (%s)" % (fname, x + 1, what))
+    return "\n".join(lines)
 
 
 def struct_sizes(text, old, notes, fname):
@@ -473,6 +589,7 @@ class Port:
         files = dict(files)
         self.member_fixes = []
         self.reach = {}                                     # (tables a run read past their ends: sanitize.py)
+        self.local_retypes = {}                             # ((file, function, variable): the pointer it holds)
         for key, typ in (members or {}).items():
             st, mem = key.split(".", 1)
             for n, t in files.items():
@@ -507,6 +624,14 @@ class Port:
                 self.notes["an empty stand-in of a function defined elsewhere (for the byte-exact build): "
                            "declared instead"].append(n)
         self.union_notes = collections.defaultdict(list)
+        internals = set(profile.get("runtime_internals", []))
+        for n, t in list(self.files.items()):               # (the old library's own structures, copied into the
+            new = re.sub(r"(?m)^[ \t]*struct\s+(\w+)\s*\{[^{}]*\}\s*;[^\n]*\n?",   # program's header - FILE's:
+                         lambda m: "" if m.group(1) in internals else m.group(0), t)   # today's library's)
+            if new != t:
+                self.files[n] = new
+                self.union_notes["the old library's own structure, copied into the program: today's library's "
+                                 "instead"].append(n)
         for n in sorted(self.files):                        # (unions whose views meet at the old places: so still)
             self.files[n] = union_views(self.files[n], self.union_notes, n)
         casts = set()                                       # (struct rfld *)&sym->u.rfl: a structure of its own laid
@@ -584,6 +709,7 @@ class Port:
                     self.notes_init[n] += len(rx.findall(blank(t)))
         self.fns = {}
         self.data = []
+        self.line_origin = {}                               # ({file: {line number: (its text before the rules, n)}})
         self.line_fixes = {}                                # ((file, a line's text): the line mended) - the loop's
         self.mended = collections.defaultdict(list)         #  (and its notes), kept from one round to the next
         self.renames = dict(profile.get("platform", {}).get("renames", {}))   # (a function whose name the C
@@ -695,7 +821,12 @@ class Port:
         for k_, v_ in reach.items():
             uses[k_] = max(uses[k_], v_)
         defn = re.compile(r"^(?P<base>(?:unsigned\s+|signed\s+)?(?:char|short|int|long|unsigned))\s+(?P<name>\w+)"
-                          r"\s*(?P<arr>\[\s*\d*\s*\])?\s*=\s*(?P<val>\{[^;{}]*\}|[^;{}]*?)\s*;(?P<rest>.*)$")
+                          r"\s*(?P<arr>\[\s*\d*\s*\])?\s*(?:=\s*(?P<val>\{[^;{}]*\}|[^;{}]*?)\s*)?;(?P<rest>.*)$")
+        def elems(m_):                                      # (an array without initialiser: its size in zeros)
+            if m_.group("val") is not None:
+                return None
+            sz = re.search(r"\d+", m_.group("arr") or "")
+            return ["0"] * (int(sz.group(0)) if sz else 1) if (sz or not m_.group("arr")) else None
         for n in sorted(self.files):
             if not n.endswith(".c"):
                 continue
@@ -704,7 +835,9 @@ class Port:
             while i < len(lines):
                 m = defn.match(lines[i])
                 vals = None
-                if m and m.group("arr"):
+                if m and m.group("arr") and m.group("val") is None:
+                    vals = elems(m)
+                elif m and m.group("arr"):
                     vals = [v.strip() for v in m.group("val").strip("{} ").split(",") if v.strip()]
                     if m.group("val").lstrip().startswith('"'):   # (a string: its bytes, and the 0 after)
                         vals = None
@@ -724,8 +857,19 @@ class Port:
                     m2 = defn.match(lines[j])
                     if not m2 or m2.group("base") != base:
                         break
-                    v2 = [v.strip() for v in m2.group("val").strip("{} ").split(",") if v.strip()] \
-                        if m2.group("arr") else [m2.group("val").strip()]
+                    if m2.group("val") is None:
+                        v2 = elems(m2)
+                        if v2 is None:
+                            break
+                    elif m2.group("arr") and m2.group("val").lstrip().startswith('"'):
+                        lit = m2.group("val").strip()               # (a string among them: its bytes as elements)
+                        bs = list(c_string_bytes(lit))
+                        size = re.search(r"\d+", m2.group("arr"))
+                        bs += [0] * ((int(size.group(0)) if size else len(bs) + 1) - len(bs))
+                        v2 = [str(x) for x in bs]
+                    else:
+                        v2 = [v.strip() for v in m2.group("val").strip("{} ").split(",") if v.strip()] \
+                            if m2.group("arr") else [m2.group("val").strip()]
                     parts.append((m2.group("name"), len(vals), len(v2), bool(m2.group("arr"))))
                     vals += v2
                     j += 1
@@ -735,8 +879,12 @@ class Port:
                     i += 1
                     continue
                 body = ", ".join(vals)
-                lines[i:j] = ["%s %s[%d] = { %s };\t/* (one table: %s) */" % (base, name, len(vals), body,
-                                                                         ", ".join(p[0] for p in parts))]
+                if any(v != "0" for v in vals):
+                    lines[i:j] = ["%s %s[%d] = { %s };\t/* (one table: %s) */" % (base, name, len(vals), body,
+                                                                             ", ".join(p[0] for p in parts))]
+                else:                                       # (none given a value: one block of them)
+                    lines[i:j] = ["%s %s[%d];\t/* (one table: %s) */" % (base, name, len(vals),
+                                                                    ", ".join(p[0] for p in parts))]
                 for p in parts[1:]:
                     self.aliases[p[0]] = (("(&%s[%d])" % (name, p[1])) if p[3] else "%s[%d]" % (name, p[1]),
                                           "%s %s[%d];" % (base, name, len(vals)))
@@ -834,8 +982,10 @@ class Port:
         for n, t in out.items():
             code = blank(t)
             t, code = widths(t, code, self.notes, n, self.int16)
+            t = word_unions(t, self.notes, n, set(getattr(self, "old_records", ())))
             t = formats(t, code, self.notes, n, self.int16, self.profile.get("printf_hex_upper", False))
             t = struct_sizes(t, self.old_layouts(), self.notes, n)
+            t = header_offsets(t, self.old_layouts(), self.notes, n)
             t = mem_sizes(t, self.old_var_sizes(), self.old_elem_sizes(), self.notes, n)
             out[n] = t
         for n, t in out.items():                            # (the program's allocators: the old sizes they keep
@@ -862,10 +1012,52 @@ class Port:
                                    "size now"].append("%s (%s: %d)" % (n, fn_, old_n))
             out[n] = t
         frames(self, out)
+        self.loose_calls(out)
         for n, t in out.items():
             out[n] = self.finish(n, t)
         self.out = out
         return out
+
+    def loose_calls(self, out):
+        """the calls of an old-style definition kept (its calls unchecked, its integer parameters intptr_t): each
+        integer given it made an intptr_t - unprototyped, an int 0 leaves the upper half of the 64-bit place what
+        it was"""
+        loose = {}
+        for f in self.fns.values():
+            if f.loose:
+                loose[self.renames.get(f.name, f.name)] = [
+                    bool(re.fullmatch(r"(?:register\s+)?(?:unsigned\s+int|unsigned|short|int|signed|intptr_t)\s+\w+",
+                                      t.strip())) for n_, t in f.params]
+        if not loose:
+            return
+        pat = re.compile(r"\b(%s)\s*\(" % "|".join(map(re.escape, sorted(loose))))
+        for n, t in out.items():
+            if not n.endswith(".c"):
+                continue
+            lines, code = t.split("\n"), blank(t).split("\n")
+            changed = False
+            for i, c in enumerate(code):
+                if not pat.search(c) or re.match(r"^\s*(?:static\s+)?[\w\s*]*\b\w+\s*\([\w\s,]*\)\s*$", c):
+                    continue                                # (the definition's own head)
+                l = lines[i]
+                for m in reversed(list(pat.finditer(c))):
+                    spans = call_args(l[m.start():], m.group(1))
+                    if not spans:
+                        continue
+                    ints = loose[m.group(1)]
+                    for k, (a_, b_) in reversed(list(enumerate(spans))):
+                        arg = l[m.start() + a_:m.start() + b_]
+                        if k >= len(ints) or not ints[k] or not arg.strip() or arg.strip().startswith("(intptr_t)"):
+                            continue
+                        lead = arg[:len(arg) - len(arg.lstrip())]
+                        l = l[:m.start() + a_] + lead + "(intptr_t)(%s)" % arg.strip() + l[m.start() + b_:]
+                        changed = True
+                if l != lines[i]:
+                    lines[i] = l
+                    self.notes["an integer given to an old-style definition kept (unchecked calls): made its "
+                               "intptr_t"].append("%s:%d" % (n, i + 1))
+            if changed:
+                out[n] = "\n".join(lines)
 
     def old_elem_sizes(self):
         """{global array: the bytes of one of its elements in the original} (its far pointers 4, near ones 2)"""
@@ -942,7 +1134,15 @@ class Port:
             text = sub_code(text, rx, lambda m: self.renames[m.group(1)])
         for rx, new in self.decl_rules:
             text = re.sub(rx, new, text)
-        return "\n".join(self.line_fixes.get((fname, l), l) for l in text.split("\n"))
+        text = apply_local_retypes(text, fname, self.local_retypes)
+        out, seen, origin = [], collections.Counter(), {}
+        for i, l in enumerate(text.split("\n")):         # (a rule for the n-th line of that text: two alike
+            k = seen[l]                                     #  lines in one file are two places)
+            seen[l] += 1
+            out.append(self.line_fixes.get((fname, l, k), self.line_fixes.get((fname, l), l)))
+            origin[i + 1] = (l, k)
+        self.line_origin[fname] = origin
+        return "\n".join(out)
 
     def _preprocessor(self, text, fname):
         """#include of the old library's headers -> port.h; the program's own macros for what the C library
@@ -973,6 +1173,7 @@ class Port:
         for f, s, j, k in reversed(defs):
             g = self.fns.get(f.name, f)
             g.params, g.static = list(f.params), f.static
+            g.implicit = getattr(f, "implicit", set())
             g.ret = g.ret if (getattr(g, "keep_int", False) or getattr(g, "ret_set", False)) and g.ret else f.ret
             for (fn_, pk), t in self.param_types.items():   # (what the loop found the parameters to be)
                 if fn_ == f.name and pk < len(g.params):
@@ -1005,7 +1206,7 @@ class Port:
                         "end) */\n" % last[1] + lines[k]
                     self.notes["function giving a value that fell off its end (the value in the register): its "
                                "last value returned"].append("%s:%d (%s)" % (fname, k + 1, f.name))
-            if valued and bare:
+            if bare and (valued or not g.void) and (g.ret or "int").strip() != "void":   # (or an int to its callers)
                 g.bare = len(bare)
                 for x in range(j, k + 1):
                     if re.search(r"\breturn\s*;", code[x]):
@@ -1013,7 +1214,9 @@ class Port:
                         self.notes["bare return in a function that gives a value elsewhere: return 0 (what the "
                                    "register held is not known)"].append("%s:%d" % (fname, x + 1))
             if g.loose:                                     # (the old-style definition kept - its calls unchecked:
-                if g.ret:                                   #  what it gives as its callers say, and its integers
+                if not g.ret:                               #  what it gives as its callers say - an int when it
+                    g.ret = "void" if g.void else "int"     #  never said - and its integers
+                if g.ret:
                     head = code[s] if s == j - 1 - (j - s - 1) else code[s]   # whole enough for a pointer)
                     nm = re.search(r"\b%s\s*\(" % re.escape(g.name), lines[s])
                     if nm:
@@ -1459,7 +1662,8 @@ def call_args(line, fn):
 def truthy(body, name):
     """whether a parameter is only ever tested (if (p), !p, p && q): a pointer given for it may be p != 0"""
     uses = list(re.finditer(r"\b%s\b" % re.escape(name), body))
-    return bool(uses) and all(re.search(r"(?:\(|!|&&|\|\|)\s*$", body[:u.start()]) and
+    return bool(uses) and all(re.search(r"(?:(?:^|[^\w\s\])]|\b(?:if|while|for|return))\s*\(|!|&&|\|\|)\s*$",
+                                        body[:u.start()]) and   # (a call's argument is no test)
                               re.match(r"\s*(?:\)|&&|\|\|)", body[u.end():]) for u in uses)
 
 
@@ -1493,6 +1697,12 @@ SAYS = {
     "retptr": [r"returning '(?P<frm>[^']*\*)'(?: \{aka '[^']*'\})? from a function with return type "
                r"'(?P<to>[^']*)'(?: \{aka '[^']*'\})? makes integer from pointer",
                r"incompatible pointer to integer conversion returning '(?P<frm>[^']*\*)'"],
+    "retint": [r"returning '(?P<frm>[^'*]*)'(?: \{aka '[^']*'\})? from a function with return type "
+               r"'(?P<to>[^']*\*)'(?: \{aka '[^']*'\})? makes pointer from integer",
+               r"incompatible integer to pointer conversion returning '(?P<frm>[^'*]*)'"],
+    "retmix": [r"returning '(?P<frm>[^']*\*)'(?: \{aka '[^']*'\})? from a function with incompatible return type "
+               r"'(?P<to>[^']*\*)'",
+               r"incompatible pointer types returning '(?P<frm>[^']*\*)'"],
     "callptr": [r"(?:assignment to|initialization of) '(?P<to>[^']*\*)'(?: \{aka '[^']*'\})? from "
                 r"'(?P<frm>[^'*]*)'(?: \{aka '[^']*'\})? makes pointer from integer",
                 r"incompatible integer to pointer conversion (?:assigning to|initializing) '(?P<to>[^']*\*)'"],
@@ -1506,6 +1716,9 @@ SAYS = {
     "void": [r"void value not ignored", r"requires expression of scalar type \('void' invalid\)",
              r"incompatible type 'void'", r"illegal use of type 'void'", r"'void' illegal", r"void expression",
              r"controlling expression has type 'void'"],
+    "seqpt": [r"operation on '(?P<v>\w+)' may be undefined", r"unsequenced modification and access to '(?P<v>\w+)'"],
+    "intcast": [r"cast to pointer from integer of different size", r"cast to '[^']*' from smaller integer type",
+                r"conversion from '[^']*' to '[^']*' of greater size"],
     "arity": [r"too (?:many|few) arguments to function (?:'(?P<fn>\w+)'|call)", r"too (?:many|few) actual parameters"],
 }
 
@@ -1547,8 +1760,67 @@ def ctype(t, tags=()):
     return re.sub(r"\s+", " ", t).strip()
 
 
+def word_unions(t, notes, fname, olds=()):
+    """union { int16_t val; char *name; } - a word that was a number or a pointer (16 bits both): the number as
+    wide as the pointer, so either is read whole through either"""
+    def one(m):
+        body = m.group(2)
+        decls = [d.strip() for d in body.split(";") if d.strip()]
+        ptrs = [d for d in decls if "*" in d]
+        ints = [d for d in decls if re.fullmatch(r"(?:u?int16_t|short|int|unsigned)\s+\w+", d)]
+        if not ptrs or len(ints) != 1 or len(ints) + len(ptrs) != len(decls) or \
+                (m.group(1) or "").strip() in olds:
+            return m.group(0)
+        nm = ints[0].split()[-1]
+        notes["a union of a number and pointers (one 16-bit word then): the number intptr_t"].append(
+            "%s (%s)" % (fname, nm))
+        return m.group(0).replace(ints[0], "intptr_t " + nm, 1)
+    return re.sub(r"\bunion(\s+\w+)?\s*\{([^{}]*)\}", one, t)
+
+
+def passed_on(port, out):
+    """an integer parameter a function gives on, as it is, to a parameter that holds a pointer whole (intptr_t):
+    it carried the pointer too (16 bits both) - intptr_t; -> whether any was"""
+    wide = {n: {k for k, (pn, pt) in enumerate(f.params) if re.fullmatch(r"intptr_t\s+\w+", pt.strip())}
+            for n, f in port.fns.items()}
+    wide = {n: ks for n, ks in wide.items() if ks}
+    if not wide:
+        return False
+    pat = re.compile(r"\b(%s)\s*\(" % "|".join(map(re.escape, sorted(wide))))
+    changed = False
+    for f, t in out.items():
+        if not f.endswith(".c"):
+            continue
+        lines, code = t.split("\n"), blank(t).split("\n")
+        for name, s_, j_, k_ in definitions_any(lines, code):
+            me = port.fns.get(name)
+            if not me:
+                continue
+            mine = {pn: i for i, (pn, pt) in enumerate(me.params)
+                    if re.fullmatch(r"(?:register\s+)?(?:u?int16_t|int|unsigned|short)\s+%s" % re.escape(pn), pt.strip())}
+            if not mine:
+                continue
+            for x in range(j_, k_ + 1):
+                for m in pat.finditer(code[x]):
+                    spans = call_args(code[x][m.start():], m.group(1)) or []
+                    for k, (a, b) in enumerate(spans):
+                        arg = code[x][m.start() + a:m.start() + b].strip()
+                        if k in wide[m.group(1)] and arg in mine:
+                            i = mine.pop(arg)
+                            me.params[i] = (arg, "intptr_t %s" % arg)
+                            port.param_types[(me.name, i)] = me.params[i][1]
+                            port.mended["integer parameter given on to one that holds a pointer (it carried one): "
+                                        "intptr_t"].append("%s:%d (%s, %s)" % (f, x + 1, me.name, arg))
+                            changed = True
+    return changed
+
+
 def mend(port, out, diags):
     """one round of mending from the compiler's complaints; -> whether anything was changed"""
+    if passed_on(port, out):
+        changed_ = True
+    else:
+        changed_ = False
     notes = port.mended
     mem = members(list(out.values()))
     tags = {s.split()[1] for v in mem.values() for s in v}
@@ -1565,6 +1837,8 @@ def mend(port, out, diags):
         l = orig = lines[ln - 1]
         for d in ds:
             kind, m = said(d["text"])
+            if not kind and "incompatible" in d["text"]:
+                kind, m = "other", re.match("", "")         # (only the a = b = 0 below may mend it)
             if not kind:
                 continue
             col = max(d.get("col", 1) - 1, 0)
@@ -1593,7 +1867,7 @@ def mend(port, out, diags):
                 want = next((re.search(r"expected '(?P<to>[^']*)'(?: \{aka '[^']*'\})? but argument is of type", x) for x in
                              d.get("notes", []) if "expected '" in x), None)
                 if not fn and at and want:                  # (a parameter of the C library's: what it takes)
-                    t = ctype(want.group("to"), tags)
+                    t = re.sub(r"\bconst\s+", "", ctype(want.group("to"), tags))   # (the variable is written too)
                     if re.search(r"\b__\w+", t):                # (the library's own name for it: what it is)
                         aka = next((re.search(r"expected '[^']*' \{aka '([^']*)'\}", x) for x in d.get("notes", [])
                                     if "aka" in x), None)
@@ -1604,7 +1878,12 @@ def mend(port, out, diags):
                     v = re.fullmatch(r"(?:[\w\]\[]+(?:->|\.))*(\w+)", arg)
                     if v and (v.group(1) in port.fns or v.group(1) in port.asm_protos or "(*)" in t):
                         v = None                            # (a function, or a function's pointer: a cast)
-                    if v and "*" in t and not re.match(CAST, arg):
+                    fn_here = enclosing(out.get(f, ""), ln)
+                    if v and (not any(re.search(r"\*\s*%s\s*[;,)=\[]" % re.escape(v.group(1)), blank(t_))
+                                      for t_ in out.values()) or
+                              (fn_here and declares_local(out[f], fn_here, v.group(1)))):
+                        v = None                            # (an int that held a pointer, there: a cast)
+                    if v and "*" in t and not re.match(CAST, arg) and not re.match(r"\s*(?:const\s+)?void\s*\*", t):
                         # (a variable or member the recovered source typed loosely - the bytes did not say: it is
                         # what the library takes, so it is declared one)
                         name = v.group(1)
@@ -1628,11 +1907,65 @@ def mend(port, out, diags):
                 n, decl = fn.params[at[1]]
                 a, b = at[2]
                 arg = l[a:b].strip()
-                if re.match(CAST, arg) or arg.endswith("!= 0"):
+                if arg.startswith("(intptr_t)") or arg.endswith("!= 0"):
                     continue                                # (mended already)
                 how = g("how") or ""
+                derefs = re.search(r"\*\s*\+*\s*%s\b|\b%s\s*(?:\+\+|--)?\s*(?:\[|->)" % (re.escape(n), re.escape(n)),
+                                   getattr(fn, "body", ""))
+                if "incompatible pointer" in how and (fn.name, at[1]) in getattr(port, "given_params", set()) and \
+                        "void *" not in decl and not derefs:   # (callers give it pointers of more than one type, as
+                    k = at[1]                               #  the int it was took them all: any pointer)
+                    fn.params[k] = (n, "void *%s" % n)
+                    port.param_types[(fn.name, k)] = fn.params[k][1]
+                    notes["parameter the old definition left an int, given pointers of several types: void *"].append(
+                        "%s:%d (%s, %s)" % (f, ln, fn.name, n))
+                    changed = True
+                    continue
+                given_t = g("frm") or next((x_.group("t") for x_ in (re.search(
+                    r"but argument is of type '(?P<t>[^']*)'", y) for y in d.get("notes", [])) if x_), "")
+                word_out = re.fullmatch(r"(?:register\s+)?(?:u?int16_t|int|unsigned|short)\s*\*\s*%s" % re.escape(n),
+                                        decl.strip())
+                if "incompatible pointer" in how and word_out and (
+                        re.search(r"\*\s*\*\s*$", given_t) or re.fullmatch(r"intptr_t\s*\*", given_t.strip())):
+                    k = at[1]                               # (an int * the old function stored a pointer through -
+                    fn.params[k] = (n, "intptr_t *%s" % n)  #  a word was either: a place that holds either whole)
+                    port.param_types[(fn.name, k)] = fn.params[k][1]
+                    notes["int * parameter given the place of a pointer (it stores one there): intptr_t *"].append(
+                        "%s:%d (%s, %s)" % (f, ln, fn.name, n))
+                    changed = True
+                    continue
+                if "incompatible pointer" in how and re.fullmatch(r"intptr_t\s*\*\s*%s" % re.escape(n), decl.strip()):
+                    if re.search(r"\*\s*\*\s*$", given_t):
+                        continue                            # (a pointer's place: an intptr_t's, the same 8 bytes)
+                    v_ = re.fullmatch(r"&\s*(\w+)", arg)
+                    fn_at = enclosing(out.get(f, ""), ln)
+                    if v_ and fn_at and re.fullmatch(r"(?:u?int16_t|short|int|unsigned)\s*\*", given_t.strip()) and \
+                            declares_local(out[f], fn_at, v_.group(1)):
+                        port.local_retypes[(f, fn_at[0], v_.group(1))] = "intptr_t"   # (the word it gives: whole)
+                        notes["a local's place given for one a pointer is stored in: the local intptr_t"].append(
+                            "%s:%d (%s, %s)" % (f, ln, fn_at[0], v_.group(1)))
+                        changed = True
+                        continue
                 if "from pointer" in how or "pointer to integer" in how or \
                    (g("frm") and "*" in g("frm") and "*" not in (g("to") or "*")):
+                    given = next((re.search(r"but argument is of type '(?P<t>[^']*\*)'", x) for x in d.get("notes", [])
+                                  if "but argument is of type" in x), None)
+                    as_ptr = re.search(r"\*\s*%s\b|\b%s\s*(?:\[|->)|\b(?:%s)\s*\(\s*%s\s*[,)]" % (
+                        re.escape(n), re.escape(n), "|".join(sorted(port.profile["libc"])), re.escape(n)),
+                        getattr(fn, "body", ""))            # (used as a pointer there: deref, index, a library's)
+                    if given and not used_as_number(getattr(fn, "body", ""), n) and \
+                            (n in getattr(fn, "implicit", set()) or (as_ptr and re.fullmatch(
+                            r"(?:register\s+)?(?:int|unsigned|short|int16_t|uint16_t)\s+%s" % re.escape(n),
+                            decl.strip()))) and not getattr(fn, "loose", False):
+                        k = at[1]                           # (a parameter the old definition never declared - an
+                        t_ = ctype(given.group("t"), tags)  #  int by default: what the callers give it)
+                        fn.params[k] = (n, "%s%s%s" % (t_, "" if t_.endswith("*") else " ", n))
+                        port.param_types[(fn.name, k)] = fn.params[k][1]
+                        port.given_params = getattr(port, "given_params", set()) | {(fn.name, k)}
+                        notes["parameter the old definition left undeclared (an int): the pointer its callers give"
+                              ].append("%s:%d (%s, %s: %s)" % (f, ln, fn.name, n, t_))
+                        changed = True
+                        continue
                     if truthy(getattr(fn, "body", ""), n):
                         new, why = "%s != 0" % arg, "pointer given for a parameter that is only tested: p != 0"
                     elif re.search(r"\bintptr_t\b", decl):   # (the parameter holds either: the pointer given whole)
@@ -1665,6 +1998,12 @@ def mend(port, out, diags):
                     notes["function put where functions giving an int are (a table, a pointer): int"].append(
                         "%s:%d (%s)" % (f, ln, fn.name))
                     changed = True
+                elif at and at.group() in port.fns and not x and g("to") and "initialization" in d["text"]:
+                    t = ctype(g("to"), tags)                # (an element of a table of them: as the table's)
+                    l = l[:col] + "(%s)" % t + l[col:]
+                    notes["function put in a table of functions of another prototype: a cast"].append(
+                        "%s:%d (%s)" % (f, ln, at.group()))
+                    changed = True
                 elif x and x.group(2) in port.fns:
                     t = ctype(g("frm"), tags)
                     if "*)" not in t:
@@ -1674,6 +2013,13 @@ def mend(port, out, diags):
                     changed = True
                 else:
                     kind = "assign"                         # (no function of the program given: a cast)
+            chain = re.fullmatch(r"(\s*)((?:[\w.\->\[\]]+\s*=\s*){2,})(0|\(\w[\w\s*]*\)\s*0)\s*;(.*)", l)
+            if chain and (kind in ("assign", "intptr", "callptr", "fnptr") or "incompatible" in d["text"]):
+                lhs = [x.strip() for x in chain.group(2).split("=") if x.strip()]
+                l = chain.group(1) + ", ".join("%s = 0" % x for x in lhs) + ";" + chain.group(4)
+                notes["0 given to several of different types at once (a = b = 0): to each"].append("%s:%d" % (f, ln))
+                changed = True
+                kind = None
             if kind == "assign":
                 eq = [x for x in re.finditer(r"(?<![=!<>+\-*/%&|^])=(?!=)", l)]
                 eq.sort(key=lambda x: abs(x.start() - col))
@@ -1711,12 +2057,39 @@ def mend(port, out, diags):
                                 "%s (%s, %s)" % (f, fn.name, t))
                             changed = True
                         break
+            elif kind in ("retint", "retmix"):              # (a function given a pointer type by its callers that
+                fn_at = enclosing(out.get(f, ""), ln)       #  gives an int - an offset; or pointers of more than
+                fn = port.fns.get(fn_at[0]) if fn_at else None   # one type: as the int it was gave them all)
+                if fn and kind == "retint" and not getattr(fn, "int_ret", False):
+                    fn.ret, fn.void, fn.keep_int, fn.int_ret = "int", False, True, True
+                    fn.ret_set = True
+                    notes["function that gives an integer though its callers take it for a pointer (16 bits both "
+                          "then): int, the callers cast"].append("%s (%s)" % (f, fn.name))
+                    changed = True
+                elif fn and kind == "retmix" and fn.ret != "void *":
+                    fn.ret, fn.void, fn.keep_int, fn.ret_set = "void *", False, True, True
+                    notes["function that gives pointers of several types (old C's int): void *"].append(
+                        "%s (%s)" % (f, fn.name))
+                    changed = True
             elif kind == "callptr":                         # (a pointer from a function declared int)
                 near = sorted(re.finditer(r"(?<![=!<>+\-*/%&|^])=(?!=)", l), key=lambda x: abs(x.start() - col))
                 cm = re.match(r"\s*\(*\s*(\w+)\s*\(", l[near[0].end():]) if near else None   # (the call right after
                 name = cm.group(1) if cm else None                                          #  the = complained of)
                 t = ctype(g("to"), tags)
-                if name in port.fns and (not port.fns[name].ret or port.fns[name].ret in ("int", "int16_t")):
+                if name in port.fns and getattr(port.fns[name], "int_ret", False):
+                    a = near[0].end()                       # (it gives an integer: what the old pointer was)
+                    b, dd = a, 0
+                    while b < len(l) and not (dd == 0 and l[b] in ";,"):
+                        dd += (l[b] in "([") - (l[b] in ")]")
+                        if dd < 0:
+                            break
+                        b += 1
+                    rhs = l[a:b].strip()
+                    if rhs and not re.match(CAST, rhs):
+                        l = l[:a] + " (%s)(intptr_t)(%s)" % (t, rhs) + l[b:]
+                        notes["integer given to a pointer (as old C took it): a cast"].append("%s:%d" % (f, ln))
+                        changed = True
+                elif name in port.fns and (not port.fns[name].ret or port.fns[name].ret in ("int", "int16_t")):
                     fn = port.fns[name]
                     fn.ret, fn.void, fn.keep_int = t, False, True
                     notes["function of old C's int that gives a pointer: declared to give it"].append(
@@ -1766,15 +2139,112 @@ def mend(port, out, diags):
             elif kind == "intptr":
                 x = re.match(r"\s*(\w+)\s*=", l)
                 t = ctype(g("frm"), tags)
-                if x and x.group(1) not in port.retyped:
-                    port.retyped[x.group(1)] = t            # (the variable holds a pointer: it is declared one)
-                    v = re.escape(x.group(1))
+                if not x:                                   # (if ((fp = fopen(..)) == 0): the name before the =)
+                    eqat = l.find("=", max(0, col - 1))
+                    vm = re.search(r"(?<![.>])\b(\w+)\s*$", l[:eqat]) if eqat > 0 else None
+                    fn_at = enclosing(out.get(f, ""), ln)
+                    if vm and fn_at and declares_local(out[f], fn_at, vm.group(1)):
+                        x = vm
+                if not x:                                   # (a member given a pointer's value - a = p = 0: the
+                    eq = l.find("=", max(0, col - 1))       #  number it was, the pointer's bits)
+                    end = l.find(";", eq)
+                    rhs = l[eq + 1:end].strip() if eq >= 0 and end > eq else ""
+                    if rhs and not rhs.startswith("(intptr_t)") and l[eq + 1:eq + 2] != "=":
+                        l = l[:eq + 1] + " (intptr_t)(%s)" % rhs + l[end:]
+                        notes["a pointer's value given to an integer (both 16 bits then): (intptr_t)"].append(
+                            "%s:%d" % (f, ln))
+                        changed = True
+                    continue
+                var = x.group(1)
+                fn_at = enclosing(out.get(f, ""), ln)       # (the function the complaint is in, and whether the
+                local = fn_at and declares_local(out[f], fn_at, var)   #  variable is one of its own)
+                key_ = (f, fn_at[0], var) if local else var
+                if key_ in port.retyped:
+                    continue
+                scope = "\n".join(blank(out[f]).split("\n")[fn_at[1]:fn_at[3] + 1]) if local else \
+                    "\n".join(blank(t_) for t_ in out.values() if t_)
+                if used_as_number(scope, var):              # (a number too: the pointer's bits given to it, a cast)
+                    eqat = l.find("=", max(0, col - 1))
+                    a, dd = eqat + 1, 0
+                    b = a
+                    while b < len(l) and not (dd == 0 and l[b] in ";,") and dd >= 0:
+                        dd += (l[b] in "([") - (l[b] in ")]")
+                        if dd < 0:
+                            break
+                        b += 1
+                    rhs = l[a:b].strip()
+                    if eqat > 0 and rhs and not rhs.startswith("(intptr_t)"):
+                        l = l[:a] + " (intptr_t)(%s)" % rhs + l[b:]
+                        notes["a pointer's value given to an integer (both 16 bits then): (intptr_t)"].append(
+                            "%s:%d" % (f, ln))
+                        changed = True
+                    continue
+                if not local and not any(re.search(r"(?m)^(?:extern\s+|static\s+)?(?:u?int16_t|int|unsigned)\s+"
+                                                   r"(?:[^;(){}\n]*,\s*)?%s\s*[;,=\[]" % re.escape(var), blank(t_))
+                                         for t_ in out.values()):
+                    continue                                # (no variable of the program's by that name: not a guess)
+                port.retyped[key_] = t                      # (the variable holds a pointer: it is declared one)
+                if local:                                   # (there alone: another function's may be a number)
+                    port.local_retypes[(f, fn_at[0], var)] = t
+                else:
+                    v = re.escape(var)
                     port.decl_rules.append((r"(?m)^(\s*(?:static\s+|extern\s+|register\s+)?)(?:u?int16_t|int|unsigned)"
-                                            r"\s+%s\s*;" % v, r"\g<1>%s%s%s;" % (t, "" if t.endswith("*") else " ",
-                                                                                x.group(1))))
-                    notes["integer variable that holds a pointer (the 8086's were both 16 bits): declared a "
-                          "pointer"].append("%s:%d (%s, %s)" % (f, ln, x.group(1), t))
-                    changed = True
+                                            r"\s+%s\s*;" % v, r"\g<1>%s%s%s;" % (t, "" if t.endswith("*") else " ", var)))
+                notes["integer variable that holds a pointer (the 8086's were both 16 bits): declared a "
+                      "pointer"].append("%s:%d (%s, %s)" % (f, ln, var, t))
+                changed = True
+            elif kind == "seqpt":                           # (f(op, (n -= 2) == 0, n): the old compiler's order
+                v = g("v")                                  #  of the arguments, written out)
+                order = port.profile.get("arg_order", "right")
+                x = re.search(r"\(\s*(%s\s*(?:[-+*/%%&|^]|<<|>>)=\s*[^()=,;]+|(?:\+\+|--)\s*%s)\s*\)" % (v, v), l)
+                st_ = re.match(r"(\s*)(return\s+)?", l)
+                if not x or order != "left" or l.rstrip().endswith(("{", ")")) or \
+                        re.match(r"\s*(?:if|while|for|switch)\b", l) or not l.rstrip().endswith(";"):
+                    continue
+                if re.search(r"\b%s\b" % v, l[st_.end():x.start()]):
+                    continue                                # (read before it: an order of its own)
+                eff = x.group(1)
+                body = l[:x.start()] + v + l[x.end():]
+                ind, ret = st_.group(1), st_.group(2) or ""
+                rest = body[st_.end():].rstrip()[:-1]
+                l = "%s%s(%s, %s);" % (ind, ret, eff, rest) if ret else "%s%s, %s;" % (ind, eff, rest)
+                notes["an argument changes a variable another reads (their order unsaid in C): the old compiler's "
+                      "order, left to right, written out"].append("%s:%d (%s)" % (f, ln, v))
+                changed = True
+            elif kind == "intcast":                         # (an int made a pointer: it held one - 16 bits both)
+                x = re.match(r"\(\s*(?:(?:struct|union)\s+\w+|\w+)[\w\s]*\*+\s*\)\s*(?:\(\s*(\w+)\s*\)|(\w+))", l[col:])
+                if not x or re.match(r"\s*(?:\(|->|\.|\[)", l[col + x.end():]):
+                    continue
+                var = x.group(1) or x.group(2)
+                fn_at = enclosing(out.get(f, ""), ln)
+                fn = port.fns.get(fn_at[0]) if fn_at else None
+                k = next((i for i, (pn, pt) in enumerate(fn.params) if pn == var), None) if fn else None
+                if k is not None:
+                    if re.fullmatch(r"(?:register\s+)?(?:u?int16_t|int|unsigned|short)\s+%s" % re.escape(var),
+                                    fn.params[k][1].strip()):
+                        fn.params[k] = (var, "intptr_t %s" % var)
+                        port.param_types[(fn.name, k)] = fn.params[k][1]
+                        notes["integer parameter made a pointer (it held one: both were 16 bits): intptr_t"].append(
+                            "%s:%d (%s, %s)" % (f, ln, fn.name, var))
+                        changed = True
+                    continue
+                local = fn_at and declares_local(out[f], fn_at, var)
+                key_ = (f, fn_at[0], var) if local else var
+                if key_ in port.retyped:
+                    continue
+                if local:
+                    port.retyped[key_] = "intptr_t"
+                    port.local_retypes[(f, fn_at[0], var)] = "intptr_t"
+                elif any(re.search(r"(?m)^(?:extern\s+|static\s+)?(?:u?int16_t|int|unsigned)\s+%s\s*;" % re.escape(var),
+                                   blank(t_)) for t_ in out.values()):
+                    port.retyped[key_] = "intptr_t"
+                    port.decl_rules.append((r"(?m)^(\s*(?:static\s+|extern\s+|register\s+)?)(?:u?int16_t|int|unsigned)"
+                                            r"\s+%s\s*;" % re.escape(var), r"\g<1>intptr_t %s;" % var))
+                else:
+                    continue
+                notes["integer variable made a pointer (it held one: both were 16 bits): intptr_t"].append(
+                    "%s:%d (%s)" % (f, ln, var))
+                changed = True
             elif kind == "member":
                 name = g("m")
                 xs = [x for x in re.finditer(r"->\s*(\w+)", l) if (not name or x.group(1) == name)]
@@ -1809,8 +2279,8 @@ def mend(port, out, diags):
                               "kept (its calls unchecked, as they were)"].append("%s:%d (%s)" % (f, ln, n))
                         changed = True
         if l != orig:                                       # (kept as a rule: the next round's text has the line)
-            key = next((k for k, v in port.line_fixes.items() if k[0] == f and v == orig), (f, orig))
-            port.line_fixes[key] = l
+            o = port.line_origin.get(f, {}).get(ln)
+            port.line_fixes[(f, o[0], o[1]) if o else (f, orig)] = l
     for var, types in port.fptr.items():                    # (a pointer to functions of one prototype: given it)
         if len(types) == 1 and var not in port.fptr_done:
             t = next(iter(types))
@@ -1819,4 +2289,4 @@ def mend(port, out, diags):
             port.fptr_done.add(var)
             notes["pointer to functions declared with the prototype of those it is given"].append("%s (%s)" % (var, t))
             changed = True
-    return changed
+    return changed or changed_

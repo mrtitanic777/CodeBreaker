@@ -13,7 +13,14 @@ CASES.json (paths relative to it):
      "env": {"DOSRT_CORE_PAGES": "1103"},                   for the port (the platform layer's settings)
      "cases": [{"name": "make", "cmd": "NEW +HELLO;", "stdin": "", "files": ["HELLO.OBJ"],
                 "then": [...more cases run in the same folders after it...]}]}
+    "programs": {"mc2": {"original": "MC2.EXE", "port": "../../mc2/modern/program.exe"}}
+                                                            another program of the same set (a compiler's next
+                                                            pass): a case names it, "program": "mc2"
+    a case's "ignore": ["*.Q"]                              files not compared (what the original left
+                                                            unwritten - its memory as it was - and the next pass
+                                                            does not read)
 """
+import fnmatch
 import difflib
 import functools
 import re
@@ -60,8 +67,13 @@ def run_cases(path, exe, env=None):
             shutil.copy(inputs[n], os.path.join(fb, n))
         for n, text in case.get("make", {}).items():
             open(os.path.join(fb, n), "wb").write(text.encode("latin1"))
+        prog = cfg.get("programs", {}).get(case.get("program"))
+        if prog:                                            # (another pass: its own port)
+            exe2 = at(prog["port"])
+            if not os.path.isfile(exe2):
+                return
         try:
-            c, x = run_port(cfg, exe, fb, case.get("cmd", ""), case.get("stdin", ""), e)
+            c, x = run_port(cfg, at(prog["port"]) if prog else exe, fb, case.get("cmd", ""), case.get("stdin", ""), e)
         except subprocess.TimeoutExpired:
             c = b"(did not end)"
         out.append((case["name"], c.decode("latin1")))
@@ -112,9 +124,11 @@ def main(argv):
             for f in (fa, fb):
                 open(os.path.join(f, n), "wb").write(text.encode("latin1"))
         cmd, stdin = case.get("cmd", ""), case.get("stdin", "")
-        ca, xa = run_original(cfg, orig, fa, cmd, stdin)
+        prog = cfg.get("programs", {}).get(case.get("program"))
+        oa, pb = (at(prog["original"]), at(prog["port"])) if prog else (orig, port)
+        ca, xa = run_original(cfg, oa, fa, cmd, stdin)
         try:
-            cb, xb = run_port(cfg, port, fb, cmd, stdin, cfg.get("env", {}))
+            cb, xb = run_port(cfg, pb, fb, cmd, stdin, cfg.get("env", {}))
         except subprocess.TimeoutExpired:                   # (a port that does not end: so recorded)
             cb, xb = b"(did not end)", "did not end"
         A, B = files_of(fa), files_of(fb)
@@ -132,6 +146,8 @@ def main(argv):
         if (xa or 0) != (xb or 0):
             bad.append("exit %s / %s" % (xa, xb))
         for n in sorted(set(A) | set(B)):
+            if any(fnmatch.fnmatch(n, g.upper()) for g in case.get("ignore", [])):
+                continue                                    # (not compared: the case says so)
             if A.get(n) != B.get(n):
                 what = "only the original's" if n not in B else "only the port's" if n not in A else \
                        "differs (%d / %d bytes, first at %d)" % (len(A[n]), len(B[n]), next(

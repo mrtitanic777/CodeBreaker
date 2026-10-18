@@ -29,9 +29,13 @@
 #undef fopen
 #undef exit
 
+#ifndef DOSRT_EXIT_STATUS
+#define DOSRT_EXIT_STATUS 1		/* (0: the old library's exit gave DOS no code - Lattice's) */
+#endif
+
 void dos_exit(int code)
 {
-	exit(code & 0377);
+	exit(DOSRT_EXIT_STATUS ? code & 0377 : 0);
 }
 
 FILE *dos_fopen(const char *name, const char *mode)
@@ -372,6 +376,53 @@ void dos_ffree(void *q)
 	far_used -= p[0];
 	free(p);
 }
+
+#define DOS_HANDLES 0x8000
+static const void *handle_ptr[DOS_HANDLES];
+static unsigned handle_hash[2 * DOS_HANDLES];		/* (open addressing: pointer -> handle + 1) */
+static unsigned handles;
+
+uint16_t dos_ph(const void *p)
+{
+	uintptr_t v = (uintptr_t)p;
+	unsigned i;
+	if (v < DOS_HANDLES || (intptr_t)v >= -0x100 && (intptr_t)v < 0)
+		return (uint16_t)v;			/* (no address: a number, as it was - -1 too) */
+	i = (unsigned)((v >> 3) ^ (v >> 19)) & (2 * DOS_HANDLES - 1);
+	while (handle_hash[i]) {
+		if (handle_ptr[handle_hash[i] - 1] == p)
+			return (uint16_t)(DOS_HANDLES + handle_hash[i] - 1);
+		i = (i + 1) & (2 * DOS_HANDLES - 1);
+	}
+	if (handles >= DOS_HANDLES - 0x100) {
+		fprintf(stderr, "dosrt: more than %u addresses kept in two bytes\n", DOS_HANDLES);
+		abort();
+	}
+	handle_ptr[handles] = p;
+	handle_hash[i] = ++handles;
+	return (uint16_t)(DOS_HANDLES + handles - 1);
+}
+
+void *dos_hp(unsigned h)
+{
+	h &= 0xFFFF;
+	if (h < DOS_HANDLES)
+		return (void *)(uintptr_t)h;
+	if (h >= 0xFF00)
+		return (void *)(intptr_t)(int16_t)h;	/* (a small negative number: -1) */
+	return (void *)handle_ptr[h - DOS_HANDLES];
+}
+
+int16_t _block = 512;			/* (Lattice's: a file's buffer, set by the program - today's library sizes its own) */
+
+int dos_allmem(void)			{ return 0; }	/* (the heap is today's: there is room) */
+/* (the program asks by the bytes its 16-bit structures had: a block four times that, zeroed - its pointers are
+   four times as long now, and nothing it built in the block reaches past it) */
+char *dos_getmem(unsigned n)		{ return calloc((size_t)(n ? n : 1) * 4, 1); }
+int dos_rlsmem(void *p, unsigned n)	{ (void)n; free(p); return 0; }
+long dos_sizmem(void)			{ return (long)heap_avail(0) * 16; }
+char *dos_getml(long n)			{ return calloc((size_t)(n > 0 ? n : 1) * 4, 1); }
+int dos_rlsml(void *p, long n)		{ (void)n; free(p); return 0; }
 
 int dos_flushall(void)
 {

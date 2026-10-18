@@ -185,6 +185,28 @@ def decode_direct(b):
     return None
 
 
+def code_segments(lines):
+    """the module's code segments: of class CODE (Lattice's PROG), named ..TEXT, or what ASSUME puts in CS -
+    itself or through its group"""
+    out, groups = set(), {}
+    for l in lines:
+        d = l.directive
+        if d and d[0] == "SEGMENT":
+            cls = re.search(r"'([^']*)'", d[2])
+            if (cls and cls.group(1).upper() in ("CODE", "PROG")) or d[1].upper().endswith("TEXT"):
+                out.add(d[1])
+        elif d and d[0] == "GROUP":
+            groups[d[1].upper()] = [x.strip() for x in strip_comment(d[2]).split(",") if x.strip()]
+    for l in lines:
+        d = l.directive
+        if d and d[0] == "ASSUME":
+            m = re.search(r"(?i)\bcs\s*:\s*([\w$@?]+)", d[2])
+            if m:
+                name = m.group(1)
+                out |= set(groups.get(name.upper(), [name])) - {"NOTHING", "nothing"}
+    return out
+
+
 def number(s):
     s = s.strip()
     m = re.fullmatch(r"([0-9][0-9a-fA-F]*)[hH]", s)
@@ -686,7 +708,7 @@ class Module:
                 return False
         return False
 
-    def __init__(self, text, ctypes, cnames=(), pascal=(), cfuncs=None, asm_routines=()):
+    def __init__(self, text, ctypes, cnames=(), pascal=(), cfuncs=None, asm_routines=(), underscore=True):
         """text: the 16-bit source; ctypes: CTypes; cnames: the names the C program calls (to match the routines'
         public names, in capitals for pascal ones); pascal: those it calls the pascal way; cfuncs: the C program's
         functions (c_functions); asm_routines: the public routines of the program's other assembly modules"""
@@ -704,17 +726,16 @@ class Module:
         self.c_calls = {}
         self.ct = ctypes
         self.public, self.extrn, self.equ = set(), {}, {}
-        self.code_seg = set()
+        self.code_seg = code_segments(self.lines)
         seg = None
         self.labels = {}
         self.code = []                                      # (the instructions of the code segments, in order)
         self.data = []                                      # ((segment, Line))
+        proc_far = False
         for l in self.lines:
             d = l.directive
             if d and d[0] == "SEGMENT":
                 seg = d[1]
-                if "CODE" in d[2].upper() or seg.upper().endswith("TEXT"):
-                    self.code_seg.add(seg)
                 continue
             if d and d[0] == "ENDS":
                 seg = None
@@ -735,6 +756,13 @@ class Module:
                 l.seg = seg
                 if d and d[0] == "LABEL":
                     l.label = d[1]
+                if d and d[0] == "PROC":                    # (NAME PROC [FAR]: the routine's label; its ret far)
+                    l.label, l.directive = d[1], None
+                    proc_far = bool(re.search(r"(?i)\bFAR\b", d[2]))
+                if d and d[0] == "ENDP":
+                    proc_far = False
+                if l.op == "ret" and proc_far:
+                    l.op = "retf"
                 if l.label:
                     self.labels[l.label] = len(self.code)
                 if d and d[0] in ("DB", "DW") and self.code and self.code[-1].directive and \
@@ -765,7 +793,7 @@ class Module:
             if p in self.labels:
                 n = p[1:] if p.startswith("_") else p
                 self.cname[p] = lower.get(n.lower(), n)
-        self.pascal = {p for p in self.cname if self.cname[p] in pascal or not p.startswith("_")}
+        self.pascal = {p for p in self.cname if self.cname[p] in pascal or (not p.startswith("_") and underscore)}
         self.notes = []
 
     # -- the kinds, to a fixed point
@@ -825,7 +853,11 @@ class Module:
                         rel = State()
                         rel.r = dict(cs.r)
                         for r in R16:
-                            if cs.r.get(r) and cs.r[r].kind == "frame":
+                            k_ = cs.r.get(r)
+                            if k_ and k_.kind == "frame" and r == "bp":   # (BP still the caller's frame: a local
+                                owner = k_.to or (self.routine(i), tuple((x[0], x[1]) for x in pre_call.stack))
+                                rel.r[r] = K("frame", owner, k_.old, k_.new)   # routine of its works on it)
+                            elif k_ and k_.kind == "frame":
                                 rel.r[r] = K("opq")         # (a frame of the caller's is none of the callee's)
                         rel.r["sp"] = K("frame", old=0, new=0)
                         rel.routines = frozenset([f[1]])
@@ -886,6 +918,8 @@ class Module:
                     if isptr and m.disp == fo + 2 and fs == 4:
                         return K("seg"), f
                     return VAL, f
+            if b and b.kind == "frame" and b.to and b.old + m.disp < 0:
+                return VAL, None                            # (a local of the routine whose frame it is)
             if b and b.kind == "frame" and b.old + m.disp < 0:
                 e, o = b.old + m.disp, 0                    # (below the entry: what was pushed there, or room)
                 for so, sn, k in st.stack:
@@ -895,7 +929,7 @@ class Module:
                 return VAL, None
             if b and b.kind == "frame":
                 e = b.old + m.disp
-                for r_ in (st.routines or ()):
+                for r_ in ((b.to[0],) if b.to else (st.routines or ())):
                     to = self.param_place(r_).get(e)
                     if to and (m.size in (None, 2, 4)):     # (an argument the C program passes a pointer in)
                         return K("ptr", to), None
@@ -1225,7 +1259,7 @@ class Module:
                     setr(d, K("opq", origin=k.origin | s2.origin) if k.kind == "opq" and s2.kind == "opq" else VAL)
                 elif k.kind == "frame":
                     n = number(l.args[1]) or 0
-                    setr(d, K("frame", old=k.old + (n if op == "add" else -n), new=k.new + (n if op == "add" else -n)))
+                    setr(d, K("frame", k.to, old=k.old + (n if op == "add" else -n), new=k.new + (n if op == "add" else -n)))
                 else:
                     setr(d, k)
             elif op in ("inc", "dec") and k and k.wide():
@@ -1487,7 +1521,7 @@ class Module:
                 k = st.r.get(o[1].regs[0])
                 if k and k.kind == "frame":
                     e = k.old + o[1].disp
-                    r = self.routine(i)
+                    r = k.to[0] if k.to else self.routine(i)
                     size = o[1].size or (4 if l.op in ("les", "lds") else 2)
                     if l.op in ("les", "lds"):
                         size = 4
@@ -1662,13 +1696,25 @@ class Module:
         regs = ["rcx", "rdx", "r8", "r9"]
         pushed = 0
         ptrs = {k for k, (o, sz) in enumerate(self.params.get(p, [])) if o in self.ptr_args.get(p, set())}
+        words = None                                        # (word k of the old stack: (C argument, its half))
+        cargs = self.param_types.get(p) or []
+        if not pascal and cargs and any(sz == 4 for sz, to in cargs) and \
+                sum(2 if sz == 4 else 1 for sz, to in cargs) == n:
+            words = []                                      # (a long of the C: two words, the low one first)
+            for i, (sz, to) in enumerate(cargs):
+                words += [(i, 0), (i, 1)] if sz == 4 and not to else [(i, 0)]
+            if len(words) != n:
+                words = None
         for k in reversed(range(n)):                        # (slot 0 at the lowest address, as the old stack had it)
-            j = (n - 1 - k) if pascal else k
+            j, half = words[k] if words else ((n - 1 - k) if pascal else k, 0)
             if j < 4:
                 reg = regs[j]
             else:
                 off = 8 * len(saved) + 8 * pushed + 8 + 32 + 8 * (j - 4)
                 out.append("\tmov\tr11, qword ptr [rsp+%d]" % off)
+                reg = "r11"
+            if half:                                        # (the high word of a long: its own slot)
+                out += ["\tmov\tr11, %s" % reg, "\tshr\tr11, 16"]
                 reg = "r11"
             if k in ptrs:                                   # (a NULL address read what began the data segment)
                 lab = "@@null_%s_%d" % (self.cname[p], k)
@@ -1747,11 +1793,22 @@ class Module:
             k = st.r.get(r)
             self.as_address(i, k)
             if k and k.kind == "frame":
-                rt = self.routine(i)
+                rt = k.to[0] if k.to else self.routine(i)
                 e = k.old + disp
                 if e >= self.retsize(rt):
                     sl, inner = self.slot(rt, e)
                     new = 8 + 8 * sl + inner
+                elif k.to:                                  # (the owner's stack, as it was when it called)
+                    o_ = n_ = 0
+                    new = None
+                    for so, sn in k.to[1]:
+                        if o_ - so <= e < o_:
+                            new = n_ - sn + (e - (o_ - so))
+                            break
+                        o_ -= so
+                        n_ -= sn
+                    if new is None:
+                        raise Asm16Error("sp%+d is not on the stack of %s" % (e, rt))
                 else:
                     new = self.stack_place(st, e)
                 disp = new - k.new
@@ -2076,7 +2133,11 @@ class Module:
             return ["%s\t%s" % (op, R64[d] if k and k.wide() and op in ("inc", "dec") else d)]
         if op in ("inc", "dec", "neg", "not") and a[0][0] == "mem":
             k_, f_ = self.kind_of_mem(a[0][1], st)
-            if op in ("inc", "dec") and k_ and k_.kind == "ptr" and (a[0][1].size or 2) == 2:
+            m_ = a[0][1]
+            fr = st.r.get(m_.regs[0]) if len(m_.regs) == 1 and not m_.sym else None
+            arg_slot = fr is not None and fr.kind == "frame" and k_ is not None and k_.wide() and \
+                fr.old + m_.disp >= self.retsize(fr.to[0] if fr.to else self.routine(i))
+            if op in ("inc", "dec") and k_ and (k_.kind == "ptr" or arg_slot) and (m_.size or 2) == 2:
                 return done("%s\t%s\t\t; (an address moved on: the whole of it)" % (op, M(0, 8)))
             return done("%s\t%s" % (op, M(0, a[0][1].size or 2)))
         if op in ("shl", "shr", "sal", "sar", "rol", "ror", "rcl", "rcr"):

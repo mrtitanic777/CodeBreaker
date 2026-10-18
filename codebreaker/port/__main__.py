@@ -72,6 +72,10 @@ def diagnostics(spec, text, folder):
         n = re.match(r"^(?P<file>[^:\n]+?(?::[\\/][^:\n]+)?):(?P<line>\d+):(?P<col>\d+): note: (?P<text>.*)$", l.strip())
         if n and out:                                       # (a note: what the complaint before it expected)
             out[-1].setdefault("notes", []).append(n.group("text"))
+            if "in expansion of macro" in n.group("text"):   # (the outermost use: the last such note)
+                out[-1].setdefault("macro_at", (out[-1]["file"], out[-1]["line"], out[-1]["col"]))   # (where it is in the
+                out[-1]["file"] = os.path.basename(n.group("file"))                       #  source: the macro's
+                out[-1]["line"], out[-1]["col"] = int(n.group("line")), int(n.group("col"))   # use)
             continue
         m = re.match(spec["diag"], l.strip())
         if m:
@@ -107,11 +111,15 @@ def asm_role(text, profile):
     names = {p[1:] if p.startswith("_") else p for p in pubs}
     if names & set(profile["runtime_defines"]) - {"fopen", "fprintf", "malloc"} or "_main" in pubs:
         return "runtime", sorted(pubs)
+    if any(re.match(r"\s*END\s+\w+", strip_asm_comment(l), re.I) for l in text.splitlines()) and \
+            not any(re.match(r"\s*_main\b", strip_asm_comment(l)) for l in text.splitlines()):
+        return "runtime", sorted(pubs)                      # (END start: the start-up code - the C library's now)
     lines, seg, code = asm16.parse(text), None, False
+    code_segs = asm16.code_segments(lines)
     for l in lines:
         d = l.directive
         if d and d[0] == "SEGMENT":
-            seg = d[1] if ("CODE" in d[2].upper() or d[1].upper().endswith("TEXT")) else None
+            seg = d[1] if d[1] in code_segs else None
         elif d and d[0] == "ENDS":
             seg = None
         elif seg and l.op:
@@ -228,10 +236,63 @@ def call_arg_types(fn, texts, origs, ct):
                     out.append((4 if arg in far else 2, ct.pointee(arg)))
                     continue
                 v = ct.var(arg) if re.fullmatch(r"\w+", arg) else None
-                out.append((4 if v and re.search(r"\b(long|int32_t|uint32_t)\b", v[0]) else 2, None))
+                lng = re.fullmatch(r"\w+", arg) and re.search(r"\b(?:long|int32_t|uint32_t)\s+(?:[^;(){}]*,\s*)?%s\s*[;,=]"
+                                                           % re.escape(arg), early_c.blank(t))
+                out.append((4 if (v and re.search(r"\b(long|int32_t|uint32_t)\b", v[0])) or lng or
+                            re.fullmatch(r"(?:0[xX][0-9a-fA-F]+|\d+)[lL]", arg) else 2, None))
             if sum(1 for s, to in out if to) > sum(1 for s, to in best if to):
                 best = out
     return best
+
+
+def runtime_tails(mods):
+    """{routine: its lines} - the old runtime's routines that are straight lines to a RET (cret: the shared end of
+    the routines of Lattice-era C - LEA SP,[BP-4], the POPs, RET): what a jump into one does, there"""
+    out = {}
+    for n, t in mods.items():
+        lines = t.splitlines()
+        pubs = set()
+        for l in lines:
+            m = re.match(r"\s*PUBLIC\s+(.+)", strip_asm_comment(l), re.I)
+            if m:
+                pubs |= {x.strip() for x in m.group(1).split(",") if x.strip()}
+        for i, l in enumerate(lines):
+            m = re.match(r"\s*(\w+)(?:\s+PROC\b.*|\s*:\s*)$", strip_asm_comment(l), re.I)
+            if not m or m.group(1) not in pubs:
+                continue
+            body = []
+            for l2 in lines[i + 1:]:
+                c = strip_asm_comment(l2).strip()
+                if not c:
+                    continue
+                if re.match(r"(?i)(?:\w+\s*:|j\w+\b|call\b|loop\w*\b|\w+\s+(?:PROC|ENDP|ENDS)\b)", c):
+                    body = None                             # (not straight: left to the C library's)
+                    break
+                body.append("\t" + c)
+                if re.match(r"(?i)ret\b", c):
+                    break
+            if body and re.match(r"(?i)\s*ret\b", body[-1]):
+                out[m.group(1)] = body
+    return out
+
+
+def inline_tails(text, tails, notes, name):
+    """JMP to one of the old runtime's straight routines: its instructions in place of the jump"""
+    if not tails:
+        return text
+    out, n = [], 0
+    for l in text.splitlines():
+        m = re.match(r"(?i)\s*jmp\s+(?:near\s+ptr\s+|short\s+)?(\w+)\s*$", strip_asm_comment(l))
+        if m and m.group(1) in tails:
+            out.append("\t; (JMP %s - the old runtime's: its instructions here)" % m.group(1))
+            out += tails[m.group(1)]
+            n += 1
+            continue
+        out.append(l)
+    if n:
+        notes.append("%s: %d jump(s) into the old runtime's own ends (%s): their instructions in place" % (
+            name, n, ", ".join(sorted({x for x in tails if re.search(r"(?i)\bjmp\s+%s\b" % x, text)}))))
+    return "\n".join(out) + ("\n" if text.endswith("\n") else "")
 
 
 def asm_modules(port, out, res, asm, paths, roles, profile, opt, compilers):
@@ -249,6 +310,8 @@ def asm_modules(port, out, res, asm, paths, roles, profile, opt, compilers):
     objs, protos, notes = [], {}, []
     cfuncs = asm16.c_functions(origs)
     declared = c_declared(origs)
+    tails = runtime_tails({n: t for n, t in asm.items() if roles[n][0] == "runtime"})
+    asm = {n: (inline_tails(t, tails, notes, n) if roles[n][0] == "code" else t) for n, t in asm.items()}
     routines, externs = {}, {}                              # (each module's public routines: the others call them)
     for n, t in asm.items():
         if roles[n][0] == "code":
@@ -290,7 +353,8 @@ def asm_modules(port, out, res, asm, paths, roles, profile, opt, compilers):
         if role != "code":
             continue
         m = asm16.Module(t, ct, cnames=calls, cfuncs=cfuncs,
-                         asm_routines=set().union(*[r for k, r in routines.items() if k != n]))
+                         asm_routines=set().union(*[r for k, r in routines.items() if k != n]),
+                         underscore=profile.get("c_underscore", True))
         m.used_outside = set().union(*[e for k, e in externs.items() if k != n])
         m.param_types = {p: call_arg_types(c, texts, origs, ct) for p, c in m.cname.items()}
         m.aliases = alias_places(port.aliases, ct)
@@ -451,7 +515,9 @@ def main(argv):
         shutil.copy(os.path.join(HERE, "platform", n), os.path.join(out, n))
     with open(os.path.join(out, "dosrt_config.h"), "w", newline="\n") as f:   # (the old runtime's ways)
         f.write("/* dosrt_config.h -- the old runtime's ways (made by CodeBreaker's port from the profile %s) */\n"
-                "#define DOSRT_TEXT_MODE %d\n" % (profile["name"], 1 if profile.get("text_mode") else 0))
+                "#define DOSRT_TEXT_MODE %d\n#define DOSRT_EXIT_STATUS %d\n" % (
+                    profile["name"], 1 if profile.get("text_mode") else 0,
+                    0 if profile.get("exit_status") is False else 1))
 
     def write():
         res = port.modernize()
@@ -468,25 +534,39 @@ def main(argv):
         objs, protos, asm_notes = asm_modules(port, out, res, asm, paths, roles, profile, opt, compilers)
         port.asm_protos = protos
     rounds, diags = 0, []
-    while True:
-        res = write()
-        diags = []
-        if cc is None:
-            break
-        from concurrent.futures import ThreadPoolExecutor
-        from codebreaker.base import parallel
-        cfiles = [n for n in sorted(res) if n.endswith(".c")]
-        with ThreadPoolExecutor(max(1, parallel.workers())) as ex:   # (the machine's budget of compilers at once)
-            done = list(ex.map(lambda n: run(spec, args(spec["check"], cc=cc, inc=".", src=n), out, cc), cfiles))
-        for p in done:                                      # (in the files' order, as one compiler would say them)
-            diags += diagnostics(spec, p.stdout + p.stderr, out)
-        rounds += 1
-        if rounds > 8 or not early_c.mend(port, res, diags):
-            break
+    checkers = [(spec, cc)]                                 # (then clang's eyes too: gcc does not check a call of an
+    if comp != "clang" and "clang" in compilers:            #  old-style definition, clang does)
+        cl = find(compilers["clang"]["find"])
+        if cl:
+            checkers.append((compilers["clang"], cl))
+    from concurrent.futures import ThreadPoolExecutor
+    from codebreaker.base import parallel
+    for k_, (spec_, cc_) in enumerate(checkers):
+        start = rounds
+        while True:
+            res = write()
+            diags = []
+            if cc_ is None:
+                break
+            cfiles = [n for n in sorted(res) if n.endswith(".c")]
+            with ThreadPoolExecutor(max(1, parallel.workers())) as ex:   # (the machine's budget of compilers at once)
+                done = list(ex.map(lambda n: run(spec_, args(spec_["check"], cc=cc_, inc=".", src=n), out, cc_),
+                                   cfiles))
+            for p in done:                                  # (in the files' order, as one compiler would say them)
+                diags += diagnostics(spec_, p.stdout + p.stderr, out)
+            if k_ and not any(d["kind"] == "error" for d in diags):
+                break                                       # (the second compiler: its errors only)
+            if k_:
+                diags = [d for d in diags if d["kind"] == "error"]
+            rounds += 1
+            if rounds - start > 8 or not early_c.mend(port, res, diags):
+                break
     if port.int16:                                          # (the 8086's arithmetic, where the C of today's differs)
         arith = arith16_pass(port, out, res, compilers)
         if arith:
             res = write()
+    if oldlayout_pass(port, out, res, compilers):           # (records the program keeps as bytes: as they were)
+        res = write()
     srcs = sorted(n for n in res if n.endswith(".c")) + ["dosrt.c"] + objs
     exe = os.path.join(out, "program.exe" if os.name == "nt" else "program")
     cases = opt("--cases")
@@ -512,6 +592,41 @@ def main(argv):
     return 0 if built else 1
 
 
+def oldlayout_pass(port, out, res, compilers):
+    """the records the program takes as bytes kept in their old layout, their pointers two-byte handles
+    (port/oldlayout.py); -> how many lines it changed"""
+    from codebreaker.port import oldlayout
+    spec = compilers.get("clang")
+    cc = find(spec["find"]) if spec else None
+    if not cc:
+        return 0
+    files = sorted(n for n in res if n.endswith(".c"))
+    new, olds, found, refused = oldlayout.run(cc, out, files)
+    if not olds:
+        return 0
+    n = 0
+    texts = dict(new)
+    for h in sorted(x for x in res if x.endswith((".h", ".c"))):   # (the records' definitions, wherever they are)
+        t = oldlayout.declare(texts.get(h, res[h]), olds, found)
+        if t != res[h]:
+            texts[h] = t
+    for f, t in texts.items():
+        a_, b_ = res[f].split("\n"), t.split("\n")
+        if len(a_) != len(b_):
+            continue
+        for i, (a, b) in enumerate(zip(a_, b_)):
+            if a != b:                                      # (its rule: the line as it was before the rules)
+                o = port.line_origin.get(f, {}).get(i + 1)
+                port.line_fixes[(f, o[0], o[1]) if o else (f, a)] = b
+                n += 1
+    port.mended["a record the program keeps as bytes (writes, reads, takes as char *): its old layout, its "
+                "pointers two-byte handles (dos_ph, dos_hp)"].append(", ".join(sorted(olds)))
+    for f, at, op in refused:
+        port.mended["**a pointer member of a record kept old, taken by %s: not converted - look at it**" % op].append(
+            "%s@%d" % (f, at))
+    return n
+
+
 def arith16_pass(port, out, res, compilers):
     """arith16 over the port's C (clang reads it): each line it changed kept as a rule; -> how many casts"""
     from codebreaker.port import arith16
@@ -524,9 +639,10 @@ def arith16_pass(port, out, res, compilers):
     new = arith16.run(cc, out, files)
     n = 0
     for f, t in new.items():
-        for a, b in zip(res[f].split("\n"), t.split("\n")):
-            if a != b:
-                port.line_fixes[(f, a)] = b
+        for i, (a, b) in enumerate(zip(res[f].split("\n"), t.split("\n"))):
+            if a != b:                                      # (its rule: the line as it was before the rules)
+                o = port.line_origin.get(f, {}).get(i + 1)
+                port.line_fixes[(f, o[0], o[1]) if o else (f, a)] = b
                 n += b.count("_t)") - a.count("_t)")
                 port.mended["the 8086's 16-bit arithmetic kept (an unsigned met by an int was unsigned; a sum was "
                             "cut to 16 bits before it was compared or made a long): a cast"].append(f)

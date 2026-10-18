@@ -31,8 +31,8 @@ int dos_isatty(int fd);
 
 /* the code a program ends with: DOS kept its low byte (exit(272) left 16 for ERRORLEVEL) */
 #include <stdlib.h>
-#define exit(n)	dos_exit(n)
-void dos_exit(int code);
+#define exit	dos_exit
+void dos_exit();			/* (Lattice's programs call exit() with none: an old declaration takes either) */
 
 /* the old C library had no text mode: a file is read and written as its bytes are, whatever the mode said */
 #include <stdio.h>
@@ -141,6 +141,25 @@ int dos_memicmp(const void *a, const void *b, size_t n);
 #endif
 /* sopen(name, mode, share[, permission]): open() - the sharing is DOS's business; setmode(handle, O_TEXT or
    O_BINARY): the mode it had; _freect(size): how many blocks of size bytes the near heap had room for */
+/* a pointer kept in two bytes, in a record the program keeps as bytes (port/oldlayout.py): its handle, and back.
+   Below 8000h a value stays itself (a number the program put where a pointer was) */
+uint16_t dos_ph(const void *p);
+void *dos_hp(unsigned h);
+
+/* Lattice C's memory calls (MS C 1.0x's library): allmem() takes the memory there is for the heap (0: done),
+   getmem(n) a block, rlsmem(p, n) gives it back (0: done), sizmem() what is left */
+#define allmem	dos_allmem
+#define getmem	dos_getmem
+#define rlsmem	dos_rlsmem
+#define sizmem	dos_sizmem
+#define getml	dos_getml
+#define rlsml	dos_rlsml
+int dos_allmem(void);
+char *dos_getmem(unsigned n);
+int dos_rlsmem(void *p, unsigned n);
+long dos_sizmem(void);
+char *dos_getml(long n);
+int dos_rlsml(void *p, long n);
 #define flushall	dos_flushall
 int dos_flushall(void);
 #define sopen	dos_sopen
