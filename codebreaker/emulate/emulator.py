@@ -227,7 +227,7 @@ _RETSENT_BASE = 0xB1B10000                                # unique per-call exte
 _INSN = {}                # (module file, its hash) -> {address: (text, is a call, direct target)}
 
 
-def _memory_hooks(U, rec, mapped, reads=True, static=(), quiet=None, saved=None):
+def _memory_hooks(U, rec, mapped, reads=True, static=(), quiet=None, saved=None, fill=False):
     """The memory side of a run, the same for every processor mode: record reads and writes
     (a write with what was there before, so an unchanged byte can be told from an effect), map
     untouched pages on demand so code that reaches into memory keeps running, and stop a run
@@ -306,6 +306,8 @@ def _memory_hooks(U, rec, mapped, reads=True, static=(), quiet=None, saved=None)
                 rec["truncated"] = True; rec["governed"] = True; uc.emu_stop(); return False
             try:
                 uc.mem_map(base, _PAGE); mapped.add(base); newly += 1
+                if fill:                                    # (a page no one set: a pattern made from
+                    uc.mem_write(base, _pattern(base))      # the address, not zeros -- see _pattern)
                 if saved is not None and base not in saved:
                     saved[base] = None
             except U.UcError:
@@ -324,6 +326,13 @@ def _memory_hooks(U, rec, mapped, reads=True, static=(), quiet=None, saved=None)
         return True                                          # retry the access now that it's mapped
 
     return hook_mem, hook_unmapped
+
+
+def _pattern(base):
+    """What a page nothing set holds, when a run asks for one filled: every byte made from its
+    own address, the same on any build. Zeros hid a C function reading the wrong field of a
+    caller's structure -- zero there, zero where it should have read, the same either way."""
+    return bytes(((base + i) * 0x9E3779B1 >> 13) & 0xFF for i in range(_PAGE))
 
 
 def _straight_run(md, image, lo, address, size):

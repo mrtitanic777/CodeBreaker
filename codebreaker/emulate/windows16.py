@@ -364,7 +364,7 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
             uc.reg_write(UC_X86_REG_EDX, dx)
             uc.reg_write(UC_X86_REG_CS, cs); uc.reg_write(UC_X86_REG_EIP, ip)
 
-    hook_mem, hook_unmapped = _memory_hooks(U, rec, set())
+    hook_mem, hook_unmapped = _memory_hooks(U, rec, set(), fill=not os.environ.get("CB_GATE_ZERO"))
 
     uc.hook_add(U.UC_HOOK_CODE, hook_code)
     uc.hook_add(U.UC_HOOK_MEM_READ | U.UC_HOOK_MEM_WRITE, hook_mem)
