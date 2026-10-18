@@ -658,7 +658,7 @@ def _rewrite_array_aggregates(s, resolver):
         s = s[:m.start()] + rep + s[close + 1:]
 
 
-from codebreaker.java.emit.statements.controlflow import _wrap_switch_cases, _translate_labels, _inline_finally
+from codebreaker.java.emit.statements.controlflow import _wrap_switch_cases, _translate_labels, _inline_finally, _npe_to_catch
 
 
 
@@ -2244,6 +2244,7 @@ def translate_body(method, cls, resolver, ledger=None):
             return re.sub(r'((?<!:):\s*)NULL(\s*[;)])', r'\g<1>%s\g<2>' % empty, l)
         out = [_arms(l) for l in out]
 
+    out = _npe_to_catch(out)                      # a null dereference in a try reaches its NPE handler
     before = out
     out = _translate_labels(out)                  # labeled break/continue -> goto (body-level)
     if ledger is not None and len(out) != len(before):
