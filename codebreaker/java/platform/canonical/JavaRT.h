@@ -72,8 +72,7 @@ struct JCat {
 	JCat& operator+(bool v) { _s += (v ? "true" : "false"); return *this; }   // Java prints true/false
 	JCat& operator+(const char* v) { if (v) _s += v; return *this; }
 	JCat& operator+(const std::string& v) { _s += v; return *this; }
-	operator JavaString() const { return JavaString(_s); }
-	operator std::string() const { return _s; }
+	operator JavaString() const { return JavaString(_s); }   // also reaches std::string (its base)
 	// Java lets you keep calling String methods on a concatenation result, e.g.
 	// `("" + name).trim()`. trim() drops leading/trailing chars <= ' ' (Java semantics).
 	JavaString trim() const {
@@ -109,8 +108,7 @@ struct StringBuilder {
 	StringBuilder* insert(int i, const std::string& v) { if (i >= 0 && i <= (int)_s.size()) _s.insert(i, v); return this; }
 	StringBuilder* reverse() { for (int a = 0, b = (int)_s.size() - 1; a < b; ++a, --b) { char t = _s[a]; _s[a] = _s[b]; _s[b] = t; } return this; }
 	void setLength(int n) { _s.resize(n >= 0 ? n : 0); }
-	operator JavaString() const { return JavaString(_s); }
-	operator std::string() const { return _s; }
+	operator JavaString() const { return JavaString(_s); }   // also reaches std::string (its base)
 };
 
 // Java array aggregate `new T[]{a, b, c}` builder. C++03 has no array initializer-list for a
@@ -161,6 +159,10 @@ struct JObject {
 	JObject() : kind(0), i(0), d(0), p(0), ti(0) {}
 	JObject(int v) : kind(v ? 1 : 0), i(v), d(0), p(0), ti(0) {}        // 0 == null (NULL is 0); else boxed int
 	JObject(long long v) : kind(v ? 1 : 0), i(v), d(0), p(0), ti(0) {}  // boxed long
+	JObject(long v) : kind(v ? 1 : 0), i(v), d(0), p(0), ti(0) {}
+	JObject(unsigned int v) : kind(v ? 1 : 0), i(v), d(0), p(0), ti(0) {}
+	JObject(unsigned long v) : kind(v ? 1 : 0), i(v), d(0), p(0), ti(0) {}
+	JObject(unsigned long long v) : kind(v ? 1 : 0), i((long long)v), d(0), p(0), ti(0) {}   // size_t on 64-bit
 	JObject(char v) : kind(2), i(v), d(0), p(0), ti(0) {}
 	JObject(bool v) : kind(7), i(v ? 1 : 0), d(0), p(0), ti(0) {}
 	JObject(float v) : kind(8), i((long long)v), d(v), p(0), ti(0) {}   // boxed Float
@@ -241,7 +243,6 @@ struct JObject {
 	// void* interop. NOTE: no operator bool() -- it would make `if(x)` ambiguous with operator int().
 	operator int() const { return (int)i; }
 	operator char() const { return (char)i; }
-	operator JavaString() const { return s; }
 	template<class T> operator T*() const { return (T*)p; }
 	// unbox a boxed array: `(int[])o` -> the stored JArray (empty if o didn't box a JArray<T>).
 	template<class T> operator JArray<T>() const {
@@ -251,11 +252,14 @@ struct JObject {
 	template<class K, class V> operator JMap<K, V>() const {
 		return (kind == 5 && p && ti && *ti == typeid(JMap<K, V>)) ? *(JMap<K, V>*)p : JMap<K, V>();
 	}
-	// unbox a boxed List: `(List)o` -> the stored JList (empty if o didn't box a JList<T>).
-	template<class T> operator JList<T>() const {
-		return (kind == 5 && p && ti && *ti == typeid(JList<T>)) ? *(JList<T>*)p : JList<T>();
-	}
 };
+
+// unbox a String: `(String)o`, `String s = o` -> the boxed string (empty if o didn't box one).
+inline JavaString::JavaString(const JObject& o) : std::string(o.s) {}
+// unbox a boxed List: `(List)o` -> the stored JList (empty if o didn't box a JList<T>).
+template<class T> JList<T>::JList(const JObject& o) {
+	if (o.kind == 5 && o.p && o.ti && *o.ti == typeid(JList<T>)) *this = *(const JList<T>*)o.p;
+}
 
 // java.util.Iterator DEFINITION (forward-declared in JIterator.h). Elements are JObject so a
 // JList<JObject> iterates as JObject, not a void* that drops the box tag; next() returns a JObject that

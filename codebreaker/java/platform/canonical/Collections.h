@@ -55,6 +55,7 @@ struct Collections {
 	template<class T> static void sort(JList<T>& list) { std::sort(list.begin(), list.end()); }
 	template<class T> static void reverse(JList<T>& list) { std::reverse(list.begin(), list.end()); }
 	template<class T> static JList<T>& synchronizedList(JList<T>& list) { return list; }   // no JVM monitor on the port
+	template<class T> static JList<T> synchronizedList(const JList<T>& list) { return list; }   // a temporary (new ArrayList())
 	template<class M> static M& synchronizedMap(M& m) { return m; }
 	template<class T> static JList<T> emptyList() { return JList<T>(); }
 	template<class T> static void shuffle(JList<T>&) {}            // no-op (no RNG dependency here)

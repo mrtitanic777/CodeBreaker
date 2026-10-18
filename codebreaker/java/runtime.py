@@ -158,6 +158,7 @@ namespace GL11 {
 	const int GL_TEXTURE_WRAP_S = 0x2802;
 	const int GL_TEXTURE_WRAP_T = 0x2803;
 	const int GL_NEAREST_MIPMAP_LINEAR = 0x2702;
+	const int GL_LINEAR_MIPMAP_LINEAR = 0x2703;
 	const int GL_REPEAT = 0x2901;
 	const int GL_CLAMP = 0x2900;
 	const int GL_COLOR_BUFFER_BIT = 0x4000;
@@ -1251,13 +1252,14 @@ _GENERATED['Robot.h'] = _class_stub('Robot', void_methods=['mouseMove'])
 # URL carries a resource path when built by Class::getResource("/x.png") so ImageIO::read(URL*) can
 # resolve it to game:\Content\... (the URL form of getResourceAsStream). openStream() returns
 # InputStream* so `new DataInputStream(url.openStream())` binds.
-_GENERATED['URL.h'] = _class_stub('URL', fwds=('InputStream', 'URLConnection'),
+_GENERATED['URL.h'] = _class_stub('URL', fwds=('InputStream', 'URLConnection'), ctors=False,
     ret_methods=[('openConnection', ('URLConnection*', '0')), ('openStream', ('InputStream*', '0')),
                  ('toString', ('std::string', 'std::string()')), ('getPath', ('std::string', 'std::string()')),
                  ('getFile', ('std::string', 'std::string()')), ('getProtocol', ('std::string', 'std::string()')),
                  ('getHost', ('std::string', 'std::string()')), ('getQuery', ('std::string', 'std::string()')),
                  ('getPort', ('int', '-1')), ('getDefaultPort', ('int', '-1')), ('toURI', ('void*', '0'))],
     extra=['std::string _j2xpath;',
+           'explicit URL(...) {}   // explicit: a string reaches URL only through the path ctor below',
            'URL(const std::string& p) : _j2xpath(p) {}',
            'const std::string& j2xResourcePath() const { return _j2xpath; }'])
 _GENERATED['FileDialog.h'] = _class_stub('FileDialog', void_methods=['setVisible', 'setMode'],

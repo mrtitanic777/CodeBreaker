@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <set>
 #include "JIterator.h"
+struct JObject;                                  // (List)o unboxes through the ctor below (JavaRT.h)
 
 // java.util.List / ArrayList / LinkedList, held BY VALUE. Subclasses std::vector<T> so every
 // existing STL use keeps working (iterators, operator[], size(), push_back, range loops, and
@@ -19,6 +20,7 @@ public:
 	typedef typename std::vector<T>::const_iterator _cit;
 	JList() {}
 	JList(long long) {}                                  // Java `List x = null;` -> empty list
+	JList(const JObject& o);                             // unbox a boxed List; defined in JavaRT.h
 	// element-cast copy: `return map.values();` builds a JList<void*> from a JList<JObject> (the raw
 	// Collection return type erases the element), and `new ArrayList(otherTypedList)` copies across
 	// element types. Same-type copy uses the compiler's copy ctor (an exact match beats this template).

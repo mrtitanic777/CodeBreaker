@@ -4,6 +4,7 @@
 #include <vector>
 #include <sstream>
 #include "JArray.h"
+struct JObject;                                  // (String)o unboxes through the ctor below (JavaRT.h)
 
 class JavaString : public std::string {
 	static char _lc(char c) { return (char)((c >= 'A' && c <= 'Z') ? c + 32 : c); }
@@ -12,6 +13,7 @@ public:
 	JavaString() {}
 	JavaString(const char* s) : std::string(s ? s : "") {}
 	JavaString(const std::string& s) : std::string(s) {}
+	JavaString(const JObject& o);                // defined in JavaRT.h, after JObject
 	// new String(byte[] [,charset]) / new String(byte[], off, len [,charset]): build from a byte array
 	// (NBT keys, packet strings). Charset is ignored -- the game's text is UTF-8/ASCII and the bytes copy
 	// verbatim. Trailing `const char* = 0` swallows the "UTF-8" argument without a separate overload.
