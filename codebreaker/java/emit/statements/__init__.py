@@ -46,31 +46,58 @@ _DECL = re.compile(
     r'^(?:final\s+)?([A-Za-z_][\w.]*(?:<[^>]*>)?(?:\s*\[\s*\])*)\s+([A-Za-z_]\w*)\s*(=|;)')
 
 _MATH = re.compile(r'\bMath\.([A-Za-z_]\w*)')
-# new T[n] (1-D, not already value-init, NOT an aggregate `new T[]{...}`) -> type, optional *, size
-_NEW_ARRAY = re.compile(r'\bnew\s+([\w:]+)\s*(\*?)\s*\[([^\]]*)\](?!\s*[\[({])')
+# `new T[...]` head; its dimensions are read with bracket balancing (a size may itself index:
+# `new X[this.logo[0].length()][this.logo.length]`) -- a `[^\]]*` pattern split that size in two.
+_NEW_ARRAY_HEAD = re.compile(r'\bnew\s+([\w:]+)\s*\*?\s*(?=\[)')
 # new T[]{a, b, c} aggregate -- captured separately and built via JArrayInit
 _NEW_ARRAY_AGG = re.compile(r'\bnew\s+([\w:]+)\s*((?:\*?\s*\[\s*\]\s*)+)\{')   # T[]...[]{ (any dims)
-# multi-dim SIZED new (not an aggregate `{`): new T[a][b] and new T[a][b][c]
-_NEW_ARRAY_3D = re.compile(r'\bnew\s+([\w:]+)\s*\*?\s*\[([^\]]*)\]\s*\[([^\]]*)\]\s*\[([^\]]*)\](?!\s*[\[{])')
-_NEW_ARRAY_2D = re.compile(r'\bnew\s+([\w:]+)\s*\*?\s*\[([^\]]*)\]\s*\[([^\]]*)\](?!\s*[\[{])')
 
 
-def _rewrite_multidim_new(s, resolver):
-    """`new T[a][b]` -> j2x_newarr2<elem>(a,b); `new T[a][b][c]` -> j2x_newarr3<elem>(a,b,c). elem is
-    the scalar element C++ type (int / Chunk*). Sized only -- aggregate `new T[][]{...}` is separate."""
+def _rewrite_sized_new(s, resolver):
+    """Sized array allocation: `new T[n]` -> JArray<elem>(n); `new T[a][b]` -> j2x_newarr2<elem >(a, b);
+    `new T[a][b][c]` -> j2x_newarr3<elem >(a, b, c); `new T[n][]` (jagged) -> JArray<JArray<elem> >(n).
+    elem is the element C++ type of the ARRAY type (`byte[]`'s element is unsigned char -- buffer policy
+    -- while a scalar `byte` is signed char: a `new byte[a][b]` must match the JArray<JArray<unsigned char> >
+    field it fills, TexturePortalFX). Aggregates `new T[]{...}` are rewritten before this and left alone."""
     def elem(t):
-        # Derive the element from the ARRAY type, not the scalar: `byte[]` element is unsigned char
-        # (buffer policy) while a scalar `byte` is signed char -- a `new byte[a][b]` must match the
-        # `JArray<JArray<unsigned char> >` field it fills (TexturePortalFX), so use the array element.
         arr = resolver.cpp_type(ir.JType(t, array_dims=1), 'local')
         if arr.startswith('JArray<') and arr.endswith('>'):
             return arr[len('JArray<'):arr.rindex('>')].strip()
         return resolver.cpp_type(ir.JType(t), 'local')
-    s = _NEW_ARRAY_3D.sub(lambda m: 'j2x_newarr3<%s >(%s, %s, %s)'
-                          % (elem(m.group(1)), m.group(2).strip(), m.group(3).strip(), m.group(4).strip()), s)
-    s = _NEW_ARRAY_2D.sub(lambda m: 'j2x_newarr2<%s >(%s, %s)'
-                          % (elem(m.group(1)), m.group(2).strip(), m.group(3).strip()), s)
-    return s
+    out, i = [], 0
+    while True:
+        m = _NEW_ARRAY_HEAD.search(s, i)
+        if not m:
+            out.append(s[i:])
+            return ''.join(out)
+        dims, j, after = [], m.end(), m.end()
+        while j < len(s) and s[j] == '[':
+            close = _balanced_bracket(s, j)
+            if close < 0:
+                break
+            dims.append(s[j + 1:close].strip())
+            j = after = close + 1                     # the text after the last ']' is kept as it is
+            while j < len(s) and s[j] == ' ':
+                j += 1
+        sized = len([d for d in dims if d])
+        rep = None
+        if dims and not (j < len(s) and s[j] in '{(') and all(dims[:sized]) and not any(dims[sized:]):
+            t = m.group(1)
+            if sized == len(dims) == 1:
+                rep = '%s(%s)' % (resolver.cpp_type(ir.JType(t, array_dims=1), 'local'), dims[0])
+            elif sized == len(dims) == 2:
+                rep = 'j2x_newarr2<%s >(%s, %s)' % (elem(t), dims[0], dims[1])
+            elif sized == len(dims) == 3:
+                rep = 'j2x_newarr3<%s >(%s, %s, %s)' % (elem(t), dims[0], dims[1], dims[2])
+            elif sized == 1:
+                rep = '%s(%s)' % (resolver.cpp_type(ir.JType(t, array_dims=len(dims)), 'local'), dims[0])
+        if rep is None:                               # not a sized allocation this rewrites: keep the head
+            out.append(s[i:m.end()])
+            i = m.end()
+            continue
+        out.append(s[i:m.start()] + rep)
+        i = after
+
 # x instanceof Type  -- x may be a var, a this->field chain, an [index], or a method CALL
 _INSTANCEOF = re.compile(
     r'([A-Za-z_]\w*(?:\s*(?:->|\.|::)\s*[A-Za-z_]\w*|\s*\([^()]*\)|\s*\[[^\]]*\])*)'
@@ -1700,9 +1727,13 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
     s = sub_outside_literals(re.compile(r'\bnew\s+String\s*\('), 'JavaString(', s)
     # 2. this.  -> this->
     s = re.sub(r'\bthis\.', 'this->', s)
-    # 3. <pointerName>.  -> <pointerName>->
+    # 3. <pointerName>.  -> <pointerName>->   -- the bare name (or this->name) only. FIXED BUG
+    #    member-shadows-scope-name: `var3.inventory.length()` with Session.inventory a String, inside a
+    #    subclass of EntityPlayer (whose own `inventory` is an InventoryPlayer*), became
+    #    `var3->inventory->length()`: the scope's type of `inventory` was applied to ANOTHER object's
+    #    member of that name. A member reached through a receiver is typed by _resolve_chains instead.
     for name in ptr_names:
-        s = re.sub(r'\b' + re.escape(name) + r'\.', name + '->', s)
+        s = re.sub(r'(?:(?<![\w.])(?<!->)|(?<=\bthis->))' + re.escape(name) + r'\.', name + '->', s)
     # 3b. index-result is a pointer: <refArray>[i].member -> <refArray>[i]->member
     s = re.sub(r'\b(\w+)(\[[^\]]*\])\.',
                lambda mm: ('%s%s->' % (mm.group(1), mm.group(2)))
@@ -1831,14 +1862,9 @@ def _translate_line(s, ptr_names, static_set, enum_set, resolver, scope, parent,
     # 9pre. new T[]{a, b, c} aggregate -> JArrayInit builder (before the sized-new pass)
     if '[]' in s and '{' in s:
         s = _rewrite_array_aggregates(s, resolver)
-    # 9b. multi-dim sized new: new T[a][b] / new T[a][b][c] -> j2x_newarr2/3<elem>(...) (nested JArray)
-    s = _rewrite_multidim_new(s, resolver)
-    # 9. new T[n] -> JArray<elem>(n) (length-carrying, bounds-checked, value-initialized)
-    def _new_arr(m):
-        cpp = resolver.cpp_type(ir.JType(m.group(1), array_dims=1), 'local')   # JArray<elem>
-        size = m.group(3).strip()
-        return '%s(%s)' % (cpp, size) if size else '%s()' % cpp
-    s = _NEW_ARRAY.sub(_new_arr, s)
+    # 9. sized new: new T[n] -> JArray<elem>(n) (length-carrying, bounds-checked, value-initialized);
+    #    new T[a][b] / new T[a][b][c] -> j2x_newarr2/3<elem>(...) (nested JArray)
+    s = _rewrite_sized_new(s, resolver)
     # 10. super.method(...) -> Parent::method(...)  (super(...) ctor calls handled in source.py)
     if parent:
         s = re.sub(r'\bsuper\.(\w+)', parent + r'::\1', s)
@@ -1988,6 +2014,17 @@ def _default_return_val(rt, resolver):
     if rt.name in typemap.PRIMITIVES:
         return '0'
     return 'NULL'
+
+
+def _value_null(rt, resolver):
+    """The empty value that stands for Java's null in a VALUE-typed C++ return (`JavaString()`,
+    `JObject()`, `JArray<T>()`, `JList<...>()`), or None for a pointer/primitive/void return."""
+    if rt is None or rt.name == 'void' or (rt.name in typemap.PRIMITIVES and not rt.is_array):
+        return None
+    if not rt.is_array and not resolver.is_value(rt):
+        return None
+    cpp = resolver.cpp_type(rt, 'local')
+    return '%s()' % cpp if re.match(r'[A-Z]\w*(<.*>)?$', cpp) else None
 
 
 def _nullable_getter_ctype(getter_name):
@@ -2185,6 +2222,18 @@ def translate_body(method, cls, resolver, ledger=None):
     if rt is not None and rt.is_array:
         empty = '%s()' % resolver.cpp_type(rt, 'local')
         out = [re.sub(r'\breturn\s+NULL\s*;', 'return %s;' % empty, l) for l in out]
+    # the same inside a conditional: `return c ? str : null;` / `return x == null ? null : x.value;` with a
+    # VALUE return type (String, Object, a List/Map, an array) -- a NULL arm is an integer, which `?:` cannot
+    # unify with JCat/JObject/JArray (g++: "operands to ?: have different types"). It becomes the type's
+    # empty value, as a plain `return null;` already does.
+    empty = _value_null(rt, resolver)
+    if empty:
+        def _arms(l):
+            if not l.lstrip().startswith('return') or '?' not in l:
+                return l
+            l = re.sub(r'(\?\s*)NULL(\s*:(?!:))', r'\g<1>%s\g<2>' % empty, l)
+            return re.sub(r'((?<!:):\s*)NULL(\s*[;)])', r'\g<1>%s\g<2>' % empty, l)
+        out = [_arms(l) for l in out]
 
     before = out
     out = _translate_labels(out)                  # labeled break/continue -> goto (body-level)
