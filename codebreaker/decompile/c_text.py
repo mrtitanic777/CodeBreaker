@@ -1316,9 +1316,12 @@ def _compilable16(module_path, outdir=None):
                 items = args.named_children
                 for a, b in zip(items, items[1:]):
                     sg_t = by_expr.get(src.at(b).strip())
-                    if sg_t is None or a.type != "number_literal" or not re.fullmatch(r"0x[0-9a-f]+", src.at(a)):
+                    # (an offset of 8000h or more the core writes negative: GetFilePortName's
+                    # dialog procedure 1:9D0F was `-0x62f1`, left a number)
+                    lit = re.fullmatch(r"(-?)0x([0-9a-f]+)", src.at(a).replace(" ", ""))
+                    if sg_t is None or a.type not in ("number_literal", "unary_expression") or not lit:
                         continue
-                    fn = at_place.get((sg_t, int(src.at(a), 16)))
+                    fn = at_place.get((sg_t, (-int(lit.group(2), 16) if lit.group(1) else int(lit.group(2), 16)) & 0xFFFF))
                     if fn:
                         src.replace(a, "((uint2)(uint4)(void __far *)&%s)" % fn)
             m.texts[name] = src.text()
