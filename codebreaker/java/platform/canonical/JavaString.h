@@ -180,6 +180,8 @@ public:
 	JavaString operator+(long long v) const { std::ostringstream o; o << v; return JavaString((const std::string&)*this + o.str()); }
 	JavaString operator+(unsigned v) const { std::ostringstream o; o << v; return JavaString((const std::string&)*this + o.str()); }
 	JavaString operator+(double v) const { return JavaString((const std::string&)*this + j2xNumberText(v, false)); }
+	// a Java byte (signed char) prints its number, as Java does ("" + b), not a character
+	JavaString operator+(signed char v) const { std::ostringstream o; o << (int)v; return JavaString((const std::string&)*this + o.str()); }
 	JavaString operator+(float v) const { return JavaString((const std::string&)*this + j2xNumberText(v, true)); }
 	JavaString operator+(char v) const { return JavaString((const std::string&)*this + std::string(1, v)); }
 	// a Java char (unsigned char) appends the character, not its number (it would promote to operator+(int))

@@ -34,7 +34,11 @@ _NEW_ARRAY = re.compile(r'^new\s+[\w.]+\s*\[([^\]]+)\]\s*$')   # size may be any
 _NEW_ARRAY_AGG_MULTI = re.compile(r'^new\s+[\w.]+\s*(?:\[\s*\]\s*){2,}\{', re.S)
 _THIS_CALL = re.compile(r'\bthis\s*\(([^;]*)\)\s*;')
 _SUPER_CALL = re.compile(r'^super\s*\(([^;]*)\)\s*;')
-_PRIMITIVE_CPP = {'int', 'short', 'long long', 'char', 'unsigned char',
+# zero-initialised in every constructor's member-init list, as Java zeroes every field. FIXED BUG
+# byte-fields-uninitialised: 'signed char' (Java byte) was missing when byte stopped being plain char, so
+# every byte field -- packet types, yaw/pitch, NBT tags -- held garbage until assigned (the behavioural
+# judge: Packet24MobSpawn.type -64, Packet34EntityTeleport.yaw -72 on a fresh packet).
+_PRIMITIVE_CPP = {'int', 'short', 'long long', 'char', 'unsigned char', 'signed char',
                   'float', 'double', 'bool', 'long'}
 
 

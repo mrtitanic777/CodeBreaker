@@ -92,6 +92,7 @@ struct JCat {
 	std::string _s;
 	template<class T> JCat& operator+(const T& v) { std::ostringstream o; o << v; _s += o.str(); return *this; }
 	JCat& operator+(double v) { _s += j2xNumberText(v, false); return *this; }      // as Java prints a double
+	JCat& operator+(signed char v) { std::ostringstream o; o << (int)v; _s += o.str(); return *this; }  // a byte: its number
 	JCat& operator+(float v) { _s += j2xNumberText(v, true); return *this; }        // ... and a float
 	JCat& operator+(bool v) { _s += (v ? "true" : "false"); return *this; }   // Java prints true/false
 	JCat& operator+(const char* v) { if (v) _s += v; return *this; }
@@ -121,6 +122,7 @@ struct StringBuilder {
 	StringBuilder(const JavaString& s) : _s(s) {}
 	template<class T> StringBuilder* append(const T& v) { std::ostringstream o; o << v; _s += o.str(); return this; }
 	StringBuilder* append(double v) { _s += j2xNumberText(v, false); return this; }
+	StringBuilder* append(signed char v) { std::ostringstream o; o << (int)v; _s += o.str(); return this; }
 	StringBuilder* append(float v) { _s += j2xNumberText(v, true); return this; }
 	StringBuilder* append(bool v) { _s += (v ? "true" : "false"); return this; }   // Java prints true/false
 	StringBuilder* append(char v) { _s += v; return this; }
@@ -405,6 +407,7 @@ namespace Double {
 namespace String {
 	template<class T> inline JavaString valueOf(const T& v) { std::ostringstream o; o << v; return JavaString(o.str()); }
 	inline JavaString valueOf(double v) { return JavaString(j2xNumberText(v, false)); }
+	inline JavaString valueOf(signed char v) { std::ostringstream o; o << (int)v; return JavaString(o.str()); }
 	inline JavaString valueOf(float v) { return JavaString(j2xNumberText(v, true)); }
 	template<class A> inline JavaString valueOf(const A& a, int, int) { std::ostringstream o; o << a; return JavaString(o.str()); }  // String.valueOf(char[], off, len) (stub)
 	inline JavaString valueOf(const JArray<unsigned char>& a, int off, int n) {   // String.valueOf(char[], off, len)
