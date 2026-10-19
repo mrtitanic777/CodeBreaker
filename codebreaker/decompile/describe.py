@@ -497,6 +497,14 @@ def callers_say(d):
     return {t: v[0] for t, v in votes.items() if len(v) >= 2 and len(set(v)) == 1}
 
 
+class _Into(object):
+    """A near jump forwards() followed: where it went."""
+    mnemonic, op_str, size = "into", "", 0
+
+    def __init__(self, address):
+        self.address = address
+
+
 def forwards(d, seg, off, kind):
     """Bytes of arguments a thunk's caller has removed, for a thunk that puts more arguments
     under its return address and jumps on: `pop bx / pop dx` (the return address), `push`es (the
@@ -505,7 +513,21 @@ def forwards(d, seg, off, kind):
     less the words the thunk added. -> bytes, or None when it is not such a thunk."""
     code = (getattr(d, "images", None) or {}).get(seg) or d.segment_bytes.get(seg, b"")   # (relocated: a far jump's segment as the placeholder)
     md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
-    ins = list(md.disasm(bytes(code[off:off + 64]), off))[:24]
+    # (read along the way it runs: a near jump inside the segment followed, not listed -- USER's
+    # 1:2440 `pop ax / pop dx / xor cx, cx / jmp 244C` into 1:2446's `push cx / push dx / push
+    # ax`, then on into the body they share, which ends `retf 0Eh`: its callers push six words,
+    # not seven, and the C passed DS for a seventh)
+    ins, at = [], off
+    while len(ins) < 30 and 0 <= at < len(code):
+        i = next(md.disasm(bytes(code[at:at + 16]), at), None)
+        if i is None:
+            break
+        if i.mnemonic == "jmp" and re.fullmatch(r"0x[0-9a-f]+", i.op_str) and len(ins) > 0:
+            at = int(i.op_str, 16) & 0xFFFF
+            ins.append(_Into(at))                        # (where it went: the body, if it is next)
+            continue
+        ins.append(i)
+        at = i.address + i.size
     words = 2 if kind == "far" else 1
     regs = ("ax", "bx", "cx", "dx", "si", "di", "es")
     if len(ins) < 2 * words + 2 or any(i.mnemonic != "pop" or i.op_str not in regs for i in ins[:words]):
@@ -523,8 +545,11 @@ def forwards(d, seg, off, kind):
         return i.mnemonic in ("xor", "mov", "sub", "cmp", "test", "and", "or") and "sp" not in i.op_str.split(",")[0] \
             or (i.mnemonic in ("jcxz", "je", "jne") and re.fullmatch(r"0x[0-9a-f]+", i.op_str)
                 and i.address < int(i.op_str, 16) <= i.address + 0x20)
-    while k < len(ins) and (ins[k].mnemonic == "push" or quiet(ins[k])) and \
+    while k < len(ins) and (ins[k].mnemonic in ("push", "into") or quiet(ins[k])) and \
             not (ins[k].mnemonic == "push" and ins[k].op_str == ret[-1]):
+        if ins[k].mnemonic == "into":                        # (a jump followed: it goes on there)
+            k += 1
+            continue
         if ins[k].mnemonic == "push":
             added += 1
         elif any(r in ins[k].op_str.split(",")[0] for r in ret):
@@ -536,14 +561,18 @@ def forwards(d, seg, off, kind):
     k += words
     while k < len(ins) - 1 and quiet(ins[k]):                # (slots set beneath, then the jump)
         k += 1
+    if k >= len(ins):
+        return None
     j = ins[k]
     if j.mnemonic == "ljmp" and re.fullmatch(r"0x[0-9a-f]+(, |:)0x[0-9a-f]+", j.op_str):
         s, o = (int(x, 16) for x in re.split(r", |:", j.op_str))
         if s >= 0xE000:
             return None                                      # (another module's: not known here)
         tseg, toff = where((s << 16) | o)
-    elif j.mnemonic == "jmp" and re.fullmatch(r"0x[0-9a-f]+", j.op_str):
-        tseg, toff = seg, int(j.op_str, 16) & 0xFFFF
+    elif j.mnemonic == "into":                               # (a near jump, followed: the body there)
+        tseg, toff = seg, j.address
+    elif j.mnemonic in ("mov", "enter", "push", "inc", "nop"):
+        tseg, toff = seg, j.address                          # (no jump: the body goes on right here)
     else:
         return None
     _k, pop = returns(d.segment_bytes.get(tseg, b""), toff, want=kind)
