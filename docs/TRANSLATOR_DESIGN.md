@@ -3,7 +3,8 @@
 The request (2026-10-19): "I want to be able to convert all kinds of code", then: "I wanna be able to
 convert back-and-forth universally. C to Java, Java to C, C++ to Java, Java to C++, etc." Every
 suggestion of the first draft was accepted: a garbage collector on the PC, modern Java, C#, the
-project layer, more consoles. **Dynamic languages are in scope too.**
+project layer, more consoles. **Dynamic languages are in scope too**, and no language or pair is
+preferred: "I wanna complete universal transpiler for all programming languages."
 
 Today `codebreaker/java` (J2CTool) converts one kind of code well: decompiled 2010-2011 Minecraft
 Java into C++03 for the Xbox 360. Judged beside the JVM, Alpha has 161 classes alike and none
@@ -220,11 +221,46 @@ same cases run on both sides of any pair. Round trips are judged too: A -> B -> 
   code; for dynamic languages, code that changes types at run time.
 - Your own programs, whenever you have some: real targets beat sample projects.
 
+## Every language: the language kit
+
+The goal is "a complete universal transpiler for all programming languages", with no pair preferred
+over another. There are thousands of languages and new ones keep appearing, so "all" is reached by
+making each addition mechanical rather than by a fixed list. A language is added by supplying a
+**kit** to a fixed contract:
+
+1. **Front end:** source -> IR, through the language's own toolchain where one can dump a typed tree,
+   else through a parser of our own (`tree-sitter` grammars exist for almost every language and give
+   a uniform syntax tree to start from).
+2. **Back end:** IR -> source, with its idiom rules.
+3. **Library:** the language's standard library, written mostly in the IR so the translator carries
+   it into every target, with a thin native layer per target.
+4. **Judge adapter:** how to run the language's own code beside a translation and read results.
+5. **Corpus:** real programs in the language, which join the regression gate.
+
+A finished kit pairs with every language already present, in both directions.
+
+**The order is set by dependency, not preference:** each step is the one that the most later work
+stands on.
+
+| Wave | Languages | Why here |
+|---|---|---|
+| Foundation | Java -> C++ on the new IR | the one path already proven; the gate checks the rebuild |
+| 1 | C (in and out) | the lowest common target: every runtime can bottom out in it, and binaries arrive as C through the decompiler |
+| 2 | Java (in and out, modern), C++ (in, C++03 and C++17 out) | the static object model, generics and templates, RAII |
+| 3 | C# | completes the static, garbage-collected family; checks the IR is not Java-shaped |
+| 4 | Python, JavaScript/TypeScript, Lua | the dynamic machinery (`dynamic`, inference, closures, tables) once, three languages on it |
+| 5 | Go, Rust, Kotlin, Swift, Objective-C, D, Zig, Dart, Scala | mostly kits over machinery that exists by then; Rust as a target uses `Rc`/`RefCell` in the faithful tier |
+| 6 | Ruby, PHP, Perl, Pascal/Delphi, BASIC dialects, Fortran, COBOL | more dynamic and older procedural languages |
+| 7 | Haskell and ML family, Lisp/Scheme/Clojure, Erlang/Elixir, Prolog | need runtime models of their own: laziness, macros, actors, logic search |
+| 8 | Assembly languages | through the decompiler, as binaries are |
+
+Each wave's languages can be built side by side once the wave before them is in.
+
 ## Phases
 
 Each phase ends with the regression gate passing, plus its own exit check. The first two are the
-foundation; after them, front ends and back ends can be added in any order, and each one multiplies
-the number of working pairs.
+foundation; after them, front ends and back ends follow the waves above, and each one multiplies the
+number of working pairs.
 
 1. **Bodies into the IR, beside the old path.** Statement and expression nodes; the javac front end;
    a C++03 back end that emits from the tree. Per class, the new path is used when the judge rates it
@@ -250,13 +286,13 @@ the number of working pairs.
 11. **Binaries in.** CodeBreaker's decompiler output as a C source for every back end.
 12. **More consoles,** each a back end setting plus a platform layer.
 
-The order of 5-11 can change to suit what you want converted first. Phases 1 and 2 cannot move:
-everything else stands on them.
+Phases 1 and 2 cannot move: everything else stands on them. After phase 11 the waves continue
+language by language (waves 5-8), each one a kit.
 
-## Open questions for you
+## Still open
 
-1. **Which pair matters most after Java -> C++?** That decides the order of phases 5-11.
-2. **Downloads:** the TypeScript compiler (`typescript`, from npm) and a Lua interpreter (5.4) when
-   their phases come. Each will be asked about at the time, with name, source and size.
-3. **Corpora:** any programs, in any of these languages, that you want converted.
-4. **Which console after the 360?**
+1. **Downloads:** the TypeScript compiler (`typescript`, from npm), a Lua interpreter (5.4),
+   `tree-sitter` grammars, and later each wave's toolchains. Each is asked about when its phase comes,
+   with name, source and size.
+2. **Corpora:** any programs, in any language, that you want converted.
+3. **Which console after the 360?**
