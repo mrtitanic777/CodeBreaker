@@ -1719,8 +1719,8 @@ def _buffer_fields(text):
         # (an array there is the rest of the buffer too: USER's sub_2_03A4 fills 'a'..'z' and
         # 'A'..'Z' as two arrays of 26 and measures the 52 as one string -- two arrays of their
         # own, the compiler put them apart, and every dialog came out the wrong width)
-        place = "((%s *)((uint1 *)%s + 0x%x))" % (typ or "int2", owner, at)
-        text = _rename(text, name, place if is_array else "(*%s)" % place)
+        place = "(%s *)((uint1 *)%s + 0x%x)" % (typ or "int2", owner, at)
+        text = _rename(text, name, "(%s)" % place if is_array else "(*%s)" % place)
         if is_array:
             need = at + size
             if need > asz:
