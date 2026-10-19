@@ -28,7 +28,7 @@ import re
 import struct
 import subprocess
 
-REV = 2
+REV = 3
 TIMEOUT = 60
 
 # Java primitive -> (C++ parameter type, inputs). Inputs are the same on both sides, written as literals.
@@ -251,26 +251,57 @@ def init_order(cpp_dir):
 _UNDEF = re.compile(r"undefined reference to `(?:vtable for |typeinfo for )?([A-Za-z_]\w*)::")
 
 
-def build_native(cxx, cpp_dir, harness, exe, first):
+MAX_UNITS = 40          # a class whose harness needs more of the program than this is not run (NOT JUDGED)
+_STEP = 180             # seconds any one compile or link may take
+
+
+def _object(cxx, cpp_dir, unit, objs, prefix):
+    """unit's object file, compiled once per module (shared by every class's harness): objs/<name>.o.
+    Written under a temporary name and moved into place, so parallel judges never read half of one."""
+    obj = os.path.join(objs, os.path.splitext(os.path.basename(unit))[0] + '.o')
+    if os.path.isfile(obj):
+        return obj
+    tmp = '%s.%d.tmp' % (obj, os.getpid())
+    first = ['-include', prefix] if prefix else []
+    r = subprocess.run([cxx, '-std=c++03', '-w', '-O0', '-iquote', cpp_dir] + first + ['-c', unit, '-o', tmp],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=_STEP)
+    if r.returncode != 0:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        raise RuntimeError(r.stderr.decode('utf-8', 'replace').strip().splitlines()[-1:] or ['compile failed'])
+    os.replace(tmp, obj)
+    return obj
+
+
+def build_native(cxx, cpp_dir, harness, exe, first, objs, prefix=None):
     """Link the harness with `first` (.cpp files), adding the .cpp of any class the linker reports
-    missing, a few rounds. -> (ok, why, [the .cpp files linked])"""
+    missing, until it links or more than MAX_UNITS are needed. Each .cpp is compiled to an object once
+    (objs). -> (ok, why, [the .cpp files linked])"""
     units = list(first)
-    for _round in range(8):
-        r = subprocess.run([cxx, '-std=c++03', '-w', '-O0', '-iquote', cpp_dir, harness] + units + ['-o', exe],
-                           stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-        if r.returncode == 0:
-            return True, '', units
-        err = r.stderr.decode('utf-8', 'replace')
-        more = sorted(set(os.path.join(cpp_dir, c + '.cpp') for c in _UNDEF.findall(err)
-                          if os.path.isfile(os.path.join(cpp_dir, c + '.cpp'))) - set(units))
-        if not more:
-            first_err = next((l for l in err.splitlines() if 'error' in l or 'undefined' in l), err[:200])
-            return False, first_err.strip()[:200], units
-        units += more
-    return False, 'link: too many classes pulled in', units
+    try:
+        main = _object(cxx, cpp_dir, harness, os.path.dirname(harness), prefix)
+        while True:
+            objects = [_object(cxx, cpp_dir, u, objs, prefix) for u in units]
+            r = subprocess.run([cxx, main] + objects + ['-o', exe], stdout=subprocess.DEVNULL,
+                               stderr=subprocess.PIPE, timeout=_STEP)
+            if r.returncode == 0:
+                return True, '', units
+            err = r.stderr.decode('utf-8', 'replace')
+            more = sorted(set(os.path.join(cpp_dir, c + '.cpp') for c in _UNDEF.findall(err)
+                              if os.path.isfile(os.path.join(cpp_dir, c + '.cpp'))) - set(units))
+            if not more:
+                first_err = next((l for l in err.splitlines() if 'error' in l or 'undefined' in l), err[:200])
+                return False, first_err.strip()[:200], units
+            if len(units) + len(more) > MAX_UNITS:
+                return False, 'it needs more than %d classes of the program linked in' % MAX_UNITS, units
+            units += more
+    except subprocess.TimeoutExpired:
+        return False, 'a compile or link took over %d s' % _STEP, units
+    except RuntimeError as e:
+        return False, 'did not compile: %s' % str(e)[:180], units
 
 
-def run(java_dir, cpp_dir, cls, work, cxx, javac, java):
+def run(java_dir, cpp_dir, cls, work, cxx, javac, java, prefix=None):
     """`java_dir`: the module's sources laid out by package (stage_sources). -> dict(methods=[...], judged=n, total=n, cases=n, differs=[(method, args, java, cpp)], why='')."""
     header = os.path.join(cpp_dir, cls.name + '.h')
     try:
@@ -289,9 +320,13 @@ def run(java_dir, cpp_dir, cls, work, cxx, javac, java):
     os.makedirs(hdir, exist_ok=True)
     with open(os.path.join(hdir, 'J2XProbe.java'), 'w', encoding='utf-8') as f:
         f.write(java_harness(cls.name, methods, pkg))
-    r = subprocess.run([javac, '-nowarn', '-encoding', 'UTF-8', '-sourcepath', java_dir, '-d', jdir,
-                        os.path.join(hdir, 'J2XProbe.java')], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                       timeout=TIMEOUT * 3)
+    try:
+        r = subprocess.run([javac, '-nowarn', '-encoding', 'UTF-8', '-sourcepath', java_dir, '-d', jdir,
+                            os.path.join(hdir, 'J2XProbe.java')], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                           timeout=TIMEOUT * 3)
+    except subprocess.TimeoutExpired:
+        res['why'] = 'javac did not finish'
+        return res
     if r.returncode != 0:
         res['why'] = 'javac: ' + next((l for l in r.stdout.decode('utf-8', 'replace').splitlines() if 'error' in l),
                                       'failed')[:180]
@@ -310,12 +345,15 @@ def run(java_dir, cpp_dir, cls, work, cxx, javac, java):
         return res
     order = init_order(cpp_dir)
     harness = os.path.join(folder, 'probe.cpp')
+    objs = os.path.join(work, 'probe', '_objects')         # shared by every class of the module
+    os.makedirs(objs, exist_ok=True)
     exe = os.path.join(folder, 'probe.exe')
     need = [cls.name] if cls.name in order else []
     for _pass in range(2):
         with open(harness, 'w', encoding='utf-8') as f:
             f.write(cpp_harness(cls.name, methods, keep, need))
-        ok, why, units = build_native(cxx, cpp_dir, harness, exe, [os.path.join(cpp_dir, cls.name + '.cpp')])
+        ok, why, units = build_native(cxx, cpp_dir, harness, exe, [os.path.join(cpp_dir, cls.name + '.cpp')],
+                                      objs, prefix)
         # the classes linked in may have static initialisers of their own: run all of theirs, in order
         linked = set(os.path.splitext(os.path.basename(u))[0] for u in units)
         wanted = [c for c in order if c in linked]

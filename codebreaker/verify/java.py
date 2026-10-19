@@ -202,7 +202,7 @@ def judge(context, item):
         cls = parse.parse_file(source)
     except Exception as e:                                   # the transpiler parsed it; say so if this did not
         return "inconclusive", "not-run", [], COMPILES % (compiled + ("could not read %s: %s" % (source, e),))
-    r = probe.run(staged, include_dir, cls, work, cxx, javac, java)
+    r = probe.run(staged, include_dir, cls, work, cxx, javac, java, prefix)
     if not r["judged"]:
         return "inconclusive", "not-run", [], COMPILES % (compiled + (r["why"],))
     said = "%d of %d methods run beside the JVM on %d inputs" % (r["judged"], r["total"], r["cases"])
