@@ -281,12 +281,14 @@ def compilable32(module_path, funcs, outdir):
     numbered = describe.BY_NUMBER.get(module_path) or {}
     imports.update({n: stem for n, (stem, _number, _pop) in numbered.items() if n not in imports})
     sizes, in_ecx, in_edx = {}, set(), set()
+    own = {}                                  # function -> address of a global -> bytes of its uses there
     for n in order:
         body = []
         for ln in out[n].split("\n"):
             m = re.match(r"/\*@G ([0-9a-f]+) (\d+)(?: \d+)? \*/$", ln)
             if m:
                 sizes.setdefault(int(m.group(1), 16), set()).add(int(m.group(2)))
+                own.setdefault(n, {}).setdefault(int(m.group(1), 16), set()).add(int(m.group(2)))
             else:
                 body.append(ln)
         # (a note the core put before the function -- "WARNING: Removing unreachable block" --
@@ -345,9 +347,25 @@ def compilable32(module_path, funcs, outdir):
         if re.search(r"(?<![A-Za-z0-9])_%sRam%s\b" % (pre, addr), text):
             # (the core's name for the same place read at another width: `_uRam0040c000`)
             macros.append("#define _%sRam%s (*(%s *)0x%s)" % (pre, addr, ty, addr))
+        # A function that uses the place at one width other than the declared one (a byte
+        # stored where other functions read a word) uses it at its own width: the declared
+        # width would store, or read, the bytes beside it too.
+        if ty in _BY_SIZE.values() or re.fullmatch(r"int\d", ty):
+            name = "%sRam%s" % (pre, addr)
+            for n in order:
+                mine = own.get(n, {}).get(int(addr, 16))
+                if mine and len(mine) == 1 and min(mine) != size and min(mine) in _BY_SIZE:
+                    w = min(mine)
+                    alias = "%s_%d" % (name, w)
+                    out[n] = re.sub(r"(?<![A-Za-z0-9_])%s\b" % name, alias, out[n])
+                    m = "#define %s (*(%s *)0x%s)" % (alias, "int%d" % w if pre[0] == "i" else _BY_SIZE[w], addr)
+                    if m not in macros:
+                        macros.append(m)
+    text = "\n".join(out.values())
     # a pointer-typed global compared with a number the decompiler cast to an integer
-    # (`(uint4)pcVar3 != pcRam004094b0`) is compared as the same integer
-    pointers = [m.group(1) for m in re.finditer(r"#define (\w+Ram[0-9a-f]{8}) \(\*\((?:char|code) \* \*\)", "\n".join(macros))]
+    # (`(uint4)pcVar3 != pcRam004094b0`, `(uint4)piVar3 == piRambff4b328`) is compared as the
+    # same integer, whatever it points to
+    pointers = [m.group(1) for m in re.finditer(r"#define (\w+Ram[0-9a-f]{8}) \(\*\([^()]*\* \*\)", "\n".join(macros))]
     if pointers:
         cast = r"\((u?int\d)\)"
         names = "|".join(pointers)
