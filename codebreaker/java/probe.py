@@ -34,7 +34,7 @@ import threading
 
 from codebreaker.java import twophase
 
-REV = 10
+REV = 11
 TIMEOUT = 60
 _STEP = 180             # seconds any one compile or link may take
 
@@ -156,12 +156,13 @@ def _result(java_dir, cpp_dir, t):
     return ('obj', t.name, fs) if fs else None
 
 
-_CLOCK = re.compile(r'\b(?:System\s*\.\s*(?:currentTimeMillis|nanoTime)|new\s+Date)\s*\(')
+_CLOCK = re.compile(r'\b(?:System\s*\.\s*(?:currentTimeMillis|nanoTime)|new\s+Date|[\w.]*getSystemClipboard)\s*\(')
 
 
 def reads_clock(cls):
     """(methods whose result depends on the clock, whether the constructors read it): a method that reads
-    System.currentTimeMillis/nanoTime, or calls one of the class's methods that does. Two runs of the
+    System.currentTimeMillis/nanoTime (or the system clipboard -- what this machine holds, not what the
+    code does: GuiScreen.getClipboardString), or calls one of the class's methods that does. Two runs of the
     original already leave out what changes between them; the clock also differs between the original's
     run and the C++ one, which no comparison can allow for (Timer.updateTimer)."""
     def text(m):
@@ -754,7 +755,7 @@ def run(java_dir, cpp_dir, cls, work, cxx, javac, java, prefix=None, compiled=No
     res = dict(methods=[m[0] for m in methods], judged=0, total=counted(cls), cases=0, differs=[], why='',
                unsteady=0)
     if not methods:
-        res['why'] = ('it reads the clock (the time differs between the two runs)' if any(reads_clock(cls)) else
+        res['why'] = ('it reads the clock or the clipboard (they differ between the two runs)' if any(reads_clock(cls)) else
                       'no method it can call and compare (its arguments made, its result or object read back)')
         return res
     folder = os.path.join(work, 'probe', cls.name)

@@ -60,3 +60,20 @@ def test_only_the_static_pure_method_is_probed(tmp_path):
 
 def test_a_class_without_the_clock(tmp_path):
     assert probe.reads_clock(_cls(tmp_path, 'Plain', PLAIN)) == (set(), False)
+
+
+CLIP = '''public class Clip {
+	public static String text() {
+		try {
+			return (String)java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().getContents(null).getTransferData(null);
+		} catch (Exception var0) {
+			return null;
+		}
+	}
+}
+'''
+
+
+def test_the_clipboard_is_the_machine_not_the_code(tmp_path):
+    # FIXED BUG probe-clipboard-noise: GuiScreen.getClipboardString differed whenever this PC's clipboard held text
+    assert probe.reads_clock(_cls(tmp_path, 'Clip', CLIP)) == ({'text'}, False)
