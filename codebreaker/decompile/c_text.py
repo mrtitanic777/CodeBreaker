@@ -1271,6 +1271,12 @@ def _compilable16(module_path, outdir=None):
             sel_expr[made_up] = "codebreaker_ds()"
         elif sg in own:
             sel_expr[made_up] = "((uint2)((uint4)(void __far *)&%s >> 16))" % own[sg]
+    # ... and a data segment besides the automatic one, by the bytes the build carries for it
+    # (USER's segment 44 handed to GetProfileString as the far pointer to a string in it)
+    other_data = set(getattr(d, "images", {})) - set(getattr(d, "code", {})) - {d.data_segment}
+    for sg in other_data:
+        sel_expr[describe.FIRST_SELECTOR + 8 * (sg - 1)] = \
+            "((uint2)((uint4)(void __far *)codebreaker_segment_%d >> 16))" % sg
     # ... where the function's own code holds a loader fix-up for that segment's selector: a
     # number like 1000h is as often a plain constant
     sites = _selector_sites(module_path)
@@ -1328,6 +1334,9 @@ def _compilable16(module_path, outdir=None):
     # the original. In another segment (constants kept beside the code, a second data segment):
     # the module carries that segment's bytes, and the global is a place in them.
     macros, m.segments = [], {}
+    for sg in other_data:                                    # (a segment's selector used as a value)
+        if any(re.search(r"\bcodebreaker_segment_%d\b" % sg, t) for t in m.texts.values()):
+            m.segments[sg] = d.images[sg]
     # a global the code calls through holds a function pointer -- near or far by its size
     called_through = set().union(*(_called_through(t) for t in m.texts.values())) if m.texts else set()
     for prefix, addr in sorted(set().union(*(_globals(t) for t in m.texts.values())) if m.texts else ()):
