@@ -410,7 +410,7 @@ def _definition(ds, a, nx, syms, decl, strs, structs=None, align=2, local=None):
             _definition(ds, a + k, nx, syms, decl, strs, structs, align, local)
     if ty and k == 1 and base in ("char", "unsigned char") and n <= 2 and (n == 1 or ds[a + 1] == 0):
         c = ds[a]                                           # (a char: the byte after it the next word's pad)
-        return "%s %s = %s;%s" % (base, nm, ("'%s'" % chr(c)) if 32 < c < 127 and chr(c) not in "'\\" else str(c), note if False else "")
+        return "%s %s = %s;%s" % (base, nm, ("'%s'" % chr(c)) if 32 < c < 127 and chr(c) not in "'\\" else str(c), "")
     note = "                 /* (nothing names it) */" if not ty and a not in syms else ""
     if structs and base and base.startswith("struct ") and base[7:] in structs and not isptr:
         size, al = _struct_size(base[7:], structs, align)

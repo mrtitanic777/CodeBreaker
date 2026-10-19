@@ -198,6 +198,17 @@ def low_reads(port, out, case, text):
         port.mended["a table's word read as a pointer, a small number at times (DOS read the null segment there): "
                     "dos_np"].append(why)
         return why
+    for v in re.findall(r"(?<![\w.>])(\w+)\s*->", line):    # (l->op, l a NULL there: as DOS read it)
+        if any(r[:2] == (f, v) for r in getattr(port, "np_rules", [])):
+            continue
+        d = re.search(r"\b((?:struct|union)\s+\w+)\s*\*\s*%s\s*[;,=)]" % re.escape(v), out[f])
+        if not d:
+            continue
+        port.np_rules = getattr(port, "np_rules", []) + [(f, v, d.group(1) + " *", "var")]
+        why = "%s: %s a NULL at times (read at %sh, case '%s'): read through the null segment there" % (
+            f, v, m.group("addr"), case)
+        port.mended["a pointer read through when NULL (DOS read the null segment there): dos_np"].append(why)
+        return why
     return None
 
 
@@ -239,6 +250,13 @@ def mend(port, out, reports):
                                 "table"].append(why)
                     done.append((var, why))
                     continue
+            if var in (getattr(port, "bss", {}) or {}) and hasattr(port, "join_bss") and port.join_bss(var):
+                why = "%s %s past its end (case '%s'): the BSS variable after it, one array with it" % (
+                    var, m.group("rw").lower(), case)
+                port.mended["a BSS array gone past into the one after it (the old layout's): one array, their "
+                            "names places in it"].append(why)
+                done.append((var, why))
+                continue
             decl = None
             for f, t in out.items():                        # (its definition: not a declaration of it, extern)
                 d = re.search(r"(?m)^\s*(?!extern\b)(?:static\s+)?(?:[\w ]*?\b)?(?:char|short|int|long|unsigned|signed|"

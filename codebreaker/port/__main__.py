@@ -157,6 +157,40 @@ def memory_guard(out):
     threading.Thread(target=watch, daemon=True, name="memory-guard").start()
 
 
+CHECK_CACHE = os.path.join(os.path.expanduser("~"), ".cache", "codebreaker", "checks")
+
+
+def check_key(spec, cc, n, res):
+    """what one file's check depends on: the compiler and its command, the file, every header it reaches"""
+    import hashlib
+    h = hashlib.sha256(repr((os.path.abspath(cc), spec.get("check"), n)).encode())
+    todo, seen = [n], set()
+    while todo:
+        x = todo.pop()
+        if x in seen:
+            continue
+        seen.add(x)
+        h.update(x.encode() + b"\0" + (res.get(x) or "").encode("latin1", "replace") + b"\0")
+        todo += re.findall(r'#\s*include\s*"([^"]+)"', res.get(x) or "")
+    return h.hexdigest()
+
+
+def check_cached(key):
+    try:
+        return json.load(open(os.path.join(CHECK_CACHE, key[:2], key + ".json"), encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def check_store(key, diags):
+    d = os.path.join(CHECK_CACHE, key[:2])
+    try:
+        os.makedirs(d, exist_ok=True)
+        json.dump(diags, open(os.path.join(d, key + ".json"), "w", encoding="utf-8"))
+    except (OSError, TypeError):
+        pass
+
+
 def changed_files(res, before, cfiles):
     """the C files to check again: those whose text is not what it was, and those that include (themselves or
     through another header) a header whose text is not"""
@@ -690,12 +724,19 @@ def main(argv):
                 break
             cfiles = [n for n in sorted(res) if n.endswith(".c")]
             todo = changed_files(res, seen_text, cfiles)   # (the files whose text, or a header's they include,
-            with ThreadPoolExecutor(max(1, parallel.workers())) as ex:   # changed: the others said it already)
+            keys = {n: check_key(spec_, cc_, n, res) for n in todo}   # changed: the others said it already - and
+            for n in list(todo):                            #  what an earlier run's compiler said of the same
+                got = check_cached(keys[n])                 #  text, kept: not said again)
+                if got is not None:
+                    seen_diags[n] = got
+                    todo.remove(n)
+            with ThreadPoolExecutor(max(1, parallel.workers())) as ex:
                 done = dict(zip(todo, ex.map(lambda n: run(spec_, args(spec_["check"], cc=cc_, inc=".", src=n), out,
                                                            cc_), todo)))
             for n in cfiles:                                # (in the files' order, as one compiler would say them)
                 if n in done:
                     seen_diags[n] = diagnostics(spec_, done[n].stdout + done[n].stderr, out)
+                    check_store(keys[n], seen_diags[n])
                 diags += seen_diags.get(n, [])
             seen_text = dict(res)
             sys.stderr.write("port: round %d (%s): %d of %d files checked, %d errors, %d warnings, %.0fs\n" % (
@@ -721,7 +762,13 @@ def main(argv):
         if arith:
             res = write()
     if oldlayout_pass(port, out, res, compilers):           # (records the program keeps as bytes: as they were)
+        want = dict(getattr(port, "_ol_wanted", {}))
         res = write()
+        lost = [(f, b) for (f, b) in want if b not in res.get(f, "").split("\n")]
+        if lost:                                            # (a line the pass mended that the next text has not)
+            port.mended["**lines the old-layout pass mended that did not reach the port - look at them**"] += [
+                "%s: %s" % (f, b.strip()[:120]) for f, b in lost[:40]]
+            sys.stderr.write("port: %d old-layout lines did not reach the port (PORT.md)\n" % len(lost))
     srcs = sorted(n for n in res if n.endswith(".c")) + ["dosrt.c"] + objs
     exe = os.path.join(out, "program.exe" if os.name == "nt" else "program")
     cases = opt("--cases")
@@ -756,6 +803,8 @@ def oldlayout_pass(port, out, res, compilers):
     if not cc:
         return 0
     files = sorted(n for n in res if n.endswith(".c"))
+    oldlayout.PTR_PARAMS = {f.name: [bool(re.search(r"\*|\[", pt)) for pn, pt in f.params]   # (the old-style
+                            for f in port.fns.values() if f.loose}   #  functions kept: their pointer parameters)
     new, olds, found, refused = oldlayout.run(cc, out, files)
     if not olds:
         return 0
@@ -775,6 +824,8 @@ def oldlayout_pass(port, out, res, compilers):
             if a != b:                                      # (its rule: the line as it was before the rules)
                 o = port.line_origin.get(f, {}).get(i + 1)
                 port.line_fixes[(f, o[0], o[1]) if o else (f, a)] = b
+                port._ol_wanted = getattr(port, "_ol_wanted", {})
+                port._ol_wanted[(f, b)] = b
                 n += 1
     port.mended["a record the program keeps as bytes (writes, reads, takes as char *): its old layout, its "
                 "pointers two-byte handles (dos_ph, dos_hp)"].append(", ".join(sorted(olds)))

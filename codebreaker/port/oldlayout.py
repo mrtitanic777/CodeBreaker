@@ -123,6 +123,10 @@ def byte_records(trees):
     return out
 
 
+PTR_PARAMS = {}                                         # ({old-style function the port keeps: [whether each
+                                                        #  parameter is a pointer]} - set by the port's pass)
+
+
 def edits_of(tree, text, path, olds):
     """[(offset, depth, text)] - every read and write of a pointer member of the records kept old; and the
     {(record, member): its pointer type} found"""
@@ -136,7 +140,8 @@ def edits_of(tree, text, path, olds):
     out, found, refused = [], {}, []
 
     intf = {fid for fid, (rid, name, t) in fields.items()   # (its int members: a pointer kept in one, a word)
-            if _top(recs, rid) in olds and re.fullmatch(r"(?:unsigned |signed )?(?:short|int|u?int16_t)( int)?", t.strip())}
+            if _top(recs, rid) in olds and re.fullmatch(r"(?:unsigned |signed )?(?:short|int|u?int16_t|intptr_t)( int)?",
+                                                         t.strip())}   # (intptr_t: a word declare makes one again)
 
     def tptr(x):
         return (x.get("type") or {}).get("qualType", "")
@@ -151,9 +156,14 @@ def edits_of(tree, text, path, olds):
         depth = len(parents)
         if k == "BinaryOperator" and par.get("opcode") == "=" and (par.get("inner") or [None])[0] is n:
             rhs = par["inner"][1]
+            while (rhs.get("kind") == "ParenExpr" or rhs.get("kind") == "ImplicitCastExpr" and   # (n->i2 =
+                   rhs.get("castKind") == "IntegralCast") and rhs.get("inner"):   #  (intptr_t)(f()): to 16 bits too)
+                rhs = rhs["inner"][0]
             if rhs.get("kind") == "ImplicitCastExpr" and rhs.get("castKind") == "PointerToIntegral" or \
                     rhs.get("kind") == "CStyleCastExpr" and rhs.get("castKind") == "PointerToIntegral":
                 q = place(rhs, path)
+                if rhs.get("kind") == "CStyleCastExpr" and rhs.get("inner"):   # ((intptr_t)(f()): the pointer
+                    q = place(rhs["inner"][0], path) or q   #  inside the cast made the handle)
                 if q:                                       # (a pointer given it: its handle)
                     out.append((q[0], depth, "dos_ph("))
                     out.append((q[1], -depth, ")"))
@@ -168,6 +178,17 @@ def edits_of(tree, text, path, olds):
         if up.get("kind") in ("ImplicitCastExpr", "CStyleCastExpr") and up.get("castKind") == "IntegralToPointer":
             out.append((p[0], depth, "dos_hp("))           # (read as a pointer: what the handle stands for)
             out.append((p[1], -depth, ")"))
+            return
+        if up.get("kind") == "CallExpr" and PTR_PARAMS:     # (given to an old-style function's parameter that is
+            args = (up.get("inner") or [])[1:]              #  a pointer - no conversion said so: the definition's
+            at = next((i for i, x in enumerate(parents) if x is up), None)   # parameter does)
+            chain = list(parents[at + 1:]) + [n] if at is not None else []
+            arg = chain[0] if chain else None
+            k = next((i for i, a in enumerate(args) if a is arg), None)
+            ps = PTR_PARAMS.get(callee_name(up))
+            if k is not None and ps and k < len(ps) and ps[k]:
+                out.append((p[0], depth, "dos_hp("))
+                out.append((p[1], -depth, ")"))
 
     def fn(n, parents):
         if n.get("kind") != "MemberExpr":
@@ -270,36 +291,8 @@ def null_reads(text):
     starts = [0]
     for l in lines:
         starts.append(starts[-1] + len(l) + 1)
-    for name, s_, j_, k_ in definitions_any(lines, clines):
-        a, b = starts[j_], starts[k_ + 1] if k_ + 1 < len(starts) else len(code)
-        body = code[a:b]
-        head = code[starts[s_]:a]
-        for v in set(re.findall(r"(?<![\w.>])(\w+)\s*=\s*\(\((?:struct|union)\s+\w+\s*\*\s*\)dos_hp\(", body)):
-            if re.search(r"\b%s\b" % re.escape(v), head):
-                continue                                    # (a parameter: its callers' NULL)
-            ok = True
-            for u in re.finditer(r"(?<![\w.>])%s\b" % re.escape(v), body):
-                before, after = body[:u.start()], body[u.end():]
-                if re.match(r"\s*->", after) or re.match(r"\s*=(?!=)", after):
-                    continue                                # (read through, or given a value)
-                if re.search(r"\*\s*$", before) and re.match(r"\s*[;,=\[]", after) and \
-                        re.search(r"(?:struct|union)\s+\w+[\s*\w,]*$", before.split("\n")[-1]):
-                    continue                                # (its declaration)
-                if re.search(r"(?:[=(,!?:;{}]|\breturn)\s*\*\s*$", before) and re.match(r"\s*[;,)]", after):
-                    continue                                # (*n = *l: the record read through it)
-                if re.search(r"(?<![=!<>])=\s*$", before) and re.match(r"\s*;", after):
-                    continue                                # (ka = r: another name of it)
-                if re.search(r"(?<!\bif)(?<!\bwhile)(?<!\bswitch)(?<!\breturn)(?<!\bfor)\b\w+\s*\(\s*$|,\s*$",
-                             before) and re.match(r"\s*[,)]", after) and \
-                        not re.search(r"\b(?:if|while|for|switch|return)\s*\(\s*$", before):
-                    continue                                # (given on to a call)
-                ok = False
-                break
-            if not ok:
-                continue
-            for m in re.finditer(r"(?<![\w.>])%s\s*=\s*(\(\((?:struct|union)\s+\w+\s*\*\s*\)dos_hp\()" %
-                                 re.escape(v), body):
-                at.add(a + m.end(1) - len("dos_hp("))
+    # (a pointer variable is left as it is: given on, a callee would take the null segment for a place -
+    #  a run's fault there names it, and sanitize.low_reads reads through it alone)
     for i in sorted(at, reverse=True):
         text = text[:i] + "dos_hpr(" + text[i + len("dos_hp("):]
     return text
@@ -378,7 +371,7 @@ def run(cc, folder, files):
     for f in files:
         if not mentions(folder, f, tags):                   # (a file that never names them, nor its headers: none)
             continue
-        key = arith16.pass_key(cc, folder, f, "oldlayout", sorted(olds), headers=hk)
+        key = arith16.pass_key(cc, folder, f, "oldlayout", sorted(olds), sorted(PTR_PARAMS.items()), headers=hk)
         got = arith16.cache_get(key)
         if got is None:
             tree = arith16.dump(cc, f, folder)
