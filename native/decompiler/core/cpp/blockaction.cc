@@ -2261,6 +2261,33 @@ bool ActionReturnSplit::isSplittable(BlockBasic *b)
   return tally(b,plain,calls,false);
 }
 
+/// CodeBreaker: does an address come from the stack pointer (through additions, copies and joins)?
+/// A load or store through one is a stack variable the analysis has already settled: a copy of it
+/// made now restarts the stack's heritage, and the frame's locals come out worse (KERNEL32
+/// SetMailslotInfo: its frame printed as `register0x00000010 + -4`).
+/// \param vn is the address
+/// \param depth is how far back to look
+/// \return \b true if it is (or may be) an address on the stack
+static bool stackAddress(const Varnode *vn,int4 depth)
+
+{
+  if (vn->isSpacebase()) return true;
+  if (!vn->isWritten() || depth == 0) return false;
+  const PcodeOp *op = vn->getDef();
+  switch(op->code()) {
+  case CPUI_INT_ADD: case CPUI_INT_SUB: case CPUI_PTRSUB: case CPUI_PTRADD: case CPUI_COPY:
+  case CPUI_CAST: case CPUI_MULTIEQUAL: case CPUI_INDIRECT:
+    for(int4 i=0;i<op->numInput();++i) {
+      const Varnode *in = op->getIn(i);
+      if (in->isConstant() || in->isAnnotation()) continue;
+      if (stackAddress(in,depth-1)) return true;
+    }
+    return false;
+  default:
+    return false;
+  }
+}
+
 /// CodeBreaker: count the ops of a block that would be copied, against \b maxSplitOps and
 /// \b maxSplitCalls, the counts carried in from other blocks of the same tail
 /// \param b is the block
@@ -2291,6 +2318,8 @@ bool ActionReturnSplit::tally(BlockBasic *b,int4 &plain,int4 &calls,bool branchE
     else if (opc != CPUI_COPY && opc != CPUI_RETURN) {
       if (op->isCall() || op->isBranch() || opc == CPUI_NEW || opc == CPUI_CPOOLREF)
 	return false;
+      if ((opc == CPUI_LOAD || opc == CPUI_STORE) && stackAddress(op->getIn(1),6))
+	return false;			// (a stack variable reached through a pointer)
       if (++plain > maxSplitOps) return false;
     }
     for(int4 i=0;i<op->numInput();++i) {
