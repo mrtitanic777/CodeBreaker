@@ -679,12 +679,19 @@ def _free_owned_reassigns(lines, owned_scalar):
     return out
 
 
+# Phase 1 of the translator (docs/TRANSLATOR_DESIGN.md): when set -- a codebreaker.translate.backends.
+# cpp03.Bodies, by transpile when CB_TREE_BODIES=1 -- method bodies come from the typed IR where its back
+# end writes them, and from translate_body otherwise.
+TREE_BODIES = None
+
+
 def _render_method(cls, m, resolver, ledger):
     ret = ownership.return_cpp_type(m, resolver)
     params = ownership.params_str(m, resolver)
     name = resolver.renamed_method(cls.name, m.name)   # field/method name-collision -> name_
     L = ['%s %s::%s(%s)' % (ret, cls.name, name, params), '{']
-    body = list(translate_body(m, cls, resolver, ledger))
+    tree = TREE_BODIES.body(cls.name, m) if TREE_BODIES is not None else None   # phase 1: the IR's body
+    body = list(tree) if tree is not None else list(translate_body(m, cls, resolver, ledger))
     for _pass in _OWNERSHIP_POSTPASSES:
         body = _pass(body, resolver)
     # delete-before-reassign for this class's owned SCALAR pointer members (the Entity.bb / setPos leak)
