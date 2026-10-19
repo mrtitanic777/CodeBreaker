@@ -401,6 +401,12 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
             same.append("&" + fn if fn else "SS" if w == ss_now else "DS" if w == ds_now
                         else "stack" if nxt == ss_now or 0xE000 <= w < 0xFFF0 else w)
         h = int(hashlib.sha1(("%s%r" % (name, same)).encode()).hexdigest()[:8], 16)
+        # (a place in the caller's stack handed over, `&local, SS`, the callee fills: a word made
+        # up the same way. Left as it was, the caller read what its frame held before -- another
+        # thing in each build: LookupMenuHandle's result, written by sub_10_009C)
+        for i, w in enumerate(words[:-1]):
+            if words[i + 1] == ss_now:
+                uc.mem_write(STACK_BASE + w, (((h >> 7) ^ (0x9E37 * (i + 1))) & 0xFFFF).to_bytes(2, "little"))
         uc.reg_write(UC_X86_REG_EAX, h & 0xFFFF)
         uc.reg_write(UC_X86_REG_EDX, (h >> 16) & 0xFFFF)
         uc.reg_write(UC_X86_REG_ESP, (first + pop) & 0xFFFF)
