@@ -1982,6 +1982,7 @@ def _first_passing(src, arr):
     is a field of codebreaker_frame by now, and found by that name too."""
     best = None
     framed = "codebreaker_frame." + arr
+    opening = src.text().find("{")
     for c in src.find("call_expression", under=src.body()):
         args = c.child_by_field_name("arguments")
         if not src.is_call(c) or not (any(src.at(n) == arr for n in src.find("identifier", under=args)) or
@@ -1990,6 +1991,9 @@ def _first_passing(src, arr):
         st = c                                       # (the statement it is in: after a label, not before it)
         while st.parent is not None and st.parent.type not in ("compound_statement", "labeled_statement"):
             st = st.parent
+        if st.start_byte <= opening:
+            continue                                 # (not inside the body: a header the parser misread
+                                                     # -- SUWIN's sub_4_9324 got the store above it)
         if best is None or st.start_byte < best.start_byte:
             best = st
     if best is None:
