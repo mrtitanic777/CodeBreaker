@@ -91,6 +91,8 @@ inline long long j2xUshr(long long v, int n) { return (long long)((unsigned long
 struct JCat {
 	std::string _s;
 	template<class T> JCat& operator+(const T& v) { std::ostringstream o; o << v; _s += o.str(); return *this; }
+	JCat& operator+(double v) { _s += j2xNumberText(v, false); return *this; }      // as Java prints a double
+	JCat& operator+(float v) { _s += j2xNumberText(v, true); return *this; }        // ... and a float
 	JCat& operator+(bool v) { _s += (v ? "true" : "false"); return *this; }   // Java prints true/false
 	JCat& operator+(const char* v) { if (v) _s += v; return *this; }
 	JCat& operator+(const std::string& v) { _s += v; return *this; }
@@ -118,6 +120,8 @@ struct StringBuilder {
 	StringBuilder(int /*capacity*/) {}
 	StringBuilder(const JavaString& s) : _s(s) {}
 	template<class T> StringBuilder* append(const T& v) { std::ostringstream o; o << v; _s += o.str(); return this; }
+	StringBuilder* append(double v) { _s += j2xNumberText(v, false); return this; }
+	StringBuilder* append(float v) { _s += j2xNumberText(v, true); return this; }
 	StringBuilder* append(bool v) { _s += (v ? "true" : "false"); return this; }   // Java prints true/false
 	StringBuilder* append(char v) { _s += v; return this; }
 	StringBuilder* append(const char* v) { if (v) _s += v; return this; }
@@ -332,7 +336,7 @@ inline std::ostream& operator<<(std::ostream& o, const JObject& j) {
 		case 2: return o << (char)j.i;
 		case 4: return o << j.s;
 		case 7: return o << (j.i ? "true" : "false");
-		case 8: return o << j.d;
+		case 8: return o << j2xNumberText(j.d, false);
 		case 0: return o << "null";
 		default: return o << "[object]";
 	}
@@ -394,12 +398,14 @@ namespace Double {
 	inline double valueOf(double v) { return v; }
 	inline bool isNaN(double v) { return v != v; }
 	inline bool isInfinite(double v) { return v != 0.0 && v * 2.0 == v; }   // only +/-inf: x*2==x (NaN fails, 0 excluded)
-	inline std::string toString(double v) { std::ostringstream o; o << v; return o.str(); }
+	inline std::string toString(double v) { return j2xNumberText(v, false); }
 }
 // java.lang.String STATIC methods (String.valueOf / String.format). The String TYPE maps to
 // JavaString; this namespace holds only the statics, accessed as String::valueOf(...) (no clash).
 namespace String {
 	template<class T> inline JavaString valueOf(const T& v) { std::ostringstream o; o << v; return JavaString(o.str()); }
+	inline JavaString valueOf(double v) { return JavaString(j2xNumberText(v, false)); }
+	inline JavaString valueOf(float v) { return JavaString(j2xNumberText(v, true)); }
 	template<class A> inline JavaString valueOf(const A& a, int, int) { std::ostringstream o; o << a; return JavaString(o.str()); }  // String.valueOf(char[], off, len) (stub)
 	inline JavaString valueOf(const JArray<unsigned char>& a, int off, int n) {   // String.valueOf(char[], off, len)
 		std::string s; for (int i = 0; i < n; ++i) s += (char)a[off + i]; return JavaString(s);
@@ -420,6 +426,7 @@ namespace Float {
 	const float NEGATIVE_INFINITY = -3.4e38f;
 	inline float parseFloat(const std::string& s) { return _javart_parse<float>(s); }
 	inline float valueOf(float v) { return v; }
+	inline std::string toString(float v) { return j2xNumberText(v, true); }
 	inline bool isNaN(float v) { return v != v; }
 	inline int floatToRawIntBits(float v) { union { float f; int i; } u; u.f = v; return u.i; }
 	inline float intBitsToFloat(int v) { union { float f; int i; } u; u.i = v; return u.f; }

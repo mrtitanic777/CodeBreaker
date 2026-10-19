@@ -51,7 +51,7 @@ def test_classes_are_judged_filed_and_written(tmp_path, monkeypatch):
     best = fs.best(sha, digest)
     assert sorted(best) == CLASSES
     for cls, row in best.items():
-        assert row['class'] in ('not-judged', 'verified'), (cls, row.get('reason'), row.get('detail'))
+        assert row['class'] in ('not-judged', 'verified', 'weak'), (cls, row.get('reason'), row.get('detail'))
     if java.jdk()[0]:                       # MathHelper's static float methods run beside the JVM, and agree
         assert best['MathHelper']['class'] == 'verified', best['MathHelper'].get('detail')
         assert 'every result alike' in best['MathHelper']['detail']
@@ -72,5 +72,5 @@ def test_a_class_that_does_not_compile_says_why(tmp_path):
         pytest.skip('needs a host C++ compiler (g++)')
     bad = tmp_path / 'Bad.cpp'
     bad.write_text('int f() { return undeclared_name; }\n', encoding='utf-8')
-    verdict, reason, limits, detail = java.judge((java.compiler(), str(tmp_path), None, '', '', '', str(tmp_path)), ('Bad', str(bad), ''))
+    verdict, reason, limits, detail = java.judge((java.compiler(), str(tmp_path), None, '', '', '', str(tmp_path), {}), ('Bad', str(bad), ''))
     assert verdict == 'no-compile' and 'undeclared_name' in reason and limits == []

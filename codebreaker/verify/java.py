@@ -137,6 +137,9 @@ def prepare(module_path, work):
     from codebreaker.java import transpile
     src = source_dir(module_path)
     out = os.path.join(work, "cpp")
+    for stale in (os.path.join(work, "probe"), os.path.join(work, "javasrc")):   # the last run's objects and
+        if os.path.isdir(stale):                                                  # archive are of other C++
+            shutil.rmtree(stale)
     if os.path.isdir(out):
         shutil.rmtree(out)
     m = Prepared()
@@ -184,27 +187,33 @@ def build(m, module_path, work):
     if javac:
         from codebreaker.java import probe
         staged = probe.stage_sources(m.src, os.path.join(work, "javasrc"))
-    return (cxx, m.out, precompile(cxx, m.out, work), staged, javac, java, work), items, {}
+    prefix = precompile(cxx, m.out, work)
+    compiled = {}
+    if javac:
+        probe.library(cxx, m.out, work, prefix)         # the whole program, once, before the judges link to it
+        # every class's Java harness, compiled in batches here rather than one javac per class there
+        compiled = probe.compile_java(staged, probe.plan(staged, m.out, list(items)), work, javac)
+    return (cxx, m.out, prefix, staged, javac, java, work, compiled), items, {}
 
 
 def judge(context, item):
-    cxx, include_dir, prefix, staged, javac, java, work = context
+    cxx, include_dir, prefix, staged, javac, java, work, compiled = context
     _name, unit, source = item
     ok, errors = check(cxx, include_dir, unit, prefix)
     if not ok:
         first = errors[0] if errors else "the compiler rejected it"
         return "no-compile", first[:200], [], "\n".join(errors[:20])
-    compiled = (os.path.basename(cxx), " ".join(FLAGS))
+    how = (os.path.basename(cxx), " ".join(FLAGS))
     if not javac or not source:
-        return "inconclusive", "not-run", [], COMPILES % (compiled + ("no JDK (settings.json: java)",))
+        return "inconclusive", "not-run", [], COMPILES % (how + ("no JDK (settings.json: java)",))
     from codebreaker.java import parse, probe
     try:
         cls = parse.parse_file(source)
     except Exception as e:                                   # the transpiler parsed it; say so if this did not
-        return "inconclusive", "not-run", [], COMPILES % (compiled + ("could not read %s: %s" % (source, e),))
-    r = probe.run(staged, include_dir, cls, work, cxx, javac, java, prefix)
+        return "inconclusive", "not-run", [], COMPILES % (how + ("could not read %s: %s" % (source, e),))
+    r = probe.run(staged, include_dir, cls, work, cxx, javac, java, prefix, compiled)
     if not r["judged"]:
-        return "inconclusive", "not-run", [], COMPILES % (compiled + (r["why"],))
+        return "inconclusive", "not-run", [], COMPILES % (how + (r["why"],))
     said = "%d of %d methods run beside the JVM on %d inputs" % (r["judged"], r["total"], r["cases"])
     if r["differs"]:
         lines = ["%s(%s): Java %s, C++ %s" % (m, ", ".join(a), j, c) for m, a, j, c in r["differs"][:12]]
