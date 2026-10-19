@@ -1813,7 +1813,10 @@ def _stack_segment_stores(text, code, start, end):
         return text
     src = ctree.Source(text)
     arrays = {}
-    for n in src.find("declaration", under=src.body()):
+    # (a buffer kept in the frame's layout is a field of codebreaker_frame's packed struct: a
+    # field declaration, not a declaration)
+    decls = list(src.find("declaration", under=src.body())) + list(src.find("field_declaration", under=src.body()))
+    for n in sorted(decls, key=lambda d: d.start_byte):
         ds = n.children_by_field_name("declarator")
         a = ds[0] if len(ds) == 1 else None
         while a is not None and a.type == "pointer_declarator":
