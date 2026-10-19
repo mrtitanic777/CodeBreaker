@@ -197,67 +197,21 @@ def functions(data):
 
 
 def _read(data):
-    lnames, segs, seg_bytes, seg_mask, pubs, last = [""], [], {}, {}, {}, None
-    for _at, kind, body in records(data):
-        wide = kind & 1
-        if kind == 0x96:                                     # LNAMES
-            p = 0
-            while p < len(body):
-                name, p = rd_str(body, p)
-                lnames.append(name)
-        elif kind in (0x98, 0x99):                           # SEGDEF
-            p = 1 + (3 if body[0] >> 5 == 0 else 0) + (4 if wide else 2)
-            name_i, p = rd_index(body, p)
-            class_i, p = rd_index(body, p)
-            name = lnames[name_i] if name_i < len(lnames) else "?%d" % name_i
-            segs.append((name, lnames[class_i] if class_i < len(lnames) else ""))
-            seg_bytes.setdefault(name, bytearray())
-            seg_mask.setdefault(name, set())
-        elif kind in (0xA0, 0xA1):                           # LEDATA
-            seg_i, p = rd_index(body, 0)
-            off = int.from_bytes(body[p:p + (4 if wide else 2)], "little")
-            p += 4 if wide else 2
-            chunk = bytes(body[p:])
-            name = segs[seg_i - 1][0] if 0 < seg_i <= len(segs) else "_TEXT"
-            buf = seg_bytes.setdefault(name, bytearray())
-            if len(buf) < off + len(chunk):
-                buf.extend(bytes(off + len(chunk) - len(buf)))
-            buf[off:off + len(chunk)] = chunk
-            last = (name, off)
-        elif kind in (0x9C, 0x9D) and last:                  # FIXUPP: the places of the last data record
-            name, base = last
-            mask, p = seg_mask.setdefault(name, set()), 0
-            while p < len(body):
-                first = body[p]
-                if not first & 0x80:                         # a THREAD: no place of its own
-                    _i, p = rd_index(body, p + 1)
-                    continue
-                locat = (first << 8) | body[p + 1]
-                for k in range(_WIDTH.get((locat >> 10) & 0x0F, 2)):
-                    mask.add(base + (locat & 0x3FF) + k)
-                fixdata, p = body[p + 2], p + 3
-                if not fixdata & 0x80 and (fixdata >> 4) & 7 in (0, 1, 2):
-                    _i, p = rd_index(body, p)
-                if not fixdata & 0x08:
-                    _i, p = rd_index(body, p)
-                if not fixdata & 0x04:
-                    p += 4 if wide else 2
-        elif kind in (0x90, 0x91):                           # PUBDEF
-            _grp, p = rd_index(body, 0)
-            seg_i, p = rd_index(body, p)
-            if seg_i == 0:
-                p += 2
-            segname = segs[seg_i - 1][0] if 0 < seg_i <= len(segs) else "?"
-            while p < len(body):
-                name, p = rd_str(body, p)
-                off = int.from_bytes(body[p:p + (4 if wide else 2)], "little")
-                p += 4 if wide else 2
-                _t, p = rd_index(body, p)
-                pubs[name] = (segname, off)
+    """(code segment's name, its bytes, {offsets the linker fills in}, {public: (segment, offset)}),
+    from the one OMF reader (formats/omf.py): the code segment is the first whose class is CODE or
+    whose name ends TEXT; its bytes run to the end of its data; a fixup covers the bytes of its kind."""
+    from codebreaker.formats import omf as reader
+    o = reader.read(data)
+    pubs = {nm: (seg if seg is not None else "?", off) for nm, seg, off in o.pubs}
+    segs = [(nm, cls) for nm, cls, _ln, _al in o.segs]
     code_seg = next((n for n, c in segs if "CODE" in c.upper() or n.upper().endswith("TEXT")), segs[0][0] if segs else None)
     if code_seg is None:
         return None, b"", set(), pubs
-    return code_seg, bytes(seg_bytes.get(code_seg, b"")), seg_mask.get(code_seg, set()), pubs
+    mask = set()
+    for (seg, at, _kind, _tgt, _disp), loc in zip(o.fix, o.fixloc):
+        if seg == code_seg:
+            mask.update(range(at, at + _WIDTH.get(loc, 2)))
+    return code_seg, bytes(o.seg.get(code_seg, b"")[:o.filled.get(code_seg, 0)]), mask, pubs
 
 
 if __name__ == "__main__":
