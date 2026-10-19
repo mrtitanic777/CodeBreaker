@@ -137,6 +137,17 @@ RISC-V Sail, Intel XED).
   no verdict better or worse; 790 read differently (fields for `*(T *)(p + n)`). The first try was
   111 not compiling (from 33) and 18 worse. Far pointers (16-bit, `les bx, p; es:[bx+8]`) are
   recognized too, not measured yet; 16-bit stays off.
+  16-bit, segments reached through a selector (2026-10-19; c_text `_selector_structs`, with
+  struct_recovery = all): `*MK_FP(sel,(int2 *)0x3e)` -- a selector, a variable or a plain read,
+  used at constant offsets -- reads as one packed structure, `SEG_PTR(seg_f_sel, sel)->f_3e` (the
+  L2 proposal's `record` behind `FarAddress(selector, 0)`, selector.of "runtime"). Per function;
+  one structure per selector text. With 16-bit structures on, the pass alone (CB_SELECTOR_STRUCTS=0
+  vs 1): USER 1 better, 0 worse, 87 functions read with fields; KRNL386 2 better, 1 worse (an
+  unset DX returned -- `CONCAT22(in_DX, ...)` -- that any change to the function moves), 156 read
+  with fields. The core's own 16-bit structures, measured for the first time (a cache key had
+  served them the C made without): USER 378 -> 356 verified, 100 -> 146 not compiling; KRNL386
+  142 -> 141, 44 -> 54 -- the work before 16-bit can be on (offsets with no field, near and far
+  casts, behaviour changes in USER).
 - D -- fewer gotos (2026-10-18; tools/goto_report.py): a short return tail that paths reach by
   `goto` is copied onto each path (core change C13). Golden: gotos 6,923 -> 6,449, 20.2 -> 17.9
   per 1,000 lines; to a bare `return` 225 -> 26; 203 functions changed, no new failures. What is

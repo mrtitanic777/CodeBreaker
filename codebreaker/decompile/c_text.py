@@ -1126,7 +1126,8 @@ def compilable16(module_path, outdir=None):
     # run with them was handed the C made without)
     k = cache.key(body, _source_stamp(sys.modules[__name__], decompiler, describe),
                   cache.tool(decompiler._exe()), decompiler._language_stamp(),
-                  (settings.get("struct_recovery") or "off").strip().lower())
+                  (settings.get("struct_recovery") or "off").strip().lower(),
+                  os.environ.get("CB_SELECTOR_STRUCTS", ""))       # (_selector_structs' off switch)
     had = cache.get("compilable16", k)
     if had is not None:
         m, description = pickle.loads(had)
@@ -1228,6 +1229,8 @@ def _compilable16(module_path, outdir=None):
     m.exported_prologue = set()                              # far functions the original starts with Windows' prologue
     sizes = {}                                               # address of a global -> bytes of the access
     struct_notes = []                                        # the structures the decompiler recovered (`/*@S`)
+    selector_structs = []                                    # ... and those a segment holds (_selector_structs)
+    by_selector = decompiler._structs(d.path) == "1" and os.environ.get("CB_SELECTOR_STRUCTS") != "0"   # (with structures)
     elems = {}                                               # ... a pointer's -> bytes of what it points at
     ends, starts = {}, {}                                    # where each function's code stops: at the next one
     for va in sorted(d.where):
@@ -1344,6 +1347,8 @@ def _compilable16(module_path, outdir=None):
         if head.split()[0] in _WIDE or "*" in head.split(name)[0] and "__far" in head.split(name)[0]:
             m.wide.add(name)
         text = _one_name_for_globals(text)                  # (a global the decompiler named twice)
+        if by_selector:
+            text = _selector_structs(text, name, selector_structs)
         m.texts[name] = _near_to_far(_far_reads(_buffer_fields(_far_locals(_stack_arguments(_entry_sp(_far_addresses(_interrupts(_open_arguments(text), m.interrupts))))))))
         if seg in d.images:
             m.texts[name] = _stack_segment_stores(m.texts[name], d.images[seg], off, _end_of(d, seg, off))
@@ -1509,7 +1514,10 @@ def _compilable16(module_path, outdir=None):
     intrinsics += interrupt_helpers(m.interrupts)
     if ("MK_FP(" in body or getattr(m, "bios_data", False)) and not m.selector_imports:
         intrinsics.append("#define MK_FP(s, o) ((void __far *)(((uint4)(uint2)(s) << 16) | (uint2)(o)))")
-    m.header = HEADER + "\n" + "\n".join(intrinsics + macros + _struct_decls(struct_notes, HEADER, True) + decls) + "\n"
+    if selector_structs:
+        intrinsics.append(SEG_PTR)
+    m.header = HEADER + "\n" + "\n".join(intrinsics + macros + _struct_decls(struct_notes, HEADER, True) +
+                                          selector_structs + decls) + "\n"
     m.description = d
     return m
 
@@ -2156,6 +2164,79 @@ def _passed_on(arg, reg):
 
 def interrupt_helper_name(vector, regs):
     return "int%02x_%s" % (vector, "_".join(regs) if regs else "none")
+
+
+SEG_PTR = "#define SEG_PTR(T, s) ((T __far *)((uint4)(uint2)(s) << 16))   /* a structure at the start of a segment */"
+
+
+def _selector_structs(text, fname, decls):
+    """A segment reached through a selector at constant offsets -- `*MK_FP(xVar2,(int2 *)0x3e)`,
+    `*MK_FP(*(xunknown2 *)(a1 + 0x18),(int2 *)0x40)`: a structure that segment holds (a task's
+    or a module's database) -- read as one: `SEG_PTR(seg_f_xVar2, xVar2)->f_3e` (SEG_PTR: the segment's start as a far pointer), its fields at
+    exactly those offsets with exactly those types (the same place, the same width: the same
+    program). Per function, for a selector that is a variable or a plain read (no call in it),
+    used at two offsets or more, each always with one type and none overlapping. The structures
+    are appended to `decls`, packed. -> the text"""
+    if "MK_FP(" not in text:
+        return text
+    src = ctree.Source(text)
+    groups = {}                                         # selector text -> [(node, offset, type)]
+    for n in src.find("call_expression"):
+        if src.at(n.child_by_field_name("function")) != "MK_FP":
+            continue
+        args = n.child_by_field_name("arguments").named_children
+        if len(args) != 2 or args[1].type != "cast_expression":
+            continue
+        ty = src.at(args[1].child_by_field_name("type")).replace(" ", "")
+        val = args[1].child_by_field_name("value")
+        if not ty.endswith("*") or ty.count("*") != 1 or val.type != "number_literal":
+            continue
+        try:
+            off = int(src.at(val), 0)
+        except ValueError:
+            continue
+        sel = " ".join(src.at(args[0]).split())
+        if args[0].type not in ("identifier", "pointer_expression", "field_expression"):
+            continue
+        if any(c.type == "call_expression" for c in src.find("call_expression", under=args[0])):
+            continue
+        if any(src.at(up.child_by_field_name("function")) == "MK_FP" for up in src.ancestors(n, "call_expression")):
+            continue                                     # (one inside another's arguments: a far call
+                                                         # through a far pointer -- left as it is)
+        groups.setdefault(sel, []).append((n, off, ty[:-1]))
+    made = 0
+    for sel, uses in groups.items():
+        fields = {}
+        for _n, off, ty in uses:
+            if fields.get(off, ty) != ty:
+                fields = None
+                break
+            fields[off] = ty
+        if not fields or len(fields) < 2 or any(_SIZEOF.get(t) is None for t in fields.values()):
+            continue
+        body, at = [], 0
+        for off in sorted(fields):
+            if off < at:
+                body = None                              # (overlapping: not one layout)
+                break
+            if off > at:
+                body.append("uint1 _pad_%x[%d];" % (at, off - at))
+            body.append("%s f_%x;" % (fields[off], off))
+            at = off + _SIZEOF[fields[off]]
+        if body is None:
+            continue
+        tag = re.sub(r"\W+", "_", sel).strip("_") if re.fullmatch(r"[A-Za-z_]\w*", sel) else "sel%d" % made
+        name = "seg_%s_%s" % (re.sub(r"\W", "_", fname), tag)   # (not s_..: the core's own structures)
+        decls.append("typedef _Packed struct %s { %s } %s;" % (name, " ".join(body), name))
+        made += 1
+        for n, off, _ty in uses:
+            ptr = "SEG_PTR(%s, %s)" % (name, src.at(n.child_by_field_name("arguments").named_children[0]))
+            up = n.parent
+            if up is not None and up.type == "pointer_expression" and src.at(up.child_by_field_name("operator")) == "*":
+                src.replace(up, "%s->f_%x" % (ptr, off))
+            else:
+                src.replace(n, "(&%s->f_%x)" % (ptr, off))     # (parenthesized: `MK_FP(...)[1]` indexes the address)
+    return src.text() if made else text
 
 
 def _far_addresses(text, pointers=None):
