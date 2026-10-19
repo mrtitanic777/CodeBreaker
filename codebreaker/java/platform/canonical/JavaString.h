@@ -3,7 +3,57 @@
 #include <string>
 #include <vector>
 #include <sstream>
+#include <cstdio>
+#include <cstdlib>
 #include "JArray.h"
+
+// Java's Double.toString / Float.toString -- what `"" + d`, StringBuilder.append(d) and String.valueOf(d)
+// print: the SHORTEST decimal that reads back to the same double (float), always with a fraction digit,
+// plain for 1e-3 <= |v| < 1e7 ("100.25", "0.001", "1000000.0"), else "d.dddE<exp>" ("1.0E7", "1.5E-4");
+// "NaN", "Infinity", "-0.0". J2X-BUGFIX java-number-text: C++ streams print 0.0 as "0" and 1000000.0 as
+// "1e+06" (Vec3D.toString(), every float in a debug/chat string); found by the behavioural judge.
+#if defined(_MSC_VER)
+#define J2X_FMT(buf, ...) sprintf_s(buf, sizeof(buf), __VA_ARGS__)     // MSVC: no C4996 for sprintf
+#else
+#define J2X_FMT(buf, ...) std::sprintf(buf, __VA_ARGS__)
+#endif
+inline std::string j2xNumberText(double v, bool single) {
+	if (v != v) return "NaN";
+	if (v - v != v - v) return v > 0 ? "Infinity" : "-Infinity";
+	if (v == 0) return (1.0 / v < 0) ? "-0.0" : "0.0";
+	char buf[40];
+	int p = 1;
+	for (; p <= 17; ++p) {                              // the fewest significant digits that read back the same
+		J2X_FMT(buf, "%.*e", p - 1, v);
+		double back = std::strtod(buf, 0);
+		if (single ? ((float)back == (float)v) : (back == v)) break;
+	}
+	std::string s(buf);                                 // [-]d[.ddd]e[+-]XX
+	bool neg = s[0] == '-';
+	if (neg) s = s.substr(1);
+	std::string::size_type e = s.find('e');
+	int exp10 = std::atoi(s.c_str() + e + 1);
+	std::string digits;
+	for (std::string::size_type i = 0; i < e; ++i) if (s[i] != '.') digits += s[i];
+	while (digits.size() > 1 && digits[digits.size() - 1] == '0') digits.erase(digits.size() - 1);
+	std::string out;
+	double a = neg ? -v : v;
+	if (a >= 1e-3 && a < 1e7) {
+		if (exp10 >= 0) {
+			std::string whole = digits.substr(0, (std::string::size_type)exp10 + 1 < digits.size() ? exp10 + 1 : digits.size());
+			while ((int)whole.size() < exp10 + 1) whole += '0';
+			std::string frac = (std::string::size_type)exp10 + 1 < digits.size() ? digits.substr(exp10 + 1) : "0";
+			out = whole + "." + frac;
+		} else {
+			out = "0." + std::string((std::string::size_type)(-exp10 - 1), '0') + digits;
+		}
+	} else {
+		char e10[16];
+		J2X_FMT(e10, "E%d", exp10);
+		out = digits.substr(0, 1) + "." + (digits.size() > 1 ? digits.substr(1) : std::string("0")) + e10;
+	}
+	return neg ? "-" + out : out;
+}
 struct JObject;                                  // (String)o unboxes through the ctor below (JavaRT.h)
 
 class JavaString : public std::string {
@@ -129,7 +179,8 @@ public:
 	JavaString operator+(long v) const { std::ostringstream o; o << v; return JavaString((const std::string&)*this + o.str()); }
 	JavaString operator+(long long v) const { std::ostringstream o; o << v; return JavaString((const std::string&)*this + o.str()); }
 	JavaString operator+(unsigned v) const { std::ostringstream o; o << v; return JavaString((const std::string&)*this + o.str()); }
-	JavaString operator+(double v) const { std::ostringstream o; o << v; return JavaString((const std::string&)*this + o.str()); }
+	JavaString operator+(double v) const { return JavaString((const std::string&)*this + j2xNumberText(v, false)); }
+	JavaString operator+(float v) const { return JavaString((const std::string&)*this + j2xNumberText(v, true)); }
 	JavaString operator+(char v) const { return JavaString((const std::string&)*this + std::string(1, v)); }
 	// a Java char (unsigned char) appends the character, not its number (it would promote to operator+(int))
 	JavaString operator+(unsigned char v) const { return JavaString((const std::string&)*this + std::string(1, (char)v)); }
