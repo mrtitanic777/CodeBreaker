@@ -48,6 +48,7 @@ def _sel(index, rpl=0):
 SCRATCH_BASE = 0xB00000        # fallback segment every "unknown" selector points at
 _N_GDT = 512                   # dense GDT: fill every selector index so loads/far-rets never #GP
 _FIXED_SLOT = 101              # the stack's GDT index (the sentinel's next): the same for any module
+_MODULE_SLOT = 300             # the module's segment n is at GDT index _MODULE_SLOT + n - 1
 
 
 def _build_harness(uc, U, segs):
@@ -92,7 +93,11 @@ def _load_ne(uc, U, nef):
     sels is indexed by NE segment number (1-based); sels[0] is unused."""
     segs = nef.segments()
     seg_bases = {}
-    harness_list = []                                        # (base, limit, is_code) per NE seg
+    # The module's segments sit high in the GDT, past every selector a plain number given as an
+    # input names (20h, 60h, 100h ...): at index n those numbers were selectors of the module's
+    # own code, and a function handed one as a far pointer read its own instructions -- which
+    # differ between the original and a rebuild, so 17 of USER's functions "differed" by it.
+    harness_list = [(SCRATCH_BASE, 0xFFFF, False)] * (_MODULE_SLOT - 1)
     for s in segs:
         base = SEG_ORIGIN + s["idx"] * SEG_STRIDE
         seg_bases[s["idx"]] = base
@@ -111,15 +116,15 @@ def _load_ne(uc, U, nef):
         uc.mem_map(SCRATCH_BASE, 0x10000)
     except U.UcError:
         pass
-    while len(harness_list) < _FIXED_SLOT - 1:
-        harness_list.append((SCRATCH_BASE, 0xFFFF, False))
-    harness_list.append((STACK_BASE, 0xFFFF, False))
-    harness_list.append((SENT_BASE, 0xFFFF, True))            # code: far calls/rets land here
+    harness_list[_FIXED_SLOT - 1] = (STACK_BASE, 0xFFFF, False)
+    harness_list[_FIXED_SLOT] = (SENT_BASE, 0xFFFF, True)    # code: far calls/rets land here
+    if len(harness_list) > _N_GDT - 24:                      # (the top indices are the heaps')
+        raise ValueError("%d segments: more than the GDT holds" % len(segs))
     sels_all = _build_harness(uc, U, harness_list)
-    # sels_all: [null, seg1, ..., segN, scratch..., stack, sent]
-    sels = {s["idx"]: sels_all[s["idx"]] for s in segs}
-    stack_sel = sels_all[len(harness_list) - 1]
-    sent_sel = sels_all[len(harness_list)]
+    # sels_all: [null, scratch..., stack, sent, scratch..., seg1, ..., segN]
+    sels = {s["idx"]: sels_all[_MODULE_SLOT + s["idx"] - 1] for s in segs}
+    stack_sel = sels_all[_FIXED_SLOT]
+    sent_sel = sels_all[_FIXED_SLOT + 1]
     return sels, seg_bases, stack_sel, sent_sel
 
 
