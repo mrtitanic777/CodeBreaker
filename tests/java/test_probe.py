@@ -87,13 +87,6 @@ def test_methods_run_beside_the_jvm(tmp_path):
     assert ('255',) not in widen and ('65535',) in widen
 
 
-def test_a_missing_class_is_read_from_every_kind_of_linker_complaint():
-    err = ("a.o: undefined reference to `vtable for MaterialLogic'\n"
-           "b.o: undefined reference to `Block::foo()'\n"
-           "c.o: undefined reference to `typeinfo for Item'\n")
-    assert probe._missing(err) == {'MaterialLogic', 'Block', 'Item'}
-
-
 @pytest.mark.skipif(not (java.compiler() and java.jdk()[0]), reason='needs g++ and a JDK')
 def test_a_result_java_itself_does_not_repeat_is_left_out(tmp_path):
     src = tmp_path / 'src'

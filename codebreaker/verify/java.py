@@ -137,6 +137,9 @@ def prepare(module_path, work):
     from codebreaker.java import transpile
     src = source_dir(module_path)
     out = os.path.join(work, "cpp")
+    for stale in (os.path.join(work, "probe"), os.path.join(work, "javasrc")):   # the last run's objects and
+        if os.path.isdir(stale):                                                  # archive are of other C++
+            shutil.rmtree(stale)
     if os.path.isdir(out):
         shutil.rmtree(out)
     m = Prepared()
@@ -184,7 +187,10 @@ def build(m, module_path, work):
     if javac:
         from codebreaker.java import probe
         staged = probe.stage_sources(m.src, os.path.join(work, "javasrc"))
-    return (cxx, m.out, precompile(cxx, m.out, work), staged, javac, java, work), items, {}
+    prefix = precompile(cxx, m.out, work)
+    if javac:
+        probe.library(cxx, m.out, work, prefix)         # the whole program, once, before the judges link to it
+    return (cxx, m.out, prefix, staged, javac, java, work), items, {}
 
 
 def judge(context, item):

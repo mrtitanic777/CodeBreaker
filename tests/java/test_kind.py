@@ -51,7 +51,7 @@ def test_classes_are_judged_filed_and_written(tmp_path, monkeypatch):
     best = fs.best(sha, digest)
     assert sorted(best) == CLASSES
     for cls, row in best.items():
-        assert row['class'] in ('not-judged', 'verified'), (cls, row.get('reason'), row.get('detail'))
+        assert row['class'] in ('not-judged', 'verified', 'weak'), (cls, row.get('reason'), row.get('detail'))
     if java.jdk()[0]:                       # MathHelper's static float methods run beside the JVM, and agree
         assert best['MathHelper']['class'] == 'verified', best['MathHelper'].get('detail')
         assert 'every result alike' in best['MathHelper']['detail']
