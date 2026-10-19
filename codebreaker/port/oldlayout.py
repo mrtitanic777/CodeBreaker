@@ -135,10 +135,47 @@ def edits_of(tree, text, path, olds):
     arith16.TEXT[0] = text
     out, found, refused = [], {}, []
 
+    intf = {fid for fid, (rid, name, t) in fields.items()   # (its int members: a pointer kept in one, a word)
+            if _top(recs, rid) in olds and re.fullmatch(r"(?:unsigned |signed )?(?:short|int|u?int16_t)( int)?", t.strip())}
+
+    def tptr(x):
+        return (x.get("type") or {}).get("qualType", "")
+
+    def int_word(n, parents):
+        """an int member of a record kept old given a pointer, or read as one: the handle of it"""
+        par = parents[-1] if parents else {}
+        k = par.get("kind")
+        p = place(n, path)
+        if not p:
+            return
+        depth = len(parents)
+        if k == "BinaryOperator" and par.get("opcode") == "=" and (par.get("inner") or [None])[0] is n:
+            rhs = par["inner"][1]
+            if rhs.get("kind") == "ImplicitCastExpr" and rhs.get("castKind") == "PointerToIntegral" or \
+                    rhs.get("kind") == "CStyleCastExpr" and rhs.get("castKind") == "PointerToIntegral":
+                q = place(rhs, path)
+                if q:                                       # (a pointer given it: its handle)
+                    out.append((q[0], depth, "dos_ph("))
+                    out.append((q[1], -depth, ")"))
+                    gp = next((x for x in reversed(parents[:-1]) if x.get("kind") != "ParenExpr"), {})
+                    w = place(par, path)                    # (the value of it as a pointer: the pointer again)
+                    if w and gp.get("castKind") == "IntegralToPointer":
+                        out.append((w[0], depth - 1, "dos_hp("))
+                        out.append((w[1], -(depth - 1), ")"))
+            return
+        up = next((x for x in reversed(parents) if not (x.get("kind") == "ParenExpr" or
+                   x.get("kind") == "ImplicitCastExpr" and x.get("castKind") in ("LValueToRValue", "IntegralCast"))), {})
+        if up.get("kind") in ("ImplicitCastExpr", "CStyleCastExpr") and up.get("castKind") == "IntegralToPointer":
+            out.append((p[0], depth, "dos_hp("))           # (read as a pointer: what the handle stands for)
+            out.append((p[1], -depth, ")"))
+
     def fn(n, parents):
         if n.get("kind") != "MemberExpr":
             return
         fid = (n.get("referencedMemberDecl") or "")
+        if fid in intf:
+            int_word(n, parents)
+            return
         if fid not in ptrf:
             return
         p = place(n, path)
@@ -155,6 +192,15 @@ def edits_of(tree, text, path, olds):
             if q:                                           # (a write: the handle of what is given)
                 out.append((q[0], depth, "dos_ph("))
                 out.append((q[1], -depth, ")"))
+                gp = parents[-2] if len(parents) > 1 else {}
+                w = place(par, path)
+                gk, gi = gp.get("kind"), gp.get("inner") or []
+                cond = {"IfStmt": 0, "WhileStmt": 0, "SwitchStmt": 0, "DoStmt": 1, "ForStmt": 2}.get(gk)
+                used = gk not in ("CompoundStmt", "CaseStmt", "DefaultStmt", "LabelStmt", None) and \
+                    (cond is None or (len(gi) > cond and gi[cond] is par))   # (a statement of an if: not used)
+                if w and used:
+                    out.append((w[0], depth - 1, "((%s)dos_hp(" % t))   # (its value used - t = n->left = x: the
+                    out.append((w[1], -(depth - 1), "))"))              #  pointer again, not the handle)
             return
         if k == "UnaryOperator" and par.get("opcode") in ("&", "++", "--") or \
                 (k == "CompoundAssignOperator" and (par.get("inner") or [None])[0] is n):
@@ -197,6 +243,65 @@ def apply(text, edits):
         closes = sorted([x for x in by[at] if x[0] < 0], key=lambda x: x[0])        # (-depth: inner first)
         s = "".join(c for d, c in closes) + "".join(o for d, o in opens)   # (the inner closed first)
         text = text[:at] + s + text[at:]
+    return text
+
+
+def null_reads(text):
+    """((struct n *)dos_hp(h))->op, and l = ((struct n *)dos_hp(h)); ... l->op with l never tested: a read
+    through what may be NULL - on DOS the start of the data segment (no fault) - dos_hpr, the null segment for
+    handle 0; a pointer the function tests (if (!l), l == 0, l && ...) keeps dos_hp, its NULL a NULL"""
+    from codebreaker.port.early_c import blank, definitions_any
+    cast = re.compile(r"\(\((?:struct|union)\s+\w+\s*\*\s*\)dos_hp\(")
+
+    def close(code, i):                                     # (the ')' that closes the '(' at i)
+        d = 0
+        for k in range(i, len(code)):
+            d += {"(": 1, ")": -1}.get(code[k], 0)
+            if d == 0:
+                return k
+        return -1
+    code = blank(text)
+    at = set()                                              # (where dos_hp( starts, to become dos_hpr()
+    for m in cast.finditer(code):
+        k = close(code, m.start())
+        if k > 0 and re.match(r"\s*->", code[k + 1:]):
+            at.add(m.end() - len("dos_hp("))
+    lines, clines = text.split("\n"), code.split("\n")
+    starts = [0]
+    for l in lines:
+        starts.append(starts[-1] + len(l) + 1)
+    for name, s_, j_, k_ in definitions_any(lines, clines):
+        a, b = starts[j_], starts[k_ + 1] if k_ + 1 < len(starts) else len(code)
+        body = code[a:b]
+        head = code[starts[s_]:a]
+        for v in set(re.findall(r"(?<![\w.>])(\w+)\s*=\s*\(\((?:struct|union)\s+\w+\s*\*\s*\)dos_hp\(", body)):
+            if re.search(r"\b%s\b" % re.escape(v), head):
+                continue                                    # (a parameter: its callers' NULL)
+            ok = True
+            for u in re.finditer(r"(?<![\w.>])%s\b" % re.escape(v), body):
+                before, after = body[:u.start()], body[u.end():]
+                if re.match(r"\s*->", after) or re.match(r"\s*=(?!=)", after):
+                    continue                                # (read through, or given a value)
+                if re.search(r"\*\s*$", before) and re.match(r"\s*[;,=\[]", after) and \
+                        re.search(r"(?:struct|union)\s+\w+[\s*\w,]*$", before.split("\n")[-1]):
+                    continue                                # (its declaration)
+                if re.search(r"(?:[=(,!?:;{}]|\breturn)\s*\*\s*$", before) and re.match(r"\s*[;,)]", after):
+                    continue                                # (*n = *l: the record read through it)
+                if re.search(r"(?<![=!<>])=\s*$", before) and re.match(r"\s*;", after):
+                    continue                                # (ka = r: another name of it)
+                if re.search(r"(?<!\bif)(?<!\bwhile)(?<!\bswitch)(?<!\breturn)(?<!\bfor)\b\w+\s*\(\s*$|,\s*$",
+                             before) and re.match(r"\s*[,)]", after) and \
+                        not re.search(r"\b(?:if|while|for|switch|return)\s*\(\s*$", before):
+                    continue                                # (given on to a call)
+                ok = False
+                break
+            if not ok:
+                continue
+            for m in re.finditer(r"(?<![\w.>])%s\s*=\s*(\(\((?:struct|union)\s+\w+\s*\*\s*\)dos_hp\()" %
+                                 re.escape(v), body):
+                at.add(a + m.end(1) - len("dos_hp("))
+    for i in sorted(at, reverse=True):
+        text = text[:i] + "dos_hpr(" + text[i + len("dos_hp("):]
     return text
 
 
@@ -251,11 +356,20 @@ def mentions(folder, f, tags, seen=None):
 def run(cc, folder, files):
     """-> ({file: its text with the conversions}, set of records kept old, {(record, member): type}, refusals)"""
     olds = set()                                            # (one file's tree at a time: a tree holds the system's
-    for f in files:                                         #  headers too - all of them at once were gigabytes)
+    hk = arith16._headers_key(folder)                       #  headers too - all of them at once were gigabytes;
+    for f in files:                                         #  a file's result kept by its text and its headers')
+        key = arith16.pass_key(cc, folder, f, "records", headers=hk)
+        got = arith16.cache_get(key)
+        if got is not None:
+            olds |= set(got["olds"])
+            continue
         tree = arith16.dump(cc, f, folder)
+        mine = set()
         if tree:
             arith16.mark_files(tree, [None])
-            olds |= byte_records([tree])
+            mine = byte_records([tree])
+            olds |= mine
+        arith16.cache_put(key, {"olds": sorted(mine)})
         del tree
     out, found_all, refused = {}, {}, []
     if not olds:
@@ -264,15 +378,22 @@ def run(cc, folder, files):
     for f in files:
         if not mentions(folder, f, tags):                   # (a file that never names them, nor its headers: none)
             continue
-        tree = arith16.dump(cc, f, folder)
-        if not tree:
-            continue
-        arith16.mark_files(tree, [None])
-        path = next((v for v in arith16._files(tree) if v.replace("\\", "/").endswith(f)), f)
-        text = open(folder + "/" + f, encoding="latin1").read()
-        e, found, ref = edits_of(tree, text, path, olds)
-        found_all.update(found)
-        refused += [(f, at, op) for at, op in ref]
-        if e:
-            out[f] = apply(text, e)
+        key = arith16.pass_key(cc, folder, f, "oldlayout", sorted(olds), headers=hk)
+        got = arith16.cache_get(key)
+        if got is None:
+            tree = arith16.dump(cc, f, folder)
+            if not tree:
+                continue
+            arith16.mark_files(tree, [None])
+            path = next((v for v in arith16._files(tree) if v.replace("\\", "/").endswith(f)), f)
+            text = open(folder + "/" + f, encoding="latin1").read()
+            e, found, ref = edits_of(tree, text, path, olds)
+            got = {"new": apply(text, e) if e else None, "found": [[k[0], k[1], v] for k, v in found.items()],
+                   "refused": [list(x) for x in ref]}
+            arith16.cache_put(key, got)
+            del tree
+        found_all.update({(a_, b_): v for a_, b_, v in got["found"]})
+        refused += [(f, at, op) for at, op in got["refused"]]
+        if got["new"] is not None:
+            out[f] = got["new"]
     return out, olds, found_all, refused

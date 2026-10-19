@@ -171,6 +171,12 @@ int dos_memicmp(const void *a, const void *b, size_t n);
    Below 8000h a value stays itself (a number the program put where a pointer was) */
 uint16_t dos_ph(const void *p);
 void *dos_hp(unsigned h);
+/* the same, for a read through it: handle 0 (NULL) the null segment - on DOS a NULL pointer read the start of the
+   data segment, and a program that looked at a NULL node's fields before it tested them got its bytes */
+void *dos_hpr(unsigned h);
+/* a pointer that may be a small number (a word of a table that holds counts as well as pointers): one below 100h
+   the null segment at that place, as DOS read it there */
+void *dos_np(const void *p);
 
 /* Lattice C's memory calls (MS C 1.0x's library): allmem() takes the memory there is for the heap (0: done),
    getmem(n) a block, rlsmem(p, n) gives it back (0: done), sizmem() what is left */

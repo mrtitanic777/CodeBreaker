@@ -170,11 +170,46 @@ def runtime_dir(cc):
     return None
 
 
+LOW = re.compile(r"access-violation on unknown address 0x0*(?P<addr>[0-9a-fA-F]{1,2})\b.*?\n(?:.*\n)*?\s*#\d+ "
+                 r"0x[0-9a-fA-F]+ in (?P<fn>\w+) (?P<path>[^\n]*?):(?P<line>\d+)")
+
+
+def low_reads(port, out, case, text):
+    """a read at a small address (below 100h) on a line that reads p[i]->m: p's words small numbers at times - on
+    DOS a read of the null segment there; each p[...]-> of the file read through dos_np; -> why, or None"""
+    m = LOW.search(text)
+    if not m:
+        return None
+    f = os.path.basename(m.group("path"))
+    if f not in out:
+        return None
+    line = out[f].split("\n")[int(m.group("line")) - 1] if int(m.group("line")) <= len(out[f].split("\n")) else ""
+    for v in re.findall(r"(?<![\w.>])(\w+)\s*\[[^\[\]]*\]\s*->", line):
+        if any(r[:2] == (f, v) for r in getattr(port, "np_rules", [])):
+            continue
+        d = re.search(r"\b((?:struct|union)\s+\w+)\s*\*\s*\*\s*%s\b|\b((?:struct|union)\s+\w+)\s*\*\s*%s\s*\[" %
+                      (re.escape(v), re.escape(v)), out[f])
+        if not d:
+            continue
+        typ = (d.group(1) or d.group(2)) + " *"
+        port.np_rules = getattr(port, "np_rules", []) + [(f, v, typ)]
+        why = "%s: %s[...] a small number at times (read at %sh, case '%s'): read through the null segment there" % (
+            f, v, m.group("addr"), case)
+        port.mended["a table's word read as a pointer, a small number at times (DOS read the null segment there): "
+                    "dos_np"].append(why)
+        return why
+    return None
+
+
 def mend(port, out, reports):
     """the rules from the sanitizer's reports; -> what was mended ([(variable, why)])"""
     done = []
     for case, text in reports:
         found = False
+        why = low_reads(port, out, case, text)
+        if why:
+            done.append((case, why))
+            continue
         for ix in INDEX.finditer(text):                     # (each index the bounds check reported: one a read
             why = before_start(port, out, case, ix.group(0))   # before a table's start, perhaps)
             if why and why not in [w for c_, w in done]:

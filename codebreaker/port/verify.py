@@ -32,15 +32,79 @@ import sys
 import tempfile
 
 
+CACHE = os.path.join(os.path.expanduser("~"), ".cache", "codebreaker", "originals")
+
+
+@functools.lru_cache(maxsize=None)
+def _emulator_key():
+    """what the emulator is: its sources (a change to it runs the originals again)"""
+    import hashlib
+    from codebreaker.exact.emu import dos
+    h = hashlib.sha256()
+    d = os.path.dirname(os.path.abspath(dos.__file__))
+    for n in sorted(os.listdir(d)):
+        if n.endswith(".py"):
+            h.update(n.encode() + open(os.path.join(d, n), "rb").read())
+    return h.hexdigest()
+
+
+@functools.lru_cache(maxsize=None)
+def _file_hash(path, mtime, size):
+    import hashlib
+    return hashlib.sha256(open(path, "rb").read()).hexdigest()
+
+
+def _original_key(exe, folder, cmd, stdin):
+    """the original's run, by everything it depends on: the program, the emulator, the command, the input and
+    every file it is given"""
+    import hashlib
+    h = hashlib.sha256()
+    st = os.stat(exe)
+    h.update(_file_hash(os.path.abspath(exe), st.st_mtime, st.st_size).encode())
+    h.update(_emulator_key().encode())
+    h.update(repr((cmd, stdin)).encode("latin1", "replace"))
+    for n in sorted(os.listdir(folder)):
+        f = os.path.join(folder, n)
+        if os.path.isfile(f):
+            h.update(n.encode("latin1", "replace") + b"\0" + open(f, "rb").read() + b"\0")
+    return h.hexdigest()
+
+
 def run_original(cfg, exe, folder, cmd, stdin):
+    """the original run under the emulator - once: what it showed and left, by what it was given, kept (it is the
+    same every time); -> (console, exit)"""
+    import base64
+    key = _original_key(exe, folder, cmd, stdin)
+    at = os.path.join(CACHE, key[:2], key + ".json")
+    if os.path.isfile(at):
+        try:
+            got = json.load(open(at))
+            for n in os.listdir(folder):                    # (the folder as the run left it)
+                if os.path.isfile(os.path.join(folder, n)):
+                    os.remove(os.path.join(folder, n))
+            for n, b64 in got["files"].items():
+                open(os.path.join(folder, n), "wb").write(base64.b64decode(b64))
+            return got["console"].encode("latin1"), got["exit"]
+        except (OSError, ValueError, KeyError):
+            pass
     from codebreaker.exact.emu import dos
     from codebreaker.base import parallel
     parallel.wait_for_memory("verify")
     try:
         r = dos.run(exe, folder, cmdline=(" " + cmd) if cmd else "", stdin=stdin.encode("latin1"), fast=True)
+        console, code = r.console, r.exit
     except RuntimeError as e:                               # (a run that does not end: what it showed, and that)
-        return str(e).encode("latin1", "replace"), "did not end"
-    return r.console, r.exit
+        console, code = str(e).encode("latin1", "replace"), "did not end"
+    try:
+        os.makedirs(os.path.dirname(at), exist_ok=True)
+        files = {n: base64.b64encode(open(os.path.join(folder, n), "rb").read()).decode()
+                 for n in os.listdir(folder) if os.path.isfile(os.path.join(folder, n))}
+        tmp = at + ".%d.tmp" % os.getpid()
+        json.dump({"console": console.decode("latin1"), "exit": code, "files": files}, open(tmp, "w"))
+        os.replace(tmp, at)
+    except OSError:
+        pass
+    return console, code
 
 
 def run_port(cfg, exe, folder, cmd, stdin, env):
@@ -60,9 +124,7 @@ def run_cases(path, exe, env=None):
     inputs = {k: at(v) for k, v in cfg.get("inputs", {}).items()}
     e = dict(cfg.get("env", {}))
     e.update(env or {})
-    out = []
-
-    def one(case, fb):
+    def one(case, fb, out):
         for n in case.get("files", []):
             shutil.copy(inputs[n], os.path.join(fb, n))
         for n, text in case.get("make", {}).items():
@@ -78,13 +140,22 @@ def run_cases(path, exe, env=None):
             c = (ex.output or b"")[-200000:] + b"\n(did not end)"   #  reports among it)
         out.append((case["name"], c.decode("latin1")))
         for c2 in case.get("then", []):
-            one(c2, fb)
-    for case in cfg["cases"]:
+            one(c2, fb, out)
+
+    def top(case):
+        o = []
         fb = tempfile.mkdtemp(prefix="cbs_")
         try:
-            one(case, fb)
+            one(case, fb, o)
         finally:
             shutil.rmtree(fb, ignore_errors=True)
+        return o
+    from concurrent.futures import ThreadPoolExecutor
+    from codebreaker.base import parallel
+    out = []
+    with ThreadPoolExecutor(max(1, parallel.workers())) as ex:   # (the cases at once: the machine's budget)
+        for o in ex.map(top, cfg["cases"]):
+            out += o
     return out
 
 
@@ -116,7 +187,7 @@ def main(argv):
     inputs = {k: at(v) for k, v in cfg.get("inputs", {}).items()}
     rows, detail = [], []
 
-    def one(case, fa, fb):
+    def one(case, fa, fb, rows, detail):
         for n in case.get("files", []):
             for f in (fa, fb):
                 shutil.copy(inputs[n], os.path.join(f, n))
@@ -158,15 +229,22 @@ def main(argv):
         rows.append((case["name"], cmd, not bad, ", ".join(bad) or "same: console%s" % (
             ", " + ", ".join(made) if made else "")))
         for c in case.get("then", []):
-            one(c, fa, fb)
+            one(c, fa, fb, rows, detail)
 
-    for case in cfg["cases"]:
+    def top(case):                                          # (a case and those run after it in its folders)
+        r, d = [], []
         fa, fb = tempfile.mkdtemp(prefix="cbv_o_"), tempfile.mkdtemp(prefix="cbv_p_")
         try:
-            one(case, fa, fb)
+            one(case, fa, fb, r, d)
         finally:
             shutil.rmtree(fa, ignore_errors=True)
             shutil.rmtree(fb, ignore_errors=True)
+        return r, d
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max(1, parallel.workers())) as ex:   # (the cases at once, the machine's budget of
+        for r, d in ex.map(top, cfg["cases"]):                  #  them; reported in their order)
+            rows += r
+            detail += d
     same = sum(1 for r in rows if r[2])
     L = ["# Behaviour: the original against the port", "",
          "`%s` (under CodeBreaker's emulator) against `%s` (native): **%d of %d cases the same**." % (

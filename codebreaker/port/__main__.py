@@ -763,6 +763,8 @@ def oldlayout_pass(port, out, res, compilers):
     texts = dict(new)
     for h in sorted(x for x in res if x.endswith((".h", ".c"))):   # (the records' definitions, wherever they are)
         t = oldlayout.declare(texts.get(h, res[h]), olds, found)
+        if h.endswith(".c"):
+            t = oldlayout.null_reads(t)                     # (a NULL read through: the null segment, as on DOS)
         if t != res[h]:
             texts[h] = t
     for f, t in texts.items():
@@ -820,6 +822,16 @@ def sanitize_loop(port, out, write, srcs, compilers, comp, cases, rounds=6):
     os.makedirs(d, exist_ok=True)
     exe = os.path.join(d, "program.exe" if os.name == "nt" else "program")
     notes = []
+    write()
+    key = sanitize_key(out, srcs, cases, cc)               # (all it would build and run: as the last time -
+    mark = os.path.join(out, ".sanitized.json")             #  what it found then, not run again)
+    try:
+        last = json.load(open(mark))
+        if last.get("key") == key:
+            return list(last.get("notes", [])) + ["(the port and its cases as the last run: not run again)"]
+    except (OSError, ValueError):
+        pass
+    clean = False
     for r in range(rounds):
         parallel.wait_for_memory("sanitized build")         # (the sanitizer's builds and runs want memory)
         write()
@@ -836,11 +848,43 @@ def sanitize_loop(port, out, write, srcs, compilers, comp, cases, rounds=6):
         if not done:
             notes.append("round %d: %d cases run sanitized, %s" % (
                 r + 1, len(reports), "no fault" if not bad else "faults not mended: " + ", ".join(bad)))
+            clean = True
             break
         notes += ["round %d: %s" % (r + 1, why) for v, why in done]
     import shutil as _sh
     _sh.rmtree(d, ignore_errors=True)
+    if clean:                                               # (settled: kept, with the key of what it ran)
+        try:
+            json.dump({"key": sanitize_key(out, srcs, cases, cc), "notes": notes}, open(mark, "w"))
+        except OSError:
+            pass
     return notes
+
+
+def sanitize_key(out, srcs, cases, cc):
+    """everything a sanitized build and its runs depend on: the port's files, the cases and their inputs, the
+    other passes' ports the cases run, the compiler"""
+    import hashlib
+    h = hashlib.sha256(os.path.abspath(cc).encode())
+    for n in sorted(os.listdir(out)):
+        f = os.path.join(out, n)
+        if os.path.isfile(f) and n.endswith((".c", ".h", ".asm")):
+            h.update(n.encode() + b"\0" + open(f, "rb").read())
+    try:
+        cfg = json.load(open(cases))
+        h.update(json.dumps(cfg, sort_keys=True).encode())
+        base = os.path.dirname(os.path.abspath(cases))
+        at = lambda p_: p_ if os.path.isabs(p_) else os.path.join(base, p_)
+        for k, v in sorted(cfg.get("inputs", {}).items()):
+            if os.path.isfile(at(v)):
+                h.update(open(at(v), "rb").read())
+        for k, v in sorted(cfg.get("programs", {}).items()):
+            if os.path.isfile(at(v.get("port", ""))):
+                st = os.stat(at(v["port"]))
+                h.update(repr((k, st.st_size, st.st_mtime)).encode())
+    except (OSError, ValueError):
+        h.update(b"?")
+    return h.hexdigest()
 
 
 def report(out, src, comp, cc, port, roles, diags, rounds, built, blog, profile, sanitized=(), asm_notes=()):
