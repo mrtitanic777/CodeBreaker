@@ -446,6 +446,33 @@ _GENERATED['Keyboard.h'] = _ns_stub('Keyboard',
     ret_fns=[('getEventKey', ('int', '0')), ('getEventKeyState', ('bool', 'false')),
              ('getEventCharacter', ('char', '0')), ('isKeyDown', ('bool', 'false')),
              ('next', ('bool', 'false')), ('getKeyName', ('std::string', 'std::string()'))])
+# LWJGL 2's Keyboard.getKeyName: a key's constant without KEY_ (17 -> "W"), null for an unnamed code --
+# what the options screen prints for each binding. Taken from lwjgl-2.9.3 itself (getKeyName(0..255)).
+# FIXED BUG keyname-stub: it returned "", so every binding read "Forward: ". The 360 replaces Keyboard.h
+# with the Input reference layer, which has its own.
+_LWJGL_KEY_NAMES = dict(kv.split('=', 1) for kv in (
+    '0=NONE 1=ESCAPE 2=1 3=2 4=3 5=4 6=5 7=6 8=7 9=8 10=9 11=0 12=MINUS 13=EQUALS 14=BACK 15=TAB 16=Q '
+    '17=W 18=E 19=R 20=T 21=Y 22=U 23=I 24=O 25=P 26=LBRACKET 27=RBRACKET 28=RETURN 29=LCONTROL 30=A 31=S '
+    '32=D 33=F 34=G 35=H 36=J 37=K 38=L 39=SEMICOLON 40=APOSTROPHE 41=GRAVE 42=LSHIFT 43=BACKSLASH 44=Z '
+    '45=X 46=C 47=V 48=B 49=N 50=M 51=COMMA 52=PERIOD 53=SLASH 54=RSHIFT 55=MULTIPLY 56=LMENU 57=SPACE '
+    '58=CAPITAL 59=F1 60=F2 61=F3 62=F4 63=F5 64=F6 65=F7 66=F8 67=F9 68=F10 69=NUMLOCK 70=SCROLL '
+    '71=NUMPAD7 72=NUMPAD8 73=NUMPAD9 74=SUBTRACT 75=NUMPAD4 76=NUMPAD5 77=NUMPAD6 78=ADD 79=NUMPAD1 '
+    '80=NUMPAD2 81=NUMPAD3 82=NUMPAD0 83=DECIMAL 87=F11 88=F12 100=F13 101=F14 102=F15 103=F16 104=F17 '
+    '105=F18 112=KANA 113=F19 121=CONVERT 123=NOCONVERT 125=YEN 141=NUMPADEQUALS 144=CIRCUMFLEX 145=AT '
+    '146=COLON 147=UNDERLINE 148=KANJI 149=STOP 150=AX 151=UNLABELED 156=NUMPADENTER 157=RCONTROL '
+    '167=SECTION 179=NUMPADCOMMA 181=DIVIDE 183=SYSRQ 184=RMENU 196=FUNCTION 197=PAUSE 199=HOME 200=UP '
+    '201=PRIOR 203=LEFT 205=RIGHT 207=END 208=DOWN 209=NEXT 210=INSERT 211=DELETE 218=CLEAR 219=LMETA '
+    '220=RMETA 221=APPS 222=POWER 223=SLEEP '
+).split())
+_kn = ['\tinline JavaString getKeyName(int key) {', '\t\tswitch (key) {']
+_kn += ['\t\tcase %s: return JavaString("%s");' % (k, v) for k, v in sorted(_LWJGL_KEY_NAMES.items(), key=lambda kv: int(kv[0]))]
+_kn += ['\t\t}', '\t\treturn JavaString();   // null, as LWJGL', '\t}',
+        '\tinline int getKeyIndex(const std::string& name) {']
+_kn += ['\t\tif (name == "%s") return %s;' % (v, k) for k, v in sorted(_LWJGL_KEY_NAMES.items(), key=lambda kv: int(kv[0]))]
+_kn += ['\t\treturn 0;   // KEY_NONE, as LWJGL', '\t}']
+_GENERATED['Keyboard.h'] = _GENERATED['Keyboard.h'].replace(
+    '\tinline std::string getKeyName(...) { return std::string(); }   // J2X-STUB[Keyboard]: returns default -- verify',
+    '\n'.join(_kn)).replace('#include <string>', '#include <string>\n#include "JavaString.h"', 1)
 _GENERATED['Mouse.h'] = _ns_stub('Mouse',
     void_fns=['create', 'destroy', 'setNativeCursor', 'setGrabbed', 'setCursorPosition'],
     ret_fns=[('getDX', ('int', '0')), ('getDY', ('int', '0')), ('getX', ('int', '0')),
