@@ -28,7 +28,7 @@ import re
 import struct
 import subprocess
 
-REV = 3
+REV = 4
 TIMEOUT = 60
 
 # Java primitive -> (C++ parameter type, inputs). Inputs are the same on both sides, written as literals.
@@ -248,7 +248,12 @@ def init_order(cpp_dir):
         return []
 
 
-_UNDEF = re.compile(r"undefined reference to `(?:vtable for |typeinfo for )?([A-Za-z_]\w*)::")
+# a class the link is missing: `Name::member`, or its `vtable for Name` / `typeinfo for Name` (no ::)
+_UNDEF = re.compile(r"undefined reference to `(?:(?:vtable|typeinfo) for ([A-Za-z_]\w*)'|([A-Za-z_]\w*)::)")
+
+
+def _missing(err):
+    return set(a or b for a, b in _UNDEF.findall(err))
 
 
 MAX_UNITS = 40          # a class whose harness needs more of the program than this is not run (NOT JUDGED)
@@ -287,7 +292,7 @@ def build_native(cxx, cpp_dir, harness, exe, first, objs, prefix=None):
             if r.returncode == 0:
                 return True, '', units
             err = r.stderr.decode('utf-8', 'replace')
-            more = sorted(set(os.path.join(cpp_dir, c + '.cpp') for c in _UNDEF.findall(err)
+            more = sorted(set(os.path.join(cpp_dir, c + '.cpp') for c in _missing(err)
                               if os.path.isfile(os.path.join(cpp_dir, c + '.cpp'))) - set(units))
             if not more:
                 first_err = next((l for l in err.splitlines() if 'error' in l or 'undefined' in l), err[:200])
@@ -309,7 +314,8 @@ def run(java_dir, cpp_dir, cls, work, cxx, javac, java, prefix=None):
             methods = probeable(cls, f.read())
     except OSError:
         methods = []
-    res = dict(methods=[m[0] for m in methods], judged=0, total=counted(cls), cases=0, differs=[], why='')
+    res = dict(methods=[m[0] for m in methods], judged=0, total=counted(cls), cases=0, differs=[], why='',
+               unsteady=0)
     if not methods:
         res['why'] = 'no method with primitive parameters and result it can call (static, or on an instance it can construct)'
         return res
@@ -331,17 +337,26 @@ def run(java_dir, cpp_dir, cls, work, cxx, javac, java, prefix=None):
         res['why'] = 'javac: ' + next((l for l in r.stdout.decode('utf-8', 'replace').splitlines() if 'error' in l),
                                       'failed')[:180]
         return res
-    try:
-        r = subprocess.run([java, '-cp', jdir, (pkg + '.J2XProbe') if pkg else 'J2XProbe'], stdout=subprocess.PIPE,
-                           stderr=subprocess.DEVNULL,
-                           timeout=TIMEOUT)
-    except subprocess.TimeoutExpired:
-        res['why'] = 'the Java side did not finish'
-        return res
-    jres = _results(r.stdout.decode('utf-8', 'replace'))
-    keep = set(k for k, v in jres.items() if v != 'throw')
+    # the original runs twice: an input whose result changes between two runs of Java itself (a Random
+    # seeded from the clock, the time, an identity hash) says nothing about the translation -- left out
+    runs = []
+    for _twice in range(2):
+        try:
+            r = subprocess.run([java, '-cp', jdir, (pkg + '.J2XProbe') if pkg else 'J2XProbe'],
+                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=TIMEOUT)
+        except subprocess.TimeoutExpired:
+            res['why'] = 'the Java side did not finish'
+            return res
+        runs.append(_results(r.stdout.decode('utf-8', 'replace')))
+    jres = runs[0]
+    # a method with ANY input whose result changed is left out whole: its other inputs may agree by chance
+    shaky = set(k.split('.')[0] for k in jres if runs[1].get(k) != jres[k])
+    unsteady = set(k for k in jres if k.split('.')[0] in shaky)
+    res['unsteady'] = len(unsteady)
+    keep = set(k for k, v in jres.items() if v != 'throw' and k not in unsteady)
     if not keep:
-        res['why'] = 'the Java methods threw on every input'
+        res['why'] = ('Java gives a different result on every run' if unsteady else
+                      'the Java methods threw on every input')
         return res
     order = init_order(cpp_dir)
     harness = os.path.join(folder, 'probe.cpp')

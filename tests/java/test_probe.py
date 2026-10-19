@@ -85,3 +85,34 @@ def test_methods_run_beside_the_jvm(tmp_path):
     # Java's char is 16 bits and unsigned; here it is unsigned char: (char)255 now agrees, (char)65535 cannot
     widen = [a for m, a, _j, _c in r['differs'] if m == 'widen']
     assert ('255',) not in widen and ('65535',) in widen
+
+
+def test_a_missing_class_is_read_from_every_kind_of_linker_complaint():
+    err = ("a.o: undefined reference to `vtable for MaterialLogic'\n"
+           "b.o: undefined reference to `Block::foo()'\n"
+           "c.o: undefined reference to `typeinfo for Item'\n")
+    assert probe._missing(err) == {'MaterialLogic', 'Block', 'Item'}
+
+
+@pytest.mark.skipif(not (java.compiler() and java.jdk()[0]), reason='needs g++ and a JDK')
+def test_a_result_java_itself_does_not_repeat_is_left_out(tmp_path):
+    src = tmp_path / 'src'
+    src.mkdir()
+    (src / 'Dice.java').write_text('''public class Dice {
+	public static int roll(int var0) {
+		return (int)(System.nanoTime() % 1000L) + var0 * 0;
+	}
+
+	public static int twice(int var0) {
+		return var0 * 2;
+	}
+}
+''', encoding='utf-8')
+    out = tmp_path / 'cpp'
+    transpile.convert(str(src), str(out), platform=None, write_report=False)
+    staged = probe.stage_sources(str(src), str(tmp_path / 'javasrc'))
+    javac, jvm = java.jdk()
+    r = probe.run(staged, str(out), parse.parse_file(str(src / 'Dice.java')), str(tmp_path / 'work'),
+                  java.compiler(), javac, jvm)
+    assert r['unsteady'] > 0 and r['differs'] == []                     # roll is left out, twice agrees
+    assert r['judged'] == 1
