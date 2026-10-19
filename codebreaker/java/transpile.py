@@ -1130,6 +1130,8 @@ def _convert_restoring(java_dir, out_dir, value_types, ledger, write_report, cpp
         typemap.KNOWN_NULLABLE_GETTERS.clear(); typemap.KNOWN_NULLABLE_GETTERS.update(_base_getters)
         typemap.NULLABLE_GETTER_RETURN_TYPE.clear(); typemap.NULLABLE_GETTER_RETURN_TYPE.update(_base_gtypes)
         _statements.refresh_nullable_getters()
+        from codebreaker.java.emit import source as _emit_source
+        _emit_source.TREE_BODIES = None                # phase 1's IR bodies never outlive their conversion
         if _profiles.active().name != _prev_profile:
             _profiles.use(_prev_profile)
 
@@ -1314,6 +1316,21 @@ def _convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True
         for _ext in ('.h', '.cpp'):
             _write(os.path.join(out_dir, 'Inflate' + _ext),
                    _read(_data_path('platform', 'reference', 'Inflate.reference' + _ext)))
+
+    # PHASE 1 OF THE TRANSLATOR (docs/TRANSLATOR_DESIGN.md), opt in with CB_TREE_BODIES=1: method bodies
+    # from javac's typed tree through codebreaker/translate's IR and C++03 back end, where it writes them.
+    tree = None
+    if os.environ.get('CB_TREE_BODIES') == '1':
+        from codebreaker.java import probe as _probe
+        from codebreaker.translate.backends import cpp03 as _cpp03
+        from codebreaker.verify import java as _vjava
+        from codebreaker.base import settings as _settings
+        _cp = list(_probe.libraries())
+        _shim = _probe.shims(_settings.state('translate'), _vjava.jdk()[0]) if _cp else ''
+        tree = _cpp03.Bodies(_cpp03.Context(resolver, classes),
+                             _cpp03.java_units(java_dir, ([_shim] if _shim else []) + _cp))
+        emit_source.TREE_BODIES = tree
+        _prog('[translate] the IR front end lowered %d classes' % len(tree.decls))
 
     headers = sources = 0
     init_classes = []                                # concrete classes whose initStatics() does real work
@@ -1546,6 +1563,12 @@ def _convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True
 
     # (the nullable-getter globals and the target profile are restored by convert()'s `finally`)
 
+    if tree is not None:
+        emit_source.TREE_BODIES = None
+        _prog('[translate] %d method bodies from the IR; the text path wrote %d (%s)'
+              % (tree.written, sum(tree.declined.values()),
+                 ', '.join('%s %d' % kv for kv in tree.declined.most_common(8))))
+
     cats = ledger.totals_by_category()
     sevs = ledger.totals_by_severity()
     _prog('[done] %d events: %d PORTED, %d GUESSED, %d STUBBED, %d RISK, %d HIGH-sev'
@@ -1555,6 +1578,7 @@ def _convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True
     return {
         'parsed': len(classes), 'headers': headers, 'sources': sources,
         'markers': sorted(markers),             # empty decompiler marker classes, dropped on purpose
+        'tree_bodies': (tree.written, dict(tree.declined)) if tree is not None else None,
         'rule_findings': rule_findings, 'events': len(ledger),
         'high': sevs.get(Severity.HIGH, 0),
         'report': rep,
