@@ -34,9 +34,13 @@ PRIMITIVES = {
 # read via `& 0xFF` and want `unsigned char*`). That split is applied in types.cpp_type: scalar byte ->
 # `signed char`, byte[] element -> `unsigned char`. `& 0xFF` still works on signed char (int-promoted),
 # so buffers that also see arithmetic are unaffected. This retires the old SIGNED_BYTE_FIELDS whitelist.
+# Java `char` is UNSIGNED: `unsigned char`, the same unit JavaString's bytes and charAt (cast to unsigned
+# char) give. J2X-BUGFIX char-unsigned: as C++ `char` (signed) every char of 128-255 -- the section sign of
+# colour codes, extended Latin -- was negative in arithmetic, comparisons and (int) casts; the behavioural
+# judge found (int)(char)255 = -1. Values past 255 cannot occur: strings here are 8-bit.
 JAVA_TO_CPP = {
     'boolean': 'bool', 'byte': 'signed char', 'short': 'short', 'int': 'int',
-    'long': 'long long', 'float': 'float', 'double': 'double', 'char': 'char',
+    'long': 'long long', 'float': 'float', 'double': 'double', 'char': 'unsigned char',
     'void': 'void',
     'String': 'JavaString',
     'ArrayList': 'JList', 'List': 'JList', 'LinkedList': 'JList',
@@ -50,7 +54,7 @@ JAVA_TO_CPP = {
     # decode work. JObject is a value (NOT a pointer); it converts to T*/JavaString via operators.
     'Object': 'JObject',
     'Integer': 'int', 'Long': 'long long', 'Float': 'float', 'Double': 'double',
-    'Boolean': 'bool', 'Byte': 'signed char', 'Short': 'short', 'Character': 'char',
+    'Boolean': 'bool', 'Byte': 'signed char', 'Short': 'short', 'Character': 'unsigned char',
 }
 
 # RETIRED: SIGNED_BYTE_FIELDS whitelist. Scalar `byte` is now `signed char` by DEFAULT (Java-faithful),

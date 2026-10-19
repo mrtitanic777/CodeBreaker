@@ -23,7 +23,11 @@ On CodeBreaker's path a folder of Java source is a module of the `java` kind (ve
 classes are its functions, each is compiled on its own with the host compiler, verdicts go to the
 store, and `codebreaker module FOLDER` writes the C++ with each class's status line and STATUS.md.
 A class that compiles is then run beside the JVM where it can be (codebreaker/java/probe.py): its
-static methods with primitive parameters and results, on the same inputs, results compared exactly.
+methods with primitive parameters and results (instance ones on an object made with a constructor that
+takes primitives), on the same inputs, results compared exactly. What it found is fixed in the transpiler:
+Math.PI as a float, (int) of a float not saturating, an empty array taken for null, a null dereference in
+a try not reaching its catch, char signed. Java's char is unsigned 8-bit here (strings are 8-bit): a char
+past 255 cannot be held, and the judge shows it.
 The support headers are precompiled once per module, so a class compiles in about a fifth of the time.
 
 Conversions in one process run one at a time (transpile.convert holds a lock): the target profile

@@ -186,6 +186,7 @@ struct JObject {
 	JObject(unsigned long v) : kind(v ? 1 : 0), i(v), d(0), p(0), ti(0) {}
 	JObject(unsigned long long v) : kind(v ? 1 : 0), i((long long)v), d(0), p(0), ti(0) {}   // size_t on 64-bit
 	JObject(char v) : kind(2), i(v), d(0), p(0), ti(0) {}
+	JObject(unsigned char v) : kind(2), i(v), d(0), p(0), ti(0) {}   // a Java char (boxed Character), not an int
 	JObject(bool v) : kind(7), i(v ? 1 : 0), d(0), p(0), ti(0) {}
 	JObject(float v) : kind(8), i((long long)v), d(v), p(0), ti(0) {}   // boxed Float
 	JObject(double v) : kind(8), i((long long)v), d(v), p(0), ti(0) {}  // boxed Double
@@ -265,6 +266,7 @@ struct JObject {
 	// void* interop. NOTE: no operator bool() -- it would make `if(x)` ambiguous with operator int().
 	operator int() const { return (int)i; }
 	operator char() const { return (char)i; }
+	operator unsigned char() const { return (unsigned char)i; }   // a Java char (unsigned): MSVC found int/char ambiguous
 	template<class T> operator T*() const { return (T*)p; }
 };
 
@@ -399,10 +401,11 @@ namespace Double {
 namespace String {
 	template<class T> inline JavaString valueOf(const T& v) { std::ostringstream o; o << v; return JavaString(o.str()); }
 	template<class A> inline JavaString valueOf(const A& a, int, int) { std::ostringstream o; o << a; return JavaString(o.str()); }  // String.valueOf(char[], off, len) (stub)
-	inline JavaString valueOf(const JArray<char>& a, int off, int n) {   // String.valueOf(char[], off, len)
-		std::string s; for (int i = 0; i < n; ++i) s += a[off + i]; return JavaString(s);
+	inline JavaString valueOf(const JArray<unsigned char>& a, int off, int n) {   // String.valueOf(char[], off, len)
+		std::string s; for (int i = 0; i < n; ++i) s += (char)a[off + i]; return JavaString(s);
 	}
-	inline JavaString valueOf(const JArray<char>& a) { return valueOf(a, 0, a.length); }   // String.valueOf(char[])
+	inline JavaString valueOf(const JArray<unsigned char>& a) { return valueOf(a, 0, a.length); }   // String.valueOf(char[])
+	inline JavaString valueOf(unsigned char c) { return JavaString(std::string(1, (char)c)); }   // String.valueOf(char)
 	inline JavaString valueOf(bool v) { return JavaString(v ? "true" : "false"); }
 	inline JavaString valueOf(const char* v) { return JavaString(v ? v : ""); }
 	inline JavaString valueOf(const std::string& v) { return JavaString(v); }

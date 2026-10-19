@@ -6,8 +6,9 @@ is transpiled by codebreaker/java (transpile.convert, for no particular platform
 C++ is compiled on its own with the host compiler (settings.json `host_cxx`, else g++ on PATH).
 
 A class that does not compile is DOES NOT COMPILE, with the compiler's first complaint. One that
-compiles is then run beside the original where it can be (codebreaker/java/probe.py): its static
-methods with primitive parameters and results are called on the same inputs in the JVM -- the Java
+compiles is then run beside the original where it can be (codebreaker/java/probe.py): its methods
+with primitive parameters and results (static ones directly, instance ones on an object made with a
+constructor that takes primitives) are called on the same inputs in the JVM -- the Java
 source compiled by javac (settings.json `java`; javac beside it, else on PATH) -- and natively, and
 the results compared exactly. All alike: VERIFIED, or VERIFIED (weak) "methods-partial" when only some
 of the class's methods could be run. Any different: UNVERIFIED, with the method, the input and both
@@ -201,7 +202,7 @@ def judge(context, item):
         cls = parse.parse_file(source)
     except Exception as e:                                   # the transpiler parsed it; say so if this did not
         return "inconclusive", "not-run", [], COMPILES % (compiled + ("could not read %s: %s" % (source, e),))
-    r = probe.run(staged, include_dir, cls, work, cxx, javac, java)
+    r = probe.run(staged, include_dir, cls, work, cxx, javac, java, prefix)
     if not r["judged"]:
         return "inconclusive", "not-run", [], COMPILES % (compiled + (r["why"],))
     said = "%d of %d methods run beside the JVM on %d inputs" % (r["judged"], r["total"], r["cases"])

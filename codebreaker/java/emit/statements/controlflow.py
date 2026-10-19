@@ -5,6 +5,7 @@ statements/controlflow.py -- control-flow lowering that has no C++ equivalent:
   * each switch case/default body wrapped in `{ }` so a decl cannot cross a case
     label (C2360/C2361), fallthrough + break preserved (_wrap_switch_cases)
   * a `finally` body run before every return/break/continue that leaves its `try` (_inline_finally)
+  * a null dereference inside a `try` reaching the handler that catches NullPointerException (_npe_to_catch)
 Leaf module: only `re` + its own regexes; imported by the statements package.
 """
 
@@ -300,3 +301,156 @@ def _inline_finally(lines, return_type):
         lines = new + [ind + '} catch (...) {'] + body + [ind + 'throw;', ind + '} {'] + lines[f + 1:]
     return [ln[:-len(_DONE)] if ln.endswith(_DONE) else ln for ln in lines]
 
+
+# ---------------------------------------------------------------------------------------------------
+# NullPointerException inside try. In Java a null dereference in a try whose catch takes it
+# (NullPointerException, RuntimeException, Exception, Throwable) runs that handler and goes on; the C++
+# dereferences NULL and the program dies -- and on the 360 a C++ exception does not unwind, so throwing
+# one is no answer. FIXED BUG npe-in-try-crashes: ColorizerGrass's static init (ImageIO.read() -> null,
+# then var0.getRGB(...) inside try/catch(Exception)) took the whole program down where Java logs and
+# carries on; found by the behavioural judge. Here, on the translated lines, each statement of such a
+# try checks the pointers it dereferences first and, on NULL, leaves the try body by goto; the handler
+# then runs after the try with a NullPointerException in its variable:
+#     bool j2xNpeN = false;
+#     try { {  if ((p) == NULL) { j2xNpeN = true; goto j2xNpeEndN; }  p->m();  ...  } j2xNpeEndN:; }
+#     catch (...) { ... }
+#     if (j2xNpeN) { Exception* e = new NullPointerException(); <handler> }
+# Checked: the first link of each `name->` / `this->name->` on a statement line (not a line that opens
+# with `}`, a case label or `else`). Innermost try first; a try nested in one that is rewritten keeps its
+# own lines. Left as it was: a try with no such handler, or whose handler holds a rewritten try itself.
+
+_NPE_CATCHES = ('NullPointerException', 'RuntimeException', 'Exception', 'Throwable')
+_CATCH_HEAD = re.compile(r'^\}\s*catch\s*\(\s*([\w:]+|\.\.\.)\s*\*?\s*(\w*)\s*\)\s*\{$')
+_RECEIVER = re.compile(r'(?<![\w>.:])((?:this->)?[A-Za-z_]\w*)\s*->')
+_NO_GUARD = ('}', 'case ', 'default', 'else', '{', '//', '/*', 'goto ', 'return;', 'break;', 'continue;')
+
+
+def _tested(r, code):
+    """Does the statement test `r` itself before dereferencing it (`r != NULL && r->x`, `r ? r->x : y`)?
+    Then Java does not dereference a null `r` there, and a guard in front of the line would be wrong."""
+    e = re.escape(r)
+    return bool(re.search(r'(?<![\w>.])%s\s*[!=]=\s*NULL\b|\bNULL\s*[!=]=\s*%s(?![\w-])|(?<![\w>.])%s\s*\?'
+                          % (e, e, e), code))
+
+
+_FOREVER = re.compile(r'^(?:while\s*\(\s*true\s*\)|for\s*\(\s*;\s*;\s*\))\s*\{$')
+
+
+def _breaks_out_of(lines, depths, x, head):
+    """Does the break on line x leave the loop opened on line `head` (it is that loop's own break, or a
+    labelled one)? Its owner is the nearest enclosing loop or switch."""
+    if lines[x].strip() != 'break;':
+        return True                                           # break label; -- leaves, conservatively
+    d = depths[x]
+    for y in range(x - 1, head, -1):
+        if depths[y] < d:
+            if _BREAKABLE.match(lines[y].strip()):
+                return False                                  # a nested loop/switch owns it
+            d = depths[y]
+    return True
+
+
+def _completes(lines, depths, a, b):
+    """Can the block of lines[a:b] (one depth below the line before a) run off its end? Not when its last
+    statement is a return/throw, or a while(true)/for(;;) loop that no break of its own leaves."""
+    level = depths[a]
+    q = next((x for x in range(b - 1, a - 1, -1) if lines[x].strip()), None)
+    if q is None:
+        return True
+    last = lines[q].strip()
+    if depths[q] == level and last.startswith(('return', 'throw')):
+        return False
+    if last == '}' and depths[q] == level + 1:
+        head = next((x for x in range(q - 1, a - 1, -1) if depths[x] == level), None)
+        if head is not None and _FOREVER.match(lines[head].strip()):
+            return any(lines[x].strip().startswith('break') and _breaks_out_of(lines, depths, x, head)
+                       for x in range(head + 1, q))
+    return True
+
+
+def _npe_try(lines, t, depths, k):
+    """Rewrite the try opened on line t (when its handlers allow). -> (new lines, changed?)"""
+    end = next((j for j in range(t + 1, len(lines)) if depths[j] == depths[t] + 1 and
+                _code(lines[j]).lstrip().startswith('}')), None)
+    if end is None or not _CATCH_HEAD.match(lines[end].strip()):
+        return lines, False
+    clauses, j = [], end                                       # (type, var, first body line, last body line)
+    while j is not None and _CATCH_HEAD.match(lines[j].strip()):
+        m = _CATCH_HEAD.match(lines[j].strip())
+        close = next((q for q in range(j + 1, len(lines)) if depths[q] == depths[t] + 1 and
+                      _code(lines[q]).lstrip().startswith('}')), None)
+        if close is None:
+            return lines, False
+        clauses.append((m.group(1), m.group(2), j + 1, close))
+        j = close
+    last = clauses[-1][3]                                      # the line that closes the chain: `}` or `} {`
+    handler = next((c for c in clauses if c[0] in _NPE_CATCHES), None)
+    if handler is None:
+        return lines, False
+    body = lines[handler[2]:handler[3]]
+    if any('j2xNpe' in ln for ln in body):
+        return lines, False
+    flag, label = 'j2xNpe%d' % k, 'j2xNpeEnd%d' % k
+    # A try body that ends in return/throw cannot fall out of its end: the label is reached only by the
+    # jump, so the handler can follow it there, unconditionally (no flag -- whose test after the try left
+    # MSVC seeing a path off the end of the method, C4715).
+    direct = not _completes(lines, depths, t + 1, end)
+    jump = ('goto %s;' % label) if direct else ('%s = true; goto %s;' % (flag, label))
+    inner, new, guards = [], [], 0
+    for q in range(t + 1, end):
+        ln = lines[q]
+        while inner and depths[q] <= inner[-1]:
+            inner.pop()
+        st = ln.strip()
+        if st == 'try {' and lines_has_npe_guard(lines, q):
+            inner.append(depths[q])
+        if not inner and not st.startswith(_NO_GUARD) and 'j2xNpe' not in st:
+            seen, code = [], _code(st)
+            for r in _RECEIVER.findall(code):
+                if r != 'this' and r not in seen and not _tested(r, code):
+                    seen.append(r)
+            for r in seen:
+                new.append('if ((%s) == NULL) { %s }' % (r, jump))
+                guards += 1
+        new.append(ln)
+    if not guards:
+        return lines, False
+    used = handler[1] and any(re.search(r'\b%s\b' % re.escape(handler[1]), ln) for ln in body)
+    npe = ['if (%s) {' % flag if not direct else '{']
+    if used:
+        npe.append('%s* %s = new NullPointerException();' % (handler[0], handler[1]))
+    npe += body + ['}']
+    if direct:
+        out = lines[:t] + ['// %s: a null dereference in this try runs its handler' % flag, 'try {', '{'] + new + \
+            ['}', '%s:;' % label] + npe + lines[end:]
+        return out, True
+    tail = lines[end:last]
+    if lines[last].strip() == '} {':                            # a finally's trailing block follows
+        closing = ['}'] + npe + ['{']
+    else:
+        closing = [lines[last]] + npe
+    out = lines[:t] + ['bool %s = false;' % flag, 'try {', '{'] + new + ['}', '%s:;' % label] + tail + closing + \
+        lines[last + 1:]
+    return out, True
+
+
+def lines_has_npe_guard(lines, q):
+    """Is the try on line q one this pass has rewritten (the flag is declared just before it)?"""
+    return q >= 1 and lines[q - 1].strip().startswith(('bool j2xNpe', '// j2xNpe'))
+
+
+def _npe_to_catch(lines):
+    """See above. `lines`: a translated method body, one statement or brace line each."""
+    lines, k, skip = list(lines), 0, set()
+    while True:
+        depths = _depths(lines)
+        tries = [q for q, ln in enumerate(lines) if ln.strip() == 'try {']   # rewriting adds no `try {` line,
+        todo = [(n, q) for n, q in enumerate(tries)                          # so n names the same try throughout
+                if n not in skip and not lines_has_npe_guard(lines, q)]
+        if not todo:
+            return lines
+        n, q = max(todo, key=lambda c: (depths[c[1]], c[1]))                 # innermost first
+        k += 1
+        lines, changed = _npe_try(lines, q, depths, k)
+        if not changed:
+            skip.add(n)

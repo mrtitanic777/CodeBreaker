@@ -3,8 +3,11 @@
     from codebreaker.java import probe
     result = probe.run(java_src_dir, cpp_dir, "MathHelper", work, cxx, javac, java)
 
-The behavioural half of the java kind's judge (verify/java.py). For a class, every static method whose
-parameters and result are primitives is called on a fixed, deterministic set of inputs:
+The behavioural half of the java kind's judge (verify/java.py). For a class, every method whose
+parameters and result are primitives is called on a fixed, deterministic set of inputs -- a static one
+directly, an instance one on a fresh object per call, made with the class's first constructor whose
+parameters are primitives (or its implicit one); the constructor's arguments come from the same input
+set:
 
   * the original: the class's Java source compiled by javac (-sourcepath: it pulls in only what the
     class needs from the folder) and run on the JVM, from a generated J2XProbe.java;
@@ -16,7 +19,8 @@ Results are compared exactly: integers by value, floats and doubles by their bit
 NaN). An input on which the Java method throws is not run on the C++ side (Java's exception is C++'s
 undefined behaviour) and not counted. A class whose methods could not all be run -- not static, a
 parameter or result that is not a primitive, an input set Java threw on throughout -- is judged on
-the ones that could, and says how many were.
+the ones that could, and says how many were. (A class with no such constructor has only its static
+methods run.)
 """
 import itertools
 import os
@@ -24,7 +28,7 @@ import re
 import struct
 import subprocess
 
-REV = 1
+REV = 4
 TIMEOUT = 60
 
 # Java primitive -> (C++ parameter type, inputs). Inputs are the same on both sides, written as literals.
@@ -34,7 +38,7 @@ _INPUTS = {
     'long': ('long long', ['0L', '1L', '-1L', '1000000007L', '-123456789012L', '9223372036854775807L']),
     'short': ('short', ['0', '1', '-1', '255', '-32768', '32767']),
     'byte': ('signed char', ['0', '1', '-1', '100', '-128', '127']),
-    'char': ('char', ['0', '32', '65', '97', '122']),
+    'char': ('unsigned char', ['0', '32', '65', '97', '122', '167', '255']),
     'boolean': ('bool', ['true', 'false']),
     'float': ('float', ['0.0F', '1.0F', '-1.0F', '0.5F', '-0.5F', '3.14159F', '100.25F', '-1000.75F', '0.001F',
                         '1000000.0F', '-0.0F']),
@@ -63,30 +67,60 @@ def cases(param_types):
     return picked
 
 
+def _primitive(types):
+    return all(not t.is_array and t.name in _INPUTS for t in types)
+
+
+def constructor(cls):
+    """The parameter types of the constructor an instance is made with -- the first non-private one
+    whose parameters are all primitives ([] for the implicit or a no-argument one) -- or None when the
+    class cannot be made that way (abstract, an interface, only object-taking or private constructors)."""
+    if cls.is_abstract or cls.is_interface or cls.is_enum:
+        return None
+    ctors = [m for m in cls.methods if m.is_ctor]
+    if not ctors:
+        return []                                         # Java's implicit default constructor
+    for m in ctors:
+        types = [p.jtype for p in m.params]
+        if m.access != 'private' and _primitive(types):
+            return [t.name for t in types]
+    return None
+
+
 def probeable(cls, header_text):
-    """[(method, [param java types], return java type)] -- static, primitive in and out, present as a
-    static member of that name in the emitted header (renamed or dropped methods are left out)."""
+    """[(method, [param java types], return java type, ctor)] -- primitive in and out, present under that
+    name in the emitted header (renamed or dropped methods are left out). ctor is None for a static
+    method; for an instance method, the parameter types of the constructor each call makes a fresh
+    instance with (see `constructor`) -- instance methods only when the class can be made so."""
     out, seen = [], set()
+    made = constructor(cls)
     for m in cls.methods:
-        if m.is_ctor or not m.is_static or m.is_abstract or m.access == 'private':
+        if m.is_ctor or m.is_abstract or m.access == 'private' or (not m.is_static and made is None):
             continue
         rt = m.return_type
         if rt is None or rt.is_array or rt.name not in _INPUTS:
             continue
         ps = [p.jtype for p in m.params]
-        if any(p.is_array or p.name not in _INPUTS for p in ps):
+        if not _primitive(ps):
             continue
         key = (m.name, tuple(p.name for p in ps))
-        if key in seen or not re.search(_CALL_RE % re.escape(m.name), header_text):
+        pattern = (_CALL_RE % re.escape(m.name)) if m.is_static else (r'\b%s\s*\(' % re.escape(m.name))
+        if key in seen or not re.search(pattern, header_text):
             continue
         seen.add(key)
-        out.append((m.name, [p.name for p in ps], rt.name))
+        out.append((m.name, [p.name for p in ps], rt.name, None if m.is_static else made))
     return out
 
 
 def counted(cls):
     """How many methods a full judgement would have to run (all non-abstract methods and constructors)."""
     return len([m for m in cls.methods if not m.is_abstract])
+
+
+def _split(ctor, args):
+    """(constructor arguments, method arguments) of one input tuple."""
+    k = len(ctor or ())
+    return args[:k], args[k:]
 
 
 def _java_literal(t, v):
@@ -139,10 +173,12 @@ def java_harness(cls_name, methods, package=None):
     lines = (['package %s;' % package] if package else []) + ['public class J2XProbe {',
              '  static void out(String k, String v) { System.out.println(k + "|" + v); }',
              '  public static void main(String[] a) {']
-    target = cls_name
-    for mi, (name, ps, rt) in enumerate(methods):
-        for ci, args in enumerate(cases(ps)):
-            call = '%s.%s(%s)' % (target, name, ', '.join(_java_literal(t, v) for t, v in zip(ps, args)))
+    for mi, (name, ps, rt, ctor) in enumerate(methods):
+        for ci, args in enumerate(cases((ctor or []) + ps)):
+            cargs, margs = _split(ctor, args)
+            target = cls_name if ctor is None else 'new %s(%s)' % (cls_name, ', '.join(
+                _java_literal(t, v) for t, v in zip(ctor, cargs)))
+            call = '%s.%s(%s)' % (target, name, ', '.join(_java_literal(t, v) for t, v in zip(ps, margs)))
             key = '%d.%d' % (mi, ci)
             lines.append('    try { out("%s", %s); } catch (Throwable t) { out("%s", "throw"); }'
                          % (key, _JAVA_OUT[rt] % call, key))
@@ -157,19 +193,25 @@ def cpp_harness(cls_name, methods, keep, init_order):
             ['#include "%s.h"' % c for c in init_order if c != cls_name] + [
         '#include <cstdio>', '#include <cstring>',
         'static void pi(const char* k, long long v) { std::printf("%s|%lld\\n", k, v); }',
-        'static void pc(const char* k, char v) { std::printf("%s|%d\\n", k, (int)(unsigned char)v); }',
+        'static void pc(const char* k, unsigned char v) { std::printf("%s|%d\\n", k, (int)v); }',
         'static void pb(const char* k, bool v) { std::printf("%s|%d\\n", k, v ? 1 : 0); }',
         'static void pf(const char* k, float v) { unsigned int u; std::memcpy(&u, &v, 4); std::printf("%s|%x\\n", k, u); }',
         'static void pd(const char* k, double v) { unsigned long long u; std::memcpy(&u, &v, 8); '
         'std::printf("%s|%llx\\n", k, u); }',
         'int main() {']
     lines += ['\t%s::initStatics();' % c for c in init_order]
-    for mi, (name, ps, rt) in enumerate(methods):
-        for ci, args in enumerate(cases(ps)):
+    for mi, (name, ps, rt, ctor) in enumerate(methods):
+        for ci, args in enumerate(cases((ctor or []) + ps)):
             key = '%d.%d' % (mi, ci)
             if key in keep:
-                lines.append('\t%s("%s", %s::%s(%s));' % (_CPP_OUT[rt], key, cls_name, name,
-                                                         ', '.join(_cpp_literal(t, v) for t, v in zip(ps, args))))
+                cargs, margs = _split(ctor, args)
+                margs = ', '.join(_cpp_literal(t, v) for t, v in zip(ps, margs))
+                if ctor is None:
+                    call = '%s::%s(%s)' % (cls_name, name, margs)
+                else:                                       # a fresh instance per call, as the Java side makes
+                    call = '(new %s(%s))->%s(%s)' % (cls_name, ', '.join(
+                        _cpp_literal(t, v) for t, v in zip(ctor, cargs)), name, margs)
+                lines.append('\t%s("%s", %s);' % (_CPP_OUT[rt], key, call))
     lines += ['\treturn 0;', '}', '']
     return '\n'.join(lines)
 
@@ -206,29 +248,65 @@ def init_order(cpp_dir):
         return []
 
 
-_UNDEF = re.compile(r"undefined reference to `(?:vtable for |typeinfo for )?([A-Za-z_]\w*)::")
+# a class the link is missing: `Name::member`, or its `vtable for Name` / `typeinfo for Name` (no ::)
+_UNDEF = re.compile(r"undefined reference to `(?:(?:vtable|typeinfo) for ([A-Za-z_]\w*)'|([A-Za-z_]\w*)::)")
 
 
-def build_native(cxx, cpp_dir, harness, exe, first):
+def _missing(err):
+    return set(a or b for a, b in _UNDEF.findall(err))
+
+
+MAX_UNITS = 40          # a class whose harness needs more of the program than this is not run (NOT JUDGED)
+_STEP = 180             # seconds any one compile or link may take
+
+
+def _object(cxx, cpp_dir, unit, objs, prefix):
+    """unit's object file, compiled once per module (shared by every class's harness): objs/<name>.o.
+    Written under a temporary name and moved into place, so parallel judges never read half of one."""
+    obj = os.path.join(objs, os.path.splitext(os.path.basename(unit))[0] + '.o')
+    if os.path.isfile(obj):
+        return obj
+    tmp = '%s.%d.tmp' % (obj, os.getpid())
+    first = ['-include', prefix] if prefix else []
+    r = subprocess.run([cxx, '-std=c++03', '-w', '-O0', '-iquote', cpp_dir] + first + ['-c', unit, '-o', tmp],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=_STEP)
+    if r.returncode != 0:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        raise RuntimeError(r.stderr.decode('utf-8', 'replace').strip().splitlines()[-1:] or ['compile failed'])
+    os.replace(tmp, obj)
+    return obj
+
+
+def build_native(cxx, cpp_dir, harness, exe, first, objs, prefix=None):
     """Link the harness with `first` (.cpp files), adding the .cpp of any class the linker reports
-    missing, a few rounds. -> (ok, why, [the .cpp files linked])"""
+    missing, until it links or more than MAX_UNITS are needed. Each .cpp is compiled to an object once
+    (objs). -> (ok, why, [the .cpp files linked])"""
     units = list(first)
-    for _round in range(8):
-        r = subprocess.run([cxx, '-std=c++03', '-w', '-O0', '-iquote', cpp_dir, harness] + units + ['-o', exe],
-                           stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-        if r.returncode == 0:
-            return True, '', units
-        err = r.stderr.decode('utf-8', 'replace')
-        more = sorted(set(os.path.join(cpp_dir, c + '.cpp') for c in _UNDEF.findall(err)
-                          if os.path.isfile(os.path.join(cpp_dir, c + '.cpp'))) - set(units))
-        if not more:
-            first_err = next((l for l in err.splitlines() if 'error' in l or 'undefined' in l), err[:200])
-            return False, first_err.strip()[:200], units
-        units += more
-    return False, 'link: too many classes pulled in', units
+    try:
+        main = _object(cxx, cpp_dir, harness, os.path.dirname(harness), prefix)
+        while True:
+            objects = [_object(cxx, cpp_dir, u, objs, prefix) for u in units]
+            r = subprocess.run([cxx, main] + objects + ['-o', exe], stdout=subprocess.DEVNULL,
+                               stderr=subprocess.PIPE, timeout=_STEP)
+            if r.returncode == 0:
+                return True, '', units
+            err = r.stderr.decode('utf-8', 'replace')
+            more = sorted(set(os.path.join(cpp_dir, c + '.cpp') for c in _missing(err)
+                              if os.path.isfile(os.path.join(cpp_dir, c + '.cpp'))) - set(units))
+            if not more:
+                first_err = next((l for l in err.splitlines() if 'error' in l or 'undefined' in l), err[:200])
+                return False, first_err.strip()[:200], units
+            if len(units) + len(more) > MAX_UNITS:
+                return False, 'it needs more than %d classes of the program linked in' % MAX_UNITS, units
+            units += more
+    except subprocess.TimeoutExpired:
+        return False, 'a compile or link took over %d s' % _STEP, units
+    except RuntimeError as e:
+        return False, 'did not compile: %s' % str(e)[:180], units
 
 
-def run(java_dir, cpp_dir, cls, work, cxx, javac, java):
+def run(java_dir, cpp_dir, cls, work, cxx, javac, java, prefix=None):
     """`java_dir`: the module's sources laid out by package (stage_sources). -> dict(methods=[...], judged=n, total=n, cases=n, differs=[(method, args, java, cpp)], why='')."""
     header = os.path.join(cpp_dir, cls.name + '.h')
     try:
@@ -236,9 +314,10 @@ def run(java_dir, cpp_dir, cls, work, cxx, javac, java):
             methods = probeable(cls, f.read())
     except OSError:
         methods = []
-    res = dict(methods=[m[0] for m in methods], judged=0, total=counted(cls), cases=0, differs=[], why='')
+    res = dict(methods=[m[0] for m in methods], judged=0, total=counted(cls), cases=0, differs=[], why='',
+               unsteady=0)
     if not methods:
-        res['why'] = 'no static method with primitive parameters and result'
+        res['why'] = 'no method with primitive parameters and result it can call (static, or on an instance it can construct)'
         return res
     folder = os.path.join(work, 'probe', cls.name)
     jdir = os.path.join(folder, 'java')
@@ -247,33 +326,49 @@ def run(java_dir, cpp_dir, cls, work, cxx, javac, java):
     os.makedirs(hdir, exist_ok=True)
     with open(os.path.join(hdir, 'J2XProbe.java'), 'w', encoding='utf-8') as f:
         f.write(java_harness(cls.name, methods, pkg))
-    r = subprocess.run([javac, '-nowarn', '-encoding', 'UTF-8', '-sourcepath', java_dir, '-d', jdir,
-                        os.path.join(hdir, 'J2XProbe.java')], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                       timeout=TIMEOUT * 3)
+    try:
+        r = subprocess.run([javac, '-nowarn', '-encoding', 'UTF-8', '-sourcepath', java_dir, '-d', jdir,
+                            os.path.join(hdir, 'J2XProbe.java')], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                           timeout=TIMEOUT * 3)
+    except subprocess.TimeoutExpired:
+        res['why'] = 'javac did not finish'
+        return res
     if r.returncode != 0:
         res['why'] = 'javac: ' + next((l for l in r.stdout.decode('utf-8', 'replace').splitlines() if 'error' in l),
                                       'failed')[:180]
         return res
-    try:
-        r = subprocess.run([java, '-cp', jdir, (pkg + '.J2XProbe') if pkg else 'J2XProbe'], stdout=subprocess.PIPE,
-                           stderr=subprocess.DEVNULL,
-                           timeout=TIMEOUT)
-    except subprocess.TimeoutExpired:
-        res['why'] = 'the Java side did not finish'
-        return res
-    jres = _results(r.stdout.decode('utf-8', 'replace'))
-    keep = set(k for k, v in jres.items() if v != 'throw')
+    # the original runs twice: an input whose result changes between two runs of Java itself (a Random
+    # seeded from the clock, the time, an identity hash) says nothing about the translation -- left out
+    runs = []
+    for _twice in range(2):
+        try:
+            r = subprocess.run([java, '-cp', jdir, (pkg + '.J2XProbe') if pkg else 'J2XProbe'],
+                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=TIMEOUT)
+        except subprocess.TimeoutExpired:
+            res['why'] = 'the Java side did not finish'
+            return res
+        runs.append(_results(r.stdout.decode('utf-8', 'replace')))
+    jres = runs[0]
+    # a method with ANY input whose result changed is left out whole: its other inputs may agree by chance
+    shaky = set(k.split('.')[0] for k in jres if runs[1].get(k) != jres[k])
+    unsteady = set(k for k in jres if k.split('.')[0] in shaky)
+    res['unsteady'] = len(unsteady)
+    keep = set(k for k, v in jres.items() if v != 'throw' and k not in unsteady)
     if not keep:
-        res['why'] = 'the Java methods threw on every input'
+        res['why'] = ('Java gives a different result on every run' if unsteady else
+                      'the Java methods threw on every input')
         return res
     order = init_order(cpp_dir)
     harness = os.path.join(folder, 'probe.cpp')
+    objs = os.path.join(work, 'probe', '_objects')         # shared by every class of the module
+    os.makedirs(objs, exist_ok=True)
     exe = os.path.join(folder, 'probe.exe')
     need = [cls.name] if cls.name in order else []
     for _pass in range(2):
         with open(harness, 'w', encoding='utf-8') as f:
             f.write(cpp_harness(cls.name, methods, keep, need))
-        ok, why, units = build_native(cxx, cpp_dir, harness, exe, [os.path.join(cpp_dir, cls.name + '.cpp')])
+        ok, why, units = build_native(cxx, cpp_dir, harness, exe, [os.path.join(cpp_dir, cls.name + '.cpp')],
+                                      objs, prefix)
         # the classes linked in may have static initialisers of their own: run all of theirs, in order
         linked = set(os.path.splitext(os.path.basename(u))[0] for u in units)
         wanted = [c for c in order if c in linked]
@@ -290,8 +385,8 @@ def run(java_dir, cpp_dir, cls, work, cxx, javac, java):
         return res
     cres = _results(r.stdout.decode('utf-8', 'replace'))
     judged = set()
-    for mi, (name, ps, rt) in enumerate(methods):
-        for ci, args in enumerate(cases(ps)):
+    for mi, (name, ps, rt, ctor) in enumerate(methods):
+        for ci, args in enumerate(cases((ctor or []) + ps)):
             key = '%d.%d' % (mi, ci)
             if key not in keep:
                 continue

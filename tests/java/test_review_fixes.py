@@ -69,8 +69,8 @@ void operator delete[](void* q) throw() {
 #include "JavaString.h"
 int main() {
     JavaString s(std::string(1000, 'x'));
-    for (int i = 0; i < 20000; ++i) { JArray<char> c = s.toCharArray(); JArray<unsigned char> b = s.getBytes("UTF-8"); }
-    JArray<char> c = JavaString("abc").toCharArray();
+    for (int i = 0; i < 20000; ++i) { JArray<unsigned char> c = s.toCharArray(); JArray<unsigned char> b = s.getBytes("UTF-8"); }
+    JArray<unsigned char> c = JavaString("abc").toCharArray();
     if (c.length != 3 || c[0] != 'a' || c[2] != 'c' || c.data()[3] != 0) return 2;   // copy + NUL tail
     std::printf("%ld\n", g_live);
     return 0;
