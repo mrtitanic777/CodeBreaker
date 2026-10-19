@@ -1121,8 +1121,12 @@ def compilable16(module_path, outdir=None):
     from codebreaker.decompile import decompiler, describe
     with open(module_path, "rb") as f:
         body = f.read()
+    from codebreaker.base import settings
+    # (the setting struct_recovery too: with structures the C is other C -- without it here, a
+    # run with them was handed the C made without)
     k = cache.key(body, _source_stamp(sys.modules[__name__], decompiler, describe),
-                  cache.tool(decompiler._exe()), decompiler._language_stamp())
+                  cache.tool(decompiler._exe()), decompiler._language_stamp(),
+                  (settings.get("struct_recovery") or "off").strip().lower())
     had = cache.get("compilable16", k)
     if had is not None:
         m, description = pickle.loads(had)
