@@ -233,6 +233,8 @@ FAR_RET = 0xFFF0                  # offset in the sentinel segment a far functio
 
 
 _RELOCATED = {}
+_LOADED = {}                   # (path, size, mtime) -> (NEFile, {base: fixed-up bytes}, imports)
+_TAILS = {}
 
 
 def relocated_data(path):
@@ -280,11 +282,24 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
     import unicorn as U
     from unicorn.x86_const import (UC_X86_REG_CS, UC_X86_REG_DS, UC_X86_REG_SS, UC_X86_REG_ES,
                                    UC_X86_REG_ESP, UC_X86_REG_EIP, UC_X86_REG_EAX, UC_X86_REG_EDX)
-    nef = NEFile(path)
+    # (a module is parsed and fixed up once per process: each run after the first writes the
+    # fixed-up segments as they were -- walking every fix-up chain again was most of a run's setup)
+    st = os.stat(path)
+    known = _LOADED.get((path, st.st_size, st.st_mtime_ns))
+    nef = known[0] if known else NEFile(path)
     uc = U.Uc(U.UC_ARCH_X86, U.UC_MODE_32)
     sels, seg_bases, stack_sel, sent_sel = _load_ne(uc, U, nef)
-    imports = {}
-    _apply_relocs(uc, nef, sels, seg_bases, sent_sel, imports)
+    if known:
+        for base, body in known[1].items():
+            uc.mem_write(base, body)
+        imports = {k: dict(v) for k, v in known[2].items()}
+    else:
+        imports = {}
+        _apply_relocs(uc, nef, sels, seg_bases, sent_sel, imports)
+        lengths = {s["idx"]: s["length"] for s in nef.segments() if s["file_off"]}
+        _LOADED[(path, st.st_size, st.st_mtime_ns)] = (
+            nef, {seg_bases[i]: bytes(uc.mem_read(seg_bases[i], n)) for i, n in lengths.items() if n},
+            {k: dict(v) for k, v in imports.items()})
 
     if ordinal is not None:
         ents = nef.entries()
@@ -333,8 +348,11 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
             except U.UcError:
                 pass                                         # (mapped already)
         uc.mem_write(base + start, bytes(max(0, data_end[1] - start)))
-        uc.mem_write(base + data_end[1], bytes(((base + a) * 0x9E3779B1 >> 13) & 0xFF      # (emulator._pattern's)
-                                               for a in range(data_end[1], 0x10000)))
+        tail = _TAILS.get((base, data_end[1]))
+        if tail is None:
+            tail = _TAILS[(base, data_end[1])] = bytes(((base + a) * 0x9E3779B1 >> 13) & 0xFF   # (emulator._pattern's)
+                                                       for a in range(data_end[1], 0x10000))
+        uc.mem_write(base + data_end[1], tail)
     _enter(seg, offset, args)
 
     rec = {"schema": "cb.behavior.trace16/1", "module": os.path.basename(path),
@@ -421,8 +439,21 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
 
     hook_mem, hook_unmapped = _memory_hooks(U, rec, set(), fill=not os.environ.get("CB_GATE_ZERO"))
 
+    def hook_limited(uc, access, address, msize, value, ud):
+        # A word read at offset FFFFh runs past the end of its segment: on the processor a
+        # protection fault, here (Unicorn checks no limit) a byte of whatever lies after the
+        # segment in this run's layout -- another in each build. It ends the run as a fault, on
+        # either side alike, and is not itself recorded. (Every segment's window is 64K-aligned.)
+        if rec.get("limit_fault"):
+            return
+        if (address & 0xFFFF) + msize > 0x10000:
+            rec["limit_fault"] = True
+            uc.emu_stop()
+            return
+        return hook_mem(uc, access, address, msize, value, ud)
+
     uc.hook_add(U.UC_HOOK_CODE, hook_code)
-    uc.hook_add(U.UC_HOOK_MEM_READ | U.UC_HOOK_MEM_WRITE, hook_mem)
+    uc.hook_add(U.UC_HOOK_MEM_READ | U.UC_HOOK_MEM_WRITE, hook_limited)
     uc.hook_add(U.UC_HOOK_MEM_READ_UNMAPPED | U.UC_HOOK_MEM_WRITE_UNMAPPED
                 | U.UC_HOOK_MEM_FETCH_UNMAPPED, hook_unmapped)
 
@@ -461,6 +492,8 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
         # just short of the cap, the skipped calls counting too. That is a run cut off, as much
         # as one the hook stops: "stopped" made a long loop in each build look like an ending)
         rec["exit"] = "ret" if rec.get("returned") else "truncated"
+        if rec.get("limit_fault"):
+            rec["exit"] = "exception: past the end of a segment"
     except U.UcError as e:
         rec["exit"] = "exception: %s" % e
         # fault detail: disassemble the instruction at the faulting CS:EIP (helps triage which

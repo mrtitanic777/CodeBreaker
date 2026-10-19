@@ -148,11 +148,31 @@ def _part(job):
 
 
 def _tables(original):
-    """What check() needs of the decompiled module: {funcs, place, wide} (made once)."""
-    from codebreaker.decompile import c_text
+    """What check() needs of the decompiled module: {funcs, place, wide} (made once, and kept:
+    decompiling the whole module again was 85% of a gate run -- four minutes before anything ran).
+    Kept by the original and all that makes the decompiled text: the decompiler, the passes over
+    its output, what is known of Windows' functions."""
+    import glob
+    import json
+    from codebreaker.base import cache
+    from codebreaker.decompile import c_text, decompiler
+    from codebreaker.symbols import api_arguments
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sources = sorted(glob.glob(os.path.join(root, "decompile", "*.py")) + glob.glob(os.path.join(root, "symbols", "*.py")))
+    try:
+        sizes = open(api_arguments._cache16_path(), "rb").read()
+    except OSError:
+        sizes = b""
+    with open(original, "rb") as f:
+        k = cache.key(f.read(), cache.tool(decompiler._exe()), sizes, *[open(p, "rb").read() for p in sources])
+    got = cache.get("gate16_tables", k)
+    if got is not None:
+        return json.loads(got)
     m = c_text.compilable16(original)
-    return {"funcs": _functions(m), "wide": sorted(m.wide),
-            "place": {n: list(m.where[va]) for va, n in m.by_va.items() if m.where.get(va)}}
+    out = {"funcs": _functions(m), "wide": sorted(m.wide),
+           "place": {n: list(m.where[va]) for va, n in m.by_va.items() if m.where.get(va)}}
+    cache.put("gate16_tables", k, json.dumps(out).encode("utf-8"))
+    return out
 
 
 def check(original, folder, names, image=None, inputs=None, workers=None, tables=None, chain=False):
@@ -225,6 +245,35 @@ def check(original, folder, names, image=None, inputs=None, workers=None, tables
         # (chained: the module's other functions run for real on both sides -- what one function
         # leaves for another, through the stack, registers or memory, is then seen)
         callees_orig = callees_ours = None
+    # The original's side of a run is the same whatever build it is compared with: kept, keyed on
+    # all it depends on (the original, the checker and emulator as written, how its callees and
+    # Windows' functions are answered, the input), so a module gated again after a change to the
+    # decompiler runs only its own side. (The self-test, the teeth and the build share it too.)
+    import pickle
+    from codebreaker.base import cache
+    from codebreaker.emulate import emulator as _emulator
+    from codebreaker.formats import ne as _ne
+    from codebreaker.symbols import api_arguments
+    try:
+        sizes = open(api_arguments._cache16_path(), "rb").read()
+    except OSError:
+        sizes = b""
+    with open(original, "rb") as f:
+        original_key = cache.key(
+            f.read(), sizes, repr(sorted((callees_orig or {}).items())), repr(data_end), bool(chain),
+            *[open(mod.__file__, "rb").read() for mod in (emu, _emulator, _ne, win16)] + [open(__file__, "rb").read()])
+
+    def original_run(name, oseg, ooff, far, wide, v, dimg):
+        k = cache.key(original_key, name, oseg, ooff, far, wide, tuple(v["args"]), bool(v.get("noisy")))
+        got = cache.get("gate16_original", k)
+        if got is not None:
+            return pickle.loads(got)
+        a = emu.probe(original, seg=oseg, offset=ooff, args=v["args"], near=not far,
+                      callees=callees_orig, insn_cap=200000 if chain else 20000, data_end=data_end,
+                      data_image=dimg)
+        fa = _fingerprint(a, wide, len(data))
+        cache.put("gate16_original", k, pickle.dumps(fa))
+        return fa
     for name in names:
         if name not in place or name not in ours or name not in funcs:
             yield name, "not run", "not found on both sides"
@@ -239,16 +288,14 @@ def check(original, folder, names, image=None, inputs=None, workers=None, tables
         for v in (inputs or win16.vectors() + aimed + noisy_runs):
             try:
                 dimg = noisy if v.get("noisy") else None
-                a = emu.probe(original, seg=oseg, offset=ooff, args=v["args"], near=not far,
-                              callees=callees_orig, insn_cap=200000 if chain else 20000, data_end=data_end,
-                              data_image=dimg)
+                fa = original_run(name, oseg, ooff, far, wide, v, dimg)
                 b = emu.probe(image, seg=bseg, offset=boff, args=v["args"], near=not far,
                               callees=callees_ours, insn_cap=200000 if chain else 20000, data_image=dimg or data,
                               data_end=data_end)
             except Exception as e:                           # (the emulator itself fell over)
                 why = why or "the emulator: %s" % type(e).__name__
                 continue
-            fa, fb = _fingerprint(a, wide, len(data)), _fingerprint(b, wide, len(data))
+            fb = _fingerprint(b, wide, len(data))
             d = _differ(fa, fb)
             if d:
                 yield name, "differs", "args %s: %s" % (" ".join("%x" % w for w in v["args"][:4]), d)
