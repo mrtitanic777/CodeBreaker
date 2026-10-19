@@ -89,7 +89,7 @@ Two lessons from the work so far shape the plan:
  Python ─┤   (per lang)          (shared)                ├──► C#
  JS/TS ──┤                                               ├──► Python
  Lua ────┤                                               ├──► JavaScript
- binary ─┘ (via CodeBreaker's decompiler -> C)           └──► Lua
+ binary ─┘ (the decompiler emits the IR directly)        └──► Lua
                  runtime per (source semantics x target language)
                  platform layer per target machine
                  judge: the source run in its own runtime beside the output in its own
@@ -115,7 +115,24 @@ the IR. Every one of these toolchains is installed on this machine except Lua's.
 Source that a toolchain will not accept (half-decompiled code, missing libraries) keeps a text front
 end per file where one exists, as Minecraft does today.
 
-### The IR: one typed tree that can hold every source language
+### One IR family, in three levels (docs/IR_UNIFICATION.md)
+
+Decided 2026-10-19: CodeBreaker has one IR family, not one for binaries and another for source.
+
+| Level | What it is | Produced by | Consumed by |
+|---|---|---|---|
+| L0 machine | P-code: exact instruction semantics | SLEIGH | the lifter |
+| L1 low | SSA over typed values: memory spaces and segments, calls with conventions | the lifter (Ghidra core today, the Rust core later) | data flow, types, structuring |
+| **L2 hub** | the typed tree below | every source front end, **and the decompiler** | every pass and back end |
+
+The decompiler is one more front end: it emits L2 after structuring, and C comes from the hub's C
+back end like any other target. There is no binary -> C text -> clang round trip. **L2 is defined in
+JSON Schema** (`codebreaker/translate/l2.schema.json`), so Python (`ir.py`) and Rust (serde) implement
+the same thing; a binary encoding of the schema is added later only if size or speed demands it.
+Phase 2's segment and pointer types are built once, as L2 types, together with the "Windows 95"
+work that owns phase 2 of the decompiler.
+
+### L2: one typed tree that can hold every source language and every binary
 
 Today's `ir.py` grows from declarations into whole programs. Everything a back end might need to
 know is a node or a flag, and lowering is left to the back end or a pass.
@@ -136,9 +153,23 @@ know is a node or a flag, and lowering is left to the back end or a pass.
   strings with an encoding (UTF-16 for Java, C# and JS; bytes for C; Unicode code points for Python),
   pointers and references, arrays (fixed, dynamic, jagged), class references, generic instances,
   function types, nullable, and **`dynamic`** for whatever inference cannot pin down.
-- **Memory model:** each allocation carries how it is managed (GC, owned, borrowed, stack, manual)
-  as decided by the source language and refined by the passes.
-- Every node carries its source file, line and column, so ledgers and the judge point at the original.
+- **Memory model:** each allocation carries how it is managed (GC, owned, borrowed, stack, manual,
+  emulated) as decided by the source language and refined by the passes. *Emulated* is the linear
+  memory for pointers the analysis cannot discipline, from C sources and binaries alike.
+- **For binaries** (docs/IR_UNIFICATION.md, items 1-7):
+  1. pointers carry an **address space**: flat, near, far (selector:offset), huge, real-mode
+     (`seg*16+off`), I/O port;
+  2. structures can have an **explicit layout**: each field's byte offset, the packing, the total size;
+  3. function types carry a **calling convention**: cdecl, pascal, stdcall, fastcall, register
+     arguments, where the result is returned, who pops how many bytes;
+  4. **exact integer semantics** are in the operators (16-bit int, wrap or saturate), not in a back end;
+  5. the **emulated memory** model above;
+  6. an **opaque machine fragment** node: what C cannot carry stays assembly, printed as inline asm by
+     the C back end and reported in the ledger by the others;
+  7. **provenance**: next to source file, line and column, a node can carry *module + address*.
+- A small **core** node set; everything else is a flagged extension with a lowering pass into the core,
+  so a back end only has to know the core.
+- Every node carries its provenance, so ledgers and the judge point at the original.
 
 ### Passes: work done once for every language
 
@@ -283,13 +314,20 @@ number of working pairs.
    end.
 9. **JavaScript / TypeScript in and out.** The TypeScript compiler front end, the JS back end.
 10. **Lua in and out.**
-11. **Binaries in.** CodeBreaker's decompiler output as a C source for every back end.
+11. **Binaries in.** A `PrintIR` beside the Ghidra core's PrintC writes each structured function as L2
+    JSON. The hub's C back end must reproduce today's C (`tools/golden.py`, the emulator judge) before
+    the C text path is retired; `c_text.py`'s remaining passes become L2 passes or C idiom rules. The
+    Rust core (CORE_ROADMAP Track 2) targets L1 and L2 and has no emitter of its own.
 12. **More consoles,** each a back end setting plus a platform layer.
 
-Phases 1 and 2 cannot move: everything else stands on them. After phase 11 the waves continue
+Phases 1 and 2 cannot move: everything else stands on them. The L2 schema is written during phase 1,
+with the binary-facing items, so the decompiler work and the translator converge on one IR. After phase 11 the waves continue
 language by language (waves 5-8), each one a kit.
 
 ## Still open
+
+0. **L2's segment and pointer types** are agreed with the "Windows 95" session (decompiler phase 2)
+   before either side builds them.
 
 1. **Downloads:** the TypeScript compiler (`typescript`, from npm), a Lua interpreter (5.4),
    `tree-sitter` grammars, and later each wave's toolchains. Each is asked about when its phase comes,
