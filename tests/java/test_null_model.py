@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Null Strings and lists: FIXED BUG null-is-empty -- a String or List is held by value, and null used to
+"""Null Strings, lists, maps and sets: FIXED BUG null-is-empty -- a String or List is held by value, and null used to
 be the empty one, so "" == null (NBTTagString threw on every empty sign line, TileEntitySign could not be
 saved), a never-set String printed "" where Java prints "null" (NBTTagString.toString), and a missing map
-entry came back as an empty list that was not null (SoundPool went on to get() from it). Both now carry a
-null state of their own: set by null and by never being given a value, cleared by any content."""
+entry came back as an empty list that was not null (SoundPool went on to get() from it). Each now carries a
+null state of its own: set by null and by never being given a value, cleared by any content."""
 
 import pytest
 
@@ -12,8 +12,10 @@ from codebreaker.verify import java
 
 SOURCE = '''import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class Nulls {
 	public String value;
@@ -61,6 +63,24 @@ public class Nulls {
 		return var2 == null ? -1 : var2.size();
 	}
 
+	public static boolean nullMap(int var0) {
+		Map var1 = var0 > 0 ? new HashMap() : null;
+		return var1 == null;
+	}
+
+	public static boolean nullSet(int var0) {
+		Set var1 = var0 > 0 ? new HashSet() : null;
+		return var1 == null;
+	}
+
+	public int nested(int var1) {
+		if(var1 > 0) {
+			this.byName.put("m", new HashMap());
+		}
+		Map var2 = (Map)this.byName.get("m");
+		return var2 == null ? -1 : var2.size();
+	}
+
 	public static boolean nullList(int var0) {
 		List var1 = var0 > 0 ? new ArrayList() : null;
 		return var1 == null;
@@ -85,5 +105,5 @@ def test_nulls_beside_the_jvm(tree, tmp_path):
     javac, jvm = java.jdk()
     r = probe.run(staged, str(out), parse.parse_file(str(src / 'Nulls.java')), str(tmp_path / 'work'),
                   java.compiler(), javac, jvm)
-    wanted = {'emptyIsNotNull', 'emptySaved', 'unset', 'slotIsNull', 'lookup', 'nullList'}
+    wanted = {'emptyIsNotNull', 'emptySaved', 'unset', 'slotIsNull', 'lookup', 'nullList', 'nullMap', 'nullSet', 'nested'}
     assert set(r['methods']) >= wanted and r['differs'] == [], (r['methods'], r['differs'][:6])

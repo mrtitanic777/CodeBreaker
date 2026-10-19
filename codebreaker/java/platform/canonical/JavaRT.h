@@ -99,6 +99,7 @@ struct JCat {
 	JCat& operator+(const std::string& v) { _s += v; return *this; }
 	JCat& operator+(const JCat& v) { _s += v._s; return *this; }   // a nested concatenation (it converts to both JavaString and JObject)
 	operator JavaString() const { return JavaString(_s); }   // also reaches std::string (its base)
+	int hashCode() const { return JavaString(_s).hashCode(); }   // ("" + x).hashCode()
 	// Java lets you keep calling String methods on a concatenation result, e.g.
 	// `("" + name).trim()`. trim() drops leading/trailing chars <= ' ' (Java semantics).
 	JavaString trim() const {
@@ -209,7 +210,7 @@ struct JObject {
 	template<class T> JObject(const JArray<T>& v) : kind(5), i(0), d(0), p(new JArray<T>(v)), ti(&typeid(JArray<T>)) {}
 	// box a value-container Map the same way (`Object o = map` / a generics bridge returning Map as
 	// Object, argo's JsonNodeSelectors). `(Map)o` unboxes via the operator below.
-	template<class K, class V> JObject(const JMap<K, V>& m) : kind(5), i(0), d(0), p(new JMap<K, V>(m)), ti(&typeid(JMap<K, V>)) {}
+	template<class K, class V> JObject(const JMap<K, V>& m) : kind(m.isNull() ? 0 : 5), i(0), d(0), p(m.isNull() ? 0 : new JMap<K, V>(m)), ti(m.isNull() ? 0 : &typeid(JMap<K, V>)) {}
 	// box a value-container List too (`Object o = list`, argo's element/array node selectors). `(List)o`
 	// unboxes via the operator below.
 	template<class T> JObject(const JList<T>& v) : kind(v.isNull() ? 0 : 5), i(0), d(0), p(v.isNull() ? 0 : new JList<T>(v)), ti(v.isNull() ? 0 : &typeid(JList<T>)) {}
@@ -284,7 +285,7 @@ template<class T> JArray<T>::JArray(const JObject& o) : _buf(0), length(0) {
 	if (o.kind == 5 && o.p && o.ti && *o.ti == typeid(JArray<T>)) *this = *(const JArray<T>*)o.p;
 }
 // unbox a boxed Map: `(Map)o` -> the stored JMap (empty if o didn't box a JMap<K,V>).
-template<class K, class V> JMap<K, V>::JMap(const JObject& o) {
+template<class K, class V> JMap<K, V>::JMap(const JObject& o) : _null(o.kind == 0) {   // (Map)null is null
 	if (o.kind == 5 && o.p && o.ti && *o.ti == typeid(JMap<K, V>)) *this = *(const JMap<K, V>*)o.p;
 }
 // unbox a boxed List: `(List)o` -> the stored JList (empty if o didn't box a JList<T>).

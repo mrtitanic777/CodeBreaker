@@ -88,6 +88,11 @@ public:
 	bool operator==(long long v) const { return v == 0 && isNull(); }
 	bool operator!=(long long v) const { return !(v == 0 && isNull()); }
 };
+// What Java's null is as a value of type V -- what Map.get gives for a missing key: V() for most (a null
+// pointer, a null JavaString, a null JObject), but a default JList/JMap/JSet is an EMPTY one, not null.
+template<class V> struct J2xNull { static V get() { return V(); } };
+template<class T> struct J2xNull<JList<T> > { static JList<T> get() { return JList<T>(0LL); } };
+
 // Java String-concatenation of a List calls AbstractCollection.toString() -> "[a, b, c]". Provide a
 // stream op so `JCat() + list` compiles (used only in exception-message paths on the port).
 #include <ostream>

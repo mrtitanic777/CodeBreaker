@@ -91,9 +91,13 @@ def test_methods_run_beside_the_jvm(tmp_path):
 def test_a_result_java_itself_does_not_repeat_is_left_out(tmp_path):
     src = tmp_path / 'src'
     src.mkdir()
-    (src / 'Dice.java').write_text('''public class Dice {
+    # an unseeded Random (seeded from the time and a counter) -- not the clock itself, which is left out
+    # before this check (probe.reads_clock)
+    (src / 'Dice.java').write_text('''import java.util.Random;
+
+public class Dice {
 	public static int roll(int var0) {
-		return (int)(System.nanoTime() % 1000L) + var0 * 0;
+		return (new Random()).nextInt(1000000) + var0 * 0;
 	}
 
 	public static int twice(int var0) {
