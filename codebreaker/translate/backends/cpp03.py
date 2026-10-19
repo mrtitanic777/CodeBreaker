@@ -274,7 +274,8 @@ class Writer(object):
                 if name in self.vars:
                     raise Decline('shadowed catch variable')
                 self.vars[name] = ct
-                out.append(ind + '} catch (%s %s) {' % (ct, name))
+                used = any(isinstance(n, ir.Name) and n.sym.name == c.sym.name for n in ir.walk(c.body))
+                out.append(ind + ('} catch (%s %s) {' % (ct, name) if used else '} catch (%s) {' % ct))   # C4101
                 self.block(c.body, out, ind)
                 self.vars.pop(name, None)
             out.append(ind + '}')
@@ -384,6 +385,11 @@ class Writer(object):
     def x_Binary(self, e):
         l, lt = self.expr(e.left)
         r, rt = self.expr(e.right)
+        if e.op in _BITS:                                 # `a >> 16 & 255` is the same in Java and C++,
+            if isinstance(e.left, ir.Binary) and e.left.op != e.op:    # but MSVC warns (C4554): group it
+                l = '(%s)' % l
+            if isinstance(e.right, ir.Binary) and e.right.op != e.op:
+                r = '(%s)' % r
         if e.op == '>>>':
             k = e.type.kind
             # static_cast, not a C cast: the transpiler's finalize pass turns `(int)(...)` into the
@@ -579,6 +585,7 @@ _MATH = dict(typemap.MATH_API_EMIT, floor='floor', ceil='ceil', pow='pow', exp='
 _MATH.pop('PI', None)
 
 
+_BITS = frozenset(('<<', '>>', '&', '|', '^'))
 _CATCHES_NPE = frozenset(('java.lang.Exception', 'java.lang.RuntimeException', 'java.lang.Throwable',
                           'java.lang.NullPointerException'))
 _UNBOX = {'int': 'intValue', 'short': 'shortValue', 'signed char': 'byteValue', 'long long': 'longValue',
