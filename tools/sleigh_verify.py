@@ -1,12 +1,15 @@
 """The SLEIGH specification checked against a real processor's emulator, instruction by instruction
 (docs/CORE_ROADMAP.md, Track 1 item A).
 
-    python tools/sleigh_verify.py [--per-form 3] [--states 8] [--report FILE] [MODULE ...]
+    python tools/sleigh_verify.py [--bits 16|32] [--per-form 3] [--states 8] [--report FILE] [MODULE ...]
 
-Takes the instructions the 16-bit modules of the golden corpus actually use (every distinct
-form -- mnemonic and operand kinds -- up to --per-form encodings each, from their code segments),
-runs each from --states random machine states in Unicorn (x86 real mode) and through the
-specification's p-code (native/decompiler/build/bin/pcodecheck), and compares what each left:
+Takes the instructions the golden corpus actually uses (every distinct form -- mnemonic and
+operand kinds -- up to --per-form encodings each, from the code): --bits 16, the 16-bit modules,
+run in real mode; --bits 32, KERNEL32 and GDI32, run as a flat 32-bit program (every segment
+based at 0, as the decompiler's x86:LE:32 sees Windows; forms with an FS or GS prefix, whose base
+is a thread's own block, are left out). Each runs from --states random machine states in Unicorn
+and through the specification's p-code (native/decompiler/build/bin/pcodecheck), and compares
+what each left:
 the registers, the flags (those Intel leaves undefined for that instruction, as Capstone reports
 them, are not compared), the bytes of memory written, and where execution goes next.
 
@@ -31,26 +34,42 @@ SEGS = ["ES", "CS", "SS", "DS", "FS", "GS"]
 FLAGS = {"CF": 0, "PF": 2, "AF": 4, "ZF": 6, "SF": 7, "TF": 8, "IF": 9, "DF": 10, "OF": 11}
 CS, IP = 0x1000, 0x0100
 MEMSIZE = 0x110000
+BITS = 16
+IP32 = 0x00401000                                # where a 32-bit case's instruction is put
+PAGE = 0x1000
 
 
 def pattern_byte(a):
     return ((a * 2654435761) >> 13) & 0xFF
 
 
-def forms(modules, per_form, seed):
-    """{form: [encoding bytes]} from the code segments of the given NE modules."""
-    import capstone
+def _code(path):
+    """[code bytes] of a module: an NE's code segments, a PE's executable sections"""
+    if BITS == 32:
+        from codebreaker.formats.pe import open_pe
+        return [bytes(raw) for _va, raw, _name in open_pe(path).code_sections()]
     from codebreaker.formats.ne import NEFile
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    nef = NEFile(path)
+    return [bytes(nef.data[s["file_off"]:s["file_off"] + s["length"]]) for s in nef.segments()
+            if s["file_off"] and not (s.get("kind") not in ("CODE", "code") and s["flags"] & 1)]
+
+
+def _cs_mode():
+    import capstone
+    return capstone.CS_MODE_32 if BITS == 32 else capstone.CS_MODE_16
+
+
+def forms(modules, per_form, seed):
+    """{form: [encoding bytes]} from the code of the given modules."""
+    import capstone
+    md = capstone.Cs(capstone.CS_ARCH_X86, _cs_mode())
     md.detail = True
     found = collections.OrderedDict()
     for path in modules:
-        nef = NEFile(path)
-        for s in nef.segments():
-            if not s["file_off"] or s.get("kind") not in ("CODE", "code") and s["flags"] & 1:
-                continue
-            raw = nef.data[s["file_off"]:s["file_off"] + s["length"]]
-            for ins in md.disasm(bytes(raw), 0):
+        for raw in _code(path):
+            for ins in md.disasm(raw, 0):
+                if BITS == 32 and (0x64 in ins.prefix or 0x65 in ins.prefix):
+                    continue                     # (FS, GS: a thread's block, not based at 0)
                 kinds = tuple(op.type for op in ins.operands)
                 sizes = tuple(op.size for op in ins.operands)
                 prefix = tuple(p for p in ins.prefix if p)
@@ -65,6 +84,15 @@ def forms(modules, per_form, seed):
 
 def state(rng, encoding, mnemonic):
     regs = {r: rng.getrandbits(32) for r in REGS32}
+    if BITS == 32:
+        regs["ESP"] = rng.choice([0x0012F000, 0x0063FF00, 0x00800000]) + rng.choice([0, 4, 0x10])
+        if mnemonic.startswith("rep") or encoding[:1] in (b"\xf2", b"\xf3"):
+            regs["ECX"] = 1
+        for f in FLAGS:
+            regs[f] = rng.getrandbits(1)
+        regs["TF"] = 0
+        regs["IF"] = 1
+        return regs
     for s in SEGS:
         regs[s] = rng.choice([0x2000, 0x3000, 0x4000, 0x5000, 0x6000, 0x7000])
     regs["CS"] = CS
@@ -78,10 +106,68 @@ def state(rng, encoding, mnemonic):
     return regs
 
 
+def unicorn_run32(encoding, regs):
+    """unicorn_run, for a flat 32-bit program: memory is mapped a page at a time as the
+    instruction touches it, each page filled with the pattern"""
+    import unicorn as U
+    from unicorn import x86_const as X
+    uc = U.Uc(U.UC_ARCH_X86, U.UC_MODE_32)
+
+    def fill(page):
+        uc.mem_map(page, PAGE)
+        uc.mem_write(page, bytes(pattern_byte(a) for a in range(page, page + PAGE)))
+    fill(IP32 & ~(PAGE - 1))
+    if (IP32 + len(encoding) - 1) & ~(PAGE - 1) != IP32 & ~(PAGE - 1):
+        fill((IP32 + len(encoding) - 1) & ~(PAGE - 1))
+    uc.mem_write(IP32, encoding)
+    for r in REGS32:
+        uc.reg_write(getattr(X, "UC_X86_REG_" + r), regs[r])
+    uc.reg_write(X.UC_X86_REG_EIP, IP32)
+    fl = 0x2
+    for f, bit in FLAGS.items():
+        fl |= regs[f] << bit
+    uc.reg_write(X.UC_X86_REG_EFLAGS, fl)
+    reads, writes = {}, {}
+
+    def on_unmapped(uc_, access, addr, size, value, _ud):
+        try:
+            for page in {addr & ~(PAGE - 1), (addr + size - 1) & ~(PAGE - 1)}:
+                fill(page)
+        except U.UcError:
+            return False
+        return True
+
+    def on_mem(uc_, access, addr, size, value, _ud):
+        if access == U.UC_MEM_READ:
+            for k in range(size):
+                if addr + k not in writes:
+                    reads.setdefault(addr + k, pattern_byte(addr + k))
+        else:
+            for k in range(size):
+                writes[addr + k] = (value >> (8 * k)) & 0xFF
+    interrupted = []
+    uc.hook_add(U.UC_HOOK_MEM_UNMAPPED, on_unmapped)
+    uc.hook_add(U.UC_HOOK_MEM_READ | U.UC_HOOK_MEM_WRITE, on_mem)
+    uc.hook_add(U.UC_HOOK_INTR, lambda uc_, n, ud: (interrupted.append(n), uc_.emu_stop()))
+    try:
+        uc.emu_start(IP32, 0xFFFFFFFF, count=1)
+    except U.UcError as e:
+        return "untested:unicorn %s" % e, None, None, reads, None
+    if interrupted:
+        return "untested:interrupt", None, None, reads, None
+    out = {r: uc.reg_read(getattr(X, "UC_X86_REG_" + r)) & 0xFFFFFFFF for r in REGS32}
+    fl = uc.reg_read(X.UC_X86_REG_EFLAGS)
+    for f, bit in FLAGS.items():
+        out[f] = (fl >> bit) & 1
+    return "ok", out, writes, reads, uc.reg_read(X.UC_X86_REG_EIP) & 0xFFFFFFFF
+
+
 def unicorn_run(encoding, regs):
     """-> (outcome, final registers, {address: byte written}, {address: byte read}, next linear)"""
     import unicorn as U
     from unicorn import x86_const as X
+    if BITS == 32:
+        return unicorn_run32(encoding, regs)
     uc = U.Uc(U.UC_ARCH_X86, U.UC_MODE_16)
     uc.mem_map(0, MEMSIZE)
     uc.mem_write(0, PATTERN)
@@ -132,9 +218,9 @@ def undefined_flags(encoding, regs):
     after a multiply (Intel SDM: "undefined")."""
     import capstone
     from capstone import x86_const as X
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    md = capstone.Cs(capstone.CS_ARCH_X86, _cs_mode())
     md.detail = True
-    ins = next(md.disasm(encoding, IP), None)
+    ins = next(md.disasm(encoding, IP32 if BITS == 32 else IP), None)
     if ins is None:
         return set()
     names = {"CF": X.X86_EFLAGS_UNDEFINED_CF, "PF": X.X86_EFLAGS_UNDEFINED_PF, "AF": X.X86_EFLAGS_UNDEFINED_AF,
@@ -155,17 +241,26 @@ def undefined_flags(encoding, regs):
 
 
 def main(argv):
-    global PATTERN
+    global PATTERN, BITS
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("modules", nargs="*")
+    ap.add_argument("--bits", type=int, default=16, choices=(16, 32))
     ap.add_argument("--per-form", type=int, default=3)
     ap.add_argument("--states", type=int, default=8)
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--report", default=os.path.join(ROOT, "state", "sleigh_verify.txt"))
     a = ap.parse_args(argv)
+    BITS = a.bits
+    if a.bits == 32 and a.report.endswith("sleigh_verify.txt"):
+        a.report = a.report[:-4] + "32.txt"
     mini = os.path.join(ROOT, "state", "mini", "original")
-    modules = a.modules or [os.path.join(mini, n) for n in ("USER.EXE", "GDI.EXE", "KRNL386.EXE", "VGA.DRV",
-                                                            "KEYBOARD.DRV", "COMM.DRV", "LZEXPAND.DLL")]
+    if a.bits == 32:
+        from codebreaker.base import settings
+        system = os.path.join(settings.get("corpus") or "", "WINDOWS", "SYSTEM")
+        modules = a.modules or [os.path.join(system, n) for n in ("kernel32.dll", "gdi32.dll")]
+    else:
+        modules = a.modules or [os.path.join(mini, n) for n in ("USER.EXE", "GDI.EXE", "KRNL386.EXE", "VGA.DRV",
+                                                                "KEYBOARD.DRV", "COMM.DRV", "LZEXPAND.DLL")]
     PATTERN = bytes(pattern_byte(i) for i in range(MEMSIZE))
     tool = os.path.join(ROOT, "native", "decompiler", "build", "bin", "pcodecheck.exe")
     sla = os.path.join(ROOT, "native", "decompiler", "languages", "x86.sla")
@@ -181,14 +276,17 @@ def main(argv):
     for k, (form, enc, st, u) in enumerate(cases):
         mem = dict(u[3])
         for addr in (u[2] or {}):                 # (what is written starts as what was there)
-            if addr < MEMSIZE:
-                mem.setdefault(addr, PATTERN[addr])
+            if addr < MEMSIZE or BITS == 32:
+                mem.setdefault(addr, pattern_byte(addr))
+        at = IP32 if BITS == 32 else CS * 16 + IP
         for i, b in enumerate(enc):
-            mem[CS * 16 + IP + i] = b
-        toks = ["%s=%x" % (r, st[r]) for r in REGS32 + SEGS + list(FLAGS)] + ["IP=%x" % IP]
+            mem[at + i] = b
+        regs = REGS32 if BITS == 32 else REGS32 + SEGS
+        toks = ["%s=%x" % (r, st[r]) for r in regs + list(FLAGS)] + ["IP=%x" % (IP32 if BITS == 32 else IP)]
         toks += ["M%x=%02x" % (addr, b) for addr, b in sorted(mem.items())]
         lines.append("c%d %s" % (k, " ".join(toks)))
-    p = subprocess.run([tool, sla, "x86-16-real"], input="\n".join(lines) + "\n", capture_output=True, text=True)
+    p = subprocess.run([tool, sla, "x86-32-flat" if BITS == 32 else "x86-16-real"], input="\n".join(lines) + "\n",
+                       capture_output=True, text=True)
     got = {}
     for ln in p.stdout.splitlines():
         parts = ln.split()
@@ -201,6 +299,15 @@ def main(argv):
         if form[0] == "hlt":                       # (the specification spins on it; the processor waits)
             rec["untested"] += 1
             rec["why"]["hlt waits"] += 1
+            continue
+        if BITS == 32 and (form[0] in ("lar", "lsl", "verr", "verw", "iret", "iretd") or
+                           form[0] in ("push", "pop") and form[1] == (1,) and form[2] == (2,) and
+                           enc[-1:] in (b"\x06", b"\x07", b"\x0e", b"\x16", b"\x17", b"\x1e", b"\x1f", b"\xa0", b"\xa1", b"\xa8", b"\xa9")):
+            # (what they do depends on the descriptor tables -- iretd from a popped CS of another
+            # privilege also pops SS:ESP -- and a segment register's push may write the selector or
+            # its zero extension, Intel allows both: a flat program models neither)
+            rec["untested"] += 1
+            rec["why"]["descriptor tables"] += 1
             continue
         if u[0] != "ok":
             rec["untested"] += 1
@@ -220,7 +327,7 @@ def main(argv):
                 pc[key] = int(val, 16)
         diffs = []
         undef = undefined_flags(enc, st)
-        for r in REGS32 + SEGS:
+        for r in (REGS32 if BITS == 32 else REGS32 + SEGS):
             if pc.get(r, 0) & 0xFFFFFFFF != u[1][r]:
                 diffs.append("%s %x/%x" % (r, pc.get(r, 0), u[1][r]))
         for f in FLAGS:
@@ -231,15 +338,18 @@ def main(argv):
                 diffs.append("%s %d/%d" % (f, pc.get(f, 0), u[1][f]))
         uw = u[2]
         for addr in sorted(set(uw) | set(pw)):
-            if uw.get(addr, PATTERN[addr] if addr < MEMSIZE else 0) != pw.get(addr, PATTERN[addr] if addr < MEMSIZE else 0):
+            if uw.get(addr, pattern_byte(addr)) != pw.get(addr, pattern_byte(addr)):
                 diffs.append("mem[%x] %x/%x" % (addr, pw.get(addr, -1), uw.get(addr, -1)))
                 break
         # where execution goes: the offset within the code segment (the specification's indirect
         # near transfers -- ret, jmp/call through a register or memory -- go to the bare offset,
         # its direct ones to CS:offset; both are the same instruction to run next)
-        p_ip = (pc.get("LIN", 0) - pc.get("CS", CS) * 16) & 0xFFFF if pc.get("LIN", 0) >= pc.get("CS", CS) * 16 \
-            else pc.get("LIN", 0) & 0xFFFF
-        u_ip = (u[4] - u[1]["CS"] * 16) & 0xFFFF
+        if BITS == 32:
+            p_ip, u_ip = pc.get("LIN", 0) & 0xFFFFFFFF, u[4]
+        else:
+            p_ip = (pc.get("LIN", 0) - pc.get("CS", CS) * 16) & 0xFFFF if pc.get("LIN", 0) >= pc.get("CS", CS) * 16 \
+                else pc.get("LIN", 0) & 0xFFFF
+            u_ip = (u[4] - u[1]["CS"] * 16) & 0xFFFF
         if p_ip != u_ip:
             diffs.append("next %x/%x" % (p_ip, u_ip))
         if diffs:

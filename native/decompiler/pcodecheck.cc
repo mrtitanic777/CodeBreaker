@@ -1,11 +1,12 @@
 // pcodecheck -- run single instructions through the SLEIGH specification's p-code, for checking
 // the specification against an emulator of the real processor (tools/sleigh_verify.py).
 //
-//   pcodecheck <file.sla> <mode>        mode: x86-16-real
+//   pcodecheck <file.sla> <mode>        mode: x86-16-real, x86-32-flat
 //
 // Reads cases from stdin, one per line:
 //   <id> CS=<hex> IP=<hex> EAX=<hex> ... CF=<0|1> ... M<hex address>=<hex bytes> ...
-// (the instruction's bytes are given as memory at CS*16+IP). Executes the one instruction's
+// (the instruction's bytes are given as memory at CS*16+IP; in x86-32-flat at IP itself, the
+// 32-bit offset, as the decompiler's x86:LE:32 sees a Windows program: every segment based at 0). Executes the one instruction's
 // p-code with the registers and memory given -- memory not given reads as zero -- and writes:
 //   <id> ok LIN=<hex> EAX=<hex> ... CF=<0|1> ... W<hex address>=<hex byte> ...
 //   <id> skip <why>        (a user operation the emulator has no meaning for: in, out, int ...)
@@ -86,6 +87,17 @@ public:
   }
 };
 
+// segment(base, inner) in a flat 32-bit program: the segment adds nothing. (FS and GS, whose bases
+// are not 0 -- a thread's own block -- are left out by the caller.)
+class FlatSegment : public BreakCallBack {
+public:
+  bool pcodeCallback(PcodeOpRaw *op) override {
+    MemoryState *mem = static_cast<EmulateMemory *>(emulate)->getMemoryState();
+    mem->setValue(op->getOutput(), mem->getValue(op->getInput(2)) & 0xffffffff);
+    return true;
+  }
+};
+
 // Any other user operation: the case is not something the emulator can judge.
 struct Untestable {
   std::string name;
@@ -100,10 +112,12 @@ public:
 }  // namespace
 
 int main(int argc, char **argv) {
-  if (argc != 3 || std::string(argv[2]) != "x86-16-real") {
-    std::fprintf(stderr, "usage: %s <file.sla> x86-16-real   (cases on stdin)\n", argv[0]);
+  const std::string mode = argc == 3 ? argv[2] : "";
+  if (mode != "x86-16-real" && mode != "x86-32-flat") {
+    std::fprintf(stderr, "usage: %s <file.sla> x86-16-real|x86-32-flat   (cases on stdin)\n", argv[0]);
     return 2;
   }
+  const bool flat = mode == "x86-32-flat";
   AttributeId::initialize();
   ElementId::initialize();
   CaseImage image;
@@ -114,9 +128,14 @@ int main(int argc, char **argv) {
   Element *root = store.parseDocument(slaname)->getRoot();
   store.registerTag(root);
   trans.initialize(store);
-  context.setVariableDefault("addrsize", 0);
-  context.setVariableDefault("opsize", 0);
-  context.setVariableDefault("protectedMode", 0);
+  if (flat) {                                     // (as languages/x86.pspec)
+    context.setVariableDefault("addrsize", 1);
+    context.setVariableDefault("opsize", 1);
+  } else {                                       // (as languages/x86-16-real.pspec)
+    context.setVariableDefault("addrsize", 0);
+    context.setVariableDefault("opsize", 0);
+    context.setVariableDefault("protectedMode", 0);
+  }
 
   AddrSpace *ramspace = trans.getDefaultCodeSpace();
   std::vector<std::string> userops;
@@ -157,10 +176,12 @@ int main(int argc, char **argv) {
       trans.initialize(store);
       BreakTableCallBack breaks(&trans);
       RealSegment segment;
+      FlatSegment flatSegment;
       std::vector<Refuse *> refusals;
       for (size_t i = 0; i < userops.size(); ++i) {
         if (userops[i].empty()) continue;
-        if (userops[i] == "segment") breaks.registerPcodeCallback("segment", &segment);
+        if (userops[i] == "segment")
+          breaks.registerPcodeCallback("segment", flat ? (BreakCallBack *)&flatSegment : &segment);
         else {
           refusals.push_back(new Refuse(userops[i]));
           breaks.registerPcodeCallback(userops[i], refusals.back());
@@ -168,9 +189,9 @@ int main(int argc, char **argv) {
       }
       EmulatePcodeCache emu(&trans, &mem, &breaks);
       for (const char *r : REGS) mem.setValue(r, given.count(r) ? given[r] : 0);
-      uintb cs = given["CS"] & 0xffff, ip = given["IP"] & 0xffff;
+      uintb cs = given["CS"] & 0xffff, ip = given["IP"] & (flat ? 0xffffffff : 0xffff);
       mem.setValue("EIP", ip);
-      emu.setExecuteAddress(Address(ramspace, (cs << 4) + ip));
+      emu.setExecuteAddress(Address(ramspace, flat ? ip : (cs << 4) + ip));
       std::string outcome;
       try {
         emu.executeInstruction();

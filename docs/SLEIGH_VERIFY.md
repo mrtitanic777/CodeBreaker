@@ -50,7 +50,25 @@ Golden (tools/golden.py, 11 modules, 6,853 functions): 65 functions print differ
 the `pushf` fix -- the flags word they compute now has bit 1 set (`... | 4` -> `... | 6`, or
 `| 2` added), a few with locals numbered differently; nothing else changed.
 
+## x86-32 (2026-10-18; `--bits 32`, report `state/sleigh_verify32.txt`)
+
+The same harness on the instructions KERNEL32 and GDI32 use, run as a flat 32-bit program --
+every segment based at 0, as the decompiler's `x86:LE:32` sees Windows (`pcodecheck`'s mode
+`x86-32-flat`; Unicorn maps a page, filled with the pattern, wherever an instruction reaches).
+Forms with an FS or GS prefix are left out (their base is the thread's own block).
+
+| | Forms |
+|---|---|
+| Agree | **247** |
+| Disagree, on purpose | 1 |
+| Untested | 29 |
+
+No specification bug found. The one on purpose is the address-size prefix again (`67 push`: the
+specification takes SP for the stack). Untested besides `in`/`out`/`int`: what depends on the
+descriptor tables, which a flat program does not model -- `lar`, `lsl`, `verr`, `verw`, `iret`/`iretd`
+(a popped CS of another privilege also pops SS:ESP), and a segment register's push (Intel lets
+it write the selector or its zero extension). AF is not modelled (70 forms), as in 16-bit.
+
 ## Next
 
-x86-32 (the same harness, protected-mode flat), then PowerPC against the interpreter in
-`codebreaker/emulate/powerpc.py`.
+PowerPC against the interpreter in `codebreaker/emulate/powerpc.py`.
