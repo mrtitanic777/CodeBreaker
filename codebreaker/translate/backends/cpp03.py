@@ -172,8 +172,11 @@ class Writer(object):
                 raise Decline('shadowed local %s' % name)
             ct = self.ctype(s.type)
             self.vars[name] = ct
-            out.append(ind + ('%s %s = %s;' % (ct, name, coerce(self.expr(s.init)[0], None, ct)) if s.init is not None
-                              else '%s %s;' % (ct, name)))
+            if s.init is not None:
+                code, it = self.expr(s.init)
+                out.append(ind + '%s %s = %s;' % (ct, name, unbox(coerce(code, it, ct), it, ct)))
+            else:
+                out.append(ind + '%s %s;' % (ct, name))
         elif isinstance(s, ir.ExprStmt):
             out.append(ind + self.expr(s.expr)[0] + ';')
         elif isinstance(s, ir.If):
@@ -223,8 +226,11 @@ class Writer(object):
                 if isinstance(l, ir.Local):
                     self.vars.pop(self.name(l.sym.name), None)
         elif isinstance(s, ir.Return):
-            out.append(ind + ('return %s;' % coerce(self.expr(s.expr)[0], None, self.ret) if s.expr is not None
-                              else 'return;'))
+            if s.expr is not None:
+                code, it = self.expr(s.expr)
+                out.append(ind + 'return %s;' % unbox(coerce(code, it, self.ret), it, self.ret))
+            else:
+                out.append(ind + 'return;')
         elif isinstance(s, ir.Break):
             if s.label:
                 raise Decline('labelled break')
@@ -253,6 +259,11 @@ class Writer(object):
         elif isinstance(s, ir.Try):
             if s.resources or s.final is not None:
                 raise Decline('finally / resources')
+            # A catch that a NullPointerException reaches needs the null checks inside the try to jump to
+            # it (Java throws where C++ would crash). The text path models that (_npe_to_catch); the IR
+            # will in phase 2's exceptions pass. Until then such a try is the text path's.
+            if any(t.kind == 'class' and t.name in _CATCHES_NPE for c in s.catches for t in c.types):
+                raise Decline('catch reached by a NullPointerException')
             out.append(ind + 'try {')
             self.block(s.body, out, ind)
             for c in s.catches:
@@ -307,6 +318,8 @@ class Writer(object):
             c = ord(v) if isinstance(v, str) else int(v)
             if 32 <= c < 127 and chr(c) not in '\\\'':
                 return "'%s'" % chr(c), 'unsigned char'
+            if c > 255:                                   # past the runtime's 8-bit char: its value as an
+                return str(c), 'int'                      # int (Java's char is 16 bits: '￿' is 65535)
             return '(unsigned char)%d' % c, 'unsigned char'
         if e.type.kind == 'class' and e.type.name == 'java.lang.String':
             return _cstring(v), 'const char*'
@@ -338,6 +351,8 @@ class Writer(object):
             ct = self.ctx.field_ctype(owner, s.name)
             if ct is None:
                 raise Decline('static field %s.%s' % (owner, s.name))
+            if owner in self.r.enums:                     # an enum's statics keep their bare names
+                return '%s::%s' % (owner, s.name), ct
             return '%s::%s' % (owner, naming.static_field_name(s.name)), ct
         if s.static:
             raise Decline('static field through an instance')
@@ -395,7 +410,7 @@ class Writer(object):
         t, tt = self.expr(e.target)
         v, _vt = self.expr(e.value)
         if e.op is None:
-            return '%s = %s' % (t, coerce(v, None, tt)), tt
+            return '%s = %s' % (t, unbox(coerce(v, _vt, tt), _vt, tt)), tt
         if e.op == '>>>':
             k = e.target.type.kind
             plain = isinstance(e.target, ir.Name) or (isinstance(e.target, ir.Select)
@@ -429,7 +444,9 @@ class Writer(object):
         return '(%s)(%s)' % (t, code)
 
     def x_Cast(self, e):
-        x, _xt = self.expr(e.x)
+        x, xt = self.expr(e.x)
+        if xt.startswith('JObject') and e.type.kind == 'class' and e.type.simple in typemap.BOXED_VALUE_TYPES:
+            return x, 'JObject'                           # (Integer)o stays boxed: o.intValue() is JObject's
         ct = self.ctype(e.type)
         return '(%s)%s' % (ct, x), ct
 
@@ -449,6 +466,17 @@ class Writer(object):
         if s is None or s.kind != 'method' or s.varargs:
             raise Decline('call')
         owner = s.owner_simple
+        if any(a.type is not None and a.type.kind == 'class' and a.type.simple in self.r.markers for a in e.args):
+            raise Decline('marker argument')               # the decompiler's EmptyN bridge parameters
+        if owner in typemap.BOXED_VALUE_TYPES and s.name.endswith('Value') and not s.params                 and e.target is not None and not isinstance(e.target, ir.TypeName):
+            recv, rt = self.expr(e.target)                # Integer.intValue(): a boxed type is a primitive
+            if not rt.startswith('JObject'):              # here, unless it is still in its JObject box
+                ct = self.ctype(e.type)
+                return '((%s)(%s))' % (ct, recv), ct
+        if s.name == 'ordinal' and not s.params and e.target is not None:
+            recv, rt = self.expr(e.target)
+            if rt == 'int':                               # a constant-only enum is its ordinal
+                return '(%s)' % recv, 'int'
         args = ', '.join(self.expr(a)[0] for a in e.args)
         if s.owner == 'java.lang.Object':                 # getClass/hashCode/equals on Object: the
             raise Decline('Object method %s' % s.name)    # transpiler's own lowering (j2xClassOf, ...)
@@ -487,7 +515,7 @@ class Writer(object):
 
     def library_field(self, owner, name, t):
         if owner == 'System' and name in ('out', 'err'):
-            return 'PrintStream*'
+            return 'System::_PrintStream'                 # a value in the runtime (JavaRT.h)
         return self.ctype(t)
 
     def library_return(self, owner, name, ret):
@@ -504,6 +532,9 @@ class Writer(object):
             rec = runtime.STUB_MEMBERS.get(rec.get('parent'))
         if name == 'iterator':
             return 'Iterator*'
+        declared = _runtime_return(owner, name)          # what the runtime's own header declares
+        if declared:
+            return declared
         if ret is not None and ret.kind == 'class' and ret.simple == owner and owner.endswith('Buffer'):
             return owner + '&'                            # NIO buffers chain by reference (put().put())
         if ret is None or ret.kind == 'void':
@@ -517,10 +548,16 @@ class Writer(object):
         jt = jtype(t)
         if jt.name in self.r.values:
             raise Decline('value type %s' % jt.name)
+        if any(a.type is not None and a.type.kind == 'class' and a.type.simple in self.r.markers for a in e.args):
+            raise Decline('marker argument')
         args = ', '.join(self.expr(a)[0] for a in e.args)
         if jt.name in self.ctx.classes:
+            if self.r.extends_value_container(jt.name):
+                raise Decline('new of a container subclass')
             return 'new %s(%s)' % (jt.name, args), jt.name + '*'
         ct = self.r.cpp_type(jt, 'local')
+        if jt.name in typemap.BOXED_VALUE_TYPES:          # new Integer(5): a boxed type is its primitive
+            return '((%s)(%s))' % (ct, args), ct
         if is_pointer(ct):
             return 'new %s(%s)' % (ct[:-1].strip(), args), ct
         return '%s(%s)' % (ct, args), ct
@@ -540,6 +577,35 @@ class Writer(object):
 # where the transpiler has the float forms (floorf, powf, ...) for the 360's float pipeline
 _MATH = dict(typemap.MATH_API_EMIT, floor='floor', ceil='ceil', pow='pow', exp='exp', log='log')
 _MATH.pop('PI', None)
+
+
+_CATCHES_NPE = frozenset(('java.lang.Exception', 'java.lang.RuntimeException', 'java.lang.Throwable',
+                          'java.lang.NullPointerException'))
+_UNBOX = {'int': 'intValue', 'short': 'shortValue', 'signed char': 'byteValue', 'long long': 'longValue',
+          'float': 'floatValue', 'double': 'doubleValue', 'bool': 'booleanValue', 'unsigned char': 'charValue'}
+
+
+def _runtime_return(owner, name):
+    """The return type `owner.h` in the runtime declares for `name` (a static holder's inline function,
+    a stub class's method), or None."""
+    from codebreaker.java import runtime
+    text = runtime.FILES.get(owner + '.h') or getattr(runtime, '_GENERATED', {}).get(owner + '.h')
+    if not text:
+        return None
+    m = re.search(r'(?:inline|virtual|static)\s+([A-Za-z_][\w:<>,* &]*?)\s*\b%s\s*\(' % re.escape(name), text)
+    if not m:
+        return None
+    t = m.group(1).replace('virtual ', '').replace('inline ', '').replace('static ', '').strip()
+    return 'JavaString' if t == 'std::string' else t
+
+
+def unbox(code, ctype, target):
+    """A boxed JObject where a primitive is wanted: its explicit accessor (the implicit conversions are
+    ambiguous for short, byte and bool)."""
+    t = re.sub(r'^const\s+', '', target or '').rstrip('&').strip()
+    if ctype and ctype.startswith('JObject') and t in _UNBOX:
+        return '(%s).%s()' % (code, _UNBOX[t])
+    return code
 
 
 def null_of(ctype):

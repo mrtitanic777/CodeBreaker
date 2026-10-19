@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """Phase 1's C++03 back end: method bodies written from the typed IR (CB_TREE_BODIES=1), compiled into
-the transpiler's own declarations, and judged beside the JVM."""
+the transpiler's own declarations, and judged beside the JVM. FIXED BUG tree-npe-catch: a try whose
+catch (Exception) a NullPointerException reaches crashed (GameSettings.saveOptions); such a try is
+declined to the text path, which models the jump."""
 
 import os
 
@@ -47,6 +49,15 @@ public class Calc {
 	public String label(int var1) {
 		String var2 = var1 < 0 ? null : this.name + ":" + var1;
 		return var2 == null ? "none" : var2 + (char)(65 + (var1 & 7));
+	}
+
+	public int guarded(int var1) {
+		Calc var2 = var1 > 0 ? null : this;
+		try {
+			return var2.cells.length + var1;
+		} catch (Exception var3) {
+			return -7;
+		}
 	}
 
 	public int count(int var1) {
@@ -100,7 +111,8 @@ def test_tree_bodies_beside_the_jvm(tree, tmp_path):
     javac, jvm = java.jdk()
     r = probe.run(staged, str(out), parse.parse_file(str(src / 'Calc.java')), str(tmp_path / 'work'),
                   java.compiler(), javac, jvm)
-    assert set(r['methods']) >= {'fill', 'mix', 'wrap', 'label', 'count'}, (r['methods'], r['why'])
+    # guarded: a NullPointerException caught by catch (Exception) -- the text path's, until phase 2
+    assert set(r['methods']) >= {'fill', 'mix', 'wrap', 'label', 'count', 'guarded'}, (r['methods'], r['why'])
     assert r['differs'] == [], r['differs'][:6]
 
 
