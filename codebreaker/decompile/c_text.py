@@ -1188,6 +1188,14 @@ def _stack_arguments(text):
 
 
 _SIZE = {"1": 1, "2": 2, "4": 4}
+
+
+def _elem16(typ):
+    """Bytes in one of a 16-bit local's type, as written: `int2`, `uint1`, `char`, `code *`."""
+    typ = (typ or "").strip()
+    if typ.endswith("*"):
+        return 2
+    return _SIZE.get(typ[-1:]) or (1 if typ in ("char", "uchar", "byte") else 2)
 # (a name of its own: it was `_LOCAL` too, and replaced the 32-bit one above for every pass that
 # read it -- _keep_frame among them. A near pointer local is two bytes, its type kept for casts.)
 _LOCAL16 = re.compile(r"(?m)^  (\w+?)(\d)?(\s*\*+\s*|\s+)(\w*Stack_([0-9a-f]+))( \[(\d+)\])?;\s*$")
@@ -1249,7 +1257,7 @@ def _buffer_fields(text):
     for mm in _LOCAL16.finditer(body):
         typ, width, stars, name, off, _a, count = mm.groups()
         stars = (stars or "").strip()
-        elem = 2 if stars else _SIZE.get(width or "", 2) if width else 2
+        elem = 2 if stars else _SIZE.get(width or "", 2) if width else _elem16(typ or "")
         size = int(count) * elem if count else elem                  # (bytes)
         decl[name] = (int(off, 16), size, bool(count), mm.group(0),
                       (typ or "") + (width or "") + (" " + stars if stars else ""))
@@ -1293,12 +1301,12 @@ def _buffer_fields(text):
         top = max(others + [2])
         need = ao - top
         if asz < need <= 0x400:
-            elem = _SIZE.get(_atyp[-1:], 2)
+            elem = _elem16(_atyp)
             newline = re.sub(r"\[\d+\]", "[%d]" % ((need + elem - 1) // elem), aline)
             body = body.replace(aline, newline, 1)
             arrays[owner] = (ao, need, True, newline, _atyp)
     for name, (off, size, is_array, line, typ) in sorted(decl.items()):
-        if is_array or name in arrays:
+        if name in arrays:
             continue
         n = re.escape(name)
         if not re.search(r"(?<![\w.])%s\b" % n, body.replace(line, "", 1)):
@@ -1309,10 +1317,22 @@ def _buffer_fields(text):
         ao, asz, _i, aline, _atyp = arrays[owner]
         at = ao - off                                        # bytes into the buffer
         body = body.replace(line, "", 1)
-        body = re.sub(r"(?<![\w.])%s\b" % n, "(*(%s *)((uint1 *)%s + 0x%x))" % (typ or "int2", owner, at), body)
-        need = at + _SIZE.get(typ[-1:], 2)
+        # (an array there is the rest of the buffer too: USER's sub_2_03A4 fills 'a'..'z' and
+        # 'A'..'Z' as two arrays of 26 and measures the 52 as one string -- two arrays of their
+        # own, the compiler put them apart, and every dialog came out the wrong width)
+        place = "((%s *)((uint1 *)%s + 0x%x))" % (typ or "int2", owner, at)
+        body = re.sub(r"(?<![\w.])%s\b" % n, place if is_array else "(*%s)" % place, body)
+        if is_array:
+            need = at + size
+            if need > asz:
+                elem = _elem16(_atyp)
+                newline = re.sub(r"\[\d+\]", "[%d]" % ((need + elem - 1) // elem), aline)
+                body = body.replace(aline, newline, 1)
+                arrays[owner] = (ao, need, True, newline, _atyp)
+            continue
+        need = at + _elem16(typ)
         if need > asz:
-            elem = _SIZE.get(_atyp[-1:], 2)
+            elem = _elem16(_atyp)
             newline = re.sub(r"\[\d+\]", "[%d]" % ((need + elem - 1) // elem), aline)
             body = body.replace(aline, newline, 1)
             arrays[owner] = (ao, need, True, newline, _atyp)
