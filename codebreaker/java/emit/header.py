@@ -229,11 +229,22 @@ def render_header(cls, resolver, ledger=None, cpp_std=None, platform_label=None)
     L.append('public:')
 
     # constructors + destructor
-    for m in cls.constructors():
-        L.append('\t' + _method_decl(cls, m, resolver))
+    two_phase = cls.name in getattr(resolver, 'two_phase', ())
+    if two_phase:
+        # two-phase (see twophase.py): C() only zeroes the fields; each Java constructor is j2xInit(...)
+        L.append('\t%s();' % cls.name)
+        for m in cls.constructors():
+            L.append('\t%s* j2xInit(%s);' % (cls.name, ownership.params_str(m, resolver)))
+        if not cls.constructors():
+            L.append('\t%s* j2xInit();' % cls.name)
+    else:
+        for m in cls.constructors():
+            L.append('\t' + _method_decl(cls, m, resolver))
     # a value-type class held by value as a field must be default-constructible; if it only
     # has parameterized ctors, synthesize a (zero-initializing) default ctor
-    if (cls.name in resolver.values and cls.constructors()
+    if two_phase:
+        pass
+    elif (cls.name in resolver.values and cls.constructors()
             and not any(c.arity == 0 for c in cls.constructors())):
         L.append('\t%s();' % cls.name)
     # A class with NO explicit ctor relies on Java's implicit default ctor, which zero-inits ALL fields

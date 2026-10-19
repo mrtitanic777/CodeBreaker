@@ -470,6 +470,52 @@ def _render_ctor(cls, m, resolver, ledger):
     return L
 
 
+_RETURN_VOID = re.compile(r'\breturn\s*;')
+
+
+def _render_two_phase(cls, resolver, ledger):
+    """A two-phase class (see twophase.py): `C::C()` zeroes the fields, and each Java constructor becomes
+    `C* C::j2xInit(params)` -- the parent's j2xInit (Java's super(...)), the instance initialisers, the
+    body, `return this`. this(args) is a call to the other j2xInit, which does the parent and initialisers."""
+    parent_two = cls.parent in resolver.two_phase
+    items = _init_list(cls, resolver)
+    L = ['%s::%s()' % (cls.name, cls.name)]
+    if items:
+        L.append('\t: ' + '\n\t, '.join(items))
+    L += ['{', '}', '']
+    ctors = cls.constructors() or [None]
+    for m in ctors:
+        params = ownership.params_str(m, resolver) if m is not None else ''
+        body = translate_body(m, cls, resolver, ledger) if m is not None else []
+        delegating = any(_THIS_CALL.match(line) for line in body)
+        out, head = [], []
+        supered = False
+        for line in body:
+            sm = _SUPER_CALL.match(line)
+            if sm and not supered and cls.parent:
+                supered = True
+                if parent_two:                             # before the initialisers, as in Java
+                    head.append('%s::j2xInit(%s);' % (cls.parent, sm.group(1).strip()))
+                continue
+            dm = _THIS_CALL.match(line)
+            if dm:
+                out.append('%s::j2xInit(%s);' % (cls.name, dm.group(1).strip()))
+                continue
+            out.append(_RETURN_VOID.sub('return this;', line))
+        if parent_two and not supered and not delegating:
+            head.append('%s::j2xInit();' % cls.parent)       # Java's implicit super()
+        inits = [] if delegating else _instance_init_lines(cls, resolver, ledger)
+        L.append('%s* %s::j2xInit(%s)' % (cls.name, cls.name, params))
+        L.append('{')
+        L += ['\t' + x for x in head + inits + out]
+        L += ['\treturn this;', '}', '']
+    if ledger is not None:
+        ledger.add(cls.name + '.cpp', Category.RULE,
+                   'two-phase construction: constructors are j2xInit(...) so their virtual calls reach the '
+                   'override, as in Java', severity=Severity.LOW, source='emit', rule='two-phase-ctor')
+    return L[:-1]
+
+
 # ---------------------------------------------------------------------------
 # destructor (Rule of Three: free heap allocated in constructors)
 # ---------------------------------------------------------------------------
@@ -816,11 +862,17 @@ def render_source(cls, resolver, ledger=None, cpp_std=None, platform_label=None)
     singleton_field = _detect_self_singleton(cls.name, static_init_lines)   # lazy-init emulation, see helper
     if static_defs:
         body += static_defs + ['']
-    for m in cls.constructors():
-        body += _render_ctor(cls, m, resolver, ledger) + ['']
+    two_phase = cls.name in getattr(resolver, 'two_phase', ())
+    if two_phase:
+        body += _render_two_phase(cls, resolver, ledger) + ['']
+    else:
+        for m in cls.constructors():
+            body += _render_ctor(cls, m, resolver, ledger) + ['']
     # synthesized zero-initializing default ctor for a value type that lacks one (so it can be
     # held by value as a field); matches the declaration emitted by header.py
-    if (cls.name in resolver.values and cls.constructors()
+    if two_phase:
+        pass
+    elif (cls.name in resolver.values and cls.constructors()
             and not any(c.arity == 0 for c in cls.constructors())):
         items = _init_list(cls, resolver)
         L2 = ['%s::%s()' % (cls.name, cls.name)]

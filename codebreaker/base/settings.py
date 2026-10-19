@@ -94,9 +94,9 @@ def corpora():
 
 def state(*parts):
     """A path inside the state folder, which is created if it is not there."""
-    d = get("state")
-    os.makedirs(d, exist_ok=True)
-    return os.path.join(d, *parts)
+    path = os.path.join(get("state"), *parts)
+    os.makedirs(os.path.dirname(path) if parts else path, exist_ok=True)
+    return path
 
 
 def export_for_carried_over_code():

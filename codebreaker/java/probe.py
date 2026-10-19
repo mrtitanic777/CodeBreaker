@@ -31,7 +31,9 @@ import re
 import struct
 import subprocess
 
-REV = 6
+from codebreaker.java import twophase
+
+REV = 7
 TIMEOUT = 60
 _STEP = 180             # seconds any one compile or link may take
 
@@ -524,6 +526,15 @@ def build_native(cxx, cpp_dir, harness, exe, lib, prefix=None):
 
 
 # ------------------------------------------------------------------------------------------------ run
+def _two_phase(cpp_dir, name):
+    """True when the class is built in two phases (its header declares j2xInit; see twophase.py)."""
+    try:
+        with open(os.path.join(cpp_dir, name + '.h'), encoding='utf-8', errors='replace') as f:
+            return ' j2xInit(' in f.read()
+    except (IOError, OSError):
+        return False
+
+
 def harness_name(cls_name):
     return 'J2XProbe_' + cls_name
 
@@ -655,9 +666,10 @@ def run(java_dir, cpp_dir, cls, work, cxx, javac, java, prefix=None, compiled=No
     exe = os.path.join(folder, 'probe.exe')
     named = _classes_named(methods, cls.name)
     need = [c for c in order if c == cls.name or c in named]
+    made_in_two = [c for c in {cls.name} | set(named) if _two_phase(cpp_dir, c)]
     for _pass in range(3):
         with open(harness, 'w', encoding='utf-8') as f:
-            f.write(cpp_harness(cls.name, methods, keep, need, named))
+            f.write(twophase.rewrite_news(cpp_harness(cls.name, methods, keep, need, named), made_in_two)[0])
         ok, why, linked = build_native(cxx, cpp_dir, harness, exe, lib, prefix)
         # the classes linked in may have static initialisers of their own: run all of theirs, in order
         wanted = [c for c in order if c in set(linked) | {cls.name} | named]

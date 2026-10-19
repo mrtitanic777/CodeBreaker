@@ -805,6 +805,11 @@ def derive_nullability(classes, resolver):
     return getters, gtypes
 
 
+def _read_text(path):
+    with open(path, encoding='utf-8', errors='replace') as f:
+        return f.read()
+
+
 def build_resolver(classes, value_types=None):
     names = set(c.name for c in classes)
     enums = set(c.name for c in classes if c.is_enum)
@@ -1177,6 +1182,12 @@ def _convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True
     compute_mi_forwards(classes)
     resolver = build_resolver(classes, value_types)
     resolver.markers = markers                            # dropped EmptyN markers -> strip their call-site args
+    # classes whose constructor makes a virtual call Java would dispatch to the override (Block's
+    # isOpaqueCube, Entity's entityInit): built in two phases, `(new C())->j2xInit(args)` (see twophase.py)
+    from codebreaker.java import twophase as _twophase
+    resolver.two_phase = _twophase.compute(classes, resolver.values)
+    if resolver.two_phase:
+        _prog('[resolve] %d class(es) built in two phases (virtual calls in constructors)' % len(resolver.two_phase))
     _prog('[resolve] done (%d known classes, %d interfaces, %d enums)'
           % (len(resolver.known), len(resolver.interfaces), len(resolver.enums)))
 
@@ -1391,6 +1402,18 @@ def _convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True
     _applied = _overlays.apply_overlays(out_dir, _ov_dir, prog=_prog)
     if _applied:
         _prog('[overlay] %d project overlay file(s) re-applied from %s' % (len(_applied), _ov_dir))
+
+    # TWO-PHASE CONSTRUCTION: every `new C(args)` of a two-phase class -- the emitted code's, the generated
+    # factories', the reference layer's and the overlays' -- becomes `(new C())->j2xInit(args)`. Last of the
+    # rewrites, so nothing after it makes a plain `new C(...)` again.
+    _tp = _twophase.run(out_dir, resolver.two_phase)
+    if _tp['sites']:
+        _prog('[twophase] %d construction site(s) across %d file(s) -> (new C())->j2xInit(...)'
+              % (_tp['sites'], len(_tp['files'])))
+    _stale = [c for c in sorted(resolver.two_phase) if os.path.isfile(os.path.join(out_dir, c + '.cpp'))
+              and ('%s::j2xInit(' % c) not in _read_text(os.path.join(out_dir, c + '.cpp'))]
+    if _stale:
+        _prog('[twophase] WARNING: %s has no j2xInit (an overlay replaced it?) -- it will not link' % ', '.join(_stale))
 
     # KEYBIND MARKING (console): the game drives F1/F2/F3/F5/F8/F11/ESC/hotbar/... off physical keyboard
     # keys that DON'T EXIST on the console. Tag every hardcoded key-press site with a greppable
