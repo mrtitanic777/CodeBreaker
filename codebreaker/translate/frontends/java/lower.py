@@ -75,33 +75,6 @@ def _type(s, i, tv):
     return t, j
 
 
-def _method_type(s):
-    """'(int,long)void' -> ([Type], Type)."""
-    if not s or not s.startswith('('):
-        return [], ir.ANY
-    depth, j = 0, 0
-    for j, ch in enumerate(s):
-        if ch == '(':
-            depth += 1
-        elif ch == ')':
-            depth -= 1
-            if depth == 0:
-                break
-    inner, ret = s[1:j], s[j + 1:]
-    params, cur, d = [], '', 0
-    for ch in inner:
-        if ch == ',' and d == 0:
-            params.append(cur)
-            cur = ''
-            continue
-        d += ch == '<'
-        d -= ch == '>'
-        cur += ch
-    if cur:
-        params.append(cur)
-    return [parse_type(p) for p in params], parse_type(ret)
-
-
 # -------------------------------------------------------------------------------------- symbols
 def sym(d):
     """TreeDump's "$sym" record -> ir.Sym."""

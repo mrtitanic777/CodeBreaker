@@ -15,7 +15,6 @@ that meets one declines the method, and the old path handles it.
 # ---------------------------------------------------------------------------------------------- types
 # Language-neutral primitive kinds. Java's char is u16, byte i8; C's are mapped by width and sign.
 PRIMS = ('bool', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64')
-INTEGRAL = ('i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64')
 
 
 class Type(object):
