@@ -59,18 +59,24 @@ struct JObject;                                  // (String)o unboxes through th
 class JavaString : public std::string {
 	static char _lc(char c) { return (char)((c >= 'A' && c <= 'Z') ? c + 32 : c); }
 	static char _uc(char c) { return (char)((c >= 'a' && c <= 'z') ? c - 32 : c); }
+	// Java null. A String that was never given a value (a field, a `new String[n]` slot) or was given
+	// null is null; "" is not -- `s == null` tells them apart, as Java does (NBTTagString threw on every
+	// "" because both were the empty string). Only an EMPTY string can be null, so any text written into
+	// it through the inherited std::string mutators (+=, append) makes it non-null without a hook.
+	bool _null;
 public:
-	JavaString() {}
-	JavaString(const char* s) : std::string(s ? s : "") {}
-	JavaString(const std::string& s) : std::string(s) {}
+	JavaString() : _null(true) {}
+	JavaString(const char* s) : std::string(s ? s : ""), _null(!s) {}
+	JavaString(const std::string& s) : std::string(s), _null(false) {}
 	JavaString(const JObject& o);                // defined in JavaRT.h, after JObject
+	bool isNull() const { return _null && empty(); }
 	// new String(byte[] [,charset]) / new String(byte[], off, len [,charset]): build from a byte array
 	// (NBT keys, packet strings). Charset is ignored -- the game's text is UTF-8/ASCII and the bytes copy
 	// verbatim. Trailing `const char* = 0` swallows the "UTF-8" argument without a separate overload.
-	JavaString(const JArray<unsigned char>& b, const char* = 0) {
+	JavaString(const JArray<unsigned char>& b, const char* = 0) : _null(false) {
 		for (int i = 0; i < b.length; ++i) push_back((char)b[i]);
 	}
-	JavaString(const JArray<unsigned char>& b, int off, int len, const char* = 0) {
+	JavaString(const JArray<unsigned char>& b, int off, int len, const char* = 0) : _null(false) {
 		for (int i = 0; i < len; ++i) push_back((char)b[off + i]);
 	}
 
@@ -168,10 +174,9 @@ public:
 		for (size_type i = 0; i < parts.size(); ++i) r[(int)i] = parts[i];
 		return r;
 	}
-	// Java `someString == null` / `!= null`. In the value model a String is never a pointer,
-	// so "null" maps to the empty string (absence). NULL is an integer 0 here, hence long long.
-	bool operator==(long long v) const { return v == 0 && empty(); }
-	bool operator!=(long long v) const { return !(v == 0 && empty()); }
+	// Java `someString == null` / `!= null` (NULL is an integer 0 here, hence long long)
+	bool operator==(long long v) const { return v == 0 && isNull(); }
+	bool operator!=(long long v) const { return !(v == 0 && isNull()); }
 	// Java string concatenation `s + <primitive>` (the JCat lowering can't reach every site, e.g. inside a
 	// ternary). String-first only, and numeric-only -- no std::string/char*/JavaString overloads, so the
 	// existing free operator+ still resolves string+string with no ambiguity (numbers can't convert to it).
@@ -190,4 +195,8 @@ public:
 	// to bool, which would make `s + "literal"` ambiguous against the free std::operator+(string,const char*).
 	// String concatenation with a bool is handled by the JCat lowering (which has its own bool overload).
 };
+// a null String prints "null", as Java's concatenation does ("" + s)
+inline std::ostream& operator<<(std::ostream& o, const JavaString& s) {
+	return s.isNull() ? (o << "null") : (o << (const std::string&)s);
+}
 #endif // JAVASTRING_H

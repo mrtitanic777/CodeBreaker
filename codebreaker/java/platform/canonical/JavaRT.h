@@ -97,6 +97,7 @@ struct JCat {
 	JCat& operator+(bool v) { _s += (v ? "true" : "false"); return *this; }   // Java prints true/false
 	JCat& operator+(const char* v) { if (v) _s += v; return *this; }
 	JCat& operator+(const std::string& v) { _s += v; return *this; }
+	JCat& operator+(const JCat& v) { _s += v._s; return *this; }   // a nested concatenation (it converts to both JavaString and JObject)
 	operator JavaString() const { return JavaString(_s); }   // also reaches std::string (its base)
 	// Java lets you keep calling String methods on a concatenation result, e.g.
 	// `("" + name).trim()`. trim() drops leading/trailing chars <= ' ' (Java semantics).
@@ -196,8 +197,8 @@ struct JObject {
 	JObject(bool v) : kind(7), i(v ? 1 : 0), d(0), p(0), ti(0) {}
 	JObject(float v) : kind(8), i((long long)v), d(v), p(0), ti(0) {}   // boxed Float
 	JObject(double v) : kind(8), i((long long)v), d(v), p(0), ti(0) {}  // boxed Double
-	JObject(const char* v) : kind(4), i(0), d(0), s(v), p(0), ti(0) {}
-	JObject(const JavaString& v) : kind(4), i(0), d(0), s(v), p(0), ti(0) {}
+	JObject(const char* v) : kind(v ? 4 : 0), i(0), d(0), s(v), p(0), ti(0) {}
+	JObject(const JavaString& v) : kind(v.isNull() ? 0 : 4), i(0), d(0), s(v), p(0), ti(0) {}   // a null String boxes to null
 	// box a string-concat builder as its String (a varargs `Object...` element is often a `"x" + n`
 	// concat -> JCat; without this it needs two user conversions to reach JObject and silently degrades
 	// to the built-in comma operator in the JArrayInit chain -- GuiConnectFailed(..., "..." + host)).
@@ -211,7 +212,7 @@ struct JObject {
 	template<class K, class V> JObject(const JMap<K, V>& m) : kind(5), i(0), d(0), p(new JMap<K, V>(m)), ti(&typeid(JMap<K, V>)) {}
 	// box a value-container List too (`Object o = list`, argo's element/array node selectors). `(List)o`
 	// unboxes via the operator below.
-	template<class T> JObject(const JList<T>& v) : kind(5), i(0), d(0), p(new JList<T>(v)), ti(&typeid(JList<T>)) {}
+	template<class T> JObject(const JList<T>& v) : kind(v.isNull() ? 0 : 5), i(0), d(0), p(v.isNull() ? 0 : new JList<T>(v)), ti(v.isNull() ? 0 : &typeid(JList<T>)) {}
 	// A raw `void*` (opaque handle / a JList<void*> element): can't `typeid(*v)` a void*, so tag it with
 	// typeid(void). Non-template -> beats the T* template below for void* args.
 	JObject(void* v) : kind(v ? 5 : 0), i(0), d(0), p(v), ti(v ? &typeid(void) : 0) {}
@@ -277,7 +278,7 @@ struct JObject {
 };
 
 // unbox a String: `(String)o`, `String s = o` -> the boxed string (empty if o didn't box one).
-inline JavaString::JavaString(const JObject& o) : std::string(o.s) {}
+inline JavaString::JavaString(const JObject& o) : std::string(o.s), _null(o.kind == 0) {}   // (String)null is null
 // unbox a boxed array: `(int[])o` -> the stored JArray (empty if o didn't box a JArray<T>).
 template<class T> JArray<T>::JArray(const JObject& o) : _buf(0), length(0) {
 	if (o.kind == 5 && o.p && o.ti && *o.ti == typeid(JArray<T>)) *this = *(const JArray<T>*)o.p;
@@ -287,7 +288,7 @@ template<class K, class V> JMap<K, V>::JMap(const JObject& o) {
 	if (o.kind == 5 && o.p && o.ti && *o.ti == typeid(JMap<K, V>)) *this = *(const JMap<K, V>*)o.p;
 }
 // unbox a boxed List: `(List)o` -> the stored JList (empty if o didn't box a JList<T>).
-template<class T> JList<T>::JList(const JObject& o) {
+template<class T> JList<T>::JList(const JObject& o) : _null(o.kind == 0) {   // (List)null is null
 	if (o.kind == 5 && o.p && o.ti && *o.ti == typeid(JList<T>)) *this = *(const JList<T>*)o.p;
 }
 

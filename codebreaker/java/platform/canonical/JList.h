@@ -18,18 +18,23 @@ class JList : public std::vector<T> {
 public:
 	typedef typename std::vector<T>::iterator _it;
 	typedef typename std::vector<T>::const_iterator _cit;
-	JList() {}
-	JList(long long) {}                                  // Java `List x = null;` -> empty list
+	// Java null: `List x = null`, or a boxed null (Map.get of a missing key). Only an empty list can be
+	// null, so anything pushed into it -- through add() or the inherited std::vector mutators -- makes it
+	// non-null. `list == null` reads it (SoundPool's missing sound name went on to get() an empty list).
+	bool _null;
+	JList() : _null(false) {}
+	JList(long long) : _null(true) {}                    // Java `List x = null;`
 	JList(const JObject& o);                             // unbox a boxed List; defined in JavaRT.h
+	bool isNull() const { return _null && this->empty(); }
 	// element-cast copy: `return map.values();` builds a JList<void*> from a JList<JObject> (the raw
 	// Collection return type erases the element), and `new ArrayList(otherTypedList)` copies across
 	// element types. Same-type copy uses the compiler's copy ctor (an exact match beats this template).
-	template<class U> JList(const JList<U>& o) {
+	template<class U> JList(const JList<U>& o) : _null(o.isNull()) {
 		this->reserve(o.size());
 		for (typename JList<U>::const_iterator i = o.begin(); i != o.end(); ++i) this->push_back((T)*i);
 	}
 	// `new ArrayList(someSet)` -- copy a Set (std::set-derived JSet) into a List, element-cast per slot.
-	template<class U> JList(const std::set<U>& s) {
+	template<class U> JList(const std::set<U>& s) : _null(false) {
 		for (typename std::set<U>::const_iterator i = s.begin(); i != s.end(); ++i) this->push_back((T)*i);
 	}
 	Iterator* iterator() const { return j2xIter(*this); }   // .iterator() on a chained/foreign receiver
@@ -79,9 +84,9 @@ public:
 	}
 	int hashCode() const { int h = 1; for (_cit i = this->begin(); i != this->end(); ++i) h = 31 * h; return h; }
 	template<class C> bool equals(const C& o) const { return this->size() == o.size() && std::equal(this->begin(), this->end(), o.begin()); }
-	// Java `list != null` / `== null`: a by-value list is never null (it always exists).
-	bool operator==(long long) const { return false; }
-	bool operator!=(long long) const { return true; }
+	// Java `list == null` / `!= null`
+	bool operator==(long long v) const { return v == 0 && isNull(); }
+	bool operator!=(long long v) const { return !(v == 0 && isNull()); }
 };
 // Java String-concatenation of a List calls AbstractCollection.toString() -> "[a, b, c]". Provide a
 // stream op so `JCat() + list` compiles (used only in exception-message paths on the port).
