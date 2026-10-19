@@ -1,209 +1,262 @@
-# The translator: many languages in, many targets out
+# The translator: any language in, any language out
 
-The request (2026-10-19): "I want to be able to convert all kinds of code." Asked which kinds: other
-languages too, not only Java. Asked which targets: the Xbox 360 (C++03), the PC (modern C++), and the
-other consoles.
+The request (2026-10-19): "I want to be able to convert all kinds of code", then: "I wanna be able to
+convert back-and-forth universally. C to Java, Java to C, C++ to Java, Java to C++, etc." Every
+suggestion of the first draft was accepted: a garbage collector on the PC, modern Java, C#, the
+project layer, more consoles. **Dynamic languages are in scope too.**
 
-Today `codebreaker/java` (J2CTool) converts one kind of code well: decompiled 2010-2011 Minecraft.
-Judged beside the JVM, Alpha has 161 classes alike and none different; Beta has 145 alike and one
-different, on non-ASCII text only. The Alpha 360 build is clean. This document is the plan to turn it
-into a general translator without losing any of that. Nothing here is built yet. It is for review
-before code moves.
+Today `codebreaker/java` (J2CTool) converts one kind of code well: decompiled 2010-2011 Minecraft
+Java into C++03 for the Xbox 360. Judged beside the JVM, Alpha has 161 classes alike and none
+different; Beta has 145 alike and one different, on non-ASCII text only. The Alpha 360 build is clean.
+This document is the plan to turn it into a universal translator without losing any of that. Nothing
+here is built yet.
+
+## What "universal" means
+
+N languages translated pairwise would need N x (N-1) translators. With a hub they need N front ends
+(language -> IR) and N back ends (IR -> language). Any front end then pairs with any back end:
+C -> Java, Java -> C, Python -> C++, C# -> Python, and so on.
+
+Every pair is possible. Not every pair is equally natural, and the plan says so explicitly. The
+output comes in two tiers:
+
+- **Faithful (always):** the output does what the input does, checked by running both. Where the
+  target cannot say something directly, the output carries a small emulation in its runtime.
+- **Idiomatic (where the languages line up):** the output reads like code a person would write in the
+  target. A pass chooses the idiomatic form wherever it is provably equivalent, and falls back to the
+  faithful form elsewhere.
+
+Where the languages differ in ways that matter, translation means lowering or emulating:
+
+| Source has | Target lacks it (e.g.) | Faithful form | Idiomatic form when possible |
+|---|---|---|---|
+| Raw memory: pointer arithmetic, unions, type punning (C, C++) | Java, C#, Python, JS, Lua | an emulated linear memory (a byte array plus addresses), as Emscripten and CheerpJ do | ordinary objects, when a pointer analysis proves the code only uses whole structs and arrays |
+| Garbage collection (Java, C#, Python, JS, Lua) | C, C++ | a collector in the runtime (Boehm GC) | ownership: owned fields, scoped objects, as J2CTool does for the 360 |
+| Destructors / RAII (C++) | Java, C#, Python, JS, Lua | try/finally at each scope exit | `try-with-resources` / `using` / `with` |
+| Templates (C++), generics (Java, C#) | C, Python, JS, Lua | one copy per instantiation, or erasure to a common base | generics in Java/C#; plain duck-typed code in dynamic targets |
+| Multiple inheritance (C++, Python) | Java, C# | interfaces plus delegation | interfaces where the bases hold no state |
+| Dynamic typing (Python, JS, Lua) | C, C++, Java, C# | a `Value` type (number / string / table / function / object) plus a small runtime | concrete types wherever type inference proves them |
+| Closures, generators, coroutines | C, C++03 | closure records and state machines | lambdas (C++11+, Java 8+, C#), iterators, `yield` |
+| Exceptions (most) | C | error returns with `setjmp`/`longjmp` underneath | error codes where the throw sites are local |
+| Unsigned and fixed-width integers (C) | Java (no unsigned), JS and Lua (doubles) | masked arithmetic (`x & 0xFFFFFFFF`), helper calls | native types where the range analysis allows |
+| `eval`, `exec`, runtime code loading (dynamic) | static targets | the translator ships an interpreter for the unsupported part, and says so in the ledger | none |
+
+Some programs depend on the source machine itself: inline assembly, a particular OS API, hardware
+registers. They translate as far as the code is portable, and the rest goes to the ledger with the
+reason. That is the same "honest gap" rule as the decompiler's.
 
 ## Where it is today
 
 | Part | Size | What it is |
 |---|---|---|
-| `parse.py` | 437 lines | A brace-and-paren scan, not a grammar. Works because decompiler output is regular: tabs, one declarator per line, `var1` locals. |
-| `ir.py` | 225 lines | Declarations only: classes, fields, method signatures. **Method bodies stay raw text lines.** |
-| `emit/statements/` | 3,286 lines | Turns that text into C++ statement by statement: about 100 regular expressions plus scans for types and scopes. |
+| `parse.py` | 437 lines | A brace-and-paren scan, not a grammar. Works because decompiler output is regular. |
+| `ir.py` | 225 lines | Declarations only. **Method bodies stay raw text lines.** |
+| `emit/statements/` | 3,286 lines | Turns that text into C++ statement by statement: about 100 regular expressions plus scans. |
 | `emit/` (rest), `types.py`, `typemap.py`, `twophase.py` | ~2,500 lines | Declarations, ownership, naming, pointer-or-value decisions. |
-| `runtime.py` + `platform/canonical/` | 1,759 + 2,570 lines, 42 headers | The Java library in C++: real where the game needed it (strings, collections, IO, regex, MD5), stubs elsewhere. |
+| `runtime.py` + `platform/canonical/` | 1,759 + 2,570 lines, 42 headers | The Java library in C++: real where Minecraft needed it, stubs elsewhere. |
 | `console/`, `profiles/` | 5,394 lines | The 360 project, the XDK, and fixes for Minecraft's own code. |
-| `probe.py` | 858 lines | The judge: runs each class beside the JVM and compares results. Already language-neutral in shape. |
+| `probe.py` | 858 lines | The judge: runs each class beside the JVM and compares. |
 
-Two lessons from the work so far shape the plan.
+Two lessons from the work so far shape the plan:
 
-1. **Text rewriting is where the bugs were born.** Nearly every fix of the last week was in the
-   regex statement layer or in a runtime stub: `->length` vs `.length`, `finally` copies, null
-   checks, byte casts, discarded `new`. The same lesson came out of the decompiler
-   (docs/CORE_ROADMAP.md, WIN16_LESSONS.md). A translator that has to accept code it was never tuned
-   on needs to work on a tree, not on lines.
-2. **The judge is what made it trustworthy.** Every fix was found or confirmed by running the
-   original beside the C++. Every new language gets the same.
+1. **Text rewriting is where the bugs were born.** Nearly every fix of the last week was in the regex
+   statement layer or in a runtime stub. The decompiler taught the same lesson
+   (docs/CORE_ROADMAP.md, WIN16_LESSONS.md). A universal translator works on trees, never on lines.
+2. **The judge is what made it trustworthy.** Every fix was found or confirmed by running the original
+   beside the translation. Every language pair gets the same.
 
 ## The rules every change follows
 
-1. **The Minecraft regression gate.** Alpha and Beta are judged in full before and after every
-   change: no class may go from alike to different or to not compiling, and the Alpha 360 build stays
-   at 0 warnings and 0 errors. Today: Alpha 161 alike, Beta 145 alike.
-2. **Behaviour, not text.** Emitted C++ may change shape freely. What it does is checked by the judge.
-3. **One IR.** Front ends produce it, back ends consume it, and language-neutral work happens on it
-   once. No back end reads source text, and no front end knows a target.
-4. **The core names no game.** Anything that knows `Block`, `GuiMainMenu` or `splashes.txt` lives in a
-   project profile (see "Project layer" below).
+1. **The regression gate.** Minecraft Alpha and Beta are judged in full before and after every change:
+   no class may go from alike to different or to not compiling, and the Alpha 360 build stays at 0
+   warnings and 0 errors. As each new language arrives, its corpus joins the gate.
+2. **Behaviour, not text.** Output may change shape freely. What it does is checked by the judge.
+3. **One IR.** Front ends produce it, back ends consume it, passes work on it. No back end reads
+   source text, and no front end knows a target.
+4. **The core names no program.** Anything that knows `Block` or `splashes.txt` lives in a project
+   profile.
+5. **Honest gaps.** Whatever cannot be translated faithfully is listed in the ledger with its reason.
+   It is never silently dropped.
 
 ## The shape
 
 ```
-  Java ─┐                                           ┌─ C++03 back end ─ 360 / other consoles
-  C#   ─┼─► front end ─► IR ─► passes ─► IR ─► back end ┤
-  ...  ─┘  (per language)       (shared)               └─ C++17 back end ─ PC
-                                                          + runtime (per source language)
-                                                          + platform layer (per target)
-                 judge: the original's own runtime beside the C++ (JVM, .NET, ...)
+ C ──────┐                                               ┌──► C
+ C++ ────┤                                               ├──► C++03  (360, consoles)
+ Java ───┤                                               ├──► C++17  (PC)
+ C# ─────┼─► front end ─► IR ─► passes ─► IR ─► back end ┼──► Java
+ Python ─┤   (per lang)          (shared)                ├──► C#
+ JS/TS ──┤                                               ├──► Python
+ Lua ────┤                                               ├──► JavaScript
+ binary ─┘ (via CodeBreaker's decompiler -> C)           └──► Lua
+                 runtime per (source semantics x target language)
+                 platform layer per target machine
+                 judge: the source run in its own runtime beside the output in its own
 ```
 
 ### Front ends: let each language's own compiler parse it
 
-The hard part of a front end is not syntax but meaning: overloads, generics, inference, implicit
-conversions, which `x` a name refers to. Rewriting that for each language is years of work, and the
-languages' own compilers already do it. So each front end is a small program in that language's own
-toolchain that compiles the source and dumps its **typed** syntax tree as JSON, which Python lowers
-into the IR.
+The hard part of a front end is meaning, not syntax: overloads, inference, implicit conversions,
+which `x` a name refers to. Each language's own toolchain already knows that. So each front end is a
+small program in that toolchain that dumps a **typed** syntax tree as JSON, and Python lowers it to
+the IR. Every one of these toolchains is installed on this machine except Lua's.
 
-- **Java:** a small `javac` plug-in using the compiler tree API (`com.sun.source.tree`, `Trees`): every
-  expression with its resolved type, every name with its declaration, every call with its chosen
-  overload. Any Java version the installed JDK reads (8-21+). The JDK is already a requirement for the
-  judge.
-- **C#:** a small Roslyn program (the .NET 9 SDK is installed). Same output shape.
-- **Fallback:** source that does not compile (half-decompiled code, missing libraries) keeps today's
-  text front end, per class, until it does. The Minecraft corpora compile as-is now that `java_libs`
-  and the probe stand-ins exist.
+| Language | Front end | Installed |
+|---|---|---|
+| C, C++ | clang: `-Xclang -ast-dump=json` (types, overloads and template instantiations resolved) | clang 22.1 |
+| Java | a small `javac` plug-in on the compiler tree API (`com.sun.source.tree`, `Trees`) | JDK 21 |
+| C# | a small Roslyn program (semantic model) | .NET 9 |
+| Python | CPython's own `ast` module, plus the IR's type inference | Python 3.14 |
+| JavaScript / TypeScript | the TypeScript compiler API (it parses plain JS too, with inferred types) | Node 24 (the `typescript` package is a download) |
+| Lua | a Lua parser library (LPeg-based or `lua-parser`), or a small parser of our own: Lua's grammar is small | not installed (a download) |
+| Binaries | CodeBreaker's decompiler already produces C; the C front end takes it from there | in the repo |
 
-### The IR: a typed tree, keeping the source's intent
+Source that a toolchain will not accept (half-decompiled code, missing libraries) keeps a text front
+end per file where one exists, as Minecraft does today.
 
-Today's `ir.py` grows from declarations into whole programs:
+### The IR: one typed tree that can hold every source language
 
-- **Declarations:** modules, types (class, interface, struct, enum, record), generic parameters,
-  fields, methods, properties and events (C#), constructors, static initialisers, nested and local
-  types.
-- **Statements:** block, local declaration, expression statement, if, while, do, for, for-each,
-  switch (on ints, strings and enums, pattern form later), break and continue with labels, return,
-  throw, try/catch/finally, using/try-with-resources, synchronized/lock, yield.
-- **Expressions:** literals, names (resolved to a declaration), field access, calls (resolved to an
-  overload), `new`, arrays, casts with kind (numeric, reference, boxing), unary and binary operators
-  with their exact semantics (Java `>>>`, integer division by zero, overflow), conditional, lambda,
-  method reference, instanceof/`is`, string concatenation, assignment and compound assignment.
-- **Types:** primitives with exact widths and signedness, class references, arrays, generic
-  parameters and instantiations, function types, nullable value types (C#).
-- Every node carries its source file, line and column, so ledgers and the judge point back at the
-  original.
+Today's `ir.py` grows from declarations into whole programs. Everything a back end might need to
+know is a node or a flag, and lowering is left to the back end or a pass.
 
-The IR keeps intent and leaves lowering to the back end. A lambda stays a lambda: C++17 emits a
-lambda, C++03 emits a functor class. A for-each stays a for-each.
+- **Declarations:** modules and namespaces, types (class, struct, union, interface, enum, record,
+  trait), generic and template parameters, fields, functions and methods, properties, operators,
+  constructors and destructors, static initialisers, nested and local types, globals.
+- **Statements:** block, local, expression, if, loops (while, do, for, for-each, for-in over keys),
+  switch and match, labelled break and continue, goto (C), return, throw, try/catch/finally, scoped
+  resources (RAII, `using`, `with`), lock, yield and await.
+- **Expressions:** literals, resolved names, member access, calls (resolved overload, or dynamic),
+  `new` and allocation (managed, `malloc`, placement), arrays, casts by kind (numeric, reference,
+  boxing, reinterpret), operators with exact semantics (width, signedness, overflow, division by zero,
+  `>>>`), pointer arithmetic, address-of and dereference, conditional, lambdas and closures with their
+  captures, method references, type tests, string operations, comprehensions (Python), spread and
+  destructuring (JS), multiple assignment and returns (Lua, Python).
+- **Types:** exact-width integers (signed and unsigned), floats, booleans, chars with an encoding,
+  strings with an encoding (UTF-16 for Java, C# and JS; bytes for C; Unicode code points for Python),
+  pointers and references, arrays (fixed, dynamic, jagged), class references, generic instances,
+  function types, nullable, and **`dynamic`** for whatever inference cannot pin down.
+- **Memory model:** each allocation carries how it is managed (GC, owned, borrowed, stack, manual)
+  as decided by the source language and refined by the passes.
+- Every node carries its source file, line and column, so ledgers and the judge point at the original.
 
-### Passes: the work done once for every language
+### Passes: work done once for every language
 
-What is spread through the regex layer today becomes passes over the IR. Each one exists already as
-text logic, so each port is checked against today's output.
-
-- **Null model:** which references can be null, and value types that need a null state (the
-  JavaString/JList/JMap work, now general).
-- **Construction:** two-phase construction for virtual calls in constructors (`twophase.py`), and
+- **Type inference** for dynamic sources: concrete types where provable, `dynamic` elsewhere.
+- **Pointer and memory analysis** for C and C++ sources: which pointers are disciplined (they become
+  references and objects in managed targets) and which need the emulated memory.
+- **Null model:** which references can be null; value types that need a null state.
+- **Construction:** two-phase construction for virtual calls in constructors (`twophase.py`),
   constructor delegation.
-- **Ownership and escape:** what may be freed where (leak temporaries, scoped deletes, objects that
-  hand out `this`) for targets without a collector.
-- **Static initialisation order:** today's `j2x_initAll` dependency order.
-- **Exceptions:** `finally`, null-pointer handlers, catch-by-pointer.
-- **Reflection:** class registries into factories (`reflection_factory.py`).
-- **Numeric semantics:** saturating float-to-int casts, signed bytes, unsigned shifts.
+- **Ownership and escape:** what may be freed where, for targets without a collector.
+- **Static initialisation order.**
+- **Exceptions:** `finally`, unwinding into targets without exceptions.
+- **Reflection:** registries into factories (`reflection_factory.py`).
+- **Numeric semantics:** saturating casts, signed bytes, unsigned emulation, integer division.
+- **Idioms:** recognise faithful forms with an idiomatic equivalent (a counted loop over an array ->
+  for-each; try/finally around a close -> `with`; getter/setter pairs -> properties) and use it when
+  the target has one.
 
 ### Back ends
 
-| | C++03 back end | C++17 back end |
-|---|---|---|
-| For | Xbox 360, other old consoles (`platforms.py`) | PC (Windows, Linux) |
-| Generics | templates, or erased to a base pointer where today's code does | templates |
-| Lambdas | generated functor classes | lambdas |
-| Memory | today's ownership inference: owned fields, scoped temporaries, leak ledger | a collector (Boehm GC) or reference counting (see "Memory") |
-| Strings | the runtime's string type | the same type, or `std::u16string` underneath |
-| Projects | `.vcxproj` for the XDK (`console/vcxproj.py`) | CMake |
+| Back end | Targets | Memory from a GC source | Notes |
+|---|---|---|---|
+| C++03 | Xbox 360, older consoles | ownership inference, reference counting where undecidable | today's path |
+| C++17 | PC (Windows, Linux) | Boehm GC | templates, lambdas, CMake |
+| C (C99) | anything with a C compiler | Boehm GC | classes as structs and function tables, exceptions as `setjmp` |
+| Java | JVM | native | pointer-heavy C/C++ through the emulated memory |
+| C# | .NET | native | structs and unsafe code available for C sources |
+| Python | CPython | native | typed source -> type hints |
+| JavaScript / TypeScript | Node, browsers | native | integers are doubles: 64-bit through `BigInt`, 32-bit by masking |
+| Lua | Lua 5.4, LuaJIT | native | tables for objects, 1-based arrays adjusted |
 
-### Runtimes: one per source language, one platform layer per target
+### Runtimes: one per (source semantics, target language)
 
-- **Java runtime:** today's `platform/canonical/` grows into a library in its own right:
-  `java.lang`, `java.util` (with Java's own semantics: HashMap iteration order, `Integer` caching),
-  `java.io`, `java.nio`, `java.util.regex`, `java.time`, `java.util.concurrent`. It is built in the
-  order corpora need it, never speculatively, and each class is judged like game code.
-- **.NET runtime:** `System`, `System.Collections.Generic`, `System.Text`, `System.IO`, LINQ, in the
-  same style.
-- **Shared core under both:** UTF-16 strings (the open difference: `length()` counts bytes today),
-  boxing, exceptions, the memory model.
-- **Platform layers:** what `platform/reference/` is for the 360 (Direct3D, XInput, XACT, storage),
-  one per target. PC: SDL2 plus OpenGL. Others from the `platforms.py` profiles.
+A translation needs the source language's library in the target language: Java's `java.util` in
+C++, C's `libc` in Java, Python's built-ins in C#. Writing each by hand for every pair is N x N, so:
+
+- **The core of each source library is written once in the IR** (or in a language with a front end)
+  and translated by the translator itself into every target. That is how `java.util.HashMap` reaches
+  Lua.
+- **Native pieces** (files, sockets, threads, time, graphics) are a thin hand-written layer per target
+  language, the way `platform/reference/` is for the 360.
+- **Where the target already has the same thing,** the runtime maps to it (`java.util.ArrayList` ->
+  `List<T>` in C#, `std::vector` in C++) when the semantics match exactly, and the judge checks that
+  they do.
+- Today's `platform/canonical/` (the Java library in C++03) is the first such runtime and stays.
 
 ### Memory
 
-This is the biggest design decision. Java and C# collect garbage, and C++ does not.
+- **GC source -> C/C++ on the PC:** Boehm GC. Converted code allocates through it and never deletes.
+- **GC source -> C/C++ on consoles:** today's ownership inference, plus reference counting where the
+  pass cannot decide.
+- **Manual-memory source (C, C++) -> managed target:** disciplined pointers become references;
+  everything else lives in the emulated memory. `free` becomes a no-op in managed targets, or a real
+  release in the emulated memory.
+- **Manual -> manual (C <-> C++):** kept as is.
 
-- **PC:** link a conservative collector (Boehm GC). Converted code allocates through it and never
-  deletes. It is the most faithful option and the simplest to get right; the cost is a pause per
-  collection.
-- **Consoles:** keep today's ownership inference: owned fields freed in destructors, scoped
-  temporaries, an explicit leak ledger. Add reference counting where the ownership pass cannot
-  decide.
-- The IR's ownership pass decides per allocation, and the back end chooses the mechanism.
+### Project layer
 
-### Project layer: everything that knows a particular program
+Everything that knows a particular program sits behind a **project profile**:
 
-Profiles today (`profiles/minecraft_*.py`) choose the era. Everything game-specific moves behind one
-interface, a **project profile**:
+- the console passes (`sound_fix`, `render_fix`, `controller_nav`, `applet_ping`, `achievements`,
+  `xact`);
+- overlays and hand fixes;
+- name lists such as `typemap.KNOWN_NULLABLE_GETTERS`;
+- the probe stand-ins for libraries a program shipped in modified form.
 
-- the console passes (`console/sound_fix.py`, `render_fix.py`, `controller_nav.py`, `applet_ping.py`,
-  `achievements.py`, `xact.py`);
-- overlays and hand fixes (`overlays.py`, `java_overlays`);
-- name lists (`typemap.KNOWN_NULLABLE_GETTERS`, Minecraft class names in rules);
-- the probe stand-ins (`probe_shims/`) for libraries a game shipped in modified form.
+A program with no profile converts with the core alone.
 
-A program with no profile converts with the core alone. Minecraft keeps working through its profile.
+### The judge, for every pair
 
-### The judge, for every language
-
-`probe.py` already runs a class's methods in the original's runtime and in C++, and compares results,
-objects and fields. It becomes language-neutral with one adapter per source runtime: the JVM today,
-`dotnet` for C#. The harness is generated from the IR rather than parsed from source.
+`probe.py` runs a class's methods in the original's runtime and in the translation's, then compares
+results, objects and fields. It becomes language-neutral with an adapter per runtime: the JVM, .NET,
+CPython, Node, Lua, and a native compiler for C and C++. The harness is generated from the IR, so the
+same cases run on both sides of any pair. Round trips are judged too: A -> B -> A must still match A.
 
 **Corpora:**
-- **Regression:** Minecraft Alpha and Beta, as above.
-- **Java:** two or three open-source projects chosen for their language features rather than their
-  size: one with heavy generics and collections, one with lambdas and streams, one that does real IO.
-- **C#:** one XNA-era game or library and one ordinary library.
-
-Each corpus's result (alike / different / does not compile / not judged) is tracked like Alpha's.
+- **Regression:** Minecraft Alpha and Beta.
+- **Per source language:** two or three real projects chosen for their features rather than their
+  size: heavy generics and collections; lambdas, closures and iterators; real IO; for C, pointer-heavy
+  code; for dynamic languages, code that changes types at run time.
+- Your own programs, whenever you have some: real targets beat sample projects.
 
 ## Phases
 
-Each phase ends with the Minecraft regression gate passing, plus its own exit check.
+Each phase ends with the regression gate passing, plus its own exit check. The first two are the
+foundation; after them, front ends and back ends can be added in any order, and each one multiplies
+the number of working pairs.
 
-1. **Bodies into the IR, beside the old path.** Statement and expression nodes in `ir.py`; the javac
-   front end; a C++03 back end that emits from the tree. Per class, the new path is used when the
-   judge rates it at least as well as the old one. *Exit:* every Alpha and Beta class through the new
-   path, the regex statement layer unused, results equal or better.
-2. **Passes off the text.** The null, construction, ownership, static-order, exception and reflection
-   logic moved onto the IR; `emit/statements/` deleted. *Exit:* the gate passes and the emitted C++ is
-   diffed class by class against the last old-path output, every difference explained.
-3. **Project layer.** Everything game-specific moved behind project profiles. *Exit:* a non-Minecraft
-   Java program converts with no Minecraft code loaded.
-4. **Modern Java.** Generics, lambdas, streams, records and switch expressions; the Java corpus
-   above. *Exit:* each corpus converted, compiled and judged, and its numbers recorded.
-5. **The C++17 back end and the PC platform layer.** Boehm GC, CMake, SDL2 and OpenGL. *Exit:* the
-   Java corpus judged on the C++17 back end too, and Minecraft Alpha builds for the PC.
-6. **C#.** The Roslyn front end, the .NET runtime, `dotnet` in the judge. *Exit:* the C# corpus
-   converted and judged.
-7. **More consoles.** Back-end and platform-layer work per console, starting with whichever one you
-   pick.
+1. **Bodies into the IR, beside the old path.** Statement and expression nodes; the javac front end;
+   a C++03 back end that emits from the tree. Per class, the new path is used when the judge rates it
+   at least as well as the old one. *Exit:* every Alpha and Beta class through the new path, results
+   equal or better.
+2. **Passes off the text.** Null, construction, ownership, static order, exceptions and reflection as
+   IR passes; `emit/statements/` deleted. *Exit:* the gate passes and the emitted C++ is diffed class
+   by class against the last old-path output, every difference explained.
+3. **Project layer.** Everything game-specific behind project profiles. *Exit:* a non-Minecraft Java
+   program converts with no Minecraft code loaded.
+4. **Modern Java and the C++17 back end.** Generics, lambdas, streams, records; Boehm GC; CMake; the
+   PC platform layer (SDL2 and OpenGL). *Exit:* a Java corpus judged on both C++ back ends; Minecraft
+   Alpha builds for the PC.
+5. **C and C++ in (clang), Java out.** The pointer analysis and the emulated memory; the Java back
+   end; the C library in Java. *Exit:* a C corpus and a C++ corpus judged as Java; Java -> C++ -> Java
+   round trips judged.
+6. **C out.** The C back end. *Exit:* the Java corpus judged as C.
+7. **C# in and out.** Roslyn front end, C# back end, the .NET adapter in the judge.
+8. **Python in and out.** The `ast` front end, type inference, the `dynamic` runtime, the Python back
+   end.
+9. **JavaScript / TypeScript in and out.** The TypeScript compiler front end, the JS back end.
+10. **Lua in and out.**
+11. **Binaries in.** CodeBreaker's decompiler output as a C source for every back end.
+12. **More consoles,** each a back end setting plus a platform layer.
 
-Phases 1 and 2 are the largest. They are also where the risk is lowest, because the Minecraft gate
-checks every step.
+The order of 5-11 can change to suit what you want converted first. Phases 1 and 2 cannot move:
+everything else stands on them.
 
 ## Open questions for you
 
-1. **Memory on the PC:** a garbage collector (most faithful, simplest) or reference counting
-   (deterministic, slower to get right)? The recommendation is a GC.
-2. **The corpora:** do you have Java or C# programs you want converted? Real targets beat sample
-   projects as a corpus.
-3. **Languages after C#:** C++ from Java and C# is natural because both are statically typed and
-   garbage-collected. Dynamic languages (Python, JavaScript, Lua) need run-time typing in the output.
-   That is a different project, and the plan leaves it out unless you want it.
+1. **Which pair matters most after Java -> C++?** That decides the order of phases 5-11.
+2. **Downloads:** the TypeScript compiler (`typescript`, from npm) and a Lua interpreter (5.4) when
+   their phases come. Each will be asked about at the time, with name, source and size.
+3. **Corpora:** any programs, in any of these languages, that you want converted.
 4. **Which console after the 360?**
