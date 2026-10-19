@@ -50,6 +50,8 @@ _LENGTH_ARRAY_FIELDS = set()
 # real pointer member access and keeps its `->`. Populated per-conversion alongside _LENGTH_ARRAY_FIELDS.
 _LENGTH_SCALAR_CLASSES = set()
 _LENGTH_SCALAR_RECEIVERS = set()
+# classes whose construction hands `this` to someone (a registry, a list, a listener) -- set per convert
+_THIS_ESCAPES = set()
 
 
 def compute_length_sets(classes):
@@ -310,10 +312,14 @@ def _finalize_emitted(text):
     # is a no-op in Java (the temporary is GC'd immediately) but LEAKS in C++. Faithful even in the original
     # -- e.g. RubyDung.render() has Notch's stray `new Cube(0, 0);`. Rewrite to `delete new X(...);` so the
     # ctor's side effects (if any) still run and the object is freed. Skips args containing a nested `new`
-    # (deleting the outer object could double-free the inner one) -- left as-is for manual review.
+    # (deleting the outer object could double-free the inner one) -- left as-is for manual review -- and
+    # FIXED BUG discarded-new-escapes: a class whose constructor hands out `this` (Item registers itself
+    # in Item.itemsList) is kept by someone else; deleting it left them a dangling pointer.
     def _fix_discarded_new(_m):
         indent, stmt = _m.group(1), _m.group(2)
         if re.search(r'\bnew\b', stmt[3:]):
+            return _m.group(0)
+        if re.match(r'new\s+([A-Za-z_]\w*)', stmt).group(1) in _THIS_ESCAPES:
             return _m.group(0)
         return '%sdelete %s  // J2X-BUGFIX discarded-new-leak' % (indent, stmt)
     text = re.sub(r'(?m)^(\s*)(new\s+[A-Za-z_][\w:]*\s*\([^;]*\)\s*;)\s*$', _fix_discarded_new, text)
@@ -805,6 +811,33 @@ def derive_nullability(classes, resolver):
     return getters, gtypes
 
 
+_THIS_AS_VALUE = re.compile(r'\bthis\b(?!\s*(?:\.|->|\())')
+
+
+def compute_this_escapes(classes):
+    """The classes whose constructor (or instance initialiser) uses `this` as a value -- stores it, passes
+    it -- and every class below one (its constructor runs the parent's). An object of one of these is kept
+    by someone else after `new`, so it must not be freed where the `new` is a bare statement."""
+    by_name = dict((c.name, c) for c in classes)
+    own = set()
+    for c in classes:
+        parts = [t for k in c.constructors() for _ln, t in (k.body or ())]
+        parts += [f.initializer for f in c.instance_fields() if f.initializer]
+        for block in getattr(c, 'inst_inits', ()) or ():
+            parts += [t for _ln, t in block]
+        if any(_THIS_AS_VALUE.search(t) for t in parts):
+            own.add(c.name)
+    out = set()
+    for c in classes:
+        k = c
+        while k is not None:
+            if k.name in own:
+                out.add(c.name)
+                break
+            k = by_name.get(k.parent)
+    return out
+
+
 def _read_text(path):
     with open(path, encoding='utf-8', errors='replace') as f:
         return f.read()
@@ -1196,6 +1229,8 @@ def _convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True
     # still corrected. (See _finalize_emitted.)
     global _LENGTH_ARRAY_FIELDS, _LENGTH_SCALAR_CLASSES, _LENGTH_SCALAR_RECEIVERS
     _LENGTH_ARRAY_FIELDS, _LENGTH_SCALAR_CLASSES, _LENGTH_SCALAR_RECEIVERS = compute_length_sets(classes)
+    global _THIS_ESCAPES
+    _THIS_ESCAPES = compute_this_escapes(classes)
 
     # Java collection out-params -> C++ references. A method that MUTATES a List/Map/Set param writes the
     # caller's collection; modelled as a value struct it would copy instead, silently dropping the writes

@@ -33,7 +33,7 @@ import subprocess
 
 from codebreaker.java import twophase
 
-REV = 7
+REV = 9
 TIMEOUT = 60
 _STEP = 180             # seconds any one compile or link may take
 
@@ -155,18 +155,48 @@ def _result(java_dir, cpp_dir, t):
     return ('obj', t.name, fs) if fs else None
 
 
+_CLOCK = re.compile(r'\b(?:System\s*\.\s*(?:currentTimeMillis|nanoTime)|new\s+Date)\s*\(')
+
+
+def reads_clock(cls):
+    """(methods whose result depends on the clock, whether the constructors read it): a method that reads
+    System.currentTimeMillis/nanoTime, or calls one of the class's methods that does. Two runs of the
+    original already leave out what changes between them; the clock also differs between the original's
+    run and the C++ one, which no comparison can allow for (Timer.updateTimer)."""
+    def text(m):
+        return '\n'.join(t for _ln, t in (m.body or ()))
+    bodies = dict((m.name, text(m)) for m in cls.methods if not m.is_ctor)
+    clocked = set(n for n, t in bodies.items() if _CLOCK.search(t))
+    grew = True
+    while grew:
+        grew = False
+        for n, t in bodies.items():
+            if n not in clocked and any(re.search(r'(?<![\w.])(?:this\s*\.\s*)?%s\s*\(' % re.escape(c), t)
+                                        for c in clocked):
+                clocked.add(n)
+                grew = True
+    ctor = '\n'.join(text(m) for m in cls.methods if m.is_ctor)
+    ctor += '\n'.join(f.initializer for f in cls.instance_fields() if f.initializer)
+    in_ctor = bool(_CLOCK.search(ctor)) or any(
+        re.search(r'(?<![\w.])(?:this\s*\.\s*)?%s\s*\(' % re.escape(c), ctor) for c in clocked)
+    return clocked, in_ctor
+
+
 def probeable(cls, header_text, java_dir=None, cpp_dir=None):
     """[(method, [slots], result, made)] -- the methods it can call: present under their name in the
     emitted header, every parameter passable, the result comparable (a void instance method compares its
     object afterwards). made is None for a static method, else how the object is made (see `maker`)."""
     out, seen = [], set()
     made = maker(cls)
+    clocked, ctor_clocked = reads_clock(cls)
     me = None
     if java_dir is not None and cpp_dir is not None:
         fs = fields(java_dir, cls, cpp_dir)
         me = ('obj', cls.name, fs) if fs else None
     for m in cls.methods:
         if m.is_ctor or m.is_abstract or m.access == 'private' or (not m.is_static and made is None):
+            continue
+        if m.name in clocked or (ctor_clocked and not m.is_static):    # depends on the time: not comparable
             continue
         rt = m.return_type
         if rt is not None and rt.name == 'void' and not rt.is_array:
@@ -327,15 +357,17 @@ def _dumpers(methods, lang):
     return out
 
 
-def java_harness(cls_name, methods, package=None, name='J2XProbe'):
+def java_harness(cls_name, methods, package=None, name='J2XProbe', only=None):
     """The Java harness class `name`, in the class's own package (so package-private members can be
-    reached)."""
+    reached). `only`: the case keys to run (all of them when None)."""
     lines = (['package %s;' % package] if package else []) + ['public class %s {' % name]
     lines += _JAVA_HELPERS.strip('\n').split('\n') + _dumpers(methods, 'java')
     lines.append('  public static void main(String[] a) {')
     for mi, (name, slots, result, made) in enumerate(methods):
         for ci, values in enumerate(cases(_flat(slots, made))):
             key = '%d.%d' % (mi, ci)
+            if only is not None and key not in only:
+                continue
             obj, args = _args(slots, made, values, 'java', cls_name)
             stmt = _statement(name, slots, result, made, obj, args, 'java', cls_name).replace('{key}', key)
             lines.append('    try { %s } catch (Throwable t) { out("%s", "throw"); }' % (stmt, key))
@@ -343,10 +375,11 @@ def java_harness(cls_name, methods, package=None, name='J2XProbe'):
     return '\n'.join(lines)
 
 
-def cpp_harness(cls_name, methods, keep, init_order, extra_headers=()):
+def cpp_harness(cls_name, methods, keep, init_order, extra_headers=(), ancestry=()):
     """The C++ side for the inputs in `keep` (the keys Java returned on). `init_order`: classes whose
-    initStatics() run first, in order."""
-    heads = [cls_name] + [c for c in list(init_order) + sorted(extra_headers) if c != cls_name]
+    initStatics() run first, in order. `ancestry`: (class, base) pairs registered for instanceof first."""
+    bases = [c for pair in ancestry for c in pair]
+    heads = [cls_name] + [c for c in list(init_order) + sorted(extra_headers) + bases if c != cls_name]
     seen, inc = set(), []
     for h in heads:
         if h not in seen:
@@ -354,6 +387,10 @@ def cpp_harness(cls_name, methods, keep, init_order, extra_headers=()):
             inc.append('#include "%s.h"' % h)
     lines = ['#include "stdafx.h"', '#include "JavaRT.h"'] + inc + _CPP_HELPERS.strip('\n').split('\n') + \
         _dumpers(methods, 'cpp') + ['int main() {']
+    # FIXED BUG probe-no-ancestry: the game registers each class's bases at boot (j2x_rtti.cpp) so that
+    # instanceof sees subclasses; the harness did not, and Beta's recipe setup crashed in every harness
+    # that linked it (x instanceof Block was false for BlockOreStorage)
+    lines += ['\tj2xRegisterBase(typeid(%s).name(), typeid(%s).name());' % pair for pair in ancestry]
     lines += ['\t%s::initStatics();' % c for c in init_order]
     for mi, (name, slots, result, made) in enumerate(methods):
         for ci, values in enumerate(cases(_flat(slots, made))):
@@ -432,6 +469,18 @@ def stage_sources(java_dir, dest):
             f.write(text)
     _INDEX.pop(dest, None)
     return dest
+
+
+_BASE = re.compile(r'j2xRegisterBase\(typeid\((\w+)\)\.name\(\), typeid\((\w+)\)\.name\(\)\);')
+
+
+def ancestry(cpp_dir):
+    """(class, base) for every class of the program, from j2x_rtti.cpp."""
+    try:
+        with open(os.path.join(cpp_dir, 'j2x_rtti.cpp'), encoding='utf-8', errors='replace') as f:
+            return _BASE.findall(f.read())
+    except OSError:
+        return []
 
 
 def init_order(cpp_dir):
@@ -516,7 +565,10 @@ def build_native(cxx, cpp_dir, harness, exe, lib, prefix=None):
         return False, 'a compile or link took over %d s' % _STEP, []
     if r.returncode != 0:
         e = r.stderr.decode('utf-8', 'replace')
-        return False, next((l for l in e.splitlines() if 'undefined' in l or 'error' in l), e[:200]).strip()[:200], []
+        missing = sorted(set(re.findall(r"undefined reference to `([^']+)'", e)))
+        if missing:                                         # the symbols, not ld's long path in front of them
+            return False, 'undefined: ' + ', '.join(missing[:4])[:200], []
+        return False, next((l for l in e.splitlines() if 'undefined' in l or 'error' in l), e[:200]).strip()[-200:], []
     try:
         with open(mapfile, encoding='utf-8', errors='replace') as f:
             linked = sorted(set(_LOADED.findall(f.read())))
@@ -596,6 +648,30 @@ def compile_java(java_dir, todo, work, javac, size=40, jobs=None, tag='batch'):
     return out
 
 
+def _java_again(java_dir, cls, methods, work, javac, java, jdir, only):
+    """Run the original once more on just the cases in `only`, in their order. -> {key: result}, or None
+    when it could not be compiled or run."""
+    kdir = os.path.join(work, 'probe', cls.name, '_java_only')
+    pkg = cls.package
+    folder = os.path.join(kdir, *(pkg.split('.') if pkg else []))
+    os.makedirs(folder, exist_ok=True)
+    name = harness_name(cls.name) + 'Only'
+    path = os.path.join(folder, name + '.java')
+    with open(path, 'w', encoding='utf-8') as f:
+        f.write(java_harness(cls.name, methods, pkg, name, only))
+    cp = os.pathsep.join((kdir, jdir))
+    try:
+        r = subprocess.run([javac, '-nowarn', '-encoding', 'UTF-8', '-cp', jdir, '-sourcepath', java_dir, '-d', kdir,
+                            path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=TIMEOUT * 3)
+        if r.returncode != 0:
+            return None
+        r = subprocess.run([java, '-cp', cp, ((pkg + '.') if pkg else '') + name],
+                           stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=TIMEOUT)
+    except subprocess.TimeoutExpired:
+        return None
+    return _results(r.stdout.decode('utf-8', 'replace'))
+
+
 def plan(java_dir, cpp_dir, names):
     """[(cls, methods)] of the named classes that have something to run (see `probeable`)."""
     out = []
@@ -626,7 +702,8 @@ def run(java_dir, cpp_dir, cls, work, cxx, javac, java, prefix=None, compiled=No
     res = dict(methods=[m[0] for m in methods], judged=0, total=counted(cls), cases=0, differs=[], why='',
                unsteady=0)
     if not methods:
-        res['why'] = 'no method it can call and compare (its arguments made, its result or object read back)'
+        res['why'] = ('it reads the clock (the time differs between the two runs)' if any(reads_clock(cls)) else
+                      'no method it can call and compare (its arguments made, its result or object read back)')
         return res
     folder = os.path.join(work, 'probe', cls.name)
     os.makedirs(folder, exist_ok=True)
@@ -657,6 +734,28 @@ def run(java_dir, cpp_dir, cls, work, cxx, javac, java, prefix=None, compiled=No
         res['why'] = ('Java gives a different result on every run' if unsteady else
                       'the Java methods threw on every input')
         return res
+    # The cases run one after another in one program, and a case can leave state behind for the next ones
+    # (an Item's constructor registers it in Item.itemsList, even when the rest of that call throws). The C++
+    # side runs only the cases kept, so when some were left out the original is run again on exactly
+    # those, in the same order, and that is what C++ is compared with; repeated until no kept case throws.
+    settled = keep == set(jres)
+    for _again in range(4):
+        if settled:
+            break
+        sub = _java_again(java_dir, cls, methods, work, javac, java, jdir, keep)
+        if sub is None:
+            res['why'] = 'the original could not be run again on the cases kept'
+            return res
+        now = set(k for k in keep if sub.get(k) not in (None, 'throw'))
+        for k in now:
+            jres[k] = sub[k]
+        settled = now == keep
+        keep = now
+        if not keep:
+            break
+    if not keep or not settled:
+        res['why'] = 'the cases depend on what the ones left out did (no steady set to compare)'
+        return res
     lib = library(cxx, cpp_dir, work, prefix)
     if not lib:
         res['why'] = 'the program could not be archived for linking'
@@ -667,15 +766,20 @@ def run(java_dir, cpp_dir, cls, work, cxx, javac, java, prefix=None, compiled=No
     named = _classes_named(methods, cls.name)
     need = [c for c in order if c == cls.name or c in named]
     made_in_two = [c for c in {cls.name} | set(named) if _two_phase(cpp_dir, c)]
-    for _pass in range(3):
+    edges = ancestry(cpp_dir)
+    present = {cls.name} | set(named)
+    for _pass in range(4):
+        pairs = [(d, b) for d, b in edges if d in present and b in present]
         with open(harness, 'w', encoding='utf-8') as f:
-            f.write(twophase.rewrite_news(cpp_harness(cls.name, methods, keep, need, named), made_in_two)[0])
+            f.write(twophase.rewrite_news(cpp_harness(cls.name, methods, keep, need, named, pairs), made_in_two)[0])
         ok, why, linked = build_native(cxx, cpp_dir, harness, exe, lib, prefix)
-        # the classes linked in may have static initialisers of their own: run all of theirs, in order
-        wanted = [c for c in order if c in set(linked) | {cls.name} | named]
-        if not ok or wanted == need:
+        # the classes linked in may have static initialisers of their own, and bases to register: all of
+        # theirs, in order
+        now = set(linked) | {cls.name} | set(named)
+        wanted = [c for c in order if c in now]
+        if not ok or (wanted == need and now == present):
             break
-        need = wanted
+        need, present = wanted, now
     if not ok:
         res['why'] = 'did not link: ' + why
         return res
