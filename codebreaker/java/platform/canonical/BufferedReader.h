@@ -7,12 +7,13 @@
 #include <string>
 #include "JavaString.h"
 #include "Reader.h"
+#include "NullPointerException.h"
 
 class BufferedReader {
 	Reader* _in;
 public:
 	BufferedReader(...) : _in(0) {}
-	BufferedReader(Reader* r, ...) : _in(r) {}       // (reader) or (reader, bufSize)
+	BufferedReader(Reader* r, ...) : _in(r) { if (!r) throw new NullPointerException(); }   // (reader) or (reader, bufSize); null throws, as Java
 	virtual ~BufferedReader() {}
 	virtual void close(...) { if (_in) _in->close(); }
 	virtual int read(...) { return _in ? _in->read() : -1; }

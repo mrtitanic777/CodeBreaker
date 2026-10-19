@@ -7,12 +7,16 @@
 #include "JavaString.h"
 #include "Reader.h"
 #include "InputStream.h"
+#include "NullPointerException.h"
 
 class InputStreamReader : public Reader {
 	InputStream* _in;
 public:
 	InputStreamReader(...) : _in(0) {}
-	InputStreamReader(InputStream* in, ...) : _in(in) {}   // (stream) or (stream, charset) -- charset ignored
+	// (stream) or (stream, charset) -- charset ignored. A null stream throws, as Java does: the game's
+	// `new InputStreamReader(getResourceAsStream(x))` relies on it when x is missing (GuiMainMenu keeps its
+	// "missingno" splash), where reading on would crash.
+	InputStreamReader(InputStream* in, ...) : _in(in) { if (!in) throw new NullPointerException(); }
 	virtual ~InputStreamReader() {}
 	virtual int read(...) { return _in ? _in->read() : -1; }
 	virtual void close(...) { if (_in) _in->close(); }
