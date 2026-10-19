@@ -635,6 +635,129 @@ void forgetGlobals(Analysis& a) {
 // alone, as with the globals).
 bool g_structs = false;
 
+// ----------------------------------------------------------------------------------------------- L2
+// PrintIR, first stage (docs/IR_UNIFICATION.md, docs/L2_BINARY_TYPES.md): with CB_L2=1, each
+// function is preceded by `/*@L2 {...} */`, its type as L2 JSON -- the hub IR's "fn": convention,
+// near or far, the bytes it removes, each parameter's type and where it is (stack offset or
+// register), the result's type and where it is. Pointers carry their address space. Off by
+// default: the C is not changed. (Bodies come later; codebreaker.translate.l2.validate judges it.)
+bool g_l2 = false;
+
+std::string jsonText(const std::string& s) {
+  std::string out = "\"";
+  for (char c : s) {
+    if (c == '"' || c == '\\') { out += '\\'; out += c; }
+    else if ((unsigned char)c < 0x20) { char b[8]; std::snprintf(b, sizeof b, "\\u%04x", c); out += b; }
+    else out += c;
+  }
+  return out + "\"";
+}
+
+std::string l2Type(Datatype* t, bool flat, int depth = 0) {
+  if (t == nullptr || depth > 6) return "{\"kind\":\"class\",\"name\":\"undefined\"}";
+  int n = (int)t->getSize();
+  switch (t->getMetatype()) {
+  case TYPE_VOID: return "{\"kind\":\"void\"}";
+  case TYPE_BOOL: return "{\"kind\":\"bool\"}";
+  case TYPE_FLOAT: return n == 4 ? "{\"kind\":\"f32\"}" : n == 8 ? "{\"kind\":\"f64\"}" : "{\"kind\":\"f80\"}";
+  case TYPE_INT:
+  case TYPE_UINT: {
+    bool u = t->getMetatype() == TYPE_UINT;
+    if (n == 1 && t->getName().find("char") != std::string::npos)
+      return std::string("{\"kind\":\"char\",\"signed\":") + (u ? "false" : "true") + "}";
+    if (n == 1 || n == 2 || n == 4 || n == 8)
+      return "{\"kind\":\"" + std::string(u ? "u" : "i") + std::to_string(n * 8) + "\"}";
+    break;
+  }
+  case TYPE_PTR: {
+    Datatype* to = ((TypePointer*)t)->getPtrTo();
+    std::string space = flat ? "flat" : n == 4 ? "far" : "near";
+    if (to != nullptr && to->getMetatype() == TYPE_CODE)
+      return "{\"kind\":\"fnptr\",\"space\":\"" + space + "\",\"fn\":{\"kind\":\"fn\",\"conv\":\"cdecl\","
+             "\"params\":[],\"result\":{\"at\":\"none\"}}}";
+    std::string seg = (!flat && n == 2) ? ",\"seg\":\"ds\"" : "";
+    return "{\"kind\":\"ptr\",\"space\":\"" + space + "\"" + seg + ",\"to\":" + l2Type(to, flat, depth + 1) + "}";
+  }
+  case TYPE_ARRAY: {
+    TypeArray* a = (TypeArray*)t;
+    return "{\"kind\":\"array\",\"elem\":" + l2Type(a->getBase(), flat, depth + 1) +
+           ",\"count\":" + std::to_string(a->numElements()) + "}";
+  }
+  case TYPE_STRUCT: {
+    TypeStruct* s = (TypeStruct*)t;
+    std::string f;
+    for (auto it = s->beginField(); it != s->endField(); ++it) {
+      if (!f.empty()) f += ",";
+      f += "{\"name\":" + jsonText(it->name) + ",\"offset\":" + std::to_string(it->offset) +
+           ",\"type\":" + l2Type(it->type, flat, depth + 1) + "}";
+    }
+    return "{\"kind\":\"record\",\"name\":" + jsonText(t->getName()) + ",\"role\":\"struct\",\"size\":" +
+           std::to_string(n) + ",\"packed\":true,\"fields\":[" + f + "]}";
+  }
+  default: break;
+  }
+  // (what has no L2 kind of its own: a nominal type by the core's name for it)
+  return "{\"kind\":\"class\",\"name\":" + jsonText(t->getName()) + "}";
+}
+
+std::string l2Location(Architecture& m, const Address& a, int size) {
+  if (a.isInvalid()) return "\"none\"";
+  AddrSpace* sp = a.getSpace();
+  if (sp->getType() == IPTR_SPACEBASE) {                 // the stack: the offset from the entry SP, signed
+    int bits = 8 * (int)sp->getAddrSize();
+    long long off = (long long)a.getOffset();
+    if (bits < 64 && ((off >> (bits - 1)) & 1)) off -= 1ll << bits;
+    return "{\"stack\":" + std::to_string(off) + "}";
+  }
+  if (sp->getType() == IPTR_PROCESSOR) {
+    std::string r = m.translate->getRegisterName(sp, a.getOffset(), size);
+    if (!r.empty()) return "{\"reg\":" + jsonText(r) + "}";
+    if (size == 4 && !m.translate->getRegisterName(sp, a.getOffset() + 2, 2).empty())
+      return "{\"regs\":[" + jsonText(m.translate->getRegisterName(sp, a.getOffset() + 2, 2)) + "," +
+             jsonText(m.translate->getRegisterName(sp, a.getOffset(), 2)) + "]}";
+  }
+  return "\"none\"";
+}
+
+std::string l2Function(Architecture& m, Funcdata* fd, bool flat) {
+  const FuncProto& p = fd->getFuncProto();
+  std::string model = p.getModelName();
+  std::string conv = model.find("cdecl") != std::string::npos ? "cdecl"
+                   : model.find("pascal") != std::string::npos ? "pascal"
+                   : model.find("stdcall") != std::string::npos ? "stdcall"
+                   : model.find("fastcall") != std::string::npos ? "fastcall"
+                   : model.find("thiscall") != std::string::npos ? "thiscall" : "register";
+  std::string distance = flat ? "flat" : model.find("far") != std::string::npos ? "far" : "near";
+  int ret = flat ? 4 : distance == "far" ? 4 : 2;
+  int xp = p.getExtraPop();
+  std::string pops = xp == ProtoModel::extrapop_unknown ? "null" : std::to_string(xp - ret);
+  std::string params;
+  for (int i = 0; i < p.numParams(); ++i) {
+    ProtoParameter* q = p.getParam(i);
+    if (!params.empty()) params += ",";
+    params += "{\"name\":" + jsonText(q->getName()) + ",\"type\":" + l2Type(q->getType(), flat) +
+              ",\"at\":" + l2Location(m, q->getAddress(), q->getType() ? (int)q->getType()->getSize() : 0) + "}";
+  }
+  ProtoParameter* o = p.getOutput();
+  Datatype* ot = o ? o->getType() : nullptr;
+  std::string result = (ot == nullptr || ot->getMetatype() == TYPE_VOID)
+      ? "{\"at\":\"none\"}"
+      : "{\"type\":" + l2Type(ot, flat) + ",\"at\":" + l2Location(m, o->getAddress(), (int)ot->getSize()) + "}";
+  std::string fn = "{\"kind\":\"fn\",\"conv\":\"" + conv + "\",\"distance\":\"" + distance + "\",\"pops\":" + pops +
+                   ",\"params\":[" + params + "],\"result\":" + result + ",\"variadic\":" +
+                   (p.isDotdotdot() ? "true" : "false") + "}";
+  // (where it is in the original: a 16-bit function by segment and offset -- the description gives
+  // segment n the made-up selector 1000h + 8(n-1) -- a 32-bit one by its address)
+  uint64_t va = fd->getAddress().getOffset();
+  std::string origin = flat ? "{\"module\":\"\",\"va\":" + std::to_string(va) + "}"
+      : "{\"module\":\"\",\"segment\":" + std::to_string((((va >> 16) & 0xFFFF) - 0x1000) / 8 + 1) +
+        ",\"offset\":" + std::to_string(va & 0xFFFF) + "}";
+  return "{\"node\":\"MethodDecl\",\"name\":" + jsonText(fd->getName()) + ",\"kind\":\"function\"," +
+         "\"sym\":{\"kind\":\"function\",\"name\":" + jsonText(fd->getName()) + ",\"static\":true,\"type\":" + fn + "}," +
+         "\"ret\":" + (ot == nullptr ? std::string("{\"kind\":\"void\"}") : l2Type(ot, flat)) +
+         ",\"origin\":" + origin + "}";
+}
+
 struct FieldUse { int size; Datatype* type; };
 
 // A function's prototype as the description set it, to put back once the function is written
@@ -1056,6 +1179,7 @@ void decompileOne(Analysis& a, const Description& d, size_t i, std::ostream& out
         out << "/*@P return " << rt->getSize() << " */" << std::endl;
     }
     out << struct_notes;
+    if (g_l2) out << "/*@L2 " << l2Function(m, t.first, d.x86_32) << " */" << std::endl;
     m.print->docFunction(t.first);
   } catch (LowlevelError& e) {
     out << "/* decompile failed: " << e.explain << " */" << std::endl;
@@ -1124,6 +1248,7 @@ int main(int argc, char** argv) {
       for (++i; i < argc && argv[i][0] != '-'; ++i) d.only.insert(strtoull(argv[i], nullptr, 16));
   d.x86_32 = d.arch.rfind("x86:LE:32", 0) == 0;
   if (const char* sv = std::getenv("CB_STRUCTS")) g_structs = std::atoi(sv) != 0;
+  if (const char* lv = std::getenv("CB_L2")) g_l2 = std::atoi(lv) != 0;
 
   try {
     startDecompilerLibrary(std::vector<std::string>{});

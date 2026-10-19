@@ -101,7 +101,8 @@ def run(description, only=(), timeout=3600, max_instructions=None):
             base.append(ln)
     if not fn_line:
         return _run_whole(description, only, timeout, max_instructions)
-    common = cache.key(cache.tool(_exe()), _language_stamp(), base, max_instructions or "", _structs(description))
+    common = cache.key(cache.tool(_exe()), _language_stamp(), base, max_instructions or "", _structs(description),
+                       *(["l2"] if os.environ.get("CB_L2") else []))   # (with the L2 notes: another text)
     starts = sorted(fn_line)
     import bisect
 
