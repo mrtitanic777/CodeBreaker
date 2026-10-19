@@ -29,6 +29,7 @@ and are named in one file, `settings.json` at the top of the checkout:
     host_cxx        the C++ compiler that judges transpiled Java (default: g++ on PATH)
     msbuild         MSBuild.exe, to build a transpiled game's Visual Studio project
     java_overlays   per-project hand fixes laid over transpiled output (default: state/java/overlays)
+    java_libs       folder of jars a Java game is compiled against when judged (LWJGL, the sound system)
     state           where results and caches are kept             (default: state/)
     target          what is being reconstructed                   (default: win95)
 
@@ -57,7 +58,7 @@ DEFAULTS = {
     "threads": "1",                    # functions the native decompiler analyses at once (CB_THREADS)
 }
 _PATHS = ("corpus", "openwatcom", "decompiler_bin", "ghidra_core", "state", "powerpc_tools", "powerpc_lib", "period_compiler", "dosbox_x", "msc6", "xenix_c", "msc203", "masm", "nasm", "msvc152",
-          "java", "retromcp", "xbox360_sdk", "host_cxx", "msbuild", "java_overlays")
+          "java", "retromcp", "xbox360_sdk", "host_cxx", "msbuild", "java_overlays", "java_libs")
 _loaded = None
 
 

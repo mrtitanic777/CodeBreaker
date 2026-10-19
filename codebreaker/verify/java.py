@@ -102,8 +102,9 @@ def profile(module_path=None):
         raise RuntimeError("no C++ compiler to judge Java with (settings.json: host_cxx, or g++ on PATH)")
     from codebreaker.java import probe
     javac, java = jdk()
+    libs = tuple(os.path.basename(j) for j in probe.libraries())     # what the game is compiled against
     settings = repr(("java", REV, cache.tool(cxx), FLAGS, PLATFORM, probe.REV,
-                     cache.tool(javac) if javac else "", cache.tool(java) if java else ""))
+                     cache.tool(javac) if javac else "", cache.tool(java) if java else "") + ((libs,) if libs else ()))
     return hashlib.sha1(settings.encode()).hexdigest()[:12], settings
 
 

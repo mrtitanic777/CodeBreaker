@@ -30,10 +30,11 @@ import os
 import re
 import struct
 import subprocess
+import threading
 
 from codebreaker.java import twophase
 
-REV = 9
+REV = 10
 TIMEOUT = 60
 _STEP = 180             # seconds any one compile or link may take
 
@@ -591,6 +592,55 @@ def harness_name(cls_name):
     return 'J2XProbe_' + cls_name
 
 
+def libraries():
+    """The jars the game is compiled and run against (settings.json `java_libs`: a folder of them --
+    LWJGL, the sound system), sorted; [] when none is set. Class files only: a method that reaches
+    native code (OpenGL, OpenAL) throws in Java and is left out like any other that throws."""
+    from codebreaker.base import settings
+    folder = settings.get('java_libs')
+    if not folder or not os.path.isdir(folder):
+        return []
+    return sorted(os.path.join(folder, f) for f in os.listdir(folder) if f.lower().endswith('.jar'))
+
+
+_SHIM_LOCK = threading.Lock()
+
+
+def shims(work, javac):
+    """Compile the stand-ins in probe_shims/ (classes the game was built against in a form no library
+    download has -- Minecraft's own build of the sound codec) into work/probe/_shims, once. -> the folder,
+    or '' when there are no libraries to compile them against or they did not compile."""
+    out = os.path.join(work, 'probe', '_shims')
+    done = os.path.join(out, '.compiled')
+    libs = libraries()
+    if not libs:
+        return ''
+    with _SHIM_LOCK:
+        if not os.path.isfile(done):
+            from codebreaker.java._paths import data_path
+            root = data_path('probe_shims')
+            files = [os.path.join(dp, f) for dp, _d, fs in os.walk(root) for f in fs if f.endswith('.java')]
+            if not files:
+                return ''
+            os.makedirs(out, exist_ok=True)
+            try:
+                r = subprocess.run([javac, '-nowarn', '-encoding', 'UTF-8', '-cp', os.pathsep.join(libs), '-d', out]
+                                   + files, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=TIMEOUT * 3)
+            except subprocess.TimeoutExpired:
+                return ''
+            if r.returncode != 0:
+                return ''
+            open(done, 'w').close()
+    return out
+
+
+def _cp(work, *dirs):
+    """A classpath: these folders, the stand-ins (ahead of the library they stand in for), the libraries."""
+    shim = os.path.join(work, 'probe', '_shims')
+    return os.pathsep.join(list(dirs) + ([shim] if os.path.isfile(os.path.join(shim, '.compiled')) else [])
+                           + libraries())
+
+
 def compile_java(java_dir, todo, work, javac, size=40, jobs=None, tag='batch'):
     """Compile the Java harnesses of `todo` [(cls, methods)] -- in batches of `size`, one javac each
     (javac's start and the classes the harnesses share are paid once a batch, not once a class: it was
@@ -600,6 +650,7 @@ def compile_java(java_dir, todo, work, javac, size=40, jobs=None, tag='batch'):
     from concurrent.futures import ThreadPoolExecutor
     out = {}
     root = os.path.join(work, 'probe', '_java')
+    shims(work, javac)
 
     def attempt(group, label):
         jdir = os.path.join(root, label)
@@ -616,7 +667,8 @@ def compile_java(java_dir, todo, work, javac, size=40, jobs=None, tag='batch'):
         with open(listing, 'w', encoding='utf-8') as f:
             f.write('\n'.join('"%s"' % x.replace('\\', '/') for x in files))
         try:
-            r = subprocess.run([javac, '-nowarn', '-encoding', 'UTF-8', '-sourcepath', java_dir, '-d', jdir,
+            r = subprocess.run([javac, '-nowarn', '-encoding', 'UTF-8'] + (['-cp', _cp(work)] if libraries() else []) +
+                               ['-sourcepath', java_dir, '-d', jdir,
                                 '@' + listing], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                timeout=TIMEOUT * 3 + 10 * len(group))
         except subprocess.TimeoutExpired:
@@ -659,9 +711,9 @@ def _java_again(java_dir, cls, methods, work, javac, java, jdir, only):
     path = os.path.join(folder, name + '.java')
     with open(path, 'w', encoding='utf-8') as f:
         f.write(java_harness(cls.name, methods, pkg, name, only))
-    cp = os.pathsep.join((kdir, jdir))
+    cp = _cp(work, kdir, jdir)
     try:
-        r = subprocess.run([javac, '-nowarn', '-encoding', 'UTF-8', '-cp', jdir, '-sourcepath', java_dir, '-d', kdir,
+        r = subprocess.run([javac, '-nowarn', '-encoding', 'UTF-8', '-cp', _cp(work, jdir), '-sourcepath', java_dir, '-d', kdir,
                             path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=TIMEOUT * 3)
         if r.returncode != 0:
             return None
@@ -719,7 +771,7 @@ def run(java_dir, cpp_dir, cls, work, cxx, javac, java, prefix=None, compiled=No
     runs = []
     for _twice in range(2):
         try:
-            r = subprocess.run([java, '-cp', jdir, main],
+            r = subprocess.run([java, '-cp', _cp(work, jdir), main],
                                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=TIMEOUT)
         except subprocess.TimeoutExpired:
             res['why'] = 'the Java side did not finish'
