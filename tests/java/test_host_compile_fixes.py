@@ -105,9 +105,10 @@ def test_sized_new_with_an_indexed_size(out):
 
 def test_null_arm_of_a_value_return_is_the_empty_value(out):
     text = _probe(out)
-    assert ': JavaString();' in text
+    # the null arm is the value type's own null, whatever grouping the writer chose
+    assert ': JavaString();' in text or ': JavaString());' in text
     assert '? JObject() :' in text
-    assert ': JArray<Probe* >());' in text
+    assert ': JArray<Probe* >())' in text
 
 
 def test_no_platform_tree_has_what_its_runtime_includes(out):

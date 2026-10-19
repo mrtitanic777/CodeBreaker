@@ -29,7 +29,7 @@ def test_int_array_cast_of_raw_list_remove():
         'import java.util.List;\nimport java.util.ArrayList;\n'
         'public class Holder { public List q = new ArrayList();\n'
         ' public int[] pop() { return (int[])this.q.remove(this.q.size() - 1); } }')})['Holder']
-    assert '(JArray<int >)(this->q.remove(' in cpp
+    assert ('(JArray<int >)(this->q.remove(' in cpp or '(JArray<int >)this->q.remove(' in cpp)
     assert '(int[])' not in cpp
 
 
@@ -40,5 +40,5 @@ def test_int_array_cast_field_chain():
         'User.java': ('public class User { public int[] f(Holder h) {\n'
                       '  return (int[])h.q.remove(h.q.size() - 1); } }'),
     })['User']
-    assert '(JArray<int >)(h->q.remove(' in cpp
+    assert ('(JArray<int >)(h->q.remove(' in cpp or '(JArray<int >)h->q.remove(' in cpp)
     assert '(int[])' not in cpp

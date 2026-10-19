@@ -1317,10 +1317,11 @@ def _convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True
             _write(os.path.join(out_dir, 'Inflate' + _ext),
                    _read(_data_path('platform', 'reference', 'Inflate.reference' + _ext)))
 
-    # PHASE 1 OF THE TRANSLATOR (docs/TRANSLATOR_DESIGN.md), opt in with CB_TREE_BODIES=1: method bodies
-    # from javac's typed tree through codebreaker/translate's IR and C++03 back end, where it writes them.
+    # THE TRANSLATOR (docs/TRANSLATOR_DESIGN.md): every method body, constructor and initialiser comes from
+    # javac's typed tree through codebreaker/translate's IR and C++03 back end. CB_TREE_BODIES=0 selects the
+    # old text translator instead (kept until the judge has confirmed the switch everywhere).
     tree = None
-    if os.environ.get('CB_TREE_BODIES') == '1':
+    if os.environ.get('CB_TREE_BODIES', '1') != '0':
         from codebreaker.java import probe as _probe
         from codebreaker.translate.backends import cpp03 as _cpp03
         from codebreaker.verify import java as _vjava
