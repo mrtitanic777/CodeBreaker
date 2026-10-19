@@ -945,6 +945,89 @@ void Funcdata::nodeSplitThrough(BlockBasic *b,int4 inedge)
   structureReset();
 }
 
+/// CodeBreaker: the region a \e goto into \b entry could be given its own copy of: \b entry and
+/// every block reachable from it, when that is at most \b maxBlocks blocks, without a loop, every
+/// block but \b entry entered only from inside the region (and no block twice from one), and every
+/// way out of it a RETURN. Nothing flows out of such a region, so what it computes is used only
+/// inside it: a copy taking over one way into \b entry is the same program.
+/// \param entry is the block the gotos go to
+/// \param maxBlocks is the most blocks the region may have
+/// \param region will hold its blocks, \b entry first
+/// \return \b true if there is such a region of two blocks or more
+bool Funcdata::regionToSplit(BlockBasic *entry,int4 maxBlocks,vector<BlockBasic *> &region) const
+
+{
+  region.clear();
+  if (entry->sizeIn() <= 1) return false;
+  for(int4 i=0;i<entry->sizeIn();++i) {
+    if (entry->isBackEdgeIn(i)) return false;
+    for(int4 j=0;j<i;++j)
+      if (entry->getIn(j) == entry->getIn(i)) return false;
+  }
+  set<const FlowBlock *> inside;
+  region.push_back(entry);
+  inside.insert(entry);
+  for(size_t k=0;k<region.size();++k) {
+    BlockBasic *b = region[k];
+    PcodeOp *last = b->lastOp();
+    if (b->sizeOut() == 0) {
+      if (last == (PcodeOp *)0 || last->code() != CPUI_RETURN) return false;
+      continue;
+    }
+    if (b->sizeOut() > 2) return false;
+    if (b->sizeOut() == 2 && (last == (PcodeOp *)0 || last->code() != CPUI_CBRANCH || b->getOut(0) == b->getOut(1)))
+      return false;
+    for(int4 i=0;i<b->sizeOut();++i) {
+      if (b->isBackEdgeOut(i)) return false;
+      BlockBasic *o = (BlockBasic *)b->getOut(i);
+      if (o == entry) return false;
+      if (inside.insert(o).second) {
+	if ((int4)region.size() >= maxBlocks) return false;
+	region.push_back(o);
+      }
+    }
+  }
+  for(size_t k=1;k<region.size();++k) {
+    BlockBasic *b = region[k];
+    for(int4 i=0;i<b->sizeIn();++i) {
+      if (inside.find(b->getIn(i)) == inside.end()) return false;
+      for(int4 j=0;j<i;++j)
+	if (b->getIn(j) == b->getIn(i)) return false;
+    }
+  }
+  return region.size() >= 2;
+}
+
+/// CodeBreaker: copy a region (Funcdata::regionToSplit) for one \e in edge of its entry: each block
+/// gets a copy, the copies flow to each other as the originals do (out edges in the same order, so a
+/// copied CBRANCH keeps its sense), and the given edge goes to the entry's copy.
+/// \param region is the region, its entry first
+/// \param inedge is the index of the entry's \e in edge to move to the copy
+void Funcdata::nodeSplitRegion(const vector<BlockBasic *> &region,int4 inedge)
+
+{
+  BlockBasic *entry = region[0];
+  map<BlockBasic *,BlockBasic *> copyOf;
+  for(size_t k=0;k<region.size();++k) {
+    BlockBasic *bp = bblocks.newBlockBasic(this);
+    bp->setFlag(FlowBlock::f_duplicate_block);
+    bp->copyRange(region[k]);
+    copyOf[region[k]] = bp;
+  }
+  bblocks.switchEdge(entry->getIn(inedge),entry,copyOf[entry]);
+  for(size_t k=0;k<region.size();++k) {
+    BlockBasic *b = region[k];
+    for(int4 i=0;i<b->sizeOut();++i)
+      bblocks.addEdge(copyOf[b],copyOf[(BlockBasic *)b->getOut(i)]);
+  }
+  CloneBlockOps cloner(*this);
+  cloner.takeBranches = true;
+  for(size_t k=0;k<region.size();++k)
+    cloner.cloneOps(region[k],copyOf[region[k]]);
+  cloner.patchRegion(entry,inedge,copyOf);
+  structureReset();
+}
+
 /// \brief Remove a basic block splitting its control-flow into two distinct paths
 ///
 /// This is used by ConditionalExecution to eliminate unnecessary control-flow joins.
@@ -1028,7 +1111,7 @@ PcodeOp *CloneBlockOps::buildOpClone(PcodeOp *op)
 {
   PcodeOp *dup;
 
-  if (op->isBranch()) {
+  if (op->isBranch() && !(takeBranches && op->code() == CPUI_CBRANCH)) {
     if (op->code() != CPUI_BRANCH)
       throw LowlevelError("Cannot duplicate 2-way or n-way branch in nodeplit");
     return (PcodeOp *)0;
@@ -1038,7 +1121,8 @@ PcodeOp *CloneBlockOps::buildOpClone(PcodeOp *op)
   uint4 fl = op->flags & (PcodeOp::startbasic | PcodeOp::nocollapse | PcodeOp::startmark |
       PcodeOp::nonprinting | PcodeOp::halt | PcodeOp::badinstruction | PcodeOp::unimplemented |
       PcodeOp::noreturn | PcodeOp::missing | PcodeOp::indirect_creation | PcodeOp::indirect_store |
-      PcodeOp::no_indirect_collapse | PcodeOp::calculated_bool | PcodeOp::ptrflow);
+      PcodeOp::no_indirect_collapse | PcodeOp::calculated_bool | PcodeOp::ptrflow |
+      PcodeOp::boolean_flip | PcodeOp::fallthru_true);	// (CodeBreaker: a CBRANCH's sense, for a region's copy)
   dup->setFlag(fl);
   fl = op->addlflags & (PcodeOp::special_prop | PcodeOp::special_print | PcodeOp::incidental_copy |
       PcodeOp::is_cpool_transformed | PcodeOp::stop_type_propagation | PcodeOp::store_unmapped);
@@ -1139,6 +1223,78 @@ Varnode *CloneBlockOps::cloneExpression(vector<PcodeOp *> &ops,PcodeOp *followOp
   return cloneOp->getOut();
 }
 
+/// CodeBreaker: clone a block's ops into its copy, outputs included; the inputs are set afterwards
+/// (patchRegion), once every block of the region has been cloned
+/// \param b is the original block
+/// \param bprime is its copy
+void CloneBlockOps::cloneOps(BlockBasic *b,BlockBasic *bprime)
+
+{
+  list<PcodeOp *>::iterator iter;
+  for(iter=b->beginOp();iter!=b->endOp();++iter) {
+    PcodeOp *origOp = *iter;
+    PcodeOp *cloneOp = buildOpClone(origOp);
+    if (cloneOp == (PcodeOp *)0) continue;
+    buildVarnodeOutput(origOp,cloneOp);
+    data.opInsertEnd(cloneOp,bprime);
+  }
+}
+
+/// CodeBreaker: a value, or -- when a cloned op computes it -- the clone's output
+Varnode *CloneBlockOps::mapped(Varnode *vn) const
+
+{
+  if (vn->isWritten()) {
+    map<PcodeOp *,PcodeOp *>::const_iterator iter = origToClone.find(vn->getDef());
+    if (iter != origToClone.end())
+      return (*iter).second->getOut();
+  }
+  return vn;
+}
+
+/// CodeBreaker: set the inputs of a region's copy (Funcdata::nodeSplitRegion). The entry's
+/// MULTIEQUALs become COPYs of what came in on the moved edge, as for one block; a MULTIEQUAL further
+/// in takes, on each edge into its block's copy, what the original took on the matching edge (from
+/// the original of that edge's source), the copy's version of it where the region computed it.
+/// \param entry is the region's entry block
+/// \param inedge is the entry's \e in edge that was moved
+/// \param copyOf maps each block of the region to its copy
+void CloneBlockOps::patchRegion(BlockBasic *entry,int4 inedge,const map<BlockBasic *,BlockBasic *> &copyOf)
+
+{
+  map<const FlowBlock *,BlockBasic *> origOf;
+  for(map<BlockBasic *,BlockBasic *>::const_iterator iter=copyOf.begin();iter!=copyOf.end();++iter)
+    origOf[(*iter).second] = (*iter).first;
+  for(int4 pos=0;pos<cloneList.size();++pos) {
+    PcodeOp *origOp = cloneList[pos].origOp;
+    PcodeOp *cloneOp = cloneList[pos].cloneOp;
+    if (origOp->code() != CPUI_MULTIEQUAL) {
+      patchOrdinary(origOp,cloneOp);
+      continue;
+    }
+    BlockBasic *b = origOp->getParent();
+    if (b == entry) {
+      cloneOp->setNumInputs(1);
+      data.opSetOpcode(cloneOp,CPUI_COPY);
+      data.opSetInput(cloneOp,origOp->getIn(inedge),0);
+      data.opRemoveInput(origOp,inedge);
+      if (origOp->numInput() == 1)
+	data.opSetOpcode(origOp,CPUI_COPY);
+      continue;
+    }
+    BlockBasic *bp = cloneOp->getParent();
+    for(int4 jp=0;jp<bp->sizeIn();++jp) {
+      const FlowBlock *src = origOf[bp->getIn(jp)];
+      int4 j = -1;
+      for(int4 k=0;k<b->sizeIn();++k)
+	if (b->getIn(k) == src) j = k;
+      if (j < 0)
+	throw LowlevelError("Region copy: an edge with no original");
+      data.opSetInput(cloneOp,mapped(origOp->getIn(j)),jp);
+    }
+  }
+}
+
 /// Map Varnodes that are inputs for PcodeOps in the original basic block to the input slots of
 /// the cloned ops. Constants and code ref Varnodes need to be duplicated, other Varnodes are shared
 /// between the ops. This routine also pulls an input Varnode out of original MULTIEQUAL ops and adds
@@ -1158,10 +1314,22 @@ void CloneBlockOps::patchInputs(int4 inedge)
       if (origOp->numInput() == 1)
 	data.opSetOpcode(origOp,CPUI_COPY);
     }
-    else {
-      // CodeBreaker: a CALL is cloned with its own copy of the call specification, and an
-      // INDIRECT with its cause (the iop annotation) pointed at the clone of the op that caused
-      // it -- so a return block holding a call can be split (ActionReturnSplit, blockaction.cc)
+    else
+      patchOrdinary(origOp,cloneOp);
+  }
+}
+
+/// CodeBreaker: the inputs of a cloned op other than a MULTIEQUAL: a CALL is cloned with its own
+/// copy of the call specification, and an INDIRECT with its cause (the iop annotation) pointed at the
+/// clone of the op that caused it -- so a return block holding a call can be split
+/// (ActionReturnSplit, blockaction.cc)
+/// \param origOp is the original op
+/// \param cloneOp is its clone
+void CloneBlockOps::patchOrdinary(PcodeOp *origOp,PcodeOp *cloneOp)
+
+{
+  {
+    {
       bool fspecIn = false;
       for(int4 i=0;i<cloneOp->numInput();++i) {
 	Varnode *origVn = origOp->getIn(i);

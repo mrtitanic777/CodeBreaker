@@ -156,3 +156,7 @@ RISC-V Sail, Intel XED).
   Then (C16) a goto that jumps over a small join block (`if (a) { ...; goto L; } x = 0; L:`):
   the block is copied for each way in -- the core can now split a block that flows on, patching
   its successor's MULTIEQUALs -- 5,417 -> 5,361, no module worse. Since the start: -23%.
+  Then (C17, 2026-10-19) a goto into a small tail region -- a shared clean-up with a branch and
+  calls in it, ending in RETURNs -- gets its own copy of the whole region: 5,384 -> 5,046 (-6%;
+  KERNEL32 -20%), no module worse, no new failures, one thread and four agree. Left: loops with
+  several exits that do not end in a return, and crossing jumps.

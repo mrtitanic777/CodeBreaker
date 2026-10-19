@@ -2294,8 +2294,12 @@ static bool stackAddress(const Varnode *vn,int4 depth)
 /// \param plain is the running count of plain ops
 /// \param calls is the running count of calls
 /// \param branchEnd is \b true if the block may end in a BRANCH (removed when it is joined to its successor)
+/// \param condEnd is \b true if it may end in a CBRANCH (a region's, copied with it)
+/// \param maxOps is the most plain ops there may be
+/// \param maxCalls is the most calls
 /// \return \b true if the block (with what was counted before) can be copied
-bool ActionReturnSplit::tally(BlockBasic *b,int4 &plain,int4 &calls,bool branchEnd)
+bool ActionReturnSplit::tally(BlockBasic *b,int4 &plain,int4 &calls,bool branchEnd,bool condEnd,
+			      int4 maxOps,int4 maxCalls)
 
 {
   list<PcodeOp *>::const_iterator iter;
@@ -2306,6 +2310,10 @@ bool ActionReturnSplit::tally(BlockBasic *b,int4 &plain,int4 &calls,bool branchE
     OpCode opc = op->code();
     if (opc == CPUI_MULTIEQUAL) continue;
     if (branchEnd && opc == CPUI_BRANCH && op == b->lastOp()) continue;
+    if (condEnd && opc == CPUI_CBRANCH && op == b->lastOp()) {	// (a region's branch, copied with it)
+      if (op->getIn(1)->isFree()) return false;
+      continue;
+    }
     if (opc == CPUI_INDIRECT) {
       // (a side-effect is copied with what causes it, which must be in the block too)
       const Varnode *iop = op->getIn(1);
@@ -2313,14 +2321,14 @@ bool ActionReturnSplit::tally(BlockBasic *b,int4 &plain,int4 &calls,bool branchE
 	return false;
     }
     else if (opc == CPUI_CALL || opc == CPUI_CALLIND) {
-      if (++calls > maxSplitCalls) return false;
+      if (++calls > maxCalls) return false;
     }
     else if (opc != CPUI_COPY && opc != CPUI_RETURN) {
       if (op->isCall() || op->isBranch() || opc == CPUI_NEW || opc == CPUI_CPOOLREF)
 	return false;
       if ((opc == CPUI_LOAD || opc == CPUI_STORE) && stackAddress(op->getIn(1),6))
 	return false;			// (a stack variable reached through a pointer)
-      if (++plain > maxSplitOps) return false;
+      if (++plain > maxOps) return false;
     }
     for(int4 i=0;i<op->numInput();++i) {
       if (op->getIn(i)->isConstant()) continue;
@@ -2412,8 +2420,8 @@ int4 ActionReturnSplit::apply(Funcdata &data)
       data.getArch()->printWarning("Block structure is not consistent");
 #endif
   }
-  if (splitedge.empty() && !joinReturn(data))
-    splitJoin(data);
+  if (splitedge.empty() && !joinReturn(data) && !splitJoin(data))
+    splitRegion(data);
   return 0;
 }
 
@@ -2504,6 +2512,50 @@ bool ActionReturnSplit::splitJoin(Funcdata &data)
       count += 1;
       return true;
     }
+  }
+  return false;
+}
+
+/// CodeBreaker: a \e goto into a small tail region -- a few blocks that reach only RETURNs, entered
+/// only through one block (`L: if (c) f(); g(); return x;`, a function's shared clean-up) -- is
+/// given its own copy of the whole region (Funcdata::nodeSplitRegion), one goto per pass, so the path
+/// can end where it is. Only regions within \b maxRegionBlocks, \b maxRegionOps and
+/// \b maxRegionCalls, at most \b maxResplits times per entry per function.
+/// \param data is the function
+/// \return \b true if a region was copied
+bool ActionReturnSplit::splitRegion(Funcdata &data)
+
+{
+  const BlockGraph &graph(data.getBasicBlocks());
+  for(int4 i=0;i<graph.getSize();++i) {
+    BlockBasic *t = (BlockBasic *)graph.getBlock(i);
+    if (t->sizeIn() <= 1) continue;
+    vector<FlowBlock *> gotoblocks;
+    gatherReturnGotos(t,gotoblocks);
+    int4 edge = -1;
+    for(int4 j=t->sizeIn()-1;j>=0 && edge < 0;--j) {
+      FlowBlock *bl = t->getIn(j)->getCopyMap();
+      while(bl != (FlowBlock *)0) {
+	if (bl->isMark()) { edge = j; break; }
+	bl = bl->getParent();
+      }
+    }
+    for(int4 j=0;j<gotoblocks.size();++j)
+      gotoblocks[j]->clearMark();
+    if (edge < 0) continue;
+    if (t->getStart().isInvalid() || regionCount[t->getStart()] >= maxResplits) continue;
+    vector<BlockBasic *> region;
+    if (!data.regionToSplit(t,maxRegionBlocks,region)) continue;
+    int4 plain = 0;
+    int4 calls = 0;
+    bool fits = true;
+    for(size_t k=0;k<region.size() && fits;++k)
+      fits = tally(region[k],plain,calls,true,true,maxRegionOps,maxRegionCalls);
+    if (!fits) continue;
+    regionCount[t->getStart()] += 1;
+    data.nodeSplitRegion(region,edge);
+    count += 1;
+    return true;
   }
   return false;
 }

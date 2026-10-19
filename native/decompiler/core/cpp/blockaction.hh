@@ -348,11 +348,17 @@ class ActionReturnSplit : public Action {
   static bool jumpedOver(BlockBasic *x,BlockBasic *t);	///< CodeBreaker: is x the else of a branch whose other side reaches t
   map<Address,int4> throughCount;	///< CodeBreaker: times each join block was split
   static bool onlyCopies(BlockBasic *b);		///< CodeBreaker: is the block only copies and the RETURN
-  static bool tally(BlockBasic *b,int4 &plain,int4 &calls,bool branchEnd);	///< CodeBreaker: count what a copy would hold
+  static bool tally(BlockBasic *b,int4 &plain,int4 &calls,bool branchEnd,bool condEnd=false,
+		    int4 maxOps=maxSplitOps,int4 maxCalls=maxSplitCalls);	///< CodeBreaker: count what a copy would hold
+  static const int4 maxRegionBlocks = 4;	///< CodeBreaker: the most blocks a region copied per goto may have
+  static const int4 maxRegionOps = 12;		///< CodeBreaker: ...the most plain ops in all
+  static const int4 maxRegionCalls = 4;		///< CodeBreaker: ...and the most calls
+  bool splitRegion(Funcdata &data);		///< CodeBreaker: give a goto its own copy of a small tail region
+  map<Address,int4> regionCount;	///< CodeBreaker: times each region entry was split
   map<Address,int4> joinCount;	///< CodeBreaker: times each block was given its own copy of the return it flows into
 public:
   ActionReturnSplit(const string &g) : Action(0,"returnsplit",g) {}		///< Constructor
-  virtual void reset(Funcdata &data) { Action::reset(data); splitCount.clear(); joinCount.clear(); throughCount.clear(); }
+  virtual void reset(Funcdata &data) { Action::reset(data); splitCount.clear(); joinCount.clear(); throughCount.clear(); regionCount.clear(); }
   virtual Action *clone(const ActionGroupList &grouplist) const {
     if (!grouplist.contains(getGroup())) return (Action *)0;
     return new ActionReturnSplit(getGroup());

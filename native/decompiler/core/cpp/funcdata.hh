@@ -582,6 +582,8 @@ public:
   void nodeSplit(BlockBasic *b,int4 inedge);
   bool canSplitThrough(BlockBasic *b) const;	///< CodeBreaker: can a block with one way out be split
   void nodeSplitThrough(BlockBasic *b,int4 inedge);	///< CodeBreaker: split a block with one way out
+  bool regionToSplit(BlockBasic *entry,int4 maxBlocks,vector<BlockBasic *> &region) const;	///< CodeBreaker: a closed acyclic region ending in RETURNs
+  void nodeSplitRegion(const vector<BlockBasic *> &region,int4 inedge);	///< CodeBreaker: copy such a region for one \e in edge
   bool forceGoto(const Address &pcop,const Address &pcdest);
   void removeFromFlowSplit(BlockBasic *bl,bool swap);
   void switchEdge(FlowBlock *inblock,BlockBasic *outbefore,FlowBlock *outafter);
@@ -660,8 +662,13 @@ class CloneBlockOps {
   PcodeOp *buildOpClone(PcodeOp *op);	///< Produce a skeleton copy of the given PcodeOp
   void buildVarnodeOutput(PcodeOp *origOp,PcodeOp *cloneOp);	///< Clone the output Varnode of the given op onto its clone
   void patchInputs(int4 inedge);				///< Set the input Varnodes of all cloned ops
+  void patchOrdinary(PcodeOp *origOp,PcodeOp *cloneOp);	///< CodeBreaker: the inputs of a cloned op other than a MULTIEQUAL
+  Varnode *mapped(Varnode *vn) const;			///< CodeBreaker: a value, or its clone's when a cloned op computes it
 public:
+  bool takeBranches = false;	///< CodeBreaker: clone CBRANCHes too (a region's, Funcdata::nodeSplitRegion)
   CloneBlockOps(Funcdata &fd) : data(fd) {}	///< Constructor
+  void cloneOps(BlockBasic *b,BlockBasic *bprime);	///< CodeBreaker: clone a block's ops (not its inputs yet)
+  void patchRegion(BlockBasic *entry,int4 inedge,const map<BlockBasic *,BlockBasic *> &copyOf);	///< CodeBreaker: set a region copy's inputs
   void cloneBlock(BlockBasic *b,BlockBasic *bprime,int4 inedge);	///< Clone all p-code ops from a block into its copy
   void patchSuccessor(BlockBasic *b,BlockBasic *bprime);	///< CodeBreaker: give the successor's MULTIEQUALs the copy's values
   Varnode *cloneExpression(vector<PcodeOp *> &ops,PcodeOp *followOp);	///< Clone p-code ops in an expression
