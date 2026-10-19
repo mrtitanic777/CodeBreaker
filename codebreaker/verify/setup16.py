@@ -84,31 +84,43 @@ def _replace_on_cd(iso, rest, out):
     from codebreaker.formats import cab
     work = tempfile.mkdtemp(prefix="cd_", dir=os.path.dirname(os.path.abspath(out)))
     try:
-        for child in iso.list_children(iso_path="/WIN95"):
-            ident = child.file_identifier().decode()
-            name = ident.split(";")[0].upper()
-            joliet = ("/WIN95/" + name) if iso.has_joliet() else None
-            if name in rest:                                 # (loose: SETUP.EXE)
-                data = open(rest[name], "rb").read()
-            elif name.endswith(".CAB"):
-                raw = io.BytesIO()
-                iso.get_file_from_iso_fp(raw, iso_path="/WIN95/" + ident)
-                here = os.path.join(work, name)
-                with open(here, "wb") as f:
+        idents = {c.file_identifier().decode().split(";")[0].upper(): c.file_identifier().decode()
+                  for c in iso.list_children(iso_path="/WIN95") if c.file_identifier() not in (b".", b"..")}
+        cabs = {}
+        for name in idents:                                  # (every cabinet, beside the others: a file
+            if name.endswith(".CAB"):                        # one cabinet continues into the next is
+                raw = io.BytesIO()                           # read from both)
+                iso.get_file_from_iso_fp(raw, iso_path="/WIN95/" + idents[name])
+                with open(os.path.join(work, name), "wb") as f:
                     f.write(raw.getvalue())
-                c = cab.read(here)
-                if not {e.name.upper() for e in c.files} & set(rest):
-                    continue
-                got = cab.extract(here, os.path.join(work, name + ".d"))
-                files = [(e.name, open(rest.get(e.name.upper()) or got[e.name], "rb").read()) for e in c.files]
-                i = c.info
-                cab.write(files, here + ".new", compress="mszip", set_id=i.get("set_id", 0),
-                          index=i.get("index", 0), prev=i.get("prev"), next=i.get("next"))
-                data = open(here + ".new", "rb").read()
-            else:
-                continue
-            iso.rm_file(iso_path="/WIN95/" + ident, joliet_path=joliet)
-            iso.add_fp(io.BytesIO(data), len(data), "/WIN95/" + ident, joliet_path=joliet)
+                cabs[name] = cab.read(os.path.join(work, name))
+        new = {name: open(rest[name], "rb").read() for name in rest if name in idents}   # (loose: SETUP.EXE)
+        # A cabinet holding one of ours is written again -- with the whole set it belongs to:
+        # PRECOPY1's last three files run on into PRECOPY2, and PRECOPY2 rewritten alone left
+        # PRECOPY1 pointing into a cabinet that no longer continued them ("Could not decompress
+        # this Setup (.CAB) file"). Each file is now whole in the cabinet it starts in.
+        todo = set()
+        for name, c in cabs.items():
+            if {e.name.upper() for e in c.files} & set(rest):
+                k = name
+                while cabs.get(k) and cabs[k].info.get("prev"):
+                    k = cabs[k].info["prev"].upper()
+                while k in cabs:
+                    todo.add(k)
+                    k = (cabs[k].info.get("next") or "").upper()
+        for name in todo:
+            c = cabs[name]
+            got = cab.extract(os.path.join(work, name), os.path.join(work, name + ".d"))
+            files = [(e.name, open(rest.get(e.name.upper()) or got[e.name], "rb").read())
+                     for e in c.files if e.folder not in (0xFFFD, 0xFFFF)]   # (continued: in the one before)
+            i = c.info
+            cab.write(files, os.path.join(work, name + ".new"), compress="mszip", set_id=i.get("set_id", 0),
+                      index=i.get("index", 0), prev=i.get("prev"), next=i.get("next"))
+            new[name] = open(os.path.join(work, name + ".new"), "rb").read()
+        for name, data in new.items():
+            joliet = ("/WIN95/" + name) if iso.has_joliet() else None
+            iso.rm_file(iso_path="/WIN95/" + idents[name], joliet_path=joliet)
+            iso.add_fp(io.BytesIO(data), len(data), "/WIN95/" + idents[name], joliet_path=joliet)
     finally:
         shutil.rmtree(work, ignore_errors=True)              # (no copies left behind)
 
