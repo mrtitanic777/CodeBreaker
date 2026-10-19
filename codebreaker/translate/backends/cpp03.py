@@ -133,10 +133,15 @@ class Writer(object):
         self.cname = cls.name
         self.m = m
         self.vars = {}                                   # name -> C++ type
-        for ctype, name in _split_params(ownership.params_str(old, self.r)):
-            self.vars[name] = ctype
+        if old is not None:
+            for ctype, name in _split_params(ownership.params_str(old, self.r)):
+                self.vars[name] = ctype
         self.parent = cls.extends.simple if cls.extends is not None else None
-        self.ret = ownership.return_cpp_type(old, self.r)
+        self.ret = ownership.return_cpp_type(old, self.r) if old is not None else 'void'
+        self.two_phase = False                           # writing a j2xInit: `return;` is `return this;`
+        self.old = old
+        self.npe = 0                                     # inside a try whose catch a NullPointerException reaches
+        self.cont_next = None                            # the label whose loop body is being written
 
     # ------------------------------------------------------------------ types
     def ctype(self, t, context='local'):
@@ -155,16 +160,45 @@ class Writer(object):
         return out
 
     def block(self, s, out, ind):
+        saved = dict(self.vars)
         if isinstance(s, ir.Block):
             for x in s.stmts:
                 self.stmt(x, out, ind + '\t')
         else:
             self.stmt(s, out, ind + '\t')
+        self.vars = saved
+
+    def loop_body(self, body, out, ind):
+        """A loop's body; when the loop is labelled and continued by label, the body sits in its own block
+        with `label_cont:` after it (so the goto crosses no initialisation)."""
+        lab, self.cont_next = self.cont_next, None
+        if lab is None:
+            self.block(body, out, ind)
+            return
+        out.append(ind + '\t{')
+        self.block(body, out, ind + '\t')
+        out.append(ind + '\t}')
+        out.append(ind + '\t%s_cont:;' % lab)
 
     def stmt(self, s, out, ind):
         if isinstance(s, ir.Block):
             out.append(ind + '{')
             self.block(s, out, ind)
+            out.append(ind + '}')
+        elif isinstance(s, ir.Labeled):
+            lab = s.label
+            used = [n for n in ir.walk(s.body) if isinstance(n, (ir.Break, ir.Continue)) and n.label == lab]
+            if any(isinstance(n, ir.Continue) for n in used):
+                if not isinstance(s.body, (ir.While, ir.DoWhile, ir.For, ir.ForEach)):
+                    raise Decline('continue to a label that is not a loop')
+                self.cont_next = lab
+            self.stmt(s.body, out, ind)
+            if any(isinstance(n, ir.Break) for n in used):
+                out.append(ind + '%s_brk:;' % lab)
+        elif isinstance(s, ir.Sync):                     # as the text path: the lock is dropped, and marked
+            out.append(ind + '/* J2X-REVIEW[synchronized-dropped]: was synchronized(%s) -- add a lock if this '
+                       'state is touched by another thread (network/pool) */ {' % _comment(self.expr(s.lock)[0]))
+            self.block(s.body, out, ind)
             out.append(ind + '}')
         elif isinstance(s, ir.Local):
             name = self.name(s.sym.name)
@@ -193,11 +227,11 @@ class Writer(object):
             out.append(ind + '}')
         elif isinstance(s, ir.While):
             out.append(ind + 'while (%s) {' % self.cond(s.cond))
-            self.block(s.body, out, ind)
+            self.loop_body(s.body, out, ind)
             out.append(ind + '}')
         elif isinstance(s, ir.DoWhile):
             out.append(ind + 'do {')
-            self.block(s.body, out, ind)
+            self.loop_body(s.body, out, ind)
             out.append(ind + '} while (%s);' % self.cond(s.cond))
         elif isinstance(s, ir.For):
             if len(s.init) > 1 and not all(isinstance(i, ir.Local) for i in s.init):
@@ -220,7 +254,7 @@ class Writer(object):
             cond = self.cond(s.cond) if s.cond is not None else ''
             upd = ', '.join(self.expr(u)[0] for u in s.update)
             out.append(ind + 'for (%s; %s; %s) {' % (init, cond, upd))
-            self.block(s.body, out, ind)
+            self.loop_body(s.body, out, ind)
             out.append(ind + '}')
             for l in s.init:                              # the loop variable's scope ends with the loop
                 if isinstance(l, ir.Local):
@@ -230,15 +264,11 @@ class Writer(object):
                 code, it = self.expr(s.expr)
                 out.append(ind + 'return %s;' % unbox(coerce(code, it, self.ret), it, self.ret))
             else:
-                out.append(ind + 'return;')
+                out.append(ind + ('return this;' if self.two_phase else 'return;'))
         elif isinstance(s, ir.Break):
-            if s.label:
-                raise Decline('labelled break')
-            out.append(ind + 'break;')
+            out.append(ind + ('goto %s_brk;' % s.label if s.label else 'break;'))
         elif isinstance(s, ir.Continue):
-            if s.label:
-                raise Decline('labelled continue')
-            out.append(ind + 'continue;')
+            out.append(ind + ('goto %s_cont;' % s.label if s.label else 'continue;'))
         elif isinstance(s, ir.Throw):
             out.append(ind + 'throw %s;' % self.expr(s.expr)[0])
         elif isinstance(s, ir.Switch):
@@ -257,32 +287,61 @@ class Writer(object):
                 out.append(ind + '}')
             out.append(ind + '}')
         elif isinstance(s, ir.Try):
-            if s.resources or s.final is not None:
-                raise Decline('finally / resources')
-            # A catch that a NullPointerException reaches needs the null checks inside the try to jump to
-            # it (Java throws where C++ would crash). The text path models that (_npe_to_catch); the IR
-            # will in phase 2's exceptions pass. Until then such a try is the text path's.
-            if any(t.kind == 'class' and t.name in _CATCHES_NPE for c in s.catches for t in c.types):
-                raise Decline('catch reached by a NullPointerException')
-            out.append(ind + 'try {')
-            self.block(s.body, out, ind)
-            for c in s.catches:
-                if len(c.types) != 1:
-                    raise Decline('multi-catch')
-                ct = self.ctype(c.types[0])
-                name = self.name(c.sym.name)
-                if name in self.vars:
-                    raise Decline('shadowed catch variable')
-                self.vars[name] = ct
-                used = any(isinstance(n, ir.Name) and n.sym.name == c.sym.name for n in ir.walk(c.body))
-                out.append(ind + ('} catch (%s %s) {' % (ct, name) if used else '} catch (%s) {' % ct))   # C4101
-                self.block(c.body, out, ind)
-                self.vars.pop(name, None)
-            out.append(ind + '}')
+            if s.resources:
+                raise Decline('try-with-resources')
+            if s.final is None:
+                self.try_catch(s, out, ind)
+            else:
+                # finally: run on the way out by an exception (catch (...), then rethrow) and on the way out
+                # normally (after the try). A return, break or continue out of the try would skip the second
+                # copy, so such a try is declined until phase 2's exceptions pass.
+                if _leaves([s.body] + [c.body for c in s.catches]):
+                    raise Decline('finally around a return, break or continue')
+                out.append(ind + 'try {')
+                self.try_catch(s, out, ind + '\t')
+                out.append(ind + '} catch (...) {')
+                self.block(s.final, out, ind)
+                out.append(ind + '\tthrow;')
+                out.append(ind + '}')
+                out.append(ind + '{')
+                self.block(s.final, out, ind)
+                out.append(ind + '}')
         elif isinstance(s, ir.Empty):
             out.append(ind + ';')
+        elif isinstance(s, ir.CtorCall):
+            raise Decline('constructor call not first')
         else:
             raise Decline('statement %s' % type(s).__name__)
+
+    def try_catch(self, s, out, ind):
+        """A try and its catches (no finally). Where a catch is one a NullPointerException reaches, every
+        dereference in the try is null-checked to throw Java's exception (j2xNN), so C++ catches it where
+        Java would, instead of crashing."""
+        if not s.catches:
+            out.append(ind + '{')
+            self.block(s.body, out, ind)
+            out.append(ind + '}')
+            return
+        npe = any(t.kind == 'class' and t.name in _CATCHES_NPE for c in s.catches for t in c.types)
+        out.append(ind + 'try {')
+        self.npe += npe
+        try:
+            self.block(s.body, out, ind)
+        finally:
+            self.npe -= npe
+        for c in s.catches:
+            if len(c.types) != 1:
+                raise Decline('multi-catch')
+            ct = self.ctype(c.types[0])
+            name = self.name(c.sym.name)
+            if name in self.vars:
+                raise Decline('shadowed catch variable')
+            self.vars[name] = ct
+            used = any(isinstance(n, ir.Name) and n.sym.name == c.sym.name for n in ir.walk(c.body))
+            out.append(ind + ('} catch (%s %s) {' % (ct, name) if used else '} catch (%s) {' % ct))   # C4101
+            self.block(c.body, out, ind)
+            self.vars.pop(name, None)
+        out.append(ind + '}')
 
     def cond(self, e):
         return self.expr(e)[0]
@@ -365,7 +424,13 @@ class Writer(object):
         ct = self.ctx.field_ctype(base or owner, s.name) or self.ctx.field_ctype(owner, s.name)
         if ct is None:
             raise Decline('field %s.%s' % (owner, s.name))
-        return '%s%s%s' % (recv, '->' if is_pointer(rt) else '.', s.name), ct
+        return '%s%s%s' % (self.checked(recv, rt), '->' if is_pointer(rt) else '.', s.name), ct
+
+    def checked(self, recv, rt):
+        """A pointer receiver, null-checked when a NullPointerException here would be caught."""
+        if self.npe and is_pointer(rt) and recv != 'this' and rt not in _REFLECTION:
+            return 'j2xNN<NullPointerException>(%s)' % recv
+        return recv
 
     def x_Length(self, e):
         a, _t = self.expr(e.arr)
@@ -401,8 +466,11 @@ class Writer(object):
             raise Decline('>>> on %s' % k)
         if e.op in ('==', '!=') and ('JavaString' in lt or 'JavaString' in rt) and 'void*' not in (lt, rt):
             raise Decline('string identity comparison')
+        if e.op in ('==', '!=') and lt != rt and ('JObject' in lt or 'JObject' in rt) and 'void*' not in (lt, rt):
+            raise Decline('identity comparison with a boxed object')
         if e.op == '%' and e.type.kind in ('f32', 'f64'):     # Java's floating remainder: C's fmod
-            return ('(float)fmod((double)(%s), (double)(%s))' if e.type.kind == 'f32' else 'fmod(%s, %s)') % (l, r),                 self.ctype(e.type)
+            fmt = '(float)fmod((double)(%s), (double)(%s))' if e.type.kind == 'f32' else 'fmod(%s, %s)'
+            return fmt % (l, r), self.ctype(e.type)
         return '%s %s %s' % (l, e.op, r), self.ctype(e.type)
 
     def x_Concat(self, e):
@@ -454,27 +522,38 @@ class Writer(object):
         if xt.startswith('JObject') and e.type.kind == 'class' and e.type.simple in typemap.BOXED_VALUE_TYPES:
             return x, 'JObject'                           # (Integer)o stays boxed: o.intValue() is JObject's
         ct = self.ctype(e.type)
-        return '(%s)%s' % (ct, x), ct
+        if e.type.is_prim:                                # grouped: the cast-saturation pass reads the operand
+            return '(%s)(%s)' % (ct, x), ct
+        return '(%s)%s' % (ct, x), ct                     # as the text path: the reflection pass reads
+                                                          # `(T*)recv->newInstance()`
 
     def x_InstanceOf(self, e):
         x, xt = self.expr(e.x)
         target = jtype(e.test)
+        if not target.is_array and target.name in _BOXED_TEST:
+            return self.boxed_instanceof(x, xt, target.name)
         if target.is_array or not self.r.is_pointer(target):
             raise Decline('instanceof %s' % target.name)
+        if is_pointer(xt):
+            return '(dynamic_cast<%s*>(%s) != NULL)' % (target.name, x), 'bool'
         if xt.startswith('JObject'):
             return '(%s).is<%s>()' % (x, target.name), 'bool'
-        if not is_pointer(xt):
-            raise Decline('instanceof on %s' % xt)
-        return '(dynamic_cast<%s*>(%s) != NULL)' % (target.name, x), 'bool'
+        raise Decline('instanceof on %s' % xt)
+
+    def boxed_instanceof(self, x, xt, name):
+        if xt.startswith('JObject') and name in _BOXED_TEST:
+            return '(%s).%s()' % (x, _BOXED_TEST[name]), 'bool'
+        raise Decline('instanceof %s' % name)
 
     def x_Call(self, e):
         s = e.sym
-        if s is None or s.kind != 'method' or s.varargs:
-            raise Decline('call')
+        if s is None or s.kind != 'method':
+            raise Decline('call %s' % (s.kind if s is not None else 'unresolved'))
         owner = s.owner_simple
         if any(a.type is not None and a.type.kind == 'class' and a.type.simple in self.r.markers for a in e.args):
             raise Decline('marker argument')               # the decompiler's EmptyN bridge parameters
-        if owner in typemap.BOXED_VALUE_TYPES and s.name.endswith('Value') and not s.params                 and e.target is not None and not isinstance(e.target, ir.TypeName):
+        if owner in typemap.BOXED_VALUE_TYPES and s.name.endswith('Value') and not s.params \
+                and e.target is not None and not isinstance(e.target, ir.TypeName):
             recv, rt = self.expr(e.target)                # Integer.intValue(): a boxed type is a primitive
             if not rt.startswith('JObject'):              # here, unless it is still in its JObject box
                 ct = self.ctype(e.type)
@@ -483,9 +562,12 @@ class Writer(object):
             recv, rt = self.expr(e.target)
             if rt == 'int':                               # a constant-only enum is its ordinal
                 return '(%s)' % recv, 'int'
-        args = ', '.join(self.expr(a)[0] for a in e.args)
-        if s.owner == 'java.lang.Object':                 # getClass/hashCode/equals on Object: the
-            raise Decline('Object method %s' % s.name)    # transpiler's own lowering (j2xClassOf, ...)
+        if s.owner == 'java.lang.Object':
+            return self.object_method(e)
+        if s.varargs:
+            args = self.varargs(e, owner)
+        else:
+            args = ', '.join(self.expr(a)[0] for a in e.args)
         old = self.ctx.old_method(owner, s.name, s.params) if owner in self.ctx.classes else None
         if owner in self.ctx.classes:
             if old is None:
@@ -505,7 +587,7 @@ class Writer(object):
                     if fn is None:
                         raise Decline('Math.%s' % s.name)
                     return '%s(%s)' % (fn, args), self.ctype(e.type)
-                if owner not in typemap.RUNTIME_STATIC_HOLDERS and owner not in typemap.JAVART_STATICS:
+                if owner not in typemap.RUNTIME_HEADERS and owner not in typemap.JAVART_STATICS:
                     raise Decline('library static call %s.%s' % (owner, s.name))
             return '%s::%s(%s)' % (owner, name, args), ret
         if isinstance(t, ir.Super):
@@ -517,7 +599,42 @@ class Writer(object):
         recv, rt = self.expr(t)
         if rt == 'const char*':
             recv, rt = 'JavaString(%s)' % recv, 'JavaString'
-        return '%s%s%s(%s)' % (recv, '->' if is_pointer(rt) else '.', name, args), ret
+        return '%s%s%s(%s)' % (self.checked(recv, rt), '->' if is_pointer(rt) else '.', name, args), ret
+
+    def object_method(self, e):
+        """java.lang.Object's own methods, as the transpiler lowers them."""
+        s, t = e.sym, e.target
+        if t is None or isinstance(t, ir.This):
+            recv, rt = 'this', self.cname + '*'
+        else:
+            recv, rt = self.expr(t)
+        if s.name == 'getClass' and not e.args:
+            if not is_pointer(rt):
+                raise Decline('getClass on %s' % rt)
+            return 'j2xClassOf(typeid(*%s))' % self.checked(recv, rt), 'Class*'
+        if s.name == 'equals' and len(e.args) == 1 and is_pointer(rt):
+            other, ot = self.expr(e.args[0])            # Object.equals is identity
+            if is_pointer(ot) or other == 'NULL':
+                return '(%s == %s)' % (recv, other), 'bool'
+        raise Decline('Object method %s' % s.name)
+
+    def varargs(self, e, owner):
+        """A varargs call's arguments: the trailing ones packed into the array the declaration takes."""
+        s = e.sym
+        if owner not in self.ctx.classes:
+            raise Decline('library varargs %s.%s' % (owner, s.name))
+        old = self.ctx.old_method(owner, s.name, s.params)
+        if old is None:
+            raise Decline('method %s.%s not found' % (owner, s.name))
+        last = _split_params(ownership.params_str(old, self.r))[-1][0]
+        fixed = len(s.params) - 1
+        args = [self.expr(a)[0] for a in e.args]
+        if len(e.args) == len(s.params) and e.args[-1].type is not None and e.args[-1].type.kind in ('array', 'null'):
+            return ', '.join(args)                      # the array itself was passed
+        rest = args[fixed:]
+        elem = _elem(last.replace('const ', '').rstrip('&').strip())
+        packed = ('(JArrayInit<%s >(), %s)' % (elem, ', '.join(rest)) if rest else 'JArray<%s >()' % elem)
+        return ', '.join(args[:fixed] + [packed])
 
     def library_field(self, owner, name, t):
         if owner == 'System' and name in ('out', 'err'):
@@ -546,6 +663,12 @@ class Writer(object):
         if ret is None or ret.kind == 'void':
             return 'void'
         return self.ctype(ret, 'return')
+
+    def x_ClassLit(self, e):
+        t = e.of
+        if t is None or t.kind != 'class':
+            raise Decline('class literal of %r' % (t,))
+        return 'j2xClassOf(typeid(%s))' % _CLASS_LIT_TYPE.get(t.simple, t.simple), 'Class*'
 
     def x_New(self, e):
         if e.body is not None or e.outer is not None:
@@ -586,6 +709,33 @@ _MATH.pop('PI', None)
 
 
 _BITS = frozenset(('<<', '>>', '&', '|', '^'))
+_REFLECTION = frozenset(('Class*', 'Constructor*'))   # left as written: the reflection pass rewrites them
+_BOXED_TEST = {'String': 'isString', 'Integer': 'isInteger', 'Character': 'isCharacter', 'Boolean': 'isBoolean'}
+# X.class for a boxed or built-in type: the C++ type it is (as the transpiler's statement layer has it)
+_CLASS_LIT_TYPE = {'Byte': 'signed char', 'Short': 'short', 'Integer': 'int', 'Long': 'long long',
+                   'Float': 'float', 'Double': 'double', 'Character': 'char', 'Boolean': 'bool',
+                   'String': 'JavaString', 'Object': 'JObject'}
+
+
+def _comment(text):
+    return text.replace('*/', '* /')
+
+
+def _leaves(stmts):
+    """Whether any of these statement trees returns, or breaks or continues out of them."""
+    def walk(n, loops, labels):
+        if isinstance(n, ir.Return):
+            return True
+        if isinstance(n, ir.Break):
+            return (n.label not in labels) if n.label else loops == 0
+        if isinstance(n, ir.Continue):
+            return (n.label not in labels) if n.label else loops == 0
+        if isinstance(n, (ir.Lambda, ir.ClassDecl, ir.LocalClass)):
+            return False
+        inner = loops + isinstance(n, (ir.While, ir.DoWhile, ir.For, ir.ForEach, ir.Switch))
+        labs = labels | {n.label} if isinstance(n, ir.Labeled) else labels
+        return any(walk(c, inner, labs) for c in n.children())
+    return any(s is not None and walk(s, 0, frozenset()) for s in stmts)
 _CATCHES_NPE = frozenset(('java.lang.Exception', 'java.lang.RuntimeException', 'java.lang.Throwable',
                           'java.lang.NullPointerException'))
 _UNBOX = {'int': 'intValue', 'short': 'shortValue', 'signed char': 'byteValue', 'long long': 'longValue',
@@ -675,6 +825,61 @@ def _cstring(v):
     return '"%s"' % ''.join(out)
 
 
+def ctor_parts(ctx, cls, m, old, two_phase):
+    """A constructor from the IR: (super-arguments or None, body lines). Ordinary classes: super(args)
+    is the base initialiser, so its arguments come back separately; this(args) is declined (C++03 has no
+    delegation: the transpiler inlines the other constructor). Two-phase classes: super(args) is
+    Parent::j2xInit(args), this(args) is C::j2xInit(args), the instance initialisers are the caller's."""
+    if ir.unsupported(m):
+        raise Decline('unsupported construct')
+    w = Writer(ctx, cls, m, old)
+    stmts = list(m.body.stmts) if m.body is not None else []
+    first = stmts[0] if stmts and isinstance(stmts[0], ir.CtorCall) else None
+    if first is not None:
+        stmts = stmts[1:]
+    args = None
+    if first is not None and not first.kind.endswith(':implicit'):
+        if first.target is not None:
+            raise Decline('qualified super call')
+        args = ', '.join(w.expr(a)[0] for a in first.args)
+    out = []
+    if two_phase:
+        w.two_phase = True
+        w.ret = cls.name + '*'
+        if first is not None and first.kind.startswith('this'):
+            out.append('%s::j2xInit(%s);' % (cls.name, args or ''))
+            args = None
+    elif first is not None and first.kind.startswith('this'):
+        raise Decline('delegating constructor')
+    for s in stmts:
+        w.stmt(s, out, '')
+    return (first.kind.split(':')[0] if first is not None else None), args, out
+
+
+def field_init(ctx, cls, f):
+    """A field initialiser's C++ expression, converted to the field's type."""
+    if f.init is None or ir.unsupported(f):
+        raise Decline('field initialiser')
+    w = Writer(ctx, cls, None, None)
+    code, ct = w.expr(f.init)
+    owner = cls.name
+    target = ctx.field_ctype(owner, f.sym.name)
+    if target is None:
+        raise Decline('field %s.%s' % (owner, f.sym.name))
+    return unbox(coerce(code, ct, target), ct, target)
+
+
+def block_lines(ctx, cls, m):
+    """An initialiser block's statements (static {} or instance {})."""
+    if ir.unsupported(m):
+        raise Decline('unsupported construct')
+    w = Writer(ctx, cls, None, None)
+    out = []
+    for s in m.body.stmts:
+        w.stmt(s, out, '')
+    return out
+
+
 def method_body(ctx, cls, m, old):
     """The C++ body lines of IR method `m`, or raise Decline."""
     if ir.unsupported(m):
@@ -694,7 +899,9 @@ class Bodies(object):
             for c in u.types:
                 self.decls.setdefault(c.name, c)
         self.written = 0
+        self.written_ctors = 0
         self.declined = collections.Counter()
+        self.reasons = collections.Counter()              # the full reason, for the work list
 
     def _find(self, cls_name, old):
         c = self.decls.get(cls_name)
@@ -712,6 +919,87 @@ class Bodies(object):
                     return c, m
         return c, None
 
+    def _ctor(self, cls_name, old):
+        c = self.decls.get(cls_name)
+        if c is None:
+            return None, None
+        ctors = [m for m in c.members if isinstance(m, ir.MethodDecl) and m.kind == 'ctor']
+        if old is None:                                   # the implicit default constructor
+            return c, next((m for m in ctors if not m.params), None)
+        want = [p.jtype.name + '[]' * p.jtype.array_dims for p in old.params]
+        for m in ctors:
+            if len(m.params) != len(old.params):
+                continue
+            try:
+                got = [jtype(p.type).name + '[]' * jtype(p.type).array_dims for p in m.params]
+            except Decline:
+                continue
+            if got == want:
+                return c, m
+        return c, None
+
+    def ctor(self, cls_name, old, two_phase=False):
+        """(kind 'super'/'this'/None, its arguments, body lines) for the transpiler's constructor `old`,
+        or None."""
+        c, m = self._ctor(cls_name, old)
+        if m is None:
+            self.declined['ctor not found'] += 1
+            return None
+        try:
+            parts = ctor_parts(self.ctx, c, m, old, two_phase)
+        except Decline as e:
+            self.declined['ctor ' + (str(e).split(' ')[0] if str(e) else '')] += 1
+            self.reasons['ctor: ' + str(e)] += 1
+            return None
+        self.written_ctors += 1
+        return parts
+
+    def field_init(self, cls_name, name):
+        """The C++ initialiser expression of field `name`, or None."""
+        c = self.decls.get(cls_name)
+        f = next((x for x in c.members if isinstance(x, ir.FieldDecl) and x.sym is not None
+                  and x.sym.name == name), None) if c is not None else None
+        if f is None or f.init is None:
+            return None
+        try:
+            return field_init(self.ctx, c, f)
+        except Decline as e:
+            self.reasons['field init: ' + str(e)] += 1
+            return None
+
+    def instance_inits(self, cls_name):
+        """`this->f = init;` for each instance field initialiser and the instance {} blocks, in source
+        order -- or None (the transpiler's own, then)."""
+        c = self.decls.get(cls_name)
+        if c is None:
+            return None
+        out = []
+        try:
+            for x in c.members:
+                if isinstance(x, ir.FieldDecl) and x.init is not None and x.sym is not None and not x.sym.static:
+                    if x.type is not None and x.type.kind == 'array' and isinstance(x.init, ir.Lit) \
+                            and x.init.value is None:
+                        continue                          # an array field = null: JArray starts empty
+                    out.append('this->%s = %s;' % (x.sym.name, field_init(self.ctx, c, x)))
+                elif isinstance(x, ir.MethodDecl) and x.kind == 'init':
+                    out += block_lines(self.ctx, c, x)
+        except Decline as e:
+            self.reasons['instance init: ' + str(e)] += 1
+            return None
+        return out
+
+    def static_blocks(self, cls_name):
+        """Each static {} block's lines, in source order, or None."""
+        c = self.decls.get(cls_name)
+        if c is None:
+            return None
+        try:
+            return [block_lines(self.ctx, c, x) for x in c.members
+                    if isinstance(x, ir.MethodDecl) and x.kind == 'static_init']
+        except Decline as e:
+            self.reasons['static block: ' + str(e)] += 1
+            return None
+
     def body(self, cls_name, old):
         """Body lines for the transpiler's method `old` of class `cls_name`, or None (use its own)."""
         c, m = self._find(cls_name, old)
@@ -722,6 +1010,7 @@ class Bodies(object):
             lines = method_body(self.ctx, c, m, old)
         except Decline as e:
             self.declined[str(e).split(' ')[0] if str(e) else 'declined'] += 1
+            self.reasons[str(e)] += 1
             return None
         self.written += 1
         return lines

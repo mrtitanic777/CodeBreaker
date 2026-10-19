@@ -480,4 +480,9 @@ namespace Arrays {
 	template<class A> inline JList<void* > asList(const A&) { return JList<void* >(); }  // stub: empty (elements not recoverable)
 }
 
+// A dereference where Java would throw NullPointerException and a catch is waiting for it: the
+// translator wraps the receiver (j2xNN<NullPointerException>(p)->f), so C++ throws Java's exception
+// to that catch instead of crashing. E is complete where it is used (the .cpp includes it).
+template<class E, class T> inline T* j2xNN(T* p) { if (!p) throw new E(); return p; }
+
 #endif // JAVART_H

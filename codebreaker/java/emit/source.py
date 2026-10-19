@@ -217,7 +217,8 @@ def _render_statics(cls, resolver, ledger):
                            '(C++03 has no braced new[]; length tracked)',
                            line=f.line, severity=Severity.LOW, source='emit', rule='static-aggregate-array')
             continue
-        init = _static_init(f, ft, ledger, cls, resolver, own_statics)
+        tree = TREE_BODIES.field_init(cls.name, f.name) if TREE_BODIES is not None else None
+        init = tree if tree is not None else _static_init(f, ft, ledger, cls, resolver, own_statics)
         if init is None:
             defs.append('%s %s::%s;' % (ft, cls.name, name))
         elif _is_deferrable_static_init(init, ft):
@@ -404,6 +405,9 @@ def _instance_init_lines(cls, resolver, ledger):
     """C++ for Java INSTANCE field initializers + instance `{ }` blocks, in declaration order.
     Java runs these at the top of every constructor that does NOT delegate via this(...). Dropping
     them was the null-deref / uninitialized-field crash class (e.g. EntityPlayer.inventory)."""
+    tree = TREE_BODIES.instance_inits(cls.name) if TREE_BODIES is not None else None
+    if tree is not None:                                  # phase 1: the IR's initialisers
+        return tree
     stmts = []
     for f in cls.instance_fields():
         if f.initializer is None:
@@ -428,6 +432,17 @@ def _instance_init_lines(cls, resolver, ledger):
 
 def _render_ctor(cls, m, resolver, ledger):
     params = ownership.params_str(m, resolver)
+    tree = TREE_BODIES.ctor(cls.name, m) if TREE_BODIES is not None else None
+    if tree is not None:                                  # phase 1: the IR's constructor
+        _kind, args, body = tree
+        items = (['%s(%s)' % (cls.parent, args)] if args is not None and cls.parent else []) + _init_list(cls, resolver)
+        L = ['%s::%s(%s)' % (cls.name, cls.name, params)]
+        if items:
+            L.append('\t: ' + '\n\t, '.join(items))
+        L.append('{')
+        L += ['\t' + line for line in _instance_init_lines(cls, resolver, ledger) + body]
+        L.append('}')
+        return L
     body = translate_body(m, cls, resolver, ledger)
 
     # extract a leading super(args) into the C++ base-class init (C++ has no super() statement)
@@ -486,6 +501,17 @@ def _render_two_phase(cls, resolver, ledger):
     ctors = cls.constructors() or [None]
     for m in ctors:
         params = ownership.params_str(m, resolver) if m is not None else ''
+        tree = TREE_BODIES.ctor(cls.name, m, True) if TREE_BODIES is not None else None
+        if tree is not None:                              # phase 1: the IR's constructor
+            kind, args, body = tree
+            head = []
+            if kind != 'this' and parent_two:
+                head.append('%s::j2xInit(%s);' % (cls.parent, args or ''))   # super(...), or Java's implicit one
+            inits = [] if kind == 'this' else _instance_init_lines(cls, resolver, ledger)
+            L += ['%s* %s::j2xInit(%s)' % (cls.name, cls.name, params), '{']
+            L += ['\t' + x for x in head + inits + body]
+            L += ['\treturn this;', '}', '']
+            continue
         body = translate_body(m, cls, resolver, ledger) if m is not None else []
         delegating = any(_THIS_CALL.match(line) for line in body)
         out, head = [], []
@@ -941,6 +967,11 @@ def render_source(cls, resolver, ledger=None, cpp_std=None, platform_label=None)
     # Static field DEFS above are zero-initialized; initStatics() assigns the real values, in order.
     static_inits = getattr(cls, 'static_inits', [])
     init_body = list(static_init_lines)                  # deferred static FIELD initializers first
+    tree = TREE_BODIES.static_blocks(cls.name) if TREE_BODIES is not None and static_inits else None
+    if tree is not None and len(tree) == len(static_inits):   # phase 1: the IR's static blocks
+        for lines in tree:
+            init_body += lines
+        static_inits = []
     for block in static_inits:                           # then the Java static{} block bodies
         init_body += _translate_block_lines(cls, resolver, ledger, _strip_block_braces(block), is_static=True)
     # ALWAYS emit initStatics() (empty when nothing to defer) so the driver can call it on any class

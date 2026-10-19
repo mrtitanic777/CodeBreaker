@@ -17,7 +17,14 @@ import java.util.List;
 
 public class Calc {
 	public static int total;
+	public static int[] table;
 	private int[] cells = new int[8];
+
+	static {
+		table = new int[4];
+		table[1] = 5;
+		total = table[1] * 2;
+	}
 	private List items = new ArrayList();
 	public String name = "calc";
 
@@ -60,6 +67,56 @@ public class Calc {
 		}
 	}
 
+	public int cleanup(int var1) {
+		int var2 = 0;
+		try {
+			var2 = 100 / (var1 & 3);
+		} catch (ArithmeticException var3) {
+			var2 = -1;
+		} finally {
+			total += 1;
+		}
+		return var2 + total;
+	}
+
+	public int search(int var1) {
+		int var2 = 0;
+		label9:
+		for (int var3 = 0; var3 < 5; ++var3) {
+			for (int var4 = 0; var4 < 5; ++var4) {
+				if (var3 * var4 == (var1 & 15)) {
+					var2 = var3 * 10 + var4;
+					break label9;
+				}
+				if (var4 > var3) {
+					continue label9;
+				}
+			}
+		}
+		return var2;
+	}
+
+	public static int sum(int... var0) {
+		int var1 = 0;
+		for (int var2 = 0; var2 < var0.length; ++var2) {
+			var1 += var0[var2];
+		}
+		return var1;
+	}
+
+	public static int sums(int var0) {
+		return sum() + sum(var0) + sum(var0, 2, 3) + sum(new int[]{var0, var0});
+	}
+
+	public static int tabled(int var0) {
+		return table[var0 & 3] + total;
+	}
+
+	public static int made(int var0) {
+		Base var1 = new Base(var0, 3);
+		return var1.size + var1.scale;
+	}
+
 	public int count(int var1) {
 		this.items.add(this.name);
 		switch (var1 & 3) {
@@ -77,10 +134,43 @@ public class Calc {
 needs_tools = pytest.mark.skipif(not (java.compiler() and java.jdk()[0]), reason='needs g++ and a JDK')
 
 
+BASE = '''public class Base {
+	public int size;
+	public int scale = 2;
+
+	public Base(int var1) {
+		this.size = var1 * this.scale;
+	}
+
+	public Base(int var1, int var2) {
+		this(var1);
+		this.scale += var2;
+	}
+}
+'''
+
+SUB = '''public class Sub extends Base {
+	public int extra = 7;
+
+	public Sub(int var1) {
+		super(var1 + 1);
+		this.extra += this.size;
+	}
+
+	public static int build(int var0) {
+		Sub var1 = new Sub(var0);
+		return var1.extra * 3 + var1.size;
+	}
+}
+'''
+
+
 @pytest.fixture(scope='module')
 def tree(tmp_path_factory):
     src = tmp_path_factory.mktemp('src')
     (src / 'Calc.java').write_text(SOURCE, encoding='utf-8')
+    (src / 'Base.java').write_text(BASE, encoding='utf-8')
+    (src / 'Sub.java').write_text(SUB, encoding='utf-8')
     out = tmp_path_factory.mktemp('cpp')
     old = os.environ.get('CB_TREE_BODIES')
     os.environ['CB_TREE_BODIES'] = '1'
@@ -98,7 +188,9 @@ def tree(tmp_path_factory):
 def test_bodies_come_from_the_tree(tree):
     _src, out, s = tree
     written, declined = s['tree_bodies']
-    assert written >= 4, (written, declined)
+    assert written >= 10 and set(declined) <= {'ctor delegating'}, (written, declined)   # this(...): text path
+    sub = (out / 'Sub.cpp').read_text(encoding='utf-8')
+    assert 'Sub::Sub(int var1)' in sub and ': Base(var1 + 1)' in sub    # super(args) as the base initialiser
     text = (out / 'Calc.cpp').read_text(encoding='utf-8')
     assert 'static_cast<int>(static_cast<unsigned int>(' in text   # >>> as an unsigned shift, wrapping
     assert 'fmod(' in text                            # float % as fmod
@@ -112,7 +204,11 @@ def test_tree_bodies_beside_the_jvm(tree, tmp_path):
     r = probe.run(staged, str(out), parse.parse_file(str(src / 'Calc.java')), str(tmp_path / 'work'),
                   java.compiler(), javac, jvm)
     # guarded: a NullPointerException caught by catch (Exception) -- the text path's, until phase 2
-    assert set(r['methods']) >= {'fill', 'mix', 'wrap', 'label', 'count', 'guarded'}, (r['methods'], r['why'])
+    assert set(r['methods']) >= {'fill', 'mix', 'wrap', 'label', 'count', 'guarded', 'cleanup', 'search',
+                                 'sums', 'tabled', 'made'}, (r['methods'], r['why'])
+    sub = probe.run(staged, str(out), parse.parse_file(str(src / 'Sub.java')), str(tmp_path / 'work2'),
+                    java.compiler(), javac, jvm)
+    assert 'build' in sub['methods'] and sub['differs'] == [], (sub['why'], sub['differs'][:4])
     assert r['differs'] == [], r['differs'][:6]
 
 
