@@ -1312,6 +1312,10 @@ def _build16(b, path, m, folder):
              "option modname='%s'" % definitions.module_name(path),
              ] + (["option heapsize=%d" % nef.h["heap"]] if nef.h["heap"] else []) \
         + (["option stack=%d" % nef.h["stack"]] if nef.h["stack"] else [])     # (the linker refuses a size of 0)
+    if not nef.h.get("autodata_seg"):
+        # (no automatic data segment in the original -- WIN87EM, SYSTEM.DRV: their functions run on
+        # the caller's DS. The build's own little DGROUP made one, and the loader set it up)
+        lines.append("option noautodata")
     if definitions.description(path):
         lines.append("option description '%s'" % definitions.description(path).replace("'", " "))
     # what the original's header says of it, as its linker was told: the Windows version it
