@@ -72,5 +72,5 @@ def test_a_class_that_does_not_compile_says_why(tmp_path):
         pytest.skip('needs a host C++ compiler (g++)')
     bad = tmp_path / 'Bad.cpp'
     bad.write_text('int f() { return undeclared_name; }\n', encoding='utf-8')
-    verdict, reason, limits, detail = java.judge((java.compiler(), str(tmp_path), None, '', '', '', str(tmp_path)), ('Bad', str(bad), ''))
+    verdict, reason, limits, detail = java.judge((java.compiler(), str(tmp_path), None, '', '', '', str(tmp_path), {}), ('Bad', str(bad), ''))
     assert verdict == 'no-compile' and 'undeclared_name' in reason and limits == []

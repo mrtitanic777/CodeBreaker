@@ -31,7 +31,7 @@ import re
 import struct
 import subprocess
 
-REV = 5
+REV = 6
 TIMEOUT = 60
 _STEP = 180             # seconds any one compile or link may take
 
@@ -325,9 +325,10 @@ def _dumpers(methods, lang):
     return out
 
 
-def java_harness(cls_name, methods, package=None):
-    """J2XProbe, in the class's own package (so package-private members can be reached)."""
-    lines = (['package %s;' % package] if package else []) + ['public class J2XProbe {']
+def java_harness(cls_name, methods, package=None, name='J2XProbe'):
+    """The Java harness class `name`, in the class's own package (so package-private members can be
+    reached)."""
+    lines = (['package %s;' % package] if package else []) + ['public class %s {' % name]
     lines += _JAVA_HELPERS.strip('\n').split('\n') + _dumpers(methods, 'java')
     lines.append('  public static void main(String[] a) {')
     for mi, (name, slots, result, made) in enumerate(methods):
@@ -523,8 +524,87 @@ def build_native(cxx, cpp_dir, harness, exe, lib, prefix=None):
 
 
 # ------------------------------------------------------------------------------------------------ run
-def run(java_dir, cpp_dir, cls, work, cxx, javac, java, prefix=None):
-    """`java_dir`: the module's sources laid out by package (stage_sources). -> dict(methods=[...],
+def harness_name(cls_name):
+    return 'J2XProbe_' + cls_name
+
+
+def compile_java(java_dir, todo, work, javac, size=40, jobs=None, tag='batch'):
+    """Compile the Java harnesses of `todo` [(cls, methods)] -- in batches of `size`, one javac each
+    (javac's start and the classes the harnesses share are paid once a batch, not once a class: it was
+    three quarters of a class's time), the batches side by side. A batch javac rejects is split in half
+    and tried again, so a class whose source cannot compile (LWJGL not on the classpath, say) fails alone.
+    -> {class name: (classes folder, harness class to run) or ('', why)}"""
+    from concurrent.futures import ThreadPoolExecutor
+    out = {}
+    root = os.path.join(work, 'probe', '_java')
+
+    def attempt(group, label):
+        jdir = os.path.join(root, label)
+        files = []
+        for cls, methods in group:
+            pkg = cls.package
+            folder = os.path.join(jdir, *(pkg.split('.') if pkg else []))
+            os.makedirs(folder, exist_ok=True)
+            path = os.path.join(folder, harness_name(cls.name) + '.java')
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(java_harness(cls.name, methods, pkg, harness_name(cls.name)))
+            files.append(path)
+        listing = os.path.join(jdir, 'sources.txt')        # an @file: the command line stays short
+        with open(listing, 'w', encoding='utf-8') as f:
+            f.write('\n'.join('"%s"' % x.replace('\\', '/') for x in files))
+        try:
+            r = subprocess.run([javac, '-nowarn', '-encoding', 'UTF-8', '-sourcepath', java_dir, '-d', jdir,
+                                '@' + listing], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                               timeout=TIMEOUT * 3 + 10 * len(group))
+        except subprocess.TimeoutExpired:
+            return False, 'javac did not finish'
+        if r.returncode != 0:
+            return False, 'javac: ' + next((l for l in r.stdout.decode('utf-8', 'replace').splitlines()
+                                             if 'error' in l), 'failed')[:180]
+        for cls, _m in group:
+            out[cls.name] = (jdir, ((cls.package + '.') if cls.package else '') + harness_name(cls.name))
+        return True, ''
+
+    def settle(group, label):
+        ok, why = attempt(group, label)
+        if ok:
+            return
+        if len(group) == 1:
+            out[group[0][0].name] = ('', why)
+            return
+        half = len(group) // 2
+        settle(group[:half], label + 'a')
+        settle(group[half:], label + 'b')
+
+    batches = [todo[i:i + size] for i in range(0, len(todo), size)]
+    if jobs is None:
+        from codebreaker.base import parallel
+        jobs = parallel.workers()
+    with ThreadPoolExecutor(max(1, min(jobs, len(batches) or 1))) as pool:
+        list(pool.map(lambda nb: settle(nb[1], '%s%d' % (tag, nb[0])), enumerate(batches)))
+    return out
+
+
+def plan(java_dir, cpp_dir, names):
+    """[(cls, methods)] of the named classes that have something to run (see `probeable`)."""
+    out = []
+    for name in names:
+        cls = lookup(java_dir, name)
+        if cls is None:
+            continue
+        try:
+            with open(os.path.join(cpp_dir, name + '.h'), encoding='utf-8', errors='replace') as f:
+                methods = probeable(cls, f.read(), java_dir, cpp_dir)
+        except OSError:
+            continue
+        if methods:
+            out.append((cls, methods))
+    return out
+
+
+def run(java_dir, cpp_dir, cls, work, cxx, javac, java, prefix=None, compiled=None):
+    """`java_dir`: the module's sources laid out by package (stage_sources); `compiled`: compile_java's
+    answer for the module, when the harnesses were compiled in batches beforehand. -> dict(methods=[...],
     judged=n, total=n, cases=n, differs=[(method, args, java, cpp)], why='', unsteady=n)."""
     header = os.path.join(cpp_dir, cls.name + '.h')
     try:
@@ -538,29 +618,20 @@ def run(java_dir, cpp_dir, cls, work, cxx, javac, java, prefix=None):
         res['why'] = 'no method it can call and compare (its arguments made, its result or object read back)'
         return res
     folder = os.path.join(work, 'probe', cls.name)
-    jdir = os.path.join(folder, 'java')
-    pkg = cls.package
-    hdir = os.path.join(jdir, *(pkg.split('.') if pkg else []))
-    os.makedirs(hdir, exist_ok=True)
-    with open(os.path.join(hdir, 'J2XProbe.java'), 'w', encoding='utf-8') as f:
-        f.write(java_harness(cls.name, methods, pkg))
-    try:
-        r = subprocess.run([javac, '-nowarn', '-encoding', 'UTF-8', '-sourcepath', java_dir, '-d', jdir,
-                            os.path.join(hdir, 'J2XProbe.java')], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                           timeout=TIMEOUT * 3)
-    except subprocess.TimeoutExpired:
-        res['why'] = 'javac did not finish'
-        return res
-    if r.returncode != 0:
-        res['why'] = 'javac: ' + next((l for l in r.stdout.decode('utf-8', 'replace').splitlines() if 'error' in l),
-                                      'failed')[:180]
+    os.makedirs(folder, exist_ok=True)
+    got = (compiled or {}).get(cls.name)
+    if got is None:                                       # not compiled with the module's batch: alone
+        got = compile_java(java_dir, [(cls, methods)], work, javac, tag=cls.name).get(cls.name)
+    jdir, main = got
+    if not jdir:
+        res['why'] = main
         return res
     # the original runs twice: a method any of whose results changes between two runs of Java itself
     # (a Random seeded from the clock, the time, an identity hash) is left out whole
     runs = []
     for _twice in range(2):
         try:
-            r = subprocess.run([java, '-cp', jdir, (pkg + '.J2XProbe') if pkg else 'J2XProbe'],
+            r = subprocess.run([java, '-cp', jdir, main],
                                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=TIMEOUT)
         except subprocess.TimeoutExpired:
             res['why'] = 'the Java side did not finish'
