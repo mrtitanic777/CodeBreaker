@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include "JArray.h"
+#include "Regex.h"
 
 // Java's Double.toString / Float.toString -- what `"" + d`, StringBuilder.append(d) and String.valueOf(d)
 // print: the SHORTEST decimal that reads back to the same double (float), always with a fraction digit,
@@ -105,8 +106,48 @@ public:
 	int indexOf(int ch, int from) const { size_type p = find((char)ch, (size_type)from); return p == npos ? -1 : (int)p; }
 	int lastIndexOf(int ch) const { size_type p = rfind((char)ch); return p == npos ? -1 : (int)p; }
 	int lastIndexOf(const std::string& s) const { size_type p = rfind(s); return p == npos ? -1 : (int)p; }
-	int compareTo(const std::string& o) const { return compare(o); }
-	int hashCode() const { int h = 0; for (size_type i = 0; i < size(); ++i) h = h * 31 + (*this)[i]; return h; }
+	// Java's String is UTF-16 and these are defined on its chars: compareTo is the difference of the first
+	// chars that differ (else of the lengths), hashCode is s[0]*31^(n-1) + ... FIXED BUG string-compare:
+	// compareTo gave std::string's -1/0/1, and hashCode summed signed bytes, wrong past ASCII ("§cRed").
+	// The text here is UTF-8, decoded to UTF-16 units; a byte that is not valid UTF-8 counts as itself.
+	static void _utf16(const std::string& s, std::vector<unsigned short>& u) {
+		u.clear();
+		u.reserve(s.size());
+		for (size_type i = 0; i < s.size(); ) {
+			unsigned c = (unsigned char)s[i];
+			int n = c >= 0xF0 && c < 0xF8 ? 3 : c >= 0xE0 && c < 0xF0 ? 2 : c >= 0xC0 && c < 0xE0 ? 1 : 0;
+			bool good = n > 0;                               // the continuation bytes are checked below
+			unsigned cp = c & (0x3F >> n);
+			for (int k = 1; good && k <= n; ++k) {
+				if (i + k >= s.size() || ((unsigned char)s[i + k] & 0xC0) != 0x80) good = false;
+				else cp = (cp << 6) | ((unsigned char)s[i + k] & 0x3F);
+			}
+			if (!good) { u.push_back((unsigned short)c); ++i; continue; }
+			if (cp >= 0x10000) {
+				cp -= 0x10000;
+				u.push_back((unsigned short)(0xD800 + (cp >> 10)));
+				u.push_back((unsigned short)(0xDC00 + (cp & 0x3FF)));
+			} else {
+				u.push_back((unsigned short)cp);
+			}
+			i += n + 1;
+		}
+	}
+	int compareTo(const std::string& o) const {
+		std::vector<unsigned short> a, b;
+		_utf16(*this, a);
+		_utf16(o, b);
+		size_type n = a.size() < b.size() ? a.size() : b.size();
+		for (size_type i = 0; i < n; ++i) if (a[i] != b[i]) return (int)a[i] - (int)b[i];
+		return (int)a.size() - (int)b.size();
+	}
+	int hashCode() const {
+		std::vector<unsigned short> u;
+		_utf16(*this, u);
+		unsigned h = 0;                                      // unsigned: Java's int overflow wraps
+		for (size_type i = 0; i < u.size(); ++i) h = h * 31u + u[i];
+		return (int)h;
+	}
 	JavaString substring(int a) const { return JavaString(std::string::substr((size_type)a)); }
 	JavaString substring(int a, int b) const { return JavaString(std::string::substr((size_type)a, (size_type)(b - a))); }
 	// substr() shadows std::string::substr so a Java `.substring()` lowered to `.substr()` still yields a
@@ -157,22 +198,72 @@ public:
 	// java.lang.String.getBytes([charset]) -> a COPY of the bytes as byte[] (JArray<unsigned char>),
 	// matching Java's return type so `byte[] b = s.getBytes("UTF-8")` (NBT/packets) assigns + `b.length`.
 	JArray<unsigned char> getBytes(...) const { return _copyOut<unsigned char>(*this); }
-	JavaString replaceAll(const std::string&, const std::string&) const { return *this; }  // PORT: no regex
-	// String.split: splits on a LITERAL delimiter (regex not ported). Returns a JArray.
-	JArray<JavaString> split(const std::string& delim) const {
+	// String.replaceAll / replaceFirst / matches / split take Java regular expressions (Regex.h). FIXED BUG
+	// replaceall-noop: replaceAll returned the string unchanged, so SoundPool's sound names kept their '/'.
+	// In the replacement, $n is group n and \x is x, as in Java.
+	JavaString replaceAll(const std::string& re, const std::string& rep) const { return _replace(re, rep, true); }
+	JavaString replaceFirst(const std::string& re, const std::string& rep) const { return _replace(re, rep, false); }
+	bool matches(const std::string& re) const { std::vector<int> g; return J2xRegex(re).matchAll(*this, g); }
+	// String.split(regex): as Java, trailing empty strings are dropped ("a:b:".split(":") is [a, b]) and a
+	// zero-width match at the start makes no leading empty one; "".split(x) is [""].
+	JArray<JavaString> split(const std::string& re) const {
 		std::vector<JavaString> parts;
-		if (delim.empty()) { parts.push_back(*this); }
-		else {
-			size_type start = 0, p;
-			while ((p = find(delim, start)) != npos) {
-				parts.push_back(JavaString(substr(start, p - start)));
-				start = p + delim.size();
+		if (empty()) {
+			parts.push_back(JavaString(""));
+		} else {
+			J2xRegex rx(re);
+			std::vector<int> g;
+			size_type start = 0;
+			int from = 0;
+			while (from <= (int)size()) {
+				int st = rx.find(*this, from, g);
+				if (st < 0) break;
+				int en = g[1];
+				if (en == 0) { from = 1; continue; }
+				parts.push_back(JavaString(substr(start, (size_type)st - start)));
+				start = (size_type)en;
+				from = en > st ? en : st + 1;
 			}
 			parts.push_back(JavaString(substr(start)));
+			while (!parts.empty() && parts.back().empty()) parts.pop_back();
 		}
 		JArray<JavaString> r((int)parts.size());
 		for (size_type i = 0; i < parts.size(); ++i) r[(int)i] = parts[i];
 		return r;
+	}
+	JavaString _replace(const std::string& re, const std::string& rep, bool all) const {
+		J2xRegex rx(re);
+		std::vector<int> g;
+		std::string out;
+		size_type last = 0;
+		int from = 0;
+		while (from <= (int)size()) {
+			int st = rx.find(*this, from, g);
+			if (st < 0) break;
+			out.append(*this, last, (size_type)st - last);
+			for (size_type i = 0; i < rep.size(); ++i) {
+				char c = rep[i];
+				if (c == '\\' && i + 1 < rep.size()) {
+					out += rep[++i];
+				} else if (c == '$' && i + 1 < rep.size() && rep[i + 1] >= '0' && rep[i + 1] <= '9') {
+					int n = rep[++i] - '0';
+					if (n <= rx.ngroups && g[2 * n] >= 0) out.append(*this, (size_type)g[2 * n], (size_type)(g[2 * n + 1] - g[2 * n]));
+				} else {
+					out += c;
+				}
+			}
+			if (g[1] == st) {                                // an empty match: keep the next char, step past it
+				if (st < (int)size()) out += (*this)[(size_type)st];
+				last = (size_type)st + 1;
+				from = st + 1;
+			} else {
+				last = (size_type)g[1];
+				from = g[1];
+			}
+			if (!all) break;
+		}
+		if (last < size()) out.append(*this, last, npos);
+		return JavaString(out);
 	}
 	// Java `someString == null` / `!= null` (NULL is an integer 0 here, hence long long)
 	bool operator==(long long v) const { return v == 0 && isNull(); }

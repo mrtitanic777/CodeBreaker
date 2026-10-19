@@ -517,16 +517,15 @@ for _b in ('FloatBuffer', 'IntBuffer', 'ByteBuffer'):
 # REAL canonical java.io byte codecs (big-endian, NBT/packet-faithful) -- were no-op stubs.
 _GENERATED['DataInput.h'] = _load_canonical('DataInput.h')
 _GENERATED['DataOutput.h'] = _load_canonical('DataOutput.h')
-# java.util.regex (Beta: chunk-filename matching in ChunkFilePattern/ChunkFolderPattern). The 360
-# has no regex engine and file-based chunk save is stubbed, so these are compile-only stubs: match
-# calls return defaults. Replace with hand C++ string parsing if region-file loading is ever wired.
-_GENERATED['Matcher.h'] = _class_stub('Matcher', includes=['JavaString'],
-    ret_methods=[('matches', ('bool', 'false')), ('find', ('bool', 'false')),
-                 ('lookingAt', ('bool', 'false')), ('group', ('JavaString', 'JavaString()')),
-                 ('groupCount', ('int', '0')), ('start', ('int', '0')), ('end', ('int', '0'))])
-_GENERATED['Pattern.h'] = _class_stub('Pattern', includes=['Matcher'],
-    ret_methods=[('matcher', ('Matcher*', 'new Matcher()'))],
-    extra=['static Pattern* compile(...) { return new Pattern(); }'])
+# java.util.regex: a backtracking matcher for the subset the games use (Regex.h), under real Pattern and
+# Matcher classes (Beta's chunk-file names, JSON numbers) -- were stubs whose matches() was always false.
+_GENERATED['Regex.h'] = _load_canonical('Regex.h')
+_GENERATED['Matcher.h'] = _load_canonical('Matcher.h')
+_GENERATED['Pattern.h'] = _load_canonical('Pattern.h')
+STUB_MEMBERS['Matcher'] = {'parent': None, 'methods': {'matches': 'bool', 'find': 'bool', 'lookingAt': 'bool',
+    'group': 'JavaString', 'groupCount': 'int', 'start': 'int', 'end': 'int', 'reset': 'Matcher*'}}
+STUB_MEMBERS['Pattern'] = {'parent': None, 'methods': {'compile': 'Pattern*', 'matcher': 'Matcher*',
+    'matches': 'bool', 'pattern': 'JavaString', 'split': 'JArray<JavaString>'}}
 # java.io.FileFilter (Beta ChunkFolderPattern extends it) -- like FilenameFilter.
 _GENERATED['FileFilter.h'] = _class_stub('FileFilter', fwds=['File'],
     ret_methods=[('accept', ('bool', 'false'))])
@@ -799,11 +798,10 @@ _GENERATED['Entry.h'] = (
 _GENERATED['NumberFormat.h'] = _load_canonical('NumberFormat.h')
 STUB_MEMBERS['NumberFormat'] = {'parent': None, 'methods': {'format': 'std::string',
     'getInstance': 'NumberFormat*', 'getIntegerInstance': 'NumberFormat*', 'getNumberInstance': 'NumberFormat*'}}
-# java.security.MessageDigest (Beta MD5). Real hashing is MCHash/MD5String platform code.
-_GENERATED['MessageDigest.h'] = _class_stub('MessageDigest', includes=['JArray'],
-    void_methods=['update', 'reset'],
-    ret_methods=[('digest', ('JArray<unsigned char >', 'JArray<unsigned char >()'))],
-    extra=['static MessageDigest* getInstance(...) { return new MessageDigest(); }'])
+# java.security.MessageDigest (Beta MD5String, the login hash).
+_GENERATED['MessageDigest.h'] = _load_canonical('MessageDigest.h')   # real MD5
+STUB_MEMBERS['MessageDigest'] = {'parent': None, 'methods': {'getInstance': 'MessageDigest*',
+    'digest': 'JArray<unsigned char >'}}
 # AWT / misc leaf stubs (dead on the 360).
 _GENERATED['RenderingHints.h'] = _class_stub('RenderingHints', void_methods=['put'],
     extra=['static const int s_KEY_INTERPOLATION = 0;',   # opaque hint keys/values (dead: no AWT on the 360)
@@ -1316,9 +1314,10 @@ _GENERATED['ByteArrayInputStream.h'] = _load_canonical('ByteArrayInputStream.h')
 # java.util.zip exceptions
 _GENERATED['DataFormatException.h'] = _class_stub('DataFormatException', bases=['Exception'], includes=['Exception'])
 _GENERATED['NoSuchAlgorithmException.h'] = _class_stub('NoSuchAlgorithmException', bases=['Exception'], includes=['Exception'])
-# java.math / java.security (MD5String checksum -- dead: no auth on the console)
-_GENERATED['BigInteger.h'] = _class_stub('BigInteger',
-    ret_methods=[('toString', ('std::string', 'std::string()')), ('abs', ('BigInteger*', '0'))])
+# java.math.BigInteger (MD5String prints the digest with it)
+_GENERATED['BigInteger.h'] = _load_canonical('BigInteger.h')   # sign + magnitude, toString(radix)
+STUB_MEMBERS['BigInteger'] = {'parent': None, 'methods': {'toString': 'std::string', 'abs': 'BigInteger*',
+    'signum': 'int'}}
 # java.lang.ref (RegionFileCache soft cache -> just holds the referent)
 # java.lang.ref.SoftReference -- REAL strong ref (no GC on the console). FIXED BUG regionfile-cache-never-hits:
 # the old stub's get()->0 permanently defeated RegionFileCache (every lookup missed -> a fresh RegionFile per
@@ -1545,6 +1544,44 @@ def annotate_stub(text, class_name, platform_id):
 _PLATFORM_BANNER_OLD = 'the real behaviour is the Xbox 360 platform layer'
 _PLATFORM_BANNER_SDK_OLD = '// (Direct3D 9 / XInput / file IO / sound).'
 
+# The file layer's out-of-line definitions for a conversion with no platform (see generate_files): what
+# FileIO.reference.cpp gives the 360 through CreateFile, here through stdio.
+HOST_IO_CPP = '''#include "stdafx.h"
+#include "JavaRT.h"
+#include <cstdio>
+#include "File.h"
+#include "FileInputStream.h"
+
+JavaString File::s_separator = JavaString("\\\\");
+
+void FileInputStream::_load(const char* p) {
+	FILE* f = p && p[0] ? std::fopen(p, "rb") : 0;
+	if (!f) return;                                     // _data stays NULL -> read() == -1 (EOF)
+	if (std::fseek(f, 0, SEEK_END) == 0) {
+		long sz = std::ftell(f);
+		if (sz > 0 && std::fseek(f, 0, SEEK_SET) == 0) {
+			_data = new unsigned char[sz]();
+			_size = (int)std::fread(_data, 1, (size_t)sz, f);
+		}
+	}
+	std::fclose(f);
+}
+
+FileInputStream::FileInputStream(File* f) : _data(0), _size(0), _pos(0) { _load(f ? f->path.c_str() : ""); }
+
+// Class.getResourceAsStream: the file under the current folder, or null when there is none (as Java,
+// when the resource is not on the classpath)
+InputStream* J2X_getResourceAsStream(const char* name) {
+	while (name && (*name == '/' || *name == '\\\\')) ++name;
+	if (!name || !*name) return 0;
+	FILE* f = std::fopen(name, "rb");
+	if (!f) return 0;
+	std::fclose(f);
+	return new FileInputStream(std::string(name));
+}
+'''
+
+
 def generate_files(cpp_std=None, platform_id=None):
     """Dynamically generate the full runtime file set, applying C++ standard
     transforms and platform-specific stub annotations on the fly.
@@ -1571,6 +1608,10 @@ def generate_files(cpp_std=None, platform_id=None):
         # Every emitted file includes stdafx.h; with no platform it is the generic one (the C/C++
         # standard library and the fixed-width typedefs), so a platform-less conversion compiles.
         out['stdafx.h'] = generate_stdafx('generic', std_label)
+        # ... and the out-of-line pieces of the file layer that a platform's reference layer defines
+        # (FileIO.reference.cpp on the 360), in standard C, so a program that opens a file still links
+        # (WorldProvider, CanvasIsomPreview: undefined FileInputStream::FileInputStream(File*)).
+        out['j2x_host_io.cpp'] = HOST_IO_CPP
 
     is_non_windows = platform_id in ('ps3', 'wii', 'psp', 'nds')
 
