@@ -56,6 +56,7 @@ DEFAULTS = {
     "state": "state",
     "target": "win95",
     "threads": "1",                    # functions the native decompiler analyses at once (CB_THREADS)
+    "struct_recovery": "32",           # structures from field accesses: off, 32 (32-bit x86 only), all
 }
 _PATHS = ("corpus", "openwatcom", "decompiler_bin", "ghidra_core", "state", "powerpc_tools", "powerpc_lib", "period_compiler", "dosbox_x", "msc6", "xenix_c", "msc203", "masm", "nasm", "msvc152",
           "java", "retromcp", "xbox360_sdk", "host_cxx", "msbuild", "java_overlays", "java_libs")

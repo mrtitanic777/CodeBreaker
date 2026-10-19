@@ -39,6 +39,7 @@
 // `/*@G <hexVA> <bytes> <bytes pointed at, or 0> */` (the printed name of an unnamed global
 // carries neither its size nor, for a pointer, the size of what it points at).
 // CB_LANGUAGES names the folder of language files (*.sla, *.ldefs, *.pspec, *.cspec).
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -619,7 +620,8 @@ void forgetGlobals(Analysis& a) {
 // a constraint on the variable it goes through: "points at something with a field of this size at
 // this offset". The address is followed back through constant additions (`q = p + 8; *(q + 4)` is
 // p's field at 12) and, in 16-bit code, through a near segment (the DS or SS the function was
-// entered with; a far pointer's segment is phase 2's). A variable's constraints are solved
+// entered with) or a far pointer -- a four-byte variable whose high word is the segment and whose
+// low word, plus constants, the offset (`les bx, p; mov ax, es:[bx+8]`). A variable's constraints are solved
 // together: it is a structure when it has fields at two or more offsets, none overlapping, none
 // negative, and it is never indexed by a value only known when the program runs (that is an
 // array). Such a variable is given a structure with exactly those fields -- their offsets and
@@ -627,6 +629,7 @@ void forgetGlobals(Analysis& a) {
 // with it, so its C reads `p->f_8`. Each structure is the function's own, named after it and the
 // variable, and reported before the function as
 //   /*@S <name> <bytes> <offset>:<bytes>:<type> ... */
+// (each type one word: see typeToken)
 // The function's prototype is put back afterwards: what one function learned about its own
 // parameters does not change how the next one sees its calls (each function from the description
 // alone, as with the globals).
@@ -668,6 +671,7 @@ void restoreProto(FuncProto& fp, const ProtoSnap& s) {
 struct Sketch {
   std::map<int64_t, FieldUse> fields;
   bool bad = false;
+  bool isFar = false;                                // (16-bit: reached as a far pointer)
 };
 
 // The high-level variable a varnode belongs to, or null (an annotation has none)
@@ -719,6 +723,32 @@ Varnode* nearOffset(Varnode* addr) {
   return nullptr;
 }
 
+// The four-byte variable a 16-bit far address `segment(s, o)` is made from: s its high word and o
+// its low word (plus constants, added to `off`), or null
+Varnode* farBase(Varnode* addr, int64_t& off) {
+  if (!addr->isWritten() || addr->getDef()->code() != CPUI_SEGMENTOP) return nullptr;
+  PcodeOp* seg = addr->getDef();
+  Varnode* s = seg->getIn(1);
+  Varnode* lo;
+  if (!baseOf(seg->getIn(2), lo, off)) return nullptr;
+  auto piece = [](Varnode* v, int at) -> Varnode* {   // v = SUBPIECE(w, at) of a 4-byte w, through copies
+    for (int depth = 0; depth < 8 && v->isWritten(); ++depth) {
+      PcodeOp* d = v->getDef();
+      if (d->code() == CPUI_COPY) { v = d->getIn(0); continue; }
+      if (d->code() == CPUI_SUBPIECE && d->getIn(0)->getSize() == 4 && (int)d->getIn(1)->getOffset() == at)
+        return d->getIn(0);
+      return nullptr;
+    }
+    return nullptr;
+  };
+  Varnode* hi = piece(s, 2);
+  Varnode* low = piece(lo, 0);
+  if (hi == nullptr || low == nullptr) return nullptr;
+  HighVariable* a = highOf(hi);
+  if (hi != low && (a == nullptr || a != highOf(low))) return nullptr;
+  return low;
+}
+
 // Is any member of h added to a value not known until run time (an index: an array, not a
 // structure)?
 bool indexed(HighVariable* h) {
@@ -740,6 +770,23 @@ bool indexed(HighVariable* h) {
     }
   }
   return false;
+}
+
+// A field's type as one word for the `/*@S` note: its name (`int2`, `xunknown4`, `code`, another
+// structure's), and for a pointer the pointed-at type's word followed by `*` -- or, a 16-bit far
+// pointer (four bytes in a two-byte program), by `^`
+std::string typeToken(Datatype* t, bool seg16, int depth = 0) {
+  if (t == nullptr) return "xunknown1";
+  if (t->getMetatype() == TYPE_PTR && depth < 4) {
+    const TypePointer* p = (const TypePointer*)t;
+    return typeToken(p->getPtrTo(), seg16, depth + 1) + ((seg16 && p->getSize() == 4) ? "^" : "*");
+  }
+  std::string n = t->getName();
+  bool plain = !n.empty();
+  for (char c : n)
+    if (!(std::isalnum((unsigned char)c) || c == '_')) plain = false;
+  if (!plain) return "xunknown" + std::to_string(t->getSize() > 0 ? t->getSize() : 1);
+  return n;
 }
 
 std::string hexOf(int64_t v) {
@@ -779,12 +826,20 @@ std::string recoverStructs(Machine& m, Funcdata* fd, const Fact& f, bool seg16, 
     if (op->code() == CPUI_LOAD ? probeLoad(op)
                                 : val->isWritten() && val->getDef()->code() == CPUI_LOAD && probeLoad(val->getDef()))
       continue;
-    if (seg16 && (addr = nearOffset(addr)) == nullptr) continue;
     Varnode* base;
     int64_t off;
     HighVariable* bh;
-    if (!baseOf(addr, base, off) || (bh = highOf(base)) == nullptr) continue;
+    bool isFar = false;
+    if (seg16) {
+      Varnode* nearAddr = nearOffset(addr);
+      if (nearAddr != nullptr) addr = nearAddr;
+      else if ((base = farBase(addr, off)) != nullptr) isFar = true;
+      else continue;
+    }
+    if (isFar ? (bh = highOf(base)) == nullptr : !baseOf(addr, base, off) || (bh = highOf(base)) == nullptr) continue;
     Sketch& s = sketches[bh];
+    if (!s.fields.empty() && s.isFar != isFar) { s.bad = true; continue; }   // (near and far at once: neither)
+    s.isFar = isFar;
     if (off < 0 || off > 0xffff) { s.bad = true; continue; }
     auto at = s.fields.find(off);
     if (at != s.fields.end() && at->second.size != val->getSize()) { s.bad = true; continue; }
@@ -801,7 +856,7 @@ std::string recoverStructs(Machine& m, Funcdata* fd, const Fact& f, bool seg16, 
   for (auto& kv : sketches) {
     HighVariable* h = kv.first;
     const Sketch& s = kv.second;
-    if (s.bad || s.fields.size() < 2 || h->getInstance(0)->getSize() != ptr_size) continue;
+    if (s.bad || s.fields.size() < 2 || h->getInstance(0)->getSize() != (s.isFar ? 4 : ptr_size)) continue;
     Symbol* sym = h->getSymbol();
     // (the function's own: a global is every function's, and not this one's to type)
     if (sym == nullptr || sym->getScope() != loc || indexed(h)) continue;
@@ -830,6 +885,8 @@ std::string recoverStructs(Machine& m, Funcdata* fd, const Fact& f, bool seg16, 
     if (!done.insert(c.sym).second) continue;      // (two variables of one symbol: typed once)
     std::string name = "s_" + f.name + "_" +
                        (!c.name.empty() ? c.name : c.param ? "p" + std::to_string(c.index + 1) : std::string("v"));
+    for (char& ch : name)                          // (a C name: a decorated function's `?`, `@` ...)
+      if (!(std::isalnum((unsigned char)ch) || ch == '_')) ch = '_';
     if (m.types->findByName(name) != nullptr) continue;
     TypeStruct* st = m.types->getTypeStruct(name);
     std::vector<TypeField> fields;
@@ -842,10 +899,10 @@ std::string recoverStructs(Machine& m, Funcdata* fd, const Fact& f, bool seg16, 
         ft = m.types->getBase(fu.second.size, TYPE_UNKNOWN);
       fields.emplace_back(id++, (int4)fu.first, "f_" + hexOf(fu.first), ft);
       line += " " + hexOf(fu.first) + ":" + std::to_string(fu.second.size) + ":" +
-              (ft->getMetatype() == TYPE_PTR ? std::string("ptr") : ft->getName());
+              typeToken(ft, seg16);
     }
     m.types->assignFixedFields(st, fields, (int4)c.end);
-    Datatype* ptr = m.types->getTypePointer(ptr_size, st, m.getDefaultDataSpace()->getWordSize());
+    Datatype* ptr = m.types->getTypePointer(c.sketch->isFar ? 4 : ptr_size, st, m.getDefaultDataSpace()->getWordSize());
     if (c.param) {
       param_types[c.index] = ptr;
     } else {
@@ -940,6 +997,16 @@ void decompileOne(Analysis& a, const Description& d, size_t i, std::ostream& out
                                     proto_changed, changed);
       if (changed) {                             // analysed again, with its structures --
         governor::begin_function();              // a new analysis, with its own time and steps
+        // -- its globals kept as the first analysis typed them: a structure is the function's
+        // own, and a global copied to or from a variable given one took it over (GDI32
+        // `piRambff4b328->f_10`, a global printed as a structure nothing declares it as)
+        Scope* glb = m.symboltab->getGlobalScope();
+        std::vector<Symbol*> made;
+        for (MapIterator it = glb->begin(); it != glb->end(); ++it) {
+          Symbol* sym = (*it)->getSymbol();
+          if (!a.registered.count(sym) && !sym->isTypeLocked()) made.push_back(sym);
+        }
+        for (Symbol* sym : made) glb->setAttribute(sym, Varnode::typelock);
         m.clearAnalysis(t.first);
         act->reset(*t.first);
         act->perform(*t.first);

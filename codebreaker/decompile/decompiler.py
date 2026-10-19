@@ -43,6 +43,26 @@ def _languages():
     return os.environ.get("CB_LANGUAGES_DIR") or os.path.join(settings.ROOT, "native", "decompiler", "languages")
 
 
+def _structs(description):
+    """"1" when the native program is to recover structures for this description (its CB_STRUCTS),
+    else "0". The setting `struct_recovery`: "off", "32" (32-bit x86 only -- the 16-bit modules
+    wait on the 16-bit gate and the VM), or "all"."""
+    from codebreaker.base import settings
+    want = (settings.get("struct_recovery") or "off").strip().lower()
+    if want == "all":
+        return "1"
+    if want != "32":
+        return "0"
+    try:
+        with open(description, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if line.startswith("arch\t"):
+                    return "1" if line.split("\t")[1].startswith("x86:LE:32") else "0"
+    except OSError:
+        pass
+    return "0"
+
+
 def available():
     return os.path.isfile(_exe()) and os.path.isdir(_languages())
 
@@ -81,7 +101,7 @@ def run(description, only=(), timeout=3600, max_instructions=None):
             base.append(ln)
     if not fn_line:
         return _run_whole(description, only, timeout, max_instructions)
-    common = cache.key(cache.tool(_exe()), _language_stamp(), base, max_instructions or "")
+    common = cache.key(cache.tool(_exe()), _language_stamp(), base, max_instructions or "", _structs(description))
     starts = sorted(fn_line)
     import bisect
 
@@ -143,7 +163,7 @@ def _run_whole(description, only=(), timeout=3600, max_instructions=None):
         return mm.group(1) + files[p].encode() + mm.group(3)
     text = re.sub(rb"(?m)^(bytes\t[0-9a-fA-F]+\t)([^\t\r\n]+)(\t)", _content, text)
     k = cache.key(cache.tool(_exe()), _language_stamp(), text, ["%x" % va for va in only],
-                  max_instructions or "")
+                  max_instructions or "", _structs(description))
     had = cache.get("decompiled", k)
     if had is not None:
         stdout, stderr = had.decode("utf-8", "replace").split("\x00", 1)
@@ -181,7 +201,8 @@ def _run_resuming(description, only, timeout, max_instructions=None):
     from codebreaker.base import settings
     # CB_THREADS (setting "threads"): functions analysed at once in the one process -- the
     # output is the same; 1 by default (a sweep already runs a process per worker)
-    env = dict(os.environ, CB_LANGUAGES=_languages(), CB_THREADS=str(settings.get("threads") or 1))
+    env = dict(os.environ, CB_LANGUAGES=_languages(), CB_THREADS=str(settings.get("threads") or 1),
+               CB_STRUCTS=_structs(description))      # (structures: see _structs)
     if max_instructions:
         env["CB_MAX_INSTRUCTIONS"] = str(max_instructions)
     if only:

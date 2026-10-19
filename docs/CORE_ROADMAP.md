@@ -113,8 +113,9 @@ RISC-V Sail, Intel XED).
   types, stayed for the next) -- each function now starts from the description alone; 418 golden
   functions changed, every one in a global's name, size or type. Results were already cached per
   function by input hash (codebreaker/decompile/decompiler.py), which this makes sound.
-- C -- structures from the code's own accesses (2026-10-18), `CB_STRUCTS=1`, off by default until
-  c_text.py takes in the `/*@S` notes (decompiler.cc, "Structures"; core change C12). Every load
+- C -- structures from the code's own accesses (2026-10-18), `CB_STRUCTS=1`; on by default for 32-bit
+  x86 since 2026-10-19 (setting `struct_recovery`: off / 32 / all -- 16-bit waits on the Win16 gate and
+  the VM; decompiler.cc, "Structures"; core change C12). Every load
   and store through `v + c` is a constraint on v (a field of that size at c), followed back through
   constant additions, copies and a near segment; a variable whose constraints agree (two or more
   fields, none overlapping, never indexed at run time; reads only probed or written back do not
@@ -126,6 +127,16 @@ RISC-V Sail, Intel XED).
   DWORD at a time). Found: OpenWatcom's wingdi.h declares FONTSIGNATURE `fsCsb[4]`; Microsoft's
   SDK and GDI32 itself have `fsCsb[2]` (24 bytes). One thread and four agree byte for byte.
   Next: far pointers (phase 2's segment types), structures passed between functions.
+  Turned on for 32-bit (2026-10-19): c_text declares each `/*@S` structure (packed, at its exact
+  layout, filler between fields) before the prototypes; an offset with no field (`&p->field_0x4`,
+  `&p[1].field_0x8`) is the bytes there; the structures' sizes keep a frame's locals at their
+  offsets; a pointer -- parameter or cast -- compared with a number is compared as one; and on the
+  second analysis the globals keep the first one's types (a structure is the function's own: a
+  global copied from a variable given one took it over). The setting is part of the cache key.
+  Behaviour (measure + tools/verdict_diff.py, off vs on): KERNEL32 1,867 and GDI32 865 functions,
+  no verdict better or worse; 790 read differently (fields for `*(T *)(p + n)`). The first try was
+  111 not compiling (from 33) and 18 worse. Far pointers (16-bit, `les bx, p; es:[bx+8]`) are
+  recognized too, not measured yet; 16-bit stays off.
 - D -- fewer gotos (2026-10-18; tools/goto_report.py): a short return tail that paths reach by
   `goto` is copied onto each path (core change C13). Golden: gotos 6,923 -> 6,449, 20.2 -> 17.9
   per 1,000 lines; to a bare `return` 225 -> 26; 203 functions changed, no new failures. What is

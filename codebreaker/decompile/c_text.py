@@ -136,7 +136,7 @@ _SIZEOF = {"int1": 1, "uint1": 1, "xunknown1": 1, "char": 1, "bool": 1, "undefin
            "int8": 8, "uint8": 8, "xunknown8": 8, "undefined8": 8, "float8": 8, "float10": 10}
 
 
-def _keep_frame(t):
+def _keep_frame(t, sizes=None):
     """Keep a function's stack locals where the original had them, relative to one another.
 
     The original often builds a small structure in its frame and passes its address
@@ -144,7 +144,8 @@ def _keep_frame(t):
     recovers the fields as separate locals; a C compiler then places them wherever it likes, and
     the callee, reading through the pointer, finds something else. When any stack local's address
     can escape, the locals are declared as the fields of one frame structure at their original
-    offsets, so every address taken still points at what the original put there."""
+    offsets, so every address taken still points at what the original put there. `sizes`: more
+    types' sizes -- the structures recovered for the function (`/*@S` notes)."""
     lines = _declaration_lines(t)                        # (`return x;` / `goto x;` are not declarations)
     locs = [m for m in _LOCAL.finditer(t) if m.group(0) in lines]
     if not locs:
@@ -157,7 +158,7 @@ def _keep_frame(t):
     items = []
     for m in locs:
         ty = " ".join(m.group(1).split())
-        size = 4 if ty.endswith("*") else _SIZEOF.get(ty)
+        size = 4 if ty.endswith("*") else _SIZEOF.get(ty) or (sizes or {}).get(ty)
         if size is None:
             return t                                       # a type whose size we do not know
         count = int(m.group(4)) if m.group(4) else 1
@@ -222,15 +223,22 @@ def _null_pointer(src, cast):
         star.type == "abstract_pointer_declarator"
 
 
+_CAST_PTR = "(cast to a pointer)"
+
+
 def _compare_as_numbers(t):
     """The core compares a pointer with a plain number freely (`if (pcVar2 < (uint4)a1)`); C does
     not allow it. Where exactly one side is a pointer variable, compare its value as a number."""
     lines = _declaration_lines(t)
     ptrs = {m.group(1) for m in _PTR_DECL.finditer(t) if m.group(0) in lines}
+    # (and the parameters declared pointers: `a1 == (uint4)psVar1`, a1 a structure's pointer)
+    head = t.split("{", 1)[0]
+    if "(" in head:
+        ptrs.update(re.findall(r"\*+\s*(\w+)\s*(?=[,)])", head[head.index("("):]))
     for ln in t.split("\n"):
         if "struct {" in ln and "} _f;" in ln:
             ptrs.update(re.findall(r"\*+\s*(\w+)(?:\[\d+\])?;", ln))
-    if not ptrs:
+    if not ptrs and "*)" not in t:
         return t
 
     def operand(src, n):
@@ -239,6 +247,8 @@ def _compare_as_numbers(t):
         if n.type == "cast_expression" and src.at(n.child_by_field_name("type")) in ("int4", "uint4"):
             v = n.child_by_field_name("value")
             return "" if v.type != "cast_expression" and operand(src, v) is not None else None
+        if n.type == "cast_expression" and src.at(n.child_by_field_name("type")).replace(" ", "").endswith("*"):
+            return _CAST_PTR                                 # (`(s_f_p *)(q + n)`: a pointer, as cast)
         if n.type == "identifier":
             return src.at(n)
         if n.type == "field_expression" and src.at(n.child_by_field_name("argument")) == "_f" and \
@@ -254,7 +264,10 @@ def _compare_as_numbers(t):
             names = [operand(src, s) for s in sides]
             if None in names:
                 continue
-            ptr = [x in ptrs for x in names]
+            if _CAST_PTR in names and "" not in names:
+                continue                                     # (a pointer cast only against a number cast:
+                                                             # a global's type is not seen here)
+            ptr = [x in ptrs or x == _CAST_PTR for x in names]
             if ptr[0] != ptr[1]:
                 for s, is_ptr in zip(sides, ptr):
                     if is_ptr:
@@ -329,6 +342,97 @@ def _without_notes(text):
     return src.data[end:].decode("utf-8").lstrip()
 
 
+# The decompiler's note for a structure it recovered from a variable's field accesses (CB_STRUCTS):
+#   /*@S <name> <bytes> <offset>:<bytes>:<type> ...*/  -- offsets in hex; a type is one word, a
+# pointer's ending in `*` (or `^`, a 16-bit far pointer)
+_STRUCT_NOTE = re.compile(r"/\*@S (\w+) (\d+)((?: [0-9a-f]+:\d+:[\w*^]+)*) \*/")
+_C_WORDS = {"char", "short", "int", "long", "float", "double", "void", "code"}
+
+
+def _struct_sizes(notes):
+    """{structure name: its bytes} from `/*@S` notes"""
+    out = {}
+    for note in notes:
+        mm = _STRUCT_NOTE.fullmatch(note.strip())
+        if mm:
+            out.setdefault(mm.group(1), int(mm.group(2)))
+    return out
+
+
+def _struct_decls(notes, header, far16=False):
+    """The C declaring the structures of the `/*@S` notes -- every name first (`typedef struct
+    s_f_p s_f_p;`, so one may point at another), then each at its exact layout: its fields at
+    their offsets with filler between, the whole its full size, packed (the 32-bit header packs
+    everything; a 16-bit structure says so itself). A field type the header does not know is
+    the bytes it takes."""
+    found = {}
+    for note in notes:
+        mm = _STRUCT_NOTE.fullmatch(note.strip())
+        if mm and mm.group(1) not in found:
+            found[mm.group(1)] = (int(mm.group(2)), [(int(o, 16), int(z), t) for o, z, t in
+                                                     (f.split(":") for f in mm.group(3).split())])
+    if not found:
+        return []
+    known = set(re.findall(r"typedef [^;()]*?\b(\w+);", header)) | _C_WORDS | set(found)
+    lines = ["typedef struct %s %s;" % (n, n) for n in found]
+    for name, (size, fields) in found.items():
+        body, at = [], 0
+        for off, width, tok in sorted(fields):
+            if off < at or off + width > size:              # (overlapping or outside: left as bytes)
+                continue
+            if off > at:
+                body.append("uint1 _pad_%x[%d];" % (at, off - at))
+            base = tok.rstrip("*^")
+            stars = tok[len(base):]
+            if base not in known:
+                base = "xunknown%d" % width if not stars and width in (1, 2, 4, 8) else "xunknown1"
+            if not stars and base in found:                  # (a structure held whole: its bytes)
+                base = "xunknown1" if width not in (1, 2, 4, 8) else "xunknown%d" % width
+            ptr = "".join(" __far *" if c == "^" else " *" for c in stars)
+            body.append("%s%s f_%x;" % (base, ptr, off))
+            at = off + width
+        if size > at:
+            body.append("uint1 _pad_%x[%d];" % (at, size - at))
+        lines.append("%sstruct %s { %s };" % ("_Packed " if far16 else "", name, " ".join(body)))
+    return lines
+
+
+_GAP_FIELD = re.compile(r"field_0x([0-9a-f]+)")
+
+
+def _struct_gaps(text):
+    """`&p->field_0x1` -- the core's name for an offset of a recovered structure that holds no
+    field of it (`p` stepped a byte along, `p + 4` read where nothing else is): the bytes at that
+    offset, `((uint1 *)p + 0x1)`, and `p->field_0x1` the byte there. With `.` the same from the
+    structure's own address: `&p[1].field_0x4` (past its end) is `((uint1 *)&(p[1]) + 0x4)`."""
+    if "field_0x" not in text:
+        return text
+    for _ in range(4):                                   # (one inside another: the outer first)
+        src = ctree.Source(text)
+        taken = []
+        for f in src.find("field_expression"):
+            name = f.child_by_field_name("field")
+            mm = _GAP_FIELD.fullmatch(src.at(name)) if name is not None else None
+            op = f.child_by_field_name("operator")
+            if not mm or op is None or src.at(op) not in ("->", ".") or \
+                    any(s <= f.start_byte and f.end_byte <= e for s, e in taken):
+                continue
+            arg = src.at(f.child_by_field_name("argument"))
+            if src.at(op) == ".":
+                arg = "&(%s)" % arg
+            up = f.parent
+            if up is not None and up.type == "pointer_expression" and src.at(up.child_by_field_name("operator")) == "&":
+                src.replace(up, "((uint1 *)(%s) + 0x%s)" % (arg, mm.group(1)))
+                taken.append((up.start_byte, up.end_byte))
+            else:
+                src.replace(f, "(*((uint1 *)(%s) + 0x%s))" % (arg, mm.group(1)))
+                taken.append((f.start_byte, f.end_byte))
+        if not taken:
+            break
+        text = src.text()
+    return text
+
+
 def _code_pointers(text, functions):
     """`p = sub_401000;` -- a function's address stored in a pointer the core typed loosely:
     `p = (code *)sub_401000;` (where the statement ends its line)."""
@@ -362,11 +466,14 @@ def compilable32(module_path, funcs, outdir):
     imports.update({n: stem for n, (stem, _number, _pop) in numbered.items() if n not in imports})
     sizes, in_ecx, in_edx = {}, set(), set()
     own = {}                                  # function -> address of a global -> bytes of its uses there
+    struct_notes = []                         # the structures the decompiler recovered (`/*@S`)
     for n in order:
         body = []
         for ln in out[n].split("\n"):
             m = re.match(r"/\*@G ([0-9a-f]+) (\d+)(?: \d+)? \*/$", ln)
-            if m:
+            if ln.startswith("/*@S "):
+                struct_notes.append(ln)
+            elif m:
                 sizes.setdefault(int(m.group(1), 16), set()).add(int(m.group(2)))
                 own.setdefault(n, {}).setdefault(int(m.group(1), 16), set()).add(int(m.group(2)))
             else:
@@ -376,9 +483,10 @@ def compilable32(module_path, funcs, outdir):
         t = _without_notes("\n".join(body).strip())
         # `x._1_2_` is the core's spelling of "2 bytes of x starting at byte 1"
         t = _pieces(t, _BY_SIZE, "uint4")
-        t = _compare_as_numbers(_keep_frame(_null_is_zero(t)))
+        t = _compare_as_numbers(_keep_frame(_null_is_zero(t), _struct_sizes(struct_notes)))
         # a function's address stored in a pointer the core typed loosely
         t = _code_pointers(t, set(order))
+        t = _struct_gaps(t)                      # an offset of a recovered structure with no field
         # every function returns a value in EAX whether or not the core saw it used
         if t.startswith("void") and t[4:5].isspace():
             t = "int" + t[4:]
@@ -507,7 +615,9 @@ def compilable32(module_path, funcs, outdir):
     own = {d.split("(")[0].split()[-1].lstrip("*") for d in decls if "(" in d}
     helpers = re.sub(r"double (%s)\([^)]*\); ?" % "|".join(_LIBM), lambda m: "" if m.group(1) in own else m.group(0),
                      _X86_HELPERS) if own & set(_LIBM) else _X86_HELPERS
-    preamble = _TYPES + "\n".join(odd) + "\n" + _HELPERS + helpers + "\n".join(decls) + "\n" + "\n".join(macros) + "\n"
+    structs = _struct_decls(struct_notes, _TYPES + "\n".join(odd))
+    preamble = (_TYPES + "\n".join(odd) + "\n" + "".join(t + "\n" for t in structs) + _HELPERS + helpers +
+                "\n".join(decls) + "\n" + "\n".join(macros) + "\n")
     from codebreaker.decompile import struct_text
     preamble, out = struct_text.apply(module_path, preamble, out, by_va)       # `p->field` for `*(T *)(p + N)`
     return preamble, out, order, by_va, used, in_ecx, in_edx
@@ -1113,6 +1223,7 @@ def _compilable16(module_path, outdir=None):
     m.selector_imports = {}                                  # imports used for their selector
     m.exported_prologue = set()                              # far functions the original starts with Windows' prologue
     sizes = {}                                               # address of a global -> bytes of the access
+    struct_notes = []                                        # the structures the decompiler recovered (`/*@S`)
     elems = {}                                               # ... a pointer's -> bytes of what it points at
     ends, starts = {}, {}                                    # where each function's code stops: at the next one
     for va in sorted(d.where):
@@ -1181,6 +1292,7 @@ def _compilable16(module_path, outdir=None):
             raw = (raw.encode("utf-8")[:at] + ("%s " % (marker or "__" + distance[name])).encode("utf-8") +
                    raw.encode("utf-8")[at:]).decode("utf-8")
         far = set()
+        struct_notes += [ln for ln in raw.split("\n") if ln.startswith("/*@S ")]
         for mm in _FACT.finditer(raw):
             if mm.group(1) == "P" and mm.group(3) == "4":
                 far.add(mm.group(2))
@@ -1393,7 +1505,7 @@ def _compilable16(module_path, outdir=None):
     intrinsics += interrupt_helpers(m.interrupts)
     if ("MK_FP(" in body or getattr(m, "bios_data", False)) and not m.selector_imports:
         intrinsics.append("#define MK_FP(s, o) ((void __far *)(((uint4)(uint2)(s) << 16) | (uint2)(o)))")
-    m.header = HEADER + "\n" + "\n".join(intrinsics + macros + decls) + "\n"
+    m.header = HEADER + "\n" + "\n".join(intrinsics + macros + _struct_decls(struct_notes, HEADER, True) + decls) + "\n"
     m.description = d
     return m
 
