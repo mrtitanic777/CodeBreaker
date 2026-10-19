@@ -779,7 +779,11 @@ def _selector_sites(module_path):
             at, seen = r["offset"], set()
             while at < len(raw) - 1 and at not in seen:
                 seen.add(at)
-                out.setdefault(s["idx"], []).append((at + (2 if r["src"] == 3 else 0), target))
+                # (the target of a far call or jump into the segment is not its selector as a
+                # value: with one in the function, a plain `push 1000h` became segment 1's)
+                opcode = at - (1 if r["src"] == 3 else 3)
+                if not (opcode >= 0 and raw[opcode] in (0x9A, 0xEA)):
+                    out.setdefault(s["idx"], []).append((at + (2 if r["src"] == 3 else 0), target))
                 if r["additive"]:
                     break
                 nxt = struct.unpack_from("<H", raw, at)[0]
