@@ -1,12 +1,14 @@
 // pcodecheck -- run single instructions through the SLEIGH specification's p-code, for checking
 // the specification against an emulator of the real processor (tools/sleigh_verify.py).
 //
-//   pcodecheck <file.sla> <mode>        mode: x86-16-real, x86-32-flat
+//   pcodecheck <file.sla> <mode>        mode: x86-16-real, x86-32-flat, ppc-be-64
 //
 // Reads cases from stdin, one per line:
 //   <id> CS=<hex> IP=<hex> EAX=<hex> ... CF=<0|1> ... M<hex address>=<hex bytes> ...
 // (the instruction's bytes are given as memory at CS*16+IP; in x86-32-flat at IP itself, the
-// 32-bit offset, as the decompiler's x86:LE:32 sees a Windows program: every segment based at 0). Executes the one instruction's
+// 32-bit offset, as the decompiler's x86:LE:32 sees a Windows program: every segment based at 0;
+// in ppc-be-64 at IP, with the PowerPC registers r0.. LR CTR cr0.. xer_so .. f0.. instead, and
+// memory big-endian). Executes the one instruction's
 // p-code with the registers and memory given -- memory not given reads as zero -- and writes:
 //   <id> ok LIN=<hex> EAX=<hex> ... CF=<0|1> ... W<hex address>=<hex byte> ...
 //   <id> skip <why>        (a user operation the emulator has no meaning for: in, out, int ...)
@@ -30,9 +32,22 @@ using namespace ghidra;
 
 namespace {
 
-const char *REGS[] = {"EAX", "ECX", "EDX", "EBX", "ESP", "EBP", "ESI", "EDI",
-                      "ES", "CS", "SS", "DS", "FS", "GS",
-                      "CF", "PF", "AF", "ZF", "SF", "TF", "IF", "DF", "OF"};
+const std::vector<std::string> REGS_X86 = {"EAX", "ECX", "EDX", "EBX", "ESP", "EBP", "ESI", "EDI",
+                                           "ES", "CS", "SS", "DS", "FS", "GS",
+                                           "CF", "PF", "AF", "ZF", "SF", "TF", "IF", "DF", "OF"};
+
+// PowerPC: the general registers, the link and count registers, the condition register's eight
+// fields (four bits each, a byte apiece in the specification), XER's bits, the floating registers
+std::vector<std::string> regsPowerPC() {
+  std::vector<std::string> v;
+  for (int i = 0; i < 32; ++i) v.push_back("r" + std::to_string(i));
+  v.push_back("LR");
+  v.push_back("CTR");
+  for (int i = 0; i < 8; ++i) v.push_back("cr" + std::to_string(i));
+  for (const char *b : {"xer_so", "xer_ov", "xer_ca"}) v.push_back(b);
+  for (int i = 0; i < 32; ++i) v.push_back("f" + std::to_string(i));
+  return v;
+}
 
 // Memory of the case: bytes given, zero elsewhere; every byte whose value a write changes is
 // remembered. Words of 8 bytes, little-endian, as the core's own banks (MemoryBank's setValue
@@ -42,34 +57,43 @@ class CaseRam : public MemoryBank {
 public:
   std::map<uintb, uint1> bytes;
   std::set<uintb> written;
-  CaseRam(AddrSpace *spc) : MemoryBank(spc, 8, 4096) {}
+  bool big;                                       // (a word's first byte is its high one)
+  uintb mask = ~(uintb)0;                         // (ppc-be-64: addresses are 32 bits, as the
+                                                  // language's ram is truncated to 4 bytes)
+  CaseRam(AddrSpace *spc) : MemoryBank(spc, 8, 4096), big(spc->isBigEndian()) {}
   uint1 byte(uintb a) const {
-    auto it = bytes.find(a);
+    auto it = bytes.find(a & mask);
     return it == bytes.end() ? 0 : it->second;
   }
   void insert(uintb addr, uintb val) override {
     for (int i = 0; i < 8; ++i) {
-      uint1 b = (uint1)(val >> (8 * i));
+      uint1 b = (uint1)(val >> (8 * (big ? 7 - i : i)));
       if (b != byte(addr + i)) {
-        bytes[addr + i] = b;
-        written.insert(addr + i);
+        bytes[(addr + i) & mask] = b;
+        written.insert((addr + i) & mask);
       }
     }
   }
   uintb find(uintb addr) const override {
     uintb w = 0;
-    for (int i = 7; i >= 0; --i) w = (w << 8) | byte(addr + i);
+    for (int i = 0; i < 8; ++i) w = (w << 8) | byte(addr + (big ? i : 7 - i));
     return w;
   }
 };
 
 // The instruction's bytes for the decoder, read from the case's memory.
+// (ppc-be-64: code not given decodes as nop -- the emulator decodes the instruction a branch goes
+// to once the branch is done, and a zero word is no PowerPC instruction)
 class CaseImage : public LoadImage {
 public:
   CaseRam *ram = nullptr;
+  bool nops = false;
   CaseImage() : LoadImage("case") {}
   void loadFill(uint1 *ptr, int4 size, const Address &addr) override {
-    for (int4 i = 0; i < size; ++i) ptr[i] = ram->byte(addr.getOffset() + i);
+    for (int4 i = 0; i < size; ++i) {
+      uintb a = addr.getOffset() + i;
+      ptr[i] = !nops || ram->bytes.count(a & ram->mask) ? ram->byte(a) : (a & 3) == 0 ? 0x60 : 0;
+    }
   }
   string getArchType(void) const override { return "x86"; }
   void adjustVma(long) override {}
@@ -113,11 +137,13 @@ public:
 
 int main(int argc, char **argv) {
   const std::string mode = argc == 3 ? argv[2] : "";
-  if (mode != "x86-16-real" && mode != "x86-32-flat") {
-    std::fprintf(stderr, "usage: %s <file.sla> x86-16-real|x86-32-flat   (cases on stdin)\n", argv[0]);
+  if (mode != "x86-16-real" && mode != "x86-32-flat" && mode != "ppc-be-64") {
+    std::fprintf(stderr, "usage: %s <file.sla> x86-16-real|x86-32-flat|ppc-be-64   (cases on stdin)\n", argv[0]);
     return 2;
   }
-  const bool flat = mode == "x86-32-flat";
+  const bool ppc = mode == "ppc-be-64";
+  const bool flat = mode == "x86-32-flat" || ppc;     // (an address is the address itself)
+  const std::vector<std::string> REGS = ppc ? regsPowerPC() : REGS_X86;
   AttributeId::initialize();
   ElementId::initialize();
   CaseImage image;
@@ -128,14 +154,18 @@ int main(int argc, char **argv) {
   Element *root = store.parseDocument(slaname)->getRoot();
   store.registerTag(root);
   trans.initialize(store);
-  if (flat) {                                     // (as languages/x86.pspec)
-    context.setVariableDefault("addrsize", 1);
-    context.setVariableDefault("opsize", 1);
-  } else {                                       // (as languages/x86-16-real.pspec)
-    context.setVariableDefault("addrsize", 0);
-    context.setVariableDefault("opsize", 0);
-    context.setVariableDefault("protectedMode", 0);
-  }
+  auto defaults = [&](ContextInternal &ctx) {
+    if (ppc) {
+    } else if (flat) {                            // (as languages/x86.pspec)
+      ctx.setVariableDefault("addrsize", 1);
+      ctx.setVariableDefault("opsize", 1);
+    } else {                                     // (as languages/x86-16-real.pspec)
+      ctx.setVariableDefault("addrsize", 0);
+      ctx.setVariableDefault("opsize", 0);
+      ctx.setVariableDefault("protectedMode", 0);
+    }
+  };
+  defaults(context);
 
   AddrSpace *ramspace = trans.getDefaultCodeSpace();
   std::vector<std::string> userops;
@@ -148,7 +178,9 @@ int main(int argc, char **argv) {
     in >> id;
     if (id.empty()) continue;
     CaseRam ram(ramspace);
+    if (ppc) ram.mask = 0xffffffff;
     image.ram = &ram;
+    image.nops = ppc;
     MemoryHashOverlay regs(trans.getSpaceByName("register"), 8, 4096, 4096, (MemoryBank *)0);
     MemoryHashOverlay tmp(trans.getUniqueSpace(), 8, 4096, 4096, (MemoryBank *)0);
     MemoryState mem(&trans);
@@ -171,9 +203,13 @@ int main(int argc, char **argv) {
     }
     try {
       // (every case is decoded afresh: the same address holds another instruction each time --
-      // reset() drops the decode caches, initialize() makes them again)
-      trans.reset(&image, &context);
+      // reset() drops the decode caches, initialize() makes them again, registering the context
+      // variables anew: in a context of the case's own, the one before being locked by then)
+      ContextInternal caseContext;
+      trans.reset(&image, &caseContext);
       trans.initialize(store);
+      trans.setDefaultFloatFormats();               // (else every floating-point operation is "unimplemented")
+      defaults(caseContext);
       BreakTableCallBack breaks(&trans);
       RealSegment segment;
       FlatSegment flatSegment;
@@ -188,9 +224,10 @@ int main(int argc, char **argv) {
         }
       }
       EmulatePcodeCache emu(&trans, &mem, &breaks);
-      for (const char *r : REGS) mem.setValue(r, given.count(r) ? given[r] : 0);
+      for (const std::string &r : REGS) mem.setValue(r, given.count(r) ? given[r] : 0);
+      if (ppc) mem.setValue("XER", (given["xer_so"] << 31) | (given["xer_ov"] << 30) | (given["xer_ca"] << 29));
       uintb cs = given["CS"] & 0xffff, ip = given["IP"] & (flat ? 0xffffffff : 0xffff);
-      mem.setValue("EIP", ip);
+      if (!ppc) mem.setValue("EIP", ip);
       emu.setExecuteAddress(Address(ramspace, flat ? ip : (cs << 4) + ip));
       std::string outcome;
       try {
@@ -206,7 +243,7 @@ int main(int argc, char **argv) {
       }
       std::ostringstream out;
       out << id << " ok LIN=" << std::hex << emu.getExecuteAddress().getOffset();
-      for (const char *r : REGS) out << " " << r << "=" << std::hex << mem.getValue(r);
+      for (const std::string &r : REGS) out << " " << r << "=" << std::hex << mem.getValue(r);
       for (uintb a : ram.written) out << " W" << std::hex << a << "=" << (unsigned)ram.bytes[a];
       std::printf("%s\n", out.str().c_str());
     } catch (LowlevelError &e) {

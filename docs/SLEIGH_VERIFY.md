@@ -69,6 +69,48 @@ descriptor tables, which a flat program does not model -- `lar`, `lsl`, `verr`, 
 (a popped CS of another privilege also pops SS:ESP), and a segment register's push (Intel lets
 it write the selector or its zero extension). AF is not modelled (70 forms), as in 16-bit.
 
-## Next
+## PowerPC (2026-10-19; `tools/sleigh_verify_ppc.py`, report `state/sleigh_verify_ppc.txt`)
 
-PowerPC against the interpreter in `codebreaker/emulate/powerpc.py`.
+The specification the PowerPC lane decompiles with (`ppc_64_isa_altivec_be.sla`,
+`PowerPC:BE:64:A2ALT-32addr`), on every instruction form the Xbox 360 SDK's `libcmt.lib`,
+`d3d9.lib` and `xapilib.lib` use (compiler output and hand-written runtime), 3 encodings x 8
+states each. `pcodecheck` mode `ppc-be-64`: big-endian memory, addresses cut to 32 bits (as the
+language truncates `ram`), code not given decodes as `nop`.
+
+The reference is Unicorn's 64-bit PowerPC (the 970 model). It cannot have its machine state
+register set (a write, `mtmsr` and `mtmsrd` all leave it 0), so it runs in 32-bit mode with
+floating point off. Its XER SO/OV/CA are set by running `mtxer` and read back by running `mfxer`
+(a direct register write or read misses them). Registers hold sign-extended 32-bit values, the
+state of code built for 32-bit addresses, and from those the two modes agree except where a
+result does not fit 32 bits. There the LT/GT/EQ of a record form and OV are not compared, nor
+the high word of an effective address (an update form's base register, a branch target).
+Forms Unicorn will not run in that mode (64-bit instructions: `ld`, `std`, `rldicl`, `extsw`; and
+floating point) run instead on CodeBreaker's own interpreter (`emulate/powerpc.py`), the one the
+PowerPC lane verifies with. The report marks them "(interp)". SO and OV are not compared there.
+
+| | Forms |
+|---|---|
+| Agree before the fixes | 226 |
+| Agree after the fixes | **233** |
+| Disagree, explained (below) | 4 |
+| Untested (VMX vector ops, which neither reference runs; cache hints; `sync`; traps; `mtmsrd`; the time base) | 42 |
+
+Fixed in the specification (docs/GHIDRA_FORK.md, L6):
+
+| Instruction | Was | Now |
+|---|---|---|
+| `mtxer`, `mfxer` | moved the raw XER only: SO, OV and CA (registers of their own, `xer_so` ..., which the arithmetic sets and reads) were left as they were / not read | moved too |
+| `stwcx.`, `stdcx.` | stored a user operation's result (`*EA = storeWordConditionalIndexed(S, ...)`); without the reservation cr0 was left as it was | store the register; without the reservation, store nothing and clear LT/GT/EQ; the reservation is dropped either way |
+| `fctid`, `fctiw` (and their record forms) | truncated toward zero | rounded, as the default rounding mode does (the `z` forms still truncate) |
+
+Found on the way: `pcodecheck` never gave the translator its float formats, so every floating-point
+p-code operation was "unimplemented". It now does, for x86's x87 too. Each case also gets a
+context of its own, because PowerPC's context variables are locked after the first case. The
+interpreter's `stwcx.`/`stdcx.` always succeeded; it now keeps the reservation `lwarx`/`ldarx`
+make, which changes nothing for real code, where one always comes first.
+
+Disagreements left:
+- `divwo.`: Unicorn keeps OV set after a division that does not overflow; the ISA says OE=1 clears
+  it. A reference bug; the specification is right.
+- `fctid`: an exact tie (`-0.5`). The processor rounds to even; p-code's `round` rounds away from zero.
+- `lwzx`, `stwbrx`: an access that wraps past 0xffffffff, which only random states produce.

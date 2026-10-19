@@ -437,6 +437,8 @@ def _extended(m, w, rt, ra, rb):
         r[rt] = _sext(v, 8 * size) if signed else v
         if update:
             r[ra] = (base + r[rb]) & M64
+        if xo in (20, 84):                                   # lwarx, ldarx: a reservation
+            m.reserve = ea
         return
     if xo in _XSTORE:
         size, update, swap = _XSTORE[xo]
@@ -453,9 +455,13 @@ def _extended(m, w, rt, ra, rb):
         if rc:
             m.record(r[ra])
         return
-    if xo == 150 or xo == 214:                               # stwcx., stdcx.: the store always succeeds
-        m.write((base + r[rb]) & M32, 4 if xo == 150 else 8, r[rt])
-        m.set_cr(0, 2)
+    if xo == 150 or xo == 214:                               # stwcx., stdcx.: stored while the reservation
+        if m.reserve is not None:                            # lwarx/ldarx made holds (one processor: it
+            m.write((base + r[rb]) & M32, 4 if xo == 150 else 8, r[rt])   # does, until this)
+            m.set_cr(0, 2)
+        else:
+            m.set_cr(0, 0)
+        m.reserve = None
         return
     if xo == 0:                                              # cmp
         if rt & 1:

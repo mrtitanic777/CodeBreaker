@@ -102,7 +102,9 @@ RISC-V Sail, Intel XED).
   against Unicorn (tools/sleigh_verify.py; docs/SLEIGH_VERIFY.md): 476 forms, 399 agree, 9 differ
   on purpose, 68 untested; four spec bugs fixed (pushf bit 1, iret flags, aad/aam flags, shr/shrd
   OF). x86-32 (KERNEL32, GDI32, flat): 277 forms, 247 agree, 1 differs on purpose, 29 untested;
-  no bug found. PowerPC next.
+  no bug found. PowerPC (2026-10-19; tools/sleigh_verify_ppc.py): the Xbox 360 SDK's instructions
+  against Unicorn (32-bit mode) and the PowerPC interpreter: 279 forms, 226 -> 233 agree, 4
+  explained, 42 untested (VMX); fixed mtxer/mfxer, stwcx./stdcx., fctid/fctiw (L6).
 - B -- parallel analysis in one process (2026-10-18): `CB_THREADS=N` (setting `threads`), each
   thread its own Architecture over one shared read-only image (core change C11). Output identical
   to one thread on all 11 modules. Golden corpus: 868 s -> 366 s at 4 threads (2.4x); peak memory

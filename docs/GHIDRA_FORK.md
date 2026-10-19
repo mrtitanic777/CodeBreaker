@@ -66,6 +66,7 @@ Every change carries a `CodeBreaker:` comment at its place in the source.
 | L3 | `ppc_64_32_homed.cspec` (ours) + one line in `ppc.ldefs` | `ppc_64_32.cspec` without stack arguments, registered as compiler id `homed` | Microsoft's PowerPC compilers (Xbox 360): locals sit directly above the outgoing argument home area, so "8 bytes above SP is an argument" made locals look like arguments and branches vanish as unreachable | `4903b51` |
 | L4 | `x86.sla`, `ppc_32_be.sla`, `ppc_64_isa_altivec_be.sla` | Compiled SLEIGH, not in the upstream source tree | Built with Ghidra 12.1.3's SLEIGH compiler from that release's `.slaspec` | `cf27f50` |
 | L5 | `src/x86/*.slaspec, *.sinc` (12.1.3's, now in the tree) and `x86.sla` built from them with `build/bin/sleigh` (C10) | Fixes found by checking every instruction the golden 16-bit corpus uses against Unicorn (`tools/sleigh_verify.py`, item 7A): `packflags` sets FLAGS bit 1 (always 1 -- `pushf` pushed 0); `AAD`/`AAM` set SF ZF PF from AL, not AX; `IRET`/`IRETD` unpack the flags they pop (as `POPF` does -- the flag registers were left as they were) | Instruction semantics the decompiler builds on | item 7A |
+| L6 | `src/ppc/*.slaspec, *.sinc` (12.1.3's, now in the tree) and `ppc_64_isa_altivec_be.sla`, `ppc_32_be.sla` built from them | Fixes found by checking the Xbox 360 SDK's instructions against Unicorn and the PowerPC interpreter (`tools/sleigh_verify_ppc.py`): `mtxer`/`mfxer` move XER's SO OV CA bits (`xer_so` ...) too; `stwcx.`/`stdcx.` store the register (not a user operation's result), clear LT GT EQ when the reservation is gone and drop it either way; `fctid`/`fctiw` round instead of truncating | Instruction semantics the decompiler builds on | item 7A |
 
 Known differences left on purpose (`tools/sleigh_verify.py` reports them): AF, the auxiliary
 carry, is not modelled (nothing in C reads it); far `call`/`jmp`/`retf` do not write CS -- the
@@ -83,9 +84,9 @@ master later added Swift and raised the x86 language version 4.8 -> 4.9. `ppc.ld
 
 1. `git clone --filter=blob:none --no-checkout https://github.com/NationalSecurityAgency/ghidra.git`
 2. Copy the new upstream `cpp/`, `zlib/` and the language files over ours; re-apply C1-C16 and
-   L1-L3, L5 (each is small and marked); drop any upstream has fixed itself (C2, C6, C7, C10 first).
+   L1-L3, L5, L6 (each is small and marked); drop any upstream has fixed itself (C2, C6, C7, C10 first).
 3. Recompile the `.sla` files with `build/bin/sleigh` (the core's compiler, target `sleigh`), then
-   `python tools/sleigh_verify.py`: no new disagreement.
+   `python tools/sleigh_verify.py` (and `--bits 32`, `tools/sleigh_verify_ppc.py`): no new disagreement.
 4. `python tools/ghidra_fork.py <clone> <new ref>`: only the files in the tables above may show
    as patched. Then `tools/golden.py` and the emulation checks must agree; explain any
    difference.
