@@ -1,4 +1,6 @@
 """omf.py -- Intel/Microsoft OMF-86 object modules: read one whole, write the few kinds exact makes.
+(Also the 32-bit records -- SEGDEF, PUBDEF, LEDATA, LIDATA, FIXUPP with 4-byte offsets -- that a
+32-bit compiler of the period writes, e.g. MSVC 2.0's: build/masm.py, invert/msvc2.)
 
     o = omf.read(data)
         o.seg      {segment name: bytes}            (LEDATA and LIDATA laid out)
@@ -8,6 +10,7 @@
         o.ext      [names]                          (EXTDEF and COMDEF)
         o.comm     {name: (size, far)}              the communal variables (COMDEF)
         o.fix      [(segment, offset, kind, target, displacement)]
+        o.fixloc   [the fixup's 4-bit location field], one per o.fix (9, 11, 13: 32-bit kinds)
                    kind: 'off' 'base' 'ptr' 'lo' 'rel' (self-relative); target: ('ext', name) /
                    ('seg', name) / ('grp', name)
         o.raw      the bytes read
@@ -93,6 +96,7 @@ def read(data):
     seginfo = []
     buf = {}
     o.pubs, o.ext, o.fix, o.groups, o.comm = [], [], [], {}, {}
+    o.fixloc = []
     o.combine, o.start = {}, None
     last = None
     thr = {}
@@ -103,18 +107,19 @@ def read(data):
             while q < len(r):
                 names.append(r[q + 1:q + 1 + r[q]].decode("latin1"))
                 q += 1 + r[q]
-        elif t == 0x98:
+        elif t in (0x98, 0x99):
             align = r[0] >> 5
             q = 1 if align else 4
-            ln = r[q] | r[q + 1] << 8
+            w = 4 if t == 0x99 else 2
+            ln = int.from_bytes(r[q:q + w], "little")
             if r[0] & 2:
-                ln = 0x10000
-            ni, q = _idx(r, q + 2)
+                ln = 0x10000 if t == 0x98 else 0         # (a 4 GB 32-bit segment: its data say how much)
+            ni, q = _idx(r, q + w)
             ci, q = _idx(r, q)
             segs.append(names[ni - 1])
             seginfo.append((names[ni - 1], names[ci - 1] if ci else "", ln, align))
             o.combine[names[ni - 1]] = (r[0] >> 2) & 7      # (5: a stack segment)
-            buf.setdefault(len(segs), bytearray(ln))
+            buf.setdefault(len(segs), bytearray(min(ln, 1 << 24)))
         elif t in (0x8A, 0x8B) and r and r[0] & 0x40:     # MODEND with the program's start: (segment, offset)
             fd = r[1]
             q = 2
@@ -132,14 +137,15 @@ def read(data):
                 si, q = _idx(r, q + 1)
                 mem.append(segs[si - 1])
             o.groups[names[gi - 1]] = mem
-        elif t in (0x8C, 0xB0):
+        elif t in (0x8C, 0xB0, 0xB4, 0xB5, 0xB8):   # EXTDEF COMDEF, and the local (static) LEXTDEF LCOMDEF:
+                                                    # one numbering, so a fixup's external index reaches them
             q = 0
             while q < len(r):
                 nm = r[q + 1:q + 1 + r[q]].decode("latin1")
                 o.ext.append(nm)
                 q += 1 + r[q]
                 _, q = _idx(r, q)
-                if t == 0xB0:                       # a communal variable: its kind and size follow
+                if t in (0xB0, 0xB8):               # a communal variable: its kind and size follow
                     far = r[q] == 0x61
                     q += 1
                     vals = []
@@ -149,7 +155,8 @@ def read(data):
                         vals.append(int.from_bytes(r[q + 1:q + 1 + k], "little") if k else c)
                         q += 1 + k
                     o.comm[nm] = (vals[0] * vals[1] if far else vals[0], far)
-        elif t == 0x90:
+        elif t in (0x90, 0x91):
+            w = 4 if t == 0x91 else 2
             gi, q = _idx(r, 0)
             si, q = _idx(r, q)
             if si == 0:
@@ -157,28 +164,30 @@ def read(data):
             while q < len(r):
                 nm = r[q + 1:q + 1 + r[q]].decode("latin1")
                 q += 1 + r[q]
-                off = r[q] | r[q + 1] << 8
-                _, q = _idx(r, q + 2)
+                off = int.from_bytes(r[q:q + w], "little")
+                _, q = _idx(r, q + w)
                 o.pubs.append((nm, segs[si - 1] if si else None, off))
-        elif t == 0xA0:
+        elif t in (0xA0, 0xA1):
+            w = 4 if t == 0xA1 else 2
             si, q = _idx(r, 0)
-            off = r[q] | r[q + 1] << 8
-            d = r[q + 2:]
+            off = int.from_bytes(r[q:q + w], "little")
+            d = r[q + w:]
             b = buf[si]
             if off + len(d) > len(b):
                 b.extend(bytes(off + len(d) - len(b)))
             b[off:off + len(d)] = d
             last = (si, off)
             filled[si] = max(filled.get(si, 0), off + len(d))
-        elif t == 0xA2:
+        elif t in (0xA2, 0xA3):
+            w = 4 if t == 0xA3 else 2                # (offset and repeat counts)
             si, q = _idx(r, 0)
-            off = r[q] | r[q + 1] << 8
-            q += 2
+            off = int.from_bytes(r[q:q + w], "little")
+            q += w
 
             def block(q):
-                rep = r[q] | r[q + 1] << 8
-                cnt = r[q + 2] | r[q + 3] << 8
-                q += 4
+                rep = int.from_bytes(r[q:q + w], "little")
+                cnt = r[q + w] | r[q + w + 1] << 8
+                q += w + 2
                 if cnt == 0:
                     return bytes(r[q + 1:q + 1 + r[q]]) * rep, q + 1 + r[q]
                 s = b""
@@ -196,7 +205,8 @@ def read(data):
             b[off:off + len(out)] = out
             last = (si, off)
             filled[si] = max(filled.get(si, 0), off + len(out))
-        elif t == 0x9C:
+        elif t in (0x9C, 0x9D):
+            w = 4 if t == 0x9D else 2
             q = 0
             while q < len(r):
                 c = r[q]
@@ -214,29 +224,31 @@ def read(data):
                 off = ((c & 3) << 8) | r[q + 1]
                 fd = r[q + 2]
                 q += 3
-                if fd & 0x80:
-                    fm, fi = thr[(1, (fd >> 4) & 3)]
+                if fd & 0x80:                        # (a thread never defined: frame unknown)
+                    fm, fi = thr.get((1, (fd >> 4) & 3), (None, None))
                 else:
                     fm = (fd >> 4) & 7
                     fi = None
                     if fm < 3:
                         fi, q = _idx(r, q)
                 if fd & 8:
-                    tm, ti = thr[(0, fd & 3)]
+                    tm, ti = thr.get((0, fd & 3), (None, None))
                 else:
                     tm = fd & 3
                     ti, q = _idx(r, q)
                 disp = 0
                 if not fd & 4:
-                    disp = r[q] | r[q + 1] << 8
-                    q += 2
-                tgt = (("seg", segs[ti - 1]) if tm & 3 == 0 else
+                    disp = int.from_bytes(r[q:q + w], "little")
+                    q += w
+                tgt = (("?", None) if tm is None else
+                       ("seg", segs[ti - 1]) if tm & 3 == 0 else
                        ("grp", names[ti - 1] if ti and ti - 1 < len(names) else ti) if tm & 3 == 1 else
                        ("ext", o.ext[ti - 1]))
                 kind = {1: "off", 2: "base", 3: "ptr", 0: "lo", 5: "off"}.get(loc, "?%d" % loc)
                 if not segrel:
                     kind = "rel"
                 o.fix.append((segs[last[0] - 1], last[1] + off, kind, tgt, disp))
+                o.fixloc.append((c >> 2) & 0x0F)
     o.seg = {segs[i - 1]: bytes(d) for i, d in buf.items()}
     o.segs = seginfo
     o.filled = {segs[i - 1]: n for i, n in filled.items()}
