@@ -48,6 +48,14 @@ def _functions(m):
     return out
 
 
+def _gdt_span():
+    from codebreaker.emulate import windows16 as emu
+    return emu.GDT_ADDR, emu.GDT_ADDR + emu._N_GDT * 8
+
+
+_GDT = _gdt_span()
+
+
 def _word(w, entry, nxt, places=None):
     """An argument word as what it is, where two builds legitimately differ in its bits."""
     if places and nxt is not None:
@@ -93,6 +101,11 @@ def _fingerprint(r, wide, data_len, places=None):
             base = ds
         elif stack is not None and stack <= a < stack + 0x10000:
             continue                                         # (its frame, its arguments)
+        elif _GDT[0] <= a < _GDT[1]:
+            # (the processor marking a descriptor accessed as a selector is loaded -- `lds si, p`
+            # sets a bit at GDT+400h for selector 400h -- is not the function's doing: GDI's
+            # sub_9_1110 loads DS before a loop that does not run; its C loads nothing)
+            continue
         else:
             into, at = far, far_before
             base = 0
@@ -322,6 +335,16 @@ def check(original, folder, names, image=None, inputs=None, workers=None, tables
                 why = why or "the emulator: %s" % type(e).__name__
                 continue
             fb = _fingerprint(b, wide, len(data), places_ours)
+            if fa.get("exit") == "fault" and fb.get("exit") != "fault":
+                # An input the original faults on (a selector it loads at once, `lds si, p`, that
+                # no caller would pass) is no behavior to match: its C, loading a selector only to
+                # use it, went on. What the original did before it faulted must still be done.
+                x, y = fa.get("calls") or (), fb.get("calls") or ()
+                if tuple(y[:len(x)]) != tuple(x):
+                    yield name, "differs", "args %s: calls: original %s, ours %s" % (
+                        " ".join("%x" % w for w in v["args"][:4]), list(x[:2]), list(y[:2]))
+                    break
+                continue
             d = _differ(fa, fb)
             if d:
                 yield name, "differs", "args %s: %s" % (" ".join("%x" % w for w in v["args"][:4]), d)
