@@ -1,0 +1,4901 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "codebreaker/l2.schema.json",
+ "title": "L2: the translator hub IR (docs/TRANSLATOR_DESIGN.md, IR_UNIFICATION.md, L2_BINARY_TYPES.md)",
+ "description": "One typed tree for every source language and for decompiled binaries. ir.py implements it in Python; the Rust core implements the same schema (serde). A document is a Node, usually a Module or a Unit.",
+ "$ref": "#/$defs/Node",
+ "$defs": {
+  "Prim": {
+   "type": "object",
+   "required": [
+    "kind"
+   ],
+   "properties": {
+    "kind": {
+     "enum": [
+      "bool",
+      "i8",
+      "i16",
+      "i32",
+      "i64",
+      "u8",
+      "u16",
+      "u32",
+      "u64",
+      "f32",
+      "f64",
+      "f80",
+      "char",
+      "void"
+     ]
+    },
+    "signed": {
+     "type": "boolean",
+     "description": "for char: stated, not assumed"
+    }
+   },
+   "additionalProperties": false
+  },
+  "Special": {
+   "type": "object",
+   "required": [
+    "kind"
+   ],
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "enum": [
+      "null",
+      "any",
+      "dynamic"
+     ]
+    }
+   }
+  },
+  "Class": {
+   "description": "a nominal type (a class, interface, enum, struct by name) with its type arguments",
+   "type": "object",
+   "required": [
+    "kind",
+    "name"
+   ],
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "class"
+    },
+    "name": {
+     "type": "string"
+    },
+    "args": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/Type"
+     }
+    }
+   }
+  },
+  "TypeVar": {
+   "type": "object",
+   "required": [
+    "kind",
+    "name"
+   ],
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "typevar"
+    },
+    "name": {
+     "type": "string"
+    }
+   }
+  },
+  "Wildcard": {
+   "type": "object",
+   "required": [
+    "kind"
+   ],
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "wildcard"
+    },
+    "bound": {
+     "enum": [
+      "extends",
+      "super"
+     ]
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    }
+   }
+  },
+  "SegmentRef": {
+   "description": "which segment a near pointer is relative to, or what a selector names",
+   "oneOf": [
+    {
+     "enum": [
+      "ds",
+      "ss",
+      "cs",
+      "es",
+      "unknown"
+     ]
+    },
+    {
+     "type": "object",
+     "required": [
+      "module_segment"
+     ],
+     "properties": {
+      "module_segment": {
+       "type": "integer",
+       "minimum": 1
+      }
+     },
+     "additionalProperties": false
+    },
+    {
+     "type": "object",
+     "required": [
+      "import"
+     ],
+     "properties": {
+      "import": {
+       "type": "string"
+      },
+      "part": {
+       "enum": [
+        "segment",
+        "offset"
+       ]
+      }
+     },
+     "additionalProperties": false
+    }
+   ]
+  },
+  "Ptr": {
+   "type": "object",
+   "required": [
+    "kind",
+    "space",
+    "to"
+   ],
+   "properties": {
+    "kind": {
+     "const": "ptr"
+    },
+    "space": {
+     "enum": [
+      "flat",
+      "near",
+      "far",
+      "huge",
+      "real",
+      "io"
+     ]
+    },
+    "seg": {
+     "$ref": "#/$defs/SegmentRef",
+     "description": "near only: the segment the offset is in"
+    },
+    "to": {
+     "$ref": "#/$defs/Type"
+    }
+   },
+   "additionalProperties": false
+  },
+  "Selector": {
+   "type": "object",
+   "required": [
+    "kind"
+   ],
+   "properties": {
+    "kind": {
+     "const": "selector"
+    },
+    "of": {
+     "$ref": "#/$defs/SegmentRef"
+    }
+   },
+   "additionalProperties": false
+  },
+  "FnPtr": {
+   "type": "object",
+   "required": [
+    "kind",
+    "space",
+    "fn"
+   ],
+   "properties": {
+    "kind": {
+     "const": "fnptr"
+    },
+    "space": {
+     "enum": [
+      "flat",
+      "near",
+      "far"
+     ]
+    },
+    "fn": {
+     "$ref": "#/$defs/Fn"
+    }
+   },
+   "additionalProperties": false
+  },
+  "Field": {
+   "type": "object",
+   "required": [
+    "name",
+    "offset",
+    "type"
+   ],
+   "properties": {
+    "name": {
+     "type": "string"
+    },
+    "offset": {
+     "type": "integer",
+     "minimum": 0
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "pad": {
+     "type": "boolean"
+    }
+   },
+   "additionalProperties": false
+  },
+  "Record": {
+   "description": "explicit layout: offsets fixed, gaps explicit (structures, frames, data segments)",
+   "type": "object",
+   "required": [
+    "kind",
+    "size",
+    "fields"
+   ],
+   "properties": {
+    "kind": {
+     "const": "record"
+    },
+    "name": {
+     "type": "string"
+    },
+    "role": {
+     "enum": [
+      "struct",
+      "union",
+      "frame",
+      "segment"
+     ]
+    },
+    "size": {
+     "type": "integer",
+     "minimum": 0
+    },
+    "packed": {
+     "type": "boolean",
+     "default": true
+    },
+    "fields": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/Field"
+     }
+    }
+   },
+   "additionalProperties": false
+  },
+  "Array": {
+   "type": "object",
+   "required": [
+    "kind",
+    "elem"
+   ],
+   "properties": {
+    "kind": {
+     "const": "array"
+    },
+    "elem": {
+     "$ref": "#/$defs/Type"
+    },
+    "count": {
+     "type": "integer",
+     "minimum": 0
+    }
+   },
+   "additionalProperties": false
+  },
+  "Location": {
+   "oneOf": [
+    {
+     "const": "none"
+    },
+    {
+     "type": "object",
+     "required": [
+      "stack"
+     ],
+     "properties": {
+      "stack": {
+       "type": "integer"
+      }
+     },
+     "additionalProperties": false
+    },
+    {
+     "type": "object",
+     "required": [
+      "reg"
+     ],
+     "properties": {
+      "reg": {
+       "type": "string"
+      }
+     },
+     "additionalProperties": false
+    },
+    {
+     "type": "object",
+     "required": [
+      "regs"
+     ],
+     "properties": {
+      "regs": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       },
+       "minItems": 2
+      }
+     },
+     "additionalProperties": false
+    },
+    {
+     "type": "object",
+     "required": [
+      "flag"
+     ],
+     "properties": {
+      "flag": {
+       "enum": [
+        "CF",
+        "ZF",
+        "SF",
+        "OF"
+       ]
+      }
+     },
+     "additionalProperties": false
+    }
+   ]
+  },
+  "Fn": {
+   "type": "object",
+   "required": [
+    "kind",
+    "conv",
+    "params",
+    "result"
+   ],
+   "properties": {
+    "kind": {
+     "const": "fn"
+    },
+    "conv": {
+     "enum": [
+      "cdecl",
+      "pascal",
+      "stdcall",
+      "fastcall",
+      "thiscall",
+      "register",
+      "interrupt"
+     ]
+    },
+    "distance": {
+     "enum": [
+      "flat",
+      "near",
+      "far"
+     ]
+    },
+    "pops": {
+     "type": [
+      "integer",
+      "null"
+     ],
+     "description": "argument bytes the callee removes; null = not known"
+    },
+    "loadds": {
+     "type": "boolean"
+    },
+    "params": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "type"
+      ],
+      "properties": {
+       "name": {
+        "type": "string"
+       },
+       "type": {
+        "$ref": "#/$defs/Type"
+       },
+       "at": {
+        "$ref": "#/$defs/Location"
+       }
+      },
+      "additionalProperties": false
+     }
+    },
+    "result": {
+     "type": "object",
+     "required": [
+      "at"
+     ],
+     "properties": {
+      "type": {
+       "$ref": "#/$defs/Type"
+      },
+      "at": {
+       "$ref": "#/$defs/Location"
+      }
+     },
+     "additionalProperties": false
+    },
+    "preserves": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "variadic": {
+     "type": "boolean"
+    }
+   },
+   "additionalProperties": false
+  },
+  "Origin": {
+   "description": "provenance: where in the original binary a node came from",
+   "oneOf": [
+    {
+     "type": "object",
+     "required": [
+      "module",
+      "segment",
+      "offset"
+     ],
+     "properties": {
+      "module": {
+       "type": "string"
+      },
+      "segment": {
+       "type": "integer"
+      },
+      "offset": {
+       "type": "integer"
+      }
+     },
+     "additionalProperties": false
+    },
+    {
+     "type": "object",
+     "required": [
+      "module",
+      "va"
+     ],
+     "properties": {
+      "module": {
+       "type": "string"
+      },
+      "va": {
+       "type": "integer"
+      }
+     },
+     "additionalProperties": false
+    }
+   ]
+  },
+  "Type": {
+   "oneOf": [
+    {
+     "$ref": "#/$defs/Prim"
+    },
+    {
+     "$ref": "#/$defs/Special"
+    },
+    {
+     "$ref": "#/$defs/Class"
+    },
+    {
+     "$ref": "#/$defs/TypeVar"
+    },
+    {
+     "$ref": "#/$defs/Wildcard"
+    },
+    {
+     "$ref": "#/$defs/Array"
+    },
+    {
+     "$ref": "#/$defs/Ptr"
+    },
+    {
+     "$ref": "#/$defs/Selector"
+    },
+    {
+     "$ref": "#/$defs/Fn"
+    },
+    {
+     "$ref": "#/$defs/FnPtr"
+    },
+    {
+     "$ref": "#/$defs/Record"
+    }
+   ]
+  },
+  "Sym": {
+   "description": "what a name refers to, as the source language resolved it",
+   "type": "object",
+   "required": [
+    "kind",
+    "name"
+   ],
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "enum": [
+      "local",
+      "param",
+      "field",
+      "method",
+      "ctor",
+      "class",
+      "enumconst",
+      "typevar",
+      "package",
+      "global",
+      "function",
+      "label"
+     ]
+    },
+    "name": {
+     "type": "string"
+    },
+    "owner": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "static": {
+     "type": "boolean"
+    },
+    "type": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Type"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "params": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/Type"
+     }
+    },
+    "ret": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Type"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "varargs": {
+     "type": "boolean"
+    }
+   }
+  },
+  "AddressOf": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "AddressOf"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "sym": {
+     "$ref": "#/$defs/Sym"
+    }
+   },
+   "additionalProperties": false
+  },
+  "Assert": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Assert"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "cond": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "detail": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "Assign": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Assign"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "op": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "target": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "value": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "overflow": {
+     "anyOf": [
+      {
+       "enum": [
+        "wrap",
+        "saturate",
+        "trap"
+       ]
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "Binary": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Binary"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "op": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "left": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "right": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "overflow": {
+     "anyOf": [
+      {
+       "enum": [
+        "wrap",
+        "saturate",
+        "trap"
+       ]
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "signed": {
+     "anyOf": [
+      {
+       "type": "boolean"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "Block": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Block"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "stmts": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "Break": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Break"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "label": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "Call": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Call"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "target": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "sym": {
+     "$ref": "#/$defs/Sym"
+    },
+    "args": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "typeargs": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/Type"
+     }
+    }
+   },
+   "additionalProperties": false
+  },
+  "Case": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Case"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "labels": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "default": {
+     "type": "boolean"
+    },
+    "body": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "Cast": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Cast"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "x": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "overflow": {
+     "anyOf": [
+      {
+       "enum": [
+        "wrap",
+        "saturate",
+        "trap"
+       ]
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "Catch": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Catch"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "sym": {
+     "$ref": "#/$defs/Sym"
+    },
+    "types": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/Type"
+     }
+    },
+    "body": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "ClassDecl": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "ClassDecl"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "name": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "qname": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "kind": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "mods": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "typeparams": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "extends": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Type"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "implements": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/Type"
+     }
+    },
+    "members": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "outer": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "ClassLit": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "ClassLit"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "of": {
+     "$ref": "#/$defs/Type"
+    }
+   },
+   "additionalProperties": false
+  },
+  "Concat": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Concat"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "parts": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "Cond": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Cond"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "cond": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "then": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "orelse": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "Continue": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Continue"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "label": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "CtorCall": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "CtorCall"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "kind": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "sym": {
+     "$ref": "#/$defs/Sym"
+    },
+    "args": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "target": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "DoWhile": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "DoWhile"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "body": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "cond": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "Empty": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Empty"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "EnumConst": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "EnumConst"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "sym": {
+     "$ref": "#/$defs/Sym"
+    },
+    "args": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "body": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "ctor": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Sym"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "ExprStmt": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "ExprStmt"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "expr": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "FarAddress": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "FarAddress"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "selector": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "offset": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "FieldDecl": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "FieldDecl"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "sym": {
+     "$ref": "#/$defs/Sym"
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "init": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "mods": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    }
+   },
+   "additionalProperties": false
+  },
+  "For": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "For"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "init": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "cond": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "update": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "body": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "ForEach": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "ForEach"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "var": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "iterable": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "body": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "Goto": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Goto"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "label": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "If": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "If"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "cond": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "then": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "orelse": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "Index": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Index"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "arr": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "index": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "InstanceOf": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "InstanceOf"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "x": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "test": {
+     "$ref": "#/$defs/Type"
+    },
+    "binding": {}
+   },
+   "additionalProperties": false
+  },
+  "Join": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Join"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "hi": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "lo": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "Labeled": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Labeled"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "label": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "body": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "Lambda": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Lambda"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "params": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "body": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "Length": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Length"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "arr": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "Lit": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Lit"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "value": {}
+   },
+   "additionalProperties": false
+  },
+  "Local": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Local"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "sym": {
+     "$ref": "#/$defs/Sym"
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "init": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "mods": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    }
+   },
+   "additionalProperties": false
+  },
+  "LocalClass": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "LocalClass"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "decl": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "MachineFragment": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "MachineFragment"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "length": {
+     "type": "integer"
+    },
+    "reason": {
+     "type": "string"
+    },
+    "why": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "asm": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "MethodDecl": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "MethodDecl"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "sym": {
+     "$ref": "#/$defs/Sym"
+    },
+    "name": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "kind": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "params": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "ret": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Type"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "body": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "mods": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "throws": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/Type"
+     }
+    },
+    "typeparams": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    }
+   },
+   "additionalProperties": false,
+   "description": "kind: method, ctor, static_init, init, or function (a free function: C, a decompiled binary). A calling-convention-carrying fn type rides on sym.type."
+  },
+  "MethodRef": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "MethodRef"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "target": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "sym": {
+     "$ref": "#/$defs/Sym"
+    },
+    "mode": {
+     "type": "string"
+    }
+   },
+   "additionalProperties": false
+  },
+  "Module": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Module"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "units": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "Name": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Name"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "sym": {
+     "$ref": "#/$defs/Sym"
+    }
+   },
+   "additionalProperties": false
+  },
+  "New": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "New"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "sym": {
+     "$ref": "#/$defs/Sym"
+    },
+    "args": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "body": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "outer": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "memory": {
+     "anyOf": [
+      {
+       "enum": [
+        "gc",
+        "owned",
+        "borrowed",
+        "stack",
+        "manual",
+        "emulated"
+       ]
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "NewArray": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "NewArray"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "elem": {
+     "$ref": "#/$defs/Type"
+    },
+    "dims": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "init": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "Param": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Param"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "sym": {
+     "$ref": "#/$defs/Sym"
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "mods": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    }
+   },
+   "additionalProperties": false
+  },
+  "Paren": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Paren"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "x": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "Piece": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Piece"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "x": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "byte": {
+     "type": "integer"
+    },
+    "width": {
+     "type": "integer"
+    }
+   },
+   "additionalProperties": false
+  },
+  "Return": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Return"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "expr": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "Select": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Select"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "obj": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "sym": {
+     "$ref": "#/$defs/Sym"
+    }
+   },
+   "additionalProperties": false
+  },
+  "Super": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Super"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "qualifier": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Type"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "Switch": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Switch"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "expr": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "cases": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "SwitchExpr": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "SwitchExpr"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "expr": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "cases": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "Sync": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Sync"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "lock": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "body": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "This": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "This"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "qualifier": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Type"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "Throw": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Throw"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "expr": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "Try": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Try"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "resources": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "body": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "catches": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "final": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "TypeName": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "TypeName"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    }
+   },
+   "additionalProperties": false
+  },
+  "Unary": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Unary"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "op": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "x": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "postfix": {
+     "type": "boolean"
+    },
+    "overflow": {
+     "anyOf": [
+      {
+       "enum": [
+        "wrap",
+        "saturate",
+        "trap"
+       ]
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "Unit": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Unit"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "path": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "package": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "imports": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "types": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "Unsupported": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Unsupported"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "kind": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "raw": {}
+   },
+   "additionalProperties": false
+  },
+  "While": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "While"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "cond": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "body": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "Yield": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Yield"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "expr": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
+  "Node": {
+   "description": "any node, dispatched on its \"node\" field (if/then, so validation stays linear)",
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "enum": [
+      "AddressOf",
+      "Assert",
+      "Assign",
+      "Binary",
+      "Block",
+      "Break",
+      "Call",
+      "Case",
+      "Cast",
+      "Catch",
+      "ClassDecl",
+      "ClassLit",
+      "Concat",
+      "Cond",
+      "Continue",
+      "CtorCall",
+      "DoWhile",
+      "Empty",
+      "EnumConst",
+      "ExprStmt",
+      "FarAddress",
+      "FieldDecl",
+      "For",
+      "ForEach",
+      "Goto",
+      "If",
+      "Index",
+      "InstanceOf",
+      "Join",
+      "Labeled",
+      "Lambda",
+      "Length",
+      "Lit",
+      "Local",
+      "LocalClass",
+      "MachineFragment",
+      "MethodDecl",
+      "MethodRef",
+      "Module",
+      "Name",
+      "New",
+      "NewArray",
+      "Param",
+      "Paren",
+      "Piece",
+      "Return",
+      "Select",
+      "Super",
+      "Switch",
+      "SwitchExpr",
+      "Sync",
+      "This",
+      "Throw",
+      "Try",
+      "TypeName",
+      "Unary",
+      "Unit",
+      "Unsupported",
+      "While",
+      "Yield"
+     ]
+    }
+   },
+   "allOf": [
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "AddressOf"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/AddressOf"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Assert"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Assert"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Assign"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Assign"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Binary"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Binary"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Block"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Block"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Break"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Break"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Call"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Call"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Case"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Case"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Cast"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Cast"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Catch"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Catch"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "ClassDecl"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/ClassDecl"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "ClassLit"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/ClassLit"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Concat"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Concat"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Cond"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Cond"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Continue"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Continue"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "CtorCall"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/CtorCall"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "DoWhile"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/DoWhile"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Empty"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Empty"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "EnumConst"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/EnumConst"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "ExprStmt"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/ExprStmt"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "FarAddress"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/FarAddress"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "FieldDecl"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/FieldDecl"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "For"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/For"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "ForEach"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/ForEach"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Goto"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Goto"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "If"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/If"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Index"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Index"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "InstanceOf"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/InstanceOf"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Join"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Join"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Labeled"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Labeled"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Lambda"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Lambda"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Length"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Length"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Lit"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Lit"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Local"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Local"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "LocalClass"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/LocalClass"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "MachineFragment"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/MachineFragment"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "MethodDecl"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/MethodDecl"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "MethodRef"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/MethodRef"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Module"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Module"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Name"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Name"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "New"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/New"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "NewArray"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/NewArray"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Param"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Param"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Paren"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Paren"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Piece"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Piece"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Return"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Return"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Select"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Select"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Super"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Super"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Switch"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Switch"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "SwitchExpr"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/SwitchExpr"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Sync"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Sync"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "This"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/This"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Throw"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Throw"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Try"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Try"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "TypeName"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/TypeName"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Unary"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Unary"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Unit"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Unit"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Unsupported"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Unsupported"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "While"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/While"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Yield"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Yield"
+     }
+    }
+   ]
+  }
+ }
+}

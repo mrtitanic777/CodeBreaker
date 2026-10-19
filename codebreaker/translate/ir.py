@@ -14,25 +14,41 @@ that meets one declines the method, and the old path handles it.
 
 # ---------------------------------------------------------------------------------------------- types
 # Language-neutral primitive kinds. Java's char is u16, byte i8; C's are mapped by width and sign.
-PRIMS = ('bool', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64')
+PRIMS = ('bool', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64', 'f80', 'char')
+# ('char' is C's plain char: its signedness is stated per target in `info['signed']`, never assumed)
 
 
 class Type(object):
-    """kind: one of PRIMS, or 'void', 'null', 'class', 'array', 'typevar', 'wildcard', 'any' (unresolved),
-    'dynamic' (known only at run time). `name` is the qualified name of a class or type variable, `args`
-    the type arguments, `elem` an array's element type, `bound` a wildcard's bound."""
-    __slots__ = ('kind', 'name', 'args', 'elem', 'bound')
+    """kind: one of PRIMS, or
+      'void', 'null', 'any' (unresolved), 'dynamic' (known only at run time);
+      'class'    a nominal type: `name` qualified, `args` its type arguments;
+      'typevar', 'wildcard' (`bound`);
+      'array'    `elem`, and info['count'] for a fixed-size array (C);
+      and the binary-facing kinds of docs/L2_BINARY_TYPES.md (agreed with the decompiler, 2026-10-19):
+      'ptr'      `elem` what it points at; info: space (SPACES), seg (a near pointer's segment);
+      'selector' info['of']: what segment it names;
+      'fn'       info: conv, distance, pops, loadds, params [{name, type, at}], result {type, at},
+                 preserves, variadic;
+      'fnptr'    info: space, fn (an 'fn' Type);
+      'record'   an explicit layout: `name`, info: size, packed, role (struct union frame segment),
+                 fields [{name, offset, type, pad}].
+    Kind-specific details live in `info` (a dict), with the names the schema uses
+    (codebreaker/translate/l2.schema.json)."""
+    __slots__ = ('kind', 'name', 'args', 'elem', 'bound', 'info')
 
-    def __init__(self, kind, name=None, args=(), elem=None, bound=None):
+    def __init__(self, kind, name=None, args=(), elem=None, bound=None, **info):
         self.kind = kind
         self.name = name
         self.args = tuple(args)
         self.elem = elem
         self.bound = bound
+        self.info = info
+
+    def _key(self):
+        return (self.kind, self.name, self.args, self.elem, self.bound, repr(sorted(self.info.items())))
 
     def __eq__(self, o):
-        return isinstance(o, Type) and (self.kind, self.name, self.args, self.elem, self.bound) == \
-            (o.kind, o.name, o.args, o.elem, o.bound)
+        return isinstance(o, Type) and self._key() == o._key()
 
     def __hash__(self):
         return hash((self.kind, self.name, self.args, self.elem))
@@ -64,6 +80,16 @@ class Type(object):
         while t.kind == 'array':
             n, t = n + 1, t.elem
         return n, t
+
+
+# docs/L2_BINARY_TYPES.md: a pointer's address space, and the memory model of an allocation
+SPACES = ('flat', 'near', 'far', 'huge', 'real', 'io')
+MEMORY = ('gc', 'owned', 'borrowed', 'stack', 'manual', 'emulated')
+OVERFLOW = ('wrap', 'saturate', 'trap')      # an operator's integer rule; None: the source language's own
+
+
+def pointer_to(t, space='flat', seg=None):
+    return Type('ptr', elem=t, space=space, **({'seg': seg} if seg is not None else {}))
 
 
 def array_of(t, dims=1):
@@ -106,12 +132,15 @@ class Sym(object):
 
 # ---------------------------------------------------------------------------------------------- nodes
 class Node(object):
-    __slots__ = ('line', 'col')
+    # origin: where in a binary the node came from (L2_BINARY_TYPES.md section 8):
+    # {'module', 'segment', 'offset'} or {'module', 'va'}; None for source
+    __slots__ = ('line', 'col', 'origin')
     fields = ()                                  # the child slots, in source order (walk() follows them)
 
     def __init__(self, **kw):
         self.line = kw.pop('line', 0)
         self.col = kw.pop('col', 0)
+        self.origin = kw.pop('origin', None)
         for k in self.slots():
             setattr(self, k, kw.pop(k, None))
         if kw:
@@ -158,10 +187,13 @@ def _node(name, slots, fields=None, base=Node):
 Module = _node('Module', ['units'])                                   # a whole program
 Unit = _node('Unit', ['path', 'package', 'imports', 'types'], ['types'])
 ClassDecl = _node('ClassDecl', ['name', 'qname', 'kind', 'mods', 'typeparams', 'extends', 'implements',
-                                'members', 'outer'], ['members'])     # kind: class interface enum record annotation
+                                'members', 'outer'], ['members'])
+# (a C struct, a frame, a data segment with a fixed layout is a 'record' Type, beside ClassDecl)     # kind: class interface enum record annotation
 FieldDecl = _node('FieldDecl', ['sym', 'type', 'init', 'mods'], ['init'])
 MethodDecl = _node('MethodDecl', ['sym', 'name', 'kind', 'params', 'ret', 'body', 'mods', 'throws', 'typeparams'],
-                   ['params', 'body'])                                # kind: method ctor static_init init
+                   ['params', 'body'])
+# kind: method ctor static_init init, or function (a free function: C, a decompiled binary). A function
+# whose type carries a calling convention (an 'fn' Type) has it on sym.type, where callers read it too.
 Param = _node('Param', ['sym', 'type', 'mods'], [])
 EnumConst = _node('EnumConst', ['sym', 'args', 'body', 'ctor'], ['args', 'body'])
 
@@ -192,6 +224,10 @@ Throw = _stmt('Throw', ['expr'])
 Try = _stmt('Try', ['resources', 'body', 'catches', 'final'])
 Catch = _stmt('Catch', ['sym', 'types', 'body'], ['body'])          # several types: a multi-catch
 Labeled = _stmt('Labeled', ['label', 'body'], ['body'])
+Goto = _stmt('Goto', ['label'], [])                  # C, and whatever structuring leaves in a binary
+# What stays assembly (L2_BINARY_TYPES.md section 7), as a statement, a member or a whole function:
+# origin, length in bytes, reason (hand-written, register-arguments, ds-left-changed, ...), why, asm.
+MachineFragment = _stmt('MachineFragment', ['length', 'reason', 'why', 'asm'], [])
 Sync = _stmt('Sync', ['lock', 'body'])
 Empty = _stmt('Empty', [], [])
 LocalClass = _stmt('LocalClass', ['decl'])
@@ -216,21 +252,26 @@ TypeName = _expr('TypeName', [], [])                 # a type used as a qualifie
 This = _expr('This', ['qualifier'], [])
 Super = _expr('Super', ['qualifier'], [])
 Call = _expr('Call', ['target', 'sym', 'args', 'typeargs'], ['target', 'args'])   # target None: own method, implicit
-New = _expr('New', ['sym', 'args', 'body', 'outer'], ['outer', 'args', 'body'])   # body: an anonymous ClassDecl
+New = _expr('New', ['sym', 'args', 'body', 'outer', 'memory'], ['outer', 'args', 'body'])   # memory: MEMORY   # body: an anonymous ClassDecl
 NewArray = _expr('NewArray', ['elem', 'dims', 'init'], ['dims', 'init'])        # elem: the element Type
 Index = _expr('Index', ['arr', 'index'])
 Length = _expr('Length', ['arr'])                    # an array's length
-Unary = _expr('Unary', ['op', 'x', 'postfix'], ['x'])     # op: - + ! ~ ++ --
-Binary = _expr('Binary', ['op', 'left', 'right'])        # op: + - * / % << >> >>> & | ^ && || == != < <= > >=
+Unary = _expr('Unary', ['op', 'x', 'postfix', 'overflow'], ['x'])     # op: - + ! ~ ++ --
+Binary = _expr('Binary', ['op', 'left', 'right', 'overflow', 'signed'], ['left', 'right'])
+# (signed: for a comparison in a binary, from the instruction (jl vs jb), not the operand types)        # op: + - * / % << >> >>> & | ^ && || == != < <= > >=
 Concat = _expr('Concat', ['parts'])                      # string concatenation, flattened
-Assign = _expr('Assign', ['op', 'target', 'value'], ['target', 'value'])   # op None, or the compound operator
+Assign = _expr('Assign', ['op', 'target', 'value', 'overflow'], ['target', 'value'])   # op None, or the compound operator
 Cond = _expr('Cond', ['cond', 'then', 'orelse'])
-Cast = _expr('Cast', ['x'])                          # .type is the target type
+Cast = _expr('Cast', ['x', 'overflow'], ['x'])                          # .type is the target type
 InstanceOf = _expr('InstanceOf', ['x', 'test', 'binding'], ['x'])   # test: a Type; binding: a pattern's Local
 ClassLit = _expr('ClassLit', ['of'], [])             # X.class; of: a Type
 Lambda = _expr('Lambda', ['params', 'body'])         # body: an Expr or a Block
 MethodRef = _expr('MethodRef', ['target', 'sym', 'mode'], ['target'])   # mode: invoke / new
 SwitchExpr = _expr('SwitchExpr', ['expr', 'cases'])  # cases: [Case]; each arm ends in a Yield or a Throw
+AddressOf = _expr('AddressOf', ['sym'], [])            # a constant code or data address: by symbol, never a number
+FarAddress = _expr('FarAddress', ['selector', 'offset'])   # selector:offset, typed ptr far (MK_FP)
+Piece = _expr('Piece', ['x', 'byte', 'width'], ['x'])   # `width` bytes of x from byte `byte`
+Join = _expr('Join', ['hi', 'lo'])                    # hi:lo as one wider value
 Paren = _expr('Paren', ['x'])                        # kept: back ends print grouping the source chose
 Unsupported = _expr('Unsupported', ['kind', 'raw'], [])   # a construct the front end cannot lower yet
 
