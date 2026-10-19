@@ -48,8 +48,16 @@ def _functions(m):
     return out
 
 
-def _word(w, entry, nxt):
+def _word(w, entry, nxt, places=None):
     """An argument word as what it is, where two builds legitimately differ in its bits."""
+    if places and nxt is not None:
+        # (the offset half of a far pointer to one of the module's own functions -- a timer's or
+        # an enumeration's callback -- is that function: it sits elsewhere in a rebuild. USER's
+        # SetCaretBlinkTime passes 13:0D65 in the original, 13:04B6 in the build: the same one)
+        from codebreaker.emulate import windows16 as emu
+        seg = (nxt >> 3) - emu._MODULE_SLOT + 1
+        if (seg, w) in places:
+            return "&" + places[(seg, w)]
     if w == entry.get("DS"):
         return "DS"
     if w == entry.get("SS"):
@@ -59,14 +67,14 @@ def _word(w, entry, nxt):
     return "%x" % w
 
 
-def _fingerprint(r, wide, data_len):
+def _fingerprint(r, wide, data_len, places=None):
     entry = r.get("entry_regs") or {}
     ex = str(r.get("exit"))
     ex = "fault" if ("exception" in ex or "fault" in ex) else ex
     calls = []
     for c in r.get("calls_out") or ():
         ws = c["args"]
-        calls.append("%s(%s)" % (c["name"], ",".join(_word(w, entry, ws[i + 1] if i + 1 < len(ws) else None)
+        calls.append("%s(%s)" % (c["name"], ",".join(_word(w, entry, ws[i + 1] if i + 1 < len(ws) else None, places)
                                                      for i, w in enumerate(ws))))
     for h in r.get("imports_hit") or ():
         calls.append("api " + win16._call(h, [], entry))
@@ -105,6 +113,11 @@ def _fingerprint(r, wide, data_len):
             return dict(out, result=out["result"])           # bytes: the stack after it says nothing
         if out["result"] is not None and (out["result"] & 0xFFFF) == entry.get("DS") and not wide:
             out["result"] = "DS"
+        from codebreaker.emulate import windows16 as emu
+        if isinstance(out["result"], int) and (out["result"] & 0xFFFF) == emu.ENTRY_AX and not wide:
+            out["result"] = "none"                           # (AX as it came in: no result set)
+        elif isinstance(out["result"], int) and (out["result"] & 0xFF00) == emu.ENTRY_AX & 0xFF00 and not wide:
+            out["result"] = ("byte", out["result"] & 0xFF)   # (AL set, AH the caller's: a byte result)
         out["pop"] = r.get("sp_delta")
         out["kept"] = (regs.get("SI") == entry.get("SI"), regs.get("DI") == entry.get("DI"),
                        regs.get("DS") == entry.get("DS"))
@@ -127,6 +140,14 @@ def _differ(a, b):
     for k, what in (("exit", "ends"), ("calls", "calls"), ("data", "leaves in the data segment"),
                     ("far", "leaves through a far pointer"),
                     ("result", "returns"), ("pop", "removes argument bytes"), ("kept", "keeps SI, DI, DS")):
+        if k == "result" and a.get(k) == "none":
+            continue
+        if k == "result" and isinstance(a.get(k), tuple) and a[k][0] == "byte":
+            mine = b.get(k)                                  # (the original returns a byte: AL is all)
+            low = mine[1] if isinstance(mine, tuple) else (mine & 0xFF) if isinstance(mine, int) else mine
+            if low == a[k][1]:
+                continue                                         # (the original sets none: nothing to match --
+                                                             # CopyRect only copies, AX is the caller's)
         if a.get(k) != b.get(k):
             x, y = a.get(k), b.get(k)
             if k == "calls":
@@ -239,6 +260,11 @@ def check(original, folder, names, image=None, inputs=None, workers=None, tables
     noisy_runs = [dict(v, noisy=True) for v in win16.vectors()[-4:]] if data else []
     # (where the original's data ends and its segment ends: past them both sides hold the same)
     data_end = (seg["length"], max(seg["length"], seg.get("minalloc") or 0) or 0x10000) if seg else None
+    # (functions both sides know by name: a data symbol -- the build's codebreaker_data at DS:0 --
+    # or a name only one side's map has would make "0, DS" a pointer on one side alone)
+    named = set(funcs) & set(place) & set(ours)
+    places_orig = {tuple(place[n]): n for n in named}
+    places_ours = {tuple(ours[n]): n for n in named}
     callees_orig = {place[n]: (n, pop, far) for n, (pop, far) in funcs.items() if n in place}
     callees_ours = {ours[n]: (n, pop, far) for n, (pop, far) in funcs.items() if n in ours}
     if chain:
@@ -271,7 +297,7 @@ def check(original, folder, names, image=None, inputs=None, workers=None, tables
         a = emu.probe(original, seg=oseg, offset=ooff, args=v["args"], near=not far,
                       callees=callees_orig, insn_cap=200000 if chain else 20000, data_end=data_end,
                       data_image=dimg)
-        fa = _fingerprint(a, wide, len(data))
+        fa = _fingerprint(a, wide, len(data), places_orig)
         cache.put("gate16_original", k, pickle.dumps(fa))
         return fa
     for name in names:
@@ -295,7 +321,7 @@ def check(original, folder, names, image=None, inputs=None, workers=None, tables
             except Exception as e:                           # (the emulator itself fell over)
                 why = why or "the emulator: %s" % type(e).__name__
                 continue
-            fb = _fingerprint(b, wide, len(data))
+            fb = _fingerprint(b, wide, len(data), places_ours)
             d = _differ(fa, fb)
             if d:
                 yield name, "differs", "args %s: %s" % (" ".join("%x" % w for w in v["args"][:4]), d)

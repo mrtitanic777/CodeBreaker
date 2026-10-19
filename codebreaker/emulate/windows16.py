@@ -228,6 +228,7 @@ def _patch_chain(uc, base, r, tsel, toff):
         seen += 1
 
 
+ENTRY_AX = 0x7E57                 # AX as a function is entered: handed back, it set no result
 NEAR_RET = 0xFFEE                 # where a near function entered by the tracer returns to
 FAR_RET = 0xFFF0                  # offset in the sentinel segment a far function returns to
 
@@ -329,6 +330,7 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
         entry_sp[0] = sp
         uc.reg_write(UC_X86_REG_SS, stack_sel); uc.reg_write(UC_X86_REG_ESP, sp)
         uc.reg_write(UC_X86_REG_DS, ds_sel); uc.reg_write(UC_X86_REG_ES, ds_sel)
+        uc.reg_write(UC_X86_REG_EAX, ENTRY_AX)               # (a function that sets no result returns it)
         uc.reg_write(UC_X86_REG_CS, sels[sseg]); uc.reg_write(UC_X86_REG_EIP, soff)
         return soff
 
@@ -366,6 +368,7 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
                      "stack_base": STACK_BASE, "scratch_base": SCRATCH_BASE, "sent_base": SENT_BASE}
 
     intercept = {}
+    places = {(cseg, coff): what[0] for (cseg, coff), what in (callees or {}).items()}
     for (cseg, coff), what in (callees or {}).items():
         if cseg in seg_bases and (cseg, coff) != (seg, offset):
             intercept[seg_bases[cseg] + coff] = what
@@ -392,7 +395,10 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
         same = []
         for i, w in enumerate(words):
             nxt = words[i + 1] if i + 1 < len(words) else None
-            same.append("SS" if w == ss_now else "DS" if w == ds_now
+            fn = None
+            if nxt is not None:                              # (a callback: the function, wherever it sits)
+                fn = places.get(((nxt >> 3) - _MODULE_SLOT + 1, w))
+            same.append("&" + fn if fn else "SS" if w == ss_now else "DS" if w == ds_now
                         else "stack" if nxt == ss_now or 0xE000 <= w < 0xFFF0 else w)
         h = int(hashlib.sha1(("%s%r" % (name, same)).encode()).hexdigest()[:8], 16)
         uc.reg_write(UC_X86_REG_EAX, h & 0xFFFF)

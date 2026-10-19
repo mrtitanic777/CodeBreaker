@@ -113,7 +113,8 @@ def explain_one(original, image, oplace, bplace, pop_far, args, data, callees_or
                   insn_cap=20000, data_image=data, data_end=data_end)
     # (the gate's own judgement picks the input: what it does not count -- DX of a function
     # returning a word -- is not a divergence here either)
-    gate = isolated16._differ(isolated16._fingerprint(a, wide, len(data)), isolated16._fingerprint(b, wide, len(data)))
+    gate = isolated16._differ(isolated16._fingerprint(a, wide, len(data), {k: v[0] for k, v in (callees_orig or {}).items()}),
+                              isolated16._fingerprint(b, wide, len(data), {k: v[0] for k, v in (callees_ours or {}).items()}))
     if not gate:
         return None
     r = _explain_runs(a, b, data, wide)
