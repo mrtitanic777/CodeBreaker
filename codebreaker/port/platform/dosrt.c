@@ -416,6 +416,16 @@ void *dos_hp(unsigned h)
 	return (void *)handle_ptr[h - DOS_HANDLES];
 }
 
+void *dos_np(const void *p)
+{
+	return (uintptr_t)p < 0x100 ? (void *)(dos_nullseg + (uintptr_t)p) : (void *)p;
+}
+
+void *dos_hpr(unsigned h)
+{
+	return (h & 0xFFFF) ? dos_hp(h) : (void *)dos_nullseg;
+}
+
 int16_t _block = 512;			/* (Lattice's: a file's buffer, set by the program - today's library sizes its own) */
 
 int dos_allmem(void)			{ return 0; }	/* (the heap is today's: there is room) */
@@ -529,3 +539,7 @@ int dos_fflag(FILE *f)
 {
 	return (feof(f) ? 0x10 : 0) | (ferror(f) ? 0x20 : 0);
 }
+
+/* the old library's floating accumulator: a routine of Microsoft C's gave a double through it (the program
+   declares it, extern double _fac) */
+double _fac;

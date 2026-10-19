@@ -15,6 +15,7 @@ Each expression's type is worked out by the 8086's rules from the tree clang mak
 at those places, the rest of the text as it was.
 """
 import json
+import os
 import re
 import subprocess
 
@@ -241,10 +242,63 @@ def apply(text, edits):
     return text
 
 
+PASS_CACHE = os.path.join(os.path.expanduser("~"), ".cache", "codebreaker", "passes")
+
+
+def _headers_key(folder):
+    """what every file of the port includes: its headers' texts (one changed: every file's result again)"""
+    import hashlib
+    h = hashlib.sha256()
+    for n in sorted(os.listdir(folder)):
+        if n.endswith(".h"):
+            h.update(n.encode() + b"\0" + open(os.path.join(folder, n), "rb").read())
+    return h.hexdigest()
+
+
+def pass_key(cc, folder, f, kind, *extra, headers=None):
+    """a pass's result for one file, by all it depends on: the file, the headers, the compiler, the pass's code"""
+    import hashlib
+    h = hashlib.sha256()
+    here = os.path.dirname(os.path.abspath(__file__))
+    for m in ("arith16.py", "oldlayout.py"):
+        h.update(open(os.path.join(here, m), "rb").read())
+    h.update(repr((os.path.abspath(cc), kind, extra)).encode())
+    h.update((headers or _headers_key(folder)).encode())
+    h.update(open(os.path.join(folder, f), "rb").read())
+    return h.hexdigest()
+
+
+def cache_get(key):
+    at = os.path.join(PASS_CACHE, key[:2], key + ".json")
+    try:
+        return json.load(open(at, encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def cache_put(key, value):
+    at = os.path.join(PASS_CACHE, key[:2], key + ".json")
+    try:
+        os.makedirs(os.path.dirname(at), exist_ok=True)
+        tmp = at + ".%d.tmp" % os.getpid()
+        json.dump(value, open(tmp, "w", encoding="utf-8"))
+        os.replace(tmp, at)
+    except OSError:
+        pass
+
+
 def run(cc, folder, files):
-    """{file: its text with the casts} for the port's C files (those clang could read)"""
+    """{file: its text with the casts} for the port's C files (those clang could read) - a file's result kept,
+    by its text and its headers': the same file again, not read again"""
     out = {}
+    hk = _headers_key(folder)
     for f in files:
+        key = pass_key(cc, folder, f, "arith16", headers=hk)
+        got = cache_get(key)
+        if got is not None:
+            if got.get("new") is not None:
+                out[f] = got["new"]
+            continue
         tree = dump(cc, f, folder)
         if not tree:
             continue
@@ -252,8 +306,11 @@ def run(cc, folder, files):
         path = next((v for v in _files(tree) if v.replace("\\", "/").endswith(f)), f)
         text = open(folder + "/" + f, encoding="latin1").read()
         e = edits_of(tree, text, path)
-        if e:
-            out[f] = apply(text, e)
+        new = apply(text, e) if e else None
+        if new is not None:
+            out[f] = new
+        cache_put(key, {"new": new})
+        del tree
     return out
 
 
