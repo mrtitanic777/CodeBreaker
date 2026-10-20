@@ -304,8 +304,11 @@ number of working pairs.
    at least as well as the old one. *Exit:* every Alpha and Beta class through the new path, results
    equal or better.
 2. **Passes off the text.** Null, construction, ownership, static order, exceptions and reflection as
-   IR passes; `emit/statements/` deleted (done 2026-10-19: the registry null guard, the leak fix and
-   the reflection tag moved into the back end; ownership is still a text pass over its output). *Exit:* the gate passes and the emitted C++ is diffed class
+   IR passes; `emit/statements/` deleted (done 2026-10-19: the registry null guard, the leak fix, the
+   reflection tag and the no-GC ownership cleanups are decided on the IR in the back end; the 360 fixes
+   to the game's own logic are IR patches, codebreaker/translate/rewrite.py. Text rewriting left on
+   purpose: two-phase construction and the GL->D3D9 rename, token renames that must also reach the
+   hand-written platform layer and overlays). *Exit:* the gate passes and the emitted C++ is diffed class
    by class against the last old-path output, every difference explained.
 3. **Project layer.** Everything game-specific behind project profiles. *Exit:* a non-Minecraft Java
    program converts with no Minecraft code loaded.
