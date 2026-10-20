@@ -982,7 +982,7 @@ for _ev in ('KeyEvent', 'MouseEvent', 'WindowEvent', 'ComponentEvent', 'FocusEve
                      ('isAltDown', ('bool', 'false'))])
 _GENERATED['Panel.h'] = _class_stub('Panel', bases=['Component'], includes=['Component'], fwds=['Graphics'],
     void_methods=_AWT_VOID,
-    ret_methods=[('getWidth', ('int', '0')), ('getHeight', ('int', '0')), ('getGraphics', ('Graphics*', '0'))])
+    ret_methods=[('getWidth', ('int', 'J2X_COMPONENT_WIDTH()')), ('getHeight', ('int', 'J2X_COMPONENT_HEIGHT()')), ('getGraphics', ('Graphics*', '0'))])
 _GENERATED['Comparable.h'] = _class_stub('Comparable', ret_methods=[('compareTo', ('int', '0'))])
 # java.awt layout managers (new BorderLayout() etc. passed to setLayout -- no-op stubs)
 for _lm in ('BorderLayout', 'GridLayout', 'FlowLayout', 'CardLayout', 'GridBagLayout'):
@@ -993,7 +993,7 @@ _GENERATED['Frame.h'] = _class_stub('Frame', bases=['Component'], includes=['Com
     void_methods=list(_AWT_VOID) + [
     'setTitle', 'setResizable', 'dispose', 'show', 'hide', 'toFront', 'setIconImage', 'setMenuBar',
     'setLocationRelativeTo', 'setLocation', 'setUndecorated', 'setState', 'setExtendedState'],
-    ret_methods=[('getWidth', ('int', '0')), ('getHeight', ('int', '0')),
+    ret_methods=[('getWidth', ('int', 'J2X_COMPONENT_WIDTH()')), ('getHeight', ('int', 'J2X_COMPONENT_HEIGHT()')),
                  ('getGraphics', ('Graphics*', '0')), ('getInsets', ('void*', '0')),
                  ('getTitle', ('std::string', 'std::string()'))])
 # java.awt.Color. Constants are static members named exactly as Java (Color is in RUNTIME_ENUM_LIKE
@@ -1449,20 +1449,25 @@ _GENERATED['Applet.h'] = _class_stub('Applet', bases=['Component'], includes=['C
                   'setFocusable', 'setFocusTraversalKeysEnabled', 'enableInputMethods'],
     ret_methods=[('getParameter', ('std::string', 'std::string()')),
                  ('getDocumentBase', ('URL*', '0')), ('getCodeBase', ('URL*', '0')),
-                 ('getWidth', ('int', '0')), ('getHeight', ('int', '0')),
+                 ('getWidth', ('int', 'J2X_COMPONENT_WIDTH()')), ('getHeight', ('int', 'J2X_COMPONENT_HEIGHT()')),
                  ('getGraphics', ('Graphics*', '0')), ('isActive', ('bool', 'false')),
                  ('isDisplayable', ('bool', 'false')), ('getParent', ('void*', '0'))])
 _GENERATED['Canvas.h'] = _class_stub('Canvas', bases=['Component'], includes=['Component'], fwds=['Graphics', 'BufferStrategy'],
     void_methods=_AWT_VOID,
-    ret_methods=[('getWidth', ('int', '0')), ('getHeight', ('int', '0')),
+    ret_methods=[('getWidth', ('int', 'J2X_COMPONENT_WIDTH()')), ('getHeight', ('int', 'J2X_COMPONENT_HEIGHT()')),
                  ('getGraphics', ('Graphics*', '0')),   # getLocationOnScreen inherited from Component (Point*)
                  ('getBufferStrategy', ('BufferStrategy*', '0'))], extra=['void createBufferStrategy(...) {}'])
 # getLocationOnScreen returns java.awt.Point (Indev's MouseHelper does `Point p = c.getLocationOnScreen()`);
 # a shared static Point keeps the dead cursor-centering path from NULL-derefing on the console.
 _GENERATED['Component.h'] = _class_stub('Component', includes=['Point'], fwds=['Graphics'], void_methods=_AWT_VOID,
-    ret_methods=[('getWidth', ('int', '0')), ('getHeight', ('int', '0')),
+    ret_methods=[('getWidth', ('int', 'J2X_COMPONENT_WIDTH()')), ('getHeight', ('int', 'J2X_COMPONENT_HEIGHT()')),
                  ('getGraphics', ('Graphics*', '0'))],
     extra=['Point* getLocationOnScreen() { static Point _p; return &_p; }'])
+# An AWT component is as big as the window a desktop platform layer opens (pc: the SDL window, through
+# J2X_COMPONENT_WIDTH in its stdafx.h); with no window it is 0, as before.
+_GENERATED['Component.h'] = _GENERATED['Component.h'].replace(
+    '#include <string>\n', '#include <string>\n#ifndef J2X_COMPONENT_WIDTH\n#define J2X_COMPONENT_WIDTH() 0\n'
+    '#define J2X_COMPONENT_HEIGHT() 0\n#endif\n', 1)
 _GENERATED['FileDialog.h'] = _class_stub('FileDialog',
     void_methods=['setVisible', 'setMode', 'setDirectory', 'setFile', 'setFilenameFilter',
                   'setLocationRelativeTo'],
@@ -1639,6 +1644,8 @@ def generate_files(cpp_std=None, platform_id=None):
         # (FileIO.reference.cpp on the 360), in standard C, so a program that opens a file still links
         # (WorldProvider, CanvasIsomPreview: undefined FileInputStream::FileInputStream(File*)).
         out['j2x_host_io.cpp'] = HOST_IO_CPP
+    if platform_id == 'pc_opengl':
+        out['j2x_host_io.cpp'] = HOST_IO_CPP              # the PC's files are the C library's
 
     is_non_windows = platform_id in ('ps3', 'wii', 'psp', 'nds')
 

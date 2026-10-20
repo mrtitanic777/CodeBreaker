@@ -317,6 +317,10 @@ number of working pairs.
 4. **Modern Java and the C++17 back end.** Generics, lambdas, streams, records; Boehm GC; CMake; the
    PC platform layer (SDL2 and OpenGL). *Exit:* a Java corpus judged on both C++ back ends; Minecraft
    Alpha builds for the PC.
+   (Progress 2026-10-20: the PC platform -- `--platform pc_opengl`: LWJGL on SDL2 + real OpenGL
+   (codebreaker/java/platform/pc), a generated PC entry and CMake project. Minecraft Alpha converts,
+   builds with g++ -std=gnu++17 and plays: menus, world generation, rendering. Still to do: the C++17
+   back end proper, Boehm GC, modern Java front-end features.)
 5. **C and C++ in (clang), Java out.** The pointer analysis and the emulated memory; the Java back
    end; the C library in Java. *Exit:* a C corpus and a C++ corpus judged as Java; Java -> C++ -> Java
    round trips judged.

@@ -277,22 +277,16 @@ _STDAFX = {
         'warnings': _STDAFX_MSVC_WARNINGS,
         'extra': '#pragma comment(lib, "d3d9.lib")\n#pragma comment(lib, "d3dx9.lib")\n',
     },
+    # No GL or SDL header here: the game's own GL11::GL_* constants would collide with GL's macros. The
+    # platform layer (codebreaker/java/platform/pc) includes them in its own .cpp files only.
     'pc_opengl': {
-        'system_headers': [
-            '#ifdef _WIN32',
-            '#define WIN32_LEAN_AND_MEAN',
-            '#include <windows.h>',
-            '#endif',
-            '',
-            '#include <GL/glew.h>',
-            '#include <SDL2/SDL.h>',
-            '#include <SDL2/SDL_opengl.h>',
-        ],
+        'system_headers': [_STDAFX_HOST_WINDOWS],
         'sdk_headers': [],
-        'globals': [
-            'extern SDL_Window*   g_pWindow;',
-            'extern SDL_GLContext g_glContext;',
-        ],
+        'extra': ('// AWT components are as big as the SDL window (Display.cpp)\n'
+                  'int j2xDisplayWidth();\nint j2xDisplayHeight();\n'
+                  '#define J2X_COMPONENT_WIDTH() j2xDisplayWidth()\n'
+                  '#define J2X_COMPONENT_HEIGHT() j2xDisplayHeight()\n'),
+        'host_minmax': True,
         'warnings': (
             '#ifdef _MSC_VER\n'
             + _STDAFX_MSVC_WARNINGS
@@ -393,6 +387,9 @@ def generate_stdafx(platform_id, cpp_std_label='C++03'):
     lines.append(_STDAFX_COMMON_CRT)
 
     lines.append(_STDAFX_COMMON_TYPEDEFS)
+
+    if cfg.get('host_minmax'):
+        lines.append(_STDAFX_HOST_MINMAX)
 
     if cfg.get('globals'):
         lines.append('// Platform globals (defined in main.cpp)')
