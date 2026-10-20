@@ -62,12 +62,14 @@ _NEW_PTR_ARRAY = re.compile(r'\bnew\s+\w[\w:]*\s*\*\s*\[[^\]]*\]\s*(\(\s*\))?')
 # Seeded with the documented offenders; the type model will grow this set later.
 from codebreaker.java import profiles as _profiles
 _HEAVY_TYPES = tuple(_profiles.active().heavy_types)
+_HEAVY_HIGH = tuple(_profiles.active().heavy_types_high)
 
 
 def _reseed(p):
     """Re-derive the heavy-types tuple when the active target profile changes (profiles.on_change)."""
-    global _HEAVY_TYPES
+    global _HEAVY_TYPES, _HEAVY_HIGH
     _HEAVY_TYPES = tuple(p.heavy_types)
+    _HEAVY_HIGH = tuple(p.heavy_types_high)
 
 
 _profiles.on_change(_reseed)
@@ -213,14 +215,14 @@ def rule_value_copy_owner(fname, text, header_text, plat):
         ret_pat = re.compile(r'(?:^|\n)\s*%s\s+(?!&|\*)\w[\w:]*\s*\(' % re.escape(t))
         for m in param_pat.finditer(src):
             line = text.count('\n', 0, m.start()) + 1
-            sev = Severity.HIGH if t in ('Tesselator', 'Tessellator') else Severity.MED
+            sev = Severity.HIGH if t in _HEAVY_HIGH else Severity.MED
             yield (line, Category.GUESSED, sev, 'value-copy-owner',
-                   "%s passed BY VALUE -- copies its whole buffer every call (Tesselator holds an MB-scale "
-                   "vertex buffer). Take it by reference: const %s& / %s&." % (t, t, t),
+                   "%s passed BY VALUE -- copies its whole buffer every call. Take it by reference: "
+                   "const %s& / %s&." % (t, t, t),
                    text.split('\n')[line-1].strip()[:160])
         for m in ret_pat.finditer(src):
             line = text.count('\n', 0, m.start()) + 1
-            sev = Severity.HIGH if t in ('Tesselator', 'Tessellator') else Severity.MED
+            sev = Severity.HIGH if t in _HEAVY_HIGH else Severity.MED
             yield (line, Category.GUESSED, sev, 'value-copy-owner',
                    "%s returned BY VALUE -- returns a full copy. getInstance() must return a reference." % t,
                    text.split('\n')[line-1].strip()[:160])

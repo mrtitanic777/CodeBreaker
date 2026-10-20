@@ -39,7 +39,7 @@ _PLAIN = re.compile(r'\(\s*([A-Za-z_]\w*)\s*\*\s*\)\s*' + _RECV + r'\s*->\s*newI
 # (a runtime Class value), which is correct whichever spelling the registration table used.
 _TYPEID = re.compile(r'(?:Class|j2xClassOf)\(typeid\(\s*(\w+)\s*\)\)')
 # registration call lines that carry the concrete class table
-_REG_LINE = re.compile(r'\b(?:addMapping|addIdClassMapping|register\w*|addClassMapping)\s*\(')
+_REG_LINE = re.compile(r'\b(?:register\w*)\s*\(')      # set per run from the project's registrars
 
 
 def _split_top(s):
@@ -220,9 +220,12 @@ def _add_include(text):
     return '\n'.join(lines)
 
 
-def run(out_dir):
+def run(out_dir, registrars=None):
     """Two passes: (1) generate a factory for each registry class from its registration table;
     (2) rewrite reflection sites in OTHER files to reuse those factories via ReflectionFactory.h."""
+    global _REG_LINE
+    if registrars:                       # the calls that map ids/names to classes (the project's: EntityList...)
+        _REG_LINE = re.compile(r'\b(?:%s)\s*\(' % '|'.join(registrars))
     files = [f for f in sorted(os.listdir(out_dir)) if f.endswith('.cpp')]
 
     def read(f):

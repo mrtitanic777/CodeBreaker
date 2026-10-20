@@ -7,6 +7,7 @@ import tempfile
 import unittest
 
 from codebreaker.java import ir, transpile as pipeline
+from codebreaker.java.projects.minecraft import raycast as _raycast
 
 
 class TestInheritanceResolution(unittest.TestCase):
@@ -129,7 +130,7 @@ class TestGlSelectPickToRaycast(unittest.TestCase):
     )
 
     def test_driver_becomes_raycast(self):
-        out = pipeline._convert_gl_pick_to_raycast(self.DRIVER)
+        out = _raycast.convert_gl_pick_to_raycast(self.DRIVER)
         self.assertNotIn('GL_SELECT', out)
         self.assertNotIn('glRenderMode', out)
         self.assertNotIn('glSelectBuffer', out)
@@ -138,9 +139,9 @@ class TestGlSelectPickToRaycast(unittest.TestCase):
         self.assertEqual(out.count('void RubyDung::pick(float a)'), 1)   # header preserved
 
     def test_helpers_emptied(self):
-        cam = pipeline._convert_gl_pick_to_raycast(self.CAMERA)
+        cam = _raycast.convert_gl_pick_to_raycast(self.CAMERA)
         self.assertNotIn('gluPickMatrix', cam)
-        ren = pipeline._convert_gl_pick_to_raycast(self.RENDERER)
+        ren = _raycast.convert_gl_pick_to_raycast(self.RENDERER)
         self.assertNotIn('glPushName', ren)
         self.assertNotIn('glInitNames', ren)
 
@@ -153,12 +154,12 @@ class TestGlSelectPickToRaycast(unittest.TestCase):
             "\tdoStuff();\n"
             "}\n"
         )
-        out = pipeline._convert_gl_pick_to_raycast(alien)
+        out = _raycast.convert_gl_pick_to_raycast(alien)
         self.assertIn('GL_SELECT', out)                   # left intact (no MC fields to raycast against)
 
     def test_no_op_without_idiom(self):
         plain = "void Foo::bar() {\n\treturn;\n}\n"
-        self.assertEqual(pipeline._convert_gl_pick_to_raycast(plain), plain)
+        self.assertEqual(_raycast.convert_gl_pick_to_raycast(plain), plain)
 
 
 class TestPruneUnreferenced(unittest.TestCase):

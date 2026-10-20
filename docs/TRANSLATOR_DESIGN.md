@@ -311,7 +311,9 @@ number of working pairs.
    hand-written platform layer and overlays). *Exit:* the gate passes and the emitted C++ is diffed class
    by class against the last old-path output, every difference explained.
 3. **Project layer.** Everything game-specific behind project profiles. *Exit:* a non-Minecraft Java
-   program converts with no Minecraft code loaded.
+   program converts with no Minecraft code loaded. (Done 2026-10-19: codebreaker/java/projects -- a project is found by
+   its manifest.json, as data, and only then imported; Minecraft's profiles, edition detection, console
+   fixes and reports live in projects/minecraft; the default is generic. tests/java/test_projects.py.)
 4. **Modern Java and the C++17 back end.** Generics, lambdas, streams, records; Boehm GC; CMake; the
    PC platform layer (SDL2 and OpenGL). *Exit:* a Java corpus judged on both C++ back ends; Minecraft
    Alpha builds for the PC.

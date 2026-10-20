@@ -145,7 +145,7 @@ def _title_id_for(proj_dir):
     """The project's self-issued Title ID from platform.config.json, as (canonical_8_hex or None, note).
     ONE source of truth: the XEX (<ImageXex><TitleID>, stamped here) and the XLAST/SPA achievement config
     are both keyed to it and must match, or achievement unlocks never bind to a profile."""
-    from codebreaker.java.console import achievements as _ach
+    from codebreaker.java.projects.minecraft import achievements as _ach
     cfg_path = os.path.join(proj_dir, 'platform.config.json')
     if not os.path.isfile(cfg_path):
         return None, ''

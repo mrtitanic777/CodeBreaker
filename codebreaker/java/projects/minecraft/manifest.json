@@ -1,0 +1,8 @@
+{
+  "name": "minecraft",
+  "description": "Minecraft, RubyDung to release: edition profiles, the console fixes to the game's own logic, and its reports.",
+  "packages": ["net.minecraft", "com.mojang"],
+  "classes": ["Minecraft", "MinecraftApplet", "MinecraftServer", "RubyDung"],
+  "options": ["edition", "mc_version"],
+  "profile_prefixes": ["minecraft_"]
+}

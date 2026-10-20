@@ -13,7 +13,7 @@ access is a rules concern, not a profile field.
 """
 
 from codebreaker.java.profiles import Profile, register
-from codebreaker.java.profiles import minecraft_base as _base
+from codebreaker.java.projects.minecraft.profiles import minecraft_base as _base
 
 # net.minecraft.game.* / net.minecraft.client.* / com.mojang.nbt / util -- from the real package tree.
 PACKAGE_ROLES = dict(_base.SHARED_PACKAGE_ROLES)

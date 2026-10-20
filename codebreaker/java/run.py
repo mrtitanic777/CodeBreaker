@@ -80,7 +80,7 @@ def _cmd_xact(args):
 
 
 def _cmd_achievements(args):
-    from codebreaker.java.console import achievements
+    from codebreaker.java.projects.minecraft import achievements
     if not os.path.isdir(args.code_dir):
         print('ERROR: not a directory: %s' % args.code_dir); return 2
     res = achievements.run(args.code_dir, args.out_dir, lang_file=args.lang,
@@ -108,7 +108,7 @@ def _cmd_achievements(args):
 
 
 def _cmd_ui_mark(args):
-    from codebreaker.java import ui_mark
+    from codebreaker.java.projects.minecraft import ui_mark
     if not os.path.isdir(args.dir):
         print('ERROR: not a directory: %s' % args.dir); return 2
     extra = [c.strip() for c in (args.extra or '').split(',') if c.strip()]
@@ -126,7 +126,7 @@ def _cmd_ui_mark(args):
 
 
 def _cmd_keybind_mark(args):
-    from codebreaker.java import keybind_mark
+    from codebreaker.java.projects.minecraft import keybind_mark
     if not os.path.isdir(args.dir):
         print('ERROR: not a directory: %s' % args.dir); return 2
     res = keybind_mark.run(args.dir, dry_run=args.dry_run)
@@ -183,7 +183,7 @@ def _cmd_reflect_factories(args):
 
 
 def _cmd_sound_fix(args):
-    from codebreaker.java.console import sound_fix
+    from codebreaker.java.projects.minecraft import sound_fix
     r = sound_fix.run(args.out_dir)
     if not r['sites']:
         print('No sound guard sites to rewrite (already applied, or none present).')
@@ -200,7 +200,7 @@ def _cmd_sound_fix(args):
 
 
 def _cmd_controller_nav(args):
-    from codebreaker.java.console import controller_nav
+    from codebreaker.java.projects.minecraft import controller_nav
     r = controller_nav.run(args.out_dir)
     print('controller menu nav: GuiScreen.h=%s GuiScreen.cpp=%s call-site=%s'
           % (r['guiscreen_h'], r['guiscreen_cpp'], r['callsite']))
@@ -211,7 +211,7 @@ def _cmd_controller_nav(args):
 
 
 def _cmd_render_fix(args):
-    from codebreaker.java.console import render_fix
+    from codebreaker.java.projects.minecraft import render_fix
     r = render_fix.run(args.out_dir)
     print('render-fix: updateRenderers budget=%d site(s), hurt-camera NaN guard=%d site(s)'
           % (r['update'], r['hurt']))
@@ -223,7 +223,7 @@ def _cmd_render_fix(args):
 
 
 def _cmd_applet_ping(args):
-    from codebreaker.java.console import applet_ping
+    from codebreaker.java.projects.minecraft import applet_ping
     r = applet_ping.run(args.out_dir)
     if not r['sites']:
         print('No applet ping sites to rewrite (already applied, or none present).')
@@ -503,7 +503,8 @@ def _apply_edition(args):
     ed = getattr(args, 'edition', None)
     if not ed:
         return None
-    from codebreaker.java import profiles as _profiles, edition as _edition
+    from codebreaker.java import profiles as _profiles
+    from codebreaker.java.projects.minecraft import edition as _edition   # --edition is Minecraft's
     prev = _profiles.active().name
     name = _edition.resolve(ed)
     if name and name != prev:

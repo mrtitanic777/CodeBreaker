@@ -7,7 +7,7 @@ cover Indev/Alpha/Beta whose surrounding code differs."""
 import os
 import tempfile
 
-from codebreaker.java.console import controller_nav as cn
+from codebreaker.java.projects.minecraft import controller_nav as cn
 
 
 _GUISCREEN_H = (

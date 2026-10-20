@@ -648,8 +648,8 @@ def test_spellings_the_runtime_and_passes_rely_on(port):
     assert 'j2xClassOf(typeid(Node))' in holder and 'Kind::values().length' in holder, holder
     kind = (out / 'Kind.cpp').read_text(encoding='utf-8')               # a typed enum: its table, built
     assert 'LOW = new Kind(1, "lo");' in kind and '_j2x_values[1] = HIGH;' in kind, kind
-    glyphs = _body(text, 'glyphs')                                    # a char per byte: the font's
-    assert r'"~\177\307"' in glyphs and '(unsigned char)127' in glyphs, glyphs   # ⌂ is CP437 127
+    glyphs = _body(text, 'glyphs')                                    # a char per byte; past 8 bits,
+    assert r'"~?\307"' in glyphs and '8962' in glyphs, glyphs          # ? (Latin-1), and a char as its int
     child = (out / 'Child.cpp').read_text(encoding='utf-8')
     assert 'Node::describe()' in child                                  # super.m() is the qualified call
     assert ': Node(' in child                                           # super(args) is the base initialiser

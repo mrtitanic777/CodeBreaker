@@ -1,17 +1,17 @@
 # -*- coding: utf-8 -*-
-"""Beta edition profile.
+"""Alpha edition profile.
 
-The canonical :mod:`minecraft_xbox360` profile is predominantly a Beta port (World/Chunk/Region-NBT,
-biomes, the full block/entity/GUI taxonomy). This profile reuses that proven vocabulary verbatim; it
-is the reference edition and the natural target of the (optional, later) `minecraft_xbox360` alias.
+Alpha is the era the canonical :mod:`minecraft_xbox360` profile was hand-tuned against (its nullable
+getters are documented as "Verified against the Alpha source"). This profile reuses that proven
+vocabulary verbatim; refine only if an Alpha-specific decompile shows a divergence from the Beta set.
 """
 
 from codebreaker.java.profiles import Profile, register
-from codebreaker.java.profiles import minecraft_base as _base
-from codebreaker.java.profiles import minecraft_xbox360 as _canon
+from codebreaker.java.projects.minecraft.profiles import minecraft_base as _base
+from codebreaker.java.projects.minecraft.profiles import minecraft_xbox360 as _canon
 
 register(Profile(
-    'minecraft_beta',
+    'minecraft_alpha',
     static_init_order=list(_canon.STATIC_INIT_ORDER),
     package_roles=dict(_canon.PACKAGE_ROLES),
     heavy_types=_base.SHARED_HEAVY_TYPES,

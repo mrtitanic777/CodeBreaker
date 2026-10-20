@@ -11,8 +11,8 @@ against a decompile of the specific release version being targeted.
 """
 
 from codebreaker.java.profiles import Profile, register
-from codebreaker.java.profiles import minecraft_base as _base
-from codebreaker.java.profiles import minecraft_xbox360 as _canon
+from codebreaker.java.projects.minecraft.profiles import minecraft_base as _base
+from codebreaker.java.projects.minecraft.profiles import minecraft_xbox360 as _canon
 
 PACKAGE_ROLES = dict(_canon.PACKAGE_ROLES)
 PACKAGE_ROLES.update({
