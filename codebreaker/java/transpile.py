@@ -1207,7 +1207,14 @@ def _convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True
     _shim = _probe.shims(_settings.state('translate'), _vjava.jdk()[0]) if _cp else ''
     _ctx = _cpp03.Context(resolver, classes)
     _ctx.ledger = ledger
-    tree = _cpp03.Bodies(_ctx, _cpp03.java_units(java_dir, ([_shim] if _shim else []) + _cp))
+    _units = _cpp03.java_units(java_dir, ([_shim] if _shim else []) + _cp)
+    # the console's fixes to the game's own logic, made on the tree before it is written (by shape, so no
+    # printing of the C++ hides a site): sound routed to XACT, the applet ping, the render budget and NaN
+    _console = {}
+    if platform == 'xbox360':
+        from codebreaker.java.console import sound_fix as _sfx, applet_ping as _ap, render_fix as _rfx
+        _console = {'sound': _sfx.patch(_units), 'applet': _ap.patch(_units), 'render': _rfx.patch(_units)}
+    tree = _cpp03.Bodies(_ctx, _units)
     emit_source.TREE_BODIES = tree
     _prog('[translate] the IR front end lowered %d classes' % len(tree.decls))
 
@@ -1270,7 +1277,7 @@ def _convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True
     # Audio bridge). See j2ctool/sound_fix.py. Runs before overlays so an overlaid SoundManager can still win.
     if platform == 'xbox360':
         from codebreaker.java.console import sound_fix as _sfx
-        _sf = _sfx.run(out_dir)
+        _sf = dict(_console['sound'], stranded=_sfx.stranded(out_dir))
         if _sf['sites']:
             _prog('[sound] SFX+music bypass: %d site(s) routed to the XACT bridge across %d file(s)'
                   % (_sf['sites'], len(_sf['files'])))
@@ -1297,7 +1304,7 @@ def _convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True
     # OG Indev hand-port). xbox360 only; before overlays. See j2ctool/applet_ping.py.
     if platform == 'xbox360':
         from codebreaker.java.console import applet_ping as _ap
-        _apr = _ap.run(out_dir)
+        _apr = dict(_console['applet'], stranded=_ap.stranded(out_dir))
         if _apr['sites']:
             _prog('[applet] anti-piracy URL ping neutralized: %d site(s) across %d file(s)'
                   % (_apr['sites'], len(_apr['files'])))
@@ -1312,7 +1319,7 @@ def _convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True
     # hand-ports. xbox360 only; before overlays. See j2ctool/render_fix.py.
     if platform == 'xbox360':
         from codebreaker.java.console import render_fix as _rfx
-        _rf = _rfx.run(out_dir)
+        _rf = dict(_console['render'], stranded=_rfx.stranded(out_dir))
         if _rf['update']:
             _prog('[render] chunk-rebuild budget applied to updateRenderers (%d site(s))' % _rf['update'])
         if _rf['hurt']:

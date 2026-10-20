@@ -26,7 +26,9 @@ whole ping and sets the level unconditionally ("applet host check n/a on 360"). 
 the generator so every edition's setLevel loses the ping. Keyed on the STRUCTURE (a try that opens
 getDocumentBase()->openStream() and guards a `theWorld = <var>` assignment on the host check), not on names.
 
-Runs as a post-emit pass over the converted tree (xbox360), BEFORE overlays. Idempotent (after the rewrite
+convert applies it on the IR before the back end writes (patch(), by tree shape), then checks the output
+for a surviving trigger (stranded()). run()/process() are the same fix on C++ text, for `j2ctool <fix> <dir>` on
+a tree converted elsewhere; that text form runs over the converted tree (xbox360), BEFORE overlays. Idempotent (after the rewrite
 there is no getDocumentBase()->openStream() try left) and fail-loud via run()'s survivor check. Also exposed
 as `j2ctool applet-ping <dir>`.
 """
@@ -78,3 +80,51 @@ def run(out_dir):
         if _SURVIVOR.search(new):
             stranded.append(f)
     return {'files': touched, 'sites': total, 'stranded': stranded}
+
+
+# ---- the same fix on the IR, before the back end writes (what convert runs) ------------------------------
+def patch(units):
+    """The ping on the lowered program: a try that calls getDocumentBase() and openStream(), whose only
+    effect is an `if (host check) { this.f = v; }`, with empty catches -> just `this.f = v;`. Returns
+    {'files': [{'file','sites'}], 'sites': N, 'stranded': []} like run()."""
+    from codebreaker.translate import ir
+    from codebreaker.translate import rewrite as rw
+    per = {}
+    for cls, m in rw.methods(units):
+        for ss in rw.stmt_lists(m.body):
+            for i, s in enumerate(ss):
+                if not isinstance(s, ir.Try) or s.final is not None or s.resources:
+                    continue
+                calls = set(n.sym.name for n in ir.walk(s.body) if isinstance(n, ir.Call) and n.sym is not None)
+                if not {'getDocumentBase', 'openStream'} <= calls:
+                    continue
+                if any(c.body is not None and c.body.stmts for c in s.catches):
+                    continue
+                guarded = [x for x in s.body.stmts if isinstance(x, ir.If)]
+                if len(guarded) != 1 or guarded[0].orelse is not None:
+                    continue
+                body = guarded[0].then.stmts if isinstance(guarded[0].then, ir.Block) else [guarded[0].then]
+                if len(body) != 1 or not isinstance(body[0], ir.ExprStmt):
+                    continue
+                a = rw.strip(body[0].expr)
+                if not (isinstance(a, ir.Assign) and a.op is None and isinstance(a.target, ir.Select)
+                        and isinstance(a.target.obj, ir.This) and isinstance(rw.strip(a.value), ir.Name)):
+                    continue
+                ss[i] = body[0]                           # set the level directly: no applet on console
+                per[cls.name] = per.get(cls.name, 0) + 1
+    files = [{'file': c + '.cpp', 'sites': n} for c, n in sorted(per.items())]
+    return {'files': files, 'sites': sum(per.values()), 'stranded': []}
+
+
+def stranded(out_dir):
+    """The .cpp files where a getDocumentBase()->openStream() try survived."""
+    out = []
+    for f in sorted(os.listdir(out_dir)):
+        if f.endswith('.cpp'):
+            try:
+                text = open(os.path.join(out_dir, f), encoding='utf-8', errors='replace').read()
+            except (IOError, OSError):
+                continue
+            if _SURVIVOR.search(text):
+                out.append(f)
+    return out

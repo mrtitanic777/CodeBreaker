@@ -35,7 +35,9 @@ SCOPE -- deliberately narrow, to match exactly what the proven hand-fix changes:
   * soundPoolMusic (getRandomSound) is LEFT ALONE -- the music path has a different, NULL-deref-prone shape
     and different XACT routing; it needs its own targeted fix, not this SFX rule.
 
-Runs as a post-emit pass over the converted tree (xbox360), BEFORE overlays, alongside reflection_factory.
+convert applies it on the IR before the back end writes (patch(), by tree shape), then checks the output
+for a surviving trigger (stranded()). run()/process() are the same fix on C++ text, for `j2ctool <fix> <dir>` on
+a tree converted elsewhere; that text form runs over the converted tree (xbox360), BEFORE overlays, alongside reflection_factory.
 Idempotent: after the rewrite the guard no longer contains `!= NULL`, so a re-run matches nothing. Also
 exposed as `j2ctool sound-fix <dir>`.
 """
@@ -153,3 +155,63 @@ def run(out_dir):
         if _SURVIVOR.search(new) or _MUSIC_SURVIVOR.search(new):
             stranded.append(f)
     return {'files': touched, 'sites': total, 'stranded': stranded}
+
+
+# ---- the same fixes on the IR, before the back end writes (what convert runs) ----------------------------
+def patch(units):
+    """The SFX and music bypass on the lowered program: matched by tree shape (the pool query's local and
+    the null test right after it), so no printing of the C++ can hide the site. Returns
+    {'files': [{'file','sfx','music'}], 'sites': N, 'stranded': []} like run()."""
+    from codebreaker.translate import ir
+    from codebreaker.translate import rewrite as rw
+    per = {}
+    for cls, m in rw.methods(units):
+        for ss in rw.stmt_lists(m.body):
+            for i in range(len(ss) - 1):
+                loc, nxt = ss[i], ss[i + 1]
+                if not (isinstance(loc, ir.Local) and loc.init is not None and isinstance(nxt, ir.If)):
+                    continue
+                v = loc.sym
+                if rw.is_call(loc.init, 'getRandomSoundFromSoundPool', 'soundPoolSounds'):
+                    cond = rw.strip(nxt.cond)
+                    if rw.is_null_test(cond, v):
+                        rest = None
+                    elif isinstance(cond, ir.Binary) and cond.op == '&&' and rw.is_null_test(cond.left, v):
+                        rest = cond.right                 # keep the volume gate
+                    else:
+                        continue
+                    sound = rw.strip(loc.init).args[0]    # the sound name: the XACT cue
+                    loc.init = rw.null()                  # no query: the empty pool's lookup hangs on console
+                    nxt.cond = rest if rest is not None else rw.true()
+
+                    def route(n, v=v, sound=sound):
+                        if isinstance(n, ir.Select) and rw.is_name(n.obj, v) and n.sym is not None:
+                            if n.sym.name == 'soundUrl':
+                                return rw.null()
+                            if n.sym.name == 'soundName':
+                                return sound
+                        return None
+                    rw.replace(nxt, route)
+                    per.setdefault(cls.name, [0, 0])[0] += 1
+                elif rw.is_call(loc.init, 'getRandomSound', 'soundPoolMusic') and rw.is_null_test(nxt.cond, v) \
+                        and nxt.orelse is None and isinstance(nxt.then, ir.Block):
+                    nxt.cond = rw.true()                  # play("BgMusic") starts the XACT playlist: always
+                    nxt.then.stmts = [rw.if_(rw.binary('!=', rw.name(v, loc.type), rw.null(), ir.BOOL), s)
+                                      if rw.mentions(s, v) else s for s in nxt.then.stmts]
+                    per.setdefault(cls.name, [0, 0])[1] += 1
+    files = [{'file': c + '.cpp', 'sfx': s, 'music': mu} for c, (s, mu) in sorted(per.items())]
+    return {'files': files, 'sites': sum(s + mu for s, mu in per.values()), 'stranded': []}
+
+
+def stranded(out_dir):
+    """The .cpp files where a soundPool null guard survived (run after the program is written)."""
+    out = []
+    for f in sorted(os.listdir(out_dir)):
+        if f.endswith('.cpp'):
+            try:
+                text = open(os.path.join(out_dir, f), encoding='utf-8', errors='replace').read()
+            except (IOError, OSError):
+                continue
+            if _SURVIVOR.search(text) or _MUSIC_SURVIVOR.search(text):
+                out.append(f)
+    return out

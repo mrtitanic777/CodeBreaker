@@ -168,6 +168,12 @@ class Writer(object):
         self.fin = []                                    # enclosing finally-with-jumps: (n, loops)
         self.fin_count = 0
         self.leaks = 0                                   # _j2xleakN stack temporaries written
+        self.after = []                                  # the statements after the one being written
+        self.subst = {}                                  # id(expression) -> (code, C++ type) already written
+        self.arg_temps = 0                               # _j2xarg_N owned temporaries hoisted
+        # the no-GC ownership cleanups run in methods (as the transpiler's did), not constructors
+        self.owning = old is not None and m is not None and getattr(m, 'kind', None) == 'method'
+        self._owned_scalar = None
 
     # ------------------------------------------------------------------ types
     def ctype(self, t, context='local'):
@@ -181,15 +187,21 @@ class Writer(object):
         if self.m.body is None:
             raise Decline('no body')
         out = []
-        for s in self.m.body.stmts:
-            self.stmt(s, out, '')
+        self.stmts(self.m.body.stmts, out, '')
         return out
+
+    def stmts(self, ss, out, ind):
+        for i, x in enumerate(ss):
+            saved, self.after = self.after, ss[i + 1:]
+            try:
+                self.stmt(x, out, ind)
+            finally:
+                self.after = saved
 
     def block(self, s, out, ind):
         saved = dict(self.vars)
         if isinstance(s, ir.Block):
-            for x in s.stmts:
-                self.stmt(x, out, ind + '\t')
+            self.stmts(s.stmts, out, ind + '\t')
         else:
             self.stmt(s, out, ind + '\t')
         self.vars = saved
@@ -242,12 +254,16 @@ class Writer(object):
             self.vars[name] = ct
             if s.init is not None:
                 self.review(s.init, out, ind)
+                self.hoist_owned_args(s.init, out, ind)
                 code, it = self.expr(s.init)
                 out.append(ind + '%s %s = %s;' % (ct, name, unbox(coerce(code, it, ct), it, ct)))
+                self.free_owned_return(s, ct, name, out, ind)
             else:
                 out.append(ind + '%s %s;' % (ct, name))
         elif isinstance(s, ir.ExprStmt):
             self.review(s.expr, out, ind)
+            self.hoist_owned_args(s.expr, out, ind)
+            self.free_owned_reassign(s.expr, out, ind)
             out.append(ind + (self.kept_call(s.expr) or self.expr(s.expr)[0] + ';'))
         elif isinstance(s, ir.If):
             out.append(ind + 'if(%s) {' % self.cond(s.cond))
@@ -307,6 +323,7 @@ class Writer(object):
         elif isinstance(s, ir.Return):
             if s.expr is not None:
                 self.review(s.expr, out, ind)
+                self.hoist_owned_args(s.expr, out, ind)
                 code, it = self.expr(s.expr)
                 out.append(ind + 'return %s;' % unbox(coerce(code, it, self.ret), it, self.ret))
             else:
@@ -483,6 +500,73 @@ class Writer(object):
             return 'if (%s != NULL) { %s; }' % (recv, call)
         return None
 
+    # -------------------------------------------------------------- no-GC ownership (Java's collector, by hand)
+    def owned_scalar(self):
+        """This class's owned scalar pointer members (ownership.owned_pointers)."""
+        if self._owned_scalar is None:
+            old_cls = self.ctx.classes.get(self.cname)
+            owned = ownership.owned_pointers(old_cls, self.r) if old_cls is not None else {}
+            self._owned_scalar = set(n for n, is_arr in owned.items() if not is_arr)
+        return self._owned_scalar
+
+    def free_owned_reassign(self, e, out, ind):
+        """`this->m = new T(..)` (or a create*/make*/alloc*/clone* factory) on an OWNED scalar member: the
+        previous object is deleted first -- Java's collector freed it; the 360 does not (Entity.bb / setPos).
+        Every member is NULL in the constructor's init list, and delete of NULL does nothing."""
+        while isinstance(e, ir.Paren):
+            e = e.x
+        if not self.owning or not isinstance(e, ir.Assign) or e.op is not None:
+            return
+        tgt = e.target
+        if not (isinstance(tgt, ir.Select) and isinstance(tgt.obj, ir.This) and tgt.sym is not None
+                and tgt.sym.name in self.owned_scalar()):
+            return
+        v = e.value
+        while isinstance(v, (ir.Paren, ir.Cast)):
+            v = v.x
+        fresh = isinstance(v, ir.New) or (isinstance(v, ir.Call) and isinstance(v.target, ir.TypeName)
+                                           and v.sym is not None and _FACTORY.match(v.sym.name))
+        if fresh and not (out and out[-1].strip() == 'delete this->%s;' % tgt.sym.name):
+            out.append(ind + 'delete this->%s;   // J2X no-gc-reassign-leak: free the previous owned %s'
+                       % (tgt.sym.name, tgt.sym.name))
+
+    def free_owned_return(self, s, ct, name, out, ind):
+        """`JList<T*> x = builder(..)` where the builder hands back a container of fresh heap objects the
+        caller frees (resolver.own_catalog.return_methods: Level.getCubes in Entity.move): an RAII guard
+        frees the elements at scope exit -- only when every later use of x is transient (its size, or an
+        element as the receiver of a call or a field read), so the delete can never dangle."""
+        m = _OWNED_CONTAINER.match(ct)
+        init = s.init
+        while isinstance(init, ir.Paren):
+            init = init.x
+        if not self.owning or m is None or not isinstance(init, ir.Call) or init.sym is None \
+                or init.sym.name not in self.r.own_catalog.return_methods:
+            return
+        if not all(_transient_use(chain) for chain in _uses(self.after, s.sym)):
+            return
+        out.append(ind + "J2X_ScopedFreeElems<%s<%s*> > _j2xfree_%s(%s);   // J2X no-gc-return-leak: free the "
+                   "heap elements %s() handed back (caller-frees; Java GC'd them)"
+                   % (m.group(1), m.group(2), name, name, init.sym.name))
+
+    def hoist_owned_args(self, root, out, ind):
+        """An owned-scalar builder used inline as an argument -- `sink.take(bb.expand(1))` -- leaks the
+        temporary. It is hoisted to a local with an RAII delete, only when the receiving method is the
+        program's own and provably just reads that argument position (own_catalog.retained_params)."""
+        if not self.owning:
+            return
+        cat = self.r.own_catalog
+        if not cat.scalar_methods:
+            return
+        for inner, outer, pos in _owned_args(root, cat):
+            elem = cat.scalar_methods[inner.sym.name]
+            code, ct = self.expr(inner)
+            self.arg_temps += 1
+            n = self.arg_temps
+            out.append(ind + '%s* _j2xarg_%d = %s;' % (elem, n, code))
+            out.append(ind + "J2X_ScopedDelete<%s > _j2xargd_%d(_j2xarg_%d);   // J2X no-gc-arg-leak: free the heap "
+                       "%s that %s() returned (%s() only reads it)" % (elem, n, n, elem, inner.sym.name, outer.sym.name))
+            self.subst[id(inner)] = ('_j2xarg_%d' % n, ct)
+
     def review(self, e, out, ind):
         """Reflection has no C++ equivalent -- the runtime's stubs return NULL -- so a statement using it is
         marked for a hand-written factory (J2X-REVIEW, and a HIGH ledger entry)."""
@@ -509,6 +593,8 @@ class Writer(object):
         return n + '_' if n in _CPP_KEYWORDS else n
 
     def expr(self, e):
+        if id(e) in self.subst:
+            return self.subst[id(e)]
         f = getattr(self, 'x_' + type(e).__name__, None)
         if f is None:
             raise Decline('expression %s' % type(e).__name__)
@@ -953,6 +1039,67 @@ _BOXED_TEST = {'String': 'isString', 'Integer': 'isInteger', 'Character': 'isCha
 _CLASS_LIT_TYPE = {'Byte': 'signed char', 'Short': 'short', 'Integer': 'int', 'Long': 'long long',
                    'Float': 'float', 'Double': 'double', 'Character': 'char', 'Boolean': 'bool',
                    'String': 'JavaString', 'Object': 'JObject'}
+
+
+_OWNED_CONTAINER = re.compile(r'^(JList|JSet)\s*<\s*([A-Za-z_][\w:]*)\s*\*\s*>$')
+_FACTORY = re.compile(r'^(?:create|make|alloc|clone)[A-Za-z]')
+
+
+def _with_parents(node, chain=()):
+    """(node, its ancestors nearest first) for every node under `node`."""
+    yield node, chain
+    for c in node.children():
+        for x in _with_parents(c, (node,) + chain):
+            yield x
+
+
+def _uses(stmts, sym):
+    """The ancestor chains of every reference to the local `sym` in `stmts`."""
+    for s in stmts:
+        for n, chain in _with_parents(s):
+            if isinstance(n, ir.Name) and n.sym is not None and n.sym.name == sym.name:   # by name: a
+                                                                    # lowered use has its own Symbol
+                yield chain
+
+
+def _transient_use(chain):
+    """A container use that lets no element outlive it: x.size() / x.isEmpty(), or x.get(i) used only as
+    the receiver of a call or a field read (through casts and parentheses)."""
+    if not chain or not isinstance(chain[0], ir.Call) or chain[0].sym is None:
+        return False
+    name = chain[0].sym.name
+    if name in ('size', 'isEmpty'):
+        return True
+    if name != 'get':
+        return False
+    k = 1
+    while k < len(chain) and isinstance(chain[k], (ir.Paren, ir.Cast)):
+        k += 1
+    if k >= len(chain):
+        return False
+    up, below = chain[k], chain[k - 1]
+    return (isinstance(up, ir.Call) and up.target is below) or (isinstance(up, ir.Select) and up.obj is below)
+
+
+def _owned_args(root, cat):
+    """(inner call, outer call, argument position) for each owned-scalar builder call passed directly as an
+    argument of a call to a method of the program that does not retain that position -- and evaluated
+    unconditionally (not under ?:, && or ||)."""
+    for n, chain in _with_parents(root):
+        if not (isinstance(n, ir.Call) and n.sym is not None and n.sym.name in cat.scalar_methods):
+            continue
+        if not chain or not isinstance(chain[0], ir.Call) or chain[0].sym is None:
+            continue
+        outer = chain[0]
+        pos = next((i for i, a in enumerate(outer.args or []) if a is n), None)
+        if pos is None:
+            continue
+        if outer.sym.name not in cat.corpus_methods or pos in cat.retained_params.get(outer.sym.name, set()):
+            continue
+        if any(isinstance(a, ir.Cond) or (isinstance(a, ir.Binary) and a.op in ('&&', '||')) or
+               isinstance(a, ir.Lambda) for a in chain):
+            continue
+        yield n, outer, pos
 
 
 def _comment(text):
