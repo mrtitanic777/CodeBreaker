@@ -180,3 +180,9 @@ RISC-V Sail, Intel XED).
   calls in it, ending in RETURNs -- gets its own copy of the whole region: 5,384 -> 5,046 (-6%;
   KERNEL32 -20%), no module worse, no new failures, one thread and four agree. Left: loops with
   several exits that do not end in a return, and crossing jumps.
+  Then (C18) a loop whose normal exit is one block before the place a goto from inside also
+  reaches: that place is the loop's exit, the block joins the body, the goto is a break. 5,046 ->
+  5,034, behaviour unchanged. What is left (outside COMMAND.COM, ~1,980): forward out of several
+  nested blocks (~630), backward into the middle of a loop -- a second entry, irreducible (~590),
+  forward out of a loop past more than a block (~450), into a sibling block (~260). Those need
+  condition-based restructuring ("no more gotos") or node splitting for multi-entry loops.

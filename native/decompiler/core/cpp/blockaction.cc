@@ -185,6 +185,18 @@ void LoopBody::findExit(const vector<FlowBlock *> &body)
   vector<FlowBlock *> trialexit;
   FlowBlock *tail;
 
+  // CodeBreaker (C18): a loop whose normal exit runs one block X and then reaches L, where another
+  // exit -- a `goto L` from inside -- goes too (`do { if (c) goto L; ... } while (t); X; L:`). With
+  // X the exit, the jump to L stays a goto. With L the exit, X is entered only from the loop and
+  // extend() takes it into the body: both ways out reach L, and the goto is a break.
+  if (immed_container == (LoopBody *)0) {
+    FlowBlock *better = exitPastStep(body);
+    if (better != (FlowBlock *)0) {
+      exitblock = better;
+      return;
+    }
+  }
+
   for(int4 j=0;j<tails.size();++j) {
     tail = tails[j];
     int4 sizeout = tail->sizeOut();
@@ -236,6 +248,38 @@ void LoopBody::findExit(const vector<FlowBlock *> &body)
     }
     clearMarks(extension);
   }
+}
+
+/// CodeBreaker (C18): the block L when a tail's exit is one block X -- entered only from that
+/// tail, one way out, into L -- and some other edge out of the loop goes to L too; else null.
+/// (Tried: a region of up to 8 blocks in X's place -- it traded gotos elsewhere, KERNEL32 +4.)
+/// \param body is the loop body (its blocks marked)
+/// eturn L, to be the loop's exit, or null
+FlowBlock *LoopBody::exitPastStep(const vector<FlowBlock *> &body) const
+
+{
+  vector<FlowBlock *> exits;
+  for(int4 i=0;i<body.size();++i) {
+    FlowBlock *bl = body[i];
+    for(int4 j=0;j<bl->sizeOut();++j) {
+      if (bl->isGotoOut(j)) continue;
+      FlowBlock *o = bl->getOut(j);
+      if (!o->isMark()) exits.push_back(o);
+    }
+  }
+  for(int4 t=0;t<tails.size();++t) {
+    FlowBlock *tail = tails[t];
+    for(int4 i=0;i<tail->sizeOut();++i) {
+      if (tail->isGotoOut(i)) continue;
+      FlowBlock *x = tail->getOut(i);
+      if (x->isMark() || x->sizeIn() != 1 || x->sizeOut() != 1 || x->isGotoOut(0)) continue;
+      FlowBlock *l = x->getOut(0);
+      if (l == x || l->isMark()) continue;
+      for(int4 k=0;k<exits.size();++k)
+        if (exits[k] == l) return l;
+    }
+  }
+  return (FlowBlock *)0;
 }
 
 /// The idea is if there is more than one \b tail for a loop, some tails are more "preferred" than others

@@ -61,6 +61,7 @@ public:
   void findBase(vector<FlowBlock *> &body);				///< Mark the body FlowBlocks of \b this loop
   void extend(vector<FlowBlock *> &body) const;				///< Extend body (to blocks that never exit)
   void findExit(const vector<FlowBlock *> &body);			///< Choose the exit block for \b this loop
+  FlowBlock *exitPastStep(const vector<FlowBlock *> &body) const;	///< CodeBreaker: an exit one block past a tail's
   void orderTails(void);						///< Find preferred \b tail
   void labelExitEdges(const vector<FlowBlock *> &body);			///< Label edges that exit the loop
   void labelContainments(const vector<FlowBlock *> &body,const vector<LoopBody *> &looporder);
