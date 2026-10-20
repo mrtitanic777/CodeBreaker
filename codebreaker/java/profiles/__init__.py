@@ -4,7 +4,7 @@
 Game- and platform-specific data (class names, package roles, nullable fields/getters, the
 static-init seed, project-filter rules) lives in a *profile* rather than being hardcoded in the
 core logic modules. The core reads it through `active()`; swapping the active profile retargets the
-tool. The bundled default is `minecraft_xbox360`; a `generic` profile supplies empty defaults.
+tool. The default is `generic` (empty defaults); a project's profiles register when it loads (projects/).
 
 NOTE: this is distinct from the repo-root ``profiles/`` directory, which holds per-conversion TYPE
 override configs (e.g. ``alpha.json``). This package is the built-in TARGET-profile registry.
@@ -42,6 +42,8 @@ class Profile(object):
         self.nullable_getter_return_type = dict(nullable_getter_return_type or {})
         self.unsigned_byte_scalar_fields = set(unsigned_byte_scalar_fields or set())
         self.default_value_types = set(default_value_types or set())
+        # heavy types whose by-value copy is a HIGH finding (an MB-scale buffer), not MED
+        self.heavy_types_high = ()
 
 
 _REGISTRY = {}
@@ -68,6 +70,9 @@ def register(profile):
 
 
 def get(name):
+    if name not in _REGISTRY:              # a project's profile: its project registers it on load
+        from codebreaker.java import projects
+        projects.for_profile(name)
     return _REGISTRY[name]
 
 
@@ -78,17 +83,9 @@ def names():
 # The empty, game-agnostic baseline.
 GENERIC = register(Profile('generic'))
 
-# Register the bundled target profile(s). (minecraft_xbox360 self-registers on import.)
-from codebreaker.java.profiles import minecraft_xbox360  # noqa: E402
-
-# Per-edition Minecraft profiles (shared minecraft_base data + era overrides). Each self-registers on
-# import. minecraft_base is data-only (imported by the era modules), so it need not be imported here.
-from codebreaker.java.profiles import minecraft_rubydung, minecraft_indev, minecraft_infdev, minecraft_alpha, minecraft_beta, minecraft_release  # noqa: E402
-BUNDLED = (minecraft_xbox360, minecraft_rubydung, minecraft_indev, minecraft_infdev, minecraft_alpha,
-           minecraft_beta, minecraft_release)      # imported for their registration
-
-# Default active profile preserves the tool's out-of-the-box (Minecraft/Xbox-360) behavior.
-_active = _REGISTRY.get('minecraft_xbox360', GENERIC)
+# A project's profiles (codebreaker/java/projects/<name>/profiles) register when the project loads --
+# chosen for a conversion, or asked for by name through get(). Nothing game-specific loads otherwise.
+_active = GENERIC
 
 
 def active():

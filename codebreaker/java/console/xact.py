@@ -149,7 +149,7 @@ def needed_cues(java_dir):
     """The XACT cues the converted game will request, derived from the sound EVENTS + step-sound
     families it references (via content.scan_assets). Returns {cue_name: [source_event(s)]}. This is
     the demand side; diff it against a bank's authored cues to find the silent-audio gaps."""
-    from codebreaker.java import content
+    from codebreaker.java.projects.minecraft import content
     a = content.scan_assets(java_dir)
     cues = {}
     for ev in a['sounds']:                               # playSound("random.click") -> random_click

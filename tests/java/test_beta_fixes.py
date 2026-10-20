@@ -307,7 +307,13 @@ class TestStaticInitOrder(unittest.TestCase):
         b = 'package sample;\npublic class Block { public static int y = 2; }\n'
         classes = [parse.parse_source(b), parse.parse_source(m)]
         pipeline.resolve_inheritance(classes)
-        order = pipeline.compute_static_init_order(classes, {'Material', 'Block'})
+        from codebreaker.java import profiles
+        prev = profiles.active().name
+        profiles.use('minecraft_xbox360')                  # the seed is Minecraft's (its project's profile)
+        try:
+            order = pipeline.compute_static_init_order(classes, {'Material', 'Block'})
+        finally:
+            profiles.use(prev)
         self.assertLess(order.index('Material'), order.index('Block'))
 
 

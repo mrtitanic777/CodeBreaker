@@ -92,6 +92,7 @@ class Context(object):
         self.classes = dict((c.name, c) for c in classes)
         self.qnames = set()                              # the program's classes by qualified name (Bodies)
         self.ledger = None                               # the conversion's ledger, when it keeps one
+        self.char_map = {}                               # char code -> the 8-bit code the program draws (project)
 
     def is_game(self, qualified):
         """A class of the program (not the library). By qualified name: the game's own `Container` is not
@@ -620,15 +621,14 @@ class Writer(object):
             return _float(v, ''), 'double'
         if k == 'u16':
             c = ord(v) if isinstance(v, str) else int(v)
-            if c == _HOUSE:
-                c = 127                                   # the font's ⌂, as in its strings
+            c = self.ctx.char_map.get(c, c)               # the program's font, as in its strings
             if 32 <= c < 127 and chr(c) not in '\\\'':
                 return "'%s'" % chr(c), 'unsigned char'
             if c > 255:                                   # past the runtime's 8-bit char: its value as an
                 return str(c), 'int'                      # int (Java's char is 16 bits: '￿' is 65535)
             return '(unsigned char)%d' % c, 'unsigned char'
         if e.type.kind == 'class' and e.type.name == 'java.lang.String':
-            return _cstring(v), 'const char*'
+            return _cstring(v, self.ctx.char_map), 'const char*'
         raise Decline('literal %r' % (v,))
 
     def x_Name(self, e):
@@ -1030,7 +1030,6 @@ _MATH.pop('PI', None)
 
 _BITS = frozenset(('<<', '>>', '&', '|', '^'))
 _SATURATING = {'int': 'j2xToInt', 'long long': 'j2xToLong'}
-_HOUSE = 0x2302                                      # U+2302, Minecraft's font tile 127
 _SIMPLE = re.compile(r'^[A-Za-z_][\w]*(?:(?:->|\.)[A-Za-z_]\w*)*$')   # a name or member chain: no grouping
 _REFLECTION = frozenset(('Class*', 'Constructor*'))   # left as written: the reflection pass rewrites them
 _REFLECTIVE = frozenset(('newInstance', 'forName', 'getConstructor', 'getDeclaredConstructor'))
@@ -1216,10 +1215,12 @@ def _float(v, suffix):
     return s + suffix
 
 
-def _cstring(v):
+def _cstring(v, char_map=None):
     out = []
     for ch in v:
         o = ord(ch)
+        o = (char_map or {}).get(o, o)                    # a code the program's font draws elsewhere
+        ch = chr(o)
         if ch == '\\':
             out.append('\\\\')
         elif ch == '"':
@@ -1232,8 +1233,6 @@ def _cstring(v):
             out.append('\\t')
         elif o < 32 or 127 <= o <= 255:                  # the runtime's String is a char per byte (Latin-1),
             out.append('\\%03o' % o)                      # as the judge's inputs are: § is one byte, 0xA7
-        elif o == _HOUSE:
-            out.append('\\177')                           # the font's ⌂ tile: its CP437 byte
         elif o > 255:
             out.append('?')                               # outside the 8-bit runtime, as Latin-1 encodes it
         else:

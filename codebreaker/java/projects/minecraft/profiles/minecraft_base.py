@@ -21,7 +21,7 @@ ctor-mediated deps differ by era), the nullable field/getter vocabulary (API ide
 ``package_roles`` (package layout differs: com.mojang.rubydung vs net.minecraft.* vs ...).
 """
 
-from codebreaker.java.profiles.minecraft_xbox360 import DEAD_TYPES, HEAVY_TYPES, PACKAGE_ROLES as _XBOX_PACKAGE_ROLES, VCXPROJ_FILTERS as _FULL_FILTERS
+from codebreaker.java.projects.minecraft.profiles.minecraft_xbox360 import DEAD_TYPES, HEAVY_TYPES, PACKAGE_ROLES as _XBOX_PACKAGE_ROLES, VCXPROJ_FILTERS as _FULL_FILTERS
 
 # Era-invariant re-exports (single source of truth = minecraft_xbox360).
 SHARED_DEAD_TYPES = DEAD_TYPES

@@ -10,8 +10,9 @@ import subprocess
 
 import pytest
 
-from codebreaker.java import run as cli, edition, parse, transpile as pipeline, profiles
-from codebreaker.java.console import controller_nav
+from codebreaker.java import run as cli, parse, transpile as pipeline, profiles
+from codebreaker.java.projects.minecraft import edition
+from codebreaker.java.projects.minecraft import controller_nav
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _CANON = os.path.join(_ROOT, 'codebreaker', 'java', 'platform', 'canonical')

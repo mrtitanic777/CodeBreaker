@@ -5,7 +5,7 @@ crashes on console (URL.openStream() is a NULL stub -> readLine() faults, uncatc
 import os
 import tempfile
 
-from codebreaker.java.console import applet_ping
+from codebreaker.java.projects.minecraft import applet_ping
 
 
 _SETLEVEL = (

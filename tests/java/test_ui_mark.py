@@ -2,7 +2,8 @@
 """Tests for the UI-marker tool (j2ctool.ui_mark) and debug markers (j2ctool.debug)."""
 
 import os
-from codebreaker.java import ui_mark, debug
+from codebreaker.java import debug
+from codebreaker.java.projects.minecraft import ui_mark
 
 
 def _write(p, text):

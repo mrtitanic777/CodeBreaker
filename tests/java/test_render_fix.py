@@ -6,7 +6,7 @@
 import os
 import tempfile
 
-from codebreaker.java.console import render_fix
+from codebreaker.java.projects.minecraft import render_fix
 
 
 # The converter's all-chunks-in-one-frame updateRenderers (flat single-tab brace style, as emitted).

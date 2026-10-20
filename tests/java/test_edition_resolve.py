@@ -3,7 +3,7 @@
 
 import pytest
 
-from codebreaker.java import edition
+from codebreaker.java.projects.minecraft import edition
 
 
 @pytest.mark.parametrize('vid,expected', [

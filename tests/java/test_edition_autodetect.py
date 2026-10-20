@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """Source auto-detection: detect_edition() over tiny synthetic corpora, conservative when uncertain."""
 
-from codebreaker.java import edition, parse
+from codebreaker.java import parse
+from codebreaker.java.projects.minecraft import edition
 
 
 def _corpus(*sources):

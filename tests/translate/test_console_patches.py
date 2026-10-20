@@ -5,7 +5,7 @@ updateRenderers once the back end printed `list.get(i)` where the old path print
 
 import pytest
 
-from codebreaker.java.console import applet_ping, render_fix, sound_fix
+from codebreaker.java.projects.minecraft import applet_ping, render_fix, sound_fix
 from codebreaker.translate import ir
 from codebreaker.translate.backends import cpp03
 from codebreaker.verify import java

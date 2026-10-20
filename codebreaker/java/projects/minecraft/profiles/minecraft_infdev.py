@@ -10,7 +10,7 @@ real Infdev decompile.
 """
 
 from codebreaker.java.profiles import Profile, register
-from codebreaker.java.profiles import minecraft_base as _base
+from codebreaker.java.projects.minecraft.profiles import minecraft_base as _base
 
 PACKAGE_ROLES = dict(_base.SHARED_PACKAGE_ROLES)
 PACKAGE_ROLES.update({

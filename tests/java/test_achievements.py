@@ -2,7 +2,7 @@
 """Tests for the achievement conversion analyzer (j2ctool.achievements)."""
 
 import os
-from codebreaker.java.console import achievements as ach
+from codebreaker.java.projects.minecraft import achievements as ach
 
 
 _SAMPLE = (

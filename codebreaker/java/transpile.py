@@ -40,6 +40,9 @@ _GL_NAMESPACES = ('GL11', 'GLU')
 
 # classes whose construction hands `this` to someone (a registry, a list, a listener) -- set per convert
 _THIS_ESCAPES = set()
+# the project of this conversion (codebreaker/java/projects), set per convert
+from codebreaker.java import projects as _projects_mod  # noqa: E402
+_PROJECT = _projects_mod.GENERIC
 
 
 def _convert_gl_to_d3d9(text):
@@ -74,116 +77,6 @@ def _trace_guest_throws(text):
     return '\n'.join(out)
 
 
-# --- Minecraft-family GL-selection picking -> screen-center raycast (xbox360) -----------------------
-# GL selection-mode picking (glRenderMode(GL_SELECT) + gluPickMatrix + a glPushName name stack) has NO
-# Direct3D equivalent. Stage 3 could only route the *calls* to the d3d9 layer, where they were software-
-# emulated -- fragile, viewport/cursor-dependent, and effectively non-functional on console. The correct
-# port replaces the whole idiom with a raycast (an ALGORITHM, not a call mapping), leaving the game with
-# ZERO GL selection semantics. This finalizer detects the idiom in emitted game code and rewrites it:
-#   * the DRIVER   -- a `Class::pick(` body containing GL_SELECT  -> screen-center voxel raycast
-#   * the RENDERER -- a body containing glPushName (name stack)   -> emptied (dead after the raycast)
-#   * the PICK CAM -- a body containing gluPickMatrix              -> emptied (dead after the raycast)
-# The raycast references Minecraft-family members (this->player{x,y,z,xo,yo,zo,xRot,yRot},
-# this->level->isSolidTile, this->hitResult, HitResult(x,y,z,o,face)); it is installed only when those
-# members are present in the file (can_raycast), so a non-Minecraft port is left untouched.
-_RAYCAST_PICK_BODY = (
-    "\n"
-    "\t// [J2X-BUGFIX raycast-pick] GL selection-mode picking has no Direct3D equivalent; replaced at the\n"
-    "\t// converter level with a screen-center raycast that ray-marches the voxel grid from the interpolated\n"
-    "\t// eye along the view vector. Emits the same HitResult(x,y,z,0,face); the face convention matches the\n"
-    "\t// place/destroy offsets in the game's render(). Also fixes the original per-frame HitResult leak.\n"
-    "\tdelete this->hitResult;\n"
-    "\tthis->hitResult = NULL;\n"
-    "\tif (this->player == NULL || this->level == NULL) { return; }\n"
-    "\tconst float j2xD2R = 3.14159265358979f / 180.0f;\n"
-    "\tfloat yawRad   = this->player->yRot * j2xD2R;\n"
-    "\tfloat pitchRad = this->player->xRot * j2xD2R;\n"
-    "\t// Camera-forward vector (world space) for the RubyDung view matrix Rx(xRot)*Ry(yRot):\n"
-    "\t//   forward = ( sin(yaw)cos(pitch), -sin(pitch), -cos(yaw)cos(pitch) ).\n"
-    "\t// xRot is POSITIVE looking DOWN (Entity::turn does xRot -= yo), hence dirY = -sin(pitch); the\n"
-    "\t// horizontal signs match where the CAMERA looks (not RubyDung's movement-forward, which is opposite).\n"
-    "\tfloat dirX =  sinf(yawRad) * cosf(pitchRad);\n"
-    "\tfloat dirY = -sinf(pitchRad);\n"
-    "\tfloat dirZ = -cosf(yawRad) * cosf(pitchRad);\n"
-    "\tfloat px = this->player->xo + (this->player->x - this->player->xo) * a;\n"
-    "\tfloat py = this->player->yo + (this->player->y - this->player->yo) * a;\n"
-    "\tfloat pz = this->player->zo + (this->player->z - this->player->zo) * a;\n"
-    "\tint lastX = (int)floorf(px), lastY = (int)floorf(py), lastZ = (int)floorf(pz);\n"
-    "\tbool hadLast = false;\n"
-    "\tfor (float dist = 0.0f; dist < 5.0f; dist += 0.05f) {\n"
-    "\t\tint bx = (int)floorf(px + dirX * dist);\n"
-    "\t\tint by = (int)floorf(py + dirY * dist);\n"
-    "\t\tint bz = (int)floorf(pz + dirZ * dist);\n"
-    "\t\tif (this->level->isSolidTile(bx, by, bz)) {\n"
-    "\t\t\t// J2X-REVIEW[side-effect-in-branch]: confirmed intentional -- the raycast records exactly one\n"
-    "\t\t\t// HitResult under the solid-tile guard, then returns; the side effect must stay guarded here.\n"
-    "\t\t\tint face = 1;\n"
-    "\t\t\tif (hadLast) {\n"
-    "\t\t\t\tint dx = bx - lastX, dy = by - lastY, dz = bz - lastZ;\n"
-    "\t\t\t\tif (dy < 0) { face = 1; }\n"
-    "\t\t\t\telse if (dy > 0) { face = 0; }\n"
-    "\t\t\t\telse if (dz < 0) { face = 3; }\n"
-    "\t\t\t\telse if (dz > 0) { face = 2; }\n"
-    "\t\t\t\telse if (dx < 0) { face = 5; }\n"
-    "\t\t\t\telse if (dx > 0) { face = 4; }\n"
-    "\t\t\t}\n"
-    "\t\t\tthis->hitResult = new HitResult(bx, by, bz, 0, face);\n"
-    "\t\t\treturn;\n"
-    "\t\t}\n"
-    "\t\tlastX = bx; lastY = by; lastZ = bz; hadLast = true;\n"
-    "\t}\n"
-)
-_EMPTY_PICK_HELPER = (
-    "\n"
-    "\t// [J2X-BUGFIX raycast-pick] GL-selection helper removed -- pick() now raycasts the voxel grid\n"
-    "\t// directly, so this name-stack / pick-matrix code is dead (no GL selection semantics remain).\n"
-)
-
-
-def _convert_gl_pick_to_raycast(text):
-    """Rewrite the Minecraft-family GL-selection picking idiom to a raycast (see block comment above).
-    Operates on emitted C++ text. Matches only real method DEFINITIONS (`Class::method(...) {`), never
-    control-flow blocks, and brace-matches each body while skipping string/char literals."""
-    if 'GL_SELECT' not in text and 'glPushName' not in text and 'gluPickMatrix' not in text:
-        return text
-    import re as _re
-    can_raycast = ('this->player' in text and 'this->level' in text and 'this->hitResult' in text)
-    spans = []   # (body_start, body_end_excl, replacement) -- in order, non-overlapping
-    for m in _re.finditer(r'\b[A-Za-z_]\w*::[A-Za-z_]\w*\s*\([^;{}]*\)\s*(?:const\s*)?\{', text):
-        open_brace = m.end() - 1
-        i, n, depth, close = open_brace, len(text), 0, None
-        while i < n:
-            c = text[i]
-            if c == '"' or c == "'":
-                q = c; i += 1
-                while i < n:
-                    if text[i] == '\\': i += 2; continue
-                    if text[i] == q: break
-                    i += 1
-            elif c == '{': depth += 1
-            elif c == '}':
-                depth -= 1
-                if depth == 0: close = i; break
-            i += 1
-        if close is None:
-            continue
-        body = text[open_brace + 1:close]
-        repl = None
-        if 'GL_SELECT' in body and can_raycast:
-            repl = _RAYCAST_PICK_BODY
-        elif 'glPushName' in body or 'gluPickMatrix' in body:
-            repl = _EMPTY_PICK_HELPER      # dead GL-selection helper; safe to strip on D3D
-        if repl is not None:
-            spans.append((open_brace + 1, close, repl))
-    if not spans:
-        return text
-    out, idx = [], 0
-    for s, e, r in spans:
-        out.append(text[idx:s]); out.append(r); idx = e
-    out.append(text[idx:])
-    return ''.join(out)
-
-
 def _finalize_emitted(text):
     """Global text finalizers applied to EVERY emitted .h/.cpp (so they also catch source.py-emitted
     static-data arrays and inlined ctor bodies, not just method-body lines):
@@ -193,7 +86,8 @@ def _finalize_emitted(text):
     from codebreaker.java.emit.std_transforms import sanitize_reserved_members
     text = sanitize_reserved_members(text)
     if _GL_TO_D3D9:
-        text = _convert_gl_pick_to_raycast(text)   # rip GL_SELECT picking -> raycast BEFORE the ns rename
+        text = _PROJECT.finalize_text(text, 'xbox360')   # the project's last word (Minecraft: GL picking
+        #                                                  -> a raycast), BEFORE the ns rename
         text = _convert_gl_to_d3d9(text)
     if _TRACE_THROWS:
         text = _trace_guest_throws(text)   # tag every throw with its site (throws are no-op landmines here)
@@ -1019,6 +913,8 @@ def _convert_restoring(java_dir, out_dir, value_types, ledger, write_report, cpp
         typemap.NULLABLE_GETTER_RETURN_TYPE.clear(); typemap.NULLABLE_GETTER_RETURN_TYPE.update(_base_gtypes)
         from codebreaker.java.emit import source as _emit_source
         _emit_source.TREE_BODIES = None                # phase 1's IR bodies never outlive their conversion
+        global _PROJECT
+        _PROJECT = _projects_mod.GENERIC              # nor does its project
         if _profiles.active().name != _prev_profile:
             _profiles.use(_prev_profile)
 
@@ -1090,9 +986,13 @@ def _convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True
     # typemap/rules/vcxproj/signatures/pipeline, so it MUST run before build_resolver (which reads
     # typemap.DEFAULT_VALUE_TYPES). convert() restores it in a `finally` (even on an exception), so
     # repeated in-process conversions can't drift.
-    from codebreaker.java import profiles as _profiles, edition as _edition
+    from codebreaker.java import profiles as _profiles, projects as _projects
+    global _PROJECT
+    _PROJECT = _projects.choose(classes, edition=edition, mc_version=mc_version)
+    if _PROJECT is not _projects.GENERIC:
+        _prog('[project] %s' % _PROJECT.name)
     _prev_profile = _profiles.active().name
-    _ed_name = _edition.resolve(edition, mc_version=mc_version, classes=classes)
+    _ed_name = _PROJECT.profile_for(edition, mc_version=mc_version, classes=classes)
     if _ed_name and _ed_name != _profiles.active().name:
         _profiles.use(_ed_name)
         _prog('[edition] active target profile: %s' % _ed_name)
@@ -1207,13 +1107,11 @@ def _convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True
     _shim = _probe.shims(_settings.state('translate'), _vjava.jdk()[0]) if _cp else ''
     _ctx = _cpp03.Context(resolver, classes)
     _ctx.ledger = ledger
+    _ctx.char_map = dict(_PROJECT.char_map)
     _units = _cpp03.java_units(java_dir, ([_shim] if _shim else []) + _cp)
     # the console's fixes to the game's own logic, made on the tree before it is written (by shape, so no
     # printing of the C++ hides a site): sound routed to XACT, the applet ping, the render budget and NaN
-    _console = {}
-    if platform == 'xbox360':
-        from codebreaker.java.console import sound_fix as _sfx, applet_ping as _ap, render_fix as _rfx
-        _console = {'sound': _sfx.patch(_units), 'applet': _ap.patch(_units), 'render': _rfx.patch(_units)}
+    _patched = _PROJECT.ir_patches(_units, platform)
     tree = _cpp03.Bodies(_ctx, _units)
     emit_source.TREE_BODIES = tree
     _prog('[translate] the IR front end lowered %d classes' % len(tree.decls))
@@ -1264,69 +1162,14 @@ def _convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True
     # from the registration table, and reuse sites (BlockSign/SpawnerAnimals) call it via a shared
     # header. Runs before the rules scan so the reflection-unsupported findings drop.
     from codebreaker.java import reflection_factory
-    _rf = reflection_factory.run(out_dir)
+    _rf = reflection_factory.run(out_dir, registrars=_PROJECT.registrars)
     if _rf['total_sites']:
         _prog('[reflect] %d registries -> factories (%d classes), %d sites rewritten (%d reused)'
               % (len(_rf['registries']), _rf['total_classes'], _rf['total_sites'], len(_rf['reused'])))
 
-    # SFX BYPASS (console): SoundManager gates every sound effect on the OGG sound pool, which is EMPTY on
-    # the console (sound comes from XACT banks via the Audio.reference bridge) -> getRandomSoundFromSoundPool
-    # returns NULL -> all SFX silent. Drop the null-guard and route the sound name straight to the bridge as
-    # the XACT cue, migrating the Alpha/Indev hand-fix into the emitter so every convert gets working SFX from
-    # one place (Beta's SoundManager overlay had FORGOTTEN it -> silent). xbox360 only (depends on the real
-    # Audio bridge). See j2ctool/sound_fix.py. Runs before overlays so an overlaid SoundManager can still win.
-    if platform == 'xbox360':
-        from codebreaker.java.console import sound_fix as _sfx
-        _sf = dict(_console['sound'], stranded=_sfx.stranded(out_dir))
-        if _sf['sites']:
-            _prog('[sound] SFX+music bypass: %d site(s) routed to the XACT bridge across %d file(s)'
-                  % (_sf['sites'], len(_sf['files'])))
-        if _sf['stranded']:
-            _prog('[sound] WARNING: a soundPool*->getRandomSound null-guard survived in %s -- sound may be '
-                  'silent there (guard shape changed; update sound_fix.py)' % ', '.join(_sf['stranded']))
-
-    # CONTROLLER MENU NAVIGATION: inject the D-pad menu nav adapter into GuiScreen + the per-frame call, so
-    # button menus are navigable with a pad on the console. The nav ALGORITHM lives in Input.reference
-    # (Input::menuNavSelect); this only injects the thin, edition-uniform adapter. Migrated from the Alpha
-    # hand-port overlay so no edition ships a dead menu again. xbox360 only; before overlays (overlay wins).
-    if platform == 'xbox360':
-        from codebreaker.java.console import controller_nav as _cnav
-        _cn = _cnav.run(out_dir)
-        if _cn['guiscreen_cpp'] and _cn['callsite']:
-            _prog('[controller] menu nav injected into GuiScreen (+ per-frame call)')
-        if _cn['missing']:
-            _prog('[controller] WARNING: menu-nav anchor(s) not found -> menus may be un-navigable: %s'
-                  % '; '.join(_cn['missing']))
-
-    # APPLET ANTI-PIRACY PING: early MC's setLevel opens getDocumentBase()->openStream() (a level-count /
-    # minecraft.net host check). On console URL.openStream() is a NULL stub -> readLine() faults (uncatchable)
-    # -> pressing "Create" crashes on setLevel's first line. Drop the ping, set the level directly (matches the
-    # OG Indev hand-port). xbox360 only; before overlays. See j2ctool/applet_ping.py.
-    if platform == 'xbox360':
-        from codebreaker.java.console import applet_ping as _ap
-        _apr = dict(_console['applet'], stranded=_ap.stranded(out_dir))
-        if _apr['sites']:
-            _prog('[applet] anti-piracy URL ping neutralized: %d site(s) across %d file(s)'
-                  % (_apr['sites'], len(_apr['files'])))
-        if _apr['stranded']:
-            _prog('[applet] WARNING: a getDocumentBase()->openStream() ping survived in %s -- may crash on '
-                  'setLevel (ping shape changed; update applet_ping.py)' % ', '.join(_apr['stranded']))
-
-    # CONSOLE RENDER FIXES: (1) RenderGlobal::updateRenderers rebuilt EVERY dirty chunk in one frame -- a
-    # fresh world is 1000+ chunks, so the frame never presented (stuck on "Spawning"); cap to a few chunk
-    # rebuilds/frame (nearest first). (2) EntityRenderer::hurtCameraEffect divided 0/0 on spawn
-    # (hurtTime=0) -> NaN camera matrix -> invisible world; guard hurtTime>0. Both match the proven OG
-    # hand-ports. xbox360 only; before overlays. See j2ctool/render_fix.py.
-    if platform == 'xbox360':
-        from codebreaker.java.console import render_fix as _rfx
-        _rf = dict(_console['render'], stranded=_rfx.stranded(out_dir))
-        if _rf['update']:
-            _prog('[render] chunk-rebuild budget applied to updateRenderers (%d site(s))' % _rf['update'])
-        if _rf['hurt']:
-            _prog('[render] hurt-camera 0/0 NaN guard applied (%d site(s))' % _rf['hurt'])
-        if _rf['stranded']:
-            _prog('[render] WARNING: a render-fix trigger survived in %s -- first in-game frame may hang '
-                  'or be invisible (shape changed; update render_fix.py)' % ', '.join(_rf['stranded']))
+    # the project's fixes and checks on the written program (Minecraft: the console's sound, menu
+    # navigation, applet ping and render fixes), before overlays so an overlay still has the last word
+    _PROJECT.after_emit(out_dir, platform, _patched, _prog)
 
     # PROJECT OVERLAYS: re-apply game/version-specific hand-fixes to GENERATED files -- leak `delete`s in
     # specific methods, the scheduled-tick value-comparing std::set, UI tweaks (OSK/FPS/tooltip), input
@@ -1353,15 +1196,8 @@ def _convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True
     if _stale:
         _prog('[twophase] WARNING: %s has no j2xInit (an overlay replaced it?) -- it will not link' % ', '.join(_stale))
 
-    # KEYBIND MARKING (console): the game drives F1/F2/F3/F5/F8/F11/ESC/hotbar/... off physical keyboard
-    # keys that DON'T EXIST on the console. Tag every hardcoded key-press site with a greppable
-    # J2X-KEYBIND marker + KEYBIND_INDEX.md so each can be deliberately routed to a controller button or a
-    # menu toggle -- instead of discovering them one at a time in-game (the Show-FPS/F3 case).
-    if platform == 'xbox360':
-        from codebreaker.java import keybind_mark as _kbm
-        _kb = _kbm.run(out_dir)
-        _prog('[keybind] tagged %d keyboard key-press site(s) -> KEYBIND_INDEX.md (route to controller/menu)'
-              % len(_kb['sites']))
+    # the project's markers over the final code (Minecraft: keyboard keys the console does not have)
+    _PROJECT.after_construction(out_dir, platform, _prog)
 
     # FORWARDER COALESCE: fold pure redirect headers (ByteBuffer.h -> NIOBuffers.h, Keyboard.h -> Input.h)
     # into their targets and delete them -- fewer files, no shims. Runs BEFORE the prune so the prune sees
@@ -1388,19 +1224,6 @@ def _convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True
                                    meta={'output_dir': os.path.abspath(out_dir), 'profile': 'rewrite (j2ctool)'})
         _prog('[report] written to %s' % rep)
 
-    # asset manifest: what textures/sounds/music/lang files must ship in the content folder
-    from codebreaker.java import content
-    cm = content.write_content_md(java_dir, out_dir)
-    _prog('[content] asset manifest written to %s' % cm)
-
-    # achievement conversion: map the program's achievements to the console achievement system
-    # (title config + networked profile write) -- only if the program actually defines any.
-    from codebreaker.java.console import achievements as _ach
-    _found = _ach.scan_achievements(out_dir)
-    if _found:
-        _ach.run(out_dir, out_dir)
-        _prog('[achievements] %d found -> ACHIEVEMENTS.md + achievements.xlast + Achievements.h/.cpp' % len(_found))
-
     # the single debug file: one master switch (DEBUG_ENABLED) gating every DBG_* macro, so all
     # debug instrumentation across the codebase is toggled from one place. Concise + rate-limited.
     # Opt-in: the UI/CLI decides whether the port gets debug support at all.
@@ -1411,15 +1234,8 @@ def _convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True
     else:
         _prog('[debug] debug support NOT emitted (opt-in disabled)')
 
-    # platform-layer coverage: which video/input/audio/fileIO/network/memory symbols the game uses,
-    # classified REUSABLE (Alpha reference) / STUB / MISSING, with an implementation-choice menu.
-    from codebreaker.java.console import platform_coverage
-    from codebreaker.java._paths import data_path as _data_path
-    _ref_dir = _data_path('platform', 'reference')
-    pc_path, _pc = platform_coverage.write_report(
-        out_dir, reference_dir=(_ref_dir if os.path.isdir(_ref_dir) else None),
-        runtime_files=set(rt_files.keys()))
-    _prog('[platform] coverage report written to %s' % pc_path)
+    # the project's own reports (Minecraft: asset manifest, achievements, platform-layer coverage)
+    _PROJECT.reports(java_dir, out_dir, rt_files.keys(), _prog)
 
     # API-mapping coverage: which external Java/library symbols the source references, resolved
     # against the API-mapping registry for the target language+dialect. APIMAP.md is the enumerable
