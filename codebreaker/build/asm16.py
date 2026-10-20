@@ -107,6 +107,15 @@ class Function(object):
             if r["kind"] in ("IMPORTORD", "IMPORTNAME"):
                 mod = refs[r["module"] - 1] if 0 < r["module"] <= len(refs) else None
                 what = r["ordinal"] if r["kind"] == "IMPORTORD" else nef.imported_name(r["name_off"])
+                # KERNEL's huge-pointer constants, __AHSHIFT (113) and __AHINCR (114), taken as a
+                # byte or a word: the number the loader writes there in protected mode, 3 and 8.
+                # (`db low offset _KERNEL_113` does not assemble: SETUPX's segment 28, its
+                # decompressor, fell back to C over it -- and faulted 15% into copying files)
+                konst = {113: 3, 114: 8, "__AHSHIFT": 3, "__AHINCR": 8}.get(what) if mod == "KERNEL" else None
+                if konst is not None and src in (0, 5):
+                    value = (konst + (add if r["additive"] else 0)) & (0xFF if src == 0 else 0xFFFF)
+                    sites[off] = (width, ("db   0%02Xh" if src == 0 else "dw   0%04Xh") % value)
+                    continue
                 sym = symbol_for("import", mod, what) if mod else None
                 if not sym:
                     self.why = "an import (%s.%s) with no symbol" % (mod, what)
