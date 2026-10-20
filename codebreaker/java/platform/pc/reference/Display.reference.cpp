@@ -181,7 +181,7 @@ void update() {
 }
 
 bool isCloseRequested() { return g_close; }
-bool isActive() { return g_active; }
+bool isActive() { return g_active || std::getenv("J2X_SCRIPT") != 0; }   // a scripted run never pauses
 bool isCreated() { return g_win != 0; }
 
 int getWidth() {

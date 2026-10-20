@@ -593,10 +593,10 @@ _GENERATED['DocumentBuilderFactory.h'] = _class_stub('DocumentBuilderFactory', f
     ret_methods=[('newDocumentBuilder', ('DocumentBuilder*', '0'))],
     extra=['static DocumentBuilderFactory* newInstance(...) { return new DocumentBuilderFactory(); }'])
 # java.util.Date / java.text.SimpleDateFormat (Beta ScreenShotHelper timestamps).
-_GENERATED['Date.h'] = _class_stub('Date',
-    ret_methods=[('getTime', ('long long', '0LL')), ('toString', ('std::string', 'std::string()'))])
-_GENERATED['SimpleDateFormat.h'] = _class_stub('SimpleDateFormat', bases=['DateFormat'], includes=['DateFormat'],
-    ret_methods=[('format', ('std::string', 'std::string()'))])
+# real: the time and Java's pattern letters (a stub gave ScreenShotHelper the file name "null.png")
+_GENERATED['Date.h'] = _load_canonical('Date.h')
+_GENERATED['SimpleDateFormat.h'] = ('#ifndef SIMPLEDATEFORMAT_H\n#define SIMPLEDATEFORMAT_H\n'
+                                    '#include "DateFormat.h"   // SimpleDateFormat lives with DateFormat\n#endif\n')
 # java.util.zip gzip streams (Beta SaveConverterMcRegion / NBT). Real gzip lives in the hand-written
 # Inflate/CompressedStreamTools platform code; these keep the type references compiling.
 # REAL gzip streams via puff.c (Inflate.cpp) -- were no-op stubs so level.dat/player.dat never (de)compressed.
@@ -782,8 +782,11 @@ public:
 '''
 # java.io.Writer / StringWriter / PushbackReader. Writer.append returns the Writer (java.lang.Appendable)
 # so `w.append(a).append(b)` chains (argo's compact formatter).
+# FIXED BUG writer-writes-lost: PrintWriter writes through a Writer*, so the typed writes must be VIRTUAL here --
+# with only write(...) every println landed on the base's no-op and FileWriter saved an empty file (options.txt).
 _GENERATED['Writer.h'] = _class_stub('Writer', void_methods=['write', 'flush', 'close'],
-    extra=['Writer* append(...) { return this; }'])
+    extra=['virtual void write(const JavaString&) {}', 'virtual void write(int) {}',
+           'Writer* append(...) { return this; }'])
 _GENERATED['StringWriter.h'] = _class_stub('StringWriter', bases=['Writer'], includes=['Writer'],
     ret_methods=[('toString', ('std::string', 'std::string()')), ('getBuffer', ('void*', '0'))])
 _GENERATED['PushbackReader.h'] = _class_stub('PushbackReader', void_methods=['unread', 'close'],
@@ -954,8 +957,7 @@ _GENERATED['Socket.h'] = _class_stub('Socket',
                  ('getRemoteSocketAddress', ('SocketAddress*', '0')), ('getInetAddress', ('InetAddress*', '0')),
                  ('getPort', ('int', '0')), ('isConnected', ('bool', 'false')), ('isClosed', ('bool', 'false'))],
     fwds=['InputStream', 'OutputStream', 'SocketAddress', 'InetAddress'])
-_GENERATED['DateFormat.h'] = _class_stub('DateFormat',
-    ret_methods=[('format', ('std::string', 'std::string()'))])
+_GENERATED['DateFormat.h'] = _load_canonical('DateFormat.h')
 _GENERATED['Dimension.h'] = _class_stub('Dimension',
     ret_methods=[('getWidth', ('int', '0')), ('getHeight', ('int', '0'))])
 # java.awt event listeners/adapters (implemented/extended by the desktop applet+window code)
@@ -1278,7 +1280,8 @@ _GENERATED['Robot.h'] = _class_stub('Robot', void_methods=['mouseMove'])
 # resolve it to game:\Content\... (the URL form of getResourceAsStream). openStream() returns
 # InputStream* so `new DataInputStream(url.openStream())` binds.
 _GENERATED['URL.h'] = _class_stub('URL', fwds=('InputStream', 'URLConnection'), ctors=False,
-    ret_methods=[('openConnection', ('URLConnection*', '0')), ('openStream', ('InputStream*', '0')),
+    ret_methods=[('openConnection', ('URLConnection*', 'J2X_URL_OPEN_CONNECTION(this)')),
+                 ('openStream', ('InputStream*', 'J2X_URL_OPEN_STREAM(this)')),
                  ('toString', ('std::string', 'std::string()')), ('getPath', ('std::string', 'std::string()')),
                  ('getFile', ('std::string', 'std::string()')), ('getProtocol', ('std::string', 'std::string()')),
                  ('getHost', ('std::string', 'std::string()')), ('getQuery', ('std::string', 'std::string()')),
@@ -1424,7 +1427,17 @@ for _e, _base in [('Exception', 'Throwable'), ('Error', 'Throwable'), ('RuntimeE
                   ('CloneNotSupportedException', 'Exception'), ('ClassNotFoundException', 'Exception')]:
     _GENERATED[_e + '.h'] = _class_stub(_e, bases=[_base], includes=[_base])
 # java.io.File (richer than the early minimal stub; overrides it via FILES.update)
-_GENERATED['URI.h'] = _class_stub('URI', fwds=['URL'], ret_methods=[('toURL', ('URL*', '0'))])
+# A URI of a file carries its path (File.toURI() -> toURL()): Minecraft's sound pool keys every sound by
+# file.toURI().toURL(), and the platform's sound system opens that path.
+# A desktop platform's network (pc: offline -- a connection whose connect/read throws IOException, as Java's
+# does with no network) through J2X_URL_OPEN_CONNECTION / J2X_URL_OPEN_STREAM in its stdafx.h; else NULL.
+_GENERATED['URL.h'] = _GENERATED['URL.h'].replace(
+    '#include <string>\n', '#include <string>\n#ifndef J2X_URL_OPEN_CONNECTION\n#define J2X_URL_OPEN_CONNECTION(u) 0\n'
+    '#define J2X_URL_OPEN_STREAM(u) 0\n#endif\n', 1)
+_GENERATED['URI.h'] = _class_stub('URI', includes=['URL'], ctors=False,
+    extra=['std::string _j2xpath;', 'URI(...) {}', 'URI(const std::string& p) : _j2xpath(p) {}',
+           'URL* toURL(...) { return new URL(_j2xpath); }', 'JavaString getPath(...) { return JavaString(_j2xpath); }',
+           'JavaString toString(...) { return JavaString(_j2xpath); }'])
 # File is NOT a symbol-only stub: the entire IO layer reads File::path (CreateFile/fopen) and resource
 # loading recurses listFiles()/isDirectory(). A no-op File silently breaks all file IO -- saves never
 # write, the sound/resource pools never fill (silent no-audio). Emit the REAL path-backed canonical File.
@@ -1606,10 +1619,20 @@ FileInputStream::FileInputStream(File* f) : _data(0), _size(0), _pos(0) { _load(
 InputStream* J2X_getResourceAsStream(const char* name) {
 	while (name && (*name == '/' || *name == '\\\\')) ++name;
 	if (!name || !*name) return 0;
-	FILE* f = std::fopen(name, "rb");
-	if (!f) return 0;
+	std::string path(name);
+	FILE* f = std::fopen(path.c_str(), "rb");
+	if (!f) {
+		// a flattened asset folder (the console's Content keeps misc/foliagecolor.png at its root): the
+		// file by its own name, as the 360's file layer does. FIXED BUG flattened-assets-black-foliage:
+		// without it the foliage/grass colour tables loaded empty and every leaf drew black.
+		std::string::size_type s = path.find_last_of("/\\\\");
+		if (s == std::string::npos) return 0;
+		path = path.substr(s + 1);
+		f = std::fopen(path.c_str(), "rb");
+		if (!f) return 0;
+	}
 	std::fclose(f);
-	return new FileInputStream(std::string(name));
+	return new FileInputStream(path);
 }
 '''
 

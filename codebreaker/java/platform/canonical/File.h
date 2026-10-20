@@ -47,6 +47,7 @@ public:
 	// path (mcDataDir blank -> options.txt/saves collapse to a relative "options.txt", device not found).
 	File(...) {}
 	File(const std::string& p) : path(p) { _norm(); }
+	File(const char* p) : path(p ? p : "") { _norm(); }   // a literal: exact, so not ambiguous with File(...)
 	File(const std::string& parent, const std::string& child) { _join(parent, child); }
 	File(File* parent, const std::string& child) { _join(parent ? parent->path : std::string(), child); }
 	virtual ~File() {}
@@ -104,7 +105,7 @@ public:
 	virtual long long lastModified(...) { return 0LL; }
 	virtual File* getParentFile(...) { std::string p = _parent(); return p.empty() ? 0 : new File(p); }
 	virtual File* getAbsoluteFile(...) { return new File(path); }
-	virtual URI toURI(...) { return URI(); }
+	virtual URI toURI(...) { return URI(path); }
 	virtual void* list(...) { return 0; }
 
 	// Enumerate children (files AND directories -- resource loading recurses via isDirectory()).

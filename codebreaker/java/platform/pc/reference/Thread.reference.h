@@ -1,53 +1,73 @@
+// java.lang.Thread on the PC: a real std::thread per start(), as in Java. The program ends when its last
+// non-daemon thread does (the generated main waits: j2xThreadsWait). The game creates its window and GL
+// context on the thread that calls Display.create(), so rendering stays on that one thread.
 #ifndef THREAD_H
 #define THREAD_H
-// java.lang.Thread. start() is a NO-OP BY DEFAULT: on the console the java daemon threads (StatsSyncher,
-// ThreadDownload*, the timer hack) are DEAD -- they do no useful work (no HTTP/socket) and flipping the global
-// start() to a real OS thread turned them on and FROZE the first menu render frame. The real game-parallelism
-// pool is j2x_pool (ThreadPool.h) -- unaffected by this.
-//
-// FIXED BUG mp-threads-never-run: multiplayer's connect/reader/writer threads are REAL java Threads, so with a
-// no-op start() ThreadConnectToServer::run() (socket + handshake) and the NetworkManager reader/writer loops
-// never executed -- MP hung forever on "Connecting to the server..." The controlled/gated fix: start() is
-// VIRTUAL, and ONLY the three net-thread classes override it (in the overlay) to call j2x_startReal() (a real
-// CreateThread). Every other Thread keeps the no-op, so the dead daemons stay dead and the menu-freeze does not
-// return. [360] equivalent: CreateThread / ExCreateThread + Sleep / WaitForSingleObject (xboxkrnl.exe).
 #include <string>
-#include "Common.h"          // xtl.h: HANDLE/DWORD/WINAPI/LPVOID, CreateThread/Sleep
+#include <thread>
+#include <atomic>
+#include <mutex>
+#include <condition_variable>
+#include <chrono>
 #include "Runnable.h"
+
+namespace j2xthreads {
+	inline std::mutex& lock() { static std::mutex m; return m; }
+	inline std::condition_variable& done() { static std::condition_variable c; return c; }
+	inline int& live() { static int n = 0; return n; }               // running non-daemon threads
+}
 
 class Thread : public Runnable {
 protected:
-	HANDLE _handle;
-	Runnable* _target;   // the Runnable passed to `new Thread(runnable)`, or 0 for a Thread subclass
-	static DWORD WINAPI _entry(LPVOID p) { ((Thread*)p)->run(); return 0; }
-	// Spawn a REAL OS thread that runs run(). Called ONLY from the net-thread start() overrides (see header note).
-	void j2x_startReal() { if (!_handle) _handle = CreateThread(0, 0, _entry, this, 0, 0); }
+	Runnable* _target;   // `new Thread(runnable)`'s runnable, or 0 for a Thread subclass
+	bool _daemon;
+	std::atomic<bool> _alive;
+	std::thread _t;
+	std::string _name;
+	static void _entry(Thread* t) {
+		t->run();
+		t->_alive = false;
+		if (!t->_daemon) {
+			std::lock_guard<std::mutex> g(j2xthreads::lock());
+			--j2xthreads::live();
+			j2xthreads::done().notify_all();
+		}
+	}
 public:
-	Thread() : _handle(0), _target(0) {}
-	Thread(const std::string&) : _handle(0), _target(0) {}
-	template<class R> Thread(R* r) : _handle(0), _target(r) {}                       // new Thread(runnable)
-	template<class R> Thread(R* r, const std::string&) : _handle(0), _target(r) {}   // new Thread(runnable, name)
-	virtual ~Thread() {}
-	// A Thread built with `new Thread(runnable)` runs its TARGET; a Thread SUBCLASS overrides run().
+	Thread() : _target(0), _daemon(false), _alive(false) {}
+	Thread(const std::string& n) : _target(0), _daemon(false), _alive(false), _name(n) {}
+	template<class R> Thread(R* r) : _target(r), _daemon(false), _alive(false) {}
+	template<class R> Thread(R* r, const std::string& n) : _target(r), _daemon(false), _alive(false), _name(n) {}
+	virtual ~Thread() { if (_t.joinable()) _t.detach(); }
 	virtual void run() { if (_target) _target->run(); }
-	// FIXED BUG thread-start-noop: RubyDung's whole game is `new Thread(this).start()` -- with the old
-	// no-op start() run() never executed (black screen). Now: a Thread WITH A TARGET (a wrapped Runnable,
-	// = "run this task", e.g. the app's main thread) runs it here, SYNCHRONOUSLY -- correct for the
-	// `new Thread(app).start()` main pattern with no process-exit race. A Thread SUBCLASS with NO target
-	// (Beta's dead daemons: StatsSyncher/ThreadDownload/timer) keeps the no-op so the menu-freeze does not
-	// return; the net reader/writer/connect threads still override start() -> j2x_startReal() (real OS thread).
-	virtual void start() { if (_target) _target->run(); }
-	void setDaemon(bool) {}
-	void setName(const std::string&) {}
+	virtual void start() {
+		if (_alive || _t.joinable()) return;
+		_alive = true;
+		if (!_daemon) {
+			std::lock_guard<std::mutex> g(j2xthreads::lock());
+			++j2xthreads::live();
+		}
+		_t = std::thread(_entry, this);
+	}
+	void setDaemon(bool d) { _daemon = d; }
+	bool isDaemon() const { return _daemon; }
+	void setName(const std::string& n) { _name = n; }
+	std::string getName() const { return _name; }
 	void setPriority(int) {}
 	void interrupt() {}
-	void join(...) {}                                     // no-op (join semantics not needed here)
+	void join(...) { if (_t.joinable() && _t.get_id() != std::this_thread::get_id()) _t.join(); }
 	static void dumpStack() {}
 	void stop() {}
 	void suspend() {}
 	void resume() {}
-	bool isAlive() { return _handle != 0; }
-	static void sleep(long long ms) { Sleep((DWORD)(ms < 0 ? 0 : ms)); }   // REAL sleep (net loops idle without busy-spin)
-	static void yield() { Sleep(0); }
+	bool isAlive() { return _alive; }
+	static void sleep(long long ms) { std::this_thread::sleep_for(std::chrono::milliseconds(ms < 0 ? 0 : ms)); }
+	static void yield() { std::this_thread::yield(); }
 };
+
+// main(): wait for every non-daemon thread, as the JVM does before it exits
+inline void j2xThreadsWait() {
+	std::unique_lock<std::mutex> g(j2xthreads::lock());
+	j2xthreads::done().wait(g, [] { return j2xthreads::live() == 0; });
+}
 #endif // THREAD_H

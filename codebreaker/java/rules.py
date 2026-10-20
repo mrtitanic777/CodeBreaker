@@ -724,7 +724,12 @@ def rule_leak_dtor_member(fname, text, header_text, plat):
         if re.search(r'\b' + re.escape(cls) + r'::~' + re.escape(cls) + r'\b', sig):
             dtor_body = (dtor_body or '') + body
         elif re.search(r'\b' + re.escape(cls) + r'::' + re.escape(cls) + r'\b', sig):
+            # the constructor's own locals (`T* v = NULL;` first, `v = new ...` later: the back end's ordered-
+            # operand temporaries j2xoN, a decompiler local) are not members
+            local = set(re.findall(r'\b[A-Za-z_][\w:<>]*\s*\*+\s*(\w+)\s*(?:=|;)', body))
             for mm in re.finditer(r'(?:this->)?(\w+)\s*=\s*new\b', body):
+                if mm.group(1) in local and not mm.group(0).startswith('this->'):
+                    continue
                 ctor_new.add(mm.group(1))
                 ctor_line.setdefault(mm.group(1), text.count('\n', 0, off + mm.start()) + 1)
     if not ctor_new:

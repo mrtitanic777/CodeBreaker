@@ -133,4 +133,68 @@ BufferedImage* read(File* f) {
 	return bytes.empty() ? NULL : decode(&bytes[0], (unsigned)bytes.size());
 }
 
+namespace {
+unsigned crc32(const unsigned char* p, size_t n, unsigned c = 0xFFFFFFFFu) {
+	static unsigned table[256];
+	static bool init = false;
+	if (!init) {
+		for (unsigned i = 0; i < 256; ++i) {
+			unsigned v = i;
+			for (int k = 0; k < 8; ++k) v = (v & 1) ? 0xEDB88320u ^ (v >> 1) : v >> 1;
+			table[i] = v;
+		}
+		init = true;
+	}
+	for (size_t i = 0; i < n; ++i) c = table[(c ^ p[i]) & 0xFF] ^ (c >> 8);
+	return c;
+}
+void put32(std::vector<unsigned char>& o, unsigned v) {
+	o.push_back((unsigned char)(v >> 24)); o.push_back((unsigned char)(v >> 16));
+	o.push_back((unsigned char)(v >> 8)); o.push_back((unsigned char)v);
+}
+void chunk(std::vector<unsigned char>& o, const char* type, const std::vector<unsigned char>& d) {
+	put32(o, (unsigned)d.size());
+	size_t start = o.size();
+	o.insert(o.end(), type, type + 4);
+	o.insert(o.end(), d.begin(), d.end());
+	put32(o, crc32(&o[start], o.size() - start) ^ 0xFFFFFFFFu);
+}
+}
+
+// PNG, RGBA 8-bit, stored (uncompressed) deflate blocks -- a valid file every decoder reads
+bool write(BufferedImage* img, const std::string& format, File* f) {
+	if (!img || !f || img->w <= 0 || img->h <= 0) return false;
+	(void)format;
+	std::vector<unsigned char> raw;
+	raw.reserve((size_t)(img->w * 4 + 1) * img->h);
+	for (int y = 0; y < img->h; ++y) {
+		raw.push_back(0);
+		for (int x = 0; x < img->w; ++x) {
+			unsigned v = (unsigned)img->pixels[y * img->w + x];
+			unsigned a = v >> 24;
+			if (a == 0) a = 255;                                   // TYPE_INT_RGB: no alpha -> opaque
+			raw.push_back((unsigned char)(v >> 16)); raw.push_back((unsigned char)(v >> 8));
+			raw.push_back((unsigned char)v); raw.push_back((unsigned char)a);
+		}
+	}
+	std::vector<unsigned char> z(raw.size() + 5 * (raw.size() / 65535 + 1) + 16);
+	int zn = zlibDeflateStored(&raw[0], (int)raw.size(), &z[0], (int)z.size());
+	if (zn < 0) return false;
+	z.resize((size_t)zn);
+	std::vector<unsigned char> out;
+	static const unsigned char sig[8] = {137, 80, 78, 71, 13, 10, 26, 10};
+	out.insert(out.end(), sig, sig + 8);
+	std::vector<unsigned char> ihdr;
+	put32(ihdr, (unsigned)img->w); put32(ihdr, (unsigned)img->h);
+	ihdr.push_back(8); ihdr.push_back(6); ihdr.push_back(0); ihdr.push_back(0); ihdr.push_back(0);
+	chunk(out, "IHDR", ihdr);
+	chunk(out, "IDAT", z);
+	chunk(out, "IEND", std::vector<unsigned char>());
+	FILE* fp = std::fopen(f->path.c_str(), "wb");
+	if (!fp) return false;
+	bool ok = std::fwrite(&out[0], 1, out.size(), fp) == out.size();
+	std::fclose(fp);
+	return ok;
+}
+
 } // namespace ImageIO
