@@ -20,6 +20,7 @@ import capstone
 from codebreaker.decompile import describe
 
 _MD = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+_MD.detail = True                                       # (what an instruction reads and writes)
 
 
 def _described(path, where):
@@ -37,21 +38,59 @@ def _calls(img, seg, lo, hi, name_of):
     """[(callee, bytes taken off after it)] of the code in [lo, hi)."""
     ins = list(_MD.disasm(bytes(img[lo:hi]), lo))
     out = []
+    # (what the prologue pushes is saved registers, not arguments; and a push a jump lands on
+    # starts a new count -- as describe counts the bytes pushed for a call through a pointer)
+    targets = {i.operands[0].imm & 0xFFFF for i in ins
+               if i.group(capstone.CS_GRP_JUMP) and i.operands and i.operands[0].type == capstone.x86.X86_OP_IMM}
+    prologue = lo
+    for i in ins[:12]:
+        if (i.mnemonic in ("nop", "enter") or i.op_str in ("ax, ds", "bp, sp", "ds, ax")
+                or (i.mnemonic in ("push", "inc") and i.op_str in ("bp", "ds", "si", "di"))
+                or (i.mnemonic == "pop" and i.op_str == "ax")
+                or (i.mnemonic == "mov" and i.op_str.startswith("ax, 0x"))
+                or (i.mnemonic == "sub" and i.op_str.startswith("sp,"))):
+            prologue = i.address + i.size
+        else:
+            break
+    targets.add(prologue)
     for k, i in enumerate(ins):
-        if i.mnemonic == "call" and re.fullmatch(r"0x[0-9a-f]+", i.op_str):
-            callee = name_of(("near", seg, int(i.op_str, 16) & 0xFFFF))
-        elif i.mnemonic == "lcall" and re.fullmatch(r"0x[0-9a-f]+, 0x[0-9a-f]+", i.op_str):
-            s, o = (int(x, 16) for x in i.op_str.split(", "))
+        # (a target of 0 is printed `0`, not `0x0`: every call to a segment's first function --
+        # SUWIN's helpers at 7:0000 and 9:0000 -- went unchecked, and a C caller passing one word
+        # of a far pointer's two was never seen)
+        mnemonic = i.mnemonic.replace("notrack ", "")      # (OpenWatcom's `3E E8`, a call with a DS prefix:
+        if mnemonic == "call" and re.fullmatch(r"0x[0-9a-f]+|\d+", i.op_str):   # Capstone's "notrack call")
+            callee = name_of(("near", seg, int(i.op_str, 0) & 0xFFFF))
+        elif mnemonic == "lcall" and re.fullmatch(r"(0x[0-9a-f]+|\d+), (0x[0-9a-f]+|\d+)", i.op_str):
+            s, o = (int(x, 0) for x in i.op_str.split(", "))
             callee = name_of(("far", (s << 16) | o))
         else:
             continue                                         # (through a pointer: the callee is not known here)
         nxt = ins[k + 1] if k + 1 < len(ins) else None
+        pushed = 0                                         # (the argument bytes pushed just before it)
+        for p in reversed(ins[:k]):
+            if p.address < prologue:
+                break
+            if p.mnemonic == "push":
+                pushed += 4 if p.operands and p.operands[0].size == 4 else 2
+                if p.address in targets:
+                    break
+                continue
+            if p.address in targets:
+                break
+            if p.group(capstone.CS_GRP_CALL) or p.group(capstone.CS_GRP_JUMP) or                     p.mnemonic in ("ret", "retf", "pop", "leave", "enter", "add", "sub") and                     (p.mnemonic not in ("add", "sub") or p.op_str.startswith("sp")):
+                break
+            try:
+                _r, w = p.regs_access()
+            except capstone.CsError:
+                break
+            if capstone.x86.X86_REG_SP in w:
+                break
         off = 0
         if nxt is not None and nxt.mnemonic == "add" and nxt.op_str.startswith("sp, "):
             amount = nxt.op_str.split(", ")[1]
             off = int(amount, 0) if re.fullmatch(r"-?(0x[0-9a-f]+|\d+)", amount) else "?" + amount
         if callee:
-            out.append((callee, off))
+            out.append((callee, off, pushed))
     return out
 
 
@@ -111,13 +150,23 @@ def mismatches(original, folder, image, names):
             hi = lst[k + 1][0] if k + 1 < len(lst) else len(img)
             os_, oo, oe = orig_fn[n]
             a, b = collections.defaultdict(set), collections.defaultdict(set)
-            for c, t in _calls(do.images.get(os_, b""), os_, oo, oe, orig_name):
+            pa, pb = collections.defaultdict(set), collections.defaultdict(set)
+            for c, t, p in _calls(do.images.get(os_, b""), os_, oo, oe, orig_name):
                 a[c].add(t)
-            for c, t in _calls(img, s, o, hi, ours_name):
+                pa[c].add(p)
+            for c, t, p in _calls(img, s, o, hi, ours_name):
                 b[c].add(t)
+                pb[c].add(p)
             for c in sorted(set(a) & set(b)):
                 if a[c] != b[c]:
                     out[n] = "after calling %s the original takes off %s bytes, ours %s" % (
                         c, sorted(a[c]), sorted(b[c]))
+                    break
+                # (and fewer argument bytes pushed than the original pushes: SUWIN's sub_8_0634
+                # gave sub_8_0A6A one near pointer for its two far ones -- the second, a 260-byte
+                # buffer the caller never reads, dropped -- and a path was written over its frame)
+                if pa[c] and pb[c] and max(pb[c]) < min(pa[c]):
+                    out[n] = "it pushes %s argument bytes for %s, the original %s" % (
+                        sorted(pb[c]), c, sorted(pa[c]))
                     break
     return out
