@@ -75,7 +75,7 @@ def _rows(blob):
     return out
 
 
-def _object(struct_name, name, pieces, far=False):
+def _object(struct_name, name, pieces, far=False, based=None):
     """C for one object. pieces: ("bytes", offset, blob) | ("zero", offset, count) |
     ("pointer", offset, C type, C expression, note)."""
     if len(pieces) > 1 and pieces[-1][0] == "zero":          # zeros at the very end need no initialiser
@@ -96,8 +96,9 @@ def _object(struct_name, name, pieces, far=False):
             values.append("    %s,%s" % (p[3], ("    /* %s */" % p[4]) if p[4] else ""))
     # packed: each member exactly at its place -- the compiler would otherwise put a word on an
     # even offset and move everything after it (the code reads the data at the original's places)
+    where = "__far " if far else ('__based(__segname("%s")) ' % based if based else "")
     return "#pragma pack(push, 1)\nstruct %s {\n%s\n};\n#pragma pack(pop)\nstruct %s %s%s = {\n%s\n};\n" % (
-        struct_name, "\n".join(members), struct_name, "__far " if far else "", name, "\n".join(values))
+        struct_name, "\n".join(members), struct_name, where, name, "\n".join(values))
 
 
 _ZEROS = re.compile(rb"\x00{64,}")
@@ -314,27 +315,17 @@ def _places(nef, seg, blob):
     return out
 
 
-def data16(path, function_at, far_segments=(), segment_symbol=None):
-    """The automatic data segment of a 16-bit module as C. `function_at((segment, offset))` ->
-    the reconstructed function there, or None; `far_segments` are the other segments the build
-    carries as `codebreaker_segment_N`."""
-    nef = NEFile(path)
-    d = Data()
-    auto = nef.h.get("autodata_seg")
-    segs = nef.segments()
-    if not auto or auto > len(segs):
-        d.source = "/* %s has no automatic data segment. */\nchar codebreaker_data = 1;\n" % nef.module_name()
-        return d
-    s = segs[auto - 1]
-    blob = bytearray(nef.data[s["file_off"]:s["file_off"] + s["length"]] if s["file_off"] else b"")
-    size = max(len(blob), min(s["minalloc"], 0x10000)) if s["file_off"] else min(s["minalloc"], 0x10000)
+def _relocated(nef, s, blob, auto, far_segments, function_at, segment_symbol, d, label="data", own=None):
+    """The fix-ups of segment `s` (its file bytes in `blob`, cleared where the loader writes): the
+    places that are pointers, {offset: (width, C type, expression, note)}, and the imports named.
+    The same for the automatic data segment and for each other data segment the build carries."""
     entries = {e["ordinal"]: e for e in nef.entries() if e.get("kind") in ("FIXED", "MOVEABLE")}
     refs = nef.module_refs()
     pointers, externs = {}, []
     for off, src, add, r in _places(nef, s, bytes(blob)):
         width = {3: 4, 2: 2, 5: 2, 0: 1}.get(src, 2)
         blob[off:off + width] = bytes(width)                 # the file keeps a chain link there, not a value
-        where = "data+0x%04x" % off
+        where = "%s+0x%04x" % (label, off)
         if r["kind"] in ("IMPORTORD", "IMPORTNAME"):
             mod = refs[r["module"] - 1] if 0 < r["module"] <= len(refs) else "?"
             if r["kind"] == "IMPORTORD":
@@ -368,18 +359,18 @@ def data16(path, function_at, far_segments=(), segment_symbol=None):
             tseg, toff = r["seg"], r["entry"]
         toff = (toff + add) & 0xFFFF
         fn = function_at((tseg, toff))
-        if src == 5 and tseg == auto:                        # an offset into this very segment: a number
+        if src == 5 and tseg in (auto, own):                 # an offset into this very segment: a number
             struct.pack_into("<H", blob, off, toff)
         elif src == 3 and fn:
             pointers[off] = (4, "code __far *", "(code __far *)%s" % fn, "")
         elif src == 3 and tseg == auto:
             pointers[off] = (4, "void __far *", "(void __far *)((char *)&codebreaker_data + 0x%x)" % toff, "")
         elif src == 3 and tseg in far_segments:
-            pointers[off] = (4, "void __far *", "(void __far *)(codebreaker_segment_%d + 0x%x)" % (tseg, toff), "")
+            pointers[off] = (4, "void __far *", "(void __far *)((uint1 __far *)&codebreaker_segment_%d + 0x%x)" % (tseg, toff), "")
         elif src == 2 and tseg == auto:                      # a segment's selector, which the loader
             pointers[off] = (2, "__segment", "(__segment)&codebreaker_data", "")   # writes: its own,
         elif src == 2 and tseg in far_segments:                                    # a segment carried,
-            pointers[off] = (2, "__segment", "(__segment)codebreaker_segment_%d" % tseg, "")
+            pointers[off] = (2, "__segment", "(__segment)&codebreaker_segment_%d" % tseg, "")
         elif src == 2 and segment_symbol and segment_symbol(tseg):                 # a code segment's
             pointers[off] = (2, "__segment", "(__segment)&%s" % segment_symbol(tseg),
                              "the selector of segment %d" % tseg)
@@ -387,6 +378,26 @@ def data16(path, function_at, far_segments=(), segment_symbol=None):
             what = {5: "an offset in segment %d" % tseg,
                     3: "a far pointer to %d:%04x" % (tseg, toff)}.get(src, "a fixup of kind %d" % src)
             d.unresolved.append((where, what + ", which has no C form here"))
+    return pointers, externs
+
+
+def data16(path, function_at, far_segments=(), segment_symbol=None):
+    """The automatic data segment of a 16-bit module as C. `function_at((segment, offset))` ->
+    the reconstructed function there, or None; `far_segments` are the other segments the build
+    carries as `codebreaker_segment_N`."""
+    nef = NEFile(path)
+    d = Data()
+    auto = nef.h.get("autodata_seg")
+    segs = nef.segments()
+    if not auto or auto > len(segs):
+        d.source = "/* %s has no automatic data segment. */\nchar codebreaker_data = 1;\n" % nef.module_name()
+        return d
+    s = segs[auto - 1]
+    blob = bytearray(nef.data[s["file_off"]:s["file_off"] + s["length"]] if s["file_off"] else b"")
+    size = max(len(blob), min(s["minalloc"], 0x10000)) if s["file_off"] else min(s["minalloc"], 0x10000)
+    entries = {e["ordinal"]: e for e in nef.entries() if e.get("kind") in ("FIXED", "MOVEABLE")}
+    refs = nef.module_refs()
+    pointers, externs = _relocated(nef, s, blob, auto, far_segments, function_at, segment_symbol, d)
     d.pointers = len(pointers)
     d.size = size
     head = ["/* The automatic data segment of %s: 0x%x bytes (0x%x of them in the file)." % (
@@ -419,8 +430,7 @@ def data16(path, function_at, far_segments=(), segment_symbol=None):
     # not left to the C's header -- with no C function using segment 41, SETUPX's data did not
     # compile, and the build fell back to a data segment of one byte)
     named = sorted({int(n) for n in re.findall(r"\bcodebreaker_segment_(\d+)\b", "\n".join(parts))})
-    head = head + ['extern uint1 __based(__segname("CODEBREAKER_SEGMENT_%d")) codebreaker_segment_%d[];' % (n, n)
-                   for n in named]
+    head = head + [_segment_declaration(n) for n in named]
     d.source = "\n".join(head) + "\n" + "\n".join(parts)
     return d
 
@@ -441,12 +451,42 @@ def _cut(pieces, offsets):
     return out
 
 
-def far_segments(segments):
+def _segment_declaration(n):
+    """The declaration, in data.c, of another data segment the build carries: an object of its
+    own layout (far_segments), named as the code knows it."""
+    return ('struct codebreaker_segment_%d_t;\nextern struct codebreaker_segment_%d_t '
+            '__based(__segname("CODEBREAKER_SEGMENT_%d")) codebreaker_segment_%d;' % (n, n, n, n))
+
+
+def far_segments(segments, path=None, function_at=lambda place: None, segment_symbol=None):
     """C for the other segments a 16-bit module's code reads from: {number: bytes}. Each is a
     segment of its own, starting with it: code (and assembly above all) reaches into it by the
-    original's offsets."""
-    out = []
+    original's offsets. With the module (`path`), the places the loader fixes up are what they
+    point at -- a string in the automatic segment, a function, a selector -- not the bytes the
+    description gave them: SYSDETMG's segment 14, a table of far pointers to its strings and
+    functions, kept the made-up selector 1080h, and its hardware detection faulted on it.
+    (The code elsewhere declares the segment as bytes; data.c, compiled with CODEBREAKER_DATA,
+    defines it with its pointers -- the linker joins them by name.)"""
+    nef = NEFile(path) if path else None
+    segs = {s["idx"]: s for s in nef.segments()} if nef else {}
+    auto = nef.h.get("autodata_seg") if nef else None
+    out, externs, scratch = [], [], Data()
+    for n in sorted(segments):
+        out.append(_segment_declaration(n))
     for n, image in sorted(segments.items()):
-        out.append('uint1 __based(__segname("CODEBREAKER_SEGMENT_%d")) codebreaker_segment_%d[] = {\n%s\n};'
-                   % (n, n, "\n".join(_rows(bytes(image)))))
-    return "\n".join(out) + ("\n" if out else "")
+        s = segs.get(n)
+        size = len(image)
+        pointers = {}
+        if s is not None and s["file_off"]:
+            blob = bytearray(nef.data[s["file_off"]:s["file_off"] + s["length"]])
+            blob += bytes(max(0, size - len(blob)))
+            pointers, more = _relocated(nef, s, blob, auto, set(segments), function_at, segment_symbol,
+                                        scratch, label="seg%d" % n, own=n)
+            externs += more
+        else:
+            blob = bytearray(image)
+        out.append(_object("codebreaker_segment_%d_t" % n, "codebreaker_segment_%d" % n,
+                           _pieces(bytes(blob[:size]), size, pointers),
+                           based="CODEBREAKER_SEGMENT_%d" % n))
+    head = ["extern uint4 __far __stdcall %s();" % x for x in sorted(set(externs))]
+    return "\n".join(head + out) + ("\n" if out else "")

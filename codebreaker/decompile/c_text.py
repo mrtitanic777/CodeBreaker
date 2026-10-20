@@ -1511,8 +1511,10 @@ def _compilable16(module_path, outdir=None):
         elif seg in d.images and off < len(d.images[seg]):
             m.segments[seg] = d.images[seg]
             macros.append("#define %sRam%s (*(%s __far *)(codebreaker_segment_%d + 0x%x))" % (prefix, addr, ty, seg, off))
-    decls = ['extern uint1 __based(__segname("CODEBREAKER_SEGMENT_%d")) codebreaker_segment_%d[];' % (n, n)
-             for n in sorted(m.segments)]
+    # (data.c, compiled with CODEBREAKER_DATA, defines these segments with their pointers in
+    # place: the declaration as bytes is for the code)
+    decls = ['#ifndef CODEBREAKER_DATA\nextern uint1 __based(__segname("CODEBREAKER_SEGMENT_%d")) codebreaker_segment_%d[];\n#endif'
+             % (n, n) for n in sorted(m.segments)]
     if m.selector_imports:                                   # imports used for their value
         decls.append("#define MK_FP(s, o) ((void __far *)(((uint4)(uint2)(s) << 16) | (uint2)(o)))")
         decls.append("#define FP_SEG(p) ((uint2)((uint4)(void __far *)(p) >> 16))")

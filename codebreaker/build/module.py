@@ -1068,7 +1068,8 @@ def _build16(b, path, m, folder):
     def extra(stem, text):
         # (code the build adds -- an entry stand-in, the interrupt routines' registers, stand-ins
         # -- in a class of its own, XCODE (code to the linker: the name ends in CODE), laid out after the original's segments)
-        return functions._compile(wcc, cflags + ["-nc=XCODE"], env, folder, stem, text)
+        return functions._compile(wcc, cflags + ["-nc=XCODE"] + (["-dCODEBREAKER_DATA"] if stem == "data" else []),
+                                  env, folder, stem, text)        # (data.c defines the segments it declares)
 
     # every data segment besides the automatic one is carried, whether or not the C reads it:
     # it is part of the module (and code written as its own instructions refers to it)
@@ -1081,10 +1082,11 @@ def _build16(b, path, m, folder):
     for (sg, _o), n in sorted(at.items()):
         in_segment.setdefault(sg, n)
     d = b.data = data.data16(path, at.get, m.segments, in_segment.get)
-    why = extra("data", d.source + data.far_segments(m.segments))
+    far = data.far_segments(m.segments, path, at.get, in_segment.get)
+    why = extra("data", d.source + far)
     if why:                                                   # the code still needs a data segment to exist
         b.data_error = "the data does not compile: %s" % why
-        extra("data", "char codebreaker_data = 1;\n" + data.far_segments(m.segments))
+        extra("data", "char codebreaker_data = 1;\n" + far)
     public = _publics(folder, stems)
     # A function written in assembly is rebuilt as assembly (analyze/origin.py says which, from
     # what its code does), not as a C translation of it -- where its instructions can be written
