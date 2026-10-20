@@ -191,6 +191,122 @@ def check_store(key, diags):
         pass
 
 
+OBJ_CACHE = os.path.join(os.path.expanduser("~"), ".cache", "codebreaker", "objects")
+
+
+def build(spec, cc, tpl, out, srcs, exe, objdir):
+    """the port built a C file at a time, side by side (the workbench's workers, at most four), each file's object
+    kept by all it depends on (the compiler and its command, the file, every header it reaches): a file as it was
+    the last time not compiled again; then the objects linked. A compiler of another form (MSVC's): all at once"""
+    at = tpl.index("{out}") if "{out}" in tpl else -1
+    if spec.get("setup") or "{srcs}" not in tpl or at < 1 or tpl[at - 1] != "-o":
+        return run(spec, args(tpl, cc=cc, inc=".", out=exe, srcs=srcs), out, cc)
+    import hashlib
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from codebreaker.base import parallel
+    cargv = args([a for i, a in enumerate(tpl) if i not in (at - 1, at) and a != "{srcs}"], cc=cc, inc=".", out="")
+    objdir = os.path.abspath(objdir) + ".%d" % os.getpid()   # (its own: two ports of one folder at once apart)
+    os.makedirs(objdir, exist_ok=True)
+    texts = {}
+
+    def text(n):
+        if n not in texts:
+            try:
+                texts[n] = open(os.path.join(out, n), "rb").read()
+            except OSError:
+                texts[n] = None
+        return texts[n]
+
+    def key(n):
+        h = hashlib.sha256(repr((os.path.abspath(cc), cargv[1:], n)).encode())
+        todo, seen = [n], set()
+        while todo:
+            x = todo.pop()
+            if x in seen:
+                continue
+            seen.add(x)
+            t = text(x)
+            if t is None:
+                continue
+            h.update(x.encode() + b"\0" + t + b"\0")
+            todo += [m.decode("latin1") for m in re.findall(rb'#\s*include\s*[<"]([^>"]+)[>"]', t)]
+        return h.hexdigest()
+
+    cs = [n for n in srcs if n.endswith(".c")]
+    keys = {n: key(n) for n in cs}
+
+    def one(n):
+        k = keys[n]
+        o = os.path.join(OBJ_CACHE, k[:2], k + ".o")
+        mine = os.path.join(objdir, n[:-2] + ".o")
+        if sound(o):                                        # (as the last time: its object, and what it said then)
+            try:
+                shutil.copyfile(o, mine)
+                os.utime(o)
+                with open(o[:-2] + ".txt", encoding="utf-8", errors="replace") as f:
+                    return 0, f.read()
+            except OSError:
+                pass
+        p = run(spec, cargv + ["-c", n, "-o", mine], out, cc)
+        if p.returncode == 0 and sound(mine):
+            try:
+                os.makedirs(os.path.dirname(o), exist_ok=True)
+                tmp = o + ".%d.%d.tmp" % (os.getpid(), threading.get_ident())
+                shutil.copyfile(mine, tmp)
+                with open(o[:-2] + ".txt", "w", encoding="utf-8") as f:
+                    f.write(p.stdout + p.stderr)
+                os.replace(tmp, o)
+            except OSError:
+                pass
+        return p.returncode, p.stdout + p.stderr
+
+    with ThreadPoolExecutor(max_workers=max(1, min(4, parallel.workers(), len(cs) or 1))) as ex:
+        done = list(ex.map(one, cs))
+    logs = "".join(t for r, t in done)
+    if any(r for r, t in done):
+        shutil.rmtree(objdir, ignore_errors=True)
+        return subprocess.CompletedProcess([], 1, logs, "")
+    here = os.path.abspath(out)
+    objs = [os.path.relpath(os.path.join(objdir, n[:-2] + ".o"), here).replace("\\", "/") if n.endswith(".c") else n
+            for n in srcs]
+    p = run(spec, args(tpl, cc=cc, inc=".", out=exe, srcs=objs), out, cc)
+    shutil.rmtree(objdir, ignore_errors=True)
+    prune_objects()
+    return subprocess.CompletedProcess(p.args, p.returncode, logs + p.stdout, p.stderr)
+
+
+def sound(path):
+    """an object file whole: not empty, its first bytes not nothing (a build cut short leaves either)"""
+    try:
+        with open(path, "rb") as f:
+            head = f.read(16)
+        return os.path.getsize(path) > 64 and head.strip(b"\0") != b""
+    except OSError:
+        return False
+
+
+def prune_objects(cap=3 << 30):
+    """the kept objects held under cap bytes: the longest unused gone first"""
+    fs = []
+    for d, _, ns in os.walk(OBJ_CACHE):
+        for n in ns:
+            try:
+                st = os.stat(os.path.join(d, n))
+                fs.append((st.st_mtime, st.st_size, os.path.join(d, n)))
+            except OSError:
+                pass
+    total = sum(s for t, s, p in fs)
+    for t, s, p in sorted(fs):
+        if total <= cap * 0.8:
+            break
+        try:
+            os.remove(p)
+            total -= s
+        except OSError:
+            pass
+
+
 def changed_files(res, before, cfiles):
     """the C files to check again: those whose text is not what it was, and those that include (themselves or
     through another header) a header whose text is not"""
@@ -780,7 +896,7 @@ def main(argv):
     if os.path.exists(exe):                                 # (an old build is not this port's: a verify would run it)
         os.remove(exe)
     if cc:
-        p = run(spec, args(spec["build"], cc=cc, inc=".", out=exe, srcs=srcs), out, cc)
+        p = build(spec, cc, spec["build"], out, srcs, exe, os.path.join(out, ".obj"))
         built, blog = p.returncode == 0, p.stdout + p.stderr
     with open(os.path.join(out, "build.sh"), "w", newline="\n") as f:
         f.write("#!/bin/sh\n# the port built by %s (made by CodeBreaker's port)\ncd \"$(dirname \"$0\")\"\n%s\n" %
@@ -888,7 +1004,7 @@ def sanitize_loop(port, out, write, srcs, compilers, comp, cases, rounds=6):
         write()
         tpl = [a for a in spec["build"] if a not in ("-O1", "/O1")]
         tpl = tpl[:1] + ["-g", "-fsanitize=address"] + (["-fsanitize=array-bounds"] if name == "clang" else []) + tpl[1:]
-        p = run(spec, args(tpl, cc=cc, inc=".", out=exe, srcs=srcs), out, cc)
+        p = build(spec, cc, tpl, out, srcs, exe, os.path.join(d, "obj"))
         if p.returncode:
             notes.append("the sanitized build failed: %s" % (p.stdout + p.stderr)[-300:])
             break

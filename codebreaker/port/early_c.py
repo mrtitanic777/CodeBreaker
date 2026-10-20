@@ -1512,6 +1512,8 @@ class Port:
                 loose[self.renames.get(f.name, f.name)] = [
                     bool(re.fullmatch(r"(?:register\s+)?(?:unsigned\s+int|unsigned|short|int|signed|intptr_t)\s+\w+",
                                       t.strip())) for n_, t in f.params]
+            elif getattr(f, "va_slots", False):             # (its variable arguments a slot each: every one of them
+                loose[self.renames.get(f.name, f.name)] = [False] * len(f.params) + [True] * 32   # an intptr_t)
         if not loose:
             return
         pat = re.compile(r"\b(%s)\s*\(" % "|".join(map(re.escape, sorted(loose))))
@@ -1531,7 +1533,8 @@ class Port:
                     ints = loose[m.group(1)]
                     for k, (a_, b_) in reversed(list(enumerate(spans))):
                         arg = l[m.start() + a_:m.start() + b_]
-                        if k >= len(ints) or not ints[k] or not arg.strip() or arg.strip().startswith("(intptr_t)"):
+                        if k >= len(ints) or not ints[k] or not arg.strip() or arg.strip().startswith("(intptr_t)") or \
+                                arg.strip() == "..." or re.search(r"\bchar\s*\*", arg):   # (a head's own: f(char *s, ...))
                             continue
                         lead = arg[:len(arg) - len(arg.lstrip())]
                         l = l[:m.start() + a_] + lead + "(intptr_t)(%s)" % arg.strip() + l[m.start() + b_:]
@@ -2381,10 +2384,16 @@ class Port:
                                        not all(ytop.get(w, (0, 0, "", "", False))[4] for w in mapping[k])
                                        for k, v in lx.items() if k != "@size"):     #  lies on the other's number)
                         mapping = None
-                    if mapping and any(re.match(r"union\b", str(ytop.get(w.split(".")[0], (0, 0, ""))[2])) for k_, m_
-                                       in mapping.items() for w in (m_ if isinstance(m_, list) else [m_[1]])):
-                        mapping = None                      # (nor one with a member on the other's union: MC2's
-                                                            #  stor over ruse's r_u - two kinds, not one)
+                    def ptr_union(w):                       # (a union of the other's whose members are all pointers)
+                        if not re.match(r"union\b", str(ytop.get(w.split(".")[0], (0, 0, ""))[2])):
+                            return False
+                        sub = (getattr(old, "inner", {}).get("%s.%s" % (y, w.split(".")[0])) or (None, None))[1] or \
+                            old.get("%s.%s" % (y, w.split(".")[0]))
+                        return bool(sub) and all(v_[4] for k2, v_ in sub.items() if k2 != "@size")
+                    if mapping and any(not lx[k_][4] and ptr_union(w) for k_, m_ in mapping.items()
+                                       for w in (m_ if isinstance(m_, list) else [m_[1]])):
+                        mapping = None                      # (nor one with a number on the other's union of pointers:
+                                                            #  MC2's stor's st_off over ruse's r_u - two kinds, not one)
                 if mapping:
                     self._views[x] = (y, mapping, n)
         views = {x: v for x, v in self._views.items() if v[2] == fname or v[2].endswith(".h")}
@@ -2784,6 +2793,32 @@ class Port:
                     g.params[pk] = (g.params[pk][0], t)
             body = "\n".join(code[j:k + 1])
             last = g.params[-1] if len(g.params) >= 2 else None
+            walk = re.search(r"\b(\w+)\s*=\s*(?:\([^()]*\)\s*)?&\s*%s\s*;" % re.escape(last[0]), body) if last else None
+            if walk and re.search(r"\bchar\s*\*", g.params[-2][1]) and \
+                    re.search(r"\b(?:int|short|int16_t|unsigned)\s*\*\s*%s\s*;" % re.escape(walk.group(1)), body) and \
+                    not re.search(r"[(,]\s*%s&\s*%s\s*[,)]" % (ARGCAST, re.escape(last[0])), body):
+                # (a function that walks its own arguments from the place of the first, by a format of its own -
+                #  "PNTPN": ap = &args; *ap; ap++ - each argument a word (two a long) then: here a slot each, read
+                #  from the variable arguments; its callers give each as an intptr_t)
+                ap_ = walk.group(1)
+                g.varargs = (last[0], g.params[-2][0])
+                g.va_slots = True
+                g.loose = False
+                g.params = g.params[:-1]
+                for x in range(j, k + 1):
+                    l_ = lines[x]
+                    l_ = re.sub(r"\b%s\s*=\s*(?:\([^()]*\)\s*)?&\s*%s\s*;" % (re.escape(ap_), re.escape(last[0])),
+                                "%s = dos_args_;" % ap_, l_)
+                    l_ = re.sub(r"\b(?:int|short|int16_t|unsigned)(\s*\*\s*%s\s*;)" % re.escape(ap_), r"intptr_t\1", l_)
+                    l_ = re.sub(r"\*\s*\(\s*long\s*\*\s*\)\s*%s\b" % re.escape(ap_), "((int32_t)*%s)" % ap_, l_)
+                    l_ = re.sub(r"\b%s\s*\+=\s*2\s*;" % re.escape(ap_), "%s += 1;" % ap_, l_)
+                    lines[x] = l_
+                lines[j] = lines[j].rstrip() + " DOS_VA_ARGS(dos_args_, %s);" % g.varargs[1]
+                self.notes["function walking its own arguments from the place of the first (by a format of its "
+                           "own): the variable arguments, a slot each (DOS_VA_ARGS)"].append(
+                    "%s:%d (%s)" % (fname, s + 1, f.name))
+                body = "\n".join(blank("\n".join(lines)).split("\n")[j:k + 1])
+                last = None
             if last and re.search(r"[(,]\s*%s&\s*%s\s*[,)]" % (ARGCAST, re.escape(last[0])), body) and \
                     re.fullmatch(r"(?:register\s+)?(?:int|short|unsigned|int16_t|intptr_t)\s+%s" % re.escape(last[0]),
                                  last[1].strip()) and re.search(r"\bchar\s*\*", g.params[-2][1]):

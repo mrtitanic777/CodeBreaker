@@ -56,6 +56,10 @@ int dos_fflag(FILE *f);
 #include <stdarg.h>
 #define DOS_VA_SLOTS 48
 void dos_va_words(intptr_t *w, int n, const char *fmt, va_list ap);
+/* a function that walked its own arguments from the place of the first (ap = &args; *ap; ap++): each argument a
+   slot of its own - an integer, a pointer or a long one slot (the callers give each as an intptr_t) */
+#define DOS_VA_ARGS(w, last) intptr_t w[DOS_VA_SLOTS]; do { va_list ap_; int i_; va_start(ap_, last); \
+	for (i_ = 0; i_ < DOS_VA_SLOTS; i_++) w[i_] = va_arg(ap_, intptr_t); va_end(ap_); } while (0)
 #define DOS_VA_WORDS(w, last) intptr_t w[DOS_VA_SLOTS]; do { va_list ap_; va_start(ap_, last); \
 	dos_va_words(w, DOS_VA_SLOTS, (const char *)(last), ap_); va_end(ap_); } while (0)
 void dos_exit();			/* (Lattice's programs call exit() with none: an old declaration takes either) */

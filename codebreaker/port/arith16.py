@@ -255,16 +255,89 @@ def _headers_key(folder):
     return h.hexdigest()
 
 
-def pass_key(cc, folder, f, kind, *extra, headers=None):
-    """a pass's result for one file, by all it depends on: the file, the headers, the compiler, the pass's code"""
+KINDS = {                                                   # (where each kind of result comes from: these functions
+    "arith16": {"arith16": ("dump", "mark_files", "_files", "edits_of", "apply")},   #  and all they use)
+    "records": {"arith16": ("dump", "mark_files"), "oldlayout": ("byte_records",)},
+    "oldlayout": {"arith16": ("dump", "mark_files", "_files"), "oldlayout": ("edits_of", "apply")},
+}
+_CODE = {}
+
+
+def code_key(kind):
+    """the code a kind of result comes from: its functions and all they name (of the two passes), by their source -
+    a change to another of the passes' rules not this kind's results' (a kind not known: both passes whole)"""
+    if kind in _CODE:
+        return _CODE[kind]
+    import ast
+    import hashlib
+    here = os.path.dirname(os.path.abspath(__file__))
+    h = hashlib.sha256(kind.encode())
+    if kind not in KINDS:
+        for m in ("arith16.py", "oldlayout.py"):
+            h.update(open(os.path.join(here, m), "rb").read())
+        _CODE[kind] = h.hexdigest()
+        return _CODE[kind]
+    defs = {}
+    for m in ("arith16", "oldlayout"):
+        src = open(os.path.join(here, m + ".py"), encoding="utf-8").read()
+        for node in ast.parse(src).body:
+            if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+                names = [node.name]
+            elif isinstance(node, ast.Assign):
+                names = [t.id for t in node.targets if isinstance(t, ast.Name)]
+            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                names = [node.target.id]
+            else:
+                continue
+            refs = set()
+            for x in ast.walk(node):
+                if isinstance(x, ast.Name):
+                    refs.add((m, x.id))
+                elif isinstance(x, ast.Attribute) and isinstance(x.value, ast.Name) and \
+                        x.value.id in ("arith16", "oldlayout"):
+                    refs.add((x.value.id, x.attr))
+            for n in names:
+                defs[(m, n)] = (ast.get_source_segment(src, node) or "", refs)
+    todo, seen = [(m, n) for m, ns in KINDS[kind].items() for n in ns], set()
+    while todo:
+        x = todo.pop()
+        if x in seen or x not in defs:
+            continue
+        seen.add(x)
+        todo += defs[x][1]
+    for x in sorted(seen):
+        h.update(repr(x).encode() + b"\0" + defs[x][0].encode() + b"\0")
+    _CODE[kind] = h.hexdigest()
+    return _CODE[kind]
+
+
+def reach_key(folder, f):
+    """the file and every header of the port's it reaches (an unchanged header's file not read again)"""
     import hashlib
     h = hashlib.sha256()
-    here = os.path.dirname(os.path.abspath(__file__))
-    for m in ("arith16.py", "oldlayout.py"):
-        h.update(open(os.path.join(here, m), "rb").read())
+    todo, seen = [f], set()
+    while todo:
+        x = todo.pop()
+        if x in seen:
+            continue
+        seen.add(x)
+        try:
+            t = open(os.path.join(folder, x), "rb").read()
+        except OSError:
+            continue
+        h.update(x.encode() + b"\0" + t + b"\0")
+        todo += [m.decode("latin1") for m in re.findall(rb'#\s*include\s*[<"]([^>"]+)[>"]', t)]
+    return h.hexdigest()
+
+
+def pass_key(cc, folder, f, kind, *extra, headers=None):
+    """a pass's result for one file, by all it depends on: the file and the headers it reaches, the compiler, the
+    code of the pass that result comes from (headers: no longer used - every header of the port)"""
+    import hashlib
+    h = hashlib.sha256()
+    h.update(code_key(kind).encode())
     h.update(repr((os.path.abspath(cc), kind, extra)).encode())
-    h.update((headers or _headers_key(folder)).encode())
-    h.update(open(os.path.join(folder, f), "rb").read())
+    h.update(reach_key(folder, f).encode())
     return h.hexdigest()
 
 
