@@ -23,6 +23,7 @@ public:
 	FileWriter(...) {}
 	FileWriter(File* f, ...) : _path(f ? f->path : std::string()) {}         // (file) / (file, append)
 	FileWriter(const JavaString& p, ...) : _path((std::string)p) {}
+	FileWriter(const char* p, ...) : _path(p ? p : "") {}                  // a literal (else ambiguous)
 	virtual ~FileWriter() {}
 	virtual void write(const JavaString& s) { _buf += (std::string)s; }
 	virtual void write(int c) { _buf += (char)c; }

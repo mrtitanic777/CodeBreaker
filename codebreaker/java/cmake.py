@@ -33,6 +33,7 @@ else()
 endif()
 find_package(OpenGL REQUIRED)
 target_link_libraries({name} PRIVATE OpenGL::GL OpenGL::GLU)
+target_link_libraries({name} PRIVATE vorbisfile vorbis ogg)   # the game's .ogg sounds and music
 if(WIN32)
   target_link_libraries({name} PRIVATE ws2_32)
 endif()

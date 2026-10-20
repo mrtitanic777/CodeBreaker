@@ -203,14 +203,9 @@ inline const j2xValueOps* _j2xValueOfName(const std::string& cls) {
 		if (const j2xValueOps* o = _j2xValueOfName(b->second[k])) return o;
 	return 0;
 }
-inline const j2xValueOps* _j2xValueOf(const std::type_info* ti) {
+inline const j2xValueOps* _j2xValueOf(const std::type_info* ti) {   // read-only: safe from any thread
 	if (!ti || _j2xValueOps().empty()) return 0;
-	static std::map<const std::type_info*, const j2xValueOps*> cache;
-	std::map<const std::type_info*, const j2xValueOps*>::iterator c = cache.find(ti);
-	if (c != cache.end()) return c->second;
-	const j2xValueOps* o = _j2xValueOfName(ti->name());
-	cache[ti] = o;
-	return o;
+	return _j2xValueOfName(ti->name());
 }
 
 struct JObject {
@@ -336,6 +331,16 @@ template<class T> JArray<T>::JArray(const JObject& o) : _buf(0), length(0) {
 // unbox a boxed Map: `(Map)o` -> the stored JMap (empty if o didn't box a JMap<K,V>).
 template<class K, class V> JMap<K, V>::JMap(const JObject& o) : _null(o.kind == 0) {   // (Map)null is null
 	if (o.kind == 5 && o.p && o.ti && *o.ti == typeid(JMap<K, V>)) *this = *(const JMap<K, V>*)o.p;
+}
+// `(List)o`, `(Map)o`, `(Set)o` as Java means it: the collection o refers to -- the boxed one itself (a JObject
+// keeps a boxed collection on the heap), so `((List)map.get(k)).add(x)` adds to the map's list, not to a copy.
+// A null or other box gives a null collection. FIXED BUG boxed-collection-copy: Minecraft's SoundPool added
+// every sound to a temporary list, so the pool stayed empty and the game was silent.
+template<class C> C& j2xUnboxRef(const JObject& o) {
+	if (o.kind == 5 && o.p && o.ti && *o.ti == typeid(C)) return *(C*)o.p;
+	static C none;
+	none = C(0LL);
+	return none;
 }
 // unbox a boxed List: `(List)o` -> the stored JList (empty if o didn't box a JList<T>).
 template<class T> JList<T>::JList(const JObject& o) : _null(o.kind == 0) {   // (List)null is null

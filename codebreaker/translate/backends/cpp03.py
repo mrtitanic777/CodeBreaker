@@ -171,6 +171,9 @@ class Writer(object):
         self.leaks = 0                                   # _j2xleakN stack temporaries written
         self.after = []                                  # the statements after the one being written
         self.subst = {}                                  # id(expression) -> (code, C++ type) already written
+        self.pending = []                                # declarations the current statement needs first
+        self.order = False                               # in a statement: keep Java's operand order
+        self.temps = 0
         self.arg_temps = 0                               # _j2xarg_N owned temporaries hoisted
         # the no-GC ownership cleanups run in methods (as the transpiler's did), not constructors
         self.owning = old is not None and m is not None and getattr(m, 'kind', None) == 'method'
@@ -222,10 +225,18 @@ class Writer(object):
     def stmt(self, s, out, ind):
         loop = isinstance(s, (ir.While, ir.DoWhile, ir.For, ir.ForEach, ir.Switch))
         self.loops += loop
+        saved, self.pending = self.pending, []
+        saved_order, self.order = self.order, True
+        saved_subst = dict(self.subst)                   # temporaries belong to this rendering of the statement
+        sub = []                                         # (a finally body is written twice)
         try:
-            self._stmt(s, out, ind)
+            self._stmt(s, sub, ind)
         finally:
             self.loops -= loop
+            decls, self.pending, self.order = self.pending, saved, saved_order
+            self.subst = saved_subst
+        out.extend(ind + d for d in decls)               # the statement's ordered-operand temporaries
+        out.extend(sub)
 
     def _stmt(self, s, out, ind):
         if isinstance(s, ir.Block):
@@ -599,7 +610,39 @@ class Writer(object):
         f = getattr(self, 'x_' + type(e).__name__, None)
         if f is None:
             raise Decline('expression %s' % type(e).__name__)
-        return f(e)
+        pre = self.sequenced(e) if self.order else ''
+        code, ct = f(e)
+        return ('(%s, %s)' % (pre, code), ct) if pre else (code, ct)
+
+    def sequenced(self, e):
+        """Java evaluates operands left to right; C++ leaves the order of a call's arguments, of a binary
+        operator's operands and of an assignment's sides unspecified (g++ takes arguments right to left). When
+        the order can change the result -- two operands with side effects, or one that writes a variable
+        another reads -- each operand is evaluated into a temporary first, in Java's order, with the comma
+        operator (sequenced in C++03 as well). Returns that sequence, or ''. FIXED BUG operand-order:
+        NoiseGeneratorPerlin's `permutations[i] = i++` shuffled another table, so every world differed from
+        Java's for the same seed (the PC's and the 360's)."""
+        nodes = _operands(e)
+        if len(nodes) < 2 or not _order_matters(nodes):
+            return ''
+        parts = []
+        for n in nodes:
+            if _constant(n) or id(n) in self.subst:
+                continue
+            code, ct = self.expr(n)
+            if ct == 'JCat':                              # a concatenation: as the String it makes
+                code, ct = 'JavaString((%s)._s)' % code, 'JavaString'
+            ct = re.sub(r'^const\s+', '', ct).rstrip('&').strip()
+            if ct in ('char*', 'char *'):                    # text: held as the String it is
+                ct = 'JavaString'
+            if ct in ('void', ''):
+                return ''
+            self.temps += 1
+            name = 'j2xo%d' % self.temps
+            self.pending.append('%s %s = %s;' % (ct, name, _zero(ct)))
+            parts.append('%s = %s' % (name, code))
+            self.subst[id(n)] = (name, ct)
+        return ', '.join(parts)
 
     def x_Paren(self, e):
         x, t = self.expr(e.x)
@@ -800,6 +843,8 @@ class Writer(object):
         if xt.startswith('JObject') and e.type.kind == 'class' and e.type.simple in typemap.BOXED_VALUE_TYPES:
             return x, 'JObject'                           # (Integer)o stays boxed: o.intValue() is JObject's
         ct = self.ctype(e.type)
+        if xt.startswith('JObject') and _COLLECTION.match(ct):   # (List)o: the boxed list itself, not a copy
+            return 'j2xUnboxRef<%s >(%s)' % (ct, x), ct
         if ct in _SATURATING:                             # Java's (int)/(long) of a float saturates; C++'s is
             return '%s(%s)' % (_SATURATING[ct], x), ct    # undefined out of range (JavaRT.h's helpers)
         if e.type.is_prim and not _SIMPLE.match(x):       # grouped
@@ -889,6 +934,8 @@ class Writer(object):
         recv, rt = self.expr(t)
         if rt == 'const char*':
             recv, rt = 'JavaString(%s)' % recv, 'JavaString'
+        if recv.startswith('new '):                       # new File(p).toURI(): `new` binds looser than ->
+            recv = '(%s)' % recv
         return '%s%s%s(%s)' % (self.checked(recv, rt), '->' if is_pointer(rt) else '.', name, args), ret
 
     def object_method(self, e):
@@ -1030,6 +1077,7 @@ _MATH.pop('PI', None)
 
 _BITS = frozenset(('<<', '>>', '&', '|', '^'))
 _SATURATING = {'int': 'j2xToInt', 'long long': 'j2xToLong'}
+_COLLECTION = re.compile(r'(JList|JMap|JSet)<')
 _SIMPLE = re.compile(r'^[A-Za-z_][\w]*(?:(?:->|\.)[A-Za-z_]\w*)*$')   # a name or member chain: no grouping
 _REFLECTION = frozenset(('Class*', 'Constructor*'))   # left as written: the reflection pass rewrites them
 _REFLECTIVE = frozenset(('newInstance', 'forName', 'getConstructor', 'getDeclaredConstructor'))
@@ -1099,6 +1147,85 @@ def _owned_args(root, cat):
                isinstance(a, ir.Lambda) for a in chain):
             continue
         yield n, outer, pos
+
+
+def _operands(e):
+    """The operands of `e` whose evaluation order Java fixes (left to right) and C++ does not."""
+    if isinstance(e, ir.Call):
+        t = [e.target] if e.target is not None and not isinstance(e.target, (ir.This, ir.Super, ir.TypeName)) else []
+        return t + list(e.args or [])
+    if isinstance(e, ir.New):
+        return list(e.args or [])
+    if isinstance(e, ir.Binary) and e.op not in ('&&', '||'):
+        return [e.left, e.right]
+    if isinstance(e, ir.Concat):
+        return list(e.parts or [])
+    if isinstance(e, ir.Assign) and isinstance(_strip_paren(e.target), ir.Index):
+        return [_strip_paren(e.target).index, e.value]   # a[i] = v: the index before the value
+    return []
+
+
+def _strip_paren(e):
+    while isinstance(e, ir.Paren):
+        e = e.x
+    return e
+
+
+_PURE_OWNERS = frozenset(('java.lang.String', 'java.lang.Math', 'java.lang.Integer', 'java.lang.Float',
+                          'java.lang.Double', 'java.lang.Long', 'java.lang.Character', 'java.lang.Boolean',
+                          'java.lang.Class', 'java.lang.reflect.Constructor'))   # (lookups: no state they change)
+
+
+def _effects(n):
+    """Does evaluating `n` change anything (a call into the program, an allocation, an assignment, ++/--)?"""
+    for x in ir.walk(n):
+        if isinstance(x, (ir.Assign, ir.New)):            # (an array's allocation is not observable: its
+            return True                                  # elements are walked like any operand)
+        if isinstance(x, ir.Unary) and x.op in ('++', '--'):
+            return True
+        if isinstance(x, ir.Call) and not (x.sym is not None and x.sym.owner in _PURE_OWNERS):
+            return True
+    return False
+
+
+def _written(n):
+    """Names (locals, fields) that evaluating `n` assigns or increments."""
+    out = set()
+    for x in ir.walk(n):
+        target = x.target if isinstance(x, ir.Assign) else (x.x if isinstance(x, ir.Unary) and x.op in ('++', '--') else None)
+        target = _strip_paren(target) if target is not None else None
+        if isinstance(target, (ir.Name, ir.Select)) and target.sym is not None:
+            out.add(target.sym.name)
+    return out
+
+
+def _read(n):
+    return set(x.sym.name for x in ir.walk(n) if isinstance(x, (ir.Name, ir.Select)) and x.sym is not None)
+
+
+def _order_matters(nodes):
+    eff = [n for n in nodes if _effects(n)]
+    if len(eff) >= 2:
+        return True
+    if len(eff) == 1:
+        w = _written(eff[0])
+        return bool(w) and any(w & _read(n) for n in nodes if n is not eff[0])
+    return False
+
+
+def _constant(n):
+    n = _strip_paren(n)
+    return isinstance(n, (ir.Lit, ir.ClassLit, ir.This, ir.TypeName)) or (
+        isinstance(n, ir.Select) and isinstance(n.obj, ir.TypeName) and n.sym is not None and n.sym.kind == 'enumconst')
+
+
+_PRIM_ZERO = {'bool': 'false', 'int': '0', 'long long': '0', 'short': '0', 'float': '0', 'double': '0',
+              'unsigned char': '0', 'signed char': '0', 'char': '0', 'unsigned int': '0', 'long': '0'}
+
+
+def _zero(ct):
+    """An initial value for a temporary of C++ type `ct` (it is assigned before it is read)."""
+    return _PRIM_ZERO.get(ct) or null_of(ct)
 
 
 def _comment(text):

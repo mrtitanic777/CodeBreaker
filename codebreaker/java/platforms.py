@@ -285,7 +285,12 @@ _STDAFX = {
         'extra': ('// AWT components are as big as the SDL window (Display.cpp)\n'
                   'int j2xDisplayWidth();\nint j2xDisplayHeight();\n'
                   '#define J2X_COMPONENT_WIDTH() j2xDisplayWidth()\n'
-                  '#define J2X_COMPONENT_HEIGHT() j2xDisplayHeight()\n'),
+                  '#define J2X_COMPONENT_HEIGHT() j2xDisplayHeight()\n'
+                  '// the network: offline -- a connection that fails as Java\'s does with none (Network.cpp)\n'
+                  'class URL; class URLConnection; class InputStream;\n'
+                  'URLConnection* j2xUrlOpenConnection(URL* u);\nInputStream* j2xUrlOpenStream(URL* u);\n'
+                  '#define J2X_URL_OPEN_CONNECTION(u) j2xUrlOpenConnection(u)\n'
+                  '#define J2X_URL_OPEN_STREAM(u) j2xUrlOpenStream(u)\n'),
         'host_minmax': True,
         'warnings': (
             '#ifdef _MSC_VER\n'

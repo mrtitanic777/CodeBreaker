@@ -319,8 +319,12 @@ number of working pairs.
    Alpha builds for the PC.
    (Progress 2026-10-20: the PC platform -- `--platform pc_opengl`: LWJGL on SDL2 + real OpenGL
    (codebreaker/java/platform/pc), a generated PC entry and CMake project. Minecraft Alpha converts,
-   builds with g++ -std=gnu++17 and plays: menus, world generation, rendering. Still to do: the C++17
-   back end proper, Boehm GC, modern Java front-end features.)
+   builds with g++ -std=gnu++17 and plays: menus, world generation, rendering. Sound (paulscode
+   SoundSystem on SDL2 audio + libvorbisfile), real threads, an offline network layer, settings saving
+   and PNG screenshots too. Java's left-to-right operand order is kept where C++'s differs (the back end
+   sequences the operands into temporaries); without it every world differed from Java's for the same
+   seed, on the 360 as well. Still to do: the C++17 back end proper, Boehm GC, modern Java front-end
+   features.)
 5. **C and C++ in (clang), Java out.** The pointer analysis and the emulated memory; the Java back
    end; the C library in Java. *Exit:* a C corpus and a C++ corpus judged as Java; Java -> C++ -> Java
    round trips judged.

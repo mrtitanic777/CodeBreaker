@@ -601,6 +601,25 @@ public class Port {
 				+ (var1.containsKey(new Pos(5, var0 & 7)) ? 1 : 0) + (var5.contains(new Pos(4, 4)) ? 5 : 0);
 	}
 
+	public static int listsInMap(int var0) {
+		HashMap var1 = new HashMap();
+		for (int var2 = 0; var2 < 8; ++var2) {
+			String var3 = "k" + (var2 + var0 & 3);
+			if (!var1.containsKey(var3)) {
+				var1.put(var3, new ArrayList());
+			}
+			((List)var1.get(var3)).add(Integer.valueOf(var2));
+		}
+		List var4 = (List)var1.get("k1");
+		List var5 = (List)var1.get("none");
+		return var4.size() * 100 + ((Integer)var4.get(0)).intValue() * 10 + (var5 == null ? 1 : 0) + var1.size() * 1000;
+	}
+
+	public static String dates(int var0) {
+		java.util.Date var1 = new java.util.Date((long)(var0 & 65535) * 86400000L + 1234567L);
+		return new java.text.SimpleDateFormat("yyyy-MM-dd_HH.mm.ss").format(var1);
+	}
+
 	public static int leak(int var0) {
 		(new Gen(var0)).generate(3);
 		(new Gen(1)).generate(var0);
@@ -630,7 +649,7 @@ JUDGED = {'access', 'statics', 'shadow', 'math', 'lists', 'maps', 'sets', 'strin
           'floatMod', 'intMod', 'literalLength', 'casts', 'unsignedChar', 'arrays', 'castDeref', 'nullable',
           'unbox', 'chains', 'inherited', 'labeled', 'nullCatch', 'switches', 'iterate', 'forInit', 'identity',
           'shifts', 'finallyCounter', 'finallyReturn', 'enums', 'builder', 'parse', 'bytesOf', 'longs',
-          'compound', 'bools', 'leak', 'registry', 'containers', 'library', 'latin', 'trig', 'copies', 'order', 'vtx', 'maybe', 'keys'}
+          'compound', 'bools', 'leak', 'registry', 'containers', 'library', 'latin', 'trig', 'copies', 'order', 'vtx', 'maybe', 'keys', 'listsInMap', 'dates'}
 
 needs_tools = pytest.mark.skipif(not (java.compiler() and java.jdk()[0]), reason='needs g++ and a JDK')
 

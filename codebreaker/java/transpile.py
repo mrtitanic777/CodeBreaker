@@ -610,6 +610,10 @@ def compute_this_escapes(classes):
             parts += [t for _ln, t in block]
         if any(_THIS_AS_VALUE.search(t) for t in parts):
             own.add(c.name)
+        # a Thread is kept by its running thread: `new ThreadSleepForever(..)` starts itself in its
+        # constructor (Alpha's timer hack), so deleting it frees a live thread
+        if c.parent in ('Thread', 'TimerTask') or 'Runnable' in (getattr(c, 'interfaces', None) or ()):
+            own.add(c.name)
     out = set()
     for c in classes:
         k = c
